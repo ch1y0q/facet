@@ -295,6 +295,34 @@ class TestPhotoSetContract:
             assert_satisfies(member, 'PhotoSetMember', 'GET /api/photo/set members[]')
 
 
+class TestIssue142FractionalIsoDoesNotFailThePage:
+    """GET /api/photos with a fractional ``iso`` on the wire (issue #142).
+
+    ``photos.iso`` is INTEGER-affinity, but affinity is not a constraint: an
+    Immich-sourced EXIF exposure index like ``63.4525478595867`` is written
+    with storage class REAL and SQLite keeps it that way. Seeded under its
+    own prefix (never ``seeded``/``PREFIX``) so this row's odd value cannot
+    leak into any other test's gallery listing in the shared session DB.
+    """
+
+    def test_fractional_iso_row_returns_200_with_iso_rounded(self, edition_client, seed_photos_prefix):
+        prefix = "/apicontract-issue142/"
+        photo = prefix + "a.jpg"
+        seed_photos_prefix(prefix, [{
+            "path": photo, "filename": "a.jpg", "aggregate": 6.0, "iso": 63.4525478595867,
+            **_MINIMAL_SCORED_FIELDS,
+        }])
+        resp = edition_client.get('/api/photos', params={'path_prefix': prefix, 'per_page': 50})
+        assert resp.status_code == 200
+        rows = {r['path']: r for r in resp.json()['photos']}
+        assert photo in rows, "seeded fractional-iso photo is not visible to the gallery"
+        # `== 63` alone would also hold for a float 63.0, which is the value
+        # the client would have to cope with — the contract is an int on the wire.
+        assert rows[photo]['iso'] == 63
+        assert isinstance(rows[photo]['iso'], int)
+        assert not isinstance(rows[photo]['iso'], bool)
+
+
 class TestWholeViewSelectionContract:
     """GET /api/photos/count and /api/photos/paths — the whole-view selection pair.
 

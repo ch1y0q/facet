@@ -142,6 +142,7 @@ API 会将其呈现在 `/api/scan/status` 的 `progress` 字段以及 SSE 数据
 | `python facet.py --score-topiq` | 从已存储的缩略图回填 TOPIQ 画质评分（需要 GPU） |
 | `python facet.py --backfill-focal-35mm` | 为缺少等效 35mm 焦距的照片从 EXIF 回填该值 |
 | `python facet.py --backfill-clipping` | 从已存储的直方图推导各通道的溢出百分比。仅使用数据库（不解码图像）且可续跑；直方图早于 RGB 格式的照片保持未知（NULL） |
+| `python facet.py --repair-int-columns` | 修复 `photos` 表中实际存储为 REAL 的 INTEGER 列——SQLite 的类型亲和性并非约束，因此外部工具写入的小数 ISO 会原样保留为 REAL。就地对每个值取整（SQLite 无法以整数保存的值——非有限值，或超过 2^53——置为 NULL），其余一概不动。仅使用数据库（不解码图像）。API 在读取时会对未修复的行取整，因此图库无需本命令即可正常显示；但筛选和排序比较的是实际存储的值，运行本命令可避免显示为 ISO 63 的照片被 ISO 区间筛选漏掉 |
 | `python facet.py --compute-recommendations` | 分析数据库并显示评分摘要 |
 | `python facet.py --compute-recommendations --verbose` | 显示详细统计信息 |
 | `python facet.py --compute-recommendations --apply-recommendations` | 自动应用评分修正 |

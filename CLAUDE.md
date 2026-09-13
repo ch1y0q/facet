@@ -277,10 +277,18 @@ wrong about:
 - TEXT affinity stringifies what you store: the scanner writes `shutter_speed` as a
   float and reads it back as `'0.0125'`. A column typed `TEXT` sends a string even
   when every value looks numeric.
+- **affinity is not a constraint**: a column declared `INTEGER` still stores whatever
+  storage class was written to it, so a fractional REAL written by an external EXIF
+  writer stays REAL on read-back. That is why the int fields of `api/models/gallery.py`'s
+  `Photo` are `CoercedInt` (`api/models/common.py`) rather than `Optional[int]`: a strict
+  `int` rejected one such `iso` with `int_from_float` and, because `response_model`
+  validates the whole page at once, answered 500 for every row on it. The coercion keeps
+  the declared wire type instead of changing it; `--repair-int-columns` rewrites the
+  stored values.
 `tests/test_api_contract.py` now asserts wire types, so a declaration that lies about
-either of these fails there. The response models enforce the same two facts server-side:
+any of these fails there. The response models enforce the same facts server-side:
 `shutter_speed` is declared `Optional[str]` because the column is TEXT, and the flags are
-`Optional[int]` because SQLite has no boolean — Pydantic **coerces**, so declaring either
+int-typed because SQLite has no boolean — Pydantic **coerces**, so declaring either
 as what it means rather than what it is silently rewrites the wire.
 
 Lookup and side tables: `photo_tags`, `faces`, `persons`, `albums`, `album_photos`,

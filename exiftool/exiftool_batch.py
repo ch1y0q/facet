@@ -13,6 +13,8 @@ import subprocess
 import threading
 from pathlib import Path
 
+from int_affinity import storable_int
+
 logger = logging.getLogger("facet.exiftool")
 
 STAY_OPEN_TIMEOUT_SECONDS = 30
@@ -250,11 +252,28 @@ def parse_exif_data(raw_data):
             return None
         return f if math.isfinite(f) else None
 
+    def _safe_int(val):
+        """Convert EXIF value to int for an INTEGER-affinity column (#142).
+
+        A fractional value (e.g. an Immich-sourced exposure index such as
+        63.4525478595867) stays REAL under SQLite's INTEGER affinity because
+        the conversion only happens when it is lossless, and the response
+        model then rejects the row. Rounding here keeps the write path
+        producing what the column actually stores.
+
+        ``storable_int`` and not a bare ``round``: an ISO beyond int64
+        rounds to an int SQLite cannot bind at all, and the INSERT that
+        raises is inside a 50-photo batch, so a bare round would trade one
+        odd value for a lost batch and a dead scan.
+        """
+        number = _safe_numeric(val)
+        return None if number is None else storable_int(number)
+
     return {
         'date_taken': raw_data.get('DateTimeOriginal') or raw_data.get('CreateDate'),
         'camera_model': raw_data.get('Model'),
         'lens_model': raw_data.get('LensModel') or raw_data.get('LensID'),
-        'iso': _safe_numeric(raw_data.get('ISO')),
+        'iso': _safe_int(raw_data.get('ISO')),
         'f_stop': _safe_numeric(raw_data.get('Aperture')),
         'shutter_speed': str(raw_data.get('ExposureTime')) if raw_data.get('ExposureTime') else None,
         'focal_length': _safe_numeric(raw_data.get('FocalLength')),

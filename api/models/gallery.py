@@ -3,7 +3,7 @@
 from pydantic import BaseModel, Field
 from typing import Optional
 
-from api.models.common import PaginationEnvelope
+from api.models.common import CoercedInt, PaginationEnvelope
 
 
 class PhotoPerson(BaseModel):
@@ -21,6 +21,12 @@ class Photo(BaseModel):
     means rather than what it is makes Pydantic coerce the value and silently
     change the wire.
 
+    One deliberate exception: affinity is not a constraint, so an
+    INTEGER-affinity column can still hand back a REAL or TEXT storage class
+    (issue #142). The 20 fields declared ``CoercedInt`` below keep the
+    declared *wire* type -- an int, same as always -- by coercing whatever
+    SQLite actually stored, rather than changing what the field means.
+
     The field set is a SUPERSET of everything ``build_photo_select_columns``
     can emit, because ``response_model`` filters: a column absent here is a
     column dropped from the response. ``tests/test_response_models.py`` pins
@@ -37,12 +43,12 @@ class Photo(BaseModel):
     date_taken: Optional[str] = None
     camera_model: Optional[str] = None
     lens_model: Optional[str] = None
-    iso: Optional[int] = None
+    iso: CoercedInt = None
     f_stop: Optional[float] = None
     shutter_speed: Optional[str] = None
     focal_length: Optional[float] = None
     aesthetic: Optional[float] = None
-    face_count: Optional[int] = None
+    face_count: CoercedInt = None
     face_quality: Optional[float] = None
     eye_sharpness: Optional[float] = None
     face_sharpness: Optional[float] = None
@@ -52,25 +58,25 @@ class Photo(BaseModel):
     exposure_score: Optional[float] = None
     comp_score: Optional[float] = None
     isolation_bonus: Optional[float] = None
-    is_blink: Optional[int] = None
+    is_blink: CoercedInt = None
     phash: Optional[str] = None
-    is_burst_lead: Optional[int] = None
+    is_burst_lead: CoercedInt = None
     aggregate: Optional[float] = None
     category: Optional[str] = None
-    image_width: Optional[int] = None
-    image_height: Optional[int] = None
+    image_width: CoercedInt = None
+    image_height: CoercedInt = None
     histogram_spread: Optional[float] = None
     mean_luminance: Optional[float] = None
     power_point_score: Optional[float] = None
-    shadow_clipped: Optional[int] = None
-    highlight_clipped: Optional[int] = None
-    is_silhouette: Optional[int] = None
-    is_group_portrait: Optional[int] = None
+    shadow_clipped: CoercedInt = None
+    highlight_clipped: CoercedInt = None
+    is_silhouette: CoercedInt = None
+    is_group_portrait: CoercedInt = None
     leading_lines_score: Optional[float] = None
     channel_clip_shadow_pct: Optional[float] = None
     channel_clip_highlight_pct: Optional[float] = None
     face_confidence: Optional[float] = None
-    is_monochrome: Optional[int] = None
+    is_monochrome: CoercedInt = None
     mean_saturation: Optional[float] = None
     dynamic_range_stops: Optional[float] = None
     noise_sigma: Optional[float] = None
@@ -89,12 +95,12 @@ class Photo(BaseModel):
     subject_prominence: Optional[float] = None
     subject_placement: Optional[float] = None
     bg_separation: Optional[float] = None
-    star_rating: Optional[int] = None
-    is_favorite: Optional[int] = None
-    is_rejected: Optional[int] = None
-    duplicate_group_id: Optional[int] = None
-    is_duplicate_lead: Optional[int] = None
-    burst_group_id: Optional[int] = None
+    star_rating: CoercedInt = None
+    is_favorite: CoercedInt = None
+    is_rejected: CoercedInt = None
+    duplicate_group_id: CoercedInt = None
+    is_duplicate_lead: CoercedInt = None
+    burst_group_id: CoercedInt = None
     caption: Optional[str] = None
     caption_translated: Optional[str] = None
     gps_latitude: Optional[float] = None
@@ -109,16 +115,16 @@ class Photo(BaseModel):
     narrative_moment: Optional[str] = None
     narrative_moment_confidence: Optional[float] = None
     junk_kind: Optional[str] = None
-    sequence_group_id: Optional[int] = None
+    sequence_group_id: CoercedInt = None
     sequence_kind: Optional[str] = None
     sequence_ev_offset: Optional[float] = None
     image_aspect: Optional[float] = None
     sequence_override: Optional[str] = None
-    sequence_override_pending: Optional[int] = None
+    sequence_override_pending: CoercedInt = None
     date_formatted: Optional[str] = None
     tags_list: list[str] = []
     persons: list[PhotoPerson] = []
-    unassigned_faces: Optional[int] = None
+    unassigned_faces: CoercedInt = None
     top_picks_score: Optional[float] = None
     learned_score: Optional[float] = None
     similarity: Optional[float] = None

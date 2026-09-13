@@ -12,6 +12,7 @@ import sqlite3
 from datetime import datetime
 from io import BytesIO
 
+from int_affinity import storable_int
 from db.connection import apply_pragmas
 
 logger = logging.getLogger("facet.db_maintenance")
@@ -1012,3 +1013,99 @@ def backfill_channel_clipping(db_path='photo_scores_pro.db', batch_size=2000, ve
                 "%d photos still hold a luminance-only histogram and stay unknown — "
                 "rescan them to measure the channels.", legacy)
     return updated
+
+
+def repair_integer_columns(db_path='photo_scores_pro.db', verbose=True):
+    """Rewrite INTEGER-affinity `photos` columns an external writer stored as REAL.
+
+    SQLite affinity is advisory, not a constraint: a column declared INTEGER
+    still accepts a fractional REAL and keeps it as one (GitHub #142's trigger
+    was an Immich-sourced EXIF exposure index landing in `iso` as e.g.
+    `63.4525478595867`), and the gallery response model then rejects it. The
+    read path now coerces what it can and the EXIF writers now round on the
+    way in; this is only the one-time repair for rows an existing library
+    already holds before those fixes existed.
+
+    The target columns are derived from `db.schema.PHOTOS_COLUMNS` by SQLite's
+    own affinity rule (`'INT' in coltype.upper()`), not by an `== 'INTEGER'`
+    equality — the stored type strings are decorated with defaults and CHECK
+    clauses (e.g. `'INTEGER DEFAULT 0 CHECK (star_rating >= 0 ...)'`) and an
+    equality match would silently select nothing.
+
+    This does one full-table scan, then a targeted per-row UPDATE touching
+    only the offending columns of that row -- never one
+    ``UPDATE ... WHERE typeof(col)='real'`` per column, for three reasons:
+
+    - `photos` stores `thumbnail`, `clip_embedding` and `histogram_data`
+      inline, so any scan of the table walks each row's BLOB overflow chain
+      to reach columns declared after them (`star_rating`, `is_favorite`,
+      `is_rejected`, `render_version`). Scanning per-column pays that cost
+      once per column (22 times today); scanning once pays it once.
+    - Several of these columns carry CHECK constraints (db/schema.py, e.g. on
+      `face_count`, `is_blink`, `star_rating`) and SQLite re-evaluates a row's
+      whole CHECK set on any UPDATE to that row, so one legacy row already
+      violating an unrelated CHECK would abort a bulk statement and repair
+      nothing. A per-row UPDATE isolates that failure: it is caught as
+      `sqlite3.IntegrityError`, the row's path is logged, and the rest of the
+      rows are still repaired.
+    - `int_affinity.storable_int` is the same function the API response
+      model's coercer applies to a REAL-stored integer, so the value this
+      repair writes and the value already being served can never disagree --
+      SQLite's own `ROUND()` breaks a `.5` tie away from zero where Python's
+      goes to even, and it would also round `1e20` to an int this process
+      cannot bind.
+
+    A REAL SQLite cannot store faithfully (`nan`, `inf`, or a magnitude beyond
+    `JS_SAFE_INT`) is repaired to NULL rather than rounded: NULL is the
+    column's own word for "unknown", and it is what the response model already
+    serves for such a value. Rounding it instead would raise -- `OverflowError`
+    for the oversized case, which is not an `IntegrityError` and so would abort
+    the whole job on that row, leaving every later row unrepaired on this and
+    on every subsequent run. Oversized is not hypothetical: a REAL survives an
+    INTEGER column either by having a fractional part or by not fitting int64.
+    TEXT-stored junk
+    (e.g. an `iso` written as `'Auto'`) is deliberately left untouched: the API
+    nulls what it cannot parse, and the database has no way to know what the
+    original writer meant.
+
+    Returns the total number of rows repaired.
+    """
+    from db.connection import get_connection
+    from db.schema import PHOTOS_COLUMNS
+
+    int_columns = [name for name, coltype in PHOTOS_COLUMNS if 'INT' in coltype.upper()]
+    select_cols = ", ".join(int_columns)
+    typeof_clause = " OR ".join(f"typeof({col}) = 'real'" for col in int_columns)
+    select_sql = f"SELECT rowid, path, {select_cols} FROM photos WHERE {typeof_clause}"
+
+    per_column = {col: 0 for col in int_columns}
+    rows_repaired = 0
+    with get_connection(db_path) as conn:
+        rows = conn.execute(select_sql).fetchall()
+        for row in rows:
+            offending = {col: storable_int(row[col])
+                         for col in int_columns if isinstance(row[col], float)}
+            if not offending:
+                continue
+            set_clause = ", ".join(f"{col} = ?" for col in offending)
+            params = list(offending.values()) + [row['rowid']]
+            try:
+                conn.execute(f"UPDATE photos SET {set_clause} WHERE rowid = ?", params)
+                conn.commit()
+            except sqlite3.IntegrityError:
+                conn.rollback()
+                if verbose:
+                    logger.warning(
+                        "Skipped %s: repaired value violates a CHECK constraint "
+                        "on the row", row['path'])
+                continue
+            rows_repaired += 1
+            for col in offending:
+                per_column[col] += 1
+
+    if verbose:
+        for col, count in per_column.items():
+            if count:
+                logger.info("Repaired %d REAL-stored value(s) in %s", count, col)
+        logger.info("Integer column repair: %d rows repaired.", rows_repaired)
+    return rows_repaired

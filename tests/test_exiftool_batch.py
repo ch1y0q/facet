@@ -13,7 +13,7 @@ import time
 import pytest
 
 import exiftool.exiftool_batch as exiftool_batch
-from exiftool.exiftool_batch import ExifToolBatch
+from exiftool.exiftool_batch import ExifToolBatch, parse_exif_data
 
 _MODEL_BY_PATH = {'A': 'CAM_A', 'B': 'CAM_B'}
 
@@ -198,6 +198,56 @@ def test_get_metadata_returns_on_stalled_process(monkeypatch):
             os.close(w_fd)
         except OSError:
             pass
+
+
+class TestParseExifDataIso:
+    """#142: ISO must land as int, since photos.iso is INTEGER-affinity and a
+    fractional REAL (e.g. an Immich-sourced exposure index) 500s the gallery's
+    response model.
+    """
+
+    def test_fractional_iso_rounds_to_int(self):
+        result = parse_exif_data({'ISO': 63.4525478595867})
+        assert result['iso'] == 63
+        assert isinstance(result['iso'], int)
+
+    def test_integer_float_iso_becomes_int(self):
+        result = parse_exif_data({'ISO': 400})
+        assert result['iso'] == 400
+        assert isinstance(result['iso'], int)
+
+    def test_numeric_string_iso_becomes_int(self):
+        result = parse_exif_data({'ISO': '400'})
+        assert result['iso'] == 400
+        assert isinstance(result['iso'], int)
+
+    def test_oversized_iso_is_none_rather_than_an_unbindable_int(self):
+        """A REAL survives an INTEGER column two ways: a fractional part, or
+        not fitting int64. ``round(1e20)`` is a Python int sqlite3 refuses to
+        bind (``OverflowError``), and this INSERT is inside a 50-photo batch
+        with no guard above it -- so an unbounded round would trade one odd
+        value for a lost batch and a dead scan.
+        """
+        result = parse_exif_data({'ISO': 1e20})
+        assert result['iso'] is None
+
+    def test_unparseable_iso_is_none(self):
+        result = parse_exif_data({'ISO': 'Auto'})
+        assert result['iso'] is None
+
+    def test_none_iso_is_none(self):
+        result = parse_exif_data({'ISO': None})
+        assert result['iso'] is None
+
+    def test_absent_iso_is_none(self):
+        result = parse_exif_data({})
+        assert result['iso'] is None
+
+    def test_f_stop_and_focal_length_stay_float(self):
+        result = parse_exif_data({'Aperture': 2.8, 'FocalLength': 50})
+        assert result['f_stop'] == 2.8
+        assert isinstance(result['f_stop'], float)
+        assert isinstance(result['focal_length'], float)
 
 
 if __name__ == '__main__':

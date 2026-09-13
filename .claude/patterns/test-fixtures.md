@@ -53,6 +53,7 @@ been wrong twice.
 | `TEXT` holding a number (`shutter_speed`) | `"0.0125"` | TEXT affinity stringifies the float the scanner wrote |
 | nullable `REAL` (`aggregate`) | `null` for an unscored row | the column has no default |
 | flag columns for favourite / rejected | usually `null` | the per-user values live in `user_preferences`; the `photos` columns are only the single-user fallback |
+| `INTEGER` column holding a REAL (`iso`) | the rounded int | affinity is not a constraint, so an external EXIF writer's fractional value stays REAL in the DB; `CoercedInt` rounds it on the way out (issue #142) |
 
 `null` is a real state, not a synonym for false. Preserve it: folding it to `false`
 turns "never evaluated" into "evaluated and negative", and for `is_favorite` that is
