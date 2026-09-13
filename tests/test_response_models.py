@@ -14,6 +14,8 @@ property against the column lists themselves rather than against a copy.
 
 from __future__ import annotations
 
+import pytest
+
 from api.db_helpers import PHOTO_BASE_COLS, PHOTO_OPTIONAL_COLS
 from api.models.gallery import Photo
 
@@ -73,3 +75,54 @@ def test_only_path_is_required():
     """
     required = {name for name, f in Photo.model_fields.items() if f.is_required()}
     assert required == {'path'}
+
+
+@pytest.mark.parametrize('raw, expected', [
+    (63.4525478595867, 63),
+    (400, 400),
+    (400.0, 400),
+    ('400', 400),
+    ('Auto', None),
+    (float('inf'), None),
+    (float('nan'), None),
+    (None, None),
+    (1.5, 2),
+    (1e20, None),
+])
+def test_iso_coerces_whatever_sqlite_affinity_let_through(raw, expected):
+    """``iso`` is INTEGER-affinity, but affinity is not a constraint (issue #142).
+
+    A REAL with a fractional part -- ``63.4525478595867``, an Immich-sourced
+    EXIF exposure index -- or a TEXT value like ``'Auto'`` both stay exactly
+    that on read-back. Declared plain ``Optional[int]``, any of these raises
+    ``int_from_float``/``int_parsing`` and the whole page 500s; ``CoercedInt``
+    rounds what is numeric and reports the rest as ``None`` rather than
+    failing the request.
+    """
+    photo = Photo(path='/x.jpg', iso=raw)
+    assert photo.iso == expected
+
+
+def test_is_favorite_stays_an_int_not_a_bool_after_coercion():
+    """Flags must stay 0/1 ints, never bools -- the same contract
+
+    ``test_photo_flag_fields_are_ints_not_bools`` pins on the declared
+    annotation, and the ``sqlite_boolean`` exceptions in
+    ``tests/test_api_contract.py`` depend on the *value*, not merely the
+    type, staying ``1`` rather than becoming ``True``.
+
+    Driven with a value that *needs* the coercion -- a plain ``Optional[int]``
+    rejects ``1.4`` with ``int_from_float`` -- because ``1.0`` is narrowed by
+    Pydantic's own lax int handling and so would pass unpatched, testing
+    nothing. ``True`` is covered too: ``_coerce_int`` hands a bool straight
+    through, and what must not happen is that bool reaching the wire.
+    """
+    photo = Photo(path='/x.jpg', is_favorite=1.4)
+    assert photo.is_favorite == 1
+    assert photo.is_favorite is not True
+    assert not isinstance(photo.is_favorite, bool)
+
+    from_bool = Photo(path='/x.jpg', is_favorite=True)
+    assert from_bool.is_favorite == 1
+    assert not isinstance(from_bool.is_favorite, bool)
+    assert from_bool.model_dump()['is_favorite'] == 1

@@ -5749,6 +5749,12 @@ export interface components {
          *     means rather than what it is makes Pydantic coerce the value and silently
          *     change the wire.
          *
+         *     One deliberate exception: affinity is not a constraint, so an
+         *     INTEGER-affinity column can still hand back a REAL or TEXT storage class
+         *     (issue #142). The 20 fields declared ``CoercedInt`` below keep the
+         *     declared *wire* type -- an int, same as always -- by coercing whatever
+         *     SQLite actually stored, rather than changing what the field means.
+         *
          *     The field set is a SUPERSET of everything ``build_photo_select_columns``
          *     can emit, because ``response_model`` filters: a column absent here is a
          *     column dropped from the response. ``tests/test_response_models.py`` pins

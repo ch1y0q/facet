@@ -143,6 +143,7 @@ These commands update specific metrics, derive new data (AI captions, GPS, embed
 | `python facet.py --score-topiq` | Backfill TOPIQ quality scores from stored thumbnails (GPU required) |
 | `python facet.py --backfill-focal-35mm` | Backfill 35mm-equivalent focal length from EXIF for photos missing it |
 | `python facet.py --backfill-clipping` | Derive per-channel clipping percentages from stored histograms. Database-only (no image decode) and resumable; photos whose histogram predates the RGB format stay unknown (NULL) |
+| `python facet.py --repair-int-columns` | Repair `photos` INTEGER columns whose stored value is a REAL — SQLite affinity is not a constraint, so an external EXIF writer's fractional ISO is kept as a REAL. Rounds each one in place (a value SQLite cannot hold as an integer — non-finite, or beyond 2^53 — becomes NULL) and leaves everything else alone. Database-only (no image decode). The API rounds unrepaired rows on read, so the gallery works without this; filters and sorts compare the value actually stored, so run it to stop a photo displayed as ISO 63 from being missed by an ISO range |
 | `python facet.py --compute-recommendations` | Analyze database, show scoring summary |
 | `python facet.py --compute-recommendations --verbose` | Show detailed statistics |
 | `python facet.py --compute-recommendations --apply-recommendations` | Auto-apply scoring fixes |

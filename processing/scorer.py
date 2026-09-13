@@ -21,6 +21,7 @@ import logging
 import functools
 import re as _re
 from pathlib import Path
+from int_affinity import storable_int
 from db import init_database, get_connection
 from db.render_version import DISPLAY_RENDER_VERSION
 from db.schema import FACES_UPSERT_SQL, face_upsert_row
@@ -277,6 +278,8 @@ _EXIF_NUMERIC_FIELDS = (
     'gps_latitude', 'gps_longitude',
 )
 
+_EXIF_INT_FIELDS = ('iso',)
+
 
 def _sanitize_exif_numeric(exif_data):
     """Null out non-finite or unparseable numeric EXIF fields before they reach the database.
@@ -286,8 +289,8 @@ def _sanitize_exif_numeric(exif_data):
     range). A value that does not parse as a float at all (e.g. an ``iso`` of
     ``"Auto"``) is nulled the same way, rather than left in place as TEXT in an
     INTEGER/REAL-affinity column. Guards the exifread/Pillow/subprocess parse
-    paths; the persistent ExifTool path is already guarded the same way in
-    exiftool_batch._safe_numeric.
+    paths; the persistent ExifTool path rounds ``iso`` the same way in
+    exiftool_batch.parse_exif_data (#142).
     """
     for key in _EXIF_NUMERIC_FIELDS:
         value = exif_data.get(key)
@@ -300,6 +303,8 @@ def _sanitize_exif_numeric(exif_data):
             continue
         if not np.isfinite(number):
             exif_data[key] = None
+        elif key in _EXIF_INT_FIELDS:
+            exif_data[key] = storable_int(number)
     return exif_data
 
 

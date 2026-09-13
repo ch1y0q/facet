@@ -26,10 +26,25 @@ class TestSanitizeExifNumeric:
         result = _sanitize_exif_numeric(exif_data)
         assert result['focal_length'] is None
 
-    def test_passes_through_valid_numeric_string(self):
+    def test_numeric_string_iso_becomes_int(self):
         exif_data = {'iso': '400'}
         result = _sanitize_exif_numeric(exif_data)
-        assert result['iso'] == '400'
+        assert result['iso'] == 400
+        assert isinstance(result['iso'], int)
+
+    def test_fractional_iso_becomes_int(self):
+        exif_data = {'iso': 63.4525478595867}
+        result = _sanitize_exif_numeric(exif_data)
+        assert result['iso'] == 63
+        assert isinstance(result['iso'], int)
+
+    def test_oversized_iso_is_nulled_not_rounded(self):
+        """``round(1e20)`` is an int sqlite3 cannot bind, and this sanitiser
+        feeds the batch INSERT -- so the bound is the same one the response
+        model applies (``int_affinity.storable_int``) and the value is nulled.
+        """
+        result = _sanitize_exif_numeric({'iso': 1e20})
+        assert result['iso'] is None
 
     def test_passes_through_valid_float(self):
         exif_data = {'f_stop': 2.8}

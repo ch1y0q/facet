@@ -671,6 +671,7 @@ LIBRARY_JOB_ARGS = (
     'refill_face_thumbnails_force',
     'refill_face_thumbnails_incremental',
     'refresh_thumbnails',
+    'repair_int_columns',
     'rescan_gps',
     'score_topiq',
     'sync_label_comparisons',
@@ -2155,6 +2156,13 @@ def main():
         from db.maintenance import backfill_channel_clipping
         init_database(args.db)
         backfill_channel_clipping(args.db)
+        exit()
+
+    # Repair INTEGER columns an external writer stored as REAL (no image decode)
+    if args.repair_int_columns:
+        from db.maintenance import repair_integer_columns
+        init_database(args.db)
+        repair_integer_columns(args.db)
         exit()
 
     # Backfill focal_length_35mm from EXIF (lightweight - no GPU needed)

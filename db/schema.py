@@ -22,6 +22,10 @@ PHOTOS_COLUMNS = [
     ('date_taken', 'TEXT'),
     ('camera_model', 'TEXT'),
     ('lens_model', 'TEXT'),
+    # Affinity is not a constraint: an external EXIF writer's fractional
+    # exposure index (e.g. an Immich-sourced ISO) is still accepted and
+    # stored as REAL here. `--repair-int-columns` rewrites rows an existing
+    # library already holds; the response model coerces the rest.
     ('iso', 'INTEGER'),
     ('f_stop', 'REAL'),
     ('shutter_speed', 'TEXT'),
