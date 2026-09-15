@@ -32,6 +32,7 @@ COMPUTED_EXTRAS = {
     'top_picks_score',
     'learned_score',
     'similarity',
+    'embedding_similarity',
 }
 
 

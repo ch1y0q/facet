@@ -302,9 +302,11 @@ Ricerca ibrida che combina la somiglianza degli embedding CLIP/SigLIP (70%) con 
 - Richiede i dati `clip_embedding` memorizzati (calcolati durante la valutazione)
 - Usa sqlite-vec per la ricerca vettoriale KNN quando installato, ricade su NumPy in memoria
 - La ricerca testuale FTS5 su didascalie/tag IA fornisce una corrispondenza per parole chiave aggiuntiva (esegui `database.py --rebuild-fts` per abilitarla)
-- Usa lo stesso modello di embedding del profilo VRAM attivo (SigLIP 2 per 16gb/24gb, CLIP ViT-L-14 per legacy/8gb)
+- Usa lo stesso modello di embedding del profilo VRAM attivo (SigLIP 2 per 16gb/24gb, CLIP ViT-L-14 per legacy/8gb), oppure quello tra `models.clip`/`clip_legacy` che corrisponde effettivamente alla dimensione di embedding memorizzata se i due non coincidono (vedi [docs/CONFIGURATION.md](CONFIGURATION.md))
 - `scope=text` limita la query alle corrispondenze FTS5 letterali nel testo OCR/didascalia e salta la ricerca tramite embedding
 - Controllato da `viewer.features.show_semantic_search` (predefinito: `true`)
+- La soglia coseno usa di default `models.clip.search_threshold_percent` (5%) / `models.clip_legacy.search_threshold_percent` (15%) — valori calibrati per backend, distinti dalla soglia di corrispondenza dei tag `similarity_threshold_percent`. Il `search_threshold_default` di `/api/config` inizializza il cursore di soglia 0-50% della galleria, che copre l'intero intervallo: una ricerca può essere restretta oltre il valore predefinito o allargata di nuovo fino a `0%` per singola query; una soglia esattamente `0%` continua a rifiutare una similarità coseno negativa, non è "nessun filtro". Il valore predefinito del 5% per SigLIP favorisce deliberatamente il recall rispetto alla precisione — vedi `clip.search_threshold_percent` in [docs/CONFIGURATION.md](CONFIGURATION.md) per il compromesso di quella calibrazione
+- Ogni risultato riporta due campi di similarità: `similarity` è il punteggio combinato embedding (70%) + FTS (30%) usato per il ranking; `embedding_similarity` è la similarità coseno grezza effettivamente confrontata con la soglia sopra, presente solo quando è stato calcolato un punteggio di embedding per quella foto (assente — mai `null` — per una corrispondenza solo FTS o `scope=text`)
 
 ## Album
 
@@ -1051,7 +1053,7 @@ I tipi TypeScript del client sono generati da questo schema in `client/src/app/c
 | `GET /api/photo/histogram?path=&bins=` | Bin di luminanza + R/G/B pronti da disegnare (`bins` ∈ 32/64/128/256, predefinito 64), misurati durante la scansione sull'immagine a piena risoluzione. Ogni canale è scalato da un unico massimo globale, mai dal proprio. `r`/`g`/`b` sono `null` per una riga salvata prima del formato per canale; 404 quando la riga non ha alcun istogramma, il segnale per cui il widget ripiega sul campionamento della miniatura |
 | `GET /api/type_counts?hide_blinks=&hide_bursts=&hide_duplicates=&hide_brackets=&hide_panoramas=` | Conteggi foto per tipo per i chip della barra laterale. Stessi cinque interruttori della galleria; uno omesso ricade su `viewer.defaults` invece che su "disattivato" — invia `hide_bursts=0`, ecc., esplicitamente per contare tutto |
 | `GET /api/similar_photos/{path}` | Foto simili (modalità: `visual`, `color`, `person`) |
-| `GET /api/search?q=&limit=&threshold=&scope=` | Ricerca semantica testo-immagine (`scope=text` = solo testo OCR/didascalia) |
+| `GET /api/search?q=&limit=&threshold=&scope=` | Ricerca semantica testo-immagine (`scope=text` = solo testo OCR/didascalia). `threshold` è opzionale: se omesso, si risolve al `models.*.search_threshold_percent` dell'encoder attivo (esposto al client come `search_threshold_default` di `/api/config`); un valore esplicito — incluso `0.0` — prevale sempre sul valore predefinito risolto. Valutato solo quando la ricerca esegue effettivamente una ricerca tramite embedding (`scope != 'text'` salta interamente la risoluzione) |
 | `GET /api/critique?path=&mode=&refresh=` | Critica IA (basata su regole o VLM); `refresh=true` rigenera la critica VLM memorizzata nella cache |
 | `GET /api/ranker/status` | Stato del ranker personale per l'ordinamento "I miei gusti" (% di copertura appresa, accuratezza su dati di validazione) |
 | `GET /api/config` | Configurazione della galleria |

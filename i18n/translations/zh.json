@@ -1136,6 +1136,8 @@
       "moments": "拍摄时刻"
     },
     "semantic_search_info": "首次使用语义搜索时，会将特征向量载入内存。照片库较大时可能需要稍等。",
+    "semantic_search_threshold": "匹配灵敏度",
+    "semantic_search_threshold_hint": "数值越低，显示的结果越多（包括较弱的匹配）；调高数值可只保留最接近的匹配。",
     "select_on_map": "在地图上选择",
     "gps_radius": "半径",
     "hide_rejected": "隐藏已淘汰照片",

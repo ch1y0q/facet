@@ -302,9 +302,11 @@ Hybride Suche, die CLIP/SigLIP-Embedding-Ähnlichkeit (70%) mit FTS5-BM25-Textab
 - Erfordert gespeicherte `clip_embedding`-Daten (während der Bewertung berechnet)
 - Verwendet sqlite-vec für KNN-Vektorsuche, sofern installiert, andernfalls Rückgriff auf In-Memory-NumPy
 - FTS5-Textsuche auf KI-Bildbeschreibungen/Tags bietet zusätzlichen Schlüsselwortabgleich (zum Aktivieren `database.py --rebuild-fts` ausführen)
-- Verwendet dasselbe Embedding-Modell wie das aktive VRAM-Profil (SigLIP 2 für 16gb/24gb, CLIP ViT-L-14 für legacy/8gb)
+- Verwendet dasselbe Embedding-Modell wie das aktive VRAM-Profil (SigLIP 2 für 16gb/24gb, CLIP ViT-L-14 für legacy/8gb), oder dasjenige von `models.clip`/`clip_legacy`, das tatsächlich zur gespeicherten Embedding-Dimension passt, falls beide voneinander abweichen (siehe [docs/CONFIGURATION.md](CONFIGURATION.md))
 - `scope=text` beschränkt die Anfrage auf literale FTS5-Treffer im OCR-/Beschreibungstext und überspringt die Embedding-Suche
 - Gesteuert über `viewer.features.show_semantic_search` (Standard: `true`)
+- Die Kosinus-Schwelle verwendet standardmäßig `models.clip.search_threshold_percent` (5%) / `models.clip_legacy.search_threshold_percent` (15%) — pro Backend kalibrierte Werte, getrennt von der Tag-Übereinstimmungsschwelle `similarity_threshold_percent`. Der `search_threshold_default` von `/api/config` initialisiert den 0-50%-Schwellenwertregler der Galerie, der den gesamten Bereich abdeckt: eine Suche kann je Anfrage über den Standardwert hinaus verschärft oder bis auf `0%` wieder gelockert werden; eine Schwelle von exakt `0%` weist weiterhin eine negative Kosinusähnlichkeit zurück — das ist kein „kein Filter". Der Standardwert von 5% für SigLIP bevorzugt bewusst Recall gegenüber Präzision — siehe `clip.search_threshold_percent` in [docs/CONFIGURATION.md](CONFIGURATION.md) für den Kalibrierungs-Kompromiss
+- Jedes Ergebnis liefert zwei Ähnlichkeitsfelder: `similarity` ist der für die Rangfolge verwendete kombinierte Wert aus Embedding (70%) + FTS (30%); `embedding_similarity` ist die rohe Kosinusähnlichkeit, die tatsächlich gegen die obige Schwelle geprüft wurde, und ist nur vorhanden, wenn für dieses Foto ein Embedding-Score berechnet wurde (fehlt — nie `null` — bei einem reinen FTS-Treffer oder `scope=text`)
 
 ## Alben
 
@@ -1050,7 +1052,7 @@ Die TypeScript-Typen des Clients werden mit `cd client && npm run gen:api` aus d
 | `GET /api/photo/histogram?path=&bins=` | Zeichenfertige Luminanz- + R/G/B-Bins (`bins` ∈ 32/64/128/256, Standard 64), beim Scan am Bild in voller Auflösung gemessen. Jeder Kanal wird mit einem einzigen globalen Maximum skaliert, nie mit seinem eigenen. `r`/`g`/`b` sind `null` für eine Zeile, die vor dem Kanalformat gespeichert wurde; 404, wenn die Zeile überhaupt kein Histogramm hat — das Signal für das Widget, auf das Abtasten des Vorschaubilds zurückzufallen |
 | `GET /api/type_counts?hide_blinks=&hide_bursts=&hide_duplicates=&hide_brackets=&hide_panoramas=` | Fotoanzahlen pro Typ für die Seitenleisten-Chips. Dieselben fünf Umschalter wie die Galerie; ein ausgelassener fällt auf `viewer.defaults` zurück statt auf „aus" — senden Sie `hide_bursts=0` usw. explizit, um alles zu zählen |
 | `GET /api/similar_photos/{path}` | Ähnliche Fotos (Modi: `visual`, `color`, `person`) |
-| `GET /api/search?q=&limit=&threshold=&scope=` | Semantische Text-zu-Bild-Suche (`scope=text` = nur OCR-/Beschreibungstext) |
+| `GET /api/search?q=&limit=&threshold=&scope=` | Semantische Text-zu-Bild-Suche (`scope=text` = nur OCR-/Beschreibungstext). `threshold` ist optional: Wird er ausgelassen, löst er sich zum `models.*.search_threshold_percent` des aktiven Encoders auf (dem Client als `search_threshold_default` von `/api/config` bereitgestellt); ein expliziter Wert — einschließlich `0.0` — überschreibt immer den aufgelösten Standardwert. Wird nur ausgewertet, wenn die Suche tatsächlich eine Embedding-Suche durchführt (`scope != 'text'` überspringt die Auflösung vollständig) |
 | `GET /api/critique?path=&mode=&refresh=` | KI-Kritik (regelbasiert oder VLM); `refresh=true` regeneriert die zwischengespeicherte VLM-Kritik |
 | `GET /api/ranker/status` | Status des persönlichen Rankers für die Sortierung „Mein Geschmack" (gelernte Abdeckung %, Held-out-Genauigkeit) |
 | `GET /api/config` | Galerie-Konfiguration |

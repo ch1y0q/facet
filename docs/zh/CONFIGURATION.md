@@ -527,13 +527,15 @@ penalty = min(noise_max_penalty_points, (noise_sigma - threshold) * noise_penalt
       "model_name": "google/siglip2-so400m-patch16-naflex",
       "backend": "transformers",
       "embedding_dim": 1152,
-      "similarity_threshold_percent": 8
+      "similarity_threshold_percent": 8,
+      "search_threshold_percent": 5
     },
     "clip_legacy": {
       "model_name": "ViT-L-14",
       "pretrained": "laion2b_s32b_b82k",
       "embedding_dim": 768,
-      "similarity_threshold_percent": 22
+      "similarity_threshold_percent": 22,
+      "search_threshold_percent": 15
     },
     "qwen2_vl": {
       "model_path": "Qwen/Qwen2-VL-2B-Instruct",
@@ -574,11 +576,13 @@ penalty = min(noise_max_penalty_points, (noise_sigma - threshold) * noise_penalt
 | `clip.model_name` | `"google/siglip2-so400m-patch16-naflex"` | SigLIP 2 NaFlex 嵌入模型（16gb/24gb） |
 | `clip.backend` | `"transformers"` | `"transformers"`（SigLIP 2 NaFlex）或 `"open_clip"`（旧版） |
 | `clip.embedding_dim` | `1152` | 嵌入维度（SigLIP 2 为 1152） |
-| `clip.similarity_threshold_percent` | `8` | 标签匹配所需的最低 CLIP 余弦相似度 |
+| `clip.similarity_threshold_percent` | `8` | **标签**匹配所需的最低 CLIP 余弦相似度（`--tag-existing`、扫描时的自动打标）——**不是**下面的语义搜索阈值 |
+| `clip.search_threshold_percent` | `5` | `GET /api/search` 语义搜索的余弦阈值（通过 `/api/config` 的 `search_threshold_default` 暴露给客户端），**不是**上面的标签匹配阈值。必须是 `0-50` 之间的整数——图库侧边栏滑块的上限是 50，客户端的百分比换算（`Math.round(search_threshold_default * 100)`）只有对整数才不会失真。基于一份包含 34 行真实 SigLIP 2 嵌入的验证样本校准得出（issue #145）：默认值下 21 个已知真正例**全部**被保留，同时 13 个已知负例中也有 3 个被保留——这是刻意偏向召回率而非精确率的取舍。更严格的 `5.5%` 本可以让负例全部被拒，但因为该 issue 的报告者在自己的图库中测得一个真实匹配的余弦相似度恰为 `0.051` 而被否决；排除一个已确认的真实匹配，被认为比放过几个负例更糟，尤其是图库的 0-50% 滑块本就允许用户事后针对某次搜索收紧（或放宽）阈值。 |
 | `clip_legacy.model_name` | `"ViT-L-14"` | 旧版 CLIP 模型（legacy/8gb 配置档） |
 | `clip_legacy.pretrained` | `"laion2b_s32b_b82k"` | 旧版预训练权重 |
 | `clip_legacy.embedding_dim` | `768` | 旧版嵌入维度 |
-| `clip_legacy.similarity_threshold_percent` | `22` | 旧版 CLIP 的标签匹配阈值 |
+| `clip_legacy.similarity_threshold_percent` | `22` | 旧版 CLIP 的标签匹配阈值——**不是**下面的语义搜索阈值 |
+| `clip_legacy.search_threshold_percent` | `15` | legacy/8gb（open_clip）配置档上 `GET /api/search` 语义搜索的余弦阈值——保留了 Facet 在引入该键之前一直使用的阈值。与上面 `clip.search_threshold_percent` 相同，必须是 `0-50` 之间的整数。 |
 | `qwen2_vl.model_path` | `"Qwen/Qwen2-VL-2B-Instruct"` | 手动启用 `composition_model: "qwen2-vl-2b"` 时使用的 HuggingFace 路径 — 没有任何配置档默认选用它 |
 | `qwen3_5_2b.model_path` | `"Qwen/Qwen3.5-2B"` | 16gb 配置档的标签模型 |
 | `qwen3_5_2b.vlm_batch_size` | `4` | 每个 VLM 推理批次的图片数 |
@@ -588,6 +592,15 @@ penalty = min(noise_max_penalty_points, (noise_sigma - threshold) * noise_penalt
 | `saliency.resolution` | `1024` | 推理分辨率 |
 | `saliency.mask_threshold` | `0.3` | 二值主体掩膜的 sigmoid 阈值 |
 | `saliency.min_subject_pixels` | `50` | 判定检测到主体所需的最少主体像素数 |
+
+**语义搜索与在不同配置档下建立索引的照片库：** `GET /api/search` 会根据*已存储*的嵌入维度
+来决定使用 `clip` 还是 `clip_legacy`（以及对应的 `search_threshold_percent`），而不一定
+是这台机器当前生效的 `vram_profile`。当一个照片库是在某个配置档下建立索引的（例如
+768 维的 CLIP），但现在在解析出另一配置档（例如默认使用 `clip`、1152 维的
+16gb/SigLIP 配置档）的机器上浏览时，这一点就很重要：已存储的维度优先，因此搜索会
+透明地改用 `clip_legacy` 的模型**及其** `search_threshold_percent`。如果已存储的维度
+与*两个*配置块都不匹配，则会原样保留当前生效配置档自身的配置块——以及它的阈值——
+而不会去猜测。
 
 ### 显存自动检测
 

@@ -1136,6 +1136,8 @@
       "moments": "Momentos"
     },
     "semantic_search_info": "A busca semântica carrega os embeddings na RAM no primeiro uso. Isso pode levar um momento para bibliotecas grandes.",
+    "semantic_search_threshold": "Sensibilidade de correspondência",
+    "semantic_search_threshold_hint": "Valores mais baixos mostram mais resultados, incluindo correspondências mais fracas; aumente para manter apenas as correspondências mais próximas.",
     "select_on_map": "Selecionar no mapa",
     "gps_radius": "Raio",
     "hide_rejected": "Ocultar rejeitadas",

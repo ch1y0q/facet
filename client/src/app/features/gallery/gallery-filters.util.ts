@@ -139,6 +139,10 @@ export interface GalleryFilters {
   min_similarity: string;
   // Semantic search
   semanticQuery: string;
+  /** 0-50 percent, as a string for URL round-trip (same idiom as min_similarity).
+   *  Empty means "no client override" -- the server resolves its own
+   *  per-model default when `threshold` is omitted entirely. */
+  search_threshold: string;
   // Album filter
   album_id: string;
   // Folder filter
@@ -192,7 +196,7 @@ export interface FilterDefaults {
 
 /** Keys excluded when building smart album filter JSON (display-only, ephemeral, or handled separately). */
 export const SMART_ALBUM_EXCLUDE_KEYS = new Set([
-  'page', 'per_page', 'semanticQuery', 'album_id',
+  'page', 'per_page', 'semanticQuery', 'search_threshold', 'album_id',
   'similar_to', 'similarity_mode', 'min_similarity',
   'hide_details', 'tooltip_mode', 'panel_activation', 'hide_blinks', 'hide_bursts',
   'hide_duplicates', 'hide_brackets', 'hide_panoramas', 'hide_rejected',
@@ -328,6 +332,7 @@ export const DEFAULT_FILTERS: GalleryFilters = {
   sequence_override: '',
   path_prefix: '',
   semanticQuery: '',
+  search_threshold: '',
   album_id: '',
   gps_lat: '',
   gps_lng: '',
@@ -403,7 +408,8 @@ export function applyQueryParams(
   const result = { ...base };
 
   const stringKeys: (keyof GalleryFilters)[] = [
-    ...RANGE_AND_SELECT_KEYS, 'sort', 'sort_direction', 'similar_to', 'min_similarity', 'semanticQuery', 'album_id',
+    ...RANGE_AND_SELECT_KEYS, 'sort', 'sort_direction', 'similar_to', 'min_similarity',
+    'semanticQuery', 'search_threshold', 'album_id',
   ];
   for (const key of stringKeys) {
     if (params[key]) (result as Record<string, unknown>)[key] = params[key];
@@ -451,6 +457,7 @@ export function buildSyncParams(
   }
   if (f.similar_to && f.min_similarity) params['min_similarity'] = f.min_similarity;
   if (f.similar_to && f.similarity_mode && f.similarity_mode !== 'visual') params['similarity_mode'] = f.similarity_mode;
+  if (f.semanticQuery && f.search_threshold) params['search_threshold'] = f.search_threshold;
 
   if (f.hide_details !== (defaults?.hide_details ?? true))
     params['hide_details'] = String(f.hide_details);

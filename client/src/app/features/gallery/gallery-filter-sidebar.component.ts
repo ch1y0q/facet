@@ -243,6 +243,17 @@ function saveSectionStates(states: Record<string, boolean>): void {
               }
             </mat-form-field>
             <p class="text-xs opacity-50 px-1">{{ I18N.gallery.semantic_search_info | translate }}</p>
+            <div class="flex items-center gap-2 px-1">
+              <span class="text-sm opacity-70 shrink-0">{{ I18N.gallery.semantic_search_threshold | translate }}</span>
+              <mat-slider [min]="0" [max]="50" [step]="1" class="flex-1">
+                <input matSliderThumb
+                  [value]="searchThresholdValue()"
+                  (valueChange)="onSearchThresholdChange($event)"
+                  [attr.aria-label]="I18N.gallery.semantic_search_threshold | translate" />
+              </mat-slider>
+              <span class="text-xs opacity-60 w-10 text-right">{{ searchThresholdValue() }}%</span>
+            </div>
+            <p class="text-xs opacity-50 px-1">{{ I18N.gallery.semantic_search_threshold_hint | translate }}</p>
           </div>
         </mat-expansion-panel>
       }
@@ -840,6 +851,22 @@ export class GalleryFilterSidebarComponent {
   private readonly coarsePointer = useCoarsePointerSignal();
   readonly sliderConfig = computed(() => this.store.config()?.display?.thumbnail_slider ?? null);
 
+  /** Numeric mirror of the string filter for the `<input matSliderThumb [value]>`
+   *  binding, and for the percent readout next to it -- a computed, never a
+   *  template method call (per project rule).
+   *
+   *  Unseeded ('') must NOT render as 0: the server only omits `threshold`
+   *  entirely when the client sends nothing, then gates at its own calibrated
+   *  default (`config.search_threshold_default`) -- so the thumb and readout
+   *  fall back to that same effective value rather than lying about a 0%
+   *  gate. Falls back to 0 only if config itself hasn't loaded yet. */
+  protected readonly searchThresholdValue = computed(() => {
+    const raw = this.store.filters().search_threshold;
+    if (raw) return Number(raw);
+    const def = this.store.config()?.search_threshold_default;
+    return def != null ? Math.round(def * 100) : 0;
+  });
+
   /**
    * Lowest card width the thumbnail slider offers.
    *
@@ -1027,6 +1054,9 @@ export class GalleryFilterSidebarComponent {
   }
 
   private searchTimeout: ReturnType<typeof setTimeout> | null = null;
+  // Kept separate from searchTimeout so a slider drag can't cancel a pending
+  // text search (or vice versa) -- they debounce independent filter keys.
+  private thresholdTimeout: ReturnType<typeof setTimeout> | null = null;
   private albumsLoaded = false;
 
   constructor() {
@@ -1039,6 +1069,7 @@ export class GalleryFilterSidebarComponent {
     });
     inject(DestroyRef).onDestroy(() => {
       if (this.searchTimeout) clearTimeout(this.searchTimeout);
+      if (this.thresholdTimeout) clearTimeout(this.thresholdTimeout);
       this.coarsePointer.cleanup();
     });
   }
@@ -1059,6 +1090,13 @@ export class GalleryFilterSidebarComponent {
     if (this.searchTimeout) clearTimeout(this.searchTimeout);
     this.searchTimeout = setTimeout(() => {
       this.store.updateFilter('semanticQuery', value);
+    }, 400);
+  }
+
+  onSearchThresholdChange(value: number): void {
+    if (this.thresholdTimeout) clearTimeout(this.thresholdTimeout);
+    this.thresholdTimeout = setTimeout(() => {
+      this.store.updateFilter('search_threshold', String(value));
     }, 400);
   }
 

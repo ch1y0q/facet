@@ -301,9 +301,11 @@ Búsqueda híbrida que combina la similitud de embeddings de CLIP/SigLIP (70%) c
 - Requiere datos de `clip_embedding` almacenados (calculados durante la puntuación)
 - Usa sqlite-vec para la búsqueda vectorial KNN cuando está instalado, y recurre a NumPy en memoria
 - La búsqueda de texto FTS5 sobre subtítulos/etiquetas de IA aporta coincidencia adicional por palabras clave (ejecuta `database.py --rebuild-fts` para habilitarla)
-- Usa el mismo modelo de embedding que el perfil de VRAM activo (SigLIP 2 para 16gb/24gb, CLIP ViT-L-14 para legacy/8gb)
+- Usa el mismo modelo de embedding que el perfil de VRAM activo (SigLIP 2 para 16gb/24gb, CLIP ViT-L-14 para legacy/8gb), o el de `models.clip`/`clip_legacy` que realmente coincide con la dimensión de embedding almacenada si ambos no coinciden (ver [docs/CONFIGURATION.md](CONFIGURATION.md))
 - `scope=text` restringe la consulta a las coincidencias literales de FTS5 en el texto de OCR/subtítulos y omite la búsqueda por embeddings
 - Controlada por `viewer.features.show_semantic_search` (predeterminado: `true`)
+- El umbral coseno usa por defecto `models.clip.search_threshold_percent` (5%) / `models.clip_legacy.search_threshold_percent` (15%) — valores calibrados por backend, distintos del umbral de coincidencia de etiqueta `similarity_threshold_percent`. El `search_threshold_default` de `/api/config` inicializa el control deslizante de umbral 0-50% de la galería, que cubre todo el rango: una búsqueda puede ajustarse por encima del valor por defecto o relajarse de nuevo hasta `0%` en cada consulta; un umbral de exactamente `0%` sigue rechazando una similitud coseno negativa, no es "sin filtro". El valor por defecto del 5% para SigLIP favorece deliberadamente la exhaustividad (recall) sobre la precisión — véase `clip.search_threshold_percent` en [docs/CONFIGURATION.md](CONFIGURATION.md) para conocer el equilibrio de esa calibración
+- Cada resultado reporta dos campos de similitud: `similarity` es la puntuación combinada de embedding (70%) + FTS (30%) usada para el ranking; `embedding_similarity` es la similitud coseno bruta que realmente se comparó con el umbral anterior, presente solo cuando se calculó una puntuación de embedding para esa foto (ausente — nunca `null` — en una coincidencia solo de FTS o `scope=text`)
 
 ## Álbumes
 
@@ -1050,7 +1052,7 @@ Los tipos TypeScript del cliente se generan a partir de ese esquema en `client/s
 | `GET /api/photo/histogram?path=&bins=` | Bins de luminancia + R/G/B listos para dibujar (`bins` ∈ 32/64/128/256, 64 por defecto), medidos durante el análisis sobre la imagen a resolución completa. Cada canal se escala por un único máximo global, nunca por el suyo. `r`/`g`/`b` son `null` para una fila guardada antes del formato por canal; 404 cuando la fila no tiene histograma alguno, la señal para que el widget recurra al muestreo de la miniatura |
 | `GET /api/type_counts?hide_blinks=&hide_bursts=&hide_duplicates=&hide_brackets=&hide_panoramas=` | Recuentos de fotos por tipo para los chips de la barra lateral. Mismos cinco interruptores que la galería; uno omitido recae en `viewer.defaults` en vez de "desactivado" — envía `hide_bursts=0`, etc., explícitamente para contarlo todo |
 | `GET /api/similar_photos/{path}` | Fotos similares (modos: `visual`, `color`, `person`) |
-| `GET /api/search?q=&limit=&threshold=&scope=` | Búsqueda semántica de texto a imagen (`scope=text` = solo texto de OCR/subtítulos) |
+| `GET /api/search?q=&limit=&threshold=&scope=` | Búsqueda semántica de texto a imagen (`scope=text` = solo texto de OCR/subtítulos). `threshold` es opcional: si se omite, se resuelve al `models.*.search_threshold_percent` del codificador activo (expuesto al cliente como `search_threshold_default` de `/api/config`); un valor explícito — incluido `0.0` — siempre prevalece sobre el valor por defecto resuelto. Solo se evalúa cuando la búsqueda ejecuta realmente una búsqueda por embedding (`scope != 'text'` omite la resolución por completo) |
 | `GET /api/critique?path=&mode=&refresh=` | Crítica con IA (basada en reglas o VLM); `refresh=true` regenera la crítica con VLM en caché |
 | `GET /api/ranker/status` | Estado del clasificador personal para la ordenación "My Taste" (% de cobertura aprendida, precisión sobre datos reservados) |
 | `GET /api/config` | Configuración del visor |

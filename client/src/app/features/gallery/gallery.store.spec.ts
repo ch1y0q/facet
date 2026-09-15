@@ -67,6 +67,7 @@ function makeConfig(overrides: Partial<ViewerConfig> = {}): ViewerConfig {
       show_folders: false,
     },
     quality_thresholds: { good: 6, great: 7, excellent: 8, best: 9 },
+    search_threshold_default: 0.15,
     ...overrides,
   };
 }
@@ -252,6 +253,30 @@ describe('GalleryStore', () => {
       expect(store.filters()).toEqual(DEFAULT_FILTERS);
     });
 
+    it('seeds search_threshold from search_threshold_default, rounded to a percent', async () => {
+      const cfg = makeConfig({ search_threshold_default: 0.05 });
+      apiGet.mockReturnValue(of(cfg));
+
+      await store.loadConfig();
+
+      expect(store.filters().search_threshold).toBe('5');
+    });
+
+    it('leaves search_threshold empty on config load failure, so /search omits threshold', async () => {
+      apiGet.mockReturnValue(throwError(() => new Error('Network error')));
+
+      await store.loadConfig();
+
+      expect(store.filters().search_threshold).toBe('');
+
+      store.filters.update(f => ({ ...f, semanticQuery: 'sunset' }));
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+      await store.loadPhotos();
+
+      const searchCall = apiGet.mock.calls.find(([path]) => path === '/search');
+      expect(searchCall?.[1]).not.toHaveProperty('threshold');
+    });
+
     it('should apply URL query params even on config error', async () => {
       apiGet.mockReturnValue(throwError(() => new Error('Network error')));
       Object.assign(queryParams, { tag: 'landscape', hide_blinks: 'false' });
@@ -359,6 +384,25 @@ describe('GalleryStore', () => {
       expect(store.photos()).toEqual([]);
       expect(store.loadError()).toBe(true);
       expect(store.loading()).toBe(false);
+    });
+
+    it('forwards search_threshold as a fraction of the percent string', async () => {
+      store.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'sunset', search_threshold: '5' });
+      apiGet.mockReturnValue(of({ photos: [], total: 0, query: 'sunset' }));
+
+      await store.loadPhotos();
+
+      expect(apiGet).toHaveBeenCalledWith('/search', expect.objectContaining({ threshold: 0.05 }));
+    });
+
+    it('omits threshold from /search when search_threshold is unseeded', async () => {
+      store.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'sunset', search_threshold: '' });
+      apiGet.mockReturnValue(of({ photos: [], total: 0, query: 'sunset' }));
+
+      await store.loadPhotos();
+
+      const searchCall = apiGet.mock.calls.find(([path]) => path === '/search');
+      expect(searchCall?.[1]).not.toHaveProperty('threshold');
     });
 
     it('should clear the error when a retried load succeeds', async () => {
@@ -617,6 +661,28 @@ describe('GalleryStore', () => {
       expect(store.filters().favorites_only).toBe(false);
       expect(store.filters().hide_rejected).toBe(false);
     });
+
+    it('should update search_threshold without reloading when no semantic query is set', async () => {
+      store.filters.set({ ...DEFAULT_FILTERS, semanticQuery: '', page: 3 });
+
+      await store.updateFilter('search_threshold', '20');
+
+      expect(store.filters().search_threshold).toBe('20');
+      // Unchanged: nothing to reload for -- the value only feeds the /search
+      // branch of loadPhotos(), which never runs without a query.
+      expect(store.filters().page).toBe(3);
+      expect(apiGet).not.toHaveBeenCalled();
+    });
+
+    it('should reload when search_threshold changes while a semantic query is active', async () => {
+      store.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'sunset', page: 3 });
+
+      await store.updateFilter('search_threshold', '20');
+
+      expect(store.filters().search_threshold).toBe('20');
+      expect(store.filters().page).toBe(1);
+      expect(apiGet).toHaveBeenCalledWith('/search', expect.objectContaining({ threshold: 0.2 }));
+    });
   });
 
   describe('updateFilterDebounced()', () => {
@@ -746,6 +812,16 @@ describe('GalleryStore', () => {
       expect(store.filters().camera).toBe('');
       expect(store.filters().min_score).toBe('');
       expect(store.filters().page).toBe(1);
+    });
+
+    it('re-seeds search_threshold from the loaded config, same as loadConfig()', async () => {
+      const cfg = makeConfig({ search_threshold_default: 0.05 });
+      store.config.set(cfg);
+      store.filters.set({ ...DEFAULT_FILTERS, search_threshold: '30', page: 5 });
+
+      await store.resetFilters();
+
+      expect(store.filters().search_threshold).toBe('5');
     });
 
     it('should use DEFAULT_FILTERS when no config is loaded', async () => {

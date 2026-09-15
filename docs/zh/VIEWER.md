@@ -358,9 +358,11 @@ HDR 之间重新标注。**漏检**则从照片库修正，因为未被检测到
 - 需要已存储的 `clip_embedding` 数据（在评分过程中计算）
 - 安装了 sqlite-vec 时用它做 KNN 向量检索，否则退回到内存中的 NumPy
 - 对 AI 照片描述／标签做 FTS5 文本检索，提供额外的关键词匹配（运行 `database.py --rebuild-fts` 启用）
-- 使用与当前 VRAM 配置档相同的嵌入模型（16gb/24gb 用 SigLIP 2，legacy/8gb 用 CLIP ViT-L-14）
+- 使用与当前 VRAM 配置档相同的嵌入模型（16gb/24gb 用 SigLIP 2，legacy/8gb 用 CLIP ViT-L-14），如果两者不一致，则使用 `models.clip`/`clip_legacy` 中实际匹配已存储嵌入维度的那一个（见 [docs/CONFIGURATION.md](CONFIGURATION.md)）
 - `scope=text` 会把查询限制为对 OCR／描述文本的字面 FTS5 匹配，并跳过嵌入向量检索
 - 由 `viewer.features.show_semantic_search` 控制（默认：`true`）
+- 余弦阈值默认使用 `models.clip.search_threshold_percent`（5%）／`models.clip_legacy.search_threshold_percent`（15%）——按后端分别校准的值，区别于标签匹配阈值 `similarity_threshold_percent`。`/api/config` 的 `search_threshold_default` 用于初始化图库的 0-50% 阈值滑块，该滑块覆盖整个区间：既可以按次搜索把阈值收紧到默认值以上，也可以放宽回 `0%`；阈值恰好为 `0%` 时仍会拒绝负的余弦相似度，并不等于”不过滤”。SigLIP 的 5% 默认值刻意偏向召回率而非精确率——校准取舍详见 [docs/CONFIGURATION.md](CONFIGURATION.md) 中的 `clip.search_threshold_percent`
+- 每条结果会返回两个相似度字段：`similarity` 是用于排序的嵌入（70%）+ FTS（30%）综合得分；`embedding_similarity` 是实际用于和上述阈值比较的原始余弦相似度，仅当该照片计算出了嵌入得分时才会出现（在仅命中 FTS 或 `scope=text` 的结果上缺失——绝不会是 `null`）
 
 ## 相册
 
@@ -1095,7 +1097,7 @@ python database.py --stats-info
 | `GET /api/photo/histogram?path=&bins=` | 可直接绘制的亮度 + R/G/B 分箱数据（`bins` ∈ 32/64/128/256，默认 64），在扫描时对全分辨率图像测得。每个通道都按同一个全局最大值缩放，而不是各自的最大值。对于在引入分通道格式之前存储的行，`r`/`g`/`b` 为 `null`；当该行完全没有直方图时返回 404，这正是控件回退到对缩略图采样的信号 |
 | `GET /api/type_counts?hide_blinks=&hide_bursts=&hide_duplicates=&hide_brackets=&hide_panoramas=` | 侧边栏类型标签所用的各类型照片数量。与照片库使用同样的五个开关；省略某个开关时会回退到 `viewer.defaults` 而不是“关闭”——要统计全部，请显式发送 `hide_bursts=0` 等 |
 | `GET /api/similar_photos/{path}` | 相似照片（模式：`visual`、`color`、`person`） |
-| `GET /api/search?q=&limit=&threshold=&scope=` | 语义化的以文搜图（`scope=text` = 仅 OCR／描述文本） |
+| `GET /api/search?q=&limit=&threshold=&scope=` | 语义化的以文搜图（`scope=text` = 仅 OCR／描述文本）。`threshold` 为可选参数：省略时会解析为当前生效编码器的 `models.*.search_threshold_percent`（以 `/api/config` 的 `search_threshold_default` 暴露给客户端）；显式传入的值——包括 `0.0`——总会覆盖解析出的默认值。只有当搜索确实执行了嵌入向量检索时才会做这次解析（`scope != 'text'` 会完全跳过解析） |
 | `GET /api/critique?path=&mode=&refresh=` | AI 点评（基于规则或 VLM）；`refresh=true` 会重新生成已缓存的 VLM 点评 |
 | `GET /api/ranker/status` | “我的偏好”排序所用的个人排序模型状态（已学习覆盖率 %、留出集准确率） |
 | `GET /api/config` | 查看器配置 |

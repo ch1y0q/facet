@@ -361,9 +361,11 @@ Hybrid search combining CLIP/SigLIP embedding similarity (70%) with FTS5 BM25 te
 - Requires stored `clip_embedding` data (computed during scoring)
 - Uses sqlite-vec for KNN vector search when installed, falls back to in-memory NumPy
 - FTS5 text search on AI captions/tags provides additional keyword matching (run `database.py --rebuild-fts` to enable)
-- Uses the same embedding model as the active VRAM profile (SigLIP 2 for 16gb/24gb, CLIP ViT-L-14 for legacy/8gb)
+- Uses the same embedding model as the active VRAM profile (SigLIP 2 for 16gb/24gb, CLIP ViT-L-14 for legacy/8gb), or whichever of `models.clip`/`clip_legacy` actually matches the stored embedding dimension if the two disagree (see [docs/CONFIGURATION.md](CONFIGURATION.md))
 - `scope=text` restricts the query to literal FTS5 matches in OCR/caption text and skips the embedding search
 - Controlled by `viewer.features.show_semantic_search` (default: `true`)
+- The cosine gate defaults to `models.clip.search_threshold_percent` (5%) / `models.clip_legacy.search_threshold_percent` (15%) — calibrated per-backend values, distinct from the tag-match `similarity_threshold_percent`. `/api/config`'s `search_threshold_default` seeds the gallery's 0-50% threshold slider, which spans the whole range: a query can be tightened above the default or loosened back down toward `0%` per search; a threshold of exactly `0%` still rejects a negative cosine, it is not "no filter". The `5%` SigLIP default itself deliberately favours recall over precision — see `clip.search_threshold_percent` in [docs/CONFIGURATION.md](CONFIGURATION.md) for the calibration tradeoff
+- Each result reports two similarity fields: `similarity` is the blended embedding (70%) + FTS (30%) score used for ranking; `embedding_similarity` is the raw cosine that was actually gated against the threshold above, present only when an embedding score was computed for that photo (absent — never `null` — on an FTS-only or `scope=text` hit)
 
 ## Albums
 
@@ -1098,7 +1100,7 @@ The client's TypeScript types are generated from that schema into `client/src/ap
 | `GET /api/photo/histogram?path=&bins=` | Draw-ready luminance + R/G/B bins (`bins` ∈ 32/64/128/256, default 64) measured at scan time on the full-resolution image. Every channel is scaled by one global max, never its own. `r`/`g`/`b` are `null` for a row stored before the per-channel format; 404 when the row has no histogram at all, which is the widget's signal to fall back to sampling the thumbnail |
 | `GET /api/type_counts?hide_blinks=&hide_bursts=&hide_duplicates=&hide_brackets=&hide_panoramas=` | Photo counts per type for the sidebar chips. Same five toggles as the gallery; an omitted one falls back to `viewer.defaults` rather than "off" — send `hide_bursts=0` etc. explicitly to count everything |
 | `GET /api/similar_photos/{path}` | Similar photos (modes: `visual`, `color`, `person`) |
-| `GET /api/search?q=&limit=&threshold=&scope=` | Semantic text-to-image search (`scope=text` = OCR/caption text only) |
+| `GET /api/search?q=&limit=&threshold=&scope=` | Semantic text-to-image search (`scope=text` = OCR/caption text only). `threshold` is optional: omitted, it resolves to the active encoder's `models.*.search_threshold_percent` (exposed to the client as `/api/config`'s `search_threshold_default`); an explicit value — including `0.0` — always overrides the resolved default. Only evaluated when the search actually runs an embedding search (`scope != 'text'` skips the resolution entirely) |
 | `GET /api/critique?path=&mode=&refresh=` | AI critique (rule-based or VLM); `refresh=true` regenerates the cached VLM critique |
 | `GET /api/ranker/status` | Personal-ranker status for the "My Taste" sort (learned coverage %, held-out accuracy) |
 | `GET /api/config` | Viewer configuration |

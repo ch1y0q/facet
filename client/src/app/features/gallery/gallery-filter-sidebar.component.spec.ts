@@ -33,7 +33,7 @@ describe('GalleryFilterSidebarComponent', () => {
         min_focal_length: '', max_focal_length: '', date_from: '', date_to: '',
         search: '', type: '', sort: 'aggregate', sort_direction: 'DESC', page: 1, per_page: 64,
         similar_to: '', similarity_mode: 'visual', min_similarity: '70',
-        semanticQuery: '', album_id: '',
+        semanticQuery: '', search_threshold: '', album_id: '',
         min_aesthetic_iaa: '', max_aesthetic_iaa: '',
         min_face_quality_iqa: '', max_face_quality_iqa: '',
         min_liqe: '', max_liqe: '',
@@ -239,6 +239,63 @@ describe('GalleryFilterSidebarComponent', () => {
       const mockStore = (component as any).store;
       mockStore.filters.set({ ...mockStore.filters(), path_prefix: '/photos/Family/2026/' });
       expect(component.currentFolderName()).toBe('2026');
+    });
+  });
+
+  describe('semantic search threshold slider', () => {
+    // Note: this suite tests the component's methods/computeds directly, the
+    // same style every other describe block in this file uses -- the harness
+    // never renders the template via fixture.createComponent/detectChanges,
+    // so panel-visibility (@if show_semantic_search, pre-existing/unchanged)
+    // is not exercised here either.
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('searchThresholdValue mirrors the string filter as a number for the slider [value] binding', () => {
+      const mockStore = (component as any).store;
+      mockStore.filters.set({ ...mockStore.filters(), search_threshold: '12' });
+      expect((component as any).searchThresholdValue()).toBe(12);
+    });
+
+    it('searchThresholdValue falls back to 0 when unseeded and config has not loaded', () => {
+      const mockStore = (component as any).store;
+      mockStore.filters.set({ ...mockStore.filters(), search_threshold: '' });
+      mockStore.config.set(null);
+      expect((component as any).searchThresholdValue()).toBe(0);
+    });
+
+    it('searchThresholdValue falls back to the config default (as a percent) when unseeded -- never a bare 0/blank readout while the server actually gates at its own default', () => {
+      const mockStore = (component as any).store;
+      mockStore.filters.set({ ...mockStore.filters(), search_threshold: '' });
+      mockStore.config.set({ search_threshold_default: 0.05 });
+      expect((component as any).searchThresholdValue()).toBe(5);
+    });
+
+    it('onSearchThresholdChange debounces the filter update by 400ms', () => {
+      const mockStore = (component as any).store;
+      component.onSearchThresholdChange(20);
+      expect(mockStore.updateFilter).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(400);
+
+      expect(mockStore.updateFilter).toHaveBeenCalledWith('search_threshold', '20');
+    });
+
+    it('uses its own debounce timer, independent of the semantic-query search timer', () => {
+      const mockStore = (component as any).store;
+      const inputEvent = { target: { value: 'sunset' } } as unknown as Event;
+
+      component.onSemanticSearch(inputEvent);
+      component.onSearchThresholdChange(30);
+      vi.advanceTimersByTime(400);
+
+      expect(mockStore.updateFilter).toHaveBeenCalledWith('semanticQuery', 'sunset');
+      expect(mockStore.updateFilter).toHaveBeenCalledWith('search_threshold', '30');
     });
   });
 });

@@ -84,6 +84,14 @@ describe('buildSyncParams', () => {
   it('emits hide_blinks=false when it differs from the true default', () => {
     expect(buildSyncParams(filters({ hide_blinks: false }), undefined)['hide_blinks']).toBe('false');
   });
+  it('emits search_threshold only when semanticQuery is set', () => {
+    expect(
+      buildSyncParams(filters({ semanticQuery: 'dog', search_threshold: '12' }), undefined)['search_threshold'],
+    ).toBe('12');
+    expect(
+      buildSyncParams(filters({ search_threshold: '12' }), undefined)['search_threshold'],
+    ).toBeUndefined();
+  });
   it('never writes the set-scope fields to the URL', () => {
     // sequence_group_id is renumbered from 1 on every detection pass, so a
     // bookmarked/shared URL carrying it would silently resolve to a
@@ -152,6 +160,11 @@ describe('applyQueryParams', () => {
     expect(restored.min_score).toBe('7');
     expect(restored.hide_blinks).toBe(false);
     expect(restored.favorites_only).toBe(true);
+  });
+  it('round-trips search_threshold only when emitted alongside semanticQuery', () => {
+    const original = filters({ semanticQuery: 'dog', search_threshold: '12' });
+    const restored = applyQueryParams(DEFAULT_FILTERS, buildSyncParams(original, undefined));
+    expect(restored.search_threshold).toBe('12');
   });
 });
 

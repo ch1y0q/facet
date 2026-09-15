@@ -3421,6 +3421,13 @@ export interface paths {
          *     ``scope='text'`` restricts results to FTS5 matches in the OCR/caption text
          *     columns and skips the embedding search entirely, so the query behaves as a
          *     literal "find words in the image / its caption" lookup.
+         *
+         *     ``threshold`` is optional: omitted, it resolves to the active encoder's
+         *     `models.*.search_threshold_percent` (via `search_threshold_default()`) —
+         *     never to a single global constant. An explicit value (including `0.0`)
+         *     always overrides the resolved default. The resolution itself only runs
+         *     when an embedding search actually happens (``scope != 'text'``), so a
+         *     text-only query never pays for the stored-embedding-dim scan.
          */
         get: operations["api_search_api_search_get"];
         put?: never;
@@ -5761,9 +5768,14 @@ export interface components {
          *     that against ``PHOTO_BASE_COLS`` and ``PHOTO_OPTIONAL_COLS``.
          *
          *     The trailing fields are computed by the handlers rather than selected.
-         *     ``top_picks_score``, ``learned_score`` and ``similarity`` are conditional --
-         *     only the request that sorts or filters by them carries them -- so they must
-         *     stay optional or the requests that do not trigger them would 500.
+         *     ``top_picks_score``, ``learned_score``, ``similarity`` and
+         *     ``embedding_similarity`` are conditional -- only the request that sorts
+         *     or filters by them carries them -- so they must stay optional or the
+         *     requests that do not trigger them would 500. ``embedding_similarity`` is
+         *     the raw cosine that `/api/search` gated the result on; it is present only
+         *     when an embedding score was actually computed for that photo (an
+         *     FTS-only or ``scope=text`` hit omits it), and is distinct from
+         *     ``similarity``, which stays the blended embedding/FTS value.
          */
         Photo: {
             /** Aesthetic */
@@ -5814,6 +5826,8 @@ export interface components {
             duplicate_group_id?: number | null;
             /** Dynamic Range Stops */
             dynamic_range_stops?: number | null;
+            /** Embedding Similarity */
+            embedding_similarity?: number | null;
             /** Exposure Score */
             exposure_score?: number | null;
             /** Eye Sharpness */
@@ -7121,6 +7135,8 @@ export interface components {
                 [key: string]: unknown;
             };
             render_migration: components["schemas"]["RenderMigrationStatus"];
+            /** Search Threshold Default */
+            search_threshold_default: number;
             social_export: components["schemas"]["SocialExportPresets"];
             /** Sort Options */
             sort_options: [
@@ -11882,7 +11898,7 @@ export interface operations {
             query: {
                 q: string;
                 limit?: number;
-                threshold?: number;
+                threshold?: number | null;
                 /** @description 'text' restricts to OCR/caption text only */
                 scope?: string;
             };

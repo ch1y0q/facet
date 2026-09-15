@@ -28,6 +28,7 @@ router = APIRouter(tags=["search"])
 logger = logging.getLogger(__name__)
 
 _text_encoder = None
+_clip_config_cache = None  # torch-free resolved models.clip[_legacy] block; see _resolve_clip_config
 _embedding_cache = None  # numpy fallback: {'matrix': np.array, 'paths': list, 'count': int}
 
 # Split-TTL availability tracking.
@@ -139,6 +140,99 @@ def _stored_embedding_dim() -> Optional[int]:
     return row[0] // 4 if row and row[0] else None
 
 
+def _reset_text_encoder_cache():
+    """Clear both the loaded text encoder and the resolved-config cache.
+
+    Must be called wherever `_text_encoder` itself is reset (tests'
+    `_reset_search_module_state`, and this module's own fixtures) so a
+    `_resolve_clip_config()` answer never outlives the encoder it was
+    resolved for.
+    """
+    global _text_encoder, _clip_config_cache
+    _text_encoder = None
+    _clip_config_cache = None
+
+
+def _resolve_clip_config() -> dict:
+    """Resolve the `models.clip`/`clip_legacy` block matching the stored embeddings.
+
+    Model-free, and torch-free on every path a real library takes.
+
+    Query vectors must live in the SAME space as the stored ones, so the
+    stored embedding dimension -- not the box's hardware -- is the primary
+    key for this lookup: a CLIP-768 library on a 16gb/SigLIP box must still
+    be searched with the 768-dim tower. When exactly one configured model
+    block carries that dimension, it wins outright and nothing else needs
+    resolving.
+
+    Only when the dimension cannot decide -- an empty library, or a stored
+    dimension that zero or several blocks claim -- does this fall back to
+    the active VRAM profile. That fallback is why the import below is local:
+    `vram_profile` ships as "auto", whose resolution probes the GPU and
+    therefore imports torch. `/api/config` reads this through
+    `search_threshold_default()` on anonymous client bootstrap and was
+    torch-free before; keeping the common path off that branch is what stops
+    a ~8s first-paint stall and torch's RSS on CPU-only installs.
+
+    An empty library resolves nothing meaningful about the *data*, so that
+    answer is never cached -- caching it would freeze the profile's default
+    for the life of the process the first time `/api/config` is hit before
+    any embeddings exist.
+    """
+    global _clip_config_cache
+    if _clip_config_cache is not None:
+        return _clip_config_cache
+
+    config = server_scoring_config()
+    stored_dim = _stored_embedding_dim()
+
+    if stored_dim:
+        model_config = config.get_model_config()
+        matches = [block for block in model_config.values()
+                   if isinstance(block, dict) and block.get('embedding_dim') == stored_dim]
+        if len(matches) == 1:
+            _clip_config_cache = matches[0]
+            return matches[0]
+
+    config.check_vram_profile_compatibility(verbose=False)
+    clip_config = config.get_clip_config()
+
+    if stored_dim and clip_config.get('embedding_dim') != stored_dim:
+        logger.warning(
+            "Stored embeddings are %d-dim but %s configured model block matches; "
+            "semantic search will likely return nothing",
+            stored_dim, "no" if not matches else "more than one",
+        )
+
+    if stored_dim is None:
+        return clip_config
+    _clip_config_cache = clip_config
+    return clip_config
+
+
+def search_threshold_default() -> float:
+    """The active encoder's calibrated semantic-search cosine threshold, as a 0-1 fraction.
+
+    Distinct from `similarity_threshold_percent` (the tag-match threshold) --
+    no fallback to it under any circumstance. The `15` here is not a silent
+    paper-over of a broken config: it is the value `get_model_config()`'s
+    in-code default `clip` block (ViT-L-14) already carries, so a config with
+    no `models` section at all -- `MINIMAL_SCORING_CONFIG` in tests, or a
+    hand-written minimal install -- keeps gating exactly where it does today
+    instead of raising from a request handler.
+
+    `search_threshold_percent` (on both `models.clip` and `models.clip_legacy`)
+    is a WHOLE NUMBER 0-50, never validated at write time: the gallery's
+    sidebar slider tops out at 50, and the client reproduces this fraction as
+    a percent via `Math.round(search_threshold_default * 100)` for display --
+    lossless only for an integer input. A fractional configured value (e.g.
+    `7.5`) would still resolve and gate correctly here, but would render
+    rounded in the UI, and any value above 50 would be unreachable from the
+    slider once seeded.
+    """
+    return _resolve_clip_config().get('search_threshold_percent', 15) / 100
+
+
 def _load_text_encoder():
     """Load and cache the text encoder matching the stored embeddings."""
     global _text_encoder
@@ -147,35 +241,7 @@ def _load_text_encoder():
 
     import torch
 
-    config = server_scoring_config()
-    config.check_vram_profile_compatibility(verbose=False)
-    clip_config = config.get_clip_config()
-
-    # A library may be embedded under a different profile than the box
-    # resolves today (e.g. a CLIP-768 library on a 16gb/SigLIP box). Query
-    # vectors must live in the stored embedding space, so when the dimensions
-    # disagree pick the model block that matches the database instead.
-    stored_dim = _stored_embedding_dim()
-    if stored_dim and clip_config.get('embedding_dim') != stored_dim:
-        model_config = config.get_model_config()
-        match = next(
-            (block for block in model_config.values()
-             if isinstance(block, dict) and block.get('embedding_dim') == stored_dim),
-            None,
-        )
-        if match:
-            logger.info(
-                "Stored embeddings are %d-dim; encoding search queries with %s "
-                "instead of the profile's %s",
-                stored_dim, match.get('model_name'), clip_config.get('model_name'),
-            )
-            clip_config = match
-        else:
-            logger.warning(
-                "Stored embeddings are %d-dim but no configured model block "
-                "matches; semantic search will likely return nothing",
-                stored_dim,
-            )
+    clip_config = _resolve_clip_config()
 
     from utils.device import get_device
     device = get_device()
@@ -183,15 +249,14 @@ def _load_text_encoder():
     model_name = clip_config.get('model_name')
 
     if backend == 'transformers':
-        from transformers import AutoModel, AutoTokenizer
+        from transformers import AutoModel
         logger.info(f"Loading SigLIP text encoder: {model_name}")
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
         model = AutoModel.from_pretrained(model_name, dtype=torch.float32).to(device)
         model.eval()
         _text_encoder = {
             'backend': 'transformers',
             'model': model,
-            'tokenizer': tokenizer,
+            'model_name': model_name,
             'device': device,
         }
     else:
@@ -200,11 +265,10 @@ def _load_text_encoder():
         logger.info(f"Loading CLIP text encoder: {model_name}")
         model, _, _ = open_clip.create_model_and_transforms(model_name, pretrained=pretrained, device=device)
         model.eval()
-        tokenizer = open_clip.get_tokenizer(model_name)
         _text_encoder = {
             'backend': 'open_clip',
             'model': model,
-            'tokenizer': tokenizer,
+            'model_name': model_name,
             'device': device,
         }
 
@@ -220,23 +284,18 @@ def _encode_texts(queries: list[str]) -> np.ndarray:
     """Encode a batch of text queries into normalized embeddings.
 
     Returns a (N, D) float32 array, L2-normalized along the last axis.
+    Delegates entirely to `models.tagger.encode_text_prompts` — the single
+    place the SigLIP `max_length=64` padding rule (dynamic padding collapses
+    similarities to noise) is allowed to live, per that function's own
+    docstring. No partial re-implementation is kept here "for speed."
     """
-    import torch
+    from models.tagger import encode_text_prompts
 
     enc = _load_text_encoder()
-
-    with torch.no_grad():
-        if enc['backend'] == 'transformers':
-            inputs = enc['tokenizer'](list(queries), padding=True, return_tensors="pt").to(enc['device'])
-            text_features = enc['model'].get_text_features(**inputs)
-            if not isinstance(text_features, torch.Tensor):
-                text_features = text_features.pooler_output
-        else:
-            tokens = enc['tokenizer'](list(queries)).to(enc['device'])
-            text_features = enc['model'].encode_text(tokens)
-
-        text_features = text_features / text_features.norm(dim=-1, keepdim=True)
-        return text_features.cpu().numpy().astype(np.float32)
+    text_features = encode_text_prompts(
+        enc['model'], enc['model_name'], enc['backend'], enc['device'], list(queries)
+    )
+    return text_features.cpu().numpy().astype(np.float32)
 
 
 async def _search_vec(conn, text_emb, limit, threshold, vis_sql, vis_params):
@@ -465,7 +524,7 @@ async def api_search(
     request: Request,
     q: str = Query(..., min_length=1, max_length=500),
     limit: int = Query(50, ge=1, le=200),
-    threshold: float = Query(0.15, ge=0.0, le=1.0),
+    threshold: Optional[float] = Query(None, ge=0.0, le=1.0),
     scope: str = Query('', description="'text' restricts to OCR/caption text only"),
     user: Optional[CurrentUser] = Depends(get_optional_user),
 ):
@@ -478,6 +537,13 @@ async def api_search(
     ``scope='text'`` restricts results to FTS5 matches in the OCR/caption text
     columns and skips the embedding search entirely, so the query behaves as a
     literal "find words in the image / its caption" lookup.
+
+    ``threshold`` is optional: omitted, it resolves to the active encoder's
+    `models.*.search_threshold_percent` (via `search_threshold_default()`) —
+    never to a single global constant. An explicit value (including `0.0`)
+    always overrides the resolved default. The resolution itself only runs
+    when an embedding search actually happens (``scope != 'text'``), so a
+    text-only query never pays for the stored-embedding-dim scan.
     """
     text_only = scope == 'text'
     if not VIEWER_CONFIG.get('features', {}).get('show_semantic_search', True):
@@ -501,16 +567,21 @@ async def api_search(
 
             # --- Embedding-based search (skipped in text-only scope) ---
             if not text_only:
+                # Resolved here, not before the `if`, so a text-scope query
+                # never pays for `_resolve_clip_config()`'s stored-embedding-dim
+                # scan on a path that does no embedding search.
+                resolved_threshold = search_threshold_default() if threshold is None else threshold
+
                 # Text encoding is GPU/CPU work — push to a worker thread so the
                 # event loop stays responsive during the typically 5-30ms encode.
                 text_emb = await asyncio.to_thread(_encode_text, q)
 
                 if await _check_vec_available(conn):
-                    embedding_scores = await _search_vec(conn, text_emb, limit, threshold, vis_sql, vis_params)
+                    embedding_scores = await _search_vec(conn, text_emb, limit, resolved_threshold, vis_sql, vis_params)
                 else:
                     global _search_vec_fallback_total
                     _search_vec_fallback_total += 1
-                    embedding_scores = await _search_numpy(conn, text_emb, limit, threshold, vis_sql, vis_params, user_id)
+                    embedding_scores = await _search_numpy(conn, text_emb, limit, resolved_threshold, vis_sql, vis_params, user_id)
 
             # --- Merge results ---
             # Embedding weight 0.7, FTS weight 0.3 (text-only scope: FTS at full weight)
@@ -548,6 +619,12 @@ async def api_search(
             for photo in photos:
                 photo['date_formatted'] = format_date(photo.get('date_taken'))
                 photo['similarity'] = round(sim_by_path.get(photo['path'], 0), 4)
+                # Present only when an embedding score was actually computed
+                # for this path (per `exclude_unset`) — never written as
+                # `None`, which would put a `null` on the wire instead of
+                # omitting the key entirely for FTS-only / scope=text hits.
+                if photo['path'] in embedding_scores:
+                    photo['embedding_similarity'] = round(embedding_scores[photo['path']], 4)
 
             await attach_person_data_async(photos, conn)
 
