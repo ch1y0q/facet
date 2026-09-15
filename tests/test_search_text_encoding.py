@@ -20,10 +20,18 @@ Locks in two fixes:
    the life of the process), nor drop the profile's own block when the
    stored embedding dimension matches no configured block at all (guessing
    the wrong block's threshold is worse than keeping the profile's own).
+
+The resolution caches its answer KEYED ON the stored embedding dimension, so
+an answer made while the library is empty is reused only while it stays empty
+and is re-resolved the moment the first embedding lands. Both halves are
+asserted below: the empty answer must not freeze, and it must not be
+re-derived from scratch on every call either -- that put an ``import torch``
+on every anonymous ``/api/config`` of a fresh install.
 """
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from unittest import mock
 
@@ -76,14 +84,27 @@ def client():
 
 @pytest.fixture(autouse=True)
 def _reset_search_state():
-    """Clear the text-encoder and resolved-config caches around every test.
+    """Clear the text-encoder, resolved-config and tokenizer caches around every test.
 
-    Nothing previously reset these two module globals, so a resolution made
-    by one test could otherwise leak into the next.
+    Nothing previously reset the two ``search`` module globals, so a
+    resolution made by one test could otherwise leak into the next.
+
+    ``models.tagger._tokenizer_cache`` is process-level and keyed on
+    ``(backend, model_name)``, so the fake tokenizers the encoding tests below
+    install under the real SigLIP / ViT-L-14 names outlive the test that made
+    them. Clearing only on the way IN (which is what these tests used to do)
+    leaves the last one resident for every later module in the session --
+    ``tests/test_tagging.py`` asks ``_get_tokenizer`` for the same key and
+    would silently be handed this file's fake, recording into a closure it
+    cannot see. Clear on the way out too.
     """
     from api.routers import search
+    from models import tagger as tagger_module
+
+    tagger_module._tokenizer_cache.clear()
     search._reset_text_encoder_cache()
     yield
+    tagger_module._tokenizer_cache.clear()
     search._reset_text_encoder_cache()
 
 
@@ -109,9 +130,7 @@ class TestEncodeTextsDelegatesToTagger:
         """
         torch = pytest.importorskip("torch")
         from api.routers import search
-        from models import tagger as tagger_module
 
-        tagger_module._tokenizer_cache.clear()
         recorded = {}
 
         class _Encoding(dict):
@@ -153,9 +172,7 @@ class TestEncodeTextsDelegatesToTagger:
         """
         torch = pytest.importorskip("torch")
         from api.routers import search
-        from models import tagger as tagger_module
 
-        tagger_module._tokenizer_cache.clear()
         recorded = {}
 
         class _FakeTokens:
@@ -226,8 +243,8 @@ class TestConfigCarriesSearchThresholdPercent:
 
 class TestResolveClipConfigDimMismatch:
     """The dim-mismatch fallback also drives the threshold, an unmatched dim
-    keeps the profile's own block, and an empty library's answer is never
-    cached.
+    keeps the profile's own block, and an empty library's answer is cached
+    under its own key rather than frozen.
     """
 
     def test_16gb_profile_with_768dim_library_resolves_clip_legacy_threshold(
@@ -275,10 +292,16 @@ class TestResolveClipConfigDimMismatch:
         with mock.patch('api.routers.search.server_scoring_config', return_value=cfg):
             assert search.search_threshold_default() == pytest.approx(0.05)
 
-    def test_empty_library_answer_is_never_cached(self, seed_photos_prefix):
+    def test_empty_library_answer_does_not_freeze_a_later_library(self, seed_photos_prefix):
         """The first call, made while the library is empty, must not freeze
         the profile's own answer once real (dim-mismatched) embeddings show
-        up."""
+        up.
+
+        The cache is keyed on the stored dimension, so the empty answer is
+        held under the key ``None`` and simply stops matching the moment a
+        768-dim row lands. See
+        ``test_empty_library_answer_is_cached_while_it_stays_empty`` for the
+        other half: it must not be re-derived on every call either."""
         from config.scoring_config import ScoringConfig
         from config_resolve import defaults_path
         from utils.embedding import embedding_to_bytes
@@ -304,6 +327,107 @@ class TestResolveClipConfigDimMismatch:
 
         assert first == pytest.approx(0.05)
         assert second == pytest.approx(0.15)
+
+    def test_empty_library_answer_is_cached_while_it_stays_empty(self):
+        """An embedding-less library must resolve ONCE, not once per request.
+
+        ``/api/config`` calls ``search_threshold_default()`` on anonymous
+        client bootstrap, and the empty-library branch is the one that reaches
+        ``check_vram_profile_compatibility()`` -> ``detect_gpu_vram_gb()`` ->
+        ``import torch``. Leaving that answer uncached put the torch import and
+        a CUDA probe on EVERY such request, on precisely the library a fresh
+        install has. ``server_scoring_config`` is the cheapest observable proxy
+        for "resolved again": it is the first thing the uncached path calls.
+        """
+        from config.scoring_config import ScoringConfig
+        from config_resolve import defaults_path
+        from api.routers import search
+
+        cfg = ScoringConfig(defaults_path(), validate=False)
+        cfg.config.setdefault('models', {})['vram_profile'] = '16gb'
+
+        with mock.patch('api.routers.search.server_scoring_config',
+                        return_value=cfg) as resolve:
+            assert search.search_threshold_default() == pytest.approx(0.05)
+            assert search.search_threshold_default() == pytest.approx(0.05)
+            assert search.search_threshold_default() == pytest.approx(0.05)
+
+        assert resolve.call_count == 1
+
+    def test_reload_config_drops_the_resolved_block(self):
+        """``api.config.reload_config`` must invalidate the cache.
+
+        The block is derived from ``scoring_config.json``; every other key of
+        that file goes live on reload, and this one used to need a process
+        restart. Asserting the module global directly rather than a threshold
+        value keeps the test independent of which config the reload happens to
+        find on disk.
+        """
+        from config.scoring_config import ScoringConfig
+        from config_resolve import defaults_path
+        from api.routers import search
+        import api.config as api_config
+
+        cfg = ScoringConfig(defaults_path(), validate=False)
+        cfg.config.setdefault('models', {})['vram_profile'] = '16gb'
+
+        with mock.patch('api.routers.search.server_scoring_config', return_value=cfg):
+            search.search_threshold_default()
+        assert search._clip_config_cache is not None
+
+        api_config.reload_config()
+
+        assert search._clip_config_cache is None
+
+
+class TestMalformedSearchThresholdPercent:
+    """A config value nothing validates must not 500 the bootstrap endpoint.
+
+    ``config/scoring_config.schema.json`` carries no ``models`` property at
+    all, so ``search_threshold_percent`` is never checked at write time.
+    ``/api/search`` would have survived a bad one inside its own ``try``;
+    ``/api/config`` has none, so a bare ``/ 100`` turned a config typo into a
+    500 on the anonymous bootstrap of the whole viewer.
+    """
+
+    @pytest.mark.parametrize("raw,expected", [
+        ("5", 0.05),        # quoted number -- a plausible hand-edit
+        (7.5, 0.075),       # fractional: resolves exactly, no rounding here
+        (None, 0.15),       # explicit null -> the in-code default
+        ("abc", 0.15),      # not a number at all
+        (150, 1.0),         # above 100 -> clamped, never a >1 cosine gate
+        (-5, 0.0),          # below 0 -> clamped
+    ])
+    def test_value_is_coerced_and_clamped(self, raw, expected):
+        from config.scoring_config import ScoringConfig
+        from api.routers import search
+
+        cfg = ScoringConfig(validate=False)
+        cfg.config = {'models': {'vram_profile': 'legacy', 'profiles': {
+            'legacy': {'clip_config': 'clip'}}, 'clip': {'search_threshold_percent': raw}}}
+
+        with mock.patch('api.routers.search.server_scoring_config', return_value=cfg):
+            assert search.search_threshold_default() == pytest.approx(expected)
+
+    def test_api_config_still_answers_200(self, client):
+        """The endpoint, not just the helper -- this is the regression that matters."""
+        with mock.patch('api.routers.search.search_threshold_default',
+                        side_effect=TypeError("boom")):
+            # Sanity: an uncaught raise really would reach the client as a 500.
+            with pytest.raises(TypeError):
+                client.get('/api/config')
+
+        from config.scoring_config import ScoringConfig
+        cfg = ScoringConfig(validate=False)
+        cfg.config = {'models': {'vram_profile': 'legacy', 'profiles': {
+            'legacy': {'clip_config': 'clip'}}, 'clip': {'search_threshold_percent': None}}}
+
+        with mock.patch('api.routers.search.server_scoring_config', return_value=cfg):
+            resp = client.get('/api/config')
+
+        assert resp.status_code == 200
+        assert resp.json()['search_threshold_default'] == pytest.approx(0.15)
+
 
 
 # ---------------------------------------------------------------------------
@@ -375,3 +499,42 @@ class TestOptionalThresholdEndToEnd:
         override_resp = _search(0.9)
         assert override_resp.status_code == 200
         assert override_resp.json()["total"] == 0
+
+    def test_threshold_resolution_runs_off_the_event_loop(self, client):
+        """Resolving the default must not block the loop.
+
+        The resolution hits SQLite and, on a library with no embeddings yet,
+        imports torch -- both measured in seconds. It sat one line ABOVE the
+        `asyncio.to_thread(_encode_text, ...)` that exists for exactly this
+        reason, so every concurrent request froze behind it.
+
+        `asyncio.get_running_loop()` is the precise probe: it returns the loop
+        when called from a coroutine and raises `RuntimeError` from a worker
+        thread, so this fails loudly if the `to_thread` is ever removed.
+        """
+        seen = {}
+
+        def _record_thread_context():
+            try:
+                asyncio.get_running_loop()
+                seen['on_event_loop'] = True
+            except RuntimeError:
+                seen['on_event_loop'] = False
+            return 0.05
+
+        with (
+            mock.patch("api.routers.search.VIEWER_CONFIG", {
+                "features": {"show_semantic_search": True},
+                "display": {"tags_per_photo": 3},
+            }),
+            mock.patch("api.routers.search.search_threshold_default", _record_thread_context),
+            mock.patch("api.routers.search._encode_text",
+                       return_value=np.zeros(4, dtype=np.float32)),
+            mock.patch("api.routers.search._has_fts", _async_return(False)),
+            mock.patch("api.routers.search._check_vec_available", _async_return(False)),
+            mock.patch("api.routers.search._load_embedding_matrix",
+                       _async_return((np.zeros((0, 4), dtype=np.float32), []))),
+        ):
+            assert client.get("/api/search", params={"q": "x"}).status_code == 200
+
+        assert seen == {'on_event_loop': False}

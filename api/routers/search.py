@@ -8,6 +8,7 @@ Fully migrated to aiosqlite per the R7 closure batch.
 import asyncio
 import logging
 import sqlite3
+import threading
 from typing import Optional
 
 import numpy as np
@@ -28,7 +29,13 @@ router = APIRouter(tags=["search"])
 logger = logging.getLogger(__name__)
 
 _text_encoder = None
-_clip_config_cache = None  # torch-free resolved models.clip[_legacy] block; see _resolve_clip_config
+# (stored embedding dim, torch-free resolved models.clip[_legacy] block). Keyed
+# rather than bare, which is what lets the embedding-less answer be cached too --
+# see _resolve_clip_config.
+_clip_config_cache = None
+_clip_config_lock = threading.Lock()
+# Rows sampled to decide the stored embedding dimension; see _stored_embedding_dim.
+_EMBEDDING_DIM_SAMPLE = 1000
 _embedding_cache = None  # numpy fallback: {'matrix': np.array, 'paths': list, 'count': int}
 
 # Split-TTL availability tracking.
@@ -125,32 +132,63 @@ async def _check_vec_available(conn):
 
 
 def _stored_embedding_dim() -> Optional[int]:
-    """Majority embedding dimension stored in the database (None if empty)."""
+    """Majority embedding dimension among the first embedded rows (None if none).
+
+    SAMPLED, not exhaustive. The unbounded form -- `GROUP BY` over every row --
+    plans as `SCAN photos` plus two temp b-trees and took 1.0s warm (far worse
+    cold) on a 126k-row library, and `/api/config` reaches this on anonymous
+    client bootstrap. Only a MIXED-dimension library can answer differently
+    from a full count, and `_EMBEDDING_DIM_SAMPLE` rows settle that vote long
+    before the tail matters.
+
+    `LENGTH()` is computed INSIDE the subquery so the sample never materializes
+    the embedding blobs themselves.
+    """
     from api.database import get_db
 
     try:
         with get_db() as conn:
             row = conn.execute(
-                "SELECT LENGTH(clip_embedding) FROM photos "
-                "WHERE clip_embedding IS NOT NULL "
-                "GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1"
+                "SELECT n FROM ("
+                " SELECT LENGTH(clip_embedding) AS n FROM photos"
+                " WHERE clip_embedding IS NOT NULL LIMIT ?"
+                ") GROUP BY n ORDER BY COUNT(*) DESC LIMIT 1",
+                (_EMBEDDING_DIM_SAMPLE,),
             ).fetchone()
     except sqlite3.Error:
         return None
     return row[0] // 4 if row and row[0] else None
 
 
-def _reset_text_encoder_cache():
-    """Clear both the loaded text encoder and the resolved-config cache.
+def _reset_clip_config_cache():
+    """Drop the resolved `models.clip`/`clip_legacy` block.
 
-    Must be called wherever `_text_encoder` itself is reset (tests'
-    `_reset_search_module_state`, and this module's own fixtures) so a
+    The block is derived from `scoring_config.json`, so `api.config.reload_config`
+    calls this. Without it a reload that changes `models.*` keeps serving the
+    pre-reload search threshold from `/api/config` and `/api/search` until the
+    process restarts, while every other key of the same file goes live at once --
+    the exact stale-generation split `reload_config` refills its dicts in place
+    to avoid.
+
+    The loaded encoder is deliberately left alone: most reloads (a password
+    change, a weight edit) cannot invalidate it, and dropping it would re-pay a
+    model load for nothing.
+    """
+    global _clip_config_cache
+    with _clip_config_lock:
+        _clip_config_cache = None
+
+
+def _reset_text_encoder_cache():
+    """Clear the loaded text encoder and the resolved-config cache together.
+
+    Must be called wherever `_text_encoder` itself is reset, so a
     `_resolve_clip_config()` answer never outlives the encoder it was
     resolved for.
     """
-    global _text_encoder, _clip_config_cache
+    global _text_encoder
     _text_encoder = None
-    _clip_config_cache = None
+    _reset_clip_config_cache()
 
 
 def _resolve_clip_config() -> dict:
@@ -174,24 +212,45 @@ def _resolve_clip_config() -> dict:
     torch-free before; keeping the common path off that branch is what stops
     a ~8s first-paint stall and torch's RSS on CPU-only installs.
 
-    An empty library resolves nothing meaningful about the *data*, so that
-    answer is never cached -- caching it would freeze the profile's default
-    for the life of the process the first time `/api/config` is hit before
-    any embeddings exist.
+    The cache is KEYED ON THE STORED DIMENSION rather than holding a bare
+    block, and that is what lets the embedding-less answer be cached too: it
+    is reused only while the library still has no embeddings, and re-resolves
+    the moment the first one lands. Caching it unkeyed would freeze the
+    profile's default for the life of a process whose `/api/config` was hit
+    before any scan; not caching it at all -- the first shape this took --
+    put the torch branch on EVERY anonymous bootstrap of a fresh install,
+    which is the one library guaranteed to have no embeddings yet.
+
+    The double-checked lock matters because `/api/config` is a sync `def`, so
+    FastAPI dispatches it to a 40-thread pool: an unguarded check-then-set let
+    a reload storm start one independent resolution per thread.
     """
     global _clip_config_cache
-    if _clip_config_cache is not None:
-        return _clip_config_cache
 
-    config = server_scoring_config()
     stored_dim = _stored_embedding_dim()
+    cached = _clip_config_cache
+    if cached is not None and cached[0] == stored_dim:
+        return cached[1]
 
+    with _clip_config_lock:
+        cached = _clip_config_cache
+        if cached is not None and cached[0] == stored_dim:
+            return cached[1]
+        resolved = _resolve_clip_config_uncached(stored_dim)
+        _clip_config_cache = (stored_dim, resolved)
+        return resolved
+
+
+def _resolve_clip_config_uncached(stored_dim: Optional[int]) -> dict:
+    """The resolution itself; `_resolve_clip_config` owns the caching rules."""
+    config = server_scoring_config()
+
+    matches = []
     if stored_dim:
         model_config = config.get_model_config()
         matches = [block for block in model_config.values()
                    if isinstance(block, dict) and block.get('embedding_dim') == stored_dim]
         if len(matches) == 1:
-            _clip_config_cache = matches[0]
             return matches[0]
 
     config.check_vram_profile_compatibility(verbose=False)
@@ -203,10 +262,6 @@ def _resolve_clip_config() -> dict:
             "semantic search will likely return nothing",
             stored_dim, "no" if not matches else "more than one",
         )
-
-    if stored_dim is None:
-        return clip_config
-    _clip_config_cache = clip_config
     return clip_config
 
 
@@ -222,15 +277,30 @@ def search_threshold_default() -> float:
     instead of raising from a request handler.
 
     `search_threshold_percent` (on both `models.clip` and `models.clip_legacy`)
-    is a WHOLE NUMBER 0-50, never validated at write time: the gallery's
-    sidebar slider tops out at 50, and the client reproduces this fraction as
-    a percent via `Math.round(search_threshold_default * 100)` for display --
-    lossless only for an integer input. A fractional configured value (e.g.
-    `7.5`) would still resolve and gate correctly here, but would render
-    rounded in the UI, and any value above 50 would be unreachable from the
-    slider once seeded.
+    is meant to be a WHOLE NUMBER 0-50 and is never validated -- there is no
+    `models` property in `config/scoring_config.schema.json` at all -- so this
+    coerces rather than trusts. `null` or a quoted `"5"` are both plausible
+    hand-edits, and a bare `/ 100` raised `TypeError` from inside
+    `/api/config`, which has no `try` of its own: a config typo that should
+    have broken only semantic search 500'd the whole anonymous bootstrap.
+
+    A fractional value (e.g. `7.5`) resolves and gates exactly here, and
+    reaches the server unrounded as long as the gallery's slider is untouched
+    -- the client seeds `Math.round(... * 100)` for DISPLAY but sends nothing
+    until the value differs from that seed. Once dragged, the percent the user
+    chose is what gates, so a fractional default is observable only until the
+    first drag. A value above 50 is likewise unreachable from the slider once
+    the user touches it.
     """
-    return _resolve_clip_config().get('search_threshold_percent', 15) / 100
+    raw = _resolve_clip_config().get('search_threshold_percent', 15)
+    try:
+        percent = float(raw)
+    except (TypeError, ValueError):
+        logger.warning(
+            "models.*.search_threshold_percent is %r, not a number; gating at 15%% instead", raw,
+        )
+        percent = 15.0
+    return min(max(percent, 0.0), 100.0) / 100
 
 
 def _load_text_encoder():
@@ -569,8 +639,15 @@ async def api_search(
             if not text_only:
                 # Resolved here, not before the `if`, so a text-scope query
                 # never pays for `_resolve_clip_config()`'s stored-embedding-dim
-                # scan on a path that does no embedding search.
-                resolved_threshold = search_threshold_default() if threshold is None else threshold
+                # lookup on a path that does no embedding search -- and in a
+                # worker thread, because that lookup hits SQLite and, on a
+                # library with no embeddings yet, imports torch. It sat on the
+                # event loop one line above the `to_thread` that exists for
+                # exactly this reason.
+                resolved_threshold = (
+                    await asyncio.to_thread(search_threshold_default)
+                    if threshold is None else threshold
+                )
 
                 # Text encoding is GPU/CPU work — push to a worker thread so the
                 # event loop stays responsive during the typically 5-30ms encode.
