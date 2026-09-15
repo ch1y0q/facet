@@ -860,7 +860,8 @@ class ScoringConfig:
             },
             'clip': {
                 'model_name': 'ViT-L-14',
-                'pretrained': 'laion2b_s32b_b82k'
+                'pretrained': 'laion2b_s32b_b82k',
+                'search_threshold_percent': 15
             }
         }
         return self._merge_configs(default_models, self.config.get('models', {}))

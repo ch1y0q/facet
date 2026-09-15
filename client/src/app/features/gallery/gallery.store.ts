@@ -17,6 +17,7 @@ import {
   loadDisplayOptionsFromStorage, saveDisplayOptionsToStorage,
   countActiveFilters, applyQueryParams, buildSyncParams, buildApiParams,
   buildViewFilterParams, viewFilterParamsEqual, anyHideToggleActive,
+  seededSearchThreshold,
 } from './gallery-filters.util';
 
 // Re-export the filter types/consts so existing importers of gallery.store keep working.
@@ -202,6 +203,10 @@ export interface ViewerConfig {
     excellent: number;
     best: number;
   };
+  /** Resolved semantic-search cosine gate (0-1) for the active encoder, always
+   *  present -- the client seeds its filter state from this rather than a
+   *  hardcoded constant. */
+  search_threshold_default: number;
   /** Per-badge opt-out for the gallery card (`viewer.badges`). Every key
    *  defaults to true except shadow clipping — see DEFAULT_BADGE_VISIBILITY. */
   badges?: Record<string, boolean>;
@@ -652,6 +657,11 @@ export class GalleryStore {
       const base: GalleryFilters = {
         ...DEFAULT_FILTERS,
         per_page: cfg.pagination?.default_per_page ?? 64,
+        // No `?? 0.15` fallback: a client-side default would silently diverge
+        // from the server's calibrated per-model value the moment the two
+        // disagreed. A MISSING field resolves to '' rather than a guess, which
+        // is what makes /search omit `threshold` and resolve its own.
+        search_threshold: seededSearchThreshold(cfg.search_threshold_default),
         sort: defaults?.sort ?? 'aggregate',
         sort_direction: defaults?.sort_direction ?? 'DESC',
         type: defaults?.type ?? '',
@@ -701,12 +711,21 @@ export class GalleryStore {
       }
 
       if (f.semanticQuery) {
+        // Omit `threshold` whenever the slider still sits on the server's own
+        // seed -- unseeded ('') or untouched alike. The server then resolves
+        // the active encoder's default (api/routers/search.py
+        // search_threshold_default()) at its exact configured precision,
+        // rather than the client echoing back the percent-rounded copy it was
+        // given for display.
+        const searchParams: Record<string, string | number> = {
+          q: f.semanticQuery,
+          limit: f.per_page,
+        };
+        if (f.search_threshold
+          && f.search_threshold !== seededSearchThreshold(this.config()?.search_threshold_default))
+          searchParams['threshold'] = +f.search_threshold / 100;
         const res = await firstValueFrom(
-          this.api.get<{ photos: Photo[]; total: number; query: string }>('/search', {
-            q: f.semanticQuery,
-            limit: f.per_page,
-            threshold: 0.15,
-          }),
+          this.api.get<{ photos: Photo[]; total: number; query: string }>('/search', searchParams),
         );
         if (seq !== this._loadSeq) return;
         this.photos.set(normalisePhotoFlagsAll(res.photos));
@@ -792,7 +811,11 @@ export class GalleryStore {
     if (key === 'favorites_only' && value) extra.hide_rejected = false;
     // Reload person dropdown when person filter is cleared (was seeded with filtered subset)
     const wasPersonFiltered = !!this.filters().person_id;
-    const isDisplayOnly = GalleryStore.DISPLAY_ONLY_KEYS.has(key);
+    // search_threshold only feeds the /search branch of loadPhotos(), so
+    // dragging the slider before a semantic query exists has nothing to
+    // reload -- treat it as display-only until a query is actually set.
+    const isDisplayOnly = GalleryStore.DISPLAY_ONLY_KEYS.has(key)
+      || (key === 'search_threshold' && !this.filters().semanticQuery);
     this.filters.update(current => ({
       ...current, [key]: value, ...extra, ...(isDisplayOnly ? {} : { page: 1 }),
     }));
@@ -881,6 +904,9 @@ export class GalleryStore {
     this.filters.set({
       ...DEFAULT_FILTERS,
       per_page: cfg?.pagination?.default_per_page ?? 64,
+      // Same re-seed loadConfig() does -- otherwise reset drops back to the
+      // unseeded '' and the sidebar readout/thumb render as if the gate were 0.
+      search_threshold: seededSearchThreshold(cfg?.search_threshold_default),
       sort: defaults?.sort ?? 'aggregate',
       sort_direction: defaults?.sort_direction ?? 'DESC',
       hide_details: defaults?.hide_details ?? true,
@@ -1429,7 +1455,9 @@ export class GalleryStore {
   /** Sync current filters to URL query params */
   private syncUrl(): void {
     this.router.navigate([], {
-      queryParams: buildSyncParams(this.filters(), this.config()?.defaults),
+      queryParams: buildSyncParams(
+        this.filters(), this.config()?.defaults, this.config()?.search_threshold_default,
+      ),
       replaceUrl: true,
     });
   }

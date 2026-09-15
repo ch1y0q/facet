@@ -1136,6 +1136,8 @@
       "moments": "Moments"
     },
     "semantic_search_info": "Semantic search loads embeddings into RAM on first use. This may take a moment for large libraries.",
+    "semantic_search_threshold": "Match sensitivity",
+    "semantic_search_threshold_hint": "Lower values show more results, including weaker matches; raise it to keep only the closest matches.",
     "select_on_map": "Select on map",
     "gps_radius": "Radius",
     "hide_rejected": "Hide Rejected",

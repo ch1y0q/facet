@@ -23,6 +23,7 @@ import { AdditionalFilterDef } from '../../shared/models/filter-def.model';
 import { computeRangeFilterUpdate } from '../../shared/utils/range-filter';
 import { useCoarsePointerSignal } from '../../shared/utils/media-query';
 import { MOBILE_MIN_CARD_WIDTH_PX } from './gallery-rows.util';
+import { SEARCH_THRESHOLD_MAX, seededSearchThreshold } from './gallery-filters.util';
 import { AlbumService, Album } from '../../core/services/album.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
@@ -243,6 +244,18 @@ function saveSectionStates(states: Record<string, boolean>): void {
               }
             </mat-form-field>
             <p class="text-xs opacity-50 px-1">{{ I18N.gallery.semantic_search_info | translate }}</p>
+            <div class="flex items-center gap-2 px-1">
+              <span class="text-sm opacity-70 shrink-0">{{ I18N.gallery.semantic_search_threshold | translate }}</span>
+              <mat-slider [min]="0" [max]="SEARCH_THRESHOLD_MAX" [step]="1" [displayWith]="formatThresholdPercent" class="flex-1">
+                <input matSliderThumb
+                  [value]="searchThresholdValue()"
+                  (valueChange)="onSearchThresholdChange($event)"
+                  [attr.aria-label]="I18N.gallery.semantic_search_threshold | translate"
+                  aria-describedby="semantic-search-threshold-hint" />
+              </mat-slider>
+              <span class="text-xs opacity-60 w-10 text-right">{{ searchThresholdValue() }}%</span>
+            </div>
+            <p id="semantic-search-threshold-hint" class="text-xs opacity-50 px-1">{{ I18N.gallery.semantic_search_threshold_hint | translate }}</p>
           </div>
         </mat-expansion-panel>
       }
@@ -840,6 +853,38 @@ export class GalleryFilterSidebarComponent {
   private readonly coarsePointer = useCoarsePointerSignal();
   readonly sliderConfig = computed(() => this.store.config()?.display?.thumbnail_slider ?? null);
 
+  protected readonly SEARCH_THRESHOLD_MAX = SEARCH_THRESHOLD_MAX;
+
+  /** MatSlider's own `aria-valuetext` host binding wins over an `[attr.]` one on
+   *  the thumb, so the unit has to come through `displayWith` -- a bare "5" is
+   *  what a screen reader announced otherwise. */
+  protected readonly formatThresholdPercent = (value: number): string => `${value}%`;
+
+  /** The value being dragged right now, before the 400ms debounce commits it.
+   *
+   *  Without it the percent readout reads the committed filter, so it stays
+   *  frozen at the old number for the whole drag and only catches up 400ms
+   *  after the thumb is released -- the slider looked dead while in use. */
+  private readonly thresholdDraft = signal<number | null>(null);
+
+  /** Numeric mirror of the string filter for the `<input matSliderThumb [value]>`
+   *  binding, and for the percent readout next to it -- a computed, never a
+   *  template method call (per project rule).
+   *
+   *  Unseeded ('') must NOT render as 0: the server only omits `threshold`
+   *  entirely when the client sends nothing, then gates at its own calibrated
+   *  default (`config.search_threshold_default`) -- so the thumb and readout
+   *  fall back to that same effective value rather than lying about a 0%
+   *  gate. Falls back to 0 only if config itself hasn't loaded yet. */
+  protected readonly searchThresholdValue = computed(() => {
+    const draft = this.thresholdDraft();
+    if (draft !== null) return draft;
+    const raw = this.store.filters().search_threshold;
+    if (raw) return Number(raw);
+    const seeded = seededSearchThreshold(this.store.config()?.search_threshold_default);
+    return seeded ? Number(seeded) : 0;
+  });
+
   /**
    * Lowest card width the thumbnail slider offers.
    *
@@ -1027,6 +1072,9 @@ export class GalleryFilterSidebarComponent {
   }
 
   private searchTimeout: ReturnType<typeof setTimeout> | null = null;
+  // Kept separate from searchTimeout so a slider drag can't cancel a pending
+  // text search (or vice versa) -- they debounce independent filter keys.
+  private thresholdTimeout: ReturnType<typeof setTimeout> | null = null;
   private albumsLoaded = false;
 
   constructor() {
@@ -1039,6 +1087,7 @@ export class GalleryFilterSidebarComponent {
     });
     inject(DestroyRef).onDestroy(() => {
       if (this.searchTimeout) clearTimeout(this.searchTimeout);
+      if (this.thresholdTimeout) clearTimeout(this.thresholdTimeout);
       this.coarsePointer.cleanup();
     });
   }
@@ -1059,6 +1108,16 @@ export class GalleryFilterSidebarComponent {
     if (this.searchTimeout) clearTimeout(this.searchTimeout);
     this.searchTimeout = setTimeout(() => {
       this.store.updateFilter('semanticQuery', value);
+    }, 400);
+  }
+
+  onSearchThresholdChange(value: number): void {
+    this.thresholdDraft.set(value);
+    if (this.thresholdTimeout) clearTimeout(this.thresholdTimeout);
+    this.thresholdTimeout = setTimeout(() => {
+      this.thresholdTimeout = null;
+      this.thresholdDraft.set(null);
+      this.store.updateFilter('search_threshold', String(value));
     }, 400);
   }
 

@@ -41,6 +41,7 @@ from datetime import date
 from pathlib import Path
 from unittest import mock
 
+import numpy as np
 import pytest
 
 from api.db_helpers import PHOTO_BASE_COLS, PHOTO_OPTIONAL_COLS
@@ -390,6 +391,59 @@ class TestSearchContract:
         photos = resp.json()['photos']
         assert photos, "FTS text search found no match for the seeded caption"
         assert_satisfies(photos[0], 'Photo', 'GET /api/search')
+
+    def test_embedding_similarity_wire_type_and_presence(self, edition_client, seed_photos_prefix):
+        """`embedding_similarity`: a float when an embedding score was
+        actually computed for the photo, omitted entirely otherwise — never
+        sent as `null`.
+
+        Regresses the exact bug the ``if path in embedding_scores`` guard
+        exists to prevent: writing the key unconditionally (even as
+        ``None``) would put a JSON ``null`` on the wire for the FTS-only
+        photo below, which the type-checker part of this suite would not
+        catch on its own (``Optional[float]`` allows ``null``) but the
+        explicit ``not in`` assertion does.
+        """
+        prefix = "/apicontract-search-emb/"
+        photo_a = prefix + "a.jpg"
+        photo_b = prefix + "b.jpg"
+        seed_photos_prefix(prefix, [
+            {"path": photo_a, "filename": "a.jpg", "aggregate": 6.0, **_MINIMAL_SCORED_FIELDS},
+            {"path": photo_b, "filename": "b.jpg", "aggregate": 6.0, **_MINIMAL_SCORED_FIELDS},
+        ])
+
+        matrix = np.array([[1.0, 0.0]], dtype=np.float32)
+        text_emb = np.array([1.0, 0.0], dtype=np.float32)
+
+        async def _matrix(*_a, **_k):
+            return matrix, [photo_a]
+
+        async def _fts(*_a, **_k):
+            return {photo_b: 1.0}
+
+        async def _false(*_a, **_k):
+            return False
+
+        async def _true(*_a, **_k):
+            return True
+
+        with (
+            mock.patch("api.routers.search._load_embedding_matrix", new=_matrix),
+            mock.patch("api.routers.search._encode_text", return_value=text_emb),
+            mock.patch("api.routers.search._has_fts", new=_true),
+            mock.patch("api.routers.search._fts_search", new=_fts),
+            mock.patch("api.routers.search._check_vec_available", new=_false),
+        ):
+            resp = edition_client.get('/api/search', params={'q': 'x', 'threshold': 0.05})
+
+        assert resp.status_code == 200
+        photos_by_path = {p['path']: p for p in resp.json()['photos']}
+        assert_satisfies(photos_by_path[photo_a], 'Photo', 'GET /api/search')
+        assert_satisfies(photos_by_path[photo_b], 'Photo', 'GET /api/search')
+
+        assert isinstance(photos_by_path[photo_a]['embedding_similarity'], float)
+        assert not isinstance(photos_by_path[photo_a]['embedding_similarity'], str)
+        assert 'embedding_similarity' not in photos_by_path[photo_b]
 
 
 class TestAlbumContract:

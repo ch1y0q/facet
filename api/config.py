@@ -1341,6 +1341,9 @@ def reload_config():
     ``load_viewer_config`` backfills every shipped key, so the auth-relevant
     values are correct from the update onward and the prune only drops keys the
     new config no longer has.
+
+    Caches DERIVED from this file must be dropped here too, not only where
+    their own owner resets them: see ``api.routers.search._reset_clip_config_cache``.
     """
     global _server_secret, JWT_SECRET
     with _config_lock:
@@ -1356,6 +1359,14 @@ def reload_config():
             del VIEWER_CONFIG[key]
         _server_secret = fresh_secret
         JWT_SECRET = _server_secret
+
+    # Outside the lock, and imported late: `api.routers.search` imports this
+    # module. Its resolved `models.clip` block is derived from the same file
+    # and is cached for the life of the process, so without this a reload that
+    # changed `models.*` would keep serving the pre-reload search threshold
+    # while every other key went live at once.
+    from api.routers.search import _reset_clip_config_cache
+    _reset_clip_config_cache()
 
 
 def _prefix_boundary_match(path, prefix):

@@ -1136,6 +1136,8 @@
       "moments": "Momenti"
     },
     "semantic_search_info": "La ricerca semantica carica gli embedding nella RAM al primo utilizzo. Potrebbe richiedere un momento per le librerie di grandi dimensioni.",
+    "semantic_search_threshold": "Sensibilità di corrispondenza",
+    "semantic_search_threshold_hint": "Valori più bassi mostrano più risultati, incluse corrispondenze più deboli; aumentalo per mantenere solo le corrispondenze più vicine.",
     "select_on_map": "Seleziona sulla mappa",
     "gps_radius": "Raggio",
     "hide_rejected": "Nascondi scartate",

@@ -302,9 +302,11 @@ Recherche hybride combinant la similarité des embeddings CLIP/SigLIP (70%) avec
 - Nécessite des données `clip_embedding` stockées (calculées pendant le scoring)
 - Utilise sqlite-vec pour la recherche vectorielle KNN lorsqu'il est installé, sinon bascule sur NumPy en mémoire
 - La recherche textuelle FTS5 sur les légendes/tags IA fournit une correspondance par mots-clés supplémentaire (lancez `database.py --rebuild-fts` pour l'activer)
-- Utilise le même modèle d'embedding que le profil VRAM actif (SigLIP 2 pour 16gb/24gb, CLIP ViT-L-14 pour legacy/8gb)
+- Utilise le même modèle d'embedding que le profil VRAM actif (SigLIP 2 pour 16gb/24gb, CLIP ViT-L-14 pour legacy/8gb), ou celui de `models.clip`/`clip_legacy` qui correspond réellement à la dimension d'embedding stockée si les deux diffèrent (voir [docs/CONFIGURATION.md](CONFIGURATION.md))
 - `scope=text` restreint la requête aux correspondances FTS5 littérales dans le texte OCR/légende et ignore la recherche par embedding
 - Contrôlé par `viewer.features.show_semantic_search` (par défaut : `true`)
+- Le seuil cosinus utilise par défaut `models.clip.search_threshold_percent` (5%) / `models.clip_legacy.search_threshold_percent` (15%) — des valeurs calibrées par moteur, distinctes du seuil de correspondance d'étiquette `similarity_threshold_percent`. Le `search_threshold_default` de `/api/config` initialise le curseur de seuil 0-50% de la galerie, qui couvre toute la plage : une recherche peut être resserrée au-delà de la valeur par défaut ou relâchée jusqu'à `0%` pour une requête donnée ; un seuil de `0%` exact rejette toujours une similarité cosinus négative, ce n'est pas « aucun filtre ». La valeur par défaut de 5% pour SigLIP favorise délibérément le rappel plutôt que la précision — voir `clip.search_threshold_percent` dans [docs/CONFIGURATION.md](CONFIGURATION.md) pour le compromis de cet étalonnage
+- Chaque résultat renvoie deux champs de similarité : `similarity` est le score combiné embedding (70%) + FTS (30%) utilisé pour le classement ; `embedding_similarity` est la similarité cosinus brute effectivement comparée au seuil ci-dessus, présente uniquement quand un score d'embedding a été calculé pour cette photo (absente — jamais `null` — pour une correspondance FTS seule ou `scope=text`)
 
 ## Albums
 
@@ -1053,7 +1055,7 @@ Les types TypeScript du client sont générés à partir de ce schéma dans `cli
 | `GET /api/photo/histogram?path=&bins=` | Bins de luminance + R/V/B prêts à dessiner (`bins` ∈ 32/64/128/256, 64 par défaut), mesurés lors de l'analyse sur l'image pleine résolution. Chaque canal est mis à l'échelle par un maximum global unique, jamais par le sien. `r`/`g`/`b` valent `null` pour une ligne enregistrée avant le format par canal ; 404 lorsque la ligne n'a aucun histogramme, ce qui indique au widget de retomber sur l'échantillonnage de la miniature |
 | `GET /api/type_counts?hide_blinks=&hide_bursts=&hide_duplicates=&hide_brackets=&hide_panoramas=` | Nombre de photos par type pour les puces de la barre latérale. Mêmes cinq bascules que la galerie ; une bascule omise retombe sur `viewer.defaults` plutôt que sur « désactivé » — envoyez `hide_bursts=0`, etc., explicitement pour tout compter |
 | `GET /api/similar_photos/{path}` | Photos similaires (modes : `visual`, `color`, `person`) |
-| `GET /api/search?q=&limit=&threshold=&scope=` | Recherche sémantique texte-vers-image (`scope=text` = texte OCR/légende uniquement) |
+| `GET /api/search?q=&limit=&threshold=&scope=` | Recherche sémantique texte-vers-image (`scope=text` = texte OCR/légende uniquement). `threshold` est optionnel : omis, il se résout vers le `models.*.search_threshold_percent` de l'encodeur actif (exposé au client via `search_threshold_default` de `/api/config`) ; une valeur explicite — y compris `0.0` — l'emporte toujours sur la valeur par défaut résolue. Évalué uniquement quand la recherche exécute effectivement une recherche par embedding (`scope != 'text'` court-circuite entièrement la résolution) |
 | `GET /api/critique?path=&mode=&refresh=` | Critique IA (basée sur des règles ou VLM) ; `refresh=true` régénère la critique VLM mise en cache |
 | `GET /api/ranker/status` | État du classeur personnel pour le tri « My Taste » (% de couverture apprise, précision en validation) |
 | `GET /api/config` | Configuration de la visionneuse |

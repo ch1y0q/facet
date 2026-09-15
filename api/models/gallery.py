@@ -33,9 +33,14 @@ class Photo(BaseModel):
     that against ``PHOTO_BASE_COLS`` and ``PHOTO_OPTIONAL_COLS``.
 
     The trailing fields are computed by the handlers rather than selected.
-    ``top_picks_score``, ``learned_score`` and ``similarity`` are conditional --
-    only the request that sorts or filters by them carries them -- so they must
-    stay optional or the requests that do not trigger them would 500.
+    ``top_picks_score``, ``learned_score``, ``similarity`` and
+    ``embedding_similarity`` are conditional -- only the request that sorts
+    or filters by them carries them -- so they must stay optional or the
+    requests that do not trigger them would 500. ``embedding_similarity`` is
+    the raw cosine that `/api/search` gated the result on; it is present only
+    when an embedding score was actually computed for that photo (an
+    FTS-only or ``scope=text`` hit omits it), and is distinct from
+    ``similarity``, which stays the blended embedding/FTS value.
     """
 
     path: str
@@ -128,6 +133,7 @@ class Photo(BaseModel):
     top_picks_score: Optional[float] = None
     learned_score: Optional[float] = None
     similarity: Optional[float] = None
+    embedding_similarity: Optional[float] = None
 
     model_config = {'from_attributes': True}
 

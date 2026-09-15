@@ -1,7 +1,8 @@
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { of } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
+import { provideNativeDateAdapter } from '@angular/material/core';
 import { GalleryStore } from './gallery.store';
 import { GalleryFilterSidebarComponent } from './gallery-filter-sidebar.component';
 import { I18nService } from '../../core/services/i18n.service';
@@ -10,9 +11,10 @@ import { AlbumService } from '../../core/services/album.service';
 
 describe('GalleryFilterSidebarComponent', () => {
   let component: GalleryFilterSidebarComponent;
+  let mockStore: Record<string, unknown>;
 
   beforeEach(() => {
-    const mockStore = {
+    mockStore = {
       filters: signal({
         hide_details: true, hide_blinks: true, hide_bursts: true, hide_duplicates: true,
         hide_rejected: true, favorites_only: false, is_monochrome: false,
@@ -33,7 +35,7 @@ describe('GalleryFilterSidebarComponent', () => {
         min_focal_length: '', max_focal_length: '', date_from: '', date_to: '',
         search: '', type: '', sort: 'aggregate', sort_direction: 'DESC', page: 1, per_page: 64,
         similar_to: '', similarity_mode: 'visual', min_similarity: '70',
-        semanticQuery: '', album_id: '',
+        semanticQuery: '', search_threshold: '', album_id: '',
         min_aesthetic_iaa: '', max_aesthetic_iaa: '',
         min_face_quality_iqa: '', max_face_quality_iqa: '',
         min_liqe: '', max_liqe: '',
@@ -239,6 +241,158 @@ describe('GalleryFilterSidebarComponent', () => {
       const mockStore = (component as any).store;
       mockStore.filters.set({ ...mockStore.filters(), path_prefix: '/photos/Family/2026/' });
       expect(component.currentFolderName()).toBe('2026');
+    });
+  });
+
+  describe('semantic search threshold slider', () => {
+    // Note: this suite tests the component's methods/computeds directly, the
+    // same style every other describe block in this file uses -- the harness
+    // never renders the template via fixture.createComponent/detectChanges,
+    // so panel-visibility (@if show_semantic_search, pre-existing/unchanged)
+    // is not exercised here either.
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('searchThresholdValue mirrors the string filter as a number for the slider [value] binding', () => {
+      const mockStore = (component as any).store;
+      mockStore.filters.set({ ...mockStore.filters(), search_threshold: '12' });
+      expect((component as any).searchThresholdValue()).toBe(12);
+    });
+
+    it('searchThresholdValue falls back to 0 when unseeded and config has not loaded', () => {
+      const mockStore = (component as any).store;
+      mockStore.filters.set({ ...mockStore.filters(), search_threshold: '' });
+      mockStore.config.set(null);
+      expect((component as any).searchThresholdValue()).toBe(0);
+    });
+
+    it('searchThresholdValue falls back to the config default (as a percent) when unseeded -- never a bare 0/blank readout while the server actually gates at its own default', () => {
+      const mockStore = (component as any).store;
+      mockStore.filters.set({ ...mockStore.filters(), search_threshold: '' });
+      mockStore.config.set({ search_threshold_default: 0.05 });
+      expect((component as any).searchThresholdValue()).toBe(5);
+    });
+
+    it('onSearchThresholdChange debounces the filter update by 400ms', () => {
+      const mockStore = (component as any).store;
+      component.onSearchThresholdChange(20);
+      expect(mockStore.updateFilter).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(400);
+
+      expect(mockStore.updateFilter).toHaveBeenCalledWith('search_threshold', '20');
+    });
+
+    it('the readout follows the drag immediately, rather than freezing for the debounce', () => {
+      const mockStore = (component as any).store;
+      mockStore.filters.set({ ...mockStore.filters(), search_threshold: '12' });
+
+      component.onSearchThresholdChange(31);
+
+      expect((component as any).searchThresholdValue()).toBe(31);
+      expect(mockStore.updateFilter).not.toHaveBeenCalled();
+    });
+
+    it('drops the draft once the debounce fires, so the filter is the single source again', () => {
+      const mockStore = (component as any).store;
+      mockStore.filters.set({ ...mockStore.filters(), search_threshold: '12' });
+      component.onSearchThresholdChange(31);
+
+      vi.advanceTimersByTime(400);
+      // The mock store never applies updateFilter, so the filter is still '12':
+      // a draft that outlived the timeout would keep reading 31.
+      expect((component as any).searchThresholdValue()).toBe(12);
+    });
+
+    it('a second drag replaces the draft rather than queueing a stale readout', () => {
+      component.onSearchThresholdChange(31);
+      vi.advanceTimersByTime(200);
+      component.onSearchThresholdChange(44);
+
+      expect((component as any).searchThresholdValue()).toBe(44);
+
+      vi.advanceTimersByTime(400);
+
+      expect((component as any).store.updateFilter).toHaveBeenCalledTimes(1);
+      expect((component as any).store.updateFilter).toHaveBeenCalledWith('search_threshold', '44');
+    });
+
+    it('uses its own debounce timer, independent of the semantic-query search timer', () => {
+      const mockStore = (component as any).store;
+      const inputEvent = { target: { value: 'sunset' } } as unknown as Event;
+
+      component.onSemanticSearch(inputEvent);
+      component.onSearchThresholdChange(30);
+      vi.advanceTimersByTime(400);
+
+      expect(mockStore.updateFilter).toHaveBeenCalledWith('semanticQuery', 'sunset');
+      expect(mockStore.updateFilter).toHaveBeenCalledWith('search_threshold', '30');
+    });
+  });
+
+  describe('semantic search threshold slider (rendered)', () => {
+    // The only block in this file that renders the template: the slider is Material
+    // markup, so [value]/(valueChange) wiring and the aria attributes cannot be
+    // reached through the component's methods alone.
+    let fixture: ComponentFixture<GalleryFilterSidebarComponent>;
+    let thumb: HTMLInputElement;
+
+    beforeEach(() => {
+      TestBed.resetTestingModule();
+      const renderedStore = {
+        ...mockStore,
+        config: signal({ features: { show_semantic_search: true }, search_threshold_default: 0.05 }),
+        cardWidth: signal(220),
+        colorTemps: signal([]),
+        hueBuckets: signal([]),
+        patterns: signal([]),
+        types: signal([]),
+        currentAlbum: signal(null),
+        galleryMode: signal('grid'),
+        gpsLocationName: signal(''),
+        virtualScroll: signal(false),
+        setCardWidth: vi.fn(),
+        setGalleryMode: vi.fn(),
+        setVirtualScroll: vi.fn(),
+      };
+
+      TestBed.configureTestingModule({
+        providers: [
+          provideNativeDateAdapter(),
+          { provide: GalleryStore, useValue: renderedStore },
+          { provide: I18nService, useValue: { t: vi.fn((k: string) => k), currentLang: vi.fn(() => 'en'), translations: vi.fn(() => ({})) } },
+          { provide: AuthService, useValue: { isEdition: vi.fn(() => false) } },
+          { provide: AlbumService, useValue: { list: vi.fn(() => of({ albums: [] })) } },
+          { provide: MatDialog, useValue: { open: vi.fn() } },
+        ],
+      });
+
+      fixture = TestBed.createComponent(GalleryFilterSidebarComponent);
+      fixture.detectChanges();
+      thumb = fixture.nativeElement.querySelector('mat-slider input');
+    });
+
+    it('renders the thumb seeded from the config default, announced with its unit', () => {
+      expect(thumb).toBeTruthy();
+      expect(thumb.value).toBe('5');
+      expect(thumb.getAttribute('aria-valuetext')).toBe('5%');
+      expect(thumb.getAttribute('aria-describedby')).toBe('semantic-search-threshold-hint');
+      expect(fixture.nativeElement.querySelector('#semantic-search-threshold-hint')).toBeTruthy();
+    });
+
+    it('wires the thumb back to the component, readout and valuetext following the drag', () => {
+      thumb.value = '31';
+      thumb.dispatchEvent(new Event('input'));
+      thumb.dispatchEvent(new Event('change'));
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.textContent).toContain('31%');
+      expect(thumb.getAttribute('aria-valuetext')).toBe('31%');
     });
   });
 });

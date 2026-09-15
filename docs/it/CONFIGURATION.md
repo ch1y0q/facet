@@ -536,13 +536,15 @@ Seleziona quali modelli vengono usati per ciascun profilo VRAM.
       "model_name": "google/siglip2-so400m-patch16-naflex",
       "backend": "transformers",
       "embedding_dim": 1152,
-      "similarity_threshold_percent": 8
+      "similarity_threshold_percent": 8,
+      "search_threshold_percent": 5
     },
     "clip_legacy": {
       "model_name": "ViT-L-14",
       "pretrained": "laion2b_s32b_b82k",
       "embedding_dim": 768,
-      "similarity_threshold_percent": 22
+      "similarity_threshold_percent": 22,
+      "search_threshold_percent": 15
     },
     "qwen2_vl": {
       "model_path": "Qwen/Qwen2-VL-2B-Instruct",
@@ -583,11 +585,13 @@ Seleziona quali modelli vengono usati per ciascun profilo VRAM.
 | `clip.model_name` | `"google/siglip2-so400m-patch16-naflex"` | Modello di embedding SigLIP 2 NaFlex (16gb/24gb) |
 | `clip.backend` | `"transformers"` | `"transformers"` (SigLIP 2 NaFlex) o `"open_clip"` (legacy) |
 | `clip.embedding_dim` | `1152` | Dimensioni dell'embedding (1152 per SigLIP 2) |
-| `clip.similarity_threshold_percent` | `8` | Similarità coseno CLIP minima per la corrispondenza di un tag |
+| `clip.similarity_threshold_percent` | `8` | Similarità coseno CLIP minima per la corrispondenza di un **tag** (`--tag-existing`, tagging automatico durante la scansione) — **non** la soglia di ricerca semantica sotto |
+| `clip.search_threshold_percent` | `5` | Soglia di similarità coseno per la ricerca semantica di `GET /api/search` (esposta tramite `/api/config` come `search_threshold_default`), **non** la soglia di corrispondenza dei tag sopra. Deve essere un numero intero compreso tra `0` e `50` — il cursore della barra laterale della galleria arriva fino a 50, e la conversione in percentuale lato client (`Math.round(search_threshold_default * 100)`) è senza perdita solo per un intero. Calibrata su un campione di validazione di 34 righe di embedding SigLIP 2 reali (issue #145): il valore predefinito ammette tutti i 21 veri positivi noti **e** 3 dei 13 negativi noti — una scelta deliberata a favore del recall rispetto alla precisione. Un valore più stringente del `5,5%` non avrebbe ammesso nessun negativo, ma è stato scartato perché chi ha segnalato il problema aveva misurato una corrispondenza reale di `0.051` di similarità coseno sulla propria libreria; escludere una corrispondenza reale confermata è stato giudicato peggiore che lasciar passare alcuni negativi, tanto più che il cursore 0-50% della galleria permette di restringere (o allargare) una ricerca specifica in seguito. |
 | `clip_legacy.model_name` | `"ViT-L-14"` | Modello CLIP legacy (profili legacy/8gb) |
 | `clip_legacy.pretrained` | `"laion2b_s32b_b82k"` | Pesi pre-addestrati legacy |
 | `clip_legacy.embedding_dim` | `768` | Dimensioni dell'embedding legacy |
-| `clip_legacy.similarity_threshold_percent` | `22` | Soglia di corrispondenza dei tag per CLIP legacy |
+| `clip_legacy.similarity_threshold_percent` | `22` | Soglia di corrispondenza dei tag per CLIP legacy — **non** la soglia di ricerca semantica sotto |
+| `clip_legacy.search_threshold_percent` | `15` | Soglia di similarità coseno per la ricerca semantica di `GET /api/search` sul profilo legacy/8gb (open_clip) — preserva la soglia che Facet usava prima dell'esistenza di questa chiave. Stesso vincolo di numero intero tra `0` e `50` di `clip.search_threshold_percent` sopra. |
 | `qwen2_vl.model_path` | `"Qwen/Qwen2-VL-2B-Instruct"` | Percorso HuggingFace per l'opt-in manuale `composition_model: "qwen2-vl-2b"` — nessun profilo lo seleziona di default |
 | `qwen3_5_2b.model_path` | `"Qwen/Qwen3.5-2B"` | Modello di tagging per il profilo 16gb |
 | `qwen3_5_2b.vlm_batch_size` | `4` | Immagini per batch di inferenza VLM |
@@ -597,6 +601,18 @@ Seleziona quali modelli vengono usati per ciascun profilo VRAM.
 | `saliency.resolution` | `1024` | Risoluzione di inferenza |
 | `saliency.mask_threshold` | `0.3` | Soglia sigmoide per la maschera binaria del soggetto |
 | `saliency.min_subject_pixels` | `50` | Pixel minimi del soggetto perché venga considerato rilevato |
+
+**Ricerca semantica e libreria incorporata con un profilo diverso:** `GET /api/search`
+risolve l'encoder di testo — e la sua `search_threshold_percent` — usando qualunque
+blocco tra `clip` / `clip_legacy` corrisponda alla dimensione di embedding *memorizzata*,
+non necessariamente al `vram_profile` attivo della macchina. Questo conta quando una
+libreria è stata incorporata sotto un profilo (ad es. CLIP a 768 dimensioni) ma viene ora
+sfogliata su una macchina che risolve un profilo diverso (ad es. il profilo 16gb/SigLIP,
+che usa `clip` di default, 1152 dimensioni): vince la dimensione memorizzata, quindi la
+ricerca usa in modo trasparente il modello di `clip_legacy` **e** la sua
+`search_threshold_percent`. Se la dimensione memorizzata non corrisponde a *nessuno* dei
+due blocchi configurati, viene mantenuto il blocco del profilo attivo — e la sua soglia —
+così com'è, invece di essere indovinato.
 
 ### Rilevamento automatico della VRAM
 

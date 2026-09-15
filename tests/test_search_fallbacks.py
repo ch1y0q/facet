@@ -26,6 +26,10 @@ def _reset_search_module_state():
     Without resetting `_search_vec_fallback_total`, the counter accumulates
     across the test session and any assertion that compares its post-state
     against zero would have to rely on a fragile `>=` workaround.
+
+    Also resets the text-encoder and resolved-clip-config caches: nothing
+    previously cleared these, so a resolution made by one test — or the
+    encoder it loaded — could leak into the next test sharing this module.
     """
     from api.routers import search
     search._vec_available = None
@@ -35,6 +39,7 @@ def _reset_search_module_state():
     search._fts_success_checked_at = 0.0
     search._fts_failure_checked_at = 0.0
     search._search_vec_fallback_total = 0
+    search._reset_text_encoder_cache()
 
 
 @pytest.fixture(autouse=True)

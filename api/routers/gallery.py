@@ -1694,6 +1694,7 @@ def api_config(user: Optional[CurrentUser] = Depends(get_optional_user)):
     from api.config import is_multi_user_enabled
     from api.auth import is_edition_enabled, is_edition_authenticated
     from api.raw_processing import get_cull_styles
+    from api.routers.search import search_threshold_default
     from api.types import SORT_OPTIONS, SORT_OPTIONS_GROUPED, QUALITY_LEVELS, TYPE_LABELS
 
     features = dict(VIEWER_CONFIG.get('features', {}))
@@ -1738,6 +1739,7 @@ def api_config(user: Optional[CurrentUser] = Depends(get_optional_user)):
         'cull': _cull_capabilities(),
         'moment_confidence_min': VIEWER_CONFIG.get('moment_confidence_min', 0),
         'notification_duration_ms': VIEWER_CONFIG.get('notification_duration_ms', 2000),
+        'search_threshold_default': search_threshold_default(),
         'translation_target_language': _FULL_CONFIG.get('translation', {}).get('target_language', ''),
         'is_multi_user': is_multi_user_enabled(),
         'edition_enabled': is_edition_enabled(),

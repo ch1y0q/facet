@@ -1152,6 +1152,8 @@ export const I18N = {
       moments: "gallery.sidebar.moments",
     },
     semantic_search_info: "gallery.semantic_search_info",
+    semantic_search_threshold: "gallery.semantic_search_threshold",
+    semantic_search_threshold_hint: "gallery.semantic_search_threshold_hint",
     select_on_map: "gallery.select_on_map",
     gps_radius: "gallery.gps_radius",
     hide_rejected: "gallery.hide_rejected",

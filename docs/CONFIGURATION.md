@@ -529,13 +529,15 @@ Selects which models are used per VRAM profile.
       "model_name": "google/siglip2-so400m-patch16-naflex",
       "backend": "transformers",
       "embedding_dim": 1152,
-      "similarity_threshold_percent": 8
+      "similarity_threshold_percent": 8,
+      "search_threshold_percent": 5
     },
     "clip_legacy": {
       "model_name": "ViT-L-14",
       "pretrained": "laion2b_s32b_b82k",
       "embedding_dim": 768,
-      "similarity_threshold_percent": 22
+      "similarity_threshold_percent": 22,
+      "search_threshold_percent": 15
     },
     "qwen2_vl": {
       "model_path": "Qwen/Qwen2-VL-2B-Instruct",
@@ -576,11 +578,13 @@ Selects which models are used per VRAM profile.
 | `clip.model_name` | `"google/siglip2-so400m-patch16-naflex"` | SigLIP 2 NaFlex embedding model (16gb/24gb) |
 | `clip.backend` | `"transformers"` | `"transformers"` (SigLIP 2 NaFlex) or `"open_clip"` (legacy) |
 | `clip.embedding_dim` | `1152` | Embedding dimensions (1152 for SigLIP 2) |
-| `clip.similarity_threshold_percent` | `8` | Minimum CLIP cosine similarity for a tag match |
+| `clip.similarity_threshold_percent` | `8` | Minimum CLIP cosine similarity for a **tag** match (`--tag-existing`, scan auto-tagging) — **not** the semantic-search gate below |
+| `clip.search_threshold_percent` | `5` | Semantic-search cosine gate for `GET /api/search` (`/api/config`'s `search_threshold_default`), **not** the tag-match threshold above. Must be a whole number in `0-50` — the gallery's sidebar slider tops out at 50, and the client's percent round-trip (`Math.round(search_threshold_default * 100)`) is only lossless for an integer. Calibrated against a 34-row validation sample of real SigLIP-2 embeddings (issue #145): the default admits all 21 known true positives **and** 3 of the 13 known negatives — a deliberate lean toward recall over precision. A stricter `5.5%` would have admitted zero of the negatives but was rejected because the issue reporter had measured a genuine match at `0.051` cosine similarity on their own library; excluding a confirmed real match was judged worse than letting a few negatives through, especially since the gallery's 0-50% slider lets a user tighten (or loosen) a specific search after the fact. |
 | `clip_legacy.model_name` | `"ViT-L-14"` | Legacy CLIP model (legacy/8gb profiles) |
 | `clip_legacy.pretrained` | `"laion2b_s32b_b82k"` | Legacy pre-trained weights |
 | `clip_legacy.embedding_dim` | `768` | Legacy embedding dimensions |
-| `clip_legacy.similarity_threshold_percent` | `22` | Tag-match threshold for legacy CLIP |
+| `clip_legacy.similarity_threshold_percent` | `22` | Tag-match threshold for legacy CLIP — **not** the semantic-search gate below |
+| `clip_legacy.search_threshold_percent` | `15` | Semantic-search cosine gate for `GET /api/search` on the legacy/8gb (open_clip) profile — preserves the threshold Facet used before this key existed. Same whole-number-in-`0-50` constraint as `clip.search_threshold_percent` above. |
 | `qwen2_vl.model_path` | `"Qwen/Qwen2-VL-2B-Instruct"` | HuggingFace path for the manual `composition_model: "qwen2-vl-2b"` opt-in — no profile selects it by default |
 | `qwen3_5_2b.model_path` | `"Qwen/Qwen3.5-2B"` | Tagging model for 16gb profile |
 | `qwen3_5_2b.vlm_batch_size` | `4` | Images per VLM inference batch |
@@ -590,6 +594,16 @@ Selects which models are used per VRAM profile.
 | `saliency.resolution` | `1024` | Inference resolution |
 | `saliency.mask_threshold` | `0.3` | Sigmoid threshold for the binary subject mask |
 | `saliency.min_subject_pixels` | `50` | Minimum subject pixels to count a subject as detected |
+
+**Semantic search and a library embedded under a different profile:** `GET /api/search`
+resolves the text encoder — and its `search_threshold_percent` — from whichever of
+`clip` / `clip_legacy` matches the *stored* embedding dimension, not necessarily the
+box's active `vram_profile`. This matters when a library was embedded under one profile
+(e.g. 768-dim CLIP) but is now browsed on a box that resolves a different one (e.g. the
+16gb/SigLIP profile, which defaults to `clip`, 1152-dim): the stored dimension wins, so
+search transparently uses `clip_legacy`'s model **and** its `search_threshold_percent`
+instead. If the stored dimension matches *neither* configured block, the active
+profile's own block — and its threshold — is kept as-is rather than guessed at.
 
 ### VRAM Auto-Detection
 

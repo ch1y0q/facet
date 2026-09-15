@@ -301,9 +301,11 @@ Busca híbrida combinando a similaridade de embedding CLIP/SigLIP (70%) com a co
 - Requer dados `clip_embedding` armazenados (computados durante a pontuação)
 - Usa sqlite-vec para busca vetorial KNN quando instalado, recorre ao NumPy em memória
 - A busca de texto FTS5 em legendas/tags geradas por IA fornece correspondência de palavras-chave adicional (execute `database.py --rebuild-fts` para habilitar)
-- Usa o mesmo modelo de embedding do perfil de VRAM ativo (SigLIP 2 para 16gb/24gb, CLIP ViT-L-14 para legacy/8gb)
+- Usa o mesmo modelo de embedding do perfil de VRAM ativo (SigLIP 2 para 16gb/24gb, CLIP ViT-L-14 para legacy/8gb), ou o de `models.clip`/`clip_legacy` que realmente corresponde à dimensão de embedding armazenada, se os dois divergirem (ver [docs/CONFIGURATION.md](CONFIGURATION.md))
 - `scope=text` restringe a consulta a correspondências literais FTS5 em texto OCR/legenda e ignora a busca por embedding
 - Controlado por `viewer.features.show_semantic_search` (padrão: `true`)
+- O limiar de cosseno usa por padrão `models.clip.search_threshold_percent` (5%) / `models.clip_legacy.search_threshold_percent` (15%) — valores calibrados por backend, distintos do limiar de correspondência de tag `similarity_threshold_percent`. O `search_threshold_default` de `/api/config` inicializa o controle deslizante de limiar 0-50% da galeria, que cobre todo o intervalo: uma busca pode ser restringida além do padrão ou afrouxada de volta até `0%` por consulta; um limiar de exatamente `0%` continua a rejeitar uma similaridade de cosseno negativa, não é "sem filtro". O valor padrão de 5% para SigLIP favorece deliberadamente a abrangência (recall) em detrimento da precisão — veja `clip.search_threshold_percent` em [docs/CONFIGURATION.md](CONFIGURATION.md) para a compensação dessa calibração
+- Cada resultado reporta dois campos de similaridade: `similarity` é a pontuação combinada de embedding (70%) + FTS (30%) usada para o ranking; `embedding_similarity` é a similaridade de cosseno bruta que foi de fato comparada com o limiar acima, presente apenas quando uma pontuação de embedding foi calculada para aquela foto (ausente — nunca `null` — numa correspondência apenas de FTS ou `scope=text`)
 
 ## Álbuns
 
@@ -1051,7 +1053,7 @@ Os tipos TypeScript do cliente são gerados a partir desse esquema em `client/sr
 | `GET /api/photo/histogram?path=&bins=` | Bins de luminância + R/G/B prontos para desenhar (`bins` ∈ 32/64/128/256, padrão 64), medidos durante a análise na imagem em resolução total. Cada canal é escalado por um único máximo global, nunca pelo seu próprio. `r`/`g`/`b` são `null` para uma linha gravada antes do formato por canal; 404 quando a linha não tem histograma algum, o sinal para o widget recorrer à amostragem da miniatura |
 | `GET /api/type_counts?hide_blinks=&hide_bursts=&hide_duplicates=&hide_brackets=&hide_panoramas=` | Contagens de fotos por tipo para os chips da barra lateral. Mesmas cinco chaves da galeria; uma omitida recorre a `viewer.defaults` em vez de "desativado" — envie `hide_bursts=0`, etc., explicitamente para contar tudo |
 | `GET /api/similar_photos/{path}` | Fotos semelhantes (modos: `visual`, `color`, `person`) |
-| `GET /api/search?q=&limit=&threshold=&scope=` | Busca semântica de texto para imagem (`scope=text` = apenas texto OCR/legenda) |
+| `GET /api/search?q=&limit=&threshold=&scope=` | Busca semântica de texto para imagem (`scope=text` = apenas texto OCR/legenda). `threshold` é opcional: se omitido, resolve-se para o `models.*.search_threshold_percent` do codificador ativo (exposto ao cliente como `search_threshold_default` de `/api/config`); um valor explícito — incluindo `0.0` — sempre prevalece sobre o padrão resolvido. Avaliado apenas quando a busca de fato executa uma busca por embedding (`scope != 'text'` ignora a resolução por completo) |
 | `GET /api/critique?path=&mode=&refresh=` | Crítica por IA (baseada em regras ou VLM); `refresh=true` regenera a crítica VLM em cache |
 | `GET /api/ranker/status` | Status do ranqueador pessoal para a ordenação "Meu Gosto" (% de cobertura aprendida, precisão em dados retidos) |
 | `GET /api/config` | Configuração do visualizador |

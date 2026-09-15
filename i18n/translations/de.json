@@ -1136,6 +1136,8 @@
       "moments": "Momente"
     },
     "semantic_search_info": "Die semantische Suche lädt beim ersten Gebrauch Embeddings in den RAM. Bei großen Bibliotheken kann dies einen Moment dauern.",
+    "semantic_search_threshold": "Übereinstimmungsempfindlichkeit",
+    "semantic_search_threshold_hint": "Niedrigere Werte zeigen mehr Ergebnisse, auch schwächere Übereinstimmungen; erhöhen Sie den Wert, um nur die engsten Übereinstimmungen zu behalten.",
     "select_on_map": "Auf Karte auswählen",
     "gps_radius": "Radius",
     "hide_rejected": "Abgelehnte ausblenden",

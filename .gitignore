@@ -83,6 +83,7 @@ scoring_config.json.backup.*
 .claude/todos.md
 .claude/snapshot*.txt
 .claude/review-all/
+.claude/.scratch/
 .codegraph/
 
 # Build output
