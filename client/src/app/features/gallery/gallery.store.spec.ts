@@ -262,6 +262,16 @@ describe('GalleryStore', () => {
       expect(store.filters().search_threshold).toBe('5');
     });
 
+    it('leaves search_threshold empty when the config omits search_threshold_default', async () => {
+      const cfg = makeConfig({});
+      delete (cfg as Record<string, unknown>)['search_threshold_default'];
+      apiGet.mockReturnValue(of(cfg));
+
+      await store.loadConfig();
+
+      expect(store.filters().search_threshold).toBe('');
+    });
+
     it('leaves search_threshold empty on config load failure, so /search omits threshold', async () => {
       apiGet.mockReturnValue(throwError(() => new Error('Network error')));
 
@@ -393,6 +403,32 @@ describe('GalleryStore', () => {
       await store.loadPhotos();
 
       expect(apiGet).toHaveBeenCalledWith('/search', expect.objectContaining({ threshold: 0.05 }));
+    });
+
+    it('omits threshold from /search while the slider still sits on the server seed', async () => {
+      // The seed is a rounded percent of the server's own fraction, so sending it
+      // back would both freeze a later recalibration out and re-gate 0.075 at 0.08.
+      apiGet.mockReturnValue(of(makeConfig({ search_threshold_default: 0.05 })));
+      await store.loadConfig();
+      store.filters.update(f => ({ ...f, semanticQuery: 'sunset' }));
+      expect(store.filters().search_threshold).toBe('5');
+      apiGet.mockReturnValue(of({ photos: [], total: 0, query: 'sunset' }));
+
+      await store.loadPhotos();
+
+      const searchCall = apiGet.mock.calls.find(([path]) => path === '/search');
+      expect(searchCall?.[1]).not.toHaveProperty('threshold');
+    });
+
+    it('sends threshold once the user moves the slider off the seed', async () => {
+      apiGet.mockReturnValue(of(makeConfig({ search_threshold_default: 0.05 })));
+      await store.loadConfig();
+      store.filters.update(f => ({ ...f, semanticQuery: 'sunset', search_threshold: '12' }));
+      apiGet.mockReturnValue(of({ photos: [], total: 0, query: 'sunset' }));
+
+      await store.loadPhotos();
+
+      expect(apiGet).toHaveBeenCalledWith('/search', expect.objectContaining({ threshold: 0.12 }));
     });
 
     it('omits threshold from /search when search_threshold is unseeded', async () => {

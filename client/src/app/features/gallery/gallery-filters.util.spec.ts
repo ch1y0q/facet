@@ -7,6 +7,7 @@ import {
   applyQueryParams,
   buildApiParams,
   buildSyncParams,
+  seededSearchThreshold,
   countActiveFilters,
   loadDisplayOptionsFromStorage,
   saveDisplayOptionsToStorage,
@@ -92,6 +93,16 @@ describe('buildSyncParams', () => {
       buildSyncParams(filters({ search_threshold: '12' }), undefined)['search_threshold'],
     ).toBeUndefined();
   });
+  it('omits a search_threshold still sitting on the server seed, emits a changed one', () => {
+    // 0.05 seeds '5'. Emitting the seed froze it into every shared link, so a
+    // later server-side recalibration could never reach an existing bookmark.
+    expect(
+      buildSyncParams(filters({ semanticQuery: 'dog', search_threshold: '5' }), undefined, 0.05)['search_threshold'],
+    ).toBeUndefined();
+    expect(
+      buildSyncParams(filters({ semanticQuery: 'dog', search_threshold: '12' }), undefined, 0.05)['search_threshold'],
+    ).toBe('12');
+  });
   it('never writes the set-scope fields to the URL', () => {
     // sequence_group_id is renumbered from 1 on every detection pass, so a
     // bookmarked/shared URL carrying it would silently resolve to a
@@ -165,6 +176,29 @@ describe('applyQueryParams', () => {
     const original = filters({ semanticQuery: 'dog', search_threshold: '12' });
     const restored = applyQueryParams(DEFAULT_FILTERS, buildSyncParams(original, undefined));
     expect(restored.search_threshold).toBe('12');
+  });
+  it('drops a non-numeric search_threshold rather than forwarding threshold=NaN', () => {
+    // `+'abc' / 100` is NaN, which the API rejects with a 422 the gallery shows
+    // only as a bare load error. '' is the meaningful value: the server then
+    // resolves its own per-model default.
+    expect(applyQueryParams(DEFAULT_FILTERS, { search_threshold: 'abc' }).search_threshold).toBe('');
+  });
+  it('clamps an out-of-range search_threshold to the slider span', () => {
+    expect(applyQueryParams(DEFAULT_FILTERS, { search_threshold: '900' }).search_threshold).toBe('50');
+    expect(applyQueryParams(DEFAULT_FILTERS, { search_threshold: '-3' }).search_threshold).toBe('0');
+    expect(applyQueryParams(DEFAULT_FILTERS, { search_threshold: '7.6' }).search_threshold).toBe('8');
+  });
+});
+
+describe('seededSearchThreshold', () => {
+  it('renders a 0-1 fraction as a whole percent string', () => {
+    expect(seededSearchThreshold(0.05)).toBe('5');
+    expect(seededSearchThreshold(0.15)).toBe('15');
+  });
+  it('returns "" for anything not a finite number, so /search omits threshold', () => {
+    expect(seededSearchThreshold(undefined)).toBe('');
+    expect(seededSearchThreshold(null)).toBe('');
+    expect(seededSearchThreshold(NaN)).toBe('');
   });
 });
 

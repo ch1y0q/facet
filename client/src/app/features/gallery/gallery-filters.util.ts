@@ -194,6 +194,31 @@ export interface FilterDefaults {
   panel_activation?: PanelActivation;
 }
 
+/** Highest match sensitivity the sidebar slider offers, and therefore the
+ *  ceiling any URL-supplied `search_threshold` is clamped to. */
+export const SEARCH_THRESHOLD_MAX = 50;
+
+/** The percent string the gallery seeds `search_threshold` with, for a given
+ *  resolved server default (`/api/config`'s `search_threshold_default`, a 0-1
+ *  fraction).
+ *
+ *  Returns `''` when the server did not answer with a usable number -- an
+ *  older backend, or a field that arrived missing. `''` is the meaningful
+ *  value, not a fallback percent: it is what makes `/api/search` omit
+ *  `threshold` entirely and resolve its own per-model default. Guessing a
+ *  number here instead would silently diverge from the server's calibration,
+ *  and `String(Math.round(undefined * 100))` produced the string `'NaN'`,
+ *  which is truthy and reached the API as `threshold=NaN` -> 422.
+ *
+ *  Single source for the seed: `loadConfig`, `resetFilters`, the sidebar's
+ *  readout and both "is this still the untouched default?" comparisons all
+ *  go through it. */
+export function seededSearchThreshold(searchThresholdDefault: number | null | undefined): string {
+  return typeof searchThresholdDefault === 'number' && Number.isFinite(searchThresholdDefault)
+    ? String(Math.round(searchThresholdDefault * 100))
+    : '';
+}
+
 /** Keys excluded when building smart album filter JSON (display-only, ephemeral, or handled separately). */
 export const SMART_ALBUM_EXCLUDE_KEYS = new Set([
   'page', 'per_page', 'semanticQuery', 'search_threshold', 'album_id',
@@ -409,10 +434,21 @@ export function applyQueryParams(
 
   const stringKeys: (keyof GalleryFilters)[] = [
     ...RANGE_AND_SELECT_KEYS, 'sort', 'sort_direction', 'similar_to', 'min_similarity',
-    'semanticQuery', 'search_threshold', 'album_id',
+    'semanticQuery', 'album_id',
   ];
   for (const key of stringKeys) {
     if (params[key]) (result as Record<string, unknown>)[key] = params[key];
+  }
+  // Parsed rather than copied: this one is sent to the API as a NUMBER
+  // (`+value / 100`), so a mangled shared link carrying `search_threshold=abc`
+  // became `threshold=NaN`, which the server rejects with a 422 the gallery
+  // surfaces only as a bare load error. Out-of-range is clamped to the
+  // slider's own span so a seeded value is always reachable from the thumb.
+  if (params['search_threshold']) {
+    const parsed = Number(params['search_threshold']);
+    result.search_threshold = Number.isFinite(parsed)
+      ? String(Math.min(SEARCH_THRESHOLD_MAX, Math.max(0, Math.round(parsed))))
+      : '';
   }
   if (params['similarity_mode'] && ['visual', 'color', 'person'].includes(params['similarity_mode'])) {
     result.similarity_mode = params['similarity_mode'] as GalleryFilters['similarity_mode'];
@@ -445,6 +481,7 @@ export function applyQueryParams(
 export function buildSyncParams(
   f: GalleryFilters,
   defaults: FilterDefaults | undefined,
+  searchThresholdDefault?: number | null,
 ): Record<string, string> {
   const params: Record<string, string> = {};
   if (f.sort !== (defaults?.sort ?? 'aggregate')) params['sort'] = f.sort;
@@ -457,7 +494,13 @@ export function buildSyncParams(
   }
   if (f.similar_to && f.min_similarity) params['min_similarity'] = f.min_similarity;
   if (f.similar_to && f.similarity_mode && f.similarity_mode !== 'visual') params['similarity_mode'] = f.similarity_mode;
-  if (f.semanticQuery && f.search_threshold) params['search_threshold'] = f.search_threshold;
+  // Only when the user moved the slider off the server's own seed -- the same
+  // "only values that differ from the default" contract every other key here
+  // follows. Emitting the seeded value froze it into every shared link, so a
+  // later server-side recalibration could never reach an existing bookmark.
+  if (f.semanticQuery && f.search_threshold
+    && f.search_threshold !== seededSearchThreshold(searchThresholdDefault))
+    params['search_threshold'] = f.search_threshold;
 
   if (f.hide_details !== (defaults?.hide_details ?? true))
     params['hide_details'] = String(f.hide_details);

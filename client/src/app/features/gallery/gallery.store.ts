@@ -17,6 +17,7 @@ import {
   loadDisplayOptionsFromStorage, saveDisplayOptionsToStorage,
   countActiveFilters, applyQueryParams, buildSyncParams, buildApiParams,
   buildViewFilterParams, viewFilterParamsEqual, anyHideToggleActive,
+  seededSearchThreshold,
 } from './gallery-filters.util';
 
 // Re-export the filter types/consts so existing importers of gallery.store keep working.
@@ -656,10 +657,11 @@ export class GalleryStore {
       const base: GalleryFilters = {
         ...DEFAULT_FILTERS,
         per_page: cfg.pagination?.default_per_page ?? 64,
-        // No `?? 0.15` fallback: `/api/config` always returns this field, so a
-        // client-side default would silently diverge from the server's calibrated
-        // per-model value the moment the two disagreed. Trusting it is intentional.
-        search_threshold: String(Math.round(cfg.search_threshold_default * 100)),
+        // No `?? 0.15` fallback: a client-side default would silently diverge
+        // from the server's calibrated per-model value the moment the two
+        // disagreed. A MISSING field resolves to '' rather than a guess, which
+        // is what makes /search omit `threshold` and resolve its own.
+        search_threshold: seededSearchThreshold(cfg.search_threshold_default),
         sort: defaults?.sort ?? 'aggregate',
         sort_direction: defaults?.sort_direction ?? 'DESC',
         type: defaults?.type ?? '',
@@ -709,14 +711,19 @@ export class GalleryStore {
       }
 
       if (f.semanticQuery) {
-        // Omit `threshold` entirely when unseeded (empty string) -- the server
-        // resolves the active encoder's own default (see api/routers/search.py
-        // search_threshold_default()) rather than the client guessing one.
+        // Omit `threshold` whenever the slider still sits on the server's own
+        // seed -- unseeded ('') or untouched alike. The server then resolves
+        // the active encoder's default (api/routers/search.py
+        // search_threshold_default()) at its exact configured precision,
+        // rather than the client echoing back the percent-rounded copy it was
+        // given for display.
         const searchParams: Record<string, string | number> = {
           q: f.semanticQuery,
           limit: f.per_page,
         };
-        if (f.search_threshold) searchParams['threshold'] = +f.search_threshold / 100;
+        if (f.search_threshold
+          && f.search_threshold !== seededSearchThreshold(this.config()?.search_threshold_default))
+          searchParams['threshold'] = +f.search_threshold / 100;
         const res = await firstValueFrom(
           this.api.get<{ photos: Photo[]; total: number; query: string }>('/search', searchParams),
         );
@@ -899,9 +906,7 @@ export class GalleryStore {
       per_page: cfg?.pagination?.default_per_page ?? 64,
       // Same re-seed loadConfig() does -- otherwise reset drops back to the
       // unseeded '' and the sidebar readout/thumb render as if the gate were 0.
-      search_threshold: cfg?.search_threshold_default != null
-        ? String(Math.round(cfg.search_threshold_default * 100))
-        : '',
+      search_threshold: seededSearchThreshold(cfg?.search_threshold_default),
       sort: defaults?.sort ?? 'aggregate',
       sort_direction: defaults?.sort_direction ?? 'DESC',
       hide_details: defaults?.hide_details ?? true,
@@ -1450,7 +1455,9 @@ export class GalleryStore {
   /** Sync current filters to URL query params */
   private syncUrl(): void {
     this.router.navigate([], {
-      queryParams: buildSyncParams(this.filters(), this.config()?.defaults),
+      queryParams: buildSyncParams(
+        this.filters(), this.config()?.defaults, this.config()?.search_threshold_default,
+      ),
       replaceUrl: true,
     });
   }
