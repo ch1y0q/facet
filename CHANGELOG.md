@@ -4,6 +4,11 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A Python whose bundled SQLite cannot load extensions made the viewer log a traceback on every async request.** `HAS_SQLITE_VEC` was set purely on whether `import sqlite_vec` succeeded, but importability is not the same as loadability: a pyenv/system build (the macOS case) ships a `sqlite3.Connection` with no `enable_load_extension`, so the package imported fine while every `/api` connection then raised `AttributeError: 'sqlite3.Connection' object has no attribute 'enable_load_extension'` and logged a full traceback. The capability is now probed once, on a throwaway `:memory:` connection that actually enables extension loading and loads `sqlite_vec`; any failure (missing package, missing attribute, or `sqlite3.Error`) sets `HAS_SQLITE_VEC = False` with a debug-level reason, so the async path stays on the NumPy `/api/search` fallback instead of retrying and logging per request. The probe is a dedicated, tested function covering import failure, extension-loading-unavailable, and the healthy path.
+
+
 ## [1.15.2] "Specular" — 2026-09-15
 
 ### Fixed

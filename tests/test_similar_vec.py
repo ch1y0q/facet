@@ -13,8 +13,15 @@ import numpy as np
 import pytest
 
 # sqlite-vec is an optional dependency; skip this whole module (rather than
-# error collection) on environments that don't install it.
+# error collection) on environments that don't install it. Importing is not
+# sufficient either: a sqlite3 built without extension loading (some pyenv /
+# system builds) can import the package yet cannot load the extension, so gate
+# on the same capability probe the runtime uses.
 sqlite_vec = pytest.importorskip("sqlite_vec")
+from db.connection import HAS_SQLITE_VEC  # noqa: E402
+pytestmark = pytest.mark.skipif(
+    not HAS_SQLITE_VEC, reason="sqlite_vec is not loadable in this sqlite3"
+)
 
 from api.routers.gallery import _find_similar_visual, _vec_knn_similar  # noqa: E402
 from utils.embedding import embedding_to_bytes  # noqa: E402

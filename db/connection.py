@@ -24,11 +24,35 @@ _CONFIG_PATH = default_config_path()
 
 logger = logging.getLogger("facet.db_connection")
 
-try:
-    import sqlite_vec
-    HAS_SQLITE_VEC = True
-except ImportError:
-    HAS_SQLITE_VEC = False
+def _probe_sqlite_vec():
+    """Return True iff sqlite_vec is importable *and* loadable in this sqlite3.
+
+    A successful import is not sufficient: the interpreter's sqlite3 must also
+    allow extension loading. Some pyenv / system builds (e.g. macOS SQLite
+    built without extension loading) expose no ``enable_load_extension``, so the
+    import succeeds yet every async connection then raises. Probing once here —
+    rather than only checking the import — lets the viewer skip the per-request
+    attempt and stay on the NumPy search fallback instead of logging a
+    traceback for every request.
+    """
+    try:
+        import sqlite_vec
+        probe = sqlite3.connect(":memory:")
+        try:
+            probe.enable_load_extension(True)
+            sqlite_vec.load(probe)
+        finally:
+            probe.close()
+        return True
+    except Exception as exc:  # ImportError / AttributeError / sqlite3.Error / OSError
+        logger.debug(
+            "sqlite-vec unavailable; /api/search will use the NumPy fallback: %s",
+            exc,
+        )
+        return False
+
+
+HAS_SQLITE_VEC = _probe_sqlite_vec()
 
 
 _pragma_cache = None
@@ -94,6 +118,7 @@ def load_sqlite_vec(conn):
     if not HAS_SQLITE_VEC:
         return
     try:
+        import sqlite_vec
         conn.enable_load_extension(True)
         sqlite_vec.load(conn)
         conn.enable_load_extension(False)
