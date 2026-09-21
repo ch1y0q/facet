@@ -329,6 +329,18 @@ class TestExifPrefetch:
 
 # --- Canon .HIF HDR PQ -> sRGB tone mapping -----------------------------------
 
+def test_scannable_extensions_include_hif():
+    # SCANNABLE_IMAGE_EXTENSIONS is the single allow-list consumed by both the
+    # scan collector (facet.py) and watch mode (processing/watcher.py).
+    assert '.hif' in image_loading.HEIF_EXTENSIONS
+    assert '.hif' in image_loading.SCANNABLE_IMAGE_EXTENSIONS
+    assert image_loading.SCANNABLE_IMAGE_EXTENSIONS == (
+        image_loading.JPEG_EXTENSIONS
+        | image_loading.HEIF_EXTENSIONS
+        | image_loading.RAW_EXTENSIONS
+    )
+
+
 def test_pq_eotf_reference_points():
     """SMPTE ST 2084:2014 EOTF: S=1 -> 10000 nits, S=0 -> 0, monotonic."""
     assert image_loading._pq_eotf(1.0) == pytest.approx(10000.0, abs=1e-3)

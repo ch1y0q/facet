@@ -92,7 +92,9 @@ except ImportError:
 # Import config module (lightweight, no cv2/torch dependency)
 from config import ScoringConfig, PercentileNormalizer
 from config.scoring_config import resolve_scoring_config_path
-from utils.image_loading import RAW_EXTENSIONS, HEIF_EXTENSIONS
+from utils.image_loading import (
+    RAW_EXTENSIONS, HEIF_EXTENSIONS, JPEG_EXTENSIONS, SCANNABLE_IMAGE_EXTENSIONS,
+)
 
 
 
@@ -1429,7 +1431,7 @@ def _run_scan(args, resumed_run):
     init_global_plugin_manager(config=scorer.config.config)
 
     # 1. Gather files recursively from subfolders (or single files)
-    valid_suffixes = {'.jpg', '.jpeg'} | HEIF_EXTENSIONS | RAW_EXTENSIONS
+    valid_suffixes = SCANNABLE_IMAGE_EXTENSIONS
     all_files = []
 
     # Get scanning settings
@@ -1500,7 +1502,7 @@ def _run_scan(args, resumed_run):
     # is keyed on (resolved parent dir, stem) so a JPEG only suppresses a RAW that
     # sits beside it: an unrelated same-stem JPEG in another folder no longer hides
     # the RAW library-wide.
-    jpeg_like = {'.jpg', '.jpeg'} | HEIF_EXTENSIONS
+    jpeg_like = JPEG_EXTENSIONS | HEIF_EXTENSIONS
     jpeg_dir_stems = {
         (os.path.dirname(_resolved(f)), f.stem.lower())
         for f in all_files if f.suffix.lower() in jpeg_like

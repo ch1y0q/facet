@@ -71,6 +71,13 @@ class TestPendingChangesAdd:
         pending.add("/library/IMG_0001.CR2")
         assert pending.take_if_settled(0) == {"/library/IMG_0001.CR2"}
 
+    def test_canon_hif_events_are_accepted(self):
+        # Canon HDR PQ stills use the .HIF extension; watch mode must not drop
+        # their create/modify events the way the old hard-coded list did.
+        pending = _PendingChanges()
+        pending.add("/library/IMG_0001.HIF")
+        assert pending.take_if_settled(0) == {"/library/IMG_0001.HIF"}
+
     def test_every_documented_suffix_is_accepted(self):
         pending = _PendingChanges()
         expected = {f"/library/file{suffix}" for suffix in WATCH_SUFFIXES}
@@ -82,6 +89,13 @@ class TestPendingChangesAdd:
         pending = _PendingChanges()
         pending.add("/library/README")
         assert pending.take_if_settled(0) is None
+
+
+def test_watch_suffixes_derive_from_scan_allow_list():
+    # Watch mode must observe exactly the still-image formats the scan
+    # collector accepts, so the two lists cannot drift apart again.
+    from utils.image_loading import SCANNABLE_IMAGE_EXTENSIONS
+    assert WATCH_SUFFIXES == SCANNABLE_IMAGE_EXTENSIONS
 
 
 class TestPendingChangesSettle:

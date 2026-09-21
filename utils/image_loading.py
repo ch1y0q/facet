@@ -31,8 +31,17 @@ except ImportError:
 # All RAW formats supported via rawpy/libraw
 RAW_EXTENSIONS = {'.cr2', '.cr3', '.nef', '.arw', '.raf', '.rw2', '.dng', '.orf', '.srw', '.pef'}
 
+# JPEG stills
+JPEG_EXTENSIONS = {'.jpg', '.jpeg'}
+
 # HEIF/HEIC formats (iPhone default since iOS 11) — empty when pillow-heif is missing
 HEIF_EXTENSIONS = {'.heic', '.heif', '.hif'} if _heif_available else set()
+
+# Every still-image extension Facet can scan. This is the single source of truth
+# for the scan collector (facet.py) and watch mode (processing/watcher.py), so a
+# newly supported format is picked up in both. HEIF_EXTENSIONS is empty when
+# pillow-heif is missing, in which case those files are neither scanned nor watched.
+SCANNABLE_IMAGE_EXTENSIONS = JPEG_EXTENSIONS | HEIF_EXTENSIONS | RAW_EXTENSIONS
 
 
 # A bracket exists to capture highlight headroom in its +EV frames, and an HDR

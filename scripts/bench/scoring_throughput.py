@@ -264,6 +264,7 @@ def count_photos(directory: Path) -> int:
         ".jpeg",
         ".heif",
         ".heic",
+        ".hif",
         ".cr2",
         ".cr3",
         ".nef",
