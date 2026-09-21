@@ -32,7 +32,7 @@ except ImportError:
 RAW_EXTENSIONS = {'.cr2', '.cr3', '.nef', '.arw', '.raf', '.rw2', '.dng', '.orf', '.srw', '.pef'}
 
 # HEIF/HEIC formats (iPhone default since iOS 11) — empty when pillow-heif is missing
-HEIF_EXTENSIONS = {'.heic', '.heif'} if _heif_available else set()
+HEIF_EXTENSIONS = {'.heic', '.heif', '.hif'} if _heif_available else set()
 
 
 # A bracket exists to capture highlight headroom in its +EV frames, and an HDR
@@ -57,6 +57,133 @@ _EXIF_ORIENTATION_TAG = 274
 
 # LibRaw sizes.flip -> counter-clockwise degrees that make the frame upright.
 _LIBRAW_FLIP_ROTATIONS = {3: 180, 5: 90, 6: 270}
+
+# --- HDR PQ HEIF -> SDR sRGB tone mapping ---------------------------------
+# Canon HDR PQ HEIF (.HIF; also some iPhone HEIFs) stores 10-bit pixels encoded
+# with the SMPTE ST 2084 (PQ) transfer function and BT.2020 primaries (NCLX:
+# colour_primaries=9, transfer_characteristics=16, matrix_coefficients=9).
+# pillow-heif hands those encoded values straight to us, so displaying or
+# scoring them as ordinary sRGB makes every frame look dark and washed out.
+#
+# Pipeline, applied only when the decoder reports PQ (transfer==16):
+#   1. PQ EOTF           S -> absolute linear light in nits   (SMPTE ST 2084:2014)
+#   2. BT.2020 -> sRGB   primaries, D65 -> D65                 (ITU-R BT.2020 / BT.709)
+#   3. scale to 100 nit SDR reference white                    (BT.2408 / ffmpeg)
+#   4. Hable filmic tone map                                   (Hable 2010)
+#   5. sRGB OETF                                               (IEC 61966-2-1)
+#
+# Gating is by the decoder's NCLX transfer field, NOT by file extension:
+# SDR HEIC (transfer 1/13/17) and HLG (transfer 18) reach the loader with
+# is_pq=False and are passed through untouched. If pillow-heif does not expose
+# a NCLX profile (older versions / unusual files) is_pq is also False, so the
+# file is treated as ordinary sRGB rather than guessed at.
+
+# SMPTE ST 2084:2014 section 7 EOTF constants. Signal S in [0,1] -> linear
+# light L in nits via  n = S^(1/M2);  L = 10000 * ((n-C1)/(C2-C3*n))^(1/M1).
+_PQ_M1 = 0.1593017578125          # 1305/8192
+_PQ_M2 = 78.84375                 # 2523/32
+_PQ_C1 = 0.8359375                # C3 - C2 + 1
+_PQ_C2 = 18.8515625               # 2413/128
+_PQ_C3 = 18.6875                  # 2392/128
+_PQ_PEAK_NITS = 10000.0           # ST 2084 reference display peak
+
+# Linear BT.2020 -> linear sRGB (BT.709) primaries. Both gamuts share the D65
+# white point, so no chromatic-adaptation step is needed; this is the standard
+# 3x3 primary-conversion matrix (e.g. Bruce Lindbloom's RGB Working Spaces).
+_BT2020_TO_SRGB = np.array([
+    [1.660491, -0.5876411, -0.0728499],
+    [-0.1245505, 1.1328999, -0.0083494],
+    [-0.0181508, -0.1005789, 1.1187297],
+], dtype=np.float32)
+
+# SDR reference white in nits. PQ is display-referred (absolute luminance).
+# 100 nits is the nominal SDR peak used by ffmpeg's zscale+tonemap pipeline and
+# matches in-camera HDR-still SDR output. The BT.2408 mastering reference of
+# 203 nits looked dark for these stills.
+_PQ_SDR_REFERENCE_NITS = 100.0
+
+# Hable filmic (Uncharted 2) tone-map operator:
+#   f(x) = (x*(a*x + c*b) + d*e) / (x*(a*x + b) + d*f) - e/f
+# Source: John Hable, "Filmic Tonemapping Operators" (2010), section 5.
+_HABLE_A, _HABLE_B, _HABLE_C, _HABLE_D, _HABLE_E, _HABLE_F = (
+    0.15, 0.50, 0.10, 0.20, 0.02, 0.30)
+
+# ISO/IEC 23001-8 / ITU-T H.273 colour table: transfer_characteristics == 16 is PQ.
+_NCLX_PQ_TRANSFER = 16
+
+
+def _pq_eotf(signal):
+    """SMPTE ST 2084:2014 section 7 EOTF: PQ signal in [0,1] -> linear light nits."""
+    n = np.clip(signal, 0.0, 1.0) ** (1.0 / _PQ_M2)
+    numer = np.maximum(n - _PQ_C1, 0.0)
+    denom = _PQ_C2 - _PQ_C3 * n
+    return _PQ_PEAK_NITS * (numer / denom) ** (1.0 / _PQ_M1)
+
+
+def _hable(x):
+    return ((x * (_HABLE_A * x + _HABLE_C * _HABLE_B) + _HABLE_D * _HABLE_E)
+            / (x * (_HABLE_A * x + _HABLE_B) + _HABLE_D * _HABLE_F)) - _HABLE_E / _HABLE_F
+
+
+def _heif_is_pq(pil_img):
+    """True only if the freshly opened HEIF reports PQ via its NCLX profile.
+
+    Gates tone mapping on the decoder's colour metadata, not on the file
+    extension: a .heic/.heif/.hif that is SDR (transfer 1/13/17) or HLG (18)
+    returns False. A missing NCLX profile also returns False (safe SDR fallback).
+    """
+    try:
+        nclx = pil_img.info.get('nclx_profile')
+    except AttributeError:
+        return False
+    return bool(nclx) and nclx.get('transfer_characteristics') == _NCLX_PQ_TRANSFER
+
+
+def _srgb_oetf(linear):
+    """IEC 61966-2-1:1999 section 6.1.5 sRGB opto-electronic transfer function."""
+    return np.where(
+        linear <= 0.0031308,
+        12.92 * linear,
+        1.055 * np.clip(linear, 0.0, None) ** (1.0 / 2.4) - 0.055,
+    )
+
+
+def _tonemap_pq_to_srgb(pil_img):
+    """Tone-map an 8-bit PQ/BT.2020 RGB PIL image to an SDR sRGB PIL image."""
+    Image, _ = _ensure_pil()
+    arr = np.asarray(pil_img, dtype=np.float32) / 255.0
+
+    # 1. PQ EOTF: encoded signal -> absolute linear light in nits (BT.2020 RGB).
+    linear = _pq_eotf(arr)
+
+    # 2. BT.2020 -> sRGB primaries, then normalise to the SDR reference white.
+    linear = np.maximum(linear @ _BT2020_TO_SRGB.T, 0.0) / _PQ_SDR_REFERENCE_NITS
+
+    # 3. Hable filmic tone map, normalised so the reference white maps to 1.0.
+    mapped = np.clip(_hable(linear) / _hable(1.0), 0.0, 1.0)
+
+    # 4. sRGB OETF, round and quantise to 8-bit.
+    encoded = _srgb_oetf(mapped)
+    out = np.clip(encoded * 255.0 + 0.5, 0, 255).astype(np.uint8)
+    return Image.fromarray(out, 'RGB')
+
+
+def _open_nonraw_image(photo):
+    """Open a non-RAW image with EXIF orientation and HDR PQ tone mapping.
+
+    The NCLX profile is read straight after ``Image.open`` because
+    ``exif_transpose``/``convert`` may drop ``info``.
+    """
+    Image, ImageOps = _ensure_pil()
+    pil_img = Image.open(photo)
+    is_pq = _heif_is_pq(pil_img)
+    pil_img = ImageOps.exif_transpose(pil_img)
+    if pil_img.mode != 'RGB':
+        pil_img = pil_img.convert('RGB')
+    if is_pq:
+        pil_img = _tonemap_pq_to_srgb(pil_img)
+    return pil_img
+
 
 _raw_decode_settings = None
 
@@ -411,8 +538,7 @@ def load_display_image(photo_path, min_preview_sensor_ratio=0.0, decode_budget='
                                            bright=FAITHFUL_BRIGHT)
             preview = _display_preview(photo, min_preview_sensor_ratio)
             return preview if preview is not None else _decode_raw_bounded(photo, decode_budget=decode_budget)
-        pil_img = ImageOps.exif_transpose(Image.open(photo))
-        return pil_img if pil_img.mode == 'RGB' else pil_img.convert('RGB')
+        return _open_nonraw_image(photo)
     except RuntimeError:
         raise
     except Exception as e:
@@ -467,10 +593,7 @@ def load_image_from_path(photo_path, use_thumbnail=False):
             if pil_img is None:
                 return None, None
         else:
-            pil_img = Image.open(photo)
-            pil_img = ImageOps.exif_transpose(pil_img)
-            if pil_img.mode != 'RGB':
-                pil_img = pil_img.convert('RGB')
+            pil_img = _open_nonraw_image(photo)
 
         # Convert to OpenCV BGR format
         img_cv = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)

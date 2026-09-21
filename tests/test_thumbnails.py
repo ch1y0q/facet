@@ -181,3 +181,25 @@ class TestImage:
             resp = client.get("/image", params={"path": "/library/photo.cr2"})
 
         assert resp.status_code == 500
+
+
+def test_heif_conversion_uses_shared_loader():
+    """_convert_heif_cached routes through _open_nonraw_image (EXIF orientation + PQ tone map).
+
+    Before the Canon .HIF fix the viewer decoded HEIF directly with PIL, so the
+    browser showed a dark/rotated image relative to what the scanner scored.
+    """
+    from PIL import Image as PILImage
+    from api.routers import thumbnails
+
+    sentinel = PILImage.new("RGB", (2, 2), (10, 20, 30))
+    thumbnails._convert_heif_cached.cache_clear()
+    try:
+        with mock.patch("utils.image_loading._open_nonraw_image", return_value=sentinel) as m:
+            out = thumbnails._convert_heif_cached("/library/photo.heif", 1.0, 96)
+            m.assert_called_once_with("/library/photo.heif")
+        im = PILImage.open(BytesIO(out))
+        assert im.size == (2, 2)
+        assert im.getpixel((0, 0)) == (10, 20, 30)
+    finally:
+        thumbnails._convert_heif_cached.cache_clear()

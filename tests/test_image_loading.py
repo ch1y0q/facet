@@ -325,3 +325,70 @@ class TestExifPrefetch:
         processor.exif_prefetch_enabled = False
         processor._start_exif_prefetch(["/x/d.jpg"])
         assert processor._exif_prefetch_thread is None
+
+
+# --- Canon .HIF HDR PQ -> sRGB tone mapping -----------------------------------
+
+def test_pq_eotf_reference_points():
+    """SMPTE ST 2084:2014 EOTF: S=1 -> 10000 nits, S=0 -> 0, monotonic."""
+    assert image_loading._pq_eotf(1.0) == pytest.approx(10000.0, abs=1e-3)
+    assert image_loading._pq_eotf(0.0) == pytest.approx(0.0, abs=1e-6)
+    s = np.linspace(0.0, 1.0, 21)
+    L = image_loading._pq_eotf(s)
+    assert np.all(np.diff(L) >= 0)  # monotonic non-decreasing
+
+
+def test_heif_is_pq_gates_on_transfer_not_extension():
+    """Gating keys off NCLX transfer==16 only; SDR/HLG/missing-NCLX all False."""
+    class _Img:
+        def __init__(self, info):
+            self.info = info
+
+    assert image_loading._heif_is_pq(_Img(
+        {'nclx_profile': {'transfer_characteristics': 16}})) is True   # PQ
+    assert image_loading._heif_is_pq(_Img(
+        {'nclx_profile': {'transfer_characteristics': 13}})) is False  # SDR sRGB
+    assert image_loading._heif_is_pq(_Img(
+        {'nclx_profile': {'transfer_characteristics': 18}})) is False  # HLG
+    assert image_loading._heif_is_pq(_Img({})) is False              # no NCLX
+    assert image_loading._heif_is_pq(_Img({'nclx_profile': None})) is False
+
+
+def test_srgb_oetf_reference_points():
+    """IEC 61966-2-1 sRGB OETF endpoints: linear 0 -> 0, 1 -> 1."""
+    assert image_loading._srgb_oetf(0.0) == pytest.approx(0.0)
+    assert image_loading._srgb_oetf(1.0) == pytest.approx(1.0)
+
+
+def test_tonemap_pq_output_shape_and_range():
+    """tone map returns an 8-bit RGB PIL image with pixels in [0,255]."""
+    rng = np.random.default_rng(0)
+    arr = rng.integers(0, 256, (16, 24, 3), dtype=np.uint8)
+    out = image_loading._tonemap_pq_to_srgb(Image.fromarray(arr, 'RGB'))
+    assert out.mode == 'RGB'
+    assert out.size == (24, 16)
+    a = np.asarray(out)
+    assert a.dtype == np.uint8
+    assert a.min() >= 0 and a.max() <= 255
+
+
+def test_open_nonraw_image_tonemaps_only_pq():
+    """_open_nonraw_image tone-maps PQ HEIF but passes SDR / no-NCLX through."""
+    dark = np.full((8, 8, 3), 60, dtype=np.uint8)
+
+    def _img(transfer):
+        im = Image.fromarray(dark, 'RGB')
+        if transfer is not None:
+            im.info['nclx_profile'] = {'transfer_characteristics': transfer}
+        return im
+
+    pq, sdr, plain = _img(16), _img(13), _img(None)
+    with mock.patch.object(Image, 'open', side_effect=[pq, sdr, plain]):
+        out_pq = image_loading._open_nonraw_image('pq.heif')
+        out_sdr = image_loading._open_nonraw_image('sdr.heif')
+        out_plain = image_loading._open_nonraw_image('plain.jpg')
+
+    # PQ dark frame is lifted by tone mapping; SDR and no-NCLX pass through.
+    assert np.asarray(out_pq).mean() > np.asarray(out_sdr).mean()
+    assert np.asarray(out_sdr).mean() == 60.0
+    assert np.asarray(out_plain).mean() == 60.0
