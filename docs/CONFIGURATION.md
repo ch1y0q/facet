@@ -967,8 +967,9 @@ rejection is logged with the file name.
 Canon HDR PQ stills (`.HIF`) are HDR: the HEIF carries the PQ transfer function
 (SMPTE ST 2084) over BT.2020 primaries, with absolute luminance up to 10,000
 nits. The quality models and the stored thumbnail work in 8-bit SDR sRGB, so a
-PQ image is decoded, converted BT.2020 to sRGB, tone-mapped in linear light,
-and encoded with the sRGB OETF. This block controls that tone map. It applies
+PQ image is decoded at the camera's native bit depth, converted BT.2020 to
+sRGB, tone-mapped in linear light, and encoded with the sRGB OETF — narrowing
+to 8 bits only at that last step. This block controls that tone map. It applies
 **only** to images whose NCLX colour profile declares the PQ transfer
 (characteristic 16); SDR HEIF, HLG and JPEG pass through untouched regardless
 of `enabled`.
@@ -1009,6 +1010,31 @@ curve is instead normalised at a per-image white point `w`, `hable(x)/hable(w)`,
 the same way ffmpeg divides by `hable(peak)` with a frame-measured peak in
 `vf_tonemap.c`. The default p99.99 percentile, clamped to 100-1200 nits, keeps
 highlight texture while ignoring isolated hot pixels.
+
+### Why the decode is at the camera's native bit depth
+
+PQ is absolute-luminance encoded: its code range is spent across the whole
+0-10,000 nit ST 2084 scale whatever the content actually reaches. At 8 bits only
+about 130 of the 256 codes land below diffuse white, and a quarter of the range
+covers 1000-10,000 nits that a camera mastering at 1000 nits never uses. Decoding
+to 8 bits before the EOTF expands them therefore posterises smooth gradients.
+
+The decode now asks the HEIF decoder for the file's own depth (10-bit on current
+cameras) and the EOTF table is sized to match, so the narrowing to 8 bits happens
+after the tone curve instead of before it. Measured on a 1024-step PQ ramp: the
+8-bit path reaches 170 distinct output levels with 86 empty interior levels, the
+native path reaches all 256 with none.
+
+This changes nothing measurable on a photograph — sensor noise already dithers
+across the 8-bit steps, so a real Canon PQ frame fills 248 of 256 luma bins either
+way and its clipping percentages, `shadow_clipped` / `highlight_clipped` flags and
+`exposure_score` are unchanged. The gain is on smooth synthetic content: clear
+skies, studio backdrops, heavy bokeh. Peak memory does not go up for it: the
+uint16 decoder buffer is wider, but taking this path means Pillow never decodes
+the frame at all, so a 12 MP PQ frame peaks at 166.4 MiB against the 8-bit
+path's 212.3 MiB. SDR HEIF is never decoded this way. A decoder that cannot
+supply the native depth falls back to the 8-bit path silently, and
+`enabled: false` skips the whole thing.
 
 **References.** PQ EOTF: SMPTE ST 2084:2014. Hable curve and per-frame peak:
 ffmpeg `vf_tonemap.c` (John Hable, "Filmic Tonemapping Operators", 2010).

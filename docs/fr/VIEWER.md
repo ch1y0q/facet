@@ -258,6 +258,22 @@ Utilisez le **curseur de seuil de similarité** (0–90%) pour contrôler la rig
 
 Les filtres actifs sont affichés sous forme de puces amovibles avec des compteurs en haut de la galerie.
 
+## Panoramas et bracketings d'exposition
+
+Les images d'un panorama ont été prises pour être assemblées, celles d'un bracketing pour être fusionnées : ni les unes ni les autres ne sont des prises concurrentes. La détection de rafales ne voit pas la différence — les images arrivent à quelques secondes d'intervalle, d'un même boîtier, à une même focale — et sans cela elle les regroupe et n'en garde qu'une, choisie sur un critère qui ne veut rien dire pour un panoramique.
+
+**Dans la galerie.** « Meilleure du bracketing » et « Meilleure du panorama » (actives par défaut) replient chaque série derrière une image représentative : l'exposition de référence pour un bracketing, l'image médiane pour un panorama. Cette image porte une petite icône en bas, à côté de l'étoile et du cœur, indiquant ce qu'elle représente — balayage simple, balayage HDR ou bracketing — avec une infobulle. L'icône n'apparaît que tant que le filtre correspondant masque réellement le reste de la série.
+
+**Dans le tri.** Le menu de granularité propose « Bracketings d'exposition », « Panoramas » et « Panoramas HDR » comme flux distincts, jamais fondus dans « Tout ». Toutes les images sont marquées « à garder » d'emblée, et valider une série n'enregistre aucune paire de comparaison : préférer un barreau d'une échelle d'exposition, ou une image d'un panoramique, décrit la façon dont la série a été prise, pas la photographie.
+
+**Corriger une série.** La géométrie ne peut pas deviner l'intention — un balayage délibéré et un filé qui suit un sujet mobile donnent la même mesure — donc un taux d'erreur résiduel d'environ 4 % est inhérent. Une correction est persistante et survit à chaque détection ultérieure, qui efface et réécrit les étiquettes qu'elle avait produites.
+
+Les deux sens d'erreur ont chacun leur surface, car on ne les rencontre pas au même endroit. Un **faux positif** se corrige dans le tri, où la série est sous les yeux : la barre d'actions du groupe porte un menu de correction (édition uniquement) proposant « Ce n'est pas un panorama » et le rebasculement entre simple et HDR. Un **oubli** se corrige depuis la galerie, car un balayage non détecté n'apparaît dans aucun groupe de tri : sélectionnez ses images puis « Marquer comme série » → « Marquer comme un panorama » dans la barre de sélection. Les deux s'annulent depuis la notification, et les deux demandent au moins deux images.
+
+Rien n'est réétiqueté immédiatement. Une correction est enregistrée aussitôt et marquée en attente — un badge horloge sur la vignette, une pastille « Correction en attente » sur le groupe de tri — car la détection est une passe par lots sur toute la bibliothèque, bien trop coûteuse pour être relancée à chaque clic. La page de tri affiche une bannière comptant les corrections en attente, avec un bouton **Relancer la détection** ; le filtre « Corrections de panorama » de la barre latérale (édition uniquement, sous Affiner) les liste à l'échelle de la bibliothèque, dans un sens ou dans l'autre. Jusqu'à cette relance, une série supprimée reste groupée comme panorama et une série forcée reste non groupée : la correction est une note adressée au détecteur, pas une étiquette en soi.
+
+**Régler la détection.** L'onglet Panoramas, sous Comparer, expose les seuils réellement calibrés sur des séries étiquetées. Les enregistrer ne change rien en soi : la détection est une passe par lots sur toute la bibliothèque, l'onglet propose donc une relance à côté de l'enregistrement. Voir [CONFIGURATION.md](CONFIGURATION.md).
+
 ## Gestion des personnes
 
 > La consultation des personnes est ouverte à tous les visiteurs ; le renommage, la fusion, le changement d'avatar et l'attribution de visages nécessitent `[Edition]`.
@@ -479,22 +495,6 @@ API : voir la section [Points d'accès API](#points-daccès-api) ci-dessous.
 ### Configuration
 
 Voir [Configuration — Capsules](CONFIGURATION.md#capsules) pour tous les réglages.
-
-## Panoramas et bracketings d'exposition
-
-Les images d'un panorama ont été prises pour être assemblées, celles d'un bracketing pour être fusionnées : ni les unes ni les autres ne sont des prises concurrentes. La détection de rafales ne voit pas la différence — les images arrivent à quelques secondes d'intervalle, d'un même boîtier, à une même focale — et sans cela elle les regroupe et n'en garde qu'une, choisie sur un critère qui ne veut rien dire pour un panoramique.
-
-**Dans la galerie.** « Meilleure du bracketing » et « Meilleure du panorama » (actives par défaut) replient chaque série derrière une image représentative : l'exposition de référence pour un bracketing, l'image médiane pour un panorama. Cette image porte une petite icône en bas, à côté de l'étoile et du cœur, indiquant ce qu'elle représente — balayage simple, balayage HDR ou bracketing — avec une infobulle. L'icône n'apparaît que tant que le filtre correspondant masque réellement le reste de la série.
-
-**Dans le tri.** Le menu de granularité propose « Bracketings d'exposition », « Panoramas » et « Panoramas HDR » comme flux distincts, jamais fondus dans « Tout ». Toutes les images sont marquées « à garder » d'emblée, et valider une série n'enregistre aucune paire de comparaison : préférer un barreau d'une échelle d'exposition, ou une image d'un panoramique, décrit la façon dont la série a été prise, pas la photographie.
-
-**Corriger une série.** La géométrie ne peut pas deviner l'intention — un balayage délibéré et un filé qui suit un sujet mobile donnent la même mesure — donc un taux d'erreur résiduel d'environ 4 % est inhérent. Une correction est persistante et survit à chaque détection ultérieure, qui efface et réécrit les étiquettes qu'elle avait produites.
-
-Les deux sens d'erreur ont chacun leur surface, car on ne les rencontre pas au même endroit. Un **faux positif** se corrige dans le tri, où la série est sous les yeux : la barre d'actions du groupe porte un menu de correction (édition uniquement) proposant « Ce n'est pas un panorama » et le rebasculement entre simple et HDR. Un **oubli** se corrige depuis la galerie, car un balayage non détecté n'apparaît dans aucun groupe de tri : sélectionnez ses images puis « Marquer comme série » → « Marquer comme un panorama » dans la barre de sélection. Les deux s'annulent depuis la notification, et les deux demandent au moins deux images.
-
-Rien n'est réétiqueté immédiatement. Une correction est enregistrée aussitôt et marquée en attente — un badge horloge sur la vignette, une pastille « Correction en attente » sur le groupe de tri — car la détection est une passe par lots sur toute la bibliothèque, bien trop coûteuse pour être relancée à chaque clic. La page de tri affiche une bannière comptant les corrections en attente, avec un bouton **Relancer la détection** ; le filtre « Corrections de panorama » de la barre latérale (édition uniquement, sous Affiner) les liste à l'échelle de la bibliothèque, dans un sens ou dans l'autre. Jusqu'à cette relance, une série supprimée reste groupée comme panorama et une série forcée reste non groupée : la correction est une note adressée au détecteur, pas une étiquette en soi.
-
-**Régler la détection.** L'onglet Panoramas, sous Comparer, expose les seuils réellement calibrés sur des séries étiquetées. Les enregistrer ne change rien en soi : la détection est une passe par lots sur toute la bibliothèque, l'onglet propose donc une relance à côté de l'enregistrement. Voir [CONFIGURATION.md](CONFIGURATION.md).
 
 ## Vue Dossiers
 
@@ -1223,9 +1223,11 @@ Les types TypeScript du client sont générés à partir de ce schéma dans `cli
 | `POST /api/culling-groups/override_sequence` | `[Edition]` Enregistre une correction persistante sur ce qu'est un ensemble d'images. Corps `{paths, kind?}` ; `kind` vaut `panorama \| hdr_panorama`, ou est omis pour marquer les images comme n'étant pas du tout un panorama. Enregistrée dans `photo_sequence_overrides` (survit à l'effacement et à la réécriture de `photos.sequence_*` par le détecteur à chaque exécution) ; prend effet au prochain `POST /api/scan/detect_panoramas` |
 | `POST /api/culling-groups/clear_sequence_override` | `[Edition]` Supprime une correction de séquence manuelle pour les images indiquées, et les rend au détecteur. Corps `{paths}` |
 | `POST /api/culling-group/faces` | Badges par visage (yeux ouverts/fermés, expression, confiance) pour un groupe, en un seul lot |
+| `POST /api/culling-group/subjects` | Recadrages de gros plan du sujet (depuis la boîte de sujet BiRefNet persistée) + netteté normalisée sur le groupe pour un groupe sans visage, en un seul lot. `has_subject:false` quand une photo n'a pas de boîte / a une boîte presque plein cadre (aucun modèle ne s'exécute) |
 | `GET /api/photo/key_subject?path=` | De quoi (ou de qui) parle une photo : son visage le mieux classé, sinon sa boîte de saillance persistée, sous forme de boîte + centre `normalized_frame_xyxy`. Résolu à chaque requête depuis les colonnes stockées (aucun modèle, aucun cache) ; `kind:"none"` quand ni l'un ni l'autre n'existe |
 | `POST /api/photos/key_subjects` | La même réponse pour jusqu'à 1000 chemins en un seul appel (`key_subjects_by_path`) — la cible du zoom de la chambre noire et le badge de personne principale. Chaque chemin demandé est présent ; ceux qui sont inconnus ou invisibles reviennent en `kind:"none"` plutôt qu'absents |
 | `POST /api/photos/keeper_hints` | Indices par photo « une meilleure photo existe dans ce groupe » pour le badge de la galerie/visionneuse, regroupés par `burst_group_id`. Corps `{paths}` ; renvoie `{path: {has_better, best_path, keeper_prob}}`. Dépend du modèle — renvoie `{}` si aucune tête de classement des photos à conserver n'est entraînée |
+| `GET /api/photo/cull_preview?path=&style=` | `[Edition]` Restitue l'original d'une photo à travers un style darktable configuré (`--style`, borné à `preview_max_edge`) pour l'aperçu « rendu développé » de la chambre noire. Mis en cache sur disque ; 400 si le style est inconnu, 503 si darktable-cli est indisponible, 502 en cas d'échec ou de délai dépassé du rendu |
 | `GET /api/scenes` | Scènes chronologiques de photos leaders de rafale (consultation en lecture seule) |
 | `GET /api/filter_options/junk_kinds` | Types d'indésirables détectés avec leur compte (exclut la sentinelle `not_junk`) pour les puces du Nettoyage des indésirables |
 | `POST /api/photo/clear_junk` | `[Edition]` Conserve un candidat indésirable — remet son `junk_kind` à `not_junk` afin qu'il quitte la file définitivement. Corps `{photo_path}` |
@@ -1291,6 +1293,8 @@ Les types TypeScript du client sont générés à partir de ce schéma dans `cli
 |----------|-------------|
 | `GET /api/download/options` | Types de téléchargement disponibles pour une photo (`path`, `is_shared` facultatif) |
 | `GET /api/download` | Télécharger une photo (`path`, `type=original\|darktable\|raw`, `profile` facultatif) |
+| `GET /api/photo/social_crop` | `[Edition]` Télécharger le JPEG plein résolution recadré pour un préréglage de format social (`path`, `preset`) |
+| `GET /api/photo/social_crop/preview` | `[Edition]` Renvoyer uniquement le rectangle de recadrage normalisé + la source du cadrage pour un préréglage (`path`, `preset`) — sans décodage de l'original |
 
 **Types de téléchargement :**
 

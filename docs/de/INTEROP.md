@@ -97,7 +97,7 @@ Sie können einen Facet-Reimport in einen digiKam-Batch-Queue-Manager-Workflow (
 
 ```bash
 #!/bin/bash
-python /pfad/zu/facet.py --import-sidecars "$(dirname "$INPUT")"
+python /path/to/facet.py --import-sidecars "$(dirname "$INPUT")"
 cp "$INPUT" "$OUTPUT"
 ```
 

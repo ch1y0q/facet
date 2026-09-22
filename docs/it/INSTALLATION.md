@@ -364,8 +364,7 @@ source venv/bin/activate
 #    Conta anche la tua SCHEDA, non solo il driver: cu128 non fornisce kernel
 #    sotto sm_75, quindi una scheda Maxwell, Pascal o Volta (GTX 900/serie 10,
 #    Titan V) richiede cu126 anche con un driver CUDA 12.8. install.sh applica
-#    automaticamente questo limite; verifica la tua con
-#    `nvidia-smi --query-gpu=compute_cap --format=csv`.
+#    automaticamente questo limite; verifica la tua con `nvidia-smi --query-gpu=compute_cap --format=csv`.
 #    In caso di dubbio, copia il comando da https://pytorch.org/get-started/locally/
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 
@@ -624,7 +623,6 @@ in tutta la documentazione:
 | Embedding SigLIP 2 | sì | `16gb`/`24gb` | — | — |
 | Tagging VLM (Qwen3.5) | sì | `16gb`/`24gb` | — | — |
 | Modello compositivo (SAMP-Net) | opzionale | qualsiasi (`legacy` = CPU) | — | — |
-| Composizione (Qwen2-VL) | sì | `24gb` | — | — |
 | Salienza del soggetto (BiRefNet) | opzionale | qualsiasi (`legacy` = CPU) | — | — |
 | Didascalie IA (genera / visualizza) | sì | `16gb`/`24gb` | — | — |
 | Didascalie IA (modifica) | sì | `16gb`/`24gb` | edition | — |

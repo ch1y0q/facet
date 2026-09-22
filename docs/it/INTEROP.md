@@ -97,7 +97,7 @@ Puoi integrare una reimportazione di Facet in un flusso Batch Queue Manager (BQM
 
 ```bash
 #!/bin/bash
-python /percorso/di/facet.py --import-sidecars "$(dirname "$INPUT")"
+python /path/to/facet.py --import-sidecars "$(dirname "$INPUT")"
 cp "$INPUT" "$OUTPUT"
 ```
 

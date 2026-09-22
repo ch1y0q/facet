@@ -258,6 +258,22 @@ Verwenden Sie den **Ähnlichkeitsschwellen-Regler** (0–90%), um zu steuern, wi
 
 Aktive Filter werden als entfernbare Chips mit Zählern oben in der Galerie angezeigt.
 
+## Panoramen und Belichtungsreihen
+
+Die Bilder eines Panoramas wurden zum Zusammenfügen aufgenommen, die einer Belichtungsreihe zum Verschmelzen — beides sind keine konkurrierenden Aufnahmen. Die Serienerkennung sieht den Unterschied nicht: Die Bilder treffen Sekunden auseinander von einer Kamera bei einer Brennweite ein. Ohne dies gruppiert sie sie und blendet alle bis auf eines aus, dessen Auswahlkriterium für einen Schwenk nichts bedeutet.
+
+**In der Galerie.** „Bestes der Belichtungsreihe" und „Bestes des Panoramas" (beide standardmäßig an) klappen jede Serie hinter ein repräsentatives Bild: die Basisbelichtung bei einer Reihe, das mittlere Bild bei einem Panorama. Dieses Bild trägt unten ein kleines Symbol neben Stern und Herz, das benennt, wofür es steht — einfacher Schwenk, HDR-Schwenk oder Belichtungsreihe — mit Tooltip. Das Symbol erscheint nur, solange der zugehörige Filter den Rest der Serie tatsächlich ausblendet.
+
+**Beim Aussortieren.** Das Granularitätsmenü bietet „Belichtungsreihen", „Panoramen" und „HDR-Panoramen" als eigene Ansichten, nie in „Alle" zusammengeführt. Jedes Bild ist von vornherein als Behalten markiert, und das Bestätigen einer Serie zeichnet keine Vergleichspaare auf: Eine Sprosse einer Belichtungsleiter oder ein Bild eines Schwenks zu bevorzugen beschreibt die Aufnahmeart, nicht das Bild.
+
+**Eine Serie korrigieren.** Geometrie kann Absicht nicht rekonstruieren — ein bewusster Schwenk und ein Mitzieher auf ein bewegtes Motiv sind dieselbe Messung — daher ist eine Restfehlerquote von rund 4 % inhärent. Eine Korrektur ist dauerhaft und überlebt jede spätere Erkennung, die die von ihr erzeugten Kennzeichnungen löscht und neu schreibt.
+
+Beide Fehlerrichtungen haben ihre eigene Oberfläche, denn sie fallen an verschiedenen Stellen auf. Ein **Fehlalarm** wird beim Aussortieren korrigiert, wo die Serie vor einem liegt: Die Aktionsleiste der Gruppe trägt ein Korrekturmenü (nur im Bearbeitungsmodus) mit „Kein Panorama“ und dem Umschalten zwischen einfach und HDR. Ein **Übersehen** wird aus der Galerie korrigiert, denn ein unerkannter Schwenk taucht in keiner Aussortier-Gruppe auf: Bilder auswählen und in der Auswahlleiste „Als Serie markieren“ → „Als ein Panorama markieren“ wählen. Beides lässt sich über die Einblendung rückgängig machen, und beides verlangt mindestens zwei Bilder.
+
+Nichts wird sofort neu gekennzeichnet. Eine Korrektur wird umgehend gespeichert und als ausstehend markiert — ein Uhr-Symbol auf der Kachel, ein Chip „Korrektur ausstehend“ an der Gruppe —, denn die Erkennung ist ein Stapellauf über die ganze Bibliothek und viel zu teuer, um bei jedem Klick zu laufen. Die Aussortier-Seite zeigt ein Banner mit der Anzahl der wartenden Korrekturen und daneben **Erkennung erneut ausführen**; der Seitenleisten-Filter „Panorama-Korrekturen“ (nur im Bearbeitungsmodus, unter Verfeinern) listet sie bibliotheksweit auf, je Richtung oder beide. Bis zu diesem Lauf bleibt eine unterdrückte Serie als Panorama gruppiert und eine erzwungene ungruppiert: Die Korrektur ist eine Notiz an die Erkennung, keine eigene Kennzeichnung.
+
+**Feinjustieren.** Der Reiter Panoramen unter Vergleichen zeigt die Schwellenwerte, die tatsächlich an etikettierten Serien kalibriert wurden. Speichern allein ändert nichts: Die Erkennung ist ein Stapellauf über die ganze Bibliothek, deshalb bietet der Reiter neben dem Speichern einen erneuten Durchlauf an. Siehe [CONFIGURATION.md](CONFIGURATION.md).
+
 ## Personenverwaltung
 
 > Das Durchsuchen von Personen steht allen Betrachtern offen; Umbenennen, Zusammenführen, Avatar-Änderungen und Gesichtszuweisung erfordern `[Edition]`.
@@ -479,22 +495,6 @@ API: siehe den Abschnitt [API-Endpunkte](#api-endpunkte) weiter unten.
 ### Konfiguration
 
 Siehe [Konfiguration — Kapseln](CONFIGURATION.md#capsules) für alle Einstellungen.
-
-## Panoramen und Belichtungsreihen
-
-Die Bilder eines Panoramas wurden zum Zusammenfügen aufgenommen, die einer Belichtungsreihe zum Verschmelzen — beides sind keine konkurrierenden Aufnahmen. Die Serienerkennung sieht den Unterschied nicht: Die Bilder treffen Sekunden auseinander von einer Kamera bei einer Brennweite ein. Ohne dies gruppiert sie sie und blendet alle bis auf eines aus, dessen Auswahlkriterium für einen Schwenk nichts bedeutet.
-
-**In der Galerie.** „Bestes der Belichtungsreihe" und „Bestes des Panoramas" (beide standardmäßig an) klappen jede Serie hinter ein repräsentatives Bild: die Basisbelichtung bei einer Reihe, das mittlere Bild bei einem Panorama. Dieses Bild trägt unten ein kleines Symbol neben Stern und Herz, das benennt, wofür es steht — einfacher Schwenk, HDR-Schwenk oder Belichtungsreihe — mit Tooltip. Das Symbol erscheint nur, solange der zugehörige Filter den Rest der Serie tatsächlich ausblendet.
-
-**Beim Aussortieren.** Das Granularitätsmenü bietet „Belichtungsreihen", „Panoramen" und „HDR-Panoramen" als eigene Ansichten, nie in „Alle" zusammengeführt. Jedes Bild ist von vornherein als Behalten markiert, und das Bestätigen einer Serie zeichnet keine Vergleichspaare auf: Eine Sprosse einer Belichtungsleiter oder ein Bild eines Schwenks zu bevorzugen beschreibt die Aufnahmeart, nicht das Bild.
-
-**Eine Serie korrigieren.** Geometrie kann Absicht nicht rekonstruieren — ein bewusster Schwenk und ein Mitzieher auf ein bewegtes Motiv sind dieselbe Messung — daher ist eine Restfehlerquote von rund 4 % inhärent. Eine Korrektur ist dauerhaft und überlebt jede spätere Erkennung, die die von ihr erzeugten Kennzeichnungen löscht und neu schreibt.
-
-Beide Fehlerrichtungen haben ihre eigene Oberfläche, denn sie fallen an verschiedenen Stellen auf. Ein **Fehlalarm** wird beim Aussortieren korrigiert, wo die Serie vor einem liegt: Die Aktionsleiste der Gruppe trägt ein Korrekturmenü (nur im Bearbeitungsmodus) mit „Kein Panorama“ und dem Umschalten zwischen einfach und HDR. Ein **Übersehen** wird aus der Galerie korrigiert, denn ein unerkannter Schwenk taucht in keiner Aussortier-Gruppe auf: Bilder auswählen und in der Auswahlleiste „Als Serie markieren“ → „Als ein Panorama markieren“ wählen. Beides lässt sich über die Einblendung rückgängig machen, und beides verlangt mindestens zwei Bilder.
-
-Nichts wird sofort neu gekennzeichnet. Eine Korrektur wird umgehend gespeichert und als ausstehend markiert — ein Uhr-Symbol auf der Kachel, ein Chip „Korrektur ausstehend“ an der Gruppe —, denn die Erkennung ist ein Stapellauf über die ganze Bibliothek und viel zu teuer, um bei jedem Klick zu laufen. Die Aussortier-Seite zeigt ein Banner mit der Anzahl der wartenden Korrekturen und daneben **Erkennung erneut ausführen**; der Seitenleisten-Filter „Panorama-Korrekturen“ (nur im Bearbeitungsmodus, unter Verfeinern) listet sie bibliotheksweit auf, je Richtung oder beide. Bis zu diesem Lauf bleibt eine unterdrückte Serie als Panorama gruppiert und eine erzwungene ungruppiert: Die Korrektur ist eine Notiz an die Erkennung, keine eigene Kennzeichnung.
-
-**Feinjustieren.** Der Reiter Panoramen unter Vergleichen zeigt die Schwellenwerte, die tatsächlich an etikettierten Serien kalibriert wurden. Speichern allein ändert nichts: Die Erkennung ist ein Stapellauf über die ganze Bibliothek, deshalb bietet der Reiter neben dem Speichern einen erneuten Durchlauf an. Siehe [CONFIGURATION.md](CONFIGURATION.md).
 
 ## Ordner-Ansicht
 
@@ -1220,9 +1220,11 @@ Die TypeScript-Typen des Clients werden mit `cd client && npm run gen:api` aus d
 | `POST /api/culling-groups/override_sequence` | `[Edition]` Zeichnet eine dauerhafte Korrektur auf, was eine Menge von Aufnahmen ist. Body `{paths, kind?}`; `kind` ist `panorama \| hdr_panorama` oder weggelassen, um die Aufnahmen als überhaupt kein Panorama zu markieren. Landet in `photo_sequence_overrides` (übersteht das Löschen und Neuschreiben von `photos.sequence_*` durch den Detektor bei jedem Lauf); wird beim nächsten `POST /api/scan/detect_panoramas` wirksam |
 | `POST /api/culling-groups/clear_sequence_override` | `[Edition]` Verwirft eine manuelle Sequenzkorrektur für die genannten Aufnahmen und gibt sie an den Detektor zurück. Body `{paths}` |
 | `POST /api/culling-group/faces` | Abzeichen pro Gesicht (Augen offen/geschlossen, Ausdruck, Konfidenz) für eine Gruppe, in einem Batch |
+| `POST /api/culling-group/subjects` | Nahaufnahme-Ausschnitte des Motivs (aus der persistierten BiRefNet-Motivbox) + gruppennormierte Schärfe für eine Gruppe ohne Gesichter, in einem Batch. `has_subject:false`, wenn ein Foto keine Box hat / eine Box hat, die fast das gesamte Bild einnimmt (kein Modelllauf) |
 | `GET /api/photo/key_subject?path=` | Worum / um wen es in einem Foto geht: sein bestplatziertes Gesicht, sonst seine persistierte Salienzbox, als `normalized_frame_xyxy`-Box + Zentrum. Pro Anfrage aus gespeicherten Spalten berechnet (kein Modelllauf, nichts zwischengespeichert); `kind:"none"`, wenn keines von beidem existiert |
 | `POST /api/photos/key_subjects` | Dieselbe Antwort für bis zu 1000 Pfade in einem Aufruf (`key_subjects_by_path`) — das Zoomziel der Dunkelkammer und das Hauptpersonen-Abzeichen. Jeder angefragte Pfad ist enthalten; unbekannte oder unsichtbare kommen als `kind:"none"` zurück statt zu fehlen |
 | `POST /api/photos/keeper_hints` | Pro-Foto-Hinweise „besseres Foto in dieser Gruppe existiert" für das Galerie-/Lightbox-Badge, gruppiert nach `burst_group_id`. Body `{paths}`; liefert `{path: {has_better, best_path, keeper_prob}}`. Modellabhängig — liefert `{}`, wenn kein Keeper-Ranking-Head trainiert ist |
+| `GET /api/photo/cull_preview?path=&style=` | `[Edition]` Rendert das Original eines Fotos über einen konfigurierten darktable-Stil (`--style`, begrenzt auf `preview_max_edge`) für die Vorschau des bearbeiteten Looks in der Dunkelkammer. Auf der Festplatte zwischengespeichert; 400 bei unbekanntem Stil, 503 wenn darktable-cli nicht verfügbar ist, 502 bei Renderfehler/Zeitüberschreitung |
 | `GET /api/scenes` | Chronologische Szenen von Serienbild-Leitfotos (schreibgeschütztes Durchsuchen) |
 | `GET /api/filter_options/junk_kinds` | Erkannte Müll-Arten mit Anzahl (ohne die Sentinel `not_junk`) für die Junk-Sweep-Chips |
 | `POST /api/photo/clear_junk` | `[Edition]` Behält einen Müll-Kandidaten — setzt dessen `junk_kind` auf `not_junk`, sodass er die Warteschlange dauerhaft verlässt. Body `{photo_path}` |
@@ -1288,6 +1290,8 @@ Die TypeScript-Typen des Clients werden mit `cd client && npm run gen:api` aus d
 |----------|-------------|
 | `GET /api/download/options` | Verfügbare Download-Typen für ein Foto (`path`, optional `is_shared`) |
 | `GET /api/download` | Ein Foto herunterladen (`path`, `type=original\|darktable\|raw`, optional `profile`) |
+| `GET /api/photo/social_crop` | `[Edition]` Das zugeschnittene JPEG in voller Auflösung für ein Social-Media-Seitenverhältnis-Preset herunterladen (`path`, `preset`) |
+| `GET /api/photo/social_crop/preview` | `[Edition]` Nur das normalisierte Zuschnittsrechteck + die Rahmenquelle für ein Preset zurückgeben (`path`, `preset`) — ohne Dekodierung des Originals |
 
 **Download-Typen:**
 

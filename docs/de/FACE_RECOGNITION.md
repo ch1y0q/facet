@@ -54,25 +54,14 @@ python facet.py --suggest-person-merges --merge-threshold 0.7  # Strenger
 
 Öffnet den Browser mit der Seite der Zusammenführungsvorschläge.
 
-### Schritt 4: Zusammenführungsvorschläge überprüfen
+### Schritt 4: Verwaltung im Viewer
 
-Die Web-Oberfläche unter `/merge-suggestions` zeigt Paare von Personen-Clustern, die möglicherweise dieselbe Person sind:
+Die verbleibende Arbeit erfolgt im Web-Viewer, entlang der Pipeline **Extrahieren → Clustern → Zusammenführen → Verwalten**:
 
-- Passen Sie den **Schieberegler für den Ähnlichkeitsschwellenwert** an, um zu steuern, wie konservativ die Vorschläge sind
-- Überprüfen Sie jeden Vorschlag nebeneinander mit Gesichts-Miniaturansichten
-- **Ein-Klick-Zusammenführung**, um zwei Personen zu kombinieren, oder **Stapel-Zusammenführung**, um mehrere Vorschläge auf einmal zu verarbeiten
-- Auch über die CLI verfügbar: `python facet.py --suggest-person-merges --merge-threshold 0.7`
+- **Zusammenführen** doppelter Cluster auf der Seite mit Zusammenführungsvorschlägen.
+- **Verwalten** von Personen (zusammenführen, Stapel-Zusammenführung, aufteilen, ausblenden, umbenennen, löschen) auf der Seite „Personen verwalten“.
 
-### Schritt 5: Manuelle Verwaltung
-
-Im Web-Viewer:
-- Rufen Sie `/persons` für die Personenverwaltung auf
-- Zusammenführen: Quellperson auswählen, Zielperson anklicken, bestätigen
-- Stapel-Zusammenführung: Mehrere Personen auswählen und in eine einzige Zielperson zusammenführen
-- Aufteilen: Eine Teilmenge der Gesichter einer Person in eine neue Person verschieben (wird die Quelle dadurch leer, wird sie gelöscht)
-- Ausblenden: Einen Cluster als `is_hidden` markieren, um ihn aus der Liste, den Filtern und den Zusammenführungsvorschlägen auszuschließen (umkehrbar)
-- Umbenennen: Auf den Personennamen klicken, um ihn inline zu bearbeiten
-- Löschen: Personen-Cluster entfernen
+Siehe [Viewer-Integration](#viewer-integration) für die vollständige Referenz der Benutzeroberfläche.
 
 ## Konfiguration
 

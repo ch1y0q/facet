@@ -681,6 +681,7 @@ FIXTURES = Path(__file__).parent / 'fixtures'
 CANON_PQ_HIF = FIXTURES / 'canon_eos_r8_hdr_pq.hif'
 SONY_SDR_HIF = FIXTURES / 'sony_a7sm3_sdr.hif'
 APPLE_GAINMAP_HEIC = FIXTURES / 'apple_iphone13pro_gainmap.heic'
+GRADIENT_PQ_HIF = FIXTURES / 'pq_gradient_ramp.hif'
 
 requires_heif = pytest.mark.skipif(
     not image_loading._heif_available, reason='pillow-heif not installed')
@@ -797,3 +798,46 @@ def test_real_hif_files_are_scannable_and_load_as_rgb(fixture):
     pil_img, img_cv = image_loading.load_image_from_path(str(fixture))
     assert pil_img is not None and pil_img.mode == 'RGB'
     assert img_cv is not None and img_cv.shape[2] == 3
+
+
+def _empty_interior_luma_bins(rgb, lo=1, hi=254):
+    """Count zero-count 8-bit luma bins strictly inside the black/white ends.
+
+    Posterisation from crushing a PQ frame to 8 bits before the EOTF shows up
+    as gaps in the output luma histogram before it shows up anywhere else --
+    exactly the comb the native-depth decode in issue #154 closes.
+    """
+    r, g, b = (rgb[..., i].astype(np.float32) for i in range(3))
+    y = np.clip(np.round(0.2126 * r + 0.7152 * g + 0.0722 * b), 0, 255).astype(np.int32)
+    counts = np.bincount(y.ravel(), minlength=256)
+    return int((counts[lo:hi + 1] == 0).sum())
+
+
+@requires_heif
+def test_pq_gradient_ramp_native_decode_has_no_posterisation_gaps():
+    """The regression this issue exists to fix.
+
+    tests/fixtures/pq_gradient_ramp.hif is a 1024-step, 10-bit PQ ramp, one
+    code per column. Through the 8-bit decode path only ~130 of PQ's codes
+    cover the SDR range, so a 1024-step ramp collapses several columns onto
+    the same output luma and the histogram gets holes (measured 86). Decoded
+    at its native 10-bit depth every step keeps its own code and the holes
+    close (measured 0) -- see
+    .claude/specs/issue-154-native-bit-depth-pq-decode.md.
+    """
+    Image_, _ = image_loading._ensure_pil()
+    with Image_.open(GRADIENT_PQ_HIF) as img:
+        eight_bit_pil = image_loading._tonemap_pq_to_srgb(img.convert('RGB'))
+    eight_bit = np.asarray(eight_bit_pil)
+
+    native_pil = image_loading.open_nonraw_image(str(GRADIENT_PQ_HIF))
+    native = np.asarray(native_pil)
+
+    assert eight_bit_pil.mode == 'RGB' and eight_bit.dtype == np.uint8
+    assert native_pil.mode == 'RGB' and native.dtype == np.uint8
+    assert eight_bit.shape == native.shape
+
+    # The 8-bit path floors rather than pins the exact count: an encoder
+    # revision of the fixture must not make this test brittle.
+    assert _empty_interior_luma_bins(eight_bit) >= 40
+    assert _empty_interior_luma_bins(native) == 0

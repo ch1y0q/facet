@@ -143,7 +143,7 @@ ssh admin@your-synology-ip
 mkdir -p /volume1/facet
 
 # Installer les dépendances (galerie web uniquement)
-pip3 install fastapi uvicorn pyjwt pillow
+pip3 install fastapi uvicorn pyjwt pillow aiosqlite
 ```
 
 ### Exporter une base de données allégée
@@ -170,11 +170,7 @@ La fonctionnalité « Photos similaires » ne fonctionnera pas sur la base de do
 
 ### Synchroniser les fichiers
 
-Sur la machine de scoring, compilez d'abord le client Angular :
-
-```bash
-cd client && npm install && npx ng build && cd ..
-```
+Sur la machine de scoring, compilez d'abord le client Angular (voir [Compilation du client Angular](#compilation-du-client-angular)).
 
 Puis synchronisez la galerie web et la base de données exportée vers le NAS :
 
@@ -287,7 +283,7 @@ Pour un NAS dédié à la galerie web où l'image doit rester légère (sans CUD
 ```dockerfile
 FROM python:3.11-slim
 WORKDIR /app
-RUN pip install fastapi uvicorn pyjwt pillow
+RUN pip install fastapi uvicorn pyjwt pillow aiosqlite
 COPY viewer.py config_resolve.py database.py tagger.py ./
 COPY api/ api/
 COPY config/ config/
@@ -458,7 +454,7 @@ mesurer.
 ### Uvicorn
 
 ```bash
-pip install fastapi uvicorn pyjwt pillow
+pip install fastapi uvicorn pyjwt pillow aiosqlite
 uvicorn api:create_app --factory --host 0.0.0.0 --port 5000 --workers 4
 ```
 

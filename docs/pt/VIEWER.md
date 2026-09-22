@@ -257,6 +257,22 @@ Use o **controle deslizante de limiar de similaridade** (0–90%) para controlar
 
 Os filtros ativos são exibidos como chips removíveis com contagens no topo da galeria.
 
+## Panorâmicas e brackets de exposição
+
+Os fotogramas de uma panorâmica foram captados para serem unidos e os de um bracket para serem fundidos: nenhum deles é um conjunto de tomadas rivais. A deteção de rajadas não distingue a diferença — chegam com segundos de intervalo, de uma câmara, a uma distância focal — e sem isto agrupa-os e esconde todos menos um, escolhido por um critério que nada significa para uma varredura.
+
+**Na galeria.** «Melhor do bracket» e «Melhor da panorâmica» (ativos por predefinição) recolhem cada série atrás de um fotograma representativo: a exposição base num bracket, o fotograma central numa panorâmica. Esse fotograma leva um pequeno ícone em baixo, junto à estrela e ao coração, que indica o que representa — varredura simples, varredura HDR ou bracket — com uma dica. O ícone só aparece enquanto o filtro correspondente estiver realmente a esconder o resto da série.
+
+**Na seleção.** O menu de granularidade oferece «Brackets de exposição», «Panorâmicas» e «Panorâmicas HDR» como fluxos próprios, nunca fundidos em «Tudo». Todos os fotogramas começam marcados para manter, e confirmar uma série não regista pares de comparação: preferir um degrau de uma escala de exposição, ou um fotograma de uma varredura, descreve como a série foi captada, não a fotografia.
+
+**Corrigir uma série.** A geometria não consegue recuperar a intenção — uma varredura deliberada e um varrimento que segue um sujeito em movimento são a mesma medição — pelo que uma taxa de erro residual de cerca de 4 % é inerente. Uma correção é persistente e sobrevive a cada deteção posterior, que apaga e reescreve as etiquetas que produzira.
+
+Cada sentido do erro tem a sua própria superfície, porque se encontram em sítios diferentes. Um **falso positivo** corrige-se na seleção, onde a série está à frente: a barra de ações do grupo tem um menu de correção (só em modo edição) com «Não é um panorama» e a troca entre simples e HDR. Uma **falha** corrige-se a partir da galeria, porque uma varredura não detetada não aparece em nenhum grupo de seleção: escolha os fotogramas e use «Marcar como série» → «Marcar como um panorama» na barra de seleção. Ambas se anulam a partir do aviso, e ambas exigem pelo menos dois fotogramas.
+
+Nada é reetiquetado de imediato. Uma correção é guardada logo e fica pendente — um emblema de relógio na miniatura, uma etiqueta «Correção pendente» no grupo — porque a deteção é uma passagem em lote sobre toda a biblioteca, demasiado cara para correr a cada clique. A página de seleção mostra um aviso com o número de correções em espera e um botão **Nova deteção**; o filtro «Correções de panorama» da barra lateral (só edição, em Refinar) lista-as em toda a biblioteca, por sentido ou ambas. Até essa passagem, uma série suprimida continua agrupada como panorama e uma forçada continua por agrupar: a correção é uma nota para o detetor, não uma etiqueta própria.
+
+**Afinar a deteção.** O separador Panorâmicas, em Comparar, expõe os limiares realmente calibrados com séries etiquetadas. Guardá-los não muda nada por si só: a deteção é uma passagem em lote sobre toda a biblioteca, por isso o separador oferece uma nova execução ao lado do guardar. Ver [CONFIGURATION.md](CONFIGURATION.md).
+
 ## Gerenciamento de Pessoas
 
 > Navegar pelas pessoas está aberto a todos os visualizadores; renomear, mesclar, alterar avatares e atribuir rostos requer `[Edition]`.
@@ -478,22 +494,6 @@ API: veja a seção [Endpoints da API](#endpoints-da-api) abaixo.
 ### Configuração
 
 Veja [Configuração — Cápsulas](CONFIGURATION.md#capsules) para todas as configurações.
-
-## Panorâmicas e brackets de exposição
-
-Os fotogramas de uma panorâmica foram captados para serem unidos e os de um bracket para serem fundidos: nenhum deles é um conjunto de tomadas rivais. A deteção de rajadas não distingue a diferença — chegam com segundos de intervalo, de uma câmara, a uma distância focal — e sem isto agrupa-os e esconde todos menos um, escolhido por um critério que nada significa para uma varredura.
-
-**Na galeria.** «Melhor do bracket» e «Melhor da panorâmica» (ativos por predefinição) recolhem cada série atrás de um fotograma representativo: a exposição base num bracket, o fotograma central numa panorâmica. Esse fotograma leva um pequeno ícone em baixo, junto à estrela e ao coração, que indica o que representa — varredura simples, varredura HDR ou bracket — com uma dica. O ícone só aparece enquanto o filtro correspondente estiver realmente a esconder o resto da série.
-
-**Na seleção.** O menu de granularidade oferece «Brackets de exposição», «Panorâmicas» e «Panorâmicas HDR» como fluxos próprios, nunca fundidos em «Tudo». Todos os fotogramas começam marcados para manter, e confirmar uma série não regista pares de comparação: preferir um degrau de uma escala de exposição, ou um fotograma de uma varredura, descreve como a série foi captada, não a fotografia.
-
-**Corrigir uma série.** A geometria não consegue recuperar a intenção — uma varredura deliberada e um varrimento que segue um sujeito em movimento são a mesma medição — pelo que uma taxa de erro residual de cerca de 4 % é inerente. Uma correção é persistente e sobrevive a cada deteção posterior, que apaga e reescreve as etiquetas que produzira.
-
-Cada sentido do erro tem a sua própria superfície, porque se encontram em sítios diferentes. Um **falso positivo** corrige-se na seleção, onde a série está à frente: a barra de ações do grupo tem um menu de correção (só em modo edição) com «Não é um panorama» e a troca entre simples e HDR. Uma **falha** corrige-se a partir da galeria, porque uma varredura não detetada não aparece em nenhum grupo de seleção: escolha os fotogramas e use «Marcar como série» → «Marcar como um panorama» na barra de seleção. Ambas se anulam a partir do aviso, e ambas exigem pelo menos dois fotogramas.
-
-Nada é reetiquetado de imediato. Uma correção é guardada logo e fica pendente — um emblema de relógio na miniatura, uma etiqueta «Correção pendente» no grupo — porque a deteção é uma passagem em lote sobre toda a biblioteca, demasiado cara para correr a cada clique. A página de seleção mostra um aviso com o número de correções em espera e um botão **Nova deteção**; o filtro «Correções de panorama» da barra lateral (só edição, em Refinar) lista-as em toda a biblioteca, por sentido ou ambas. Até essa passagem, uma série suprimida continua agrupada como panorama e uma forçada continua por agrupar: a correção é uma nota para o detetor, não uma etiqueta própria.
-
-**Afinar a deteção.** O separador Panorâmicas, em Comparar, expõe os limiares realmente calibrados com séries etiquetadas. Guardá-los não muda nada por si só: a deteção é uma passagem em lote sobre toda a biblioteca, por isso o separador oferece uma nova execução ao lado do guardar. Ver [CONFIGURATION.md](CONFIGURATION.md).
 
 ## Visão de Pastas
 
@@ -1225,6 +1225,7 @@ Os tipos TypeScript do cliente são gerados a partir desse esquema em `client/sr
 | `GET /api/photo/key_subject?path=` | Do que / de quem trata uma foto: seu rosto mais bem classificado, senão sua caixa de saliência persistida, como caixa + centro `normalized_frame_xyxy`. Resolvido a cada requisição a partir de colunas armazenadas (nenhum modelo, nada em cache); `kind:"none"` quando nenhum dos dois existe |
 | `POST /api/photos/key_subjects` | A mesma resposta para até 1000 caminhos em uma única chamada (`key_subjects_by_path`) — o alvo do zoom do laboratório e o selo de pessoa principal. Todo caminho solicitado está presente; os desconhecidos ou invisíveis voltam como `kind:"none"` em vez de faltarem |
 | `POST /api/photos/keeper_hints` | Dicas por foto de "existe uma foto melhor neste grupo" para o selo da galeria/lightbox, agrupadas por `burst_group_id`. Corpo `{paths}`; retorna `{path: {has_better, best_path, keeper_prob}}`. Depende do modelo — retorna `{}` quando nenhuma cabeça de ranqueamento de retenção está treinada |
+| `GET /api/photo/cull_preview?path=&style=` | `[Edition]` Renderiza o original de uma foto através de um estilo darktable configurado (`--style`, limitado a `preview_max_edge`) para a prévia de aparência editada do laboratório. Armazenado em cache no disco; 400 para estilo desconhecido, 503 quando darktable-cli está indisponível, 502 por falha/tempo limite de renderização |
 | `GET /api/scenes` | Cenas cronológicas de fotos líderes de sequência (navegação somente leitura) |
 | `GET /api/filter_options/junk_kinds` | Tipos de lixo detectados com contagem (exclui a sentinela `not_junk`) para os chips da Limpeza de lixo |
 | `POST /api/photo/clear_junk` | `[Edition]` Mantém um candidato a lixo — redefine seu `junk_kind` para `not_junk` para que ele saia da fila permanentemente. Corpo `{photo_path}` |
@@ -1290,6 +1291,8 @@ Os tipos TypeScript do cliente são gerados a partir desse esquema em `client/sr
 |----------|-------------|
 | `GET /api/download/options` | Tipos de download disponíveis para uma foto (`path`, `is_shared` opcional) |
 | `GET /api/download` | Baixa uma foto (`path`, `type=original\|darktable\|raw`, `profile` opcional) |
+| `GET /api/photo/social_crop` | `[Edition]` Baixa o JPEG em resolução completa recortado para uma predefinição de formato social (`path`, `preset`) |
+| `GET /api/photo/social_crop/preview` | `[Edition]` Retorna apenas o retângulo de recorte normalizado + a origem do enquadramento para uma predefinição (`path`, `preset`) — sem decodificar o original |
 
 **Tipos de download:**
 

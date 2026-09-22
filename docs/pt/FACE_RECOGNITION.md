@@ -61,7 +61,7 @@ O trabalho restante acontece no visualizador web, seguindo o pipeline **Extrair 
 - **Mescle** clusters duplicados na página Sugestões de mesclagem.
 - **Gerencie** pessoas (mesclar, mesclagem em lote, dividir, ocultar, renomear, excluir) na página Gerenciar pessoas.
 
-Consulte [Integração com o visualizador](#viewer-integration) para a referência completa da interface.
+Consulte [Integração com o visualizador](#integração-com-o-visualizador) para a referência completa da interface.
 
 ## Configuração
 

@@ -144,7 +144,7 @@ ssh admin@your-synology-ip
 mkdir -p /volume1/facet
 
 # Abhängigkeiten installieren (nur Viewer)
-pip3 install fastapi uvicorn pyjwt pillow
+pip3 install fastapi uvicorn pyjwt pillow aiosqlite
 ```
 
 ### Leichtgewichtige Datenbank exportieren
@@ -171,11 +171,7 @@ Die Funktion „Ähnliche finden“ funktioniert auf der exportierten Datenbank 
 
 ### Dateien synchronisieren
 
-Erstellen Sie auf der Bewertungsmaschine zuerst den Angular-Client:
-
-```bash
-cd client && npm install && npx ng build && cd ..
-```
+Erstellen Sie auf der Bewertungsmaschine zuerst den Angular-Client (siehe [Erstellen des Angular-Clients](#erstellen-des-angular-clients)).
 
 Synchronisieren Sie dann den Viewer und die exportierte Datenbank auf das NAS:
 
@@ -466,7 +462,7 @@ sind und ein echtes Registry-Manifest zum Messen vorliegt.
 ### Uvicorn
 
 ```bash
-pip install fastapi uvicorn pyjwt pillow
+pip install fastapi uvicorn pyjwt pillow aiosqlite
 uvicorn api:create_app --factory --host 0.0.0.0 --port 5000 --workers 4
 ```
 

@@ -2,7 +2,7 @@
 
 > 🌐 [English](../COMMANDS.md) · **Français** · [Deutsch](../de/COMMANDS.md) · [Italiano](../it/COMMANDS.md) · [Español](../es/COMMANDS.md) · [Português](../pt/COMMANDS.md) · [简体中文](../zh/COMMANDS.md)
 
-[Analyse](#scanning) · [Aperçu et export](#preview--export) · [Opérations de recalcul](#recompute-operations) · [Reconnaissance faciale](#face-recognition) · [Gestion des miniatures](#thumbnail-management) · [Diagnostics](#diagnostics) · [Informations sur les modèles](#model-information) · [Optimisation des poids](#weight-optimization-pairwise-comparison) · [Configuration](#configuration) · [Étiquetage](#tagging) · [Validation de la base de données](#database-validation) · [Maintenance de la base de données](#database-maintenance) · [Visionneuse web](#web-viewer) · [Flux de travail courants](#common-workflows)
+[Analyse](#analyse) · [Aperçu et export](#aperçu-et-export) · [Opérations de recalcul](#opérations-de-recalcul) · [Reconnaissance faciale](#reconnaissance-faciale) · [Gestion des miniatures](#gestion-des-miniatures) · [Diagnostics](#diagnostics) · [Informations sur les modèles](#informations-sur-les-modèles) · [Optimisation des poids](#optimisation-des-poids-comparaison-par-paires) · [Configuration](#configuration) · [Étiquetage](#étiquetage) · [Validation de la base de données](#validation-de-la-base-de-données) · [Maintenance de la base de données](#maintenance-de-la-base-de-données) · [Visionneuse web](#visionneuse-web) · [Flux de travail courants](#flux-de-travail-courants)
 
 > Étiquettes d'exigence utilisées ci-dessous : `[GPU]` · `[8gb/16gb/24gb]` / `[16gb/24gb]` / `[24gb]` (profil VRAM). Voir la [matrice des fonctionnalités](../README.md#feature-availability--requirements).
 
@@ -308,18 +308,17 @@ La galerie web `viewer.py` et le serveur `api/` qu'elle démarre ne font jamais 
 
 ```bash
 # 1. --config prime sur tout. Un fichier manquant ici est une ERREUR, pas une surcharge vide.
-python facet.py --config /srv/facet/mariage.json /photos/mariage
+python facet.py --config /srv/facet/wedding.json /photos/wedding
 
 # 2. $FACET_CONFIG fournit le chemin par défaut si --config est omis (Docker le définit).
 export FACET_CONFIG=/config/scoring_config.json
 python facet.py /photos            # lit /config/scoring_config.json
-python facet.py --config autre.json /photos   # --config prime toujours
+python facet.py --config other.json /photos   # --config prime toujours
 
-# 3. Ni l'un ni l'autre : un config du RÉPERTOIRE DE TRAVAIL prime pour les outils en
-#    ligne de commande, une photothèque peut donc embarquer le sien. viewer.py n'a pas
-#    ce comportement -- voir plus bas.
-cd /photos/seance-client         # contient son propre scoring_config.json
-python /opt/facet/facet.py .     # noté avec /photos/seance-client/scoring_config.json
+# 3. Ni l'un ni l'autre : un config du RÉPERTOIRE DE TRAVAIL prime pour les outils
+#    CLI, une photothèque peut donc embarquer le sien ; viewer.py n'a pas ce pas -- voir plus bas.
+cd /photos/client-shoot          # contient son propre scoring_config.json
+python /opt/facet/facet.py .     # noté avec /photos/client-shoot/scoring_config.json
 
 # 4. Ni l'un ni l'autre, et rien ici : repli sur le config situé à côté de l'installation.
 cd /tmp
@@ -327,7 +326,7 @@ python /opt/facet/facet.py /photos   # lit /opt/facet/scoring_config.json
                                      # absent = tourne sur les valeurs par défaut fournies
 
 # 5. viewer.py ne fait jamais ce détour par le répertoire de travail, contrairement aux cas 1 à 4.
-cd /photos/seance-client         # contient son propre scoring_config.json -- sans effet ici
+cd /photos/client-shoot          # contient son propre scoring_config.json -- sans effet ici
 python /opt/facet/viewer.py      # lit toujours /opt/facet/scoring_config.json (ou $FACET_CONFIG)
 ```
 
