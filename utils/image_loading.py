@@ -168,7 +168,7 @@ def _hable(x):
 # replaces the four frame-sized float temporaries _pq_eotf builds (the power,
 # the numerator, the denominator and the result) with one lookup table -- 256
 # entries (1 KiB) at 8 bits, 1024 entries (4 KiB) at 10.
-_PQ_EOTF_LUTS = {}
+_PQ_EOTF_LUTS: dict[int, np.ndarray] = {}
 
 
 def _pq_eotf_lut(bit_depth):
