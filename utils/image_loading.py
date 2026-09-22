@@ -14,7 +14,11 @@ from pathlib import Path
 
 import numpy as np
 
-from config.scoring_config import RAW_DECODE_DEFAULTS
+from config.scoring_config import (
+    RAW_DECODE_DEFAULTS,
+    HDR_PQ_TONEMAP_DEFAULTS,
+    merge_hdr_pq_tonemap_settings,
+)
 from utils._lazy import ensure_cv2 as _ensure_cv2, ensure_pil as _ensure_pil
 
 logger = logging.getLogger("facet.image_loading")
@@ -105,15 +109,21 @@ _BT2020_TO_SRGB = np.array([
     [-0.0181508, -0.1005789, 1.1187297],
 ], dtype=np.float32)
 
-# SDR reference white in nits. PQ is display-referred (absolute luminance).
-# 100 nits is the nominal SDR peak used by ffmpeg's zscale+tonemap pipeline and
-# matches in-camera HDR-still SDR output. The BT.2408 mastering reference of
-# 203 nits looked dark for these stills.
+# SDR reference white in nits. PQ is display-referred (absolute luminance):
+# linear light is expressed in units of this 100 nit level (x = nits / 100),
+# the nominal SDR peak used by ffmpeg's zscale+tonemap pipeline and a match for
+# in-camera HDR-still SDR output. It is NOT the tone-map white point - that is
+# measured per image (see _hdr_pq_white_point); normalising at a fixed 100 nit
+# white clipped every bright still to pure white. The BT.2408 mastering
+# reference of 203 nits looked dark for these stills.
 _PQ_SDR_REFERENCE_NITS = 100.0
 
 # Hable filmic (Uncharted 2) tone-map operator:
 #   f(x) = (x*(a*x + c*b) + d*e) / (x*(a*x + b) + d*f) - e/f
 # Source: John Hable, "Filmic Tonemapping Operators" (2010), section 5.
+# Coefficients and the divide-by-hable(peak) normalisation match ffmpeg's
+# hable tone-map (libavfilter/vf_tonemap.c), which divides by hable(peak)
+# rather than by hable(1).
 _HABLE_A, _HABLE_B, _HABLE_C, _HABLE_D, _HABLE_E, _HABLE_F = (
     0.15, 0.50, 0.10, 0.20, 0.02, 0.30)
 
@@ -157,22 +167,87 @@ def _srgb_oetf(linear):
     )
 
 
-def _tonemap_pq_to_srgb(pil_img):
-    """Tone-map an 8-bit PQ/BT.2020 RGB PIL image to an SDR sRGB PIL image."""
+def _hdr_pq_white_point(nits, wp):
+    """Per-image display white point in nits (the level mapped to SDR white).
+
+    A fixed 100 nit white clips every bright still to pure white: real HDR
+    stills peak at hundreds-to-thousands of nits, so the normalising peak is
+    measured per image. ffmpeg's tonemap filter does the same via
+    ff_determine_signal_peak() (vf_tonemap.c); the percentile mode is the
+    MaxCLL-style robust form of that, insensitive to a handful of hot pixels
+    (e.g. night-scene lights) that would otherwise drag the whole frame dark.
+    """
+    mode = wp.get('mode', 'percentile')
+    min_nits = float(wp.get('min_nits', 100.0))
+    per_pixel_max = nits.max(axis=2)
+    if mode == 'fixed':
+        return max(float(wp.get('fixed_nits', 1000.0)), min_nits)
+    if mode == 'max':
+        # Single brightest pixel (strict ffmpeg signal peak); no upper clamp.
+        return max(float(per_pixel_max.max()), min_nits)
+    # percentile (default): a high percentile of the brightest channel.
+    percentile = float(np.clip(wp.get('percentile', 99.99), 0.0, 100.0))
+    max_nits = float(wp.get('max_nits', 1200.0))
+    white = float(np.percentile(per_pixel_max, percentile))
+    return float(np.clip(white, min_nits, max_nits))
+
+
+def _hdr_pq_tone_map(nits, white_nits, settings):
+    """Map absolute-nit linear sRGB to [0,1] linear SDR sRGB.
+
+    Linear light is expressed in units of the 100 nit SDR reference white
+    (``x = nits / 100``). The Hable curve is normalised at the per-image white
+    point so that white maps to 1 - ``hable(x) / hable(white/100)`` - matching
+    ffmpeg's hable branch, which divides by ``hable(peak)`` rather than by
+    ``hable(1)`` (vf_tonemap.c).
+    """
+    method = settings.get('method', 'hable')
+    x = nits / _PQ_SDR_REFERENCE_NITS
+    w = white_nits / _PQ_SDR_REFERENCE_NITS
+    if method == 'clip':
+        # Linear normalise + hard clip, no filmic shoulder (reference only).
+        return np.clip(x / w, 0.0, 1.0)
+    if settings.get('chroma_preserve') == 'max_channel':
+        # ffmpeg hue-preserving form: one scale from the brightest channel,
+        # applied to all three, so a highlight rolls off together instead of
+        # per-channel clipping shifting its hue toward white.
+        sig = np.maximum(x.max(axis=2), 1e-6)
+        scale = (_hable(np.clip(sig, 0.0, w)) / _hable(w)) / sig
+        return np.clip(x * scale[..., None], 0.0, 1.0)
+    # per_channel (default): each R/G/B channel rolls off independently.
+    # Brighter, at the cost of some hue shift in the brightest highlights.
+    return np.clip(_hable(x) / _hable(w), 0.0, 1.0)
+
+
+def _tonemap_pq_to_srgb(pil_img, settings=None):
+    """Tone-map an 8-bit PQ/BT.2020 RGB PIL image to an SDR sRGB PIL image.
+
+    Only called once the freshly opened image has been confirmed as PQ (NCLX
+    transfer 16), so SDR/HLG frames never reach this. Behaviour is tunable
+    through the ``hdr_pq_tonemap`` config block; setting ``enabled: false``
+    returns the decoder's raw PQ values untouched.
+    """
     Image, _ = _ensure_pil()
+    if settings is None:
+        settings = get_hdr_pq_tonemap_settings()
+    if not settings.get('enabled', True):
+        return pil_img
+
     arr = np.asarray(pil_img, dtype=np.float32) / 255.0
 
-    # 1. PQ EOTF: encoded signal -> absolute linear light in nits (BT.2020 RGB).
+    # 1. PQ EOTF (SMPTE ST 2084): encoded signal -> absolute linear light in
+    #    nits (BT.2020 RGB).
     linear = _pq_eotf(arr)
 
-    # 2. BT.2020 -> sRGB primaries, then normalise to the SDR reference white.
-    linear = np.maximum(linear @ _BT2020_TO_SRGB.T, 0.0) / _PQ_SDR_REFERENCE_NITS
+    # 2. BT.2020 -> sRGB primaries; keep absolute nits for white-point detection.
+    nits = np.maximum(linear @ _BT2020_TO_SRGB.T, 0.0)
 
-    # 3. Hable filmic tone map, normalised so the reference white maps to 1.0.
-    mapped = np.clip(_hable(linear) / _hable(1.0), 0.0, 1.0)
+    # 3. Per-image display white point, then a filmic tone map in linear light.
+    white_nits = _hdr_pq_white_point(nits, settings.get('white_point', {}))
+    mapped = _hdr_pq_tone_map(nits, white_nits, settings)
 
-    # 4. sRGB OETF, round and quantise to 8-bit.
-    encoded = _srgb_oetf(mapped)
+    # 4. sRGB OETF (IEC 61966-2-1), round and quantise to 8-bit.
+    encoded = _srgb_oetf(np.clip(mapped, 0.0, 1.0))
     out = np.clip(encoded * 255.0 + 0.5, 0, 255).astype(np.uint8)
     return Image.fromarray(out, 'RGB')
 
@@ -227,6 +302,38 @@ def get_raw_decode_settings():
     if _raw_decode_settings is None:
         return configure_raw_decode_profile(_raw_decode_settings_from_config())
     return _raw_decode_settings
+
+
+_hdr_pq_tonemap_settings = None
+
+
+def configure_hdr_pq_tonemap_profile(settings=None):
+    """Set the HDR PQ tone-map profile for this process; missing keys keep defaults."""
+    global _hdr_pq_tonemap_settings
+    _hdr_pq_tonemap_settings = merge_hdr_pq_tonemap_settings(settings or {})
+    return _hdr_pq_tonemap_settings
+
+
+def _hdr_pq_tonemap_settings_from_config():
+    """Read the profile off disk without validating or rewriting it.
+
+    A decode can run on a viewer or worker thread, where ScoringConfig's
+    default validation would re-save a corrected config behind the write
+    lock's back. Mirrors _raw_decode_settings_from_config.
+    """
+    try:
+        from config import ScoringConfig, default_config_path
+        return ScoringConfig(default_config_path(), validate=False).get_hdr_pq_tonemap_settings()
+    except Exception as ex:
+        logger.warning("Using default HDR PQ tone-map settings (%s)", ex)
+        return dict(HDR_PQ_TONEMAP_DEFAULTS)
+
+
+def get_hdr_pq_tonemap_settings():
+    """HDR PQ tone-map profile, read from scoring_config.json on first use."""
+    if _hdr_pq_tonemap_settings is None:
+        return configure_hdr_pq_tonemap_profile(_hdr_pq_tonemap_settings_from_config())
+    return _hdr_pq_tonemap_settings
 
 
 def raw_postprocess_kwargs(auto_bright=False, bright=None):

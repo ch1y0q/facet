@@ -22,6 +22,7 @@ Ogni impostazione è distribuita in `config/scoring_config.default.json` e sovra
 - [Modelli di valutazione della qualità](#quality-assessment-models)
 - [Elaborazione](#processing)
 - [Decodifica RAW](#decodifica-raw)
+- [Mappatura dei toni HDR PQ](#mappatura-dei-toni-hdr-pq)
 - [Rilevamento raffiche](#burst-detection)
 - [Punteggio raffiche](#burst-scoring)
 - [Rilevamento duplicati](#duplicate-detection)
@@ -972,6 +973,61 @@ migrazione incustodita è il posto peggiore perché ciò passi inosservato. Il
 rifiuto viene registrato con il nome del file.
 
 ---
+
+## Mappatura dei toni HDR PQ
+
+Le foto Canon HDR PQ (`.HIF`) sono HDR: il HEIF trasporta la funzione di
+trasferimento PQ (SMPTE ST 2084) su primari BT.2020, con luminanza assoluta
+fino a 10.000 nit. I modelli di qualità e la miniatura memorizzata lavorano in
+sRGB SDR a 8 bit, quindi un’immagine PQ viene decodificata, convertita da
+BT.2020 a sRGB, mappata nei toni in luce lineare e codificata con l’OETF sRGB.
+Questo blocco controlla tale mappatura. Si applica **solo** alle immagini il
+cui profilo colore NCLX dichiara il trasferimento PQ (caratteristica 16); HEIF
+SDR, HLG e JPEG passano invariati indipendentemente da `enabled`.
+
+```json
+"hdr_pq_tonemap": {
+  "enabled": true,
+  "method": "hable",
+  "white_point": {
+    "mode": "percentile",
+    "percentile": 99.99,
+    "min_nits": 100.0,
+    "max_nits": 1200.0,
+    "fixed_nits": 1000.0
+  },
+  "chroma_preserve": "per_channel"
+}
+```
+
+| Impostazione | Predefinito | Descrizione |
+|---------|---------|-------------|
+| `enabled` | `true` | Mappare nei toni le immagini PQ in SDR. Con `false` i valori PQ grezzi del decodificatore vengono restituiti senza conversione, lasciando galleria e punteggi con un’immagine scura e slavata; lasciare attivo salvo che per il debug della pipeline |
+| `method` | `hable` | Curva di tono. `hable` è la curva filmica (spalla) usata dal filtro `tonemap` HDR-to-SDR di ffmpeg; `clip` è una semplice normalizzazione lineare con taglio duro, utile solo come riferimento |
+| `white_point.mode` | `percentile` | Come viene scelto il punto di bianco per immagine (la luminanza mappata sul bianco SDR). `percentile` prende un percentile alto del canale più luminoso; `max` usa il singolo pixel più luminoso (equivale al picco di segnale di ffmpeg, ma un pixel caldo in una scena notturna scurisce tutto il fotogramma); `fixed` usa `fixed_nits` |
+| `white_point.percentile` | `99.99` | Percentile usato in modalità `percentile`. Abbastanza alto da seguire un ampio cielo luminoso, abbastanza basso da ignorare pixel speculari isolati |
+| `white_point.min_nits` | `100.0` | Soglia inferiore per il punto di bianco; un fotogramma scuro non viene mai normalizzato sotto il bianco di riferimento SDR |
+| `white_point.max_nits` | `1200.0` | Soglia superiore in modalità `percentile`; limita quanto un fotogramma insolitamente luminoso possa spingere la curva verso il basso |
+| `white_point.fixed_nits` | `1000.0` | Punto di bianco usato in modalità `fixed` |
+| `chroma_preserve` | `per_channel` | `per_channel` arrotola i canali R/G/B in modo indipendente (più luminoso, con una lieve variazione di tinta nelle alte luci); `max_channel` ricava un fattore dal canale più luminoso come il predefinito di ffmpeg, preservando la tinta con un risultato leggermente più scuro |
+
+### Perché il punto di bianco è per immagine
+
+Normalizzare la curva Hable su un bianco di riferimento fisso di 100 nit,
+`hable(x)/hable(1)`, taglia al bianco puro ogni pixel sopra i 100 nit. Le foto
+HDR reali raggiungono picchi da alcune centinaia a poche migliaia di nit, quindi
+cieli e finestre luminosi perdevano ogni texture (25-60% dei pixel tagliati al
+bianco su un campione di foto Canon HDR PQ). La curva viene invece normalizzata
+su un punto di bianco per immagine `w`, `hable(x)/hable(w)`, allo stesso modo in
+cui ffmpeg divide per `hable(peak)` con un picco misurato per fotogramma in
+`vf_tonemap.c`. Il percentile predefinito p99.99, vincolato a 100-1200 nit,
+mantiene la texture delle alte luci ignorando i pixel caldi isolati.
+
+**Riferimenti.** EOTF PQ: SMPTE ST 2084:2014. Curva Hable e picco per
+fotogramma: ffmpeg `vf_tonemap.c` (John Hable, “Filmic Tonemapping Operators”,
+2010). Matrice BT.2020 to sRGB: BT.2020-2 / IEC 61966-2-1 con D65. OETF sRGB:
+IEC 61966-2-1. Caratteristica di trasferimento NCLX 16: ISO/IEC 23001-8 /
+ITU-T H.273.
 
 ## Burst Detection
 

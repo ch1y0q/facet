@@ -1589,7 +1589,11 @@ def _run_scan(args, resumed_run):
         exit(1)
 
     # 2. Main Processing Loop
-    from utils import configure_raw_decode_profile, configure_raw_decoding
+    from utils import (
+        configure_raw_decode_profile,
+        configure_raw_decoding,
+        configure_hdr_pq_tonemap_profile,
+    )
     from processing.scan_state import ScanRun, scan_in_progress
     from processing.progress import emit_progress
     _proc = scorer.config.get_processing_settings()
@@ -1598,6 +1602,7 @@ def _run_scan(args, resumed_run):
         timeout_seconds=_proc.get('raw_decode_timeout_seconds', 120),
     )
     configure_raw_decode_profile(scorer.config.get_raw_decode_settings())
+    configure_hdr_pq_tonemap_profile(scorer.config.get_hdr_pq_tonemap_settings())
 
     # Concurrency guard: a run with a fresh heartbeat looks genuinely live.
     # Resuming on top of it would double-process, so refuse; a fresh scan only

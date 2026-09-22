@@ -25,6 +25,7 @@ def _reset_decode_state():
     image_loading._abandoned_decodes = 0
     configure_raw_decoding(concurrency=image_loading._auto_decode_concurrency(),
                            timeout_seconds=0)
+    image_loading._hdr_pq_tonemap_settings = None
 
 
 def _make_jpegs(tmp_path, count=3):
@@ -412,3 +413,159 @@ def test_open_nonraw_image_tonemaps_only_pq():
     assert np.asarray(out_pq).mean() > np.asarray(out_sdr).mean()
     assert np.asarray(out_sdr).mean() == 60.0
     assert np.asarray(out_plain).mean() == 60.0
+
+
+# --- HDR PQ tone mapping: configurable white point / highlight roll-off ------
+
+def _pq_oetf(nits):
+    """Inverse of image_loading._pq_eotf: absolute nits -> PQ signal [0,1]."""
+    L = np.asarray(nits, dtype=np.float64) / image_loading._PQ_PEAK_NITS
+    Lm = L ** image_loading._PQ_M1
+    return ((image_loading._PQ_C1 + image_loading._PQ_C2 * Lm)
+            / (1.0 + image_loading._PQ_C3 * Lm)) ** image_loading._PQ_M2
+
+
+def _full_settings(**overrides):
+    """A complete hdr_pq_tonemap settings dict with optional overrides."""
+    from config.scoring_config import merge_hdr_pq_tonemap_settings
+    return merge_hdr_pq_tonemap_settings(overrides)
+
+
+def test_hdr_pq_default_settings():
+    s = image_loading.configure_hdr_pq_tonemap_profile()
+    assert s['enabled'] is True
+    assert s['method'] == 'hable'
+    assert s['chroma_preserve'] == 'per_channel'
+    wp = s['white_point']
+    assert wp['mode'] == 'percentile'
+    assert wp['percentile'] == 99.99
+    assert wp['min_nits'] == 100.0
+    assert wp['max_nits'] == 1200.0
+
+
+def test_configure_hdr_pq_profile_merges_nested_white_point():
+    # Overriding one white_point sub-key keeps the others at defaults.
+    s = image_loading.configure_hdr_pq_tonemap_profile(
+        {'white_point': {'percentile': 99.9}, 'method': 'clip'})
+    assert s['method'] == 'clip'
+    assert s['white_point']['percentile'] == 99.9
+    assert s['white_point']['mode'] == 'percentile'      # untouched default
+    assert s['white_point']['max_nits'] == 1200.0        # untouched default
+    assert s['chroma_preserve'] == 'per_channel'         # untouched default
+
+
+def test_configure_hdr_pq_profile_tolerates_malformed_block():
+    # The decode path reads config with validate=False, so a hand-edited file
+    # must not crash the merge: non-dict blocks fall back to defaults, a
+    # non-dict white_point is ignored (valid siblings still apply), and unknown
+    # keys at either level are discarded.
+    from config.scoring_config import (
+        HDR_PQ_TONEMAP_DEFAULTS,
+        merge_hdr_pq_tonemap_settings,
+    )
+    for bad in (None, "x", 42, []):
+        assert merge_hdr_pq_tonemap_settings(bad) == HDR_PQ_TONEMAP_DEFAULTS
+    s = merge_hdr_pq_tonemap_settings(
+        {'white_point': None, 'method': 'clip'})
+    assert s['white_point'] == HDR_PQ_TONEMAP_DEFAULTS['white_point']
+    assert s['method'] == 'clip'
+    s2 = merge_hdr_pq_tonemap_settings(
+        {'bogus': 1, 'white_point': {'bogus': 2}})
+    assert 'bogus' not in s2 and 'bogus' not in s2['white_point']
+
+
+def test_hdr_pq_white_point_modes_and_clamps():
+    # Brightest-channel field: values 20 / 300 / 800 nits.
+    nits = np.zeros((4, 4, 3), dtype=np.float32)
+    nits[:2] = 20.0
+    nits[2:, :2] = 300.0
+    nits[2:, 2:] = 800.0
+    wp = image_loading._hdr_pq_white_point
+    assert wp(nits, {'mode': 'percentile', 'percentile': 99.99,
+                     'min_nits': 100, 'max_nits': 1200}) == pytest.approx(800.0)
+    assert wp(nits, {'mode': 'max', 'min_nits': 100}) == pytest.approx(800.0)
+    assert wp(nits, {'mode': 'fixed', 'fixed_nits': 1000.0,
+                     'min_nits': 100}) == pytest.approx(1000.0)
+    # Upper clamp: a very bright percentile is capped at max_nits.
+    hot = np.full((4, 4, 3), 4000.0, dtype=np.float32)
+    assert wp(hot, {'mode': 'percentile', 'percentile': 99.99,
+                    'min_nits': 100, 'max_nits': 1200}) == pytest.approx(1200.0)
+    # Lower clamp: a dark frame never sets white below the SDR floor.
+    dark = np.full((4, 4, 3), 5.0, dtype=np.float32)
+    assert wp(dark, {'mode': 'percentile', 'percentile': 99.99,
+                     'min_nits': 100, 'max_nits': 1200}) == pytest.approx(100.0)
+
+
+def test_hdr_pq_white_point_percentile_ignores_hot_pixels():
+    # A night scene at ~11 nits with one 3402-nit specular pixel. Percentile
+    # keeps the white at the floor; max mode chases the hot pixel and would
+    # darken the whole frame.
+    night = np.full((100, 100, 3), 11.0, dtype=np.float32)
+    night[0, 0] = 3402.0
+    wp = image_loading._hdr_pq_white_point
+    assert wp(night, {'mode': 'percentile', 'percentile': 99.99,
+                      'min_nits': 100, 'max_nits': 1200}) == pytest.approx(100.0)
+    assert wp(night, {'mode': 'max', 'min_nits': 100}) == pytest.approx(3402.0)
+
+
+def test_hdr_pq_tone_map_preserves_highlight_texture():
+    # Regression: normalising at a fixed 100-nit white clipped 300 and 800 nit
+    # regions to identical pure white. The per-image white keeps them apart.
+    nits = np.zeros((4, 4, 3), dtype=np.float32)
+    nits[:2] = 20.0
+    nits[2:, :2] = 300.0
+    nits[2:, 2:] = 800.0
+    cfg = _full_settings()
+    white = image_loading._hdr_pq_white_point(nits, cfg['white_point'])
+    out = image_loading._hdr_pq_tone_map(nits, white, cfg)
+    assert out[2, 0].mean() < out[2, 2].mean()      # 300 nits darker than 800
+    assert out[2, 2].mean() == pytest.approx(1.0)    # white maps to 1
+    assert out[0, 0].mean() < out[2, 0].mean()       # shadows still darker
+
+
+def test_hdr_pq_tone_map_methods_and_chroma_preserve_in_range():
+    rng = np.random.default_rng(1)
+    nits = (rng.random((16, 16, 3)) * 1500.0).astype(np.float32) + 1.0
+    for method in ('hable', 'clip'):
+        for chroma in ('per_channel', 'max_channel'):
+            cfg = _full_settings(method=method, chroma_preserve=chroma)
+            white = image_loading._hdr_pq_white_point(nits, cfg['white_point'])
+            out = image_loading._hdr_pq_tone_map(nits, white, cfg)
+            assert np.isfinite(out).all()
+            assert float(out.min()) >= 0.0 and float(out.max()) <= 1.0
+
+
+def test_tonemap_pq_disabled_returns_input_unchanged():
+    im = Image.fromarray(np.full((4, 4, 3), 200, dtype=np.uint8), 'RGB')
+    out = image_loading._tonemap_pq_to_srgb(im, {'enabled': False})
+    assert out is im
+
+
+def test_tonemap_pq_end_to_end_bright_gradient_keeps_steps():
+    # A PQ gradient spanning ~150-1000 nits must not collapse to flat white.
+    cols = 64
+    nits = np.tile(np.linspace(150.0, 1000.0, cols, dtype=np.float32), (8, 1))
+    nits = np.repeat(nits[:, :, None], 3, axis=2)
+    signal = _pq_oetf(nits).astype(np.float32)
+    arr = np.clip(signal * 255.0 + 0.5, 0, 255).astype(np.uint8)
+    out = np.asarray(image_loading._tonemap_pq_to_srgb(
+        Image.fromarray(arr, 'RGB'), _full_settings()))
+    col_means = out.mean(axis=(0, 2))
+    assert np.all(np.diff(col_means) >= -1e-6)          # monotonic non-decreasing
+    assert (col_means < 255).sum() > cols // 2          # most steps not clipped
+    assert col_means.max() >= 250                        # bright end reaches white
+
+
+def test_non_pq_passes_through_regardless_of_enabled():
+    # Gating is on NCLX transfer, not the enabled switch: SDR HEIF is never
+    # tone-mapped whether the HDR block is enabled or not.
+    def _open_sdr():
+        sdr = Image.fromarray(np.full((4, 4, 3), 60, dtype=np.uint8), 'RGB')
+        sdr.info['nclx_profile'] = {'transfer_characteristics': 13}
+        with mock.patch.object(Image, 'open', return_value=sdr):
+            return np.asarray(image_loading._open_nonraw_image('sdr.heif')).mean()
+
+    image_loading.configure_hdr_pq_tonemap_profile({'enabled': True})
+    assert _open_sdr() == 60.0
+    image_loading.configure_hdr_pq_tonemap_profile({'enabled': False})
+    assert _open_sdr() == 60.0
