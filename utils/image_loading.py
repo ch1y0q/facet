@@ -84,9 +84,12 @@ _LIBRAW_FLIP_ROTATIONS = {3: 180, 5: 90, 6: 270}
 # --- HDR PQ HEIF -> SDR sRGB tone mapping ---------------------------------
 # Canon HDR PQ HEIF (.HIF; also some iPhone HEIFs) stores 10-bit pixels encoded
 # with the SMPTE ST 2084 (PQ) transfer function and BT.2020 primaries (NCLX:
-# colour_primaries=9, transfer_characteristics=16, matrix_coefficients=9).
-# pillow-heif hands those encoded values straight to us, so displaying or
-# scoring them as ordinary sRGB makes every frame look dark and washed out.
+# colour_primaries=9, transfer_characteristics=16). The matrix field varies —
+# the vendored Canon EOS R8 fixture writes matrix_coefficients=1 (BT.709), since
+# an HDR PQ HEIF does not have to carry BT.2020 non-constant luminance — so
+# nothing here may gate on that field. pillow-heif hands those encoded values
+# straight to us, so displaying or scoring them as ordinary sRGB makes every
+# frame look dark and washed out.
 #
 # Pipeline, applied only when the decoder reports PQ (transfer==16):
 #   1. PQ EOTF           S -> absolute linear light in nits   (SMPTE ST 2084:2014)
@@ -161,10 +164,7 @@ def _heif_is_pq(pil_img):
     extension: a .heic/.heif/.hif that is SDR (transfer 1/13/17) or HLG (18)
     returns False. A missing NCLX profile also returns False (safe SDR fallback).
     """
-    try:
-        nclx = pil_img.info.get('nclx_profile')
-    except AttributeError:
-        return False
+    nclx = pil_img.info.get('nclx_profile')
     return bool(nclx) and nclx.get('transfer_characteristics') == _NCLX_PQ_TRANSFER
 
 
@@ -680,7 +680,6 @@ def load_display_image(photo_path, min_preview_sensor_ratio=0.0, decode_budget='
     Returns:
         PIL Image in RGB, or None on error.
     """
-    Image, ImageOps = _ensure_pil()
     try:
         photo = Path(photo_path)
         if photo.suffix.lower() in RAW_EXTENSIONS:
@@ -733,7 +732,6 @@ def load_image_from_path(photo_path, use_thumbnail=False):
         tuple: (pil_img, img_cv) - PIL Image and OpenCV BGR array
                Returns (None, None) on error
     """
-    Image, ImageOps = _ensure_pil()
     cv2 = _ensure_cv2()
 
     try:
