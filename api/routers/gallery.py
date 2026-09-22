@@ -1657,8 +1657,11 @@ def _cull_capabilities() -> dict:
     trashing is enabled, however the operator wrote the value.
 
     ``send2trash``'s importability is read from the module-scope
-    ``HAS_SEND2TRASH`` constant (set once, at import time, the same idiom
-    ``db.connection`` uses for ``HAS_SQLITE_VEC``) rather than probed here.
+    ``HAS_SEND2TRASH`` constant (set once, at import time, the same
+    once-at-import discipline ``db.connection`` uses for
+    ``HAS_SQLITE_VEC`` -- a bare import suffices here, where that one needs
+    a real load probe, because importing ``sqlite_vec`` does not prove the
+    interpreter's SQLite can load its extension) rather than probed here.
     That constant is fixed for the life of the process: a ``pip install
     send2trash`` into a running venv is not reflected until the server
     restarts, so ``trash_available`` can keep reporting ``false`` right

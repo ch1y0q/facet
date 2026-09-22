@@ -356,7 +356,7 @@ HDR 之间重新标注。**漏检**则从照片库修正，因为未被检测到
 混合搜索，把 CLIP/SigLIP 嵌入向量相似度（70%）与基于照片描述和标签的 FTS5 BM25 文本匹配（30%）结合起来。输入诸如“群山之上的日落”或“在雪中玩耍的孩子”这样的查询，查看器就会按综合得分排序返回匹配的照片。
 
 - 需要已存储的 `clip_embedding` 数据（在评分过程中计算）
-- 安装了 sqlite-vec 时用它做 KNN 向量检索，否则退回到内存中的 NumPy
+- 安装了 sqlite-vec 且当前 Python 的 SQLite 能加载扩展时用它做 KNN 向量检索，否则退回到内存中的 NumPy
 - 对 AI 照片描述／标签做 FTS5 文本检索，提供额外的关键词匹配（运行 `database.py --rebuild-fts` 启用）
 - 使用与当前 VRAM 配置档相同的嵌入模型（16gb/24gb 用 SigLIP 2，legacy/8gb 用 CLIP ViT-L-14），如果两者不一致，则使用 `models.clip`/`clip_legacy` 中实际匹配已存储嵌入维度的那一个（见 [docs/CONFIGURATION.md](CONFIGURATION.md)）
 - `scope=text` 会把查询限制为对 OCR／描述文本的字面 FTS5 匹配，并跳过嵌入向量检索

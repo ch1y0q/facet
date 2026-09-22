@@ -359,7 +359,7 @@ A related but separate trigger, `POST /api/scan/recompute`, reuses the same job 
 Hybrid search combining CLIP/SigLIP embedding similarity (70%) with FTS5 BM25 text matching on captions and tags (30%). Type a query like "sunset over mountains" or "child playing in snow" and the viewer returns matching photos ranked by combined score.
 
 - Requires stored `clip_embedding` data (computed during scoring)
-- Uses sqlite-vec for KNN vector search when installed, falls back to in-memory NumPy
+- Uses sqlite-vec for KNN vector search when installed and this Python's SQLite can load extensions, falls back to in-memory NumPy
 - FTS5 text search on AI captions/tags provides additional keyword matching (run `database.py --rebuild-fts` to enable)
 - Uses the same embedding model as the active VRAM profile (SigLIP 2 for 16gb/24gb, CLIP ViT-L-14 for legacy/8gb), or whichever of `models.clip`/`clip_legacy` actually matches the stored embedding dimension if the two disagree (see [docs/CONFIGURATION.md](CONFIGURATION.md))
 - `scope=text` restricts the query to literal FTS5 matches in OCR/caption text and skips the embedding search

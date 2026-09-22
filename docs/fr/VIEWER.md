@@ -300,7 +300,7 @@ Un déclencheur apparenté mais distinct, `POST /api/scan/recompute`, réutilise
 Recherche hybride combinant la similarité des embeddings CLIP/SigLIP (70%) avec la correspondance textuelle FTS5 BM25 sur les légendes et les tags (30%). Tapez une requête comme « sunset over mountains » ou « child playing in snow » et la visionneuse renvoie les photos correspondantes classées par score combiné.
 
 - Nécessite des données `clip_embedding` stockées (calculées pendant le scoring)
-- Utilise sqlite-vec pour la recherche vectorielle KNN lorsqu'il est installé, sinon bascule sur NumPy en mémoire
+- Utilise sqlite-vec pour la recherche vectorielle KNN lorsqu'il est installé et que le SQLite de ce Python peut charger des extensions, sinon bascule sur NumPy en mémoire
 - La recherche textuelle FTS5 sur les légendes/tags IA fournit une correspondance par mots-clés supplémentaire (lancez `database.py --rebuild-fts` pour l'activer)
 - Utilise le même modèle d'embedding que le profil VRAM actif (SigLIP 2 pour 16gb/24gb, CLIP ViT-L-14 pour legacy/8gb), ou celui de `models.clip`/`clip_legacy` qui correspond réellement à la dimension d'embedding stockée si les deux diffèrent (voir [docs/CONFIGURATION.md](CONFIGURATION.md))
 - `scope=text` restreint la requête aux correspondances FTS5 littérales dans le texte OCR/légende et ignore la recherche par embedding

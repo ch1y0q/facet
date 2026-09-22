@@ -300,7 +300,7 @@ Ein verwandter, aber eigenständiger Auslöser, `POST /api/scan/recompute`, verw
 Hybride Suche, die CLIP/SigLIP-Embedding-Ähnlichkeit (70%) mit FTS5-BM25-Textabgleich auf Bildbeschreibungen und Tags (30%) kombiniert. Geben Sie eine Anfrage wie „Sonnenuntergang über Bergen" oder „Kind spielt im Schnee" ein, und die Galerie liefert passende Fotos, sortiert nach kombinierter Wertung.
 
 - Erfordert gespeicherte `clip_embedding`-Daten (während der Bewertung berechnet)
-- Verwendet sqlite-vec für KNN-Vektorsuche, sofern installiert, andernfalls Rückgriff auf In-Memory-NumPy
+- Verwendet sqlite-vec für KNN-Vektorsuche, sofern installiert und das SQLite dieses Pythons Erweiterungen laden kann, andernfalls Rückgriff auf In-Memory-NumPy
 - FTS5-Textsuche auf KI-Bildbeschreibungen/Tags bietet zusätzlichen Schlüsselwortabgleich (zum Aktivieren `database.py --rebuild-fts` ausführen)
 - Verwendet dasselbe Embedding-Modell wie das aktive VRAM-Profil (SigLIP 2 für 16gb/24gb, CLIP ViT-L-14 für legacy/8gb), oder dasjenige von `models.clip`/`clip_legacy`, das tatsächlich zur gespeicherten Embedding-Dimension passt, falls beide voneinander abweichen (siehe [docs/CONFIGURATION.md](CONFIGURATION.md))
 - `scope=text` beschränkt die Anfrage auf literale FTS5-Treffer im OCR-/Beschreibungstext und überspringt die Embedding-Suche
