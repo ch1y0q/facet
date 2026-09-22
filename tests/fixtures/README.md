@@ -74,3 +74,45 @@ retrieved 2026-09-22. Fetch it through `media.githubusercontent.com/media/...`
 — the file is Git LFS, so `raw.githubusercontent.com` serves the 131-byte
 pointer instead.
 sha256 `c690fa4ecc6ae71ee9a926de869a95835a5d41e764ccbc200647e2fb9d0800cc`
+
+## `pq_gradient_ramp.hif` — 3 KiB, 1024×8, 10-bit — synthetic
+
+The one deliberately synthetic fixture here, and the reason is the whole point of
+it: **no real photograph can show this regression.** Sensor noise dithers across
+the quantisation steps and fills the comb back in, so the Canon frame above scores
+248 of 256 occupied luma bins whether it is decoded at 8-bit or at its native
+10-bit. Smooth content — clear sky, a studio backdrop, heavy bokeh — has no noise
+to dither with, and that is where a decode that throws away two bits before the PQ
+EOTF expands them shows as a visible contour.
+
+One 10-bit code per column, 0–1023 left to right, grey (R=G=B), encoded losslessly.
+
+| field | value |
+|---|---|
+| `color_primaries` | 9 — BT.2020 |
+| `transfer_characteristics` | 16 — SMPTE ST 2084 (PQ) |
+| `matrix_coefficients` | 9 — BT.2020 non-constant luminance |
+| `full_range_flag` | 1 |
+| `bit_depth` | 10 |
+
+Through the shipped tone map the two decode paths separate cleanly: the 8-bit path
+reaches 170 distinct output levels with 86 empty interior luma bins, the native
+10-bit path reaches all 256 with none. That gap is what
+`test_pq_gradient_ramp_native_decode_has_no_posterisation_gaps` asserts.
+
+Regenerate with (note `transfer_characteristics`, **plural** — the singular spelling
+is accepted and silently ignored, and the file comes back as transfer 13, sRGB):
+
+```python
+import numpy as np, pillow_heif
+h, w = 8, 1024
+ramp = (np.arange(w, dtype=np.uint16) << 6)          # 10-bit codes, left-shifted to 16
+rgb = np.repeat(np.stack([ramp] * 3, axis=-1)[None, :, :], h, axis=0).copy()
+pillow_heif.from_bytes(mode='RGB;16', size=(w, h), data=rgb.tobytes()).save(
+    'tests/fixtures/pq_gradient_ramp.hif', quality=-1, chroma=444,
+    save_nclx_profile=True, color_primaries=9, transfer_characteristics=16,
+    matrix_coefficients=9, full_range_flag=1)
+```
+
+The round trip is exact: reopening with `convert_hdr_to_8bit=False` returns the
+same 1024 distinct values per channel.
