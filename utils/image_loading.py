@@ -82,14 +82,14 @@ _EXIF_ORIENTATION_TAG = 274
 _LIBRAW_FLIP_ROTATIONS = {3: 180, 5: 90, 6: 270}
 
 # --- HDR PQ HEIF -> SDR sRGB tone mapping ---------------------------------
-# Canon HDR PQ HEIF (.HIF; also some iPhone HEIFs) stores 10-bit pixels encoded
-# with the SMPTE ST 2084 (PQ) transfer function and BT.2020 primaries (NCLX:
-# colour_primaries=9, transfer_characteristics=16). The matrix field varies —
-# the vendored Canon EOS R8 fixture writes matrix_coefficients=1 (BT.709), since
-# an HDR PQ HEIF does not have to carry BT.2020 non-constant luminance — so
-# nothing here may gate on that field. pillow-heif hands those encoded values
-# straight to us, so displaying or scoring them as ordinary sRGB makes every
-# frame look dark and washed out.
+# Canon HDR PQ HEIF (.HIF) stores 10-bit pixels encoded with the SMPTE ST 2084
+# (PQ) transfer function and BT.2020 primaries (NCLX: colour_primaries=9,
+# transfer_characteristics=16). The matrix field varies — the vendored Canon
+# EOS R8 fixture writes matrix_coefficients=1 (BT.709), since an HDR PQ HEIF
+# does not have to carry BT.2020 non-constant luminance — so nothing here may
+# gate on that field. pillow-heif hands those encoded values straight to us, so
+# displaying or scoring them as ordinary sRGB makes every frame look dark and
+# washed out.
 #
 # Pipeline, applied only when the decoder reports PQ (transfer==16):
 #   1. PQ EOTF           S -> absolute linear light in nits   (SMPTE ST 2084:2014)
@@ -100,9 +100,11 @@ _LIBRAW_FLIP_ROTATIONS = {3: 180, 5: 90, 6: 270}
 #
 # Gating is by the decoder's NCLX transfer field, NOT by file extension:
 # SDR HEIC (transfer 1/13/17) and HLG (transfer 18) reach the loader with
-# is_pq=False and are passed through untouched. If pillow-heif does not expose
-# a NCLX profile (older versions / unusual files) is_pq is also False, so the
-# file is treated as ordinary sRGB rather than guessed at.
+# is_pq=False and are passed through untouched. A file carrying no NCLX box at
+# all is is_pq=False too, so it is treated as ordinary sRGB rather than guessed
+# at — that is the Apple case, not an exotic one: an iPhone HDR still is an 8-bit
+# SDR base image plus a `...aux:hdrgainmap` auxiliary, a different HDR mechanism
+# from PQ entirely, and its base image is already the right thing to display.
 
 # SMPTE ST 2084:2014 section 7 EOTF constants. Signal S in [0,1] -> linear
 # light L in nits via  n = S^(1/M2);  L = 10000 * ((n-C1)/(C2-C3*n))^(1/M1).

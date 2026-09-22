@@ -48,3 +48,29 @@ would break an extension-based gate.
 
 Source: `tests/images/heif_other/cat.hif` in
 <https://github.com/bigcat88/pillow_heif> (BSD-3-Clause), retrieved 2026-09-22.
+
+## `apple_iphone13pro_gainmap.heic` — 233 KiB, 1512×850, 8-bit
+
+An unmodified iPhone 13 Pro HDR still (iOS 17.6.1). Vendored to pin the third
+NCLX state, which no synthetic fixture covers honestly: **no NCLX box at all**.
+
+| field | value |
+|---|---|
+| `nclx_profile` | absent — `img.info` has no such key |
+| `icc_profile` | 536 bytes, Display P3 |
+| `AuxiliaryImageType` | `urn:com:apple:photo:2020:aux:hdrgainmap` |
+| `BitDepthLuma` | 8 |
+
+Apple HDR stills are **not** PQ. They are an 8-bit SDR base image plus an
+auxiliary gain map — a different HDR mechanism entirely — so the base image is
+already the right thing to display and the loader must pass it through
+untouched. The Sony fixture exercises `_heif_is_pq`'s "NCLX present, transfer is
+not 16" path; this one exercises the `bool(nclx)` falsy path, and it is the
+common case rather than an exotic one.
+
+Source: `tests/data/hdr-sample.heic` in
+<https://github.com/johncf/apple-hdr-heic> (MIT, © 2024 John Charankattu),
+retrieved 2026-09-22. Fetch it through `media.githubusercontent.com/media/...`
+— the file is Git LFS, so `raw.githubusercontent.com` serves the 131-byte
+pointer instead.
+sha256 `c690fa4ecc6ae71ee9a926de869a95835a5d41e764ccbc200647e2fb9d0800cc`

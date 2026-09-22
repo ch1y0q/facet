@@ -577,6 +577,7 @@ def test_non_pq_passes_through_regardless_of_enabled():
 FIXTURES = Path(__file__).parent / 'fixtures'
 CANON_PQ_HIF = FIXTURES / 'canon_eos_r8_hdr_pq.hif'
 SONY_SDR_HIF = FIXTURES / 'sony_a7sm3_sdr.hif'
+APPLE_GAINMAP_HEIC = FIXTURES / 'apple_iphone13pro_gainmap.heic'
 
 requires_heif = pytest.mark.skipif(
     not image_loading._heif_available, reason='pillow-heif not installed')
@@ -648,7 +649,34 @@ def test_real_sony_sdr_hif_passes_through_untouched():
 
 
 @requires_heif
-@pytest.mark.parametrize('fixture', [CANON_PQ_HIF, SONY_SDR_HIF])
+def test_real_apple_heic_has_no_nclx_box_at_all():
+    """Apple HDR is a gain map, not PQ — and it ships no NCLX box whatsoever.
+
+    The Sony fixture covers "NCLX present, transfer != 16". This one covers the
+    other falsy branch of _heif_is_pq: `img.info` has no 'nclx_profile' key, so
+    the guard must read it with .get() and not KeyError. An iPhone HDR still is
+    an 8-bit SDR base image plus a `...aux:hdrgainmap` auxiliary, so there is
+    nothing here to tone map.
+    """
+    Image_, _ = image_loading._ensure_pil()
+    with Image_.open(APPLE_GAINMAP_HEIC) as img:
+        assert 'nclx_profile' not in img.info
+        assert image_loading._heif_is_pq(img) is False
+
+
+@requires_heif
+def test_real_apple_heic_passes_through_untouched():
+    """The base image is already displayable SDR — tone mapping it would be a bug."""
+    Image_, _ = image_loading._ensure_pil()
+    with Image_.open(APPLE_GAINMAP_HEIC) as img:
+        decoded = np.asarray(img.convert('RGB'))
+    loaded = np.asarray(image_loading.open_nonraw_image(str(APPLE_GAINMAP_HEIC)))
+    assert np.array_equal(loaded, decoded)
+
+
+@requires_heif
+@pytest.mark.parametrize(
+    'fixture', [CANON_PQ_HIF, SONY_SDR_HIF, APPLE_GAINMAP_HEIC])
 def test_real_hif_files_are_scannable_and_load_as_rgb(fixture):
     assert fixture.suffix.lower() in image_loading.SCANNABLE_IMAGE_EXTENSIONS
     pil_img, img_cv = image_loading.load_image_from_path(str(fixture))
