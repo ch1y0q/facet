@@ -313,18 +313,17 @@ O visualizador `viewer.py` e o servidor `api/` que ele inicia nunca fazem esse d
 
 ```bash
 # 1. --config vence tudo. Um arquivo ausente aqui é um ERRO, não um override vazio.
-python facet.py --config /srv/facet/casamento.json /photos/casamento
+python facet.py --config /srv/facet/wedding.json /photos/wedding
 
 # 2. $FACET_CONFIG fornece o caminho padrão quando --config é omitido (o Docker define isso).
 export FACET_CONFIG=/config/scoring_config.json
 python facet.py /photos            # lê /config/scoring_config.json
-python facet.py --config outro.json /photos   # --config ainda prevalece
+python facet.py --config other.json /photos   # --config ainda prevalece
 
 # 3. Nenhum dos dois: uma configuração no DIRETÓRIO DE TRABALHO vence para as
-#    ferramentas de linha de comando, então uma fototeca pode carregar a sua própria.
-#    O viewer.py não tem essa etapa, veja abaixo.
-cd /photos/ensaio-cliente        # contém seu próprio scoring_config.json
-python /opt/facet/facet.py .     # pontuado por /photos/ensaio-cliente/scoring_config.json
+#    ferramentas CLI, então uma fototeca pode ter a sua própria; o viewer.py não tem essa etapa -- veja abaixo.
+cd /photos/client-shoot          # contém seu próprio scoring_config.json
+python /opt/facet/facet.py .     # pontuado por /photos/client-shoot/scoring_config.json
 
 # 4. Nenhum dos dois e nada aqui: recai no arquivo ao lado da instalação.
 cd /tmp
@@ -332,7 +331,7 @@ python /opt/facet/facet.py /photos   # lê /opt/facet/scoring_config.json
                                      # ausente ali = rodando com os padrões distribuídos
 
 # 5. O viewer.py nunca faz esse desvio pelo diretório de trabalho, diferente dos casos 1 a 4.
-cd /photos/ensaio-cliente        # contém seu próprio scoring_config.json -- irrelevante aqui
+cd /photos/client-shoot          # contém seu próprio scoring_config.json -- irrelevante aqui
 python /opt/facet/viewer.py      # continua lendo /opt/facet/scoring_config.json (ou $FACET_CONFIG)
 ```
 

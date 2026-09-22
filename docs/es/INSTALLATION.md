@@ -366,8 +366,7 @@ source venv/bin/activate
 #    Tu TARJETA también cuenta, no solo el controlador: cu128 no incluye kernels
 #    por debajo de sm_75, así que una tarjeta Maxwell, Pascal o Volta (GTX
 #    900/serie 10, Titan V) necesita cu126 incluso con un controlador CUDA 12.8.
-#    install.sh aplica este mínimo automáticamente; comprueba la tuya con
-#    `nvidia-smi --query-gpu=compute_cap --format=csv`.
+#    install.sh aplica este mínimo automáticamente; comprueba la tuya con `nvidia-smi --query-gpu=compute_cap --format=csv`.
 #    En caso de duda, copia el comando de https://pytorch.org/get-started/locally/
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 
@@ -626,7 +625,6 @@ a lo largo de la documentación:
 | Embeddings SigLIP 2 | sí | `16gb`/`24gb` | — | — |
 | Etiquetado VLM (Qwen3.5) | sí | `16gb`/`24gb` | — | — |
 | Patrón de composición (SAMP-Net) | opcional | cualquiera (`legacy` = CPU) | — | — |
-| Composición (Qwen2-VL) | sí | `24gb` | — | — |
 | Saliencia del sujeto (BiRefNet) | opcional | cualquiera (`legacy` = CPU) | — | — |
 | Leyendas con IA (generar / ver) | sí | `16gb`/`24gb` | — | — |
 | Leyendas con IA (editar) | sí | `16gb`/`24gb` | edición | — |

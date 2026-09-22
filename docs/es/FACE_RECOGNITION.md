@@ -54,25 +54,14 @@ python facet.py --suggest-person-merges --merge-threshold 0.7  # Más estricto
 
 Abre el navegador en la página de sugerencias de fusión.
 
-### Paso 4: Revisar las sugerencias de fusión
+### Paso 4: Gestión en el visor
 
-La interfaz web en `/merge-suggestions` muestra pares de clústeres de personas que podrían ser el mismo individuo:
+El trabajo restante ocurre en el visor web, siguiendo el flujo **Extraer → Agrupar → Fusionar → Gestionar**:
 
-- Ajusta el **control deslizante de umbral de similitud** para controlar cuán conservadoras son las sugerencias
-- Revisa cada sugerencia lado a lado con las miniaturas de los rostros
-- **Fusión con un clic** para combinar dos personas, o **fusión por lotes** para procesar varias sugerencias a la vez
-- También disponible a través de la CLI: `python facet.py --suggest-person-merges --merge-threshold 0.7`
+- **Fusiona** los clústeres duplicados en la página de sugerencias de fusión.
+- **Gestiona** las personas (fusionar, fusión por lotes, dividir, ocultar, renombrar, eliminar) en la página de gestión de personas.
 
-### Paso 5: Gestión manual
-
-En la galería web:
-- Accede a `/persons` para la gestión de personas
-- Fusionar: Selecciona la persona de origen, haz clic en la de destino, confirma
-- Fusión por lotes: Selecciona varias personas y fusiónalas en un único destino
-- Dividir: Mueve un subconjunto de los rostros de una persona a una persona nueva (si el origen queda vacío, se elimina)
-- Ocultar: Marca un clúster como `is_hidden` para excluirlo de la lista, los filtros y las sugerencias de fusión (reversible)
-- Renombrar: Haz clic en el nombre de la persona para editarlo en línea
-- Eliminar: Elimina el clúster de la persona
+Consulta [Integración con la galería](#integración-con-la-galería) para la referencia completa de la interfaz.
 
 ## Configuración
 

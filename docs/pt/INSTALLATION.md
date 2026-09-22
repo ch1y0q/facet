@@ -365,8 +365,7 @@ source venv/bin/activate
 #    A sua PLACA também conta, não apenas o driver: cu128 não traz kernels
 #    abaixo de sm_75, portanto uma placa Maxwell, Pascal ou Volta (GTX 900/série
 #    10, Titan V) precisa de cu126 mesmo com um driver CUDA 12.8. O install.sh
-#    aplica esse piso automaticamente; verifique a sua com
-#    `nvidia-smi --query-gpu=compute_cap --format=csv`.
+#    aplica esse piso automaticamente; verifique a sua com `nvidia-smi --query-gpu=compute_cap --format=csv`.
 #    Na dúvida, copie o comando de https://pytorch.org/get-started/locally/
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 
@@ -620,7 +619,6 @@ A maior parte do Facet roda em qualquer lugar (CPU, qualquer perfil). Alguns rec
 | Embeddings SigLIP 2 | sim | `16gb`/`24gb` | — | — |
 | Marcação por VLM (Qwen3.5) | sim | `16gb`/`24gb` | — | — |
 | Padrão de composição (SAMP-Net) | opcional | qualquer (`legacy` = CPU) | — | — |
-| Composição (Qwen2-VL) | sim | `24gb` | — | — |
 | Saliência do sujeito (BiRefNet) | opcional | qualquer (`legacy` = CPU) | — | — |
 | Legendas por IA (gerar / visualizar) | sim | `16gb`/`24gb` | — | — |
 | Legendas por IA (editar) | sim | `16gb`/`24gb` | edition | — |

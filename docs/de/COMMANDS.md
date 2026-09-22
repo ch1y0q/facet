@@ -2,7 +2,7 @@
 
 > 🌐 [English](../COMMANDS.md) · [Français](../fr/COMMANDS.md) · **Deutsch** · [Italiano](../it/COMMANDS.md) · [Español](../es/COMMANDS.md) · [Português](../pt/COMMANDS.md) · [简体中文](../zh/COMMANDS.md)
 
-[Scannen](#scanning) · [Vorschau & Export](#preview--export) · [Neuberechnungen](#recompute-operations) · [Gesichtserkennung](#face-recognition) · [Thumbnail-Verwaltung](#thumbnail-management) · [Diagnose](#diagnostics) · [Modellinformationen](#model-information) · [Gewichtungsoptimierung](#weight-optimization-pairwise-comparison) · [Konfiguration](#configuration) · [Verschlagwortung](#tagging) · [Datenbankvalidierung](#database-validation) · [Datenbankpflege](#database-maintenance) · [Web-Viewer](#web-viewer) · [Häufige Arbeitsabläufe](#common-workflows)
+[Scannen](#scannen) · [Vorschau & Export](#vorschau--export) · [Neuberechnungen](#neuberechnungen) · [Gesichtserkennung](#gesichtserkennung) · [Thumbnail-Verwaltung](#thumbnail-verwaltung) · [Diagnose](#diagnose) · [Modellinformationen](#modellinformationen) · [Gewichtungsoptimierung](#gewichtungsoptimierung-paarweiser-vergleich) · [Konfiguration](#konfiguration) · [Verschlagwortung](#verschlagwortung) · [Datenbankvalidierung](#datenbankvalidierung) · [Datenbankpflege](#datenbankpflege) · [Web-Viewer](#web-viewer) · [Häufige Arbeitsabläufe](#häufige-arbeitsabläufe)
 
 > Anforderungs-Tags, die nachstehend verwendet werden: `[GPU]` · `[8gb/16gb/24gb]` / `[16gb/24gb]` / `[24gb]` (VRAM-Profil). Siehe die [Funktionsmatrix](../README.md#feature-availability--requirements).
 
@@ -311,20 +311,18 @@ Ist keine von beiden gesetzt, lesen `facet.py`, `database.py`, `tag_existing.py`
 Der Viewer `viewer.py` und der von ihm gestartete `api/`-Server machen diesen Umweg über das Arbeitsverzeichnis nie mit: Sie lösen nur `FACET_CONFIG` auf, sonst die Datei neben der Installation — niemals eine `scoring_config.json`, die zufällig in dem Verzeichnis liegt, aus dem heraus sie gestartet wurden. Das ist wichtig, weil die Konfiguration des Viewers diejenige ist, die die Passwörter des Betreibers trägt: Wer ihn aus einer Fotosammlung heraus startet, bekommt nicht deren Konfiguration, und fehlt auch neben der Installation eine, fällt er still auf die ausgelieferten Standardwerte zurück — ein leeres `viewer.edition_password`, das dann jede Route anonym bedient.
 
 ```bash
-# 1. --config hat Vorrang vor allem. Eine fehlende Datei ist hier ein FEHLER,
-#    keine leere Überschreibung.
-python facet.py --config /srv/facet/hochzeit.json /photos/hochzeit
+# 1. --config hat Vorrang vor allem. Eine fehlende Datei ist hier ein FEHLER, keine leere Überschreibung.
+python facet.py --config /srv/facet/wedding.json /photos/wedding
 
 # 2. $FACET_CONFIG liefert den Standardpfad, wenn --config fehlt (Docker setzt das).
 export FACET_CONFIG=/config/scoring_config.json
 python facet.py /photos            # liest /config/scoring_config.json
-python facet.py --config andere.json /photos   # --config hat weiterhin Vorrang
+python facet.py --config other.json /photos   # --config hat weiterhin Vorrang
 
-# 3. Keines von beiden: eine Konfiguration im ARBEITSVERZEICHNIS gewinnt — bei den
-#    Kommandozeilenwerkzeugen, eine Fotosammlung kann also ihre eigene mitbringen.
-#    viewer.py kennt diesen Schritt nicht, siehe unten.
-cd /photos/kunden-shooting       # enthält eine eigene scoring_config.json
-python /opt/facet/facet.py .     # bewertet mit /photos/kunden-shooting/scoring_config.json
+# 3. Keines von beiden: eine Konfiguration im ARBEITSVERZEICHNIS gewinnt bei den
+#    CLI-Werkzeugen, eine Fotosammlung kann also ihre eigene mitbringen; viewer.py kennt diesen Schritt nicht -- siehe unten.
+cd /photos/client-shoot          # enthält eine eigene scoring_config.json
+python /opt/facet/facet.py .     # bewertet mit /photos/client-shoot/scoring_config.json
 
 # 4. Keines von beiden und hier nichts: Rückfall auf die Datei neben der Installation.
 cd /tmp
@@ -332,7 +330,7 @@ python /opt/facet/facet.py /photos   # liest /opt/facet/scoring_config.json
                                      # fehlt sie dort, laufen die Standardwerte
 
 # 5. viewer.py macht diesen Umweg über das Arbeitsverzeichnis nie mit, anders als Fall 1 bis 4.
-cd /photos/kunden-shooting       # enthält eine eigene scoring_config.json -- hier wirkungslos
+cd /photos/client-shoot          # enthält eine eigene scoring_config.json -- hier wirkungslos
 python /opt/facet/viewer.py      # liest weiterhin /opt/facet/scoring_config.json (oder $FACET_CONFIG)
 ```
 

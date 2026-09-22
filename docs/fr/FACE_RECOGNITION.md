@@ -54,25 +54,14 @@ python facet.py --suggest-person-merges --merge-threshold 0.7  # Plus strict
 
 Ouvre le navigateur sur la page des suggestions de fusion.
 
-### Étape 4 : Examiner les suggestions de fusion
+### Étape 4 : Gestion dans la visionneuse
 
-L'interface web à `/merge-suggestions` présente des paires de clusters de personnes susceptibles d'être le même individu :
+Le travail restant se déroule dans la visionneuse web, en suivant le pipeline **Extraire → Regrouper → Fusionner → Gérer** :
 
-- Ajustez le **curseur de seuil de similarité** pour contrôler le degré de prudence des suggestions
-- Examinez chaque suggestion côte à côte avec les miniatures de visages
-- **Fusion en un clic** pour combiner deux personnes, ou **fusion par lot** pour traiter plusieurs suggestions à la fois
-- Disponible également en ligne de commande : `python facet.py --suggest-person-merges --merge-threshold 0.7`
+- **Fusionnez** les clusters en double sur la page Suggestions de fusion.
+- **Gérez** les personnes (fusionner, fusion par lot, scinder, masquer, renommer, supprimer) sur la page Gérer les personnes.
 
-### Étape 5 : Gestion manuelle
-
-Dans la galerie web :
-- Accédez à `/persons` pour la gestion des personnes
-- Fusionner : sélectionnez la personne source, cliquez sur la cible, confirmez
-- Fusion par lot : sélectionnez plusieurs personnes et fusionnez-les dans une seule cible
-- Scinder : déplacez un sous-ensemble des visages d'une personne vers une nouvelle personne (si la source se retrouve vide, elle est supprimée)
-- Masquer : marquez un cluster `is_hidden` pour l'exclure de la liste, des filtres et des suggestions de fusion (réversible)
-- Renommer : cliquez sur le nom de la personne pour le modifier en ligne
-- Supprimer : retirez le cluster de personne
+Voir [Intégration à la galerie](#intégration-à-la-galerie) pour la référence complète de l'interface.
 
 ## Configuration
 

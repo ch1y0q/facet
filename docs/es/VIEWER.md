@@ -257,6 +257,22 @@ Usa el **control deslizante de umbral de similitud** (0–90%) para controlar lo
 
 Los filtros activos se muestran como chips eliminables con recuentos en la parte superior de la galería.
 
+## Panorámicas y bracketing de exposición
+
+Los fotogramas de una panorámica se tomaron para unirse y los de un bracketing para fusionarse: ninguno es un conjunto de tomas rivales. La detección de ráfagas no distingue la diferencia — llegan con segundos de separación, de una cámara, a una focal — y sin esto los agrupa y oculta todos menos uno, elegido con un criterio que no significa nada para un barrido.
+
+**En la galería.** «Mejor del bracketing» y «Mejor de la panorámica» (activados por defecto) contraen cada serie tras un fotograma representativo: la exposición base en un bracketing, el fotograma central en una panorámica. Ese fotograma lleva un pequeño icono abajo, junto a la estrella y el corazón, que nombra lo que representa — barrido simple, barrido HDR o bracketing — con información sobre herramientas. El icono solo aparece mientras el filtro correspondiente oculta realmente el resto de la serie.
+
+**Al descartar.** El menú de granularidad ofrece «Bracketing de exposición», «Panorámicas» y «Panorámicas HDR» como flujos propios, nunca fundidos en «Todo». Todos los fotogramas empiezan marcados para conservar, y confirmar una serie no registra pares de comparación: preferir un peldaño de una escala de exposición, o un fotograma de un barrido, describe cómo se tomó la serie, no la fotografía.
+
+**Corregir una serie.** La geometría no puede recuperar la intención — un barrido deliberado y un barrido que sigue a un sujeto en movimiento son la misma medida — así que una tasa de error residual de cerca del 4 % es inherente. Una corrección es persistente y sobrevive a cada detección posterior, que borra y reescribe las etiquetas que había producido.
+
+Cada sentido del error tiene su propia superficie, porque se encuentran en sitios distintos. Un **falso positivo** se corrige al descartar, donde la serie está delante: la barra de acciones del grupo lleva un menú de corrección (solo en modo edición) con «No es un panorama» y el cambio entre simple y HDR. Un **olvido** se corrige desde la galería, porque un barrido no detectado no aparece en ningún grupo de descarte: seleccione sus fotogramas y use «Marcar como serie» → «Marcar como un panorama» en la barra de selección. Ambos se deshacen desde el aviso, y ambos exigen al menos dos fotogramas.
+
+Nada se reetiqueta de inmediato. Una corrección se guarda enseguida y queda pendiente — una insignia de reloj en la miniatura, una etiqueta «Corrección pendiente» en el grupo de descarte — porque la detección es una pasada por lotes sobre toda la biblioteca, demasiado costosa para lanzarla en cada clic. La página de descarte muestra un aviso con el número de correcciones en espera y un botón **Relanzar la detección**; el filtro «Correcciones de panorama» de la barra lateral (solo edición, en Refinar) las lista en toda la biblioteca, por sentido o ambas. Hasta esa ejecución, una serie suprimida sigue agrupada como panorama y una forzada sigue sin agrupar: la corrección es una nota para el detector, no una etiqueta en sí.
+
+**Ajustar la detección.** La pestaña Panorámicas, bajo Comparar, expone los umbrales realmente calibrados con series etiquetadas. Guardarlos no cambia nada por sí solo: la detección es una pasada por lotes sobre toda la biblioteca, así que la pestaña ofrece una nueva ejecución junto al guardado. Véase [CONFIGURATION.md](CONFIGURATION.md).
+
 ## Gestión de personas
 
 > Explorar personas está abierto a todos los visores; renombrar, fusionar, cambiar avatares y asignar caras requiere `[Edition]`.
@@ -478,22 +494,6 @@ API: consulta la sección [Endpoints de la API](#endpoints-de-la-api) más abajo
 ### Configuración
 
 Consulta [Configuración — Cápsulas](CONFIGURATION.md#capsules) para todos los ajustes.
-
-## Panorámicas y bracketing de exposición
-
-Los fotogramas de una panorámica se tomaron para unirse y los de un bracketing para fusionarse: ninguno es un conjunto de tomas rivales. La detección de ráfagas no distingue la diferencia — llegan con segundos de separación, de una cámara, a una focal — y sin esto los agrupa y oculta todos menos uno, elegido con un criterio que no significa nada para un barrido.
-
-**En la galería.** «Mejor del bracketing» y «Mejor de la panorámica» (activados por defecto) contraen cada serie tras un fotograma representativo: la exposición base en un bracketing, el fotograma central en una panorámica. Ese fotograma lleva un pequeño icono abajo, junto a la estrella y el corazón, que nombra lo que representa — barrido simple, barrido HDR o bracketing — con información sobre herramientas. El icono solo aparece mientras el filtro correspondiente oculta realmente el resto de la serie.
-
-**Al descartar.** El menú de granularidad ofrece «Bracketing de exposición», «Panorámicas» y «Panorámicas HDR» como flujos propios, nunca fundidos en «Todo». Todos los fotogramas empiezan marcados para conservar, y confirmar una serie no registra pares de comparación: preferir un peldaño de una escala de exposición, o un fotograma de un barrido, describe cómo se tomó la serie, no la fotografía.
-
-**Corregir una serie.** La geometría no puede recuperar la intención — un barrido deliberado y un barrido que sigue a un sujeto en movimiento son la misma medida — así que una tasa de error residual de cerca del 4 % es inherente. Una corrección es persistente y sobrevive a cada detección posterior, que borra y reescribe las etiquetas que había producido.
-
-Cada sentido del error tiene su propia superficie, porque se encuentran en sitios distintos. Un **falso positivo** se corrige al descartar, donde la serie está delante: la barra de acciones del grupo lleva un menú de corrección (solo en modo edición) con «No es un panorama» y el cambio entre simple y HDR. Un **olvido** se corrige desde la galería, porque un barrido no detectado no aparece en ningún grupo de descarte: seleccione sus fotogramas y use «Marcar como serie» → «Marcar como un panorama» en la barra de selección. Ambos se deshacen desde el aviso, y ambos exigen al menos dos fotogramas.
-
-Nada se reetiqueta de inmediato. Una corrección se guarda enseguida y queda pendiente — una insignia de reloj en la miniatura, una etiqueta «Corrección pendiente» en el grupo de descarte — porque la detección es una pasada por lotes sobre toda la biblioteca, demasiado costosa para lanzarla en cada clic. La página de descarte muestra un aviso con el número de correcciones en espera y un botón **Relanzar la detección**; el filtro «Correcciones de panorama» de la barra lateral (solo edición, en Refinar) las lista en toda la biblioteca, por sentido o ambas. Hasta esa ejecución, una serie suprimida sigue agrupada como panorama y una forzada sigue sin agrupar: la corrección es una nota para el detector, no una etiqueta en sí.
-
-**Ajustar la detección.** La pestaña Panorámicas, bajo Comparar, expone los umbrales realmente calibrados con series etiquetadas. Guardarlos no cambia nada por sí solo: la detección es una pasada por lotes sobre toda la biblioteca, así que la pestaña ofrece una nueva ejecución junto al guardado. Véase [CONFIGURATION.md](CONFIGURATION.md).
 
 ## Vista de carpetas
 
@@ -1220,9 +1220,11 @@ Los tipos TypeScript del cliente se generan a partir de ese esquema en `client/s
 | `POST /api/culling-groups/override_sequence` | `[Edition]` Registra una corrección persistente de qué es un conjunto de fotogramas. Cuerpo `{paths, kind?}`; `kind` es `panorama \| hdr_panorama`, u omitido para marcar los fotogramas como que no son en absoluto una panorámica. Se guarda en `photo_sequence_overrides` (sobrevive a que el detector la borre y reescriba `photos.sequence_*` en cada ejecución); surte efecto en la siguiente `POST /api/scan/detect_panoramas` |
 | `POST /api/culling-groups/clear_sequence_override` | `[Edition]` Elimina una corrección manual de secuencia para los fotogramas indicados, devolviéndolos al detector. Cuerpo `{paths}` |
 | `POST /api/culling-group/faces` | Insignias por cara (ojos abiertos/cerrados, expresión, confianza) de un grupo, en un solo lote |
+| `POST /api/culling-group/subjects` | Recortes de primer plano del sujeto (desde la caja de sujeto BiRefNet persistida) + nitidez normalizada al grupo para un grupo sin caras, en un solo lote. `has_subject:false` cuando una foto no tiene caja / tiene una caja casi a pantalla completa (no se ejecuta ningún modelo) |
 | `GET /api/photo/key_subject?path=` | De qué / de quién trata una foto: su cara mejor clasificada o, si no, su caja de saliencia persistida, como caja + centro `normalized_frame_xyxy`. Se resuelve en cada petición a partir de columnas almacenadas (sin ejecutar ningún modelo ni cachear nada); `kind:"none"` cuando no existe ninguna de las dos |
 | `POST /api/photos/key_subjects` | La misma respuesta para hasta 1000 rutas en una sola llamada (`key_subjects_by_path`) — el objetivo del zoom del laboratorio y la insignia de persona principal. Toda ruta solicitada está presente; las desconocidas o invisibles vuelven como `kind:"none"` en lugar de faltar |
 | `POST /api/photos/keeper_hints` | Sugerencias por foto de "existe una foto mejor en este grupo" para la insignia de la galería/visor, agrupadas por `burst_group_id`. Cuerpo `{paths}`; devuelve `{path: {has_better, best_path, keeper_prob}}`. Depende del modelo — devuelve `{}` si no hay ninguna cabeza de clasificación de conservación entrenada |
+| `GET /api/photo/cull_preview?path=&style=` | `[Edition]` Renderiza el original de una foto a través de un estilo de darktable configurado (`--style`, limitado a `preview_max_edge`) para la vista previa del aspecto editado del laboratorio. Almacenado en caché en disco; 400 si el estilo es desconocido, 503 cuando darktable-cli no está disponible, 502 por fallo/tiempo de espera del renderizado |
 | `GET /api/scenes` | Escenas cronológicas de fotos líderes de ráfaga (exploración de solo lectura) |
 | `GET /api/filter_options/junk_kinds` | Tipos de basura detectados con su recuento (excluye el centinela `not_junk`) para los chips de Limpieza de basura |
 | `POST /api/photo/clear_junk` | `[Edition]` Conserva un candidato de basura — restablece su `junk_kind` a `not_junk` para que salga de la cola de forma permanente. Cuerpo `{photo_path}` |
@@ -1288,6 +1290,8 @@ Los tipos TypeScript del cliente se generan a partir de ese esquema en `client/s
 |----------|-------------|
 | `GET /api/download/options` | Tipos de descarga disponibles para una foto (`path`, opcional `is_shared`) |
 | `GET /api/download` | Descargar una foto (`path`, `type=original\|darktable\|raw`, opcional `profile`) |
+| `GET /api/photo/social_crop` | `[Edition]` Descargar el JPEG de resolución completa recortado para un preajuste de formato social (`path`, `preset`) |
+| `GET /api/photo/social_crop/preview` | `[Edition]` Devolver solo el rectángulo de recorte normalizado + la fuente del encuadre para un preajuste (`path`, `preset`) — sin decodificar el original |
 
 **Tipos de descarga:**
 

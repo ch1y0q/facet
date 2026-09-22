@@ -369,8 +369,7 @@ source venv/bin/activate
 #    Auch Ihre KARTE zählt, nicht nur der Treiber: cu128 liefert keine Kernel
 #    unterhalb von sm_75, daher benötigt eine Maxwell-, Pascal- oder Volta-Karte
 #    (GTX 900/10-Serie, Titan V) selbst mit einem CUDA-12.8-Treiber cu126.
-#    install.sh wendet diese Untergrenze automatisch an; prüfen Sie Ihre mit
-#    `nvidia-smi --query-gpu=compute_cap --format=csv`.
+#    install.sh wendet diese Untergrenze automatisch an; prüfen Sie Ihre mit `nvidia-smi --query-gpu=compute_cap --format=csv`.
 #    Im Zweifel kopieren Sie den Befehl von https://pytorch.org/get-started/locally/
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 
@@ -630,7 +629,6 @@ Dokumentation verwendete Kennzeichnungen:
 | SigLIP-2-Embeddings | ja | `16gb`/`24gb` | — | — |
 | VLM-Tagging (Qwen3.5) | ja | `16gb`/`24gb` | — | — |
 | Kompositionsmuster (SAMP-Net) | optional | beliebig (`legacy` = CPU) | — | — |
-| Komposition (Qwen2-VL) | ja | `24gb` | — | — |
 | Motiverkennung (BiRefNet) | optional | beliebig (`legacy` = CPU) | — | — |
 | KI-Beschreibungen (erzeugen / ansehen) | ja | `16gb`/`24gb` | — | — |
 | KI-Beschreibungen (bearbeiten) | ja | `16gb`/`24gb` | edition | — |

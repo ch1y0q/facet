@@ -312,20 +312,18 @@ Si no se define ninguna, `facet.py`, `database.py`, `tag_existing.py`, `diagnost
 El visor `viewer.py` y el servidor `api/` que arranca nunca dan ese rodeo por el directorio de trabajo: solo resuelven `FACET_CONFIG` y, si no está, el archivo junto a la instalación — nunca un `scoring_config.json` que ande suelto en el directorio desde el que se lanzan. Esto importa porque la configuración del visor es la que lleva las contraseñas del operador: arrancarlo desde dentro de una fototeca no recoge la configuración de esta, y si tampoco hay ninguna junto a la instalación, cae en silencio en los valores predeterminados distribuidos — un `viewer.edition_password` vacío que deja entonces cada ruta servida de forma anónima.
 
 ```bash
-# 1. --config manda sobre todo lo demás. Un archivo que falte aquí es un ERROR,
-#    no una anulación vacía.
-python facet.py --config /srv/facet/boda.json /photos/boda
+# 1. --config manda sobre todo lo demás. Un archivo que falte aquí es un ERROR, no una anulación vacía.
+python facet.py --config /srv/facet/wedding.json /photos/wedding
 
 # 2. $FACET_CONFIG aporta la ruta predeterminada si se omite --config (Docker lo define).
 export FACET_CONFIG=/config/scoring_config.json
 python facet.py /photos            # lee /config/scoring_config.json
-python facet.py --config otro.json /photos   # --config sigue mandando
+python facet.py --config other.json /photos   # --config sigue mandando
 
 # 3. Ninguna de las dos: gana una configuración del DIRECTORIO DE TRABAJO para las
-#    herramientas de línea de comandos, así una fototeca puede llevar la suya.
-#    viewer.py no tiene este paso, ver más abajo.
-cd /photos/sesion-cliente        # contiene su propio scoring_config.json
-python /opt/facet/facet.py .     # puntuado con /photos/sesion-cliente/scoring_config.json
+#    herramientas CLI, así una fototeca puede tener la suya; viewer.py no tiene este paso -- ver más abajo.
+cd /photos/client-shoot          # contiene su propio scoring_config.json
+python /opt/facet/facet.py .     # puntuado con /photos/client-shoot/scoring_config.json
 
 # 4. Ninguna de las dos y aquí no hay nada: recurre al archivo junto a la instalación.
 cd /tmp
@@ -333,7 +331,7 @@ python /opt/facet/facet.py /photos   # lee /opt/facet/scoring_config.json
                                      # si falta allí, funciona con los valores por defecto
 
 # 5. viewer.py nunca da ese rodeo por el directorio de trabajo, a diferencia de los casos 1 a 4.
-cd /photos/sesion-cliente        # contiene su propio scoring_config.json -- irrelevante aquí
+cd /photos/client-shoot          # contiene su propio scoring_config.json -- irrelevante aquí
 python /opt/facet/viewer.py      # sigue leyendo /opt/facet/scoring_config.json (o $FACET_CONFIG)
 ```
 

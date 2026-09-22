@@ -258,6 +258,22 @@ Usa il **cursore della soglia di somiglianza** (0–90%) per controllare quanto 
 
 I filtri attivi sono mostrati come chip rimovibili con i relativi conteggi in cima alla galleria.
 
+## Panorami e bracket di esposizione
+
+I fotogrammi di un panorama sono stati scattati per essere uniti e quelli di un bracket per essere fusi: né gli uni né gli altri sono scatti in competizione. Il rilevamento delle raffiche non coglie la differenza — arrivano a pochi secondi l'uno dall'altro, da una fotocamera, a una focale — e senza questo li raggruppa e ne nasconde tutti tranne uno, scelto con un criterio che per una panoramica non significa nulla.
+
+**Nella galleria.** «Migliore del bracket» e «Migliore del panorama» (attivi per impostazione predefinita) comprimono ogni serie dietro un fotogramma rappresentativo: l'esposizione di base per un bracket, il fotogramma centrale per un panorama. Quel fotogramma porta una piccola icona in basso, accanto alla stella e al cuore, che indica che cosa rappresenta — panoramica semplice, panoramica HDR o bracket — con un suggerimento. L'icona compare solo finché il filtro corrispondente nasconde davvero il resto della serie.
+
+**Nella selezione.** Il menu di granularità offre «Bracket di esposizione», «Panorami» e «Panorami HDR» come flussi propri, mai uniti in «Tutto». Ogni fotogramma parte contrassegnato da tenere, e confermare una serie non registra coppie di confronto: preferire un gradino di una scala di esposizione, o un fotogramma di una panoramica, descrive come è stata scattata la serie, non la fotografia.
+
+**Correggere una serie.** La geometria non può ricostruire l'intenzione — una panoramica deliberata e un panning che segue un soggetto in movimento sono la stessa misura — quindi un tasso di errore residuo intorno al 4 % è inerente. Una correzione è persistente e sopravvive a ogni rilevamento successivo, che cancella e riscrive le etichette che aveva prodotto.
+
+Le due direzioni dell'errore hanno ciascuna la propria superficie, perché si incontrano in punti diversi. Un **falso positivo** si corregge nella selezione, dove la serie è davanti agli occhi: la barra delle azioni del gruppo porta un menu di correzione (solo in modalità edizione) con «Non è un panorama» e il passaggio tra semplice e HDR. Una **mancanza** si corregge dalla galleria, perché una panoramica non rilevata non compare in alcun gruppo di selezione: seleziona i fotogrammi e usa «Segna come serie» → «Segna come un panorama» nella barra di selezione. Entrambe si annullano dalla notifica, ed entrambe richiedono almeno due fotogrammi.
+
+Nulla viene rietichettato subito. Una correzione è salvata immediatamente e segnata in attesa — un badge orologio sulla miniatura, un chip «Correzione in attesa» sul gruppo — perché il rilevamento è una passata batch sull'intera libreria, troppo costosa per essere lanciata a ogni clic. La pagina di selezione mostra un banner che conta le correzioni in attesa, con accanto **Rilancia il rilevamento**; il filtro «Correzioni panorama» nella barra laterale (solo edizione, sotto Affina) le elenca su tutta la libreria, per direzione o entrambe. Fino a quella passata, una serie soppressa resta raggruppata come panorama e una forzata resta non raggruppata: la correzione è una nota per il rilevatore, non un'etichetta a sé.
+
+**Regolare il rilevamento.** La scheda Panorami, sotto Confronta, espone le soglie realmente calibrate su serie etichettate. Salvarle non cambia nulla di per sé: il rilevamento è una passata batch sull'intera libreria, quindi la scheda offre un rilancio accanto al salvataggio. Vedi [CONFIGURATION.md](CONFIGURATION.md).
+
 ## Gestione delle persone
 
 > La consultazione delle persone è aperta a tutti i visualizzatori; rinominare, unire, cambiare gli avatar e assegnare i volti richiede `[Edition]`.
@@ -479,22 +495,6 @@ API: vedi la sezione [Endpoint API](#endpoint-api) più sotto.
 ### Configurazione
 
 Vedi [Configurazione — Capsule](CONFIGURATION.md#capsules) per tutte le impostazioni.
-
-## Panorami e bracket di esposizione
-
-I fotogrammi di un panorama sono stati scattati per essere uniti e quelli di un bracket per essere fusi: né gli uni né gli altri sono scatti in competizione. Il rilevamento delle raffiche non coglie la differenza — arrivano a pochi secondi l'uno dall'altro, da una fotocamera, a una focale — e senza questo li raggruppa e ne nasconde tutti tranne uno, scelto con un criterio che per una panoramica non significa nulla.
-
-**Nella galleria.** «Migliore del bracket» e «Migliore del panorama» (attivi per impostazione predefinita) comprimono ogni serie dietro un fotogramma rappresentativo: l'esposizione di base per un bracket, il fotogramma centrale per un panorama. Quel fotogramma porta una piccola icona in basso, accanto alla stella e al cuore, che indica che cosa rappresenta — panoramica semplice, panoramica HDR o bracket — con un suggerimento. L'icona compare solo finché il filtro corrispondente nasconde davvero il resto della serie.
-
-**Nella selezione.** Il menu di granularità offre «Bracket di esposizione», «Panorami» e «Panorami HDR» come flussi propri, mai uniti in «Tutto». Ogni fotogramma parte contrassegnato da tenere, e confermare una serie non registra coppie di confronto: preferire un gradino di una scala di esposizione, o un fotogramma di una panoramica, descrive come è stata scattata la serie, non la fotografia.
-
-**Correggere una serie.** La geometria non può ricostruire l'intenzione — una panoramica deliberata e un panning che segue un soggetto in movimento sono la stessa misura — quindi un tasso di errore residuo intorno al 4 % è inerente. Una correzione è persistente e sopravvive a ogni rilevamento successivo, che cancella e riscrive le etichette che aveva prodotto.
-
-Le due direzioni dell'errore hanno ciascuna la propria superficie, perché si incontrano in punti diversi. Un **falso positivo** si corregge nella selezione, dove la serie è davanti agli occhi: la barra delle azioni del gruppo porta un menu di correzione (solo in modalità edizione) con «Non è un panorama» e il passaggio tra semplice e HDR. Una **mancanza** si corregge dalla galleria, perché una panoramica non rilevata non compare in alcun gruppo di selezione: seleziona i fotogrammi e usa «Segna come serie» → «Segna come un panorama» nella barra di selezione. Entrambe si annullano dalla notifica, ed entrambe richiedono almeno due fotogrammi.
-
-Nulla viene rietichettato subito. Una correzione è salvata immediatamente e segnata in attesa — un badge orologio sulla miniatura, un chip «Correzione in attesa» sul gruppo — perché il rilevamento è una passata batch sull'intera libreria, troppo costosa per essere lanciata a ogni clic. La pagina di selezione mostra un banner che conta le correzioni in attesa, con accanto **Rilancia il rilevamento**; il filtro «Correzioni panorama» nella barra laterale (solo edizione, sotto Affina) le elenca su tutta la libreria, per direzione o entrambe. Fino a quella passata, una serie soppressa resta raggruppata come panorama e una forzata resta non raggruppata: la correzione è una nota per il rilevatore, non un'etichetta a sé.
-
-**Regolare il rilevamento.** La scheda Panorami, sotto Confronta, espone le soglie realmente calibrate su serie etichettate. Salvarle non cambia nulla di per sé: il rilevamento è una passata batch sull'intera libreria, quindi la scheda offre un rilancio accanto al salvataggio. Vedi [CONFIGURATION.md](CONFIGURATION.md).
 
 ## Vista cartelle
 
@@ -1221,9 +1221,11 @@ I tipi TypeScript del client sono generati da questo schema in `client/src/app/c
 | `POST /api/culling-groups/override_sequence` | `[Edition]` Registra una correzione persistente su cosa sia una serie di fotogrammi. Corpo `{paths, kind?}`; `kind` è `panorama \| hdr_panorama` oppure omesso per contrassegnare i fotogrammi come non facenti affatto parte di un panorama. Finisce in `photo_sequence_overrides` (sopravvive alla cancellazione e riscrittura di `photos.sequence_*` da parte del rilevatore a ogni esecuzione); ha effetto alla successiva `POST /api/scan/detect_panoramas` |
 | `POST /api/culling-groups/clear_sequence_override` | `[Edition]` Rimuove una correzione manuale della sequenza per i fotogrammi indicati, restituendoli al rilevatore. Corpo `{paths}` |
 | `POST /api/culling-group/faces` | Badge per volto (occhi aperti/chiusi, espressione, confidenza) per un gruppo, in un'unica chiamata batch |
+| `POST /api/culling-group/subjects` | Ritagli di primo piano del soggetto (dalla box del soggetto BiRefNet persistita) + nitidezza normalizzata sul gruppo per un gruppo senza volti, in un'unica chiamata batch. `has_subject:false` quando una foto non ha una box / ha una box quasi a schermo intero (nessun modello viene eseguito) |
 | `GET /api/photo/key_subject?path=` | Di cosa / di chi parla una foto: il suo volto meglio classificato, altrimenti la sua box di salienza persistita, come box + centro `normalized_frame_xyxy`. Risolto a ogni richiesta dalle colonne memorizzate (nessun modello, nessuna cache); `kind:"none"` quando non esiste né l'uno né l'altra |
 | `POST /api/photos/key_subjects` | La stessa risposta per un massimo di 1000 percorsi in un'unica chiamata (`key_subjects_by_path`) — il bersaglio dello zoom della camera oscura e il badge della persona principale. Ogni percorso richiesto è presente; quelli sconosciuti o invisibili tornano come `kind:"none"` anziché mancare |
 | `POST /api/photos/keeper_hints` | Suggerimenti per foto "esiste una foto migliore in questo gruppo" per il badge di galleria/lightbox, raggruppati per `burst_group_id`. Corpo `{paths}`; restituisce `{path: {has_better, best_path, keeper_prob}}`. Dipende dal modello — restituisce `{}` se non è addestrato alcun keeper-ranking head |
+| `GET /api/photo/cull_preview?path=&style=` | `[Edition]` Rende l'originale di una foto attraverso uno stile darktable configurato (`--style`, limitato a `preview_max_edge`) per l'anteprima dell'aspetto elaborato della camera oscura. Memorizzato in cache su disco; 400 per stile sconosciuto, 503 quando darktable-cli non è disponibile, 502 per errore/timeout del rendering |
 | `GET /api/scenes` | Scene cronologiche delle foto guida delle raffiche (consultazione in sola lettura) |
 | `GET /api/filter_options/junk_kinds` | Tipi di scarto rilevati con conteggio (esclude la sentinella `not_junk`) per i chip di Pulizia degli scarti |
 | `POST /api/photo/clear_junk` | `[Edition]` Conserva un candidato scarto — riporta il suo `junk_kind` a `not_junk` così lascia la coda permanentemente. Corpo `{photo_path}` |
@@ -1289,6 +1291,8 @@ I tipi TypeScript del client sono generati da questo schema in `client/src/app/c
 |----------|-------------|
 | `GET /api/download/options` | Tipi di download disponibili per una foto (`path`, `is_shared` facoltativo) |
 | `GET /api/download` | Scarica una foto (`path`, `type=original\|darktable\|raw`, `profile` facoltativo) |
+| `GET /api/photo/social_crop` | `[Edition]` Scarica il JPEG a piena risoluzione ritagliato per un preset di formato social (`path`, `preset`) |
+| `GET /api/photo/social_crop/preview` | `[Edition]` Restituisce solo il rettangolo di ritaglio normalizzato + la fonte dell'inquadratura per un preset (`path`, `preset`) — senza decodifica dell'originale |
 
 **Tipi di download:**
 

@@ -54,25 +54,14 @@ python facet.py --suggest-person-merges --merge-threshold 0.7  # Più restrittiv
 
 Apre il browser sulla pagina dei suggerimenti di unione.
 
-### Passo 4: Esaminare i suggerimenti di unione
+### Passo 4: Gestione nel visualizzatore
 
-L'interfaccia web all'indirizzo `/merge-suggestions` mostra coppie di cluster di persone che potrebbero essere lo stesso individuo:
+Il lavoro restante avviene nel visualizzatore web, seguendo il flusso **Estrarre → Raggruppare → Unire → Gestire**:
 
-- Regola il **cursore della soglia di somiglianza** per controllare quanto i suggerimenti debbano essere conservativi
-- Esamina ciascun suggerimento affiancato alle miniature dei volti
-- **Unione con un clic** per combinare due persone, oppure **unione in blocco** per elaborare più suggerimenti contemporaneamente
-- Disponibile anche tramite CLI: `python facet.py --suggest-person-merges --merge-threshold 0.7`
+- **Unisci** i cluster duplicati nella pagina Suggerimenti di unione.
+- **Gestisci** le persone (unire, unione in blocco, dividere, nascondere, rinominare, eliminare) nella pagina Gestisci persone.
 
-### Passo 5: Gestione manuale
-
-Nel visualizzatore web:
-- Accedi a `/persons` per la gestione delle persone
-- Unione: seleziona la persona di origine, clicca su quella di destinazione, conferma
-- Unione in blocco: seleziona più persone e uniscile in un'unica destinazione
-- Divisione: sposta un sottoinsieme dei volti di una persona in una nuova persona (se l'origine rimane vuota, viene eliminata)
-- Nascondi: contrassegna un cluster come `is_hidden` per escluderlo dall'elenco, dai filtri e dai suggerimenti di unione (reversibile)
-- Rinomina: clicca sul nome della persona per modificarlo in linea
-- Elimina: rimuovi il cluster della persona
+Vedi [Integrazione nel visualizzatore](#integrazione-nel-visualizzatore) per il riferimento completo dell'interfaccia.
 
 ## Configurazione
 

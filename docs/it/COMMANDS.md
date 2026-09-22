@@ -313,18 +313,17 @@ Il viewer `viewer.py` e il server `api/` che avvia non fanno mai questa deviazio
 
 ```bash
 # 1. --config prevale su tutto. Un file mancante qui è un ERRORE, non un override vuoto.
-python facet.py --config /srv/facet/matrimonio.json /photos/matrimonio
+python facet.py --config /srv/facet/wedding.json /photos/wedding
 
 # 2. $FACET_CONFIG fornisce il percorso predefinito se --config è omesso (Docker lo imposta).
 export FACET_CONFIG=/config/scoring_config.json
 python facet.py /photos            # legge /config/scoring_config.json
-python facet.py --config altro.json /photos   # --config prevale comunque
+python facet.py --config other.json /photos   # --config prevale comunque
 
 # 3. Nessuno dei due: vince una configurazione nella DIRECTORY DI LAVORO per gli
-#    strumenti a riga di comando, così una libreria fotografica può portarsi la propria.
-#    viewer.py non ha questo passaggio, vedi sotto.
-cd /photos/servizio-cliente      # contiene il proprio scoring_config.json
-python /opt/facet/facet.py .     # valutato con /photos/servizio-cliente/scoring_config.json
+#    strumenti CLI, così una libreria può avere la propria; viewer.py non ha questo passaggio -- vedi sotto.
+cd /photos/client-shoot          # contiene il proprio scoring_config.json
+python /opt/facet/facet.py .     # valutato con /photos/client-shoot/scoring_config.json
 
 # 4. Nessuno dei due e qui non c'è nulla: ripiego sul file accanto all'installazione.
 cd /tmp
@@ -332,7 +331,7 @@ python /opt/facet/facet.py /photos   # legge /opt/facet/scoring_config.json
                                      # se manca, gira sui valori predefiniti distribuiti
 
 # 5. viewer.py non fa mai questa deviazione per la directory di lavoro, a differenza dei casi 1-4.
-cd /photos/servizio-cliente      # contiene il proprio scoring_config.json -- qui irrilevante
+cd /photos/client-shoot          # contiene il proprio scoring_config.json -- qui irrilevante
 python /opt/facet/viewer.py      # legge comunque /opt/facet/scoring_config.json (o $FACET_CONFIG)
 ```
 
