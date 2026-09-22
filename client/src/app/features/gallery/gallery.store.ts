@@ -1018,6 +1018,40 @@ export class GalleryStore {
     );
   }
 
+  /**
+   * Drop deleted photos from local state without a refetch.
+   *
+   * `POST /api/photo/delete` removes the DB row immediately (decision 5), so
+   * by the time its response returns these rows are already gone server-side
+   * -- filtering them out here is correct, and the existing bulk-action
+   * pattern's `await this.store.loadPhotos()` refetch would be pure added
+   * latency for a delete specifically (decision 6 bullet 4).
+   */
+  removePhotos(paths: Iterable<string>): void {
+    const pathSet = new Set(paths);
+    if (pathSet.size === 0) return;
+    const before = this.photos().length;
+    this.photos.update(photos => photos.filter(p => !pathSet.has(p.path)));
+    const removed = before - this.photos().length;
+    this.total.update(total => Math.max(0, total - removed));
+    this.selectedPaths.update(selected => {
+      const next = new Set(selected);
+      for (const path of pathSet) next.delete(path);
+      return next;
+    });
+    // Under 'view' scope `excludedPaths` is what NARROWS the effective
+    // selection away from "everything" (selectionCount = total - excluded.size).
+    // Dropping a deleted path out of it WIDENS that selection back by one --
+    // which exactly cancels the `total` decrement above for a photo that was
+    // excluded, so selectionCount lands correctly whether the deleted photo
+    // was selected or excluded.
+    this.excludedPaths.update(excluded => {
+      const next = new Set(excluded);
+      for (const path of pathSet) next.delete(path);
+      return next;
+    });
+  }
+
   /** Fetch "a better shot exists in this group" hints and merge them in.
    *  Head-gated server-side: returns {} (a no-op) when no keeper head is
    *  trained, so the default gallery pays nothing. Best-effort, fire-and-forget. */

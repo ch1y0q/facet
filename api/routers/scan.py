@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from starlette.responses import StreamingResponse
 
-from api.auth import CurrentUser, create_access_token, decode_access_token, require_edition, require_superadmin
+from api.auth import CurrentUser, create_access_token, decode_access_token, require_edition, require_scan_access
 from api.config import VIEWER_CONFIG, FACET_SCRIPT, _CONFIG_PATH, get_all_scan_directories, get_user_directories, _photo_types_cache, _stats_cache
 from api.models.scan import (
     LibraryJobStartResponse,
@@ -138,7 +138,7 @@ class RecomputeRequest(BaseModel):
 @router.post("/start", response_model=ScanStartResponse, response_model_exclude_unset=True)
 def start_scan(
     body: ScanStartRequest,
-    user: CurrentUser = Depends(require_superadmin),
+    user: CurrentUser = Depends(require_scan_access),
 ):
     """Spawn a photo scan as a background subprocess.
 
@@ -218,7 +218,7 @@ def start_scan(
 @router.get("/status", response_model=ScanStatusResponse, response_model_exclude_unset=True)
 def scan_status(
     lines: int = Query(20),
-    user: CurrentUser = Depends(require_superadmin),
+    user: CurrentUser = Depends(require_scan_access),
 ):
     """Poll scan progress. Returns last N lines of output."""
     if not VIEWER_CONFIG.get('features', {}).get('show_scan_button', False):
@@ -229,32 +229,28 @@ def scan_status(
 
 @router.get("/stream_token", response_model=ScanStreamTokenResponse, response_model_exclude_unset=True)
 def scan_stream_token(
-    user: CurrentUser = Depends(require_superadmin),
+    user: CurrentUser = Depends(require_scan_access),
 ):
     """Mint a short-lived, single-purpose token for opening the SSE stream.
 
-    Header-authenticated (superadmin), so the long-lived JWT never travels in a
-    URL. The stream URL then carries only this 60-second token.
+    Header-authenticated (require_scan_access), so the long-lived JWT never
+    travels in a URL. The stream URL then carries only this 60-second token.
     """
     if not VIEWER_CONFIG.get('features', {}).get('show_scan_button', False):
         raise HTTPException(status_code=403, detail="Scan feature not enabled")
     token = create_access_token(
-        {'sub': user.user_id, 'role': 'superadmin', 'purpose': SCAN_STREAM_PURPOSE},
+        {'sub': user.user_id or '_legacy', 'purpose': SCAN_STREAM_PURPOSE},
         expires_delta=timedelta(seconds=SCAN_STREAM_TOKEN_TTL_SECONDS),
     )
     return {'token': token}
 
 
-def _verify_superadmin_token(token: Optional[str]) -> None:
+def _verify_scan_stream_token(token: Optional[str]) -> None:
     if not token:
         raise HTTPException(status_code=401, detail="Authentication required")
     payload = decode_access_token(token)
-    if (
-        not payload
-        or payload.get('role') != 'superadmin'
-        or payload.get('purpose') != SCAN_STREAM_PURPOSE
-    ):
-        raise HTTPException(status_code=403, detail="Superadmin access required")
+    if not payload or payload.get('purpose') != SCAN_STREAM_PURPOSE:
+        raise HTTPException(status_code=403, detail="Invalid or expired scan stream token")
 
 
 def _build_scan_snapshot(lines: int) -> dict:
@@ -281,7 +277,7 @@ async def scan_stream(
     minted by GET /stream_token; the long-lived session JWT is rejected."""
     if not VIEWER_CONFIG.get('features', {}).get('show_scan_button', False):
         raise HTTPException(status_code=403, detail="Scan feature not enabled")
-    _verify_superadmin_token(token)
+    _verify_scan_stream_token(token)
 
     async def event_generator():
         import time as _time
@@ -331,7 +327,7 @@ async def scan_stream(
 
 @router.get("/directories", response_model=ScanDirectoriesResponse, response_model_exclude_unset=True)
 def scan_directories(
-    user: CurrentUser = Depends(require_superadmin),
+    user: CurrentUser = Depends(require_scan_access),
 ):
     """List all configured directories available for scanning."""
     if not VIEWER_CONFIG.get('features', {}).get('show_scan_button', False):

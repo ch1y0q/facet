@@ -32,6 +32,21 @@ export const SEQUENCE_KIND_LABELS: Record<string, string> = {
  */
 export const SUPPRESSED_OVERRIDE = 'suppressed';
 
+/**
+ * Sets whose frames were shot to be combined: kept whole by default, and never
+ * a source of comparison pairs. Shared by every surface that must treat a
+ * bracket/panorama/hdr_panorama set as a unit -- the gallery's and
+ * photo-detail's delete guards (a lone frame from one of these sets cannot be
+ * deleted without pulling in the rest), and the culling darkroom's own
+ * `_KEEP_WHOLE_KINDS`.
+ *
+ * Not a `SequenceKind[]`: that type is narrower, covering only the kinds a
+ * manual correction can FORCE a set to become (`SequenceOverrideService`) --
+ * `bracket` is never one of those, since a bracket's membership is a physical
+ * fact of the exposures (`sequence_ev_offset`), not a movable override.
+ */
+export const SEQUENCE_KINDS_KEPT_WHOLE: readonly string[] = ['bracket', 'panorama', 'hdr_panorama'];
+
 /** Material icon for a photo's sequence kind, or '' when it belongs to no set. */
 @Pipe({ name: 'sequenceKindIcon', standalone: true })
 export class SequenceKindIconPipe implements PipeTransform {

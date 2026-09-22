@@ -2285,6 +2285,18 @@
       "kind_duplicate": "Duplicato",
       "open_in_gallery": "Apri questo gruppo nella galleria",
       "member_position": "Fotogramma {position} di {count}"
+    },
+    "delete": {
+      "button_label": "Elimina",
+      "confirm_title": "Eliminare questa foto?",
+      "confirm_body": "Il file viene inviato al cestino del sistema operativo. Resta recuperabile finché non lo svuoti.",
+      "confirm_body_with_companion": "Il file e il suo RAW/XMP associato vengono inviati al cestino del sistema operativo. Restano recuperabili finché non lo svuoti.",
+      "confirm_body_with_siblings": "Ogni fotogramma di questa serie viene inviato al cestino del sistema operativo. Restano recuperabili finché non lo svuoti.",
+      "confirm_body_bracket_refused": "Questo fotogramma rappresenta il suo bracketing. Eliminarlo da solo è rifiutato — seleziona «Includi tutta la serie» per eliminare tutti i fotogrammi insieme.",
+      "include_companions": "Includi RAW / XMP associato",
+      "include_siblings": "Includi tutta la serie",
+      "success": "Foto inviata al cestino",
+      "error": "Eliminazione non riuscita"
     }
   },
   "photo": {
@@ -2345,7 +2357,13 @@
     "apply": "Applica",
     "cancel": "Annulla",
     "done": "Scarto applicato",
-    "error": "Scarto non riuscito"
+    "error": "Scarto non riuscito",
+    "delete_action": "Elimina…",
+    "delete_confirm_title": "Eliminare le foto?",
+    "delete_confirm_body": "{count} foto verranno inviate al cestino del sistema operativo. Restano recuperabili finché non lo svuoti.",
+    "delete_partial_result": "{deleted} eliminate, {failed} fallite",
+    "delete_failed": "Eliminazione non riuscita — nulla è stato inviato al cestino",
+    "delete_disabled_view_scope_tooltip": "Seleziona le foto esplicitamente per eliminarle — qui non è possibile usare una selezione dell'intera vista"
   },
   "shortcuts": {
     "title": "Scorciatoie da tastiera",

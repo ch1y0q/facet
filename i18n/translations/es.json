@@ -2285,6 +2285,18 @@
       "kind_duplicate": "Duplicado",
       "open_in_gallery": "Abrir este grupo en la galería",
       "member_position": "Fotograma {position} de {count}"
+    },
+    "delete": {
+      "button_label": "Eliminar",
+      "confirm_title": "¿Eliminar esta foto?",
+      "confirm_body": "El archivo se envía a la papelera del sistema operativo. Permanece recuperable hasta que la vacíes.",
+      "confirm_body_with_companion": "El archivo y su RAW/XMP asociado se envían a la papelera del sistema operativo. Permanecen recuperables hasta que la vacíes.",
+      "confirm_body_with_siblings": "Cada fotograma de esta serie se envía a la papelera del sistema operativo. Permanecen recuperables hasta que la vacíes.",
+      "confirm_body_bracket_refused": "Este fotograma representa su horquillado. Eliminarlo solo se rechaza — marca «Incluir toda la serie» para eliminar todos los fotogramas juntos.",
+      "include_companions": "Incluir RAW / XMP asociado",
+      "include_siblings": "Incluir toda la serie",
+      "success": "Foto enviada a la papelera",
+      "error": "Error al eliminar"
     }
   },
   "photo": {
@@ -2345,7 +2357,13 @@
     "apply": "Aplicar",
     "cancel": "Cancelar",
     "done": "Descarte aplicado",
-    "error": "Error al descartar"
+    "error": "Error al descartar",
+    "delete_action": "Eliminar…",
+    "delete_confirm_title": "¿Eliminar las fotos?",
+    "delete_confirm_body": "{count} fotos se enviarán a la papelera del sistema operativo. Permanecen recuperables hasta que la vacíes.",
+    "delete_partial_result": "{deleted} eliminadas, {failed} fallidas",
+    "delete_failed": "Error al eliminar — no se envió nada a la papelera",
+    "delete_disabled_view_scope_tooltip": "Selecciona las fotos explícitamente para eliminarlas — aquí no se puede usar una selección de toda la vista"
   },
   "shortcuts": {
     "title": "Atajos de teclado",

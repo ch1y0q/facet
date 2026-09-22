@@ -13,6 +13,7 @@ export type SheetAction =
   | { kind: 'compare' }
   | { kind: 'export' }
   | { kind: 'cull' }
+  | { kind: 'delete' }
   | { kind: 'rate'; rating: number }
   | { kind: 'mark-panorama'; sequenceKind: 'panorama' | 'hdr_panorama' }
   | { kind: 'album'; albumId: number }
@@ -28,6 +29,10 @@ export interface GalleryActionsSheetData {
   downloadProfiles: string[];
   /** Whether the selection size is within the compare surface's pane bounds. */
   canCompare: boolean;
+  /** Gates the delete entry -- `_cull_capabilities.trash_available`, never the
+   *  raw `allow_trash` flag (a button gated on that alone would 400 on an
+   *  install where the flag is on but `send2trash` isn't installed). */
+  trashAvailable: boolean;
 }
 
 /** Touch-friendly bulk-actions sheet replacing the cramped mobile action bar. */
@@ -85,6 +90,12 @@ export interface GalleryActionsSheetData {
           <mat-icon aria-hidden="true">folder_move</mat-icon>
           {{ I18N.cull.action | translate }}
         </button>
+        @if (data.trashAvailable) {
+          <button class="flex items-center gap-3 w-full px-4 py-3 text-sm text-left hover:bg-white/10 cursor-pointer" (click)="pick({ kind: 'delete' })">
+            <mat-icon aria-hidden="true">delete</mat-icon>
+            {{ I18N.cull.delete_action | translate }}
+          </button>
+        }
         <button class="flex items-center gap-3 w-full px-4 py-3 text-sm text-left hover:bg-white/10 cursor-pointer" (click)="pick({ kind: 'mark-panorama', sequenceKind: 'panorama' })">
           <mat-icon aria-hidden="true">{{ 'panorama' | sequenceKindIcon }}</mat-icon>
           {{ I18N.gallery.selection.mark_panorama | translate }}

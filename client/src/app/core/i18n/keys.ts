@@ -2302,6 +2302,18 @@ export const I18N = {
       open_in_gallery: "photo_detail.set.open_in_gallery",
       member_position: "photo_detail.set.member_position",
     },
+    delete: {
+      button_label: "photo_detail.delete.button_label",
+      confirm_title: "photo_detail.delete.confirm_title",
+      confirm_body: "photo_detail.delete.confirm_body",
+      confirm_body_with_companion: "photo_detail.delete.confirm_body_with_companion",
+      confirm_body_with_siblings: "photo_detail.delete.confirm_body_with_siblings",
+      confirm_body_bracket_refused: "photo_detail.delete.confirm_body_bracket_refused",
+      include_companions: "photo_detail.delete.include_companions",
+      include_siblings: "photo_detail.delete.include_siblings",
+      success: "photo_detail.delete.success",
+      error: "photo_detail.delete.error",
+    },
   },
   photo: {
     category_override: {
@@ -2362,6 +2374,12 @@ export const I18N = {
     cancel: "cull.cancel",
     done: "cull.done",
     error: "cull.error",
+    delete_action: "cull.delete_action",
+    delete_confirm_title: "cull.delete_confirm_title",
+    delete_confirm_body: "cull.delete_confirm_body",
+    delete_partial_result: "cull.delete_partial_result",
+    delete_failed: "cull.delete_failed",
+    delete_disabled_view_scope_tooltip: "cull.delete_disabled_view_scope_tooltip",
   },
   shortcuts: {
     title: "shortcuts.title",

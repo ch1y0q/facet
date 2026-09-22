@@ -25,7 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from api.auth import CurrentUser, require_edition
-from api.config import VIEWER_CONFIG, cull_allow_trash, get_all_scan_directories
+from api.config import VIEWER_CONFIG, cull_allow_trash, get_all_scan_directories, invalidate_stats_cache
 from api.database import get_db
 from api.db_helpers import (
     PANORAMA_KINDS_SQL,
@@ -33,15 +33,17 @@ from api.db_helpers import (
     get_preference_columns,
     get_visibility_clause,
 )
-from api.models.scan import CullApplyResponse
+from api.models.scan import CullApplyResponse, PhotoDeleteResponse
 from api.path_validation import resolve_photo_disk_path
 from api.raw_processing import find_companion_raw
+from db.maintenance import delete_photo_rows
 from processing.xmp_export import (
     FaceRegion,
     XmpRating,
     person_names_from_regions,
     write_metadata,
 )
+from utils.sequence import BRACKET as BRACKET_KIND
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +158,28 @@ class CullApplyRequest(_PathsOrFiltersRequest):
     # widening a destructive move/trash to cover it needs explicit consent.
     # Unlike include_companions this is DB-derived (sequence_kind +
     # sequence_group_id), not a same-stem disk lookup.
+    include_sequence_siblings: bool = False
+    dry_run: bool = True
+
+
+# POST /api/photo/delete's request. Deliberately does NOT subclass
+# _PathsOrFiltersRequest: unlike cull, delete removes the DB row immediately,
+# so a filter-driven request is the one shape that could trash an unbounded
+# set with no server-side cap on the resolved target (decision 8). Explicit
+# paths only, capped like every other paths-bearing request in this module.
+class PhotoDeleteRequest(BaseModel):
+    paths: list[str] = Field(max_length=10000)
+    # Off by default: deleting a derived JPEG must not silently trash its
+    # untouched companion RAW or darktable .xmp. Opt in to remove a shot whole.
+    include_companions: bool = False
+    # Off by default too, for the same reason: a bracket/panorama sibling is a
+    # separate photo row that the gallery hides by default, so silently
+    # widening a destructive delete to cover it needs explicit consent.
+    # Matches CullApplyRequest's field of the same name: EVERY visible
+    # requested path widens to every frame sharing its (sequence_kind,
+    # sequence_group_id) -- panoramas, brackets, and any other kind alike.
+    # It is also what unblocks a refused bracket-lead delete (decision 7),
+    # since that refusal now simply falls out of the general widening.
     include_sequence_siblings: bool = False
     dry_run: bool = True
 
@@ -572,7 +596,7 @@ def _sequence_siblings(conn, group_keys, exclude_paths, user_id):
     return siblings
 
 
-def _reassign_dead_leads(conn, removed_db_paths, user_id):
+def _reassign_dead_leads(conn, removed_db_paths, user_id, commit: bool = True):
     """Re-pick a surviving frame as lead for any panorama-kind sequence group
     whose lead was just moved/trashed.
 
@@ -608,6 +632,15 @@ def _reassign_dead_leads(conn, removed_db_paths, user_id):
     touched by this request) is large. Both queries are visibility-scoped
     like every sibling helper in this file, and the dead-lead lookup is
     chunked at ``_PATH_QUERY_CHUNK`` since ``removed_db_paths`` is unbounded.
+
+    ``commit`` defaults to ``True`` so ``api_cull_apply``'s two call sites
+    (via ``_reassign_dead_leads_after_removal``, on its own private
+    connection) keep committing the re-pick in its own transaction,
+    unchanged. ``POST /api/photo/delete`` passes ``commit=False`` and issues
+    a single ``conn.commit()`` itself after also running ``delete_photo_rows``
+    on the SAME connection -- one transaction covering both writes, so a
+    crash between them cannot strand a re-picked lead pointing at a photo
+    whose row deletion never happened.
     """
     if not removed_db_paths:
         return
@@ -640,7 +673,8 @@ def _reassign_dead_leads(conn, removed_db_paths, user_id):
                 "UPDATE photos SET is_sequence_lead = 1 WHERE path = ?",
                 (survivors[len(survivors) // 2]["path"],),
             )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 def _reassign_dead_leads_after_removal(items, succeeded, user_id):
@@ -657,6 +691,71 @@ def _reassign_dead_leads_after_removal(items, succeeded, user_id):
     removed_db_paths = {db_path for db_path, fs in items if fs[0] in succeeded}
     with get_db() as reassign_conn:
         _reassign_dead_leads(reassign_conn, removed_db_paths, user_id)
+
+
+def _visible_photo_paths(conn, paths, user_id):
+    """The subset of ``paths`` that exist in ``photos`` AND are visible to
+    ``user_id``.
+
+    ``POST /api/photo/delete`` calls this FIRST, before ``_resolve_cull_files``
+    ever runs: ``_resolve_cull_files`` -> ``resolve_photo_disk_path`` checks
+    only scan-dir containment (itself conditional on
+    ``is_multi_user_enabled() or scan_dirs``) and ``os.path.isfile`` -- it
+    never consults ``photos`` or ``get_visibility_clause``. Calling it
+    directly on caller-supplied paths would let a request act on any path
+    resolvable on disk, in the DB or not, visible to this user or not.
+    """
+    if not paths:
+        return set()
+    vis_sql, vis_params = get_visibility_clause(user_id)
+    rows = _chunked_path_rows(
+        conn, paths,
+        sql_fn=lambda ph: f"SELECT path FROM photos WHERE path IN ({ph}) AND {vis_sql}",
+        params_fn=lambda chunk: chunk + vis_params,
+    )
+    return {r["path"] for r in rows}
+
+
+def _photo_membership(conn, paths):
+    """Which of ``paths`` exist in ``photos`` at all, ignoring visibility.
+
+    Used only to classify a path ``_visible_photo_paths`` dropped as
+    ``not_found`` (never in the DB) vs ``not_visible`` (in the DB, hidden from
+    this user) for ``POST /api/photo/delete``'s response.
+    """
+    if not paths:
+        return set()
+    rows = _chunked_path_rows(
+        conn, paths,
+        sql_fn=lambda ph: f"SELECT path FROM photos WHERE path IN ({ph})",
+        params_fn=lambda chunk: chunk,
+    )
+    return {r["path"] for r in rows}
+
+
+def _bracket_lead_paths(conn, paths, user_id):
+    """Visible requested paths that are a BRACKET-kind sequence lead.
+
+    A bracket's representative is its ``sequence_ev_offset = 0`` frame -- a
+    physical fact of the exposures, not a movable flag -- so unlike a
+    panorama lead there is no re-pick to fall back on once the row is gone.
+    ``POST /api/photo/delete`` refuses these outright unless the caller opts
+    into ``include_sequence_siblings``, in which case the whole bracket group
+    is deleted together with no re-pick attempted (decision 7: the set goes
+    entirely or not at all). Visibility-scoped like ``_visible_photo_paths``.
+    """
+    if not paths:
+        return set()
+    vis_sql, vis_params = get_visibility_clause(user_id)
+    rows = _chunked_path_rows(
+        conn, paths,
+        sql_fn=lambda ph: (
+            f"SELECT path FROM photos WHERE path IN ({ph}) AND is_sequence_lead = 1 "
+            f"AND sequence_kind = ? AND {vis_sql}"
+        ),
+        params_fn=lambda chunk: chunk + [BRACKET_KIND] + vis_params,
+    )
+    return {r["path"] for r in rows}
 
 
 def _reject_state_map(conn, paths, user_id):
@@ -806,6 +905,32 @@ def api_export_sidecars(
         return _write_sidecars_for_paths(conn, paths, user_id, body.overwrite)
 
 
+def _require_trash_available():
+    """Re-derive the OS-trash gate from server state, never trusted from the
+    client: off via config (403) or ``send2trash`` missing from the venv
+    (400). Shared by ``POST /api/cull/apply``'s ``trash_rejects`` branch and
+    ``POST /api/photo/delete`` -- both must refuse identically.
+
+    Returns the imported ``send2trash`` module.
+    """
+    if not cull_allow_trash(VIEWER_CONFIG):
+        raise HTTPException(status_code=403,
+                            detail="OS-trash is disabled — set viewer.cull.allow_trash to enable")
+    try:
+        import send2trash
+    except ImportError:
+        # This action's own import re-runs every request, so it recovers the
+        # moment the package lands in the venv -- but GET /api/config's
+        # trash_available flag (api/routers/gallery.py's HAS_SEND2TRASH) is a
+        # module-scope constant set once at process start, so the UI keeps
+        # hiding this action until the server restarts even though a retry
+        # here would now succeed. Tell the operator both things.
+        raise HTTPException(status_code=400,
+                            detail="send2trash ships with Facet — upgrade the image or run pip install send2trash, "
+                                    "then restart the server so the UI stops hiding this option")
+    return send2trash
+
+
 @router.post("/api/cull/apply", response_model=CullApplyResponse, response_model_exclude_unset=True)
 def api_cull_apply(
     body: CullApplyRequest,
@@ -923,21 +1048,7 @@ def api_cull_apply(
         return respond(False, errors, moved=moved)
 
     # trash_rejects
-    if not cull_allow_trash(VIEWER_CONFIG):
-        raise HTTPException(status_code=403,
-                            detail="OS-trash is disabled — set viewer.cull.allow_trash to enable")
-    try:
-        import send2trash
-    except ImportError:
-        # This action's own import re-runs every request, so it recovers the
-        # moment the package lands in the venv -- but GET /api/config's
-        # trash_available flag (api/routers/gallery.py's HAS_SEND2TRASH) is a
-        # module-scope constant set once at process start, so the UI keeps
-        # hiding this action until the server restarts even though a retry
-        # here would now succeed. Tell the operator both things.
-        raise HTTPException(status_code=400,
-                            detail="send2trash ships with Facet — upgrade the image or run pip install send2trash, "
-                                    "then restart the server so the UI stops hiding this option")
+    send2trash = _require_trash_available()
     if body.dry_run:
         return respond(True, [], would_trash=files)
     trashed = errors = 0
@@ -952,6 +1063,181 @@ def api_cull_apply(
             errors += 1
     _reassign_dead_leads_after_removal(items, succeeded, user_id)
     return respond(False, errors, trashed=trashed)
+
+
+@router.post("/api/photo/delete", response_model=PhotoDeleteResponse, response_model_exclude_unset=True)
+def api_photo_delete(
+    body: PhotoDeleteRequest,
+    user: CurrentUser = Depends(require_edition),
+):
+    """Send one or more photos to the OS trash and delete their DB rows
+    immediately.
+
+    OS-trash only, exactly like ``POST /api/cull/apply``'s ``trash_rejects``
+    action -- never a permanent delete. Gated behind ``viewer.cull.allow_trash``
+    (403 when off) and a live ``send2trash`` import (400 when missing), both
+    re-derived here rather than trusted from the client, exactly as
+    ``api_cull_apply`` does.
+
+    Default scope is the named file only: a companion RAW/XMP is reached only
+    with ``include_companions``, and a sequence sibling only with
+    ``include_sequence_siblings`` -- which behaves exactly as it does on
+    ``POST /api/cull/apply``: every visible requested path widens to every
+    frame sharing its ``(sequence_kind, sequence_group_id)``, panoramas,
+    brackets and any other kind alike (reported in ``sequence_siblings``).
+    Ungrouped photos (``sequence_kind IS NULL``) are unaffected by the flag.
+    Bounded server-side to paths this caller may actually see -- a path not
+    in ``photos``, or in it but not visible to this user, is reported
+    (``not_found`` / ``not_visible``) and never resolved to a disk file. A
+    frame carrying ``is_sequence_lead = 1`` in a BRACKET-kind group is refused
+    (``refused_bracket_lead``) unless ``include_sequence_siblings`` is set, in
+    which case its whole bracket group is deleted together (as a consequence
+    of the general widening above) with no re-pick attempted -- a bracket's
+    representative is its ``sequence_ev_offset = 0`` frame, a physical fact of
+    the exposures rather than a movable flag, so there is no partial way to
+    leave the set intact. A panorama lead instead re-picks a surviving sibling
+    as the new lead when it is deleted WITHOUT the flag (a survivor remains to
+    promote); with the flag, its whole group goes together and nothing
+    survives to promote. Either way the re-pick attempt runs BEFORE the row
+    delete (so the still-live rows are there to read) and in the SAME
+    transaction as the row delete, so a crash between the two writes can
+    never strand a re-picked lead pointing at a photo whose row deletion
+    never happened.
+
+    The response is per-path, not all-or-nothing: a partial ``send2trash``
+    failure leaves that path's row untouched in ``photos`` -- the row delete
+    is restricted to paths whose trash actually succeeded -- with the OS
+    error text recorded in ``errors``. If the commit covering the lead re-pick
+    and the row delete itself raises, the exception propagates as a 500;
+    trash has already succeeded for those paths by that point, so their rows
+    become "missing on disk," which the next rescan or
+    ``--cleanup-missing-photos`` reconciles -- an accepted edge (expected only
+    on a corrupted database), not a silent inconsistency.
+
+    A trashed companion (``include_companions``'s RAW/``.xmp``) that is ITSELF
+    a separate ``photos`` row is folded into ``deleted`` too, not a distinct
+    field: its file is gone the moment ``send2trash`` succeeds regardless of
+    whether the caller ever named or could see that row, so it is exactly as
+    deleted as any path the caller requested directly -- `deleted` already
+    means "row removed," not "row the caller named."
+
+    ``skipped`` carries a path that was visible, in ``photos``, and never
+    refused as a bracket lead, but whose file ``_resolve_cull_files`` could
+    not resolve on disk (already missing) -- neither trashed nor
+    row-deleted, so it is reported rather than silently dropped from every
+    bucket. Reconciling it is ``--cleanup-missing-photos``'s job, same as any
+    other missing-on-disk row.
+    """
+    send2trash = _require_trash_available()
+
+    user_id = user.user_id
+    removed_db_paths: set[str] = set()
+    with get_db() as conn:
+        visible = _visible_photo_paths(conn, body.paths, user_id)
+        missing_or_hidden = [p for p in body.paths if p not in visible]
+        in_db = _photo_membership(conn, missing_or_hidden)
+        not_found = [p for p in missing_or_hidden if p not in in_db]
+        not_visible = [p for p in missing_or_hidden if p in in_db]
+
+        visible_ordered = [p for p in body.paths if p in visible]
+        bracket_leads = _bracket_lead_paths(conn, visible_ordered, user_id)
+
+        refused_bracket_lead = []
+        action_paths = []
+        for p in visible_ordered:
+            if p in bracket_leads and not body.include_sequence_siblings:
+                refused_bracket_lead.append(p)
+                continue
+            action_paths.append(p)
+
+        # Same widening as CullApplyRequest's field of the same name: every
+        # frame sharing a requested path's (sequence_kind, sequence_group_id)
+        # -- panoramas, brackets, any other kind. A bracket lead's whole group
+        # going together (decision 7) falls out of this rather than being a
+        # special case; ungrouped photos are simply absent from group_keys.
+        sequence_siblings: list[str] = []
+        if body.include_sequence_siblings and action_paths:
+            group_keys = _sequence_group_keys(conn, action_paths, user_id)
+            sequence_siblings = _sequence_siblings(conn, group_keys, set(action_paths), user_id)
+            action_paths.extend(sequence_siblings)
+
+        items, skipped = _resolve_cull_files(action_paths, body.include_companions)
+        files = [f for _, fs in items for f in fs]
+
+        if body.dry_run:
+            return PhotoDeleteResponse(
+                dry_run=True, would_trash=files, deleted=[], not_found=not_found,
+                not_visible=not_visible, refused_bracket_lead=refused_bracket_lead,
+                sequence_siblings=sequence_siblings, skipped=skipped, trashed=0, errors={},
+            )
+
+        errors: dict[str, str] = {}
+        succeeded = set()
+        for src in files:
+            try:
+                send2trash.send2trash(src)
+                succeeded.add(src)
+            except OSError as ex:
+                logger.exception("Failed to trash %s", src)
+                errors[src] = str(ex)
+
+        # Restricted to paths whose PRIMARY file actually trashed -- a path
+        # whose trash failed keeps its row.
+        removed_db_paths = {db_path for db_path, fs in items if fs[0] in succeeded}
+
+        # A companion (RAW/.xmp) that trashed successfully may itself be a
+        # SEPARATE `photos` row (a RAW variant scanned independently of its
+        # JPEG) -- its file is gone the instant send2trash succeeds, whether
+        # or not ITS path was ever visible to this caller: visibility gated
+        # only the PRIMARY path the request named, and the companion follows
+        # the shot. `_photo_membership` ignores visibility for exactly this
+        # reason, so a companion belonging to another user's scope is still
+        # matched here and still removed -- its file is gone regardless of
+        # who could see it. Leaving such a row behind would strand it
+        # pointing at a trashed file, contradicting this endpoint's own
+        # "row deleted immediately" contract (no --cleanup-missing-photos
+        # needed).
+        companion_files_trashed = {f for _, fs in items for f in fs[1:] if f in succeeded}
+        if companion_files_trashed:
+            removed_db_paths |= _photo_membership(conn, list(companion_files_trashed))
+
+        _reassign_dead_leads(conn, removed_db_paths, user_id, commit=False)
+        delete_photo_rows(conn, list(removed_db_paths), preserve_auto_retrain_counters=True)
+        conn.commit()
+
+    if removed_db_paths:
+        # The gallery grid must not keep serving pre-delete counts for up to
+        # `cache_ttl_seconds` (default 1h) -- unlike the row delete itself,
+        # the in-process stats cache has no TTL-independent invalidation of
+        # its own.
+        invalidate_stats_cache()
+
+        # photos_vec (sqlite-vec) has no FK or trigger. Clean it best-effort
+        # OUTSIDE the request transaction -- the vector index is derived and
+        # rebuildable, and this must never fail the response for rows already
+        # committed gone.
+        try:
+            from db.connection import HAS_SQLITE_VEC, load_sqlite_vec
+            from db.vec import _vec_table_exists
+            with get_db() as vec_conn:
+                load_sqlite_vec(vec_conn)
+                if HAS_SQLITE_VEC and _vec_table_exists(vec_conn):
+                    placeholders = ",".join("?" * len(removed_db_paths))
+                    vec_conn.execute(
+                        f"DELETE FROM photos_vec WHERE path IN ({placeholders})",
+                        list(removed_db_paths),
+                    )
+                    vec_conn.commit()
+        except Exception:
+            logger.exception(
+                "Could not clean photos_vec entries after photo delete (rebuild with --populate-vec)"
+            )
+
+    return PhotoDeleteResponse(
+        dry_run=False, deleted=sorted(removed_db_paths), not_found=not_found,
+        not_visible=not_visible, refused_bracket_lead=refused_bracket_lead,
+        sequence_siblings=sequence_siblings, skipped=skipped, trashed=len(succeeded), errors=errors,
+    )
 
 
 def _validate_target_dir_required(target_dir):

@@ -1155,3 +1155,461 @@ class TestCullAllowTrashCoercion:
             expected_allow_trash = bool(raw_allow_trash)
             assert cull["allow_trash"] == expected_allow_trash
             assert cull["trash_available"] == (expected_allow_trash and package_present)
+
+
+def _remaining_paths(db):
+    """Every path still present in ``photos`` -- used by the delete tests to
+    assert a row is actually gone (or actually survived a partial failure)."""
+    conn = sqlite3.connect(db)
+    try:
+        return {r[0] for r in conn.execute("SELECT path FROM photos").fetchall()}
+    finally:
+        conn.close()
+
+
+class TestPhotoDelete:
+    """POST /api/photo/delete (api/routers/export.py:api_photo_delete).
+
+    Mirrors POST /api/cull/apply's trash_rejects action but removes the DB
+    row immediately instead of waiting for --cleanup-missing-photos, so the
+    ordering (trash -> panorama lead re-pick -> row delete -> commit, all in
+    one transaction) and the bounding (DB-membership + visibility, checked
+    BEFORE any path is resolved to disk) are the load-bearing behaviors here.
+    """
+
+    def test_delete_trashes_file_and_row_gone_immediately(self, client, tmp_path):
+        path = _make_file(tmp_path, "a.jpg")
+        db = _db(tmp_path, [(path, 0)])
+        fake_send2trash = mock.MagicMock()
+        fake_module = mock.Mock(send2trash=fake_send2trash)
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+            mock.patch.dict("sys.modules", {"send2trash": fake_module}),
+        ):
+            resp = client.post("/api/photo/delete", json={"paths": [path], "dry_run": False})
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["deleted"] == [path]
+            assert body["trashed"] == 1
+            assert fake_send2trash.call_args_list == [mock.call(path)]
+            assert path not in _remaining_paths(db)
+
+            # A second call for the same (now-gone) path must report it as
+            # not_found (decision 6's per-path partial result), never a 404 --
+            # the row is simply absent from `photos` at this point.
+            resp2 = client.post("/api/photo/delete", json={"paths": [path], "dry_run": False})
+        assert resp2.status_code == 200
+        body2 = resp2.json()
+        assert body2["not_found"] == [path]
+        assert body2["deleted"] == []
+
+    def test_dry_run_reports_would_trash_and_writes_nothing(self, client, tmp_path):
+        path = _make_file(tmp_path, "a.jpg")
+        db = _db(tmp_path, [(path, 0)])
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+        ):
+            resp = client.post("/api/photo/delete", json={"paths": [path]})  # dry_run defaults True
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["dry_run"] is True
+        assert body["would_trash"] == [path]
+        assert os.path.isfile(path)
+        assert path in _remaining_paths(db)
+
+    def test_not_found_path_never_reaches_disk_resolution(self, client, tmp_path):
+        """B3: a path that exists on disk but was never scanned into the DB
+        must come back as not_found and never be resolved/trashed."""
+        on_disk_not_scanned = _make_file(tmp_path, "ghost.jpg")
+        db = _db(tmp_path, [])
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+        ):
+            resp = client.post("/api/photo/delete", json={
+                "paths": [on_disk_not_scanned], "dry_run": False,
+            })
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["not_found"] == [on_disk_not_scanned]
+        assert body["deleted"] == []
+        assert os.path.isfile(on_disk_not_scanned)
+
+    def test_not_visible_path_reported_and_untouched(self, client, tmp_path):
+        """A path in the DB but scoped to another user under multi-user mode
+        must come back as not_visible, never not_found and never resolved."""
+        path = _make_file(tmp_path, "hidden.jpg")
+        db = _db(tmp_path, [(path, 0)])
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+            mock.patch("api.db_helpers.is_multi_user_enabled", return_value=True),
+            mock.patch("api.db_helpers.get_user_directories",
+                       return_value=[str(tmp_path / "someone_elses_dir")]),
+        ):
+            resp = client.post("/api/photo/delete", json={"paths": [path], "dry_run": False})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["not_visible"] == [path]
+        assert body["deleted"] == []
+        assert os.path.isfile(path)
+        assert path in _remaining_paths(db)
+
+    def test_paths_over_max_length_422(self, client, tmp_path):
+        db = _db(tmp_path, [])
+        with mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)):
+            resp = client.post("/api/photo/delete", json={"paths": ["x"] * 10001})
+        assert resp.status_code == 422
+
+    def test_panorama_lead_delete_repicks_surviving_lead_before_row_delete(self, client, tmp_path):
+        """B1: `_reassign_dead_leads` matches `is_sequence_lead = 1` against
+        the LIVE `photos` table -- if the row delete ran first, this would
+        match nothing. Asserted via a direct DB read inside THIS SAME test,
+        not a second request, to prove ordering rather than eventual
+        consistency."""
+        lead = _make_file(tmp_path, "lead.jpg")
+        f1 = _make_file(tmp_path, "f1.jpg")
+        f2 = _make_file(tmp_path, "f2.jpg")
+        db = _db(tmp_path, [
+            (lead, 0, {"sequence_kind": _PANORAMA, "sequence_group_id": 1, "is_sequence_lead": 1}),
+            (f1, 0, {"sequence_kind": _PANORAMA, "sequence_group_id": 1, "is_sequence_lead": 0}),
+            (f2, 0, {"sequence_kind": _PANORAMA, "sequence_group_id": 1, "is_sequence_lead": 0}),
+        ])
+        fake_send2trash = mock.MagicMock()
+        fake_module = mock.Mock(send2trash=fake_send2trash)
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+            mock.patch.dict("sys.modules", {"send2trash": fake_module}),
+        ):
+            resp = client.post("/api/photo/delete", json={"paths": [lead], "dry_run": False})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["deleted"] == [lead]
+        leads = _lead_paths(db, _PANORAMA, 1)
+        assert len(leads) == 1
+        assert leads[0] in (f1, f2)  # exactly one surviving frame promoted
+
+    def test_partial_trash_failure_restricts_row_delete_to_succeeded(self, client, tmp_path):
+        """G14: the row delete must be restricted to paths whose trash
+        actually succeeded -- a path whose OS trash call fails keeps its row,
+        with the OS error text surfaced per-path in `errors`."""
+        ok = _make_file(tmp_path, "ok.jpg")
+        bad = _make_file(tmp_path, "bad.jpg")
+        db = _db(tmp_path, [(ok, 0), (bad, 0)])
+
+        def fake_trash(path):
+            if path == bad:
+                raise OSError("disk full")
+
+        fake_module = mock.Mock(send2trash=mock.Mock(side_effect=fake_trash))
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+            mock.patch.dict("sys.modules", {"send2trash": fake_module}),
+        ):
+            resp = client.post("/api/photo/delete", json={"paths": [ok, bad], "dry_run": False})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["deleted"] == [ok]
+        assert "disk full" in body["errors"].get(bad, "")
+        remaining = _remaining_paths(db)
+        assert bad in remaining  # failed trash -> row survives
+        assert ok not in remaining  # succeeded trash -> row gone
+
+    def test_include_companions_deletes_companion_row_too(self, client, tmp_path):
+        """Finding 1/6 (2026-09-22 review): `include_companions` trashes a
+        companion RAW's file -- if that RAW is ALSO a separately-scanned
+        `photos` row (a.jpg + a.cr2 both scanned independently), its row
+        must be deleted too, not left behind orphaned and pointing at a
+        now-gone file. Covers the endpoint's previously-untested
+        `include_companions` path (all prior hits were on /api/cull/apply)."""
+        jpg = _make_file(tmp_path, "a.jpg")
+        raw = _make_file(tmp_path, "a.cr2")
+        db = _db(tmp_path, [(jpg, 0), (raw, 0)])
+        fake_send2trash = mock.MagicMock()
+        fake_module = mock.Mock(send2trash=fake_send2trash)
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+            mock.patch.dict("sys.modules", {"send2trash": fake_module}),
+        ):
+            resp = client.post("/api/photo/delete", json={
+                "paths": [jpg], "dry_run": False, "include_companions": True,
+            })
+        assert resp.status_code == 200
+        body = resp.json()
+        trashed_paths = sorted(c.args[0] for c in fake_send2trash.call_args_list)
+        assert trashed_paths == sorted([jpg, raw])
+        assert set(body["deleted"]) == {jpg, raw}
+        assert body["trashed"] == 2
+        assert _remaining_paths(db) == set()  # neither row orphaned
+
+    def test_missing_on_disk_file_reported_as_skipped(self, client, tmp_path):
+        """Finding 2 (2026-09-22 review): a path visible AND in `photos` but
+        whose file is missing on disk must land in `skipped` -- it is never
+        trashed and its row is never deleted, but it must not be silently
+        absent from every bucket (not_found/not_visible/refused_bracket_lead
+        cannot catch it either)."""
+        gone = str(tmp_path / "gone.jpg")  # never created on disk
+        ok = _make_file(tmp_path, "ok.jpg")
+        db = _db(tmp_path, [(ok, 0), (gone, 0)])
+        fake_send2trash = mock.MagicMock()
+        fake_module = mock.Mock(send2trash=fake_send2trash)
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+            mock.patch.dict("sys.modules", {"send2trash": fake_module}),
+        ):
+            resp = client.post("/api/photo/delete", json={"paths": [ok, gone], "dry_run": False})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["skipped"] == [gone]
+        assert body["deleted"] == [ok]
+        assert body["not_found"] == []
+        assert body["not_visible"] == []
+        remaining = _remaining_paths(db)
+        assert gone in remaining  # never trashed -> row survives
+        assert ok not in remaining
+
+    def test_delete_preserves_auto_retrain_counter_but_clears_other_cache(self, client, tmp_path):
+        """Finding 3/4 (2026-09-22 review): a single-photo delete must not
+        reset optimization.auto_retrain's per-scope "comparisons since last
+        train" counter (stats_cache key `auto_retrain_pending:<scope>`),
+        even though it still invalidates ordinary aggregates in the same
+        table (photo counts, similarity_groups, etc.)."""
+        path = _make_file(tmp_path, "a.jpg")
+        db = _db(tmp_path, [(path, 0)])
+        conn = sqlite3.connect(db)
+        conn.execute(
+            "INSERT INTO stats_cache (key, value, updated_at) VALUES (?, ?, ?)",
+            ("auto_retrain_pending:global", "47", 0),
+        )
+        conn.execute(
+            "INSERT INTO stats_cache (key, value, updated_at) VALUES (?, ?, ?)",
+            ("similarity_groups_x", "[]", 0),
+        )
+        conn.commit()
+        conn.close()
+
+        fake_send2trash = mock.MagicMock()
+        fake_module = mock.Mock(send2trash=fake_send2trash)
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+            mock.patch.dict("sys.modules", {"send2trash": fake_module}),
+        ):
+            resp = client.post("/api/photo/delete", json={"paths": [path], "dry_run": False})
+        assert resp.status_code == 200
+
+        conn = sqlite3.connect(db)
+        try:
+            rows = {r[0]: r[1] for r in conn.execute("SELECT key, value FROM stats_cache").fetchall()}
+        finally:
+            conn.close()
+        assert rows.get("auto_retrain_pending:global") == "47"  # survives
+        assert "similarity_groups_x" not in rows  # ordinary aggregate still wiped
+
+
+class TestPhotoDeleteBracketLead:
+    """Decision 7 / B2: a bracket's representative is its
+    `sequence_ev_offset = 0` frame, a physical fact of the exposures with no
+    re-pick to fall back on -- so deleting its lead without
+    `include_sequence_siblings` must be refused per-path, and with the flag
+    on must take the whole group together, with no lead promotion attempted.
+    """
+
+    def test_bracket_lead_refused_without_flag(self, client, tmp_path):
+        lead = _make_file(tmp_path, "lead.jpg")
+        sib = _make_file(tmp_path, "sib.jpg")
+        db = _db(tmp_path, [
+            (lead, 0, {"sequence_kind": _BRACKET, "sequence_group_id": 1,
+                       "sequence_ev_offset": 0.0, "is_sequence_lead": 1}),
+            (sib, 0, {"sequence_kind": _BRACKET, "sequence_group_id": 1,
+                      "sequence_ev_offset": 2.0}),
+        ])
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+        ):
+            resp = client.post("/api/photo/delete", json={
+                "paths": [lead], "dry_run": False, "include_sequence_siblings": False,
+            })
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["refused_bracket_lead"] == [lead]
+        assert body["deleted"] == []
+        assert os.path.isfile(lead)
+        assert os.path.isfile(sib)
+        remaining = _remaining_paths(db)
+        assert {lead, sib} <= remaining  # the whole set untouched, not just the lead
+
+    def test_bracket_lead_with_flag_deletes_whole_group(self, client, tmp_path):
+        lead = _make_file(tmp_path, "lead.jpg")
+        sib = _make_file(tmp_path, "sib.jpg")
+        db = _db(tmp_path, [
+            (lead, 0, {"sequence_kind": _BRACKET, "sequence_group_id": 1,
+                       "sequence_ev_offset": 0.0, "is_sequence_lead": 1}),
+            (sib, 0, {"sequence_kind": _BRACKET, "sequence_group_id": 1,
+                      "sequence_ev_offset": 2.0}),
+        ])
+        fake_send2trash = mock.MagicMock()
+        fake_module = mock.Mock(send2trash=fake_send2trash)
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+            mock.patch.dict("sys.modules", {"send2trash": fake_module}),
+        ):
+            resp = client.post("/api/photo/delete", json={
+                "paths": [lead], "dry_run": False, "include_sequence_siblings": True,
+            })
+        assert resp.status_code == 200
+        body = resp.json()
+        assert set(body["deleted"]) == {lead, sib}
+        assert body["refused_bracket_lead"] == []
+        assert _remaining_paths(db) == set()
+
+
+class TestPhotoDeleteSequenceSiblings:
+    """Adjudicated 2026-09-22: `include_sequence_siblings` means the SAME
+    thing here as on `/api/cull/apply` -- every visible requested path widens
+    to every frame sharing its `(sequence_kind, sequence_group_id)`, not just
+    a refused bracket lead. The bracket-lead refusal (TestPhotoDeleteBracketLead)
+    now falls out of this general widening rather than being a special case."""
+
+    def test_panorama_lead_with_flag_deletes_whole_group_no_repick(self, client, tmp_path):
+        """With the flag, a panorama lead's whole group goes together --
+        nothing survives to promote, so no re-pick is attempted."""
+        lead = _make_file(tmp_path, "lead.jpg")
+        f1 = _make_file(tmp_path, "f1.jpg")
+        f2 = _make_file(tmp_path, "f2.jpg")
+        db = _db(tmp_path, [
+            (lead, 0, {"sequence_kind": _PANORAMA, "sequence_group_id": 1, "is_sequence_lead": 1}),
+            (f1, 0, {"sequence_kind": _PANORAMA, "sequence_group_id": 1, "is_sequence_lead": 0}),
+            (f2, 0, {"sequence_kind": _PANORAMA, "sequence_group_id": 1, "is_sequence_lead": 0}),
+        ])
+        fake_send2trash = mock.MagicMock()
+        fake_module = mock.Mock(send2trash=fake_send2trash)
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+            mock.patch.dict("sys.modules", {"send2trash": fake_module}),
+        ):
+            resp = client.post("/api/photo/delete", json={
+                "paths": [lead], "dry_run": False, "include_sequence_siblings": True,
+            })
+        assert resp.status_code == 200
+        body = resp.json()
+        assert set(body["deleted"]) == {lead, f1, f2}
+        assert set(body["sequence_siblings"]) == {f1, f2}
+        assert _remaining_paths(db) == set()  # whole group gone, nothing left to promote
+
+    def test_ordinary_member_with_flag_pulls_in_siblings(self, client, tmp_path):
+        """The REQUESTED path need not be a lead -- widening applies to any
+        visible member of a sequence group."""
+        member = _make_file(tmp_path, "member.jpg")
+        sib = _make_file(tmp_path, "sib.jpg")
+        db = _db(tmp_path, [
+            (member, 0, {"sequence_kind": _PANORAMA, "sequence_group_id": 1, "is_sequence_lead": 0}),
+            (sib, 0, {"sequence_kind": _PANORAMA, "sequence_group_id": 1, "is_sequence_lead": 1}),
+        ])
+        fake_send2trash = mock.MagicMock()
+        fake_module = mock.Mock(send2trash=fake_send2trash)
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+            mock.patch.dict("sys.modules", {"send2trash": fake_module}),
+        ):
+            resp = client.post("/api/photo/delete", json={
+                "paths": [member], "dry_run": False, "include_sequence_siblings": True,
+            })
+        assert resp.status_code == 200
+        body = resp.json()
+        assert set(body["deleted"]) == {member, sib}
+        assert body["sequence_siblings"] == [sib]
+        assert _remaining_paths(db) == set()
+
+    def test_ordinary_member_without_flag_deletes_only_itself(self, client, tmp_path):
+        member = _make_file(tmp_path, "member.jpg")
+        sib = _make_file(tmp_path, "sib.jpg")
+        db = _db(tmp_path, [
+            (member, 0, {"sequence_kind": _PANORAMA, "sequence_group_id": 1, "is_sequence_lead": 0}),
+            (sib, 0, {"sequence_kind": _PANORAMA, "sequence_group_id": 1, "is_sequence_lead": 1}),
+        ])
+        fake_send2trash = mock.MagicMock()
+        fake_module = mock.Mock(send2trash=fake_send2trash)
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+            mock.patch.dict("sys.modules", {"send2trash": fake_module}),
+        ):
+            resp = client.post("/api/photo/delete", json={
+                "paths": [member], "dry_run": False, "include_sequence_siblings": False,
+            })
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["deleted"] == [member]
+        assert body["sequence_siblings"] == []
+        assert os.path.isfile(sib)
+        remaining = _remaining_paths(db)
+        assert sib in remaining
+        assert member not in remaining
+
+    def test_dry_run_reports_sequence_siblings(self, client, tmp_path):
+        lead = _make_file(tmp_path, "lead.jpg")
+        f1 = _make_file(tmp_path, "f1.jpg")
+        db = _db(tmp_path, [
+            (lead, 0, {"sequence_kind": _PANORAMA, "sequence_group_id": 1, "is_sequence_lead": 1}),
+            (f1, 0, {"sequence_kind": _PANORAMA, "sequence_group_id": 1, "is_sequence_lead": 0}),
+        ])
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+        ):
+            resp = client.post("/api/photo/delete", json={
+                "paths": [lead], "include_sequence_siblings": True,  # dry_run defaults True
+            })
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["dry_run"] is True
+        assert body["sequence_siblings"] == [f1]
+        assert set(body["would_trash"]) == {lead, f1}
+        assert os.path.isfile(lead)
+        assert os.path.isfile(f1)
+
+
+class TestPhotoDeleteGate:
+    """Same two-part refusal as /api/cull/apply's trash_rejects branch,
+    re-derived here rather than trusted from the client, and the same
+    edition-only role."""
+
+    def test_trash_disabled_403(self, client, tmp_path):
+        path = _make_file(tmp_path, "a.jpg")
+        db = _db(tmp_path, [(path, 0)])
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": False}}),
+        ):
+            resp = client.post("/api/photo/delete", json={"paths": [path], "dry_run": False})
+        assert resp.status_code == 403
+        assert os.path.isfile(path)
+
+    def test_missing_send2trash_400(self, client, tmp_path):
+        path = _make_file(tmp_path, "a.jpg")
+        db = _db(tmp_path, [(path, 0)])
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+            mock.patch.dict("sys.modules", {"send2trash": None}),
+        ):
+            resp = client.post("/api/photo/delete", json={"paths": [path], "dry_run": False})
+        assert resp.status_code == 400
+        assert os.path.isfile(path)
+
+    def test_regular_user_forbidden(self, regular_client, tmp_path):
+        resp = regular_client.post("/api/photo/delete", json={
+            "paths": ["/a.jpg"], "dry_run": True,
+        })
+        assert resp.status_code in (401, 403)

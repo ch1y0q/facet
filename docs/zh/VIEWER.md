@@ -8,7 +8,7 @@
 
 - [启动查看器](#启动查看器) · [身份验证](#身份验证) · [筛选选项](#筛选选项) · [排序](#排序) · [照片库功能](#照片库功能)
 - [全景照片与包围曝光](#全景照片与包围曝光)
-- [人物管理](#人物管理) · [触发扫描（Superadmin）](#触发扫描superadmin) · [语义搜索](#语义搜索) · [相册](#相册)
+- [人物管理](#人物管理) · [触发扫描](#触发扫描) · [语义搜索](#语义搜索) · [相册](#相册)
 - [AI 点评](#ai-点评) · [AI 照片描述](#ai-照片描述-gpu-16gb24gb-edition) · [回忆（“那年今日”）](#回忆那年今日) · [时间线视图](#时间线视图) · [地图视图](#地图视图) · [照片胶囊](#照片胶囊)
 - [文件夹视图](#文件夹视图) · [GPS 筛选对话框](#gps-筛选对话框) · [人物合并建议](#人物合并建议) · [导出到后期软件](#导出到后期软件) · [选片](#选片) · [废片清理](#废片清理) · [两两比较模式](#两两比较模式)
 - [EXIF 统计](#exif-统计) · [键盘快捷键](#键盘快捷键照片库) · [撤销](#撤销) · [渐进式网页应用](#渐进式网页应用) · [移动端](#移动端) · [数码相框与展示屏端点](#数码相框与展示屏端点) · [手机自动上传](#手机自动上传)
@@ -207,6 +207,7 @@ python database.py --migrate-user-preferences --user alice
 - **复制文件名**——把选中照片的文件名复制到剪贴板；整个视图的复制会先确认，超过 10 000 张照片的视图会被直接拒绝，而不是复制一部分
 - **导出**——在选中文件旁写入 XMP 附属文件（星级／收藏／淘汰）（参见[导出到后期软件](#导出到后期软件)）
 - **选片后导出／清理**——把保留照片复制、或把淘汰照片移动／移入回收站到目标文件夹（参见[选片后导出／清理](#选片后导出清理)）
+- **删除**——把选中的照片直接送入系统回收站（参见[删除](#删除)）；受与“选片后导出／清理”相同的 `viewer.cull.allow_trash` 开关控制，因此一个安装要么两者都显示，要么都不显示。在“选中整个筛选视图”的范围下该按钮被禁用——按筛选条件驱动的删除是唯一可能在单次请求中删除无限多张照片的操作，因此按钮要求改为显式选择。
 - **下载**——下载选中的照片
 - 按 Escape 键或“清除”按钮可清除选择
 
@@ -227,6 +228,18 @@ python database.py --migrate-user-preferences --user alice
 **可以写入哪里。**在未配置 `viewer.export.allowed_target_dirs` 时，Facet 唯一会写入的文件夹就是你的扫描目录——把对话框指向照片树下的某个子文件夹（例如 `_rejected`）即可开箱即用。若要使用扫描树之外的文件夹，请先把它加入 `viewer.export.allowed_target_dirs`；其他任何路径都会被拒绝并返回 `403`，与文件系统权限无关。参见[配置——导出与选片目标目录](CONFIGURATION.md#导出与选片目标位置)。在 Docker/Podman 中运行时，你输入的路径是**在容器内部**、针对实际挂载到那里的内容解析的，绝不是针对宿主机文件系统——参见[部署——容器路径语义](DEPLOYMENT.md#容器路径语义)。
 
 **每个操作都提示“拒绝访问”。**那是 `403`——来自上面那道目标文件夹检查的刻意拒绝，或是编辑会话已过期——而不是文件系统或容器用户的权限问题。提示条不会说明是哪一种，请在浏览器的“网络”面板中查看失败请求响应体里的 `detail` 字段。真正的文件系统／权限问题表现不同：操作会报告部分成功并带上非零的 `errors` 计数，而不是整体失败，同时服务器会为每个失败的文件记录底层的操作系统错误。
+
+### 删除
+
+照片详情页和照片库的多选工具栏都各自提供一个**删除**按钮，它与上文的“选片后导出／清理”以及[选片](#选片)中描述的 `/culling` 暗房都不同——Facet 现在有三种会涉及多帧组的操作，它们的行为并不相同。删除会调用 `POST /api/photo/delete`，通过 `send2trash` 把指定文件直接送入系统回收站——可恢复，绝不是永久删除——确认对话框会明确说明这一点。它受与“选片后导出／清理”相同的 `viewer.cull.allow_trash` 开关控制（没有新增配置键）：`403` 表示开关已关闭，`400` 表示开关已打开但 `send2trash` 包未安装。
+
+与“选片后导出／清理”不同（它在重新扫描之前会保留数据库行不变），删除会在照片文件真正被送入回收站后立即移除该照片行——它从照片库中消失不需要 `--cleanup-missing-photos`。这也适用于由 `include_companions` 带入的配套 RAW：如果该 RAW 本身也是作为独立照片被扫描的，一旦其文件被送入回收站，它的行同样会被移除——一张曾在照片库中作为独立条目存在的 RAW，会随 JPEG 一起消失。有两种情况会保留其行，因为没有为它们执行任何回收站操作：落入 `skipped` 的路径——其文件在请求之前就已在磁盘上缺失，因此 `--cleanup-missing-photos` 正是用来协调它的；以及落入 `errors` 的路径——送入回收站的尝试本身失败了，因此该行被有意保留，而不是让它继续指向一个仍然存在的文件。
+
+**范围。** 请求只接受显式的 `paths`（上限 10000）——不存在按 `filters` 驱动的变体，因为按筛选条件驱动的删除是唯一可能在单次请求中删除无限多张照片的形式。在照片库“选中整个视图”的范围下，删除操作会被禁用，并显示提示要求进行显式选择，而不是悄悄地只删除视图的一部分。默认范围仅为指定的文件。两个可选复选框可以扩大范围，名称和默认值都与 `/api/cull/apply` 相同：**包含配套 RAW／XMP**（`include_companions`，默认关闭）会加上同一帧的同名配套 RAW 和 `.xmp`；**包含同组照片**（`include_sequence_siblings`，默认关闭）会把任何请求路径扩大到与其共享 `(sequence_kind, sequence_group_id)` 的所有其他帧。
+
+**包围曝光头帧。** 带有 `is_sequence_lead = 1` 且属于 bracket 类型组的帧会被拒绝而不是删除——按路径记录在 `refused_bracket_lead` 中——除非设置了 `include_sequence_siblings`，此时整组 bracket 会一起被删除。bracket 的头帧是其 `sequence_ev_offset = 0` 的那一帧，这是曝光本身的物理事实，而不是可移动的标记，因此与全景照片不同，没有幸存的帧可以被提升；而且由于删除会立即移除该行，部分删除的 bracket 组会从照片库中消失，且除非重新扫描否则无法恢复。未设置该开关时被删除的全景组头帧会改为重新指定一张幸存的同组照片作为新的 `is_sequence_lead`，与“选片后导出／清理”的做法完全一致，因此该组照片在默认的 `hide_panoramas` 下仍保持可见。
+
+**部分结果。** 响应按路径给出，从不是全有或全无：`dry_run`、`would_trash`（试运行预览）、`deleted`、`not_found`（从未存在于数据库中）、`not_visible`（存在于数据库中但对该用户隐藏）、`refused_bracket_lead`、`sequence_siblings`（同组开关带入的帧）、`skipped`（对该用户可见且存在于 `photos` 中，但文件在磁盘上已经缺失——未送入回收站，行未删除）、`trashed`（一个计数）以及 `errors`（每个删除失败路径对应的系统错误——未送入回收站，行未删除）。即使批量删除中包含一个被拒绝的 bracket 头帧，其余的仍会被删除并报告该拒绝，而不会导致整个请求失败。`dry_run` 默认值为 `true`。
 
 ### 显示选项
 
@@ -338,9 +351,9 @@ HDR 之间重新标注。**漏检**则从照片库修正，因为未被检测到
 | **拆分** | 打开某个人物的人脸，选中其中一部分，拆分为新人物 |
 | **隐藏** | 把某个聚类从人物列表、筛选条件和合并建议中隐藏（可恢复） |
 
-## 触发扫描（Superadmin）
+## 触发扫描
 
-当 `viewer.features.show_scan_button` 为 `true` 且用户具有 `superadmin` 角色时，照片库为空的状态下会出现一个**扫描照片以开始使用**按钮。它在 `scoring_config.json` 中出厂设置为 **`false`**（需超级管理员主动开启）。该按钮会打开扫描启动器对话框（`ScanLauncherComponent`）。
+当 `viewer.features.show_scan_button` 为 `true`，且调用者拥有扫描权限——多用户模式下为 `superadmin` 角色，或单用户模式下在已锁定的单用户安装（`viewer.edition_password` 已设置）上通过编辑模式身份验证的会话——照片库为空的状态下会出现一个**扫描照片以开始使用**按钮。它在 `scoring_config.json` 中出厂设置为 **`false`**（需主动开启）。在开放的单用户安装上（`viewer.edition_password` 为空，出厂默认值），全部四个扫描路由都会对任何调用者返回 403，即便调用者持有有效的编辑模式生成 JWT，该按钮也绝不会渲染——开放安装本就把匿名调用者当作已通过编辑模式身份验证，而启动扫描子进程绝不能被匿名访问到。该按钮会打开扫描启动器对话框（`ScanLauncherComponent`）。
 
 - 从启动器的列表中选择一个目录，直接在应用内开始扫描
 - 启动器会把实时进度（SSE，并自动回退到轮询）推送到一个由结构化 `progress` 字段驱动的 `mat-progress-bar`，另外还有一段输出日志尾部，扫描结束时会刷新照片库
@@ -349,7 +362,7 @@ HDR 之间重新标注。**漏检**则从照片库修正，因为未被检测到
 
 当查看器运行在拥有 GPU 算力的同一台机器上时，这一功能很有用。
 
-另有一个相关但独立的触发器 `POST /api/scan/recompute`，它复用同一把作业锁来原地重新为已有照片评分（不引入新文件）——参见[类别优先级与拍摄场景评分方案](#类别优先级与拍摄场景评分方案)。与这个仅限超级管理员的扫描按钮不同，它受编辑模式限制。
+另有一个相关但独立的触发器 `POST /api/scan/recompute`，它复用同一把作业锁来原地重新为已有照片评分（不引入新文件）——参见[类别优先级与拍摄场景评分方案](#类别优先级与拍摄场景评分方案)。与这个扫描按钮依赖模式的访问规则不同，它只受编辑模式限制，不区分超级管理员与已锁定安装。
 
 ## 语义搜索
 
@@ -1278,12 +1291,12 @@ python database.py --stats-info
 
 | 端点 | 说明 |
 |----------|-------------|
-| `POST /api/scan/start` | `[Superadmin]` 启动一次评分扫描 |
-| `GET /api/scan/status` | 查询扫描进度（结构化的 `progress`：`{phase, current, total, eta_seconds}`） |
-| `GET /api/scan/stream?token=<jwt>` | `[Superadmin]` 通过 Server-Sent Events 推送实时进度；令牌作为查询参数传递（`EventSource` API 无法设置请求头），并会自动回退到轮询 `/status` |
-| `GET /api/scan/directories` | 列出已配置的扫描目录 |
-| `POST /api/scan/recompute` | `[Edition]` 以后台作业方式触发整个照片库的综合评分重新计算（`--recompute-average`）；由 `facet.LibraryLock` 做跨进程保护，因此当已有扫描或重新计算从终端（而不只是另一个查看器标签页）运行时，它同样会拒绝（409，并指出持有者）。与 `/start` 不同，它的 argv 在服务端固定、不接受任何请求输入，因此无需超级管理员权限 |
-| `GET /api/scan/recompute_status` | `[Edition]` 轮询重新计算的进度：`{running, kind, progress, exit_code}`——不包含 `/status` 会返回的、仅限超级管理员的 `output_lines` 日志流 |
+| `POST /api/scan/start` | 启动一次评分扫描。需要 `superadmin` 角色（多用户）或在已锁定的单用户安装（`viewer.edition_password` 已设置）上通过编辑模式身份验证的会话——开放的单用户安装（`viewer.edition_password` 为空，出厂默认值）会对任何调用者返回 403，即便调用者持有有效的编辑模式生成 JWT |
+| `GET /api/scan/status` | 查询扫描进度（结构化的 `progress`：`{phase, current, total, eta_seconds}`）；访问规则与 `/start` 相同 |
+| `GET /api/scan/stream?token=<jwt>` | 通过 Server-Sent Events 推送实时进度；令牌由 `GET /api/scan/stream_token` 签发（访问规则与 `/start` 相同），并作为查询参数传递（`EventSource` API 无法设置请求头），并会自动回退到轮询 `/status` |
+| `GET /api/scan/directories` | 列出已配置的扫描目录；访问规则与 `/start` 相同 |
+| `POST /api/scan/recompute` | `[Edition]` 以后台作业方式触发整个照片库的综合评分重新计算（`--recompute-average`）；由 `facet.LibraryLock` 做跨进程保护，因此当已有扫描或重新计算从终端（而不只是另一个查看器标签页）运行时，它同样会拒绝（409，并指出持有者）。与 `/start` 不同，它的 argv 在服务端固定、不接受任何请求输入，因此不受上述依赖模式的访问规则约束 |
+| `GET /api/scan/recompute_status` | `[Edition]` 轮询重新计算的进度：`{running, kind, progress, exit_code}`——不包含 `/status` 会返回的 `output_lines` 日志流，该日志流的访问规则与 `/start` 相同 |
 
 ### 人脸管理
 
@@ -1359,6 +1372,7 @@ python database.py --stats-info
 | `POST /api/photo/embed_metadata` | `[Edition]` 把元数据嵌入原始文件（JPEG/HEIC/TIFF/PNG/DNG；RAW 绝不修改）并写入附属文件 |
 | `POST /api/albums/{id}/export` | `[Edition]` 以附属文件、复制或符号链接的方式导出相册 |
 | `POST /api/cull/apply` | `[Edition]` 把保留照片复制、或把淘汰照片移动／移入回收站到某个文件夹（参见[选片后导出／清理](#选片后导出清理)）。请求体 `{paths?, filters?, exclude?, action, target_dir?, include_companions, include_sequence_siblings, dry_run}`——必须恰好是 `paths`（最多 10000）或一组照片库 `filters` 之一，两者都给返回 `422`，都不给返回 `400`；`exclude`（可选，最多 1000）会从所发送的目标中剔除指定路径——从 `paths` 中减去，或从 `filters` 范围中排除——因此它只能收窄目标，绝不会扩大，而且被排除的路径也绝不会作为同组照片被重新加回来（它同样不计入 `sequence_siblings`）；指定了相册的 `filters` 会像该相册自身的 GET 一样做访问检查——相册不存在返回 `404`，在受访问控制的安装上访问他人的相册返回 `403`；`filters` 会走与 `GET /api/photos` 相同的归一化流程（查看器默认值加上 `type` 预设展开），因此它始终与它所来源的照片库视图一致。匹配超过 10000 张照片的 `filters` 会以 `412` 拒绝并给出数量和上限，该计数在构建任何路径列表之前完成，绝不截断，并且对试运行与真实执行同样强制——预览不能被拿来完成执行本身被拒绝去做的无界工作；`action` 为 `copy_keeps \| trash_rejects \| move_rejects`；`include_companions`（默认 `false`）会加上每个文件的同名配套 RAW 和 `.xmp`；`include_sequence_siblings`（默认 `false`）会加上与匹配照片共享 `(sequence_kind, sequence_group_id)` 的所有其他帧，**前提是它自身的淘汰状态与本次操作相符**，因此绝不会因为某个同组照片被淘汰就毁掉一张被保留的帧；`dry_run` 默认为 `true`。响应在 `skipped` / `excluded_by_state` / `not_visible` 之外还会加上 `matched`（符合本次操作条件的路径）和 `sequence_siblings`（同组照片帧数，即使该开关关闭也会报告） |
+| `POST /api/photo/delete` | `[Edition]` 把一张或多张照片送入系统回收站——可恢复，绝不是永久删除（参见[删除](#删除)）。受与 `/api/cull/apply` 相同的 `viewer.cull.allow_trash` 开关控制：关闭时返回 `403`，`send2trash` 包未安装时返回 `400`。请求体 `{paths, include_companions, include_sequence_siblings, dry_run}`——只接受 `paths`（最多 10000），刻意不提供 `filters`/`exclude` 分支：按筛选条件驱动的删除是唯一可能删除无限多张照片的形式，因此照片库的“选中整个筛选视图”范围无法使用此端点。默认范围仅为指定的文件；`include_companions`（默认 `false`）会加上每个文件的同名配套 RAW 和 `.xmp`；`include_sequence_siblings`（默认 `false`）会把任何请求路径扩大到与其共享 `(sequence_kind, sequence_group_id)` 的所有其他帧，与 `/api/cull/apply` 上的行为完全一致；由 `include_companions` 带入的配套 RAW／XMP，如果自身在 `photos` 中也有独立一行，一旦其文件被送入回收站，该行也会一并删除。带有 `is_sequence_lead = 1` 且属于 bracket 类型组的帧会被拒绝（`refused_bracket_lead`），除非设置了 `include_sequence_siblings`，此时整组 bracket 会一起被删除；未设置该开关时被删除的全景组头帧会改为重新指定一张幸存的同组照片作为新的头帧。某路径对应的照片行会在其文件真正被送入回收站后立即删除——对该路径不需要 `--cleanup-missing-photos`。落入 `skipped` 的路径（文件在磁盘上已经缺失）会保留其行，因为没有为它执行任何回收站操作——这正是 `--cleanup-missing-photos` 要协调的情况。落入 `errors` 的路径（送入回收站的尝试失败）同样会保留其行，因为其文件仍然在磁盘上。`dry_run` 默认值为 `true`。响应按路径给出：`{dry_run, would_trash, deleted, not_found, not_visible, refused_bracket_lead, sequence_siblings, skipped, trashed, errors}` |
 
 ### 插件
 
@@ -1404,7 +1418,7 @@ python database.py --stats-info
 | 没有“比较”按钮 | 设置非空的 `edition_password`（单用户），或使用 `admin`／`superadmin` 角色（多用户） |
 | 密码不生效 | 检查 `viewer.password`（单用户），或核对密码哈希（多用户） |
 | 用户看不到照片 | 检查其用户配置中的 `directories` 以及 `shared_directories` |
-| 没有扫描按钮 | 需要 `superadmin` 角色以及 `viewer.features.show_scan_button: true` |
+| 没有扫描按钮 | 需要 `viewer.features.show_scan_button: true`，外加扫描权限：多用户模式下的 `superadmin` 角色，或单用户模式下在已锁定安装（`viewer.edition_password` 已设置）上通过编辑模式身份验证的会话——开放的单用户安装永远不会显示该按钮 |
 | 搜索没有结果 | 确认照片已有 `clip_embedding` 数据（请先运行评分） |
 | VLM 点评不可用 | 需要 16gb/24gb VRAM 配置档以及 `viewer.features.show_vlm_critique: true` |
 | 地图上没有照片 | 运行 `--extract-gps` 填充 GPS 列，并确认照片带有 EXIF GPS 数据 |

@@ -35,7 +35,7 @@ import { Photo } from '../../shared/models/photo.model';
 import { isTypingContext } from '../../shared/utils/keyboard';
 import { UndoService } from '../../core/services/undo.service';
 import { SequenceOverrideService, SequenceKind } from '../../core/services/sequence-override.service';
-import { SequenceKindIconPipe } from '../../shared/pipes/sequence-kind.pipe';
+import { SequenceKindIconPipe, SEQUENCE_KINDS_KEPT_WHOLE } from '../../shared/pipes/sequence-kind.pipe';
 import { IsSelectedPipe } from '../../shared/pipes/selection.pipe';
 import { PhotoSetKindIconPipe, PhotoSetKindLabelPipe } from '../../shared/pipes/photo-set-kind.pipe';
 import { AuthService } from '../../core/services/auth.service';
@@ -606,6 +606,13 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
           @if (auth.isEdition()) {
             <button mat-button class="!hidden lg:!inline-flex" (click)="openExportDialog()"><mat-icon>drive_file_move</mat-icon> {{ I18N.export.action | translate }}</button>
             <button mat-button class="!hidden lg:!inline-flex" (click)="openCullDialog()"><mat-icon>folder_move</mat-icon> {{ I18N.cull.action | translate }}</button>
+            @if (store.config()?.cull?.trash_available) {
+              <button mat-button class="!hidden lg:!inline-flex" (click)="deleteSelected()"
+                      [disabled]="viewScoped()"
+                      [matTooltip]="viewScoped() ? (I18N.cull.delete_disabled_view_scope_tooltip | translate) : null">
+                <mat-icon>delete</mat-icon> {{ I18N.cull.delete_action | translate }}
+              </button>
+            }
           }
           @if (auth.downloadProfiles().length) {
             <button mat-flat-button class="!hidden lg:!inline-flex" [matMenuTriggerFor]="dlMenu" [disabled]="downloading()">@if (downloading()) { <mat-spinner diameter="18" class="!inline-block !align-baseline" [attr.aria-label]="I18N.ui.labels.loading | translate" ></mat-spinner> } @else { <mat-icon>download</mat-icon> } {{ downloading() ? (I18N.photo_detail.downloading | translate) : (I18N.gallery.selection.download | translate) }}</button>
@@ -632,9 +639,12 @@ export class GalleryComponent implements OnInit, OnDestroy {
   protected readonly I18N = I18N_KEYS;
   protected readonly store = inject(GalleryStore);
   protected readonly auth = inject(AuthService);
-  protected readonly canShowScanButton = computed(
-    () => this.auth.isSuperadmin() && this.auth.hasFeature('show_scan_button'),
-  );
+  protected readonly canShowScanButton = computed(() => {
+    if (!this.auth.hasFeature('show_scan_button')) return false;
+    return this.auth.isMultiUser()
+      ? this.auth.isSuperadmin()
+      : this.auth.editionPasswordRequired() && this.auth.isEdition();
+  });
   private readonly snackBar = inject(MatSnackBar);
   private readonly bottomSheet = inject(MatBottomSheet);
   private readonly i18n = inject(I18nService);
@@ -1508,6 +1518,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
         albums: this.albumOptions(),
         downloadProfiles: this.auth.downloadProfiles(),
         canCompare: this.canCompareSelection(),
+        trashAvailable: this.store.config()?.cull?.trash_available ?? false,
       },
     });
     const action = await firstValueFrom(ref.afterDismissed());
@@ -1522,6 +1533,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
       case 'compare': await this.compareSelection(); break;
       case 'export': this.openExportDialog(); break;
       case 'cull': await this.openCullDialog(); break;
+      case 'delete': await this.deleteSelected(); break;
       case 'copy': await this.copyPaths(); break;
       case 'mark-panorama': await this.markAsPanorama(action.sequenceKind); break;
       case 'download': await this.downloadSelected(action.type, action.profile); break;
@@ -1636,6 +1648,65 @@ export class GalleryComponent implements OnInit, OnDestroy {
       // the list until this returns.
       await this.store.loadPhotos();
       this.clearSelection();
+    }
+  }
+
+  /**
+   * Bulk "Delete…": paths only, never `filters`/`exclude` (decision 8 / B5) --
+   * a filter-driven request is the one shape that can trash an unbounded set,
+   * so under view scope this is disabled rather than switched to a
+   * filter-based request; the guard below is a belt-and-braces check against
+   * the button state, not the primary gate.
+   *
+   * Drops rows via `GalleryStore.removePhotos` (decision 6 bullet 4), never
+   * `loadPhotos()` -- the existing cull reload is correct for cull, whose
+   * rows survive a move/trash, but delete's rows are already gone from
+   * `photos` server-side by the time this response returns.
+   */
+  async deleteSelected(): Promise<void> {
+    if (this.viewScoped()) return;
+    const paths = [...this.selectedPaths()];
+    if (!paths.length) return;
+    const selectedSet = new Set(paths);
+    const hasSiblings = this.store.photos().some(p =>
+      selectedSet.has(p.path) && !!p.sequence_kind && SEQUENCE_KINDS_KEPT_WHOLE.includes(p.sequence_kind));
+    const { PhotoDeleteDialogComponent } = await import('../../shared/components/photo-delete-dialog/photo-delete-dialog.component');
+    const ref = this.dialog.open(PhotoDeleteDialogComponent, {
+      width: '32rem',
+      data: {
+        surface: 'bulk',
+        paths,
+        count: paths.length,
+        hasCompanion: true,
+        hasSiblings,
+        // No per-path lead signal client-side for a bulk selection -- the
+        // response's own `refused_bracket_lead` is what the partial-result
+        // toast below reports instead.
+        hasBracketLead: false,
+      },
+    });
+    const result = await firstValueFrom(ref.afterClosed());
+    if (!result) return;
+    const res = await this.photoActions.deletePhotos(paths, result);
+    if (!res) return;
+    this.store.removePhotos(res.deleted);
+    this.clearSelection();
+    // Every failure bucket counts as "failed" here, not just
+    // `refused_bracket_lead` -- an unwritable trash dir (errors), a path the
+    // rescan already dropped (not_found/not_visible) or whose file was
+    // already gone (skipped) are just as much a reason the user's count came
+    // up short, and a response where every path landed in one of those must
+    // read as a failure rather than the "0 deleted, 0 refused" neutral result
+    // the old two-field toast rendered.
+    const failed = res.refused_bracket_lead.length + res.not_found.length + res.not_visible.length
+      + res.skipped.length + Object.keys(res.errors).length;
+    if (res.deleted.length === 0 && failed > 0) {
+      this.snackBar.open(this.i18n.t(I18N.cull.delete_failed), '', { duration: 4000 });
+    } else {
+      this.snackBar.open(
+        this.i18n.t(I18N.cull.delete_partial_result, { deleted: res.deleted.length, failed }),
+        '', { duration: 4000 },
+      );
     }
   }
 

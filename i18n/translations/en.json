@@ -2285,6 +2285,18 @@
       "kind_duplicate": "Duplicate",
       "open_in_gallery": "Open this set in the gallery",
       "member_position": "Frame {position} of {count}"
+    },
+    "delete": {
+      "button_label": "Delete",
+      "confirm_title": "Delete this photo?",
+      "confirm_body": "The file is sent to your operating system's trash. It stays recoverable until you empty it.",
+      "confirm_body_with_companion": "The file and its companion RAW/XMP are sent to your operating system's trash. They stay recoverable until you empty it.",
+      "confirm_body_with_siblings": "Every frame in this set is sent to your operating system's trash. They stay recoverable until you empty it.",
+      "confirm_body_bracket_refused": "This frame represents its bracket. Deleting it alone is refused — tick “Include the whole set” to delete every frame together.",
+      "include_companions": "Include companion RAW / XMP",
+      "include_siblings": "Include the whole set",
+      "success": "Photo sent to trash",
+      "error": "Delete failed"
     }
   },
   "photo": {
@@ -2345,7 +2357,13 @@
     "apply": "Apply",
     "cancel": "Cancel",
     "done": "Cull applied",
-    "error": "Cull failed"
+    "error": "Cull failed",
+    "delete_action": "Delete…",
+    "delete_confirm_title": "Delete photos?",
+    "delete_confirm_body": "{count} photos will be sent to your operating system's trash. They stay recoverable until you empty it.",
+    "delete_partial_result": "{deleted} deleted, {failed} failed",
+    "delete_failed": "Delete failed — nothing was sent to trash",
+    "delete_disabled_view_scope_tooltip": "Select photos explicitly to delete them — a whole-view selection can’t be used here"
   },
   "shortcuts": {
     "title": "Keyboard shortcuts",

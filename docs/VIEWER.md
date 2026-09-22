@@ -8,7 +8,7 @@ FastAPI + Angular single-page application for browsing, filtering, and managing 
 
 - [Starting the Viewer](#starting-the-viewer) · [Authentication](#authentication) · [Filtering Options](#filtering-options) · [Sorting](#sorting) · [Gallery Features](#gallery-features)
 - [Panoramas and exposure brackets](#panoramas-and-exposure-brackets)
-- [Person Management](#person-management) · [Scan Trigger (Superadmin)](#scan-trigger-superadmin) · [Semantic Search](#semantic-search) · [Albums](#albums)
+- [Person Management](#person-management) · [Scan Trigger](#scan-trigger) · [Semantic Search](#semantic-search) · [Albums](#albums)
 - [AI Critique](#ai-critique) · [AI Captioning](#ai-captioning-gpu-16gb24gb-edition) · [Memories ("On This Day")](#memories-on-this-day) · [Timeline View](#timeline-view) · [Map View](#map-view) · [Capsules](#capsules)
 - [Folders View](#folders-view) · [GPS Filter Dialog](#gps-filter-dialog) · [Merge Suggestions](#merge-suggestions) · [Editor Export](#editor-export) · [Culling](#culling) · [Junk Sweep](#junk-sweep) · [Pairwise Comparison Mode](#pairwise-comparison-mode)
 - [EXIF Statistics](#exif-statistics) · [Keyboard Shortcuts](#keyboard-shortcuts-gallery) · [Undo](#undo) · [Progressive Web App](#progressive-web-app) · [Mobile](#mobile) · [Photo Frame / Kiosk Endpoint](#photo-frame--kiosk-endpoint) · [Phone Auto-Upload](#phone-auto-upload)
@@ -207,6 +207,7 @@ Controlled by `viewer.features.show_my_taste` (default: `true`). Ranker status i
 - **Copy filenames** — Copy selected filenames to clipboard; a whole-view copy confirms first, and a view over 10 000 photos is refused rather than partially copied
 - **Export** — Write XMP sidecars (rating/favorite/reject) next to the selected files (see [Editor Export](#editor-export))
 - **Cull to folder** — Copy keeps, or move/trash rejects, to a target folder (see [Cull to folder](#cull-to-folder))
+- **Delete** — Send selected photos straight to the OS trash (see [Delete](#delete)); gated by the same `viewer.cull.allow_trash` flag as Cull to folder, so an install that shows one shows the other. Disabled under "select all in view" scope — a filter-driven delete could trash an unbounded set in one request, so the button asks for an explicit selection instead.
 - **Download** — Download selected photos
 - Clear selection with Escape or the Clear button
 
@@ -227,6 +228,18 @@ The bulk-action bar's **Cull to folder…** dialog (edition mode) copies keeps, 
 **Where you can write.** With no `viewer.export.allowed_target_dirs` configured, the only folders Facet will write into are your scan directories — point the dialog at a subfolder of the photo tree (e.g. `_rejected`) and it works with no setup. To use a folder outside the scanned tree, add it to `viewer.export.allowed_target_dirs` first; anything else is refused with a `403`, regardless of filesystem permissions. See [Configuration — Export and Cull Destinations](CONFIGURATION.md#export-and-cull-destinations). Running in Docker/Podman, the path you type is resolved **inside the container**, against whatever is actually mounted there — never against the host filesystem — see [Deployment — Container Path Semantics](DEPLOYMENT.md#container-path-semantics).
 
 **"Access denied" on every action.** That's a `403` — a deliberate refusal from the target-folder check above, or an expired edition session — not a filesystem or container-user permission problem. The toast doesn't say which, so check the failed request's response body in your browser's Network tab for the `detail` field. A real filesystem/permission problem looks different: the action reports partial success with a nonzero `errors` count instead of failing outright, and the server logs the underlying OS error for each file that failed.
+
+### Delete
+
+Photo detail and the gallery's multi-select bar each add a **Delete** button, distinct from Cull to folder above and from the `/culling` darkroom in [Culling](#culling) — Facet now has three actions that touch a multi-frame set, and they do not behave alike. Delete calls `POST /api/photo/delete`, which sends the named file straight to the OS trash via `send2trash` — recoverable, never a permanent delete — and the confirm dialog says so plainly. It is gated by the same `viewer.cull.allow_trash` flag as Cull to folder (no separate config key): a `403` means the flag is off, a `400` means the flag is on but the `send2trash` package is not installed.
+
+Unlike Cull to folder, which leaves the database row alone until a rescan, Delete removes a photo's row immediately once its file is actually trashed — no `--cleanup-missing-photos` needed for it to disappear from the gallery. That includes a companion RAW pulled in by `include_companions`: if the companion was itself scanned as its own photo, its row is removed too, the moment its file trashes — a RAW that had been in the library as its own entry disappears along with the JPEG. Two cases keep their row instead, because nothing was trashed for them: a path in `skipped` — its file was already missing from disk before the request, so `--cleanup-missing-photos` is exactly what reconciles it — and a path in `errors` — the trash attempt itself failed, so the row is deliberately kept rather than left pointing at a file that is still there.
+
+**Scope.** The request takes only explicit `paths` (capped at 10000) — there is no `filters`-driven variant, because a filter-driven delete is the one shape that could trash an unbounded set in a single request. Under the gallery's "select all in view" scope the Delete action is disabled with a tooltip asking for an explicit selection, rather than silently under-deleting the view. The default scope is the named file only. Two opt-in checkboxes widen it, with the same names and defaults `/api/cull/apply` uses: **Include companion RAW / XMP** (`include_companions`, default off) pulls in the same frame's same-stem companion RAW and `.xmp` sidecar; **Include sequence siblings** (`include_sequence_siblings`, default off) widens any requested path to every other frame sharing its `(sequence_kind, sequence_group_id)`.
+
+**Bracket leads.** A frame carrying `is_sequence_lead = 1` in a bracket-kind group is refused rather than deleted — reported per-path in `refused_bracket_lead` — unless `include_sequence_siblings` is set, in which case the whole bracket goes together. A bracket's lead is its `sequence_ev_offset = 0` frame, a physical fact of the exposures rather than a movable flag, so unlike a panorama there is no surviving frame to promote; and because Delete removes the row immediately, a partially deleted bracket would vanish from the gallery with no way back short of a rescan. A panorama lead deleted without the flag re-picks a surviving sibling as the new `is_sequence_lead`, exactly as Cull to folder does, so the set stays visible under the default `hide_panoramas`.
+
+**Partial results.** The response is per-path, not all-or-nothing: `dry_run`, `would_trash` (dry-run preview), `deleted`, `not_found` (never in the database), `not_visible` (in the database but hidden from this user), `refused_bracket_lead`, `sequence_siblings` (frames the sibling flag pulled in), `skipped` (visible and present in `photos`, but the file was already missing from disk — not trashed, row not deleted), `trashed` (a count), and `errors` (an OS error string per path that failed to trash — not trashed, row not deleted). A bulk delete that includes a refused bracket lead still deletes everything else and reports the refusal, rather than failing the whole request. `dry_run` defaults to `true`.
 
 ### Display Options
 
@@ -341,9 +354,9 @@ Access via header button or `/persons`:
 | **Split** | Open a person's faces, select a subset, split them into a new person |
 | **Hide** | Hide a cluster from the persons list, filters, and merge suggestions (reversible) |
 
-## Scan Trigger (Superadmin)
+## Scan Trigger
 
-When `viewer.features.show_scan_button` is `true` and the user has `superadmin` role, a **Scan photos to get started** button appears on the empty-gallery state. It ships set to **`false`** in `scoring_config.json` (superadmin opt-in). The button opens the scan launcher dialog (`ScanLauncherComponent`).
+When `viewer.features.show_scan_button` is `true` and the caller has scan access — `superadmin` role in multi-user mode, or an edition-authenticated session on a locked single-user install (`viewer.edition_password` set) in single-user mode — a **Scan photos to get started** button appears on the empty-gallery state. It ships set to **`false`** in `scoring_config.json` (opt-in). On an open single-user install (`viewer.edition_password` empty, the shipped default) all four scan routes 403 for every caller, including one holding a valid edition-generation JWT, and the button is never rendered — an open install already treats anonymous callers as edition-authenticated, and spawning a scan subprocess must not be reachable anonymously. The button opens the scan launcher dialog (`ScanLauncherComponent`).
 
 - Pick a directory from the launcher's list and start the scan in-app
 - The launcher streams live progress (SSE with automatic polling fallback) into a `mat-progress-bar` driven by the structured `progress` field, plus a tail of output lines, and refreshes the gallery when the scan finishes
@@ -352,7 +365,7 @@ When `viewer.features.show_scan_button` is `true` and the user has `superadmin` 
 
 This is useful when the viewer runs on the same machine that has GPU access for scoring.
 
-A related but separate trigger, `POST /api/scan/recompute`, reuses the same job lock to rescore existing photos in place (no new files) — see [Category Priority & Scoring Contexts](#category-priority--scoring-contexts). Unlike this superadmin-only scan button, it is edition-gated.
+A related but separate trigger, `POST /api/scan/recompute`, reuses the same job lock to rescore existing photos in place (no new files) — see [Category Priority & Scoring Contexts](#category-priority--scoring-contexts). Unlike this scan button's mode-dependent access rule above, it is edition-gated only, with no superadmin/locked-install distinction.
 
 ## Semantic Search
 
@@ -1281,12 +1294,12 @@ The client's TypeScript types are generated from that schema into `client/src/ap
 
 | Endpoint | Description |
 |----------|-------------|
-| `POST /api/scan/start` | `[Superadmin]` Start a scoring scan |
-| `GET /api/scan/status` | Check scan progress (structured `progress`: `{phase, current, total, eta_seconds}`) |
-| `GET /api/scan/stream?token=<jwt>` | `[Superadmin]` Real-time progress via Server-Sent Events; token is passed as a query param (the `EventSource` API can't set headers), with automatic fallback to polling `/status` |
-| `GET /api/scan/directories` | List configured scan directories |
-| `POST /api/scan/recompute` | `[Edition]` Trigger a full-library aggregate recompute (`--recompute-average`) as a background job; guarded cross-process by `facet.LibraryLock`, so it also refuses (409, naming the holder) when a scan or recompute is already running from a terminal, not just from another viewer tab. Unlike `/start`, its argv is fixed server-side and takes no request input, so it needs no superadmin |
-| `GET /api/scan/recompute_status` | `[Edition]` Poll recompute progress: `{running, kind, progress, exit_code}` — omits the superadmin-only `output_lines` log stream that `/status` returns |
+| `POST /api/scan/start` | Start a scoring scan. Requires `superadmin` role (multi-user) or an edition-authenticated session on a locked single-user install (`viewer.edition_password` set) — an open single-user install (`viewer.edition_password` empty, the shipped default) 403s every caller, including one holding a valid edition-generation JWT |
+| `GET /api/scan/status` | Check scan progress (structured `progress`: `{phase, current, total, eta_seconds}`); same access rule as `/start` |
+| `GET /api/scan/stream?token=<jwt>` | Real-time progress via Server-Sent Events; the token is minted by `GET /api/scan/stream_token` (same access rule as `/start`) and passed as a query param (the `EventSource` API can't set headers), with automatic fallback to polling `/status` |
+| `GET /api/scan/directories` | List configured scan directories; same access rule as `/start` |
+| `POST /api/scan/recompute` | `[Edition]` Trigger a full-library aggregate recompute (`--recompute-average`) as a background job; guarded cross-process by `facet.LibraryLock`, so it also refuses (409, naming the holder) when a scan or recompute is already running from a terminal, not just from another viewer tab. Unlike `/start`, its argv is fixed server-side and takes no request input, so it isn't gated by the mode-dependent access rule above |
+| `GET /api/scan/recompute_status` | `[Edition]` Poll recompute progress: `{running, kind, progress, exit_code}` — omits the `output_lines` log stream that `/status` returns, which is gated the same way as `/start` |
 
 ### Face Management
 
@@ -1362,6 +1375,7 @@ The `/api/download/options` endpoint detects companion RAW files automatically a
 | `POST /api/photo/embed_metadata` | `[Edition]` Embed metadata into the original file (JPEG/HEIC/TIFF/PNG/DNG; RAW never modified) and write the sidecar |
 | `POST /api/albums/{id}/export` | `[Edition]` Album export as sidecars, copy, or symlink |
 | `POST /api/cull/apply` | `[Edition]` Copy keeps or move/trash rejects to a folder (see [Cull to folder](#cull-to-folder)). Body `{paths?, filters?, exclude?, action, target_dir?, include_companions, include_sequence_siblings, dry_run}` — exactly one of `paths` (max 10000) or a gallery `filters` set, naming both being a `422` and naming neither a `400`; `exclude` (optional, max 1000) drops named paths from whichever target is sent — subtracted from `paths`, or bound out of the `filters` scope — so it can only narrow the target, never widen it, and an excluded path is never re-added as a sequence sibling either (it is left out of `sequence_siblings` as well); a `filters` set naming an album is access-checked like that album's own GET — `404` for an album that does not exist, `403` for another user's on an access-controlled install; `filters` resolves through the same normalization `GET /api/photos` uses (viewer defaults plus `type` preset expansion), so it always matches the gallery view it was derived from. A `filters` set matching more than 10000 photos is refused with a `412` naming the count and the cap, counted before any path list is built, never truncated, and enforced on a dry run exactly like a real one — a preview cannot be used to do the unbounded work the run itself is refused for; `action` is `copy_keeps \| trash_rejects \| move_rejects`; `include_companions` (default `false`) adds each file's same-stem companion RAW and `.xmp`; `include_sequence_siblings` (default `false`) adds every other frame sharing a matched photo's `(sequence_kind, sequence_group_id)` **whose own reject state matches the action**, so a kept frame is never destroyed because a sibling was rejected; `dry_run` defaults to `true`. Response adds `matched` (paths that qualified for the action) and `sequence_siblings` (sibling frame count, reported even when the flag is off) alongside `skipped` / `excluded_by_state` / `not_visible` |
+| `POST /api/photo/delete` | `[Edition]` Send one or more photos to the OS trash — recoverable, never a permanent delete (see [Delete](#delete)). Gated by the same `viewer.cull.allow_trash` flag as `/api/cull/apply`: `403` when off, `400` when the `send2trash` package is not installed. Body `{paths, include_companions, include_sequence_siblings, dry_run}` — `paths` only (max 10000), deliberately no `filters`/`exclude` branch: a filter-driven delete is the one shape that could trash an unbounded set, so the gallery's "select all in view" scope cannot use this endpoint. Default scope is the named file only; `include_companions` (default `false`) adds each file's same-stem companion RAW and `.xmp`; `include_sequence_siblings` (default `false`) widens any requested path to every other frame sharing its `(sequence_kind, sequence_group_id)`, exactly as it does on `/api/cull/apply`; a companion RAW/XMP pulled in by `include_companions` that itself has its own `photos` row is removed too, once its file trashes. A frame with `is_sequence_lead = 1` in a bracket-kind group is refused (`refused_bracket_lead`) unless `include_sequence_siblings` is set, in which case the whole bracket is deleted together; a panorama lead deleted without the flag re-picks a surviving sibling as the new lead instead. A path's row is deleted immediately once its file actually trashes — no `--cleanup-missing-photos` needed for it. A path in `skipped` (file already missing from disk) keeps its row, since nothing was trashed for it — that is exactly what `--cleanup-missing-photos` reconciles. A path in `errors` (the trash attempt failed) also keeps its row, since its file is still on disk. `dry_run` defaults to `true`. Response is per-path: `{dry_run, would_trash, deleted, not_found, not_visible, refused_bracket_lead, sequence_siblings, skipped, trashed, errors}` |
 
 ### Plugins
 
@@ -1407,7 +1421,7 @@ The `/api/download/options` endpoint detects companion RAW files automatically a
 | Compare button missing | Set a non-empty `edition_password` (single-user) or use `admin`/`superadmin` role (multi-user) |
 | Password not working | Check `viewer.password` (single-user) or verify password hash (multi-user) |
 | User can't see photos | Check `directories` in their user config and `shared_directories` |
-| Scan button missing | Requires `superadmin` role and `viewer.features.show_scan_button: true` |
+| Scan button missing | Requires `viewer.features.show_scan_button: true` plus scan access: `superadmin` role (multi-user), or an edition-authenticated session on a locked single-user install (`viewer.edition_password` set) — an open single-user install never shows it |
 | Search returns no results | Ensure photos have `clip_embedding` data (run scoring first) |
 | VLM critique unavailable | Requires 16gb/24gb VRAM profile and `viewer.features.show_vlm_critique: true` |
 | Map shows no photos | Run `--extract-gps` to populate GPS columns, ensure photos have EXIF GPS data |

@@ -2463,6 +2463,82 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/photo/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Api Photo Delete
+         * @description Send one or more photos to the OS trash and delete their DB rows
+         *     immediately.
+         *
+         *     OS-trash only, exactly like ``POST /api/cull/apply``'s ``trash_rejects``
+         *     action -- never a permanent delete. Gated behind ``viewer.cull.allow_trash``
+         *     (403 when off) and a live ``send2trash`` import (400 when missing), both
+         *     re-derived here rather than trusted from the client, exactly as
+         *     ``api_cull_apply`` does.
+         *
+         *     Default scope is the named file only: a companion RAW/XMP is reached only
+         *     with ``include_companions``, and a sequence sibling only with
+         *     ``include_sequence_siblings`` -- which behaves exactly as it does on
+         *     ``POST /api/cull/apply``: every visible requested path widens to every
+         *     frame sharing its ``(sequence_kind, sequence_group_id)``, panoramas,
+         *     brackets and any other kind alike (reported in ``sequence_siblings``).
+         *     Ungrouped photos (``sequence_kind IS NULL``) are unaffected by the flag.
+         *     Bounded server-side to paths this caller may actually see -- a path not
+         *     in ``photos``, or in it but not visible to this user, is reported
+         *     (``not_found`` / ``not_visible``) and never resolved to a disk file. A
+         *     frame carrying ``is_sequence_lead = 1`` in a BRACKET-kind group is refused
+         *     (``refused_bracket_lead``) unless ``include_sequence_siblings`` is set, in
+         *     which case its whole bracket group is deleted together (as a consequence
+         *     of the general widening above) with no re-pick attempted -- a bracket's
+         *     representative is its ``sequence_ev_offset = 0`` frame, a physical fact of
+         *     the exposures rather than a movable flag, so there is no partial way to
+         *     leave the set intact. A panorama lead instead re-picks a surviving sibling
+         *     as the new lead when it is deleted WITHOUT the flag (a survivor remains to
+         *     promote); with the flag, its whole group goes together and nothing
+         *     survives to promote. Either way the re-pick attempt runs BEFORE the row
+         *     delete (so the still-live rows are there to read) and in the SAME
+         *     transaction as the row delete, so a crash between the two writes can
+         *     never strand a re-picked lead pointing at a photo whose row deletion
+         *     never happened.
+         *
+         *     The response is per-path, not all-or-nothing: a partial ``send2trash``
+         *     failure leaves that path's row untouched in ``photos`` -- the row delete
+         *     is restricted to paths whose trash actually succeeded -- with the OS
+         *     error text recorded in ``errors``. If the commit covering the lead re-pick
+         *     and the row delete itself raises, the exception propagates as a 500;
+         *     trash has already succeeded for those paths by that point, so their rows
+         *     become "missing on disk," which the next rescan or
+         *     ``--cleanup-missing-photos`` reconciles -- an accepted edge (expected only
+         *     on a corrupted database), not a silent inconsistency.
+         *
+         *     A trashed companion (``include_companions``'s RAW/``.xmp``) that is ITSELF
+         *     a separate ``photos`` row is folded into ``deleted`` too, not a distinct
+         *     field: its file is gone the moment ``send2trash`` succeeds regardless of
+         *     whether the caller ever named or could see that row, so it is exactly as
+         *     deleted as any path the caller requested directly -- `deleted` already
+         *     means "row removed," not "row the caller named."
+         *
+         *     ``skipped`` carries a path that was visible, in ``photos``, and never
+         *     refused as a bracket lead, but whose file ``_resolve_cull_files`` could
+         *     not resolve on disk (already missing) -- neither trashed nor
+         *     row-deleted, so it is reported rather than silently dropped from every
+         *     bucket. Reconciling it is ``--cleanup-missing-photos``'s job, same as any
+         *     other missing-on-disk row.
+         */
+        post: operations["api_photo_delete_api_photo_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/photo/embed_metadata": {
         parameters: {
             query?: never;
@@ -3367,8 +3443,8 @@ export interface paths {
          * Scan Stream Token
          * @description Mint a short-lived, single-purpose token for opening the SSE stream.
          *
-         *     Header-authenticated (superadmin), so the long-lived JWT never travels in a
-         *     URL. The stream URL then carries only this 60-second token.
+         *     Header-authenticated (require_scan_access), so the long-lived JWT never
+         *     travels in a URL. The stream URL then carries only this 60-second token.
          */
         get: operations["scan_stream_token_api_scan_stream_token_get"];
         put?: never;
@@ -5979,6 +6055,75 @@ export interface components {
         PhotoCountResponse: {
             /** Total */
             total: number;
+        };
+        /** PhotoDeleteRequest */
+        PhotoDeleteRequest: {
+            /**
+             * Dry Run
+             * @default true
+             */
+            dry_run?: boolean;
+            /**
+             * Include Companions
+             * @default false
+             */
+            include_companions?: boolean;
+            /**
+             * Include Sequence Siblings
+             * @default false
+             */
+            include_sequence_siblings?: boolean;
+            /** Paths */
+            paths: string[];
+        };
+        /**
+         * PhotoDeleteResponse
+         * @description ``POST /api/photo/delete`` -- see ``api.routers.export.api_photo_delete``
+         *     for the invariants the fields carry.
+         *
+         *     Per-path rather than per-count, unlike ``CullApplyResponse``: the request
+         *     can mix visible and invisible paths, and ordinary frames with refused
+         *     bracket leads, in one call, and the gallery's bulk surface needs to know
+         *     WHICH path landed in which bucket to report a partial result ("3 deleted,
+         *     1 refused") rather than an all-or-nothing outcome. ``sequence_siblings``
+         *     is the one field kept per-path rather than per-count even though
+         *     ``CullApplyResponse`` reports the same thing as a count: it is populated
+         *     the same way -- every frame ``include_sequence_siblings`` pulled in by
+         *     sharing a requested path's ``(sequence_kind, sequence_group_id)`` -- but
+         *     named here so the caller can tell WHICH frames were added, matching this
+         *     response's own per-path idiom.
+         *
+         *     A trashed ``include_companions`` RAW/``.xmp`` that is itself a separate
+         *     ``photos`` row is folded into ``deleted``, not a distinct bucket -- its
+         *     file is gone the moment the trash succeeds, so it is exactly as deleted
+         *     as any path the caller named directly. ``skipped`` mirrors
+         *     ``CullApplyResponse``'s field of the same name: a path that was visible,
+         *     in ``photos``, and not a refused bracket lead, but whose file could not
+         *     be resolved on disk (already missing) -- landing in no other bucket.
+         */
+        PhotoDeleteResponse: {
+            /** Deleted */
+            deleted: string[];
+            /** Dry Run */
+            dry_run: boolean;
+            /** Errors */
+            errors: {
+                [key: string]: string;
+            };
+            /** Not Found */
+            not_found: string[];
+            /** Not Visible */
+            not_visible: string[];
+            /** Refused Bracket Lead */
+            refused_bracket_lead: string[];
+            /** Sequence Siblings */
+            sequence_siblings: string[];
+            /** Skipped */
+            skipped: string[];
+            /** Trashed */
+            trashed: number;
+            /** Would Trash */
+            would_trash?: string[] | null;
         };
         /**
          * PhotoFace
@@ -10731,6 +10876,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    api_photo_delete_api_photo_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotoDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhotoDeleteResponse"];
                 };
             };
             /** @description Validation Error */

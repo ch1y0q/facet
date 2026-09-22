@@ -92,6 +92,43 @@ class CullApplyResponse(BaseModel):
     errors: int | list[str]
 
 
+class PhotoDeleteResponse(BaseModel):
+    """``POST /api/photo/delete`` -- see ``api.routers.export.api_photo_delete``
+    for the invariants the fields carry.
+
+    Per-path rather than per-count, unlike ``CullApplyResponse``: the request
+    can mix visible and invisible paths, and ordinary frames with refused
+    bracket leads, in one call, and the gallery's bulk surface needs to know
+    WHICH path landed in which bucket to report a partial result ("3 deleted,
+    1 refused") rather than an all-or-nothing outcome. ``sequence_siblings``
+    is the one field kept per-path rather than per-count even though
+    ``CullApplyResponse`` reports the same thing as a count: it is populated
+    the same way -- every frame ``include_sequence_siblings`` pulled in by
+    sharing a requested path's ``(sequence_kind, sequence_group_id)`` -- but
+    named here so the caller can tell WHICH frames were added, matching this
+    response's own per-path idiom.
+
+    A trashed ``include_companions`` RAW/``.xmp`` that is itself a separate
+    ``photos`` row is folded into ``deleted``, not a distinct bucket -- its
+    file is gone the moment the trash succeeds, so it is exactly as deleted
+    as any path the caller named directly. ``skipped`` mirrors
+    ``CullApplyResponse``'s field of the same name: a path that was visible,
+    in ``photos``, and not a refused bracket lead, but whose file could not
+    be resolved on disk (already missing) -- landing in no other bucket.
+    """
+
+    dry_run: bool
+    would_trash: Optional[list[str]] = None
+    deleted: list[str]
+    not_found: list[str]
+    not_visible: list[str]
+    refused_bracket_lead: list[str]
+    sequence_siblings: list[str]
+    skipped: list[str]
+    trashed: int
+    errors: dict[str, str]
+
+
 class UpdateCheckResponse(BaseModel):
     """``GET /api/updates/check`` -- matches ``client/src/app/app.ts``'s
     ``ReleaseCheck``, which the contract test already reads."""

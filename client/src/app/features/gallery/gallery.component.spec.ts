@@ -2,8 +2,11 @@ import type { Mock } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { computed, signal, WritableSignal } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
+import { By } from '@angular/platform-browser';
 import { Subject, of, throwError } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
+import { MatBottomSheet } from '@angular/material/bottom-sheet';
+import { MatTooltip } from '@angular/material/tooltip';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
@@ -14,6 +17,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { AlbumService } from '../../core/services/album.service';
 import { GalleryComponent } from './gallery.component';
+import { I18N } from '../../core/i18n/keys';
 import { ScoreClassPipe } from '../../shared/pipes/score.pipes';
 import { MAX_COMPARE_PANES } from './synced-zoom.component';
 import { gridColumnCount } from './gallery-rows.util';
@@ -106,6 +110,7 @@ describe('GalleryComponent', () => {
       batchReject: vi.fn(() => Promise.resolve({ snapshot: new Map(), targeted: 0, count: 0 })),
       batchRating: vi.fn(() => Promise.resolve({ snapshot: new Map(), targeted: 0, count: 0 })),
       patchSequenceOverride: vi.fn(),
+      removePhotos: vi.fn(),
       // Read only once the real template renders -- the toolbar, the filter
       // sidebar and the slideshow all pull off the store directly.
       slideshowActive: signal(false),
@@ -151,6 +156,7 @@ describe('GalleryComponent', () => {
         },
         { provide: ActivatedRoute, useValue: routeMock },
         { provide: MatDialog, useValue: { open: vi.fn() } },
+        { provide: MatBottomSheet, useValue: { open: vi.fn() } },
         { provide: LiveAnnouncer, useValue: { announce: vi.fn(() => Promise.resolve()) } },
         // Returns a ref stub, not undefined: UndoService reads onAction() /
         // afterDismissed() off whatever open() hands back.
@@ -1310,6 +1316,294 @@ describe('GalleryComponent', () => {
     });
   });
 
+  describe('deleteSelected', () => {
+    function select(paths: string[]) {
+      mockStore.selectedPaths.set(new Set(paths));
+      mockStore.selectionCount.set(paths.length);
+    }
+
+    function deleteResponse(overrides: Partial<{
+      deleted: string[]; refused_bracket_lead: string[]; not_found: string[];
+      not_visible: string[]; sequence_siblings: string[]; skipped: string[];
+      errors: Record<string, string>; trashed: number;
+    }> = {}) {
+      return of({
+        dry_run: false,
+        deleted: [],
+        not_found: [],
+        not_visible: [],
+        refused_bracket_lead: [],
+        sequence_siblings: [],
+        skipped: [],
+        trashed: 0,
+        errors: {},
+        ...overrides,
+      });
+    }
+
+    // decision 8 / B5: `paths` cannot express a view-scoped selection, so the
+    // toolbar button is disabled under it -- this is the belt-and-braces guard
+    // behind that, proven directly rather than only via the disabled attribute.
+    it('does nothing under view scope, even if somehow invoked', async () => {
+      mockStore.viewScopeSelected.set(true);
+      const dialog = TestBed.inject(MatDialog);
+
+      await component.deleteSelected();
+
+      expect(dialog.open).not.toHaveBeenCalled();
+    });
+
+    it('does nothing with an empty selection', async () => {
+      select([]);
+      const dialog = TestBed.inject(MatDialog);
+
+      await component.deleteSelected();
+
+      expect(dialog.open).not.toHaveBeenCalled();
+    });
+
+    it('opens the dialog with paths only (never filters/exclude) and hasCompanion always offered', async () => {
+      select(['/a.jpg', '/b.jpg']);
+      const dialog = TestBed.inject(MatDialog);
+      (dialog.open as Mock).mockReturnValue({ afterClosed: () => of(null) });
+
+      await component.deleteSelected();
+
+      const data = (dialog.open as Mock).mock.calls[0][1].data;
+      expect(data.surface).toBe('bulk');
+      expect(data.paths).toEqual(['/a.jpg', '/b.jpg']);
+      expect(data.filters).toBeUndefined();
+      expect(data.exclude).toBeUndefined();
+      expect(data.hasCompanion).toBe(true);
+      expect(data.hasBracketLead).toBe(false);
+    });
+
+    it('passes hasSiblings true when a selected, loaded photo carries a sequence_kind', async () => {
+      mockStore.photos.set([
+        { path: '/a.jpg', sequence_kind: 'bracket' },
+        { path: '/b.jpg', sequence_kind: null },
+      ]);
+      select(['/a.jpg', '/b.jpg']);
+      const dialog = TestBed.inject(MatDialog);
+      (dialog.open as Mock).mockReturnValue({ afterClosed: () => of(null) });
+
+      await component.deleteSelected();
+
+      expect((dialog.open as Mock).mock.calls[0][1].data.hasSiblings).toBe(true);
+    });
+
+    it('passes hasSiblings false when no selected photo carries a bracket/panorama/hdr_panorama sequence_kind', async () => {
+      mockStore.photos.set([{ path: '/a.jpg', sequence_kind: null }]);
+      select(['/a.jpg']);
+      const dialog = TestBed.inject(MatDialog);
+      (dialog.open as Mock).mockReturnValue({ afterClosed: () => of(null) });
+
+      await component.deleteSelected();
+
+      expect((dialog.open as Mock).mock.calls[0][1].data.hasSiblings).toBe(false);
+    });
+
+    it('cancelling the dialog makes no request', async () => {
+      select(['/a.jpg']);
+      const dialog = TestBed.inject(MatDialog);
+      (dialog.open as Mock).mockReturnValue({ afterClosed: () => of(null) });
+
+      await component.deleteSelected();
+
+      expect(mockApi.post).not.toHaveBeenCalledWith('/photo/delete', expect.anything());
+      expect(mockStore.removePhotos).not.toHaveBeenCalled();
+    });
+
+    it('on confirm: posts dry_run=false, removes only the DELETED paths (not a refused one), clears the selection, and never refetches', async () => {
+      select(['/a.jpg', '/b.jpg']);
+      const dialog = TestBed.inject(MatDialog);
+      (dialog.open as Mock).mockReturnValue({
+        afterClosed: () => of({ includeCompanions: false, includeSequenceSiblings: false }),
+      });
+      mockApi.post.mockReturnValueOnce(
+        deleteResponse({ deleted: ['/a.jpg'], refused_bracket_lead: ['/b.jpg'], trashed: 1 }),
+      );
+
+      await component.deleteSelected();
+
+      expect(mockApi.post).toHaveBeenCalledWith('/photo/delete', {
+        paths: ['/a.jpg', '/b.jpg'],
+        include_companions: false,
+        include_sequence_siblings: false,
+        dry_run: false,
+      });
+      // Restricted to what the response actually reports deleted -- a refused
+      // bracket lead's row still exists server-side and must stay in the grid.
+      expect(mockStore.removePhotos).toHaveBeenCalledWith(['/a.jpg']);
+      expect(mockStore.clearSelection).toHaveBeenCalled();
+      // Step 11 deliberately departs from cull's `loadPhotos()` reload pattern
+      // for delete specifically -- guards against silently reverting to it.
+      expect(mockStore.loadPhotos).not.toHaveBeenCalled();
+    });
+
+    it('reports a partial result snackbar with the deleted and failed counts', async () => {
+      select(['/a.jpg', '/b.jpg']);
+      const dialog = TestBed.inject(MatDialog);
+      (dialog.open as Mock).mockReturnValue({
+        afterClosed: () => of({ includeCompanions: false, includeSequenceSiblings: false }),
+      });
+      mockApi.post.mockReturnValueOnce(
+        deleteResponse({ deleted: ['/a.jpg'], refused_bracket_lead: ['/b.jpg'], trashed: 1 }),
+      );
+      const snackBar = TestBed.inject(MatSnackBar);
+
+      await component.deleteSelected();
+
+      expect(snackBar.open).toHaveBeenCalledWith(
+        mockI18n.t(I18N.cull.delete_partial_result, { deleted: 1, failed: 1 }),
+        '', { duration: 4000 },
+      );
+    });
+
+    // Finding 5: a bulk delete where every send2trash failed must not render
+    // as a neutral "0 deleted, 0 refused" result -- `errors` (an unwritable
+    // trash dir), `not_found`, `not_visible` and `skipped` all count as
+    // failures even though none of them is `refused_bracket_lead`, the only
+    // bucket the toast used to read.
+    it('reports the dedicated delete_failed snackbar when every path lands in errors and none is deleted', async () => {
+      select(['/a.jpg', '/b.jpg']);
+      const dialog = TestBed.inject(MatDialog);
+      (dialog.open as Mock).mockReturnValue({
+        afterClosed: () => of({ includeCompanions: false, includeSequenceSiblings: false }),
+      });
+      mockApi.post.mockReturnValueOnce(
+        deleteResponse({ errors: { '/a.jpg': 'Permission denied', '/b.jpg': 'Permission denied' } }),
+      );
+      const snackBar = TestBed.inject(MatSnackBar);
+
+      await component.deleteSelected();
+
+      expect(snackBar.open).toHaveBeenCalledWith(
+        mockI18n.t(I18N.cull.delete_failed), '', { duration: 4000 },
+      );
+    });
+
+    it('folds not_found, not_visible and skipped into the partial-result failed count, not just refused_bracket_lead', async () => {
+      select(['/a.jpg', '/b.jpg', '/c.jpg', '/d.jpg']);
+      const dialog = TestBed.inject(MatDialog);
+      (dialog.open as Mock).mockReturnValue({
+        afterClosed: () => of({ includeCompanions: false, includeSequenceSiblings: false }),
+      });
+      mockApi.post.mockReturnValueOnce(
+        deleteResponse({
+          deleted: ['/a.jpg'], not_found: ['/b.jpg'], not_visible: ['/c.jpg'], skipped: ['/d.jpg'], trashed: 1,
+        }),
+      );
+      await component.deleteSelected();
+
+      // Asserted on the i18n mock's own call args, not on the snackbar's
+      // resolved text: `mockI18n.t` ignores its `vars` argument and echoes
+      // the key back, so `snackBar.open`'s first argument is identical
+      // ("cull.delete_partial_result") whether `failed` is computed from all
+      // four buckets or from `refused_bracket_lead` alone -- asserting on
+      // that resolved string would pass under either implementation.
+      expect(mockI18n.t).toHaveBeenCalledWith(I18N.cull.delete_partial_result, { deleted: 1, failed: 3 });
+    });
+
+    it('a failed request does not touch the store', async () => {
+      select(['/a.jpg']);
+      const dialog = TestBed.inject(MatDialog);
+      (dialog.open as Mock).mockReturnValue({
+        afterClosed: () => of({ includeCompanions: false, includeSequenceSiblings: false }),
+      });
+      mockApi.post.mockReturnValueOnce(throwError(() => new Error('boom')));
+
+      await component.deleteSelected();
+
+      expect(mockStore.removePhotos).not.toHaveBeenCalled();
+      expect(mockStore.clearSelection).not.toHaveBeenCalled();
+    });
+  });
+
+  // The desktop toolbar button and its gating -- the two properties the
+  // adversarial review singled out (G13, B5): gated on `trash_available`
+  // (never the raw `allow_trash`), and disabled (not hidden) under a
+  // view-scoped selection because `paths` cannot express one.
+  describe('bulk delete toolbar button (rendered)', () => {
+    let fixture: ComponentFixture<GalleryComponent> | null = null;
+
+    afterEach(() => {
+      fixture?.destroy();
+      fixture = null;
+    });
+
+    function render(trashAvailable: boolean, viewScoped: boolean, allowTrash: boolean = trashAvailable): ComponentFixture<GalleryComponent> {
+      mockAuth['isEdition'] = vi.fn(() => true);
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      mockAuth['isMultiUser'] = vi.fn(() => false);
+      mockAuth['isSuperadmin'] = vi.fn(() => false);
+      mockAuth['downloadProfiles'] = vi.fn(() => []);
+      mockStore.config.set({ cull: { allow_trash: allowTrash, trash_available: trashAvailable } });
+      mockStore.selectionCount.set(2);
+      mockStore.viewScopeSelected.set(viewScoped);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      return fixture;
+    }
+
+    function deleteButton(f: ComponentFixture<GalleryComponent>): HTMLButtonElement | null {
+      return (Array.from(f.nativeElement.querySelectorAll('button')) as HTMLButtonElement[])
+        .find(b => b.textContent?.includes('cull.delete_action')) ?? null;
+    }
+
+    it('is absent when trash_available is false, even with allow_trash true', () => {
+      const f = render(false, false, true);
+      expect(deleteButton(f)).toBeNull();
+    });
+
+    it('is present and enabled when trash_available is true and the selection is an explicit path list', () => {
+      const f = render(true, false);
+      const button = deleteButton(f);
+      expect(button).not.toBeNull();
+      expect(button!.disabled).toBe(false);
+    });
+
+    it('is disabled under a view-scoped ("select all in view") selection, with a tooltip explaining why', () => {
+      const f = render(true, true);
+      const button = deleteButton(f);
+      expect(button).not.toBeNull();
+      expect(button!.disabled).toBe(true);
+      const tooltipDebug = f.debugElement.queryAll(By.directive(MatTooltip))
+        .find(de => de.nativeElement === button);
+      expect(tooltipDebug?.injector.get(MatTooltip).message).toBe(I18N.cull.delete_disabled_view_scope_tooltip);
+    });
+  });
+
+  describe('openActionsSheet -> delete dispatch (mobile)', () => {
+    beforeEach(() => {
+      mockAuth['downloadProfiles'] = vi.fn(() => []);
+    });
+
+    it('passes trashAvailable through to the sheet data', async () => {
+      mockStore.config.set({ cull: { allow_trash: true, trash_available: true } });
+      mockAuth['isEdition'] = vi.fn(() => true);
+      const bottomSheet = TestBed.inject(MatBottomSheet);
+      (bottomSheet.open as Mock).mockReturnValue({ afterDismissed: () => of(null) });
+
+      await (component as unknown as { openActionsSheet(): Promise<void> }).openActionsSheet();
+
+      const data = (bottomSheet.open as Mock).mock.calls[0][1].data;
+      expect(data.trashAvailable).toBe(true);
+    });
+
+    it('dispatches to deleteSelected() when the sheet resolves { kind: "delete" }', async () => {
+      mockStore.config.set({ cull: { allow_trash: true, trash_available: true } });
+      mockAuth['isEdition'] = vi.fn(() => true);
+      const bottomSheet = TestBed.inject(MatBottomSheet);
+      (bottomSheet.open as Mock).mockReturnValue({ afterDismissed: () => of({ kind: 'delete' }) });
+      const spy = vi.spyOn(component, 'deleteSelected').mockResolvedValue();
+
+      await (component as unknown as { openActionsSheet(): Promise<void> }).openActionsSheet();
+
+      expect(spy).toHaveBeenCalled();
+    });
+  });
+
   describe('openExportDialog', () => {
     function select(paths: string[]) {
       mockStore.selectedPaths.set(new Set(paths));
@@ -1894,6 +2188,55 @@ describe('GalleryComponent', () => {
         expect(mockStore.pathsInView).not.toHaveBeenCalled();
         expect(addPhotos).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('canShowScanButton', () => {
+    function setAuth(overrides: {
+      isMultiUser?: boolean;
+      isSuperadmin?: boolean;
+      editionPasswordRequired?: boolean;
+      isEdition?: boolean;
+      hasFeature?: boolean;
+    }): void {
+      mockAuth['isMultiUser'] = vi.fn(() => overrides.isMultiUser ?? false);
+      mockAuth['isSuperadmin'] = vi.fn(() => overrides.isSuperadmin ?? false);
+      mockAuth['editionPasswordRequired'] = vi.fn(() => overrides.editionPasswordRequired ?? false);
+      mockAuth['isEdition'] = vi.fn(() => overrides.isEdition ?? false);
+      mockAuth['hasFeature'] = vi.fn(() => overrides.hasFeature ?? true);
+    }
+
+    function canShowScanButton(): boolean {
+      return (component as unknown as { canShowScanButton(): boolean }).canShowScanButton();
+    }
+
+    it('shows the button for a multi-user superadmin with the flag on', () => {
+      setAuth({ isMultiUser: true, isSuperadmin: true, hasFeature: true });
+      expect(canShowScanButton()).toBe(true);
+    });
+
+    it('hides the button for a multi-user admin who is not superadmin', () => {
+      setAuth({ isMultiUser: true, isSuperadmin: false, hasFeature: true });
+      expect(canShowScanButton()).toBe(false);
+    });
+
+    it('shows the button for a single-user locked install with an edition session', () => {
+      setAuth({ isMultiUser: false, editionPasswordRequired: true, isEdition: true, hasFeature: true });
+      expect(canShowScanButton()).toBe(true);
+    });
+
+    // The open-install trap this change exists to close: on an open single-user
+    // install, CurrentUser.is_edition is true for every caller (the open-install
+    // shortcut), but editionPasswordRequired is false, so the button must stay
+    // hidden even though isEdition() reports true.
+    it('hides the button on an open single-user install even though the caller reads as edition-authenticated', () => {
+      setAuth({ isMultiUser: false, editionPasswordRequired: false, isEdition: true, hasFeature: true });
+      expect(canShowScanButton()).toBe(false);
+    });
+
+    it('hides the button regardless of role when the feature flag is off', () => {
+      setAuth({ isMultiUser: true, isSuperadmin: true, hasFeature: false });
+      expect(canShowScanButton()).toBe(false);
     });
   });
 });
