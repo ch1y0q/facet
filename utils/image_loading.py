@@ -273,9 +273,28 @@ def open_nonraw_image(photo):
     ``exif_transpose``/``convert`` may drop ``info``. The source handle is
     closed before returning: ``exif_transpose`` loads the pixels and always
     hands back a new image, so nothing returned here still refers to the file.
+
+    Raises:
+        ValueError: the frame exceeds ``Image.MAX_IMAGE_PIXELS``.
     """
     Image, ImageOps = _ensure_pil()
     with Image.open(photo) as source:
+        # Pillow only WARNS between MAX_IMAGE_PIXELS and twice that, and hard-errors
+        # only above the doubled bound -- a warn-only band nothing here checks or
+        # sets. The PQ tone map then adds a measured ~9.9 bytes/pixel of float32
+        # intermediates on top of the decoded frame, so a frame Pillow would only
+        # warn about is already an outsized allocation before tone mapping even
+        # starts. Refuse it here, once, on the one decode path every non-RAW
+        # consumer shares, rather than let it warn its way into an OOM per request.
+        # A None limit is Pillow's documented way to disable the check entirely,
+        # and it disables this one too.
+        width, height = source.size
+        pixel_count = width * height
+        if Image.MAX_IMAGE_PIXELS is not None and pixel_count > Image.MAX_IMAGE_PIXELS:
+            raise ValueError(
+                f"{photo}: {pixel_count} pixels exceeds the "
+                f"MAX_IMAGE_PIXELS limit of {Image.MAX_IMAGE_PIXELS}"
+            )
         is_pq = _heif_is_pq(source)
         pil_img = ImageOps.exif_transpose(source)
     if pil_img.mode != 'RGB':
