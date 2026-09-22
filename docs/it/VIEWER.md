@@ -300,7 +300,7 @@ Un trigger correlato ma distinto, `POST /api/scan/recompute`, riutilizza lo stes
 Ricerca ibrida che combina la somiglianza degli embedding CLIP/SigLIP (70%) con la corrispondenza testuale FTS5 BM25 su didascalie e tag (30%). Digita una query come "tramonto sulle montagne" o "bambino che gioca nella neve" e la galleria restituisce le foto corrispondenti ordinate per punteggio combinato.
 
 - Richiede i dati `clip_embedding` memorizzati (calcolati durante la valutazione)
-- Usa sqlite-vec per la ricerca vettoriale KNN quando installato, ricade su NumPy in memoria
+- Usa sqlite-vec per la ricerca vettoriale KNN quando installato e SQLite di questo Python può caricare estensioni, altrimenti ricade su NumPy in memoria
 - La ricerca testuale FTS5 su didascalie/tag IA fornisce una corrispondenza per parole chiave aggiuntiva (esegui `database.py --rebuild-fts` per abilitarla)
 - Usa lo stesso modello di embedding del profilo VRAM attivo (SigLIP 2 per 16gb/24gb, CLIP ViT-L-14 per legacy/8gb), oppure quello tra `models.clip`/`clip_legacy` che corrisponde effettivamente alla dimensione di embedding memorizzata se i due non coincidono (vedi [docs/CONFIGURATION.md](CONFIGURATION.md))
 - `scope=text` limita la query alle corrispondenze FTS5 letterali nel testo OCR/didascalia e salta la ricerca tramite embedding

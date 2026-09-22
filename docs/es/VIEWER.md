@@ -299,7 +299,7 @@ Un activador relacionado pero independiente, `POST /api/scan/recompute`, reutili
 Búsqueda híbrida que combina la similitud de embeddings de CLIP/SigLIP (70%) con la coincidencia de texto BM25 de FTS5 sobre subtítulos y etiquetas (30%). Escribe una consulta como "sunset over mountains" o "child playing in snow" y el visor devuelve las fotos coincidentes ordenadas por puntuación combinada.
 
 - Requiere datos de `clip_embedding` almacenados (calculados durante la puntuación)
-- Usa sqlite-vec para la búsqueda vectorial KNN cuando está instalado, y recurre a NumPy en memoria
+- Usa sqlite-vec para la búsqueda vectorial KNN cuando está instalado y el SQLite de este Python puede cargar extensiones, y recurre a NumPy en memoria
 - La búsqueda de texto FTS5 sobre subtítulos/etiquetas de IA aporta coincidencia adicional por palabras clave (ejecuta `database.py --rebuild-fts` para habilitarla)
 - Usa el mismo modelo de embedding que el perfil de VRAM activo (SigLIP 2 para 16gb/24gb, CLIP ViT-L-14 para legacy/8gb), o el de `models.clip`/`clip_legacy` que realmente coincide con la dimensión de embedding almacenada si ambos no coinciden (ver [docs/CONFIGURATION.md](CONFIGURATION.md))
 - `scope=text` restringe la consulta a las coincidencias literales de FTS5 en el texto de OCR/subtítulos y omite la búsqueda por embeddings
