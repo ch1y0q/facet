@@ -8,6 +8,8 @@ import types
 from pathlib import Path
 from unittest import mock
 
+import tracemalloc
+
 import numpy as np
 import pytest
 from PIL import Image
@@ -382,6 +384,17 @@ def test_srgb_oetf_reference_points():
     assert image_loading._srgb_oetf(1.0) == pytest.approx(1.0)
 
 
+def test_srgb_oetf_keeps_the_linear_toe():
+    """Below the 0.0031308 threshold the curve is the 12.92 linear segment.
+
+    The in-place form computes the toe mask and the scaled toe BEFORE np.power
+    overwrites the buffer; getting that order wrong returns the shoulder for
+    every toe pixel, which no endpoint check would catch.
+    """
+    toe = np.array([0.0, 0.001, 0.003], dtype=np.float32)
+    assert image_loading._srgb_oetf(toe) == pytest.approx(toe * 12.92, rel=1e-5)
+
+
 def test_tonemap_pq_output_shape_and_range():
     """tone map returns an 8-bit RGB PIL image with pixels in [0,255]."""
     rng = np.random.default_rng(0)
@@ -570,6 +583,79 @@ def test_non_pq_passes_through_regardless_of_enabled():
     assert _open_sdr() == 60.0
     image_loading.configure_hdr_pq_tonemap_profile({'enabled': False})
     assert _open_sdr() == 60.0
+
+@pytest.mark.parametrize('mode', ['percentile', 'max', 'fixed'])
+@pytest.mark.parametrize('shape', [(97, 61), (1, 40), (40, 1), (64, 64)])
+def test_banded_white_point_matches_the_whole_frame_form(shape, mode):
+    """Banding the white point is an allocation strategy, not a different number.
+
+    Three rows per band divides none of these shapes evenly, which is the case
+    an equal-split implementation gets wrong. The clamps are opened right out on
+    purpose: at the shipped 100/1200 nit bounds random PQ codes saturate
+    max_nits, and the two forms then agree on a constant instead of on the value
+    they computed.
+    """
+    rng = np.random.default_rng(3)
+    src = rng.integers(0, 256, (*shape, 3), dtype=np.uint8)
+    wp = dict(_full_settings()['white_point'],
+              mode=mode, min_nits=1.0, max_nits=1e6, percentile=99.0)
+    whole = image_loading._hdr_pq_white_point(image_loading._band_nits(src), wp)
+    assert image_loading._banded_white_point(src, wp, 3) == pytest.approx(whole, rel=1e-6)
+
+
+def test_pq_tonemap_banding_does_not_change_the_result():
+    """Row banding is an allocation strategy, not a different transform."""
+    rng = np.random.default_rng(7)
+    arr = rng.integers(0, 256, (97, 61, 3), dtype=np.uint8)
+    settings = _full_settings()
+    whole = np.asarray(image_loading._tonemap_pq_to_srgb(Image.fromarray(arr, 'RGB'), settings))
+    with mock.patch.object(image_loading, '_TONEMAP_BAND_PIXELS', 61 * 8):
+        banded = np.asarray(image_loading._tonemap_pq_to_srgb(Image.fromarray(arr, 'RGB'), settings))
+    assert np.array_equal(whole, banded)
+
+
+def test_pq_eotf_lut_is_exact_over_every_8bit_code():
+    """The table is a tabulation, not an approximation.
+
+    The decoder hands back 8-bit RGB, so the EOTF has exactly 256 possible
+    inputs per channel and the lookup must equal the closed form on all of
+    them -- otherwise the "exact" in its comment is a claim, not a fact.
+    """
+    codes = np.arange(256, dtype=np.float32) / 255.0
+    assert np.array_equal(image_loading._PQ_EOTF_LUT, image_loading._pq_eotf(codes).astype(np.float32))
+
+
+def test_tonemap_pq_float32_intermediates_are_band_bound():
+    """Growing the frame must not grow the float32 working set.
+
+    The peak itself is NOT frame-invariant and the name does not claim it is:
+    the uint8 output and the per-pixel channel maxima are inherently frame-sized,
+    which measures ~6.6 bytes/pixel. What must not scale is the float32
+    intermediates -- the whole-array form built eight frame-sized copies, so a
+    48 MP still peaked at 1327 MiB against this one's 107. The bound below is
+    3 bytes/pixel of headroom over the measurement, which one more full-size
+    float32 temporary (4 bytes/pixel) would exceed.
+    """
+    rng = np.random.default_rng(11)
+    settings = _full_settings()
+
+    def _peak(side):
+        arr = rng.integers(0, 256, (side, side, 3), dtype=np.uint8)
+        img = Image.fromarray(arr, 'RGB')
+        tracemalloc.start()
+        image_loading._tonemap_pq_to_srgb(img, settings)
+        peak = tracemalloc.get_traced_memory()[1]
+        tracemalloc.stop()
+        return peak, arr.nbytes
+
+    small_peak, small_bytes = _peak(512)
+    large_peak, large_bytes = _peak(2048)
+
+    # At 8 float32 copies the whole-array form grew ~29x the frame delta.
+    assert large_peak - small_peak < 3 * (large_bytes - small_bytes), (
+        f"{small_bytes / 2**20:.0f} MiB frame -> {small_peak / 2**20:.0f} MiB peak; "
+        f"{large_bytes / 2**20:.0f} MiB frame -> {large_peak / 2**20:.0f} MiB peak")
+
 
 # --- Real camera files --------------------------------------------------------
 # See tests/fixtures/README.md for provenance and the exact NCLX values.
