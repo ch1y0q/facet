@@ -159,11 +159,33 @@ def _hable(x):
             / (x * (_HABLE_A * x + _HABLE_B) + _HABLE_D * _HABLE_F)) - _HABLE_E / _HABLE_F
 
 
-# The decoder hands back 8-bit RGB, so the EOTF has exactly 256 possible
-# inputs per channel: tabulating it is EXACT, not an approximation, and it
+# The decoder hands back RGB at either 8 bits (the PIL plugin's hardcoded
+# convert_hdr_to_8bit path) or its native depth (the pillow-heif path used by
+# _decode_pq_native, left-shifted to 16 bits by the decoder -- see
+# _decode_pq_native for the shift back down). The EOTF therefore has exactly
+# ``1 << bit_depth`` possible inputs per channel at whichever depth is in
+# play: tabulating it is EXACT, not an approximation, at any depth, and it
 # replaces the four frame-sized float temporaries _pq_eotf builds (the power,
-# the numerator, the denominator and the result) with one 256-entry lookup.
-_PQ_EOTF_LUT = _pq_eotf(np.arange(256, dtype=np.float32) / 255.0).astype(np.float32)
+# the numerator, the denominator and the result) with one lookup table -- 256
+# entries (1 KiB) at 8 bits, 1024 entries (4 KiB) at 10.
+_PQ_EOTF_LUTS = {}
+
+
+def _pq_eotf_lut(bit_depth):
+    """Memoised EOTF table for ``bit_depth``, exact at every code that depth has."""
+    lut = _PQ_EOTF_LUTS.get(bit_depth)
+    if lut is None:
+        size = 1 << bit_depth
+        lut = _pq_eotf(np.arange(size, dtype=np.float32) / (size - 1)).astype(np.float32)
+        _PQ_EOTF_LUTS[bit_depth] = lut
+    return lut
+
+
+# The pinned 8-bit table, kept as a module-level name because it is exactly
+# _pq_eotf_lut(8) -- the table every decode used before this depth-aware form
+# existed, and what _tonemap_pq_to_srgb's PIL wrapper still uses today.
+_PQ_EOTF_LUT = _pq_eotf_lut(8)
+
 
 # Pixels per band. Sized for cache rather than for the frame: it is the float32
 # INTERMEDIATES that stay band-bound however large the still is, not the peak
@@ -171,7 +193,8 @@ _PQ_EOTF_LUT = _pq_eotf(np.arange(256, dtype=np.float32) / 255.0).astype(np.floa
 # the uint8 output plus the per-pixel channel maxima the white point reads --
 # rather than at the ~8 full-size float32 copies the whole-array form cost.
 # Measured against 1 << 20, this is 19-32% faster and ~18% lighter, bit-identical
-# out.
+# out. The native path's uint16 decoder buffer is twice the width of the 8-bit
+# one, but it does NOT make the frame more expensive: see open_nonraw_image.
 _TONEMAP_BAND_PIXELS = 1 << 16
 
 
@@ -180,14 +203,24 @@ def _tonemap_band_rows(shape):
     return max(1, _TONEMAP_BAND_PIXELS // max(1, int(shape[1]) * int(shape[2])))
 
 
-def _band_nits(band):
-    """Absolute-nit linear sRGB for one band of 8-bit PQ/BT.2020 pixels."""
-    nits = _PQ_EOTF_LUT[band] @ _BT2020_TO_SRGB.T
+def _band_nits(band, lut=_PQ_EOTF_LUT, shift=0):
+    """Absolute-nit linear sRGB for one band of PQ/BT.2020 pixels.
+
+    ``lut`` is sized to the band's own bit depth (defaulting to the 8-bit
+    table); ``shift`` maps a wider-than-the-LUT code back down to it (0 when
+    the band already IS at the LUT's depth, e.g. the decoder's
+    16-bit-shifted 10-bit codes on the native path need >>6). The shift
+    happens here, band-sized, rather than on the source array: that array is
+    a read-only, non-owning view into the still-open HeifFile on the native
+    path (see _decode_pq_native), so an in-place ``>>=`` would raise.
+    """
+    codes = band >> shift if shift else band
+    nits = lut[codes] @ _BT2020_TO_SRGB.T
     np.maximum(nits, 0.0, out=nits)
     return nits
 
 
-def _banded_white_point(src, wp, band_rows):
+def _banded_white_point(src, wp, band_rows, lut=_PQ_EOTF_LUT, shift=0):
     """:func:`_hdr_pq_white_point` without a frame-sized nits array.
 
     Returns the same value the whole-frame form does. The white point reads
@@ -202,12 +235,12 @@ def _banded_white_point(src, wp, band_rows):
     if mode == 'max':
         peak = 0.0
         for start in range(0, src.shape[0], band_rows):
-            peak = max(peak, float(_band_nits(src[start:start + band_rows]).max()))
+            peak = max(peak, float(_band_nits(src[start:start + band_rows], lut, shift).max()))
         return max(peak, min_nits)
     per_pixel_max = np.empty(src.shape[:2], dtype=np.float32)
     for start in range(0, src.shape[0], band_rows):
         stop = min(start + band_rows, src.shape[0])
-        np.max(_band_nits(src[start:stop]), axis=2, out=per_pixel_max[start:stop])
+        np.max(_band_nits(src[start:stop], lut, shift), axis=2, out=per_pixel_max[start:stop])
     percentile = float(np.clip(wp.get('percentile', 99.99), 0.0, 100.0))
     max_nits = float(wp.get('max_nits', 1200.0))
     # overwrite_input: per_pixel_max is our own scratch, and the partition
@@ -316,6 +349,43 @@ def _hdr_pq_tone_map(nits, white_nits, settings):
     return np.clip(_hable(x) / _hable(w), 0.0, 1.0)
 
 
+def _tonemap_codes_to_srgb(codes, lut, shift, settings):
+    """Tone-map an array of PQ/BT.2020 codes at any depth to 8-bit sRGB.
+
+    ``codes`` is whatever the decoder produced (8-bit PIL array or the
+    16-bit-shifted native-depth array from :func:`_decode_pq_native`); ``lut``
+    and ``shift`` describe how to read it (see :func:`_band_nits`). This is
+    the shared body behind both :func:`_tonemap_pq_to_srgb` (the 8-bit PIL
+    wrapper existing callers use) and the native decode path.
+    """
+    band_rows = _tonemap_band_rows(codes.shape)
+
+    # Pass 1: the per-image white point. It needs the whole frame's channel
+    # maxima before any pixel can be mapped, so it gets its own banded sweep
+    # rather than forcing the nits array to exist all at once.
+    white_nits = _banded_white_point(codes, settings.get('white_point', {}), band_rows, lut, shift)
+
+    # Pass 2: map band by band. Every intermediate is band-sized, so the peak
+    # working set is the band plus the frame-sized decoder buffer and our
+    # uint8 output -- not the eight float32 copies of the frame the
+    # whole-array form built.
+    out = np.empty(codes.shape, dtype=np.uint8)
+    for start in range(0, codes.shape[0], band_rows):
+        stop = min(start + band_rows, codes.shape[0])
+        # 1. PQ EOTF (SMPTE ST 2084) via the exact depth-sized table, then
+        #    BT.2020 -> sRGB primaries, keeping absolute nits.
+        # 2. Filmic tone map in linear light at the per-image white point.
+        mapped = _hdr_pq_tone_map(_band_nits(codes[start:stop], lut, shift), white_nits, settings)
+        np.clip(mapped, 0.0, 1.0, out=mapped)
+        # 3. sRGB OETF (IEC 61966-2-1), round and quantise to 8-bit.
+        _srgb_oetf_into(mapped)
+        mapped *= 255.0
+        mapped += 0.5
+        np.clip(mapped, 0, 255, out=mapped)
+        out[start:stop] = mapped.astype(np.uint8)
+    return out
+
+
 def _tonemap_pq_to_srgb(pil_img, settings=None):
     """Tone-map an 8-bit PQ/BT.2020 RGB PIL image to an SDR sRGB PIL image.
 
@@ -323,6 +393,12 @@ def _tonemap_pq_to_srgb(pil_img, settings=None):
     transfer 16), so SDR/HLG frames never reach this. Behaviour is tunable
     through the ``hdr_pq_tonemap`` config block; setting ``enabled: false``
     returns the decoder's raw PQ values untouched.
+
+    This is the 8-bit path: pillow-heif's PIL plugin hardcodes
+    ``convert_hdr_to_8bit=True``, so ``pil_img`` never carries more than 256
+    codes per channel. :func:`_decode_pq_native` calls
+    :func:`_tonemap_codes_to_srgb` directly with the decoder's native depth
+    instead of going through here.
     """
     Image, _ = _ensure_pil()
     if settings is None:
@@ -331,32 +407,48 @@ def _tonemap_pq_to_srgb(pil_img, settings=None):
         return pil_img
 
     src = np.asarray(pil_img)
-    band_rows = _tonemap_band_rows(src.shape)
-
-    # Pass 1: the per-image white point. It needs the whole frame's channel
-    # maxima before any pixel can be mapped, so it gets its own banded sweep
-    # rather than forcing the nits array to exist all at once.
-    white_nits = _banded_white_point(src, settings.get('white_point', {}), band_rows)
-
-    # Pass 2: map band by band. Every intermediate is band-sized, so the peak
-    # working set is the band plus the two frame-sized uint8 buffers (the
-    # decoder's and ours) -- not the eight float32 copies of the frame the
-    # whole-array form built.
-    out = np.empty(src.shape, dtype=np.uint8)
-    for start in range(0, src.shape[0], band_rows):
-        stop = min(start + band_rows, src.shape[0])
-        # 1. PQ EOTF (SMPTE ST 2084) via the exact 256-entry table, then
-        #    BT.2020 -> sRGB primaries, keeping absolute nits.
-        # 2. Filmic tone map in linear light at the per-image white point.
-        mapped = _hdr_pq_tone_map(_band_nits(src[start:stop]), white_nits, settings)
-        np.clip(mapped, 0.0, 1.0, out=mapped)
-        # 3. sRGB OETF (IEC 61966-2-1), round and quantise to 8-bit.
-        _srgb_oetf_into(mapped)
-        mapped *= 255.0
-        mapped += 0.5
-        np.clip(mapped, 0, 255, out=mapped)
-        out[start:stop] = mapped.astype(np.uint8)
+    out = _tonemap_codes_to_srgb(src, _pq_eotf_lut(8), 0, settings)
     return Image.fromarray(out, 'RGB')
+
+
+def _decode_pq_native(photo, settings):
+    """Tone-map ``photo`` from its native decoded bit depth, or None on any failure.
+
+    pillow-heif's PIL plugin hardcodes ``convert_hdr_to_8bit=True`` with no
+    flag to disable it, so this calls ``pillow_heif.open_heif`` directly
+    instead of going through PIL. The decoder reports mode ``RGB;16`` with the
+    codes left-shifted to 16 bits (a 10-bit code ``C`` arrives as ``C << 6`` --
+    the Canon fixture's max 10-bit code 907 comes back as 58048); ``_band_nits``
+    shifts it back down per band rather than here, because ``np.asarray(img)``
+    is a read-only, non-owning VIEW into ``img``'s own buffer and cannot be
+    modified in place.
+
+    ``img`` -- the ``HeifFile`` -- is kept referenced for the whole tone map:
+    that view's buffer dies with it, and letting it be collected early
+    produces silently garbled pixels rather than an error.
+
+    Any failure -- pillow-heif missing or erroring, a corrupt file, an
+    SDR-depth (<=8 bit) frame slipping through -- returns None so the caller
+    falls back to today's 8-bit path; the exception is logged at debug rather
+    than swallowed silently.
+    """
+    try:
+        img = pillow_heif.open_heif(photo, convert_hdr_to_8bit=False)
+        bit_depth = img.info.get('bit_depth', 8)
+        if bit_depth <= 8 or img.mode != 'RGB;16':
+            return None
+        out = _tonemap_codes_to_srgb(
+            np.asarray(img), _pq_eotf_lut(bit_depth), 16 - bit_depth, settings)
+        Image, _ = _ensure_pil()
+        native_img = Image.fromarray(out, 'RGB')
+        exif = img.info.get('exif')
+        if exif:
+            native_img.info['exif'] = exif
+        return native_img
+    except Exception as ex:
+        logger.debug("Native-depth PQ decode failed for %s, falling back to 8-bit: %s",
+                     os.path.basename(str(photo)), ex)
+        return None
 
 
 def open_nonraw_image(photo):
@@ -371,6 +463,19 @@ def open_nonraw_image(photo):
     closed before returning: ``exif_transpose`` loads the pixels and always
     hands back a new image, so nothing returned here still refers to the file.
 
+    A PQ frame is decoded twice in the worst case: once here (header only --
+    ``Image.open`` is lazy) to detect PQ from the NCLX profile, then again by
+    :func:`_decode_pq_native` at its native bit depth. The native decode is the
+    CHEAPER of the two despite its uint16 buffer, because taking it means PIL
+    never decodes the frame at all and ``exif_transpose`` never copies that
+    decode: measured on a 12 MP PQ frame, peak RSS is 166.4 MiB native against
+    212.3 MiB 8-bit (14.5 vs 18.6 bytes/pixel). That native decode
+    replaces the whole rest of this function on success -- its own EXIF
+    transpose happens after the tone map, which is safe: the map is per-pixel
+    and the white point is a percentile over all pixels, both order-independent.
+    Any failure there (including ``hdr_pq_tonemap.enabled: false``, which is
+    never even attempted) falls through to the 8-bit path below unchanged.
+
     Raises:
         ValueError: the frame exceeds ``Image.MAX_IMAGE_PIXELS``.
     """
@@ -380,10 +485,10 @@ def open_nonraw_image(photo):
         # only above the doubled bound -- a warn-only band nothing here checks or
         # sets. The PQ tone map then adds a measured ~6.6 bytes/pixel on top of
         # the decoded frame, so a frame Pillow would only warn about is already an
-        # outsized allocation before tone mapping even starts. Refuse it here, once, on the one decode path every non-RAW
-        # consumer shares, rather than let it warn its way into an OOM per request.
-        # A None limit is Pillow's documented way to disable the check entirely,
-        # and it disables this one too.
+        # outsized allocation before tone mapping even starts. Refuse it here, once,
+        # on the one decode path every non-RAW consumer shares, rather than let it
+        # warn its way into an OOM per request. A None limit is Pillow's documented
+        # way to disable the check entirely, and it disables this one too.
         width, height = source.size
         pixel_count = width * height
         if Image.MAX_IMAGE_PIXELS is not None and pixel_count > Image.MAX_IMAGE_PIXELS:
@@ -392,6 +497,12 @@ def open_nonraw_image(photo):
                 f"MAX_IMAGE_PIXELS limit of {Image.MAX_IMAGE_PIXELS}"
             )
         is_pq = _heif_is_pq(source)
+        if is_pq:
+            settings = get_hdr_pq_tonemap_settings()
+            if settings.get('enabled', True):
+                native_img = _decode_pq_native(photo, settings)
+                if native_img is not None:
+                    return ImageOps.exif_transpose(native_img)
         pil_img = ImageOps.exif_transpose(source)
     if pil_img.mode != 'RGB':
         pil_img = pil_img.convert('RGB')
