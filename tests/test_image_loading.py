@@ -5,6 +5,7 @@ import sys
 import threading
 import time
 import types
+from pathlib import Path
 from unittest import mock
 
 import numpy as np
@@ -569,3 +570,87 @@ def test_non_pq_passes_through_regardless_of_enabled():
     assert _open_sdr() == 60.0
     image_loading.configure_hdr_pq_tonemap_profile({'enabled': False})
     assert _open_sdr() == 60.0
+
+# --- Real camera files --------------------------------------------------------
+# See tests/fixtures/README.md for provenance and the exact NCLX values.
+
+FIXTURES = Path(__file__).parent / 'fixtures'
+CANON_PQ_HIF = FIXTURES / 'canon_eos_r8_hdr_pq.hif'
+SONY_SDR_HIF = FIXTURES / 'sony_a7sm3_sdr.hif'
+
+requires_heif = pytest.mark.skipif(
+    not image_loading._heif_available, reason='pillow-heif not installed')
+
+
+def _pure_white_pixels(rgb):
+    return int((rgb == 255).all(axis=-1).sum())
+
+
+@requires_heif
+def test_real_canon_hif_reports_pq_through_its_nclx_profile():
+    """A genuine in-camera HDR PQ still must be recognised from its metadata."""
+    Image_, _ = image_loading._ensure_pil()
+    with Image_.open(CANON_PQ_HIF) as img:
+        nclx = img.info['nclx_profile']
+        assert image_loading._heif_is_pq(img) is True
+        assert nclx['color_primaries'] == 9          # BT.2020
+        assert nclx['transfer_characteristics'] == 16  # SMPTE ST 2084 (PQ)
+        # An HDR PQ HEIF need not carry BT.2020 non-constant luminance: this
+        # Canon body writes matrix 1 (BT.709). Nothing may gate on that field.
+        assert nclx['matrix_coefficients'] == 1
+
+
+@requires_heif
+def test_real_canon_hif_is_dark_when_decoded_as_plain_srgb():
+    """Pins the bug: pillow-heif hands back PQ code values, not sRGB ones."""
+    Image_, _ = image_loading._ensure_pil()
+    with Image_.open(CANON_PQ_HIF) as img:
+        decoded = np.asarray(img.convert('RGB'))
+    assert decoded.mean() < 100          # measured 92.6/255
+    assert np.percentile(decoded, 99) < 170  # measured 153
+    assert _pure_white_pixels(decoded) == 0
+
+
+@requires_heif
+def test_real_canon_hif_tone_map_invents_no_clipping():
+    """The regression guard for the tone curve's white point.
+
+    The source frame has no pure-white pixel at all. Normalising the Hable
+    operator at diffuse white instead of at the signal peak turned 21 648 of
+    its 240 000 pixels pure white, which would have driven highlight_clipped
+    and channel_clip_highlight_pct on a frame that clips nowhere.
+    """
+    Image_, _ = image_loading._ensure_pil()
+    with Image_.open(CANON_PQ_HIF) as img:
+        decoded = np.asarray(img.convert('RGB'))
+    mapped = np.asarray(image_loading._open_nonraw_image(str(CANON_PQ_HIF)))
+
+    assert _pure_white_pixels(mapped) == 0
+    # The transform ran, and it opened the highlights up the scale.
+    assert not np.array_equal(mapped, decoded)
+    assert np.percentile(mapped, 99) > np.percentile(decoded, 99)
+
+
+@requires_heif
+def test_real_sony_sdr_hif_passes_through_untouched():
+    """.HIF is neither Canon-only nor HDR: Sony writes SDR stills under it.
+
+    An extension-based gate would tone-map this file. The NCLX transfer (13,
+    sRGB) is what keeps it byte-identical to a plain decode.
+    """
+    Image_, _ = image_loading._ensure_pil()
+    with Image_.open(SONY_SDR_HIF) as img:
+        assert img.info['nclx_profile']['transfer_characteristics'] == 13
+        assert image_loading._heif_is_pq(img) is False
+        decoded = np.asarray(img.convert('RGB'))
+    loaded = np.asarray(image_loading._open_nonraw_image(str(SONY_SDR_HIF)))
+    assert np.array_equal(loaded, decoded)
+
+
+@requires_heif
+@pytest.mark.parametrize('fixture', [CANON_PQ_HIF, SONY_SDR_HIF])
+def test_real_hif_files_are_scannable_and_load_as_rgb(fixture):
+    assert fixture.suffix.lower() in image_loading.SCANNABLE_IMAGE_EXTENSIONS
+    pil_img, img_cv = image_loading.load_image_from_path(str(fixture))
+    assert pil_img is not None and pil_img.mode == 'RGB'
+    assert img_cv is not None and img_cv.shape[2] == 3
