@@ -332,8 +332,16 @@ class TestExifPrefetch:
 def test_scannable_extensions_include_hif():
     # SCANNABLE_IMAGE_EXTENSIONS is the single allow-list consumed by both the
     # scan collector (facet.py) and watch mode (processing/watcher.py).
-    assert '.hif' in image_loading.HEIF_EXTENSIONS
-    assert '.hif' in image_loading.SCANNABLE_IMAGE_EXTENSIONS
+    # pillow-heif is a soft dependency: the CI test job installs the minimal
+    # dependency set without it, so HEIF_EXTENSIONS is empty and .HIF is neither
+    # scanned nor watched. Assert the correct behaviour for both states rather
+    # than assuming the decoder is present.
+    if image_loading._heif_available:
+        assert '.hif' in image_loading.HEIF_EXTENSIONS
+        assert '.hif' in image_loading.SCANNABLE_IMAGE_EXTENSIONS
+    else:
+        assert image_loading.HEIF_EXTENSIONS == set()
+        assert '.hif' not in image_loading.SCANNABLE_IMAGE_EXTENSIONS
     assert image_loading.SCANNABLE_IMAGE_EXTENSIONS == (
         image_loading.JPEG_EXTENSIONS
         | image_loading.HEIF_EXTENSIONS
