@@ -33,19 +33,29 @@ except ImportError:
     logger.warning("pillow-heif not installed — HEIF/HEIC files will be skipped")
 
 # All RAW formats supported via rawpy/libraw
-RAW_EXTENSIONS = {'.cr2', '.cr3', '.nef', '.arw', '.raf', '.rw2', '.dng', '.orf', '.srw', '.pef'}
+RAW_EXTENSIONS = frozenset({'.cr2', '.cr3', '.nef', '.arw', '.raf', '.rw2', '.dng', '.orf', '.srw', '.pef'})
 
 # JPEG stills
-JPEG_EXTENSIONS = {'.jpg', '.jpeg'}
+JPEG_EXTENSIONS = frozenset({'.jpg', '.jpeg'})
 
-# HEIF/HEIC formats (iPhone default since iOS 11) — empty when pillow-heif is missing
-HEIF_EXTENSIONS = {'.heic', '.heif', '.hif'} if _heif_available else set()
+# Every HEIF container extension Facet recognises, whether or not this install can
+# decode one. '.hif' is Canon's extension for the HDR PQ render; iPhone writes
+# '.heic'. Readers that need to know what the CONTAINER is use this set.
+KNOWN_HEIF_EXTENSIONS = frozenset({'.heic', '.heif', '.hif'})
 
-# Every still-image extension Facet can scan. This is the single source of truth
-# for the scan collector (facet.py) and watch mode (processing/watcher.py), so a
-# newly supported format is picked up in both. HEIF_EXTENSIONS is empty when
-# pillow-heif is missing, in which case those files are neither scanned nor watched.
+# The subset this install can actually open — empty when pillow-heif is missing.
+# Readers that need to know what can be DECODED use this one.
+HEIF_EXTENSIONS = KNOWN_HEIF_EXTENSIONS if _heif_available else frozenset()
+
+# Every still-image extension the scan collector (facet.py) accepts. HEIF drops out
+# when pillow-heif is missing, because a scan would have nothing to decode it with.
 SCANNABLE_IMAGE_EXTENSIONS = JPEG_EXTENSIONS | HEIF_EXTENSIONS | RAW_EXTENSIONS
+
+# What watch mode observes. Deliberately the KNOWN set rather than the decodable
+# one: a filesystem event is only a note that the path changed, and dropping HEIF
+# events on a pillow-heif-less install would mean a library that gains the
+# dependency later never sees the files it already holds.
+WATCHABLE_IMAGE_EXTENSIONS = JPEG_EXTENSIONS | KNOWN_HEIF_EXTENSIONS | RAW_EXTENSIONS
 
 
 # A bracket exists to capture highlight headroom in its +EV frames, and an HDR

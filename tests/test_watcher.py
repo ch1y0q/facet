@@ -94,11 +94,37 @@ class TestPendingChangesAdd:
         assert pending.take_if_settled(0) is None
 
 
-def test_watch_suffixes_derive_from_scan_allow_list():
-    # Watch mode must observe exactly the still-image formats the scan
-    # collector accepts, so the two lists cannot drift apart again.
-    from utils.image_loading import SCANNABLE_IMAGE_EXTENSIONS
-    assert WATCH_SUFFIXES == SCANNABLE_IMAGE_EXTENSIONS
+def test_watch_suffixes_derive_from_shared_extension_table():
+    # Watch mode must not carry its own copy of the format list: the hard-coded
+    # one it used to hold had already drifted, omitting Canon .HIF.
+    from utils.image_loading import WATCHABLE_IMAGE_EXTENSIONS
+    assert WATCH_SUFFIXES == WATCHABLE_IMAGE_EXTENSIONS
+
+
+def test_watch_suffixes_cover_heif_even_without_pillow_heif():
+    # A filesystem event is only a note that the path changed. Narrowing watch
+    # mode to what this install can DECODE would mean a library that gains
+    # pillow-heif later never sees the HEIF files it already holds, so the
+    # watch set is the known-container set and is never gated on availability.
+    from utils.image_loading import (
+        KNOWN_HEIF_EXTENSIONS, SCANNABLE_IMAGE_EXTENSIONS, WATCHABLE_IMAGE_EXTENSIONS,
+    )
+    assert KNOWN_HEIF_EXTENSIONS <= WATCHABLE_IMAGE_EXTENSIONS
+    assert SCANNABLE_IMAGE_EXTENSIONS <= WATCHABLE_IMAGE_EXTENSIONS
+    for suffix in KNOWN_HEIF_EXTENSIONS:
+        pending = _PendingChanges()
+        pending.add(f"/library/IMG_0001{suffix.upper()}")
+        assert pending.take_if_settled(0) == {f"/library/IMG_0001{suffix.upper()}"}
+
+
+def test_extension_sets_are_immutable():
+    # WATCH_SUFFIXES used to be bound to the very same set object as the scan
+    # allow-list, so mutating either would silently have rewritten the other.
+    import utils.image_loading as il
+    for name in ('JPEG_EXTENSIONS', 'RAW_EXTENSIONS', 'KNOWN_HEIF_EXTENSIONS',
+                 'HEIF_EXTENSIONS', 'SCANNABLE_IMAGE_EXTENSIONS',
+                 'WATCHABLE_IMAGE_EXTENSIONS'):
+        assert isinstance(getattr(il, name), frozenset), name
 
 
 class TestPendingChangesSettle:

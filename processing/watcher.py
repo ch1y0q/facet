@@ -14,15 +14,14 @@ import sys
 import threading
 import time
 
-from utils.image_loading import SCANNABLE_IMAGE_EXTENSIONS
+from utils.image_loading import WATCHABLE_IMAGE_EXTENSIONS
 
 logger = logging.getLogger("facet.watcher")
 
-# Derived from the shared scan allow-list (see utils/image_loading.py) so watch
-# mode observes exactly the formats the scan collector accepts — including Canon
-# .HIF — and the two cannot drift apart. The HEIF set is empty when pillow-heif
-# is missing, in which case those files are neither scanned nor watched.
-WATCH_SUFFIXES = SCANNABLE_IMAGE_EXTENSIONS
+# Derived from the shared extension table (see utils/image_loading.py) so watch
+# mode and the scan collector cannot drift apart again — this list used to be a
+# hard-coded copy that still omitted Canon .HIF.
+WATCH_SUFFIXES = WATCHABLE_IMAGE_EXTENSIONS
 
 MAX_CONSECUTIVE_FAILURES = 3
 
