@@ -344,7 +344,7 @@ def image(
             quality = _get_image_jpeg_quality()
             jpeg_bytes = _convert_heif_cached(real_disk, mtime, quality)
             return _cached_image_response(jpeg_bytes, request)
-        except (OSError, ValueError):
+        except Exception:
             logger.exception("Failed to convert HEIF file: %s", real_disk)
             if want_fallback:
                 return _stored_thumbnail_response(path, request)
