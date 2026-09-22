@@ -572,7 +572,7 @@ manualmente e coloque-o em `pretrained_models/samp_net.pth`.
 | `open-clip-torch` | Embeddings/tagueamento CLIP (perfis legacy/8gb) |
 | `pyiqa` | TOPIQ e outros modelos de qualidade/estética |
 | `opencv-python` | Processamento de imagens |
-| `pillow` | Carregamento de imagens |
+| `pillow` | Carregamento de imagens, incl. PNG/GIF/WebP/BMP/TIFF/AVIF (AVIF precisa de pillow>=11.3) |
 | `imagehash` | Hashing perceptual para detecção de rajadas |
 | `rawpy` | Suporte a arquivos RAW |
 | `fastapi`, `uvicorn` | Servidor de API |

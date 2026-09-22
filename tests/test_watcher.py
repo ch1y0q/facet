@@ -116,6 +116,21 @@ def test_watch_suffixes_cover_heif_even_without_pillow_heif():
         assert pending.take_if_settled(0) == {f"/library/IMG_0001{suffix.upper()}"}
 
 
+def test_watch_suffixes_include_new_still_formats():
+    # Mirrors test_scannable_extensions_include_hif's explicit per-extension
+    # assertions, but for the WATCH set specifically -- a regression here
+    # would otherwise only be caught implicitly through the subset check
+    # above. PNG/GIF/WebP/BMP/TIFF are unconditional; .avif is watched
+    # unconditionally too (KNOWN_AVIF_EXTENSIONS, the container set), even on
+    # a Pillow build with no AVIF codec -- the same reasoning that gives .hif
+    # unconditional watch coverage above.
+    for suffix in ('.png', '.gif', '.webp', '.bmp', '.tif', '.tiff', '.avif'):
+        assert suffix in WATCH_SUFFIXES
+        pending = _PendingChanges()
+        pending.add(f"/library/file{suffix.upper()}")
+        assert pending.take_if_settled(0) == {f"/library/file{suffix.upper()}"}
+
+
 def test_extension_sets_are_immutable():
     # WATCH_SUFFIXES used to be bound to the very same set object as the scan
     # allow-list, so mutating either would silently have rewritten the other.

@@ -553,7 +553,7 @@ manually and place it at `pretrained_models/samp_net.pth`.
 | `open-clip-torch` | CLIP embeddings/tagging (legacy/8gb profiles) |
 | `pyiqa` | TOPIQ and other quality/aesthetic models |
 | `opencv-python` | Image processing |
-| `pillow` | Image loading |
+| `pillow` | Image loading, incl. PNG/GIF/WebP/BMP/TIFF/AVIF (AVIF needs pillow>=11.3) |
 | `imagehash` | Perceptual hashing for burst detection |
 | `rawpy` | RAW file support |
 | `fastapi`, `uvicorn` | API server |

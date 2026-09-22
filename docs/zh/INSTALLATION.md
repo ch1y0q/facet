@@ -536,7 +536,7 @@ SAMP-Net 权重来自本项目的
 | `open-clip-torch` | CLIP 嵌入向量/标签（legacy/8gb 配置档） |
 | `pyiqa` | TOPIQ 及其他画质/美学模型 |
 | `opencv-python` | 图像处理 |
-| `pillow` | 图像加载 |
+| `pillow` | 图像加载，包括 PNG/GIF/WebP/BMP/TIFF/AVIF（AVIF 需要 pillow>=11.3） |
 | `imagehash` | 用于连拍检测的感知哈希 |
 | `rawpy` | RAW 文件支持 |
 | `fastapi`、`uvicorn` | API 服务器 |

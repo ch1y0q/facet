@@ -16,7 +16,7 @@ Facet es un motor local de análisis y selección de fotos. Puntúa cada imagen 
 
 ## Cómo funciona
 
-1. **Escanear** — Apunta Facet a una carpeta de fotos. Cada imagen se analiza en cuanto a calidad, composición y rostros. Admite JPG, HEIF/HEIC/HIF (las imágenes `.HIF` Canon HDR PQ se decodifican con la función de transferencia SMPTE ST 2084 PQ y se convierten automáticamente a sRGB SDR) y 10 formatos RAW (CR2, CR3, NEF, ARW, RAF, RW2, DNG, ORF, SRW, PEF).
+1. **Escanear** — Apunta Facet a una carpeta de fotos. Cada imagen se analiza en cuanto a calidad, composición y rostros. Admite JPG, HEIF/HEIC/HIF (las imágenes `.HIF` Canon HDR PQ se decodifican con la función de transferencia SMPTE ST 2084 PQ y se convierten automáticamente a sRGB SDR), 10 formatos RAW (CR2, CR3, NEF, ARW, RAF, RW2, DNG, ORF, SRW, PEF) e imágenes PNG, GIF, WebP, BMP, TIFF y AVIF (AVIF necesita un Pillow compilado con soporte AVIF, nativo a partir de 11.3).
 2. **Explorar** — Abre la galería web para recorrer tu biblioteca con filtros, búsqueda y varios modos de visualización.
 3. **Seleccionar** — Facet detecta ráfagas, marca parpadeos, agrupa fotos similares y destaca la mejor selección. Los horquillados de exposición y las series panorámicas/HDR se reconocen y se mantienen íntegros en lugar de descartarse por separado.
 

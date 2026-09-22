@@ -13,7 +13,9 @@ Betroffen sind **nicht**:
 - **digiKam** — prüft beide Namenskonventionen und findet Facets Sidecar in jedem Fall (siehe [digiKam](#digikam) weiter unten).
 - **darktable** — verwendet dieselbe Konvention `<bild><ext>.xmp` wie Facet (siehe [darktable](#darktable) weiter unten).
 
-Für einen Lightroom- oder Capture-One-Workflow gilt also: Verwenden Sie `--embed-originals` für alles, was keine proprietäre RAW-Datei ist, und rechnen Sie damit, dass der Sidecar-Roundtrip bei reinen RAW-Dateien stillschweigend nichts bewirkt (kein Fehler, es wird einfach nichts gelesen). Wenn Sie in RAW+JPEG fotografieren, ist die begleitende JPEG-Datei das praktische Interop-Vehikel — die RAW-Datei bleibt unverändert auf der Festplatte liegen, während Facets Datenbank die maßgebliche Bewertung führt.
+**GIF, WebP, BMP und AVIF sind die Ausnahme — sie trifft die Diskrepanz am härtesten.** Sie liegen außerhalb von Facets einbettbarer Menge, `--embed-originals` bewirkt für sie also nichts, und ihr einziges Roundtrip-Vehikel ist ein XMP-Sidecar mit Facets Namensschema (`photo.webp.xmp`). Die oben beschriebene Diskrepanz gilt für diese vier daher genauso wie für proprietäre RAW-Dateien: digiKam und darktable finden das Sidecar, Lightroom Classic und Capture One nicht.
+
+Für einen Lightroom- oder Capture-One-Workflow gilt also: Verwenden Sie `--embed-originals` für alles aus der einbettbaren Menge (JPEG, HEIC, TIFF, PNG, DNG), und rechnen Sie damit, dass der Sidecar-Roundtrip bei proprietären RAW-Dateien — und bei GIF, WebP, BMP und AVIF — stillschweigend nichts bewirkt (kein Fehler, es wird einfach nichts gelesen). Wenn Sie in RAW+JPEG fotografieren, ist die begleitende JPEG-Datei das praktische Interop-Vehikel — die RAW-Datei bleibt unverändert auf der Festplatte liegen, während Facets Datenbank die maßgebliche Bewertung führt.
 
 ## Lightroom Classic
 

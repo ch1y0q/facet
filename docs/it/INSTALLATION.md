@@ -571,7 +571,7 @@ manualmente e posizionalo in `pretrained_models/samp_net.pth`.
 | `open-clip-torch` | Embedding/tagging CLIP (profili legacy/8gb) |
 | `pyiqa` | TOPIQ e altri modelli di qualità/estetica |
 | `opencv-python` | Elaborazione delle immagini |
-| `pillow` | Caricamento delle immagini |
+| `pillow` | Caricamento delle immagini, incluse PNG/GIF/WebP/BMP/TIFF/AVIF (AVIF richiede pillow>=11.3) |
 | `imagehash` | Hashing percettivo per il rilevamento delle raffiche |
 | `rawpy` | Supporto file RAW |
 | `fastapi`, `uvicorn` | Server API |

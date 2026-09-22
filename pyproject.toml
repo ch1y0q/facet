@@ -53,7 +53,7 @@ dependencies = [
     # See install.sh or docs/INSTALLATION.md for details.
     "open-clip-torch>=2.20.0",
     "opencv-python>=4.8.0",
-    "pillow>=10.0.0",
+    "pillow>=11.3",  # AVIF is native only from Pillow 11.3
     # HEIF/HEIC/.HIF decoding. Not optional: utils/image_loading registers the
     # opener at import and, without it, every HEIF extension drops out of
     # SCANNABLE_IMAGE_EXTENSIONS — a scan silently skips the files instead of

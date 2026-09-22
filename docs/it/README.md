@@ -23,6 +23,8 @@ una libreria fotografica locale, poi serve una galleria per sfogliarla. Inizia d
 - **JPEG** (.jpg, .jpeg)
 - **HEIF/HEIC/HIF** (.heic, .heif, .hif) — richiede `pillow-heif`; gli scatti `.HIF` Canon HDR PQ sono sottoposti a tone mapping in sRGB SDR
 - **RAW** (.cr2, .cr3, .nef, .arw, .raf, .rw2, .dng, .orf, .srw, .pef) — ignorati se esiste un JPEG/HEIC corrispondente
+- **PNG, GIF, WebP, BMP, TIFF** (.png, .gif, .webp, .bmp, .tif, .tiff) — la scala di grigi a 16 bit viene scalata a 8 bit, un canale alfa viene composito su sfondo bianco, e i GIF/WebP animati vengono valutati sul primo fotogramma; il TIFF viene convertito in JPEG per il browser. PNG, WebP e TIFF contengono l'EXIF quando il programma che li ha scritti lo ha salvato; GIF e BMP non possono, quindi per questi due `date_taken` e fotocamera/obiettivo restano vuoti
+- **AVIF** (.avif) — richiede un Pillow compilato con il supporto AVIF (nativo a partire da `pillow>=11.3`); gli scatti AVIF HDR PQ vengono sottoposti a tone mapping in sRGB SDR, come i `.HIF` Canon; l'EXIF viene letto quando è presente
 
 ## Domande comuni
 
