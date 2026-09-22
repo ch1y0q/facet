@@ -152,7 +152,7 @@ All profiles additionally run: SAMP-Net (composition), InsightFace (faces), supp
 
 ### Data Flow
 
-1. `facet.py` scans directories for JPG/JPEG, HEIF/HEIC, and RAW files (CR2, CR3, NEF, ARW, RAF, RW2, DNG, ORF, SRW, PEF)
+1. `facet.py` scans directories for JPG/JPEG, HEIF/HEIC/HIF, and RAW files (CR2, CR3, NEF, ARW, RAF, RW2, DNG, ORF, SRW, PEF). A `.hif`/`.heic`/`.heif` carrying NCLX `transfer_characteristics = 16` is HDR PQ and is tone-mapped to SDR sRGB by the shared loader; `.HIF` implies neither Canon nor HDR (Sony writes SDR under it), so nothing may gate on the extension
 2. BatchProcessor processes images with continuous GPU batching (no inter-batch gaps)
 3. Each image gets: CLIP/SigLIP embedding + tags, aesthetic scores (TOPIQ + IAA + LIQE), face analysis, technical metrics, composition pattern, subject saliency
 4. Results stored in SQLite with 640x640 thumbnail BLOBs

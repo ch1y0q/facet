@@ -14,7 +14,11 @@ from pathlib import Path
 
 import numpy as np
 
-from config.scoring_config import RAW_DECODE_DEFAULTS
+from config.scoring_config import (
+    RAW_DECODE_DEFAULTS,
+    HDR_PQ_TONEMAP_DEFAULTS,
+    merge_hdr_pq_tonemap_settings,
+)
 from utils._lazy import ensure_cv2 as _ensure_cv2, ensure_pil as _ensure_pil
 
 logger = logging.getLogger("facet.image_loading")
@@ -29,10 +33,29 @@ except ImportError:
     logger.warning("pillow-heif not installed — HEIF/HEIC files will be skipped")
 
 # All RAW formats supported via rawpy/libraw
-RAW_EXTENSIONS = {'.cr2', '.cr3', '.nef', '.arw', '.raf', '.rw2', '.dng', '.orf', '.srw', '.pef'}
+RAW_EXTENSIONS = frozenset({'.cr2', '.cr3', '.nef', '.arw', '.raf', '.rw2', '.dng', '.orf', '.srw', '.pef'})
 
-# HEIF/HEIC formats (iPhone default since iOS 11) — empty when pillow-heif is missing
-HEIF_EXTENSIONS = {'.heic', '.heif'} if _heif_available else set()
+# JPEG stills
+JPEG_EXTENSIONS = frozenset({'.jpg', '.jpeg'})
+
+# Every HEIF container extension Facet recognises, whether or not this install can
+# decode one. '.hif' is Canon's extension for the HDR PQ render; iPhone writes
+# '.heic'. Readers that need to know what the CONTAINER is use this set.
+KNOWN_HEIF_EXTENSIONS = frozenset({'.heic', '.heif', '.hif'})
+
+# The subset this install can actually open — empty when pillow-heif is missing.
+# Readers that need to know what can be DECODED use this one.
+HEIF_EXTENSIONS = KNOWN_HEIF_EXTENSIONS if _heif_available else frozenset()
+
+# Every still-image extension the scan collector (facet.py) accepts. HEIF drops out
+# when pillow-heif is missing, because a scan would have nothing to decode it with.
+SCANNABLE_IMAGE_EXTENSIONS = JPEG_EXTENSIONS | HEIF_EXTENSIONS | RAW_EXTENSIONS
+
+# What watch mode observes. Deliberately the KNOWN set rather than the decodable
+# one: a filesystem event is only a note that the path changed, and dropping HEIF
+# events on a pillow-heif-less install would mean a library that gains the
+# dependency later never sees the files it already holds.
+WATCHABLE_IMAGE_EXTENSIONS = JPEG_EXTENSIONS | KNOWN_HEIF_EXTENSIONS | RAW_EXTENSIONS
 
 
 # A bracket exists to capture highlight headroom in its +EV frames, and an HDR
@@ -57,6 +80,325 @@ _EXIF_ORIENTATION_TAG = 274
 
 # LibRaw sizes.flip -> counter-clockwise degrees that make the frame upright.
 _LIBRAW_FLIP_ROTATIONS = {3: 180, 5: 90, 6: 270}
+
+# --- HDR PQ HEIF -> SDR sRGB tone mapping ---------------------------------
+# Canon HDR PQ HEIF (.HIF) stores 10-bit pixels encoded with the SMPTE ST 2084
+# (PQ) transfer function and BT.2020 primaries (NCLX: colour_primaries=9,
+# transfer_characteristics=16). The matrix field varies — the vendored Canon
+# EOS R8 fixture writes matrix_coefficients=1 (BT.709), since an HDR PQ HEIF
+# does not have to carry BT.2020 non-constant luminance — so nothing here may
+# gate on that field. pillow-heif hands those encoded values straight to us, so
+# displaying or scoring them as ordinary sRGB makes every frame look dark and
+# washed out.
+#
+# Pipeline, applied only when the decoder reports PQ (transfer==16):
+#   1. PQ EOTF           S -> absolute linear light in nits   (SMPTE ST 2084:2014)
+#   2. BT.2020 -> sRGB   primaries, D65 -> D65                 (ITU-R BT.2020 / BT.709)
+#   3. scale to 100 nit SDR reference white                    (BT.2408 / ffmpeg)
+#   4. Hable filmic tone map                                   (Hable 2010)
+#   5. sRGB OETF                                               (IEC 61966-2-1)
+#
+# Gating is by the decoder's NCLX transfer field, NOT by file extension:
+# SDR HEIC (transfer 1/13/17) and HLG (transfer 18) reach the loader with
+# is_pq=False and are passed through untouched. A file carrying no NCLX box at
+# all is is_pq=False too, so it is treated as ordinary sRGB rather than guessed
+# at — that is the Apple case, not an exotic one: an iPhone HDR still is an 8-bit
+# SDR base image plus a `...aux:hdrgainmap` auxiliary, a different HDR mechanism
+# from PQ entirely, and its base image is already the right thing to display.
+
+# SMPTE ST 2084:2014 section 7 EOTF constants. Signal S in [0,1] -> linear
+# light L in nits via  n = S^(1/M2);  L = 10000 * ((n-C1)/(C2-C3*n))^(1/M1).
+_PQ_M1 = 0.1593017578125          # 1305/8192
+_PQ_M2 = 78.84375                 # 2523/32
+_PQ_C1 = 0.8359375                # C3 - C2 + 1
+_PQ_C2 = 18.8515625               # 2413/128
+_PQ_C3 = 18.6875                  # 2392/128
+_PQ_PEAK_NITS = 10000.0           # ST 2084 reference display peak
+
+# Linear BT.2020 -> linear sRGB (BT.709) primaries. Both gamuts share the D65
+# white point, so no chromatic-adaptation step is needed; this is the standard
+# 3x3 primary-conversion matrix (e.g. Bruce Lindbloom's RGB Working Spaces).
+_BT2020_TO_SRGB = np.array([
+    [1.660491, -0.5876411, -0.0728499],
+    [-0.1245505, 1.1328999, -0.0083494],
+    [-0.0181508, -0.1005789, 1.1187297],
+], dtype=np.float32)
+
+# SDR reference white in nits. PQ is display-referred (absolute luminance):
+# linear light is expressed in units of this 100 nit level (x = nits / 100),
+# the nominal SDR peak used by ffmpeg's zscale+tonemap pipeline and a match for
+# in-camera HDR-still SDR output. It is NOT the tone-map white point - that is
+# measured per image (see _hdr_pq_white_point); normalising at a fixed 100 nit
+# white clipped every bright still to pure white. The BT.2408 mastering
+# reference of 203 nits looked dark for these stills.
+_PQ_SDR_REFERENCE_NITS = 100.0
+
+# Hable filmic (Uncharted 2) tone-map operator:
+#   f(x) = (x*(a*x + c*b) + d*e) / (x*(a*x + b) + d*f) - e/f
+# Source: John Hable, "Filmic Tonemapping Operators" (2010), section 5.
+# Coefficients and the divide-by-hable(peak) normalisation match ffmpeg's
+# hable tone-map (libavfilter/vf_tonemap.c), which divides by hable(peak)
+# rather than by hable(1).
+_HABLE_A, _HABLE_B, _HABLE_C, _HABLE_D, _HABLE_E, _HABLE_F = (
+    0.15, 0.50, 0.10, 0.20, 0.02, 0.30)
+
+# ISO/IEC 23001-8 / ITU-T H.273 colour table: transfer_characteristics == 16 is PQ.
+_NCLX_PQ_TRANSFER = 16
+
+
+def _pq_eotf(signal):
+    """SMPTE ST 2084:2014 section 7 EOTF: PQ signal in [0,1] -> linear light nits."""
+    n = np.clip(signal, 0.0, 1.0) ** (1.0 / _PQ_M2)
+    numer = np.maximum(n - _PQ_C1, 0.0)
+    denom = _PQ_C2 - _PQ_C3 * n
+    return _PQ_PEAK_NITS * (numer / denom) ** (1.0 / _PQ_M1)
+
+
+def _hable(x):
+    return ((x * (_HABLE_A * x + _HABLE_C * _HABLE_B) + _HABLE_D * _HABLE_E)
+            / (x * (_HABLE_A * x + _HABLE_B) + _HABLE_D * _HABLE_F)) - _HABLE_E / _HABLE_F
+
+
+# The decoder hands back 8-bit RGB, so the EOTF has exactly 256 possible
+# inputs per channel: tabulating it is EXACT, not an approximation, and it
+# replaces the four frame-sized float temporaries _pq_eotf builds (the power,
+# the numerator, the denominator and the result) with one 256-entry lookup.
+_PQ_EOTF_LUT = _pq_eotf(np.arange(256, dtype=np.float32) / 255.0).astype(np.float32)
+
+# Pixels per band. Sized for cache rather than for the frame: it is the float32
+# INTERMEDIATES that stay band-bound however large the still is, not the peak
+# itself. The peak still grows with the frame, at a measured ~6.6 bytes/pixel --
+# the uint8 output plus the per-pixel channel maxima the white point reads --
+# rather than at the ~8 full-size float32 copies the whole-array form cost.
+# Measured against 1 << 20, this is 19-32% faster and ~18% lighter, bit-identical
+# out.
+_TONEMAP_BAND_PIXELS = 1 << 16
+
+
+def _tonemap_band_rows(shape):
+    """Rows per band for a frame of ``shape``, at least one."""
+    return max(1, _TONEMAP_BAND_PIXELS // max(1, int(shape[1]) * int(shape[2])))
+
+
+def _band_nits(band):
+    """Absolute-nit linear sRGB for one band of 8-bit PQ/BT.2020 pixels."""
+    nits = _PQ_EOTF_LUT[band] @ _BT2020_TO_SRGB.T
+    np.maximum(nits, 0.0, out=nits)
+    return nits
+
+
+def _banded_white_point(src, wp, band_rows):
+    """:func:`_hdr_pq_white_point` without a frame-sized nits array.
+
+    Returns the same value the whole-frame form does. The white point reads
+    nothing but the per-pixel channel maxima, which are a third of the size of
+    the nits array that would otherwise have to exist all at once -- and in
+    ``fixed`` mode it reads no pixels at all.
+    """
+    mode = wp.get('mode', 'percentile')
+    min_nits = float(wp.get('min_nits', 100.0))
+    if mode == 'fixed':
+        return max(float(wp.get('fixed_nits', 1000.0)), min_nits)
+    if mode == 'max':
+        peak = 0.0
+        for start in range(0, src.shape[0], band_rows):
+            peak = max(peak, float(_band_nits(src[start:start + band_rows]).max()))
+        return max(peak, min_nits)
+    per_pixel_max = np.empty(src.shape[:2], dtype=np.float32)
+    for start in range(0, src.shape[0], band_rows):
+        stop = min(start + band_rows, src.shape[0])
+        np.max(_band_nits(src[start:stop]), axis=2, out=per_pixel_max[start:stop])
+    percentile = float(np.clip(wp.get('percentile', 99.99), 0.0, 100.0))
+    max_nits = float(wp.get('max_nits', 1200.0))
+    # overwrite_input: per_pixel_max is our own scratch, and the partition
+    # np.percentile does otherwise copies the whole thing a second time.
+    white = float(np.percentile(per_pixel_max, percentile, overwrite_input=True))
+    return float(np.clip(white, min_nits, max_nits))
+
+
+def _heif_is_pq(pil_img):
+    """True only if the freshly opened HEIF reports PQ via its NCLX profile.
+
+    Gates tone mapping on the decoder's colour metadata, not on the file
+    extension: a .heic/.heif/.hif that is SDR (transfer 1/13/17) or HLG (18)
+    returns False. A missing NCLX profile also returns False (safe SDR fallback).
+    """
+    nclx = pil_img.info.get('nclx_profile')
+    return bool(nclx) and nclx.get('transfer_characteristics') == _NCLX_PQ_TRANSFER
+
+
+_SRGB_TOE_THRESHOLD = 0.0031308
+_SRGB_TOE_SLOPE = 12.92
+_SRGB_GAMMA = 2.4
+_SRGB_SHOULDER_SCALE = 1.055
+_SRGB_SHOULDER_OFFSET = 0.055
+
+
+def _srgb_oetf_into(linear):
+    """IEC 61966-2-1:1999 section 6.1.5 sRGB OETF, evaluated IN PLACE.
+
+    ``linear`` must be a float ndarray; it is overwritten and returned. The
+    obvious ``np.where`` form gathers both branches into full-size temporaries,
+    which is what made the tone map's working set scale with the frame rather
+    than with the band. ``toe`` and ``scaled`` are both computed before
+    ``np.power`` overwrites ``linear`` -- reordering them silently returns the
+    shoulder for every toe pixel.
+    """
+    toe = linear <= _SRGB_TOE_THRESHOLD
+    scaled = linear * _SRGB_TOE_SLOPE
+    np.clip(linear, 0.0, None, out=linear)
+    np.power(linear, 1.0 / _SRGB_GAMMA, out=linear)
+    linear *= _SRGB_SHOULDER_SCALE
+    linear -= _SRGB_SHOULDER_OFFSET
+    np.copyto(linear, scaled, where=toe)
+    return linear
+
+
+def _srgb_oetf(linear):
+    """IEC 61966-2-1:1999 section 6.1.5 sRGB opto-electronic transfer function."""
+    return _srgb_oetf_into(np.array(linear, dtype=np.float32))
+
+
+def _hdr_pq_white_point(nits, wp):
+    """Per-image display white point in nits (the level mapped to SDR white).
+
+    The decode path calls :func:`_banded_white_point` instead, which returns the
+    same number without a frame-sized nits array. This whole-frame form is kept
+    as the reference the banded one is asserted equal to, so that equality is a
+    test rather than an argument.
+
+    A fixed 100 nit white clips every bright still to pure white: real HDR
+    stills peak at hundreds-to-thousands of nits, so the normalising peak is
+    measured per image. ffmpeg's tonemap filter does the same via
+    ff_determine_signal_peak() (vf_tonemap.c); the percentile mode is the
+    MaxCLL-style robust form of that, insensitive to a handful of hot pixels
+    (e.g. night-scene lights) that would otherwise drag the whole frame dark.
+    """
+    mode = wp.get('mode', 'percentile')
+    min_nits = float(wp.get('min_nits', 100.0))
+    per_pixel_max = nits.max(axis=2)
+    if mode == 'fixed':
+        return max(float(wp.get('fixed_nits', 1000.0)), min_nits)
+    if mode == 'max':
+        # Single brightest pixel (strict ffmpeg signal peak); no upper clamp.
+        return max(float(per_pixel_max.max()), min_nits)
+    # percentile (default): a high percentile of the brightest channel.
+    percentile = float(np.clip(wp.get('percentile', 99.99), 0.0, 100.0))
+    max_nits = float(wp.get('max_nits', 1200.0))
+    white = float(np.percentile(per_pixel_max, percentile))
+    return float(np.clip(white, min_nits, max_nits))
+
+
+def _hdr_pq_tone_map(nits, white_nits, settings):
+    """Map absolute-nit linear sRGB to [0,1] linear SDR sRGB.
+
+    Linear light is expressed in units of the 100 nit SDR reference white
+    (``x = nits / 100``). The Hable curve is normalised at the per-image white
+    point so that white maps to 1 - ``hable(x) / hable(white/100)`` - matching
+    ffmpeg's hable branch, which divides by ``hable(peak)`` rather than by
+    ``hable(1)`` (vf_tonemap.c).
+    """
+    method = settings.get('method', 'hable')
+    x = nits / _PQ_SDR_REFERENCE_NITS
+    w = white_nits / _PQ_SDR_REFERENCE_NITS
+    if method == 'clip':
+        # Linear normalise + hard clip, no filmic shoulder (reference only).
+        return np.clip(x / w, 0.0, 1.0)
+    if settings.get('chroma_preserve') == 'max_channel':
+        # ffmpeg hue-preserving form: one scale from the brightest channel,
+        # applied to all three, so a highlight rolls off together instead of
+        # per-channel clipping shifting its hue toward white.
+        sig = np.maximum(x.max(axis=2), 1e-6)
+        scale = (_hable(np.clip(sig, 0.0, w)) / _hable(w)) / sig
+        return np.clip(x * scale[..., None], 0.0, 1.0)
+    # per_channel (default): each R/G/B channel rolls off independently.
+    # Brighter, at the cost of some hue shift in the brightest highlights.
+    return np.clip(_hable(x) / _hable(w), 0.0, 1.0)
+
+
+def _tonemap_pq_to_srgb(pil_img, settings=None):
+    """Tone-map an 8-bit PQ/BT.2020 RGB PIL image to an SDR sRGB PIL image.
+
+    Only called once the freshly opened image has been confirmed as PQ (NCLX
+    transfer 16), so SDR/HLG frames never reach this. Behaviour is tunable
+    through the ``hdr_pq_tonemap`` config block; setting ``enabled: false``
+    returns the decoder's raw PQ values untouched.
+    """
+    Image, _ = _ensure_pil()
+    if settings is None:
+        settings = get_hdr_pq_tonemap_settings()
+    if not settings.get('enabled', True):
+        return pil_img
+
+    src = np.asarray(pil_img)
+    band_rows = _tonemap_band_rows(src.shape)
+
+    # Pass 1: the per-image white point. It needs the whole frame's channel
+    # maxima before any pixel can be mapped, so it gets its own banded sweep
+    # rather than forcing the nits array to exist all at once.
+    white_nits = _banded_white_point(src, settings.get('white_point', {}), band_rows)
+
+    # Pass 2: map band by band. Every intermediate is band-sized, so the peak
+    # working set is the band plus the two frame-sized uint8 buffers (the
+    # decoder's and ours) -- not the eight float32 copies of the frame the
+    # whole-array form built.
+    out = np.empty(src.shape, dtype=np.uint8)
+    for start in range(0, src.shape[0], band_rows):
+        stop = min(start + band_rows, src.shape[0])
+        # 1. PQ EOTF (SMPTE ST 2084) via the exact 256-entry table, then
+        #    BT.2020 -> sRGB primaries, keeping absolute nits.
+        # 2. Filmic tone map in linear light at the per-image white point.
+        mapped = _hdr_pq_tone_map(_band_nits(src[start:stop]), white_nits, settings)
+        np.clip(mapped, 0.0, 1.0, out=mapped)
+        # 3. sRGB OETF (IEC 61966-2-1), round and quantise to 8-bit.
+        _srgb_oetf_into(mapped)
+        mapped *= 255.0
+        mapped += 0.5
+        np.clip(mapped, 0, 255, out=mapped)
+        out[start:stop] = mapped.astype(np.uint8)
+    return Image.fromarray(out, 'RGB')
+
+
+def open_nonraw_image(photo):
+    """Open a non-RAW image with EXIF orientation and HDR PQ tone mapping.
+
+    The single decode for every non-RAW consumer -- the batch scorer, the
+    viewer's HEIF-to-JPEG converter -- so the image the models score and the
+    image the browser shows cannot disagree on orientation or tone.
+
+    The NCLX profile is read straight after ``Image.open`` because
+    ``exif_transpose``/``convert`` may drop ``info``. The source handle is
+    closed before returning: ``exif_transpose`` loads the pixels and always
+    hands back a new image, so nothing returned here still refers to the file.
+
+    Raises:
+        ValueError: the frame exceeds ``Image.MAX_IMAGE_PIXELS``.
+    """
+    Image, ImageOps = _ensure_pil()
+    with Image.open(photo) as source:
+        # Pillow only WARNS between MAX_IMAGE_PIXELS and twice that, and hard-errors
+        # only above the doubled bound -- a warn-only band nothing here checks or
+        # sets. The PQ tone map then adds a measured ~6.6 bytes/pixel on top of
+        # the decoded frame, so a frame Pillow would only warn about is already an
+        # outsized allocation before tone mapping even starts. Refuse it here, once, on the one decode path every non-RAW
+        # consumer shares, rather than let it warn its way into an OOM per request.
+        # A None limit is Pillow's documented way to disable the check entirely,
+        # and it disables this one too.
+        width, height = source.size
+        pixel_count = width * height
+        if Image.MAX_IMAGE_PIXELS is not None and pixel_count > Image.MAX_IMAGE_PIXELS:
+            raise ValueError(
+                f"{photo}: {pixel_count} pixels exceeds the "
+                f"MAX_IMAGE_PIXELS limit of {Image.MAX_IMAGE_PIXELS}"
+            )
+        is_pq = _heif_is_pq(source)
+        pil_img = ImageOps.exif_transpose(source)
+    if pil_img.mode != 'RGB':
+        pil_img = pil_img.convert('RGB')
+    if is_pq:
+        pil_img = _tonemap_pq_to_srgb(pil_img)
+    return pil_img
+
 
 _raw_decode_settings = None
 
@@ -91,6 +433,38 @@ def get_raw_decode_settings():
     if _raw_decode_settings is None:
         return configure_raw_decode_profile(_raw_decode_settings_from_config())
     return _raw_decode_settings
+
+
+_hdr_pq_tonemap_settings = None
+
+
+def configure_hdr_pq_tonemap_profile(settings=None):
+    """Set the HDR PQ tone-map profile for this process; missing keys keep defaults."""
+    global _hdr_pq_tonemap_settings
+    _hdr_pq_tonemap_settings = merge_hdr_pq_tonemap_settings(settings or {})
+    return _hdr_pq_tonemap_settings
+
+
+def _hdr_pq_tonemap_settings_from_config():
+    """Read the profile off disk without validating or rewriting it.
+
+    A decode can run on a viewer or worker thread, where ScoringConfig's
+    default validation would re-save a corrected config behind the write
+    lock's back. Mirrors _raw_decode_settings_from_config.
+    """
+    try:
+        from config import ScoringConfig, default_config_path
+        return ScoringConfig(default_config_path(), validate=False).get_hdr_pq_tonemap_settings()
+    except Exception as ex:
+        logger.warning("Using default HDR PQ tone-map settings (%s)", ex)
+        return dict(HDR_PQ_TONEMAP_DEFAULTS)
+
+
+def get_hdr_pq_tonemap_settings():
+    """HDR PQ tone-map profile, read from scoring_config.json on first use."""
+    if _hdr_pq_tonemap_settings is None:
+        return configure_hdr_pq_tonemap_profile(_hdr_pq_tonemap_settings_from_config())
+    return _hdr_pq_tonemap_settings
 
 
 def raw_postprocess_kwargs(auto_bright=False, bright=None):
@@ -402,7 +776,6 @@ def load_display_image(photo_path, min_preview_sensor_ratio=0.0, decode_budget='
     Returns:
         PIL Image in RGB, or None on error.
     """
-    Image, ImageOps = _ensure_pil()
     try:
         photo = Path(photo_path)
         if photo.suffix.lower() in RAW_EXTENSIONS:
@@ -411,8 +784,7 @@ def load_display_image(photo_path, min_preview_sensor_ratio=0.0, decode_budget='
                                            bright=FAITHFUL_BRIGHT)
             preview = _display_preview(photo, min_preview_sensor_ratio)
             return preview if preview is not None else _decode_raw_bounded(photo, decode_budget=decode_budget)
-        pil_img = ImageOps.exif_transpose(Image.open(photo))
-        return pil_img if pil_img.mode == 'RGB' else pil_img.convert('RGB')
+        return open_nonraw_image(photo)
     except RuntimeError:
         raise
     except Exception as e:
@@ -456,7 +828,6 @@ def load_image_from_path(photo_path, use_thumbnail=False):
         tuple: (pil_img, img_cv) - PIL Image and OpenCV BGR array
                Returns (None, None) on error
     """
-    Image, ImageOps = _ensure_pil()
     cv2 = _ensure_cv2()
 
     try:
@@ -467,10 +838,7 @@ def load_image_from_path(photo_path, use_thumbnail=False):
             if pil_img is None:
                 return None, None
         else:
-            pil_img = Image.open(photo)
-            pil_img = ImageOps.exif_transpose(pil_img)
-            if pil_img.mode != 'RGB':
-                pil_img = pil_img.convert('RGB')
+            pil_img = open_nonraw_image(photo)
 
         # Convert to OpenCV BGR format
         img_cv = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)

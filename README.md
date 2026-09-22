@@ -16,7 +16,7 @@ Facet is a local photo-analysis and culling engine. It scores each image across 
 
 ## How It Works
 
-1. **Scan** — Point Facet at a folder of photos. Each image is analyzed for quality, composition, and faces. Supports JPG, HEIF/HEIC, and 10 RAW formats (CR2, CR3, NEF, ARW, RAF, RW2, DNG, ORF, SRW, PEF).
+1. **Scan** — Point Facet at a folder of photos. Each image is analyzed for quality, composition, and faces. Supports JPG, HEIF/HEIC/HIF (Canon HDR PQ `.HIF` stills are decoded with the SMPTE ST 2084 PQ transfer function and tone-mapped to SDR sRGB automatically), and 10 RAW formats (CR2, CR3, NEF, ARW, RAF, RW2, DNG, ORF, SRW, PEF).
 2. **Browse** — Open the web gallery to explore your library with filters, search, and multiple view modes.
 3. **Cull** — Facet detects bursts, flags blinks, groups similar photos, and surfaces top picks. Exposure brackets and panorama/HDR sets are recognized and kept whole rather than culled apart.
 

@@ -5,7 +5,10 @@ import sys
 import threading
 import time
 import types
+from pathlib import Path
 from unittest import mock
+
+import tracemalloc
 
 import numpy as np
 import pytest
@@ -25,6 +28,7 @@ def _reset_decode_state():
     image_loading._abandoned_decodes = 0
     configure_raw_decoding(concurrency=image_loading._auto_decode_concurrency(),
                            timeout_seconds=0)
+    image_loading._hdr_pq_tonemap_settings = None
 
 
 def _make_jpegs(tmp_path, count=3):
@@ -325,3 +329,471 @@ class TestExifPrefetch:
         processor.exif_prefetch_enabled = False
         processor._start_exif_prefetch(["/x/d.jpg"])
         assert processor._exif_prefetch_thread is None
+
+
+# --- Canon .HIF HDR PQ -> sRGB tone mapping -----------------------------------
+
+def test_scannable_extensions_include_hif():
+    # SCANNABLE_IMAGE_EXTENSIONS is the single allow-list consumed by both the
+    # scan collector (facet.py) and watch mode (processing/watcher.py).
+    # pillow-heif is a soft dependency: the CI test job installs the minimal
+    # dependency set without it, so HEIF_EXTENSIONS is empty and .HIF is neither
+    # scanned nor watched. Assert the correct behaviour for both states rather
+    # than assuming the decoder is present.
+    if image_loading._heif_available:
+        assert '.hif' in image_loading.HEIF_EXTENSIONS
+        assert '.hif' in image_loading.SCANNABLE_IMAGE_EXTENSIONS
+    else:
+        assert image_loading.HEIF_EXTENSIONS == set()
+        assert '.hif' not in image_loading.SCANNABLE_IMAGE_EXTENSIONS
+    assert image_loading.SCANNABLE_IMAGE_EXTENSIONS == (
+        image_loading.JPEG_EXTENSIONS
+        | image_loading.HEIF_EXTENSIONS
+        | image_loading.RAW_EXTENSIONS
+    )
+
+
+def test_pq_eotf_reference_points():
+    """SMPTE ST 2084:2014 EOTF: S=1 -> 10000 nits, S=0 -> 0, monotonic."""
+    assert image_loading._pq_eotf(1.0) == pytest.approx(10000.0, abs=1e-3)
+    assert image_loading._pq_eotf(0.0) == pytest.approx(0.0, abs=1e-6)
+    s = np.linspace(0.0, 1.0, 21)
+    L = image_loading._pq_eotf(s)
+    assert np.all(np.diff(L) >= 0)  # monotonic non-decreasing
+
+
+def test_heif_is_pq_gates_on_transfer_not_extension():
+    """Gating keys off NCLX transfer==16 only; SDR/HLG/missing-NCLX all False."""
+    class _Img:
+        def __init__(self, info):
+            self.info = info
+
+    assert image_loading._heif_is_pq(_Img(
+        {'nclx_profile': {'transfer_characteristics': 16}})) is True   # PQ
+    assert image_loading._heif_is_pq(_Img(
+        {'nclx_profile': {'transfer_characteristics': 13}})) is False  # SDR sRGB
+    assert image_loading._heif_is_pq(_Img(
+        {'nclx_profile': {'transfer_characteristics': 18}})) is False  # HLG
+    assert image_loading._heif_is_pq(_Img({})) is False              # no NCLX
+    assert image_loading._heif_is_pq(_Img({'nclx_profile': None})) is False
+
+
+def test_srgb_oetf_reference_points():
+    """IEC 61966-2-1 sRGB OETF endpoints: linear 0 -> 0, 1 -> 1."""
+    assert image_loading._srgb_oetf(0.0) == pytest.approx(0.0)
+    assert image_loading._srgb_oetf(1.0) == pytest.approx(1.0)
+
+
+def test_srgb_oetf_keeps_the_linear_toe():
+    """Below the 0.0031308 threshold the curve is the 12.92 linear segment.
+
+    The in-place form computes the toe mask and the scaled toe BEFORE np.power
+    overwrites the buffer; getting that order wrong returns the shoulder for
+    every toe pixel, which no endpoint check would catch.
+    """
+    toe = np.array([0.0, 0.001, 0.003], dtype=np.float32)
+    assert image_loading._srgb_oetf(toe) == pytest.approx(toe * 12.92, rel=1e-5)
+
+
+def test_tonemap_pq_output_shape_and_range():
+    """tone map returns an 8-bit RGB PIL image with pixels in [0,255]."""
+    rng = np.random.default_rng(0)
+    arr = rng.integers(0, 256, (16, 24, 3), dtype=np.uint8)
+    out = image_loading._tonemap_pq_to_srgb(Image.fromarray(arr, 'RGB'))
+    assert out.mode == 'RGB'
+    assert out.size == (24, 16)
+    a = np.asarray(out)
+    assert a.dtype == np.uint8
+    assert a.min() >= 0 and a.max() <= 255
+
+
+def test_open_nonraw_image_tonemaps_only_pq():
+    """open_nonraw_image tone-maps PQ HEIF but passes SDR / no-NCLX through."""
+    dark = np.full((8, 8, 3), 60, dtype=np.uint8)
+
+    def _img(transfer):
+        im = Image.fromarray(dark, 'RGB')
+        if transfer is not None:
+            im.info['nclx_profile'] = {'transfer_characteristics': transfer}
+        return im
+
+    pq, sdr, plain = _img(16), _img(13), _img(None)
+    with mock.patch.object(Image, 'open', side_effect=[pq, sdr, plain]):
+        out_pq = image_loading.open_nonraw_image('pq.heif')
+        out_sdr = image_loading.open_nonraw_image('sdr.heif')
+        out_plain = image_loading.open_nonraw_image('plain.jpg')
+
+    # PQ dark frame is lifted by tone mapping; SDR and no-NCLX pass through.
+    assert np.asarray(out_pq).mean() > np.asarray(out_sdr).mean()
+    assert np.asarray(out_sdr).mean() == 60.0
+    assert np.asarray(out_plain).mean() == 60.0
+
+
+# --- HDR PQ tone mapping: configurable white point / highlight roll-off ------
+
+def _pq_oetf(nits):
+    """Inverse of image_loading._pq_eotf: absolute nits -> PQ signal [0,1]."""
+    L = np.asarray(nits, dtype=np.float64) / image_loading._PQ_PEAK_NITS
+    Lm = L ** image_loading._PQ_M1
+    return ((image_loading._PQ_C1 + image_loading._PQ_C2 * Lm)
+            / (1.0 + image_loading._PQ_C3 * Lm)) ** image_loading._PQ_M2
+
+
+def _full_settings(**overrides):
+    """A complete hdr_pq_tonemap settings dict with optional overrides."""
+    from config.scoring_config import merge_hdr_pq_tonemap_settings
+    return merge_hdr_pq_tonemap_settings(overrides)
+
+
+def test_hdr_pq_default_settings():
+    s = image_loading.configure_hdr_pq_tonemap_profile()
+    assert s['enabled'] is True
+    assert s['method'] == 'hable'
+    assert s['chroma_preserve'] == 'per_channel'
+    wp = s['white_point']
+    assert wp['mode'] == 'percentile'
+    assert wp['percentile'] == 99.99
+    assert wp['min_nits'] == 100.0
+    assert wp['max_nits'] == 1200.0
+
+
+def test_hand_edited_null_white_point_leaf_falls_back_to_its_default():
+    """A null LEAF must not reach the decode path, as a null block already cannot.
+
+    The nested block is merged key-by-key, so a null under white_point replaces
+    a float the tone map multiplies. The decode path reads the config without
+    re-validating it, so the TypeError lands per photo and surfaces as the still
+    silently missing from the scan rather than as a config error.
+    """
+    s = image_loading.configure_hdr_pq_tonemap_profile(
+        {'white_point': {'min_nits': None, 'percentile': 'not a number'}})
+    assert s['white_point']['min_nits'] == 100.0
+    assert s['white_point']['percentile'] == 99.99
+    # A string that IS a number is still usable, so it is coerced, not dropped.
+    s = image_loading.configure_hdr_pq_tonemap_profile({'white_point': {'max_nits': '900'}})
+    assert s['white_point']['max_nits'] == 900.0
+
+
+def test_configure_hdr_pq_profile_merges_nested_white_point():
+    # Overriding one white_point sub-key keeps the others at defaults.
+    s = image_loading.configure_hdr_pq_tonemap_profile(
+        {'white_point': {'percentile': 99.9}, 'method': 'clip'})
+    assert s['method'] == 'clip'
+    assert s['white_point']['percentile'] == 99.9
+    assert s['white_point']['mode'] == 'percentile'      # untouched default
+    assert s['white_point']['max_nits'] == 1200.0        # untouched default
+    assert s['chroma_preserve'] == 'per_channel'         # untouched default
+
+
+def test_configure_hdr_pq_profile_tolerates_malformed_block():
+    # The decode path reads config with validate=False, so a hand-edited file
+    # must not crash the merge: non-dict blocks fall back to defaults, a
+    # non-dict white_point is ignored (valid siblings still apply), and unknown
+    # keys at either level are discarded.
+    from config.scoring_config import (
+        HDR_PQ_TONEMAP_DEFAULTS,
+        merge_hdr_pq_tonemap_settings,
+    )
+    for bad in (None, "x", 42, []):
+        assert merge_hdr_pq_tonemap_settings(bad) == HDR_PQ_TONEMAP_DEFAULTS
+    s = merge_hdr_pq_tonemap_settings(
+        {'white_point': None, 'method': 'clip'})
+    assert s['white_point'] == HDR_PQ_TONEMAP_DEFAULTS['white_point']
+    assert s['method'] == 'clip'
+    s2 = merge_hdr_pq_tonemap_settings(
+        {'bogus': 1, 'white_point': {'bogus': 2}})
+    assert 'bogus' not in s2 and 'bogus' not in s2['white_point']
+
+
+def test_hdr_pq_white_point_modes_and_clamps():
+    # Brightest-channel field: values 20 / 300 / 800 nits.
+    nits = np.zeros((4, 4, 3), dtype=np.float32)
+    nits[:2] = 20.0
+    nits[2:, :2] = 300.0
+    nits[2:, 2:] = 800.0
+    wp = image_loading._hdr_pq_white_point
+    assert wp(nits, {'mode': 'percentile', 'percentile': 99.99,
+                     'min_nits': 100, 'max_nits': 1200}) == pytest.approx(800.0)
+    assert wp(nits, {'mode': 'max', 'min_nits': 100}) == pytest.approx(800.0)
+    assert wp(nits, {'mode': 'fixed', 'fixed_nits': 1000.0,
+                     'min_nits': 100}) == pytest.approx(1000.0)
+    # Upper clamp: a very bright percentile is capped at max_nits.
+    hot = np.full((4, 4, 3), 4000.0, dtype=np.float32)
+    assert wp(hot, {'mode': 'percentile', 'percentile': 99.99,
+                    'min_nits': 100, 'max_nits': 1200}) == pytest.approx(1200.0)
+    # Lower clamp: a dark frame never sets white below the SDR floor.
+    dark = np.full((4, 4, 3), 5.0, dtype=np.float32)
+    assert wp(dark, {'mode': 'percentile', 'percentile': 99.99,
+                     'min_nits': 100, 'max_nits': 1200}) == pytest.approx(100.0)
+
+
+def test_hdr_pq_white_point_percentile_ignores_hot_pixels():
+    # A night scene at ~11 nits with one 3402-nit specular pixel. Percentile
+    # keeps the white at the floor; max mode chases the hot pixel and would
+    # darken the whole frame.
+    night = np.full((100, 100, 3), 11.0, dtype=np.float32)
+    night[0, 0] = 3402.0
+    wp = image_loading._hdr_pq_white_point
+    assert wp(night, {'mode': 'percentile', 'percentile': 99.99,
+                      'min_nits': 100, 'max_nits': 1200}) == pytest.approx(100.0)
+    assert wp(night, {'mode': 'max', 'min_nits': 100}) == pytest.approx(3402.0)
+
+
+def test_hdr_pq_tone_map_preserves_highlight_texture():
+    # Regression: normalising at a fixed 100-nit white clipped 300 and 800 nit
+    # regions to identical pure white. The per-image white keeps them apart.
+    nits = np.zeros((4, 4, 3), dtype=np.float32)
+    nits[:2] = 20.0
+    nits[2:, :2] = 300.0
+    nits[2:, 2:] = 800.0
+    cfg = _full_settings()
+    white = image_loading._hdr_pq_white_point(nits, cfg['white_point'])
+    out = image_loading._hdr_pq_tone_map(nits, white, cfg)
+    assert out[2, 0].mean() < out[2, 2].mean()      # 300 nits darker than 800
+    assert out[2, 2].mean() == pytest.approx(1.0)    # white maps to 1
+    assert out[0, 0].mean() < out[2, 0].mean()       # shadows still darker
+
+
+def test_hdr_pq_tone_map_methods_and_chroma_preserve_in_range():
+    rng = np.random.default_rng(1)
+    nits = (rng.random((16, 16, 3)) * 1500.0).astype(np.float32) + 1.0
+    for method in ('hable', 'clip'):
+        for chroma in ('per_channel', 'max_channel'):
+            cfg = _full_settings(method=method, chroma_preserve=chroma)
+            white = image_loading._hdr_pq_white_point(nits, cfg['white_point'])
+            out = image_loading._hdr_pq_tone_map(nits, white, cfg)
+            assert np.isfinite(out).all()
+            assert float(out.min()) >= 0.0 and float(out.max()) <= 1.0
+
+
+def test_tonemap_pq_disabled_returns_input_unchanged():
+    im = Image.fromarray(np.full((4, 4, 3), 200, dtype=np.uint8), 'RGB')
+    out = image_loading._tonemap_pq_to_srgb(im, {'enabled': False})
+    assert out is im
+
+
+def test_tonemap_pq_end_to_end_bright_gradient_keeps_steps():
+    # A PQ gradient spanning ~150-1000 nits must not collapse to flat white.
+    cols = 64
+    nits = np.tile(np.linspace(150.0, 1000.0, cols, dtype=np.float32), (8, 1))
+    nits = np.repeat(nits[:, :, None], 3, axis=2)
+    signal = _pq_oetf(nits).astype(np.float32)
+    arr = np.clip(signal * 255.0 + 0.5, 0, 255).astype(np.uint8)
+    out = np.asarray(image_loading._tonemap_pq_to_srgb(
+        Image.fromarray(arr, 'RGB'), _full_settings()))
+    col_means = out.mean(axis=(0, 2))
+    assert np.all(np.diff(col_means) >= -1e-6)          # monotonic non-decreasing
+    assert (col_means < 255).sum() > cols // 2          # most steps not clipped
+    assert col_means.max() >= 250                        # bright end reaches white
+
+
+def test_non_pq_passes_through_regardless_of_enabled():
+    # Gating is on NCLX transfer, not the enabled switch: SDR HEIF is never
+    # tone-mapped whether the HDR block is enabled or not.
+    def _open_sdr():
+        sdr = Image.fromarray(np.full((4, 4, 3), 60, dtype=np.uint8), 'RGB')
+        sdr.info['nclx_profile'] = {'transfer_characteristics': 13}
+        with mock.patch.object(Image, 'open', return_value=sdr):
+            return np.asarray(image_loading.open_nonraw_image('sdr.heif')).mean()
+
+    image_loading.configure_hdr_pq_tonemap_profile({'enabled': True})
+    assert _open_sdr() == 60.0
+    image_loading.configure_hdr_pq_tonemap_profile({'enabled': False})
+    assert _open_sdr() == 60.0
+
+@pytest.mark.parametrize('mode', ['percentile', 'max', 'fixed'])
+@pytest.mark.parametrize('shape', [(97, 61), (1, 40), (40, 1), (64, 64)])
+def test_banded_white_point_matches_the_whole_frame_form(shape, mode):
+    """Banding the white point is an allocation strategy, not a different number.
+
+    Three rows per band divides none of these shapes evenly, which is the case
+    an equal-split implementation gets wrong. The clamps are opened right out on
+    purpose: at the shipped 100/1200 nit bounds random PQ codes saturate
+    max_nits, and the two forms then agree on a constant instead of on the value
+    they computed.
+    """
+    rng = np.random.default_rng(3)
+    src = rng.integers(0, 256, (*shape, 3), dtype=np.uint8)
+    wp = dict(_full_settings()['white_point'],
+              mode=mode, min_nits=1.0, max_nits=1e6, percentile=99.0)
+    whole = image_loading._hdr_pq_white_point(image_loading._band_nits(src), wp)
+    assert image_loading._banded_white_point(src, wp, 3) == pytest.approx(whole, rel=1e-6)
+
+
+def test_pq_tonemap_banding_does_not_change_the_result():
+    """Row banding is an allocation strategy, not a different transform."""
+    rng = np.random.default_rng(7)
+    arr = rng.integers(0, 256, (97, 61, 3), dtype=np.uint8)
+    settings = _full_settings()
+    whole = np.asarray(image_loading._tonemap_pq_to_srgb(Image.fromarray(arr, 'RGB'), settings))
+    with mock.patch.object(image_loading, '_TONEMAP_BAND_PIXELS', 61 * 8):
+        banded = np.asarray(image_loading._tonemap_pq_to_srgb(Image.fromarray(arr, 'RGB'), settings))
+    assert np.array_equal(whole, banded)
+
+
+def test_pq_eotf_lut_is_exact_over_every_8bit_code():
+    """The table is a tabulation, not an approximation.
+
+    The decoder hands back 8-bit RGB, so the EOTF has exactly 256 possible
+    inputs per channel and the lookup must equal the closed form on all of
+    them -- otherwise the "exact" in its comment is a claim, not a fact.
+    """
+    codes = np.arange(256, dtype=np.float32) / 255.0
+    assert np.array_equal(image_loading._PQ_EOTF_LUT, image_loading._pq_eotf(codes).astype(np.float32))
+
+
+def test_tonemap_pq_float32_intermediates_are_band_bound():
+    """Growing the frame must not grow the float32 working set.
+
+    The peak itself is NOT frame-invariant and the name does not claim it is:
+    the uint8 output and the per-pixel channel maxima are inherently frame-sized,
+    which measures ~6.6 bytes/pixel. What must not scale is the float32
+    intermediates -- the whole-array form built eight frame-sized copies, so a
+    48 MP still peaked at 1327 MiB against this one's 107. The bound below is
+    3 bytes/pixel of headroom over the measurement, which one more full-size
+    float32 temporary (4 bytes/pixel) would exceed.
+    """
+    rng = np.random.default_rng(11)
+    settings = _full_settings()
+
+    def _peak(side):
+        arr = rng.integers(0, 256, (side, side, 3), dtype=np.uint8)
+        img = Image.fromarray(arr, 'RGB')
+        tracemalloc.start()
+        image_loading._tonemap_pq_to_srgb(img, settings)
+        peak = tracemalloc.get_traced_memory()[1]
+        tracemalloc.stop()
+        return peak, arr.nbytes
+
+    small_peak, small_bytes = _peak(512)
+    large_peak, large_bytes = _peak(2048)
+
+    # At 8 float32 copies the whole-array form grew ~29x the frame delta.
+    assert large_peak - small_peak < 3 * (large_bytes - small_bytes), (
+        f"{small_bytes / 2**20:.0f} MiB frame -> {small_peak / 2**20:.0f} MiB peak; "
+        f"{large_bytes / 2**20:.0f} MiB frame -> {large_peak / 2**20:.0f} MiB peak")
+
+
+# --- Real camera files --------------------------------------------------------
+# See tests/fixtures/README.md for provenance and the exact NCLX values.
+
+FIXTURES = Path(__file__).parent / 'fixtures'
+CANON_PQ_HIF = FIXTURES / 'canon_eos_r8_hdr_pq.hif'
+SONY_SDR_HIF = FIXTURES / 'sony_a7sm3_sdr.hif'
+APPLE_GAINMAP_HEIC = FIXTURES / 'apple_iphone13pro_gainmap.heic'
+
+requires_heif = pytest.mark.skipif(
+    not image_loading._heif_available, reason='pillow-heif not installed')
+
+
+def _pure_white_pixels(rgb):
+    return int((rgb == 255).all(axis=-1).sum())
+
+
+@requires_heif
+def test_real_canon_hif_reports_pq_through_its_nclx_profile():
+    """A genuine in-camera HDR PQ still must be recognised from its metadata."""
+    Image_, _ = image_loading._ensure_pil()
+    with Image_.open(CANON_PQ_HIF) as img:
+        nclx = img.info['nclx_profile']
+        assert image_loading._heif_is_pq(img) is True
+        assert nclx['color_primaries'] == 9          # BT.2020
+        assert nclx['transfer_characteristics'] == 16  # SMPTE ST 2084 (PQ)
+        # An HDR PQ HEIF need not carry BT.2020 non-constant luminance: this
+        # Canon body writes matrix 1 (BT.709). Nothing may gate on that field.
+        assert nclx['matrix_coefficients'] == 1
+
+
+@requires_heif
+def test_real_canon_hif_still_decodes_with_a_null_white_point_leaf():
+    """The end of the path the merge guard protects.
+
+    Asserted on the real PQ file rather than on the merge alone: what the null
+    actually costs is this decode returning None, and load_image_from_path
+    turning that into a dropped photo.
+    """
+    image_loading.configure_hdr_pq_tonemap_profile({'white_point': {'min_nits': None}})
+    assert image_loading.open_nonraw_image(CANON_PQ_HIF) is not None
+
+
+@requires_heif
+def test_real_canon_hif_is_dark_when_decoded_as_plain_srgb():
+    """Pins the bug: pillow-heif hands back PQ code values, not sRGB ones."""
+    Image_, _ = image_loading._ensure_pil()
+    with Image_.open(CANON_PQ_HIF) as img:
+        decoded = np.asarray(img.convert('RGB'))
+    assert decoded.mean() < 100          # measured 92.6/255
+    assert np.percentile(decoded, 99) < 170  # measured 153
+    assert _pure_white_pixels(decoded) == 0
+
+
+@requires_heif
+def test_real_canon_hif_tone_map_invents_no_clipping():
+    """The regression guard for the tone curve's white point.
+
+    The source frame has no pure-white pixel at all. Normalising the Hable
+    operator at diffuse white instead of at the signal peak turned 21 648 of
+    its 240 000 pixels pure white, which would have driven highlight_clipped
+    and channel_clip_highlight_pct on a frame that clips nowhere.
+    """
+    Image_, _ = image_loading._ensure_pil()
+    with Image_.open(CANON_PQ_HIF) as img:
+        decoded = np.asarray(img.convert('RGB'))
+    mapped = np.asarray(image_loading.open_nonraw_image(str(CANON_PQ_HIF)))
+
+    assert _pure_white_pixels(mapped) == 0
+    # The transform ran, and it opened the highlights up the scale.
+    assert not np.array_equal(mapped, decoded)
+    assert np.percentile(mapped, 99) > np.percentile(decoded, 99)
+
+
+@requires_heif
+def test_real_sony_sdr_hif_passes_through_untouched():
+    """.HIF is neither Canon-only nor HDR: Sony writes SDR stills under it.
+
+    An extension-based gate would tone-map this file. The NCLX transfer (13,
+    sRGB) is what keeps it byte-identical to a plain decode.
+    """
+    Image_, _ = image_loading._ensure_pil()
+    with Image_.open(SONY_SDR_HIF) as img:
+        assert img.info['nclx_profile']['transfer_characteristics'] == 13
+        assert image_loading._heif_is_pq(img) is False
+        decoded = np.asarray(img.convert('RGB'))
+    loaded = np.asarray(image_loading.open_nonraw_image(str(SONY_SDR_HIF)))
+    assert np.array_equal(loaded, decoded)
+
+
+@requires_heif
+def test_real_apple_heic_has_no_nclx_box_at_all():
+    """Apple HDR is a gain map, not PQ — and it ships no NCLX box whatsoever.
+
+    The Sony fixture covers "NCLX present, transfer != 16". This one covers the
+    other falsy branch of _heif_is_pq: `img.info` has no 'nclx_profile' key, so
+    the guard must read it with .get() and not KeyError. An iPhone HDR still is
+    an 8-bit SDR base image plus a `...aux:hdrgainmap` auxiliary, so there is
+    nothing here to tone map.
+    """
+    Image_, _ = image_loading._ensure_pil()
+    with Image_.open(APPLE_GAINMAP_HEIC) as img:
+        assert 'nclx_profile' not in img.info
+        assert image_loading._heif_is_pq(img) is False
+
+
+@requires_heif
+def test_real_apple_heic_passes_through_untouched():
+    """The base image is already displayable SDR — tone mapping it would be a bug."""
+    Image_, _ = image_loading._ensure_pil()
+    with Image_.open(APPLE_GAINMAP_HEIC) as img:
+        decoded = np.asarray(img.convert('RGB'))
+    loaded = np.asarray(image_loading.open_nonraw_image(str(APPLE_GAINMAP_HEIC)))
+    assert np.array_equal(loaded, decoded)
+
+
+@requires_heif
+@pytest.mark.parametrize(
+    'fixture', [CANON_PQ_HIF, SONY_SDR_HIF, APPLE_GAINMAP_HEIC])
+def test_real_hif_files_are_scannable_and_load_as_rgb(fixture):
+    assert fixture.suffix.lower() in image_loading.SCANNABLE_IMAGE_EXTENSIONS
+    pil_img, img_cv = image_loading.load_image_from_path(str(fixture))
+    assert pil_img is not None and pil_img.mode == 'RGB'
+    assert img_cv is not None and img_cv.shape[2] == 3

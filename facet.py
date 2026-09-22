@@ -92,7 +92,9 @@ except ImportError:
 # Import config module (lightweight, no cv2/torch dependency)
 from config import ScoringConfig, PercentileNormalizer
 from config.scoring_config import resolve_scoring_config_path
-from utils.image_loading import RAW_EXTENSIONS, HEIF_EXTENSIONS
+from utils.image_loading import (
+    RAW_EXTENSIONS, HEIF_EXTENSIONS, JPEG_EXTENSIONS, SCANNABLE_IMAGE_EXTENSIONS,
+)
 
 
 
@@ -1429,7 +1431,7 @@ def _run_scan(args, resumed_run):
     init_global_plugin_manager(config=scorer.config.config)
 
     # 1. Gather files recursively from subfolders (or single files)
-    valid_suffixes = {'.jpg', '.jpeg'} | HEIF_EXTENSIONS | RAW_EXTENSIONS
+    valid_suffixes = SCANNABLE_IMAGE_EXTENSIONS
     all_files = []
 
     # Get scanning settings
@@ -1500,7 +1502,7 @@ def _run_scan(args, resumed_run):
     # is keyed on (resolved parent dir, stem) so a JPEG only suppresses a RAW that
     # sits beside it: an unrelated same-stem JPEG in another folder no longer hides
     # the RAW library-wide.
-    jpeg_like = {'.jpg', '.jpeg'} | HEIF_EXTENSIONS
+    jpeg_like = JPEG_EXTENSIONS | HEIF_EXTENSIONS
     jpeg_dir_stems = {
         (os.path.dirname(_resolved(f)), f.stem.lower())
         for f in all_files if f.suffix.lower() in jpeg_like
@@ -1530,7 +1532,30 @@ def _run_scan(args, resumed_run):
     # Filter the list to only include new or un-scanned files
     todo_list = [f for f in all_files if _resolved(f) in unscanned
                  and not _raw_paired_with_jpeg(f)]
-    raw_paired_skipped = sum(1 for f in all_files if _raw_paired_with_jpeg(f))
+    raw_paired_files = [f for f in all_files if _raw_paired_with_jpeg(f)]
+    raw_paired_skipped = len(raw_paired_files)
+
+    # A RAW suppressed above by a newly-collected HEIF/JPEG sibling may already have
+    # its own row from a scan run before that sibling extension was scannable (e.g.
+    # .hif added to SCANNABLE_IMAGE_EXTENSIONS on an existing Canon RAW+HDR library).
+    # That row is never deleted here -- it may carry ratings, tags or faces the user
+    # set by hand -- so warn instead of silently leaving the library double-counted.
+    if raw_paired_files:
+        raw_paired_resolved = {_resolved(f) for f in raw_paired_files}
+        raw_paired_unscanned = scorer.filter_unscanned_paths(raw_paired_resolved)
+        raw_paired_already_rowed = len(raw_paired_resolved) - len(raw_paired_unscanned)
+        if raw_paired_already_rowed:
+            logger.warning(
+                "%d photo(s) are now stored twice, once as the RAW and once as the "
+                "HEIF/JPEG beside it -- this library was scanned before that HEIF/JPEG "
+                "extension was scannable, so the RAW's row from that earlier scan was "
+                "never removed. It is left in place deliberately, since it may carry "
+                "ratings, tags or faces you set by hand. To clean it up, delete the "
+                "superseded RAW file(s) yourself, then run "
+                "'python database.py --cleanup-missing-photos' to remove their now-"
+                "missing rows (cascades to faces, album memberships and the vector index).",
+                raw_paired_already_rowed,
+            )
 
     logger.info("Found %d total, processing %d new files.", len(all_files), len(todo_list))
 
@@ -1587,7 +1612,11 @@ def _run_scan(args, resumed_run):
         exit(1)
 
     # 2. Main Processing Loop
-    from utils import configure_raw_decode_profile, configure_raw_decoding
+    from utils import (
+        configure_raw_decode_profile,
+        configure_raw_decoding,
+        configure_hdr_pq_tonemap_profile,
+    )
     from processing.scan_state import ScanRun, scan_in_progress
     from processing.progress import emit_progress
     _proc = scorer.config.get_processing_settings()
@@ -1596,6 +1625,7 @@ def _run_scan(args, resumed_run):
         timeout_seconds=_proc.get('raw_decode_timeout_seconds', 120),
     )
     configure_raw_decode_profile(scorer.config.get_raw_decode_settings())
+    configure_hdr_pq_tonemap_profile(scorer.config.get_hdr_pq_tonemap_settings())
 
     # Concurrency guard: a run with a fresh heartbeat looks genuinely live.
     # Resuming on top of it would double-process, so refuse; a fresh scan only

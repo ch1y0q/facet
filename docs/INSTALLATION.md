@@ -568,7 +568,7 @@ manually and place it at `pretrained_models/samp_net.pth`.
 | `reverse_geocoder` | Reverse geocoding for GPS |
 | `psutil` | Batch-processing auto-tuning (system monitoring) |
 | `aiosqlite` | Async SQLite for FastAPI read endpoints |
-| `sqlite-vec` | On-disk KNN for semantic search & similarity (falls back to in-memory NumPy cache if missing) |
+| `sqlite-vec` | On-disk KNN for semantic search & similarity (falls back to in-memory NumPy cache if missing); `pip install -e .[vec]` |
 
 All of these are in `requirements.txt`; no profile needs extra base packages.
 

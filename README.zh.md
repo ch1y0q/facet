@@ -16,7 +16,7 @@ Facet 是一款本地的照片分析与选片引擎。它从美观度到人脸�
 
 ## 工作原理
 
-1. **扫描**——把 Facet 指向一个照片文件夹。每张照片都会针对画质、构图和人脸进行分析。支持 JPG、HEIF/HEIC 以及 10 种 RAW 格式（CR2、CR3、NEF、ARW、RAF、RW2、DNG、ORF、SRW、PEF）。
+1. **扫描**——把 Facet 指向一个照片文件夹。每张照片都会针对画质、构图和人脸进行分析。支持 JPG、HEIF/HEIC/HIF（佳能 HDR PQ `.HIF` 照片会以 SMPTE ST 2084 PQ 传递函数解码，并自动 tone map 到 SDR sRGB）以及 10 种 RAW 格式（CR2、CR3、NEF、ARW、RAF、RW2、DNG、ORF、SRW、PEF）。
 2. **浏览**——打开网页照片库，用筛选、搜索和多种视图模式探索你的照片库。
 3. **选片**——Facet 会检测连拍、标记闭眼照片、把相似照片分组，并把精选照片推到前面。包围曝光和全景／HDR 组会被识别出来并整组保留，而不会在选片时被拆散。
 

@@ -2,13 +2,16 @@
 
 from contextlib import contextmanager
 from io import BytesIO
+from pathlib import Path
 from unittest import mock
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
 from api import create_app
 from api.auth import CurrentUser, get_optional_user
+from utils import image_loading
 
 
 # ---------------------------------------------------------------------------
@@ -181,3 +184,51 @@ class TestImage:
             resp = client.get("/image", params={"path": "/library/photo.cr2"})
 
         assert resp.status_code == 500
+
+
+def test_heif_conversion_uses_shared_loader():
+    """_convert_heif_cached routes through open_nonraw_image (EXIF orientation + PQ tone map).
+
+    Before the Canon .HIF fix the viewer decoded HEIF directly with PIL, so the
+    browser showed a dark/rotated image relative to what the scanner scored.
+    """
+    from PIL import Image as PILImage
+    from api.routers import thumbnails
+
+    sentinel = PILImage.new("RGB", (2, 2), (10, 20, 30))
+    thumbnails._convert_heif_cached.cache_clear()
+    try:
+        with mock.patch("utils.image_loading.open_nonraw_image", return_value=sentinel) as m:
+            out = thumbnails._convert_heif_cached("/library/photo.heif", 1.0, 96)
+            m.assert_called_once_with("/library/photo.heif")
+        im = PILImage.open(BytesIO(out))
+        assert im.size == (2, 2)
+        assert im.getpixel((0, 0)) == (10, 20, 30)
+    finally:
+        thumbnails._convert_heif_cached.cache_clear()
+
+
+@pytest.mark.skipif(not image_loading._heif_available, reason='pillow-heif not installed')
+def test_heif_conversion_matches_what_the_scanner_scored():
+    """The browser JPEG and the scored buffer must come from one decode.
+
+    Run on the real Canon HDR PQ frame: before the shared loader the viewer
+    decoded HEIF with a bare PIL open, so it showed the untone-mapped, dark
+    image while the models scored a different one.
+    """
+    from api.routers import thumbnails
+    from PIL import Image as PILImage
+
+    fixture = str(Path(__file__).parent / 'fixtures' / 'canon_eos_r8_hdr_pq.hif')
+    thumbnails._convert_heif_cached.cache_clear()
+    try:
+        jpeg = thumbnails._convert_heif_cached(fixture, 1.0, 100)
+    finally:
+        thumbnails._convert_heif_cached.cache_clear()
+
+    served = np.asarray(PILImage.open(BytesIO(jpeg)).convert('RGB')).astype(int)
+    scored = np.asarray(image_loading.open_nonraw_image(fixture)).astype(int)
+    assert served.shape == scored.shape
+    # JPEG at quality 100 is still lossy; the two must agree to within it, and
+    # nowhere near the gulf a missing tone map would open.
+    assert np.abs(served - scored).mean() < 2.0

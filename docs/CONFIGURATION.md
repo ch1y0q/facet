@@ -22,6 +22,7 @@ Every setting is shipped in `config/scoring_config.default.json` and overridden,
 - [Quality Assessment Models](#quality-assessment-models)
 - [Processing](#processing)
 - [RAW Decode](#raw-decode)
+- [HDR PQ Tone Mapping](#hdr-pq-tone-mapping)
 - [Burst Detection](#burst-detection)
 - [Burst Scoring](#burst-scoring)
 - [Duplicate Detection](#duplicate-detection)
@@ -960,6 +961,59 @@ and an unattended migration is the worst place for that to go unnoticed. The
 rejection is logged with the file name.
 
 ---
+
+## HDR PQ Tone Mapping
+
+Canon HDR PQ stills (`.HIF`) are HDR: the HEIF carries the PQ transfer function
+(SMPTE ST 2084) over BT.2020 primaries, with absolute luminance up to 10,000
+nits. The quality models and the stored thumbnail work in 8-bit SDR sRGB, so a
+PQ image is decoded, converted BT.2020 to sRGB, tone-mapped in linear light,
+and encoded with the sRGB OETF. This block controls that tone map. It applies
+**only** to images whose NCLX colour profile declares the PQ transfer
+(characteristic 16); SDR HEIF, HLG and JPEG pass through untouched regardless
+of `enabled`.
+
+```json
+"hdr_pq_tonemap": {
+  "enabled": true,
+  "method": "hable",
+  "white_point": {
+    "mode": "percentile",
+    "percentile": 99.99,
+    "min_nits": 100.0,
+    "max_nits": 1200.0,
+    "fixed_nits": 1000.0
+  },
+  "chroma_preserve": "per_channel"
+}
+```
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `enabled` | `true` | Tone-map PQ images to SDR. `false` returns the decoder's raw PQ values with no conversion, leaving the gallery and scores with a dark, washed-out image; keep this on unless debugging the pipeline |
+| `method` | `hable` | Tone curve. `hable` is the filmic shoulder used by ffmpeg's HDR-to-SDR `tonemap` filter; `clip` is a plain linear normalise with a hard clip, useful only as a reference |
+| `white_point.mode` | `percentile` | How the per-image white point (the luminance mapped to SDR white) is chosen. `percentile` takes a high percentile of the brightest channel; `max` uses the single brightest pixel (matches ffmpeg's signal peak, but a night-scene hot pixel darkens the whole frame); `fixed` uses `fixed_nits` |
+| `white_point.percentile` | `99.99` | Percentile used by `percentile` mode. High enough to follow a large bright sky, low enough to ignore isolated specular pixels |
+| `white_point.min_nits` | `100.0` | Floor for the white point; a dark frame is never normalised below the SDR reference white |
+| `white_point.max_nits` | `1200.0` | Ceiling for `percentile` mode; caps how far an unusually bright frame pulls the curve down |
+| `white_point.fixed_nits` | `1000.0` | White point used by `fixed` mode |
+| `chroma_preserve` | `per_channel` | `per_channel` rolls each R/G/B channel off independently (brighter, with a slight hue shift in the brightest highlights); `max_channel` derives one scale from the brightest channel like ffmpeg's default, preserving hue at a slightly darker result |
+
+### Why the white point is per-image
+
+Normalising the Hable curve at a fixed 100-nit reference white, `hable(x)/hable(1)`,
+clips every pixel above 100 nits to pure white. Real HDR stills peak at several
+hundred to a few thousand nits, so bright skies and windows lost all texture
+(25-60% of pixels clipped to white on a sample of Canon HDR PQ stills). The
+curve is instead normalised at a per-image white point `w`, `hable(x)/hable(w)`,
+the same way ffmpeg divides by `hable(peak)` with a frame-measured peak in
+`vf_tonemap.c`. The default p99.99 percentile, clamped to 100-1200 nits, keeps
+highlight texture while ignoring isolated hot pixels.
+
+**References.** PQ EOTF: SMPTE ST 2084:2014. Hable curve and per-frame peak:
+ffmpeg `vf_tonemap.c` (John Hable, "Filmic Tonemapping Operators", 2010).
+BT.2020 to sRGB matrix: BT.2020-2 / IEC 61966-2-1 with D65. sRGB OETF:
+IEC 61966-2-1. NCLX transfer characteristic 16: ISO/IEC 23001-8 / ITU-T H.273.
 
 ## Burst Detection
 

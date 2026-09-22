@@ -21,7 +21,7 @@ photo library, then serves a gallery to browse it. Start with
 ## Supported file types
 
 - **JPEG** (.jpg, .jpeg)
-- **HEIF/HEIC** (.heic, .heif) — requires `pillow-heif`
+- **HEIF/HEIC/HIF** (.heic, .heif, .hif) — requires `pillow-heif`; Canon HDR PQ `.HIF` stills are tone-mapped to SDR sRGB
 - **RAW** (.cr2, .cr3, .nef, .arw, .raf, .rw2, .dng, .orf, .srw, .pef) — skipped when a matching JPEG/HEIC exists
 
 ## Common questions

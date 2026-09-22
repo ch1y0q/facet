@@ -22,7 +22,7 @@ Copy-and-paste-Blöcken ab.
 ## Unterstützte Dateitypen
 
 - **JPEG** (.jpg, .jpeg)
-- **HEIF/HEIC** (.heic, .heif) — erfordert `pillow-heif`
+- **HEIF/HEIC/HIF** (.heic, .heif, .hif) — erfordert `pillow-heif`; Canon-HDR-PQ-`.HIF`-Aufnahmen werden auf SDR-sRGB tone-gemappt
 - **RAW** (.cr2, .cr3, .nef, .arw, .raf, .rw2, .dng, .orf, .srw, .pef) — übersprungen, wenn ein passendes JPEG/HEIC vorhanden ist
 
 ## Häufige Fragen

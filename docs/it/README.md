@@ -21,7 +21,7 @@ una libreria fotografica locale, poi serve una galleria per sfogliarla. Inizia d
 ## Tipi di file supportati
 
 - **JPEG** (.jpg, .jpeg)
-- **HEIF/HEIC** (.heic, .heif) — richiede `pillow-heif`
+- **HEIF/HEIC/HIF** (.heic, .heif, .hif) — richiede `pillow-heif`; gli scatti `.HIF` Canon HDR PQ sono sottoposti a tone mapping in sRGB SDR
 - **RAW** (.cr2, .cr3, .nef, .arw, .raf, .rw2, .dng, .orf, .srw, .pef) — ignorati se esiste un JPEG/HEIC corrispondente
 
 ## Domande comuni

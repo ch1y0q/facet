@@ -51,6 +51,83 @@ RAW_DECODE_DEFAULTS = {
     'faithful_bracket_render': True,
 }
 
+# HDR PQ (SMPTE ST 2084) HEIF still -> SDR sRGB tone-mapping defaults. Only the
+# tunable policy lives here; the standard physical constants (PQ M1/M2/C1-C3,
+# the BT.2020->sRGB matrix, the Hable A-F coefficients) stay in
+# utils/image_loading.py because they are part of the formulas, not knobs.
+# Authoritative copy - utils/image_loading.py imports this rather than
+# redefining it. See docs/CONFIGURATION.md "HDR PQ Tone Mapping".
+HDR_PQ_TONEMAP_DEFAULTS = {
+    # Master switch. NCLX transfer-characteristics gating is independent: a
+    # non-PQ HEIF (SDR 1/13/17, HLG 18, or no NCLX) always passes through.
+    'enabled': True,
+    # 'hable' = Hable filmic roll-off (ffmpeg's default HDR->SDR curve);
+    # 'clip' = linear normalise + hard clip, kept as a no-shoulder reference.
+    'method': 'hable',
+    'white_point': {
+        # Where the per-image display white is taken from.
+        # 'percentile' = a high percentile of the brightest channel (robust to
+        #   a handful of hot pixels, e.g. night-scene lights);
+        # 'max' = the single brightest pixel (strict ffmpeg signal-peak, which
+        #   can darken a whole image when one specular pixel is very hot);
+        # 'fixed' = fixed_nits for every image.
+        'mode': 'percentile',
+        'percentile': 99.99,
+        'min_nits': 100.0,
+        'max_nits': 1200.0,
+        'fixed_nits': 1000.0,
+    },
+    # 'per_channel' maps each R/G/B channel independently (brighter);
+    # 'max_channel' derives one scale from the brightest channel and applies
+    # it to all three (ffmpeg's hue-preserving form, slightly darker).
+    'chroma_preserve': 'per_channel',
+}
+
+
+# The white-point sub-keys the tone map does arithmetic on, as opposed to
+# 'mode', which it only compares.
+_HDR_PQ_WHITE_POINT_NUMERIC = frozenset({'percentile', 'min_nits', 'max_nits', 'fixed_nits'})
+
+
+def merge_hdr_pq_tonemap_settings(block):
+    """Merge a user ``hdr_pq_tonemap`` block over the defaults.
+
+    ``white_point`` is nested, so it is merged key-by-key rather than replaced
+    wholesale; overriding one sub-key must not drop the others. Its numeric
+    leaves are coerced, so a hand-edited null cannot reach the decode path.
+    """
+    merged = {
+        'enabled': HDR_PQ_TONEMAP_DEFAULTS['enabled'],
+        'method': HDR_PQ_TONEMAP_DEFAULTS['method'],
+        'chroma_preserve': HDR_PQ_TONEMAP_DEFAULTS['chroma_preserve'],
+        'white_point': dict(HDR_PQ_TONEMAP_DEFAULTS['white_point']),
+    }
+    if not isinstance(block, dict):
+        return merged
+    for key, value in block.items():
+        if key == 'white_point':
+            # Merge the nested block key-by-key; a non-dict value (e.g. a
+            # hand-edited null) is ignored rather than replacing the defaults,
+            # since the decode path reads the config without re-validating it.
+            if isinstance(value, dict):
+                for sub_key, sub_value in value.items():
+                    if sub_key not in merged['white_point']:
+                        continue
+                    if sub_key in _HDR_PQ_WHITE_POINT_NUMERIC:
+                        # The same hazard one level down, and a worse one: the
+                        # tone map does float() arithmetic on these, so a null
+                        # would raise TypeError for every PQ still and make the
+                        # whole decode path return None -- silently dropping the
+                        # photo from a scan, the gallery and the thumbnailer.
+                        try:
+                            sub_value = float(sub_value)
+                        except (TypeError, ValueError):
+                            continue
+                    merged['white_point'][sub_key] = sub_value
+        elif key in merged:
+            merged[key] = value
+    return merged
+
 
 def _calc_stats(values):
     """Calculate statistical summary for a list of values.
@@ -617,6 +694,14 @@ class ScoringConfig:
         if not isinstance(block, dict):
             return dict(RAW_DECODE_DEFAULTS)
         return {**RAW_DECODE_DEFAULTS, **block}
+
+    def get_hdr_pq_tonemap_settings(self):
+        """Get HDR PQ (ST 2084) -> SDR sRGB tone-mapping settings for HEIF stills.
+
+        The nested ``white_point`` block is merged key-by-key (see
+        :func:`merge_hdr_pq_tonemap_settings`).
+        """
+        return merge_hdr_pq_tonemap_settings(self.config.get('hdr_pq_tonemap', {}))
 
     def get_scanning_settings(self):
         """Get directory scanning settings.
