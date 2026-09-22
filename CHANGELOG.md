@@ -4,6 +4,8 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+## [1.16.0] "Collodion" — 2026-09-22
+
 ### Added
 
 - **A photo can be deleted from the viewer in one action, instead of being rejected and then culled.** Deletion was two-step and indirect: mark a photo rejected, then `POST /api/cull/apply` with `action=trash_rejects`. `POST /api/photo/delete` now sends one or more named photos to the OS trash and removes their rows immediately, behind the EXISTING `viewer.cull.allow_trash` gate (default `false`, 403 when off, 400 when the `send2trash` package is absent) — no new config key, so an admin who already accepted the recoverable-trash trade-off for cull-to-folder gets this for free. It is OS-trash only; Facet still has no permanent-delete path anywhere. The control appears on photo-detail and on the gallery's multi-select toolbar and mobile sheet, all three gated on `trash_available` — `allow_trash` AND a live `send2trash` import — rather than on the config flag alone, which would render a button that 400s.
