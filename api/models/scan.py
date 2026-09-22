@@ -107,6 +107,14 @@ class PhotoDeleteResponse(BaseModel):
     sharing a requested path's ``(sequence_kind, sequence_group_id)`` -- but
     named here so the caller can tell WHICH frames were added, matching this
     response's own per-path idiom.
+
+    A trashed ``include_companions`` RAW/``.xmp`` that is itself a separate
+    ``photos`` row is folded into ``deleted``, not a distinct bucket -- its
+    file is gone the moment the trash succeeds, so it is exactly as deleted
+    as any path the caller named directly. ``skipped`` mirrors
+    ``CullApplyResponse``'s field of the same name: a path that was visible,
+    in ``photos``, and not a refused bracket lead, but whose file could not
+    be resolved on disk (already missing) -- landing in no other bucket.
     """
 
     dry_run: bool
@@ -116,6 +124,7 @@ class PhotoDeleteResponse(BaseModel):
     not_visible: list[str]
     refused_bracket_lead: list[str]
     sequence_siblings: list[str]
+    skipped: list[str]
     trashed: int
     errors: dict[str, str]
 

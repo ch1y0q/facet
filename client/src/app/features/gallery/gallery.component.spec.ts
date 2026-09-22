@@ -1324,7 +1324,8 @@ describe('GalleryComponent', () => {
 
     function deleteResponse(overrides: Partial<{
       deleted: string[]; refused_bracket_lead: string[]; not_found: string[];
-      not_visible: string[]; sequence_siblings: string[]; errors: Record<string, string>; trashed: number;
+      not_visible: string[]; sequence_siblings: string[]; skipped: string[];
+      errors: Record<string, string>; trashed: number;
     }> = {}) {
       return of({
         dry_run: false,
@@ -1333,6 +1334,7 @@ describe('GalleryComponent', () => {
         not_visible: [],
         refused_bracket_lead: [],
         sequence_siblings: [],
+        skipped: [],
         trashed: 0,
         errors: {},
         ...overrides,
@@ -1439,7 +1441,7 @@ describe('GalleryComponent', () => {
       expect(mockStore.loadPhotos).not.toHaveBeenCalled();
     });
 
-    it('reports a partial result snackbar with the deleted and refused counts', async () => {
+    it('reports a partial result snackbar with the deleted and failed counts', async () => {
       select(['/a.jpg', '/b.jpg']);
       const dialog = TestBed.inject(MatDialog);
       (dialog.open as Mock).mockReturnValue({
@@ -1453,9 +1455,54 @@ describe('GalleryComponent', () => {
       await component.deleteSelected();
 
       expect(snackBar.open).toHaveBeenCalledWith(
-        mockI18n.t(I18N.cull.delete_partial_result, { deleted: 1, refused: 1 }),
+        mockI18n.t(I18N.cull.delete_partial_result, { deleted: 1, failed: 1 }),
         '', { duration: 4000 },
       );
+    });
+
+    // Finding 5: a bulk delete where every send2trash failed must not render
+    // as a neutral "0 deleted, 0 refused" result -- `errors` (an unwritable
+    // trash dir), `not_found`, `not_visible` and `skipped` all count as
+    // failures even though none of them is `refused_bracket_lead`, the only
+    // bucket the toast used to read.
+    it('reports the dedicated delete_failed snackbar when every path lands in errors and none is deleted', async () => {
+      select(['/a.jpg', '/b.jpg']);
+      const dialog = TestBed.inject(MatDialog);
+      (dialog.open as Mock).mockReturnValue({
+        afterClosed: () => of({ includeCompanions: false, includeSequenceSiblings: false }),
+      });
+      mockApi.post.mockReturnValueOnce(
+        deleteResponse({ errors: { '/a.jpg': 'Permission denied', '/b.jpg': 'Permission denied' } }),
+      );
+      const snackBar = TestBed.inject(MatSnackBar);
+
+      await component.deleteSelected();
+
+      expect(snackBar.open).toHaveBeenCalledWith(
+        mockI18n.t(I18N.cull.delete_failed), '', { duration: 4000 },
+      );
+    });
+
+    it('folds not_found, not_visible and skipped into the partial-result failed count, not just refused_bracket_lead', async () => {
+      select(['/a.jpg', '/b.jpg', '/c.jpg', '/d.jpg']);
+      const dialog = TestBed.inject(MatDialog);
+      (dialog.open as Mock).mockReturnValue({
+        afterClosed: () => of({ includeCompanions: false, includeSequenceSiblings: false }),
+      });
+      mockApi.post.mockReturnValueOnce(
+        deleteResponse({
+          deleted: ['/a.jpg'], not_found: ['/b.jpg'], not_visible: ['/c.jpg'], skipped: ['/d.jpg'], trashed: 1,
+        }),
+      );
+      await component.deleteSelected();
+
+      // Asserted on the i18n mock's own call args, not on the snackbar's
+      // resolved text: `mockI18n.t` ignores its `vars` argument and echoes
+      // the key back, so `snackBar.open`'s first argument is identical
+      // ("cull.delete_partial_result") whether `failed` is computed from all
+      // four buckets or from `refused_bracket_lead` alone -- asserting on
+      // that resolved string would pass under either implementation.
+      expect(mockI18n.t).toHaveBeenCalledWith(I18N.cull.delete_partial_result, { deleted: 1, failed: 3 });
     });
 
     it('a failed request does not touch the store', async () => {

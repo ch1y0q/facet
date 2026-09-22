@@ -18,6 +18,7 @@ export interface PhotoDeleteResponse {
   not_visible: string[];
   refused_bracket_lead: string[];
   sequence_siblings: string[];
+  skipped: string[];
   trashed: number;
   errors: Record<string, string>;
 }

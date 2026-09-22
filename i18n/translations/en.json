@@ -2360,8 +2360,9 @@
     "error": "Cull failed",
     "delete_action": "Delete…",
     "delete_confirm_title": "Delete photos?",
-    "delete_confirm_body": "photos will be sent to your operating system's trash. They stay recoverable until you empty it.",
-    "delete_partial_result": "{deleted} deleted, {refused} refused",
+    "delete_confirm_body": "{count} photos will be sent to your operating system's trash. They stay recoverable until you empty it.",
+    "delete_partial_result": "{deleted} deleted, {failed} failed",
+    "delete_failed": "Delete failed — nothing was sent to trash",
     "delete_disabled_view_scope_tooltip": "Select photos explicitly to delete them — a whole-view selection can’t be used here"
   },
   "shortcuts": {

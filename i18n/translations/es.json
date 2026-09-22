@@ -2360,8 +2360,9 @@
     "error": "Error al descartar",
     "delete_action": "Eliminar…",
     "delete_confirm_title": "¿Eliminar las fotos?",
-    "delete_confirm_body": "fotos se enviarán a la papelera del sistema operativo. Permanecen recuperables hasta que la vacíes.",
-    "delete_partial_result": "{deleted} eliminadas, {refused} rechazadas",
+    "delete_confirm_body": "{count} fotos se enviarán a la papelera del sistema operativo. Permanecen recuperables hasta que la vacíes.",
+    "delete_partial_result": "{deleted} eliminadas, {failed} fallidas",
+    "delete_failed": "Error al eliminar — no se envió nada a la papelera",
     "delete_disabled_view_scope_tooltip": "Selecciona las fotos explícitamente para eliminarlas — aquí no se puede usar una selección de toda la vista"
   },
   "shortcuts": {

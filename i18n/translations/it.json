@@ -2360,8 +2360,9 @@
     "error": "Scarto non riuscito",
     "delete_action": "Elimina…",
     "delete_confirm_title": "Eliminare le foto?",
-    "delete_confirm_body": "foto verranno inviate al cestino del sistema operativo. Restano recuperabili finché non lo svuoti.",
-    "delete_partial_result": "{deleted} eliminate, {refused} rifiutate",
+    "delete_confirm_body": "{count} foto verranno inviate al cestino del sistema operativo. Restano recuperabili finché non lo svuoti.",
+    "delete_partial_result": "{deleted} eliminate, {failed} fallite",
+    "delete_failed": "Eliminazione non riuscita — nulla è stato inviato al cestino",
     "delete_disabled_view_scope_tooltip": "Seleziona le foto esplicitamente per eliminarle — qui non è possibile usare una selezione dell'intera vista"
   },
   "shortcuts": {

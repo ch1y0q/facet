@@ -1319,6 +1319,99 @@ class TestPhotoDelete:
         assert bad in remaining  # failed trash -> row survives
         assert ok not in remaining  # succeeded trash -> row gone
 
+    def test_include_companions_deletes_companion_row_too(self, client, tmp_path):
+        """Finding 1/6 (2026-09-22 review): `include_companions` trashes a
+        companion RAW's file -- if that RAW is ALSO a separately-scanned
+        `photos` row (a.jpg + a.cr2 both scanned independently), its row
+        must be deleted too, not left behind orphaned and pointing at a
+        now-gone file. Covers the endpoint's previously-untested
+        `include_companions` path (all prior hits were on /api/cull/apply)."""
+        jpg = _make_file(tmp_path, "a.jpg")
+        raw = _make_file(tmp_path, "a.cr2")
+        db = _db(tmp_path, [(jpg, 0), (raw, 0)])
+        fake_send2trash = mock.MagicMock()
+        fake_module = mock.Mock(send2trash=fake_send2trash)
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+            mock.patch.dict("sys.modules", {"send2trash": fake_module}),
+        ):
+            resp = client.post("/api/photo/delete", json={
+                "paths": [jpg], "dry_run": False, "include_companions": True,
+            })
+        assert resp.status_code == 200
+        body = resp.json()
+        trashed_paths = sorted(c.args[0] for c in fake_send2trash.call_args_list)
+        assert trashed_paths == sorted([jpg, raw])
+        assert set(body["deleted"]) == {jpg, raw}
+        assert body["trashed"] == 2
+        assert _remaining_paths(db) == set()  # neither row orphaned
+
+    def test_missing_on_disk_file_reported_as_skipped(self, client, tmp_path):
+        """Finding 2 (2026-09-22 review): a path visible AND in `photos` but
+        whose file is missing on disk must land in `skipped` -- it is never
+        trashed and its row is never deleted, but it must not be silently
+        absent from every bucket (not_found/not_visible/refused_bracket_lead
+        cannot catch it either)."""
+        gone = str(tmp_path / "gone.jpg")  # never created on disk
+        ok = _make_file(tmp_path, "ok.jpg")
+        db = _db(tmp_path, [(ok, 0), (gone, 0)])
+        fake_send2trash = mock.MagicMock()
+        fake_module = mock.Mock(send2trash=fake_send2trash)
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+            mock.patch.dict("sys.modules", {"send2trash": fake_module}),
+        ):
+            resp = client.post("/api/photo/delete", json={"paths": [ok, gone], "dry_run": False})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["skipped"] == [gone]
+        assert body["deleted"] == [ok]
+        assert body["not_found"] == []
+        assert body["not_visible"] == []
+        remaining = _remaining_paths(db)
+        assert gone in remaining  # never trashed -> row survives
+        assert ok not in remaining
+
+    def test_delete_preserves_auto_retrain_counter_but_clears_other_cache(self, client, tmp_path):
+        """Finding 3/4 (2026-09-22 review): a single-photo delete must not
+        reset optimization.auto_retrain's per-scope "comparisons since last
+        train" counter (stats_cache key `auto_retrain_pending:<scope>`),
+        even though it still invalidates ordinary aggregates in the same
+        table (photo counts, similarity_groups, etc.)."""
+        path = _make_file(tmp_path, "a.jpg")
+        db = _db(tmp_path, [(path, 0)])
+        conn = sqlite3.connect(db)
+        conn.execute(
+            "INSERT INTO stats_cache (key, value, updated_at) VALUES (?, ?, ?)",
+            ("auto_retrain_pending:global", "47", 0),
+        )
+        conn.execute(
+            "INSERT INTO stats_cache (key, value, updated_at) VALUES (?, ?, ?)",
+            ("similarity_groups_x", "[]", 0),
+        )
+        conn.commit()
+        conn.close()
+
+        fake_send2trash = mock.MagicMock()
+        fake_module = mock.Mock(send2trash=fake_send2trash)
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+            mock.patch.dict("sys.modules", {"send2trash": fake_module}),
+        ):
+            resp = client.post("/api/photo/delete", json={"paths": [path], "dry_run": False})
+        assert resp.status_code == 200
+
+        conn = sqlite3.connect(db)
+        try:
+            rows = {r[0]: r[1] for r in conn.execute("SELECT key, value FROM stats_cache").fetchall()}
+        finally:
+            conn.close()
+        assert rows.get("auto_retrain_pending:global") == "47"  # survives
+        assert "similarity_groups_x" not in rows  # ordinary aggregate still wiped
+
 
 class TestPhotoDeleteBracketLead:
     """Decision 7 / B2: a bracket's representative is its

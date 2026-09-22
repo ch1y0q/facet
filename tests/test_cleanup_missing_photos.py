@@ -148,6 +148,24 @@ def test_delete_photo_rows_refreshes_face_count_without_its_own_commit(tmp_path)
     remaining_faces = conn.execute("SELECT COUNT(*) FROM faces WHERE photo_path = ?", (path,)).fetchone()[0]
     assert remaining_faces == 0
 
+    # The "without its own commit" half of the claim above cannot be proven
+    # by reading back through the SAME connection: every read there uses the
+    # writing connection, which sees its own uncommitted writes regardless
+    # of whether delete_photo_rows ever committed -- so that assertion alone
+    # passes whether or not the fix under test is in place. A SECOND
+    # connection is SQLite's actual test for "not yet committed": it must
+    # still see the pre-delete state.
+    other = sqlite3.connect(db)
+    try:
+        other_photo_count = other.execute(
+            "SELECT COUNT(*) FROM photos WHERE path = ?", (path,)).fetchone()[0]
+        other_face_count = other.execute(
+            "SELECT face_count FROM persons WHERE id = ?", (person_id,)).fetchone()[0]
+    finally:
+        other.close()
+    assert other_photo_count == 1  # row still visible elsewhere -- not committed yet
+    assert other_face_count == 1  # pre-delete face_count still visible elsewhere
+
     conn.commit()
     conn.close()
     assert path not in _paths_in_db(db)

@@ -2378,6 +2378,7 @@ export const I18N = {
     delete_confirm_title: "cull.delete_confirm_title",
     delete_confirm_body: "cull.delete_confirm_body",
     delete_partial_result: "cull.delete_partial_result",
+    delete_failed: "cull.delete_failed",
     delete_disabled_view_scope_tooltip: "cull.delete_disabled_view_scope_tooltip",
   },
   shortcuts: {

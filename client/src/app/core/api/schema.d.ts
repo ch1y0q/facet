@@ -2517,6 +2517,20 @@ export interface paths {
          *     become "missing on disk," which the next rescan or
          *     ``--cleanup-missing-photos`` reconciles -- an accepted edge (expected only
          *     on a corrupted database), not a silent inconsistency.
+         *
+         *     A trashed companion (``include_companions``'s RAW/``.xmp``) that is ITSELF
+         *     a separate ``photos`` row is folded into ``deleted`` too, not a distinct
+         *     field: its file is gone the moment ``send2trash`` succeeds regardless of
+         *     whether the caller ever named or could see that row, so it is exactly as
+         *     deleted as any path the caller requested directly -- `deleted` already
+         *     means "row removed," not "row the caller named."
+         *
+         *     ``skipped`` carries a path that was visible, in ``photos``, and never
+         *     refused as a bracket lead, but whose file ``_resolve_cull_files`` could
+         *     not resolve on disk (already missing) -- neither trashed nor
+         *     row-deleted, so it is reported rather than silently dropped from every
+         *     bucket. Reconciling it is ``--cleanup-missing-photos``'s job, same as any
+         *     other missing-on-disk row.
          */
         post: operations["api_photo_delete_api_photo_delete_post"];
         delete?: never;
@@ -6078,6 +6092,14 @@ export interface components {
          *     sharing a requested path's ``(sequence_kind, sequence_group_id)`` -- but
          *     named here so the caller can tell WHICH frames were added, matching this
          *     response's own per-path idiom.
+         *
+         *     A trashed ``include_companions`` RAW/``.xmp`` that is itself a separate
+         *     ``photos`` row is folded into ``deleted``, not a distinct bucket -- its
+         *     file is gone the moment the trash succeeds, so it is exactly as deleted
+         *     as any path the caller named directly. ``skipped`` mirrors
+         *     ``CullApplyResponse``'s field of the same name: a path that was visible,
+         *     in ``photos``, and not a refused bracket lead, but whose file could not
+         *     be resolved on disk (already missing) -- landing in no other bucket.
          */
         PhotoDeleteResponse: {
             /** Deleted */
@@ -6096,6 +6118,8 @@ export interface components {
             refused_bracket_lead: string[];
             /** Sequence Siblings */
             sequence_siblings: string[];
+            /** Skipped */
+            skipped: string[];
             /** Trashed */
             trashed: number;
             /** Would Trash */

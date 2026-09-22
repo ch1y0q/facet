@@ -92,4 +92,33 @@ describe('PhotoDeleteDialogComponent', () => {
     const body = fixture.nativeElement.querySelector('mat-dialog-content p').textContent;
     expect(body).toBe('photo_detail.delete.confirm_body_bracket_refused');
   });
+
+  // Finding 7: `bodyKey`'s `includeSequenceSiblings()` branch (line 92) was
+  // never exercised by any test -- only the checkboxes' presence/absence and
+  // `dialogClose`'s payload were asserted, never the rendered body text after
+  // ticking the siblings checkbox. Ticking siblings ALONE cannot pin the
+  // line order against line 93 (companion): with only one flag true, the
+  // two independent `if`s return the same result whichever is checked
+  // first. Both must be ticked so the siblings check's priority over the
+  // companion check is what the assertion actually depends on -- pinning
+  // both the confirm() payload AND the rendered <p> text together so lines
+  // 92/93 cannot be swapped without failing here.
+  it('ticking both the companion and sequence-sibling checkboxes gives the siblings body text priority, and confirms with both flags true', () => {
+    const fixture = buildRendered({ ...baseData, hasCompanion: true, hasSiblings: true });
+
+    const checkboxes = fixture.nativeElement.querySelectorAll('input[type="checkbox"]') as NodeListOf<HTMLInputElement>;
+    expect(checkboxes.length).toBe(2);
+    checkboxes[0].click(); // companion (rendered first)
+    checkboxes[1].click(); // sequence siblings (rendered second)
+    fixture.detectChanges();
+
+    const body = fixture.nativeElement.querySelector('mat-dialog-content p').textContent;
+    expect(body).toBe('photo_detail.delete.confirm_body_with_siblings');
+
+    const confirmButton = Array.from(fixture.nativeElement.querySelectorAll('button'))
+      .find((b) => (b as HTMLElement).textContent?.includes('photo_detail.delete.button_label')) as HTMLElement;
+    confirmButton.click();
+
+    expect(dialogClose).toHaveBeenCalledWith({ includeCompanions: true, includeSequenceSiblings: true });
+  });
 });

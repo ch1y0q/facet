@@ -24,6 +24,7 @@ import { CategoryLabelPipe } from '../gallery/photo-tooltip.component';
 import { IsLensNamePipe } from '../../shared/pipes/is-lens-name.pipe';
 import { DownloadIconPipe } from '../../shared/pipes/download-icon.pipe';
 import { PhotoSetKindIconPipe, PhotoSetKindLabelPipe } from '../../shared/pipes/photo-set-kind.pipe';
+import { SEQUENCE_KINDS_KEPT_WHOLE } from '../../shared/pipes/sequence-kind.pipe';
 import { EvOffsetPipe } from '../gallery/burst-culling.pipes';
 import {
   HISTOGRAM_PANEL_HEIGHT, HistogramComponent,
@@ -1039,8 +1040,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     const p = this.photo();
     if (!p) return;
     const set = this.photoSet();
-    const sequenceKinds = ['bracket', 'panorama', 'hdr_panorama'];
-    const hasSiblings = !!set?.kind && sequenceKinds.includes(set.kind) && set.count > 1;
+    const hasSiblings = !!set?.kind && SEQUENCE_KINDS_KEPT_WHOLE.includes(set.kind) && set.count > 1;
     const hasBracketLead = set?.kind === 'bracket'
       && (set.members.find(m => m.path === p.path)?.is_lead ?? false);
     import('../../shared/components/photo-delete-dialog/photo-delete-dialog.component').then(m => {

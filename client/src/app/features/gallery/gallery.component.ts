@@ -35,7 +35,7 @@ import { Photo } from '../../shared/models/photo.model';
 import { isTypingContext } from '../../shared/utils/keyboard';
 import { UndoService } from '../../core/services/undo.service';
 import { SequenceOverrideService, SequenceKind } from '../../core/services/sequence-override.service';
-import { SequenceKindIconPipe } from '../../shared/pipes/sequence-kind.pipe';
+import { SequenceKindIconPipe, SEQUENCE_KINDS_KEPT_WHOLE } from '../../shared/pipes/sequence-kind.pipe';
 import { IsSelectedPipe } from '../../shared/pipes/selection.pipe';
 import { PhotoSetKindIconPipe, PhotoSetKindLabelPipe } from '../../shared/pipes/photo-set-kind.pipe';
 import { AuthService } from '../../core/services/auth.service';
@@ -1668,9 +1668,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
     const paths = [...this.selectedPaths()];
     if (!paths.length) return;
     const selectedSet = new Set(paths);
-    const sequenceKinds = ['bracket', 'panorama', 'hdr_panorama'];
     const hasSiblings = this.store.photos().some(p =>
-      selectedSet.has(p.path) && !!p.sequence_kind && sequenceKinds.includes(p.sequence_kind));
+      selectedSet.has(p.path) && !!p.sequence_kind && SEQUENCE_KINDS_KEPT_WHOLE.includes(p.sequence_kind));
     const { PhotoDeleteDialogComponent } = await import('../../shared/components/photo-delete-dialog/photo-delete-dialog.component');
     const ref = this.dialog.open(PhotoDeleteDialogComponent, {
       width: '32rem',
@@ -1692,13 +1691,23 @@ export class GalleryComponent implements OnInit, OnDestroy {
     if (!res) return;
     this.store.removePhotos(res.deleted);
     this.clearSelection();
-    this.snackBar.open(
-      this.i18n.t(I18N.cull.delete_partial_result, {
-        deleted: res.deleted.length,
-        refused: res.refused_bracket_lead.length,
-      }),
-      '', { duration: 4000 },
-    );
+    // Every failure bucket counts as "failed" here, not just
+    // `refused_bracket_lead` -- an unwritable trash dir (errors), a path the
+    // rescan already dropped (not_found/not_visible) or whose file was
+    // already gone (skipped) are just as much a reason the user's count came
+    // up short, and a response where every path landed in one of those must
+    // read as a failure rather than the "0 deleted, 0 refused" neutral result
+    // the old two-field toast rendered.
+    const failed = res.refused_bracket_lead.length + res.not_found.length + res.not_visible.length
+      + res.skipped.length + Object.keys(res.errors).length;
+    if (res.deleted.length === 0 && failed > 0) {
+      this.snackBar.open(this.i18n.t(I18N.cull.delete_failed), '', { duration: 4000 });
+    } else {
+      this.snackBar.open(
+        this.i18n.t(I18N.cull.delete_partial_result, { deleted: res.deleted.length, failed }),
+        '', { duration: 4000 },
+      );
+    }
   }
 
   openCritique(photo: Photo): void {

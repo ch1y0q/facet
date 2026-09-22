@@ -25,7 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from api.auth import CurrentUser, require_edition
-from api.config import VIEWER_CONFIG, cull_allow_trash, get_all_scan_directories
+from api.config import VIEWER_CONFIG, cull_allow_trash, get_all_scan_directories, invalidate_stats_cache
 from api.database import get_db
 from api.db_helpers import (
     PANORAMA_KINDS_SQL,
@@ -905,6 +905,32 @@ def api_export_sidecars(
         return _write_sidecars_for_paths(conn, paths, user_id, body.overwrite)
 
 
+def _require_trash_available():
+    """Re-derive the OS-trash gate from server state, never trusted from the
+    client: off via config (403) or ``send2trash`` missing from the venv
+    (400). Shared by ``POST /api/cull/apply``'s ``trash_rejects`` branch and
+    ``POST /api/photo/delete`` -- both must refuse identically.
+
+    Returns the imported ``send2trash`` module.
+    """
+    if not cull_allow_trash(VIEWER_CONFIG):
+        raise HTTPException(status_code=403,
+                            detail="OS-trash is disabled — set viewer.cull.allow_trash to enable")
+    try:
+        import send2trash
+    except ImportError:
+        # This action's own import re-runs every request, so it recovers the
+        # moment the package lands in the venv -- but GET /api/config's
+        # trash_available flag (api/routers/gallery.py's HAS_SEND2TRASH) is a
+        # module-scope constant set once at process start, so the UI keeps
+        # hiding this action until the server restarts even though a retry
+        # here would now succeed. Tell the operator both things.
+        raise HTTPException(status_code=400,
+                            detail="send2trash ships with Facet — upgrade the image or run pip install send2trash, "
+                                    "then restart the server so the UI stops hiding this option")
+    return send2trash
+
+
 @router.post("/api/cull/apply", response_model=CullApplyResponse, response_model_exclude_unset=True)
 def api_cull_apply(
     body: CullApplyRequest,
@@ -1022,21 +1048,7 @@ def api_cull_apply(
         return respond(False, errors, moved=moved)
 
     # trash_rejects
-    if not cull_allow_trash(VIEWER_CONFIG):
-        raise HTTPException(status_code=403,
-                            detail="OS-trash is disabled — set viewer.cull.allow_trash to enable")
-    try:
-        import send2trash
-    except ImportError:
-        # This action's own import re-runs every request, so it recovers the
-        # moment the package lands in the venv -- but GET /api/config's
-        # trash_available flag (api/routers/gallery.py's HAS_SEND2TRASH) is a
-        # module-scope constant set once at process start, so the UI keeps
-        # hiding this action until the server restarts even though a retry
-        # here would now succeed. Tell the operator both things.
-        raise HTTPException(status_code=400,
-                            detail="send2trash ships with Facet — upgrade the image or run pip install send2trash, "
-                                    "then restart the server so the UI stops hiding this option")
+    send2trash = _require_trash_available()
     if body.dry_run:
         return respond(True, [], would_trash=files)
     trashed = errors = 0
@@ -1101,16 +1113,22 @@ def api_photo_delete(
     become "missing on disk," which the next rescan or
     ``--cleanup-missing-photos`` reconciles -- an accepted edge (expected only
     on a corrupted database), not a silent inconsistency.
+
+    A trashed companion (``include_companions``'s RAW/``.xmp``) that is ITSELF
+    a separate ``photos`` row is folded into ``deleted`` too, not a distinct
+    field: its file is gone the moment ``send2trash`` succeeds regardless of
+    whether the caller ever named or could see that row, so it is exactly as
+    deleted as any path the caller requested directly -- `deleted` already
+    means "row removed," not "row the caller named."
+
+    ``skipped`` carries a path that was visible, in ``photos``, and never
+    refused as a bracket lead, but whose file ``_resolve_cull_files`` could
+    not resolve on disk (already missing) -- neither trashed nor
+    row-deleted, so it is reported rather than silently dropped from every
+    bucket. Reconciling it is ``--cleanup-missing-photos``'s job, same as any
+    other missing-on-disk row.
     """
-    if not cull_allow_trash(VIEWER_CONFIG):
-        raise HTTPException(status_code=403,
-                            detail="OS-trash is disabled — set viewer.cull.allow_trash to enable")
-    try:
-        import send2trash
-    except ImportError:
-        raise HTTPException(status_code=400,
-                            detail="send2trash ships with Facet — upgrade the image or run pip install send2trash, "
-                                    "then restart the server so the UI stops hiding this option")
+    send2trash = _require_trash_available()
 
     user_id = user.user_id
     removed_db_paths: set[str] = set()
@@ -1143,14 +1161,14 @@ def api_photo_delete(
             sequence_siblings = _sequence_siblings(conn, group_keys, set(action_paths), user_id)
             action_paths.extend(sequence_siblings)
 
-        items, _skipped = _resolve_cull_files(action_paths, body.include_companions)
+        items, skipped = _resolve_cull_files(action_paths, body.include_companions)
         files = [f for _, fs in items for f in fs]
 
         if body.dry_run:
             return PhotoDeleteResponse(
                 dry_run=True, would_trash=files, deleted=[], not_found=not_found,
                 not_visible=not_visible, refused_bracket_lead=refused_bracket_lead,
-                sequence_siblings=sequence_siblings, trashed=0, errors={},
+                sequence_siblings=sequence_siblings, skipped=skipped, trashed=0, errors={},
             )
 
         errors: dict[str, str] = {}
@@ -1166,15 +1184,38 @@ def api_photo_delete(
         # Restricted to paths whose PRIMARY file actually trashed -- a path
         # whose trash failed keeps its row.
         removed_db_paths = {db_path for db_path, fs in items if fs[0] in succeeded}
+
+        # A companion (RAW/.xmp) that trashed successfully may itself be a
+        # SEPARATE `photos` row (a RAW variant scanned independently of its
+        # JPEG) -- its file is gone the instant send2trash succeeds, whether
+        # or not ITS path was ever visible to this caller: visibility gated
+        # only the PRIMARY path the request named, and the companion follows
+        # the shot. `_photo_membership` ignores visibility for exactly this
+        # reason, so a companion belonging to another user's scope is still
+        # matched here and still removed -- its file is gone regardless of
+        # who could see it. Leaving such a row behind would strand it
+        # pointing at a trashed file, contradicting this endpoint's own
+        # "row deleted immediately" contract (no --cleanup-missing-photos
+        # needed).
+        companion_files_trashed = {f for _, fs in items for f in fs[1:] if f in succeeded}
+        if companion_files_trashed:
+            removed_db_paths |= _photo_membership(conn, list(companion_files_trashed))
+
         _reassign_dead_leads(conn, removed_db_paths, user_id, commit=False)
-        delete_photo_rows(conn, list(removed_db_paths))
+        delete_photo_rows(conn, list(removed_db_paths), preserve_auto_retrain_counters=True)
         conn.commit()
 
-    # photos_vec (sqlite-vec) has no FK or trigger. Clean it best-effort
-    # OUTSIDE the request transaction -- the vector index is derived and
-    # rebuildable, and this must never fail the response for rows already
-    # committed gone.
     if removed_db_paths:
+        # The gallery grid must not keep serving pre-delete counts for up to
+        # `cache_ttl_seconds` (default 1h) -- unlike the row delete itself,
+        # the in-process stats cache has no TTL-independent invalidation of
+        # its own.
+        invalidate_stats_cache()
+
+        # photos_vec (sqlite-vec) has no FK or trigger. Clean it best-effort
+        # OUTSIDE the request transaction -- the vector index is derived and
+        # rebuildable, and this must never fail the response for rows already
+        # committed gone.
         try:
             from db.connection import HAS_SQLITE_VEC, load_sqlite_vec
             from db.vec import _vec_table_exists
@@ -1195,7 +1236,7 @@ def api_photo_delete(
     return PhotoDeleteResponse(
         dry_run=False, deleted=sorted(removed_db_paths), not_found=not_found,
         not_visible=not_visible, refused_bracket_lead=refused_bracket_lead,
-        sequence_siblings=sequence_siblings, trashed=len(succeeded), errors=errors,
+        sequence_siblings=sequence_siblings, skipped=skipped, trashed=len(succeeded), errors=errors,
     )
 
 

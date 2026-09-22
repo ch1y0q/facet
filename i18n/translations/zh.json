@@ -2360,8 +2360,9 @@
     "error": "选片文件操作失败",
     "delete_action": "删除…",
     "delete_confirm_title": "删除照片？",
-    "delete_confirm_body": "张照片将被发送到操作系统的回收站，在清空之前仍可恢复。",
-    "delete_partial_result": "已删除 {deleted} 张，拒绝 {refused} 张",
+    "delete_confirm_body": "{count} 张照片将被发送到操作系统的回收站，在清空之前仍可恢复。",
+    "delete_partial_result": "已删除 {deleted} 张，失败 {failed} 张",
+    "delete_failed": "删除失败 — 没有任何内容被发送到回收站",
     "delete_disabled_view_scope_tooltip": "请明确选择照片以删除——此处不能使用整视图选择"
   },
   "shortcuts": {

@@ -2360,8 +2360,9 @@
     "error": "Aussortierung fehlgeschlagen",
     "delete_action": "Löschen…",
     "delete_confirm_title": "Fotos löschen?",
-    "delete_confirm_body": "Fotos werden in den Papierkorb des Betriebssystems verschoben. Sie bleiben wiederherstellbar, bis Sie ihn leeren.",
-    "delete_partial_result": "{deleted} gelöscht, {refused} abgelehnt",
+    "delete_confirm_body": "{count} Fotos werden in den Papierkorb des Betriebssystems verschoben. Sie bleiben wiederherstellbar, bis Sie ihn leeren.",
+    "delete_partial_result": "{deleted} gelöscht, {failed} fehlgeschlagen",
+    "delete_failed": "Löschen fehlgeschlagen — nichts wurde in den Papierkorb verschoben",
     "delete_disabled_view_scope_tooltip": "Wählen Sie Fotos explizit aus, um sie zu löschen — eine Auswahl der gesamten Ansicht kann hier nicht verwendet werden"
   },
   "shortcuts": {

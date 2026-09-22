@@ -51,7 +51,7 @@ export interface PhotoDeleteDialogData {
       @if (data.surface === 'photo_detail') {
         <p class="text-sm mb-3">{{ bodyKey() | translate }}</p>
       } @else {
-        <p class="text-sm mb-3">{{ data.count }} {{ I18N.cull.delete_confirm_body | translate }}</p>
+        <p class="text-sm mb-3">{{ I18N.cull.delete_confirm_body | translate:{ count: data.count } }}</p>
       }
 
       @if (data.hasCompanion) {

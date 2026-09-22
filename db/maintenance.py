@@ -228,7 +228,7 @@ def backup_database(db_path='photo_scores_pro.db', keep=3, dest_dir=None, verbos
     return backup_path
 
 
-def delete_photo_rows(conn, paths: list[str]) -> dict:
+def delete_photo_rows(conn, paths: list[str], *, preserve_auto_retrain_counters: bool = False) -> dict:
     """Delete photo rows and their cascade-adjacent side effects.
 
     The row + cascade portion of :func:`cleanup_missing_photos`, extracted so
@@ -244,6 +244,19 @@ def delete_photo_rows(conn, paths: list[str]) -> dict:
     ``album_client_picks``, and the ``albums.cover_photo_path``
     back-reference. Refreshes ``persons.face_count`` afterward so the viewer
     stays accurate, and invalidates ``stats_cache``.
+
+    ``preserve_auto_retrain_counters`` (default off, ``cleanup_missing_photos``'s
+    behaviour unchanged) scopes that invalidation to spare
+    ``optimization.auto_retrain``'s per-scope ``auto_retrain_pending:<scope>``
+    counters: an unqualified wholesale wipe (the CLI path's own, offline,
+    batch-oriented behaviour) resets every user's "new comparisons since last
+    train" progress to zero on every single-photo delete reachable from
+    ``POST /api/photo/delete``, so a user who rates and prunes in the same
+    session never crosses ``auto_retrain.threshold``. ``POST /api/photo/delete``
+    passes ``True``; ``cleanup_missing_photos`` leaves the default, unscoped
+    wipe in place -- it is an intentional offline maintenance pass, not a
+    per-click UI action, so resetting the counter alongside every other
+    aggregate is acceptable there.
 
     Deliberately does NOT ``conn.commit()`` and does NOT touch ``photos_vec``:
     both are call-site-specific. ``cleanup_missing_photos`` commits
@@ -284,7 +297,10 @@ def delete_photo_rows(conn, paths: list[str]) -> dict:
 
     # Invalidate stats cache since photo counts and details have changed.
     try:
-        cursor.execute("DELETE FROM stats_cache")
+        if preserve_auto_retrain_counters:
+            cursor.execute("DELETE FROM stats_cache WHERE key NOT LIKE 'auto_retrain_pending:%'")
+        else:
+            cursor.execute("DELETE FROM stats_cache")
     except sqlite3.OperationalError:
         pass
 

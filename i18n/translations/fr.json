@@ -2360,8 +2360,9 @@
     "error": "Échec du tri",
     "delete_action": "Supprimer…",
     "delete_confirm_title": "Supprimer les photos ?",
-    "delete_confirm_body": "photos seront envoyées dans la corbeille du système. Elles restent récupérables tant que vous ne la videz pas.",
-    "delete_partial_result": "{deleted} supprimée(s), {refused} refusée(s)",
+    "delete_confirm_body": "{count} photos seront envoyées dans la corbeille du système. Elles restent récupérables tant que vous ne la videz pas.",
+    "delete_partial_result": "{deleted} supprimée(s), {failed} échouée(s)",
+    "delete_failed": "Échec de la suppression — rien n’a été envoyé à la corbeille",
     "delete_disabled_view_scope_tooltip": "Sélectionnez les photos explicitement pour les supprimer — une sélection de toute la vue ne peut pas être utilisée ici"
   },
   "shortcuts": {
