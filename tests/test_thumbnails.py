@@ -187,7 +187,7 @@ class TestImage:
 
 
 def test_heif_conversion_uses_shared_loader():
-    """_convert_heif_cached routes through open_nonraw_image (EXIF orientation + PQ tone map).
+    """_convert_nonraw_cached routes through open_nonraw_image (EXIF orientation + PQ tone map).
 
     Before the Canon .HIF fix the viewer decoded HEIF directly with PIL, so the
     browser showed a dark/rotated image relative to what the scanner scored.
@@ -196,16 +196,16 @@ def test_heif_conversion_uses_shared_loader():
     from api.routers import thumbnails
 
     sentinel = PILImage.new("RGB", (2, 2), (10, 20, 30))
-    thumbnails._convert_heif_cached.cache_clear()
+    thumbnails._convert_nonraw_cached.cache_clear()
     try:
         with mock.patch("utils.image_loading.open_nonraw_image", return_value=sentinel) as m:
-            out = thumbnails._convert_heif_cached("/library/photo.heif", 1.0, 96)
+            out = thumbnails._convert_nonraw_cached("/library/photo.heif", 1.0, 96)
             m.assert_called_once_with("/library/photo.heif")
         im = PILImage.open(BytesIO(out))
         assert im.size == (2, 2)
         assert im.getpixel((0, 0)) == (10, 20, 30)
     finally:
-        thumbnails._convert_heif_cached.cache_clear()
+        thumbnails._convert_nonraw_cached.cache_clear()
 
 
 @pytest.mark.skipif(not image_loading._heif_available, reason='pillow-heif not installed')
@@ -220,11 +220,11 @@ def test_heif_conversion_matches_what_the_scanner_scored():
     from PIL import Image as PILImage
 
     fixture = str(Path(__file__).parent / 'fixtures' / 'canon_eos_r8_hdr_pq.hif')
-    thumbnails._convert_heif_cached.cache_clear()
+    thumbnails._convert_nonraw_cached.cache_clear()
     try:
-        jpeg = thumbnails._convert_heif_cached(fixture, 1.0, 100)
+        jpeg = thumbnails._convert_nonraw_cached(fixture, 1.0, 100)
     finally:
-        thumbnails._convert_heif_cached.cache_clear()
+        thumbnails._convert_nonraw_cached.cache_clear()
 
     served = np.asarray(PILImage.open(BytesIO(jpeg)).convert('RGB')).astype(int)
     scored = np.asarray(image_loading.open_nonraw_image(fixture)).astype(int)

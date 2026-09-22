@@ -346,10 +346,24 @@ def test_scannable_extensions_include_hif():
     else:
         assert image_loading.HEIF_EXTENSIONS == set()
         assert '.hif' not in image_loading.SCANNABLE_IMAGE_EXTENSIONS
+    # AVIF mirrors the HEIF gating exactly: decodable only when this Pillow
+    # build has the AVIF codec (native only from Pillow >= 11.3).
+    if image_loading._avif_available:
+        assert '.avif' in image_loading.AVIF_EXTENSIONS
+        assert '.avif' in image_loading.SCANNABLE_IMAGE_EXTENSIONS
+    else:
+        assert image_loading.AVIF_EXTENSIONS == set()
+        assert '.avif' not in image_loading.SCANNABLE_IMAGE_EXTENSIONS
     assert image_loading.SCANNABLE_IMAGE_EXTENSIONS == (
         image_loading.JPEG_EXTENSIONS
         | image_loading.HEIF_EXTENSIONS
         | image_loading.RAW_EXTENSIONS
+        | image_loading.PNG_EXTENSIONS
+        | image_loading.GIF_EXTENSIONS
+        | image_loading.WEBP_EXTENSIONS
+        | image_loading.BMP_EXTENSIONS
+        | image_loading.TIFF_EXTENSIONS
+        | image_loading.AVIF_EXTENSIONS
     )
 
 

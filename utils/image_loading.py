@@ -6,6 +6,7 @@ Handles RAW (via rawpy/libraw) and JPEG loading with EXIF transpose.
 
 import logging
 import os
+import struct
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
@@ -13,6 +14,7 @@ from io import BytesIO
 from pathlib import Path
 
 import numpy as np
+from PIL import features as _pil_features
 
 from config.scoring_config import (
     RAW_DECODE_DEFAULTS,
@@ -32,6 +34,15 @@ try:
 except ImportError:
     logger.warning("pillow-heif not installed — HEIF/HEIC files will be skipped")
 
+# AVIF codec availability (soft dependency, native in Pillow >= 11.3). Checked
+# eagerly, at import time, for the same reason pillow-heif is registered
+# eagerly above rather than through utils/_lazy.py's lazy PIL loader:
+# SCANNABLE_IMAGE_EXTENSIONS / WATCHABLE_IMAGE_EXTENSIONS are themselves
+# computed at import time, so a lazy check would leave both wrong until the
+# first decode. PIL.features.check() warns rather than raises when the AVIF
+# codec is missing from the underlying libavif build.
+_avif_available = bool(_pil_features.check('avif'))
+
 # All RAW formats supported via rawpy/libraw
 RAW_EXTENSIONS = frozenset({'.cr2', '.cr3', '.nef', '.arw', '.raf', '.rw2', '.dng', '.orf', '.srw', '.pef'})
 
@@ -47,15 +58,43 @@ KNOWN_HEIF_EXTENSIONS = frozenset({'.heic', '.heif', '.hif'})
 # Readers that need to know what can be DECODED use this one.
 HEIF_EXTENSIONS = KNOWN_HEIF_EXTENSIONS if _heif_available else frozenset()
 
-# Every still-image extension the scan collector (facet.py) accepts. HEIF drops out
-# when pillow-heif is missing, because a scan would have nothing to decode it with.
-SCANNABLE_IMAGE_EXTENSIONS = JPEG_EXTENSIONS | HEIF_EXTENSIONS | RAW_EXTENSIONS
+# PNG/GIF/WebP/BMP/TIFF decode with no optional Pillow plugin, so unlike HEIF/AVIF
+# there is no availability gate for any of these five.
+PNG_EXTENSIONS = frozenset({'.png'})
+GIF_EXTENSIONS = frozenset({'.gif'})
+WEBP_EXTENSIONS = frozenset({'.webp'})
+BMP_EXTENSIONS = frozenset({'.bmp'})
+TIFF_EXTENSIONS = frozenset({'.tif', '.tiff'})
 
-# What watch mode observes. Deliberately the KNOWN set rather than the decodable
-# one: a filesystem event is only a note that the path changed, and dropping HEIF
-# events on a pillow-heif-less install would mean a library that gains the
-# dependency later never sees the files it already holds.
-WATCHABLE_IMAGE_EXTENSIONS = JPEG_EXTENSIONS | KNOWN_HEIF_EXTENSIONS | RAW_EXTENSIONS
+# The single-channel Pillow modes whose samples are 16-bit and therefore need
+# scaling down to 8-bit rather than convert('RGB')'s clip. 32-bit 'I' and 'F'
+# are excluded on purpose -- see open_nonraw_image.
+_SIXTEEN_BIT_MODES = frozenset({'I;16', 'I;16B', 'I;16L'})
+
+# AVIF follows the exact two-tier KNOWN/decodable pattern HEIF uses above: the
+# container extension is always known, but the decodable subset is empty on a
+# Pillow build without the AVIF codec (native only from Pillow 11.3).
+KNOWN_AVIF_EXTENSIONS = frozenset({'.avif'})
+AVIF_EXTENSIONS = KNOWN_AVIF_EXTENSIONS if _avif_available else frozenset()
+
+# Every still-image extension the scan collector (facet.py) accepts. HEIF/AVIF
+# drop out when their decoder is missing, because a scan would have nothing to
+# decode them with.
+SCANNABLE_IMAGE_EXTENSIONS = (
+    JPEG_EXTENSIONS | HEIF_EXTENSIONS | RAW_EXTENSIONS
+    | PNG_EXTENSIONS | GIF_EXTENSIONS | WEBP_EXTENSIONS | BMP_EXTENSIONS
+    | TIFF_EXTENSIONS | AVIF_EXTENSIONS
+)
+
+# What watch mode observes. Deliberately the KNOWN sets rather than the decodable
+# ones: a filesystem event is only a note that the path changed, and dropping
+# HEIF/AVIF events on an install missing the matching decoder would mean a
+# library that gains the dependency later never sees the files it already holds.
+WATCHABLE_IMAGE_EXTENSIONS = (
+    JPEG_EXTENSIONS | KNOWN_HEIF_EXTENSIONS | RAW_EXTENSIONS
+    | PNG_EXTENSIONS | GIF_EXTENSIONS | WEBP_EXTENSIONS | BMP_EXTENSIONS
+    | TIFF_EXTENSIONS | KNOWN_AVIF_EXTENSIONS
+)
 
 
 # A bracket exists to capture highlight headroom in its +EV frames, and an HDR
@@ -258,6 +297,131 @@ def _heif_is_pq(pil_img):
     """
     nclx = pil_img.info.get('nclx_profile')
     return bool(nclx) and nclx.get('transfer_characteristics') == _NCLX_PQ_TRANSFER
+
+
+# --- AVIF colr/nclx parsing -------------------------------------------------
+# Pillow's native AVIF plugin exposes no colour metadata at all -- a PQ AVIF's
+# ``pil_img.info`` was confirmed in-session to contain no CICP/NCLX field, so
+# there is nothing here to read the way _heif_is_pq reads pillow-heif's
+# 'nclx_profile'. This walks the ISO/IEC 14496-12 (ISO-BMFF) box tree
+# ourselves: ftyp/meta/iprp/ipco/colr is the standard MIAF path to an AVIF's
+# CICP colour description, and reading only box headers plus the ~12-byte
+# colr body (never mdat, the pixel payload) makes the cost negligible even on
+# a large file. This resolves the FIRST colr/nclx box under ipco without
+# resolving ipma item-to-property associations, which is correct for the
+# common single-primary-item AVIF and a known simplification for a multi-item
+# file (e.g. primary + thumbnail with different colour info) -- deliberately
+# out of scope, per the locked decision to parse the colr/nclx box ourselves
+# rather than implement a full MIAF item-property resolver.
+
+def _iter_bmff_boxes(f, end):
+    """Yield ``(box_type, payload_start, box_end)`` for each box in ``[f.tell(), end)``.
+
+    ``size == 1`` means an 8-byte 64-bit largesize follows the header;
+    ``size == 0`` means the box extends to ``end``. Malformed or truncated
+    input simply stops the walk (empty tail) rather than raising here --
+    every caller wraps the whole parse in one try/except and treats any
+    structural failure as "not PQ".
+    """
+    while f.tell() < end:
+        pos = f.tell()
+        header = f.read(8)
+        if len(header) < 8:
+            return
+        size, box_type = struct.unpack('>I4s', header)
+        payload_start = pos + 8
+        if size == 1:
+            largesize_bytes = f.read(8)
+            if len(largesize_bytes) < 8:
+                return
+            size = struct.unpack('>Q', largesize_bytes)[0]
+            payload_start = pos + 16
+        elif size == 0:
+            size = end - pos
+        box_end = pos + size
+        if size < (payload_start - pos) or box_end > end:
+            return
+        yield box_type, payload_start, box_end
+        f.seek(box_end)
+
+
+def _find_bmff_box(f, end, target):
+    """Return ``(payload_start, box_end)`` of the first direct child box of type ``target``, or None."""
+    for box_type, payload_start, box_end in _iter_bmff_boxes(f, end):
+        if box_type == target:
+            return payload_start, box_end
+    return None
+
+
+def _avif_nclx_transfer_characteristics(photo_path):
+    """Parse an AVIF's colr/nclx box for its transfer_characteristics, or None.
+
+    Walks ``meta`` (a FullBox -- its payload starts 4 bytes in, past
+    version+flags) -> ``iprp`` -> ``ipco`` (both plain container boxes, no
+    FullBox header) -> the first ``colr`` box whose 4-byte colour_type reads
+    b'nclx' (as opposed to b'rICC'/b'prof', an ICC profile this does not
+    parse), then unpacks ``>HHH`` for colour_primaries/transfer_characteristics/
+    matrix_coefficients and returns the transfer field directly.
+
+    Any structural failure -- box not found, truncated read, malformed size --
+    is caught and returns None, the same safe-SDR-fallback semantics
+    _heif_is_pq already uses for a missing NCLX profile.
+    """
+    try:
+        with open(photo_path, 'rb') as f:
+            f.seek(0, os.SEEK_END)
+            file_end = f.tell()
+            f.seek(0)
+
+            meta = _find_bmff_box(f, file_end, b'meta')
+            if meta is None:
+                return None
+            meta_start, meta_end = meta
+            f.seek(meta_start + 4)  # meta is a FullBox: skip version+flags
+
+            iprp = _find_bmff_box(f, meta_end, b'iprp')
+            if iprp is None:
+                return None
+            iprp_start, iprp_end = iprp
+            f.seek(iprp_start)
+
+            ipco = _find_bmff_box(f, iprp_end, b'ipco')
+            if ipco is None:
+                return None
+            ipco_start, ipco_end = ipco
+            f.seek(ipco_start)
+
+            for box_type, payload_start, box_end in _iter_bmff_boxes(f, ipco_end):
+                if box_type != b'colr':
+                    continue
+                # An nclx payload is 4 bytes colour_type + 3 x uint16 +
+                # a full_range byte. Bounding the read by box_end matters:
+                # a colr box declaring size 12 (header + colour_type, no
+                # body) would otherwise let f.read(6) spill into the NEXT
+                # box's header and return its bytes as a transfer
+                # characteristic -- verified to yield 16, forcing the PQ
+                # tone map onto an SDR image.
+                if payload_start + 10 > box_end:
+                    continue
+                f.seek(payload_start)
+                colour_type = f.read(4)
+                if colour_type != b'nclx':
+                    continue
+                body = f.read(6)
+                if len(body) < 6:
+                    return None
+                _primaries, transfer, _matrix = struct.unpack('>HHH', body)
+                return transfer
+            return None
+    except Exception as ex:
+        logger.debug("AVIF colr/nclx parse failed for %s: %s",
+                     os.path.basename(str(photo_path)), ex)
+        return None
+
+
+def _avif_is_pq(photo_path):
+    """True only if the AVIF's colr/nclx box reports PQ (transfer_characteristics == 16)."""
+    return _avif_nclx_transfer_characteristics(photo_path) == _NCLX_PQ_TRANSFER
 
 
 _SRGB_TOE_THRESHOLD = 0.0031308
@@ -475,6 +639,14 @@ def open_nonraw_image(photo):
     and the white point is a percentile over all pixels, both order-independent.
     Any failure there (including ``hdr_pq_tonemap.enabled: false``, which is
     never even attempted) falls through to the 8-bit path below unchanged.
+    :func:`_decode_pq_native` calls ``pillow_heif.open_heif`` and so can never
+    serve an AVIF -- only HEIF takes this native-depth branch; a PQ AVIF
+    always takes the 8-bit path below.
+
+    Alpha (RGBA/LA, or palette with an ``info['transparency']`` key) is
+    composited over white, and a 16-bit single-channel frame (16-bit
+    grey PNG/TIFF) is scaled to 8-bit rather than left to clip to white --
+    see the inline comments below for the two measured defects this fixes.
 
     Raises:
         ValueError: the frame exceeds ``Image.MAX_IMAGE_PIXELS``.
@@ -496,18 +668,77 @@ def open_nonraw_image(photo):
                 f"{photo}: {pixel_count} pixels exceeds the "
                 f"MAX_IMAGE_PIXELS limit of {Image.MAX_IMAGE_PIXELS}"
             )
-        is_pq = _heif_is_pq(source)
-        if is_pq:
+        is_heif_pq = _heif_is_pq(source)
+        # Pillow's native AVIF plugin exposes no colour metadata (verified
+        # in-session: pil_img.info on a PQ AVIF has no CICP field at all), so
+        # PQ can only be detected by parsing the container ourselves -- and
+        # only for an AVIF container, never for a format this box walk was
+        # not written for.
+        is_avif_pq = (Path(photo).suffix.lower() in KNOWN_AVIF_EXTENSIONS
+                      and _avif_is_pq(photo))
+        is_pq = is_heif_pq or is_avif_pq
+        if is_heif_pq:
             settings = get_hdr_pq_tonemap_settings()
             if settings.get('enabled', True):
                 native_img = _decode_pq_native(photo, settings)
                 if native_img is not None:
                     return ImageOps.exif_transpose(native_img)
         pil_img = ImageOps.exif_transpose(source)
+
+    # Palette images carry transparency as an info key rather than a pixel
+    # band, and split() on a palette image returns a 'P' band, not alpha
+    # (verified: raises ValueError: bad transparency mask). convert('RGBA')
+    # is the only leg that produces a real alpha band from one.
+    if pil_img.mode == 'P' and 'transparency' in pil_img.info:
+        pil_img = pil_img.convert('RGBA')
+
+    # The alpha mask must come from the image AFTER exif_transpose, never
+    # from the pre-transpose source: an RGBA image carrying EXIF Orientation 6
+    # changes size through the transpose (verified: (40, 20) -> (20, 40)), so
+    # a mask split off before it no longer matches pil_img's size and
+    # background.paste(mask=...) below would raise ValueError: images do not
+    # match.
+    has_alpha = pil_img.mode in ('RGBA', 'LA')
+    alpha_channel = pil_img.getchannel('A') if has_alpha else None
+
+    if pil_img.mode in _SIXTEEN_BIT_MODES:
+        # Bug 2: convert('RGB') on a 16-bit single-channel frame clips to
+        # solid white instead of scaling -- verified on a uint16 ramp of
+        # source mean 32767.5 decoding to output mean 254.8, max 255.
+        # The convert('I') hop is mandatory, not stylistic: a bare
+        # pil_img.point(...) RAISES ValueError: point operation not supported
+        # for this mode on I;16B/I;16L (the exact mode the source defect was
+        # measured on, a big-endian 16-bit TIFF), and normalising via
+        # convert('I;16') instead of convert('I') yields mean 0.00 -- silent
+        # total corruption. convert('I') + point(i * 1/256) + convert('L') is
+        # verified on Pillow 12.3.0 to give mean 127.50 on all three modes.
+        #
+        # The 32-bit modes 'I' and 'F' are deliberately NOT in this set: a
+        # 16-bit source always opens as one of the I;16* modes (verified for
+        # both PNG and TIFF on Pillow 12.3.0), while 'I'/'F' carry a 32-bit
+        # range this /256 is wrong for -- a float TIFF whose samples are
+        # already 0..255 would scale to mean 0.00, i.e. solid black, with no
+        # exception and so no scan_failures row. Their pre-existing
+        # convert('RGB') clip is left untouched.
+        pil_img = pil_img.convert('I').point(lambda i: i * (1 / 256)).convert('L')
+
     if pil_img.mode != 'RGB':
         pil_img = pil_img.convert('RGB')
+
     if is_pq:
         pil_img = _tonemap_pq_to_srgb(pil_img)
+
+    if has_alpha:
+        # Composited over white only as the FINAL step, after any PQ tone
+        # map: AVIF's alpha plane is not transfer-function-encoded, so
+        # blending it in before the map would run un-tone-mapped PQ code
+        # values through the white background. For the non-PQ majority case
+        # this is a one-step composite-then-return with no behavioural
+        # difference from doing it earlier.
+        background = Image.new('RGB', pil_img.size, (255, 255, 255))
+        background.paste(pil_img, mask=alpha_channel)
+        pil_img = background
+
     return pil_img
 
 

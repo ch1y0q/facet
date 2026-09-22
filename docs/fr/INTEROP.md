@@ -13,7 +13,9 @@ Cela n'affecte **pas** :
 - **digiKam** — vérifie les deux conventions de nommage et trouve le sidecar de Facet dans tous les cas (voir [digiKam](#digikam) plus bas).
 - **darktable** — utilise la même convention `<image><ext>.xmp` que Facet (voir [darktable](#darktable) plus bas).
 
-Donc, pour un flux Lightroom ou Capture One : utilisez `--embed-originals` pour tout ce qui n'est pas du RAW propriétaire, et attendez-vous à ce que l'aller-retour par sidecar reste silencieux (pas d'erreur, simplement rien lu) pour les fichiers RAW purs. Si vous shootez en RAW+JPEG, le JPEG compagnon est le véhicule d'interopérabilité pratique — le RAW reste sur le disque, intact, tandis que la base de données de Facet conserve la note qui fait autorité.
+**Le GIF, le WebP, le BMP et l'AVIF sont l'exception — ce sont eux que la discordance touche le plus.** Ils sont hors de l'ensemble embarquable de Facet : `--embed-originals` ne fait rien pour eux et leur seul véhicule d'aller-retour est un sidecar XMP portant le nommage de Facet (`photo.webp.xmp`). La discordance ci-dessus s'applique donc à ces quatre formats exactement comme au RAW propriétaire : digiKam et darktable trouvent le sidecar, Lightroom Classic et Capture One non.
+
+Donc, pour un flux Lightroom ou Capture One : utilisez `--embed-originals` pour tout ce qui fait partie de l'ensemble embarquable (JPEG, HEIC, TIFF, PNG, DNG), et attendez-vous à ce que l'aller-retour par sidecar reste silencieux (pas d'erreur, simplement rien lu) pour les RAW propriétaires — ainsi que pour le GIF, le WebP, le BMP et l'AVIF. Si vous shootez en RAW+JPEG, le JPEG compagnon est le véhicule d'interopérabilité pratique — le RAW reste sur le disque, intact, tandis que la base de données de Facet conserve la note qui fait autorité.
 
 ## Lightroom Classic
 

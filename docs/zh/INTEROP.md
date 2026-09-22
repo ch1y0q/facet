@@ -13,7 +13,9 @@ Facet 把附属文件命名为 `<image><ext>.xmp` —— 例如 `IMG_1234.CR2.xm
 - **digiKam** —— 两种命名约定都会检查，无论哪一种都能找到 Facet 的附属文件（见下文 [digiKam](#digikam)）。
 - **darktable** —— 使用与 Facet 相同的 `<image><ext>.xmp` 约定（见下文 [darktable](#darktable)）。
 
-所以，对于 Lightroom 或 Capture One 的工作流：凡是非专有 RAW 的文件都用 `--embed-originals`，而对于纯 RAW 文件，要预料到附属文件的往返是静默的（不报错，只是什么都没读到）。如果你拍摄 RAW+JPEG，配套的 JPEG 就是实际可用的互操作载体 —— RAW 原封不动地留在磁盘上，而 Facet 的数据库保留具有权威性的星级。
+**GIF、WebP、BMP 与 AVIF 是例外 —— 命名差异对它们的影响最大。** 它们不在 Facet 的可嵌入集合内，`--embed-originals` 对它们没有任何作用，唯一的往返载体就是按 Facet 命名方式生成的 XMP 附属文件（`photo.webp.xmp`）。因此上面这种命名差异对这四种格式的影响，与对专有 RAW 完全一样：digiKam 与 darktable 能找到附属文件，Lightroom Classic 与 Capture One 找不到。
+
+所以，对于 Lightroom 或 Capture One 的工作流：凡是属于可嵌入集合的文件（JPEG、HEIC、TIFF、PNG、DNG）都用 `--embed-originals`；而对于专有 RAW 文件，以及 GIF、WebP、BMP 与 AVIF，要预料到附属文件的往返是静默的（不报错，只是什么都没读到）。如果你拍摄 RAW+JPEG，配套的 JPEG 就是实际可用的互操作载体 —— RAW 原封不动地留在磁盘上，而 Facet 的数据库保留具有权威性的星级。
 
 ## Lightroom Classic
 

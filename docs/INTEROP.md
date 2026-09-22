@@ -13,7 +13,9 @@ It does **not** affect:
 - **digiKam** — checks both naming conventions and finds Facet's sidecar either way (see [digiKam](#digikam) below).
 - **darktable** — uses the same `<image><ext>.xmp` convention as Facet (see [darktable](#darktable) below).
 
-So for a Lightroom or Capture One workflow: use `--embed-originals` for anything that isn't proprietary RAW, and expect the sidecar round-trip to be silent (no error, just nothing read) for pure RAW files. If you shoot RAW+JPEG, the JPEG companion is the practical interop vehicle — the RAW rides along on disk, untouched, while Facet's database keeps the authoritative rating.
+**GIF, WebP, BMP and AVIF are the exception — the mismatch hits them hardest.** They sit outside Facet's embeddable set, so `--embed-originals` does nothing for them and their only round-trip vehicle is an XMP sidecar carrying Facet's naming (`photo.webp.xmp`). The mismatch above therefore applies to these four exactly as it does to proprietary RAW: digiKam and darktable find the sidecar, Lightroom Classic and Capture One do not.
+
+So for a Lightroom or Capture One workflow: use `--embed-originals` for anything in the embeddable set (JPEG, HEIC, TIFF, PNG, DNG), and expect the sidecar round-trip to be silent (no error, just nothing read) for proprietary RAW files — and for GIF, WebP, BMP and AVIF. If you shoot RAW+JPEG, the JPEG companion is the practical interop vehicle — the RAW rides along on disk, untouched, while Facet's database keeps the authoritative rating.
 
 ## Lightroom Classic
 

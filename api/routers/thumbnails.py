@@ -19,7 +19,7 @@ from api.config import VIEWER_CONFIG
 from api.database import get_db, get_db_connection
 from api.db_helpers import get_visibility_clause
 from api.path_validation import resolve_photo_disk_path
-from utils.image_loading import RAW_EXTENSIONS, HEIF_EXTENSIONS
+from utils.image_loading import RAW_EXTENSIONS, HEIF_EXTENSIONS, TIFF_EXTENSIONS
 
 logger = logging.getLogger(__name__)
 
@@ -89,12 +89,16 @@ def _convert_raw_cached(file_path: str, mtime: float, quality: int = 96,
 
 
 @lru_cache(maxsize=32)
-def _convert_heif_cached(file_path: str, mtime: float, quality: int = 96) -> bytes:
-    """Convert a HEIF/HEIC file to JPEG bytes, cached by path+mtime+quality.
+def _convert_nonraw_cached(file_path: str, mtime: float, quality: int = 96) -> bytes:
+    """Convert a non-RAW, non-browser-renderable file to JPEG bytes, cached by path+mtime+quality.
 
-    Goes through the same loader as the scanner so EXIF orientation and HDR
-    PQ -> sRGB tone mapping (Canon .HIF) are applied here too — otherwise the
-    browser image would be dark/rotated relative to what was actually scored.
+    Used for both HEIF/HEIC and TIFF: open_nonraw_image is format-agnostic for
+    every non-RAW extension (RGBA/16-bit/AVIF-PQ handling all live there), so
+    one cached conversion serves both branches below rather than pasting a
+    second near-identical function. Goes through the same loader as the
+    scanner so EXIF orientation and HDR PQ -> sRGB tone mapping (Canon .HIF)
+    are applied here too — otherwise the browser image would be dark/rotated
+    relative to what was actually scored.
     """
     from utils.image_loading import open_nonraw_image
 
@@ -342,12 +346,28 @@ def image(
         try:
             mtime = os.path.getmtime(real_disk)
             quality = _get_image_jpeg_quality()
-            jpeg_bytes = _convert_heif_cached(real_disk, mtime, quality)
+            jpeg_bytes = _convert_nonraw_cached(real_disk, mtime, quality)
             return _cached_image_response(jpeg_bytes, request)
         except Exception:
             logger.exception("Failed to convert HEIF file: %s", real_disk)
             if want_fallback:
                 return _stored_thumbnail_response(path, request)
             return Response(content="Failed to convert HEIF file", status_code=500)
+
+    # Convert TIFF to JPEG: the only new-format extension no major browser
+    # renders natively (confirmed via mimetypes.guess_type). PNG/GIF/WebP/BMP/
+    # AVIF are all browser-renderable and fall through to the bare
+    # FileResponse below, unconverted.
+    if Path(real_disk).suffix.lower() in TIFF_EXTENSIONS:
+        try:
+            mtime = os.path.getmtime(real_disk)
+            quality = _get_image_jpeg_quality()
+            jpeg_bytes = _convert_nonraw_cached(real_disk, mtime, quality)
+            return _cached_image_response(jpeg_bytes, request)
+        except Exception:
+            logger.exception("Failed to convert TIFF file: %s", real_disk)
+            if want_fallback:
+                return _stored_thumbnail_response(path, request)
+            return Response(content="Failed to convert TIFF file", status_code=500)
 
     return FileResponse(real_disk)

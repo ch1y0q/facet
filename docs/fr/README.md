@@ -24,6 +24,8 @@ copier-coller.
 - **JPEG** (.jpg, .jpeg)
 - **HEIF/HEIC/HIF** (.heic, .heif, .hif) — nécessite `pillow-heif` ; les images `.HIF` Canon HDR PQ sont tonemappées en sRGB SDR
 - **RAW** (.cr2, .cr3, .nef, .arw, .raf, .rw2, .dng, .orf, .srw, .pef) — ignoré lorsqu'un JPEG/HEIC correspondant existe
+- **PNG, GIF, WebP, BMP, TIFF** (.png, .gif, .webp, .bmp, .tif, .tiff) — les niveaux de gris 16 bits sont mis à l'échelle en 8 bits, un canal alpha est composé sur fond blanc, et les GIF/WebP animés sont évalués sur leur première image ; le TIFF est converti en JPEG pour le navigateur. Le PNG, le WebP et le TIFF contiennent l'EXIF quand le logiciel d'écriture l'a enregistré ; le GIF et le BMP ne le peuvent pas, donc pour ces deux-là `date_taken` et l'appareil/objectif restent vides
+- **AVIF** (.avif) — nécessite un Pillow compilé avec la prise en charge AVIF (native à partir de `pillow>=11.3`) ; les images AVIF HDR PQ sont tonemappées en sRGB SDR, comme les `.HIF` Canon ; l'EXIF est lu quand il est présent
 
 ## Questions fréquentes
 

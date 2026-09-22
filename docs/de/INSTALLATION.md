@@ -577,7 +577,7 @@ Netzwerk), sehen Sie `Failed to download SAMP-Net weights: HTTP Error 404: Not F
 | `open-clip-torch` | CLIP-Embeddings/Tagging (legacy/8gb-Profile) |
 | `pyiqa` | TOPIQ und weitere Qualitäts-/Ästhetikmodelle |
 | `opencv-python` | Bildverarbeitung |
-| `pillow` | Bildladen |
+| `pillow` | Bildladen, einschließlich PNG/GIF/WebP/BMP/TIFF/AVIF (AVIF erfordert pillow>=11.3) |
 | `imagehash` | Perzeptuelles Hashing für die Serienbilderkennung |
 | `rawpy` | RAW-Dateiunterstützung |
 | `fastapi`, `uvicorn` | API-Server |
