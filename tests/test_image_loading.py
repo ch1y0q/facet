@@ -457,6 +457,23 @@ def test_hdr_pq_default_settings():
     assert wp['max_nits'] == 1200.0
 
 
+def test_hand_edited_null_white_point_leaf_falls_back_to_its_default():
+    """A null LEAF must not reach the decode path, as a null block already cannot.
+
+    The nested block is merged key-by-key, so a null under white_point replaces
+    a float the tone map multiplies. The decode path reads the config without
+    re-validating it, so the TypeError lands per photo and surfaces as the still
+    silently missing from the scan rather than as a config error.
+    """
+    s = image_loading.configure_hdr_pq_tonemap_profile(
+        {'white_point': {'min_nits': None, 'percentile': 'not a number'}})
+    assert s['white_point']['min_nits'] == 100.0
+    assert s['white_point']['percentile'] == 99.99
+    # A string that IS a number is still usable, so it is coerced, not dropped.
+    s = image_loading.configure_hdr_pq_tonemap_profile({'white_point': {'max_nits': '900'}})
+    assert s['white_point']['max_nits'] == 900.0
+
+
 def test_configure_hdr_pq_profile_merges_nested_white_point():
     # Overriding one white_point sub-key keeps the others at defaults.
     s = image_loading.configure_hdr_pq_tonemap_profile(
@@ -685,6 +702,18 @@ def test_real_canon_hif_reports_pq_through_its_nclx_profile():
         # An HDR PQ HEIF need not carry BT.2020 non-constant luminance: this
         # Canon body writes matrix 1 (BT.709). Nothing may gate on that field.
         assert nclx['matrix_coefficients'] == 1
+
+
+@requires_heif
+def test_real_canon_hif_still_decodes_with_a_null_white_point_leaf():
+    """The end of the path the merge guard protects.
+
+    Asserted on the real PQ file rather than on the merge alone: what the null
+    actually costs is this decode returning None, and load_image_from_path
+    turning that into a dropped photo.
+    """
+    image_loading.configure_hdr_pq_tonemap_profile({'white_point': {'min_nits': None}})
+    assert image_loading.open_nonraw_image(CANON_PQ_HIF) is not None
 
 
 @requires_heif

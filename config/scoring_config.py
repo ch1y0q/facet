@@ -84,11 +84,17 @@ HDR_PQ_TONEMAP_DEFAULTS = {
 }
 
 
+# The white-point sub-keys the tone map does arithmetic on, as opposed to
+# 'mode', which it only compares.
+_HDR_PQ_WHITE_POINT_NUMERIC = frozenset({'percentile', 'min_nits', 'max_nits', 'fixed_nits'})
+
+
 def merge_hdr_pq_tonemap_settings(block):
     """Merge a user ``hdr_pq_tonemap`` block over the defaults.
 
     ``white_point`` is nested, so it is merged key-by-key rather than replaced
-    wholesale; overriding one sub-key must not drop the others.
+    wholesale; overriding one sub-key must not drop the others. Its numeric
+    leaves are coerced, so a hand-edited null cannot reach the decode path.
     """
     merged = {
         'enabled': HDR_PQ_TONEMAP_DEFAULTS['enabled'],
@@ -105,8 +111,19 @@ def merge_hdr_pq_tonemap_settings(block):
             # since the decode path reads the config without re-validating it.
             if isinstance(value, dict):
                 for sub_key, sub_value in value.items():
-                    if sub_key in merged['white_point']:
-                        merged['white_point'][sub_key] = sub_value
+                    if sub_key not in merged['white_point']:
+                        continue
+                    if sub_key in _HDR_PQ_WHITE_POINT_NUMERIC:
+                        # The same hazard one level down, and a worse one: the
+                        # tone map does float() arithmetic on these, so a null
+                        # would raise TypeError for every PQ still and make the
+                        # whole decode path return None -- silently dropping the
+                        # photo from a scan, the gallery and the thumbnailer.
+                        try:
+                            sub_value = float(sub_value)
+                        except (TypeError, ValueError):
+                            continue
+                    merged['white_point'][sub_key] = sub_value
         elif key in merged:
             merged[key] = value
     return merged
