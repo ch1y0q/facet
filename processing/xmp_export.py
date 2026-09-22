@@ -50,6 +50,8 @@ from datetime import datetime, timezone
 from typing import NamedTuple
 from xml.etree import ElementTree as ET
 
+from utils.image_loading import JPEG_EXTENSIONS, KNOWN_HEIF_EXTENSIONS
+
 
 # XMP namespaces. Registered so ElementTree emits the canonical prefixes that
 # Lightroom / darktable expect rather than ns0:, ns1: …
@@ -384,8 +386,16 @@ def write_sidecar(image_path: str, rating: XmpRating, *, overwrite: bool = False
 # into an existing darktable-authored ``<img>.xmp`` sidecar. When exiftool is not
 # installed, ``write_metadata`` falls back to the dependency-free ``write_sidecar``.
 
-# Formats where embedding metadata in-file is safe and standard.
-SAFE_EMBED_EXTS = frozenset({"jpg", "jpeg", "heic", "heif", "tif", "tiff", "png", "dng"})
+# Formats where embedding metadata in-file is safe and standard. Derived from
+# the shared extension tables (see utils/image_loading.py) rather than
+# hand-maintained, so a format Facet newly scans (e.g. Canon .hif) is not
+# silently excluded from embedding while a byte-identical container under a
+# different extension (e.g. .heic) is embedded. KNOWN_HEIF_EXTENSIONS (the
+# container set), not the decoder-gated HEIF_EXTENSIONS: exiftool needs no
+# pillow-heif to write a sidecar or embed into a HEIF container.
+SAFE_EMBED_EXTS = frozenset(
+    {ext.lstrip(".") for ext in JPEG_EXTENSIONS | KNOWN_HEIF_EXTENSIONS}
+) | {"tif", "tiff", "png", "dng"}
 
 
 def exiftool_available() -> bool:
