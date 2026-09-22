@@ -271,6 +271,33 @@ async def require_superadmin(
     return user
 
 
+async def require_scan_access(
+    user: CurrentUser = Depends(require_authenticated),
+) -> CurrentUser:
+    """Require access to trigger/monitor a library scan.
+
+    Multi-user mode: superadmin only, unchanged. Single-user mode: edition
+    access AND a locked install — an open install (empty
+    viewer.edition_password) is refused even for an authenticated caller,
+    because on that install every request already IS edition-authenticated
+    by the CurrentUser.is_edition open-install shortcut, and this route
+    starts an OS subprocess. Raises 403 in both refusal cases; never 401
+    (require_authenticated already covers "no session").
+    """
+    if is_multi_user_enabled():
+        if not user.is_superadmin:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superadmin access required")
+        return user
+    if _is_open_install(EDITION_PASSWORD_KEY):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Set viewer.edition_password to enable the scan trigger",
+        )
+    if not user.is_edition:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Edition access required")
+    return user
+
+
 # --- SHARE CLIENT SESSIONS (proofing on shared albums) ---
 
 SHARE_CLIENT_ROLE = 'share_client'

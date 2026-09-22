@@ -7,7 +7,7 @@ Application monopage FastAPI + Angular pour parcourir, filtrer et gérer les pho
 ## Sommaire
 
 - [Démarrer la visionneuse](#démarrer-la-visionneuse) · [Authentification](#authentification) · [Options de filtrage](#options-de-filtrage) · [Tri](#tri) · [Fonctionnalités de la galerie](#fonctionnalités-de-la-galerie)
-- [Gestion des personnes](#gestion-des-personnes) · [Déclenchement d'un scan (Superadmin)](#déclenchement-dun-scan-superadmin) · [Recherche sémantique](#recherche-sémantique) · [Albums](#albums)
+- [Gestion des personnes](#gestion-des-personnes) · [Déclenchement d'un scan](#déclenchement-dun-scan) · [Recherche sémantique](#recherche-sémantique) · [Albums](#albums)
 - [Critique IA](#critique-ia) · [Légendage IA](#légendage-ia-gpu-16gb24gb-edition) · [Souvenirs (« Ce jour-là »)](#souvenirs--ce-jour-là-) · [Vue Chronologie](#vue-chronologie) · [Vue Carte](#vue-carte) · [Capsules](#capsules)
 - [Vue Dossiers](#vue-dossiers) · [Boîte de dialogue Filtre GPS](#boîte-de-dialogue-filtre-gps) · [Suggestions de fusion](#suggestions-de-fusion) · [Export vers éditeur](#export-vers-éditeur) · [Tri sélectif](#tri-sélectif) · [Nettoyage des indésirables](#nettoyage-des-indésirables) · [Mode de comparaison par paires](#mode-de-comparaison-par-paires)
 - [Statistiques EXIF](#statistiques-exif) · [Raccourcis clavier](#raccourcis-clavier-galerie) · [Annuler](#annuler) · [Application web progressive](#application-web-progressive) · [Mobile](#mobile) · [Cadre photo / Kiosque](#cadre-photo--kiosque) · [Envoi automatique depuis le téléphone](#envoi-automatique-depuis-le-téléphone)
@@ -298,9 +298,9 @@ Accessible via le bouton d'en-tête ou `/persons` :
 | **Scinder** | Ouvrez les visages d'une personne, sélectionnez un sous-ensemble, scindez-les en une nouvelle personne |
 | **Masquer** | Masquez un cluster de la liste des personnes, des filtres et des suggestions de fusion (réversible) |
 
-## Déclenchement d'un scan (Superadmin)
+## Déclenchement d'un scan
 
-Lorsque `viewer.features.show_scan_button` vaut `true` et que l'utilisateur a le rôle `superadmin`, un bouton **Scanner des photos pour commencer** apparaît dans l'état de galerie vide. Il est livré réglé sur **`false`** dans `scoring_config.json` (activation explicite par le superadmin). Le bouton ouvre la boîte de dialogue de lancement de scan (`ScanLauncherComponent`).
+Lorsque `viewer.features.show_scan_button` vaut `true` et que l'appelant dispose de l'accès au scan — rôle `superadmin` en mode multi-utilisateurs, ou une session authentifiée en édition sur une installation mono-utilisateur verrouillée (`viewer.edition_password` défini) en mode mono-utilisateur — un bouton **Scanner des photos pour commencer** apparaît dans l'état de galerie vide. Il est livré réglé sur **`false`** dans `scoring_config.json` (activation explicite). Sur une installation mono-utilisateur ouverte (`viewer.edition_password` vide, la valeur livrée par défaut), les quatre routes de scan renvoient 403 pour tout appelant, y compris celui détenant un JWT de génération d'édition valide, et le bouton ne s'affiche jamais — une installation ouverte traite déjà les appelants anonymes comme authentifiés en édition, et déclencher un sous-processus de scan ne doit pas être accessible anonymement. Le bouton ouvre la boîte de dialogue de lancement de scan (`ScanLauncherComponent`).
 
 - Choisissez un répertoire dans la liste du lanceur et démarrez le scan dans l'application
 - Le lanceur diffuse la progression en direct (SSE avec repli automatique sur le polling) dans une `mat-progress-bar` pilotée par le champ structuré `progress`, plus une queue de lignes de sortie, et rafraîchit la galerie à la fin du scan
@@ -309,7 +309,7 @@ Lorsque `viewer.features.show_scan_button` vaut `true` et que l'utilisateur a le
 
 C'est utile lorsque la visionneuse tourne sur la même machine que celle disposant d'un accès GPU pour le scoring.
 
-Un déclencheur apparenté mais distinct, `POST /api/scan/recompute`, réutilise le même verrou de tâche pour renoter les photos existantes sur place (sans nouveau fichier) — voir [Priorité des catégories et contextes de notation](#priorité-des-catégories-et-contextes-de-notation). Contrairement à ce bouton de scan réservé au superadmin, il est réservé au mode édition.
+Un déclencheur apparenté mais distinct, `POST /api/scan/recompute`, réutilise le même verrou de tâche pour renoter les photos existantes sur place (sans nouveau fichier) — voir [Priorité des catégories et contextes de notation](#priorité-des-catégories-et-contextes-de-notation). Contrairement à la règle d'accès de ce bouton de scan, dépendante du mode, il est réservé au mode édition uniquement, sans distinction superadmin/installation verrouillée.
 
 ## Recherche sémantique
 
@@ -1238,12 +1238,12 @@ Les types TypeScript du client sont générés à partir de ce schéma dans `cli
 
 | Point d'accès | Description |
 |----------|-------------|
-| `POST /api/scan/start` | `[Superadmin]` Démarrer un scan de scoring |
-| `GET /api/scan/status` | Vérifier la progression du scan (champ structuré `progress` : `{phase, current, total, eta_seconds}`) |
-| `GET /api/scan/stream?token=<jwt>` | `[Superadmin]` Progression en temps réel via Server-Sent Events ; le jeton est passé en paramètre de requête (l'API `EventSource` ne peut pas définir d'en-têtes), avec repli automatique sur le polling de `/status` |
-| `GET /api/scan/directories` | Lister les répertoires de scan configurés |
-| `POST /api/scan/recompute` | `[Edition]` Déclencher un recalcul des agrégats sur toute la bibliothèque (`--recompute-average`) comme tâche en arrière-plan ; protégé au niveau inter-processus par `facet.LibraryLock`, il refuse donc aussi avec un 409 nommant le détenteur si un scan ou un recalcul est déjà en cours depuis un terminal, pas seulement depuis un autre onglet de la visionneuse. Contrairement à `/start`, ses arguments sont fixés côté serveur et n'acceptent aucune entrée de la requête, il ne nécessite donc pas le rôle superadmin |
-| `GET /api/scan/recompute_status` | `[Edition]` Interroger la progression du recalcul : `{running, kind, progress, exit_code}` — omet le flux de journal `output_lines` réservé au superadmin que renvoie `/status` |
+| `POST /api/scan/start` | Démarrer un scan de scoring. Nécessite le rôle `superadmin` (multi-utilisateurs) ou une session authentifiée en édition sur une installation mono-utilisateur verrouillée (`viewer.edition_password` défini) — une installation mono-utilisateur ouverte (`viewer.edition_password` vide, la valeur livrée par défaut) renvoie 403 à tout appelant, y compris celui détenant un JWT de génération d'édition valide |
+| `GET /api/scan/status` | Vérifier la progression du scan (champ structuré `progress` : `{phase, current, total, eta_seconds}`) ; même règle d'accès que `/start` |
+| `GET /api/scan/stream?token=<jwt>` | Progression en temps réel via Server-Sent Events ; le jeton est délivré par `GET /api/scan/stream_token` (même règle d'accès que `/start`) et passé en paramètre de requête (l'API `EventSource` ne peut pas définir d'en-têtes), avec repli automatique sur le polling de `/status` |
+| `GET /api/scan/directories` | Lister les répertoires de scan configurés ; même règle d'accès que `/start` |
+| `POST /api/scan/recompute` | `[Edition]` Déclencher un recalcul des agrégats sur toute la bibliothèque (`--recompute-average`) comme tâche en arrière-plan ; protégé au niveau inter-processus par `facet.LibraryLock`, il refuse donc aussi avec un 409 nommant le détenteur si un scan ou un recalcul est déjà en cours depuis un terminal, pas seulement depuis un autre onglet de la visionneuse. Contrairement à `/start`, ses arguments sont fixés côté serveur et n'acceptent aucune entrée de la requête, il n'est donc pas soumis à la règle d'accès dépendante du mode ci-dessus |
+| `GET /api/scan/recompute_status` | `[Edition]` Interroger la progression du recalcul : `{running, kind, progress, exit_code}` — omet le flux de journal `output_lines` que renvoie `/status`, soumis à la même règle d'accès que `/start` |
 
 ### Gestion des visages
 
@@ -1360,7 +1360,7 @@ Le point d'accès `/api/download/options` détecte automatiquement les fichiers 
 | Bouton Comparer manquant | Définissez un `edition_password` non vide (mono-utilisateur) ou utilisez le rôle `admin`/`superadmin` (multi-utilisateurs) |
 | Mot de passe ne fonctionne pas | Vérifiez `viewer.password` (mono-utilisateur) ou vérifiez le hash du mot de passe (multi-utilisateurs) |
 | Un utilisateur ne voit pas de photos | Vérifiez `directories` dans sa configuration utilisateur et `shared_directories` |
-| Bouton de scan manquant | Nécessite le rôle `superadmin` et `viewer.features.show_scan_button: true` |
+| Bouton de scan manquant | Nécessite `viewer.features.show_scan_button: true` plus l'accès au scan : rôle `superadmin` (multi-utilisateurs), ou une session authentifiée en édition sur une installation mono-utilisateur verrouillée (`viewer.edition_password` défini) — une installation mono-utilisateur ouverte ne l'affiche jamais |
 | La recherche ne renvoie aucun résultat | Assurez-vous que les photos ont des données `clip_embedding` (lancez d'abord le scoring) |
 | Critique VLM indisponible | Nécessite un profil VRAM 16gb/24gb et `viewer.features.show_vlm_critique: true` |
 | La carte n'affiche aucune photo | Lancez `--extract-gps` pour peupler les colonnes GPS, assurez-vous que les photos ont des données GPS EXIF |

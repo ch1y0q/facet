@@ -8,7 +8,7 @@ FastAPI + Angular single-page application for browsing, filtering, and managing 
 
 - [Starting the Viewer](#starting-the-viewer) · [Authentication](#authentication) · [Filtering Options](#filtering-options) · [Sorting](#sorting) · [Gallery Features](#gallery-features)
 - [Panoramas and exposure brackets](#panoramas-and-exposure-brackets)
-- [Person Management](#person-management) · [Scan Trigger (Superadmin)](#scan-trigger-superadmin) · [Semantic Search](#semantic-search) · [Albums](#albums)
+- [Person Management](#person-management) · [Scan Trigger](#scan-trigger) · [Semantic Search](#semantic-search) · [Albums](#albums)
 - [AI Critique](#ai-critique) · [AI Captioning](#ai-captioning-gpu-16gb24gb-edition) · [Memories ("On This Day")](#memories-on-this-day) · [Timeline View](#timeline-view) · [Map View](#map-view) · [Capsules](#capsules)
 - [Folders View](#folders-view) · [GPS Filter Dialog](#gps-filter-dialog) · [Merge Suggestions](#merge-suggestions) · [Editor Export](#editor-export) · [Culling](#culling) · [Junk Sweep](#junk-sweep) · [Pairwise Comparison Mode](#pairwise-comparison-mode)
 - [EXIF Statistics](#exif-statistics) · [Keyboard Shortcuts](#keyboard-shortcuts-gallery) · [Undo](#undo) · [Progressive Web App](#progressive-web-app) · [Mobile](#mobile) · [Photo Frame / Kiosk Endpoint](#photo-frame--kiosk-endpoint) · [Phone Auto-Upload](#phone-auto-upload)
@@ -341,9 +341,9 @@ Access via header button or `/persons`:
 | **Split** | Open a person's faces, select a subset, split them into a new person |
 | **Hide** | Hide a cluster from the persons list, filters, and merge suggestions (reversible) |
 
-## Scan Trigger (Superadmin)
+## Scan Trigger
 
-When `viewer.features.show_scan_button` is `true` and the user has `superadmin` role, a **Scan photos to get started** button appears on the empty-gallery state. It ships set to **`false`** in `scoring_config.json` (superadmin opt-in). The button opens the scan launcher dialog (`ScanLauncherComponent`).
+When `viewer.features.show_scan_button` is `true` and the caller has scan access — `superadmin` role in multi-user mode, or an edition-authenticated session on a locked single-user install (`viewer.edition_password` set) in single-user mode — a **Scan photos to get started** button appears on the empty-gallery state. It ships set to **`false`** in `scoring_config.json` (opt-in). On an open single-user install (`viewer.edition_password` empty, the shipped default) all four scan routes 403 for every caller, including one holding a valid edition-generation JWT, and the button is never rendered — an open install already treats anonymous callers as edition-authenticated, and spawning a scan subprocess must not be reachable anonymously. The button opens the scan launcher dialog (`ScanLauncherComponent`).
 
 - Pick a directory from the launcher's list and start the scan in-app
 - The launcher streams live progress (SSE with automatic polling fallback) into a `mat-progress-bar` driven by the structured `progress` field, plus a tail of output lines, and refreshes the gallery when the scan finishes
@@ -352,7 +352,7 @@ When `viewer.features.show_scan_button` is `true` and the user has `superadmin` 
 
 This is useful when the viewer runs on the same machine that has GPU access for scoring.
 
-A related but separate trigger, `POST /api/scan/recompute`, reuses the same job lock to rescore existing photos in place (no new files) — see [Category Priority & Scoring Contexts](#category-priority--scoring-contexts). Unlike this superadmin-only scan button, it is edition-gated.
+A related but separate trigger, `POST /api/scan/recompute`, reuses the same job lock to rescore existing photos in place (no new files) — see [Category Priority & Scoring Contexts](#category-priority--scoring-contexts). Unlike this scan button's mode-dependent access rule above, it is edition-gated only, with no superadmin/locked-install distinction.
 
 ## Semantic Search
 
@@ -1281,12 +1281,12 @@ The client's TypeScript types are generated from that schema into `client/src/ap
 
 | Endpoint | Description |
 |----------|-------------|
-| `POST /api/scan/start` | `[Superadmin]` Start a scoring scan |
-| `GET /api/scan/status` | Check scan progress (structured `progress`: `{phase, current, total, eta_seconds}`) |
-| `GET /api/scan/stream?token=<jwt>` | `[Superadmin]` Real-time progress via Server-Sent Events; token is passed as a query param (the `EventSource` API can't set headers), with automatic fallback to polling `/status` |
-| `GET /api/scan/directories` | List configured scan directories |
-| `POST /api/scan/recompute` | `[Edition]` Trigger a full-library aggregate recompute (`--recompute-average`) as a background job; guarded cross-process by `facet.LibraryLock`, so it also refuses (409, naming the holder) when a scan or recompute is already running from a terminal, not just from another viewer tab. Unlike `/start`, its argv is fixed server-side and takes no request input, so it needs no superadmin |
-| `GET /api/scan/recompute_status` | `[Edition]` Poll recompute progress: `{running, kind, progress, exit_code}` — omits the superadmin-only `output_lines` log stream that `/status` returns |
+| `POST /api/scan/start` | Start a scoring scan. Requires `superadmin` role (multi-user) or an edition-authenticated session on a locked single-user install (`viewer.edition_password` set) — an open single-user install (`viewer.edition_password` empty, the shipped default) 403s every caller, including one holding a valid edition-generation JWT |
+| `GET /api/scan/status` | Check scan progress (structured `progress`: `{phase, current, total, eta_seconds}`); same access rule as `/start` |
+| `GET /api/scan/stream?token=<jwt>` | Real-time progress via Server-Sent Events; the token is minted by `GET /api/scan/stream_token` (same access rule as `/start`) and passed as a query param (the `EventSource` API can't set headers), with automatic fallback to polling `/status` |
+| `GET /api/scan/directories` | List configured scan directories; same access rule as `/start` |
+| `POST /api/scan/recompute` | `[Edition]` Trigger a full-library aggregate recompute (`--recompute-average`) as a background job; guarded cross-process by `facet.LibraryLock`, so it also refuses (409, naming the holder) when a scan or recompute is already running from a terminal, not just from another viewer tab. Unlike `/start`, its argv is fixed server-side and takes no request input, so it isn't gated by the mode-dependent access rule above |
+| `GET /api/scan/recompute_status` | `[Edition]` Poll recompute progress: `{running, kind, progress, exit_code}` — omits the `output_lines` log stream that `/status` returns, which is gated the same way as `/start` |
 
 ### Face Management
 
@@ -1407,7 +1407,7 @@ The `/api/download/options` endpoint detects companion RAW files automatically a
 | Compare button missing | Set a non-empty `edition_password` (single-user) or use `admin`/`superadmin` role (multi-user) |
 | Password not working | Check `viewer.password` (single-user) or verify password hash (multi-user) |
 | User can't see photos | Check `directories` in their user config and `shared_directories` |
-| Scan button missing | Requires `superadmin` role and `viewer.features.show_scan_button: true` |
+| Scan button missing | Requires `viewer.features.show_scan_button: true` plus scan access: `superadmin` role (multi-user), or an edition-authenticated session on a locked single-user install (`viewer.edition_password` set) — an open single-user install never shows it |
 | Search returns no results | Ensure photos have `clip_embedding` data (run scoring first) |
 | VLM critique unavailable | Requires 16gb/24gb VRAM profile and `viewer.features.show_vlm_critique: true` |
 | Map shows no photos | Run `--extract-gps` to populate GPS columns, ensure photos have EXIF GPS data |

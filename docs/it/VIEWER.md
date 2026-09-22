@@ -7,7 +7,7 @@ Applicazione a pagina singola FastAPI + Angular per sfogliare, filtrare e gestir
 ## Contenuti
 
 - [Avvio della galleria](#avvio-della-galleria) · [Autenticazione](#autenticazione) · [Opzioni di filtraggio](#opzioni-di-filtraggio) · [Ordinamento](#ordinamento) · [Funzionalità della galleria](#funzionalità-della-galleria)
-- [Gestione delle persone](#gestione-delle-persone) · [Avvio scansione (Superadmin)](#avvio-scansione-superadmin) · [Ricerca semantica](#ricerca-semantica) · [Album](#album)
+- [Gestione delle persone](#gestione-delle-persone) · [Avvio scansione](#avvio-scansione) · [Ricerca semantica](#ricerca-semantica) · [Album](#album)
 - [Critica IA](#critica-ia) · [Didascalie IA](#didascalie-ia-gpu-16gb24gb-edition) · [Ricordi ("In questo giorno")](#ricordi-in-questo-giorno) · [Vista cronologia](#vista-cronologia) · [Vista mappa](#vista-mappa) · [Capsule](#capsule)
 - [Vista cartelle](#vista-cartelle) · [Finestra filtro GPS](#finestra-filtro-gps) · [Suggerimenti di unione](#suggerimenti-di-unione) · [Esportazione per editor](#esportazione-per-editor) · [Selezione](#selezione) · [Pulizia degli scarti](#pulizia-degli-scarti) · [Modalità di confronto a coppie](#modalità-di-confronto-a-coppie)
 - [Statistiche EXIF](#statistiche-exif) · [Scorciatoie da tastiera](#scorciatoie-da-tastiera-galleria) · [Annulla](#annulla) · [Progressive Web App](#progressive-web-app) · [Mobile](#mobile) · [Cornice digitale / Chiosco](#cornice-digitale--chiosco) · [Caricamento automatico dal telefono](#caricamento-automatico-dal-telefono)
@@ -298,9 +298,9 @@ Accessibile tramite il pulsante nell'intestazione o `/persons`:
 | **Dividi** | Apri i volti di una persona, seleziona un sottoinsieme, dividili in una nuova persona |
 | **Nascondi** | Nascondi un cluster dall'elenco delle persone, dai filtri e dai suggerimenti di unione (reversibile) |
 
-## Avvio scansione (Superadmin)
+## Avvio scansione
 
-Quando `viewer.features.show_scan_button` è `true` e l'utente ha il ruolo `superadmin`, nello stato di galleria vuota compare un pulsante **Scansiona le foto per iniziare**. Viene fornito impostato su **`false`** in `scoring_config.json` (opt-in per il superadmin). Il pulsante apre la finestra di avvio della scansione (`ScanLauncherComponent`).
+Quando `viewer.features.show_scan_button` è `true` e chi chiama ha l'accesso alla scansione — ruolo `superadmin` in modalità multiutente, oppure una sessione autenticata in modalità di modifica su un'installazione a utente singolo bloccata (`viewer.edition_password` impostata) in modalità utente singolo — nello stato di galleria vuota compare un pulsante **Scansiona le foto per iniziare**. Viene fornito impostato su **`false`** in `scoring_config.json` (opt-in). Su un'installazione a utente singolo aperta (`viewer.edition_password` vuota, il valore predefinito di fabbrica) tutte e quattro le rotte di scansione restituiscono 403 per qualsiasi chiamante, incluso chi possiede un JWT di generazione della modifica valido, e il pulsante non viene mai mostrato — un'installazione aperta tratta già i chiamanti anonimi come autenticati in modalità di modifica, e l'avvio di un sottoprocesso di scansione non deve essere raggiungibile in modo anonimo. Il pulsante apre la finestra di avvio della scansione (`ScanLauncherComponent`).
 
 - Scegli una directory dall'elenco del launcher e avvia la scansione direttamente nell'app
 - Il launcher trasmette l'avanzamento in tempo reale (SSE con fallback automatico al polling) in una `mat-progress-bar` pilotata dal campo strutturato `progress`, oltre a una coda di righe di output, e aggiorna la galleria al termine della scansione
@@ -309,7 +309,7 @@ Quando `viewer.features.show_scan_button` è `true` e l'utente ha il ruolo `supe
 
 Questo è utile quando la galleria viene eseguita sulla stessa macchina che ha accesso alla GPU per la valutazione.
 
-Un trigger correlato ma distinto, `POST /api/scan/recompute`, riutilizza lo stesso lock del job per rivalutare le foto esistenti sul posto (nessun file nuovo) — vedi [Priorità delle categorie e contesti di punteggio](#priorità-delle-categorie-e-contesti-di-punteggio). A differenza di questo pulsante di scansione riservato al superadmin, è riservato alla modalità di modifica.
+Un trigger correlato ma distinto, `POST /api/scan/recompute`, riutilizza lo stesso lock del job per rivalutare le foto esistenti sul posto (nessun file nuovo) — vedi [Priorità delle categorie e contesti di punteggio](#priorità-delle-categorie-e-contesti-di-punteggio). A differenza della regola di accesso di questo pulsante di scansione, dipendente dalla modalità, esso è riservato esclusivamente alla modalità di modifica, senza distinzione superadmin/installazione bloccata.
 
 ## Ricerca semantica
 
@@ -1236,12 +1236,12 @@ I tipi TypeScript del client sono generati da questo schema in `client/src/app/c
 
 | Endpoint | Descrizione |
 |----------|-------------|
-| `POST /api/scan/start` | `[Superadmin]` Avvia una scansione di valutazione |
-| `GET /api/scan/status` | Controlla l'avanzamento della scansione (campo strutturato `progress`: `{phase, current, total, eta_seconds}`) |
-| `GET /api/scan/stream?token=<jwt>` | `[Superadmin]` Avanzamento in tempo reale tramite Server-Sent Events; il token viene passato come parametro di query (l'API `EventSource` non può impostare header), con fallback automatico al polling di `/status` |
-| `GET /api/scan/directories` | Elenca le directory di scansione configurate |
-| `POST /api/scan/recompute` | `[Edition]` Avvia un ricalcolo aggregato dell'intera libreria (`--recompute-average`) come job in background; protetto a livello inter-processo da `facet.LibraryLock`, quindi si rifiuta anche con 409, indicando chi lo detiene, se è già in corso una scansione o un ricalcolo da un terminale, non solo da un'altra scheda del viewer. A differenza di `/start`, i suoi argomenti sono fissati lato server e non accetta alcun input dalla richiesta, quindi non richiede il superadmin |
-| `GET /api/scan/recompute_status` | `[Edition]` Interroga l'avanzamento del ricalcolo: `{running, kind, progress, exit_code}` — omette il flusso di log `output_lines`, riservato al superadmin, restituito da `/status` |
+| `POST /api/scan/start` | Avvia una scansione di valutazione. Richiede il ruolo `superadmin` (multiutente) oppure una sessione autenticata in modalità di modifica su un'installazione a utente singolo bloccata (`viewer.edition_password` impostata) — un'installazione a utente singolo aperta (`viewer.edition_password` vuota, il valore predefinito di fabbrica) restituisce 403 per qualsiasi chiamante, incluso chi possiede un JWT di generazione della modifica valido |
+| `GET /api/scan/status` | Controlla l'avanzamento della scansione (campo strutturato `progress`: `{phase, current, total, eta_seconds}`); stessa regola di accesso di `/start` |
+| `GET /api/scan/stream?token=<jwt>` | Avanzamento in tempo reale tramite Server-Sent Events; il token viene rilasciato da `GET /api/scan/stream_token` (stessa regola di accesso di `/start`) e passato come parametro di query (l'API `EventSource` non può impostare header), con fallback automatico al polling di `/status` |
+| `GET /api/scan/directories` | Elenca le directory di scansione configurate; stessa regola di accesso di `/start` |
+| `POST /api/scan/recompute` | `[Edition]` Avvia un ricalcolo aggregato dell'intera libreria (`--recompute-average`) come job in background; protetto a livello inter-processo da `facet.LibraryLock`, quindi si rifiuta anche con 409, indicando chi lo detiene, se è già in corso una scansione o un ricalcolo da un terminale, non solo da un'altra scheda del viewer. A differenza di `/start`, i suoi argomenti sono fissati lato server e non accetta alcun input dalla richiesta, quindi non è soggetto alla regola di accesso dipendente dalla modalità descritta sopra |
+| `GET /api/scan/recompute_status` | `[Edition]` Interroga l'avanzamento del ricalcolo: `{running, kind, progress, exit_code}` — omette il flusso di log `output_lines` restituito da `/status`, soggetto alla stessa regola di accesso di `/start` |
 
 ### Gestione dei volti
 
@@ -1358,7 +1358,7 @@ L'endpoint `/api/download/options` rileva automaticamente i file RAW associati e
 | Pulsante Confronta mancante | Imposta una `edition_password` non vuota (utente singolo) o usa il ruolo `admin`/`superadmin` (multiutente) |
 | Password non funzionante | Controlla `viewer.password` (utente singolo) o verifica l'hash della password (multiutente) |
 | L'utente non vede le foto | Controlla `directories` nella sua configurazione utente e `shared_directories` |
-| Pulsante di scansione mancante | Richiede il ruolo `superadmin` e `viewer.features.show_scan_button: true` |
+| Pulsante di scansione mancante | Richiede `viewer.features.show_scan_button: true` più l'accesso alla scansione: ruolo `superadmin` (multiutente), oppure una sessione autenticata in modalità di modifica su un'installazione a utente singolo bloccata (`viewer.edition_password` impostata) — un'installazione a utente singolo aperta non lo mostra mai |
 | La ricerca non restituisce risultati | Assicurati che le foto abbiano i dati `clip_embedding` (esegui prima la valutazione) |
 | Critica VLM non disponibile | Richiede il profilo VRAM 16gb/24gb e `viewer.features.show_vlm_critique: true` |
 | La mappa non mostra foto | Esegui `--extract-gps` per popolare le colonne GPS, assicurati che le foto abbiano dati GPS EXIF |

@@ -141,6 +141,41 @@ def _make_superadmin_app(viewer_cfg=None):
     return app, client, sa
 
 
+def _single_user_viewer_config(edition_password="", enabled=True):
+    """Single-user viewer config (no ``users`` block) with the given edition_password."""
+    return {"password": "", "edition_password": edition_password, "features": {"show_scan_button": enabled}}
+
+
+@contextlib.contextmanager
+def _single_user_mode(viewer_cfg):
+    """Patch both ``api.auth`` and the scan router into single-user mode with ``viewer_cfg``.
+
+    Mirrors the file's own idiom (``mock.patch`` on plain functions/config,
+    never on the ``Depends()``-captured auth dependency itself -- see the
+    project rule against ``mock.patch`` on FastAPI auth dependencies).
+    """
+    with (
+        mock.patch(f"{_AUTH_MODULE}.VIEWER_CONFIG", viewer_cfg),
+        mock.patch(f"{_AUTH_MODULE}.is_multi_user_enabled", return_value=False),
+        mock.patch(f"{_ROUTER_MODULE}.VIEWER_CONFIG", viewer_cfg),
+    ):
+        yield
+
+
+def _make_single_user_app(edition_authenticated=False, user_id="u1"):
+    """Create app + client with a single-user identity injected via require_authenticated.
+
+    ``require_scan_access``'s single-user branch never reads ``role`` -- only
+    ``edition_authenticated`` (via ``CurrentUser.is_edition``) and the
+    open/locked state of ``viewer.edition_password`` drive it.
+    """
+    app = create_app()
+    client = TestClient(app, raise_server_exceptions=False)
+    user = CurrentUser(user_id=user_id, role="user", edition_authenticated=edition_authenticated)
+    app.dependency_overrides[require_authenticated] = lambda: user
+    return app, client, user
+
+
 class TestStartScan:
     """Tests for POST /api/scan/start."""
 
@@ -230,6 +265,46 @@ class TestStartScan:
 
         assert resp.status_code == 200
 
+    def test_start_scan_single_user_open_install_refused_even_when_edition_authenticated(self):
+        """The open-install trap this fix exists to close: on a single-user
+        install with no edition_password, CurrentUser.is_edition auto-grants
+        edition access to every caller (the empty-password shortcut) -- but
+        starting a scan spawns an OS subprocess, so require_scan_access must
+        refuse anyway rather than let the open-install shortcut through."""
+        viewer_cfg = _single_user_viewer_config(edition_password="")
+        with _single_user_mode(viewer_cfg):
+            app, client, _ = _make_single_user_app(edition_authenticated=True)
+            resp = client.post("/api/scan/start", json={"directories": ["/photos"]})
+
+        assert resp.status_code == 403
+
+    def test_start_scan_single_user_locked_edition_authenticated_succeeds(self):
+        from api.routers import scan as scan_router
+
+        scan_router._scan_state['running'] = False
+        viewer_cfg = _single_user_viewer_config(edition_password="s3cret")
+        mock_proc = mock.MagicMock()
+        mock_proc.pid = 4242
+        mock_proc.stdout = iter([])
+        mock_proc.wait.return_value = 0
+        with (
+            _single_user_mode(viewer_cfg),
+            mock.patch(f"{_ROUTER_MODULE}.get_all_scan_directories", return_value=["/photos"]),
+            mock.patch.object(scan_router.subprocess, "Popen", return_value=mock_proc),
+        ):
+            app, client, _ = _make_single_user_app(edition_authenticated=True)
+            resp = client.post("/api/scan/start", json={"directories": ["/photos"]})
+
+        assert resp.status_code == 200
+
+    def test_start_scan_single_user_locked_not_edition_authenticated_refused(self):
+        viewer_cfg = _single_user_viewer_config(edition_password="s3cret")
+        with _single_user_mode(viewer_cfg):
+            app, client, _ = _make_single_user_app(edition_authenticated=False)
+            resp = client.post("/api/scan/start", json={"directories": ["/photos"]})
+
+        assert resp.status_code == 403
+
 
 class TestScanStatus:
     """Tests for GET /api/scan/status."""
@@ -302,6 +377,30 @@ class TestScanStatus:
 
         assert resp.status_code == 403
 
+    def test_scan_status_single_user_open_install_refused(self):
+        viewer_cfg = _single_user_viewer_config(edition_password="")
+        with _single_user_mode(viewer_cfg):
+            app, client, _ = _make_single_user_app(edition_authenticated=True)
+            resp = client.get("/api/scan/status")
+
+        assert resp.status_code == 403
+
+    def test_scan_status_single_user_locked_edition_authenticated_succeeds(self):
+        viewer_cfg = _single_user_viewer_config(edition_password="s3cret")
+        with _single_user_mode(viewer_cfg):
+            app, client, _ = _make_single_user_app(edition_authenticated=True)
+            resp = client.get("/api/scan/status")
+
+        assert resp.status_code == 200
+
+    def test_scan_status_single_user_locked_not_edition_authenticated_refused(self):
+        viewer_cfg = _single_user_viewer_config(edition_password="s3cret")
+        with _single_user_mode(viewer_cfg):
+            app, client, _ = _make_single_user_app(edition_authenticated=False)
+            resp = client.get("/api/scan/status")
+
+        assert resp.status_code == 403
+
 
 class TestScanStreamToken:
     """F8': /stream_token mints a short-lived, single-purpose token so the
@@ -346,17 +445,45 @@ class TestScanStreamToken:
 
         assert resp.status_code == 200
         from api.auth import decode_access_token
-        from api.routers.scan import SCAN_STREAM_PURPOSE, _verify_superadmin_token
+        from api.routers.scan import SCAN_STREAM_PURPOSE, _verify_scan_stream_token
         token = resp.json()["token"]
         payload = decode_access_token(token)
         assert payload["purpose"] == SCAN_STREAM_PURPOSE
-        assert payload["role"] == "superadmin"
+        # Step 3: the role claim carried no authorization meaning of its own --
+        # it only re-checked an identity already proven at mint time by
+        # require_scan_access -- so it is dropped from the minted token
+        # entirely rather than merely going unchecked.
+        assert "role" not in payload
         # The minted token is a valid credential for the stream endpoint.
-        _verify_superadmin_token(token)
+        _verify_scan_stream_token(token)
+
+    def test_single_user_locked_edition_authenticated_gets_short_lived_purpose_token(self):
+        viewer_cfg = _single_user_viewer_config(edition_password="s3cret")
+        with _single_user_mode(viewer_cfg):
+            app, client, _ = _make_single_user_app(edition_authenticated=True)
+            resp = client.get("/api/scan/stream_token")
+
+        assert resp.status_code == 200
+
+    def test_single_user_open_install_refused_even_when_edition_authenticated(self):
+        viewer_cfg = _single_user_viewer_config(edition_password="")
+        with _single_user_mode(viewer_cfg):
+            app, client, _ = _make_single_user_app(edition_authenticated=True)
+            resp = client.get("/api/scan/stream_token")
+
+        assert resp.status_code == 403
+
+    def test_single_user_locked_not_edition_authenticated_refused(self):
+        viewer_cfg = _single_user_viewer_config(edition_password="s3cret")
+        with _single_user_mode(viewer_cfg):
+            app, client, _ = _make_single_user_app(edition_authenticated=False)
+            resp = client.get("/api/scan/stream_token")
+
+        assert resp.status_code == 403
 
 
 class TestScanStreamAuth:
-    """GET /api/scan/stream rejects unidentified / non-superadmin callers."""
+    """GET /api/scan/stream rejects callers without a valid scan-stream token."""
 
     def test_missing_token_401(self):
         viewer_cfg = _viewer_config_with_scan()
@@ -418,6 +545,36 @@ class TestScanStreamAuth:
             resp = client.get("/api/scan/stream", params={"token": token})
         assert resp.status_code == 403
 
+    def test_minted_stream_token_accepted_for_single_user_locked_identity(self):
+        """Step 3: the mint/verify pair no longer carries a superadmin role
+        claim, so a single-user locked identity must round-trip through
+        GET /stream_token -> GET /stream exactly like a multi-user superadmin
+        does, with no 'superadmin' role present anywhere in the identity."""
+        viewer_cfg = _single_user_viewer_config(edition_password="s3cret")
+        mock_state = {
+            'running': False,
+            'process': None,
+            'output_lines': deque(maxlen=500),
+            'started_at': None,
+            'directories': [],
+            'exit_code': None,
+            'progress': None,
+        }
+        with (
+            _single_user_mode(viewer_cfg),
+            mock.patch(f"{_ROUTER_MODULE}._scan_state", mock_state),
+        ):
+            app, client, _ = _make_single_user_app(edition_authenticated=True)
+            token = client.get("/api/scan/stream_token").json()["token"]
+
+            from api.auth import decode_access_token
+            payload = decode_access_token(token)
+            assert "role" not in payload
+            assert payload.get("role") != "superadmin"
+
+            resp = client.get("/api/scan/stream", params={"token": token})
+        assert resp.status_code == 200
+
 
 class TestScanDirectories:
     """Tests for GET /api/scan/directories."""
@@ -453,6 +610,40 @@ class TestScanDirectories:
             mock.patch(f"{_ROUTER_MODULE}.VIEWER_CONFIG", viewer_cfg),
         ):
             app, client, _ = _make_superadmin_app(viewer_cfg)
+            resp = client.get("/api/scan/directories")
+
+        assert resp.status_code == 403
+
+    def test_scan_directories_single_user_open_install_refused(self):
+        viewer_cfg = _single_user_viewer_config(edition_password="")
+        with (
+            _single_user_mode(viewer_cfg),
+            mock.patch(f"{_ROUTER_MODULE}.get_all_scan_directories", return_value=["/photos"]),
+        ):
+            app, client, _ = _make_single_user_app(edition_authenticated=True)
+            resp = client.get("/api/scan/directories")
+
+        assert resp.status_code == 403
+
+    def test_scan_directories_single_user_locked_edition_authenticated_succeeds(self):
+        viewer_cfg = _single_user_viewer_config(edition_password="s3cret")
+        with (
+            _single_user_mode(viewer_cfg),
+            mock.patch(f"{_ROUTER_MODULE}.get_all_scan_directories", return_value=["/photos"]),
+            mock.patch(f"{_ROUTER_MODULE}.get_user_directories", return_value=["/photos"]),
+        ):
+            app, client, _ = _make_single_user_app(edition_authenticated=True)
+            resp = client.get("/api/scan/directories")
+
+        assert resp.status_code == 200
+
+    def test_scan_directories_single_user_locked_not_edition_authenticated_refused(self):
+        viewer_cfg = _single_user_viewer_config(edition_password="s3cret")
+        with (
+            _single_user_mode(viewer_cfg),
+            mock.patch(f"{_ROUTER_MODULE}.get_all_scan_directories", return_value=["/photos"]),
+        ):
+            app, client, _ = _make_single_user_app(edition_authenticated=False)
             resp = client.get("/api/scan/directories")
 
         assert resp.status_code == 403

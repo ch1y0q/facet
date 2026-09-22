@@ -7,7 +7,7 @@ Aplicação de página única em FastAPI + Angular para navegar, filtrar e geren
 ## Conteúdo
 
 - [Iniciando o Visualizador](#iniciando-o-visualizador) · [Autenticação](#autenticação) · [Opções de Filtragem](#opções-de-filtragem) · [Ordenação](#ordenação) · [Recursos da Galeria](#recursos-da-galeria)
-- [Gerenciamento de Pessoas](#gerenciamento-de-pessoas) · [Disparo de Varredura (Superadmin)](#disparo-de-varredura-superadmin) · [Busca Semântica](#busca-semântica) · [Álbuns](#álbuns)
+- [Gerenciamento de Pessoas](#gerenciamento-de-pessoas) · [Disparo de Varredura](#disparo-de-varredura) · [Busca Semântica](#busca-semântica) · [Álbuns](#álbuns)
 - [Crítica por IA](#crítica-por-ia) · [Legendagem por IA](#legendagem-por-ia-gpu-16gb24gb-edition) · [Memórias ("Neste Dia")](#memórias-neste-dia) · [Visão de Linha do Tempo](#visão-de-linha-do-tempo) · [Visão de Mapa](#visão-de-mapa) · [Cápsulas](#cápsulas)
 - [Visão de Pastas](#visão-de-pastas) · [Diálogo de Filtro por GPS](#diálogo-de-filtro-por-gps) · [Sugestões de Mesclagem](#sugestões-de-mesclagem) · [Exportação para Editor](#exportação-para-editor) · [Triagem](#triagem) · [Limpeza de lixo](#limpeza-de-lixo) · [Modo de Comparação Pareada](#modo-de-comparação-pareada)
 - [Estatísticas EXIF](#estatísticas-exif) · [Atalhos de Teclado](#atalhos-de-teclado-galeria) · [Desfazer](#desfazer) · [Progressive Web App](#progressive-web-app) · [Mobile](#mobile) · [Moldura Digital / Quiosque](#moldura-digital--quiosque) · [Envio Automático do Telefone](#envio-automático-do-telefone)
@@ -297,9 +297,9 @@ Acesse pelo botão no cabeçalho ou por `/persons`:
 | **Dividir** | Abra os rostos de uma pessoa, selecione um subconjunto, divida-os em uma nova pessoa |
 | **Ocultar** | Oculta um cluster da lista de pessoas, filtros e sugestões de mesclagem (reversível) |
 
-## Disparo de Varredura (Superadmin)
+## Disparo de Varredura
 
-Quando `viewer.features.show_scan_button` é `true` e o usuário tem o papel `superadmin`, um botão **Varrer fotos para começar** aparece no estado de galeria vazia. Ele vem definido como **`false`** no `scoring_config.json` (adesão explícita do superadmin). O botão abre o diálogo do lançador de varredura (`ScanLauncherComponent`).
+Quando `viewer.features.show_scan_button` é `true` e quem chama tem acesso à varredura — papel `superadmin` em modo multiusuário, ou uma sessão autenticada em modo de edição sobre uma instalação de usuário único bloqueada (`viewer.edition_password` definida) em modo de usuário único — um botão **Varrer fotos para começar** aparece no estado de galeria vazia. Ele vem definido como **`false`** no `scoring_config.json` (adesão explícita). Em uma instalação de usuário único aberta (`viewer.edition_password` vazia, o valor padrão de fábrica), as quatro rotas de varredura retornam 403 para qualquer chamador, incluindo um com um JWT de geração de edição válido, e o botão nunca é exibido — uma instalação aberta já trata chamadores anônimos como autenticados em modo de edição, e disparar um subprocesso de varredura não pode ser acessível anonimamente. O botão abre o diálogo do lançador de varredura (`ScanLauncherComponent`).
 
 - Escolha um diretório da lista do lançador e inicie a varredura dentro do aplicativo
 - O lançador transmite o progresso ao vivo (SSE com fallback automático para polling) em uma `mat-progress-bar` controlada pelo campo estruturado `progress`, além de um trecho final de linhas de saída, e atualiza a galeria quando a varredura termina
@@ -308,7 +308,7 @@ Quando `viewer.features.show_scan_button` é `true` e o usuário tem o papel `su
 
 Isso é útil quando o visualizador é executado na mesma máquina que tem acesso à GPU para pontuação.
 
-Um gatilho relacionado, porém separado, `POST /api/scan/recompute`, reutiliza o mesmo lock de job para repontuar fotos existentes no local (sem novos arquivos) — veja [Prioridade de Categoria e Contextos de Pontuação](#prioridade-de-categoria-e-contextos-de-pontuação). Diferente deste botão de varredura exclusivo para superadmin, ele é protegido por edition.
+Um gatilho relacionado, porém separado, `POST /api/scan/recompute`, reutiliza o mesmo lock de job para repontuar fotos existentes no local (sem novos arquivos) — veja [Prioridade de Categoria e Contextos de Pontuação](#prioridade-de-categoria-e-contextos-de-pontuação). Diferente da regra de acesso deste botão de varredura, que depende do modo, ele é protegido apenas por edition, sem distinção entre superadmin e instalação bloqueada.
 
 ## Busca Semântica
 
@@ -1236,12 +1236,12 @@ Os tipos TypeScript do cliente são gerados a partir desse esquema em `client/sr
 
 | Endpoint | Descrição |
 |----------|-------------|
-| `POST /api/scan/start` | `[Superadmin]` Inicia uma varredura de pontuação |
-| `GET /api/scan/status` | Verifica o progresso da varredura (`progress` estruturado: `{phase, current, total, eta_seconds}`) |
-| `GET /api/scan/stream?token=<jwt>` | `[Superadmin]` Progresso em tempo real via Server-Sent Events; o token é passado como parâmetro de consulta (a API `EventSource` não pode definir cabeçalhos), com fallback automático para polling de `/status` |
-| `GET /api/scan/directories` | Lista os diretórios de varredura configurados |
-| `POST /api/scan/recompute` | `[Edition]` Dispara um recálculo de agregados de toda a biblioteca (`--recompute-average`) como um job em segundo plano; protegido entre processos por `facet.LibraryLock`, então também recusa com 409, informando quem o detém, se já houver uma varredura ou recálculo em andamento a partir de um terminal, não só de outra aba do visualizador. Diferente de `/start`, seu argv é fixo no servidor e não recebe entrada da requisição, então não exige superadmin |
-| `GET /api/scan/recompute_status` | `[Edition]` Consulta o progresso do recálculo: `{running, kind, progress, exit_code}` — omite o fluxo de log `output_lines`, exclusivo de superadmin, que `/status` retorna |
+| `POST /api/scan/start` | Inicia uma varredura de pontuação. Requer o papel `superadmin` (multiusuário) ou uma sessão autenticada em modo de edição sobre uma instalação de usuário único bloqueada (`viewer.edition_password` definida) — uma instalação de usuário único aberta (`viewer.edition_password` vazia, o valor padrão de fábrica) retorna 403 para qualquer chamador, incluindo um com um JWT de geração de edição válido |
+| `GET /api/scan/status` | Verifica o progresso da varredura (`progress` estruturado: `{phase, current, total, eta_seconds}`); mesma regra de acesso de `/start` |
+| `GET /api/scan/stream?token=<jwt>` | Progresso em tempo real via Server-Sent Events; o token é emitido por `GET /api/scan/stream_token` (mesma regra de acesso de `/start`) e passado como parâmetro de consulta (a API `EventSource` não pode definir cabeçalhos), com fallback automático para polling de `/status` |
+| `GET /api/scan/directories` | Lista os diretórios de varredura configurados; mesma regra de acesso de `/start` |
+| `POST /api/scan/recompute` | `[Edition]` Dispara um recálculo de agregados de toda a biblioteca (`--recompute-average`) como um job em segundo plano; protegido entre processos por `facet.LibraryLock`, então também recusa com 409, informando quem o detém, se já houver uma varredura ou recálculo em andamento a partir de um terminal, não só de outra aba do visualizador. Diferente de `/start`, seu argv é fixo no servidor e não recebe entrada da requisição, então não está sujeito à regra de acesso dependente do modo acima |
+| `GET /api/scan/recompute_status` | `[Edition]` Consulta o progresso do recálculo: `{running, kind, progress, exit_code}` — omite o fluxo de log `output_lines` que `/status` retorna, sujeito à mesma regra de acesso de `/start` |
 
 ### Gerenciamento de Rostos
 
@@ -1358,7 +1358,7 @@ O endpoint `/api/download/options` detecta automaticamente arquivos RAW companhe
 | Botão Comparar ausente | Defina uma `edition_password` não vazia (usuário único) ou use o papel `admin`/`superadmin` (multiusuário) |
 | Senha não funciona | Verifique `viewer.password` (usuário único) ou verifique o hash da senha (multiusuário) |
 | Usuário não consegue ver fotos | Verifique `directories` na configuração do usuário e `shared_directories` |
-| Botão de varredura ausente | Requer o papel `superadmin` e `viewer.features.show_scan_button: true` |
+| Botão de varredura ausente | Requer `viewer.features.show_scan_button: true` mais acesso à varredura: papel `superadmin` (multiusuário), ou uma sessão autenticada em modo de edição sobre uma instalação de usuário único bloqueada (`viewer.edition_password` definida) — uma instalação de usuário único aberta nunca o exibe |
 | Busca não retorna resultados | Garanta que as fotos tenham dados `clip_embedding` (execute a pontuação primeiro) |
 | Crítica por VLM indisponível | Requer o perfil de VRAM 16gb/24gb e `viewer.features.show_vlm_critique: true` |
 | Mapa não mostra fotos | Execute `--extract-gps` para preencher as colunas GPS, garanta que as fotos tenham dados GPS EXIF |

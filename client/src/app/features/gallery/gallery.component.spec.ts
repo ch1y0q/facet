@@ -1896,4 +1896,53 @@ describe('GalleryComponent', () => {
       });
     });
   });
+
+  describe('canShowScanButton', () => {
+    function setAuth(overrides: {
+      isMultiUser?: boolean;
+      isSuperadmin?: boolean;
+      editionPasswordRequired?: boolean;
+      isEdition?: boolean;
+      hasFeature?: boolean;
+    }): void {
+      mockAuth['isMultiUser'] = vi.fn(() => overrides.isMultiUser ?? false);
+      mockAuth['isSuperadmin'] = vi.fn(() => overrides.isSuperadmin ?? false);
+      mockAuth['editionPasswordRequired'] = vi.fn(() => overrides.editionPasswordRequired ?? false);
+      mockAuth['isEdition'] = vi.fn(() => overrides.isEdition ?? false);
+      mockAuth['hasFeature'] = vi.fn(() => overrides.hasFeature ?? true);
+    }
+
+    function canShowScanButton(): boolean {
+      return (component as unknown as { canShowScanButton(): boolean }).canShowScanButton();
+    }
+
+    it('shows the button for a multi-user superadmin with the flag on', () => {
+      setAuth({ isMultiUser: true, isSuperadmin: true, hasFeature: true });
+      expect(canShowScanButton()).toBe(true);
+    });
+
+    it('hides the button for a multi-user admin who is not superadmin', () => {
+      setAuth({ isMultiUser: true, isSuperadmin: false, hasFeature: true });
+      expect(canShowScanButton()).toBe(false);
+    });
+
+    it('shows the button for a single-user locked install with an edition session', () => {
+      setAuth({ isMultiUser: false, editionPasswordRequired: true, isEdition: true, hasFeature: true });
+      expect(canShowScanButton()).toBe(true);
+    });
+
+    // The open-install trap this change exists to close: on an open single-user
+    // install, CurrentUser.is_edition is true for every caller (the open-install
+    // shortcut), but editionPasswordRequired is false, so the button must stay
+    // hidden even though isEdition() reports true.
+    it('hides the button on an open single-user install even though the caller reads as edition-authenticated', () => {
+      setAuth({ isMultiUser: false, editionPasswordRequired: false, isEdition: true, hasFeature: true });
+      expect(canShowScanButton()).toBe(false);
+    });
+
+    it('hides the button regardless of role when the feature flag is off', () => {
+      setAuth({ isMultiUser: true, isSuperadmin: true, hasFeature: false });
+      expect(canShowScanButton()).toBe(false);
+    });
+  });
 });

@@ -8,7 +8,7 @@
 
 - [启动查看器](#启动查看器) · [身份验证](#身份验证) · [筛选选项](#筛选选项) · [排序](#排序) · [照片库功能](#照片库功能)
 - [全景照片与包围曝光](#全景照片与包围曝光)
-- [人物管理](#人物管理) · [触发扫描（Superadmin）](#触发扫描superadmin) · [语义搜索](#语义搜索) · [相册](#相册)
+- [人物管理](#人物管理) · [触发扫描](#触发扫描) · [语义搜索](#语义搜索) · [相册](#相册)
 - [AI 点评](#ai-点评) · [AI 照片描述](#ai-照片描述-gpu-16gb24gb-edition) · [回忆（“那年今日”）](#回忆那年今日) · [时间线视图](#时间线视图) · [地图视图](#地图视图) · [照片胶囊](#照片胶囊)
 - [文件夹视图](#文件夹视图) · [GPS 筛选对话框](#gps-筛选对话框) · [人物合并建议](#人物合并建议) · [导出到后期软件](#导出到后期软件) · [选片](#选片) · [废片清理](#废片清理) · [两两比较模式](#两两比较模式)
 - [EXIF 统计](#exif-统计) · [键盘快捷键](#键盘快捷键照片库) · [撤销](#撤销) · [渐进式网页应用](#渐进式网页应用) · [移动端](#移动端) · [数码相框与展示屏端点](#数码相框与展示屏端点) · [手机自动上传](#手机自动上传)
@@ -338,9 +338,9 @@ HDR 之间重新标注。**漏检**则从照片库修正，因为未被检测到
 | **拆分** | 打开某个人物的人脸，选中其中一部分，拆分为新人物 |
 | **隐藏** | 把某个聚类从人物列表、筛选条件和合并建议中隐藏（可恢复） |
 
-## 触发扫描（Superadmin）
+## 触发扫描
 
-当 `viewer.features.show_scan_button` 为 `true` 且用户具有 `superadmin` 角色时，照片库为空的状态下会出现一个**扫描照片以开始使用**按钮。它在 `scoring_config.json` 中出厂设置为 **`false`**（需超级管理员主动开启）。该按钮会打开扫描启动器对话框（`ScanLauncherComponent`）。
+当 `viewer.features.show_scan_button` 为 `true`，且调用者拥有扫描权限——多用户模式下为 `superadmin` 角色，或单用户模式下在已锁定的单用户安装（`viewer.edition_password` 已设置）上通过编辑模式身份验证的会话——照片库为空的状态下会出现一个**扫描照片以开始使用**按钮。它在 `scoring_config.json` 中出厂设置为 **`false`**（需主动开启）。在开放的单用户安装上（`viewer.edition_password` 为空，出厂默认值），全部四个扫描路由都会对任何调用者返回 403，即便调用者持有有效的编辑模式生成 JWT，该按钮也绝不会渲染——开放安装本就把匿名调用者当作已通过编辑模式身份验证，而启动扫描子进程绝不能被匿名访问到。该按钮会打开扫描启动器对话框（`ScanLauncherComponent`）。
 
 - 从启动器的列表中选择一个目录，直接在应用内开始扫描
 - 启动器会把实时进度（SSE，并自动回退到轮询）推送到一个由结构化 `progress` 字段驱动的 `mat-progress-bar`，另外还有一段输出日志尾部，扫描结束时会刷新照片库
@@ -349,7 +349,7 @@ HDR 之间重新标注。**漏检**则从照片库修正，因为未被检测到
 
 当查看器运行在拥有 GPU 算力的同一台机器上时，这一功能很有用。
 
-另有一个相关但独立的触发器 `POST /api/scan/recompute`，它复用同一把作业锁来原地重新为已有照片评分（不引入新文件）——参见[类别优先级与拍摄场景评分方案](#类别优先级与拍摄场景评分方案)。与这个仅限超级管理员的扫描按钮不同，它受编辑模式限制。
+另有一个相关但独立的触发器 `POST /api/scan/recompute`，它复用同一把作业锁来原地重新为已有照片评分（不引入新文件）——参见[类别优先级与拍摄场景评分方案](#类别优先级与拍摄场景评分方案)。与这个扫描按钮依赖模式的访问规则不同，它只受编辑模式限制，不区分超级管理员与已锁定安装。
 
 ## 语义搜索
 
@@ -1278,12 +1278,12 @@ python database.py --stats-info
 
 | 端点 | 说明 |
 |----------|-------------|
-| `POST /api/scan/start` | `[Superadmin]` 启动一次评分扫描 |
-| `GET /api/scan/status` | 查询扫描进度（结构化的 `progress`：`{phase, current, total, eta_seconds}`） |
-| `GET /api/scan/stream?token=<jwt>` | `[Superadmin]` 通过 Server-Sent Events 推送实时进度；令牌作为查询参数传递（`EventSource` API 无法设置请求头），并会自动回退到轮询 `/status` |
-| `GET /api/scan/directories` | 列出已配置的扫描目录 |
-| `POST /api/scan/recompute` | `[Edition]` 以后台作业方式触发整个照片库的综合评分重新计算（`--recompute-average`）；由 `facet.LibraryLock` 做跨进程保护，因此当已有扫描或重新计算从终端（而不只是另一个查看器标签页）运行时，它同样会拒绝（409，并指出持有者）。与 `/start` 不同，它的 argv 在服务端固定、不接受任何请求输入，因此无需超级管理员权限 |
-| `GET /api/scan/recompute_status` | `[Edition]` 轮询重新计算的进度：`{running, kind, progress, exit_code}`——不包含 `/status` 会返回的、仅限超级管理员的 `output_lines` 日志流 |
+| `POST /api/scan/start` | 启动一次评分扫描。需要 `superadmin` 角色（多用户）或在已锁定的单用户安装（`viewer.edition_password` 已设置）上通过编辑模式身份验证的会话——开放的单用户安装（`viewer.edition_password` 为空，出厂默认值）会对任何调用者返回 403，即便调用者持有有效的编辑模式生成 JWT |
+| `GET /api/scan/status` | 查询扫描进度（结构化的 `progress`：`{phase, current, total, eta_seconds}`）；访问规则与 `/start` 相同 |
+| `GET /api/scan/stream?token=<jwt>` | 通过 Server-Sent Events 推送实时进度；令牌由 `GET /api/scan/stream_token` 签发（访问规则与 `/start` 相同），并作为查询参数传递（`EventSource` API 无法设置请求头），并会自动回退到轮询 `/status` |
+| `GET /api/scan/directories` | 列出已配置的扫描目录；访问规则与 `/start` 相同 |
+| `POST /api/scan/recompute` | `[Edition]` 以后台作业方式触发整个照片库的综合评分重新计算（`--recompute-average`）；由 `facet.LibraryLock` 做跨进程保护，因此当已有扫描或重新计算从终端（而不只是另一个查看器标签页）运行时，它同样会拒绝（409，并指出持有者）。与 `/start` 不同，它的 argv 在服务端固定、不接受任何请求输入，因此不受上述依赖模式的访问规则约束 |
+| `GET /api/scan/recompute_status` | `[Edition]` 轮询重新计算的进度：`{running, kind, progress, exit_code}`——不包含 `/status` 会返回的 `output_lines` 日志流，该日志流的访问规则与 `/start` 相同 |
 
 ### 人脸管理
 
@@ -1404,7 +1404,7 @@ python database.py --stats-info
 | 没有“比较”按钮 | 设置非空的 `edition_password`（单用户），或使用 `admin`／`superadmin` 角色（多用户） |
 | 密码不生效 | 检查 `viewer.password`（单用户），或核对密码哈希（多用户） |
 | 用户看不到照片 | 检查其用户配置中的 `directories` 以及 `shared_directories` |
-| 没有扫描按钮 | 需要 `superadmin` 角色以及 `viewer.features.show_scan_button: true` |
+| 没有扫描按钮 | 需要 `viewer.features.show_scan_button: true`，外加扫描权限：多用户模式下的 `superadmin` 角色，或单用户模式下在已锁定安装（`viewer.edition_password` 已设置）上通过编辑模式身份验证的会话——开放的单用户安装永远不会显示该按钮 |
 | 搜索没有结果 | 确认照片已有 `clip_embedding` 数据（请先运行评分） |
 | VLM 点评不可用 | 需要 16gb/24gb VRAM 配置档以及 `viewer.features.show_vlm_critique: true` |
 | 地图上没有照片 | 运行 `--extract-gps` 填充 GPS 列，并确认照片带有 EXIF GPS 数据 |

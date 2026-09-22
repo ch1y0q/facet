@@ -7,7 +7,7 @@ FastAPI + Angular Single-Page-Application zum Durchsuchen, Filtern und Verwalten
 ## Inhalt
 
 - [Galerie starten](#galerie-starten) · [Authentifizierung](#authentifizierung) · [Filteroptionen](#filteroptionen) · [Sortierung](#sortierung) · [Galeriefunktionen](#galeriefunktionen)
-- [Personenverwaltung](#personenverwaltung) · [Scan auslösen (Superadmin)](#scan-auslösen-superadmin) · [Semantische Suche](#semantische-suche) · [Alben](#alben)
+- [Personenverwaltung](#personenverwaltung) · [Scan auslösen](#scan-auslösen) · [Semantische Suche](#semantische-suche) · [Alben](#alben)
 - [KI-Kritik](#ki-kritik) · [KI-Bildbeschreibung](#ki-bildbeschreibung-gpu-16gb24gb-edition) · [Erinnerungen ("Heute vor Jahren")](#erinnerungen-heute-vor-jahren) · [Zeitleisten-Ansicht](#zeitleisten-ansicht) · [Kartenansicht](#kartenansicht) · [Kapseln](#kapseln)
 - [Ordner-Ansicht](#ordner-ansicht) · [GPS-Filterdialog](#gps-filterdialog) · [Zusammenführungsvorschläge](#zusammenführungsvorschläge) · [Editor-Export](#editor-export) · [Auswahl](#auswahl) · [Müll aufräumen](#müll-aufräumen) · [Paarweiser Vergleichsmodus](#paarweiser-vergleichsmodus)
 - [EXIF-Statistiken](#exif-statistiken) · [Tastenkürzel](#tastenkürzel-galerie) · [Rückgängig](#rückgängig) · [Progressive Web App](#progressive-web-app) · [Mobil](#mobil) · [Bilderrahmen / Kiosk](#bilderrahmen--kiosk) · [Automatischer Upload vom Telefon](#automatischer-upload-vom-telefon)
@@ -298,9 +298,9 @@ Zugriff über die Header-Schaltfläche oder `/persons`:
 | **Aufteilen** | Die Gesichter einer Person öffnen, eine Teilmenge auswählen und in eine neue Person aufteilen |
 | **Ausblenden** | Ein Cluster aus der Personenliste, den Filtern und den Zusammenführungsvorschlägen ausblenden (umkehrbar) |
 
-## Scan auslösen (Superadmin)
+## Scan auslösen
 
-Wenn `viewer.features.show_scan_button` auf `true` steht und der Benutzer die Rolle `superadmin` hat, erscheint im leeren Galerie-Zustand eine Schaltfläche **Fotos scannen, um loszulegen**. Sie wird in `scoring_config.json` auf **`false`** ausgeliefert (Superadmin-Opt-in). Die Schaltfläche öffnet den Scan-Starter-Dialog (`ScanLauncherComponent`).
+Wenn `viewer.features.show_scan_button` auf `true` steht und der Aufrufer Scan-Zugriff hat — Rolle `superadmin` im Mehrbenutzermodus, oder eine edition-authentifizierte Sitzung auf einer gesperrten Einzelbenutzer-Installation (`viewer.edition_password` gesetzt) im Einzelbenutzermodus — erscheint im leeren Galerie-Zustand eine Schaltfläche **Fotos scannen, um loszulegen**. Sie wird in `scoring_config.json` auf **`false`** ausgeliefert (Opt-in). Bei einer offenen Einzelbenutzer-Installation (`viewer.edition_password` leer, der ausgelieferte Standardwert) liefern alle vier Scan-Routen für jeden Aufrufer 403, auch für einen mit gültigem edition-generiertem JWT, und die Schaltfläche wird nie gerendert — eine offene Installation behandelt anonyme Aufrufer bereits als edition-authentifiziert, und das Starten eines Scan-Unterprozesses darf nicht anonym erreichbar sein. Die Schaltfläche öffnet den Scan-Starter-Dialog (`ScanLauncherComponent`).
 
 - Ein Verzeichnis aus der Liste des Starters auswählen und den Scan direkt in der App starten
 - Der Starter überträgt den Fortschritt live (SSE mit automatischem Polling-Rückgriff) in einen `mat-progress-bar`, der vom strukturierten `progress`-Feld gesteuert wird, plus einen Auszug der Ausgabezeilen, und aktualisiert die Galerie, sobald der Scan abgeschlossen ist
@@ -309,7 +309,7 @@ Wenn `viewer.features.show_scan_button` auf `true` steht und der Benutzer die Ro
 
 Dies ist nützlich, wenn die Galerie auf derselben Maschine läuft, die GPU-Zugriff für die Bewertung hat.
 
-Ein verwandter, aber eigenständiger Auslöser, `POST /api/scan/recompute`, verwendet dieselbe Job-Sperre, um vorhandene Fotos direkt neu zu bewerten (keine neuen Dateien) – siehe [Kategoriepriorität & Bewertungskontexte](#kategoriepriorität--bewertungskontexte). Anders als diese nur für Superadmins sichtbare Scan-Schaltfläche ist er Edition-geschützt.
+Ein verwandter, aber eigenständiger Auslöser, `POST /api/scan/recompute`, verwendet dieselbe Job-Sperre, um vorhandene Fotos direkt neu zu bewerten (keine neuen Dateien) – siehe [Kategoriepriorität & Bewertungskontexte](#kategoriepriorität--bewertungskontexte). Anders als die modusabhängige Zugriffsregel dieser Scan-Schaltfläche ist er ausschließlich Edition-geschützt, ohne Unterscheidung zwischen Superadmin und gesperrter Installation.
 
 ## Semantische Suche
 
@@ -1235,12 +1235,12 @@ Die TypeScript-Typen des Clients werden mit `cd client && npm run gen:api` aus d
 
 | Endpunkt | Beschreibung |
 |----------|-------------|
-| `POST /api/scan/start` | `[Superadmin]` Einen Bewertungs-Scan starten |
-| `GET /api/scan/status` | Scan-Fortschritt prüfen (strukturiertes `progress`: `{phase, current, total, eta_seconds}`) |
-| `GET /api/scan/stream?token=<jwt>` | `[Superadmin]` Echtzeit-Fortschritt über Server-Sent Events; das Token wird als Query-Parameter übergeben (die `EventSource`-API kann keine Header setzen), mit automatischem Rückgriff auf das Polling von `/status` |
-| `GET /api/scan/directories` | Konfigurierte Scan-Verzeichnisse auflisten |
-| `POST /api/scan/recompute` | `[Edition]` Löst eine vollständige Aggregat-Neuberechnung der Bibliothek (`--recompute-average`) als Hintergrundjob aus; prozessübergreifend durch `facet.LibraryLock` abgesichert, verweigert daher auch mit 409 unter Angabe des Halters, wenn bereits ein Scan oder eine Neuberechnung von einem Terminal aus läuft, nicht nur von einem anderen Viewer-Tab. Anders als `/start` ist die argv serverseitig fest vorgegeben und nimmt keine Eingaben aus der Anfrage entgegen, weshalb kein Superadmin erforderlich ist |
-| `GET /api/scan/recompute_status` | `[Edition]` Fortschritt der Neuberechnung abfragen: `{running, kind, progress, exit_code}` – ohne den nur für Superadmins sichtbaren `output_lines`-Log-Stream, den `/status` liefert |
+| `POST /api/scan/start` | Einen Bewertungs-Scan starten. Erfordert die Rolle `superadmin` (Mehrbenutzer) oder eine edition-authentifizierte Sitzung auf einer gesperrten Einzelbenutzer-Installation (`viewer.edition_password` gesetzt) — eine offene Einzelbenutzer-Installation (`viewer.edition_password` leer, der ausgelieferte Standardwert) liefert für jeden Aufrufer 403, auch für einen mit gültigem edition-generiertem JWT |
+| `GET /api/scan/status` | Scan-Fortschritt prüfen (strukturiertes `progress`: `{phase, current, total, eta_seconds}`); gleiche Zugriffsregel wie `/start` |
+| `GET /api/scan/stream?token=<jwt>` | Echtzeit-Fortschritt über Server-Sent Events; das Token wird von `GET /api/scan/stream_token` ausgestellt (gleiche Zugriffsregel wie `/start`) und als Query-Parameter übergeben (die `EventSource`-API kann keine Header setzen), mit automatischem Rückgriff auf das Polling von `/status` |
+| `GET /api/scan/directories` | Konfigurierte Scan-Verzeichnisse auflisten; gleiche Zugriffsregel wie `/start` |
+| `POST /api/scan/recompute` | `[Edition]` Löst eine vollständige Aggregat-Neuberechnung der Bibliothek (`--recompute-average`) als Hintergrundjob aus; prozessübergreifend durch `facet.LibraryLock` abgesichert, verweigert daher auch mit 409 unter Angabe des Halters, wenn bereits ein Scan oder eine Neuberechnung von einem Terminal aus läuft, nicht nur von einem anderen Viewer-Tab. Anders als `/start` ist die argv serverseitig fest vorgegeben und nimmt keine Eingaben aus der Anfrage entgegen, weshalb die obige modusabhängige Zugriffsregel hier nicht gilt |
+| `GET /api/scan/recompute_status` | `[Edition]` Fortschritt der Neuberechnung abfragen: `{running, kind, progress, exit_code}` – ohne den `output_lines`-Log-Stream, den `/status` liefert und der derselben Zugriffsregel wie `/start` unterliegt |
 
 ### Gesichtsverwaltung
 
@@ -1357,7 +1357,7 @@ Der Endpunkt `/api/download/options` erkennt begleitende RAW-Dateien automatisch
 | Schaltfläche „Vergleichen" fehlt | Ein nicht leeres `edition_password` setzen (Einzelbenutzer) oder die Rolle `admin`/`superadmin` verwenden (Mehrbenutzer) |
 | Passwort funktioniert nicht | `viewer.password` prüfen (Einzelbenutzer) oder den Passwort-Hash verifizieren (Mehrbenutzer) |
 | Benutzer kann keine Fotos sehen | `directories` in seiner Benutzerkonfiguration und `shared_directories` prüfen |
-| Scan-Schaltfläche fehlt | Erfordert die Rolle `superadmin` und `viewer.features.show_scan_button: true` |
+| Scan-Schaltfläche fehlt | Erfordert `viewer.features.show_scan_button: true` plus Scan-Zugriff: Rolle `superadmin` (Mehrbenutzer), oder eine edition-authentifizierte Sitzung auf einer gesperrten Einzelbenutzer-Installation (`viewer.edition_password` gesetzt) — eine offene Einzelbenutzer-Installation zeigt sie nie |
 | Suche liefert keine Ergebnisse | Sicherstellen, dass Fotos `clip_embedding`-Daten haben (zuerst Bewertung ausführen) |
 | VLM-Kritik nicht verfügbar | Erfordert das 16gb/24gb-VRAM-Profil und `viewer.features.show_vlm_critique: true` |
 | Karte zeigt keine Fotos | `--extract-gps` ausführen, um GPS-Spalten zu befüllen; sicherstellen, dass Fotos EXIF-GPS-Daten haben |

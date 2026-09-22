@@ -632,9 +632,12 @@ export class GalleryComponent implements OnInit, OnDestroy {
   protected readonly I18N = I18N_KEYS;
   protected readonly store = inject(GalleryStore);
   protected readonly auth = inject(AuthService);
-  protected readonly canShowScanButton = computed(
-    () => this.auth.isSuperadmin() && this.auth.hasFeature('show_scan_button'),
-  );
+  protected readonly canShowScanButton = computed(() => {
+    if (!this.auth.hasFeature('show_scan_button')) return false;
+    return this.auth.isMultiUser()
+      ? this.auth.isSuperadmin()
+      : this.auth.editionPasswordRequired() && this.auth.isEdition();
+  });
   private readonly snackBar = inject(MatSnackBar);
   private readonly bottomSheet = inject(MatBottomSheet);
   private readonly i18n = inject(I18nService);
