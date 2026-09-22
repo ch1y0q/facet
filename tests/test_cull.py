@@ -1028,8 +1028,11 @@ class TestCullCapabilities:
 
     `gallery.py` reads the package's importability off the module-scope
     `HAS_SEND2TRASH` constant (set once, at import time, via a plain
-    `try: import send2trash / except ImportError` -- the same idiom
-    `db.connection` uses for `HAS_SQLITE_VEC`), not a per-request probe. A
+    `try: import send2trash / except ImportError` -- the bare-import form
+    of the once-at-import discipline `db.connection` uses for
+    `HAS_SQLITE_VEC`, which needs a real load probe instead because
+    importing `sqlite_vec` does not prove the interpreter's SQLite can
+    load its extension), not a per-request probe. A
     process-wide `mock.patch.dict("sys.modules", {"send2trash": None})`
     would do nothing to it, since it is read once at import and never
     consulted again, so these tests patch `HAS_SEND2TRASH` itself instead --
@@ -1098,7 +1101,8 @@ class TestCullCapabilities:
         `_send2trash_available` memo (primed lazily via
         `importlib.util.find_spec`, benchmarked slower than a plain import
         with no memo at all) with a plain module-scope constant, the same
-        idiom `db.connection` uses for `HAS_SQLITE_VEC`. What this test can
+        once-at-import discipline `db.connection` uses for
+        `HAS_SQLITE_VEC`. What this test can
         still do is assert the UNPATCHED value directly: a typo'd import
         name flips it to `False` immediately at import, with no mock
         involved. `send2trash` is a base dependency (`requirements.txt` and
