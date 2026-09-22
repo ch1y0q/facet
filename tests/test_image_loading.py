@@ -395,7 +395,7 @@ def test_tonemap_pq_output_shape_and_range():
 
 
 def test_open_nonraw_image_tonemaps_only_pq():
-    """_open_nonraw_image tone-maps PQ HEIF but passes SDR / no-NCLX through."""
+    """open_nonraw_image tone-maps PQ HEIF but passes SDR / no-NCLX through."""
     dark = np.full((8, 8, 3), 60, dtype=np.uint8)
 
     def _img(transfer):
@@ -406,9 +406,9 @@ def test_open_nonraw_image_tonemaps_only_pq():
 
     pq, sdr, plain = _img(16), _img(13), _img(None)
     with mock.patch.object(Image, 'open', side_effect=[pq, sdr, plain]):
-        out_pq = image_loading._open_nonraw_image('pq.heif')
-        out_sdr = image_loading._open_nonraw_image('sdr.heif')
-        out_plain = image_loading._open_nonraw_image('plain.jpg')
+        out_pq = image_loading.open_nonraw_image('pq.heif')
+        out_sdr = image_loading.open_nonraw_image('sdr.heif')
+        out_plain = image_loading.open_nonraw_image('plain.jpg')
 
     # PQ dark frame is lifted by tone mapping; SDR and no-NCLX pass through.
     assert np.asarray(out_pq).mean() > np.asarray(out_sdr).mean()
@@ -564,7 +564,7 @@ def test_non_pq_passes_through_regardless_of_enabled():
         sdr = Image.fromarray(np.full((4, 4, 3), 60, dtype=np.uint8), 'RGB')
         sdr.info['nclx_profile'] = {'transfer_characteristics': 13}
         with mock.patch.object(Image, 'open', return_value=sdr):
-            return np.asarray(image_loading._open_nonraw_image('sdr.heif')).mean()
+            return np.asarray(image_loading.open_nonraw_image('sdr.heif')).mean()
 
     image_loading.configure_hdr_pq_tonemap_profile({'enabled': True})
     assert _open_sdr() == 60.0
@@ -623,7 +623,7 @@ def test_real_canon_hif_tone_map_invents_no_clipping():
     Image_, _ = image_loading._ensure_pil()
     with Image_.open(CANON_PQ_HIF) as img:
         decoded = np.asarray(img.convert('RGB'))
-    mapped = np.asarray(image_loading._open_nonraw_image(str(CANON_PQ_HIF)))
+    mapped = np.asarray(image_loading.open_nonraw_image(str(CANON_PQ_HIF)))
 
     assert _pure_white_pixels(mapped) == 0
     # The transform ran, and it opened the highlights up the scale.
@@ -643,7 +643,7 @@ def test_real_sony_sdr_hif_passes_through_untouched():
         assert img.info['nclx_profile']['transfer_characteristics'] == 13
         assert image_loading._heif_is_pq(img) is False
         decoded = np.asarray(img.convert('RGB'))
-    loaded = np.asarray(image_loading._open_nonraw_image(str(SONY_SDR_HIF)))
+    loaded = np.asarray(image_loading.open_nonraw_image(str(SONY_SDR_HIF)))
     assert np.array_equal(loaded, decoded)
 
 

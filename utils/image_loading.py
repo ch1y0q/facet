@@ -262,16 +262,22 @@ def _tonemap_pq_to_srgb(pil_img, settings=None):
     return Image.fromarray(out, 'RGB')
 
 
-def _open_nonraw_image(photo):
+def open_nonraw_image(photo):
     """Open a non-RAW image with EXIF orientation and HDR PQ tone mapping.
 
+    The single decode for every non-RAW consumer -- the batch scorer, the
+    viewer's HEIF-to-JPEG converter -- so the image the models score and the
+    image the browser shows cannot disagree on orientation or tone.
+
     The NCLX profile is read straight after ``Image.open`` because
-    ``exif_transpose``/``convert`` may drop ``info``.
+    ``exif_transpose``/``convert`` may drop ``info``. The source handle is
+    closed before returning: ``exif_transpose`` loads the pixels and always
+    hands back a new image, so nothing returned here still refers to the file.
     """
     Image, ImageOps = _ensure_pil()
-    pil_img = Image.open(photo)
-    is_pq = _heif_is_pq(pil_img)
-    pil_img = ImageOps.exif_transpose(pil_img)
+    with Image.open(photo) as source:
+        is_pq = _heif_is_pq(source)
+        pil_img = ImageOps.exif_transpose(source)
     if pil_img.mode != 'RGB':
         pil_img = pil_img.convert('RGB')
     if is_pq:
@@ -664,7 +670,7 @@ def load_display_image(photo_path, min_preview_sensor_ratio=0.0, decode_budget='
                                            bright=FAITHFUL_BRIGHT)
             preview = _display_preview(photo, min_preview_sensor_ratio)
             return preview if preview is not None else _decode_raw_bounded(photo, decode_budget=decode_budget)
-        return _open_nonraw_image(photo)
+        return open_nonraw_image(photo)
     except RuntimeError:
         raise
     except Exception as e:
@@ -719,7 +725,7 @@ def load_image_from_path(photo_path, use_thumbnail=False):
             if pil_img is None:
                 return None, None
         else:
-            pil_img = _open_nonraw_image(photo)
+            pil_img = open_nonraw_image(photo)
 
         # Convert to OpenCV BGR format
         img_cv = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)

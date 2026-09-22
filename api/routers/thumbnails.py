@@ -96,10 +96,10 @@ def _convert_heif_cached(file_path: str, mtime: float, quality: int = 96) -> byt
     PQ -> sRGB tone mapping (Canon .HIF) are applied here too — otherwise the
     browser image would be dark/rotated relative to what was actually scored.
     """
-    from utils.image_loading import _open_nonraw_image
+    from utils.image_loading import open_nonraw_image
 
     buf = BytesIO()
-    _open_nonraw_image(file_path).save(buf, format="JPEG", quality=quality)
+    open_nonraw_image(file_path).save(buf, format="JPEG", quality=quality)
     return buf.getvalue()
 
 
