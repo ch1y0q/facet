@@ -2285,6 +2285,18 @@
       "kind_duplicate": "Duplicata",
       "open_in_gallery": "Abrir este grupo na galeria",
       "member_position": "Quadro {position} de {count}"
+    },
+    "delete": {
+      "button_label": "Excluir",
+      "confirm_title": "Excluir esta foto?",
+      "confirm_body": "O arquivo é enviado para a lixeira do sistema operacional. Permanece recuperável até que você a esvazie.",
+      "confirm_body_with_companion": "O arquivo e seu RAW/XMP associado são enviados para a lixeira do sistema operacional. Permanecem recuperáveis até que você a esvazie.",
+      "confirm_body_with_siblings": "Cada quadro desta série é enviado para a lixeira do sistema operacional. Permanecem recuperáveis até que você a esvazie.",
+      "confirm_body_bracket_refused": "Este quadro representa seu bracketing. Excluí-lo sozinho é recusado — marque «Incluir toda a série» para excluir todos os quadros juntos.",
+      "include_companions": "Incluir RAW / XMP associado",
+      "include_siblings": "Incluir toda a série",
+      "success": "Foto enviada para a lixeira",
+      "error": "Falha ao excluir"
     }
   },
   "photo": {
@@ -2345,7 +2357,12 @@
     "apply": "Aplicar",
     "cancel": "Cancelar",
     "done": "Seleção aplicada",
-    "error": "Falha na seleção"
+    "error": "Falha na seleção",
+    "delete_action": "Excluir…",
+    "delete_confirm_title": "Excluir as fotos?",
+    "delete_confirm_body": "fotos serão enviadas para a lixeira do sistema operacional. Permanecem recuperáveis até que você a esvazie.",
+    "delete_partial_result": "{deleted} excluída(s), {refused} recusada(s)",
+    "delete_disabled_view_scope_tooltip": "Selecione as fotos explicitamente para excluí-las — uma seleção de toda a visualização não pode ser usada aqui"
   },
   "shortcuts": {
     "title": "Atalhos de teclado",

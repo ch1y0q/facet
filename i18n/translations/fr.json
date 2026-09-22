@@ -2285,6 +2285,18 @@
       "kind_duplicate": "Doublon",
       "open_in_gallery": "Ouvrir ce groupe dans la galerie",
       "member_position": "Image {position} sur {count}"
+    },
+    "delete": {
+      "button_label": "Supprimer",
+      "confirm_title": "Supprimer cette photo ?",
+      "confirm_body": "Le fichier est envoyé dans la corbeille du système. Il reste récupérable tant que vous ne la videz pas.",
+      "confirm_body_with_companion": "Le fichier et son RAW/XMP associé sont envoyés dans la corbeille du système. Ils restent récupérables tant que vous ne la videz pas.",
+      "confirm_body_with_siblings": "Chaque image de cette série est envoyée dans la corbeille du système. Elles restent récupérables tant que vous ne la videz pas.",
+      "confirm_body_bracket_refused": "Cette image représente son bracketing. La supprimer seule est refusé — cochez « Inclure toute la série » pour supprimer toutes les images ensemble.",
+      "include_companions": "Inclure le RAW / XMP associé",
+      "include_siblings": "Inclure toute la série",
+      "success": "Photo envoyée à la corbeille",
+      "error": "Échec de la suppression"
     }
   },
   "photo": {
@@ -2345,7 +2357,12 @@
     "apply": "Appliquer",
     "cancel": "Annuler",
     "done": "Tri appliqué",
-    "error": "Échec du tri"
+    "error": "Échec du tri",
+    "delete_action": "Supprimer…",
+    "delete_confirm_title": "Supprimer les photos ?",
+    "delete_confirm_body": "photos seront envoyées dans la corbeille du système. Elles restent récupérables tant que vous ne la videz pas.",
+    "delete_partial_result": "{deleted} supprimée(s), {refused} refusée(s)",
+    "delete_disabled_view_scope_tooltip": "Sélectionnez les photos explicitement pour les supprimer — une sélection de toute la vue ne peut pas être utilisée ici"
   },
   "shortcuts": {
     "title": "Raccourcis clavier",

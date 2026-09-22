@@ -2285,6 +2285,18 @@
       "kind_duplicate": "Duplikat",
       "open_in_gallery": "Diese Gruppe in der Galerie öffnen",
       "member_position": "Bild {position} von {count}"
+    },
+    "delete": {
+      "button_label": "Löschen",
+      "confirm_title": "Dieses Foto löschen?",
+      "confirm_body": "Die Datei wird in den Papierkorb des Betriebssystems verschoben. Sie bleibt wiederherstellbar, bis Sie ihn leeren.",
+      "confirm_body_with_companion": "Die Datei und ihre zugehörige RAW-/XMP-Datei werden in den Papierkorb des Betriebssystems verschoben. Sie bleiben wiederherstellbar, bis Sie ihn leeren.",
+      "confirm_body_with_siblings": "Jedes Bild dieser Serie wird in den Papierkorb des Betriebssystems verschoben. Sie bleiben wiederherstellbar, bis Sie ihn leeren.",
+      "confirm_body_bracket_refused": "Dieses Bild repräsentiert seine Belichtungsreihe. Es allein zu löschen wird abgelehnt — aktivieren Sie „Ganze Serie einbeziehen“, um alle Bilder gemeinsam zu löschen.",
+      "include_companions": "Zugehörige RAW-/XMP-Datei einbeziehen",
+      "include_siblings": "Ganze Serie einbeziehen",
+      "success": "Foto in den Papierkorb verschoben",
+      "error": "Löschen fehlgeschlagen"
     }
   },
   "photo": {
@@ -2345,7 +2357,12 @@
     "apply": "Anwenden",
     "cancel": "Abbrechen",
     "done": "Aussortierung angewendet",
-    "error": "Aussortierung fehlgeschlagen"
+    "error": "Aussortierung fehlgeschlagen",
+    "delete_action": "Löschen…",
+    "delete_confirm_title": "Fotos löschen?",
+    "delete_confirm_body": "Fotos werden in den Papierkorb des Betriebssystems verschoben. Sie bleiben wiederherstellbar, bis Sie ihn leeren.",
+    "delete_partial_result": "{deleted} gelöscht, {refused} abgelehnt",
+    "delete_disabled_view_scope_tooltip": "Wählen Sie Fotos explizit aus, um sie zu löschen — eine Auswahl der gesamten Ansicht kann hier nicht verwendet werden"
   },
   "shortcuts": {
     "title": "Tastenkürzel",

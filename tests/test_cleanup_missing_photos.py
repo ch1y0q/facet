@@ -8,7 +8,7 @@ import sqlite3
 
 import pytest
 
-from db.maintenance import cleanup_missing_photos
+from db.maintenance import cleanup_missing_photos, delete_photo_rows
 from db.schema import init_database
 
 _IS_ROOT = hasattr(os, 'geteuid') and os.geteuid() == 0
@@ -112,6 +112,45 @@ def test_client_picks_removed_for_deleted_photo(tmp_path):
     assert removed == 1
     assert str(deleted) not in remaining_picks
     assert str(present) in remaining_picks
+
+
+def test_delete_photo_rows_refreshes_face_count_without_its_own_commit(tmp_path):
+    """`delete_photo_rows` is the row+cascade portion `cleanup_missing_photos`
+    extracted so the new `POST /api/photo/delete` endpoint can run it on a
+    connection THE REQUEST already opened and control its own commit timing
+    (B1: the sequence-lead re-pick and the row delete must land in one
+    transaction). It must not secretly depend on `cleanup_missing_photos`'s
+    own `conn.commit()` to take effect -- the persons.face_count refresh has
+    to be visible on the SAME uncommitted connection immediately."""
+    path = str(tmp_path / 'linked.jpg')
+    db = str(tmp_path / 'scores.db')
+    init_database(db)
+    conn = sqlite3.connect(db)
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("INSERT INTO photos (path, filename) VALUES (?, ?)", (path, 'linked.jpg'))
+    conn.execute("INSERT INTO persons (name, face_count) VALUES ('Someone', 1)")
+    person_id = conn.execute("SELECT id FROM persons").fetchone()[0]
+    conn.execute(
+        "INSERT INTO faces (photo_path, face_index, embedding, person_id) VALUES (?, 0, ?, ?)",
+        (path, b'x', person_id),
+    )
+    conn.commit()
+
+    result = delete_photo_rows(conn, [path])
+
+    assert result == {"deleted": 1, "emptied_persons": 1}
+    # No conn.commit() was called by delete_photo_rows itself, yet the face
+    # cascade and the persons.face_count refresh must already be visible on
+    # THIS SAME connection -- proving the helper does its own work rather
+    # than depending on cleanup_missing_photos's commit to take effect.
+    face_count = conn.execute("SELECT face_count FROM persons WHERE id = ?", (person_id,)).fetchone()[0]
+    assert face_count == 0
+    remaining_faces = conn.execute("SELECT COUNT(*) FROM faces WHERE photo_path = ?", (path,)).fetchone()[0]
+    assert remaining_faces == 0
+
+    conn.commit()
+    conn.close()
+    assert path not in _paths_in_db(db)
 
 
 if __name__ == '__main__':

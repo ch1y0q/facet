@@ -228,6 +228,69 @@ def backup_database(db_path='photo_scores_pro.db', keep=3, dest_dir=None, verbos
     return backup_path
 
 
+def delete_photo_rows(conn, paths: list[str]) -> dict:
+    """Delete photo rows and their cascade-adjacent side effects.
+
+    The row + cascade portion of :func:`cleanup_missing_photos`, extracted so
+    ``POST /api/photo/delete`` (``api/routers/export.py``) can run the SAME
+    delete on a connection the REQUEST already opened, in the SAME
+    transaction as its own sequence-lead re-pick, rather than duplicating the
+    cascade list on a second, private connection the way this module's own
+    CLI caller does.
+
+    Deletes each path from ``photos`` (the FK cascade cleans up faces, tags,
+    comparisons, learned scores and per-user preferences), then cleans the
+    stores that have no cascade of their own: ``album_photos`` membership,
+    ``album_client_picks``, and the ``albums.cover_photo_path``
+    back-reference. Refreshes ``persons.face_count`` afterward so the viewer
+    stays accurate, and invalidates ``stats_cache``.
+
+    Deliberately does NOT ``conn.commit()`` and does NOT touch ``photos_vec``:
+    both are call-site-specific. ``cleanup_missing_photos`` commits
+    immediately after this returns and cleans ``photos_vec`` best-effort right
+    after that, on its own private connection it opened and will close. The
+    delete endpoint instead commits this together with its lead re-pick as ONE
+    transaction on the request's own connection, and cleans ``photos_vec``
+    outside that transaction, afterward.
+
+    Returns ``{"deleted": n, "emptied_persons": n}`` where ``deleted`` is
+    ``len(paths)`` -- every named path is deleted unconditionally; bounding
+    ``paths`` to what should actually be removed is the caller's job -- and
+    ``emptied_persons`` is the count of persons left with zero faces after
+    the cascade.
+    """
+    if not paths:
+        return {"deleted": 0, "emptied_persons": 0}
+    cursor = conn.cursor()
+    batch_size = 500
+    for i in range(0, len(paths), batch_size):
+        params = [(p,) for p in paths[i:i + batch_size]]
+        cursor.executemany("DELETE FROM photos WHERE path = ?", params)
+        # album_photos.photo_path has no ON DELETE CASCADE — drop memberships explicitly.
+        cursor.executemany("DELETE FROM album_photos WHERE photo_path = ?", params)
+        # album_client_picks cascades on album_id only, not photo_path — drop picks explicitly.
+        cursor.executemany("DELETE FROM album_client_picks WHERE photo_path = ?", params)
+        # An album cover may point at a now-deleted photo.
+        cursor.executemany("UPDATE albums SET cover_photo_path = NULL WHERE cover_photo_path = ?", params)
+
+    # Faces were cascade-deleted; refresh person face counts so the viewer stays accurate.
+    cursor.execute(
+        "UPDATE persons SET face_count = "
+        "(SELECT COUNT(*) FROM faces WHERE faces.person_id = persons.id)"
+    )
+    emptied_persons = cursor.execute(
+        "SELECT COUNT(*) FROM persons WHERE face_count = 0"
+    ).fetchone()[0]
+
+    # Invalidate stats cache since photo counts and details have changed.
+    try:
+        cursor.execute("DELETE FROM stats_cache")
+    except sqlite3.OperationalError:
+        pass
+
+    return {"deleted": len(paths), "emptied_persons": emptied_persons}
+
+
 def cleanup_missing_photos(db_path='photo_scores_pro.db', dry_run=False, force=False, verbose=True):
     """Delete photos from the database that are no longer on disk.
 
@@ -323,30 +386,8 @@ def cleanup_missing_photos(db_path='photo_scores_pro.db', dry_run=False, force=F
         logger.info("Removing missing files from the database (cascading deletes will clean up faces, tags, etc.)...")
 
     batch_size = 500
-    for i in range(0, len(targets), batch_size):
-        params = [(p,) for p in targets[i:i + batch_size]]
-        cursor.executemany("DELETE FROM photos WHERE path = ?", params)
-        # album_photos.photo_path has no ON DELETE CASCADE — drop memberships explicitly.
-        cursor.executemany("DELETE FROM album_photos WHERE photo_path = ?", params)
-        # album_client_picks cascades on album_id only, not photo_path — drop picks explicitly.
-        cursor.executemany("DELETE FROM album_client_picks WHERE photo_path = ?", params)
-        # An album cover may point at a now-deleted photo.
-        cursor.executemany("UPDATE albums SET cover_photo_path = NULL WHERE cover_photo_path = ?", params)
-
-    # Faces were cascade-deleted; refresh person face counts so the viewer stays accurate.
-    cursor.execute(
-        "UPDATE persons SET face_count = "
-        "(SELECT COUNT(*) FROM faces WHERE faces.person_id = persons.id)"
-    )
-    emptied_persons = cursor.execute(
-        "SELECT COUNT(*) FROM persons WHERE face_count = 0"
-    ).fetchone()[0]
-
-    # Invalidate stats cache since photo counts and details have changed
-    try:
-        cursor.execute("DELETE FROM stats_cache")
-    except sqlite3.OperationalError:
-        pass
+    result = delete_photo_rows(conn, targets)
+    emptied_persons = result["emptied_persons"]
 
     conn.commit()
 

@@ -106,6 +106,13 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
           </button>
         }
 
+        @if (auth.isEdition() && store.config()?.cull?.trash_available) {
+          <button mat-icon-button (click)="deletePhoto()"
+            [matTooltip]="I18N.photo_detail.delete.button_label | translate" [attr.aria-label]="I18N.photo_detail.delete.button_label | translate">
+            <mat-icon>delete</mat-icon>
+          </button>
+        }
+
         @if (auth.isEdition()) {
           <button mat-icon-button [matMenuTriggerFor]="categoryOverrideMenu"
             [matTooltip]="I18N.photo.category_override.menu_tooltip | translate" [attr.aria-label]="I18N.photo.category_override.menu_tooltip | translate">
@@ -1014,6 +1021,54 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
 
   protected openCritique(photo: Photo): void {
     this.photoActions.openCritique(photo);
+  }
+
+  /**
+   * Open the delete confirm dialog and, on confirm, call
+   * `PhotoActionsService.deletePhotos` for the single open photo.
+   *
+   * `hasSiblings`/`hasBracketLead` are read off the already-fetched
+   * `photoSet()` rather than a fresh request: a bracket/panorama/hdr_panorama
+   * set with more than one member offers the sibling checkbox, and this
+   * photo being that set's own bracket-kind lead frame is exactly the
+   * condition the endpoint refuses without `includeSequenceSiblings`
+   * (decision 7) -- known precisely here, unlike the gallery's bulk
+   * selection, which has no per-path lead signal client-side.
+   */
+  protected deletePhoto(): void {
+    const p = this.photo();
+    if (!p) return;
+    const set = this.photoSet();
+    const sequenceKinds = ['bracket', 'panorama', 'hdr_panorama'];
+    const hasSiblings = !!set?.kind && sequenceKinds.includes(set.kind) && set.count > 1;
+    const hasBracketLead = set?.kind === 'bracket'
+      && (set.members.find(m => m.path === p.path)?.is_lead ?? false);
+    import('../../shared/components/photo-delete-dialog/photo-delete-dialog.component').then(m => {
+      const ref = this.dialog.open(m.PhotoDeleteDialogComponent, {
+        width: '95vw',
+        maxWidth: '28rem',
+        data: {
+          surface: 'photo_detail',
+          paths: [p.path],
+          count: 1,
+          hasCompanion: true,
+          hasSiblings,
+          hasBracketLead,
+        },
+      });
+      ref.afterClosed().subscribe(async result => {
+        if (!result) return;
+        const res = await this.photoActions.deletePhotos([p.path], result);
+        if (!res) return;
+        if (res.deleted.includes(p.path)) {
+          this.store.removePhotos([p.path]);
+          this.snackBar.open(this.i18n.t(I18N.photo_detail.delete.success), '', { duration: 2000 });
+          this.goBack();
+        } else {
+          this.snackBar.open(this.i18n.t(I18N.photo_detail.delete.error), '', { duration: 3000 });
+        }
+      });
+    });
   }
 
   protected openCategoryOverride(p: Photo): void {

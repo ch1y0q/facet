@@ -2285,6 +2285,18 @@
       "kind_duplicate": "重复照片",
       "open_in_gallery": "在照片库中打开此照片组",
       "member_position": "第 {position} / {count} 张"
+    },
+    "delete": {
+      "button_label": "删除",
+      "confirm_title": "删除这张照片？",
+      "confirm_body": "文件将被发送到操作系统的回收站，在清空之前仍可恢复。",
+      "confirm_body_with_companion": "文件及其配套的 RAW／XMP 文件将被发送到操作系统的回收站，在清空之前仍可恢复。",
+      "confirm_body_with_siblings": "该组中的每一张照片都会被发送到操作系统的回收站，在清空之前仍可恢复。",
+      "confirm_body_bracket_refused": "此照片代表其包围曝光组，系统拒绝单独删除它——请勾选“包含整组”以一起删除所有照片。",
+      "include_companions": "包含配套的 RAW／XMP 文件",
+      "include_siblings": "包含整组",
+      "success": "照片已发送到回收站",
+      "error": "删除失败"
     }
   },
   "photo": {
@@ -2345,7 +2357,12 @@
     "apply": "应用",
     "cancel": "取消",
     "done": "选片文件操作已完成",
-    "error": "选片文件操作失败"
+    "error": "选片文件操作失败",
+    "delete_action": "删除…",
+    "delete_confirm_title": "删除照片？",
+    "delete_confirm_body": "张照片将被发送到操作系统的回收站，在清空之前仍可恢复。",
+    "delete_partial_result": "已删除 {deleted} 张，拒绝 {refused} 张",
+    "delete_disabled_view_scope_tooltip": "请明确选择照片以删除——此处不能使用整视图选择"
   },
   "shortcuts": {
     "title": "键盘快捷键",
