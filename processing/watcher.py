@@ -14,7 +14,7 @@ import sys
 import threading
 import time
 
-from utils.image_loading import WATCHABLE_IMAGE_EXTENSIONS
+from utils.image_loading import SCANNABLE_IMAGE_EXTENSIONS, WATCHABLE_IMAGE_EXTENSIONS
 
 logger = logging.getLogger("facet.watcher")
 
@@ -51,6 +51,20 @@ class _PendingChanges:
             paths = self._paths
             self._paths = set()
             return paths
+
+
+def _has_scannable_path(paths):
+    """Return True if any path's extension is one the scan collector decodes.
+
+    ``WATCH_SUFFIXES`` deliberately observes every HEIF container regardless of
+    whether this install can decode one, so a library that gains pillow-heif
+    later still sees files it already holds (see WATCHABLE_IMAGE_EXTENSIONS).
+    But the rescan subprocess derives its own list from
+    SCANNABLE_IMAGE_EXTENSIONS, which drops HEIF entirely without pillow-heif
+    -- so a batch made up only of paths that scan provably cannot collect
+    would spawn a scan for nothing, every debounce window, forever.
+    """
+    return any(os.path.splitext(path)[1].lower() in SCANNABLE_IMAGE_EXTENSIONS for path in paths)
 
 
 def _build_scan_command(directories, db_path, config_path):
@@ -132,6 +146,13 @@ def run_watch_loop(directories, db_path, config_path=None, debounce_seconds=30,
             time.sleep(1)
             batch = pending.take_if_settled(debounce_seconds)
             if batch:
+                if not _has_scannable_path(batch):
+                    logger.info(
+                        "Skipping scan: %d changed file(s) have no extension this "
+                        "install can decode (likely HEIF without pillow-heif)",
+                        len(batch),
+                    )
+                    continue
                 if _run_scan(f'{len(batch)} changed files'):
                     consecutive_failures = 0
                 else:

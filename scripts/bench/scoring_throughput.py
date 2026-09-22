@@ -42,6 +42,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scripts.bench import _common as bench
+from utils.image_loading import SCANNABLE_IMAGE_EXTENSIONS
 
 _BYTES_PER_MB = 1024 * 1024
 _MB_SUFFIX = "MB"
@@ -259,27 +260,10 @@ class ResourceTracker:
 
 
 def count_photos(directory: Path) -> int:
-    exts = {
-        ".jpg",
-        ".jpeg",
-        ".heif",
-        ".heic",
-        ".hif",
-        ".cr2",
-        ".cr3",
-        ".nef",
-        ".arw",
-        ".raf",
-        ".rw2",
-        ".dng",
-        ".orf",
-        ".srw",
-        ".pef",
-    }
     n = 0
     for root, _dirs, files in os.walk(directory):
         for f in files:
-            if Path(f).suffix.lower() in exts:
+            if Path(f).suffix.lower() in SCANNABLE_IMAGE_EXTENSIONS:
                 n += 1
     return n
 
