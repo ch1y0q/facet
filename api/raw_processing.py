@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+from collections.abc import Collection
 from io import BytesIO
 from pathlib import Path
 
@@ -188,7 +189,7 @@ _COMPANION_RAW_TTL = 300  # 5 minutes
 _COMPANION_RAW_MAX = 2048
 
 
-def _find_companion_raw_cached(stem: str, parent_dir: str, raw_extensions: set[str]) -> str | None:
+def _find_companion_raw_cached(stem: str, parent_dir: str, raw_extensions: Collection[str]) -> str | None:
     import time
     key = (stem, parent_dir)
     now = time.monotonic()

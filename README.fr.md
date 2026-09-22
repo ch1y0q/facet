@@ -16,7 +16,7 @@ Facet est un moteur local d'analyse et de tri de photos. Il évalue chaque image
 
 ## Fonctionnement
 
-1. **Analyse** — Pointez Facet vers un dossier de photos. Chaque image est analysée pour sa qualité, sa composition et ses visages. Prend en charge le JPG, le HEIF/HEIC et 10 formats RAW (CR2, CR3, NEF, ARW, RAF, RW2, DNG, ORF, SRW, PEF).
+1. **Analyse** — Pointez Facet vers un dossier de photos. Chaque image est analysée pour sa qualité, sa composition et ses visages. Prend en charge le JPG, le HEIF/HEIC/HIF (les images `.HIF` Canon HDR PQ sont décodées avec la fonction de transfert SMPTE ST 2084 PQ et tonemappées automatiquement en sRGB SDR) et 10 formats RAW (CR2, CR3, NEF, ARW, RAF, RW2, DNG, ORF, SRW, PEF).
 2. **Parcours** — Ouvrez la galerie web pour explorer votre bibliothèque avec des filtres, une recherche et plusieurs modes d'affichage.
 3. **Tri** — Facet détecte les rafales, signale les clignements, regroupe les photos similaires et fait remonter les meilleurs choix. Les bracketings d'exposition et les séries panorama/HDR sont reconnus et conservés intacts plutôt que dispersés par le tri.
 

@@ -22,7 +22,7 @@ copiar y pegar.
 ## Tipos de archivo admitidos
 
 - **JPEG** (.jpg, .jpeg)
-- **HEIF/HEIC** (.heic, .heif) — requiere `pillow-heif`
+- **HEIF/HEIC/HIF** (.heic, .heif, .hif) — requiere `pillow-heif`; las imágenes `.HIF` Canon HDR PQ se convierten (tone mapping) a sRGB SDR
 - **RAW** (.cr2, .cr3, .nef, .arw, .raf, .rw2, .dng, .orf, .srw, .pef) — se omiten si existe un JPEG/HEIC equivalente
 
 ## Preguntas frecuentes

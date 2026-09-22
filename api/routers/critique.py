@@ -549,9 +549,10 @@ def _load_critique_image(path, thumbnail_bytes):
         return Image.open(BytesIO(thumbnail_bytes)).convert('RGB')
 
     from api.path_validation import resolve_photo_disk_path
+    from utils.image_loading import open_nonraw_image
 
     disk_path = resolve_photo_disk_path(path)
-    img = Image.open(disk_path).convert('RGB')
+    img = open_nonraw_image(disk_path)
     img.thumbnail((640, 640))
     return img
 

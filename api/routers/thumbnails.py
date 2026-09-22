@@ -90,12 +90,16 @@ def _convert_raw_cached(file_path: str, mtime: float, quality: int = 96,
 
 @lru_cache(maxsize=32)
 def _convert_heif_cached(file_path: str, mtime: float, quality: int = 96) -> bytes:
-    """Convert a HEIF/HEIC file to JPEG bytes, cached by path+mtime+quality."""
-    from PIL import Image as PILImage
+    """Convert a HEIF/HEIC file to JPEG bytes, cached by path+mtime+quality.
+
+    Goes through the same loader as the scanner so EXIF orientation and HDR
+    PQ -> sRGB tone mapping (Canon .HIF) are applied here too — otherwise the
+    browser image would be dark/rotated relative to what was actually scored.
+    """
+    from utils.image_loading import open_nonraw_image
 
     buf = BytesIO()
-    with PILImage.open(file_path) as img:
-        img.convert("RGB").save(buf, format="JPEG", quality=quality)
+    open_nonraw_image(file_path).save(buf, format="JPEG", quality=quality)
     return buf.getvalue()
 
 
@@ -340,7 +344,7 @@ def image(
             quality = _get_image_jpeg_quality()
             jpeg_bytes = _convert_heif_cached(real_disk, mtime, quality)
             return _cached_image_response(jpeg_bytes, request)
-        except (OSError, ValueError):
+        except Exception:
             logger.exception("Failed to convert HEIF file: %s", real_disk)
             if want_fallback:
                 return _stored_thumbnail_response(path, request)

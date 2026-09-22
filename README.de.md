@@ -16,7 +16,7 @@ Facet ist eine lokale Engine zur Fotoanalyse und Bildauswahl. Sie bewertet jedes
 
 ## Funktionsweise
 
-1. **Scannen** — Richten Sie Facet auf einen Ordner mit Fotos. Jedes Bild wird auf Qualität, Komposition und Gesichter analysiert. Unterstützt JPG, HEIF/HEIC und 10 RAW-Formate (CR2, CR3, NEF, ARW, RAF, RW2, DNG, ORF, SRW, PEF).
+1. **Scannen** — Richten Sie Facet auf einen Ordner mit Fotos. Jedes Bild wird auf Qualität, Komposition und Gesichter analysiert. Unterstützt JPG, HEIF/HEIC/HIF (Canon-HDR-PQ-`.HIF`-Aufnahmen werden mit der SMPTE-ST-2084-PQ-Kurve decodiert und automatisch auf SDR-sRGB tone-gemappt) sowie 10 RAW-Formate (CR2, CR3, NEF, ARW, RAF, RW2, DNG, ORF, SRW, PEF).
 2. **Durchstöbern** — Öffnen Sie die Web-Galerie, um Ihre Bibliothek mit Filtern, Suche und mehreren Ansichtsmodi zu erkunden.
 3. **Aussortieren** — Facet erkennt Serienbilder, markiert Blinzler, gruppiert ähnliche Fotos und hebt die beste Auswahl hervor. Belichtungsreihen und Panorama-/HDR-Sets werden erkannt und vollständig erhalten, statt auseinandergerissen zu werden.
 

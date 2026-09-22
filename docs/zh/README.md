@@ -21,7 +21,7 @@ Facet 是一个多维度的照片分析引擎：它为本地照片库评分、�
 ## 支持的文件类型
 
 - **JPEG**（.jpg、.jpeg）
-- **HEIF/HEIC**（.heic、.heif）——需要 `pillow-heif`
+- **HEIF/HEIC/HIF**（.heic、.heif、.hif）——需要 `pillow-heif`；佳能 HDR PQ `.HIF` 照片会被 tone map 到 SDR sRGB
 - **RAW**（.cr2、.cr3、.nef、.arw、.raf、.rw2、.dng、.orf、.srw、.pef）——当存在同名的 JPEG/HEIC 时会跳过
 
 ## 常见问题

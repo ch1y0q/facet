@@ -593,7 +593,7 @@ Netzwerk), sehen Sie `Failed to download SAMP-Net weights: HTTP Error 404: Not F
 | `reverse_geocoder` | Reverse-Geocoding für GPS |
 | `psutil` | Auto-Tuning der Stapelverarbeitung (Systemüberwachung) |
 | `aiosqlite` | Asynchrones SQLite für die FastAPI-Lese-Endpunkte |
-| `sqlite-vec` | KNN auf Festplatte für Semantische Suche & Ähnlichkeit (greift auf den In-Memory-NumPy-Cache zurück, falls nicht vorhanden) |
+| `sqlite-vec` | KNN auf Festplatte für Semantische Suche & Ähnlichkeit (greift auf den In-Memory-NumPy-Cache zurück, falls nicht vorhanden); `pip install -e .[vec]` |
 
 Alle diese sind in `requirements.txt` enthalten; kein Profil benötigt zusätzliche
 Basis-Pakete.

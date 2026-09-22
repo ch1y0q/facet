@@ -22,6 +22,7 @@
 - [画质评估模型](#画质评估模型)
 - [处理](#处理)
 - [RAW 解码](#raw-解码)
+- [HDR PQ 色调映射](#hdr-pq-色调映射)
 - [连拍检测](#连拍检测)
 - [连拍评分](#连拍评分)
 - [重复照片检测](#重复照片检测)
@@ -958,6 +959,56 @@ LibRaw 不会失败，而是零填充成一张有效的全尺寸黑图，而无�
 连同文件名一起记入日志。
 
 ---
+
+## HDR PQ 色调映射
+
+佳能 HDR PQ 静态照片（`.HIF`）属于 HDR：HEIF 在 BT.2020 原色之上携带 PQ
+传递函数（SMPTE ST 2084），绝对亮度最高可达 10,000 尼特。质量模型与存储
+缩略图都在 8-bit SDR sRGB 空间工作，因此 PQ 图像会先解码、做 BT.2020 到
+sRGB 的原色转换、在线性光下做色调映射，最后套用 sRGB OETF。本段控制这一
+色调映射。它**仅**作用于 NCLX 色彩配置声明为 PQ 传递函数（特征值 16）的
+图像；无论 `enabled` 为何，SDR HEIF、HLG 与 JPEG 都原样透传。
+
+```json
+"hdr_pq_tonemap": {
+  "enabled": true,
+  "method": "hable",
+  "white_point": {
+    "mode": "percentile",
+    "percentile": 99.99,
+    "min_nits": 100.0,
+    "max_nits": 1200.0,
+    "fixed_nits": 1000.0
+  },
+  "chroma_preserve": "per_channel"
+}
+```
+
+| 设置 | 默认值 | 说明 |
+|---------|---------|-------------|
+| `enabled` | `true` | 是否把 PQ 图像色调映射到 SDR。设为 `false` 会原样返回解码器的 PQ 值、不做任何转换，照片库和评分会因此偏暗发灰；除非在调试管线，否则应保持开启 |
+| `method` | `hable` | 色调曲线。`hable` 是 ffmpeg 把 HDR 转 SDR 的 `tonemap` 滤镜所用的胶片感肩部曲线；`clip` 是简单的线性归一化加硬钳，仅作对照 |
+| `white_point.mode` | `percentile` | 逐图白场（映射到 SDR 白的亮度）如何确定。`percentile` 取最亮通道的一个高百分位；`max` 取单个最亮像素（与 ffmpeg 的信号峰值一致，但夜景里的一个热像素会把整帧压暗）；`fixed` 使用 `fixed_nits` |
+| `white_point.percentile` | `99.99` | `percentile` 模式使用的百分位。高到足以跟随大面积亮天空，又低到能忽略孤立的高光热点 |
+| `white_point.min_nits` | `100.0` | 白场下限；暗帧绝不会被归一化到 SDR 参考白以下 |
+| `white_point.max_nits` | `1200.0` | `percentile` 模式的上限；限制异常明亮的帧把曲线下压的程度 |
+| `white_point.fixed_nits` | `1000.0` | `fixed` 模式使用的白场 |
+| `chroma_preserve` | `per_channel` | `per_channel` 让 R/G/B 各通道独立滚降（更亮，但最亮高光处会有轻微色相偏移）；`max_channel` 像 ffmpeg 默认那样从最亮通道导出一个统一缩放，色相更准但整体略暗 |
+
+### 为什么白场逐图确定
+
+把 Hable 曲线归一化到固定的 100 尼特参考白，即 `hable(x)/hable(1)`，会把
+所有高于 100 尼特的像素钳成纯白。真实 HDR 静态照片的峰值往往在数百到数千
+尼特，因此明亮天空和窗户会丢失全部纹理（在一组佳能 HDR PQ 照片样本上，
+实测有 25-60% 的像素被钳白）。改为按逐图白场 `w` 归一化，即
+`hable(x)/hable(w)`，与 ffmpeg 在 `vf_tonemap.c` 中以逐帧检测的峰值除以
+`hable(peak)` 的做法一致。默认的 p99.99 百分位（钳制在 100-1200 尼特）既能
+保留高光纹理，又能忽略孤立的热像素。
+
+**参考来源。** PQ EOTF：SMPTE ST 2084:2014。Hable 曲线与逐帧峰值：
+ffmpeg `vf_tonemap.c`（John Hable，“Filmic Tonemapping Operators”，2010）。
+BT.2020 到 sRGB 矩阵：BT.2020-2 / IEC 61966-2-1（D65）。sRGB OETF：
+IEC 61966-2-1。NCLX 传递特征值 16：ISO/IEC 23001-8 / ITU-T H.273。
 
 ## 连拍检测
 

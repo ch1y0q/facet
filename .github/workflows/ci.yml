@@ -20,7 +20,7 @@ jobs:
           python-version: "3.12"
           cache: "pip"
       - name: Install test dependencies
-        run: pip install pytest pytest-asyncio pytest-cov fastapi[standard] httpx pyjwt pillow numpy scipy scikit-learn opencv-python-headless tqdm aiosqlite sqlite-vec imagehash psutil watchdog send2trash
+        run: pip install pytest pytest-asyncio pytest-cov fastapi[standard] httpx pyjwt pillow pillow-heif numpy scipy scikit-learn opencv-python-headless tqdm aiosqlite sqlite-vec imagehash psutil watchdog send2trash
       - name: Run tests
         run: python -m pytest --tb=short -q --cov=api --cov=processing --cov=analyzers --cov=config --cov=utils --cov-report=term-missing
       - uses: actions/setup-node@v7
@@ -65,7 +65,7 @@ jobs:
           python-version: "3.12"
           cache: "pip"
       - name: Install test dependencies
-        run: pip install pytest pytest-asyncio pytest-cov fastapi[standard] httpx pyjwt pillow numpy scipy scikit-learn opencv-python-headless tqdm aiosqlite sqlite-vec imagehash psutil send2trash
+        run: pip install pytest pytest-asyncio pytest-cov fastapi[standard] httpx pyjwt pillow pillow-heif numpy scipy scikit-learn opencv-python-headless tqdm aiosqlite sqlite-vec imagehash psutil send2trash
       - name: Run the platform-sensitive suites
         # Deliberately NOT the whole suite. Much of it hard-codes POSIX paths
         # ("/lib/a.jpg") that no Windows path ever matches, so a full run is

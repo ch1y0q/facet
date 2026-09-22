@@ -50,6 +50,24 @@
         }
       }
     },
+    "hdr_pq_tonemap": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "method": { "enum": ["hable", "clip"] },
+        "white_point": {
+          "type": "object",
+          "properties": {
+            "mode": { "enum": ["percentile", "max", "fixed"] },
+            "percentile": { "type": "number", "minimum": 0, "maximum": 100 },
+            "min_nits": { "type": "number", "minimum": 0 },
+            "max_nits": { "type": "number", "minimum": 0 },
+            "fixed_nits": { "type": "number", "minimum": 0 }
+          }
+        },
+        "chroma_preserve": { "enum": ["per_channel", "max_channel"] }
+      }
+    },
     "processing": { "type": "object" },
     "scoring": { "type": "object" },
     "thresholds": { "type": "object" },

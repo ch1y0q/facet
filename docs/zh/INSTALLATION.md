@@ -551,7 +551,7 @@ SAMP-Net 权重来自本项目的
 | `reverse_geocoder` | 针对 GPS 的反向地理编码 |
 | `psutil` | 批处理自动调优（系统监控） |
 | `aiosqlite` | 供 FastAPI 读取端点使用的异步 SQLite |
-| `sqlite-vec` | 用于语义搜索与相似照片的磁盘 KNN（缺失时回退到内存中的 NumPy 缓存） |
+| `sqlite-vec` | 用于语义搜索与相似照片的磁盘 KNN（缺失时回退到内存中的 NumPy 缓存）；`pip install -e .[vec]` |
 
 以上全部都在 `requirements.txt` 里；没有哪个配置档需要额外的基础软件包。
 

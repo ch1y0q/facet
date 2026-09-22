@@ -2482,6 +2482,18 @@
     "viewer_concurrency": 3,
     "faithful_bracket_render": true
   },
+  "hdr_pq_tonemap": {
+    "enabled": true,
+    "method": "hable",
+    "white_point": {
+      "mode": "percentile",
+      "percentile": 99.99,
+      "min_nits": 100.0,
+      "max_nits": 1200.0,
+      "fixed_nits": 1000.0
+    },
+    "chroma_preserve": "per_channel"
+  },
   "burst_detection": {
     "similarity_threshold_percent": 70,
     "time_window_minutes": 0.8,
