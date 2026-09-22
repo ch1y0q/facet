@@ -13,13 +13,17 @@ import numpy as np
 import pytest
 
 # sqlite-vec is an optional dependency; skip this whole module (rather than
-# error collection) on environments that don't install it. Importing is not
-# sufficient either: a sqlite3 built without extension loading (some pyenv /
-# system builds) can import the package yet cannot load the extension, so gate
-# on the same capability probe the runtime uses.
+# error collection) on environments that don't install it.
 sqlite_vec = pytest.importorskip("sqlite_vec")
 from db.connection import HAS_SQLITE_VEC  # noqa: E402
-pytestmark = pytest.mark.skipif(
+
+# Importing the package is not the same as being able to load its extension: a
+# sqlite3 built without extension loading (some pyenv / system builds) imports
+# it fine and then cannot load it. That gates the two tests that need a real
+# `vec0` table -- NOT the whole module, because the two fallback tests below
+# describe exactly what such a machine runs, and skipping them would remove the
+# coverage on the only environment where the fallback is the only path.
+needs_loadable_vec = pytest.mark.skipif(
     not HAS_SQLITE_VEC, reason="sqlite_vec is not loadable in this sqlite3"
 )
 
@@ -41,9 +45,15 @@ def _make_vec_db(path, embeddings, with_vec=True):
 
     `embeddings` is a dict {photo_path: np.ndarray}. No photo gets a pHash, so
     _find_similar_visual always enters the CLIP-only branch.
+
+    The extension is loaded only for `with_vec=True`. A `with_vec=False` DB is
+    the fallback case by construction -- there is no `photos_vec` to query --
+    so loading it there would make the fallback tests need a capability they
+    are specifically about not having.
     """
     conn = sqlite3.connect(path)
-    _load_vec(conn)
+    if with_vec:
+        _load_vec(conn)
     conn.row_factory = sqlite3.Row
     conn.execute(
         """CREATE TABLE photos (
@@ -92,6 +102,7 @@ def embeddings():
     return {f"/p{i}.jpg": rng.randn(DIM).astype(np.float32) for i in range(60)}
 
 
+@needs_loadable_vec
 def test_vec_branch_uses_match_and_matches_numpy_top10(tmp_path, embeddings):
     """vec0 KNN top-10 ordering is identical to the NumPy cosine reference."""
     db = str(tmp_path / "vec.db")
@@ -137,6 +148,7 @@ def test_numpy_fallback_identical_when_vec_unavailable(tmp_path, embeddings):
     conn.close()
 
 
+@needs_loadable_vec
 def test_vec_respects_visibility_filter(tmp_path, embeddings):
     """Rejected photos excluded by the visibility post-filter never appear."""
     db = str(tmp_path / "vis.db")
