@@ -21,7 +21,6 @@ import watchdog.observers  # noqa: E402
 import watchdog.observers.polling  # noqa: E402
 
 import processing.watcher as watcher  # noqa: E402
-from utils import image_loading  # noqa: E402
 from processing.watcher import (  # noqa: E402
     MAX_CONSECUTIVE_FAILURES,
     WATCH_SUFFIXES,
@@ -72,11 +71,11 @@ class TestPendingChangesAdd:
         pending.add("/library/IMG_0001.CR2")
         assert pending.take_if_settled(0) == {"/library/IMG_0001.CR2"}
 
-    @pytest.mark.skipif(not image_loading._heif_available,
-                        reason="pillow-heif not installed; .HIF is not watchable without a decoder")
     def test_canon_hif_events_are_accepted(self):
         # Canon HDR PQ stills use the .HIF extension; watch mode must not drop
-        # their create/modify events the way the old hard-coded list did.
+        # their create/modify events the way the old hard-coded list did. NOT
+        # skipped without pillow-heif: watch mode observes the KNOWN container
+        # set, so the decoder-less job is the one this most needs to run in.
         pending = _PendingChanges()
         pending.add("/library/IMG_0001.HIF")
         assert pending.take_if_settled(0) == {"/library/IMG_0001.HIF"}
