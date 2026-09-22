@@ -7,43 +7,43 @@ Chaque réglage est fourni dans `config/scoring_config.default.json` puis surcha
 ## Table des matières
 
 - [Valeurs par défaut et votre surcharge](#valeurs-par-défaut-et-votre-surcharge)
-- [Utilisateurs](#users)
-- [Analyse](#scanning)
-- [Catégories](#categories)
+- [Utilisateurs](#utilisateurs)
+- [Analyse](#analyse)
+- [Catégories](#catégories)
 - [Contextes de notation](#contextes-de-notation)
-- [Notation](#scoring)
-- [Seuils](#thresholds)
+- [Notation](#notation)
+- [Seuils](#seuils)
 - [Composition](#composition)
-- [Ajustements EXIF](#exif-adjustments)
-- [Exposition](#exposure)
-- [Pénalités](#penalties)
-- [Normalisation](#normalization)
-- [Modèles](#models)
-- [Modèles d'évaluation de la qualité](#quality-assessment-models)
-- [Traitement](#processing)
+- [Ajustements EXIF](#ajustements-exif)
+- [Exposition](#exposition)
+- [Pénalités](#pénalités)
+- [Normalisation](#normalisation)
+- [Modèles](#modèles)
+- [Modèles d'évaluation de la qualité](#modèles-dévaluation-de-la-qualité)
+- [Traitement](#traitement)
 - [Décodage RAW](#décodage-raw)
 - [Mappage de tons HDR PQ](#mappage-de-tons-hdr-pq)
-- [Détection de rafales](#burst-detection)
-- [Notation des rafales](#burst-scoring)
-- [Détection de doublons](#duplicate-detection)
-- [Détection des visages](#face-detection)
-- [Regroupement des visages](#face-clustering)
-- [Traitement des visages](#face-processing)
-- [Détection monochrome](#monochrome-detection)
-- [Étiquetage](#tagging)
-- [Étiquettes autonomes](#standalone-tags)
-- [Analyse](#analysis)
-- [Visionneuse](#viewer)
+- [Détection de rafales](#détection-de-rafales)
+- [Notation des rafales](#notation-des-rafales)
+- [Détection de doublons](#détection-de-doublons)
+- [Détection des visages](#détection-des-visages)
+- [Regroupement des visages](#regroupement-des-visages)
+- [Traitement des visages](#traitement-des-visages)
+- [Détection monochrome](#détection-monochrome)
+- [Étiquetage](#étiquetage)
+- [Étiquettes autonomes](#étiquettes-autonomes)
+- [Analyse](#analyse)
+- [Visionneuse](#visionneuse)
 - [Performance](#performance)
-- [Stockage](#storage)
+- [Stockage](#stockage)
 - [Plugins](#plugins)
 - [Capsules](#capsules)
-- [Groupes de similarité](#similarity-groups)
-- [Scènes](#scenes)
+- [Groupes de similarité](#groupes-de-similarité)
+- [Scènes](#scènes)
 - [OCR](#ocr)
-- [Frise chronologique](#timeline)
-- [Carte](#map)
-- [Traduction](#translation)
+- [Frise chronologique](#frise-chronologique)
+- [Carte](#carte)
+- [Traduction](#traduction)
 
 ---
 
@@ -503,9 +503,9 @@ Sélectionne les modèles utilisés selon le profil VRAM.
         "clip_config": "clip_legacy",
         "composition_model": "samp-net",
         "tagging_model": "clip",
-        "supplementary_pyiqa": [],
-        "saliency_enabled": false,
-        "description": "CLIP-MLP aesthetic + SAMP-Net composition + CLIP tagging (8GB+ RAM)"
+        "supplementary_pyiqa": ["topiq_iaa", "topiq_nr_face", "liqe"],
+        "saliency_enabled": true,
+        "description": "CPU: CLIP-MLP aesthetic + SAMP-Net composition + CLIP tagging + TOPIQ IAA/NR-Face/LIQE + BiRefNet saliency (8GB+ RAM; saliency/IQA are slower on CPU)"
       },
       "8gb": {
         "aesthetic_model": "clip-mlp",
@@ -513,8 +513,8 @@ Sélectionne les modèles utilisés selon le profil VRAM.
         "composition_model": "samp-net",
         "tagging_model": "clip",
         "supplementary_pyiqa": ["topiq_iaa", "topiq_nr_face", "liqe"],
-        "saliency_enabled": false,
-        "description": "CLIP-MLP aesthetic + SAMP-Net composition + CLIP tagging (6-14GB VRAM)"
+        "saliency_enabled": true,
+        "description": "CLIP-MLP aesthetic + SAMP-Net composition + CLIP tagging + TOPIQ IAA/NR-Face/LIQE + BiRefNet saliency (6-14GB VRAM)"
       },
       "16gb": {
         "aesthetic_model": "topiq",
@@ -626,6 +626,18 @@ Lorsque `vram_profile` vaut `"auto"` (par défaut), le système détecte la VRAM
 | ≥ 14 Go | `16gb` |
 | ≥ 6 Go | `8gb` |
 | Pas de GPU | `legacy` (utilise la RAM système) |
+
+---
+
+### Surcharge par la variable d'environnement `FACET_VRAM_PROFILE`
+
+La variable d'environnement `FACET_VRAM_PROFILE` surcharge `models.vram_profile` au chargement (prise en charge par `config/scoring_config.py`), si bien qu'une seule configuration montée peut servir tous les profils Docker sans modifier le JSON. Les valeurs acceptées sont `auto`, `legacy`, `8gb`, `16gb` et `24gb` ; toute autre valeur est ignorée avec un avertissement (une faute de frappe ne peut donc pas fausser silencieusement une analyse). Les surcouches Docker Compose par profil (`docker-compose.{legacy,8gb,16gb,24gb}.yml`) définissent cette variable pour vous.
+
+La surcharge est **valable uniquement à l'exécution et n'est jamais réécrite dans `scoring_config.json`**, même lorsqu'une autre modification déclenche un enregistrement — une correction automatique de pondération, par exemple. C'est cette garantie qui rend une configuration montée utilisable par plusieurs conteneurs à la fois : sans elle, le premier conteneur à enregistrer figerait `models.vram_profile` sur sa propre valeur, et tous les autres conteneurs lisant le même fichier en hériteraient, quelle que soit leur propre variable. Un `vram_profile` que vous avez défini vous-même dans le fichier reste intact et l'emporte toujours lorsque la variable n'est pas définie.
+
+```bash
+FACET_VRAM_PROFILE=8gb python facet.py /path/to/photos
+```
 
 ---
 
@@ -968,6 +980,92 @@ que cela passe inaperçu. Le rejet est journalisé avec le nom du fichier.
 
 ---
 
+## Mappage de tons HDR PQ
+
+Les images Canon HDR PQ (`.HIF`) sont HDR : le HEIF porte la fonction de
+transfert PQ (SMPTE ST 2084) sur des primaires BT.2020, avec une luminance
+absolue jusqu’à 10 000 nits. Les modèles de qualité et la vignette stockée
+travaillent en sRGB SDR 8 bits ; une image PQ est donc décodée à la
+profondeur native du boîtier, convertie de BT.2020 vers sRGB, mappée en lumière
+linéaire puis encodée avec l’OETF sRGB — la réduction à 8 bits n’intervient
+qu’à cette dernière étape. Ce bloc contrôle ce mappage. Il ne s’applique qu’aux images dont le profil de
+couleur NCLX déclare le transfert PQ (caractéristique 16) ; les HEIF SDR, HLG
+et JPEG passent tels quels, quelle que soit la valeur de `enabled`.
+
+```json
+"hdr_pq_tonemap": {
+  "enabled": true,
+  "method": "hable",
+  "white_point": {
+    "mode": "percentile",
+    "percentile": 99.99,
+    "min_nits": 100.0,
+    "max_nits": 1200.0,
+    "fixed_nits": 1000.0
+  },
+  "chroma_preserve": "per_channel"
+}
+```
+
+| Réglage | Défaut | Description |
+|---------|---------|-------------|
+| `enabled` | `true` | Mapper les images PQ en SDR. Avec `false`, les valeurs PQ brutes du décodeur sont renvoyées sans conversion, ce qui laisse la galerie et les notes avec une image sombre et délavée ; à laisser activé sauf pour déboguer la chaîne |
+| `method` | `hable` | Courbe de tons. `hable` est la courbe filmique (épaule) utilisée par le filtre `tonemap` HDR vers SDR de ffmpeg ; `clip` est une simple normalisation linéaire avec écrasement brutal, uniquement à titre de référence |
+| `white_point.mode` | `percentile` | Manière de choisir le point blanc par image (la luminance mappée sur le blanc SDR). `percentile` prend un percentile élevé du canal le plus clair ; `max` utilise le pixel le plus clair (équivaut au pic de signal de ffmpeg, mais un pixel chaud dans une scène nocturne assombrit toute l’image) ; `fixed` utilise `fixed_nits` |
+| `white_point.percentile` | `99.99` | Percentile utilisé en mode `percentile`. Assez haut pour suivre un grand ciel clair, assez bas pour ignorer les pixels spéculaires isolés |
+| `white_point.min_nits` | `100.0` | Plancher du point blanc ; une image sombre n’est jamais normalisée sous le blanc de référence SDR |
+| `white_point.max_nits` | `1200.0` | Plafond en mode `percentile` ; limite dans quelle mesure une image inhabituellement claire peut tirer la courbe vers le bas |
+| `white_point.fixed_nits` | `1000.0` | Point blanc utilisé en mode `fixed` |
+| `chroma_preserve` | `per_channel` | `per_channel` fait rouler chaque canal R/V/B indépendamment (plus clair, avec un léger décalage de teinte dans les plus hautes lumières) ; `max_channel` dérive une échelle du canal le plus clair comme le défaut de ffmpeg, en préservant la teinte pour un résultat légèrement plus sombre |
+
+### Pourquoi le point blanc est déterminé par image
+
+Normaliser la courbe Hable sur un blanc de référence fixe de 100 nits,
+`hable(x)/hable(1)`, écrase en blanc pur tout pixel au-dessus de 100 nits. Les
+photos HDR réelles culminent à plusieurs centaines voire quelques milliers de
+nits : les ciels et fenêtres clairs perdaient donc toute texture (25 à 60 %
+des pixels écrasés en blanc sur un échantillon de photos Canon HDR PQ). La
+courbe est plutôt normalisée sur un point blanc par image `w`,
+`hable(x)/hable(w)`, comme ffmpeg divise par `hable(peak)` avec un pic mesuré
+par image dans `vf_tonemap.c`. Le percentile par défaut p99.99, borné à
+100-1200 nits, conserve la texture des hautes lumières tout en ignorant les
+pixels chauds isolés.
+
+### Pourquoi le décodage se fait à la profondeur native du boîtier
+
+Le PQ encode une luminance absolue : sa plage de codes couvre toute l’échelle
+ST 2084 de 0 à 10 000 nits, quel que soit le contenu réel. En 8 bits, seuls
+130 codes environ tombent sous le blanc diffus, et un quart de la plage couvre
+les 1000-10 000 nits qu’un boîtier masterisé à 1000 nits n’atteint jamais.
+Décoder en 8 bits avant que l’EOTF ne les dilate provoque donc une postérisation
+des dégradés lisses.
+
+Le décodage réclame désormais au décodeur HEIF la profondeur propre du fichier
+(10 bits sur les boîtiers actuels) et la table d’EOTF est dimensionnée en
+conséquence : la réduction à 8 bits a lieu après la courbe de tons, plus avant.
+Mesuré sur une rampe PQ de 1024 paliers : la voie 8 bits atteint 170 niveaux de
+sortie distincts avec 86 niveaux intermédiaires vides, la voie native atteint
+les 256 sans aucun trou.
+
+Cela ne change rien de mesurable sur une photographie : le bruit du capteur
+diffuse déjà les paliers 8 bits, si bien qu’une vraie image PQ Canon remplit 248
+des 256 casiers de luminance dans les deux cas, et que ses pourcentages
+d’écrêtage, ses indicateurs `shadow_clipped` / `highlight_clipped` et son
+`exposure_score` sont inchangés. Le gain porte sur le contenu synthétique lisse :
+ciels dégagés, fonds de studio, bokeh marqué. Le pic mémoire n’augmente pas
+pour autant : le tampon uint16 du décodeur est plus large, mais emprunter cette
+voie signifie que Pillow ne décode jamais l’image, si bien qu’une image PQ de
+12 Mpx culmine à 166,4 Mio contre 212,3 Mio pour la voie 8 bits. Un HEIF SDR
+n’est jamais décodé ainsi. Un décodeur incapable de fournir la profondeur native
+retombe silencieusement sur la voie 8 bits, et `enabled: false` court-circuite
+l’ensemble.
+
+**Références.** EOTF PQ : SMPTE ST 2084:2014. Courbe Hable et pic par image :
+ffmpeg `vf_tonemap.c` (John Hable, « Filmic Tonemapping Operators », 2010).
+Matrice BT.2020 vers sRGB : BT.2020-2 / IEC 61966-2-1 avec D65. OETF sRGB :
+IEC 61966-2-1. Caractéristique de transfert NCLX 16 : ISO/IEC 23001-8 /
+UIT-T H.273.
+
 ## Détection de rafales
 
 Regroupe les photos similaires prises en succession rapide.
@@ -1015,62 +1113,6 @@ Passez `enabled` à `false` pour supprimer complètement la requête sortante.
 | `interval_days` | `7` | Durée de mise en cache du résultat avant une nouvelle interrogation |
 
 ---
-
-## Mappage de tons HDR PQ
-
-Les images Canon HDR PQ (`.HIF`) sont HDR : le HEIF porte la fonction de
-transfert PQ (SMPTE ST 2084) sur des primaires BT.2020, avec une luminance
-absolue jusqu’à 10 000 nits. Les modèles de qualité et la vignette stockée
-travaillent en sRGB SDR 8 bits ; une image PQ est donc décodée, convertie de
-BT.2020 vers sRGB, mappée en lumière linéaire puis encodée avec l’OETF sRGB.
-Ce bloc contrôle ce mappage. Il ne s’applique qu’aux images dont le profil de
-couleur NCLX déclare le transfert PQ (caractéristique 16) ; les HEIF SDR, HLG
-et JPEG passent tels quels, quelle que soit la valeur de `enabled`.
-
-```json
-"hdr_pq_tonemap": {
-  "enabled": true,
-  "method": "hable",
-  "white_point": {
-    "mode": "percentile",
-    "percentile": 99.99,
-    "min_nits": 100.0,
-    "max_nits": 1200.0,
-    "fixed_nits": 1000.0
-  },
-  "chroma_preserve": "per_channel"
-}
-```
-
-| Réglage | Défaut | Description |
-|---------|---------|-------------|
-| `enabled` | `true` | Mapper les images PQ en SDR. Avec `false`, les valeurs PQ brutes du décodeur sont renvoyées sans conversion, ce qui laisse la galerie et les notes avec une image sombre et délavée ; à laisser activé sauf pour déboguer la chaîne |
-| `method` | `hable` | Courbe de tons. `hable` est la courbe filmique (épaule) utilisée par le filtre `tonemap` HDR vers SDR de ffmpeg ; `clip` est une simple normalisation linéaire avec écrasement brutal, uniquement à titre de référence |
-| `white_point.mode` | `percentile` | Manière de choisir le point blanc par image (la luminance mappée sur le blanc SDR). `percentile` prend un percentile élevé du canal le plus clair ; `max` utilise le pixel le plus clair (équivaut au pic de signal de ffmpeg, mais un pixel chaud dans une scène nocturne assombrit toute l’image) ; `fixed` utilise `fixed_nits` |
-| `white_point.percentile` | `99.99` | Percentile utilisé en mode `percentile`. Assez haut pour suivre un grand ciel clair, assez bas pour ignorer les pixels spéculaires isolés |
-| `white_point.min_nits` | `100.0` | Plancher du point blanc ; une image sombre n’est jamais normalisée sous le blanc de référence SDR |
-| `white_point.max_nits` | `1200.0` | Plafond en mode `percentile` ; limite dans quelle mesure une image inhabituellement claire peut tirer la courbe vers le bas |
-| `white_point.fixed_nits` | `1000.0` | Point blanc utilisé en mode `fixed` |
-| `chroma_preserve` | `per_channel` | `per_channel` fait rouler chaque canal R/V/B indépendamment (plus clair, avec un léger décalage de teinte dans les plus hautes lumières) ; `max_channel` dérive une échelle du canal le plus clair comme le défaut de ffmpeg, en préservant la teinte pour un résultat légèrement plus sombre |
-
-### Pourquoi le point blanc est déterminé par image
-
-Normaliser la courbe Hable sur un blanc de référence fixe de 100 nits,
-`hable(x)/hable(1)`, écrase en blanc pur tout pixel au-dessus de 100 nits. Les
-photos HDR réelles culminent à plusieurs centaines voire quelques milliers de
-nits : les ciels et fenêtres clairs perdaient donc toute texture (25 à 60 %
-des pixels écrasés en blanc sur un échantillon de photos Canon HDR PQ). La
-courbe est plutôt normalisée sur un point blanc par image `w`,
-`hable(x)/hable(w)`, comme ffmpeg divise par `hable(peak)` avec un pic mesuré
-par image dans `vf_tonemap.c`. Le percentile par défaut p99.99, borné à
-100-1200 nits, conserve la texture des hautes lumières tout en ignorant les
-pixels chauds isolés.
-
-**Références.** EOTF PQ : SMPTE ST 2084:2014. Courbe Hable et pic par image :
-ffmpeg `vf_tonemap.c` (John Hable, « Filmic Tonemapping Operators », 2010).
-Matrice BT.2020 vers sRGB : BT.2020-2 / IEC 61966-2-1 avec D65. OETF sRGB :
-IEC 61966-2-1. Caractéristique de transfert NCLX 16 : ISO/IEC 23001-8 /
-UIT-T H.273.
 
 ## Détection de séquences
 
@@ -1163,7 +1205,8 @@ Les seuils ont été calibrés sur 26 panoramas et 8 non-panoramas confirmés à
     "min_frames": 8,
     "min_drift": 0.43,
     "min_inliers": 25,
-    "hdr_min_span_stops": 1.5
+    "hdr_min_span_stops": 1.5,
+    "sift_features": 400
   }
 }
 ```
@@ -1808,7 +1851,7 @@ Activez ou désactivez des fonctionnalités optionnelles pour réduire l'utilisa
 | `show_my_taste` | `true` | Afficher le tri « My Taste » fondé sur le score appris du classeur personnel, avec un badge de confiance couverture-apprise / précision |
 | `show_social_export` | `true` | Affiche le menu **Recadrage social** (réservé à l'édition) : recadrages sensibles au sujet pour les formats des réseaux sociaux. Voir [Export social](#export-social) |
 | `show_portfolio_export` | `true` | Affiche l'action d'album **Exporter le portfolio** (réservée à l'édition) : galerie HTML statique autonome. Voir [Export de portfolio](#export-de-portfolio) |
-| `show_proofing` | `false` | Active l'épreuvage client sur les albums partagés : un lien de partage (plus un code PIN facultatif) permet à un client sans compte de mettre un cœur aux photos et de laisser des commentaires, que le propriétaire de l'album examine depuis une boîte de dialogue réservée à l'édition. Désactivé par défaut. Voir [Épreuvage client](#client-proofing) |
+| `show_proofing` | `false` | Active l'épreuvage client sur les albums partagés : un lien de partage (plus un code PIN facultatif) permet à un client sans compte de mettre un cœur aux photos et de laisser des commentaires, que le propriétaire de l'album examine depuis une boîte de dialogue réservée à l'édition. Désactivé par défaut. Voir [Épreuvage client](#épreuvage-client) |
 
 **Optimisation mémoire :** définir `show_similar_button: false` empêche le chargement de numpy, réduisant l'empreinte mémoire de la visionneuse. La fonctionnalité de photos similaires calcule la similarité cosinus des embeddings CLIP, ce qui nécessite numpy.
 
@@ -2328,7 +2371,14 @@ Le signal repose sur la **sémantique de la légende** : la légende IA de chaq
         "transformers": { "min_confidence": 0.10, "min_margin": 0.01 }
       }
     },
-    "priors": { "enabled": true, "weight": 0.04 },
+    "priors": {
+      "enabled": true, "weight": 0.04, "caption_tag_scale": 0.25,
+      "rules": [
+        { "kind": "structural", "when": { "is_group_portrait": true, "face_count_min": 4 }, "boost": { "group_gathering": 1.0 } },
+        { "kind": "tag", "when": { "tags_any": ["beach", "ocean", "sand"] }, "boost": { "beach": 0.8 } }
+      ],
+      "event_types": { "wedding": { "rules": [ { "kind": "tag", "when": { "tags_any": ["cake"] }, "boost": { "cake_cutting": 1.0 } } ] } }
+    },
     "vlm_tiebreak": { "enabled": false, "min_confidence": 0.0, "min_margin": 0.04 },
     "transitions": { "stay_prob": 0.7, "forward_bias": 0.0, "weight": 0.3 },
     "event_types": { "general": { "beach": ["people at a sandy beach by the sea", "..."], "...": [] }, "wedding": { "vows": ["the couple exchanging vows at the altar", "..."] } }
@@ -2347,7 +2397,8 @@ Le signal repose sur la **sémantique de la légende** : la légende IA de chaq
 | `thresholds.<signal>.<backend>.min_margin` | caption `0.02`/`0.01`, image `0.01`/`0.01` | Écart cosinus minimal top-1/top-2 ; en dessous, l'image est `other` |
 | `priors.enabled` / `priors.weight` | `true` / `0.04` | Coups de pouce L1 visage/étiquette qui ne départagent que les quasi-égalités ; `weight` plafonne chaque ajustement à l'échelle cosinus |
 | `priors.caption_tag_scale` | `0.25` | Atténue les règles `tag` sur le signal caption (le L0 encode déjà la légende) ; les règles structurelles gardent tout leur poids |
-| `priors.rules` / `priors.event_types.<et>.rules` | (jeu général) | Règles déclaratives `{kind, when, boost}` indépendantes du vocabulaire ; un `boost` ciblant un moment absent du vocabulaire actif est ignoré. Les règles par `event_type` remplacent la liste globale. Référence complète des prédicats : doc anglaise |
+| `priors.rules` | (jeu général) | Règles déclaratives `{kind, when, boost}` indépendantes du vocabulaire. `kind` : `structural` (géométrie des visages) ou `tag`. Prédicats `when` (tous combinés par ET) : `is_group_portrait`, `face_count_min`/`face_count_max`, `face_ratio_min`/`face_ratio_max`, `tags_any`, `tags_all`. `boost` : `{moment: valeur}` — un moment absent du vocabulaire actif est ignoré, si bien qu'un même jeu de règles se dégrade proprement d'un vocabulaire à l'autre |
+| `priors.event_types.<et>.rules` | surcharge `wedding` | Règles par type d'événement qui **remplacent** les `rules` globales quand ce vocabulaire est actif, ce qui garde la liste partagée indépendante du vocabulaire |
 | `transitions.stay_prob` / `forward_bias` / `weight` | `0.7` / `0.0` / `0.3` | Lissage de chronologie L2 (Viterbi) : à forte tendance auto-boucle sans progression vers l'avant (le vocabulaire agnostique n'a pas d'ordre canonique), appliqué légèrement (`weight=0` = pas de lissage) |
 | `vlm_tiebreak.enabled` / `min_confidence` / `min_margin` | `false` / `0.0` / `0.04` | Départage L3 (désormais actif) : lorsqu'il est activé sur les profils 16gb/24gb, seules les images à faible postérieur (sous `min_confidence`) ou à faible marge (sous `min_margin`) sont reclassées par le VLM du profil pendant `--detect-moments` / `--recompute-moments` : reclasser les images à faible marge avec le VLM Qwen (16gb/24gb uniquement) |
 | `event_types` | `general` + `wedding` | `{moment: [synonymes de prompt]}` par type d'événement ; définissez `default_event_type` pour changer de genre ou ajouter le vôtre |
@@ -2508,7 +2559,7 @@ Diffuse les « meilleures photos » vers des appareils kiosque sans authentifica
 
 Les jetons sont comparés à temps constant en octets UTF-8 : un jeton manquant renvoie 401 et un jeton erroné ou non-ASCII renvoie 403 (jamais 500). La sélection exclut les photos rejetées, indésirables (`junk_kind`) et avec clignement, puis applique le seuil de score / favoris / catégories ; l'ensemble renvoyé est un échantillon aléatoire pondéré par le score.
 
-Un jeton de cadre n'est pas une connexion utilisateur : il ne porte aucun `user_id` et est vérifié par rapport à toute la bibliothèque, donc en [mode multi-utilisateur](#users), il ignore les `directories` privés de chaque utilisateur et accorde un accès en lecture aux photos de tous les utilisateurs, pas seulement aux `shared_directories`. N'émettez des jetons de cadre que sur les installations où chaque utilisateur configuré est à l'aise avec cela.
+Un jeton de cadre n'est pas une connexion utilisateur : il ne porte aucun `user_id` et est vérifié par rapport à toute la bibliothèque, donc en [mode multi-utilisateur](#utilisateurs), il ignore les `directories` privés de chaque utilisateur et accorde un accès en lecture aux photos de tous les utilisateurs, pas seulement aux `shared_directories`. N'émettez des jetons de cadre que sur les installations où chaque utilisateur configuré est à l'aise avec cela.
 
 ## Envoi automatique depuis le téléphone
 
@@ -2570,6 +2621,26 @@ Détecteur zero-shot pour les fichiers non photographiques « indésirables »
 | `kinds` | screenshot/document/receipt/meme/slide | `{type: [synonymes de prompt]}` ; ajoutez, retirez ou renommez les types librement — la colonne et la file de la visionneuse suivent la configuration |
 | `not_junk_prompts` | 8 prompts de photographie | Jeu contrastif décrivant de vraies photographies ; le filtre qui garde les photos authentiques hors de la file |
 
+## Critique IA
+
+Configuration du prompt de la critique propulsée par VLM (profils 16gb/24gb). La critique injecte la décomposition complète des règles, les pénalités et l'EXIF dans un prompt à paliers configurable, restitue la réponse sous forme Observation / Évaluation / Suggestions, et la met en cache par photo dans `photos.vlm_critique` (traduite à la demande dans `vlm_critique_translated`). Elle s'exécute sur la vignette stockée, si bien que les fichiers RAW sont critiqués correctement au lieu d'échouer en silence ; `refresh` régénère. Le palier par défaut suit la structure à quatre aptitudes d'AesBench (percevoir → ressentir → juger → conseiller) : son Évaluation donne un verdict bref sur la composition, la couleur & la lumière, la mise au point/PdC & l'exécution technique, et le sujet & le moment, chacun confronté aux métriques injectées plutôt que de répéter les chiffres.
+
+```json
+{
+  "critique": {
+    "vlm": {
+      "max_new_tokens": 320
+    }
+  }
+}
+```
+
+| Réglage | Défaut | Description |
+|---------|--------|-------------|
+| `critique.vlm.max_new_tokens` | `320` | Budget de jetons pour la génération de la critique VLM structurée |
+
+Voir [Visionneuse web — Critique IA](VIEWER.md#critique-ia).
+
 ## Backend VLM
 
 Choisit où s'exécute le modèle vision-langage de légendage/étiquetage. `local` (par défaut) utilise le chemin transformers Qwen en process, embarqué avec les profils VRAM 16gb/24gb — aucun changement pour les installations existantes. Les deux backends distants pointent Facet vers un serveur externe afin que le légendage et l'étiquetage VLM fonctionnent sur les **profils legacy/8gb qui n'embarquent aucun VLM local** : quand un backend distant est sélectionné, les fonctionnalités VLM ne dépendent plus du profil VRAM.
@@ -2605,26 +2676,6 @@ Choisit où s'exécute le modèle vision-langage de légendage/étiquetage. `loc
 | `openai_compatible.timeout_seconds` | `120` | Délai d'expiration par requête pour les appels compatibles OpenAI |
 
 Le backend partagé pilote le légendage (`--generate-captions` et l'endpoint à la demande `/api/caption`), la critique VLM (`/api/critique?mode=vlm`), le ré-étiquetage VLM (`--recompute-tags-vlm`), et le départage VLM des moments narratifs. Un échec de requête distante est rapporté comme un échec par photo (journalisé, tags vides / pas de légende) et ne fait jamais planter l'exécution. L'étiquetage en cours de scan utilise toujours l'étiqueteur propre au profil ; exécutez `--recompute-tags-vlm` pour appliquer un backend distant à une bibliothèque existante.
-
-## Critique IA
-
-Configuration du prompt de la critique propulsée par VLM (profils 16gb/24gb). La critique injecte la décomposition complète des règles, les pénalités et l'EXIF dans un prompt à paliers configurable, restitue la réponse sous forme Observation / Évaluation / Suggestions, et la met en cache par photo dans `photos.vlm_critique` (traduite à la demande dans `vlm_critique_translated`). Elle s'exécute sur la vignette stockée, si bien que les fichiers RAW sont critiqués correctement au lieu d'échouer en silence ; `refresh` régénère. Le palier par défaut suit la structure à quatre aptitudes d'AesBench (percevoir → ressentir → juger → conseiller) : son Évaluation donne un verdict bref sur la composition, la couleur & la lumière, la mise au point/PdC & l'exécution technique, et le sujet & le moment, chacun confronté aux métriques injectées plutôt que de répéter les chiffres.
-
-```json
-{
-  "critique": {
-    "vlm": {
-      "max_new_tokens": 320
-    }
-  }
-}
-```
-
-| Réglage | Défaut | Description |
-|---------|--------|-------------|
-| `critique.vlm.max_new_tokens` | `320` | Budget de jetons pour la génération de la critique VLM structurée |
-
-Voir [Visionneuse web — Critique IA](VIEWER.md#critique-ia).
 
 ## Attributs de distorsion
 

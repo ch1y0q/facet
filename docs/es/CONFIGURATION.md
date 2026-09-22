@@ -502,9 +502,9 @@ Selecciona qué modelos se usan por cada perfil de VRAM.
         "clip_config": "clip_legacy",
         "composition_model": "samp-net",
         "tagging_model": "clip",
-        "supplementary_pyiqa": [],
-        "saliency_enabled": false,
-        "description": "CLIP-MLP aesthetic + SAMP-Net composition + CLIP tagging (8GB+ RAM)"
+        "supplementary_pyiqa": ["topiq_iaa", "topiq_nr_face", "liqe"],
+        "saliency_enabled": true,
+        "description": "CPU: CLIP-MLP aesthetic + SAMP-Net composition + CLIP tagging + TOPIQ IAA/NR-Face/LIQE + BiRefNet saliency (8GB+ RAM; saliency/IQA are slower on CPU)"
       },
       "8gb": {
         "aesthetic_model": "clip-mlp",
@@ -512,8 +512,8 @@ Selecciona qué modelos se usan por cada perfil de VRAM.
         "composition_model": "samp-net",
         "tagging_model": "clip",
         "supplementary_pyiqa": ["topiq_iaa", "topiq_nr_face", "liqe"],
-        "saliency_enabled": false,
-        "description": "CLIP-MLP aesthetic + SAMP-Net composition + CLIP tagging (6-14GB VRAM)"
+        "saliency_enabled": true,
+        "description": "CLIP-MLP aesthetic + SAMP-Net composition + CLIP tagging + TOPIQ IAA/NR-Face/LIQE + BiRefNet saliency (6-14GB VRAM)"
       },
       "16gb": {
         "aesthetic_model": "topiq",
@@ -626,6 +626,18 @@ Cuando `vram_profile` es `"auto"` (por defecto), el sistema detecta la VRAM disp
 | ≥ 14GB | `16gb` |
 | ≥ 6GB | `8gb` |
 | Sin GPU | `legacy` (usa la RAM del sistema) |
+
+---
+
+### Anulación mediante la variable de entorno `FACET_VRAM_PROFILE`
+
+La variable de entorno `FACET_VRAM_PROFILE` anula `models.vram_profile` en el momento de la carga (lo aplica `config/scoring_config.py`), de modo que una sola configuración montada puede servir a todos los perfiles de Docker sin editar el JSON. Los valores aceptados son `auto`, `legacy`, `8gb`, `16gb` y `24gb`; cualquier otro valor se ignora con una advertencia (así una errata no puede provocar un análisis erróneo en silencio). Las superposiciones de Docker Compose por perfil (`docker-compose.{legacy,8gb,16gb,24gb}.yml`) definen esta variable por ti.
+
+La anulación es **solo de tiempo de ejecución y nunca se reescribe en `scoring_config.json`**, ni siquiera cuando otra edición provoca un guardado — una corrección automática de pesos, por ejemplo. Esa garantía es lo que hace que una configuración montada sea utilizable por varios contenedores a la vez: sin ella, el primer contenedor en guardar fijaría `models.vram_profile` con su propio valor y todos los demás contenedores que leyeran el mismo archivo lo heredarían, dijera lo que dijera su propia variable. Un `vram_profile` que hayas puesto tú en el archivo queda intacto y sigue ganando cuando la variable no está definida.
+
+```bash
+FACET_VRAM_PROFILE=8gb python facet.py /path/to/photos
+```
 
 ---
 
@@ -983,8 +995,9 @@ Las fotos fijas Canon HDR PQ (`.HIF`) son HDR: el HEIF lleva la función de
 transferencia PQ (SMPTE ST 2084) sobre primarios BT.2020, con luminancia
 absoluta de hasta 10.000 nits. Los modelos de calidad y la miniatura
 almacenada trabajan en sRGB SDR de 8 bits, por lo que una imagen PQ se
-decodifica, se convierte de BT.2020 a sRGB, se mapea por tono en luz lineal y
-se codifica con la OETF sRGB. Este bloque controla ese mapeo. Se aplica
+decodifica a la profundidad nativa de la cámara, se convierte de BT.2020 a sRGB,
+se mapea por tono en luz lineal y se codifica con la OETF sRGB: el estrechamiento
+a 8 bits solo ocurre en ese último paso. Este bloque controla ese mapeo. Se aplica
 **solo** a las imágenes cuyo perfil de color NCLX declara la transferencia PQ
 (característica 16); el HEIF SDR, HLG y JPEG pasan sin cambios independientemente
 de `enabled`.
@@ -1027,6 +1040,34 @@ PQ). La curva se normaliza en un punto blanco por imagen `w`,
 medido por fotograma en `vf_tonemap.c`. El percentil por defecto p99.99,
 acotado a 100-1200 nits, conserva la textura de los brillos y a la vez ignora
 los píxeles calientes aislados.
+
+### Por qué la decodificación usa la profundidad nativa de la cámara
+
+El PQ codifica luminancia absoluta: su rango de códigos se reparte por toda la
+escala ST 2084 de 0 a 10.000 nits, alcance lo que alcance el contenido real. A
+8 bits solo unos 130 de los 256 códigos caen por debajo del blanco difuso, y un
+cuarto del rango cubre los 1000-10.000 nits que una cámara masterizada a
+1000 nits nunca alcanza. Decodificar a 8 bits antes de que la EOTF los expanda
+posteriza, por tanto, los degradados suaves.
+
+La decodificación ahora pide al decodificador HEIF la profundidad propia del
+archivo (10 bits en las cámaras actuales) y la tabla de EOTF se dimensiona en
+consecuencia: el estrechamiento a 8 bits ocurre después de la curva de tono en
+vez de antes. Medido sobre una rampa PQ de 1024 escalones: la vía de 8 bits
+alcanza 170 niveles de salida distintos con 86 niveles intermedios vacíos, la vía
+nativa alcanza los 256 sin ninguno.
+
+Esto no cambia nada medible en una fotografía: el ruido del sensor ya difunde los
+escalones de 8 bits, así que una imagen PQ Canon real llena 248 de los 256
+compartimentos de luminancia en ambos casos, y sus porcentajes de recorte, sus
+indicadores `shadow_clipped` / `highlight_clipped` y su `exposure_score` no
+varían. La ganancia está en el contenido sintético suave: cielos despejados,
+fondos de estudio, bokeh intenso. La memoria pico no sube por ello: el búfer
+uint16 del decodificador es más ancho, pero tomar esta vía significa que Pillow
+no decodifica la imagen en absoluto, así que una imagen PQ de 12 MP llega a
+166,4 MiB frente a los 212,3 MiB de la vía de 8 bits. Un HEIF SDR nunca se
+decodifica así. Un decodificador que no pueda dar la profundidad nativa vuelve en
+silencio a la vía de 8 bits, y `enabled: false` omite todo el proceso.
 
 **Referencias.** EOTF PQ: SMPTE ST 2084:2014. Curva Hable y pico por fotograma:
 ffmpeg `vf_tonemap.c` (John Hable, «Filmic Tonemapping Operators», 2010).
@@ -1169,7 +1210,8 @@ Los umbrales se calibraron con 26 panorámicas y 8 no panorámicas confirmadas a
     "min_frames": 8,
     "min_drift": 0.43,
     "min_inliers": 25,
-    "hdr_min_span_stops": 1.5
+    "hdr_min_span_stops": 1.5,
+    "sift_features": 400
   }
 }
 ```
@@ -2334,7 +2376,14 @@ La señal es **semántica de leyenda**: la leyenda de IA de cada foto se codific
         "transformers": { "min_confidence": 0.10, "min_margin": 0.01 }
       }
     },
-    "priors": { "enabled": true, "weight": 0.04 },
+    "priors": {
+      "enabled": true, "weight": 0.04, "caption_tag_scale": 0.25,
+      "rules": [
+        { "kind": "structural", "when": { "is_group_portrait": true, "face_count_min": 4 }, "boost": { "group_gathering": 1.0 } },
+        { "kind": "tag", "when": { "tags_any": ["beach", "ocean", "sand"] }, "boost": { "beach": 0.8 } }
+      ],
+      "event_types": { "wedding": { "rules": [ { "kind": "tag", "when": { "tags_any": ["cake"] }, "boost": { "cake_cutting": 1.0 } } ] } }
+    },
     "vlm_tiebreak": { "enabled": false, "min_confidence": 0.0, "min_margin": 0.04 },
     "transitions": { "stay_prob": 0.7, "forward_bias": 0.0, "weight": 0.3 },
     "event_types": { "general": { "beach": ["people at a sandy beach by the sea", "..."], "...": [] }, "wedding": { "vows": ["the couple exchanging vows at the altar", "..."] } }
@@ -2353,7 +2402,8 @@ La señal es **semántica de leyenda**: la leyenda de IA de cada foto se codific
 | `thresholds.<signal>.<backend>.min_margin` | caption `0.02`/`0.01`, image `0.01`/`0.01` | Brecha coseno top-1/top-2 mínima; por debajo de ella el fotograma es `other` |
 | `priors.enabled` / `priors.weight` | `true` / `0.04` | Empujones L1 de rostro/etiqueta que solo deshacen casi-empates; `weight` limita cada ajuste a la escala del coseno |
 | `priors.caption_tag_scale` | `0.25` | Reduce las reglas `tag` en la señal caption (L0 ya codifica el pie de foto); las reglas estructurales conservan todo su peso |
-| `priors.rules` / `priors.event_types.<et>.rules` | (conjunto general) | Reglas declarativas `{kind, when, boost}` independientes del vocabulario; un `boost` hacia un momento ausente del vocabulario activo se omite. Las reglas por `event_type` reemplazan la lista global. Referencia completa de predicados: doc en inglés |
+| `priors.rules` | (conjunto general) | Lista declarativa `{kind, when, boost}`, independiente del vocabulario. `kind`: `structural` (geometría de rostros) o `tag`. Predicados `when` (todos en AND): `is_group_portrait`, `face_count_min`/`face_count_max`, `face_ratio_min`/`face_ratio_max`, `tags_any`, `tags_all`. `boost`: `{moment: cantidad}` — un momento ausente del vocabulario activo se omite en silencio, de modo que un mismo conjunto de reglas degrada con elegancia entre vocabularios |
+| `priors.event_types.<et>.rules` | anulación `wedding` | Reglas por tipo de evento que **reemplazan** las `rules` globales cuando ese vocabulario está activo, manteniendo la lista compartida libre de vocabulario |
 | `transitions.stay_prob` / `forward_bias` / `weight` | `0.7` / `0.0` / `0.3` | Suavizado L2 de la línea de tiempo (Viterbi): sesgo fuerte a permanecer sin progresión hacia delante (el vocabulario agnóstico no tiene un orden canónico), aplicado de forma ligera (`weight=0` = sin suavizado) |
 | `vlm_tiebreak.enabled` / `min_confidence` / `min_margin` | `false` / `0.0` / `0.04` | Desempate L3 (ahora activo): cuando se activa en perfiles 16gb/24gb, solo los fotogramas de bajo posterior (por debajo de `min_confidence`) o bajo margen (por debajo de `min_margin`) se reclasifican con el VLM del perfil durante `--detect-moments` / `--recompute-moments` |
 | `event_types` | `general` + `wedding` | `{moment: [sinónimos de prompt]}` por tipo de evento; establece `default_event_type` para cambiar de género o añadir el tuyo propio |
@@ -2576,6 +2626,26 @@ Detector zero-shot para archivos no fotográficos "basura" — capturas de panta
 | `kinds` | screenshot/document/receipt/meme/slide | `{tipo: [sinónimos de prompt]}`; añade, quita o renombra tipos libremente — la columna y la cola del visor siguen la configuración |
 | `not_junk_prompts` | 8 prompts fotográficos | Conjunto de contraste que describe fotografías reales; el filtro que mantiene las fotos genuinas fuera de la cola |
 
+## Crítica con IA
+
+Configuración de prompt para la crítica basada en VLM (perfiles 16gb/24gb). La crítica inyecta el desglose completo de reglas, las penalizaciones y el EXIF en un prompt escalonado configurable, presenta la respuesta como Observación / Evaluación / Sugerencias y la almacena en caché por foto en `photos.vlm_critique` (traducida bajo demanda a `vlm_critique_translated`). Se ejecuta sobre la miniatura almacenada, de modo que los archivos RAW se critican correctamente en lugar de fallar en silencio; `refresh` la regenera. La escala por defecto sigue la estructura de cuatro capacidades de AesBench (percibir → sentir → juzgar → aconsejar): su Evaluación da un breve veredicto sobre composición, color y luz, enfoque/PdC y ejecución técnica, y sujeto y momento, cada uno contrastado con las métricas inyectadas en lugar de repetir los números.
+
+```json
+{
+  "critique": {
+    "vlm": {
+      "max_new_tokens": 320
+    }
+  }
+}
+```
+
+| Ajuste | Por defecto | Descripción |
+|---------|---------|-------------|
+| `critique.vlm.max_new_tokens` | `320` | Presupuesto de tokens para la generación estructurada de la crítica con VLM |
+
+Consulta [Galería web — Crítica con IA](VIEWER.md#crítica-con-ia).
+
 ## Backend VLM
 
 Elige dónde se ejecuta el modelo de visión y lenguaje de leyendas/etiquetas. `local` (por defecto) usa la ruta transformers Qwen en proceso, incluida en los perfiles VRAM 16gb/24gb — sin cambios para las instalaciones existentes. Los dos backends remotos apuntan Facet a un servidor externo para que el subtitulado y el etiquetado VLM funcionen en los **perfiles legacy/8gb que no incluyen ningún VLM local**: cuando se selecciona un backend remoto, las funciones VLM ya no dependen del perfil de VRAM.
@@ -2611,26 +2681,6 @@ Elige dónde se ejecuta el modelo de visión y lenguaje de leyendas/etiquetas. `
 | `openai_compatible.timeout_seconds` | `120` | Tiempo de espera por solicitud para las llamadas compatibles con OpenAI |
 
 El backend compartido impulsa el subtitulado (`--generate-captions` y el endpoint bajo demanda `/api/caption`), la crítica VLM (`/api/critique?mode=vlm`), el reetiquetado VLM (`--recompute-tags-vlm`) y el desempate VLM de momentos narrativos. Un fallo de solicitud remota se registra como un fallo por foto (registrado, tags vacíos / sin leyenda) y nunca hace fallar la ejecución. El etiquetado durante el escaneo sigue usando el etiquetador propio del perfil; ejecuta `--recompute-tags-vlm` para aplicar un backend remoto a una biblioteca existente.
-
-## Crítica con IA
-
-Configuración de prompt para la crítica basada en VLM (perfiles 16gb/24gb). La crítica inyecta el desglose completo de reglas, las penalizaciones y el EXIF en un prompt escalonado configurable, presenta la respuesta como Observación / Evaluación / Sugerencias y la almacena en caché por foto en `photos.vlm_critique` (traducida bajo demanda a `vlm_critique_translated`). Se ejecuta sobre la miniatura almacenada, de modo que los archivos RAW se critican correctamente en lugar de fallar en silencio; `refresh` la regenera. La escala por defecto sigue la estructura de cuatro capacidades de AesBench (percibir → sentir → juzgar → aconsejar): su Evaluación da un breve veredicto sobre composición, color y luz, enfoque/PdC y ejecución técnica, y sujeto y momento, cada uno contrastado con las métricas inyectadas en lugar de repetir los números.
-
-```json
-{
-  "critique": {
-    "vlm": {
-      "max_new_tokens": 320
-    }
-  }
-}
-```
-
-| Ajuste | Por defecto | Descripción |
-|---------|---------|-------------|
-| `critique.vlm.max_new_tokens` | `320` | Presupuesto de tokens para la generación estructurada de la crítica con VLM |
-
-Consulta [Galería web — Crítica con IA](VIEWER.md#crítica-con-ia).
 
 ## Atributos de distorsión
 
