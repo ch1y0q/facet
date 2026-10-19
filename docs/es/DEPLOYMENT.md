@@ -263,6 +263,8 @@ DSM > Panel de control > Portal de inicio de sesión > Avanzado > Proxy inverso:
 
 Combínalo con un certificado de Let's Encrypt desde DSM > Panel de control > Seguridad > Certificado.
 
+Si usas el puente de pestaña para agentes (consulta [Agentes de IA](AGENTS.md)), abre también la pestaña **Encabezado personalizado** de la regla y elige **Crear > WebSocket**: añade las cabeceras `Upgrade` y `Connection` que necesita `/api/mcp/bridge`. Si la regla reescribe la cabecera `Host`, indica también tu origen público en `viewer.mcp.allowed_origins`.
+
 ## NAS Synology (serie Plus / x86)
 
 Los NAS de la serie Plus admiten Docker (Container Manager).
@@ -316,6 +318,8 @@ COPY i18n/ i18n/
 EXPOSE 5000
 CMD ["uvicorn", "api:create_app", "--factory", "--host", "0.0.0.0", "--port", "5000", "--workers", "4"]
 ```
+
+Varios workers no funcionan con el puente de pestaña para agentes: su registro de pestañas es por proceso, así que con más de un worker una llamada `ui_*` puede llegar a un proceso que no conoce tu pestaña y responder `no_tab`. Usa `--workers 1` si usas los [Agentes de IA](AGENTS.md).
 
 ```yaml
 services:
@@ -506,6 +510,8 @@ O usa el wrapper (predeterminado a 1 worker; pasa `--workers N` para más):
 python viewer.py --production --workers 4
 ```
 
+Varios workers no funcionan con el puente de pestaña para agentes: su registro de pestañas es por proceso, así que con más de un worker una llamada `ui_*` puede llegar a un proceso que no conoce tu pestaña y responder `no_tab`. Usa `--workers 1` si usas los [Agentes de IA](AGENTS.md).
+
 ### Uvicorn + Nginx
 
 ```nginx
@@ -520,8 +526,19 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         client_max_body_size 50M;
     }
+
+    location /api/mcp/bridge {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $http_host;
+        proxy_read_timeout 3600s;
+    }
 }
 ```
+
+El puente de pestaña para agentes (`/api/mcp/bridge`, consulta [Agentes de IA](AGENTS.md)) es un WebSocket, así que necesita las cabeceras `Upgrade` y `Connection` del segundo bloque `location`; sin ellas el handshake falla y las herramientas `ui_*` responden `no_tab`. También necesita un único worker (`--workers 1`, el valor por defecto).
 
 Añade HTTPS:
 ```bash
@@ -546,6 +563,8 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 ```
+
+Varios workers no funcionan con el puente de pestaña para agentes: su registro de pestañas es por proceso, así que con más de un worker una llamada `ui_*` puede llegar a un proceso que no conoce tu pestaña y responder `no_tab`. Usa `--workers 1` si usas los [Agentes de IA](AGENTS.md).
 
 ```bash
 sudo systemctl enable --now facet

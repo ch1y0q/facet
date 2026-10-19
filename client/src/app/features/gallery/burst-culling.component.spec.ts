@@ -184,6 +184,35 @@ describe('BurstCullingComponent', () => {
     });
   });
 
+  describe('showGroupForAgent (ui_show_culling_group)', () => {
+    const show = (type: string, groupId: number): Promise<unknown> =>
+      (component as any).showGroupForAgent({ type, group_id: groupId });
+
+    it('stops paging when a page fails instead of re-requesting it', async () => {
+      await (component as any).loadGroups();
+      component['totalPages'].set(3);
+      mockApi.get.mockClear();
+      mockApi.get.mockReturnValue(throwError(() => new Error('down')));
+      await expect(show('burst', 99)).rejects.toMatchObject({ code: 'not_found' });
+      expect(mockApi.get).toHaveBeenCalledTimes(1);
+    });
+
+    it('waits for a load already in flight rather than racing it', async () => {
+      await (component as any).loadGroups();
+      component['totalPages'].set(2);
+      const pending = new Subject<unknown>();
+      mockApi.get.mockClear();
+      mockApi.get.mockReturnValue(pending);
+      const scrolled = (component as any).loadMore() as Promise<void>;
+      const asked = show('burst', 3);
+      pending.next({ groups: [{ group_id: 3, type: 'burst', reason: '', photos: [], best_path: '', count: 0 }], total_groups: 3, page: 2, per_page: 20, total_pages: 2 });
+      pending.complete();
+      await scrolled;
+      await expect(asked).resolves.toMatchObject({ group_id: 3 });
+      expect(mockApi.get).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('toggleSelection', () => {
     beforeEach(async () => {
       await (component as any).loadGroups();

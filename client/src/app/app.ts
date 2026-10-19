@@ -574,6 +574,11 @@ export class App implements OnInit {
     this.auth.logout();
   }
 
+  protected async showConnectAssistantDialog(): Promise<void> {
+    const { ConnectAssistantDialogComponent } = await import('./features/agent/connect-assistant-dialog.component');
+    this.dialog.open(ConnectAssistantDialogComponent, { width: '95vw', maxWidth: '640px' });
+  }
+
   protected showEditionDialog(): void {
     this.dialog.open(EditionDialogComponent, { width: '95vw', maxWidth: '360px' });
   }

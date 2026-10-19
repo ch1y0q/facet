@@ -28,8 +28,12 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from api.agent import limits, tokens
 from api.agent.internal_client import InternalClient
 from api.agent.internal_client import err
+from api.agent.bridge import TabRegistry
 from api.agent.runtime import bearer_token, to_result
 from api.agent.tools_read import register_read_tools
+from api.agent.tools_ui import register_ui_tools
+from api.agent.tokens import ResolvedGrant
+from api.agent.ui_tools import tools_version
 from api.config import mcp_settings
 
 logger = logging.getLogger(__name__)
@@ -178,10 +182,16 @@ def mount_agent(app: FastAPI) -> StreamableHTTPSessionManager:
     client = InternalClient(app)
     version = _server_version()
 
-    def status_extra() -> dict[str, Any]:
-        return {"server_version": version}
+    registry = getattr(app.state, "tab_registry", None)
+    if registry is None:
+        registry = app.state.tab_registry = TabRegistry()
+
+    def status_extra(resolved: ResolvedGrant) -> dict[str, Any]:
+        return {"server_version": version, "tabs": registry.describe(resolved.principal),
+                "ui_tools_version": tools_version()}
 
     register_read_tools(server, client, status_extra)
+    register_ui_tools(server, registry)
     sdk_app = server.streamable_http_app(
         streamable_http_path=MCP_PATH,
         json_response=True,

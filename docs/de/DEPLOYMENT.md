@@ -265,6 +265,8 @@ DSM > Systemsteuerung > Anmeldeportal > Erweitert > Reverse-Proxy:
 
 Kombinieren Sie dies mit einem Let's-Encrypt-Zertifikat aus DSM > Systemsteuerung > Sicherheit > Zertifikat.
 
+Wenn Sie die Tab-Brücke für Agenten nutzen (siehe [KI-Agenten](AGENTS.md)), öffnen Sie zusätzlich den Reiter **Benutzerdefinierter Header** der Regel und wählen Sie **Erstellen > WebSocket**: Das fügt die Header `Upgrade` und `Connection` hinzu, die `/api/mcp/bridge` braucht. Schreibt die Regel den `Host`-Header um, tragen Sie Ihren öffentlichen Ursprung zusätzlich in `viewer.mcp.allowed_origins` ein.
+
 ## Synology NAS (Plus / x86-Serie)
 
 NAS der Plus-Serie unterstützen Docker (Container Manager).
@@ -311,6 +313,8 @@ COPY i18n/ i18n/
 EXPOSE 5000
 CMD ["uvicorn", "api:create_app", "--factory", "--host", "0.0.0.0", "--port", "5000", "--workers", "4"]
 ```
+
+Mehrere Worker vertragen sich nicht mit der Tab-Brücke für Agenten: Ihr Tab-Register gilt pro Prozess, daher kann ein `ui_*`-Aufruf bei mehr als einem Worker einen Prozess erreichen, der Ihren Tab nicht kennt, und `no_tab` melden. Verwenden Sie `--workers 1`, wenn Sie [KI-Agenten](AGENTS.md) nutzen.
 
 ```yaml
 services:
@@ -500,6 +504,8 @@ Oder verwenden Sie den Wrapper (Standard ist 1 Worker; übergeben Sie `--workers
 python viewer.py --production --workers 4
 ```
 
+Mehrere Worker vertragen sich nicht mit der Tab-Brücke für Agenten: Ihr Tab-Register gilt pro Prozess, daher kann ein `ui_*`-Aufruf bei mehr als einem Worker einen Prozess erreichen, der Ihren Tab nicht kennt, und `no_tab` melden. Verwenden Sie `--workers 1`, wenn Sie [KI-Agenten](AGENTS.md) nutzen.
+
 ### Uvicorn + Nginx
 
 ```nginx
@@ -514,8 +520,19 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         client_max_body_size 50M;
     }
+
+    location /api/mcp/bridge {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $http_host;
+        proxy_read_timeout 3600s;
+    }
 }
 ```
+
+Die Tab-Brücke für Agenten (`/api/mcp/bridge`, siehe [KI-Agenten](AGENTS.md)) ist ein WebSocket und braucht die Header `Upgrade` und `Connection` des zweiten `location`-Blocks; ohne sie schlägt der Handshake fehl und die `ui_*`-Werkzeuge antworten `no_tab`. Außerdem braucht sie einen einzigen Worker (`--workers 1`, der Standard).
 
 HTTPS hinzufügen:
 ```bash
@@ -540,6 +557,8 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 ```
+
+Mehrere Worker vertragen sich nicht mit der Tab-Brücke für Agenten: Ihr Tab-Register gilt pro Prozess, daher kann ein `ui_*`-Aufruf bei mehr als einem Worker einen Prozess erreichen, der Ihren Tab nicht kennt, und `no_tab` melden. Verwenden Sie `--workers 1`, wenn Sie [KI-Agenten](AGENTS.md) nutzen.
 
 ```bash
 sudo systemctl enable --now facet

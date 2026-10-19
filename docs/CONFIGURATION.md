@@ -2577,7 +2577,8 @@ Exposes the read tools described in [AI Agents (MCP)](AGENTS.md) at `POST /mcp`.
       "call_timeout_s": 30,
       "semantic_timeout_s": 120,
       "rate_per_min": 120,
-      "write_rate_per_min": 30
+      "write_rate_per_min": 30,
+      "allowed_origins": []
     }
   }
 }
@@ -2586,13 +2587,14 @@ Exposes the read tools described in [AI Agents (MCP)](AGENTS.md) at `POST /mcp`.
 | Key | Default | Description |
 |-----|---------|-------------|
 | `enabled` | `false` | Master switch for `/mcp` and `/api/mcp/*`. Off means both answer 404. |
-| `bridge` | `true` | Reserved for the browser-tab bridge. Reported by the `status` tool; it has no other effect yet. |
+| `bridge` | `true` | Whether the browser-tab bridge (`/api/mcp/bridge`) accepts WebSockets and the `ui_*` tools can reach a tab. When `false`, the bridge answers 404 and `ui_*` tools return an error saying so. Needs a single worker. |
 | `max_rows` | `100` | Maximum rows in one tool result (1 to 500). Extra rows are dropped and `truncated: true` is set. |
 | `max_bytes` | `60000` | Maximum serialized size of one tool result in bytes (4000 to 500000). |
-| `call_timeout_s` | `30` | Timeout for one tool call in seconds (1 to 300). |
+| `call_timeout_s` | `30` | Timeout for one tool call in seconds (1 to 300). It also bounds how long a `ui_*` call waits for the browser tab (`tab_timeout`). |
 | `semantic_timeout_s` | `120` | Timeout for `semantic_search` in seconds (1 to 300); it loads the embedding model, so it needs more. |
 | `rate_per_min` | `120` | Tool calls per minute per token (minimum 1). |
 | `write_rate_per_min` | `30` | Write calls per minute per token (minimum 1). Kept separate so reads cannot starve writes. No write tool is registered yet. |
+| `allowed_origins` | `[]` | Extra browser origins (for example `["https://photos.example.com"]`) allowed to open the tab bridge when a reverse proxy rewrites `Host`. Distinct from the CORS key `viewer.allowed_origins`. |
 
 Out-of-range numbers are clamped, and a value of the wrong type falls back to the default. The block is read on every request, so a configuration reload toggles the feature without a restart.
 

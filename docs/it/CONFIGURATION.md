@@ -2600,7 +2600,8 @@ Espone gli strumenti di lettura descritti in [Agenti IA (MCP)](AGENTS.md) su `PO
       "call_timeout_s": 30,
       "semantic_timeout_s": 120,
       "rate_per_min": 120,
-      "write_rate_per_min": 30
+      "write_rate_per_min": 30,
+      "allowed_origins": []
     }
   }
 }
@@ -2609,13 +2610,14 @@ Espone gli strumenti di lettura descritti in [Agenti IA (MCP)](AGENTS.md) su `PO
 | Chiave | Predefinito | Descrizione |
 |-----|---------|-------------|
 | `enabled` | `false` | Interruttore generale di `/mcp` e `/api/mcp/*`. Disattivato, entrambi rispondono 404. |
-| `bridge` | `true` | Riservato al ponte verso la scheda del browser. Riportato dallo strumento `status`; per ora non ha altri effetti. |
+| `bridge` | `true` | Se il ponte verso la scheda del browser (`/api/mcp/bridge`) accetta WebSocket e gli strumenti `ui_*` possono raggiungere una scheda. Con `false`, il ponte risponde 404 e gli strumenti `ui_*` restituiscono un errore esplicito. Richiede un solo worker. |
 | `max_rows` | `100` | Numero massimo di righe in un risultato di strumento (da 1 a 500). Le righe in eccesso vengono scartate e si imposta `truncated: true`. |
 | `max_bytes` | `60000` | Dimensione serializzata massima di un risultato di strumento in byte (da 4000 a 500000). |
-| `call_timeout_s` | `30` | Timeout di una chiamata di strumento in secondi (da 1 a 300). |
+| `call_timeout_s` | `30` | Timeout di una chiamata di strumento in secondi (da 1 a 300). Limita anche l'attesa di una chiamata `ui_*` verso la scheda del browser (`tab_timeout`). |
 | `semantic_timeout_s` | `120` | Timeout di `semantic_search` in secondi (da 1 a 300); carica il modello di embedding e richiede più tempo. |
 | `rate_per_min` | `120` | Chiamate di strumento al minuto per token (minimo 1). |
 | `write_rate_per_min` | `30` | Chiamate di scrittura al minuto per token (minimo 1). Tenuto separato perché le letture non affamino le scritture. Per ora non è registrato alcuno strumento di scrittura. |
+| `allowed_origins` | `[]` | Origini del browser aggiuntive (per esempio `["https://photos.example.com"]`) autorizzate ad aprire il ponte della scheda quando un reverse proxy riscrive `Host`. Distinta dalla chiave CORS `viewer.allowed_origins`. |
 
 I numeri fuori intervallo vengono riportati nei limiti e un valore di tipo errato torna al predefinito. Il blocco è letto a ogni richiesta, quindi un ricaricamento della configurazione attiva o disattiva la funzione senza riavvio.
 

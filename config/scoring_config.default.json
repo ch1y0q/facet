@@ -3736,7 +3736,8 @@
       "call_timeout_s": 30,
       "semantic_timeout_s": 120,
       "rate_per_min": 120,
-      "write_rate_per_min": 30
+      "write_rate_per_min": 30,
+      "allowed_origins": []
     },
     "raw_processor": {
       "backend": "rawpy",

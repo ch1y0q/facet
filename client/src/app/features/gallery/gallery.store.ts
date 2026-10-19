@@ -256,6 +256,8 @@ export class GalleryStore {
   readonly filters = signal<GalleryFilters>({ ...DEFAULT_FILTERS });
   readonly currentAlbum = signal<Album | null>(null);
   readonly initializing = signal(false);
+  /** Bumped each time the gallery page initialises, so a caller that navigated to it can await a real mount rather than a delay. */
+  readonly galleryMounts = signal(0);
   private smartSaveTimer: ReturnType<typeof setTimeout> | null = null;
   private rangeLoadTimer: ReturnType<typeof setTimeout> | null = null;
   readonly photos = signal<Photo[]>([]);

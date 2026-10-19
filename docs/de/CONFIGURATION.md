@@ -2605,7 +2605,8 @@ Stellt die in [KI-Agenten (MCP)](AGENTS.md) beschriebenen Lesewerkzeuge unter `P
       "call_timeout_s": 30,
       "semantic_timeout_s": 120,
       "rate_per_min": 120,
-      "write_rate_per_min": 30
+      "write_rate_per_min": 30,
+      "allowed_origins": []
     }
   }
 }
@@ -2614,13 +2615,14 @@ Stellt die in [KI-Agenten (MCP)](AGENTS.md) beschriebenen Lesewerkzeuge unter `P
 | Schlüssel | Standard | Beschreibung |
 |-----|---------|-------------|
 | `enabled` | `false` | Hauptschalter für `/mcp` und `/api/mcp/*`. Deaktiviert antworten beide mit 404. |
-| `bridge` | `true` | Reserviert für die Brücke zum Browser-Tab. Wird vom Werkzeug `status` gemeldet; sonst bisher ohne Wirkung. |
+| `bridge` | `true` | Ob die Brücke zum Browser-Tab (`/api/mcp/bridge`) WebSockets annimmt und die `ui_*`-Werkzeuge einen Tab erreichen können. Bei `false` antwortet die Brücke mit 404 und `ui_*`-Werkzeuge melden einen entsprechenden Fehler. Erfordert einen einzigen Worker. |
 | `max_rows` | `100` | Höchstzahl an Zeilen in einem Werkzeug-Ergebnis (1 bis 500). Überzählige Zeilen werden verworfen und `truncated: true` gesetzt. |
 | `max_bytes` | `60000` | Maximale serialisierte Größe eines Werkzeug-Ergebnisses in Bytes (4000 bis 500000). |
-| `call_timeout_s` | `30` | Zeitlimit für einen Werkzeugaufruf in Sekunden (1 bis 300). |
+| `call_timeout_s` | `30` | Zeitlimit für einen Werkzeugaufruf in Sekunden (1 bis 300). Begrenzt auch, wie lange ein `ui_*`-Aufruf auf den Browser-Tab wartet (`tab_timeout`). |
 | `semantic_timeout_s` | `120` | Zeitlimit für `semantic_search` in Sekunden (1 bis 300); es lädt das Embedding-Modell und braucht daher mehr. |
 | `rate_per_min` | `120` | Werkzeugaufrufe pro Minute und Token (mindestens 1). |
 | `write_rate_per_min` | `30` | Schreibende Aufrufe pro Minute und Token (mindestens 1). Getrennt geführt, damit Lesezugriffe Schreibzugriffe nicht aushungern. Derzeit ist kein Schreibwerkzeug registriert. |
+| `allowed_origins` | `[]` | Zusätzliche Browser-Ursprünge (zum Beispiel `["https://photos.example.com"]`), die die Tab-Brücke öffnen dürfen, wenn ein Reverse-Proxy `Host` umschreibt. Nicht zu verwechseln mit dem CORS-Schlüssel `viewer.allowed_origins`. |
 
 Zahlen außerhalb des Bereichs werden begrenzt, und ein Wert des falschen Typs fällt auf den Standard zurück. Der Block wird bei jeder Anfrage gelesen, ein Neuladen der Konfiguration schaltet die Funktion also ohne Neustart um.
 

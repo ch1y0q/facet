@@ -65,7 +65,8 @@
             "call_timeout_s": { "type": "number", "minimum": 1, "maximum": 300 },
             "semantic_timeout_s": { "type": "number", "minimum": 1, "maximum": 300 },
             "rate_per_min": { "type": "integer", "minimum": 1 },
-            "write_rate_per_min": { "type": "integer", "minimum": 1 }
+            "write_rate_per_min": { "type": "integer", "minimum": 1 },
+            "allowed_origins": { "type": "array", "items": { "type": "string", "format": "uri" } }
           }
         }
       }

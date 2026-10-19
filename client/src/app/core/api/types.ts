@@ -27,3 +27,13 @@ export type LightroomImportResponse = components['schemas']['LightroomImportResp
 export type LightroomManifest = components['schemas']['LightroomManifest'];
 
 export type MergeSuggestionsResponse = components['schemas']['MergeSuggestionsResponse'];
+
+export type McpTokenItem = components['schemas']['McpTokenItem'];
+
+export type McpTokenCreate = components['schemas']['McpTokenCreate'];
+
+export type McpTokenCreated = components['schemas']['McpTokenCreated'];
+
+export type McpTokenList = components['schemas']['McpTokenList'];
+
+export type McpTokenRevoked = components['schemas']['McpTokenRevoked'];

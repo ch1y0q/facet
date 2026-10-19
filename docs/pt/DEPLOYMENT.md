@@ -264,6 +264,8 @@ DSM > Painel de Controle > Portal de Login > Avançado > Proxy Reverso:
 
 Combine com um certificado Let's Encrypt em DSM > Painel de Controle > Segurança > Certificado.
 
+Se usar a ponte de separador para agentes (veja [Agentes de IA](AGENTS.md)), abra também o separador **Cabeçalho personalizado** da regra e escolha **Criar > WebSocket**: acrescenta os cabeçalhos `Upgrade` e `Connection` de que `/api/mcp/bridge` precisa. Se a regra reescrever o cabeçalho `Host`, indique também a sua origem pública em `viewer.mcp.allowed_origins`.
+
 ## Synology NAS (série Plus / x86)
 
 O NAS da série Plus suporta Docker (Container Manager).
@@ -311,6 +313,8 @@ COPY i18n/ i18n/
 EXPOSE 5000
 CMD ["uvicorn", "api:create_app", "--factory", "--host", "0.0.0.0", "--port", "5000", "--workers", "4"]
 ```
+
+Vários workers não funcionam com a ponte de separador para agentes: o seu registo de separadores é por processo, por isso com mais de um worker uma chamada `ui_*` pode chegar a um processo que não conhece o seu separador e responder `no_tab`. Use `--workers 1` se usar os [Agentes de IA](AGENTS.md).
 
 ```yaml
 services:
@@ -499,6 +503,8 @@ Ou use o wrapper (padrão de 1 worker; passe `--workers N` para mais):
 python viewer.py --production --workers 4
 ```
 
+Vários workers não funcionam com a ponte de separador para agentes: o seu registo de separadores é por processo, por isso com mais de um worker uma chamada `ui_*` pode chegar a um processo que não conhece o seu separador e responder `no_tab`. Use `--workers 1` se usar os [Agentes de IA](AGENTS.md).
+
 ### Uvicorn + Nginx
 
 ```nginx
@@ -513,8 +519,19 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         client_max_body_size 50M;
     }
+
+    location /api/mcp/bridge {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $http_host;
+        proxy_read_timeout 3600s;
+    }
 }
 ```
+
+A ponte de separador para agentes (`/api/mcp/bridge`, veja [Agentes de IA](AGENTS.md)) é um WebSocket e precisa dos cabeçalhos `Upgrade` e `Connection` do segundo bloco `location`; sem eles o handshake falha e as ferramentas `ui_*` respondem `no_tab`. Precisa também de um único worker (`--workers 1`, o valor por omissão).
 
 Adicione HTTPS:
 ```bash
@@ -539,6 +556,8 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 ```
+
+Vários workers não funcionam com a ponte de separador para agentes: o seu registo de separadores é por processo, por isso com mais de um worker uma chamada `ui_*` pode chegar a um processo que não conhece o seu separador e responder `no_tab`. Use `--workers 1` se usar os [Agentes de IA](AGENTS.md).
 
 ```bash
 sudo systemctl enable --now facet

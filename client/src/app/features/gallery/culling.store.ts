@@ -378,7 +378,7 @@ export class CullingStore {
   }
 
   async loadMore(): Promise<void> {
-    if (!this.hasMore()) return;
+    if (!this.hasMore() || this.loadingMore()) return;
     const gen = this.loadGenerationId;
     this.loadingMore.set(true);
     try {

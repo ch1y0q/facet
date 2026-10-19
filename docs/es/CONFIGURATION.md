@@ -2602,7 +2602,8 @@ Expone las herramientas de lectura descritas en [Agentes de IA (MCP)](AGENTS.md)
       "call_timeout_s": 30,
       "semantic_timeout_s": 120,
       "rate_per_min": 120,
-      "write_rate_per_min": 30
+      "write_rate_per_min": 30,
+      "allowed_origins": []
     }
   }
 }
@@ -2611,13 +2612,14 @@ Expone las herramientas de lectura descritas en [Agentes de IA (MCP)](AGENTS.md)
 | Clave | Predeterminado | Descripción |
 |-----|---------|-------------|
 | `enabled` | `false` | Interruptor general de `/mcp` y `/api/mcp/*`. Desactivado, ambos responden 404. |
-| `bridge` | `true` | Reservado al puente con la pestaña del navegador. Lo informa la herramienta `status`; por ahora no tiene otro efecto. |
+| `bridge` | `true` | Si el puente con la pestaña del navegador (`/api/mcp/bridge`) acepta WebSockets y las herramientas `ui_*` pueden llegar a una pestaña. Con `false`, el puente responde 404 y las herramientas `ui_*` devuelven un error claro. Requiere un único worker. |
 | `max_rows` | `100` | Máximo de filas en un resultado de herramienta (1 a 500). Las filas sobrantes se descartan y se marca `truncated: true`. |
 | `max_bytes` | `60000` | Tamaño serializado máximo de un resultado de herramienta en bytes (4000 a 500000). |
-| `call_timeout_s` | `30` | Tiempo límite de una llamada a herramienta en segundos (1 a 300). |
+| `call_timeout_s` | `30` | Tiempo límite de una llamada a herramienta en segundos (1 a 300). También acota cuánto espera una llamada `ui_*` a la pestaña del navegador (`tab_timeout`). |
 | `semantic_timeout_s` | `120` | Tiempo límite de `semantic_search` en segundos (1 a 300); carga el modelo de embeddings y necesita más. |
 | `rate_per_min` | `120` | Llamadas a herramientas por minuto y token (mínimo 1). |
 | `write_rate_per_min` | `30` | Llamadas de escritura por minuto y token (mínimo 1). Se mantiene aparte para que las lecturas no dejen sin cupo a las escrituras. Por ahora no hay ninguna herramienta de escritura registrada. |
+| `allowed_origins` | `[]` | Orígenes de navegador adicionales (por ejemplo `["https://photos.example.com"]`) autorizados a abrir el puente de pestaña cuando un proxy inverso reescribe `Host`. Distinta de la clave CORS `viewer.allowed_origins`. |
 
 Los números fuera de rango se ajustan al límite, y un valor de tipo incorrecto vuelve al predeterminado. El bloque se lee en cada petición, así que recargar la configuración activa o desactiva la función sin reiniciar.
 

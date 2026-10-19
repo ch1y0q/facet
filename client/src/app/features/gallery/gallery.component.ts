@@ -1112,6 +1112,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
   }
 
   async ngOnInit(): Promise<void> {
+    this.store.galleryMounts.update(n => n + 1);
     this.pageHelp.setDescription(I18N.gallery.help);
     // Read (and clear) BEFORE tryRestoreView: a scoped "open this set" request
     // means the user wants that new scoped view, never a resumed previous one.

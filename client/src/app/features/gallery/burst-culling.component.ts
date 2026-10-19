@@ -1,5 +1,7 @@
-import { Component, inject, signal, computed, effect, untracked, viewChild, ElementRef, OnDestroy, HostListener, TemplateRef, ChangeDetectionStrategy } from '@angular/core';
+import { Component, DestroyRef, inject, signal, computed, effect, untracked, viewChild, ElementRef, OnDestroy, HostListener, TemplateRef, ChangeDetectionStrategy } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
+import { ViewActionRegistry } from '../../core/agent/view-action-registry.service';
+import { UiToolError } from '../../core/agent/ui-tool.types';
 import { HttpErrorResponse } from '@angular/common/http';
 import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { DecimalPipe, NgClass, NgTemplateOutlet, PercentPipe } from '@angular/common';
@@ -1900,6 +1902,9 @@ export class BurstCullingComponent implements OnDestroy {
       this.snackBar.open(text, '', { duration: notice.duration, horizontalPosition: 'right', verticalPosition: 'bottom' });
     });
     this.coarsePointer.setup();
+    inject(DestroyRef).onDestroy(
+      inject(ViewActionRegistry).register('ui_show_culling_group', args => this.showGroupForAgent(args)),
+    );
     const qp = this.route.snapshot.queryParamMap;
     this.scopeAlbum.set(qp.get('album'));
     this.scopeFrom.set(qp.get('from'));
@@ -2235,6 +2240,28 @@ export class BurstCullingComponent implements OnDestroy {
   protected tuneCategory(category: string): void {
     this.compareFilters.selectedCategory.set(category);
     void this.router.navigate(['/compare']);
+  }
+
+  /** `ui_show_culling_group`: open the lightbox on the group identified by (type, group_id), paging in more groups if needed. */
+  private async showGroupForAgent(args: Record<string, unknown>): Promise<unknown> {
+    const type = args['type'];
+    const groupId = args['group_id'];
+    const find = () => this.groups().find(g => g.type === type && g.group_id === groupId);
+    const deadline = Date.now() + 10_000;
+    // Wait out a feed or scroll load already in flight, then page in until found; a page that fails
+    // does not advance, so stop there rather than re-request it (each attempt raises a snackbar).
+    while ((this.cull.loading() || this.cull.loadingMore()) && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    while (!find() && this.cull.hasMore() && Date.now() < deadline) {
+      const before = this.cull.currentPage();
+      await this.cull.loadMore();
+      if (this.cull.currentPage() === before) break;
+    }
+    const group = find();
+    if (!group) throw new UiToolError('not_found', `No ${String(type)} group ${String(groupId)} in the darkroom's current scope.`);
+    this.openLightbox(group, 0);
+    return { type: group.type, group_id: group.group_id, photo_count: group.photos?.length ?? null };
   }
 
   // --- Lightbox handlers ---

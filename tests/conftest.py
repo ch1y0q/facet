@@ -593,3 +593,116 @@ def agent_app():
         api_config._FULL_CONFIG.pop("users", None)
     with sqlite3.connect(_TEST_DB_FILE.name) as conn:
         conn.execute("DELETE FROM mcp_tokens")
+
+
+class FakeTab:
+    """A scripted browser tab on ``/api/mcp/bridge`` (runs on its own thread).
+
+    ``reply(call_frame)`` returns the ``result`` frame body to send back, or ``None``
+    to stay silent, or ``"close"`` to hang up. Every frame the server sent is kept in ``inbox``. The server's
+    pings (patched fast by the ``fake_tab`` fixture) are what wake the receive loop so
+    :meth:`stop` can end the thread.
+    """
+
+    def __init__(self, env, jwt, tab_id="tab-1", *, tools=None, version="__current__", route="/",
+                 focused=True, origin="http://testserver", reply=None, answer_pings=True):
+        import threading
+        from api.agent.ui_tools import UI_TOOLS, tools_version
+        self.env = env
+        self.inbox = []
+        self.ready = None
+        self.close_code = None
+        self.reply = reply or (lambda call: {"ok": True, "data": {"echo": call["tool"]}})
+        self.answer_pings = answer_pings
+        self._stop = threading.Event()
+        self._ready = threading.Event()
+        self._frames = []
+        self.auth = {
+            "type": "auth", "token": jwt, "tab_id": tab_id, "route": route, "focused": focused,
+            "tools": [t.name for t in UI_TOOLS] if tools is None else tools,
+            "tools_version": tools_version() if version == "__current__" else version,
+        }
+        self._origin = origin
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def _run(self):
+        from starlette.websockets import WebSocketDisconnect
+        try:
+            with self.env.client.websocket_connect(
+                    "/api/mcp/bridge", headers={"origin": self._origin}) as ws:
+                self._ws = ws
+                ws.send_json(self.auth)
+                self.ready = ws.receive_json()
+                self._ready.set()
+                while not self._stop.is_set():
+                    for frame in self._outgoing():
+                        if isinstance(frame, tuple):
+                            ws.send_text(frame[1])
+                        else:
+                            ws.send_json(frame)
+                    msg = ws.receive_json()
+                    self.inbox.append(msg)
+                    if msg.get("type") == "ping" and self.answer_pings:
+                        ws.send_json({"type": "pong"})
+                    elif msg.get("type") == "call":
+                        body = self.reply(msg)
+                        if body == "close":
+                            break
+                        if body is not None:
+                            ws.send_json({"type": "result", "id": msg["id"], **body})
+        except WebSocketDisconnect as ex:
+            self.close_code = ex.code
+        finally:
+            self._ready.set()
+
+    def _outgoing(self):
+        frames, self._frames = self._frames, []
+        return frames
+
+    def send_raw(self, text):
+        """Queue a raw text frame (not JSON-encoded); sent on the next server ping."""
+        self._frames.append(("raw", text))
+
+    def send_later(self, frame):
+        """Queue a frame; it goes out the next time the server wakes the thread (a ping)."""
+        self._frames.append(frame)
+
+    @property
+    def calls(self):
+        return [m for m in self.inbox if m.get("type") == "call"]
+
+    def start(self, wait=True):
+        self._thread.start()
+        if wait:
+            assert self._ready.wait(10), "fake tab never became ready"
+        return self
+
+    def wait_closed(self, timeout=10):
+        self._thread.join(timeout)
+        assert not self._thread.is_alive(), "tab socket stayed open"
+        return self.close_code
+
+    def stop(self):
+        self._stop.set()
+        self._thread.join(10)
+
+
+@pytest.fixture()
+def fake_tab(monkeypatch):
+    """Factory ``fake_tab(env, jwt, tab_id=..., **FakeTab kwargs)`` -> a STARTED tab.
+
+    Server pings are patched to 0.1 s so tab threads stay responsive and expiry /
+    silence handling is observable without long sleeps.
+    """
+    from api.agent import bridge
+    monkeypatch.setattr(bridge, "PING_INTERVAL_S", 0.1)
+    tabs = []
+
+    def make(env, jwt, tab_id="tab-1", wait=True, **kwargs):
+        tab = FakeTab(env, jwt, tab_id, **kwargs)
+        tabs.append(tab)
+        return tab.start(wait)
+
+    yield make
+    for tab in tabs:
+        tab.stop()

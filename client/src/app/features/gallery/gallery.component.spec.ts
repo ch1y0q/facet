@@ -63,6 +63,7 @@ describe('GalleryComponent', () => {
       filterDrawerOpen: signal(false),
       currentAlbum: signal(null),
       initializing: signal(false),
+      galleryMounts: signal(0),
       galleryMode: signal('mosaic'),
       cardWidth: signal(300),
       virtualScroll: signal(false),

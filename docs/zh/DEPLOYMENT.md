@@ -259,6 +259,8 @@ DSM > 控制面板 > 登录门户 > 高级 > 反向代理：
 
 再配合 DSM > 控制面板 > 安全性 > 证书 中申请的 Let's Encrypt 证书。
 
+如果使用智能体标签页桥接（参见 [AI 智能体](AGENTS.md)），还需打开该规则的**自定义标头**选项卡并选择**创建 > WebSocket**：这会添加 `/api/mcp/bridge` 所需的 `Upgrade` 和 `Connection` 头。如果该规则改写了 `Host` 头，还需把你的公开来源写入 `viewer.mcp.allowed_origins`。
+
 ## Synology NAS（Plus / x86 系列）
 
 Plus 系列 NAS 支持 Docker（Container Manager）。
@@ -290,6 +292,8 @@ COPY i18n/ i18n/
 EXPOSE 5000
 CMD ["uvicorn", "api:create_app", "--factory", "--host", "0.0.0.0", "--port", "5000", "--workers", "4"]
 ```
+
+多个 worker 无法配合智能体标签页桥接：其标签页注册表按进程保存，worker 多于一个时 `ui_*` 调用可能落到不认识你标签页的进程并返回 `no_tab`。如果使用 [AI 智能体](AGENTS.md)，请使用 `--workers 1`。
 
 ```yaml
 services:
@@ -555,6 +559,8 @@ uvicorn api:create_app --factory --host 0.0.0.0 --port 5000 --workers 4
 python viewer.py --production --workers 4
 ```
 
+多个 worker 无法配合智能体标签页桥接：其标签页注册表按进程保存，worker 多于一个时 `ui_*` 调用可能落到不认识你标签页的进程并返回 `no_tab`。如果使用 [AI 智能体](AGENTS.md)，请使用 `--workers 1`。
+
 ### Uvicorn + Nginx
 
 ```nginx
@@ -569,8 +575,19 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         client_max_body_size 50M;
     }
+
+    location /api/mcp/bridge {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $http_host;
+        proxy_read_timeout 3600s;
+    }
 }
 ```
+
+智能体标签页桥接（`/api/mcp/bridge`，参见 [AI 智能体](AGENTS.md)）是 WebSocket，因此需要第二个 `location` 块中的 `Upgrade` 和 `Connection` 头；缺少它们时握手会失败，`ui_*` 工具会返回 `no_tab`。它还要求单个 worker（`--workers 1`，默认值）。
 
 启用 HTTPS：
 ```bash
@@ -595,6 +612,8 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 ```
+
+多个 worker 无法配合智能体标签页桥接：其标签页注册表按进程保存，worker 多于一个时 `ui_*` 调用可能落到不认识你标签页的进程并返回 `no_tab`。如果使用 [AI 智能体](AGENTS.md)，请使用 `--workers 1`。
 
 ```bash
 sudo systemctl enable --now facet

@@ -10,12 +10,15 @@ import pytest
 
 from api import config as api_config
 from api.agent import limits
+from api.agent.ui_tools import UI_TOOLS
 from tests.conftest import AGENT_DIR
 
 READ_TOOLS = {
     "search_photos", "semantic_search", "get_photo", "similar_photos", "filter_options",
     "list_persons", "list_albums", "library_stats", "status",
 }
+
+UI_TOOL_NAMES = {tool.name for tool in UI_TOOLS}
 
 ROWS = [
     {"path": AGENT_DIR + "a.jpg", "filename": "a.jpg", "aggregate": 8.0, "aesthetic": 9.0,
@@ -116,13 +119,13 @@ class TestMount:
 
     def test_tools_list_names_the_read_tools(self, agent_app):
         env = agent_app("open")
-        assert env.tool_names(env.token(env.login())) == READ_TOOLS
+        assert env.tool_names(env.token(env.login())) == READ_TOOLS | UI_TOOL_NAMES
 
     def test_every_read_tool_is_annotated_read_only_and_untrusted(self, agent_app):
         env = agent_app("open")
         token = env.token(env.login())
         tools = env.rpc(token, "tools/list").json()["result"]["tools"]
-        for tool in tools:
+        for tool in (t for t in tools if t["name"] in READ_TOOLS):
             assert tool["annotations"]["readOnlyHint"] is True, tool["name"]
             assert tool["_meta"]["facet/untrusted_content"] is True, tool["name"]
             assert tool["name"] == tool["name"].lower() and len(tool["name"]) < 40
@@ -150,7 +153,7 @@ class TestReadTools:
         assert result["ok"] is True
         data = result["data"]
         assert data["owner"] == "alice" and data["level"] == "user"
-        assert data["tabs"] == [] and data["mcp"]["enabled"] is True
+        assert data["tabs"] == [] and data["mcp"]["enabled"] is True and data["mcp"]["bridge"] is True
 
     def test_search_filters_by_min_aesthetic_and_totals_match(self, agent_app, photos):
         env = agent_app("open")
@@ -271,6 +274,15 @@ class TestAuthStatusFeature:
         api_config.VIEWER_CONFIG["mcp"]["enabled"] = False
         assert env.client.get("/api/auth/status").json()["features"]["mcp"] is False
 
+    def test_features_mcp_bridge_needs_both_flags(self, agent_app):
+        env = agent_app("open", mcp_enabled=True)
+        assert env.client.get("/api/auth/status").json()["features"]["mcp_bridge"] is True
+        api_config.VIEWER_CONFIG["mcp"]["bridge"] = False
+        assert env.client.get("/api/auth/status").json()["features"]["mcp_bridge"] is False
+        api_config.VIEWER_CONFIG["mcp"]["bridge"] = True
+        api_config.VIEWER_CONFIG["mcp"]["enabled"] = False
+        assert env.client.get("/api/auth/status").json()["features"]["mcp_bridge"] is False
+
 
 class TestMcpSettings:
     def test_values_are_clamped(self, agent_app):
@@ -346,7 +358,7 @@ class TestRealSdkClient:
         finally:
             server.should_exit = True
             thread.join(timeout=10)
-        assert names == READ_TOOLS
+        assert names == READ_TOOLS | UI_TOOL_NAMES
         assert status["ok"] is True and status["data"]["owner"] == "_legacy"
 
 

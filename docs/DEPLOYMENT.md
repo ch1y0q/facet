@@ -269,6 +269,8 @@ DSM > Control Panel > Login Portal > Advanced > Reverse Proxy:
 
 Pair with a Let's Encrypt certificate from DSM > Control Panel > Security > Certificate.
 
+If you use the agent tab bridge (see [AI Agents](AGENTS.md)), also open the rule's **Custom Header** tab and choose **Create > WebSocket**: it adds the `Upgrade` and `Connection` headers that `/api/mcp/bridge` needs. If the rule rewrites the `Host` header, also list your public origin in `viewer.mcp.allowed_origins`.
+
 ## Synology NAS (Plus / x86 series)
 
 Plus-series NAS supports Docker (Container Manager).
@@ -317,6 +319,8 @@ COPY i18n/ i18n/
 EXPOSE 5000
 CMD ["uvicorn", "api:create_app", "--factory", "--host", "0.0.0.0", "--port", "5000", "--workers", "4"]
 ```
+
+Several workers do not work with the agent tab bridge: its tab registry is per process, so with more than one worker a `ui_*` call can reach a process that does not know your tab and answers `no_tab`. Use `--workers 1` if you use [AI Agents](AGENTS.md).
 
 ```yaml
 services:
@@ -609,6 +613,8 @@ Or use the wrapper (defaults to 1 worker; pass `--workers N` for more):
 python viewer.py --production --workers 4
 ```
 
+Several workers do not work with the agent tab bridge: its tab registry is per process, so with more than one worker a `ui_*` call can reach a process that does not know your tab and answers `no_tab`. Use `--workers 1` if you use [AI Agents](AGENTS.md).
+
 ### Uvicorn + Nginx
 
 ```nginx
@@ -623,8 +629,19 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         client_max_body_size 50M;
     }
+
+    location /api/mcp/bridge {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $http_host;
+        proxy_read_timeout 3600s;
+    }
 }
 ```
+
+The agent tab bridge (`/api/mcp/bridge`, see [AI Agents](AGENTS.md)) is a WebSocket, so it needs the `Upgrade` and `Connection` headers of the second `location` block; without them the handshake fails and the `ui_*` agent tools answer `no_tab`. It also needs a single worker (`--workers 1`, the default).
 
 Add HTTPS:
 ```bash
@@ -649,6 +666,8 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 ```
+
+Several workers do not work with the agent tab bridge: its tab registry is per process, so with more than one worker a `ui_*` call can reach a process that does not know your tab and answers `no_tab`. Use `--workers 1` if you use [AI Agents](AGENTS.md).
 
 ```bash
 sudo systemctl enable --now facet

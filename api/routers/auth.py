@@ -218,7 +218,11 @@ def auth_status(user: Optional[CurrentUser] = Depends(get_optional_user)):
         user_role=user.role if user else None,
         display_name=user.display_name if user else None,
         # features.mcp is derived, not stored: the master switch lives in viewer.mcp.enabled.
-        features={**VIEWER_CONFIG.get('features', {}), 'mcp': mcp_settings()['enabled']},
+        features={
+            **VIEWER_CONFIG.get('features', {}),
+            'mcp': mcp_settings()['enabled'],
+            'mcp_bridge': mcp_settings()['enabled'] and mcp_settings()['bridge'],
+        },
         download_profiles=profile_names,
     )
 

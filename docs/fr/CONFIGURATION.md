@@ -2596,7 +2596,8 @@ Expose les outils de lecture décrits dans [Agents IA (MCP)](AGENTS.md) via `POS
       "call_timeout_s": 30,
       "semantic_timeout_s": 120,
       "rate_per_min": 120,
-      "write_rate_per_min": 30
+      "write_rate_per_min": 30,
+      "allowed_origins": []
     }
   }
 }
@@ -2605,13 +2606,14 @@ Expose les outils de lecture décrits dans [Agents IA (MCP)](AGENTS.md) via `POS
 | Clé | Défaut | Description |
 |-----|---------|-------------|
 | `enabled` | `false` | Interrupteur général de `/mcp` et `/api/mcp/*`. Désactivé, les deux répondent 404. |
-| `bridge` | `true` | Réservé au pont vers l'onglet du navigateur. Rapporté par l'outil `status` ; sans autre effet pour l'instant. |
+| `bridge` | `true` | Indique si le pont vers l'onglet du navigateur (`/api/mcp/bridge`) accepte les WebSockets et si les outils `ui_*` peuvent atteindre un onglet. À `false`, le pont répond 404 et les outils `ui_*` renvoient une erreur explicite. Exige un seul worker. |
 | `max_rows` | `100` | Nombre maximal de lignes dans un résultat d'outil (1 à 500). Les lignes en trop sont retirées et `truncated: true` est ajouté. |
 | `max_bytes` | `60000` | Taille sérialisée maximale d'un résultat d'outil en octets (4000 à 500000). |
-| `call_timeout_s` | `30` | Délai d'un appel d'outil en secondes (1 à 300). |
+| `call_timeout_s` | `30` | Délai d'un appel d'outil en secondes (1 à 300). Borne aussi l'attente d'un appel `ui_*` vers l'onglet du navigateur (`tab_timeout`). |
 | `semantic_timeout_s` | `120` | Délai de `semantic_search` en secondes (1 à 300) ; l'outil charge le modèle d'embeddings et demande donc plus de temps. |
 | `rate_per_min` | `120` | Appels d'outils par minute et par jeton (minimum 1). |
 | `write_rate_per_min` | `30` | Appels d'écriture par minute et par jeton (minimum 1). Budget séparé pour que les lectures n'affament pas les écritures. Aucun outil d'écriture n'est enregistré pour l'instant. |
+| `allowed_origins` | `[]` | Origines de navigateur supplémentaires (par exemple `["https://photos.example.com"]`) autorisées à ouvrir le pont d'onglet lorsqu'un proxy inverse réécrit `Host`. Distinct de la clé CORS `viewer.allowed_origins`. |
 
 Les nombres hors plage sont ramenés dans la plage, et une valeur d'un mauvais type revient à la valeur par défaut. Le bloc est lu à chaque requête : un rechargement de la configuration active ou désactive la fonction sans redémarrage.
 

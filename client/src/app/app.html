@@ -354,6 +354,12 @@
             <mat-icon>palette</mat-icon>
             {{ I18N.ui.theme | translate }}
           </button>
+          @if (auth.features()['mcp']) {
+            <button mat-menu-item (click)="showConnectAssistantDialog()">
+              <mat-icon>smart_toy</mat-icon>
+              {{ I18N.dialog.connect_assistant.menu | translate }}
+            </button>
+          }
           @if (auth.isMultiUser() || auth.loginPasswordRequired()) {
             <mat-divider />
             <button mat-menu-item (click)="logout()">

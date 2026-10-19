@@ -2597,7 +2597,8 @@ Expõe as ferramentas de leitura descritas em [Agentes de IA (MCP)](AGENTS.md) e
       "call_timeout_s": 30,
       "semantic_timeout_s": 120,
       "rate_per_min": 120,
-      "write_rate_per_min": 30
+      "write_rate_per_min": 30,
+      "allowed_origins": []
     }
   }
 }
@@ -2606,13 +2607,14 @@ Expõe as ferramentas de leitura descritas em [Agentes de IA (MCP)](AGENTS.md) e
 | Chave | Predefinição | Descrição |
 |-----|---------|-------------|
 | `enabled` | `false` | Interruptor geral de `/mcp` e `/api/mcp/*`. Desativado, ambos respondem 404. |
-| `bridge` | `true` | Reservado à ponte com o separador do navegador. Indicado pela ferramenta `status`; por agora não tem outro efeito. |
+| `bridge` | `true` | Se a ponte com o separador do navegador (`/api/mcp/bridge`) aceita WebSockets e as ferramentas `ui_*` podem chegar a um separador. Com `false`, a ponte responde 404 e as ferramentas `ui_*` devolvem um erro claro. Exige um único worker. |
 | `max_rows` | `100` | Máximo de linhas num resultado de ferramenta (1 a 500). As linhas a mais são descartadas e `truncated: true` é definido. |
 | `max_bytes` | `60000` | Tamanho serializado máximo de um resultado de ferramenta em bytes (4000 a 500000). |
-| `call_timeout_s` | `30` | Tempo limite de uma chamada de ferramenta em segundos (1 a 300). |
+| `call_timeout_s` | `30` | Tempo limite de uma chamada de ferramenta em segundos (1 a 300). Também limita a espera de uma chamada `ui_*` pelo separador do navegador (`tab_timeout`). |
 | `semantic_timeout_s` | `120` | Tempo limite de `semantic_search` em segundos (1 a 300); carrega o modelo de embeddings e precisa de mais. |
 | `rate_per_min` | `120` | Chamadas de ferramentas por minuto e por token (mínimo 1). |
 | `write_rate_per_min` | `30` | Chamadas de escrita por minuto e por token (mínimo 1). Mantido à parte para que as leituras não deixem as escritas sem quota. Por agora não há nenhuma ferramenta de escrita registada. |
+| `allowed_origins` | `[]` | Origens de navegador adicionais (por exemplo `["https://photos.example.com"]`) autorizadas a abrir a ponte do separador quando um proxy reverso reescreve `Host`. Distinta da chave CORS `viewer.allowed_origins`. |
 
 Os números fora do intervalo são limitados, e um valor de tipo errado volta à predefinição. O bloco é lido em cada pedido, por isso recarregar a configuração ativa ou desativa a funcionalidade sem reiniciar.
 

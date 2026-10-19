@@ -2563,7 +2563,8 @@ python facet.py --recompute-text   # 重新读取整个图库
       "call_timeout_s": 30,
       "semantic_timeout_s": 120,
       "rate_per_min": 120,
-      "write_rate_per_min": 30
+      "write_rate_per_min": 30,
+      "allowed_origins": []
     }
   }
 }
@@ -2572,13 +2573,14 @@ python facet.py --recompute-text   # 重新读取整个图库
 | 键 | 默认值 | 说明 |
 |-----|---------|-------------|
 | `enabled` | `false` | `/mcp` 与 `/api/mcp/*` 的总开关。关闭时两者都返回 404。 |
-| `bridge` | `true` | 为浏览器标签页桥接预留。由 `status` 工具报告；目前没有其他作用。 |
+| `bridge` | `true` | 浏览器标签页桥接（`/api/mcp/bridge`）是否接受 WebSocket、`ui_*` 工具能否到达标签页。为 `false` 时桥接返回 404，`ui_*` 工具会返回相应错误。需要单个 worker。 |
 | `max_rows` | `100` | 单次工具结果的最大行数（1 到 500）。多余的行被丢弃并设置 `truncated: true`。 |
 | `max_bytes` | `60000` | 单次工具结果序列化后的最大字节数（4000 到 500000）。 |
-| `call_timeout_s` | `30` | 单次工具调用的超时秒数（1 到 300）。 |
+| `call_timeout_s` | `30` | 单次工具调用的超时秒数（1 到 300）。同时限制 `ui_*` 调用等待浏览器标签页的时间（`tab_timeout`）。 |
 | `semantic_timeout_s` | `120` | `semantic_search` 的超时秒数（1 到 300）；它要加载嵌入模型，因此需要更久。 |
 | `rate_per_min` | `120` | 每个令牌每分钟的工具调用次数（最小 1）。 |
 | `write_rate_per_min` | `30` | 每个令牌每分钟的写入调用次数（最小 1）。单独计算，避免读取挤占写入。目前尚未注册任何写入工具。 |
+| `allowed_origins` | `[]` | 当反向代理改写 `Host` 时，额外允许打开标签页桥接的浏览器来源（例如 `["https://photos.example.com"]`）。与 CORS 键 `viewer.allowed_origins` 不同。 |
 
 超出范围的数字会被限制到边界，类型错误的值会回退到默认值。该配置块在每次请求时读取，因此重新加载配置即可切换该功能，无需重启。
 

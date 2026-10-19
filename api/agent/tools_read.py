@@ -263,8 +263,7 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra)
                 "level": resolved.level,
                 "token_level": grant.level,
                 "mcp": {"enabled": settings["enabled"], "bridge": settings["bridge"]},
-                "tabs": [],
-                **status_extra(),
+                **status_extra(resolved),
             })
         return await run_tool(ctx, "status", handler)
 

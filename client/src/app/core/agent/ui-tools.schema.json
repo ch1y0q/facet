@@ -1,0 +1,1120 @@
+{
+  "tools": [
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "readOnlyHint": false,
+        "untrustedContentHint": true
+      },
+      "description": "Move the user's open Facet tab to another page (gallery, persons, albums, stats, ...).",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "additionalProperties": {
+              "type": [
+                "string",
+                "integer",
+                "number",
+                "boolean"
+              ]
+            },
+            "description": "Query-string parameters for the route.",
+            "type": "object"
+          },
+          "route": {
+            "description": "Where to go. Edition-only pages (/culling, /junk, /compare, /merge-suggestions) are refused by the tab for other users.",
+            "enum": [
+              "/",
+              "/persons",
+              "/merge-suggestions",
+              "/compare",
+              "/culling",
+              "/scenes",
+              "/junk",
+              "/stats",
+              "/albums",
+              "/capsules",
+              "/folders",
+              "/timeline",
+              "/map"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "route"
+        ],
+        "type": "object"
+      },
+      "name": "ui_navigate"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "readOnlyHint": false,
+        "untrustedContentHint": true
+      },
+      "description": "Change the gallery filters and sort in the user's open tab. `patch` merges into the current filters (null removes one); `replace: true` starts from none.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "patch": {
+            "additionalProperties": false,
+            "properties": {
+              "album_id": {
+                "description": "Gallery filter `album_id`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "camera": {
+                "description": "Gallery filter `camera`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "category": {
+                "description": "Gallery filter `category`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "color_temp": {
+                "description": "Gallery filter `color_temp`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "composition_pattern": {
+                "description": "Gallery filter `composition_pattern`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "date_from": {
+                "description": "Gallery filter `date_from`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "date_to": {
+                "description": "Gallery filter `date_to`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "favorites_only": {
+                "description": "Gallery filter `favorites_only`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "gps_lat": {
+                "description": "Gallery filter `gps_lat`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "gps_lng": {
+                "description": "Gallery filter `gps_lng`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "gps_radius_km": {
+                "description": "Gallery filter `gps_radius_km`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "hide_blinks": {
+                "description": "Gallery filter `hide_blinks`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "hide_brackets": {
+                "description": "Gallery filter `hide_brackets`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "hide_bursts": {
+                "description": "Gallery filter `hide_bursts`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "hide_duplicates": {
+                "description": "Gallery filter `hide_duplicates`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "hide_panoramas": {
+                "description": "Gallery filter `hide_panoramas`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "hide_rejected": {
+                "description": "Gallery filter `hide_rejected`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "is_monochrome": {
+                "description": "Gallery filter `is_monochrome`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "lens": {
+                "description": "Gallery filter `lens`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_aesthetic": {
+                "description": "Gallery filter `max_aesthetic`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_aesthetic_iaa": {
+                "description": "Gallery filter `max_aesthetic_iaa`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_aperture": {
+                "description": "Gallery filter `max_aperture`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_bg_separation": {
+                "description": "Gallery filter `max_bg_separation`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_color": {
+                "description": "Gallery filter `max_color`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_composition": {
+                "description": "Gallery filter `max_composition`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_contrast": {
+                "description": "Gallery filter `max_contrast`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_dynamic_range": {
+                "description": "Gallery filter `max_dynamic_range`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_exposure": {
+                "description": "Gallery filter `max_exposure`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_eye_sharpness": {
+                "description": "Gallery filter `max_eye_sharpness`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_face_confidence": {
+                "description": "Gallery filter `max_face_confidence`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_face_count": {
+                "description": "Gallery filter `max_face_count`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_face_quality": {
+                "description": "Gallery filter `max_face_quality`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_face_quality_iqa": {
+                "description": "Gallery filter `max_face_quality_iqa`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_face_ratio": {
+                "description": "Gallery filter `max_face_ratio`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_face_sharpness": {
+                "description": "Gallery filter `max_face_sharpness`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_focal_length": {
+                "description": "Gallery filter `max_focal_length`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_iso": {
+                "description": "Gallery filter `max_iso`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_isolation": {
+                "description": "Gallery filter `max_isolation`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_liqe": {
+                "description": "Gallery filter `max_liqe`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_luminance": {
+                "description": "Gallery filter `max_luminance`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_noise": {
+                "description": "Gallery filter `max_noise`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_saturation": {
+                "description": "Gallery filter `max_saturation`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_score": {
+                "description": "Gallery filter `max_score`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_sharpness": {
+                "description": "Gallery filter `max_sharpness`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_star_rating": {
+                "description": "Gallery filter `max_star_rating`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_subject_prominence": {
+                "description": "Gallery filter `max_subject_prominence`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_subject_sharpness": {
+                "description": "Gallery filter `max_subject_sharpness`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_topiq": {
+                "description": "Gallery filter `max_topiq`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_aesthetic": {
+                "description": "Gallery filter `min_aesthetic`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_aesthetic_iaa": {
+                "description": "Gallery filter `min_aesthetic_iaa`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_aperture": {
+                "description": "Gallery filter `min_aperture`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_bg_separation": {
+                "description": "Gallery filter `min_bg_separation`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_color": {
+                "description": "Gallery filter `min_color`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_composition": {
+                "description": "Gallery filter `min_composition`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_contrast": {
+                "description": "Gallery filter `min_contrast`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_dynamic_range": {
+                "description": "Gallery filter `min_dynamic_range`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_exposure": {
+                "description": "Gallery filter `min_exposure`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_eye_sharpness": {
+                "description": "Gallery filter `min_eye_sharpness`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_face_confidence": {
+                "description": "Gallery filter `min_face_confidence`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_face_count": {
+                "description": "Gallery filter `min_face_count`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_face_quality": {
+                "description": "Gallery filter `min_face_quality`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_face_quality_iqa": {
+                "description": "Gallery filter `min_face_quality_iqa`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_face_ratio": {
+                "description": "Gallery filter `min_face_ratio`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_face_sharpness": {
+                "description": "Gallery filter `min_face_sharpness`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_focal_length": {
+                "description": "Gallery filter `min_focal_length`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_iso": {
+                "description": "Gallery filter `min_iso`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_isolation": {
+                "description": "Gallery filter `min_isolation`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_liqe": {
+                "description": "Gallery filter `min_liqe`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_luminance": {
+                "description": "Gallery filter `min_luminance`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_noise": {
+                "description": "Gallery filter `min_noise`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_saturation": {
+                "description": "Gallery filter `min_saturation`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_score": {
+                "description": "Gallery filter `min_score`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_sharpness": {
+                "description": "Gallery filter `min_sharpness`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_star_rating": {
+                "description": "Gallery filter `min_star_rating`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_subject_prominence": {
+                "description": "Gallery filter `min_subject_prominence`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_subject_sharpness": {
+                "description": "Gallery filter `min_subject_sharpness`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_topiq": {
+                "description": "Gallery filter `min_topiq`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "path_prefix": {
+                "description": "Gallery filter `path_prefix`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "person": {
+                "description": "Gallery filter `person`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "quality_tier": {
+                "description": "Gallery filter `quality_tier`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "search": {
+                "description": "Gallery filter `search`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "sort": {
+                "description": "Sort column.",
+                "enum": [
+                  "aggregate",
+                  "aesthetic",
+                  "date_taken",
+                  "comp_score",
+                  "face_quality",
+                  "tech_sharpness",
+                  "exposure_score",
+                  "color_score",
+                  "contrast_score",
+                  "topiq_score",
+                  "quality_score",
+                  "top_picks_score",
+                  "learned_score",
+                  "star_rating",
+                  "filename",
+                  null
+                ],
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sort_direction": {
+                "description": "Sort direction.",
+                "enum": [
+                  "asc",
+                  "desc",
+                  null
+                ],
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tag": {
+                "description": "Gallery filter `tag`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "type": {
+                "description": "Gallery filter `type`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "replace": {
+            "default": false,
+            "description": "true: reset every other filter first.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "patch"
+        ],
+        "type": "object"
+      },
+      "name": "ui_set_gallery_filters"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "readOnlyHint": true,
+        "untrustedContentHint": true
+      },
+      "description": "What the user's tab shows now: route, active filters, total matches, the first visible photo paths and the selection count.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "default": 50,
+            "description": "Most visible photo paths to return.",
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "name": "ui_get_gallery_view"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "readOnlyHint": false,
+        "untrustedContentHint": true
+      },
+      "description": "Open one photo in the user's tab (the detail view).",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "description": "Path of the photo to open.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "name": "ui_open_photo"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "readOnlyHint": false,
+        "untrustedContentHint": true
+      },
+      "description": "Change the selection in the user's tab: explicit `paths`, or the whole filtered view (`select_view`). Selecting does not modify any photo.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "default": "replace",
+            "enum": [
+              "replace",
+              "add",
+              "remove"
+            ],
+            "type": "string"
+          },
+          "paths": {
+            "description": "Photo paths to select. Exactly one of `paths` and `select_view`.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "type": "array"
+          },
+          "select_view": {
+            "default": false,
+            "description": "true: select the WHOLE filtered view (not just the loaded rows), scope 'view'. Only with mode replace or add.",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "name": "ui_select_photos"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "readOnlyHint": false,
+        "untrustedContentHint": true
+      },
+      "description": "Clear the selection in the user's tab.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "name": "ui_clear_selection"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "readOnlyHint": true,
+        "untrustedContentHint": true
+      },
+      "description": "The user's current selection: `scope` 'paths' (explicit `paths`) or 'view' (the whole filtered view: `filters`, minus `excluded_paths`), and `count`.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "name": "ui_get_selection"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "readOnlyHint": false,
+        "untrustedContentHint": true
+      },
+      "description": "Load the next page of the gallery in the user's tab (infinite scroll).",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "name": "ui_next_page"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "readOnlyHint": false,
+        "untrustedContentHint": true
+      },
+      "description": "Open the darkroom (/culling) and focus one group, identified by (type, group_id). Edition accounts only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "group_id": {
+            "description": "The `group_id` from list_culling_groups.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": {
+            "description": "Group kind; a group's identity is (type, group_id).",
+            "enum": [
+              "burst",
+              "similar",
+              "scene",
+              "bracket",
+              "panorama",
+              "hdr_panorama"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "group_id"
+        ],
+        "type": "object"
+      },
+      "name": "ui_show_culling_group"
+    }
+  ],
+  "version": "33c8d2a9bdd8935a"
+}

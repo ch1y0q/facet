@@ -113,6 +113,21 @@ describe('CullingStore', () => {
       expect(store.selectionsMap().has(1)).toBe(true);
       expect(store.selectionsMap().has(3)).toBe(true);
     });
+
+    it('does not start a second page request while one is in flight', async () => {
+      await store.loadGroups();
+      store.totalPages.set(3);
+      const pending = new Subject<typeof GROUPS_RESPONSE>();
+      api.get.mockClear();
+      api.get.mockReturnValue(pending);
+      const first = store.loadMore();
+      await store.loadMore();
+      expect(api.get).toHaveBeenCalledTimes(1);
+      pending.next({ ...GROUPS_RESPONSE, groups: [], total_pages: 3 });
+      pending.complete();
+      await first;
+      expect(store.currentPage()).toBe(2);
+    });
   });
 
   describe('confirming groups', () => {

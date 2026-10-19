@@ -617,13 +617,17 @@ def create_app() -> FastAPI:
     # `mcp` package: leave the feature off instead of failing to start the viewer.
     from api.config import set_mcp_available
     try:
+        from api.agent.bridge import TabRegistry
         from api.agent.server import mount_agent
+        from api.routers.mcp_bridge import router as mcp_bridge_router
     except ImportError as ex:
         logger.warning("Agent (MCP) endpoint unavailable: %s; run `pip install -r requirements.txt`", ex)
         set_mcp_available(False)
         app.state.mcp_session_manager = None
     else:
         set_mcp_available(True)
+        app.state.tab_registry = TabRegistry()
+        app.include_router(mcp_bridge_router)
         app.state.mcp_session_manager = mount_agent(app)
 
     # Check for plaintext passwords at startup
