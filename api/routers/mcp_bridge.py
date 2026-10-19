@@ -177,7 +177,11 @@ async def _handshake(ws: WebSocket, registry: TabRegistry) -> Optional[tuple[Tab
     conn = TabConn(tab_id=tab_id, user_id=user_id, level=level, ws=ws, loop=asyncio.get_running_loop(),
                    tools=announced[0], tools_version=announced[1], route=route, focused=focused)
     conn.send_lock = asyncio.Lock()
-    for old in registry.add(conn):
+    displaced = registry.add(conn)
+    if displaced is None:
+        await ws.close(bridge.CLOSE_SUPERSEDED)
+        return None
+    for old in displaced:
         await old.close(bridge.CLOSE_SUPERSEDED)
     return conn, session_token, exp
 

@@ -58,7 +58,8 @@ def _make_tool(tool: UiTool, registry: TabRegistry) -> Any:
                 return err("invalid_input", "Invalid arguments", issues=validation_issues(ex))
             return await registry.call(
                 resolved.principal, tool.name, args.forward(), level=resolved.level,
-                tab_id=args.tab_id, timeout=settings["call_timeout_s"])
+                tab_id=args.tab_id, timeout=settings["call_timeout_s"],
+                max_level=resolved.minted_level)
         return await run_tool(ctx, tool.name, handler)
 
     run.__name__ = tool.name

@@ -108,7 +108,7 @@ def create_token(body: McpTokenCreate, user: CurrentUser = Depends(require_human
         raise HTTPException(
             status_code=412,
             detail=f"At most {tokens.MAX_LIVE_TOKENS_PER_USER} live tokens per user; revoke one first")
-    row, plaintext = tokens.mint(principal, body.name, level)
+    row, plaintext = tokens.mint(principal, body.name, level, _session_level(user))
     logger.info("MCP token %d minted (level %s)", row['id'], level)
     return {**row, 'token': plaintext}
 

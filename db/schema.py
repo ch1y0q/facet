@@ -821,6 +821,8 @@ MCP_TOKENS_COLUMNS = [
     ('last_used_at', 'TEXT'),
     ('revoked', 'INTEGER NOT NULL DEFAULT 0'),
     ('revoked_at', 'TEXT'),
+    # Level of the session that minted the token; NULL (pre-column rows) counts as readonly.
+    ('minted_level', 'TEXT'),
 ]
 
 MCP_TOKENS_INDEXES = [

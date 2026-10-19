@@ -76,9 +76,11 @@ async def run_tool(ctx: Context, name: str, handler: Handler, *, write: bool = F
                 allowed, retry_after = (True, 0.0) if below_floor else limits.check_rate(
                     grant.id, write, per_min)
                 if below_floor:
+                    needs = tokens.effective_requirement(min_level)
+                    hint = (" (an open install cannot grant it: set viewer.password and mint an "
+                            "edition token)" if needs == "edition" and tokens.install_mode() == "open" else "")
                     envelope = err("forbidden_level",
-                                   f"This token's level is {resolved.level}; {name} needs "
-                                   f"{tokens.effective_requirement(min_level)}")
+                                   f"This token's level is {resolved.level}; {name} needs {needs}{hint}")
                 elif not allowed:
                     envelope = err("rate_limited", "Too many calls; slow down",
                                    retry_after_s=retry_after)

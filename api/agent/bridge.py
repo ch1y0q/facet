@@ -28,6 +28,7 @@ from urllib.parse import urlparse
 from fastapi import WebSocket
 
 from api.agent.internal_client import err, ok
+from api.agent.tokens import install_mode
 from api.agent.ui_tools import TAB_ERROR_CODES, UI_TOOLS, tools_version
 
 logger = logging.getLogger(__name__)
@@ -167,16 +168,33 @@ class TabRegistry:
         self._lock = threading.Lock()
         self._tabs: dict[str, dict[str, TabConn]] = {}
 
-    def add(self, conn: TabConn) -> list[TabConn]:
-        """Register ``conn``; return the connections it displaced (same id, or over the cap)."""
+    def add(self, conn: TabConn) -> Optional[list[TabConn]]:
+        """Register ``conn``; return the connections it displaced, or None when it is refused.
+
+        Replacement is level-aware, so a lower-rights session cannot knock a higher one off
+        the bridge: a newcomer reusing the id of a higher-level tab is refused, and over the
+        per-user cap the oldest tab of the LOWEST level present goes (the newcomer is refused
+        instead when it ranks below every registered tab).
+        """
+        rank = LEVEL_RANK.get(conn.level, 0)
         displaced: list[TabConn] = []
         with self._lock:
             tabs = self._tabs.setdefault(conn.user_id, {})
-            same = tabs.pop(conn.tab_id, None)
+            same = tabs.get(conn.tab_id)
+            if same is not None and LEVEL_RANK.get(same.level, 0) > rank:
+                return None
             if same is not None:
-                displaced.append(same)
+                displaced.append(tabs.pop(conn.tab_id))
+            if len(tabs) >= MAX_TABS_PER_USER:
+                lowest = min(LEVEL_RANK.get(t.level, 0) for t in tabs.values())
+                if rank < lowest:
+                    if same is not None:
+                        tabs[same.tab_id] = displaced.pop()
+                    return None
             while len(tabs) >= MAX_TABS_PER_USER:
-                oldest = min(tabs.values(), key=lambda t: t.connected_at)
+                lowest = min(LEVEL_RANK.get(t.level, 0) for t in tabs.values())
+                oldest = min((t for t in tabs.values() if LEVEL_RANK.get(t.level, 0) == lowest),
+                             key=lambda t: t.connected_at)
                 displaced.append(tabs.pop(oldest.tab_id))
             tabs[conn.tab_id] = conn
         return displaced
@@ -192,12 +210,17 @@ class TabRegistry:
         conn.closed = True
         conn.fail_all(err("no_tab", "The tab closed before it answered"))
 
-    def tabs_for(self, user_id: str, min_level: Optional[str] = None) -> list[TabConn]:
+    def tabs_for(self, user_id: str, min_level: Optional[str] = None,
+                 max_level: Optional[str] = None) -> list[TabConn]:
+        """Tabs with ``min_level <= level <= max_level`` (either bound optional)."""
         floor = LEVEL_RANK[min_level] if min_level is not None else 0
+        ceiling = LEVEL_RANK[max_level] if max_level is not None else max(LEVEL_RANK.values())
         with self._lock:
-            return [t for t in self._tabs.get(user_id, {}).values() if LEVEL_RANK.get(t.level, 0) >= floor]
+            return [t for t in self._tabs.get(user_id, {}).values()
+                    if floor <= LEVEL_RANK.get(t.level, 0) <= ceiling]
 
-    def describe(self, user_id: str, min_level: Optional[str] = None) -> list[dict]:
+    def describe(self, user_id: str, min_level: Optional[str] = None,
+                 max_level: Optional[str] = None) -> list[dict]:
         """Public view for ``status``: no sockets, no tool lists, ages instead of clocks."""
         now = time.monotonic()
         return [{
@@ -206,7 +229,22 @@ class TabRegistry:
             "focused": t.focused,
             "last_seen_s": round(now - t.last_seen, 1),
             "tools_current": all(t.current(name) for name in SERVER_TOOL_NAMES),
-        } for t in sorted(self.tabs_for(user_id, min_level), key=lambda t: -t.last_active)]
+        } for t in sorted(self.tabs_for(user_id, min_level, max_level), key=lambda t: -t.last_active)]
+
+    @staticmethod
+    def _out_of_reach(level: str, max_level: Optional[str]) -> str:
+        """Why open tabs do not serve this token, worded for the install mode."""
+        mode = install_mode()
+        if mode == "multi":
+            return (f"Only tabs whose account role is below {level} rights are open. Ask the user to "
+                    "sign in again if their role changed, or use a token at a lower level.")
+        if mode == "legacy" and max_level is not None and LEVEL_RANK[max_level] < LEVEL_RANK["edition"]:
+            return ("This token was minted from a viewer-only session, so it reaches only viewer-level "
+                    "tabs, and only higher-rights tabs are open. Mint the token from the edition session.")
+        if mode == "legacy":
+            return (f"Only tabs signed in with less than {level} rights are open. Ask the user to "
+                    "unlock edition in the viewer, or use a read-only token.")
+        return "No open tab is reachable by this token."
 
     @staticmethod
     def pick(tabs: list[TabConn], tab_id: Optional[str]) -> tuple[Optional[TabConn], str]:
@@ -221,24 +259,29 @@ class TabRegistry:
         return max(tabs, key=lambda t: t.last_active), "most_recent"
 
     async def call(self, user_id: str, tool: str, args: dict, *, level: str, tab_id: Optional[str],
-                   timeout: float) -> dict:
+                   timeout: float, max_level: Optional[str] = None) -> dict:
         """Forward ``tool`` to the user's tab and wait for its result envelope.
 
         Only tabs whose session level is at least ``level`` (the token's effective level)
-        are considered.
+        are considered, and at most ``max_level`` when given (single-password installs: the
+        level of the session that minted the token).
 
         Never raises: ``no_tab`` (no tab, or it closed mid-call), ``tab_outdated``,
         ``tab_timeout`` and ``upstream_error`` (tab sent a broken reply) are envelopes.
         """
-        tabs = self.tabs_for(user_id, level)
-        if not tabs and self.tabs_for(user_id):
-            return err("no_tab", f"Only tabs signed in with less than {level} rights are open. Ask the user to "
-                                 "unlock edition in the viewer, or use a read-only token.")
+        tabs = self.tabs_for(user_id, level, max_level)
+        everything = self.tabs_for(user_id)
+        if not tabs and everything:
+            return err("no_tab", self._out_of_reach(level, max_level))
         if not tabs:
             return err("no_tab", "No Facet tab is open and connected for this user. Ask the user to "
                                  "open the viewer in a browser and sign in.")
         conn, how = self.pick(tabs, tab_id)
         if conn is None:
+            if any(t.tab_id == tab_id for t in everything):
+                return err("no_tab", f"Tab {tab_id} is open but outside this token's reach: its session "
+                                     f"level is outside the range this token can drive (at least {level}, "
+                                     f"at most {max_level or 'any'}). `status` lists the tabs it can.")
             return err("no_tab", f"Tab {tab_id} is not connected; `status` lists the open tabs.")
         if not conn.current(tool):
             return err("tab_outdated", f"The open tab does not implement {tool} at this server's "

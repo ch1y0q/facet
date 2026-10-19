@@ -430,7 +430,112 @@ class TestTabLevels:
     def test_readonly_token_may_drive_an_edition_tab(self, agent_app, fake_tab):
         env = agent_app("legacy")
         fake_tab(env, jwt_of(env.login(edition=True)), "edition-tab")
+        token = env.token(env.login(edition=True), "readonly")
+        assert env.call(token, "ui_get_selection")["tab"]["tab_id"] == "edition-tab"
+
+    def test_viewer_minted_readonly_token_cannot_reach_an_edition_tab(self, agent_app, fake_tab):
+        env = agent_app("legacy")
+        fake_tab(env, jwt_of(env.login(edition=True)), "edition-tab")
         token = env.token(env.login(), "readonly")
+        result = env.call(token, "ui_get_selection")
+        assert result["error"] == "no_tab" and "viewer-only session" in result["message"]
+        assert env.call(token, "status")["data"]["tabs"] == []
+        fake_tab(env, jwt_of(env.login()), "viewer-tab")
+        assert env.call(token, "ui_get_selection")["tab"]["tab_id"] == "viewer-tab"
+        assert [t["tab_id"] for t in env.call(token, "status")["data"]["tabs"]] == ["viewer-tab"]
+
+    def test_null_minted_level_row_counts_as_readonly(self, agent_app, fake_tab):
+        from api.database import get_db
+        env = agent_app("legacy")
+        fake_tab(env, jwt_of(env.login(edition=True)), "edition-tab")
+        token = env.token(env.login(edition=True), "readonly")
+        with get_db() as conn:
+            conn.execute("UPDATE mcp_tokens SET minted_level = NULL")
+            conn.commit()
+        assert env.call(token, "ui_get_selection")["error"] == "no_tab"
+
+    def test_null_minted_level_edition_row_is_capped_at_its_own_level(self, agent_app, fake_tab):
+        from api.database import get_db
+        env = agent_app("legacy")
+        fake_tab(env, jwt_of(env.login(edition=True)), "edition-tab")
+        token = env.token(env.login(edition=True), "edition")
+        with get_db() as conn:
+            conn.execute("UPDATE mcp_tokens SET minted_level = NULL")
+            conn.commit()
+        assert env.call(token, "ui_get_selection")["tab"]["tab_id"] == "edition-tab"
+        assert [t["tab_id"] for t in env.call(token, "status")["data"]["tabs"]] == ["edition-tab"]
+
+    def test_viewer_session_cannot_evict_an_edition_tab_by_reusing_its_id(self, agent_app, fake_tab):
+        env = agent_app("legacy")
+        edition_tab = fake_tab(env, jwt_of(env.login(edition=True)), "shared-id")
+        rogue = fake_tab(env, jwt_of(env.login()), "shared-id", wait=False)
+        assert rogue.wait_closed() == bridge.CLOSE_SUPERSEDED
+        token = env.token(env.login(edition=True), "edition")
+        assert env.call(token, "ui_get_selection")["tab"]["tab_id"] == "shared-id"
+        assert edition_tab.close_code is None
+
+    def test_full_registry_never_evicts_a_higher_tab_for_a_lower_newcomer(self, agent_app, fake_tab, monkeypatch):
+        monkeypatch.setattr(bridge, "MAX_TABS_PER_USER", 2)
+        env = agent_app("legacy")
+        edition_jwt = jwt_of(env.login(edition=True))
+        fake_tab(env, edition_jwt, "e1")
+        fake_tab(env, edition_jwt, "e2")
+        rogue = fake_tab(env, jwt_of(env.login()), "v1", wait=False)
+        assert rogue.wait_closed() == bridge.CLOSE_SUPERSEDED
+        token = env.token(env.login(edition=True), "readonly")
+        assert {t["tab_id"] for t in env.call(token, "status")["data"]["tabs"]} == {"e1", "e2"}
+
+    def test_full_registry_evicts_the_lowest_level_first(self, agent_app, fake_tab, monkeypatch):
+        monkeypatch.setattr(bridge, "MAX_TABS_PER_USER", 2)
+        env = agent_app("legacy")
+        edition_jwt = jwt_of(env.login(edition=True))
+        fake_tab(env, edition_jwt, "e1")
+        viewer = fake_tab(env, jwt_of(env.login()), "v1")
+        fake_tab(env, edition_jwt, "e2")
+        assert viewer.wait_closed() == bridge.CLOSE_SUPERSEDED
+
+    def test_multi_user_token_reaches_its_own_role_tab(self, agent_app, fake_tab):
+        env = agent_app("multi")
+        fake_tab(env, jwt_of(env.login("alice")), "alice-tab")
+        assert env.call(env.token(env.login("alice"), "user"), "ui_get_selection")["tab"]["tab_id"] == "alice-tab"
+        fake_tab(env, jwt_of(env.login("root")), "root-tab")
+        assert env.call(env.token(env.login("root"), "edition"), "ui_get_selection")["tab"]["tab_id"] == "root-tab"
+
+    def test_multi_user_floor_message_does_not_mention_unlocking_edition(self, agent_app, fake_tab):
+        env = agent_app("multi")
+        stale = {"Authorization": "Bearer " + create_access_token({"sub": "root", "role": "user"})}
+        fake_tab(env, jwt_of(stale), "root-stale-tab")
+        result = env.call(env.token(env.login("root"), "edition"), "ui_get_selection")
+        assert result["error"] == "no_tab" and "account role is below edition rights" in result["message"]
+        assert "unlock" not in result["message"]
+
+    def test_tab_id_of_an_out_of_reach_tab_is_not_reported_as_disconnected(self, agent_app, fake_tab):
+        env = agent_app("legacy")
+        fake_tab(env, jwt_of(env.login()), "viewer-tab")
+        fake_tab(env, jwt_of(env.login(edition=True)), "edition-tab")
+        token = env.token(env.login(edition=True), "edition")
+        result = env.call(token, "ui_get_selection", {"tab_id": "viewer-tab"})
+        assert result["error"] == "no_tab" and "not connected" not in result["message"]
+        assert "viewer-tab is open but outside this token's reach" in result["message"]
+        assert "only higher-rights" not in result["message"] and "less than" not in result["message"]
+        assert "not connected" in env.call(token, "ui_get_selection", {"tab_id": "ghost"})["message"]
+
+    def test_status_for_an_edition_token_with_only_a_viewer_tab_is_empty(self, agent_app, fake_tab):
+        env = agent_app("legacy")
+        fake_tab(env, jwt_of(env.login()), "viewer-tab")
+        assert env.call(env.token(env.login(edition=True), "edition"), "status")["data"]["tabs"] == []
+
+    def test_clearing_the_edition_password_mid_socket_drops_the_tab_level(self, agent_app, fake_tab):
+        from api import config as api_config
+        env = agent_app("legacy")
+        fake_tab(env, jwt_of(env.login(edition=True)), "edition-tab")
+        token = env.token(env.login(edition=True), "edition")
+        assert env.call(token, "ui_get_selection")["tab"]["tab_id"] == "edition-tab"
+        api_config.VIEWER_CONFIG["edition_password"] = ""
+        time.sleep(0.5)
+        registry = env.client.app.state.tab_registry
+        assert [t.level for t in registry.tabs_for("_legacy")] == ["readonly"]
+        # the token degrades with the password too, so it follows the tab down rather than losing it
         assert env.call(token, "ui_get_selection")["tab"]["tab_id"] == "edition-tab"
 
     def test_open_install_edition_session_tab_is_reachable(self, agent_app, fake_tab):

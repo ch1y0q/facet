@@ -113,16 +113,20 @@ def _public(row: sqlite3.Row) -> dict:
 
 
 @retry_on_locked()
-def mint(principal: str, name: str, level: str) -> tuple[dict, str]:
-    """Create a token; return ``(public row, plaintext)``. The plaintext is never stored."""
+def mint(principal: str, name: str, level: str, minted_level: str = "readonly") -> tuple[dict, str]:
+    """Create a token; return ``(public row, plaintext)``. The plaintext is never stored.
+
+    ``minted_level`` is the level of the minting session; single-password routing caps a
+    token's tab reach with it.
+    """
     plaintext = TOKEN_PREFIX + secrets.token_urlsafe(32)
     user_gen, edition_gen = snapshot(principal)
     with get_db() as conn:
         cursor = conn.execute(
             "INSERT INTO mcp_tokens (user_id, name, token_prefix, token_hash, level, user_gen, "
-            "edition_gen, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "edition_gen, created_at, minted_level) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (principal, name, plaintext[:DISPLAY_PREFIX_LENGTH], _hash(plaintext), level,
-             user_gen, edition_gen, _now_iso()))
+             user_gen, edition_gen, _now_iso(), minted_level))
         conn.commit()
         row = conn.execute("SELECT * FROM mcp_tokens WHERE id = ?", (cursor.lastrowid,)).fetchone()
         return _public(row), plaintext
@@ -139,12 +143,12 @@ def verify(plaintext: Optional[str]) -> Optional["TokenGrant"]:
         return None
     with get_db() as conn:
         row = conn.execute(
-            "SELECT id, user_id, name, level, user_gen, edition_gen FROM mcp_tokens "
+            "SELECT id, user_id, name, level, user_gen, edition_gen, minted_level FROM mcp_tokens "
             "WHERE token_hash = ? AND revoked = 0", (_hash(plaintext),)).fetchone()
     if row is None:
         return None
     return TokenGrant(row["id"], row["user_id"], row["name"], row["level"],
-                      row["user_gen"], row["edition_gen"])
+                      row["user_gen"], row["edition_gen"], row["minted_level"] or row["level"])
 
 
 def list_tokens(user_id: Optional[str] = None) -> list[dict]:
@@ -202,6 +206,7 @@ class ResolvedGrant:
     role: str
     display_name: str
     anonymous: bool
+    minted_level: Optional[str] = None
 
     def jwt_claims(self) -> Optional[dict]:
         """Claims for the 60-second internal JWT, or None on an open install.
@@ -230,6 +235,7 @@ class TokenGrant:
     level: str
     user_gen: str
     edition_gen: str
+    minted_level: str = "readonly"
 
     def resolve(self) -> Optional[ResolvedGrant]:
         """Effective grant against the live config, or None when the token is dead."""
@@ -255,7 +261,7 @@ class TokenGrant:
         )
         # Single-password mode has no middle rung: the rating routes demand edition.
         level = "edition" if edition_live else "readonly"
-        return ResolvedGrant(self.id, LEGACY_PRINCIPAL, level, "user", "", False)
+        return ResolvedGrant(self.id, LEGACY_PRINCIPAL, level, "user", "", False, self.minted_level)
 
     def _resolve_multi(self) -> Optional[ResolvedGrant]:
         user = get_user_config(self.user_id)
