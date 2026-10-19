@@ -53,6 +53,15 @@ def level_rank(level: str) -> int:
     return LEVELS.index(level)
 
 
+def effective_requirement(min_level: str) -> str:
+    """The level a caller really needs for a tool declared at ``min_level``.
+
+    ``user`` is a multi-user rung: single-password mode has no middle rung (the rating
+    routes demand edition there), so the honest requirement is ``edition``.
+    """
+    return "edition" if min_level == "user" and install_mode() != "multi" else min_level
+
+
 def _lower(a: str, b: str) -> str:
     return a if level_rank(a) <= level_rank(b) else b
 

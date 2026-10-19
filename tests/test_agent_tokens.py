@@ -59,6 +59,26 @@ class TestTokenService:
         assert tokens.verify(plaintext) is None
         assert tokens.revoke(row["id"], "_legacy") is False
 
+    def test_touch_stamps_last_used_at_once_per_interval(self, agent_app, monkeypatch):
+        agent_app("legacy")
+        row, _ = tokens.mint("_legacy", "laptop", "readonly")
+        tokens._last_touched.pop(row["id"], None)
+        clock = [1000.0]
+        monkeypatch.setattr(tokens.time, "monotonic", lambda: clock[0])
+        stamps = iter(["t1", "t2", "t3"])
+        monkeypatch.setattr(tokens, "_now_iso", lambda: next(stamps))
+
+        def last_used():
+            return next(r["last_used_at"] for r in _rows() if r["id"] == row["id"])
+        tokens.touch(row["id"])
+        assert last_used() == "t1"
+        clock[0] += tokens.TOUCH_INTERVAL_SECONDS - 1
+        tokens.touch(row["id"])
+        assert last_used() == "t1"
+        clock[0] += 2
+        tokens.touch(row["id"])
+        assert last_used() == "t2"
+
     def test_level_check_constraint_rejects_junk(self, agent_app):
         agent_app("legacy")
         with pytest.raises(sqlite3.IntegrityError):
@@ -192,6 +212,21 @@ class TestTokenRoutes:
         assert env.mint(headers, "readonly").status_code == 403
         assert env.client.get("/api/mcp/tokens", headers=headers).status_code == 403
         assert env.client.delete("/api/mcp/tokens/1", headers=headers).status_code == 403
+
+    @pytest.mark.parametrize("mode", ["multi", "legacy"])
+    def test_an_fct_agent_token_on_the_token_routes_is_403(self, agent_app, mode):
+        env = agent_app(mode)
+        fct = {"Authorization": "Bearer " + env.token(
+            env.login("alice") if mode == "multi" else env.login(edition=True), "readonly")}
+        assert env.mint(fct, "readonly").status_code == 403
+        assert env.client.get("/api/mcp/tokens", headers=fct).status_code == 403
+        assert env.client.delete("/api/mcp/tokens/1", headers=fct).status_code == 403
+
+    def test_minting_for_a_removed_account_is_401_not_500(self, agent_app):
+        env = agent_app("multi")
+        headers = env.login("alice")
+        del api_config._FULL_CONFIG["users"]["alice"]
+        assert env.mint(headers, "readonly").status_code == 401
 
     def test_plaintext_is_returned_once_and_never_listed(self, agent_app):
         env = agent_app("multi")

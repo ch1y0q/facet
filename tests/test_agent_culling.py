@@ -101,12 +101,34 @@ class TestListGroups:
         assert group["type"] == "burst" and group["photo_count"] == 3
         assert {p["path"] for p in group["photos"]} == set(BURST_PATHS)
 
+    def test_default_group_by_all_lists_the_burst(self, env_token):
+        env, token = env_token
+        result = env.call(token, "list_culling_groups", SCOPE)
+        assert result["ok"], result
+        assert [g["type"] for g in result["data"]["rows"]] == ["burst"], result
+
     def test_bracket_set_carries_its_sequence_kind(self, env_token):
         env, token = env_token
         result = env.call(token, "list_culling_groups", {"group_by": "bracket", **SCOPE})
         group = result["data"]["rows"][0]
         assert (group["type"], group["sequence_kind"]) == ("bracket", "bracket")
         assert {p["path"] for p in group["photos"]} == set(BRACKET_PATHS)
+
+    def test_a_page_over_the_byte_budget_sheds_members_not_groups(self):
+        groups = [{"type": "scene", "group_id": g, "photos": [
+            {"path": f"/p/{g}/{i}.jpg", "filename": "x" * 40, "date_taken": "1999:01:01 10:00:00"}
+            for i in range(45)]} for g in range(20)]
+        rows = tools_culling._fit_groups([tools_culling._compact_group(g) for g in groups], 20000)
+        assert len(rows) == 20
+        assert tools_culling.encoded_size({"rows": rows}) <= 20000
+        assert all(row["photo_count"] == 45 for row in rows)
+        assert all(row["photos_truncated"] is True for row in rows)
+        assert any(len(row["photos"]) < tools_culling.GROUP_PHOTO_LIMIT for row in rows)
+
+    def test_has_more_signals_further_pages(self, env_token):
+        env, token = env_token
+        result = env.call(token, "list_culling_groups", {"group_by": "burst", "per_page": 1, **SCOPE})
+        assert result["data"]["has_more"] is False
 
     def test_bad_timestamp_is_invalid_input_before_any_call(self, env_token):
         env, token = env_token

@@ -62,8 +62,8 @@ def _make_tool(tool: UiTool, registry: TabRegistry) -> Any:
             except ValidationError as ex:
                 return err("invalid_input", "Invalid arguments", issues=_validation_issues(ex))
             return await registry.call(
-                resolved.principal, tool.name, args.forward(), tab_id=args.tab_id,
-                timeout=settings["call_timeout_s"])
+                resolved.principal, tool.name, args.forward(), level=resolved.level,
+                tab_id=args.tab_id, timeout=settings["call_timeout_s"])
         return await run_tool(ctx, tool.name, handler)
 
     run.__name__ = tool.name

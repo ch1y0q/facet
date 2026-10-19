@@ -13,6 +13,9 @@ from typing import Callable, Optional
 
 WINDOW_SECONDS = 60.0
 FAILED_AUTH_MAX = 10
+# Past this many tracked addresses a failure sweeps the ones whose window has expired,
+# so an attacker rotating source addresses cannot grow the map without bound.
+FAILURE_SWEEP_THRESHOLD = 10000
 
 _clock: Callable[[], float] = time.monotonic
 _lock = threading.Lock()
@@ -71,11 +74,16 @@ def auth_blocked(client_ip: str) -> bool:
 
 
 def record_auth_failure(client_ip: str) -> None:
+    current = now()
     with _lock:
-        _failures[client_ip].append(now())
+        if len(_failures) > FAILURE_SWEEP_THRESHOLD:
+            for stale in [ip for ip, window in _failures.items()
+                          if not window or window[-1] <= current - WINDOW_SECONDS]:
+                del _failures[stale]
+        _failures[client_ip].append(current)
 
 
-def _encoded_size(envelope: dict) -> int:
+def encoded_size(envelope: dict) -> int:
     return len(json.dumps(envelope, separators=(",", ":"), ensure_ascii=False, default=str).encode("utf-8"))
 
 
@@ -90,17 +98,17 @@ def fit_envelope(envelope: dict, max_rows: int, max_bytes: int) -> dict:
     data = envelope.get("data")
     rows = data.get("rows") if isinstance(data, dict) else None
     if not isinstance(data, dict) or not isinstance(rows, list):
-        if _encoded_size(envelope) <= max_bytes:
+        if encoded_size(envelope) <= max_bytes:
             return envelope
         return {"ok": False, "error": "too_large",
                 "message": "The result exceeds the byte cap; narrow the request."}
-    if len(rows) <= max_rows and _encoded_size(envelope) <= max_bytes:
+    if len(rows) <= max_rows and encoded_size(envelope) <= max_bytes:
         return envelope
     capped = copy.copy(envelope)
     capped["data"] = dict(data)
     capped["data"]["rows"] = rows[:max_rows]
     capped["truncated"] = True
-    while capped["data"]["rows"] and _encoded_size(capped) > max_bytes:
+    while capped["data"]["rows"] and encoded_size(capped) > max_bytes:
         kept = capped["data"]["rows"]
         capped["data"]["rows"] = kept[:len(kept) // 2 if len(kept) > 8 else len(kept) - 1]
     return capped

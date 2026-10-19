@@ -304,6 +304,85 @@ class TestBatchTools:
         assert env.call(token, "junk_clear", {"paths": [P[0]] * 51})["error"] == "too_large"
 
 
+def test_user_floor_message_names_edition_on_a_single_password_install(agent_app, photos):
+    env = agent_app("legacy")
+    token = env.token(env.login(), "readonly")
+    refused = env.call(token, "set_rejected", {"paths": [P[0]], "value": True})
+    assert refused["error"] == "forbidden_level" and "needs edition" in refused["message"]
+    multi = agent_app("multi")
+    viewer = multi.token(multi.login("alice"), "readonly")
+    assert "needs user" in multi.call(viewer, "set_rejected", {"paths": [P[0]], "value": True})["message"]
+
+
+def test_filter_scope_resolves_the_same_set_as_search_photos(edition, photos, monkeypatch):
+    env, token = edition
+    monkeypatch.setitem(api_config.VIEWER_CONFIG["defaults"], "hide_blinks", True)
+    conn = sqlite3.connect(_TEST_DB_FILE.name)
+    conn.execute("UPDATE photos SET is_blink = 1 WHERE path = ?", (P[3],))
+    conn.commit()
+    conn.close()
+    filters = {"path_prefix": AGENT_DIR}
+    seen = env.call(token, "search_photos", {"filters": filters})["data"]["total"]
+    assert seen == 4
+    result = env.call(token, "batch_set_rating", {"filters": filters, "rating": 5, "expected_count": seen})
+    assert result["ok"], result
+    assert result["data"]["affected"] == 4 and photo_col(P[3], "star_rating") == 1
+
+
+@pytest.fixture()
+def panorama(edition, seed_photos_prefix, tmp_path, monkeypatch):
+    """Three rejected frames of one panorama set on disk."""
+    env, token = edition
+    root = os.path.realpath(tmp_path)
+    src = os.path.join(root, "pano")
+    os.makedirs(src)
+    rows = []
+    for index in range(3):
+        path = os.path.join(src, f"p{index}.jpg")
+        with open(path, "wb") as handle:
+            handle.write(b"JPG")
+        rows.append({"path": path, "filename": f"p{index}.jpg", "is_rejected": 1,
+                     "sequence_kind": "panorama", "sequence_group_id": 9,
+                     "is_sequence_lead": 1 if index == 1 else 0})
+    seed_photos_prefix(src + "/", rows)
+    monkeypatch.setattr("api.routers.export._allowed_export_roots", lambda: [root])
+    monkeypatch.setitem(api_config.VIEWER_CONFIG, "cull", {"allow_trash": True})
+    monkeypatch.setattr("send2trash.send2trash", os.remove)
+    return type("Pano", (), {"env": env, "token": token, "src": src, "target": os.path.join(root, "out"),
+                             "lead": rows[1]["path"], "paths": [r["path"] for r in rows]})
+
+
+class TestSequenceSiblingsAreBoundToTheNonce:
+    def test_delete_lists_the_siblings_and_binds_the_flag(self, panorama):
+        def call(**kw):
+            return panorama.env.call(panorama.token, "delete_photos", {"paths": [panorama.lead], **kw})
+        plain = call()["data"]
+        assert plain["would_trash_count"] == 1
+        wide = call(include_sequence_siblings=True)["data"]
+        assert wide["would_trash_count"] == 3 and wide["sequence_siblings_count"] == 2
+        flipped = call(dry_run=False, confirm=wide["confirm"])
+        assert flipped["error"] == "confirmation_required"
+        assert all(os.path.exists(p) for p in panorama.paths)
+        fresh = call(include_sequence_siblings=True)["data"]
+        done = call(include_sequence_siblings=True, dry_run=False, confirm=fresh["confirm"])
+        assert done["ok"] and len(done["data"]["deleted"]) == 3
+        assert not any(os.path.exists(p) for p in panorama.paths)
+
+    def test_cull_apply_binds_the_flag(self, panorama):
+        def call(**kw):
+            return panorama.env.call(panorama.token, "cull_apply", {
+                "action": "move_rejects", "target_dir": panorama.target, "paths": [panorama.lead], **kw})
+        plain = call()["data"]
+        assert plain["would_move_count"] == 1
+        wide = call(include_sequence_siblings=True)["data"]
+        assert wide["would_move_count"] == 3 and wide["sequence_siblings"] == 2
+        assert call(dry_run=False, confirm=wide["confirm"])["error"] == "confirmation_required"
+        assert all(os.path.exists(p) for p in panorama.paths)
+        fresh = call(include_sequence_siblings=True)["data"]
+        done = call(include_sequence_siblings=True, dry_run=False, confirm=fresh["confirm"])
+        assert done["ok"] and done["data"]["moved"] == 3
+
+
 @pytest.fixture()
 def library(edition, seed_photos_prefix, tmp_path, monkeypatch):
     """Four photos on disk: r1, r2 rejected, k1 kept (r1 has a RAW companion)."""
@@ -440,6 +519,12 @@ class TestCullApply:
         ok_run = library.env.call(library.token, "cull_apply", {
             "action": "move_rejects", "target_dir": library.target, "filters": filters, "expected_count": 3})
         assert ok_run["ok"] and ok_run["data"]["would_move_count"] == 2
+
+    def test_a_file_missing_on_disk_is_skipped_with_a_reason(self, library):
+        os.remove(library.r2)
+        data = self.dry(library)
+        assert data["skipped"] == [library.r2] and "skipped_reason" in data
+        assert "disk" in data["skipped_reason"]
 
     def test_non_edition_tokens_are_refused(self, library, agent_app):
         env = agent_app("multi")

@@ -84,7 +84,6 @@
       "intro": "Laissez un assistant IA explorer votre bibliothèque et piloter cet onglet. Il se connecte avec un jeton d'accès personnel que vous pouvez révoquer à tout moment.",
       "tokens_heading": "Jetons d'accès",
       "no_tokens": "Aucun jeton d'accès pour l'instant.",
-      "col_name": "Nom",
       "col_created": "Créé le",
       "col_last_used": "Dernière utilisation",
       "never_used": "Jamais",
@@ -103,6 +102,7 @@
       "level_edition_badge": "Édition",
       "mint": "Créer le jeton",
       "mint_failed": "Impossible de créer le jeton",
+      "revoke_failed": "Impossible de révoquer le jeton",
       "mint_limit": "Vous avez déjà le nombre maximal de jetons actifs. Révoquez-en un d'abord.",
       "reveal_heading": "Votre nouveau jeton",
       "reveal_warning": "Copiez-le maintenant. Vous ne le reverrez plus.",
@@ -118,7 +118,7 @@
       "copy_snippet_aria": "Copier la commande de connexion",
       "revoke_aria": "Révoquer le jeton {name}",
       "revoke_confirm_yes_aria": "Oui, révoquer le jeton {name}",
-      "cancel_revoke_aria": "Conserver le jeton {name}",
+      "cancel_revoke_aria": "Annuler, conserver le jeton {name}",
       "token_created_announce": "Jeton {name} créé. Il n'est affiché qu'une fois, dans le champ mis en évidence.",
       "reveal_level": "Accès accordé : {level}"
     }

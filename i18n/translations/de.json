@@ -84,7 +84,6 @@
       "intro": "Lassen Sie einen KI-Assistenten Ihre Bibliothek durchsuchen und diesen Tab steuern. Er verbindet sich mit einem persönlichen Zugriffstoken, das Sie jederzeit widerrufen können.",
       "tokens_heading": "Zugriffstoken",
       "no_tokens": "Noch keine Zugriffstoken.",
-      "col_name": "Name",
       "col_created": "Erstellt",
       "col_last_used": "Zuletzt verwendet",
       "never_used": "Nie",
@@ -103,6 +102,7 @@
       "level_edition_badge": "Bearbeitung",
       "mint": "Token erstellen",
       "mint_failed": "Das Token konnte nicht erstellt werden",
+      "revoke_failed": "Das Token konnte nicht widerrufen werden",
       "mint_limit": "Sie haben bereits die maximale Anzahl aktiver Token. Widerrufen Sie zuerst eines.",
       "reveal_heading": "Ihr neues Token",
       "reveal_warning": "Kopieren Sie es jetzt. Sie sehen es nicht noch einmal.",
@@ -118,7 +118,7 @@
       "copy_snippet_aria": "Verbindungsbefehl kopieren",
       "revoke_aria": "Token {name} widerrufen",
       "revoke_confirm_yes_aria": "Ja, Token {name} widerrufen",
-      "cancel_revoke_aria": "Token {name} behalten",
+      "cancel_revoke_aria": "Abbrechen, Token {name} behalten",
       "token_created_announce": "Token {name} erstellt. Es wird nur einmal im hervorgehobenen Feld angezeigt.",
       "reveal_level": "Gewährter Zugriff: {level}"
     }

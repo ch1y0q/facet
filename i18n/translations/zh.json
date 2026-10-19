@@ -84,7 +84,6 @@
       "intro": "让 AI 助手搜索您的图库并操作此标签页。它使用个人访问令牌连接，您可以随时撤销。",
       "tokens_heading": "访问令牌",
       "no_tokens": "还没有访问令牌。",
-      "col_name": "名称",
       "col_created": "创建时间",
       "col_last_used": "最近使用",
       "never_used": "从未",
@@ -103,6 +102,7 @@
       "level_edition_badge": "编辑",
       "mint": "创建令牌",
       "mint_failed": "无法创建令牌",
+      "revoke_failed": "无法撤销令牌",
       "mint_limit": "您的有效令牌已达上限，请先撤销一个。",
       "reveal_heading": "您的新令牌",
       "reveal_warning": "请立即复制，之后将无法再次查看。",
@@ -118,7 +118,7 @@
       "copy_snippet_aria": "复制连接命令",
       "revoke_aria": "撤销令牌 {name}",
       "revoke_confirm_yes_aria": "是，撤销令牌 {name}",
-      "cancel_revoke_aria": "保留令牌 {name}",
+      "cancel_revoke_aria": "取消，保留令牌 {name}",
       "token_created_announce": "令牌 {name} 已创建。它只在高亮字段中显示一次。",
       "reveal_level": "已授予的权限：{level}"
     }

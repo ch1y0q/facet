@@ -84,7 +84,6 @@
       "intro": "Deixe um assistente de IA pesquisar a sua biblioteca e controlar este separador. Liga-se com um token de acesso pessoal que pode revogar a qualquer momento.",
       "tokens_heading": "Tokens de acesso",
       "no_tokens": "Ainda não há tokens de acesso.",
-      "col_name": "Nome",
       "col_created": "Criado",
       "col_last_used": "Última utilização",
       "never_used": "Nunca",
@@ -103,6 +102,7 @@
       "level_edition_badge": "Edição",
       "mint": "Criar token",
       "mint_failed": "Não foi possível criar o token",
+      "revoke_failed": "Não foi possível revogar o token",
       "mint_limit": "Já tem o número máximo de tokens ativos. Revogue um primeiro.",
       "reveal_heading": "O seu novo token",
       "reveal_warning": "Copie-o agora. Não o voltará a ver.",
@@ -118,7 +118,7 @@
       "copy_snippet_aria": "Copiar o comando de ligação",
       "revoke_aria": "Revogar o token {name}",
       "revoke_confirm_yes_aria": "Sim, revogar o token {name}",
-      "cancel_revoke_aria": "Manter o token {name}",
+      "cancel_revoke_aria": "Cancelar, manter o token {name}",
       "token_created_announce": "Token {name} criado. É mostrado uma só vez, no campo realçado.",
       "reveal_level": "Acesso concedido: {level}"
     }

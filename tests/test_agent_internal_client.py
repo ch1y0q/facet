@@ -197,6 +197,15 @@ class TestStatusMapping:
         result = _run(client.call(tokens.verify(token), "slow", timeout=0.05))
         assert result["error"] == "upstream_error"
 
+    def test_timeout_does_not_need_asyncio_timeout_python_3_11(self, agent_app, monkeypatch):
+        monkeypatch.delattr(asyncio, "timeout")
+        env = agent_app("open")
+        token = env.token(env.login(), "readonly")
+        client = InternalClient(_fake_app(), allowlist={"slow": RouteSpec("GET", "/slow", "readonly")})
+        result = _run(client.call(tokens.verify(token), "slow", timeout=0.05))
+        assert result["error"] == "upstream_error"
+        assert "did not answer in time" in result["message"]
+
     def test_write_timeout_is_outcome_unknown(self, agent_app):
         env = agent_app("legacy")
         token = env.token(env.login(edition=True), "edition")

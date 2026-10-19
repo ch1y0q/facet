@@ -1106,7 +1106,7 @@ class TestManualTagsOnEveryPhotoPayload:
 
 
 class TestMcpTokenWireTypes:
-    """The token routes' wire types, as SQLite emits them (no client declaration yet)."""
+    """The token routes' wire types, as SQLite emits them (the generated client types are guarded by the gen:api gate)."""
 
     def test_create_and_list_wire_types(self, agent_app):
         env = agent_app("multi")

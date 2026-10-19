@@ -52,6 +52,11 @@ _FILTER_FIELDS: dict[str, Any] = {
         default=None, description=f"Gallery filter `{key}` (same meaning as in the viewer)."))
     for key in MCP_FILTER_KEYS
 }
+# The route reads only show_rejected == "1" (rejected photos ONLY); anything else is
+# silently the normal listing, so the key is a boolean rather than a free value.
+_FILTER_FIELDS["show_rejected"] = (Optional[bool], Field(
+    default=None, description="true lists ONLY the rejected photos; false or omitted is the "
+    "normal listing. Other values are refused."))
 SearchFilters = create_model("SearchFilters", __config__=ConfigDict(extra="forbid"), **_FILTER_FIELDS)
 
 MetricField = Literal[
@@ -193,10 +198,11 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra)
                 query={"limit": limit, "mode": mode}, timeout=settings["call_timeout_s"])
             if not upstream["ok"]:
                 return upstream
-            body = upstream["data"]
-            photos = body.get("photos", body.get("results", [])) if isinstance(body, dict) else body
-            return ok({"rows": [compact_photo(p) | {"similarity": p.get("similarity")}
-                                for p in photos or []], "total": len(photos or [])})
+            body = upstream["data"] or {}
+            photos = body.get("similar") or []
+            return ok({"rows": [compact_photo(p) | {"similarity": p.get("similarity")} for p in photos],
+                       "total": body.get("total", len(photos)),
+                       "has_more": bool(body.get("has_more"))})
         return await run_tool(ctx, "similar_photos", handler)
 
     async def filter_options(
@@ -224,7 +230,7 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra)
             if not upstream["ok"]:
                 return upstream
             body = upstream["data"] or {}
-            rows = [{k: p.get(k) for k in ("id", "name", "face_count", "photo_count")}
+            rows = [{k: p.get(k) for k in ("id", "name", "face_count")}
                     for p in body.get("persons", [])]
             return ok({"rows": rows, "total": body.get("total", len(rows))})
         return await run_tool(ctx, "list_persons", handler)

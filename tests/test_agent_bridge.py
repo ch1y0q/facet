@@ -28,10 +28,8 @@ def connect(env, origin="http://testserver"):
 
 
 def refused_code(env, **kwargs):
-    with pytest.raises(WebSocketDisconnect) as info:
-        with connect(env, **kwargs):
-            pass
-    return info.value.code
+    with connect(env, **kwargs) as ws:
+        return closed_after(ws)
 
 
 def auth_frame(token, tab_id="t1", **extra):
@@ -333,7 +331,7 @@ class TestForwarding:
         conn.closed = True
         started = time.monotonic()
         result = asyncio.run(env.app.state.tab_registry.call(
-            "_anonymous", "ui_next_page", {}, tab_id=None, timeout=30))
+            "_anonymous", "ui_next_page", {}, level="readonly", tab_id=None, timeout=30))
         assert result["error"] == "no_tab" and time.monotonic() - started < 2
         assert conn.pending == {}
 
@@ -409,6 +407,81 @@ class TestForwarding:
         assert "ui_navigate" in env.tool_names(token)
         result = env.call(token, "ui_navigate", {"route": "/stats"})
         assert result["error"] == "no_tab" and "bridge" in result["message"]
+
+
+class TestTabLevels:
+    def test_viewer_only_tab_never_serves_an_edition_token(self, agent_app, fake_tab):
+        env = agent_app("legacy")
+        fake_tab(env, jwt_of(env.login()), "viewer-tab")
+        edition_token = env.token(env.login(edition=True), "edition")
+        result = env.call(edition_token, "ui_get_selection")
+        assert result["error"] == "no_tab"
+        assert "edition" in result["message"]
+        fake_tab(env, jwt_of(env.login(edition=True)), "edition-tab")
+        assert env.call(edition_token, "ui_get_selection")["tab"]["tab_id"] == "edition-tab"
+
+    def test_viewer_only_tab_cannot_steal_focus_from_an_edition_tab(self, agent_app, fake_tab):
+        env = agent_app("legacy")
+        fake_tab(env, jwt_of(env.login(edition=True)), "edition-tab", focused=False)
+        fake_tab(env, jwt_of(env.login()), "rogue-tab", focused=True)
+        edition_token = env.token(env.login(edition=True), "edition")
+        assert env.call(edition_token, "ui_get_selection")["tab"]["tab_id"] == "edition-tab"
+
+    def test_readonly_token_may_drive_an_edition_tab(self, agent_app, fake_tab):
+        env = agent_app("legacy")
+        fake_tab(env, jwt_of(env.login(edition=True)), "edition-tab")
+        token = env.token(env.login(), "readonly")
+        assert env.call(token, "ui_get_selection")["tab"]["tab_id"] == "edition-tab"
+
+    def test_open_install_edition_session_tab_is_reachable(self, agent_app, fake_tab):
+        env = agent_app("open")
+        from api import config as api_config
+        api_config.VIEWER_CONFIG["edition_password"] = "edition-pw"
+        edition = env.client.post("/api/auth/edition/login", json={"password": "edition-pw"})
+        assert edition.status_code == 200, edition.text
+        env.client.cookies.clear()
+        fake_tab(env, edition.json()["access_token"], "edition-tab")
+        token = env.token(env.login())
+        assert env.call(token, "ui_get_selection")["tab"]["tab_id"] == "edition-tab"
+
+
+class TestRealBrowserCloseCodes:
+    """The refusals must reach a real WebSocket client as close frames, not an HTTP 403 (a
+    browser reports that as 1006 and the tab would retry forever)."""
+
+    @staticmethod
+    def _serve(app):
+        import uvicorn
+        server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, lifespan="off", log_level="error"))
+        thread = threading.Thread(target=server.run, daemon=True)
+        thread.start()
+        deadline = time.monotonic() + 10
+        while not server.started and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert server.started
+        return server, thread, server.servers[0].sockets[0].getsockname()[1]
+
+    @staticmethod
+    def _close_code(port, origin):
+        from websockets.exceptions import ConnectionClosed
+        from websockets.sync.client import connect as ws_connect
+        with ws_connect(f"ws://127.0.0.1:{port}/api/mcp/bridge", origin=origin, open_timeout=5) as ws:
+            with pytest.raises(ConnectionClosed) as info:
+                ws.recv(timeout=5)
+        return info.value.rcvd.code
+
+    @pytest.mark.parametrize("bridge_on,origin,code", [
+        (False, "http://127.0.0.1:{port}", 4404),
+        (True, "http://evil.example", 4403),
+    ])
+    def test_refusal_is_a_close_frame(self, agent_app, bridge_on, origin, code):
+        env = agent_app("open", bridge=bridge_on)
+        server, thread, port = self._serve(env.app)
+        try:
+            assert self._close_code(port, origin.format(port=port)) == code
+        finally:
+            server.should_exit = True
+            thread.join(10)
 
 
 class TestUiTools:

@@ -105,7 +105,7 @@ describe('UI tool registry and handlers', () => {
     it('navigates to an allowed route with the query', async () => {
       const result = await run('ui_navigate', { route: '/stats', query: { year: 2024 } });
       expect(result.ok).toBe(true);
-      expect(navigate).toHaveBeenCalledWith(['/stats'], { queryParams: { year: '2024' } });
+      expect(navigate).toHaveBeenCalledWith(['/stats'], { queryParams: { year: '2024' }, onSameUrlNavigation: 'reload' });
     });
 
     it('refuses edition-only routes for a non-edition session', async () => {
@@ -213,6 +213,12 @@ describe('UI tool registry and handlers', () => {
       expect(store.filters()).toMatchObject({ camera: '', min_iso: '', lens: '50mm' });
     });
 
+    it('replace also lifts a set scope the user opened', async () => {
+      await store.updateFilters({ sequence_group_id: '4', sequence_kind: 'burst', burst_group_id: '4', duplicate_group_id: '2' });
+      await run('ui_set_gallery_filters', { patch: { lens: '50mm' }, replace: true });
+      expect(store.filters()).toMatchObject({ sequence_group_id: '', sequence_kind: '', burst_group_id: '', duplicate_group_id: '' });
+    });
+
     it('refuses a filter the tab cannot show, without applying the rest', async () => {
       const result = await run('ui_set_gallery_filters', { patch: { camera: 'Canon', junk_kind: 'blurry' } });
       expect(result).toMatchObject({ ok: false, error: 'invalid_input' });
@@ -254,7 +260,7 @@ describe('UI tool registry and handlers', () => {
   describe('ui_open_photo', () => {
     it('navigates to /photo?path=', async () => {
       await run('ui_open_photo', { path: '/x/y.jpg' });
-      expect(navigate).toHaveBeenCalledWith(['/photo'], { queryParams: { path: '/x/y.jpg' } });
+      expect(navigate).toHaveBeenCalledWith(['/photo'], { queryParams: { path: '/x/y.jpg' }, onSameUrlNavigation: 'reload' });
     });
   });
 

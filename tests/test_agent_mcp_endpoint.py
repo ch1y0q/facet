@@ -231,6 +231,17 @@ class TestReadTools:
             result = env.call(token, tool, args)
             assert result["ok"] is True, (tool, result)
 
+    def test_similar_photos_returns_the_routes_hits(self, agent_app, photos, monkeypatch):
+        from api.routers import gallery
+        hit = {"path": AGENT_DIR + "b.jpg", "filename": "b.jpg", "similarity": 0.9}
+        monkeypatch.setattr(gallery, "_find_similar_visual", lambda *a, **k: ([hit], None))
+        env = agent_app("open")
+        result = env.call(env.token(env.login()), "similar_photos", {"path": AGENT_DIR + "a.jpg"})
+        assert result["ok"] is True, result
+        assert [r["filename"] for r in result["data"]["rows"]] == ["b.jpg"]
+        assert result["data"]["rows"][0]["similarity"] == 0.9
+        assert result["data"]["total"] == 1 and result["data"]["has_more"] is False
+
     def test_multi_user_sees_only_their_own_library(self, agent_app, photos):
         env = agent_app("multi")
         alice = env.token(env.login("alice"), "user")
@@ -403,10 +414,33 @@ class TestInputEnvelopes:
         result = env.call(token, "search_photos", {"filters": {"min_aestheticc": 7}})
         assert result["ok"] is False and result["error"] == "invalid_input"
 
+    def test_show_rejected_only_accepts_a_boolean(self, agent_app):
+        env, token = self._token(agent_app)
+        for bad in ("only", "banana", 7):
+            result = env.call(token, "search_photos", {"filters": {"show_rejected": bad}})
+            assert result["ok"] is False and result["error"] == "invalid_input", bad
+        assert env.call(token, "search_photos", {"filters": {"show_rejected": True}})["ok"] is True
+
     def test_unknown_tool_is_an_envelope(self, agent_app):
         env, token = self._token(agent_app)
         result = env.call(token, "no_such_tool", {})
         assert result["ok"] is False and result["error"] == "invalid_input"
+
+
+class TestAuthFailureBookkeeping:
+    def test_stale_failure_entries_are_swept_so_the_map_stays_bounded(self):
+        now = [0.0]
+        limits.set_clock(lambda: now[0])
+        try:
+            limits.reset_limits()
+            for index in range(limits.FAILURE_SWEEP_THRESHOLD + 5):
+                limits.record_auth_failure(f"10.0.{index // 250}.{index % 250}")
+            now[0] += limits.WINDOW_SECONDS + 1
+            limits.record_auth_failure("fresh")
+            assert set(limits._failures) == {"fresh"}
+        finally:
+            limits.set_clock(None)
+            limits.reset_limits()
 
 
 class TestAuthBlockDoesNotLockOutValidTokens:
@@ -469,3 +503,44 @@ class TestMcpUnavailable:
         assert env.client.get("/api/mcp/tokens").status_code == 404
         assert env.rpc("fct_x", "tools/list").status_code in (404, 405)
         assert env.client.get("/api/health").status_code < 500
+
+
+def test_tools_version_is_computed_once_per_contract(monkeypatch):
+    from api.agent import ui_tools
+    calls = []
+    real = ui_tools.tool_descriptors
+    monkeypatch.setattr(ui_tools, "_version_memo", (None, ""))
+    monkeypatch.setattr(ui_tools, "tool_descriptors", lambda: calls.append(1) or real())
+    first = ui_tools.tools_version()
+    assert [ui_tools.tools_version() for _ in range(5)] == [first] * 5
+    assert len(calls) == 1
+
+
+def test_trim_options_filters_by_query_and_caps_each_list():
+    from api.agent.tools_read import FILTER_OPTION_LIMIT, _trim_options
+    names = [f"cam-{i}" for i in range(FILTER_OPTION_LIMIT + 5)]
+    kept, cut = _trim_options(names, None)
+    assert len(kept) == FILTER_OPTION_LIMIT and cut is True
+    kept, cut = _trim_options(names[:FILTER_OPTION_LIMIT], None)
+    assert len(kept) == FILTER_OPTION_LIMIT and cut is False
+    kept, cut = _trim_options(names, "CAM-19")
+    assert kept == ["cam-19", "cam-190", "cam-191", "cam-192", "cam-193", "cam-194", "cam-195",
+                    "cam-196", "cam-197", "cam-198", "cam-199"] and cut is False
+    kept, cut = _trim_options({"a": names, "b": ["x"], "n": 3}, "x")
+    assert kept == {"a": [], "b": ["x"], "n": 3} and cut is False
+
+
+class TestHideDefaults:
+    def test_hide_defaults_apply_unless_the_caller_overrides(self, agent_app, photos):
+        import sqlite3
+        from tests.conftest import _TEST_DB_FILE
+        env = agent_app("open")
+        api_config.VIEWER_CONFIG["defaults"]["hide_blinks"] = True
+        with sqlite3.connect(_TEST_DB_FILE.name) as conn:
+            conn.execute("UPDATE photos SET is_blink = 1 WHERE path = ?", (AGENT_DIR + "b.jpg",))
+        token = env.token(env.login())
+        scope = {"path_prefix": AGENT_DIR}
+        hidden = env.call(token, "search_photos", {"filters": scope})
+        assert sorted(r["filename"] for r in hidden["data"]["rows"]) == ["a.jpg", "c.jpg"]
+        shown = env.call(token, "search_photos", {"filters": {**scope, "hide_blinks": False}})
+        assert sorted(r["filename"] for r in shown["data"]["rows"]) == ["a.jpg", "b.jpg", "c.jpg"]

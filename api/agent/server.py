@@ -189,7 +189,7 @@ def mount_agent(app: FastAPI) -> StreamableHTTPSessionManager:
         registry = app.state.tab_registry = TabRegistry()
 
     def status_extra(resolved: ResolvedGrant) -> dict[str, Any]:
-        return {"server_version": version, "tabs": registry.describe(resolved.principal),
+        return {"server_version": version, "tabs": registry.describe(resolved.principal, resolved.level),
                 "ui_tools_version": tools_version()}
 
     register_read_tools(server, client, status_extra)

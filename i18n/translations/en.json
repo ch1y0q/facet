@@ -84,7 +84,6 @@
       "intro": "Let an AI assistant search your library and drive this tab. It connects with a personal access token that you can revoke at any time.",
       "tokens_heading": "Access tokens",
       "no_tokens": "No access tokens yet.",
-      "col_name": "Name",
       "col_created": "Created",
       "col_last_used": "Last used",
       "never_used": "Never",
@@ -103,6 +102,7 @@
       "level_edition_badge": "Editing",
       "mint": "Create token",
       "mint_failed": "Could not create the token",
+      "revoke_failed": "Could not revoke the token",
       "mint_limit": "You already have the maximum number of active tokens. Revoke one first.",
       "reveal_heading": "Your new token",
       "reveal_warning": "Copy it now. You will not see it again.",
@@ -118,7 +118,7 @@
       "copy_snippet_aria": "Copy the connection command",
       "revoke_aria": "Revoke token {name}",
       "revoke_confirm_yes_aria": "Yes, revoke token {name}",
-      "cancel_revoke_aria": "Keep token {name}",
+      "cancel_revoke_aria": "Cancel, keep token {name}",
       "token_created_announce": "Token {name} created. It is shown once, in the highlighted field.",
       "reveal_level": "Access granted: {level}"
     }

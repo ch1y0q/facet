@@ -234,7 +234,7 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
       // The revoked row (and its focused button) is gone; land on the list's heading rather than on <body>.
       afterNextRender(() => this.tokensHeading()?.nativeElement.focus(), { injector: this.injector });
     } catch {
-      this.error.set(this.I18N.dialog.connect_assistant.load_failed);
+      this.error.set(this.I18N.dialog.connect_assistant.revoke_failed);
     }
   }
 

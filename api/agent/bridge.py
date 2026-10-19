@@ -38,6 +38,11 @@ CLOSE_SUPERSEDED = 4409
 CLOSE_PROTOCOL = 4400
 CLOSE_SILENT = 4408
 
+# Rights a tab's session carries, lowest first. A tab serves an agent call only when its
+# level is at least the calling token's effective level: otherwise a viewer-password
+# session (same `_legacy` principal as the edition session) could feed an edition agent.
+LEVEL_RANK = {"readonly": 0, "user": 1, "edition": 2}
+
 AUTH_TIMEOUT_S = 5.0
 PING_INTERVAL_S = 25.0
 SILENCE_DROP_S = 60.0
@@ -66,6 +71,7 @@ class TabConn:
     loop: asyncio.AbstractEventLoop
     tools: frozenset
     tools_version: Optional[str]
+    level: str = "readonly"
     route: str = ""
     focused: bool = False
     connected_at: float = field(default_factory=time.monotonic)
@@ -186,11 +192,12 @@ class TabRegistry:
         conn.closed = True
         conn.fail_all(err("no_tab", "The tab closed before it answered"))
 
-    def tabs_for(self, user_id: str) -> list[TabConn]:
+    def tabs_for(self, user_id: str, min_level: Optional[str] = None) -> list[TabConn]:
+        floor = LEVEL_RANK[min_level] if min_level is not None else 0
         with self._lock:
-            return list(self._tabs.get(user_id, {}).values())
+            return [t for t in self._tabs.get(user_id, {}).values() if LEVEL_RANK.get(t.level, 0) >= floor]
 
-    def describe(self, user_id: str) -> list[dict]:
+    def describe(self, user_id: str, min_level: Optional[str] = None) -> list[dict]:
         """Public view for ``status``: no sockets, no tool lists, ages instead of clocks."""
         now = time.monotonic()
         return [{
@@ -199,7 +206,7 @@ class TabRegistry:
             "focused": t.focused,
             "last_seen_s": round(now - t.last_seen, 1),
             "tools_current": all(t.current(name) for name in SERVER_TOOL_NAMES),
-        } for t in sorted(self.tabs_for(user_id), key=lambda t: -t.last_active)]
+        } for t in sorted(self.tabs_for(user_id, min_level), key=lambda t: -t.last_active)]
 
     @staticmethod
     def pick(tabs: list[TabConn], tab_id: Optional[str]) -> tuple[Optional[TabConn], str]:
@@ -213,14 +220,20 @@ class TabRegistry:
             return max(focused, key=lambda t: t.last_active), "focused"
         return max(tabs, key=lambda t: t.last_active), "most_recent"
 
-    async def call(self, user_id: str, tool: str, args: dict, *, tab_id: Optional[str],
+    async def call(self, user_id: str, tool: str, args: dict, *, level: str, tab_id: Optional[str],
                    timeout: float) -> dict:
         """Forward ``tool`` to the user's tab and wait for its result envelope.
+
+        Only tabs whose session level is at least ``level`` (the token's effective level)
+        are considered.
 
         Never raises: ``no_tab`` (no tab, or it closed mid-call), ``tab_outdated``,
         ``tab_timeout`` and ``upstream_error`` (tab sent a broken reply) are envelopes.
         """
-        tabs = self.tabs_for(user_id)
+        tabs = self.tabs_for(user_id, level)
+        if not tabs and self.tabs_for(user_id):
+            return err("no_tab", f"Only tabs signed in with less than {level} rights are open. Ask the user to "
+                                 "unlock edition in the viewer, or use a read-only token.")
         if not tabs:
             return err("no_tab", "No Facet tab is open and connected for this user. Ask the user to "
                                  "open the viewer in a browser and sign in.")

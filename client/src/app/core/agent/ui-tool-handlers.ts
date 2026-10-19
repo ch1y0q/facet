@@ -124,6 +124,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
     const keys: (keyof GalleryFilters)[] = [
       ...RANGE_AND_SELECT_KEYS, 'album_id', 'favorites_only', 'is_monochrome', 'similar_to', 'semanticQuery',
       'hide_blinks', 'hide_bursts', 'hide_duplicates', 'hide_brackets', 'hide_panoramas', 'hide_rejected',
+      'sequence_group_id', 'sequence_kind', 'burst_group_id', 'duplicate_group_id',
     ];
     const cleared: Record<string, unknown> = {};
     for (const key of keys) cleared[key] = filterDefault(key);
@@ -195,7 +196,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       }
       const query = (args['query'] ?? {}) as Record<string, string | number | boolean>;
       const queryParams = Object.fromEntries(Object.entries(query).map(([k, v]) => [k, String(v)]));
-      const ok = await router.navigate([route], { queryParams });
+      const ok = await router.navigate([route], { queryParams, onSameUrlNavigation: 'reload' });
       if (!ok) throw new UiToolError('forbidden_level', `The tab refused to open ${route}.`);
       return { route: pathOf(router.url) || '/' };
     },
@@ -239,7 +240,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
 
     ui_open_photo: async args => {
       const path = args['path'] as string;
-      const ok = await router.navigate(['/photo'], { queryParams: { path } });
+      const ok = await router.navigate(['/photo'], { queryParams: { path }, onSameUrlNavigation: 'reload' });
       if (!ok) throw new UiToolError('not_found', 'The tab could not open that photo.');
       return { route: '/photo', path };
     },

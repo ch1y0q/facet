@@ -258,10 +258,23 @@ def tool_descriptors() -> list[dict]:
              "annotations": annotations(t)} for t in UI_TOOLS]
 
 
+_version_memo: tuple[Any, str] = (None, "")
+
+
 def tools_version() -> str:
-    """Digest of the whole contract. A tab announcing another value is ``tab_outdated``."""
-    blob = json.dumps(tool_descriptors(), sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+    """Digest of the whole contract. A tab announcing another value is ``tab_outdated``.
+
+    The contract is static for the process, but building its schemas costs ~12 ms of
+    pydantic work and this runs per tab on the event loop, so the digest is memoised
+    against the identity of ``UI_TOOLS`` (a test that swaps the tuple still sees a new value).
+    """
+    global _version_memo
+    tools, version = _version_memo
+    if tools is not UI_TOOLS:
+        blob = json.dumps(tool_descriptors(), sort_keys=True, separators=(",", ":"))
+        version = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+        _version_memo = (UI_TOOLS, version)
+    return version
 
 
 def render_client_json() -> str:

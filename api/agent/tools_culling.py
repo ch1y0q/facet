@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from api.agent import nonce
 from api.agent.internal_client import InternalClient, RouteSpec, err, ok
+from api.agent.limits import encoded_size
 from api.agent.runtime import run_tool
 from api.agent.tools_read import READ_ANNOTATIONS, UNTRUSTED_META, UNTRUSTED_NOTE
 
@@ -67,6 +68,24 @@ def _compact_group(group: dict) -> dict:
         "photos": [{key: p.get(key) for key in GROUP_PHOTO_KEYS}
                    for p in photos[:GROUP_PHOTO_LIMIT]],
     }
+
+
+def _fit_groups(rows: list[dict], budget: int) -> list[dict]:
+    """Shed group members (never groups) until the page fits ``budget`` serialized bytes.
+
+    A scene page is ~20 groups of up to ``GROUP_PHOTO_LIMIT`` photos; halving every group's
+    member list keeps each group visible. ``photo_count`` stays the true size and
+    ``photos_truncated`` marks a group whose list was cut.
+    """
+    shown = GROUP_PHOTO_LIMIT
+    while shown > 1 and encoded_size({"rows": rows}) > budget:
+        shown = max(1, shown // 2)
+        for row in rows:
+            if len(row["photos"]) > shown:
+                row["photos"] = row["photos"][:shown]
+    for row in rows:
+        row["photos_truncated"] = len(row["photos"]) < row["photo_count"]
+    return rows
 
 
 def _plan_digest(options: dict, preview: list[dict]) -> str:
@@ -139,10 +158,13 @@ def register_culling_tools(server: MCPServer, app: Any) -> None:
             if not upstream["ok"]:
                 return upstream
             body = upstream["data"] or {}
-            return ok({"rows": [_compact_group(g) for g in body.get("groups", [])],
+            rows = _fit_groups([_compact_group(g) for g in body.get("groups", [])],
+                               settings["max_bytes"] // 2)
+            return ok({"rows": rows,
                        "total": body.get("total_groups", 0), "page": body.get("page", page),
                        "per_page": body.get("per_page", per_page),
-                       "total_pages": body.get("total_pages", 0)})
+                       "total_pages": body.get("total_pages", 0),
+                       "has_more": body.get("page", page) < body.get("total_pages", 0)})
         return await run_tool(ctx, "list_culling_groups", handler)
 
     async def culling_profiles(ctx: Context) -> CallToolResult:

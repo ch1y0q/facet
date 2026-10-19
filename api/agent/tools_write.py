@@ -25,7 +25,9 @@ from pydantic import Field
 from api.agent import nonce
 from api.agent.internal_client import InternalClient, err, ok
 from api.agent.runtime import run_tool
-from api.agent.tools_read import UNTRUSTED_META, UNTRUSTED_NOTE, SearchFilters, _list_result, _query_value
+from api.agent.tools_read import (
+    UNTRUSTED_META, UNTRUSTED_NOTE, SearchFilters, _hide_defaults, _list_result, _query_value,
+)
 
 PER_PHOTO_CAP = 50
 BATCH_CAP = 1000
@@ -59,7 +61,10 @@ def _too_large(count: int, cap: int) -> dict:
 
 
 def _scope_filters(filters: Any) -> dict:
-    return {key: _query_value(value) for key, value in filters.model_dump(exclude_none=True).items()}
+    """The filters as the routes read them, with the viewer's hide defaults applied exactly as
+    ``search_photos`` applies them, so its ``total`` is the ``expected_count`` and the set written."""
+    merged = _hide_defaults(filters.model_dump(exclude_none=True))
+    return {key: _query_value(value) for key, value in merged.items()}
 
 
 async def resolve_scope(
@@ -144,9 +149,18 @@ async def set_each(client: InternalClient, grant: Any, settings: dict, paths: li
                "skipped": skipped, "results": results})
 
 
+SKIPPED_REASON = ("these library paths have no readable file on disk (missing, moved, or outside "
+                  "the scan directories); nothing was done for them")
+
+
 def _cap_lists(data: dict, limit: int) -> dict:
-    """Long lists become their first ``limit`` entries plus a ``<key>_count``."""
+    """Long lists become their first ``limit`` entries plus a ``<key>_count``.
+
+    A non-empty ``skipped`` list gets a ``skipped_reason``: the routes report bare paths.
+    """
     shaped = dict(data)
+    if data.get("skipped"):
+        shaped["skipped_reason"] = SKIPPED_REASON
     for key, value in data.items():
         if isinstance(value, list) and len(value) > limit:
             shaped[key] = value[:limit]

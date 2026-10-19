@@ -9,11 +9,11 @@ authenticates from the cookie.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from api.agent import tokens
 from api.auth import CurrentUser, _edition_refusal, require_human_session
-from api.config import is_multi_user_enabled, mcp_settings
+from api.config import get_user_config, is_multi_user_enabled, mcp_settings
 from api.models.mcp import (
     McpTokenCreate, McpTokenCreated, McpTokenList, McpTokenRevoked,
 )
@@ -26,7 +26,19 @@ def _require_enabled() -> None:
         raise HTTPException(status_code=404, detail="Not Found")
 
 
-router = APIRouter(prefix="/api/mcp", tags=["mcp"], dependencies=[Depends(_require_enabled)])
+def _refuse_agent_token(request: Request) -> None:
+    """403 for an agent's own bearer (``fct_...``) on these routes, as the internal JWT gets.
+
+    Without this the generic session check answers 401 ("not a session"), which reads as
+    "log in" to an agent that holds a perfectly valid token.
+    """
+    scheme, _, secret = request.headers.get("authorization", "").partition(" ")
+    if scheme.lower() == "bearer" and secret.strip().startswith(tokens.TOKEN_PREFIX):
+        raise HTTPException(status_code=403, detail="Agent credentials cannot manage agent tokens")
+
+
+router = APIRouter(prefix="/api/mcp", tags=["mcp"],
+                   dependencies=[Depends(_require_enabled), Depends(_refuse_agent_token)])
 
 
 def _principal(user: CurrentUser) -> str:
@@ -89,7 +101,7 @@ def _shared_principal_scope(user: CurrentUser) -> Optional[int]:
 def create_token(body: McpTokenCreate, user: CurrentUser = Depends(require_human_session)):
     """Mint a token. The plaintext is in this response and nowhere else, ever."""
     principal = _principal(user)
-    if not principal:
+    if not principal or (tokens.install_mode() == 'multi' and get_user_config(principal) is None):
         raise HTTPException(status_code=401, detail="Authentication required")
     level = _granted_level(user, body.level)
     if tokens.count_live(principal) >= tokens.MAX_LIVE_TOKENS_PER_USER:

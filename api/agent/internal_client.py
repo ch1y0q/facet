@@ -138,7 +138,8 @@ class InternalClient:
             return err("forbidden_level", "This token is no longer valid")
         if tokens.level_rank(resolved.level) < tokens.level_rank(spec.min_level):
             return err("forbidden_level",
-                       f"This token's level is {resolved.level}; {tool} needs {spec.min_level}")
+                       f"This token's level is {resolved.level}; {tool} needs "
+                       f"{tokens.effective_requirement(spec.min_level)}")
         for value in (path_args or {}).values():
             text = str(value)
             if not text or any(part in (".", "..") for part in text.split("/")):
@@ -155,10 +156,9 @@ class InternalClient:
             app=self._app, raise_app_exceptions=False, client=(self._peer_ip, 0))
         try:
             async with httpx.AsyncClient(transport=transport, base_url=INTERNAL_BASE_URL) as client:
-                async with asyncio.timeout(timeout):
-                    response = await client.request(
-                        spec.method, path, params=params or None, json=json, headers=headers)
-        except TimeoutError:
+                response = await asyncio.wait_for(client.request(
+                    spec.method, path, params=params or None, json=json, headers=headers), timeout)
+        except asyncio.TimeoutError:
             return self._timed_out(spec, tool)
         except (httpx.HTTPError, OSError) as ex:
             logger.warning("Agent upstream call %s failed: %r", tool, ex)

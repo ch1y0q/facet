@@ -189,10 +189,75 @@ describe('ConnectAssistantDialogComponent', () => {
 
     it('shows the level the server granted when it capped the request', async () => {
       multiUser = true;
+      edition = true;
       createMcpToken.mockReturnValueOnce(of({ ...TOKEN_ROW, id: 9, name: 'x', level: 'readonly', token: SECRET } as McpTokenCreated));
       await create();
+      const select = query<HTMLSelectElement>('select[name="token-level"]')!;
+      select.value = 'edition';
+      select.dispatchEvent(new Event('change'));
+      fixture.detectChanges();
       await mintAs('x');
-      expect(query('[data-testid="granted-level"]')?.textContent).toContain('dialog.connect_assistant.level_readonly');
+      expect(createMcpToken).toHaveBeenCalledWith({ name: 'x', level: 'edition' });
+      const granted = query('[data-testid="granted-level"]')?.textContent;
+      expect(granted).toContain('dialog.connect_assistant.level_readonly');
+      expect(granted).not.toContain('level_edition');
+    });
+  });
+
+  describe('failures', () => {
+    it('reports a failed list load', async () => {
+      listMcpTokens.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
+      await create();
+      expect(query('[role="alert"]')?.textContent).toContain('dialog.connect_assistant.load_failed');
+    });
+
+    it('reports a non-412 mint failure as mint_failed', async () => {
+      createMcpToken.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 500 })));
+      await create();
+      await mintAs('x');
+      expect(query('[role="alert"]')?.textContent).toContain('dialog.connect_assistant.mint_failed');
+    });
+
+    it('reports a failed revoke as revoke_failed and keeps the row', async () => {
+      revokeMcpToken.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 404 })));
+      await create();
+      buttonByText('dialog.connect_assistant.revoke')!.click();
+      fixture.detectChanges();
+      buttonByText('dialog.connect_assistant.revoke_confirm_yes')!.click();
+      await flush();
+      const alert = query('[role="alert"]')?.textContent;
+      expect(alert).toContain('dialog.connect_assistant.revoke_failed');
+      expect(alert).not.toContain('load_failed');
+      expect(queryAll('[data-testid="token-row"]')).toHaveLength(1);
+    });
+  });
+
+  describe('copy', () => {
+    afterEach(() => {
+      Reflect.deleteProperty(navigator, 'clipboard');
+      delete (document as unknown as Record<string, unknown>)['execCommand'];
+    });
+
+    it('falls back to a hidden textarea when navigator.clipboard is unavailable', async () => {
+      Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+      const execCommand = vi.fn(() => true);
+      (document as unknown as Record<string, unknown>)['execCommand'] = execCommand;
+      await create();
+      buttonByText('dialog.connect_assistant.copy')!.click();
+      await flush();
+      expect(execCommand).toHaveBeenCalledWith('copy');
+      expect(document.querySelector('textarea')).toBeNull();
+      expect(text()).toContain('dialog.connect_assistant.copied');
+      expect(query('[data-testid="live-region"]')?.textContent).toContain('dialog.connect_assistant.copied');
+    });
+
+    it('says nothing when both copy routes fail', async () => {
+      Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+      (document as unknown as Record<string, unknown>)['execCommand'] = vi.fn(() => false);
+      await create();
+      buttonByText('dialog.connect_assistant.copy')!.click();
+      await flush();
+      expect(query('[data-testid="live-region"]')?.textContent).toBe('');
     });
   });
 

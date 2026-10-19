@@ -77,7 +77,8 @@ async def run_tool(ctx: Context, name: str, handler: Handler, *, write: bool = F
                     grant.id, write, per_min)
                 if below_floor:
                     envelope = err("forbidden_level",
-                                   f"This token's level is {resolved.level}; {name} needs {min_level}")
+                                   f"This token's level is {resolved.level}; {name} needs "
+                                   f"{tokens.effective_requirement(min_level)}")
                 elif not allowed:
                     envelope = err("rate_limited", "Too many calls; slow down",
                                    retry_after_s=retry_after)

@@ -3,11 +3,14 @@
 Protocol (the Angular ``AgentBridgeService`` is the other half; every frame is one
 JSON text message):
 
-1. Before ``accept``: the feature or the bridge is off -> close 4404; the ``Origin``
-   header is missing or not this host (nor in ``viewer.mcp.allowed_origins``) -> close
-   4403. Browsers attach cookies to cross-site WebSocket handshakes, so the Origin
-   check is what stops a foreign page from opening this socket.
-2. After ``accept``: the FIRST frame, within ``AUTH_TIMEOUT_S``, must be
+1. The socket is accepted first, then refused with an application close code: the
+   feature or the bridge is off -> close 4404; the ``Origin`` header is missing or not
+   this host (nor in ``viewer.mcp.allowed_origins``) -> close 4403. (A close BEFORE
+   accept is an HTTP 403 on the wire, which a browser reports as 1006 and the tab
+   would retry forever.) Browsers attach cookies to cross-site WebSocket handshakes, so
+   the Origin check is what stops a foreign page from opening this socket; no frame is
+   read from a refused socket.
+2. The FIRST frame, within ``AUTH_TIMEOUT_S``, must be
    ``{type: "auth", token, tab_id, route, tools: [names], tools_version?, focused}``.
    ``token`` is the user's session JWT -- never in the URL, which would land in proxy
    and browser logs -- or ``null`` on an open install. Anything else -> close 4401.
@@ -33,9 +36,9 @@ from starlette.websockets import WebSocketDisconnect
 
 from api.agent import bridge
 from api.agent.bridge import TabConn, TabRegistry
-from api.agent.tokens import OPEN_PRINCIPAL
+from api.agent.tokens import OPEN_PRINCIPAL, install_mode
 from api.agent.ui_tools import TAB_ID_PATTERN, tools_version
-from api.auth import SHARE_CLIENT_ROLE, VIEWER_PASSWORD_KEY, _is_open_install, decode_access_token
+from api.auth import EDITION_PASSWORD_KEY, SHARE_CLIENT_ROLE, VIEWER_PASSWORD_KEY, _is_open_install, decode_access_token
 from api.config import VIEWER_CONFIG, mcp_settings
 
 logger = logging.getLogger(__name__)
@@ -68,10 +71,22 @@ def origin_allowed(origin: Optional[str], host: Optional[str]) -> bool:
     return bool(host) and urlparse(origin).netloc.lower() == (host or "").lower()
 
 
-def _authenticate(token: Any) -> Optional[tuple[str, Optional[str], Optional[float]]]:
-    """``(user_id, session_token, exp)`` for an auth frame's token, else None."""
+def _level_of(payload: dict) -> str:
+    """The rights a session's JWT carries; ``edition`` / ``user`` / ``readonly`` as in a token grant."""
+    if install_mode() == "multi":
+        return "edition" if payload.get("role") in ("admin", "superadmin") else "user"
+    return "edition" if payload.get("edition") is True and not _is_open_install(EDITION_PASSWORD_KEY) else "readonly"
+
+
+def _authenticate(token: Any) -> Optional[tuple[str, str, Optional[str], Optional[float]]]:
+    """``(principal, level, session_token, exp)`` for an auth frame's token, else None.
+
+    The principal is the one a token resolves to (``TokenGrant.resolve``): the fixed
+    ``_anonymous`` on an open install whatever the JWT's ``sub`` says (an edition login
+    there still mints ``_legacy``), otherwise the JWT's own ``sub``.
+    """
     if token is None:
-        return (OPEN_PRINCIPAL, None, None) if _is_open_install(VIEWER_PASSWORD_KEY) else None
+        return (OPEN_PRINCIPAL, "readonly", None, None) if _is_open_install(VIEWER_PASSWORD_KEY) else None
     if not isinstance(token, str) or not token:
         return None
     payload = decode_access_token(token)
@@ -81,13 +96,16 @@ def _authenticate(token: Any) -> Optional[tuple[str, Optional[str], Optional[flo
     if not isinstance(sub, str) or not sub:
         return None
     exp = payload.get("exp")
-    return sub, token, float(exp) if isinstance(exp, (int, float)) else None
+    principal = OPEN_PRINCIPAL if install_mode() == "open" else sub
+    return principal, _level_of(payload), token, float(exp) if isinstance(exp, (int, float)) else None
 
 
-def _session_valid(session_token: Optional[str]) -> bool:
+def _session_level(session_token: Optional[str]) -> Optional[str]:
+    """The session's current level, or None when it is no longer valid."""
     if session_token is None:
-        return _is_open_install(VIEWER_PASSWORD_KEY)
-    return decode_access_token(session_token) is not None
+        return "readonly" if _is_open_install(VIEWER_PASSWORD_KEY) else None
+    payload = decode_access_token(session_token)
+    return None if payload is None else _level_of(payload)
 
 
 _RESULT_ID = re.compile(r'"id"\s*:\s*"([0-9a-f]{1,32})"')
@@ -156,8 +174,8 @@ async def _handshake(ws: WebSocket, registry: TabRegistry) -> Optional[tuple[Tab
             or not _TAB_ID.match(tab_id) or not isinstance(focused, bool)):
         await ws.close(bridge.CLOSE_PROTOCOL)
         return None
-    user_id, session_token, exp = identity
-    conn = TabConn(tab_id=tab_id, user_id=user_id, ws=ws, loop=asyncio.get_running_loop(),
+    user_id, level, session_token, exp = identity
+    conn = TabConn(tab_id=tab_id, user_id=user_id, level=level, ws=ws, loop=asyncio.get_running_loop(),
                    tools=announced[0], tools_version=announced[1], route=route, focused=focused)
     conn.send_lock = asyncio.Lock()
     for old in registry.add(conn):
@@ -224,9 +242,11 @@ async def _keepalive(ws: WebSocket, conn: TabConn, session_token: Optional[str],
         if not (settings["enabled"] and settings["bridge"]):
             await ws.close(bridge.CLOSE_DISABLED)
             return
-        if not _session_valid(session_token):
+        level = _session_level(session_token)
+        if level is None:
             await ws.close(bridge.CLOSE_UNAUTHORIZED)
             return
+        conn.level = level
         if time.monotonic() - conn.last_seen > bridge.SILENCE_DROP_S:
             await ws.close(bridge.CLOSE_SILENT)
             return
@@ -237,13 +257,13 @@ async def _keepalive(ws: WebSocket, conn: TabConn, session_token: Optional[str],
 async def tab_bridge(ws: WebSocket) -> None:
     settings = mcp_settings()
     registry: Optional[TabRegistry] = getattr(ws.app.state, "tab_registry", None)
+    await ws.accept()
     if not (settings["enabled"] and settings["bridge"]) or registry is None:
         await ws.close(bridge.CLOSE_DISABLED)
         return
     if not origin_allowed(ws.headers.get("origin"), ws.headers.get("host")):
         await ws.close(bridge.CLOSE_FORBIDDEN_ORIGIN)
         return
-    await ws.accept()
     try:
         joined = await _handshake(ws, registry)
         if joined is None:
