@@ -2562,6 +2562,40 @@ Export an album as a self-contained static HTML gallery a photographer can drop 
 
 The `target_dir` goes through the exact same allow-list as the copy/move export endpoints (`viewer.export.allowed_target_dirs` plus the scan directories — see [Export and Cull Destinations](#export-and-cull-destinations)). Gated by `viewer.features.show_portfolio_export` (default `true`). See [Web Viewer — Portfolio export](VIEWER.md#portfolio-export).
 
+## Agent Endpoint (MCP)
+
+Exposes the read tools described in [AI Agents (MCP)](AGENTS.md) at `POST /mcp`. Everything stays off (404) until `enabled` is `true`.
+
+```json
+{
+  "viewer": {
+    "mcp": {
+      "enabled": false,
+      "bridge": true,
+      "max_rows": 100,
+      "max_bytes": 60000,
+      "call_timeout_s": 30,
+      "semantic_timeout_s": 120,
+      "rate_per_min": 120,
+      "write_rate_per_min": 30
+    }
+  }
+}
+```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `false` | Master switch for `/mcp` and `/api/mcp/*`. Off means both answer 404. |
+| `bridge` | `true` | Reserved for the browser-tab bridge. Reported by the `status` tool; it has no other effect yet. |
+| `max_rows` | `100` | Maximum rows in one tool result (1 to 500). Extra rows are dropped and `truncated: true` is set. |
+| `max_bytes` | `60000` | Maximum serialized size of one tool result in bytes (4000 to 500000). |
+| `call_timeout_s` | `30` | Timeout for one tool call in seconds (1 to 300). |
+| `semantic_timeout_s` | `120` | Timeout for `semantic_search` in seconds (1 to 300); it loads the embedding model, so it needs more. |
+| `rate_per_min` | `120` | Tool calls per minute per token (minimum 1). |
+| `write_rate_per_min` | `30` | Write calls per minute per token (minimum 1). Kept separate so reads cannot starve writes. No write tool is registered yet. |
+
+Out-of-range numbers are clamped, and a value of the wrong type falls back to the default. The block is read on every request, so a configuration reload toggles the feature without a restart.
+
 ## Photo Frame / Kiosk
 
 Serve curated "best shots" to login-less kiosk devices — smart photo frames, Home Assistant dashboards, ImmichFrame / Immich-Kiosk style displays — over three anonymous, static-token endpoints (`GET /api/frame/photos`, `GET /api/frame/image/{id}`, `GET /api/frame/next`). Access is a long-lived opaque **frame token**; an empty `tokens` list disables the whole feature (every endpoint returns 404). Responses never contain filesystem paths — photos are addressed by an opaque signed id derived from the row's `rowid`.

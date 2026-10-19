@@ -236,6 +236,25 @@ async def require_authenticated(
     return user
 
 
+async def require_human_session(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
+    user: CurrentUser = Depends(require_authenticated),
+) -> CurrentUser:
+    """``require_authenticated`` that refuses an agent's internal credential.
+
+    The 60-second JWTs the MCP layer mints for its own in-process calls carry an
+    ``mcp`` claim. The routes that mint, list and revoke agent tokens use this so an
+    agent can never create or widen a token of its own.
+    """
+    payload = decode_access_token(credentials.credentials) if credentials else None
+    if payload is not None and payload.get('mcp'):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Agent credentials cannot manage agent tokens",
+        )
+    return user
+
+
 def _edition_refusal(locked_detail):
     """The 403 for a caller without edition rights.
 

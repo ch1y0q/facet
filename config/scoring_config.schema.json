@@ -54,6 +54,19 @@
           "properties": {
             "allow_trash": { "type": "boolean" }
           }
+        },
+        "mcp": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "bridge": { "type": "boolean" },
+            "max_rows": { "type": "integer", "minimum": 1, "maximum": 500 },
+            "max_bytes": { "type": "integer", "minimum": 4000, "maximum": 500000 },
+            "call_timeout_s": { "type": "number", "minimum": 1, "maximum": 300 },
+            "semantic_timeout_s": { "type": "number", "minimum": 1, "maximum": 300 },
+            "rate_per_min": { "type": "integer", "minimum": 1 },
+            "write_rate_per_min": { "type": "integer", "minimum": 1 }
+          }
         }
       }
     },

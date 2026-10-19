@@ -2590,6 +2590,40 @@ Exportieren Sie ein Album als eigenständige statische HTML-Galerie, die eine Fo
 
 Das `target_dir` durchläuft dieselbe Allowlist wie die Kopier-/Verschiebe-Export-Endpunkte (`viewer.export.allowed_target_dirs` plus die Scan-Verzeichnisse — siehe [Ziele für Export und Aussortierung](#ziele-für-export-und-aussortierung)). Gesteuert durch `viewer.features.show_portfolio_export` (Standard `true`).
 
+## Agent-Endpunkt (MCP)
+
+Stellt die in [KI-Agenten (MCP)](AGENTS.md) beschriebenen Lesewerkzeuge unter `POST /mcp` bereit. Alles bleibt deaktiviert (404), bis `enabled` auf `true` steht.
+
+```json
+{
+  "viewer": {
+    "mcp": {
+      "enabled": false,
+      "bridge": true,
+      "max_rows": 100,
+      "max_bytes": 60000,
+      "call_timeout_s": 30,
+      "semantic_timeout_s": 120,
+      "rate_per_min": 120,
+      "write_rate_per_min": 30
+    }
+  }
+}
+```
+
+| Schlüssel | Standard | Beschreibung |
+|-----|---------|-------------|
+| `enabled` | `false` | Hauptschalter für `/mcp` und `/api/mcp/*`. Deaktiviert antworten beide mit 404. |
+| `bridge` | `true` | Reserviert für die Brücke zum Browser-Tab. Wird vom Werkzeug `status` gemeldet; sonst bisher ohne Wirkung. |
+| `max_rows` | `100` | Höchstzahl an Zeilen in einem Werkzeug-Ergebnis (1 bis 500). Überzählige Zeilen werden verworfen und `truncated: true` gesetzt. |
+| `max_bytes` | `60000` | Maximale serialisierte Größe eines Werkzeug-Ergebnisses in Bytes (4000 bis 500000). |
+| `call_timeout_s` | `30` | Zeitlimit für einen Werkzeugaufruf in Sekunden (1 bis 300). |
+| `semantic_timeout_s` | `120` | Zeitlimit für `semantic_search` in Sekunden (1 bis 300); es lädt das Embedding-Modell und braucht daher mehr. |
+| `rate_per_min` | `120` | Werkzeugaufrufe pro Minute und Token (mindestens 1). |
+| `write_rate_per_min` | `30` | Schreibende Aufrufe pro Minute und Token (mindestens 1). Getrennt geführt, damit Lesezugriffe Schreibzugriffe nicht aushungern. Derzeit ist kein Schreibwerkzeug registriert. |
+
+Zahlen außerhalb des Bereichs werden begrenzt, und ein Wert des falschen Typs fällt auf den Standard zurück. Der Block wird bei jeder Anfrage gelesen, ein Neuladen der Konfiguration schaltet die Funktion also ohne Neustart um.
+
 ## Bilderrahmen / Kiosk
 
 Liefert kuratierte „beste Aufnahmen" an anmeldungsfreie Kiosk-Geräte — smarte Bilderrahmen, Home-Assistant-Dashboards, Anzeigen im Stil von ImmichFrame / Immich-Kiosk — über drei anonyme Endpunkte mit statischem Token (`GET /api/frame/photos`, `GET /api/frame/image/{id}`, `GET /api/frame/next`). Der Zugriff erfolgt über ein langlebiges, undurchsichtiges **Rahmen-Token**; eine leere `tokens`-Liste deaktiviert die gesamte Funktion (jeder Endpunkt gibt 404 zurück). Antworten enthalten niemals Dateipfade — jede Foto wird über eine undurchsichtige signierte Kennung adressiert, die aus der `rowid` der Zeile abgeleitet ist.

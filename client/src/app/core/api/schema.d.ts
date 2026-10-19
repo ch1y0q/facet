@@ -2073,6 +2073,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/mcp/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tokens
+         * @description The caller's own tokens, newest first. Never the secret or its hash.
+         */
+        get: operations["list_tokens_api_mcp_tokens_get"];
+        put?: never;
+        /**
+         * Create Token
+         * @description Mint a token. The plaintext is in this response and nowhere else, ever.
+         */
+        post: operations["create_token_api_mcp_tokens_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/tokens/{token_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Token
+         * @description Revoke one of the caller's tokens (any token, for a superadmin).
+         */
+        delete: operations["revoke_token_api_mcp_tokens__token_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/memories": {
         parameters: {
             query?: never;
@@ -5633,6 +5677,87 @@ export interface components {
             lng: number;
             /** Path */
             path: string;
+        };
+        /** McpTokenCreate */
+        McpTokenCreate: {
+            /**
+             * Level
+             * @default readonly
+             * @enum {string}
+             */
+            level?: "readonly" | "user" | "edition";
+            /** Name */
+            name: string;
+        };
+        /**
+         * McpTokenCreated
+         * @description The one response that carries the plaintext token.
+         */
+        McpTokenCreated: {
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Last Used At */
+            last_used_at?: string | null;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "readonly" | "user" | "edition";
+            /** Name */
+            name: string;
+            /** Revoked */
+            revoked: number;
+            /** Revoked At */
+            revoked_at?: string | null;
+            /** Token */
+            token: string;
+            /** Token Prefix */
+            token_prefix: string;
+            /** User Id */
+            user_id: string;
+        };
+        /**
+         * McpTokenItem
+         * @description Token metadata. Never carries the secret or its hash.
+         *
+         *     ``revoked`` is int-typed because SQLite has no boolean: the wire carries 0/1.
+         */
+        McpTokenItem: {
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Last Used At */
+            last_used_at?: string | null;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "readonly" | "user" | "edition";
+            /** Name */
+            name: string;
+            /** Revoked */
+            revoked: number;
+            /** Revoked At */
+            revoked_at?: string | null;
+            /** Token Prefix */
+            token_prefix: string;
+            /** User Id */
+            user_id: string;
+        };
+        /** McpTokenList */
+        McpTokenList: {
+            /** Tokens */
+            tokens: components["schemas"]["McpTokenItem"][];
+        };
+        /** McpTokenRevoked */
+        McpTokenRevoked: {
+            /** Id */
+            id: number;
+            /** Ok */
+            ok: boolean;
         };
         /** MediaCaptionResponse */
         MediaCaptionResponse: {
@@ -10496,6 +10621,172 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["LightroomManifest"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tokens_api_mcp_tokens_get: {
+        parameters: {
+            query?: {
+                /** @description 1 lists every owner's tokens (superadmin only) */
+                all?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpTokenList"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Superadmin access required, or an agent credential was used. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The agent endpoint is disabled (viewer.mcp.enabled). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_token_api_mcp_tokens_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["McpTokenCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpTokenCreated"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The session may not hold the requested level, or an agent credential was used. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The agent endpoint is disabled (viewer.mcp.enabled). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The owner already has the maximum number of live tokens. */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_token_api_mcp_tokens__token_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpTokenRevoked"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An agent credential was used, or the token's level is above the session's. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such live token, or the endpoint is disabled. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

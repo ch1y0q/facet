@@ -18,7 +18,8 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Query, Request
+from fastapi import Query
+from fastapi.requests import HTTPConnection
 
 from api.config import (
     _existing_columns_cache, _existing_columns_lock,
@@ -204,7 +205,7 @@ def _warm_schema_caches() -> None:
     db_change_token(DEFAULT_DB_PATH)
 
 
-async def warm_schema_caches(request: Request) -> None:
+async def warm_schema_caches(request: HTTPConnection) -> None:
     """App-wide dependency: fill the cached schema probes on a worker thread.
 
     The column list, the photo_tags and photo_manual_tags probes and the

@@ -424,7 +424,15 @@ async def lifespan(app: FastAPI):
     app.state.wal_thread = wal_thread
 
     logger.info("Facet API ready")
-    yield
+    # The MCP session manager's task group lives exactly as long as the app. It is
+    # entered whatever viewer.mcp.enabled says: run() may be entered only once per
+    # manager, so the flag is checked per request (api.agent.server), not here.
+    mcp_manager = getattr(app.state, "mcp_session_manager", None)
+    if mcp_manager is None:
+        yield
+    else:
+        async with mcp_manager.run():
+            yield
     # First: the index build holds the write lock for minutes per index, which every
     # shutdown step below that writes (rating flush, checkpoint) would wait on.
     index_build.stop(INDEX_BUILD_STOP_TIMEOUT_SECONDS)
@@ -562,6 +570,7 @@ def create_app() -> FastAPI:
     from api.routers.webdav import router as webdav_router
     from api.routers.immich import router as immich_router
     from api.routers.updates import router as updates_router
+    from api.routers.mcp_tokens import router as mcp_tokens_router
 
     app.include_router(health_router)
     app.include_router(auth_router)
@@ -601,6 +610,21 @@ def create_app() -> FastAPI:
     app.include_router(frame_router)
     app.include_router(webdav_router)
     app.include_router(immich_router)
+    app.include_router(mcp_tokens_router)
+
+    # Agent (MCP) endpoint: POST /mcp. Appended here, before the SPA catch-all below.
+    # An install upgraded without re-running `pip install -r requirements.txt` has no
+    # `mcp` package: leave the feature off instead of failing to start the viewer.
+    from api.config import set_mcp_available
+    try:
+        from api.agent.server import mount_agent
+    except ImportError as ex:
+        logger.warning("Agent (MCP) endpoint unavailable: %s; run `pip install -r requirements.txt`", ex)
+        set_mcp_available(False)
+        app.state.mcp_session_manager = None
+    else:
+        set_mcp_available(True)
+        app.state.mcp_session_manager = mount_agent(app)
 
     # Check for plaintext passwords at startup
     from api.auth import check_legacy_password_warnings

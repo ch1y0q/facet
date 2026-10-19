@@ -16,6 +16,8 @@
 
 > **功能所需条件**在正文中就地标注：`[GPU]` · `[16gb/24gb]`（VRAM 配置档） · `[Edition]`（编辑密码） · `[Superadmin]`。参见[功能矩阵](INSTALLATION.md#各功能的要求)。
 
+> **AI 助手**：Facet 可以把它的读取工具提供给 Claude Code 和其他 MCP 客户端；参见 [AI 智能体（MCP）](AGENTS.md)。
+
 ## 启动查看器
 
 ### 生产环境

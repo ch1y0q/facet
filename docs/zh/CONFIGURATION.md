@@ -2548,6 +2548,40 @@ python facet.py --recompute-text   # 重新读取整个图库
 
 `target_dir` 会经过与复制/移动导出端点完全相同的白名单（`viewer.export.allowed_target_dirs` 加上扫描目录 — 见[导出与选片目标位置](#导出与选片目标位置)）。受 `viewer.features.show_portfolio_export`（默认 `true`）控制。见[网页查看器 — 作品集导出](VIEWER.md#作品集导出)。
 
+## 智能体端点（MCP）
+
+在 `POST /mcp` 上提供 [AI 智能体（MCP）](AGENTS.md) 中描述的读取工具。在 `enabled` 为 `true` 之前，一切保持关闭（404）。
+
+```json
+{
+  "viewer": {
+    "mcp": {
+      "enabled": false,
+      "bridge": true,
+      "max_rows": 100,
+      "max_bytes": 60000,
+      "call_timeout_s": 30,
+      "semantic_timeout_s": 120,
+      "rate_per_min": 120,
+      "write_rate_per_min": 30
+    }
+  }
+}
+```
+
+| 键 | 默认值 | 说明 |
+|-----|---------|-------------|
+| `enabled` | `false` | `/mcp` 与 `/api/mcp/*` 的总开关。关闭时两者都返回 404。 |
+| `bridge` | `true` | 为浏览器标签页桥接预留。由 `status` 工具报告；目前没有其他作用。 |
+| `max_rows` | `100` | 单次工具结果的最大行数（1 到 500）。多余的行被丢弃并设置 `truncated: true`。 |
+| `max_bytes` | `60000` | 单次工具结果序列化后的最大字节数（4000 到 500000）。 |
+| `call_timeout_s` | `30` | 单次工具调用的超时秒数（1 到 300）。 |
+| `semantic_timeout_s` | `120` | `semantic_search` 的超时秒数（1 到 300）；它要加载嵌入模型，因此需要更久。 |
+| `rate_per_min` | `120` | 每个令牌每分钟的工具调用次数（最小 1）。 |
+| `write_rate_per_min` | `30` | 每个令牌每分钟的写入调用次数（最小 1）。单独计算，避免读取挤占写入。目前尚未注册任何写入工具。 |
+
+超出范围的数字会被限制到边界，类型错误的值会回退到默认值。该配置块在每次请求时读取，因此重新加载配置即可切换该功能，无需重启。
+
 ## 照片相框／展示模式
 
 通过三个匿名的静态令牌端点（`GET /api/frame/photos`、`GET /api/frame/image/{id}`、`GET /api/frame/next`），把精选的“最佳照片”提供给无需登录的展示设备 — 智能相框、Home Assistant 仪表盘、ImmichFrame / Immich-Kiosk 风格的展示屏。访问凭据是一个长期有效的不透明**相框令牌**；`tokens` 列表为空即禁用整个功能（每个端点都返回 404）。响应中绝不包含文件系统路径 — 照片是通过由行 `rowid` 派生的不透明签名 id 来寻址的。

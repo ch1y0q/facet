@@ -15,6 +15,8 @@ Application monopage FastAPI + Angular pour parcourir, filtrer et gérer les pho
 
 > **Les prérequis des fonctionnalités** sont indiqués en ligne : `[GPU]` · `[16gb/24gb]` (profil VRAM) · `[Edition]` (mot de passe d'édition) · `[Superadmin]`. Voir la [matrice des fonctionnalités](../README.md#feature-availability--requirements).
 
+> **Assistants IA** : Facet peut fournir ses outils de lecture à Claude Code et à d'autres clients MCP ; voir [Agents IA (MCP)](AGENTS.md).
+
 ## Démarrer la visionneuse
 
 ### Production

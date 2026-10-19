@@ -2585,6 +2585,40 @@ Esporta un album come galleria HTML statica e autonoma che un fotografo può car
 
 Il `target_dir` passa attraverso la stessa allow-list degli endpoint di esportazione copia/spostamento (`viewer.export.allowed_target_dirs` più le directory di scansione — vedi [Destinazioni di esportazione e scarto](#destinazioni-di-esportazione-e-scarto)). Controllato da `viewer.features.show_portfolio_export` (predefinito `true`).
 
+## Endpoint agente (MCP)
+
+Espone gli strumenti di lettura descritti in [Agenti IA (MCP)](AGENTS.md) su `POST /mcp`. Tutto resta disattivato (404) finché `enabled` non è `true`.
+
+```json
+{
+  "viewer": {
+    "mcp": {
+      "enabled": false,
+      "bridge": true,
+      "max_rows": 100,
+      "max_bytes": 60000,
+      "call_timeout_s": 30,
+      "semantic_timeout_s": 120,
+      "rate_per_min": 120,
+      "write_rate_per_min": 30
+    }
+  }
+}
+```
+
+| Chiave | Predefinito | Descrizione |
+|-----|---------|-------------|
+| `enabled` | `false` | Interruttore generale di `/mcp` e `/api/mcp/*`. Disattivato, entrambi rispondono 404. |
+| `bridge` | `true` | Riservato al ponte verso la scheda del browser. Riportato dallo strumento `status`; per ora non ha altri effetti. |
+| `max_rows` | `100` | Numero massimo di righe in un risultato di strumento (da 1 a 500). Le righe in eccesso vengono scartate e si imposta `truncated: true`. |
+| `max_bytes` | `60000` | Dimensione serializzata massima di un risultato di strumento in byte (da 4000 a 500000). |
+| `call_timeout_s` | `30` | Timeout di una chiamata di strumento in secondi (da 1 a 300). |
+| `semantic_timeout_s` | `120` | Timeout di `semantic_search` in secondi (da 1 a 300); carica il modello di embedding e richiede più tempo. |
+| `rate_per_min` | `120` | Chiamate di strumento al minuto per token (minimo 1). |
+| `write_rate_per_min` | `30` | Chiamate di scrittura al minuto per token (minimo 1). Tenuto separato perché le letture non affamino le scritture. Per ora non è registrato alcuno strumento di scrittura. |
+
+I numeri fuori intervallo vengono riportati nei limiti e un valore di tipo errato torna al predefinito. Il blocco è letto a ogni richiesta, quindi un ricaricamento della configurazione attiva o disattiva la funzione senza riavvio.
+
 ## Cornice digitale / Chiosco
 
 Distribuisce gli «scatti migliori» curati verso dispositivi in modalità chiosco senza login — cornici digitali smart, dashboard Home Assistant, display in stile ImmichFrame / Immich-Kiosk — tramite tre endpoint anonimi con token statico (`GET /api/frame/photos`, `GET /api/frame/image/{id}`, `GET /api/frame/next`). L'accesso è un **token di cornice** opaco e a lunga durata; un elenco `tokens` vuoto disabilita l'intera funzione (ogni endpoint restituisce 404). Le risposte non contengono mai percorsi di file — ogni foto è indirizzata da un id firmato opaco derivato dal `rowid` della riga.

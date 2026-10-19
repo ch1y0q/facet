@@ -128,6 +128,7 @@ Bewegen Sie den Mauszeiger über ein beliebiges Foto, um einen Tooltip mit der W
 - **Albumfreigabe** — generieren Sie teilbare Links für jedes Album, ohne dass sich Empfänger anmelden müssen. Widerrufen Sie den Zugriff jederzeit.
 - **Foto-Download** — laden Sie einzelne Fotos oder Auswahlen aus der Galerie herunter
 - **Export** — exportieren Sie alle Wertungen als CSV oder JSON zur externen Analyse
+- **KI-Agenten (MCP)** — ein optionaler, schreibgeschützter [Model Context Protocol](https://modelcontextprotocol.io/)-Endpunkt lässt Claude Code und andere Assistenten die Bibliothek mit den Filtern der Galerie durchsuchen und untersuchen, mit widerrufbaren persönlichen Tokens
 
 ### Mehr
 
@@ -224,6 +225,7 @@ Zum ersten Mal hier? Folgen Sie der Anleitung **[Erste Schritte](docs/de/GETTING
 | [Viewer](docs/de/VIEWER.md) | Funktionen und Nutzung der Web-Galerie |
 | [Interop](docs/de/INTEROP.md) | Bewertungen/Tags mit Lightroom, Capture One, digiKam, darktable austauschen |
 | [Immich](docs/de/IMMICH.md) | Bewertungen und Favoriten mit Immich synchronisieren, plus der eingehende Webhook |
+| [KI-Agenten](docs/de/AGENTS.md) | Claude Code und andere MCP-Assistenten die Bibliothek mit einem persönlichen Token durchsuchen lassen |
 | [Bereitstellung](docs/de/DEPLOYMENT.md) | Produktivbereitstellung (Synology NAS, Linux, Docker) |
 | [Mitwirken](CONTRIBUTING.md) | Entwicklungseinrichtung, Architektur, Code-Stil |
 

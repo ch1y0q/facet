@@ -2587,6 +2587,40 @@ Exporta un álbum como una galería HTML estática y autónoma que un fotógrafo
 
 El `target_dir` pasa por la misma lista de permitidos que los endpoints de exportación copiar/mover (`viewer.export.allowed_target_dirs` más los directorios de escaneo — consulta [Destinos de exportación y descarte](#destinos-de-exportación-y-descarte)). Controlado por `viewer.features.show_portfolio_export` (predeterminado `true`).
 
+## Endpoint de agentes (MCP)
+
+Expone las herramientas de lectura descritas en [Agentes de IA (MCP)](AGENTS.md) en `POST /mcp`. Todo sigue desactivado (404) hasta que `enabled` sea `true`.
+
+```json
+{
+  "viewer": {
+    "mcp": {
+      "enabled": false,
+      "bridge": true,
+      "max_rows": 100,
+      "max_bytes": 60000,
+      "call_timeout_s": 30,
+      "semantic_timeout_s": 120,
+      "rate_per_min": 120,
+      "write_rate_per_min": 30
+    }
+  }
+}
+```
+
+| Clave | Predeterminado | Descripción |
+|-----|---------|-------------|
+| `enabled` | `false` | Interruptor general de `/mcp` y `/api/mcp/*`. Desactivado, ambos responden 404. |
+| `bridge` | `true` | Reservado al puente con la pestaña del navegador. Lo informa la herramienta `status`; por ahora no tiene otro efecto. |
+| `max_rows` | `100` | Máximo de filas en un resultado de herramienta (1 a 500). Las filas sobrantes se descartan y se marca `truncated: true`. |
+| `max_bytes` | `60000` | Tamaño serializado máximo de un resultado de herramienta en bytes (4000 a 500000). |
+| `call_timeout_s` | `30` | Tiempo límite de una llamada a herramienta en segundos (1 a 300). |
+| `semantic_timeout_s` | `120` | Tiempo límite de `semantic_search` en segundos (1 a 300); carga el modelo de embeddings y necesita más. |
+| `rate_per_min` | `120` | Llamadas a herramientas por minuto y token (mínimo 1). |
+| `write_rate_per_min` | `30` | Llamadas de escritura por minuto y token (mínimo 1). Se mantiene aparte para que las lecturas no dejen sin cupo a las escrituras. Por ahora no hay ninguna herramienta de escritura registrada. |
+
+Los números fuera de rango se ajustan al límite, y un valor de tipo incorrecto vuelve al predeterminado. El bloque se lee en cada petición, así que recargar la configuración activa o desactiva la función sin reiniciar.
+
 ## Marco de fotos / Quiosco
 
 Sirve las «mejores tomas» curadas a dispositivos de tipo quiosco sin inicio de sesión — marcos de fotos inteligentes, paneles de Home Assistant, pantallas al estilo ImmichFrame / Immich-Kiosk — a través de tres endpoints anónimos con token estático (`GET /api/frame/photos`, `GET /api/frame/image/{id}`, `GET /api/frame/next`). El acceso es un **token de marco** opaco y de larga duración; una lista `tokens` vacía deshabilita toda la función (cada endpoint devuelve 404). Las respuestas nunca contienen rutas de archivos — cada foto se identifica mediante un id firmado opaco derivado del `rowid` de la fila.

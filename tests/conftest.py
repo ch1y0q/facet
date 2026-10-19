@@ -457,3 +457,139 @@ def symlink_or_skip(link, target):
         if sys.platform != "win32":
             raise
         pytest.skip(f"cannot create a symlink here: {ex}")
+
+
+# ---------------------------------------------------------------------------
+# Agent (MCP) app: REAL auth, REAL lifespan
+# ---------------------------------------------------------------------------
+
+AGENT_PROTOCOL = "2025-11-25"
+AGENT_MCP_HEADERS = {
+    "Accept": "application/json, text/event-stream",
+    "Content-Type": "application/json",
+    "MCP-Protocol-Version": AGENT_PROTOCOL,
+}
+AGENT_USER_PASSWORDS = {"alice": "alice-pw", "bob": "bob-pw", "root": "root-pw"}
+AGENT_VIEW_PASSWORD = "view-pw"
+AGENT_EDITION_PASSWORD = "edition-pw"
+AGENT_DIR = "/agent-seeded/"
+
+
+class AgentEnv:
+    """A plain ``create_app()`` whose auth and lifespan are the production ones.
+
+    Unlike ``edition_client`` / ``regular_client`` this carries NO
+    ``dependency_overrides``: the internal JWT, the grant level and the token
+    generations are only meaningful when the real ``Depends()`` chain runs.
+    """
+
+    def __init__(self, client, mode):
+        self.client = client
+        self.app = client.app
+        self.mode = mode
+
+    def login(self, user=None, edition=False):
+        """Bearer headers for a real session, obtained through the real login routes."""
+        if self.mode == "multi":
+            resp = self.client.post(
+                "/api/auth/login", json={"username": user, "password": AGENT_USER_PASSWORDS[user]})
+        elif self.mode == "legacy":
+            resp = self.client.post("/api/auth/login", json={"password": AGENT_VIEW_PASSWORD})
+            if edition:
+                resp = self.client.post(
+                    "/api/auth/edition/login", json={"password": AGENT_EDITION_PASSWORD})
+        else:
+            resp = self.client.post("/api/auth/login", json={"password": ""})
+        assert resp.status_code == 200, resp.text
+        self.client.cookies.clear()
+        return {"Authorization": "Bearer " + resp.json()["access_token"]}
+
+    def mint(self, headers, level="readonly", name="test"):
+        return self.client.post("/api/mcp/tokens", json={"name": name, "level": level}, headers=headers)
+
+    def token(self, headers, level="readonly", name="test"):
+        resp = self.mint(headers, level, name)
+        assert resp.status_code == 200, resp.text
+        return resp.json()["token"]
+
+    def rpc(self, token, method, params=None, rpc_id=1, headers=None):
+        hdrs = dict(AGENT_MCP_HEADERS)
+        if token is not None:
+            hdrs["Authorization"] = "Bearer " + token
+        hdrs.update(headers or {})
+        body = {"jsonrpc": "2.0", "id": rpc_id, "method": method}
+        if params is not None:
+            body["params"] = params
+        return self.client.post("/mcp", json=body, headers=hdrs, follow_redirects=False)
+
+    def call(self, token, tool, arguments=None):
+        """Call a tool; return its decoded result envelope (``{ok: ..}``)."""
+        resp = self.rpc(token, "tools/call", {"name": tool, "arguments": arguments or {}})
+        assert resp.status_code == 200, resp.text
+        result = resp.json()["result"]
+        return json.loads(result["content"][0]["text"])
+
+    def tool_names(self, token):
+        resp = self.rpc(token, "tools/list")
+        assert resp.status_code == 200, resp.text
+        return {t["name"] for t in resp.json()["result"]["tools"]}
+
+
+@pytest.fixture()
+def agent_app():
+    """Factory: ``agent_app(mode, mcp_enabled=True, **mcp)`` -> :class:`AgentEnv`.
+
+    ``mode`` is ``"legacy"`` (viewer + edition passwords), ``"multi"`` (users
+    alice/bob = role user, root = admin, each with the :data:`AGENT_DIR` library)
+    or ``"open"`` (no passwords). Config is mutated IN PLACE on ``VIEWER_CONFIG``
+    / ``_FULL_CONFIG`` (the dicts every module holds) and restored on teardown.
+    The lifespan runs (``with TestClient(app)``), and the fixture refuses to
+    build an app carrying ``dependency_overrides``.
+    """
+    import copy
+    from api import auth as api_auth
+    from api import config as api_config
+    from api.auth import hash_password
+    from api.agent import limits as agent_limits
+
+    saved_viewer = copy.deepcopy(api_config.VIEWER_CONFIG)
+    saved_full_users = copy.deepcopy(api_config._FULL_CONFIG.get("users", None))
+    had_users = "users" in api_config._FULL_CONFIG
+    entered = []
+
+    def build(mode, mcp_enabled=True, **mcp):
+        viewer = api_config.VIEWER_CONFIG
+        viewer["password"] = AGENT_VIEW_PASSWORD if mode == "legacy" else ""
+        viewer["edition_password"] = AGENT_EDITION_PASSWORD if mode == "legacy" else ""
+        viewer["mcp"] = {**api_config.MCP_SETTINGS_DEFAULTS, "enabled": mcp_enabled, **mcp}
+        if mode == "multi":
+            api_config._FULL_CONFIG["users"] = {
+                "alice": {"password_hash": hash_password("alice-pw"), "role": "user",
+                          "directories": [AGENT_DIR]},
+                "bob": {"password_hash": hash_password("bob-pw"), "role": "user",
+                        "directories": ["/agent-bob-only/"]},
+                "root": {"password_hash": hash_password("root-pw"), "role": "admin",
+                         "directories": [AGENT_DIR]},
+            }
+        else:
+            api_config._FULL_CONFIG.pop("users", None)
+        api_auth._login_limiter._attempts.clear()
+        agent_limits.reset_limits()
+        app = create_app()
+        assert not app.dependency_overrides, "agent_app must run the real auth chain"
+        client = TestClient(app)
+        client.__enter__()
+        entered.append(client)
+        return AgentEnv(client, mode)
+
+    yield build
+    for client in reversed(entered):
+        client.__exit__(None, None, None)
+    api_config.VIEWER_CONFIG.clear()
+    api_config.VIEWER_CONFIG.update(saved_viewer)
+    if had_users:
+        api_config._FULL_CONFIG["users"] = saved_full_users
+    else:
+        api_config._FULL_CONFIG.pop("users", None)
+    with sqlite3.connect(_TEST_DB_FILE.name) as conn:
+        conn.execute("DELETE FROM mcp_tokens")

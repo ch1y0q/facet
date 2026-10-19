@@ -2581,6 +2581,40 @@ Exportez un album sous forme de galerie HTML statique autonome qu'un photographe
 
 Le `target_dir` passe par la même liste d'autorisation que les endpoints d'export copie/déplacement (`viewer.export.allowed_target_dirs` plus les répertoires de scan — voir [Destinations d'export et de tri](#destinations-dexport-et-de-tri)). Contrôlé par `viewer.features.show_portfolio_export` (par défaut `true`).
 
+## Point d'accès agent (MCP)
+
+Expose les outils de lecture décrits dans [Agents IA (MCP)](AGENTS.md) via `POST /mcp`. Tout reste désactivé (404) tant que `enabled` n'est pas `true`.
+
+```json
+{
+  "viewer": {
+    "mcp": {
+      "enabled": false,
+      "bridge": true,
+      "max_rows": 100,
+      "max_bytes": 60000,
+      "call_timeout_s": 30,
+      "semantic_timeout_s": 120,
+      "rate_per_min": 120,
+      "write_rate_per_min": 30
+    }
+  }
+}
+```
+
+| Clé | Défaut | Description |
+|-----|---------|-------------|
+| `enabled` | `false` | Interrupteur général de `/mcp` et `/api/mcp/*`. Désactivé, les deux répondent 404. |
+| `bridge` | `true` | Réservé au pont vers l'onglet du navigateur. Rapporté par l'outil `status` ; sans autre effet pour l'instant. |
+| `max_rows` | `100` | Nombre maximal de lignes dans un résultat d'outil (1 à 500). Les lignes en trop sont retirées et `truncated: true` est ajouté. |
+| `max_bytes` | `60000` | Taille sérialisée maximale d'un résultat d'outil en octets (4000 à 500000). |
+| `call_timeout_s` | `30` | Délai d'un appel d'outil en secondes (1 à 300). |
+| `semantic_timeout_s` | `120` | Délai de `semantic_search` en secondes (1 à 300) ; l'outil charge le modèle d'embeddings et demande donc plus de temps. |
+| `rate_per_min` | `120` | Appels d'outils par minute et par jeton (minimum 1). |
+| `write_rate_per_min` | `30` | Appels d'écriture par minute et par jeton (minimum 1). Budget séparé pour que les lectures n'affament pas les écritures. Aucun outil d'écriture n'est enregistré pour l'instant. |
+
+Les nombres hors plage sont ramenés dans la plage, et une valeur d'un mauvais type revient à la valeur par défaut. Le bloc est lu à chaque requête : un rechargement de la configuration active ou désactive la fonction sans redémarrage.
+
 ## Cadre photo / Kiosque
 
 Diffuse les « meilleures photos » vers des appareils kiosque sans authentification — cadres photo connectés, tableaux de bord Home Assistant, affichages de type ImmichFrame / Immich-Kiosk — via trois endpoints anonymes à jeton statique (`GET /api/frame/photos`, `GET /api/frame/image/{id}`, `GET /api/frame/next`). L'accès repose sur un **jeton de cadre** opaque à longue durée de vie ; une liste `tokens` vide désactive toute la fonctionnalité (chaque endpoint renvoie 404). Les réponses ne contiennent jamais de chemins de fichiers — chaque photo est identifiée par un identifiant signé opaque dérivé du `rowid` de la ligne.

@@ -128,6 +128,7 @@ Passa il puntatore su una foto per vedere un tooltip con il dettaglio del punteg
 - **Condivisione di album** — genera link condivisibili per qualsiasi album, senza richiedere l'accesso ai destinatari. Revoca l'accesso in qualsiasi momento.
 - **Download delle foto** — scarica singole foto o selezioni dalla galleria
 - **Esportazione** — esporta tutti i punteggi in CSV o JSON per l'analisi esterna
+- **Agenti IA (MCP)** — un endpoint [Model Context Protocol](https://modelcontextprotocol.io/) opzionale e di sola lettura permette a Claude Code e ad altri assistenti di cercare e ispezionare la libreria con i filtri della galleria, tramite token personali revocabili
 
 ### Altro
 
@@ -223,6 +224,7 @@ Prima volta? Segui il percorso **[Per iniziare](docs/it/GETTING_STARTED.md)**: s
 | [Viewer](docs/it/VIEWER.md) | Funzionalità e utilizzo della galleria web |
 | [Interoperabilità](docs/it/INTEROP.md) | Scambiare valutazioni/tag con Lightroom, Capture One, digiKam, darktable |
 | [Immich](docs/it/IMMICH.md) | Sincronizzare valutazioni e preferiti con Immich, più il webhook in entrata |
+| [Agenti IA](docs/it/AGENTS.md) | Far cercare la libreria a Claude Code e ad altri assistenti MCP con un token personale |
 | [Distribuzione](docs/it/DEPLOYMENT.md) | Distribuzione in produzione (NAS Synology, Linux, Docker) |
 | [Contribuire](CONTRIBUTING.md) | Configurazione di sviluppo, architettura, stile del codice |
 

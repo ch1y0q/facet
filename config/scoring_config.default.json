@@ -3728,6 +3728,16 @@
     "cull": {
       "allow_trash": false
     },
+    "mcp": {
+      "enabled": false,
+      "bridge": true,
+      "max_rows": 100,
+      "max_bytes": 60000,
+      "call_timeout_s": 30,
+      "semantic_timeout_s": 120,
+      "rate_per_min": 120,
+      "write_rate_per_min": 30
+    },
     "raw_processor": {
       "backend": "rawpy",
       "darktable": {

@@ -1283,6 +1283,69 @@ def cull_allow_trash(viewer_config: dict) -> bool:
     return bool((viewer_config.get('cull', {}) or {}).get('allow_trash', False))
 
 
+MCP_SETTINGS_DEFAULTS = {
+    'enabled': False,
+    'bridge': True,
+    'max_rows': 100,
+    'max_bytes': 60000,
+    'call_timeout_s': 30,
+    'semantic_timeout_s': 120,
+    'rate_per_min': 120,
+    'write_rate_per_min': 30,
+}
+
+# (low, high) per numeric key; None = unbounded on that side.
+_MCP_SETTINGS_BOUNDS = {
+    'max_rows': (1, 500),
+    'max_bytes': (4000, 500000),
+    'call_timeout_s': (1, 300),
+    'semantic_timeout_s': (1, 300),
+    'rate_per_min': (1, None),
+    'write_rate_per_min': (1, None),
+}
+
+
+_mcp_available = True
+
+
+def set_mcp_available(available: bool) -> None:
+    """Record whether the ``mcp`` package imported; ``create_app`` calls this on every build."""
+    global _mcp_available
+    _mcp_available = available
+
+
+def mcp_settings() -> dict:
+    """The ``viewer.mcp`` block with every value typed and clamped.
+
+    Read per call through ``VIEWER_CONFIG`` (which ``reload_config`` refills in
+    place), so an operator edit followed by a reload toggles the feature without
+    a restart. A missing block, or a value of the wrong type, falls back to the
+    shipped default: the feature stays OFF unless the operator wrote a real
+    ``true``. Nothing here writes the override file. ``enabled`` is forced off when
+    the ``mcp`` package could not be imported (``set_mcp_available``).
+    """
+    block = VIEWER_CONFIG.get('mcp')
+    if not isinstance(block, dict):
+        block = {}
+    out: dict = {}
+    for key, default in MCP_SETTINGS_DEFAULTS.items():
+        value = block.get(key, default)
+        if isinstance(default, bool):
+            out[key] = value if isinstance(value, bool) else default
+            continue
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            value = default
+        low, high = _MCP_SETTINGS_BOUNDS[key]
+        if low is not None:
+            value = max(low, value)
+        if high is not None:
+            value = min(high, value)
+        out[key] = value if key.endswith('_s') else int(value)
+    if not _mcp_available:
+        out['enabled'] = False
+    return out
+
+
 def get_xmp_export_config():
     """Return the ``xmp_export`` config block (score-to-stars mapping etc.)."""
     return _FULL_CONFIG.get('xmp_export', {})

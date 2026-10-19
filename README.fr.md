@@ -128,6 +128,7 @@ Survolez n'importe quelle photo pour afficher une infobulle avec le détail du s
 - **Partage d'albums** — générez des liens partageables pour n'importe quel album, sans connexion requise pour les destinataires. Révoquez l'accès à tout moment.
 - **Téléchargement de photos** — téléchargez des photos individuelles ou des sélections depuis la galerie
 - **Export** — exportez tous les scores en CSV ou JSON pour une analyse externe
+- **Agents IA (MCP)** — un point d'accès [Model Context Protocol](https://modelcontextprotocol.io/) optionnel et en lecture seule permet à Claude Code et à d'autres assistants de rechercher et d'inspecter la bibliothèque avec les filtres de la galerie, au moyen de jetons personnels révocables
 
 ### En plus
 
@@ -223,6 +224,7 @@ Première fois ? Suivez le parcours **[Prise en main](docs/fr/GETTING_STARTED.md
 | [Visualiseur](docs/fr/VIEWER.md) | Fonctionnalités et utilisation de la galerie web |
 | [Interopérabilité](docs/fr/INTEROP.md) | Faire circuler notes/tags avec Lightroom, Capture One, digiKam, darktable |
 | [Immich](docs/fr/IMMICH.md) | Synchroniser notes et favoris avec Immich, plus le webhook entrant |
+| [Agents IA](docs/fr/AGENTS.md) | Laisser Claude Code et d'autres assistants MCP interroger la bibliothèque avec un jeton personnel |
 | [Déploiement](docs/fr/DEPLOYMENT.md) | Déploiement en production (NAS Synology, Linux, Docker) |
 | [Contribuer](CONTRIBUTING.md) | Configuration de développement, architecture, style de code |
 

@@ -2582,6 +2582,40 @@ Exporte um álbum como uma galeria HTML estática e autónoma que um fotógrafo 
 
 O `target_dir` passa pela mesma lista de permissões que os endpoints de exportação copiar/mover (`viewer.export.allowed_target_dirs` mais os diretórios de varredura — veja [Destinos de exportação e seleção](#destinos-de-exportação-e-seleção)). Controlado por `viewer.features.show_portfolio_export` (padrão `true`).
 
+## Endpoint de agentes (MCP)
+
+Expõe as ferramentas de leitura descritas em [Agentes de IA (MCP)](AGENTS.md) em `POST /mcp`. Tudo fica desativado (404) até `enabled` ser `true`.
+
+```json
+{
+  "viewer": {
+    "mcp": {
+      "enabled": false,
+      "bridge": true,
+      "max_rows": 100,
+      "max_bytes": 60000,
+      "call_timeout_s": 30,
+      "semantic_timeout_s": 120,
+      "rate_per_min": 120,
+      "write_rate_per_min": 30
+    }
+  }
+}
+```
+
+| Chave | Predefinição | Descrição |
+|-----|---------|-------------|
+| `enabled` | `false` | Interruptor geral de `/mcp` e `/api/mcp/*`. Desativado, ambos respondem 404. |
+| `bridge` | `true` | Reservado à ponte com o separador do navegador. Indicado pela ferramenta `status`; por agora não tem outro efeito. |
+| `max_rows` | `100` | Máximo de linhas num resultado de ferramenta (1 a 500). As linhas a mais são descartadas e `truncated: true` é definido. |
+| `max_bytes` | `60000` | Tamanho serializado máximo de um resultado de ferramenta em bytes (4000 a 500000). |
+| `call_timeout_s` | `30` | Tempo limite de uma chamada de ferramenta em segundos (1 a 300). |
+| `semantic_timeout_s` | `120` | Tempo limite de `semantic_search` em segundos (1 a 300); carrega o modelo de embeddings e precisa de mais. |
+| `rate_per_min` | `120` | Chamadas de ferramentas por minuto e por token (mínimo 1). |
+| `write_rate_per_min` | `30` | Chamadas de escrita por minuto e por token (mínimo 1). Mantido à parte para que as leituras não deixem as escritas sem quota. Por agora não há nenhuma ferramenta de escrita registada. |
+
+Os números fora do intervalo são limitados, e um valor de tipo errado volta à predefinição. O bloco é lido em cada pedido, por isso recarregar a configuração ativa ou desativa a funcionalidade sem reiniciar.
+
 ## Moldura digital / Quiosque
 
 Serve as «melhores fotos» curadas para dispositivos de quiosque sem início de sessão — molduras digitais inteligentes, painéis do Home Assistant, ecrãs ao estilo ImmichFrame / Immich-Kiosk — através de três endpoints anónimos com token estático (`GET /api/frame/photos`, `GET /api/frame/image/{id}`, `GET /api/frame/next`). O acesso é um **token de moldura** opaco e de longa duração; uma lista `tokens` vazia desativa toda a funcionalidade (cada endpoint devolve 404). As respostas nunca contêm caminhos de ficheiros — cada foto é identificada por um id assinado opaco derivado do `rowid` da linha.
