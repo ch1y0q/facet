@@ -1,4 +1,4 @@
-import { Component, DestroyRef, Pipe, PipeTransform, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
+import { Component, DestroyRef, Pipe, PipeTransform, computed, effect, inject, input, output, signal, untracked, ChangeDetectionStrategy } from '@angular/core';
 import { TitleCasePipe } from '@angular/common';
 import { Router } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
@@ -46,6 +46,7 @@ export class CategoryLabelPipe implements PipeTransform {
     CategoryLabelPipe, IsLensNamePipe, PhotoSetKindIconPipe, PhotoSetKindLabelPipe, EvOffsetPipe,
     MomentLabelPipe, HistogramComponent,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     @if (photo(); as p) {
       <!-- The class list stays a literal string: Tailwind only generates a

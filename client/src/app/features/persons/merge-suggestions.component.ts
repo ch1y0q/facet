@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, effect, viewChild, TemplateRef, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, signal, computed, effect, viewChild, TemplateRef, OnInit, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -44,6 +44,7 @@ type SuggestionPerson = MergeSuggestion['person1'];
     FixedPipe,
     NgTemplateOutlet,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <div class="p-4 md:p-6 pb-20 w-full lg:max-w-[96%] mx-auto">
       <!-- Toolbar projects into the global header on lg+ (HeaderSlotService); on small

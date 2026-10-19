@@ -1,4 +1,4 @@
-import { Component, inject, signal, effect, viewChild, TemplateRef, OnInit, OnDestroy, HostListener } from '@angular/core';
+import { Component, inject, signal, effect, viewChild, TemplateRef, OnInit, OnDestroy, HostListener, ChangeDetectionStrategy } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -43,6 +43,7 @@ const ANY_KIND = 'any';
     JunkKindLabelPipe,
     JunkKindIconPipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <!-- The toolbar projects into the global header on lg+ (HeaderSlotService) and
          renders as a fixed bottom bar on small screens (same #junkToolbar template):

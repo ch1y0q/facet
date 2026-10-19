@@ -12,6 +12,7 @@ import {
   DestroyRef,
   Injector,
   TemplateRef,
+  ChangeDetectionStrategy
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
@@ -700,6 +701,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
       </div>
     }
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   host: {
     class: 'block h-full',
     '(document:keydown.control.a)': 'onSelectAllShortcut($event)',

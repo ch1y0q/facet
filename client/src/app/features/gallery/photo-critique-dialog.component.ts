@@ -1,4 +1,4 @@
-import { Component, Pipe, PipeTransform, inject, signal, computed, OnInit } from '@angular/core';
+import { Component, Pipe, PipeTransform, inject, signal, computed, OnInit, ChangeDetectionStrategy } from '@angular/core';
 import { DecimalPipe, PercentPipe } from '@angular/common';
 import { MatDialogModule, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
@@ -170,6 +170,7 @@ export class DistortionLabelPipe implements PipeTransform {
     MatDialogModule, MatButtonModule, MatIconModule, MatProgressSpinnerModule,
     DecimalPipe, PercentPipe, TranslatePipe, ThumbnailUrlPipe, ContributionColorPipe, CategoryReasonPipe, MismatchReasonPipe, DistortionLabelPipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title class="!flex items-center gap-2 truncate">
       <mat-icon>analytics</mat-icon>

@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -17,6 +17,7 @@ import { i18nKeys } from '../../core/i18n/keys';
     FormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatButtonModule, MatTooltipModule, TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title class="truncate" [matTooltip]="I18N.albums.save_smart | translate">{{ I18N.albums.save_smart | translate }}</h2>
     <mat-dialog-content>

@@ -1,11 +1,12 @@
-import { Component, signal, computed } from '@angular/core';
+import { Component, signal, computed, ChangeDetectionStrategy } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { AuthService, AuthStatus } from '../services/auth.service';
 import { authGuard } from './auth.guard';
 import { editionGuard } from './edition.guard';
 
-@Component({ template: '' })
+@Component({ changeDetection: ChangeDetectionStrategy.Eager,
+ template: '' })
 class DummyComponent {}
 
 const STATUS: AuthStatus = {

@@ -1,4 +1,4 @@
-import { Component, inject, computed, effect, viewChild, TemplateRef, DestroyRef } from '@angular/core';
+import { Component, inject, computed, effect, viewChild, TemplateRef, DestroyRef, ChangeDetectionStrategy } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { map } from 'rxjs';
@@ -32,6 +32,7 @@ import { GalleryStore, anyHideToggleActive } from '../gallery/gallery.store';
     DateRangeFilterComponent,
   ],
   host: { class: 'block h-full overflow-auto' },
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <ng-template #timelineToolbar>
       <app-date-range-filter

@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, OnInit, effect, untracked, DestroyRef, viewChild, TemplateRef } from '@angular/core';
+import { Component, inject, signal, computed, OnInit, effect, untracked, DestroyRef, viewChild, TemplateRef, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -54,6 +54,7 @@ export interface SplitPersonResult {
 @Component({
   selector: 'app-merge-target-dialog',
   imports: [MatButtonModule, MatDialogModule, MatIconModule, MatTooltipModule, TranslatePipe, PersonThumbnailUrlPipe],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title class="truncate" [matTooltip]="I18N.persons.select_merge_target | translate">{{ I18N.persons.select_merge_target | translate }}</h2>
     <mat-dialog-content>
@@ -98,6 +99,7 @@ export class MergeTargetDialogComponent {
 @Component({
   selector: 'app-new-person-dialog',
   imports: [FormsModule, MatButtonModule, MatDialogModule, MatFormFieldModule, MatInputModule, TranslatePipe],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title>{{ I18N.manage_persons.new_person_dialog.title | translate }}</h2>
     <mat-dialog-content class="!flex !flex-col gap-3 min-w-[320px]">
@@ -142,6 +144,7 @@ export class NewPersonDialogComponent {
     TranslatePipe,
     FaceThumbnailUrlPipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title class="truncate" [matTooltip]="data.personName || (I18N.persons.unnamed | translate)">
       {{ I18N.persons.split_dialog_title | translate }}
@@ -249,6 +252,7 @@ export class PersonFacesDialogComponent implements OnInit {
     InfiniteScrollDirective,
     RouterLink,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <ng-template #personsToolbar>
       <mat-form-field class="!hidden lg:!inline-flex w-52 ml-2" subscriptSizing="dynamic">

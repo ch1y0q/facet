@@ -1,4 +1,4 @@
-import { Component, computed, DestroyRef, effect, ElementRef, inject, signal, viewChild } from '@angular/core';
+import { Component, computed, DestroyRef, effect, ElementRef, inject, signal, viewChild, ChangeDetectionStrategy } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatSelectModule } from '@angular/material/select';
@@ -168,6 +168,7 @@ function saveSectionStates(states: Record<string, boolean>): void {
     FilterDisplayPipe,
     PersonThumbnailUrlPipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
 <div data-scroll class="flex-1 min-h-0 overflow-y-auto px-2 pb-4">
 

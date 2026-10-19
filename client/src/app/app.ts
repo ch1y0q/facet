@@ -1,4 +1,4 @@
-import { Component, inject, computed, signal, effect, untracked, OnInit } from '@angular/core';
+import { Component, inject, computed, signal, effect, untracked, OnInit, ChangeDetectionStrategy } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterOutlet, RouterLink, RouterLinkActive, NavigationEnd } from '@angular/router';
@@ -62,6 +62,7 @@ interface ReleaseCheck {
 @Component({
   selector: 'app-edition-dialog',
   imports: [FormsModule, MatFormFieldModule, MatInputModule, MatButtonModule, MatIconModule, MatDialogModule, TranslatePipe],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title class="flex items-center gap-2 truncate">
       <mat-icon>lock_open</mat-icon>
@@ -139,6 +140,7 @@ export class EditionDialogComponent {
     SlideshowComponent,
   ],
   templateUrl: './app.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   host: {
     class: 'block h-full',
     '(document:keydown)': 'onGlobalKeydown($event)',

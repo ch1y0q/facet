@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, ChangeDetectionStrategy } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { I18nService } from '../../../core/services/i18n.service';
 import { PhotoCardComponent } from './photo-card.component';
@@ -10,6 +10,7 @@ import { makePhoto } from '../../../../testing/photo.fixture';
   selector: 'test-host',
   standalone: true,
   imports: [PhotoCardComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `<app-photo-card [photo]="photo()" [config]="config()"
                              [burstFramesVisible]="burstFramesVisible()"
                              [collapsedSetKinds]="collapsedSetKinds()"

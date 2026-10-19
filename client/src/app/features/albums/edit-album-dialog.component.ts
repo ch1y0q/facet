@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -21,6 +21,7 @@ export interface EditAlbumDialogData {
     FormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatButtonModule, MatTooltipModule, TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title class="truncate" [matTooltip]="I18N.albums.edit | translate">{{ I18N.albums.edit | translate }}</h2>
     <mat-dialog-content>

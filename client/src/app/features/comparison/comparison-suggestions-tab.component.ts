@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, effect, output } from '@angular/core';
+import { Component, inject, signal, computed, effect, output, ChangeDetectionStrategy } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -53,6 +53,7 @@ interface TopPhoto {
     ThumbnailUrlPipe,
     WeightLabelKeyPipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <div class="pt-2 pb-20 grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
       <!-- Column 1: weight suggestions + actions -->

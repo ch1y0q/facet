@@ -1,4 +1,4 @@
-import { Component, computed, effect, input, output, signal, untracked } from '@angular/core';
+import { Component, computed, effect, input, output, signal, untracked, ChangeDetectionStrategy } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -130,6 +130,7 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
     SortScorePipe,
     SortPersonsPipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <div
       role="button"

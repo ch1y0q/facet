@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, viewChild, ElementRef, effect, DestroyRef, untracked, TemplateRef } from '@angular/core';
+import { Component, inject, signal, computed, viewChild, ElementRef, effect, DestroyRef, untracked, TemplateRef, ChangeDetectionStrategy } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -96,6 +96,7 @@ const COLORS = ['#22c55e', '#3b82f6', '#a855f7', '#f59e0b', '#ef4444', '#06b6d4'
     StatsCorrelationsTabComponent,
   ],
   host: { class: 'block p-4 md:p-6' },
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <ng-template #statsToolbar>
       <mat-form-field class="!hidden lg:!inline-flex w-52 ml-2" subscriptSizing="dynamic">

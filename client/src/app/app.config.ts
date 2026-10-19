@@ -7,7 +7,7 @@ import {
 } from '@angular/core';
 import { provideServiceWorker } from '@angular/service-worker';
 import { provideRouter, withComponentInputBinding, withInMemoryScrolling } from '@angular/router';
-import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { provideHttpClient, withInterceptors, withXhr } from '@angular/common/http';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { MAT_DATE_LOCALE, provideNativeDateAdapter } from '@angular/material/core';
 
@@ -22,7 +22,7 @@ export const appConfig: ApplicationConfig = {
     provideBrowserGlobalErrorListeners(),
     provideZonelessChangeDetection(),
     provideRouter(routes, withComponentInputBinding(), withInMemoryScrolling({ scrollPositionRestoration: 'top' })),
-    provideHttpClient(withInterceptors([authInterceptor, errorInterceptor, retryInterceptor])),
+    provideHttpClient(withXhr(), withInterceptors([authInterceptor, errorInterceptor, retryInterceptor])),
     provideAnimations(),
     { provide: MAT_DATE_LOCALE, useValue: 'en-GB' },
     provideNativeDateAdapter(),

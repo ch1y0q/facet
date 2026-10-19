@@ -1,4 +1,4 @@
-import { Component, computed, DestroyRef, effect, inject, signal, viewChild, TemplateRef } from '@angular/core';
+import { Component, computed, DestroyRef, effect, inject, signal, viewChild, TemplateRef, ChangeDetectionStrategy } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -42,6 +42,7 @@ Chart.register(...registerables);
     ComparisonPriorityTabComponent,
     PanoramaSettingsTabComponent,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <div class="p-4 md:p-6 max-w-screen-2xl mx-auto">
       <!-- Tab-contextual actions projected into the global header on lg (HeaderSlotService);

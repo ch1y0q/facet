@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClient, withXhr } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { AlbumService, Album, AlbumPhotosResponse } from './album.service';
 
@@ -24,7 +24,7 @@ describe('AlbumService', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [AlbumService, provideHttpClient(), provideHttpClientTesting()],
+      providers: [AlbumService, provideHttpClient(withXhr()), provideHttpClientTesting()],
     });
     service = TestBed.inject(AlbumService);
     httpTesting = TestBed.inject(HttpTestingController);

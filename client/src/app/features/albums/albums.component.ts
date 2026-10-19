@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, effect, untracked, viewChild, TemplateRef, DestroyRef } from '@angular/core';
+import { Component, inject, signal, computed, effect, untracked, viewChild, TemplateRef, DestroyRef, ChangeDetectionStrategy } from '@angular/core';
 import { RouterLink, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -36,6 +36,7 @@ import { HeaderSlotService } from '../../core/services/header-slot.service';
     MatProgressSpinnerModule,
     TranslatePipe, ThumbnailUrlPipe, InfiniteScrollDirective,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <ng-template #albumsToolbar>
       <mat-form-field class="!hidden lg:!inline-flex w-52" subscriptSizing="dynamic">

@@ -1,6 +1,6 @@
 import type { Mock } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Component, signal } from '@angular/core';
+import { Component, signal, ChangeDetectionStrategy } from '@angular/core';
 import { Router } from '@angular/router';
 import { of } from 'rxjs';
 import { PhotoTooltipComponent, CategoryLabelPipe } from './photo-tooltip.component';
@@ -13,6 +13,7 @@ import { makePhoto, makePhotoFull } from '../../../testing/photo.fixture';
 @Component({
   selector: 'test-host',
   imports: [PhotoTooltipComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `<app-photo-tooltip [photo]="photo()" [x]="0" [y]="0" [flipped]="flipped()"
                                  [pinned]="pinned()" [docked]="docked()" />`,
 })

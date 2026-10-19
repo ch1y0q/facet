@@ -1,4 +1,4 @@
-import { Component, inject, signal, viewChild, ElementRef, DestroyRef, afterNextRender } from '@angular/core';
+import { Component, inject, signal, viewChild, ElementRef, DestroyRef, afterNextRender, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
@@ -28,6 +28,7 @@ export interface GpsEditDialogData {
   styles: [`
     :host ::ng-deep .leaflet-container { width: 100%; }
   `],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title class="!flex items-center gap-2">
       <mat-icon class="!text-xl !w-5 !h-5 !leading-5 shrink-0">location_on</mat-icon>

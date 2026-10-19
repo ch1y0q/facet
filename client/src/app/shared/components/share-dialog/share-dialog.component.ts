@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit, ChangeDetectionStrategy } from '@angular/core';
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -35,6 +35,7 @@ export interface ShareDialogData {
     MatDialogModule, MatButtonModule, MatIconModule,
     MatInputModule, MatFormFieldModule, MatTooltipModule, TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title class="truncate" [matTooltip]="titleKey | translate">{{ titleKey | translate }}</h2>
     <mat-dialog-content>

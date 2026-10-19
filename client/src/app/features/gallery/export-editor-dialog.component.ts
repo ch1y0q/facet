@@ -1,4 +1,4 @@
-import { Component, ElementRef, computed, inject, signal, viewChild } from '@angular/core';
+import { Component, ElementRef, computed, inject, signal, viewChild, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -44,6 +44,7 @@ export interface ExportEditorDialogData {
     MatButtonModule, MatCheckboxModule, MatRadioModule, MatIconModule,
     MatProgressSpinnerModule, TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title>{{ I18N.export.title | translate }}</h2>
     <mat-dialog-content class="flex flex-col gap-3">

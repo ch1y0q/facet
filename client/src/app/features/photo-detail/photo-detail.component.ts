@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, effect, OnInit, HostListener, DestroyRef, ElementRef, viewChild } from '@angular/core';
+import { Component, inject, signal, computed, effect, OnInit, HostListener, DestroyRef, ElementRef, viewChild, ChangeDetectionStrategy } from '@angular/core';
 import { Location } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
@@ -617,6 +617,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
       </div>
     }
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   host: { class: 'block h-full overflow-y-auto lg:overflow-y-hidden' },
 })
 export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {

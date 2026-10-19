@@ -1,5 +1,6 @@
 import {
   Component, OnInit, OnDestroy, inject, signal, effect, viewChild, ElementRef, TemplateRef,
+  ChangeDetectionStrategy
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
@@ -95,6 +96,7 @@ interface MapResponse {
       font-size: 0.75rem;
     }
   `],
+  changeDetection: ChangeDetectionStrategy.Eager,
   host: { class: 'block h-full' },
 })
 export class MapComponent implements OnInit, OnDestroy {

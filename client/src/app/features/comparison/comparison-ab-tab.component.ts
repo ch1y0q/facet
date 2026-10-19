@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, output } from '@angular/core';
+import { Component, inject, signal, computed, output, ChangeDetectionStrategy } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -60,6 +60,7 @@ interface LearnedWeightsResponse {
     WeightLabelKeyPipe,
   ],
   host: { '(window:keydown)': 'onKeydown($event)' },
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <div class="mt-4">
       <!-- Strategy selector + keyboard hints -->

@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, OnInit, HostListener } from '@angular/core';
+import { Component, inject, signal, computed, OnInit, HostListener, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { NgClass } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
@@ -66,6 +66,7 @@ interface ScenesResponse {
     MomentLabelPipe,
     MomentUncertainPipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <div class="px-4 pt-3 md:px-8 mx-auto w-full max-w-[96%]">
       <div class="flex items-center gap-3 mb-1">

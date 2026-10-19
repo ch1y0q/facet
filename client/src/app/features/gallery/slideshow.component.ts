@@ -12,6 +12,7 @@ import {
   untracked,
   afterNextRender,
   viewChild,
+  ChangeDetectionStrategy
 } from '@angular/core';
 import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { MatIconModule } from '@angular/material/icon';
@@ -39,6 +40,7 @@ interface Slide {
     ImageUrlPipe,
     TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <!-- cdkTrapFocus without auto-capture: the shortcuts in onKeyDown() are bound
          on window, so they fire regardless of which element inside the overlay

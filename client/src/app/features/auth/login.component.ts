@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -22,6 +22,7 @@ import { I18N, i18nKeys } from '../../core/i18n/keys';
     MatIconModule,
     TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <div class="flex items-center justify-center min-h-full p-4">
       <mat-card class="w-full max-w-sm">

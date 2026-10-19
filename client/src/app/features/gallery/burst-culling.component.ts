@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, effect, untracked, viewChild, ElementRef, OnDestroy, WritableSignal, HostListener, TemplateRef } from '@angular/core';
+import { Component, inject, signal, computed, effect, untracked, viewChild, ElementRef, OnDestroy, WritableSignal, HostListener, TemplateRef, ChangeDetectionStrategy } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { CdkTrapFocus } from '@angular/cdk/a11y';
@@ -1412,6 +1412,7 @@ class RunGeneration {
       </div>
     }
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   host: { class: 'block h-full' },
 })
 export class BurstCullingComponent implements OnDestroy {

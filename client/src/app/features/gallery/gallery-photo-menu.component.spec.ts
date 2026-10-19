@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Component, signal } from '@angular/core';
+import { Component, signal, ChangeDetectionStrategy } from '@angular/core';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { MatContextMenuTrigger, MatMenuModule } from '@angular/material/menu';
 import { By } from '@angular/platform-browser';
@@ -28,6 +28,7 @@ function makePhoto(over: Partial<Photo> = {}): Photo {
 
 @Component({
   imports: [GalleryPhotoMenuComponent, MatMenuModule],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <app-gallery-photo-menu
       #m
