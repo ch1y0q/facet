@@ -2593,7 +2593,7 @@ Exposes the read tools described in [AI Agents (MCP)](AGENTS.md) at `POST /mcp`.
 | `call_timeout_s` | `30` | Timeout for one tool call in seconds (1 to 300). It also bounds how long a `ui_*` call waits for the browser tab (`tab_timeout`). |
 | `semantic_timeout_s` | `120` | Timeout for `semantic_search` in seconds (1 to 300); it loads the embedding model, so it needs more. |
 | `rate_per_min` | `120` | Tool calls per minute per token (minimum 1). |
-| `write_rate_per_min` | `30` | Write calls per minute per token (minimum 1). Kept separate so reads cannot starve writes. No write tool is registered yet. |
+| `write_rate_per_min` | `30` | Write calls per minute per token (minimum 1). Kept separate so reads cannot starve writes. Applies to the write tools (including the dry run of `cull_apply` and `delete_photos`); see [AI Agents](AGENTS.md#changing-things). |
 | `allowed_origins` | `[]` | Extra browser origins (for example `["https://photos.example.com"]`) allowed to open the tab bridge when a reverse proxy rewrites `Host`. Distinct from the CORS key `viewer.allowed_origins`. |
 
 Out-of-range numbers are clamped, and a value of the wrong type falls back to the default. The block is read on every request, so a configuration reload toggles the feature without a restart.

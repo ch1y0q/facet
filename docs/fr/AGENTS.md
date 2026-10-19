@@ -2,7 +2,7 @@
 
 > 🌐 [English](../AGENTS.md) · **Français** · [Deutsch](../de/AGENTS.md) · [Italiano](../it/AGENTS.md) · [Español](../es/AGENTS.md) · [Português](../pt/AGENTS.md) · [简体中文](../zh/AGENTS.md)
 
-Facet peut jouer le rôle de serveur [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) : un assistant IA comme Claude Code peut ainsi rechercher et inspecter votre bibliothèque avec les mêmes filtres que la galerie. Il expose neuf outils de lecture qui ne modifient rien dans votre bibliothèque, plus neuf outils `ui_*` qui pilotent l'onglet du navigateur que vous avez déjà ouvert (page, filtres, sélection) et n'écrivent jamais de données de la bibliothèque.
+Facet peut jouer le rôle de serveur [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) : un assistant IA comme Claude Code peut ainsi rechercher et inspecter votre bibliothèque avec les mêmes filtres que la galerie. Il expose neuf outils de lecture qui ne modifient rien dans votre bibliothèque et neuf outils `ui_*` qui pilotent l'onglet du navigateur que vous avez déjà ouvert (page, filtres, sélection) et n'écrivent jamais de données de la bibliothèque. Les jetons qui y sont autorisés peuvent aussi [modifier des éléments](#modifier-la-bibliothèque) (notes, indicateurs, étiquettes, albums, tri et suppression) et piloter la [chambre noire](#chambre-noire-groupes-de-tri).
 
 ## L'activer
 
@@ -40,6 +40,8 @@ Un jeton est créé avec un niveau accordé : `readonly`, `user` ou `edition`. L
 - Installations à mot de passe unique : `user` est ramené à `readonly` à la création, car ce mode n'a pas de niveau intermédiaire. Un jeton `edition` exige une session d'édition et ne fonctionne que tant que le mot de passe d'édition ne change pas.
 - Installations multi-utilisateurs : le jeton `edition` d'un utilisateur rétrogradé passe à `user` ; une promotion n'élève jamais un jeton au-dessus de son niveau accordé.
 - Installations ouvertes (aucun mot de passe) : les jetons sont toujours `readonly` et appartiennent à un propriétaire partagé `_anonymous`.
+- Les installations à mot de passe unique n'ont pas de niveau `user` : le niveau effectif est `edition` ou `readonly`, donc les outils marqués `user` dans [Modifier la bibliothèque](#modifier-la-bibliothèque) exigent aussi un jeton `edition`.
+- Chaque outil a son propre niveau minimal, vérifié avant toute lecture ou écriture ; un jeton plus bas reçoit `forbidden_level`.
 
 Un jeton devient invalide dès que les identifiants de son propriétaire changent : mot de passe de la visionneuse ou d'édition en mode mot de passe unique, mot de passe du propriétaire en mode multi-utilisateur, ou suppression de son compte. Il reçoit alors une réponse 401 à l'entrée.
 
@@ -105,13 +107,77 @@ Indépendamment du point d'accès `/mcp`, un onglet connecté propose aussi les 
 - Enregistrés quand `viewer.mcp.enabled` vaut true et que vous êtes connecté, retirés à la déconnexion.
 - Les outils font les mêmes choses, bornées par le même niveau de compte, que dans le tableau ci-dessus.
 
+## Modifier la bibliothèque
+
+Les outils d'écriture figurent à côté des outils de lecture dans la même liste `/mcp`. Chacun passe par les routes `/api` de la visionneuse, de sorte que les protections de la route s'appliquent toujours, et chacun est décompté du budget `write_rate_per_min`. Le niveau est le plus bas niveau effectif autorisé à appeler l'outil (voir [Niveaux d'autorisation](#niveaux-dautorisation)).
+
+| Outil | Niveau | Ce qu'il fait | Plafonds |
+|-------|--------|---------------|----------|
+| `set_rating` | `user` | Définit la note en étoiles (0-5) de photos | 50 chemins |
+| `set_favorite` | `user` | Marque ou démarque des photos comme favorites (marquer retire le rejet) | 50 chemins |
+| `set_rejected` | `user` | Rejette ou annule le rejet de photos (rejeter retire la note et le favori) | 50 chemins |
+| `batch_set_rating` | `edition` | Définit la note de nombreuses photos | 1000 chemins, ou `filters` |
+| `batch_set_favorite` | `edition` | Marque de nombreuses photos comme favorites | 1000 chemins, ou `filters` |
+| `batch_set_rejected` | `edition` | Rejette de nombreuses photos | 1000 chemins, ou `filters` |
+| `add_tags` | `edition` | Ajoute des étiquettes manuelles (séparées des étiquettes IA) | 10 étiquettes ; 1000 chemins, ou `filters` |
+| `remove_tags` | `edition` | Retire des étiquettes manuelles | 10 étiquettes ; 1000 chemins, ou `filters` |
+| `create_album` | `edition` | Crée un album vide (non idempotent : deux appels, deux albums) | |
+| `album_add_photos` | `edition` | Ajoute des photos à un album (celles déjà présentes sont ignorées) | 1000 chemins |
+| `album_remove_photos` | `edition` | Retire des photos d'un album ; les photos ne sont pas touchées | 1000 chemins |
+| `junk_list` | `readonly` | Liste les candidates du tri des ratés, éventuellement d'un seul `kind` | 100 par page |
+| `junk_reject` | `edition` | Rejette les candidates du tri des ratés (comme `batch_set_rejected`) | 1000 chemins |
+| `junk_clear` | `edition` | Conserve des candidates : les marque comme évaluées et saines pour qu'elles quittent la file | 50 chemins |
+| `cull_apply` | `edition` | Copie les photos à conserver, ou déplace ou met à la corbeille les rejetées ([aperçu puis confirmation](#actions-destructives--aperçu-puis-confirmation)) | 10000 chemins, ou `filters` |
+| `delete_photos` | `edition` | Met les fichiers à la corbeille et supprime leurs lignes de la bibliothèque ([aperçu puis confirmation](#actions-destructives--aperçu-puis-confirmation)) | 1000 chemins |
+
+- **Les outils `user` exigent un jeton d'édition sur une installation à mot de passe unique**, qui n'a pas de niveau intermédiaire (voir [Niveaux d'autorisation](#niveaux-dautorisation)).
+- **Sémantique d'affectation.** Les outils par photo lisent l'état actuel et n'écrivent qu'une différence, donc répéter un appel est sans danger ; chaque chemin indique `changed` ou `already`. Ils traitent un chemin à la fois et s'arrêtent au premier `library_busy`, `outcome_unknown` ou `forbidden_level`, en rapportant `affected`, les `results` par chemin et `not_attempted`. Les outils par lot appliquent le même état.
+- **Choisir les photos.** Les outils par lot, d'étiquettes et `cull_apply` prennent SOIT `paths` SOIT `filters` (l'objet de filtres de `search_photos`), plus une liste `exclude` facultative. Une cible `filters` doit s'accompagner de `expected_count`, le nombre de correspondances des filtres avant application de `exclude` (le `total` de `search_photos`). Facet recompte d'abord les filtres et n'écrit rien si les nombres diffèrent (`invalid_input`, avec `actual_count`).
+- **À qui appartient l'état.** Les notes, favoris et rejets sont ceux du propriétaire du jeton.
+
+### Actions destructives : aperçu puis confirmation
+
+`cull_apply` (`copy_keeps`, `move_rejects`, `trash_rejects`) et `delete_photos` portent l'indicateur `destructiveHint` et s'exécutent en simulation sauf appel avec `dry_run: false`.
+
+1. La simulation ne modifie rien et liste les fichiers qu'elle copierait, déplacerait ou mettrait à la corbeille (les longues listes sont tronquées à `max_rows`, avec un `<key>_count`). Pour `move_rejects`, `trash_rejects` et `delete_photos`, elle renvoie aussi une valeur `confirm`, valable `confirm_expires_in_s` (5 minutes) et pour un seul usage.
+2. L'appel réel (`dry_run: false`) doit transmettre ce `confirm`. Facet recalcule l'ensemble de fichiers et les options et les compare à ceux pour lesquels la valeur a été émise. Si quelque chose a changé, la valeur est annulée et l'appel répond `confirmation_required` : refaites une simulation.
+3. `copy_keeps` n'a pas besoin de `confirm` : il n'écrit que des copies. Il commence quand même par une simulation par défaut.
+
+La valeur `confirm` est liée au jeton, à l'action et à l'ensemble exact de fichiers plus les options. Elle vit en mémoire dans un seul processus : un redémarrage supprime toutes les valeurs en attente.
+
+**Pratique recommandée :** montrez toujours à l'utilisateur le résumé de la simulation (nombres et liste de fichiers) et obtenez son accord explicite avant l'appel `dry_run: false`. Ne confirmez jamais de votre propre initiative.
+
+- `move_rejects` et `trash_rejects` n'agissent que sur les photos que le propriétaire a rejetées ; les autres sont signalées comme `excluded_by_state`. Les fichiers RAW et `.xmp` compagnons (`include_companions`) et les autres images d'un bracketing ou d'un panorama (`include_sequence_siblings`) ne sont pas touchés sauf si vous l'activez.
+- `delete_photos` envoie les fichiers à la corbeille du système et **supprime leurs lignes de la bibliothèque** : les scores, étiquettes et notes ne sont pas récupérables, même si les fichiers le sont.
+- **Prérequis.** `trash_rejects` et `delete_photos` exigent `viewer.cull.allow_trash` à `true` (par défaut `false` ; l'appel est refusé sinon). Le `target_dir` de `copy_keeps` et `move_rejects` doit se trouver dans un emplacement d'export autorisé : `viewer.export.allowed_target_dirs` plus vos répertoires d'analyse (voir [Destinations d'export et de tri](CONFIGURATION.md#destinations-dexport-et-de-tri)).
+
+## Chambre noire (groupes de tri)
+
+Les outils de la chambre noire reprennent la page `/culling`. Tous exigent le niveau `edition`, y compris ceux qui ne font que lister.
+
+| Outil | Ce qu'il fait |
+|-------|---------------|
+| `list_culling_groups` | Liste les groupes (`burst`, `similar`, `scene`, `bracket`, `panorama`, `hdr_panorama`) avec leurs photos et scores, triables et limités par album ou plage de dates |
+| `culling_profiles` | Les préréglages de tri adaptés au genre et celui par défaut |
+| `suggest_culling_profile` | Nomme le préréglage adapté à un album ou à une plage de prise de vue |
+| `keeper_hints` | Indications par photo « un meilleur cliché existe dans cette rafale » pour jusqu'à 100 chemins (vides si aucune tête de classement n'est entraînée) |
+| `auto_cull` | Tri automatique d'un périmètre sous un budget de photos à conserver : aperçu d'abord, puis application avec la valeur `confirm` |
+| `confirm_culling_groups` | Confirme jusqu'à 20 groupes : conserve leurs `keep_paths`, rejette le reste de leurs `paths` |
+
+- **Un groupe est identifié par le couple `(type, group_id)`**, jamais par `group_id` seul : les identifiants des groupes similaires sont décalés lors de la fusion avec les rafales.
+- **Les bracketings, panoramas et panoramas HDR sont conservés entiers.** Dans `confirm_culling_groups`, `keep_paths` doit égaler `paths` pour ces types (sinon `invalid_input`), et `auto_cull` ne les scinde jamais.
+- **Un `keep_paths` vide rejette toutes les images du groupe.** Le premier appel répond alors `confirmation_required` avec une valeur `confirm` ; montrez-le à l'utilisateur, puis répétez l'appel avec cette valeur. Si un lot s'arrête sur `forbidden_level`, `library_busy` ou `rate_limited`, les groupes déjà traités sont rapportés.
+- **`auto_cull` fait un aperçu par défaut** et renvoie la répartition conservation/rejet par groupe plus une valeur `confirm` (seulement si quelque chose serait rejeté). L'application recalcule le plan et le refuse avec `confirmation_required` s'il a changé depuis l'aperçu ou s'il est trop grand pour être confirmé en un seul ensemble (réduisez-le avec `album_id`, `date_from` et `date_to`, ou `group_by`). Les images rejetées alimentent le classeur personnel comme un tri manuel.
+- Appelez `ui_show_culling_group` pour montrer un groupe à l'utilisateur dans son onglet ouvert (voir [Piloter votre onglet ouvert](#piloter-votre-onglet-ouvert)).
+
 ## Résultats, limites et erreurs
 
 Chaque résultat est une enveloppe JSON : `{"ok": true, "data": ...}` ou `{"ok": false, "error": "<code>", "message": "..."}`. Les listes renvoient `data.rows` (un jeu compact et fixe de champs par photo) ainsi que `total`.
 
 - **Plafonds :** au plus `max_rows` lignes et `max_bytes` octets sérialisés. Les dernières lignes sont retirées et `truncated: true` est ajouté. Un résultat sans lignes qui dépasse `max_bytes` devient une erreur `too_large`.
-- **Limite de débit :** `rate_per_min` appels par minute et par jeton (un budget distinct, `write_rate_per_min`, existe pour les appels d'écriture). Au-delà : `rate_limited` avec `retry_after_s`. Dix échecs d'authentification par minute depuis une même adresse déclenchent un 429.
-- **Codes d'erreur :** `forbidden_level` (point d'accès désactivé, jeton invalide ou niveau insuffisant), `invalid_input`, `not_found`, `rate_limited`, `library_busy`, `upstream_error`, `outcome_unknown`, `too_large`, `no_tab`, `tab_timeout`, `tab_outdated`.
+- **Limite de débit :** `rate_per_min` appels par minute et par jeton pour la lecture. Les outils d'écriture puisent dans un budget distinct, `write_rate_per_min` (30 par défaut), si bien que les recherches n'affament pas les écritures, et inversement ; la simulation de `cull_apply` et de `delete_photos` compte comme une écriture, l'aperçu d'`auto_cull` comme une lecture. Au-delà : `rate_limited` avec `retry_after_s`. Dix échecs d'authentification par minute depuis une même adresse déclenchent un 429.
+- **Codes d'erreur :** `forbidden_level` (point d'accès désactivé, jeton invalide ou niveau insuffisant), `invalid_input`, `not_found`, `rate_limited`, `library_busy`, `upstream_error`, `outcome_unknown`, `confirmation_required`, `too_large`, `no_tab`, `tab_timeout`, `tab_outdated`.
+- **Les codes récents :** `confirmation_required` (un appel destructif n'a pas de valeur `confirm` valide pour cet ensemble exact : refaites une simulation, montrez le résultat à l'utilisateur, puis réessayez), `outcome_unknown` (une écriture a expiré ou la connexion a été coupée, elle a donc pu avoir lieu ou non : relisez l'état avant de réessayer, ne réessayez jamais à l'aveugle), `library_busy` (la bibliothèque est occupée par une autre tâche : réessayez dans un instant).
 - **Codes HTTP à l'entrée :** 401 pour un jeton absent ou inconnu, 403 pour une requête de navigateur d'une autre origine, 404 quand le point d'accès est désactivé.
 
 ## Notes de sécurité

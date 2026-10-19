@@ -10,6 +10,7 @@ import pytest
 
 from api import config as api_config
 from api.agent import limits
+from api.agent.tools_write import WRITE_TOOL_LEVELS
 from api.agent.ui_tools import UI_TOOLS
 from tests.conftest import AGENT_DIR
 
@@ -19,6 +20,9 @@ READ_TOOLS = {
 }
 
 UI_TOOL_NAMES = {tool.name for tool in UI_TOOLS}
+WRITE_TOOLS = set(WRITE_TOOL_LEVELS)
+CULLING_TOOLS = {"list_culling_groups", "culling_profiles", "suggest_culling_profile", "keeper_hints",
+                 "auto_cull", "confirm_culling_groups"}
 
 ROWS = [
     {"path": AGENT_DIR + "a.jpg", "filename": "a.jpg", "aggregate": 8.0, "aesthetic": 9.0,
@@ -119,7 +123,7 @@ class TestMount:
 
     def test_tools_list_names_the_read_tools(self, agent_app):
         env = agent_app("open")
-        assert env.tool_names(env.token(env.login())) == READ_TOOLS | UI_TOOL_NAMES
+        assert env.tool_names(env.token(env.login())) == READ_TOOLS | UI_TOOL_NAMES | WRITE_TOOLS | CULLING_TOOLS
 
     def test_every_read_tool_is_annotated_read_only_and_untrusted(self, agent_app):
         env = agent_app("open")
@@ -358,7 +362,7 @@ class TestRealSdkClient:
         finally:
             server.should_exit = True
             thread.join(timeout=10)
-        assert names == READ_TOOLS | UI_TOOL_NAMES
+        assert names == READ_TOOLS | UI_TOOL_NAMES | WRITE_TOOLS | CULLING_TOOLS
         assert status["ok"] is True and status["data"]["owner"] == "_legacy"
 
 

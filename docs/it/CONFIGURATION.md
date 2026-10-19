@@ -2616,7 +2616,7 @@ Espone gli strumenti di lettura descritti in [Agenti IA (MCP)](AGENTS.md) su `PO
 | `call_timeout_s` | `30` | Timeout di una chiamata di strumento in secondi (da 1 a 300). Limita anche l'attesa di una chiamata `ui_*` verso la scheda del browser (`tab_timeout`). |
 | `semantic_timeout_s` | `120` | Timeout di `semantic_search` in secondi (da 1 a 300); carica il modello di embedding e richiede più tempo. |
 | `rate_per_min` | `120` | Chiamate di strumento al minuto per token (minimo 1). |
-| `write_rate_per_min` | `30` | Chiamate di scrittura al minuto per token (minimo 1). Tenuto separato perché le letture non affamino le scritture. Per ora non è registrato alcuno strumento di scrittura. |
+| `write_rate_per_min` | `30` | Chiamate di scrittura al minuto per token (minimo 1). Tenuto separato perché le letture non affamino le scritture. Vale per gli strumenti di scrittura (inclusa la simulazione di `cull_apply` e `delete_photos`); vedi [Agenti IA](AGENTS.md#modificare-la-libreria). |
 | `allowed_origins` | `[]` | Origini del browser aggiuntive (per esempio `["https://photos.example.com"]`) autorizzate ad aprire il ponte della scheda quando un reverse proxy riscrive `Host`. Distinta dalla chiave CORS `viewer.allowed_origins`. |
 
 I numeri fuori intervallo vengono riportati nei limiti e un valore di tipo errato torna al predefinito. Il blocco è letto a ogni richiesta, quindi un ricaricamento della configurazione attiva o disattiva la funzione senza riavvio.

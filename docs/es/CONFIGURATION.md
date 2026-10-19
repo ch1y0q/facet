@@ -2618,7 +2618,7 @@ Expone las herramientas de lectura descritas en [Agentes de IA (MCP)](AGENTS.md)
 | `call_timeout_s` | `30` | Tiempo límite de una llamada a herramienta en segundos (1 a 300). También acota cuánto espera una llamada `ui_*` a la pestaña del navegador (`tab_timeout`). |
 | `semantic_timeout_s` | `120` | Tiempo límite de `semantic_search` en segundos (1 a 300); carga el modelo de embeddings y necesita más. |
 | `rate_per_min` | `120` | Llamadas a herramientas por minuto y token (mínimo 1). |
-| `write_rate_per_min` | `30` | Llamadas de escritura por minuto y token (mínimo 1). Se mantiene aparte para que las lecturas no dejen sin cupo a las escrituras. Por ahora no hay ninguna herramienta de escritura registrada. |
+| `write_rate_per_min` | `30` | Llamadas de escritura por minuto y token (mínimo 1). Se mantiene aparte para que las lecturas no dejen sin cupo a las escrituras. Se aplica a las herramientas de escritura (incluida la simulación de `cull_apply` y `delete_photos`); consulta [Agentes de IA](AGENTS.md#modificar-la-biblioteca). |
 | `allowed_origins` | `[]` | Orígenes de navegador adicionales (por ejemplo `["https://photos.example.com"]`) autorizados a abrir el puente de pestaña cuando un proxy inverso reescribe `Host`. Distinta de la clave CORS `viewer.allowed_origins`. |
 
 Los números fuera de rango se ajustan al límite, y un valor de tipo incorrecto vuelve al predeterminado. El bloque se lee en cada petición, así que recargar la configuración activa o desactiva la función sin reiniciar.

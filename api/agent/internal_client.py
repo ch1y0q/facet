@@ -58,6 +58,26 @@ ROUTE_ALLOWLIST: Mapping[str, RouteSpec] = MappingProxyType({
     "list_albums": RouteSpec("GET", "/api/albums", "readonly"),
     "library_stats.type_counts": RouteSpec("GET", "/api/type_counts", "readonly"),
     "library_stats.overview": RouteSpec("GET", "/api/stats/overview", "readonly"),
+    "photos_count": RouteSpec("GET", "/api/photos/count", "readonly"),
+    # Write routes. ``user`` = the per-photo require_auth routes a regular account
+    # may call in the UI; ``edition`` = everything gated by require_edition.
+    "set_rating": RouteSpec("POST", "/api/photo/set_rating", "user", write=True),
+    "toggle_favorite": RouteSpec("POST", "/api/photo/toggle_favorite", "user", write=True),
+    "toggle_rejected": RouteSpec("POST", "/api/photo/toggle_rejected", "user", write=True),
+    "batch_favorite": RouteSpec("POST", "/api/photos/batch_favorite", "edition", write=True),
+    "batch_reject": RouteSpec("POST", "/api/photos/batch_reject", "edition", write=True),
+    "batch_rating": RouteSpec("POST", "/api/photos/batch_rating", "edition", write=True),
+    "batch_manual_tags": RouteSpec("POST", "/api/photos/batch_manual_tags", "edition", write=True),
+    "clear_junk": RouteSpec("POST", "/api/photo/clear_junk", "edition", write=True),
+    "create_album": RouteSpec("POST", "/api/albums", "edition", write=True),
+    "album_add_photos": RouteSpec("POST", "/api/albums/{album_id}/photos", "edition", write=True),
+    "album_remove_photos": RouteSpec("DELETE", "/api/albums/{album_id}/photos", "edition", write=True),
+    "cull_apply": RouteSpec("POST", "/api/cull/apply", "edition", write=True),
+    "delete_photos": RouteSpec("POST", "/api/photo/delete", "edition", write=True),
+    # The same two routes with ``dry_run=true``: nothing is written, so a timeout is a
+    # plain upstream error rather than ``outcome_unknown``.
+    "cull_apply.preview": RouteSpec("POST", "/api/cull/apply", "edition"),
+    "delete_photos.preview": RouteSpec("POST", "/api/photo/delete", "edition"),
 })
 
 

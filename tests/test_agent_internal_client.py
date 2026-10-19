@@ -53,9 +53,11 @@ def _client(env, **allow):
 
 
 class TestAllowlist:
-    def test_allowlist_is_frozen_and_covers_only_read_routes_in_p1(self):
+    def test_allowlist_is_frozen_and_only_writes_demand_a_level(self):
         assert isinstance(ROUTE_ALLOWLIST, MappingProxyType)
-        assert all(spec.min_level == "readonly" and not spec.write for spec in ROUTE_ALLOWLIST.values())
+        assert all(spec.min_level == "readonly" or spec.write or spec.template.endswith("/api/cull/apply")
+                   or spec.template.endswith("/api/photo/delete") for spec in ROUTE_ALLOWLIST.values())
+        assert all(spec.min_level != "readonly" for spec in ROUTE_ALLOWLIST.values() if spec.write)
         assert not any(spec.template.startswith(("/api/admin", "/api/config", "/api/scan",
                                                  "/api/auth", "/dav", "/api/frame"))
                        for spec in ROUTE_ALLOWLIST.values())

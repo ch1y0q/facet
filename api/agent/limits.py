@@ -31,9 +31,11 @@ def now() -> float:
 
 
 def reset_limits() -> None:
+    from api.agent import nonce
     with _lock:
         _calls.clear()
         _failures.clear()
+    nonce.reset()
 
 
 def check_rate(token_id: int, write: bool, per_min: int) -> tuple[bool, float]:

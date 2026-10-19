@@ -2612,7 +2612,7 @@ Expose les outils de lecture décrits dans [Agents IA (MCP)](AGENTS.md) via `POS
 | `call_timeout_s` | `30` | Délai d'un appel d'outil en secondes (1 à 300). Borne aussi l'attente d'un appel `ui_*` vers l'onglet du navigateur (`tab_timeout`). |
 | `semantic_timeout_s` | `120` | Délai de `semantic_search` en secondes (1 à 300) ; l'outil charge le modèle d'embeddings et demande donc plus de temps. |
 | `rate_per_min` | `120` | Appels d'outils par minute et par jeton (minimum 1). |
-| `write_rate_per_min` | `30` | Appels d'écriture par minute et par jeton (minimum 1). Budget séparé pour que les lectures n'affament pas les écritures. Aucun outil d'écriture n'est enregistré pour l'instant. |
+| `write_rate_per_min` | `30` | Appels d'écriture par minute et par jeton (minimum 1). Budget séparé pour que les lectures n'affament pas les écritures. S'applique aux outils d'écriture (y compris la simulation de `cull_apply` et `delete_photos`) ; voir [Agents IA](AGENTS.md#modifier-la-bibliothèque). |
 | `allowed_origins` | `[]` | Origines de navigateur supplémentaires (par exemple `["https://photos.example.com"]`) autorisées à ouvrir le pont d'onglet lorsqu'un proxy inverse réécrit `Host`. Distinct de la clé CORS `viewer.allowed_origins`. |
 
 Les nombres hors plage sont ramenés dans la plage, et une valeur d'un mauvais type revient à la valeur par défaut. Le bloc est lu à chaque requête : un rechargement de la configuration active ou désactive la fonction sans redémarrage.

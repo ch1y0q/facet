@@ -47,11 +47,16 @@ def _row_count(envelope: dict) -> int:
     return len(rows) if isinstance(rows, list) else 0
 
 
-async def run_tool(ctx: Context, name: str, handler: Handler, *, write: bool = False) -> CallToolResult:
+async def run_tool(ctx: Context, name: str, handler: Handler, *, write: bool = False,
+                   min_level: str = "readonly") -> CallToolResult:
     """Authenticate, rate-limit and run ``handler``; always return an envelope.
 
     Handlers never raise to the SDK: transport-level failure is reserved for the
     auth gate (401/403/429), so a tool problem reaches the model as data.
+
+    ``min_level`` is the tool's own floor, checked here BEFORE the rate limit and
+    before ``handler`` runs, so a refused tool makes no upstream call at all (not
+    even a read-only pre-count).
     """
     started = time.monotonic()
     settings = mcp_settings()
@@ -67,8 +72,13 @@ async def run_tool(ctx: Context, name: str, handler: Handler, *, write: bool = F
             else:
                 token_id = grant.id
                 per_min = settings["write_rate_per_min" if write else "rate_per_min"]
-                allowed, retry_after = limits.check_rate(grant.id, write, per_min)
-                if not allowed:
+                below_floor = tokens.level_rank(resolved.level) < tokens.level_rank(min_level)
+                allowed, retry_after = (True, 0.0) if below_floor else limits.check_rate(
+                    grant.id, write, per_min)
+                if below_floor:
+                    envelope = err("forbidden_level",
+                                   f"This token's level is {resolved.level}; {name} needs {min_level}")
+                elif not allowed:
                     envelope = err("rate_limited", "Too many calls; slow down",
                                    retry_after_s=retry_after)
                 else:

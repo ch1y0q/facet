@@ -30,8 +30,10 @@ from api.agent.internal_client import InternalClient
 from api.agent.internal_client import err
 from api.agent.bridge import TabRegistry
 from api.agent.runtime import bearer_token, to_result
+from api.agent.tools_culling import register_culling_tools
 from api.agent.tools_read import register_read_tools
 from api.agent.tools_ui import register_ui_tools
+from api.agent.tools_write import register_write_tools
 from api.agent.tokens import ResolvedGrant
 from api.agent.ui_tools import tools_version
 from api.config import mcp_settings
@@ -191,7 +193,9 @@ def mount_agent(app: FastAPI) -> StreamableHTTPSessionManager:
                 "ui_tools_version": tools_version()}
 
     register_read_tools(server, client, status_extra)
+    register_write_tools(server, client)
     register_ui_tools(server, registry)
+    register_culling_tools(server, app)
     sdk_app = server.streamable_http_app(
         streamable_http_path=MCP_PATH,
         json_response=True,

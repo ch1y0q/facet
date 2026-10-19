@@ -2,7 +2,7 @@
 
 > 🌐 [English](../AGENTS.md) · [Français](../fr/AGENTS.md) · [Deutsch](../de/AGENTS.md) · **Italiano** · [Español](../es/AGENTS.md) · [Português](../pt/AGENTS.md) · [简体中文](../zh/AGENTS.md)
 
-Facet può fungere da server [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), così un assistente IA come Claude Code può cercare e ispezionare la tua libreria con gli stessi filtri della galleria. Espone nove strumenti di lettura che non modificano nulla nella tua libreria, più nove strumenti `ui_*` che guidano la scheda del browser che hai già aperto (pagina, filtri, selezione) e non scrivono mai dati della libreria.
+Facet può fungere da server [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), così un assistente IA come Claude Code può cercare e ispezionare la tua libreria con gli stessi filtri della galleria. Espone nove strumenti di lettura che non modificano nulla nella libreria e nove strumenti `ui_*` che muovono la scheda del browser già aperta (pagina, filtri, selezione) e non scrivono mai dati della libreria. I token autorizzati possono anche [modificare la libreria](#modificare-la-libreria) (valutazioni, indicatori, tag, album, selezione ed eliminazione) e usare la [camera oscura](#camera-oscura-gruppi-di-selezione).
 
 ## Attivarlo
 
@@ -40,6 +40,8 @@ Un token viene creato con un livello concesso: `readonly`, `user` o `edition`. I
 - Installazioni con password unica: `user` è limitato a `readonly` alla creazione, perché questa modalità non ha un livello intermedio. Un token `edition` richiede una sessione di edizione e funziona solo finché la password di edizione non cambia.
 - Installazioni multiutente: il token `edition` di un utente poi retrocesso scende a `user`; una promozione non porta mai un token oltre il livello concesso.
 - Installazioni aperte (nessuna password): i token sono sempre `readonly` e appartengono a un proprietario condiviso `_anonymous`.
+- Le installazioni con password unica non hanno il livello `user`: il livello effettivo è `edition` o `readonly`, quindi gli strumenti contrassegnati `user` in [Modificare la libreria](#modificare-la-libreria) richiedono anch'essi un token `edition`.
+- Ogni strumento ha il proprio livello minimo, verificato prima di qualsiasi lettura o scrittura; un token di livello inferiore riceve `forbidden_level`.
 
 Un token decade automaticamente quando cambiano le credenziali del suo proprietario: la password del viewer o di edizione in modalità password unica, la password del proprietario in modalità multiutente, oppure l'eliminazione del suo account. Riceve allora un 401 all'ingresso.
 
@@ -105,13 +107,77 @@ Indipendentemente dall'endpoint `/mcp`, una scheda con accesso effettuato offre 
 - Registrati quando `viewer.mcp.enabled` è true e hai effettuato l'accesso, rimossi all'uscita.
 - Gli strumenti fanno le stesse cose, limitate dallo stesso livello di account, della tabella qui sopra.
 
+## Modificare la libreria
+
+Gli strumenti di scrittura stanno accanto a quelli di lettura nella stessa lista `/mcp`. Ciascuno passa dalle route `/api` del viewer, quindi le protezioni della route restano valide, e ciascuno viene conteggiato nel budget `write_rate_per_min`. Il livello è il più basso livello effettivo che può chiamare lo strumento (vedi [Livelli di autorizzazione](#livelli-di-autorizzazione)).
+
+| Strumento | Livello | Cosa fa | Limiti |
+|-----------|---------|---------|--------|
+| `set_rating` | `user` | Imposta la valutazione a stelle (0-5) delle foto | 50 percorsi |
+| `set_favorite` | `user` | Segna o toglie il preferito alle foto (segnare toglie lo scarto) | 50 percorsi |
+| `set_rejected` | `user` | Scarta o annulla lo scarto delle foto (scartare rimuove valutazione e preferito) | 50 percorsi |
+| `batch_set_rating` | `edition` | Imposta la valutazione di molte foto | 1000 percorsi, oppure `filters` |
+| `batch_set_favorite` | `edition` | Segna molte foto come preferite | 1000 percorsi, oppure `filters` |
+| `batch_set_rejected` | `edition` | Scarta molte foto | 1000 percorsi, oppure `filters` |
+| `add_tags` | `edition` | Aggiunge tag manuali (separati dai tag IA) | 10 tag; 1000 percorsi, oppure `filters` |
+| `remove_tags` | `edition` | Rimuove tag manuali | 10 tag; 1000 percorsi, oppure `filters` |
+| `create_album` | `edition` | Crea un album vuoto (non idempotente: due volte crea due album) | |
+| `album_add_photos` | `edition` | Aggiunge foto a un album (quelle già presenti sono ignorate) | 1000 percorsi |
+| `album_remove_photos` | `edition` | Toglie foto da un album; le foto non sono toccate | 1000 percorsi |
+| `junk_list` | `readonly` | Elenca i candidati della pulizia degli scarti, eventualmente di un solo `kind` | 100 per pagina |
+| `junk_reject` | `edition` | Scarta i candidati della pulizia (come `batch_set_rejected`) | 1000 percorsi |
+| `junk_clear` | `edition` | Conserva i candidati: li segna come valutati e a posto perché escano dalla coda | 50 percorsi |
+| `cull_apply` | `edition` | Copia le foto da tenere, oppure sposta o cestina quelle scartate ([anteprima, poi conferma](#azioni-distruttive-anteprima-poi-conferma)) | 10000 percorsi, oppure `filters` |
+| `delete_photos` | `edition` | Cestina i file ed elimina le loro righe dalla libreria ([anteprima, poi conferma](#azioni-distruttive-anteprima-poi-conferma)) | 1000 percorsi |
+
+- **Gli strumenti `user` richiedono un token edition su un'installazione con password unica**, che non ha un livello intermedio (vedi [Livelli di autorizzazione](#livelli-di-autorizzazione)).
+- **Semantica di impostazione.** Gli strumenti per singola foto leggono lo stato attuale e scrivono solo una differenza, quindi ripetere una chiamata è innocuo; ogni percorso riporta `changed` o `already`. Procedono un percorso alla volta e si fermano al primo `library_busy`, `outcome_unknown` o `forbidden_level`, riportando `affected`, i `results` per percorso e `not_attempted`. Gli strumenti batch impostano lo stesso stato.
+- **Scegliere le foto.** Gli strumenti batch, dei tag e `cull_apply` accettano O `paths` O `filters` (l'oggetto filtri di `search_photos`), più un elenco `exclude` facoltativo. Un bersaglio `filters` deve avere `expected_count`, il numero di corrispondenze dei filtri prima di applicare `exclude` (il `total` di `search_photos`). Facet ricalcola prima i filtri e non scrive nulla se i numeri differiscono (`invalid_input`, con `actual_count`).
+- **Di chi è lo stato.** Valutazioni, preferiti e scarti sono quelli del proprietario del token.
+
+### Azioni distruttive: anteprima, poi conferma
+
+`cull_apply` (`copy_keeps`, `move_rejects`, `trash_rejects`) e `delete_photos` sono contrassegnati `destructiveHint` e girano come simulazione se non chiamati con `dry_run: false`.
+
+1. La simulazione non modifica nulla ed elenca i file che copierebbe, sposterebbe o cestinerebbe (le liste lunghe sono troncate a `max_rows`, con un `<key>_count`). Per `move_rejects`, `trash_rejects` e `delete_photos` restituisce anche un valore `confirm`, valido per `confirm_expires_in_s` (5 minuti) e per un solo uso.
+2. La chiamata reale (`dry_run: false`) deve passare quel `confirm`. Facet ricalcola l'insieme di file e le opzioni e li confronta con quelli per cui il valore è stato emesso. Se qualcosa è cambiato, il valore è nullo e la chiamata risponde `confirmation_required`: rifai la simulazione.
+3. `copy_keeps` non richiede `confirm`: scrive solo copie. Per impostazione predefinita parte comunque con una simulazione.
+
+Il valore `confirm` è legato al token, all'azione e all'esatto insieme di file più le opzioni. Vive in memoria in un solo processo, quindi un riavvio scarta tutti i valori in sospeso.
+
+**Pratica consigliata:** mostra sempre all'utente il riepilogo della simulazione (conteggi ed elenco dei file) e ottieni la sua approvazione esplicita prima della chiamata `dry_run: false`. Non confermare mai di propria iniziativa.
+
+- `move_rejects` e `trash_rejects` agiscono solo sulle foto che il proprietario ha scartato; le altre sono riportate come `excluded_by_state`. I file RAW e `.xmp` associati (`include_companions`) e gli altri fotogrammi di un bracketing o di un panorama (`include_sequence_siblings`) non sono toccati se non lo attivi.
+- `delete_photos` invia i file al cestino di sistema ed **elimina le loro righe dalla libreria**: punteggi, tag e valutazioni non sono recuperabili, anche se i file lo sono.
+- **Prerequisiti.** `trash_rejects` e `delete_photos` richiedono `viewer.cull.allow_trash` impostato a `true` (predefinito `false`; altrimenti la chiamata è rifiutata). Il `target_dir` di `copy_keeps` e `move_rejects` deve trovarsi in una posizione di esportazione consentita: `viewer.export.allowed_target_dirs` più le tue directory di scansione (vedi [Destinazioni di esportazione e scarto](CONFIGURATION.md#destinazioni-di-esportazione-e-scarto)).
+
+## Camera oscura (gruppi di selezione)
+
+Gli strumenti della camera oscura rispecchiano la pagina `/culling`. Tutti richiedono il livello `edition`, anche quelli che si limitano a elencare.
+
+| Strumento | Cosa fa |
+|-----------|---------|
+| `list_culling_groups` | Elenca i gruppi (`burst`, `similar`, `scene`, `bracket`, `panorama`, `hdr_panorama`) con foto e punteggi, ordinabili e limitabili per album o intervallo di date |
+| `culling_profiles` | I preset di selezione per genere e quello predefinito |
+| `suggest_culling_profile` | Indica il preset adatto a un album o a un intervallo di scatto |
+| `keeper_hints` | Indicazioni per foto «in questa raffica esiste uno scatto migliore» per fino a 100 percorsi (vuote se nessuna testa di classificazione è addestrata) |
+| `auto_cull` | Selezione automatica di un ambito con un budget di foto da tenere: prima l'anteprima, poi l'applicazione con il valore `confirm` |
+| `confirm_culling_groups` | Conferma fino a 20 gruppi: tiene i loro `keep_paths`, scarta il resto dei `paths` |
+
+- **Un gruppo è identificato dalla coppia `(type, group_id)`**, mai dal solo `group_id`: gli id dei gruppi simili sono traslati quando vengono uniti alle raffiche.
+- **Bracketing, panorami e panorami HDR si tengono interi.** In `confirm_culling_groups`, `keep_paths` deve coincidere con `paths` per questi tipi (altrimenti `invalid_input`), e `auto_cull` non li divide mai.
+- **Un `keep_paths` vuoto scarta ogni fotogramma del gruppo.** La prima chiamata risponde allora `confirmation_required` con un valore `confirm`; mostralo all'utente, poi ripeti la chiamata con quel valore. Se un lotto si ferma su `forbidden_level`, `library_busy` o `rate_limited`, vengono riportati i gruppi già completati.
+- **`auto_cull` mostra un'anteprima per impostazione predefinita** e restituisce la ripartizione tenere/scartare per gruppo più un valore `confirm` (solo se qualcosa verrebbe scartato). L'applicazione ricalcola il piano e lo rifiuta con `confirmation_required` se è cambiato dopo l'anteprima o se è troppo grande per essere confermato come un solo insieme (restringilo con `album_id`, `date_from` e `date_to`, oppure `group_by`). I fotogrammi scartati alimentano il classificatore personale come ogni selezione manuale.
+- Chiama `ui_show_culling_group` per mostrare un gruppo all'utente nella sua scheda aperta (vedi [Controllare la scheda aperta](#controllare-la-scheda-aperta)).
+
 ## Risultati, limiti ed errori
 
 Ogni risultato è una busta JSON: `{"ok": true, "data": ...}` oppure `{"ok": false, "error": "<code>", "message": "..."}`. Gli elenchi restituiscono `data.rows` (un insieme compatto e fisso di campi per foto) più `total`.
 
 - **Tetti:** al massimo `max_rows` righe e `max_bytes` byte serializzati. Le ultime righe vengono scartate e si imposta `truncated: true`. Un risultato senza righe che supera `max_bytes` diventa un errore `too_large`.
-- **Limite di frequenza:** `rate_per_min` chiamate al minuto per token (esiste un budget separato, `write_rate_per_min`, per le chiamate di scrittura). Oltre: `rate_limited` con `retry_after_s`. Dieci tentativi bearer falliti al minuto da un indirizzo danno 429.
-- **Codici di errore:** `forbidden_level` (endpoint disattivato, token non valido o livello insufficiente), `invalid_input`, `not_found`, `rate_limited`, `library_busy`, `upstream_error`, `outcome_unknown`, `too_large`, `no_tab`, `tab_timeout`, `tab_outdated`.
+- **Limite di frequenza:** `rate_per_min` chiamate al minuto per token per la lettura. Gli strumenti di scrittura attingono a un budget separato, `write_rate_per_min` (predefinito 30), così le ricerche non affamano le scritture e viceversa; la simulazione di `cull_apply` e `delete_photos` conta come scrittura, l'anteprima di `auto_cull` come lettura. Oltre: `rate_limited` con `retry_after_s`. Dieci tentativi bearer falliti al minuto dallo stesso indirizzo ricevono 429.
+- **Codici di errore:** `forbidden_level` (endpoint disattivato, token non valido o livello troppo basso), `invalid_input`, `not_found`, `rate_limited`, `library_busy`, `upstream_error`, `outcome_unknown`, `confirmation_required`, `too_large`, `no_tab`, `tab_timeout`, `tab_outdated`.
+- **I codici più recenti:** `confirmation_required` (una chiamata distruttiva non ha un valore `confirm` valido per questo preciso insieme: rifai una simulazione, mostra il risultato all'utente, poi riprova), `outcome_unknown` (una scrittura è scaduta o la connessione è caduta, quindi può essere avvenuta o no: rileggi lo stato prima di riprovare, non ripetere mai alla cieca), `library_busy` (la libreria è occupata da un altro lavoro: riprova tra un istante).
 - **Codici HTTP all'ingresso:** 401 per token mancante o sconosciuto, 403 per una richiesta di browser da un'altra origine, 404 quando è disattivato.
 
 ## Note di sicurezza

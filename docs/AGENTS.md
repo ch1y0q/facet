@@ -2,7 +2,7 @@
 
 > 🌐 **English** · [Français](fr/AGENTS.md) · [Deutsch](de/AGENTS.md) · [Italiano](it/AGENTS.md) · [Español](es/AGENTS.md) · [Português](pt/AGENTS.md) · [简体中文](zh/AGENTS.md)
 
-Facet can act as a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server, so an AI assistant such as Claude Code can search and inspect your library with the same filters the gallery uses. It exposes nine read tools that change nothing in your library, plus nine `ui_*` tools that move the browser tab you already have open (page, filters, selection) and never write library data.
+Facet can act as a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server, so an AI assistant such as Claude Code can search and inspect your library with the same filters the gallery uses. It exposes nine read tools that change nothing in your library and nine `ui_*` tools that move the browser tab you already have open (page, filters, selection) and never write library data. Tokens that are allowed to can also [change things](#changing-things) (ratings, flags, tags, albums, culling and deletion) and work the [darkroom](#darkroom-culling-groups).
 
 ## Enable it
 
@@ -40,6 +40,8 @@ A token is minted with a grant: `readonly`, `user` or `edition`. The **effective
 - Single-password installs: `user` is capped to `readonly` at mint time, because that mode has no middle level. An `edition` token needs an edition session and works only while the edition password is unchanged.
 - Multi-user installs: an `edition` token of a user who is later demoted drops to `user`; a promotion never raises a token above its grant.
 - Open installs (no password set): tokens are always `readonly` and belong to a shared `_anonymous` owner.
+- Single-password installs have no `user` level: the effective level is `edition` or `readonly`, so the tools marked `user` under [Changing things](#changing-things) also need an `edition` token there.
+- Each tool has its own minimum level, checked before anything is read or written; a lower token gets `forbidden_level`.
 
 A token dies automatically when its owner's credentials change: the viewer or edition password in single-password mode, the owner's password in multi-user mode, or the owner's account being deleted. It then answers 401 at the gate.
 
@@ -105,13 +107,77 @@ Separately from the `/mcp` endpoint, a tab that is signed in also offers the sam
 - Registered when `viewer.mcp.enabled` is true and you are signed in, and removed when you sign out.
 - The tools do the same things, and are bounded by the same account level, as in the table above.
 
+## Changing things
+
+Write tools sit next to the read tools in the same `/mcp` list. Each one goes through the viewer's own `/api` routes, so the route's guards still apply, and each counts against the `write_rate_per_min` budget. The level is the lowest effective level that may call the tool (see [Permission levels](#permission-levels)).
+
+| Tool | Level | What it does | Caps |
+|------|-------|--------------|------|
+| `set_rating` | `user` | Set the star rating (0-5) of photos | 50 paths |
+| `set_favorite` | `user` | Mark or unmark photos as favourite (marking clears rejected) | 50 paths |
+| `set_rejected` | `user` | Reject or un-reject photos (rejecting clears rating and favourite) | 50 paths |
+| `batch_set_rating` | `edition` | Set the rating of many photos | 1000 paths, or `filters` |
+| `batch_set_favorite` | `edition` | Mark many photos as favourite | 1000 paths, or `filters` |
+| `batch_set_rejected` | `edition` | Reject many photos | 1000 paths, or `filters` |
+| `add_tags` | `edition` | Add manual tags (kept apart from the AI tags) | 10 tags; 1000 paths, or `filters` |
+| `remove_tags` | `edition` | Remove manual tags | 10 tags; 1000 paths, or `filters` |
+| `create_album` | `edition` | Create an empty album (not idempotent: twice makes two albums) | |
+| `album_add_photos` | `edition` | Add photos to an album (already present ones are ignored) | 1000 paths |
+| `album_remove_photos` | `edition` | Remove photos from an album; the photos are untouched | 1000 paths |
+| `junk_list` | `readonly` | List junk-sweep candidates, optionally of one `kind` | 100 per page |
+| `junk_reject` | `edition` | Reject junk-sweep candidates (same as `batch_set_rejected`) | 1000 paths |
+| `junk_clear` | `edition` | Keep candidates: mark them evaluated-clean so they leave the queue | 50 paths |
+| `cull_apply` | `edition` | Copy the keepers, or move or trash the rejects ([preview then confirm](#destructive-actions-preview-then-confirm)) | 10000 paths, or `filters` |
+| `delete_photos` | `edition` | Trash the files and delete their library rows ([preview then confirm](#destructive-actions-preview-then-confirm)) | 1000 paths |
+
+- **The `user` tools need an edition token on a single-password install**, which has no middle level (see [Permission levels](#permission-levels)).
+- **Set semantics.** The per-photo tools read the current state and write only a difference, so repeating a call is harmless; each path reports `changed` or `already`. They run one path at a time and stop at the first `library_busy`, `outcome_unknown` or `forbidden_level`, reporting `affected`, the per-path `results` and `not_attempted`. The batch tools set the same state.
+- **Choosing the photos.** The batch, tag and `cull_apply` tools take EITHER `paths` OR `filters` (the `search_photos` filter object), plus an optional `exclude` list. A `filters` target must come with `expected_count`, the match count of the filters before `exclude` is applied (`search_photos` `total`). Facet counts the filters again first and writes nothing when the numbers differ (`invalid_input`, with `actual_count`).
+- **Whose state.** Ratings, favourites and rejections are the token owner's own.
+
+### Destructive actions: preview then confirm
+
+`cull_apply` (`copy_keeps`, `move_rejects`, `trash_rejects`) and `delete_photos` are flagged `destructiveHint` and run as a dry run unless called with `dry_run: false`.
+
+1. The dry run changes nothing and lists the files it would copy, move or trash (long lists are cut to `max_rows`, with a `<key>_count`). For `move_rejects`, `trash_rejects` and `delete_photos` it also returns a `confirm` value, valid for `confirm_expires_in_s` (5 minutes) and for one use.
+2. The real call (`dry_run: false`) must pass that `confirm`. Facet re-resolves the file set and options and compares them with the ones the value was issued for. If anything changed, the value is void and the call answers `confirmation_required`: dry-run again.
+3. `copy_keeps` needs no `confirm`: it only writes copies. It still previews by default.
+
+The `confirm` value is bound to the token, the action and the exact file set plus options. It lives in memory in one process, so a restart discards every pending value.
+
+**Recommended practice:** always show the user the dry-run summary (counts and file list) and get explicit approval before the `dry_run: false` call. Never confirm on your own initiative.
+
+- `move_rejects` and `trash_rejects` act only on photos the owner rejected; any others are reported as `excluded_by_state`. Companion RAW and `.xmp` files (`include_companions`) and the other frames of a bracket or panorama (`include_sequence_siblings`) are untouched unless you opt in.
+- `delete_photos` sends the files to the OS trash and **deletes their library rows**: the scores, tags and ratings are not recoverable, even when the files are.
+- **Prerequisites.** `trash_rejects` and `delete_photos` need `viewer.cull.allow_trash` set to `true` (default `false`; the call is refused otherwise). The `target_dir` of `copy_keeps` and `move_rejects` must sit under an allowed export location: `viewer.export.allowed_target_dirs` plus your scan directories (see [Export and Cull Destinations](CONFIGURATION.md#export-and-cull-destinations)).
+
+## Darkroom (culling groups)
+
+The darkroom tools mirror the `/culling` page. All of them need the `edition` level, including the listing ones.
+
+| Tool | What it does |
+|------|--------------|
+| `list_culling_groups` | List groups (`burst`, `similar`, `scene`, `bracket`, `panorama`, `hdr_panorama`) with their photos and scores, sortable and scoped by album or date window |
+| `culling_profiles` | The genre-aware culling presets and the default one |
+| `suggest_culling_profile` | Name the preset that fits an album or a capture-time window |
+| `keeper_hints` | Per-photo "a better shot exists in this burst" hints for up to 100 paths (empty when no keeper head is trained) |
+| `auto_cull` | Auto-cull a scope under a keeper budget: preview first, then apply with the `confirm` value |
+| `confirm_culling_groups` | Confirm up to 20 groups: keep their `keep_paths`, reject the rest of their `paths` |
+
+- **A group is identified by the pair `(type, group_id)`**, never by `group_id` alone: similar-group ids are offset when merged with bursts.
+- **Brackets, panoramas and HDR panoramas are kept whole.** In `confirm_culling_groups`, `keep_paths` must equal `paths` for these types (otherwise `invalid_input`), and `auto_cull` never splits them.
+- **Empty `keep_paths` rejects every frame of the group.** The first call then answers `confirmation_required` with a `confirm` value; show the user, then repeat the call with it. If a batch stops on `forbidden_level`, `library_busy` or `rate_limited`, the groups already done are reported.
+- **`auto_cull` previews by default** and returns the keep and reject split per group plus a `confirm` value (only when something would be rejected). The apply re-computes the plan and refuses it as `confirmation_required` if it changed since the preview, or if the plan is too large to confirm as one set (narrow it with `album_id`, `date_from` and `date_to`, or `group_by`). Rejected frames feed the personal ranker like any manual cull.
+- Call `ui_show_culling_group` to show a group to the user in their open tab (see [Control your open tab](#control-your-open-tab)).
+
 ## Results, limits and errors
 
 Every result is a JSON envelope: `{"ok": true, "data": ...}` or `{"ok": false, "error": "<code>", "message": "..."}`. Listings return `data.rows` (a compact fixed set of fields per photo) plus `total`.
 
 - **Caps:** at most `max_rows` rows and `max_bytes` serialized bytes. Tail rows are dropped and `truncated: true` is set. A result without rows that exceeds `max_bytes` becomes a `too_large` error.
-- **Rate limit:** `rate_per_min` calls per minute per token (a separate `write_rate_per_min` budget exists for write calls). Beyond it: `rate_limited` with `retry_after_s`. Ten failed bearer attempts per minute from one address answer 429.
-- **Error codes:** `forbidden_level` (disabled endpoint, dead token or too low a level), `invalid_input`, `not_found`, `rate_limited`, `library_busy`, `upstream_error`, `outcome_unknown`, `too_large`, `no_tab`, `tab_timeout`, `tab_outdated`.
+- **Rate limit:** `rate_per_min` calls per minute per token for reads. Write tools draw on a separate `write_rate_per_min` budget (default 30), so searches cannot starve writes and the other way round; the dry run of `cull_apply` and `delete_photos` counts as a write, an `auto_cull` preview as a read. Beyond it: `rate_limited` with `retry_after_s`. Ten failed bearer attempts per minute from one address answer 429.
+- **Error codes:** `forbidden_level` (disabled endpoint, dead token or too low a level), `invalid_input`, `not_found`, `rate_limited`, `library_busy`, `upstream_error`, `outcome_unknown`, `confirmation_required`, `too_large`, `no_tab`, `tab_timeout`, `tab_outdated`.
+- **The newer codes:** `confirmation_required` (a destructive call has no live `confirm` value for exactly this set: dry-run again, show the user the result, then retry), `outcome_unknown` (a write timed out or the connection dropped, so it may or may not have happened: re-read the state before retrying, never retry blindly), `library_busy` (the library is busy with another job: retry in a moment).
 - **Gate status codes:** 401 for a missing or unknown token, 403 for a cross-origin browser request, 404 when disabled.
 
 ## Security notes

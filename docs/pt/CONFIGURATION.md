@@ -2613,7 +2613,7 @@ Expõe as ferramentas de leitura descritas em [Agentes de IA (MCP)](AGENTS.md) e
 | `call_timeout_s` | `30` | Tempo limite de uma chamada de ferramenta em segundos (1 a 300). Também limita a espera de uma chamada `ui_*` pelo separador do navegador (`tab_timeout`). |
 | `semantic_timeout_s` | `120` | Tempo limite de `semantic_search` em segundos (1 a 300); carrega o modelo de embeddings e precisa de mais. |
 | `rate_per_min` | `120` | Chamadas de ferramentas por minuto e por token (mínimo 1). |
-| `write_rate_per_min` | `30` | Chamadas de escrita por minuto e por token (mínimo 1). Mantido à parte para que as leituras não deixem as escritas sem quota. Por agora não há nenhuma ferramenta de escrita registada. |
+| `write_rate_per_min` | `30` | Chamadas de escrita por minuto e por token (mínimo 1). Mantido à parte para que as leituras não deixem as escritas sem quota. Aplica-se às ferramentas de escrita (incluindo a simulação de `cull_apply` e `delete_photos`); veja [Agentes de IA](AGENTS.md#alterar-a-biblioteca). |
 | `allowed_origins` | `[]` | Origens de navegador adicionais (por exemplo `["https://photos.example.com"]`) autorizadas a abrir a ponte do separador quando um proxy reverso reescreve `Host`. Distinta da chave CORS `viewer.allowed_origins`. |
 
 Os números fora do intervalo são limitados, e um valor de tipo errado volta à predefinição. O bloco é lido em cada pedido, por isso recarregar a configuração ativa ou desativa a funcionalidade sem reiniciar.
