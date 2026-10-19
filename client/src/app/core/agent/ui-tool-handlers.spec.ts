@@ -15,7 +15,7 @@ import { DEFAULT_FILTERS } from '../../features/gallery/gallery-filters.util';
 import { createUiToolHandlers } from './ui-tool-handlers';
 import { ViewActionRegistry } from './view-action-registry.service';
 import contractFile from './ui-tools.schema.json';
-import { UiToolContractFile, UiToolEnvelope } from './ui-tool.types';
+import { UI_TOOL_ERROR_CODES, UiToolContractFile, UiToolEnvelope } from './ui-tool.types';
 
 const CONFIG = {
   pagination: { default_per_page: 64 },
@@ -82,6 +82,10 @@ describe('UI tool registry and handlers', () => {
       const mismatch = contractHandlerMismatch((contractFile as unknown as UiToolContractFile).tools, handlers);
       expect(mismatch).toEqual({ missingHandlers: [], missingContract: [] });
       expect(registry.toolNames.length).toBe((contractFile as unknown as UiToolContractFile).tools.length);
+    });
+
+    it('reports the error codes the server lets a tab use', () => {
+      expect([...UI_TOOL_ERROR_CODES].sort()).toEqual((contractFile as unknown as UiToolContractFile).error_codes);
     });
 
     it('answers invalid_input for an enum violation and never throws', async () => {

@@ -23,7 +23,7 @@ from api.agent import nonce
 from api.agent.internal_client import InternalClient, RouteSpec, err, ok
 from api.agent.limits import encoded_size
 from api.agent.runtime import run_tool
-from api.agent.tools_read import READ_ANNOTATIONS, UNTRUSTED_META, UNTRUSTED_NOTE
+from api.agent.tools_common import DESTRUCTIVE_ANNOTATIONS, READ_ANNOTATIONS, register_tool
 
 CULLING_ROUTES: dict[str, RouteSpec] = {
     "culling.groups": RouteSpec("GET", "/api/culling-groups", "edition"),
@@ -40,8 +40,6 @@ EXIF_TIMESTAMP = re.compile(r"^\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}$")
 GROUP_PHOTO_LIMIT = 12
 GROUP_PHOTO_KEYS = ("path", "filename", "date_taken", "aggregate", "aesthetic", "tech_sharpness",
                     "is_blink", "sequence_ev_offset", "keeper_prob")
-WRITE_ANNOTATIONS = ToolAnnotations(read_only_hint=False, destructive_hint=True,
-                                    idempotent_hint=False, open_world_hint=False)
 SEE_GROUP = " Call ui_show_culling_group to show a group to the user."
 
 
@@ -129,8 +127,7 @@ def register_culling_tools(server: MCPServer, app: Any) -> None:
     client = InternalClient(app, CULLING_ROUTES)
 
     def add(fn, name: str, description: str, annotations: ToolAnnotations = READ_ANNOTATIONS) -> None:
-        server.add_tool(fn, name=name, description=description + UNTRUSTED_NOTE,
-                        annotations=annotations, meta=UNTRUSTED_META, structured_output=False)
+        register_tool(server, fn, name, description, annotations)
 
     async def list_culling_groups(
         ctx: Context,
@@ -230,8 +227,7 @@ def register_culling_tools(server: MCPServer, app: Any) -> None:
                 return err("confirmation_required",
                            "The plan is too large to confirm as one set; narrow it with "
                            "album_id, date_from/date_to or group_by")
-            if not confirm or not nonce.consume(
-                    grant.id, "auto_cull", _plan_digest(options, body.get("preview", [])), confirm):
+            if not nonce.check(grant.id, "auto_cull", _plan_digest(options, body.get("preview", [])), confirm):
                 return err("confirmation_required",
                            "Preview with dry_run=true first and pass its `confirm` value; the "
                            "plan must be unchanged since that preview")
@@ -264,7 +260,7 @@ def register_culling_tools(server: MCPServer, app: Any) -> None:
                 return bad
             if any(not g.keep_paths for g in groups):
                 digest = _confirm_digest(groups)
-                if not confirm or not nonce.consume(grant.id, "confirm_culling_groups", digest, confirm):
+                if not nonce.check(grant.id, "confirm_culling_groups", digest, confirm):
                     return err("confirmation_required",
                                "A group with empty keep_paths rejects every frame it names. Show "
                                "the user, then repeat this call with `confirm` set to this value.",
@@ -304,10 +300,10 @@ def register_culling_tools(server: MCPServer, app: Any) -> None:
         "and returns a `confirm` value; show the user the counts, then call again with "
         "dry_run=false and that `confirm` to reject the planned frames. The apply is refused when "
         "the plan changed since the preview. Brackets and panoramas are kept whole." + SEE_GROUP,
-        WRITE_ANNOTATIONS)
+        DESTRUCTIVE_ANNOTATIONS)
     add(confirm_culling_groups, "confirm_culling_groups",
         "Confirm up to 20 groups, each keyed by (type, group_id) with the group's `paths` and the "
         "`keep_paths` to keep; the rest are rejected. bracket/panorama/hdr_panorama groups must "
         "keep every path. A group with empty keep_paths (reject all) first answers "
         "confirmation_required with a `confirm` value to repeat the call with." + SEE_GROUP,
-        WRITE_ANNOTATIONS)
+        DESTRUCTIVE_ANNOTATIONS)

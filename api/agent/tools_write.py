@@ -19,15 +19,16 @@ sit on top:
 from typing import Annotated, Any, Callable, Literal, Optional
 
 from mcp.server.mcpserver import Context, MCPServer
-from mcp.types import CallToolResult, ToolAnnotations
+from mcp.types import CallToolResult
 from pydantic import Field
 
 from api.agent import nonce
 from api.agent.internal_client import InternalClient, err, ok
 from api.agent.runtime import run_tool
-from api.agent.tools_read import (
-    UNTRUSTED_META, UNTRUSTED_NOTE, SearchFilters, _hide_defaults, _list_result, _query_value,
+from api.agent.tools_common import (
+    DESTRUCTIVE_ANNOTATIONS, READ_ANNOTATIONS, WRITE_ANNOTATIONS, register_tool,
 )
+from api.agent.tools_read import SearchFilters, _hide_defaults, _list_result, _query_value
 
 PER_PHOTO_CAP = 50
 BATCH_CAP = 1000
@@ -42,13 +43,6 @@ WRITE_TOOL_LEVELS: dict[str, str] = {
     "junk_list": "readonly", "junk_reject": "edition", "junk_clear": "edition",
     "cull_apply": "edition", "delete_photos": "edition",
 }
-DESTRUCTIVE_TOOLS = ("cull_apply", "delete_photos")
-WRITE_ANNOTATIONS = ToolAnnotations(read_only_hint=False, destructive_hint=False,
-                                    idempotent_hint=True, open_world_hint=False)
-DESTRUCTIVE_ANNOTATIONS = ToolAnnotations(read_only_hint=False, destructive_hint=True,
-                                          idempotent_hint=False, open_world_hint=False)
-READ_ANNOTATIONS = ToolAnnotations(read_only_hint=True, destructive_hint=False,
-                                   idempotent_hint=True, open_world_hint=False)
 NONCE_ACTIONS = ("move_rejects", "trash_rejects")
 LIST_KEYS = ("would_copy", "would_move", "would_trash")
 
@@ -175,9 +169,15 @@ def _confirmation_required(message: str) -> dict:
     return err("confirmation_required", message)
 
 
-async def _confirmed(grant: Any, action: str, confirm: Optional[str], files: list[str], options: dict) -> bool:
-    return bool(confirm) and nonce.consume(grant.id, action, nonce.digest(files, options), confirm or "")
+def _confirmed(grant: Any, action: str, confirm: Optional[str], files: list[str], options: dict) -> bool:
+    return nonce.check(grant.id, action, nonce.digest(files, options), confirm)
 
+
+def _with_confirm(shaped: dict, grant: Any, action: str, files: list[str], options: dict) -> dict:
+    """Bind a single-use ``confirm`` nonce to the resolved file set of a dry run."""
+    shaped["confirm"] = nonce.issue(grant.id, action, nonce.digest(files, options))
+    shaped["confirm_expires_in_s"] = int(nonce.TTL_SECONDS)
+    return shaped
 
 def register_write_tools(server: MCPServer, client: InternalClient) -> None:
     """Register the write tools on ``server``."""
@@ -188,8 +188,7 @@ def register_write_tools(server: MCPServer, client: InternalClient) -> None:
             fn.__annotations__["filters"] = Optional[SearchFilters]
         annotations = READ_ANNOTATIONS if read_only else (
             DESTRUCTIVE_ANNOTATIONS if destructive else WRITE_ANNOTATIONS)
-        server.add_tool(fn, name=name, description=description + UNTRUSTED_NOTE,
-                        annotations=annotations, meta=UNTRUSTED_META, structured_output=False)
+        register_tool(server, fn, name, description, annotations)
 
     def level(name: str) -> str:
         return WRITE_TOOL_LEVELS[name]
@@ -444,11 +443,9 @@ def register_write_tools(server: MCPServer, client: InternalClient) -> None:
                 files = next((data[key] for key in LIST_KEYS if isinstance(data.get(key), list)), [])
             if dry_run:
                 shaped = _cap_lists(data, limit)
-                if guarded and files:
-                    shaped["confirm"] = nonce.issue(grant.id, "cull_apply", nonce.digest(files, options))
-                    shaped["confirm_expires_in_s"] = int(nonce.TTL_SECONDS)
-                return ok(shaped)
-            if guarded and not await _confirmed(grant, "cull_apply", confirm, files, options):
+                return ok(_with_confirm(shaped, grant, "cull_apply", files, options)
+                          if guarded and files else shaped)
+            if guarded and not _confirmed(grant, "cull_apply", confirm, files, options):
                 return _confirmation_required(
                     "This destructive run needs the `confirm` value from a dry run of the SAME request "
                     "whose file list has not changed since. Dry-run again, show the user the result, and retry.")
@@ -475,11 +472,8 @@ def register_write_tools(server: MCPServer, client: InternalClient) -> None:
             files = list(data.get("would_trash") or []) + ["seq:" + p for p in data.get("sequence_siblings") or []]
             if dry_run:
                 shaped = _cap_lists(data, settings["max_rows"])
-                if files:
-                    shaped["confirm"] = nonce.issue(grant.id, "delete_photos", nonce.digest(files, options))
-                    shaped["confirm_expires_in_s"] = int(nonce.TTL_SECONDS)
-                return ok(shaped)
-            if not await _confirmed(grant, "delete_photos", confirm, files, options):
+                return ok(_with_confirm(shaped, grant, "delete_photos", files, options) if files else shaped)
+            if not _confirmed(grant, "delete_photos", confirm, files, options):
                 return _confirmation_required(
                     "delete_photos needs the `confirm` value from a dry run of the SAME request whose file "
                     "list has not changed since. Dry-run again, show the user the result, and retry.")
@@ -489,7 +483,7 @@ def register_write_tools(server: MCPServer, client: InternalClient) -> None:
 
     destructive_note = (" ALWAYS call with dry_run=true first (the default) and show the user the counts and "
                         "file list; ask the user to confirm before any dry_run=false call, which also needs "
-                        "the single-use `confirm` value from that dry run (valid 5 minutes, void if the "
+                        "the single-use `confirm` value from that dry run (valid " + str(int(nonce.TTL_SECONDS // 60)) + " minutes, void if the "
                         "affected files change).")
     add(cull_apply, "cull_apply",
         "Act on culling decisions: copy_keeps copies non-rejected photos into target_dir; move_rejects moves, "

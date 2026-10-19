@@ -1,4 +1,12 @@
 {
+  "error_codes": [
+    "forbidden_level",
+    "invalid_input",
+    "no_active_view",
+    "not_found",
+    "too_large",
+    "upstream_error"
+  ],
   "tools": [
     {
       "annotations": {

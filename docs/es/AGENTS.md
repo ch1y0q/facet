@@ -6,7 +6,7 @@ Facet puede actuar como servidor [Model Context Protocol](https://modelcontextpr
 
 ## Activarlo
 
-El endpoint está **desactivado por defecto**. Pon `viewer.mcp.enabled` a `true` en `scoring_config.json` (ver [Endpoint de agentes (MCP)](CONFIGURATION.md#endpoint-de-agentes-mcp)) y reinicia el visor, o recarga la configuración. Mientras esté desactivado, `/mcp` y todas las rutas `/api/mcp/*` responden 404.
+El endpoint está **desactivado por defecto**. Pon `viewer.mcp.enabled` a `true` en `scoring_config.json` (ver [Endpoint de agentes (MCP)](CONFIGURATION.md#endpoint-de-agentes-mcp)) y reinicia el visor, o recarga la configuración. Mientras esté desactivado, `/mcp` y todas las rutas `/api/mcp/*` responden 404. Sin `viewer.password` la instalación se considera abierta, aunque `viewer.edition_password` esté definida: sus tokens solo pueden ser `readonly`.
 
 El endpoint es `POST /mcp` en el puerto del visor: Streamable HTTP, sin estado, respuestas JSON simples. `GET` responde 405. Solo el puente de pestaña, `/api/mcp/bridge`, es un WebSocket; consulta [Controlar tu pestaña abierta](#controlar-tu-pestaña-abierta).
 
@@ -23,7 +23,7 @@ TOKEN=$(curl -s -X POST http://localhost:5000/api/auth/login -H 'Content-Type: a
 curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"name": "claude-code", "level": "readonly"}'
 ```
 
-La respuesta incluye el texto en claro en `token`. `GET /api/mcp/tokens` lista tus tokens (nunca el secreto) y `DELETE /api/mcp/tokens/{id}` revoca uno. Un superadmin puede listar los tokens de todos los propietarios con `?all=1` y revocar cualquiera. Cada propietario puede tener como máximo 20 tokens activos (más allá, 412). Estas rutas rechazan las credenciales de un agente, así que un asistente nunca puede crear, listar ni revocar tokens.
+La respuesta incluye el texto en claro en `token`. `GET /api/mcp/tokens` lista tus tokens (nunca el secreto) y `DELETE /api/mcp/tokens/{id}` revoca uno. Un superadmin puede listar los tokens de todos los propietarios con `?all=1` y revocar cualquiera. Cada propietario puede tener como máximo 20 tokens activos (más allá, 412). Estas rutas rechazan (403) las credenciales de un agente, así que un asistente nunca puede crear, listar ni revocar tokens.
 
 ## Conectar Claude Code
 
@@ -39,8 +39,8 @@ Un token se crea con un nivel concedido: `readonly`, `user` o `edition`. El nive
 
 - Instalaciones con contraseña única: `user` se limita a `readonly` al crearlo, porque ese modo no tiene nivel intermedio. Un token `edition` exige una sesión de edición y solo funciona mientras no cambie la contraseña de edición.
 - Instalaciones multiusuario: el token `edition` de un usuario que luego pierde el rol baja a `user`; un ascenso nunca eleva un token por encima de su nivel concedido.
-- Instalaciones abiertas (sin contraseña): los tokens son siempre `readonly` y pertenecen a un propietario compartido `_anonymous`.
-- Las instalaciones con contraseña única no tienen nivel `user`: el nivel efectivo es `edition` o `readonly`, así que las herramientas marcadas `user` en [Modificar la biblioteca](#modificar-la-biblioteca) también necesitan un token `edition`.
+- Instalaciones abiertas (sin `viewer.password`, aunque `viewer.edition_password` esté definida): los tokens son siempre `readonly` y pertenecen a un propietario compartido `_anonymous`.
+- Las instalaciones con contraseña única no tienen nivel `user`: el nivel efectivo es `edition` o `readonly`, así que las herramientas marcadas `user` en [Modificar la biblioteca](#modificar-la-biblioteca) también necesitan un token `edition`. Una herramienta `user` llamada con un token de nivel inferior responde `forbidden_level` indicando que necesita `edition`.
 - Cada herramienta tiene su propio nivel mínimo, comprobado antes de leer o escribir nada; un token inferior recibe `forbidden_level`.
 
 Un token deja de valer automáticamente cuando cambian las credenciales de su propietario: la contraseña del visor o de edición en modo contraseña única, la contraseña del propietario en modo multiusuario, o la eliminación de su cuenta. Recibe entonces un 401 en la entrada.
@@ -59,7 +59,9 @@ Las nueve herramientas de datos son de solo lectura:
 | `list_persons` | Personas reconocidas, filtrables por nombre |
 | `list_albums` | Álbumes que puede ver el propietario del token |
 | `library_stats` | Tamaño de la biblioteca, recuentos por tipo y resumen de puntuaciones |
-| `status` | Quién es el token, su nivel efectivo y las banderas del servidor |
+| `status` | Quién es el token, su nivel efectivo y las banderas del servidor y las pestañas abiertas que puede manejar |
+
+En cada objeto de filtros, `show_rejected` es un booleano: `true` lista solo las fotos descartadas, `false` u omitido da el listado normal.
 
 ## Controlar tu pestaña abierta
 
@@ -80,11 +82,13 @@ Junto a las herramientas de datos, el servidor siempre lista nueve herramientas 
 Cómo funciona:
 
 - Mientras tengas la sesión iniciada y `viewer.mcp.enabled` y `viewer.mcp.bridge` valgan `true`, cada pestaña de Facet abre un WebSocket del mismo origen hacia `/api/mcp/bridge` y se autentica con tu sesión en su primer mensaje. El puente está activo por defecto; pon `viewer.mcp.bridge` en `false` para desactivarlo y las herramientas `ui_*` responderán con un error claro.
-- Una herramienta solo llega a las pestañas del propietario del token. Con una única contraseña todas las sesiones son el mismo usuario; en una instalación abierta cada pestaña pertenece al usuario compartido `_anonymous`.
+- Una herramienta solo llega a las pestañas del propietario del token. Con una única contraseña todas las sesiones son el mismo usuario; en una instalación abierta cada pestaña pertenece al usuario compartido `_anonymous`, incluidos los inicios de sesión de edición.
+- Cada pestaña lleva el nivel de la sesión que la abrió, y un token solo maneja pestañas de nivel igual o superior a su nivel efectivo: un token `edition` nunca usa una pestaña con una sesión de solo consulta, mientras que un token `readonly` sí puede manejar una pestaña `edition`. `status` lista solo las pestañas que el token puede manejar.
 - Con varias pestañas abiertas se usa la que tuvo el foco más recientemente y el campo `tab` del resultado lo indica. Pasa `tab_id` (lo lista `status`) para elegir otra.
 - Una pestaña rechaza lo que su cuenta no puede hacer (por ejemplo `/culling` para una cuenta sin edición) y la herramienta devuelve ese rechazo.
 - Lo que devuelve una pestaña no es de fiar: se limitan la profundidad y la longitud de cadenas y listas, y todo queda acotado por `max_bytes`.
 - Errores: `no_tab` (ninguna pestaña conectada, o puente desactivado), `tab_timeout` (sin respuesta en `call_timeout_s`) y `tab_outdated` (la pestaña abierta no conoce la herramienta; recarga la página tras actualizar Facet).
+- El puente acepta primero el WebSocket y luego lo rechaza con un código de cierre en lugar de un estado HTTP: 4404 si el endpoint o el puente están desactivados, 4403 si falta `Origin` o no está permitido, 4401 por una sesión ausente o rechazada.
 - Un proxy inverso debe reenviar la actualización a WebSocket para `/api/mcp/bridge`; consulta [Despliegue](DEPLOYMENT.md). Si reescribe la cabecera `Host`, indica el origen público en `viewer.mcp.allowed_origins` (por ejemplo `["https://photos.example.com"]`), porque el origen de la página debe coincidir con el host o figurar en la lista.
 - El registro de pestañas es por proceso, así que el puente necesita un único worker (el valor por defecto).
 
@@ -101,10 +105,11 @@ Además:
 
 ## WebMCP en la página (agentes del navegador)
 
-Aparte del endpoint `/mcp`, una pestaña con sesión iniciada ofrece también las mismas herramientas `ui_*` a los agentes que viven en el propio navegador, mediante la API W3C [WebMCP](https://webmachinelearning.github.io/webmcp/) (`navigator.modelContext`). Un asistente nativo del navegador ve así exactamente las herramientas listadas arriba, las ejecuta en la pestaña que estás mirando y no necesita token.
+Aparte del endpoint `/mcp`, una pestaña con sesión iniciada ofrece también las mismas herramientas `ui_*` a los agentes que viven en el propio navegador, mediante la API W3C [WebMCP](https://webmachinelearning.github.io/webmcp/) (`document.modelContext`). Un asistente nativo del navegador ve así exactamente las herramientas listadas arriba, las ejecuta en la pestaña que estás mirando y no necesita token.
 
 - **Solo en contexto seguro.** Facet registra las herramientas únicamente con HTTPS o en `localhost`. Con HTTP simple no se ofrecen y el cuadro **Conectar un asistente** lo indica; la conexión con token anterior sigue funcionando.
 - Se registran cuando `viewer.mcp.enabled` es true y has iniciado sesión, y se retiran al cerrar sesión.
+- El objeto es `document.modelContext` (el alias obsoleto `navigator.modelContext` no se proporciona). Es un polyfill, instalado solo si el navegador no tiene uno nativo, y no se puede desinstalar: puede existir antes de iniciar sesión sin ninguna herramienta de Facet y permanece tras cerrar sesión con una lista de herramientas vacía.
 - Las herramientas hacen lo mismo, limitadas por el mismo nivel de cuenta, que en la tabla anterior.
 
 ## Modificar la biblioteca
@@ -134,6 +139,7 @@ Las herramientas de escritura figuran junto a las de lectura en la misma lista `
 - **Semántica de asignación.** Las herramientas por foto leen el estado actual y solo escriben una diferencia, así que repetir una llamada es inofensivo; cada ruta informa `changed` o `already`. Procesan una ruta cada vez y se detienen en el primer `library_busy`, `outcome_unknown` o `forbidden_level`, informando `affected`, los `results` por ruta y `not_attempted`. Las herramientas por lotes fijan el mismo estado.
 - **Elegir las fotos.** Las herramientas por lotes, de etiquetas y `cull_apply` aceptan O `paths` O `filters` (el objeto de filtros de `search_photos`), más una lista `exclude` opcional. Un destino `filters` debe llevar `expected_count`, el número de coincidencias de los filtros antes de aplicar `exclude` (el `total` de `search_photos`). Facet vuelve a contar primero los filtros y no escribe nada si los números difieren (`invalid_input`, con `actual_count`).
 - **De quién es el estado.** Las valoraciones, favoritos y descartes son los del propietario del token.
+- **Archivos omitidos.** Cuando `cull_apply` o `delete_photos` informa una lista `skipped` no vacía, el resultado incluye también un `skipped_reason`: esas rutas de la biblioteca no tienen ningún archivo legible en disco (falta, se movió o está fuera de los directorios analizados) y no se hizo nada con ellas.
 
 ### Acciones destructivas: vista previa y confirmación
 
@@ -165,6 +171,8 @@ Las herramientas del cuarto oscuro reflejan la página `/culling`. Todas exigen 
 | `confirm_culling_groups` | Confirma hasta 20 grupos: conserva sus `keep_paths` y descarta el resto de sus `paths` |
 
 - **Un grupo se identifica por el par `(type, group_id)`**, nunca solo por `group_id`: los ids de los grupos similares se desplazan al fusionarse con las ráfagas.
+- **El valor por defecto `group_by: "all"` devuelve solo ráfagas y grupos similares.** Pide explícitamente `scene`, `bracket`, `panorama` o `hdr_panorama`.
+- **Una página se recorta para caber en `max_bytes` acortando la lista `photos` de cada grupo, nunca eliminando grupos.** `photo_count` sigue siendo el tamaño real, `photos_truncated` marca un grupo cuya lista se cortó y `has_more` indica si sigue otra página.
 - **Los bracketings, panoramas y panoramas HDR se conservan enteros.** En `confirm_culling_groups`, `keep_paths` debe ser igual a `paths` para estos tipos (si no, `invalid_input`), y `auto_cull` nunca los divide.
 - **Un `keep_paths` vacío descarta todos los fotogramas del grupo.** La primera llamada responde entonces `confirmation_required` con un valor `confirm`; muéstraselo al usuario y repite la llamada con ese valor. Si un lote se detiene en `forbidden_level`, `library_busy` o `rate_limited`, se informan los grupos ya completados.
 - **`auto_cull` hace una vista previa por defecto** y devuelve el reparto conservar/descartar por grupo más un valor `confirm` (solo si algo se descartaría). La aplicación recalcula el plan y lo rechaza con `confirmation_required` si cambió desde la vista previa o es demasiado grande para confirmarse como un solo conjunto (acótalo con `album_id`, `date_from` y `date_to`, o `group_by`). Los fotogramas descartados alimentan el clasificador personal como cualquier descarte manual.
@@ -178,7 +186,7 @@ Cada resultado es un sobre JSON: `{"ok": true, "data": ...}` o `{"ok": false, "e
 - **Límite de frecuencia:** `rate_per_min` llamadas por minuto y token para lectura. Las herramientas de escritura usan un presupuesto aparte, `write_rate_per_min` (30 por defecto), para que las búsquedas no dejen sin cupo a las escrituras ni al revés; la simulación de `cull_apply` y `delete_photos` cuenta como escritura, la vista previa de `auto_cull` como lectura. Superado: `rate_limited` con `retry_after_s`. Diez intentos bearer fallidos por minuto desde una misma dirección reciben 429.
 - **Códigos de error:** `forbidden_level` (endpoint desactivado, token inválido o nivel insuficiente), `invalid_input`, `not_found`, `rate_limited`, `library_busy`, `upstream_error`, `outcome_unknown`, `confirmation_required`, `too_large`, `no_tab`, `tab_timeout`, `tab_outdated`.
 - **Los códigos más recientes:** `confirmation_required` (una llamada destructiva no tiene un valor `confirm` vigente para este conjunto exacto: repite la simulación, muestra el resultado al usuario y vuelve a intentarlo), `outcome_unknown` (una escritura agotó el tiempo o se cortó la conexión, así que puede haberse hecho o no: relee el estado antes de reintentar, nunca reintentes a ciegas), `library_busy` (la biblioteca está ocupada con otra tarea: reintenta en un momento).
-- **Códigos HTTP en la entrada:** 401 por token ausente o desconocido, 403 por una petición de navegador de otro origen, 404 cuando está desactivado.
+- **Códigos HTTP en la entrada:** 401 por token ausente o desconocido, 403 por una petición de navegador de otro origen o por las credenciales de un agente en `/api/mcp/tokens`, 404 cuando está desactivado. El puente de pestañas responde con códigos de cierre.
 
 ## Notas de seguridad
 

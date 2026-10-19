@@ -6,7 +6,7 @@ Facet can act as a [Model Context Protocol](https://modelcontextprotocol.io/) (M
 
 ## Enable it
 
-The endpoint is **off by default**. Set `viewer.mcp.enabled` to `true` in `scoring_config.json` (see [Agent Endpoint (MCP)](CONFIGURATION.md#agent-endpoint-mcp)) and restart the viewer, or reload the configuration. While it is off, `/mcp` and every `/api/mcp/*` route answer 404.
+The endpoint is **off by default**. Set `viewer.mcp.enabled` to `true` in `scoring_config.json` (see [Agent Endpoint (MCP)](CONFIGURATION.md#agent-endpoint-mcp)) and restart the viewer, or reload the configuration. While it is off, `/mcp` and every `/api/mcp/*` route answer 404. Without `viewer.password` the install counts as open, even when `viewer.edition_password` is set, so its tokens can only be `readonly`.
 
 The endpoint is `POST /mcp` on the viewer's own port: Streamable HTTP, stateless, plain JSON responses. `GET` answers 405. Only the tab bridge, `/api/mcp/bridge`, is a WebSocket; see [Control your open tab](#control-your-open-tab).
 
@@ -23,7 +23,7 @@ TOKEN=$(curl -s -X POST http://localhost:5000/api/auth/login -H 'Content-Type: a
 curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"name": "claude-code", "level": "readonly"}'
 ```
 
-The response carries the plaintext in `token`. `GET /api/mcp/tokens` lists your tokens (never the secret), and `DELETE /api/mcp/tokens/{id}` revokes one. A superadmin can list every owner's tokens with `?all=1` and revoke any of them. Each owner can hold at most 20 live tokens (412 beyond that). These routes refuse an agent's own credential, so an assistant can never mint, list or revoke tokens.
+The response carries the plaintext in `token`. `GET /api/mcp/tokens` lists your tokens (never the secret), and `DELETE /api/mcp/tokens/{id}` revokes one. A superadmin can list every owner's tokens with `?all=1` and revoke any of them. Each owner can hold at most 20 live tokens (412 beyond that). These routes refuse an agent's own credential (403), so an assistant can never mint, list or revoke tokens.
 
 ## Connect Claude Code
 
@@ -39,8 +39,8 @@ A token is minted with a grant: `readonly`, `user` or `edition`. The **effective
 
 - Single-password installs: `user` is capped to `readonly` at mint time, because that mode has no middle level. An `edition` token needs an edition session and works only while the edition password is unchanged.
 - Multi-user installs: an `edition` token of a user who is later demoted drops to `user`; a promotion never raises a token above its grant.
-- Open installs (no password set): tokens are always `readonly` and belong to a shared `_anonymous` owner.
-- Single-password installs have no `user` level: the effective level is `edition` or `readonly`, so the tools marked `user` under [Changing things](#changing-things) also need an `edition` token there.
+- Open installs (no `viewer.password`, even if `viewer.edition_password` is set): tokens are always `readonly` and belong to a shared `_anonymous` owner.
+- Single-password installs have no `user` level: the effective level is `edition` or `readonly`, so the tools marked `user` under [Changing things](#changing-things) also need an `edition` token there. A `user` tool called with a lower token answers `forbidden_level`, saying it needs `edition`.
 - Each tool has its own minimum level, checked before anything is read or written; a lower token gets `forbidden_level`.
 
 A token dies automatically when its owner's credentials change: the viewer or edition password in single-password mode, the owner's password in multi-user mode, or the owner's account being deleted. It then answers 401 at the gate.
@@ -59,7 +59,9 @@ The nine data tools are read-only:
 | `list_persons` | Recognised people, optionally filtered by name |
 | `list_albums` | Albums the token's owner can see |
 | `library_stats` | Library size, type counts and score overview |
-| `status` | Who the token is, its effective level and the server flags |
+| `status` | Who the token is, its effective level and the server flags and the open tabs it can drive |
+
+In every filter object, `show_rejected` is a boolean: `true` lists only the rejected photos, `false` or omitted gives the normal listing.
 
 ## Control your open tab
 
@@ -80,11 +82,13 @@ Next to the data tools, the server always lists nine `ui_*` tools that act on th
 How it works:
 
 - While you are signed in and both `viewer.mcp.enabled` and `viewer.mcp.bridge` are true, every Facet tab opens a same-origin WebSocket to `/api/mcp/bridge` and authenticates with your session in its first message. The bridge is on by default; set `viewer.mcp.bridge` to `false` to turn it off, and the `ui_*` tools then answer a clear error.
-- A tool only reaches the tabs of the token's owner. On a single-password install every session is the same user, and on an open install every tab belongs to the shared `_anonymous` user.
+- A tool only reaches the tabs of the token's owner. On a single-password install every session is the same user, and on an open install every tab belongs to the shared `_anonymous` user, edition logins included.
+- Each tab carries the level of the session that opened it, and a token only drives tabs at or above its effective level: an `edition` token never uses a tab signed in with a viewer-only session, while a `readonly` token may drive an `edition` tab. `status` lists only the tabs the token can drive.
 - With several tabs open, the most recently focused one is used and the result's `tab` field says so. Pass `tab_id` (listed by `status`) to choose another.
 - A tab refuses what its account may not do (for example `/culling` for a non-edition account) and the tool returns that refusal.
 - What a tab sends back is untrusted: it is bounded in depth, string length and list length, and capped by `max_bytes`.
 - Errors: `no_tab` (no tab is connected, or the bridge is off), `tab_timeout` (no answer within `call_timeout_s`) and `tab_outdated` (the open tab does not know the tool; reload the page after upgrading Facet).
+- The bridge accepts the WebSocket first and then refuses it with a close code rather than an HTTP status: 4404 when the endpoint or the bridge is off, 4403 when the `Origin` is missing or not allowed, 4401 for a missing or rejected session.
 - A reverse proxy must forward the WebSocket upgrade for `/api/mcp/bridge`; see [Deployment](DEPLOYMENT.md). If it rewrites the `Host` header, list the public origin in `viewer.mcp.allowed_origins` (for example `["https://photos.example.com"]`), because the page's origin must match the host or be listed.
 - The tab registry is per process, so the bridge needs a single worker (the default).
 
@@ -101,10 +105,11 @@ Beyond the basics above:
 
 ## In-page WebMCP (browser agents)
 
-Separately from the `/mcp` endpoint, a tab that is signed in also offers the same `ui_*` tools to agents that live in the browser itself, through the W3C [WebMCP](https://webmachinelearning.github.io/webmcp/) API (`navigator.modelContext`). A browser-native assistant therefore sees exactly the tools listed above, runs them in the tab you are looking at, and needs no token.
+Separately from the `/mcp` endpoint, a tab that is signed in also offers the same `ui_*` tools to agents that live in the browser itself, through the W3C [WebMCP](https://webmachinelearning.github.io/webmcp/) API (`document.modelContext`). A browser-native assistant therefore sees exactly the tools listed above, runs them in the tab you are looking at, and needs no token.
 
 - **Secure context only.** Facet registers the tools only on HTTPS or `localhost`. On plain HTTP they are not offered and the **Connect an assistant** dialog says so; the token-based connection above keeps working.
 - Registered when `viewer.mcp.enabled` is true and you are signed in, and removed when you sign out.
+- The object is `document.modelContext` (the deprecated `navigator.modelContext` alias is not provided). It is a polyfill, installed only when the browser has no native one, and it cannot be uninstalled: it can exist before you sign in with no Facet tools in it, and after you sign out it stays with an empty tool list.
 - The tools do the same things, and are bounded by the same account level, as in the table above.
 
 ## Changing things
@@ -134,6 +139,7 @@ Write tools sit next to the read tools in the same `/mcp` list. Each one goes th
 - **Set semantics.** The per-photo tools read the current state and write only a difference, so repeating a call is harmless; each path reports `changed` or `already`. They run one path at a time and stop at the first `library_busy`, `outcome_unknown` or `forbidden_level`, reporting `affected`, the per-path `results` and `not_attempted`. The batch tools set the same state.
 - **Choosing the photos.** The batch, tag and `cull_apply` tools take EITHER `paths` OR `filters` (the `search_photos` filter object), plus an optional `exclude` list. A `filters` target must come with `expected_count`, the match count of the filters before `exclude` is applied (`search_photos` `total`). Facet counts the filters again first and writes nothing when the numbers differ (`invalid_input`, with `actual_count`).
 - **Whose state.** Ratings, favourites and rejections are the token owner's own.
+- **Skipped files.** When `cull_apply` or `delete_photos` reports a non-empty `skipped` list, the result also carries a `skipped_reason`: those library paths have no readable file on disk (missing, moved, or outside the scan directories), and nothing was done for them.
 
 ### Destructive actions: preview then confirm
 
@@ -165,6 +171,8 @@ The darkroom tools mirror the `/culling` page. All of them need the `edition` le
 | `confirm_culling_groups` | Confirm up to 20 groups: keep their `keep_paths`, reject the rest of their `paths` |
 
 - **A group is identified by the pair `(type, group_id)`**, never by `group_id` alone: similar-group ids are offset when merged with bursts.
+- **The default `group_by: "all"` returns bursts plus similar groups only.** Ask for `scene`, `bracket`, `panorama` or `hdr_panorama` explicitly.
+- **A page is trimmed to fit `max_bytes` by shortening each group's `photos` list, never by dropping groups.** `photo_count` stays the true size, `photos_truncated` marks a group whose list was cut, and `has_more` says whether another page follows.
 - **Brackets, panoramas and HDR panoramas are kept whole.** In `confirm_culling_groups`, `keep_paths` must equal `paths` for these types (otherwise `invalid_input`), and `auto_cull` never splits them.
 - **Empty `keep_paths` rejects every frame of the group.** The first call then answers `confirmation_required` with a `confirm` value; show the user, then repeat the call with it. If a batch stops on `forbidden_level`, `library_busy` or `rate_limited`, the groups already done are reported.
 - **`auto_cull` previews by default** and returns the keep and reject split per group plus a `confirm` value (only when something would be rejected). The apply re-computes the plan and refuses it as `confirmation_required` if it changed since the preview, or if the plan is too large to confirm as one set (narrow it with `album_id`, `date_from` and `date_to`, or `group_by`). Rejected frames feed the personal ranker like any manual cull.
@@ -178,7 +186,7 @@ Every result is a JSON envelope: `{"ok": true, "data": ...}` or `{"ok": false, "
 - **Rate limit:** `rate_per_min` calls per minute per token for reads. Write tools draw on a separate `write_rate_per_min` budget (default 30), so searches cannot starve writes and the other way round; the dry run of `cull_apply` and `delete_photos` counts as a write, an `auto_cull` preview as a read. Beyond it: `rate_limited` with `retry_after_s`. Ten failed bearer attempts per minute from one address answer 429.
 - **Error codes:** `forbidden_level` (disabled endpoint, dead token or too low a level), `invalid_input`, `not_found`, `rate_limited`, `library_busy`, `upstream_error`, `outcome_unknown`, `confirmation_required`, `too_large`, `no_tab`, `tab_timeout`, `tab_outdated`.
 - **The newer codes:** `confirmation_required` (a destructive call has no live `confirm` value for exactly this set: dry-run again, show the user the result, then retry), `outcome_unknown` (a write timed out or the connection dropped, so it may or may not have happened: re-read the state before retrying, never retry blindly), `library_busy` (the library is busy with another job: retry in a moment).
-- **Gate status codes:** 401 for a missing or unknown token, 403 for a cross-origin browser request, 404 when disabled.
+- **Gate status codes:** 401 for a missing or unknown token, 403 for a cross-origin browser request or an agent's own credential on `/api/mcp/tokens`, 404 when disabled. The tab bridge answers with close codes instead.
 
 ## Security notes
 

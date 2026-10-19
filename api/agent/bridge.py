@@ -23,11 +23,12 @@ import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 from fastapi import WebSocket
 
 from api.agent.internal_client import err, ok
-from api.agent.ui_tools import UI_TOOLS, tools_version
+from api.agent.ui_tools import TAB_ERROR_CODES, UI_TOOLS, tools_version
 
 logger = logging.getLogger(__name__)
 
@@ -53,11 +54,10 @@ MAX_DATA_DEPTH = 8
 MAX_STRING_CHARS = 2000
 MAX_LIST_ITEMS = 1000
 MAX_MESSAGE_CHARS = 500
-# Codes a tab may report; anything else becomes upstream_error. `no_active_view`
-# is the darkroom action registry's "that view is not mounted".
-TAB_ERROR_CODES = frozenset({
-    "invalid_input", "not_found", "forbidden_level", "no_active_view", "upstream_error", "too_large",
-})
+
+def same_origin(origin: str, host: Optional[str]) -> bool:
+    """The one same-origin test, shared by the ``/mcp`` gate and the tab WebSocket."""
+    return bool(host) and urlparse(origin).netloc.lower() == (host or "").lower()
 
 
 SERVER_TOOL_NAMES = tuple(tool.name for tool in UI_TOOLS)

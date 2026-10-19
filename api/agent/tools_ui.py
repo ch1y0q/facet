@@ -15,18 +15,13 @@ from mcp.types import CallToolResult, ToolAnnotations
 from pydantic import ValidationError
 
 from api.agent.bridge import TabRegistry
-from api.agent.internal_client import err
+from api.agent.internal_client import err, validation_issues
 from api.agent.runtime import run_tool
-from api.agent.tools_read import UNTRUSTED_META, UNTRUSTED_NOTE
+from api.agent.tools_common import UNTRUSTED_META, UNTRUSTED_NOTE
 from api.agent.ui_tools import UI_TOOLS, UiTool
 
 BRIDGE_DISABLED = ("The tab bridge is disabled on this server (viewer.mcp.bridge is false), "
                    "so ui_* tools cannot reach a browser tab.")
-
-
-def _validation_issues(ex: ValidationError) -> list[dict]:
-    return [{"field": ".".join(str(part) for part in issue["loc"]), "message": issue["msg"]}
-            for issue in ex.errors(include_url=False, include_context=False, include_input=False)]
 
 
 def _signature(tool: UiTool) -> inspect.Signature:
@@ -60,7 +55,7 @@ def _make_tool(tool: UiTool, registry: TabRegistry) -> Any:
             try:
                 args = tool.model(**kwargs)
             except ValidationError as ex:
-                return err("invalid_input", "Invalid arguments", issues=_validation_issues(ex))
+                return err("invalid_input", "Invalid arguments", issues=validation_issues(ex))
             return await registry.call(
                 resolved.principal, tool.name, args.forward(), level=resolved.level,
                 tab_id=args.tab_id, timeout=settings["call_timeout_s"])

@@ -11,7 +11,7 @@ import hashlib
 import json
 import secrets
 import threading
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional
 
 from api.agent import limits
 
@@ -48,6 +48,13 @@ def issue(token_id: int, action: str, payload_hash: str) -> str:
         _prune(current)
         _pending[nonce] = (token_id, action, payload_hash, current + TTL_SECONDS)
     return nonce
+
+
+def check(token_id: int, action: str, payload_hash: str, confirm: Optional[str]) -> bool:
+    """:func:`consume` for a caller-supplied value: an absent ``confirm`` never matches."""
+    if not confirm:
+        return False
+    return consume(token_id, action, payload_hash, confirm)
 
 
 def consume(token_id: int, action: str, payload_hash: str, nonce: str) -> bool:

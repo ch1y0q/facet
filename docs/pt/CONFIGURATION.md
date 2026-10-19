@@ -2584,7 +2584,7 @@ O `target_dir` passa pela mesma lista de permissões que os endpoints de exporta
 
 ## Endpoint de agentes (MCP)
 
-Expõe as ferramentas de leitura descritas em [Agentes de IA (MCP)](AGENTS.md) em `POST /mcp`. Tudo fica desativado (404) até `enabled` ser `true`.
+Expõe as ferramentas descritas em [Agentes de IA (MCP)](AGENTS.md) em `POST /mcp`: leitura, controlo do separador aberto e, consoante o nível do token, alteração de classificações, etiquetas e álbuns, seleção e eliminação. Tudo fica desativado (404) até `enabled` ser `true`.
 
 ```json
 {
@@ -2606,8 +2606,8 @@ Expõe as ferramentas de leitura descritas em [Agentes de IA (MCP)](AGENTS.md) e
 
 | Chave | Predefinição | Descrição |
 |-----|---------|-------------|
-| `enabled` | `false` | Interruptor geral de `/mcp` e `/api/mcp/*`. Desativado, ambos respondem 404. |
-| `bridge` | `true` | Se a ponte com o separador do navegador (`/api/mcp/bridge`) aceita WebSockets e as ferramentas `ui_*` podem chegar a um separador. Com `false`, a ponte responde 404 e as ferramentas `ui_*` devolvem um erro claro. Exige um único worker. |
+| `enabled` | `false` | Interruptor geral de `/mcp` e `/api/mcp/*`. Desativado, respondem 404 (a ponte fecha com o código 4404). |
+| `bridge` | `true` | Se a ponte com o separador do navegador (`/api/mcp/bridge`) aceita WebSockets e as ferramentas `ui_*` podem chegar a um separador. Com `false`, a ponte recusa a ligação (código de fecho 4404) e as ferramentas `ui_*` devolvem um erro claro. Exige um único worker. |
 | `max_rows` | `100` | Máximo de linhas num resultado de ferramenta (1 a 500). As linhas a mais são descartadas e `truncated: true` é definido. |
 | `max_bytes` | `60000` | Tamanho serializado máximo de um resultado de ferramenta em bytes (4000 a 500000). |
 | `call_timeout_s` | `30` | Tempo limite de uma chamada de ferramenta em segundos (1 a 300). Também limita a espera de uma chamada `ui_*` pelo separador do navegador (`tab_timeout`). |

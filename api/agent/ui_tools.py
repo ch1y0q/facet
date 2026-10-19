@@ -26,6 +26,12 @@ from api.agent.tools_read import MCP_FILTER_KEYS, FilterValue, SortColumn
 TAB_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
 MAX_SELECT_PATHS = 1000
 MAX_QUERY_ENTRIES = 20
+# Codes a tab may report; anything else becomes upstream_error. `no_active_view` is the
+# darkroom action registry's "that view is not mounted". Emitted into the client JSON
+# so the client's own list is checked against it.
+TAB_ERROR_CODES = frozenset({
+    "invalid_input", "not_found", "forbidden_level", "no_active_view", "upstream_error", "too_large",
+})
 
 UiRoute = Literal[
     "/", "/persons", "/merge-suggestions", "/compare", "/culling", "/scenes", "/junk",
@@ -188,7 +194,6 @@ UI_TOOLS: tuple[UiTool, ...] = (
            "Edition accounts only.",
            UiShowCullingGroup, False),
 )
-UI_TOOLS_BY_NAME = {tool.name: tool for tool in UI_TOOLS}
 
 
 def _simplify(node: Any, defs: dict, keep_null: bool = False) -> Any:
@@ -278,6 +283,7 @@ def tools_version() -> str:
 
 
 def render_client_json() -> str:
-    """The committed ``ui-tools.schema.json``: ``{version, tools: [...]}``."""
-    return json.dumps({"version": tools_version(), "tools": tool_descriptors()},
+    """The committed ``ui-tools.schema.json``: ``{version, tools: [...], error_codes: [...]}``."""
+    return json.dumps({"version": tools_version(), "tools": tool_descriptors(),
+                       "error_codes": sorted(TAB_ERROR_CODES)},
                       indent=2, sort_keys=True, ensure_ascii=False) + "\n"

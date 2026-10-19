@@ -128,7 +128,7 @@ Passa il puntatore su una foto per vedere un tooltip con il dettaglio del punteg
 - **Condivisione di album** — genera link condivisibili per qualsiasi album, senza richiedere l'accesso ai destinatari. Revoca l'accesso in qualsiasi momento.
 - **Download delle foto** — scarica singole foto o selezioni dalla galleria
 - **Esportazione** — esporta tutti i punteggi in CSV o JSON per l'analisi esterna
-- **Agenti IA (MCP)** — un endpoint [Model Context Protocol](https://modelcontextprotocol.io/) opzionale e di sola lettura permette a Claude Code e ad altri assistenti di cercare e ispezionare la libreria con i filtri della galleria, tramite token personali revocabili
+- **Agenti IA (MCP)** — un endpoint [Model Context Protocol](https://modelcontextprotocol.io/) opzionale permette a Claude Code e ad altri assistenti di cercare e ispezionare la libreria con i filtri della galleria, tramite token personali revocabili; a seconda del livello del token, un assistente può anche valutare, etichettare, organizzare e selezionare le foto (le azioni distruttive mostrano prima un'anteprima e richiedono una conferma)
 
 ### Altro
 

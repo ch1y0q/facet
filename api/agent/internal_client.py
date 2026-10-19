@@ -2,7 +2,8 @@
 
 Every tool maps to one allow-listed ``(method, path template, minimum level)``.
 There is no generic "call any API" tool, so the reachable surface is exactly this
-table -- admin, config, scan, share, proofing, frame, webdav and login routes are
+table plus ``tools_culling.CULLING_ROUTES`` (the darkroom's own, same ``RouteSpec``
+shape, passed to its own ``InternalClient``) -- admin, config, scan, share, proofing, frame, webdav and login routes are
 not in it. Each call therefore runs the route's own auth, validation and guards;
 there is no second SQL path.
 
@@ -20,6 +21,7 @@ from typing import Any, Mapping, Optional
 from urllib.parse import quote
 
 import httpx
+from pydantic import ValidationError
 
 from api.agent import tokens
 from api.auth import create_access_token
@@ -28,7 +30,6 @@ logger = logging.getLogger(__name__)
 
 INTERNAL_BASE_URL = "http://facet.internal"
 INTERNAL_JWT_SECONDS = 60
-READ_ONLY_ROUTE_LEVEL = "readonly"
 
 
 @dataclass(frozen=True)
@@ -91,6 +92,12 @@ def ok(data: Any = None, **extra: Any) -> dict:
 
 def err(code: str, message: str, **extra: Any) -> dict:
     return {"ok": False, "error": code, "message": message, **extra}
+
+
+def validation_issues(ex: ValidationError) -> list[dict]:
+    """The agent-facing ``invalid_input`` issue list for a pydantic failure."""
+    return [{"field": ".".join(str(part) for part in issue["loc"]), "message": issue["msg"]}
+            for issue in ex.errors(include_url=False, include_context=False, include_input=False)]
 
 
 def _status_to_error(status: int, detail: Any) -> dict:

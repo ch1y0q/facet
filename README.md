@@ -134,7 +134,7 @@ Hover over any photo for a tooltip with the score breakdown and EXIF data.
 - **Client proofing** — a shared album can run in proofing mode: clients heart photos and leave comments with just the link (plus an optional PIN), fully isolated from your own ratings
 - **Phone auto-upload** — point PhotoSync or any WebDAV app at the built-in `/dav` inbox; `--watch` scores new shots as they arrive
 - **Photo frames & kiosks** — a token-guarded endpoint feeds your curated best shots to smart photo frames and Home Assistant dashboards
-- **AI agents (MCP)** — an opt-in, read-only [Model Context Protocol](https://modelcontextprotocol.io/) endpoint lets Claude Code and other assistants search and inspect the library with the gallery's filters, using revocable personal tokens
+- **AI agents (MCP)** — an opt-in [Model Context Protocol](https://modelcontextprotocol.io/) endpoint lets Claude Code and other assistants search and inspect the library with the gallery's filters, using revocable personal tokens; depending on the token's level, an assistant can also rate, tag, organise and cull photos (destructive actions preview first and need a confirmation)
 - **Portfolio export** `[Edition]` — render an album into a self-contained static HTML gallery (no CDN references, works offline) you can drop on any web host
 - **Social crops** `[Edition]` — full-resolution exports framed on the detected subject for square, portrait and story aspect presets
 - **Photo download** — download individual photos or selections from the gallery

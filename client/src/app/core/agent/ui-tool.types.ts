@@ -6,17 +6,11 @@
  */
 
 /** The only error codes the bridge protocol lets a tab report; the server maps any other to `upstream_error`. */
-export type UiToolErrorCode =
-  | 'invalid_input'
-  | 'not_found'
-  | 'forbidden_level'
-  | 'no_active_view'
-  | 'upstream_error'
-  | 'too_large';
-
-export const UI_TOOL_ERROR_CODES: readonly UiToolErrorCode[] = [
+export const UI_TOOL_ERROR_CODES = [
   'invalid_input', 'not_found', 'forbidden_level', 'no_active_view', 'upstream_error', 'too_large',
-];
+] as const;
+
+export type UiToolErrorCode = (typeof UI_TOOL_ERROR_CODES)[number];
 
 export interface UiToolAnnotations {
   readOnlyHint: boolean;
@@ -53,6 +47,7 @@ export interface UiToolContract {
 export interface UiToolContractFile {
   version: string;
   tools: UiToolContract[];
+  error_codes: string[];
 }
 
 export type UiToolEnvelope =

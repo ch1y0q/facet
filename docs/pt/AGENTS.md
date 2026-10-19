@@ -6,7 +6,7 @@ O Facet pode atuar como servidor [Model Context Protocol](https://modelcontextpr
 
 ## Ativá-lo
 
-O endpoint está **desativado por predefinição**. Defina `viewer.mcp.enabled` como `true` em `scoring_config.json` (ver [Endpoint de agentes (MCP)](CONFIGURATION.md#endpoint-de-agentes-mcp)) e reinicie o visualizador, ou recarregue a configuração. Enquanto estiver desativado, `/mcp` e todas as rotas `/api/mcp/*` respondem 404.
+O endpoint está **desativado por predefinição**. Defina `viewer.mcp.enabled` como `true` em `scoring_config.json` (ver [Endpoint de agentes (MCP)](CONFIGURATION.md#endpoint-de-agentes-mcp)) e reinicie o visualizador, ou recarregue a configuração. Enquanto estiver desativado, `/mcp` e todas as rotas `/api/mcp/*` respondem 404. Sem `viewer.password` a instalação é considerada aberta, mesmo que `viewer.edition_password` esteja definida: os seus tokens só podem ser `readonly`.
 
 O endpoint é `POST /mcp` na porta do visualizador: Streamable HTTP, sem estado, respostas JSON simples. `GET` responde 405. Só a ponte do separador, `/api/mcp/bridge`, é um WebSocket; veja [Controlar o separador aberto](#controlar-o-separador-aberto).
 
@@ -23,7 +23,7 @@ TOKEN=$(curl -s -X POST http://localhost:5000/api/auth/login -H 'Content-Type: a
 curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"name": "claude-code", "level": "readonly"}'
 ```
 
-A resposta traz o texto simples em `token`. `GET /api/mcp/tokens` lista os seus tokens (nunca o segredo) e `DELETE /api/mcp/tokens/{id}` revoga um. Um superadmin pode listar os tokens de todos os proprietários com `?all=1` e revogar qualquer um. Cada proprietário pode ter no máximo 20 tokens ativos (acima disso, 412). Estas rotas recusam as credenciais de um agente, por isso um assistente nunca pode criar, listar nem revogar tokens.
+A resposta traz o texto simples em `token`. `GET /api/mcp/tokens` lista os seus tokens (nunca o segredo) e `DELETE /api/mcp/tokens/{id}` revoga um. Um superadmin pode listar os tokens de todos os proprietários com `?all=1` e revogar qualquer um. Cada proprietário pode ter no máximo 20 tokens ativos (acima disso, 412). Estas rotas recusam (403) as credenciais de um agente, por isso um assistente nunca pode criar, listar nem revogar tokens.
 
 ## Ligar o Claude Code
 
@@ -39,8 +39,8 @@ Um token é criado com um nível concedido: `readonly`, `user` ou `edition`. O n
 
 - Instalações com palavra-passe única: `user` é limitado a `readonly` na criação, porque esse modo não tem nível intermédio. Um token `edition` exige uma sessão de edição e só funciona enquanto a palavra-passe de edição não mudar.
 - Instalações multiutilizador: o token `edition` de um utilizador entretanto despromovido desce para `user`; uma promoção nunca eleva um token acima do nível concedido.
-- Instalações abertas (sem palavra-passe): os tokens são sempre `readonly` e pertencem a um proprietário partilhado `_anonymous`.
-- As instalações com palavra-passe única não têm o nível `user`: o nível efetivo é `edition` ou `readonly`, pelo que as ferramentas marcadas `user` em [Alterar a biblioteca](#alterar-a-biblioteca) também precisam aí de um token `edition`.
+- Instalações abertas (sem `viewer.password`, mesmo que `viewer.edition_password` esteja definida): os tokens são sempre `readonly` e pertencem a um proprietário partilhado `_anonymous`.
+- As instalações com palavra-passe única não têm o nível `user`: o nível efetivo é `edition` ou `readonly`, pelo que as ferramentas marcadas `user` em [Alterar a biblioteca](#alterar-a-biblioteca) também precisam aí de um token `edition`. Uma ferramenta `user` chamada com um token de nível inferior responde `forbidden_level`, indicando que precisa de `edition`.
 - Cada ferramenta tem o seu próprio nível mínimo, verificado antes de ler ou escrever o que quer que seja; um token inferior recebe `forbidden_level`.
 
 Um token deixa de valer automaticamente quando as credenciais do seu proprietário mudam: a palavra-passe do visualizador ou de edição no modo de palavra-passe única, a palavra-passe do proprietário no modo multiutilizador, ou a eliminação da sua conta. Recebe então um 401 à entrada.
@@ -59,7 +59,9 @@ As nove ferramentas de dados são só de leitura:
 | `list_persons` | Pessoas reconhecidas, filtráveis por nome |
 | `list_albums` | Álbuns que o proprietário do token pode ver |
 | `library_stats` | Tamanho da biblioteca, contagens por tipo e resumo das pontuações |
-| `status` | Quem é o token, o seu nível efetivo e as sinalizações do servidor |
+| `status` | Quem é o token, o seu nível efetivo e as sinalizações do servidor e os separadores abertos que pode controlar |
+
+Em cada objeto de filtros, `show_rejected` é um booleano: `true` lista apenas as fotos rejeitadas, `false` ou omitido dá a listagem normal.
 
 ## Controlar o separador aberto
 
@@ -80,11 +82,13 @@ Ao lado das ferramentas de dados, o servidor lista sempre nove ferramentas `ui_*
 Como funciona:
 
 - Enquanto tiver sessão iniciada e `viewer.mcp.enabled` e `viewer.mcp.bridge` forem `true`, cada separador do Facet abre um WebSocket da mesma origem para `/api/mcp/bridge` e autentica-se com a sua sessão na primeira mensagem. A ponte vem ativa por omissão; ponha `viewer.mcp.bridge` a `false` para a desativar e as ferramentas `ui_*` passam a responder com um erro claro.
-- Uma ferramenta só chega aos separadores do dono do token. Com uma única palavra-passe todas as sessões são o mesmo utilizador; numa instalação aberta cada separador pertence ao utilizador partilhado `_anonymous`.
+- Uma ferramenta só chega aos separadores do dono do token. Com uma única palavra-passe todas as sessões são o mesmo utilizador; numa instalação aberta cada separador pertence ao utilizador partilhado `_anonymous`, incluindo as sessões de edição.
+- Cada separador tem o nível da sessão que o abriu, e um token só controla separadores de nível igual ou superior ao seu nível efetivo: um token `edition` nunca usa um separador com sessão apenas de consulta, enquanto um token `readonly` pode controlar um separador `edition`. O `status` lista apenas os separadores que o token pode controlar.
 - Com vários separadores abertos usa-se o que teve o foco mais recentemente e o campo `tab` do resultado di-lo. Passe `tab_id` (listado por `status`) para escolher outro.
 - Um separador recusa o que a sua conta não pode fazer (por exemplo `/culling` para uma conta sem edição) e a ferramenta devolve essa recusa.
 - O que um separador devolve não é de confiança: a profundidade e o comprimento de cadeias e listas são limitados, e tudo fica contido por `max_bytes`.
 - Erros: `no_tab` (nenhum separador ligado, ou ponte desativada), `tab_timeout` (sem resposta em `call_timeout_s`) e `tab_outdated` (o separador aberto não conhece a ferramenta; recarregue a página depois de atualizar o Facet).
+- A ponte aceita primeiro o WebSocket e depois recusa-o com um código de fecho em vez de um estado HTTP: 4404 se o endpoint ou a ponte estiver desativado, 4403 se faltar `Origin` ou não for permitido, 4401 para uma sessão em falta ou rejeitada.
 - Um proxy reverso tem de reencaminhar a atualização para WebSocket em `/api/mcp/bridge`; veja [Implantação](DEPLOYMENT.md). Se reescrever o cabeçalho `Host`, indique a origem pública em `viewer.mcp.allowed_origins` (por exemplo `["https://photos.example.com"]`), porque a origem da página tem de coincidir com o host ou constar da lista.
 - O registo de separadores é por processo, por isso a ponte exige um único worker (o valor por omissão).
 
@@ -101,10 +105,11 @@ Em complemento:
 
 ## WebMCP na página (agentes do navegador)
 
-À parte do endpoint `/mcp`, um separador com sessão iniciada oferece também as mesmas ferramentas `ui_*` aos agentes que vivem no próprio navegador, através da API W3C [WebMCP](https://webmachinelearning.github.io/webmcp/) (`navigator.modelContext`). Um assistente nativo do navegador vê assim exatamente as ferramentas listadas acima, executa-as no separador que está a ver e não precisa de token.
+À parte do endpoint `/mcp`, um separador com sessão iniciada oferece também as mesmas ferramentas `ui_*` aos agentes que vivem no próprio navegador, através da API W3C [WebMCP](https://webmachinelearning.github.io/webmcp/) (`document.modelContext`). Um assistente nativo do navegador vê assim exatamente as ferramentas listadas acima, executa-as no separador que está a ver e não precisa de token.
 
 - **Apenas em contexto seguro.** O Facet só regista as ferramentas em HTTPS ou em `localhost`. Em HTTP simples não são oferecidas e a caixa **Ligar um assistente** indica-o; a ligação por token acima continua a funcionar.
 - Registadas quando `viewer.mcp.enabled` é true e tem a sessão iniciada, e removidas ao terminar a sessão.
+- O objeto é `document.modelContext` (o alias obsoleto `navigator.modelContext` não é fornecido). É um polyfill, instalado apenas se o navegador não tiver um nativo, e não pode ser desinstalado: pode existir antes de iniciar sessão sem qualquer ferramenta do Facet e permanece depois de terminar a sessão com uma lista de ferramentas vazia.
 - As ferramentas fazem o mesmo, limitadas pelo mesmo nível de conta, que na tabela acima.
 
 ## Alterar a biblioteca
@@ -134,6 +139,7 @@ As ferramentas de escrita estão ao lado das de leitura na mesma lista `/mcp`. C
 - **Semântica de definição.** As ferramentas por foto leem o estado atual e só escrevem uma diferença, pelo que repetir uma chamada é inofensivo; cada caminho indica `changed` ou `already`. Processam um caminho de cada vez e param no primeiro `library_busy`, `outcome_unknown` ou `forbidden_level`, indicando `affected`, os `results` por caminho e `not_attempted`. As ferramentas em lote definem o mesmo estado.
 - **Escolher as fotos.** As ferramentas em lote, de etiquetas e `cull_apply` aceitam OU `paths` OU `filters` (o objeto de filtros de `search_photos`), mais uma lista `exclude` opcional. Um alvo `filters` tem de trazer `expected_count`, o número de correspondências dos filtros antes de aplicar `exclude` (o `total` de `search_photos`). O Facet volta primeiro a contar os filtros e não escreve nada se os números diferirem (`invalid_input`, com `actual_count`).
 - **De quem é o estado.** As classificações, favoritos e rejeições são os do proprietário do token.
+- **Ficheiros ignorados.** Quando `cull_apply` ou `delete_photos` devolve uma lista `skipped` não vazia, o resultado traz também um `skipped_reason`: esses caminhos da biblioteca não têm nenhum ficheiro legível no disco (em falta, movido ou fora das pastas analisadas) e nada foi feito com eles.
 
 ### Ações destrutivas: pré-visualizar e confirmar
 
@@ -165,6 +171,8 @@ As ferramentas da câmara escura espelham a página `/culling`. Todas exigem o n
 | `confirm_culling_groups` | Confirma até 20 grupos: mantém os seus `keep_paths` e rejeita o resto dos seus `paths` |
 
 - **Um grupo é identificado pelo par `(type, group_id)`**, nunca só por `group_id`: os ids dos grupos semelhantes são deslocados ao serem fundidos com as rajadas.
+- **O valor predefinido `group_by: "all"` devolve apenas rajadas e grupos semelhantes.** Peça explicitamente `scene`, `bracket`, `panorama` ou `hdr_panorama`.
+- **Uma página é reduzida para caber em `max_bytes` encurtando a lista `photos` de cada grupo, nunca removendo grupos.** `photo_count` continua a ser o tamanho real, `photos_truncated` assinala um grupo cuja lista foi cortada e `has_more` indica se segue outra página.
 - **Bracketings, panoramas e panoramas HDR são mantidos inteiros.** Em `confirm_culling_groups`, `keep_paths` tem de ser igual a `paths` para estes tipos (senão `invalid_input`), e `auto_cull` nunca os divide.
 - **Um `keep_paths` vazio rejeita todos os fotogramas do grupo.** A primeira chamada responde então `confirmation_required` com um valor `confirm`; mostre-o ao utilizador e repita a chamada com esse valor. Se um lote parar em `forbidden_level`, `library_busy` ou `rate_limited`, os grupos já concluídos são indicados.
 - **`auto_cull` faz uma pré-visualização por predefinição** e devolve a divisão manter/rejeitar por grupo mais um valor `confirm` (só se algo fosse rejeitado). A aplicação recalcula o plano e recusa-o com `confirmation_required` se mudou desde a pré-visualização ou se é demasiado grande para ser confirmado como um só conjunto (restrinja-o com `album_id`, `date_from` e `date_to`, ou `group_by`). Os fotogramas rejeitados alimentam o classificador pessoal como qualquer triagem manual.
@@ -178,7 +186,7 @@ Cada resultado é um envelope JSON: `{"ok": true, "data": ...}` ou `{"ok": false
 - **Limite de taxa:** `rate_per_min` chamadas por minuto e por token para leitura. As ferramentas de escrita usam um orçamento separado, `write_rate_per_min` (30 por predefinição), para que as pesquisas não deixem as escritas sem quota nem o contrário; a simulação de `cull_apply` e `delete_photos` conta como escrita, a pré-visualização de `auto_cull` como leitura. Acima disso: `rate_limited` com `retry_after_s`. Dez tentativas bearer falhadas por minuto a partir do mesmo endereço recebem 429.
 - **Códigos de erro:** `forbidden_level` (endpoint desativado, token inválido ou nível insuficiente), `invalid_input`, `not_found`, `rate_limited`, `library_busy`, `upstream_error`, `outcome_unknown`, `confirmation_required`, `too_large`, `no_tab`, `tab_timeout`, `tab_outdated`.
 - **Os códigos mais recentes:** `confirmation_required` (uma chamada destrutiva não tem um valor `confirm` válido para este conjunto exato: repita a simulação, mostre o resultado ao utilizador e tente de novo), `outcome_unknown` (uma escrita excedeu o tempo ou a ligação caiu, pelo que pode ou não ter acontecido: volte a ler o estado antes de repetir, nunca repita às cegas), `library_busy` (a biblioteca está ocupada com outra tarefa: tente de novo daqui a pouco).
-- **Códigos HTTP à entrada:** 401 para token em falta ou desconhecido, 403 para um pedido de navegador de outra origem, 404 quando está desativado.
+- **Códigos HTTP à entrada:** 401 para token em falta ou desconhecido, 403 para um pedido de navegador de outra origem ou para as credenciais de um agente em `/api/mcp/tokens`, 404 quando está desativado. A ponte de separadores responde com códigos de fecho.
 
 ## Notas de segurança
 

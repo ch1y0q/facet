@@ -128,7 +128,7 @@ Pasa el cursor sobre cualquier foto para ver un tooltip con el desglose de la pu
 - **Compartir álbumes** — genera enlaces para compartir cualquier álbum, sin que los destinatarios necesiten iniciar sesión. Revoca el acceso en cualquier momento.
 - **Descarga de fotos** — descarga fotos individuales o selecciones desde la galería
 - **Exportar** — exporta todas las puntuaciones a CSV o JSON para análisis externo
-- **Agentes de IA (MCP)** — un endpoint [Model Context Protocol](https://modelcontextprotocol.io/) opcional y de solo lectura permite a Claude Code y a otros asistentes buscar e inspeccionar la biblioteca con los filtros de la galería, mediante tokens personales revocables
+- **Agentes de IA (MCP)** — un endpoint [Model Context Protocol](https://modelcontextprotocol.io/) opcional permite a Claude Code y a otros asistentes buscar e inspeccionar la biblioteca con los filtros de la galería, mediante tokens personales revocables; según el nivel del token, un asistente también puede valorar, etiquetar, organizar y seleccionar fotos (las acciones destructivas muestran antes una vista previa y requieren confirmación)
 
 ### Más
 

@@ -29,7 +29,6 @@ import logging
 import re
 import time
 from typing import Any, Optional
-from urllib.parse import urlparse
 
 from fastapi import APIRouter, WebSocket
 from starlette.websockets import WebSocketDisconnect
@@ -68,7 +67,7 @@ def origin_allowed(origin: Optional[str], host: Optional[str]) -> bool:
         return False
     if origin.rstrip("/").lower() in _allowed_origins():
         return True
-    return bool(host) and urlparse(origin).netloc.lower() == (host or "").lower()
+    return bridge.same_origin(origin, host)
 
 
 def _level_of(payload: dict) -> str:

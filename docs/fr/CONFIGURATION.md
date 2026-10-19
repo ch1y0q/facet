@@ -2583,7 +2583,7 @@ Le `target_dir` passe par la même liste d'autorisation que les endpoints d'expo
 
 ## Point d'accès agent (MCP)
 
-Expose les outils de lecture décrits dans [Agents IA (MCP)](AGENTS.md) via `POST /mcp`. Tout reste désactivé (404) tant que `enabled` n'est pas `true`.
+Expose les outils décrits dans [Agents IA (MCP)](AGENTS.md) via `POST /mcp` : lecture, pilotage de l'onglet ouvert et, selon le niveau du jeton, modification des notes, étiquettes et albums, tri et suppression. Tout reste désactivé (404) tant que `enabled` n'est pas `true`.
 
 ```json
 {
@@ -2605,8 +2605,8 @@ Expose les outils de lecture décrits dans [Agents IA (MCP)](AGENTS.md) via `POS
 
 | Clé | Défaut | Description |
 |-----|---------|-------------|
-| `enabled` | `false` | Interrupteur général de `/mcp` et `/api/mcp/*`. Désactivé, les deux répondent 404. |
-| `bridge` | `true` | Indique si le pont vers l'onglet du navigateur (`/api/mcp/bridge`) accepte les WebSockets et si les outils `ui_*` peuvent atteindre un onglet. À `false`, le pont répond 404 et les outils `ui_*` renvoient une erreur explicite. Exige un seul worker. |
+| `enabled` | `false` | Interrupteur général de `/mcp` et `/api/mcp/*`. Désactivé, ils répondent 404 (le pont se ferme avec le code 4404). |
+| `bridge` | `true` | Indique si le pont vers l'onglet du navigateur (`/api/mcp/bridge`) accepte les WebSockets et si les outils `ui_*` peuvent atteindre un onglet. À `false`, le pont refuse la connexion (code de fermeture 4404) et les outils `ui_*` renvoient une erreur explicite. Exige un seul worker. |
 | `max_rows` | `100` | Nombre maximal de lignes dans un résultat d'outil (1 à 500). Les lignes en trop sont retirées et `truncated: true` est ajouté. |
 | `max_bytes` | `60000` | Taille sérialisée maximale d'un résultat d'outil en octets (4000 à 500000). |
 | `call_timeout_s` | `30` | Délai d'un appel d'outil en secondes (1 à 300). Borne aussi l'attente d'un appel `ui_*` vers l'onglet du navigateur (`tab_timeout`). |

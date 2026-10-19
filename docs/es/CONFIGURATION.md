@@ -2589,7 +2589,7 @@ El `target_dir` pasa por la misma lista de permitidos que los endpoints de expor
 
 ## Endpoint de agentes (MCP)
 
-Expone las herramientas de lectura descritas en [Agentes de IA (MCP)](AGENTS.md) en `POST /mcp`. Todo sigue desactivado (404) hasta que `enabled` sea `true`.
+Expone las herramientas descritas en [Agentes de IA (MCP)](AGENTS.md) en `POST /mcp`: lectura, control de la pestaña abierta y, según el nivel del token, modificación de valoraciones, etiquetas y álbumes, selección y eliminación. Todo sigue desactivado (404) hasta que `enabled` sea `true`.
 
 ```json
 {
@@ -2611,8 +2611,8 @@ Expone las herramientas de lectura descritas en [Agentes de IA (MCP)](AGENTS.md)
 
 | Clave | Predeterminado | Descripción |
 |-----|---------|-------------|
-| `enabled` | `false` | Interruptor general de `/mcp` y `/api/mcp/*`. Desactivado, ambos responden 404. |
-| `bridge` | `true` | Si el puente con la pestaña del navegador (`/api/mcp/bridge`) acepta WebSockets y las herramientas `ui_*` pueden llegar a una pestaña. Con `false`, el puente responde 404 y las herramientas `ui_*` devuelven un error claro. Requiere un único worker. |
+| `enabled` | `false` | Interruptor general de `/mcp` y `/api/mcp/*`. Desactivado, responden 404 (el puente se cierra con el código 4404). |
+| `bridge` | `true` | Si el puente con la pestaña del navegador (`/api/mcp/bridge`) acepta WebSockets y las herramientas `ui_*` pueden llegar a una pestaña. Con `false`, el puente rechaza la conexión (código de cierre 4404) y las herramientas `ui_*` devuelven un error claro. Requiere un único worker. |
 | `max_rows` | `100` | Máximo de filas en un resultado de herramienta (1 a 500). Las filas sobrantes se descartan y se marca `truncated: true`. |
 | `max_bytes` | `60000` | Tamaño serializado máximo de un resultado de herramienta en bytes (4000 a 500000). |
 | `call_timeout_s` | `30` | Tiempo límite de una llamada a herramienta en segundos (1 a 300). También acota cuánto espera una llamada `ui_*` a la pestaña del navegador (`tab_timeout`). |

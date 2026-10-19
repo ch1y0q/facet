@@ -2587,7 +2587,7 @@ Il `target_dir` passa attraverso la stessa allow-list degli endpoint di esportaz
 
 ## Endpoint agente (MCP)
 
-Espone gli strumenti di lettura descritti in [Agenti IA (MCP)](AGENTS.md) su `POST /mcp`. Tutto resta disattivato (404) finché `enabled` non è `true`.
+Espone gli strumenti descritti in [Agenti IA (MCP)](AGENTS.md) su `POST /mcp`: lettura, controllo della scheda aperta e, a seconda del livello del token, modifica di valutazioni, tag e album, selezione ed eliminazione. Tutto resta disattivato (404) finché `enabled` non è `true`.
 
 ```json
 {
@@ -2609,8 +2609,8 @@ Espone gli strumenti di lettura descritti in [Agenti IA (MCP)](AGENTS.md) su `PO
 
 | Chiave | Predefinito | Descrizione |
 |-----|---------|-------------|
-| `enabled` | `false` | Interruttore generale di `/mcp` e `/api/mcp/*`. Disattivato, entrambi rispondono 404. |
-| `bridge` | `true` | Se il ponte verso la scheda del browser (`/api/mcp/bridge`) accetta WebSocket e gli strumenti `ui_*` possono raggiungere una scheda. Con `false`, il ponte risponde 404 e gli strumenti `ui_*` restituiscono un errore esplicito. Richiede un solo worker. |
+| `enabled` | `false` | Interruttore generale di `/mcp` e `/api/mcp/*`. Disattivato, rispondono 404 (il ponte si chiude con il codice 4404). |
+| `bridge` | `true` | Se il ponte verso la scheda del browser (`/api/mcp/bridge`) accetta WebSocket e gli strumenti `ui_*` possono raggiungere una scheda. Con `false`, il ponte rifiuta la connessione (codice di chiusura 4404) e gli strumenti `ui_*` restituiscono un errore esplicito. Richiede un solo worker. |
 | `max_rows` | `100` | Numero massimo di righe in un risultato di strumento (da 1 a 500). Le righe in eccesso vengono scartate e si imposta `truncated: true`. |
 | `max_bytes` | `60000` | Dimensione serializzata massima di un risultato di strumento in byte (da 4000 a 500000). |
 | `call_timeout_s` | `30` | Timeout di una chiamata di strumento in secondi (da 1 a 300). Limita anche l'attesa di una chiamata `ui_*` verso la scheda del browser (`tab_timeout`). |

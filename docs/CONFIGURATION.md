@@ -2564,7 +2564,7 @@ The `target_dir` goes through the exact same allow-list as the copy/move export 
 
 ## Agent Endpoint (MCP)
 
-Exposes the read tools described in [AI Agents (MCP)](AGENTS.md) at `POST /mcp`. Everything stays off (404) until `enabled` is `true`.
+Exposes the tools described in [AI Agents (MCP)](AGENTS.md) at `POST /mcp`: reading, driving your open tab and, depending on the token's level, changing ratings, tags and albums, culling and deleting. Everything stays off (404) until `enabled` is `true`.
 
 ```json
 {
@@ -2586,8 +2586,8 @@ Exposes the read tools described in [AI Agents (MCP)](AGENTS.md) at `POST /mcp`.
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `enabled` | `false` | Master switch for `/mcp` and `/api/mcp/*`. Off means both answer 404. |
-| `bridge` | `true` | Whether the browser-tab bridge (`/api/mcp/bridge`) accepts WebSockets and the `ui_*` tools can reach a tab. When `false`, the bridge answers 404 and `ui_*` tools return an error saying so. Needs a single worker. |
+| `enabled` | `false` | Master switch for `/mcp` and `/api/mcp/*`. Off means `/mcp` and `/api/mcp/*` answer 404 (the bridge closes with code 4404). |
+| `bridge` | `true` | Whether the browser-tab bridge (`/api/mcp/bridge`) accepts WebSockets and the `ui_*` tools can reach a tab. When `false`, the bridge refuses the connection (close code 4404) and `ui_*` tools return an error saying so. Needs a single worker. |
 | `max_rows` | `100` | Maximum rows in one tool result (1 to 500). Extra rows are dropped and `truncated: true` is set. |
 | `max_bytes` | `60000` | Maximum serialized size of one tool result in bytes (4000 to 500000). |
 | `call_timeout_s` | `30` | Timeout for one tool call in seconds (1 to 300). It also bounds how long a `ui_*` call waits for the browser tab (`tab_timeout`). |

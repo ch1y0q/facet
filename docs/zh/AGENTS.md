@@ -6,7 +6,7 @@ Facet 可以充当 [Model Context Protocol](https://modelcontextprotocol.io/)（
 
 ## 启用
 
-该端点**默认关闭**。在 `scoring_config.json` 中把 `viewer.mcp.enabled` 设为 `true`（参见 [智能体端点（MCP）](CONFIGURATION.md#智能体端点mcp)），然后重启查看器或重新加载配置。关闭期间，`/mcp` 和所有 `/api/mcp/*` 路由都返回 404。
+该端点**默认关闭**。在 `scoring_config.json` 中把 `viewer.mcp.enabled` 设为 `true`（参见 [智能体端点（MCP）](CONFIGURATION.md#智能体端点mcp)），然后重启查看器或重新加载配置。关闭期间，`/mcp` 和所有 `/api/mcp/*` 路由都返回 404。 没有 `viewer.password` 时，即使设置了 `viewer.edition_password`，该安装也视为开放安装，其令牌只能是 `readonly`。
 
 端点是查看器自身端口上的 `POST /mcp`：Streamable HTTP、无状态、纯 JSON 响应。`GET` 返回 405。只有标签页桥接 `/api/mcp/bridge` 是 WebSocket，参见[控制已打开的标签页](#控制已打开的标签页)。
 
@@ -23,7 +23,7 @@ TOKEN=$(curl -s -X POST http://localhost:5000/api/auth/login -H 'Content-Type: a
 curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"name": "claude-code", "level": "readonly"}'
 ```
 
-响应的 `token` 字段包含明文令牌。`GET /api/mcp/tokens` 列出你的令牌（绝不包含密钥本身），`DELETE /api/mcp/tokens/{id}` 吊销其中一个。超级管理员可以用 `?all=1` 列出所有所有者的令牌并吊销任意一个。每位所有者最多持有 20 个有效令牌（超出返回 412）。这些路由会拒绝智能体自己的凭据，因此助手永远无法创建、列出或吊销令牌。
+响应的 `token` 字段包含明文令牌。`GET /api/mcp/tokens` 列出你的令牌（绝不包含密钥本身），`DELETE /api/mcp/tokens/{id}` 吊销其中一个。超级管理员可以用 `?all=1` 列出所有所有者的令牌并吊销任意一个。每位所有者最多持有 20 个有效令牌（超出返回 412）。这些路由会以 403 拒绝智能体自己的凭据，因此助手永远无法创建、列出或吊销令牌。
 
 ## 连接 Claude Code
 
@@ -39,8 +39,8 @@ claude mcp add --transport http facet http://localhost:5000/mcp --header "Author
 
 - 单密码安装：`user` 在创建时被限制为 `readonly`，因为该模式没有中间级别。`edition` 令牌需要编辑会话，且只在编辑密码未变更期间有效。
 - 多用户安装：之后被降级的用户的 `edition` 令牌会降为 `user`；升级绝不会让令牌超过其授予级别。
-- 开放安装（未设置密码）：令牌始终为 `readonly`，并归属于共享所有者 `_anonymous`。
-- 单密码安装没有 `user` 级别：有效级别只有 `edition` 或 `readonly`，因此[修改内容](#修改内容)中标为 `user` 的工具在那里同样需要 `edition` 令牌。
+- 开放安装（未设置 `viewer.password`，即使设置了 `viewer.edition_password`）：令牌始终为 `readonly`，并归属于共享所有者 `_anonymous`。
+- 单密码安装没有 `user` 级别：有效级别只有 `edition` 或 `readonly`，因此[修改内容](#修改内容)中标为 `user` 的工具在那里同样需要 `edition` 令牌。 用较低级别的令牌调用 `user` 工具时，返回 `forbidden_level` 并说明需要 `edition`。
 - 每个工具都有自己的最低级别，在读取或写入任何内容之前检查；级别更低的令牌会收到 `forbidden_level`。
 
 所有者的凭据一旦变化，令牌会自动失效：单密码模式下是查看器或编辑密码，多用户模式下是所有者的密码，或其账户被删除。此后它在入口处返回 401。
@@ -59,7 +59,9 @@ claude mcp add --transport http facet http://localhost:5000/mcp --header "Author
 | `list_persons` | 已识别的人物，可按姓名过滤 |
 | `list_albums` | 令牌所有者能看到的相册 |
 | `library_stats` | 照片库规模、各类型数量和评分概览 |
-| `status` | 令牌是谁、它的有效级别以及服务器标志 |
+| `status` | 令牌是谁、它的有效级别、服务器标志以及它能控制的已打开标签页 |
+
+在每个筛选对象中，`show_rejected` 是布尔值：`true` 只列出被淘汰的照片，`false` 或省略则为常规列表。
 
 ## 控制已打开的标签页
 
@@ -80,11 +82,13 @@ claude mcp add --transport http facet http://localhost:5000/mcp --header "Author
 工作方式：
 
 - 只要你已登录，且 `viewer.mcp.enabled` 与 `viewer.mcp.bridge` 都为 `true`，每个 Facet 标签页都会向 `/api/mcp/bridge` 打开一个同源 WebSocket，并在第一条消息中用你的会话完成认证。桥接默认开启；把 `viewer.mcp.bridge` 设为 `false` 即可关闭，此时 `ui_*` 工具会返回明确的错误。
-- 工具只能到达令牌所有者的标签页。单密码安装中所有会话是同一个用户；开放安装中每个标签页都属于共享用户 `_anonymous`。
+- 工具只能到达令牌所有者的标签页。单密码安装中所有会话是同一个用户；开放安装中每个标签页都属于共享用户 `_anonymous`，包括 edition 登录。
+- 每个标签页都带有打开它的会话的级别，令牌只能控制级别不低于其有效级别的标签页：`edition` 令牌绝不会使用仅有查看会话的标签页，而 `readonly` 令牌可以控制 `edition` 标签页。`status` 只列出该令牌能控制的标签页。
 - 打开多个标签页时，使用最近获得焦点的那个，结果中的 `tab` 字段会说明。传入 `tab_id`（由 `status` 列出）可选择其他标签页。
 - 标签页会拒绝其账户无权执行的操作（例如非编辑账户访问 `/culling`），工具会返回该拒绝信息。
 - 标签页返回的内容不可信：深度、字符串长度和列表长度都有上限，整体还受 `max_bytes` 限制。
 - 错误：`no_tab`（没有已连接的标签页，或桥接已关闭）、`tab_timeout`（在 `call_timeout_s` 内无响应）和 `tab_outdated`（已打开的标签页不认识该工具；升级 Facet 后请刷新页面）。
+- 桥接先接受 WebSocket，再以关闭码而非 HTTP 状态码拒绝：端点或桥接关闭时为 4404，`Origin` 缺失或不被允许时为 4403，会话缺失或被拒绝时为 4401。
 - 反向代理必须为 `/api/mcp/bridge` 转发 WebSocket 升级；参见[部署](DEPLOYMENT.md)。如果它改写了 `Host` 头，请把公开来源写入 `viewer.mcp.allowed_origins`（例如 `["https://photos.example.com"]`），因为页面的来源必须与主机匹配或在列表中。
 - 标签页注册表按进程保存，因此桥接需要单个 worker（默认值）。
 
@@ -101,10 +105,11 @@ claude mcp add --transport http facet http://localhost:5000/mcp --header "Author
 
 ## 页面内 WebMCP（浏览器智能体）
 
-除 `/mcp` 端点之外，已登录的标签页还会通过 W3C [WebMCP](https://webmachinelearning.github.io/webmcp/) API（`navigator.modelContext`）向运行在浏览器内部的智能体提供同一组 `ui_*` 工具。因此浏览器原生的助手看到的正是上文列出的工具，在您正在查看的标签页中执行，并且无需令牌。
+除 `/mcp` 端点之外，已登录的标签页还会通过 W3C [WebMCP](https://webmachinelearning.github.io/webmcp/) API（`document.modelContext`）向运行在浏览器内部的智能体提供同一组 `ui_*` 工具。因此浏览器原生的助手看到的正是上文列出的工具，在您正在查看的标签页中执行，并且无需令牌。
 
 - **仅限安全上下文。** Facet 只在 HTTPS 或 `localhost` 下注册这些工具。在普通 HTTP 下不会提供，**连接助手**对话框会提示这一点；上文基于令牌的连接仍可使用。
 - 当 `viewer.mcp.enabled` 为 true 且您已登录时注册，退出登录时移除。
+- 该对象是 `document.modelContext`（不提供已弃用的 `navigator.modelContext` 别名）。它是一个 polyfill，仅在浏览器没有原生实现时安装，且无法卸载：登录前它可能已存在但不含任何 Facet 工具，退出登录后它仍保留，工具列表为空。
 - 这些工具的功能与上表相同，并受同一账户级别的限制。
 
 ## 修改内容
@@ -134,6 +139,7 @@ claude mcp add --transport http facet http://localhost:5000/mcp --header "Author
 - **设置语义。** 逐张照片的工具先读取当前状态，只写入有差异的部分，因此重复调用是无害的；每个路径会报告 `changed` 或 `already`。它们一次处理一个路径，遇到第一个 `library_busy`、`outcome_unknown` 或 `forbidden_level` 就停止，并报告 `affected`、每个路径的 `results` 和 `not_attempted`。批量工具设置的是同样的状态。
 - **选择照片。** 批量、标签和 `cull_apply` 工具接受 `paths` 或 `filters`（`search_photos` 的筛选对象）二者之一，外加可选的 `exclude` 列表。`filters` 目标必须带有 `expected_count`，即应用 `exclude` 之前筛选条件的匹配数（`search_photos` 的 `total`）。Facet 会先重新统计，数字不一致时不写入任何内容（`invalid_input`，附带 `actual_count`）。
 - **状态归谁。** 评分、收藏和淘汰都属于令牌所有者本人。
+- **被跳过的文件。** 当 `cull_apply` 或 `delete_photos` 返回非空的 `skipped` 列表时，结果还会带有 `skipped_reason`：这些库路径在磁盘上没有可读文件（缺失、已移动或不在扫描目录内），对它们未执行任何操作。
 
 ### 破坏性操作：先预览再确认
 
@@ -165,6 +171,8 @@ claude mcp add --transport http facet http://localhost:5000/mcp --header "Author
 | `confirm_culling_groups` | 确认最多 20 个分组：保留其 `keep_paths`，淘汰 `paths` 中的其余照片 |
 
 - **分组由 `(type, group_id)` 这一对标识**，绝不能只用 `group_id`：相似分组的 id 在与连拍合并时会被偏移。
+- **默认的 `group_by: "all"` 只返回连拍和相似分组。** 如需 `scene`、`bracket`、`panorama` 或 `hdr_panorama`，请明确指定。
+- **页面通过缩短每个分组的 `photos` 列表来适应 `max_bytes`，绝不会丢弃分组。** `photo_count` 仍是真实大小，`photos_truncated` 标记列表被截断的分组，`has_more` 表示后面是否还有一页。
 - **包围曝光、全景和 HDR 全景整组保留。** 在 `confirm_culling_groups` 中，这些类型的 `keep_paths` 必须等于 `paths`（否则 `invalid_input`），`auto_cull` 也从不拆分它们。
 - **空的 `keep_paths` 会淘汰该分组的每一帧。** 此时第一次调用返回 `confirmation_required` 并附带一个 `confirm` 值；先展示给用户，再带上该值重复调用。若批量调用在 `forbidden_level`、`library_busy` 或 `rate_limited` 处停止，会报告已完成的分组。
 - **`auto_cull` 默认只预览**，返回每组的保留/淘汰划分，以及一个 `confirm` 值（仅当有照片会被淘汰时）。应用时会重新计算方案，若预览后发生变化，或方案太大无法作为一个集合确认，则以 `confirmation_required` 拒绝（用 `album_id`、`date_from` 和 `date_to` 或 `group_by` 缩小范围）。被淘汰的帧会像任何手动选片一样训练个人排序器。
@@ -178,7 +186,7 @@ claude mcp add --transport http facet http://localhost:5000/mcp --header "Author
 - **速率限制：** 每个令牌每分钟 `rate_per_min` 次读取调用。写入工具使用单独的 `write_rate_per_min` 预算（默认 30），因此搜索不会挤占写入，反之亦然；`cull_apply` 和 `delete_photos` 的试运行算作写入，`auto_cull` 的预览算作读取。超出后返回 `rate_limited` 并附带 `retry_after_s`。同一地址每分钟十次失败的 bearer 尝试会收到 429。
 - **错误码：** `forbidden_level`（端点已禁用、令牌失效或级别过低）、`invalid_input`、`not_found`、`rate_limited`、`library_busy`、`upstream_error`、`outcome_unknown`、`confirmation_required`、`too_large`、`no_tab`、`tab_timeout`、`tab_outdated`。
 - **较新的错误码：** `confirmation_required`（破坏性调用没有针对这一确切集合的有效 `confirm` 值：重新试运行，把结果展示给用户，然后再试）、`outcome_unknown`（写入超时或连接中断，可能已生效也可能没有：重试前先重新读取状态，切勿盲目重试）、`library_busy`（照片库正忙于其他任务：稍后再试）。
-- **入口处的 HTTP 状态码：** 令牌缺失或未知返回 401，跨源的浏览器请求返回 403，端点关闭时返回 404。
+- **入口处的 HTTP 状态码：** 令牌缺失或未知返回 401，跨源的浏览器请求或智能体自身凭据访问 `/api/mcp/tokens` 时返回 403，端点关闭时返回 404。标签页桥接则改用关闭码。
 
 ## 安全说明
 

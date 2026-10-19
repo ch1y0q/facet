@@ -12,7 +12,6 @@ import logging
 from contextlib import contextmanager
 from importlib import metadata
 from typing import Any, Iterator, cast
-from urllib.parse import urlparse
 
 from fastapi import FastAPI
 from mcp.server.mcpserver import Context, MCPServer
@@ -26,9 +25,8 @@ from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from api.agent import limits, tokens
-from api.agent.internal_client import InternalClient
-from api.agent.internal_client import err
-from api.agent.bridge import TabRegistry
+from api.agent.internal_client import InternalClient, err, validation_issues
+from api.agent.bridge import TabRegistry, same_origin
 from api.agent.runtime import bearer_token, to_result
 from api.agent.tools_culling import register_culling_tools
 from api.agent.tools_read import register_read_tools
@@ -109,18 +107,11 @@ class AgentMCPServer(MCPServer):
             cause = ex.__cause__
             if not isinstance(cause, ValidationError):
                 return to_result(err("invalid_input", "The request was rejected"))
-            issues = [{"field": ".".join(str(part) for part in issue["loc"]), "message": issue["msg"]}
-                      for issue in cause.errors(include_url=False, include_context=False,
-                                                include_input=False)]
-            return to_result(err("invalid_input", "Invalid arguments", issues=issues))
+            return to_result(err("invalid_input", "Invalid arguments", issues=validation_issues(cause)))
 
 
 def _reject(status: int, detail: str, headers: dict | None = None) -> JSONResponse:
     return JSONResponse({"detail": detail}, status_code=status, headers=headers)
-
-
-def _same_origin(origin: str, host: str | None) -> bool:
-    return bool(host) and urlparse(origin).netloc.lower() == (host or "").lower()
 
 
 class AgentAuthMiddleware:
@@ -154,7 +145,7 @@ class AgentAuthMiddleware:
             return _reject(404, "Not Found")
         headers = Headers(scope=scope)
         origin = headers.get("origin")
-        if origin and not _same_origin(origin, headers.get("host")):
+        if origin and not same_origin(origin, headers.get("host")):
             return _reject(403, "Cross-origin requests are not accepted")
         client = scope.get("client")
         ip = client[0] if client else "unknown"

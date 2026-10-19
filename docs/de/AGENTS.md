@@ -6,7 +6,7 @@ Facet kann als [Model Context Protocol](https://modelcontextprotocol.io/)-Server
 
 ## Aktivieren
 
-Der Endpunkt ist **standardmäßig deaktiviert**. Setzen Sie `viewer.mcp.enabled` in `scoring_config.json` auf `true` (siehe [Agent-Endpunkt (MCP)](CONFIGURATION.md#agent-endpunkt-mcp)) und starten Sie den Viewer neu oder laden Sie die Konfiguration neu. Solange er deaktiviert ist, antworten `/mcp` und alle `/api/mcp/*`-Routen mit 404.
+Der Endpunkt ist **standardmäßig deaktiviert**. Setzen Sie `viewer.mcp.enabled` in `scoring_config.json` auf `true` (siehe [Agent-Endpunkt (MCP)](CONFIGURATION.md#agent-endpunkt-mcp)) und starten Sie den Viewer neu oder laden Sie die Konfiguration neu. Solange er deaktiviert ist, antworten `/mcp` und alle `/api/mcp/*`-Routen mit 404. Ohne `viewer.password` gilt die Installation als offen, auch wenn `viewer.edition_password` gesetzt ist; ihre Tokens können dann nur `readonly` sein.
 
 Der Endpunkt ist `POST /mcp` auf dem Port des Viewers: Streamable HTTP, zustandslos, einfache JSON-Antworten. `GET` antwortet mit 405. Nur die Tab-Brücke `/api/mcp/bridge` ist ein WebSocket; siehe [Den geöffneten Tab steuern](#den-geöffneten-tab-steuern).
 
@@ -23,7 +23,7 @@ TOKEN=$(curl -s -X POST http://localhost:5000/api/auth/login -H 'Content-Type: a
 curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"name": "claude-code", "level": "readonly"}'
 ```
 
-Die Antwort enthält den Klartext in `token`. `GET /api/mcp/tokens` listet Ihre Tokens auf (nie das Geheimnis), `DELETE /api/mcp/tokens/{id}` widerruft eines. Ein Superadmin kann mit `?all=1` die Tokens aller Besitzer auflisten und beliebige widerrufen. Jeder Besitzer kann höchstens 20 aktive Tokens haben (darüber 412). Diese Routen lehnen die eigenen Zugangsdaten eines Agenten ab, ein Assistent kann also nie Tokens erstellen, auflisten oder widerrufen.
+Die Antwort enthält den Klartext in `token`. `GET /api/mcp/tokens` listet Ihre Tokens auf (nie das Geheimnis), `DELETE /api/mcp/tokens/{id}` widerruft eines. Ein Superadmin kann mit `?all=1` die Tokens aller Besitzer auflisten und beliebige widerrufen. Jeder Besitzer kann höchstens 20 aktive Tokens haben (darüber 412). Diese Routen lehnen die eigenen Zugangsdaten eines Agenten mit 403 ab, ein Assistent kann also nie Tokens erstellen, auflisten oder widerrufen.
 
 ## Claude Code verbinden
 
@@ -39,8 +39,8 @@ Ein Token wird mit einer Stufe erstellt: `readonly`, `user` oder `edition`. Die 
 
 - Installationen mit einem Passwort: `user` wird beim Erstellen auf `readonly` begrenzt, da dieser Modus keine mittlere Stufe kennt. Ein `edition`-Token braucht eine Edition-Sitzung und funktioniert nur, solange das Edition-Passwort unverändert bleibt.
 - Mehrbenutzer-Installationen: Das `edition`-Token eines später herabgestuften Benutzers fällt auf `user`; eine Beförderung hebt ein Token nie über seine Stufe.
-- Offene Installationen (kein Passwort): Tokens sind immer `readonly` und gehören einem gemeinsamen Besitzer `_anonymous`.
-- Installationen mit einem einzigen Passwort haben keine Stufe `user`: Die effektive Stufe ist `edition` oder `readonly`, daher brauchen die unter [Änderungen vornehmen](#änderungen-vornehmen) mit `user` markierten Werkzeuge dort ebenfalls ein `edition`-Token.
+- Offene Installationen (kein `viewer.password`, auch wenn `viewer.edition_password` gesetzt ist): Tokens sind immer `readonly` und gehören einem gemeinsamen Besitzer `_anonymous`.
+- Installationen mit einem einzigen Passwort haben keine Stufe `user`: Die effektive Stufe ist `edition` oder `readonly`, daher brauchen die unter [Änderungen vornehmen](#änderungen-vornehmen) mit `user` markierten Werkzeuge dort ebenfalls ein `edition`-Token. Ruft ein Token niedrigerer Stufe ein `user`-Werkzeug auf, antwortet es mit `forbidden_level` und nennt `edition` als Voraussetzung.
 - Jedes Werkzeug hat seine eigene Mindeststufe, die vor jedem Lesen oder Schreiben geprüft wird; ein niedrigeres Token erhält `forbidden_level`.
 
 Ein Token wird automatisch ungültig, wenn sich die Zugangsdaten seines Besitzers ändern: Viewer- oder Edition-Passwort im Ein-Passwort-Modus, Passwort des Besitzers im Mehrbenutzer-Modus oder Löschen seines Kontos. Es erhält dann am Eingang ein 401.
@@ -59,7 +59,9 @@ Die neun Datenwerkzeuge sind schreibgeschützt:
 | `list_persons` | Erkannte Personen, optional nach Name gefiltert |
 | `list_albums` | Alben, die der Besitzer des Tokens sehen kann |
 | `library_stats` | Bibliotheksgröße, Zahlen je Typ und Überblick über die Bewertungen |
-| `status` | Wer das Token ist, seine effektive Stufe und die Server-Flags |
+| `status` | Wer das Token ist, seine effektive Stufe und die Server-Flags und die offenen Tabs, die es steuern kann |
+
+In jedem Filterobjekt ist `show_rejected` ein Boolean: `true` listet nur die abgelehnten Fotos, `false` oder weggelassen ergibt die normale Liste.
 
 ## Den geöffneten Tab steuern
 
@@ -80,11 +82,13 @@ Neben den Datenwerkzeugen listet der Server immer neun `ui_*`-Werkzeuge, die auf
 So funktioniert es:
 
 - Solange Sie angemeldet sind und `viewer.mcp.enabled` und `viewer.mcp.bridge` beide `true` sind, öffnet jeder Facet-Tab einen WebSocket gleichen Ursprungs zu `/api/mcp/bridge` und authentifiziert sich in seiner ersten Nachricht mit Ihrer Sitzung. Die Brücke ist standardmäßig aktiv; setzen Sie `viewer.mcp.bridge` auf `false`, um sie abzuschalten, dann antworten die `ui_*`-Werkzeuge mit einem eindeutigen Fehler.
-- Ein Werkzeug erreicht nur die Tabs des Token-Besitzers. Bei einem einzelnen Passwort sind alle Sitzungen derselbe Benutzer, bei einer offenen Installation gehört jeder Tab dem gemeinsamen Benutzer `_anonymous`.
+- Ein Werkzeug erreicht nur die Tabs des Token-Besitzers. Bei einem einzelnen Passwort sind alle Sitzungen derselbe Benutzer, bei einer offenen Installation gehört jeder Tab dem gemeinsamen Benutzer `_anonymous`, auch bei Edition-Anmeldungen.
+- Jeder Tab trägt die Stufe der Sitzung, die ihn geöffnet hat, und ein Token steuert nur Tabs mit mindestens seiner effektiven Stufe: Ein `edition`-Token nutzt nie einen Tab mit reiner Viewer-Sitzung, ein `readonly`-Token darf dagegen einen `edition`-Tab steuern. `status` listet nur die Tabs auf, die das Token steuern kann.
 - Sind mehrere Tabs offen, wird der zuletzt fokussierte verwendet, und das Feld `tab` des Ergebnisses sagt das. Mit `tab_id` (von `status` aufgelistet) wählen Sie einen anderen.
 - Ein Tab lehnt ab, was sein Konto nicht darf (zum Beispiel `/culling` für ein Konto ohne Edition), und das Werkzeug gibt diese Ablehnung zurück.
 - Was ein Tab zurückschickt, ist nicht vertrauenswürdig: Tiefe, Zeichenketten- und Listenlänge sind begrenzt, und alles wird durch `max_bytes` gedeckelt.
 - Fehler: `no_tab` (kein Tab verbunden oder Brücke aus), `tab_timeout` (keine Antwort innerhalb von `call_timeout_s`) und `tab_outdated` (der geöffnete Tab kennt das Werkzeug nicht; laden Sie die Seite nach einem Facet-Update neu).
+- Die Brücke nimmt den WebSocket zuerst an und lehnt ihn dann mit einem Close-Code statt eines HTTP-Status ab: 4404, wenn der Endpunkt oder die Brücke aus ist, 4403, wenn `Origin` fehlt oder nicht erlaubt ist, 4401 bei fehlender oder abgelehnter Sitzung.
 - Ein Reverse-Proxy muss das WebSocket-Upgrade für `/api/mcp/bridge` weiterreichen; siehe [Deployment](DEPLOYMENT.md). Schreibt er den `Host`-Header um, tragen Sie den öffentlichen Ursprung in `viewer.mcp.allowed_origins` ein (zum Beispiel `["https://photos.example.com"]`), denn der Ursprung der Seite muss zum Host passen oder aufgelistet sein.
 - Das Tab-Register gilt pro Prozess, daher braucht die Brücke einen einzigen Worker (der Standard).
 
@@ -101,10 +105,11 @@ Ergänzend:
 
 ## WebMCP im Tab (Browser-Agenten)
 
-Unabhängig vom Endpunkt `/mcp` bietet ein angemeldeter Tab dieselben `ui_*`-Werkzeuge auch Agenten an, die im Browser selbst laufen, über die W3C-API [WebMCP](https://webmachinelearning.github.io/webmcp/) (`navigator.modelContext`). Ein browsernativer Assistent sieht also genau die oben aufgeführten Werkzeuge, führt sie im Tab aus, den Sie ansehen, und braucht kein Token.
+Unabhängig vom Endpunkt `/mcp` bietet ein angemeldeter Tab dieselben `ui_*`-Werkzeuge auch Agenten an, die im Browser selbst laufen, über die W3C-API [WebMCP](https://webmachinelearning.github.io/webmcp/) (`document.modelContext`). Ein browsernativer Assistent sieht also genau die oben aufgeführten Werkzeuge, führt sie im Tab aus, den Sie ansehen, und braucht kein Token.
 
 - **Nur im sicheren Kontext.** Facet registriert die Werkzeuge nur über HTTPS oder auf `localhost`. Über einfaches HTTP werden sie nicht angeboten, und der Dialog **Assistent verbinden** weist darauf hin; die tokenbasierte Verbindung oben funktioniert weiter.
 - Registriert, wenn `viewer.mcp.enabled` true ist und Sie angemeldet sind, und beim Abmelden entfernt.
+- Das Objekt heißt `document.modelContext` (der veraltete Alias `navigator.modelContext` wird nicht bereitgestellt). Es ist ein Polyfill, der nur installiert wird, wenn der Browser kein natives Objekt hat, und er lässt sich nicht deinstallieren: Er kann schon vor der Anmeldung ohne Facet-Werkzeuge existieren und bleibt nach der Abmeldung mit leerer Werkzeugliste bestehen.
 - Die Werkzeuge tun dasselbe und sind durch dieselbe Kontostufe begrenzt wie in der obigen Tabelle.
 
 ## Änderungen vornehmen
@@ -134,6 +139,7 @@ Schreibwerkzeuge stehen neben den Lesewerkzeugen in derselben `/mcp`-Liste. Jede
 - **Mengensemantik.** Die Werkzeuge pro Foto lesen den aktuellen Zustand und schreiben nur eine Abweichung, ein wiederholter Aufruf ist also harmlos; jeder Pfad meldet `changed` oder `already`. Sie arbeiten einen Pfad nach dem anderen ab und halten beim ersten `library_busy`, `outcome_unknown` oder `forbidden_level` an und melden `affected`, die `results` je Pfad und `not_attempted`. Die Stapelwerkzeuge setzen denselben Zustand.
 - **Fotos auswählen.** Die Stapel-, Tag- und `cull_apply`-Werkzeuge nehmen ENTWEDER `paths` ODER `filters` (das Filterobjekt von `search_photos`) plus eine optionale Liste `exclude`. Ein `filters`-Ziel muss `expected_count` mitbringen, die Trefferzahl der Filter vor Anwendung von `exclude` (das `total` von `search_photos`). Facet zählt die Filter zuerst neu und schreibt nichts, wenn die Zahlen abweichen (`invalid_input`, mit `actual_count`).
 - **Wessen Zustand.** Bewertungen, Favoriten und Ablehnungen gehören dem Besitzer des Tokens.
+- **Übersprungene Dateien.** Meldet `cull_apply` oder `delete_photos` eine nicht leere Liste `skipped`, enthält das Ergebnis auch ein `skipped_reason`: Für diese Bibliothekspfade gibt es keine lesbare Datei auf dem Datenträger (fehlt, verschoben oder außerhalb der Scan-Verzeichnisse), und es wurde nichts damit getan.
 
 ### Destruktive Aktionen: Vorschau, dann Bestätigung
 
@@ -165,6 +171,8 @@ Die Dunkelkammer-Werkzeuge spiegeln die Seite `/culling`. Alle brauchen die Stuf
 | `confirm_culling_groups` | Bestätigt bis zu 20 Gruppen: behält ihre `keep_paths`, lehnt den Rest ihrer `paths` ab |
 
 - **Eine Gruppe wird durch das Paar `(type, group_id)` identifiziert**, nie durch `group_id` allein: Die IDs ähnlicher Gruppen werden beim Zusammenführen mit Serien versetzt.
+- **Der Standardwert `group_by: "all"` liefert nur Serien und ähnliche Gruppen.** Fordern Sie `scene`, `bracket`, `panorama` oder `hdr_panorama` ausdrücklich an.
+- **Eine Seite wird auf `max_bytes` gekürzt, indem die `photos`-Liste jeder Gruppe verkürzt wird, nie durch Weglassen von Gruppen.** `photo_count` bleibt die wahre Größe, `photos_truncated` markiert eine Gruppe mit gekürzter Liste, und `has_more` zeigt, ob eine weitere Seite folgt.
 - **Belichtungsreihen, Panoramen und HDR-Panoramen bleiben komplett erhalten.** In `confirm_culling_groups` muss `keep_paths` für diese Typen gleich `paths` sein (sonst `invalid_input`), und `auto_cull` teilt sie nie auf.
 - **Ein leeres `keep_paths` lehnt jedes Bild der Gruppe ab.** Der erste Aufruf antwortet dann `confirmation_required` mit einem `confirm`-Wert; zeigen Sie das dem Benutzer und wiederholen Sie den Aufruf mit diesem Wert. Hält ein Stapel bei `forbidden_level`, `library_busy` oder `rate_limited` an, werden die bereits erledigten Gruppen gemeldet.
 - **`auto_cull` zeigt standardmäßig eine Vorschau** und liefert die Aufteilung in Behalten und Ablehnen je Gruppe plus einen `confirm`-Wert (nur wenn etwas abgelehnt würde). Das Anwenden berechnet den Plan neu und weist ihn mit `confirmation_required` ab, wenn er sich seit der Vorschau geändert hat oder zu groß ist, um als eine Menge bestätigt zu werden (mit `album_id`, `date_from` und `date_to` oder `group_by` eingrenzen). Abgelehnte Bilder speisen den persönlichen Ranker wie jede manuelle Auswahl.
@@ -178,7 +186,7 @@ Jedes Ergebnis ist ein JSON-Umschlag: `{"ok": true, "data": ...}` oder `{"ok": f
 - **Ratenlimit:** `rate_per_min` Aufrufe pro Minute und Token für Lesezugriffe. Schreibwerkzeuge verbrauchen ein getrenntes Budget `write_rate_per_min` (Standard 30), damit Suchen Schreibzugriffe nicht aushungern und umgekehrt; der Probelauf von `cull_apply` und `delete_photos` zählt als Schreibzugriff, eine `auto_cull`-Vorschau als Lesezugriff. Darüber hinaus: `rate_limited` mit `retry_after_s`. Zehn fehlgeschlagene Bearer-Versuche pro Minute von einer Adresse beantwortet der Server mit 429.
 - **Fehlercodes:** `forbidden_level` (Endpunkt deaktiviert, ungültiges Token oder zu niedrige Stufe), `invalid_input`, `not_found`, `rate_limited`, `library_busy`, `upstream_error`, `outcome_unknown`, `confirmation_required`, `too_large`, `no_tab`, `tab_timeout`, `tab_outdated`.
 - **Die neueren Codes:** `confirmation_required` (ein destruktiver Aufruf hat keinen gültigen `confirm`-Wert für genau diese Menge: erneut einen Probelauf machen, dem Benutzer das Ergebnis zeigen, dann wiederholen), `outcome_unknown` (ein Schreibvorgang hat das Zeitlimit überschritten oder die Verbindung brach ab, er kann also erfolgt sein oder nicht: vor einer Wiederholung den Zustand neu lesen, nie blind wiederholen), `library_busy` (die Bibliothek ist mit einem anderen Job beschäftigt: gleich noch einmal versuchen).
-- **HTTP-Codes am Eingang:** 401 bei fehlendem oder unbekanntem Token, 403 bei Browser-Anfragen einer anderen Origin, 404 bei deaktiviertem Endpunkt.
+- **HTTP-Codes am Eingang:** 401 bei fehlendem oder unbekanntem Token, 403 bei Browser-Anfragen einer anderen Origin oder bei den eigenen Zugangsdaten eines Agenten auf `/api/mcp/tokens`, 404 bei deaktiviertem Endpunkt. Die Tab-Brücke antwortet stattdessen mit Close-Codes.
 
 ## Sicherheitshinweise
 

@@ -2592,7 +2592,7 @@ Das `target_dir` durchläuft dieselbe Allowlist wie die Kopier-/Verschiebe-Expor
 
 ## Agent-Endpunkt (MCP)
 
-Stellt die in [KI-Agenten (MCP)](AGENTS.md) beschriebenen Lesewerkzeuge unter `POST /mcp` bereit. Alles bleibt deaktiviert (404), bis `enabled` auf `true` steht.
+Stellt die in [KI-Agenten (MCP)](AGENTS.md) beschriebenen Werkzeuge unter `POST /mcp` bereit: Lesen, Steuern des geöffneten Tabs und, je nach Token-Stufe, Ändern von Bewertungen, Tags und Alben sowie Aussortieren und Löschen. Alles bleibt deaktiviert (404), bis `enabled` auf `true` steht.
 
 ```json
 {
@@ -2614,8 +2614,8 @@ Stellt die in [KI-Agenten (MCP)](AGENTS.md) beschriebenen Lesewerkzeuge unter `P
 
 | Schlüssel | Standard | Beschreibung |
 |-----|---------|-------------|
-| `enabled` | `false` | Hauptschalter für `/mcp` und `/api/mcp/*`. Deaktiviert antworten beide mit 404. |
-| `bridge` | `true` | Ob die Brücke zum Browser-Tab (`/api/mcp/bridge`) WebSockets annimmt und die `ui_*`-Werkzeuge einen Tab erreichen können. Bei `false` antwortet die Brücke mit 404 und `ui_*`-Werkzeuge melden einen entsprechenden Fehler. Erfordert einen einzigen Worker. |
+| `enabled` | `false` | Hauptschalter für `/mcp` und `/api/mcp/*`. Deaktiviert antworten sie mit 404 (die Brücke schließt mit Code 4404). |
+| `bridge` | `true` | Ob die Brücke zum Browser-Tab (`/api/mcp/bridge`) WebSockets annimmt und die `ui_*`-Werkzeuge einen Tab erreichen können. Bei `false` lehnt die Brücke die Verbindung ab (Close-Code 4404) und `ui_*`-Werkzeuge melden einen entsprechenden Fehler. Erfordert einen einzigen Worker. |
 | `max_rows` | `100` | Höchstzahl an Zeilen in einem Werkzeug-Ergebnis (1 bis 500). Überzählige Zeilen werden verworfen und `truncated: true` gesetzt. |
 | `max_bytes` | `60000` | Maximale serialisierte Größe eines Werkzeug-Ergebnisses in Bytes (4000 bis 500000). |
 | `call_timeout_s` | `30` | Zeitlimit für einen Werkzeugaufruf in Sekunden (1 bis 300). Begrenzt auch, wie lange ein `ui_*`-Aufruf auf den Browser-Tab wartet (`tab_timeout`). |
