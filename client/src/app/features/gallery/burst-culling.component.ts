@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, effect, untracked, viewChild, ElementRef, OnDestroy, WritableSignal, HostListener, TemplateRef, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, signal, computed, effect, untracked, viewChild, ElementRef, OnDestroy, HostListener, TemplateRef, ChangeDetectionStrategy } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { CdkTrapFocus } from '@angular/cdk/a11y';
@@ -11,7 +11,6 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatSliderModule } from '@angular/material/slider';
 import { ApiService } from '../../core/services/api.service';
-import type { ComparisonStats } from '../../core/api/types';
 import { AuthService } from '../../core/services/auth.service';
 import { AlbumService, Album } from '../../core/services/album.service';
 import { GalleryStore } from './gallery.store';
@@ -34,7 +33,12 @@ import { PanoramaSettingsService } from '../comparison/panorama-settings.service
 import { SequenceOverrideService, SequenceKind } from '../../core/services/sequence-override.service';
 import { UndoService } from '../../core/services/undo.service';
 import { SequenceKindLabelPipe, SUPPRESSED_OVERRIDE } from '../../shared/pipes/sequence-kind.pipe';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom } from 'rxjs';
+import {
+  CullingStore, CullProfile, AutoCullRunOutcome, RunGeneration, GroupBy, GROUP_BY_VALUES, KEEP_WHOLE_KINDS,
+  CULL_GROUP_BY_KEY, CULL_SORT_KEY, CULL_SORT_DIR_KEY, updateMapSignal,
+} from './culling.store';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
 import {
   IsKeptPipe, IsDecidedPipe, IsConfirmedPipe, IsPassingPipe, PassCountdownPipe,
@@ -50,79 +54,13 @@ import {
   FrameSize, GridMode, KeySubject,
 } from './burst-culling.pipes';
 
-interface CullingGroupsResponse {
-  groups: CullingGroup[];
-  total_groups: number;
-  page: number;
-  per_page: number;
-  total_pages: number;
-}
-
-/** Response of POST /api/culling/auto (dry-run preview and apply share the shape). */
-interface AutoCullResponse {
-  groups_processed: number;
-  kept: number;
-  rejected: number;
-  highlights_added: number;
-  dry_run: boolean;
-  preview: { group_id: number; type: string; keep_paths: string[]; reject_paths: string[]; best_path: string }[];
-  preview_truncated: boolean;
-}
-
-/** A genre culling preset (GET /api/culling/profiles) bundling the culling knobs. */
-interface CullProfile {
-  id: string;
-  label_key: string;
-  strictness: number | null;
-  eyes_closed_max: number | null;
-  poor_expression_min: number | null;
-  keep_min_per_group: number;
-  similarity_threshold: number | null;
-}
-interface CullProfilesResponse { profiles: CullProfile[]; default: string; }
-
-/** Request body of POST /culling/auto. The dry run's body is kept verbatim so
- *  the apply re-sends the very parameters the displayed counts came from. */
-interface AutoCullRequest {
-  group_by: GroupBy;
-  strictness: number;
-  dry_run: boolean;
-  highlights_album: string;
-  trim_brackets: boolean;
-  profile?: string;
-  album_id?: number;
-  date_from?: string;
-  date_to?: string;
-}
-
-/** How an auto-cull dry run ended, for the callers that reconcile their own
- *  state against the snapshot it publishes. `superseded` covers both a newer
- *  run and the destructive apply owning the dialog: in neither case is the
- *  outcome this caller's to act on, and reading it as its own failure reverts
- *  UI state to a snapshot that is no longer the one on screen. */
-type AutoCullRunOutcome = 'landed' | 'superseded' | 'failed';
-
-/** Response of GET /api/culling/suggest_profile: the preset the scope's own
- *  content argues for, and the confidence it named it with (surfaced in the
- *  Suggested badge's tooltip). The endpoint also returns `evidence` -- the
- *  per-genre counts `confidence` was computed from -- which nothing here
- *  reads, so it is left off this type rather than declared and ignored. */
-interface ProfileSuggestion {
-  profile: string | null;
-  confidence: number;
-}
-
 // Per-user culling toolbar preferences, persisted so the page reopens the way
 // the user left it. The URL query param (deep links / "Cull this scene") still
 // overrides the stored granularity.
-const CULL_GROUP_BY_KEY = 'facet_culling_group_by';
-const CULL_SORT_KEY = 'facet_culling_sort';
-const CULL_SORT_DIR_KEY = 'facet_culling_sort_direction';
 const CULL_CATEGORY_KEY = 'facet_culling_category';
 const CULL_FACE_EYES_KEY = 'facet_culling_face_eyes_min';
 const CULL_FACE_SMILE_KEY = 'facet_culling_face_smile_min';
 const CULL_FACE_SIZE_KEY = 'facet_culling_face_size';
-const CULL_PROFILE_KEY = 'facet_culling_profile';
 const CULL_LEGEND_KEY = 'facet_culling_legend';
 const CULL_DARKROOM_LOUPE_KEY = 'facet_culling_darkroom_loupe';
 const CULL_SWIPE_HINT_KEY = 'facet_culling_swipe_hint';
@@ -149,14 +87,6 @@ function readStoredFaceSize(): number {
     ? v
     : FACE_SIZE_DEFAULT_PX;
 }
-const GROUP_BY_VALUES = ['all', 'burst', 'similar', 'scene', 'bracket',
-                         'panorama', 'hdr_panorama'] as const;
-type GroupBy = typeof GROUP_BY_VALUES[number];
-// Sets whose frames were shot to be combined: kept whole by default, and
-// never a source of comparison pairs.
-const KEEP_WHOLE_KINDS: readonly string[] = ['bracket', 'panorama', 'hdr_panorama'];
-const SORT_VALUES = ['easiest', 'redundant', 'best', 'recent', 'needs_comparisons', 'chronological'];
-
 /** Thumbnail width the darkroom displays. Shared with the peaking pipeline so
  *  the edge map is computed from the very pixels on screen. */
 const DARKROOM_THUMB_SIZE = 1920;
@@ -170,22 +100,6 @@ const NO_PEAKING_OVERLAYS = new Map<string, string>();
  *  a data URL per frame it ever showed. */
 const PEAKING_CACHE_MAX = 8;
 
-function readStoredGroupBy(): GroupBy {
-  const v = localStorage.getItem(CULL_GROUP_BY_KEY);
-  return (GROUP_BY_VALUES as readonly string[]).includes(v ?? '') ? v as GroupBy : 'all';
-}
-
-function readStoredSort(): string {
-  const v = localStorage.getItem(CULL_SORT_KEY);
-  return v && SORT_VALUES.includes(v) ? v : 'easiest';
-}
-
-/** Stored sort direction. '' means "whatever the active mode naturally does". */
-function readStoredSortDirection(): '' | 'asc' | 'desc' {
-  const v = localStorage.getItem(CULL_SORT_DIR_KEY);
-  return v === 'asc' || v === 'desc' ? v : '';
-}
-
 /** Lightweight scene shape for the album→scene scope cascade (GET /scenes?summary=true). */
 interface SceneSummary {
   scene_id: number;
@@ -198,26 +112,6 @@ interface SceneSummary {
 interface ShortcutRow {
   keys: string[];
   labelKey: string;
-}
-
-/** Monotonic guard for the two passes here that can be superseded while they
- *  await — darkroom focus peaking and the auto-cull dry run. A pass takes a
- *  ticket with `next()` and drops its result unless `isCurrent(ticket)` still
- *  holds; `cancel()` invalidates whatever is in flight without starting one. */
-class RunGeneration {
-  private value = 0;
-
-  next(): number {
-    return ++this.value;
-  }
-
-  isCurrent(run: number): boolean {
-    return run === this.value;
-  }
-
-  cancel(): void {
-    this.value++;
-  }
 }
 
 @Component({
@@ -1414,6 +1308,7 @@ class RunGeneration {
   `,
   changeDetection: ChangeDetectionStrategy.Eager,
   host: { class: 'block h-full' },
+  providers: [CullingStore],
 })
 export class BurstCullingComponent implements OnDestroy {
   protected readonly I18N = i18nKeys();
@@ -1432,55 +1327,51 @@ export class BurstCullingComponent implements OnDestroy {
   protected readonly auth = inject(AuthService);
   protected readonly store = inject(GalleryStore);
   private readonly sceneDate = new SceneDatePipe();
+  /** Data state + API calls; provided per component, so it lives one darkroom visit. */
+  private readonly cull = inject(CullingStore);
 
   /** Granularity served by the feed: all (merged burst+similar) | burst | similar | scene.
    *  Restored from localStorage (default 'all'); a ?group_by= query param overrides it. */
-  protected readonly groupBy = signal<GroupBy>(readStoredGroupBy());
+  protected readonly groupBy = this.cull.groupBy;
   /** Min posterior below which a moment label is shown dimmed + "(uncertain)". */
   protected readonly momentConfidenceMin = computed(
     () => this.store.config()?.moment_confidence_min ?? 0,
   );
 
   // Optional scope from "Cull this scene" / album entry points (query params).
-  protected readonly scopeAlbum = signal<string | null>(null);
-  protected readonly scopeFrom = signal<string | null>(null);
-  protected readonly scopeTo = signal<string | null>(null);
-  protected readonly scopeScene = signal<string | null>(null);
+  protected readonly scopeAlbum = this.cull.scopeAlbum;
+  protected readonly scopeFrom = this.cull.scopeFrom;
+  protected readonly scopeTo = this.cull.scopeTo;
+  protected readonly scopeScene = this.cull.scopeScene;
   protected readonly scoped = computed(
     () => !!(this.scopeAlbum() || this.scopeFrom() || this.scopeTo()),
   );
   // Non-smart albums + lazily-loaded scenes powering the scope cascade menu.
-  protected readonly albums = signal<Album[]>([]);
+  protected readonly albums = this.cull.albums;
   protected readonly expandedAlbumId = signal<number | null>(null);
   protected readonly expandedScenes = signal<SceneSummary[]>([]);
   protected readonly loadingScenes = signal(false);
   // Album name for the current scope, resolved from the loaded album list
   // (works for both menu selection and a deep-linked ?album=ID).
-  protected readonly scopeAlbumName = computed(() =>
-    AlbumService.nameById(this.albums(), this.scopeAlbum()));
+  protected readonly scopeAlbumName = this.cull.scopeAlbumName;
   // Human label for the scope button / banner (null = whole library).
-  protected readonly scopeLabel = computed(() => {
-    const album = this.scopeAlbumName();
-    const scene = this.scopeScene();
-    if (album && scene) return `${album} · ${scene}`;
-    return album ?? scene ?? null;
-  });
+  protected readonly scopeLabel = this.cull.scopeLabel;
   // Personal-ranker status, surfaced as the "this cull trains My Taste" chip.
-  protected readonly rankerComparisons = signal<number | null>(null);
-  protected readonly rankerTrained = signal(false);
+  protected readonly rankerComparisons = this.cull.rankerComparisons;
+  protected readonly rankerTrained = this.cull.rankerTrained;
 
   // Photo-Mechanic-style hover loupe over the group tiles (Z toggles; zoom slider).
   private readonly loupe = createLoupeState();
   protected readonly loupeActive = this.loupe.loupeActive;
   protected readonly loupeZoom = this.loupe.loupeZoom;
-  protected readonly similarityThreshold = signal(85);
+  protected readonly similarityThreshold = this.cull.similarityThreshold;
   /** Auto-keep strictness (0-100): higher keeps fewer photos below the best. */
-  protected readonly strictness = signal(100);
+  protected readonly strictness = this.cull.strictness;
 
   /** Genre culling presets (GET /api/culling/profiles). */
-  protected readonly cullProfiles = signal<CullProfile[]>([]);
+  protected readonly cullProfiles = this.cull.cullProfiles;
   /** Active preset id ('' = custom / none). Persisted; re-applied on open. */
-  protected readonly selectedProfile = signal<string>(localStorage.getItem(CULL_PROFILE_KEY) ?? '');
+  protected readonly selectedProfile = this.cull.selectedProfile;
   /** Label of the active preset, or "Custom" when none matches the current knobs. */
   protected readonly selectedProfileLabel = computed(() => {
     const p = this.cullProfiles().find(x => x.id === this.selectedProfile());
@@ -1489,14 +1380,8 @@ export class BurstCullingComponent implements OnDestroy {
 
   /** The preset the current scope's own content argues for
    *  (GET /culling/suggest_profile), or null while none was inferred. */
-  protected readonly profileSuggestion = signal<ProfileSuggestion | null>(null);
-  /** Set the moment the user picks a preset or moves a knob — including a
-   *  choice restored from a previous session. A manual choice is never
-   *  overwritten by a suggestion for the rest of the session. */
-  private readonly profileChosen = signal(false);
-  /** The scope the cached suggestion answers for; a scope change refetches. */
-  private suggestionScopeKey: string | null = null;
-  private suggestionApplied = false;
+  protected readonly profileSuggestion = this.cull.profileSuggestion;
+  private readonly profileChosen = this.cull.profileChosen;
 
   /** True when the active preset is the suggested one and the user never chose
    *  it — the only case where the dialog claims a suggestion. */
@@ -1504,61 +1389,32 @@ export class BurstCullingComponent implements OnDestroy {
     const suggested = this.profileSuggestion()?.profile;
     return !!suggested && !this.profileChosen() && this.selectedProfile() === suggested;
   });
-  protected readonly excludeRejected = signal(true);
-  protected readonly groups = signal<CullingGroup[]>([]);
-  protected readonly totalGroups = signal(0);
-  protected readonly loading = signal(true);
-  protected readonly loadingMore = signal(false);
-  protected readonly confirming = signal(false);
-
-  /** Monotonic id bumped on every filter change; loadGroups/loadMore drop late responses whose generation no longer matches. */
-  private loadGenerationId = 0;
+  protected readonly excludeRejected = this.cull.excludeRejected;
+  protected readonly groups = this.cull.groups;
+  protected readonly totalGroups = this.cull.totalGroups;
+  protected readonly loading = this.cull.loading;
+  protected readonly loadingMore = this.cull.loadingMore;
+  protected readonly confirming = this.cull.confirming;
 
   /** group_id -> set of kept paths */
-  protected readonly selectionsMap = signal<Map<number, Set<string>>>(new Map());
+  protected readonly selectionsMap = this.cull.selectionsMap;
 
   /** Set of confirmed group keys (group_id + '_' + type) */
-  protected readonly confirmedGroups = signal<Set<string>>(new Set());
+  protected readonly confirmedGroups = this.cull.confirmedGroups;
 
   /** Seconds a skipped group stays cancellable before it is hidden. */
-  protected readonly passCountdownSeconds = 7;
+  protected readonly passCountdownSeconds = this.cull.passCountdownSeconds;
 
   /** Map of group key -> remaining countdown seconds for groups being passed */
-  protected readonly passingGroups = signal<Map<string, number>>(new Map());
+  protected readonly passingGroups = this.cull.passingGroups;
 
   /** Set of group keys hidden after pass timeout */
-  private readonly hiddenGroups = signal<Set<string>>(new Set());
+  private readonly hiddenGroups = this.cull.hiddenGroups;
 
   /** Group keys in the feed carrying a correction the detector has not applied yet. */
-  private readonly pendingCorrectionKeys = computed(
-    () => new Set(this.groups()
-      .filter(g => g.photos.some(p => p.sequence_override && p.sequence_override_pending))
-      .map(g => this.groupKey(g))),
-  );
-
-  /**
-   * Corrections dropped this session that the detector had already applied.
-   *
-   * Dropping a still-pending correction needs no re-run: the detector never
-   * touched `photos` for it. But dropping an APPLIED one (`sequence_override`
-   * set, not pending) leaves the forced set sitting in `photos` until the
-   * detector runs again -- and by then `pendingCorrectionKeys` sees nothing, so
-   * the re-run banner would never appear without this counter.
-   *
-   * A key is only ever removed here by a successful re-run (see
-   * `pollDetection`): the group may still be pending again in the meantime
-   * (re-marked) or no longer pending (undone), but in either case `photos`
-   * still holds the stale applied set until the detector runs, so the key
-   * must stay recorded regardless of what happens to the pending correction.
-   */
-  private readonly droppedApplied = signal<Set<string>>(new Set());
-
-  /** Groups needing a re-run: the union of still-pending corrections and applied
-   *  ones dropped this session. A group that is both pending and dropped counts
-   *  once, and keeps counting even after its pending correction is cleared or
-   *  re-marked away, because `droppedApplied` is never trimmed by that. */
-  protected readonly rerunNeeded = computed(
-    () => new Set([...this.pendingCorrectionKeys(), ...this.droppedApplied()]).size);
+  private readonly pendingCorrectionKeys = this.cull.pendingCorrectionKeys;
+  private readonly droppedApplied = this.cull.droppedApplied;
+  protected readonly rerunNeeded = this.cull.rerunNeeded;
 
   /**
    * True in a granularity whose sets are kept whole.
@@ -1577,14 +1433,10 @@ export class BurstCullingComponent implements OnDestroy {
   protected readonly detectFailed = signal(false);
   private detectPollTimer: ReturnType<typeof setInterval> | null = null;
 
-  /** Active timers for passing groups (for cleanup) */
-  private readonly passTimers = new Map<string, { timeoutId: ReturnType<typeof setTimeout>; intervalId: ReturnType<typeof setInterval>; onElapsed: () => void; commit: boolean }>();
+  protected readonly currentPage = this.cull.currentPage;
+  protected readonly totalPages = this.cull.totalPages;
 
-  protected readonly currentPage = signal(1);
-  protected readonly totalPages = signal(1);
-  private readonly similarSeed = Math.floor(Math.random() * 1_000_000);
-
-  protected readonly hasMore = computed(() => this.currentPage() < this.totalPages());
+  protected readonly hasMore = this.cull.hasMore;
 
   /** Lightbox state — group being viewed, and current photo index inside it. */
   protected readonly lightboxGroupId = signal<string | null>(null);
@@ -1848,7 +1700,7 @@ export class BurstCullingComponent implements OnDestroy {
   private async ensureFrameSize(path: string): Promise<void> {
     if (this.frameSizes().has(path)) return;
     const size = await this.measureFrame(this.frameSource(path, false));
-    if (size) this.updateMapSignal(this.frameSizes, path, size);
+    if (size) updateMapSignal(this.frameSizes, path, size);
   }
 
   /** Seam over the image load, for the same reason as renderPeaking. */
@@ -1966,11 +1818,11 @@ export class BurstCullingComponent implements OnDestroy {
   protected readonly selectedGroupIndex = signal(0);
 
   /** Server-side ordering of culling groups; reloads from page 1 on change. Persisted. */
-  protected readonly sortMode = signal(readStoredSort());
+  protected readonly sortMode = this.cull.sortMode;
   protected readonly sortModes = ['easiest', 'redundant', 'best', 'recent', 'needs_comparisons', 'chronological'] as const;
 
   /** Explicit sort direction; '' leaves each mode its natural one. Persisted. */
-  protected readonly sortDirection = signal<'' | 'asc' | 'desc'>(readStoredSortDirection());
+  protected readonly sortDirection = this.cull.sortDirection;
 
   /** Whether the active mode currently runs oldest/smallest-first. */
   protected readonly sortAscending = computed(() => {
@@ -2001,52 +1853,21 @@ export class BurstCullingComponent implements OnDestroy {
   });
 
   /** Per-category comparison counts + threshold, for the weight-tuning chip. */
-  protected readonly comparisonStats = signal<ComparisonStats | null>(null);
+  protected readonly comparisonStats = this.cull.comparisonStats;
 
   /** Dry-run result of POST /culling/auto shown in the confirm dialog (null = closed). */
-  protected readonly autoCullPreview = signal<AutoCullResponse | null>(null);
-  /** The dry-run body the preview on screen was computed from, set with it and
-   *  never re-derived: Apply re-sends this verbatim (dry_run flipped) so the
-   *  counts the user agreed to and the knobs that run cannot diverge. A
-   *  suggestion applying a preset mid-flight used to move strictness and the
-   *  profile between the request and its answer, and the apply then read the
-   *  moved signals. */
-  private readonly autoCullRequest = signal<AutoCullRequest | null>(null);
-  /** Bumped per dry run, so a superseded one can never publish over a newer
-   *  preview — the pair above must always describe the same run. */
-  private readonly autoCullRun = new RunGeneration();
-  /** True between a dry run's request and its answer. A suggestion landing in
-   *  that window has to re-run too: the dialog is not open yet, so waiting on
-   *  `autoCullPreview` would have opened it on counts from the knobs the
-   *  suggestion just replaced. */
-  private dryRunInFlight = false;
-  /** True while any auto-cull request is in flight (dry run or apply): it drives
-   *  the dialog's spinner and disables the knobs that would re-run it. */
-  protected readonly autoCullLoading = signal(false);
-  /** True while the *destructive* apply is in flight — the one request that
-   *  cannot be abandoned. Every dismissal path (Cancel, backdrop, Escape) is
-   *  ignored for its duration and Apply refuses to fire twice, because
-   *  dismissing mid-flight re-armed Apply over a snapshot already being applied,
-   *  and the apply's own close then bumped the dry-run generation over the run
-   *  the reopened dialog was waiting on. */
-  protected readonly autoCullApplying = signal(false);
-  /** What the dialog actually renders busy. Not `autoCullLoading` alone: a dry
-   *  run that a profile suggestion started behind the apply clears that flag
-   *  when it lands, which would drop the spinner and re-arm the knobs while the
-   *  destructive request is still open. */
-  protected readonly autoCullBusy = computed(() => this.autoCullLoading() || this.autoCullApplying());
+  protected readonly autoCullPreview = this.cull.autoCullPreview;
+  private readonly autoCullRequest = this.cull.autoCullRequest;
+  /** True while any auto-cull request is in flight (dry run or apply). */
+  protected readonly autoCullLoading = this.cull.autoCullLoading;
+  /** True while the destructive apply is in flight (see CullingStore.confirmAutoCull). */
+  protected readonly autoCullApplying = this.cull.autoCullApplying;
+  protected readonly autoCullBusy = this.cull.autoCullBusy;
   /** Whether the apply also fills the Highlights album (dialog checkbox, opt-in). */
-  protected readonly autoCullHighlights = signal(false);
-  /** Whether auto-cull also proposes trimming redundant, non-clipping bracket
-   *  exposures (dialog checkbox); toggling re-runs the dry run since it
-   *  changes the preview's group/keep/reject counts. */
-  protected readonly trimBrackets = signal(false);
-  /** Translated preset name whose suggestion re-ran an already-open dialog's
-   *  preview — the counts changed under the user, so the dialog says why. */
-  protected readonly autoCullSuggestionNotice = signal<string | null>(null);
-  /** True when trimming brackets returned the very same counts: without this the
-   *  toggle looks broken, since a re-run that changes nothing is silent. */
-  protected readonly trimBracketsUnchanged = signal(false);
+  protected readonly autoCullHighlights = this.cull.autoCullHighlights;
+  protected readonly trimBrackets = this.cull.trimBrackets;
+  protected readonly autoCullSuggestionNotice = this.cull.autoCullSuggestionNotice;
+  protected readonly trimBracketsUnchanged = this.cull.trimBracketsUnchanged;
 
   protected readonly darkroomShortcuts: ShortcutRow[] = [
     { keys: ['←', '→'], labelKey: 'culling.shortcuts.navigate' },
@@ -2074,6 +1895,10 @@ export class BurstCullingComponent implements OnDestroy {
 
   constructor() {
     this.pageHelp.setDescription(null);
+    this.cull.notice$.pipe(takeUntilDestroyed()).subscribe(notice => {
+      const text = notice.params ? this.i18n.t(notice.key, notice.params) : this.i18n.t(notice.key);
+      this.snackBar.open(text, '', { duration: notice.duration, horizontalPosition: 'right', verticalPosition: 'bottom' });
+    });
     this.coarsePointer.setup();
     const qp = this.route.snapshot.queryParamMap;
     this.scopeAlbum.set(qp.get('album'));
@@ -2087,8 +1912,8 @@ export class BurstCullingComponent implements OnDestroy {
     void this.loadGroups();
     void this.loadAlbums();
     void this.loadCullProfiles();
-    void this.refreshComparisonStats();
-    void this.refreshRankerStatus();
+    void this.cull.refreshComparisonStats();
+    void this.cull.refreshRankerStatus();
     // Keep the keyboard selection in bounds as groups load / get hidden, preserving
     // the identity of the highlighted group when an earlier one drops out of the list.
     let previousVisibleKeys: string[] = [];
@@ -2208,25 +2033,10 @@ export class BurstCullingComponent implements OnDestroy {
     this.activeStyle.set(style);
   }
 
-  /** Update a signal holding a Map by cloning and setting a key. */
-  private updateMapSignal<K, V>(sig: WritableSignal<Map<K, V>>, key: K, value: V): void {
-    sig.update(m => { const next = new Map(m); next.set(key, value); return next; });
-  }
-
-  /** Update a signal holding a Map by cloning and deleting a key. */
-  private deleteMapKey<K, V>(sig: WritableSignal<Map<K, V>>, key: K): void {
-    sig.update(m => { if (!m.has(key)) return m; const next = new Map(m); next.delete(key); return next; });
-  }
-
-  /** Update a signal holding a Set by cloning and adding a value. */
-  private addToSetSignal<V>(sig: WritableSignal<Set<V>>, value: V): void {
-    sig.update(s => { const next = new Set(s); next.add(value); return next; });
-  }
-
   ngOnDestroy(): void {
     this.pageHelp.setDescription(null);
     this.coarsePointer.cleanup();
-    this.clearAllPassTimers();
+    this.cull.clearAllPassTimers();
     this.stopDetectionPolling();
     if (document.fullscreenElement) {
       void document.exitFullscreen().catch(() => {});
@@ -2236,27 +2046,11 @@ export class BurstCullingComponent implements OnDestroy {
   }
 
   protected groupKey(group: CullingGroup): string {
-    return `${group.group_id}_${group.type}`;
+    return this.cull.groupKey(group);
   }
 
   private buildParams(page: number): Record<string, string | number | boolean> {
-    const params: Record<string, string | number | boolean> = {
-      page,
-      per_page: 20,
-      similarity_threshold: (this.similarityThreshold() / 100).toString(),
-      seed: this.similarSeed,
-      exclude_rejected: this.excludeRejected(),
-      sort: this.sortMode(),
-      direction: this.sortDirection(),
-      group_by: this.groupBy(),
-    };
-    const album = this.scopeAlbum();
-    const from = this.scopeFrom();
-    const to = this.scopeTo();
-    if (album) params['album_id'] = album;
-    if (from) params['date_from'] = from;
-    if (to) params['date_to'] = to;
-    return params;
+    return this.cull.buildParams(page);
   }
 
   /** Clear the scene/album scope and return to the full unreviewed feed. */
@@ -2297,7 +2091,7 @@ export class BurstCullingComponent implements OnDestroy {
   }
 
   private applyScope(album: string | null, from: string | null, to: string | null, scene: string | null): void {
-    this.resetProfileSuggestion();
+    this.cull.resetProfileSuggestion();
     this.scopeAlbum.set(album);
     this.scopeFrom.set(from);
     this.scopeTo.set(to);
@@ -2325,222 +2119,53 @@ export class BurstCullingComponent implements OnDestroy {
     this.applyScope(id.toString(), scene.start, scene.end, this.sceneDate.transform(scene.start));
   }
 
-  /** Fetch personal-ranker status for the "trains My Taste" chip (best-effort). */
-  private async refreshRankerStatus(): Promise<void> {
-    try {
-      const s = await firstValueFrom(
-        this.api.get<{ trained: boolean; comparison_count: number }>('/ranker/status'),
-      );
-      this.rankerTrained.set(!!s.trained);
-      this.rankerComparisons.set(s.comparison_count ?? null);
-    } catch {
-      // The chip is a nice-to-have; ignore status failures.
-    }
-  }
-
-  private autoSelectBest(groups: CullingGroup[], base?: Map<number, Set<string>>): Map<number, Set<string>> {
-    const map = base ? new Map(base) : new Map<number, Set<string>>();
-    for (const group of groups) {
-      if (!map.has(group.group_id)) {
-        const kept = this.computeAutoKeep(group);
-        if (kept.size > 0) {
-          map.set(group.group_id, kept);
-        }
-      }
-    }
-    return map;
-  }
-
-  /**
-   * Derive the auto-keep set for a group from the current strictness (0-100).
-   * The best photo is always kept; additional photos whose burst_score falls
-   * within a strictness-derived margin of the best are also kept. At strictness
-   * 100 only the single best survives; at 0 everything within ~5 points stays.
-   *
-   * A bracket or a panorama is the exception and starts fully kept whatever the
-   * strictness: their frames were shot to be merged, not to compete, so
-   * proposing to drop the flanking exposures or half a sweep would be proposing
-   * to destroy the set. Trimming a bracket stays available deliberately,
-   * through auto-cull's `trim_brackets`, which first checks the base exposure
-   * clips nothing.
-   */
-  private computeAutoKeep(group: CullingGroup): Set<string> {
-    if (group.sequence_kind && KEEP_WHOLE_KINDS.includes(group.sequence_kind)) {
-      return new Set<string>(group.photos.map(p => p.path));
-    }
-    const best = group.best_path || group.photos[0]?.path;
-    if (!best) return new Set<string>();
-    const kept = new Set<string>([best]);
-
-    const bestScore = group.photos.find(p => p.path === best)?.burst_score
-      ?? Math.max(0, ...group.photos.map(p => p.burst_score));
-    // strictness 100 -> margin 0 (only the best); strictness 0 -> margin 5.
-    const margin = (100 - this.strictness()) / 100 * 5;
-    if (margin > 0) {
-      for (const photo of group.photos) {
-        if (bestScore - photo.burst_score <= margin) {
-          kept.add(photo.path);
-        }
-      }
-    }
-    return kept;
-  }
-
   protected onThresholdChange(value: number): void {
     this.similarityThreshold.set(value);
     this.profileChosen.set(true);
-    this.clearProfileSelection();
+    this.cull.clearProfileSelection();
     this.resetForReload();
-  }
-
-  /** Moving a knob by hand drops the preset label — the mix is now custom. */
-  private clearProfileSelection(): void {
-    if (this.selectedProfile()) {
-      this.selectedProfile.set('');
-      localStorage.removeItem(CULL_PROFILE_KEY);
-    }
   }
 
   protected onStrictnessChange(value: number): void {
     this.strictness.set(value);
     this.profileChosen.set(true);
-    this.clearProfileSelection();
-    this.reselectFromStrictness();
+    this.cull.clearProfileSelection();
+    this.cull.reselectFromStrictness();
   }
 
-  /**
-   * Re-derive the auto-keep selection for every loaded group from the current
-   * strictness. Purely client-side over the burst_score values already
-   * returned — no backend round-trip. Confirmed groups are left untouched.
-   */
-  private reselectFromStrictness(): void {
-    const confirmed = this.confirmedGroups();
-    const map = new Map<number, Set<string>>();
-    for (const group of this.groups()) {
-      if (confirmed.has(this.groupKey(group))) {
-        const existing = this.selectionsMap().get(group.group_id);
-        if (existing) map.set(group.group_id, existing);
-        continue;
-      }
-      const kept = this.computeAutoKeep(group);
-      if (kept.size > 0) map.set(group.group_id, kept);
-    }
-    this.selectionsMap.set(map);
-  }
-
-  // --- Genre culling profiles (preset selector + moment auto-suggest) ---
+  // --- Genre culling profiles and auto-cull: the state and requests live in CullingStore ---
 
   /** Load the genre culling presets; re-apply the persisted one on open. */
-  private async loadCullProfiles(): Promise<void> {
-    try {
-      const data = await firstValueFrom(this.api.get<CullProfilesResponse>('/culling/profiles'));
-      this.cullProfiles.set(data.profiles ?? []);
-      const stored = this.cullProfiles().find(p => p.id === this.selectedProfile());
-      if (stored) {
-        // A restored preset is a choice the user made, just in an earlier
-        // session; a suggestion must not silently replace it.
-        this.profileChosen.set(true);
-        this.applyProfile(stored, false);
-      } else {
-        this.clearProfileSelection();
-      }
-    } catch {
-      // Preset selector stays hidden when the list can't load.
-    }
+  private loadCullProfiles(): Promise<void> {
+    return this.cull.loadCullProfiles();
   }
 
-  /**
-   * Apply a preset: set strictness first (so a reload auto-selects with it) and
-   * the similarity threshold, remember the choice, then re-derive the auto-keep
-   * selection in place — or reload only when the threshold changed the grouping.
-   */
   protected applyProfile(p: CullProfile, persist = true): void {
-    this.selectedProfile.set(p.id);
-    if (persist) {
-      localStorage.setItem(CULL_PROFILE_KEY, p.id);
-      this.profileChosen.set(true);
-    }
-    if (p.strictness != null) this.strictness.set(p.strictness);
-    if (p.similarity_threshold != null && p.similarity_threshold !== this.similarityThreshold()) {
-      this.similarityThreshold.set(p.similarity_threshold);
+    this.cull.applyProfile(p, persist);
+  }
+
+  private applySuggestedProfile(): Promise<void> {
+    return this.cull.applySuggestedProfile();
+  }
+
+  protected openAutoCull(): Promise<AutoCullRunOutcome> {
+    return this.cull.openAutoCull();
+  }
+
+  protected cancelAutoCull(): void {
+    this.cull.cancelAutoCull();
+  }
+
+  protected onTrimBracketsChange(value: boolean): Promise<void> {
+    return this.cull.onTrimBracketsChange(value);
+  }
+
+  /** Apply the previewed auto-cull, then reset the keyboard selection and reload the feed. */
+  protected confirmAutoCull(): Promise<void> {
+    return this.cull.confirmAutoCull(() => {
+      this.selectedGroupIndex.set(0);
       this.resetForReload();
-    } else if (p.strictness != null) {
-      this.reselectFromStrictness();
-    }
-  }
-
-  /** Identity of the current scope, so a scope change refetches its suggestion. */
-  private scopeKey(): string {
-    return [this.scopeAlbum() ?? '', this.scopeFrom() ?? '', this.scopeTo() ?? ''].join('|');
-  }
-
-  /** Drop a suggestion that answered for another scope. */
-  private resetProfileSuggestion(): void {
-    this.suggestionScopeKey = null;
-    this.suggestionApplied = false;
-    this.profileSuggestion.set(null);
-  }
-
-  /**
-   * Preselect the preset the scope's content argues for, at most once per scope.
-   *
-   * Fetched alongside the dry run rather than before it, so the dialog opens at
-   * the same speed whether or not a suggestion arrives; one that lands while the
-   * dialog is open — or while its dry run is still in flight — re-runs the
-   * preview under the suggested knobs rather than leaving stale counts on
-   * screen. An explicit choice — a preset click, a knob move, or one restored
-   * from a previous session — is never overwritten.
-   *
-   * Refused outright once the destructive apply is in flight, and refused again
-   * after the fetch, since that is the whole window this can resolve in. The
-   * apply owns the knobs the same way it owns the snapshot: refusing only at the
-   * dry run's door came after applyProfile() had already moved strictness and lit
-   * the preset chip, so the user watched them jump under a request neither the
-   * counts on screen nor the apply itself were computed from. Nothing is queued
-   * for afterwards — the dialog a late suggestion would repaint is gone by then.
-   */
-  private async applySuggestedProfile(): Promise<void> {
-    if (this.profileChosen() || this.suggestionApplied || this.autoCullApplying()) return;
-    const key = this.scopeKey();
-    const suggestion = this.suggestionScopeKey === key
-      ? this.profileSuggestion()
-      : await this.fetchProfileSuggestion(key);
-    const suggested = suggestion?.profile;
-    if (!suggested || this.profileChosen() || this.autoCullApplying()) return;
-    const profile = this.cullProfiles().find(p => p.id === suggested);
-    if (!profile || profile.id === this.selectedProfile()) return;
-    this.suggestionApplied = true;
-    this.applyProfile(profile, false);
-    if (this.autoCullPreview() || this.dryRunInFlight) {
-      // Named only once the re-run published: a refused one (the apply owns the
-      // dialog) leaves the counts exactly as they were, and the notice claims
-      // they were recomputed under the preset it names.
-      if (await this.openAutoCull() === 'landed') {
-        this.autoCullSuggestionNotice.set(this.i18n.t(profile.label_key));
-      }
-    }
-  }
-
-  /** Ask the backend which preset this scope's stored content looks like. */
-  private async fetchProfileSuggestion(key: string): Promise<ProfileSuggestion | null> {
-    const params: Record<string, string | number> = {};
-    const album = this.scopeAlbum();
-    if (album) params['album_id'] = Number(album);
-    const from = this.scopeFrom();
-    if (from) params['date_from'] = from;
-    const to = this.scopeTo();
-    if (to) params['date_to'] = to;
-    try {
-      const data = await firstValueFrom(
-        this.api.get<ProfileSuggestion>('/culling/suggest_profile', params),
-      );
-      this.suggestionScopeKey = key;
-      this.profileSuggestion.set(data);
-      return data;
-    } catch {
-      // No suggestion: the dialog keeps whatever preset is already active.
-      return null;
-    }
+    });
   }
 
   protected onExcludeRejectedChange(value: boolean): void {
@@ -2582,56 +2207,17 @@ export class BurstCullingComponent implements OnDestroy {
   }
 
   private resetForReload(): void {
-    this.loadGenerationId++;
-    this.currentPage.set(1);
-    this.groups.set([]);
-    this.confirmedGroups.set(new Set());
-    this.selectionsMap.set(new Map());
-    this.clearAllPassTimers();
+    this.cull.resetFeed();
+    this.cull.clearAllPassTimers();
     void this.loadGroups();
   }
 
-  protected async loadGroups(): Promise<void> {
-    const gen = this.loadGenerationId;
-    this.loading.set(true);
-    try {
-      const data = await firstValueFrom(
-        this.api.get<CullingGroupsResponse>('/culling-groups', this.buildParams(1)),
-      );
-      if (gen !== this.loadGenerationId) return;
-      this.groups.set(data.groups);
-      this.totalGroups.set(data.total_groups);
-      this.totalPages.set(data.total_pages);
-      this.currentPage.set(1);
-      this.selectionsMap.set(this.autoSelectBest(data.groups));
-    } catch {
-      if (gen !== this.loadGenerationId) return;
-      this.snackBar.open(this.i18n.t(I18N.culling.error_loading), '', { duration: 2000, horizontalPosition: 'right', verticalPosition: 'bottom' });
-    } finally {
-      if (gen === this.loadGenerationId) this.loading.set(false);
-    }
+  protected loadGroups(): Promise<void> {
+    return this.cull.loadGroups();
   }
 
-  protected async loadMore(): Promise<void> {
-    if (!this.hasMore()) return;
-    const gen = this.loadGenerationId;
-    this.loadingMore.set(true);
-    try {
-      const nextPage = this.currentPage() + 1;
-      const data = await firstValueFrom(
-        this.api.get<CullingGroupsResponse>('/culling-groups', this.buildParams(nextPage)),
-      );
-      if (gen !== this.loadGenerationId) return;
-      this.groups.update(existing => [...existing, ...data.groups]);
-      this.totalPages.set(data.total_pages);
-      this.currentPage.set(nextPage);
-      this.selectionsMap.set(this.autoSelectBest(data.groups, this.selectionsMap()));
-    } catch {
-      if (gen !== this.loadGenerationId) return;
-      this.snackBar.open(this.i18n.t(I18N.culling.error_loading), '', { duration: 2000, horizontalPosition: 'right', verticalPosition: 'bottom' });
-    } finally {
-      if (gen === this.loadGenerationId) this.loadingMore.set(false);
-    }
+  protected loadMore(): Promise<void> {
+    return this.cull.loadMore();
   }
 
   protected onScrollReached(): void {
@@ -2920,11 +2506,7 @@ export class BurstCullingComponent implements OnDestroy {
    *  the per-pane buttons a compare grid needs (where "the current photo" is not
    *  a question the keyboard can answer for the pane the user is looking at). */
   protected setPhotoKept(group: CullingGroup, path: string, keep: boolean): void {
-    const map = new Map(this.selectionsMap());
-    const kept = new Set(map.get(group.group_id) ?? []);
-    if (keep) kept.add(path); else kept.delete(path);
-    map.set(group.group_id, kept);
-    this.selectionsMap.set(map);
+    this.cull.setPhotoKept(group, path, keep);
   }
 
   private setCurrentLightboxPhotoKept(group: CullingGroup, keep: boolean): void {
@@ -2953,7 +2535,7 @@ export class BurstCullingComponent implements OnDestroy {
       labelKey: keep ? I18N.culling.swipe.kept : I18N.culling.swipe.rejected,
       labelParams: { filename: photo.filename },
       undo: () => {
-        this.updateMapSignal(this.selectionsMap, group.group_id, previousKept);
+        updateMapSignal(this.selectionsMap, group.group_id, previousKept);
         this.lightboxIndex.set(previousIndex);
         this.zoom.set(FIT_ZOOM);
         return Promise.resolve();
@@ -3053,260 +2635,16 @@ export class BurstCullingComponent implements OnDestroy {
     }
   }
 
-  // --- Auto-cull (one-button cull under a keeper budget) ---
-
-  /** Request body for POST /culling/auto, reusing the page's scope + strictness. */
-  private autoCullBody(dryRun: boolean, highlightsAlbum: string): AutoCullRequest {
-    const body: AutoCullRequest = {
-      group_by: this.groupBy(),
-      strictness: this.strictness(),
-      dry_run: dryRun,
-      highlights_album: highlightsAlbum,
-      trim_brackets: this.trimBrackets(),
-    };
-    const profile = this.selectedProfile();
-    if (profile) body.profile = profile;
-    const album = this.scopeAlbum();
-    if (album) body.album_id = Number(album);
-    const from = this.scopeFrom();
-    if (from) body.date_from = from;
-    const to = this.scopeTo();
-    if (to) body.date_to = to;
-    return body;
-  }
-
-  /** Deterministic Highlights album name for the current scope and day. */
-  private highlightsAlbumName(): string {
-    const scope = this.scopeLabel() ?? this.i18n.t(I18N.culling.scope_whole_library);
-    const day = new Date().toISOString().slice(0, 10);
-    return `${this.i18n.t(I18N.culling.auto_cull.highlights_name)} — ${scope} ${day}`;
-  }
-
-  /** True while this dry run is still the one the dialog answers to: no newer
-   *  run took over, and the destructive apply does not own the snapshot. */
-  private ownsAutoCullDialog(run: number): boolean {
-    return this.autoCullRun.isCurrent(run) && !this.autoCullApplying();
-  }
-
-  /**
-   * Put the trim-brackets checkbox back to what the snapshot Apply sends carries.
-   *
-   * Called from the failure of whichever run owns the dialog, because that run is
-   * the one the box has to agree with — not necessarily the one the user clicked.
-   * A failed run never moved the snapshot, so a box left on the value that run
-   * asked for promises a trim the apply would not perform.
-   */
-  private reconcileTrimBrackets(): void {
-    const applied = this.autoCullRequest();
-    if (applied) this.trimBrackets.set(applied.trim_brackets);
-  }
-
-  /**
-   * Dry-run the auto-cull for the current scope and open the confirm dialog.
-   *
-   * Refused outright while the apply is in flight, and its answer dropped if an
-   * apply started under it: the apply sends the snapshot below verbatim, so a dry
-   * run repainting it mid-flight would leave the dialog describing a request the
-   * user never agreed to. The suggestion's re-run is fire-and-forget, so it can
-   * arrive at any point — including over the destructive request.
-   *
-   * The outcome is for the callers that mirror the snapshot in their own state:
-   * a bail-out is not this caller's run failing, and reconciling on it reverts to
-   * a snapshot the newer run is about to replace.
-   */
-  protected async openAutoCull(): Promise<AutoCullRunOutcome> {
-    if (this.autoCullApplying()) return 'superseded';
-    // Only a fresh open clears the notices: the re-runs that raise them come back
-    // through here, and clearing unconditionally would erase them on the way in —
-    // including the re-run of a dry run whose preview has not landed yet.
-    if (!this.autoCullPreview() && !this.dryRunInFlight) this.clearAutoCullNotices();
-    const run = this.autoCullRun.next();
-    this.dryRunInFlight = true;
-    void this.applySuggestedProfile();
-    const body = this.autoCullBody(true, this.highlightsAlbumName());
-    this.autoCullLoading.set(true);
-    try {
-      const preview = await firstValueFrom(this.api.post<AutoCullResponse>('/culling/auto', body));
-      if (!this.ownsAutoCullDialog(run)) return 'superseded';
-      this.autoCullPreview.set(preview);
-      this.autoCullRequest.set(body);
-      return 'landed';
-    } catch {
-      if (!this.ownsAutoCullDialog(run)) return 'superseded';
-      this.reconcileTrimBrackets();
-      this.snackBar.open(this.i18n.t(I18N.culling.auto_cull.error), '', { duration: 2000, horizontalPosition: 'right', verticalPosition: 'bottom' });
-      return 'failed';
-    } finally {
-      if (this.autoCullRun.isCurrent(run)) {
-        this.dryRunInFlight = false;
-        this.autoCullLoading.set(false);
-      }
-    }
-  }
-
-  /** Every dismissal lands here — the Cancel button, the backdrop and Escape.
-   *  It is a no-op while the apply is in flight: the destructive request cannot
-   *  be called off, so the dialog stays up with its spinner rather than pretend
-   *  it was. */
-  protected cancelAutoCull(): void {
-    if (this.autoCullApplying()) return;
-    this.closeAutoCull();
-    this.clearAutoCullNotices();
-  }
-
-  /** Drop the dialog and the run behind it, so a dry run still in flight cannot
-   *  reopen it with counts nobody asked for. Safe from the apply's own success
-   *  path for the same reason the guard above exists: no dismissal can have
-   *  reopened the dialog mid-apply, so the bump can only cancel a dry run whose
-   *  preview this apply just made obsolete. */
-  private closeAutoCull(): void {
-    this.autoCullRun.cancel();
-    this.dryRunInFlight = false;
-    this.autoCullPreview.set(null);
-    this.autoCullRequest.set(null);
-    this.autoCullLoading.set(false);
-  }
-
-  private clearAutoCullNotices(): void {
-    this.autoCullSuggestionNotice.set(null);
-    this.trimBracketsUnchanged.set(false);
-  }
-
-  /** Trim-brackets changes the group set the dry run splits, so the preview
-   *  counts must be re-fetched through the same path openAutoCull() uses.
-   *
-   *  A scope with no redundant exposures answers with the very same counts, which
-   *  is indistinguishable from a dead toggle — so that case is stated. The
-   *  identity check on the preview object keeps a failed re-run (which leaves the
-   *  old preview in place) from being read as "nothing to trim".
-   *
-   *  Reverting the checkbox over a failed re-run is not this handler's to do: the
-   *  run that fails is not always the one this call started. A superseded re-run
-   *  reads from here exactly like its own failure, and the snapshot it would be
-   *  reconciled against is the stale one the newer run has not replaced yet — so
-   *  the box would be reverted to a value that run is about to contradict, and
-   *  the newer run failing in turn would leave nobody to put it back. The run
-   *  that owns the dialog reconciles the box, in openAutoCull(); this handler
-   *  only reads the outcome. */
-  protected async onTrimBracketsChange(value: boolean): Promise<void> {
-    if (this.autoCullApplying()) return;
-    const before = this.autoCullPreview();
-    this.trimBrackets.set(value);
-    this.trimBracketsUnchanged.set(false);
-    if (await this.openAutoCull() !== 'landed') return;
-    const after = this.autoCullPreview();
-    this.trimBracketsUnchanged.set(
-      value && !!before && !!after && after !== before
-      && after.groups_processed === before.groups_processed
-      && after.kept === before.kept
-      && after.rejected === before.rejected,
-    );
-  }
-
-  /**
-   * Apply the previewed auto-cull (dry_run=false), then refresh the feed.
-   *
-   * The body is the dry run's own, not one rebuilt from the live signals: a
-   * profile suggestion can land between the preview request and its answer, and
-   * rebuilding here would then apply knobs the counts on screen never described.
-   * Only the Highlights album is the dialog's to decide, being a checkbox the
-   * user ticks after the preview.
-   *
-   * The `autoCullApplying` gate makes the click idempotent: a second one over
-   * the same snapshot is refused rather than sent, since the two applies would
-   * reject different sets — the first has already moved the state the second
-   * would be computed from.
-   */
-  protected async confirmAutoCull(): Promise<void> {
-    const previewed = this.autoCullRequest();
-    if (!previewed || this.autoCullApplying()) return;
-    this.autoCullApplying.set(true);
-    this.autoCullLoading.set(true);
-    try {
-      const body: AutoCullRequest = {
-        ...previewed,
-        dry_run: false,
-        highlights_album: this.autoCullHighlights() ? previewed.highlights_album : '',
-      };
-      const result = await firstValueFrom(this.api.post<AutoCullResponse>('/culling/auto', body));
-      this.closeAutoCull();
-      this.clearAutoCullNotices();
-      this.snackBar.open(
-        this.i18n.t(I18N.culling.auto_cull.applied, { kept: result.kept, rejected: result.rejected }),
-        '', { duration: 3000, horizontalPosition: 'right', verticalPosition: 'bottom' },
-      );
-      this.selectedGroupIndex.set(0);
-      this.resetForReload();
-      void this.refreshComparisonStats();
-      void this.refreshRankerStatus();
-    } catch {
-      this.snackBar.open(this.i18n.t(I18N.culling.auto_cull.error), '', { duration: 2000, horizontalPosition: 'right', verticalPosition: 'bottom' });
-    } finally {
-      this.autoCullApplying.set(false);
-      this.autoCullLoading.set(false);
-    }
-  }
-
   protected toggleSelection(path: string, group: CullingGroup): void {
-    const map = new Map(this.selectionsMap());
-    const kept = new Set(map.get(group.group_id) ?? []);
-
-    if (kept.has(path)) {
-      kept.delete(path);
-    } else {
-      kept.add(path);
-    }
-    map.set(group.group_id, kept);
-    this.selectionsMap.set(map);
+    this.cull.toggleSelection(path, group);
   }
 
-  /**
-   * A bracket or a pan is a no-op here: its frames were shot to be merged, not
-   * to compete (see KEEP_WHOLE_KINDS), and every other surface -- computeAutoKeep,
-   * the hidden auto-cull button -- already protects that. The persistent hint
-   * badge on these groups already explains why, so this stays silent rather
-   * than adding a second, redundant message.
-   */
   protected selectExclusive(path: string, group: CullingGroup): void {
-    if (group.sequence_kind && KEEP_WHOLE_KINDS.includes(group.sequence_kind)) return;
-    this.updateMapSignal(this.selectionsMap, group.group_id, new Set([path]));
+    this.cull.selectExclusive(path, group);
   }
 
   protected confirmGroup(group: CullingGroup): boolean {
-    const kept = this.selectionsMap().get(group.group_id);
-    if (!kept || kept.size === 0) return false;
-
-    // Grey the group and start the cancellable cooldown; the commit + close only
-    // happen when it elapses, so Cancel within the window fully reverts it.
-    const key = this.groupKey(group);
-    const keepPaths = [...kept];
-    this.addToSetSignal(this.confirmedGroups, key);
-    this.startCountdown(key, () => {
-      void firstValueFrom(this.api.post('/culling-groups/confirm', {
-        group_id: group.group_id,
-        type: group.type,
-        paths: group.photos.map(p => p.path),
-        keep_paths: keepPaths,
-      }))
-        .then(() => {
-          this.addToSetSignal(this.hiddenGroups, key);
-          void this.refreshComparisonStats();
-          void this.refreshRankerStatus();
-        })
-        .catch(() => {
-          this.unconfirmGroup(key);
-          this.snackBar.open(this.i18n.t(I18N.culling.error_confirming), '', { duration: 2000, horizontalPosition: 'right', verticalPosition: 'bottom' });
-        });
-    }, true);
-    return true;
-  }
-
-  private unconfirmGroup(key: string): void {
-    this.confirmedGroups.update(s => {
-      const next = new Set(s);
-      next.delete(key);
-      return next;
-    });
+    return this.cull.confirmGroup(group);
   }
 
   /**
@@ -3331,12 +2669,12 @@ export class BurstCullingComponent implements OnDestroy {
       );
       return;
     }
-    this.patchOverrides(paths, kind ?? 'suppressed');
+    this.cull.patchOverrides(paths, kind ?? 'suppressed');
     this.undoService.register({
       labelKey: I18N.culling.panorama.corrected,
       undo: async () => {
         await this.restoreOverridesOnServer(previous);
-        this.restoreOverrides(previous);
+        this.cull.restoreOverrides(previous);
       },
     });
   }
@@ -3377,42 +2715,11 @@ export class BurstCullingComponent implements OnDestroy {
                          { duration: 3000, horizontalPosition: 'right', verticalPosition: 'bottom' });
       return;
     }
-    this.patchOverrides(paths, null);
+    this.cull.patchOverrides(paths, null);
     if (hadApplied) {
       const key = this.groupKey(group);
       this.droppedApplied.update(keys => new Set(keys).add(key));
     }
-  }
-
-  /** Set one override value on the named frames, wherever they sit in the feed. */
-  private patchOverrides(paths: string[], value: string | null): void {
-    this.restoreOverrides(new Map(paths.map(path => [path, value])));
-  }
-
-  /** Write back per-path override values (the undo path restores the old ones). */
-  private restoreOverrides(values: Map<string, string | null>): void {
-    // `droppedApplied` is deliberately left untouched here: `rerunNeeded` unions it
-    // with the pending-correction keys, so re-marking (or undoing the re-mark) a
-    // group whose applied override was already dropped this session must not stop
-    // it counting -- `photos` still holds the stale applied set either way.
-    this.groups.update(groups => groups.map(group => (
-      group.photos.some(p => values.has(p.path))
-        ? {
-            ...group,
-            photos: group.photos.map(p => (
-              values.has(p.path)
-                ? {
-                    ...p,
-                    sequence_override: values.get(p.path) ?? null,
-                    // Anything just written here is by definition unapplied: the
-                    // detector is a batch pass, not a live query.
-                    sequence_override_pending: values.get(p.path) ? 1 : null,
-                  }
-                : p
-            )),
-          }
-        : group
-    )));
   }
 
   /**
@@ -3468,123 +2775,15 @@ export class BurstCullingComponent implements OnDestroy {
     }
   }
 
-  /** Fetch per-category comparison counts + threshold for the weight-tuning chip. */
-  private async refreshComparisonStats(): Promise<void> {
-    try {
-      const stats = await firstValueFrom(this.api.get<ComparisonStats>('/comparison/stats'));
-      this.comparisonStats.set(stats);
-    } catch {
-      // Best-effort: the chip simply stays hidden if stats are unavailable.
-    }
-  }
-
-  /**
-   * Shared 7s cooldown: a per-second countdown in passingGroups plus a one-shot
-   * timer that runs onElapsed (hide for skip; commit + hide for confirm). Cancel
-   * via cancelPass before it fires fully reverts the action.
-   */
-  private startCountdown(key: string, onElapsed: () => void, commit = false): void {
-    this.clearPassTimer(key);
-    this.updateMapSignal(this.passingGroups, key, this.passCountdownSeconds);
-
-    const intervalId = setInterval(() => {
-      this.passingGroups.update(m => {
-        const current = m.get(key);
-        if (current === undefined) return m;
-        const next = new Map(m);
-        next.set(key, current - 1);
-        return next;
-      });
-    }, 1000);
-
-    const timeoutId = setTimeout(() => {
-      this.clearPassTimer(key);
-      onElapsed();
-    }, this.passCountdownSeconds * 1000);
-
-    this.passTimers.set(key, { timeoutId, intervalId, onElapsed, commit });
-  }
-
   protected skipGroup(group: CullingGroup): void {
-    const key = this.groupKey(group);
-    this.startCountdown(key, () => this.addToSetSignal(this.hiddenGroups, key));
+    this.cull.skipGroup(group);
   }
 
   protected cancelPass(group: CullingGroup): void {
-    const key = this.groupKey(group);
-    this.clearPassTimer(key);
-    this.unconfirmGroup(key);
+    this.cull.cancelPass(group);
   }
 
-  private clearPassTimer(key: string): void {
-    const timers = this.passTimers.get(key);
-    if (timers) {
-      clearTimeout(timers.timeoutId);
-      clearInterval(timers.intervalId);
-      this.passTimers.delete(key);
-    }
-    this.deleteMapKey(this.passingGroups, key);
-  }
-
-  private clearAllPassTimers(): void {
-    // A confirm defers its server commit into the cooldown timer; cancelling
-    // that timer on teardown/reload without running it would silently drop the
-    // user's keep/reject decision. So flush pending confirm commits here (skip
-    // timers only hide a group, nothing to persist). Explicit cancelPass goes
-    // through clearPassTimer and is unaffected — an abort still aborts.
-    const pendingCommits: (() => void)[] = [];
-    for (const { timeoutId, intervalId, onElapsed, commit } of this.passTimers.values()) {
-      clearTimeout(timeoutId);
-      clearInterval(intervalId);
-      if (commit) pendingCommits.push(onElapsed);
-    }
-    this.passTimers.clear();
-    this.passingGroups.set(new Map());
-    this.hiddenGroups.set(new Set());
-    for (const commit of pendingCommits) commit();
-  }
-
-  protected async confirmAllRemaining(): Promise<void> {
-    this.confirming.set(true);
-    try {
-      const confirmed = this.confirmedGroups();
-      const remaining = this.visibleGroups().filter(g => !confirmed.has(this.groupKey(g)));
-      const toConfirm = remaining.filter(g => {
-        const kept = this.selectionsMap().get(g.group_id);
-        return kept && kept.size > 0;
-      });
-
-      // Process in batches of 5 to avoid overwhelming the server
-      const batchSize = 5;
-      for (let i = 0; i < toConfirm.length; i += batchSize) {
-        const batch = toConfirm.slice(i, i + batchSize);
-        await Promise.all(batch.map(g => {
-          const kept = this.selectionsMap().get(g.group_id)!;
-          return firstValueFrom(this.api.post('/culling-groups/confirm', {
-            group_id: g.group_id,
-            type: g.type,
-            paths: g.photos.map(p => p.path),
-            keep_paths: [...kept],
-          }));
-        }));
-        this.confirmedGroups.update(s => {
-          const next = new Set(s);
-          for (const g of batch) next.add(this.groupKey(g));
-          return next;
-        });
-      }
-
-      const skipped = remaining.filter(g => !toConfirm.includes(g));
-      this.confirmedGroups.update(s => {
-        const next = new Set(s);
-        for (const g of skipped) next.add(this.groupKey(g));
-        return next;
-      });
-      this.snackBar.open(this.i18n.t(I18N.culling.confirmed), '', { duration: 2000, horizontalPosition: 'right', verticalPosition: 'bottom' });
-    } catch {
-      this.snackBar.open(this.i18n.t(I18N.culling.error_auto_select), '', { duration: 2000, horizontalPosition: 'right', verticalPosition: 'bottom' });
-    } finally {
-      this.confirming.set(false);
-    }
+  protected confirmAllRemaining(): Promise<void> {
+    return this.cull.confirmAllRemaining(this.visibleGroups());
   }
 }
