@@ -249,23 +249,37 @@ async def tab_bridge(ws: WebSocket) -> None:
         if joined is None:
             return
         conn, session_token, exp = joined
-        await ws.send_json({
-            "type": "ready", "user_id": conn.user_id, "tab_id": conn.tab_id,
-            "tools_version": tools_version(), "ping_interval_s": bridge.PING_INTERVAL_S,
-            "call_timeout_s": settings["call_timeout_s"],
-        })
-        tasks = [asyncio.ensure_future(_receive_loop(ws, conn)),
-                 asyncio.ensure_future(_keepalive(ws, conn, session_token, exp))]
         try:
-            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            await ws.send_json({
+                "type": "ready", "user_id": conn.user_id, "tab_id": conn.tab_id,
+                "tools_version": tools_version(), "ping_interval_s": bridge.PING_INTERVAL_S,
+                "call_timeout_s": settings["call_timeout_s"],
+            })
+            await _serve(ws, conn, session_token, exp)
         finally:
-            for task in tasks:
-                task.cancel()
-            outcomes = await asyncio.gather(*tasks, return_exceptions=True)
             registry.remove(conn)
-            for outcome in outcomes:
-                if isinstance(outcome, Exception) and not isinstance(
-                        outcome, (asyncio.CancelledError, WebSocketDisconnect, RuntimeError)):
-                    logger.warning("Bridge tab %s ended with %r", conn.tab_id, outcome)
     except WebSocketDisconnect:
         return
+
+
+async def _serve(ws: WebSocket, conn: TabConn, session_token: Optional[str], exp: Optional[float]) -> None:
+    """Run the reader and the pinger until either ends, then stop the other.
+
+    The cleanup waits with ``asyncio.wait``, never ``gather``: when the handler itself
+    is cancelled mid-cleanup (server shutdown; Starlette's TestClient cancels the app
+    right after sending ``websocket.disconnect``), ``gather`` re-raises the CHILD's
+    untagged ``CancelledError`` in place of the handler's own, so the caller's cancel
+    scope no longer recognises it and the cancellation escapes it.
+    """
+    tasks = [asyncio.ensure_future(_receive_loop(ws, conn)),
+             asyncio.ensure_future(_keepalive(ws, conn, session_token, exp))]
+    try:
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.wait(tasks)
+    for task in tasks:
+        outcome = None if task.cancelled() else task.exception()
+        if isinstance(outcome, Exception) and not isinstance(outcome, (WebSocketDisconnect, RuntimeError)):
+            logger.warning("Bridge tab %s ended with %r", conn.tab_id, outcome)

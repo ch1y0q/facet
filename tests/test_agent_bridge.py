@@ -195,6 +195,65 @@ class TestHandshake:
         assert len(env.app.state.tab_registry.tabs_for("_anonymous")) == 1
 
 
+class _ScriptedSocket:
+    """The handler's side of a socket: the queued frames, then the client is gone."""
+
+    def __init__(self, app, frames):
+        self.app = app
+        self.headers = {"origin": "http://testserver", "host": "testserver"}
+        self._frames = list(frames)
+
+    async def accept(self):
+        pass
+
+    async def receive(self):
+        if self._frames:
+            return {"type": "websocket.receive", "text": json.dumps(self._frames.pop(0))}
+        return {"type": "websocket.disconnect", "code": 1000}
+
+    async def send_json(self, frame):
+        pass
+
+    async def close(self, code=1000):
+        pass
+
+
+class TestHandlerCancellation:
+    def test_cancel_during_cleanup_reraises_its_own_and_unregisters(self, agent_app, monkeypatch):
+        """Starlette's TestClient cancels the app right after sending the disconnect, so the
+        handler can be cancelled while it stops its pinger. That cancellation must stay the
+        handler's own -- a child's untagged one escapes anyio's cancel scope and fails the
+        session teardown -- and the tab must still leave the registry."""
+        from api.routers import mcp_bridge
+        env = agent_app("open")
+        registry = env.app.state.tab_registry
+
+        async def scenario():
+            stopping, release = asyncio.Event(), asyncio.Event()
+
+            async def keepalive_slow_to_stop(*_):
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    stopping.set()
+                    await release.wait()
+                    raise
+
+            monkeypatch.setattr(mcp_bridge, "_keepalive", keepalive_slow_to_stop)
+            handler = asyncio.ensure_future(mcp_bridge.tab_bridge(
+                _ScriptedSocket(env.app, [auth_frame(None, tab_id="cancelled")])))
+            await stopping.wait()
+            handler.cancel("cancelled by the server")
+            release.set()
+            with pytest.raises(asyncio.CancelledError) as info:
+                await handler
+            return info.value
+
+        cancelled = asyncio.run(scenario())
+        assert cancelled.args == ("cancelled by the server",)
+        assert registry.tabs_for("_anonymous") == []
+
+
 class TestForwarding:
     def test_call_roundtrip_and_envelope(self, agent_app, fake_tab):
         env = agent_app("multi")
