@@ -179,6 +179,7 @@ def _with_confirm(shaped: dict, grant: Any, action: str, files: list[str], optio
     shaped["confirm_expires_in_s"] = int(nonce.TTL_SECONDS)
     return shaped
 
+
 def register_write_tools(server: MCPServer, client: InternalClient) -> None:
     """Register the write tools on ``server``."""
 
@@ -483,8 +484,8 @@ def register_write_tools(server: MCPServer, client: InternalClient) -> None:
 
     destructive_note = (" ALWAYS call with dry_run=true first (the default) and show the user the counts and "
                         "file list; ask the user to confirm before any dry_run=false call, which also needs "
-                        "the single-use `confirm` value from that dry run (valid " + str(int(nonce.TTL_SECONDS // 60)) + " minutes, void if the "
-                        "affected files change).")
+                        f"the single-use `confirm` value from that dry run (valid {int(nonce.TTL_SECONDS // 60)} "
+                        "minutes, void if the affected files change).")
     add(cull_apply, "cull_apply",
         "Act on culling decisions: copy_keeps copies non-rejected photos into target_dir; move_rejects moves, "
         "and trash_rejects sends to the OS trash, ONLY photos the owner rejected (others are reported as "

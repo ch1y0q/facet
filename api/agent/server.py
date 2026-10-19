@@ -27,7 +27,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from api.agent import limits, tokens
 from api.agent.internal_client import InternalClient, err, validation_issues
 from api.agent.bridge import TabRegistry, same_origin
-from api.agent.runtime import bearer_token, to_result
+from api.agent.runtime import SETTINGS_SCOPE_KEY, bearer_token, to_result
 from api.agent.tools_culling import register_culling_tools
 from api.agent.tools_read import register_read_tools
 from api.agent.tools_ui import register_ui_tools
@@ -141,7 +141,8 @@ class AgentAuthMiddleware:
         await self.app(scope, receive, send)
 
     async def _gate(self, scope: Scope) -> JSONResponse | None:
-        if not mcp_settings()["enabled"]:
+        settings = scope[SETTINGS_SCOPE_KEY] = mcp_settings()
+        if not settings["enabled"]:
             return _reject(404, "Not Found")
         headers = Headers(scope=scope)
         origin = headers.get("origin")
@@ -175,13 +176,12 @@ def mount_agent(app: FastAPI) -> StreamableHTTPSessionManager:
     client = InternalClient(app)
     version = _server_version()
 
-    registry = getattr(app.state, "tab_registry", None)
-    if registry is None:
-        registry = app.state.tab_registry = TabRegistry()
+    registry: TabRegistry = app.state.tab_registry
 
     def status_extra(resolved: ResolvedGrant) -> dict[str, Any]:
-        return {"server_version": version,
-                "tabs": registry.describe(resolved.principal, resolved.level, resolved.minted_level),
+        tabs, out_of_reach = registry.reach_counts(resolved.principal, resolved.level, resolved.minted_level)
+        return {"server_version": version, "tabs": tabs,
+                "out_of_reach_tabs": out_of_reach,
                 "ui_tools_version": tools_version()}
 
     register_read_tools(server, client, status_extra)

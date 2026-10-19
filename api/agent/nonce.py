@@ -17,6 +17,7 @@ from api.agent import limits
 
 TTL_SECONDS = 300.0
 MAX_PENDING = 256
+MAX_PENDING_PER_TOKEN = 16
 
 _lock = threading.Lock()
 _pending: dict[str, tuple[int, str, str, float]] = {}
@@ -34,18 +35,40 @@ def reset() -> None:
         _pending.clear()
 
 
-def _prune(current: float) -> None:
+def _oldest(keys: Iterable[str]) -> str:
+    return min(keys, key=lambda k: _pending[k][3])
+
+
+class NonceCapacityError(Exception):
+    """The global pending cap is full of other tokens' live confirmations."""
+
+
+def _prune(current: float, token_id: int) -> None:
+    """Make room for one more nonce of ``token_id`` without touching another token's.
+
+    A token over its own cap loses its own oldest entry. The global cap is a backstop:
+    it evicts the issuing token's own entries, and when that is not enough it refuses
+    with :class:`NonceCapacityError` rather than flush the confirmation another token
+    is about to use.
+    """
     for key in [k for k, v in _pending.items() if v[3] <= current]:
         del _pending[key]
+    own = [k for k, v in _pending.items() if v[0] == token_id]
+    while len(own) >= MAX_PENDING_PER_TOKEN:
+        victim = _oldest(own)
+        own.remove(victim)
+        del _pending[victim]
     while len(_pending) >= MAX_PENDING:
-        del _pending[min(_pending, key=lambda k: _pending[k][3])]
+        if not own:
+            raise NonceCapacityError("Too many pending confirmations")
+        del _pending[own.pop(own.index(_oldest(own)))]
 
 
 def issue(token_id: int, action: str, payload_hash: str) -> str:
     current = limits.now()
     nonce = secrets.token_urlsafe(24)
     with _lock:
-        _prune(current)
+        _prune(current, token_id)
         _pending[nonce] = (token_id, action, payload_hash, current + TTL_SECONDS)
     return nonce
 

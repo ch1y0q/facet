@@ -1454,14 +1454,22 @@ class TestCullingGroupsMemoAcrossConfirm:
     confirm just changed: every later GET would be served it until the TTL ran out.
     """
 
-    def test_a_confirm_during_a_get_is_not_undone_by_the_memo(self):
+    def test_a_confirm_during_a_get_is_not_undone_by_the_memo(self, tmp_path):
         import threading
         from fastapi.testclient import TestClient
         from api import create_app
         from api.auth import CurrentUser, get_optional_user, require_edition
         from api.routers.burst_culling import _invalidate_culling_groups_cache
 
-        conn = TestConfirmBracketGroup._db()
+        conn = _real_schema_db(tmp_path)
+        for path, ev in (('/k0.jpg', -2.0), ('/k1.jpg', 0.0), ('/k2.jpg', 2.0)):
+            conn.execute(
+                "INSERT INTO photos (path, filename, sequence_group_id, sequence_kind, "
+                "sequence_ev_offset) VALUES (?, ?, 1, 'bracket', ?)",
+                (path, path.lstrip('/'), ev),
+            )
+        conn.execute("INSERT INTO photos (path, filename) VALUES ('/plain.jpg', 'plain.jpg')")
+        conn.commit()
         app = create_app()
         fake_user = CurrentUser(user_id="test", edition_authenticated=True)
         app.dependency_overrides[get_optional_user] = lambda: fake_user

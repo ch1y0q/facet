@@ -11,7 +11,7 @@ import {
   untracked,
 } from '@angular/core';
 import { AuthService } from '../services/auth.service';
-import { UiToolDefinition, WebMcpToolRegistry } from './webmcp-registry.service';
+import { UiToolDefinition, WebMcpToolRegistry, contractReadyWhen } from './webmcp-registry.service';
 
 type WebMcpDescriptor = Parameters<typeof declareExperimentalWebMcpTool>[0];
 
@@ -55,8 +55,7 @@ export class AgentWebMcpService {
       const status = this.auth.status();
       const enabled = !!status?.authenticated && status.features['mcp'] === true;
       // The contract is fetched only for a session that has the feature on.
-      if (enabled && !this.registry.ready()) untracked(() => void this.registry.load());
-      const wanted = enabled && this.registry.ready();
+      const wanted = contractReadyWhen(this.registry, enabled);
       untracked(() => {
         if (wanted) void this.start();
         else this.stop();

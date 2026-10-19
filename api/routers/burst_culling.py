@@ -1153,8 +1153,11 @@ def _culling_sort_reverse(sort, direction):
 # Memo of the fully-enriched + globally-sorted culling groups, keyed by the
 # request params that determine the set. Pagination over the same set then
 # reuses one enrichment instead of re-materializing + re-scoring every group on
-# every page. Invalidated on any confirm (the unreviewed set shrinks); the short
-# TTL is a backstop for changes the invalidation can't see (a fresh scan).
+# every page. Invalidated on any confirm (the unreviewed set shrinks) and on every
+# reject / favorite write (`exclude_rejected` is part of the feed). The key also
+# carries `_library_change_token`, so photos landing from another process (a scan,
+# a burst pass) miss the memo at once; the short TTL is only the backstop for what
+# neither can see.
 _culling_groups_cache: dict = {}
 _CULLING_GROUPS_CACHE_TTL = 45.0
 _CULLING_GROUPS_CACHE_MAX = 16
@@ -1173,6 +1176,20 @@ def _invalidate_culling_groups_cache():
     with _culling_groups_lock:
         _culling_groups_generation += 1
         _culling_groups_cache.clear()
+
+
+def _library_change_token(conn):
+    """Cheap fingerprint of the library: the latest scan run plus the photo count.
+
+    A scan runs in another process and cannot call ``_invalidate_culling_groups_cache``;
+    new photos or a started or finished run move this token. Grouping passes run from
+    the CLI (burst, bracket, panorama) touch neither, so they show once the memo expires.
+    ``processed_files`` is left out: it is rewritten about once a second during a scan.
+    """
+    run = conn.execute(
+        "SELECT id, status, finished_at FROM scan_runs ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    return (tuple(run) if run else None, conn.execute("SELECT COUNT(*) FROM photos").fetchone()[0])
 
 
 def _cached_culling_groups(cache_key, now):
@@ -1514,7 +1531,8 @@ def api_culling_groups(
                 # across pages, so memo it and let pagination reuse one enrichment
                 # instead of re-materializing + re-scoring every group per page.
                 cache_key = (round(similarity_threshold, 3), seed, sort, direction, exclude_rejected,
-                             user_id, album_id, date_from, date_to, group_by)
+                             user_id, album_id, date_from, date_to, group_by,
+                             _library_change_token(conn))
                 now = time.time()
                 cached_groups, generation = _cached_culling_groups(cache_key, now)
                 if cached_groups is not None:

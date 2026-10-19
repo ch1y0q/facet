@@ -124,7 +124,7 @@ describe('AgentBridgeService', () => {
     TestBed.configureTestingModule({
       providers: [
         { provide: BRIDGE_SOCKET_FACTORY, useValue: (url: string) => new FakeSocket(url) },
-        { provide: AuthService, useValue: { status: signal(status({ login_password_required: false })), get token() { return token; }, loginPasswordRequired: () => loginRequired } },
+        { provide: AuthService, useValue: { status: signal(status({ multi_user: false, login_password_required: false })), get token() { return token; }, loginPasswordRequired: () => loginRequired } },
         { provide: Router, useValue: { url: '/', events: routerEvents } },
         { provide: WebMcpToolRegistry, useValue: { toolNames: [], toolsVersion: 'v1', execute, ready: signal(true), load: () => Promise.resolve() } },
       ],
@@ -259,6 +259,8 @@ describe('AgentBridgeService', () => {
 
     it('4401 on an open install with a leftover JWT retries once with a null token, then blocks', () => {
       loginRequired = false;
+      authStatus.set(status({ multi_user: false, login_password_required: false }));
+      settle();
       last().open();
       last().serverClose(4401);
       expect(FakeSocket.instances).toHaveLength(2);
@@ -268,6 +270,31 @@ describe('AgentBridgeService', () => {
       vi.advanceTimersByTime(BACKOFF_MAX_MS * 3);
       expect(FakeSocket.instances).toHaveLength(2);
       expect(bridge.status()).toBe('blocked');
+    });
+
+    it('4401 on a multi-user install blocks at once: the null token only opens an install with no accounts', () => {
+      // The server reports login_password_required=false for a multi-user install (the flag is single-password only).
+      loginRequired = false;
+      last().open();
+      last().serverClose(4401);
+      expect(FakeSocket.instances).toHaveLength(1);
+      expect(bridge.status()).toBe('blocked');
+    });
+
+    it('does not dial with a null token on a multi-user install', () => {
+      TestBed.resetTestingModule();
+      FakeSocket.instances = [];
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: BRIDGE_SOCKET_FACTORY, useValue: (url: string) => new FakeSocket(url) },
+          { provide: AuthService, useValue: { status: signal(status({ multi_user: true, login_password_required: false })), token: null, loginPasswordRequired: () => false } },
+          { provide: Router, useValue: { url: '/', events: routerEvents } },
+          { provide: WebMcpToolRegistry, useValue: { toolNames: [], toolsVersion: 'v1', execute, ready: signal(true), load: () => Promise.resolve() } },
+        ],
+      });
+      TestBed.inject(AgentBridgeService);
+      settle();
+      expect(FakeSocket.instances).toHaveLength(0);
     });
 
     it('4401 on the very first connection also blocks reconnects', () => {

@@ -184,12 +184,13 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra)
         ctx: Context,
         path: Annotated[str, Field(min_length=1)],
         limit: Annotated[int, Field(ge=1, le=50)] = 20,
+        offset: Annotated[int, Field(ge=0)] = 0,
         mode: Literal["visual", "color"] = "visual",
     ) -> CallToolResult:
         async def handler(grant, resolved, settings):
             upstream = await client.call(
                 grant, "similar_photos", path_args={"path": path},
-                query={"limit": limit, "mode": mode}, timeout=settings["call_timeout_s"])
+                query={"limit": limit, "offset": offset, "mode": mode}, timeout=settings["call_timeout_s"])
             if not upstream["ok"]:
                 return upstream
             body = upstream["data"] or {}
@@ -274,7 +275,7 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra)
     add(semantic_search, "semantic_search",
         "Find photos by meaning (text-to-image) or, with scope='text', by words in captions/OCR.")
     add(get_photo, "get_photo", "Full detail of one photo by its path.")
-    add(similar_photos, "similar_photos", "Photos similar to one photo (visual or colour).")
+    add(similar_photos, "similar_photos", "Photos similar to one photo (visual or colour); pass `offset` to page when has_more is true.")
     add(filter_options, "filter_options",
         "List the vocabulary a filter accepts (cameras, lenses, tags, persons, patterns, "
         "categories, narrative_moments, junk_kinds, metric_ranges).")

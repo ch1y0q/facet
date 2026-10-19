@@ -219,9 +219,23 @@ class TabRegistry:
             return [t for t in self._tabs.get(user_id, {}).values()
                     if floor <= LEVEL_RANK.get(t.level, 0) <= ceiling]
 
+    def reach_counts(self, user_id: str, min_level: Optional[str] = None,
+                     max_level: Optional[str] = None) -> tuple[list[dict], int]:
+        """Reachable tabs (public view) and the count of the user's other open tabs, from one locked read."""
+        floor = LEVEL_RANK[min_level] if min_level is not None else 0
+        ceiling = LEVEL_RANK[max_level] if max_level is not None else max(LEVEL_RANK.values())
+        with self._lock:
+            every = list(self._tabs.get(user_id, {}).values())
+        reach = [t for t in every if floor <= LEVEL_RANK.get(t.level, 0) <= ceiling]
+        return self._view(reach), len(every) - len(reach)
+
     def describe(self, user_id: str, min_level: Optional[str] = None,
                  max_level: Optional[str] = None) -> list[dict]:
         """Public view for ``status``: no sockets, no tool lists, ages instead of clocks."""
+        return self._view(self.tabs_for(user_id, min_level, max_level))
+
+    @staticmethod
+    def _view(tabs: list[TabConn]) -> list[dict]:
         now = time.monotonic()
         return [{
             "tab_id": t.tab_id,
@@ -229,7 +243,7 @@ class TabRegistry:
             "focused": t.focused,
             "last_seen_s": round(now - t.last_seen, 1),
             "tools_current": all(t.current(name) for name in SERVER_TOOL_NAMES),
-        } for t in sorted(self.tabs_for(user_id, min_level, max_level), key=lambda t: -t.last_active)]
+        } for t in sorted(tabs, key=lambda t: -t.last_active)]
 
     @staticmethod
     def _out_of_reach(level: str, max_level: Optional[str]) -> str:

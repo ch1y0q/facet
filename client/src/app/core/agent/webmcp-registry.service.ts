@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, inject, signal, untracked } from '@angular/core';
 import { Router } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 import { GalleryStore } from '../../features/gallery/gallery.store';
@@ -28,6 +28,15 @@ export function contractHandlerMismatch(
     missingHandlers: contract.filter(t => !Object.hasOwn(handlers, t.name)).map(t => t.name),
     missingContract: Object.keys(handlers).filter(name => !names.has(name)),
   };
+}
+
+/**
+ * The one lazy-load gate: starts the contract's load for a session that wants it, and says whether
+ * it is both wanted and loaded. Reads `ready()` (so a caller inside an effect re-runs when it lands).
+ */
+export function contractReadyWhen(registry: Pick<WebMcpToolRegistry, 'ready' | 'load'>, enabled: boolean): boolean {
+  if (enabled && !registry.ready()) untracked(() => void registry.load());
+  return enabled && registry.ready();
 }
 
 /**

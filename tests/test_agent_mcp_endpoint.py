@@ -141,6 +141,17 @@ class TestMount:
             "name": "search_photos", "arguments": {"filters": {"min_aestheticc": 7}}})
         assert resp.status_code == 200
         assert resp.json()["result"]["isError"] is True
+        envelope = json.loads(resp.json()["result"]["content"][0]["text"])
+        assert envelope["ok"] is False and envelope["error"] == "invalid_input"
+        assert [i["field"] for i in envelope["issues"]] == ["filters.min_aestheticc"]
+        assert envelope["issues"][0]["message"] == "Extra inputs are not permitted"
+
+    def test_settings_defaults_come_from_the_shipped_config(self):
+        from config_resolve import load_defaults
+        shipped = load_defaults()["viewer"]["mcp"]
+        assert api_config.MCP_SETTINGS_DEFAULTS == {k: v for k, v in shipped.items() if k != "allowed_origins"}
+        assert set(api_config._MCP_SETTINGS_BOUNDS) == {
+            k for k, v in shipped.items() if k != "allowed_origins" and not isinstance(v, bool)}
 
     def test_mcp_filter_keys_are_gallery_params(self):
         from api.agent.tools_read import MCP_FILTER_KEYS
@@ -241,6 +252,18 @@ class TestReadTools:
         assert [r["filename"] for r in result["data"]["rows"]] == ["b.jpg"]
         assert result["data"]["rows"][0]["similarity"] == 0.9
         assert result["data"]["total"] == 1 and result["data"]["has_more"] is False
+
+    def test_similar_photos_pages_with_offset(self, agent_app, photos, monkeypatch):
+        from api.routers import gallery
+        hits = [{"path": AGENT_DIR + name, "filename": name, "similarity": 0.9} for name in ("b.jpg", "c.jpg", "d.jpg")]
+        monkeypatch.setattr(gallery, "_find_similar_visual", lambda *a, **k: (hits, None))
+        env = agent_app("open")
+        token = env.token(env.login())
+        args = {"path": AGENT_DIR + "a.jpg", "limit": 1}
+        first = env.call(token, "similar_photos", args)["data"]
+        last = env.call(token, "similar_photos", {**args, "offset": 2})["data"]
+        assert [r["filename"] for r in first["rows"]] == ["b.jpg"] and first["has_more"] is True
+        assert [r["filename"] for r in last["rows"]] == ["d.jpg"] and last["has_more"] is False
 
     def test_multi_user_sees_only_their_own_library(self, agent_app, photos):
         env = agent_app("multi")
@@ -439,6 +462,35 @@ class TestAuthFailureBookkeeping:
             limits.record_auth_failure("fresh")
             assert set(limits._failures) == {"fresh"}
         finally:
+            limits.set_clock(None)
+            limits.reset_limits()
+
+    def test_the_sweep_runs_at_most_once_per_window(self):
+        class CountingMap(limits.defaultdict):
+            scans = 0
+
+            def items(self):
+                CountingMap.scans += 1
+                return super().items()
+
+        now = [0.0]
+        limits.set_clock(lambda: now[0])
+        saved = limits._failures
+        try:
+            limits.reset_limits()
+            limits._failures = CountingMap(limits.deque)
+            for index in range(limits.FAILURE_SWEEP_THRESHOLD + 5):
+                limits._failures[f"10.1.{index // 250}.{index % 250}"].append(0.0)
+            limits.record_auth_failure("first")
+            assert CountingMap.scans == 1
+            for index in range(50):
+                limits.record_auth_failure(f"late-{index}")
+            assert CountingMap.scans == 1
+            now[0] += limits.WINDOW_SECONDS
+            limits.record_auth_failure("next-window")
+            assert CountingMap.scans == 2
+        finally:
+            limits._failures = saved
             limits.set_clock(None)
             limits.reset_limits()
 

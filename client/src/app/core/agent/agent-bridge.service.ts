@@ -1,7 +1,7 @@
 import { DestroyRef, Injectable, InjectionToken, computed, effect, inject, signal, untracked } from '@angular/core';
 import { NavigationEnd, Router } from '@angular/router';
 import { AuthService } from '../services/auth.service';
-import { WebMcpToolRegistry } from './webmcp-registry.service';
+import { WebMcpToolRegistry, contractReadyWhen } from './webmcp-registry.service';
 import { UiToolEnvelope } from './ui-tool.types';
 
 /** Minimal socket surface the bridge uses; the browser `WebSocket` satisfies it, tests pass a fake. */
@@ -113,21 +113,28 @@ export class AgentBridgeService {
     return this.openInstallNullToken ? null : this.auth.token;
   }
 
-  /** A password install with no live token cannot authenticate; an open install legitimately sends `null`. */
+  /**
+   * No password anywhere: the only install on which the server accepts a `null` token. A multi-user
+   * install reports `login_password_required: false` too (the flag is single-password only), yet
+   * answers `null` with 4401, so it must be excluded explicitly.
+   */
+  private isOpenInstall(): boolean {
+    return !this.auth.loginPasswordRequired() && this.auth.status()?.multi_user !== true;
+  }
+
+  /** An install with a password (or accounts) and no live token cannot authenticate; an open install legitimately sends `null`. */
   private canAuthenticate(): boolean {
-    return this.currentToken() !== null || !this.auth.loginPasswordRequired();
+    return this.currentToken() !== null || this.isOpenInstall();
   }
 
   /**
    * Signed in, the server serves the bridge (`features.mcp_bridge`: the agent feature on AND the
    * bridge switch on, so a bridge-off install is never dialled) and the contract has loaded.
-   * Reading the contract's readiness here also starts its lazy load for a session that wants it.
+   * `contractReadyWhen` also starts the contract's lazy load for a session that wants it.
    */
   private wanted(): boolean {
     const status = this.auth.status();
-    const enabled = !!status?.authenticated && status.features['mcp_bridge'] === true;
-    if (enabled && !this.registry.ready()) untracked(() => void this.registry.load());
-    return enabled && this.registry.ready();
+    return contractReadyWhen(this.registry, !!status?.authenticated && status.features['mcp_bridge'] === true);
   }
 
   private reconcile(wanted: boolean): void {
@@ -240,7 +247,7 @@ export class AgentBridgeService {
     this.socket = null;
     switch (code) {
       case BRIDGE_CLOSE.AUTH_FAILED:
-        if (this.connectedToken !== null && !this.openInstallNullToken && !this.auth.loginPasswordRequired()) {
+        if (this.connectedToken !== null && !this.openInstallNullToken && this.isOpenInstall()) {
           // An open install accepts `null` but not a stale JWT: retry once as the anonymous principal.
           this.openInstallNullToken = true;
           this.status.set('disconnected');

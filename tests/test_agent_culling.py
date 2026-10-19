@@ -130,6 +130,37 @@ class TestListGroups:
         result = env.call(token, "list_culling_groups", {"group_by": "burst", "per_page": 1, **SCOPE})
         assert result["data"]["has_more"] is False
 
+    def test_has_more_is_true_on_a_page_with_more_behind_it(self, env_token, seed_photos_prefix):
+        env, token = env_token
+        window = {"date_from": "1998:01:01 00:00:00", "date_to": "1998:01:01 23:59:59"}
+        rows = [{**_burst(f"p{gid}_{i}.jpg", i, 9.0 - i, gid, int(i == 0)),
+                 "date_taken": f"1998:01:01 1{gid - 5000}:00:{i:02d}"} for gid in (5001, 5002) for i in range(3)]
+        seed_photos_prefix(PREFIX + "pg/", [{**r, "path": PREFIX + "pg/" + r["filename"]} for r in rows])
+        first = env.call(token, "list_culling_groups", {"group_by": "burst", "per_page": 1, **window})
+        assert first["ok"] and len(first["data"]["rows"]) == 1 and first["data"]["has_more"] is True, first
+        both = env.call(token, "list_culling_groups", {"group_by": "burst", "per_page": 2, **window})
+        assert len(both["data"]["rows"]) == 2 and both["data"]["has_more"] is False
+
+    def test_groups_seeded_after_a_first_call_are_visible_at_once(self, env_token, seed_photos_prefix):
+        env, token = env_token
+        window = {"date_from": "1997:01:01 00:00:00", "date_to": "1997:01:01 23:59:59"}
+        assert env.call(token, "list_culling_groups", {"group_by": "burst", **window})["data"]["rows"] == []
+        seed_photos_prefix(PREFIX + "late/", [
+            {**_burst(f"l{i}.jpg", i, 9.0 - i, 6001, int(i == 0)), "path": PREFIX + f"late/l{i}.jpg",
+             "date_taken": f"1997:01:01 10:00:{i:02d}"} for i in range(3)])
+        rows = env.call(token, "list_culling_groups", {"group_by": "burst", **window})["data"]["rows"]
+        assert [g["photo_count"] for g in rows] == [3]
+
+    def test_rejecting_a_frame_through_the_gallery_route_refreshes_the_feed(self, env_token):
+        env, token = env_token
+        before = env.call(token, "list_culling_groups", {"group_by": "burst", **SCOPE})["data"]["rows"]
+        assert [g["photo_count"] for g in before] == [3]
+        resp = env.client.post("/api/photo/toggle_rejected", json={"photo_path": BURST_PATHS[2]},
+                               headers=env.login(edition=True))
+        assert resp.status_code == 200, resp.text
+        after = env.call(token, "list_culling_groups", {"group_by": "burst", **SCOPE})["data"]["rows"]
+        assert [g["photo_count"] for g in after] == [2]
+
     def test_bad_timestamp_is_invalid_input_before_any_call(self, env_token):
         env, token = env_token
         result = env.call(token, "list_culling_groups", {"date_from": "1999-01-01"})

@@ -1283,26 +1283,26 @@ def cull_allow_trash(viewer_config: dict) -> bool:
     return bool((viewer_config.get('cull', {}) or {}).get('allow_trash', False))
 
 
-MCP_SETTINGS_DEFAULTS = {
-    'enabled': False,
-    'bridge': True,
-    'max_rows': 100,
-    'max_bytes': 60000,
-    'call_timeout_s': 30,
-    'semantic_timeout_s': 120,
-    'rate_per_min': 120,
-    'write_rate_per_min': 30,
-}
+_MCP_SCHEMA_PATH = os.path.join(os.path.dirname(defaults_path()), 'scoring_config.schema.json')
 
-# (low, high) per numeric key; None = unbounded on that side.
-_MCP_SETTINGS_BOUNDS = {
-    'max_rows': (1, 500),
-    'max_bytes': (4000, 500000),
-    'call_timeout_s': (1, 300),
-    'semantic_timeout_s': (1, 300),
-    'rate_per_min': (1, None),
-    'write_rate_per_min': (1, None),
-}
+
+def _load_mcp_settings_spec() -> tuple[dict, dict]:
+    """``(defaults, bounds)`` for ``viewer.mcp``, read from the two shipped files.
+
+    The defaults are the ones in ``scoring_config.default.json`` and the (low, high)
+    bounds come from ``scoring_config.schema.json`` (``None`` = unbounded on that
+    side), so the three places that used to restate them cannot drift apart.
+    """
+    defaults = {key: value for key, value in load_defaults()['viewer']['mcp'].items()
+                if key != 'allowed_origins'}
+    with open(_MCP_SCHEMA_PATH) as f:
+        props = json.load(f)['properties']['viewer']['properties']['mcp']['properties']
+    bounds = {key: (props[key].get('minimum'), props[key].get('maximum'))
+              for key, value in defaults.items() if not isinstance(value, bool)}
+    return defaults, bounds
+
+
+MCP_SETTINGS_DEFAULTS, _MCP_SETTINGS_BOUNDS = _load_mcp_settings_spec()
 
 
 _mcp_available = True

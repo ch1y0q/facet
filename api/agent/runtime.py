@@ -11,16 +11,20 @@ import asyncio
 import json
 import logging
 import time
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Optional, cast
 
 from mcp.server.mcpserver import Context
 from mcp.types import CallToolResult, TextContent
+from starlette.requests import Request
 
-from api.agent import limits, tokens
+from api.agent import limits, nonce, tokens
 from api.agent.internal_client import err
-from api.config import mcp_settings
 
 logger = logging.getLogger(__name__)
+
+# ASGI scope key under which ``AgentAuthMiddleware`` leaves the request's ``mcp_settings()``
+# for the tool wrapper, so one request reads the (clamped) config once.
+SETTINGS_SCOPE_KEY = "facet.mcp_settings"
 
 Handler = Callable[[tokens.TokenGrant, tokens.ResolvedGrant, dict], Awaitable[dict]]
 
@@ -59,35 +63,34 @@ async def run_tool(ctx: Context, name: str, handler: Handler, *, write: bool = F
     even a read-only pre-count).
     """
     started = time.monotonic()
-    settings = mcp_settings()
+    settings = cast(Request, ctx.request_context.request).scope[SETTINGS_SCOPE_KEY]
     token_id = None
     try:
-        if not settings["enabled"]:
-            envelope = err("forbidden_level", "The agent endpoint is disabled")
+        grant = await asyncio.to_thread(tokens.verify, bearer_token(ctx.headers))
+        resolved = await asyncio.to_thread(grant.resolve) if grant else None
+        if grant is None or resolved is None:
+            envelope = err("forbidden_level", "This token is revoked or no longer valid")
         else:
-            grant = await asyncio.to_thread(tokens.verify, bearer_token(ctx.headers))
-            resolved = await asyncio.to_thread(grant.resolve) if grant else None
-            if grant is None or resolved is None:
-                envelope = err("forbidden_level", "This token is revoked or no longer valid")
+            token_id = grant.id
+            per_min = settings["write_rate_per_min" if write else "rate_per_min"]
+            if tokens.level_rank(resolved.level) < tokens.level_rank(min_level):
+                needs = tokens.effective_requirement(min_level)
+                hint = (" (an open install cannot grant it: set viewer.password and mint an "
+                        "edition token)" if needs == "edition" and tokens.install_mode() == "open" else "")
+                envelope = err("forbidden_level",
+                               f"This token's level is {resolved.level}; {name} needs {needs}{hint}")
             else:
-                token_id = grant.id
-                per_min = settings["write_rate_per_min" if write else "rate_per_min"]
-                below_floor = tokens.level_rank(resolved.level) < tokens.level_rank(min_level)
-                allowed, retry_after = (True, 0.0) if below_floor else limits.check_rate(
-                    grant.id, write, per_min)
-                if below_floor:
-                    needs = tokens.effective_requirement(min_level)
-                    hint = (" (an open install cannot grant it: set viewer.password and mint an "
-                            "edition token)" if needs == "edition" and tokens.install_mode() == "open" else "")
-                    envelope = err("forbidden_level",
-                                   f"This token's level is {resolved.level}; {name} needs {needs}{hint}")
-                elif not allowed:
-                    envelope = err("rate_limited", "Too many calls; slow down",
-                                   retry_after_s=retry_after)
-                else:
+                allowed, retry_after = limits.check_rate(grant.id, write, per_min)
+                if allowed:
                     envelope = await handler(grant, resolved, settings)
                     envelope = limits.fit_envelope(
                         envelope, settings["max_rows"], settings["max_bytes"])
+                else:
+                    envelope = err("rate_limited", "Too many calls; slow down",
+                                   retry_after_s=retry_after)
+    except nonce.NonceCapacityError:
+        envelope = err("rate_limited", "Too many confirmations are pending; retry in a few minutes",
+                       retry_after_s=int(nonce.TTL_SECONDS))
     except Exception:
         logger.exception("Agent tool %s crashed", name)
         envelope = err("upstream_error", "The tool failed unexpectedly")

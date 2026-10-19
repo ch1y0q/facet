@@ -295,6 +295,48 @@ describe('ConnectAssistantDialogComponent', () => {
       expect(document.activeElement?.id).toBe('connect-tokens-heading');
     });
 
+    it('moves focus to the confirm button when Revoke turns into the confirm, and back to Revoke on cancel', async () => {
+      await create();
+      buttonByText('dialog.connect_assistant.revoke')!.click();
+      await flush();
+      expect(document.activeElement).toBe(query('[data-testid="revoke-confirm-yes"]'));
+      query<HTMLButtonElement>('button[aria-label^="dialog.connect_assistant.cancel_revoke_aria"]')!.click();
+      await flush();
+      expect(document.activeElement).toBe(query('button[aria-label^="dialog.connect_assistant.revoke_aria"]'));
+    });
+
+    it('re-announces a repeated copy by clearing the live region first', async () => {
+      vi.useFakeTimers();
+      try {
+        Object.defineProperty(navigator, 'clipboard', { value: { writeText: vi.fn(() => Promise.resolve()) }, configurable: true });
+        await create();
+        const live = query('[data-testid="live-region"]')!;
+        const copyButton = buttonByText('dialog.connect_assistant.copy')!;
+        copyButton.click();
+        await flush();
+        expect(live.textContent).toContain('dialog.connect_assistant.copied');
+        copyButton.click();
+        await flush();
+        expect(live.textContent).toBe('');
+        vi.advanceTimersByTime(150);
+        fixture.detectChanges();
+        expect(live.textContent).toContain('dialog.connect_assistant.copied');
+      } finally {
+        vi.useRealTimers();
+        Reflect.deleteProperty(navigator, 'clipboard');
+      }
+    });
+
+    it('names the Copy buttons by their visible "Copied" text while the copied state shows', async () => {
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText: vi.fn(() => Promise.resolve()) }, configurable: true });
+      await create();
+      query<HTMLButtonElement>('button[aria-label="dialog.connect_assistant.copy_snippet_aria"]')!.click();
+      await new Promise(resolve => setTimeout(resolve, 20));
+      fixture.detectChanges();
+      expect(query('button[aria-label="dialog.connect_assistant.copied_snippet_aria"]')).not.toBeNull();
+      Reflect.deleteProperty(navigator, 'clipboard');
+    });
+
     it('does not use the low-contrast amber-600 text', async () => {
       await create();
       await mintAs('x');

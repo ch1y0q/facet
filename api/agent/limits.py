@@ -13,14 +13,16 @@ from typing import Callable, Optional
 
 WINDOW_SECONDS = 60.0
 FAILED_AUTH_MAX = 10
-# Past this many tracked addresses a failure sweeps the ones whose window has expired,
-# so an attacker rotating source addresses cannot grow the map without bound.
+# Past this many tracked addresses a failure sweeps the ones whose window has expired
+# (at most once per window), so an attacker rotating source addresses cannot grow the
+# map without bound nor make every failure scan it.
 FAILURE_SWEEP_THRESHOLD = 10000
 
 _clock: Callable[[], float] = time.monotonic
 _lock = threading.Lock()
 _calls: dict[tuple[int, bool], deque] = defaultdict(deque)
 _failures: dict[str, deque] = defaultdict(deque)
+_last_sweep = float("-inf")
 
 
 def set_clock(clock: Optional[Callable[[], float]]) -> None:
@@ -34,10 +36,12 @@ def now() -> float:
 
 
 def reset_limits() -> None:
+    global _last_sweep
     from api.agent import nonce
     with _lock:
         _calls.clear()
         _failures.clear()
+        _last_sweep = float("-inf")
     nonce.reset()
 
 
@@ -74,9 +78,11 @@ def auth_blocked(client_ip: str) -> bool:
 
 
 def record_auth_failure(client_ip: str) -> None:
+    global _last_sweep
     current = now()
     with _lock:
-        if len(_failures) > FAILURE_SWEEP_THRESHOLD:
+        if len(_failures) > FAILURE_SWEEP_THRESHOLD and current - _last_sweep >= WINDOW_SECONDS:
+            _last_sweep = current
             for stale in [ip for ip, window in _failures.items()
                           if not window or window[-1] <= current - WINDOW_SECONDS]:
                 del _failures[stale]

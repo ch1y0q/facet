@@ -9,6 +9,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '../../../core/services/api.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { i18nKeys } from '../../../core/i18n/keys';
+import { copyText } from '../../utils/clipboard';
 
 export interface ShareDialogData {
   entityType: 'album' | 'person';
@@ -119,20 +120,9 @@ export class ShareDialogComponent implements OnInit {
   }
 
   protected async copyLink(): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(this.fullShareUrl());
-      this.copied.set(true);
-      setTimeout(() => this.copied.set(false), 2000);
-    } catch {
-      // Fallback: select and copy via execCommand for older browsers
-      const input = document.querySelector<HTMLInputElement>('mat-dialog-content input');
-      if (input) {
-        input.select();
-        document.execCommand('copy');
-        this.copied.set(true);
-        setTimeout(() => this.copied.set(false), 2000);
-      }
-    }
+    if (!await copyText(this.fullShareUrl())) return;
+    this.copied.set(true);
+    setTimeout(() => this.copied.set(false), 2000);
   }
 
   protected async revoke(): Promise<void> {

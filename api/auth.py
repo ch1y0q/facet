@@ -162,6 +162,16 @@ class CurrentUser:
         self.display_name = display_name
         self.edition_authenticated = edition_authenticated
 
+    @classmethod
+    def from_payload(cls, payload):
+        """The user a decoded access-token payload describes."""
+        return cls(
+            user_id=payload.get('sub'),
+            role=payload.get('role', 'user'),
+            display_name=payload.get('display_name', ''),
+            edition_authenticated=payload.get('edition', False),
+        )
+
     @property
     def is_authenticated(self):
         return self.user_id is not None or self._is_no_password_mode()
@@ -215,12 +225,7 @@ async def get_optional_user(
     if payload.get('role') == SHARE_CLIENT_ROLE:
         return None
 
-    return CurrentUser(
-        user_id=payload.get('sub'),
-        role=payload.get('role', 'user'),
-        display_name=payload.get('display_name', ''),
-        edition_authenticated=payload.get('edition', False),
-    )
+    return CurrentUser.from_payload(payload)
 
 
 async def require_authenticated(

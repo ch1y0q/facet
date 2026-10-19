@@ -15,6 +15,10 @@ import { AgentWebMcpService } from '../../core/agent/agent-web-mcp.service';
 import { McpTokenItem } from '../../core/api/types';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { i18nKeys } from '../../core/i18n/keys';
+import { copyText } from '../../shared/utils/clipboard';
+
+/** Gap between clearing the live region and re-setting it, long enough for the empty text to render. */
+const ANNOUNCE_GAP_MS = 100;
 
 type TokenLevel = McpTokenItem['level'];
 
@@ -52,7 +56,7 @@ interface LevelOption {
           <p class="text-xs" data-testid="granted-level">{{ I18N.dialog.connect_assistant.reveal_level | translate: { level: (createdLevelKey() | translate) } }}</p>
           <div class="flex items-center gap-2">
             <code #tokenField tabindex="-1" class="flex-1 break-all rounded bg-black/10 px-2 py-1 text-xs" data-testid="token-value">{{ created.token }}</code>
-            <button mat-stroked-button type="button" [attr.aria-label]="I18N.dialog.connect_assistant.copy_token_aria | translate" (click)="copy(created.token)">
+            <button mat-stroked-button type="button" [attr.aria-label]="(copied() === 'token' ? I18N.dialog.connect_assistant.copied_token_aria : I18N.dialog.connect_assistant.copy_token_aria) | translate" (click)="copy(created.token)">
               {{ (copied() === 'token' ? I18N.dialog.connect_assistant.copied : I18N.dialog.connect_assistant.copy) | translate }}
             </button>
           </div>
@@ -63,7 +67,7 @@ interface LevelOption {
         <h3 id="connect-snippet-heading" class="text-sm font-medium">{{ I18N.dialog.connect_assistant.snippet_heading | translate }}</h3>
         <div class="flex items-start gap-2">
           <pre class="flex-1 overflow-x-auto whitespace-pre-wrap break-all rounded bg-black/10 p-2 text-xs" data-testid="snippet">{{ snippet() }}</pre>
-          <button mat-stroked-button type="button" [attr.aria-label]="I18N.dialog.connect_assistant.copy_snippet_aria | translate" (click)="copy(snippet(), 'snippet')">
+          <button mat-stroked-button type="button" [attr.aria-label]="(copied() === 'snippet' ? I18N.dialog.connect_assistant.copied_snippet_aria : I18N.dialog.connect_assistant.copy_snippet_aria) | translate" (click)="copy(snippet(), 'snippet')">
             {{ (copied() === 'snippet' ? I18N.dialog.connect_assistant.copied : I18N.dialog.connect_assistant.copy) | translate }}
           </button>
         </div>
@@ -112,10 +116,10 @@ interface LevelOption {
             <span class="ml-auto flex items-center gap-1">
               @if (confirmRevokeId() === token.id) {
                 <span class="text-xs">{{ I18N.dialog.connect_assistant.revoke_confirm | translate }}</span>
-                <button mat-button type="button" [attr.aria-label]="I18N.dialog.connect_assistant.revoke_confirm_yes_aria | translate: { name: token.name }" (click)="revoke(token.id)">{{ I18N.dialog.connect_assistant.revoke_confirm_yes | translate }}</button>
-                <button mat-button type="button" [attr.aria-label]="I18N.dialog.connect_assistant.cancel_revoke_aria | translate: { name: token.name }" (click)="confirmRevokeId.set(null)">{{ I18N.dialog.cancel | translate }}</button>
+                <button mat-button type="button" [attr.aria-label]="I18N.dialog.connect_assistant.revoke_confirm_yes_aria | translate: { name: token.name }" data-testid="revoke-confirm-yes" (click)="revoke(token.id)">{{ I18N.dialog.connect_assistant.revoke_confirm_yes | translate }}</button>
+                <button mat-button type="button" [attr.aria-label]="I18N.dialog.connect_assistant.cancel_revoke_aria | translate: { name: token.name }" (click)="cancelRevoke(token.id)">{{ I18N.dialog.cancel | translate }}</button>
               } @else {
-                <button mat-button type="button" [attr.aria-label]="I18N.dialog.connect_assistant.revoke_aria | translate: { name: token.name }" (click)="confirmRevokeId.set(token.id)">{{ I18N.dialog.connect_assistant.revoke | translate }}</button>
+                <button mat-button type="button" [attr.aria-label]="I18N.dialog.connect_assistant.revoke_aria | translate: { name: token.name }" [attr.data-revoke-id]="token.id" (click)="askRevoke(token.id)">{{ I18N.dialog.connect_assistant.revoke | translate }}</button>
               }
             </span>
           </div>
@@ -142,6 +146,7 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
   private readonly injector = inject(Injector);
   private readonly tokenField = viewChild<ElementRef<HTMLElement>>('tokenField');
   private readonly tokensHeading = viewChild<ElementRef<HTMLElement>>('tokensHeading');
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   protected readonly name = signal('');
   protected level: TokenLevel = 'readonly';
   protected readonly tokens = signal<McpTokenItem[]>([]);
@@ -153,6 +158,7 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
   protected readonly liveMessage = signal('');
   protected readonly error = signal<string | null>(null);
   protected readonly confirmRevokeId = signal<number | null>(null);
+  private announceTimer: ReturnType<typeof setTimeout> | undefined;
   protected readonly copied = signal<'token' | 'snippet' | null>(null);
 
   protected readonly bridgeConnected = computed(() => this.bridge.connected());
@@ -192,6 +198,7 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    clearTimeout(this.announceTimer);
     this.createdToken.set(null);
   }
 
@@ -212,7 +219,7 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
       const created = await firstValueFrom(this.api.createMcpToken({ name, level: this.level }));
       this.createdToken.set({ token: created.token, level: created.level });
       this.name.set('');
-      this.liveMessage.set(this.i18n.t(this.I18N.dialog.connect_assistant.token_created_announce, { name: created.name }));
+      this.announce(this.i18n.t(this.I18N.dialog.connect_assistant.token_created_announce, { name: created.name }));
       afterNextRender(() => this.tokenField()?.nativeElement.focus(), { injector: this.injector });
       await this.refresh();
     } catch (err) {
@@ -230,7 +237,7 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
       await firstValueFrom(this.api.revokeMcpToken(id));
       this.tokens.update(rows => rows.filter(row => row.id !== id));
       this.snackBar.open(this.i18n.t(this.I18N.dialog.connect_assistant.revoked), '', { duration: 2000 });
-      this.liveMessage.set(this.i18n.t(this.I18N.dialog.connect_assistant.revoked));
+      this.announce(this.i18n.t(this.I18N.dialog.connect_assistant.revoked));
       // The revoked row (and its focused button) is gone; land on the list's heading rather than on <body>.
       afterNextRender(() => this.tokensHeading()?.nativeElement.focus(), { injector: this.injector });
     } catch {
@@ -238,29 +245,39 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
     }
   }
 
-  /** `navigator.clipboard` is undefined on plain-http LAN (no secure context), so fall back to a hidden textarea. */
-  protected async copy(text: string, what: 'token' | 'snippet' = 'token'): Promise<void> {
-    let done = false;
-    try {
-      await navigator.clipboard.writeText(text);
-      done = true;
-    } catch {
-      const area = document.createElement('textarea');
-      area.value = text;
-      area.setAttribute('readonly', '');
-      area.style.position = 'fixed';
-      area.style.opacity = '0';
-      document.body.appendChild(area);
-      area.select();
-      try {
-        done = document.execCommand('copy');
-      } finally {
-        area.remove();
-      }
+  /**
+   * Speak `message` through the polite live region. A region whose text does not change is not
+   * re-announced, so a repeat of the current message clears it first and sets it a beat later.
+   */
+  private announce(message: string): void {
+    clearTimeout(this.announceTimer);
+    if (this.liveMessage() !== message) {
+      this.liveMessage.set(message);
+      return;
     }
-    if (!done) return;
+    this.liveMessage.set('');
+    this.announceTimer = setTimeout(() => this.liveMessage.set(message), ANNOUNCE_GAP_MS);
+  }
+
+  private focusInRow(selector: string): void {
+    afterNextRender(() => this.host.nativeElement.querySelector<HTMLElement>(selector)?.focus(), { injector: this.injector });
+  }
+
+  /** Revoke turns into the confirm buttons, so the button that held focus is gone: move focus to the confirm. */
+  protected askRevoke(id: number): void {
+    this.confirmRevokeId.set(id);
+    this.focusInRow('[data-testid="revoke-confirm-yes"]');
+  }
+
+  protected cancelRevoke(id: number): void {
+    this.confirmRevokeId.set(null);
+    this.focusInRow(`[data-revoke-id="${id}"]`);
+  }
+
+  protected async copy(text: string, what: 'token' | 'snippet' = 'token'): Promise<void> {
+    if (!await copyText(text)) return;
     this.copied.set(what);
-    this.liveMessage.set(this.i18n.t(this.I18N.dialog.connect_assistant.copied));
+    this.announce(this.i18n.t(this.I18N.dialog.connect_assistant.copied));
     setTimeout(() => this.copied.set(null), 2000);
   }
 }

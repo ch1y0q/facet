@@ -41,16 +41,6 @@ router = APIRouter(prefix="/api/mcp", tags=["mcp"],
                    dependencies=[Depends(_require_enabled), Depends(_refuse_agent_token)])
 
 
-def _principal(user: CurrentUser) -> str:
-    """The identity a token is bound to: the account, the shared password, or nobody."""
-    mode = tokens.install_mode()
-    if mode == 'multi':
-        return user.user_id or ''
-    if mode == 'legacy':
-        return tokens.LEGACY_PRINCIPAL
-    return tokens.OPEN_PRINCIPAL
-
-
 def _granted_level(user: CurrentUser, requested: str) -> str:
     """The level to mint at, or a 403 when the session may not hold ``requested``.
 
@@ -71,10 +61,6 @@ def _granted_level(user: CurrentUser, requested: str) -> str:
     return 'readonly'
 
 
-def _session_level(user: CurrentUser) -> str:
-    return 'edition' if user.is_edition else 'readonly'
-
-
 def _shared_principal_scope(user: CurrentUser) -> Optional[int]:
     """The highest token rank this session may see and revoke, or None when it is unbounded.
 
@@ -85,7 +71,7 @@ def _shared_principal_scope(user: CurrentUser) -> Optional[int]:
     """
     if tokens.install_mode() == 'multi':
         return None
-    return tokens.level_rank(_session_level(user))
+    return tokens.level_rank(tokens.session_level(user))
 
 
 @router.post(
@@ -100,7 +86,7 @@ def _shared_principal_scope(user: CurrentUser) -> Optional[int]:
 )
 def create_token(body: McpTokenCreate, user: CurrentUser = Depends(require_human_session)):
     """Mint a token. The plaintext is in this response and nowhere else, ever."""
-    principal = _principal(user)
+    principal = tokens.session_principal(user.user_id)
     if not principal or (tokens.install_mode() == 'multi' and get_user_config(principal) is None):
         raise HTTPException(status_code=401, detail="Authentication required")
     level = _granted_level(user, body.level)
@@ -108,7 +94,7 @@ def create_token(body: McpTokenCreate, user: CurrentUser = Depends(require_human
         raise HTTPException(
             status_code=412,
             detail=f"At most {tokens.MAX_LIVE_TOKENS_PER_USER} live tokens per user; revoke one first")
-    row, plaintext = tokens.mint(principal, body.name, level, _session_level(user))
+    row, plaintext = tokens.mint(principal, body.name, level, tokens.session_level(user))
     logger.info("MCP token %d minted (level %s)", row['id'], level)
     return {**row, 'token': plaintext}
 
@@ -131,7 +117,7 @@ def list_tokens(
         if not (is_multi_user_enabled() and user.is_superadmin):
             raise HTTPException(status_code=403, detail="Superadmin access required")
         return {'tokens': tokens.list_tokens(None)}
-    rows = tokens.list_tokens(_principal(user))
+    rows = tokens.list_tokens(tokens.session_principal(user.user_id))
     ceiling = _shared_principal_scope(user)
     if ceiling is not None:
         rows = [row for row in rows if tokens.level_rank(row['level']) <= ceiling]
@@ -149,7 +135,7 @@ def list_tokens(
 )
 def revoke_token(token_id: int, user: CurrentUser = Depends(require_human_session)):
     """Revoke one of the caller's tokens (any token, for a superadmin)."""
-    owner: Optional[str] = None if (is_multi_user_enabled() and user.is_superadmin) else _principal(user)
+    owner: Optional[str] = None if (is_multi_user_enabled() and user.is_superadmin) else tokens.session_principal(user.user_id)
     ceiling = _shared_principal_scope(user)
     if ceiling is not None:
         target = next((row for row in tokens.list_tokens(owner) if row['id'] == token_id), None)

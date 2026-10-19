@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from api.auth import (
-    EDITION_PASSWORD_KEY, VIEWER_PASSWORD_KEY, _is_open_install, password_generation,
+    EDITION_PASSWORD_KEY, CurrentUser, VIEWER_PASSWORD_KEY, _is_open_install, password_generation,
 )
 from api.config import config_load_failed, get_user_config, is_multi_user_enabled
 from api.database import get_db
@@ -83,6 +83,23 @@ def install_mode() -> str:
     if _is_open_install(VIEWER_PASSWORD_KEY):
         return "open"
     return "legacy"
+
+
+def session_principal(user_id: Optional[str]) -> str:
+    """The identity a session (and so a token or a bridge tab) is bound to.
+
+    The account in multi-user mode, the shared ``_legacy`` principal on a single
+    password, and the fixed ``_anonymous`` on an open install.
+    """
+    mode = install_mode()
+    if mode == "multi":
+        return user_id or ""
+    return LEGACY_PRINCIPAL if mode == "legacy" else OPEN_PRINCIPAL
+
+
+def session_level(user: CurrentUser) -> str:
+    """``edition`` for a session holding edition rights, else ``readonly``."""
+    return "edition" if user.is_edition else "readonly"
 
 
 def user_generation(user: dict) -> str:

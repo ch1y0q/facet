@@ -66,10 +66,14 @@ export interface CullingSubject {
   crop_sharpness_score: number | null;
 }
 
+/** The group types the culling feed serves; the one list the type, the toolbar's granularity values and their checks share. */
+export const CULLING_GROUP_TYPES = ['burst', 'similar', 'scene', 'bracket', 'panorama', 'hdr_panorama'] as const;
+export type CullingGroupType = typeof CULLING_GROUP_TYPES[number];
+
 /** A burst, similar, scene, bracket or panorama group surfaced for culling. */
 export interface CullingGroup {
   group_id: number;
-  type: 'burst' | 'similar' | 'scene' | 'bracket' | 'panorama' | 'hdr_panorama';
+  type: CullingGroupType;
   reason: string;
   photos: CullingPhoto[];
   best_path: string;

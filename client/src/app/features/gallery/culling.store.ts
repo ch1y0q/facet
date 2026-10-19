@@ -5,7 +5,7 @@ import type { ComparisonStats } from '../../core/api/types';
 import { Album, AlbumService } from '../../core/services/album.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { I18N } from '../../core/i18n/keys';
-import type { CullingGroup } from './burst-culling.pipes';
+import { CULLING_GROUP_TYPES, type CullingGroup } from './burst-culling.pipes';
 
 export interface CullingGroupsResponse {
   groups: CullingGroup[];
@@ -35,8 +35,7 @@ export const CULL_SORT_KEY = 'facet_culling_sort';
 export const CULL_SORT_DIR_KEY = 'facet_culling_sort_direction';
 export const CULL_PROFILE_KEY = 'facet_culling_profile';
 
-export const GROUP_BY_VALUES = ['all', 'burst', 'similar', 'scene', 'bracket',
-                                'panorama', 'hdr_panorama'] as const;
+export const GROUP_BY_VALUES = ['all', ...CULLING_GROUP_TYPES] as const;
 export type GroupBy = typeof GROUP_BY_VALUES[number];
 // Sets whose frames were shot to be combined: kept whole by default, and
 // never a source of comparison pairs.

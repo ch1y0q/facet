@@ -116,6 +116,8 @@
       "insecure_context": "WebMCP en la página necesita HTTPS o localhost. La conexión de arriba sigue funcionando por HTTP simple.",
       "copy_token_aria": "Copiar el nuevo token",
       "copy_snippet_aria": "Copiar el comando de conexión",
+      "copied_token_aria": "Nuevo token copiado",
+      "copied_snippet_aria": "Comando de conexión copiado",
       "revoke_aria": "Revocar el token {name}",
       "revoke_confirm_yes_aria": "Sí, revocar el token {name}",
       "cancel_revoke_aria": "Cancelar, conservar el token {name}",

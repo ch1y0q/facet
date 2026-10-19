@@ -439,10 +439,12 @@ class TestTabLevels:
         token = env.token(env.login(), "readonly")
         result = env.call(token, "ui_get_selection")
         assert result["error"] == "no_tab" and "viewer-only session" in result["message"]
-        assert env.call(token, "status")["data"]["tabs"] == []
+        status = env.call(token, "status")["data"]
+        assert status["tabs"] == [] and status["out_of_reach_tabs"] == 1
         fake_tab(env, jwt_of(env.login()), "viewer-tab")
         assert env.call(token, "ui_get_selection")["tab"]["tab_id"] == "viewer-tab"
-        assert [t["tab_id"] for t in env.call(token, "status")["data"]["tabs"]] == ["viewer-tab"]
+        status = env.call(token, "status")["data"]
+        assert [t["tab_id"] for t in status["tabs"]] == ["viewer-tab"] and status["out_of_reach_tabs"] == 1
 
     def test_null_minted_level_row_counts_as_readonly(self, agent_app, fake_tab):
         from api.database import get_db
@@ -523,7 +525,8 @@ class TestTabLevels:
     def test_status_for_an_edition_token_with_only_a_viewer_tab_is_empty(self, agent_app, fake_tab):
         env = agent_app("legacy")
         fake_tab(env, jwt_of(env.login()), "viewer-tab")
-        assert env.call(env.token(env.login(edition=True), "edition"), "status")["data"]["tabs"] == []
+        status = env.call(env.token(env.login(edition=True), "edition"), "status")["data"]
+        assert status["tabs"] == [] and status["out_of_reach_tabs"] == 1
 
     def test_clearing_the_edition_password_mid_socket_drops_the_tab_level(self, agent_app, fake_tab):
         from api import config as api_config

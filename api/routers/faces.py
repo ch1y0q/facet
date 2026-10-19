@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, ValidationError, model_validator
 from api.auth import CurrentUser, require_edition, require_auth, require_authenticated
 from api.config import is_multi_user_enabled, _stats_cache
 from api.database import get_async_db, get_db
+from api.routers.burst_culling import _invalidate_culling_groups_cache
 from api.db_helpers import (
     update_person_face_count, trigger_auto_retrain, get_visibility_clause,
     assert_faces_visible, assert_photo_visible, repair_stale_representative,
@@ -512,6 +513,7 @@ def api_toggle_favorite(
                     conn.execute("UPDATE photos SET is_favorite = 0 WHERE path = ?", (body.photo_path,))
             conn.commit()
             _stats_cache.clear()
+            _invalidate_culling_groups_cache()
             _mint_rating_comparisons(user.user_id)
             return {'success': True, 'is_favorite': new_value == 1, 'is_rejected': False if new_value == 1 else None}
         except HTTPException:
@@ -562,6 +564,7 @@ def api_toggle_rejected(
                     conn.execute("UPDATE photos SET is_rejected = 0 WHERE path = ?", (body.photo_path,))
             conn.commit()
             _stats_cache.clear()
+            _invalidate_culling_groups_cache()
             _mint_rating_comparisons(user.user_id)
             return {'success': True, 'is_rejected': new_value == 1, 'star_rating': 0 if new_value == 1 else None, 'is_favorite': False if new_value == 1 else None}
         except HTTPException:
@@ -737,6 +740,7 @@ def _batch_update(body: BatchPhotoRequest, user: CurrentUser, sql: BatchWriteSql
                 count = _write_paths(conn, paths, user, sql)
             conn.commit()
             _stats_cache.clear()
+            _invalidate_culling_groups_cache()
             return {'success': True, 'count': count}
         except HTTPException:
             raise

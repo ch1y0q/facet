@@ -116,8 +116,10 @@
       "insecure_context": "WebMCP auf der Seite benötigt HTTPS oder localhost. Die obige Verbindung funktioniert auch über einfaches HTTP.",
       "copy_token_aria": "Neues Token kopieren",
       "copy_snippet_aria": "Verbindungsbefehl kopieren",
+      "copied_token_aria": "Neues Token kopiert",
+      "copied_snippet_aria": "Verbindungsbefehl kopiert",
       "revoke_aria": "Token {name} widerrufen",
-      "revoke_confirm_yes_aria": "Ja, Token {name} widerrufen",
+      "revoke_confirm_yes_aria": "Ja, widerrufen: Token {name}",
       "cancel_revoke_aria": "Abbrechen, Token {name} behalten",
       "token_created_announce": "Token {name} erstellt. Es wird nur einmal im hervorgehobenen Feld angezeigt.",
       "reveal_level": "Gewährter Zugriff: {level}"

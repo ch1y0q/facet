@@ -33,11 +33,13 @@ from typing import Any, Optional
 from fastapi import APIRouter, WebSocket
 from starlette.websockets import WebSocketDisconnect
 
-from api.agent import bridge
+from api.agent import bridge, tokens
 from api.agent.bridge import TabConn, TabRegistry
 from api.agent.tokens import OPEN_PRINCIPAL, install_mode
 from api.agent.ui_tools import TAB_ID_PATTERN, tools_version
-from api.auth import EDITION_PASSWORD_KEY, SHARE_CLIENT_ROLE, VIEWER_PASSWORD_KEY, _is_open_install, decode_access_token
+from api.auth import (
+    SHARE_CLIENT_ROLE, VIEWER_PASSWORD_KEY, CurrentUser, _is_open_install, decode_access_token,
+)
 from api.config import VIEWER_CONFIG, mcp_settings
 
 logger = logging.getLogger(__name__)
@@ -72,17 +74,16 @@ def origin_allowed(origin: Optional[str], host: Optional[str]) -> bool:
 
 def _level_of(payload: dict) -> str:
     """The rights a session's JWT carries; ``edition`` / ``user`` / ``readonly`` as in a token grant."""
-    if install_mode() == "multi":
-        return "edition" if payload.get("role") in ("admin", "superadmin") else "user"
-    return "edition" if payload.get("edition") is True and not _is_open_install(EDITION_PASSWORD_KEY) else "readonly"
+    level = tokens.session_level(CurrentUser.from_payload(payload))
+    return "user" if level == "readonly" and install_mode() == "multi" else level
 
 
 def _authenticate(token: Any) -> Optional[tuple[str, str, Optional[str], Optional[float]]]:
     """``(principal, level, session_token, exp)`` for an auth frame's token, else None.
 
-    The principal is the one a token resolves to (``TokenGrant.resolve``): the fixed
+    The principal is the one a token is minted for (``tokens.session_principal``): the fixed
     ``_anonymous`` on an open install whatever the JWT's ``sub`` says (an edition login
-    there still mints ``_legacy``), otherwise the JWT's own ``sub``.
+    there still mints ``_legacy``), ``_legacy`` on a single password, else the account.
     """
     if token is None:
         return (OPEN_PRINCIPAL, "readonly", None, None) if _is_open_install(VIEWER_PASSWORD_KEY) else None
@@ -95,8 +96,7 @@ def _authenticate(token: Any) -> Optional[tuple[str, str, Optional[str], Optiona
     if not isinstance(sub, str) or not sub:
         return None
     exp = payload.get("exp")
-    principal = OPEN_PRINCIPAL if install_mode() == "open" else sub
-    return principal, _level_of(payload), token, float(exp) if isinstance(exp, (int, float)) else None
+    return tokens.session_principal(sub), _level_of(payload), token, float(exp) if isinstance(exp, (int, float)) else None
 
 
 def _session_level(session_token: Optional[str]) -> Optional[str]:

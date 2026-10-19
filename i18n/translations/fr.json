@@ -116,6 +116,8 @@
       "insecure_context": "WebMCP dans la page nécessite HTTPS ou localhost. La connexion ci-dessus fonctionne quand même en HTTP simple.",
       "copy_token_aria": "Copier le nouveau jeton",
       "copy_snippet_aria": "Copier la commande de connexion",
+      "copied_token_aria": "Nouveau jeton copié",
+      "copied_snippet_aria": "Commande de connexion copiée",
       "revoke_aria": "Révoquer le jeton {name}",
       "revoke_confirm_yes_aria": "Oui, révoquer le jeton {name}",
       "cancel_revoke_aria": "Annuler, conserver le jeton {name}",

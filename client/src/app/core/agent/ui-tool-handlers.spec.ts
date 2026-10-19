@@ -1,6 +1,7 @@
 import type { Mock } from 'vitest';
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, provideRouter } from '@angular/router';
+import { Component } from '@angular/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { of } from 'rxjs';
 import { ApiService } from '../services/api.service';
@@ -16,6 +17,9 @@ import { createUiToolHandlers } from './ui-tool-handlers';
 import { ViewActionRegistry } from './view-action-registry.service';
 import contractFile from './ui-tools.schema.json';
 import { UI_TOOL_ERROR_CODES, UiToolContractFile, UiToolEnvelope } from './ui-tool.types';
+
+@Component({ selector: 'app-stub-page', template: '' })
+class StubPage {}
 
 const CONFIG = {
   pagination: { default_per_page: 64 },
@@ -163,6 +167,32 @@ describe('UI tool registry and handlers', () => {
       const data = ((await run('ui_get_gallery_view', {})) as { data: { filters: Record<string, unknown> } }).data;
       expect(data.filters['category']).toBe('macro');
       expect(data.filters).not.toHaveProperty('type');
+    });
+  });
+
+  describe('ui_navigate against the real client routes', () => {
+    const contractRoutes = (): string[] => {
+      const tool = (contractFile as unknown as UiToolContractFile).tools.find(t => t.name === 'ui_navigate');
+      return (tool?.inputSchema.properties?.['route'] as { enum?: string[] } | undefined)?.enum ?? [];
+    };
+
+    it('every route the contract offers is a static path the app router defines', () => {
+      const defined = new Set(routes.filter(r => r.path !== undefined && r.redirectTo === undefined).map(r => `/${r.path}`));
+      expect(contractRoutes().length).toBeGreaterThan(10);
+      expect(contractRoutes().filter(route => !defined.has(route))).toEqual([]);
+    });
+
+    it('a same-URL navigation resolves true on a real router instead of being skipped', async () => {
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [provideRouter([{ path: 'stats', component: StubPage }, { path: '', component: StubPage }])],
+      });
+      const realRouter = TestBed.inject(Router);
+      await realRouter.navigateByUrl('/stats');
+      const handlers = createUiToolHandlers({
+        gallery: store, router: realRouter, auth: { isEdition: () => false } as unknown as AuthService, viewActions,
+      });
+      await expect(handlers['ui_navigate']({ route: '/stats' })).resolves.toEqual({ route: '/stats' });
     });
   });
 

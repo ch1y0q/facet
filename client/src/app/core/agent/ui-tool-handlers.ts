@@ -262,34 +262,27 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
         return selectionSnapshot();
       }
       const wanted = paths ?? [];
-      if (gallery.viewScopeSelected()) {
-        // Under a view-scoped selection, adding/removing photos edits the exclusion list.
-        if (mode === 'replace') {
-          gallery.restoreSelection(wanted);
-        } else {
-          const excluded = new Set(gallery.excludedPaths());
-          const inView = new Set(gallery.photos().map(photo => photo.path));
-          const notInView: string[] = [];
-          for (const path of wanted) {
-            if (mode === 'add') excluded.delete(path);
-            else if (inView.has(path)) excluded.add(path);
-            else notInView.push(path);
-          }
-          gallery.excludedPaths.set(excluded);
-          // An exclusion outside the view would shrink the count below the number of photos actually selected.
-          return notInView.length ? { ...selectionSnapshot(), not_in_view: notInView.slice(0, SELECTION_PATH_LIMIT) } : selectionSnapshot();
-        }
-        return selectionSnapshot();
-      }
       if (mode === 'replace') {
         gallery.restoreSelection(wanted);
+        return selectionSnapshot();
+      }
+      // Under a view-scoped selection the edited set is the exclusion list, so adding a photo takes it OUT of that set.
+      const viewScoped = gallery.viewScopeSelected();
+      const edited = new Set(viewScoped ? gallery.excludedPaths() : gallery.selectedPaths());
+      const insert = viewScoped ? mode === 'remove' : mode === 'add';
+      const inView = new Set(gallery.photos().map(photo => photo.path));
+      const notInView: string[] = [];
+      for (const path of wanted) {
+        if (viewScoped && insert && !inView.has(path)) notInView.push(path);
+        else if (insert) edited.add(path);
+        else edited.delete(path);
+      }
+      if (!viewScoped) {
+        gallery.restoreSelection(edited);
       } else {
-        const next = new Set(gallery.selectedPaths());
-        for (const path of wanted) {
-          if (mode === 'add') next.add(path);
-          else next.delete(path);
-        }
-        gallery.restoreSelection(next);
+        gallery.excludedPaths.set(edited);
+        // An exclusion outside the view would shrink the count below the number of photos actually selected.
+        if (notInView.length) return { ...selectionSnapshot(), not_in_view: notInView.slice(0, SELECTION_PATH_LIMIT) };
       }
       return selectionSnapshot();
     },

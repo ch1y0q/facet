@@ -596,3 +596,34 @@ class TestNonceModule:
         for _ in range(nonce.MAX_PENDING + 20):
             nonce.issue(1, "act", "h")
         assert len(nonce._pending) <= nonce.MAX_PENDING
+
+    def test_one_token_cannot_flush_another_tokens_pending_nonce(self):
+        nonce.reset()
+        digest = nonce.digest(["a"], {})
+        victim = nonce.issue(1, "act", digest)
+        for _ in range(nonce.MAX_PENDING * 2):
+            nonce.issue(2, "act", "h")
+        assert nonce.consume(1, "act", digest, victim)
+        assert sum(1 for entry in nonce._pending.values() if entry[0] == 2) <= nonce.MAX_PENDING_PER_TOKEN
+
+    def test_global_cap_evicts_the_issuers_own_entries_first(self):
+        nonce.reset()
+        others = nonce.MAX_PENDING // nonce.MAX_PENDING_PER_TOKEN - 1
+        for token in range(2, 2 + others):
+            for _ in range(nonce.MAX_PENDING_PER_TOKEN):
+                nonce.issue(token, "act", "h")
+        for _ in range(30):
+            nonce.issue(1, "act", "h")
+        assert len(nonce._pending) == nonce.MAX_PENDING
+        assert sum(1 for entry in nonce._pending.values() if entry[0] != 1) == others * nonce.MAX_PENDING_PER_TOKEN
+
+    def test_global_cap_full_of_other_tokens_refuses_instead_of_evicting(self):
+        nonce.reset()
+        others = nonce.MAX_PENDING // nonce.MAX_PENDING_PER_TOKEN
+        for token in range(2, 2 + others):
+            for _ in range(nonce.MAX_PENDING_PER_TOKEN):
+                nonce.issue(token, "act", "h")
+        before = dict(nonce._pending)
+        with pytest.raises(nonce.NonceCapacityError):
+            nonce.issue(1, "act", "h")
+        assert nonce._pending == before

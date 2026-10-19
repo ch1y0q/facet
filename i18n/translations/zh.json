@@ -116,6 +116,8 @@
       "insecure_context": "页面内 WebMCP 需要 HTTPS 或 localhost。上面的连接在普通 HTTP 下仍可使用。",
       "copy_token_aria": "复制新令牌",
       "copy_snippet_aria": "复制连接命令",
+      "copied_token_aria": "已复制新令牌",
+      "copied_snippet_aria": "已复制连接命令",
       "revoke_aria": "撤销令牌 {name}",
       "revoke_confirm_yes_aria": "是，撤销令牌 {name}",
       "cancel_revoke_aria": "取消，保留令牌 {name}",
