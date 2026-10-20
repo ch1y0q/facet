@@ -124,21 +124,10 @@
       "prompt_token_rules": "令牌只能保存在你的 MCP 客户端配置中。不要在回复中重复它，也不要将它写入任何其他文件或笔记。我可以随时在 Facet 中撤销它。",
       "prompt_verify": "配置完成后，调用此工具以确认连接：",
       "prompt_capabilities": "你可以搜索图库，并打开或浏览此 Facet 标签页。只有上方授予的权限允许时，你才能修改照片。",
-      "actions_heading": "助手最近的操作（{count}）",
-      "action_summary": "{tool}：{count} 项更改",
-      "action_undo": "撤销",
-      "action_undo_confirm": "撤销这一批操作？",
-      "action_undo_yes": "是，撤销",
-      "action_undo_aria": "撤销 {when} 的 {tool}",
-      "action_undo_yes_aria": "是，撤销 {when} 的 {tool}",
-      "action_undo_cancel_aria": "取消，保留 {when} 的 {tool}",
-      "undo_result": "已恢复 {restored} 项，{kept} 项因之后被修改而保留",
-      "undo_failed": "无法撤销该批操作",
-      "action_undone": "已撤销",
       "inpage_toggle": "允许此浏览器中的智能体使用 Facet 工具",
       "inpage_hint": "开启后，在此浏览器中运行的助手可以搜索，并在您的会话允许时通过页面修改您的图库。默认关闭，仅对此浏览器生效。",
-      "inpage_changed": "助手修改了 {count} 张照片",
-      "inpage_undo": "撤销"
+      "inpage_changed": "助手更改了 {count} 张照片",
+      "inpage_changed_plural": "助手更改了 {count} 张照片"
     }
   },
   "pagination": {
@@ -291,6 +280,7 @@
     "category": "类别",
     "strategy": "策略",
     "strategies": {
+      "learning": "学习价值（信息量最大）",
       "uncertainty": "不确定性（评分接近）",
       "boundary": "临界区间（6—8 分）",
       "active": "主动学习（比较次数少）",
@@ -298,6 +288,8 @@
     },
     "strategy_help": {
       "title": "比较策略",
+      "learning_title": "学习价值（信息量最大）",
+      "learning_desc": "选择排序模型能从中学到最多的图片对：训练前选取特征空间中相距较远的照片；训练后选取综合分与学习分排序不一致的图片对。默认策略。",
       "uncertainty_title": "不确定性（评分接近）",
       "uncertainty_desc": "选择综合评分几乎相同的照片对，适合校准权重。当算法难分高下时，你的选择能帮助确定哪些指标更重要。",
       "boundary_title": "临界区间（画质阈值）",

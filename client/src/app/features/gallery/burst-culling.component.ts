@@ -1,3 +1,4 @@
+import { SEQUENCE_KINDS_KEPT_WHOLE } from '../../shared/pipes/sequence-kind.pipe';
 import { Component, DestroyRef, inject, signal, computed, effect, untracked, viewChild, ElementRef, OnDestroy, HostListener, TemplateRef, ChangeDetectionStrategy } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
 import { ViewActionRegistry } from '../../core/agent/view-action-registry.service';
@@ -38,7 +39,7 @@ import { SequenceKindLabelPipe, SUPPRESSED_OVERRIDE } from '../../shared/pipes/s
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom } from 'rxjs';
 import {
-  CullingStore, CullProfile, AutoCullRunOutcome, RunGeneration, GroupBy, GROUP_BY_VALUES, KEEP_WHOLE_KINDS,
+  CullingStore, RunGeneration, GroupBy, GROUP_BY_VALUES,
   CULL_GROUP_BY_KEY, CULL_SORT_KEY, CULL_SORT_DIR_KEY, updateMapSignal,
 } from './culling.store';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
@@ -207,11 +208,11 @@ interface ShortcutRow {
             }
             <!-- Filters ordered by impact: scope → granularity → sort → category →
                  thresholds. The actions live in the pinned cluster below. -->
-            @if (albums().length > 0) {
+            @if (cull.albums().length > 0) {
               <button mat-icon-button [matMenuTriggerFor]="scopeMenu"
                       [class.!text-[var(--mat-sys-primary)]]="scoped()"
-                      [matTooltip]="scopeLabel() ?? (I18N.culling.scope_whole_library | translate)"
-                      [attr.aria-label]="scopeLabel() ?? (I18N.culling.scope_whole_library | translate)">
+                      [matTooltip]="cull.scopeLabel() ?? (I18N.culling.scope_whole_library | translate)"
+                      [attr.aria-label]="cull.scopeLabel() ?? (I18N.culling.scope_whole_library | translate)">
                 <mat-icon>filter_alt</mat-icon>
               </button>
               <mat-menu #scopeMenu="matMenu">
@@ -219,7 +220,7 @@ interface ShortcutRow {
                   <mat-icon>photo_library</mat-icon>
                   <span>{{ I18N.culling.scope_whole_library | translate }}</span>
                 </button>
-                @for (a of albums(); track a.id) {
+                @for (a of cull.albums(); track a.id) {
                   <button mat-menu-item [matMenuTriggerFor]="sceneMenu" (menuOpened)="loadAlbumScenes(a)">
                     <mat-icon>photo_album</mat-icon>
                     <span>{{ a.name }}</span>
@@ -244,60 +245,60 @@ interface ShortcutRow {
               </mat-menu>
             }
             <button mat-icon-button [matMenuTriggerFor]="cullGroupByMenu"
-                    [class.!text-[var(--mat-sys-primary)]]="groupBy() !== 'all'"
+                    [class.!text-[var(--mat-sys-primary)]]="cull.groupBy() !== 'all'"
                     [matTooltip]="I18N.culling.group_by.label | translate"
                     [attr.aria-label]="I18N.culling.group_by.label | translate">
-              <mat-icon>{{ groupBy() | cullGroupIcon }}</mat-icon>
+              <mat-icon>{{ cull.groupBy() | cullGroupIcon }}</mat-icon>
             </button>
             <mat-menu #cullGroupByMenu="matMenu">
               <button mat-menu-item (click)="onGroupByChange('all')">
                 <mat-icon>{{ 'all' | cullGroupIcon }}</mat-icon>
-                <span [class.font-bold]="groupBy() === 'all'">{{ I18N.culling.group_by.all | translate }}</span>
+                <span [class.font-bold]="cull.groupBy() === 'all'">{{ I18N.culling.group_by.all | translate }}</span>
               </button>
               <button mat-menu-item (click)="onGroupByChange('burst')">
                 <mat-icon>{{ 'burst' | cullGroupIcon }}</mat-icon>
-                <span [class.font-bold]="groupBy() === 'burst'">{{ I18N.culling.group_by.bursts | translate }}</span>
+                <span [class.font-bold]="cull.groupBy() === 'burst'">{{ I18N.culling.group_by.bursts | translate }}</span>
               </button>
               <button mat-menu-item (click)="onGroupByChange('similar')">
                 <mat-icon>{{ 'similar' | cullGroupIcon }}</mat-icon>
-                <span [class.font-bold]="groupBy() === 'similar'">{{ I18N.culling.group_by.similar | translate }}</span>
+                <span [class.font-bold]="cull.groupBy() === 'similar'">{{ I18N.culling.group_by.similar | translate }}</span>
               </button>
-              @if (store.config()?.features?.show_scenes || groupBy() === 'scene') {
+              @if (store.config()?.features?.show_scenes || cull.groupBy() === 'scene') {
                 <button mat-menu-item (click)="onGroupByChange('scene')">
                   <mat-icon>{{ 'scene' | cullGroupIcon }}</mat-icon>
-                  <span [class.font-bold]="groupBy() === 'scene'">{{ I18N.culling.group_by.scenes | translate }}</span>
+                  <span [class.font-bold]="cull.groupBy() === 'scene'">{{ I18N.culling.group_by.scenes | translate }}</span>
                 </button>
               }
               <button mat-menu-item (click)="onGroupByChange('bracket')">
                 <mat-icon>{{ 'bracket' | cullGroupIcon }}</mat-icon>
-                <span [class.font-bold]="groupBy() === 'bracket'">{{ I18N.culling.group_by.brackets | translate }}</span>
+                <span [class.font-bold]="cull.groupBy() === 'bracket'">{{ I18N.culling.group_by.brackets | translate }}</span>
               </button>
               <button mat-menu-item (click)="onGroupByChange('panorama')">
                 <mat-icon>{{ 'panorama' | cullGroupIcon }}</mat-icon>
-                <span [class.font-bold]="groupBy() === 'panorama'">{{ I18N.culling.group_by.panoramas | translate }}</span>
+                <span [class.font-bold]="cull.groupBy() === 'panorama'">{{ I18N.culling.group_by.panoramas | translate }}</span>
               </button>
               <button mat-menu-item (click)="onGroupByChange('hdr_panorama')">
                 <mat-icon>{{ 'hdr_panorama' | cullGroupIcon }}</mat-icon>
-                <span [class.font-bold]="groupBy() === 'hdr_panorama'">{{ I18N.culling.group_by.hdr_panoramas | translate }}</span>
+                <span [class.font-bold]="cull.groupBy() === 'hdr_panorama'">{{ I18N.culling.group_by.hdr_panoramas | translate }}</span>
               </button>
             </mat-menu>
-            @if (groupBy() !== 'scene') {
+            @if (cull.groupBy() !== 'scene') {
               <button mat-icon-button [matMenuTriggerFor]="cullSortMenu"
-                      [class.!text-[var(--mat-sys-primary)]]="sortMode() !== 'easiest'"
-                      [matTooltip]="'culling.sort.' + sortMode() | translate"
-                      [attr.aria-label]="'culling.sort.' + sortMode() | translate">
-                <mat-icon>{{ sortMode() | sortIcon }}</mat-icon>
+                      [class.!text-[var(--mat-sys-primary)]]="cull.sortMode() !== 'easiest'"
+                      [matTooltip]="'culling.sort.' + cull.sortMode() | translate"
+                      [attr.aria-label]="'culling.sort.' + cull.sortMode() | translate">
+                <mat-icon>{{ cull.sortMode() | sortIcon }}</mat-icon>
               </button>
               <mat-menu #cullSortMenu="matMenu">
                 @for (m of sortModes; track m) {
                   <button mat-menu-item (click)="onSortChange(m)">
                     <mat-icon>{{ m | sortIcon }}</mat-icon>
-                    <span [class.font-bold]="sortMode() === m">{{ 'culling.sort.' + m | translate }}</span>
+                    <span [class.font-bold]="cull.sortMode() === m">{{ 'culling.sort.' + m | translate }}</span>
                   </button>
                 }
               </mat-menu>
               <button mat-icon-button (click)="toggleSortDirection()"
-                      [class.!text-[var(--mat-sys-primary)]]="sortDirection() !== ''"
+                      [class.!text-[var(--mat-sys-primary)]]="cull.sortDirection() !== ''"
                       [matTooltip]="(sortAscending() ? I18N.culling.sort.ascending : I18N.culling.sort.descending) | translate"
                       [attr.aria-label]="(sortAscending() ? I18N.culling.sort.ascending : I18N.culling.sort.descending) | translate">
                 <mat-icon>{{ sortAscending() ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
@@ -323,9 +324,9 @@ interface ShortcutRow {
                 }
               </mat-menu>
             }
-            @if (groupBy() === 'similar' || groupBy() === 'all') {
+            @if (cull.groupBy() === 'similar' || cull.groupBy() === 'all') {
               <button mat-icon-button [matMenuTriggerFor]="thresholdMenu"
-                      [matTooltip]="(I18N.culling.threshold | translate) + ' · ' + similarityThreshold() + '%'"
+                      [matTooltip]="(I18N.culling.threshold | translate) + ' · ' + cull.similarityThreshold() + '%'"
                       [attr.aria-label]="I18N.culling.threshold | translate">
                 <mat-icon>compare</mat-icon>
               </button>
@@ -333,30 +334,30 @@ interface ShortcutRow {
                 <div class="flex items-center gap-2 px-4 py-3" tabindex="-1" (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation()">
                   <span class="text-xs opacity-60">{{ I18N.culling.threshold | translate }}</span>
                   <mat-slider class="!w-28 !min-w-0" [min]="70" [max]="95" [step]="5" [discrete]="true">
-                    <input matSliderThumb [value]="similarityThreshold()" (valueChange)="onThresholdChange($event)" [attr.aria-label]="I18N.culling.threshold | translate" />
+                    <input matSliderThumb [value]="cull.similarityThreshold()" (valueChange)="onThresholdChange($event)" [attr.aria-label]="I18N.culling.threshold | translate" />
                   </mat-slider>
-                  <span class="text-xs font-medium w-8">{{ similarityThreshold() }}%</span>
+                  <span class="text-xs font-medium w-8">{{ cull.similarityThreshold() }}%</span>
                 </div>
               </mat-menu>
             }
-            @if (cullProfiles().length > 0) {
+            @if (cull.cullProfiles().length > 0) {
               <button mat-icon-button [matMenuTriggerFor]="profileMenu"
-                      [class.!text-[var(--mat-sys-primary)]]="selectedProfile() !== ''"
+                      [class.!text-[var(--mat-sys-primary)]]="cull.selectedProfile() !== ''"
                       [matTooltip]="selectedProfileLabel() | translate"
                       [attr.aria-label]="selectedProfileLabel() | translate">
-                <mat-icon>{{ selectedProfile() | cullProfileIcon }}</mat-icon>
+                <mat-icon>{{ cull.selectedProfile() | cullProfileIcon }}</mat-icon>
               </button>
               <mat-menu #profileMenu="matMenu">
-                @for (p of cullProfiles(); track p.id) {
-                  <button mat-menu-item (click)="applyProfile(p)">
+                @for (p of cull.cullProfiles(); track p.id) {
+                  <button mat-menu-item (click)="cull.applyProfile(p)">
                     <mat-icon>{{ p.id | cullProfileIcon }}</mat-icon>
-                    <span [class.font-bold]="selectedProfile() === p.id">{{ p.label_key | translate }}</span>
+                    <span [class.font-bold]="cull.selectedProfile() === p.id">{{ p.label_key | translate }}</span>
                   </button>
                 }
               </mat-menu>
             }
             <button mat-icon-button [matMenuTriggerFor]="strictnessMenu"
-                    [matTooltip]="(I18N.culling.strictness_tooltip | translate) + ' · ' + strictness() + '%'"
+                    [matTooltip]="(I18N.culling.strictness_tooltip | translate) + ' · ' + cull.strictness() + '%'"
                     [attr.aria-label]="I18N.culling.strictness | translate">
               <mat-icon>tune</mat-icon>
             </button>
@@ -364,21 +365,21 @@ interface ShortcutRow {
               <div class="flex items-center gap-2 px-4 py-3" tabindex="-1" (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation()">
                 <span class="text-xs opacity-60">{{ I18N.culling.strictness | translate }}</span>
                 <mat-slider class="!w-28 !min-w-0" [min]="0" [max]="100" [step]="5" [discrete]="true">
-                  <input matSliderThumb [value]="strictness()" (valueChange)="onStrictnessChange($event)" [attr.aria-label]="I18N.culling.strictness | translate" />
+                  <input matSliderThumb [value]="cull.strictness()" (valueChange)="onStrictnessChange($event)" [attr.aria-label]="I18N.culling.strictness | translate" />
                 </mat-slider>
-                <span class="text-xs font-medium w-8">{{ strictness() }}%</span>
+                <span class="text-xs font-medium w-8">{{ cull.strictness() }}%</span>
               </div>
             </mat-menu>
           </div>
           <!-- Exclude-rejected and the loupe act on the photos rather than
                selecting which ones the feed serves, so they are pinned with the
                other actions instead of scrolling away with the filters. -->
-          <button mat-icon-button class="shrink-0" (click)="onExcludeRejectedChange(!excludeRejected())"
-                  [class.!text-[var(--mat-sys-primary)]]="excludeRejected()"
-                  [attr.aria-pressed]="excludeRejected()"
+          <button mat-icon-button class="shrink-0" (click)="onExcludeRejectedChange(!cull.excludeRejected())"
+                  [class.!text-[var(--mat-sys-primary)]]="cull.excludeRejected()"
+                  [attr.aria-pressed]="cull.excludeRejected()"
                   [matTooltip]="I18N.culling.exclude_rejected | translate"
                   [attr.aria-label]="I18N.culling.exclude_rejected | translate">
-            <mat-icon>{{ excludeRejected() ? 'visibility_off' : 'visibility' }}</mat-icon>
+            <mat-icon>{{ cull.excludeRejected() ? 'visibility_off' : 'visibility' }}</mat-icon>
           </button>
           <button mat-icon-button class="shrink-0" (click)="loupeActive.set(!loupeActive())"
                   [class.!text-[var(--mat-sys-primary)]]="loupeActive()"
@@ -394,14 +395,14 @@ interface ShortcutRow {
             </mat-slider>
           }
           @if (auth.isEdition() && !keepWholeGranularity()) {
-            <button mat-icon-button class="shrink-0" (click)="openAutoCull()" [disabled]="autoCullBusy()"
+            <button mat-icon-button class="shrink-0" (click)="cull.openAutoCull()" [disabled]="cull.autoCullBusy()"
                     [matTooltip]="I18N.culling.auto_cull.tooltip | translate"
                     [attr.aria-label]="I18N.culling.auto_cull.button | translate">
               <mat-icon>auto_fix_high</mat-icon>
             </button>
           }
           @if (unconfirmedCount() > 0) {
-            <button mat-flat-button (click)="confirmAllRemaining()" [disabled]="confirming()" class="!hidden lg:!inline-flex !rounded-md shrink-0">
+            <button mat-flat-button (click)="confirmAllRemaining()" [disabled]="cull.confirming()" class="!hidden lg:!inline-flex !rounded-md shrink-0">
               <mat-icon>done_all</mat-icon>
               {{ I18N.culling.confirm_all | translate }} ({{ unconfirmedCount() }})
             </button>
@@ -412,12 +413,12 @@ interface ShortcutRow {
       @if (pageHelp.open()) {
         <div class="shrink-0 p-3 mb-3 rounded-lg bg-[var(--mat-sys-surface-container)] space-y-3">
           <p class="text-sm opacity-80">{{ I18N.culling.help_text | translate }}</p>
-          @if (rankerComparisons() !== null) {
+          @if (cull.rankerComparisons() !== null) {
             <span class="text-xs opacity-70 flex items-center gap-1"
                   [matTooltip]="I18N.culling.my_taste_tooltip | translate">
               <mat-icon class="!text-sm !w-4 !h-4 !leading-4 text-[var(--mat-sys-primary)]">auto_awesome</mat-icon>
-              {{ (rankerTrained() ? I18N.culling.my_taste_trained : I18N.culling.my_taste_learning)
-                 | translate:{ count: (rankerComparisons() ?? 0) } }}
+              {{ (cull.rankerTrained() ? I18N.culling.my_taste_trained : I18N.culling.my_taste_learning)
+                 | translate:{ count: (cull.rankerComparisons() ?? 0) } }}
             </span>
           }
           <div class="flex flex-wrap gap-x-10 gap-y-3">
@@ -445,10 +446,10 @@ interface ShortcutRow {
       <!-- Corrections change nothing until the detector runs again, and that run
            is a whole-library batch pass -- far too expensive to fire once per
            click. So they accumulate and the run is offered here, once. -->
-      @if (rerunNeeded() > 0) {
+      @if (cull.rerunNeeded() > 0) {
         <div class="shrink-0 flex flex-wrap items-center gap-3 p-3 mb-3 rounded-lg bg-[var(--mat-sys-surface-container)]" role="status">
           <mat-icon class="!text-base !w-5 !h-5 !leading-5 text-amber-500" aria-hidden="true">schedule</mat-icon>
-          <span class="text-sm">{{ I18N.culling.panorama.rerun_banner | translate:{ count: rerunNeeded() } }}</span>
+          <span class="text-sm">{{ I18N.culling.panorama.rerun_banner | translate:{ count: cull.rerunNeeded() } }}</span>
           <button mat-stroked-button class="!h-8 !text-sm !rounded-md" [disabled]="detecting()"
                   (click)="rerunDetection()"
                   [matTooltip]="I18N.panorama.settings.redetect_tooltip | translate">
@@ -464,7 +465,7 @@ interface ShortcutRow {
       <!-- Scrollable group list; the header above stays fixed -->
       <div class="flex-1 min-h-0 overflow-y-auto -mx-4 px-4 md:-mx-8 md:px-8 pb-4 max-lg:pb-24" data-culling-scroll>
       <!-- Content -->
-      @if (loading()) {
+      @if (cull.loading()) {
         <div class="flex justify-center items-center py-20">
           <mat-spinner diameter="40" [attr.aria-label]="I18N.ui.labels.loading | translate" />
         </div>
@@ -530,26 +531,26 @@ interface ShortcutRow {
               }
               <!-- Photos -->
               <div class="flex gap-2 md:gap-3 overflow-x-auto px-2 py-3 items-center transition-opacity duration-300 [&::-webkit-scrollbar]:h-2.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--mat-sys-outline-variant)] [&::-webkit-scrollbar-track]:bg-transparent"
-                   [class.pointer-events-none]="(group | isConfirmed:confirmedGroups())"
-                   [class.opacity-40]="(group | isConfirmed:confirmedGroups())">
+                   [class.pointer-events-none]="(group | isConfirmed:cull.confirmedGroups())"
+                   [class.opacity-40]="(group | isConfirmed:cull.confirmedGroups())">
                 @for (photo of group.photos; track photo.path; let pIdx = $index) {
                   <div class="group/photo relative inline-block cursor-pointer rounded-lg overflow-hidden border-2 transition-colors flex-shrink-0"
-                       [class.border-green-500]="photo.path | isKept:selectionsMap():group.group_id"
-                       [class.border-red-500]="!(photo.path | isKept:selectionsMap():group.group_id) && (photo.path | isDecided:selectionsMap():group.group_id)"
-                       [class.border-transparent]="!(photo.path | isDecided:selectionsMap():group.group_id)"
+                       [class.border-green-500]="photo.path | isKept:cull.selectionsMap():group.group_id"
+                       [class.border-red-500]="!(photo.path | isKept:cull.selectionsMap():group.group_id) && (photo.path | isDecided:cull.selectionsMap():group.group_id)"
+                       [class.border-transparent]="!(photo.path | isDecided:cull.selectionsMap():group.group_id)"
                        role="button"
                        tabindex="0"
                        [attr.aria-label]="photo.filename + ', ' + (
-                         (photo.path | isKept:selectionsMap():group.group_id)
+                         (photo.path | isKept:cull.selectionsMap():group.group_id)
                            ? (I18N.culling.lightbox.kept | translate)
-                           : (photo.path | isDecided:selectionsMap():group.group_id)
+                           : (photo.path | isDecided:cull.selectionsMap():group.group_id)
                              ? (I18N.culling.lightbox.rejected | translate)
                              : (I18N.culling.lightbox.undecided | translate))"
-                       [attr.aria-pressed]="photo.path | isKept:selectionsMap():group.group_id"
-                       (click)="toggleSelection(photo.path, group)"
-                       (keydown.enter)="toggleSelection(photo.path, group); $event.stopPropagation()"
-                       (keydown.space)="toggleSelection(photo.path, group); $event.stopPropagation(); $event.preventDefault()"
-                       (dblclick)="selectExclusive(photo.path, group); $event.stopPropagation()">
+                       [attr.aria-pressed]="photo.path | isKept:cull.selectionsMap():group.group_id"
+                       (click)="cull.toggleSelection(photo.path, group)"
+                       (keydown.enter)="cull.toggleSelection(photo.path, group); $event.stopPropagation()"
+                       (keydown.space)="cull.toggleSelection(photo.path, group); $event.stopPropagation(); $event.preventDefault()"
+                       (dblclick)="cull.selectExclusive(photo.path, group); $event.stopPropagation()">
                     <img [src]="photo.path | thumbnailUrl:640"
                          [appLoupe]="photo.path | imageUrl:true"
                          [loupeActive]="loupeActive()"
@@ -564,11 +565,11 @@ interface ShortcutRow {
                         {{ reason | cullReason }}
                       </div>
                     }
-                    @if (photo.path | isKept:selectionsMap():group.group_id) {
+                    @if (photo.path | isKept:cull.selectionsMap():group.group_id) {
                       <div class="absolute top-2 right-2 w-7 h-7 rounded-full bg-green-600 inline-flex items-center justify-center">
                         <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-white">check</mat-icon>
                       </div>
-                    } @else if (photo.path | isDecided:selectionsMap():group.group_id) {
+                    } @else if (photo.path | isDecided:cull.selectionsMap():group.group_id) {
                       <div class="absolute top-2 right-2 w-7 h-7 rounded-full bg-red-600 inline-flex items-center justify-center">
                         <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-white">close</mat-icon>
                       </div>
@@ -588,7 +589,7 @@ interface ShortcutRow {
                         {{ I18N.ui.badges.blink | translate }}
                       </div>
                     }
-                    @if (!(photo.path | isKept:selectionsMap():group.group_id)) {
+                    @if (!(photo.path | isKept:cull.selectionsMap():group.group_id)) {
                       <button class="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 inline-flex items-center justify-center opacity-0 group-hover/photo:opacity-100 transition-opacity cursor-pointer"
                               [matTooltip]="I18N.culling.view_detail | translate"
                               [attr.aria-label]="I18N.culling.view_detail | translate"
@@ -607,7 +608,7 @@ interface ShortcutRow {
                           [attr.aria-label]="group.type | cullGroupLabel | translate">{{ group.type | cullGroupIcon }}</mat-icon>
                 <span class="text-xs opacity-50">{{ group.count }} {{ I18N.culling.photos | translate }}</span>
                 @if (group.category; as category) {
-                  @if (comparisonStats(); as stats) {
+                  @if (cull.comparisonStats(); as stats) {
                     @if ((category | weightRemaining:stats); as remaining) {
                       <button class="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-[var(--mat-sys-surface-container-high)] transition-colors cursor-pointer"
                               (click)="tuneCategory(category)"
@@ -626,21 +627,21 @@ interface ShortcutRow {
                   }
                   <span class="text-xs opacity-50">{{ 'category_names.' + category | translate }}</span>
                 }
-                @if ((group | isConfirmed:confirmedGroups())) {
+                @if ((group | isConfirmed:cull.confirmedGroups())) {
                   <span class="inline-flex items-center gap-1 text-xs text-green-500 font-medium">
                     <mat-icon class="inline-flex !text-sm !w-4 !h-4 !leading-4">check_circle</mat-icon>
                     {{ I18N.culling.confirmed_badge | translate }}
                   </span>
                 }
                 <div class="flex gap-2 ml-auto">
-                  @if (group | isPassing:passingGroups()) {
+                  @if (group | isPassing:cull.passingGroups()) {
                     <div class="relative overflow-hidden rounded-md">
-                      <button mat-stroked-button (click)="cancelPass(group)" class="!h-8 !text-sm !rounded-md relative z-10"
+                      <button mat-stroked-button (click)="cull.cancelPass(group)" class="!h-8 !text-sm !rounded-md relative z-10"
                               [matTooltip]="I18N.culling.cancel_restore | translate">
-                        {{ I18N.culling.cancel_pass | translate }} ({{ group | passCountdown:passingGroups() }}s)
+                        {{ I18N.culling.cancel_pass | translate }} ({{ group | passCountdown:cull.passingGroups() }}s)
                       </button>
                       <div class="absolute inset-0 bg-[var(--mat-sys-outline-variant)] opacity-30 origin-right transition-transform duration-1000 ease-linear"
-                           [style.transform]="'scaleX(' + ((group | passCountdown:passingGroups()) / passCountdownSeconds) + ')'"></div>
+                           [style.transform]="'scaleX(' + ((group | passCountdown:cull.passingGroups()) / cull.passCountdownSeconds) + ')'"></div>
                     </div>
                   } @else {
                     <!-- Geometry cannot recover intent, so a residual error rate
@@ -713,12 +714,12 @@ interface ShortcutRow {
                             [attr.aria-label]="I18N.culling.darkroom | translate">
                       <mat-icon>fullscreen</mat-icon>
                     </button>
-                    <button mat-icon-button (click)="skipGroup(group)"
+                    <button mat-icon-button (click)="cull.skipGroup(group)"
                             [matTooltip]="I18N.culling.skip_tooltip | translate"
                             [attr.aria-label]="I18N.culling.skip | translate">
                       <mat-icon>skip_next</mat-icon>
                     </button>
-                    <button mat-icon-button (click)="confirmGroup(group)" [disabled]="confirming()"
+                    <button mat-icon-button (click)="cull.confirmGroup(group)" [disabled]="cull.confirming()"
                             [matTooltip]="I18N.culling.confirm_tooltip | translate"
                             [attr.aria-label]="I18N.culling.confirm | translate">
                       <mat-icon>check_circle</mat-icon>
@@ -730,9 +731,9 @@ interface ShortcutRow {
           }
 
           <!-- Infinite scroll sentinel -->
-          @if (hasMore()) {
+          @if (cull.hasMore()) {
             <div appInfiniteScroll scrollRoot="[data-culling-scroll]" (scrollReached)="onScrollReached()" class="flex justify-center py-6">
-              @if (loadingMore()) {
+              @if (cull.loadingMore()) {
                 <mat-spinner diameter="32" [attr.aria-label]="I18N.ui.labels.loading | translate" />
               }
             </div>
@@ -746,7 +747,7 @@ interface ShortcutRow {
            its height (max-lg:mb-16) to avoid stacking under the fixed icon bar. -->
       @if (unconfirmedCount() > 0) {
         <div class="lg:!hidden shrink-0 flex justify-center py-1.5 max-lg:mb-14 border-t border-[var(--mat-sys-outline-variant)] bg-[var(--mat-sys-surface)]">
-          <button mat-flat-button (click)="confirmAllRemaining()" [disabled]="confirming()" class="!px-6 !rounded-md !h-9">
+          <button mat-flat-button (click)="confirmAllRemaining()" [disabled]="cull.confirming()" class="!px-6 !rounded-md !h-9">
             <mat-icon>done_all</mat-icon>
             {{ I18N.culling.confirm_all | translate }} ({{ unconfirmedCount() }})
           </button>
@@ -937,8 +938,8 @@ interface ShortcutRow {
                    [style.left.px]="singlePane.fitInsetX()" [style.right.px]="singlePane.fitInsetX()">
                 <ng-container [ngTemplateOutlet]="frameState"
                               [ngTemplateOutletContext]="{
-                                kept: (lbPhoto.path | isKept:selectionsMap():lbGroup.group_id),
-                                decided: (lbPhoto.path | isDecided:selectionsMap():lbGroup.group_id) }" />
+                                kept: (lbPhoto.path | isKept:cull.selectionsMap():lbGroup.group_id),
+                                decided: (lbPhoto.path | isDecided:cull.selectionsMap():lbGroup.group_id) }" />
               </div>
               @if (previewLoading()) {
                 <div class="absolute inset-0 flex items-center justify-center bg-black/40 pointer-events-none"
@@ -1003,28 +1004,28 @@ interface ShortcutRow {
                        [class.ring-amber-400]="photo.path === lbPhoto.path">
                     <ng-container [ngTemplateOutlet]="frameState"
                                   [ngTemplateOutletContext]="{
-                                    kept: (photo.path | isKept:selectionsMap():lbGroup.group_id),
-                                    decided: (photo.path | isDecided:selectionsMap():lbGroup.group_id) }" />
+                                    kept: (photo.path | isKept:cull.selectionsMap():lbGroup.group_id),
+                                    decided: (photo.path | isDecided:cull.selectionsMap():lbGroup.group_id) }" />
                     <!-- The ↑ / ↓ keys only ever reach the focused frame, so a
                          compare grid needs a way to decide the pane the user is
                          actually looking at. Same write as those keys. -->
                     <div class="absolute bottom-2 right-2 flex items-center gap-2 pointer-events-auto">
                       <button type="button"
                               class="w-7 h-7 rounded-full bg-green-600 inline-flex items-center justify-center shadow transition-opacity hover:opacity-100 cursor-pointer"
-                              [class.opacity-70]="!(photo.path | isKept:selectionsMap():lbGroup.group_id)"
-                              [attr.aria-pressed]="photo.path | isKept:selectionsMap():lbGroup.group_id"
+                              [class.opacity-70]="!(photo.path | isKept:cull.selectionsMap():lbGroup.group_id)"
+                              [attr.aria-pressed]="photo.path | isKept:cull.selectionsMap():lbGroup.group_id"
                               [matTooltip]="I18N.culling.lightbox.keep | translate"
                               [attr.aria-label]="photo.filename + ', ' + (I18N.culling.lightbox.keep | translate)"
-                              (click)="setPhotoKept(lbGroup, photo.path, true)">
+                              (click)="cull.setPhotoKept(lbGroup, photo.path, true)">
                         <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-white">check</mat-icon>
                       </button>
                       <button type="button"
                               class="w-7 h-7 rounded-full bg-red-600 inline-flex items-center justify-center shadow transition-opacity hover:opacity-100 cursor-pointer"
-                              [class.opacity-70]="!(photo.path | isDecided:selectionsMap():lbGroup.group_id)"
-                              [attr.aria-pressed]="photo.path | isDecided:selectionsMap():lbGroup.group_id"
+                              [class.opacity-70]="!(photo.path | isDecided:cull.selectionsMap():lbGroup.group_id)"
+                              [attr.aria-pressed]="photo.path | isDecided:cull.selectionsMap():lbGroup.group_id"
                               [matTooltip]="I18N.culling.lightbox.reject | translate"
                               [attr.aria-label]="photo.filename + ', ' + (I18N.culling.lightbox.reject | translate)"
-                              (click)="setPhotoKept(lbGroup, photo.path, false)">
+                              (click)="cull.setPhotoKept(lbGroup, photo.path, false)">
                         <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-white">close</mat-icon>
                       </button>
                     </div>
@@ -1044,12 +1045,12 @@ interface ShortcutRow {
                    verdict on all of them. -->
               <span class="text-white/60 text-sm mr-2">{{ lbPhoto.filename }}</span>
             }
-            @if (lbPhoto.path | isKept:selectionsMap():lbGroup.group_id) {
+            @if (lbPhoto.path | isKept:cull.selectionsMap():lbGroup.group_id) {
               <span class="inline-flex items-center gap-1 text-green-400 text-sm">
                 <mat-icon class="!text-base !w-4 !h-4 !leading-4">check</mat-icon>
                 {{ I18N.culling.lightbox.kept | translate }}
               </span>
-            } @else if (lbPhoto.path | isDecided:selectionsMap():lbGroup.group_id) {
+            } @else if (lbPhoto.path | isDecided:cull.selectionsMap():lbGroup.group_id) {
               <span class="inline-flex items-center gap-1 text-red-400 text-sm">
                 <mat-icon class="!text-base !w-4 !h-4 !leading-4">close</mat-icon>
                 {{ I18N.culling.lightbox.rejected | translate }}
@@ -1219,11 +1220,11 @@ interface ShortcutRow {
     }
 
     <!-- Auto-cull preview / confirm dialog -->
-    @if (autoCullPreview(); as ac) {
+    @if (cull.autoCullPreview(); as ac) {
       <div class="fixed inset-0 z-[110] bg-black/50 flex items-center justify-center p-4"
            role="presentation"
-           (click)="cancelAutoCull()"
-           (keydown.escape)="cancelAutoCull()">
+           (click)="cull.cancelAutoCull()"
+           (keydown.escape)="cull.cancelAutoCull()">
         <!-- Escape is handled here, not only on the backdrop: the blanket keydown
              shield below (which keeps the page's cull shortcuts from firing behind
              the modal) stops the event before any ancestor or document handler. -->
@@ -1235,10 +1236,10 @@ interface ShortcutRow {
              cdkTrapFocus
              [cdkTrapFocusAutoCapture]="true"
              (click)="$event.stopPropagation()"
-             (keydown.escape)="cancelAutoCull()"
+             (keydown.escape)="cull.cancelAutoCull()"
              (keydown)="$event.stopPropagation()">
           <h2 id="autoCullTitle" class="text-lg font-semibold">{{ I18N.culling.auto_cull.title | translate }}</h2>
-          @if (selectedProfile(); as profile) {
+          @if (cull.selectedProfile(); as profile) {
             <p class="flex items-center gap-1.5 text-sm opacity-80">
               <mat-icon class="!text-base !w-4 !h-4 !leading-4">{{ profile | cullProfileIcon }}</mat-icon>
               {{ selectedProfileLabel() | translate }}
@@ -1250,7 +1251,7 @@ interface ShortcutRow {
                         class="px-2 py-0.5 rounded-full text-xs bg-[var(--mat-sys-primary)]/20 text-[var(--mat-sys-primary)]"
                         [matTooltip]="I18N.culling.auto_cull.suggested_tooltip | translate">
                   {{ I18N.culling.auto_cull.suggested | translate }}
-                  @if (profileSuggestion(); as suggestion) {
+                  @if (cull.profileSuggestion(); as suggestion) {
                     <span class="sr-only">: {{ suggestion.confidence | percent }}</span>
                   }
                 </button>
@@ -1260,24 +1261,24 @@ interface ShortcutRow {
           <label class="flex items-center gap-2 text-sm cursor-pointer"
                  [matTooltip]="I18N.culling.auto_cull.trim_brackets_hint | translate">
             <input type="checkbox" class="accent-[var(--mat-sys-primary)]"
-                   [checked]="trimBrackets()" [disabled]="autoCullBusy()"
-                   (change)="onTrimBracketsChange(!trimBrackets())" />
+                   [checked]="cull.trimBrackets()" [disabled]="cull.autoCullBusy()"
+                   (change)="cull.onTrimBracketsChange(!cull.trimBrackets())" />
             {{ I18N.culling.auto_cull.trim_brackets | translate }}
           </label>
           <!-- A cold suggest+preview takes seconds, during which the counts below are
                last run's. Say so rather than let them read as this run's answer. -->
-          @if (autoCullBusy()) {
+          @if (cull.autoCullBusy()) {
             <p class="flex items-center gap-2 text-sm opacity-80" role="status">
               <mat-spinner diameter="16" [attr.aria-label]="I18N.ui.labels.loading | translate" />
               {{ I18N.culling.auto_cull.updating | translate }}
             </p>
           }
-          @if (autoCullSuggestionNotice(); as suggested) {
+          @if (cull.autoCullSuggestionNotice(); as suggested) {
             <p class="text-xs text-[var(--mat-sys-primary)]" role="status">
               {{ I18N.culling.auto_cull.preview_updated | translate:{ profile: suggested } }}
             </p>
           }
-          @if (trimBracketsUnchanged()) {
+          @if (cull.trimBracketsUnchanged()) {
             <p class="text-xs opacity-70" role="status">{{ I18N.culling.auto_cull.trim_brackets_none | translate }}</p>
           }
           @if (ac.groups_processed === 0) {
@@ -1286,20 +1287,20 @@ interface ShortcutRow {
             <p class="text-sm opacity-80">
               {{ I18N.culling.auto_cull.summary | translate:{ groups: ac.groups_processed, kept: ac.kept, rejected: ac.rejected } }}
             </p>
-            <p class="text-xs opacity-60">{{ I18N.culling.strictness | translate }} · {{ strictness() }}%</p>
+            <p class="text-xs opacity-60">{{ I18N.culling.strictness | translate }} · {{ cull.strictness() }}%</p>
             @if (ac.highlights_added > 0) {
               <label class="flex items-center gap-2 text-sm cursor-pointer">
                 <input type="checkbox" class="accent-[var(--mat-sys-primary)]"
-                       [checked]="autoCullHighlights()"
-                       (change)="autoCullHighlights.set(!autoCullHighlights())" />
+                       [checked]="cull.autoCullHighlights()"
+                       (change)="cull.autoCullHighlights.set(!cull.autoCullHighlights())" />
                 {{ I18N.culling.auto_cull.highlights_label | translate:{ count: ac.highlights_added } }}
               </label>
             }
           }
           <div class="flex justify-end gap-2">
-            <button mat-stroked-button (click)="cancelAutoCull()" [disabled]="autoCullApplying()">{{ I18N.dialog.cancel | translate }}</button>
+            <button mat-stroked-button (click)="cull.cancelAutoCull()" [disabled]="cull.autoCullApplying()">{{ I18N.dialog.cancel | translate }}</button>
             @if (ac.groups_processed > 0) {
-              <button mat-flat-button (click)="confirmAutoCull()" [disabled]="autoCullBusy()">
+              <button mat-flat-button (click)="confirmAutoCull()" [disabled]="cull.autoCullBusy()">
                 {{ I18N.culling.auto_cull.apply | translate:{ rejected: ac.rejected } }}
               </button>
             }
@@ -1330,93 +1331,37 @@ export class BurstCullingComponent implements OnDestroy {
   protected readonly store = inject(GalleryStore);
   private readonly sceneDate = new SceneDatePipe();
   /** Data state + API calls; provided per component, so it lives one darkroom visit. */
-  private readonly cull = inject(CullingStore);
+  protected readonly cull = inject(CullingStore);
 
-  /** Granularity served by the feed: all (merged burst+similar) | burst | similar | scene.
-   *  Restored from localStorage (default 'all'); a ?group_by= query param overrides it. */
-  protected readonly groupBy = this.cull.groupBy;
   /** Min posterior below which a moment label is shown dimmed + "(uncertain)". */
   protected readonly momentConfidenceMin = computed(
     () => this.store.config()?.moment_confidence_min ?? 0,
   );
 
-  // Optional scope from "Cull this scene" / album entry points (query params).
-  protected readonly scopeAlbum = this.cull.scopeAlbum;
-  protected readonly scopeFrom = this.cull.scopeFrom;
-  protected readonly scopeTo = this.cull.scopeTo;
-  protected readonly scopeScene = this.cull.scopeScene;
   protected readonly scoped = computed(
-    () => !!(this.scopeAlbum() || this.scopeFrom() || this.scopeTo()),
+    () => !!(this.cull.scopeAlbum() || this.cull.scopeFrom() || this.cull.scopeTo()),
   );
-  // Non-smart albums + lazily-loaded scenes powering the scope cascade menu.
-  protected readonly albums = this.cull.albums;
   protected readonly expandedAlbumId = signal<number | null>(null);
   protected readonly expandedScenes = signal<SceneSummary[]>([]);
   protected readonly loadingScenes = signal(false);
-  // Album name for the current scope, resolved from the loaded album list
-  // (works for both menu selection and a deep-linked ?album=ID).
-  protected readonly scopeAlbumName = this.cull.scopeAlbumName;
-  // Human label for the scope button / banner (null = whole library).
-  protected readonly scopeLabel = this.cull.scopeLabel;
-  // Personal-ranker status, surfaced as the "this cull trains My Taste" chip.
-  protected readonly rankerComparisons = this.cull.rankerComparisons;
-  protected readonly rankerTrained = this.cull.rankerTrained;
 
   // Photo-Mechanic-style hover loupe over the group tiles (Z toggles; zoom slider).
   private readonly loupe = createLoupeState();
   protected readonly loupeActive = this.loupe.loupeActive;
   protected readonly loupeZoom = this.loupe.loupeZoom;
-  protected readonly similarityThreshold = this.cull.similarityThreshold;
-  /** Auto-keep strictness (0-100): higher keeps fewer photos below the best. */
-  protected readonly strictness = this.cull.strictness;
 
-  /** Genre culling presets (GET /api/culling/profiles). */
-  protected readonly cullProfiles = this.cull.cullProfiles;
-  /** Active preset id ('' = custom / none). Persisted; re-applied on open. */
-  protected readonly selectedProfile = this.cull.selectedProfile;
   /** Label of the active preset, or "Custom" when none matches the current knobs. */
   protected readonly selectedProfileLabel = computed(() => {
-    const p = this.cullProfiles().find(x => x.id === this.selectedProfile());
+    const p = this.cull.cullProfiles().find(x => x.id === this.cull.selectedProfile());
     return p ? p.label_key : I18N.culling.profiles.custom;
   });
-
-  /** The preset the current scope's own content argues for
-   *  (GET /culling/suggest_profile), or null while none was inferred. */
-  protected readonly profileSuggestion = this.cull.profileSuggestion;
-  private readonly profileChosen = this.cull.profileChosen;
 
   /** True when the active preset is the suggested one and the user never chose
    *  it — the only case where the dialog claims a suggestion. */
   protected readonly suggestedProfileActive = computed(() => {
-    const suggested = this.profileSuggestion()?.profile;
-    return !!suggested && !this.profileChosen() && this.selectedProfile() === suggested;
+    const suggested = this.cull.profileSuggestion()?.profile;
+    return !!suggested && !this.cull.profileChosen() && this.cull.selectedProfile() === suggested;
   });
-  protected readonly excludeRejected = this.cull.excludeRejected;
-  protected readonly groups = this.cull.groups;
-  protected readonly totalGroups = this.cull.totalGroups;
-  protected readonly loading = this.cull.loading;
-  protected readonly loadingMore = this.cull.loadingMore;
-  protected readonly confirming = this.cull.confirming;
-
-  /** group_id -> set of kept paths */
-  protected readonly selectionsMap = this.cull.selectionsMap;
-
-  /** Set of confirmed group keys (group_id + '_' + type) */
-  protected readonly confirmedGroups = this.cull.confirmedGroups;
-
-  /** Seconds a skipped group stays cancellable before it is hidden. */
-  protected readonly passCountdownSeconds = this.cull.passCountdownSeconds;
-
-  /** Map of group key -> remaining countdown seconds for groups being passed */
-  protected readonly passingGroups = this.cull.passingGroups;
-
-  /** Set of group keys hidden after pass timeout */
-  private readonly hiddenGroups = this.cull.hiddenGroups;
-
-  /** Group keys in the feed carrying a correction the detector has not applied yet. */
-  private readonly pendingCorrectionKeys = this.cull.pendingCorrectionKeys;
-  private readonly droppedApplied = this.cull.droppedApplied;
-  protected readonly rerunNeeded = this.cull.rerunNeeded;
 
   /**
    * True in a granularity whose sets are kept whole.
@@ -1427,7 +1372,7 @@ export class BurstCullingComponent implements OnDestroy {
    * enabled produced a bare 422 behind a generic failure message.
    */
   protected readonly keepWholeGranularity = computed(
-    () => KEEP_WHOLE_KINDS.includes(this.groupBy()),
+    () => SEQUENCE_KINDS_KEPT_WHOLE.includes(this.cull.groupBy()),
   );
   /** True while a re-detection subprocess runs (spawned here or elsewhere). */
   protected readonly detecting = signal(false);
@@ -1435,18 +1380,13 @@ export class BurstCullingComponent implements OnDestroy {
   protected readonly detectFailed = signal(false);
   private detectPollTimer: ReturnType<typeof setInterval> | null = null;
 
-  protected readonly currentPage = this.cull.currentPage;
-  protected readonly totalPages = this.cull.totalPages;
-
-  protected readonly hasMore = this.cull.hasMore;
-
   /** Lightbox state — group being viewed, and current photo index inside it. */
   protected readonly lightboxGroupId = signal<string | null>(null);
   protected readonly lightboxIndex = signal(0);
   protected readonly lightboxGroup = computed<CullingGroup | null>(() => {
     const key = this.lightboxGroupId();
     if (!key) return null;
-    return this.groups().find(g => this.groupKey(g) === key) ?? null;
+    return this.cull.groups().find(g => this.cull.groupKey(g) === key) ?? null;
   });
 
   /** Compare mode for the darkroom: single view, or a synced 2-up / 4-up grid. */
@@ -1806,31 +1746,26 @@ export class BurstCullingComponent implements OnDestroy {
 
   /** Groups visible in the UI (excludes hidden groups + honors the category filter). */
   protected readonly visibleGroups = computed(() => {
-    const hidden = this.hiddenGroups();
+    const hidden = this.cull.hiddenGroups();
     const cat = this.categoryFilter();
-    return this.groups().filter(g => !hidden.has(this.groupKey(g)) && (!cat || g.category === cat));
+    return this.cull.groups().filter(g => !hidden.has(this.cull.groupKey(g)) && (!cat || g.category === cat));
   });
 
   protected readonly unconfirmedCount = computed(() => {
-    const confirmed = this.confirmedGroups();
-    return this.visibleGroups().filter(g => !confirmed.has(this.groupKey(g))).length;
+    const confirmed = this.cull.confirmedGroups();
+    return this.visibleGroups().filter(g => !confirmed.has(this.cull.groupKey(g))).length;
   });
 
   /** Index of the keyboard-selected group (page-level nav when the lightbox is closed). */
   protected readonly selectedGroupIndex = signal(0);
 
-  /** Server-side ordering of culling groups; reloads from page 1 on change. Persisted. */
-  protected readonly sortMode = this.cull.sortMode;
   protected readonly sortModes = ['easiest', 'redundant', 'best', 'recent', 'needs_comparisons', 'chronological'] as const;
-
-  /** Explicit sort direction; '' leaves each mode its natural one. Persisted. */
-  protected readonly sortDirection = this.cull.sortDirection;
 
   /** Whether the active mode currently runs oldest/smallest-first. */
   protected readonly sortAscending = computed(() => {
-    const explicit = this.sortDirection();
+    const explicit = this.cull.sortDirection();
     if (explicit) return explicit === 'asc';
-    return this.sortMode() === 'chronological';
+    return this.cull.sortMode() === 'chronological';
   });
 
   /** Content-category to cull ('' = all). Filters the visible group list client-side. Persisted. */
@@ -1839,7 +1774,7 @@ export class BurstCullingComponent implements OnDestroy {
   /** Distinct categories among loaded groups, for the header filter select. */
   protected readonly availableCategories = computed<string[]>(() => {
     const set = new Set<string>();
-    for (const g of this.groups()) if (g.category) set.add(g.category);
+    for (const g of this.cull.groups()) if (g.category) set.add(g.category);
     return [...set].sort();
   });
 
@@ -1853,23 +1788,6 @@ export class BurstCullingComponent implements OnDestroy {
     if (active) set.add(active);
     return [...set].sort();
   });
-
-  /** Per-category comparison counts + threshold, for the weight-tuning chip. */
-  protected readonly comparisonStats = this.cull.comparisonStats;
-
-  /** Dry-run result of POST /culling/auto shown in the confirm dialog (null = closed). */
-  protected readonly autoCullPreview = this.cull.autoCullPreview;
-  private readonly autoCullRequest = this.cull.autoCullRequest;
-  /** True while any auto-cull request is in flight (dry run or apply). */
-  protected readonly autoCullLoading = this.cull.autoCullLoading;
-  /** True while the destructive apply is in flight (see CullingStore.confirmAutoCull). */
-  protected readonly autoCullApplying = this.cull.autoCullApplying;
-  protected readonly autoCullBusy = this.cull.autoCullBusy;
-  /** Whether the apply also fills the Highlights album (dialog checkbox, opt-in). */
-  protected readonly autoCullHighlights = this.cull.autoCullHighlights;
-  protected readonly trimBrackets = this.cull.trimBrackets;
-  protected readonly autoCullSuggestionNotice = this.cull.autoCullSuggestionNotice;
-  protected readonly trimBracketsUnchanged = this.cull.trimBracketsUnchanged;
 
   protected readonly darkroomShortcuts: ShortcutRow[] = [
     { keys: ['←', '→'], labelKey: 'culling.shortcuts.navigate' },
@@ -1906,17 +1824,17 @@ export class BurstCullingComponent implements OnDestroy {
       inject(ViewActionRegistry).register('ui_show_culling_group', args => this.showGroupForAgent(args)),
     );
     const qp = this.route.snapshot.queryParamMap;
-    this.scopeAlbum.set(qp.get('album'));
-    this.scopeFrom.set(qp.get('from'));
-    this.scopeTo.set(qp.get('to'));
-    this.scopeScene.set(qp.get('scene'));
+    this.cull.scopeAlbum.set(qp.get('album'));
+    this.cull.scopeFrom.set(qp.get('from'));
+    this.cull.scopeTo.set(qp.get('to'));
+    this.cull.scopeScene.set(qp.get('scene'));
     const gb = qp.get('group_by');
     // Validated against the shared list, not a repeated literal union: the
     // hand-written one silently dropped every granularity added after it.
-    if (gb && (GROUP_BY_VALUES as readonly string[]).includes(gb)) this.groupBy.set(gb as GroupBy);
-    void this.loadGroups();
+    if (gb && (GROUP_BY_VALUES as readonly string[]).includes(gb)) this.cull.groupBy.set(gb as GroupBy);
+    void this.cull.loadGroups();
     void this.loadAlbums();
-    void this.loadCullProfiles();
+    void this.cull.loadCullProfiles();
     void this.cull.refreshComparisonStats();
     void this.cull.refreshRankerStatus();
     // Keep the keyboard selection in bounds as groups load / get hidden, preserving
@@ -1927,7 +1845,7 @@ export class BurstCullingComponent implements OnDestroy {
       const count = groups.length;
       if (count === 0) { previousVisibleKeys = []; return; }
       const idx = this.selectedGroupIndex();
-      const currentKeys = groups.map(g => this.groupKey(g));
+      const currentKeys = groups.map(g => this.cull.groupKey(g));
       const groupsChanged = currentKeys.length !== previousVisibleKeys.length
         || currentKeys.some((k, i) => k !== previousVisibleKeys[i]);
       if (groupsChanged && previousVisibleKeys[idx] !== undefined) {
@@ -1959,7 +1877,7 @@ export class BurstCullingComponent implements OnDestroy {
     // Focus the auto-cull confirm dialog on open so keyboard users land inside
     // the modal (not stranded on the tiles behind it) next to a destructive action.
     effect(() => {
-      if (this.autoCullPreview()) this.autoCullDialog()?.nativeElement.focus();
+      if (this.cull.autoCullPreview()) this.autoCullDialog()?.nativeElement.focus();
     });
     // Project the toolbar into the global header on lg+ (the page renders it in
     // its own bottom bar on small screens — see the #cullToolbar template).
@@ -2050,28 +1968,20 @@ export class BurstCullingComponent implements OnDestroy {
     if (tpl) this.headerSlot.clear(tpl);
   }
 
-  protected groupKey(group: CullingGroup): string {
-    return this.cull.groupKey(group);
-  }
-
-  private buildParams(page: number): Record<string, string | number | boolean> {
-    return this.cull.buildParams(page);
-  }
-
   /** Clear the scene/album scope and return to the full unreviewed feed. */
   protected exitScope(): void {
-    this.scopeAlbum.set(null);
-    this.scopeFrom.set(null);
-    this.scopeTo.set(null);
-    this.scopeScene.set(null);
+    this.cull.scopeAlbum.set(null);
+    this.cull.scopeFrom.set(null);
+    this.cull.scopeTo.set(null);
+    this.cull.scopeScene.set(null);
     void this.router.navigate(['/culling']);
-    void this.loadGroups();
+    void this.cull.loadGroups();
   }
 
   /** Non-smart albums for the scope cascade's first level (best-effort). */
   private async loadAlbums(): Promise<void> {
     try {
-      this.albums.set(await firstValueFrom(this.albumService.listNonSmart()));
+      this.cull.albums.set(await firstValueFrom(this.albumService.listNonSmart()));
     } catch {
       // Scope menu keeps the "Whole library" entry only.
     }
@@ -2097,15 +2007,15 @@ export class BurstCullingComponent implements OnDestroy {
 
   private applyScope(album: string | null, from: string | null, to: string | null, scene: string | null): void {
     this.cull.resetProfileSuggestion();
-    this.scopeAlbum.set(album);
-    this.scopeFrom.set(from);
-    this.scopeTo.set(to);
-    this.scopeScene.set(scene);
+    this.cull.scopeAlbum.set(album);
+    this.cull.scopeFrom.set(from);
+    this.cull.scopeTo.set(to);
+    this.cull.scopeScene.set(scene);
     void this.router.navigate(['/culling'], {
       queryParams: { album: album ?? null, from: from ?? null, to: to ?? null, scene: scene ?? null },
     });
     this.selectedGroupIndex.set(0);
-    this.resetForReload();
+    this.cull.resetForReload();
   }
 
   protected scopeWholeLibrary(): void {
@@ -2125,57 +2035,32 @@ export class BurstCullingComponent implements OnDestroy {
   }
 
   protected onThresholdChange(value: number): void {
-    this.similarityThreshold.set(value);
-    this.profileChosen.set(true);
+    this.cull.similarityThreshold.set(value);
+    this.cull.profileChosen.set(true);
     this.cull.clearProfileSelection();
-    this.resetForReload();
+    this.cull.resetForReload();
   }
 
   protected onStrictnessChange(value: number): void {
-    this.strictness.set(value);
-    this.profileChosen.set(true);
+    this.cull.strictness.set(value);
+    this.cull.profileChosen.set(true);
     this.cull.clearProfileSelection();
     this.cull.reselectFromStrictness();
   }
 
   // --- Genre culling profiles and auto-cull: the state and requests live in CullingStore ---
 
-  /** Load the genre culling presets; re-apply the persisted one on open. */
-  private loadCullProfiles(): Promise<void> {
-    return this.cull.loadCullProfiles();
-  }
-
-  protected applyProfile(p: CullProfile, persist = true): void {
-    this.cull.applyProfile(p, persist);
-  }
-
-  private applySuggestedProfile(): Promise<void> {
-    return this.cull.applySuggestedProfile();
-  }
-
-  protected openAutoCull(): Promise<AutoCullRunOutcome> {
-    return this.cull.openAutoCull();
-  }
-
-  protected cancelAutoCull(): void {
-    this.cull.cancelAutoCull();
-  }
-
-  protected onTrimBracketsChange(value: boolean): Promise<void> {
-    return this.cull.onTrimBracketsChange(value);
-  }
-
   /** Apply the previewed auto-cull, then reset the keyboard selection and reload the feed. */
   protected confirmAutoCull(): Promise<void> {
     return this.cull.confirmAutoCull(() => {
       this.selectedGroupIndex.set(0);
-      this.resetForReload();
+      this.cull.resetForReload();
     });
   }
 
   protected onExcludeRejectedChange(value: boolean): void {
-    this.excludeRejected.set(value);
-    this.resetForReload();
+    this.cull.excludeRejected.set(value);
+    this.cull.resetForReload();
   }
 
   protected onCategoryFilterChange(value: string): void {
@@ -2185,49 +2070,35 @@ export class BurstCullingComponent implements OnDestroy {
   }
 
   protected onSortChange(value: string): void {
-    this.sortMode.set(value);
+    this.cull.sortMode.set(value);
     localStorage.setItem(CULL_SORT_KEY, value);
     this.selectedGroupIndex.set(0);
-    this.resetForReload();
+    this.cull.resetForReload();
   }
 
   /** Flip the active sort. Writes an explicit direction rather than a "reversed"
    *  flag, so switching mode afterwards keeps the direction the user asked for. */
   protected toggleSortDirection(): void {
     const next = this.sortAscending() ? 'desc' : 'asc';
-    this.sortDirection.set(next);
+    this.cull.sortDirection.set(next);
     localStorage.setItem(CULL_SORT_DIR_KEY, next);
     this.selectedGroupIndex.set(0);
-    this.resetForReload();
+    this.cull.resetForReload();
   }
 
   /** Switch the feed granularity (all | burst | similar | scene); reloads from page 1. */
   protected onGroupByChange(value: GroupBy): void {
-    if (value === this.groupBy()) return;
-    this.groupBy.set(value);
+    if (value === this.cull.groupBy()) return;
+    this.cull.groupBy.set(value);
     localStorage.setItem(CULL_GROUP_BY_KEY, value);
     this.selectedGroupIndex.set(0);
     void this.router.navigate([], { queryParams: { group_by: value }, queryParamsHandling: 'merge' });
-    this.resetForReload();
-  }
-
-  private resetForReload(): void {
-    this.cull.resetFeed();
-    this.cull.clearAllPassTimers();
-    void this.loadGroups();
-  }
-
-  protected loadGroups(): Promise<void> {
-    return this.cull.loadGroups();
-  }
-
-  protected loadMore(): Promise<void> {
-    return this.cull.loadMore();
+    this.cull.resetForReload();
   }
 
   protected onScrollReached(): void {
-    if (this.hasMore() && !this.loadingMore()) {
-      this.loadMore();
+    if (this.cull.hasMore() && !this.cull.loadingMore()) {
+      this.cull.loadMore();
     }
   }
 
@@ -2246,7 +2117,7 @@ export class BurstCullingComponent implements OnDestroy {
   private async showGroupForAgent(args: Record<string, unknown>): Promise<unknown> {
     const type = args['type'];
     const groupId = args['group_id'];
-    const find = () => this.groups().find(g => g.type === type && g.group_id === groupId);
+    const find = () => this.cull.groups().find(g => g.type === type && g.group_id === groupId);
     const deadline = Date.now() + 10_000;
     // Wait out a feed or scroll load already in flight, then page in until found; a page that fails
     // does not advance, so stop there rather than re-request it (each attempt raises a snackbar).
@@ -2269,9 +2140,9 @@ export class BurstCullingComponent implements OnDestroy {
   protected openLightbox(group: CullingGroup, index: number): void {
     this.zoom.set(FIT_ZOOM);  // never inherit a prior session's zoom/pan
     this.activeStyle.set('');  // each darkroom session starts on the flat Original
-    this.lightboxGroupId.set(this.groupKey(group));
+    this.lightboxGroupId.set(this.cull.groupKey(group));
     this.lightboxIndex.set(index);
-    const gi = this.visibleGroups().findIndex(g => this.groupKey(g) === this.groupKey(group));
+    const gi = this.visibleGroups().findIndex(g => this.cull.groupKey(g) === this.cull.groupKey(group));
     if (gi >= 0) this.selectedGroupIndex.set(gi);
     void this.loadCloseupsForGroup(group);
   }
@@ -2307,7 +2178,7 @@ export class BurstCullingComponent implements OnDestroy {
     // ones highlighted and scrolled into view on exit.
     const group = this.lightboxGroup();
     if (group) {
-      const gi = this.visibleGroups().findIndex(g => this.groupKey(g) === this.groupKey(group));
+      const gi = this.visibleGroups().findIndex(g => this.cull.groupKey(g) === this.cull.groupKey(group));
       if (gi >= 0) this.selectedGroupIndex.set(gi);
     }
     this.lightboxGroupId.set(null);
@@ -2325,7 +2196,7 @@ export class BurstCullingComponent implements OnDestroy {
     try {
       const data = await firstValueFrom(
         this.api.post<{ faces_by_path: Record<string, CullingFace[]>; thresholds?: FaceThresholds }>(
-          '/culling-group/faces', { paths: missing.map(p => p.path), profile: this.selectedProfile() || undefined },
+          '/culling-group/faces', { paths: missing.map(p => p.path), profile: this.cull.selectedProfile() || undefined },
         ),
       );
       if (data.thresholds) this.faceThresholds.set(data.thresholds);
@@ -2529,17 +2400,10 @@ export class BurstCullingComponent implements OnDestroy {
     this.isFullscreen.set(!!document.fullscreenElement);
   }
 
-  /** The one write behind every darkroom decision: the ↑ / ↓ keys, a swipe, and
-   *  the per-pane buttons a compare grid needs (where "the current photo" is not
-   *  a question the keyboard can answer for the pane the user is looking at). */
-  protected setPhotoKept(group: CullingGroup, path: string, keep: boolean): void {
-    this.cull.setPhotoKept(group, path, keep);
-  }
-
   private setCurrentLightboxPhotoKept(group: CullingGroup, keep: boolean): void {
     const photo = group.photos[this.lightboxIndex()];
     if (!photo) return;
-    this.setPhotoKept(group, photo.path, keep);
+    this.cull.setPhotoKept(group, photo.path, keep);
   }
 
   /**
@@ -2554,7 +2418,7 @@ export class BurstCullingComponent implements OnDestroy {
   protected onSwipeDecision(group: CullingGroup, keep: boolean): void {
     const photo = group.photos[this.lightboxIndex()];
     if (!photo) return;
-    const previousKept = new Set(this.selectionsMap().get(group.group_id) ?? []);
+    const previousKept = new Set(this.cull.selectionsMap().get(group.group_id) ?? []);
     const previousIndex = this.lightboxIndex();
     this.setCurrentLightboxPhotoKept(group, keep);
     this.stepLightbox(group, 1);
@@ -2562,7 +2426,7 @@ export class BurstCullingComponent implements OnDestroy {
       labelKey: keep ? I18N.culling.swipe.kept : I18N.culling.swipe.rejected,
       labelParams: { filename: photo.filename },
       undo: () => {
-        updateMapSignal(this.selectionsMap, group.group_id, previousKept);
+        updateMapSignal(this.cull.selectionsMap, group.group_id, previousKept);
         this.lightboxIndex.set(previousIndex);
         this.zoom.set(FIT_ZOOM);
         return Promise.resolve();
@@ -2610,10 +2474,10 @@ export class BurstCullingComponent implements OnDestroy {
   /** Next visible, not-yet-confirmed group after the given one (for darkroom auto-advance). */
   private nextUnconfirmedGroupAfter(group: CullingGroup): CullingGroup | null {
     const groups = this.visibleGroups();
-    const confirmed = this.confirmedGroups();
-    const startIdx = groups.findIndex(g => this.groupKey(g) === this.groupKey(group));
+    const confirmed = this.cull.confirmedGroups();
+    const startIdx = groups.findIndex(g => this.cull.groupKey(g) === this.cull.groupKey(group));
     for (let i = startIdx + 1; i < groups.length; i++) {
-      if (!confirmed.has(this.groupKey(groups[i]))) return groups[i];
+      if (!confirmed.has(this.cull.groupKey(groups[i]))) return groups[i];
     }
     return null;
   }
@@ -2624,7 +2488,7 @@ export class BurstCullingComponent implements OnDestroy {
     if (group) {
       // Darkroom: confirm the open group and jump into the next one.
       event.preventDefault();
-      if (!this.confirmGroup(group)) return;
+      if (!this.cull.confirmGroup(group)) return;
       const next = this.nextUnconfirmedGroupAfter(group);
       if (next) {
         this.openLightbox(next, 0);
@@ -2639,10 +2503,10 @@ export class BurstCullingComponent implements OnDestroy {
     const selected = this.visibleGroups()[this.selectedGroupIndex()];
     if (!selected) return;
     event.preventDefault();
-    if (!this.confirmGroup(selected)) return;
+    if (!this.cull.confirmGroup(selected)) return;
     const next = this.nextUnconfirmedGroupAfter(selected);
     if (next) {
-      const gi = this.visibleGroups().findIndex(g => this.groupKey(g) === this.groupKey(next));
+      const gi = this.visibleGroups().findIndex(g => this.cull.groupKey(g) === this.cull.groupKey(next));
       if (gi >= 0) this.selectedGroupIndex.set(gi);
     } else {
       this.selectedGroupIndex.update(i => this.clampIndex(i + 1, this.visibleGroups().length));
@@ -2651,27 +2515,15 @@ export class BurstCullingComponent implements OnDestroy {
 
   @HostListener('document:keydown.escape', ['$event'])
   protected onEscape(event: Event): void {
-    if (this.autoCullPreview()) {
+    if (this.cull.autoCullPreview()) {
       event.preventDefault();
-      this.cancelAutoCull();
+      this.cull.cancelAutoCull();
       return;
     }
     if (this.lightboxGroup()) {
       event.preventDefault();
       this.closeLightbox();
     }
-  }
-
-  protected toggleSelection(path: string, group: CullingGroup): void {
-    this.cull.toggleSelection(path, group);
-  }
-
-  protected selectExclusive(path: string, group: CullingGroup): void {
-    this.cull.selectExclusive(path, group);
-  }
-
-  protected confirmGroup(group: CullingGroup): boolean {
-    return this.cull.confirmGroup(group);
   }
 
   /**
@@ -2744,8 +2596,8 @@ export class BurstCullingComponent implements OnDestroy {
     }
     this.cull.patchOverrides(paths, null);
     if (hadApplied) {
-      const key = this.groupKey(group);
-      this.droppedApplied.update(keys => new Set(keys).add(key));
+      const key = this.cull.groupKey(group);
+      this.cull.droppedApplied.update(keys => new Set(keys).add(key));
     }
   }
 
@@ -2786,7 +2638,7 @@ export class BurstCullingComponent implements OnDestroy {
       this.detectMessage.set(failed ? I18N.culling.panorama.rerun_failed : I18N.culling.panorama.rerun_done);
       // A completed run has re-applied or dropped every correction the feed
       // held, so the applied-drops this session no longer need a re-run.
-      if (!failed) this.droppedApplied.set(new Set());
+      if (!failed) this.cull.droppedApplied.set(new Set());
     } catch {
       this.stopDetectionPolling();
       this.detectFailed.set(true);
@@ -2800,14 +2652,6 @@ export class BurstCullingComponent implements OnDestroy {
       clearInterval(this.detectPollTimer);
       this.detectPollTimer = null;
     }
-  }
-
-  protected skipGroup(group: CullingGroup): void {
-    this.cull.skipGroup(group);
-  }
-
-  protected cancelPass(group: CullingGroup): void {
-    this.cull.cancelPass(group);
   }
 
   protected confirmAllRemaining(): Promise<void> {

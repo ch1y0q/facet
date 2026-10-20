@@ -9,7 +9,7 @@ validates the patch through the same model as ``ui_set_gallery_filters``.
 """
 
 import logging
-from typing import Any, Optional, get_args
+from typing import Any, Callable, Optional, get_args
 
 from pydantic import ValidationError
 
@@ -116,54 +116,47 @@ def comparison_open(registry: TabRegistry, resolved: ResolvedGrant, tab_id: Opti
     return conn is not None and conn.route.split("?")[0].split("#")[0].rstrip("/") == "/compare"
 
 
-async def show_in_tab(registry: TabRegistry, resolved: ResolvedGrant, settings: dict,
-                      tab_id: Optional[str], patch: dict, *, timeout: float) -> dict:
-    """Apply ``patch`` (replace semantics) to the user's tab; describe the outcome, never raise."""
+async def _show(registry: TabRegistry, resolved: ResolvedGrant, settings: dict, tab_id: Optional[str],
+                tool: str, label: str, build_args: Callable[[], dict], on_ok: Callable[[dict, dict], dict],
+                *, timeout: float) -> dict:
+    """The guards and refusal mapping every show shares; ``on_ok(data, tab)`` shapes the success."""
     if not settings["bridge"]:
         return not_shown("bridge_disabled")
     if comparison_open(registry, resolved, tab_id):
         return not_shown("comparison_open", note="The user is on the comparison page; nothing was changed.")
     try:
-        args = UiSetGalleryFilters.model_validate({"patch": patch, "replace": True}).forward()
+        args = build_args()
     except ValidationError as ex:
-        logger.error("Show patch refused by the contract (%d issues)", ex.error_count())
+        logger.error("%s refused by the contract (%d issues)", label, ex.error_count())
         return not_shown("error")
-    envelope = await call_tab(registry, resolved, settings, "ui_set_gallery_filters", args, tab_id,
-                              timeout=timeout)
+    envelope = await call_tab(registry, resolved, settings, tool, args, tab_id, timeout=timeout)
     if envelope.get("crashed"):
         return not_shown("error")
     if envelope.get("ok"):
-        data = envelope.get("data") or {}
-        tab = envelope.get("tab") or {}
-        return {"applied": True, "tab_id": tab.get("tab_id"), "keys": data.get("applied"),
-                "total": data.get("total")}
+        return on_ok(envelope.get("data") or {}, envelope.get("tab") or {})
     code = str(envelope.get("error") or "error")
     if code == "tab_timeout":
         return not_shown(code, note="The tab may still apply it.")
     return not_shown("forbidden" if code == "forbidden_level" else code)
+
+
+async def show_in_tab(registry: TabRegistry, resolved: ResolvedGrant, settings: dict,
+                      tab_id: Optional[str], patch: dict, *, timeout: float) -> dict:
+    """Apply ``patch`` (replace semantics) to the user's tab; describe the outcome, never raise."""
+    return await _show(
+        registry, resolved, settings, tab_id, "ui_set_gallery_filters", "Show patch",
+        lambda: UiSetGalleryFilters.model_validate({"patch": patch, "replace": True}).forward(),
+        lambda data, tab: {"applied": True, "tab_id": tab.get("tab_id"), "keys": data.get("applied"),
+                           "total": data.get("total")},
+        timeout=timeout)
 
 
 async def show_paths_in_tab(registry: TabRegistry, resolved: ResolvedGrant, settings: dict,
                             tab_id: Optional[str], paths: list[str], *, timeout: float) -> dict:
     """Pin exactly ``paths`` (in order) as the user's gallery list; describe the outcome, never raise."""
-    if not settings["bridge"]:
-        return not_shown("bridge_disabled")
-    if comparison_open(registry, resolved, tab_id):
-        return not_shown("comparison_open", note="The user is on the comparison page; nothing was changed.")
-    try:
-        args = UiShowPhotos.model_validate({"paths": paths}).forward()
-    except ValidationError as ex:
-        logger.error("Show paths refused by the contract (%d issues)", ex.error_count())
-        return not_shown("error")
-    envelope = await call_tab(registry, resolved, settings, "ui_show_photos", args, tab_id, timeout=timeout)
-    if envelope.get("crashed"):
-        return not_shown("error")
-    if envelope.get("ok"):
-        data = envelope.get("data") or {}
-        tab = envelope.get("tab") or {}
-        return {"applied": True, "tab_id": tab.get("tab_id"), "keys": None, "total": data.get("total"),
-                "missing": data.get("missing") or []}
-    code = str(envelope.get("error") or "error")
-    if code == "tab_timeout":
-        return not_shown(code, note="The tab may still apply it.")
-    return not_shown("forbidden" if code == "forbidden_level" else code)
+    return await _show(
+        registry, resolved, settings, tab_id, "ui_show_photos", "Show paths",
+        lambda: UiShowPhotos.model_validate({"paths": paths}).forward(),
+        lambda data, tab: {"applied": True, "tab_id": tab.get("tab_id"), "keys": None,
+                           "total": data.get("total"), "missing": data.get("missing") or []},
+        timeout=timeout)

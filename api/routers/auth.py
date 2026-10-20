@@ -222,6 +222,7 @@ def auth_status(user: Optional[CurrentUser] = Depends(get_optional_user)):
             **VIEWER_CONFIG.get('features', {}),
             'mcp': mcp_settings()['enabled'],
             'mcp_bridge': mcp_settings()['enabled'] and mcp_settings()['bridge'],
+            'mcp_inpage': mcp_settings()['enabled'] and mcp_settings()['inpage_tools'],
         },
         download_profiles=profile_names,
     )

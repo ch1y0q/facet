@@ -295,3 +295,22 @@ class TestRevocationScope:
             "/api/mcp/tokens", headers=edition_session).json()["tokens"]} >= {edition_id, readonly_id}
         assert env.client.delete(f"/api/mcp/tokens/{edition_id}", headers=edition_session).status_code == 200
         assert env.client.delete(f"/api/mcp/tokens/{readonly_id}", headers=viewer_session).status_code == 200
+
+
+class TestTokenCap:
+    def test_the_cap_holds_under_concurrent_mints(self, agent_app, monkeypatch):
+        import threading
+        env = agent_app("open")
+        monkeypatch.setattr(tokens, "MAX_LIVE_TOKENS_PER_USER", 3)
+        codes = []
+
+        def mint():
+            codes.append(env.client.post("/api/mcp/tokens", json={"name": "x", "level": "readonly"}).status_code)
+
+        threads = [threading.Thread(target=mint) for _ in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        assert sorted(codes) == [200] * 3 + [412] * 5
+        assert len(tokens.list_tokens("_anonymous")) == 3

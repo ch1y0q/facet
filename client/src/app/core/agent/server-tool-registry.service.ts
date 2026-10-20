@@ -3,7 +3,6 @@ import {
   Injectable,
   computed,
   createEnvironmentInjector,
-  declareExperimentalWebMcpTool,
   effect,
   inject,
   signal,
@@ -13,16 +12,29 @@ import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../services/auth.service';
 import { McpCallRequest, McpCallResponse, McpInpageLevel, McpInpageTool, McpInpageTools } from '../api/types';
+import { LEVEL_TIERS, agentLevel } from './agent-level';
+import { WebMcpDescriptor, registerWebMcpTools, toHex, toWebMcpDescriptor } from './webmcp-descriptor';
 import { AgentWebMcpService } from './agent-web-mcp.service';
 import { InpageChangeNotifier } from './inpage-change-notifier.service';
 import { WebMcpToolRegistry } from './webmcp-registry.service';
 
-type WebMcpDescriptor = Parameters<typeof declareExperimentalWebMcpTool>[0];
-
 export const INPAGE_OPT_IN_KEY = 'facet_agent_inpage_tools';
 export const SESSION_HEADER = 'X-Facet-Agent-Session';
-const TIERS: readonly McpInpageLevel[] = ['readonly', 'user', 'edition'];
+const TIERS: readonly McpInpageLevel[] = LEVEL_TIERS;
 const STRIPPED_ARGS = ['tab_id'] as const;
+/** Wait before the single retry of a failed tool listing. */
+export const INPAGE_RETRY_MS = 2000;
+
+/** A v4-shaped id. `crypto.randomUUID` exists only in secure contexts, and a plain-HTTP LAN install is not one. */
+function newSessionId(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = toHex(bytes);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 function readOptIn(): boolean {
   try {
@@ -34,9 +46,7 @@ function readOptIn(): boolean {
 
 /** The caller's level from the cached auth status: edition when unlocked, user for a signed-in multi-user account, else readonly. */
 export function inpageLevel(status: { authenticated: boolean; multi_user: boolean; edition_authenticated: boolean } | null): McpInpageLevel | null {
-  if (!status?.authenticated) return null;
-  if (status.edition_authenticated) return 'edition';
-  return status.multi_user ? 'user' : 'readonly';
+  return status?.authenticated ? agentLevel(status) : null;
 }
 
 /**
@@ -57,8 +67,8 @@ export class ServerToolRegistry {
 
   /** Per-browser opt-in, default off. */
   readonly optedIn = signal(readOptIn());
-  /** Random per tab: it only isolates confirmation nonces between this user's sessions. */
-  private readonly sessionId = crypto.randomUUID();
+  /** Random per tab, created on the first call: it only isolates confirmation nonces between this user's sessions. */
+  private sessionId: string | null = null;
   private readonly children = new Map<McpInpageLevel, EnvironmentInjector>();
   private generation = 0;
   private parent: EnvironmentInjector | null = null;
@@ -88,7 +98,7 @@ export class ServerToolRegistry {
     this.optedIn.set(on);
   }
 
-  private async apply(level: McpInpageLevel | null, session: EnvironmentInjector | null): Promise<void> {
+  private async apply(level: McpInpageLevel | null, session: EnvironmentInjector | null, retried = false): Promise<void> {
     const generation = ++this.generation;
     if (!level || !session) {
       this.destroyTiers(0);
@@ -107,17 +117,28 @@ export class ServerToolRegistry {
     let listing: McpInpageTools;
     try {
       listing = await firstValueFrom(this.http.get<McpInpageTools>('/api/mcp/inpage_tools'));
-    } catch {
+    } catch (err) {
+      console.warn('Facet: could not load the in-page assistant tools', err);
+      // One retry, and only if nothing changed meanwhile; a later level or auth change starts afresh.
+      if (!retried) {
+        setTimeout(() => {
+          if (generation === this.generation) void this.apply(level, session, true);
+        }, INPAGE_RETRY_MS);
+      }
       return;
     }
-    // Logout, a lock or the opt-in turning off may have landed during the fetch.
-    if (generation !== this.generation) return;
     for (const tier of missing) {
+      // Logout, a lock or the opt-in turning off may have landed during any await above or below.
+      if (this.superseded(generation, session)) return;
       const child = createEnvironmentInjector([], session);
       this.children.set(tier, child);
       const tools = listing.tools.filter(tool => tool.required_level === tier);
-      await Promise.allSettled(tools.map(tool => declareExperimentalWebMcpTool(this.descriptor(tool), child)));
+      await registerWebMcpTools(tools.map(tool => this.descriptor(tool)), child);
     }
+  }
+
+  private superseded(generation: number, session: EnvironmentInjector): boolean {
+    return generation !== this.generation || this.parent !== session;
   }
 
   private destroyTiers(fromRank: number): void {
@@ -129,7 +150,7 @@ export class ServerToolRegistry {
 
   private descriptor(tool: McpInpageTool): WebMcpDescriptor {
     const readOnly = tool.annotations.readOnlyHint === true;
-    return {
+    return toWebMcpDescriptor({
       name: tool.name,
       description: tool.description,
       inputSchema: this.stripSchema(tool.inputSchema),
@@ -139,7 +160,7 @@ export class ServerToolRegistry {
         untrustedContentHint: true,
       },
       execute: (args: unknown) => this.call(tool, args),
-    } as unknown as WebMcpDescriptor;
+    });
   }
 
   private stripSchema(schema: Record<string, unknown>): Record<string, unknown> {
@@ -161,13 +182,13 @@ export class ServerToolRegistry {
     if ('target' in properties && input['target'] === 'selection') {
       const selection = await this.ui.execute('ui_get_selection', {});
       if (!selection.ok) return JSON.stringify(selection);
-      body.selection_snapshot = selection.data;
+      body.selection_snapshot = selection.data && typeof selection.data === 'object' ? selection.data as Record<string, unknown> : null;
     }
     try {
       const response = await firstValueFrom(this.http.post<McpCallResponse>('/api/mcp/call', body, {
-        headers: new HttpHeaders({ [SESSION_HEADER]: this.sessionId }),
+        headers: new HttpHeaders({ [SESSION_HEADER]: this.sessionId ??= newSessionId() }),
       }));
-      if (response.ok && tool.annotations.readOnlyHint !== true && response.changed) this.notifier.notify(response.changed, response.batch_id);
+      if (response.ok && tool.annotations.readOnlyHint !== true && response.changed) this.notifier.notify(response.changed);
       return JSON.stringify(response);
     } catch (err) {
       // A 401 already reached the interceptor (logout); a 403 just reports, without ending the session.

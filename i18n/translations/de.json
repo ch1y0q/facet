@@ -124,21 +124,10 @@
       "prompt_token_rules": "Bewahre das Token nur in der Konfiguration deines MCP-Clients auf. Wiederhole es nicht in deinen Antworten und schreibe es in keine andere Datei und keine Notiz. Ich kann es jederzeit in Facet widerrufen.",
       "prompt_verify": "Rufe nach der Konfiguration dieses Werkzeug auf, um die Verbindung zu bestätigen:",
       "prompt_capabilities": "Du kannst die Bibliothek durchsuchen sowie diesen Facet-Tab öffnen und darin navigieren. Fotos darfst du nur ändern, wenn der oben gewährte Zugriff es erlaubt.",
-      "actions_heading": "Letzte Assistenten-Aktionen ({count})",
-      "action_summary": "{tool}: {count} Änderungen",
-      "action_undo": "Rückgängig",
-      "action_undo_confirm": "Diesen Stapel rückgängig machen?",
-      "action_undo_yes": "Ja, rückgängig",
-      "action_undo_aria": "{tool} vom {when} rückgängig machen",
-      "action_undo_yes_aria": "Ja, {tool} vom {when} rückgängig machen",
-      "action_undo_cancel_aria": "Abbrechen, {tool} vom {when} behalten",
-      "undo_result": "{restored} wiederhergestellt, {kept} behalten (seitdem geändert)",
-      "undo_failed": "Der Stapel konnte nicht rückgängig gemacht werden",
-      "action_undone": "Rückgängig gemacht",
       "inpage_toggle": "Agenten in diesem Browser dürfen Facet-Werkzeuge nutzen",
       "inpage_hint": "Wenn aktiviert, kann ein in diesem Browser laufender Assistent suchen und, sofern Ihre Sitzung es erlaubt, Ihre Bibliothek über die Seite ändern. Standardmäßig aus; gilt nur für diesen Browser.",
-      "inpage_changed": "Assistent hat {count} Fotos geändert",
-      "inpage_undo": "Rückgängig"
+      "inpage_changed": "Der Assistent hat {count} Foto geändert",
+      "inpage_changed_plural": "Der Assistent hat {count} Fotos geändert"
     }
   },
   "pagination": {
@@ -291,6 +280,7 @@
     "category": "Kategorie",
     "strategy": "Strategie",
     "strategies": {
+      "learning": "Lernwert (am informativsten)",
       "uncertainty": "Unsicherheit (ähnliche Wertungen)",
       "boundary": "Grenzbereich (Bereich 6-8)",
       "active": "Aktives Lernen (wenige Vergleiche)",
@@ -298,6 +288,8 @@
     },
     "strategy_help": {
       "title": "Vergleichsstrategien",
+      "learning_title": "Lernwert (am informativsten)",
+      "learning_desc": "Wählt das Paar, aus dem das Ranking-Modell am meisten lernt: vor dem Training Fotos mit großem Abstand im Merkmalsraum, danach Paare, bei denen sich die Reihenfolge von Gesamtscore und gelerntem Score widerspricht. Standardstrategie.",
       "uncertainty_title": "Unsicherheit (ähnliche Wertungen)",
       "uncertainty_desc": "Wählt Paare mit nahezu identischen Gesamtwertungen. Am besten zur Gewichtungskalibrierung geeignet - Ihre Präferenz zeigt, welche Metriken wichtig sind, wenn der Algorithmus keinen Unterschied erkennen kann.",
       "boundary_title": "Grenzbereich (Qualitätsschwelle)",

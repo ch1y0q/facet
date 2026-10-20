@@ -34,10 +34,34 @@ describe('validateAgainstSchema', () => {
   });
 
   it('ignores Object.prototype names: they are neither declared properties nor present keys', () => {
-    expect(validateAgainstSchema(SCHEMA, JSON.parse('{"route":"/","constructor":1}'))).not.toEqual([]);
-    expect(validateAgainstSchema(SCHEMA, JSON.parse('{"route":"/","hasOwnProperty":"x"}'))).not.toEqual([]);
-    expect(validateAgainstSchema({ type: 'object', required: ['toString'], properties: {} }, {})).not.toEqual([]);
+    expect(validateAgainstSchema(SCHEMA, JSON.parse('{"route":"/","constructor":1}'))).toEqual(['args.constructor: unknown property']);
+    expect(validateAgainstSchema(SCHEMA, JSON.parse('{"route":"/","hasOwnProperty":"x"}'))).toEqual(['args.hasOwnProperty: unknown property']);
+    expect(validateAgainstSchema({ type: 'object', required: ['toString'], properties: {} }, {})).toEqual(['args.toString: required']);
     const filled = withDefaults({ properties: { constructor: { type: 'string', default: 'd' } } }, {});
     expect(Object.hasOwn(filled, 'constructor')).toBe(true);
+  });
+
+  it('checks string length, array size, numeric minimum and type mixes with exact messages', () => {
+    const schema: JsonSchema = {
+      type: 'object',
+      properties: {
+        name: { type: 'string', minLength: 2, maxLength: 3 },
+        tags: { type: 'array', minItems: 1 },
+        score: { type: 'number', minimum: 0 },
+        count: { type: 'integer' },
+      },
+    };
+    expect(validateAgainstSchema(schema, { name: 'a' })).toEqual(['args.name: too short']);
+    expect(validateAgainstSchema(schema, { name: 'abcd' })).toEqual(['args.name: too long']);
+    expect(validateAgainstSchema(schema, { tags: [] })).toEqual(['args.tags: too few items']);
+    expect(validateAgainstSchema(schema, { score: -1 })).toEqual(['args.score: below 0']);
+    expect(validateAgainstSchema(schema, { score: 1.5, count: 1.5 })).toEqual(['args.count: expected integer']);
+  });
+
+  it('accepts anything for a schema with no type, and validates additionalProperties given as a schema', () => {
+    expect(validateAgainstSchema({}, { a: [1, 'x'] })).toEqual([]);
+    const open: JsonSchema = { type: 'object', additionalProperties: { type: 'number' } };
+    expect(validateAgainstSchema(open, { a: 1, b: 2 })).toEqual([]);
+    expect(validateAgainstSchema(open, { a: 'x' })).toEqual(['args.a: expected number']);
   });
 });

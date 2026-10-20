@@ -5,14 +5,17 @@ deterministic is driven through Starlette's TestClient instead.
 """
 
 import json
+import subprocess
+import sys
 
 import pytest
 
 from api import config as api_config
 from api.agent import limits
+from api.agent.tools_common import TOOL_LEVELS
 from api.agent.tools_write import WRITE_TOOL_LEVELS
 from api.agent.ui_tools import UI_TOOLS
-from tests.conftest import AGENT_DIR
+from tests.conftest import AGENT_DIR, intercept_internal_call, serve_app
 
 READ_TOOLS = {
     "search_photos", "semantic_search", "get_photo", "similar_photos", "filter_options",
@@ -128,8 +131,9 @@ class TestMount:
 
     def test_tools_list_names_the_read_tools(self, agent_app):
         env = agent_app("open")
-        assert env.tool_names(env.token(env.login())) == READONLY_LISTED
-        assert READONLY_LISTED < READ_TOOLS | UI_TOOL_NAMES | WRITE_TOOLS | CULLING_TOOLS
+        listed = env.tool_names(env.token(env.login()))
+        assert listed == READONLY_LISTED
+        assert listed <= set(TOOL_LEVELS)
 
     def test_every_read_tool_is_annotated_read_only_and_untrusted(self, agent_app):
         env = agent_app("open")
@@ -413,15 +417,12 @@ class TestLibraryStatsKinds:
         assert result["ok"] is False and result["error"] == "invalid_input"
 
     def test_overview_forwards_its_filters_and_keeps_its_shape(self, agent_app, photos, monkeypatch):
-        from api.agent.internal_client import InternalClient
         seen = {}
-        original = InternalClient.call
 
-        async def call(self, grant, tool, **kwargs):
+        def record(tool, kwargs):
             seen[tool] = kwargs.get("query")
-            return await original(self, grant, tool, **kwargs)
 
-        monkeypatch.setattr(InternalClient, "call", call)
+        intercept_internal_call(monkeypatch, record)
         env = agent_app("open")
         data = env.call(env.token(env.login()), "library_stats", {
             "date_from": "2020-01-01", "category": "portrait"})["data"]
@@ -577,27 +578,14 @@ class TestRealSdkClient:
 
     def test_sdk_client_lists_tools_and_calls_status(self, agent_app):
         import asyncio
-        import threading
-        import time
 
         import httpx2
-        import uvicorn
         from mcp import ClientSession
         from mcp.client.streamable_http import streamable_http_client
 
         env = agent_app("legacy")
         token = env.token(env.login())
-        server = uvicorn.Server(uvicorn.Config(env.app, host="127.0.0.1", port=0, log_level="warning",
-                                               lifespan="off"))
-        thread = threading.Thread(target=server.run, daemon=True)
-        thread.start()
-        try:
-            deadline = time.monotonic() + 10
-            while not server.started and time.monotonic() < deadline:
-                time.sleep(0.05)
-            assert server.started
-            port = server.servers[0].sockets[0].getsockname()[1]
-
+        with serve_app(env.app, log_level="warning") as port:
             async def drive():
                 async with httpx2.AsyncClient(headers={"Authorization": "Bearer " + token}) as http:
                     async with streamable_http_client(f"http://127.0.0.1:{port}/mcp", http_client=http) as streams:
@@ -608,9 +596,6 @@ class TestRealSdkClient:
                             return {t.name for t in listed.tools}, json.loads(called.content[0].text)
 
             names, status = asyncio.run(drive())
-        finally:
-            server.should_exit = True
-            thread.join(timeout=10)
         assert names == READONLY_LISTED
         assert status["ok"] is True and status["data"]["owner"] == "_legacy"
 
@@ -826,3 +811,13 @@ class TestHideDefaults:
         assert hidden["data"]["total"] == 2
         shown = env.call(token, "search_photos", {"filters": {**scope, "show_rejected": True}})
         assert [r["filename"] for r in shown["data"]["rows"]] == ["b.jpg"]
+
+
+@pytest.mark.parametrize("missing", ["httpx", "mcp", "websockets"])
+def test_a_missing_agent_dependency_leaves_the_viewer_starting(missing):
+    """An install upgraded without `pip install -r requirements.txt` loses the agent layer, never the viewer."""
+    code = ("import sys; sys.modules[sys.argv[1]] = None\n"
+            "import api\n"
+            "api.create_app()\n")
+    done = subprocess.run([sys.executable, "-c", code, missing], capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr[-2000:]

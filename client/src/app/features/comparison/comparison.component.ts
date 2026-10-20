@@ -14,7 +14,7 @@ import { PageHelpService } from '../../core/services/page-help.service';
 import { GalleryStore } from '../gallery/gallery.store';
 import { HeaderSlotService } from '../../core/services/header-slot.service';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
-import { CompareFiltersService } from './compare-filters.service';
+import { CompareFiltersService, DEFAULT_COMPARE_STRATEGY } from './compare-filters.service';
 import { ComparisonWeightsTabComponent } from './comparison-weights-tab.component';
 import { ComparisonSnapshotsTabComponent } from './comparison-snapshots-tab.component';
 import { ComparisonAbTabComponent } from './comparison-ab-tab.component';
@@ -219,6 +219,8 @@ export class ComparisonComponent {
   constructor() {
     this.pageHelp.setDescription(I18N.compare.help);
     inject(DestroyRef).onDestroy(() => {
+      // The service outlives the page. Reset on leaving, never on entering, so what ui_show_comparison set for this visit survives the navigation it triggers.
+      this.compareFilters.strategy.set(DEFAULT_COMPARE_STRATEGY);
       this.pageHelp.setDescription(null);
       this.compareFilters.activeTab.set(0);
       const tpl = this.compareToolbar();

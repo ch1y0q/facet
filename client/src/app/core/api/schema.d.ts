@@ -2073,27 +2073,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/mcp/actions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Actions
-         * @description The caller's recent agent changes, newest first, grouped by tool call.
-         */
-        get: operations["list_actions_api_mcp_actions_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/mcp/actions/undo": {
+    "/api/mcp/call": {
         parameters: {
             query?: never;
             header?: never;
@@ -2103,10 +2083,30 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Undo Action
-         * @description Undo one batch as the session's owner. Each target is restored only if it still holds the agent's value.
+         * Call Tool
+         * @description Run one tool as this session. A tool failure is a 200 envelope (`ok: false`), like on `/mcp`.
          */
-        post: operations["undo_action_api_mcp_actions_undo_post"];
+        post: operations["call_tool_api_mcp_call_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/inpage_tools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inpage Tools
+         * @description The server tools this session may call from the page, live, with the schemas the registry holds.
+         */
+        get: operations["inpage_tools_api_mcp_inpage_tools_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4500,78 +4500,6 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
-         * AgentActionBatch
-         * @description One tool call's worth of journaled changes.
-         */
-        AgentActionBatch: {
-            /** Batch Id */
-            batch_id: string;
-            /** Created At */
-            created_at: string;
-            /** Fields */
-            fields: string[];
-            /**
-             * Rows
-             * @description Journaled field changes in the batch.
-             */
-            rows: number;
-            /**
-             * Source
-             * @description 'mcp' (a token), 'inpage' (the in-page assistant) or 'dialog'.
-             */
-            source: string;
-            /**
-             * Token Name
-             * @description The token's name, or the in-page actor.
-             */
-            token_name?: string | null;
-            /** Tool */
-            tool: string;
-            /** Undone */
-            undone: boolean;
-        };
-        /** AgentActionList */
-        AgentActionList: {
-            /** Actions */
-            actions: components["schemas"]["AgentActionBatch"][];
-        };
-        /** AgentUndoItem */
-        AgentUndoItem: {
-            /** Field */
-            field: string;
-            /**
-             * Outcome
-             * @description restored | skipped_changed_since | missing | skipped_level | error
-             */
-            outcome: string;
-            /** Target */
-            target: string;
-        };
-        /** AgentUndoRequest */
-        AgentUndoRequest: {
-            /** Batch Id */
-            batch_id: string;
-        };
-        /** AgentUndoResult */
-        AgentUndoResult: {
-            /** Batch Id */
-            batch_id: string;
-            /**
-             * Outcomes
-             * @description Count of targets per outcome.
-             */
-            outcomes: {
-                [key: string]: number;
-            };
-            /**
-             * Results
-             * @description At most 200 targets; see `results_count`.
-             */
-            results: components["schemas"]["AgentUndoItem"][];
-            /** Results Count */
-            results_count: number;
-        };
-        /**
          * Album
          * @description An album's own metadata, as embedded in the shared-album view.
          */
@@ -5845,6 +5773,84 @@ export interface components {
             lng: number;
             /** Path */
             path: string;
+        };
+        /** McpCallRequest */
+        McpCallRequest: {
+            /** Arguments */
+            arguments?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Selection Snapshot
+             * @description The calling tab's `ui_get_selection` data; read by `target: "selection"`.
+             */
+            selection_snapshot?: {
+                [key: string]: unknown;
+            } | null;
+            /** Tool */
+            tool: string;
+        };
+        /**
+         * McpCallResponse
+         * @description A tool's result envelope; failures are `ok: false` with an `error` code, never an HTTP error.
+         */
+        McpCallResponse: {
+            /**
+             * Changed
+             * @description Photos a write changed (0 for a dry run).
+             */
+            changed?: number | null;
+            /** Data */
+            data?: unknown | null;
+            /** Error */
+            error?: string | null;
+            /** Message */
+            message?: string | null;
+            /** Ok */
+            ok: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /** McpInpageAnnotations */
+        McpInpageAnnotations: {
+            /** Consequentialhint */
+            consequentialHint: boolean;
+            /** Readonlyhint */
+            readOnlyHint: boolean;
+            /** Untrustedcontenthint */
+            untrustedContentHint: boolean;
+        };
+        /** McpInpageTool */
+        McpInpageTool: {
+            annotations: components["schemas"]["McpInpageAnnotations"];
+            /** Description */
+            description: string;
+            /**
+             * Inputschema
+             * @description JSON Schema of the arguments; `show` and `tab_id` are stripped.
+             */
+            inputSchema: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            /**
+             * Required Level
+             * @description The level the session needs to call the tool (single-password installs have no `user` rung).
+             * @enum {string}
+             */
+            required_level: "readonly" | "user" | "edition";
+        };
+        /** McpInpageTools */
+        McpInpageTools: {
+            /**
+             * Level
+             * @description The session's level right now.
+             * @enum {string}
+             */
+            level: "readonly" | "user" | "edition";
+            /** Tools */
+            tools: components["schemas"]["McpInpageTool"][];
         };
         /** McpTokenCreate */
         McpTokenCreate: {
@@ -10864,18 +10870,20 @@ export interface operations {
             };
         };
     };
-    list_actions_api_mcp_actions_get: {
+    call_tool_api_mcp_call_post: {
         parameters: {
-            query?: {
-                limit?: number;
-                /** @description 1 also lists batches that were already undone */
-                include_undone?: number;
+            query?: never;
+            header?: {
+                "X-Facet-Agent-Session"?: string | null;
             };
-            header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["McpCallRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -10883,8 +10891,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AgentActionList"];
+                    "application/json": components["schemas"]["McpCallResponse"];
                 };
+            };
+            /** @description Missing or malformed X-Facet-Agent-Session header. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Authentication required. */
             401: {
@@ -10893,14 +10908,14 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description An agent credential was used. */
+            /** @description An agent credential or a foreign origin was used. */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description The agent endpoint is disabled (viewer.mcp.enabled). */
+            /** @description In-page tools are disabled (viewer.mcp.enabled / viewer.mcp.inpage_tools). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -10918,18 +10933,14 @@ export interface operations {
             };
         };
     };
-    undo_action_api_mcp_actions_undo_post: {
+    inpage_tools_api_mcp_inpage_tools_get: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AgentUndoRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -10937,7 +10948,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AgentUndoResult"];
+                    "application/json": components["schemas"]["McpInpageTools"];
                 };
             };
             /** @description Authentication required. */
@@ -10947,35 +10958,19 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description An agent credential was used, or the session's level is below the batch's. */
+            /** @description An agent credential or a foreign origin was used. */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description No such batch for this account, or the endpoint is disabled. */
+            /** @description In-page tools are disabled (viewer.mcp.enabled / viewer.mcp.inpage_tools). */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            /** @description The batch was already undone. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
             };
         };
     };
@@ -11330,6 +11325,20 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PossibleFacesResponse"];
                 };
+            };
+            /** @description Person not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No usable centroid, or the scan is over MAX_FACE_SCAN faces */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

@@ -1,3 +1,4 @@
+import { LEVEL_RANK, agentLevel } from './agent-level';
 import { Router } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 import { GalleryStore } from '../../features/gallery/gallery.store';
@@ -26,7 +27,6 @@ export interface UiToolDeps {
 
 /** The contract's cap on `ui_show_photos` paths (api/agent/ui_tools.py MAX_SHOW_PATHS). */
 const MAX_SHOW_PATHS = 200;
-const LEVEL_RANK: Record<string, number> = { readonly: 0, user: 1, edition: 2 };
 
 /**
  * The pages `ui_navigate` may open, read from the live router config so a new page
@@ -301,7 +301,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
   };
 
   /** The session level this tab carries, as the server's bridge records it. */
-  const sessionLevel = (): string => (auth.isEdition() ? 'edition' : auth.isMultiUser() && auth.isAuthenticated() ? 'user' : 'readonly');
+  const sessionLevel = (): string => agentLevel({ authenticated: auth.isAuthenticated(), multi_user: auth.isMultiUser(), edition_authenticated: auth.isEdition() });
 
   return {
     ui_navigate: async args => {
@@ -321,8 +321,9 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
     ui_set_gallery_filters: async args => {
       const patch = (args['patch'] ?? {}) as Record<string, unknown>;
       patchToUpdates(patch);
-      // A replace on an album page would be saved as that album's smart filter (edition sessions), so it leaves the album first.
-      if (args['replace'] === true) await leaveAlbum();
+      // On an album page the store saves every filter change as that album's smart filter (edition sessions),
+      // which a readonly-granted agent must never cause: leave the album for any change, not only a replace.
+      await leaveAlbum();
       await ensureGalleryView();
       // Built after the gallery is up: the cleared state and null resets use the configured defaults, which load with it.
       await gallery.updateFilters({ ...(args['replace'] === true ? clearedFilters() : {}), ...patchToUpdates(patch) });
@@ -471,8 +472,11 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       if (category) compareFilters.selectedCategory.set(category);
       if (strategy) compareFilters.strategy.set(strategy);
       compareFilters.activeTab.set(COMPARE_AB_TAB_INDEX);
-      const ok = await router.navigate(['/compare']);
-      if (!ok) throw new UiToolError('forbidden_level', 'The tab refused to open the comparison page.');
+      // Already there: navigating to the same URL resolves false, which is not a refusal.
+      if (router.url.split(/[?#]/)[0] !== '/compare') {
+        const ok = await router.navigate(['/compare']);
+        if (!ok) throw new UiToolError('forbidden_level', 'The tab refused to open the comparison page.');
+      }
       return {
         route: '/compare',
         category: compareFilters.selectedCategory() || null,

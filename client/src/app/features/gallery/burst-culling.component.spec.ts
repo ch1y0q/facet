@@ -10,12 +10,14 @@ import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { GalleryStore } from './gallery.store';
+import { CullingStore } from './culling.store';
 import { BurstCullingComponent } from './burst-culling.component';
 import { SyncedZoomComponent } from './synced-zoom.component';
 import { SwipeDecisionDirective, SWIPE_SETTLE_MS } from '../../shared/directives/swipe-decision.directive';
 
 describe('BurstCullingComponent', () => {
   let component: BurstCullingComponent;
+  let store: CullingStore;
   let mockApi: { get: Mock; post: Mock };
   let mockSnackBar: { open: Mock };
   let mockI18n: { t: Mock; translations: Mock };
@@ -82,44 +84,35 @@ describe('BurstCullingComponent', () => {
       ],
     });
     component = TestBed.inject(BurstCullingComponent);
+    store = TestBed.inject(CullingStore);
   });
 
   afterEach(() => {
     component.ngOnDestroy();
   });
 
-  describe('initial state', () => {
-    it('should have loading as a signal function', () => {
-      expect(typeof component['loading']).toBe('function');
-    });
-
-    it('should start with confirming false', () => {
-      expect(component['confirming']()).toBe(false);
-    });
-  });
-
   describe('loadGroups', () => {
     it('should load culling groups from API', async () => {
-      await (component as any).loadGroups();
+      await store.loadGroups();
 
       expect(mockApi.get).toHaveBeenCalledWith('/culling-groups', expect.objectContaining({ page: 1, per_page: 20, exclude_rejected: true }));
-      expect(component['groups']()).toHaveLength(2);
-      expect(component['totalGroups']()).toBe(2);
-      expect(component['loading']()).toBe(false);
+      expect(store.groups()).toHaveLength(2);
+      expect(store.totalGroups()).toBe(2);
+      expect(store.loading()).toBe(false);
     });
 
     it('should update exclude_rejected value and reload on change', async () => {
       mockApi.get.mockClear();
       (component as any).onExcludeRejectedChange(false);
 
-      expect(component['excludeRejected']()).toBe(false);
+      expect(store.excludeRejected()).toBe(false);
       expect(mockApi.get).toHaveBeenCalledWith('/culling-groups', expect.objectContaining({ page: 1, per_page: 20, exclude_rejected: false }));
     });
 
     it('should auto-select best photo in each group', async () => {
-      await (component as any).loadGroups();
+      await store.loadGroups();
 
-      const selections = component['selectionsMap']();
+      const selections = store.selectionsMap();
       expect(selections.get(1)?.has('/photo1.jpg')).toBe(true);
       expect(selections.get(2)?.has('/photo4.jpg')).toBe(true);
     });
@@ -130,57 +123,30 @@ describe('BurstCullingComponent', () => {
         total_groups: 1, page: 1, per_page: 20, total_pages: 1,
       }));
 
-      await (component as any).loadGroups();
+      await store.loadGroups();
 
-      const selections = component['selectionsMap']();
+      const selections = store.selectionsMap();
       expect(selections.has(10)).toBe(false);
     });
 
     it('should set loading false on error', async () => {
       mockApi.get.mockReturnValue(throwError(() => new Error('Network error')));
 
-      await (component as any).loadGroups();
+      await store.loadGroups();
 
-      expect(component['loading']()).toBe(false);
+      expect(store.loading()).toBe(false);
     });
 
     it('should retain existing groups on error (no reset)', async () => {
       // First load succeeds
-      await (component as any).loadGroups();
-      expect(component['groups']()).toHaveLength(2);
+      await store.loadGroups();
+      expect(store.groups()).toHaveLength(2);
 
       // Second load fails — groups remain from the first load
       mockApi.get.mockReturnValue(throwError(() => new Error('Network error')));
-      await (component as any).loadGroups();
+      await store.loadGroups();
 
-      expect(component['groups']()).toHaveLength(2);
-    });
-  });
-
-  describe('loadMore', () => {
-    it('should append groups from the next page', async () => {
-      await (component as any).loadGroups();
-      component['totalPages'].set(2);
-
-      const page2Response = {
-        groups: [{ group_id: 3, type: 'burst', reason: '1s apart', photos: [], best_path: '', count: 0 }],
-        total_groups: 3, page: 2, per_page: 20, total_pages: 2,
-      };
-      mockApi.get.mockReturnValue(of(page2Response));
-
-      await (component as any).loadMore();
-
-      expect(component['groups']()).toHaveLength(3);
-      expect(component['currentPage']()).toBe(2);
-    });
-
-    it('should not load if no more pages', async () => {
-      await (component as any).loadGroups();
-      mockApi.get.mockClear();
-
-      await (component as any).loadMore();
-
-      expect(mockApi.get).not.toHaveBeenCalled();
+      expect(store.groups()).toHaveLength(2);
     });
   });
 
@@ -189,8 +155,8 @@ describe('BurstCullingComponent', () => {
       (component as any).showGroupForAgent({ type, group_id: groupId });
 
     it('stops paging when a page fails instead of re-requesting it', async () => {
-      await (component as any).loadGroups();
-      component['totalPages'].set(3);
+      await store.loadGroups();
+      store.totalPages.set(3);
       mockApi.get.mockClear();
       mockApi.get.mockReturnValue(throwError(() => new Error('down')));
       await expect(show('burst', 99)).rejects.toMatchObject({ code: 'not_found' });
@@ -198,12 +164,12 @@ describe('BurstCullingComponent', () => {
     });
 
     it('waits for a load already in flight rather than racing it', async () => {
-      await (component as any).loadGroups();
-      component['totalPages'].set(2);
+      await store.loadGroups();
+      store.totalPages.set(2);
       const pending = new Subject<unknown>();
       mockApi.get.mockClear();
       mockApi.get.mockReturnValue(pending);
-      const scrolled = (component as any).loadMore() as Promise<void>;
+      const scrolled = store.loadMore() as Promise<void>;
       const asked = show('burst', 3);
       pending.next({ groups: [{ group_id: 3, type: 'burst', reason: '', photos: [], best_path: '', count: 0 }], total_groups: 3, page: 2, per_page: 20, total_pages: 2 });
       pending.complete();
@@ -213,168 +179,51 @@ describe('BurstCullingComponent', () => {
     });
   });
 
-  describe('toggleSelection', () => {
-    beforeEach(async () => {
-      await (component as any).loadGroups();
-    });
-
-    it('should add a photo to the selection when not already selected', () => {
-      const group = component['groups']()[0];
-      component['toggleSelection']('/photo2.jpg', group);
-
-      const kept = component['selectionsMap']().get(1);
-      expect(kept?.has('/photo2.jpg')).toBe(true);
-    });
-
-    it('should remove a photo from the selection when already selected', () => {
-      const group = component['groups']()[0];
-      // photo1.jpg is auto-selected as best_path
-      component['toggleSelection']('/photo1.jpg', group);
-
-      const kept = component['selectionsMap']().get(1);
-      expect(kept?.has('/photo1.jpg')).toBe(false);
-    });
-
-    it('should allow multiple photos to be selected', () => {
-      const group = component['groups']()[0];
-      component['toggleSelection']('/photo2.jpg', group);
-      component['toggleSelection']('/photo3.jpg', group);
-
-      const kept = component['selectionsMap']().get(1);
-      expect(kept?.has('/photo1.jpg')).toBe(true); // auto-selected
-      expect(kept?.has('/photo2.jpg')).toBe(true);
-      expect(kept?.has('/photo3.jpg')).toBe(true);
-    });
-
-    it('should not mutate original map', () => {
-      const originalMap = component['selectionsMap']();
-      const group = component['groups']()[0];
-      component['toggleSelection']('/photo2.jpg', group);
-      const newMap = component['selectionsMap']();
-
-      expect(newMap).not.toBe(originalMap);
-    });
-  });
-
-  // Double-click on a tile. For an ordinary burst/similar/scene it is the
-  // fast "keep only this one" gesture the feature exists for. For a bracket
-  // or a pan the frames were shot to be merged, not to compete -- the same
-  // reason computeAutoKeep starts every frame of those kinds KEPT and the
-  // auto-cull button hides in that granularity -- so it must be a no-op there.
-  describe('selectExclusive (double-click)', () => {
-    const buildKeepWholeGroup = (kind: 'bracket' | 'panorama' | 'hdr_panorama') => ({
-      group_id: 42,
-      type: kind,
-      reason: '3 frames',
-      sequence_kind: kind,
-      best_path: '/kw0.jpg',
-      count: 3,
-      photos: [0, 1, 2].map(i => ({
-        path: `/kw${i}.jpg`, filename: `kw${i}.jpg`, aggregate: 5, aesthetic: 5,
-        tech_sharpness: 5, is_blink: 0, is_burst_lead: 0, date_taken: '2025-04-15',
-        burst_score: 5, sequence_kind: kind,
-      })),
-    });
-
-    it('refuses to reduce a bracket set to a single frame', () => {
-      const group = buildKeepWholeGroup('bracket');
-      component['groups'].set([group] as never);
-      component['selectionsMap'].set(
-        new Map([[group.group_id, new Set(group.photos.map(p => p.path))]]),
-      );
-
-      component['selectExclusive']('/kw1.jpg', group as never);
-
-      const kept = component['selectionsMap']().get(group.group_id);
-      expect(kept?.size).toBe(3);
-      expect([...(kept ?? [])].sort()).toEqual(['/kw0.jpg', '/kw1.jpg', '/kw2.jpg']);
-    });
-
-    it('refuses to reduce a panorama set to a single frame', () => {
-      const group = buildKeepWholeGroup('panorama');
-      component['groups'].set([group] as never);
-      component['selectionsMap'].set(
-        new Map([[group.group_id, new Set(group.photos.map(p => p.path))]]),
-      );
-
-      component['selectExclusive']('/kw1.jpg', group as never);
-
-      const kept = component['selectionsMap']().get(group.group_id);
-      expect(kept?.size).toBe(3);
-      expect([...(kept ?? [])].sort()).toEqual(['/kw0.jpg', '/kw1.jpg', '/kw2.jpg']);
-    });
-
-    it('refuses to reduce an hdr_panorama set to a single frame', () => {
-      const group = buildKeepWholeGroup('hdr_panorama');
-      component['groups'].set([group] as never);
-      component['selectionsMap'].set(
-        new Map([[group.group_id, new Set(group.photos.map(p => p.path))]]),
-      );
-
-      component['selectExclusive']('/kw1.jpg', group as never);
-
-      const kept = component['selectionsMap']().get(group.group_id);
-      expect(kept?.size).toBe(3);
-      expect([...(kept ?? [])].sort()).toEqual(['/kw0.jpg', '/kw1.jpg', '/kw2.jpg']);
-    });
-
-    it('still collapses an ordinary burst to the single double-clicked frame', async () => {
-      await (component as any).loadGroups();
-      const group = component['groups']()[0]; // type: 'burst', no sequence_kind
-
-      component['selectExclusive']('/photo2.jpg', group);
-
-      const kept = component['selectionsMap']().get(group.group_id);
-      expect(kept?.size).toBe(1);
-      expect(kept?.has('/photo2.jpg')).toBe(true);
-    });
-  });
-
   // The one write behind the arrow keys, a swipe and the compare panes' own
   // buttons. It takes a path because "the current photo" is a question only the
   // keyboard can answer, and a compare grid has four of them on screen.
   describe('setPhotoKept (the shared darkroom decision)', () => {
     beforeEach(async () => {
-      await (component as any).loadGroups();
+      await store.loadGroups();
     });
 
     it('keeps and rejects the path it is given, whatever frame is focused', () => {
-      const group = component['groups']()[0];
+      const group = store.groups()[0];
       component['lightboxIndex'].set(0);
 
-      component['setPhotoKept'](group, '/photo3.jpg', true);
-      expect([...component['selectionsMap']().get(1)!]).toContain('/photo3.jpg');
+      store.setPhotoKept(group, '/photo3.jpg', true);
+      expect([...store.selectionsMap().get(1)!]).toContain('/photo3.jpg');
 
-      component['setPhotoKept'](group, '/photo3.jpg', false);
-      expect([...component['selectionsMap']().get(1)!]).not.toContain('/photo3.jpg');
+      store.setPhotoKept(group, '/photo3.jpg', false);
+      expect([...store.selectionsMap().get(1)!]).not.toContain('/photo3.jpg');
       expect(component['lightboxIndex']()).toBe(0);
     });
 
     it('is what the arrow keys write through', () => {
-      const group = component['groups']()[0];
-      component['lightboxGroupId'].set(component['groupKey'](group));
+      const group = store.groups()[0];
+      component['lightboxGroupId'].set(store.groupKey(group));
       component['lightboxIndex'].set(1);
       const event = { preventDefault: vi.fn(), target: document.body } as unknown as Event;
 
       component['onArrowUp'](event);
 
-      expect([...component['selectionsMap']().get(1)!]).toContain('/photo2.jpg');
+      expect([...store.selectionsMap().get(1)!]).toContain('/photo2.jpg');
     });
 
     it('never mutates the map in place', () => {
-      const group = component['groups']()[0];
-      const before = component['selectionsMap']();
+      const group = store.groups()[0];
+      const before = store.selectionsMap();
 
-      component['setPhotoKept'](group, '/photo2.jpg', true);
+      store.setPhotoKept(group, '/photo2.jpg', true);
 
-      expect(component['selectionsMap']()).not.toBe(before);
+      expect(store.selectionsMap()).not.toBe(before);
     });
   });
 
   describe('confirmGroup (cooldown then commit + hide)', () => {
     beforeEach(async () => {
       vi.useFakeTimers();
-      await (component as any).loadGroups();
+      await store.loadGroups();
       mockApi.post.mockReturnValue(of({}));
     });
 
@@ -383,17 +232,17 @@ describe('BurstCullingComponent', () => {
     });
 
     it('greys the group and starts the countdown without posting yet', () => {
-      const group = component['groups']()[0];
-      component['confirmGroup'](group);
+      const group = store.groups()[0];
+      store.confirmGroup(group);
 
-      expect(component['confirmedGroups']().has('1_burst')).toBe(true);
-      expect(component['passingGroups']().get('1_burst')).toBe(7);
+      expect(store.confirmedGroups().has('1_burst')).toBe(true);
+      expect(store.passingGroups().get('1_burst')).toBe(7);
       expect(mockApi.post).not.toHaveBeenCalled();
     });
 
     it('commits the selected paths and hides the group after the cooldown', async () => {
-      const group = component['groups']()[0];
-      component['confirmGroup'](group);
+      const group = store.groups()[0];
+      store.confirmGroup(group);
 
       await vi.advanceTimersByTimeAsync(7000);
 
@@ -407,24 +256,24 @@ describe('BurstCullingComponent', () => {
     });
 
     it('does nothing when no photos are selected', () => {
-      component['selectionsMap'].set(new Map());
-      const group = component['groups']()[0];
+      store.selectionsMap.set(new Map());
+      const group = store.groups()[0];
 
-      component['confirmGroup'](group);
+      store.confirmGroup(group);
 
-      expect(component['confirmedGroups']().has('1_burst')).toBe(false);
-      expect(component['passingGroups']().has('1_burst')).toBe(false);
+      expect(store.confirmedGroups().has('1_burst')).toBe(false);
+      expect(store.passingGroups().has('1_burst')).toBe(false);
     });
 
     it('cancelPass within the cooldown reverts the confirm without posting', () => {
-      const group = component['groups']()[0];
-      component['confirmGroup'](group);
-      component['cancelPass'](group);
+      const group = store.groups()[0];
+      store.confirmGroup(group);
+      store.cancelPass(group);
 
       vi.advanceTimersByTime(7000);
 
-      expect(component['confirmedGroups']().has('1_burst')).toBe(false);
-      expect(component['passingGroups']().has('1_burst')).toBe(false);
+      expect(store.confirmedGroups().has('1_burst')).toBe(false);
+      expect(store.passingGroups().has('1_burst')).toBe(false);
       expect(mockApi.post).not.toHaveBeenCalled();
       expect(component['visibleGroups']().find(g => g.group_id === 1)).toBeDefined();
     });
@@ -432,31 +281,31 @@ describe('BurstCullingComponent', () => {
 
   describe('onSpace (darkroom confirm + auto-advance)', () => {
     beforeEach(async () => {
-      await (component as any).loadGroups();
+      await store.loadGroups();
       mockApi.post.mockReturnValue(of({}));
     });
 
     it('confirms the open group and opens the next group fullscreen', async () => {
-      const [first, second] = component['groups']();
+      const [first, second] = store.groups();
       component['openLightbox'](first, 0);
 
       component['onSpace'](new KeyboardEvent('keydown'));
       await Promise.resolve();
       await Promise.resolve();
 
-      expect(component['confirmedGroups']().has('1_burst')).toBe(true);
-      expect(component['lightboxGroupId']()).toBe(component['groupKey'](second));
+      expect(store.confirmedGroups().has('1_burst')).toBe(true);
+      expect(component['lightboxGroupId']()).toBe(store.groupKey(second));
     });
 
     it('closes the lightbox after confirming the last group', async () => {
-      const second = component['groups']()[1];
+      const second = store.groups()[1];
       component['openLightbox'](second, 0);
 
       component['onSpace'](new KeyboardEvent('keydown'));
       await Promise.resolve();
       await Promise.resolve();
 
-      expect(component['confirmedGroups']().has('2_similar')).toBe(true);
+      expect(store.confirmedGroups().has('2_similar')).toBe(true);
       expect(component['lightboxGroupId']()).toBeNull();
     });
 
@@ -465,7 +314,7 @@ describe('BurstCullingComponent', () => {
       component['selectedGroupIndex'].set(0);
       component['onSpace'](new KeyboardEvent('keydown'));
 
-      expect(component['confirmedGroups']().has('1_burst')).toBe(true);
+      expect(store.confirmedGroups().has('1_burst')).toBe(true);
       expect(component['lightboxGroupId']()).toBeNull();
       expect(component['selectedGroupIndex']()).toBe(1);
     });
@@ -478,7 +327,7 @@ describe('BurstCullingComponent', () => {
     const originalExitFullscreen = document.exitFullscreen;
 
     beforeEach(async () => {
-      await (component as any).loadGroups();
+      await store.loadGroups();
     });
 
     afterEach(() => {
@@ -506,7 +355,7 @@ describe('BurstCullingComponent', () => {
       component['onFullscreenToggle'](new KeyboardEvent('keydown', { key: 'f' }));
       expect(spy).not.toHaveBeenCalled();
 
-      component['openLightbox'](component['groups']()[0], 0);
+      component['openLightbox'](store.groups()[0], 0);
       component['onFullscreenToggle'](new KeyboardEvent('keydown', { key: 'f' }));
       expect(spy).toHaveBeenCalledTimes(1);
     });
@@ -523,7 +372,7 @@ describe('BurstCullingComponent', () => {
 
     it('closeLightbox() exits fullscreen when the darkroom closes while fullscreen', () => {
       document.exitFullscreen = vi.fn().mockResolvedValue(undefined);
-      component['openLightbox'](component['groups']()[0], 0);
+      component['openLightbox'](store.groups()[0], 0);
       setFullscreenElement(document.body);
 
       component['closeLightbox']();
@@ -563,6 +412,7 @@ describe('BurstCullingComponent', () => {
         ],
       });
       component = TestBed.runInInjectionContext(() => new BurstCullingComponent());
+      store = component['cull'];
 
       expect(component['legendVisible']()).toBe(true);
     });
@@ -598,6 +448,7 @@ describe('BurstCullingComponent', () => {
         ],
       });
       component = TestBed.runInInjectionContext(() => new BurstCullingComponent());
+      store = component['cull'];
 
       expect(component['darkroomLoupeActive']()).toBe(false);
     });
@@ -623,7 +474,7 @@ describe('BurstCullingComponent', () => {
           { ...mockCullingGroupsResponse.groups[1], category: 'landscape' },
         ],
       }));
-      await (component as any).loadGroups();
+      await store.loadGroups();
     });
 
     it('lists distinct categories from loaded groups', () => {
@@ -646,15 +497,15 @@ describe('BurstCullingComponent', () => {
 
   describe('sort', () => {
     it('defaults to easiest and passes the sort mode in request params', () => {
-      expect(component['sortMode']()).toBe('easiest');
-      expect(component['buildParams'](1)).toEqual(expect.objectContaining({ sort: 'easiest' }));
+      expect(store.sortMode()).toBe('easiest');
+      expect(store.buildParams(1)).toEqual(expect.objectContaining({ sort: 'easiest' }));
     });
 
     it('onSortChange updates the mode and reloads from page 1', () => {
-      const spy = vi.spyOn(component as any, 'loadGroups');
+      const spy = vi.spyOn(store, 'loadGroups');
       component['onSortChange']('recent');
-      expect(component['sortMode']()).toBe('recent');
-      expect(component['buildParams'](1)).toEqual(expect.objectContaining({ sort: 'recent' }));
+      expect(store.sortMode()).toBe('recent');
+      expect(store.buildParams(1)).toEqual(expect.objectContaining({ sort: 'recent' }));
       expect(spy).toHaveBeenCalled();
     });
 
@@ -666,21 +517,21 @@ describe('BurstCullingComponent', () => {
 
   describe('group_by granularity', () => {
     it('defaults to "all" and passes group_by in request params', () => {
-      expect(component['groupBy']()).toBe('all');
-      expect(component['buildParams'](1)).toEqual(expect.objectContaining({ group_by: 'all' }));
+      expect(store.groupBy()).toBe('all');
+      expect(store.buildParams(1)).toEqual(expect.objectContaining({ group_by: 'all' }));
     });
 
     it('onGroupByChange updates the granularity, persists it, and reloads from page 1', () => {
-      const spy = vi.spyOn(component as any, 'loadGroups');
+      const spy = vi.spyOn(store, 'loadGroups');
       component['onGroupByChange']('scene');
-      expect(component['groupBy']()).toBe('scene');
-      expect(component['buildParams'](1)).toEqual(expect.objectContaining({ group_by: 'scene' }));
+      expect(store.groupBy()).toBe('scene');
+      expect(store.buildParams(1)).toEqual(expect.objectContaining({ group_by: 'scene' }));
       expect(localStorage.getItem('facet_culling_group_by')).toBe('scene');
       expect(spy).toHaveBeenCalled();
     });
 
     it('ignores a no-op change to the same granularity', () => {
-      const spy = vi.spyOn(component as any, 'loadGroups');
+      const spy = vi.spyOn(store, 'loadGroups');
       component['onGroupByChange']('all');
       expect(spy).not.toHaveBeenCalled();
     });
@@ -699,13 +550,13 @@ describe('BurstCullingComponent', () => {
 
     it('openAutoCull dry-runs the current scope and stores the preview', async () => {
       mockApi.post = vi.fn(() => of(preview));
-      await component['openAutoCull']();
+      await store.openAutoCull();
       expect(mockApi.post).toHaveBeenCalledWith('/culling/auto', expect.objectContaining({
         dry_run: true,
         group_by: 'all',
-        strictness: component['strictness'](),
+        strictness: store.strictness(),
       }));
-      expect(component['autoCullPreview']()).toEqual(preview);
+      expect(store.autoCullPreview()).toEqual(preview);
     });
 
     /** The apply body, which only exists once a preview has been agreed to. */
@@ -720,15 +571,25 @@ describe('BurstCullingComponent', () => {
 
     it('confirmAutoCull applies with dry_run false, closes the dialog and reloads', async () => {
       mockApi.post = vi.fn(() => of(preview));
-      await component['openAutoCull']();
-      const reload = vi.spyOn(component as any, 'loadGroups');
+      await store.openAutoCull();
+      const reload = vi.spyOn(store, 'loadGroups');
 
       await component['confirmAutoCull']();
 
       expect(appliedBody()).toMatchObject({ dry_run: false });
-      expect(component['autoCullPreview']()).toBeNull();
+      expect(store.autoCullPreview()).toBeNull();
       expect(reload).toHaveBeenCalled();
       expect(mockSnackBar.open).toHaveBeenCalled();
+    });
+
+    it('confirmAutoCull puts the keyboard selection back on the first group once the apply lands', async () => {
+      mockApi.post = vi.fn(() => of(preview));
+      await store.openAutoCull();
+      component['selectedGroupIndex'].set(1);
+
+      await component['confirmAutoCull']();
+
+      expect(component['selectedGroupIndex']()).toBe(0);
     });
 
     // Apply is reachable from the dialog alone, and the dialog is the preview.
@@ -742,8 +603,8 @@ describe('BurstCullingComponent', () => {
 
     it('sends an empty highlights_album on apply when the checkbox is off', async () => {
       mockApi.post = vi.fn(() => of(preview));
-      await component['openAutoCull']();
-      component['autoCullHighlights'].set(false);
+      await store.openAutoCull();
+      store.autoCullHighlights.set(false);
 
       await component['confirmAutoCull']();
 
@@ -752,8 +613,8 @@ describe('BurstCullingComponent', () => {
 
     it('sends the generated highlights album name on apply when the checkbox is on', async () => {
       mockApi.post = vi.fn(() => of(preview));
-      await component['openAutoCull']();
-      component['autoCullHighlights'].set(true);
+      await store.openAutoCull();
+      store.autoCullHighlights.set(true);
 
       await component['confirmAutoCull']();
 
@@ -762,65 +623,65 @@ describe('BurstCullingComponent', () => {
 
     it('openAutoCull surfaces an error snackbar on failure', async () => {
       mockApi.post = vi.fn(() => throwError(() => new Error('boom')));
-      await component['openAutoCull']();
-      expect(component['autoCullPreview']()).toBeNull();
+      await store.openAutoCull();
+      expect(store.autoCullPreview()).toBeNull();
       expect(mockSnackBar.open).toHaveBeenCalled();
     });
 
     it('autoCullBody sends trim_brackets false by default', async () => {
       mockApi.post = vi.fn(() => of(preview));
-      await component['openAutoCull']();
+      await store.openAutoCull();
       expect(mockApi.post).toHaveBeenCalledWith('/culling/auto', expect.objectContaining({ trim_brackets: false }));
     });
 
     it('onTrimBracketsChange sets the signal and re-runs the dry run with trim_brackets true', async () => {
       mockApi.post = vi.fn(() => of(preview));
-      await component['onTrimBracketsChange'](true);
-      expect(component['trimBrackets']()).toBe(true);
+      await store.onTrimBracketsChange(true);
+      expect(store.trimBrackets()).toBe(true);
       expect(mockApi.post).toHaveBeenCalledWith('/culling/auto', expect.objectContaining({ trim_brackets: true, dry_run: true }));
-      expect(component['autoCullPreview']()).toEqual(preview);
+      expect(store.autoCullPreview()).toEqual(preview);
     });
 
     // A re-run that answers with the same counts is indistinguishable from a
     // toggle that does nothing, which is exactly how the checkbox read.
     it('says so when trimming brackets changes none of the counts', async () => {
-      component['autoCullPreview'].set({ ...preview });
+      store.autoCullPreview.set({ ...preview });
       mockApi.post = vi.fn(() => of({ ...preview }));
 
-      await component['onTrimBracketsChange'](true);
+      await store.onTrimBracketsChange(true);
 
-      expect(component['trimBracketsUnchanged']()).toBe(true);
+      expect(store.trimBracketsUnchanged()).toBe(true);
     });
 
     it('stays quiet when trimming brackets does change the counts', async () => {
-      component['autoCullPreview'].set({ ...preview });
+      store.autoCullPreview.set({ ...preview });
       mockApi.post = vi.fn(() => of({ ...preview, rejected: preview.rejected + 3 }));
 
-      await component['onTrimBracketsChange'](true);
+      await store.onTrimBracketsChange(true);
 
-      expect(component['trimBracketsUnchanged']()).toBe(false);
+      expect(store.trimBracketsUnchanged()).toBe(false);
     });
 
     // A failed re-run leaves the previous preview in place, which must not be
     // read as "the trimmed run returned the same answer".
     it('stays quiet when the re-run fails', async () => {
-      component['autoCullPreview'].set({ ...preview });
+      store.autoCullPreview.set({ ...preview });
       mockApi.post = vi.fn(() => throwError(() => new Error('boom')));
 
-      await component['onTrimBracketsChange'](true);
+      await store.onTrimBracketsChange(true);
 
-      expect(component['trimBracketsUnchanged']()).toBe(false);
+      expect(store.trimBracketsUnchanged()).toBe(false);
     });
 
     it('clears the dialog notices on cancel', () => {
-      component['autoCullPreview'].set(preview);
-      component['trimBracketsUnchanged'].set(true);
-      component['autoCullSuggestionNotice'].set('culling.profiles.wedding');
+      store.autoCullPreview.set(preview);
+      store.trimBracketsUnchanged.set(true);
+      store.autoCullSuggestionNotice.set('culling.profiles.wedding');
 
-      component['cancelAutoCull']();
+      store.cancelAutoCull();
 
-      expect(component['trimBracketsUnchanged']()).toBe(false);
-      expect(component['autoCullSuggestionNotice']()).toBeNull();
+      expect(store.trimBracketsUnchanged()).toBe(false);
+      expect(store.autoCullSuggestionNotice()).toBeNull();
     });
 
     // The checkbox is a mirror of the snapshot Apply sends, not of the click: a
@@ -828,32 +689,32 @@ describe('BurstCullingComponent', () => {
     // stayed ticked, promising a trim the apply would never perform.
     it('reverts the trim-brackets checkbox when the re-run fails', async () => {
       mockApi.post = vi.fn(() => of(preview));
-      await component['openAutoCull']();
+      await store.openAutoCull();
       mockApi.post = vi.fn(() => throwError(() => new Error('boom')));
       mockSnackBar.open.mockClear();
 
-      await component['onTrimBracketsChange'](true);
+      await store.onTrimBracketsChange(true);
 
-      expect(component['trimBrackets']()).toBe(false);
-      expect(component['autoCullRequest']()).toMatchObject({ trim_brackets: false });
+      expect(store.trimBrackets()).toBe(false);
+      expect(store.autoCullRequest()).toMatchObject({ trim_brackets: false });
       expect(mockSnackBar.open).toHaveBeenCalled();
     });
 
     it('keeps the trim-brackets checkbox ticked when the re-run lands', async () => {
       mockApi.post = vi.fn(() => of(preview));
-      await component['openAutoCull']();
+      await store.openAutoCull();
 
-      await component['onTrimBracketsChange'](true);
+      await store.onTrimBracketsChange(true);
 
-      expect(component['trimBrackets']()).toBe(true);
-      expect(component['autoCullRequest']()).toMatchObject({ trim_brackets: true });
+      expect(store.trimBrackets()).toBe(true);
+      expect(store.autoCullRequest()).toMatchObject({ trim_brackets: true });
     });
 
     describe('the destructive apply is uninterruptible', () => {
       /** Opens the dialog on a landed dry run, then leaves an apply in flight. */
       const applyInFlight = async () => {
         mockApi.post = vi.fn(() => of(preview));
-        await component['openAutoCull']();
+        await store.openAutoCull();
         const response = new Subject<typeof preview>();
         mockApi.post = vi.fn(() => response);
         return { response, applied: component['confirmAutoCull']() };
@@ -865,16 +726,16 @@ describe('BurstCullingComponent', () => {
       it('ignores cancel and Escape while the apply is in flight', async () => {
         const { response, applied } = await applyInFlight();
 
-        component['cancelAutoCull']();
+        store.cancelAutoCull();
         component['onEscape'](new KeyboardEvent('keydown', { key: 'Escape' }));
 
-        expect(component['autoCullPreview']()).toEqual(preview);
-        expect(component['autoCullRequest']()).not.toBeNull();
+        expect(store.autoCullPreview()).toEqual(preview);
+        expect(store.autoCullRequest()).not.toBeNull();
         expect(mockApi.post).toHaveBeenCalledTimes(1);
 
         await settleApply(response, applied);
 
-        expect(component['autoCullPreview']()).toBeNull();
+        expect(store.autoCullPreview()).toBeNull();
         expect(mockApi.post).toHaveBeenCalledTimes(1);
       });
 
@@ -893,19 +754,19 @@ describe('BurstCullingComponent', () => {
 
       it('re-arms the dialog after a failed apply', async () => {
         mockApi.post = vi.fn(() => of(preview));
-        await component['openAutoCull']();
+        await store.openAutoCull();
         mockApi.post = vi.fn(() => throwError(() => new Error('boom')));
 
         await component['confirmAutoCull']();
 
-        expect(component['autoCullPreview']()).toEqual(preview);
+        expect(store.autoCullPreview()).toEqual(preview);
         expect(mockSnackBar.open).toHaveBeenCalled();
 
         mockApi.post = vi.fn(() => of({ ...preview, dry_run: false }));
         await component['confirmAutoCull']();
 
         expect(mockApi.post).toHaveBeenCalledTimes(1);
-        expect(component['autoCullPreview']()).toBeNull();
+        expect(store.autoCullPreview()).toBeNull();
       });
 
       // The close behind a completed apply bumps the dry-run generation, so the
@@ -915,10 +776,10 @@ describe('BurstCullingComponent', () => {
         await settleApply(response, applied);
 
         mockApi.post = vi.fn(() => of({ ...preview, rejected: 9 }));
-        await component['openAutoCull']();
+        await store.openAutoCull();
 
-        expect(component['autoCullPreview']()).toMatchObject({ rejected: 9 });
-        expect(component['autoCullLoading']()).toBe(false);
+        expect(store.autoCullPreview()).toMatchObject({ rejected: 9 });
+        expect(store.autoCullLoading()).toBe(false);
       });
     });
 
@@ -940,18 +801,18 @@ describe('BurstCullingComponent', () => {
 
       it('refuses to dry-run at all while the apply is in flight', async () => {
         mockApi.post = vi.fn(() => of(preview));
-        await component['openAutoCull']();
-        const snapshot = component['autoCullRequest']();
+        await store.openAutoCull();
+        const snapshot = store.autoCullRequest();
         const response = new Subject<typeof preview>();
         mockApi.post = vi.fn(() => response);
         const applied = component['confirmAutoCull']();
 
         // Left unawaited on purpose: a call that fires is a call that hangs on
         // the apply's own answer, and the count below is the finding either way.
-        const outcome = component['openAutoCull']();
+        const outcome = store.openAutoCull();
 
         expect(mockApi.post).toHaveBeenCalledTimes(1);
-        expect(component['autoCullRequest']()).toBe(snapshot);
+        expect(store.autoCullRequest()).toBe(snapshot);
 
         await settleApply(response, applied);
 
@@ -960,7 +821,7 @@ describe('BurstCullingComponent', () => {
 
       /** The reproduction, through the writer that actually reaches it. */
       it('drops the suggestion re-run that lands mid-apply', async () => {
-        component['cullProfiles'].set(profiles);
+        store.cullProfiles.set(profiles);
         const suggestReply = new Subject<unknown>();
         mockApi.get = vi.fn((url: string) =>
           url === '/culling/suggest_profile' ? suggestReply : of(mockCullingGroupsResponse));
@@ -973,11 +834,11 @@ describe('BurstCullingComponent', () => {
           return answer;
         });
 
-        void component['openAutoCull']();
+        void store.openAutoCull();
         await flush();
         posts[0].next(preview);
         await flush();
-        const snapshot = component['autoCullRequest']();
+        const snapshot = store.autoCullRequest();
 
         void component['confirmAutoCull']();
         await flush();
@@ -985,10 +846,10 @@ describe('BurstCullingComponent', () => {
         await flush();
 
         expect(bodies.filter(body => body['dry_run'] === true)).toHaveLength(1);
-        expect(component['autoCullRequest']()).toBe(snapshot);
-        expect(component['autoCullPreview']()).toEqual(preview);
+        expect(store.autoCullRequest()).toBe(snapshot);
+        expect(store.autoCullPreview()).toEqual(preview);
         // The notice would have claimed counts the refused re-run never computed.
-        expect(component['autoCullSuggestionNotice']()).toBeNull();
+        expect(store.autoCullSuggestionNotice()).toBeNull();
 
         posts[1].next({ ...preview, dry_run: false });
         await flush();
@@ -1000,13 +861,13 @@ describe('BurstCullingComponent', () => {
       // destructive request was open — knobs that describe neither the counts on
       // screen nor the request being applied.
       it('leaves the knobs alone when the suggestion resolves mid-apply', async () => {
-        component['cullProfiles'].set(profiles);
+        store.cullProfiles.set(profiles);
         const suggestReply = new Subject<unknown>();
         mockApi.get = vi.fn((url: string) =>
           url === '/culling/suggest_profile' ? suggestReply : of(mockCullingGroupsResponse));
         mockApi.post = vi.fn(() => of(preview));
-        await component['openAutoCull']();
-        const knobs = () => ({ strictness: component['strictness'](), profile: component['selectedProfile']() });
+        await store.openAutoCull();
+        const knobs = () => ({ strictness: store.strictness(), profile: store.selectedProfile() });
         const before = knobs();
         const response = new Subject<typeof preview>();
         mockApi.post = vi.fn(() => response);
@@ -1017,7 +878,7 @@ describe('BurstCullingComponent', () => {
 
         expect(knobs()).toEqual(before);
         expect(component['suggestedProfileActive']()).toBe(false);
-        expect(component['autoCullSuggestionNotice']()).toBeNull();
+        expect(store.autoCullSuggestionNotice()).toBeNull();
         // The apply, and nothing behind it.
         expect(mockApi.post).toHaveBeenCalledTimes(1);
 
@@ -1028,11 +889,11 @@ describe('BurstCullingComponent', () => {
       // Apply was hit, so refusing at the door cannot catch it.
       it('drops the answer of a dry run that was already in flight when Apply was hit', async () => {
         mockApi.post = vi.fn(() => of(preview));
-        await component['openAutoCull']();
-        const snapshot = component['autoCullRequest']();
+        await store.openAutoCull();
+        const snapshot = store.autoCullRequest();
         const late = new Subject<typeof preview>();
         mockApi.post = vi.fn(() => late);
-        void component['openAutoCull']();
+        void store.openAutoCull();
         await flush();
         const response = new Subject<typeof preview>();
         mockApi.post = vi.fn(() => response);
@@ -1041,31 +902,31 @@ describe('BurstCullingComponent', () => {
         late.next({ ...preview, rejected: 99 });
         await flush();
 
-        expect(component['autoCullPreview']()).toEqual(preview);
-        expect(component['autoCullRequest']()).toBe(snapshot);
+        expect(store.autoCullPreview()).toEqual(preview);
+        expect(store.autoCullRequest()).toBe(snapshot);
 
         await settleApply(response, applied);
 
-        expect(component['autoCullPreview']()).toBeNull();
+        expect(store.autoCullPreview()).toBeNull();
       });
 
       // Nothing else may edit the state the snapshot is mirrored in either.
       it('refuses the trim-brackets toggle while the apply is in flight', async () => {
         mockApi.post = vi.fn(() => of(preview));
-        await component['openAutoCull']();
+        await store.openAutoCull();
         const response = new Subject<typeof preview>();
         mockApi.post = vi.fn(() => response);
         const applied = component['confirmAutoCull']();
 
-        const toggling = component['onTrimBracketsChange'](true);
+        const toggling = store.onTrimBracketsChange(true);
 
-        expect(component['trimBrackets']()).toBe(false);
+        expect(store.trimBrackets()).toBe(false);
         expect(mockApi.post).toHaveBeenCalledTimes(1);
 
         await settleApply(response, applied);
         await toggling;
 
-        expect(component['trimBrackets']()).toBe(false);
+        expect(store.trimBrackets()).toBe(false);
       });
     });
 
@@ -1082,26 +943,26 @@ describe('BurstCullingComponent', () => {
       const flush = () => new Promise(resolve => setTimeout(resolve, 0));
       /** Armed, and what the two sides say — one assertion, one legible diff. */
       const armedState = () => ({
-        armed: !component['autoCullBusy'](),
-        box: component['trimBrackets'](),
-        snapshotTrim: component['autoCullRequest']()?.trim_brackets,
+        armed: !store.autoCullBusy(),
+        box: store.trimBrackets(),
+        snapshotTrim: store.autoCullRequest()?.trim_brackets,
       });
 
       it('holds when the toggle\'s own re-run lands', async () => {
         mockApi.post = vi.fn(() => of(preview));
-        await component['openAutoCull']();
+        await store.openAutoCull();
 
-        await component['onTrimBracketsChange'](true);
+        await store.onTrimBracketsChange(true);
 
         expect(armedState()).toEqual({ armed: true, box: true, snapshotTrim: true });
       });
 
       it('holds when the toggle\'s own re-run fails', async () => {
         mockApi.post = vi.fn(() => of(preview));
-        await component['openAutoCull']();
+        await store.openAutoCull();
         mockApi.post = vi.fn(() => throwError(() => new Error('boom')));
 
-        await component['onTrimBracketsChange'](true);
+        await store.onTrimBracketsChange(true);
 
         expect(armedState()).toEqual({ armed: true, box: false, snapshotTrim: false });
       });
@@ -1112,7 +973,7 @@ describe('BurstCullingComponent', () => {
       // `trim_brackets: true` under a box the toggle had just unticked.
       it('holds when a newer run supersedes the toggle\'s own', async () => {
         mockApi.post = vi.fn(() => of(preview));
-        await component['openAutoCull']();
+        await store.openAutoCull();
         const bodies: Record<string, unknown>[] = [];
         const posts: Subject<typeof preview>[] = [];
         mockApi.post = vi.fn((_url: string, body: Record<string, unknown>) => {
@@ -1122,16 +983,16 @@ describe('BurstCullingComponent', () => {
           return answer;
         });
 
-        const toggling = component['onTrimBracketsChange'](true);
+        const toggling = store.onTrimBracketsChange(true);
         await flush();
-        void component['openAutoCull']();
+        void store.openAutoCull();
         await flush();
         posts[0].next(preview);
         await toggling;
 
         // The dialog belongs to the newer run: nothing is confirmable until it
         // answers, which is what makes leaving the box to it safe.
-        expect(component['autoCullBusy']()).toBe(true);
+        expect(store.autoCullBusy()).toBe(true);
 
         posts[1].next({ ...preview, kept: 9 });
         await flush();
@@ -1147,14 +1008,14 @@ describe('BurstCullingComponent', () => {
       // snapshot, so the box was left standing on the superseding run's value
       // over a snapshot that still carries the older one.
       it('holds when the run that superseded the toggle\'s own fails', async () => {
-        component['cullProfiles'].set([
+        store.cullProfiles.set([
           { id: 'wedding', label_key: 'culling.profiles.wedding', strictness: 35, eyes_closed_max: 5, poor_expression_min: 5, keep_min_per_group: 2, similarity_threshold: 90 },
         ]);
         const suggestReply = new Subject<unknown>();
         mockApi.get = vi.fn((url: string) =>
           url === '/culling/suggest_profile' ? suggestReply : of(mockCullingGroupsResponse));
         mockApi.post = vi.fn(() => of(preview));
-        await component['openAutoCull']();
+        await store.openAutoCull();
         const posts: Subject<typeof preview>[] = [];
         mockApi.post = vi.fn(() => {
           const answer = new Subject<typeof preview>();
@@ -1162,7 +1023,7 @@ describe('BurstCullingComponent', () => {
           return answer;
         });
 
-        const toggling = component['onTrimBracketsChange'](true);
+        const toggling = store.onTrimBracketsChange(true);
         await flush();
         // The suggestion's re-run takes the dialog over from the toggle's run...
         suggestReply.next({ profile: 'wedding', confidence: 0.8, evidence: {} });
@@ -1189,40 +1050,40 @@ describe('BurstCullingComponent', () => {
 
     it('loads profiles from the API', async () => {
       mockApi.get.mockReturnValue(of(profilesResponse));
-      await (component as any).loadCullProfiles();
+      await store.loadCullProfiles();
 
       expect(mockApi.get).toHaveBeenCalledWith('/culling/profiles');
-      expect(component['cullProfiles']()).toEqual(profilesResponse.profiles);
+      expect(store.cullProfiles()).toEqual(profilesResponse.profiles);
     });
 
     it('applyProfile sets strictness and the similarity threshold, and persists the choice', () => {
       mockApi.get.mockReturnValue(of(mockCullingGroupsResponse));
-      component['applyProfile'](profilesResponse.profiles[1]);
+      store.applyProfile(profilesResponse.profiles[1]);
 
-      expect(component['selectedProfile']()).toBe('wedding');
-      expect(component['strictness']()).toBe(35);
-      expect(component['similarityThreshold']()).toBe(90);
+      expect(store.selectedProfile()).toBe('wedding');
+      expect(store.strictness()).toBe(35);
+      expect(store.similarityThreshold()).toBe(90);
       expect(localStorage.getItem('facet_culling_profile')).toBe('wedding');
     });
 
     it('a manual strictness change after selecting a profile reverts the selection to custom', () => {
       mockApi.get.mockReturnValue(of(mockCullingGroupsResponse));
-      component['applyProfile'](profilesResponse.profiles[1]);
+      store.applyProfile(profilesResponse.profiles[1]);
 
       component['onStrictnessChange'](60);
 
-      expect(component['selectedProfile']()).toBe('');
+      expect(store.selectedProfile()).toBe('');
       expect(localStorage.getItem('facet_culling_profile')).toBeNull();
       expect(component['selectedProfileLabel']()).toBe('culling.profiles.custom');
     });
 
     it('a manual similarity threshold change after selecting a profile also reverts to custom', () => {
       mockApi.get.mockReturnValue(of(mockCullingGroupsResponse));
-      component['applyProfile'](profilesResponse.profiles[1]);
+      store.applyProfile(profilesResponse.profiles[1]);
 
       component['onThresholdChange'](75);
 
-      expect(component['selectedProfile']()).toBe('');
+      expect(store.selectedProfile()).toBe('');
     });
 
     it('restores a persisted profile id from localStorage on a fresh construction', async () => {
@@ -1241,20 +1102,21 @@ describe('BurstCullingComponent', () => {
         ],
       });
       component = TestBed.runInInjectionContext(() => new BurstCullingComponent());
+      store = component['cull'];
 
-      expect(component['selectedProfile']()).toBe('wedding');
+      expect(store.selectedProfile()).toBe('wedding');
 
-      await (component as any).loadCullProfiles();
+      await store.loadCullProfiles();
 
-      expect(component['strictness']()).toBe(35);
-      expect(component['similarityThreshold']()).toBe(90);
+      expect(store.strictness()).toBe(35);
+      expect(store.similarityThreshold()).toBe(90);
     });
   });
 
   describe('skipGroup (pass with countdown)', () => {
     beforeEach(async () => {
       vi.useFakeTimers();
-      await (component as any).loadGroups();
+      await store.loadGroups();
     });
 
     afterEach(() => {
@@ -1262,58 +1124,58 @@ describe('BurstCullingComponent', () => {
     });
 
     it('should add group to passingGroups with the configured countdown', () => {
-      const group = component['groups']()[0];
-      component['skipGroup'](group);
+      const group = store.groups()[0];
+      store.skipGroup(group);
 
-      expect(component['passingGroups']().has('1_burst')).toBe(true);
-      expect(component['passingGroups']().get('1_burst')).toBe(7);
+      expect(store.passingGroups().has('1_burst')).toBe(true);
+      expect(store.passingGroups().get('1_burst')).toBe(7);
       expect(mockApi.post).not.toHaveBeenCalled();
     });
 
     it('should not add group to confirmedGroups immediately', () => {
-      const group = component['groups']()[0];
-      component['skipGroup'](group);
+      const group = store.groups()[0];
+      store.skipGroup(group);
 
-      expect(component['confirmedGroups']().has('1_burst')).toBe(false);
+      expect(store.confirmedGroups().has('1_burst')).toBe(false);
     });
 
     it('should decrement countdown every second', () => {
-      const group = component['groups']()[0];
-      component['skipGroup'](group);
+      const group = store.groups()[0];
+      store.skipGroup(group);
 
       vi.advanceTimersByTime(1000);
-      expect(component['passingGroups']().get('1_burst')).toBe(6);
+      expect(store.passingGroups().get('1_burst')).toBe(6);
 
       vi.advanceTimersByTime(1000);
-      expect(component['passingGroups']().get('1_burst')).toBe(5);
+      expect(store.passingGroups().get('1_burst')).toBe(5);
     });
 
     it('should hide group after the countdown elapses', () => {
-      const group = component['groups']()[0];
-      component['skipGroup'](group);
+      const group = store.groups()[0];
+      store.skipGroup(group);
 
       vi.advanceTimersByTime(7000);
 
       // Group should be hidden (removed from visible groups)
       expect(component['visibleGroups']().find(g => g.group_id === 1)).toBeUndefined();
       // But still in groups
-      expect(component['groups']().find(g => g.group_id === 1)).toBeDefined();
+      expect(store.groups().find(g => g.group_id === 1)).toBeDefined();
     });
 
     it('should remove group from passingGroups after timeout', () => {
-      const group = component['groups']()[0];
-      component['skipGroup'](group);
+      const group = store.groups()[0];
+      store.skipGroup(group);
 
       vi.advanceTimersByTime(7000);
 
-      expect(component['passingGroups']().has('1_burst')).toBe(false);
+      expect(store.passingGroups().has('1_burst')).toBe(false);
     });
   });
 
   describe('cancelPass', () => {
     beforeEach(async () => {
       vi.useFakeTimers();
-      await (component as any).loadGroups();
+      await store.loadGroups();
     });
 
     afterEach(() => {
@@ -1321,31 +1183,31 @@ describe('BurstCullingComponent', () => {
     });
 
     it('should remove group from passingGroups', () => {
-      const group = component['groups']()[0];
-      component['skipGroup'](group);
-      expect(component['passingGroups']().has('1_burst')).toBe(true);
+      const group = store.groups()[0];
+      store.skipGroup(group);
+      expect(store.passingGroups().has('1_burst')).toBe(true);
 
-      component['cancelPass'](group);
-      expect(component['passingGroups']().has('1_burst')).toBe(false);
+      store.cancelPass(group);
+      expect(store.passingGroups().has('1_burst')).toBe(false);
     });
 
     it('should keep group visible after cancel', () => {
-      const group = component['groups']()[0];
-      component['skipGroup'](group);
+      const group = store.groups()[0];
+      store.skipGroup(group);
 
       vi.advanceTimersByTime(2000);
-      component['cancelPass'](group);
+      store.cancelPass(group);
 
       // Group should still be visible
       expect(component['visibleGroups']().find(g => g.group_id === 1)).toBeDefined();
     });
 
     it('should prevent auto-hide after cancel', () => {
-      const group = component['groups']()[0];
-      component['skipGroup'](group);
+      const group = store.groups()[0];
+      store.skipGroup(group);
 
       vi.advanceTimersByTime(2000);
-      component['cancelPass'](group);
+      store.cancelPass(group);
 
       // Advance past original timeout
       vi.advanceTimersByTime(5000);
@@ -1357,7 +1219,7 @@ describe('BurstCullingComponent', () => {
 
   describe('confirmAllRemaining', () => {
     beforeEach(async () => {
-      await (component as any).loadGroups();
+      await store.loadGroups();
       mockApi.post.mockReturnValue(of({}));
     });
 
@@ -1376,16 +1238,28 @@ describe('BurstCullingComponent', () => {
       }));
     });
 
+    it('only confirms the groups the category filter leaves visible', async () => {
+      store.groups.update(gs => gs.map((g, i) => ({ ...g, category: i === 0 ? 'portrait' : 'landscape' })));
+      component['categoryFilter'].set('portrait');
+      mockApi.post.mockClear();
+
+      await component['confirmAllRemaining']();
+
+      expect(mockApi.post).toHaveBeenCalledTimes(1);
+      expect(mockApi.post).toHaveBeenCalledWith('/culling-groups/confirm', expect.objectContaining({ group_id: 1 }));
+      expect(store.confirmedGroups().has('2_similar')).toBe(false);
+    });
+
     it('should mark all groups as confirmed', async () => {
       await component['confirmAllRemaining']();
 
-      expect(component['confirmedGroups']().has('1_burst')).toBe(true);
-      expect(component['confirmedGroups']().has('2_similar')).toBe(true);
+      expect(store.confirmedGroups().has('1_burst')).toBe(true);
+      expect(store.confirmedGroups().has('2_similar')).toBe(true);
     });
 
     it('should skip already confirmed groups', async () => {
       // Directly confirm group 1 (simulating a previously confirmed group)
-      component['confirmedGroups'].update(s => {
+      store.confirmedGroups.update(s => {
         const next = new Set(s);
         next.add('1_burst');
         return next;
@@ -1404,22 +1278,7 @@ describe('BurstCullingComponent', () => {
     it('should set confirming false after completion', async () => {
       await component['confirmAllRemaining']();
 
-      expect(component['confirming']()).toBe(false);
-    });
-  });
-
-  describe('hasMore', () => {
-    beforeEach(async () => {
-      await (component as any).loadGroups();
-    });
-
-    it('should return false on single page', () => {
-      expect(component['hasMore']()).toBe(false);
-    });
-
-    it('should return true when more pages exist', () => {
-      component['totalPages'].set(2);
-      expect(component['hasMore']()).toBe(true);
+      expect(store.confirming()).toBe(false);
     });
   });
 
@@ -1444,22 +1303,26 @@ describe('BurstCullingComponent', () => {
 
     it('hides the style selector when no styles are configured', () => {
       component = build({ cull_styles: [] });
+      store = component['cull'];
       expect(component['cullStyleCapable']()).toBe(false);
     });
 
     it('hides the style selector when the user lacks edition rights', () => {
       component = build({ cull_styles: styles }, false);
+      store = component['cull'];
       expect(component['cullStyleCapable']()).toBe(false);
     });
 
     it('shows the style selector with configured styles and edition rights', () => {
       component = build({ cull_styles: styles });
+      store = component['cull'];
       expect(component['cullStyleCapable']()).toBe(true);
       expect(component['cullStyles']()).toEqual(styles);
     });
 
     it('selecting a style updates the active style that drives the preview src swap', () => {
       component = build({ cull_styles: styles });
+      store = component['cull'];
       expect(component['activeStyle']()).toBe('');
       component['selectCullStyle']('velvia');
       expect(component['activeStyle']()).toBe('velvia');
@@ -1467,6 +1330,7 @@ describe('BurstCullingComponent', () => {
 
     it('selecting Original clears the active style back to the flat frame', () => {
       component = build({ cull_styles: styles });
+      store = component['cull'];
       component['selectCullStyle']('velvia');
       component['selectCullStyle']('');
       expect(component['activeStyle']()).toBe('');
@@ -1483,8 +1347,8 @@ describe('BurstCullingComponent', () => {
     };
 
     const focus = (idx: number, style: string) => {
-      component['groups'].set([grp]);
-      component['lightboxGroupId'].set(component['groupKey'](grp));
+      store.groups.set([grp]);
+      component['lightboxGroupId'].set(store.groupKey(grp));
       component['lightboxIndex'].set(idx);
       component['activeStyle'].set(style);
     };
@@ -1561,8 +1425,8 @@ describe('BurstCullingComponent', () => {
     };
 
     const focusGroup = () => {
-      component['groups'].set([wildlifeGroup]);
-      component['lightboxGroupId'].set(component['groupKey'](wildlifeGroup));
+      store.groups.set([wildlifeGroup]);
+      component['lightboxGroupId'].set(store.groupKey(wildlifeGroup));
     };
 
     it('loadSubjectsForGroup populates the subject map from the response', async () => {
@@ -1662,7 +1526,7 @@ describe('BurstCullingComponent', () => {
 
   describe('face-strip slider focus release (pointer drag/click must not eat arrow-key nav)', () => {
     beforeEach(async () => {
-      await (component as any).loadGroups();
+      await store.loadGroups();
     });
 
     it('releaseSliderFocus() (bound to a slider thumb\'s dragEnd) refocuses the darkroom dialog', () => {
@@ -1677,7 +1541,7 @@ describe('BurstCullingComponent', () => {
     it('after a pointer interaction releases focus, ArrowRight advances lightboxIndex again', () => {
       const mockEl = { focus: vi.fn() };
       Object.defineProperty(component, 'lightboxDialog', { value: () => ({ nativeElement: mockEl }), writable: true, configurable: true });
-      component['openLightbox'](component['groups']()[0], 0);
+      component['openLightbox'](store.groups()[0], 0);
       expect(component['lightboxIndex']()).toBe(0);
 
       // Simulate the slider's dragEnd firing after a mouse drag/click.
@@ -1691,7 +1555,7 @@ describe('BurstCullingComponent', () => {
     it('a keyboard-only interaction (no pointer event, no dragEnd) never touches focus', () => {
       const mockEl = { focus: vi.fn() };
       Object.defineProperty(component, 'lightboxDialog', { value: () => ({ nativeElement: mockEl }), writable: true, configurable: true });
-      component['openLightbox'](component['groups']()[0], 0);
+      component['openLightbox'](store.groups()[0], 0);
 
       // Tab onto the slider, then adjust it with the keyboard: valueChange fires,
       // but releaseSliderFocus() is only wired to dragEnd, so it must stay uncalled.
@@ -1748,7 +1612,7 @@ describe('BurstCullingComponent', () => {
       // Let this instance's own initial load land before seeding the darkroom,
       // or it would replace the seeded group and close it again.
       await flush();
-      rendered['groups'].set([grp]);
+      rendered['cull'].groups.set([grp]);
       rendered['openLightbox'](grp, 0);
       await flush();
       fixture.detectChanges();
@@ -1892,13 +1756,13 @@ describe('BurstCullingComponent', () => {
       })),
     };
 
-    const seed = () => component['groups'].set([structuredClone(panoramaGroup)] as never);
+    const seed = () => store.groups.set([structuredClone(panoramaGroup)] as never);
 
     it('suppressing a set posts the correction for every frame', async () => {
       seed();
 
       await (component as never as { correctSequence: (g: unknown) => Promise<void> })
-        .correctSequence(component['groups']()[0]);
+        .correctSequence(store.groups()[0]);
 
       expect(mockApi.post).toHaveBeenCalledWith('/culling-groups/override_sequence', {
         paths: ['/p0.jpg', '/p1.jpg', '/p2.jpg'],
@@ -1910,34 +1774,34 @@ describe('BurstCullingComponent', () => {
       seed();
 
       await (component as never as { correctSequence: (g: unknown) => Promise<void> })
-        .correctSequence(component['groups']()[0]);
+        .correctSequence(store.groups()[0]);
 
-      expect(component['groups']()[0].photos.map(p => p.sequence_override))
+      expect(store.groups()[0].photos.map(p => p.sequence_override))
         .toEqual(['suppressed', 'suppressed', 'suppressed']);
-      expect(component['pendingCorrectionKeys']().size).toBe(1);
+      expect(store.pendingCorrectionKeys().size).toBe(1);
     });
 
     it('a relabel records the forced kind', async () => {
       seed();
 
       await (component as never as { correctSequence: (g: unknown, k: string) => Promise<void> })
-        .correctSequence(component['groups']()[0], 'hdr_panorama');
+        .correctSequence(store.groups()[0], 'hdr_panorama');
 
       expect(mockApi.post).toHaveBeenCalledWith('/culling-groups/override_sequence', {
         paths: ['/p0.jpg', '/p1.jpg', '/p2.jpg'],
         kind: 'hdr_panorama',
       });
-      expect(component['groups']()[0].photos[0].sequence_override).toBe('hdr_panorama');
+      expect(store.groups()[0].photos[0].sequence_override).toBe('hdr_panorama');
     });
 
     it('leaves the group in the feed — the detector has not run yet', async () => {
       seed();
 
       await (component as never as { correctSequence: (g: unknown) => Promise<void> })
-        .correctSequence(component['groups']()[0]);
+        .correctSequence(store.groups()[0]);
 
-      expect(component['groups']()).toHaveLength(1);
-      expect(component['hiddenGroups']()).not.toContain('7_panorama');
+      expect(store.groups()).toHaveLength(1);
+      expect(store.hiddenGroups()).not.toContain('7_panorama');
     });
 
     it('a failed correction marks nothing pending', async () => {
@@ -1945,145 +1809,145 @@ describe('BurstCullingComponent', () => {
       mockApi.post.mockReturnValueOnce(throwError(() => new Error('nope')));
 
       await (component as never as { correctSequence: (g: unknown) => Promise<void> })
-        .correctSequence(component['groups']()[0]);
+        .correctSequence(store.groups()[0]);
 
-      expect(component['groups']()[0].photos[0].sequence_override).toBeUndefined();
-      expect(component['pendingCorrectionKeys']().size).toBe(0);
+      expect(store.groups()[0].photos[0].sequence_override).toBeUndefined();
+      expect(store.pendingCorrectionKeys().size).toBe(0);
       expect(mockSnackBar.open).toHaveBeenCalled();
     });
 
     it('dropping a correction clears it server-side and locally', async () => {
       seed();
       await (component as never as { correctSequence: (g: unknown) => Promise<void> })
-        .correctSequence(component['groups']()[0]);
+        .correctSequence(store.groups()[0]);
 
       await (component as never as { clearCorrection: (g: unknown) => Promise<void> })
-        .clearCorrection(component['groups']()[0]);
+        .clearCorrection(store.groups()[0]);
 
       expect(mockApi.post).toHaveBeenCalledWith('/culling-groups/clear_sequence_override', {
         paths: ['/p0.jpg', '/p1.jpg', '/p2.jpg'],
       });
-      expect(component['pendingCorrectionKeys']().size).toBe(0);
+      expect(store.pendingCorrectionKeys().size).toBe(0);
     });
 
     it('an uncorrected feed offers no re-run', () => {
       seed();
 
-      expect(component['pendingCorrectionKeys']().size).toBe(0);
+      expect(store.pendingCorrectionKeys().size).toBe(0);
     });
 
     it('dropping an already-applied correction still asks for a re-run', async () => {
       seed();
       // Simulate a completed detection run: the override is no longer pending.
-      component['groups']()[0].photos.forEach(p => {
+      store.groups()[0].photos.forEach(p => {
         (p as { sequence_override?: string; sequence_override_pending?: number })
           .sequence_override = 'suppressed';
         (p as { sequence_override_pending?: number }).sequence_override_pending = 0;
       });
 
       await (component as never as { clearCorrection: (g: unknown) => Promise<void> })
-        .clearCorrection(component['groups']()[0]);
+        .clearCorrection(store.groups()[0]);
 
-      expect(component['pendingCorrectionKeys']().size).toBe(0);
-      expect(component['rerunNeeded']()).toBe(1);
+      expect(store.pendingCorrectionKeys().size).toBe(0);
+      expect(store.rerunNeeded()).toBe(1);
     });
 
     it('dropping a still-pending correction needs no re-run', async () => {
       seed();
       await (component as never as { correctSequence: (g: unknown) => Promise<void> })
-        .correctSequence(component['groups']()[0]);
-      expect(component['pendingCorrectionKeys']().size).toBe(1);
+        .correctSequence(store.groups()[0]);
+      expect(store.pendingCorrectionKeys().size).toBe(1);
 
       await (component as never as { clearCorrection: (g: unknown) => Promise<void> })
-        .clearCorrection(component['groups']()[0]);
+        .clearCorrection(store.groups()[0]);
 
-      expect(component['rerunNeeded']()).toBe(0);
+      expect(store.rerunNeeded()).toBe(0);
     });
 
     it('a successful re-run clears the applied-drop counter', async () => {
       seed();
-      component['groups']()[0].photos.forEach(p => {
+      store.groups()[0].photos.forEach(p => {
         (p as { sequence_override?: string; sequence_override_pending?: number })
           .sequence_override = 'suppressed';
         (p as { sequence_override_pending?: number }).sequence_override_pending = 0;
       });
       await (component as never as { clearCorrection: (g: unknown) => Promise<void> })
-        .clearCorrection(component['groups']()[0]);
-      expect(component['rerunNeeded']()).toBe(1);
+        .clearCorrection(store.groups()[0]);
+      expect(store.rerunNeeded()).toBe(1);
 
       mockApi.post.mockReturnValueOnce(of({}));
       mockApi.get.mockReturnValueOnce(of({ running: false, kind: null, exit_code: 0 }));
       await (component as never as { rerunDetection: () => Promise<void> }).rerunDetection();
       await (component as never as { ['pollDetection']: () => Promise<void> })['pollDetection']();
 
-      expect(component['rerunNeeded']()).toBe(0);
+      expect(store.rerunNeeded()).toBe(0);
       (component as never as { stopDetectionPolling: () => void }).stopDetectionPolling();
     });
 
     it('re-correcting a group after dropping its applied override counts it once', async () => {
       seed();
-      component['groups']()[0].photos.forEach(p => {
+      store.groups()[0].photos.forEach(p => {
         (p as { sequence_override?: string; sequence_override_pending?: number })
           .sequence_override = 'suppressed';
         (p as { sequence_override_pending?: number }).sequence_override_pending = 0;
       });
 
       await (component as never as { clearCorrection: (g: unknown) => Promise<void> })
-        .clearCorrection(component['groups']()[0]);
-      expect(component['rerunNeeded']()).toBe(1);
+        .clearCorrection(store.groups()[0]);
+      expect(store.rerunNeeded()).toBe(1);
 
       await (component as never as { correctSequence: (g: unknown, k?: string) => Promise<void> })
-        .correctSequence(component['groups']()[0], 'hdr_panorama');
+        .correctSequence(store.groups()[0], 'hdr_panorama');
 
-      expect(component['rerunNeeded']()).toBe(1);
+      expect(store.rerunNeeded()).toBe(1);
     });
 
     it('dropping an applied override, re-marking, then dropping again still needs one re-run', async () => {
       seed();
-      component['groups']()[0].photos.forEach(p => {
+      store.groups()[0].photos.forEach(p => {
         (p as { sequence_override?: string; sequence_override_pending?: number })
           .sequence_override = 'suppressed';
         (p as { sequence_override_pending?: number }).sequence_override_pending = 0;
       });
 
       await (component as never as { clearCorrection: (g: unknown) => Promise<void> })
-        .clearCorrection(component['groups']()[0]);
-      expect(component['rerunNeeded']()).toBe(1);
+        .clearCorrection(store.groups()[0]);
+      expect(store.rerunNeeded()).toBe(1);
 
       await (component as never as { correctSequence: (g: unknown, k?: string) => Promise<void> })
-        .correctSequence(component['groups']()[0], 'hdr_panorama');
-      expect(component['rerunNeeded']()).toBe(1);
+        .correctSequence(store.groups()[0], 'hdr_panorama');
+      expect(store.rerunNeeded()).toBe(1);
 
       await (component as never as { clearCorrection: (g: unknown) => Promise<void> })
-        .clearCorrection(component['groups']()[0]);
+        .clearCorrection(store.groups()[0]);
 
-      expect(component['rerunNeeded']()).toBe(1);
+      expect(store.rerunNeeded()).toBe(1);
     });
 
     it('dropping an applied override, re-marking, then undoing the re-mark still needs one re-run', async () => {
       seed();
-      component['groups']()[0].photos.forEach(p => {
+      store.groups()[0].photos.forEach(p => {
         (p as { sequence_override?: string; sequence_override_pending?: number })
           .sequence_override = 'suppressed';
         (p as { sequence_override_pending?: number }).sequence_override_pending = 0;
       });
 
       await (component as never as { clearCorrection: (g: unknown) => Promise<void> })
-        .clearCorrection(component['groups']()[0]);
-      expect(component['rerunNeeded']()).toBe(1);
+        .clearCorrection(store.groups()[0]);
+      expect(store.rerunNeeded()).toBe(1);
 
       const undoAction = new Subject<void>();
       mockSnackBar.open.mockReturnValueOnce({
         onAction: () => undoAction, afterDismissed: () => new Subject<void>(),
       });
       await (component as never as { correctSequence: (g: unknown, k?: string) => Promise<void> })
-        .correctSequence(component['groups']()[0], 'hdr_panorama');
-      expect(component['rerunNeeded']()).toBe(1);
+        .correctSequence(store.groups()[0], 'hdr_panorama');
+      expect(store.rerunNeeded()).toBe(1);
 
       undoAction.next();
       await new Promise(resolve => setTimeout(resolve, 0));
 
-      expect(component['rerunNeeded']()).toBe(1);
+      expect(store.rerunNeeded()).toBe(1);
     });
 
     it('a bracket correction failing with a 400 shows the ladder-specific message', async () => {
@@ -2091,7 +1955,7 @@ describe('BurstCullingComponent', () => {
       mockApi.post.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 400 })));
 
       await (component as never as { correctSequence: (g: unknown, k?: string) => Promise<void> })
-        .correctSequence(component['groups']()[0], 'bracket');
+        .correctSequence(store.groups()[0], 'bracket');
 
       expect(mockSnackBar.open).toHaveBeenCalledWith(
         'culling.bracket.not_a_ladder', '', expect.anything());
@@ -2102,7 +1966,7 @@ describe('BurstCullingComponent', () => {
       mockApi.post.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 400 })));
 
       await (component as never as { correctSequence: (g: unknown, k?: string) => Promise<void> })
-        .correctSequence(component['groups']()[0], 'panorama');
+        .correctSequence(store.groups()[0], 'panorama');
 
       expect(mockSnackBar.open).toHaveBeenCalledWith(
         'culling.panorama.correction_failed', '', expect.anything());
@@ -2143,8 +2007,8 @@ describe('BurstCullingComponent', () => {
       const fixture = TestBed.createComponent(BurstCullingComponent);
       const rendered = fixture.componentInstance as any;
       await new Promise(resolve => setTimeout(resolve, 0));
-      rendered['groups'].set(groups);
-      rendered['loading'].set(false);
+      rendered['cull'].groups.set(groups);
+      rendered['cull'].loading.set(false);
       fixture.detectChanges();
       return {
         fixture,
@@ -2240,18 +2104,18 @@ describe('BurstCullingComponent', () => {
       mockApi.get.mock.calls.filter(call => call[0] === '/culling/suggest_profile');
 
     beforeEach(() => {
-      component['cullProfiles'].set(profiles);
+      store.cullProfiles.set(profiles);
       mockApi.post = vi.fn(() => of(preview));
     });
 
     it('preselects the suggested preset when the user has chosen none', async () => {
       routeGet(suggestion('wedding'));
 
-      await (component as any).applySuggestedProfile();
+      await store.applySuggestedProfile();
 
       expect(mockApi.get).toHaveBeenCalledWith('/culling/suggest_profile', {});
-      expect(component['selectedProfile']()).toBe('wedding');
-      expect(component['strictness']()).toBe(35);
+      expect(store.selectedProfile()).toBe('wedding');
+      expect(store.strictness()).toBe(35);
       expect(component['suggestedProfileActive']()).toBe(true);
     });
 
@@ -2260,19 +2124,19 @@ describe('BurstCullingComponent', () => {
     it('does not persist the preset it suggested', async () => {
       routeGet(suggestion('wedding'));
 
-      await (component as any).applySuggestedProfile();
+      await store.applySuggestedProfile();
 
       expect(localStorage.getItem('facet_culling_profile')).toBeNull();
     });
 
     it('never overrides a preset the user picked, and does not even ask', async () => {
-      component['applyProfile'](profiles[1]);
+      store.applyProfile(profiles[1]);
       routeGet(suggestion('wildlife'));
 
-      await (component as any).applySuggestedProfile();
+      await store.applySuggestedProfile();
 
       expect(suggestCalls()).toHaveLength(0);
-      expect(component['selectedProfile']()).toBe('wedding');
+      expect(store.selectedProfile()).toBe('wedding');
       expect(component['suggestedProfileActive']()).toBe(false);
     });
 
@@ -2280,34 +2144,34 @@ describe('BurstCullingComponent', () => {
       component['onStrictnessChange'](80);
       routeGet(suggestion('wedding'));
 
-      await (component as any).applySuggestedProfile();
+      await store.applySuggestedProfile();
 
       expect(suggestCalls()).toHaveLength(0);
-      expect(component['strictness']()).toBe(80);
+      expect(store.strictness()).toBe(80);
     });
 
     it('applies nothing when the scope argues for no preset', async () => {
       routeGet(suggestion(null));
 
-      await (component as any).applySuggestedProfile();
+      await store.applySuggestedProfile();
 
-      expect(component['selectedProfile']()).toBe('');
+      expect(store.selectedProfile()).toBe('');
       expect(component['suggestedProfileActive']()).toBe(false);
     });
 
     it('applies nothing when the suggested preset is not configured', async () => {
       routeGet(suggestion('sports'));
 
-      await (component as any).applySuggestedProfile();
+      await store.applySuggestedProfile();
 
-      expect(component['selectedProfile']()).toBe('');
+      expect(store.selectedProfile()).toBe('');
     });
 
     it('asks once per scope and reuses the answer', async () => {
       routeGet(suggestion('wedding'));
 
-      await (component as any).applySuggestedProfile();
-      await (component as any).applySuggestedProfile();
+      await store.applySuggestedProfile();
+      await store.applySuggestedProfile();
 
       expect(suggestCalls()).toHaveLength(1);
     });
@@ -2317,18 +2181,18 @@ describe('BurstCullingComponent', () => {
       mockApi.get = vi.fn((url: string) =>
         url === '/culling/suggest_profile' ? new Subject() : of(mockCullingGroupsResponse));
 
-      await component['openAutoCull']();
+      await store.openAutoCull();
 
       expect(suggestCalls()).toHaveLength(1);
-      expect(component['autoCullPreview']()).toEqual(preview);
-      expect(component['selectedProfile']()).toBe('');
+      expect(store.autoCullPreview()).toEqual(preview);
+      expect(store.selectedProfile()).toBe('');
     });
 
     it('a suggestion landing on the open dialog re-runs the preview under its knobs', async () => {
       routeGet(suggestion('wedding'));
-      component['autoCullPreview'].set(preview);
+      store.autoCullPreview.set(preview);
 
-      await (component as any).applySuggestedProfile();
+      await store.applySuggestedProfile();
 
       expect(mockApi.post).toHaveBeenCalledWith('/culling/auto', expect.objectContaining({
         dry_run: true, profile: 'wedding', strictness: 35,
@@ -2339,11 +2203,11 @@ describe('BurstCullingComponent', () => {
     // silent change to a destructive confirmation.
     it('names the preset when a landing suggestion renumbers an open dialog', async () => {
       routeGet(suggestion('wedding'));
-      component['autoCullPreview'].set(preview);
+      store.autoCullPreview.set(preview);
 
-      await (component as any).applySuggestedProfile();
+      await store.applySuggestedProfile();
 
-      expect(component['autoCullSuggestionNotice']()).toBe('culling.profiles.wedding');
+      expect(store.autoCullSuggestionNotice()).toBe('culling.profiles.wedding');
     });
 
     // The third way that re-run can end. A failed one leaves the counts on
@@ -2352,31 +2216,31 @@ describe('BurstCullingComponent', () => {
     // that has anything to say.
     it('raises no notice when the re-run behind a landing suggestion fails', async () => {
       routeGet(suggestion('wedding'));
-      component['autoCullPreview'].set(preview);
+      store.autoCullPreview.set(preview);
       mockApi.post = vi.fn(() => throwError(() => new Error('boom')));
 
-      await (component as any).applySuggestedProfile();
+      await store.applySuggestedProfile();
 
-      expect(component['autoCullSuggestionNotice']()).toBeNull();
-      expect(component['autoCullPreview']()).toEqual(preview);
+      expect(store.autoCullSuggestionNotice()).toBeNull();
+      expect(store.autoCullPreview()).toEqual(preview);
       expect(mockSnackBar.open).toHaveBeenCalled();
     });
 
     it('raises no notice when the dialog was not open', async () => {
       routeGet(suggestion('wedding'));
 
-      await (component as any).applySuggestedProfile();
+      await store.applySuggestedProfile();
 
-      expect(component['autoCullSuggestionNotice']()).toBeNull();
+      expect(store.autoCullSuggestionNotice()).toBeNull();
     });
 
     it('clears a stale notice when the dialog is opened again', async () => {
       routeGet(suggestion(null));
-      component['autoCullSuggestionNotice'].set('culling.profiles.wildlife');
+      store.autoCullSuggestionNotice.set('culling.profiles.wildlife');
 
-      await component['openAutoCull']();
+      await store.openAutoCull();
 
-      expect(component['autoCullSuggestionNotice']()).toBeNull();
+      expect(store.autoCullSuggestionNotice()).toBeNull();
     });
 
     /**
@@ -2415,7 +2279,7 @@ describe('BurstCullingComponent', () => {
       // The dialog is not open yet, so the old re-run condition never fired and
       // the preview opened on pre-suggestion counts under post-suggestion knobs.
       it('opens on the suggested knobs when the suggestion lands before the preview', async () => {
-        void component['openAutoCull']();
+        void store.openAutoCull();
         await flush();
         expect(bodies).toHaveLength(1);
         expect(bodies[0]).toMatchObject({ strictness: 100 });
@@ -2429,12 +2293,12 @@ describe('BurstCullingComponent', () => {
 
         expect(bodies).toHaveLength(2);
         expect(bodies[1]).toMatchObject({ strictness: 35, profile: 'wedding' });
-        expect(component['autoCullPreview']()).toEqual(preview);
-        expect(component['autoCullSuggestionNotice']()).toBe('culling.profiles.wedding');
+        expect(store.autoCullPreview()).toEqual(preview);
+        expect(store.autoCullSuggestionNotice()).toBe('culling.profiles.wedding');
       });
 
       it('applies exactly the body the displayed counts came from, after the re-run', async () => {
-        void component['openAutoCull']();
+        void store.openAutoCull();
         await flush();
         suggestReply.next(suggestion('wedding'));
         await flush();
@@ -2454,11 +2318,11 @@ describe('BurstCullingComponent', () => {
       // flight, so the counts on screen are still the first run's. Those are the
       // ones the user agreed to, so those are the knobs that run.
       it('applies the displayed run when Apply is clicked before the re-run lands', async () => {
-        void component['openAutoCull']();
+        void store.openAutoCull();
         await flush();
         posts[0].next(preview);
         await flush();
-        expect(component['autoCullPreview']()).toEqual(preview);
+        expect(store.autoCullPreview()).toEqual(preview);
 
         suggestReply.next(suggestion('wedding'));
         await flush();
@@ -2474,11 +2338,11 @@ describe('BurstCullingComponent', () => {
       });
 
       it('keeps the Highlights checkbox the dialog\'s own decision', async () => {
-        void component['openAutoCull']();
+        void store.openAutoCull();
         await flush();
         posts[0].next(preview);
         await flush();
-        component['autoCullHighlights'].set(true);
+        store.autoCullHighlights.set(true);
 
         void component['confirmAutoCull']();
         posts[1].next({ ...preview, dry_run: false });
@@ -2503,8 +2367,8 @@ describe('BurstCullingComponent', () => {
     const flush = () => new Promise(resolve => setTimeout(resolve, 0));
 
     const openDarkroom = (index = 0) => {
-      component['groups'].set([grp]);
-      component['lightboxGroupId'].set(component['groupKey'](grp));
+      store.groups.set([grp]);
+      component['lightboxGroupId'].set(store.groupKey(grp));
       component['lightboxIndex'].set(index);
     };
     /** Run the overlay effects and let their async raster work settle. */
@@ -2612,8 +2476,8 @@ describe('BurstCullingComponent', () => {
         ...grp,
         photos: [...grp.photos, { ...grp.photos[0], path: '/f3.jpg', filename: 'f3.jpg' }],
       };
-      component['groups'].set([trio]);
-      component['lightboxGroupId'].set(component['groupKey'](trio));
+      store.groups.set([trio]);
+      component['lightboxGroupId'].set(store.groupKey(trio));
       component['peakingActive'].set(true);
       component['setCompareMode']('2up');
       await settle();
@@ -2664,8 +2528,8 @@ describe('BurstCullingComponent', () => {
         ...grp,
         photos: Array.from({ length: 12 }, (_, i) => ({ ...grp.photos[0], path: `/long${i}.jpg` })),
       };
-      component['groups'].set([long]);
-      component['lightboxGroupId'].set(component['groupKey'](long));
+      store.groups.set([long]);
+      component['lightboxGroupId'].set(store.groupKey(long));
       component['peakingActive'].set(true);
       for (let i = 0; i < long.photos.length; i++) {
         component['lightboxIndex'].set(i);
@@ -2743,8 +2607,9 @@ describe('BurstCullingComponent', () => {
       await flush();
       vi.spyOn(rendered as any, 'renderPeaking').mockResolvedValue('data:image/png;base64,x');
       vi.spyOn(rendered as any, 'measureFrame').mockResolvedValue({ w: 6000, h: 4000 });
-      rendered['groups'].set([grp]);
-      rendered['lightboxGroupId'].set(rendered['groupKey'](grp));
+      const renderedStore: CullingStore = rendered['cull'];
+      renderedStore.groups.set([grp]);
+      rendered['lightboxGroupId'].set(renderedStore.groupKey(grp));
       rendered['lightboxIndex'].set(0);
       rendered['peakingActive'].set(true);
       rendered['gridMode'].set('thirds');
@@ -2797,6 +2662,7 @@ describe('BurstCullingComponent', () => {
 describe('BurstCullingComponent modals (rendered)', () => {
   let fixture: ComponentFixture<BurstCullingComponent>;
   let component: any;
+  let store: CullingStore;
   // jsdom ships no scrollIntoView, which the group list calls whenever the
   // selection lands back on a tile — as it does when the darkroom closes.
   const scrollIntoView = Element.prototype.scrollIntoView;
@@ -2832,6 +2698,7 @@ describe('BurstCullingComponent modals (rendered)', () => {
     });
     fixture = TestBed.createComponent(BurstCullingComponent);
     component = fixture.componentInstance;
+    store = component['cull'];
     fixture.detectChanges();
   });
 
@@ -2844,7 +2711,7 @@ describe('BurstCullingComponent modals (rendered)', () => {
     fixture.debugElement.query(By.css('[aria-labelledby="autoCullTitle"]'));
 
   const openAutoCullDialog = () => {
-    component['autoCullPreview'].set(preview);
+    store.autoCullPreview.set(preview);
     fixture.detectChanges();
   };
 
@@ -2868,11 +2735,11 @@ describe('BurstCullingComponent modals (rendered)', () => {
   });
 
   const openDarkroom = () => {
-    component['groups'].set([{
+    store.groups.set([{
       group_id: 1, type: 'burst', reason: '', best_path: '/p1.jpg', count: 2,
       photos: [photo('/p1.jpg'), photo('/p2.jpg')],
     }]);
-    component['lightboxGroupId'].set(component['groupKey'](component['groups']()[0]));
+    component['lightboxGroupId'].set(store.groupKey(store.groups()[0]));
     fixture.detectChanges();
   };
 
@@ -2889,7 +2756,7 @@ describe('BurstCullingComponent modals (rendered)', () => {
     );
     fixture.detectChanges();
 
-    expect(component['autoCullPreview']()).toBeNull();
+    expect(store.autoCullPreview()).toBeNull();
   });
 
   // Rendered rather than called: the backdrop click and the Escape binding are
@@ -2897,7 +2764,7 @@ describe('BurstCullingComponent modals (rendered)', () => {
   // apply that was still in flight — re-arming Apply for a second one.
   it('survives Escape and a backdrop click while the apply is in flight', async () => {
     const api = TestBed.inject(ApiService) as unknown as { post: Mock };
-    await component['openAutoCull']();
+    await store.openAutoCull();
     fixture.detectChanges();
     const response = new Subject<typeof preview>();
     api.post = vi.fn(() => response);
@@ -2937,14 +2804,14 @@ describe('BurstCullingComponent modals (rendered)', () => {
   it('keeps every dialog control disabled while an apply outlives the dry run behind it', async () => {
     const api = TestBed.inject(ApiService) as unknown as { post: Mock };
     const flush = () => new Promise(resolve => setTimeout(resolve, 0));
-    await component['openAutoCull']();
+    await store.openAutoCull();
     fixture.detectChanges();
     expect(trimBracketsBox().disabled).toBe(false);
     expect(dialogButton('culling.auto_cull.apply').disabled).toBe(false);
 
     const dryRun = new Subject<typeof preview>();
     api.post = vi.fn(() => dryRun);
-    void component['openAutoCull']();
+    void store.openAutoCull();
     await flush();
     const response = new Subject<typeof preview>();
     api.post = vi.fn(() => response);
@@ -2956,8 +2823,8 @@ describe('BurstCullingComponent modals (rendered)', () => {
 
     // The window the two signals disagree in: the dry run behind the apply has
     // cleared `loading`, and the apply is still open.
-    expect(component['autoCullLoading']()).toBe(false);
-    expect(component['autoCullApplying']()).toBe(true);
+    expect(store.autoCullLoading()).toBe(false);
+    expect(store.autoCullApplying()).toBe(true);
     expect(trimBracketsBox().disabled).toBe(true);
     expect(dialogButton('culling.auto_cull.apply').disabled).toBe(true);
     expect(dialogButton('dialog.cancel').disabled).toBe(true);
@@ -3050,7 +2917,7 @@ describe('BurstCullingComponent modals (rendered)', () => {
   });
 
   it('legend toggle starts hidden, shows the legend on click and flips aria-pressed', () => {
-    component['groups'].set([{
+    store.groups.set([{
       group_id: 1, type: 'burst', reason: '', best_path: '/p1.jpg', count: 1,
       photos: [{
         path: '/p1.jpg', filename: 'p1.jpg', aggregate: 8, aesthetic: 7,
@@ -3058,7 +2925,7 @@ describe('BurstCullingComponent modals (rendered)', () => {
         date_taken: '2024-01-01', burst_score: 8,
       }],
     }]);
-    component['lightboxGroupId'].set(component['groupKey'](component['groups']()[0]));
+    component['lightboxGroupId'].set(store.groupKey(store.groups()[0]));
     fixture.detectChanges();
 
     const darkroom = fixture.debugElement.query(By.css('[role="dialog"][aria-modal="true"]'));
@@ -3106,6 +2973,7 @@ describe('BurstCullingComponent modals (rendered)', () => {
 describe('BurstCullingComponent swipe-to-decide (rendered, touch)', () => {
   let fixture: ComponentFixture<BurstCullingComponent>;
   let component: any;
+  let store: CullingStore;
   let undoAction: Subject<void>;
   let mockSnackBar: { open: Mock };
 
@@ -3114,7 +2982,7 @@ describe('BurstCullingComponent swipe-to-decide (rendered, touch)', () => {
     is_blink: 0, is_burst_lead: 1, date_taken: '2024-01-01', burst_score: 8,
   });
   const group = {
-    group_id: 1, type: 'burst', reason: '', best_path: '/s1.jpg', count: 3,
+    group_id: 1, type: 'burst' as const, reason: '', best_path: '/s1.jpg', count: 3,
     photos: [photo('/s1.jpg'), photo('/s2.jpg'), photo('/s3.jpg')],
   };
   const emptyFeed = { groups: [], total_groups: 0, page: 1, per_page: 20, total_pages: 1 };
@@ -3163,6 +3031,7 @@ describe('BurstCullingComponent swipe-to-decide (rendered, touch)', () => {
     });
     fixture = TestBed.createComponent(BurstCullingComponent);
     component = fixture.componentInstance;
+    store = component['cull'];
     fixture.detectChanges();
   });
 
@@ -3172,8 +3041,8 @@ describe('BurstCullingComponent swipe-to-decide (rendered, touch)', () => {
   });
 
   const openDarkroom = () => {
-    component['groups'].set([group]);
-    component['lightboxGroupId'].set(component['groupKey'](group));
+    store.groups.set([group]);
+    component['lightboxGroupId'].set(store.groupKey(group));
     component['lightboxIndex'].set(0);
     fixture.detectChanges();
   };
@@ -3206,7 +3075,7 @@ describe('BurstCullingComponent swipe-to-decide (rendered, touch)', () => {
 
   /** The decision lands when the card has flown out, not when the finger lifts. */
   const settle = () => new Promise(resolve => setTimeout(resolve, SWIPE_SETTLE_MS + 20));
-  const keptPaths = () => [...(component['selectionsMap']().get(1) ?? [])];
+  const keptPaths = () => [...(store.selectionsMap().get(1) ?? [])];
 
   it('keeps the frame on a right swipe past the threshold, then steps to the next', async () => {
     openDarkroom();
@@ -3222,7 +3091,7 @@ describe('BurstCullingComponent swipe-to-decide (rendered, touch)', () => {
   // group's kept set, not adding it to a second one.
   it('rejects the frame on a left swipe past the threshold, then steps to the next', async () => {
     openDarkroom();
-    component['selectionsMap'].set(new Map([[1, new Set(['/s1.jpg', '/s2.jpg', '/s3.jpg'])]]));
+    store.selectionsMap.set(new Map([[1, new Set(['/s1.jpg', '/s2.jpg', '/s3.jpg'])]]));
 
     drag(-OVER);
     await settle();
@@ -3237,7 +3106,7 @@ describe('BurstCullingComponent swipe-to-decide (rendered, touch)', () => {
     drag(UNDER);
     await settle();
 
-    expect(component['selectionsMap']().get(1)).toBeUndefined();
+    expect(store.selectionsMap().get(1)).toBeUndefined();
     expect(component['lightboxIndex']()).toBe(0);
   });
 
@@ -3249,7 +3118,7 @@ describe('BurstCullingComponent swipe-to-decide (rendered, touch)', () => {
     drag(OVER, 400);
     await settle();
 
-    expect(component['selectionsMap']().get(1)).toBeUndefined();
+    expect(store.selectionsMap().get(1)).toBeUndefined();
     expect(component['lightboxIndex']()).toBe(0);
   });
 
@@ -3290,7 +3159,7 @@ describe('BurstCullingComponent swipe-to-decide (rendered, touch)', () => {
     // How far it panned depends on when change detection pushes the shared zoom
     // back down into the pane; that it panned at all is the point.
     expect(component['zoom']().tx).toBeGreaterThan(0);
-    expect(component['selectionsMap']().get(1)).toBeUndefined();
+    expect(store.selectionsMap().get(1)).toBeUndefined();
     expect(component['lightboxIndex']()).toBe(0);
   });
 
@@ -3334,13 +3203,14 @@ describe('BurstCullingComponent swipe-to-decide (rendered, touch)', () => {
 describe('BurstCullingComponent compare panes (rendered)', () => {
   let fixture: ComponentFixture<BurstCullingComponent>;
   let component: any;
+  let store: CullingStore;
 
   const photo = (path: string) => ({
     path, filename: path.slice(1), aggregate: 8, aesthetic: 7, tech_sharpness: 6,
     is_blink: 0, is_burst_lead: 1, date_taken: '2024-01-01', burst_score: 8,
   });
   const group = {
-    group_id: 1, type: 'burst', reason: '', best_path: '/c1.jpg', count: 2,
+    group_id: 1, type: 'burst' as const, reason: '', best_path: '/c1.jpg', count: 2,
     photos: [photo('/c1.jpg'), photo('/c2.jpg')],
   };
   const emptyFeed = { groups: [], total_groups: 0, page: 1, per_page: 20, total_pages: 1 };
@@ -3367,6 +3237,7 @@ describe('BurstCullingComponent compare panes (rendered)', () => {
     });
     fixture = TestBed.createComponent(BurstCullingComponent);
     component = fixture.componentInstance;
+    store = component['cull'];
     fixture.detectChanges();
   });
 
@@ -3376,8 +3247,8 @@ describe('BurstCullingComponent compare panes (rendered)', () => {
   });
 
   const openCompare = () => {
-    component['groups'].set([group]);
-    component['lightboxGroupId'].set(component['groupKey'](group));
+    store.groups.set([group]);
+    component['lightboxGroupId'].set(store.groupKey(group));
     component['lightboxIndex'].set(0);
     component['setCompareMode']('2up');
     fixture.detectChanges();
@@ -3386,7 +3257,7 @@ describe('BurstCullingComponent compare panes (rendered)', () => {
   const buttonFor = (label: string): HTMLButtonElement | undefined =>
     [...(fixture.nativeElement as HTMLElement).querySelectorAll('button')]
       .find(b => b.getAttribute('aria-label') === label);
-  const keptPaths = () => [...(component['selectionsMap']().get(1) ?? [])];
+  const keptPaths = () => [...(store.selectionsMap().get(1) ?? [])];
 
   it('offers a keep and a reject button naming the frame of each pane', () => {
     openCompare();
@@ -3411,7 +3282,7 @@ describe('BurstCullingComponent compare panes (rendered)', () => {
 
   it('writes the same state the arrow keys do, so rejecting drops the frame', () => {
     openCompare();
-    component['selectionsMap'].set(new Map([[1, new Set(['/c1.jpg', '/c2.jpg'])]]));
+    store.selectionsMap.set(new Map([[1, new Set(['/c1.jpg', '/c2.jpg'])]]));
     fixture.detectChanges();
 
     buttonFor('c2.jpg, culling.lightbox.reject')!.click();
@@ -3422,7 +3293,7 @@ describe('BurstCullingComponent compare panes (rendered)', () => {
 
   it('marks the decided pane with the solid badge the tiles use', () => {
     openCompare();
-    component['selectionsMap'].set(new Map([[1, new Set(['/c1.jpg'])]]));
+    store.selectionsMap.set(new Map([[1, new Set(['/c1.jpg'])]]));
     fixture.detectChanges();
 
     const host: HTMLElement = fixture.nativeElement;

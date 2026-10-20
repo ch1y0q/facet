@@ -2601,6 +2601,7 @@ Expõe as ferramentas descritas em [Agentes de IA (MCP)](AGENTS.md) em `POST /mc
       "write_rate_per_min": 30,
       "tool_profile": "full",
       "allow_destructive": false,
+      "inpage_tools": true,
       "allowed_origins": []
     }
   }
@@ -2618,8 +2619,9 @@ Expõe as ferramentas descritas em [Agentes de IA (MCP)](AGENTS.md) em `POST /mc
 | `semantic_timeout_s` | `120` | Tempo limite de `semantic_search` em segundos (1 a 300); carrega o modelo de embeddings e precisa de mais. |
 | `rate_per_min` | `120` | Chamadas de ferramentas por minuto e por token (mínimo 1). |
 | `write_rate_per_min` | `30` | Chamadas de escrita por minuto e por token (mínimo 1). Mantido à parte para que as leituras não deixem as escritas sem quota. Aplica-se às ferramentas de escrita (incluindo a simulação de `cull_apply` e `delete_photos`); veja [Agentes de IA](AGENTS.md#alterar-a-biblioteca). |
-| `tool_profile` | `"full"` | `"full"` lista todas as ferramentas que a chave pode chamar. `"core"` lista apenas um conjunto de 12 ferramentas para modelos pequenos (`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`, `undo_last`). Só a lista muda: uma ferramenta fora dela ainda pode ser chamada se o nível da chave o permitir. Qualquer outro valor volta a `"full"`. Ver [Agentes de IA](AGENTS.md#níveis-de-permissão). |
-| `allow_destructive` | `false` | Permite aos assistentes executar `delete_photos`, as ações `move_rejects` e `trash_rejects` de `cull_apply` e `assign_faces` com `allow_reassign`. Desativado, `delete_photos` não é listado e as outras duas respondem `feature_disabled` indicando esta chave. Nenhuma pode ser desfeita. Ver [Agentes de IA](AGENTS.md#ações-destrutivas-pré-visualizar-e-confirmar). |
+| `tool_profile` | `"full"` | `"full"` lista todas as ferramentas que a chave pode chamar. `"core"` lista apenas um conjunto de 11 ferramentas para modelos pequenos (`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`). Só a lista muda: uma ferramenta fora dela ainda pode ser chamada se o nível da chave o permitir. Qualquer outro valor volta a `"full"`. Ver [Agentes de IA](AGENTS.md#níveis-de-permissão). |
+| `allow_destructive` | `false` | Permite aos assistentes executar `delete_photos`, as ações `move_rejects` e `trash_rejects` de `cull_apply` e `assign_faces` com `allow_reassign`. Desativado, `delete_photos` não é listado e as outras duas respondem `feature_disabled` indicando esta chave. Ver [Agentes de IA](AGENTS.md#ações-destrutivas-pré-visualizar-e-confirmar). |
+| `inpage_tools` | `true` | Se um separador com sessão iniciada pode chamar as ferramentas do servidor a partir da página: `GET /api/mcp/inpage_tools` lista-as e `POST /api/mcp/call` executa uma como a sessão, ao seu nível atual, pelo mesmo invólucro que `/mcp`. Desativado, ambas as rotas respondem 404 e `features.mcp_inpage` é falso em `/api/auth/status`. Veja [Agentes de IA](AGENTS.md#webmcp-na-página-agentes-do-navegador). |
 | `allowed_origins` | `[]` | Origens de navegador adicionais (por exemplo `["https://photos.example.com"]`) autorizadas a abrir a ponte do separador quando um proxy reverso reescreve `Host`. Distinta da chave CORS `viewer.allowed_origins`. |
 
 Os números fora do intervalo são limitados, e um valor de tipo errado volta à predefinição. O bloco é lido em cada pedido, por isso recarregar a configuração ativa ou desativa a funcionalidade sem reiniciar.

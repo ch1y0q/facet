@@ -25,6 +25,13 @@ DEFAULT_MAX_PAIRS = 2000  # global cap per sync run
 RNG_SEED = 42
 
 
+def _agent_left(conn, user_id):
+    """``{path: (star_rating, is_favorite, is_rejected)}`` an assistant left for this scope."""
+    return {r[0]: (r[1], r[2], r[3]) for r in conn.execute(
+        "SELECT photo_path, star_rating, is_favorite, is_rejected FROM rating_provenance WHERE user_id = ?",
+        (user_id or '',))}
+
+
 def _fetch_labels(conn, user_id=None):
     """Load labeled photos: (path, category, star_rating, is_favorite, is_rejected).
 
@@ -51,7 +58,10 @@ def _fetch_labels(conn, user_id=None):
                WHERE aggregate IS NOT NULL
                  AND (star_rating > 0 OR is_favorite = 1 OR is_rejected = 1)""",
         ).fetchall()
-    return [dict(r) for r in rows]
+    left = _agent_left(conn, user_id)
+    # A label an assistant left is not the user's taste; one the user changed since counts again.
+    return [dict(r) for r in rows
+            if left.get(r['path']) != (r['star_rating'] or 0, r['is_favorite'] or 0, r['is_rejected'] or 0)]
 
 
 def generate_rating_pairs(conn, user_id=None, max_pairs=DEFAULT_MAX_PAIRS,

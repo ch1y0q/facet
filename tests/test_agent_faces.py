@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from api.routers import face_matches
-from tests.conftest import _TEST_DB_FILE, AGENT_DIR
+from tests.conftest import _TEST_DB_FILE, AGENT_DIR, intercept_internal_call
 
 PFX = AGENT_DIR + "faces/"
 PERSON, BOB, HIDDEN, EMPTY = 987101, 987102, 987103, 987104
@@ -226,16 +226,13 @@ class TestScanBounds:
         assert none["ok"] is True and none["data"]["candidates"] == 0 and none["data"]["rows"] == []
 
     def test_the_tool_waits_for_the_scan_budget_not_the_call_timeout(self, agent_app, library, monkeypatch):
-        from api.agent.internal_client import InternalClient
         seen = {}
-        original = InternalClient.call
 
-        async def spy(self, grant, tool, **kwargs):
+        def spy(tool, kwargs):
             if tool == "possible_faces":
                 seen["timeout"] = kwargs["timeout"]
-            return await original(self, grant, tool, **kwargs)
 
-        monkeypatch.setattr(InternalClient, "call", spy)
+        intercept_internal_call(monkeypatch, spy)
         call(agent_app, {})
         assert seen["timeout"] == face_matches.FACE_SCAN_TIMEOUT_S == 120
 
@@ -295,10 +292,6 @@ class TestAssignFaces:
         assert result["error"] == "feature_disabled" and "viewer.mcp.allow_destructive" in result["message"]
         assert owner("d") == BOB
 
-    def test_assigned_faces_are_marked_not_undoable(self, agent_app, library):
-        _, _, result = assign(agent_app, "a")
-        assert result["data"]["undoable"] is False and "undo_last" in result["data"]["undo_note"]
-
     def test_a_readonly_token_is_forbidden_and_fifty_one_ids_are_too_large(self, agent_app, library):
         assert assign(agent_app, "a", level="readonly")[2]["error"] == "forbidden_level"
         assert owner("a") is None
@@ -310,3 +303,12 @@ class TestAssignFaces:
         resp = env.client.post(f"/api/persons/{PERSON}/assign_faces", json={"face_ids": [987654321]},
                                headers=headers)
         assert resp.status_code == 404
+
+
+def test_only_unassigned_without_tolerant_is_refused_by_the_request_model():
+    import pydantic
+    from api.routers.persons import AssignFacesRequest
+    with pytest.raises(pydantic.ValidationError, match="only_unassigned"):
+        AssignFacesRequest(face_ids=[1], only_unassigned=True)
+    assert AssignFacesRequest(face_ids=[1], only_unassigned=True, tolerant=True).only_unassigned
+    assert not AssignFacesRequest(face_ids=[1]).only_unassigned

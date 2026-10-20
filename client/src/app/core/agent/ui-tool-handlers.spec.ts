@@ -7,6 +7,7 @@ import { of } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { AuthService } from '../services/auth.service';
 import { AlbumService } from '../services/album.service';
+import type { Album } from '../services/album.service';
 import { I18nService } from '../services/i18n.service';
 import { GalleryStore, PhotosResponse, ViewerConfig } from '../../features/gallery/gallery.store';
 import { makePhoto } from '../../../testing/photo.fixture';
@@ -56,6 +57,8 @@ describe('UI tool registry and handlers', () => {
     auth: { isEdition: () => edition } as unknown as AuthService, viewActions, actions: () => [],
     compareFilters: TestBed.inject(CompareFiltersService),
   });
+
+  afterEach(() => localStorage.clear());
 
   beforeEach(async () => {
     edition = false;
@@ -209,11 +212,14 @@ describe('UI tool registry and handlers', () => {
       const post = TestBed.inject(ApiService).post as unknown as Mock;
       const keys: string[] = [];
       const onKey = (event: KeyboardEvent): void => { keys.push(event.key); };
+      // The comparison page's shortcuts listen on window, so a key sent from the tool would land there.
+      window.addEventListener('keydown', onKey, true);
       document.addEventListener('keydown', onKey, true);
       try {
         const result = await direct()['ui_show_comparison']({ category: 'portrait', strategy: 'boundary' });
         expect(result).toEqual({ route: '/compare', category: 'portrait', strategy: 'boundary', tab: 'ab' });
       } finally {
+        window.removeEventListener('keydown', onKey, true);
         document.removeEventListener('keydown', onKey, true);
       }
       expect(navigate).toHaveBeenCalledWith(['/compare']);
@@ -222,6 +228,22 @@ describe('UI tool registry and handlers', () => {
       expect(filters.activeTab()).toBe(1);
       expect(post).not.toHaveBeenCalled();
       expect(keys).toEqual([]);
+    });
+
+    it('answers success without navigating when the tab is already on /compare', async () => {
+      edition = true;
+      router.url = '/compare?x=1';
+      navigate.mockResolvedValue(false);
+      const result = await direct()['ui_show_comparison']({ strategy: 'boundary' });
+      expect(result).toMatchObject({ route: '/compare', strategy: 'boundary', tab: 'ab' });
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('still reports a refused navigation when coming from another page', async () => {
+      edition = true;
+      router.url = '/';
+      navigate.mockResolvedValue(false);
+      await expect(direct()['ui_show_comparison']({})).rejects.toMatchObject({ code: 'forbidden_level' });
     });
 
     it('needs an edition session and touches nothing without one', async () => {
@@ -378,10 +400,24 @@ describe('UI tool registry and handlers', () => {
       expect(TestBed.inject(AlbumService).update).not.toHaveBeenCalled();
     });
 
-    it('does not navigate for a patch without replace', async () => {
+    it('leaves the album for a patch without replace too, and the edition tab then saves no album filter', async () => {
+      edition = true;
       router.url = '/album/7';
-      await run('ui_set_gallery_filters', { patch: { camera: 'Canon' } });
-      expect(navigate).not.toHaveBeenCalledWith(['/']);
+      store.currentAlbum.set({ id: 7, is_smart: true } as unknown as Album);
+      const albumUpdate = TestBed.inject(AlbumService).update as unknown as Mock;
+      navigate.mockImplementationOnce(async () => {
+        router.url = '/';
+        store.currentAlbum.set(null);
+        store.galleryMounts.update(n => n + 1);
+        return true;
+      });
+      const result = await run('ui_set_gallery_filters', { patch: { camera: 'Canon' } });
+      expect(result.ok).toBe(true);
+      expect(navigate).toHaveBeenCalledWith(['/']);
+      TestBed.tick();
+      await new Promise(resolve => setTimeout(resolve, 700));
+      TestBed.tick();
+      expect(albumUpdate).not.toHaveBeenCalled();
     });
   });
 

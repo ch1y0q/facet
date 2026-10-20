@@ -5,14 +5,18 @@ router's ``Popen``, its output reader, its configured-directory list and its job
 Popen recorder is what proves a refused call spawned nothing.
 """
 
-from collections import deque
-
-import pytest
-
-from api import config as api_config
+import asyncio
 import importlib
 import subprocess
+from collections import deque
 from types import SimpleNamespace
+
+import pytest
+from fastapi import HTTPException
+
+from api import auth as api_auth
+from api import config as api_config
+from api.agent import requirements
 from tests.conftest import AGENT_DIR
 
 scan = importlib.import_module("api.routers.scan")
@@ -72,7 +76,7 @@ def test_an_unconfigured_directory_is_refused_before_anything_spawns(world):
 def test_a_configured_directory_spawns_exactly_the_validated_command(world):
     env, token, spawned = world
     done = env.call(token, "start_scan", {"directories": [CONFIGURED[1]]})
-    assert done["ok"] and done["data"]["pid"] == 4242 and done["data"]["undoable"] is False
+    assert done["ok"] and done["data"]["pid"] == 4242
     assert len(spawned) == 1 and spawned[0][-1:] == [CONFIGURED[1]] and spawned[0][1] == scan.FACET_SCRIPT
 
 
@@ -95,7 +99,8 @@ def test_status_caps_the_returned_lines(world, monkeypatch):
 
 def test_more_than_twenty_directories_are_refused(world):
     env, token, spawned = world
-    assert env.call(token, "start_scan", {"directories": [f"/d{i}/" for i in range(21)]})["ok"] is False
+    refused = env.call(token, "start_scan", {"directories": [f"/d{i}/" for i in range(21)]})
+    assert refused["ok"] is False and refused["error"] in ("too_large", "invalid_input")
     assert spawned == []
 
 
@@ -137,11 +142,23 @@ def test_multi_user_needs_a_superadmin_not_just_an_admin(agent_app, monkeypatch)
     assert len(spawned) == 1
 
 
-def test_the_tool_gate_and_the_route_gate_are_one_rule():
-    from api.auth import scan_access_refusal
-    from api.agent import requirements
-    import inspect
-    assert "scan_access_refusal" in inspect.getsource(requirements.scan_available)
-    assert "scan_access_refusal" in inspect.getsource(__import__("api.auth", fromlist=["x"]).require_scan_access)
-    assert scan_access_refusal(False, False, True, True)[0] == 403 and scan_access_refusal(False, False, True, False) is None
-    assert scan_access_refusal(True, False, True, False)[0] == 403 and scan_access_refusal(True, True, False, True) is None
+@pytest.mark.parametrize("multi", [False, True])
+@pytest.mark.parametrize("superadmin", [False, True])
+@pytest.mark.parametrize("edition", [False, True])
+@pytest.mark.parametrize("open_install", [False, True])
+def test_the_tool_gate_and_the_route_gate_are_one_rule(
+        monkeypatch, multi, superadmin, edition, open_install):
+    monkeypatch.setitem(api_config.VIEWER_CONFIG.setdefault("features", {}), "show_scan_button", True)
+    for module in (requirements, api_auth):
+        monkeypatch.setattr(module, "is_multi_user_enabled", lambda: multi, raising=False)
+        monkeypatch.setattr(module, "_is_open_install", lambda key: open_install)
+    resolved = SimpleNamespace(role="superadmin" if superadmin else "user", level="edition" if edition else "readonly")
+    user = SimpleNamespace(is_superadmin=superadmin, is_edition=edition)
+    tool_refusal = requirements.scan_available(resolved, {})
+    try:
+        asyncio.run(api_auth.require_scan_access(user))
+        route_status = None
+    except HTTPException as ex:
+        route_status = ex.status_code
+    assert (tool_refusal is None) == (route_status is None)
+    assert route_status in (None, 403) and (tool_refusal is None or tool_refusal[0] == "forbidden_level")

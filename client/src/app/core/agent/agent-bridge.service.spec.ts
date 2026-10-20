@@ -188,7 +188,7 @@ describe('AgentBridgeService', () => {
     expect(first.sent.filter(f => f['type'] === 'result')).toEqual([]);
   });
 
-  it('does not send on a socket that is no longer OPEN, and raises no unhandled rejection', async () => {
+  it('sends nothing on a socket that is no longer OPEN', async () => {
     const socket = connectReady();
     let release: (v: unknown) => void = () => undefined;
     execute.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
@@ -197,6 +197,73 @@ describe('AgentBridgeService', () => {
     release({ ok: true, data: {} });
     await vi.advanceTimersByTimeAsync(0);
     expect(socket.sent.filter(f => f['type'] === 'result')).toEqual([]);
+  });
+
+  it('swallows a send that throws after the OPEN check, so the answer promise resolves', async () => {
+    const socket = connectReady();
+    const send = vi.fn(() => { throw new Error('InvalidStateError'); });
+    socket.send = send;
+    const answer = (bridge as unknown as { answer: (call: unknown) => Promise<void> }).answer.bind(bridge);
+    await expect(answer({ type: 'call', id: 'racing', tool: 'ui_get_selection', args: {} })).resolves.toBeUndefined();
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('answers upstream_error when the result cannot be serialised', async () => {
+    execute.mockResolvedValueOnce({ ok: true, data: { big: BigInt(1) } });
+    const socket = connectReady();
+    socket.receive({ type: 'call', id: 'bi', tool: 'ui_get_selection', args: {} });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(socket.sent.at(-1)).toMatchObject({ type: 'result', id: 'bi', ok: false, error: 'upstream_error' });
+  });
+
+  it('ignores malformed, non-string and id-less-typed frames without answering', async () => {
+    const socket = connectReady();
+    const before = socket.sent.length;
+    socket.onmessage?.({ data: 'not json' });
+    socket.onmessage?.({ data: 42 });
+    socket.onmessage?.({ data: new ArrayBuffer(4) });
+    socket.receive({ type: 'call', id: 5, tool: 'ui_get_selection', args: {} });
+    socket.receive({ type: 'nonsense' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(execute).not.toHaveBeenCalled();
+    expect(socket.sent).toHaveLength(before);
+  });
+
+  describe('auth frame limits and a failing socket factory', () => {
+    const rebuild = (factory: (url: string) => FakeSocket, url: string, toolNames: string[]): void => {
+      TestBed.resetTestingModule();
+      FakeSocket.instances = [];
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: BRIDGE_SOCKET_FACTORY, useValue: factory },
+          { provide: AuthService, useValue: { status: signal(status()), get token() { return token; }, loginPasswordRequired: () => loginRequired } },
+          { provide: Router, useValue: { url, events: routerEvents } },
+          { provide: WebMcpToolRegistry, useValue: { toolNames, toolsVersion: 'v1', execute, ready: signal(true), load: () => Promise.resolve() } },
+        ],
+      });
+      bridge = TestBed.inject(AgentBridgeService);
+      settle();
+    };
+
+    it('truncates the route to 200 characters and the tool list to 64 names', () => {
+      rebuild(url => new FakeSocket(url), '/' + 'r'.repeat(400), Array.from({ length: 70 }, (_, i) => `tool_${i}`));
+      const socket = last();
+      socket.open();
+      expect((socket.sent[0]['route'] as string).length).toBe(200);
+      expect((socket.sent[0]['tools'] as string[]).length).toBe(64);
+    });
+
+    it('reconnects after the factory throws, instead of giving up', async () => {
+      let calls = 0;
+      rebuild(url => {
+        calls += 1;
+        if (calls === 1) throw new Error('blocked');
+        return new FakeSocket(url);
+      }, '/', []);
+      expect(FakeSocket.instances).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(FakeSocket.instances).toHaveLength(1);
+    });
   });
 
   it('sends an error result with only the code and message', async () => {

@@ -303,7 +303,7 @@ Für ein reines Viewer-NAS, bei dem das Image klein bleiben muss (kein CUDA), er
 ```dockerfile
 FROM python:3.11-slim
 WORKDIR /app
-RUN pip install fastapi uvicorn pyjwt pillow aiosqlite
+RUN pip install fastapi uvicorn pyjwt pillow aiosqlite 'mcp>=2.3,<3' 'httpx>=0.28,<1' 'websockets>=13.0'
 COPY viewer.py config_resolve.py database.py tagger.py ./
 COPY api/ api/
 COPY config/ config/
@@ -494,7 +494,7 @@ sind und ein echtes Registry-Manifest zum Messen vorliegt.
 ### Uvicorn
 
 ```bash
-pip install fastapi uvicorn pyjwt pillow aiosqlite
+pip install fastapi uvicorn pyjwt pillow aiosqlite 'mcp>=2.3,<3' 'httpx>=0.28,<1' 'websockets>=13.0'
 uvicorn api:create_app --factory --host 0.0.0.0 --port 5000 --workers 4
 ```
 

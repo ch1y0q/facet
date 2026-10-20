@@ -6,16 +6,17 @@
 
 import asyncio
 import json
-import threading
 import time
 from datetime import timedelta
 
 import pytest
 from starlette.websockets import WebSocketDisconnect
 
+from api import config as api_config
 from api.agent import bridge
 from api.agent.ui_tools import UI_TOOLS, tools_version
 from api.auth import SHARE_CLIENT_ROLE, create_access_token
+from tests.conftest import serve_app
 
 
 def jwt_of(headers):
@@ -459,6 +460,20 @@ class TestTabLevels:
         status = env.call(token, "status")["data"]
         assert [t["tab_id"] for t in status["tabs"]] == ["viewer-tab"] and status["out_of_reach_tabs"] == 1
 
+    def test_open_install_token_cannot_reach_an_edition_tab_of_the_shared_principal(self, agent_app, fake_tab):
+        env = agent_app("open")
+        api_config.VIEWER_CONFIG["edition_password"] = "ed-pw"
+        resp = env.client.post("/api/auth/edition/login", json={"password": "ed-pw"})
+        assert resp.status_code == 200, resp.text
+        env.client.cookies.clear()
+        fake_tab(env, resp.json()["access_token"], "edition-tab")
+        assert [t.level for t in env.app.state.tab_registry.tabs_for("_anonymous")] == ["edition"]
+        token = env.token(env.login(), "readonly")
+        result = env.call(token, "ui_get_selection")
+        assert result["error"] == "no_tab"
+        status = env.call(token, "status")["data"]
+        assert status["tabs"] == [] and status["out_of_reach_tabs"] == 1
+
     def test_null_minted_level_row_counts_as_readonly(self, agent_app, fake_tab):
         from api.database import get_db
         env = agent_app("legacy")
@@ -554,33 +569,10 @@ class TestTabLevels:
         # the token degrades with the password too, so it follows the tab down rather than losing it
         assert env.call(token, "ui_get_selection")["tab"]["tab_id"] == "edition-tab"
 
-    def test_open_install_edition_session_tab_is_reachable(self, agent_app, fake_tab):
-        env = agent_app("open")
-        from api import config as api_config
-        api_config.VIEWER_CONFIG["edition_password"] = "edition-pw"
-        edition = env.client.post("/api/auth/edition/login", json={"password": "edition-pw"})
-        assert edition.status_code == 200, edition.text
-        env.client.cookies.clear()
-        fake_tab(env, edition.json()["access_token"], "edition-tab")
-        token = env.token(env.login())
-        assert env.call(token, "ui_get_selection")["tab"]["tab_id"] == "edition-tab"
-
 
 class TestRealBrowserCloseCodes:
     """The refusals must reach a real WebSocket client as close frames, not an HTTP 403 (a
     browser reports that as 1006 and the tab would retry forever)."""
-
-    @staticmethod
-    def _serve(app):
-        import uvicorn
-        server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, lifespan="off", log_level="error"))
-        thread = threading.Thread(target=server.run, daemon=True)
-        thread.start()
-        deadline = time.monotonic() + 10
-        while not server.started and time.monotonic() < deadline:
-            time.sleep(0.02)
-        assert server.started
-        return server, thread, server.servers[0].sockets[0].getsockname()[1]
 
     @staticmethod
     def _close_code(port, origin):
@@ -597,12 +589,8 @@ class TestRealBrowserCloseCodes:
     ])
     def test_refusal_is_a_close_frame(self, agent_app, bridge_on, origin, code):
         env = agent_app("open", bridge=bridge_on)
-        server, thread, port = self._serve(env.app)
-        try:
+        with serve_app(env.app, log_level="error") as port:
             assert self._close_code(port, origin.format(port=port)) == code
-        finally:
-            server.should_exit = True
-            thread.join(10)
 
 
 class TestUiTools:
@@ -699,7 +687,6 @@ class TestLiveSdkClient:
 
     def test_sdk_client_drives_a_websocket_tab(self, agent_app):
         import httpx2
-        import uvicorn
         import websockets
         from mcp import ClientSession
         from mcp.client.streamable_http import streamable_http_client
@@ -707,16 +694,7 @@ class TestLiveSdkClient:
         env = agent_app("legacy")
         jwt = jwt_of(env.login())
         token = env.token(env.login())
-        server = uvicorn.Server(uvicorn.Config(env.app, host="127.0.0.1", port=0, log_level="warning",
-                                               lifespan="off", ws="auto"))
-        thread = threading.Thread(target=server.run, daemon=True)
-        thread.start()
-        try:
-            deadline = time.monotonic() + 10
-            while not server.started and time.monotonic() < deadline:
-                time.sleep(0.05)
-            assert server.started
-            port = server.servers[0].sockets[0].getsockname()[1]
+        with serve_app(env.app, log_level="warning", ws="auto") as port:
             seen = []
 
             async def tab(ready):
@@ -746,8 +724,5 @@ class TestLiveSdkClient:
                 return json.loads(called.content[0].text)
 
             envelope = asyncio.run(drive())
-        finally:
-            server.should_exit = True
-            thread.join(timeout=10)
         assert envelope["ok"] is True and envelope["data"] == {"total": 3}
         assert seen[0]["tool"] == "ui_get_gallery_view" and seen[0]["args"] == {"limit": 5}

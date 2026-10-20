@@ -12,7 +12,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from api.agent import tokens
-from api.auth import CurrentUser, _edition_refusal, require_human_session
+from api.auth import CurrentUser, _edition_refusal, decode_access_token, require_human_session
 from api.config import get_user_config, is_multi_user_enabled, mcp_settings
 from api.models.mcp import (
     McpTokenCreate, McpTokenCreated, McpTokenList, McpTokenRevoked,
@@ -32,8 +32,7 @@ def _refuse_agent_token(request: Request) -> None:
     Without this the generic session check answers 401 ("not a session"), which reads as
     "log in" to an agent that holds a perfectly valid token.
     """
-    scheme, _, secret = request.headers.get("authorization", "").partition(" ")
-    if scheme.lower() == "bearer" and secret.strip().startswith(tokens.TOKEN_PREFIX):
+    if (tokens.bearer_token(request.headers) or "").startswith(tokens.TOKEN_PREFIX):
         raise HTTPException(status_code=403, detail="Agent credentials cannot manage agent tokens")
 
 
@@ -59,6 +58,12 @@ def _granted_level(user: CurrentUser, requested: str) -> str:
     if requested == 'user' and mode == 'multi':
         return 'user'
     return 'readonly'
+
+
+def session_claims(request: Request) -> Optional[dict]:
+    """The decoded claims of the request's own bearer JWT (the session), or None."""
+    secret = tokens.bearer_token(request.headers)
+    return decode_access_token(secret) if secret else None
 
 
 def _shared_principal_scope(user: CurrentUser) -> Optional[int]:
@@ -90,11 +95,13 @@ def create_token(body: McpTokenCreate, user: CurrentUser = Depends(require_human
     if not principal or (tokens.install_mode() == 'multi' and get_user_config(principal) is None):
         raise HTTPException(status_code=401, detail="Authentication required")
     level = _granted_level(user, body.level)
-    if tokens.count_live(principal) >= tokens.MAX_LIVE_TOKENS_PER_USER:
+    try:
+        row, plaintext = tokens.mint(principal, body.name, level, tokens.session_level(user),
+                                     tokens.MAX_LIVE_TOKENS_PER_USER)
+    except tokens.TokenLimitReached:
         raise HTTPException(
             status_code=412,
             detail=f"At most {tokens.MAX_LIVE_TOKENS_PER_USER} live tokens per user; revoke one first")
-    row, plaintext = tokens.mint(principal, body.name, level, tokens.session_level(user))
     logger.info("MCP token %d minted (level %s)", row['id'], level)
     return {**row, 'token': plaintext}
 

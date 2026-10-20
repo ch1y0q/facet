@@ -785,6 +785,7 @@ API：参见下文的 [API 端点](#api-端点)一节。
 
 | 策略 | 说明 |
 |----------|-------------|
+| `learning` | 默认。先按嵌入多样性冷启动，之后选取个人排序器分歧最大的照片对（信息量最大） |
 | `uncertainty` | 评分接近的照片（信息量最大） |
 | `boundary` | 6–8 分区间（模糊地带） |
 | `active` | 被比较次数最少的照片（保证覆盖率） |
@@ -1189,6 +1190,7 @@ python database.py --stats-info
 | `GET /api/photos` | 带筛选条件的分页照片列表 |
 | `GET /api/photos/count` | `{ total }`——有多少照片符合当前照片库的筛选条件 |
 | `GET /api/photos/paths` | `{ total, paths }`——所有匹配的路径，无序；仅由需要文件名的操作（下载、复制）按需使用，全选绝不会用到它。上限为 10000：超过此数的视图会被以 `412` 拒绝并给出数量和上限，而不是被截断——一份不完整的路径列表会让用户误以为选择是完整的——而且没有任何回退：该操作会带着一条“照片过多”的提示被放弃，让用户去缩小筛选范围后重试。只有真正需要字面路径列表的操作才会走这里；整个视图的选择本身只需计数（`GET /api/photos/count`），从来不需要路径列表，因此建立在其之上的、按筛选条件限定的操作（批量评分／淘汰写入、选片、附属文件导出）不受此上限影响，它们各有自己的上限 |
+| `POST /api/photos/by_paths` | 请求体：`{paths (1–500), filters}`。按请求顺序返回所列照片，经过图库的可见性与筛选（`filters` 接受图库自身的键；分页与排序键会被丢弃，其他键返回 `422`）。查看器的默认类型和隐藏开关不会生效：调用方指定的列表会完整显示。响应 `{photos, total, missing}`；`missing` 列出（最多 200 个）未知、不可见或被筛掉的路径 |
 | `GET /api/photo` | 单张照片的详情 |
 | `PUT /api/photo/manual_tags` | 为一张照片添加[手动标签](#手动标签)（受编辑模式限制）。请求体：`{path, tag}`。路径未知或不可见返回 `404`，标签无效或照片已有 50 个标签返回 `422`；与照片某个 AI 标签相同的标签不起作用，返回 `200` 且带 `skipped_existing: true` |
 | `DELETE /api/photo/manual_tags` | 从一张照片移除一个手动标签（受编辑模式限制）。请求体：`{path, tag}` |
@@ -1251,7 +1253,7 @@ python database.py --stats-info
 | `POST /api/persons` | 创建一个新人物，可同时附加人脸（受编辑模式限制）。请求体：`{name, face_ids}` |
 | `GET /api/persons/needs_naming?min_faces=N` | 列出 `face_count >= N` 的未命名自动聚类人物（默认值来自 `viewer.persons.needs_naming_min_faces`） |
 | `POST /api/persons/{id}/rename` | 重命名人物 |
-| `POST /api/persons/{id}/assign_faces` | 批量把人脸附加到某个人物；变空的旧人物会被自动删除（受编辑模式限制）。请求体：`{face_ids}` |
+| `POST /api/persons/{id}/assign_faces` | 批量把人脸附加到某个人物；变空的旧人物会被自动删除（受编辑模式限制）。请求体：`{face_ids, tolerant?, only_unassigned?}`。`tolerant: true` 时，调用会分配可分配的人脸并报告其余部分，而不是整体失败：`missing`、`already`、`skipped_model`、`skipped_hidden`、`skipped_assigned`（另有 `assigned_count`）；`only_unassigned: true` 不会动已属于其他人物的人脸，并且要求 `tolerant: true`（否则返回 `422`） |
 | `POST /api/persons/{id}/split` | 把某个人物的部分人脸拆分为新人物（受编辑模式限制）。请求体：`{face_ids, name}` |
 | `POST /api/persons/{id}/hide` | 把某个人物从列表、筛选条件和合并建议中隐藏 |
 | `POST /api/persons/{id}/unhide` | 取消隐藏此前被隐藏的人物 |
@@ -1389,6 +1391,7 @@ python database.py --stats-info
 | 端点 | 说明 |
 |----------|-------------|
 | `GET /api/person/{id}/faces` | 列出某个人物的人脸 |
+| `GET /api/person/{id}/possible_faces` | 与该人物质心最相似的人脸，最佳在前（仅限同一嵌入模型）。查询参数：`scope`（`unassigned`、`other_persons`、`all`）、`min_similarity`、`limit`（≤ 100）、`path_prefix`、`date_from`、`date_to`。未知或不可见的人物返回 `404`；人物没有可用质心，或扫描会超过服务器的人脸上限时返回 `412`（用 `scope`、`path_prefix` 或日期缩小范围）。响应 `{faces, faces_scanned, candidates}` |
 | `POST /api/person/{id}/avatar` | 设置人物头像所用的人脸 |
 | `GET /api/photo/faces` | 列出某张照片中检测到的人脸 |
 | `POST /api/face/{id}/assign` | 把一张人脸分配给某个人物 |

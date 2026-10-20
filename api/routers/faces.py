@@ -19,7 +19,7 @@ from api.config import is_multi_user_enabled, _stats_cache
 from api.database import get_async_db, get_db
 from api.routers.burst_culling import _invalidate_culling_groups_cache
 from api.db_helpers import (
-    update_person_face_count, trigger_auto_retrain, get_visibility_clause,
+    update_person_face_count, record_label_origin, snapshot_labels, clear_label_origin_for_scope, trigger_auto_retrain, get_visibility_clause,
     assert_faces_visible, assert_photo_visible, repair_stale_representative,
     is_locked_error, retry_on_locked, select_in_chunks,
 )
@@ -455,6 +455,7 @@ def api_set_rating(
     with get_db() as conn:
         try:
             _require_writable_photo(conn, user, body.photo_path)
+            before = snapshot_labels(conn, user.is_agent_request, user.user_id, [body.photo_path])
             if user.user_id and is_multi_user_enabled():
                 conn.execute("""
                     INSERT INTO user_preferences (user_id, photo_path, star_rating)
@@ -463,6 +464,7 @@ def api_set_rating(
                 """, (user.user_id, body.photo_path, body.rating))
             else:
                 conn.execute("UPDATE photos SET star_rating = ? WHERE path = ?", (body.rating, body.photo_path))
+            record_label_origin(conn, user.is_agent_request, user.user_id, [body.photo_path], before)
             conn.commit()
             _stats_cache.clear()
             if not user.is_agent_request:
@@ -486,6 +488,7 @@ def api_toggle_favorite(
     with get_db() as conn:
         try:
             _require_writable_photo(conn, user, body.photo_path)
+            before = snapshot_labels(conn, user.is_agent_request, user.user_id, [body.photo_path])
             if user.user_id and is_multi_user_enabled():
                 row = conn.execute(
                     "SELECT is_favorite FROM user_preferences WHERE user_id = ? AND photo_path = ?",
@@ -512,6 +515,7 @@ def api_toggle_favorite(
                     conn.execute("UPDATE photos SET is_favorite = 1, is_rejected = 0 WHERE path = ?", (body.photo_path,))
                 else:
                     conn.execute("UPDATE photos SET is_favorite = 0 WHERE path = ?", (body.photo_path,))
+            record_label_origin(conn, user.is_agent_request, user.user_id, [body.photo_path], before)
             conn.commit()
             _stats_cache.clear()
             _invalidate_culling_groups_cache()
@@ -538,6 +542,7 @@ def api_toggle_rejected(
     with get_db() as conn:
         try:
             _require_writable_photo(conn, user, body.photo_path)
+            before = snapshot_labels(conn, user.is_agent_request, user.user_id, [body.photo_path])
             if user.user_id and is_multi_user_enabled():
                 row = conn.execute(
                     "SELECT is_rejected FROM user_preferences WHERE user_id = ? AND photo_path = ?",
@@ -564,6 +569,7 @@ def api_toggle_rejected(
                     conn.execute("UPDATE photos SET is_rejected = 1, star_rating = 0, is_favorite = 0 WHERE path = ?", (body.photo_path,))
                 else:
                     conn.execute("UPDATE photos SET is_rejected = 0 WHERE path = ?", (body.photo_path,))
+            record_label_origin(conn, user.is_agent_request, user.user_id, [body.photo_path], before)
             conn.commit()
             _stats_cache.clear()
             _invalidate_culling_groups_cache()
@@ -691,6 +697,16 @@ def _write_filter_scope(conn, body: BatchPhotoRequest, user: CurrentUser, sql: B
     return cursor.rowcount
 
 
+def _filter_scope_paths(conn, body: BatchPhotoRequest, user: CurrentUser) -> list:
+    """The paths a filter-scoped batch is about to write, read BEFORE the write.
+
+    The statement itself never materialises the set; the label provenance (who wrote these labels)
+    has to name it, whatever the size.
+    """
+    from_clause, where_str, scope_params = _batch_scope_sql(conn, body, user)
+    return [r[0] for r in conn.execute(f"SELECT photos.path FROM {from_clause}{where_str}", scope_params)]
+
+
 def _write_paths(conn, paths: list, user: CurrentUser, sql: BatchWriteSql) -> int:
     """Write the named paths, which the caller has already filtered."""
     if user.user_id and is_multi_user_enabled():
@@ -726,7 +742,14 @@ def _batch_update(body: BatchPhotoRequest, user: CurrentUser, sql: BatchWriteSql
     with get_db() as conn:
         try:
             if body.filters is not None:
-                count = _write_filter_scope(conn, body, user, sql)
+                if user.is_agent_request:
+                    touched = _filter_scope_paths(conn, body, user)
+                    before = snapshot_labels(conn, True, user.user_id, touched)
+                    count = _write_filter_scope(conn, body, user, sql)
+                    record_label_origin(conn, True, user.user_id, touched, before)
+                else:
+                    clear_label_origin_for_scope(conn, user.user_id, *_batch_scope_sql(conn, body, user))
+                    count = _write_filter_scope(conn, body, user, sql)
             else:
                 # `exclude` narrows WHICHEVER target is sent. On the filter
                 # branch `_batch_scope_sql` binds it into the query; here it is
@@ -740,7 +763,9 @@ def _batch_update(body: BatchPhotoRequest, user: CurrentUser, sql: BatchWriteSql
                 paths = _writable_photo_paths(conn, user, named)
                 if not paths:
                     return {'success': True, 'count': 0}
+                before = snapshot_labels(conn, user.is_agent_request, user.user_id, paths)
                 count = _write_paths(conn, paths, user, sql)
+                record_label_origin(conn, user.is_agent_request, user.user_id, paths, before)
             conn.commit()
             _stats_cache.clear()
             _invalidate_culling_groups_cache()

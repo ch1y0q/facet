@@ -35,7 +35,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from api.agent import bridge, tokens
 from api.agent.bridge import TabConn, TabRegistry
-from api.agent.tokens import OPEN_PRINCIPAL, install_mode
+from api.agent.tokens import OPEN_PRINCIPAL
 from api.agent.ui_tools import TAB_ID_PATTERN, tools_version
 from api.auth import (
     SHARE_CLIENT_ROLE, VIEWER_PASSWORD_KEY, CurrentUser, _is_open_install, decode_access_token,
@@ -72,10 +72,11 @@ def origin_allowed(origin: Optional[str], host: Optional[str]) -> bool:
     return bridge.same_origin(origin, host)
 
 
-def _level_of(payload: dict) -> str:
-    """The rights a session's JWT carries; ``edition`` / ``user`` / ``readonly`` as in a token grant."""
-    level = tokens.session_level(CurrentUser.from_payload(payload))
-    return "user" if level == "readonly" and install_mode() == "multi" else level
+def _level_of(payload: dict) -> Optional[str]:
+    """The rights a session holds right now (``tokens.session_grant``), or None when it no longer exists."""
+    grant = tokens.session_grant(CurrentUser.from_payload(payload), payload)
+    resolved = grant.resolve() if grant is not None else None
+    return None if resolved is None else resolved.level
 
 
 def _authenticate(token: Any) -> Optional[tuple[str, str, Optional[str], Optional[float]]]:
@@ -96,7 +97,10 @@ def _authenticate(token: Any) -> Optional[tuple[str, str, Optional[str], Optiona
     if not isinstance(sub, str) or not sub:
         return None
     exp = payload.get("exp")
-    return tokens.session_principal(sub), _level_of(payload), token, float(exp) if isinstance(exp, (int, float)) else None
+    level = _level_of(payload)
+    if level is None:
+        return None
+    return tokens.session_principal(sub), level, token, float(exp) if isinstance(exp, (int, float)) else None
 
 
 def _session_level(session_token: Optional[str]) -> Optional[str]:

@@ -8,15 +8,16 @@ reaches the developer's trash.
 import os
 import sqlite3
 import time
+from types import SimpleNamespace
 
 import httpx
 import pytest
 
 from api import config as api_config
-from api.agent import internal_client, limits, nonce
+from api.agent import limits, nonce
 from api.agent.internal_client import ROUTE_ALLOWLIST
 from api.agent.tools_write import WRITE_TOOL_LEVELS
-from tests.conftest import _TEST_DB_FILE, AGENT_DIR
+from tests.conftest import _TEST_DB_FILE, AGENT_DIR, intercept_internal_call
 
 ROWS = [
     {"path": AGENT_DIR + f"w{i}.jpg", "filename": f"w{i}.jpg", "aggregate": 5.0 + i,
@@ -72,12 +73,7 @@ def edition(agent_app):
 def counting(monkeypatch):
     """Record every upstream tool name the internal client is asked to call."""
     calls = []
-    real = internal_client.InternalClient.call
-
-    async def call(self, grant, tool, **kw):
-        calls.append(tool)
-        return await real(self, grant, tool, **kw)
-    monkeypatch.setattr(internal_client.InternalClient, "call", call)
+    intercept_internal_call(monkeypatch, lambda tool, kw: calls.append(tool))
     return calls
 
 
@@ -94,7 +90,6 @@ class TestGrantMatrix:
         "cull_apply": {"action": "copy_keeps", "paths": [P[0]]}, "delete_photos": {"paths": [P[0]]},
         "assign_faces": {"person_id": 999999, "face_ids": [1]},
         "set_caption": {"path": P[0], "caption": "x"}, "export_metadata": {"paths": [P[0]]},
-        "undo_last": {}, "list_agent_actions": {},
         "override_sequence": {"paths": [AGENT_DIR + "nope1.jpg", AGENT_DIR + "nope2.jpg"], "kind": "panorama"},
         "clear_sequence_override": {"paths": [AGENT_DIR + "nope1.jpg"]},
         "override_category": {"path": AGENT_DIR + "nope1.jpg", "category": "portrait"},
@@ -102,7 +97,7 @@ class TestGrantMatrix:
         "group_compare": {"paths": [P[0]], "by": "faces"}, "cull_report": {},
         "start_scan": {"directories": [AGENT_DIR]}, "scan_status": {}, "comparison_status": {},
     }
-    READ_ONLY = ("junk_list", "list_agent_actions", "scan_status", "comparison_status", "group_compare", "cull_report")
+    READ_ONLY = ("junk_list", "scan_status", "comparison_status", "group_compare", "cull_report")
 
     def test_every_write_tool_has_args_and_a_level(self):
         assert set(self.ARGS) == set(WRITE_TOOL_LEVELS)
@@ -340,27 +335,38 @@ def test_filter_scope_resolves_the_same_set_as_search_photos(edition, photos, mo
     assert result["data"]["affected"] == 4 and photo_col(P[3], "star_rating") == 1
 
 
-@pytest.fixture()
-def panorama(edition, seed_photos_prefix, tmp_path, monkeypatch):
-    """Three rejected frames of one panorama set on disk."""
+def _disk_library(edition, seed_photos_prefix, tmp_path, monkeypatch, subdir, rows, extra_files=()):
+    """Write each row's file (b'JPG') and the extra ``(name, bytes)`` files under ``tmp_path/subdir``, seed the
+    rows, and allow export/trash there. ``rows`` are ``(file name, row fields)``; returns the shared namespace."""
     env, token = edition
     root = os.path.realpath(tmp_path)
-    src = os.path.join(root, "pano")
+    src = os.path.join(root, subdir)
     os.makedirs(src)
-    rows = []
-    for index in range(3):
-        path = os.path.join(src, f"p{index}.jpg")
+    seeded = []
+    for name, fields in rows:
+        path = os.path.join(src, name)
         with open(path, "wb") as handle:
             handle.write(b"JPG")
-        rows.append({"path": path, "filename": f"p{index}.jpg", "is_rejected": 1,
-                     "sequence_kind": "panorama", "sequence_group_id": 9,
-                     "is_sequence_lead": 1 if index == 1 else 0})
-    seed_photos_prefix(src + "/", rows)
+        seeded.append({"path": path, "filename": name, **fields})
+    for name, data in extra_files:
+        with open(os.path.join(src, name), "wb") as handle:
+            handle.write(data)
+    seed_photos_prefix(src + "/", seeded)
     monkeypatch.setattr("api.routers.export._allowed_export_roots", lambda: [root])
     monkeypatch.setitem(api_config.VIEWER_CONFIG, "cull", {"allow_trash": True})
     monkeypatch.setattr("send2trash.send2trash", os.remove)
-    return type("Pano", (), {"env": env, "token": token, "src": src, "target": os.path.join(root, "out"),
-                             "lead": rows[1]["path"], "paths": [r["path"] for r in rows]})
+    return SimpleNamespace(env=env, token=token, src=src, target=os.path.join(root, "out"),
+                           paths=[row["path"] for row in seeded])
+
+
+@pytest.fixture()
+def panorama(edition, seed_photos_prefix, tmp_path, monkeypatch):
+    """Three rejected frames of one panorama set on disk."""
+    lib = _disk_library(edition, seed_photos_prefix, tmp_path, monkeypatch, "pano", [
+        (f"p{index}.jpg", {"is_rejected": 1, "sequence_kind": "panorama", "sequence_group_id": 9,
+                           "is_sequence_lead": 1 if index == 1 else 0}) for index in range(3)])
+    lib.lead = lib.paths[1]
+    return lib
 
 
 class TestSequenceSiblingsAreBoundToTheNonce:
@@ -397,31 +403,12 @@ class TestSequenceSiblingsAreBoundToTheNonce:
 @pytest.fixture()
 def library(edition, seed_photos_prefix, tmp_path, monkeypatch):
     """Four photos on disk: r1, r2 rejected, k1 kept (r1 has a RAW companion)."""
-    env, token = edition
-    root = os.path.realpath(tmp_path)
-    src = os.path.join(root, "src")
-    os.makedirs(src)
-    names = {"r1": 1, "r2": 1, "k1": 0}
-    rows = []
-    for name, rejected in names.items():
-        with open(os.path.join(src, name + ".jpg"), "wb") as handle:
-            handle.write(b"JPG")
-        rows.append({"path": os.path.join(src, name + ".jpg"), "filename": name + ".jpg",
-                     "is_rejected": rejected})
-    with open(os.path.join(src, "r1.CR2"), "wb") as handle:
-        handle.write(b"RAW")
-    seed_photos_prefix(src + "/", rows)
-    target = os.path.join(root, "out")
-    monkeypatch.setattr("api.routers.export._allowed_export_roots", lambda: [root])
-    monkeypatch.setitem(api_config.VIEWER_CONFIG, "cull", {"allow_trash": True})
-
-    def fake_trash(path):
-        os.remove(path)
-    monkeypatch.setattr("send2trash.send2trash", fake_trash)
-    return type("Lib", (), {
-        "env": env, "token": token, "src": src, "target": target,
-        "r1": rows[0]["path"], "r2": rows[1]["path"], "k1": rows[2]["path"],
-        "listing": staticmethod(lambda d: sorted(os.listdir(d)) if os.path.isdir(d) else [])})
+    lib = _disk_library(edition, seed_photos_prefix, tmp_path, monkeypatch, "src", [
+        ("r1.jpg", {"is_rejected": 1}), ("r2.jpg", {"is_rejected": 1}), ("k1.jpg", {"is_rejected": 0})],
+        [("r1.CR2", b"RAW")])
+    lib.r1, lib.r2, lib.k1 = lib.paths
+    lib.listing = lambda d: sorted(os.listdir(d)) if os.path.isdir(d) else []
+    return lib
 
 
 class TestCullApply:
@@ -629,24 +616,24 @@ class TestNonceModule:
         for _ in range(nonce.MAX_PENDING * 2):
             nonce.issue(2, "act", "h")
         assert nonce.consume(1, "act", digest, victim)
-        assert sum(1 for entry in nonce._pending.values() if entry[0] == 2) <= nonce.MAX_PENDING_PER_TOKEN
+        assert sum(1 for entry in nonce._pending.values() if entry[0] == 2) <= nonce.MAX_PENDING_PER_OWNER
 
     def test_global_cap_evicts_the_issuers_own_entries_first(self):
         nonce.reset()
-        others = nonce.MAX_PENDING // nonce.MAX_PENDING_PER_TOKEN - 1
+        others = nonce.MAX_PENDING // nonce.MAX_PENDING_PER_OWNER - 1
         for token in range(2, 2 + others):
-            for _ in range(nonce.MAX_PENDING_PER_TOKEN):
+            for _ in range(nonce.MAX_PENDING_PER_OWNER):
                 nonce.issue(token, "act", "h")
         for _ in range(30):
             nonce.issue(1, "act", "h")
         assert len(nonce._pending) == nonce.MAX_PENDING
-        assert sum(1 for entry in nonce._pending.values() if entry[0] != 1) == others * nonce.MAX_PENDING_PER_TOKEN
+        assert sum(1 for entry in nonce._pending.values() if entry[0] != 1) == others * nonce.MAX_PENDING_PER_OWNER
 
     def test_global_cap_full_of_other_tokens_refuses_instead_of_evicting(self):
         nonce.reset()
-        others = nonce.MAX_PENDING // nonce.MAX_PENDING_PER_TOKEN
+        others = nonce.MAX_PENDING // nonce.MAX_PENDING_PER_OWNER
         for token in range(2, 2 + others):
-            for _ in range(nonce.MAX_PENDING_PER_TOKEN):
+            for _ in range(nonce.MAX_PENDING_PER_OWNER):
                 nonce.issue(token, "act", "h")
         before = dict(nonce._pending)
         with pytest.raises(nonce.NonceCapacityError):
@@ -726,13 +713,12 @@ class TestExportMetadata:
 
     def test_the_call_uses_the_dedicated_timeout_not_call_timeout_s(self, library, monkeypatch):
         seen = {}
-        real = internal_client.InternalClient.call
 
-        async def spy(self, grant, tool, **kw):
+        def spy(tool, kw):
             if tool == "export_metadata":
                 seen["timeout"] = kw["timeout"]
-            return await real(self, grant, tool, **kw)
-        monkeypatch.setattr(internal_client.InternalClient, "call", spy)
+
+        intercept_internal_call(monkeypatch, spy)
         self.export(library, [library.k1])
         assert seen["timeout"] == 180 != api_config.mcp_settings()["call_timeout_s"]
 
@@ -740,3 +726,20 @@ class TestExportMetadata:
         env = agent_app("legacy")
         token = env.token(env.login(), "user")
         assert env.call(token, "export_metadata", {"paths": [library.k1]})["error"] == "forbidden_level"
+
+
+class TestFilterScopedBatchBeyondTheRouteCap:
+    """A filter scope reaches the route as filters, so it may exceed the 1000 paths a path list takes."""
+    PREFIX = AGENT_DIR + "big/"
+
+    def test_1100_photo_filter_batch_is_written_and_every_photo_is_marked_agent_made(self, edition, seed_photos_prefix):
+        env, token = edition
+        rows = [{"path": f"{self.PREFIX}b{i:04d}.jpg", "filename": f"b{i:04d}.jpg", "aggregate": 5.0,
+                 "star_rating": 1} for i in range(1100)]
+        seed_photos_prefix(self.PREFIX, rows)
+        scope = {"path_prefix": self.PREFIX}
+        result = env.call(token, "batch_set_rating", {"filters": scope, "expected_count": 1100, "rating": 4})
+        assert result["ok"], result
+        assert result["data"]["affected"] == 1100
+        assert db_row("SELECT COUNT(*) FROM photos WHERE path LIKE ? AND star_rating = 4", self.PREFIX + "%")[0] == 1100
+        assert db_row("SELECT COUNT(*) FROM rating_provenance WHERE photo_path LIKE ?", self.PREFIX + "%")[0] == 1100

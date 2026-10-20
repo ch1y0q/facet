@@ -169,6 +169,41 @@ describe('AgentWebMcpService', () => {
     expect(registerTool).toHaveBeenCalledTimes(4);
   });
 
+  it('goes back to off and registers nothing when the polyfill fails to load', async () => {
+    TestBed.resetTestingModule();
+    registerTool.mockClear();
+    const failing = vi.fn(() => Promise.reject(new Error('chunk failed')));
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: AuthService, useValue: { status: signal<AuthStatus | null>(status()) } },
+        { provide: WEBMCP_POLYFILL_LOADER, useValue: failing },
+        { provide: IS_SECURE_CONTEXT, useValue: () => true },
+        { provide: WebMcpToolRegistry, useValue: { tools: [tool('ui_navigate', false, false)], ready: signal(true), load: () => Promise.resolve() } },
+      ],
+    });
+    const failed = TestBed.inject(AgentWebMcpService);
+    await settle();
+    expect(failing).toHaveBeenCalled();
+    expect(failed.state()).toBe('off');
+    expect(failed.sessionInjector()).toBeNull();
+    expect(registerTool).not.toHaveBeenCalled();
+  });
+
+  it('exposes the session injector while active and clears it after logout', async () => {
+    await settle();
+    expect(service.sessionInjector()).not.toBeNull();
+    authStatus.set(null);
+    await settle();
+    expect(service.sessionInjector()).toBeNull();
+  });
+
+  it('unregisters every tool when the app is destroyed', async () => {
+    await settle();
+    expect(live.size).toBe(2);
+    TestBed.resetTestingModule();
+    expect(live.size).toBe(0);
+  });
+
   it('unregisters when the feature turns off', async () => {
     await settle();
     authStatus.set(status({ features: { mcp: false } }));

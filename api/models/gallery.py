@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, Field, StringConstraints
 from typing import Annotated
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 from api.models.common import CoercedInt, PaginationEnvelope
 
@@ -369,11 +369,18 @@ def gallery_filter_keys() -> frozenset[str]:
     return frozenset(GalleryParams.model_fields) | GALLERY_FILTER_ALIASES
 
 
+def query_value(value: Any) -> str:
+    """A filter value as the gallery's query string carries it: booleans as '1'/'0', the rest str()."""
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    return str(value)
+
+
 class PhotosByPathsRequest(BaseModel):
     """Photos named by path, optionally narrowed by the gallery's filters."""
     paths: list[Annotated[str, StringConstraints(min_length=1, max_length=4096)]] = Field(
         min_length=1, max_length=BY_PATHS_MAX)
-    filters: dict[str, Union[str, int, bool]] = {}
+    filters: dict[str, Union[str, int, float, bool]] = {}
 
 
 class PhotosByPathsResponse(BaseModel):

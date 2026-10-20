@@ -2606,6 +2606,7 @@ Expone las herramientas descritas en [Agentes de IA (MCP)](AGENTS.md) en `POST /
       "write_rate_per_min": 30,
       "tool_profile": "full",
       "allow_destructive": false,
+      "inpage_tools": true,
       "allowed_origins": []
     }
   }
@@ -2623,8 +2624,9 @@ Expone las herramientas descritas en [Agentes de IA (MCP)](AGENTS.md) en `POST /
 | `semantic_timeout_s` | `120` | Tiempo límite de `semantic_search` en segundos (1 a 300); carga el modelo de embeddings y necesita más. |
 | `rate_per_min` | `120` | Llamadas a herramientas por minuto y token (mínimo 1). |
 | `write_rate_per_min` | `30` | Llamadas de escritura por minuto y token (mínimo 1). Se mantiene aparte para que las lecturas no dejen sin cupo a las escrituras. Se aplica a las herramientas de escritura (incluida la simulación de `cull_apply` y `delete_photos`); consulta [Agentes de IA](AGENTS.md#modificar-la-biblioteca). |
-| `tool_profile` | `"full"` | `"full"` lista cada herramienta que la clave puede llamar. `"core"` lista solo un conjunto de 12 herramientas para modelos pequeños (`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`, `undo_last`). Solo cambia la lista: una herramienta fuera de ella aún puede llamarse si el nivel de la clave lo permite. Cualquier otro valor vuelve a `"full"`. Ver [Agentes de IA](AGENTS.md#niveles-de-permiso). |
-| `allow_destructive` | `false` | Permite a los asistentes ejecutar `delete_photos`, las acciones `move_rejects` y `trash_rejects` de `cull_apply` y `assign_faces` con `allow_reassign`. Desactivado, `delete_photos` no se lista y las otras dos responden `feature_disabled` nombrando esta clave. Ninguna se puede deshacer. Ver [Agentes de IA](AGENTS.md#acciones-destructivas-vista-previa-y-confirmación). |
+| `tool_profile` | `"full"` | `"full"` lista cada herramienta que la clave puede llamar. `"core"` lista solo un conjunto de 11 herramientas para modelos pequeños (`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`). Solo cambia la lista: una herramienta fuera de ella aún puede llamarse si el nivel de la clave lo permite. Cualquier otro valor vuelve a `"full"`. Ver [Agentes de IA](AGENTS.md#niveles-de-permiso). |
+| `allow_destructive` | `false` | Permite a los asistentes ejecutar `delete_photos`, las acciones `move_rejects` y `trash_rejects` de `cull_apply` y `assign_faces` con `allow_reassign`. Desactivado, `delete_photos` no se lista y las otras dos responden `feature_disabled` nombrando esta clave. Ver [Agentes de IA](AGENTS.md#acciones-destructivas-vista-previa-y-confirmación). |
+| `inpage_tools` | `true` | Si una pestaña con sesión iniciada puede llamar a las herramientas del servidor desde la página: `GET /api/mcp/inpage_tools` las lista y `POST /api/mcp/call` ejecuta una como la sesión, a su nivel actual, por el mismo envoltorio que `/mcp`. Desactivado, ambas rutas responden 404 y `features.mcp_inpage` es falso en `/api/auth/status`. Consulta [Agentes de IA](AGENTS.md#webmcp-en-la-página-agentes-del-navegador). |
 | `allowed_origins` | `[]` | Orígenes de navegador adicionales (por ejemplo `["https://photos.example.com"]`) autorizados a abrir el puente de pestaña cuando un proxy inverso reescribe `Host`. Distinta de la clave CORS `viewer.allowed_origins`. |
 
 Los números fuera de rango se ajustan al límite, y un valor de tipo incorrecto vuelve al predeterminado. El bloque se lee en cada petición, así que recargar la configuración activa o desactiva la función sin reiniciar.
@@ -2821,7 +2823,7 @@ Naturalidad del tono de piel en retratos (solo informativo). `--recompute-skin-t
 
 ## Sincronización con Immich
 
-Sincronización unidireccional de las valoraciones por estrellas y los favoritos de Facet a un servidor [Immich](https://immich.app/) mediante su API REST. Los recursos se resuelven por `originalPath` a través de las asignaciones de prefijo de ruta configuradas, en una única pasada de búsqueda masiva. Ejecútala con `--immich-sync` (comprueba primero con `--immich-test`); consulta [Comandos — Sincronización con Immich](COMMANDS.md#immich-sync).
+Sincronización unidireccional de las valoraciones por estrellas y los favoritos de Facet a un servidor [Immich](https://immich.app/) mediante su API REST. Los recursos se resuelven por `originalPath` a través de las asignaciones de prefijo de ruta configuradas, en una única pasada de búsqueda masiva. Ejecútala con `--immich-sync` (comprueba primero con `--immich-test`); consulta [Comandos — Sincronización con Immich](COMMANDS.md#sincronización-con-immich).
 
 ```json
 {

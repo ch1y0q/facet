@@ -2,8 +2,9 @@ export function basename(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
-export function copyLines(lines: string[]): Promise<void> {
-  return navigator.clipboard.writeText(lines.join('\n'));
+/** Copy `lines` one per row, through the same clipboard-then-execCommand route as `copyText`; rejects when neither worked. */
+export async function copyLines(lines: string[]): Promise<void> {
+  if (!await copyText(lines.join('\n'))) throw new Error('The clipboard is not available');
 }
 
 /**

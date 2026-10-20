@@ -69,8 +69,6 @@ ACTIONS: tuple[Action, ...] = (
            ("junk_list", "junk_reject", "junk_clear"), ANY),
     Action("teach_preferences", "Open the comparison page so the user can teach Facet their taste",
            ("ui_show_comparison", "comparison_status"), ANY),
-    Action("undo_agent_changes", "List what assistants changed and take a batch back",
-           ("list_agent_actions", "undo_last"), ANY),
     Action("fix_sequence_set", "Tell Facet what a set of frames really is (panorama, bracket, not a set)",
            ("override_sequence", "clear_sequence_override"), _when("culling", "selection")),
     Action("recategorize", "Pin or release one photo's category",
@@ -118,6 +116,18 @@ def facts_for(route: str, selection_count: int, pinned: bool) -> frozenset[str]:
     if pinned:
         facts.add("pinned")
     return frozenset(facts)
+
+
+def facts_from_context(data: dict) -> tuple[frozenset[str], str, int, bool]:
+    """``(facts, route, selection_count, pinned)`` from a tab's ``ui_get_context`` data."""
+    raw_gallery, raw_selection = data.get("gallery"), data.get("selection")
+    gallery: dict = raw_gallery if isinstance(raw_gallery, dict) else {}
+    selection: dict = raw_selection if isinstance(raw_selection, dict) else {}
+    raw_count = selection.get("count")
+    count = raw_count if isinstance(raw_count, int) else 0
+    route = str(data.get("route") or "/")
+    pinned = bool(gallery.get("pinned"))
+    return facts_for(route, count, pinned), route, count, pinned
 
 
 def applies(action: Action, facts: frozenset[str]) -> bool:

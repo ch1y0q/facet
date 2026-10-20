@@ -38,44 +38,13 @@ export type McpTokenList = components['schemas']['McpTokenList'];
 
 export type McpTokenRevoked = components['schemas']['McpTokenRevoked'];
 
-export type AgentActionBatch = components['schemas']['AgentActionBatch'];
+export type McpInpageTool = components['schemas']['McpInpageTool'];
 
-export type AgentActionList = components['schemas']['AgentActionList'];
+export type McpInpageTools = components['schemas']['McpInpageTools'];
 
-export type AgentUndoRequest = components['schemas']['AgentUndoRequest'];
+export type McpCallRequest = components['schemas']['McpCallRequest'];
 
-export type AgentUndoResult = components['schemas']['AgentUndoResult'];
+export type McpCallResponse = components['schemas']['McpCallResponse'];
 
 /** Level tiers of the in-page server tools; a tool needs at least its `required_level`. */
-export type McpInpageLevel = 'readonly' | 'user' | 'edition';
-
-/** One server tool the session may call in-page (`GET /api/mcp/inpage_tools`); `show` and `tab_id` are already stripped. */
-export interface McpInpageTool {
-  name: string;
-  description: string;
-  inputSchema: Record<string, unknown>;
-  annotations: { readOnlyHint?: boolean; consequentialHint?: boolean; untrustedContentHint?: boolean };
-  required_level: McpInpageLevel;
-}
-
-export interface McpInpageTools {
-  level: McpInpageLevel;
-  tools: McpInpageTool[];
-}
-
-/** Body of `POST /api/mcp/call`; `selection_snapshot` is the caller tab's `ui_get_selection` data. */
-export interface McpCallRequest {
-  tool: string;
-  arguments: Record<string, unknown>;
-  selection_snapshot?: unknown;
-}
-
-/** The tool envelope as a 200 body. `changed` counts photos a write changed (0 for a dry run), `batch_id` is its journal batch. */
-export interface McpCallResponse {
-  ok: boolean;
-  data?: unknown;
-  error?: string;
-  message?: string;
-  changed?: number;
-  batch_id?: string;
-}
+export type McpInpageLevel = McpInpageTools['level'];

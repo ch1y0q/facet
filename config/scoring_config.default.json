@@ -3740,6 +3740,7 @@
       "write_rate_per_min": 30,
       "tool_profile": "full",
       "allow_destructive": false,
+      "inpage_tools": true,
       "allowed_origins": []
     },
     "raw_processor": {

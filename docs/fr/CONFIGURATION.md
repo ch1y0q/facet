@@ -2600,6 +2600,7 @@ Expose les outils décrits dans [Agents IA (MCP)](AGENTS.md) via `POST /mcp` : l
       "write_rate_per_min": 30,
       "tool_profile": "full",
       "allow_destructive": false,
+      "inpage_tools": true,
       "allowed_origins": []
     }
   }
@@ -2617,8 +2618,9 @@ Expose les outils décrits dans [Agents IA (MCP)](AGENTS.md) via `POST /mcp` : l
 | `semantic_timeout_s` | `120` | Délai de `semantic_search` en secondes (1 à 300) ; l'outil charge le modèle d'embeddings et demande donc plus de temps. |
 | `rate_per_min` | `120` | Appels d'outils par minute et par jeton (minimum 1). |
 | `write_rate_per_min` | `30` | Appels d'écriture par minute et par jeton (minimum 1). Budget séparé pour que les lectures n'affament pas les écritures. S'applique aux outils d'écriture (y compris la simulation de `cull_apply` et `delete_photos`) ; voir [Agents IA](AGENTS.md#modifier-la-bibliothèque). |
-| `tool_profile` | `"full"` | `"full"` liste tous les outils que la clé peut appeler. `"core"` ne liste qu'un ensemble de 12 outils pour les petits modèles (`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`, `undo_last`). Seule la liste change : un outil absent peut toujours être appelé si le niveau de la clé le permet. Toute autre valeur revient à `"full"`. Voir [Agents IA](AGENTS.md#niveaux-dautorisation). |
-| `allow_destructive` | `false` | Autorise les assistants à lancer `delete_photos`, les actions `move_rejects` et `trash_rejects` de `cull_apply`, et `assign_faces` avec `allow_reassign`. Désactivé, `delete_photos` n'est pas listé et les deux autres répondent `feature_disabled` en nommant cette clé. Aucun n'est annulable. Voir [Agents IA](AGENTS.md#actions-destructives--aperçu-puis-confirmation). |
+| `tool_profile` | `"full"` | `"full"` liste tous les outils que la clé peut appeler. `"core"` ne liste qu'un ensemble de 11 outils pour les petits modèles (`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`). Seule la liste change : un outil absent peut toujours être appelé si le niveau de la clé le permet. Toute autre valeur revient à `"full"`. Voir [Agents IA](AGENTS.md#niveaux-dautorisation). |
+| `allow_destructive` | `false` | Autorise les assistants à lancer `delete_photos`, les actions `move_rejects` et `trash_rejects` de `cull_apply`, et `assign_faces` avec `allow_reassign`. Désactivé, `delete_photos` n'est pas listé et les deux autres répondent `feature_disabled` en nommant cette clé. Voir [Agents IA](AGENTS.md#actions-destructives--aperçu-puis-confirmation). |
+| `inpage_tools` | `true` | Indique si un onglet connecté peut appeler les outils du serveur depuis la page : `GET /api/mcp/inpage_tools` les liste et `POST /api/mcp/call` en exécute un avec la session, à son niveau actuel, par le même enveloppeur que `/mcp`. Désactivé, les deux routes répondent 404 et `features.mcp_inpage` est faux dans `/api/auth/status`. Voir [Agents IA](AGENTS.md#webmcp-dans-la-page-agents-du-navigateur). |
 | `allowed_origins` | `[]` | Origines de navigateur supplémentaires (par exemple `["https://photos.example.com"]`) autorisées à ouvrir le pont d'onglet lorsqu'un proxy inverse réécrit `Host`. Distinct de la clé CORS `viewer.allowed_origins`. |
 
 Les nombres hors plage sont ramenés dans la plage, et une valeur d'un mauvais type revient à la valeur par défaut. Le bloc est lu à chaque requête : un rechargement de la configuration active ou désactive la fonction sans redémarrage.
@@ -2815,7 +2817,7 @@ Naturel du teint des portraits (indicatif uniquement). `--recompute-skin-tone` �
 
 ## Synchronisation Immich
 
-Synchronisation à sens unique des notes en étoiles et favoris Facet vers un serveur [Immich](https://immich.app/) via son API REST. Les ressources sont résolues par `originalPath` grâce aux correspondances de préfixes de chemin configurées, en une seule passe de recherche groupée. Lancez-la avec `--immich-sync` (vérifiez d'abord avec `--immich-test`) ; voir [Commandes — Synchronisation Immich](COMMANDS.md#immich-sync).
+Synchronisation à sens unique des notes en étoiles et favoris Facet vers un serveur [Immich](https://immich.app/) via son API REST. Les ressources sont résolues par `originalPath` grâce aux correspondances de préfixes de chemin configurées, en une seule passe de recherche groupée. Lancez-la avec `--immich-sync` (vérifiez d'abord avec `--immich-test`) ; voir [Commandes — Synchronisation Immich](COMMANDS.md#synchronisation-immich).
 
 ```json
 {

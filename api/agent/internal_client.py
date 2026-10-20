@@ -136,6 +136,8 @@ def validation_issues(ex: ValidationError) -> list[dict]:
 
 
 CONFIG_REFUSAL_MARKERS = ("viewer.", "disabled", "not enabled")
+# A 412 whose detail names a server cap ("... over the ceiling of N; narrow ...") is a size refusal.
+TOO_LARGE_MARKER = "over the ceiling of"
 
 
 def _is_config_refusal(message: str) -> bool:
@@ -155,7 +157,7 @@ def _status_to_error(status: int, detail: Any) -> dict:
         return err("conflict", message)
     if status == 404:
         return err("not_found", message)
-    if status == 413:
+    if status == 413 or (status == 412 and TOO_LARGE_MARKER in message):
         return err("too_large", message)
     if status in (400, 412, 422):
         return err("invalid_input", message if issues is None else "Invalid input",
@@ -200,9 +202,7 @@ class InternalClient:
                            "A path argument may not be empty or contain '.' or '..' segments"), None
         headers = {}
         claims = resolved.jwt_claims()
-        if resolved.bearer is not None:
-            headers["Authorization"] = "Bearer " + resolved.bearer
-        elif claims is not None:
+        if claims is not None:
             jwt_token = create_access_token(claims, expires_delta=timedelta(seconds=INTERNAL_JWT_SECONDS))
             headers["Authorization"] = "Bearer " + jwt_token
         path = spec.template.format(

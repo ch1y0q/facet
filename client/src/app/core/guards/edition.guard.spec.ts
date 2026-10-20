@@ -5,8 +5,7 @@ import { AuthService, AuthStatus } from '../services/auth.service';
 import { authGuard } from './auth.guard';
 import { editionGuard } from './edition.guard';
 
-@Component({ changeDetection: ChangeDetectionStrategy.Eager,
- template: '' })
+@Component({ changeDetection: ChangeDetectionStrategy.Eager, template: '' })
 class DummyComponent {}
 
 const STATUS: AuthStatus = {

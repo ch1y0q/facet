@@ -726,6 +726,7 @@ Coppie di foto affiancate. Scegli un vincitore, segna un pareggio o salta. Una b
 
 | Strategia | Descrizione |
 |----------|-------------|
+| `learning` | Predefinita. Avvio a freddo per diversità di embedding, poi le coppie su cui il ranker personale è più in disaccordo (le più informative) |
 | `uncertainty` | Foto con punteggi simili (più informative) |
 | `boundary` | Intervallo di punteggio 6–8 (zona ambigua) |
 | `active` | Foto con il minor numero di confronti (assicura la copertura) |
@@ -1129,6 +1130,7 @@ I tipi TypeScript del client sono generati da questo schema in `client/src/app/c
 | `GET /api/photos` | Elenco foto impaginato con filtri |
 | `GET /api/photos/count` | `{ total }` — quante foto corrispondono ai filtri attuali della galleria |
 | `GET /api/photos/paths` | `{ total, paths }` — ogni percorso corrispondente, senza ordine; usato all'occorrenza dalle azioni che hanno bisogno dei nomi file (scaricamento, copia), mai da «Seleziona tutto». Limitato a 10000: una vista che ne contiene di più viene rifiutata con un `412` che indica il conteggio e il limite anziché essere troncata — un elenco di percorsi parziale sarebbe una selezione che l'utente crede completa — e non esiste alcun ripiego: l'azione viene abbandonata con un messaggio «troppe foto», lasciando all'utente il compito di restringere i filtri e riprovare. Solo le azioni che hanno bisogno di un elenco di percorsi letterale passano di qui; la selezione dell'intera vista è essa stessa un semplice conteggio (`GET /api/photos/count`) e non ha mai avuto bisogno di un simile elenco, quindi le azioni basate sui filtri che ne derivano (scritture in blocco di voto/scarto, cernita, esportazione dei sidecar) non sono toccate da questo limite e hanno il proprio |
+| `POST /api/photos/by_paths` | Corpo: `{paths (1–500), filters}`. Le foto indicate, nell'ordine richiesto, attraverso la visibilità e i filtri della galleria (`filters` accetta le chiavi proprie della galleria; le chiavi di paginazione e ordinamento vengono scartate, qualsiasi altra è `422`). Il tipo predefinito del visualizzatore e gli interruttori di nascondimento NON si applicano: un elenco indicato dal chiamante viene mostrato per intero. Risposta `{photos, total, missing}`; `missing` elenca (fino a 200) i percorsi sconosciuti, invisibili o esclusi dai filtri |
 | `GET /api/photo` | Dettagli di una singola foto |
 | `PUT /api/photo/manual_tags` | Aggiunge un [tag manuale](#tag-manuali) a una foto (soggetto alla modalità di modifica). Corpo: `{path, tag}`. `404` per un percorso sconosciuto o non visibile, `422` per un tag non valido o una foto già a 50 tag; un tag uguale a uno dei tag IA della foto non fa nulla e risponde `200` con `skipped_existing: true` |
 | `DELETE /api/photo/manual_tags` | Rimuove un tag manuale da una foto (soggetto alla modalità di modifica). Corpo: `{path, tag}` |
@@ -1191,7 +1193,7 @@ I tipi TypeScript del client sono generati da questo schema in `client/src/app/c
 | `POST /api/persons` | Crea una nuova persona, allegando facoltativamente dei volti (riservato alla modalità di modifica). Corpo: `{name, face_ids}` |
 | `GET /api/persons/needs_naming?min_faces=N` | Elenca le persone raggruppate automaticamente senza nome con `face_count >= N` (predefinito da `viewer.persons.needs_naming_min_faces`) |
 | `POST /api/persons/{id}/rename` | Rinomina una persona |
-| `POST /api/persons/{id}/assign_faces` | Allega in blocco volti a una persona; le vecchie persone vuote vengono eliminate automaticamente (riservato alla modalità di modifica). Corpo: `{face_ids}` |
+| `POST /api/persons/{id}/assign_faces` | Allega in blocco volti a una persona; le vecchie persone vuote vengono eliminate automaticamente (riservato alla modalità di modifica). Corpo: `{face_ids, tolerant?, only_unassigned?}`. Con `tolerant: true` la chiamata assegna ciò che può e segnala il resto invece di fallire: `missing`, `already`, `skipped_model`, `skipped_hidden`, `skipped_assigned` (più `assigned_count`); `only_unassigned: true` lascia stare i volti che appartengono già a un'altra persona e richiede `tolerant: true` (altrimenti `422`) |
 | `POST /api/persons/{id}/split` | Dividi un sottoinsieme dei volti di una persona in una nuova persona (riservato alla modalità di modifica). Corpo: `{face_ids, name}` |
 | `POST /api/persons/{id}/hide` | Nascondi una persona dall'elenco, dai filtri e dai suggerimenti di unione |
 | `POST /api/persons/{id}/unhide` | Mostra di nuovo una persona precedentemente nascosta |
@@ -1329,6 +1331,7 @@ I tipi TypeScript del client sono generati da questo schema in `client/src/app/c
 | Endpoint | Descrizione |
 |----------|-------------|
 | `GET /api/person/{id}/faces` | Elenca i volti di una persona |
+| `GET /api/person/{id}/possible_faces` | I volti più simili al centroide della persona, dal migliore (solo lo stesso modello di embedding). Query: `scope` (`unassigned`, `other_persons`, `all`), `min_similarity`, `limit` (≤ 100), `path_prefix`, `date_from`, `date_to`. `404` per una persona sconosciuta o invisibile, `412` se la persona non ha un centroide utilizzabile o la scansione supererebbe il limite di volti del server (restringi con `scope`, `path_prefix` o le date). Risposta `{faces, faces_scanned, candidates}` |
 | `POST /api/person/{id}/avatar` | Imposta il volto avatar della persona |
 | `GET /api/photo/faces` | Elenca i volti rilevati in una foto |
 | `POST /api/face/{id}/assign` | Assegna un volto a una persona |

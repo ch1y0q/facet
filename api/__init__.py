@@ -423,16 +423,6 @@ async def lifespan(app: FastAPI):
     # Expose the WAL thread reference so /metrics can report whether it died.
     app.state.wal_thread = wal_thread
 
-    # The undo journal keeps 30 days; a batch older than that is dropped here so a quiet install does not
-    # carry it until its owner next writes (the per-write prune only runs for that owner).
-    try:
-        from api.agent.journal import prune_by_age
-        pruned = prune_by_age()
-        if pruned:
-            logger.info("Dropped %d expired agent action rows", pruned)
-    except Exception:
-        logger.exception("Could not prune the agent action journal")
-
     logger.info("Facet API ready")
     # The MCP session manager's task group lives exactly as long as the app. It is
     # entered whatever viewer.mcp.enabled says: run() may be entered only once per
@@ -582,7 +572,6 @@ def create_app() -> FastAPI:
     from api.routers.immich import router as immich_router
     from api.routers.updates import router as updates_router
     from api.routers.mcp_tokens import router as mcp_tokens_router
-    from api.routers.mcp_actions import router as mcp_actions_router
 
     app.include_router(health_router)
     app.include_router(auth_router)
@@ -624,7 +613,6 @@ def create_app() -> FastAPI:
     app.include_router(webdav_router)
     app.include_router(immich_router)
     app.include_router(mcp_tokens_router)
-    app.include_router(mcp_actions_router)
 
     # Agent (MCP) endpoint: POST /mcp. Appended here, before the SPA catch-all below.
     # An install upgraded without re-running `pip install -r requirements.txt` has no
@@ -634,6 +622,7 @@ def create_app() -> FastAPI:
         from api.agent.bridge import TabRegistry
         from api.agent.server import mount_agent
         from api.routers.mcp_bridge import router as mcp_bridge_router
+        from api.routers.mcp_inpage import router as mcp_inpage_router
     except ImportError as ex:
         logger.warning("Agent (MCP) endpoint unavailable: %s; run `pip install -r requirements.txt`", ex)
         set_mcp_available(False)
@@ -642,6 +631,7 @@ def create_app() -> FastAPI:
         set_mcp_available(True)
         app.state.tab_registry = TabRegistry()
         app.include_router(mcp_bridge_router)
+        app.include_router(mcp_inpage_router)
         app.state.mcp_session_manager = mount_agent(app)
 
     # Check for plaintext passwords at startup

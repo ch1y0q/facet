@@ -1,14 +1,13 @@
-"""Sequence-set and category correction tools over /mcp, with their journal rows and undo.
+"""Sequence-set and category correction tools over /mcp, over the real routes.
 
 [REAL] ``agent_app`` (real auth chain), the real routes and side tables, rows seeded into the shared
 session DB. Nothing on the auth path is mocked.
 """
 
-import sqlite3
 
 import pytest
 
-from tests.conftest import _TEST_DB_FILE, AGENT_DIR
+from tests.conftest import AGENT_DIR, agent_db as db
 
 PREFIX = AGENT_DIR + "fix/"
 SEQ = [PREFIX + f"s{i}.jpg" for i in range(3)]
@@ -28,19 +27,9 @@ ROWS = (
 )
 
 
-def db(sql, *args):
-    with sqlite3.connect(_TEST_DB_FILE.name) as conn:
-        return conn.execute(sql, args).fetchall()
-
-
 def override_row(path):
     rows = db("SELECT sequence_kind, applied_at FROM photo_sequence_overrides WHERE photo_path = ?", path)
     return rows[0] if rows else None
-
-
-def journal_rows(tool):
-    return db("SELECT target_key, field, old_value, new_value, undone_at FROM agent_actions WHERE tool = ? "
-              "ORDER BY id", tool)
 
 
 @pytest.fixture()
@@ -50,7 +39,6 @@ def world(agent_app, seed_photos_prefix):
     yield env, env.token(env.login(edition=True), "edition")
     db("DELETE FROM photo_sequence_overrides WHERE photo_path LIKE ?", PREFIX + "%")
     db("DELETE FROM photo_scoring_overrides WHERE photo_path LIKE ?", PREFIX + "%")
-    db("DELETE FROM agent_actions WHERE target_key LIKE ?", PREFIX + "%")
 
 
 class TestSequenceOverride:
@@ -98,40 +86,11 @@ class TestSequenceOverride:
         assert result["data"]["state"][0]["sequence_override"] == "suppressed"
         assert override_row(SOLO) == (None, None)
 
-    def test_journal_row_and_undo_clears_new_override(self, world):
+    def test_a_one_frame_forced_kind_is_invalid_input_and_leaves_no_row(self, world):
         env, token = world
-        batch = env.call(token, "override_sequence", {"paths": SEQ, "kind": "panorama"})["data"]["undo"]["batch_id"]
-        assert [(r[1], r[2], r[3]) for r in journal_rows("override_sequence")] == [
-            ("sequence_override", "null", '"panorama"')] * 3
-        undone = env.call(token, "undo_last", {"batch_id": batch})
-        assert undone["data"]["outcomes"] == {"restored": 3}, undone
-        assert override_row(SEQ[0]) is None
-
-    def test_undo_refuses_when_override_changed_since(self, world):
-        env, token = world
-        batch = env.call(token, "override_sequence", {"paths": SEQ, "kind": "panorama"})["data"]["undo"]["batch_id"]
-        resp = env.client.post("/api/culling-groups/override_sequence", json={"paths": SEQ, "kind": "hdr_panorama"},
-                               headers=env.login(edition=True))
-        assert resp.status_code == 200, resp.text
-        undone = env.call(token, "undo_last", {"batch_id": batch})
-        assert undone["data"]["outcomes"] == {"skipped_changed_since": 3}
-        assert override_row(SEQ[0])[0] == "hdr_panorama"
-
-    def test_clear_journals_the_prior_kind_and_undo_reapplies_it(self, world):
-        env, token = world
-        env.call(token, "override_sequence", {"paths": SEQ, "kind": "panorama"})
-        cleared = env.call(token, "clear_sequence_override", {"paths": SEQ})
-        assert cleared["data"]["cleared"] == 3 and cleared["data"]["state"][0]["sequence_override"] is None
-        assert override_row(SEQ[0]) is None
-        assert env.call(token, "undo_last", {})["data"]["outcomes"] == {"restored": 3}
-        assert override_row(SEQ[0])[0] == "panorama"
-
-    def test_clearing_nothing_journals_nothing(self, world):
-        env, token = world
-        result = env.call(token, "clear_sequence_override", {"paths": [SOLO]})
-        assert result["ok"] and "undo" not in result["data"]
-        assert journal_rows("clear_sequence_override") == []
-
+        result = env.call(token, "override_sequence", {"paths": [SOLO], "kind": "panorama"})
+        assert result["error"] == "invalid_input"
+        assert override_row(SOLO) is None
 
 class TestCategoryOverride:
     def test_override_category_requires_edition(self, agent_app, seed_photos_prefix):
@@ -154,43 +113,7 @@ class TestCategoryOverride:
         env, token = world
         result = env.call(token, "override_category", {"path": SOLO, "category": "no_such_category"})
         assert result["error"] == "invalid_input" and "Unknown category" in result["message"]
-        assert journal_rows("override_category") == []
-
-    def test_journal_old_is_prior_override_not_prior_category(self, world):
-        env, token = world
-        env.call(token, "override_category", {"path": SOLO, "category": "portrait"})
-        env.call(token, "override_category", {"path": SOLO, "category": "landscape"})
-        rows = journal_rows("override_category")
-        assert [(r[1], r[2], r[3]) for r in rows] == [("category_override", "null", '"portrait"'),
-                                                      ("category_override", '"portrait"', '"landscape"')]
-
-    def test_undo_restores_prior_override_and_aggregate(self, world):
-        env, token = world
-        env.call(token, "override_category", {"path": SOLO, "category": "portrait"})
-        before = db("SELECT category, aggregate FROM photos WHERE path = ?", SOLO)
-        second = env.call(token, "override_category", {"path": SOLO, "category": "landscape"})
-        assert db("SELECT category FROM photos WHERE path = ?", SOLO) == [("landscape",)]
-        undone = env.call(token, "undo_last", {"batch_id": second["data"]["undo"]["batch_id"]})
-        assert undone["data"]["outcomes"] == {"restored": 1}, undone
-        assert db("SELECT category_override FROM photo_scoring_overrides WHERE photo_path = ?", SOLO) == [("portrait",)]
-        assert db("SELECT category, aggregate FROM photos WHERE path = ?", SOLO) == before
-
-    def test_undo_of_a_first_override_clears_it(self, world):
-        env, token = world
-        batch = env.call(token, "override_category", {"path": SOLO, "category": "portrait"})["data"]["undo"]["batch_id"]
-        assert env.call(token, "undo_last", {"batch_id": batch})["data"]["outcomes"] == {"restored": 1}
-        assert db("SELECT category_override FROM photo_scoring_overrides WHERE photo_path = ?", SOLO) in ([], [(None,)])
-
-    def test_undo_refuses_when_user_changed_override_in_ui(self, world):
-        env, token = world
-        batch = env.call(token, "override_category", {"path": SOLO, "category": "portrait"})["data"]["undo"]["batch_id"]
-        resp = env.client.post("/api/comparison/override_category", json={"path": SOLO, "category": "landscape"},
-                               headers=env.login(edition=True))
-        assert resp.status_code == 200, resp.text
-        undone = env.call(token, "undo_last", {"batch_id": batch})
-        assert undone["data"]["outcomes"] == {"skipped_changed_since": 1}
-        assert db("SELECT category_override FROM photo_scoring_overrides WHERE photo_path = ?",
-                  SOLO) == [("landscape",)]
+        assert db("SELECT 1 FROM photo_scoring_overrides WHERE photo_path = ?", SOLO) == []
 
     def test_clear_preserves_scoring_context(self, world):
         env, token = world
@@ -198,14 +121,14 @@ class TestCategoryOverride:
         db("UPDATE photo_scoring_overrides SET scoring_context = 'travel' WHERE photo_path = ?", SOLO)
         result = env.call(token, "clear_category_override", {"path": SOLO})
         assert result["ok"], result
+        assert "Sticky" not in result["data"]["note"] and "decide the category again" in result["data"]["note"]
         assert db("SELECT category_override, scoring_context FROM photo_scoring_overrides WHERE photo_path = ?",
                   SOLO) == [(None, "travel")]
 
-    def test_clearing_without_an_override_is_already_and_journals_nothing(self, world):
+    def test_clearing_without_an_override_is_already(self, world):
         env, token = world
         result = env.call(token, "clear_category_override", {"path": SOLO})
         assert result["data"] == {"path": SOLO, "already": True}
-        assert journal_rows("clear_category_override") == []
 
     def test_get_photo_exposes_the_override(self, world):
         env, token = world

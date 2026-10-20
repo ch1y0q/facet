@@ -80,6 +80,13 @@ def test_a_metric_filter_moves_a_low_photo_to_missing(client, rows):
     assert data["missing"] == [PFX + "low.jpg"]
 
 
+def test_a_fractional_json_number_filter_is_accepted_like_its_string_form(client, rows):
+    as_number = _post(client, ["low.jpg", "high.jpg"], {"min_score": 9.5})
+    assert as_number.status_code == 200, as_number.text
+    assert as_number.json() == _post(client, ["low.jpg", "high.jpg"], {"min_score": "9.5"}).json()
+    assert [p["path"] for p in as_number.json()["photos"]] == [PFX + "high.jpg"]
+
+
 def test_paging_and_sort_keys_are_dropped_not_rejected(client, rows):
     data = _post(client, ["low.jpg", "high.jpg"], {"page": 7, "per_page": 1, "sort": "aggregate", "dir": "ASC"}).json()
     assert [p["path"] for p in data["photos"]] == [PFX + "low.jpg", PFX + "high.jpg"]

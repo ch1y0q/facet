@@ -36,6 +36,7 @@ class ResourceSpec:
     name: str
     description: str
     read: Reader
+    required: tuple[str, ...] = ()
 
 
 async def _route(client: InternalClient, grant: Any, timeout: float, route: str, **query: Any) -> Any:
@@ -46,11 +47,11 @@ async def _route(client: InternalClient, grant: Any, timeout: float, route: str,
 
 
 async def _categories(client: InternalClient, grant: Any, timeout: float) -> dict:
-    return {"categories": await _route(client, grant, timeout, "filter_options.categories")}
+    return {"categories": ((await _route(client, grant, timeout, "filter_options.categories")) or {}).get("categories")}
 
 
 async def _tags(client: InternalClient, grant: Any, timeout: float) -> dict:
-    return {"tags": await _route(client, grant, timeout, "filter_options.tags")}
+    return {"tags": ((await _route(client, grant, timeout, "filter_options.tags")) or {}).get("tags")}
 
 
 async def _persons(client: InternalClient, grant: Any, timeout: float) -> dict:
@@ -86,12 +87,14 @@ async def _filters(client: InternalClient, grant: Any, timeout: float) -> dict:
 
 
 RESOURCES: dict[str, ResourceSpec] = {spec.uri: spec for spec in (
-    ResourceSpec("facet://categories", "Categories", "Scoring category names with their photo counts.", _categories),
-    ResourceSpec("facet://tags", "Tags", "The tag vocabulary with counts (top 200).", _tags),
+    ResourceSpec("facet://categories", "Categories", "Scoring category names with their photo counts.", _categories,
+                 ("filter_options",)),
+    ResourceSpec("facet://tags", "Tags", "The tag vocabulary with counts (top 200).", _tags,
+                 ("filter_options",)),
     ResourceSpec("facet://persons", "Persons", "Named people with their photo counts, as this key's owner sees them.",
-                 _persons),
+                 _persons, ("list_persons",)),
     ResourceSpec("facet://filters", "Filters", "Every search_photos filter key with its value domain and the "
-                 "library's metric ranges.", _filters),
+                 "library's metric ranges.", _filters, ("search_photos", "filter_options")),
     ResourceSpec("facet://scoring-contexts", "Scoring contexts", "Scoring contexts: promoted and excluded "
                  "categories and the resulting order.", _scoring_contexts),
 )}
@@ -117,10 +120,12 @@ def _limit(value: Any) -> tuple[Any, bool]:
         cut = True
 
 
-def list_resources() -> ListResourcesResult:
+def list_resources(resolved: tokens.ResolvedGrant, settings: dict) -> ListResourcesResult:
+    """The resources whose tools this key is offered, by the filter ``tools/list`` and ``prompts/list`` use."""
+    seen = prompts.visible_tools(resolved, settings)
     return ListResourcesResult(resources=[
         Resource(uri=spec.uri, name=spec.name, description=spec.description, mime_type=MIME, _meta=UNTRUSTED_META)
-        for spec in RESOURCES.values()])
+        for spec in RESOURCES.values() if set(spec.required) <= seen])
 
 
 async def read_resource(request: Any, uri: str, client: Optional[InternalClient]) -> ReadResourceResult:

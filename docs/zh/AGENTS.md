@@ -97,13 +97,14 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 | `ui_get_selection` | `scope`（`paths` 或 `view`）和 `count`，附带 `paths`；视图范围则附带 `filters` 和 `excluded_paths` |
 | `ui_next_page` | 加载图库的下一页 |
 | `ui_show_culling_group` | 在暗房中打开某个分组，由 `(type, group_id)` 标识（编辑账户） |
+| `ui_show_comparison` | 打开成对比较页面，可选指定类别和策略；它只负责打开页面，由您自己选出胜者 |
 
 工作方式：
 
 - 只要你已登录，且 `viewer.mcp.enabled` 与 `viewer.mcp.bridge` 都为 `true`，每个 Facet 标签页都会向 `/api/mcp/bridge` 打开一个同源 WebSocket，并在第一条消息中用你的会话完成认证。桥接默认开启；把 `viewer.mcp.bridge` 设为 `false` 即可关闭，此时 `ui_*` 工具会返回明确的错误。
 - `ui_get_context` 读取已打开的页面、图库状态、所选照片数量,以及适用于此页面和该令牌的 `actions`;`available_actions` 由服务器针对你已打开的标签页回答同一问题。超出令牌级别的工具不会列出。
 - 工具只能到达令牌所有者的标签页。单密码安装中所有会话是同一个用户；开放安装中每个标签页都属于共享用户 `_anonymous`，包括 edition 登录。
-- 每个标签页都带有打开它的会话的级别，令牌只能控制级别不低于其有效级别的标签页：`edition` 令牌绝不会使用仅有查看会话的标签页，而 `readonly` 令牌可以控制 `edition` 标签页。在单密码安装中，令牌还受创建它的会话限制：由仅查看会话创建的令牌只能到达查看级标签页，绝不会到达 `edition` 标签页（此规则之前创建的令牌被限制在其自身级别）。标签页只能被同级或更高级的标签页替换：仅查看会话重用 `edition` 标签页的 `tab_id` 会被以 4409 拒绝，超过每用户标签页上限时最低级别的标签页最先被移除。`status` 只列出该令牌能控制的标签页。 `status` 还会返回 `out_of_reach_tabs`，即此令牌无法驱动的已打开标签页数量。
+- 每个标签页都带有打开它的会话的级别，令牌只能控制级别不低于其有效级别的标签页：`edition` 令牌绝不会使用仅有查看会话的标签页，而 `readonly` 令牌可以控制 `edition` 标签页。在单密码安装中，令牌还受创建它的会话限制：由仅查看会话创建的令牌只能到达查看级标签页，绝不会到达 `edition` 标签页（此规则之前创建的令牌被限制在其自身级别）。在开放安装中，令牌同样被限制在查看级别：只能到达查看级标签页，绝不会到达 `edition` 标签页。标签页只能被同级或更高级的标签页替换：仅查看会话重用 `edition` 标签页的 `tab_id` 会被以 4409 拒绝，超过每用户标签页上限时最低级别的标签页最先被移除。`status` 只列出该令牌能控制的标签页。 `status` 还会返回 `out_of_reach_tabs`，即此令牌无法驱动的已打开标签页数量。
 - 打开多个标签页时，使用最近获得焦点的那个，结果中的 `tab` 字段会说明。传入 `tab_id`（由 `status` 列出）可选择其他标签页。
 - 标签页会拒绝其账户无权执行的操作（例如非编辑账户访问 `/culling`），工具会返回该拒绝信息。
 - 标签页返回的内容不可信：深度、字符串长度和列表长度都有上限，整体还受 `max_bytes` 限制。
@@ -114,7 +115,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 
 补充说明：
 
-- 当打开的是其他页面时，`ui_set_gallery_filters` 会先跳转到图库，再应用补丁。如果补丁中包含标签页无法操作的筛选条件，整个补丁会被拒绝（`invalid_input`）；这类条件请使用 `search_photos`。 在相册页面上，`replace: true` 会先回到图库，因此相册已保存的筛选不会被覆盖。它还接受 `semantic_query`、`semantic_threshold`（0 到 0.5）、`similar_to`、`similarity_mode` 和 `min_similarity`（0 到 1）；`similar_to` 与 `semantic_query` 不能同时使用。
+- 当打开的是其他页面时，`ui_set_gallery_filters` 会先跳转到图库，再应用补丁。如果补丁中包含标签页无法操作的筛选条件，整个补丁会被拒绝（`invalid_input`）；这类条件请使用 `search_photos`。 在相册页面上，任何更改都会先回到图库（不只是 `replace: true`），因此相册已保存的筛选不会被覆盖，相册范围也会被放弃。它还接受 `semantic_query`、`semantic_threshold`（0 到 0.5）、`similar_to`、`similarity_mode` 和 `min_similarity`（0 到 1）；`similar_to` 与 `semantic_query` 不能同时使用。
 - `ui_get_gallery_view`、`ui_next_page` 以及带 `select_view` 的 `ui_select_photos` 要求当前打开的页面是图库（或相册），否则返回 `no_active_view`；请先调用 `ui_navigate` 前往 `/`。`ui_select_photos` 必须恰好给出 `paths` 与 `select_view` 之一。
 - `no_tab` 也表示没有打开任何 Facet 标签页：请在浏览器中打开 Facet 并登录。**连接助手**对话框中的状态行会显示此标签页是否已连接；`status` 工具会列出已打开的标签页及其 id。
 - 标签页的会话被拒绝后会停止重连（请重新登录）；如果您的另一个标签页接管了连接，它会等到您回到该标签页再重连。
@@ -131,7 +132,13 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 - 当 `viewer.mcp.enabled` 为 true 且您已登录时注册，退出登录时移除。
 - 该对象是 `document.modelContext`（不提供已弃用的 `navigator.modelContext` 别名）。它是一个 polyfill，仅在浏览器没有原生实现时安装，且无法卸载：登录前它可能已存在但不含任何 Facet 工具，退出登录后它仍保留，工具列表为空。
 - 这些工具的功能与上表相同，并受同一账户级别的限制。
-- 浏览器智能体通过 `ui_get_context` 读取同一份 `actions` 列表。页内写入工具暂未提供:对库的修改通过 `/mcp` 端点进行。
+- 浏览器智能体通过 `ui_get_context` 读取同一份 `actions` 列表。
+- **页面内的图库工具。** 标签页还提供服务器自身的工具（搜索、评分、标签、相册、暗房、报告），通过 `GET /api/mcp/inpage_tools`（列表，含每个工具的 schema、`required_level` 以及会话当前的 `level`）和 `POST /api/mcp/call`（`{tool, arguments, selection_snapshot?}`）。它们以你已登录的会话身份，经与 `/mcp` 相同的封装层运行，因此级别、预览、`confirm` 值和速率限制的行为完全一致。工具失败时返回正常的 `ok: false` 信封（HTTP 200）；调用还会报告 `changed`（已写入的照片数）。
+- **级别。** 级别取你登录时的级别与你当前角色中较低者，每次调用都会重新读取：被降级的账户立即失去写入权限，被删除的账户会被拒绝（401）。低于工具的最低要求时，答复为 `forbidden_level`（"This session's level is readonly; set_rating needs edition: unlock edition in Facet"）。在单密码安装中，执行写入的会话必须已解锁编辑权限。
+- **谁可以调用。** 仅限已登录的人。智能体自己的 `/mcp` 令牌在这些路由上会被拒绝（403），外部 `Origin` 也一样；仅有 cookie 永远不能认证。每次调用都带有 `X-Facet-Agent-Session` 头（1 到 64 个字母、数字、`_` 或 `-`；缺失或格式错误则返回 400）。它用来区分标签页：为某个标签页签发的 `confirm` 值会被拒绝给另一个标签页；该值由页面自己选择，所以它只起区分作用，不起认证作用。
+- **不包含的内容。** 图像工具（`get_thumbnail`、`contact_sheet`）和 `available_actions`（请用 `ui_get_context`）。工具的 `show` 参数始终关闭，因为调用者就是标签页本身，`tab_id` 会被拒绝。`status` 只报告服务器与界面契约的版本。`target: "selection"` 使用页面发送的 `selection_snapshot`（即 `ui_get_selection` 返回的内容），缺少它则为 `invalid_input`。破坏性操作仍遵循 `viewer.mcp.allow_destructive`。
+- **品味。** 与任何助手的写入一样，从页面发起的工具调用从不记录比较，也从不触发重新训练。
+- **开关。** `viewer.mcp.inpage_tools`（默认 `true`）会关闭这两个路由（404），并将 `/api/auth/status` 中的 `features.mcp_inpage` 置为假；`viewer.mcp.enabled: false` 同样会关闭它们。
 
 ## 修改内容
 
@@ -165,7 +172,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 - **状态归谁。** 评分、收藏和淘汰都属于令牌所有者本人。
 - **被跳过的文件。** 当 `cull_apply` 或 `delete_photos` 返回非空的 `skipped` 列表时，结果还会带有 `skipped_reason`：这些库路径在磁盘上没有可读文件（缺失、已移动或不在扫描目录内），对它们未执行任何操作。
 - **用户所选的照片。** 在工具接受 `paths` 的地方,`target: "selection"` 改用已打开标签页的选择(`tab_id` 选择标签页)。预览与确认之间选择发生变化时返回 `invalid_input` 并带 `selection_changed`,选择过大而无法放入标签页回复时返回 `too_large`,`delete_photos` 在确认时会重新读取选择。
-- **说明文字与导出。** `set_caption` 只保存文本。说明文字不会重新嵌入,因此语义说明搜索在重新嵌入之前仍会匹配旧文本;增量导出到查看器数据库时,若来源的说明为空则保留已有说明,所以清除说明可能被之后的导出或扫描撤销。`export_metadata` 最多等待 180 秒,报告 `written`、`skipped` 和 `errors`,第一条错误文本在 `first_error` 中,并且在 exiftool 为 13.23 至 13.27 时拒绝写入。
+- **说明文字与导出。** `set_caption` 只保存文本。说明文字不会重新嵌入,因此语义说明搜索在重新嵌入之前仍会匹配旧文本;增量导出到查看器数据库时,若来源的说明为空则保留已有说明,所以已清除的说明可能随之后的导出或扫描重新出现。`export_metadata` 最多等待 180 秒,报告 `written`、`skipped` 和 `errors`,第一条错误文本在 `first_error` 中,并且在 exiftool 为 13.23 至 13.27 时拒绝写入。
 - **人脸。** `assign_faces` 会跳过并列出:不存在的、已在该人物下的、属于其他人物的(除非 `allow_reassign`)、使用其他嵌入模型的或属于已隐藏人物的人脸;`assigned_count` 是实际移动的数量。
 
 ### 破坏性操作：先预览再确认
@@ -184,17 +191,14 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 - `delete_photos` 把文件送入系统回收站并**删除其照片库记录**：评分、标签和评级无法恢复，即使文件本身可以恢复。
 - **前提条件。** `trash_rejects` 和 `delete_photos` 需要将 `viewer.cull.allow_trash` 设为 `true`（默认 `false`；否则调用会被拒绝）。`copy_keeps` 和 `move_rejects` 的 `target_dir` 必须位于允许的导出位置之下：`viewer.export.allowed_target_dirs` 加上你的扫描目录（参见[导出与选片目标位置](CONFIGURATION.md#导出与选片目标位置)）。
 
-## 撤销、修正与参考数据
+## 修正与参考数据
 
-- **撤销日志。** 写入工具替你做的每项更改都会被记录，并按工具调用归为一个批次（结果的 `undo` 字段带有其 `batch_id`）。`list_agent_actions`（`readonly`）按时间从新到旧列出你最近的批次。`undo_last`（`user`）撤销最近一个未撤销的批次，或 `batch_id` 指定的批次；`dry_run: true` 显示批次内容。只有当照片仍保留助手写入的值时才会恢复：此后你改动过的内容会被跳过（`skipped_changed_since`），因此你自己的编辑绝不会被覆盖。
-- **可以撤销的内容。** 评分、收藏、淘汰、手动标签、相册成员关系、说明文字，以及序列和类别修正。不可撤销：`cull_apply`、`delete_photos`、`junk_clear`、`create_album`、`export_metadata`、`assign_faces` 和 `start_scan`。撤销序列修正会恢复覆盖设置，而不是之后的检测遍历所分配的分组编号。
-- **保留期限。** 记录保留 30 天，每位所有者最多 20000 行，按整批清除；一次调用最多记录 5000 项更改（超出时写入仍会执行，结果会说明日志无法容纳）。日志也通过 `GET /api/mcp/actions` 和 `POST /api/mcp/actions/undo` 提供给已登录的会话（从不提供给智能体自己的令牌），并且不包含在查看器数据库导出中。在单密码安装上，密钥只能看到其自身级别及以下的批次。
 - **修正**（`edition`）。`override_sequence`（`kind`：`panorama`、`bracket`、`hdr_panorama` 或 `suppress`；除 `suppress` 外至少 2 个路径）和 `clear_sequence_override` 记录一项在下一次检测遍历时生效的修正（结果报告 `pending`）。`override_category` 和 `clear_category_override` 设置或清除持久的类别，它在重新扫描后依然保留并保持评分上下文。
 - **比较画面**（`readonly`）。`group_compare` 比较一个选片分组中的画面（最多 12 个路径），`by: "faces"`（每帧：人脸数、眨眼、最低睁眼度、最佳笑容、`best_path_by_eyes`）或 `by: "subjects"`（主体清晰度与突出度、`sharpest_path`）。这只是建议，不是决定。`cull_report` 用一次调用汇总一个范围：总数、保留、淘汰、收藏、已评分、未审阅、隐藏开关会隐藏的内容、垃圾、低分、最佳照片，以及（使用 edition 令牌时）暗房的前几个分组。各原因相互重叠。
-- **品味。** `comparison_status`（`edition`）报告你做了多少次成对比较以及它们对照片库的覆盖程度。没有任何工具能提交、编辑或删除比较：每一对的答案是你自己的点击。助手所做的写入（评分、淘汰、暗房确认、`auto_cull`）从不记录比较，也从不触发自动重新训练；你本人在图库中做同样的操作仍会如此。
-- **扫描。** `start_scan` 和 `scan_status`（`edition`）启动并跟踪对已配置目录的扫描。仅当 `viewer.features.show_scan_button` 开启且安装已锁定（多用户模式下为超级管理员密钥）时才会列出。扫描是追加式的，无法撤销，并在另一项任务运行时被拒绝（`conflict`）。与 Immich 的同步仍通过命令行进行。
+- **品味。** `comparison_status`（`edition`）报告你做了多少次成对比较以及它们对照片库的覆盖程度。没有任何工具能提交、编辑或删除比较：每一对的答案是你自己的点击。助手所做的写入（评分、淘汰、暗房确认、`auto_cull`）从不记录比较，也从不触发自动重新训练；你本人在图库中做同样的操作仍会如此。 助手写入的评分、收藏和淘汰，在个人排序器依据你的评分重建时同样不会进入训练对；一旦你自己给该照片评分，它们就会重新计入。这份记录保存在单独的表中，永不导出。
+- **扫描。** `start_scan` 和 `scan_status`（`edition`）启动并跟踪对已配置目录的扫描。仅当 `viewer.features.show_scan_button` 开启且安装已锁定（多用户模式下为超级管理员密钥）时才会列出。扫描是追加式的，并在另一项任务运行时被拒绝（`conflict`）。与 Immich 的同步仍通过命令行进行。
 - **资源。** 除工具外，服务器还列出五个只读的 `facet://` 资源：`facet://categories`、`facet://tags`、`facet://persons`、`facet://filters`（每个搜索筛选条件及其取值范围，加上指标范围）和 `facet://scoring-contexts`。每个资源按密钥所有者看到的照片库读取，上限 200 行和 32 KiB（`truncated` 会标明）。
-- **选择列出的内容。** `viewer.mcp.tool_profile` 为 `full`（默认）或 `core`：`core` 只列出面向小模型的 12 个工具（`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`, `undo_last`）。它只改变列表，不改变密钥可调用的内容。`viewer.mcp.allow_destructive`（默认 `false`）控制 `delete_photos`（关闭时不列出）、`cull_apply` 的 `move_rejects` 与 `trash_rejects` 操作，以及带 `allow_reassign` 的 `assign_faces`；被拒绝的调用返回 `feature_disabled`。令牌级别无法调用的工具同样不会列出。
+- **选择列出的内容。** `viewer.mcp.tool_profile` 为 `full`（默认）或 `core`：`core` 只列出面向小模型的 11 个工具（`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`）。它只改变列表，不改变密钥可调用的内容。`viewer.mcp.allow_destructive`（默认 `false`）控制 `delete_photos`（关闭时不列出）、`cull_apply` 的 `move_rejects` 与 `trash_rejects` 操作，以及带 `allow_reassign` 的 `assign_faces`；被拒绝的调用返回 `feature_disabled`。令牌级别无法调用的工具同样不会列出。
 - **另外两个错误代码。** `feature_disabled`：该路由被某个配置键关闭，消息中会指出该键。`conflict`：照片库正忙于与此冲突的任务（例如已有扫描在运行）。
 
 ## Prompts
@@ -227,7 +231,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 - **页面通过缩短每个分组的 `photos` 列表来适应 `max_bytes`，绝不会丢弃分组。** `photo_count` 仍是真实大小，`photos_truncated` 标记列表被截断的分组，`has_more` 表示后面是否还有一页。
 - **包围曝光、全景和 HDR 全景整组保留。** 在 `confirm_culling_groups` 中，这些类型的 `keep_paths` 必须等于 `paths`（否则 `invalid_input`），`auto_cull` 也从不拆分它们。
 - **空的 `keep_paths` 会淘汰该分组的每一帧。** 此时第一次调用返回 `confirmation_required` 并附带一个 `confirm` 值；先展示给用户，再带上该值重复调用。若批量调用在 `forbidden_level`、`library_busy` 或 `rate_limited` 处停止，会报告已完成的分组。
-- **`auto_cull` 默认只预览**，返回每组的保留/淘汰划分，以及一个 `confirm` 值（仅当有照片会被淘汰时）。应用时会重新计算方案，若预览后发生变化，或方案太大无法作为一个集合确认，则以 `confirmation_required` 拒绝（用 `album_id`、`date_from` 和 `date_to` 或 `group_by` 缩小范围）。被淘汰的帧会像任何手动选片一样训练个人排序器。
+- **`auto_cull` 默认只预览**，返回每组的保留/淘汰划分，以及一个 `confirm` 值（仅当有照片会被淘汰时）。应用时会重新计算方案，若预览后发生变化，或方案太大无法作为一个集合确认，则以 `confirmation_required` 拒绝（用 `album_id`、`date_from` 和 `date_to` 或 `group_by` 缩小范围）。助手所做的淘汰绝不会训练个人排序器，这与你在图库中亲自进行的同样选片不同。
 - 调用 `ui_show_culling_group` 可在用户已打开的标签页中向其展示某个分组（参见[控制已打开的标签页](#控制已打开的标签页)）。
 
 ## 结果、限制与错误

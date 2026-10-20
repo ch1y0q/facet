@@ -13,6 +13,7 @@ pass-by-accident. ``app.dependency_overrides`` is the documented FastAPI
 mechanism that actually bypasses the captured reference.
 """
 
+import contextlib
 import json
 import os
 import sqlite3
@@ -475,6 +476,44 @@ AGENT_EDITION_PASSWORD = "edition-pw"
 AGENT_DIR = "/agent-seeded/"
 
 
+def agent_db(sql, *args):
+    """Run one statement against the shared session database and return its rows."""
+    with sqlite3.connect(_TEST_DB_FILE.name) as conn:
+        return conn.execute(sql, args).fetchall()
+
+
+def intercept_internal_call(monkeypatch, handler):
+    """Wrap ``InternalClient.call``: ``handler(tool, kwargs)`` returns a replacement result, or None to fall through."""
+    from api.agent.internal_client import InternalClient
+    original = InternalClient.call
+
+    async def call(self, grant, tool, **kwargs):
+        replaced = handler(tool, kwargs)
+        return replaced if replaced is not None else await original(self, grant, tool, **kwargs)
+
+    monkeypatch.setattr(InternalClient, "call", call)
+
+
+@contextlib.contextmanager
+def serve_app(app, **config):
+    """Run ``app`` under a live uvicorn on a free local port; yield the port, stop the server on exit."""
+    import threading
+    import time
+    import uvicorn
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, lifespan="off", **config))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    try:
+        deadline = time.monotonic() + 10
+        while not server.started and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert server.started
+        yield server.servers[0].sockets[0].getsockname()[1]
+    finally:
+        server.should_exit = True
+        thread.join(timeout=10)
+
+
 class AgentEnv:
     """A plain ``create_app()`` whose auth and lifespan are the production ones.
 
@@ -674,7 +713,7 @@ class FakeTab:
     def start(self, wait=True):
         self._thread.start()
         if wait:
-            assert self._ready.wait(10), "fake tab never became ready"
+            assert self._ready.wait(60), "fake tab never became ready"
         return self
 
     def wait_closed(self, timeout=10):

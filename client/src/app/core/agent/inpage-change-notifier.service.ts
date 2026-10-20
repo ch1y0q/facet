@@ -1,7 +1,6 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, computed, effect, inject, untracked } from '@angular/core';
 import { MatSnackBar, MatSnackBarRef, TextOnlySnackBar } from '@angular/material/snack-bar';
-import { firstValueFrom } from 'rxjs';
-import { ApiService } from '../services/api.service';
+import { AuthService } from '../services/auth.service';
 import { I18nService } from '../services/i18n.service';
 import { I18N } from '../i18n/keys';
 
@@ -9,43 +8,54 @@ const SNACKBAR_MS = 8000;
 
 /**
  * One non-blocking "Assistant changed N photos" snackbar per burst. Writes landing while it is open
- * raise its count instead of stacking; Undo reverts every batch of the burst.
+ * raise its count instead of stacking. Its only action is Close.
  */
 @Injectable({ providedIn: 'root' })
 export class InpageChangeNotifier {
   private readonly snackBar = inject(MatSnackBar);
   private readonly i18n = inject(I18nService);
-  private readonly api = inject(ApiService);
+  private readonly auth = inject(AuthService);
   private ref: MatSnackBarRef<TextOnlySnackBar> | null = null;
   private count = 0;
-  private batches: string[] = [];
 
-  /** Record a write that changed `changed` photos (journal batch `batchId`). */
-  notify(changed: number, batchId?: string): void {
+  /** Who is signed in: a burst belongs to one identity, so a logout or a user switch ends it. */
+  private readonly identity = computed(() => {
+    const status = this.auth.status();
+    return `${status?.authenticated ? 1 : 0}|${status?.user_id ?? ''}`;
+  });
+
+  constructor() {
+    let first = true;
+    effect(() => {
+      this.identity();
+      untracked(() => {
+        if (first) first = false;
+        else this.dropBurst();
+      });
+    });
+  }
+
+  /** Record a write that changed `changed` photos. */
+  notify(changed: number): void {
     if (changed <= 0) return;
     this.count += changed;
-    if (batchId) this.batches.push(batchId);
-    const message = this.i18n.t(I18N.dialog.connect_assistant.inpage_changed, { count: String(this.count) });
-    const ref = this.snackBar.open(message, this.i18n.t(I18N.dialog.connect_assistant.inpage_undo), { duration: SNACKBAR_MS });
+    const keys = I18N.dialog.connect_assistant;
+    const close = I18N.dialog.close;
+    const message = this.i18n.t(this.count === 1 ? keys.inpage_changed : keys.inpage_changed_plural, { count: String(this.count) });
+    const ref = this.snackBar.open(message, this.i18n.t(close), { duration: SNACKBAR_MS });
     this.ref = ref;
-    const batches = this.batches;
-    ref.onAction().subscribe(() => void this.undo([...batches]));
     ref.afterDismissed().subscribe(() => {
       // A later write replaced this snackbar: only the one still current ends the burst.
       if (this.ref !== ref) return;
       this.ref = null;
       this.count = 0;
-      this.batches = [];
     });
   }
 
-  private async undo(batches: string[]): Promise<void> {
-    for (const batch_id of batches) {
-      try {
-        await firstValueFrom(this.api.undoMcpAction({ batch_id }));
-      } catch {
-        return;
-      }
-    }
+  private dropBurst(): void {
+    const ref = this.ref;
+    this.ref = null;
+    this.count = 0;
+    ref?.dismiss();
   }
 }

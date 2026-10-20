@@ -1,3 +1,4 @@
+import { toHex } from './webmcp-descriptor';
 import { DestroyRef, Injectable, InjectionToken, computed, effect, inject, signal, untracked } from '@angular/core';
 import { NavigationEnd, Router } from '@angular/router';
 import { AuthService } from '../services/auth.service';
@@ -47,7 +48,7 @@ const RESULT_FRAME_LIMIT = 250 * 1024;
 function newTabId(): string {
   const bytes = new Uint8Array(12);
   crypto.getRandomValues(bytes);
-  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+  return toHex(bytes);
 }
 
 interface CallFrame {

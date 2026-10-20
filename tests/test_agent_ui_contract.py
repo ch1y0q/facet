@@ -16,6 +16,16 @@ def test_committed_json_matches_the_contract():
         "ui-tools.schema.json is stale: run `venv/bin/python scripts/dump_ui_tools.py`")
 
 
+DOCS = Path(__file__).resolve().parent.parent / "docs"
+
+
+@pytest.mark.parametrize("lang", ["", "fr", "de", "it", "es", "pt", "zh"])
+def test_every_ui_tool_has_a_row_in_the_agents_doc_table(lang):
+    text = (DOCS / lang / "AGENTS.md").read_text()
+    rows = {m.group(1) for m in re.finditer(r"^\| `(ui_[a-z_]+)` \|", text, re.MULTILINE)}
+    assert rows == {tool.name for tool in UI_TOOLS}
+
+
 def test_json_shape_for_the_client_checker():
     data = json.loads(render_client_json())
     assert data["version"] == tools_version() and re.fullmatch(r"[0-9a-f]{16}", data["version"])

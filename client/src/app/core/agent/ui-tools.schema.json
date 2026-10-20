@@ -303,23 +303,6 @@
       ]
     },
     {
-      "id": "undo_agent_changes",
-      "summary": "List what assistants changed and take a batch back",
-      "tools": [
-        {
-          "name": "list_agent_actions",
-          "required_level": "readonly"
-        },
-        {
-          "name": "undo_last",
-          "required_level": "user"
-        }
-      ],
-      "when": [
-        "any"
-      ]
-    },
-    {
       "id": "fix_sequence_set",
       "summary": "Tell Facet what a set of frames really is (panorama, bracket, not a set)",
       "tools": [

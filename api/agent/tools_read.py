@@ -5,7 +5,6 @@ declares ``readOnlyHint`` and carries the untrusted-content meta (captions, tags
 file names, paths and album/person names can all hold a prompt injection).
 """
 
-import logging
 import operator
 from typing import Annotated, Any, Literal, Optional
 
@@ -24,11 +23,10 @@ from api.agent.tools_common import (
     unavailable_tools,
 )
 from api.agent.ui_tools import TAB_ID_PATTERN
+from api.models.gallery import query_value
 from api.routers.face_matches import FACE_SCAN_TIMEOUT_S
 from api.config import CORRELATION_X_AXES, CORRELATION_Y_METRICS, VIEWER_CONFIG
 from api.db_helpers import PHOTO_BASE_COLS, PHOTO_OPTIONAL_COLS
-
-logger = logging.getLogger(__name__)
 
 HIDE_DEFAULT_KEYS = ("hide_blinks", "hide_bursts", "hide_duplicates", "hide_brackets", "hide_panoramas",
                      "hide_rejected")
@@ -74,8 +72,9 @@ SHOW_RULE = ("The result is shown automatically in the user's open Facet tab (`s
              "never ask whether to open or show it, and report `shown_in_tab` (applied, or the reason "
              "it was not). The last shown search is what the user sees; use show=false only for "
              "intermediate probes, counts, or a search that feeds `expected_count` of a write tool. "
-             "Showing replaces the tab's filters, leaves /culling, /compare and /photo, and resets a "
-             "view-scope selection. A page after the first and an empty result are not shown.")
+             "Showing replaces the tab's filters, leaves /culling and /photo, and resets a view-scope "
+             "selection; on /compare it is refused (reason `comparison_open`). A page after the first and "
+             "an empty result are not shown.")
 STATS_KINDS = ("overview", "score_distribution", "top_cameras", "categories", "gear", "timeline",
                "correlations", "category_breakdown", "category_weights", "category_correlations",
                "category_overlap", "stats_settings", "timeline_dates", "timeline_years", "timeline_months")
@@ -101,12 +100,6 @@ SEMANTIC_CANDIDATES = 200
 CAPTION_LIMIT = 240
 TAG_LIMIT = 5
 FILTER_OPTION_LIMIT = 200
-
-
-def _query_value(value: Any) -> str:
-    if isinstance(value, bool):
-        return "1" if value else "0"
-    return str(value)
 
 
 def compact_photo(photo: dict, extra_fields: tuple = ()) -> dict:
@@ -202,7 +195,7 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
         async def handler(grant, resolved, settings):
             merged = _hide_defaults(
                 filters.model_dump(exclude_none=True) if filters is not None else {})
-            query = {key: _query_value(value) for key, value in merged.items()}
+            query = {key: query_value(value) for key, value in merged.items()}
             query.update(page=page, per_page=per_page)
             if sort:
                 query["sort"] = sort
@@ -261,7 +254,7 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
                 narrowed = await client.call(
                     grant, "photos_by_paths",
                     json={"paths": [p["path"] for p in hits],
-                          "filters": {key: _query_value(value)
+                          "filters": {key: query_value(value)
                                       for key, value in filters.model_dump(exclude_none=True).items()}},
                     timeout=timeout)
                 if not narrowed["ok"]:
@@ -482,14 +475,9 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
             if settings["bridge"]:
                 context = await relay.call_tab(registry, resolved, settings, "ui_get_context", {}, tab_id)
                 if context.get("ok") and isinstance(context.get("data"), dict):
-                    data = context["data"]
-                    gallery = data.get("gallery") if isinstance(data.get("gallery"), dict) else {}
-                    selection = data.get("selection") if isinstance(data.get("selection"), dict) else {}
-                    count = selection.get("count") if isinstance(selection.get("count"), int) else 0
-                    route = str(data.get("route") or "/")
-                    facts = actions.facts_for(route, count, bool(gallery.get("pinned")))
+                    facts, route, count, pinned = actions.facts_from_context(context["data"])
                     tab = {"tab_id": (context.get("tab") or {}).get("tab_id"), "route": route,
-                           "selection_count": count, "pinned": bool(gallery.get("pinned"))}
+                           "selection_count": count, "pinned": pinned}
             rows, hidden = actions.evaluate(resolved.level, facts, TOOL_LEVELS, unavailable_tools(resolved, settings))
             return ok({"tab": tab, "level": resolved.level, "actions": rows, "hidden": hidden})
         return await run_tool(ctx, "available_actions", handler)

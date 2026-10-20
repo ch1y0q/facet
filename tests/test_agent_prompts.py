@@ -12,6 +12,10 @@ import pytest
 from api.agent.tools_common import TOOL_LEVELS
 
 PROMPTS = {"find_photo", "cull_shoot", "build_album", "tag_people", "teach_taste"}
+PROMPT_ARGS = {"find_photo": {"description": "d"}, "cull_shoot": {}, "build_album": {"theme": "t"},
+               "tag_people": {}, "teach_taste": {}}
+# Backticked identifiers a prompt may use that are arguments or flags, not tools.
+NON_TOOL_IDENTS = ("show_false", "dry_run", "min_similarity")
 
 
 def listed(env, token):
@@ -82,22 +86,29 @@ class TestGet:
 
     def test_every_backticked_tool_in_any_prompt_is_a_registered_tool(self, edition_env):
         env, token = edition_env
-        arguments = {"find_photo": {"description": "d"}, "cull_shoot": {}, "build_album": {"theme": "t"},
-                     "tag_people": {}, "teach_taste": {}}
         known = set(TOOL_LEVELS)
-        for name, args in arguments.items():
+        for name, args in PROMPT_ARGS.items():
             body = text_of(got(env, token, name, args))
             for ident in re.findall(r"`([a-z_]+)`", body):
-                if "_" in ident and ident not in ("show_false",):
-                    assert ident in known or ident in ("dry_run", "min_similarity"), (name, ident)
+                if "_" in ident and ident != "show_false":
+                    assert ident in known or ident in NON_TOOL_IDENTS, (name, ident)
 
-    def test_destructive_tools_are_only_named_with_a_dry_run_and_a_confirmation(self, edition_env):
+    def test_destructive_tools_are_only_named_with_a_dry_run_and_a_confirmation(self, agent_app):
+        env = agent_app("legacy", allow_destructive=True)
+        token = env.token(env.login(edition=True), "edition")
+        body = text_of(got(env, token, "cull_shoot"))
+        assert "`delete_photos`" in body and "`cull_apply`" in body
+        assert "`dry_run`" in body and "`confirm`" in body
+        for name, args in PROMPT_ARGS.items():
+            other = text_of(got(env, token, name, args))
+            if "`delete_photos`" in other:
+                assert "dry run" in other and "`confirm`" in other, name
+
+    def test_destructive_tools_are_not_named_while_they_are_disabled(self, edition_env):
         env, token = edition_env
-        for name, args in {"find_photo": {"description": "d"}, "cull_shoot": {}, "build_album": {"theme": "t"},
-                           "tag_people": {}, "teach_taste": {}}.items():
+        for name, args in PROMPT_ARGS.items():
             body = text_of(got(env, token, name, args))
-            if "delete_photos" in body or "cull_apply" in body:
-                assert "dry_run" in body and "confirm" in body
+            assert "delete_photos" not in body and "cull_apply" not in body, name
 
     def test_a_prompt_names_no_tool_the_key_cannot_see(self, agent_app):
         env = agent_app("legacy")
@@ -162,16 +173,16 @@ class TestSweep:
     def text(self, env, token, name, args=None):
         return text_of(got(env, token, name, args))
 
-    def test_cull_shoot_starts_with_the_report_and_ends_with_the_undo_id(self, edition_env):
+    def test_cull_shoot_starts_with_the_report(self, edition_env):
         env, token = edition_env
         body = self.text(env, token, "cull_shoot")
         assert body.index("`cull_report`") < body.index("`list_culling_groups`")
-        assert "`group_compare`" in body and "undo.batch_id" in body and "`undo_last`" in body
+        assert "`group_compare`" in body and "undo" not in body
 
-    def test_build_album_and_tag_people_mention_undo_honestly(self, edition_env):
+    def test_build_album_and_tag_people_do_not_mention_undo(self, edition_env):
         env, token = edition_env
-        assert "`undo_last`" in self.text(env, token, "build_album", {"theme": "t"})
-        assert "not journaled for undo" in self.text(env, token, "tag_people")
+        assert "undo" not in self.text(env, token, "build_album", {"theme": "t"})
+        assert "undo" not in self.text(env, token, "tag_people")
 
     def test_teach_taste_says_the_agent_cannot_answer_a_pair(self, edition_env):
         env, token = edition_env
@@ -181,8 +192,7 @@ class TestSweep:
 
     def test_every_prompt_tells_the_model_what_a_missing_tool_means(self, edition_env):
         env, token = edition_env
-        for name, args in {"find_photo": {"description": "d"}, "cull_shoot": {}, "build_album": {"theme": "t"},
-                           "tag_people": {}, "teach_taste": {}}.items():
+        for name, args in PROMPT_ARGS.items():
             assert "tool profile is core" in self.text(env, token, name, args), name
 
     def test_a_core_profile_prompt_drops_the_steps_of_hidden_tools(self, agent_app):

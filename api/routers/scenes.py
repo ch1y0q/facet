@@ -393,7 +393,7 @@ def apply_scene_cull(
                 sequence_members = _sequence_members(rows)
 
             reject_paths = list(group_paths - keep_set)
-            set_photos_rejected(conn, reject_paths, user_id)
+            set_photos_rejected(conn, reject_paths, user_id, agent=bool(user and user.is_agent_request))
 
             conn.execute("DELETE FROM stats_cache WHERE key LIKE 'scenes_%'")
             record_culling_decision(

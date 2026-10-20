@@ -124,21 +124,10 @@
       "prompt_token_rules": "Guarda el token solo en la configuración de tu cliente MCP. No lo repitas en tus respuestas ni lo escribas en ningún otro archivo o nota. Puedo revocarlo desde Facet en cualquier momento.",
       "prompt_verify": "Tras la configuración, llama a esta herramienta para confirmar la conexión:",
       "prompt_capabilities": "Puedes buscar en la biblioteca y abrir o navegar por esta pestaña de Facet. Solo puedes modificar fotos si el acceso concedido arriba lo permite.",
-      "actions_heading": "Acciones recientes del asistente ({count})",
-      "action_summary": "{tool}: {count} cambios",
-      "action_undo": "Deshacer",
-      "action_undo_confirm": "¿Deshacer este lote?",
-      "action_undo_yes": "Sí, deshacer",
-      "action_undo_aria": "Deshacer {tool} del {when}",
-      "action_undo_yes_aria": "Sí, deshacer {tool} del {when}",
-      "action_undo_cancel_aria": "Cancelar, conservar {tool} del {when}",
-      "undo_result": "{restored} restaurados, {kept} conservados por haber cambiado desde entonces",
-      "undo_failed": "No se pudo deshacer el lote",
-      "action_undone": "Deshecho",
       "inpage_toggle": "Permitir que los agentes de este navegador usen las herramientas de Facet",
       "inpage_hint": "Si está activado, un asistente que se ejecute en este navegador puede buscar y, si su sesión lo permite, modificar su biblioteca a través de la página. Desactivado por defecto; solo afecta a este navegador.",
-      "inpage_changed": "El asistente modificó {count} fotos",
-      "inpage_undo": "Deshacer"
+      "inpage_changed": "El asistente cambió {count} foto",
+      "inpage_changed_plural": "El asistente cambió {count} fotos"
     }
   },
   "pagination": {
@@ -291,6 +280,7 @@
     "category": "Categoría",
     "strategy": "Estrategia",
     "strategies": {
+      "learning": "Valor de aprendizaje (más informativo)",
       "uncertainty": "Incertidumbre (puntuaciónes similares)",
       "boundary": "Límite (rango 6-8)",
       "active": "Aprendizaje activo (pocos datos)",
@@ -298,6 +288,8 @@
     },
     "strategy_help": {
       "title": "Estrategias de comparación",
+      "learning_title": "Valor de aprendizaje (más informativo)",
+      "learning_desc": "Elige el par del que el clasificador más aprende: antes del entrenamiento, fotos muy distantes en el espacio de características; después, pares donde el orden de la puntuación agregada y de la aprendida discrepa. Estrategia predeterminada.",
       "uncertainty_title": "Incertidumbre (puntuaciónes similares)",
       "uncertainty_desc": "Selecciona pares con puntuaciónes globales casi idénticas. Ideal para calibrar pesos: tu preferencia revela qué métricas importan cuando el algoritmo no puede distinguir la diferencia.",
       "boundary_title": "Límite (umbral de calidad)",

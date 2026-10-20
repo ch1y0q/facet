@@ -4,12 +4,10 @@
 seeded row; nothing on the auth path is mocked.
 """
 
-import copy
-import json
-
 import pytest
 
 from api import config as api_config
+from api.agent import tokens
 from api.agent.tools_common import CORE_TOOLS, TOOL_LEVELS
 from api.agent.tools_write import WRITE_TOOL_LEVELS
 from tests import test_agent_write as write_tests
@@ -19,6 +17,7 @@ P, ROWS, ARGS, wipe_prefs = write_tests.P, write_tests.ROWS, write_tests.TestGra
 
 # What the WRAPPER refuses (level floor, operator switch). A route's own config refusal (the OS-trash switch on
 # delete_photos, say) is an upstream answer for a tool that is listed, so it is not in this set.
+SCAN_TOOLS = {"start_scan", "scan_status"}   # behind viewer.features.show_scan_button, off in the test config
 WRAPPER_MESSAGES = ("token's level", "allow_destructive", "show_scan_button")
 
 
@@ -43,7 +42,26 @@ def test_the_listed_write_tools_are_exactly_the_ones_a_call_is_not_refused_for(a
     for tool in WRITE_TOOL_LEVELS:
         assert (tool in listed) is (not refused(env, token, tool)), (level, tool)
     assert listed >= {n for n, floor in TOOL_LEVELS.items() if floor == "readonly" and n not in WRITE_TOOL_LEVELS
-                      and not n.startswith("ui_")} or level == "readonly"
+                      and not n.startswith("ui_")}
+
+
+@pytest.mark.parametrize("mode,who,level", [
+    ("multi", "root", "readonly"), ("multi", "alice", "user"), ("multi", "root", "edition"),
+    ("legacy", None, "readonly"), ("legacy", None, "edition"), ("open", None, "readonly")])
+def test_every_registered_tool_is_listed_exactly_when_its_requirement_is_met(agent_app, photos, mode, who, level):
+    """All tools, not just the writes: culling, ui_* and reads, in every install mode.
+
+    A single-password install has no ``user`` rung, so its ``user`` tools need ``edition`` there.
+    """
+    env = agent_app(mode, allow_destructive=True)
+    login = env.login(who) if who else (env.login(edition=True) if level == "edition" else env.login())
+    token = env.token(login, level)
+    rank = tokens.level_rank(level)
+    expected = {n for n, floor in TOOL_LEVELS.items()
+                if rank >= tokens.level_rank(tokens.effective_requirement(floor))}
+    listed = env.tool_names(token)
+    assert listed == expected - SCAN_TOOLS, (sorted(listed ^ expected))
+    assert {n for n in listed if n.startswith("ui_")} and any(n.startswith("get_culling") or "cull" in n for n in listed)
 
 
 def test_a_downgrade_shrinks_the_very_next_list(agent_app, photos):
@@ -111,8 +129,18 @@ def test_a_hidden_tool_is_refused_not_missing(agent_app):
     assert result["error"] == "feature_disabled" and "allow_destructive" in result["message"]
 
 
-def test_the_listing_is_a_json_list_of_unique_names(agent_app):
+def test_the_listing_is_a_non_empty_list_of_unique_names(agent_app):
     env = agent_app("legacy")
     resp = env.rpc(env.token(env.login(edition=True), "edition"), "tools/list").json()["result"]["tools"]
     names = [t["name"] for t in resp]
-    assert len(names) == len(set(names)) and json.dumps(names) and copy.copy(names)
+    assert names and len(names) == len(set(names))
+
+
+@pytest.mark.parametrize("args", [{}, {"nope": 1}, {"paths": "not-a-list", "rating": 99}])
+def test_a_tool_above_the_level_answers_forbidden_level_before_any_argument_check(agent_app, args):
+    env = agent_app("legacy")
+    token = env.token(env.login(), "readonly")
+    assert "set_rating" not in env.tool_names(token)
+    result = env.call(token, "set_rating", args)
+    assert result["error"] == "forbidden_level" and "issues" not in result, result
+    assert env.call(env.token(env.login(edition=True), "edition"), "set_rating", args)["error"] == "invalid_input"

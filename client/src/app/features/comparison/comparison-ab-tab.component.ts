@@ -269,7 +269,7 @@ export class ComparisonAbTabComponent {
   /** Emitted when user applies learned weight suggestions — parent updates the weights tab */
   readonly weightsApplied = output<Record<string, number>>();
 
-  protected readonly strategies = ['uncertainty', 'boundary', 'active', 'random'] as const;
+  protected readonly strategies = ['learning', 'uncertainty', 'boundary', 'active', 'random'] as const;
 
   constructor() {
     toObservable(this.compareFilters.selectedCategory).pipe(

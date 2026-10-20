@@ -69,6 +69,7 @@
             "write_rate_per_min": { "type": "integer", "minimum": 1 },
             "tool_profile": { "enum": ["full", "core"] },
             "allow_destructive": { "type": "boolean" },
+            "inpage_tools": { "type": "boolean" },
             "allowed_origins": { "type": "array", "items": { "type": "string", "format": "uri" } }
           }
         }

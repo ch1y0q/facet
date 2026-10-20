@@ -20,6 +20,7 @@ from starlette.requests import Request
 
 from api.agent import limits, nonce, tokens
 from api.agent.internal_client import err
+from api.agent.tokens import bearer_token
 from api.agent.tools_common import TOOL_LEVELS, tool_refusal
 
 logger = logging.getLogger(__name__)
@@ -27,17 +28,11 @@ logger = logging.getLogger(__name__)
 # ASGI scope key under which ``AgentAuthMiddleware`` leaves the request's ``mcp_settings()``
 # for the tool wrapper, so one request reads the (clamped) config once.
 SETTINGS_SCOPE_KEY = "facet.mcp_settings"
+# Scope key under which ``POST /api/mcp/call`` leaves the logged-in session's grant, beside the
+# settings: the wrapper then runs the tool for that session instead of verifying a bearer token.
+INPAGE_SCOPE_KEY = "facet.inpage_grant"
 
-Handler = Callable[[tokens.TokenGrant, tokens.ResolvedGrant, dict], Awaitable[dict]]
-
-
-def bearer_token(headers: Any) -> Optional[str]:
-    """The ``fct_`` secret from an ``Authorization: Bearer`` header, else None."""
-    value = (headers or {}).get("authorization") if headers is not None else None
-    if not isinstance(value, str):
-        return None
-    scheme, _, secret = value.partition(" ")
-    return secret.strip() if scheme.lower() == "bearer" and secret.strip() else None
+Handler = Callable[[Any, tokens.ResolvedGrant, dict], Awaitable[dict]]
 
 
 def to_result(envelope: dict, images: Optional[list] = None) -> CallToolResult:
@@ -53,6 +48,27 @@ def _row_count(envelope: dict) -> int:
     data = envelope.get("data")
     rows = data.get("rows") if isinstance(data, dict) else None
     return len(rows) if isinstance(rows, list) else 0
+
+
+def level_refusal(name: str, resolved: Any, floor: Optional[str] = None) -> Optional[dict]:
+    """The ``forbidden_level`` envelope when ``resolved`` is below the tool's floor, else None."""
+    floor = floor or TOOL_LEVELS[name]
+    if tokens.level_rank(resolved.level) >= tokens.level_rank(floor):
+        return None
+    needs = tokens.effective_requirement(floor)
+    if resolved.inpage:
+        return err("forbidden_level", f"This session's level is {resolved.level}; {name} needs "
+                   f"{needs}" + (": unlock edition in Facet" if needs == "edition" else ""))
+    hint = (" (an open install cannot grant it: set viewer.password and mint an "
+            "edition token)" if needs == "edition" and tokens.install_mode() == "open" else "")
+    return err("forbidden_level", f"This token's level is {resolved.level}; {name} needs {needs}{hint}")
+
+
+async def resolve_context(ctx: Any) -> tuple[Any, Any]:
+    """``(grant, resolved)`` for a tool call's context, ``(None, None)`` when it is not valid."""
+    session = cast(Request, ctx.request_context.request).scope.get(INPAGE_SCOPE_KEY)
+    grant = session if session is not None else await asyncio.to_thread(tokens.verify, bearer_token(ctx.headers))
+    return grant, (await asyncio.to_thread(grant.resolve) if grant else None)
 
 
 async def run_tool(ctx: Context, name: str, handler: Handler, *, write: bool = False,
@@ -74,24 +90,21 @@ async def run_tool(ctx: Context, name: str, handler: Handler, *, write: bool = F
     images: list = []
     settings = cast(Request, ctx.request_context.request).scope[SETTINGS_SCOPE_KEY]
     token_id = None
+    actor: Any = "-"
     try:
-        grant = await asyncio.to_thread(tokens.verify, bearer_token(ctx.headers))
-        resolved = await asyncio.to_thread(grant.resolve) if grant else None
+        grant, resolved = await resolve_context(ctx)
         if grant is None or resolved is None:
             envelope = err("forbidden_level", "This token is revoked or no longer valid")
         else:
-            token_id = grant.id
+            token_id = grant.token_id
+            actor = grant.rate_key
             per_min = settings["write_rate_per_min" if write else "rate_per_min"]
-            if tokens.level_rank(resolved.level) < tokens.level_rank(floor):
-                needs = tokens.effective_requirement(floor)
-                hint = (" (an open install cannot grant it: set viewer.password and mint an "
-                        "edition token)" if needs == "edition" and tokens.install_mode() == "open" else "")
-                envelope = err("forbidden_level",
-                               f"This token's level is {resolved.level}; {name} needs {needs}{hint}")
+            if (below := level_refusal(name, resolved, floor)) is not None:
+                envelope = below
             elif (refusal := tool_refusal(name, resolved, settings, args)) is not None:
                 envelope = err(refusal[0], refusal[1])
             else:
-                allowed, retry_after = limits.check_rate(grant.id, write, per_min)
+                allowed, retry_after = limits.check_rate(grant.rate_key, write, per_min)
                 if allowed:
                     envelope = await handler(grant, resolved, settings)
                     # Images ride beside the JSON, so the JSON cap must not see (or count) them.
@@ -116,7 +129,7 @@ async def run_tool(ctx: Context, name: str, handler: Handler, *, write: bool = F
             except Exception as ex:
                 logger.warning("Could not stamp last_used_at for MCP token %s: %r", token_id, ex)
     # Counts and codes only: never arguments (paths) and never the token.
-    logger.info("MCP call token=%s tool=%s ok=%s code=%s rows=%d ms=%d", token_id, name,
+    logger.info("MCP call actor=%s tool=%s ok=%s code=%s rows=%d ms=%d", actor, name,
                 envelope.get("ok"), envelope.get("error", "-"), _row_count(envelope),
                 (time.monotonic() - started) * 1000)
     return to_result(envelope, images if envelope.get("ok") else None)

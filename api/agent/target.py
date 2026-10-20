@@ -20,7 +20,7 @@ from api.agent import show as relay
 from api.agent.bridge import TabRegistry
 from api.agent.internal_client import InternalClient, err
 from api.agent.tokens import ResolvedGrant
-from api.models.gallery import GALLERY_PAGING_KEYS, gallery_filter_keys
+from api.models.gallery import GALLERY_PAGING_KEYS, gallery_filter_keys, query_value
 
 SELECTION = "selection"
 SELECTION_RULE = (
@@ -46,12 +46,6 @@ class TabSelection:
         return {"source": "tab_selection", "tab_id": self.tab_id, "scope": self.scope, "count": self.count}
 
 
-def _stringify(value: Any) -> str:
-    if isinstance(value, bool):
-        return "1" if value else "0"
-    return str(value)
-
-
 def view_filters(raw: Any) -> tuple[Optional[dict], dict[str, str]]:
     """``(error, filters)``: the tab's view payload, whitelisted and stringified."""
     if raw is None:
@@ -66,13 +60,20 @@ def view_filters(raw: Any) -> tuple[Optional[dict], dict[str, str]]:
                    f"{', '.join(unknown[:10])}"), {}
     if any(not isinstance(value, _SCALAR) for value in raw.values()):
         return err("invalid_input", "The tab's view filters must be plain values"), {}
-    return None, {key: _stringify(value) for key, value in raw.items() if key not in GALLERY_PAGING_KEYS}
+    return None, {key: query_value(value) for key, value in raw.items() if key not in GALLERY_PAGING_KEYS}
 
 
 async def read_selection(registry: TabRegistry, resolved: ResolvedGrant, settings: dict,
                          tab_id: Optional[str]) -> tuple[Optional[dict], Optional[TabSelection]]:
-    """``(error, selection)`` from the tab's own ``ui_get_selection``."""
-    envelope = await relay.call_tab(registry, resolved, settings, "ui_get_selection", {}, tab_id)
+    """``(error, selection)`` from the tab's own ``ui_get_selection`` (or, in-page, the snapshot the call carried)."""
+    if resolved.inpage:
+        # The in-page agent's own tab sent its selection with the call: never another tab's.
+        snapshot = resolved.selection_snapshot
+        if snapshot is None:
+            return err("invalid_input", "The call carried no selection of this tab; nothing was done"), None
+        envelope = {"ok": True, "data": snapshot}
+    else:
+        envelope = await relay.call_tab(registry, resolved, settings, "ui_get_selection", {}, tab_id)
     if not envelope.get("ok"):
         code = str(envelope.get("error") or "upstream_error")
         if code == "too_large":
@@ -85,7 +86,8 @@ async def read_selection(registry: TabRegistry, resolved: ResolvedGrant, setting
     if envelope.get("truncated"):
         return err("too_large", "The tab's reply was cut by the bridge's string limit, so its selection "
                    "cannot be read in full; select fewer photos or use `filters`"), None
-    seen_tab = (envelope.get("tab") or {}).get("tab_id")
+    tab = envelope.get("tab")
+    seen_tab = tab.get("tab_id") if isinstance(tab, dict) else None
     count = data.get("count")
     if not isinstance(count, int) or isinstance(count, bool) or count < 0:
         return err("upstream_error", "The tab reported an unusable selection count"), None

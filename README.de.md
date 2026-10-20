@@ -128,7 +128,7 @@ Bewegen Sie den Mauszeiger über ein beliebiges Foto, um einen Tooltip mit der W
 - **Albumfreigabe** — generieren Sie teilbare Links für jedes Album, ohne dass sich Empfänger anmelden müssen. Widerrufen Sie den Zugriff jederzeit.
 - **Foto-Download** — laden Sie einzelne Fotos oder Auswahlen aus der Galerie herunter
 - **Export** — exportieren Sie alle Wertungen als CSV oder JSON zur externen Analyse
-- **KI-Agenten (MCP)** — ein optionaler [Model Context Protocol](https://modelcontextprotocol.io/)-Endpunkt lässt MCP-fähige Assistenten die Bibliothek mit den Filtern der Galerie durchsuchen und untersuchen, mit widerrufbaren persönlichen Tokens; je nach Token-Stufe lässt sich die Bibliothek auch bewerten, taggen, organisieren und aussortieren (destruktive Aktionen zeigen zuerst eine Vorschau und brauchen eine Bestätigung)
+- **KI-Agenten (MCP)** — ein standardmäßig aktivierter [Model Context Protocol](https://modelcontextprotocol.io/)-Endpunkt (abschaltbar mit `viewer.mcp.enabled`) lässt MCP-fähige Assistenten die Bibliothek mit den Filtern der Galerie durchsuchen und untersuchen, mit widerrufbaren persönlichen Tokens; je nach Token-Stufe lässt sich die Bibliothek auch bewerten, taggen, organisieren und aussortieren (destruktive Aktionen zeigen zuerst eine Vorschau und brauchen eine Bestätigung)
 
 ### Mehr
 

@@ -33,6 +33,28 @@ const PREVIEW = {
   dry_run: true, preview: [], preview_truncated: false,
 };
 
+// The component spec's original feed, kept verbatim so the moved tests read the same.
+const PHOTO_GROUP_FEED = {
+  groups: [
+    {
+      group_id: 1, type: 'burst', reason: '0.8s apart', best_path: '/photo1.jpg', count: 3,
+      photos: [
+        { path: '/photo1.jpg', filename: 'photo1.jpg', aggregate: 8.5, aesthetic: 7.0, tech_sharpness: 6.0, is_blink: 0, is_burst_lead: 1, date_taken: '2024-01-01', burst_score: 9.0 },
+        { path: '/photo2.jpg', filename: 'photo2.jpg', aggregate: 7.0, aesthetic: 6.5, tech_sharpness: 5.5, is_blink: 0, is_burst_lead: 0, date_taken: '2024-01-01', burst_score: 7.0 },
+        { path: '/photo3.jpg', filename: 'photo3.jpg', aggregate: 5.0, aesthetic: 5.0, tech_sharpness: 4.0, is_blink: 1, is_burst_lead: 0, date_taken: '2024-01-01', burst_score: 4.0 },
+      ],
+    },
+    {
+      group_id: 2, type: 'similar', reason: '85% similar', best_path: '/photo4.jpg', count: 2,
+      photos: [
+        { path: '/photo4.jpg', filename: 'photo4.jpg', aggregate: 9.0, aesthetic: 8.5, tech_sharpness: 7.0, is_blink: 0, is_burst_lead: 1, date_taken: '2024-01-02', burst_score: 9.5 },
+        { path: '/photo5.jpg', filename: 'photo5.jpg', aggregate: 6.0, aesthetic: 5.0, tech_sharpness: 5.0, is_blink: 0, is_burst_lead: 0, date_taken: '2024-01-02', burst_score: 5.5 },
+      ],
+    },
+  ],
+  total_groups: 2, page: 1, per_page: 20, total_pages: 1,
+};
+
 describe('CullingStore', () => {
   let store: CullingStore;
   let api: { get: Mock; post: Mock };
@@ -112,6 +134,22 @@ describe('CullingStore', () => {
       expect(store.currentPage()).toBe(2);
       expect(store.selectionsMap().has(1)).toBe(true);
       expect(store.selectionsMap().has(3)).toBe(true);
+    });
+
+    it('clears loadingMore when a feed reset overtakes a page request, so scrolling works again', async () => {
+      await store.loadGroups();
+      store.totalPages.set(3);
+      const late = new Subject<typeof GROUPS_RESPONSE>();
+      api.get.mockReturnValue(late);
+      const pending = store.loadMore();
+      expect(store.loadingMore()).toBe(true);
+      store.resetFeed();
+      expect(store.loadingMore()).toBe(false);
+      late.next(GROUPS_RESPONSE);
+      late.complete();
+      await pending;
+      expect(store.loadingMore()).toBe(false);
+      expect(store.groups()).toEqual([]);
     });
 
     it('does not start a second page request while one is in flight', async () => {
@@ -298,6 +336,184 @@ describe('CullingStore', () => {
       first.complete();
       expect(await stale).toBe('superseded');
       expect(store.autoCullPreview()?.kept).toBe(9);
+    });
+  });
+
+
+  // Moved from burst-culling.component.spec.ts: these drove the store through the
+  // component's pass-through members and never touched the component itself.
+  describe('selection and paging on the three-photo feed', () => {
+    beforeEach(() => {
+      api.get.mockReturnValue(of(PHOTO_GROUP_FEED));
+    });
+
+    describe('initial state', () => {
+      it('should have loading as a signal function', () => {
+        expect(typeof store.loading).toBe('function');
+      });
+
+      it('should start with confirming false', () => {
+        expect(store.confirming()).toBe(false);
+      });
+    });
+
+    describe('loadMore', () => {
+      it('should append groups from the next page', async () => {
+        await store.loadGroups();
+        store.totalPages.set(2);
+
+        const page2Response = {
+          groups: [{ group_id: 3, type: 'burst', reason: '1s apart', photos: [], best_path: '', count: 0 }],
+          total_groups: 3, page: 2, per_page: 20, total_pages: 2,
+        };
+        api.get.mockReturnValue(of(page2Response));
+
+        await store.loadMore();
+
+        expect(store.groups()).toHaveLength(3);
+        expect(store.currentPage()).toBe(2);
+      });
+
+      it('should not load if no more pages', async () => {
+        await store.loadGroups();
+        api.get.mockClear();
+
+        await store.loadMore();
+
+        expect(api.get).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('toggleSelection', () => {
+      beforeEach(async () => {
+        await store.loadGroups();
+      });
+
+      it('should add a photo to the selection when not already selected', () => {
+        const group = store.groups()[0];
+        store.toggleSelection('/photo2.jpg', group);
+
+        const kept = store.selectionsMap().get(1);
+        expect(kept?.has('/photo2.jpg')).toBe(true);
+      });
+
+      it('should remove a photo from the selection when already selected', () => {
+        const group = store.groups()[0];
+        // photo1.jpg is auto-selected as best_path
+        store.toggleSelection('/photo1.jpg', group);
+
+        const kept = store.selectionsMap().get(1);
+        expect(kept?.has('/photo1.jpg')).toBe(false);
+      });
+
+      it('should allow multiple photos to be selected', () => {
+        const group = store.groups()[0];
+        store.toggleSelection('/photo2.jpg', group);
+        store.toggleSelection('/photo3.jpg', group);
+
+        const kept = store.selectionsMap().get(1);
+        expect(kept?.has('/photo1.jpg')).toBe(true); // auto-selected
+        expect(kept?.has('/photo2.jpg')).toBe(true);
+        expect(kept?.has('/photo3.jpg')).toBe(true);
+      });
+
+      it('should not mutate original map', () => {
+        const originalMap = store.selectionsMap();
+        const group = store.groups()[0];
+        store.toggleSelection('/photo2.jpg', group);
+        const newMap = store.selectionsMap();
+
+        expect(newMap).not.toBe(originalMap);
+      });
+    });
+
+    // Double-click on a tile. For an ordinary burst/similar/scene it is the
+    // fast "keep only this one" gesture the feature exists for. For a bracket
+    // or a pan the frames were shot to be merged, not to compete -- the same
+    // reason computeAutoKeep starts every frame of those kinds KEPT and the
+    // auto-cull button hides in that granularity -- so it must be a no-op there.
+    describe('selectExclusive (double-click)', () => {
+      const buildKeepWholeGroup = (kind: 'bracket' | 'panorama' | 'hdr_panorama') => ({
+        group_id: 42,
+        type: kind,
+        reason: '3 frames',
+        sequence_kind: kind,
+        best_path: '/kw0.jpg',
+        count: 3,
+        photos: [0, 1, 2].map(i => ({
+          path: `/kw${i}.jpg`, filename: `kw${i}.jpg`, aggregate: 5, aesthetic: 5,
+          tech_sharpness: 5, is_blink: 0, is_burst_lead: 0, date_taken: '2025-04-15',
+          burst_score: 5, sequence_kind: kind,
+        })),
+      });
+
+      it('refuses to reduce a bracket set to a single frame', () => {
+        const group = buildKeepWholeGroup('bracket');
+        store.groups.set([group] as never);
+        store.selectionsMap.set(
+          new Map([[group.group_id, new Set(group.photos.map(p => p.path))]]),
+        );
+
+        store.selectExclusive('/kw1.jpg', group as never);
+
+        const kept = store.selectionsMap().get(group.group_id);
+        expect(kept?.size).toBe(3);
+        expect([...(kept ?? [])].sort()).toEqual(['/kw0.jpg', '/kw1.jpg', '/kw2.jpg']);
+      });
+
+      it('refuses to reduce a panorama set to a single frame', () => {
+        const group = buildKeepWholeGroup('panorama');
+        store.groups.set([group] as never);
+        store.selectionsMap.set(
+          new Map([[group.group_id, new Set(group.photos.map(p => p.path))]]),
+        );
+
+        store.selectExclusive('/kw1.jpg', group as never);
+
+        const kept = store.selectionsMap().get(group.group_id);
+        expect(kept?.size).toBe(3);
+        expect([...(kept ?? [])].sort()).toEqual(['/kw0.jpg', '/kw1.jpg', '/kw2.jpg']);
+      });
+
+      it('refuses to reduce an hdr_panorama set to a single frame', () => {
+        const group = buildKeepWholeGroup('hdr_panorama');
+        store.groups.set([group] as never);
+        store.selectionsMap.set(
+          new Map([[group.group_id, new Set(group.photos.map(p => p.path))]]),
+        );
+
+        store.selectExclusive('/kw1.jpg', group as never);
+
+        const kept = store.selectionsMap().get(group.group_id);
+        expect(kept?.size).toBe(3);
+        expect([...(kept ?? [])].sort()).toEqual(['/kw0.jpg', '/kw1.jpg', '/kw2.jpg']);
+      });
+
+      it('still collapses an ordinary burst to the single double-clicked frame', async () => {
+        await store.loadGroups();
+        const group = store.groups()[0]; // type: 'burst', no sequence_kind
+
+        store.selectExclusive('/photo2.jpg', group);
+
+        const kept = store.selectionsMap().get(group.group_id);
+        expect(kept?.size).toBe(1);
+        expect(kept?.has('/photo2.jpg')).toBe(true);
+      });
+    });
+
+    describe('hasMore', () => {
+      beforeEach(async () => {
+        await store.loadGroups();
+      });
+
+      it('should return false on single page', () => {
+        expect(store.hasMore()).toBe(false);
+      });
+
+      it('should return true when more pages exist', () => {
+        store.totalPages.set(2);
+        expect(store.hasMore()).toBe(true);
+      });
     });
   });
 });

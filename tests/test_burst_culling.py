@@ -546,6 +546,7 @@ class TestConfirmBracketGroup:
     """
 
     _SCHEMA = """
+        CREATE TABLE rating_provenance (user_id TEXT NOT NULL DEFAULT '', photo_path TEXT NOT NULL, star_rating INTEGER NOT NULL DEFAULT 0, is_favorite INTEGER NOT NULL DEFAULT 0, is_rejected INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, photo_path));
         CREATE TABLE photos (
             path TEXT PRIMARY KEY, filename TEXT, sequence_group_id INTEGER,
             sequence_kind TEXT, sequence_ev_offset REAL, is_rejected INTEGER DEFAULT 0
@@ -1201,6 +1202,7 @@ class TestSelectSimilarInvalidatesCache:
 
 class TestQueryBurstGroupsScope:
     _SCHEMA = """
+        CREATE TABLE rating_provenance (user_id TEXT NOT NULL DEFAULT '', photo_path TEXT NOT NULL, star_rating INTEGER NOT NULL DEFAULT 0, is_favorite INTEGER NOT NULL DEFAULT 0, is_rejected INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, photo_path));
         CREATE TABLE photos (
             path TEXT PRIMARY KEY, filename TEXT, date_taken TEXT, aggregate REAL,
             aesthetic REAL, tech_sharpness REAL, is_blink INTEGER, is_burst_lead INTEGER, is_sequence_lead INTEGER DEFAULT 0,
@@ -1304,6 +1306,7 @@ class TestFetchBracketGroups:
     """
 
     _SCHEMA = """
+        CREATE TABLE rating_provenance (user_id TEXT NOT NULL DEFAULT '', photo_path TEXT NOT NULL, star_rating INTEGER NOT NULL DEFAULT 0, is_favorite INTEGER NOT NULL DEFAULT 0, is_rejected INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, photo_path));
         CREATE TABLE photos (
             path TEXT PRIMARY KEY, filename TEXT, date_taken TEXT, aggregate REAL,
             aesthetic REAL, tech_sharpness REAL, is_blink INTEGER DEFAULT 0,
@@ -1399,6 +1402,7 @@ class TestPanoramaGroupsCarryTheOverride:
     """
 
     _SCHEMA = """
+        CREATE TABLE rating_provenance (user_id TEXT NOT NULL DEFAULT '', photo_path TEXT NOT NULL, star_rating INTEGER NOT NULL DEFAULT 0, is_favorite INTEGER NOT NULL DEFAULT 0, is_rejected INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, photo_path));
         CREATE TABLE photos (
             path TEXT PRIMARY KEY, filename TEXT, date_taken TEXT, aggregate REAL,
             aesthetic REAL, tech_sharpness REAL, is_blink INTEGER DEFAULT 0,

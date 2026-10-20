@@ -1585,14 +1585,99 @@ def get_preference_columns(user_id=None):
     }
 
 
-def set_photos_rejected(conn, paths, user_id):
+_LABEL_CHUNK = 500
+
+
+def _read_label_tuples(conn, scope, chunk):
+    """``{path: (star_rating, is_favorite, is_rejected)}`` for ``chunk``; a path with no row reads as unrated."""
+    marks = ','.join('?' * len(chunk))
+    if scope:
+        rows = conn.execute(
+            "SELECT photo_path, star_rating, is_favorite, is_rejected FROM user_preferences "
+            f"WHERE user_id = ? AND photo_path IN ({marks})", [scope, *chunk]).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT path, star_rating, is_favorite, is_rejected FROM photos "
+            f"WHERE path IN ({marks})", chunk).fetchall()
+    found = {r[0]: (r[1] or 0, r[2] or 0, r[3] or 0) for r in rows}
+    return {p: found.get(p, (0, 0, 0)) for p in chunk}
+
+
+def _label_scope(user_id):
+    return user_id if (user_id and is_multi_user_enabled()) else ''
+
+
+def snapshot_labels(conn, agent, user_id, paths):
+    """The label tuples of ``paths`` BEFORE a write, for :func:`record_label_origin`'s ``before``.
+
+    Only an assistant's write needs it (a person's write just deletes marks), so a human call reads
+    nothing and returns ``{}``.
+    """
+    paths = list(paths)
+    if not agent or not paths:
+        return {}
+    scope = _label_scope(user_id)
+    before = {}
+    for start in range(0, len(paths), _LABEL_CHUNK):
+        before.update(_read_label_tuples(conn, scope, paths[start:start + _LABEL_CHUNK]))
+    return before
+
+
+def record_label_origin(conn, agent, user_id, paths, before=None):
+    """Keep ``rating_provenance`` true to who wrote the labels of ``paths``, in the writer's transaction.
+
+    An agent's write (the internal ``mcp`` JWT, ``user.is_agent_request``) records the tuple it left, so
+    the taste model skips it (``optimization.label_pairs``); a person's own write deletes the mark, the
+    label being theirs again. Only a path whose tuple the write CHANGED is marked (``before`` is the
+    :func:`snapshot_labels` taken ahead of the write): a label the person had already set and the
+    assistant merely re-asserted stays theirs and keeps training. A path already marked stays marked,
+    with its tuple refreshed. ``before=None`` treats every path as changed.
+    """
+    paths = list(paths)
+    if not paths:
+        return
+    scope = _label_scope(user_id)
+    for start in range(0, len(paths), _LABEL_CHUNK):
+        chunk = paths[start:start + _LABEL_CHUNK]
+        marks = ','.join('?' * len(chunk))
+        if not agent:
+            conn.execute(f"DELETE FROM rating_provenance WHERE user_id = ? AND photo_path IN ({marks})",
+                         [scope, *chunk])
+            continue
+        after = _read_label_tuples(conn, scope, chunk)
+        marked = {r[0] for r in conn.execute(
+            f"SELECT photo_path FROM rating_provenance WHERE user_id = ? AND photo_path IN ({marks})",
+            [scope, *chunk])}
+        conn.executemany(
+            "INSERT INTO rating_provenance (user_id, photo_path, star_rating, is_favorite, is_rejected) "
+            "VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id, photo_path) DO UPDATE SET "
+            "star_rating = excluded.star_rating, is_favorite = excluded.is_favorite, "
+            "is_rejected = excluded.is_rejected",
+            [(scope, p, *t) for p, t in after.items()
+             if p in marked or before is None or before.get(p) != t])
+
+
+def clear_label_origin_for_scope(conn, user_id, from_clause, where_str, scope_params):
+    """Delete the provenance marks of every photo a filter scope matches, in one set-based statement.
+
+    A person's filter-scoped write only needs to remove marks, so the scope is never read into Python.
+    Run it BEFORE the write, while the scope still matches the same rows.
+    """
+    conn.execute(
+        "DELETE FROM rating_provenance WHERE user_id = ? AND photo_path IN "
+        f"(SELECT photos.path FROM {from_clause}{where_str})",
+        [_label_scope(user_id), *scope_params])
+
+
+def set_photos_rejected(conn, paths, user_id, agent=False):
     """Mark photos as rejected, honoring multi-user per-user preferences and visibility.
 
     Resolves the caller's visible subset of ``paths`` first, then records the
     rejection per-user in ``user_preferences`` (multi-user mode) or in the global
     ``photos`` table (single-user). This keeps bulk culling/scene rejects consistent
     with the per-user read path (``get_preference_columns``) and the single-photo
-    toggle in ``api/routers/faces.py``. Returns the number of photos affected.
+    toggle in ``api/routers/faces.py``. Returns the number of photos affected. ``agent`` says an
+    assistant made the call, which :func:`record_label_origin` records for the taste model.
     """
     if not paths:
         return 0
@@ -1604,6 +1689,7 @@ def set_photos_rejected(conn, paths, user_id):
     ).fetchall()]
     if not visible:
         return 0
+    before = snapshot_labels(conn, agent, user_id, visible)
     if user_id and is_multi_user_enabled():
         conn.executemany(
             "INSERT INTO user_preferences (user_id, photo_path, is_rejected) "
@@ -1614,6 +1700,7 @@ def set_photos_rejected(conn, paths, user_id):
     else:
         ph = ','.join('?' * len(visible))
         conn.execute(f"UPDATE photos SET is_rejected = 1 WHERE path IN ({ph})", visible)
+    record_label_origin(conn, agent, user_id, visible, before)
     return len(visible)
 
 

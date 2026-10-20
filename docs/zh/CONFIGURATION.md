@@ -2567,6 +2567,7 @@ python facet.py --recompute-text   # 重新读取整个图库
       "write_rate_per_min": 30,
       "tool_profile": "full",
       "allow_destructive": false,
+      "inpage_tools": true,
       "allowed_origins": []
     }
   }
@@ -2584,8 +2585,9 @@ python facet.py --recompute-text   # 重新读取整个图库
 | `semantic_timeout_s` | `120` | `semantic_search` 的超时秒数（1 到 300）；它要加载嵌入模型，因此需要更久。 |
 | `rate_per_min` | `120` | 每个令牌每分钟的工具调用次数（最小 1）。 |
 | `write_rate_per_min` | `30` | 每个令牌每分钟的写入调用次数（最小 1）。单独计算，避免读取挤占写入。适用于写入工具（包括 `cull_apply` 和 `delete_photos` 的试运行）；参见 [AI 智能体](AGENTS.md#修改内容)。 |
-| `tool_profile` | `"full"` | `"full"` 列出密钥可调用的所有工具。`"core"` 只列出面向小模型的 12 个工具（`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`, `undo_last`）。只有列表改变：列表之外的工具只要密钥的级别允许仍可调用。其他任何值都回退到 `"full"`。参见 [AI 智能体](AGENTS.md#权限级别)。 |
-| `allow_destructive` | `false` | 允许助手运行 `delete_photos`、`cull_apply` 的 `move_rejects` 与 `trash_rejects` 操作，以及带 `allow_reassign` 的 `assign_faces`。关闭时 `delete_photos` 不会被列出，另外两者返回 `feature_disabled` 并指明此键。它们都无法撤销。参见 [AI 智能体](AGENTS.md#破坏性操作先预览再确认)。 |
+| `tool_profile` | `"full"` | `"full"` 列出密钥可调用的所有工具。`"core"` 只列出面向小模型的 11 个工具（`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`）。只有列表改变：列表之外的工具只要密钥的级别允许仍可调用。其他任何值都回退到 `"full"`。参见 [AI 智能体](AGENTS.md#权限级别)。 |
+| `allow_destructive` | `false` | 允许助手运行 `delete_photos`、`cull_apply` 的 `move_rejects` 与 `trash_rejects` 操作，以及带 `allow_reassign` 的 `assign_faces`。关闭时 `delete_photos` 不会被列出，另外两者返回 `feature_disabled` 并指明此键。参见 [AI 智能体](AGENTS.md#破坏性操作先预览再确认)。 |
+| `inpage_tools` | `true` | 已登录的标签页是否可以在页面内调用服务器的工具：`GET /api/mcp/inpage_tools` 列出它们，`POST /api/mcp/call` 以该会话的身份、按其当前级别、经与 `/mcp` 相同的封装层执行其中一个。关闭后，两个路由都返回 404，`/api/auth/status` 中的 `features.mcp_inpage` 为假。参见 [AI 智能体](AGENTS.md#页面内-webmcp浏览器智能体)。 |
 | `allowed_origins` | `[]` | 当反向代理改写 `Host` 时，额外允许打开标签页桥接的浏览器来源（例如 `["https://photos.example.com"]`）。与 CORS 键 `viewer.allowed_origins` 不同。 |
 
 超出范围的数字会被限制到边界，类型错误的值会回退到默认值。该配置块在每次请求时读取，因此重新加载配置即可切换该功能，无需重启。

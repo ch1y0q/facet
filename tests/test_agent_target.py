@@ -11,7 +11,7 @@ import pytest
 
 from api import config as api_config
 from api.agent.target import view_filters
-from tests.conftest import _TEST_DB_FILE, AGENT_DIR
+from tests.conftest import _TEST_DB_FILE, AGENT_DIR, intercept_internal_call
 from tests import test_agent_write
 
 # The on-disk library of test_agent_write, reused as fixtures (the nonce tests need real files).
@@ -186,14 +186,12 @@ class TestViewSelection:
 
     def test_hide_toggles_are_not_added_to_the_tabs_payload(self, setup, monkeypatch):
         seen = []
-        from api.agent import internal_client
-        real = internal_client.InternalClient.call
 
-        async def call(self, grant, tool, **kw):
+        def spy(tool, kw):
             if tool == "photos_count":
                 seen.append(dict(kw["query"]))
-            return await real(self, grant, tool, **kw)
-        monkeypatch.setattr(internal_client.InternalClient, "call", call)
+
+        intercept_internal_call(monkeypatch, spy)
         monkeypatch.setitem(api_config.VIEWER_CONFIG["defaults"], "hide_bursts", True)
         monkeypatch.setitem(api_config.VIEWER_CONFIG["defaults"], "hide_panoramas", True)
         env, token, _ = setup(view_selection(11, filters={"path_prefix": PFX}))

@@ -689,7 +689,7 @@ def select_burst_photos(
             reject_paths = list(group_paths - keep_set)
             _mark_burst_reviewed(conn, keep_paths, reject_paths)
             if reject_paths:
-                set_photos_rejected(conn, reject_paths, user_id)
+                set_photos_rejected(conn, reject_paths, user_id, agent=bool(user and user.is_agent_request))
 
             record_culling_decision(
                 conn, keep_paths, reject_paths, sequence_members,
@@ -795,7 +795,7 @@ def select_similar_photos(
 
             # Mark non-kept photos as rejected (per-user in multi-user mode, visibility-checked)
             reject_paths = list(group_paths - keep_set)
-            set_photos_rejected(conn, reject_paths, user_id)
+            set_photos_rejected(conn, reject_paths, user_id, agent=bool(user and user.is_agent_request))
 
             # Mark ALL photos in the group as similarity_reviewed. The column
             # is guaranteed present by the lifespan-time init_database() migration
@@ -1766,7 +1766,7 @@ def _confirm_sequence_group(body, user, kind):
             _mark_burst_reviewed(conn, keep_paths, reject_paths)
         elif body.type == 'similar':
             _mark_similarity_reviewed(conn, keep_paths + reject_paths, vis_sql, vis_params)
-        set_photos_rejected(conn, reject_paths, user_id)
+        set_photos_rejected(conn, reject_paths, user_id, agent=bool(user and user.is_agent_request))
         conn.commit()
     _invalidate_culling_groups_cache()
     return {
@@ -2066,7 +2066,7 @@ def _apply_auto_cull_group(conn, group, keep_paths, reject_paths, user_id, vis_s
         _mark_burst_reviewed(conn, keep_paths, reject_paths)
     elif gtype == 'similar':
         _mark_similarity_reviewed(conn, keep_paths + reject_paths, vis_sql, vis_params)
-    set_photos_rejected(conn, reject_paths, user_id)
+    set_photos_rejected(conn, reject_paths, user_id, agent=not record)
     if keep_whole:
         # Deliberately no comparison pairs. Dropping the flanking exposures of a
         # bracket says nothing about taste -- feeding "base beat -2 EV" to the

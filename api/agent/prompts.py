@@ -84,10 +84,7 @@ def _cull_shoot(args: dict, visible: frozenset) -> str:
     if {"cull_apply", "delete_photos"} <= visible:
         steps.append("Moving, trashing or deleting rejects (`cull_apply`, `delete_photos`) only after a "
                      "dry run (`dry_run`) that you show the user and their explicit confirmation of "
-                     "that exact list; pass the `confirm` it returned. They cannot be undone.")
-    if "undo_last" in visible:
-        steps.append("Finish by telling the user the `undo.batch_id` of each change you made, so they can ask "
-                     "you to take it back with `undo_last`.")
+                     "that exact list; pass the `confirm` it returned. They are irreversible.")
     return f"Cull a shoot in Facet.\n\n{_steps(steps)}\n\n{DATA_NOTE}"
 
 
@@ -99,8 +96,7 @@ def _build_album(args: dict, visible: frozenset) -> str:
         f"Create the album with `create_album` ({name}); creating it twice makes two albums.",
         "Add the photos with `album_add_photos`, passing the paths you found"
         + (" or `target: \"selection\"` to use what the user selected in the tab." if "ui_get_selection" in visible else "."),
-        "Tell the user the album id, its name and how many photos went in"
-        + (", and the `undo.batch_id` (`undo_last` takes the additions back)." if "undo_last" in visible else "."),
+        "Tell the user the album id, its name and how many photos went in.",
     ]
     return f"Build an album in Facet.\n\n{_steps(steps)}\n\n{DATA_NOTE}"
 
@@ -112,8 +108,7 @@ def _tag_people(args: dict, visible: frozenset) -> str:
         "Call `possible_faces` for that person (default scope `unassigned`, shown in the tab) and review "
         "the best matches with the user; lower `min_similarity` only if the person has few faces.",
         "Ask the user before calling `assign_faces` with the face ids they approved. Leave faces that "
-        "already belong to someone else alone unless the user explicitly asks to move them. Face assignments "
-        "are not journaled for undo: `undo_last` cannot move them back.",
+        "already belong to someone else alone unless the user explicitly asks to move them.",
     ]
     return f"Name more of one person's faces in Facet.\n\n{_steps(steps)}\n\n{DATA_NOTE}"
 

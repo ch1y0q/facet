@@ -4,21 +4,15 @@
 """
 
 import json
-import sqlite3
 
 import pytest
 
 from api.agent import resources
 from api.agent.tools_common import MCP_FILTER_KEYS
-from tests.conftest import _TEST_DB_FILE, AGENT_DIR
+from tests.conftest import AGENT_DIR, agent_db as db
 
 PREFIX = AGENT_DIR + "res/"
 URIS = {"facet://categories", "facet://tags", "facet://persons", "facet://filters", "facet://scoring-contexts"}
-
-
-def db(sql, *args):
-    with sqlite3.connect(_TEST_DB_FILE.name) as conn:
-        return conn.execute(sql, args).fetchall()
 
 
 def read(env, token, uri):
@@ -137,3 +131,18 @@ def test_readers_never_open_the_database_themselves():
     names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)} | {n.attr for n in ast.walk(tree)
                                                                       if isinstance(n, ast.Attribute)}
     assert not names & {"get_db", "sqlite3", "execute"}
+
+
+def test_categories_and_tags_are_flat_lists_without_the_route_cache_flag(world):
+    env, token = world
+    for uri, key in (("facet://categories", "categories"), ("facet://tags", "tags")):
+        data = body(env, token, uri)["data"]
+        assert set(data) == {key} and isinstance(data[key], list), (uri, data)
+
+
+def test_resources_list_follows_the_tool_profile_like_tools_list(agent_app):
+    env = agent_app("legacy", tool_profile="core")
+    token = env.token(env.login(), "readonly")
+    assert "list_persons" not in env.tool_names(token)
+    listed = {r["uri"] for r in env.rpc(token, "resources/list").json()["result"]["resources"]}
+    assert listed == URIS - {"facet://persons"}

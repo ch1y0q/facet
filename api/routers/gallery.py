@@ -18,7 +18,7 @@ from api.database import get_async_db, get_db
 from api.models.gallery import (
     BY_PATHS_MISSING_CAP, GALLERY_PAGING_KEYS, GalleryParams, Photo, PhotoCountResponse,
     PhotoPathsResponse, PhotosByPathsRequest, PhotosByPathsResponse, PhotosResponse,
-    gallery_filter_keys,
+    gallery_filter_keys, query_value,
 )
 from api.models.discovery import PhotoSetResponse, PhotoTypeCountsResponse, ViewerConfigResponse
 from api.db_helpers import (
@@ -1243,7 +1243,7 @@ async def api_photos_by_paths(
     unknown = sorted(set(body.filters) - gallery_filter_keys())
     if unknown:
         raise HTTPException(status_code=422, detail=f"Unknown filter key(s): {', '.join(unknown)}")
-    qp = {key: ('1' if value is True else '0' if value is False else str(value))
+    qp = {key: query_value(value)
           for key, value in body.filters.items() if key not in GALLERY_PAGING_KEYS}
     qp.setdefault('type', '')
     try:

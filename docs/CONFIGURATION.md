@@ -2581,6 +2581,7 @@ Exposes the tools described in [AI Agents (MCP)](AGENTS.md) at `POST /mcp`: read
       "write_rate_per_min": 30,
       "tool_profile": "full",
       "allow_destructive": false,
+      "inpage_tools": true,
       "allowed_origins": []
     }
   }
@@ -2598,8 +2599,9 @@ Exposes the tools described in [AI Agents (MCP)](AGENTS.md) at `POST /mcp`: read
 | `semantic_timeout_s` | `120` | Timeout for `semantic_search` in seconds (1 to 300); it loads the embedding model, so it needs more. |
 | `rate_per_min` | `120` | Tool calls per minute per token (minimum 1). |
 | `write_rate_per_min` | `30` | Write calls per minute per token (minimum 1). Kept separate so reads cannot starve writes. Applies to the write tools (including the dry run of `cull_apply` and `delete_photos`); see [AI Agents](AGENTS.md#changing-things). |
-| `tool_profile` | `"full"` | `"full"` lists every tool the key may call. `"core"` lists only a 12-tool set for small models (`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`, `undo_last`). Only the listing changes: a tool outside it can still be called when the key's level allows it. Any other value falls back to `"full"`. See [AI Agents](AGENTS.md#permission-levels). |
-| `allow_destructive` | `false` | Lets assistants run `delete_photos`, the `move_rejects` and `trash_rejects` actions of `cull_apply`, and `assign_faces` with `allow_reassign`. Off, `delete_photos` is not listed and the other two answer `feature_disabled` naming this key. None of them can be undone. See [AI Agents](AGENTS.md#destructive-actions-preview-then-confirm). |
+| `tool_profile` | `"full"` | `"full"` lists every tool the key may call. `"core"` lists only an 11-tool set for small models (`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`). Only the listing changes: a tool outside it can still be called when the key's level allows it. Any other value falls back to `"full"`. See [AI Agents](AGENTS.md#permission-levels). |
+| `allow_destructive` | `false` | Lets assistants run `delete_photos`, the `move_rejects` and `trash_rejects` actions of `cull_apply`, and `assign_faces` with `allow_reassign`. Off, `delete_photos` is not listed and the other two answer `feature_disabled` naming this key. See [AI Agents](AGENTS.md#destructive-actions-preview-then-confirm). |
+| `inpage_tools` | `true` | Whether a signed-in tab may call the server's tools from the page: `GET /api/mcp/inpage_tools` lists them and `POST /api/mcp/call` runs one as the session, at the session's live level, through the same wrapper as `/mcp`. Off, both routes answer 404 and `features.mcp_inpage` is false in `/api/auth/status`. See [AI Agents](AGENTS.md#in-page-webmcp-browser-agents). |
 | `allowed_origins` | `[]` | Extra browser origins (for example `["https://photos.example.com"]`) allowed to open the tab bridge when a reverse proxy rewrites `Host`. Distinct from the CORS key `viewer.allowed_origins`. |
 
 Out-of-range numbers are clamped, and a value of the wrong type falls back to the default. The block is read on every request, so a configuration reload toggles the feature without a restart.

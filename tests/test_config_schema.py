@@ -80,5 +80,8 @@ class TestSchemaValidation:
     def test_mcp_allow_destructive_must_be_boolean(self, tmp_path):
         cfg_dict = _minimal_valid()
         cfg_dict["viewer"] = {"mcp": {"allow_destructive": "yes"}}
-        assert ScoringConfig(_write(tmp_path, cfg_dict), validate=False).validate_schema()
+        errors = ScoringConfig(_write(tmp_path, cfg_dict), validate=False).validate_schema()
+        assert any("allow_destructive" in e for e in errors)
+        cfg_dict["viewer"] = {"mcp": {"allow_destructive": True}}
+        assert ScoringConfig(_write(tmp_path, cfg_dict), validate=False).validate_schema() == []
 

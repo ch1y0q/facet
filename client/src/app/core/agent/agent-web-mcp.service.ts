@@ -4,16 +4,14 @@ import {
   Injectable,
   InjectionToken,
   createEnvironmentInjector,
-  declareExperimentalWebMcpTool,
   effect,
   inject,
   signal,
   untracked,
 } from '@angular/core';
 import { AuthService } from '../services/auth.service';
+import { WebMcpDescriptor, registerWebMcpTools, toWebMcpDescriptor } from './webmcp-descriptor';
 import { UiToolDefinition, WebMcpToolRegistry, contractReadyWhen } from './webmcp-registry.service';
-
-type WebMcpDescriptor = Parameters<typeof declareExperimentalWebMcpTool>[0];
 
 /** Loads the polyfill. A dynamic import, so its code ships in a lazy chunk and never in the main bundle. */
 export const WEBMCP_POLYFILL_LOADER = new InjectionToken<() => Promise<{ installWebMCP: () => void }>>(
@@ -86,7 +84,7 @@ export class AgentWebMcpService {
     this.session = session;
     this.state.set('active');
     this.sessionInjector.set(session);
-    await Promise.allSettled(this.registry.tools.map(tool => declareExperimentalWebMcpTool(this.descriptor(tool), session)));
+    await registerWebMcpTools(this.registry.tools.map(tool => this.descriptor(tool)), session);
   }
 
   private stop(): void {
@@ -99,7 +97,7 @@ export class AgentWebMcpService {
   }
 
   private descriptor(tool: UiToolDefinition): WebMcpDescriptor {
-    return {
+    return toWebMcpDescriptor({
       name: tool.name,
       description: tool.description,
       inputSchema: tool.inputSchema,
@@ -108,6 +106,6 @@ export class AgentWebMcpService {
         untrustedContentHint: tool.annotations.untrustedContentHint,
       },
       execute: async (args: unknown) => JSON.stringify(await tool.execute(args)),
-    } as unknown as WebMcpDescriptor;
+    });
   }
 }

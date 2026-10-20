@@ -8,7 +8,8 @@ import pytest
 from api import config as api_config
 from api.agent import show
 from api.agent.tools_read import HIDE_DEFAULT_KEYS
-from tests.conftest import AGENT_DIR
+from api.agent.internal_client import ok
+from tests.conftest import AGENT_DIR, intercept_internal_call
 
 ROWS = [{"path": AGENT_DIR + f"show/{i}.jpg", "filename": f"{i}.jpg", "aggregate": 5.0 + i,
          "aesthetic": 4.0 + i, "caption": "a red sunset" if i == 0 else "a street"} for i in range(3)]
@@ -18,6 +19,19 @@ PREFIX = AGENT_DIR + "show/"
 @pytest.fixture()
 def photos(seed_photos_prefix):
     return seed_photos_prefix(PREFIX, ROWS)
+
+
+def stub_semantic_search(monkeypatch, hits, seen=None):
+    """Answer ``semantic_search`` with ``hits`` (row index, similarity or None); every other call goes through."""
+    def handler(tool, kwargs):
+        if tool != "semantic_search":
+            return None
+        if seen is not None:
+            seen.append(kwargs["query"])
+        return ok({"photos": [{"path": ROWS[i]["path"], "filename": f"{i}.jpg",
+                               **({} if sim is None else {"similarity": sim})} for i, sim in hits],
+                   "total": len(hits), "query": "q"})
+    intercept_internal_call(monkeypatch, handler)
 
 
 def reply_total(total=7):
@@ -191,15 +205,7 @@ class TestSearchRelay:
 
 class TestSemanticAndSimilarRelay:
     def test_semantic_search_shows_the_query(self, agent_app, fake_tab, photos, monkeypatch):
-        from api.agent.internal_client import InternalClient, ok
-        original = InternalClient.call
-
-        async def call(self, grant, tool, **kwargs):
-            if tool == "semantic_search":
-                return ok({"photos": [{"path": ROWS[0]["path"], "filename": "0.jpg"}], "total": 1})
-            return await original(self, grant, tool, **kwargs)
-
-        monkeypatch.setattr(InternalClient, "call", call)
+        stub_semantic_search(monkeypatch, [(0, None)])
         env = agent_app("open")
         tab = fake_tab(env, None, reply=reply_total(1))
         result = env.call(env.token(env.login()), "semantic_search", {"query": "red sunset", "threshold": 0.2})
@@ -264,15 +270,7 @@ class TestSemanticTimeout:
     def test_the_semantic_show_waits_on_semantic_timeout_not_call_timeout(self, agent_app, fake_tab, photos, monkeypatch):
         import time
 
-        from api.agent.internal_client import InternalClient, ok
-        original = InternalClient.call
-
-        async def call(self, grant, tool, **kwargs):
-            if tool == "semantic_search":
-                return ok({"photos": [{"path": ROWS[0]["path"], "filename": "0.jpg"}], "total": 1})
-            return await original(self, grant, tool, **kwargs)
-
-        monkeypatch.setattr(InternalClient, "call", call)
+        stub_semantic_search(monkeypatch, [(0, None)])
         env = agent_app("open", call_timeout_s=1, semantic_timeout_s=10)
 
         def slow(call):
@@ -289,24 +287,9 @@ class TestSemanticFilters:
 
     HITS = [(2, 0.9), (0, 0.8), (1, 0.7)]
 
-    @staticmethod
-    def stub(monkeypatch, hits, seen=None):
-        from api.agent.internal_client import InternalClient, ok
-        original = InternalClient.call
-
-        async def call(self, grant, tool, **kwargs):
-            if tool == "semantic_search":
-                if seen is not None:
-                    seen.append(kwargs["query"])
-                return ok({"photos": [{"path": ROWS[i]["path"], "filename": f"{i}.jpg", "similarity": sim}
-                                      for i, sim in hits], "total": len(hits), "query": "q"})
-            return await original(self, grant, tool, **kwargs)
-
-        monkeypatch.setattr(InternalClient, "call", call)
-
     def test_filtered_rows_keep_similarity_order_and_scores(self, agent_app, fake_tab, photos, monkeypatch):
         seen = []
-        self.stub(monkeypatch, self.HITS, seen)
+        stub_semantic_search(monkeypatch, self.HITS, seen)
         env = agent_app("open")
         fake_tab(env, None, reply=lambda call: {"ok": True, "data": {"shown": 2, "missing": [], "total": 2}})
         result = env.call(env.token(env.login()), "semantic_search",
@@ -319,7 +302,7 @@ class TestSemanticFilters:
         assert seen[0]["limit"] == 200
 
     def test_filtered_show_is_one_ui_show_photos_frame_with_the_final_paths(self, agent_app, fake_tab, photos, monkeypatch):
-        self.stub(monkeypatch, self.HITS)
+        stub_semantic_search(monkeypatch, self.HITS)
         env = agent_app("open")
         tab = fake_tab(env, None, reply=lambda call: {"ok": True, "data": {"shown": 2, "missing": [], "total": 2}})
         result = env.call(env.token(env.login()), "semantic_search",
@@ -329,7 +312,7 @@ class TestSemanticFilters:
         assert result["shown_in_tab"]["applied"] is True and result["shown_in_tab"]["mode"] == "paths"
 
     def test_show_false_and_empty_results_send_no_frame(self, agent_app, fake_tab, photos, monkeypatch):
-        self.stub(monkeypatch, self.HITS)
+        stub_semantic_search(monkeypatch, self.HITS)
         env = agent_app("open")
         tab = fake_tab(env, None, reply=lambda call: {"ok": True, "data": {}})
         token = env.token(env.login())
@@ -339,7 +322,7 @@ class TestSemanticFilters:
         assert empty["data"]["rows"] == [] and empty["shown_in_tab"]["reason"] == "empty_result"
 
     def test_unfiltered_search_still_shows_the_semantic_patch_and_keeps_scores(self, agent_app, fake_tab, photos, monkeypatch):
-        self.stub(monkeypatch, self.HITS)
+        stub_semantic_search(monkeypatch, self.HITS)
         env = agent_app("open")
         tab = fake_tab(env, None, reply=reply_total(3))
         result = env.call(env.token(env.login()), "semantic_search", {"query": "q"})
@@ -351,7 +334,7 @@ class TestSemanticFilters:
     def test_a_saturated_candidate_list_adds_a_note(self, agent_app, fake_tab, photos, monkeypatch):
         from api.agent import tools_read
         monkeypatch.setattr(tools_read, "SEMANTIC_CANDIDATES", 3)
-        self.stub(monkeypatch, self.HITS)
+        stub_semantic_search(monkeypatch, self.HITS)
         env = agent_app("open")
         fake_tab(env, None, reply=lambda call: {"ok": True, "data": {}})
         result = env.call(env.token(env.login()), "semantic_search",

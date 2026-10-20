@@ -8,7 +8,7 @@ import sqlite3
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from api.auth import CurrentUser, require_edition, require_authenticated
 from api.config import VIEWER_CONFIG, invalidate_stats_cache
@@ -73,6 +73,12 @@ class AssignFacesRequest(BaseModel):
     # whole call, ``only_unassigned`` leaves faces another person already owns alone.
     only_unassigned: bool = False
     tolerant: bool = False
+
+    @model_validator(mode='after')
+    def _only_unassigned_needs_tolerant(self):
+        if self.only_unassigned and not self.tolerant:
+            raise ValueError("only_unassigned requires tolerant=true: the strict path moves every listed face")
+        return self
 
 
 class SplitPersonRequest(BaseModel):

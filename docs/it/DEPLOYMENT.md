@@ -298,7 +298,7 @@ Per un NAS solo viewer in cui l'immagine deve restare piccola (senza CUDA), comp
 ```dockerfile
 FROM python:3.11-slim
 WORKDIR /app
-RUN pip install fastapi uvicorn pyjwt pillow aiosqlite
+RUN pip install fastapi uvicorn pyjwt pillow aiosqlite 'mcp>=2.3,<3' 'httpx>=0.28,<1' 'websockets>=13.0'
 COPY viewer.py config_resolve.py database.py tagger.py ./
 COPY api/ api/
 COPY config/ config/
@@ -488,7 +488,7 @@ cui misurarlo.
 ### Uvicorn
 
 ```bash
-pip install fastapi uvicorn pyjwt pillow aiosqlite
+pip install fastapi uvicorn pyjwt pillow aiosqlite 'mcp>=2.3,<3' 'httpx>=0.28,<1' 'websockets>=13.0'
 uvicorn api:create_app --factory --host 0.0.0.0 --port 5000 --workers 4
 ```
 

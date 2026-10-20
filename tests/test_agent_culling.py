@@ -8,7 +8,7 @@ import sqlite3
 
 import pytest
 
-from api.agent import nonce, server, tools_culling
+from api.agent import nonce, tools_culling
 from tests.conftest import _TEST_DB_FILE, AGENT_DIR
 
 PREFIX = AGENT_DIR + "cull/"
@@ -43,21 +43,8 @@ def photos(seed_photos_prefix):
 
 
 @pytest.fixture()
-def wired(monkeypatch):
-    """Register the culling tools on the server the way ``mount_agent`` will."""
-    original = server.register_read_tools
-
-    def register(srv, client, status_extra, registry):
-        original(srv, client, status_extra, registry)
-        if srv._tool_manager.get_tool("list_culling_groups") is None:
-            tools_culling.register_culling_tools(srv, client._app)
-
-    monkeypatch.setattr(server, "register_read_tools", register)
+def env_token(agent_app, photos):
     nonce.reset()
-
-
-@pytest.fixture()
-def env_token(wired, agent_app, photos):
     env = agent_app("legacy")
     return env, env.token(env.login(edition=True), "edition")
 
@@ -75,7 +62,7 @@ def _counts():
 
 
 class TestGrant:
-    def test_user_and_readonly_tokens_are_refused(self, wired, agent_app, photos):
+    def test_user_and_readonly_tokens_are_refused(self, agent_app, photos):
         env = agent_app("multi")
         headers = env.login("alice")
         for level in ("readonly", "user"):

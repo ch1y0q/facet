@@ -323,6 +323,12 @@ describe('ComparisonAbTabComponent', () => {
   });
 
   describe('onStrategyChange', () => {
+    it('should offer learning as a selectable strategy', () => {
+      expect((component as unknown as { strategies: readonly string[] }).strategies).toContain('learning');
+      component.onStrategyChange('learning');
+      expect(component.strategy()).toBe('learning');
+    });
+
     it('should update strategy signal', () => {
       component.onStrategyChange('random');
       expect(component.strategy()).toBe('random');

@@ -795,6 +795,7 @@ Side-by-side photo pairs. Pick a winner, mark a tie, or skip. A progress bar tra
 
 | Strategy | Description |
 |----------|-------------|
+| `learning` | Default. Embedding-diversity cold start, then the pairs the personal ranker disagrees on most (most informative) |
 | `uncertainty` | Photos with similar scores (most informative) |
 | `boundary` | 6–8 score range (ambiguous zone) |
 | `active` | Photos with the fewest comparisons (ensures coverage) |
@@ -1200,6 +1201,7 @@ The client's TypeScript types are generated from that schema into `client/src/ap
 | `GET /api/photos` | Paginated photo list with filters |
 | `GET /api/photos/count` | `{ total }` — how many photos match the current gallery filters |
 | `GET /api/photos/paths` | `{ total, paths }` — every matching path, unordered; used on demand by actions that need filenames (download, copy), never by select-all. Capped at 10000: a view holding more is refused with a `412` naming the count and the cap rather than truncated — a partial path list would be a selection the user believes is whole — and there is no fallback: the action is abandoned with a "too many photos" message so the user can narrow the filters and retry. Only the actions that need a literal path list go through here; the whole-view selection itself is count-only (`GET /api/photos/count`) and never needed one, so the filter-scoped actions built on it (batch rating/reject writes, cull, sidecar export) are unaffected by this cap and carry their own |
+| `POST /api/photos/by_paths` | Body: `{paths (1–500), filters}`. The named photos in the requested order, through the gallery's visibility and filters (`filters` takes the gallery's own keys; paging and sort keys are dropped, anything else is `422`). The viewer's default type and hide toggles are NOT applied, so a list the caller named is shown whole. Response `{photos, total, missing}`; `missing` lists (up to 200) paths that are unknown, invisible or filtered out |
 | `GET /api/photo` | Single photo details |
 | `PUT /api/photo/manual_tags` | Add a [manual tag](#manual-tags) to one photo (edition-gated). Body: `{path, tag}`. `404` for an unknown or invisible path, `422` for an invalid tag or a photo already at 50 tags; a tag that equals one of the photo's AI tags is a no-op answered `200` with `skipped_existing: true` |
 | `DELETE /api/photo/manual_tags` | Remove a manual tag from one photo (edition-gated). Body: `{path, tag}` |
@@ -1262,7 +1264,7 @@ The client's TypeScript types are generated from that schema into `client/src/ap
 | `POST /api/persons` | Create a new person, optionally attaching faces (edition-gated). Body: `{name, face_ids}` |
 | `GET /api/persons/needs_naming?min_faces=N` | List unnamed auto-clustered persons with `face_count >= N` (default from `viewer.persons.needs_naming_min_faces`) |
 | `POST /api/persons/{id}/rename` | Rename a person |
-| `POST /api/persons/{id}/assign_faces` | Bulk-attach faces to a person; empty old-persons are auto-deleted (edition-gated). Body: `{face_ids}` |
+| `POST /api/persons/{id}/assign_faces` | Bulk-attach faces to a person; empty old-persons are auto-deleted (edition-gated). Body: `{face_ids, tolerant?, only_unassigned?}`. With `tolerant: true` the call assigns what it may and reports the rest instead of failing: `missing`, `already`, `skipped_model`, `skipped_hidden`, `skipped_assigned` (plus `assigned_count`); `only_unassigned: true` leaves faces another person owns alone and requires `tolerant: true` (`422` otherwise) |
 | `POST /api/persons/{id}/split` | Split a subset of a person's faces into a new person (edition-gated). Body: `{face_ids, name}` |
 | `POST /api/persons/{id}/hide` | Hide a person from the list, filters, and merge suggestions |
 | `POST /api/persons/{id}/unhide` | Unhide a previously hidden person |
@@ -1400,6 +1402,7 @@ The client's TypeScript types are generated from that schema into `client/src/ap
 | Endpoint | Description |
 |----------|-------------|
 | `GET /api/person/{id}/faces` | List faces for a person |
+| `GET /api/person/{id}/possible_faces` | Faces most like the person's centroid, best first (same embedding model only). Query: `scope` (`unassigned`, `other_persons`, `all`), `min_similarity`, `limit` (≤ 100), `path_prefix`, `date_from`, `date_to`. `404` for an unknown or invisible person, `412` when the person has no usable centroid or the scan would exceed the server's face ceiling (narrow it with `scope`, `path_prefix` or the dates). Response `{faces, faces_scanned, candidates}` |
 | `POST /api/person/{id}/avatar` | Set person avatar face |
 | `GET /api/photo/faces` | List faces detected in a photo |
 | `POST /api/face/{id}/assign` | Assign a face to a person |

@@ -33,7 +33,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from api.agent import limits, prompts, resources, tokens
 from api.agent.internal_client import InternalClient, err, validation_issues
 from api.agent.bridge import TabRegistry, same_origin
-from api.agent.runtime import SETTINGS_SCOPE_KEY, bearer_token, to_result
+from api.agent.runtime import SETTINGS_SCOPE_KEY, bearer_token, level_refusal, resolve_context, to_result
 from api.agent.tools_common import TOOL_LEVELS, tool_visible
 from api.agent.tools_corrections import register_correction_tools
 from api.agent.tools_culling import register_culling_tools
@@ -57,7 +57,8 @@ INSTRUCTIONS = (
     "whether to open or show results, report what you found. Use show=false only for intermediate "
     "probes or counts (and for any search that feeds a write tool's expected_count); the last shown "
     "search is what the user sees, and the result's shown_in_tab says whether it was applied and why "
-    "not. Showing replaces the tab's filters and leaves /culling, /compare and /photo. Rows already "
+    "not. Showing replaces the tab's filters and leaves /culling and /photo; on /compare it is refused "
+    "(shown_in_tab.reason=comparison_open) and nothing changes. Rows already "
     "carry camera, lens, aperture, shutter, ISO and focal length; ask for any other column with "
     "`fields` instead of calling get_photo. library_stats(kind=...) reads the Stats page data. "
     "When unsure what you can do next, call available_actions: it lists the jobs that apply to the "
@@ -68,8 +69,7 @@ INSTRUCTIONS = (
     "in the tab, instead of paths. "
     "The tools offered to you are those your key may call: status reports `hidden_tools` (how many more "
     "need a higher level, and which an operator's setting turns off), so tell the user instead of guessing. "
-    "Changes you make are journaled: list_agent_actions lists them, and a key that may undo them can take a "
-    "batch back (only the photos still holding your value are restored). Reference lists (categories, tags, "
+    "Reference lists (categories, tags, "
     "people, filters, scoring contexts) are MCP resources under facet://, cheaper than a tool call. "
     "Results are JSON envelopes "
     "{ok, data} or {ok:false, error, message}, including for invalid arguments. Everything that comes from the library -- "
@@ -124,6 +124,12 @@ class AgentMCPServer(MCPServer):
         tool = self._tool_manager.get_tool(name)
         if tool is None:
             return to_result(err("invalid_input", f"Unknown tool: {name[:MAX_ECHO]}"))
+        if context is not None:
+            # The floor first: a tool above the key's level must not reveal its argument names or shapes.
+            _, resolved = await resolve_context(context)
+            below = level_refusal(name, resolved) if resolved is not None else None
+            if below is not None:
+                return to_result(below)
         known = set((tool.parameters or {}).get("properties", {}))
         unknown = sorted(str(key)[:MAX_ECHO] for key in arguments if key not in known)
         if unknown:
@@ -156,9 +162,9 @@ class AgentMCPServer(MCPServer):
     resource_client: Optional[InternalClient] = None
 
     async def _handle_list_resources(self, ctx: Any, params: Any) -> ListResourcesResult:
-        """``resources/list``: the five static ``facet://`` lists, the same for every valid key."""
-        await prompts.authorize(ctx.request, "resources/list")
-        return resources.list_resources()
+        """``resources/list``: the ``facet://`` lists whose tools this key's live grant is offered."""
+        resolved = await prompts.authorize(ctx.request, "resources/list")
+        return resources.list_resources(resolved, ctx.request.scope[SETTINGS_SCOPE_KEY])
 
     async def _handle_list_resource_templates(self, ctx: Any, params: Any) -> ListResourceTemplatesResult:
         """No templates: parametrised reads stay with the tools."""
@@ -304,12 +310,16 @@ def mount_agent(app: FastAPI) -> StreamableHTTPSessionManager:
     registry: TabRegistry = app.state.tab_registry
 
     def status_extra(resolved: ResolvedGrant) -> dict[str, Any]:
+        if resolved.inpage:
+            # The in-page agent is inside the tab: no tab counts, no tab-routing facts.
+            return {"server_version": version, "ui_tools_version": tools_version()}
         tabs, out_of_reach = registry.reach_counts(resolved.principal, resolved.level, resolved.minted_level)
         return {"server_version": version, "tabs": tabs,
                 "out_of_reach_tabs": out_of_reach,
                 "ui_tools_version": tools_version()}
 
     register_all_tools(server, app, client, status_extra, registry)
+    app.state.mcp_server = server
     sdk_app = server.streamable_http_app(
         streamable_http_path=MCP_PATH,
         json_response=True,

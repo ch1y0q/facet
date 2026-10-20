@@ -5,11 +5,10 @@ unique path prefix so every number is exact.
 """
 
 import json
-import sqlite3
 
 import pytest
 
-from tests.conftest import _TEST_DB_FILE, AGENT_DIR
+from tests.conftest import AGENT_DIR
 
 PREFIX = AGENT_DIR + "report/"
 SCOPE = {"path_prefix": PREFIX}
@@ -30,11 +29,6 @@ ROWS = [
     row("g.jpg", burst_group_id=7001, is_burst_lead=0),
     row("h.jpg", aggregate=2.0, junk_kind="screenshot"),
 ]
-
-
-def db(sql, *args):
-    with sqlite3.connect(_TEST_DB_FILE.name) as conn:
-        return conn.execute(sql, args).fetchall()
 
 
 @pytest.fixture()

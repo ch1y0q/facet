@@ -43,12 +43,7 @@ def restrict_context(result: dict, level: str) -> None:
     data = result.get("data") if result.get("ok") else None
     if not isinstance(data, dict):
         return
-    raw_gallery, raw_selection = data.get("gallery"), data.get("selection")
-    gallery: dict = raw_gallery if isinstance(raw_gallery, dict) else {}
-    selection: dict = raw_selection if isinstance(raw_selection, dict) else {}
-    raw_count = selection.get("count")
-    count = raw_count if isinstance(raw_count, int) else 0
-    facts = actions.facts_for(str(data.get("route") or "/"), count, bool(gallery.get("pinned")))
+    facts = actions.facts_from_context(data)[0]
     rows, _hidden = actions.evaluate(level, facts, TOOL_LEVELS)
     data["level"] = level
     data["actions"] = [{"id": row["id"], "summary": row["summary"], "tools": [t["name"] for t in row["tools"]]}

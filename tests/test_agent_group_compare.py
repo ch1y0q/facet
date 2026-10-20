@@ -5,13 +5,12 @@ seeded into the shared session DB.
 """
 
 import io
-import sqlite3
 
 import numpy as np
 import pytest
 from PIL import Image
 
-from tests.conftest import _TEST_DB_FILE, AGENT_DIR
+from tests.conftest import AGENT_DIR, agent_db as db
 
 PREFIX = AGENT_DIR + "gc/"
 A, B, C = (PREFIX + n for n in ("a.jpg", "b.jpg", "c.jpg"))
@@ -39,11 +38,6 @@ ROWS = [
 ]
 # (path, face_index, eyes_open_score, smile_score)
 FACES = [(A, 0, 9.0, 1.0), (A, 1, 2.0, 8.0), (B, 0, 7.0, 3.0), (B, 1, 8.0, 9.0), (C, 0, 9.5, 5.0)]
-
-
-def db(sql, *args):
-    with sqlite3.connect(_TEST_DB_FILE.name) as conn:
-        return conn.execute(sql, args).fetchall()
 
 
 @pytest.fixture()
@@ -106,7 +100,7 @@ class TestFaces:
     def test_over_twelve_paths_are_refused(self, world):
         env, token = world
         refused = env.call(token, "group_compare", {"paths": [PREFIX + f"{i}.jpg" for i in range(13)], "by": "faces"})
-        assert refused["ok"] is False
+        assert refused["error"] == "too_large" and "12" in refused["message"]
 
 
 class TestSubjects:

@@ -49,6 +49,14 @@ describe('ComparisonComponent', () => {
     component = TestBed.inject(ComparisonComponent);
   });
 
+  describe('leaving the page', () => {
+    it('resets the strategy the root service kept from this visit', () => {
+      compareFilters.strategy.set('boundary');
+      TestBed.resetTestingModule();
+      expect(compareFilters.strategy()).toBe('uncertainty');
+    });
+  });
+
   describe('loadCategories', () => {
     it('should call store.loadTypeCounts when types are empty', async () => {
       mockStore.types.set([]);

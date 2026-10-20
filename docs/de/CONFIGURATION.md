@@ -2609,6 +2609,7 @@ Stellt die in [KI-Agenten (MCP)](AGENTS.md) beschriebenen Werkzeuge unter `POST 
       "write_rate_per_min": 30,
       "tool_profile": "full",
       "allow_destructive": false,
+      "inpage_tools": true,
       "allowed_origins": []
     }
   }
@@ -2626,8 +2627,9 @@ Stellt die in [KI-Agenten (MCP)](AGENTS.md) beschriebenen Werkzeuge unter `POST 
 | `semantic_timeout_s` | `120` | Zeitlimit für `semantic_search` in Sekunden (1 bis 300); es lädt das Embedding-Modell und braucht daher mehr. |
 | `rate_per_min` | `120` | Werkzeugaufrufe pro Minute und Token (mindestens 1). |
 | `write_rate_per_min` | `30` | Schreibende Aufrufe pro Minute und Token (mindestens 1). Getrennt geführt, damit Lesezugriffe Schreibzugriffe nicht aushungern. Gilt für die Schreibwerkzeuge (einschließlich des Probelaufs von `cull_apply` und `delete_photos`); siehe [KI-Agenten](AGENTS.md#änderungen-vornehmen). |
-| `tool_profile` | `"full"` | `"full"` listet jedes Werkzeug, das der Schlüssel aufrufen darf. `"core"` listet nur einen Satz von 12 Werkzeugen für kleine Modelle (`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`, `undo_last`). Nur die Liste ändert sich: ein Werkzeug außerhalb kann weiter aufgerufen werden, wenn die Stufe des Schlüssels es erlaubt. Jeder andere Wert fällt auf `"full"` zurück. Siehe [KI-Agenten](AGENTS.md#berechtigungsstufen). |
-| `allow_destructive` | `false` | Erlaubt Assistenten `delete_photos`, die Aktionen `move_rejects` und `trash_rejects` von `cull_apply` sowie `assign_faces` mit `allow_reassign`. Deaktiviert wird `delete_photos` nicht aufgelistet, und die beiden anderen antworten `feature_disabled` mit Nennung dieses Schlüssels. Keines davon lässt sich rückgängig machen. Siehe [KI-Agenten](AGENTS.md#destruktive-aktionen-vorschau-dann-bestätigung). |
+| `tool_profile` | `"full"` | `"full"` listet jedes Werkzeug, das der Schlüssel aufrufen darf. `"core"` listet nur einen Satz von 11 Werkzeugen für kleine Modelle (`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`). Nur die Liste ändert sich: ein Werkzeug außerhalb kann weiter aufgerufen werden, wenn die Stufe des Schlüssels es erlaubt. Jeder andere Wert fällt auf `"full"` zurück. Siehe [KI-Agenten](AGENTS.md#berechtigungsstufen). |
+| `allow_destructive` | `false` | Erlaubt Assistenten `delete_photos`, die Aktionen `move_rejects` und `trash_rejects` von `cull_apply` sowie `assign_faces` mit `allow_reassign`. Deaktiviert wird `delete_photos` nicht aufgelistet, und die beiden anderen antworten `feature_disabled` mit Nennung dieses Schlüssels. Siehe [KI-Agenten](AGENTS.md#destruktive-aktionen-vorschau-dann-bestätigung). |
+| `inpage_tools` | `true` | Ob ein angemeldeter Tab die Werkzeuge des Servers aus der Seite aufrufen darf: `GET /api/mcp/inpage_tools` listet sie und `POST /api/mcp/call` führt eines als die Sitzung aus, mit deren aktueller Stufe, durch denselben Wrapper wie `/mcp`. Aus, antworten beide Routen mit 404 und `features.mcp_inpage` ist in `/api/auth/status` falsch. Siehe [KI-Agenten](AGENTS.md#webmcp-im-tab-browser-agenten). |
 | `allowed_origins` | `[]` | Zusätzliche Browser-Ursprünge (zum Beispiel `["https://photos.example.com"]`), die die Tab-Brücke öffnen dürfen, wenn ein Reverse-Proxy `Host` umschreibt. Nicht zu verwechseln mit dem CORS-Schlüssel `viewer.allowed_origins`. |
 
 Zahlen außerhalb des Bereichs werden begrenzt, und ein Wert des falschen Typs fällt auf den Standard zurück. Der Block wird bei jeder Anfrage gelesen, ein Neuladen der Konfiguration schaltet die Funktion also ohne Neustart um.

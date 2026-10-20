@@ -2604,6 +2604,7 @@ Espone gli strumenti descritti in [Agenti IA (MCP)](AGENTS.md) su `POST /mcp`: l
       "write_rate_per_min": 30,
       "tool_profile": "full",
       "allow_destructive": false,
+      "inpage_tools": true,
       "allowed_origins": []
     }
   }
@@ -2621,8 +2622,9 @@ Espone gli strumenti descritti in [Agenti IA (MCP)](AGENTS.md) su `POST /mcp`: l
 | `semantic_timeout_s` | `120` | Timeout di `semantic_search` in secondi (da 1 a 300); carica il modello di embedding e richiede più tempo. |
 | `rate_per_min` | `120` | Chiamate di strumento al minuto per token (minimo 1). |
 | `write_rate_per_min` | `30` | Chiamate di scrittura al minuto per token (minimo 1). Tenuto separato perché le letture non affamino le scritture. Vale per gli strumenti di scrittura (inclusa la simulazione di `cull_apply` e `delete_photos`); vedi [Agenti IA](AGENTS.md#modificare-la-libreria). |
-| `tool_profile` | `"full"` | `"full"` elenca ogni strumento che la chiave può chiamare. `"core"` elenca solo un insieme di 12 strumenti per i modelli piccoli (`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`, `undo_last`). Cambia solo l'elenco: uno strumento escluso può comunque essere chiamato se il livello della chiave lo consente. Qualsiasi altro valore torna a `"full"`. Vedi [Agenti IA](AGENTS.md#livelli-di-autorizzazione). |
-| `allow_destructive` | `false` | Consente agli assistenti di eseguire `delete_photos`, le azioni `move_rejects` e `trash_rejects` di `cull_apply` e `assign_faces` con `allow_reassign`. Disattivato, `delete_photos` non è elencato e gli altri due rispondono `feature_disabled` indicando questa chiave. Nessuno di essi è annullabile. Vedi [Agenti IA](AGENTS.md#azioni-distruttive-anteprima-poi-conferma). |
+| `tool_profile` | `"full"` | `"full"` elenca ogni strumento che la chiave può chiamare. `"core"` elenca solo un insieme di 11 strumenti per i modelli piccoli (`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`). Cambia solo l'elenco: uno strumento escluso può comunque essere chiamato se il livello della chiave lo consente. Qualsiasi altro valore torna a `"full"`. Vedi [Agenti IA](AGENTS.md#livelli-di-autorizzazione). |
+| `allow_destructive` | `false` | Consente agli assistenti di eseguire `delete_photos`, le azioni `move_rejects` e `trash_rejects` di `cull_apply` e `assign_faces` con `allow_reassign`. Disattivato, `delete_photos` non è elencato e gli altri due rispondono `feature_disabled` indicando questa chiave. Vedi [Agenti IA](AGENTS.md#azioni-distruttive-anteprima-poi-conferma). |
+| `inpage_tools` | `true` | Se una scheda autenticata può chiamare gli strumenti del server dalla pagina: `GET /api/mcp/inpage_tools` li elenca e `POST /api/mcp/call` ne esegue uno come la sessione, al suo livello attuale, attraverso lo stesso wrapper di `/mcp`. Disattivato, entrambe le route rispondono 404 e `features.mcp_inpage` è falso in `/api/auth/status`. Vedi [Agenti IA](AGENTS.md#webmcp-nella-pagina-agenti-del-browser). |
 | `allowed_origins` | `[]` | Origini del browser aggiuntive (per esempio `["https://photos.example.com"]`) autorizzate ad aprire il ponte della scheda quando un reverse proxy riscrive `Host`. Distinta dalla chiave CORS `viewer.allowed_origins`. |
 
 I numeri fuori intervallo vengono riportati nei limiti e un valore di tipo errato torna al predefinito. Il blocco è letto a ogni richiesta, quindi un ricaricamento della configurazione attiva o disattiva la funzione senza riavvio.

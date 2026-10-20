@@ -1,9 +1,7 @@
 """Correction tools (sequence sets, category) and the per-face / per-subject group comparison.
 
 The correction writers are edition tools that go through the same ``/api`` routes the darkroom and the
-lightbox use, and each is journaled (:mod:`api.agent.journal`): the OLD value is read through the
-routes first, the INTENDED value is recorded, and ``undo_last`` restores it only while the current
-value is still the one the agent wrote. ``group_compare`` is a readonly read of the darkroom's
+lightbox use. ``group_compare`` is a readonly read of the darkroom's
 face / subject feeds with every bulky key (bounding boxes, base64 crops) dropped.
 """
 
@@ -13,7 +11,8 @@ from mcp.server.mcpserver import Context, MCPServer
 from mcp.types import CallToolResult
 from pydantic import Field
 
-from api.agent import journal
+from api.agent import photo_io
+from api.types import SEQUENCE_OVERRIDE_SUPPRESSED
 from api.agent.internal_client import InternalClient, err, ok
 from api.agent.runtime import run_tool
 from api.agent.tools_common import READ_ANNOTATIONS, WRITE_ANNOTATIONS, register_tool
@@ -30,6 +29,7 @@ PENDING_NEXT = ("Takes effect on the next detection pass (POST /api/scan/detect_
 CLEARED_NEXT = ("The detector takes the frames back at the next pass; a cleared correction that was already "
                 "applied changes the library only when that pass runs.")
 CATEGORY_NOTE = "Sticky: survives --recompute-average; the aggregate was recomputed now."
+CATEGORY_CLEARED_NOTE = "The filters decide the category again; the aggregate was recomputed now."
 
 CorrectionKind = Literal["panorama", "hdr_panorama", "bracket", "suppress"]
 
@@ -40,7 +40,7 @@ def _round(value: Any) -> Any:
 
 async def _echo(client: InternalClient, grant: Any, paths: list[str], timeout: float) -> dict:
     """What the library now says about the first few paths, so the agent reports the data, not the assumption."""
-    failure, photos = await journal.read_photos(client, grant, paths[:ECHO_CAP], timeout)
+    failure, photos = await photo_io.read_photos(client, grant, paths[:ECHO_CAP], timeout)
     if failure is not None:
         return {}
     return {"state": [{"path": p, "sequence_override": photos[p].get("sequence_override"),
@@ -49,7 +49,7 @@ async def _echo(client: InternalClient, grant: Any, paths: list[str], timeout: f
 
 
 def _sequence_value(kind: str) -> str:
-    return journal.SUPPRESSED if kind == "suppress" else kind
+    return SEQUENCE_OVERRIDE_SUPPRESSED if kind == "suppress" else kind
 
 
 def _faces_of(faces: list) -> dict:
@@ -78,18 +78,12 @@ def register_correction_tools(server: MCPServer, client: InternalClient) -> None
                 return err("invalid_input", f"A {kind} set needs at least 2 frames; give 2 or more paths "
                            "(only kind=suppress and clear_sequence_override accept a single path)")
             timeout = settings["call_timeout_s"]
-            failure, before = await journal.read_photos(client, grant, named, timeout)
-            if failure is not None:
-                return failure
-            upstream = await journal.apply_sequence(client, grant, timeout, named, _sequence_value(kind))
+            upstream = await photo_io.apply_sequence(client, grant, timeout, named, _sequence_value(kind))
             if not upstream["ok"]:
                 return upstream
             body = upstream["data"] or {}
-            result = ok({"overridden": body.get("overridden", 0), "skipped": body.get("skipped", 0), "kind": kind,
-                         "pending": True, "next": PENDING_NEXT, **await _echo(client, grant, named, timeout)})
-            rows = [(p, "sequence_override", before[p].get("sequence_override"), _sequence_value(kind))
-                    for p in named if p in before and before[p].get("sequence_override") != _sequence_value(kind)]
-            return await journal.seal(grant, resolved, "override_sequence", rows, result)
+            return ok({"overridden": body.get("overridden", 0), "skipped": body.get("skipped", 0), "kind": kind,
+                       "pending": True, "next": PENDING_NEXT, **await _echo(client, grant, named, timeout)})
         return await run_tool(ctx, "override_sequence", handler, write=True)
 
     async def clear_sequence_override(
@@ -98,17 +92,11 @@ def register_correction_tools(server: MCPServer, client: InternalClient) -> None
         async def handler(grant, resolved, settings):
             named = list(dict.fromkeys(paths))
             timeout = settings["call_timeout_s"]
-            failure, before = await journal.read_photos(client, grant, named, timeout)
-            if failure is not None:
-                return failure
-            upstream = await journal.apply_sequence(client, grant, timeout, named, None)
+            upstream = await photo_io.apply_sequence(client, grant, timeout, named, None)
             if not upstream["ok"]:
                 return upstream
-            result = ok({"cleared": (upstream["data"] or {}).get("cleared", 0), "next": CLEARED_NEXT,
-                         **await _echo(client, grant, named, timeout)})
-            rows = [(p, "sequence_override", before[p].get("sequence_override"), None)
-                    for p in named if p in before and before[p].get("sequence_override") is not None]
-            return await journal.seal(grant, resolved, "clear_sequence_override", rows, result)
+            return ok({"cleared": (upstream["data"] or {}).get("cleared", 0), "next": CLEARED_NEXT,
+                       **await _echo(client, grant, named, timeout)})
         return await run_tool(ctx, "clear_sequence_override", handler, write=True)
 
     keyed = ("Keyed on the member paths you name, never on a group id (ids are renumbered on every detection "
@@ -130,18 +118,12 @@ def register_correction_tools(server: MCPServer, client: InternalClient) -> None
     ) -> CallToolResult:
         async def handler(grant, resolved, settings):
             timeout = settings["call_timeout_s"]
-            got = await client.call(grant, "get_photo", query={"path": path}, timeout=timeout)
-            if not got["ok"]:
-                return got
-            old = (got["data"] or {}).get("category_override")
-            upstream = await journal.apply_category(client, grant, timeout, path, category)
+            upstream = await photo_io.apply_category(client, grant, timeout, path, category)
             if not upstream["ok"]:
                 return upstream
             data = dict(upstream["data"] or {})
             data.pop("success", None)
-            result = ok({**data, "note": CATEGORY_NOTE})
-            rows = [] if old == category else [(path, "category_override", old, category)]
-            return await journal.seal(grant, resolved, "override_category", rows, result)
+            return ok({**data, "note": CATEGORY_NOTE})
         return await run_tool(ctx, "override_category", handler, write=True)
 
     async def clear_category_override(
@@ -155,13 +137,12 @@ def register_correction_tools(server: MCPServer, client: InternalClient) -> None
             old = (got["data"] or {}).get("category_override")
             if old is None:
                 return ok({"path": path, "already": True})
-            upstream = await journal.apply_category(client, grant, timeout, path, None)
+            upstream = await photo_io.apply_category(client, grant, timeout, path, None)
             if not upstream["ok"]:
                 return upstream
             data = dict(upstream["data"] or {})
             data.pop("success", None)
-            return await journal.seal(grant, resolved, "clear_category_override",
-                                      [(path, "category_override", old, None)], ok({**data, "note": CATEGORY_NOTE}))
+            return ok({**data, "note": CATEGORY_CLEARED_NOTE})
         return await run_tool(ctx, "clear_category_override", handler, write=True)
 
     add(override_category, "override_category",
@@ -173,13 +154,16 @@ def register_correction_tools(server: MCPServer, client: InternalClient) -> None
         "A photo with no override answers `already: true`.")
 
     async def group_compare(
-        ctx: Context, paths: Annotated[list[str], Field(min_length=1, max_length=GROUP_COMPARE_CAP)],
+        ctx: Context, paths: Annotated[list[str], Field(min_length=1)],
         by: Literal["faces", "subjects"], profile: Optional[str] = None,
     ) -> CallToolResult:
         async def handler(grant, resolved, settings):
             named = list(dict.fromkeys(paths))
+            if len(named) > GROUP_COMPARE_CAP:
+                return err("too_large", f"{len(named)} paths exceeds the cap of {GROUP_COMPARE_CAP} for this tool; "
+                           "compare one culling group at a time")
             timeout = settings["call_timeout_s"]
-            failure, visible = await journal.read_photos(client, grant, named, timeout)
+            failure, visible = await photo_io.read_photos(client, grant, named, timeout)
             if failure is not None:
                 return failure
             missing = [p for p in named if p not in visible]

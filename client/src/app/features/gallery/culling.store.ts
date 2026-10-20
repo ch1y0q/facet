@@ -1,3 +1,4 @@
+import { SEQUENCE_KINDS_KEPT_WHOLE } from '../../shared/pipes/sequence-kind.pipe';
 import { Injectable, inject, signal, computed, WritableSignal } from '@angular/core';
 import { Subject, firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
@@ -37,9 +38,6 @@ export const CULL_PROFILE_KEY = 'facet_culling_profile';
 
 export const GROUP_BY_VALUES = ['all', ...CULLING_GROUP_TYPES] as const;
 export type GroupBy = typeof GROUP_BY_VALUES[number];
-// Sets whose frames were shot to be combined: kept whole by default, and
-// never a source of comparison pairs.
-export const KEEP_WHOLE_KINDS: readonly string[] = ['bracket', 'panorama', 'hdr_panorama'];
 const SORT_VALUES = ['easiest', 'redundant', 'best', 'recent', 'needs_comparisons', 'chronological'];
 
 export function readStoredGroupBy(): GroupBy {
@@ -330,18 +328,28 @@ export class CullingStore {
       direction: this.sortDirection(),
       group_by: this.groupBy(),
     };
+    return Object.assign(params, this.scopeParams());
+  }
+
+  /** The scope as request params: the one place that decides an empty album or date is left out. */
+  private scopeParams(): { album_id?: string; date_from?: string; date_to?: string } {
     const album = this.scopeAlbum();
     const from = this.scopeFrom();
     const to = this.scopeTo();
-    if (album) params['album_id'] = album;
-    if (from) params['date_from'] = from;
-    if (to) params['date_to'] = to;
-    return params;
+    return { ...(album ? { album_id: album } : {}), ...(from ? { date_from: from } : {}), ...(to ? { date_to: to } : {}) };
+  }
+
+  /** The same scope for the endpoints that take the album as a number. */
+  private numericScopeParams(): { album_id?: number; date_from?: string; date_to?: string } {
+    const { album_id, ...dates } = this.scopeParams();
+    return { ...(album_id ? { album_id: Number(album_id) } : {}), ...dates };
   }
 
   /** Drop the loaded feed and its per-feed decisions, invalidating any load in flight. */
   resetFeed(): void {
     this.loadGenerationId++;
+    // The superseded loadMore's finally no longer matches the generation, so it will not clear this itself.
+    this.loadingMore.set(false);
     this.currentPage.set(1);
     this.groups.set([]);
     this.confirmedGroups.set(new Set());
@@ -458,7 +466,7 @@ export class CullingStore {
    * clips nothing.
    */
   private computeAutoKeep(group: CullingGroup): Set<string> {
-    if (group.sequence_kind && KEEP_WHOLE_KINDS.includes(group.sequence_kind)) {
+    if (group.sequence_kind && SEQUENCE_KINDS_KEPT_WHOLE.includes(group.sequence_kind)) {
       return new Set<string>(group.photos.map(p => p.path));
     }
     const best = group.best_path || group.photos[0]?.path;
@@ -510,24 +518,16 @@ export class CullingStore {
   }
 
   toggleSelection(path: string, group: CullingGroup): void {
-    const map = new Map(this.selectionsMap());
-    const kept = new Set(map.get(group.group_id) ?? []);
-    if (kept.has(path)) {
-      kept.delete(path);
-    } else {
-      kept.add(path);
-    }
-    map.set(group.group_id, kept);
-    this.selectionsMap.set(map);
+    this.setPhotoKept(group, path, !(this.selectionsMap().get(group.group_id)?.has(path) ?? false));
   }
 
   /**
    * A bracket or a pan is a no-op here: its frames were shot to be merged, not
-   * to compete (see KEEP_WHOLE_KINDS), and every other surface -- computeAutoKeep,
+   * to compete (see SEQUENCE_KINDS_KEPT_WHOLE), and every other surface -- computeAutoKeep,
    * the hidden auto-cull button -- already protects that.
    */
   selectExclusive(path: string, group: CullingGroup): void {
-    if (group.sequence_kind && KEEP_WHOLE_KINDS.includes(group.sequence_kind)) return;
+    if (group.sequence_kind && SEQUENCE_KINDS_KEPT_WHOLE.includes(group.sequence_kind)) return;
     updateMapSignal(this.selectionsMap, group.group_id, new Set([path]));
   }
 
@@ -759,7 +759,8 @@ export class CullingStore {
 
   /** Identity of the current scope, so a scope change refetches its suggestion. */
   scopeKey(): string {
-    return [this.scopeAlbum() ?? '', this.scopeFrom() ?? '', this.scopeTo() ?? ''].join('|');
+    const scope = this.scopeParams();
+    return [scope.album_id ?? '', scope.date_from ?? '', scope.date_to ?? ''].join('|');
   }
 
   /** Drop a suggestion that answered for another scope. */
@@ -811,13 +812,7 @@ export class CullingStore {
 
   /** Ask the backend which preset this scope's stored content looks like. */
   async fetchProfileSuggestion(key: string): Promise<ProfileSuggestion | null> {
-    const params: Record<string, string | number> = {};
-    const album = this.scopeAlbum();
-    if (album) params['album_id'] = Number(album);
-    const from = this.scopeFrom();
-    if (from) params['date_from'] = from;
-    const to = this.scopeTo();
-    if (to) params['date_to'] = to;
+    const params: Record<string, string | number> = this.numericScopeParams();
     try {
       const data = await firstValueFrom(
         this.api.get<ProfileSuggestion>('/culling/suggest_profile', params),
@@ -844,13 +839,7 @@ export class CullingStore {
     };
     const profile = this.selectedProfile();
     if (profile) body.profile = profile;
-    const album = this.scopeAlbum();
-    if (album) body.album_id = Number(album);
-    const from = this.scopeFrom();
-    if (from) body.date_from = from;
-    const to = this.scopeTo();
-    if (to) body.date_to = to;
-    return body;
+    return Object.assign(body, this.numericScopeParams());
   }
 
   /** Deterministic Highlights album name for the current scope and day. */

@@ -21,7 +21,8 @@ from api.agent.runtime import run_tool
 from api.agent.tools_common import READ_ANNOTATIONS, register_tool
 from api.agent.tools_culling import CULLING_ROUTES, EXIF_TIMESTAMP
 from api.agent.tools_write import WRITE_TOOL_LEVELS
-from api.agent.tools_read import SearchFilters, _hide_defaults, _query_value
+from api.agent.tools_read import SearchFilters, _hide_defaults
+from api.models.gallery import query_value
 
 COUNT_CONCURRENCY = 4
 TOP_N_MAX = 10
@@ -60,7 +61,7 @@ def _scope(filters: Any) -> dict:
 async def _count(client: InternalClient, grant: Any, timeout: float, gate: asyncio.Semaphore,
                  query: dict) -> Optional[int]:
     async with gate:
-        counted = await client.call(grant, "photos_count", query={k: _query_value(v) for k, v in query.items()},
+        counted = await client.call(grant, "photos_count", query={k: query_value(v) for k, v in query.items()},
                                     timeout=timeout)
     return (counted["data"] or {}).get("total") if counted["ok"] else None
 
@@ -98,7 +99,7 @@ def register_report_tools(server: MCPServer, app: Any, client: InternalClient) -
             reasons = {name: _minus(total, counts[bucket]) for name, bucket in HIDDEN_REASONS}
             reasons.update(junk=counts["junk"], low_score=counts["low_score"])
             top = await client.call(grant, "search_photos", timeout=timeout, query={
-                **{k: _query_value(v) for k, v in _hide_defaults(scope).items()},
+                **{k: query_value(v) for k, v in _hide_defaults(scope).items()},
                 "sort": "aggregate", "sort_direction": "DESC", "page": 1, "per_page": top_n})
             sets, sets_note = None, "needs an edition token"
             if tokens.level_rank(resolved.level) >= tokens.level_rank(tokens.effective_requirement("edition")):

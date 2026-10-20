@@ -9,7 +9,7 @@ import time
 from typing import Literal, Optional
 
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from api.auth import CurrentUser, require_authenticated
 from api.database import get_db
@@ -101,7 +101,9 @@ def _scan(conn, from_sql: str, where_sql: str, params: list, centroid: np.ndarra
 
 
 @router.get("/api/person/{person_id}/possible_faces", response_model=PossibleFacesResponse,
-            response_model_exclude_unset=True)
+            response_model_exclude_unset=True,
+            responses={404: {"description": "Person not found"},
+                       412: {"description": "No usable centroid, or the scan is over MAX_FACE_SCAN faces"}})
 def api_person_possible_faces(
     person_id: int,
     scope: Literal["unassigned", "other_persons", "all"] = "unassigned",
@@ -140,7 +142,7 @@ def api_person_possible_faces(
             f"SELECT COUNT(*) FROM {from_sql} WHERE {where_sql}", params).fetchone()[0]
         if candidates > MAX_FACE_SCAN:
             raise HTTPException(
-                status_code=413,
+                status_code=status.HTTP_412_PRECONDITION_FAILED,
                 detail=(f"{candidates} faces would be scanned, over the ceiling of {MAX_FACE_SCAN}; "
                         "narrow the scan with scope, path_prefix, date_from or date_to"))
         scanned, ids, sims = _scan(conn, from_sql, where_sql, params, centroid, dim,

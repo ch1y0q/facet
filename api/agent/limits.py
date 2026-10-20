@@ -20,7 +20,7 @@ FAILURE_SWEEP_THRESHOLD = 10000
 
 _clock: Callable[[], float] = time.monotonic
 _lock = threading.Lock()
-_calls: dict[tuple[int, bool], deque] = defaultdict(deque)
+_calls: dict[tuple[int | str, bool], deque] = defaultdict(deque)
 _failures: dict[str, deque] = defaultdict(deque)
 _last_sweep = float("-inf")
 
@@ -45,15 +45,15 @@ def reset_limits() -> None:
     nonce.reset()
 
 
-def check_rate(token_id: int, write: bool, per_min: int) -> tuple[bool, float]:
-    """Record one call for ``token_id``; return ``(allowed, retry_after_s)``.
+def check_rate(rate_key: int | str, write: bool, per_min: int) -> tuple[bool, float]:
+    """Record one call for ``rate_key`` (a token id, or ``inpage:<principal>``); return ``(allowed, retry_after_s)``.
 
     Reads and writes keep separate windows, so a burst of searches cannot starve
     the (much smaller) write budget, and the other way round.
     """
     current = now()
     with _lock:
-        window = _calls[(token_id, write)]
+        window = _calls[(rate_key, write)]
         while window and window[0] <= current - WINDOW_SECONDS:
             window.popleft()
         if len(window) >= per_min:

@@ -173,3 +173,25 @@ def test_delete_photo_rows_refreshes_face_count_without_its_own_commit(tmp_path)
 
 if __name__ == '__main__':
     raise SystemExit(pytest.main([__file__, '-v']))
+
+
+def test_provenance_marks_removed_for_deleted_photo(tmp_path):
+    """rating_provenance has no FK, so a deleted photo's mark must go with it, or a re-import inherits it."""
+    present = tmp_path / 'present.jpg'
+    present.write_bytes(b'x')
+    deleted = tmp_path / 'deleted.jpg'
+    db = str(tmp_path / 'scores.db')
+    _make_db(db, [str(present), str(deleted)])
+    conn = sqlite3.connect(db)
+    conn.executemany(
+        "INSERT INTO rating_provenance (user_id, photo_path, star_rating, is_favorite, is_rejected) "
+        "VALUES ('', ?, 0, 0, 1)", [(str(present),), (str(deleted),)])
+    conn.commit()
+    conn.close()
+
+    assert cleanup_missing_photos(db, dry_run=False, force=False, verbose=False) == 1
+
+    conn = sqlite3.connect(db)
+    marks = {r[0] for r in conn.execute("SELECT photo_path FROM rating_provenance")}
+    conn.close()
+    assert marks == {str(present)}

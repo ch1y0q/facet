@@ -6,7 +6,7 @@ import { Observable, Subject, of, throwError } from 'rxjs';
 import { AuthService, AuthStatus } from '../services/auth.service';
 import { AgentWebMcpService } from './agent-web-mcp.service';
 import { InpageChangeNotifier } from './inpage-change-notifier.service';
-import { INPAGE_OPT_IN_KEY, ServerToolRegistry, SESSION_HEADER } from './server-tool-registry.service';
+import { INPAGE_OPT_IN_KEY, INPAGE_RETRY_MS, ServerToolRegistry, SESSION_HEADER, inpageLevel } from './server-tool-registry.service';
 import { WebMcpToolRegistry } from './webmcp-registry.service';
 import { McpInpageTool } from '../api/types';
 
@@ -26,8 +26,8 @@ function status(over: Partial<AuthStatus> = {}, features: Record<string, boolean
 }
 
 const TOOLS: McpInpageTool[] = [
-  { name: 'search_photos', description: 'd', inputSchema: { type: 'object', properties: { query: {}, tab_id: {} } }, annotations: { readOnlyHint: true }, required_level: 'readonly' },
-  { name: 'set_rating', description: 'd', inputSchema: { type: 'object', properties: { target: {}, rating: {} } }, annotations: { readOnlyHint: false }, required_level: 'edition' },
+  { name: 'search_photos', description: 'd', inputSchema: { type: 'object', properties: { query: {}, tab_id: {} } }, annotations: { readOnlyHint: true, consequentialHint: false, untrustedContentHint: true }, required_level: 'readonly' },
+  { name: 'set_rating', description: 'd', inputSchema: { type: 'object', properties: { target: {}, rating: {} } }, annotations: { readOnlyHint: false, consequentialHint: true, untrustedContentHint: true }, required_level: 'edition' },
 ];
 
 describe('ServerToolRegistry', () => {
@@ -196,9 +196,9 @@ describe('ServerToolRegistry', () => {
   it('reports a changed write to the notifier, but not a read', async () => {
     setup(status({ edition_authenticated: true }));
     await settle();
-    post.mockReturnValue(of({ ok: true, changed: 3, batch_id: 'b1' }));
+    post.mockReturnValue(of({ ok: true, changed: 3 }));
     await live.get('set_rating')!.execute({ rating: 1 }, {});
-    expect(notify).toHaveBeenCalledWith(3, 'b1');
+    expect(notify).toHaveBeenCalledWith(3);
     notify.mockClear();
     await live.get('search_photos')!.execute({ query: 'x' }, {});
     expect(notify).not.toHaveBeenCalled();
@@ -211,5 +211,110 @@ describe('ServerToolRegistry', () => {
     expect(JSON.parse(await live.get('search_photos')!.execute({}, {})).error).toBe('forbidden_level');
     post.mockReturnValueOnce(throwError(() => ({ status: 0 })));
     expect(JSON.parse(await live.get('search_photos')!.execute({}, {})).error).toBe('upstream_error');
+  });
+
+  it('constructs without crypto.randomUUID (plain-HTTP context) and still sends a well-formed session id', async () => {
+    Object.defineProperty(crypto, 'randomUUID', { value: undefined, configurable: true });
+    try {
+      setup(status());
+      await settle();
+      await live.get('search_photos')!.execute({}, {});
+      const id = post.mock.calls[0][2].headers.get(SESSION_HEADER) as string;
+      expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    } finally {
+      Reflect.deleteProperty(crypto, 'randomUUID');
+    }
+  });
+
+  it('a lock during the user-tier registration creates no edition child', async () => {
+    const userTool: McpInpageTool = { name: 'user_tool', description: 'd', inputSchema: { type: 'object', properties: {} }, annotations: { readOnlyHint: true, consequentialHint: false, untrustedContentHint: true }, required_level: 'user' };
+    get.mockReturnValue(of({ level: 'edition', tools: [...TOOLS, userTool] }));
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    Object.defineProperty(document, 'modelContext', {
+      configurable: true,
+      value: {
+        registerTool: (tool: Registered, options?: { signal?: AbortSignal }) => {
+          live.set(tool.name, tool);
+          options?.signal?.addEventListener('abort', () => live.delete(tool.name));
+          return tool.name === 'user_tool' ? gate : Promise.resolve();
+        },
+      },
+    });
+    setup(status({ multi_user: true, edition_authenticated: true }));
+    await settle();
+    expect(live.has('user_tool')).toBe(true);
+    authStatus.set(status({ multi_user: true }));
+    await settle();
+    release();
+    await settle();
+    expect(live.has('set_rating')).toBe(false);
+    expect([...live.keys()].sort()).toEqual(['search_photos', 'user_tool']);
+  });
+
+  describe('a failed tool listing', () => {
+    const settleFake = async (): Promise<void> => {
+      for (let i = 0; i < 4; i += 1) {
+        TestBed.tick();
+        await vi.advanceTimersByTimeAsync(0);
+      }
+    };
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('warns and retries once after the backoff', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      get.mockReturnValueOnce(throwError(() => ({ status: 500 })));
+      setup(status());
+      await settleFake();
+      expect(live.size).toBe(0);
+      expect(warn).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(INPAGE_RETRY_MS);
+      await settleFake();
+      expect(get).toHaveBeenCalledTimes(2);
+      expect([...live.keys()]).toEqual(['search_photos']);
+      warn.mockRestore();
+    });
+
+    it('gives up after the one retry instead of looping', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      get.mockReturnValue(throwError(() => ({ status: 500 })));
+      setup(status());
+      await settleFake();
+      await vi.advanceTimersByTimeAsync(INPAGE_RETRY_MS * 10);
+      await settleFake();
+      expect(get).toHaveBeenCalledTimes(2);
+      expect(live.size).toBe(0);
+      warn.mockRestore();
+    });
+  });
+});
+
+describe('inpageLevel', () => {
+  const base = { authenticated: true, multi_user: false, edition_authenticated: false };
+
+  it('is null when nobody is signed in or the status is unknown', () => {
+    expect(inpageLevel(null)).toBeNull();
+    expect(inpageLevel({ ...base, authenticated: false })).toBeNull();
+  });
+
+  it('maps a multi-user regular account to user and an admin to edition', () => {
+    expect(inpageLevel({ ...base, multi_user: true })).toBe('user');
+    expect(inpageLevel({ ...base, multi_user: true, edition_authenticated: true })).toBe('edition');
+  });
+
+  it('maps a single-password install to readonly when locked and edition when unlocked', () => {
+    expect(inpageLevel(base)).toBe('readonly');
+    expect(inpageLevel({ ...base, edition_authenticated: true })).toBe('edition');
+  });
+
+  it('maps an open install (authenticated, no passwords, edition not unlocked) to readonly', () => {
+    expect(inpageLevel({ authenticated: true, multi_user: false, edition_authenticated: false })).toBe('readonly');
   });
 });

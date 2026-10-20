@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import type { AgentActionList, AgentUndoRequest, AgentUndoResult, McpTokenCreate, McpTokenCreated, McpTokenList, McpTokenRevoked } from '../api/types';
+import type { McpTokenCreate, McpTokenCreated, McpTokenList, McpTokenRevoked } from '../api/types';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -46,16 +46,6 @@ export class ApiService {
 
   revokeMcpToken(id: number): Observable<McpTokenRevoked> {
     return this.delete<McpTokenRevoked>(`/mcp/tokens/${id}`);
-  }
-
-  /** The caller's recent agent write batches, newest first (journal rows are never listed). */
-  listMcpActions(limit = 20): Observable<AgentActionList> {
-    return this.get<AgentActionList>('/mcp/actions', { limit });
-  }
-
-  /** Undo one agent batch with the human's own session (the route is Bearer-only). */
-  undoMcpAction(body: AgentUndoRequest): Observable<AgentUndoResult> {
-    return this.post<AgentUndoResult>('/mcp/actions/undo', body);
   }
 
   /** Get raw response (e.g., for binary thumbnails) */

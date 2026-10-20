@@ -726,6 +726,7 @@ Fotopaare nebeneinander. Wählen Sie einen Gewinner, markieren Sie ein Unentschi
 
 | Strategie | Beschreibung |
 |----------|-------------|
+| `learning` | Standard. Kaltstart über Embedding-Vielfalt, danach die Paare, bei denen der persönliche Ranker am meisten abweicht (am aufschlussreichsten) |
 | `uncertainty` | Fotos mit ähnlichen Wertungen (am aufschlussreichsten) |
 | `boundary` | Wertungsbereich 6–8 (mehrdeutige Zone) |
 | `active` | Fotos mit den wenigsten Vergleichen (sichert Abdeckung) |
@@ -1128,6 +1129,7 @@ Die TypeScript-Typen des Clients werden mit `cd client && npm run gen:api` aus d
 | `GET /api/photos` | Paginierte Fotoliste mit Filtern |
 | `GET /api/photos/count` | `{ total }` — wie viele Fotos den aktuellen Galerie-Filtern entsprechen |
 | `GET /api/photos/paths` | `{ total, paths }` — jeder passende Pfad, ungeordnet; wird bei Bedarf von Aktionen genutzt, die Dateinamen brauchen (Herunterladen, Kopieren), nie von „Alle auswählen“. Auf 10000 begrenzt: eine Ansicht mit mehr wird mit einem `412` abgelehnt, der die Anzahl und die Obergrenze nennt, statt abgeschnitten zu werden — eine unvollständige Pfadliste wäre eine Auswahl, die der Benutzer für vollständig hält — und es gibt keinen Rückfallpfad: die Aktion wird abgebrochen und meldet „zu viele Fotos“, sodass der Benutzer die Filter eingrenzen und es erneut versuchen kann. Nur die Aktionen, die eine buchstäbliche Pfadliste brauchen, gehen hier durch; die Auswahl der gesamten Ansicht ist selbst reine Zählung (`GET /api/photos/count`) und brauchte nie eine solche Liste, sodass die darauf aufbauenden filterbasierten Aktionen (Stapelschreibvorgänge für Bewertung/Ablehnung, Aussortieren, Sidecar-Export) von dieser Obergrenze nicht betroffen sind und ihre eigene haben |
+| `POST /api/photos/by_paths` | Body: `{paths (1–500), filters}`. Die genannten Fotos in der angeforderten Reihenfolge, durch Sichtbarkeit und Filter der Galerie (`filters` nimmt die eigenen Schlüssel der Galerie; Paging- und Sortierschlüssel werden verworfen, alles andere ist `422`). Der Standardtyp des Viewers und die Ausblend-Schalter werden NICHT angewendet, eine vom Aufrufer genannte Liste wird vollständig gezeigt. Antwort `{photos, total, missing}`; `missing` listet (bis zu 200) unbekannte, unsichtbare oder herausgefilterte Pfade |
 | `GET /api/photo` | Details zu einem einzelnen Foto |
 | `PUT /api/photo/manual_tags` | Ein [manuelles Tag](#manuelle-tags) zu einem Foto hinzufügen (an den Bearbeitungsmodus gebunden). Body: `{path, tag}`. `404` bei unbekanntem oder unsichtbarem Pfad, `422` bei ungültigem Tag oder einem Foto, das schon 50 Tags hat; ein Tag, das einem KI-Tag des Fotos entspricht, bewirkt nichts und wird mit `200` und `skipped_existing: true` beantwortet |
 | `DELETE /api/photo/manual_tags` | Ein manuelles Tag von einem Foto entfernen (an den Bearbeitungsmodus gebunden). Body: `{path, tag}` |
@@ -1190,7 +1192,7 @@ Die TypeScript-Typen des Clients werden mit `cd client && npm run gen:api` aus d
 | `POST /api/persons` | Eine neue Person erstellen, optional mit Gesichtern (Bearbeitungsmodus erforderlich). Body: `{name, face_ids}` |
 | `GET /api/persons/needs_naming?min_faces=N` | Unbenannte, automatisch geclusterte Personen mit `face_count >= N` auflisten (Standard aus `viewer.persons.needs_naming_min_faces`) |
 | `POST /api/persons/{id}/rename` | Eine Person umbenennen |
-| `POST /api/persons/{id}/assign_faces` | Gesichter per Sammelaktion einer Person zuweisen; leere Alt-Personen werden automatisch gelöscht (Bearbeitungsmodus erforderlich). Body: `{face_ids}` |
+| `POST /api/persons/{id}/assign_faces` | Gesichter per Sammelaktion einer Person zuweisen; leere Alt-Personen werden automatisch gelöscht (Bearbeitungsmodus erforderlich). Body: `{face_ids, tolerant?, only_unassigned?}`. Mit `tolerant: true` weist der Aufruf zu, was möglich ist, und meldet den Rest, statt zu scheitern: `missing`, `already`, `skipped_model`, `skipped_hidden`, `skipped_assigned` (plus `assigned_count`); `only_unassigned: true` lässt Gesichter, die bereits einer anderen Person gehören, unangetastet und verlangt `tolerant: true` (sonst `422`) |
 | `POST /api/persons/{id}/split` | Eine Teilmenge der Gesichter einer Person in eine neue Person aufteilen (Bearbeitungsmodus erforderlich). Body: `{face_ids, name}` |
 | `POST /api/persons/{id}/hide` | Eine Person aus Liste, Filtern und Zusammenführungsvorschlägen ausblenden |
 | `POST /api/persons/{id}/unhide` | Eine zuvor ausgeblendete Person wieder einblenden |
@@ -1328,6 +1330,7 @@ Die TypeScript-Typen des Clients werden mit `cd client && npm run gen:api` aus d
 | Endpunkt | Beschreibung |
 |----------|-------------|
 | `GET /api/person/{id}/faces` | Gesichter einer Person auflisten |
+| `GET /api/person/{id}/possible_faces` | Gesichter, die dem Zentroid der Person am ähnlichsten sind, die besten zuerst (nur dasselbe Embedding-Modell). Query: `scope` (`unassigned`, `other_persons`, `all`), `min_similarity`, `limit` (≤ 100), `path_prefix`, `date_from`, `date_to`. `404` bei unbekannter oder unsichtbarer Person, `412`, wenn die Person keinen verwendbaren Zentroid hat oder der Scan die Gesichtsobergrenze des Servers überschreiten würde (mit `scope`, `path_prefix` oder den Daten eingrenzen). Antwort `{faces, faces_scanned, candidates}` |
 | `POST /api/person/{id}/avatar` | Avatar-Gesicht einer Person festlegen |
 | `GET /api/photo/faces` | In einem Foto erkannte Gesichter auflisten |
 | `POST /api/face/{id}/assign` | Ein Gesicht einer Person zuweisen |

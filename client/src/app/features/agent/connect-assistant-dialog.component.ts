@@ -1,5 +1,5 @@
-import { ChangeDetectionStrategy, Component, ElementRef, Injector, OnDestroy, afterNextRender, computed, inject, signal, viewChild } from '@angular/core';
-import { DatePipe, formatDate } from '@angular/common';
+import { ChangeDetectionStrategy, Component, ElementRef, Injector, NgZone, OnDestroy, afterNextRender, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
+import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { MatDialogModule } from '@angular/material/dialog';
@@ -12,7 +12,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { AgentBridgeService } from '../../core/agent/agent-bridge.service';
 import { ServerToolRegistry } from '../../core/agent/server-tool-registry.service';
-import { AgentActionBatch, McpTokenItem } from '../../core/api/types';
+import { McpTokenItem } from '../../core/api/types';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { i18nKeys } from '../../core/i18n/keys';
 import { copyText } from '../../shared/utils/clipboard';
@@ -20,6 +20,8 @@ import { buildAssistantPrompt } from './assistant-prompt';
 
 /** Gap between clearing the live region and re-setting it, long enough for the empty text to render. */
 const ANNOUNCE_GAP_MS = 100;
+/** How often the token list is re-read while the dialog is open. */
+export const TOKENS_POLL_MS = 15000;
 
 type TokenLevel = McpTokenItem['level'];
 
@@ -28,6 +30,7 @@ interface LevelOption {
   label: string;
 }
 
+
 @Component({
   selector: 'app-connect-assistant-dialog',
   standalone: true,
@@ -35,7 +38,7 @@ interface LevelOption {
   changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title>{{ I18N.dialog.connect_assistant.title | translate }}</h2>
-    <mat-dialog-content class="!flex !flex-col gap-4 !pt-2">
+    <mat-dialog-content class="!flex !flex-col gap-3 !pt-2">
       <p class="sr-only" role="status" aria-live="polite" data-testid="live-region">{{ liveMessage() }}</p>
       @if (error(); as message) {
         <p class="text-sm text-red-700 dark:text-red-400" role="alert">{{ message | translate }}</p>
@@ -88,8 +91,9 @@ interface LevelOption {
             </span>
           </label>
         }
-        <details #tokensDetails class="flex flex-col gap-2" data-testid="tokens-disclosure" [open]="tokensOpen()" (toggle)="tokensOpen.set(tokensDetails.open)">
+        <details #tokensDetails data-testid="tokens-disclosure" [open]="tokensOpen()" (toggle)="tokensOpen.set(tokensDetails.open)">
           <summary #tokensSummary class="cursor-pointer py-1 text-sm font-medium">{{ I18N.dialog.connect_assistant.manage_tokens | translate: { count: tokens().length } }}</summary>
+        <div class="flex flex-col gap-2 pt-2">
         @for (token of tokens(); track token.id) {
           <div class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded border border-current/20 py-1 pl-3 pr-1 text-sm" data-testid="token-row">
             <span class="font-medium" [title]="token.token_prefix + '…'">{{ token.name }}</span>
@@ -114,32 +118,8 @@ interface LevelOption {
         } @empty {
           <p class="text-sm opacity-70">{{ I18N.dialog.connect_assistant.no_tokens | translate }}</p>
         }
+        </div>
         </details>
-        @if (actionRows().length > 0) {
-          <details class="flex flex-col gap-2" data-testid="actions-disclosure">
-            <summary class="cursor-pointer py-1 text-sm font-medium">{{ I18N.dialog.connect_assistant.actions_heading | translate: { count: actionRows().length } }}</summary>
-            @for (row of actionRows(); track row.id) {
-              <div class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded border border-current/20 py-1 pl-3 pr-1 text-sm" data-testid="action-row">
-                <span class="font-medium">{{ row.summary }}</span>
-                <span class="text-xs opacity-70">{{ row.createdAt | date: 'dd/MM/yyyy HH:mm' }}</span>
-                <span class="ml-auto flex items-center gap-1">
-                  @if (row.undone) {
-                    <span class="text-xs opacity-70" data-testid="action-undone">{{ I18N.dialog.connect_assistant.action_undone | translate }}</span>
-                  } @else if (confirmUndoId() === row.id) {
-                    <span class="text-xs">{{ I18N.dialog.connect_assistant.action_undo_confirm | translate }}</span>
-                    <button mat-button type="button" [disabled]="undoBusy()" [attr.aria-label]="row.yesAria" data-testid="undo-confirm-yes" (click)="undo(row.id)">{{ I18N.dialog.connect_assistant.action_undo_yes | translate }}</button>
-                    <button mat-button type="button" [attr.aria-label]="row.cancelAria" (click)="cancelUndo(row.id)">{{ I18N.dialog.cancel | translate }}</button>
-                  } @else {
-                    <button mat-button type="button" [attr.aria-label]="row.undoAria" [attr.data-undo-id]="row.id" (click)="askUndo(row.id)">{{ I18N.dialog.connect_assistant.action_undo | translate }}</button>
-                  }
-                </span>
-              </div>
-            }
-            @if (undoResult(); as result) {
-              <p class="text-xs opacity-80" data-testid="undo-result">{{ result }}</p>
-            }
-          </details>
-        }
       }
     </mat-dialog-content>
     <mat-dialog-actions align="end">
@@ -157,6 +137,7 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
   private readonly serverTools = inject(ServerToolRegistry);
 
   private readonly injector = inject(Injector);
+  private readonly zone = inject(NgZone);
   private readonly promptHeading = viewChild<ElementRef<HTMLElement>>('promptHeading');
   private readonly nameField = viewChild<ElementRef<HTMLElement>>('nameField');
   private readonly tokensSummary = viewChild<ElementRef<HTMLElement>>('tokensSummary');
@@ -172,33 +153,10 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
   protected readonly liveMessage = signal('');
   protected readonly error = signal<string | null>(null);
   protected readonly confirmRevokeId = signal<number | null>(null);
+  private pollTimer: ReturnType<typeof setInterval> | undefined;
   private announceTimer: ReturnType<typeof setTimeout> | undefined;
   protected readonly copied = signal(false);
   protected readonly tokensOpen = signal(false);
-  protected readonly actions = signal<AgentActionBatch[]>([]);
-  protected readonly confirmUndoId = signal<string | null>(null);
-  protected readonly undoBusy = signal(false);
-  /** One-line outcome of the last undo, or null. */
-  protected readonly undoResult = signal<string | null>(null);
-
-  /** View-model of the journal list: text is composed here so the template calls no method. */
-  protected readonly actionRows = computed(() => {
-    const keys = this.I18N.dialog.connect_assistant;
-    return this.actions().map(batch => {
-      const when = formatDate(batch.created_at, 'dd/MM/yyyy HH:mm', 'en-US');
-      const vars = { tool: batch.tool, when };
-      return {
-        id: batch.batch_id,
-        undone: !!batch.undone,
-        createdAt: batch.created_at,
-        summary: this.i18n.t(keys.action_summary, { tool: batch.tool, count: String(batch.rows) }),
-        undoAria: this.i18n.t(keys.action_undo_aria, vars),
-        yesAria: this.i18n.t(keys.action_undo_yes_aria, vars),
-        cancelAria: this.i18n.t(keys.action_undo_cancel_aria, vars),
-      };
-    });
-  });
-
   protected readonly inpageAvailable = computed(() => this.auth.status()?.features['mcp_inpage'] === true);
   protected readonly inpageOptIn = computed(() => this.serverTools.optedIn());
   protected readonly bridgeConnected = computed(() => this.bridge.connected());
@@ -222,9 +180,9 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
 
   /** The level the server actually granted, which it may have capped below the one requested. */
   protected readonly createdLevelKey = computed(() => {
-    const level = this.createdToken()?.level ?? 'readonly';
     const keys = this.I18N.dialog.connect_assistant;
-    return level === 'edition' ? keys.level_edition : level === 'user' ? keys.level_user : keys.level_readonly;
+    const byLevel: Record<TokenLevel, string> = { edition: keys.level_edition, user: keys.level_user, readonly: keys.level_readonly };
+    return byLevel[this.createdToken()?.level ?? 'readonly'];
   });
 
   protected readonly promptText = computed(() => {
@@ -241,19 +199,30 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
 
   constructor() {
     void this.refresh();
-    void this.refreshActions();
+    // "Last used" moves when an assistant connects, so pick it up then and lightly while the dialog stays open.
+    let wasConnected = this.bridgeConnected();
+    effect(() => {
+      const connected = this.bridgeConnected();
+      if (connected && !wasConnected) untracked(() => void this.refresh(true));
+      wasConnected = connected;
+    });
+    // Outside the zone: a repeating timer inside it would keep the app from ever reporting stable.
+    this.zone.runOutsideAngular(() => {
+      this.pollTimer = setInterval(() => void this.refresh(true), TOKENS_POLL_MS);
+    });
   }
 
   ngOnDestroy(): void {
+    clearInterval(this.pollTimer);
     clearTimeout(this.announceTimer);
     this.createdToken.set(null);
   }
 
-  private async refresh(): Promise<void> {
+  private async refresh(quiet = false): Promise<void> {
     try {
       this.tokens.set((await firstValueFrom(this.api.listMcpTokens())).tokens.filter(t => !t.revoked));
     } catch {
-      this.error.set(this.I18N.dialog.connect_assistant.load_failed);
+      if (!quiet) this.error.set(this.I18N.dialog.connect_assistant.load_failed);
     }
   }
 
@@ -283,44 +252,6 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
   }
 
   /** The journal is optional on the page: a failed list simply hides the section. */
-  private async refreshActions(): Promise<void> {
-    try {
-      this.actions.set((await firstValueFrom(this.api.listMcpActions(20))).actions);
-    } catch {
-      this.actions.set([]);
-    }
-  }
-
-  protected askUndo(id: string): void {
-    this.confirmUndoId.set(id);
-    this.focusInRow('[data-testid="undo-confirm-yes"]');
-  }
-
-  protected cancelUndo(id: string): void {
-    this.confirmUndoId.set(null);
-    this.focusInRow(`[data-undo-id="${id}"]`);
-  }
-
-  protected async undo(batchId: string): Promise<void> {
-    if (this.undoBusy()) return;
-    this.undoBusy.set(true);
-    this.confirmUndoId.set(null);
-    this.error.set(null);
-    try {
-      const result = await firstValueFrom(this.api.undoMcpAction({ batch_id: batchId }));
-      const restored = result.outcomes['restored'] ?? 0;
-      const kept = Object.entries(result.outcomes).reduce((sum, [outcome, count]) => (outcome === 'restored' ? sum : sum + count), 0);
-      const message = this.i18n.t(this.I18N.dialog.connect_assistant.undo_result, { restored: String(restored), kept: String(kept) });
-      this.undoResult.set(message);
-      this.announce(message);
-      await this.refreshActions();
-    } catch {
-      this.error.set(this.I18N.dialog.connect_assistant.undo_failed);
-    } finally {
-      this.undoBusy.set(false);
-    }
-  }
-
   protected async revoke(id: number): Promise<void> {
     this.confirmRevokeId.set(null);
     try {

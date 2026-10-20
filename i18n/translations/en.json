@@ -124,21 +124,10 @@
       "prompt_token_rules": "Keep the token only in your MCP client configuration. Do not repeat it in your replies and do not write it to any other file or note. I can revoke it from Facet at any time.",
       "prompt_verify": "After configuring, call this tool to confirm the connection:",
       "prompt_capabilities": "You can search the library, and open or navigate this Facet tab. You can change photos only if the access granted above allows it.",
-      "actions_heading": "Recent assistant actions ({count})",
-      "action_summary": "{tool}: {count} changes",
-      "action_undo": "Undo",
-      "action_undo_confirm": "Undo this batch?",
-      "action_undo_yes": "Yes, undo",
-      "action_undo_aria": "Undo {tool} from {when}",
-      "action_undo_yes_aria": "Yes, undo {tool} from {when}",
-      "action_undo_cancel_aria": "Cancel, keep {tool} from {when}",
-      "undo_result": "Restored {restored}, kept {kept} unchanged",
-      "undo_failed": "Could not undo the batch",
-      "action_undone": "Undone",
       "inpage_toggle": "Let agents in this browser use Facet tools",
       "inpage_hint": "When on, an assistant running in this browser can search and, if your session allows it, change your library through the page. Off by default; it only applies to this browser.",
-      "inpage_changed": "Assistant changed {count} photos",
-      "inpage_undo": "Undo"
+      "inpage_changed": "Assistant changed {count} photo",
+      "inpage_changed_plural": "Assistant changed {count} photos"
     }
   },
   "pagination": {
@@ -291,6 +280,7 @@
     "category": "Category",
     "strategy": "Strategy",
     "strategies": {
+      "learning": "Learning value (most informative)",
       "uncertainty": "Uncertainty (similar scores)",
       "boundary": "Boundary (6-8 range)",
       "active": "Active Learning (low counts)",
@@ -298,6 +288,8 @@
     },
     "strategy_help": {
       "title": "Comparison Strategies",
+      "learning_title": "Learning Value (Most Informative)",
+      "learning_desc": "Picks the pair the ranker would learn the most from: before training, photos far apart in feature space; once trained, pairs whose aggregate and learned-score ordering disagree. Default strategy.",
       "uncertainty_title": "Uncertainty (Similar Scores)",
       "uncertainty_desc": "Selects pairs with nearly identical aggregate scores. Best for calibrating weights - your preference reveals which metrics matter when the algorithm can't tell the difference.",
       "boundary_title": "Boundary (Quality Threshold)",

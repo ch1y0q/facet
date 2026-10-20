@@ -35,7 +35,7 @@ PROFILE_CORE = "core"
 # The small-model profile: safe, idempotent, reversible edits plus the query tools. Never a nonce tool.
 CORE_TOOLS = frozenset({
     "status", "search_photos", "semantic_search", "get_photo", "filter_options", "library_stats",
-    "ui_show_photos", "set_rating", "set_favorite", "set_rejected", "album_add_photos", "undo_last",
+    "ui_show_photos", "set_rating", "set_favorite", "set_rejected", "album_add_photos",
 })
 
 
@@ -127,7 +127,8 @@ def hidden_tools(resolved: Any, settings: dict) -> dict:
     needs = max((tokens.effective_requirement(TOOL_LEVELS[n]) for n in above), key=tokens.level_rank, default=None)
     out: dict[str, Any] = {"count": len(above), "needs": needs}
     if above:
-        out["hint"] = f"{len(above)} more tools need {needs}; ask the user to mint an {needs} token"
+        how = f"unlock {needs} in Facet" if getattr(resolved, "inpage", False) else f"ask the user to mint an {needs} token"
+        out["hint"] = f"{len(above)} more tools need {needs}; {how}"
     disabled = sorted(unavailable_tools(resolved, settings))
     if disabled:
         out["disabled"] = [{"tool": name, "reason": (tool_refusal(name, resolved, settings) or ("", ""))[1]}
