@@ -2583,13 +2583,13 @@ Le `target_dir` passe par la même liste d'autorisation que les endpoints d'expo
 
 ## Point d'accès agent (MCP)
 
-Expose les outils décrits dans [Agents IA (MCP)](AGENTS.md) via `POST /mcp` : lecture, pilotage de l'onglet ouvert et, selon le niveau du jeton, modification des notes, étiquettes et albums, tri et suppression. Tout reste désactivé (404) tant que `enabled` n'est pas `true`.
+Expose les outils décrits dans [Agents IA (MCP)](AGENTS.md) via `POST /mcp` : lecture, pilotage de l'onglet ouvert et, selon le niveau du jeton, modification des notes, étiquettes et albums, tri et suppression. Il est activé par défaut ; mettez `enabled` à `false` pour le désactiver (toutes les routes répondent alors 404). Sur une installation ouverte (sans `viewer.password`), `/mcp` ne sert qu'une clé anonyme en lecture seule, qui n'accorde rien que l'`/api` ouverte n'accorde déjà.
 
 ```json
 {
   "viewer": {
     "mcp": {
-      "enabled": false,
+      "enabled": true,
       "bridge": true,
       "max_rows": 100,
       "max_bytes": 60000,
@@ -2598,6 +2598,8 @@ Expose les outils décrits dans [Agents IA (MCP)](AGENTS.md) via `POST /mcp` : l
       "semantic_timeout_s": 120,
       "rate_per_min": 120,
       "write_rate_per_min": 30,
+      "tool_profile": "full",
+      "allow_destructive": false,
       "allowed_origins": []
     }
   }
@@ -2606,7 +2608,7 @@ Expose les outils décrits dans [Agents IA (MCP)](AGENTS.md) via `POST /mcp` : l
 
 | Clé | Défaut | Description |
 |-----|---------|-------------|
-| `enabled` | `false` | Interrupteur général de `/mcp` et `/api/mcp/*`. Désactivé, ils répondent 404 (le pont se ferme avec le code 4404). |
+| `enabled` | `true` | Interrupteur général de `/mcp` et `/api/mcp/*`. Désactivé, ils répondent 404 (le pont se ferme avec le code 4404). Sur une installation ouverte (sans `viewer.password`), le point d'accès ne sert qu'une clé anonyme en lecture seule : aucune autorité nouvelle, puisque l'`/api` ouverte expose déjà les mêmes données. |
 | `bridge` | `true` | Indique si le pont vers l'onglet du navigateur (`/api/mcp/bridge`) accepte les WebSockets et si les outils `ui_*` peuvent atteindre un onglet. À `false`, le pont refuse la connexion (code de fermeture 4404) et les outils `ui_*` renvoient une erreur explicite. Exige un seul worker. |
 | `max_rows` | `100` | Nombre maximal de lignes dans un résultat d'outil (1 à 500). Les lignes en trop sont retirées et `truncated: true` est ajouté. |
 | `max_bytes` | `60000` | Taille sérialisée maximale d'un résultat d'outil en octets (4000 à 500000). |
@@ -2615,6 +2617,8 @@ Expose les outils décrits dans [Agents IA (MCP)](AGENTS.md) via `POST /mcp` : l
 | `semantic_timeout_s` | `120` | Délai de `semantic_search` en secondes (1 à 300) ; l'outil charge le modèle d'embeddings et demande donc plus de temps. |
 | `rate_per_min` | `120` | Appels d'outils par minute et par jeton (minimum 1). |
 | `write_rate_per_min` | `30` | Appels d'écriture par minute et par jeton (minimum 1). Budget séparé pour que les lectures n'affament pas les écritures. S'applique aux outils d'écriture (y compris la simulation de `cull_apply` et `delete_photos`) ; voir [Agents IA](AGENTS.md#modifier-la-bibliothèque). |
+| `tool_profile` | `"full"` | `"full"` liste tous les outils que la clé peut appeler. `"core"` ne liste qu'un ensemble de 12 outils pour les petits modèles (`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`, `undo_last`). Seule la liste change : un outil absent peut toujours être appelé si le niveau de la clé le permet. Toute autre valeur revient à `"full"`. Voir [Agents IA](AGENTS.md#niveaux-dautorisation). |
+| `allow_destructive` | `false` | Autorise les assistants à lancer `delete_photos`, les actions `move_rejects` et `trash_rejects` de `cull_apply`, et `assign_faces` avec `allow_reassign`. Désactivé, `delete_photos` n'est pas listé et les deux autres répondent `feature_disabled` en nommant cette clé. Aucun n'est annulable. Voir [Agents IA](AGENTS.md#actions-destructives--aperçu-puis-confirmation). |
 | `allowed_origins` | `[]` | Origines de navigateur supplémentaires (par exemple `["https://photos.example.com"]`) autorisées à ouvrir le pont d'onglet lorsqu'un proxy inverse réécrit `Host`. Distinct de la clé CORS `viewer.allowed_origins`. |
 
 Les nombres hors plage sont ramenés dans la plage, et une valeur d'un mauvais type revient à la valeur par défaut. Le bloc est lu à chaque requête : un rechargement de la configuration active ou désactive la fonction sans redémarrage.

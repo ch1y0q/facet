@@ -2,7 +2,7 @@
 
 from typing import Any, Optional, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from api.models.common import CoercedInt
 
@@ -180,8 +180,10 @@ class PossibleFace(BaseModel):
 
 class PossibleFacesResponse(BaseModel):
     faces: list[PossibleFace]
-    faces_scanned: int
-    candidates: int
+    faces_scanned: int = Field(
+        description="Rows actually scored against the centroid (after the embedding-dimension check).")
+    candidates: int = Field(
+        description="Index count of faces in scope that the caller can see, before the embedding-dimension check.")
 
 
 class PhotoFace(BaseModel):

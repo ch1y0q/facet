@@ -829,6 +829,39 @@ MCP_TOKENS_INDEXES = [
     ('idx_mcp_tokens_user', 'mcp_tokens', 'user_id'),
 ]
 
+# Journal of the writes an AGENT made (MCP tool wrapper or an in-page agent call), so they can be
+# listed and reversed. A side table, never a column on `photos`: it records what the agent wrote
+# and the value it replaced, and must survive a rescan. One row per changed field; a tool call is
+# one `batch_id`. `target_key` is a photo path, `album:<id>:<path>` or `face:<id>`; values are JSON
+# text (NULL = absent). `token_id` is NULL for an in-page (session) write, whose `source` is
+# 'inpage' and whose `actor` / `session_id` say who and which browser tab. `required_level` is the
+# level the undo of this row needs. No foreign key to `photos`: deleting a photo must not erase the
+# record of what was done to it (the undo then reports the row as `missing`). The viewer database
+# export drops this table: values can hold captions and paths.
+AGENT_ACTIONS_COLUMNS = [
+    ('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+    ('batch_id', 'TEXT NOT NULL'),
+    ('token_id', 'INTEGER'),
+    ('source', "TEXT NOT NULL DEFAULT 'mcp'"),
+    ('actor', 'TEXT'),
+    ('session_id', 'TEXT'),
+    ('owner_user', 'TEXT NOT NULL'),
+    ('tool', 'TEXT NOT NULL'),
+    ('target_key', 'TEXT NOT NULL'),
+    ('field', 'TEXT NOT NULL'),
+    ('old_value', 'TEXT'),
+    ('new_value', 'TEXT'),
+    ('required_level', "TEXT NOT NULL DEFAULT 'edition'"),
+    ('created_at', 'TEXT NOT NULL'),
+    ('undone_at', 'TEXT'),
+    ('undo_batch_id', 'TEXT'),
+]
+
+AGENT_ACTIONS_INDEXES = [
+    ('idx_agent_actions_owner', 'agent_actions', 'owner_user, created_at'),
+    ('idx_agent_actions_batch', 'agent_actions', 'batch_id'),
+]
+
 # Authoritative registry of every CREATE INDEX group. init_database creates all
 # of these and db.info.get_schema_info counts them, so the two can never
 # disagree on how many indexes the schema declares (they did before: info
@@ -848,6 +881,7 @@ ALL_INDEX_GROUPS = [
     ALBUM_INDEXES,
     USER_PREFERENCES_INDEXES,
     MCP_TOKENS_INDEXES,
+    AGENT_ACTIONS_INDEXES,
 ]
 
 # Sticky per-photo scoring context / category override — a side table, not
@@ -1029,6 +1063,7 @@ _MIGRATED_TABLES = [
     ('photo_tags', PHOTO_TAGS_COLUMNS),
     ('photo_manual_tags', PHOTO_MANUAL_TAGS_COLUMNS),
     ('mcp_tokens', MCP_TOKENS_COLUMNS),
+    ('agent_actions', AGENT_ACTIONS_COLUMNS),
     ('comparisons', COMPARISONS_COLUMNS),
     ('learned_scores', LEARNED_SCORES_COLUMNS),
     ('rejected_merge_suggestions', REJECTED_MERGE_SUGGESTIONS_COLUMNS),
@@ -1215,6 +1250,8 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
 
         # Create mcp_tokens (agent bearer tokens, hash only; side table)
         conn.execute(_build_create_table_sql('mcp_tokens', MCP_TOKENS_COLUMNS))
+        # Create agent_actions (the undo journal of agent writes; side table)
+        conn.execute(_build_create_table_sql('agent_actions', AGENT_ACTIONS_COLUMNS))
 
         # Create comparisons table for pairwise comparison feedback. The UNIQUE
         # is user-scoped so one user's vote never clobbers another's; existing

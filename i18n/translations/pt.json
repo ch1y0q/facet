@@ -123,7 +123,22 @@
       "prompt_label_access": "Acesso concedido:",
       "prompt_token_rules": "Guarda o token apenas na configuração do teu cliente MCP. Não o repitas nas tuas respostas nem o escrevas em qualquer outro ficheiro ou nota. Posso revogá-lo no Facet a qualquer momento.",
       "prompt_verify": "Após a configuração, chama esta ferramenta para confirmar a ligação:",
-      "prompt_capabilities": "Podes pesquisar na biblioteca e abrir ou navegar neste separador do Facet. Só podes alterar fotografias se o acesso concedido acima o permitir."
+      "prompt_capabilities": "Podes pesquisar na biblioteca e abrir ou navegar neste separador do Facet. Só podes alterar fotografias se o acesso concedido acima o permitir.",
+      "actions_heading": "Ações recentes do assistente ({count})",
+      "action_summary": "{tool}: {count} alterações",
+      "action_undo": "Desfazer",
+      "action_undo_confirm": "Desfazer este lote?",
+      "action_undo_yes": "Sim, desfazer",
+      "action_undo_aria": "Desfazer {tool} de {when}",
+      "action_undo_yes_aria": "Sim, desfazer {tool} de {when}",
+      "action_undo_cancel_aria": "Cancelar, manter {tool} de {when}",
+      "undo_result": "{restored} restaurados, {kept} mantidos por terem mudado desde então",
+      "undo_failed": "Não foi possível desfazer o lote",
+      "action_undone": "Desfeito",
+      "inpage_toggle": "Permitir que agentes neste navegador usem as ferramentas do Facet",
+      "inpage_hint": "Quando ativado, um assistente executado neste navegador pode pesquisar e, se a sua sessão permitir, alterar a sua biblioteca através da página. Desativado por predefinição; aplica-se apenas a este navegador.",
+      "inpage_changed": "O assistente alterou {count} fotos",
+      "inpage_undo": "Anular"
     }
   },
   "pagination": {

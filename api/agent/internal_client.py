@@ -96,6 +96,20 @@ ROUTE_ALLOWLIST: Mapping[str, RouteSpec] = MappingProxyType({
     "album_remove_photos": RouteSpec("DELETE", "/api/albums/{album_id}/photos", "edition", write=True),
     "cull_apply": RouteSpec("POST", "/api/cull/apply", "edition", write=True),
     "delete_photos": RouteSpec("POST", "/api/photo/delete", "edition", write=True),
+    "override_sequence": RouteSpec("POST", "/api/culling-groups/override_sequence", "edition", write=True),
+    "clear_sequence_override": RouteSpec("POST", "/api/culling-groups/clear_sequence_override", "edition", write=True),
+    "group_faces": RouteSpec("POST", "/api/culling-group/faces", "readonly"),
+    "group_subjects": RouteSpec("POST", "/api/culling-group/subjects", "readonly"),
+    "override_category": RouteSpec("POST", "/api/comparison/override_category", "edition", write=True),
+    "clear_category_override": RouteSpec("POST", "/api/comparison/clear_category_override", "edition", write=True),
+    "scan_start": RouteSpec("POST", "/api/scan/start", "edition", write=True),
+    # Read-only comparison reads. There is deliberately NO submit / reset / edit / delete entry: the answer to a
+    # pair is the user's own click (tests/test_agent_comparison.py walks this table to keep it so).
+    "comparison_stats": RouteSpec("GET", "/api/comparison/stats", "edition"),
+    "comparison_coverage": RouteSpec("GET", "/api/comparison/coverage", "edition"),
+    "scan_status": RouteSpec("GET", "/api/scan/status", "edition"),
+    "scan_directories": RouteSpec("GET", "/api/scan/directories", "edition"),
+    "scoring_contexts": RouteSpec("GET", "/api/config/scoring_contexts", "readonly"),
     # The same two routes with ``dry_run=true``: nothing is written, so a timeout is a
     # plain upstream error rather than ``outcome_unknown``.
     "cull_apply.preview": RouteSpec("POST", "/api/cull/apply", "edition"),
@@ -121,11 +135,24 @@ def validation_issues(ex: ValidationError) -> list[dict]:
             for issue in ex.errors(include_url=False, include_context=False, include_input=False)]
 
 
+CONFIG_REFUSAL_MARKERS = ("viewer.", "disabled", "not enabled")
+
+
+def _is_config_refusal(message: str) -> bool:
+    """A 403 whose detail names an operator's configuration ("OS-trash is disabled", "Scan feature
+    not enabled", "set viewer.edition_password ...") is a switch that is off, not a missing right."""
+    return any(marker in message for marker in CONFIG_REFUSAL_MARKERS)
+
+
 def _status_to_error(status: int, detail: Any) -> dict:
     message = detail if isinstance(detail, str) else "Request refused"
     issues = detail if isinstance(detail, list) else None
+    if status == 403 and _is_config_refusal(message):
+        return err("feature_disabled", message)
     if status in (401, 403):
         return err("forbidden_level", message)
+    if status == 409:
+        return err("conflict", message)
     if status == 404:
         return err("not_found", message)
     if status == 413:
@@ -173,7 +200,9 @@ class InternalClient:
                            "A path argument may not be empty or contain '.' or '..' segments"), None
         headers = {}
         claims = resolved.jwt_claims()
-        if claims is not None:
+        if resolved.bearer is not None:
+            headers["Authorization"] = "Bearer " + resolved.bearer
+        elif claims is not None:
             jwt_token = create_access_token(claims, expires_delta=timedelta(seconds=INTERNAL_JWT_SECONDS))
             headers["Authorization"] = "Bearer " + jwt_token
         path = spec.template.format(

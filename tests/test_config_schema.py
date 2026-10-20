@@ -67,3 +67,18 @@ class TestSchemaValidation:
         ok, issues = cfg.validate_categories(verbose=False)
         assert ok is False
         assert any(i.startswith("schema:") for i in issues)
+
+    def test_mcp_tool_profile_must_be_a_listed_value(self, tmp_path):
+        for value, valid in (("full", True), ("core", True), ("tiny", False), (3, False)):
+            cfg_dict = _minimal_valid()
+            cfg_dict["viewer"] = {"mcp": {"tool_profile": value}}
+            errors = ScoringConfig(_write(tmp_path, cfg_dict), validate=False).validate_schema()
+            assert (errors == []) is valid, (value, errors)
+            if not valid:
+                assert any("tool_profile" in e for e in errors)
+
+    def test_mcp_allow_destructive_must_be_boolean(self, tmp_path):
+        cfg_dict = _minimal_valid()
+        cfg_dict["viewer"] = {"mcp": {"allow_destructive": "yes"}}
+        assert ScoringConfig(_write(tmp_path, cfg_dict), validate=False).validate_schema()
+

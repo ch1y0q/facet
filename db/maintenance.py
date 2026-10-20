@@ -862,6 +862,10 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
     return source_size, output_size
 
 
+# Tables a viewer database export must not carry (the DROP list of the full export).
+VIEWER_EXPORT_EXCLUDED_TABLES = ('agent_actions', 'mcp_tokens')
+
+
 def export_viewer_db(source_db='photo_scores_pro.db', output_path=None, thumbnail_size=320, verbose=True, force=False):
     """Export a lightweight database for viewer-only deployment.
 
@@ -924,6 +928,13 @@ def export_viewer_db(source_db='photo_scores_pro.db', output_path=None, thumbnai
     # thumbnail when it is absent. It costs ~2KB/photo.
     dst_conn.execute("UPDATE photos SET clip_embedding = NULL, "
                      "raw_sharpness_variance = NULL, caption_embedding = NULL")
+    dst_conn.commit()
+
+    # The agent side tables never ship in a viewer export: the undo journal holds captions and
+    # paths, and the token table holds bearer-secret hashes. The viewer's own init_database
+    # re-creates both empty. (The incremental path copies neither.)
+    for table in VIEWER_EXPORT_EXCLUDED_TABLES:
+        dst_conn.execute(f"DROP TABLE IF EXISTS {table}")
     dst_conn.commit()
 
     # faces: embedding (NOT NULL constraint — use empty blob), landmark_2d_106

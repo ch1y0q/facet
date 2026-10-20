@@ -2,6 +2,7 @@ import { Injectable, inject, signal, untracked } from '@angular/core';
 import { Router } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 import { GalleryStore } from '../../features/gallery/gallery.store';
+import { CompareFiltersService } from '../../features/comparison/compare-filters.service';
 import { validateAgainstSchema, withDefaults } from './schema-validate';
 import { createUiToolHandlers } from './ui-tool-handlers';
 import { ViewActionRegistry } from './view-action-registry.service';
@@ -61,6 +62,7 @@ export class WebMcpToolRegistry {
     auth: inject(AuthService),
     viewActions: inject(ViewActionRegistry),
     actions: () => this.actions,
+    compareFilters: inject(CompareFiltersService),
   });
   private loading: Promise<void> | null = null;
 

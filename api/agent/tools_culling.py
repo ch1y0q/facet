@@ -19,7 +19,7 @@ from mcp.server.mcpserver import Context, MCPServer
 from mcp.types import CallToolResult, ToolAnnotations
 from pydantic import BaseModel, ConfigDict, Field
 
-from api.agent import nonce
+from api.agent import journal, nonce
 from api.agent.internal_client import InternalClient, RouteSpec, err, ok
 from api.agent.limits import encoded_size
 from api.agent.runtime import run_tool
@@ -41,6 +41,9 @@ GroupType = Literal["burst", "similar", "scene", "bracket", "panorama", "hdr_pan
 KEEP_WHOLE_TYPES = ("bracket", "panorama", "hdr_panorama")
 EXIF_TIMESTAMP = re.compile(r"^\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}$")
 GROUP_PHOTO_LIMIT = 12
+PIN_CAP = journal.PIN_CAP
+UNPINNED_PLAN = (f"more than {PIN_CAP} frames are rejected, so the journal could not hold them; the change "
+                 "was applied and cannot be undone by undo_last")
 GROUP_PHOTO_KEYS = ("path", "filename", "date_taken", "aggregate", "aesthetic", "tech_sharpness",
                     "is_blink", "sequence_ev_offset", "keeper_prob")
 SEE_GROUP = " Call ui_show_culling_group to show a group to the user."
@@ -128,6 +131,20 @@ def _validate_confirm(groups: list[ConfirmGroup]) -> Optional[dict]:
 def register_culling_tools(server: MCPServer, app: Any) -> None:
     """Register the darkroom tools. ``app`` is the FastAPI app the routes live on."""
     client = InternalClient(app, CULLING_ROUTES)
+    reader = InternalClient(app)
+
+    async def reject_rows(grant, timeout: float, paths: list[str]) -> tuple[Optional[dict], dict[str, tuple]]:
+        """The rating tuples of the frames about to be rejected, read through the owner's own routes."""
+        return await journal.snapshot_ratings(reader, grant, list(dict.fromkeys(paths)), timeout)
+
+    def confirmed_rows(before: dict[str, tuple], by_group: dict) -> list:
+        """Rows for the frames of the groups that really confirmed (a failed group rejected nothing)."""
+        done = {p for paths in by_group.values() for p in paths}
+        return rejected_rows({p: old for p, old in before.items() if p in done})
+
+    def rejected_rows(before: dict[str, tuple]) -> list:
+        return [row for path, old in before.items()
+                for row in journal.rating_rows(path, old, journal.intended_tuple(old, "flag_rejected", True))]
 
     def add(fn, name: str, description: str, annotations: ToolAnnotations = READ_ANNOTATIONS) -> None:
         register_tool(server, fn, name, description, annotations, CULLING_LEVEL)
@@ -234,8 +251,18 @@ def register_culling_tools(server: MCPServer, app: Any) -> None:
                 return err("confirmation_required",
                            "Preview with dry_run=true first and pass its `confirm` value; the "
                            "plan must be unchanged since that preview")
-            return await client.call(grant, "culling.auto", json={**options, "dry_run": False},
-                                     timeout=timeout)
+            planned = [p for g in body.get("preview", []) for p in g.get("reject_paths", [])]
+            unpinned = len(planned) > PIN_CAP
+            before: dict = {}
+            if planned and not unpinned:
+                failure, before = await reject_rows(grant, timeout, planned)
+                if failure is not None:
+                    return failure
+            applied = await client.call(grant, "culling.auto", json={**options, "dry_run": False}, timeout=timeout)
+            if not applied["ok"]:
+                return applied
+            return await journal.seal(grant, resolved, "auto_cull", rejected_rows(before), applied,
+                                      unavailable=UNPINNED_PLAN if unpinned else None)
         return await run_tool(ctx, "auto_cull", handler, write=not dry_run)
 
     def _preview_result(grant, upstream: dict, options: dict) -> dict:
@@ -269,21 +296,34 @@ def register_culling_tools(server: MCPServer, app: Any) -> None:
                                "the user, then repeat this call with `confirm` set to this value.",
                                confirm=nonce.issue(grant.id, "confirm_culling_groups", digest))
             rows = []
+            doomed = [p for g in groups for p in g.paths if p not in set(g.keep_paths)]
+            unpinned = len(doomed) > PIN_CAP
+            before: dict = {}
+            if doomed and not unpinned:
+                failure, before = await reject_rows(grant, settings["call_timeout_s"], doomed)
+                if failure is not None:
+                    return failure
+            note = UNPINNED_PLAN if unpinned else None
+            rejected_by_group: dict = {}
             for g in groups:
                 upstream = await client.call(
                     grant, "culling.confirm", json=g.model_dump(), timeout=settings["call_timeout_s"])
                 head = {"type": g.type, "group_id": g.group_id}
                 if upstream["ok"]:
                     body = upstream["data"] or {}
+                    rejected_by_group[(g.type, g.group_id)] = [p for p in g.paths if p not in set(g.keep_paths)]
                     rows.append({**head, "ok": True, "kept": body.get("kept"),
                                  "rejected": body.get("rejected"), "skipped": body.get("skipped")})
                 elif upstream["error"] in ("forbidden_level", "library_busy", "rate_limited"):
-                    return upstream if not rows else ok({"rows": rows + [
+                    stopped = upstream if not rows else ok({"rows": rows + [
                         {**head, "ok": False, "error": upstream["error"]}]})
+                    return await journal.seal(grant, resolved, "confirm_culling_groups", confirmed_rows(
+                        before, rejected_by_group), stopped, unavailable=note)
                 else:
                     rows.append({**head, "ok": False, "error": upstream["error"],
                                  "message": upstream["message"]})
-            return ok({"rows": rows})
+            return await journal.seal(grant, resolved, "confirm_culling_groups",
+                                      confirmed_rows(before, rejected_by_group), ok({"rows": rows}), unavailable=note)
         return await run_tool(ctx, "confirm_culling_groups", handler, write=True)
 
     add(list_culling_groups, "list_culling_groups",

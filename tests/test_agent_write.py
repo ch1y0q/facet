@@ -64,7 +64,7 @@ def pref(user, path):
 
 @pytest.fixture()
 def edition(agent_app):
-    env = agent_app("legacy")
+    env = agent_app("legacy", allow_destructive=True)
     return env, env.token(env.login(edition=True), "edition")
 
 
@@ -94,7 +94,15 @@ class TestGrantMatrix:
         "cull_apply": {"action": "copy_keeps", "paths": [P[0]]}, "delete_photos": {"paths": [P[0]]},
         "assign_faces": {"person_id": 999999, "face_ids": [1]},
         "set_caption": {"path": P[0], "caption": "x"}, "export_metadata": {"paths": [P[0]]},
+        "undo_last": {}, "list_agent_actions": {},
+        "override_sequence": {"paths": [AGENT_DIR + "nope1.jpg", AGENT_DIR + "nope2.jpg"], "kind": "panorama"},
+        "clear_sequence_override": {"paths": [AGENT_DIR + "nope1.jpg"]},
+        "override_category": {"path": AGENT_DIR + "nope1.jpg", "category": "portrait"},
+        "clear_category_override": {"path": AGENT_DIR + "nope1.jpg"},
+        "group_compare": {"paths": [P[0]], "by": "faces"}, "cull_report": {},
+        "start_scan": {"directories": [AGENT_DIR]}, "scan_status": {}, "comparison_status": {},
     }
+    READ_ONLY = ("junk_list", "list_agent_actions", "scan_status", "comparison_status", "group_compare", "cull_report")
 
     def test_every_write_tool_has_args_and_a_level(self):
         assert set(self.ARGS) == set(WRITE_TOOL_LEVELS)
@@ -138,10 +146,11 @@ class TestGrantMatrix:
 
     def test_write_tools_are_not_read_only_and_destructive_hint_only_on_two(self, edition):
         env, token = edition
+        api_config.VIEWER_CONFIG.setdefault("features", {})["show_scan_button"] = True
         tools = {t["name"]: t for t in env.rpc(token, "tools/list").json()["result"]["tools"]}
         for name in WRITE_TOOL_LEVELS:
             hints = tools[name]["annotations"]
-            assert hints["readOnlyHint"] is (name == "junk_list"), name
+            assert hints["readOnlyHint"] is (name in TestGrantMatrix.READ_ONLY), name
             assert hints["destructiveHint"] is (name in ("cull_apply", "delete_photos")), name
 
 

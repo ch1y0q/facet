@@ -260,7 +260,7 @@ def trigger_auto_retrain(db_path, user_id, added=1, conn=None):
 
 
 def record_culling_decision(conn, keep_paths, reject_paths, sequence_members,
-                            user_id=None, group_type='burst', commit=True):
+                            user_id=None, group_type='burst', commit=True, record=True):
     """Turn a culling confirm into ranker training pairs, commit, nudge retrain.
 
     ``sequence_members`` are the paths belonging to a keep-whole sequence set
@@ -285,8 +285,16 @@ def record_culling_decision(conn, keep_paths, reject_paths, sequence_members,
     left True the commit is part of the contract -- ``trigger_auto_retrain``
     must only ever see a decision that is already durable.
 
+    ``record=False`` is for a decision an assistant made through the agent layer
+    (``CurrentUser.is_agent_request``): nothing is paired, so it never trains the
+    ranker or arms the auto-retrain counter. The commit stays part of the contract.
+
     Returns the number of comparison rows inserted.
     """
+    if not record:
+        if commit:
+            conn.commit()
+        return 0
     pairable_keep = [p for p in keep_paths if p not in sequence_members]
     pairable_reject = [p for p in reject_paths if p not in sequence_members]
     added = record_culling_pairs(

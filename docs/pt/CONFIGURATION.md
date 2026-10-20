@@ -2584,13 +2584,13 @@ O `target_dir` passa pela mesma lista de permissões que os endpoints de exporta
 
 ## Endpoint de agentes (MCP)
 
-Expõe as ferramentas descritas em [Agentes de IA (MCP)](AGENTS.md) em `POST /mcp`: leitura, controlo do separador aberto e, consoante o nível do token, alteração de classificações, etiquetas e álbuns, seleção e eliminação. Tudo fica desativado (404) até `enabled` ser `true`.
+Expõe as ferramentas descritas em [Agentes de IA (MCP)](AGENTS.md) em `POST /mcp`: leitura, controlo do separador aberto e, consoante o nível do token, alteração de classificações, etiquetas e álbuns, seleção e eliminação. Está ativado por predefinição; ponha `enabled` em `false` para o desligar (todas as rotas respondem então 404). Numa instalação aberta (sem `viewer.password`) o `/mcp` serve apenas uma chave anónima só de leitura, que não concede nada que a `/api` aberta não conceda já.
 
 ```json
 {
   "viewer": {
     "mcp": {
-      "enabled": false,
+      "enabled": true,
       "bridge": true,
       "max_rows": 100,
       "max_bytes": 60000,
@@ -2599,6 +2599,8 @@ Expõe as ferramentas descritas em [Agentes de IA (MCP)](AGENTS.md) em `POST /mc
       "semantic_timeout_s": 120,
       "rate_per_min": 120,
       "write_rate_per_min": 30,
+      "tool_profile": "full",
+      "allow_destructive": false,
       "allowed_origins": []
     }
   }
@@ -2607,7 +2609,7 @@ Expõe as ferramentas descritas em [Agentes de IA (MCP)](AGENTS.md) em `POST /mc
 
 | Chave | Predefinição | Descrição |
 |-----|---------|-------------|
-| `enabled` | `false` | Interruptor geral de `/mcp` e `/api/mcp/*`. Desativado, respondem 404 (a ponte fecha com o código 4404). |
+| `enabled` | `true` | Interruptor geral de `/mcp` e `/api/mcp/*`. Desativado, respondem 404 (a ponte fecha com o código 4404). Numa instalação aberta (sem `viewer.password`) o endpoint serve apenas uma chave anónima só de leitura: nenhuma autoridade nova, porque a `/api` aberta já expõe os mesmos dados. |
 | `bridge` | `true` | Se a ponte com o separador do navegador (`/api/mcp/bridge`) aceita WebSockets e as ferramentas `ui_*` podem chegar a um separador. Com `false`, a ponte recusa a ligação (código de fecho 4404) e as ferramentas `ui_*` devolvem um erro claro. Exige um único worker. |
 | `max_rows` | `100` | Máximo de linhas num resultado de ferramenta (1 a 500). As linhas a mais são descartadas e `truncated: true` é definido. |
 | `max_bytes` | `60000` | Tamanho serializado máximo de um resultado de ferramenta em bytes (4000 a 500000). |
@@ -2616,6 +2618,8 @@ Expõe as ferramentas descritas em [Agentes de IA (MCP)](AGENTS.md) em `POST /mc
 | `semantic_timeout_s` | `120` | Tempo limite de `semantic_search` em segundos (1 a 300); carrega o modelo de embeddings e precisa de mais. |
 | `rate_per_min` | `120` | Chamadas de ferramentas por minuto e por token (mínimo 1). |
 | `write_rate_per_min` | `30` | Chamadas de escrita por minuto e por token (mínimo 1). Mantido à parte para que as leituras não deixem as escritas sem quota. Aplica-se às ferramentas de escrita (incluindo a simulação de `cull_apply` e `delete_photos`); veja [Agentes de IA](AGENTS.md#alterar-a-biblioteca). |
+| `tool_profile` | `"full"` | `"full"` lista todas as ferramentas que a chave pode chamar. `"core"` lista apenas um conjunto de 12 ferramentas para modelos pequenos (`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`, `undo_last`). Só a lista muda: uma ferramenta fora dela ainda pode ser chamada se o nível da chave o permitir. Qualquer outro valor volta a `"full"`. Ver [Agentes de IA](AGENTS.md#níveis-de-permissão). |
+| `allow_destructive` | `false` | Permite aos assistentes executar `delete_photos`, as ações `move_rejects` e `trash_rejects` de `cull_apply` e `assign_faces` com `allow_reassign`. Desativado, `delete_photos` não é listado e as outras duas respondem `feature_disabled` indicando esta chave. Nenhuma pode ser desfeita. Ver [Agentes de IA](AGENTS.md#ações-destrutivas-pré-visualizar-e-confirmar). |
 | `allowed_origins` | `[]` | Origens de navegador adicionais (por exemplo `["https://photos.example.com"]`) autorizadas a abrir a ponte do separador quando um proxy reverso reescreve `Host`. Distinta da chave CORS `viewer.allowed_origins`. |
 
 Os números fora do intervalo são limitados, e um valor de tipo errado volta à predefinição. O bloco é lido em cada pedido, por isso recarregar a configuração ativa ou desativa a funcionalidade sem reiniciar.

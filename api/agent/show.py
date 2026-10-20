@@ -105,11 +105,24 @@ async def call_tab(registry: TabRegistry, resolved: ResolvedGrant, settings: dic
         return err("upstream_error", "The tab call failed unexpectedly", crashed=True)
 
 
+def comparison_open(registry: TabRegistry, resolved: ResolvedGrant, tab_id: Optional[str]) -> bool:
+    """Whether the tab a show would drive is on /compare (the registry tracks each tab's route).
+
+    A show there would navigate away from a pair the user is judging, so it is skipped. No extra
+    frame is sent: the route is the one the tab last reported.
+    """
+    tabs = registry.tabs_for(resolved.principal, resolved.level, resolved.minted_level)
+    conn, _ = registry.pick(tabs, tab_id)
+    return conn is not None and conn.route.split("?")[0].split("#")[0].rstrip("/") == "/compare"
+
+
 async def show_in_tab(registry: TabRegistry, resolved: ResolvedGrant, settings: dict,
                       tab_id: Optional[str], patch: dict, *, timeout: float) -> dict:
     """Apply ``patch`` (replace semantics) to the user's tab; describe the outcome, never raise."""
     if not settings["bridge"]:
         return not_shown("bridge_disabled")
+    if comparison_open(registry, resolved, tab_id):
+        return not_shown("comparison_open", note="The user is on the comparison page; nothing was changed.")
     try:
         args = UiSetGalleryFilters.model_validate({"patch": patch, "replace": True}).forward()
     except ValidationError as ex:
@@ -135,6 +148,8 @@ async def show_paths_in_tab(registry: TabRegistry, resolved: ResolvedGrant, sett
     """Pin exactly ``paths`` (in order) as the user's gallery list; describe the outcome, never raise."""
     if not settings["bridge"]:
         return not_shown("bridge_disabled")
+    if comparison_open(registry, resolved, tab_id):
+        return not_shown("comparison_open", note="The user is on the comparison page; nothing was changed.")
     try:
         args = UiShowPhotos.model_validate({"paths": paths}).forward()
     except ValidationError as ex:

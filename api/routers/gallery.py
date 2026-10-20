@@ -711,6 +711,14 @@ async def api_photo(
             photo = photos[0]
             photo['date_formatted'] = format_date(photo.get('date_taken'))
             await attach_person_data_async([photo], conn)
+            # The manual category correction, read only on this one-photo route: the listing
+            # feeds carry no such column (the correction lives in a side table), and an agent
+            # undoing its own override has to compare against the stored value, not photos.category.
+            cur = await conn.execute(
+                "SELECT category_override FROM photo_scoring_overrides WHERE photo_path = ?", [path])
+            override = await cur.fetchone()
+            await cur.close()
+            photo['category_override'] = override['category_override'] if override else None
 
             sanitize_float_values([photo])
 

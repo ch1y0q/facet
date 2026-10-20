@@ -35,4 +35,9 @@ describe('CompareFiltersService', () => {
     service.selectedCategory.set('');
     expect(service.selectedCategory()).toBe('');
   });
+
+  it('defaults the strategy to uncertainty and the tab to the first one', () => {
+    expect(service.strategy()).toBe('uncertainty');
+    expect(service.activeTab()).toBe(0);
+  });
 });

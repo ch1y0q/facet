@@ -46,6 +46,15 @@ TOOL_ROUTES = {
     "list_culling_groups": ["culling.groups"], "culling_profiles": ["culling.profiles"],
     "suggest_culling_profile": ["culling.suggest_profile"], "keeper_hints": ["culling.keeper_hints"],
     "auto_cull": ["culling.auto"], "confirm_culling_groups": ["culling.confirm"],
+    "undo_last": ["get_photo", "set_rating"], "list_agent_actions": [],
+    "override_sequence": ["photos_by_paths", "override_sequence"],
+    "clear_sequence_override": ["photos_by_paths", "clear_sequence_override"],
+    "override_category": ["get_photo", "override_category"],
+    "clear_category_override": ["get_photo", "clear_category_override"],
+    "group_compare": ["photos_by_paths", "group_faces", "group_subjects"],
+    "cull_report": ["photos_count", "search_photos"],
+    "comparison_status": ["comparison_stats", "comparison_coverage"],
+    "start_scan": ["scan_directories", "scan_start"], "scan_status": ["scan_status", "scan_directories"],
     **{tool.name: [] for tool in UI_TOOLS},
 }
 CULLING_TOOLS = {"list_culling_groups", "culling_profiles", "suggest_culling_profile", "keeper_hints",
@@ -79,26 +88,24 @@ def tool_rows(data):
 
 class TestDrift:
     def test_actions_and_registered_tools_name_the_same_set(self, agent_app):
-        env = agent_app("open")
-        registered = env.tool_names(env.token(env.login()))
+        agent_app("open")
+        registered = set(TOOL_LEVELS)
         in_actions = {name for action in ACTIONS for name in action.tools}
         assert in_actions == registered
         assert set(TOOL_LEVELS) == registered
 
     def test_tool_routes_cover_every_registered_tool(self, agent_app):
-        env = agent_app("open")
-        assert set(TOOL_ROUTES) == env.tool_names(env.token(env.login()))
+        agent_app("open")
+        assert set(TOOL_ROUTES) == set(TOOL_LEVELS)
 
     def test_levels_match_route_gate(self, agent_app):
-        env = agent_app("open")
-        env.tool_names(env.token(env.login()))
+        agent_app("open")
         for tool, routes in TOOL_ROUTES.items():
             expected = max((ROUTES[r].min_level for r in routes), default="readonly", key=LEVELS.index)
             assert TOOL_LEVELS[tool] == expected, tool
 
     def test_write_levels_table_is_what_registration_recorded(self, agent_app):
-        env = agent_app("open")
-        env.tool_names(env.token(env.login()))
+        agent_app("open")
         for tool, level in WRITE_TOOL_LEVELS.items():
             assert TOOL_LEVELS[tool] == level
 
@@ -119,8 +126,8 @@ class TestDrift:
         assert rows == render_client_actions()
 
     def test_docs_tool_counts_follow_the_registered_tools(self, agent_app):
-        env = agent_app("open")
-        registered = env.tool_names(env.token(env.login()))
+        agent_app("open")
+        registered = set(TOOL_LEVELS)
         ui = {t.name for t in UI_TOOLS}
         reads = registered - ui - set(WRITE_TOOL_LEVELS) - CULLING_TOOLS
         text = (DOCS / "AGENTS.md").read_text(encoding="utf-8")

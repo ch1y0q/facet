@@ -123,7 +123,22 @@
       "prompt_label_access": "Accès accordé :",
       "prompt_token_rules": "Conserve le jeton uniquement dans la configuration de ton client MCP. Ne le répète pas dans tes réponses et ne l'écris dans aucun autre fichier ni aucune note. Je peux le révoquer depuis Facet à tout moment.",
       "prompt_verify": "Après la configuration, appelle cet outil pour confirmer la connexion :",
-      "prompt_capabilities": "Tu peux rechercher dans la bibliothèque, ouvrir cet onglet Facet et y naviguer. Tu ne peux modifier des photos que si l'accès accordé ci-dessus le permet."
+      "prompt_capabilities": "Tu peux rechercher dans la bibliothèque, ouvrir cet onglet Facet et y naviguer. Tu ne peux modifier des photos que si l'accès accordé ci-dessus le permet.",
+      "actions_heading": "Actions récentes de l'assistant ({count})",
+      "action_summary": "{tool} : {count} modifications",
+      "action_undo": "Annuler",
+      "action_undo_confirm": "Annuler ce lot ?",
+      "action_undo_yes": "Oui, annuler",
+      "action_undo_aria": "Annuler {tool} du {when}",
+      "action_undo_yes_aria": "Oui, annuler {tool} du {when}",
+      "action_undo_cancel_aria": "Non, garder {tool} du {when}",
+      "undo_result": "{restored} restauré(s), {kept} conservé(s) car modifié(s) depuis",
+      "undo_failed": "Impossible d'annuler le lot",
+      "action_undone": "Annulé",
+      "inpage_toggle": "Autoriser les agents de ce navigateur à utiliser les outils Facet",
+      "inpage_hint": "Activé, un assistant exécuté dans ce navigateur peut rechercher et, si votre session le permet, modifier votre bibliothèque via la page. Désactivé par défaut ; ne concerne que ce navigateur.",
+      "inpage_changed": "L'assistant a modifié {count} photos",
+      "inpage_undo": "Annuler"
     }
   },
   "pagination": {

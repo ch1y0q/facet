@@ -465,7 +465,8 @@ def api_set_rating(
                 conn.execute("UPDATE photos SET star_rating = ? WHERE path = ?", (body.rating, body.photo_path))
             conn.commit()
             _stats_cache.clear()
-            _mint_rating_comparisons(user.user_id)
+            if not user.is_agent_request:
+                _mint_rating_comparisons(user.user_id)
             return {'success': True, 'rating': body.rating}
         except sqlite3.Error as ex:
             conn.rollback()
@@ -514,7 +515,8 @@ def api_toggle_favorite(
             conn.commit()
             _stats_cache.clear()
             _invalidate_culling_groups_cache()
-            _mint_rating_comparisons(user.user_id)
+            if not user.is_agent_request:
+                _mint_rating_comparisons(user.user_id)
             return {'success': True, 'is_favorite': new_value == 1, 'is_rejected': False if new_value == 1 else None}
         except HTTPException:
             raise
@@ -565,7 +567,8 @@ def api_toggle_rejected(
             conn.commit()
             _stats_cache.clear()
             _invalidate_culling_groups_cache()
-            _mint_rating_comparisons(user.user_id)
+            if not user.is_agent_request:
+                _mint_rating_comparisons(user.user_id)
             return {'success': True, 'is_rejected': new_value == 1, 'star_rating': 0 if new_value == 1 else None, 'is_favorite': False if new_value == 1 else None}
         except HTTPException:
             raise

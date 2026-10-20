@@ -1298,8 +1298,9 @@ def _load_mcp_settings_spec() -> tuple[dict, dict]:
     with open(_MCP_SCHEMA_PATH) as f:
         props = json.load(f)['properties']['viewer']['properties']['mcp']['properties']
     bounds = {key: (props[key].get('minimum'), props[key].get('maximum'))
-              for key, value in defaults.items() if not isinstance(value, bool)}
-    return defaults, bounds
+              for key, value in defaults.items() if not isinstance(value, (bool, str))}
+    choices = {key: tuple(props[key]['enum']) for key, value in defaults.items() if isinstance(value, str)}
+    return defaults, {**bounds, **choices}
 
 
 MCP_SETTINGS_DEFAULTS, _MCP_SETTINGS_BOUNDS = _load_mcp_settings_spec()
@@ -1320,8 +1321,7 @@ def mcp_settings() -> dict:
     Read per call through ``VIEWER_CONFIG`` (which ``reload_config`` refills in
     place), so an operator edit followed by a reload toggles the feature without
     a restart. A missing block, or a value of the wrong type, falls back to the
-    shipped default: the feature stays OFF unless the operator wrote a real
-    ``true``. Nothing here writes the override file. ``enabled`` is forced off when
+    shipped default: the feature is ON unless the operator wrote a real ``false``. Nothing here writes the override file. ``enabled`` is forced off when
     the ``mcp`` package could not be imported (``set_mcp_available``).
     """
     block = VIEWER_CONFIG.get('mcp')
@@ -1332,6 +1332,9 @@ def mcp_settings() -> dict:
         value = block.get(key, default)
         if isinstance(default, bool):
             out[key] = value if isinstance(value, bool) else default
+            continue
+        if isinstance(default, str):
+            out[key] = value if value in _MCP_SETTINGS_BOUNDS[key] else default
             continue
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             value = default

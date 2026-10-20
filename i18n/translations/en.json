@@ -123,7 +123,22 @@
       "prompt_label_access": "Access granted:",
       "prompt_token_rules": "Keep the token only in your MCP client configuration. Do not repeat it in your replies and do not write it to any other file or note. I can revoke it from Facet at any time.",
       "prompt_verify": "After configuring, call this tool to confirm the connection:",
-      "prompt_capabilities": "You can search the library, and open or navigate this Facet tab. You can change photos only if the access granted above allows it."
+      "prompt_capabilities": "You can search the library, and open or navigate this Facet tab. You can change photos only if the access granted above allows it.",
+      "actions_heading": "Recent assistant actions ({count})",
+      "action_summary": "{tool}: {count} changes",
+      "action_undo": "Undo",
+      "action_undo_confirm": "Undo this batch?",
+      "action_undo_yes": "Yes, undo",
+      "action_undo_aria": "Undo {tool} from {when}",
+      "action_undo_yes_aria": "Yes, undo {tool} from {when}",
+      "action_undo_cancel_aria": "Cancel, keep {tool} from {when}",
+      "undo_result": "Restored {restored}, kept {kept} unchanged",
+      "undo_failed": "Could not undo the batch",
+      "action_undone": "Undone",
+      "inpage_toggle": "Let agents in this browser use Facet tools",
+      "inpage_hint": "When on, an assistant running in this browser can search and, if your session allows it, change your library through the page. Off by default; it only applies to this browser.",
+      "inpage_changed": "Assistant changed {count} photos",
+      "inpage_undo": "Undo"
     }
   },
   "pagination": {

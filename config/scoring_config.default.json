@@ -3729,7 +3729,7 @@
       "allow_trash": false
     },
     "mcp": {
-      "enabled": false,
+      "enabled": true,
       "bridge": true,
       "max_rows": 100,
       "max_bytes": 60000,
@@ -3738,6 +3738,8 @@
       "semantic_timeout_s": 120,
       "rate_per_min": 120,
       "write_rate_per_min": 30,
+      "tool_profile": "full",
+      "allow_destructive": false,
       "allowed_origins": []
     },
     "raw_processor": {

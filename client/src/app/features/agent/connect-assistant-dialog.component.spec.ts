@@ -8,6 +8,7 @@ import { of, throwError } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
+import { ServerToolRegistry } from '../../core/agent/server-tool-registry.service';
 import { AgentBridgeService } from '../../core/agent/agent-bridge.service';
 import { McpTokenCreated, McpTokenItem } from '../../core/api/types';
 import { ConnectAssistantDialogComponent } from './connect-assistant-dialog.component';
@@ -23,10 +24,15 @@ describe('ConnectAssistantDialogComponent', () => {
   let listMcpTokens: Mock;
   let createMcpToken: Mock;
   let revokeMcpToken: Mock;
+  let listMcpActions: Mock;
+  let undoMcpAction: Mock;
   let multiUser: boolean;
   let edition: boolean;
   let loginRequired: boolean;
   let connected: boolean;
+  let inpage: boolean;
+  let optedIn: ReturnType<typeof signal<boolean>>;
+  let setOptIn: Mock;
 
   const text = (): string => (fixture.nativeElement as HTMLElement).textContent ?? '';
   const query = <T extends HTMLElement>(selector: string): T | null => (fixture.nativeElement as HTMLElement).querySelector<T>(selector);
@@ -50,17 +56,23 @@ describe('ConnectAssistantDialogComponent', () => {
     loginRequired = true;
     connected = false;
     listMcpTokens = vi.fn(() => of({ tokens: [TOKEN_ROW] }));
+    inpage = true;
+    optedIn = signal(false);
+    setOptIn = vi.fn((on: boolean) => optedIn.set(on));
     createMcpToken = vi.fn((body: { name: string; level: McpTokenItem['level'] }) =>
       of({ ...TOKEN_ROW, id: 8, name: body.name, level: body.level, token: SECRET } as McpTokenCreated));
     revokeMcpToken = vi.fn(() => of({ id: 7, ok: true }));
+    listMcpActions = vi.fn(() => of({ actions: [] }));
+    undoMcpAction = vi.fn(() => of({ batch_id: 'b1', outcomes: { restored: 2, skipped_changed_since: 1 }, results: [], results_count: 3 }));
     TestBed.configureTestingModule({
       providers: [
-        { provide: ApiService, useValue: { listMcpTokens, createMcpToken, revokeMcpToken } },
-        { provide: AuthService, useValue: { isMultiUser: () => multiUser, isEdition: () => edition, loginPasswordRequired: () => loginRequired } },
+        { provide: ApiService, useValue: { listMcpTokens, createMcpToken, revokeMcpToken, listMcpActions, undoMcpAction } },
+        { provide: AuthService, useValue: { isMultiUser: () => multiUser, isEdition: () => edition, loginPasswordRequired: () => loginRequired, status: () => ({ features: { mcp_inpage: inpage } }) } },
         { provide: I18nService, useValue: { t: (key: string, vars?: Record<string, string>) => (vars ? `${key} ${Object.values(vars).join(' ')}` : key), translations: signal({}) } },
         { provide: MatSnackBar, useValue: { open: vi.fn() } },
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: AgentBridgeService, useValue: { tabId: 'tab123', connected: () => connected } },
+        { provide: ServerToolRegistry, useValue: { optedIn: optedIn, setOptIn } },
       ],
     });
   });
@@ -74,6 +86,22 @@ describe('ConnectAssistantDialogComponent', () => {
     expect(query('[data-testid="reveal"]')).toBeNull();
     expect(query('[data-testid="prompt"]')).toBeNull();
     expect(text()).not.toContain('SECRET');
+  });
+
+  it('shows the per-browser in-page opt-in unchecked and persists a change through the registry', async () => {
+    await create();
+    const box = query<HTMLInputElement>('[data-testid="inpage-optin"] input')!;
+    expect(box.checked).toBe(false);
+    box.click();
+    await flush();
+    expect(setOptIn).toHaveBeenCalledWith(true);
+    expect(query<HTMLInputElement>('[data-testid="inpage-optin"] input')!.checked).toBe(true);
+  });
+
+  it('hides the in-page opt-in when the server has the feature off', async () => {
+    inpage = false;
+    await create();
+    expect(query('[data-testid="inpage-optin"]')).toBeNull();
   });
 
   it('shows the Manage tokens disclosure with the token count, and no tab id', async () => {
@@ -98,12 +126,13 @@ describe('ConnectAssistantDialogComponent', () => {
     edition = true;
     TestBed.configureTestingModule({
       providers: [
-        { provide: ApiService, useValue: { listMcpTokens, createMcpToken, revokeMcpToken } },
-        { provide: AuthService, useValue: { isMultiUser: () => true, isEdition: () => true, loginPasswordRequired: () => true } },
+        { provide: ApiService, useValue: { listMcpTokens, createMcpToken, revokeMcpToken, listMcpActions, undoMcpAction } },
+        { provide: AuthService, useValue: { isMultiUser: () => true, isEdition: () => true, loginPasswordRequired: () => true, status: signal({ features: { mcp_inpage: false } }) } },
         { provide: I18nService, useValue: { t: (key: string, vars?: Record<string, string>) => (vars ? `${key} ${Object.values(vars).join(' ')}` : key), translations: signal({}) } },
         { provide: MatSnackBar, useValue: { open: vi.fn() } },
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: AgentBridgeService, useValue: { tabId: 'tab123', connected: () => connected } },
+        { provide: ServerToolRegistry, useValue: { optedIn: optedIn, setOptIn } },
       ],
     });
     await create();
@@ -396,4 +425,64 @@ describe('ConnectAssistantDialogComponent', () => {
     await flush();
     await flush();
   }
+
+  describe('recent assistant actions', () => {
+    const BATCH = { batch_id: 'b1', tool: 'batch_set_rejected', token_name: 'Laptop', created_at: '2026-09-03T10:05:00', rows: 3, undone: false, fields: ['is_rejected'] };
+
+    it('hides the section when the journal is empty', async () => {
+      await create();
+      expect(query('[data-testid="actions-disclosure"]')).toBeNull();
+      expect(listMcpActions).toHaveBeenCalledWith(20);
+    });
+
+    it('lists one row per batch with a dd/MM/yyyy HH:mm date', async () => {
+      listMcpActions.mockReturnValue(of({ actions: [BATCH] }));
+      await create();
+      expect(queryAll('[data-testid="action-row"]')).toHaveLength(1);
+      expect(query('[data-testid="action-row"]')?.textContent).toContain('03/09/2026 10:05');
+      expect(query('[data-testid="action-row"]')?.textContent).toContain('batch_set_rejected 3');
+    });
+
+    it('asks for confirmation, undoes once with the batch id and shows the outcome line', async () => {
+      listMcpActions.mockReturnValue(of({ actions: [BATCH] }));
+      await create();
+      query<HTMLButtonElement>('button[data-undo-id="b1"]')!.click();
+      await flush();
+      expect(undoMcpAction).not.toHaveBeenCalled();
+      expect(query('[data-testid="undo-confirm-yes"]')).not.toBeNull();
+      listMcpActions.mockReturnValue(of({ actions: [{ ...BATCH, undone: true }] }));
+      query<HTMLButtonElement>('[data-testid="undo-confirm-yes"]')!.click();
+      await flush();
+      await flush();
+      expect(undoMcpAction).toHaveBeenCalledTimes(1);
+      expect(undoMcpAction).toHaveBeenCalledWith({ batch_id: 'b1' });
+      expect(query('[data-testid="undo-result"]')?.textContent).toContain('dialog.connect_assistant.undo_result 2 1');
+      expect(query('[data-testid="action-undone"]')).not.toBeNull();
+      expect(query('button[data-undo-id="b1"]')).toBeNull();
+    });
+
+    it('cancelling the confirm undoes nothing', async () => {
+      listMcpActions.mockReturnValue(of({ actions: [BATCH] }));
+      await create();
+      query<HTMLButtonElement>('button[data-undo-id="b1"]')!.click();
+      await flush();
+      query<HTMLButtonElement>('button[aria-label^="dialog.connect_assistant.action_undo_cancel_aria"]')!.click();
+      await flush();
+      expect(undoMcpAction).not.toHaveBeenCalled();
+      expect(query('button[data-undo-id="b1"]')).not.toBeNull();
+    });
+
+    it('reports a failed undo and keeps the row', async () => {
+      listMcpActions.mockReturnValue(of({ actions: [BATCH] }));
+      undoMcpAction.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 403 })));
+      await create();
+      query<HTMLButtonElement>('button[data-undo-id="b1"]')!.click();
+      await flush();
+      query<HTMLButtonElement>('[data-testid="undo-confirm-yes"]')!.click();
+      await flush();
+      await flush();
+      expect(query('[role="alert"]')?.textContent).toContain('dialog.connect_assistant.undo_failed');
+      expect(queryAll('[data-testid="action-row"]')).toHaveLength(1);
+    });
+  });
 });

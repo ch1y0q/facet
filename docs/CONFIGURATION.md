@@ -2564,13 +2564,13 @@ The `target_dir` goes through the exact same allow-list as the copy/move export 
 
 ## Agent Endpoint (MCP)
 
-Exposes the tools described in [AI Agents (MCP)](AGENTS.md) at `POST /mcp`: reading, driving your open tab and, depending on the token's level, changing ratings, tags and albums, culling and deleting. Everything stays off (404) until `enabled` is `true`.
+Exposes the tools described in [AI Agents (MCP)](AGENTS.md) at `POST /mcp`: reading, driving your open tab and, depending on the token's level, changing ratings, tags and albums, culling and deleting. It is on by default; set `enabled` to `false` to switch it off (every route then answers 404). On an open install (no `viewer.password`) `/mcp` serves only a read-only anonymous key, which grants nothing the open `/api` does not already grant.
 
 ```json
 {
   "viewer": {
     "mcp": {
-      "enabled": false,
+      "enabled": true,
       "bridge": true,
       "max_rows": 100,
       "max_bytes": 60000,
@@ -2579,6 +2579,8 @@ Exposes the tools described in [AI Agents (MCP)](AGENTS.md) at `POST /mcp`: read
       "semantic_timeout_s": 120,
       "rate_per_min": 120,
       "write_rate_per_min": 30,
+      "tool_profile": "full",
+      "allow_destructive": false,
       "allowed_origins": []
     }
   }
@@ -2587,7 +2589,7 @@ Exposes the tools described in [AI Agents (MCP)](AGENTS.md) at `POST /mcp`: read
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `enabled` | `false` | Master switch for `/mcp` and `/api/mcp/*`. Off means `/mcp` and `/api/mcp/*` answer 404 (the bridge closes with code 4404). |
+| `enabled` | `true` | Master switch for `/mcp` and `/api/mcp/*`. Off means `/mcp` and `/api/mcp/*` answer 404 (the bridge closes with code 4404). On an open install (no `viewer.password`) the endpoint serves only a read-only anonymous key: no new authority, since the open `/api` already exposes the same data. |
 | `bridge` | `true` | Whether the browser-tab bridge (`/api/mcp/bridge`) accepts WebSockets and the `ui_*` tools can reach a tab. When `false`, the bridge refuses the connection (close code 4404) and `ui_*` tools return an error saying so. Needs a single worker. |
 | `max_rows` | `100` | Maximum rows in one tool result (1 to 500). Extra rows are dropped and `truncated: true` is set. |
 | `max_bytes` | `60000` | Maximum serialized size of one tool result in bytes (4000 to 500000). |
@@ -2596,6 +2598,8 @@ Exposes the tools described in [AI Agents (MCP)](AGENTS.md) at `POST /mcp`: read
 | `semantic_timeout_s` | `120` | Timeout for `semantic_search` in seconds (1 to 300); it loads the embedding model, so it needs more. |
 | `rate_per_min` | `120` | Tool calls per minute per token (minimum 1). |
 | `write_rate_per_min` | `30` | Write calls per minute per token (minimum 1). Kept separate so reads cannot starve writes. Applies to the write tools (including the dry run of `cull_apply` and `delete_photos`); see [AI Agents](AGENTS.md#changing-things). |
+| `tool_profile` | `"full"` | `"full"` lists every tool the key may call. `"core"` lists only a 12-tool set for small models (`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`, `undo_last`). Only the listing changes: a tool outside it can still be called when the key's level allows it. Any other value falls back to `"full"`. See [AI Agents](AGENTS.md#permission-levels). |
+| `allow_destructive` | `false` | Lets assistants run `delete_photos`, the `move_rejects` and `trash_rejects` actions of `cull_apply`, and `assign_faces` with `allow_reassign`. Off, `delete_photos` is not listed and the other two answer `feature_disabled` naming this key. None of them can be undone. See [AI Agents](AGENTS.md#destructive-actions-preview-then-confirm). |
 | `allowed_origins` | `[]` | Extra browser origins (for example `["https://photos.example.com"]`) allowed to open the tab bridge when a reverse proxy rewrites `Host`. Distinct from the CORS key `viewer.allowed_origins`. |
 
 Out-of-range numbers are clamped, and a value of the wrong type falls back to the default. The block is read on every request, so a configuration reload toggles the feature without a restart.

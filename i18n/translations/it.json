@@ -123,7 +123,22 @@
       "prompt_label_access": "Accesso concesso:",
       "prompt_token_rules": "Conserva il token solo nella configurazione del tuo client MCP. Non ripeterlo nelle tue risposte e non scriverlo in nessun altro file o nota. Posso revocarlo da Facet in qualsiasi momento.",
       "prompt_verify": "Dopo la configurazione, chiama questo strumento per confermare la connessione:",
-      "prompt_capabilities": "Puoi cercare nella libreria e aprire o navigare questa scheda di Facet. Puoi modificare le foto solo se l'accesso concesso qui sopra lo consente."
+      "prompt_capabilities": "Puoi cercare nella libreria e aprire o navigare questa scheda di Facet. Puoi modificare le foto solo se l'accesso concesso qui sopra lo consente.",
+      "actions_heading": "Azioni recenti dell'assistente ({count})",
+      "action_summary": "{tool}: {count} modifiche",
+      "action_undo": "Annulla",
+      "action_undo_confirm": "Annullare questo lotto?",
+      "action_undo_yes": "Sì, annulla",
+      "action_undo_aria": "Annulla {tool} del {when}",
+      "action_undo_yes_aria": "Sì, annulla {tool} del {when}",
+      "action_undo_cancel_aria": "No, mantieni {tool} del {when}",
+      "undo_result": "{restored} ripristinati, {kept} mantenuti perché modificati da allora",
+      "undo_failed": "Impossibile annullare il lotto",
+      "action_undone": "Annullato",
+      "inpage_toggle": "Consenti agli agenti di questo browser di usare gli strumenti di Facet",
+      "inpage_hint": "Se attivo, un assistente in esecuzione in questo browser può cercare e, se la sessione lo consente, modificare la libreria tramite la pagina. Disattivato per impostazione predefinita; vale solo per questo browser.",
+      "inpage_changed": "L'assistente ha modificato {count} foto",
+      "inpage_undo": "Annulla"
     }
   },
   "pagination": {

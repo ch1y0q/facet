@@ -127,6 +127,8 @@ class Photo(BaseModel):
     image_aspect: Optional[float] = None
     sequence_override: Optional[str] = None
     sequence_override_pending: CoercedInt = None
+    # Only `GET /api/photo` fills it: the manual category correction (photo_scoring_overrides).
+    category_override: Optional[str] = None
     date_formatted: Optional[str] = None
     tags_list: list[str] = []
     manual_tags: list[str] = []

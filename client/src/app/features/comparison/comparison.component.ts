@@ -121,7 +121,7 @@ Chart.register(...registerables);
       }
 
       @if (compareFilters.selectedCategory()) {
-        <mat-tab-group class="mb-6" [selectedIndex]="0" (selectedIndexChange)="onTabChange($event)">
+        <mat-tab-group class="mb-6" [selectedIndex]="compareFilters.activeTab()" (selectedIndexChange)="onTabChange($event)">
           <!-- Snapshots tab -->
           <mat-tab>
             <ng-template mat-tab-label>
@@ -201,7 +201,7 @@ export class ComparisonComponent {
   protected readonly compareToolbar = viewChild<TemplateRef<unknown>>('compareToolbar');
 
   /** Active tab (0 Snapshots, 1 Compare, 2 Suggestions, 3 Weights, 4 Scoring context) — drives the contextual top bar. */
-  protected readonly selectedTabIndex = signal(0);
+  protected readonly selectedTabIndex = signal(this.compareFilters.activeTab());
 
   /** Total comparisons (all sources) + threshold, to gate the Weight Suggestions tab. */
   private readonly comparisonStats = signal<{ total_comparisons: number; min_comparisons_for_optimization?: number } | null>(null);
@@ -220,6 +220,7 @@ export class ComparisonComponent {
     this.pageHelp.setDescription(I18N.compare.help);
     inject(DestroyRef).onDestroy(() => {
       this.pageHelp.setDescription(null);
+      this.compareFilters.activeTab.set(0);
       const tpl = this.compareToolbar();
       if (tpl) this.headerSlot.clear(tpl);
     });
@@ -259,6 +260,7 @@ export class ComparisonComponent {
 
   protected onTabChange(index: number): void {
     this.selectedTabIndex.set(index);
+    this.compareFilters.activeTab.set(index);
     if (index === 1 && !this.abTab()?.pairA() && !this.abTab()?.pairLoading()) {
       void this.abTab()?.loadNextPair();
     }

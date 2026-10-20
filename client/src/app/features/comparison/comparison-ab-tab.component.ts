@@ -294,7 +294,7 @@ export class ComparisonAbTabComponent {
   protected readonly pairSubmitting = signal(false);
   protected readonly pairError = signal<string | null>(null);
   protected readonly comparisonCount = signal(0);
-  protected readonly strategy = signal<string>('uncertainty');
+  protected readonly strategy = this.compareFilters.strategy;
   protected readonly comparisonStats = signal<ComparisonStats | null>(null);
   protected readonly learnedWeights = signal<LearnedWeightsResponse | null>(null);
   protected readonly learnedWeightsLoading = signal(false);

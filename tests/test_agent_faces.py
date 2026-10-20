@@ -250,8 +250,8 @@ def owner(name):
         return conn.execute("SELECT person_id FROM faces WHERE photo_path = ?", (PHOTOS[name],)).fetchone()[0]
 
 
-def assign(agent_app, face_names=(), extra=(), level="edition", **arguments):
-    env = agent_app("legacy")
+def assign(agent_app, face_names=(), extra=(), level="edition", destructive=False, **arguments):
+    env = agent_app("legacy", allow_destructive=destructive)
     headers = env.login(edition=True)
     ids = [face_id(n) for n in face_names] + list(extra)
     return env, headers, env.call(env.token(headers, level), "assign_faces",
@@ -276,7 +276,7 @@ class TestAssignFaces:
         assert data["assigned_count"] == 1 and len(data["missing"]) == 1 and len(data["skipped_assigned"]) == 1
 
     def test_a_face_of_another_model_and_a_hidden_persons_face_are_skipped(self, agent_app, library):
-        _, _, result = assign(agent_app, "fe", allow_reassign=True)
+        _, _, result = assign(agent_app, "fe", destructive=True, allow_reassign=True)
         data = result["data"]
         assert data["skipped_model"] == [face_id("f")] and data["skipped_hidden"] == [face_id("e")]
         assert data["assigned_count"] == 0
@@ -286,9 +286,18 @@ class TestAssignFaces:
         assert result["data"]["already"] == [face_id("h")] and result["data"]["assigned_count"] == 0
 
     def test_allow_reassign_moves_the_only_face_and_reports_the_deleted_person(self, agent_app, library):
-        _, _, result = assign(agent_app, "d", allow_reassign=True)
+        _, _, result = assign(agent_app, "d", destructive=True, allow_reassign=True)
         assert result["data"]["assigned_count"] == 1 and result["data"]["deleted_persons"] == [BOB]
         assert owner("d") == PERSON
+
+    def test_allow_reassign_is_refused_without_allow_destructive_and_moves_nothing(self, agent_app, library):
+        _, _, result = assign(agent_app, "d", allow_reassign=True)
+        assert result["error"] == "feature_disabled" and "viewer.mcp.allow_destructive" in result["message"]
+        assert owner("d") == BOB
+
+    def test_assigned_faces_are_marked_not_undoable(self, agent_app, library):
+        _, _, result = assign(agent_app, "a")
+        assert result["data"]["undoable"] is False and "undo_last" in result["data"]["undo_note"]
 
     def test_a_readonly_token_is_forbidden_and_fifty_one_ids_are_too_large(self, agent_app, library):
         assert assign(agent_app, "a", level="readonly")[2]["error"] == "forbidden_level"

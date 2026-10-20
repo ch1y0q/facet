@@ -20,7 +20,8 @@ from api.agent.bridge import TabRegistry
 from api.agent.internal_client import InternalClient, err, ok
 from api.agent.runtime import run_tool
 from api.agent.tools_common import (
-    MCP_FILTER_KEYS, READ_ANNOTATIONS, TOOL_LEVELS, FilterValue, SortColumn, register_tool,
+    MCP_FILTER_KEYS, READ_ANNOTATIONS, TOOL_LEVELS, FilterValue, SortColumn, hidden_tools, register_tool,
+    unavailable_tools,
 )
 from api.agent.ui_tools import TAB_ID_PATTERN
 from api.routers.face_matches import FACE_SCAN_TIMEOUT_S
@@ -465,6 +466,8 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
                 "owner": resolved.principal,
                 "level": resolved.level,
                 "token_level": grant.level,
+                "tool_profile": settings["tool_profile"],
+                "hidden_tools": hidden_tools(resolved, settings),
                 "mcp": {"enabled": settings["enabled"], "bridge": settings["bridge"]},
                 **status_extra(resolved),
             })
@@ -487,7 +490,7 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
                     facts = actions.facts_for(route, count, bool(gallery.get("pinned")))
                     tab = {"tab_id": (context.get("tab") or {}).get("tab_id"), "route": route,
                            "selection_count": count, "pinned": bool(gallery.get("pinned"))}
-            rows, hidden = actions.evaluate(resolved.level, facts, TOOL_LEVELS)
+            rows, hidden = actions.evaluate(resolved.level, facts, TOOL_LEVELS, unavailable_tools(resolved, settings))
             return ok({"tab": tab, "level": resolved.level, "actions": rows, "hidden": hidden})
         return await run_tool(ctx, "available_actions", handler)
 
@@ -540,6 +543,8 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
         "`min_similarity` defaults to 0.30; `limit` max 100. Rows carry face_id, photo_path, "
         "person_id/person_name (current owner), similarity and distance. A scan over 192000 faces is "
         "refused with too_large: narrow it with scope, path_prefix, date_from or date_to. "
+        "`candidates` is the count of faces in scope you can see, before the embedding-dimension "
+        "check; `faces_scanned` is the number of rows actually scored. "
         + SHOW_RULE + " The distinct photos are shown as an assistant-chosen list. A person with no "
         "centroid yet answers invalid_input.")
     add(similar_photos, "similar_photos",

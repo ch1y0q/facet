@@ -203,6 +203,16 @@ class UiShowCullingGroup(UiArgs):
     group_id: int = Field(ge=0, description="The `group_id` from list_culling_groups.")
 
 
+ComparisonStrategy = Literal["learning", "uncertainty", "boundary", "active", "random"]
+
+
+class UiShowComparison(UiArgs):
+    category: Optional[str] = Field(
+        default=None, description="Category to compare within (a name from `facet://categories`).")
+    strategy: Optional[ComparisonStrategy] = Field(
+        default=None, description="Pair-selection strategy. Default: the tab's current one.")
+
+
 @dataclass(frozen=True)
 class UiTool:
     name: str
@@ -250,6 +260,10 @@ UI_TOOLS: tuple[UiTool, ...] = (
            "Open the darkroom (/culling) and focus one group, identified by (type, group_id). "
            "Edition accounts only.",
            UiShowCullingGroup, False),
+    UiTool("ui_show_comparison",
+           "Open the /compare page in the user's tab, optionally on one category and strategy. It "
+           "only opens the page: the user picks the winners, nothing is submitted for them.",
+           UiShowComparison, False),
 )
 
 

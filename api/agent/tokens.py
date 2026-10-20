@@ -217,13 +217,15 @@ def touch(token_id: int) -> None:
 class ResolvedGrant:
     """What a token may do RIGHT NOW."""
 
-    token_id: int
+    token_id: Optional[int]
     principal: str
     level: str
     role: str
     display_name: str
     anonymous: bool
     minted_level: Optional[str] = None
+    # A human session's own bearer, forwarded in-process instead of minting an internal JWT.
+    bearer: Optional[str] = None
 
     def jwt_claims(self) -> Optional[dict]:
         """Claims for the 60-second internal JWT, or None on an open install.
@@ -242,6 +244,38 @@ class ResolvedGrant:
             "mcp": True,
             "mcp_token_id": self.token_id,
         }
+
+
+@dataclass(frozen=True)
+class SessionGrant:
+    """A logged-in human acting through the agent layer (the Connect dialog's undo).
+
+    Duck-typed like :class:`TokenGrant` for ``InternalClient`` (``id`` is None: no token). It
+    holds the session's level as computed once from the request; the routes it reaches
+    re-check the forwarded bearer themselves.
+    """
+
+    principal: str
+    level: str
+    role: str
+    display_name: str
+    anonymous: bool
+    bearer: Optional[str] = None
+    id: Optional[int] = None
+
+    def resolve(self) -> Optional[ResolvedGrant]:
+        return ResolvedGrant(None, self.principal, self.level, self.role, self.display_name,
+                             self.anonymous, self.level, self.bearer)
+
+
+def session_grant(user: CurrentUser, bearer: Optional[str] = None) -> SessionGrant:
+    """The grant for ``user``'s own session. ``bearer`` is their JWT, forwarded as-is."""
+    mode = install_mode()
+    level = session_level(user)
+    if level == "readonly" and mode == "multi":
+        level = "user"
+    return SessionGrant(session_principal(user.user_id), level, getattr(user, "role", "user") or "user",
+                        getattr(user, "display_name", "") or "", mode == "open", bearer)
 
 
 @dataclass(frozen=True)

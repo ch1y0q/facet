@@ -153,14 +153,15 @@ def _is_open_install(password_key):
 
 class CurrentUser:
     """Represents the current authenticated user."""
-    __slots__ = ('user_id', 'role', 'display_name', 'edition_authenticated')
+    __slots__ = ('user_id', 'role', 'display_name', 'edition_authenticated', 'agent')
 
     def __init__(self, user_id=None, role='user', display_name='',
-                 edition_authenticated=False):
+                 edition_authenticated=False, agent=False):
         self.user_id = user_id
         self.role = role
         self.display_name = display_name
         self.edition_authenticated = edition_authenticated
+        self.agent = agent
 
     @classmethod
     def from_payload(cls, payload):
@@ -170,7 +171,17 @@ class CurrentUser:
             role=payload.get('role', 'user'),
             display_name=payload.get('display_name', ''),
             edition_authenticated=payload.get('edition', False),
+            agent=bool(payload.get('mcp')),
         )
+
+    @property
+    def is_agent_request(self):
+        """True when the request carries the agent layer's internal JWT (the ``mcp`` claim).
+
+        Routes that LEARN from a user's decisions (pairwise comparisons, the auto-retrain
+        counter) skip recording for such a request: an assistant's mass edit is not the user's taste.
+        """
+        return self.agent
 
     @property
     def is_authenticated(self):
@@ -307,6 +318,23 @@ async def require_superadmin(
     return user
 
 
+def scan_access_refusal(multi_user, is_superadmin, is_edition, open_install):
+    """The ``(status, detail)`` that refuses a scan trigger, or None when it is allowed.
+
+    One pure rule shared by ``require_scan_access`` and the agent's ``start_scan`` /
+    ``scan_status`` tools, so the tool and the route cannot disagree. Multi-user mode:
+    superadmin only. Single-user mode: edition AND a locked install (an open install is refused
+    even for a caller presenting an edition claim, because the route starts an OS subprocess).
+    """
+    if multi_user:
+        return None if is_superadmin else (status.HTTP_403_FORBIDDEN, "Superadmin access required")
+    if open_install:
+        return status.HTTP_403_FORBIDDEN, "Set viewer.edition_password to enable the scan trigger"
+    if not is_edition:
+        return status.HTTP_403_FORBIDDEN, "Edition access required"
+    return None
+
+
 async def require_scan_access(
     user: CurrentUser = Depends(require_authenticated),
 ) -> CurrentUser:
@@ -319,17 +347,10 @@ async def require_scan_access(
     starts an OS subprocess. Raises 403 in both refusal cases; never 401
     (require_authenticated already covers "no session").
     """
-    if is_multi_user_enabled():
-        if not user.is_superadmin:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superadmin access required")
-        return user
-    if _is_open_install(EDITION_PASSWORD_KEY):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Set viewer.edition_password to enable the scan trigger",
-        )
-    if not user.is_edition:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Edition access required")
+    refusal = scan_access_refusal(
+        is_multi_user_enabled(), user.is_superadmin, user.is_edition, _is_open_install(EDITION_PASSWORD_KEY))
+    if refusal is not None:
+        raise HTTPException(status_code=refusal[0], detail=refusal[1])
     return user
 
 

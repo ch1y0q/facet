@@ -67,6 +67,19 @@ ACTIONS: tuple[Action, ...] = (
            ("set_caption", "export_metadata"), _when("detail", "gallery", "selection")),
     Action("junk_sweep", "Review junk-sweep candidates and reject or keep them",
            ("junk_list", "junk_reject", "junk_clear"), ANY),
+    Action("teach_preferences", "Open the comparison page so the user can teach Facet their taste",
+           ("ui_show_comparison", "comparison_status"), ANY),
+    Action("undo_agent_changes", "List what assistants changed and take a batch back",
+           ("list_agent_actions", "undo_last"), ANY),
+    Action("fix_sequence_set", "Tell Facet what a set of frames really is (panorama, bracket, not a set)",
+           ("override_sequence", "clear_sequence_override"), _when("culling", "selection")),
+    Action("recategorize", "Pin or release one photo's category",
+           ("override_category", "clear_category_override"), _when("detail", "selection")),
+    Action("compare_in_group", "Compare the faces or the subject sharpness of a group's frames",
+           ("group_compare",), _when("culling")),
+    Action("cull_summary", "Summarise a scope before culling it", ("cull_report",), ANY),
+    Action("start_scan", "Start a scan of a configured directory and follow it",
+           ("start_scan", "scan_status"), ANY),
     Action("cull_or_delete", "Copy the keepers, move or trash the rejects, or delete photos",
            ("cull_apply", "delete_photos"), _when("gallery", "selection")),
     Action("work_darkroom", "Work through culling groups and confirm what to keep",
@@ -111,11 +124,13 @@ def applies(action: Action, facts: frozenset[str]) -> bool:
     return "any" in action.when or bool(action.when & facts)
 
 
-def evaluate(level: str, facts: frozenset[str], levels: Mapping[str, str]) -> tuple[list[dict], int]:
+def evaluate(level: str, facts: frozenset[str], levels: Mapping[str, str],
+             switched_off: frozenset[str] = frozenset()) -> tuple[list[dict], int]:
     """``(actions, hidden)`` for a caller at ``level`` and a tab in state ``facts``.
 
     ``hidden`` counts the actions that do not apply to the tab's state; actions dropped for
-    rights are not counted (the caller cannot use them anyway).
+    rights are not counted (the caller cannot use them anyway). Tools in ``switched_off`` (an
+    operator's switch, e.g. ``viewer.mcp.allow_destructive``) are dropped from their action the same way.
     """
     rank = tokens.level_rank(level)
     rows: list[dict] = []
@@ -127,7 +142,7 @@ def evaluate(level: str, facts: frozenset[str], levels: Mapping[str, str]) -> tu
         listed: list[dict[str, Any]] = []
         for name in action.tools:
             floor = tokens.effective_requirement(levels[name])
-            if tokens.level_rank(floor) > rank:
+            if tokens.level_rank(floor) > rank or name in switched_off:
                 continue
             need = TOOL_STATE_NEEDS.get(name)
             listed.append({"name": name, "required_level": floor, "allowed": need is None or need in facts})

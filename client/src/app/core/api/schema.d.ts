@@ -2073,6 +2073,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/mcp/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Actions
+         * @description The caller's recent agent changes, newest first, grouped by tool call.
+         */
+        get: operations["list_actions_api_mcp_actions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/actions/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo Action
+         * @description Undo one batch as the session's owner. Each target is restored only if it still holds the agent's value.
+         */
+        post: operations["undo_action_api_mcp_actions_undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/mcp/tokens": {
         parameters: {
             query?: never;
@@ -4460,6 +4500,78 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * AgentActionBatch
+         * @description One tool call's worth of journaled changes.
+         */
+        AgentActionBatch: {
+            /** Batch Id */
+            batch_id: string;
+            /** Created At */
+            created_at: string;
+            /** Fields */
+            fields: string[];
+            /**
+             * Rows
+             * @description Journaled field changes in the batch.
+             */
+            rows: number;
+            /**
+             * Source
+             * @description 'mcp' (a token), 'inpage' (the in-page assistant) or 'dialog'.
+             */
+            source: string;
+            /**
+             * Token Name
+             * @description The token's name, or the in-page actor.
+             */
+            token_name?: string | null;
+            /** Tool */
+            tool: string;
+            /** Undone */
+            undone: boolean;
+        };
+        /** AgentActionList */
+        AgentActionList: {
+            /** Actions */
+            actions: components["schemas"]["AgentActionBatch"][];
+        };
+        /** AgentUndoItem */
+        AgentUndoItem: {
+            /** Field */
+            field: string;
+            /**
+             * Outcome
+             * @description restored | skipped_changed_since | missing | skipped_level | error
+             */
+            outcome: string;
+            /** Target */
+            target: string;
+        };
+        /** AgentUndoRequest */
+        AgentUndoRequest: {
+            /** Batch Id */
+            batch_id: string;
+        };
+        /** AgentUndoResult */
+        AgentUndoResult: {
+            /** Batch Id */
+            batch_id: string;
+            /**
+             * Outcomes
+             * @description Count of targets per outcome.
+             */
+            outcomes: {
+                [key: string]: number;
+            };
+            /**
+             * Results
+             * @description At most 200 targets; see `results_count`.
+             */
+            results: components["schemas"]["AgentUndoItem"][];
+            /** Results Count */
+            results_count: number;
+        };
+        /**
          * Album
          * @description An album's own metadata, as embedded in the shared-album view.
          */
@@ -6327,6 +6439,8 @@ export interface components {
             caption_translated?: string | null;
             /** Category */
             category?: string | null;
+            /** Category Override */
+            category_override?: string | null;
             /** Channel Clip Highlight Pct */
             channel_clip_highlight_pct?: number | null;
             /** Channel Clip Shadow Pct */
@@ -6834,11 +6948,17 @@ export interface components {
         };
         /** PossibleFacesResponse */
         PossibleFacesResponse: {
-            /** Candidates */
+            /**
+             * Candidates
+             * @description Index count of faces in scope that the caller can see, before the embedding-dimension check.
+             */
             candidates: number;
             /** Faces */
             faces: components["schemas"]["PossibleFace"][];
-            /** Faces Scanned */
+            /**
+             * Faces Scanned
+             * @description Rows actually scored against the centroid (after the embedding-dimension check).
+             */
             faces_scanned: number;
         };
         /** PreviewScoreBody */
@@ -10732,6 +10852,121 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["LightroomManifest"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_actions_api_mcp_actions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description 1 also lists batches that were already undone */
+                include_undone?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentActionList"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An agent credential was used. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The agent endpoint is disabled (viewer.mcp.enabled). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_action_api_mcp_actions_undo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentUndoRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentUndoResult"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An agent credential was used, or the session's level is below the batch's. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such batch for this account, or the endpoint is disabled. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The batch was already undone. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

@@ -16,7 +16,7 @@ describe('ComparisonAbTabComponent', () => {
   let mockSnackBar: { open: Mock };
   let mockI18n: { t: Mock };
   let mockAuth: { isEdition: Mock };
-  let compareFilters: { selectedCategory: ReturnType<typeof signal<string>> };
+  let compareFilters: { selectedCategory: ReturnType<typeof signal<string>>; strategy: ReturnType<typeof signal<string>>; activeTab: ReturnType<typeof signal<number>> };
 
   beforeEach(() => {
     mockApi = {
@@ -26,7 +26,7 @@ describe('ComparisonAbTabComponent', () => {
     mockSnackBar = { open: vi.fn() };
     mockI18n = { t: vi.fn((key: string) => key) };
     mockAuth = { isEdition: vi.fn(() => true) };
-    compareFilters = { selectedCategory: signal('portrait') };
+    compareFilters = { selectedCategory: signal('portrait'), strategy: signal('uncertainty'), activeTab: signal(0) };
 
     TestBed.configureTestingModule({
       providers: [

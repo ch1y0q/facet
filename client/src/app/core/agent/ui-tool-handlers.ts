@@ -9,6 +9,7 @@ import {
   buildApiParams,
   seededSearchThreshold,
 } from '../../features/gallery/gallery-filters.util';
+import { COMPARE_AB_TAB_INDEX, CompareFiltersService } from '../../features/comparison/compare-filters.service';
 import { ViewActionRegistry } from './view-action-registry.service';
 import { UiActionRow, UiToolError, UiToolHandler } from './ui-tool.types';
 
@@ -19,6 +20,8 @@ export interface UiToolDeps {
   viewActions: ViewActionRegistry;
   /** The generated `actions` table (empty until the contract has loaded). */
   actions: () => readonly UiActionRow[];
+  /** Category / strategy / tab state of the comparison page. */
+  compareFilters: CompareFiltersService;
 }
 
 /** The contract's cap on `ui_show_photos` paths (api/agent/ui_tools.py MAX_SHOW_PATHS). */
@@ -164,7 +167,7 @@ function stringList(value: unknown): string[] {
 }
 
 export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHandler> {
-  const { gallery, router, auth, viewActions, actions } = deps;
+  const { gallery, router, auth, viewActions, actions, compareFilters } = deps;
 
   const requireGalleryView = (): void => {
     if (!isGalleryUrl(router.url)) {
@@ -453,6 +456,28 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
         added: gallery.photos().length - before,
         total: gallery.total(),
         has_more: gallery.hasMore(),
+      };
+    },
+
+    /**
+     * Puts the compare page on the A/B tab for the user to answer. It only sets the page's own
+     * state through the service: it never submits a comparison and sends no key event, so the
+     * answer stays the user's click (ArrowLeft / ArrowRight / T are the page's answer shortcuts).
+     */
+    ui_show_comparison: async args => {
+      if (!auth.isEdition()) throw new UiToolError('forbidden_level', 'The comparison page needs an edition session.');
+      const category = typeof args['category'] === 'string' ? args['category'] : '';
+      const strategy = typeof args['strategy'] === 'string' ? args['strategy'] : '';
+      if (category) compareFilters.selectedCategory.set(category);
+      if (strategy) compareFilters.strategy.set(strategy);
+      compareFilters.activeTab.set(COMPARE_AB_TAB_INDEX);
+      const ok = await router.navigate(['/compare']);
+      if (!ok) throw new UiToolError('forbidden_level', 'The tab refused to open the comparison page.');
+      return {
+        route: '/compare',
+        category: compareFilters.selectedCategory() || null,
+        strategy: compareFilters.strategy(),
+        tab: 'ab',
       };
     },
 

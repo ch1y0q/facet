@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, ElementRef, Injector, OnDestroy, afterNextRender, computed, inject, signal, viewChild } from '@angular/core';
-import { DatePipe } from '@angular/common';
+import { DatePipe, formatDate } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { MatDialogModule } from '@angular/material/dialog';
@@ -11,7 +11,8 @@ import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { AgentBridgeService } from '../../core/agent/agent-bridge.service';
-import { McpTokenItem } from '../../core/api/types';
+import { ServerToolRegistry } from '../../core/agent/server-tool-registry.service';
+import { AgentActionBatch, McpTokenItem } from '../../core/api/types';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { i18nKeys } from '../../core/i18n/keys';
 import { copyText } from '../../shared/utils/clipboard';
@@ -78,6 +79,15 @@ interface LevelOption {
           <mat-icon class="shrink-0 !w-4 !h-4 !text-[16px] !leading-4" [class.text-green-600]="bridgeConnected()" [class.opacity-60]="!bridgeConnected()">{{ bridgeConnected() ? 'link' : 'link_off' }}</mat-icon>
           <span>{{ bridgeStatusKey() | translate }}</span>
         </p>
+        @if (inpageAvailable()) {
+          <label class="flex items-start gap-2 text-sm" data-testid="inpage-optin">
+            <input type="checkbox" class="mt-1" name="inpage-optin" [checked]="inpageOptIn()" (change)="setInpage($event)" />
+            <span class="flex flex-col">
+              <span>{{ I18N.dialog.connect_assistant.inpage_toggle | translate }}</span>
+              <span class="text-xs opacity-70">{{ I18N.dialog.connect_assistant.inpage_hint | translate }}</span>
+            </span>
+          </label>
+        }
         <details #tokensDetails class="flex flex-col gap-2" data-testid="tokens-disclosure" [open]="tokensOpen()" (toggle)="tokensOpen.set(tokensDetails.open)">
           <summary #tokensSummary class="cursor-pointer py-1 text-sm font-medium">{{ I18N.dialog.connect_assistant.manage_tokens | translate: { count: tokens().length } }}</summary>
         @for (token of tokens(); track token.id) {
@@ -105,6 +115,31 @@ interface LevelOption {
           <p class="text-sm opacity-70">{{ I18N.dialog.connect_assistant.no_tokens | translate }}</p>
         }
         </details>
+        @if (actionRows().length > 0) {
+          <details class="flex flex-col gap-2" data-testid="actions-disclosure">
+            <summary class="cursor-pointer py-1 text-sm font-medium">{{ I18N.dialog.connect_assistant.actions_heading | translate: { count: actionRows().length } }}</summary>
+            @for (row of actionRows(); track row.id) {
+              <div class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded border border-current/20 py-1 pl-3 pr-1 text-sm" data-testid="action-row">
+                <span class="font-medium">{{ row.summary }}</span>
+                <span class="text-xs opacity-70">{{ row.createdAt | date: 'dd/MM/yyyy HH:mm' }}</span>
+                <span class="ml-auto flex items-center gap-1">
+                  @if (row.undone) {
+                    <span class="text-xs opacity-70" data-testid="action-undone">{{ I18N.dialog.connect_assistant.action_undone | translate }}</span>
+                  } @else if (confirmUndoId() === row.id) {
+                    <span class="text-xs">{{ I18N.dialog.connect_assistant.action_undo_confirm | translate }}</span>
+                    <button mat-button type="button" [disabled]="undoBusy()" [attr.aria-label]="row.yesAria" data-testid="undo-confirm-yes" (click)="undo(row.id)">{{ I18N.dialog.connect_assistant.action_undo_yes | translate }}</button>
+                    <button mat-button type="button" [attr.aria-label]="row.cancelAria" (click)="cancelUndo(row.id)">{{ I18N.dialog.cancel | translate }}</button>
+                  } @else {
+                    <button mat-button type="button" [attr.aria-label]="row.undoAria" [attr.data-undo-id]="row.id" (click)="askUndo(row.id)">{{ I18N.dialog.connect_assistant.action_undo | translate }}</button>
+                  }
+                </span>
+              </div>
+            }
+            @if (undoResult(); as result) {
+              <p class="text-xs opacity-80" data-testid="undo-result">{{ result }}</p>
+            }
+          </details>
+        }
       }
     </mat-dialog-content>
     <mat-dialog-actions align="end">
@@ -119,6 +154,7 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
   private readonly i18n = inject(I18nService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly bridge = inject(AgentBridgeService);
+  private readonly serverTools = inject(ServerToolRegistry);
 
   private readonly injector = inject(Injector);
   private readonly promptHeading = viewChild<ElementRef<HTMLElement>>('promptHeading');
@@ -139,7 +175,32 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
   private announceTimer: ReturnType<typeof setTimeout> | undefined;
   protected readonly copied = signal(false);
   protected readonly tokensOpen = signal(false);
+  protected readonly actions = signal<AgentActionBatch[]>([]);
+  protected readonly confirmUndoId = signal<string | null>(null);
+  protected readonly undoBusy = signal(false);
+  /** One-line outcome of the last undo, or null. */
+  protected readonly undoResult = signal<string | null>(null);
 
+  /** View-model of the journal list: text is composed here so the template calls no method. */
+  protected readonly actionRows = computed(() => {
+    const keys = this.I18N.dialog.connect_assistant;
+    return this.actions().map(batch => {
+      const when = formatDate(batch.created_at, 'dd/MM/yyyy HH:mm', 'en-US');
+      const vars = { tool: batch.tool, when };
+      return {
+        id: batch.batch_id,
+        undone: !!batch.undone,
+        createdAt: batch.created_at,
+        summary: this.i18n.t(keys.action_summary, { tool: batch.tool, count: String(batch.rows) }),
+        undoAria: this.i18n.t(keys.action_undo_aria, vars),
+        yesAria: this.i18n.t(keys.action_undo_yes_aria, vars),
+        cancelAria: this.i18n.t(keys.action_undo_cancel_aria, vars),
+      };
+    });
+  });
+
+  protected readonly inpageAvailable = computed(() => this.auth.status()?.features['mcp_inpage'] === true);
+  protected readonly inpageOptIn = computed(() => this.serverTools.optedIn());
   protected readonly bridgeConnected = computed(() => this.bridge.connected());
   protected readonly bridgeStatusKey = computed(() =>
     this.bridgeConnected()
@@ -180,6 +241,7 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
 
   constructor() {
     void this.refresh();
+    void this.refreshActions();
   }
 
   ngOnDestroy(): void {
@@ -213,6 +275,49 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
         : this.I18N.dialog.connect_assistant.mint_failed);
     } finally {
       this.busy.set(false);
+    }
+  }
+
+  protected setInpage(event: Event): void {
+    this.serverTools.setOptIn((event.target as HTMLInputElement).checked);
+  }
+
+  /** The journal is optional on the page: a failed list simply hides the section. */
+  private async refreshActions(): Promise<void> {
+    try {
+      this.actions.set((await firstValueFrom(this.api.listMcpActions(20))).actions);
+    } catch {
+      this.actions.set([]);
+    }
+  }
+
+  protected askUndo(id: string): void {
+    this.confirmUndoId.set(id);
+    this.focusInRow('[data-testid="undo-confirm-yes"]');
+  }
+
+  protected cancelUndo(id: string): void {
+    this.confirmUndoId.set(null);
+    this.focusInRow(`[data-undo-id="${id}"]`);
+  }
+
+  protected async undo(batchId: string): Promise<void> {
+    if (this.undoBusy()) return;
+    this.undoBusy.set(true);
+    this.confirmUndoId.set(null);
+    this.error.set(null);
+    try {
+      const result = await firstValueFrom(this.api.undoMcpAction({ batch_id: batchId }));
+      const restored = result.outcomes['restored'] ?? 0;
+      const kept = Object.entries(result.outcomes).reduce((sum, [outcome, count]) => (outcome === 'restored' ? sum : sum + count), 0);
+      const message = this.i18n.t(this.I18N.dialog.connect_assistant.undo_result, { restored: String(restored), kept: String(kept) });
+      this.undoResult.set(message);
+      this.announce(message);
+      await this.refreshActions();
+    } catch {
+      this.error.set(this.I18N.dialog.connect_assistant.undo_failed);
+    } finally {
+      this.undoBusy.set(false);
     }
   }
 

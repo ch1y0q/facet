@@ -18,7 +18,7 @@ describe('ComparisonComponent', () => {
   let mockI18n: { t: Mock };
   let mockAuth: { isEdition: Mock };
   let mockStore: { types: ReturnType<typeof signal<{ id: string; count: number }[]>>; loadTypeCounts: Mock };
-  let compareFilters: { selectedCategory: ReturnType<typeof signal<string>> };
+  let compareFilters: { selectedCategory: ReturnType<typeof signal<string>>; strategy: ReturnType<typeof signal<string>>; activeTab: ReturnType<typeof signal<number>> };
 
   beforeEach(() => {
     mockApi = {
@@ -33,7 +33,7 @@ describe('ComparisonComponent', () => {
       types: signal([]),
       loadTypeCounts: vi.fn(() => Promise.resolve()),
     };
-    compareFilters = { selectedCategory: signal('') };
+    compareFilters = { selectedCategory: signal(''), strategy: signal('uncertainty'), activeTab: signal(0) };
 
     TestBed.configureTestingModule({
       providers: [

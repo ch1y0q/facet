@@ -100,6 +100,14 @@ class TestSearchRelay:
         assert shown["applied"] is True and shown["tab_id"] == "tab-1" and shown["total"] == 7
         assert "min_aesthetic" in shown["keys"] and "filters" not in shown
 
+    def test_a_tab_on_the_comparison_page_is_left_alone(self, agent_app, fake_tab, photos):
+        env = agent_app("open")
+        tab = fake_tab(env, None, reply=reply_total(7), route="/compare")
+        result = env.call(env.token(env.login()), "search_photos", {"filters": {"path_prefix": PREFIX}})
+        assert result["ok"] is True and tab.calls == []
+        assert result["shown_in_tab"]["applied"] is False
+        assert result["shown_in_tab"]["reason"] == "comparison_open"
+
     def test_show_false_sends_nothing(self, agent_app, fake_tab, photos):
         env = agent_app("open")
         tab = fake_tab(env, None, reply=reply_total())

@@ -693,7 +693,7 @@ def select_burst_photos(
 
             record_culling_decision(
                 conn, keep_paths, reject_paths, sequence_members,
-                user_id=user_id, group_type='burst',
+                user_id=user_id, group_type='burst', record=not user.is_agent_request,
             )
             _invalidate_culling_groups_cache()
             return {'status': 'ok', 'kept': len(keep_set), 'rejected': len(group_paths - keep_set)}
@@ -812,7 +812,7 @@ def select_similar_photos(
 
             record_culling_decision(
                 conn, keep_set, reject_paths, sequence_members,
-                user_id=user_id, group_type='similar',
+                user_id=user_id, group_type='similar', record=not user.is_agent_request,
             )
             _invalidate_culling_groups_cache()
             return {'status': 'ok', 'kept': len(keep_set), 'rejected': len(reject_paths)}
@@ -2043,7 +2043,8 @@ def _collect_auto_cull_groups(conn, user_id, group_by, album_id, date_from, date
     return groups
 
 
-def _apply_auto_cull_group(conn, group, keep_paths, reject_paths, user_id, vis_sql, vis_params):
+def _apply_auto_cull_group(conn, group, keep_paths, reject_paths, user_id, vis_sql, vis_params,
+                           record=True):
     """Commit one auto-culled group with the existing manual-confirm semantics.
 
     Mirrors ``select_burst_photos`` / ``select_similar_photos`` /
@@ -2079,7 +2080,7 @@ def _apply_auto_cull_group(conn, group, keep_paths, reject_paths, user_id, vis_s
         return 0
     return record_culling_decision(
         conn, keep_paths, reject_paths, _sequence_members(group['photos']),
-        user_id=user_id, group_type=gtype, commit=False,
+        user_id=user_id, group_type=gtype, commit=False, record=record,
     )
 
 
@@ -2399,7 +2400,7 @@ def _confine_groups_to_scope(groups, path_scope):
 def run_auto_cull(conn, db_path, user_id, *, group_by, strictness, min_keep,
                   trim_brackets=False, highlights_album='', dry_run=True,
                   album_id=None, date_from=None, date_to=None, path_scope=None,
-                  use_cache=True, membership_groups=False):
+                  use_cache=True, membership_groups=False, record=True):
     """Collect, split and (unless ``dry_run``) apply one auto-cull sweep.
 
     Shared by ``POST /api/culling/auto`` and ``facet.py --auto-cull``. Raises
@@ -2490,7 +2491,7 @@ def run_auto_cull(conn, db_path, user_id, *, group_by, strictness, min_keep,
             })
         if not dry_run:
             result.total_pairs += _apply_auto_cull_group(
-                conn, group, keep_paths, reject_paths, user_id, vis_sql, vis_params,
+                conn, group, keep_paths, reject_paths, user_id, vis_sql, vis_params, record,
             )
 
     result.highlights_added = len(highlight_paths)
@@ -2555,6 +2556,7 @@ def auto_cull(
                 trim_brackets=body.trim_brackets, highlights_album=body.highlights_album,
                 dry_run=body.dry_run, album_id=body.album_id,
                 date_from=body.date_from, date_to=body.date_to,
+                record=not (user and user.is_agent_request),
             )
             return {
                 'groups_processed': result.processed,

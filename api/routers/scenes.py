@@ -398,7 +398,7 @@ def apply_scene_cull(
             conn.execute("DELETE FROM stats_cache WHERE key LIKE 'scenes_%'")
             record_culling_decision(
                 conn, keep_set, reject_paths, sequence_members,
-                user_id=user_id, group_type='scene',
+                user_id=user_id, group_type='scene', record=not user.is_agent_request,
             )
 
             # The unified culling feed memoizes its enriched burst/similar groups

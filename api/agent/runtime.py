@@ -20,7 +20,7 @@ from starlette.requests import Request
 
 from api.agent import limits, nonce, tokens
 from api.agent.internal_client import err
-from api.agent.tools_common import TOOL_LEVELS
+from api.agent.tools_common import TOOL_LEVELS, tool_refusal
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ def _row_count(envelope: dict) -> int:
 
 
 async def run_tool(ctx: Context, name: str, handler: Handler, *, write: bool = False,
-                   min_level: Optional[str] = None) -> CallToolResult:
+                   min_level: Optional[str] = None, args: Optional[dict] = None) -> CallToolResult:
     """Authenticate, rate-limit and run ``handler``; always return an envelope.
 
     Handlers never raise to the SDK: transport-level failure is reserved for the
@@ -64,7 +64,10 @@ async def run_tool(ctx: Context, name: str, handler: Handler, *, write: bool = F
 
     The tool's floor (``min_level``, else its ``TOOL_LEVELS`` entry) is checked here
     BEFORE the rate limit and before ``handler`` runs, so a refused tool makes no
-    upstream call at all (not even a read-only pre-count).
+    upstream call at all (not even a read-only pre-count). The tool's requirement predicate
+    (``TOOL_REQUIRES``, and ``ARG_REQUIRES`` against ``args``, the arguments that gate it) is
+    checked right after, in the same place, with a ``feature_disabled`` or ``forbidden_level``
+    answer, so the list hook and the call agree.
     """
     floor = min_level or TOOL_LEVELS[name]
     started = time.monotonic()
@@ -85,6 +88,8 @@ async def run_tool(ctx: Context, name: str, handler: Handler, *, write: bool = F
                         "edition token)" if needs == "edition" and tokens.install_mode() == "open" else "")
                 envelope = err("forbidden_level",
                                f"This token's level is {resolved.level}; {name} needs {needs}{hint}")
+            elif (refusal := tool_refusal(name, resolved, settings, args)) is not None:
+                envelope = err(refusal[0], refusal[1])
             else:
                 allowed, retry_after = limits.check_rate(grant.id, write, per_min)
                 if allowed:
@@ -103,7 +108,7 @@ async def run_tool(ctx: Context, name: str, handler: Handler, *, write: bool = F
         logger.exception("Agent tool %s crashed", name)
         envelope = err("upstream_error", "The tool failed unexpectedly")
     else:
-        if token_id is not None and envelope.get("error") not in ("forbidden_level", "rate_limited"):
+        if token_id is not None and envelope.get("error") not in ("forbidden_level", "feature_disabled", "rate_limited"):
             # Best effort, after the result exists: a locked database must not turn a
             # finished call into an error.
             try:

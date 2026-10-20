@@ -2592,13 +2592,13 @@ Das `target_dir` durchläuft dieselbe Allowlist wie die Kopier-/Verschiebe-Expor
 
 ## Agent-Endpunkt (MCP)
 
-Stellt die in [KI-Agenten (MCP)](AGENTS.md) beschriebenen Werkzeuge unter `POST /mcp` bereit: Lesen, Steuern des geöffneten Tabs und, je nach Token-Stufe, Ändern von Bewertungen, Tags und Alben sowie Aussortieren und Löschen. Alles bleibt deaktiviert (404), bis `enabled` auf `true` steht.
+Stellt die in [KI-Agenten (MCP)](AGENTS.md) beschriebenen Werkzeuge unter `POST /mcp` bereit: Lesen, Steuern des geöffneten Tabs und, je nach Token-Stufe, Ändern von Bewertungen, Tags und Alben sowie Aussortieren und Löschen. Er ist standardmäßig aktiv; setzen Sie `enabled` auf `false`, um ihn abzuschalten (alle Routen antworten dann 404). Bei einer offenen Installation (ohne `viewer.password`) liefert `/mcp` nur einen schreibgeschützten anonymen Schlüssel, der nichts gewährt, was die offene `/api` nicht ohnehin gewährt.
 
 ```json
 {
   "viewer": {
     "mcp": {
-      "enabled": false,
+      "enabled": true,
       "bridge": true,
       "max_rows": 100,
       "max_bytes": 60000,
@@ -2607,6 +2607,8 @@ Stellt die in [KI-Agenten (MCP)](AGENTS.md) beschriebenen Werkzeuge unter `POST 
       "semantic_timeout_s": 120,
       "rate_per_min": 120,
       "write_rate_per_min": 30,
+      "tool_profile": "full",
+      "allow_destructive": false,
       "allowed_origins": []
     }
   }
@@ -2615,7 +2617,7 @@ Stellt die in [KI-Agenten (MCP)](AGENTS.md) beschriebenen Werkzeuge unter `POST 
 
 | Schlüssel | Standard | Beschreibung |
 |-----|---------|-------------|
-| `enabled` | `false` | Hauptschalter für `/mcp` und `/api/mcp/*`. Deaktiviert antworten sie mit 404 (die Brücke schließt mit Code 4404). |
+| `enabled` | `true` | Hauptschalter für `/mcp` und `/api/mcp/*`. Deaktiviert antworten sie mit 404 (die Brücke schließt mit Code 4404). Bei einer offenen Installation (ohne `viewer.password`) liefert der Endpunkt nur einen schreibgeschützten anonymen Schlüssel: keine neue Berechtigung, da die offene `/api` dieselben Daten ohnehin preisgibt. |
 | `bridge` | `true` | Ob die Brücke zum Browser-Tab (`/api/mcp/bridge`) WebSockets annimmt und die `ui_*`-Werkzeuge einen Tab erreichen können. Bei `false` lehnt die Brücke die Verbindung ab (Close-Code 4404) und `ui_*`-Werkzeuge melden einen entsprechenden Fehler. Erfordert einen einzigen Worker. |
 | `max_rows` | `100` | Höchstzahl an Zeilen in einem Werkzeug-Ergebnis (1 bis 500). Überzählige Zeilen werden verworfen und `truncated: true` gesetzt. |
 | `max_bytes` | `60000` | Maximale serialisierte Größe eines Werkzeug-Ergebnisses in Bytes (4000 bis 500000). |
@@ -2624,6 +2626,8 @@ Stellt die in [KI-Agenten (MCP)](AGENTS.md) beschriebenen Werkzeuge unter `POST 
 | `semantic_timeout_s` | `120` | Zeitlimit für `semantic_search` in Sekunden (1 bis 300); es lädt das Embedding-Modell und braucht daher mehr. |
 | `rate_per_min` | `120` | Werkzeugaufrufe pro Minute und Token (mindestens 1). |
 | `write_rate_per_min` | `30` | Schreibende Aufrufe pro Minute und Token (mindestens 1). Getrennt geführt, damit Lesezugriffe Schreibzugriffe nicht aushungern. Gilt für die Schreibwerkzeuge (einschließlich des Probelaufs von `cull_apply` und `delete_photos`); siehe [KI-Agenten](AGENTS.md#änderungen-vornehmen). |
+| `tool_profile` | `"full"` | `"full"` listet jedes Werkzeug, das der Schlüssel aufrufen darf. `"core"` listet nur einen Satz von 12 Werkzeugen für kleine Modelle (`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`, `undo_last`). Nur die Liste ändert sich: ein Werkzeug außerhalb kann weiter aufgerufen werden, wenn die Stufe des Schlüssels es erlaubt. Jeder andere Wert fällt auf `"full"` zurück. Siehe [KI-Agenten](AGENTS.md#berechtigungsstufen). |
+| `allow_destructive` | `false` | Erlaubt Assistenten `delete_photos`, die Aktionen `move_rejects` und `trash_rejects` von `cull_apply` sowie `assign_faces` mit `allow_reassign`. Deaktiviert wird `delete_photos` nicht aufgelistet, und die beiden anderen antworten `feature_disabled` mit Nennung dieses Schlüssels. Keines davon lässt sich rückgängig machen. Siehe [KI-Agenten](AGENTS.md#destruktive-aktionen-vorschau-dann-bestätigung). |
 | `allowed_origins` | `[]` | Zusätzliche Browser-Ursprünge (zum Beispiel `["https://photos.example.com"]`), die die Tab-Brücke öffnen dürfen, wenn ein Reverse-Proxy `Host` umschreibt. Nicht zu verwechseln mit dem CORS-Schlüssel `viewer.allowed_origins`. |
 
 Zahlen außerhalb des Bereichs werden begrenzt, und ein Wert des falschen Typs fällt auf den Standard zurück. Der Block wird bei jeder Anfrage gelesen, ein Neuladen der Konfiguration schaltet die Funktion also ohne Neustart um.

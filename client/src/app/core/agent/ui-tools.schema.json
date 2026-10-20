@@ -286,6 +286,119 @@
       ]
     },
     {
+      "id": "teach_preferences",
+      "summary": "Open the comparison page so the user can teach Facet their taste",
+      "tools": [
+        {
+          "name": "ui_show_comparison",
+          "required_level": "readonly"
+        },
+        {
+          "name": "comparison_status",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "any"
+      ]
+    },
+    {
+      "id": "undo_agent_changes",
+      "summary": "List what assistants changed and take a batch back",
+      "tools": [
+        {
+          "name": "list_agent_actions",
+          "required_level": "readonly"
+        },
+        {
+          "name": "undo_last",
+          "required_level": "user"
+        }
+      ],
+      "when": [
+        "any"
+      ]
+    },
+    {
+      "id": "fix_sequence_set",
+      "summary": "Tell Facet what a set of frames really is (panorama, bracket, not a set)",
+      "tools": [
+        {
+          "name": "override_sequence",
+          "required_level": "edition"
+        },
+        {
+          "name": "clear_sequence_override",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "culling",
+        "selection"
+      ]
+    },
+    {
+      "id": "recategorize",
+      "summary": "Pin or release one photo's category",
+      "tools": [
+        {
+          "name": "override_category",
+          "required_level": "edition"
+        },
+        {
+          "name": "clear_category_override",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "detail",
+        "selection"
+      ]
+    },
+    {
+      "id": "compare_in_group",
+      "summary": "Compare the faces or the subject sharpness of a group's frames",
+      "tools": [
+        {
+          "name": "group_compare",
+          "required_level": "readonly"
+        }
+      ],
+      "when": [
+        "culling"
+      ]
+    },
+    {
+      "id": "cull_summary",
+      "summary": "Summarise a scope before culling it",
+      "tools": [
+        {
+          "name": "cull_report",
+          "required_level": "readonly"
+        }
+      ],
+      "when": [
+        "any"
+      ]
+    },
+    {
+      "id": "start_scan",
+      "summary": "Start a scan of a configured directory and follow it",
+      "tools": [
+        {
+          "name": "start_scan",
+          "required_level": "edition"
+        },
+        {
+          "name": "scan_status",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "any"
+      ]
+    },
+    {
       "id": "cull_or_delete",
       "summary": "Copy the keepers, move or trash the rejects, or delete photos",
       "tools": [
@@ -1550,7 +1663,38 @@
         "type": "object"
       },
       "name": "ui_show_culling_group"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "readOnlyHint": false,
+        "untrustedContentHint": true
+      },
+      "description": "Open the /compare page in the user's tab, optionally on one category and strategy. It only opens the page: the user picks the winners, nothing is submitted for them.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "description": "Category to compare within (a name from `facet://categories`).",
+            "type": "string"
+          },
+          "strategy": {
+            "description": "Pair-selection strategy. Default: the tab's current one.",
+            "enum": [
+              "learning",
+              "uncertainty",
+              "boundary",
+              "active",
+              "random"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "ui_show_comparison"
     }
   ],
-  "version": "effa695ecc2012e1"
+  "version": "ebb1fd0929bb883d"
 }

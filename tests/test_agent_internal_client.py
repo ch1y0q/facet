@@ -53,13 +53,20 @@ def _client(env, **allow):
 
 
 class TestAllowlist:
+    # Edition-only READS the allowlist carries on purpose (the routes themselves are edition-gated), and the
+    # only /api/scan and /api/config routes it may name.
+    EDITION_READS = ("/api/comparison/stats", "/api/comparison/coverage", "/api/scan/status", "/api/scan/directories")
+    ALLOWED_PREFIXED = ("/api/scan/start", "/api/scan/status", "/api/scan/directories", "/api/config/scoring_contexts")
+
     def test_allowlist_is_frozen_and_only_writes_demand_a_level(self):
         assert isinstance(ROUTE_ALLOWLIST, MappingProxyType)
         assert all(spec.min_level == "readonly" or spec.write or spec.template.endswith("/api/cull/apply")
-                   or spec.template.endswith("/api/photo/delete") for spec in ROUTE_ALLOWLIST.values())
+                   or spec.template.endswith("/api/photo/delete") or spec.template in self.EDITION_READS
+                   for spec in ROUTE_ALLOWLIST.values())
         assert all(spec.min_level != "readonly" for spec in ROUTE_ALLOWLIST.values() if spec.write)
         assert not any(spec.template.startswith(("/api/admin", "/api/config", "/api/scan",
                                                  "/api/auth", "/dav", "/api/frame"))
+                       and spec.template not in self.ALLOWED_PREFIXED
                        for spec in ROUTE_ALLOWLIST.values())
 
     def test_unknown_tool_raises_without_an_upstream_call(self, agent_app):
@@ -160,6 +167,10 @@ def _fake_app():
             return JSONResponse({"detail": "library busy"}, status_code=503)
         raise HTTPException(status_code=code, detail=f"detail {code}")
 
+    @app.get("/config403/{detail}")
+    async def config_refusal(detail: str):
+        raise HTTPException(status_code=403, detail=detail)
+
     @app.get("/slow")
     async def slow():
         await asyncio.sleep(2)
@@ -181,7 +192,7 @@ class TestStatusMapping:
     @pytest.mark.parametrize("code,expected", [
         (401, "forbidden_level"), (403, "forbidden_level"), (404, "not_found"),
         (400, "invalid_input"), (412, "invalid_input"), (422, "invalid_input"),
-        (429, "rate_limited"), (503, "library_busy"), (500, "upstream_error"),
+        (409, "conflict"), (429, "rate_limited"), (503, "library_busy"), (500, "upstream_error"),
     ])
     def test_error_codes(self, agent_app, code, expected):
         env = agent_app("open")
@@ -189,6 +200,18 @@ class TestStatusMapping:
         client = InternalClient(_fake_app(), allowlist={"s": RouteSpec("GET", "/s/{code}", "readonly")})
         result = _run(client.call(tokens.verify(token), "s", path_args={"code": code}))
         assert result["ok"] is False and result["error"] == expected
+
+    @pytest.mark.parametrize("detail,expected", [
+        ("Scan feature not enabled", "feature_disabled"), ("OS-trash is disabled", "feature_disabled"),
+        ("Set viewer.edition_password to enable the scan trigger", "feature_disabled"),
+        ("Edition access required", "forbidden_level"),
+    ])
+    def test_a_403_that_names_a_config_switch_is_feature_disabled(self, agent_app, detail, expected):
+        env = agent_app("open")
+        token = env.token(env.login(), "readonly")
+        client = InternalClient(_fake_app(), allowlist={"c": RouteSpec("GET", "/config403/{detail}", "readonly")})
+        result = _run(client.call(tokens.verify(token), "c", path_args={"detail": detail}))
+        assert result["error"] == expected
 
     def test_read_timeout_is_upstream_error(self, agent_app):
         env = agent_app("open")

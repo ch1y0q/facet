@@ -123,7 +123,22 @@
       "prompt_label_access": "Gewährter Zugriff:",
       "prompt_token_rules": "Bewahre das Token nur in der Konfiguration deines MCP-Clients auf. Wiederhole es nicht in deinen Antworten und schreibe es in keine andere Datei und keine Notiz. Ich kann es jederzeit in Facet widerrufen.",
       "prompt_verify": "Rufe nach der Konfiguration dieses Werkzeug auf, um die Verbindung zu bestätigen:",
-      "prompt_capabilities": "Du kannst die Bibliothek durchsuchen sowie diesen Facet-Tab öffnen und darin navigieren. Fotos darfst du nur ändern, wenn der oben gewährte Zugriff es erlaubt."
+      "prompt_capabilities": "Du kannst die Bibliothek durchsuchen sowie diesen Facet-Tab öffnen und darin navigieren. Fotos darfst du nur ändern, wenn der oben gewährte Zugriff es erlaubt.",
+      "actions_heading": "Letzte Assistenten-Aktionen ({count})",
+      "action_summary": "{tool}: {count} Änderungen",
+      "action_undo": "Rückgängig",
+      "action_undo_confirm": "Diesen Stapel rückgängig machen?",
+      "action_undo_yes": "Ja, rückgängig",
+      "action_undo_aria": "{tool} vom {when} rückgängig machen",
+      "action_undo_yes_aria": "Ja, {tool} vom {when} rückgängig machen",
+      "action_undo_cancel_aria": "Abbrechen, {tool} vom {when} behalten",
+      "undo_result": "{restored} wiederhergestellt, {kept} behalten (seitdem geändert)",
+      "undo_failed": "Der Stapel konnte nicht rückgängig gemacht werden",
+      "action_undone": "Rückgängig gemacht",
+      "inpage_toggle": "Agenten in diesem Browser dürfen Facet-Werkzeuge nutzen",
+      "inpage_hint": "Wenn aktiviert, kann ein in diesem Browser laufender Assistent suchen und, sofern Ihre Sitzung es erlaubt, Ihre Bibliothek über die Seite ändern. Standardmäßig aus; gilt nur für diesen Browser.",
+      "inpage_changed": "Assistent hat {count} Fotos geändert",
+      "inpage_undo": "Rückgängig"
     }
   },
   "pagination": {

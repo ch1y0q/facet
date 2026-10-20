@@ -2,11 +2,11 @@
 
 > 🌐 **English** · [Français](fr/AGENTS.md) · [Deutsch](de/AGENTS.md) · [Italiano](it/AGENTS.md) · [Español](es/AGENTS.md) · [Português](pt/AGENTS.md) · [简体中文](zh/AGENTS.md)
 
-Facet can act as a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server, so an MCP-capable AI assistant can search and inspect your library with the same filters the gallery uses. It exposes thirteen read tools that change nothing in your library and eleven `ui_*` tools that move the browser tab you already have open (page, filters, selection) and never write library data. Tokens that are allowed to can also [change things](#changing-things) (ratings, flags, tags, albums, culling and deletion) and work the [darkroom](#darkroom-culling-groups).
+Facet can act as a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server, so an MCP-capable AI assistant can search and inspect your library with the same filters the gallery uses. It exposes thirteen read tools that change nothing in your library and twelve `ui_*` tools that move the browser tab you already have open (page, filters, selection) and never write library data. Tokens that are allowed to can also [change things](#changing-things) (ratings, flags, tags, albums, culling and deletion) and work the [darkroom](#darkroom-culling-groups).
 
 ## Enable it
 
-The endpoint is **off by default**. Set `viewer.mcp.enabled` to `true` in `scoring_config.json` (see [Agent Endpoint (MCP)](CONFIGURATION.md#agent-endpoint-mcp)) and restart the viewer, or reload the configuration. While it is off, `/mcp` and every `/api/mcp/*` route answer 404. Without `viewer.password` the install counts as open, even when `viewer.edition_password` is set, so its tokens can only be `readonly`.
+The endpoint is **on by default**. To switch it off, set `viewer.mcp.enabled` to `false` in `scoring_config.json` (see [Agent Endpoint (MCP)](CONFIGURATION.md#agent-endpoint-mcp)) and restart the viewer, or reload the configuration; `/mcp` and every `/api/mcp/*` route then answer 404. Without `viewer.password` the install counts as open, even when `viewer.edition_password` is set, so its tokens can only be `readonly`. On an open install the endpoint serves only a read-only anonymous key, which grants nothing the open `/api` does not already grant.
 
 The endpoint is `POST /mcp` on the viewer's own port: Streamable HTTP, stateless, plain JSON responses. `GET` answers 405. Only the tab bridge, `/api/mcp/bridge`, is a WebSocket; see [Control your open tab](#control-your-open-tab).
 
@@ -52,7 +52,7 @@ The thirteen data tools are read-only:
 | `get_photo` | Full detail of one photo by its path (the histogram is left out) |
 | `get_thumbnail` | Look at one photo: its thumbnail as an image part (`size` 160 to 640, default 512). A smaller size is used when the JPEG would exceed `viewer.mcp.max_image_bytes`; `too_large` when none fits |
 | `contact_sheet` | Look at 1 to 16 photos as one numbered grid image (`columns` 2 to 4, longest edge 1024). The text part lists `legend` (tile number to path, in request order) and `unavailable` (tiles left blank because the photo is missing or not visible) |
-| `possible_faces` | Faces that look like one recognised person: cosine similarity to the person's centroid, best first, same embedding model only. `scope` is `unassigned` (default), `other_persons` or `all`; `min_similarity` defaults to 0.30; `limit` up to 100. A scan above 192000 faces is refused (`too_large`): narrow it with `scope`, `path_prefix`, `date_from` or `date_to`. The photos are shown in your tab |
+| `possible_faces` | Faces that look like one recognised person: cosine similarity to the person's centroid, best first, same embedding model only. `scope` is `unassigned` (default), `other_persons` or `all`; `min_similarity` defaults to 0.30; `limit` up to 100. A scan above 192000 faces is refused (`too_large`): narrow it with `scope`, `path_prefix`, `date_from` or `date_to`. The photos are shown in your tab. `candidates` is the count of faces in scope you can see, before the embedding-dimension check; `faces_scanned` is the number of rows actually scored. |
 | `similar_photos` | Photos similar to one photo, by visual embedding or by colour; `min_similarity` (0 to 1) sets the floor |
 | `filter_options` | The vocabulary a filter accepts: cameras, lenses, tags, persons, patterns, categories, narrative moments, junk kinds, metric ranges |
 | `list_persons` | Recognised people, optionally filtered by name |
@@ -82,7 +82,7 @@ In every filter object, `show_rejected` is a boolean: `true` lists only the reje
 
 ## Control your open tab
 
-Next to the data tools, the server always lists eleven `ui_*` tools that act on the Facet tab you have open in a browser: they move the page, change the filters or the selection, and read back what you see. They never write library data, so a `readonly` token is enough.
+Next to the data tools, the server always lists twelve `ui_*` tools that act on the Facet tab you have open in a browser: they move the page, change the filters or the selection, and read back what you see. They never write library data, so a `readonly` token is enough.
 
 | Tool | What it does |
 |------|--------------|
@@ -184,9 +184,22 @@ The `confirm` value is bound to the token, the action and the exact file set plu
 - `delete_photos` sends the files to the OS trash and **deletes their library rows**: the scores, tags and ratings are not recoverable, even when the files are.
 - **Prerequisites.** `trash_rejects` and `delete_photos` need `viewer.cull.allow_trash` set to `true` (default `false`; the call is refused otherwise). The `target_dir` of `copy_keeps` and `move_rejects` must sit under an allowed export location: `viewer.export.allowed_target_dirs` plus your scan directories (see [Export and Cull Destinations](CONFIGURATION.md#export-and-cull-destinations)).
 
+## Undo, corrections and reference data
+
+- **Undo journal.** Every change a write tool makes for you is recorded, grouped by tool call into a batch (the result's `undo` field carries its `batch_id`). `list_agent_actions` (`readonly`) lists your recent batches, newest first. `undo_last` (`user`) undoes the latest open batch, or the one named by `batch_id`; `dry_run: true` shows what a batch holds. A photo is restored only while it still holds the value the assistant wrote: anything you changed since is skipped (`skipped_changed_since`), so your own edits are never overwritten.
+- **What can be undone.** Ratings, favourites, rejections, manual tags, album membership, captions, and sequence and category corrections. Not undoable: `cull_apply`, `delete_photos`, `junk_clear`, `create_album`, `export_metadata`, `assign_faces` and `start_scan`. Undoing a sequence correction restores the override, not the group numbering a later detection pass assigns.
+- **Retention.** Rows are kept 30 days and at most 20000 per owner, pruned as whole batches; one call journals at most 5000 changes (beyond that the write still happens and the result says the journal could not hold it). The journal is also served to signed-in sessions by `GET /api/mcp/actions` and `POST /api/mcp/actions/undo` (never to an agent's own token) and is left out of the viewer database export. On a single-password install a key sees only batches at or below its own level.
+- **Corrections** (`edition`). `override_sequence` (`kind`: `panorama`, `bracket`, `hdr_panorama` or `suppress`; at least 2 paths except for `suppress`) and `clear_sequence_override` record a correction that takes effect at the next detection pass (the result reports `pending`). `override_category` and `clear_category_override` set or clear a sticky category that survives rescans and keeps the scoring context.
+- **Comparing frames** (`readonly`). `group_compare` compares the frames of one culling group (up to 12 paths) `by: "faces"` (per frame: face count, blinks, worst eyes-open, best smile, `best_path_by_eyes`) or `by: "subjects"` (subject sharpness and prominence, `sharpest_path`). It is advice for you, not a decision. `cull_report` summarises a scope in one call: total, kept, rejected, favourites, rated, unreviewed, what the hide toggles would hide, junk, low scores, the top keepers and, with an edition token, the first darkroom sets. Reasons overlap.
+- **Taste.** `comparison_status` (`edition`) reports how many pairwise comparisons you have made and how well they cover the library. No tool submits, edits or deletes a comparison: the answer to a pair is your own click. Writes made by an assistant (ratings, rejections, darkroom confirms, `auto_cull`) never record comparisons and never arm the automatic retrain; the same action made by you in the gallery still does.
+- **Scans.** `start_scan` and `scan_status` (`edition`) start and follow a scan of the configured directories. They are listed only when `viewer.features.show_scan_button` is on and the install is locked (a superadmin key in multi-user mode). A scan is additive, cannot be undone and is refused while another job runs (`conflict`). Syncing with Immich stays on the command line.
+- **Resources.** Besides tools, the server lists five read-only `facet://` resources: `facet://categories`, `facet://tags`, `facet://persons`, `facet://filters` (every search filter with its value domain, plus the metric ranges) and `facet://scoring-contexts`. Each is read as the key's owner sees the library and is capped at 200 rows and 32 KiB (`truncated` says so).
+- **Choosing what is listed.** `viewer.mcp.tool_profile` is `full` (default) or `core`: `core` lists only a 12-tool set for small models (`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`, `undo_last`). It changes the listing only, never what a key may call. `viewer.mcp.allow_destructive` (default `false`) gates `delete_photos` (not listed when off), the `move_rejects` and `trash_rejects` actions of `cull_apply`, and `assign_faces` with `allow_reassign`; refused calls answer `feature_disabled`. Tools a token's level cannot call are not listed either.
+- **Two more error codes.** `feature_disabled`: the route is switched off by a configuration key, and the message names it. `conflict`: the library is busy with a job that excludes this one (for example a scan already running).
+
 ## Prompts
 
-The server also offers four ready-made prompts, listed by `prompts/list` and filtered by the token's level. A prompt only names tools the token can call, and a destructive tool only behind its dry run and confirmation. Each call counts against the read rate limit and is audited by name, never with its arguments.
+The server also offers five ready-made prompts, listed by `prompts/list` and filtered by the token's level. A prompt only names tools the token can call, and a destructive tool only behind its dry run and confirmation. Each call counts against the read rate limit and is audited by name, never with its arguments.
 
 | Prompt | Arguments | What it asks the assistant to do |
 |--------|-----------|-----------------------------------|
@@ -194,6 +207,7 @@ The server also offers four ready-made prompts, listed by `prompts/list` and fil
 | `cull_shoot` | `scope_hint` | Review a shoot, propose what to reject and, once you decide, record your decisions with `confirm_culling_groups`; moving or trashing happens only after a dry run and your confirmation |
 | `build_album` | `theme`, `album_name` | Collect matching photos into a new album |
 | `tag_people` | `person` | Find faces that look like a person and assign the ones you confirm |
+| `teach_taste` | `category` | Open the pairwise comparison page in your tab and track how many comparisons you have made; the answer to each pair is always your own click |
 
 ## Darkroom (culling groups)
 

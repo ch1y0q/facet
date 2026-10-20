@@ -14,6 +14,7 @@ import { contractHandlerMismatch, WebMcpToolRegistry } from './webmcp-registry.s
 import { routes } from '../../app.routes';
 import { DEFAULT_FILTERS } from '../../features/gallery/gallery-filters.util';
 import { applicableActions, createUiToolHandlers } from './ui-tool-handlers';
+import { CompareFiltersService } from '../../features/comparison/compare-filters.service';
 import { ViewActionRegistry } from './view-action-registry.service';
 import contractFile from './ui-tools.schema.json';
 import { UI_TOOL_ERROR_CODES, UiToolContractFile, UiToolEnvelope } from './ui-tool.types';
@@ -53,6 +54,7 @@ describe('UI tool registry and handlers', () => {
   const direct = (): ReturnType<typeof createUiToolHandlers> => createUiToolHandlers({
     gallery: store, router: router as unknown as Router,
     auth: { isEdition: () => edition } as unknown as AuthService, viewActions, actions: () => [],
+    compareFilters: TestBed.inject(CompareFiltersService),
   });
 
   beforeEach(async () => {
@@ -84,6 +86,7 @@ describe('UI tool registry and handlers', () => {
       const handlers = createUiToolHandlers({
         gallery: store, router: router as unknown as Router,
         auth: { isEdition: () => edition } as unknown as AuthService, viewActions, actions: () => [],
+        compareFilters: TestBed.inject(CompareFiltersService),
       });
       const mismatch = contractHandlerMismatch((contractFile as unknown as UiToolContractFile).tools, handlers);
       expect(mismatch).toEqual({ missingHandlers: [], missingContract: [] });
@@ -193,8 +196,46 @@ describe('UI tool registry and handlers', () => {
       await realRouter.navigateByUrl('/stats');
       const handlers = createUiToolHandlers({
         gallery: store, router: realRouter, auth: { isEdition: () => false } as unknown as AuthService, viewActions, actions: () => [],
+        compareFilters: TestBed.inject(CompareFiltersService),
       });
       await expect(handlers['ui_navigate']({ route: '/stats' })).resolves.toEqual({ route: '/stats' });
+    });
+  });
+
+  describe('ui_show_comparison', () => {
+    it('sets category, strategy and the A/B tab through the service, submits nothing and sends no answer key', async () => {
+      edition = true;
+      const filters = TestBed.inject(CompareFiltersService);
+      const post = TestBed.inject(ApiService).post as unknown as Mock;
+      const keys: string[] = [];
+      const onKey = (event: KeyboardEvent): void => { keys.push(event.key); };
+      document.addEventListener('keydown', onKey, true);
+      try {
+        const result = await direct()['ui_show_comparison']({ category: 'portrait', strategy: 'boundary' });
+        expect(result).toEqual({ route: '/compare', category: 'portrait', strategy: 'boundary', tab: 'ab' });
+      } finally {
+        document.removeEventListener('keydown', onKey, true);
+      }
+      expect(navigate).toHaveBeenCalledWith(['/compare']);
+      expect(filters.selectedCategory()).toBe('portrait');
+      expect(filters.strategy()).toBe('boundary');
+      expect(filters.activeTab()).toBe(1);
+      expect(post).not.toHaveBeenCalled();
+      expect(keys).toEqual([]);
+    });
+
+    it('needs an edition session and touches nothing without one', async () => {
+      const filters = TestBed.inject(CompareFiltersService);
+      await expect(direct()['ui_show_comparison']({ category: 'portrait' })).rejects.toMatchObject({ code: 'forbidden_level' });
+      expect(navigate).not.toHaveBeenCalled();
+      expect(filters.selectedCategory()).toBe('');
+    });
+
+    it('the contract offers no property that could carry an answer', () => {
+      const tool = (contractFile as unknown as UiToolContractFile).tools.find(t => t.name === 'ui_show_comparison');
+      expect(tool).toBeDefined();
+      const props = Object.keys(tool?.inputSchema.properties ?? {});
+      expect(props.filter(p => /choice|winner|answer|submit/.test(p))).toEqual([]);
     });
   });
 

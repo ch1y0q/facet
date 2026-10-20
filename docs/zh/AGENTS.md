@@ -2,11 +2,11 @@
 
 > 🌐 [English](../AGENTS.md) · [Français](../fr/AGENTS.md) · [Deutsch](../de/AGENTS.md) · [Italiano](../it/AGENTS.md) · [Español](../es/AGENTS.md) · [Português](../pt/AGENTS.md) · **简体中文**
 
-Facet 可以充当 [Model Context Protocol](https://modelcontextprotocol.io/)（MCP）服务器，让支持 MCP 的 AI 助手使用与图库相同的筛选条件搜索和查看你的照片库。它提供十三个不会改动照片库的只读工具，以及十一个 `ui_*` 工具：它们操作你已经打开的浏览器标签页（页面、筛选条件、选择），从不写入照片库数据。获得授权的令牌还可以[修改内容](#修改内容)（评分、标记、标签、相册、选片和删除）并操作[暗房](#暗房选片分组)。
+Facet 可以充当 [Model Context Protocol](https://modelcontextprotocol.io/)（MCP）服务器，让支持 MCP 的 AI 助手使用与图库相同的筛选条件搜索和查看你的照片库。它提供十三个不会改动照片库的只读工具，以及十二个 `ui_*` 工具：它们操作你已经打开的浏览器标签页（页面、筛选条件、选择），从不写入照片库数据。获得授权的令牌还可以[修改内容](#修改内容)（评分、标记、标签、相册、选片和删除）并操作[暗房](#暗房选片分组)。
 
 ## 启用
 
-该端点**默认关闭**。在 `scoring_config.json` 中把 `viewer.mcp.enabled` 设为 `true`（参见 [智能体端点（MCP）](CONFIGURATION.md#智能体端点mcp)），然后重启查看器或重新加载配置。关闭期间，`/mcp` 和所有 `/api/mcp/*` 路由都返回 404。 没有 `viewer.password` 时，即使设置了 `viewer.edition_password`，该安装也视为开放安装，其令牌只能是 `readonly`。
+该端点**默认开启**。要关闭它，请在 `scoring_config.json` 中把 `viewer.mcp.enabled` 设为 `false`（参见 [智能体端点（MCP）](CONFIGURATION.md#智能体端点mcp)），然后重启查看器或重新加载配置；此后 `/mcp` 和所有 `/api/mcp/*` 路由都返回 404。没有 `viewer.password` 时，即使设置了 `viewer.edition_password`，该安装也视为开放安装，其令牌只能是 `readonly`。在开放安装上，该端点只提供一个只读匿名密钥，它不授予开放的 `/api` 本来没有授予的任何权限。
 
 端点是查看器自身端口上的 `POST /mcp`：Streamable HTTP、无状态、纯 JSON 响应。`GET` 返回 405。只有标签页桥接 `/api/mcp/bridge` 是 WebSocket，参见[控制已打开的标签页](#控制已打开的标签页)。
 
@@ -52,7 +52,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 | `get_photo` | 按路径获取单张照片的完整详情（不含直方图） |
 | `get_thumbnail` | 查看一张照片:其缩略图作为图像部分(`size` 160 至 640,默认 512)。若 JPEG 会超过 `viewer.mcp.max_image_bytes`,则使用更小的尺寸;都放不下则返回 `too_large` |
 | `contact_sheet` | 将 1 至 16 张照片作为一张带编号的网格图查看(`columns` 2 至 4,最长边 1024)。文本部分列出 `legend`(格子编号对应路径,按请求顺序)和 `unavailable`(因照片缺失或不可见而留空的格子) |
-| `possible_faces` | 与某个已识别人物相似的人脸:与该人物质心的余弦相似度,最佳在前,仅限同一嵌入模型。`scope` 为 `unassigned`(默认)、`other_persons` 或 `all`;`min_similarity` 默认 0.30;`limit` 最多 100。超过 192000 张人脸的扫描会被拒绝(`too_large`):用 `scope`、`path_prefix`、`date_from` 或 `date_to` 缩小范围。照片会显示在你的标签页中 |
+| `possible_faces` | 与某个已识别人物相似的人脸:与该人物质心的余弦相似度,最佳在前,仅限同一嵌入模型。`scope` 为 `unassigned`(默认)、`other_persons` 或 `all`;`min_similarity` 默认 0.30;`limit` 最多 100。超过 192000 张人脸的扫描会被拒绝(`too_large`):用 `scope`、`path_prefix`、`date_from` 或 `date_to` 缩小范围。照片会显示在你的标签页中。`candidates` 是范围内您可见的人脸数量（在嵌入维度检查之前）；`faces_scanned` 是实际评分的行数。 |
 | `similar_photos` | 按视觉嵌入或颜色查找与某张照片相似的照片；`min_similarity`（0 到 1）设定下限 |
 | `filter_options` | 筛选条件接受的词汇：相机、镜头、标签、人物、构图模式、类别、叙事瞬间、垃圾类型、指标范围 |
 | `list_persons` | 已识别的人物，可按姓名过滤 |
@@ -82,7 +82,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 
 ## 控制已打开的标签页
 
-除数据工具外，服务器始终列出十一个 `ui_*` 工具，它们作用于你在浏览器中打开的 Facet 标签页：切换页面、修改筛选或选择，并读回你看到的内容。它们从不写入照片库数据，因此 `readonly` 令牌就够了。
+除数据工具外，服务器始终列出十二个 `ui_*` 工具，它们作用于你在浏览器中打开的 Facet 标签页：切换页面、修改筛选或选择，并读回你看到的内容。它们从不写入照片库数据，因此 `readonly` 令牌就够了。
 
 | 工具 | 作用 |
 |------|------|
@@ -184,9 +184,22 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 - `delete_photos` 把文件送入系统回收站并**删除其照片库记录**：评分、标签和评级无法恢复，即使文件本身可以恢复。
 - **前提条件。** `trash_rejects` 和 `delete_photos` 需要将 `viewer.cull.allow_trash` 设为 `true`（默认 `false`；否则调用会被拒绝）。`copy_keeps` 和 `move_rejects` 的 `target_dir` 必须位于允许的导出位置之下：`viewer.export.allowed_target_dirs` 加上你的扫描目录（参见[导出与选片目标位置](CONFIGURATION.md#导出与选片目标位置)）。
 
+## 撤销、修正与参考数据
+
+- **撤销日志。** 写入工具替你做的每项更改都会被记录，并按工具调用归为一个批次（结果的 `undo` 字段带有其 `batch_id`）。`list_agent_actions`（`readonly`）按时间从新到旧列出你最近的批次。`undo_last`（`user`）撤销最近一个未撤销的批次，或 `batch_id` 指定的批次；`dry_run: true` 显示批次内容。只有当照片仍保留助手写入的值时才会恢复：此后你改动过的内容会被跳过（`skipped_changed_since`），因此你自己的编辑绝不会被覆盖。
+- **可以撤销的内容。** 评分、收藏、淘汰、手动标签、相册成员关系、说明文字，以及序列和类别修正。不可撤销：`cull_apply`、`delete_photos`、`junk_clear`、`create_album`、`export_metadata`、`assign_faces` 和 `start_scan`。撤销序列修正会恢复覆盖设置，而不是之后的检测遍历所分配的分组编号。
+- **保留期限。** 记录保留 30 天，每位所有者最多 20000 行，按整批清除；一次调用最多记录 5000 项更改（超出时写入仍会执行，结果会说明日志无法容纳）。日志也通过 `GET /api/mcp/actions` 和 `POST /api/mcp/actions/undo` 提供给已登录的会话（从不提供给智能体自己的令牌），并且不包含在查看器数据库导出中。在单密码安装上，密钥只能看到其自身级别及以下的批次。
+- **修正**（`edition`）。`override_sequence`（`kind`：`panorama`、`bracket`、`hdr_panorama` 或 `suppress`；除 `suppress` 外至少 2 个路径）和 `clear_sequence_override` 记录一项在下一次检测遍历时生效的修正（结果报告 `pending`）。`override_category` 和 `clear_category_override` 设置或清除持久的类别，它在重新扫描后依然保留并保持评分上下文。
+- **比较画面**（`readonly`）。`group_compare` 比较一个选片分组中的画面（最多 12 个路径），`by: "faces"`（每帧：人脸数、眨眼、最低睁眼度、最佳笑容、`best_path_by_eyes`）或 `by: "subjects"`（主体清晰度与突出度、`sharpest_path`）。这只是建议，不是决定。`cull_report` 用一次调用汇总一个范围：总数、保留、淘汰、收藏、已评分、未审阅、隐藏开关会隐藏的内容、垃圾、低分、最佳照片，以及（使用 edition 令牌时）暗房的前几个分组。各原因相互重叠。
+- **品味。** `comparison_status`（`edition`）报告你做了多少次成对比较以及它们对照片库的覆盖程度。没有任何工具能提交、编辑或删除比较：每一对的答案是你自己的点击。助手所做的写入（评分、淘汰、暗房确认、`auto_cull`）从不记录比较，也从不触发自动重新训练；你本人在图库中做同样的操作仍会如此。
+- **扫描。** `start_scan` 和 `scan_status`（`edition`）启动并跟踪对已配置目录的扫描。仅当 `viewer.features.show_scan_button` 开启且安装已锁定（多用户模式下为超级管理员密钥）时才会列出。扫描是追加式的，无法撤销，并在另一项任务运行时被拒绝（`conflict`）。与 Immich 的同步仍通过命令行进行。
+- **资源。** 除工具外，服务器还列出五个只读的 `facet://` 资源：`facet://categories`、`facet://tags`、`facet://persons`、`facet://filters`（每个搜索筛选条件及其取值范围，加上指标范围）和 `facet://scoring-contexts`。每个资源按密钥所有者看到的照片库读取，上限 200 行和 32 KiB（`truncated` 会标明）。
+- **选择列出的内容。** `viewer.mcp.tool_profile` 为 `full`（默认）或 `core`：`core` 只列出面向小模型的 12 个工具（`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`, `undo_last`）。它只改变列表，不改变密钥可调用的内容。`viewer.mcp.allow_destructive`（默认 `false`）控制 `delete_photos`（关闭时不列出）、`cull_apply` 的 `move_rejects` 与 `trash_rejects` 操作，以及带 `allow_reassign` 的 `assign_faces`；被拒绝的调用返回 `feature_disabled`。令牌级别无法调用的工具同样不会列出。
+- **另外两个错误代码。** `feature_disabled`：该路由被某个配置键关闭，消息中会指出该键。`conflict`：照片库正忙于与此冲突的任务（例如已有扫描在运行）。
+
 ## Prompts
 
-服务器还提供四个现成的提示词,由 `prompts/list` 列出并按令牌级别过滤。提示词只会提到令牌可调用的工具,破坏性工具只出现在试运行与确认之后。每次调用都计入读取速率限制,并按名称记录审计,从不记录其参数。
+服务器还提供五个现成的提示词,由 `prompts/list` 列出并按令牌级别过滤。提示词只会提到令牌可调用的工具,破坏性工具只出现在试运行与确认之后。每次调用都计入读取速率限制,并按名称记录审计,从不记录其参数。
 
 | 提示词 | 参数 | 它要求助手做什么 |
 |--------|------|------------------|
@@ -194,6 +207,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 | `cull_shoot` | `scope_hint` | 检查一次拍摄,建议拒绝哪些,并在你决定后用 `confirm_culling_groups` 记录你的决定;移动或移入回收站只在试运行并经你确认之后进行 |
 | `build_album` | `theme`, `album_name` | 把匹配的照片收集到新相册 |
 | `tag_people` | `person` | 找到与某人相似的人脸并分配你确认的那些 |
+| `teach_taste` | `category` | 在你的标签页中打开成对比较页面并统计你已做的比较次数；每一对的答案始终是你自己的点击 |
 
 ## 暗房（选片分组）
 

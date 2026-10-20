@@ -21,6 +21,9 @@ READ_TOOLS = {
 
 UI_TOOL_NAMES = {tool.name for tool in UI_TOOLS}
 WRITE_TOOLS = set(WRITE_TOOL_LEVELS)
+# What a READONLY key is offered (tools/list is filtered by the key's level): the read tools, every ui_* tool and
+# the readonly entries of the write table. An open install and a viewer-password login both mint readonly keys.
+READONLY_LISTED = READ_TOOLS | UI_TOOL_NAMES | {name for name, level in WRITE_TOOL_LEVELS.items() if level == "readonly"}
 CULLING_TOOLS = {"list_culling_groups", "culling_profiles", "suggest_culling_profile", "keeper_hints",
                  "auto_cull", "confirm_culling_groups"}
 
@@ -125,7 +128,8 @@ class TestMount:
 
     def test_tools_list_names_the_read_tools(self, agent_app):
         env = agent_app("open")
-        assert env.tool_names(env.token(env.login())) == READ_TOOLS | UI_TOOL_NAMES | WRITE_TOOLS | CULLING_TOOLS
+        assert env.tool_names(env.token(env.login())) == READONLY_LISTED
+        assert READONLY_LISTED < READ_TOOLS | UI_TOOL_NAMES | WRITE_TOOLS | CULLING_TOOLS
 
     def test_every_read_tool_is_annotated_read_only_and_untrusted(self, agent_app):
         env = agent_app("open")
@@ -525,21 +529,36 @@ class TestMcpSettings:
         assert s["max_rows"] == 500 and s["max_bytes"] == 4000
         assert s["call_timeout_s"] == 1 and s["rate_per_min"] == 1
 
-    def test_absent_block_means_defaults_and_off(self, agent_app):
+    def test_absent_block_means_defaults_and_on(self, agent_app):
         agent_app("open")
         del api_config.VIEWER_CONFIG["mcp"]
         s = api_config.mcp_settings()
-        assert s["enabled"] is False and s["max_rows"] == 100
+        assert s["enabled"] is True and s["max_rows"] == 100
 
     def test_wrong_types_fall_back_to_defaults(self, agent_app):
         agent_app("open")
         api_config.VIEWER_CONFIG["mcp"] = {"enabled": "yes", "max_rows": "lots", "bridge": 1}
         s = api_config.mcp_settings()
-        assert s["enabled"] is False and s["max_rows"] == 100 and s["bridge"] is True
+        assert s["enabled"] is True and s["max_rows"] == 100 and s["bridge"] is True
 
-    def test_shipped_default_is_off(self):
+    def test_tool_profile_takes_only_listed_values(self, agent_app):
+        agent_app("open", tool_profile="core")
+        assert api_config.mcp_settings()["tool_profile"] == "core"
+        api_config.VIEWER_CONFIG["mcp"]["tool_profile"] = "tiny"
+        assert api_config.mcp_settings()["tool_profile"] == "full"
+        api_config.VIEWER_CONFIG["mcp"]["tool_profile"] = 3
+        assert api_config.mcp_settings()["tool_profile"] == "full"
+
+    def test_allow_destructive_must_be_a_real_boolean(self, agent_app):
+        agent_app("open", allow_destructive="yes")
+        assert api_config.mcp_settings()["allow_destructive"] is False
+        api_config.VIEWER_CONFIG["mcp"]["allow_destructive"] = True
+        assert api_config.mcp_settings()["allow_destructive"] is True
+
+    def test_shipped_default_is_on(self):
         from config_resolve import load_defaults
-        assert load_defaults()["viewer"]["mcp"]["enabled"] is False
+        assert load_defaults()["viewer"]["mcp"]["enabled"] is True
+        assert api_config.MCP_SETTINGS_DEFAULTS["enabled"] is True
 
 
 class TestFixtureGuard:
@@ -592,7 +611,7 @@ class TestRealSdkClient:
         finally:
             server.should_exit = True
             thread.join(timeout=10)
-        assert names == READ_TOOLS | UI_TOOL_NAMES | WRITE_TOOLS | CULLING_TOOLS
+        assert names == READONLY_LISTED
         assert status["ok"] is True and status["data"]["owner"] == "_legacy"
 
 

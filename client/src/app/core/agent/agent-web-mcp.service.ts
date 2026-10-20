@@ -46,6 +46,8 @@ export class AgentWebMcpService {
   private readonly isSecureContext = inject(IS_SECURE_CONTEXT);
 
   readonly state = signal<WebMcpState>('off');
+  /** The live session injector while tools are registered, so server-tool tiers can hang children off it. */
+  readonly sessionInjector = signal<EnvironmentInjector | null>(null);
 
   private session: EnvironmentInjector | null = null;
   private generation = 0;
@@ -83,6 +85,7 @@ export class AgentWebMcpService {
     const session = createEnvironmentInjector([], this.root);
     this.session = session;
     this.state.set('active');
+    this.sessionInjector.set(session);
     await Promise.allSettled(this.registry.tools.map(tool => declareExperimentalWebMcpTool(this.descriptor(tool), session)));
   }
 
@@ -91,6 +94,7 @@ export class AgentWebMcpService {
     const session = this.session;
     this.session = null;
     this.state.set('off');
+    this.sessionInjector.set(null);
     session?.destroy();
   }
 
