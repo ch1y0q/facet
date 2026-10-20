@@ -2,7 +2,7 @@
 
 > 🌐 [English](../AGENTS.md) · [Français](../fr/AGENTS.md) · [Deutsch](../de/AGENTS.md) · [Italiano](../it/AGENTS.md) · [Español](../es/AGENTS.md) · [Português](../pt/AGENTS.md) · **简体中文**
 
-Facet 可以充当 [Model Context Protocol](https://modelcontextprotocol.io/)（MCP）服务器，让 Claude Code 等 AI 助手使用与图库相同的筛选条件搜索和查看你的照片库。它提供九个不会改动照片库的只读工具，以及九个 `ui_*` 工具：它们操作你已经打开的浏览器标签页（页面、筛选条件、选择），从不写入照片库数据。获得授权的令牌还可以[修改内容](#修改内容)（评分、标记、标签、相册、选片和删除）并操作[暗房](#暗房选片分组)。
+Facet 可以充当 [Model Context Protocol](https://modelcontextprotocol.io/)（MCP）服务器，让支持 MCP 的 AI 助手使用与图库相同的筛选条件搜索和查看你的照片库。它提供九个不会改动照片库的只读工具，以及九个 `ui_*` 工具：它们操作你已经打开的浏览器标签页（页面、筛选条件、选择），从不写入照片库数据。获得授权的令牌还可以[修改内容](#修改内容)（评分、标记、标签、相册、选片和删除）并操作[暗房](#暗房选片分组)。
 
 ## 启用
 
@@ -12,7 +12,7 @@ Facet 可以充当 [Model Context Protocol](https://modelcontextprotocol.io/)（
 
 ## 创建令牌
 
-最简单的方式是在浏览器中操作。启用 `viewer.mcp.enabled` 后，打开账户菜单并选择**连接助手**。在**创建令牌**下输入**名称**，并选择**助手可执行的操作**：**仅读取和操作界面**；若当前会话具备相应级别，还可选择**代表我操作**或**完全编辑**（令牌的级别不能高于创建它的会话）。点击**创建令牌**：令牌只会在**您的新令牌**下显示一次，请立即复制。**访问令牌**列出您的令牌及其最近使用时间，并可撤销其中一个。**添加到 Claude Code**给出可直接粘贴的 Claude Code 命令（见下文），**此标签页**则说明此标签页是否已连接、能否被助手操控。 级别列表仅限服务器会授予的范围：开放安装只提供**仅读取和操作界面**，**代表我操作**仅出现在多用户安装中，**完全编辑**仅在编辑会话中提供。创建后，对话框会说明实际授予的级别（“已授予的权限：{level}”）。
+最简单的方式是在浏览器中操作。启用 `viewer.mcp.enabled` 后，打开账户菜单并选择**连接助手**。输入**名称**，选择**助手可执行的操作**：**仅读取和操作界面**；若当前会话具备相应级别，还可选择**代表我操作**或**完全编辑**（令牌的级别不能高于创建它的会话），然后点击**创建令牌**。对话框随后会显示**将此内容粘贴到您的助手中**，并附带一段包含令牌的现成提示词。它只显示一次：请点击**复制提示词**，粘贴到您的助手中，再点击**完成**。**管理令牌（N）**列出您的令牌及其最近使用时间，并可撤销其中一个；状态行则说明此标签页是否已连接、能否被助手操控。级别列表仅限服务器会授予的范围：开放安装只提供**仅读取和操作界面**，**代表我操作**仅出现在多用户安装中，**完全编辑**仅在编辑会话中提供。提示词中会写明实际授予的级别。
 
 通过脚本创建（curl）：
 
@@ -20,18 +20,14 @@ Facet 可以充当 [Model Context Protocol](https://modelcontextprotocol.io/)（
 
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:5000/api/auth/login -H 'Content-Type: application/json' -d '{"password": "YOUR_VIEWER_PASSWORD"}' | jq -r .access_token)
-curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"name": "claude-code", "level": "readonly"}'
+curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"name": "my-assistant", "level": "readonly"}'
 ```
 
 响应的 `token` 字段包含明文令牌。`GET /api/mcp/tokens` 列出你的令牌（绝不包含密钥本身），`DELETE /api/mcp/tokens/{id}` 吊销其中一个。超级管理员可以用 `?all=1` 列出所有所有者的令牌并吊销任意一个。每位所有者最多持有 20 个有效令牌（超出返回 412）。这些路由会以 403 拒绝智能体自己的凭据，因此助手永远无法创建、列出或吊销令牌。
 
-## 连接 Claude Code
+## 连接您的助手
 
-```bash
-claude mcp add --transport http facet http://localhost:5000/mcp --header "Authorization: Bearer fct_YOUR_TOKEN"
-```
-
-之后工具会以 `mcp__facet__search_photos` 等名称出现。只要查看器可以从你自己的机器之外访问，就请使用 HTTPS，因为每次调用令牌都会放在请求头里传输。
+对话框生成的提示词包含支持 MCP 的助手所需的一切：服务器名称 `facet`、URL（`http://<主机>/mcp`）、传输方式（Streamable HTTP）、请求头 `Authorization: Bearer fct_...`、已授予的访问级别，以及用于确认连接的 `status` 工具调用。请把它粘贴到您的助手中，或自行把该服务器添加到您使用的 MCP 客户端。只要查看器可以从你自己的机器之外访问，就请使用 HTTPS，因为每次调用令牌都会放在请求头里传输。
 
 ## 权限级别
 
@@ -96,7 +92,7 @@ claude mcp add --transport http facet http://localhost:5000/mcp --header "Author
 
 - 当打开的是其他页面时，`ui_set_gallery_filters` 会先跳转到图库，再应用补丁。如果补丁中包含标签页无法操作的筛选条件，整个补丁会被拒绝（`invalid_input`）；这类条件请使用 `search_photos`。
 - `ui_get_gallery_view`、`ui_next_page` 以及带 `select_view` 的 `ui_select_photos` 要求当前打开的页面是图库（或相册），否则返回 `no_active_view`；请先调用 `ui_navigate` 前往 `/`。`ui_select_photos` 必须恰好给出 `paths` 与 `select_view` 之一。
-- `no_tab` 也表示没有打开任何 Facet 标签页：请在浏览器中打开 Facet 并登录。**连接助手**对话框中的**此标签页**会显示连接状态及标签页 id。
+- `no_tab` 也表示没有打开任何 Facet 标签页：请在浏览器中打开 Facet 并登录。**连接助手**对话框中的状态行会显示此标签页是否已连接；`status` 工具会列出已打开的标签页及其 id。
 - 标签页的会话被拒绝后会停止重连（请重新登录）；如果您的另一个标签页接管了连接，它会等到您回到该标签页再重连。
 - 仅当服务器声明桥接可用（端点已启用且 `viewer.mcp.bridge` 为 true）时，标签页桥接才会连接；桥接关闭时，标签页完全不会连接。
 - `ui_set_gallery_filters` 会以 `invalid_input` 拒绝未知的筛选名称，也会拒绝同时给出 `category` 与 `type`、或同时给出 `person` 与 `person_id` 的补丁。它只提供图库能够显示的筛选条件；其他条件请使用 `search_photos`。
@@ -107,7 +103,7 @@ claude mcp add --transport http facet http://localhost:5000/mcp --header "Author
 
 除 `/mcp` 端点之外，已登录的标签页还会通过 W3C [WebMCP](https://webmachinelearning.github.io/webmcp/) API（`document.modelContext`）向运行在浏览器内部的智能体提供同一组 `ui_*` 工具。因此浏览器原生的助手看到的正是上文列出的工具，在您正在查看的标签页中执行，并且无需令牌。
 
-- **仅限安全上下文。** Facet 只在 HTTPS 或 `localhost` 下注册这些工具。在普通 HTTP 下不会提供，**连接助手**对话框会提示这一点；上文基于令牌的连接仍可使用。
+- **仅限安全上下文。** Facet 只在 HTTPS 或 `localhost` 下注册这些工具。在普通 HTTP 下不会提供页面内的工具；上文基于令牌的连接仍可使用。
 - 当 `viewer.mcp.enabled` 为 true 且您已登录时注册，退出登录时移除。
 - 该对象是 `document.modelContext`（不提供已弃用的 `navigator.modelContext` 别名）。它是一个 polyfill，仅在浏览器没有原生实现时安装，且无法卸载：登录前它可能已存在但不含任何 Facet 工具，退出登录后它仍保留，工具列表为空。
 - 这些工具的功能与上表相同，并受同一账户级别的限制。

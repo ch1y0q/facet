@@ -15,7 +15,7 @@ Aplicação de página única em FastAPI + Angular para navegar, filtrar e geren
 
 > **Requisitos de recurso** são marcados em linha: `[GPU]` · `[16gb/24gb]` (perfil de VRAM) · `[Edition]` (senha de edição) · `[Superadmin]`. Veja a [matriz de recursos](../README.md#feature-availability--requirements).
 
-> **Assistentes de IA**: o Facet pode servir as suas ferramentas ao Claude Code e a outros clientes MCP, que podem pesquisar a biblioteca e, consoante o nível do token, alterá-la e selecioná-la; ver [Agentes de IA (MCP)](AGENTS.md).
+> **Assistentes de IA**: o Facet pode servir as suas ferramentas a assistentes compatíveis com MCP, que podem pesquisar a biblioteca e, consoante o nível do token, alterá-la e selecioná-la; ver [Agentes de IA (MCP)](AGENTS.md).
 
 ## Iniciando o Visualizador
 

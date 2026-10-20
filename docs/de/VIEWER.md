@@ -15,7 +15,7 @@ FastAPI + Angular Single-Page-Application zum Durchsuchen, Filtern und Verwalten
 
 > **Funktionsanforderungen** sind inline gekennzeichnet: `[GPU]` · `[16gb/24gb]` (VRAM-Profil) · `[Edition]` (Bearbeitungspasswort) · `[Superadmin]`. Siehe die [Funktionsmatrix](../README.md#feature-availability--requirements).
 
-> **KI-Assistenten**: Facet kann seine Werkzeuge für Claude Code und andere MCP-Clients bereitstellen, die die Bibliothek durchsuchen und je nach Token-Stufe auch ändern und aussortieren können; siehe [KI-Agenten (MCP)](AGENTS.md).
+> **KI-Assistenten**: Facet kann seine Werkzeuge für MCP-fähige Assistenten bereitstellen, die die Bibliothek durchsuchen und je nach Token-Stufe auch ändern und aussortieren können; siehe [KI-Agenten (MCP)](AGENTS.md).
 
 ## Galerie starten
 

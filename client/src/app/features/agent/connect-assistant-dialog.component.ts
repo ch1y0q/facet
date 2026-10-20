@@ -11,11 +11,11 @@ import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { AgentBridgeService } from '../../core/agent/agent-bridge.service';
-import { AgentWebMcpService } from '../../core/agent/agent-web-mcp.service';
 import { McpTokenItem } from '../../core/api/types';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { i18nKeys } from '../../core/i18n/keys';
 import { copyText } from '../../shared/utils/clipboard';
+import { buildAssistantPrompt } from './assistant-prompt';
 
 /** Gap between clearing the live region and re-setting it, long enough for the empty text to render. */
 const ANNOUNCE_GAP_MS = 100;
@@ -36,75 +36,53 @@ interface LevelOption {
     <h2 mat-dialog-title>{{ I18N.dialog.connect_assistant.title | translate }}</h2>
     <mat-dialog-content class="flex flex-col gap-4">
       <p class="sr-only" role="status" aria-live="polite" data-testid="live-region">{{ liveMessage() }}</p>
-      <p class="text-sm opacity-80">{{ I18N.dialog.connect_assistant.intro | translate }}</p>
-
-      <section class="flex flex-col gap-1" aria-labelledby="connect-bridge-heading">
-        <h3 id="connect-bridge-heading" class="text-sm font-medium">{{ I18N.dialog.connect_assistant.bridge_heading | translate }}</h3>
-        <p class="text-sm flex items-center gap-2" data-testid="bridge-status">
-          <mat-icon class="!text-base !w-4 !h-4" [class.text-green-600]="bridgeConnected()" [class.opacity-60]="!bridgeConnected()">{{ bridgeConnected() ? 'link' : 'link_off' }}</mat-icon>
-          <span>{{ bridgeStatusKey() | translate: { id: tabId } }}</span>
-        </p>
-        @if (insecureContext()) {
-          <p class="text-xs opacity-70" data-testid="insecure-note">{{ I18N.dialog.connect_assistant.insecure_context | translate }}</p>
-        }
-      </section>
-
-      @if (createdToken(); as created) {
-        <section class="flex flex-col gap-2 rounded-lg border border-amber-500/60 p-3" aria-labelledby="connect-reveal-heading" data-testid="reveal">
-          <h3 id="connect-reveal-heading" class="text-sm font-medium">{{ I18N.dialog.connect_assistant.reveal_heading | translate }}</h3>
-          <p class="text-xs text-amber-800 dark:text-amber-300">{{ I18N.dialog.connect_assistant.reveal_warning | translate }}</p>
-          <p class="text-xs" data-testid="granted-level">{{ I18N.dialog.connect_assistant.reveal_level | translate: { level: (createdLevelKey() | translate) } }}</p>
+      @if (error(); as message) {
+        <p class="text-sm text-red-700 dark:text-red-400" role="alert">{{ message | translate }}</p>
+      }
+      @if (createdToken()) {
+        <section class="flex flex-col gap-2 rounded-lg border border-amber-500/60 p-3" aria-labelledby="connect-prompt-heading" data-testid="reveal">
+          <h3 #promptHeading id="connect-prompt-heading" tabindex="-1" class="text-sm font-medium">{{ I18N.dialog.connect_assistant.prompt_heading | translate }}</h3>
+          <p class="text-xs text-amber-800 dark:text-amber-300">{{ I18N.dialog.connect_assistant.prompt_warning | translate }}</p>
+          <textarea readonly rows="18" class="w-full rounded bg-black/10 p-2 font-mono text-xs" [attr.aria-label]="I18N.dialog.connect_assistant.prompt_box_aria | translate" [value]="promptText()" data-testid="prompt"></textarea>
           <div class="flex items-center gap-2">
-            <code #tokenField tabindex="-1" class="flex-1 break-all rounded bg-black/10 px-2 py-1 text-xs" data-testid="token-value">{{ created.token }}</code>
-            <button mat-stroked-button type="button" [attr.aria-label]="(copied() === 'token' ? I18N.dialog.connect_assistant.copied_token_aria : I18N.dialog.connect_assistant.copy_token_aria) | translate" (click)="copy(created.token)">
-              {{ (copied() === 'token' ? I18N.dialog.connect_assistant.copied : I18N.dialog.connect_assistant.copy) | translate }}
+            <button mat-stroked-button type="button" (click)="copy(promptText())">
+              {{ (copied() ? I18N.dialog.connect_assistant.copied : I18N.dialog.connect_assistant.copy_prompt) | translate }}
             </button>
+            <button mat-flat-button type="button" (click)="done()">{{ I18N.dialog.connect_assistant.done | translate }}</button>
           </div>
         </section>
-      }
-
-      <section class="flex flex-col gap-2" aria-labelledby="connect-snippet-heading">
-        <h3 id="connect-snippet-heading" class="text-sm font-medium">{{ I18N.dialog.connect_assistant.snippet_heading | translate }}</h3>
-        <div class="flex items-start gap-2">
-          <pre class="flex-1 overflow-x-auto whitespace-pre-wrap break-all rounded bg-black/10 p-2 text-xs" data-testid="snippet">{{ snippet() }}</pre>
-          <button mat-stroked-button type="button" [attr.aria-label]="(copied() === 'snippet' ? I18N.dialog.connect_assistant.copied_snippet_aria : I18N.dialog.connect_assistant.copy_snippet_aria) | translate" (click)="copy(snippet(), 'snippet')">
-            {{ (copied() === 'snippet' ? I18N.dialog.connect_assistant.copied : I18N.dialog.connect_assistant.copy) | translate }}
-          </button>
+      } @else {
+        <p class="text-sm opacity-80">{{ I18N.dialog.connect_assistant.intro | translate }}</p>
+        <div class="flex flex-col gap-2">
+          <label class="flex flex-col gap-1 text-sm">
+            <span>{{ I18N.dialog.connect_assistant.name_label | translate }}</span>
+            <input #nameField class="rounded border border-current/30 bg-transparent px-2 py-1" maxlength="100" name="token-name"
+                   [placeholder]="I18N.dialog.connect_assistant.name_placeholder | translate"
+                   [ngModel]="name()" (ngModelChange)="name.set($event)" (keydown.enter)="mint()" />
+          </label>
+          <label class="flex flex-col gap-1 text-sm">
+            <span>{{ I18N.dialog.connect_assistant.level_label | translate }}</span>
+            <select class="rounded border border-current/30 bg-transparent px-2 py-1" name="token-level" [(ngModel)]="level">
+              @for (option of levelOptions(); track option.value) {
+                <option class="text-black" [value]="option.value">{{ option.label | translate }}</option>
+              }
+            </select>
+          </label>
+          <div>
+            <button mat-flat-button type="button" [disabled]="!canMint()" (click)="mint()">
+              {{ I18N.dialog.connect_assistant.mint | translate }}
+            </button>
+          </div>
         </div>
-      </section>
-
-      <section class="flex flex-col gap-2" aria-labelledby="connect-mint-heading">
-        <h3 id="connect-mint-heading" class="text-sm font-medium">{{ I18N.dialog.connect_assistant.mint_heading | translate }}</h3>
-        <label class="flex flex-col gap-1 text-sm">
-          <span>{{ I18N.dialog.connect_assistant.name_label | translate }}</span>
-          <input class="rounded border border-current/30 bg-transparent px-2 py-1" maxlength="100" name="token-name"
-                 [placeholder]="I18N.dialog.connect_assistant.name_placeholder | translate"
-                 [ngModel]="name()" (ngModelChange)="name.set($event)" (keydown.enter)="mint()" />
-        </label>
-        <label class="flex flex-col gap-1 text-sm">
-          <span>{{ I18N.dialog.connect_assistant.level_label | translate }}</span>
-          <select class="rounded border border-current/30 bg-transparent px-2 py-1" name="token-level" [(ngModel)]="level">
-            @for (option of levelOptions(); track option.value) {
-              <option class="text-black" [value]="option.value">{{ option.label | translate }}</option>
-            }
-          </select>
-        </label>
-        @if (error(); as message) {
-          <p class="text-sm text-red-700 dark:text-red-400" role="alert">{{ message | translate }}</p>
-        }
-        <div>
-          <button mat-flat-button type="button" [disabled]="!canMint()" (click)="mint()">
-            {{ I18N.dialog.connect_assistant.mint | translate }}
-          </button>
-        </div>
-      </section>
-
-      <section class="flex flex-col gap-2" aria-labelledby="connect-tokens-heading">
-        <h3 #tokensHeading id="connect-tokens-heading" tabindex="-1" class="text-sm font-medium">{{ I18N.dialog.connect_assistant.tokens_heading | translate }}</h3>
+        <p class="text-sm flex items-center gap-2" data-testid="bridge-status">
+          <mat-icon class="!text-base !w-4 !h-4" [class.text-green-600]="bridgeConnected()" [class.opacity-60]="!bridgeConnected()">{{ bridgeConnected() ? 'link' : 'link_off' }}</mat-icon>
+          <span>{{ bridgeStatusKey() | translate }}</span>
+        </p>
+        <details #tokensDetails class="flex flex-col gap-2" data-testid="tokens-disclosure" [open]="tokensOpen()" (toggle)="tokensOpen.set(tokensDetails.open)">
+          <summary #tokensSummary class="cursor-pointer text-sm font-medium">{{ I18N.dialog.connect_assistant.manage_tokens | translate: { count: tokens().length } }}</summary>
         @for (token of tokens(); track token.id) {
           <div class="flex flex-wrap items-center gap-2 rounded border border-current/20 px-2 py-1 text-sm" data-testid="token-row">
-            <span class="font-medium">{{ token.name }}</span>
-            <code class="text-xs opacity-70">{{ token.token_prefix }}…</code>
+            <span class="font-medium" [title]="token.token_prefix + '…'">{{ token.name }}</span>
             @if (token.level === 'edition') {
               <span class="rounded bg-amber-500/20 px-1.5 text-xs text-amber-800 dark:text-amber-300" data-testid="edition-badge">{{ I18N.dialog.connect_assistant.level_edition_badge | translate }}</span>
             }
@@ -126,7 +104,8 @@ interface LevelOption {
         } @empty {
           <p class="text-sm opacity-70">{{ I18N.dialog.connect_assistant.no_tokens | translate }}</p>
         }
-      </section>
+        </details>
+      }
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>{{ I18N.dialog.close | translate }}</button>
@@ -140,12 +119,11 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
   private readonly i18n = inject(I18nService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly bridge = inject(AgentBridgeService);
-  private readonly webMcp = inject(AgentWebMcpService);
 
-  protected readonly tabId = this.bridge.tabId;
   private readonly injector = inject(Injector);
-  private readonly tokenField = viewChild<ElementRef<HTMLElement>>('tokenField');
-  private readonly tokensHeading = viewChild<ElementRef<HTMLElement>>('tokensHeading');
+  private readonly promptHeading = viewChild<ElementRef<HTMLElement>>('promptHeading');
+  private readonly nameField = viewChild<ElementRef<HTMLElement>>('nameField');
+  private readonly tokensSummary = viewChild<ElementRef<HTMLElement>>('tokensSummary');
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   protected readonly name = signal('');
   protected level: TokenLevel = 'readonly';
@@ -159,15 +137,15 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
   protected readonly error = signal<string | null>(null);
   protected readonly confirmRevokeId = signal<number | null>(null);
   private announceTimer: ReturnType<typeof setTimeout> | undefined;
-  protected readonly copied = signal<'token' | 'snippet' | null>(null);
+  protected readonly copied = signal(false);
+  protected readonly tokensOpen = signal(false);
 
   protected readonly bridgeConnected = computed(() => this.bridge.connected());
   protected readonly bridgeStatusKey = computed(() =>
     this.bridgeConnected()
-      ? this.I18N.dialog.connect_assistant.bridge_connected
-      : this.I18N.dialog.connect_assistant.bridge_not_connected,
+      ? this.I18N.dialog.connect_assistant.tab_connected
+      : this.I18N.dialog.connect_assistant.tab_not_connected,
   );
-  protected readonly insecureContext = computed(() => this.webMcp.state() === 'insecure_context');
 
   /**
    * Only the grants the server will honour: an open install holds `readonly` at most, `user` is a
@@ -188,9 +166,16 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
     return level === 'edition' ? keys.level_edition : level === 'user' ? keys.level_user : keys.level_readonly;
   });
 
-  protected readonly snippet = computed(() => {
-    const token = this.createdToken()?.token ?? this.i18n.t(this.I18N.dialog.connect_assistant.snippet_placeholder_token);
-    return `claude mcp add --transport http facet ${location.origin}/mcp --header "Authorization: Bearer ${token}"`;
+  protected readonly promptText = computed(() => {
+    const created = this.createdToken();
+    return created
+      ? buildAssistantPrompt((key, params) => this.i18n.t(key, params), {
+        url: `${location.origin}/mcp`,
+        token: created.token,
+        levelLabel: this.i18n.t(this.createdLevelKey()),
+        level: created.level,
+      })
+      : '';
   });
 
   constructor() {
@@ -220,7 +205,7 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
       this.createdToken.set({ token: created.token, level: created.level });
       this.name.set('');
       this.announce(this.i18n.t(this.I18N.dialog.connect_assistant.token_created_announce, { name: created.name }));
-      afterNextRender(() => this.tokenField()?.nativeElement.focus(), { injector: this.injector });
+      afterNextRender(() => this.promptHeading()?.nativeElement.focus(), { injector: this.injector });
       await this.refresh();
     } catch (err) {
       this.error.set(err instanceof HttpErrorResponse && err.status === 412
@@ -238,8 +223,8 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
       this.tokens.update(rows => rows.filter(row => row.id !== id));
       this.snackBar.open(this.i18n.t(this.I18N.dialog.connect_assistant.revoked), '', { duration: 2000 });
       this.announce(this.i18n.t(this.I18N.dialog.connect_assistant.revoked));
-      // The revoked row (and its focused button) is gone; land on the list's heading rather than on <body>.
-      afterNextRender(() => this.tokensHeading()?.nativeElement.focus(), { injector: this.injector });
+      // The revoked row (and its focused button) is gone; land on the disclosure's summary rather than on <body>.
+      afterNextRender(() => this.tokensSummary()?.nativeElement.focus(), { injector: this.injector });
     } catch {
       this.error.set(this.I18N.dialog.connect_assistant.revoke_failed);
     }
@@ -274,10 +259,17 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
     this.focusInRow(`[data-revoke-id="${id}"]`);
   }
 
-  protected async copy(text: string, what: 'token' | 'snippet' = 'token'): Promise<void> {
+  /** Leave the prompt: drop the plaintext token and return to the form. */
+  protected done(): void {
+    this.createdToken.set(null);
+    this.copied.set(false);
+    afterNextRender(() => this.nameField()?.nativeElement.focus(), { injector: this.injector });
+  }
+
+  protected async copy(text: string): Promise<void> {
     if (!await copyText(text)) return;
-    this.copied.set(what);
+    this.copied.set(true);
     this.announce(this.i18n.t(this.I18N.dialog.connect_assistant.copied));
-    setTimeout(() => this.copied.set(null), 2000);
+    setTimeout(() => this.copied.set(false), 2000);
   }
 }

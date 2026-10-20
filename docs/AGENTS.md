@@ -2,7 +2,7 @@
 
 > 🌐 **English** · [Français](fr/AGENTS.md) · [Deutsch](de/AGENTS.md) · [Italiano](it/AGENTS.md) · [Español](es/AGENTS.md) · [Português](pt/AGENTS.md) · [简体中文](zh/AGENTS.md)
 
-Facet can act as a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server, so an AI assistant such as Claude Code can search and inspect your library with the same filters the gallery uses. It exposes nine read tools that change nothing in your library and nine `ui_*` tools that move the browser tab you already have open (page, filters, selection) and never write library data. Tokens that are allowed to can also [change things](#changing-things) (ratings, flags, tags, albums, culling and deletion) and work the [darkroom](#darkroom-culling-groups).
+Facet can act as a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server, so an MCP-capable AI assistant can search and inspect your library with the same filters the gallery uses. It exposes nine read tools that change nothing in your library and nine `ui_*` tools that move the browser tab you already have open (page, filters, selection) and never write library data. Tokens that are allowed to can also [change things](#changing-things) (ratings, flags, tags, albums, culling and deletion) and work the [darkroom](#darkroom-culling-groups).
 
 ## Enable it
 
@@ -12,7 +12,7 @@ The endpoint is `POST /mcp` on the viewer's own port: Streamable HTTP, stateless
 
 ## Mint a token
 
-The easiest way is the browser. With `viewer.mcp.enabled` on, open the account menu and choose **Connect an assistant**. Under **Create a token**, enter a **Name** and pick **What the assistant may do**: **Read and pilot only**, plus **Act as me** or **Full editing** when your session holds that level (a token cannot out-rank the session that creates it). Click **Create token**: the token appears once under **Your new token**, so copy it now. **Access tokens** lists your tokens with their last use and revokes one. **Add it to Claude Code** shows the ready-to-paste Claude Code command (see below), and **This tab** says whether this tab is connected so assistants can drive it. The level list is limited to what the server will grant: an open install offers only **Read and pilot only**, **Act as me** appears only on multi-user installs and **Full editing** only in an edition session. After creating, the dialog states the level actually granted ("Access granted: {level}").
+The easiest way is the browser. With `viewer.mcp.enabled` on, open the account menu and choose **Connect an assistant**. Enter a **Name**, pick **What the assistant may do**: **Read and pilot only**, plus **Act as me** or **Full editing** when your session holds that level (a token cannot out-rank the session that creates it), and click **Create token**. The dialog then shows **Paste this into your assistant** with a ready-made prompt that contains the token. It is shown once, so click **Copy prompt**, paste it into your assistant and click **Done**. **Manage tokens (N)** lists your tokens with their last use and revokes one, and a status line says whether this tab is connected so assistants can drive it. The level list is limited to what the server will grant: an open install offers only **Read and pilot only**, **Act as me** appears only on multi-user installs and **Full editing** only in an edition session. The prompt states the level actually granted.
 
 Scripted alternative (curl):
 
@@ -20,18 +20,14 @@ An assistant authenticates with a personal token that starts with `fct_`. Mint o
 
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:5000/api/auth/login -H 'Content-Type: application/json' -d '{"password": "YOUR_VIEWER_PASSWORD"}' | jq -r .access_token)
-curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"name": "claude-code", "level": "readonly"}'
+curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"name": "my-assistant", "level": "readonly"}'
 ```
 
 The response carries the plaintext in `token`. `GET /api/mcp/tokens` lists your tokens (never the secret), and `DELETE /api/mcp/tokens/{id}` revokes one. A superadmin can list every owner's tokens with `?all=1` and revoke any of them. Each owner can hold at most 20 live tokens (412 beyond that). These routes refuse an agent's own credential (403), so an assistant can never mint, list or revoke tokens.
 
-## Connect Claude Code
+## Connect your assistant
 
-```bash
-claude mcp add --transport http facet http://localhost:5000/mcp --header "Authorization: Bearer fct_YOUR_TOKEN"
-```
-
-The tools then appear as `mcp__facet__search_photos` and so on. Use HTTPS when the viewer is reachable beyond your own machine, since the token travels in a header on every call.
+The prompt the dialog generates holds everything an MCP-capable assistant needs: the server name `facet`, the URL (`http://<host>/mcp`), the transport (Streamable HTTP), the header `Authorization: Bearer fct_...`, the access level granted and a call to the `status` tool to confirm the connection. Paste it into your assistant, or add that server yourself to whichever MCP client you use. Use HTTPS when the viewer is reachable beyond your own machine, since the token travels in a header on every call.
 
 ## Permission levels
 
@@ -96,7 +92,7 @@ Beyond the basics above:
 
 - `ui_set_gallery_filters` takes you to the gallery first when another page is open, then applies the patch. It refuses a whole patch (`invalid_input`) that names a filter the tab has no control for; use `search_photos` for those.
 - `ui_get_gallery_view`, `ui_next_page` and `ui_select_photos` with `select_view` need the gallery (or an album) to be the open page, otherwise they answer `no_active_view`; call `ui_navigate` to `/` first. Give `ui_select_photos` exactly one of `paths` and `select_view`.
-- `no_tab` also means no Facet tab is open: open Facet in a browser and sign in. **This tab** in the **Connect an assistant** dialog shows the connection state, with the tab id.
+- `no_tab` also means no Facet tab is open: open Facet in a browser and sign in. The status line in the **Connect an assistant** dialog shows whether this tab is connected; the `status` tool lists open tabs and their ids.
 - A tab stops reconnecting once its session is rejected (sign in again), and waits until you return to it after another tab of yours took over.
 - The tab bridge connects only when the server reports the bridge as available (the endpoint is on and `viewer.mcp.bridge` is true); with the bridge off, tabs do not connect at all.
 - `ui_set_gallery_filters` refuses an unknown filter name with `invalid_input`, and also a patch giving both `category` and `type`, or both `person` and `person_id`. It offers only the filters the gallery can show; use `search_photos` for the others.
@@ -107,7 +103,7 @@ Beyond the basics above:
 
 Separately from the `/mcp` endpoint, a tab that is signed in also offers the same `ui_*` tools to agents that live in the browser itself, through the W3C [WebMCP](https://webmachinelearning.github.io/webmcp/) API (`document.modelContext`). A browser-native assistant therefore sees exactly the tools listed above, runs them in the tab you are looking at, and needs no token.
 
-- **Secure context only.** Facet registers the tools only on HTTPS or `localhost`. On plain HTTP they are not offered and the **Connect an assistant** dialog says so; the token-based connection above keeps working.
+- **Secure context only.** Facet registers the tools only on HTTPS or `localhost`. On plain HTTP the in-page tools are not offered; the token-based connection above keeps working.
 - Registered when `viewer.mcp.enabled` is true and you are signed in, and removed when you sign out.
 - The object is `document.modelContext` (the deprecated `navigator.modelContext` alias is not provided). It is a polyfill, installed only when the browser has no native one, and it cannot be uninstalled: it can exist before you sign in with no Facet tools in it, and after you sign out it stays with an empty tool list.
 - The tools do the same things, and are bounded by the same account level, as in the table above.

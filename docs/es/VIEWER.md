@@ -15,7 +15,7 @@ Aplicación de página única (SPA) basada en FastAPI + Angular para explorar, f
 
 > **Los requisitos de cada función** se indican en línea: `[GPU]` · `[16gb/24gb]` (perfil de VRAM) · `[Edition]` (contraseña de edición) · `[Superadmin]`. Consulta la [matriz de funciones](../README.md#feature-availability--requirements).
 
-> **Asistentes de IA**: Facet puede ofrecer sus herramientas a Claude Code y a otros clientes MCP, que pueden buscar en la biblioteca y, según el nivel del token, modificarla y seleccionarla; ver [Agentes de IA (MCP)](AGENTS.md).
+> **Asistentes de IA**: Facet puede ofrecer sus herramientas a los asistentes compatibles con MCP, que pueden buscar en la biblioteca y, según el nivel del token, modificarla y seleccionarla; ver [Agentes de IA (MCP)](AGENTS.md).
 
 ## Iniciar el visor
 

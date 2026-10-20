@@ -2,7 +2,7 @@
 
 > 🌐 [English](../AGENTS.md) · [Français](../fr/AGENTS.md) · [Deutsch](../de/AGENTS.md) · [Italiano](../it/AGENTS.md) · **Español** · [Português](../pt/AGENTS.md) · [简体中文](../zh/AGENTS.md)
 
-Facet puede actuar como servidor [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), de modo que un asistente de IA como Claude Code pueda buscar e inspeccionar tu biblioteca con los mismos filtros que la galería. Expone nueve herramientas de lectura que no cambian nada en tu biblioteca y nueve herramientas `ui_*` que mueven la pestaña del navegador que ya tienes abierta (página, filtros, selección) y nunca escriben datos de la biblioteca. Los tokens autorizados también pueden [modificar la biblioteca](#modificar-la-biblioteca) (valoraciones, indicadores, etiquetas, álbumes, descarte y borrado) y manejar el [cuarto oscuro](#cuarto-oscuro-grupos-de-descarte).
+Facet puede actuar como servidor [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), de modo que un asistente de IA compatible con MCP pueda buscar e inspeccionar tu biblioteca con los mismos filtros que la galería. Expone nueve herramientas de lectura que no cambian nada en tu biblioteca y nueve herramientas `ui_*` que mueven la pestaña del navegador que ya tienes abierta (página, filtros, selección) y nunca escriben datos de la biblioteca. Los tokens autorizados también pueden [modificar la biblioteca](#modificar-la-biblioteca) (valoraciones, indicadores, etiquetas, álbumes, descarte y borrado) y manejar el [cuarto oscuro](#cuarto-oscuro-grupos-de-descarte).
 
 ## Activarlo
 
@@ -12,7 +12,7 @@ El endpoint es `POST /mcp` en el puerto del visor: Streamable HTTP, sin estado, 
 
 ## Crear un token
 
-Lo más sencillo es el navegador. Con `viewer.mcp.enabled` activado, abre el menú de la cuenta y elige **Conectar un asistente**. En **Crear un token**, escribe un **Nombre** y elige **Lo que el asistente puede hacer**: **Solo leer y pilotar**, más **Actuar como yo** o **Edición completa** si tu sesión tiene ese nivel (un token no puede superar a la sesión que lo crea). Haz clic en **Crear token**: el token aparece una sola vez en **Tu nuevo token**, así que cópialo ahora. **Tokens de acceso** lista tus tokens con su último uso y permite revocar uno. **Añadirlo a Claude Code** muestra el comando de Claude Code listo para pegar (véase más abajo), y **Esta pestaña** indica si esta pestaña está conectada y, por tanto, los asistentes pueden controlarla. La lista de niveles se limita a lo que el servidor concederá: una instalación abierta solo ofrece **Solo leer y pilotar**, **Actuar como yo** aparece solo en instalaciones multiusuario y **Edición completa** solo en una sesión de edición. Tras crear el token, el cuadro indica el nivel realmente concedido ("Acceso concedido: {level}").
+Lo más sencillo es el navegador. Con `viewer.mcp.enabled` activado, abre el menú de la cuenta y elige **Conectar un asistente**. Escribe un **Nombre**, elige **Lo que el asistente puede hacer**: **Solo leer y pilotar**, más **Actuar como yo** o **Edición completa** si tu sesión tiene ese nivel (un token no puede superar a la sesión que lo crea), y haz clic en **Crear token**. El cuadro muestra entonces **Pega esto en tu asistente** con un prompt ya preparado que contiene el token. Se muestra una sola vez: haz clic en **Copiar prompt**, pégalo en tu asistente y haz clic en **Hecho**. **Gestionar tokens (N)** lista tus tokens con su último uso y permite revocar uno, y una línea de estado indica si esta pestaña está conectada y, por tanto, los asistentes pueden controlarla. La lista de niveles se limita a lo que el servidor concederá: una instalación abierta solo ofrece **Solo leer y pilotar**, **Actuar como yo** aparece solo en instalaciones multiusuario y **Edición completa** solo en una sesión de edición. El prompt indica el nivel realmente concedido.
 
 Alternativa por script (curl):
 
@@ -20,18 +20,14 @@ Un asistente se autentica con un token personal que empieza por `fct_`. Crea uno
 
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:5000/api/auth/login -H 'Content-Type: application/json' -d '{"password": "YOUR_VIEWER_PASSWORD"}' | jq -r .access_token)
-curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"name": "claude-code", "level": "readonly"}'
+curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"name": "my-assistant", "level": "readonly"}'
 ```
 
 La respuesta incluye el texto en claro en `token`. `GET /api/mcp/tokens` lista tus tokens (nunca el secreto) y `DELETE /api/mcp/tokens/{id}` revoca uno. Un superadmin puede listar los tokens de todos los propietarios con `?all=1` y revocar cualquiera. Cada propietario puede tener como máximo 20 tokens activos (más allá, 412). Estas rutas rechazan (403) las credenciales de un agente, así que un asistente nunca puede crear, listar ni revocar tokens.
 
-## Conectar Claude Code
+## Conectar tu asistente
 
-```bash
-claude mcp add --transport http facet http://localhost:5000/mcp --header "Authorization: Bearer fct_YOUR_TOKEN"
-```
-
-Las herramientas aparecen entonces como `mcp__facet__search_photos` y así sucesivamente. Usa HTTPS cuando el visor sea accesible más allá de tu propio equipo, ya que el token viaja en una cabecera en cada llamada.
+El prompt que genera el cuadro contiene todo lo que necesita un asistente compatible con MCP: el nombre del servidor `facet`, la URL (`http://<host>/mcp`), el transporte (Streamable HTTP), la cabecera `Authorization: Bearer fct_...`, el nivel de acceso concedido y una llamada a la herramienta `status` para confirmar la conexión. Pégalo en tu asistente, o añade tú mismo ese servidor al cliente MCP que uses. Usa HTTPS cuando el visor sea accesible más allá de tu propio equipo, ya que el token viaja en una cabecera en cada llamada.
 
 ## Niveles de permiso
 
@@ -96,7 +92,7 @@ Además:
 
 - `ui_set_gallery_filters` te lleva primero a la galería si hay otra página abierta y después aplica el parche. Rechaza el parche entero (`invalid_input`) si nombra un filtro que la pestaña no sabe manejar; para esos usa `search_photos`.
 - `ui_get_gallery_view`, `ui_next_page` y `ui_select_photos` con `select_view` necesitan que la galería (o un álbum) sea la página abierta; si no, responden `no_active_view`; llama antes a `ui_navigate` hacia `/`. Da a `ui_select_photos` exactamente uno de `paths` y `select_view`.
-- `no_tab` también significa que no hay ninguna pestaña de Facet abierta: abre Facet en un navegador e inicia sesión. **Esta pestaña** en el cuadro **Conectar un asistente** muestra el estado de la conexión, con el id de la pestaña.
+- `no_tab` también significa que no hay ninguna pestaña de Facet abierta: abre Facet en un navegador e inicia sesión. La línea de estado del cuadro **Conectar un asistente** muestra si esta pestaña está conectada; la herramienta `status` lista las pestañas abiertas y sus id.
 - Una pestaña deja de reconectarse cuando se rechaza su sesión (inicia sesión de nuevo) y espera a que vuelvas a ella si otra de tus pestañas tomó el relevo.
 - El puente de la pestaña solo se conecta si el servidor lo declara disponible (el endpoint está activo y `viewer.mcp.bridge` es true); con el puente desactivado, las pestañas no se conectan en absoluto.
 - `ui_set_gallery_filters` rechaza un nombre de filtro desconocido con `invalid_input`, y también un parche que dé a la vez `category` y `type`, o a la vez `person` y `person_id`. Solo ofrece los filtros que la galería puede mostrar; para los demás usa `search_photos`.
@@ -107,7 +103,7 @@ Además:
 
 Aparte del endpoint `/mcp`, una pestaña con sesión iniciada ofrece también las mismas herramientas `ui_*` a los agentes que viven en el propio navegador, mediante la API W3C [WebMCP](https://webmachinelearning.github.io/webmcp/) (`document.modelContext`). Un asistente nativo del navegador ve así exactamente las herramientas listadas arriba, las ejecuta en la pestaña que estás mirando y no necesita token.
 
-- **Solo en contexto seguro.** Facet registra las herramientas únicamente con HTTPS o en `localhost`. Con HTTP simple no se ofrecen y el cuadro **Conectar un asistente** lo indica; la conexión con token anterior sigue funcionando.
+- **Solo en contexto seguro.** Facet registra las herramientas únicamente con HTTPS o en `localhost`. Con HTTP simple no se ofrecen las herramientas de la página; la conexión con token anterior sigue funcionando.
 - Se registran cuando `viewer.mcp.enabled` es true y has iniciado sesión, y se retiran al cerrar sesión.
 - El objeto es `document.modelContext` (el alias obsoleto `navigator.modelContext` no se proporciona). Es un polyfill, instalado solo si el navegador no tiene uno nativo, y no se puede desinstalar: puede existir antes de iniciar sesión sin ninguna herramienta de Facet y permanece tras cerrar sesión con una lista de herramientas vacía.
 - Las herramientas hacen lo mismo, limitadas por el mismo nivel de cuenta, que en la tabla anterior.

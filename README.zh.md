@@ -134,7 +134,7 @@ GPU 会被自动检测，并非必需。Facet 既能纯 CPU 运行，也能使�
 - **客户选片**——分享出去的相册可以运行在客户选片模式：客户只凭链接（还可选配一个 PIN 码）就能选中喜欢的照片并留言，与你自己的评分完全隔离
 - **手机自动上传**——把 PhotoSync 或任意 WebDAV 应用指向内置的 `/dav` 收件箱；`--watch` 会在新照片到达时立即为其评分
 - **数码相框与展示屏**——一个受令牌保护的接口，把你精选的最佳照片推送给智能相框和 Home Assistant 仪表盘
-- **AI 智能体（MCP）**——可选启用的 [Model Context Protocol](https://modelcontextprotocol.io/) 端点，让 Claude Code 等助手用图库的筛选条件搜索和查看照片库，使用可吊销的个人令牌；视令牌级别而定，助手还可以为照片评分、打标签、整理并筛选（破坏性操作会先预览，且需要确认）
+- **AI 智能体（MCP）**——可选启用的 [Model Context Protocol](https://modelcontextprotocol.io/) 端点，让支持 MCP 的助手用图库的筛选条件搜索和查看照片库，使用可吊销的个人令牌；视令牌级别而定，助手还可以为照片评分、打标签、整理并筛选（破坏性操作会先预览，且需要确认）
 - **作品集导出** `[Edition]`——把一个相册渲染成自包含的静态 HTML 照片库（不引用任何 CDN，可离线使用），你可以把它放到任意网站空间上
 - **社交平台裁切** `[Edition]`——以检测到的主体为中心构图的全分辨率导出，支持方形、竖版和快拍等比例预设
 - **照片下载**——从照片库中下载单张照片或所选照片
@@ -234,7 +234,7 @@ python viewer.py                       # 照片库 → http://localhost:5000
 | [查看器](docs/zh/VIEWER.md) | 网页照片库的功能与用法 |
 | [互操作](docs/zh/INTEROP.md) | 与 Lightroom、Capture One、digiKam、darktable 往返同步星级／标签 |
 | [Immich](docs/zh/IMMICH.md) | 与 Immich 同步星级和收藏，以及入站 webhook |
-| [AI 智能体](docs/zh/AGENTS.md) | 让 Claude Code 等 MCP 助手使用个人令牌搜索照片库 |
+| [AI 智能体](docs/zh/AGENTS.md) | 让支持 MCP 的助手使用个人令牌搜索照片库 |
 | [部署](docs/zh/DEPLOYMENT.md) | 生产环境部署（Synology NAS、Linux、Docker） |
 | [贡献指南](CONTRIBUTING.md) | 开发环境搭建、架构、代码风格 |
 

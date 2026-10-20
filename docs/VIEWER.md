@@ -16,7 +16,7 @@ FastAPI + Angular single-page application for browsing, filtering, and managing 
 
 > **Feature requirements** are tagged inline: `[GPU]` · `[16gb/24gb]` (VRAM profile) · `[Edition]` (edition password) · `[Superadmin]`. See the [feature matrix](INSTALLATION.md#feature-requirements).
 
-> **AI assistants**: Facet can serve its tools to Claude Code and other MCP clients, which can search the library and, with the right token level, change and cull it; see [AI Agents (MCP)](AGENTS.md).
+> **AI assistants**: Facet can serve its tools to MCP-capable assistants, which can search the library and, with the right token level, change and cull it; see [AI Agents (MCP)](AGENTS.md).
 
 ## Starting the Viewer
 

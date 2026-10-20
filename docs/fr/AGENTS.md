@@ -2,7 +2,7 @@
 
 > 🌐 [English](../AGENTS.md) · **Français** · [Deutsch](../de/AGENTS.md) · [Italiano](../it/AGENTS.md) · [Español](../es/AGENTS.md) · [Português](../pt/AGENTS.md) · [简体中文](../zh/AGENTS.md)
 
-Facet peut jouer le rôle de serveur [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) : un assistant IA comme Claude Code peut ainsi rechercher et inspecter votre bibliothèque avec les mêmes filtres que la galerie. Il expose neuf outils de lecture qui ne modifient rien dans votre bibliothèque et neuf outils `ui_*` qui pilotent l'onglet du navigateur que vous avez déjà ouvert (page, filtres, sélection) et n'écrivent jamais de données de la bibliothèque. Les jetons qui y sont autorisés peuvent aussi [modifier des éléments](#modifier-la-bibliothèque) (notes, indicateurs, étiquettes, albums, tri et suppression) et piloter la [chambre noire](#chambre-noire-groupes-de-tri).
+Facet peut jouer le rôle de serveur [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) : un assistant IA compatible MCP peut ainsi rechercher et inspecter votre bibliothèque avec les mêmes filtres que la galerie. Il expose neuf outils de lecture qui ne modifient rien dans votre bibliothèque et neuf outils `ui_*` qui pilotent l'onglet du navigateur que vous avez déjà ouvert (page, filtres, sélection) et n'écrivent jamais de données de la bibliothèque. Les jetons qui y sont autorisés peuvent aussi [modifier des éléments](#modifier-la-bibliothèque) (notes, indicateurs, étiquettes, albums, tri et suppression) et piloter la [chambre noire](#chambre-noire-groupes-de-tri).
 
 ## L'activer
 
@@ -12,7 +12,7 @@ Le point d'accès est `POST /mcp` sur le port de la visionneuse : HTTP diffusabl
 
 ## Créer un jeton
 
-Le plus simple passe par le navigateur. Avec `viewer.mcp.enabled` activé, ouvrez le menu du compte et choisissez **Connecter un assistant**. Sous **Créer un jeton**, saisissez un **Nom** et choisissez **Ce que l'assistant peut faire** : **Lecture et pilotage uniquement**, plus **Agir à ma place** ou **Édition complète** si votre session détient ce niveau (un jeton ne peut pas dépasser la session qui le crée). Cliquez sur **Créer le jeton** : le jeton n'apparaît qu'une fois sous **Votre nouveau jeton**, copiez-le donc tout de suite. **Jetons d'accès** liste vos jetons avec leur dernière utilisation et permet d'en révoquer un. **Ajouter à Claude Code** affiche la commande Claude Code prête à coller (voir plus bas), et **Cet onglet** indique si cet onglet est connecté, donc pilotable par les assistants. La liste des niveaux se limite à ce que le serveur accordera : une installation ouverte ne propose que **Lecture et pilotage uniquement**, **Agir à ma place** n'apparaît que sur les installations multi-utilisateurs et **Édition complète** seulement dans une session d'édition. Après la création, la boîte indique le niveau réellement accordé (« Accès accordé : {level} »).
+Le plus simple passe par le navigateur. Avec `viewer.mcp.enabled` activé, ouvrez le menu du compte et choisissez **Connecter un assistant**. Saisissez un **Nom**, choisissez **Ce que l'assistant peut faire** : **Lecture et pilotage uniquement**, plus **Agir à ma place** ou **Édition complète** si votre session détient ce niveau (un jeton ne peut pas dépasser la session qui le crée), puis cliquez sur **Créer le jeton**. La boîte affiche alors **Collez ceci dans votre assistant** avec une invite toute prête qui contient le jeton. Elle n'est affichée qu'une fois : cliquez sur **Copier l'invite**, collez-la dans votre assistant, puis cliquez sur **Terminé**. **Gérer les jetons (N)** liste vos jetons avec leur dernière utilisation et permet d'en révoquer un, et une ligne d'état indique si cet onglet est connecté, donc pilotable par les assistants. La liste des niveaux se limite à ce que le serveur accordera : une installation ouverte ne propose que **Lecture et pilotage uniquement**, **Agir à ma place** n'apparaît que sur les installations multi-utilisateurs et **Édition complète** seulement dans une session d'édition. L'invite indique le niveau réellement accordé.
 
 Alternative par script (curl) :
 
@@ -20,18 +20,14 @@ Un assistant s'authentifie avec un jeton personnel commençant par `fct_`. Crée
 
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:5000/api/auth/login -H 'Content-Type: application/json' -d '{"password": "YOUR_VIEWER_PASSWORD"}' | jq -r .access_token)
-curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"name": "claude-code", "level": "readonly"}'
+curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"name": "my-assistant", "level": "readonly"}'
 ```
 
 La réponse contient le jeton en clair dans `token`. `GET /api/mcp/tokens` liste vos jetons (jamais le secret) et `DELETE /api/mcp/tokens/{id}` en révoque un. Un superadmin peut lister les jetons de tous les propriétaires avec `?all=1` et en révoquer n'importe lequel. Chaque propriétaire peut détenir au plus 20 jetons actifs (412 au-delà). Ces routes refusent (403) les identifiants d'un agent : un assistant ne peut donc jamais créer, lister ni révoquer de jetons.
 
-## Connecter Claude Code
+## Connecter votre assistant
 
-```bash
-claude mcp add --transport http facet http://localhost:5000/mcp --header "Authorization: Bearer fct_YOUR_TOKEN"
-```
-
-Les outils apparaissent ensuite sous les noms `mcp__facet__search_photos`, etc. Utilisez HTTPS dès que la visionneuse est accessible au-delà de votre machine, car le jeton transite dans un en-tête à chaque appel.
+L'invite générée par la boîte contient tout ce dont un assistant compatible MCP a besoin : le nom du serveur `facet`, l'URL (`http://<hôte>/mcp`), le transport (Streamable HTTP), l'en-tête `Authorization: Bearer fct_...`, le niveau d'accès accordé et un appel à l'outil `status` pour confirmer la connexion. Collez-la dans votre assistant, ou ajoutez vous-même ce serveur au client MCP que vous utilisez. Utilisez HTTPS dès que la visionneuse est accessible au-delà de votre machine, car le jeton transite dans un en-tête à chaque appel.
 
 ## Niveaux d'autorisation
 
@@ -96,7 +92,7 @@ En complément :
 
 - `ui_set_gallery_filters` vous amène d'abord à la galerie si une autre page est ouverte, puis applique le patch. Il refuse en bloc (`invalid_input`) un patch qui nomme un filtre que l'onglet ne sait pas piloter ; utilisez `search_photos` pour ceux-là.
 - `ui_get_gallery_view`, `ui_next_page` et `ui_select_photos` avec `select_view` exigent que la galerie (ou un album) soit la page ouverte, sinon ils répondent `no_active_view` ; appelez d'abord `ui_navigate` vers `/`. Donnez à `ui_select_photos` exactement l'un de `paths` et `select_view`.
-- `no_tab` signifie aussi qu'aucun onglet Facet n'est ouvert : ouvrez Facet dans un navigateur et connectez-vous. **Cet onglet** dans la boîte **Connecter un assistant** affiche l'état de la connexion, avec l'identifiant de l'onglet.
+- `no_tab` signifie aussi qu'aucun onglet Facet n'est ouvert : ouvrez Facet dans un navigateur et connectez-vous. La ligne d'état de la boîte **Connecter un assistant** indique si cet onglet est connecté ; l'outil `status` liste les onglets ouverts et leurs identifiants.
 - Un onglet cesse de se reconnecter dès que sa session est rejetée (reconnectez-vous), et attend votre retour sur lui lorsqu'un autre de vos onglets a pris la place.
 - Le pont d'onglet ne se connecte que si le serveur le déclare disponible (le point d'accès est activé et `viewer.mcp.bridge` vaut true) ; pont désactivé, les onglets ne se connectent pas du tout.
 - `ui_set_gallery_filters` refuse un nom de filtre inconnu avec `invalid_input`, ainsi qu'un patch donnant à la fois `category` et `type`, ou à la fois `person` et `person_id`. Il ne propose que les filtres que la galerie sait afficher ; utilisez `search_photos` pour les autres.
@@ -107,7 +103,7 @@ En complément :
 
 Indépendamment du point d'accès `/mcp`, un onglet connecté propose aussi les mêmes outils `ui_*` aux agents qui vivent dans le navigateur lui-même, via l'API W3C [WebMCP](https://webmachinelearning.github.io/webmcp/) (`document.modelContext`). Un assistant natif du navigateur voit donc exactement les outils listés plus haut, les exécute dans l'onglet que vous regardez et n'a besoin d'aucun jeton.
 
-- **Contexte sécurisé uniquement.** Facet n'enregistre les outils qu'en HTTPS ou sur `localhost`. En HTTP simple ils ne sont pas proposés et la boîte **Connecter un assistant** le signale ; la connexion par jeton ci-dessus continue de fonctionner.
+- **Contexte sécurisé uniquement.** Facet n'enregistre les outils qu'en HTTPS ou sur `localhost`. En HTTP simple, les outils dans la page ne sont pas proposés ; la connexion par jeton ci-dessus continue de fonctionner.
 - Enregistrés quand `viewer.mcp.enabled` vaut true et que vous êtes connecté, retirés à la déconnexion.
 - L'objet est `document.modelContext` (l'ancien alias `navigator.modelContext` n'est pas fourni). C'est un polyfill, installé seulement si le navigateur n'en a pas de natif, et il ne peut pas être désinstallé : il peut exister avant votre connexion sans aucun outil Facet, et reste après la déconnexion avec une liste d'outils vide.
 - Les outils font les mêmes choses, bornées par le même niveau de compte, que dans le tableau ci-dessus.

@@ -15,7 +15,7 @@ Applicazione a pagina singola FastAPI + Angular per sfogliare, filtrare e gestir
 
 > **I requisiti delle funzionalità** sono indicati in linea: `[GPU]` · `[16gb/24gb]` (profilo VRAM) · `[Edition]` (password di modifica) · `[Superadmin]`. Vedi la [matrice delle funzionalità](../README.md#feature-availability--requirements).
 
-> **Assistenti IA**: Facet può offrire i suoi strumenti a Claude Code e ad altri client MCP, che possono cercare nella libreria e, a seconda del livello del token, modificarla e selezionarla; vedi [Agenti IA (MCP)](AGENTS.md).
+> **Assistenti IA**: Facet può offrire i suoi strumenti agli assistenti compatibili con MCP, che possono cercare nella libreria e, a seconda del livello del token, modificarla e selezionarla; vedi [Agenti IA (MCP)](AGENTS.md).
 
 ## Avvio della galleria
 
