@@ -267,6 +267,16 @@ export class GalleryStore {
    *  silently reinstating the previous view's photos. Cleared on every new load. */
   readonly loadError = signal(false);
   private _loadSeq = 0;
+  /**
+   * An explicit, ordered photo list shown in place of the filtered view (set by the
+   * assistant's `ui_show_photos`). Deliberately NOT a GalleryFilters key: it never reaches
+   * the URL, a smart album or buildApiParams. `loadPhotos` clears it unless `showPaths`
+   * raised `pinnedLoad`, so every filter writer that reloads also drops the pin.
+   */
+  readonly pinnedPaths = signal<string[] | null>(null);
+  /** Requested paths the server did not return for the current pin (invisible, unknown). */
+  readonly pinnedMissing = signal<string[]>([]);
+  private pinnedLoad = false;
   readonly hasMore = signal(false);
   readonly config = signal<ViewerConfig | null>(null);
   readonly filterDrawerOpen = signal(localStorage.getItem(DRAWER_STATE_KEY) === 'true');
@@ -343,7 +353,7 @@ export class GalleryStore {
    */
   readonly canScopeSelectionToView = computed(() => {
     const f = this.filters();
-    return !f.similar_to && !f.semanticQuery;
+    return !f.similar_to && !f.semanticQuery && this.pinnedPaths() === null;
   });
 
   /** The loaded photos the selection covers, in grid order — either scope. */
@@ -642,6 +652,8 @@ export class GalleryStore {
 
   /** Load viewer config and apply defaults */
   async loadConfig(): Promise<void> {
+    // loadConfig replaces `filters` wholesale, so an explicit list shown under the old ones is stale.
+    this.pinnedPaths.set(null);
     try {
       const cfg = await firstValueFrom(this.api.get<ViewerConfig>('/config'));
       this.config.set(cfg);
@@ -698,6 +710,9 @@ export class GalleryStore {
   /** Load photos based on current filters (replaces list) */
   async loadPhotos(): Promise<void> {
     // Always load from page 1 — only nextPage() uses page > 1
+    const pinned = this.pinnedLoad ? this.pinnedPaths() : null;
+    this.pinnedLoad = false;
+    if (!pinned) this.pinnedPaths.set(null);
     this.resetViewScope();
     this.filters.update(current => ({ ...current, page: 1 }));
     const seq = ++this._loadSeq;
@@ -706,6 +721,19 @@ export class GalleryStore {
     this.loading.set(true);
     try {
       const f = this.filters();
+
+      if (pinned) {
+        const res = await firstValueFrom(
+          this.api.post<{ photos: Photo[]; total: number; missing: string[] }>('/photos/by_paths', { paths: pinned }),
+        );
+        if (seq !== this._loadSeq) return;
+        this.photos.set(normalisePhotoFlagsAll(res.photos));
+        this.total.set(res.photos.length);
+        this.hasMore.set(false);
+        this.pinnedMissing.set(res.missing);
+        this.hiddenSummary.set({ total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 });
+        return;
+      }
 
       if (f.similar_to) {
         const res = await this.fetchSimilarPage(f, (f.page - 1) * f.per_page);
@@ -762,8 +790,33 @@ export class GalleryStore {
     }
   }
 
+  /**
+   * Show exactly these photos, in this order, until any filter change reloads the view.
+   * Resolves with the requested paths the server did not return.
+   */
+  async showPaths(paths: string[]): Promise<string[]> {
+    this.pinnedPaths.set([...paths]);
+    this.pinnedMissing.set([]);
+    this.pinnedLoad = true;
+    await this.loadPhotos();
+    return this.pinnedMissing();
+  }
+
+  /** Reload what is on screen without it counting as a filter change: a pinned list stays pinned. */
+  async reloadPhotos(): Promise<void> {
+    this.pinnedLoad = this.pinnedPaths() !== null;
+    await this.loadPhotos();
+  }
+
+  /** Drop the explicit list and reload the filtered view. */
+  async clearPinned(): Promise<void> {
+    if (this.pinnedPaths() === null) return;
+    await this.loadPhotos();
+  }
+
   /** Load next page and append to existing photos */
   async nextPage(): Promise<void> {
+    if (this.pinnedPaths() !== null) return;
     if (!this.hasMore() || this.loading()) return;
 
     const seq = this._loadSeq;
@@ -1312,7 +1365,7 @@ export class GalleryStore {
     keepPercent: number,
   ): Promise<{ total: number; keep: number; cut: number; truncated: boolean; paths: string[] } | null> {
     const f = this.filters();
-    if (f.similar_to || f.semanticQuery) {
+    if (!this.canScopeSelectionToView()) {
       this.notifyActionFailed();
       return null;
     }

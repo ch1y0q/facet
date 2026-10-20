@@ -1,4 +1,346 @@
 {
+  "actions": [
+    {
+      "id": "check_access",
+      "summary": "See who you act as, what the token may do and what the open tab shows",
+      "tools": [
+        {
+          "name": "status",
+          "required_level": "readonly"
+        },
+        {
+          "name": "available_actions",
+          "required_level": "readonly"
+        },
+        {
+          "name": "ui_get_context",
+          "required_level": "readonly"
+        }
+      ],
+      "when": [
+        "any"
+      ]
+    },
+    {
+      "id": "search_library",
+      "summary": "Find photos by filters, by meaning or by look-alike",
+      "tools": [
+        {
+          "name": "search_photos",
+          "required_level": "readonly"
+        },
+        {
+          "name": "semantic_search",
+          "required_level": "readonly"
+        },
+        {
+          "name": "similar_photos",
+          "required_level": "readonly"
+        },
+        {
+          "name": "filter_options",
+          "required_level": "readonly"
+        }
+      ],
+      "when": [
+        "any"
+      ]
+    },
+    {
+      "id": "browse_library",
+      "summary": "Read one photo, the people, the albums and the library statistics",
+      "tools": [
+        {
+          "name": "get_photo",
+          "required_level": "readonly"
+        },
+        {
+          "name": "list_persons",
+          "required_level": "readonly"
+        },
+        {
+          "name": "list_albums",
+          "required_level": "readonly"
+        },
+        {
+          "name": "library_stats",
+          "required_level": "readonly"
+        }
+      ],
+      "when": [
+        "any"
+      ]
+    },
+    {
+      "id": "look_at_photos",
+      "summary": "See a photo or a numbered contact sheet of up to 16 photos",
+      "tools": [
+        {
+          "name": "get_thumbnail",
+          "required_level": "readonly"
+        },
+        {
+          "name": "contact_sheet",
+          "required_level": "readonly"
+        }
+      ],
+      "when": [
+        "detail",
+        "gallery"
+      ]
+    },
+    {
+      "id": "match_faces",
+      "summary": "Find faces that look like a recognised person",
+      "tools": [
+        {
+          "name": "possible_faces",
+          "required_level": "readonly"
+        },
+        {
+          "name": "assign_faces",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "persons"
+      ]
+    },
+    {
+      "id": "drive_tab",
+      "summary": "Move the user's tab to another page or open a photo",
+      "tools": [
+        {
+          "name": "ui_navigate",
+          "required_level": "readonly"
+        },
+        {
+          "name": "ui_open_photo",
+          "required_level": "readonly"
+        }
+      ],
+      "when": [
+        "any"
+      ]
+    },
+    {
+      "id": "steer_gallery",
+      "summary": "Change what the gallery shows and read it back",
+      "tools": [
+        {
+          "name": "ui_set_gallery_filters",
+          "required_level": "readonly"
+        },
+        {
+          "name": "ui_show_photos",
+          "required_level": "readonly"
+        },
+        {
+          "name": "ui_get_gallery_view",
+          "required_level": "readonly"
+        },
+        {
+          "name": "ui_next_page",
+          "required_level": "readonly"
+        }
+      ],
+      "when": [
+        "gallery"
+      ]
+    },
+    {
+      "id": "select_photos",
+      "summary": "Select photos in the tab and read the selection back",
+      "tools": [
+        {
+          "name": "ui_select_photos",
+          "required_level": "readonly"
+        },
+        {
+          "name": "ui_get_selection",
+          "required_level": "readonly"
+        },
+        {
+          "name": "ui_clear_selection",
+          "required_level": "readonly"
+        }
+      ],
+      "when": [
+        "gallery"
+      ]
+    },
+    {
+      "id": "rate_photos",
+      "summary": "Rate, favourite or reject a few photos",
+      "tools": [
+        {
+          "name": "set_rating",
+          "required_level": "user"
+        },
+        {
+          "name": "set_favorite",
+          "required_level": "user"
+        },
+        {
+          "name": "set_rejected",
+          "required_level": "user"
+        }
+      ],
+      "when": [
+        "detail",
+        "gallery"
+      ]
+    },
+    {
+      "id": "edit_many",
+      "summary": "Rate, flag or tag many photos at once",
+      "tools": [
+        {
+          "name": "batch_set_rating",
+          "required_level": "edition"
+        },
+        {
+          "name": "batch_set_favorite",
+          "required_level": "edition"
+        },
+        {
+          "name": "batch_set_rejected",
+          "required_level": "edition"
+        },
+        {
+          "name": "add_tags",
+          "required_level": "edition"
+        },
+        {
+          "name": "remove_tags",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "gallery",
+        "selection"
+      ]
+    },
+    {
+      "id": "manage_albums",
+      "summary": "Create an album and add photos to it or remove them",
+      "tools": [
+        {
+          "name": "create_album",
+          "required_level": "edition"
+        },
+        {
+          "name": "album_add_photos",
+          "required_level": "edition"
+        },
+        {
+          "name": "album_remove_photos",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "albums",
+        "detail",
+        "gallery",
+        "selection"
+      ]
+    },
+    {
+      "id": "write_metadata",
+      "summary": "Set a photo's caption or write XMP sidecars next to the files",
+      "tools": [
+        {
+          "name": "set_caption",
+          "required_level": "edition"
+        },
+        {
+          "name": "export_metadata",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "detail",
+        "gallery",
+        "selection"
+      ]
+    },
+    {
+      "id": "junk_sweep",
+      "summary": "Review junk-sweep candidates and reject or keep them",
+      "tools": [
+        {
+          "name": "junk_list",
+          "required_level": "readonly"
+        },
+        {
+          "name": "junk_reject",
+          "required_level": "edition"
+        },
+        {
+          "name": "junk_clear",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "any"
+      ]
+    },
+    {
+      "id": "cull_or_delete",
+      "summary": "Copy the keepers, move or trash the rejects, or delete photos",
+      "tools": [
+        {
+          "name": "cull_apply",
+          "required_level": "edition"
+        },
+        {
+          "name": "delete_photos",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "gallery",
+        "selection"
+      ]
+    },
+    {
+      "id": "work_darkroom",
+      "summary": "Work through culling groups and confirm what to keep",
+      "tools": [
+        {
+          "name": "list_culling_groups",
+          "required_level": "edition"
+        },
+        {
+          "name": "culling_profiles",
+          "required_level": "edition"
+        },
+        {
+          "name": "suggest_culling_profile",
+          "required_level": "edition"
+        },
+        {
+          "name": "keeper_hints",
+          "required_level": "edition"
+        },
+        {
+          "name": "auto_cull",
+          "required_level": "edition"
+        },
+        {
+          "name": "confirm_culling_groups",
+          "required_level": "edition"
+        },
+        {
+          "name": "ui_show_culling_group",
+          "required_level": "readonly"
+        }
+      ],
+      "when": [
+        "culling"
+      ]
+    }
+  ],
   "error_codes": [
     "forbidden_level",
     "invalid_input",
@@ -1051,6 +1393,36 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
+      "description": "Show exactly these photos, in this order, as the gallery's list (max 200). Photos the user cannot see are skipped and returned as `missing`. Any filter change by the user or the assistant replaces the list.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "paths": {
+            "description": "Photo paths to show, in this order, as the gallery's own list. The user's filters and sort are left untouched; any filter change replaces the list.",
+            "items": {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "paths"
+        ],
+        "type": "object"
+      },
+      "name": "ui_show_photos"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "readOnlyHint": false,
+        "untrustedContentHint": true
+      },
       "description": "Change the selection in the user's tab: explicit `paths`, or the whole filtered view (`select_view`). Selecting does not modify any photo.",
       "inputSchema": {
         "additionalProperties": false,
@@ -1115,6 +1487,21 @@
     {
       "annotations": {
         "destructiveHint": false,
+        "idempotentHint": true,
+        "readOnlyHint": true,
+        "untrustedContentHint": true
+      },
+      "description": "Where the user's tab is, from any page: route, the open photo, the selection (scope and count), a gallery summary (total, loaded, has_more, pinned list) when the gallery is open, the mounted page actions and the jobs that apply now (`actions`, with their tools).",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "name": "ui_get_context"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
         "idempotentHint": false,
         "readOnlyHint": false,
         "untrustedContentHint": true
@@ -1165,5 +1552,5 @@
       "name": "ui_show_culling_group"
     }
   ],
-  "version": "2414a3053b119f9c"
+  "version": "effa695ecc2012e1"
 }

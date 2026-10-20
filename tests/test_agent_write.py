@@ -92,6 +92,8 @@ class TestGrantMatrix:
         "add_tags": {"tags": ["t"], "paths": [P[0]]}, "remove_tags": {"tags": ["t"], "paths": [P[0]]},
         "junk_list": {}, "junk_reject": {"paths": [P[0]]}, "junk_clear": {"paths": [P[0]]},
         "cull_apply": {"action": "copy_keeps", "paths": [P[0]]}, "delete_photos": {"paths": [P[0]]},
+        "assign_faces": {"person_id": 999999, "face_ids": [1]},
+        "set_caption": {"path": P[0], "caption": "x"}, "export_metadata": {"paths": [P[0]]},
     }
 
     def test_every_write_tool_has_args_and_a_level(self):
@@ -508,17 +510,31 @@ class TestCullApply:
         assert result["ok"] is False and "allow_trash" in result["message"]
         assert os.path.exists(library.r1)
 
-    def test_filter_scope_requires_expected_count(self, library):
-        filters = {"path_prefix": library.src + "/"}
+    def test_filter_scope_requires_expected_count(self, library, monkeypatch):
+        monkeypatch.setitem(api_config.VIEWER_CONFIG["defaults"], "hide_rejected", True)
+        filters = {"path_prefix": library.src + "/", "show_rejected": True}
         result = library.env.call(library.token, "cull_apply", {
             "action": "move_rejects", "target_dir": library.target, "filters": filters})
         assert result["error"] == "invalid_input"
         wrong = library.env.call(library.token, "cull_apply", {
             "action": "move_rejects", "target_dir": library.target, "filters": filters, "expected_count": 7})
-        assert wrong["error"] == "invalid_input" and wrong["actual_count"] == 3
+        assert wrong["error"] == "invalid_input" and wrong["actual_count"] == 2
         ok_run = library.env.call(library.token, "cull_apply", {
-            "action": "move_rejects", "target_dir": library.target, "filters": filters, "expected_count": 3})
+            "action": "move_rejects", "target_dir": library.target, "filters": filters, "expected_count": 2})
         assert ok_run["ok"] and ok_run["data"]["would_move_count"] == 2
+
+    def test_filters_hide_rejected_photos_like_search_photos_unless_shown(self, library, monkeypatch):
+        monkeypatch.setitem(api_config.VIEWER_CONFIG["defaults"], "hide_rejected", True)
+        scope = {"path_prefix": library.src + "/"}
+        searched = library.env.call(library.token, "search_photos", {"filters": scope, "show": False})
+        assert searched["data"]["total"] == 1
+        keeps = library.env.call(library.token, "cull_apply", {
+            "action": "copy_keeps", "target_dir": library.target, "filters": scope,
+            "expected_count": searched["data"]["total"]})
+        assert keeps["ok"] is True, keeps
+        refused = library.env.call(library.token, "cull_apply", {
+            "action": "move_rejects", "target_dir": library.target, "filters": scope, "expected_count": 3})
+        assert refused["error"] == "invalid_input" and refused["actual_count"] == 1
 
     def test_a_file_missing_on_disk_is_skipped_with_a_reason(self, library):
         os.remove(library.r2)
@@ -627,3 +643,91 @@ class TestNonceModule:
         with pytest.raises(nonce.NonceCapacityError):
             nonce.issue(1, "act", "h")
         assert nonce._pending == before
+
+
+class TestSetCaption:
+    def call(self, edition, path, caption):
+        env, token = edition
+        return env.call(token, "set_caption", {"path": path, "caption": caption})
+
+    def test_set_then_get_photo_returns_it_and_the_translation_is_cleared(self, edition, photos):
+        conn = sqlite3.connect(_TEST_DB_FILE.name)
+        conn.execute("UPDATE photos SET caption_translated = 'ancienne' WHERE path = ?", (P[0],))
+        conn.commit()
+        conn.close()
+        result = self.call(edition, P[0], "a red door")
+        assert result["ok"] and result["data"]["already"] is False
+        env, token = edition
+        assert env.call(token, "get_photo", {"path": P[0]})["data"]["caption"] == "a red door"
+        assert photo_col(P[0], "caption_translated") is None
+
+    def test_the_same_text_again_is_already_and_writes_nothing(self, edition, photos, counting):
+        self.call(edition, P[1], "same")
+        counting.clear()
+        again = self.call(edition, P[1], "same")
+        assert again["data"]["already"] is True and "set_caption" not in counting
+
+    def test_an_empty_string_clears_the_caption(self, edition, photos):
+        self.call(edition, P[2], "to clear")
+        cleared = self.call(edition, P[2], "")
+        assert cleared["ok"] and cleared["data"]["caption"] is None
+        assert photo_col(P[2], "caption") is None
+
+    def test_a_caption_over_2000_characters_is_invalid_input(self, edition, photos):
+        assert self.call(edition, P[0], "x" * 2001)["error"] == "invalid_input"
+
+    def test_a_readonly_token_is_forbidden(self, agent_app, photos):
+        env = agent_app("legacy")
+        token = env.token(env.login(), "readonly")
+        assert env.call(token, "set_caption", {"path": P[0], "caption": "x"})["error"] == "forbidden_level"
+
+
+def file_hashes(directory):
+    import hashlib
+    return {name: hashlib.md5(open(os.path.join(directory, name), "rb").read()).hexdigest()
+            for name in sorted(os.listdir(directory)) if not name.endswith(".xmp")}
+
+
+class TestExportMetadata:
+    def export(self, lib, paths, **extra):
+        return lib.env.call(lib.token, "export_metadata", {"paths": paths, **extra})
+
+    def test_two_photos_get_sidecars_and_the_originals_are_untouched(self, library):
+        before = file_hashes(library.src)
+        result = self.export(library, [library.r1, library.k1])
+        assert result["ok"], result
+        data = result["data"]
+        assert data["written"] == 2 and data["errors"] == 0 and data["sidecars_count"] == 2
+        assert len([n for n in os.listdir(library.src) if n.endswith(".xmp")]) == 2
+        assert file_hashes(library.src) == before
+
+    def test_a_path_with_no_file_on_disk_is_counted_as_skipped(self, library, photos):
+        data = self.export(library, [library.k1, P[0]])["data"]
+        assert data["written"] == 1 and data["skipped"] == 1 and "skipped_reason" in data
+
+    def test_more_than_100_paths_is_too_large(self, library):
+        assert self.export(library, [f"/x/{i}.jpg" for i in range(101)])["error"] == "too_large"
+
+    def test_an_exiftool_refusal_is_reported_not_swallowed(self, library, monkeypatch):
+        def refuse(*args, **kwargs):
+            raise RuntimeError("exiftool 13.25 corrupts XMP sidecars (bug in 13.23-13.27)")
+        monkeypatch.setattr("api.routers.export.write_metadata", refuse)
+        data = self.export(library, [library.r1, library.k1])["data"]
+        assert data["written"] == 0 and data["errors"] == 2 and "13.23-13.27" in data["first_error"]
+
+    def test_the_call_uses_the_dedicated_timeout_not_call_timeout_s(self, library, monkeypatch):
+        seen = {}
+        real = internal_client.InternalClient.call
+
+        async def spy(self, grant, tool, **kw):
+            if tool == "export_metadata":
+                seen["timeout"] = kw["timeout"]
+            return await real(self, grant, tool, **kw)
+        monkeypatch.setattr(internal_client.InternalClient, "call", spy)
+        self.export(library, [library.k1])
+        assert seen["timeout"] == 180 != api_config.mcp_settings()["call_timeout_s"]
+
+    def test_a_user_token_is_forbidden(self, agent_app, library):
+        env = agent_app("legacy")
+        token = env.token(env.login(), "user")
+        assert env.call(token, "export_metadata", {"paths": [library.k1]})["error"] == "forbidden_level"

@@ -167,6 +167,23 @@ class PersonFacesResponse(BaseModel):
     faces: list[PersonFace]
 
 
+class PossibleFace(BaseModel):
+    """One face that looks like the person, with its current owner (if any)."""
+
+    face_id: int
+    photo_path: str
+    person_id: Optional[int] = None
+    person_name: Optional[str] = None
+    similarity: float
+    distance: float
+
+
+class PossibleFacesResponse(BaseModel):
+    faces: list[PossibleFace]
+    faces_scanned: int
+    candidates: int
+
+
 class PhotoFace(BaseModel):
     """A face row as ``GET /api/photo/faces`` emits it, with its assignment."""
 

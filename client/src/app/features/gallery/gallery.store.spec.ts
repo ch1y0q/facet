@@ -1090,6 +1090,105 @@ describe('GalleryStore', () => {
     });
   });
 
+  describe('pinned list (showPaths)', () => {
+    const paths = ['/b.jpg', '/a.jpg'];
+    const byPaths = () => of({ photos: [makePhoto({ path: '/b.jpg' }), makePhoto({ path: '/a.jpg' })], total: 2, missing: ['/gone.jpg'] });
+
+    beforeEach(async () => {
+      apiGet.mockImplementation((path: string) => of(path === '/config' ? makeConfig() : makePhotosResponse()));
+      apiPost.mockImplementation((path: string) => path === '/photos/by_paths' ? byPaths() : of({}));
+      await store.showPaths(paths);
+      apiGet.mockClear();
+    });
+
+    const expectFilteredReload = () => {
+      expect(store.pinnedPaths()).toBeNull();
+      expect(apiGet.mock.calls.some(c => c[0] === '/photos')).toBe(true);
+    };
+
+    it('posts the paths to /photos/by_paths, never GET /photos, and keeps the requested order', () => {
+      expect(apiPost).toHaveBeenCalledWith('/photos/by_paths', { paths });
+      expect(apiGet).not.toHaveBeenCalled();
+      expect(store.photos().map(p => p.path)).toEqual(paths);
+      expect(store.total()).toBe(2);
+      expect(store.hasMore()).toBe(false);
+      expect(store.pinnedMissing()).toEqual(['/gone.jpg']);
+      expect(store.canScopeSelectionToView()).toBe(false);
+      expect(store.filterPayload()).toBeNull();
+    });
+
+    it('updateFilter drops the pin and loads the filtered view', async () => {
+      await store.updateFilter('camera', 'X100');
+      expectFilteredReload();
+    });
+
+    it('updateFilterDebounced drops the pin once its reload fires', async () => {
+      vi.useFakeTimers();
+      try {
+        store.updateFilterDebounced('min_score', '7');
+        await vi.advanceTimersByTimeAsync(400);
+      } finally {
+        vi.useRealTimers();
+      }
+      expectFilteredReload();
+    });
+
+    it('loadConfig drops the pin (it replaces the filters wholesale)', async () => {
+      await store.loadConfig();
+      expect(store.pinnedPaths()).toBeNull();
+    });
+
+    it('showAllHidden drops the pin and loads the filtered view', async () => {
+      store.showAllHidden();
+      await vi.waitFor(() => expect(apiGet.mock.calls.some(c => c[0] === '/photos')).toBe(true));
+      expect(store.pinnedPaths()).toBeNull();
+    });
+
+    it('restoreHidden drops the pin and loads the filtered view', async () => {
+      store.hiddenFiltersStash.set({
+        hide_blinks: true, hide_bursts: true, hide_duplicates: true, hide_brackets: true, hide_panoramas: true,
+      });
+      store.restoreHidden();
+      await vi.waitFor(() => expect(apiGet.mock.calls.some(c => c[0] === '/photos')).toBe(true));
+      expect(store.pinnedPaths()).toBeNull();
+    });
+
+    it('nextPage keeps the pin and fetches nothing', async () => {
+      store.hasMore.set(true);
+      await store.nextPage();
+      expect(store.pinnedPaths()).toEqual(paths);
+      expect(apiGet).not.toHaveBeenCalled();
+    });
+
+    it('reloadPhotos keeps the pin and re-posts the paths', async () => {
+      apiPost.mockClear();
+      await store.reloadPhotos();
+      expect(store.pinnedPaths()).toEqual(paths);
+      expect(apiPost).toHaveBeenCalledWith('/photos/by_paths', { paths });
+      expect(apiGet.mock.calls.some(c => c[0] === '/photos')).toBe(false);
+    });
+
+    it('updateFilters drops the pin and loads the filtered view', async () => {
+      await store.updateFilters({ camera: 'X100' });
+      expectFilteredReload();
+    });
+
+    it('resetFilters drops the pin and loads the filtered view', async () => {
+      await store.resetFilters();
+      expectFilteredReload();
+    });
+
+    it('Keep top N% refuses while a list is pinned, calling nothing', async () => {
+      expect(await store.selectBottomPercent(50)).toBeNull();
+      expect(apiGet.mock.calls.some(c => String(c[0]).includes('select_bottom_percent'))).toBe(false);
+    });
+
+    it('clearPinned reloads the filtered view', async () => {
+      await store.clearPinned();
+      expectFilteredReload();
+    });
+  });
+
   describe('syncUrl (via updateFilter)', () => {
     beforeEach(() => {
       apiGet.mockReturnValue(of(makePhotosResponse()));

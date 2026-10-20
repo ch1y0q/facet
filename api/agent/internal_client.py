@@ -44,6 +44,8 @@ ROUTE_ALLOWLIST: Mapping[str, RouteSpec] = MappingProxyType({
     "search_photos": RouteSpec("GET", "/api/photos", "readonly"),
     "semantic_search": RouteSpec("GET", "/api/search", "readonly"),
     "get_photo": RouteSpec("GET", "/api/photo", "readonly"),
+    "thumbnail": RouteSpec("GET", "/thumbnail", "readonly"),
+    "possible_faces": RouteSpec("GET", "/api/person/{person_id}/possible_faces", "readonly"),
     "similar_photos": RouteSpec("GET", "/api/similar_photos/{path}", "readonly"),
     "filter_options.cameras": RouteSpec("GET", "/api/filter_options/cameras", "readonly"),
     "filter_options.lenses": RouteSpec("GET", "/api/filter_options/lenses", "readonly"),
@@ -74,6 +76,8 @@ ROUTE_ALLOWLIST: Mapping[str, RouteSpec] = MappingProxyType({
     "library_stats.timeline_years": RouteSpec("GET", "/api/timeline/years", "readonly"),
     "library_stats.timeline_months": RouteSpec("GET", "/api/timeline/months", "readonly"),
     "photos_count": RouteSpec("GET", "/api/photos/count", "readonly"),
+    "photos_paths": RouteSpec("GET", "/api/photos/paths", "readonly"),
+    "photos_by_paths": RouteSpec("POST", "/api/photos/by_paths", "readonly"),
     # Write routes. ``user`` = the per-photo require_auth routes a regular account
     # may call in the UI; ``edition`` = everything gated by require_edition.
     "set_rating": RouteSpec("POST", "/api/photo/set_rating", "user", write=True),
@@ -84,6 +88,9 @@ ROUTE_ALLOWLIST: Mapping[str, RouteSpec] = MappingProxyType({
     "batch_rating": RouteSpec("POST", "/api/photos/batch_rating", "edition", write=True),
     "batch_manual_tags": RouteSpec("POST", "/api/photos/batch_manual_tags", "edition", write=True),
     "clear_junk": RouteSpec("POST", "/api/photo/clear_junk", "edition", write=True),
+    "assign_faces": RouteSpec("POST", "/api/persons/{person_id}/assign_faces", "edition", write=True),
+    "set_caption": RouteSpec("PUT", "/api/caption", "edition", write=True),
+    "export_metadata": RouteSpec("POST", "/api/export/sidecars", "edition", write=True),
     "create_album": RouteSpec("POST", "/api/albums", "edition", write=True),
     "album_add_photos": RouteSpec("POST", "/api/albums/{album_id}/photos", "edition", write=True),
     "album_remove_photos": RouteSpec("DELETE", "/api/albums/{album_id}/photos", "edition", write=True),
@@ -121,6 +128,8 @@ def _status_to_error(status: int, detail: Any) -> dict:
         return err("forbidden_level", message)
     if status == 404:
         return err("not_found", message)
+    if status == 413:
+        return err("too_large", message)
     if status in (400, 412, 422):
         return err("invalid_input", message if issues is None else "Invalid input",
                    **({"issues": issues} if issues else {}))
@@ -141,30 +150,27 @@ class InternalClient:
         self._allowlist = allowlist
         self._peer_ip = peer_ip
 
-    async def call(
-        self,
-        grant: tokens.TokenGrant,
-        tool: str,
-        *,
-        query: Optional[Mapping[str, Any]] = None,
-        path_args: Optional[Mapping[str, Any]] = None,
-        json: Any = None,
-        timeout: float = 30.0,
-    ) -> dict:
+    async def _send(self, grant: tokens.TokenGrant, tool: str, query: Optional[Mapping[str, Any]],
+                    path_args: Optional[Mapping[str, Any]], json: Any, timeout: float):
+        """The allow-list, level and path checks, then the in-process request.
+
+        Returns ``(error_envelope, None)`` or ``(None, response)``.
+        """
         spec = self._allowlist.get(tool)
         if spec is None:
             raise NotAllowedError(tool)
         resolved = await asyncio.to_thread(grant.resolve)
         if resolved is None:
-            return err("forbidden_level", "This token is no longer valid")
+            return err("forbidden_level", "This token is no longer valid"), None
         if tokens.level_rank(resolved.level) < tokens.level_rank(spec.min_level):
             return err("forbidden_level",
                        f"This token's level is {resolved.level}; {tool} needs "
-                       f"{tokens.effective_requirement(spec.min_level)}")
+                       f"{tokens.effective_requirement(spec.min_level)}"), None
         for value in (path_args or {}).values():
             text = str(value)
             if not text or any(part in (".", "..") for part in text.split("/")):
-                return err("invalid_input", "A path argument may not be empty or contain '.' or '..' segments")
+                return err("invalid_input",
+                           "A path argument may not be empty or contain '.' or '..' segments"), None
         headers = {}
         claims = resolved.jwt_claims()
         if claims is not None:
@@ -180,10 +186,25 @@ class InternalClient:
                 response = await asyncio.wait_for(client.request(
                     spec.method, path, params=params or None, json=json, headers=headers), timeout)
         except asyncio.TimeoutError:
-            return self._timed_out(spec, tool)
+            return self._timed_out(spec, tool), None
         except (httpx.HTTPError, OSError) as ex:
             logger.warning("Agent upstream call %s failed: %r", tool, ex)
-            return self._timed_out(spec, tool)
+            return self._timed_out(spec, tool), None
+        return None, response
+
+    async def call(
+        self,
+        grant: tokens.TokenGrant,
+        tool: str,
+        *,
+        query: Optional[Mapping[str, Any]] = None,
+        path_args: Optional[Mapping[str, Any]] = None,
+        json: Any = None,
+        timeout: float = 30.0,
+    ) -> dict:
+        failure, response = await self._send(grant, tool, query, path_args, json, timeout)
+        if response is None:
+            return failure
         try:
             body = response.json() if response.content else None
         except ValueError:
@@ -192,6 +213,28 @@ class InternalClient:
             detail = body.get("detail") if isinstance(body, dict) else None
             return _status_to_error(response.status_code, detail)
         return ok(body)
+
+    async def call_bytes(
+        self,
+        grant: tokens.TokenGrant,
+        tool: str,
+        *,
+        query: Optional[Mapping[str, Any]] = None,
+        timeout: float = 30.0,
+    ) -> dict:
+        """Like ``call`` for a route that answers image bytes: ``ok({"bytes", "mime"})``."""
+        failure, response = await self._send(grant, tool, query, None, None, timeout)
+        if response is None:
+            return failure
+        if response.status_code >= 400:
+            try:
+                body = response.json()
+            except ValueError:
+                body = None
+            detail = body.get("detail") if isinstance(body, dict) else None
+            return _status_to_error(response.status_code, detail)
+        return ok({"bytes": response.content,
+                   "mime": response.headers.get("content-type", "image/jpeg").split(";")[0]})
 
     @staticmethod
     def _timed_out(spec: RouteSpec, tool: str) -> dict:

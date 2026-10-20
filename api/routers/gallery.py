@@ -16,7 +16,9 @@ from api.auth import CurrentUser, get_optional_user
 from api.config import VIEWER_CONFIG, _FULL_CONFIG, cull_allow_trash
 from api.database import get_async_db, get_db
 from api.models.gallery import (
-    GalleryParams, Photo, PhotoCountResponse, PhotoPathsResponse, PhotosResponse,
+    BY_PATHS_MISSING_CAP, GALLERY_PAGING_KEYS, GalleryParams, Photo, PhotoCountResponse,
+    PhotoPathsResponse, PhotosByPathsRequest, PhotosByPathsResponse, PhotosResponse,
+    gallery_filter_keys,
 )
 from api.models.discovery import PhotoSetResponse, PhotoTypeCountsResponse, ViewerConfigResponse
 from api.db_helpers import (
@@ -1085,6 +1087,18 @@ async def api_photos_paths(
     return {"total": len(paths), "paths": paths}
 
 
+async def _assemble_gallery_rows(rows, conn) -> list[dict]:
+    """Gallery rows as the wire carries them: tags split, date formatted, persons attached.
+
+    Shared by the listing and ``/api/photos/by_paths`` so the two cannot drift.
+    """
+    photos = split_photo_tags(rows, VIEWER_CONFIG['display']['tags_per_photo'])
+    for photo in photos:
+        photo['date_formatted'] = format_date(photo.get('date_taken'))
+    await attach_person_data_async(photos, conn)
+    return photos
+
+
 @router.get("/api/photos", response_model=PhotosResponse,
             response_model_exclude_unset=True)
 async def api_photos(
@@ -1184,13 +1198,7 @@ async def api_photos(
             else:
                 rows = []
 
-            tags_limit = VIEWER_CONFIG['display']['tags_per_photo']
-            photos = split_photo_tags(rows, tags_limit)
-
-            for photo in photos:
-                photo['date_formatted'] = format_date(photo.get('date_taken'))
-
-            await attach_person_data_async(photos, conn)
+            photos = await _assemble_gallery_rows(rows, conn)
 
     except sqlite3.Error:
         logger.exception("Failed to fetch gallery photos")
@@ -1208,6 +1216,57 @@ async def api_photos(
         'sort_col': sort_col,
         'hidden_summary': hidden_summary,
     }
+
+
+@router.post("/api/photos/by_paths", response_model=PhotosByPathsResponse,
+             response_model_exclude_unset=True)
+async def api_photos_by_paths(
+    body: PhotosByPathsRequest,
+    user: Optional[CurrentUser] = Depends(get_optional_user),
+):
+    """The named photos, in the requested order, through the gallery's visibility and filters.
+
+    The explicit-list counterpart of ``/api/photos``: no paging and no sort, because the
+    caller chose the rows. Filter keys are the gallery's own (``gallery_filter_keys``);
+    paging and ordering keys are dropped and anything else is a 422. The viewer's default
+    ``type`` and the hide toggles are NOT applied -- a list the caller named is shown whole
+    unless it asks otherwise -- so ``type`` is set to ``''`` only when the caller gave none.
+    """
+    unknown = sorted(set(body.filters) - gallery_filter_keys())
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"Unknown filter key(s): {', '.join(unknown)}")
+    qp = {key: ('1' if value is True else '0' if value is False else str(value))
+          for key, value in body.filters.items() if key not in GALLERY_PAGING_KEYS}
+    qp.setdefault('type', '')
+    try:
+        _, params = _prepare_gallery_params(qp)
+    except ValidationError as e:
+        _raise_422_for_invalid_gallery_params(e, logger, "By-paths parameter validation failed: %s")
+    wanted = list(dict.fromkeys(body.paths))
+    try:
+        async with get_async_db() as conn:
+            user_id = user.user_id if user else None
+            from_clause, where_str, all_params = await gallery_scope_sql_async(
+                conn, qp, user_id, prepared=params)
+            select_cols = build_photo_select_columns(conn=None, user_id=user_id)
+            select_cols = with_top_picks_alias(select_cols, params.get('top_picks_filter') == '1')
+            marks = ','.join('?' * len(wanted))
+            cur = await conn.execute(
+                f"SELECT {', '.join(select_cols)} FROM {from_clause}{where_str} "
+                f"AND photos.path IN ({marks})",
+                all_params + wanted,
+            )
+            rows = await cur.fetchall()
+            await cur.close()
+            photos = await _assemble_gallery_rows(rows, conn)
+    except sqlite3.Error:
+        logger.exception("Failed to fetch photos by path")
+        raise HTTPException(status_code=500, detail='Internal server error')
+    sanitize_float_values(photos)
+    by_path = {photo['path']: photo for photo in photos}
+    ordered = [by_path[path] for path in wanted if path in by_path]
+    missing = [path for path in wanted if path not in by_path]
+    return {'photos': ordered, 'total': len(ordered), 'missing': missing[:BY_PATHS_MISSING_CAP]}
 
 
 async def _enrich_similar_with_full_rows_async(page_results, conn, user_id):

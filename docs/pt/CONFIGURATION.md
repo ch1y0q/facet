@@ -2594,6 +2594,7 @@ Expõe as ferramentas descritas em [Agentes de IA (MCP)](AGENTS.md) em `POST /mc
       "bridge": true,
       "max_rows": 100,
       "max_bytes": 60000,
+      "max_image_bytes": 262144,
       "call_timeout_s": 30,
       "semantic_timeout_s": 120,
       "rate_per_min": 120,
@@ -2610,6 +2611,7 @@ Expõe as ferramentas descritas em [Agentes de IA (MCP)](AGENTS.md) em `POST /mc
 | `bridge` | `true` | Se a ponte com o separador do navegador (`/api/mcp/bridge`) aceita WebSockets e as ferramentas `ui_*` podem chegar a um separador. Com `false`, a ponte recusa a ligação (código de fecho 4404) e as ferramentas `ui_*` devolvem um erro claro. Exige um único worker. |
 | `max_rows` | `100` | Máximo de linhas num resultado de ferramenta (1 a 500). As linhas a mais são descartadas e `truncated: true` é definido. |
 | `max_bytes` | `60000` | Tamanho serializado máximo de um resultado de ferramenta em bytes (4000 a 500000). |
+| `max_image_bytes` | `262144` | Tamanho máximo em bytes da imagem devolvida por uma ferramenta, `get_thumbnail` ou `contact_sheet` (de 32768 a 2097152); não contada em `max_bytes`. |
 | `call_timeout_s` | `30` | Tempo limite de uma chamada de ferramenta em segundos (1 a 300). Também limita a espera de uma chamada `ui_*` pelo separador do navegador (`tab_timeout`). |
 | `semantic_timeout_s` | `120` | Tempo limite de `semantic_search` em segundos (1 a 300); carrega o modelo de embeddings e precisa de mais. |
 | `rate_per_min` | `120` | Chamadas de ferramentas por minuto e por token (mínimo 1). |

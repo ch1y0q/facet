@@ -4,6 +4,8 @@ import { TestBed } from '@angular/core/testing';
 import { AuthService, AuthStatus } from '../services/auth.service';
 import { AgentWebMcpService, IS_SECURE_CONTEXT, WEBMCP_POLYFILL_LOADER } from './agent-web-mcp.service';
 import { UiToolDefinition, WebMcpToolRegistry } from './webmcp-registry.service';
+import contractFile from './ui-tools.schema.json';
+import { UiToolContractFile } from './ui-tool.types';
 
 interface RegisteredTool {
   name: string;
@@ -88,6 +90,27 @@ describe('AgentWebMcpService', () => {
     expect(service.state()).toBe('active');
     expect(live.get('ui_get_selection')?.annotations).toEqual({ readOnlyHint: true, untrustedContentHint: true });
     expect(live.get('ui_navigate')?.annotations).toEqual({ readOnlyHint: false, untrustedContentHint: false });
+  });
+
+  it('declares every tool of the generated contract in-page, ui_get_context included', async () => {
+    TestBed.resetTestingModule();
+    live.clear();
+    const contract = contractFile as unknown as UiToolContractFile;
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: AuthService, useValue: { status: signal(status()) } },
+        { provide: WEBMCP_POLYFILL_LOADER, useValue: loader },
+        { provide: IS_SECURE_CONTEXT, useValue: () => true },
+        {
+          provide: WebMcpToolRegistry,
+          useValue: { tools: contract.tools.map(t => tool(t.name, t.annotations.readOnlyHint, t.annotations.untrustedContentHint)), ready: signal(true), load: () => Promise.resolve() },
+        },
+      ],
+    });
+    TestBed.inject(AgentWebMcpService);
+    await settle();
+    expect([...live.keys()].sort()).toEqual(contract.tools.map(t => t.name).sort());
+    expect(live.has('ui_get_context')).toBe(true);
   });
 
   it('runs a tool through the registry envelope', async () => {

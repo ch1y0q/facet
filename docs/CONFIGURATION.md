@@ -2574,6 +2574,7 @@ Exposes the tools described in [AI Agents (MCP)](AGENTS.md) at `POST /mcp`: read
       "bridge": true,
       "max_rows": 100,
       "max_bytes": 60000,
+      "max_image_bytes": 262144,
       "call_timeout_s": 30,
       "semantic_timeout_s": 120,
       "rate_per_min": 120,
@@ -2590,6 +2591,7 @@ Exposes the tools described in [AI Agents (MCP)](AGENTS.md) at `POST /mcp`: read
 | `bridge` | `true` | Whether the browser-tab bridge (`/api/mcp/bridge`) accepts WebSockets and the `ui_*` tools can reach a tab. When `false`, the bridge refuses the connection (close code 4404) and `ui_*` tools return an error saying so. Needs a single worker. |
 | `max_rows` | `100` | Maximum rows in one tool result (1 to 500). Extra rows are dropped and `truncated: true` is set. |
 | `max_bytes` | `60000` | Maximum serialized size of one tool result in bytes (4000 to 500000). |
+| `max_image_bytes` | `262144` | Maximum size in bytes of the image a tool returns, `get_thumbnail` or `contact_sheet` (32768 to 2097152); not counted in `max_bytes`. |
 | `call_timeout_s` | `30` | Timeout for one tool call in seconds (1 to 300). It also bounds how long a `ui_*` call waits for the browser tab (`tab_timeout`). |
 | `semantic_timeout_s` | `120` | Timeout for `semantic_search` in seconds (1 to 300); it loads the embedding model, so it needs more. |
 | `rate_per_min` | `120` | Tool calls per minute per token (minimum 1). |

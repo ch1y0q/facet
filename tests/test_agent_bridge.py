@@ -264,6 +264,19 @@ class TestForwarding:
         assert [c["tool"] for c in tab.calls] == ["ui_get_gallery_view"]
         assert "tab_id" not in tab.calls[0]["args"]
 
+    def test_show_photos_sends_one_frame_and_bounds_the_list(self, agent_app, fake_tab):
+        env = agent_app("open")
+        tab = fake_tab(env, None, reply=lambda call: {"ok": True, "data": {"shown": 2, "missing": [], "total": 2}})
+        token = env.token(env.login())
+        paths = ["/a.jpg", "/b.jpg"]
+        result = env.call(token, "ui_show_photos", {"paths": paths})
+        assert result["ok"] is True and result["data"]["shown"] == 2
+        assert [(c["tool"], c["args"]) for c in tab.calls] == [("ui_show_photos", {"paths": paths})]
+        for bad in ([], [f"/p{n}.jpg" for n in range(201)], [""]):
+            refused = env.call(token, "ui_show_photos", {"paths": bad})
+            assert refused["ok"] is False and refused["error"] == "invalid_input"
+        assert len(tab.calls) == 1
+
     def test_tab_error_codes_are_whitelisted_and_bounded(self, agent_app, fake_tab):
         env = agent_app("open")
         fake_tab(env, None, reply=lambda call: {"ok": False, "error": "rm -rf", "message": "x" * 5000})
@@ -597,7 +610,7 @@ class TestUiTools:
         env = agent_app("open")
         token = env.token(env.login())
         tools = {t["name"]: t for t in env.rpc(token, "tools/list").json()["result"]["tools"]}
-        read_only = {"ui_get_gallery_view", "ui_get_selection"}
+        read_only = {"ui_get_gallery_view", "ui_get_selection", "ui_get_context"}
         for tool in UI_TOOLS:
             listed = tools[tool.name]
             assert listed["annotations"]["readOnlyHint"] is (tool.name in read_only), tool.name
@@ -649,6 +662,19 @@ class TestUiTools:
         tab = fake_tab(env, None)
         result = env.call(env.token(env.login()), "ui_show_culling_group", {"type": "bracket", "group_id": 4})
         assert result["ok"] is True and tab.calls[0]["args"] == {"type": "bracket", "group_id": 4}
+
+    def test_get_context_is_one_empty_frame_and_the_tab_answer_passes_through(self, agent_app, fake_tab):
+        env = agent_app("open")
+        body = {"route": "/photo", "query_path": "a.jpg", "selection": {"scope": "paths", "count": 0},
+                "gallery": None, "mounted_actions": [], "level": "readonly", "actions": []}
+        tab = fake_tab(env, None, reply=lambda call: {"ok": True, "data": body})
+        result = env.call(env.token(env.login()), "ui_get_context")
+        assert result["ok"] is True
+        data = result["data"]
+        assert {k: v for k, v in data.items() if k not in ("actions", "level")} == \
+            {k: v for k, v in body.items() if k not in ("actions", "level")}
+        assert data["level"] == "readonly" and data["actions"] and all(row["tools"] for row in data["actions"])
+        assert [(c["tool"], c["args"]) for c in tab.calls] == [("ui_get_context", {})]
 
     def test_ui_tools_need_only_readonly(self, agent_app, fake_tab):
         env = agent_app("legacy")

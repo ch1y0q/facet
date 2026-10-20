@@ -2597,6 +2597,7 @@ Espone gli strumenti descritti in [Agenti IA (MCP)](AGENTS.md) su `POST /mcp`: l
       "bridge": true,
       "max_rows": 100,
       "max_bytes": 60000,
+      "max_image_bytes": 262144,
       "call_timeout_s": 30,
       "semantic_timeout_s": 120,
       "rate_per_min": 120,
@@ -2613,6 +2614,7 @@ Espone gli strumenti descritti in [Agenti IA (MCP)](AGENTS.md) su `POST /mcp`: l
 | `bridge` | `true` | Se il ponte verso la scheda del browser (`/api/mcp/bridge`) accetta WebSocket e gli strumenti `ui_*` possono raggiungere una scheda. Con `false`, il ponte rifiuta la connessione (codice di chiusura 4404) e gli strumenti `ui_*` restituiscono un errore esplicito. Richiede un solo worker. |
 | `max_rows` | `100` | Numero massimo di righe in un risultato di strumento (da 1 a 500). Le righe in eccesso vengono scartate e si imposta `truncated: true`. |
 | `max_bytes` | `60000` | Dimensione serializzata massima di un risultato di strumento in byte (da 4000 a 500000). |
+| `max_image_bytes` | `262144` | Dimensione massima in byte dell'immagine restituita da uno strumento, `get_thumbnail` o `contact_sheet` (da 32768 a 2097152); non conteggiata in `max_bytes`. |
 | `call_timeout_s` | `30` | Timeout di una chiamata di strumento in secondi (da 1 a 300). Limita anche l'attesa di una chiamata `ui_*` verso la scheda del browser (`tab_timeout`). |
 | `semantic_timeout_s` | `120` | Timeout di `semantic_search` in secondi (da 1 a 300); carica il modello di embedding e richiede più tempo. |
 | `rate_per_min` | `120` | Chiamate di strumento al minuto per token (minimo 1). |

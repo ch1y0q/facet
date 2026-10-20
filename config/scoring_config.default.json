@@ -3733,6 +3733,7 @@
       "bridge": true,
       "max_rows": 100,
       "max_bytes": 60000,
+      "max_image_bytes": 262144,
       "call_timeout_s": 30,
       "semantic_timeout_s": 120,
       "rate_per_min": 120,

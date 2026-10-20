@@ -1035,6 +1035,11 @@
     "set_scope": {
       "message": "正在显示一组照片：{kind}"
     },
+    "pinned": {
+      "chip": "助手挑选了 {count} 张照片",
+      "chip_plural": "助手挑选了 {count} 张照片",
+      "clear": "返回常规视图"
+    },
     "all_photos": "全部照片",
     "sort": "排序方式",
     "sort_aggregate": "综合评分",

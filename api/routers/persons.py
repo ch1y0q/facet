@@ -14,9 +14,11 @@ from api.auth import CurrentUser, require_edition, require_authenticated
 from api.config import VIEWER_CONFIG, invalidate_stats_cache
 from api.database import get_async_db, get_db
 from api.db_helpers import (
-    assert_faces_visible, reassign_faces_to_person, person_visibility_exists,
+    assert_faces_visible, get_visibility_clause, reassign_faces_to_person, person_visibility_exists,
+    select_in_chunks,
 )
 from db import person_not_hidden_clause
+from db.embedding_space import ARCFACE_MODEL, active_embedding_model, tag_matches
 from db.person_centroids import recompute_person_centroid
 from api.models.culling import PersonsListResponse, PersonsNeedsNamingResponse
 
@@ -67,6 +69,10 @@ class CreatePersonRequest(BaseModel):
 
 class AssignFacesRequest(BaseModel):
     face_ids: List[int] = Field(min_length=1, max_length=500)
+    # Additive, for the assistant tool: ``tolerant`` reports what it skipped instead of failing the
+    # whole call, ``only_unassigned`` leaves faces another person already owns alone.
+    only_unassigned: bool = False
+    tolerant: bool = False
 
 
 class SplitPersonRequest(BaseModel):
@@ -519,6 +525,50 @@ def api_create_person(
             raise HTTPException(status_code=500, detail='Internal server error')
 
 
+def _assign_tolerant(conn, user_id, person_id, body):
+    """Assign what may be assigned and say what was not, inside the caller's transaction.
+
+    An unknown id and a face on a photo the caller cannot see are both ``missing`` (answering
+    differently would be an existence oracle). The rest are skipped by reason, and only the
+    remainder is reassigned, so ``assigned_count`` is what really moved.
+    """
+    face_ids = list(dict.fromkeys(body.face_ids))
+    vis_sql, vis_params = get_visibility_clause(user_id, table_alias='ph')
+    found = {
+        row[0]: row for row in select_in_chunks(
+            conn,
+            "SELECT f.id, f.person_id, f.embedding_model, pe.is_hidden FROM faces f "
+            "JOIN photos ph ON ph.path = f.photo_path LEFT JOIN persons pe ON pe.id = f.person_id "
+            f"WHERE f.id IN ({{placeholders}}) AND {vis_sql}", face_ids, after=vis_params)
+    }
+    target = conn.execute(
+        "SELECT centroid, centroid_model FROM persons WHERE id = ?", (person_id,)).fetchone()
+    model = (target[1] or ARCFACE_MODEL) if target and target[0] else active_embedding_model()
+    report = {"missing": [], "already": [], "skipped_model": [], "skipped_hidden": [], "skipped_assigned": []}
+    eligible = []
+    for face_id in face_ids:
+        row = found.get(face_id)
+        if row is None:
+            report["missing"].append(face_id)
+        elif row[1] == person_id:
+            report["already"].append(face_id)
+        elif not tag_matches(row[2], model):
+            report["skipped_model"].append(face_id)
+        elif row[1] is not None and row[3]:
+            report["skipped_hidden"].append(face_id)
+        elif row[1] is not None and body.only_unassigned:
+            report["skipped_assigned"].append(face_id)
+        else:
+            eligible.append(face_id)
+    if eligible:
+        moved = reassign_faces_to_person(conn, person_id, eligible)
+        face_count, deleted = moved["face_count"], moved["deleted_persons"]
+    else:
+        row = conn.execute("SELECT face_count FROM persons WHERE id = ?", (person_id,)).fetchone()
+        face_count, deleted = (row[0] if row else 0), []
+    return {"assigned_count": len(eligible), "face_count": face_count, "deleted_persons": deleted, **report}
+
+
 @router.post("/api/persons/{person_id}/assign_faces")
 def api_assign_faces_batch(
     person_id: int,
@@ -535,6 +585,11 @@ def api_assign_faces_batch(
                 raise HTTPException(status_code=404, detail="Target person not found")
 
             _assert_person_assignable(conn, user.user_id if user else None, person_id)
+            if body.tolerant:
+                report = _assign_tolerant(conn, user.user_id if user else None, person_id, body)
+                conn.commit()
+                invalidate_stats_cache()
+                return {"success": True, "person_id": person_id, **report}
             assert_faces_visible(conn, user.user_id if user else None, body.face_ids)
             result = reassign_faces_to_person(conn, person_id, body.face_ids)
             face_count = result["face_count"]

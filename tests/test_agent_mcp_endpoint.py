@@ -16,7 +16,7 @@ from tests.conftest import AGENT_DIR
 
 READ_TOOLS = {
     "search_photos", "semantic_search", "get_photo", "similar_photos", "filter_options",
-    "list_persons", "list_albums", "library_stats", "status",
+    "list_persons", "list_albums", "library_stats", "status", "available_actions", "get_thumbnail", "contact_sheet", "possible_faces",
 }
 
 UI_TOOL_NAMES = {tool.name for tool in UI_TOOLS}
@@ -792,3 +792,18 @@ class TestHideDefaults:
         assert sorted(r["filename"] for r in hidden["data"]["rows"]) == ["a.jpg", "c.jpg"]
         shown = env.call(token, "search_photos", {"filters": {**scope, "hide_blinks": False}})
         assert sorted(r["filename"] for r in shown["data"]["rows"]) == ["a.jpg", "b.jpg", "c.jpg"]
+
+    def test_rejected_photos_are_hidden_like_the_tab_does(self, agent_app, photos):
+        import sqlite3
+        from tests.conftest import _TEST_DB_FILE
+        env = agent_app("open")
+        api_config.VIEWER_CONFIG["defaults"]["hide_rejected"] = True
+        with sqlite3.connect(_TEST_DB_FILE.name) as conn:
+            conn.execute("UPDATE photos SET is_rejected = 1 WHERE path = ?", (AGENT_DIR + "b.jpg",))
+        token = env.token(env.login())
+        scope = {"path_prefix": AGENT_DIR}
+        hidden = env.call(token, "search_photos", {"filters": scope})
+        assert sorted(r["filename"] for r in hidden["data"]["rows"]) == ["a.jpg", "c.jpg"]
+        assert hidden["data"]["total"] == 2
+        shown = env.call(token, "search_photos", {"filters": {**scope, "show_rejected": True}})
+        assert [r["filename"] for r in shown["data"]["rows"]] == ["b.jpg"]

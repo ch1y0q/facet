@@ -2,6 +2,8 @@
 
 import json
 import re
+
+import pytest
 from pathlib import Path
 
 from api.agent.ui_tools import UI_TOOLS, render_client_json, tools_version
@@ -26,6 +28,16 @@ def test_json_shape_for_the_client_checker():
         assert {"readOnlyHint", "destructiveHint", "untrustedContentHint"} <= set(tool["annotations"])
 
 
+def test_json_carries_the_jobs_table_for_the_client():
+    from api.agent.actions import ACTIONS, FACTS
+    rows = json.loads(render_client_json())["actions"]
+    assert [r["id"] for r in rows] == [a.id for a in ACTIONS]
+    for row in rows:
+        assert set(row) == {"id", "summary", "when", "tools"}
+        assert set(row["when"]) <= FACTS
+        assert all(set(t) == {"name", "required_level"} for t in row["tools"])
+
+
 def test_version_changes_with_a_description():
     before = tools_version()
     original = UI_TOOLS[0]
@@ -37,3 +49,13 @@ def test_version_changes_with_a_description():
     finally:
         module.UI_TOOLS = (original,) + module.UI_TOOLS[1:]
     assert tools_version() == before
+
+
+def test_ui_show_photos_path_bound_is_in_the_contract_and_enforced():
+    from api.agent.ui_tools import UiShowPhotos
+    items = UiShowPhotos.model_json_schema()["properties"]["paths"]["items"]
+    assert items["minLength"] == 1 and items["maxLength"] == 4096
+    with pytest.raises(ValueError):
+        UiShowPhotos(paths=["x" * 4097])
+    with pytest.raises(ValueError):
+        UiShowPhotos(paths=[""])

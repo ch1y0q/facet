@@ -17,7 +17,7 @@ The tool set is static: the stateless transport has no channel to push
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Any, Literal, Optional, Union
+from typing import Annotated, Any, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, create_model, field_validator, model_validator
 
@@ -146,6 +146,16 @@ class UiOpenPhoto(UiArgs):
     path: str = Field(min_length=1, max_length=4096, description="Path of the photo to open.")
 
 
+MAX_SHOW_PATHS = 200
+
+
+class UiShowPhotos(UiArgs):
+    paths: list[Annotated[str, Field(min_length=1, max_length=4096)]] = Field(
+        min_length=1, max_length=MAX_SHOW_PATHS,
+        description="Photo paths to show, in this order, as the gallery's own list. The user's "
+                    "filters and sort are left untouched; any filter change replaces the list.")
+
+
 class UiSelectPhotos(UiArgs):
     paths: Optional[list[str]] = Field(
         default=None, max_length=MAX_SELECT_PATHS,
@@ -180,6 +190,10 @@ class UiGetSelection(UiArgs):
     pass
 
 
+class UiGetContext(UiArgs):
+    pass
+
+
 class UiNextPage(UiArgs):
     pass
 
@@ -211,6 +225,11 @@ UI_TOOLS: tuple[UiTool, ...] = (
            "photo paths and the selection count.",
            UiGetGalleryView, True),
     UiTool("ui_open_photo", "Open one photo in the user's tab (the detail view).", UiOpenPhoto, False),
+    UiTool("ui_show_photos",
+           "Show exactly these photos, in this order, as the gallery's list (max 200). Photos the "
+           "user cannot see are skipped and returned as `missing`. Any filter change by the user "
+           "or the assistant replaces the list.",
+           UiShowPhotos, False),
     UiTool("ui_select_photos",
            "Change the selection in the user's tab: explicit `paths`, or the whole filtered view "
            "(`select_view`). Selecting does not modify any photo.",
@@ -220,6 +239,11 @@ UI_TOOLS: tuple[UiTool, ...] = (
            "The user's current selection: `scope` 'paths' (explicit `paths`) or 'view' (the whole "
            "filtered view: `filters`, minus `excluded_paths`), and `count`.",
            UiGetSelection, True),
+    UiTool("ui_get_context",
+           "Where the user's tab is, from any page: route, the open photo, the selection (scope and "
+           "count), a gallery summary (total, loaded, has_more, pinned list) when the gallery is open, "
+           "the mounted page actions and the jobs that apply now (`actions`, with their tools).",
+           UiGetContext, True),
     UiTool("ui_next_page", "Load the next page of the gallery in the user's tab (infinite scroll).",
            UiNextPage, False),
     UiTool("ui_show_culling_group",
@@ -316,7 +340,8 @@ def tools_version() -> str:
 
 
 def render_client_json() -> str:
-    """The committed ``ui-tools.schema.json``: ``{version, tools: [...], error_codes: [...]}``."""
+    """The committed ``ui-tools.schema.json``: ``{version, tools, error_codes, actions}``."""
+    from api.agent.actions import render_client_actions
     return json.dumps({"version": tools_version(), "tools": tool_descriptors(),
-                       "error_codes": sorted(TAB_ERROR_CODES)},
+                       "error_codes": sorted(TAB_ERROR_CODES), "actions": render_client_actions()},
                       indent=2, sort_keys=True, ensure_ascii=False) + "\n"

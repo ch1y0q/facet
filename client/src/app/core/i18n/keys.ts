@@ -1049,6 +1049,11 @@ export const I18N = {
     set_scope: {
       message: "gallery.set_scope.message",
     },
+    pinned: {
+      chip: "gallery.pinned.chip",
+      chip_plural: "gallery.pinned.chip_plural",
+      clear: "gallery.pinned.clear",
+    },
     all_photos: "gallery.all_photos",
     sort: "gallery.sort",
     sort_aggregate: "gallery.sort_aggregate",

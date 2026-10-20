@@ -538,6 +538,7 @@ def create_app() -> FastAPI:
     from api.routers.thumbnails import router as thumbnails_router
     from api.routers.filter_options import router as filter_options_router
     from api.routers.faces import router as faces_router
+    from api.routers.face_matches import router as face_matches_router
     from api.routers.persons import router as persons_router
     from api.routers.merge_suggestions import router as merge_suggestions_router
     from api.routers.comparison import router as comparison_router
@@ -578,6 +579,7 @@ def create_app() -> FastAPI:
     app.include_router(thumbnails_router)
     app.include_router(filter_options_router)
     app.include_router(faces_router)
+    app.include_router(face_matches_router)
     app.include_router(persons_router)
     app.include_router(merge_suggestions_router)
     app.include_router(comparison_router)

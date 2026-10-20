@@ -10,14 +10,20 @@ import {
   seededSearchThreshold,
 } from '../../features/gallery/gallery-filters.util';
 import { ViewActionRegistry } from './view-action-registry.service';
-import { UiToolError, UiToolHandler } from './ui-tool.types';
+import { UiActionRow, UiToolError, UiToolHandler } from './ui-tool.types';
 
 export interface UiToolDeps {
   gallery: GalleryStore;
   router: Router;
   auth: AuthService;
   viewActions: ViewActionRegistry;
+  /** The generated `actions` table (empty until the contract has loaded). */
+  actions: () => readonly UiActionRow[];
 }
+
+/** The contract's cap on `ui_show_photos` paths (api/agent/ui_tools.py MAX_SHOW_PATHS). */
+const MAX_SHOW_PATHS = 200;
+const LEVEL_RANK: Record<string, number> = { readonly: 0, user: 1, edition: 2 };
 
 /**
  * The pages `ui_navigate` may open, read from the live router config so a new page
@@ -70,6 +76,9 @@ function percentToFraction(percent: string): number {
 }
 
 const SELECTION_PATH_LIMIT = 1000;
+/** A selection frame must stay under the bridge's 256 KB limit, so its path lists share this budget. */
+const SELECTION_BYTE_BUDGET = 200 * 1024;
+const TEXT_ENCODER = new TextEncoder();
 const WAIT_STEP_MS = 25;
 const WAIT_TIMEOUT_MS = 10_000;
 
@@ -107,12 +116,55 @@ function toBoolean(key: string, value: unknown): boolean {
   throw new UiToolError('invalid_input', `${key} must be a boolean`);
 }
 
+/** The longest prefix of `paths` (at most `limit`) that fits `budget` bytes once JSON-encoded. */
+function fitPaths(paths: readonly string[], budget: number, limit = SELECTION_PATH_LIMIT): string[] {
+  const kept: string[] = [];
+  let used = 0;
+  for (const path of paths) {
+    used += TEXT_ENCODER.encode(JSON.stringify(path)).length + 1;
+    if (kept.length >= limit || used > budget) break;
+    kept.push(path);
+  }
+  return kept;
+}
+
+/**
+ * The facts of a tab's state; the same rules as the server's `actions.facts_for`, so the
+ * generated `actions` table means the same thing on both sides.
+ */
+export function actionFacts(route: string, selectionCount: number, pinned: boolean): Set<string> {
+  const path = pathOf(route) || '/';
+  const facts = new Set(['any']);
+  if (path === '/' || path.startsWith('/album/')) facts.add('gallery');
+  if (path === '/photo') facts.add('detail');
+  if (path === '/culling') facts.add('culling');
+  if (path === '/persons' || path === '/merge-suggestions') facts.add('persons');
+  if (path === '/albums' || path.startsWith('/album/')) facts.add('albums');
+  if (selectionCount > 0) facts.add('selection');
+  if (pinned) facts.add('pinned');
+  return facts;
+}
+
+/** The jobs that apply to `facts` for a session at `level`; tools above the level are left out. */
+export function applicableActions(
+  rows: readonly UiActionRow[], facts: ReadonlySet<string>, level: string,
+): { id: string; summary: string; tools: string[] }[] {
+  const rank = LEVEL_RANK[level] ?? -1;
+  const out: { id: string; summary: string; tools: string[] }[] = [];
+  for (const row of rows) {
+    if (!row.when.includes('any') && !row.when.some(fact => facts.has(fact))) continue;
+    const tools = row.tools.filter(tool => (LEVEL_RANK[tool.required_level] ?? Infinity) <= rank).map(tool => tool.name);
+    if (tools.length) out.push({ id: row.id, summary: row.summary, tools });
+  }
+  return out;
+}
+
 function stringList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
 }
 
 export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHandler> {
-  const { gallery, router, auth, viewActions } = deps;
+  const { gallery, router, auth, viewActions, actions } = deps;
 
   const requireGalleryView = (): void => {
     if (!isGalleryUrl(router.url)) {
@@ -136,6 +188,14 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
     }
     const settled = await waitFor(() => !gallery.initializing() && gallery.config() !== null);
     if (!settled) throw new UiToolError('upstream_error', 'The gallery did not finish loading.');
+  };
+
+  /** Leave an album page for the plain gallery, so a view change is never saved as that album's smart filter. */
+  const leaveAlbum = async (): Promise<void> => {
+    if (!pathOf(router.url).startsWith('/album/')) return;
+    const mounts = gallery.galleryMounts();
+    if (!await router.navigate(['/'])) throw new UiToolError('forbidden_level', 'The tab could not leave the album.');
+    if (!await waitFor(() => gallery.galleryMounts() > mounts)) throw new UiToolError('upstream_error', 'The gallery did not open.');
   };
 
   const filterDefault = (key: keyof GalleryFilters): GalleryFilters[keyof GalleryFilters] => {
@@ -215,21 +275,30 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
 
   const selectionSnapshot = (): Record<string, unknown> => {
     if (gallery.viewScopeSelected()) {
+      const filters = gallery.filterPayload();
+      const excluded = [...gallery.excludedPaths()];
+      const kept = fitPaths(excluded, SELECTION_BYTE_BUDGET - TEXT_ENCODER.encode(JSON.stringify(filters)).length);
       return {
         scope: 'view',
         count: gallery.selectionCount(),
-        filters: gallery.filterPayload(),
-        excluded_paths: [...gallery.excludedPaths()].slice(0, SELECTION_PATH_LIMIT),
+        filters,
+        excluded_paths: kept,
+        excluded_count: excluded.length,
+        excluded_truncated: kept.length < excluded.length,
       };
     }
     const paths = [...gallery.selectedPaths()];
+    const kept = fitPaths(paths, SELECTION_BYTE_BUDGET);
     return {
       scope: 'paths',
       count: paths.length,
-      paths: paths.slice(0, SELECTION_PATH_LIMIT),
-      ...(paths.length > SELECTION_PATH_LIMIT ? { truncated: true } : {}),
+      paths: kept,
+      ...(kept.length < paths.length ? { truncated: true } : {}),
     };
   };
+
+  /** The session level this tab carries, as the server's bridge records it. */
+  const sessionLevel = (): string => (auth.isEdition() ? 'edition' : auth.isMultiUser() && auth.isAuthenticated() ? 'user' : 'readonly');
 
   return {
     ui_navigate: async args => {
@@ -250,11 +319,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       const patch = (args['patch'] ?? {}) as Record<string, unknown>;
       patchToUpdates(patch);
       // A replace on an album page would be saved as that album's smart filter (edition sessions), so it leaves the album first.
-      if (args['replace'] === true && pathOf(router.url).startsWith('/album/')) {
-        const mounts = gallery.galleryMounts();
-        if (!await router.navigate(['/'])) throw new UiToolError('forbidden_level', 'The tab could not leave the album.');
-        if (!await waitFor(() => gallery.galleryMounts() > mounts)) throw new UiToolError('upstream_error', 'The gallery did not open.');
-      }
+      if (args['replace'] === true) await leaveAlbum();
       await ensureGalleryView();
       // Built after the gallery is up: the cleared state and null resets use the configured defaults, which load with it.
       await gallery.updateFilters({ ...(args['replace'] === true ? clearedFilters() : {}), ...patchToUpdates(patch) });
@@ -265,6 +330,18 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
         loaded: gallery.photos().length,
         filters: viewFilters(),
       };
+    },
+
+    ui_show_photos: async args => {
+      const paths = stringList(args['paths']);
+      if (paths.length === 0 || paths.length > MAX_SHOW_PATHS) {
+        throw new UiToolError('invalid_input', `Give 1 to ${MAX_SHOW_PATHS} paths.`);
+      }
+      await leaveAlbum();
+      await ensureGalleryView();
+      const missing = await gallery.showPaths(paths);
+      if (gallery.loadError()) throw new UiToolError('upstream_error', 'The gallery could not load these photos.');
+      return { shown: gallery.photos().length, missing: missing.slice(0, 50), total: gallery.total() };
     },
 
     ui_get_gallery_view: async args => {
@@ -307,7 +384,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
         if (mode === 'remove') throw new UiToolError('invalid_input', '`select_view` cannot be combined with mode "remove".');
         requireGalleryView();
         if (!gallery.canScopeSelectionToView()) {
-          throw new UiToolError('invalid_input', 'This view (similar-photo or semantic search) cannot be selected as a whole.');
+          throw new UiToolError('invalid_input', 'This view (similar-photo, semantic search or an assistant-chosen list) cannot be selected as a whole.');
         }
         gallery.selectWholeView();
         return selectionSnapshot();
@@ -344,6 +421,28 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
     },
 
     ui_get_selection: async () => selectionSnapshot(),
+
+    ui_get_context: async () => {
+      const route = pathOf(router.url) || '/';
+      const inGallery = isGalleryUrl(router.url);
+      const albumMatch = /^\/album\/(\d+)$/.exec(route);
+      const params = new URLSearchParams(router.url.split('#')[0].split('?')[1] ?? '');
+      const selection = selectionSnapshot();
+      const pinned = gallery.pinnedPaths() !== null;
+      const level = sessionLevel();
+      return {
+        route,
+        ...(route === '/photo' && params.get('path') ? { query_path: params.get('path') } : {}),
+        ...(albumMatch ? { album_id: Number(albumMatch[1]) } : {}),
+        selection: { scope: selection['scope'], count: selection['count'] },
+        gallery: inGallery
+          ? { total: gallery.total(), loaded: gallery.photos().length, has_more: gallery.hasMore(), pinned }
+          : null,
+        mounted_actions: viewActions.names(),
+        level,
+        actions: applicableActions(actions(), actionFacts(route, gallery.selectionCount(), pinned), level),
+      };
+    },
 
     ui_next_page: async () => {
       requireGalleryView();

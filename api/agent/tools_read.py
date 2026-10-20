@@ -13,20 +13,24 @@ from mcp.server.mcpserver import Context, MCPServer
 from mcp.types import CallToolResult
 from pydantic import BaseModel, ConfigDict, Field, create_model
 
+from api.agent import actions
 from api.agent import show as relay
+from api.agent.images import MAX_SHEET_PATHS, contact_sheet_result, thumbnail_result
 from api.agent.bridge import TabRegistry
 from api.agent.internal_client import InternalClient, err, ok
 from api.agent.runtime import run_tool
 from api.agent.tools_common import (
-    MCP_FILTER_KEYS, READ_ANNOTATIONS, FilterValue, SortColumn, register_tool,
+    MCP_FILTER_KEYS, READ_ANNOTATIONS, TOOL_LEVELS, FilterValue, SortColumn, register_tool,
 )
 from api.agent.ui_tools import TAB_ID_PATTERN
+from api.routers.face_matches import FACE_SCAN_TIMEOUT_S
 from api.config import CORRELATION_X_AXES, CORRELATION_Y_METRICS, VIEWER_CONFIG
 from api.db_helpers import PHOTO_BASE_COLS, PHOTO_OPTIONAL_COLS
 
 logger = logging.getLogger(__name__)
 
-HIDE_DEFAULT_KEYS = ("hide_blinks", "hide_bursts", "hide_duplicates", "hide_brackets", "hide_panoramas")
+HIDE_DEFAULT_KEYS = ("hide_blinks", "hide_bursts", "hide_duplicates", "hide_brackets", "hide_panoramas",
+                     "hide_rejected")
 
 _FILTER_FIELDS: dict[str, Any] = {
     key: (Optional[FilterValue], Field(
@@ -91,6 +95,8 @@ STATS_LIST_LIMIT = 50
 FilterKind = Literal["cameras", "lenses", "tags", "persons", "patterns", "categories",
                      "narrative_moments", "junk_kinds", "metric_ranges"]
 
+# The best semantic matches a filtered search narrows; the route's own cap is 200.
+SEMANTIC_CANDIDATES = 200
 CAPTION_LIMIT = 240
 TAG_LIMIT = 5
 FILTER_OPTION_LIMIT = 200
@@ -134,6 +140,18 @@ def _list_result(upstream: dict, extra_fields: tuple = ()) -> dict:
     return ok(data)
 
 
+def _attach_similarity(rows: list[dict], similarity: dict) -> None:
+    """Re-attach the search score to compact rows, which carry no score of their own."""
+    for row in rows:
+        row["similarity"] = similarity.get(row["path"])
+
+
+def _tag_mode(result: dict, mode: str) -> None:
+    shown = result.get("shown_in_tab")
+    if isinstance(shown, dict) and shown.get("applied"):
+        shown["mode"] = mode
+
+
 def _hide_defaults(filters: dict) -> dict:
     """Start from what the viewer shows: ``viewer.defaults.hide_*`` unless the caller set it."""
     defaults = VIEWER_CONFIG.get("defaults", {}) or {}
@@ -141,6 +159,8 @@ def _hide_defaults(filters: dict) -> dict:
     for key in HIDE_DEFAULT_KEYS:
         if key not in merged and defaults.get(key):
             merged[key] = True
+    if merged.get("show_rejected") or merged.get("favorites_only"):
+        merged.pop("hide_rejected", None)
     return merged
 
 
@@ -207,23 +227,67 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
         limit: Annotated[int, Field(ge=1, le=50)] = 20,
         threshold: Annotated[Optional[float], Field(ge=0.0, le=1.0)] = None,
         scope: Optional[Literal["text"]] = None,
+        filters: Optional[BaseModel] = None,
         fields: Optional[list[str]] = None,
         show: Annotated[bool, Field(description=SHOW_DESCRIPTION)] = True,
         tab_id: Optional[str] = None,
     ) -> CallToolResult:
         async def handler(grant, resolved, settings):
+            timeout = settings["semantic_timeout_s"]
             upstream = await client.call(
                 grant, "semantic_search",
-                query={"q": query, "limit": limit, "threshold": threshold, "scope": scope},
-                timeout=settings["semantic_timeout_s"])
-            result = _list_result(upstream, tuple(fields or ()))
+                query={"q": query, "limit": SEMANTIC_CANDIDATES if filters is not None else limit,
+                       "threshold": threshold, "scope": scope}, timeout=timeout)
+            if not upstream["ok"]:
+                return upstream
+            body = upstream["data"] or {}
+            if body.get("error"):
+                return err("upstream_error", str(body["error"]))
+            hits = body.get("photos", [])
+            similarity = {p["path"]: p.get("similarity") for p in hits}
+            candidates = len(hits)
+            if filters is None:
+                result = _list_result(upstream, tuple(fields or ()))
+                _attach_similarity(result["data"]["rows"], similarity)
+                if show:
+                    await show_result(result, resolved, settings, tab_id, first_page=True,
+                                      patch_or_reason=relay.semantic_patch(query, threshold, scope),
+                                      timeout=timeout)
+                    _tag_mode(result, "semantic")
+                return result
+            kept = hits
+            if hits:
+                narrowed = await client.call(
+                    grant, "photos_by_paths",
+                    json={"paths": [p["path"] for p in hits],
+                          "filters": {key: _query_value(value)
+                                      for key, value in filters.model_dump(exclude_none=True).items()}},
+                    timeout=timeout)
+                if not narrowed["ok"]:
+                    return narrowed
+                kept = (narrowed["data"] or {}).get("photos", [])
+            # by_paths answers in the requested order, which is the search's similarity order.
+            cut = kept[:limit]
+            result = _list_result(ok({"photos": cut, "total": len(kept), "query": body.get("query", query)}),
+                                  tuple(fields or ()))
+            _attach_similarity(result["data"]["rows"], similarity)
+            result["data"]["candidates"] = candidates
+            result["data"]["filtered_out"] = candidates - len(kept)
+            if candidates >= SEMANTIC_CANDIDATES and len(kept) < limit:
+                result["data"]["note"] = (
+                    f"Only the {SEMANTIC_CANDIDATES} best semantic matches were filtered; more matching "
+                    "photos may exist beyond them. Loosen the query or the filters.")
             if show:
-                await show_result(result, resolved, settings, tab_id, first_page=True,
-                                  patch_or_reason=relay.semantic_patch(query, threshold, scope),
-                                  timeout=settings["semantic_timeout_s"])
+                if not cut:
+                    result["shown_in_tab"] = relay.not_shown("empty_result")
+                else:
+                    result["shown_in_tab"] = await relay.show_paths_in_tab(
+                        registry, resolved, settings, tab_id, [row["path"] for row in cut], timeout=timeout)
+                _tag_mode(result, "paths")
             return result
         return await run_tool(ctx, "semantic_search", handler)
 
+    semantic_search.__annotations__["filters"] = Optional[SearchFilters]
     semantic_search.__annotations__["fields"] = FIELDS_ANNOTATION
     semantic_search.__annotations__["tab_id"] = Annotated[Optional[str], Field(pattern=TAB_ID_PATTERN)]
 
@@ -235,6 +299,42 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
                 upstream["data"].pop("histogram_data", None)
             return upstream
         return await run_tool(ctx, "get_photo", handler)
+
+    async def possible_faces(
+        ctx: Context,
+        person_id: Annotated[int, Field(ge=1)],
+        scope: Literal["unassigned", "other_persons", "all"] = "unassigned",
+        min_similarity: Annotated[float, Field(ge=0.0, le=1.0)] = 0.30,
+        limit: Annotated[int, Field(ge=1, le=100)] = 30,
+        path_prefix: Annotated[Optional[str], Field(max_length=4096)] = None,
+        date_from: Annotated[Optional[str], Field(pattern=r"^\d{4}-\d{2}-\d{2}$")] = None,
+        date_to: Annotated[Optional[str], Field(pattern=r"^\d{4}-\d{2}-\d{2}$")] = None,
+        show: Annotated[bool, Field(description=SHOW_DESCRIPTION)] = True,
+        tab_id: Optional[str] = None,
+    ) -> CallToolResult:
+        async def handler(grant, resolved, settings):
+            upstream = await client.call(
+                grant, "possible_faces", path_args={"person_id": person_id},
+                query={"scope": scope, "min_similarity": min_similarity, "limit": limit,
+                       "path_prefix": path_prefix, "date_from": date_from, "date_to": date_to},
+                timeout=FACE_SCAN_TIMEOUT_S)
+            if not upstream["ok"]:
+                return upstream
+            body = upstream["data"] or {}
+            faces = body.get("faces") or []
+            result = ok({"rows": faces, "total": len(faces), "faces_scanned": body.get("faces_scanned"),
+                         "candidates": body.get("candidates")})
+            if show:
+                paths = list(dict.fromkeys(face["photo_path"] for face in faces))
+                result["shown_in_tab"] = (
+                    await relay.show_paths_in_tab(registry, resolved, settings, tab_id, paths,
+                                                  timeout=settings["call_timeout_s"])
+                    if paths else relay.not_shown("empty_result"))
+                _tag_mode(result, "paths")
+            return result
+        return await run_tool(ctx, "possible_faces", handler)
+
+    possible_faces.__annotations__["tab_id"] = Annotated[Optional[str], Field(pattern=TAB_ID_PATTERN)]
 
     async def similar_photos(
         ctx: Context,
@@ -370,6 +470,46 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
             })
         return await run_tool(ctx, "status", handler)
 
+    async def available_actions(
+        ctx: Context, tab_id: Annotated[Optional[str], Field(pattern=TAB_ID_PATTERN)] = None,
+    ) -> CallToolResult:
+        async def handler(grant, resolved, settings):
+            tab = None
+            facts = frozenset({"any"})
+            if settings["bridge"]:
+                context = await relay.call_tab(registry, resolved, settings, "ui_get_context", {}, tab_id)
+                if context.get("ok") and isinstance(context.get("data"), dict):
+                    data = context["data"]
+                    gallery = data.get("gallery") if isinstance(data.get("gallery"), dict) else {}
+                    selection = data.get("selection") if isinstance(data.get("selection"), dict) else {}
+                    count = selection.get("count") if isinstance(selection.get("count"), int) else 0
+                    route = str(data.get("route") or "/")
+                    facts = actions.facts_for(route, count, bool(gallery.get("pinned")))
+                    tab = {"tab_id": (context.get("tab") or {}).get("tab_id"), "route": route,
+                           "selection_count": count, "pinned": bool(gallery.get("pinned"))}
+            rows, hidden = actions.evaluate(resolved.level, facts, TOOL_LEVELS)
+            return ok({"tab": tab, "level": resolved.level, "actions": rows, "hidden": hidden})
+        return await run_tool(ctx, "available_actions", handler)
+
+    async def get_thumbnail(
+        ctx: Context,
+        path: Annotated[str, Field(min_length=1, max_length=4096)],
+        size: Literal[160, 256, 384, 512, 640] = 512,
+    ) -> CallToolResult:
+        async def handler(grant, resolved, settings):
+            return await thumbnail_result(client, grant, path, size, settings)
+        return await run_tool(ctx, "get_thumbnail", handler)
+
+    async def contact_sheet(
+        ctx: Context,
+        paths: Annotated[list[Annotated[str, Field(min_length=1, max_length=4096)]],
+                         Field(min_length=1, max_length=MAX_SHEET_PATHS)],
+        columns: Annotated[int, Field(ge=2, le=4)] = 4,
+    ) -> CallToolResult:
+        async def handler(grant, resolved, settings):
+            return await contact_sheet_result(client, grant, paths, columns, settings)
+        return await run_tool(ctx, "contact_sheet", handler)
+
     add(search_photos, "search_photos",
         "Search and filter the photo library like the viewer gallery. Applies the viewer's "
         "default hide toggles (bursts, duplicates, brackets, panoramas, blinks) unless the filter "
@@ -380,8 +520,28 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
         "any photo column to the rows.")
     add(semantic_search, "semantic_search",
         "Find photos by meaning (text-to-image) or, with scope='text', by words in captions/OCR. "
-        + SHOW_RULE + " scope='text' is not shown (`unsupported_filters`).")
+        "Rows carry their `similarity`. `filters` (the `search_photos` filters, no hide defaults) narrows "
+        "the best 200 matches and keeps similarity order; the result adds `candidates` and "
+        "`filtered_out`, and a `note` when the 200 limit may have hidden more. "
+        + SHOW_RULE + " scope='text' without `filters` is not shown (`unsupported_filters`); with "
+        "`filters` the exact photos are shown as an assistant-chosen list (`shown_in_tab.mode` "
+        "'paths').")
     add(get_photo, "get_photo", "Full detail of one photo by its path.")
+    add(get_thumbnail, "get_thumbnail",
+        "Look at one photo: its thumbnail as an image (size 160 to 640, default 512; a smaller size is "
+        "used when the JPEG would exceed the byte cap). A photo the token cannot see answers not_found.")
+    add(contact_sheet, "contact_sheet",
+        "Look at up to 16 photos at once as one numbered grid image (columns 2 to 4, longest edge 1024). "
+        "The text part's `legend` maps each tile number to its path, in request order; `unavailable` "
+        "lists tiles left blank because the photo is missing or not visible.")
+    add(possible_faces, "possible_faces",
+        "Faces that look like one recognised person (cosine similarity to the person's centroid, best "
+        "first; same embedding model only). `scope` is unassigned (default), other_persons or all; "
+        "`min_similarity` defaults to 0.30; `limit` max 100. Rows carry face_id, photo_path, "
+        "person_id/person_name (current owner), similarity and distance. A scan over 192000 faces is "
+        "refused with too_large: narrow it with scope, path_prefix, date_from or date_to. "
+        + SHOW_RULE + " The distinct photos are shown as an assistant-chosen list. A person with no "
+        "centroid yet answers invalid_input.")
     add(similar_photos, "similar_photos",
         "Photos similar to one photo (visual or colour); pass `offset` to page when has_more is true. "
         "`min_similarity` (0 to 1) sets the floor the route and the shown view both use. " + SHOW_RULE)
@@ -396,6 +556,11 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
         "`timeline_dates` and `timeline_months` need `year`; `correlations` takes x, y (comma list), "
         "group_by and min_samples. Long lists are cut and `truncated` is set.")
     add(status, "status", "Who this token is, its effective level and the server flags.")
+    add(available_actions, "available_actions",
+        "The jobs that apply to the user's open tab and this token right now, each with its tools "
+        "(`required_level`, and `allowed: false` when the tab is not in the state the tool needs, "
+        "with a `hint`). Tools above this token's level are not listed; `hidden` counts the jobs "
+        "that do not apply to the tab's page. Without a tab only the page-independent jobs are listed.")
 
 
 def _trim_options(data: Any, query: Optional[str]) -> tuple[Any, bool]:

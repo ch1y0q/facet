@@ -2602,6 +2602,7 @@ Stellt die in [KI-Agenten (MCP)](AGENTS.md) beschriebenen Werkzeuge unter `POST 
       "bridge": true,
       "max_rows": 100,
       "max_bytes": 60000,
+      "max_image_bytes": 262144,
       "call_timeout_s": 30,
       "semantic_timeout_s": 120,
       "rate_per_min": 120,
@@ -2618,6 +2619,7 @@ Stellt die in [KI-Agenten (MCP)](AGENTS.md) beschriebenen Werkzeuge unter `POST 
 | `bridge` | `true` | Ob die Brücke zum Browser-Tab (`/api/mcp/bridge`) WebSockets annimmt und die `ui_*`-Werkzeuge einen Tab erreichen können. Bei `false` lehnt die Brücke die Verbindung ab (Close-Code 4404) und `ui_*`-Werkzeuge melden einen entsprechenden Fehler. Erfordert einen einzigen Worker. |
 | `max_rows` | `100` | Höchstzahl an Zeilen in einem Werkzeug-Ergebnis (1 bis 500). Überzählige Zeilen werden verworfen und `truncated: true` gesetzt. |
 | `max_bytes` | `60000` | Maximale serialisierte Größe eines Werkzeug-Ergebnisses in Bytes (4000 bis 500000). |
+| `max_image_bytes` | `262144` | Maximale Größe in Bytes des Bildes, das ein Werkzeug zurückgibt, `get_thumbnail` oder `contact_sheet` (32768 bis 2097152); nicht in `max_bytes` eingerechnet. |
 | `call_timeout_s` | `30` | Zeitlimit für einen Werkzeugaufruf in Sekunden (1 bis 300). Begrenzt auch, wie lange ein `ui_*`-Aufruf auf den Browser-Tab wartet (`tab_timeout`). |
 | `semantic_timeout_s` | `120` | Zeitlimit für `semantic_search` in Sekunden (1 bis 300); es lädt das Embedding-Modell und braucht daher mehr. |
 | `rate_per_min` | `120` | Werkzeugaufrufe pro Minute und Token (mindestens 1). |

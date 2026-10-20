@@ -7,6 +7,7 @@ import { createUiToolHandlers } from './ui-tool-handlers';
 import { ViewActionRegistry } from './view-action-registry.service';
 import {
   UI_TOOL_ERROR_CODES,
+  UiActionRow,
   UiToolContract,
   UiToolContractFile,
   UiToolEnvelope,
@@ -51,12 +52,15 @@ export class WebMcpToolRegistry {
   readonly ready = signal(false);
   toolsVersion = '';
   tools: readonly UiToolDefinition[] = [];
+  /** The generated jobs table; `ui_get_context` reports the ones that apply. */
+  actions: readonly UiActionRow[] = [];
   private readonly byName = new Map<string, UiToolDefinition>();
   private readonly handlers = createUiToolHandlers({
     gallery: inject(GalleryStore),
     router: inject(Router),
     auth: inject(AuthService),
     viewActions: inject(ViewActionRegistry),
+    actions: () => this.actions,
   });
   private loading: Promise<void> | null = null;
 
@@ -68,6 +72,7 @@ export class WebMcpToolRegistry {
     this.loading ??= import('./ui-tools.schema.json').then(module => {
       const contract = (module.default ?? module) as unknown as UiToolContractFile;
       this.toolsVersion = contract.version;
+      this.actions = contract.actions;
       this.tools = contract.tools
         .filter(tool => Object.hasOwn(this.handlers, tool.name))
         .map(tool => ({ ...tool, execute: args => this.run(tool, this.handlers[tool.name], args) }));

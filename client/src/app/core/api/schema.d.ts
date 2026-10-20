@@ -2226,6 +2226,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/person/{person_id}/possible_faces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Api Person Possible Faces
+         * @description Faces most like ``person_id``'s centroid, best first (same embedding model only).
+         */
+        get: operations["api_person_possible_faces_api_person__person_id__possible_faces_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/persons": {
         parameters: {
             query?: never;
@@ -3118,6 +3138,32 @@ export interface paths {
          * @description Mark multiple photos as rejected (clears favorite and rating).
          */
         post: operations["api_batch_reject_api_photos_batch_reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/photos/by_paths": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Api Photos By Paths
+         * @description The named photos, in the requested order, through the gallery's visibility and filters.
+         *
+         *     The explicit-list counterpart of ``/api/photos``: no paging and no sort, because the
+         *     caller chose the rows. Filter keys are the gallery's own (``gallery_filter_keys``);
+         *     paging and ordering keys are dropped and anything else is a 422. The viewer's default
+         *     ``type`` and the hide toggles are NOT applied -- a list the caller named is shown whole
+         *     unless it asks otherwise -- so ``type`` is set to ``''`` only when the caller gave none.
+         */
+        post: operations["api_photos_by_paths_api_photos_by_paths_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4557,6 +4603,16 @@ export interface components {
         AssignFacesRequest: {
             /** Face Ids */
             face_ids: number[];
+            /**
+             * Only Unassigned
+             * @default false
+             */
+            only_unassigned?: boolean;
+            /**
+             * Tolerant
+             * @default false
+             */
+            tolerant?: boolean;
         };
         /** AuthStatusResponse */
         AuthStatusResponse: {
@@ -6681,6 +6737,34 @@ export interface components {
             types?: components["schemas"]["PhotoTypeCount"][];
         };
         /**
+         * PhotosByPathsRequest
+         * @description Photos named by path, optionally narrowed by the gallery's filters.
+         */
+        PhotosByPathsRequest: {
+            /**
+             * Filters
+             * @default {}
+             */
+            filters?: {
+                [key: string]: string | number | boolean;
+            };
+            /** Paths */
+            paths: string[];
+        };
+        /**
+         * PhotosByPathsResponse
+         * @description Rows in the REQUESTED order; ``missing`` lists (up to 200) requested paths that are
+         *     invisible, unknown or filtered out.
+         */
+        PhotosByPathsResponse: {
+            /** Missing */
+            missing: string[];
+            /** Photos */
+            photos: components["schemas"]["Photo"][];
+            /** Total */
+            total: number;
+        };
+        /**
          * PhotosResponse
          * @description The gallery listing.
          *
@@ -6729,6 +6813,33 @@ export interface components {
             target_dir: string;
             /** Title */
             title?: string | null;
+        };
+        /**
+         * PossibleFace
+         * @description One face that looks like the person, with its current owner (if any).
+         */
+        PossibleFace: {
+            /** Distance */
+            distance: number;
+            /** Face Id */
+            face_id: number;
+            /** Person Id */
+            person_id?: number | null;
+            /** Person Name */
+            person_name?: string | null;
+            /** Photo Path */
+            photo_path: string;
+            /** Similarity */
+            similarity: number;
+        };
+        /** PossibleFacesResponse */
+        PossibleFacesResponse: {
+            /** Candidates */
+            candidates: number;
+            /** Faces */
+            faces: components["schemas"]["PossibleFace"][];
+            /** Faces Scanned */
+            faces_scanned: number;
         };
         /** PreviewScoreBody */
         PreviewScoreBody: {
@@ -10958,6 +11069,44 @@ export interface operations {
             };
         };
     };
+    api_person_possible_faces_api_person__person_id__possible_faces_get: {
+        parameters: {
+            query?: {
+                scope?: "unassigned" | "other_persons" | "all";
+                min_similarity?: number;
+                limit?: number;
+                path_prefix?: string | null;
+                date_from?: string | null;
+                date_to?: string | null;
+            };
+            header?: never;
+            path: {
+                person_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PossibleFacesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_persons_api_persons_get: {
         parameters: {
             query?: {
@@ -12239,6 +12388,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    api_photos_by_paths_api_photos_by_paths_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotosByPathsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhotosByPathsResponse"];
                 };
             };
             /** @description Validation Error */

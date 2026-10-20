@@ -274,3 +274,78 @@ class TestSemanticTimeout:
         fake_tab(env, None, reply=slow)
         result = env.call(env.token(env.login()), "semantic_search", {"query": "sunset"})
         assert result["ok"] is True and result["shown_in_tab"]["applied"] is True
+
+
+class TestSemanticFilters:
+    """semantic_search(filters): narrow the best matches through by_paths, keep similarity order."""
+
+    HITS = [(2, 0.9), (0, 0.8), (1, 0.7)]
+
+    @staticmethod
+    def stub(monkeypatch, hits, seen=None):
+        from api.agent.internal_client import InternalClient, ok
+        original = InternalClient.call
+
+        async def call(self, grant, tool, **kwargs):
+            if tool == "semantic_search":
+                if seen is not None:
+                    seen.append(kwargs["query"])
+                return ok({"photos": [{"path": ROWS[i]["path"], "filename": f"{i}.jpg", "similarity": sim}
+                                      for i, sim in hits], "total": len(hits), "query": "q"})
+            return await original(self, grant, tool, **kwargs)
+
+        monkeypatch.setattr(InternalClient, "call", call)
+
+    def test_filtered_rows_keep_similarity_order_and_scores(self, agent_app, fake_tab, photos, monkeypatch):
+        seen = []
+        self.stub(monkeypatch, self.HITS, seen)
+        env = agent_app("open")
+        fake_tab(env, None, reply=lambda call: {"ok": True, "data": {"shown": 2, "missing": [], "total": 2}})
+        result = env.call(env.token(env.login()), "semantic_search",
+                          {"query": "q", "limit": 5, "filters": {"min_aggregate": 5.5}})
+        assert result["ok"] is True, result
+        # 0.jpg (aggregate 5.0) is filtered out; by_paths order is the search order, not 1,2.
+        assert [(r["filename"], r["similarity"]) for r in result["data"]["rows"]] == [("2.jpg", 0.9), ("1.jpg", 0.7)]
+        assert result["data"]["candidates"] == 3 and result["data"]["filtered_out"] == 1
+        assert "note" not in result["data"]
+        assert seen[0]["limit"] == 200
+
+    def test_filtered_show_is_one_ui_show_photos_frame_with_the_final_paths(self, agent_app, fake_tab, photos, monkeypatch):
+        self.stub(monkeypatch, self.HITS)
+        env = agent_app("open")
+        tab = fake_tab(env, None, reply=lambda call: {"ok": True, "data": {"shown": 2, "missing": [], "total": 2}})
+        result = env.call(env.token(env.login()), "semantic_search",
+                          {"query": "q", "filters": {"min_aggregate": 5.5}})
+        assert [(c["tool"], c["args"]) for c in tab.calls] == [
+            ("ui_show_photos", {"paths": [ROWS[2]["path"], ROWS[1]["path"]]})]
+        assert result["shown_in_tab"]["applied"] is True and result["shown_in_tab"]["mode"] == "paths"
+
+    def test_show_false_and_empty_results_send_no_frame(self, agent_app, fake_tab, photos, monkeypatch):
+        self.stub(monkeypatch, self.HITS)
+        env = agent_app("open")
+        tab = fake_tab(env, None, reply=lambda call: {"ok": True, "data": {}})
+        token = env.token(env.login())
+        env.call(token, "semantic_search", {"query": "q", "show": False, "filters": {"min_aggregate": 5.5}})
+        empty = env.call(token, "semantic_search", {"query": "q", "filters": {"min_aggregate": 99}})
+        assert tab.calls == []
+        assert empty["data"]["rows"] == [] and empty["shown_in_tab"]["reason"] == "empty_result"
+
+    def test_unfiltered_search_still_shows_the_semantic_patch_and_keeps_scores(self, agent_app, fake_tab, photos, monkeypatch):
+        self.stub(monkeypatch, self.HITS)
+        env = agent_app("open")
+        tab = fake_tab(env, None, reply=reply_total(3))
+        result = env.call(env.token(env.login()), "semantic_search", {"query": "q"})
+        assert [c["tool"] for c in tab.calls] == ["ui_set_gallery_filters"]
+        assert result["shown_in_tab"]["mode"] == "semantic"
+        assert [r["similarity"] for r in result["data"]["rows"]] == [0.9, 0.8, 0.7]
+        assert "candidates" not in result["data"]
+
+    def test_a_saturated_candidate_list_adds_a_note(self, agent_app, fake_tab, photos, monkeypatch):
+        from api.agent import tools_read
+        monkeypatch.setattr(tools_read, "SEMANTIC_CANDIDATES", 3)
+        self.stub(monkeypatch, self.HITS)
+        env = agent_app("open")
+        fake_tab(env, None, reply=lambda call: {"ok": True, "data": {}})
+        result = env.call(env.token(env.login()), "semantic_search",
+                          {"query": "q", "limit": 10, "show": False, "filters": {"min_aggregate": 5.5}})
+        assert "note" in result["data"]

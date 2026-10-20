@@ -34,6 +34,9 @@ CULLING_ROUTES: dict[str, RouteSpec] = {
     "culling.confirm": RouteSpec("POST", "/api/culling-groups/confirm", "edition", write=True),
 }
 
+# Every darkroom route is edition-gated upstream; the tools carry the same floor.
+CULLING_LEVEL = "edition"
+
 GroupType = Literal["burst", "similar", "scene", "bracket", "panorama", "hdr_panorama"]
 KEEP_WHOLE_TYPES = ("bracket", "panorama", "hdr_panorama")
 EXIF_TIMESTAMP = re.compile(r"^\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}$")
@@ -127,7 +130,7 @@ def register_culling_tools(server: MCPServer, app: Any) -> None:
     client = InternalClient(app, CULLING_ROUTES)
 
     def add(fn, name: str, description: str, annotations: ToolAnnotations = READ_ANNOTATIONS) -> None:
-        register_tool(server, fn, name, description, annotations)
+        register_tool(server, fn, name, description, annotations, CULLING_LEVEL)
 
     async def list_culling_groups(
         ctx: Context,

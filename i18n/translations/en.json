@@ -1035,6 +1035,11 @@
     "set_scope": {
       "message": "Showing one photo set: {kind}"
     },
+    "pinned": {
+      "chip": "{count} photo chosen by your assistant",
+      "chip_plural": "{count} photos chosen by your assistant",
+      "clear": "Show the usual view"
+    },
     "all_photos": "All Photos",
     "sort": "Sort by",
     "sort_aggregate": "Aggregate",

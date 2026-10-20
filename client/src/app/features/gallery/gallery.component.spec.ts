@@ -72,6 +72,7 @@ describe('GalleryComponent', () => {
       loadFilterOptions: vi.fn(() => Promise.resolve()),
       loadTypeCounts: vi.fn(() => Promise.resolve()),
       loadPhotos: vi.fn(() => Promise.resolve()),
+      reloadPhotos: vi.fn(() => Promise.resolve()),
       updateFilter: vi.fn(() => Promise.resolve()),
       resetFilters: vi.fn(() => Promise.resolve()),
       nextPage: vi.fn(() => Promise.resolve()),
@@ -102,6 +103,8 @@ describe('GalleryComponent', () => {
       pathsInView: vi.fn(() => Promise.resolve([] as string[])),
       filterPayload: vi.fn(() => ({ page: '1' })),
       viewSnapshot: signal(null),
+      pinnedPaths: signal<string[] | null>(null),
+      clearPinned: vi.fn(() => Promise.resolve()),
       filterKey: vi.fn((f?: GalleryFilters) => JSON.stringify(buildApiParams(f ?? mockStore.filters(), false))),
       hiddenSummary: signal({ total: 0, blinks: 0, bursts: 0, duplicates: 0 }),
       hiddenFiltersStash: signal(null),
@@ -972,6 +975,94 @@ describe('GalleryComponent', () => {
     });
   });
 
+  describe('assistant-pinned list', () => {
+    let fixture: ComponentFixture<GalleryComponent> | null = null;
+
+    afterEach(() => {
+      fixture?.destroy();
+      fixture = null;
+    });
+
+    it('keeps the pin when the gallery is restored from a /photo round trip', async () => {
+      mockStore.pinnedPaths.set(['/a.jpg']);
+      mockStore.photos.set([{ path: '/a.jpg' }]);
+      mockStore.viewSnapshot.set({ scrollTop: 0, albumId: null, filterKey: mockStore.filterKey() });
+
+      await component.ngOnInit();
+
+      expect(mockStore.loadConfig).not.toHaveBeenCalled();
+      expect(mockStore.loadPhotos).not.toHaveBeenCalled();
+      expect(mockStore.pinnedPaths()).toEqual(['/a.jpg']);
+    });
+
+    it('reloads through loadConfig and loadPhotos (which drop the pin) when it cannot restore', async () => {
+      mockStore.pinnedPaths.set(['/a.jpg']);
+
+      await component.ngOnInit();
+
+      expect(mockStore.loadConfig).toHaveBeenCalled();
+      expect(mockStore.loadPhotos).toHaveBeenCalled();
+    });
+
+    it('renders the chip with the count and its button clears the pin', () => {
+      mockStore.pinnedPaths.set(['/a.jpg', '/b.jpg']);
+      mockStore.total.set(2);
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const html = fixture.nativeElement as HTMLElement;
+      expect(html.textContent).toContain(I18N.gallery.pinned.chip_plural);
+      expect(html.querySelector('[role="status"]')).toBeTruthy();
+      const clear = Array.from(html.querySelectorAll('button')).find(b => b.textContent?.includes(I18N.gallery.pinned.clear));
+      expect(clear).toBeTruthy();
+      clear?.click();
+      expect(mockStore.clearPinned).toHaveBeenCalled();
+    });
+
+    it('the load-error Retry button reloads without dropping the pin', () => {
+      mockStore.pinnedPaths.set(['/a.jpg']);
+      mockStore.loadError.set(true);
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const retry = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button'))
+        .find(b => b.textContent?.includes(I18N.gallery.load_error.retry));
+      expect(retry).toBeTruthy();
+      retry?.click();
+      expect(mockStore.reloadPhotos).toHaveBeenCalled();
+      mockStore.loadError.set(false);
+    });
+
+    it('hides the Keep top N% button while a pinned list is shown', () => {
+      (mockAuth as { isEdition: unknown }).isEdition = vi.fn(() => true);
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      mockStore.total.set(2);
+      mockStore.canScopeSelectionToView.set(false);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      expect((fixture.nativeElement as HTMLElement).querySelector(`[aria-label="${I18N.gallery.keep_top.label}"]`)).toBeNull();
+      mockStore.canScopeSelectionToView.set(true);
+    });
+
+    it('uses the singular chip text for one photo', () => {
+      mockStore.pinnedPaths.set(['/a.jpg']);
+      mockStore.total.set(1);
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(text).toContain(I18N.gallery.pinned.chip);
+      expect(text).not.toContain(I18N.gallery.pinned.chip_plural);
+    });
+
+    it('renders no chip without a pin', () => {
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      expect((fixture.nativeElement as HTMLElement).textContent).not.toContain(I18N.gallery.pinned.chip);
+    });
+  });
+
   describe('collapsedSetKinds', () => {
     it('lists nothing when every hide toggle is off', () => {
       mockStore.filters.set({
@@ -1349,7 +1440,7 @@ describe('GalleryComponent', () => {
       const dialog = TestBed.inject(MatDialog);
       (dialog.open as Mock).mockReturnValue({ afterClosed: () => of(true) });
       const order: string[] = [];
-      mockStore.loadPhotos.mockImplementation(() => {
+      mockStore.reloadPhotos.mockImplementation(() => {
         order.push('load');
         return Promise.resolve();
       });
@@ -1435,7 +1526,7 @@ describe('GalleryComponent', () => {
 
       await open();
 
-      expect(mockStore.loadPhotos).toHaveBeenCalledTimes(1);
+      expect(mockStore.reloadPhotos).toHaveBeenCalledTimes(1);
       expect(mockStore.restoreSelection).toHaveBeenCalledWith(['/a.jpg']);
     });
 
@@ -1717,7 +1808,7 @@ describe('GalleryComponent', () => {
     });
 
     function render(trashAvailable: boolean, viewScoped: boolean, allowTrash: boolean = trashAvailable): ComponentFixture<GalleryComponent> {
-      mockAuth['isEdition'] = vi.fn(() => true);
+      (mockAuth as { isEdition: unknown }).isEdition = vi.fn(() => true);
       mockAuth['hasFeature'] = vi.fn(() => false);
       mockAuth['isMultiUser'] = vi.fn(() => false);
       mockAuth['isSuperadmin'] = vi.fn(() => false);
@@ -1765,7 +1856,7 @@ describe('GalleryComponent', () => {
 
     it('passes trashAvailable through to the sheet data', async () => {
       mockStore.config.set({ cull: { allow_trash: true, trash_available: true } });
-      mockAuth['isEdition'] = vi.fn(() => true);
+      (mockAuth as { isEdition: unknown }).isEdition = vi.fn(() => true);
       const bottomSheet = TestBed.inject(MatBottomSheet);
       (bottomSheet.open as Mock).mockReturnValue({ afterDismissed: () => of(null) });
 
@@ -1777,7 +1868,7 @@ describe('GalleryComponent', () => {
 
     it('dispatches to deleteSelected() when the sheet resolves { kind: "delete" }', async () => {
       mockStore.config.set({ cull: { allow_trash: true, trash_available: true } });
-      mockAuth['isEdition'] = vi.fn(() => true);
+      (mockAuth as { isEdition: unknown }).isEdition = vi.fn(() => true);
       const bottomSheet = TestBed.inject(MatBottomSheet);
       (bottomSheet.open as Mock).mockReturnValue({ afterDismissed: () => of({ kind: 'delete' }) });
       const spy = vi.spyOn(component, 'deleteSelected').mockResolvedValue();
@@ -2747,7 +2838,7 @@ describe('GalleryComponent', () => {
         expect(data.filters).toBeNull();
         expect(data.exclude).toEqual([]);
         expect(data.count).toBe(1);
-        expect(mockStore.loadPhotos).toHaveBeenCalled();
+        expect(mockStore.reloadPhotos).toHaveBeenCalled();
         expect(mockStore.clearSelection).not.toHaveBeenCalled();
       });
 
@@ -3043,7 +3134,7 @@ describe('GalleryComponent', () => {
     });
 
     function render(mode: 'grid' | 'mosaic', virtual: boolean, touch = false): HTMLElement[] {
-      mockAuth['isEdition'] = vi.fn(() => true);
+      (mockAuth as { isEdition: unknown }).isEdition = vi.fn(() => true);
       mockAuth['hasFeature'] = vi.fn(() => false);
       mockAuth['isMultiUser'] = vi.fn(() => false);
       mockAuth['isSuperadmin'] = vi.fn(() => false);

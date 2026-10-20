@@ -1035,6 +1035,11 @@
     "set_scope": {
       "message": "Viene mostrato un gruppo di foto: {kind}"
     },
+    "pinned": {
+      "chip": "{count} foto scelta dal tuo assistente",
+      "chip_plural": "{count} foto scelte dal tuo assistente",
+      "clear": "Torna alla vista abituale"
+    },
     "all_photos": "Tutte le foto",
     "sort": "Ordina per",
     "sort_aggregate": "Aggregato",

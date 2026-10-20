@@ -13,7 +13,7 @@ import { makePhoto } from '../../../testing/photo.fixture';
 import { contractHandlerMismatch, WebMcpToolRegistry } from './webmcp-registry.service';
 import { routes } from '../../app.routes';
 import { DEFAULT_FILTERS } from '../../features/gallery/gallery-filters.util';
-import { createUiToolHandlers } from './ui-tool-handlers';
+import { applicableActions, createUiToolHandlers } from './ui-tool-handlers';
 import { ViewActionRegistry } from './view-action-registry.service';
 import contractFile from './ui-tools.schema.json';
 import { UI_TOOL_ERROR_CODES, UiToolContractFile, UiToolEnvelope } from './ui-tool.types';
@@ -45,17 +45,19 @@ describe('UI tool registry and handlers', () => {
   let navigate: Mock;
   let router: { navigate: Mock; url: string; events: unknown; config: unknown };
   let edition: boolean;
+  let multiUser: boolean;
   let viewActions: ViewActionRegistry;
 
   const run = (name: string, args: unknown = {}): Promise<UiToolEnvelope> => registry.execute(name, args);
   /** The handlers without the registry's schema gate, to prove each one defends itself. */
   const direct = (): ReturnType<typeof createUiToolHandlers> => createUiToolHandlers({
     gallery: store, router: router as unknown as Router,
-    auth: { isEdition: () => edition } as unknown as AuthService, viewActions,
+    auth: { isEdition: () => edition } as unknown as AuthService, viewActions, actions: () => [],
   });
 
   beforeEach(async () => {
     edition = false;
+    multiUser = false;
     apiGet = vi.fn(() => of(photosResponse(['/a.jpg', '/b.jpg', '/c.jpg'])));
     navigate = vi.fn(() => Promise.resolve(true));
     router = { navigate, url: '/', events: of(), config: routes };
@@ -64,7 +66,7 @@ describe('UI tool registry and handlers', () => {
         { provide: ApiService, useValue: { get: apiGet, post: vi.fn(() => of({})) } },
         { provide: Router, useValue: router },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
-        { provide: AuthService, useValue: { isEdition: () => edition } },
+        { provide: AuthService, useValue: { isEdition: () => edition, isMultiUser: () => multiUser, isAuthenticated: () => true } },
         { provide: AlbumService, useValue: { list: vi.fn(() => of({ albums: [] })), update: vi.fn(() => of({})) } },
         { provide: MatSnackBar, useValue: { open: vi.fn() } },
         { provide: I18nService, useValue: { t: (k: string) => k } },
@@ -81,7 +83,7 @@ describe('UI tool registry and handlers', () => {
     it('has a handler for every contract entry and a contract entry for every handler', () => {
       const handlers = createUiToolHandlers({
         gallery: store, router: router as unknown as Router,
-        auth: { isEdition: () => edition } as unknown as AuthService, viewActions,
+        auth: { isEdition: () => edition } as unknown as AuthService, viewActions, actions: () => [],
       });
       const mismatch = contractHandlerMismatch((contractFile as unknown as UiToolContractFile).tools, handlers);
       expect(mismatch).toEqual({ missingHandlers: [], missingContract: [] });
@@ -190,7 +192,7 @@ describe('UI tool registry and handlers', () => {
       const realRouter = TestBed.inject(Router);
       await realRouter.navigateByUrl('/stats');
       const handlers = createUiToolHandlers({
-        gallery: store, router: realRouter, auth: { isEdition: () => false } as unknown as AuthService, viewActions,
+        gallery: store, router: realRouter, auth: { isEdition: () => false } as unknown as AuthService, viewActions, actions: () => [],
       });
       await expect(handlers['ui_navigate']({ route: '/stats' })).resolves.toEqual({ route: '/stats' });
     });
@@ -368,6 +370,58 @@ describe('UI tool registry and handlers', () => {
     });
   });
 
+  describe('ui_show_photos', () => {
+    const byPaths = (shown: string[], missing: string[]) => {
+      const post = TestBed.inject(ApiService).post as unknown as Mock;
+      post.mockImplementation(() => of({ photos: shown.map(path => makePhoto({ path })), total: shown.length, missing }));
+      return post;
+    };
+
+    it('pins the list, reports what was missing, and leaves the filters alone', async () => {
+      const post = byPaths(['/a.jpg', '/b.jpg', '/c.jpg'], ['/x.jpg', '/y.jpg']);
+      const before = JSON.stringify(store.filters());
+      const result = await run('ui_show_photos', { paths: ['/a.jpg', '/b.jpg', '/c.jpg', '/x.jpg', '/y.jpg'] });
+      expect(result).toMatchObject({ ok: true, data: { shown: 3, missing: ['/x.jpg', '/y.jpg'], total: 3 } });
+      expect(post).toHaveBeenCalledWith('/photos/by_paths', { paths: ['/a.jpg', '/b.jpg', '/c.jpg', '/x.jpg', '/y.jpg'] });
+      expect(store.pinnedPaths()).toHaveLength(5);
+      expect(JSON.stringify(store.filters())).toBe(before);
+    });
+
+    it('leaves an album page first, without saving a smart filter', async () => {
+      byPaths(['/a.jpg'], []);
+      router.url = '/album/3';
+      navigate.mockImplementationOnce(async () => {
+        router.url = '/';
+        store.galleryMounts.update(n => n + 1);
+        return true;
+      });
+      const result = await run('ui_show_photos', { paths: ['/a.jpg'] });
+      expect(result.ok).toBe(true);
+      expect(navigate).toHaveBeenCalledWith(['/']);
+      expect(TestBed.inject(AlbumService).update).not.toHaveBeenCalled();
+    });
+
+    it('rejects an empty list and 201 paths before touching the gallery', async () => {
+      const post = byPaths([], []);
+      expect(await run('ui_show_photos', { paths: [] })).toMatchObject({ ok: false, error: 'invalid_input' });
+      const tooMany = Array.from({ length: 201 }, (_, n) => `/p${n}.jpg`);
+      expect(await run('ui_show_photos', { paths: tooMany })).toMatchObject({ ok: false, error: 'invalid_input' });
+      expect(post).not.toHaveBeenCalled();
+    });
+
+    it('refuses selecting the whole view while the list is pinned', async () => {
+      byPaths(['/a.jpg'], []);
+      await run('ui_show_photos', { paths: ['/a.jpg'] });
+      expect(await run('ui_select_photos', { select_view: true })).toMatchObject({ ok: false, error: 'invalid_input' });
+    });
+
+    it('is reported as pinned by ui_get_context', async () => {
+      byPaths(['/a.jpg'], []);
+      await run('ui_show_photos', { paths: ['/a.jpg'] });
+      expect(await run('ui_get_context')).toMatchObject({ ok: true, data: { gallery: { pinned: true } } });
+    });
+  });
+
   describe('selection', () => {
     beforeEach(async () => {
       await store.loadPhotos();
@@ -427,6 +481,130 @@ describe('UI tool registry and handlers', () => {
     });
   });
 
+  describe('selection snapshot bounds', () => {
+    beforeEach(async () => {
+      await store.loadPhotos();
+    });
+
+    it('flags 1001 exclusions and reports the real count', async () => {
+      await run('ui_select_photos', { select_view: true });
+      store.excludedPaths.set(new Set(Array.from({ length: 1001 }, (_, i) => `/x${i}.jpg`)));
+      const data = ((await run('ui_get_selection')) as { data: Record<string, unknown> }).data;
+      expect(data['excluded_count']).toBe(1001);
+      expect(data['excluded_truncated']).toBe(true);
+      expect((data['excluded_paths'] as string[]).length).toBe(1000);
+    });
+
+    it('does not flag a view selection whose exclusions all fit', async () => {
+      await run('ui_select_photos', { select_view: true });
+      store.excludedPaths.set(new Set(['/x.jpg']));
+      const data = ((await run('ui_get_selection')) as { data: Record<string, unknown> }).data;
+      expect(data).toMatchObject({ excluded_count: 1, excluded_truncated: false });
+    });
+
+    it('measures paths as JSON-escaped encoded bytes, so escapes cannot overflow the frame', async () => {
+      const paths = Array.from({ length: 300 }, (_, i) => `/${'"'.repeat(3000)}/${i}.jpg`);
+      store.restoreSelection(paths);
+      const data = ((await run('ui_get_selection')) as { data: Record<string, unknown> }).data;
+      expect(data['truncated']).toBe(true);
+      expect(new TextEncoder().encode(JSON.stringify(data)).length).toBeLessThan(200 * 1024);
+    });
+
+    it('cuts 3000 long paths to a 200 KB frame and marks the selection truncated', async () => {
+      const paths = Array.from({ length: 3000 }, (_, i) => `/${'d'.repeat(3000)}/${i}.jpg`);
+      store.restoreSelection(paths);
+      const data = ((await run('ui_get_selection')) as { data: Record<string, unknown> }).data;
+      expect(data['truncated']).toBe(true);
+      expect(data['count']).toBe(3000);
+      expect(JSON.stringify(data).length).toBeLessThan(200 * 1024);
+      expect((data['paths'] as string[]).length).toBeLessThan(1000);
+    });
+  });
+
+  describe('ui_get_context', () => {
+    const context = async (): Promise<Record<string, unknown>> =>
+      ((await run('ui_get_context')) as { data: Record<string, unknown> }).data;
+    const jobIds = (data: Record<string, unknown>): string[] => (data['actions'] as { id: string }[]).map(a => a.id);
+
+    it('reports the open photo of the detail route', async () => {
+      router.url = '/photo?path=a.jpg';
+      expect(await context()).toMatchObject({ route: '/photo', query_path: 'a.jpg', gallery: null });
+    });
+
+    it('reports the album id on an album page', async () => {
+      router.url = '/album/7';
+      expect(await context()).toMatchObject({ route: '/album/7', album_id: 7, gallery: { pinned: false } });
+    });
+
+    it('answers off the gallery with gallery null instead of throwing', async () => {
+      router.url = '/stats';
+      const data = await context();
+      expect(data['gallery']).toBeNull();
+      expect(data['selection']).toEqual({ scope: 'paths', count: 0 });
+    });
+
+    it('reports scope and count of a view selection and nothing else about it', async () => {
+      await store.loadPhotos();
+      await run('ui_select_photos', { select_view: true });
+      const data = await context();
+      expect(data['selection']).toEqual({ scope: 'view', count: 120 });
+      expect(data['gallery']).toMatchObject({ total: 120, loaded: 3, has_more: false, pinned: false });
+    });
+
+    it('lists the registered page actions by name', async () => {
+      const off = viewActions.register('ui_show_culling_group', async () => ({}));
+      expect((await context())['mounted_actions']).toEqual(['ui_show_culling_group']);
+      off();
+      expect((await context())['mounted_actions']).toEqual([]);
+    });
+
+    it('lists the jobs that apply to the gallery and drops the tools above the session level', async () => {
+      const data = await context();
+      expect(data['level']).toBe('readonly');
+      const ids = jobIds(data);
+      expect(ids).toContain('steer_gallery');
+      expect(ids).not.toContain('work_darkroom');
+      expect(ids).not.toContain('edit_many');
+      const rate = (data['actions'] as { id: string; tools: string[] }[]).find(a => a.id === 'rate_photos');
+      expect(rate).toBeUndefined();
+    });
+
+    it('lists the editing jobs for an edition session once photos are selected', async () => {
+      edition = true;
+      await store.loadPhotos();
+      store.restoreSelection(['/a.jpg']);
+      const data = await context();
+      expect(data['level']).toBe('edition');
+      const edit = (data['actions'] as { id: string; tools: string[] }[]).find(a => a.id === 'edit_many');
+      expect(edit?.tools).toContain('batch_set_rating');
+      expect(jobIds(data)).toContain('cull_or_delete');
+    });
+
+    it('reports the user level of a signed-in multi-user session', async () => {
+      multiUser = true;
+      const data = await context();
+      expect(data['level']).toBe('user');
+      const rate = (data['actions'] as { id: string; tools: string[] }[]).find(a => a.id === 'rate_photos');
+      expect(rate?.tools).toEqual(['set_rating', 'set_favorite', 'set_rejected']);
+    });
+
+    it('lists the darkroom job on /culling and not the selection jobs', async () => {
+      edition = true;
+      router.url = '/culling';
+      const ids = jobIds(await context());
+      expect(ids).toContain('work_darkroom');
+      expect(ids).not.toContain('edit_many');
+    });
+
+    it('carries exactly the jobs of the generated table for the same facts', async () => {
+      edition = true;
+      router.url = '/stats';
+      const rows = (contractFile as unknown as UiToolContractFile).actions;
+      const expected = rows.filter(row => row.when.includes('any')).map(row => row.id);
+      expect(jobIds(await context())).toEqual(expected);
+    });
+  });
+
   describe('ui_next_page', () => {
     it('loads the next page', async () => {
       apiGet.mockReturnValue(of(photosResponse(['/a.jpg'], true)));
@@ -471,5 +649,17 @@ describe('UI tool registry and handlers', () => {
         vi.useRealTimers();
       }
     });
+  });
+});
+
+describe('applicableActions', () => {
+  const rows = [{ id: 'a', summary: 's', when: ['any'], tools: [{ name: 'read', required_level: 'readonly' }, { name: 'odd', required_level: 'mystery' }] }];
+
+  it('fails closed on an unknown required level', () => {
+    expect(applicableActions(rows, new Set(), 'edition')[0].tools).toEqual(['read']);
+  });
+
+  it('lists nothing for an unknown session level', () => {
+    expect(applicableActions(rows, new Set(), 'mystery')).toEqual([]);
   });
 });

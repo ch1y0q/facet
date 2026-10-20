@@ -14,9 +14,13 @@ from typing import Any, Optional, get_args
 from pydantic import ValidationError
 
 from api.agent.bridge import TabRegistry
+from api.agent.internal_client import err
 from api.agent.tokens import ResolvedGrant
 from api.agent.tools_common import SortColumn
-from api.agent.ui_tools import SEMANTIC_THRESHOLD_MAX, TAB_UNSUPPORTED_FILTER_KEYS, UiSetGalleryFilters
+from api.agent.tools_ui import BRIDGE_DISABLED
+from api.agent.ui_tools import (
+    SEMANTIC_THRESHOLD_MAX, TAB_UNSUPPORTED_FILTER_KEYS, UiSetGalleryFilters, UiShowPhotos,
+)
 from api.config import VIEWER_CONFIG
 
 logger = logging.getLogger(__name__)
@@ -82,6 +86,25 @@ def similar_patch(path: str, mode: str, min_similarity: Optional[float],
             "semantic_query": None, "semantic_threshold": None, **effective_sort(sort, sort_direction)}
 
 
+async def call_tab(registry: TabRegistry, resolved: ResolvedGrant, settings: dict, tool: str,
+                   payload: dict, tab_id: Optional[str], *, timeout: Optional[float] = None) -> dict:
+    """Ask the user's tab to run ``tool``; the bridge's envelope, never a raise.
+
+    The one tab relay every server-side tool shares (show, context, selection reads), with
+    the same level and ``max_level`` reach rules as a ``ui_*`` call.
+    """
+    if not settings["bridge"]:
+        return err("no_tab", BRIDGE_DISABLED)
+    try:
+        return await registry.call(
+            resolved.principal, tool, payload, level=resolved.level, tab_id=tab_id,
+            timeout=settings["call_timeout_s"] if timeout is None else timeout,
+            max_level=resolved.minted_level)
+    except Exception:
+        logger.exception("Tab call %s crashed", tool)
+        return err("upstream_error", "The tab call failed unexpectedly", crashed=True)
+
+
 async def show_in_tab(registry: TabRegistry, resolved: ResolvedGrant, settings: dict,
                       tab_id: Optional[str], patch: dict, *, timeout: float) -> dict:
     """Apply ``patch`` (replace semantics) to the user's tab; describe the outcome, never raise."""
@@ -89,20 +112,42 @@ async def show_in_tab(registry: TabRegistry, resolved: ResolvedGrant, settings: 
         return not_shown("bridge_disabled")
     try:
         args = UiSetGalleryFilters.model_validate({"patch": patch, "replace": True}).forward()
-        envelope = await registry.call(
-            resolved.principal, "ui_set_gallery_filters", args, level=resolved.level,
-            tab_id=tab_id, timeout=timeout, max_level=resolved.minted_level)
     except ValidationError as ex:
         logger.error("Show patch refused by the contract (%d issues)", ex.error_count())
         return not_shown("error")
-    except Exception:
-        logger.exception("Show in tab crashed")
+    envelope = await call_tab(registry, resolved, settings, "ui_set_gallery_filters", args, tab_id,
+                              timeout=timeout)
+    if envelope.get("crashed"):
         return not_shown("error")
     if envelope.get("ok"):
         data = envelope.get("data") or {}
         tab = envelope.get("tab") or {}
         return {"applied": True, "tab_id": tab.get("tab_id"), "keys": data.get("applied"),
                 "total": data.get("total")}
+    code = str(envelope.get("error") or "error")
+    if code == "tab_timeout":
+        return not_shown(code, note="The tab may still apply it.")
+    return not_shown("forbidden" if code == "forbidden_level" else code)
+
+
+async def show_paths_in_tab(registry: TabRegistry, resolved: ResolvedGrant, settings: dict,
+                            tab_id: Optional[str], paths: list[str], *, timeout: float) -> dict:
+    """Pin exactly ``paths`` (in order) as the user's gallery list; describe the outcome, never raise."""
+    if not settings["bridge"]:
+        return not_shown("bridge_disabled")
+    try:
+        args = UiShowPhotos.model_validate({"paths": paths}).forward()
+    except ValidationError as ex:
+        logger.error("Show paths refused by the contract (%d issues)", ex.error_count())
+        return not_shown("error")
+    envelope = await call_tab(registry, resolved, settings, "ui_show_photos", args, tab_id, timeout=timeout)
+    if envelope.get("crashed"):
+        return not_shown("error")
+    if envelope.get("ok"):
+        data = envelope.get("data") or {}
+        tab = envelope.get("tab") or {}
+        return {"applied": True, "tab_id": tab.get("tab_id"), "keys": None, "total": data.get("total"),
+                "missing": data.get("missing") or []}
     code = str(envelope.get("error") or "error")
     if code == "tab_timeout":
         return not_shown(code, note="The tab may still apply it.")

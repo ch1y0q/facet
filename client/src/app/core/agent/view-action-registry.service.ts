@@ -19,6 +19,11 @@ export class ViewActionRegistry {
     };
   }
 
+  /** The names of the actions a mounted view has registered. */
+  names(): string[] {
+    return [...this.actions.keys()];
+  }
+
   get(name: string): UiToolHandler | undefined {
     return this.actions.get(name);
   }

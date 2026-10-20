@@ -14,12 +14,15 @@ from mcp.server.mcpserver import Context, MCPServer
 from mcp.types import CallToolResult, ToolAnnotations
 from pydantic import ValidationError
 
+from api.agent import actions
 from api.agent.bridge import TabRegistry
 from api.agent.internal_client import err, validation_issues
 from api.agent.runtime import run_tool
-from api.agent.tools_common import UNTRUSTED_META, UNTRUSTED_NOTE
+from api.agent.tools_common import TOOL_LEVELS, UNTRUSTED_META, UNTRUSTED_NOTE
 from api.agent.ui_tools import UI_TOOLS, UiTool
 
+# They change what a tab shows, never library data, so the lowest grant is enough.
+UI_TOOL_LEVEL = "readonly"
 BRIDGE_DISABLED = ("The tab bridge is disabled on this server (viewer.mcp.bridge is false), "
                    "so ui_* tools cannot reach a browser tab.")
 
@@ -35,8 +38,26 @@ def _signature(tool: UiTool) -> inspect.Signature:
     return inspect.Signature(params)
 
 
+def restrict_context(result: dict, level: str) -> None:
+    """Rewrite the tab's ``actions`` for the TOKEN's level: the tab built them at its own session's."""
+    data = result.get("data") if result.get("ok") else None
+    if not isinstance(data, dict):
+        return
+    raw_gallery, raw_selection = data.get("gallery"), data.get("selection")
+    gallery: dict = raw_gallery if isinstance(raw_gallery, dict) else {}
+    selection: dict = raw_selection if isinstance(raw_selection, dict) else {}
+    raw_count = selection.get("count")
+    count = raw_count if isinstance(raw_count, int) else 0
+    facts = actions.facts_for(str(data.get("route") or "/"), count, bool(gallery.get("pinned")))
+    rows, _hidden = actions.evaluate(level, facts, TOOL_LEVELS)
+    data["level"] = level
+    data["actions"] = [{"id": row["id"], "summary": row["summary"], "tools": [t["name"] for t in row["tools"]]}
+                       for row in rows]
+
+
 def register_ui_tools(server: MCPServer, registry: TabRegistry) -> None:
     for tool in UI_TOOLS:
+        TOOL_LEVELS[tool.name] = UI_TOOL_LEVEL
         server.add_tool(
             _make_tool(tool, registry), name=tool.name,
             description=tool.description + UNTRUSTED_NOTE,
@@ -56,10 +77,13 @@ def _make_tool(tool: UiTool, registry: TabRegistry) -> Any:
                 args = tool.model(**kwargs)
             except ValidationError as ex:
                 return err("invalid_input", "Invalid arguments", issues=validation_issues(ex))
-            return await registry.call(
+            result = await registry.call(
                 resolved.principal, tool.name, args.forward(), level=resolved.level,
                 tab_id=args.tab_id, timeout=settings["call_timeout_s"],
                 max_level=resolved.minted_level)
+            if tool.name == "ui_get_context":
+                restrict_context(result, resolved.level)
+            return result
         return await run_tool(ctx, tool.name, handler)
 
     run.__name__ = tool.name

@@ -2593,6 +2593,7 @@ Expose les outils décrits dans [Agents IA (MCP)](AGENTS.md) via `POST /mcp` : l
       "bridge": true,
       "max_rows": 100,
       "max_bytes": 60000,
+      "max_image_bytes": 262144,
       "call_timeout_s": 30,
       "semantic_timeout_s": 120,
       "rate_per_min": 120,
@@ -2609,6 +2610,7 @@ Expose les outils décrits dans [Agents IA (MCP)](AGENTS.md) via `POST /mcp` : l
 | `bridge` | `true` | Indique si le pont vers l'onglet du navigateur (`/api/mcp/bridge`) accepte les WebSockets et si les outils `ui_*` peuvent atteindre un onglet. À `false`, le pont refuse la connexion (code de fermeture 4404) et les outils `ui_*` renvoient une erreur explicite. Exige un seul worker. |
 | `max_rows` | `100` | Nombre maximal de lignes dans un résultat d'outil (1 à 500). Les lignes en trop sont retirées et `truncated: true` est ajouté. |
 | `max_bytes` | `60000` | Taille sérialisée maximale d'un résultat d'outil en octets (4000 à 500000). |
+| `max_image_bytes` | `262144` | Taille maximale en octets de l'image renvoyée par un outil, `get_thumbnail` ou `contact_sheet` (32768 à 2097152) ; non comptée dans `max_bytes`. |
 | `call_timeout_s` | `30` | Délai d'un appel d'outil en secondes (1 à 300). Borne aussi l'attente d'un appel `ui_*` vers l'onglet du navigateur (`tab_timeout`). |
 | `semantic_timeout_s` | `120` | Délai de `semantic_search` en secondes (1 à 300) ; l'outil charge le modèle d'embeddings et demande donc plus de temps. |
 | `rate_per_min` | `120` | Appels d'outils par minute et par jeton (minimum 1). |

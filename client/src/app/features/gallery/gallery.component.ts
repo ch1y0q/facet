@@ -48,6 +48,7 @@ import { downloadAll } from '../../shared/utils/download';
 import { basename, copyLines } from '../../shared/utils/clipboard';
 import { I18nService } from '../../core/services/i18n.service';
 import { ApiService } from '../../core/services/api.service';
+import { PluralKeyPipe } from '../../shared/pipes/plural-key.pipe';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { PhotoTooltipComponent } from './photo-tooltip.component';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
@@ -95,6 +96,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
     MatMenuModule,
     MatTooltipModule,
     MatBottomSheetModule,
+    PluralKeyPipe,
     TranslatePipe,
     SequenceKindIconPipe,
     IsSelectedPipe,
@@ -143,7 +145,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
 
       <!-- Keep top N%: server-rank the current view by the current sort and
            select the bottom (100-N)% for review/rejection via the selection bar. -->
-      @if (auth.isEdition() && store.total() > 0) {
+      @if (auth.isEdition() && store.total() > 0 && store.canScopeSelectionToView()) {
         <button mat-icon-button class="!hidden lg:!inline-flex" [matMenuTriggerFor]="keepTopMenu"
                 [matTooltip]="I18N.gallery.keep_top.label | translate"
                 [attr.aria-label]="I18N.gallery.keep_top.label | translate">
@@ -259,6 +261,20 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
             </span>
             <button mat-button class="!min-w-0" (click)="clearSetScope()">
               {{ I18N.ui.buttons.clear | translate }}
+            </button>
+          </div>
+        }
+
+        <!-- Pinned-list chip: the assistant's ui_show_photos list replaces the filtered
+             view; this is the way back to it (any filter change drops the list too). -->
+        @if (store.pinnedPaths() !== null) {
+          <div role="status" class="mx-2 md:mx-4 mt-2 md:mt-4 px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] border border-[var(--mat-sys-outline-variant)] flex items-center gap-3 text-sm">
+            <mat-icon class="opacity-70 !text-base !w-5 !h-5">auto_awesome</mat-icon>
+            <span class="flex-1">
+              {{ store.total() | pluralKey:I18N.gallery.pinned.chip:I18N.gallery.pinned.chip_plural | translate:{ count: store.total() } }}
+            </span>
+            <button mat-button class="!min-w-0" (click)="store.clearPinned()">
+              {{ I18N.gallery.pinned.clear | translate }}
             </button>
           </div>
         }
@@ -507,7 +523,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
           <div class="flex flex-col items-center justify-center gap-4 p-16" role="alert">
             <mat-icon class="!text-6xl !w-16 !h-16 text-[var(--mat-sys-error)]">cloud_off</mat-icon>
             <p class="text-lg text-center">{{ I18N.gallery.load_error.message | translate }}</p>
-            <button mat-flat-button color="primary" (click)="store.loadPhotos()">
+            <button mat-flat-button color="primary" (click)="store.reloadPhotos()">
               <mat-icon>refresh</mat-icon>
               {{ I18N.gallery.load_error.retry | translate }}
             </button>
@@ -1754,7 +1770,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     const completed = await firstValueFrom(ref.afterClosed());
     if (completed) {
       await this.store.loadTypeCounts();
-      await this.store.loadPhotos();
+      await this.store.reloadPhotos();
     }
   }
 
@@ -1802,7 +1818,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     const written = await firstValueFrom(ref.afterClosed());
     if (!written) return;
     const kept = viewScoped ? new Set(this.excludedPaths()) : new Set(this.selectedPaths());
-    await this.store.loadPhotos();
+    await this.store.reloadPhotos();
     this.restoreSelectionWithout(viewScoped, kept, []);
   }
 
@@ -1833,7 +1849,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
       // card, and the rows the cull has just moved away are still standing in
       // the list until this returns.
       if (!explicit) {
-        await this.store.loadPhotos();
+        await this.store.reloadPhotos();
         this.clearSelection();
         return;
       }
@@ -1842,7 +1858,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
       // so what the user built is captured first and put back after it.
       const wasViewScoped = this.viewScoped();
       const kept = wasViewScoped ? new Set(this.excludedPaths()) : new Set(this.selectedPaths());
-      await this.store.loadPhotos();
+      await this.store.reloadPhotos();
       this.restoreSelectionWithout(wasViewScoped, kept, culled);
     }
   }

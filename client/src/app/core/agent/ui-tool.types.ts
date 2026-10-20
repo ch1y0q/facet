@@ -44,10 +44,19 @@ export interface UiToolContract {
   annotations: UiToolAnnotations;
 }
 
+/** One row of the generated `actions` table: a job, the page facts it applies to, and its tools with their floors. */
+export interface UiActionRow {
+  id: string;
+  summary: string;
+  when: string[];
+  tools: { name: string; required_level: string }[];
+}
+
 export interface UiToolContractFile {
   version: string;
   tools: UiToolContract[];
   error_codes: string[];
+  actions: UiActionRow[];
 }
 
 export type UiToolEnvelope =
