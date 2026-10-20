@@ -34,7 +34,7 @@ interface LevelOption {
   changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title>{{ I18N.dialog.connect_assistant.title | translate }}</h2>
-    <mat-dialog-content class="flex flex-col gap-4">
+    <mat-dialog-content class="!flex !flex-col gap-4 !pt-2">
       <p class="sr-only" role="status" aria-live="polite" data-testid="live-region">{{ liveMessage() }}</p>
       @if (error(); as message) {
         <p class="text-sm text-red-700 dark:text-red-400" role="alert">{{ message | translate }}</p>
@@ -53,16 +53,16 @@ interface LevelOption {
         </section>
       } @else {
         <p class="text-sm opacity-80">{{ I18N.dialog.connect_assistant.intro | translate }}</p>
-        <div class="flex flex-col gap-2">
+        <div class="flex flex-col gap-3">
           <label class="flex flex-col gap-1 text-sm">
             <span>{{ I18N.dialog.connect_assistant.name_label | translate }}</span>
-            <input #nameField class="rounded border border-current/30 bg-transparent px-2 py-1" maxlength="100" name="token-name"
+            <input #nameField class="h-9 rounded border border-current/30 bg-transparent px-3" maxlength="100" name="token-name"
                    [placeholder]="I18N.dialog.connect_assistant.name_placeholder | translate"
                    [ngModel]="name()" (ngModelChange)="name.set($event)" (keydown.enter)="mint()" />
           </label>
           <label class="flex flex-col gap-1 text-sm">
             <span>{{ I18N.dialog.connect_assistant.level_label | translate }}</span>
-            <select class="rounded border border-current/30 bg-transparent px-2 py-1" name="token-level" [(ngModel)]="level">
+            <select class="h-9 rounded border border-current/30 bg-transparent px-2" name="token-level" [(ngModel)]="level">
               @for (option of levelOptions(); track option.value) {
                 <option class="text-black" [value]="option.value">{{ option.label | translate }}</option>
               }
@@ -74,14 +74,14 @@ interface LevelOption {
             </button>
           </div>
         </div>
-        <p class="text-sm flex items-center gap-2" data-testid="bridge-status">
-          <mat-icon class="!text-base !w-4 !h-4" [class.text-green-600]="bridgeConnected()" [class.opacity-60]="!bridgeConnected()">{{ bridgeConnected() ? 'link' : 'link_off' }}</mat-icon>
+        <p class="flex items-center gap-2 text-sm" data-testid="bridge-status">
+          <mat-icon class="shrink-0 !w-4 !h-4 !text-[16px] !leading-4" [class.text-green-600]="bridgeConnected()" [class.opacity-60]="!bridgeConnected()">{{ bridgeConnected() ? 'link' : 'link_off' }}</mat-icon>
           <span>{{ bridgeStatusKey() | translate }}</span>
         </p>
         <details #tokensDetails class="flex flex-col gap-2" data-testid="tokens-disclosure" [open]="tokensOpen()" (toggle)="tokensOpen.set(tokensDetails.open)">
-          <summary #tokensSummary class="cursor-pointer text-sm font-medium">{{ I18N.dialog.connect_assistant.manage_tokens | translate: { count: tokens().length } }}</summary>
+          <summary #tokensSummary class="cursor-pointer py-1 text-sm font-medium">{{ I18N.dialog.connect_assistant.manage_tokens | translate: { count: tokens().length } }}</summary>
         @for (token of tokens(); track token.id) {
-          <div class="flex flex-wrap items-center gap-2 rounded border border-current/20 px-2 py-1 text-sm" data-testid="token-row">
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded border border-current/20 py-1 pl-3 pr-1 text-sm" data-testid="token-row">
             <span class="font-medium" [title]="token.token_prefix + '…'">{{ token.name }}</span>
             @if (token.level === 'edition') {
               <span class="rounded bg-amber-500/20 px-1.5 text-xs text-amber-800 dark:text-amber-300" data-testid="edition-badge">{{ I18N.dialog.connect_assistant.level_edition_badge | translate }}</span>
