@@ -47,17 +47,33 @@ Die neun Datenwerkzeuge sind schreibgeschützt:
 
 | Werkzeug | Funktion |
 |------|--------------|
-| `search_photos` | Filtert und sortiert die Bibliothek wie die Galerie; die Standard-Ausblendungen des Viewers gelten, sofern der Filter sie nicht setzt (meldet `hidden_summary`) |
-| `semantic_search` | Findet Fotos nach Bedeutung oder mit `scope: "text"` nach Wörtern in Bildunterschriften |
+| `search_photos` | Filtert und sortiert die Bibliothek wie die Galerie, mit den Standard-Ausblendungen des Viewers, sofern der Filter sie nicht setzt (meldet `hidden_summary`). Standardmäßig in Ihrem offenen Tab angezeigt (siehe unten); `fields` fügt beliebige Fotospalten hinzu |
+| `semantic_search` | Findet Fotos nach Bedeutung oder mit `scope: "text"` nach Wörtern in Beschreibungen (nicht im Tab angezeigt) |
 | `get_photo` | Vollständige Details eines Fotos anhand seines Pfads (ohne Histogramm) |
-| `similar_photos` | Fotos, die einem Foto ähneln, per visueller Einbettung oder nach Farbe |
+| `similar_photos` | Fotos, die einem Foto ähneln, per visuellem Embedding oder nach Farbe; `min_similarity` (0 bis 1) setzt die Untergrenze |
 | `filter_options` | Das Vokabular, das ein Filter akzeptiert: Kameras, Objektive, Tags, Personen, Muster, Kategorien, narrative Momente, Müll-Arten, Metrikbereiche |
 | `list_persons` | Erkannte Personen, optional nach Name gefiltert |
 | `list_albums` | Alben, die der Besitzer des Tokens sehen kann |
-| `library_stats` | Bibliotheksgröße, Zahlen je Typ und Überblick über die Bewertungen |
+| `library_stats` | Bibliotheksstatistik: `kind` wählt die Übersicht über Größe und Scores (Standard) oder beliebige Daten der Statistikseite (siehe unten) |
 | `status` | Wer das Token ist, seine effektive Stufe und die Server-Flags und die offenen Tabs, die es steuern kann |
 
 In jedem Filterobjekt ist `show_rejected` ein Boolean: `true` listet nur die abgelehnten Fotos, `false` oder weggelassen ergibt die normale Liste.
+
+## Ergebnisse erscheinen in Ihrem Tab
+
+- `search_photos`, `semantic_search` und `similar_photos` haben `show` (Standard `true`). Nach einer erfolgreichen Suche auf der ersten Seite wendet der Server dieselbe Abfrage auf den geöffneten Facet-Tab an und ersetzt dessen Filter, sodass Sie sehen, was der Assistent gefunden hat, ohne gefragt zu werden. Assistenten wird gesagt, nie zu fragen, ob Ergebnisse geöffnet oder angezeigt werden sollen; `show: false` ist für Zwischenabfragen und Zählungen gedacht, und die zuletzt angezeigte Suche ist die, die Sie sehen.
+- Das Ergebnis enthält `shown_in_tab`: `{"applied": true, "tab_id", "keys", "total"}` oder `{"applied": false, "reason"}`, wobei der Grund `no_tab`, `bridge_disabled`, `tab_outdated`, `tab_timeout` (der Tab kann sie noch anwenden), `forbidden`, `page_not_first`, `empty_result`, `unsupported_filters` (mit `keys`) oder `invalid_combination` ist. Eine fehlgeschlagene Anzeige lässt die Suche nie scheitern. Mit `tab_id` wählen Sie einen Tab. Alle Gründe: `error` (die Anzeige selbst ist fehlgeschlagen), `bridge_disabled`, `page_not_first`, `empty_result`, `invalid_combination`, `unsupported_filters` (mit `keys`; bei `semantic_search` sind das `scope` oder `threshold`, ein Schwellwert über 0,5, den der Schieberegler der Seitenleiste nicht ausdrücken kann) und die Codes der Tab-Bridge (`no_tab`, `tab_outdated`, `tab_timeout`, `forbidden`, `invalid_input`, `upstream_error`). Der Tab blättert selbst, bei einer semantischen Suche kann er daher mehr Zeilen zeigen, als der Assistent erhalten hat. Werden Zeilen gekürzt, nennt `next_page` (mit `suggested_per_page`) die Seite, die genau nach der letzten gelieferten Zeile weitergeht, oder, wenn Seiten diesen Punkt nicht ausdrücken können, gibt `next_offset` ihn als Zeilenoffset an.
+- Nur die erste Seite wird angezeigt (der Tab blättert beim Scrollen selbst), und ein leeres Ergebnis wird nicht angezeigt, sodass Ihre bisherige Ansicht bleibt. Eine Suche mit Filtern, für die die Galerie-Seitenleiste kein Feld hat (`exclude_tags`, `require_tags`, `is_silhouette`, `junk_kind`, `narrative_moment`, `min_rating`, `min_aggregate`, `show_rejected: true`), wird nicht teilweise angewendet, und `semantic_search` mit `scope: "text"` wird ebenfalls nicht angezeigt.
+- Eine Anzeige verlässt `/culling`, `/compare` und `/photo` zugunsten der Galerie, hebt eine Auswahl der ganzen Ansicht auf und kehrt auf einer Albumseite zuerst zur Galerie zurück, sodass die gespeicherten Filter eines Albums nie überschrieben werden. Eine Suche, deren Anzahl in `expected_count` eines Schreibwerkzeugs eingeht, sollte `show: false` verwenden.
+- Zeilen enthalten Kamera, Objektiv, Blende, Verschlusszeit, ISO, Brennweite und `is_monochrome`. `fields` (an den drei Suchwerkzeugen) fügt jede andere Fotospalte außer Bild- und Embedding-Daten hinzu, etwa `leading_lines_score`; `learned_score` ist nur beim Sortieren danach gefüllt. Kürzt das Byte-Limit die Zeilen, ergänzt das Ergebnis `returned` (und `next_offset` oder `suggested_per_page`).
+- `library_stats` nimmt `kind` (Standard `overview`: Größe, Zahlen je Typ und Score-Übersicht). Die übrigen Werte sind schreibgeschützt und liefern die Daten der Statistikseite; lange Listen werden bei 50 Einträgen mit `truncated: true` gekürzt:
+
+| Wert von kind | Daten |
+|------|------|
+| `score_distribution`, `top_cameras`, `categories`, `gear`, `stats_settings`, `timeline`, `correlations` | Die Bereiche der Statistikseite; sie akzeptieren `date_from`, `date_to` und `category`. `correlations` nimmt zusätzlich `x`, `y` (kommagetrennte Liste), `group_by` und `min_samples` |
+| `category_breakdown`, `category_weights`, `category_correlations`, `category_overlap` | Kategoriestatistiken (ohne Parameter) |
+| `timeline_dates`, `timeline_months` | Fotozahlen pro Tag oder Monat; sie brauchen `year` (`timeline_dates` nimmt auch `month`) |
+| `timeline_years` | Fotozahlen pro Jahr |
 
 ## Den geöffneten Tab steuern
 
@@ -90,7 +106,7 @@ So funktioniert es:
 
 Ergänzend:
 
-- `ui_set_gallery_filters` führt zuerst zur Galerie, wenn eine andere Seite offen ist, und wendet dann den Patch an. Ein Patch, der einen Filter nennt, den der Tab nicht steuern kann, wird insgesamt abgelehnt (`invalid_input`); nutzen Sie dafür `search_photos`.
+- `ui_set_gallery_filters` führt zuerst zur Galerie, wenn eine andere Seite offen ist, und wendet dann den Patch an. Ein Patch, der einen Filter nennt, den der Tab nicht steuern kann, wird insgesamt abgelehnt (`invalid_input`); nutzen Sie dafür `search_photos`. Auf einer Albumseite kehrt `replace: true` zuerst zur Galerie zurück, sodass die gespeicherten Filter des Albums nicht überschrieben werden. Akzeptiert außerdem `semantic_query`, `semantic_threshold` (0 bis 0,5), `similar_to`, `similarity_mode` und `min_similarity` (0 bis 1); `similar_to` und `semantic_query` lassen sich nicht kombinieren.
 - `ui_get_gallery_view`, `ui_next_page` und `ui_select_photos` mit `select_view` brauchen die Galerie (oder ein Album) als offene Seite, sonst antworten sie `no_active_view`; rufen Sie zuerst `ui_navigate` nach `/` auf. Übergeben Sie `ui_select_photos` genau eines von `paths` und `select_view`.
 - `no_tab` heißt auch, dass kein Facet-Tab offen ist: Öffnen Sie Facet in einem Browser und melden Sie sich an. Die Statuszeile im Dialog **Assistent verbinden** zeigt, ob dieser Tab verbunden ist; das Werkzeug `status` listet die offenen Tabs mit ihren IDs auf.
 - Ein Tab verbindet sich nicht mehr neu, sobald seine Sitzung abgelehnt wurde (erneut anmelden), und wartet, bis Sie zu ihm zurückkehren, wenn ein anderer Ihrer Tabs übernommen hat.
@@ -176,7 +192,7 @@ Die Dunkelkammer-Werkzeuge spiegeln die Seite `/culling`. Alle brauchen die Stuf
 
 ## Ergebnisse, Limits und Fehler
 
-Jedes Ergebnis ist ein JSON-Umschlag: `{"ok": true, "data": ...}` oder `{"ok": false, "error": "<code>", "message": "..."}`. Listen liefern `data.rows` (ein kompakter, fester Feldsatz pro Foto) plus `total`.
+Jedes Ergebnis ist ein JSON-Umschlag: `{"ok": true, "data": ...}` oder `{"ok": false, "error": "<code>", "message": "..."}`. Listen liefern `data.rows` (ein kompakter, fester Feldsatz pro Foto) plus `total`. Ein Suchergebnis enthält außerdem `shown_in_tab`, und ein durch das Byte-Limit gekürztes Ergebnis enthält `returned`.
 
 - **Obergrenzen:** höchstens `max_rows` Zeilen und `max_bytes` serialisierte Bytes. Letzte Zeilen werden verworfen und `truncated: true` gesetzt. Ein Ergebnis ohne Zeilen, das `max_bytes` überschreitet, wird zum Fehler `too_large`.
 - **Ratenlimit:** `rate_per_min` Aufrufe pro Minute und Token für Lesezugriffe. Schreibwerkzeuge verbrauchen ein getrenntes Budget `write_rate_per_min` (Standard 30), damit Suchen Schreibzugriffe nicht aushungern und umgekehrt; der Probelauf von `cull_apply` und `delete_photos` zählt als Schreibzugriff, eine `auto_cull`-Vorschau als Lesezugriff. Darüber hinaus: `rate_limited` mit `retry_after_s`. Zehn fehlgeschlagene Bearer-Versuche pro Minute von einer Adresse beantwortet der Server mit 429.

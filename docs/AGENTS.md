@@ -47,17 +47,33 @@ The nine data tools are read-only:
 
 | Tool | What it does |
 |------|--------------|
-| `search_photos` | Filter and sort the library like the gallery, with the viewer's default hide toggles applied unless the filter sets them (reports `hidden_summary`) |
-| `semantic_search` | Find photos by meaning, or by words in captions with `scope: "text"` |
+| `search_photos` | Filter and sort the library like the gallery, with the viewer's default hide toggles applied unless the filter sets them (reports `hidden_summary`). Shown in your open tab by default (see below); `fields` adds any photo column |
+| `semantic_search` | Find photos by meaning, or by words in captions with `scope: "text"` (not shown in the tab) |
 | `get_photo` | Full detail of one photo by its path (the histogram is left out) |
-| `similar_photos` | Photos similar to one photo, by visual embedding or by colour |
+| `similar_photos` | Photos similar to one photo, by visual embedding or by colour; `min_similarity` (0 to 1) sets the floor |
 | `filter_options` | The vocabulary a filter accepts: cameras, lenses, tags, persons, patterns, categories, narrative moments, junk kinds, metric ranges |
 | `list_persons` | Recognised people, optionally filtered by name |
 | `list_albums` | Albums the token's owner can see |
-| `library_stats` | Library size, type counts and score overview |
+| `library_stats` | Library statistics: `kind` selects the size and score overview (default) or any Stats page data (see below) |
 | `status` | Who the token is, its effective level and the server flags and the open tabs it can drive |
 
 In every filter object, `show_rejected` is a boolean: `true` lists only the rejected photos, `false` or omitted gives the normal listing.
+
+## Results are shown in your tab
+
+- `search_photos`, `semantic_search` and `similar_photos` take `show` (default `true`). After a successful first-page search the server applies the same query to the Facet tab you have open, replacing its filters, so you see what the assistant found without being asked. Assistants are told never to ask whether to open or show results; `show: false` is for intermediate probes and counts, and the last shown search is what you see.
+- The result carries `shown_in_tab`: `{"applied": true, "tab_id", "keys", "total"}`, or `{"applied": false, "reason"}` where the reason is `no_tab`, `bridge_disabled`, `tab_outdated`, `tab_timeout` (the tab may still apply it), `forbidden`, `page_not_first`, `empty_result`, `unsupported_filters` (with `keys`) or `invalid_combination`. A failed show never fails the search. Pass `tab_id` to choose a tab. Every reason: `error` (the show itself failed), `bridge_disabled`, `page_not_first`, `empty_result`, `invalid_combination`, `unsupported_filters` (with `keys`; for `semantic_search` the keys are `scope` or `threshold`, a threshold over 0.5 that the sidebar slider cannot express), and the codes the tab bridge returns (`no_tab`, `tab_outdated`, `tab_timeout`, `forbidden`, `invalid_input`, `upstream_error`). The tab pages itself, so for a semantic search it may show more rows than the agent received. When rows are trimmed, `next_page` (with `suggested_per_page`) names the page that continues exactly after the last returned row, or, when pages cannot express that point, `next_offset` gives it as a row offset.
+- Only the first page is shown (the tab pages itself as you scroll), and an empty result is not shown, so you keep your previous view. A search using filters the gallery sidebar has no field for (`exclude_tags`, `require_tags`, `is_silhouette`, `junk_kind`, `narrative_moment`, `min_rating`, `min_aggregate`, `show_rejected: true`) is not partially applied, and `semantic_search` with `scope: "text"` is not shown either.
+- A show leaves `/culling`, `/compare` and `/photo` for the gallery, clears a whole-view selection, and on an album page first goes back to the gallery, so an album's saved filters are never overwritten. A search whose count feeds the `expected_count` of a write tool should use `show: false`.
+- Rows carry camera, lens, aperture, shutter speed, ISO, focal length and `is_monochrome`. `fields` (on the three search tools) adds any other photo column except the image and embedding data, for example `leading_lines_score`; `learned_score` is filled only when sorting by it. When the byte cap trims rows, the result adds `returned` (and `next_offset` or `suggested_per_page`).
+- `library_stats` takes `kind` (default `overview`: size, type counts and score overview). The other kinds are read-only and return the data of the Stats page; long lists are cut at 50 entries with `truncated: true`:
+
+| Kind | Data |
+|------|------|
+| `score_distribution`, `top_cameras`, `categories`, `gear`, `stats_settings`, `timeline`, `correlations` | The Stats page panels; they accept `date_from`, `date_to` and `category`. `correlations` also takes `x`, `y` (comma list), `group_by` and `min_samples` |
+| `category_breakdown`, `category_weights`, `category_correlations`, `category_overlap` | Category statistics (no parameters) |
+| `timeline_dates`, `timeline_months` | Photo counts per day or per month; they need `year` (`timeline_dates` also takes `month`) |
+| `timeline_years` | Photo counts per year |
 
 ## Control your open tab
 
@@ -90,7 +106,7 @@ How it works:
 
 Beyond the basics above:
 
-- `ui_set_gallery_filters` takes you to the gallery first when another page is open, then applies the patch. It refuses a whole patch (`invalid_input`) that names a filter the tab has no control for; use `search_photos` for those.
+- `ui_set_gallery_filters` takes you to the gallery first when another page is open, then applies the patch. It refuses a whole patch (`invalid_input`) that names a filter the tab has no control for; use `search_photos` for those. On an album page, `replace: true` first returns to the gallery, so the album's saved filters are not overwritten. It also accepts `semantic_query`, `semantic_threshold` (0 to 0.5), `similar_to`, `similarity_mode` and `min_similarity` (0 to 1); `similar_to` and `semantic_query` cannot be combined.
 - `ui_get_gallery_view`, `ui_next_page` and `ui_select_photos` with `select_view` need the gallery (or an album) to be the open page, otherwise they answer `no_active_view`; call `ui_navigate` to `/` first. Give `ui_select_photos` exactly one of `paths` and `select_view`.
 - `no_tab` also means no Facet tab is open: open Facet in a browser and sign in. The status line in the **Connect an assistant** dialog shows whether this tab is connected; the `status` tool lists open tabs and their ids.
 - A tab stops reconnecting once its session is rejected (sign in again), and waits until you return to it after another tab of yours took over.
@@ -176,7 +192,7 @@ The darkroom tools mirror the `/culling` page. All of them need the `edition` le
 
 ## Results, limits and errors
 
-Every result is a JSON envelope: `{"ok": true, "data": ...}` or `{"ok": false, "error": "<code>", "message": "..."}`. Listings return `data.rows` (a compact fixed set of fields per photo) plus `total`.
+Every result is a JSON envelope: `{"ok": true, "data": ...}` or `{"ok": false, "error": "<code>", "message": "..."}`. Listings return `data.rows` (a compact fixed set of fields per photo) plus `total`. A search result also carries `shown_in_tab`, and a result trimmed by the byte cap carries `returned`.
 
 - **Caps:** at most `max_rows` rows and `max_bytes` serialized bytes. Tail rows are dropped and `truncated: true` is set. A result without rows that exceeds `max_bytes` becomes a `too_large` error.
 - **Rate limit:** `rate_per_min` calls per minute per token for reads. Write tools draw on a separate `write_rate_per_min` budget (default 30), so searches cannot starve writes and the other way round; the dry run of `cull_apply` and `delete_photos` counts as a write, an `auto_cull` preview as a read. Beyond it: `rate_limited` with `retry_after_s`. Ten failed bearer attempts per minute from one address answer 429.

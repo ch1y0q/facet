@@ -1,0 +1,109 @@
+"""Show a search in the user's open tab: the one relay every searching read tool shares.
+
+A search tool applies its own query to the tab with ``replace`` semantics, so the user
+sees what the agent found without being asked. The relay never fails the search: a
+missing tab, an outdated one, a refusal or a timeout is reported in ``shown_in_tab``.
+
+The mappers are pure (query in, patch out) so a test pins the exact frame; the relay
+validates the patch through the same model as ``ui_set_gallery_filters``.
+"""
+
+import logging
+from typing import Any, Optional, get_args
+
+from pydantic import ValidationError
+
+from api.agent.bridge import TabRegistry
+from api.agent.tokens import ResolvedGrant
+from api.agent.tools_common import SortColumn
+from api.agent.ui_tools import SEMANTIC_THRESHOLD_MAX, TAB_UNSUPPORTED_FILTER_KEYS, UiSetGalleryFilters
+from api.config import VIEWER_CONFIG
+
+logger = logging.getLogger(__name__)
+
+# The route's own per-mode floor when the caller gives none (``_MODE_DEFAULT_MIN_SIM``); the
+# tab's own default ('70') differs, so the show always sends the value the route used.
+SIMILAR_DEFAULT_MIN = {"visual": 0.40, "color": 0.40, "person": 0.0}
+
+
+def not_shown(reason: str, **extra: Any) -> dict:
+    return {"applied": False, "reason": reason, **extra}
+
+
+def effective_sort(sort: Optional[str], sort_direction: Optional[str]) -> dict:
+    """The sort the upstream query used: the caller's, else the viewer's configured default."""
+    defaults = VIEWER_CONFIG.get("defaults", {}) or {}
+    valid = get_args(SortColumn)
+    column = sort or defaults.get("sort")
+    direction = sort_direction or defaults.get("sort_direction")
+    return {"sort": column if column in valid else "aggregate",
+            "sort_direction": str(direction).lower() if str(direction).lower() in ("asc", "desc") else "desc"}
+
+
+def _is_effective(key: str, value: Any) -> bool:
+    """Whether the gallery route acts on ``value``; a value it ignores is the normal listing."""
+    if key in ("show_rejected", "is_silhouette"):
+        return value is True
+    if key in ("exclude_tags", "require_tags"):
+        return bool(str(value).strip())
+    if key == "min_rating":
+        try:
+            return 1 <= int(value) <= 5
+        except (TypeError, ValueError):
+            return False
+    return True
+
+
+def search_patch(filters: dict, sort: Optional[str], sort_direction: Optional[str]) -> tuple[dict, Optional[dict]]:
+    """``(patch, None)`` for a search the tab can express, else ``({}, <not_shown reason>)``."""
+    effective = {k: v for k, v in filters.items() if v is not None and _is_effective(k, v)}
+    keys = sorted(k for k in effective if k in TAB_UNSUPPORTED_FILTER_KEYS)
+    if keys:
+        return {}, not_shown("unsupported_filters", keys=keys)
+    if "type" in effective and "category" in effective:
+        return {}, not_shown("invalid_combination", keys=["type", "category"])
+    return {**effective, **effective_sort(sort, sort_direction)}, None
+
+
+def semantic_patch(query: str, threshold: Optional[float], scope: Optional[str],
+                   sort: Optional[str] = None, sort_direction: Optional[str] = None) -> tuple[dict, Optional[dict]]:
+    unsupported = (["scope"] if scope else []) + (
+        ["threshold"] if threshold is not None and threshold > SEMANTIC_THRESHOLD_MAX else [])
+    if unsupported:
+        return {}, not_shown("unsupported_filters", keys=unsupported)
+    return {"semantic_query": query, "semantic_threshold": threshold, "similar_to": None,
+            "similarity_mode": None, "min_similarity": None, **effective_sort(sort, sort_direction)}, None
+
+
+def similar_patch(path: str, mode: str, min_similarity: Optional[float],
+                  sort: Optional[str] = None, sort_direction: Optional[str] = None) -> dict:
+    floor = min_similarity if min_similarity is not None else SIMILAR_DEFAULT_MIN.get(mode, 0.40)
+    return {"similar_to": path, "similarity_mode": mode, "min_similarity": floor,
+            "semantic_query": None, "semantic_threshold": None, **effective_sort(sort, sort_direction)}
+
+
+async def show_in_tab(registry: TabRegistry, resolved: ResolvedGrant, settings: dict,
+                      tab_id: Optional[str], patch: dict, *, timeout: float) -> dict:
+    """Apply ``patch`` (replace semantics) to the user's tab; describe the outcome, never raise."""
+    if not settings["bridge"]:
+        return not_shown("bridge_disabled")
+    try:
+        args = UiSetGalleryFilters.model_validate({"patch": patch, "replace": True}).forward()
+        envelope = await registry.call(
+            resolved.principal, "ui_set_gallery_filters", args, level=resolved.level,
+            tab_id=tab_id, timeout=timeout, max_level=resolved.minted_level)
+    except ValidationError as ex:
+        logger.error("Show patch refused by the contract (%d issues)", ex.error_count())
+        return not_shown("error")
+    except Exception:
+        logger.exception("Show in tab crashed")
+        return not_shown("error")
+    if envelope.get("ok"):
+        data = envelope.get("data") or {}
+        tab = envelope.get("tab") or {}
+        return {"applied": True, "tab_id": tab.get("tab_id"), "keys": data.get("applied"),
+                "total": data.get("total")}
+    code = str(envelope.get("error") or "error")
+    if code == "tab_timeout":
+        return not_shown(code, note="The tab may still apply it.")
+    return not_shown("forbidden" if code == "forbidden_level" else code)

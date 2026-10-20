@@ -47,17 +47,33 @@ I nove strumenti dati sono di sola lettura:
 
 | Strumento | Cosa fa |
 |------|--------------|
-| `search_photos` | Filtra e ordina la libreria come la galleria, applicando i nascondimenti predefiniti del viewer salvo che il filtro li imposti (riporta `hidden_summary`) |
-| `semantic_search` | Trova foto per significato, o per parole nelle didascalie con `scope: "text"` |
+| `search_photos` | Filtra e ordina la libreria come la galleria, applicando le esclusioni predefinite del visualizzatore salvo che il filtro le imposti (riporta `hidden_summary`). Mostrato per impostazione predefinita nella scheda aperta (vedi sotto); `fields` aggiunge qualsiasi colonna della foto |
+| `semantic_search` | Trova foto per significato, o per parole nelle didascalie con `scope: "text"` (non mostrato nella scheda) |
 | `get_photo` | Dettaglio completo di una foto dal suo percorso (senza istogramma) |
-| `similar_photos` | Foto simili a una foto, per embedding visivo o per colore |
+| `similar_photos` | Foto simili a una foto, per embedding visivo o per colore; `min_similarity` (da 0 a 1) imposta la soglia |
 | `filter_options` | Il vocabolario accettato da un filtro: fotocamere, obiettivi, tag, persone, pattern, categorie, momenti narrativi, tipi di scarto, intervalli delle metriche |
 | `list_persons` | Persone riconosciute, filtrabili per nome |
 | `list_albums` | Album visibili al proprietario del token |
-| `library_stats` | Dimensione della libreria, conteggi per tipo e panoramica dei punteggi |
+| `library_stats` | Statistiche della libreria: `kind` sceglie il riepilogo di dimensione e punteggi (predefinito) o qualsiasi dato della pagina Statistiche (vedi sotto) |
 | `status` | Chi è il token, il suo livello effettivo e i flag del server e le schede aperte che può pilotare |
 
 In ogni oggetto filtro, `show_rejected` è un booleano: `true` elenca solo le foto scartate, `false` o omesso dà l'elenco normale.
+
+## I risultati compaiono nella tua scheda
+
+- `search_photos`, `semantic_search` e `similar_photos` accettano `show` (predefinito `true`). Dopo una ricerca riuscita sulla prima pagina, il server applica la stessa query alla scheda Facet aperta, sostituendone i filtri: vedi ciò che l'assistente ha trovato senza dover chiedere. Agli assistenti si dice di non chiedere mai se aprire o mostrare i risultati; `show: false` serve per le sonde intermedie e i conteggi, e l'ultima ricerca mostrata è quella che vedi.
+- Il risultato contiene `shown_in_tab`: `{"applied": true, "tab_id", "keys", "total"}`, oppure `{"applied": false, "reason"}` dove il motivo è `no_tab`, `bridge_disabled`, `tab_outdated`, `tab_timeout` (la scheda può ancora applicarla), `forbidden`, `page_not_first`, `empty_result`, `unsupported_filters` (con `keys`) o `invalid_combination`. Una visualizzazione fallita non fa mai fallire la ricerca. Passa `tab_id` per scegliere una scheda. Tutti i motivi: `error` (la visualizzazione stessa è fallita), `bridge_disabled`, `page_not_first`, `empty_result`, `invalid_combination`, `unsupported_filters` (con `keys`; per `semantic_search` sono `scope` o `threshold`, una soglia oltre 0,5 che il cursore della barra laterale non può esprimere) e i codici restituiti dal bridge della scheda (`no_tab`, `tab_outdated`, `tab_timeout`, `forbidden`, `invalid_input`, `upstream_error`). La scheda pagina da sola, quindi per una ricerca semantica può mostrare più righe di quelle ricevute dall'assistente. Quando le righe vengono accorciate, `next_page` (con `suggested_per_page`) indica la pagina che continua esattamente dopo l'ultima riga restituita oppure, se le pagine non possono esprimerlo, `next_offset` la dà come offset di riga.
+- Viene mostrata solo la prima pagina (la scheda pagina da sola durante lo scorrimento) e un risultato vuoto non viene mostrato, così mantieni la vista precedente. Una ricerca con filtri per cui la barra laterale della galleria non ha un campo (`exclude_tags`, `require_tags`, `is_silhouette`, `junk_kind`, `narrative_moment`, `min_rating`, `min_aggregate`, `show_rejected: true`) non viene applicata parzialmente, e nemmeno `semantic_search` con `scope: "text"` viene mostrata.
+- Una visualizzazione lascia `/culling`, `/compare` e `/photo` per la galleria, azzera una selezione dell'intera vista e, in una pagina di album, torna prima alla galleria, così i filtri salvati di un album non vengono mai sovrascritti. Una ricerca il cui conteggio alimenta `expected_count` di uno strumento di scrittura deve usare `show: false`.
+- Le righe contengono fotocamera, obiettivo, apertura, tempo di posa, ISO, lunghezza focale e `is_monochrome`. `fields` (sui tre strumenti di ricerca) aggiunge qualsiasi altra colonna della foto tranne i dati di immagine e di embedding, ad esempio `leading_lines_score`; `learned_score` è valorizzato solo ordinando per esso. Quando il limite di byte accorcia le righe, il risultato aggiunge `returned` (e `next_offset` o `suggested_per_page`).
+- `library_stats` accetta `kind` (predefinito `overview`: dimensione, conteggi per tipo e riepilogo dei punteggi). Gli altri valori sono di sola lettura e restituiscono i dati della pagina Statistiche; le liste lunghe sono tagliate a 50 voci con `truncated: true`:
+
+| Valore di kind | Dati |
+|------|------|
+| `score_distribution`, `top_cameras`, `categories`, `gear`, `stats_settings`, `timeline`, `correlations` | I pannelli della pagina Statistiche; accettano `date_from`, `date_to` e `category`. `correlations` accetta anche `x`, `y` (elenco separato da virgole), `group_by` e `min_samples` |
+| `category_breakdown`, `category_weights`, `category_correlations`, `category_overlap` | Statistiche per categoria (senza parametri) |
+| `timeline_dates`, `timeline_months` | Numero di foto per giorno o per mese; richiedono `year` (`timeline_dates` accetta anche `month`) |
+| `timeline_years` | Numero di foto per anno |
 
 ## Controllare la scheda aperta
 
@@ -90,7 +106,7 @@ Come funziona:
 
 In aggiunta:
 
-- `ui_set_gallery_filters` porta prima alla galleria se è aperta un'altra pagina, poi applica la patch. Rifiuta per intero (`invalid_input`) una patch che nomina un filtro che la scheda non sa controllare; per quelli usa `search_photos`.
+- `ui_set_gallery_filters` porta prima alla galleria se è aperta un'altra pagina, poi applica la patch. Rifiuta per intero (`invalid_input`) una patch che nomina un filtro che la scheda non sa controllare; per quelli usa `search_photos`. In una pagina di album, `replace: true` torna prima alla galleria, così i filtri salvati dell'album non vengono sovrascritti. Accetta anche `semantic_query`, `semantic_threshold` (da 0 a 0,5), `similar_to`, `similarity_mode` e `min_similarity` (da 0 a 1); `similar_to` e `semantic_query` non si combinano.
 - `ui_get_gallery_view`, `ui_next_page` e `ui_select_photos` con `select_view` richiedono che la galleria (o un album) sia la pagina aperta, altrimenti rispondono `no_active_view`; chiama prima `ui_navigate` verso `/`. Dai a `ui_select_photos` esattamente uno tra `paths` e `select_view`.
 - `no_tab` significa anche che nessuna scheda Facet è aperta: apri Facet in un browser e accedi. La riga di stato nella finestra **Collega un assistente** mostra se questa scheda è connessa; lo strumento `status` elenca le schede aperte e i loro id.
 - Una scheda smette di riconnettersi quando la sua sessione viene rifiutata (accedi di nuovo), e aspetta il tuo ritorno se un'altra tua scheda ha preso il suo posto.
@@ -176,7 +192,7 @@ Gli strumenti della camera oscura rispecchiano la pagina `/culling`. Tutti richi
 
 ## Risultati, limiti ed errori
 
-Ogni risultato è una busta JSON: `{"ok": true, "data": ...}` oppure `{"ok": false, "error": "<code>", "message": "..."}`. Gli elenchi restituiscono `data.rows` (un insieme compatto e fisso di campi per foto) più `total`.
+Ogni risultato è una busta JSON: `{"ok": true, "data": ...}` oppure `{"ok": false, "error": "<code>", "message": "..."}`. Gli elenchi restituiscono `data.rows` (un insieme compatto e fisso di campi per foto) più `total`. Il risultato di una ricerca contiene anche `shown_in_tab`, e un risultato accorciato dal limite di byte contiene `returned`.
 
 - **Tetti:** al massimo `max_rows` righe e `max_bytes` byte serializzati. Le ultime righe vengono scartate e si imposta `truncated: true`. Un risultato senza righe che supera `max_bytes` diventa un errore `too_large`.
 - **Limite di frequenza:** `rate_per_min` chiamate al minuto per token per la lettura. Gli strumenti di scrittura attingono a un budget separato, `write_rate_per_min` (predefinito 30), così le ricerche non affamano le scritture e viceversa; la simulazione di `cull_apply` e `delete_photos` conta come scrittura, l'anteprima di `auto_cull` come lettura. Oltre: `rate_limited` con `retry_after_s`. Dieci tentativi bearer falliti al minuto dallo stesso indirizzo ricevono 429.

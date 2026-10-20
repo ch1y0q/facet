@@ -5,43 +5,29 @@ declares ``readOnlyHint`` and carries the untrusted-content meta (captions, tags
 file names, paths and album/person names can all hold a prompt injection).
 """
 
-from typing import Annotated, Any, Literal, Optional, Union
+import logging
+import operator
+from typing import Annotated, Any, Literal, Optional
 
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.types import CallToolResult
 from pydantic import BaseModel, ConfigDict, Field, create_model
 
+from api.agent import show as relay
+from api.agent.bridge import TabRegistry
 from api.agent.internal_client import InternalClient, err, ok
 from api.agent.runtime import run_tool
-from api.agent.tools_common import READ_ANNOTATIONS, register_tool
-from api.config import VIEWER_CONFIG
-from api.models.gallery import GalleryParams
+from api.agent.tools_common import (
+    MCP_FILTER_KEYS, READ_ANNOTATIONS, FilterValue, SortColumn, register_tool,
+)
+from api.agent.ui_tools import TAB_ID_PATTERN
+from api.config import CORRELATION_X_AXES, CORRELATION_Y_METRICS, VIEWER_CONFIG
+from api.db_helpers import PHOTO_BASE_COLS, PHOTO_OPTIONAL_COLS
 
-_METRIC_STEMS = (
-    "score", "aggregate", "aesthetic", "sharpness", "exposure", "face_count", "face_ratio",
-    "face_quality", "eye_sharpness", "face_sharpness", "face_confidence", "iso", "aperture",
-    "focal_length", "composition", "color", "saturation", "noise", "contrast", "dynamic_range",
-    "luminance", "isolation", "star_rating", "topiq", "liqe", "subject_sharpness",
-    "subject_prominence", "bg_separation", "aesthetic_iaa", "face_quality_iqa",
-)
-_PLAIN_KEYS = (
-    "camera", "lens", "type", "tag", "person", "search", "category", "narrative_moment",
-    "junk_kind", "composition_pattern", "album_id", "path_prefix", "date_from", "date_to",
-    "gps_lat", "gps_lng", "gps_radius_km", "hide_blinks", "hide_bursts", "hide_duplicates",
-    "hide_brackets", "hide_panoramas", "is_monochrome", "is_silhouette", "favorites_only",
-    "hide_rejected", "show_rejected", "min_rating", "require_tags", "exclude_tags",
-    "color_temp", "quality_tier",
-)
-# min_/max_ for every stem GalleryParams knows; a stem it does not know is dropped
-# here and caught by the subset test, not silently ignored by the route.
-MCP_FILTER_KEYS = tuple(dict.fromkeys(
-    _PLAIN_KEYS
-    + tuple(f"{bound}_{stem}" for stem in _METRIC_STEMS for bound in ("min", "max")
-            if f"{bound}_{stem}" in GalleryParams.model_fields)
-))
+logger = logging.getLogger(__name__)
+
 HIDE_DEFAULT_KEYS = ("hide_blinks", "hide_bursts", "hide_duplicates", "hide_brackets", "hide_panoramas")
 
-FilterValue = Union[str, int, float, bool]
 _FILTER_FIELDS: dict[str, Any] = {
     key: (Optional[FilterValue], Field(
         default=None, description=f"Gallery filter `{key}` (same meaning as in the viewer)."))
@@ -54,24 +40,57 @@ _FILTER_FIELDS["show_rejected"] = (Optional[bool], Field(
     "normal listing. Other values are refused."))
 SearchFilters = create_model("SearchFilters", __config__=ConfigDict(extra="forbid"), **_FILTER_FIELDS)
 
-MetricField = Literal[
-    "tech_sharpness", "exposure_score", "color_score", "contrast_score", "dynamic_range_stops",
-    "noise_sigma", "isolation_bonus", "quality_score", "topiq_score", "aesthetic_iaa",
-    "liqe_score", "face_quality_iqa", "eye_sharpness", "face_sharpness", "face_ratio",
-    "face_confidence", "subject_sharpness", "subject_prominence", "bg_separation",
-    "mean_saturation", "mean_luminance", "iso", "f_stop", "focal_length", "learned_score",
-]
-SortColumn = Literal[
-    "aggregate", "aesthetic", "date_taken", "comp_score", "face_quality", "tech_sharpness",
-    "exposure_score", "color_score", "contrast_score", "topiq_score", "quality_score",
-    "top_picks_score", "learned_score", "star_rating", "filename",
-]
+# Every column the gallery routes serve is requestable, except the BLOBs (a guard: none is
+# listed today) and the two keys whose trimmed form is already in every row.
+BLOB_COLUMNS = frozenset({"thumbnail", "clip_embedding", "caption_embedding", "face_embedding",
+                          "histogram_data"})
+COMPACT_KEYS = ("path", "filename", "date_taken", "aggregate", "aesthetic", "comp_score",
+                "face_quality", "category", "face_count", "is_favorite", "star_rating",
+                "is_rejected", "sequence_kind", "is_monochrome", "camera_model", "lens_model",
+                "focal_length", "f_stop", "shutter_speed", "iso")
+TRIMMED_KEYS = ("tags", "caption")
+# ``learned_score`` is served only under sort=learned_score (null otherwise).
+PHOTO_FIELDS = tuple(dict.fromkeys(
+    c for c in (*PHOTO_BASE_COLS, *PHOTO_OPTIONAL_COLS, "learned_score")
+    if c not in COMPACT_KEYS and c not in TRIMMED_KEYS and c not in BLOB_COLUMNS))
+# Row keys are accepted as no-ops so an agent that lists them is not refused.
+ACCEPTED_FIELDS = (*PHOTO_FIELDS, *COMPACT_KEYS, *TRIMMED_KEYS)
+MetricField: Any = operator.getitem(Literal, ACCEPTED_FIELDS)
+SHOW_DESCRIPTION = ("true (default): after a successful first-page search, the same query is applied to "
+                    "the user's open Facet tab. false only for intermediate probes and counts.")
+FIELDS_DESCRIPTION = ("Extra photo columns to add to every row (any photo column except the image data). "
+                      "Rows already carry camera, lens, aperture, shutter, ISO, focal length and "
+                      "is_monochrome, so ask only for what is missing.")
+# Built by subscripting at runtime: pydantic reads the enum from it, and mypy never has to
+# accept a variable inside a type expression.
+FIELDS_ANNOTATION: Any = operator.getitem(Annotated, (
+    operator.getitem(Optional, list.__class_getitem__(MetricField)), Field(description=FIELDS_DESCRIPTION)))
+SHOW_RULE = ("The result is shown automatically in the user's open Facet tab (`show`, default true): "
+             "never ask whether to open or show it, and report `shown_in_tab` (applied, or the reason "
+             "it was not). The last shown search is what the user sees; use show=false only for "
+             "intermediate probes, counts, or a search that feeds `expected_count` of a write tool. "
+             "Showing replaces the tab's filters, leaves /culling, /compare and /photo, and resets a "
+             "view-scope selection. A page after the first and an empty result are not shown.")
+STATS_KINDS = ("overview", "score_distribution", "top_cameras", "categories", "gear", "timeline",
+               "correlations", "category_breakdown", "category_weights", "category_correlations",
+               "category_overlap", "stats_settings", "timeline_dates", "timeline_years", "timeline_months")
+StatsKind: Any = operator.getitem(Literal, STATS_KINDS)
+_STATS_FILTERS = ("date_from", "date_to", "category")
+# The parameters each kind forwards: exactly the ones its route declares.
+STATS_KIND_PARAMS: dict[str, tuple[str, ...]] = {
+    "overview": _STATS_FILTERS,
+    "score_distribution": _STATS_FILTERS, "top_cameras": _STATS_FILTERS, "categories": _STATS_FILTERS,
+    "gear": _STATS_FILTERS, "stats_settings": _STATS_FILTERS, "timeline": _STATS_FILTERS,
+    "correlations": ("x", "y", "group_by", "min_samples", *_STATS_FILTERS),
+    "category_breakdown": (), "category_weights": (), "category_correlations": (), "category_overlap": (),
+    "timeline_dates": ("year", "month", "date_from", "date_to"),
+    "timeline_years": ("date_from", "date_to"),
+    "timeline_months": ("year", "date_from", "date_to"),
+}
+STATS_LIST_LIMIT = 50
 FilterKind = Literal["cameras", "lenses", "tags", "persons", "patterns", "categories",
                      "narrative_moments", "junk_kinds", "metric_ranges"]
 
-COMPACT_KEYS = ("path", "filename", "date_taken", "aggregate", "aesthetic", "comp_score",
-                "face_quality", "category", "face_count", "is_favorite", "star_rating",
-                "is_rejected", "sequence_kind")
 CAPTION_LIMIT = 240
 TAG_LIMIT = 5
 FILTER_OPTION_LIMIT = 200
@@ -94,7 +113,7 @@ def compact_photo(photo: dict, extra_fields: tuple = ()) -> dict:
     caption = photo.get("caption")
     row["caption"] = caption[:CAPTION_LIMIT] if isinstance(caption, str) else caption
     for field in extra_fields:
-        row[field] = photo.get(field)
+        row.setdefault(field, photo.get(field))
     return row
 
 
@@ -125,11 +144,28 @@ def _hide_defaults(filters: dict) -> dict:
     return merged
 
 
-def register_read_tools(server: MCPServer, client: InternalClient, status_extra) -> None:
+def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
+                        registry: TabRegistry) -> None:
     """Register the read tools on ``server``. ``status_extra`` supplies status-only fields."""
 
     def add(fn, name: str, description: str) -> None:
         register_tool(server, fn, name, description, READ_ANNOTATIONS)
+
+    async def show_result(result: dict, resolved, settings, tab_id: Optional[str], *, first_page: bool,
+                          patch_or_reason: Any, timeout: float) -> None:
+        """Attach ``shown_in_tab`` to a successful search; a failed show never fails the search."""
+        if not result["ok"]:
+            return
+        patch, reason = patch_or_reason
+        if not first_page:
+            shown = relay.not_shown("page_not_first")
+        elif not (result["data"] or {}).get("total"):
+            shown = relay.not_shown("empty_result")
+        elif reason is not None:
+            shown = reason
+        else:
+            shown = await relay.show_in_tab(registry, resolved, settings, tab_id, patch, timeout=timeout)
+        result["shown_in_tab"] = shown
 
     async def search_photos(
         ctx: Context,
@@ -138,7 +174,9 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra)
         sort_direction: Optional[Literal["asc", "desc"]] = None,
         page: Annotated[int, Field(ge=1)] = 1,
         per_page: Annotated[int, Field(ge=1, le=100)] = 50,
-        fields: Optional[list[MetricField]] = None,
+        fields: Optional[list[str]] = None,
+        show: Annotated[bool, Field(description=SHOW_DESCRIPTION)] = True,
+        tab_id: Optional[str] = None,
     ) -> CallToolResult:
         async def handler(grant, resolved, settings):
             merged = _hide_defaults(
@@ -151,10 +189,17 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra)
                 query["sort_direction"] = sort_direction.upper()
             upstream = await client.call(grant, "search_photos", query=query,
                                          timeout=settings["call_timeout_s"])
-            return _list_result(upstream, tuple(fields or ()))
+            result = _list_result(upstream, tuple(fields or ()))
+            if show:
+                await show_result(result, resolved, settings, tab_id, first_page=page == 1,
+                                  patch_or_reason=relay.search_patch(merged, sort, sort_direction),
+                                  timeout=settings["call_timeout_s"])
+            return result
         return await run_tool(ctx, "search_photos", handler)
 
     search_photos.__annotations__["filters"] = Optional[SearchFilters]
+    search_photos.__annotations__["fields"] = FIELDS_ANNOTATION
+    search_photos.__annotations__["tab_id"] = Annotated[Optional[str], Field(pattern=TAB_ID_PATTERN)]
 
     async def semantic_search(
         ctx: Context,
@@ -162,14 +207,25 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra)
         limit: Annotated[int, Field(ge=1, le=50)] = 20,
         threshold: Annotated[Optional[float], Field(ge=0.0, le=1.0)] = None,
         scope: Optional[Literal["text"]] = None,
+        fields: Optional[list[str]] = None,
+        show: Annotated[bool, Field(description=SHOW_DESCRIPTION)] = True,
+        tab_id: Optional[str] = None,
     ) -> CallToolResult:
         async def handler(grant, resolved, settings):
             upstream = await client.call(
                 grant, "semantic_search",
                 query={"q": query, "limit": limit, "threshold": threshold, "scope": scope},
                 timeout=settings["semantic_timeout_s"])
-            return _list_result(upstream)
+            result = _list_result(upstream, tuple(fields or ()))
+            if show:
+                await show_result(result, resolved, settings, tab_id, first_page=True,
+                                  patch_or_reason=relay.semantic_patch(query, threshold, scope),
+                                  timeout=settings["semantic_timeout_s"])
+            return result
         return await run_tool(ctx, "semantic_search", handler)
+
+    semantic_search.__annotations__["fields"] = FIELDS_ANNOTATION
+    semantic_search.__annotations__["tab_id"] = Annotated[Optional[str], Field(pattern=TAB_ID_PATTERN)]
 
     async def get_photo(ctx: Context, path: Annotated[str, Field(min_length=1)]) -> CallToolResult:
         async def handler(grant, resolved, settings):
@@ -186,19 +242,33 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra)
         limit: Annotated[int, Field(ge=1, le=50)] = 20,
         offset: Annotated[int, Field(ge=0)] = 0,
         mode: Literal["visual", "color"] = "visual",
+        min_similarity: Annotated[Optional[float], Field(ge=0.0, le=1.0)] = None,
+        fields: Optional[list[str]] = None,
+        show: Annotated[bool, Field(description=SHOW_DESCRIPTION)] = True,
+        tab_id: Optional[str] = None,
     ) -> CallToolResult:
         async def handler(grant, resolved, settings):
             upstream = await client.call(
                 grant, "similar_photos", path_args={"path": path},
-                query={"limit": limit, "offset": offset, "mode": mode}, timeout=settings["call_timeout_s"])
+                query={"limit": limit, "offset": offset, "mode": mode, "full": 1,
+                       "min_similarity": min_similarity}, timeout=settings["call_timeout_s"])
             if not upstream["ok"]:
                 return upstream
             body = upstream["data"] or {}
             photos = body.get("similar") or []
-            return ok({"rows": [compact_photo(p) | {"similarity": p.get("similarity")} for p in photos],
-                       "total": body.get("total", len(photos)),
-                       "has_more": bool(body.get("has_more"))})
+            extra = tuple(fields or ())
+            result = ok({"rows": [compact_photo(p, extra) | {"similarity": p.get("similarity")} for p in photos],
+                         "total": body.get("total", len(photos)), "offset": offset,
+                         "has_more": bool(body.get("has_more"))})
+            if show:
+                await show_result(result, resolved, settings, tab_id, first_page=offset == 0,
+                                  patch_or_reason=(relay.similar_patch(path, mode, min_similarity), None),
+                                  timeout=settings["call_timeout_s"])
+            return result
         return await run_tool(ctx, "similar_photos", handler)
+
+    similar_photos.__annotations__["fields"] = FIELDS_ANNOTATION
+    similar_photos.__annotations__["tab_id"] = Annotated[Optional[str], Field(pattern=TAB_ID_PATTERN)]
 
     async def filter_options(
         ctx: Context,
@@ -244,18 +314,50 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra)
             return ok({"rows": rows, "total": body.get("total", len(rows))})
         return await run_tool(ctx, "list_albums", handler)
 
-    async def library_stats(ctx: Context) -> CallToolResult:
+    async def library_stats(
+        ctx: Context,
+        kind: str = "overview",
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        category: Optional[str] = None,
+        year: Annotated[Optional[int], Field(ge=1900, le=2100)] = None,
+        month: Annotated[Optional[int], Field(ge=1, le=12)] = None,
+        x: Optional[str] = None,
+        y: Optional[str] = None,
+        group_by: Optional[str] = None,
+        min_samples: Annotated[Optional[int], Field(ge=1)] = None,
+    ) -> CallToolResult:
         async def handler(grant, resolved, settings):
-            counts = await client.call(grant, "library_stats.type_counts",
-                                       timeout=settings["call_timeout_s"])
-            overview = await client.call(grant, "library_stats.overview",
-                                         timeout=settings["call_timeout_s"])
-            if not counts["ok"]:
-                return counts
-            if not overview["ok"]:
-                return overview
-            return ok({"type_counts": counts["data"], "overview": overview["data"]})
+            timeout = settings["call_timeout_s"]
+            given = {"date_from": date_from, "date_to": date_to, "category": category, "year": year,
+                     "month": month, "x": x, "y": y, "group_by": group_by, "min_samples": min_samples}
+            refused = [key for key, value in given.items()
+                       if value is not None and key not in STATS_KIND_PARAMS[kind]]
+            if refused:
+                return err("invalid_input", f"kind={kind} does not take {', '.join(refused)}",
+                           issues=[{"field": key, "message": f"not a parameter of kind={kind}"}
+                                   for key in refused])
+            if kind == "overview":
+                counts = await client.call(grant, "library_stats.type_counts", timeout=timeout)
+                overview = await client.call(
+                    grant, "library_stats.overview", timeout=timeout,
+                    query={key: given[key] for key in STATS_KIND_PARAMS["overview"]})
+                if not counts["ok"]:
+                    return counts
+                if not overview["ok"]:
+                    return overview
+                return ok({"type_counts": counts["data"], "overview": overview["data"]})
+            bad = _stats_params_error(kind, year, x, y, group_by)
+            if bad is not None:
+                return bad
+            query = {key: given[key] for key in STATS_KIND_PARAMS[kind]}
+            upstream = await client.call(grant, f"library_stats.{kind}", query=query, timeout=timeout)
+            if not upstream["ok"]:
+                return upstream
+            return _stats_result(upstream["data"])
         return await run_tool(ctx, "library_stats", handler)
+
+    library_stats.__annotations__["kind"] = StatsKind
 
     async def status(ctx: Context) -> CallToolResult:
         async def handler(grant, resolved, settings):
@@ -271,17 +373,28 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra)
     add(search_photos, "search_photos",
         "Search and filter the photo library like the viewer gallery. Applies the viewer's "
         "default hide toggles (bursts, duplicates, brackets, panoramas, blinks) unless the filter "
-        "sets them, and reports `hidden_summary` so you can say how many more are hidden.")
+        "sets them, and reports `hidden_summary` so you can say how many more are hidden. " + SHOW_RULE +
+        " Filters the gallery sidebar has no field for (exclude_tags, require_tags, is_silhouette, "
+        "junk_kind, narrative_moment, min_rating, min_aggregate, show_rejected) make the show report "
+        "`unsupported_filters`: drop those keys to show the search, or tell the user. `fields` adds "
+        "any photo column to the rows.")
     add(semantic_search, "semantic_search",
-        "Find photos by meaning (text-to-image) or, with scope='text', by words in captions/OCR.")
+        "Find photos by meaning (text-to-image) or, with scope='text', by words in captions/OCR. "
+        + SHOW_RULE + " scope='text' is not shown (`unsupported_filters`).")
     add(get_photo, "get_photo", "Full detail of one photo by its path.")
-    add(similar_photos, "similar_photos", "Photos similar to one photo (visual or colour); pass `offset` to page when has_more is true.")
+    add(similar_photos, "similar_photos",
+        "Photos similar to one photo (visual or colour); pass `offset` to page when has_more is true. "
+        "`min_similarity` (0 to 1) sets the floor the route and the shown view both use. " + SHOW_RULE)
     add(filter_options, "filter_options",
         "List the vocabulary a filter accepts (cameras, lenses, tags, persons, patterns, "
         "categories, narrative_moments, junk_kinds, metric_ranges).")
     add(list_persons, "list_persons", "Recognised people, optionally filtered by name.")
     add(list_albums, "list_albums", "Albums the token's owner can see.")
-    add(library_stats, "library_stats", "Library size, type counts and score overview.")
+    add(library_stats, "library_stats",
+        "Library statistics, read-only. kind='overview' (default) is the size, type counts and score "
+        "overview; the other kinds are the Stats page's data: " + ", ".join(STATS_KINDS[1:]) + ". "
+        "`timeline_dates` and `timeline_months` need `year`; `correlations` takes x, y (comma list), "
+        "group_by and min_samples. Long lists are cut and `truncated` is set.")
     add(status, "status", "Who this token is, its effective level and the server flags.")
 
 
@@ -303,3 +416,48 @@ def _trim_options(data: Any, query: Optional[str]) -> tuple[Any, bool]:
         return {key: trim(value) if isinstance(value, list) else value
                 for key, value in data.items()}, cut
     return data, cut
+
+
+def _stats_params_error(kind: str, year: Optional[int], x: Optional[str], y: Optional[str],
+                        group_by: Optional[str]) -> Optional[dict]:
+    """``invalid_input`` for a kind whose required parameter is missing or unknown."""
+    if kind in ("timeline_dates", "timeline_months") and year is None:
+        return err("invalid_input", f"kind={kind} needs `year`",
+                   issues=[{"field": "year", "message": "required for this kind"}])
+    if kind == "correlations":
+        if x is not None and x not in CORRELATION_X_AXES:
+            return err("invalid_input", f"x must be one of {', '.join(sorted(CORRELATION_X_AXES))}")
+        wrong = [m for m in (y or "").split(",") if m and m not in CORRELATION_Y_METRICS]
+        if wrong:
+            return err("invalid_input", f"y has unknown metrics: {', '.join(wrong)}")
+        if group_by and group_by not in CORRELATION_X_AXES:
+            return err("invalid_input", f"group_by must be one of {', '.join(sorted(CORRELATION_X_AXES))}")
+    return None
+
+
+def _cut_lists(value: Any, depth: int = 0) -> tuple[Any, bool]:
+    """Cap every list at ``STATS_LIST_LIMIT`` (recursively); report whether any was cut."""
+    cut = False
+    if isinstance(value, list):
+        cut = len(value) > STATS_LIST_LIMIT
+        out = []
+        for item in value[:STATS_LIST_LIMIT]:
+            trimmed, inner = _cut_lists(item, depth + 1) if depth < 6 else (item, False)
+            out.append(trimmed)
+            cut = cut or inner
+        return out, cut
+    if isinstance(value, dict) and depth < 6:
+        out_dict = {}
+        for key, item in value.items():
+            out_dict[key], inner = _cut_lists(item, depth + 1)
+            cut = cut or inner
+        return out_dict, cut
+    return value, False
+
+
+def _stats_result(data: Any) -> dict:
+    """A list body becomes ``rows`` (the row cap applies); a dict body has its lists cut."""
+    if isinstance(data, list):
+        return ok({"rows": data, "total": len(data)})
+    trimmed, cut = _cut_lists(data)
+    return ok(trimmed, **({"truncated": True} if cut else {}))

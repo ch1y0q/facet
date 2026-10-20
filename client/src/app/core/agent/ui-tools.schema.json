@@ -802,6 +802,13 @@
                   "null"
                 ]
               },
+              "min_similarity": {
+                "description": "Minimum similarity for `similar_to`, 0 to 1 (null: the tab default).",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
               "min_star_rating": {
                 "description": "Gallery filter `min_star_rating`.",
                 "type": [
@@ -879,6 +886,40 @@
                   "integer",
                   "number",
                   "boolean",
+                  "null"
+                ]
+              },
+              "semantic_query": {
+                "description": "Show the gallery as a semantic (text-to-image) search for this text.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "semantic_threshold": {
+                "description": "Semantic match threshold, 0 to 0.5 (null: the server default).",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "similar_to": {
+                "description": "Show the photos similar to the photo at this path. Cannot be combined with `semantic_query`.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "similarity_mode": {
+                "description": "How `similar_to` compares photos.",
+                "enum": [
+                  "visual",
+                  "color",
+                  "person",
+                  null
+                ],
+                "type": [
+                  "string",
                   "null"
                 ]
               },
@@ -1124,5 +1165,5 @@
       "name": "ui_show_culling_group"
     }
   ],
-  "version": "33c8d2a9bdd8935a"
+  "version": "2414a3053b119f9c"
 }

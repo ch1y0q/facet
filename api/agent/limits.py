@@ -98,7 +98,7 @@ def fit_envelope(envelope: dict, max_rows: int, max_bytes: int) -> dict:
 
     Tail rows are dropped (never the middle of a row), ``truncated: true`` is set,
     and the output stays valid JSON. ``total`` is left alone so the caller still
-    learns how many rows exist. An envelope without a ``data.rows`` list that is
+    learns how many rows exist, and ``returned`` says how many came back. An envelope without a ``data.rows`` list that is
     over the byte cap becomes a ``too_large`` error rather than being cut mid-text.
     """
     data = envelope.get("data")
@@ -117,4 +117,20 @@ def fit_envelope(envelope: dict, max_rows: int, max_bytes: int) -> dict:
     while capped["data"]["rows"] and encoded_size(capped) > max_bytes:
         kept = capped["data"]["rows"]
         capped["data"]["rows"] = kept[:len(kept) // 2 if len(kept) > 8 else len(kept) - 1]
+    returned = len(capped["data"]["rows"])
+    capped["returned"] = returned
+    # Where to resume: a paged tool re-asks with a page size the cap allows, an offset tool
+    # continues after the last row it returned.
+    if isinstance(data.get("offset"), int):
+        capped["next_offset"] = data["offset"] + returned
+    page, per_page = data.get("page"), data.get("per_page")
+    if isinstance(page, int) and isinstance(per_page, int) and returned:
+        resume = (page - 1) * per_page + returned
+        capped["suggested_per_page"] = returned
+        # Pages of ``returned`` rows express the resume point only when it falls on a page
+        # boundary; otherwise a row offset is all that is exact.
+        if resume % returned == 0:
+            capped["next_page"] = resume // returned + 1
+        else:
+            capped["next_offset"] = resume
     return capped

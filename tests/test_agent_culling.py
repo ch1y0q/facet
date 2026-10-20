@@ -47,8 +47,8 @@ def wired(monkeypatch):
     """Register the culling tools on the server the way ``mount_agent`` will."""
     original = server.register_read_tools
 
-    def register(srv, client, status_extra):
-        original(srv, client, status_extra)
+    def register(srv, client, status_extra, registry):
+        original(srv, client, status_extra, registry)
         if srv._tool_manager.get_tool("list_culling_groups") is None:
             tools_culling.register_culling_tools(srv, client._app)
 

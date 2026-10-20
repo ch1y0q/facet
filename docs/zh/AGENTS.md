@@ -47,17 +47,33 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 
 | 工具 | 作用 |
 |------|--------------|
-| `search_photos` | 像图库一样筛选和排序照片库，除非筛选条件另行设置，否则应用查看器默认的隐藏开关（会报告 `hidden_summary`） |
-| `semantic_search` | 按含义查找照片，或用 `scope: "text"` 按说明文字中的词查找 |
+| `search_photos` | 像图库一样筛选和排序照片库，除非筛选条件另行设置，否则应用查看器的默认隐藏开关（会报告 `hidden_summary`）。默认显示在你打开的标签页中（见下文）；`fields` 可添加任意照片列 |
+| `semantic_search` | 按含义查找照片，或用 `scope: "text"` 按说明文字中的词查找（不会显示在标签页中） |
 | `get_photo` | 按路径获取单张照片的完整详情（不含直方图） |
-| `similar_photos` | 按视觉嵌入或颜色查找与某张照片相似的照片 |
+| `similar_photos` | 按视觉嵌入或颜色查找与某张照片相似的照片；`min_similarity`（0 到 1）设定下限 |
 | `filter_options` | 筛选条件接受的词汇：相机、镜头、标签、人物、构图模式、类别、叙事瞬间、垃圾类型、指标范围 |
 | `list_persons` | 已识别的人物，可按姓名过滤 |
 | `list_albums` | 令牌所有者能看到的相册 |
-| `library_stats` | 照片库规模、各类型数量和评分概览 |
+| `library_stats` | 照片库统计：`kind` 选择规模与评分概览（默认）或统计页面的任意数据（见下文） |
 | `status` | 令牌是谁、它的有效级别、服务器标志以及它能控制的已打开标签页 |
 
 在每个筛选对象中，`show_rejected` 是布尔值：`true` 只列出被淘汰的照片，`false` 或省略则为常规列表。
+
+## 结果会显示在你的标签页中
+
+- `search_photos`、`semantic_search` 和 `similar_photos` 带有 `show`（默认 `true`）。第一页搜索成功后，服务器会把同一查询应用到你打开的 Facet 标签页，并替换其筛选条件，因此无需询问就能看到助手找到了什么。助手被告知不要询问是否打开或显示结果；`show: false` 用于中间探查和计数，你看到的是最后一次显示的搜索。
+- 结果带有 `shown_in_tab`：`{"applied": true, "tab_id", "keys", "total"}`，或 `{"applied": false, "reason"}`，原因为 `no_tab`、`bridge_disabled`、`tab_outdated`、`tab_timeout`（标签页仍可能应用它）、`forbidden`、`page_not_first`、`empty_result`、`unsupported_filters`（附带 `keys`）或 `invalid_combination`。显示失败绝不会使搜索失败。传入 `tab_id` 可选择标签页。全部原因：`error`（显示本身失败）、`bridge_disabled`、`page_not_first`、`empty_result`、`invalid_combination`、`unsupported_filters`（附带 `keys`；对 `semantic_search`，键为 `scope` 或 `threshold`，即侧栏滑块无法表达的大于 0.5 的阈值），以及标签页桥返回的代码（`no_tab`、`tab_outdated`、`tab_timeout`、`forbidden`、`invalid_input`、`upstream_error`）。标签页自行分页，因此对语义搜索，它显示的行数可能多于助手收到的。行被截短时，`next_page`（连同 `suggested_per_page`）给出恰好接在最后一行之后的页码；若页码无法表达该位置，则由 `next_offset` 以行偏移给出。
+- 只显示第一页（标签页在你滚动时自行分页），空结果不会显示，因此你保留之前的视图。使用图库侧栏没有对应控件的筛选（`exclude_tags`、`require_tags`、`is_silhouette`、`junk_kind`、`narrative_moment`、`min_rating`、`min_aggregate`、`show_rejected: true`）的搜索不会被部分应用，带 `scope: "text"` 的 `semantic_search` 也不会显示。
+- 显示会离开 `/culling`、`/compare` 和 `/photo` 并回到图库，清除整个视图的选择；在相册页面上会先回到图库，因此相册已保存的筛选绝不会被覆盖。其数量要用作写入工具 `expected_count` 的搜索应使用 `show: false`。
+- 每行包含相机、镜头、光圈、快门速度、ISO、焦距和 `is_monochrome`。三个搜索工具上的 `fields` 可添加任何其他照片列（图像和嵌入数据除外），例如 `leading_lines_score`；`learned_score` 仅在按其排序时才有值。字节上限截短行数时，结果会增加 `returned`（以及 `next_offset` 或 `suggested_per_page`）。
+- `library_stats` 接受 `kind`（默认 `overview`：规模、各类型数量和评分概览）。其他取值均为只读，返回统计页面的数据；过长的列表会在 50 项处截断并带 `truncated: true`：
+
+| kind 取值 | 数据 |
+|------|------|
+| `score_distribution`、`top_cameras`、`categories`、`gear`、`stats_settings`、`timeline`、`correlations` | 统计页面的各个面板；接受 `date_from`、`date_to` 和 `category`。`correlations` 还接受 `x`、`y`（逗号分隔列表）、`group_by` 和 `min_samples` |
+| `category_breakdown`、`category_weights`、`category_correlations`、`category_overlap` | 分类统计（无参数） |
+| `timeline_dates`、`timeline_months` | 按日或按月的照片数量；需要 `year`（`timeline_dates` 还接受 `month`） |
+| `timeline_years` | 按年的照片数量 |
 
 ## 控制已打开的标签页
 
@@ -90,7 +106,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 
 补充说明：
 
-- 当打开的是其他页面时，`ui_set_gallery_filters` 会先跳转到图库，再应用补丁。如果补丁中包含标签页无法操作的筛选条件，整个补丁会被拒绝（`invalid_input`）；这类条件请使用 `search_photos`。
+- 当打开的是其他页面时，`ui_set_gallery_filters` 会先跳转到图库，再应用补丁。如果补丁中包含标签页无法操作的筛选条件，整个补丁会被拒绝（`invalid_input`）；这类条件请使用 `search_photos`。 在相册页面上，`replace: true` 会先回到图库，因此相册已保存的筛选不会被覆盖。它还接受 `semantic_query`、`semantic_threshold`（0 到 0.5）、`similar_to`、`similarity_mode` 和 `min_similarity`（0 到 1）；`similar_to` 与 `semantic_query` 不能同时使用。
 - `ui_get_gallery_view`、`ui_next_page` 以及带 `select_view` 的 `ui_select_photos` 要求当前打开的页面是图库（或相册），否则返回 `no_active_view`；请先调用 `ui_navigate` 前往 `/`。`ui_select_photos` 必须恰好给出 `paths` 与 `select_view` 之一。
 - `no_tab` 也表示没有打开任何 Facet 标签页：请在浏览器中打开 Facet 并登录。**连接助手**对话框中的状态行会显示此标签页是否已连接；`status` 工具会列出已打开的标签页及其 id。
 - 标签页的会话被拒绝后会停止重连（请重新登录）；如果您的另一个标签页接管了连接，它会等到您回到该标签页再重连。
@@ -176,7 +192,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 
 ## 结果、限制与错误
 
-每个结果都是一个 JSON 信封：`{"ok": true, "data": ...}` 或 `{"ok": false, "error": "<code>", "message": "..."}`。列表返回 `data.rows`（每张照片一组精简的固定字段）以及 `total`。
+每个结果都是一个 JSON 信封：`{"ok": true, "data": ...}` 或 `{"ok": false, "error": "<code>", "message": "..."}`。列表返回 `data.rows`（每张照片一组精简的固定字段）以及 `total`。搜索结果还带有 `shown_in_tab`，被字节上限截短的结果带有 `returned`。
 
 - **上限：** 最多 `max_rows` 行和 `max_bytes` 序列化字节。末尾的行会被丢弃并设置 `truncated: true`。没有行但超过 `max_bytes` 的结果会变成 `too_large` 错误。
 - **速率限制：** 每个令牌每分钟 `rate_per_min` 次读取调用。写入工具使用单独的 `write_rate_per_min` 预算（默认 30），因此搜索不会挤占写入，反之亦然；`cull_apply` 和 `delete_photos` 的试运行算作写入，`auto_cull` 的预览算作读取。超出后返回 `rate_limited` 并附带 `retry_after_s`。同一地址每分钟十次失败的 bearer 尝试会收到 429。

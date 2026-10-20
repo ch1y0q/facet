@@ -26,7 +26,9 @@ CULLING_TOOLS = {"list_culling_groups", "culling_profiles", "suggest_culling_pro
 
 ROWS = [
     {"path": AGENT_DIR + "a.jpg", "filename": "a.jpg", "aggregate": 8.0, "aesthetic": 9.0,
-     "caption": "a red sunset over the sea", "tags": "sunset,sea,sky,red,orange,extra"},
+     "caption": "a red sunset over the sea", "tags": "sunset,sea,sky,red,orange,extra",
+     "leading_lines_score": 4.5, "shutter_speed": "0.0125", "is_monochrome": 1, "camera_model": "X100",
+     "lens_model": "23mm", "iso": 200, "f_stop": 2.0, "focal_length": 23.0},
     {"path": AGENT_DIR + "b.jpg", "filename": "b.jpg", "aggregate": 5.0, "aesthetic": 4.0,
      "caption": "a quiet street"},
     {"path": AGENT_DIR + "c.jpg", "filename": "c.jpg", "aggregate": 3.0, "aesthetic": 2.0,
@@ -154,7 +156,7 @@ class TestMount:
             k for k, v in shipped.items() if k != "allowed_origins" and not isinstance(v, bool)}
 
     def test_mcp_filter_keys_are_gallery_params(self):
-        from api.agent.tools_read import MCP_FILTER_KEYS
+        from api.agent.tools_common import MCP_FILTER_KEYS
         from api.models.gallery import GalleryParams
         assert set(MCP_FILTER_KEYS) <= set(GalleryParams.model_fields)
         assert {"min_aesthetic", "path_prefix", "album_id", "camera", "tag"} <= set(MCP_FILTER_KEYS)
@@ -253,9 +255,12 @@ class TestReadTools:
         assert result["data"]["rows"][0]["similarity"] == 0.9
         assert result["data"]["total"] == 1 and result["data"]["has_more"] is False
 
-    def test_similar_photos_pages_with_offset(self, agent_app, photos, monkeypatch):
+    def test_similar_photos_pages_with_offset(self, agent_app, photos, seed_photos_prefix, monkeypatch):
         from api.routers import gallery
-        hits = [{"path": AGENT_DIR + name, "filename": name, "similarity": 0.9} for name in ("b.jpg", "c.jpg", "d.jpg")]
+        names = ("b.jpg", "c.jpg", "d.jpg")
+        seed_photos_prefix(AGENT_DIR + "sim/", [
+            {"path": AGENT_DIR + "sim/" + name, "filename": name} for name in names])
+        hits = [{"path": AGENT_DIR + "sim/" + name, "filename": name, "similarity": 0.9} for name in names]
         monkeypatch.setattr(gallery, "_find_similar_visual", lambda *a, **k: (hits, None))
         env = agent_app("open")
         token = env.token(env.login())
@@ -273,6 +278,197 @@ class TestReadTools:
         theirs = env.call(bob, "search_photos", {"filters": {"path_prefix": AGENT_DIR}})
         assert mine["data"]["total"] == 3
         assert theirs["data"]["total"] == 0 and theirs["data"]["rows"] == []
+
+
+class TestFieldsAndDefaultRows:
+    def call_a(self, env, **extra):
+        token = env.token(env.login())
+        result = env.call(token, "search_photos", {
+            "filters": {"path_prefix": AGENT_DIR}, "show": False, **extra})
+        assert result["ok"] is True, result
+        return next(r for r in result["data"]["rows"] if r["filename"] == "a.jpg")
+
+    def test_default_rows_carry_camera_exposure_and_monochrome(self, agent_app, photos):
+        row = self.call_a(agent_app("open"))
+        assert row["camera_model"] == "X100" and row["lens_model"] == "23mm"
+        assert row["iso"] == 200 and row["f_stop"] == 2.0 and row["focal_length"] == 23.0
+        assert row["is_monochrome"] == 1
+
+    def test_shutter_speed_stays_the_stored_string(self, agent_app, photos):
+        assert self.call_a(agent_app("open"))["shutter_speed"] == "0.0125"
+
+    def test_fields_accepts_a_column_the_old_list_lacked(self, agent_app, photos):
+        row = self.call_a(agent_app("open"), fields=["leading_lines_score"])
+        assert row["leading_lines_score"] == 4.5
+
+    def test_fields_on_the_other_two_search_tools(self, agent_app, photos, monkeypatch):
+        from api.routers import gallery
+        monkeypatch.setattr(gallery, "_find_similar_visual", lambda *a, **k: (
+            [{"path": AGENT_DIR + "a.jpg", "filename": "a.jpg", "similarity": 0.9}], None))
+        env = agent_app("open")
+        token = env.token(env.login())
+        row = env.call(token, "similar_photos", {
+            "path": AGENT_DIR + "b.jpg", "fields": ["leading_lines_score"], "show": False})["data"]["rows"][0]
+        assert row["leading_lines_score"] == 4.5
+        semantic = env.call(token, "semantic_search", {
+            "query": "sunset", "scope": "text", "fields": ["leading_lines_score"]})["data"]["rows"][0]
+        assert semantic["leading_lines_score"] == 4.5
+
+    def test_row_keys_are_accepted_as_no_ops(self, agent_app, photos):
+        row = self.call_a(agent_app("open"), fields=["aggregate", "tags", "caption", "camera_model"])
+        assert row["aggregate"] == 8.0 and row["caption"].startswith("a red sunset")
+
+    @pytest.mark.parametrize("name", ["thumbnail", "clip_embedding", "histogram_data", "face_embedding",
+                                      "caption_embedding", "not_a_column"])
+    def test_blobs_and_unknown_names_are_refused(self, agent_app, photos, name):
+        env = agent_app("open")
+        result = env.call(env.token(env.login()), "search_photos", {"fields": [name], "show": False})
+        assert result["ok"] is False and result["error"] == "invalid_input"
+
+    def test_the_schema_offers_no_blob_name(self, agent_app):
+        from api.agent.tools_read import ACCEPTED_FIELDS, BLOB_COLUMNS
+        env = agent_app("open")
+        tools = env.rpc(env.token(env.login()), "tools/list").json()["result"]["tools"]
+        for tool in (t for t in tools if t["name"] in {"search_photos", "semantic_search", "similar_photos"}):
+            offered = set(tool["inputSchema"]["properties"]["fields"]["anyOf"][0]["items"]["enum"])
+            assert offered == set(ACCEPTED_FIELDS) and not offered & BLOB_COLUMNS, tool["name"]
+
+    def test_every_listed_field_is_a_column_the_gallery_route_serves(self, agent_app, photos):
+        from api.agent.tools_read import PHOTO_FIELDS
+        env = agent_app("open")
+        headers = env.login()
+        body = env.client.get("/api/photos", params={"path_prefix": AGENT_DIR, "per_page": 5}, headers=headers).json()
+        served = set(body["photos"][0])
+        # learned_score is served only under sort=learned_score; caption_translated only when translated.
+        assert set(PHOTO_FIELDS) - {"learned_score", "caption_translated"} <= served
+
+    def test_a_trimmed_envelope_says_how_many_rows_came_back(self, agent_app, seed_photos_prefix):
+        env = agent_app("open", max_bytes=4000)
+        seed_photos_prefix(AGENT_DIR + "wide/", [
+            {"path": AGENT_DIR + f"wide/{i:03}.jpg", "filename": f"{i:03}.jpg", "camera_model": "Camera " + "x" * 40,
+             "caption": "c" * 240} for i in range(100)])
+        result = env.call(env.token(env.login()), "search_photos", {
+            "filters": {"path_prefix": AGENT_DIR + "wide/"}, "per_page": 100, "show": False})
+        assert result["ok"] is True and result["truncated"] is True
+        assert result["returned"] == len(result["data"]["rows"]) < 100
+        assert result["suggested_per_page"] == result["returned"] and result["data"]["total"] == 100
+
+
+class TestShowGuidance:
+    def test_instructions_and_descriptions_tell_the_agent_not_to_ask(self, agent_app):
+        env = agent_app("open")
+        token = env.token(env.login())
+        init = env.rpc(token, "initialize", {
+            "protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}})
+        text = init.json()["result"]["instructions"]
+        assert "never ask whether to open or show results" in text and "shown_in_tab" in text and "show=false" in text
+        tools = {t["name"]: t for t in env.rpc(token, "tools/list").json()["result"]["tools"]}
+        for name in ("search_photos", "semantic_search", "similar_photos"):
+            description = tools[name]["description"]
+            assert "never ask whether to open or show it" in description and "shown_in_tab" in description, name
+            assert "show" in tools[name]["inputSchema"]["properties"], name
+        assert "unsupported_filters" in tools["search_photos"]["description"]
+
+
+STATS_KINDS_ARGS = {
+    "score_distribution": {}, "top_cameras": {}, "categories": {}, "gear": {}, "timeline": {},
+    "correlations": {"x": "iso", "y": "aggregate"}, "category_breakdown": {}, "category_weights": {},
+    "category_correlations": {}, "category_overlap": {}, "stats_settings": {},
+    "timeline_dates": {"year": 2024}, "timeline_years": {}, "timeline_months": {"year": 2024},
+}
+
+
+class TestLibraryStatsKinds:
+    def test_every_kind_is_covered(self):
+        from api.agent.tools_read import STATS_KINDS
+        assert set(STATS_KINDS) - {"overview"} == set(STATS_KINDS_ARGS)
+
+    @pytest.mark.parametrize("kind", sorted(STATS_KINDS_ARGS))
+    def test_kind_answers_ok_within_the_cap_as_json(self, agent_app, photos, kind):
+        env = agent_app("open")
+        result = env.call(env.token(env.login()), "library_stats", {"kind": kind, **STATS_KINDS_ARGS[kind]})
+        assert result["ok"] is True, (kind, result)
+        assert limits.encoded_size(result) <= api_config.mcp_settings()["max_bytes"]
+
+    def test_default_kind_keeps_the_overview_payload(self, agent_app, photos):
+        env = agent_app("open")
+        data = env.call(env.token(env.login()), "library_stats", {})["data"]
+        assert set(data) == {"type_counts", "overview"}
+
+    @pytest.mark.parametrize("kind", ["timeline_dates", "timeline_months"])
+    def test_a_kind_that_needs_year_refuses_without_it(self, agent_app, kind):
+        env = agent_app("open")
+        result = env.call(env.token(env.login()), "library_stats", {"kind": kind})
+        assert result["ok"] is False and result["error"] == "invalid_input"
+        assert [i["field"] for i in result["issues"]] == ["year"]
+
+    @pytest.mark.parametrize("args", [{"x": "nope"}, {"y": "nope"}, {"group_by": "nope"}])
+    def test_correlations_validates_its_axes(self, agent_app, args):
+        env = agent_app("open")
+        result = env.call(env.token(env.login()), "library_stats", {"kind": "correlations", **args})
+        assert result["ok"] is False and result["error"] == "invalid_input"
+
+    def test_overview_forwards_its_filters_and_keeps_its_shape(self, agent_app, photos, monkeypatch):
+        from api.agent.internal_client import InternalClient
+        seen = {}
+        original = InternalClient.call
+
+        async def call(self, grant, tool, **kwargs):
+            seen[tool] = kwargs.get("query")
+            return await original(self, grant, tool, **kwargs)
+
+        monkeypatch.setattr(InternalClient, "call", call)
+        env = agent_app("open")
+        data = env.call(env.token(env.login()), "library_stats", {
+            "date_from": "2020-01-01", "category": "portrait"})["data"]
+        assert set(data) == {"type_counts", "overview"}
+        assert seen["library_stats.overview"] == {"date_from": "2020-01-01", "date_to": None, "category": "portrait"}
+        assert seen["library_stats.type_counts"] is None
+
+    @pytest.mark.parametrize("kind,param,refused", [
+        ("overview", {"year": 2024}, ["year"]), ("top_cameras", {"year": 2024}, ["year"]),
+        ("timeline_years", {"category": "x"}, ["category"]),
+        ("category_weights", {"date_from": "2020-01-01"}, ["date_from"]),
+        ("timeline_months", {"year": 2024, "month": 3}, ["month"]), ("gear", {"x": "iso"}, ["x"])])
+    def test_a_param_the_kind_does_not_declare_is_refused(self, agent_app, kind, param, refused):
+        env = agent_app("open")
+        result = env.call(env.token(env.login()), "library_stats", {"kind": kind, **param})
+        assert result["ok"] is False and result["error"] == "invalid_input"
+        assert [i["field"] for i in result["issues"]] == refused
+
+    def test_an_unknown_kind_is_invalid_input(self, agent_app):
+        env = agent_app("open")
+        result = env.call(env.token(env.login()), "library_stats", {"kind": "recompute"})
+        assert result["ok"] is False and result["error"] == "invalid_input"
+
+    def test_a_long_dict_list_is_cut_and_marked(self):
+        from api.agent.tools_read import STATS_LIST_LIMIT, _stats_result
+        result = _stats_result({"cameras": [{"n": i} for i in range(STATS_LIST_LIMIT + 5)], "other": 1})
+        assert len(result["data"]["cameras"]) == STATS_LIST_LIMIT and result["truncated"] is True
+        assert _stats_result([1, 2]) == {"ok": True, "data": {"rows": [1, 2], "total": 2}}
+
+    def test_trimmed_search_pages_say_where_to_resume(self):
+        def trimmed(page, per_page, count):
+            rows = [{"x": "y" * 300} for _ in range(count)]
+            env = {"ok": True, "data": {"rows": rows, "page": page, "per_page": per_page, "total": 999}}
+            return limits.fit_envelope(env, 100, 2500)
+
+        aligned = trimmed(2, 10, 10)
+        assert aligned["returned"] == 5 and aligned["suggested_per_page"] == 5
+        assert aligned["next_page"] == 4 and "next_offset" not in aligned
+        off = trimmed(2, 9, 9)
+        assert off["returned"] == 4 and off["next_offset"] == 13 and "next_page" not in off
+
+    def test_an_oversize_dict_becomes_too_large_never_a_cut_string(self):
+        envelope = limits.fit_envelope({"ok": True, "data": {"blob": "x" * 5000}}, 100, 4000)
+        assert envelope["ok"] is False and envelope["error"] == "too_large"
+
+    def test_no_write_route_is_reachable_through_the_stats_kinds(self):
+        from api.agent.internal_client import ROUTE_ALLOWLIST
+        stats = {k: v for k, v in ROUTE_ALLOWLIST.items() if k.startswith("library_stats.")}
+        assert all(spec.method == "GET" and not spec.write and spec.min_level == "readonly"
+                   for spec in stats.values())
+        assert not any(spec.template.endswith(("/update", "/recompute")) for spec in stats.values())
 
 
 class TestLimits:

@@ -47,17 +47,33 @@ As nove ferramentas de dados são só de leitura:
 
 | Ferramenta | O que faz |
 |------|--------------|
-| `search_photos` | Filtra e ordena a biblioteca como a galeria, aplicando as ocultações predefinidas do visualizador, a não ser que o filtro as defina (indica `hidden_summary`) |
-| `semantic_search` | Encontra fotos pelo significado, ou por palavras das legendas com `scope: "text"` |
+| `search_photos` | Filtra e ordena a biblioteca como a galeria, aplicando as ocultações padrão do visualizador a menos que o filtro as defina (informa `hidden_summary`). Mostrado por padrão na sua aba aberta (veja abaixo); `fields` acrescenta qualquer coluna da foto |
+| `semantic_search` | Encontra fotos pelo significado, ou por palavras das legendas com `scope: "text"` (não mostrado na aba) |
 | `get_photo` | Detalhe completo de uma foto a partir do seu caminho (sem o histograma) |
-| `similar_photos` | Fotos semelhantes a uma foto, por embedding visual ou por cor |
+| `similar_photos` | Fotos semelhantes a uma foto, por embedding visual ou por cor; `min_similarity` (de 0 a 1) define o limite |
 | `filter_options` | O vocabulário que um filtro aceita: câmaras, objetivas, etiquetas, pessoas, padrões, categorias, momentos narrativos, tipos de lixo, intervalos de métricas |
 | `list_persons` | Pessoas reconhecidas, filtráveis por nome |
 | `list_albums` | Álbuns que o proprietário do token pode ver |
-| `library_stats` | Tamanho da biblioteca, contagens por tipo e resumo das pontuações |
+| `library_stats` | Estatísticas da biblioteca: `kind` escolhe o resumo de tamanho e pontuações (padrão) ou qualquer dado da página Estatísticas (veja abaixo) |
 | `status` | Quem é o token, o seu nível efetivo e as sinalizações do servidor e os separadores abertos que pode controlar |
 
 Em cada objeto de filtros, `show_rejected` é um booleano: `true` lista apenas as fotos rejeitadas, `false` ou omitido dá a listagem normal.
+
+## Os resultados aparecem na sua aba
+
+- `search_photos`, `semantic_search` e `similar_photos` aceitam `show` (padrão `true`). Depois de uma busca bem-sucedida da primeira página, o servidor aplica a mesma consulta à aba do Facet aberta, substituindo os filtros dela: você vê o que o assistente encontrou sem precisar pedir. Os assistentes são instruídos a nunca perguntar se devem abrir ou mostrar os resultados; `show: false` serve para sondagens intermediárias e contagens, e a última busca mostrada é a que você vê.
+- O resultado traz `shown_in_tab`: `{"applied": true, "tab_id", "keys", "total"}`, ou `{"applied": false, "reason"}` em que o motivo é `no_tab`, `bridge_disabled`, `tab_outdated`, `tab_timeout` (a aba ainda pode aplicá-la), `forbidden`, `page_not_first`, `empty_result`, `unsupported_filters` (com `keys`) ou `invalid_combination`. Uma exibição que falha nunca faz a busca falhar. Passe `tab_id` para escolher uma aba. Todos os motivos: `error` (a própria exibição falhou), `bridge_disabled`, `page_not_first`, `empty_result`, `invalid_combination`, `unsupported_filters` (com `keys`; em `semantic_search` são `scope` ou `threshold`, um limite acima de 0,5 que o controle deslizante da barra lateral não consegue expressar) e os códigos devolvidos pela ponte de abas (`no_tab`, `tab_outdated`, `tab_timeout`, `forbidden`, `invalid_input`, `upstream_error`). A aba pagina sozinha, então numa busca semântica ela pode mostrar mais linhas do que o assistente recebeu. Quando linhas são cortadas, `next_page` (com `suggested_per_page`) indica a página que continua exatamente após a última linha devolvida ou, se as páginas não conseguem expressar isso, `next_offset` a dá como deslocamento de linhas.
+- Só a primeira página é mostrada (a aba pagina sozinha ao rolar) e um resultado vazio não é mostrado, para você manter a vista anterior. Uma busca com filtros para os quais a barra lateral da galeria não tem campo (`exclude_tags`, `require_tags`, `is_silhouette`, `junk_kind`, `narrative_moment`, `min_rating`, `min_aggregate`, `show_rejected: true`) não é aplicada parcialmente, e `semantic_search` com `scope: "text"` também não é mostrada.
+- Mostrar sai de `/culling`, `/compare` e `/photo` para a galeria, limpa uma seleção de toda a vista e, na página de um álbum, volta primeiro à galeria, de modo que os filtros salvos de um álbum nunca são sobrescritos. Uma busca cuja contagem alimenta o `expected_count` de uma ferramenta de escrita deve usar `show: false`.
+- As linhas trazem câmera, objetiva, abertura, velocidade do obturador, ISO, distância focal e `is_monochrome`. `fields` (nas três ferramentas de busca) acrescenta qualquer outra coluna da foto, exceto dados de imagem e de embeddings, por exemplo `leading_lines_score`; `learned_score` só é preenchido ao ordenar por ele. Quando o limite de bytes corta linhas, o resultado acrescenta `returned` (e `next_offset` ou `suggested_per_page`).
+- `library_stats` aceita `kind` (padrão `overview`: tamanho, contagens por tipo e resumo das pontuações). Os demais valores são somente leitura e devolvem os dados da página Estatísticas; listas longas são cortadas em 50 entradas com `truncated: true`:
+
+| Valor de kind | Dados |
+|------|------|
+| `score_distribution`, `top_cameras`, `categories`, `gear`, `stats_settings`, `timeline`, `correlations` | Os painéis da página Estatísticas; aceitam `date_from`, `date_to` e `category`. `correlations` aceita também `x`, `y` (lista separada por vírgulas), `group_by` e `min_samples` |
+| `category_breakdown`, `category_weights`, `category_correlations`, `category_overlap` | Estatísticas por categoria (sem parâmetros) |
+| `timeline_dates`, `timeline_months` | Número de fotos por dia ou por mês; exigem `year` (`timeline_dates` aceita também `month`) |
+| `timeline_years` | Número de fotos por ano |
 
 ## Controlar o separador aberto
 
@@ -90,7 +106,7 @@ Como funciona:
 
 Em complemento:
 
-- `ui_set_gallery_filters` leva primeiro à galeria se estiver aberta outra página e depois aplica o patch. Recusa o patch inteiro (`invalid_input`) se nomear um filtro que o separador não sabe controlar; para esses use `search_photos`.
+- `ui_set_gallery_filters` leva primeiro à galeria se estiver aberta outra página e depois aplica o patch. Recusa o patch inteiro (`invalid_input`) se nomear um filtro que o separador não sabe controlar; para esses use `search_photos`. Na página de um álbum, `replace: true` volta primeiro à galeria, de modo que os filtros salvos do álbum não são sobrescritos. Aceita também `semantic_query`, `semantic_threshold` (de 0 a 0,5), `similar_to`, `similarity_mode` e `min_similarity` (de 0 a 1); `similar_to` e `semantic_query` não podem ser combinados.
 - `ui_get_gallery_view`, `ui_next_page` e `ui_select_photos` com `select_view` precisam que a galeria (ou um álbum) seja a página aberta; caso contrário respondem `no_active_view`; chame antes `ui_navigate` para `/`. Dê a `ui_select_photos` exatamente um de `paths` e `select_view`.
 - `no_tab` também significa que não há nenhum separador do Facet aberto: abra o Facet num navegador e inicie sessão. A linha de estado da caixa **Ligar um assistente** mostra se este separador está ligado; a ferramenta `status` lista os separadores abertos e os respetivos id.
 - Um separador deixa de se religar quando a sua sessão é recusada (inicie sessão de novo) e espera que volte a ele se outro dos seus separadores tomou o seu lugar.
@@ -176,7 +192,7 @@ As ferramentas da câmara escura espelham a página `/culling`. Todas exigem o n
 
 ## Resultados, limites e erros
 
-Cada resultado é um envelope JSON: `{"ok": true, "data": ...}` ou `{"ok": false, "error": "<code>", "message": "..."}`. As listagens devolvem `data.rows` (um conjunto compacto e fixo de campos por foto) mais `total`.
+Cada resultado é um envelope JSON: `{"ok": true, "data": ...}` ou `{"ok": false, "error": "<code>", "message": "..."}`. As listagens devolvem `data.rows` (um conjunto compacto e fixo de campos por foto) mais `total`. O resultado de uma busca traz também `shown_in_tab`, e um resultado cortado pelo limite de bytes traz `returned`.
 
 - **Limites máximos:** no máximo `max_rows` linhas e `max_bytes` bytes serializados. As últimas linhas são descartadas e `truncated: true` é definido. Um resultado sem linhas que exceda `max_bytes` torna-se um erro `too_large`.
 - **Limite de taxa:** `rate_per_min` chamadas por minuto e por token para leitura. As ferramentas de escrita usam um orçamento separado, `write_rate_per_min` (30 por predefinição), para que as pesquisas não deixem as escritas sem quota nem o contrário; a simulação de `cull_apply` e `delete_photos` conta como escrita, a pré-visualização de `auto_cull` como leitura. Acima disso: `rate_limited` com `retry_after_s`. Dez tentativas bearer falhadas por minuto a partir do mesmo endereço recebem 429.

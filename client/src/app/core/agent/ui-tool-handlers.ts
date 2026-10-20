@@ -5,7 +5,9 @@ import {
   DEFAULT_FILTERS,
   GalleryFilters,
   RANGE_AND_SELECT_KEYS,
+  SEARCH_THRESHOLD_MAX,
   buildApiParams,
+  seededSearchThreshold,
 } from '../../features/gallery/gallery-filters.util';
 import { ViewActionRegistry } from './view-action-registry.service';
 import { UiToolError, UiToolHandler } from './ui-tool.types';
@@ -39,9 +41,33 @@ function appRoutes(router: Router): { allowed: Set<string>; editionOnly: Set<str
 const CONTRACT_TO_CLIENT_KEY: Record<string, keyof GalleryFilters> = {
   person: 'person_id',
   category: 'type',
+  semantic_query: 'semanticQuery',
+  semantic_threshold: 'search_threshold',
 };
 
-const CLIENT_TO_CONTRACT_KEY: Record<string, string> = { person_id: 'person', type: 'category' };
+const CLIENT_TO_CONTRACT_KEY: Record<string, string> = {
+  person_id: 'person',
+  type: 'category',
+  semanticQuery: 'semantic_query',
+  search_threshold: 'semantic_threshold',
+};
+
+/** The contract speaks 0-1 fractions (like the MCP tools and the REST routes); the store keeps percent strings. */
+const FRACTION_KEYS = new Set(['semantic_threshold', 'min_similarity']);
+const SIMILARITY_MODES = ['visual', 'color', 'person'];
+
+function fractionToPercent(key: string, value: unknown): string {
+  const fraction = typeof value === 'number' ? value : Number(value);
+  const max = key === 'semantic_threshold' ? SEARCH_THRESHOLD_MAX / 100 : 1;
+  if (!Number.isFinite(fraction) || fraction < 0 || fraction > max) {
+    throw new UiToolError('invalid_input', `${key} must be a number between 0 and ${max}.`);
+  }
+  return String(Number((fraction * 100).toFixed(4)));
+}
+
+function percentToFraction(percent: string): number {
+  return Number((Number(percent) / 100).toFixed(6));
+}
 
 const SELECTION_PATH_LIMIT = 1000;
 const WAIT_STEP_MS = 25;
@@ -144,7 +170,16 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       }
       const clientKey = key as keyof GalleryFilters;
       if (value === null) {
-        updates[clientKey] = filterDefault(clientKey);
+        updates[clientKey] = clientKey === 'search_threshold'
+          ? seededSearchThreshold(gallery.config()?.search_threshold_default)
+          : filterDefault(clientKey);
+      } else if (FRACTION_KEYS.has(contractKey)) {
+        updates[clientKey] = fractionToPercent(contractKey, value);
+      } else if (clientKey === 'similarity_mode') {
+        if (!SIMILARITY_MODES.includes(String(value))) {
+          throw new UiToolError('invalid_input', `similarity_mode must be one of ${SIMILARITY_MODES.join(', ')}.`);
+        }
+        updates[clientKey] = String(value);
       } else if (typeof DEFAULT_FILTERS[clientKey] === 'boolean') {
         updates[clientKey] = toBoolean(contractKey, value);
       } else if (clientKey === 'sort_direction') {
@@ -152,6 +187,9 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       } else {
         updates[clientKey] = String(value);
       }
+    }
+    if (updates['similar_to'] && updates['semanticQuery']) {
+      throw new UiToolError('invalid_input', 'similar_to and semantic_query cannot be combined (the tab ranks by one of them).');
     }
     return updates as Partial<GalleryFilters>;
   };
@@ -163,8 +201,15 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
     delete params['per_page'];
     const out: Record<string, string | number | boolean> = {};
     for (const [key, value] of Object.entries(params)) out[Object.hasOwn(CLIENT_TO_CONTRACT_KEY, key) ? CLIENT_TO_CONTRACT_KEY[key] : key] = value;
-    if (f.semanticQuery) out['semantic_query'] = f.semanticQuery;
-    if (f.similar_to) out['similar_to'] = f.similar_to;
+    if (f.semanticQuery) {
+      out['semantic_query'] = f.semanticQuery;
+      if (f.search_threshold) out['semantic_threshold'] = percentToFraction(f.search_threshold);
+    }
+    if (f.similar_to) {
+      out['similar_to'] = f.similar_to;
+      out['similarity_mode'] = f.similarity_mode;
+      out['min_similarity'] = percentToFraction(f.min_similarity);
+    }
     return out;
   };
 
@@ -204,6 +249,12 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
     ui_set_gallery_filters: async args => {
       const patch = (args['patch'] ?? {}) as Record<string, unknown>;
       patchToUpdates(patch);
+      // A replace on an album page would be saved as that album's smart filter (edition sessions), so it leaves the album first.
+      if (args['replace'] === true && pathOf(router.url).startsWith('/album/')) {
+        const mounts = gallery.galleryMounts();
+        if (!await router.navigate(['/'])) throw new UiToolError('forbidden_level', 'The tab could not leave the album.');
+        if (!await waitFor(() => gallery.galleryMounts() > mounts)) throw new UiToolError('upstream_error', 'The gallery did not open.');
+      }
       await ensureGalleryView();
       // Built after the gallery is up: the cleared state and null resets use the configured defaults, which load with it.
       await gallery.updateFilters({ ...(args['replace'] === true ? clearedFilters() : {}), ...patchToUpdates(patch) });

@@ -21,7 +21,7 @@ from typing import Any, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, create_model, field_validator, model_validator
 
-from api.agent.tools_read import MCP_FILTER_KEYS, FilterValue, SortColumn
+from api.agent.tools_common import MCP_FILTER_KEYS, FilterValue, SortColumn
 
 TAB_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
 MAX_SELECT_PATHS = 1000
@@ -69,7 +69,40 @@ _PATCH_FIELDS: dict[str, Any] = {
 _PATCH_FIELDS["sort"] = (Optional[SortColumn], Field(default=None, description="Sort column."))
 _PATCH_FIELDS["sort_direction"] = (
     Optional[Literal["asc", "desc"]], Field(default=None, description="Sort direction."))
-UiFilterPatch = create_model("UiFilterPatch", __config__=ConfigDict(extra="forbid"), **_PATCH_FIELDS)
+# Semantic and similar views. Bounds are checked by the validator below, not by Field
+# constraints: a constraint would turn the nullable scalar into an `anyOf` the client's
+# hand-written schema checker does not read.
+SEMANTIC_THRESHOLD_MAX = 0.5
+_PATCH_FIELDS["semantic_query"] = (Optional[str], Field(
+    default=None, description="Show the gallery as a semantic (text-to-image) search for this text."))
+_PATCH_FIELDS["semantic_threshold"] = (Optional[float], Field(
+    default=None, description="Semantic match threshold, 0 to 0.5 (null: the server default)."))
+_PATCH_FIELDS["similar_to"] = (Optional[str], Field(
+    default=None, description="Show the photos similar to the photo at this path. "
+                              "Cannot be combined with `semantic_query`."))
+_PATCH_FIELDS["similarity_mode"] = (Optional[Literal["visual", "color", "person"]], Field(
+    default=None, description="How `similar_to` compares photos."))
+_PATCH_FIELDS["min_similarity"] = (Optional[float], Field(
+    default=None, description="Minimum similarity for `similar_to`, 0 to 1 (null: the tab default)."))
+
+
+class _PatchBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def _check_patch(self) -> "_PatchBase":
+        threshold = getattr(self, "semantic_threshold", None)
+        similarity = getattr(self, "min_similarity", None)
+        if threshold is not None and not 0 <= threshold <= SEMANTIC_THRESHOLD_MAX:
+            raise ValueError(f"semantic_threshold must be between 0 and {SEMANTIC_THRESHOLD_MAX}")
+        if similarity is not None and not 0 <= similarity <= 1:
+            raise ValueError("min_similarity must be between 0 and 1")
+        if getattr(self, "semantic_query", None) and getattr(self, "similar_to", None):
+            raise ValueError("`semantic_query` and `similar_to` cannot be combined")
+        return self
+
+
+UiFilterPatch = create_model("UiFilterPatch", __base__=_PatchBase, **_PATCH_FIELDS)
 
 QueryValue = Union[str, int, float, bool]
 

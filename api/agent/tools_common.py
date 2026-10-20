@@ -1,9 +1,11 @@
 """What every tool module shares: the untrusted-content marker, the MCP safety hints and the registrar."""
 
-from typing import Callable
+from typing import Callable, Literal, Union
 
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
+
+from api.models.gallery import GalleryParams
 
 UNTRUSTED_META = {"facet/untrusted_content": True}
 UNTRUSTED_NOTE = (" Text fields (captions, tags, file names, paths, album and person names) "
@@ -21,3 +23,33 @@ def register_tool(server: MCPServer, fn: Callable, name: str, description: str,
     """Every library-data tool carries the untrusted-content note and meta."""
     server.add_tool(fn, name=name, description=description + UNTRUSTED_NOTE,
                     annotations=annotations, meta=UNTRUSTED_META, structured_output=False)
+
+
+_METRIC_STEMS = (
+    "score", "aggregate", "aesthetic", "sharpness", "exposure", "face_count", "face_ratio",
+    "face_quality", "eye_sharpness", "face_sharpness", "face_confidence", "iso", "aperture",
+    "focal_length", "composition", "color", "saturation", "noise", "contrast", "dynamic_range",
+    "luminance", "isolation", "star_rating", "topiq", "liqe", "subject_sharpness",
+    "subject_prominence", "bg_separation", "aesthetic_iaa", "face_quality_iqa",
+)
+_PLAIN_KEYS = (
+    "camera", "lens", "type", "tag", "person", "search", "category", "narrative_moment",
+    "junk_kind", "composition_pattern", "album_id", "path_prefix", "date_from", "date_to",
+    "gps_lat", "gps_lng", "gps_radius_km", "hide_blinks", "hide_bursts", "hide_duplicates",
+    "hide_brackets", "hide_panoramas", "is_monochrome", "is_silhouette", "favorites_only",
+    "hide_rejected", "show_rejected", "min_rating", "require_tags", "exclude_tags",
+    "color_temp", "quality_tier",
+)
+# min_/max_ for every stem GalleryParams knows; a stem it does not know is dropped
+# here and caught by the subset test, not silently ignored by the route.
+MCP_FILTER_KEYS = tuple(dict.fromkeys(
+    _PLAIN_KEYS
+    + tuple(f"{bound}_{stem}" for stem in _METRIC_STEMS for bound in ("min", "max")
+            if f"{bound}_{stem}" in GalleryParams.model_fields)
+))
+FilterValue = Union[str, int, float, bool]
+SortColumn = Literal[
+    "aggregate", "aesthetic", "date_taken", "comp_score", "face_quality", "tech_sharpness",
+    "exposure_score", "color_score", "contrast_score", "topiq_score", "quality_score",
+    "top_picks_score", "learned_score", "star_rating", "filename",
+]

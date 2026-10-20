@@ -150,7 +150,7 @@ describe('UI tool registry and handlers', () => {
     it('every ui_set_gallery_filters patch key lands on a key of DEFAULT_FILTERS', () => {
       const tool = (contractFile as unknown as UiToolContractFile).tools.find(t => t.name === 'ui_set_gallery_filters');
       const patchKeys = Object.keys(tool?.inputSchema.properties?.['patch'].properties ?? {});
-      const rename: Record<string, string> = { person: 'person_id', category: 'type' };
+      const rename: Record<string, string> = { person: 'person_id', category: 'type', semantic_query: 'semanticQuery', semantic_threshold: 'search_threshold' };
       expect(patchKeys.length).toBeGreaterThan(50);
       const orphans = patchKeys.filter(key => !Object.hasOwn(DEFAULT_FILTERS, rename[key] ?? key));
       expect(orphans).toEqual([]);
@@ -269,6 +269,76 @@ describe('UI tool registry and handlers', () => {
       const pending = run('ui_set_gallery_filters', { patch: { camera: 'Canon' } });
       expect((await pending).ok).toBe(true);
       expect(navigate).toHaveBeenCalledWith(['/']);
+    });
+  });
+
+  describe('semantic and similar views', () => {
+    it('maps a 0-1 semantic threshold to the percent string the store keeps', async () => {
+      const result = await run('ui_set_gallery_filters', { patch: { semantic_query: 'red sunset', semantic_threshold: 0.25 }, replace: true });
+      expect(result.ok).toBe(true);
+      expect(store.filters()).toMatchObject({ semanticQuery: 'red sunset', search_threshold: '25' });
+    });
+
+    it('maps similar_to with its mode and a 0-1 floor to a percent string', async () => {
+      await run('ui_set_gallery_filters', { patch: { similar_to: '/a.jpg', similarity_mode: 'color', min_similarity: 0.8 }, replace: true });
+      expect(store.filters()).toMatchObject({ similar_to: '/a.jpg', similarity_mode: 'color', min_similarity: '80' });
+    });
+
+    it('keeps a fractional percent without rounding loss', async () => {
+      await run('ui_set_gallery_filters', { patch: { similar_to: '/a.jpg', min_similarity: 0.855 } });
+      expect(store.filters().min_similarity).toBe('85.5');
+    });
+
+    it('refuses similar_to together with semantic_query, applying nothing', async () => {
+      const result = await run('ui_set_gallery_filters', { patch: { similar_to: '/a.jpg', semantic_query: 'x' } });
+      expect(result).toMatchObject({ ok: false, error: 'invalid_input' });
+      expect(store.filters()).toMatchObject({ similar_to: '', semanticQuery: '' });
+    });
+
+    it('refuses a threshold above the slider ceiling and an unknown mode', async () => {
+      expect(await direct()['ui_set_gallery_filters']({ patch: { semantic_query: 'x', semantic_threshold: 0.7 } }).catch((e: unknown) => e))
+        .toMatchObject({ code: 'invalid_input' });
+      expect(await direct()['ui_set_gallery_filters']({ patch: { similar_to: '/a.jpg', similarity_mode: 'nope' } }).catch((e: unknown) => e))
+        .toMatchObject({ code: 'invalid_input' });
+    });
+
+    it('null puts the knobs back to the seeded or default values', async () => {
+      await run('ui_set_gallery_filters', { patch: { semantic_query: 'x', semantic_threshold: 0.3 } });
+      await run('ui_set_gallery_filters', { patch: { semantic_threshold: null, semantic_query: null } });
+      expect(store.filters()).toMatchObject({ semanticQuery: '', search_threshold: '15' });
+    });
+
+    it('echoes the new keys in the view under contract names and 0-1 units', async () => {
+      await run('ui_set_gallery_filters', { patch: { similar_to: '/a.jpg', similarity_mode: 'color', min_similarity: 0.8 } });
+      let data = ((await run('ui_get_gallery_view', {})) as { data: { filters: Record<string, unknown> } }).data;
+      expect(data.filters).toMatchObject({ similar_to: '/a.jpg', similarity_mode: 'color', min_similarity: 0.8 });
+      await run('ui_set_gallery_filters', { patch: { semantic_query: 'x', semantic_threshold: 0.25 }, replace: true });
+      data = ((await run('ui_get_gallery_view', {})) as { data: { filters: Record<string, unknown> } }).data;
+      expect(data.filters).toMatchObject({ semantic_query: 'x', semantic_threshold: 0.25 });
+      expect(data.filters).not.toHaveProperty('search_threshold');
+    });
+  });
+
+  describe('replace on an album page', () => {
+    it('leaves the album before applying, so no smart filter is saved for it', async () => {
+      router.url = '/album/7';
+      navigate.mockImplementationOnce(async () => {
+        router.url = '/';
+        store.galleryMounts.update(n => n + 1);
+        return true;
+      });
+      const update = vi.spyOn(store, 'updateFilters');
+      const result = await run('ui_set_gallery_filters', { patch: { camera: 'Canon' }, replace: true });
+      expect(result.ok).toBe(true);
+      expect(navigate).toHaveBeenCalledWith(['/']);
+      expect(navigate.mock.invocationCallOrder[0]).toBeLessThan(update.mock.invocationCallOrder[0]);
+      expect(TestBed.inject(AlbumService).update).not.toHaveBeenCalled();
+    });
+
+    it('does not navigate for a patch without replace', async () => {
+      router.url = '/album/7';
+      await run('ui_set_gallery_filters', { patch: { camera: 'Canon' } });
+      expect(navigate).not.toHaveBeenCalledWith(['/']);
     });
   });
 

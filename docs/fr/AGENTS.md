@@ -47,17 +47,33 @@ Les neuf outils de données sont en lecture seule :
 
 | Outil | Rôle |
 |------|--------------|
-| `search_photos` | Filtre et trie la bibliothèque comme la galerie, en appliquant les masquages par défaut de la visionneuse sauf si le filtre les précise (renvoie `hidden_summary`) |
-| `semantic_search` | Trouve des photos par le sens, ou par les mots des légendes avec `scope: "text"` |
+| `search_photos` | Filtre et trie la bibliothèque comme la galerie, en appliquant les masquages par défaut de la visionneuse sauf si le filtre les précise (renvoie `hidden_summary`). Affiché par défaut dans votre onglet ouvert (voir plus bas) ; `fields` ajoute n'importe quelle colonne de photo |
+| `semantic_search` | Trouve des photos par le sens, ou par les mots des légendes avec `scope: "text"` (non affiché dans l'onglet) |
 | `get_photo` | Détail complet d'une photo à partir de son chemin (sans l'histogramme) |
-| `similar_photos` | Photos similaires à une photo, par plongement visuel ou par couleur |
+| `similar_photos` | Photos similaires à une photo, par plongement visuel ou par couleur ; `min_similarity` (0 à 1) fixe le seuil |
 | `filter_options` | Le vocabulaire accepté par un filtre : appareils, objectifs, étiquettes, personnes, motifs, catégories, moments narratifs, types d'indésirables, plages de métriques |
 | `list_persons` | Personnes reconnues, filtrables par nom |
 | `list_albums` | Albums visibles par le propriétaire du jeton |
-| `library_stats` | Taille de la bibliothèque, décomptes par type et aperçu des scores |
+| `library_stats` | Statistiques de la bibliothèque : `kind` choisit l'aperçu de la taille et des scores (par défaut) ou n'importe quelle donnée de la page Statistiques (voir plus bas) |
 | `status` | Identité du jeton, son niveau effectif et les réglages du serveur et les onglets ouverts qu'il peut piloter |
 
 Dans tout objet de filtres, `show_rejected` est un booléen : `true` ne liste que les photos rejetées, `false` ou son absence donne la liste normale.
+
+## Les résultats s'affichent dans votre onglet
+
+- `search_photos`, `semantic_search` et `similar_photos` acceptent `show` (`true` par défaut). Après une recherche réussie sur la première page, le serveur applique la même requête à l'onglet Facet ouvert, en remplaçant ses filtres : vous voyez ce que l'assistant a trouvé sans avoir à le demander. On indique aux assistants de ne jamais demander s'il faut ouvrir ou afficher les résultats ; `show: false` sert aux sondages intermédiaires et aux décomptes, et la dernière recherche affichée est celle que vous voyez.
+- Le résultat porte `shown_in_tab` : `{"applied": true, "tab_id", "keys", "total"}`, ou `{"applied": false, "reason"}` où la raison est `no_tab`, `bridge_disabled`, `tab_outdated`, `tab_timeout` (l'onglet peut encore l'appliquer), `forbidden`, `page_not_first`, `empty_result`, `unsupported_filters` (avec `keys`) ou `invalid_combination`. Un affichage raté ne fait jamais échouer la recherche. Passez `tab_id` pour choisir un onglet. Toutes les raisons : `error` (l'affichage lui-même a échoué), `bridge_disabled`, `page_not_first`, `empty_result`, `invalid_combination`, `unsupported_filters` (avec `keys` ; pour `semantic_search` ce sont `scope` ou `threshold`, un seuil supérieur à 0,5 que le curseur de la barre latérale ne peut pas exprimer) et les codes renvoyés par le pont d'onglet (`no_tab`, `tab_outdated`, `tab_timeout`, `forbidden`, `invalid_input`, `upstream_error`). L'onglet pagine lui-même : pour une recherche sémantique il peut afficher plus de lignes que l'assistant n'en a reçu. Quand des lignes sont raccourcies, `next_page` (avec `suggested_per_page`) désigne la page qui continue exactement après la dernière ligne renvoyée ou, si les pages ne peuvent pas l'exprimer, `next_offset` la donne comme décalage en lignes.
+- Seule la première page est affichée (l'onglet pagine lui-même au défilement), et un résultat vide n'est pas affiché : vous gardez votre vue précédente. Une recherche utilisant des filtres que la barre latérale de la galerie ne propose pas (`exclude_tags`, `require_tags`, `is_silhouette`, `junk_kind`, `narrative_moment`, `min_rating`, `min_aggregate`, `show_rejected: true`) n'est pas appliquée partiellement, et `semantic_search` avec `scope: "text"` n'est pas affichée non plus.
+- Un affichage quitte `/culling`, `/compare` et `/photo` pour la galerie, efface une sélection de toute la vue et, sur une page d'album, revient d'abord à la galerie : les filtres enregistrés d'un album ne sont donc jamais écrasés. Une recherche dont le décompte alimente l'`expected_count` d'un outil d'écriture doit utiliser `show: false`.
+- Les lignes portent l'appareil, l'objectif, l'ouverture, la vitesse, les ISO, la focale et `is_monochrome`. `fields` (sur les trois outils de recherche) ajoute toute autre colonne de photo, hors données d'image et de plongements, par exemple `leading_lines_score` ; `learned_score` n'est rempli que pour un tri sur ce score. Quand le plafond d'octets raccourcit les lignes, le résultat ajoute `returned` (et `next_offset` ou `suggested_per_page`).
+- `library_stats` accepte `kind` (`overview` par défaut : taille, décomptes par type et aperçu des scores). Les autres valeurs sont en lecture seule et renvoient les données de la page Statistiques ; les longues listes sont coupées à 50 entrées avec `truncated: true` :
+
+| Valeur de kind | Données |
+|------|------|
+| `score_distribution`, `top_cameras`, `categories`, `gear`, `stats_settings`, `timeline`, `correlations` | Les panneaux de la page Statistiques ; ils acceptent `date_from`, `date_to` et `category`. `correlations` accepte aussi `x`, `y` (liste séparée par des virgules), `group_by` et `min_samples` |
+| `category_breakdown`, `category_weights`, `category_correlations`, `category_overlap` | Statistiques par catégorie (sans paramètre) |
+| `timeline_dates`, `timeline_months` | Nombre de photos par jour ou par mois ; elles exigent `year` (`timeline_dates` accepte aussi `month`) |
+| `timeline_years` | Nombre de photos par année |
 
 ## Piloter votre onglet ouvert
 
@@ -90,7 +106,7 @@ Fonctionnement :
 
 En complément :
 
-- `ui_set_gallery_filters` vous amène d'abord à la galerie si une autre page est ouverte, puis applique le patch. Il refuse en bloc (`invalid_input`) un patch qui nomme un filtre que l'onglet ne sait pas piloter ; utilisez `search_photos` pour ceux-là.
+- `ui_set_gallery_filters` vous amène d'abord à la galerie si une autre page est ouverte, puis applique le patch. Il refuse en bloc (`invalid_input`) un patch qui nomme un filtre que l'onglet ne sait pas piloter ; utilisez `search_photos` pour ceux-là. Sur une page d'album, `replace: true` revient d'abord à la galerie : les filtres enregistrés de l'album ne sont pas écrasés. L'outil accepte aussi `semantic_query`, `semantic_threshold` (0 à 0,5), `similar_to`, `similarity_mode` et `min_similarity` (0 à 1) ; `similar_to` et `semantic_query` ne se combinent pas.
 - `ui_get_gallery_view`, `ui_next_page` et `ui_select_photos` avec `select_view` exigent que la galerie (ou un album) soit la page ouverte, sinon ils répondent `no_active_view` ; appelez d'abord `ui_navigate` vers `/`. Donnez à `ui_select_photos` exactement l'un de `paths` et `select_view`.
 - `no_tab` signifie aussi qu'aucun onglet Facet n'est ouvert : ouvrez Facet dans un navigateur et connectez-vous. La ligne d'état de la boîte **Connecter un assistant** indique si cet onglet est connecté ; l'outil `status` liste les onglets ouverts et leurs identifiants.
 - Un onglet cesse de se reconnecter dès que sa session est rejetée (reconnectez-vous), et attend votre retour sur lui lorsqu'un autre de vos onglets a pris la place.
@@ -176,7 +192,7 @@ Les outils de la chambre noire reprennent la page `/culling`. Tous exigent le ni
 
 ## Résultats, limites et erreurs
 
-Chaque résultat est une enveloppe JSON : `{"ok": true, "data": ...}` ou `{"ok": false, "error": "<code>", "message": "..."}`. Les listes renvoient `data.rows` (un jeu compact et fixe de champs par photo) ainsi que `total`.
+Chaque résultat est une enveloppe JSON : `{"ok": true, "data": ...}` ou `{"ok": false, "error": "<code>", "message": "..."}`. Les listes renvoient `data.rows` (un jeu compact et fixe de champs par photo) ainsi que `total`. Un résultat de recherche porte aussi `shown_in_tab`, et un résultat raccourci par le plafond d'octets porte `returned`.
 
 - **Plafonds :** au plus `max_rows` lignes et `max_bytes` octets sérialisés. Les dernières lignes sont retirées et `truncated: true` est ajouté. Un résultat sans lignes qui dépasse `max_bytes` devient une erreur `too_large`.
 - **Limite de débit :** `rate_per_min` appels par minute et par jeton pour la lecture. Les outils d'écriture puisent dans un budget distinct, `write_rate_per_min` (30 par défaut), si bien que les recherches n'affament pas les écritures, et inversement ; la simulation de `cull_apply` et de `delete_photos` compte comme une écriture, l'aperçu d'`auto_cull` comme une lecture. Au-delà : `rate_limited` avec `retry_after_s`. Dix échecs d'authentification par minute depuis une même adresse déclenchent un 429.
