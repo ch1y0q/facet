@@ -9,7 +9,7 @@ from api import config as api_config
 from api.agent import show
 from api.agent.tools_read import HIDE_DEFAULT_KEYS
 from api.agent.internal_client import ok
-from tests.conftest import AGENT_DIR, intercept_internal_call
+from tests.conftest import AGENT_DIR, intercept_internal_call, visual_ranking
 
 ROWS = [{"path": AGENT_DIR + f"show/{i}.jpg", "filename": f"{i}.jpg", "aggregate": 5.0 + i,
          "aesthetic": 4.0 + i, "caption": "a red sunset" if i == 0 else "a street"} for i in range(3)]
@@ -228,7 +228,7 @@ class TestSemanticAndSimilarRelay:
 
         def find(conn, source, path, min_similarity, *rest):
             seen.append(min_similarity)
-            return [{"path": ROWS[1]["path"], "filename": "1.jpg", "similarity": 0.9}], None
+            return [{"path": ROWS[1]["path"], "filename": "1.jpg", "similarity": 0.9}], 1, None
 
         monkeypatch.setattr(gallery, "_find_similar_visual", find)
         env = agent_app("open")
@@ -247,8 +247,8 @@ class TestSemanticAndSimilarRelay:
         from api.routers import gallery
         seed_photos_prefix(AGENT_DIR + "simkeys/", [{
             "path": AGENT_DIR + "simkeys/h.jpg", "filename": "h.jpg", "camera_model": "X100", "iso": 200}])
-        monkeypatch.setattr(gallery, "_find_similar_visual", lambda *a, **k: (
-            [{"path": AGENT_DIR + "simkeys/h.jpg", "filename": "h.jpg", "similarity": 0.9}], None))
+        monkeypatch.setattr(gallery, "_find_similar_visual", visual_ranking(
+            [{"path": AGENT_DIR + "simkeys/h.jpg", "filename": "h.jpg", "similarity": 0.9}]))
         env = agent_app("open")
         row = env.call(env.token(env.login()), "similar_photos", {
             "path": ROWS[0]["path"], "show": False})["data"]["rows"][0]
@@ -256,9 +256,9 @@ class TestSemanticAndSimilarRelay:
 
     def test_a_later_similar_page_is_not_reapplied(self, agent_app, fake_tab, photos, monkeypatch):
         from api.routers import gallery
-        monkeypatch.setattr(gallery, "_find_similar_visual", lambda *a, **k: (
+        monkeypatch.setattr(gallery, "_find_similar_visual", visual_ranking(
             [{"path": ROWS[1]["path"], "filename": "1.jpg", "similarity": 0.9},
-             {"path": ROWS[2]["path"], "filename": "2.jpg", "similarity": 0.8}], None))
+             {"path": ROWS[2]["path"], "filename": "2.jpg", "similarity": 0.8}]))
         env = agent_app("open")
         tab = fake_tab(env, None, reply=reply_total())
         result = env.call(env.token(env.login()), "similar_photos", {

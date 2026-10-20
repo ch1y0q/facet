@@ -15,7 +15,7 @@ from api.agent import limits
 from api.agent.tools_common import TOOL_LEVELS
 from api.agent.tools_write import WRITE_TOOL_LEVELS
 from api.agent.ui_tools import UI_TOOLS
-from tests.conftest import AGENT_DIR, intercept_internal_call, serve_app
+from tests.conftest import AGENT_DIR, intercept_internal_call, serve_app, visual_ranking
 
 READ_TOOLS = {
     "search_photos", "semantic_search", "get_photo", "similar_photos", "filter_options",
@@ -255,7 +255,7 @@ class TestReadTools:
     def test_similar_photos_returns_the_routes_hits(self, agent_app, photos, monkeypatch):
         from api.routers import gallery
         hit = {"path": AGENT_DIR + "b.jpg", "filename": "b.jpg", "similarity": 0.9}
-        monkeypatch.setattr(gallery, "_find_similar_visual", lambda *a, **k: ([hit], None))
+        monkeypatch.setattr(gallery, "_find_similar_visual", visual_ranking([hit]))
         env = agent_app("open")
         result = env.call(env.token(env.login()), "similar_photos", {"path": AGENT_DIR + "a.jpg"})
         assert result["ok"] is True, result
@@ -269,7 +269,7 @@ class TestReadTools:
         seed_photos_prefix(AGENT_DIR + "sim/", [
             {"path": AGENT_DIR + "sim/" + name, "filename": name} for name in names])
         hits = [{"path": AGENT_DIR + "sim/" + name, "filename": name, "similarity": 0.9} for name in names]
-        monkeypatch.setattr(gallery, "_find_similar_visual", lambda *a, **k: (hits, None))
+        monkeypatch.setattr(gallery, "_find_similar_visual", visual_ranking(hits))
         env = agent_app("open")
         token = env.token(env.login())
         args = {"path": AGENT_DIR + "a.jpg", "limit": 1}
@@ -311,8 +311,8 @@ class TestFieldsAndDefaultRows:
 
     def test_fields_on_the_other_two_search_tools(self, agent_app, photos, monkeypatch):
         from api.routers import gallery
-        monkeypatch.setattr(gallery, "_find_similar_visual", lambda *a, **k: (
-            [{"path": AGENT_DIR + "a.jpg", "filename": "a.jpg", "similarity": 0.9}], None))
+        monkeypatch.setattr(gallery, "_find_similar_visual", visual_ranking(
+            [{"path": AGENT_DIR + "a.jpg", "filename": "a.jpg", "similarity": 0.9}]))
         env = agent_app("open")
         token = env.token(env.login())
         row = env.call(token, "similar_photos", {

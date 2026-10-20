@@ -482,6 +482,13 @@ def agent_db(sql, *args):
         return conn.execute(sql, args).fetchall()
 
 
+def visual_ranking(hits):
+    """A ``_find_similar_visual`` stand-in serving ``hits`` as its full ranking, one page at a time."""
+    def find(conn, source, photo_path, min_similarity, vis_sql, vis_params, offset, limit, change_token):
+        return hits[offset:offset + limit], len(hits), None
+    return find
+
+
 def intercept_internal_call(monkeypatch, handler):
     """Wrap ``InternalClient.call``: ``handler(tool, kwargs)`` returns a replacement result, or None to fall through."""
     from api.agent.internal_client import InternalClient
