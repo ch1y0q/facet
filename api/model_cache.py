@@ -36,13 +36,32 @@ vlm_generate_lock = threading.Lock()
 _mps_lock = threading.Lock()
 
 
-def accelerator_lock(device):
+class AcceleratorBusy(TimeoutError):
+    """The MPS lock was not free within the caller's ``timeout``."""
+
+
+@contextlib.contextmanager
+def _bounded_mps_lock(timeout):
+    if not _mps_lock.acquire(timeout=timeout):
+        raise AcceleratorBusy(f"MPS is busy with another model task (waited {timeout}s)")
+    try:
+        yield
+    finally:
+        _mps_lock.release()
+
+
+def accelerator_lock(device, timeout=None):
     """The process-wide MPS lock when ``device`` is MPS, else a no-op context.
 
     CUDA and CPU are not serialized, and ``None`` (a remote backend, nothing
-    on the local GPU) is a no-op too.
+    on the local GPU) is a no-op too. ``timeout`` (seconds) bounds the wait for
+    the MPS lock: entering the context raises ``AcceleratorBusy`` when it cannot
+    be had in time. ``None`` waits as long as it takes, and off MPS there is
+    nothing to wait for.
     """
-    return _mps_lock if str(device or '').startswith('mps') else contextlib.nullcontext()
+    if not str(device or '').startswith('mps'):
+        return contextlib.nullcontext()
+    return _mps_lock if timeout is None else _bounded_mps_lock(timeout)
 
 
 def vlm_accelerator_lock(tagger):

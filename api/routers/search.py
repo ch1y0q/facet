@@ -22,7 +22,7 @@ from api.db_helpers import (
     build_photo_select_columns, is_manual_tags_available,
     split_photo_tags, attach_person_data_async, format_date, sanitize_float_values,
 )
-from api.model_cache import accelerator_lock
+from api.model_cache import AcceleratorBusy, accelerator_lock
 from api.models.discovery import PhotoSearchResponse
 from db.connection import HAS_SQLITE_VEC
 from db.manual_tags import ManualTagError, normalize_manual_tag
@@ -35,6 +35,8 @@ _text_encoder = None
 # searches would each load the model. Inference is serialized separately, on
 # MPS only, by api.model_cache.accelerator_lock.
 _text_encoder_lock = threading.Lock()
+# Seconds a search waits for the MPS lock (not for the encode) before answering "busy", so waiters cannot pin the executor.
+_MPS_WAIT_SECONDS = 15
 # (stored embedding dim, torch-free resolved models.clip[_legacy] block). Keyed
 # rather than bare, which is what lets the embedding-less answer be cached too --
 # see _resolve_clip_config.
@@ -325,7 +327,7 @@ def _load_text_encoder():
     backend = clip_config.get('backend', 'open_clip')
     model_name = clip_config.get('model_name')
 
-    with accelerator_lock(device):
+    with accelerator_lock(device, _MPS_WAIT_SECONDS):
         if backend == 'transformers':
             # Deliberately fp32 and NOT routed through utils.siglip.load_siglip_model
             # (which loads fp16 on CUDA): this is the text-only query encoder, it
@@ -377,7 +379,7 @@ def _encode_texts(queries: list[str]) -> np.ndarray:
 
     with _text_encoder_lock:
         enc = _load_text_encoder()
-    with accelerator_lock(enc['device']):
+    with accelerator_lock(enc['device'], _MPS_WAIT_SECONDS):
         text_features = encode_text_prompts(
             enc['model'], enc['model_name'], enc['backend'], enc['device'], list(queries)
         )
@@ -762,6 +764,10 @@ async def api_search(
                 'total': len(photos),
                 'query': q,
             }
+
+    except AcceleratorBusy:
+        logger.warning("Semantic search gave up waiting for the MPS lock: %s", q)
+        return {'photos': [], 'total': 0, 'query': q, 'error': 'Search model is busy with another task, try again in a moment'}
 
     except Exception:
         logger.exception("Semantic search failed for query: %s", q)
