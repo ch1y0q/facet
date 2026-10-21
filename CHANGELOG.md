@@ -19,6 +19,7 @@ All notable changes to Facet are documented in this file.
 
 ### Changed
 
+- **The scan button moved into the header** (`viewer.features.show_scan_button`). The **Scan for new photos** icon now sits right after the **Sort** selector, highlighted with a coloured background, and after the Sort selector in the bottom bar on small screens, instead of above the photo grid. The empty-gallery **Scan photos to get started** button is unchanged. See [docs/VIEWER.md](docs/VIEWER.md#scan-trigger).
 - **Web client upgraded to Angular 22.2 and TypeScript 6.0.** Components keep their previous change detection through an explicit `ChangeDetectionStrategy.Eager` (the framework migration; Angular 22 defaults to OnPush), `provideHttpClient` opts into `withXhr()` to keep the XHR backend, and the `@angular-eslint/prefer-on-push-component-change-detection` rule is turned off for that reason. `openapi-typescript` 7.13 declares a TypeScript 5 peer, so `client/package.json` overrides it to follow the project's TypeScript. No behaviour change.
 
 ### Fixed

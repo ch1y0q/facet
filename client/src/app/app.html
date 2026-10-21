@@ -198,6 +198,12 @@
           </mat-select>
         </mat-form-field>
 
+        @if (scan.canLaunch()) {
+          <button mat-icon-button class="!hidden lg:!inline-flex !bg-[var(--mat-sys-primary-container)] !text-[var(--mat-sys-on-primary-container)]" (click)="openScanLauncher()" [matTooltip]="I18N.gallery.scan_action | translate" [attr.aria-label]="I18N.gallery.scan_action | translate">
+            <mat-icon>add_photo_alternate</mat-icon>
+          </button>
+        }
+
         <!-- "My Taste" confidence indicator — held-out accuracy of the personal ranker.
              A button, not a bare icon: the accuracy lives only in the tooltip, which a
              keyboard or screen-reader user can only reach through a focusable host. -->
@@ -558,6 +564,12 @@
             }
           </mat-select>
         </mat-form-field>
+
+        @if (scan.canLaunch()) {
+          <button mat-icon-button class="!w-10 !h-10 shrink-0 !bg-[var(--mat-sys-primary-container)] !text-[var(--mat-sys-on-primary-container)]" (click)="openScanLauncher()" [matTooltip]="I18N.gallery.scan_action | translate" [attr.aria-label]="I18N.gallery.scan_action | translate">
+            <mat-icon>add_photo_alternate</mat-icon>
+          </button>
+        }
 
         <!-- Tooltip-mode menu (mobile, first in icon cluster) -->
         <button mat-icon-button class="!w-10 !h-10 shrink-0"

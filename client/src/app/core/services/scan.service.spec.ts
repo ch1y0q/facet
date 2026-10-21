@@ -3,6 +3,8 @@ import { provideHttpClient, withXhr } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ScanService, ScanStatus } from './scan.service';
 import { AuthService } from './auth.service';
+import { MatDialog } from '@angular/material/dialog';
+import { of } from 'rxjs';
 import { makeJwt } from '../../../testing/jwt';
 
 class MockEventSource {
@@ -277,6 +279,102 @@ describe('ScanService', () => {
 
       const dirs = await promise;
       expect(dirs).toEqual([{ path: '/photos', owner: 'shared' }]);
+    });
+  });
+
+  describe('canLaunch', () => {
+    function setAuth(overrides: {
+      isMultiUser?: boolean;
+      isSuperadmin?: boolean;
+      editionPasswordRequired?: boolean;
+      isEdition?: boolean;
+      loginPasswordRequired?: boolean;
+      hasFeature?: boolean;
+    }): boolean {
+      TestBed.resetTestingModule();
+      const auth = {
+        loginPasswordRequired: () => overrides.loginPasswordRequired ?? false,
+        isMultiUser: () => overrides.isMultiUser ?? false,
+        isSuperadmin: () => overrides.isSuperadmin ?? false,
+        editionPasswordRequired: () => overrides.editionPasswordRequired ?? false,
+        isEdition: () => overrides.isEdition ?? false,
+        hasFeature: () => overrides.hasFeature ?? true,
+      };
+      TestBed.configureTestingModule({
+        providers: [
+          ScanService,
+          { provide: AuthService, useValue: auth },
+          provideHttpClient(withXhr()),
+          provideHttpClientTesting(),
+        ],
+      });
+      return TestBed.inject(ScanService).canLaunch();
+    }
+
+    it('is true for a multi-user superadmin with the flag on', () => {
+      expect(setAuth({ isMultiUser: true, isSuperadmin: true, hasFeature: true })).toBe(true);
+    });
+
+    it('is false for a multi-user admin who is not superadmin', () => {
+      expect(setAuth({ isMultiUser: true, isSuperadmin: false, hasFeature: true })).toBe(false);
+    });
+
+    it('is true for a single-user locked install with an edition session', () => {
+      expect(setAuth({ isMultiUser: false, editionPasswordRequired: true, isEdition: true, hasFeature: true })).toBe(true);
+    });
+
+    // On an open install the server reports edition only for a trusted-local session
+    // (viewer.trusted_local_editing), so that session may scan without the flag.
+    it('is true for an open-install edition session without the flag', () => {
+      expect(setAuth({ isMultiUser: false, editionPasswordRequired: false, isEdition: true, hasFeature: false })).toBe(true);
+    });
+
+    it('is false for an open-install non-edition session without the flag', () => {
+      expect(setAuth({ isMultiUser: false, editionPasswordRequired: false, isEdition: false, hasFeature: false })).toBe(false);
+    });
+
+    it('is false for an edition session behind a login password without the flag', () => {
+      expect(setAuth({ isMultiUser: false, editionPasswordRequired: false, loginPasswordRequired: true, isEdition: true, hasFeature: false })).toBe(false);
+    });
+
+    it('is false regardless of role when the feature flag is off', () => {
+      expect(setAuth({ isMultiUser: true, isSuperadmin: true, hasFeature: false })).toBe(false);
+    });
+
+    it('is false for a locked single-user install without an edition session, even with the flag on', () => {
+      expect(setAuth({ isMultiUser: false, editionPasswordRequired: true, isEdition: false, hasFeature: true })).toBe(false);
+    });
+
+    it('is false for an edition session behind a login password with no edition password, even with the flag on', () => {
+      expect(setAuth({ isMultiUser: false, editionPasswordRequired: false, loginPasswordRequired: true, isEdition: true, hasFeature: true })).toBe(false);
+    });
+  });
+
+  describe('openLauncher()', () => {
+    function withDialog(result: unknown): { open: ReturnType<typeof vi.fn> } {
+      TestBed.resetTestingModule();
+      const dialog = { open: vi.fn(() => ({ afterClosed: () => of(result) })) };
+      TestBed.configureTestingModule({
+        providers: [
+          ScanService,
+          AuthService,
+          { provide: MatDialog, useValue: dialog },
+          provideHttpClient(withXhr()),
+          provideHttpClientTesting(),
+        ],
+      });
+      return dialog;
+    }
+
+    it('returns true when the launcher closes with a truthy result', async () => {
+      const dialog = withDialog(true);
+      expect(await TestBed.inject(ScanService).openLauncher()).toBe(true);
+      expect(dialog.open).toHaveBeenCalledWith(expect.anything(), { width: '36rem' });
+    });
+
+    it('returns false when the launcher is dismissed', async () => {
+      withDialog(undefined);
+      expect(await TestBed.inject(ScanService).openLauncher()).toBe(false);
     });
   });
 });

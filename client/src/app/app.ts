@@ -22,6 +22,7 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { ApiService } from './core/services/api.service';
 import { AuthService } from './core/services/auth.service';
+import { ScanService } from './core/services/scan.service';
 import { I18nService } from './core/services/i18n.service';
 import { ThemeService } from './core/services/theme.service';
 import { PageHelpService } from './core/services/page-help.service';
@@ -150,6 +151,7 @@ export class App implements OnInit {
   protected readonly I18N = i18nKeys();
   private readonly router = inject(Router);
   private readonly dialog = inject(MatDialog);
+  protected readonly scan = inject(ScanService);
   private readonly api = inject(ApiService);
   protected readonly auth = inject(AuthService);
   protected readonly i18n = inject(I18nService);
@@ -572,6 +574,13 @@ export class App implements OnInit {
 
   protected logout(): void {
     this.auth.logout();
+  }
+
+  protected async openScanLauncher(): Promise<void> {
+    if (await this.scan.openLauncher()) {
+      await this.store.loadTypeCounts();
+      await this.store.reloadPhotos();
+    }
   }
 
   protected async showConnectAssistantDialog(): Promise<void> {

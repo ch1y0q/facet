@@ -23,6 +23,7 @@ import { I18N } from '../../core/i18n/keys';
 import { ScoreClassPipe } from '../../shared/pipes/score.pipes';
 import { MAX_COMPARE_PANES } from './synced-zoom.component';
 import { gridColumnCount } from './gallery-rows.util';
+import { ScanService } from '../../core/services/scan.service';
 import { UndoService } from '../../core/services/undo.service';
 import { SequenceKind } from '../../core/services/sequence-override.service';
 
@@ -177,6 +178,7 @@ describe('GalleryComponent', () => {
           },
         },
         { provide: ActivatedRoute, useValue: routeMock },
+        { provide: ScanService, useValue: { canLaunch: signal(false), openLauncher: vi.fn(() => Promise.resolve(false)) } },
         { provide: MatDialog, useValue: { open: vi.fn() } },
         { provide: MatBottomSheet, useValue: { open: vi.fn() } },
         { provide: LiveAnnouncer, useValue: { announce: vi.fn(() => Promise.resolve()) } },
@@ -2716,90 +2718,9 @@ describe('GalleryComponent', () => {
     });
   });
 
-  describe('canShowScanButton', () => {
-    function setAuth(overrides: {
-      isMultiUser?: boolean;
-      isSuperadmin?: boolean;
-      editionPasswordRequired?: boolean;
-      isEdition?: boolean;
-      loginPasswordRequired?: boolean;
-      hasFeature?: boolean;
-    }): void {
-      mockAuth['loginPasswordRequired'] = vi.fn(() => overrides.loginPasswordRequired ?? false);
-      mockAuth['isMultiUser'] = vi.fn(() => overrides.isMultiUser ?? false);
-      mockAuth['isSuperadmin'] = vi.fn(() => overrides.isSuperadmin ?? false);
-      mockAuth['editionPasswordRequired'] = vi.fn(() => overrides.editionPasswordRequired ?? false);
-      mockAuth['isEdition'] = vi.fn(() => overrides.isEdition ?? false);
-      mockAuth['hasFeature'] = vi.fn(() => overrides.hasFeature ?? true);
-    }
-
-    function canShowScanButton(): boolean {
-      return (component as unknown as { canShowScanButton(): boolean }).canShowScanButton();
-    }
-
-    it('shows the button for a multi-user superadmin with the flag on', () => {
-      setAuth({ isMultiUser: true, isSuperadmin: true, hasFeature: true });
-      expect(canShowScanButton()).toBe(true);
-    });
-
-    it('hides the button for a multi-user admin who is not superadmin', () => {
-      setAuth({ isMultiUser: true, isSuperadmin: false, hasFeature: true });
-      expect(canShowScanButton()).toBe(false);
-    });
-
-    it('shows the button for a single-user locked install with an edition session', () => {
-      setAuth({ isMultiUser: false, editionPasswordRequired: true, isEdition: true, hasFeature: true });
-      expect(canShowScanButton()).toBe(true);
-    });
-
-    // On an open install the server reports edition only for a trusted-local session
-    // (viewer.trusted_local_editing), so that session may scan without the flag.
-    it('shows the scan button for an open-install edition session without the flag', () => {
-      setAuth({ isMultiUser: false, editionPasswordRequired: false, isEdition: true, hasFeature: false });
-      expect(canShowScanButton()).toBe(true);
-    });
-
-    it('keeps the scan button hidden for an open-install non-edition session without the flag', () => {
-      setAuth({ isMultiUser: false, editionPasswordRequired: false, isEdition: false, hasFeature: false });
-      expect(canShowScanButton()).toBe(false);
-    });
-
-    it('keeps the scan button hidden for an edition session behind a login password without the flag', () => {
-      setAuth({ isMultiUser: false, editionPasswordRequired: false, loginPasswordRequired: true, isEdition: true, hasFeature: false });
-      expect(canShowScanButton()).toBe(false);
-    });
-
-    it('hides the button regardless of role when the feature flag is off', () => {
-      setAuth({ isMultiUser: true, isSuperadmin: true, hasFeature: false });
-      expect(canShowScanButton()).toBe(false);
-    });
-  });
-
-  // The permanent Scan entry. It belongs to the PAGE, not to the header-slot
-  // toolbar (`#galleryToolbar`): the shell projects that template on lg+ only
-  // (app.html wraps it in `!hidden lg:!flex`), so an icon placed there -- or
-  // given the Keep-top button's `!hidden lg:!inline-flex` -- is gone below lg,
-  // which is exactly where nothing else offers a scan. The fixture holds only
-  // the page's own DOM, never the projected header, so finding the entry in it
-  // is what proves it is not header-slot-only.
-  describe('scan entry above the grid (rendered)', () => {
-    interface ScanAccess {
-      hasFeature: boolean;
-      isMultiUser: boolean;
-      isSuperadmin: boolean;
-      editionPasswordRequired: boolean;
-      isEdition: boolean;
-      loginPasswordRequired?: boolean;
-    }
-    // A locked single-user install with an unlocked edition session.
-    const ALLOWED: ScanAccess = {
-      hasFeature: true, isMultiUser: false, isSuperadmin: false,
-      editionPasswordRequired: true, isEdition: true,
-    };
-    const SUPERADMIN: ScanAccess = {
-      hasFeature: true, isMultiUser: true, isSuperadmin: true,
-      editionPasswordRequired: false, isEdition: true,
-    };
+  // The scan entry lives in the shell header (app.html, covered by app.spec.ts); the
+  // gallery keeps only the empty-state call to action.
+  describe('scan entry (gallery page)', () => {
     const photos = Array.from({ length: 3 }, (_, n) => ({
       path: `/p${n}.jpg`, filename: `p${n}.jpg`, image_width: 4000, image_height: 3000,
       is_favorite: false, is_rejected: false, unassigned_faces: 0,
@@ -2811,85 +2732,63 @@ describe('GalleryComponent', () => {
       fixture = null;
     });
 
-    function render(access: ScanAccess, library: typeof photos): ComponentFixture<GalleryComponent> {
-      mockAuth['hasFeature'] = vi.fn(() => access.hasFeature);
-      mockAuth['isMultiUser'] = vi.fn(() => access.isMultiUser);
-      mockAuth['isSuperadmin'] = vi.fn(() => access.isSuperadmin);
-      mockAuth['editionPasswordRequired'] = vi.fn(() => access.editionPasswordRequired);
-      mockAuth['isEdition'] = vi.fn(() => access.isEdition);
-      mockAuth['loginPasswordRequired'] = vi.fn(() => access.loginPasswordRequired ?? false);
+    function render(canLaunch: boolean, library: typeof photos, launched = true) {
       mockAuth['downloadProfiles'] = vi.fn(() => []);
       mockStore.photos.set(library);
       mockStore.total.set(library.length);
+      const scan = TestBed.inject(ScanService) as unknown as { canLaunch: WritableSignal<boolean>; openLauncher: Mock };
+      scan.canLaunch.set(canLaunch);
+      scan.openLauncher.mockResolvedValue(launched);
       fixture = TestBed.createComponent(GalleryComponent);
       fixture.detectChanges();
-      return fixture;
+      return { f: fixture, scan };
     }
 
     function allButtons(f: ComponentFixture<GalleryComponent>): HTMLButtonElement[] {
       return Array.from(f.nativeElement.querySelectorAll('button')) as HTMLButtonElement[];
     }
 
-    function scanEntries(f: ComponentFixture<GalleryComponent>): HTMLButtonElement[] {
-      return allButtons(f).filter(b => b.getAttribute('aria-label') === I18N.gallery.scan_action);
+    function getStarted(f: ComponentFixture<GalleryComponent>): HTMLButtonElement[] {
+      return allButtons(f).filter(b => b.textContent?.includes(I18N.scan.get_started));
     }
 
-    it('is offered above a library that already has photos', () => {
-      expect(scanEntries(render(ALLOWED, photos))).toHaveLength(1);
+    it('renders no scan button above a populated grid', () => {
+      // A locked single-user install with an unlocked edition session, which used to earn the button.
+      mockAuth['hasFeature'] = vi.fn(() => true);
+      mockAuth['isMultiUser'] = vi.fn(() => false);
+      mockAuth['editionPasswordRequired'] = vi.fn(() => true);
+      mockAuth['isEdition'] = vi.fn(() => true);
+      const { f } = render(true, photos);
+      expect(allButtons(f).filter(b => b.getAttribute('aria-label') === I18N.gallery.scan_action)).toHaveLength(0);
+      expect(getStarted(f)).toHaveLength(0);
     });
 
-    it('is offered to a multi-user superadmin too', () => {
-      expect(scanEntries(render(SUPERADMIN, photos))).toHaveLength(1);
+    it('offers the get-started button on an empty, unfiltered library when scanning is allowed', () => {
+      expect(getStarted(render(true, []).f)).toHaveLength(1);
     });
 
-    it('carries the tooltip as well as the accessible name', () => {
-      const f = render(ALLOWED, photos);
-      const [button] = scanEntries(f);
-      expect(button).toBeDefined();
-      const tooltip = f.debugElement.queryAll(By.directive(MatTooltip))
-        .find(de => de.nativeElement === button);
-      expect(tooltip?.injector.get(MatTooltip).message).toBe(I18N.gallery.scan_action);
+    it('withholds the get-started button when scanning is not allowed', () => {
+      expect(getStarted(render(false, []).f)).toHaveLength(0);
     });
 
-    it('opens the scan launcher when clicked', () => {
-      const f = render(ALLOWED, photos);
-      const open = vi.spyOn(f.componentInstance, 'openScanLauncher').mockResolvedValue(undefined);
-      const [button] = scanEntries(f);
-      expect(button).toBeDefined();
-      button.click();
-      expect(open).toHaveBeenCalledTimes(1);
+    it('reloads the counts and the photos when the launcher reports a completed scan', async () => {
+      const { f, scan } = render(true, []);
+      getStarted(f)[0].click();
+      await vi.waitFor(() => expect(mockStore.reloadPhotos).toHaveBeenCalledTimes(1));
+      expect(scan.openLauncher).toHaveBeenCalledTimes(1);
+      expect(mockStore.loadTypeCounts).toHaveBeenCalled();
     });
 
-    // jsdom lays nothing out, so "visible at every width" can only be asserted
-    // as the absence of a class that hides it at some width -- the one thing
-    // copying the Keep-top button's classes would have introduced.
-    it('is not hidden at any width: neither the button nor an ancestor carries a hidden class', () => {
-      const f = render(ALLOWED, photos);
-      const [button] = scanEntries(f);
-      expect(button).toBeDefined();
-      const hiders: string[] = [];
-      for (let el: Element | null = button; el; el = el === f.nativeElement ? null : el.parentElement) {
-        hiders.push(...Array.from(el.classList).filter(c => /(^|:)!?hidden$/.test(c)));
-      }
-      expect(hiders).toEqual([]);
-    });
-
-    for (const [name, access] of [
-      ['the feature flag is off', { ...ALLOWED, hasFeature: false }],
-      ['a multi-user admin is not a superadmin', { ...SUPERADMIN, isSuperadmin: false }],
-      ['a login-password install has no edition password, even if the caller read as edition',
-        { ...ALLOWED, editionPasswordRequired: false, loginPasswordRequired: true }],
-      ['a locked single-user install has no edition session', { ...ALLOWED, isEdition: false }],
-    ] as const) {
-      it(`is withheld when ${name}`, () => {
-        expect(scanEntries(render(access, photos))).toHaveLength(0);
-      });
-    }
-
-    it('leaves an empty library to the empty-state call to action, which already carries Scan', () => {
-      const f = render(ALLOWED, []);
-      expect(scanEntries(f)).toHaveLength(0);
-      expect(allButtons(f).filter(b => b.textContent?.includes(I18N.scan.get_started))).toHaveLength(1);
+    it('reloads nothing when the launcher is dismissed', async () => {
+      const { f, scan } = render(true, [], false);
+      await f.whenStable();
+      mockStore.loadTypeCounts.mockClear();
+      mockStore.reloadPhotos.mockClear();
+      getStarted(f)[0].click();
+      await vi.waitFor(() => expect(scan.openLauncher).toHaveBeenCalledTimes(1));
+      await f.whenStable();
+      expect(mockStore.loadTypeCounts).not.toHaveBeenCalled();
+      expect(mockStore.reloadPhotos).not.toHaveBeenCalled();
     });
   });
 
