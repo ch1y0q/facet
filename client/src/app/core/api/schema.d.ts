@@ -4732,12 +4732,19 @@ export interface components {
             highlights_album?: string;
             /** Keep Paths */
             keep_paths?: string[];
+            /**
+             * Lenient Overrides
+             * @default false
+             */
+            lenient_overrides?: boolean;
             /** Min Keep Per Group */
             min_keep_per_group?: number | null;
             /** Profile */
             profile?: string | null;
             /** Remove Paths */
             remove_paths?: string[];
+            /** Skip Paths */
+            skip_paths?: string[];
             /** Strictness */
             strictness?: number | null;
             /**
@@ -4746,16 +4753,61 @@ export interface components {
              */
             trim_brackets?: boolean;
         };
+        /**
+         * AutoCullCullReason
+         * @description Why a rejected photo ranks below its group's best (the ``culling.reason.*`` key).
+         */
+        AutoCullCullReason: {
+            /** Key */
+            key: string;
+            /** Value */
+            value?: number | null;
+        };
+        /** AutoCullDroppedOverride */
+        AutoCullDroppedOverride: {
+            /** Path */
+            path: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "in_both_lists" | "keep_whole_set" | "would_leave_no_keeper";
+        };
+        /**
+         * AutoCullGroupReason
+         * @description A group's reason as a translatable key plus its params.
+         */
+        AutoCullGroupReason: {
+            /** Key */
+            key: string;
+            /**
+             * Params
+             * @default {}
+             */
+            params?: {
+                [key: string]: string | number;
+            };
+        };
         /** AutoCullPreviewItem */
         AutoCullPreviewItem: {
             /** Best Path */
             best_path: string;
             /** Group Id */
             group_id: number;
+            group_reason?: components["schemas"]["AutoCullGroupReason"] | null;
             /** Keep Paths */
             keep_paths: string[];
+            /** Kind */
+            kind?: string | null;
             /** Number */
             number: number;
+            /**
+             * Reasons
+             * @default {}
+             */
+            reasons?: {
+                [key: string]: components["schemas"]["AutoCullCullReason"];
+            };
             /** Reject Paths */
             reject_paths: string[];
             /** Type */
@@ -4766,6 +4818,11 @@ export interface components {
          * @description ``POST /api/culling/auto``.
          */
         AutoCullResponse: {
+            /**
+             * Dropped Overrides
+             * @default []
+             */
+            dropped_overrides?: components["schemas"]["AutoCullDroppedOverride"][];
             /** Dry Run */
             dry_run: boolean;
             /** Groups Processed */
@@ -4792,6 +4849,23 @@ export interface components {
              * @default []
              */
             scope_dependent_kinds?: string[];
+            /**
+             * Skipped User Changed
+             * @default []
+             */
+            skipped_user_changed?: string[];
+            /**
+             * Skipped User Changed Count
+             * @default 0
+             */
+            skipped_user_changed_count?: number;
+            /**
+             * Skipped User Changed Groups
+             * @default 0
+             */
+            skipped_user_changed_groups?: number;
+            /** State Guard */
+            state_guard?: "unavailable" | null;
         };
         /** AvatarRequest */
         AvatarRequest: {
@@ -5817,6 +5891,13 @@ export interface components {
             arguments?: {
                 [key: string]: unknown;
             };
+            /**
+             * Review Snapshot
+             * @description The calling tab's `ui_get_context` `review`; read by auto_cull when it is given neither list.
+             */
+            review_snapshot?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Selection Snapshot
              * @description The calling tab's `ui_get_selection` data; read by `target: "selection"`.

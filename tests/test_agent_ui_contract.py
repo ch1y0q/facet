@@ -110,3 +110,51 @@ def test_show_photos_contract_describes_group_sections_not_a_pill():
 def test_tools_version_moved_with_the_review_rendering():
     # The version before the group pill became section headers + a per-card keep/remove strip.
     assert tools_version() != "abffbeeba56ed5b5"
+
+
+def test_tools_version_moved_with_labels_reasons_kinds_and_activity_since():
+    # The version before ui_show_photos gained labels / reasons / kinds and ui_get_context activity_since.
+    assert tools_version() != "698f8fbb2300cdf8"
+
+
+def test_ui_show_photos_labels_reasons_kinds_must_match_paths_length():
+    from api.agent.ui_tools import UiShowPhotos
+    for name, value in (("labels", [{"key": "burst"}]), ("reasons", [{"key": "best"}]), ("kinds", ["burst"])):
+        with pytest.raises(ValueError, match=f"`{name}` must have exactly one entry per path"):
+            UiShowPhotos(paths=["a", "b"], **{name: value})
+
+
+def test_ui_show_photos_forwards_the_parallel_arrays_as_data():
+    from api.agent.ui_tools import UiShowPhotos
+    args = UiShowPhotos(
+        paths=["a", "b"], groups=[1, 1], marks=["keep", "remove"],
+        labels=[{"key": "bracket_span", "params": {"frames": 4, "ev_span": 1.3}}] * 2,
+        reasons=[{"key": "best"}, {"key": "soft", "value": None}], kinds=["bracket", "bracket"])
+    assert args.forward()["labels"][0] == {"key": "bracket_span", "params": {"frames": 4, "ev_span": 1.3}}
+    assert args.forward()["reasons"] == [{"key": "best"}, {"key": "soft"}]
+    assert args.forward()["kinds"] == ["bracket", "bracket"]
+    with pytest.raises(ValueError):
+        UiShowPhotos(paths=["a"], kinds=["not_a_kind"])
+    with pytest.raises(ValueError):
+        UiShowPhotos(paths=["a"], labels=[{"key": "x", "params": {"p": ["nested"]}}])
+
+
+def test_ui_show_photos_schema_stays_plain_with_the_new_arrays():
+    from api.agent.ui_tools import input_schema
+    schema = input_schema(next(t for t in UI_TOOLS if t.name == "ui_show_photos"))
+    text = json.dumps(schema)
+    assert "$ref" not in text and "anyOf" not in text
+    for name in ("labels", "reasons", "kinds"):
+        assert schema["properties"][name]["type"] == "array"
+
+
+def test_ui_get_context_takes_an_optional_activity_since():
+    from api.agent.ui_tools import UiGetContext, input_schema
+    assert UiGetContext().forward() == {}
+    assert UiGetContext(activity_since=7).forward() == {"activity_since": 7}
+    with pytest.raises(ValueError):
+        UiGetContext(activity_since=-1)
+    schema = input_schema(next(t for t in UI_TOOLS if t.name == "ui_get_context"))
+    assert schema["properties"]["activity_since"]["type"] == "integer"
+    text = next(t.description for t in UI_TOOLS if t.name == "ui_get_context")
+    assert "activity_since" in text and "user_activity" in text

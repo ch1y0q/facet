@@ -192,7 +192,7 @@ class TestAutoCull:
         from api.agent import show as relay
         calls = []
 
-        async def fake(registry, resolved, settings, tab_id, paths, *, timeout, groups=None, marks=None):
+        async def fake(registry, resolved, settings, tab_id, paths, *, timeout, groups=None, marks=None, **extra):
             calls.append({"paths": paths, "groups": groups, "marks": marks, "tab_id": tab_id})
             return reply or {"applied": True, "tab_id": "t", "total": len(paths)}
         monkeypatch.setattr(relay, "show_paths_in_tab", fake)
@@ -331,7 +331,7 @@ class TestAutoCullPaging:
         env, token = big
         first = _big_pages(env, token)[0]
         photos = sum(len(r["keep_paths"]) + len(r["reject_paths"]) for r in first["data"]["rows"])
-        assert 150 < photos <= 200 and len(first["data"]["rows"]) <= 100
+        assert 100 < photos <= 200 and len(first["data"]["rows"]) <= 100
         assert max(len(p) for r in first["data"]["rows"] for p in r["keep_paths"]) >= 120
         assert "truncated" not in first and "next_offset" not in first
         assert len(first["data"]["rows"]) == first["data"]["next_cursor"]
@@ -590,12 +590,64 @@ class TestProfiles:
 
 
 def test_pinned_page_past_the_cap_pins_keepers_first():
-    rows = [{"number": n, "keep_paths": [f"/k{n}"], "reject_paths": [f"/r{n}a", f"/r{n}b"]}
+    rows = [{"number": n, "keep_paths": [f"/k{n}"], "reject_paths": [f"/r{n}a", f"/r{n}b"],
+             "group_reason": {"key": "photo_count", "params": {"n": 3}}, "kind": "burst",
+             "reasons": {f"/r{n}a": {"key": "soft", "value": None}, f"/r{n}b": {"key": "lower_overall", "value": 1.5}}}
             for n in range(1, 101)]
-    paths, groups, marks, unpinned = tools_culling._pinned_page(rows)
-    assert len(paths) == tools_culling.SHOW_PIN_MAX and unpinned == 100
-    assert marks[:100] == ["keep"] * 100 and marks[100:] == ["remove"] * 100
-    assert paths[0] == "/k1" and groups[0] == 1 and paths[100] == "/r1a" and groups[100] == 1
+    page = tools_culling._pinned_page(rows)
+    assert len(page.paths) == tools_culling.SHOW_PIN_MAX and page.unpinned == 100
+    assert page.marks[:100] == ["keep"] * 100 and page.marks[100:] == ["remove"] * 100
+    assert page.paths[0] == "/k1" and page.groups[0] == 1 and page.paths[100] == "/r1a" and page.groups[100] == 1
+    assert len(page.labels) == len(page.reasons) == len(page.kinds) == len(page.paths)
+    assert page.reasons[0] == {"key": "best"} and page.reasons[100] == {"key": "soft", "value": None}
+    assert page.reasons[101] == {"key": "lower_overall", "value": 1.5}
+    assert page.labels[100] == {"key": "photo_count", "params": {"n": 3}} and page.kinds[100] == "burst"
+
+
+class TestAutoCullRowsCarryReasons:
+    def test_rows_have_a_group_reason_key_reject_only_reasons_and_a_kind(self, env_token):
+        env, token = env_token
+        result = env.call(token, "auto_cull", {"group_by": "burst", "strictness": 0, "show": False, **SCOPE})
+        assert result["ok"], result
+        row = result["data"]["rows"][0]
+        assert row["group_reason"]["key"] in ("burst", "burst_seconds") and isinstance(row["group_reason"]["params"], dict)
+        assert set(row["reasons"]) == set(row["reject_paths"]) and row["reject_paths"]
+        assert all(set(r) == {"key", "value"} and r["key"] != "best" for r in row["reasons"].values())
+        assert row["kind"] == "burst"
+
+    def test_the_pin_carries_aligned_labels_reasons_and_kinds(self, env_token, monkeypatch):
+        from api.agent import show as relay
+        env, token = env_token
+        sent = []
+
+        async def fake(registry, resolved, settings, tab_id, paths, *, timeout, **extra):
+            sent.append({"paths": paths, **extra})
+            return {"applied": True, "tab_id": "t", "total": len(paths)}
+        monkeypatch.setattr(relay, "show_paths_in_tab", fake)
+        result = env.call(token, "auto_cull", {"group_by": "burst", "strictness": 0, **SCOPE})
+        assert result["ok"], result
+        call = sent[0]
+        assert len(call["labels"]) == len(call["reasons"]) == len(call["kinds"]) == len(call["paths"])
+        assert call["kinds"] == ["burst"] * len(call["paths"])
+        assert call["reasons"][0] == {"key": "best"}
+
+
+def test_group_reason_keys_for_every_plan_builder_string():
+    from api.routers.burst_culling import _group_reason
+    cases = [
+        ({"type": "burst", "reason": "burst"}, "burst", {}),
+        ({"type": "burst", "reason": "1.5s burst"}, "burst_seconds", {"seconds": 1.5}),
+        ({"type": "burst", "reason": "2.5m burst"}, "burst_minutes", {"minutes": 2.5}),
+        ({"type": "similar", "reason": "85% similar"}, "similar_percent", {"percent": 85}),
+        ({"type": "scene", "reason": "12 photos"}, "photo_count", {"n": 12}),
+        ({"type": "scene", "reason": "golden hour"}, "moment", {"moment": "golden hour"}),
+        ({"type": "bracket", "reason": "4 frames, 1.3 EV span"}, "bracket_span", {"frames": 4, "ev_span": 1.3}),
+        ({"type": "panorama", "reason": "9 frames"}, "frame_count", {"frames": 9}),
+    ]
+    for group, key, params in cases:
+        assert _group_reason(group) == {"key": key, "params": params}, group
+    assert _group_reason({"type": "burst"}) is None
+    assert len(_group_reason({"type": "scene", "reason": "x" * 200})["params"]["moment"]) == 80
 
 
 class TestAutoCullOversizedGroup:
@@ -622,3 +674,212 @@ class TestAutoCullOversizedGroup:
         assert len(got[0]["keep_paths"]) + len(got[0]["reject_paths"]) < 800
         assert result["data"]["next_cursor"] == got[0]["number"]
         assert "truncated" not in result
+
+
+def _jwt_of(headers):
+    return headers["Authorization"].split(" ", 1)[1]
+
+
+def _rate(path, **columns):
+    sets = ", ".join(f"{k} = ?" for k in columns)
+    with sqlite3.connect(_TEST_DB_FILE.name) as conn:
+        conn.execute(f"UPDATE photos SET {sets} WHERE path = ?", [*columns.values(), path])
+
+
+class TestAutoCullTabMarks:
+    """C1: ``auto_cull`` reads the user's Keep/Remove flips from the tab when it is given neither list."""
+
+    @pytest.fixture()
+    def rig(self, agent_app, photos, fake_tab, monkeypatch):
+        from tests.conftest import intercept_internal_call
+        nonce.reset()
+        tools_culling.reset_preview_memory()
+        state = {"review": {"keep": [], "remove": []}, "upstream": []}
+        env = agent_app("legacy")
+        headers = env.login(edition=True)
+
+        def reply(call):
+            if call["tool"] == "ui_get_context":
+                return {"ok": True, "data": {"review": state["review"]}}
+            return {"ok": True, "data": {"echo": call["tool"]}}
+        tab = fake_tab(env, _jwt_of(headers), reply=reply)
+        intercept_internal_call(monkeypatch, lambda tool, kw: state["upstream"].append((tool, kw)) and None)
+        token = env.token(headers, "edition")
+        return type("Rig", (), {"env": env, "token": token, "tab": tab, "state": state, "headers": headers})
+
+    @staticmethod
+    def args(**extra):
+        return {"group_by": "burst", "strictness": 0, "show": False, **SCOPE, **extra}
+
+    def auto_calls(self, rig):
+        return [kw["json"] for tool, kw in rig.state["upstream"] if tool == "culling.auto"]
+
+    def context_calls(self, rig):
+        return [c for c in rig.tab.calls if c["tool"] == "ui_get_context"]
+
+    def test_neither_list_reads_the_tab_marks(self, rig):
+        rig.state["review"] = {"keep": [BURST_PATHS[0], BURST_PATHS[2]], "remove": [BURST_PATHS[1]]}
+        result = rig.env.call(rig.token, "auto_cull", self.args())
+        assert result["ok"], result
+        sent = self.auto_calls(rig)[0]
+        assert sent["keep_paths"] == [BURST_PATHS[0], BURST_PATHS[2]] and sent["remove_paths"] == [BURST_PATHS[1]]
+        assert result["overrides_from_tab"] == {"keep": 2, "remove": 1}
+        assert len(self.context_calls(rig)) == 1 and "activity_since" not in self.context_calls(rig)[0]["args"]
+
+    def test_an_explicit_list_wins_with_no_merge_and_the_tab_is_never_asked(self, rig):
+        rig.state["review"] = {"keep": [BURST_PATHS[0]], "remove": [BURST_PATHS[1]]}
+        result = rig.env.call(rig.token, "auto_cull", self.args(keep_paths=[BURST_PATHS[2]]))
+        assert result["ok"], result
+        sent = self.auto_calls(rig)[0]
+        assert sent["keep_paths"] == [BURST_PATHS[2]] and sent["remove_paths"] == []
+        assert not self.context_calls(rig) and "overrides_from_tab" not in result
+
+    def test_no_tab_keeps_today_s_behaviour(self, agent_app, photos, monkeypatch):
+        from tests.conftest import intercept_internal_call
+        nonce.reset()
+        seen = []
+        intercept_internal_call(monkeypatch, lambda tool, kw: seen.append((tool, kw)) and None)
+        env = agent_app("legacy")
+        result = env.call(env.token(env.login(edition=True), "edition"), "auto_cull", self.args())
+        assert result["ok"], result
+        sent = next(kw["json"] for tool, kw in seen if tool == "culling.auto")
+        assert sent["keep_paths"] == [] and sent["remove_paths"] == [] and "overrides_from_tab" not in result
+
+    def test_bridge_off_keeps_today_s_behaviour(self, agent_app, photos, monkeypatch):
+        from tests.conftest import intercept_internal_call
+        nonce.reset()
+        seen = []
+        intercept_internal_call(monkeypatch, lambda tool, kw: seen.append((tool, kw)) and None)
+        env = agent_app("legacy", bridge=False)
+        result = env.call(env.token(env.login(edition=True), "edition"), "auto_cull", self.args())
+        assert result["ok"], result
+        assert "overrides_from_tab" not in result
+        assert next(kw["json"] for tool, kw in seen if tool == "culling.auto")["keep_paths"] == []
+
+    def test_a_list_at_the_tab_cap_is_not_trusted(self, rig):
+        rig.state["review"] = {"keep": [f"/k/{i}.jpg" for i in range(1000)], "remove": [BURST_PATHS[1]]}
+        result = rig.env.call(rig.token, "auto_cull", self.args())
+        assert result["ok"], result
+        sent = self.auto_calls(rig)[0]
+        assert sent["keep_paths"] == [] and sent["remove_paths"] == []
+        assert result["overrides_from_tab"] == {"skipped": "truncated"}
+
+    def test_ignored_overrides_surface(self, rig):
+        rig.state["review"] = {"keep": [], "remove": ["/not/in/plan.jpg"]}
+        result = rig.env.call(rig.token, "auto_cull", self.args())
+        assert result["ok"] and result["data"]["ignored_overrides"] == ["/not/in/plan.jpg"]
+        assert result["overrides_from_tab"]["remove"] == 1
+
+    def test_a_remove_all_group_mark_is_dropped_and_reported_not_refused(self, rig):
+        rig.state["review"] = {"keep": [], "remove": list(BURST_PATHS)}
+        result = rig.env.call(rig.token, "auto_cull", self.args())
+        assert result["ok"], result
+        dropped = result["overrides_from_tab"]["dropped"]
+        assert {d["path"] for d in dropped} == set(BURST_PATHS[:2])
+        assert {d["reason"] for d in dropped} == {"would_leave_no_keeper"}
+        assert self.auto_calls(rig)[0]["lenient_overrides"] is True
+
+    def test_later_pages_reuse_the_marks_and_never_re_read_the_tab(self, rig):
+        rig.state["review"] = {"keep": [BURST_PATHS[2]], "remove": []}
+        first = rig.env.call(rig.token, "auto_cull", self.args())
+        digest = first["data"]["plan_digest"]
+        rig.state["review"] = {"keep": [], "remove": [BURST_PATHS[1]]}
+        second = rig.env.call(rig.token, "auto_cull", self.args(cursor=1, plan_digest=digest))
+        assert second["ok"], second
+        assert self.auto_calls(rig)[1]["keep_paths"] == [BURST_PATHS[2]]
+        assert self.auto_calls(rig)[1]["remove_paths"] == []
+        assert len(self.context_calls(rig)) == 1
+        assert second["overrides_from_tab"] == {"keep": 1, "remove": 0}
+
+    def test_the_description_tells_the_agent_to_omit_the_lists(self, rig):
+        tools = rig.env.rpc(rig.token, "tools/list").json()["result"]["tools"]
+        text = next(t["description"] for t in tools if t["name"] == "auto_cull")
+        assert "omit" in text.lower() and "pass them as keep_paths / remove_paths" not in text
+
+
+class TestAutoCullStateGuardThroughTheTool:
+    """C2: the tool binds the apply to the ORIGINAL preview and the route skips what the user touched."""
+
+    @pytest.fixture()
+    def rig(self, agent_app, photos, fake_tab, monkeypatch):
+        from tests.conftest import intercept_internal_call
+        nonce.reset()
+        tools_culling.reset_preview_memory()
+        state = {"review": {"keep": [], "remove": []}, "upstream": []}
+        env = agent_app("legacy")
+        headers = env.login(edition=True)
+
+        def reply(call):
+            if call["tool"] == "ui_get_context":
+                return {"ok": True, "data": {"review": state["review"]}}
+            return {"ok": True, "data": {"echo": call["tool"]}}
+        tab = fake_tab(env, _jwt_of(headers), reply=reply)
+        intercept_internal_call(monkeypatch, lambda tool, kw: state["upstream"].append((tool, kw)) and None)
+        token = env.token(headers, "edition")
+        yield type("Rig", (), {"env": env, "token": token, "tab": tab, "state": state})
+        for path in BURST_PATHS:
+            _rate(path, star_rating=0, is_favorite=0, is_rejected=0)
+
+    @staticmethod
+    def args(**extra):
+        return {"group_by": "burst", "strictness": 0, "show": False, **SCOPE, **extra}
+
+    def apply(self, rig, preview, **extra):
+        return rig.env.call(rig.token, "auto_cull", self.args(dry_run=False, confirm=preview["confirm"], **extra))
+
+    def test_a_rating_after_the_preview_is_skipped_and_listed(self, rig):
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        assert {p for r in preview["data"]["rows"] for p in r["reject_paths"]} == {BURST_PATHS[2]}
+        _rate(BURST_PATHS[2], star_rating=5)
+        result = self.apply(rig, preview)
+        assert result["ok"], result
+        assert _rejected() == set()
+        assert result["data"]["skipped_user_changed"] == [BURST_PATHS[2]]
+        assert result["data"]["skipped_user_changed_count"] == 1
+
+    def test_a_manual_reject_after_the_preview_is_listed(self, rig):
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        _rate(BURST_PATHS[2], is_rejected=1)
+        result = self.apply(rig, preview)
+        assert result["ok"], result
+        assert _rejected() == {BURST_PATHS[2]}
+        assert result["data"]["skipped_user_changed"] == [BURST_PATHS[2]]
+
+    def test_the_apply_does_not_re_run_a_dry_run_that_would_overwrite_the_snapshot(self, rig):
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        _rate(BURST_PATHS[2], star_rating=5)
+        self.apply(rig, preview)
+        sent = self.auto_calls(rig)
+        assert [c["dry_run"] for c in sent] == [True, False]
+        assert sent[1]["expected_digest"] == preview["data"]["plan_digest"]
+
+    def auto_calls(self, rig):
+        return [kw["json"] for tool, kw in rig.state["upstream"] if tool == "culling.auto"]
+
+    def test_a_flip_since_the_preview_becomes_skip_paths_under_the_preview_marks(self, rig):
+        rig.state["review"] = {"keep": [], "remove": [BURST_PATHS[1]]}
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        assert preview["ok"], preview
+        rig.state["review"] = {"keep": [], "remove": []}
+        result = self.apply(rig, preview)
+        assert result["ok"], result
+        sent = self.auto_calls(rig)[-1]
+        assert sent["remove_paths"] == [BURST_PATHS[1]] and sent["skip_paths"] == [BURST_PATHS[1]]
+        assert sent["expected_digest"] == preview["data"]["plan_digest"]
+        assert result["data"]["skipped_user_changed"] == [BURST_PATHS[1]]
+        assert _rejected() == {BURST_PATHS[2]}
+
+    def test_without_memory_of_the_confirm_the_apply_keeps_todays_path(self, rig):
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        tools_culling.reset_preview_memory()
+        result = self.apply(rig, preview)
+        assert result["ok"], result
+        sent = self.auto_calls(rig)
+        assert [c["dry_run"] for c in sent] == [True, True, False]
+        assert "skip_paths" not in sent[-1]
+        assert _rejected() == {BURST_PATHS[2]}
+
+    def test_a_confirm_is_single_use(self, rig):
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        assert self.apply(rig, preview)["ok"]
+        assert self.apply(rig, preview)["error"] == "confirmation_required"

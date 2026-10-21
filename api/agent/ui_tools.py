@@ -149,6 +149,29 @@ class UiOpenPhoto(UiArgs):
 MAX_SHOW_PATHS = 200
 
 
+MAX_LABEL_PARAMS = 8
+LabelParam = Union[str, int, float]
+
+
+class UiGroupLabel(BaseModel):
+    """A group's heading as a KEY plus params, translated by the tab (server text is data, never HTML)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(min_length=1, max_length=64, description="Stable key, e.g. `burst_seconds`.")
+    params: dict[Annotated[str, Field(max_length=32)], Annotated[LabelParam, Field(union_mode="left_to_right")]] = Field(
+        default_factory=dict, max_length=MAX_LABEL_PARAMS, description="Values the translation interpolates.")
+
+
+class UiCullReason(BaseModel):
+    """Why a photo ranks below its group's best, as the machine key the tab translates."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(min_length=1, max_length=64, description="`best`, `soft`, `eyes_closed`, ...")
+    value: Optional[float] = Field(default=None, description="The number the translation shows, when it has one.")
+
+
 class UiShowPhotos(UiArgs):
     paths: list[Annotated[str, Field(min_length=1, max_length=4096)]] = Field(
         min_length=1, max_length=MAX_SHOW_PATHS,
@@ -163,10 +186,22 @@ class UiShowPhotos(UiArgs):
         default=None, max_length=MAX_SHOW_PATHS,
         description="Optional, one per path: the planned 'keep' or 'remove', shown as a keep/remove strip "
                     "on the card that the user can flip.")
+    labels: Optional[list[UiGroupLabel]] = Field(
+        default=None, max_length=MAX_SHOW_PATHS,
+        description="Optional, one per path: the heading of the path's group as {key, params}; it is "
+                    "appended to the section header after the counts.")
+    reasons: Optional[list[UiCullReason]] = Field(
+        default=None, max_length=MAX_SHOW_PATHS,
+        description="Optional, one per path: why the photo is planned for removal as {key, value} "
+                    "(`best` for a keeper); shown on the card's keep/remove strip.")
+    kinds: Optional[list[CullingGroupType]] = Field(
+        default=None, max_length=MAX_SHOW_PATHS,
+        description="Optional, one per path: the kind of the path's group (bracket / panorama / "
+                    "hdr_panorama sets are kept whole).")
 
     @model_validator(mode="after")
     def _parallel_to_paths(self) -> "UiShowPhotos":
-        for name in ("groups", "marks"):
+        for name in ("groups", "marks", "labels", "reasons", "kinds"):
             value = getattr(self, name)
             if value is not None and len(value) != len(self.paths):
                 raise ValueError(f"`{name}` must have exactly one entry per path "
@@ -209,7 +244,11 @@ class UiGetSelection(UiArgs):
 
 
 class UiGetContext(UiArgs):
-    pass
+    activity_since: Optional[int] = Field(
+        default=None, ge=0,
+        description="Only the user's own actions after this sequence number are returned in "
+                    "`user_activity`; pass the previous answer's `until`. Omitted: everything the tab still "
+                    "holds. Nothing advances on the tab, so a repeated call returns the same items.")
 
 
 class UiNextPage(UiArgs):
@@ -257,10 +296,11 @@ UI_TOOLS: tuple[UiTool, ...] = (
            "Show exactly these photos, in this order, as the gallery's list (max 200). Photos the "
            "user cannot see are skipped and returned as `missing`. Any filter change by the user "
            "or the assistant replaces the list. Optional `groups` (one number per path: each group "
-           "becomes a section under its own header, with its keep/remove counts) and `marks` "
+           "becomes a section under its own header, with its keep/remove counts), `marks` "
            "('keep'/'remove' per path, the planned decision shown as a keep/remove strip on the "
-           "card that the user can flip); read the user's flips back with ui_get_context "
-           "`review`.",
+           "card that the user can flip), `labels` ({key, params} heading per path), `reasons` "
+           "({key, value} per path) and `kinds` (group kind per path), all parallel to `paths`; read "
+           "the user's flips back with ui_get_context `review`.",
            UiShowPhotos, False),
     UiTool("ui_select_photos",
            "Change the selection in the user's tab: explicit `paths`, or the whole filtered view "
@@ -277,7 +317,11 @@ UI_TOOLS: tuple[UiTool, ...] = (
            "the mounted page actions and the jobs that apply now (`actions`, with their tools), and "
            "`review`, the user's Keep/Remove flips on a pinned auto-cull page. When the review is "
            "too large for one answer its lists are cut: `review.truncated` is true and "
-           "`review.keep_count` / `review.remove_count` hold the true sizes.",
+           "`review.keep_count` / `review.remove_count` hold the true sizes; `review.groups_total` / "
+           "`groups_visited` / `groups_changed` report the review's progress. `user_activity` "
+           "({items, until, truncated}) lists what the user did in the tab after `activity_since` "
+           "(rating, reject, favorite, review marks, tags, album, navigation; at most 50 items of 20 paths); "
+           "pass the answer's `until` as the next `activity_since`.",
            UiGetContext, True),
     UiTool("ui_next_page", "Load the next page of the gallery in the user's tab (infinite scroll).",
            UiNextPage, False),

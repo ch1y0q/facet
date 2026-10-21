@@ -10,6 +10,7 @@ import hashlib
 import json
 import logging
 import random
+import re
 import sqlite3
 import threading
 import time
@@ -145,6 +146,10 @@ class AutoCullBody(BaseModel):
     keep_paths: list[str] = Field(default_factory=list, max_length=1000)
     remove_paths: list[str] = Field(default_factory=list, max_length=1000)
     expected_digest: Optional[str] = None
+    # Photos the caller saw the user touch since the preview: dropped from the apply, never part of the digest.
+    skip_paths: list[str] = Field(default_factory=list, max_length=1000)
+    # Drop an override the plan cannot honour (and report it) instead of answering 400.
+    lenient_overrides: bool = False
 
 
 # --- Helpers ---
@@ -2392,6 +2397,143 @@ def suggest_cull_profile(
     }
 
 
+DROPPED_IN_BOTH = 'in_both_lists'
+DROPPED_KEEP_WHOLE = 'keep_whole_set'
+DROPPED_NO_KEEPER = 'would_leave_no_keeper'
+
+# --- State guard: what the user touched between an agent's preview and its apply ---
+
+GUARD_TTL_S = 15 * 60
+GUARD_MAX_PER_USER = 8
+SKIPPED_REPORT_CAP = 50
+GUARD_UNAVAILABLE = 'unavailable'
+_LABEL_CHUNK_SIZE = 500
+_guard_clock = time.monotonic
+_guard_lock = threading.Lock()
+# user_id -> {plan_digest: _GuardSnapshot}, least recently used first.
+_guard_snapshots: dict = {}
+
+
+@dataclass(frozen=True)
+class _GuardSnapshot:
+    tags: frozenset
+    rest: str
+    labels: dict
+    stored_at: float
+
+
+def reset_state_guard():
+    with _guard_lock:
+        _guard_snapshots.clear()
+
+
+def _guard_live(entries):
+    """Drop expired snapshots from one user's ordered ``entries``."""
+    cutoff = _guard_clock() - GUARD_TTL_S
+    for digest in [d for d, snap in entries.items() if snap.stored_at <= cutoff]:
+        del entries[digest]
+
+
+def state_guard_size(user_id):
+    with _guard_lock:
+        entries = _guard_snapshots.get(user_id, {})
+        _guard_live(entries)
+        return len(entries)
+
+
+def state_guard_has(user_id, digest):
+    with _guard_lock:
+        entries = _guard_snapshots.get(user_id, {})
+        _guard_live(entries)
+        return digest in entries
+
+
+def _guard_store(user_id, digest, build):
+    """Store ``build()`` under ``digest`` unless a live snapshot already holds it (first write wins)."""
+    with _guard_lock:
+        entries = _guard_snapshots.setdefault(user_id, {})
+        _guard_live(entries)
+        if digest in entries:
+            return
+        entries[digest] = build()
+        while len(entries) > GUARD_MAX_PER_USER:
+            del entries[next(iter(entries))]
+
+
+def _guard_load(user_id, digest):
+    with _guard_lock:
+        entries = _guard_snapshots.get(user_id, {})
+        _guard_live(entries)
+        snapshot = entries.pop(digest, None)
+        if snapshot is not None:
+            entries[digest] = snapshot
+        return snapshot
+
+
+def _label_fingerprints(conn, user_id, paths):
+    """``{path: (star_rating, is_favorite, is_rejected)}`` from the per-user source (``user_preferences`` in
+    multi-user mode, the ``photos`` columns otherwise): the same reader the assistant-label provenance uses."""
+    from api.db_helpers import _label_scope, _read_label_tuples
+    paths = list(paths)
+    scope = _label_scope(user_id)
+    labels = {}
+    for start in range(0, len(paths), _LABEL_CHUNK_SIZE):
+        labels.update(_read_label_tuples(conn, scope, paths[start:start + _LABEL_CHUNK_SIZE]))
+    return labels
+
+
+def _plan_tags(plan):
+    return frozenset((e['group']['type'], e['group']['group_id'], side, path) for e in plan
+                     for side in ('keep', 'reject') for path in e[f'{side}_paths'])
+
+
+def _remember_plan(conn, user_id, digest, plan, rest):
+    _guard_store(user_id, digest, lambda: _GuardSnapshot(
+        _plan_tags(plan), rest,
+        _label_fingerprints(conn, user_id, [t[3] for t in _plan_tags(plan)]), _guard_clock()))
+
+
+def _reconcile_plan(conn, user_id, plan, result, expected_digest, rest, explicit_skip, state_guard):
+    """The paths to leave out of an apply, or ``AutoCullPlanChanged`` when the plan moved for another reason.
+
+    ``changed`` is every path whose rating / favourite / reject differs from the preview's snapshot plus the
+    caller's ``explicit_skip``. A different plan digest is tolerated only when the difference between the two
+    plans' tags names nothing but ``changed`` and the options / overrides part is identical; without a
+    snapshot (expired, another worker) it is the plain refusal.
+    """
+    snapshot = _guard_load(user_id, expected_digest) if state_guard and expected_digest is not None else None
+    if state_guard and expected_digest is not None and snapshot is None:
+        result.state_guard = GUARD_UNAVAILABLE
+    changed = set(explicit_skip)
+    if snapshot is not None:
+        fresh = _label_fingerprints(conn, user_id, snapshot.labels)
+        changed |= {path for path, labels in snapshot.labels.items() if fresh[path] != labels}
+    if expected_digest is not None and expected_digest != result.plan_digest:
+        if snapshot is None or snapshot.rest != rest or \
+                any(tag[3] not in changed for tag in snapshot.tags ^ _plan_tags(plan)):
+            raise AutoCullPlanChanged(
+                'The plan changed since it was previewed; nothing was written. Preview it again.')
+    known = {t[3] for t in _plan_tags(plan)} | (set(snapshot.labels) if snapshot is not None else set())
+    return changed, changed & known
+
+
+def _drop_skipped(plan, skipped):
+    """``plan`` without ``skipped`` paths; a group left with no keeper is skipped whole. Returns the group count."""
+    emptied = 0
+    for entry in list(plan):
+        if not skipped & set(entry['keep_paths'] + entry['reject_paths']):
+            continue
+        entry['keep'] = [p for p in entry['keep'] if p['path'] not in skipped]
+        entry['reject'] = [p for p in entry['reject'] if p['path'] not in skipped]
+        if not entry['keep']:
+            plan.remove(entry)
+            emptied += 1
+            continue
+        entry['keep_paths'] = [p['path'] for p in entry['keep']]
+        entry['reject_paths'] = [p['path'] for p in entry['reject']]
+    return emptied
+
+
 class AutoCullPlanChanged(Exception):
     """The plan no longer matches the digest the caller confirmed."""
 
@@ -2438,18 +2580,23 @@ def _plan_auto_cull_groups(groups, decided, strictness, min_keep):
     return plan
 
 
-def _apply_plan_overrides(plan, keep_override, remove_override):
+def _apply_plan_overrides(plan, keep_override, remove_override, dropped=None):
     """Move frames between the sides of ``plan`` in place.
 
     Returns ``(effective, ignored)``: the overrides that changed the plan, and those naming a
     path the plan does not contain. An override that restates the plan is neither. Refuses
     (``AutoCullOverrideError``) a path in both lists, a removal inside a keep-whole set and a
-    group left without a keeper, naming each.
+    group left without a keeper, naming each. Given a ``dropped`` list it refuses nothing:
+    each such override is left out and appended there as ``{'path', 'reason'}`` instead.
     """
     both = [p for p in keep_override if p in set(remove_override)]
     if both:
-        raise AutoCullOverrideError(
-            f"Paths in both keep_paths and remove_paths: {', '.join(both)}")
+        if dropped is None:
+            raise AutoCullOverrideError(
+                f"Paths in both keep_paths and remove_paths: {', '.join(both)}")
+        dropped += [{'path': p, 'reason': DROPPED_IN_BOTH} for p in both]
+        keep_override = [p for p in keep_override if p not in both]
+        remove_override = [p for p in remove_override if p not in both]
     owner = {}
     for entry in plan:
         for path in entry['keep_paths'] + entry['reject_paths']:
@@ -2458,9 +2605,12 @@ def _apply_plan_overrides(plan, keep_override, remove_override):
     whole = [p for p in remove_override
              if p in owner and _plan_keeps_whole(owner[p]) and p in owner[p]['keep_paths']]
     if whole:
-        raise AutoCullOverrideError(
-            'Frames of a bracket or panorama set are kept whole and cannot be removed: '
-            + ', '.join(whole))
+        if dropped is None:
+            raise AutoCullOverrideError(
+                'Frames of a bracket or panorama set are kept whole and cannot be removed: '
+                + ', '.join(whole))
+        dropped += [{'path': p, 'reason': DROPPED_KEEP_WHOLE} for p in whole]
+        remove_override = [p for p in remove_override if p not in whole]
     effective = {'keep': [], 'remove': []}
     touched = {}
     for path in keep_override:
@@ -2471,6 +2621,8 @@ def _apply_plan_overrides(plan, keep_override, remove_override):
             entry['keep'].append(photo)
             effective['keep'].append(path)
             touched[id(entry)] = entry
+    if dropped is not None:
+        remove_override = _drop_emptying_removals(owner, remove_override, dropped)
     for path in remove_override:
         entry = owner.get(path)
         if entry is not None and path in entry['keep_paths'] and path not in entry['reject_paths']:
@@ -2489,6 +2641,21 @@ def _apply_plan_overrides(plan, keep_override, remove_override):
     return effective, ignored
 
 
+def _drop_emptying_removals(owner, remove_override, dropped):
+    """``remove_override`` without the removals that would leave a group with no keeper (appended to ``dropped``)."""
+    removing = {}
+    for path in remove_override:
+        entry = owner.get(path)
+        if entry is not None and path in entry['keep_paths'] and path not in entry['reject_paths']:
+            removing.setdefault(id(entry), (entry, []))[1].append(path)
+    gone = set()
+    for entry, paths in removing.values():
+        if {p['path'] for p in entry['keep']} <= set(paths):
+            gone.update(paths)
+            dropped += [{'path': p, 'reason': DROPPED_NO_KEEPER} for p in paths]
+    return [p for p in remove_override if p not in gone]
+
+
 def _auto_cull_plan_digest(plan, options, effective):
     tagged = [f"{e['group']['type']}:{e['group']['group_id']}:{side}:{path}" for e in plan
               for side in ('keep', 'reject') for path in e[f'{side}_paths']]
@@ -2496,6 +2663,42 @@ def _auto_cull_plan_digest(plan, options, effective):
                        'overrides': {k: sorted(v) for k, v in effective.items()}},
                       sort_keys=True, separators=(',', ':'), ensure_ascii=False)
     return hashlib.sha256(body.encode('utf-8')).hexdigest()
+
+
+def _auto_cull_rest_digest(options, effective):
+    """The part of the plan digest that is not the plan: its options and effective overrides."""
+    return _auto_cull_plan_digest([], options, effective)
+
+
+GROUP_REASON_TEXT_MAX = 80
+_REASON_PATTERNS = (
+    (re.compile(r'(\d+(?:\.\d+)?)s burst'), 'burst_seconds', (('seconds', float),)),
+    (re.compile(r'(\d+(?:\.\d+)?)m burst'), 'burst_minutes', (('minutes', float),)),
+    (re.compile(r'(\d+)% similar'), 'similar_percent', (('percent', int),)),
+    (re.compile(r'(\d+) photos'), 'photo_count', (('n', int),)),
+    (re.compile(r'(\d+) frames, (-?\d+(?:\.\d+)?) EV span'), 'bracket_span',
+     (('frames', int), ('ev_span', float))),
+    (re.compile(r'(\d+) frames'), 'frame_count', (('frames', int),)),
+)
+
+
+def _group_reason(group):
+    """The group's English ``reason`` as ``{'key', 'params'}`` for the client to translate, or None.
+
+    Keys: ``burst`` {}, ``burst_seconds`` {seconds}, ``burst_minutes`` {minutes}, ``similar_percent``
+    {percent}, ``photo_count`` {n}, ``bracket_span`` {frames, ev_span}, ``frame_count`` {frames}, and
+    ``moment`` {moment} for a scene's narrative-moment label (free text, capped, shown as data).
+    """
+    reason = group.get('reason')
+    if not reason:
+        return None
+    if reason == 'burst':
+        return {'key': 'burst', 'params': {}}
+    for pattern, key, params in _REASON_PATTERNS:
+        match = pattern.fullmatch(reason)
+        if match:
+            return {'key': key, 'params': {name: cast(value) for (name, cast), value in zip(params, match.groups())}}
+    return {'key': 'moment', 'params': {'moment': str(reason)[:GROUP_REASON_TEXT_MAX]}}
 
 
 def _auto_cull_page(plan, cursor):
@@ -2511,7 +2714,12 @@ def _auto_cull_page(plan, cursor):
         entry = plan[index]
         row = {'number': entry['number'], 'group_id': entry['group']['group_id'],
                'type': entry['group']['type'], 'keep_paths': entry['keep_paths'],
-               'reject_paths': entry['reject_paths'], 'best_path': entry['keep_paths'][0]}
+               'reject_paths': entry['reject_paths'], 'best_path': entry['keep_paths'][0],
+               'kind': entry['group'].get('sequence_kind') or entry['group']['type'],
+               'reasons': {p['path']: _compute_cull_reason(p, entry['keep'][0]) for p in entry['reject']}}
+        group_reason = _group_reason(entry['group'])
+        if group_reason:
+            row['group_reason'] = group_reason
         count = len(entry['keep_paths']) + len(entry['reject_paths'])
         row_size = len(json.dumps(row))
         if rows and (photos + count > _AUTO_CULL_PAGE_PHOTOS or size + row_size > _AUTO_CULL_PAGE_BYTES):
@@ -2542,6 +2750,11 @@ class AutoCullResult:
     next_cursor: Optional[int] = None
     plan_digest: str = ''
     ignored_overrides: list = field(default_factory=list)
+    dropped_overrides: list = field(default_factory=list)
+    skipped_user_changed: list = field(default_factory=list)
+    skipped_user_changed_count: int = 0
+    skipped_user_changed_groups: int = 0
+    state_guard: Optional[str] = None
     keep_paths: list = field(default_factory=list)
     reject_paths: list = field(default_factory=list)
     decided: set = field(default_factory=set)
@@ -2586,7 +2799,8 @@ def run_auto_cull(conn, db_path, user_id, *, group_by, strictness, min_keep,
                   trim_brackets=False, highlights_album='', dry_run=True,
                   album_id=None, date_from=None, date_to=None, path_scope=None,
                   use_cache=True, membership_groups=False, record=True, cursor=0,
-                  keep_override=None, remove_override=None, expected_digest=None):
+                  keep_override=None, remove_override=None, expected_digest=None,
+                  lenient_overrides=False, state_guard=False, skip_paths=None):
     """Collect, split and (unless ``dry_run``) apply one auto-cull sweep.
 
     Shared by ``POST /api/culling/auto`` and ``facet.py --auto-cull``. Raises
@@ -2644,7 +2858,28 @@ def run_auto_cull(conn, db_path, user_id, *, group_by, strictness, min_keep,
     plan = _plan_auto_cull_groups(groups, result.decided, strictness, min_keep)
     keep_override = list(dict.fromkeys(keep_override or []))
     remove_override = list(dict.fromkeys(remove_override or []))
-    effective, result.ignored_overrides = _apply_plan_overrides(plan, keep_override, remove_override)
+    effective, result.ignored_overrides = _apply_plan_overrides(
+        plan, keep_override, remove_override, result.dropped_overrides if lenient_overrides else None)
+    digest_options = {
+        'group_by': group_by, 'album_id': album_id, 'date_from': date_from,
+        'date_to': date_to, 'strictness': strictness, 'min_keep': min_keep,
+        'trim_brackets': trim_brackets, 'highlights_album': highlights_album,
+    }
+    result.plan_digest = _auto_cull_plan_digest(plan, digest_options, effective)
+    rest = _auto_cull_rest_digest(digest_options, effective)
+    if dry_run:
+        if expected_digest is not None and expected_digest != result.plan_digest:
+            raise AutoCullPlanChanged(
+                'The plan changed since it was previewed; nothing was written. Preview it again.')
+        if state_guard:
+            _remember_plan(conn, user_id, result.plan_digest, plan, rest)
+    else:
+        changed, reported = _reconcile_plan(
+            conn, user_id, plan, result, expected_digest, rest, set(skip_paths or []), state_guard)
+        if changed:
+            result.skipped_user_changed_groups = _drop_skipped(plan, changed)
+        result.skipped_user_changed_count = len(reported)
+        result.skipped_user_changed = sorted(reported)[:SKIPPED_REPORT_CAP]
     for number, entry in enumerate(plan, start=1):
         entry['number'] = number
         result.decided.update(entry['keep_paths'])
@@ -2654,14 +2889,6 @@ def run_auto_cull(conn, db_path, user_id, *, group_by, strictness, min_keep,
         result.processed += 1
         result.kept += len(entry['keep_paths'])
         result.rejected += len(entry['reject_paths'])
-    result.plan_digest = _auto_cull_plan_digest(plan, {
-        'group_by': group_by, 'album_id': album_id, 'date_from': date_from,
-        'date_to': date_to, 'strictness': strictness, 'min_keep': min_keep,
-        'trim_brackets': trim_brackets, 'highlights_album': highlights_album,
-    }, effective)
-    if expected_digest is not None and expected_digest != result.plan_digest:
-        raise AutoCullPlanChanged(
-            'The plan changed since it was previewed; nothing was written. Preview it again.')
     result.preview, result.next_cursor = _auto_cull_page(plan, cursor)
     highlight_paths = [
         entry['keep_paths'][0] for entry in plan
@@ -2686,6 +2913,21 @@ def run_auto_cull(conn, db_path, user_id, *, group_by, strictness, min_keep,
         _invalidate_culling_groups_cache()
         trigger_auto_retrain(db_path, user_id, result.total_pairs, conn=conn)
     return result
+
+
+def _guard_report(result):
+    """The response keys the state guard and lenient overrides add; absent when there is nothing to say."""
+    report = {}
+    if result.dropped_overrides:
+        report['dropped_overrides'] = result.dropped_overrides
+    if result.skipped_user_changed_count:
+        report['skipped_user_changed'] = result.skipped_user_changed
+        report['skipped_user_changed_count'] = result.skipped_user_changed_count
+    if result.skipped_user_changed_groups:
+        report['skipped_user_changed_groups'] = result.skipped_user_changed_groups
+    if result.state_guard:
+        report['state_guard'] = result.state_guard
+    return report
 
 
 @router.post("/api/culling/auto", response_model=AutoCullResponse, response_model_exclude_unset=True)
@@ -2738,6 +2980,8 @@ def auto_cull(
                 record=not (user and user.is_agent_request),
                 cursor=body.cursor, keep_override=body.keep_paths,
                 remove_override=body.remove_paths, expected_digest=body.expected_digest,
+                lenient_overrides=body.lenient_overrides, skip_paths=body.skip_paths,
+                state_guard=bool(user and user.is_agent_request),
             )
             return {
                 'groups_processed': result.processed,
@@ -2750,6 +2994,7 @@ def auto_cull(
                 'plan_digest': result.plan_digest,
                 'ignored_overrides': result.ignored_overrides,
                 'scope_dependent_kinds': result.scope_dependent_kinds,
+                **_guard_report(result),
             }
 
         except HTTPException:

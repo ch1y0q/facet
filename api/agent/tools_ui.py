@@ -51,25 +51,62 @@ def restrict_context(result: dict, level: str) -> None:
                        for row in rows]
 
 
-def fit_review(result: dict, max_bytes: int) -> None:
-    """Trim ``review.keep`` / ``review.remove`` so the context fits ``max_bytes``, rather than refusing it.
+ACTIVITY_MAX_ITEMS = 50
+ACTIVITY_MAX_PATHS = 20
 
-    The tab caps each list at 1000 paths, far more than the envelope allows. The longer list is
-    halved until the whole result fits; the true sizes stay in ``review.keep_count`` /
-    ``review.remove_count`` and ``review.truncated`` is set.
+
+def _cap_activity(activity: dict) -> None:
+    """Hold ``user_activity`` to 50 items (the newest) of 20 paths, flagging every cut."""
+    items = activity.get("items")
+    if not isinstance(items, list):
+        return
+    if len(items) > ACTIVITY_MAX_ITEMS:
+        activity["items"] = items = items[-ACTIVITY_MAX_ITEMS:]
+        activity["truncated"] = True
+    for item in items:
+        paths = item.get("paths") if isinstance(item, dict) else None
+        if isinstance(paths, list) and len(paths) > ACTIVITY_MAX_PATHS:
+            item["paths"] = paths[:ACTIVITY_MAX_PATHS]
+            item["truncated"] = True
+
+
+def fit_review(result: dict, max_bytes: int) -> None:
+    """Trim ``review.keep`` / ``review.remove`` and ``user_activity.items`` so the context fits ``max_bytes``.
+
+    The tab caps each review list at 1000 paths and the activity at 50 items, far more than the envelope
+    allows. The biggest of the three is halved (activity drops its OLDEST half) until the whole result fits;
+    the true review sizes stay in ``review.keep_count`` / ``review.remove_count``, ``review.truncated`` and
+    ``user_activity.truncated`` are set. Everything is edited in place, so the review's other keys
+    (``groups_total`` / ``groups_visited`` / ``groups_changed``) and ``user_activity.until`` are untouched.
     """
     data = result.get("data") if result.get("ok") else None
-    review = data.get("review") if isinstance(data, dict) else None
-    if not isinstance(review, dict) or encoded_size(result) <= max_bytes:
+    if not isinstance(data, dict):
         return
-    keep, remove = review.get("keep"), review.get("remove")
-    if not isinstance(keep, list) or not isinstance(remove, list):
+    activity = data.get("user_activity")
+    if isinstance(activity, dict):
+        _cap_activity(activity)
+    if encoded_size(result) <= max_bytes:
         return
-    review["keep_count"], review["remove_count"] = len(keep), len(remove)
-    review["truncated"] = True
-    while encoded_size(result) > max_bytes and (review["keep"] or review["remove"]):
-        side = "keep" if len(review["keep"]) >= len(review["remove"]) else "remove"
-        review[side] = review[side][:len(review[side]) // 2]
+    review = data.get("review")
+    lists = {side: review[side] for side in ("keep", "remove")
+             if isinstance(review, dict) and isinstance(review.get(side), list)} if isinstance(review, dict) else {}
+    if len(lists) == 2:
+        review["keep_count"], review["remove_count"] = len(lists["keep"]), len(lists["remove"])
+        review["truncated"] = True
+    items = activity.get("items") if isinstance(activity, dict) else None
+    while encoded_size(result) > max_bytes:
+        sizes = {side: encoded_size(review[side]) for side in lists if review[side]}
+        if isinstance(items, list) and activity["items"]:
+            sizes["activity"] = encoded_size(activity["items"])
+        if not sizes:
+            return
+        biggest = max(sizes, key=lambda name: sizes[name])
+        if biggest == "activity":
+            activity["items"] = activity["items"][(len(activity["items"]) + 1) // 2:]
+            activity["truncated"] = True
+        else:
+            review[biggest] = review[biggest][:len(review[biggest]) // 2]
+            lists[biggest] = review[biggest]
 
 
 def register_ui_tools(server: MCPServer, registry: TabRegistry) -> None:

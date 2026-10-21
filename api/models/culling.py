@@ -1,6 +1,6 @@
 """Pydantic response models for burst_culling.py, faces.py and persons.py."""
 
-from typing import Any, Optional, Union
+from typing import Any, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -127,6 +127,20 @@ class SuggestCullProfileResponse(BaseModel):
     evidence: ShootTypeEvidence
 
 
+class AutoCullGroupReason(BaseModel):
+    """A group's reason as a translatable key plus its params."""
+
+    key: str
+    params: dict[str, Union[str, int, float]] = {}
+
+
+class AutoCullCullReason(BaseModel):
+    """Why a rejected photo ranks below its group's best (the ``culling.reason.*`` key)."""
+
+    key: str
+    value: Optional[float] = None
+
+
 class AutoCullPreviewItem(BaseModel):
     number: int
     group_id: int
@@ -134,6 +148,14 @@ class AutoCullPreviewItem(BaseModel):
     keep_paths: list[str]
     reject_paths: list[str]
     best_path: str
+    kind: Optional[str] = None
+    group_reason: Optional[AutoCullGroupReason] = None
+    reasons: dict[str, AutoCullCullReason] = {}
+
+
+class AutoCullDroppedOverride(BaseModel):
+    path: str
+    reason: Literal['in_both_lists', 'keep_whole_set', 'would_leave_no_keeper']
 
 
 class AutoCullResponse(BaseModel):
@@ -148,6 +170,11 @@ class AutoCullResponse(BaseModel):
     next_cursor: Optional[int] = None
     plan_digest: str
     ignored_overrides: list[str] = []
+    dropped_overrides: list[AutoCullDroppedOverride] = []
+    skipped_user_changed: list[str] = []
+    skipped_user_changed_count: int = 0
+    skipped_user_changed_groups: int = 0
+    state_guard: Optional[Literal['unavailable']] = None
     scope_dependent_kinds: list[str] = []
 
 

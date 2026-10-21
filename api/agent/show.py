@@ -154,15 +154,20 @@ async def show_in_tab(registry: TabRegistry, resolved: ResolvedGrant, settings: 
 async def show_paths_in_tab(registry: TabRegistry, resolved: ResolvedGrant, settings: dict,
                             tab_id: Optional[str], paths: list[str], *, timeout: float,
                             groups: Optional[list[int]] = None,
-                            marks: Optional[list[str]] = None) -> dict:
+                            marks: Optional[list[str]] = None,
+                            labels: Optional[list[dict]] = None,
+                            reasons: Optional[list[dict]] = None,
+                            kinds: Optional[list[str]] = None) -> dict:
     """Pin exactly ``paths`` (in order) as the user's gallery list; describe the outcome, never raise.
 
-    ``groups`` / ``marks`` (one per path) lay the pin out as group sections (a header each) and put a keep/remove strip on every card.
+    ``groups`` / ``marks`` (one per path) lay the pin out as group sections (a header each) and put a keep/remove strip on every card;
+    ``labels`` ({key, params}), ``reasons`` ({key, value}) and ``kinds`` (one each per path) are data the tab translates, never HTML.
     """
     return await _show(
         registry, resolved, settings, tab_id, "ui_show_photos", "Show paths",
         lambda: UiShowPhotos.model_validate(
-            {"paths": paths, "groups": groups, "marks": marks}).forward(),
+            {"paths": paths, "groups": groups, "marks": marks, "labels": labels, "reasons": reasons,
+             "kinds": kinds}).forward(),
         lambda data, tab: {"applied": True, "tab_id": tab.get("tab_id"), "keys": None,
                            "total": data.get("total"), "missing": data.get("missing") or []},
         timeout=timeout)

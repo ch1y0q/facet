@@ -1489,7 +1489,7 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Show exactly these photos, in this order, as the gallery's list (max 200). Photos the user cannot see are skipped and returned as `missing`. Any filter change by the user or the assistant replaces the list. Optional `groups` (one number per path: each group becomes a section under its own header, with its keep/remove counts) and `marks` ('keep'/'remove' per path, the planned decision shown as a keep/remove strip on the card that the user can flip); read the user's flips back with ui_get_context `review`.",
+      "description": "Show exactly these photos, in this order, as the gallery's list (max 200). Photos the user cannot see are skipped and returned as `missing`. Any filter change by the user or the assistant replaces the list. Optional `groups` (one number per path: each group becomes a section under its own header, with its keep/remove counts), `marks` ('keep'/'remove' per path, the planned decision shown as a keep/remove strip on the card that the user can flip), `labels` ({key, params} heading per path), `reasons` ({key, value} per path) and `kinds` (group kind per path), all parallel to `paths`; read the user's flips back with ui_get_context `review`.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1498,6 +1498,58 @@
             "items": {
               "minimum": 1,
               "type": "integer"
+            },
+            "maxItems": 200,
+            "type": "array"
+          },
+          "kinds": {
+            "description": "Optional, one per path: the kind of the path's group (bracket / panorama / hdr_panorama sets are kept whole).",
+            "items": {
+              "enum": [
+                "burst",
+                "similar",
+                "scene",
+                "bracket",
+                "panorama",
+                "hdr_panorama"
+              ],
+              "type": "string"
+            },
+            "maxItems": 200,
+            "type": "array"
+          },
+          "labels": {
+            "description": "Optional, one per path: the heading of the path's group as {key, params}; it is appended to the section header after the counts.",
+            "items": {
+              "additionalProperties": false,
+              "description": "A group's heading as a KEY plus params, translated by the tab (server text is data, never HTML).",
+              "properties": {
+                "key": {
+                  "description": "Stable key, e.g. `burst_seconds`.",
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "params": {
+                  "additionalProperties": {
+                    "type": [
+                      "string",
+                      "integer",
+                      "number"
+                    ]
+                  },
+                  "description": "Values the translation interpolates.",
+                  "maxProperties": 8,
+                  "propertyNames": {
+                    "maxLength": 32
+                  },
+                  "type": "object"
+                }
+              },
+              "required": [
+                "key"
+              ],
+              "type": "object"
             },
             "maxItems": 200,
             "type": "array"
@@ -1523,6 +1575,31 @@
             },
             "maxItems": 200,
             "minItems": 1,
+            "type": "array"
+          },
+          "reasons": {
+            "description": "Optional, one per path: why the photo is planned for removal as {key, value} (`best` for a keeper); shown on the card's keep/remove strip.",
+            "items": {
+              "additionalProperties": false,
+              "description": "Why a photo ranks below its group's best, as the machine key the tab translates.",
+              "properties": {
+                "key": {
+                  "description": "`best`, `soft`, `eyes_closed`, ...",
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "value": {
+                  "description": "The number the translation shows, when it has one.",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "key"
+              ],
+              "type": "object"
+            },
+            "maxItems": 200,
             "type": "array"
           }
         },
@@ -1608,10 +1685,16 @@
         "readOnlyHint": true,
         "untrustedContentHint": true
       },
-      "description": "Where the user's tab is, from any page: route, the open photo, the selection (scope and count), a gallery summary (total, loaded, has_more, pinned list) when the gallery is open, the mounted page actions and the jobs that apply now (`actions`, with their tools), and `review`, the user's Keep/Remove flips on a pinned auto-cull page. When the review is too large for one answer its lists are cut: `review.truncated` is true and `review.keep_count` / `review.remove_count` hold the true sizes.",
+      "description": "Where the user's tab is, from any page: route, the open photo, the selection (scope and count), a gallery summary (total, loaded, has_more, pinned list) when the gallery is open, the mounted page actions and the jobs that apply now (`actions`, with their tools), and `review`, the user's Keep/Remove flips on a pinned auto-cull page. When the review is too large for one answer its lists are cut: `review.truncated` is true and `review.keep_count` / `review.remove_count` hold the true sizes; `review.groups_total` / `groups_visited` / `groups_changed` report the review's progress. `user_activity` ({items, until, truncated}) lists what the user did in the tab after `activity_since` (rating, reject, favorite, review marks, tags, album, navigation; at most 50 items of 20 paths); pass the answer's `until` as the next `activity_since`.",
       "inputSchema": {
         "additionalProperties": false,
-        "properties": {},
+        "properties": {
+          "activity_since": {
+            "description": "Only the user's own actions after this sequence number are returned in `user_activity`; pass the previous answer's `until`. Omitted: everything the tab still holds. Nothing advances on the tab, so a repeated call returns the same items.",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
         "type": "object"
       },
       "name": "ui_get_context"
@@ -1700,5 +1783,5 @@
       "name": "ui_show_comparison"
     }
   ],
-  "version": "698f8fbb2300cdf8"
+  "version": "d639e433069010db"
 }

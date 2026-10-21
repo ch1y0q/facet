@@ -647,3 +647,46 @@ class TestChangedPaths:
         resp = env.client.post("/api/mcp/call", json={"tool": "search_photos", "tab_id": "bad id!"},
                                headers={**headers, SESSION_HEADER: "tab-a"})
         assert resp.status_code == 422
+
+
+class TestAutoCullReviewSnapshot:
+    """C1 in-page: the caller tab's `ui_get_context.review` rides the call; a bridge tab is never read."""
+
+    def test_the_snapshot_is_used_and_the_bridge_is_never_queried(self, agent_app, fake_tab, seed_photos_prefix,
+                                                                   monkeypatch):
+        from tests import test_agent_culling as culling
+        seed_photos_prefix(culling.PREFIX, culling.ROWS)
+        nonce.reset()
+        env = agent_app("legacy")
+        headers = env.login(edition=True)
+        tab = fake_tab(env, headers["Authorization"].split(" ", 1)[1])
+        seen = []
+        intercept_internal_call(monkeypatch, lambda tool, kw: seen.append((tool, kw)) and None)
+        body = {"tool": "auto_cull", "arguments": {"group_by": "burst", "strictness": 0, **culling.SCOPE},
+                "review_snapshot": {"keep": [culling.BURST_PATHS[2]], "remove": [culling.BURST_PATHS[1]]}}
+        resp = env.client.post("/api/mcp/call", json=body, headers={**headers, SESSION_HEADER: "tab-a"})
+        assert resp.status_code == 200, resp.text
+        result = resp.json()
+        assert result["ok"], result
+        sent = next(kw["json"] for tool, kw in seen if tool == "culling.auto")
+        assert sent["keep_paths"] == [culling.BURST_PATHS[2]] and sent["remove_paths"] == [culling.BURST_PATHS[1]]
+        assert result["overrides_from_tab"] == {"keep": 1, "remove": 1}
+        assert not [c for c in tab.calls if c["tool"] == "ui_get_context"]
+
+    def test_no_snapshot_in_page_means_no_marks_and_no_bridge_read(self, agent_app, fake_tab, seed_photos_prefix,
+                                                                    monkeypatch):
+        from tests import test_agent_culling as culling
+        seed_photos_prefix(culling.PREFIX, culling.ROWS)
+        nonce.reset()
+        env = agent_app("legacy")
+        headers = env.login(edition=True)
+        tab = fake_tab(env, headers["Authorization"].split(" ", 1)[1])
+        result = call(env, headers, "auto_cull", {"group_by": "burst", "strictness": 0, **culling.SCOPE})
+        assert result["ok"], result
+        assert "overrides_from_tab" not in result
+        assert not [c for c in tab.calls if c["tool"] == "ui_get_context"]
+
+    def test_the_request_model_documents_the_field(self):
+        from api.models.mcp_inpage import McpCallRequest
+        description = McpCallRequest.model_fields["review_snapshot"].description
+        assert description.startswith("The calling tab's `ui_get_context` `review`")

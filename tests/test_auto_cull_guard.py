@@ -1,0 +1,325 @@
+"""The auto-cull state guard: per-photo exclusion instead of a whole 412.
+
+Route core (``run_auto_cull`` with ``state_guard=True``, what ``POST /api/culling/auto`` passes for an agent
+request) on databases built with ``db.schema.init_database``; the HTTP cases use the shared session DB
+through ``seed_photos_prefix``.
+"""
+
+from __future__ import annotations
+
+import os
+import sqlite3
+
+import pytest
+
+import api.config
+from api.routers import burst_culling
+from api.routers.burst_culling import AutoCullPlanChanged, run_auto_cull
+from db.schema import init_database
+from tests.conftest import AGENT_DIR
+
+BURST = 4242
+SCORES = {"b1.jpg": 9.0, "b2.jpg": 3.0, "b3.jpg": 1.0}
+
+
+@pytest.fixture(autouse=True)
+def _no_retrain(monkeypatch):
+    monkeypatch.setattr("api.routers.burst_culling.trigger_auto_retrain", lambda *a, **k: None)
+    burst_culling.reset_state_guard()
+
+
+@pytest.fixture()
+def clock(monkeypatch):
+    """A settable monotonic clock for the guard's TTL."""
+    now = [1000.0]
+    monkeypatch.setattr(burst_culling, "_guard_clock", lambda: now[0])
+    return now
+
+
+def _kwargs(**over):
+    return {"group_by": "burst", "strictness": 0, "min_keep": 1, **over}
+
+
+def _library(tmp_path, extra=0):
+    db = str(tmp_path / "lib.db")
+    init_database(db)
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    names = dict(SCORES)
+    names.update({f"x{i:03d}.jpg": 1.0 - i / 1000 for i in range(extra)})
+    for second, (name, score) in enumerate(names.items()):
+        conn.execute(
+            "INSERT INTO photos (path, filename, date_taken, aggregate, aesthetic, tech_sharpness, is_blink, "
+            "burst_group_id, is_burst_lead) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)",
+            (str(tmp_path / name), name, f"2024:06:15 10:{second // 60:02d}:{second % 60:02d}", score, score,
+             score, BURST, 1 if name == "b1.jpg" else 0))
+    conn.commit()
+    return db, conn
+
+
+def _p(tmp_path, name):
+    return str(tmp_path / name)
+
+
+def _rejected(conn):
+    return {os.path.basename(r[0]) for r in conn.execute("SELECT path FROM photos WHERE is_rejected = 1")}
+
+
+def _preview(conn, db, user="_anonymous", **over):
+    return run_auto_cull(conn, db, user, **_kwargs(**over), dry_run=True, state_guard=True)
+
+
+def _apply(conn, db, preview, user="_anonymous", **over):
+    return run_auto_cull(conn, db, user, **_kwargs(**over), dry_run=False, state_guard=True,
+                         expected_digest=preview.plan_digest)
+
+
+class TestPerPhotoExclusion:
+    def test_a_five_star_after_the_preview_is_skipped_and_the_rest_rejected(self, tmp_path):
+        db, conn = _library(tmp_path)
+        preview = _preview(conn, db)
+        assert {os.path.basename(p) for p in preview.reject_paths} == {"b2.jpg", "b3.jpg"}
+        conn.execute("UPDATE photos SET star_rating = 5 WHERE path = ?", (_p(tmp_path, "b2.jpg"),))
+        conn.commit()
+        result = _apply(conn, db, preview)
+        assert _rejected(conn) == {"b3.jpg"}
+        assert result.skipped_user_changed == [_p(tmp_path, "b2.jpg")]
+        assert result.skipped_user_changed_count == 1
+
+    def test_a_favourite_after_the_preview_is_skipped(self, tmp_path):
+        db, conn = _library(tmp_path)
+        preview = _preview(conn, db)
+        conn.execute("UPDATE photos SET is_favorite = 1 WHERE path = ?", (_p(tmp_path, "b3.jpg"),))
+        conn.commit()
+        result = _apply(conn, db, preview)
+        assert _rejected(conn) == {"b2.jpg"}
+        assert result.skipped_user_changed == [_p(tmp_path, "b3.jpg")]
+
+    def test_a_manual_reject_after_the_preview_is_tolerated_and_listed(self, tmp_path):
+        db, conn = _library(tmp_path)
+        preview = _preview(conn, db)
+        conn.execute("UPDATE photos SET is_rejected = 1 WHERE path = ?", (_p(tmp_path, "b2.jpg"),))
+        conn.commit()
+        result = _apply(conn, db, preview)
+        assert _rejected(conn) == {"b2.jpg", "b3.jpg"}
+        assert result.skipped_user_changed == [_p(tmp_path, "b2.jpg")]
+
+    def test_a_change_to_an_untouched_photo_still_refuses(self, tmp_path):
+        db, conn = _library(tmp_path)
+        preview = _preview(conn, db)
+        conn.execute("UPDATE photos SET aggregate = 9.9, aesthetic = 9.9, tech_sharpness = 9.9 WHERE path = ?",
+                     (_p(tmp_path, "b3.jpg"),))
+        conn.commit()
+        with pytest.raises(AutoCullPlanChanged):
+            _apply(conn, db, preview)
+        assert _rejected(conn) == set()
+
+    def test_a_user_change_plus_an_unrelated_change_still_refuses(self, tmp_path):
+        db, conn = _library(tmp_path)
+        preview = _preview(conn, db)
+        conn.execute("UPDATE photos SET is_rejected = 1 WHERE path = ?", (_p(tmp_path, "b2.jpg"),))
+        conn.execute("UPDATE photos SET aggregate = 9.9, aesthetic = 9.9, tech_sharpness = 9.9 WHERE path = ?",
+                     (_p(tmp_path, "b3.jpg"),))
+        conn.commit()
+        with pytest.raises(AutoCullPlanChanged):
+            _apply(conn, db, preview)
+
+    def test_a_different_option_part_still_refuses_even_with_a_user_change(self, tmp_path):
+        db, conn = _library(tmp_path)
+        preview = _preview(conn, db)
+        conn.execute("UPDATE photos SET is_rejected = 1 WHERE path = ?", (_p(tmp_path, "b2.jpg"),))
+        conn.commit()
+        with pytest.raises(AutoCullPlanChanged):
+            run_auto_cull(conn, db, "_anonymous", **_kwargs(highlights_album="Best"), dry_run=False,
+                          state_guard=True, expected_digest=preview.plan_digest)
+
+    def test_nothing_changed_reports_nothing(self, tmp_path):
+        db, conn = _library(tmp_path)
+        preview = _preview(conn, db)
+        result = _apply(conn, db, preview)
+        assert _rejected(conn) == {"b2.jpg", "b3.jpg"}
+        assert result.skipped_user_changed == [] and result.skipped_user_changed_count == 0
+        assert result.state_guard is None
+
+
+class TestSnapshotStore:
+    def test_the_first_snapshot_wins_a_later_dry_run_never_overwrites(self, tmp_path):
+        db, conn = _library(tmp_path)
+        preview = _preview(conn, db)
+        conn.execute("UPDATE photos SET star_rating = 5 WHERE path = ?", (_p(tmp_path, "b2.jpg"),))
+        conn.commit()
+        _preview(conn, db)
+        result = _apply(conn, db, preview)
+        assert result.skipped_user_changed == [_p(tmp_path, "b2.jpg")]
+        assert _rejected(conn) == {"b3.jpg"}
+
+    def test_an_expired_snapshot_reports_unavailable_and_keeps_the_legacy_refusal(self, tmp_path, clock):
+        db, conn = _library(tmp_path)
+        preview = _preview(conn, db)
+        clock[0] += burst_culling.GUARD_TTL_S + 1
+        conn.execute("UPDATE photos SET is_rejected = 1 WHERE path = ?", (_p(tmp_path, "b2.jpg"),))
+        conn.commit()
+        with pytest.raises(AutoCullPlanChanged):
+            _apply(conn, db, preview)
+
+    def test_an_expired_snapshot_with_an_equal_plan_applies_and_says_unavailable(self, tmp_path, clock):
+        db, conn = _library(tmp_path)
+        preview = _preview(conn, db)
+        clock[0] += burst_culling.GUARD_TTL_S + 1
+        conn.execute("UPDATE photos SET star_rating = 5 WHERE path = ?", (_p(tmp_path, "b2.jpg"),))
+        conn.commit()
+        result = _apply(conn, db, preview)
+        assert result.state_guard == "unavailable"
+        assert result.skipped_user_changed == []
+        assert _rejected(conn) == {"b2.jpg", "b3.jpg"}
+
+    def test_a_user_keeps_at_most_eight_snapshots_least_recently_used_first(self, tmp_path):
+        db, conn = _library(tmp_path)
+        digests = []
+        for album in range(burst_culling.GUARD_MAX_PER_USER + 1):
+            digests.append(_preview(conn, db, highlights_album=f"A{album}").plan_digest)
+        assert burst_culling.state_guard_size("_anonymous") == burst_culling.GUARD_MAX_PER_USER
+        assert not burst_culling.state_guard_has("_anonymous", digests[0])
+        assert burst_culling.state_guard_has("_anonymous", digests[-1])
+
+    def test_the_cli_passes_no_guard_and_stores_nothing(self, tmp_path):
+        db, conn = _library(tmp_path)
+        preview = run_auto_cull(conn, db, "_anonymous", **_kwargs(), dry_run=True)
+        assert not burst_culling.state_guard_has("_anonymous", preview.plan_digest)
+        conn.execute("UPDATE photos SET is_rejected = 1 WHERE path = ?", (_p(tmp_path, "b2.jpg"),))
+        conn.commit()
+        with pytest.raises(AutoCullPlanChanged):
+            run_auto_cull(conn, db, "_anonymous", **_kwargs(), dry_run=False,
+                          expected_digest=preview.plan_digest)
+
+
+class TestEmptiedAndCapped:
+    def test_a_group_whose_keepers_were_all_touched_is_skipped_whole(self, tmp_path):
+        db, conn = _library(tmp_path)
+        preview = _preview(conn, db)
+        conn.execute("UPDATE photos SET star_rating = 3 WHERE path = ?", (_p(tmp_path, "b1.jpg"),))
+        conn.commit()
+        result = _apply(conn, db, preview)
+        assert _rejected(conn) == set()
+        assert result.skipped_user_changed_groups == 1
+        assert result.skipped_user_changed == [_p(tmp_path, "b1.jpg")]
+
+    def test_sixty_changed_paths_list_fifty_and_count_sixty(self, tmp_path):
+        db, conn = _library(tmp_path, extra=70)
+        preview = _preview(conn, db)
+        rejected = [p for p in preview.reject_paths if os.path.basename(p).startswith("x")]
+        assert len(rejected) == 70
+        for path in rejected[:60]:
+            conn.execute("UPDATE photos SET star_rating = 4 WHERE path = ?", (path,))
+        conn.commit()
+        result = _apply(conn, db, preview)
+        assert result.skipped_user_changed_count == 60 and len(result.skipped_user_changed) == 50
+        assert len(_rejected(conn)) == 12
+
+
+class TestSkipPaths:
+    def test_skip_paths_are_not_part_of_the_digest_and_are_dropped_from_the_apply(self, tmp_path):
+        db, conn = _library(tmp_path)
+        preview = _preview(conn, db)
+        result = run_auto_cull(conn, db, "_anonymous", **_kwargs(), dry_run=False, state_guard=True,
+                               expected_digest=preview.plan_digest, skip_paths=[_p(tmp_path, "b2.jpg")])
+        assert result.plan_digest == preview.plan_digest
+        assert _rejected(conn) == {"b3.jpg"}
+        assert result.skipped_user_changed == [_p(tmp_path, "b2.jpg")]
+
+    def test_a_skip_path_outside_the_plan_is_not_reported(self, tmp_path):
+        db, conn = _library(tmp_path)
+        preview = _preview(conn, db)
+        result = run_auto_cull(conn, db, "_anonymous", **_kwargs(), dry_run=False, state_guard=True,
+                               expected_digest=preview.plan_digest, skip_paths=["/elsewhere.jpg"])
+        assert result.skipped_user_changed == [] and _rejected(conn) == {"b2.jpg", "b3.jpg"}
+
+
+class TestMultiUser:
+    @pytest.fixture()
+    def multi(self, tmp_path, monkeypatch):
+        monkeypatch.setitem(api.config._FULL_CONFIG, "users", {
+            "alice": {"role": "user", "directories": [str(tmp_path)]},
+            "bob": {"role": "user", "directories": [str(tmp_path)]}})
+        monkeypatch.setattr("api.db_helpers.is_multi_user_enabled", lambda: True)
+        monkeypatch.setattr("api.routers.burst_culling.is_multi_user_enabled", lambda: True)
+        return _library(tmp_path)
+
+    @staticmethod
+    def _rate(conn, user, path, stars):
+        conn.execute("INSERT INTO user_preferences (user_id, photo_path, star_rating) VALUES (?, ?, ?) "
+                     "ON CONFLICT(user_id, photo_path) DO UPDATE SET star_rating = excluded.star_rating",
+                     (user, path, stars))
+        conn.commit()
+
+    def test_another_users_rating_does_not_skip_my_apply(self, tmp_path, multi):
+        db, conn = multi
+        preview = _preview(conn, db, user="alice")
+        self._rate(conn, "bob", _p(tmp_path, "b2.jpg"), 5)
+        result = _apply(conn, db, preview, user="alice")
+        assert result.skipped_user_changed == []
+        assert {r[0] for r in conn.execute(
+            "SELECT photo_path FROM user_preferences WHERE user_id = 'alice' AND is_rejected = 1")
+        } == {_p(tmp_path, "b2.jpg"), _p(tmp_path, "b3.jpg")}
+
+    def test_my_own_rating_skips_my_apply(self, tmp_path, multi):
+        db, conn = multi
+        preview = _preview(conn, db, user="alice")
+        self._rate(conn, "alice", _p(tmp_path, "b2.jpg"), 5)
+        result = _apply(conn, db, preview, user="alice")
+        assert result.skipped_user_changed == [_p(tmp_path, "b2.jpg")]
+        assert {r[0] for r in conn.execute(
+            "SELECT photo_path FROM user_preferences WHERE user_id = 'alice' AND is_rejected = 1")
+        } == {_p(tmp_path, "b3.jpg")}
+
+
+class TestLenientOverrides:
+    def test_offending_marks_are_dropped_and_named_instead_of_refused(self, tmp_path):
+        db, conn = _library(tmp_path)
+        all_three = [_p(tmp_path, n) for n in SCORES]
+        with pytest.raises(burst_culling.AutoCullOverrideError):
+            run_auto_cull(conn, db, "_anonymous", **_kwargs(), dry_run=True, remove_override=all_three)
+        result = run_auto_cull(conn, db, "_anonymous", **_kwargs(), dry_run=True, remove_override=all_three,
+                               lenient_overrides=True)
+        assert [d["path"] for d in result.dropped_overrides] == [all_three[0]]
+        assert result.dropped_overrides[0]['reason'] == 'would_leave_no_keeper'
+        plain = run_auto_cull(conn, db, "_anonymous", **_kwargs(), dry_run=True)
+        assert result.plan_digest == plain.plan_digest
+
+    def test_a_path_in_both_lists_is_dropped_from_both(self, tmp_path):
+        db, conn = _library(tmp_path)
+        b2 = _p(tmp_path, "b2.jpg")
+        result = run_auto_cull(conn, db, "_anonymous", **_kwargs(), dry_run=True, keep_override=[b2],
+                               remove_override=[b2], lenient_overrides=True)
+        assert result.dropped_overrides == [{"path": b2, "reason": "in_both_lists"}]
+
+
+    def test_a_keep_whole_frame_removal_is_dropped_and_reported(self):
+        photos = [{"path": "/b/k0.jpg", "sequence_ev_offset": 0},
+                  {"path": "/b/k-2.jpg", "sequence_ev_offset": -2},
+                  {"path": "/b/k+2.jpg", "sequence_ev_offset": 2}]
+        plan = burst_culling._plan_auto_cull_groups(
+            [{"type": "bracket", "group_id": 9, "sequence_kind": "bracket", "photos": photos}], set(), 50, 1)
+        dropped = []
+        effective, ignored = burst_culling._apply_plan_overrides(plan, [], ["/b/k0.jpg"], dropped)
+        assert dropped == [{"path": "/b/k0.jpg", "reason": "keep_whole_set"}]
+        assert effective == {"keep": [], "remove": []} and ignored == []
+
+
+class TestHttp:
+    def test_skip_paths_and_the_report_ride_the_route(self, edition_client, seed_photos_prefix):
+        prefix = AGENT_DIR + "guard/"
+        rows = [{"path": prefix + n, "filename": n, "date_taken": f"1998:01:01 10:00:0{i}", "aggregate": s,
+                 "aesthetic": s, "tech_sharpness": s, "burst_group_id": 5151, "is_burst_lead": 1 if i == 1 else 0}
+                for i, (n, s) in enumerate(SCORES.items(), start=1)]
+        seed_photos_prefix(prefix, rows)
+        body = {"group_by": "burst", "strictness": 0, "date_from": "1998:01:01 00:00:00",
+                "date_to": "1998:01:01 23:59:59"}
+        preview = edition_client.post("/api/culling/auto", json=body)
+        assert preview.status_code == 200, preview.text
+        applied = edition_client.post("/api/culling/auto", json={
+            **body, "dry_run": False, "expected_digest": preview.json()["plan_digest"],
+            "skip_paths": [prefix + "b2.jpg"]})
+        assert applied.status_code == 200, applied.text
+        assert applied.json()["skipped_user_changed"] == [prefix + "b2.jpg"]
+        assert applied.json()["skipped_user_changed_count"] == 1
