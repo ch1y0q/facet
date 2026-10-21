@@ -142,11 +142,12 @@ async def call(server: Any, grant: tokens.SessionGrant, settings: dict, name: st
     try:
         result = await server.call_tool(name, forced, SessionContext(grant, settings))
     except UnexpectedToolError:
-        return err("upstream_error", "The tool failed unexpectedly")
+        result = None
     finally:
         LIVE_SINK_OVERRIDE.reset(marker)
-    envelope = _envelope(result)
-    envelope.update(_changed(name, envelope))
+    envelope = err("upstream_error", "The tool failed unexpectedly") if result is None else _envelope(result)
+    if result is not None:
+        envelope.update(_changed(name, envelope))
     if collector.wrote:
         envelope["changed_paths"] = collector.paths()
         if registry is not None and tab_id is not None:

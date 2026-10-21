@@ -597,6 +597,32 @@ class TestChangedPaths:
         time.sleep(0.5)
         assert changed_frames(caller) == []
 
+    def test_an_unexpected_error_after_a_write_still_carries_the_paths_and_broadcasts(
+            self, edition_session, fake_tab, monkeypatch):
+        from mcp.server.mcpserver.exceptions import UnexpectedToolError
+        from api.agent.live_updates import LIVE_SINK_OVERRIDE
+        env, headers = edition_session
+        jwt = headers["Authorization"].split(" ", 1)[1]
+        other = fake_tab(env, jwt, "tab-other")
+
+        async def write_then_boom(*args, **kw):
+            LIVE_SINK_OVERRIDE.get()("_legacy", "batch_reject", {"photo_paths": P[:2]}, {"count": 2})
+            raise UnexpectedToolError("x")
+        monkeypatch.setattr(env.app.state.mcp_server, "call_tool", write_then_boom)
+        out = post_json(env, headers, "batch_set_rejected", {"paths": P[:2]}, tab_id="tab-caller")
+        assert out["error"] == "upstream_error" and out["changed_paths"] == P[:2]
+        assert frames_within(other, 1) == [{"type": "changed", "tool": "batch_reject", "paths": P[:2], "count": 2}]
+
+    def test_an_unexpected_error_without_a_write_has_no_key(self, edition_session, monkeypatch):
+        from mcp.server.mcpserver.exceptions import UnexpectedToolError
+        env, headers = edition_session
+
+        async def boom(*args, **kw):
+            raise UnexpectedToolError("x")
+        monkeypatch.setattr(env.app.state.mcp_server, "call_tool", boom)
+        out = post_json(env, headers, "batch_set_rejected", {"paths": P[:2]})
+        assert out["error"] == "upstream_error" and "changed_paths" not in out
+
     def test_a_dry_run_broadcasts_nothing(self, edition_session, fake_tab):
         env, headers = edition_session
         jwt = headers["Authorization"].split(" ", 1)[1]

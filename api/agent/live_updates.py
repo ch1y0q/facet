@@ -20,7 +20,8 @@ logger = logging.getLogger(__name__)
 MAX_LIVE_PATHS = 200
 PATH_KEYS = ("photo_paths", "paths", "photo_path", "path")
 # Response fields that count the photos a write changed, first match wins.
-COUNT_KEYS = ("count", "affected", "moved", "trashed", "copied", "rejected", "cleared")
+COUNT_KEYS = ("count", "affected", "moved", "trashed", "copied", "rejected", "cleared",
+              "assigned_count")
 
 # Every ``write=True`` route in ROUTE_ALLOWLIST and CULLING_ROUTES sits in exactly one of the two sets
 # (tests/test_agent_live_updates.py walks both tables), so a new write route fails CI until classified.
@@ -71,13 +72,18 @@ def _response_count(response: Any) -> Optional[int]:
     return len(deleted) if isinstance(deleted, list) else None
 
 
+def _rejects_whole_burst(tool: str, body: Any) -> bool:
+    """A burst confirm rejects every visible member of the group, not just the paths the body named."""
+    return tool == "culling.confirm" and isinstance(body, dict) and body.get("type") == "burst"
+
+
 def frame_for(tool: str, body: Any, response: Any) -> Optional[dict]:
     """The ``changed`` frame for one write, or ``None`` when it changed no photo (or only previewed)."""
     if tool not in PHOTO_EFFECT_TOOLS:
         return None
     if isinstance(body, dict) and body.get("dry_run") is True:
         return None
-    paths = changed_paths(tool, body)
+    paths = None if _rejects_whole_burst(tool, body) else changed_paths(tool, body)
     count = len(paths) if paths is not None else _response_count(response)
     return {"type": "changed", "tool": tool, "paths": paths, "count": count}
 

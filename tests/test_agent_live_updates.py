@@ -14,6 +14,7 @@ from api.agent.live_updates import (
     MAX_LIVE_PATHS, NO_PHOTO_EFFECT_TOOLS, PHOTO_EFFECT_TOOLS, changed_paths, frame_for,
 )
 from api.agent.tools_culling import CULLING_ROUTES
+from tests import test_agent_faces as faces_tests
 from tests import test_agent_write as write_tests
 from tests.conftest import AGENT_DIR
 
@@ -66,9 +67,20 @@ class TestFrameFor:
                           {"moved": 4})
         assert frame["paths"] is None and frame["count"] == 4
 
-    def test_assign_faces_is_a_coarse_reload(self):
-        frame = frame_for("assign_faces", {"face_ids": [1, 2]}, {"assigned": 2, "count": 2})
-        assert frame["paths"] is None
+    def test_assign_faces_takes_the_routes_assigned_count(self):
+        response = {"assigned_count": 2, "face_count": 5, "deleted_persons": []}
+        frame = frame_for("assign_faces", {"face_ids": [1, 2]}, response)
+        assert frame["paths"] is None and frame["count"] == 2
+
+    def test_a_burst_confirm_is_null_with_the_rejected_count(self):
+        body = {"group_id": 1, "type": "burst", "paths": ["/a"], "keep_paths": ["/a"]}
+        frame = frame_for("culling.confirm", body, {"status": "ok", "kept": 1, "rejected": 3})
+        assert frame == {"type": "changed", "tool": "culling.confirm", "paths": None, "count": 3}
+
+    @pytest.mark.parametrize("kind", ["similar", "scene"])
+    def test_the_other_confirm_types_keep_their_paths(self, kind):
+        body = {"group_id": 1, "type": kind, "paths": ["/a", "/b"], "keep_paths": ["/a"]}
+        assert frame_for("culling.confirm", body, {})["paths"] == ["/a", "/b"]
 
     @pytest.mark.parametrize("tool", sorted(NO_PHOTO_EFFECT_TOOLS))
     def test_unrelated_writes_emit_nothing(self, tool):
@@ -85,7 +97,7 @@ class TestFrameFor:
         assert frame == {"type": "changed", "tool": "culling.auto", "paths": None, "count": 3}
 
     def test_culling_confirm_emits_its_paths(self):
-        frame = frame_for("culling.confirm", {"group_id": 1, "type": "burst", "paths": ["/a", "/b"],
+        frame = frame_for("culling.confirm", {"group_id": 1, "type": "similar", "paths": ["/a", "/b"],
                                              "keep_paths": ["/a"]}, {})
         assert frame["paths"] == ["/a", "/b"]
 
@@ -246,3 +258,19 @@ class TestBroadcastOverMcp:
         assert len(settle(tab)) == 1
         assert frames[0]["tool"] == "culling.auto" and frames[0]["paths"] is None
         assert frames[0]["count"] == applied["data"]["rejected"] > 0
+
+
+faces_library = faces_tests.library
+
+
+class TestAssignFacesOverTheRealRoute:
+    def test_the_frame_counts_the_faces_the_route_assigned(self, agent_app, faces_library, fake_tab):
+        env = agent_app("legacy")
+        headers = env.login(edition=True)
+        tab = fake_tab(env, jwt_of(headers))
+        ids = [faces_tests.face_id("a"), faces_tests.face_id("b")]
+        result = env.call(env.token(headers, "edition"), "assign_faces",
+                          {"person_id": faces_tests.PERSON, "face_ids": ids})
+        assert result["ok"] and result["data"]["assigned_count"] == 2, result
+        frame = wait_frames(tab, 1)[0]
+        assert frame["tool"] == "assign_faces" and frame["paths"] is None and frame["count"] == 2
