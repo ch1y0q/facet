@@ -883,3 +883,74 @@ class TestAutoCullStateGuardThroughTheTool:
         preview = rig.env.call(rig.token, "auto_cull", self.args())
         assert self.apply(rig, preview)["ok"]
         assert self.apply(rig, preview)["error"] == "confirmation_required"
+
+
+def test_a_pinned_card_without_a_group_reason_labels_the_photo_count():
+    page = tools_culling._pinned_page([{"number": 1, "keep_paths": ["/k"], "reject_paths": ["/r1", "/r2"]}])
+    assert page.labels[0] == {"key": "photo_count", "params": {"n": 3}}
+
+
+class TestAutoCullApplyWithUnreadableMarks:
+    """I2: a preview built on the tab's marks is not applied when the tab cannot be re-read."""
+
+    @pytest.fixture()
+    def rig(self, agent_app, photos, fake_tab, monkeypatch):
+        from tests.conftest import intercept_internal_call
+        nonce.reset()
+        tools_culling.reset_preview_memory()
+        state = {"review": {"keep": [], "remove": []}, "upstream": [], "fail": False}
+        env = agent_app("legacy")
+        headers = env.login(edition=True)
+
+        def reply(call):
+            if call["tool"] == "ui_get_context":
+                if state["fail"]:
+                    return {"ok": False, "error": "tab_timeout"}
+                return {"ok": True, "data": {"review": state["review"]}}
+            return {"ok": True, "data": {"echo": call["tool"]}}
+        tab = fake_tab(env, _jwt_of(headers), reply=reply)
+        intercept_internal_call(monkeypatch, lambda tool, kw: state["upstream"].append((tool, kw)) and None)
+        token = env.token(headers, "edition")
+        yield type("Rig", (), {"env": env, "token": token, "tab": tab, "state": state})
+        for path in BURST_PATHS:
+            _rate(path, star_rating=0, is_favorite=0, is_rejected=0)
+
+    @staticmethod
+    def args(**extra):
+        return {"group_by": "burst", "strictness": 0, "show": False, **SCOPE, **extra}
+
+    def apply(self, rig, preview):
+        return rig.env.call(rig.token, "auto_cull", self.args(dry_run=False, confirm=preview["confirm"]))
+
+    def applies(self, rig):
+        return [kw["json"] for tool, kw in rig.state["upstream"]
+                if tool == "culling.auto" and not kw["json"]["dry_run"]]
+
+    def refused(self, rig, result):
+        assert result["error"] == "confirmation_required", result
+        assert not self.applies(rig) and _rejected() == set()
+
+    def test_a_failed_re_read_refuses_the_apply(self, rig):
+        rig.state["review"] = {"keep": [], "remove": [BURST_PATHS[1]]}
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        rig.state["fail"] = True
+        self.refused(rig, self.apply(rig, preview))
+
+    def test_a_truncated_re_read_refuses_the_apply(self, rig):
+        rig.state["review"] = {"keep": [], "remove": [BURST_PATHS[1]]}
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        rig.state["review"] = {"keep": [], "remove": [], "truncated": True}
+        self.refused(rig, self.apply(rig, preview))
+
+    def test_more_flips_than_the_skip_list_holds_refuses_the_apply(self, rig):
+        rig.state["review"] = {"keep": [], "remove": [BURST_PATHS[1]]}
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        rig.state["review"] = {"keep": [f"/k{i}" for i in range(999)], "remove": [f"/r{i}" for i in range(999)]}
+        self.refused(rig, self.apply(rig, preview))
+
+    def test_a_preview_without_tab_marks_applies_despite_a_failed_re_read(self, rig):
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        rig.state["fail"] = True
+        result = self.apply(rig, preview)
+        assert result["ok"], result
+        assert len(self.applies(rig)) == 1 and _rejected() == {BURST_PATHS[2]}

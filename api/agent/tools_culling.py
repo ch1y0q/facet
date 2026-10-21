@@ -132,7 +132,7 @@ def flips_since(before: Marks, now: Optional[Marks]) -> list[str]:
     if now is None or now.truncated:
         return []
     old, new = (before.keep, before.remove), (now.keep, now.remove)
-    return sorted({p for a, b in zip(old, new) for p in set(a) ^ set(b)})[:SKIP_PATHS_MAX]
+    return sorted({p for a, b in zip(old, new) for p in set(a) ^ set(b)})
 # Room kept for what the tool adds after the page is fitted (`shown_in_tab`).
 SHOWN_RESERVE = 4096
 
@@ -200,7 +200,9 @@ def _pinned_page(rows: list[dict]) -> PinnedPage:
     """
     cards = []
     for row in rows:
-        label = row.get("group_reason") or {"key": "photo_count", "params": {}}
+        count = (row.get("keep_count") or 0) + (row.get("reject_count") or 0) or (
+            len(row.get("keep_paths") or []) + len(row.get("reject_paths") or []))
+        label = row.get("group_reason") or {"key": "photo_count", "params": {"n": count}}
         reasons = row.get("reasons") or {}
         for paths, mark in ((row.get("keep_paths") or [], "keep"), (row.get("reject_paths") or [], "remove")):
             for path in paths:
@@ -520,7 +522,13 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
             return err("confirmation_required",
                        "Preview with dry_run=true first and pass its `confirm` value, with the "
                        "same overrides; the plan must be unchanged since that preview")
-        flips = flips_since(memory.marks, await read_marks(resolved, settings, tab_id, timeout, snapshot))
+        current = await read_marks(resolved, settings, tab_id, timeout, snapshot)
+        flips = flips_since(memory.marks, current)
+        if memory.marks.usable and (current is None or current.truncated or len(flips) > SKIP_PATHS_MAX):
+            return err("confirmation_required",
+                       "The marks in the tab could not be re-read in full (or too many changed since the "
+                       "preview), so a photo you flipped to Keep could still be rejected: preview again "
+                       "with dry_run=true")
         return await send_apply(grant, options, memory.digest, memory.marks, timeout, flips)
 
     async def _show_page(rows: list[dict], resolved, settings, tab_id: Optional[str], timeout: float) -> dict:
