@@ -1,4 +1,4 @@
-import { Injectable, computed, effect, inject, untracked } from '@angular/core';
+import { Injectable, effect, inject, untracked } from '@angular/core';
 import { MatSnackBar, MatSnackBarRef, TextOnlySnackBar } from '@angular/material/snack-bar';
 import { AuthService } from '../services/auth.service';
 import { I18nService } from '../services/i18n.service';
@@ -18,16 +18,10 @@ export class InpageChangeNotifier {
   private ref: MatSnackBarRef<TextOnlySnackBar> | null = null;
   private count = 0;
 
-  /** Who is signed in: a burst belongs to one identity, so a logout or a user switch ends it. */
-  private readonly identity = computed(() => {
-    const status = this.auth.status();
-    return `${status?.authenticated ? 1 : 0}|${status?.user_id ?? ''}`;
-  });
-
   constructor() {
     let first = true;
     effect(() => {
-      this.identity();
+      this.auth.identity();
       untracked(() => {
         if (first) first = false;
         else this.dropBurst();

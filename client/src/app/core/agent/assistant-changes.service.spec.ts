@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { AuthService } from '../services/auth.service';
 import { AssistantChangeBatch, AssistantChangesService } from './assistant-changes.service';
@@ -17,7 +17,7 @@ describe('AssistantChangesService', () => {
     TestBed.configureTestingModule({
       providers: [
         { provide: InpageChangeNotifier, useValue: { notify } },
-        { provide: AuthService, useValue: { status: authStatus } },
+        { provide: AuthService, useValue: { identity: computed(() => `${authStatus()?.authenticated ? 1 : 0}|${authStatus()?.user_id ?? ''}`) } },
       ],
     });
     service = TestBed.inject(AssistantChangesService);
@@ -135,5 +135,21 @@ describe('AssistantChangesService', () => {
       expect(log[49].tool).toBe('ui_tool_10');
       expect(new Set(log.map(e => e.id)).size).toBe(50);
     });
+  });
+
+  it.each([
+    ['another user', { authenticated: true, user_id: 'bob' }],
+    ['logout', null],
+  ])('clears the activity log and the active chip on %s', (_label, next) => {
+    service.noteCall('ui_navigate');
+    service.report({ tool: 'set_rating', paths: ['/a'], count: 1 });
+    expect(service.activity()).toHaveLength(2);
+    expect(service.active()).toBe(true);
+    authStatus.set(next);
+    TestBed.tick();
+    expect(service.activity()).toEqual([]);
+    expect(service.active()).toBe(false);
+    vi.advanceTimersByTime(5000);
+    expect(service.active()).toBe(false);
   });
 });

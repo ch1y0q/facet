@@ -48,7 +48,7 @@ function createApp(routerUrl = '/', extraProviders: Provider[] = []) {
       App,
       { provide: Router, useValue: mockRouter },
       { provide: GalleryStore, useValue: mockStore },
-      { provide: AuthService, useValue: { isAuthenticated: vi.fn(() => true), checkStatus: vi.fn(() => Promise.resolve()) } },
+      { provide: AuthService, useValue: { identity: () => '0|', isAuthenticated: vi.fn(() => true), checkStatus: vi.fn(() => Promise.resolve()) } },
       { provide: I18nService, useValue: { load: vi.fn(() => Promise.resolve()), loadLanguages: vi.fn(() => Promise.resolve()), languages: signal([]), t: vi.fn((k: string) => k), translations: signal({}) } },
       { provide: StatsFiltersService, useValue: { filterCategory: signal(''), dateFrom: signal(''), dateTo: signal('') } },
       { provide: CompareFiltersService, useValue: { selectedCategory: compareCategorySig } },
@@ -428,6 +428,7 @@ describe('App', () => {
         {
           provide: AuthService,
           useValue: {
+            identity: () => '0|',
             isAuthenticated: vi.fn(() => true),
             checkStatus: vi.fn(() => Promise.resolve()),
             isEdition: vi.fn(() => edition),
@@ -515,6 +516,7 @@ describe('App', () => {
           {
             provide: AuthService,
             useValue: {
+            identity: () => '0|',
               isAuthenticated: vi.fn(() => true),
               checkStatus: vi.fn(() => Promise.resolve()),
               isEdition: vi.fn(() => edition),
@@ -555,7 +557,7 @@ describe('App', () => {
         providers: [
           { provide: Router, useValue: mockRouter },
           { provide: GalleryStore, useValue: { filters: signal({ ...DEFAULT_FILTERS }), persons: signal([]), selectionCount: signal(0), config: signal(null), types: signal([]), loadTypeCounts: vi.fn(), loadConfig: vi.fn(), viewFilterParams: signal({}) } },
-          { provide: AuthService, useValue: { isAuthenticated: signal(false), isReadOnlyInstall: signal(isReadOnlyInstall), isEdition: signal(false), status: signal(null), editionPasswordRequired: signal(false), isMultiUser: signal(false), loginPasswordRequired: signal(false), checkStatus: vi.fn(() => Promise.resolve()) } },
+          { provide: AuthService, useValue: { identity: () => '0|', isAuthenticated: signal(false), isReadOnlyInstall: signal(isReadOnlyInstall), isEdition: signal(false), status: signal(null), editionPasswordRequired: signal(false), isMultiUser: signal(false), loginPasswordRequired: signal(false), checkStatus: vi.fn(() => Promise.resolve()) } },
           { provide: I18nService, useValue: { load: vi.fn(() => Promise.resolve()), loadLanguages: vi.fn(() => Promise.resolve()), languages: signal([]), t: vi.fn((k: string) => k), translations: signal({}) } },
           { provide: StatsFiltersService, useValue: { filterCategory: signal(''), dateFrom: signal(''), dateTo: signal('') } },
           { provide: CompareFiltersService, useValue: { selectedCategory: signal('') } },
@@ -598,7 +600,7 @@ describe('App', () => {
           provideRouter([]),
           { provide: GalleryStore, useValue: store },
           { provide: ScanService, useValue: { canLaunch: canLaunchSig, openLauncher } },
-          { provide: AuthService, useValue: { isAuthenticated: signal(true), isReadOnlyInstall: signal(false), features: signal({}), user: signal(null), logout: vi.fn(), isEdition: signal(false), status: signal(null), editionPasswordRequired: signal(false), isMultiUser: signal(false), loginPasswordRequired: signal(false), checkStatus: vi.fn(() => Promise.resolve()) } },
+          { provide: AuthService, useValue: { identity: () => '0|', isAuthenticated: signal(true), isReadOnlyInstall: signal(false), features: signal({}), user: signal(null), logout: vi.fn(), isEdition: signal(false), status: signal(null), editionPasswordRequired: signal(false), isMultiUser: signal(false), loginPasswordRequired: signal(false), checkStatus: vi.fn(() => Promise.resolve()) } },
           { provide: I18nService, useValue: { load: vi.fn(() => Promise.resolve()), loadLanguages: vi.fn(() => Promise.resolve()), languages: signal([]), t: vi.fn((k: string) => k), translations: signal({}) } },
           { provide: StatsFiltersService, useValue: { filterCategory: signal(''), dateFrom: signal(''), dateTo: signal('') } },
           { provide: CompareFiltersService, useValue: { selectedCategory: signal('') } },
@@ -686,7 +688,7 @@ describe('App', () => {
         TestBed.resetTestingModule();
         const { app, mockRouter } = createApp(url, [
           { provide: Router, useValue: { url, events: NEVER, navigate: vi.fn(), config } },
-          { provide: AuthService, useValue: { isAuthenticated: vi.fn(() => true), checkStatus: vi.fn(), dropEdition: vi.fn(() => Promise.resolve()) } },
+          { provide: AuthService, useValue: { identity: () => '0|', isAuthenticated: vi.fn(() => true), checkStatus: vi.fn(), dropEdition: vi.fn(() => Promise.resolve()) } },
         ]);
         await (app as any).lockEdition();
         return { app, router: TestBed.inject(Router) as unknown as { navigate: ReturnType<typeof vi.fn> }, mockRouter };

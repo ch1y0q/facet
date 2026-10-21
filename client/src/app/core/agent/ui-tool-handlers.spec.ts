@@ -19,7 +19,6 @@ import { CompareFiltersService } from '../../features/comparison/compare-filters
 import { ViewActionRegistry } from './view-action-registry.service';
 import { AssistantChangeBatch, AssistantChangesService } from './assistant-changes.service';
 import { UserActivityJournal } from './user-activity-journal.service';
-import { CullingStore } from '../../features/gallery/culling.store';
 import contractFile from './ui-tools.schema.json';
 import { UI_TOOL_ERROR_CODES, UiToolContractFile, UiToolEnvelope } from './ui-tool.types';
 
@@ -61,7 +60,7 @@ describe('UI tool registry and handlers', () => {
     gallery: store, router: router as unknown as Router,
     auth: { isEdition: () => edition } as unknown as AuthService, viewActions, actions: () => [],
     compareFilters: TestBed.inject(CompareFiltersService),
-    journal: TestBed.inject(UserActivityJournal), culling: TestBed.inject(CullingStore),
+    journal: TestBed.inject(UserActivityJournal),
   });
 
   afterEach(() => localStorage.clear());
@@ -79,7 +78,7 @@ describe('UI tool registry and handlers', () => {
         { provide: ApiService, useValue: { get: apiGet, post: vi.fn(() => of({})) } },
         { provide: Router, useValue: router },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
-        { provide: AuthService, useValue: { isEdition: () => edition, isMultiUser: () => multiUser, isAuthenticated: () => true } },
+        { provide: AuthService, useValue: { identity: () => '0|', isEdition: () => edition, isMultiUser: () => multiUser, isAuthenticated: () => true } },
         // The real GalleryStore subscribes to assistant write batches; none arrive here.
         { provide: AssistantChangesService, useValue: { batch$: assistantBatches } },
         { provide: AlbumService, useValue: { list: vi.fn(() => of({ albums: [] })), update: vi.fn(() => of({})) } },
@@ -100,7 +99,7 @@ describe('UI tool registry and handlers', () => {
         gallery: store, router: router as unknown as Router,
         auth: { isEdition: () => edition } as unknown as AuthService, viewActions, actions: () => [],
         compareFilters: TestBed.inject(CompareFiltersService),
-        journal: TestBed.inject(UserActivityJournal), culling: TestBed.inject(CullingStore),
+        journal: TestBed.inject(UserActivityJournal),
       });
       const mismatch = contractHandlerMismatch((contractFile as unknown as UiToolContractFile).tools, handlers);
       expect(mismatch).toEqual({ missingHandlers: [], missingContract: [] });
@@ -211,7 +210,7 @@ describe('UI tool registry and handlers', () => {
       const handlers = createUiToolHandlers({
         gallery: store, router: realRouter, auth: { isEdition: () => false } as unknown as AuthService, viewActions, actions: () => [],
         compareFilters: TestBed.inject(CompareFiltersService),
-        journal: TestBed.inject(UserActivityJournal), culling: TestBed.inject(CullingStore),
+        journal: TestBed.inject(UserActivityJournal),
       });
       await expect(handlers['ui_navigate']({ route: '/stats' })).resolves.toEqual({ route: '/stats' });
     });
@@ -682,7 +681,7 @@ describe('UI tool registry and handlers', () => {
         (await createUiToolHandlers({
           gallery: store, router: router as unknown as Router, auth: TestBed.inject(AuthService), viewActions, actions: () => [],
           compareFilters: TestBed.inject(CompareFiltersService),
-          journal: TestBed.inject(UserActivityJournal), culling: TestBed.inject(CullingStore),
+          journal: TestBed.inject(UserActivityJournal),
         })['ui_get_context'](since === undefined ? {} : { activity_since: since }) as
           { user_activity: { items: { kind: string; seq: number }[]; until: number; truncated: boolean } }).user_activity;
 
@@ -762,7 +761,7 @@ describe('UI tool registry and handlers', () => {
 
       it('is the lightbox photo in the darkroom', async () => {
         router.url = '/culling';
-        TestBed.inject(CullingStore).focusedPath.set('/c.jpg');
+        TestBed.inject(UserActivityJournal).darkroomFocus.set('/c.jpg');
         expect(await focused()).toEqual({ path: '/c.jpg' });
       });
 

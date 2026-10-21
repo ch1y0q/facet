@@ -33,7 +33,7 @@ describe('PhotoDetailComponent', () => {
   let mockRouter: { navigate: Mock; events: Observable<unknown> };
   let mockLocation: { back: Mock };
   let mockRoute: { snapshot: { queryParamMap: { get: Mock } } };
-  let mockAuth: { isEdition: ReturnType<typeof signal>; downloadProfiles: ReturnType<typeof signal> };
+  let mockAuth: { identity: () => string; isEdition: ReturnType<typeof signal>; downloadProfiles: ReturnType<typeof signal> };
   let mockDialog: { open: Mock };
 
   const samplePhoto = {
@@ -111,7 +111,7 @@ describe('PhotoDetailComponent', () => {
         queryParamMap: { get: vi.fn((key: string) => key === 'path' ? '/photos/test.jpg' : null) },
       },
     };
-    mockAuth = { isEdition: signal(true), downloadProfiles: signal([]) };
+    mockAuth = { identity: () => '0|', isEdition: signal(true), downloadProfiles: signal([]) };
     mockDialog = { open: vi.fn(() => ({ afterClosed: () => of(undefined) })) };
   });
 

@@ -4,7 +4,6 @@ import { AuthService } from '../services/auth.service';
 import { GalleryStore } from '../../features/gallery/gallery.store';
 import { CompareFiltersService } from '../../features/comparison/compare-filters.service';
 import { validateAgainstSchema, withDefaults } from './schema-validate';
-import { CullingStore } from '../../features/gallery/culling.store';
 import { UserActivityJournal } from './user-activity-journal.service';
 import { createUiToolHandlers } from './ui-tool-handlers';
 import { ViewActionRegistry } from './view-action-registry.service';
@@ -66,7 +65,6 @@ export class WebMcpToolRegistry {
     actions: () => this.actions,
     compareFilters: inject(CompareFiltersService),
     journal: inject(UserActivityJournal),
-    culling: inject(CullingStore),
   });
   private readonly journal = inject(UserActivityJournal);
   private loading: Promise<void> | null = null;

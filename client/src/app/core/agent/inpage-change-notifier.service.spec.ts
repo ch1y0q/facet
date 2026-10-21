@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { Subject } from 'rxjs';
@@ -30,7 +30,7 @@ describe('InpageChangeNotifier', () => {
     TestBed.configureTestingModule({
       providers: [
         { provide: MatSnackBar, useValue: { open } },
-        { provide: AuthService, useValue: { status: authStatus } },
+        { provide: AuthService, useValue: { identity: computed(() => `${authStatus()?.authenticated ? 1 : 0}|${authStatus()?.user_id ?? ''}`) } },
         { provide: I18nService, useValue: { t: (key: string, vars?: Record<string, string>) => `${key} ${vars?.['count'] ?? ''}`.trim() } },
       ],
     });
@@ -86,7 +86,7 @@ describe('InpageChangeNotifier', () => {
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({
         providers: [
-          { provide: AuthService, useValue: { status: authStatus } },
+          { provide: AuthService, useValue: { identity: computed(() => `${authStatus()?.authenticated ? 1 : 0}|${authStatus()?.user_id ?? ''}`) } },
           { provide: I18nService, useValue: { t: (key: string) => key === 'dialog.close' ? 'Close' : key } },
         ],
       });

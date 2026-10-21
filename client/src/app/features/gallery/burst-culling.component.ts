@@ -38,6 +38,7 @@ import { UndoService } from '../../core/services/undo.service';
 import { SequenceKindLabelPipe, SUPPRESSED_OVERRIDE } from '../../shared/pipes/sequence-kind.pipe';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AssistantChangesService } from '../../core/agent/assistant-changes.service';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { firstValueFrom } from 'rxjs';
 import {
   CullingStore, RunGeneration, GroupBy, GROUP_BY_VALUES,
@@ -1345,6 +1346,7 @@ export class BurstCullingComponent implements OnDestroy {
   private readonly sceneDate = new SceneDatePipe();
   /** Data state + API calls; provided per component, so it lives one darkroom visit. */
   protected readonly cull = inject(CullingStore);
+  private readonly journal = inject(UserActivityJournal);
   private readonly assistantChanges = inject(AssistantChangesService);
 
   /** Min posterior below which a moment label is shown dimmed + "(uncertain)". */
@@ -1838,9 +1840,9 @@ export class BurstCullingComponent implements OnDestroy {
     });
     // Mirror the lightbox photo for `ui_get_context`; no lightbox, or leaving the page, means none.
     effect(() => {
-      this.cull.focusedPath.set(this.lightboxGroup()?.photos[this.lightboxIndex()]?.path ?? null);
+      this.journal.darkroomFocus.set(this.lightboxGroup()?.photos[this.lightboxIndex()]?.path ?? null);
     });
-    inject(DestroyRef).onDestroy(() => this.cull.focusedPath.set(null));
+    inject(DestroyRef).onDestroy(() => this.journal.darkroomFocus.set(null));
     // A photo an assistant moved or deleted can vanish from the group the darkroom is showing.
     effect(() => {
       const group = this.lightboxGroup();

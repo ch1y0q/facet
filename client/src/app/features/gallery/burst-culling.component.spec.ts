@@ -11,6 +11,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { GalleryStore } from './gallery.store';
 import { CullingStore } from './culling.store';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { BurstCullingComponent } from './burst-culling.component';
 import { AssistantChangesService, AssistantChangeBatch } from '../../core/agent/assistant-changes.service';
 import { SyncedZoomComponent } from './synced-zoom.component';
@@ -83,7 +84,7 @@ describe('BurstCullingComponent', () => {
         { provide: MatSnackBar, useValue: mockSnackBar },
         { provide: I18nService, useValue: mockI18n },
         { provide: GalleryStore, useValue: { config: () => null } },
-        { provide: AuthService, useValue: { isEdition: () => true } },
+        { provide: AuthService, useValue: { isEdition: () => true, identity: () => '0|' } },
         { provide: AssistantChangesService, useValue: { batch$: changes$.asObservable() } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: { get: () => null } } } },
       ],
@@ -157,16 +158,27 @@ describe('BurstCullingComponent', () => {
     } as unknown as ReturnType<typeof store.groups>[number];
 
     it('follows the lightbox photo and is null with no lightbox', () => {
-      store.groups.set([grp]);
+      // jsdom has no scrollIntoView; opening the lightbox scrolls its filmstrip.
+      Element.prototype.scrollIntoView = vi.fn();
+      const fixture = TestBed.createComponent(BurstCullingComponent);
+      const own = fixture.debugElement.injector.get(CullingStore);
+      const comp = fixture.componentInstance;
+      expect(own).not.toBe(TestBed.inject(CullingStore));
+      // What the agent sees: the root-scoped value.
+      const seen = () => TestBed.inject(UserActivityJournal).darkroomFocus();
+      own.groups.set([grp]);
+      fixture.detectChanges();
       TestBed.tick();
-      expect(store.focusedPath()).toBeNull();
-      component['lightboxGroupId'].set(store.groupKey(grp));
-      component['lightboxIndex'].set(1);
+      expect(seen()).toBeNull();
+      comp['lightboxGroupId'].set(own.groupKey(grp));
+      comp['lightboxIndex'].set(1);
+      fixture.detectChanges();
       TestBed.tick();
-      expect(store.focusedPath()).toBe('/photo2.jpg');
-      component['lightboxGroupId'].set(null);
+      expect(seen()).toBe('/photo2.jpg');
+      comp['lightboxGroupId'].set(null);
+      fixture.detectChanges();
       TestBed.tick();
-      expect(store.focusedPath()).toBeNull();
+      expect(seen()).toBeNull();
     });
   });
 
@@ -486,7 +498,7 @@ describe('BurstCullingComponent', () => {
           { provide: MatSnackBar, useValue: mockSnackBar },
           { provide: I18nService, useValue: mockI18n },
           { provide: GalleryStore, useValue: { config: () => null } },
-          { provide: AuthService, useValue: { isEdition: () => true } },
+          { provide: AuthService, useValue: { isEdition: () => true, identity: () => '0|' } },
           { provide: AssistantChangesService, useValue: { batch$: changes$.asObservable() } },
           { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: { get: () => null } } } },
         ],
@@ -523,7 +535,7 @@ describe('BurstCullingComponent', () => {
           { provide: MatSnackBar, useValue: mockSnackBar },
           { provide: I18nService, useValue: mockI18n },
           { provide: GalleryStore, useValue: { config: () => null } },
-          { provide: AuthService, useValue: { isEdition: () => true } },
+          { provide: AuthService, useValue: { isEdition: () => true, identity: () => '0|' } },
           { provide: AssistantChangesService, useValue: { batch$: changes$.asObservable() } },
           { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: { get: () => null } } } },
         ],
@@ -1178,7 +1190,7 @@ describe('BurstCullingComponent', () => {
           { provide: MatSnackBar, useValue: mockSnackBar },
           { provide: I18nService, useValue: mockI18n },
           { provide: GalleryStore, useValue: { config: () => null } },
-          { provide: AuthService, useValue: { isEdition: () => true } },
+          { provide: AuthService, useValue: { isEdition: () => true, identity: () => '0|' } },
           { provide: AssistantChangesService, useValue: { batch$: changes$.asObservable() } },
           { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: { get: () => null } } } },
         ],
@@ -1576,7 +1588,7 @@ describe('BurstCullingComponent', () => {
           { provide: MatSnackBar, useValue: mockSnackBar },
           { provide: I18nService, useValue: mockI18n },
           { provide: GalleryStore, useValue: { config: () => null } },
-          { provide: AuthService, useValue: { isEdition: () => true } },
+          { provide: AuthService, useValue: { isEdition: () => true, identity: () => '0|' } },
           { provide: AssistantChangesService, useValue: { batch$: changes$.asObservable() } },
           { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: { get: () => null } } } },
         ],
@@ -2776,7 +2788,7 @@ describe('BurstCullingComponent modals (rendered)', () => {
         })) } },
         { provide: I18nService, useValue: { t: (key: string) => key, translations: () => ({}) } },
         { provide: GalleryStore, useValue: { config: () => null } },
-        { provide: AuthService, useValue: { isEdition: () => true } },
+        { provide: AuthService, useValue: { isEdition: () => true, identity: () => '0|' } },
         { provide: AssistantChangesService, useValue: { batch$: changes$.asObservable() } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: { get: () => null } } } },
       ],
@@ -3119,7 +3131,7 @@ describe('BurstCullingComponent swipe-to-decide (rendered, touch)', () => {
         { provide: MatSnackBar, useValue: mockSnackBar },
         { provide: I18nService, useValue: { t: (key: string) => key, translations: () => ({}) } },
         { provide: GalleryStore, useValue: { config: () => null } },
-        { provide: AuthService, useValue: { isEdition: () => true } },
+        { provide: AuthService, useValue: { isEdition: () => true, identity: () => '0|' } },
         { provide: AssistantChangesService, useValue: { batch$: changes$.asObservable() } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: { get: () => null } } } },
       ],
@@ -3326,7 +3338,7 @@ describe('BurstCullingComponent compare panes (rendered)', () => {
         })) } },
         { provide: I18nService, useValue: { t: (key: string) => key, translations: () => ({}) } },
         { provide: GalleryStore, useValue: { config: () => null } },
-        { provide: AuthService, useValue: { isEdition: () => true } },
+        { provide: AuthService, useValue: { isEdition: () => true, identity: () => '0|' } },
         { provide: AssistantChangesService, useValue: { batch$: changes$.asObservable() } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: { get: () => null } } } },
       ],

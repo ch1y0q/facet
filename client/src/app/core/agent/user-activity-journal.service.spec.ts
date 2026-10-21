@@ -1,17 +1,27 @@
 import { TestBed } from '@angular/core/testing';
 import { Router, NavigationEnd } from '@angular/router';
+import { computed, signal } from '@angular/core';
 import { Subject } from 'rxjs';
 import { describe, it, expect, beforeEach } from 'vitest';
+import { AuthService } from '../services/auth.service';
 import { UserActivityJournal } from './user-activity-journal.service';
 
 describe('UserActivityJournal', () => {
   let events: Subject<unknown>;
   let journal: UserActivityJournal;
+  let authStatus: ReturnType<typeof signal<{ authenticated: boolean; user_id: string | null } | null>>;
 
   beforeEach(() => {
     events = new Subject();
-    TestBed.configureTestingModule({ providers: [{ provide: Router, useValue: { events } }] });
+    authStatus = signal({ authenticated: true, user_id: 'alice' });
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: Router, useValue: { events } },
+        { provide: AuthService, useValue: { identity: computed(() => `${authStatus()?.authenticated ? 1 : 0}|${authStatus()?.user_id ?? ''}`) } },
+      ],
+    });
     journal = TestBed.inject(UserActivityJournal);
+    TestBed.tick();
   });
 
   it('assigns monotonic seqs and is stateless on read', () => {
@@ -56,5 +66,20 @@ describe('UserActivityJournal', () => {
     expect(journal.since().items).toEqual([]);
     journal.record('rating', ['a'], 1);
     expect(journal.since().items).toHaveLength(1);
+  });
+
+  it.each([
+    ['another user', { authenticated: true, user_id: 'bob' }],
+    ['logout', null],
+  ])('drops the entries on %s but keeps seq monotonic', (_label, next) => {
+    journal.record('rating', ['a'], 1);
+    journal.record('rating', ['b'], 2);
+    authStatus.set(next);
+    TestBed.tick();
+    expect(journal.since(0).items).toEqual([]);
+    journal.record('rating', ['c'], 3);
+    const [item] = journal.since(0).items;
+    expect(item.seq).toBeGreaterThan(2);
+    expect(journal.since(2).items).toHaveLength(1);
   });
 });

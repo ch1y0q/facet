@@ -87,6 +87,7 @@ describe('AgentBridgeService', () => {
         {
           provide: AuthService,
           useValue: {
+            identity: () => '0|',
             status: authStatus,
             get token() { return token; },
             loginPasswordRequired: () => loginRequired,
@@ -130,7 +131,7 @@ describe('AgentBridgeService', () => {
     TestBed.configureTestingModule({
       providers: [
         { provide: BRIDGE_SOCKET_FACTORY, useValue: (url: string) => new FakeSocket(url) },
-        { provide: AuthService, useValue: { status: signal(status({ multi_user: false, login_password_required: false })), get token() { return token; }, loginPasswordRequired: () => loginRequired } },
+        { provide: AuthService, useValue: { identity: () => '0|', status: signal(status({ multi_user: false, login_password_required: false })), get token() { return token; }, loginPasswordRequired: () => loginRequired } },
         { provide: Router, useValue: { url: '/', events: routerEvents } },
         { provide: WebMcpToolRegistry, useValue: { toolNames: [], toolsVersion: 'v1', execute, ready: signal(true), load: () => Promise.resolve() } },
       ],
@@ -157,7 +158,7 @@ describe('AgentBridgeService', () => {
       TestBed.configureTestingModule({
         providers: [
           { provide: BRIDGE_SOCKET_FACTORY, useValue: (url: string) => new FakeSocket(url) },
-          { provide: AuthService, useValue: { status: signal(st), get token() { return token; }, loginPasswordRequired: () => true } },
+          { provide: AuthService, useValue: { identity: () => '0|', status: signal(st), get token() { return token; }, loginPasswordRequired: () => true } },
           { provide: Router, useValue: { url: '/', events: routerEvents } },
           { provide: WebMcpToolRegistry, useValue: { toolNames: [], toolsVersion: 'v1', execute, ready: signal(true), load: () => Promise.resolve() } },
         ],
@@ -278,7 +279,7 @@ describe('AgentBridgeService', () => {
       TestBed.configureTestingModule({
         providers: [
           { provide: BRIDGE_SOCKET_FACTORY, useValue: factory },
-          { provide: AuthService, useValue: { status: signal(status()), get token() { return token; }, loginPasswordRequired: () => loginRequired } },
+          { provide: AuthService, useValue: { identity: () => '0|', status: signal(status()), get token() { return token; }, loginPasswordRequired: () => loginRequired } },
           { provide: Router, useValue: { url, events: routerEvents } },
           { provide: WebMcpToolRegistry, useValue: { toolNames, toolsVersion: 'v1', execute, ready: signal(true), load: () => Promise.resolve() } },
         ],
@@ -396,7 +397,7 @@ describe('AgentBridgeService', () => {
       TestBed.configureTestingModule({
         providers: [
           { provide: BRIDGE_SOCKET_FACTORY, useValue: (url: string) => new FakeSocket(url) },
-          { provide: AuthService, useValue: { status: signal(status({ multi_user: true, login_password_required: false })), token: null, loginPasswordRequired: () => false } },
+          { provide: AuthService, useValue: { identity: () => '0|', status: signal(status({ multi_user: true, login_password_required: false })), token: null, loginPasswordRequired: () => false } },
           { provide: Router, useValue: { url: '/', events: routerEvents } },
           { provide: WebMcpToolRegistry, useValue: { toolNames: [], toolsVersion: 'v1', execute, ready: signal(true), load: () => Promise.resolve() } },
         ],

@@ -1,4 +1,4 @@
-import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Injectable, effect, inject, signal, untracked } from '@angular/core';
 import { Observable, Subject } from 'rxjs';
 import { AuthService } from '../services/auth.service';
 import { InpageChangeNotifier } from './inpage-change-notifier.service';
@@ -62,15 +62,10 @@ export class AssistantChangesService {
   private startedAt = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
 
-  private readonly identity = computed(() => {
-    const status = this.auth.status();
-    return `${status?.authenticated ? 1 : 0}|${status?.user_id ?? ''}`;
-  });
-
   constructor() {
     let first = true;
     effect(() => {
-      this.identity();
+      this.auth.identity();
       untracked(() => {
         if (first) first = false;
         else this.drop();
@@ -126,6 +121,10 @@ export class AssistantChangesService {
   }
 
   private drop(): void {
+    this.entries.set([]);
+    if (this.activeTimer !== null) clearTimeout(this.activeTimer);
+    this.activeTimer = null;
+    this.activeFlag.set(false);
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
     this.reset();

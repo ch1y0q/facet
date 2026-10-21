@@ -192,7 +192,6 @@ export class CullingStore {
   });
 
   /** The darkroom lightbox's current photo, mirrored by the component for `ui_get_context`; null when no lightbox is open. */
-  readonly focusedPath = signal<string | null>(null);
 
   // Personal-ranker status, surfaced as the "this cull trains My Taste" chip.
   readonly rankerComparisons = signal<number | null>(null);

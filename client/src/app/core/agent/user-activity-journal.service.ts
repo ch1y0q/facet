@@ -1,5 +1,6 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, effect, inject, signal, untracked } from '@angular/core';
 import { NavigationEnd, Router } from '@angular/router';
+import { AuthService } from '../services/auth.service';
 
 export type UserActivityKind =
   | 'rating'
@@ -45,11 +46,23 @@ const JOURNAL_CAPACITY = 500;
 @Injectable({ providedIn: 'root' })
 export class UserActivityJournal {
   private readonly router = inject(Router);
+  private readonly auth = inject(AuthService);
+  /** The darkroom's lightbox photo; here because the darkroom's `CullingStore` is component-scoped, invisible to root services. */
+  readonly darkroomFocus = signal<string | null>(null);
   private entries: UserActivityEntry[] = [];
   private seq = 0;
   private suppressed = 0;
 
   constructor() {
+    let first = true;
+    effect(() => {
+      this.auth.identity();
+      untracked(() => {
+        // `seq` is kept: a cursor held from before the change must never re-read or skip an item.
+        if (first) first = false;
+        else this.entries = [];
+      });
+    });
     this.router.events.subscribe(event => {
       if (event instanceof NavigationEnd) this.record('navigate', [], event.urlAfterRedirects);
     });

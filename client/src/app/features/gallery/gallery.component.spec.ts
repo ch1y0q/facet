@@ -154,6 +154,7 @@ describe('GalleryComponent', () => {
     };
 
     mockAuth = {
+      identity: vi.fn(() => '0|'),
       isEdition: vi.fn(() => false),
       downloadProfiles: vi.fn(() => []),
       hasFeature: vi.fn(() => false),

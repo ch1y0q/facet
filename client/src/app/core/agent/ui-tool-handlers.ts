@@ -12,7 +12,6 @@ import {
 } from '../../features/gallery/gallery-filters.util';
 import { COMPARE_AB_TAB_INDEX, CompareFiltersService } from '../../features/comparison/compare-filters.service';
 import { ViewActionRegistry } from './view-action-registry.service';
-import { CullingStore } from '../../features/gallery/culling.store';
 import { UserActivityJournal } from './user-activity-journal.service';
 import { UiActionRow, UiToolError, UiToolHandler } from './ui-tool.types';
 
@@ -28,7 +27,6 @@ export interface UiToolDeps {
   /** What the user did in this tab; read by `ui_get_context`. */
   journal: UserActivityJournal;
   /** The darkroom's store, for the focused photo. */
-  culling: CullingStore;
 }
 
 /** The contract's cap on `ui_show_photos` paths (api/agent/ui_tools.py MAX_SHOW_PATHS). */
@@ -193,7 +191,7 @@ function stringList(value: unknown): string[] {
 }
 
 export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHandler> {
-  const { gallery, router, auth, viewActions, actions, compareFilters, journal, culling } = deps;
+  const { gallery, router, auth, viewActions, actions, compareFilters, journal } = deps;
 
   const requireGalleryView = (): void => {
     if (!isGalleryUrl(router.url)) {
@@ -499,7 +497,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
         : route === '/photo'
           ? params.get('path')
           : route === '/culling'
-            ? culling.focusedPath()
+            ? journal.darkroomFocus()
             : null;
       return {
         route,
