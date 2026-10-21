@@ -4,6 +4,8 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+## [1.22.0] "Révélateur" — 2026-10-21
+
 ### Added
 
 - **`scanning.skip_directories`: directory names the scanner never descends into** (issue #207). A list of name globs (`fnmatch`, case-sensitive, matched against each directory's name, never the scan root itself), defaulting to `["@eaDir", "#recycle", "#snapshot", "@Recycle"]`. On a Synology NAS every photo folder carries an `@eaDir/` of `SYNOPHOTO_THUMB_*.jpg` thumbnails, which were scanned and scored as photos. It applies on top of `skip_hidden_directories`, which is unchanged. A list in your `scoring_config.json` replaces the default wholesale, so keep the NAS entries you still need; `[]` turns it off. Thumbnails an earlier scan already stored stay in the database, since their files still exist. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
