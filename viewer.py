@@ -18,6 +18,11 @@ _script_dir = os.path.dirname(os.path.abspath(__file__))
 if _script_dir not in sys.path:
     sys.path.insert(0, _script_dir)
 
+# uvicorn waits for every in-flight request before a worker exits, by default
+# forever, so one request that never finishes (a stalled MCP call, say) hung a
+# --reload, Ctrl+C or container stop while new requests queued behind it.
+GRACEFUL_SHUTDOWN_SECONDS = 5
+
 def main():
     parser = argparse.ArgumentParser(description='Facet API Server')
     parser.add_argument('--port', type=int, default=int(os.environ.get('PORT', 5000)),
@@ -48,6 +53,7 @@ def main():
             port=args.port,
             workers=args.workers,
             access_log=False,
+            timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS,
         )
     else:
         uvicorn.run(
@@ -58,6 +64,7 @@ def main():
             reload=True,
             reload_dirs=[_script_dir],
             access_log=False,
+            timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS,
         )
 
 
