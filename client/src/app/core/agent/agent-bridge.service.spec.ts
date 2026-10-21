@@ -59,6 +59,7 @@ describe('AgentBridgeService', () => {
   let routerEvents: Subject<unknown>;
   let execute: Mock;
   let report: Mock;
+  let noteCall: Mock;
   let bridge: AgentBridgeService;
 
   const last = (): FakeSocket => FakeSocket.instances[FakeSocket.instances.length - 1];
@@ -79,6 +80,7 @@ describe('AgentBridgeService', () => {
     routerEvents = new Subject();
     execute = vi.fn(async () => ({ ok: true, data: { hello: 'world' } }));
     report = vi.fn();
+    noteCall = vi.fn();
     TestBed.configureTestingModule({
       providers: [
         { provide: BRIDGE_SOCKET_FACTORY, useValue: (url: string) => new FakeSocket(url) },
@@ -90,7 +92,7 @@ describe('AgentBridgeService', () => {
             loginPasswordRequired: () => loginRequired,
           },
         },
-        { provide: AssistantChangesService, useValue: { report } },
+        { provide: AssistantChangesService, useValue: { report, noteCall } },
         { provide: Router, useValue: { url: '/persons?x=1', events: routerEvents } },
         { provide: WebMcpToolRegistry, useValue: { toolNames: ['ui_navigate', 'ui_get_selection'], toolsVersion: 'v1', execute, ready: signal(true), load: () => Promise.resolve() } },
       ],
@@ -220,15 +222,23 @@ describe('AgentBridgeService', () => {
     expect(socket.sent.at(-1)).toMatchObject({ type: 'result', id: 'bi', ok: false, error: 'upstream_error' });
   });
 
+  it('notes every call frame for the assistant chip', async () => {
+    const socket = connectReady();
+    socket.receive({ type: 'call', id: 'n1', tool: 'ui_show_photos', args: {} });
+    socket.receive({ type: 'call', id: 'n2', tool: 'ui_get_context', args: {} });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(noteCall.mock.calls).toEqual([['ui_show_photos'], ['ui_get_context']]);
+  });
+
   it('reports a changed frame to AssistantChanges', () => {
     const socket = connectReady();
     socket.receive({ type: 'changed', tool: 'set_rating', paths: ['/a', '/b'], count: 2 });
     socket.receive({ type: 'changed', tool: 'cull_apply', paths: null, count: 9 });
     socket.receive({ type: 'changed', tool: 'x', paths: null, count: null });
     expect(report.mock.calls).toEqual([
-      [{ paths: ['/a', '/b'], count: 2 }],
-      [{ paths: null, count: 9 }],
-      [{ paths: null, count: null }],
+      [{ tool: 'set_rating', paths: ['/a', '/b'], count: 2 }],
+      [{ tool: 'cull_apply', paths: null, count: 9 }],
+      [{ tool: 'x', paths: null, count: null }],
     ]);
   });
 

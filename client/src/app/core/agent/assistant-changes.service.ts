@@ -1,4 +1,4 @@
-import { Injectable, computed, effect, inject, untracked } from '@angular/core';
+import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { Observable, Subject } from 'rxjs';
 import { AuthService } from '../services/auth.service';
 import { InpageChangeNotifier } from './inpage-change-notifier.service';
@@ -11,10 +11,24 @@ export interface AssistantChangeBatch {
 }
 
 export interface AssistantChangeReport {
+  /** The tool that wrote, for the activity log. */
+  tool?: string;
   paths: string[] | null;
   count: number | null;
 }
 
+/** One line of the activity log: an assistant write, or a tool call that drove this tab. */
+export interface ActivityEntry {
+  id: number;
+  at: number;
+  kind: 'write' | 'ui';
+  tool: string;
+  count: number | null;
+  paths: string[] | null;
+}
+
+export const ACTIVITY_LIMIT = 50;
+export const ACTIVE_MS = 4000;
 export const CHANGES_DEBOUNCE_MS = 400;
 export const CHANGES_MAX_WAIT_MS = 2000;
 
@@ -31,6 +45,15 @@ export class AssistantChangesService {
   private readonly subject = new Subject<AssistantChangeBatch>();
   /** Emits one batch per burst, after the debounce. */
   readonly batch$: Observable<AssistantChangeBatch> = this.subject.asObservable();
+
+  private readonly entries = signal<ActivityEntry[]>([]);
+  /** The assistant's recent activity, newest first, capped at 50; session-only. */
+  readonly activity = this.entries.asReadonly();
+  private readonly activeFlag = signal(false);
+  /** True for 4 s after any assistant event. */
+  readonly active = this.activeFlag.asReadonly();
+  private activeTimer: ReturnType<typeof setTimeout> | null = null;
+  private nextId = 1;
 
   private paths = new Set<string>();
   private sticky = false;
@@ -55,7 +78,29 @@ export class AssistantChangesService {
     });
   }
 
+  /** A tool call reached this tab. Read-only `ui_get_*` calls light the chip but are not listed. */
+  noteCall(tool: string): void {
+    this.light();
+    if (!tool.startsWith('ui_get_')) this.append('ui', tool, null, null);
+  }
+
+  private light(): void {
+    this.activeFlag.set(true);
+    if (this.activeTimer !== null) clearTimeout(this.activeTimer);
+    this.activeTimer = setTimeout(() => {
+      this.activeTimer = null;
+      this.activeFlag.set(false);
+    }, ACTIVE_MS);
+  }
+
+  private append(kind: ActivityEntry['kind'], tool: string, count: number | null, paths: string[] | null): void {
+    const entry: ActivityEntry = { id: this.nextId++, at: Date.now(), kind, tool, count, paths };
+    this.entries.update(list => [entry, ...list].slice(0, ACTIVITY_LIMIT));
+  }
+
   report(report: AssistantChangeReport): void {
+    this.light();
+    this.append('write', report.tool ?? '', report.count ?? report.paths?.length ?? null, report.paths);
     const now = Date.now();
     if (!this.pending) {
       this.pending = true;

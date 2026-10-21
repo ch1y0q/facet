@@ -2642,5 +2642,14 @@
       "shadow": "Écrêtage des ombres : {channels}",
       "highlight": "Écrêtage des hautes lumières : {channels}"
     }
+  },
+  "assistant_activity": {
+    "chip": "Assistant actif",
+    "title": "Activité de l'assistant",
+    "empty": "Aucune activité de l'assistant pour l'instant.",
+    "unknown_tool": "Assistant",
+    "photo_one": "{count} photo",
+    "photo_other": "{count} photos",
+    "show_photos": "Afficher les photos"
   }
 }

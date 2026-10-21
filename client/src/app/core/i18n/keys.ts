@@ -2657,6 +2657,15 @@ export const I18N = {
       highlight: "histogram.clipping.highlight",
     },
   },
+  assistant_activity: {
+    chip: "assistant_activity.chip",
+    title: "assistant_activity.title",
+    empty: "assistant_activity.empty",
+    unknown_tool: "assistant_activity.unknown_tool",
+    photo_one: "assistant_activity.photo_one",
+    photo_other: "assistant_activity.photo_other",
+    show_photos: "assistant_activity.show_photos",
+  },
 } as const;
 
 /** Returns {@link I18N}; use it to initialize class fields -- see the header comment above. */

@@ -2642,5 +2642,14 @@
       "shadow": "Shadow clipping: {channels}",
       "highlight": "Highlight clipping: {channels}"
     }
+  },
+  "assistant_activity": {
+    "chip": "Assistant active",
+    "title": "Assistant activity",
+    "empty": "No assistant activity yet.",
+    "unknown_tool": "Assistant",
+    "photo_one": "{count} photo",
+    "photo_other": "{count} photos",
+    "show_photos": "Show photos"
   }
 }

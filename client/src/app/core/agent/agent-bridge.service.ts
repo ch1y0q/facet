@@ -225,16 +225,17 @@ export class AgentBridgeService {
     }
   }
 
-  private onChanged(frame: { paths?: unknown; count?: unknown }): void {
-    const { paths, count } = frame;
+  private onChanged(frame: { tool?: unknown; paths?: unknown; count?: unknown }): void {
+    const { tool, paths, count } = frame;
     const pathsOk = paths === null || (Array.isArray(paths) && paths.length <= MAX_CHANGED_PATHS && paths.every(p => typeof p === 'string'));
     const countOk = count === null || (typeof count === 'number' && Number.isFinite(count));
     if (!pathsOk || !countOk) return;
-    this.changes.report({ paths: paths as string[] | null, count: count as number | null });
+    this.changes.report({ tool: typeof tool === 'string' ? tool : undefined, paths: paths as string[] | null, count: count as number | null });
   }
 
   private async answer(call: CallFrame): Promise<void> {
     if (typeof call.id !== 'string') return;
+    this.changes.noteCall(call.tool);
     // The socket that carried the call; a tool can outlive it (reconnect, sign-out), and its answer then belongs to nobody.
     const socket = this.socket;
     const envelope: UiToolEnvelope = await this.registry.execute(call.tool, call.args);

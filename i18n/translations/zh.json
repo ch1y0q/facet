@@ -2642,5 +2642,14 @@
       "shadow": "阴影溢出：{channels}",
       "highlight": "高光溢出：{channels}"
     }
+  },
+  "assistant_activity": {
+    "chip": "助手运行中",
+    "title": "助手活动",
+    "empty": "暂无助手活动。",
+    "unknown_tool": "助手",
+    "photo_one": "{count} 张照片",
+    "photo_other": "{count} 张照片",
+    "show_photos": "显示照片"
   }
 }

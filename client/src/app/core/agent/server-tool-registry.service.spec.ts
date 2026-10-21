@@ -8,6 +8,7 @@ import { AgentWebMcpService } from './agent-web-mcp.service';
 import { AssistantChangesService } from './assistant-changes.service';
 import { AgentBridgeService } from './agent-bridge.service';
 import { INPAGE_OPT_IN_KEY, INPAGE_RETRY_MS, ServerToolRegistry, SESSION_HEADER, inpageLevel } from './server-tool-registry.service';
+import { GalleryStore } from '../../features/gallery/gallery.store';
 import { WebMcpToolRegistry } from './webmcp-registry.service';
 import { McpInpageTool } from '../api/types';
 
@@ -39,6 +40,7 @@ describe('ServerToolRegistry', () => {
   let post: Mock;
   let report: Mock;
   let uiExecute: Mock;
+  let review: ReturnType<typeof signal<{ keep: string[]; remove: string[] }>>;
   let service: ServerToolRegistry;
 
   const settle = async (): Promise<void> => {
@@ -52,6 +54,7 @@ describe('ServerToolRegistry', () => {
     if (optIn) localStorage.setItem(INPAGE_OPT_IN_KEY, '1');
     authStatus = signal(initial);
     session = signal<EnvironmentInjector | null>(null);
+    review = signal({ keep: [] as string[], remove: [] as string[] });
     TestBed.configureTestingModule({
       providers: [
         { provide: AuthService, useValue: { status: authStatus } },
@@ -60,6 +63,7 @@ describe('ServerToolRegistry', () => {
         { provide: AssistantChangesService, useValue: { report } },
         { provide: AgentBridgeService, useValue: { tabId: 'tab-1' } },
         { provide: WebMcpToolRegistry, useValue: { execute: uiExecute } },
+        { provide: GalleryStore, useValue: { review } },
       ],
     });
     service = TestBed.inject(ServerToolRegistry);
@@ -188,6 +192,16 @@ describe('ServerToolRegistry', () => {
     expect(options.headers.get(SESSION_HEADER)).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
   });
 
+  it('sends the tab review as review_snapshot when one exists, and omits it otherwise', async () => {
+    setup(status({ edition_authenticated: true }));
+    await settle();
+    await live.get('set_rating')!.execute({ rating: 4 }, {});
+    expect(post.mock.calls[0][1]).not.toHaveProperty('review_snapshot');
+    review.set({ keep: ['/k.jpg'], remove: ['/r.jpg'] });
+    await live.get('set_rating')!.execute({ rating: 4 }, {});
+    expect(post.mock.calls[1][1].review_snapshot).toEqual({ keep: ['/k.jpg'], remove: ['/r.jpg'] });
+  });
+
   it('sends no snapshot when the target is not the selection', async () => {
     setup(status({ edition_authenticated: true }));
     await settle();
@@ -202,7 +216,7 @@ describe('ServerToolRegistry', () => {
     post.mockReturnValue(of({ ok: true, changed: 3, changed_paths: ['/a', '/b', '/c'] }));
     await live.get('set_rating')!.execute({ rating: 1 }, {});
     expect(report).toHaveBeenCalledTimes(1);
-    expect(report).toHaveBeenCalledWith({ paths: ['/a', '/b', '/c'], count: 3 });
+    expect(report).toHaveBeenCalledWith({ tool: 'set_rating', paths: ['/a', '/b', '/c'], count: 3 });
     expect(post.mock.calls[0][1].tab_id).toBe('tab-1');
     report.mockClear();
     post.mockReturnValue(of({ ok: true }));
@@ -215,10 +229,10 @@ describe('ServerToolRegistry', () => {
     await settle();
     post.mockReturnValueOnce(of({ ok: true, changed_paths: null, changed: 12 }));
     await live.get('set_rating')!.execute({ rating: 1 }, {});
-    expect(report).toHaveBeenLastCalledWith({ paths: null, count: 12 });
+    expect(report).toHaveBeenLastCalledWith({ tool: 'set_rating', paths: null, count: 12 });
     post.mockReturnValueOnce(of({ ok: false, error: 'outcome_unknown', changed_paths: ['/z'] }));
     await live.get('set_rating')!.execute({ rating: 1 }, {});
-    expect(report).toHaveBeenLastCalledWith({ paths: ['/z'], count: 1 });
+    expect(report).toHaveBeenLastCalledWith({ tool: 'set_rating', paths: ['/z'], count: 1 });
     report.mockClear();
     post.mockReturnValueOnce(of({ ok: true, changed: 2 }));
     await live.get('set_rating')!.execute({ rating: 1 }, {});

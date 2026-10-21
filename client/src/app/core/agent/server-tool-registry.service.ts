@@ -12,12 +12,16 @@ import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../services/auth.service';
 import { McpCallRequest, McpCallResponse, McpInpageLevel, McpInpageTool, McpInpageTools } from '../api/types';
+import { GalleryStore } from '../../features/gallery/gallery.store';
 import { LEVEL_TIERS, agentLevel } from './agent-level';
 import { WebMcpDescriptor, registerWebMcpTools, toHex, toWebMcpDescriptor } from './webmcp-descriptor';
 import { AgentWebMcpService } from './agent-web-mcp.service';
 import { AgentBridgeService } from './agent-bridge.service';
 import { AssistantChangesService } from './assistant-changes.service';
 import { WebMcpToolRegistry } from './webmcp-registry.service';
+
+/** `review_snapshot` is added to the server's `McpCallRequest` in a parallel change; typed here until `gen:api` runs. */
+type McpCallBody = McpCallRequest & { review_snapshot?: Record<string, unknown> };
 
 export const INPAGE_OPT_IN_KEY = 'facet_agent_inpage_tools';
 export const SESSION_HEADER = 'X-Facet-Agent-Session';
@@ -66,6 +70,7 @@ export class ServerToolRegistry {
   private readonly http = inject(HttpClient);
   private readonly changes = inject(AssistantChangesService);
   private readonly bridge = inject(AgentBridgeService);
+  private readonly gallery = inject(GalleryStore);
 
   /** Per-browser opt-in, default off. */
   readonly optedIn = signal(readOptIn());
@@ -179,13 +184,15 @@ export class ServerToolRegistry {
   private async call(tool: McpInpageTool, args: unknown): Promise<string> {
     const input = { ...((args && typeof args === 'object' ? args : {}) as Record<string, unknown>) };
     for (const key of STRIPPED_ARGS) delete input[key];
-    const body: McpCallRequest = { tool: tool.name, arguments: input, tab_id: this.bridge.tabId };
+    const body: McpCallBody = { tool: tool.name, arguments: input, tab_id: this.bridge.tabId };
     const properties = (tool.inputSchema['properties'] ?? {}) as Record<string, unknown>;
     if ('target' in properties && input['target'] === 'selection') {
       const selection = await this.ui.execute('ui_get_selection', {});
       if (!selection.ok) return JSON.stringify(selection);
       body.selection_snapshot = selection.data && typeof selection.data === 'object' ? selection.data as Record<string, unknown> : null;
     }
+    const review = this.gallery.review();
+    if (review.keep.length || review.remove.length) body.review_snapshot = { ...review };
     try {
       const response = await firstValueFrom(this.http.post<McpCallResponse>('/api/mcp/call', body, {
         headers: new HttpHeaders({ [SESSION_HEADER]: this.sessionId ??= newSessionId() }),
@@ -193,7 +200,7 @@ export class ServerToolRegistry {
       // The key is present only when a photo-changing write ran (even an ok:false outcome_unknown one).
       if ('changed_paths' in response) {
         const paths = response.changed_paths ?? null;
-        this.changes.report({ paths, count: response.changed ?? paths?.length ?? null });
+        this.changes.report({ tool: tool.name, paths, count: response.changed ?? paths?.length ?? null });
       }
       return JSON.stringify(response);
     } catch (err) {

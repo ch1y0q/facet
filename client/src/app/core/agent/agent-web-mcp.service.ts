@@ -10,6 +10,7 @@ import {
   untracked,
 } from '@angular/core';
 import { AuthService } from '../services/auth.service';
+import { AssistantChangesService } from './assistant-changes.service';
 import { WebMcpDescriptor, registerWebMcpTools, toWebMcpDescriptor } from './webmcp-descriptor';
 import { UiToolDefinition, WebMcpToolRegistry, contractReadyWhen } from './webmcp-registry.service';
 
@@ -39,6 +40,7 @@ export type WebMcpState = 'off' | 'insecure_context' | 'active';
 export class AgentWebMcpService {
   private readonly auth = inject(AuthService);
   private readonly registry = inject(WebMcpToolRegistry);
+  private readonly changes = inject(AssistantChangesService);
   private readonly root = inject(EnvironmentInjector);
   private readonly loadPolyfill = inject(WEBMCP_POLYFILL_LOADER);
   private readonly isSecureContext = inject(IS_SECURE_CONTEXT);
@@ -105,7 +107,10 @@ export class AgentWebMcpService {
         readOnlyHint: tool.annotations.readOnlyHint,
         untrustedContentHint: tool.annotations.untrustedContentHint,
       },
-      execute: async (args: unknown) => JSON.stringify(await tool.execute(args)),
+      execute: async (args: unknown) => {
+        this.changes.noteCall(tool.name);
+        return JSON.stringify(await tool.execute(args));
+      },
     });
   }
 }

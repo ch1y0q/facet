@@ -2642,5 +2642,14 @@
       "shadow": "Schatten beschnitten: {channels}",
       "highlight": "Lichter beschnitten: {channels}"
     }
+  },
+  "assistant_activity": {
+    "chip": "Assistent aktiv",
+    "title": "Assistenten-Aktivität",
+    "empty": "Noch keine Aktivität des Assistenten.",
+    "unknown_tool": "Assistent",
+    "photo_one": "{count} Foto",
+    "photo_other": "{count} Fotos",
+    "show_photos": "Fotos anzeigen"
   }
 }

@@ -3,6 +3,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { AuthService, AuthStatus } from '../services/auth.service';
 import { AgentWebMcpService, IS_SECURE_CONTEXT, WEBMCP_POLYFILL_LOADER } from './agent-web-mcp.service';
+import { AssistantChangesService } from './assistant-changes.service';
 import { UiToolDefinition, WebMcpToolRegistry } from './webmcp-registry.service';
 import contractFile from './ui-tools.schema.json';
 import { UiToolContractFile } from './ui-tool.types';
@@ -38,6 +39,7 @@ describe('AgentWebMcpService', () => {
   let secure: boolean;
   let resolveLoad: (() => void) | null;
   let service: AgentWebMcpService;
+  const noteCall = vi.fn();
 
   const settle = async (): Promise<void> => {
     TestBed.tick();
@@ -46,6 +48,7 @@ describe('AgentWebMcpService', () => {
   };
 
   beforeEach(() => {
+    noteCall.mockClear();
     live = new Map();
     registerTool = vi.fn((registered: RegisteredTool, options?: { signal?: AbortSignal }) => {
       if (live.has(registered.name)) throw new DOMException('duplicate', 'InvalidStateError');
@@ -67,6 +70,7 @@ describe('AgentWebMcpService', () => {
       providers: [
         { provide: AuthService, useValue: { status: authStatus } },
         { provide: WEBMCP_POLYFILL_LOADER, useValue: loader },
+        { provide: AssistantChangesService, useValue: { noteCall } },
         { provide: IS_SECURE_CONTEXT, useValue: () => secure },
         {
           provide: WebMcpToolRegistry,
@@ -100,6 +104,7 @@ describe('AgentWebMcpService', () => {
       providers: [
         { provide: AuthService, useValue: { status: signal(status()) } },
         { provide: WEBMCP_POLYFILL_LOADER, useValue: loader },
+        { provide: AssistantChangesService, useValue: { noteCall } },
         { provide: IS_SECURE_CONTEXT, useValue: () => true },
         {
           provide: WebMcpToolRegistry,
@@ -119,6 +124,13 @@ describe('AgentWebMcpService', () => {
     expect(JSON.parse(result as string)).toEqual({ ok: true, data: { name: 'ui_navigate' } });
   });
 
+  it('lights the assistant chip for an in-page UI-tool call, read-only ones included', async () => {
+    await settle();
+    await live.get('ui_navigate')?.execute({}, {});
+    await live.get('ui_get_selection')?.execute({}, {});
+    expect(noteCall.mock.calls).toEqual([['ui_navigate'], ['ui_get_selection']]);
+  });
+
   it('registers nothing and never loads the polyfill when the feature flag is off', async () => {
     TestBed.resetTestingModule();
     loader.mockClear();
@@ -127,6 +139,7 @@ describe('AgentWebMcpService', () => {
       providers: [
         { provide: AuthService, useValue: { status: signal(status({ features: { mcp: false } })) } },
         { provide: WEBMCP_POLYFILL_LOADER, useValue: loader },
+        { provide: AssistantChangesService, useValue: { noteCall } },
         { provide: IS_SECURE_CONTEXT, useValue: () => true },
         { provide: WebMcpToolRegistry, useValue: { tools: [tool('ui_navigate', false, false)], ready: signal(true), load: () => Promise.resolve() } },
       ],
@@ -145,6 +158,7 @@ describe('AgentWebMcpService', () => {
       providers: [
         { provide: AuthService, useValue: { status: signal(status()) } },
         { provide: WEBMCP_POLYFILL_LOADER, useValue: loader },
+        { provide: AssistantChangesService, useValue: { noteCall } },
         { provide: IS_SECURE_CONTEXT, useValue: () => secure },
         { provide: WebMcpToolRegistry, useValue: { tools: [tool('ui_navigate', false, false)], ready: signal(true), load: () => Promise.resolve() } },
       ],
@@ -177,6 +191,7 @@ describe('AgentWebMcpService', () => {
       providers: [
         { provide: AuthService, useValue: { status: signal<AuthStatus | null>(status()) } },
         { provide: WEBMCP_POLYFILL_LOADER, useValue: failing },
+        { provide: AssistantChangesService, useValue: { noteCall } },
         { provide: IS_SECURE_CONTEXT, useValue: () => true },
         { provide: WebMcpToolRegistry, useValue: { tools: [tool('ui_navigate', false, false)], ready: signal(true), load: () => Promise.resolve() } },
       ],
@@ -223,6 +238,7 @@ describe('AgentWebMcpService', () => {
       providers: [
         { provide: AuthService, useValue: { status: st } },
         { provide: WEBMCP_POLYFILL_LOADER, useValue: slowLoader },
+        { provide: AssistantChangesService, useValue: { noteCall } },
         { provide: IS_SECURE_CONTEXT, useValue: () => true },
         { provide: WebMcpToolRegistry, useValue: { tools: [tool('ui_navigate', false, false)], ready: signal(true), load: () => Promise.resolve() } },
       ],

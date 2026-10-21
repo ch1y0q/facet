@@ -36,6 +36,7 @@ import { CompareFiltersService } from './features/comparison/compare-filters.ser
 import { MapFiltersService } from './features/map/map-filters.service';
 import { CapsuleFiltersService } from './features/capsules/capsule-filters.service';
 import { TranslatePipe } from './shared/pipes/translate.pipe';
+import { AssistantActivityChipComponent } from './features/agent/assistant-activity-chip.component';
 import { SortGroupKeyPipe } from './shared/pipes/sort-group-key.pipe';
 import { PersonThumbnailUrlPipe, ThumbnailUrlPipe } from './shared/pipes/thumbnail-url.pipe';
 import { SlideshowComponent } from './features/gallery/slideshow.component';
@@ -116,6 +117,7 @@ export class EditionDialogComponent {
   selector: 'app-root',
   imports: [
     DecimalPipe,
+    AssistantActivityChipComponent,
     RouterOutlet,
     RouterLink,
     RouterLinkActive,
