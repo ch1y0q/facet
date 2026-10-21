@@ -201,6 +201,7 @@ docker compose exec facet python facet.py --doctor   # 使用 Docker 时
 - [install.sh 选项与 Makefile 快捷命令](#installsh-选项与-makefile-快捷命令)
 - [exiftool](#exiftool)
 - [用于人脸检测的 ONNX Runtime](#用于人脸检测的-onnx-runtime)
+- [OpenCV headless 版本](#opencv-headless-版本)
 - [使用 RAPIDS cuML 在 GPU 上做人脸聚类](#使用-rapids-cuml-在-gpu-上做人脸聚类)
 - [Apple Silicon (Metal/MPS)](#apple-silicon-metalmps)
 - [下载体积](#下载体积)
@@ -372,10 +373,18 @@ pip install "onnxruntime-gpu>=1.19.0,<1.27"   # CUDA 12.x 版 PyTorch（cu124、
 # 仅 CPU，或 CUDA 11.8（cu118）：保留第 3 步装好的版本，或用下面的命令重装
 # pip install "onnxruntime>=1.15.0"
 
-# 5. 构建网页照片库
+# 5. 只保留 headless 版 OpenCV。第 3 步安装了 opencv-python，即带图形界面的版本，
+#    它需要 libGL.so.1（Debian、WSL 和精简主机没有它，`import cv2` 会失败）；
+#    两个包共用 cv2/，最后安装的那个生效。请在第 3、4 步之后执行：
+#    卸载两者，再按相同版本装回 headless 版。
+CV_VER=$(pip show opencv-python-headless opencv-python 2>/dev/null | awk '/^Version:/ {print $2; exit}')
+pip uninstall -y opencv-python opencv-python-headless
+pip install --no-deps "opencv-python-headless==$CV_VER"
+
+# 6. 构建网页照片库
 cd client && npm install && npx ng build && cd ..
 
-# 6. 运行
+# 7. 运行
 python facet.py /path/to/photos
 python viewer.py
 ```
@@ -391,9 +400,9 @@ python -c "import torch, cv2, fastapi, insightface, open_clip, pyiqa, numpy, sci
 ## install.sh 选项与 Makefile 快捷命令
 
 `install.sh` 会定位一个 Python 3.10+，创建 `venv`，检测操作系统和 GPU（Apple
-Silicon → Metal，否则用 `nvidia-smi` → 匹配的 CUDA 构建），安装 PyTorch、`requirements.txt`、`transformers` 和 `accelerate`，最后安装对应的
-ONNX Runtime（见[用于人脸检测的 ONNX Runtime](#用于人脸检测的-onnx-runtime)），检查
-`exiftool`，构建 Angular 客户端，并验证每一处导入。
+Silicon → Metal，否则用 `nvidia-smi` → 匹配的 CUDA 构建），安装 PyTorch、`requirements.txt`、`transformers` 和 `accelerate`，最后换上对应的
+ONNX Runtime（见[用于人脸检测的 ONNX Runtime](#用于人脸检测的-onnx-runtime)）和 headless 版 OpenCV（见[OpenCV headless 版本](#opencv-headless-版本)），检查
+`exiftool`，构建 Angular 客户端，并验证每一处导入；任何一处失败时脚本以状态码 1 退出。
 
 | 参数 | 作用 |
 |------|--------|
@@ -450,7 +459,21 @@ CUDA 11.8（cu118）没有可安装的 GPU 构建。唯一适用于 CUDA 11 的 
 
 替换之后，`pip check` 会报告 "insightface ... requires onnxruntime, which is not installed"（`uv pip check`："The package `insightface` requires `onnxruntime`, but it's not installed"）。这是预期的，也无害：`onnxruntime-gpu` 提供的是同一个 `onnxruntime` 模块。
 
+OpenCV 的替换也会留下同类提示：`pip check` 还会报告 `insightface` 和 `facexlib` 需要 `opencv-python`。这同样是预期的，因为 `opencv-python-headless` 提供的是同一个 `cv2` 模块。之后手动执行 `pip install -r requirements.txt` 会把带图形界面的版本装回来；重新执行[OpenCV headless 版本](#opencv-headless-版本)中的替换，或重新运行 `install.sh`，即可修复。
+
 要检查结果，请运行 `python facet.py --doctor` 并查看其 **ONNX Runtime** 一节。它会列出已安装的包、版本和执行提供程序，并在两个包同时安装或包无法导入时给出警告，每次都附带修复命令。当 Facet 运行在 CUDA 上时，它还会比较 ONNX Runtime 编译时针对的 CUDA 构建与 PyTorch 的构建，并运行一个单节点测试会话。只有该会话确实运行在 `CUDAExecutionProvider` 上时，`CUDA session` 一行才是 OK；否则诊断会连同 ONNX Runtime 自己给出的原因和修复方法一起发出警告。测试会话需要 `onnx` 包（没有它时诊断会说明未做探测），在 CPU 上和商业模式下（此时不使用 InsightFace）会被跳过。在 CUDA 上扫描时，若 InsightFace 的会话运行在 CPU 上，也会记录一条警告。在 Docker 容器里，诊断打印的修复命令会在下一次 `docker run` 时丢失：请改为拉取最新镜像或重新构建镜像（CUDA 镜像通过构建参数 `ORT_GPU_VERSION` 内置 `onnxruntime-gpu` 1.26.0；切勿设成 1.27 及更高版本，那些是 CUDA 13 构建）。
+
+## OpenCV headless 版本
+
+`opencv-python` 和 `opencv-python-headless` 安装到同一个 `cv2/` 目录并共用文件，因此无法共存：pip 最后安装的那个生效。Facet 的依赖同时要求两者（`requirements.txt` 要求 `opencv-python`，`pyiqa` 要求 headless 版，`insightface` 和 `facexlib` 又要求 `opencv-python`），所以由哪一个提供 `cv2` 取决于安装顺序。`opencv-python` 是带图形界面的版本，会链接 `libGL.so.1`，而 Debian、WSL 和精简主机并不提供它：此时 `import cv2` 会失败，报 `ImportError: libGL.so.1: cannot open shared object file`。Facet 不调用任何 OpenCV 窗口函数，所以 headless 版始终够用。
+
+`bash install.sh` 在所有模式（包括 `--commercial`）下都只保留这个版本：在最后一次安装依赖之后，它会卸载两个包，并以找到的版本重新安装 `opencv-python-headless`。Docker 镜像不受影响（它们安装了 `libgl1`）。要手动修复现有的 `venv`，请把 `<version>` 换成 `pip list` 为这两个包之一显示的版本：
+
+```bash
+pip uninstall -y opencv-python opencv-python-headless && pip install --no-deps "opencv-python-headless==<version>"
+```
+
+`python facet.py --doctor` 为此提供了 **OpenCV** 一节。`cv2` 能导入时显示 `[OK]`。不能导入时，它会连同导入错误一起发出警告，并打印上面的命令，其中已填入你安装的版本。两个包都已安装但导入正常，属于信息而非警告：Docker 镜像同时包含两者，并带有 `libgl1`。如果 `install.sh` 结束时有核心导入失败（包括 `cv2`），脚本会打印 "Installation finished with errors" 并以状态码 1 退出，而不是输出 "Installation complete!"。
 
 ## 使用 RAPIDS cuML 在 GPU 上做人脸聚类
 
@@ -463,6 +486,10 @@ conda activate facet
 conda install -c rapidsai -c conda-forge -c nvidia cuml cuda-version=12.0
 # 或：pip install --extra-index-url https://pypi.nvidia.com/ "cuml-cu12"
 pip install -r requirements.txt
+# requirements.txt 会安装 opencv-python，即带图形界面的版本（需要 libGL.so.1）：只保留 headless 版
+CV_VER=$(pip show opencv-python-headless opencv-python 2>/dev/null | awk '/^Version:/ {print $2; exit}')
+pip uninstall -y opencv-python opencv-python-headless
+pip install --no-deps "opencv-python-headless==$CV_VER"
 ```
 
 只要 cuML 可用，聚类就会自动使用 GPU（`scoring_config.json` 中的

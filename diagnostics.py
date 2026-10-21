@@ -449,6 +449,75 @@ def _report_onnx_runtime(config_path, torch, selected_device):
         _report_onnx_runtime_cuda(ort, torch_cuda)
 
 
+_OPENCV_HEADLESS = "opencv-python-headless"
+_OPENCV_DISTRIBUTIONS = ("opencv-python", _OPENCV_HEADLESS)
+
+
+def _installed_versions(names):
+    """``{name: version}`` for those of ``names`` that pip has installed, in the order given."""
+    found = {}
+    for name in names:
+        try:
+            found[name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            continue
+    return found
+
+
+def _opencv_fix(versions):
+    """The command that leaves only the headless OpenCV build, at the version already installed.
+
+    The headless distribution's version wins, as in ``install.sh``, so the repair does not move
+    ``cv2`` to another release. With no distribution recorded there is nothing to uninstall.
+    """
+    version = versions.get(_OPENCV_HEADLESS) or versions.get("opencv-python")
+    if version is None:
+        return f"pip install {_OPENCV_HEADLESS}"
+    return f'pip uninstall -y opencv-python opencv-python-headless && pip install --no-deps "{_OPENCV_HEADLESS}=={version}"'
+
+
+def _import_opencv():
+    """``(module, None)``, or ``(None, why it is unusable)``; never raises.
+
+    ``opencv-python`` links ``libGL.so.1``, which Debian/WSL and slim hosts lack, so its ``cv2``
+    fails to import there. The ``__version__`` guard is a defensive case, not observed behaviour:
+    pip 24 and uv 0.8 delete ``cv2/`` entirely when only one build is uninstalled (a
+    ``ModuleNotFoundError``, which the ``except`` below reports), but an empty ``cv2/`` left by an interrupted
+    uninstall or a hand-edited tree would import as a namespace package with no ``__version__``,
+    and that must read as a broken install, not a working one.
+    """
+    try:
+        cv2 = importlib.import_module("cv2")
+    except Exception as ex:
+        return None, f"{type(ex).__name__}: {ex}"
+    if not hasattr(cv2, "__version__"):
+        return None, "module 'cv2' has no attribute '__version__' (an empty namespace package)"
+    return cv2, None
+
+
+def _report_opencv():
+    """Whether ``cv2`` imports, and which OpenCV distributions provide it.
+
+    ``opencv-python`` and ``opencv-python-headless`` share one ``cv2/`` directory and the one
+    installed last wins; ``insightface`` and ``facexlib`` pull the GUI build back in over the
+    headless one ``pyiqa`` wants. Facet uses no OpenCV GUI, so only the headless build is needed.
+    """
+    versions = _installed_versions(_OPENCV_DISTRIBUTIONS)
+    cv2, import_error = _import_opencv()
+    if cv2 is None:
+        _warn("cv2", f"cannot be imported: {import_error}")
+        _log_fix(f"Fix: {_opencv_fix(versions)}")
+        return
+    described = f"{cv2.__version__} ({', '.join(versions) or 'distribution unknown'})"
+    if len(versions) < len(_OPENCV_DISTRIBUTIONS):
+        _ok("cv2", described)
+        return
+    # Not a warning: the Docker images ship both on purpose, with libgl1 installed.
+    _info("cv2", described)
+    _info("OpenCV packages", "both are installed and share cv2/; the one installed last provides it "
+                             "(fine where libGL is present, as in the Docker images)")
+
+
 # Exit codes of verify_onnx_runtime, read by install.sh's final check; the numbers in its `case`
 # are kept in step with these by tests/test_onnx_runtime_install_consistency.py.
 VERIFY_ON_CUDA = 0
@@ -681,6 +750,13 @@ def run_doctor(config_path=None, db_path=None, simulate_gpu=None, simulate_vram=
             logger.warning("  Install the NVIDIA driver for your GPU, then reinstall PyTorch with CUDA.")
         except Exception as e:
             _warn("nvidia-smi", f"error: {e}")
+
+    # --- OpenCV --- (its own section: core in every mode, unlike ONNX Runtime, which commercial mode drops)
+    _section("OpenCV")
+    try:
+        _report_opencv()
+    except Exception as e:
+        _warn("OpenCV check", f"failed unexpectedly: {e}")
 
     # --- ONNX Runtime ---
     _section("ONNX Runtime")

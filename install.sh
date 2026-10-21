@@ -262,7 +262,7 @@ $INSTALLER install "transformers>=5.3.0,<5.16" "accelerate>=0.25.0"
 ok "Transformers installed"
 
 # --- Step 8: Install ONNX Runtime (insightface only; skipped with --commercial) ---
-# Deliberately LAST of the installs: insightface (requirements.restricted.txt) requires
+# Deliberately the LAST install that resolves dependencies: insightface (requirements.restricted.txt) requires
 # the plain CPU `onnxruntime`, and the CPU and GPU distributions install into the same
 # onnxruntime/ tree, so whichever pip installs last wins. Installing the GPU build before
 # the dependencies left it overwritten by the CPU one (issue #229). Both names are
@@ -278,7 +278,39 @@ else
     info "Skipping ONNX Runtime (--commercial: insightface is not installed)"
 fi
 
-# --- Step 9: Check exiftool ---
+# --- Step 9: Keep only the headless OpenCV build (every mode, commercial included) ---
+# opencv-python and opencv-python-headless install into the same cv2/ directory, so whichever
+# pip installs last wins, exactly as with the two ONNX Runtime distributions above. The
+# requirements ask for both: requirements.txt for opencv-python, pyiqa for the headless one,
+# insightface and facexlib for opencv-python again, so the build left providing cv2 follows
+# install order. The GUI build links libGL.so.1, which Debian/WSL and slim hosts do not have,
+# and `import cv2` then fails with an ImportError. Facet calls no OpenCV GUI function (no
+# imshow, waitKey or namedWindow), so the headless build is always enough. This runs after
+# every install that can pull opencv-python (steps 6, 7 and 8) and, being --no-deps, cannot pull
+# the CPU onnxruntime back in over step 8. Both names are uninstalled first, for the reason
+# step 8 gives: uninstalling only one would remove files the other shares. requirements.txt
+# carries opencv-python in --commercial mode too, so there is no mode check. The version is
+# the headless one's when it is installed, else opencv-python's; nothing is touched when
+# neither distribution is installed.
+CV_VER=$($PYTHON -c '
+import importlib.metadata as metadata
+for name in ("opencv-python-headless", "opencv-python"):
+    try:
+        print(metadata.version(name))
+        break
+    except metadata.PackageNotFoundError:
+        pass
+' 2>/dev/null || true)
+if [[ -n "$CV_VER" ]]; then
+    info "Keeping only OpenCV headless $CV_VER: the GUI build needs libGL, which many hosts lack..."
+    $UNINSTALLER opencv-python opencv-python-headless
+    $INSTALLER install --no-deps "opencv-python-headless==$CV_VER"
+    ok "OpenCV installed (opencv-python-headless $CV_VER)"
+else
+    info "Skipping the OpenCV swap (no OpenCV distribution is installed)"
+fi
+
+# --- Step 10: Check exiftool ---
 echo ""
 if command -v exiftool &>/dev/null; then
     ok "exiftool: $(exiftool -ver)"
@@ -288,7 +320,7 @@ else
     echo "              brew install exiftool                    (macOS)"
 fi
 
-# --- Step 10: Build Angular client ---
+# --- Step 11: Build Angular client ---
 if [[ "$SKIP_CLIENT" -eq 0 ]]; then
     if [[ -f "client/package.json" && ! -d "client/dist" ]]; then
         if command -v node &>/dev/null && command -v npm &>/dev/null; then
@@ -307,16 +339,18 @@ else
     info "Skipping Angular build (--skip-client)"
 fi
 
-# --- Step 11: Verify imports ---
+# --- Step 12: Verify imports ---
 echo ""
 info "Verifying installation..."
 CORE_IMPORTS="torch, cv2, fastapi, open_clip, numpy, scipy, PIL, imagehash, rawpy, tqdm, exifread"
 if [[ "$COMMERCIAL" -eq 0 ]]; then
     CORE_IMPORTS="$CORE_IMPORTS, insightface"
 fi
+IMPORTS_FAILED=0
 if $PYTHON -c "import $CORE_IMPORTS" 2>/dev/null; then
     ok "All core imports successful"
 else
+    IMPORTS_FAILED=1
     err "Some imports failed — run 'python facet.py --doctor' for diagnostics"
 fi
 
@@ -369,6 +403,21 @@ if [[ "$COMMERCIAL" -eq 1 ]]; then
 fi
 
 # --- Summary ---
+# A failed core import is not a finished install: exit non-zero (after the checks above have
+# all had their say) so a script or CI step wrapping install.sh sees the failure.
+if [[ "$IMPORTS_FAILED" -eq 1 ]]; then
+    echo ""
+    echo -e "${RED}══════════════════════════════════${NC}"
+    echo -e "${RED}  Installation finished with errors${NC}"
+    echo -e "${RED}══════════════════════════════════${NC}"
+    echo ""
+    echo "  Some core imports failed (see above). Activate the venv and run:"
+    echo ""
+    echo "    source venv/bin/activate         # macOS/Linux"
+    echo "    python facet.py --doctor"
+    echo ""
+    exit 1
+fi
 echo ""
 echo -e "${GREEN}══════════════════════════════════${NC}"
 echo -e "${GREEN}  Installation complete!${NC}"

@@ -213,6 +213,7 @@ cómo cambiarla y la referencia completa de dependencias.
 - [Opciones de install.sh y atajos de Makefile](#opciones-de-installsh-y-atajos-de-makefile)
 - [exiftool](#exiftool)
 - [ONNX Runtime para la detección de rostros](#onnx-runtime-para-la-detección-de-rostros)
+- [Compilación headless de OpenCV](#compilación-headless-de-opencv)
 - [Agrupación de rostros en GPU con RAPIDS cuML](#agrupación-de-rostros-en-gpu-con-rapids-cuml)
 - [Apple Silicon (Metal/MPS)](#apple-silicon-metalmps)
 - [Tamaños de descarga](#tamaños-de-descarga)
@@ -409,10 +410,18 @@ pip install "onnxruntime-gpu>=1.19.0,<1.27"   # PyTorch con CUDA 12.x (cu124, cu
 # Solo CPU, o CUDA 11.8 (cu118): conserva lo que instaló el paso 3, o reinstálalo con
 # pip install "onnxruntime>=1.15.0"
 
-# 5. Compila la galería web
+# 5. Conserva solo la compilación headless de OpenCV. El paso 3 instaló opencv-python, la compilación con
+#    interfaz gráfica, que necesita libGL.so.1 (Debian, WSL y los hosts mínimos no la tienen y `import cv2` falla);
+#    los paquetes comparten cv2/ y gana el último instalado. Hazlo DESPUÉS de los pasos 3 y 4: elimina ambos
+#    y reinstala la compilación headless en la misma versión.
+CV_VER=$(pip show opencv-python-headless opencv-python 2>/dev/null | awk '/^Version:/ {print $2; exit}')
+pip uninstall -y opencv-python opencv-python-headless
+pip install --no-deps "opencv-python-headless==$CV_VER"
+
+# 6. Compila la galería web
 cd client && npm install && npx ng build && cd ..
 
-# 6. Ejecútalo
+# 7. Ejecútalo
 python facet.py /path/to/photos
 python viewer.py
 ```
@@ -430,10 +439,11 @@ python -c "import torch, cv2, fastapi, insightface, open_clip, pyiqa, numpy, sci
 
 `install.sh` localiza un Python 3.10+, crea el `venv`, detecta el sistema operativo y la
 GPU (Apple Silicon → Metal, o si no, `nvidia-smi` → la compilación de CUDA
-correspondiente), instala PyTorch, `requirements.txt`, `transformers` y `accelerate`, y por último
-el ONNX Runtime adecuado (consulta [ONNX Runtime para la detección de rostros](#onnx-runtime-para-la-detección-de-rostros)),
+correspondiente), instala PyTorch, `requirements.txt`, `transformers` y `accelerate`, y después de todo
+lo demás cambia al ONNX Runtime adecuado (consulta [ONNX Runtime para la detección de rostros](#onnx-runtime-para-la-detección-de-rostros))
+y a la compilación headless de OpenCV (consulta [Compilación headless de OpenCV](#compilación-headless-de-opencv)),
 comprueba si existe `exiftool`, compila el cliente de
-Angular y verifica todas las importaciones.
+Angular y verifica todas las importaciones; si alguna falla, termina con estado 1.
 
 | Opción | Efecto |
 |------|--------|
@@ -533,6 +543,13 @@ installed" (`uv pip check`: "The package `insightface` requires `onnxruntime`, b
 not installed"). Es lo esperado e inofensivo: `onnxruntime-gpu` proporciona el mismo
 módulo `onnxruntime`.
 
+El cambio de OpenCV deja el mismo tipo de aviso: `pip check` también informa de que
+`insightface` y `facexlib` requieren `opencv-python`. Eso también es lo esperado, porque
+`opencv-python-headless` proporciona el mismo módulo `cv2`. Un `pip install -r
+requirements.txt` manual posterior trae de vuelta la compilación con interfaz gráfica;
+vuelve a ejecutar el cambio de [Compilación headless de OpenCV](#compilación-headless-de-opencv)
+o `install.sh` para corregirlo.
+
 Para comprobar el resultado, ejecuta `python facet.py --doctor` y lee su sección **ONNX
 Runtime**. Muestra el paquete instalado, su versión y los proveedores de ejecución, y
 avisa cuando están instalados ambos paquetes o el paquete no se puede importar, en cada
@@ -549,6 +566,37 @@ Docker, el comando de reparación que imprime el diagnóstico se pierde en el si
 `onnxruntime-gpu` 1.26.0 mediante el argumento de compilación `ORT_GPU_VERSION`; no
 establezcas nunca un valor 1.27 o posterior, porque son compilaciones para CUDA 13).
 
+## Compilación headless de OpenCV
+
+`opencv-python` y `opencv-python-headless` se instalan en el mismo directorio `cv2/` y
+comparten archivos, así que no pueden coexistir: gana el último que instala pip. Los
+requisitos de Facet piden ambos (`requirements.txt` pide `opencv-python`, `pyiqa` la
+compilación headless, e `insightface` y `facexlib` vuelven a pedir `opencv-python`), de
+modo que cuál aporta `cv2` depende del orden de instalación. `opencv-python` es la
+compilación con interfaz gráfica y enlaza con `libGL.so.1`, que Debian, WSL y los hosts
+mínimos no incluyen: entonces `import cv2` falla con
+`ImportError: libGL.so.1: cannot open shared object file`. Facet no llama a ninguna
+función de ventanas de OpenCV, así que la compilación headless siempre basta.
+
+`bash install.sh` conserva solo esa compilación, en todos los modos, incluido
+`--commercial`: tras la última instalación de dependencias elimina ambos paquetes y
+vuelve a instalar `opencv-python-headless` en la versión que encontró. Las imágenes
+Docker no se ven afectadas (instalan `libgl1`). Para reparar a mano un `venv` existente,
+sustituye `<version>` por la versión que `pip list` muestra para cualquiera de los dos
+paquetes:
+
+```bash
+pip uninstall -y opencv-python opencv-python-headless && pip install --no-deps "opencv-python-headless==<version>"
+```
+
+`python facet.py --doctor` tiene una sección **OpenCV** para esto. Muestra `[OK]` cuando
+`cv2` se importa. Cuando no, avisa con el error de importación e imprime el comando
+anterior con tu versión instalada. Que ambos paquetes estén instalados con una
+importación que funciona es información, no un aviso: las imágenes Docker incluyen
+ambos, con `libgl1`. Si al final de `install.sh` falla alguna importación básica (`cv2`
+incluida), el script imprime "Installation finished with errors" y termina con estado 1
+en lugar de "Installation complete!".
+
 ## Agrupación de rostros en GPU con RAPIDS cuML
 
 Para bases de datos de rostros grandes (más de 80 000 rostros), cuML acelera
@@ -560,6 +608,10 @@ conda activate facet
 conda install -c rapidsai -c conda-forge -c nvidia cuml cuda-version=12.0
 # o bien: pip install --extra-index-url https://pypi.nvidia.com/ "cuml-cu12"
 pip install -r requirements.txt
+# requirements.txt instala opencv-python, la compilación con interfaz gráfica (necesita libGL.so.1): conserva solo la headless
+CV_VER=$(pip show opencv-python-headless opencv-python 2>/dev/null | awk '/^Version:/ {print $2; exit}')
+pip uninstall -y opencv-python opencv-python-headless
+pip install --no-deps "opencv-python-headless==$CV_VER"
 ```
 
 Cuando cuML está disponible, la agrupación usa la GPU automáticamente

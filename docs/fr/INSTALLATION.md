@@ -215,6 +215,7 @@ modifier, et la référence complète des dépendances.
 - [Options d'install.sh et raccourcis Makefile](#options-dinstallsh-et-raccourcis-makefile)
 - [exiftool](#exiftool)
 - [ONNX Runtime pour la détection de visages](#onnx-runtime-pour-la-détection-de-visages)
+- [OpenCV en build headless](#opencv-en-build-headless)
 - [Regroupement de visages sur GPU avec RAPIDS cuML](#regroupement-de-visages-sur-gpu-avec-rapids-cuml)
 - [Apple Silicon (Metal/MPS)](#apple-silicon-metalmps)
 - [Tailles de téléchargement](#tailles-de-téléchargement)
@@ -413,10 +414,18 @@ pip install "onnxruntime-gpu>=1.19.0,<1.27"   # PyTorch CUDA 12.x (cu124, cu126,
 # CPU uniquement, ou CUDA 11.8 (cu118) : conservez ce que l'étape 3 a installé, ou réinstallez-le avec
 # pip install "onnxruntime>=1.15.0"
 
-# 5. Compiler la galerie web
+# 5. Ne garder que le build headless d'OpenCV. L'étape 3 a installé opencv-python, le build avec interface
+#    graphique, qui exige libGL.so.1 (Debian, WSL et les hôtes allégés ne l'ont pas, et `import cv2` échoue alors) ;
+#    les paquets partagent cv2/ et le dernier installé l'emporte. Faites-le APRÈS les étapes 3 et 4 : retirez
+#    les deux et remettez le build headless à la même version.
+CV_VER=$(pip show opencv-python-headless opencv-python 2>/dev/null | awk '/^Version:/ {print $2; exit}')
+pip uninstall -y opencv-python opencv-python-headless
+pip install --no-deps "opencv-python-headless==$CV_VER"
+
+# 6. Compiler la galerie web
 cd client && npm install && npx ng build && cd ..
 
-# 6. L'exécuter
+# 7. L'exécuter
 python facet.py /path/to/photos
 python viewer.py
 ```
@@ -433,9 +442,10 @@ Des erreurs ? Consultez
 ## Options d'install.sh et raccourcis Makefile
 
 `install.sh` repère un Python 3.10+, crée le `venv`, détecte l'OS et le GPU (Apple
-Silicon → Metal, sinon `nvidia-smi` → build CUDA correspondant), installe PyTorch, `requirements.txt`, `transformers` et `accelerate`, puis, en dernier, la bonne
-variante d'ONNX Runtime (voir [ONNX Runtime pour la détection de visages](#onnx-runtime-pour-la-détection-de-visages)),
-vérifie la présence d'`exiftool`, compile le client Angular et vérifie chaque import.
+Silicon → Metal, sinon `nvidia-smi` → build CUDA correspondant), installe PyTorch, `requirements.txt`, `transformers` et `accelerate`, puis met en place, après tout le reste, la bonne
+variante d'ONNX Runtime (voir [ONNX Runtime pour la détection de visages](#onnx-runtime-pour-la-détection-de-visages))
+et le build headless d'OpenCV (voir [OpenCV en build headless](#opencv-en-build-headless)),
+vérifie la présence d'`exiftool`, compile le client Angular et vérifie chaque import ; si l'un échoue, il se termine avec le code 1.
 
 | Option | Effet |
 |------|--------|
@@ -534,6 +544,12 @@ installed » (`uv pip check` : « The package `insightface` requires `onnxrun
 not installed »). C'est attendu et sans conséquence : `onnxruntime-gpu` fournit le même
 module `onnxruntime`.
 
+L'échange d'OpenCV laisse le même type de signalement : `pip check` indique aussi que
+`insightface` et `facexlib` requièrent `opencv-python`. C'est attendu également, puisque
+`opencv-python-headless` fournit le même module `cv2`. Un `pip install -r requirements.txt`
+manuel ultérieur ramène le build avec interface graphique ; relancez l'échange décrit dans
+[OpenCV en build headless](#opencv-en-build-headless), ou `install.sh`, pour le corriger.
+
 Pour vérifier le résultat, lancez `python facet.py --doctor` et lisez sa section **ONNX
 Runtime**. Elle liste le paquet installé, sa version et les fournisseurs d'exécution, et
 avertit quand les deux paquets sont installés ou que le paquet ne s'importe pas, avec à
@@ -550,6 +566,36 @@ Docker, la commande de réparation affichée par le diagnostic est perdue au pro
 embarquent `onnxruntime-gpu` 1.26.0 via l'argument de build `ORT_GPU_VERSION` ; ne le
 réglez jamais sur une version 1.27 ou plus récente, ce sont des builds CUDA 13).
 
+## OpenCV en build headless
+
+`opencv-python` et `opencv-python-headless` s'installent dans le même répertoire `cv2/`
+et partagent des fichiers, donc ils ne peuvent pas coexister : le dernier installé par pip
+l'emporte. Les dépendances de Facet demandent les deux (`requirements.txt` demande
+`opencv-python`, `pyiqa` le build headless, `insightface` et `facexlib` de nouveau
+`opencv-python`), si bien que celui qui fournit `cv2` dépend de l'ordre d'installation.
+`opencv-python` est le build avec interface graphique et se lie à `libGL.so.1`, que
+Debian, WSL et les hôtes allégés ne fournissent pas : `import cv2` échoue alors avec
+`ImportError: libGL.so.1: cannot open shared object file`. Facet n'appelle aucune fonction
+de fenêtre d'OpenCV, donc le build headless suffit toujours.
+
+`bash install.sh` ne garde que ce build, dans tous les modes y compris `--commercial` :
+après sa dernière installation de dépendances, il retire les deux paquets puis réinstalle
+`opencv-python-headless` à la version trouvée. Les images Docker ne sont pas concernées
+(elles installent `libgl1`). Pour réparer à la main un `venv` existant, remplacez
+`<version>` par la version que `pip list` affiche pour l'un ou l'autre paquet :
+
+```bash
+pip uninstall -y opencv-python opencv-python-headless && pip install --no-deps "opencv-python-headless==<version>"
+```
+
+`python facet.py --doctor` a pour cela une section **OpenCV**. Elle affiche `[OK]` quand
+`cv2` s'importe. Sinon, elle avertit avec l'erreur d'import et affiche la commande
+ci-dessus avec votre version installée. Avoir les deux paquets installés avec un import
+qui fonctionne est une information, pas un avertissement : les images Docker embarquent
+les deux, avec `libgl1`. Si un import essentiel échoue à la fin d'`install.sh` (`cv2`
+compris), le script affiche "Installation finished with errors" et se termine avec le
+code 1 au lieu d'afficher "Installation complete!".
+
 ## Regroupement de visages sur GPU avec RAPIDS cuML
 
 Pour les grandes bases de visages (80 000+ visages), cuML accélère considérablement le
@@ -561,6 +607,10 @@ conda activate facet
 conda install -c rapidsai -c conda-forge -c nvidia cuml cuda-version=12.0
 # ou : pip install --extra-index-url https://pypi.nvidia.com/ "cuml-cu12"
 pip install -r requirements.txt
+# requirements.txt installe opencv-python, le build avec interface graphique (exige libGL.so.1) : ne gardez que le build headless
+CV_VER=$(pip show opencv-python-headless opencv-python 2>/dev/null | awk '/^Version:/ {print $2; exit}')
+pip uninstall -y opencv-python opencv-python-headless
+pip install --no-deps "opencv-python-headless==$CV_VER"
 ```
 
 Lorsque cuML est disponible, le regroupement utilise automatiquement le GPU

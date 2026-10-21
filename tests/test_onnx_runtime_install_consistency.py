@@ -5,7 +5,8 @@ Dockerfile carry their own copies because neither can import Python at the point
 it installs. These tests read both files as text so the copies cannot drift apart
 from the helper silently, pin the one ordering that matters in install.sh (the
 ONNX Runtime swap runs after everything that pulls the CPU ``onnxruntime`` back
-in), and run install.sh against stand-in ``uv``, ``pip``, ``nvidia-smi``,
+in, and the OpenCV swap after everything that pulls ``opencv-python`` back in),
+and run install.sh against stand-in ``uv``, ``pip``, ``nvidia-smi``,
 ``uname`` and ``python`` to check which packages each path installs.
 """
 
@@ -97,7 +98,7 @@ class TestInstallShVerify:
     def test_run_outside_the_repo_root_the_check_could_not_run_and_says_so(self, tmp_path):
         """The wrapper cannot import ``diagnostics`` from another directory: exit 2, never the 'not on CUDA' code."""
         code = _code("install.sh")
-        snippet = code[code.index("$PYTHON -c '") + len("$PYTHON -c '"):]
+        snippet = code[code.index("$PYTHON -c '", code.index("ORT_REPORT=")) + len("$PYTHON -c '"):]
         snippet = snippet[:snippet.index("'")]
         result = subprocess.run([sys.executable, "-c", snippet], cwd=tmp_path, capture_output=True, text=True,
                                 env={"PATH": os.environ.get("PATH", ""), "PYTHONPATH": ""}, check=False)
@@ -116,6 +117,20 @@ class TestInstallShOrder:
         verify = _position(code, 'info "Verifying installation..."')
         assert restricted < uninstall
         assert transformers < uninstall
+        assert uninstall < install < verify
+
+    def test_the_opencv_swap_runs_after_every_install_that_can_pull_opencv_python(self):
+        """requirements.txt, insightface and facexlib pull the GUI wheel into the headless one's ``cv2/``; the last wins."""
+        code = _code("install.sh")
+        restricted = _position(code, "install -r requirements.txt -r requirements.restricted.txt")
+        transformers = _position(code, '"transformers>=')
+        ort_install = _position(code, '$INSTALLER install "$ONNX_PACKAGE"')
+        uninstall = _position(code, "$UNINSTALLER opencv-python opencv-python-headless")
+        install = _position(code, '$INSTALLER install --no-deps "opencv-python-headless==$CV_VER"')
+        verify = _position(code, 'info "Verifying installation..."')
+        assert restricted < uninstall
+        assert transformers < uninstall
+        assert ort_install < uninstall
         assert uninstall < install < verify
 
 
@@ -144,6 +159,8 @@ if [ "$1" = "-c" ]; then
   case "$2" in
     *version_info*) exec "$REAL_PYTHON" -c "$2";;
     *verify_onnx_runtime*) echo "CMD verify-ort" >> "$LOG"; [ -n "$FAKE_ORT_OUT" ] && printf '%b\\n' "$FAKE_ORT_OUT"; exit "${FAKE_ORT_RC:-1}";;
+    *importlib.metadata*) printf '%s' "$FAKE_CV_VER"; exit 0;;
+    "import torch,"*) exit "${FAKE_CORE_RC:-0}";;
     *) exit 0;;
   esac
 fi
@@ -296,3 +313,109 @@ class TestInstallShRuns:
         assert rc == 0
         assert must_say in output
         assert must_not_say not in output
+
+
+def _opencv_commands(commands):
+    return [cmd for cmd in commands if "opencv" in cmd]
+
+
+def _cv_ver_snippet():
+    """The Python install.sh runs to read the installed OpenCV version, exactly as it is written there."""
+    opener = "CV_VER=$($PYTHON -c '"
+    code = _code("install.sh")
+    start = _position(code, opener) + len(opener)
+    return code[start:code.index("'", start)]
+
+
+def _read_cv_ver(tmp_path, distributions):
+    """Run the real snippet over a ``sys.path`` holding only fake ``{name: version}`` distribution metadata.
+
+    ``-I -S`` keep the interpreter's own site-packages (this venv's real OpenCV) out of the lookup; the
+    fake directory is put on ``sys.path`` by a two-line prefix, since ``-I`` also ignores ``PYTHONPATH``.
+    """
+    site = tmp_path / "fake-site"
+    site.mkdir()
+    for name, version in distributions.items():
+        info = site / f"{name.replace('-', '_')}-{version}.dist-info"
+        info.mkdir()
+        (info / "METADATA").write_text(f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n",
+                                       encoding="utf-8")
+    prefix = f"import sys\nsys.path[:0] = [{str(site)!r}]\n"
+    return subprocess.run([sys.executable, "-I", "-S", "-c", prefix + _cv_ver_snippet()], capture_output=True,
+                          text=True, check=False)
+
+
+class TestInstallShOpenCV:
+    """opencv-python and the headless build share ``cv2/``; install.sh leaves the headless one, and says so when cv2 is broken."""
+
+    @pytest.mark.parametrize("flags, installer, uninstall", [
+        ([], "uv pip", "uv pip uninstall opencv-python opencv-python-headless"),
+        (["--no-uv"], "pip", "pip uninstall -y opencv-python opencv-python-headless"),
+    ])
+    def test_both_distributions_are_removed_then_the_headless_one_is_put_back_at_the_same_version(
+            self, run_install, flags, installer, uninstall):
+        rc, commands, output = run_install(*flags, cv_ver="5.0.0.93")
+        assert rc == 0
+        assert _opencv_commands(commands) == [uninstall,
+                                              f"{installer} install --no-deps opencv-python-headless==5.0.0.93"]
+        assert "OpenCV installed (opencv-python-headless 5.0.0.93)" in output
+
+    def test_it_runs_after_the_requirements_transformers_and_onnx_runtime_installs(self, run_install):
+        _, commands, _ = run_install("--cpu", cv_ver="5.0.0.93")
+        swap = commands.index("uv pip uninstall opencv-python opencv-python-headless")
+        assert next(i for i, cmd in enumerate(commands) if "requirements.restricted.txt" in cmd) < swap
+        assert next(i for i, cmd in enumerate(commands) if cmd.startswith("uv pip install transformers")) < swap
+        assert commands.index(f"uv pip install {CPU_ORT}") < swap
+
+    def test_commercial_installs_opencv_through_requirements_txt_so_it_swaps_too(self, run_install):
+        rc, commands, _ = run_install("--commercial", cv_ver="5.0.0.93")
+        assert rc == 0
+        assert _opencv_commands(commands) == ["uv pip uninstall opencv-python opencv-python-headless",
+                                              "uv pip install --no-deps opencv-python-headless==5.0.0.93"]
+        assert _ort_commands(commands) == []
+
+    def test_nothing_is_touched_when_no_opencv_distribution_is_installed(self, run_install):
+        rc, commands, output = run_install()
+        assert rc == 0
+        assert _opencv_commands(commands) == []
+        assert "Skipping the OpenCV swap" in output
+
+    @pytest.mark.parametrize("distributions, printed", [
+        ({"opencv-python": "4.9.0.80", "opencv-python-headless": "5.0.0.93"}, "5.0.0.93\n"),
+        ({"opencv-python": "4.9.0.80"}, "4.9.0.80\n"),
+        ({"opencv-python-headless": "5.0.0.93"}, "5.0.0.93\n"),
+        ({}, ""),
+    ], ids=["headless-preferred", "only-opencv-python", "only-headless", "neither"])
+    def test_the_real_version_snippet_prefers_the_headless_build_and_prints_nothing_without_opencv(
+            self, tmp_path, distributions, printed):
+        """The stub answers ``$FAKE_CV_VER`` for this snippet, so a typo in it would otherwise pass unseen."""
+        result = _read_cv_ver(tmp_path, distributions)
+        assert (result.returncode, result.stderr) == (0, "")
+        assert result.stdout == printed
+
+    def test_a_passing_import_check_ends_with_the_success_banner_and_exit_0(self, run_install):
+        rc, _, output = run_install(cv_ver="5.0.0.93", core_rc=0)
+        assert rc == 0
+        assert "All core imports successful" in output
+        assert "Installation complete!" in output
+        assert "Installation finished with errors" not in output
+
+    def test_a_failed_import_check_exits_non_zero_without_the_success_banner(self, run_install):
+        rc, _, output = run_install(cv_ver="5.0.0.93", core_rc=1)
+        assert rc == 1
+        assert "✗ Some imports failed" in output
+        assert "Installation finished with errors" in output
+        assert "python facet.py --doctor" in output.split("Installation finished with errors", 1)[1]
+        assert "Installation complete!" not in output
+        assert "Next steps" not in output
+
+    def test_a_failed_import_check_still_lets_the_onnx_runtime_verify_and_the_commercial_notice_run(
+            self, run_install):
+        rc, commands, output = run_install("--cuda", "12.8", core_rc=1, ort_rc=0, ort_out="ok")
+        assert rc == 1
+        assert commands[-1] == "verify-ort"
+        assert "ONNX Runtime: ok" in output
+        rc, _, output = run_install("--commercial", core_rc=1)
+        assert rc == 1
+        assert "Commercial install: enable commercial mode" in output
+        assert "Installation complete!" not in output

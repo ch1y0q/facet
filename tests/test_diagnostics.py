@@ -1283,6 +1283,132 @@ class TestDoctorOnnxRuntime:
             "  [!!] ONNX Runtime check: failed unexpectedly: boom"]
 
 
+_OPENCV_FIX = ('pip uninstall -y opencv-python opencv-python-headless && '
+               'pip install --no-deps "opencv-python-headless==5.0.0.93"')
+_LIBGL_ERROR = "libGL.so.1: cannot open shared object file: No such file or directory"
+
+
+def _opencv_section(out):
+    """The text of the OpenCV section of a doctor run."""
+    return out.split("  OpenCV\n", 1)[1].split("  ONNX Runtime\n", 1)[0]
+
+
+class TestDoctorOpenCV:
+    """--doctor reports cv2 and the OpenCV distributions behind it: the GUI wheel fails to import without libGL."""
+
+    def _run(self, capsys, tmp_path, monkeypatch, cv2, distributions, *, config=None):
+        """Run the doctor and return the OpenCV section's text.
+
+        ``cv2`` is the module ``import cv2`` yields, or an exception it raises. ``distributions`` is the
+        ``{name: version}`` pip metadata knows, so a missing name raises ``PackageNotFoundError``.
+        """
+        real_import_module = importlib.import_module
+        real_version = importlib.metadata.version
+
+        def import_module(name, *args, **kwargs):
+            if name == "cv2":
+                if isinstance(cv2, Exception):
+                    raise cv2
+                return cv2
+            return real_import_module(name, *args, **kwargs)
+
+        def version(name):
+            if name.startswith("opencv-python"):
+                if name not in distributions:
+                    raise importlib.metadata.PackageNotFoundError(name)
+                return distributions[name]
+            return real_version(name)
+
+        monkeypatch.delenv("FACET_DEVICE", raising=False)
+        monkeypatch.setattr(importlib, "import_module", import_module)
+        monkeypatch.setattr(importlib.metadata, "version", version)
+        config_path = tmp_path / "no.json"
+        if config is not None:
+            config_path.write_text(json.dumps(config), encoding="utf-8")
+        with mock.patch.dict("sys.modules", {"torch": None}):
+            run_doctor(config_path=str(config_path), db_path=str(tmp_path / "no.db"))
+        self.output = capsys.readouterr().out
+        return _opencv_section(self.output)
+
+    @staticmethod
+    def _cv2(version="5.0.0"):
+        module = types.ModuleType("cv2")
+        module.__version__ = version
+        return module
+
+    @pytest.mark.parametrize("distributions, shown", [
+        ({"opencv-python-headless": "5.0.0.93"}, "opencv-python-headless"),
+        ({"opencv-python": "5.0.0.93"}, "opencv-python"),
+    ])
+    def test_a_cv2_that_imports_from_one_distribution_is_ok(self, capsys, tmp_path, monkeypatch, distributions, shown):
+        section = self._run(capsys, tmp_path, monkeypatch, self._cv2(), distributions)
+        assert f"[OK] cv2: 5.0.0 ({shown})" in section
+        assert "[!!]" not in section
+
+    def test_both_distributions_with_a_working_import_are_information_not_a_warning(self, capsys, tmp_path,
+                                                                                    monkeypatch):
+        """The Docker images ship both, with libgl1: nothing is broken, so nothing may say so."""
+        section = self._run(capsys, tmp_path, monkeypatch, self._cv2(),
+                            {"opencv-python": "5.0.0.93", "opencv-python-headless": "5.0.0.93"})
+        assert "[--] cv2: 5.0.0 (opencv-python, opencv-python-headless)" in section
+        assert "[--] OpenCV packages: both are installed and share cv2/; the one installed last provides it" in section
+        assert "[!!]" not in section
+        assert "[OK]" not in section
+        assert "Fix:" not in section
+
+    def test_a_cv2_that_imports_without_any_distribution_metadata_says_so(self, capsys, tmp_path, monkeypatch):
+        section = self._run(capsys, tmp_path, monkeypatch, self._cv2(), {})
+        assert "[OK] cv2: 5.0.0 (distribution unknown)" in section
+
+    def test_the_libgl_failure_is_a_warning_with_the_headless_repair(self, capsys, tmp_path, monkeypatch):
+        section = self._run(capsys, tmp_path, monkeypatch, ImportError(_LIBGL_ERROR),
+                            {"opencv-python": "5.0.0.93", "opencv-python-headless": "5.0.0.93"})
+        assert f"[!!] cv2: cannot be imported: ImportError: {_LIBGL_ERROR}" in section
+        assert f"Fix: {_OPENCV_FIX}" in section
+        assert "[OK]" not in section
+
+    @pytest.mark.parametrize("distributions", [
+        {"opencv-python": "5.0.0.93"},
+        {"opencv-python-headless": "5.0.0.93"},
+        {"opencv-python": "4.9.0.80", "opencv-python-headless": "5.0.0.93"},
+    ])
+    def test_the_repair_pins_the_installed_version_preferring_the_headless_one(self, capsys, tmp_path, monkeypatch,
+                                                                                distributions):
+        section = self._run(capsys, tmp_path, monkeypatch, ImportError(_LIBGL_ERROR), distributions)
+        assert f"Fix: {_OPENCV_FIX}" in section
+
+    def test_with_no_metadata_the_repair_is_a_plain_headless_install(self, capsys, tmp_path, monkeypatch):
+        section = self._run(capsys, tmp_path, monkeypatch, ImportError("No module named 'cv2'"), {})
+        assert "[!!] cv2: cannot be imported: ImportError: No module named 'cv2'" in section
+        assert "Fix: pip install opencv-python-headless" in section
+        assert "uninstall" not in section
+        assert "--no-deps" not in section
+
+    def test_an_empty_namespace_package_is_a_broken_install_not_a_working_one(self, capsys, tmp_path, monkeypatch):
+        """Defensive: pip 24 and uv 0.8 delete cv2/ whole (ModuleNotFoundError), but an empty cv2/ must still not read as OK."""
+        section = self._run(capsys, tmp_path, monkeypatch, types.ModuleType("cv2"),
+                            {"opencv-python-headless": "5.0.0.93"})
+        assert "[!!] cv2: cannot be imported: module 'cv2' has no attribute '__version__'" in section
+        assert f"Fix: {_OPENCV_FIX}" in section
+        assert "[OK]" not in section
+
+    def test_commercial_mode_checks_opencv_too(self, capsys, tmp_path, monkeypatch):
+        """OpenCV is core: requirements.txt installs it in every mode."""
+        section = self._run(capsys, tmp_path, monkeypatch, ImportError(_LIBGL_ERROR),
+                            {"opencv-python": "5.0.0.93"}, config={"licensing": {"mode": "commercial"}})
+        assert "[!!] cv2: cannot be imported" in section
+        assert f"Fix: {_OPENCV_FIX}" in section
+
+    def test_an_unexpected_failure_in_the_section_is_one_warning_and_the_doctor_carries_on(self, capsys, tmp_path,
+                                                                                           monkeypatch):
+        with mock.patch("diagnostics._report_opencv", side_effect=RuntimeError("boom")):
+            section = self._run(capsys, tmp_path, monkeypatch, self._cv2(), {})
+        assert [line for line in section.splitlines() if "[!!]" in line] == [
+            "  [!!] OpenCV check: failed unexpectedly: boom"]
+        assert "  ONNX Runtime\n" in self.output
+        assert "  Config / Database\n" in self.output
+
+
 class TestCapturedStderrFd:
     def test_the_temp_file_is_closed_when_the_descriptor_cannot_be_duplicated(self, monkeypatch):
         import diagnostics
