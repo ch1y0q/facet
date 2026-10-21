@@ -1185,7 +1185,7 @@ describe('GalleryStore', () => {
         await store.showPaths(paths, { groups: [1, 1], marks: ['remove', 'keep'] });
         expect(store.userMarks().get('/b.jpg')).toBe('remove');
         expect(store.userMarks().get('/a.jpg')).toBe('keep');
-        expect(store.review()).toEqual({ keep: ['/a.jpg'], remove: ['/b.jpg'] });
+        expect(store.review()).toMatchObject({ keep: ['/a.jpg'], remove: ['/b.jpg'] });
       });
 
       it('clears the user marks on a pin without marks', async () => {
@@ -1211,6 +1211,169 @@ describe('GalleryStore', () => {
         for (let n = 0; n < 1100; n++) store.setReviewMark(`/r${n}.jpg`, 'remove');
         expect(store.review().keep).toHaveLength(1000);
         expect(store.review().remove).toHaveLength(1000);
+      });
+    });
+
+    describe('review context: labels, reasons, kinds, progress and group actions', () => {
+      const six = ['/p1.jpg', '/p2.jpg', '/p3.jpg', '/p4.jpg', '/p5.jpg', '/p6.jpg'];
+      const label = (key: string, params: Record<string, string | number> = {}) => ({ key, params });
+      const pin = (extra: Record<string, unknown> = {}) => {
+        apiPost.mockImplementation((path: string, body?: { paths?: string[] }) => path === '/photos/by_paths'
+          ? of({ photos: (body?.paths ?? []).map(p => makePhoto({ path: p })), total: 6, missing: [] })
+          : of({}));
+        return store.showPaths(six, {
+          groups: [1, 1, 1, 2, 2, 3],
+          marks: ['keep', 'remove', 'remove', 'keep', 'remove', 'remove'],
+          ...extra,
+        });
+      };
+      const journalItems = () => TestBed.inject(UserActivityJournal).since().items;
+
+      it('keeps one label and kind per group and one reason per path, reordered with the gather', async () => {
+        await store.showPaths(['/p1.jpg', '/p2.jpg', '/p3.jpg', '/p4.jpg'], {
+          groups: [1, 2, 1, 2],
+          marks: ['keep', 'keep', 'remove', 'remove'],
+          labels: [label('burst'), label('bracket_span', { frames: 4, ev_span: 1.3 }), label('burst'), label('bracket_span', { frames: 4, ev_span: 1.3 })],
+          reasons: [{ key: 'best' }, { key: 'best' }, { key: 'soft', value: 2 }, { key: 'near_duplicate' }],
+          kinds: ['burst', 'bracket', 'burst', 'bracket'],
+        });
+        expect(store.pinnedPaths()).toEqual(['/p1.jpg', '/p3.jpg', '/p2.jpg', '/p4.jpg']);
+        expect(store.pinnedLabels().get(2)).toEqual(label('bracket_span', { frames: 4, ev_span: 1.3 }));
+        expect(store.pinnedLabels().size).toBe(2);
+        expect(store.pinnedKinds().get(1)).toBe('burst');
+        expect(store.pinnedKinds().get(2)).toBe('bracket');
+        expect(store.pinnedReasons().get('/p3.jpg')).toEqual({ key: 'soft', value: 2 });
+        expect(store.pinnedReasons().get('/p4.jpg')).toEqual({ key: 'near_duplicate' });
+      });
+
+      it('has none of them for a pin that carries none (the old shape)', async () => {
+        await pin();
+        expect(store.pinnedLabels().size).toBe(0);
+        expect(store.pinnedReasons().size).toBe(0);
+        expect(store.pinnedKinds().size).toBe(0);
+      });
+
+      it('clears them on showPaths without them, on clearPinned and when a photo is dropped', async () => {
+        const extra = {
+          labels: six.map((_, i) => label(i < 3 ? 'burst' : i < 5 ? 'photo_count' : 'frame_count', { n: 2 })),
+          reasons: six.map(() => ({ key: 'soft' })),
+          kinds: ['burst', 'burst', 'burst', 'similar', 'similar', 'scene'],
+        };
+        await pin(extra);
+        expect(store.pinnedLabels().size).toBe(3);
+        await pin();
+        expect(store.pinnedLabels().size).toBe(0);
+        await pin(extra);
+        apiPost.mockImplementation((path: string, body?: { paths?: string[] }) => path === '/photos/by_paths'
+          ? of({ photos: [], total: 0, missing: body?.paths ?? [] })
+          : of({}));
+        await store.refreshPaths(['/p6.jpg']);
+        expect(store.pinnedReasons().has('/p6.jpg')).toBe(false);
+        expect(store.pinnedLabels().has(3)).toBe(false);
+        expect(store.pinnedKinds().has(3)).toBe(false);
+        expect(store.pinnedLabels().has(1)).toBe(true);
+        await store.clearPinned();
+        expect(store.pinnedLabels().size).toBe(0);
+        expect(store.pinnedReasons().size).toBe(0);
+        expect(store.pinnedKinds().size).toBe(0);
+      });
+
+      describe('progress', () => {
+        it('counts visited groups, resets on showPaths and reports the three numbers in review()', async () => {
+          await pin();
+          expect(store.review()).toEqual({ keep: [], remove: [], groups_total: 3, groups_visited: 0, groups_changed: 0 });
+          store.markGroupsVisited([1]);
+          expect(store.review().groups_visited).toBe(1);
+          store.markGroupsVisited([1, 3]);
+          expect(store.review().groups_visited).toBe(2);
+          await pin();
+          expect(store.review().groups_visited).toBe(0);
+        });
+
+        it('counts a group as changed while one of its effective marks differs, not after flipping back', async () => {
+          await pin();
+          store.setReviewMark('/p2.jpg', 'keep');
+          expect(store.review().groups_changed).toBe(1);
+          store.setReviewMark('/p5.jpg', 'keep');
+          expect(store.review().groups_changed).toBe(2);
+          store.setReviewMark('/p2.jpg', 'remove');
+          expect(store.review().groups_changed).toBe(1);
+          store.setReviewMark('/p5.jpg', 'remove');
+          expect(store.review().groups_changed).toBe(0);
+        });
+
+        it('reports zero for a pin without groups', async () => {
+          await store.showPaths(['/b.jpg', '/a.jpg']);
+          expect(store.review()).toMatchObject({ groups_total: 0, groups_visited: 0, groups_changed: 0 });
+        });
+      });
+
+      describe('setGroupMarks', () => {
+        const effective = () => Object.fromEntries(six.map(p => [p, store.userMarks().get(p) ?? store.pinnedMarks().get(p)]));
+
+        it('keep_all flips the group, counts it, marks the changed photos and journals once', async () => {
+          await pin();
+          store.setGroupMarks(1, 'keep_all');
+          expect(effective()).toMatchObject({ '/p1.jpg': 'keep', '/p2.jpg': 'keep', '/p3.jpg': 'keep', '/p4.jpg': 'keep', '/p5.jpg': 'remove' });
+          expect(store.reviewGroupCounts().get(1)).toEqual({ count: 3, keep: 3, remove: 0 });
+          expect(store.reviewGroupCounts().get(2)).toEqual({ count: 2, keep: 1, remove: 1 });
+          const changed = ['/p1.jpg', '/p2.jpg', '/p3.jpg'].filter(p => store.userMarks().get(p) !== store.pinnedMarks().get(p));
+          expect(changed).toEqual(['/p2.jpg', '/p3.jpg']);
+          const items = journalItems().filter(i => i.kind === 'review_group');
+          expect(items).toHaveLength(1);
+          expect(items[0].paths).toEqual(['/p1.jpg', '/p2.jpg', '/p3.jpg']);
+          expect(items[0].value).toEqual({ group: 1, mode: 'keep_all' });
+          expect(journalItems().filter(i => i.kind === 'review_mark')).toHaveLength(0);
+        });
+
+        it('keep_best keeps the first agent keep and removes the rest of the group only', async () => {
+          await pin();
+          store.setGroupMarks(2, 'keep_best');
+          expect(effective()).toMatchObject({ '/p4.jpg': 'keep', '/p5.jpg': 'remove', '/p1.jpg': 'keep', '/p2.jpg': 'remove' });
+          expect(store.userMarks().has('/p1.jpg')).toBe(false);
+        });
+
+        it('keep_best picks the second photo when it is the group first keep, whatever the order of others', async () => {
+          await store.showPaths(['/p1.jpg', '/p2.jpg', '/p3.jpg'], { groups: [1, 1, 1], marks: ['remove', 'keep', 'keep'] });
+          store.setGroupMarks(1, 'keep_best');
+          expect(store.userMarks().get('/p2.jpg')).toBe('keep');
+          expect(store.userMarks().get('/p1.jpg')).toBe('remove');
+          expect(store.userMarks().get('/p3.jpg')).toBe('remove');
+        });
+
+        it('keep_best falls back to the first photo of a group with no keep', async () => {
+          await pin();
+          store.setGroupMarks(3, 'keep_best');
+          expect(store.userMarks().get('/p6.jpg')).toBe('keep');
+          await store.showPaths(['/p1.jpg', '/p2.jpg'], { groups: [1, 1], marks: ['remove', 'remove'] });
+          store.setGroupMarks(1, 'keep_best');
+          expect(store.userMarks().get('/p1.jpg')).toBe('keep');
+          expect(store.userMarks().get('/p2.jpg')).toBe('remove');
+        });
+
+        it('remove_all removes every photo of the group and touches no other group', async () => {
+          await pin();
+          store.setGroupMarks(1, 'remove_all');
+          expect(effective()).toMatchObject({ '/p1.jpg': 'remove', '/p2.jpg': 'remove', '/p3.jpg': 'remove', '/p4.jpg': 'keep' });
+          expect([...store.userMarks().keys()].sort()).toEqual(['/p1.jpg', '/p2.jpg', '/p3.jpg']);
+        });
+
+        it('refuses remove_all and keep_best for a keep-whole kind, still allows keep_all', async () => {
+          await pin({ kinds: ['bracket', 'bracket', 'bracket', 'burst', 'burst', 'panorama'] });
+          store.setGroupMarks(1, 'remove_all');
+          store.setGroupMarks(1, 'keep_best');
+          store.setGroupMarks(3, 'remove_all');
+          expect(store.userMarks().size).toBe(0);
+          expect(journalItems().filter(i => i.kind === 'review_group')).toHaveLength(0);
+          store.setGroupMarks(1, 'keep_all');
+          expect(store.userMarks().size).toBe(3);
+        });
+
+        it('does nothing for a pin without marks', async () => {
+          await store.showPaths(['/p1.jpg', '/p2.jpg'], { groups: [1, 1] });
+          store.setGroupMarks(1, 'keep_all');
+          expect(store.userMarks().size).toBe(0);
+        });
       });
     });
 

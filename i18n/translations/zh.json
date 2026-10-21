@@ -1062,7 +1062,18 @@
         "group_header_plural": "第 {group} 组 — {count} 张照片 · 保留 {keep} · 移除 {remove}",
         "changed_by_you": "由你更改",
         "keep_aria_ungrouped": "保留。激活以标记为移除",
-        "remove_aria_ungrouped": "移除。激活以保留"
+        "remove_aria_ungrouped": "移除。激活以保留",
+        "copy_for_assistant": "复制给助手",
+        "copy_text_auto_cull": "我在 Facet 中检查了照片：修改了 {changed} 张（{keep} 张保留，{remove} 张移除），访问了 {total} 个分组中的 {visited} 个。请按我的标记执行 auto_cull。",
+        "copy_text_plain": "我在 Facet 中检查了照片：修改了 {changed} 张（{keep} 张保留，{remove} 张移除），访问了 {total} 个分组中的 {visited} 个。请使用我的标记。",
+        "copied": "已复制",
+        "keep_all": "全部保留",
+        "keep_best": "仅保留最佳",
+        "remove_all": "全部移除",
+        "keep_all_aria": "保留第 {group} 组的全部照片",
+        "keep_best_aria": "仅保留第 {group} 组的最佳照片",
+        "remove_all_aria": "移除第 {group} 组的全部照片",
+        "group_kept_whole": "不可用：该分组整体保留"
       }
     },
     "all_photos": "全部照片",
@@ -2161,6 +2172,16 @@
       "rerun_done": "检测完成，请重新加载以查看新标签",
       "rerun_failed": "无法运行检测",
       "rerun_busy": "另一个照片库任务正在运行，请等其完成后再试"
+    },
+    "group_reason": {
+      "burst": "连拍",
+      "burst_seconds": "{seconds} 秒连拍",
+      "burst_minutes": "{minutes} 分钟连拍",
+      "similar_percent": "相似度 {percent}%",
+      "photo_count": "{n} 张照片",
+      "bracket_span": "{frames} 张，{ev_span} EV 范围",
+      "frame_count": "{frames} 张",
+      "moment": "{moment}"
     }
   },
   "scenes": {

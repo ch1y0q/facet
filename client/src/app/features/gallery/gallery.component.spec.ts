@@ -114,6 +114,13 @@ describe('GalleryComponent', () => {
       hasReview: signal(false),
       reviewLegend: signal({ groups: 0, keep: 0, remove: 0 }),
       reviewGroupCounts: signal(new Map<number, { count: number; keep: number; remove: number }>()),
+      pinnedLabels: signal(new Map<number, { key: string; params: Record<string, string | number> }>()),
+      pinnedKinds: signal(new Map<number, string>()),
+      pinnedReasons: signal(new Map<string, { key: string; value?: number }>()),
+      reviewChanges: signal({ changed: 0, keep: 0, remove: 0 }),
+      review: signal({ keep: [] as string[], remove: [] as string[], groups_total: 0, groups_visited: 0, groups_changed: 0 }),
+      markGroupsVisited: vi.fn(),
+      setGroupMarks: vi.fn(),
       setReviewMark: vi.fn(),
       clearPinned: vi.fn(() => Promise.resolve()),
       filterKey: vi.fn((f?: GalleryFilters) => JSON.stringify(buildApiParams(f ?? mockStore.filters(), false))),
@@ -3559,7 +3566,7 @@ describe('GalleryComponent', () => {
       mockStore.galleryMode.set(mode);
       mockStore.virtualScroll.set(virtual);
       vi.stubGlobal('matchMedia', (media: string) => ({
-        matches: true, media, addEventListener() {}, removeEventListener() {},
+        matches: true, media, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {},
       }));
       fixture = TestBed.createComponent(GalleryComponent);
       const instance = fixture.componentInstance as unknown as {
@@ -3676,6 +3683,267 @@ describe('GalleryComponent', () => {
       const cellW = photoRow.widths[0];
       expect(photoRow.height).toBeGreaterThan(Math.round(cellW * 3 / 4));
       mockStore.filters.set({ ...DEFAULT_FILTERS });
+    });
+
+    describe('assistant context: labels, reasons, progress, group actions, copy', () => {
+      interface Inst {
+        viewportH: { set(v: number): void };
+        relScrollTop: { set(v: number): void };
+        activeIndex: { (): number; set(v: number): void };
+        onGridKeydown(e: KeyboardEvent): void;
+      }
+      const inst = () => fixture!.componentInstance as unknown as Inst;
+      const actions = (html: HTMLElement) => [...html.querySelectorAll('[data-review-group-actions] button')] as HTMLButtonElement[];
+      const echo = () => mockI18n.t.mockImplementation((key: string, vars?: Record<string, unknown>) =>
+        vars ? `${key} ${JSON.stringify(vars)}` : key);
+
+      beforeEach(() => {
+        Element.prototype.scrollIntoView = vi.fn();
+      });
+
+      describe('group label', () => {
+        it('appends the translated label after the counts, only on the group that has one', () => {
+          pin({});
+          echo();
+          mockStore.pinnedLabels.set(new Map([[1, { key: 'bracket_span', params: { frames: 4, ev_span: 1.3 } }]]));
+          const html = render('grid', false);
+          expect(headers(html)[0].textContent).toContain('"remove":2}');
+          expect(headers(html)[0].textContent).toContain(' · culling.group_reason.bracket_span {"frames":4,"ev_span":1.3}');
+          expect(headers(html)[1].textContent).not.toContain('group_reason');
+        });
+
+        it('renders a header without any label exactly as before', () => {
+          pin({});
+          const html = render('grid', false);
+          expect(headers(html)[0].textContent).not.toContain('· culling');
+          expect(html.querySelector('[data-testid="review-group-label"]')).toBeNull();
+        });
+
+        it('shows a server-supplied moment as text, never as markup', () => {
+          pin({});
+          mockI18n.t.mockImplementation((key: string, vars?: Record<string, unknown>) =>
+            key === 'culling.group_reason.moment' ? String(vars?.['moment']) : key);
+          mockStore.pinnedLabels.set(new Map([[1, { key: 'moment', params: { moment: '<img src=x onerror=alert(1)>' } }]]));
+          const html = render('grid', false);
+          expect(html.querySelector('img[onerror]')).toBeNull();
+          expect(html.querySelector('[data-testid="review-group-label"]')?.textContent).toContain('<img src=x onerror=alert(1)>');
+        });
+      });
+
+      describe('reason on the strip', () => {
+        it('feeds the card the reason of its own path', () => {
+          pin({});
+          mockI18n.t.mockImplementation((key: string, vars?: Record<string, unknown>) =>
+            key.startsWith('culling.reason.') ? key : (vars ? `${key} ${JSON.stringify(vars)}` : key));
+          mockStore.pinnedReasons.set(new Map([['/g1.jpg', { key: 'eyes_closed' }]]));
+          const html = render('grid', false);
+          const labels = [...html.querySelectorAll('app-photo-card button[aria-label]')].map(b => b.getAttribute('aria-label') ?? '');
+          expect(labels.filter(l => l.includes('culling.reason.eyes_closed'))).toHaveLength(1);
+        });
+      });
+
+      describe('visited groups', () => {
+        it('marks only the groups whose header is inside the visible viewport, with no overscan', () => {
+          pin({});
+          const html = render('grid', false);
+          void html;
+          mockStore.markGroupsVisited.mockClear();
+          inst().viewportH.set(50);
+          fixture!.detectChanges();
+          expect(mockStore.markGroupsVisited).toHaveBeenLastCalledWith([1]);
+          const model = fixture!.componentInstance.rowsModel();
+          const second = model.find(r => r.kind === 'header' && r.group === 2)!;
+          mockStore.markGroupsVisited.mockClear();
+          inst().relScrollTop.set(second.offset);
+          fixture!.detectChanges();
+          expect(mockStore.markGroupsVisited).toHaveBeenLastCalledWith([2]);
+        });
+
+        it('marks the group of the photo the keyboard cursor lands on', () => {
+          pin({});
+          render('grid', false);
+          mockStore.markGroupsVisited.mockClear();
+          inst().activeIndex.set(3);
+          const ev = new KeyboardEvent('keydown', { key: 'ArrowDown' });
+          Object.defineProperty(ev, 'target', { value: null, configurable: true });
+          inst().onGridKeydown(ev);
+          expect(inst().activeIndex()).toBe(4);
+          expect(mockStore.markGroupsVisited).toHaveBeenCalledWith([2]);
+        });
+      });
+
+      describe('group actions', () => {
+        it('renders three real buttons per header, each naming its group, that call setGroupMarks', () => {
+          pin({});
+          echo();
+          const html = render('grid', false);
+          const all = actions(html);
+          expect(all).toHaveLength(6);
+          expect(all.every(b => b.tagName === 'BUTTON' && b.getAttribute('type') === 'button')).toBe(true);
+          expect(all[0].getAttribute('aria-label')).toBe('gallery.pinned.review.keep_all_aria {"group":1}');
+          expect(all[1].getAttribute('aria-label')).toBe('gallery.pinned.review.keep_best_aria {"group":1}');
+          expect(all[2].getAttribute('aria-label')).toBe('gallery.pinned.review.remove_all_aria {"group":1}');
+          expect(all[3].getAttribute('aria-label')).toContain('"group":2');
+          all[0].click();
+          all[1].click();
+          all[5].click();
+          expect(mockStore.setGroupMarks.mock.calls).toEqual([[1, 'keep_all'], [1, 'keep_best'], [2, 'remove_all']]);
+        });
+
+        it('disables Keep best only and Remove all, and says why, for a keep-whole group', () => {
+          pin({});
+          echo();
+          mockStore.pinnedKinds.set(new Map([[1, 'bracket'], [2, 'burst']]));
+          const all = actions(render('grid', false));
+          expect(all[0].disabled).toBe(false);
+          expect(all[1].disabled).toBe(true);
+          expect(all[2].disabled).toBe(true);
+          expect(all[1].getAttribute('aria-description')).toBe('gallery.pinned.review.group_kept_whole');
+          expect(all[2].getAttribute('aria-description')).toBe('gallery.pinned.review.group_kept_whole');
+          expect(all[0].getAttribute('aria-description')).toBeNull();
+          expect(all[3].disabled || all[4].disabled || all[5].disabled).toBe(false);
+        });
+
+        it('offers no actions when the pin carries no marks', () => {
+          pin({ marks: false });
+          mockStore.pinnedMarks.set(new Map());
+          const html = render('grid', false);
+          expect(headers(html)).toHaveLength(2);
+          expect(actions(html)).toHaveLength(0);
+        });
+
+        it('keeps the buttons in DOM order between the heading and the group cards', () => {
+          pin({});
+          const html = render('grid', false);
+          const order = [...html.querySelectorAll('[role="heading"], [data-review-group-actions] button, app-photo-card')];
+          const first = order.findIndex(el => el.tagName === 'BUTTON');
+          expect(order[first - 1].getAttribute('role')).toBe('heading');
+          expect(order.slice(first, first + 3).every(el => el.tagName === 'BUTTON')).toBe(true);
+          expect(order[first + 3].tagName).toBe('APP-PHOTO-CARD');
+          expect(html.querySelectorAll('[data-review-group-actions] button[tabindex="-1"]')).toHaveLength(0);
+        });
+
+        const fireOnButton = (button: HTMLElement, key: string): KeyboardEvent => {
+          const ev = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+          button.dispatchEvent(ev);
+          return ev;
+        };
+
+        it('lets K, R and the arrows pass while a header button has focus', () => {
+          pin({});
+          mockStore.photos.set(photos);
+          mockStore.setReviewMark.mockClear();
+          const html = render('grid', false);
+          (mockAuth as { isEdition: unknown }).isEdition = vi.fn(() => true);
+          inst().activeIndex.set(1);
+          const button = actions(html)[0];
+          for (const key of ['k', 'r', 'K', 'ArrowDown', 'ArrowRight', 'Home', 'End']) {
+            const ev = fireOnButton(button, key);
+            expect(ev.defaultPrevented).toBe(false);
+          }
+          expect(mockStore.setReviewMark).not.toHaveBeenCalled();
+          expect(inst().activeIndex()).toBe(1);
+        });
+
+        it('lets Space and Enter through to the native button', () => {
+          pin({});
+          const button = actions(render('grid', false))[2];
+          expect(fireOnButton(button, ' ').defaultPrevented).toBe(false);
+          expect(fireOnButton(button, 'Enter').defaultPrevented).toBe(false);
+        });
+
+        it('still handles K on a card of the same grid', () => {
+          pin({});
+          const html = render('grid', false);
+          mockStore.pinnedMarks.set(new Map(paths.map((p, i) => [p, i % 2 ? 'remove' : 'keep'] as [string, 'keep' | 'remove'])));
+          inst().activeIndex.set(1);
+          const card = html.querySelector('app-photo-card') as HTMLElement;
+          const ev = new KeyboardEvent('keydown', { key: 'k', bubbles: true, cancelable: true });
+          card.dispatchEvent(ev);
+          expect(mockStore.setReviewMark).toHaveBeenCalledWith('/g1.jpg', 'keep');
+        });
+      });
+
+      describe('Copy for assistant', () => {
+        const en = async (): Promise<(key: string, vars?: Record<string, unknown>) => string> => {
+          const bundle = (await import('../../../../../i18n/translations/en.json')).default as Record<string, unknown>;
+          return (key, vars = {}) => {
+            const text = key.split('.').reduce<unknown>((node, part) => (node as Record<string, unknown>)?.[part], bundle) as string;
+            return text.replace(/\{(\w+)\}/g, (_, name) => String(vars[name]));
+          };
+        };
+        const copyButton = (html: HTMLElement) => html.querySelector('[data-testid="copy-for-assistant"]') as HTMLButtonElement | null;
+        let writeText: Mock;
+        let snackOpen: { mock: { calls: unknown[][] } };
+        const setup = async (kinds: boolean) => {
+          pin({});
+          mockI18n.t.mockImplementation(await en());
+          mockStore.reviewChanges.set({ changed: 3, keep: 2, remove: 1 });
+          mockStore.review.set({ keep: [], remove: [], groups_total: 5, groups_visited: 4, groups_changed: 2 });
+          mockStore.pinnedKinds.set(kinds ? new Map([[1, 'burst']]) : new Map());
+          writeText = vi.fn(() => Promise.resolve());
+          Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+          const html = render('grid', false);
+          // The component's own MatSnackBar (MatSnackBarModule re-provides it) would open a real bar here.
+          snackOpen = vi.spyOn((fixture!.componentInstance as unknown as { snackBar: MatSnackBar }).snackBar, 'open')
+            .mockReturnValue(undefined as never);
+          return html;
+        };
+        let clipboardDescriptor: PropertyDescriptor | undefined;
+        beforeEach(() => {
+          clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+        });
+        // Restore the original property: a leftover read-only `clipboard` breaks every later spec that assigns it.
+        afterEach(() => {
+          if (clipboardDescriptor) Object.defineProperty(navigator, 'clipboard', clipboardDescriptor);
+          else delete (navigator as unknown as { clipboard?: unknown }).clipboard;
+          delete (document as unknown as Record<string, unknown>)['execCommand'];
+        });
+
+        it('is offered with the review and not without one', () => {
+          pin({});
+          expect(copyButton(render('grid', false))).not.toBeNull();
+          fixture!.destroy();
+          mockStore.hasReview.set(false);
+          mockStore.pinnedGroups.set(new Map());
+          mockStore.pinnedMarks.set(new Map());
+          mockStore.pinnedPaths.set(null);
+          expect(copyButton(render('grid', false))).toBeNull();
+        });
+
+        it('copies the exact text of an auto_cull pin (it carries kinds)', async () => {
+          const html = await setup(true);
+          copyButton(html)!.click();
+          await vi.waitFor(() => expect(writeText).toHaveBeenCalled());
+          expect(writeText).toHaveBeenCalledWith(
+            'I reviewed the photos in Facet: I changed 3 (2 keep, 1 remove), visited 4 of 5 groups. Apply auto_cull using my marks.');
+          await vi.waitFor(() => expect(snackOpen.mock.calls).toEqual([['Copied', '', { duration: 2000 }]]));
+        });
+
+        it('copies the exact text of a plain pin, naming no tool', async () => {
+          const html = await setup(false);
+          copyButton(html)!.click();
+          await vi.waitFor(() => expect(writeText).toHaveBeenCalled());
+          expect(writeText).toHaveBeenCalledWith(
+            'I reviewed the photos in Facet: I changed 3 (2 keep, 1 remove), visited 4 of 5 groups. Use my marks.');
+        });
+
+        it('falls back to a hidden textarea and execCommand when navigator.clipboard is undefined', async () => {
+          const html = await setup(false);
+          Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+          let copied = '';
+          const execCommand = vi.fn(() => {
+            copied = (document.querySelector('textarea') as HTMLTextAreaElement).value;
+            return true;
+          });
+          (document as unknown as Record<string, unknown>)['execCommand'] = execCommand;
+          copyButton(html)!.click();
+          await vi.waitFor(() => expect(execCommand).toHaveBeenCalledWith('copy'));
+          expect(copied).toContain('Use my marks.');
+          expect(document.querySelector('textarea')).toBeNull();
+          await vi.waitFor(() => expect(snackOpen.mock.calls).toEqual([['Copied', '', { duration: 2000 }]]));
+        });
+      });
     });
 
     describe('keyboard', () => {

@@ -147,7 +147,7 @@ export class PassCountdownPipe implements PipeTransform {
 export class CullReasonPipe implements PipeTransform {
   private readonly i18n = inject(I18nService);
 
-  transform(reason: CullReason | undefined): string {
+  transform(reason: CullReason | null | undefined): string {
     if (!reason?.key) return '';
     const vars = reason.value != null ? { value: reason.value } : undefined;
     return this.i18n.t(`culling.reason.${reason.key}`, vars);

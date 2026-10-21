@@ -37,6 +37,33 @@ export type ReviewMark = 'keep' | 'remove';
 /** Cap per list in the review snapshot handed back to the assistant. */
 export const REVIEW_CAP = 1000;
 
+/** A group's heading as a translation key plus params, sent by the assistant (server text is data). */
+export interface ReviewGroupLabel {
+  key: string;
+  params: Record<string, string | number>;
+}
+
+/** Why one photo is planned for removal: the machine key the cull-reason pipe translates (`best` for a keeper). */
+export interface ReviewReason {
+  key: string;
+  value?: number | null;
+}
+
+/** What `setGroupMarks` does to the marks of one group. */
+export type ReviewGroupMode = 'keep_all' | 'keep_best' | 'remove_all';
+
+/** Group kinds the cull keeps whole (mirrors the server's `_KEEP_WHOLE_KINDS`): a frame of them is never removed alone. */
+export const REVIEW_KEEP_WHOLE_KINDS: ReadonlySet<string> = new Set(['bracket', 'panorama', 'hdr_panorama']);
+
+/** The optional annotations of a pin, each parallel to its paths. */
+export interface PinReview {
+  groups?: number[];
+  marks?: ReviewMark[];
+  labels?: ReviewGroupLabel[];
+  reasons?: ReviewReason[];
+  kinds?: string[];
+}
+
 export const FILTER_OPTIONS_TIMEOUT_MS = 20000;
 
 /**
@@ -330,6 +357,14 @@ export class GalleryStore {
    */
   readonly focusedPath = signal<string | null>(null);
   readonly pinnedMarks = signal<ReadonlyMap<string, ReviewMark>>(new Map());
+  /** The assistant's heading per group number (empty when the pin carries none). */
+  readonly pinnedLabels = signal<ReadonlyMap<number, ReviewGroupLabel>>(new Map());
+  /** The assistant's kind per group number (bracket / panorama / burst ...). */
+  readonly pinnedKinds = signal<ReadonlyMap<number, string>>(new Map());
+  /** The assistant's reason per photo. */
+  readonly pinnedReasons = signal<ReadonlyMap<string, ReviewReason>>(new Map());
+  /** Groups the user has looked at in this pin: header on screen, or a card of it under the cursor. */
+  readonly visitedGroups = signal<ReadonlySet<number>>(new Set());
   /** The user's ABSOLUTE chosen mark per path, accumulated across pins (never a flip of the agent's). */
   readonly userMarks = signal<ReadonlyMap<string, ReviewMark>>(new Map());
   /** Legend counts over the pinned list: distinct groups, and photos effectively kept / removed. */
@@ -367,6 +402,33 @@ export class GalleryStore {
     }
     return counts;
   });
+  /** Distinct groups of the pin. */
+  readonly groupsTotal = computed(() => new Set(this.pinnedGroups().values()).size);
+  /** Groups holding at least one photo whose effective user mark differs from the assistant's (a flip back is not counted). */
+  readonly groupsChanged = computed(() => {
+    const groups = this.pinnedGroups();
+    const agent = this.pinnedMarks();
+    const changed = new Set<number>();
+    for (const [path, mark] of this.userMarks()) {
+      const planned = agent.get(path);
+      const group = groups.get(path);
+      if (planned !== undefined && group !== undefined && planned !== mark) changed.add(group);
+    }
+    return changed.size;
+  });
+  /** Photos whose effective mark differs from the assistant's, and what the user made of them. */
+  readonly reviewChanges = computed(() => {
+    const agent = this.pinnedMarks();
+    let keep = 0;
+    let remove = 0;
+    for (const [path, mark] of this.userMarks()) {
+      const planned = agent.get(path);
+      if (planned === undefined || planned === mark) continue;
+      if (mark === 'keep') keep++;
+      else remove++;
+    }
+    return { changed: keep + remove, keep, remove };
+  });
   /** Whether the current pin carries any review annotation. */
   readonly hasReview = computed(() => this.pinnedGroups().size > 0 || this.pinnedMarks().size > 0);
   /** What the user chose, for the assistant: only paths they set themselves, capped. */
@@ -376,7 +438,16 @@ export class GalleryStore {
     for (const [path, mark] of this.userMarks()) {
       (mark === 'keep' ? keep : remove).push(path);
     }
-    return { keep: keep.slice(0, REVIEW_CAP), remove: remove.slice(0, REVIEW_CAP) };
+    const groups = new Set(this.pinnedGroups().values());
+    let visited = 0;
+    for (const group of this.visitedGroups()) if (groups.has(group)) visited++;
+    return {
+      keep: keep.slice(0, REVIEW_CAP),
+      remove: remove.slice(0, REVIEW_CAP),
+      groups_total: groups.size,
+      groups_visited: visited,
+      groups_changed: this.groupsChanged(),
+    };
   });
   readonly hasMore = signal(false);
   readonly config = signal<ViewerConfig | null>(null);
@@ -909,10 +980,13 @@ export class GalleryStore {
    */
   async showPaths(
     paths: string[],
-    review?: { groups?: number[]; marks?: ReviewMark[] },
+    review?: PinReview,
   ): Promise<string[]> {
     const groups = review?.groups;
     const marks = review?.marks;
+    const labels = review?.labels;
+    const kinds = review?.kinds;
+    const reasons = review?.reasons;
     // Gather each group contiguously (first-seen group order, stable within a group) so the
     // gallery draws one header per group.
     let order = paths.map((_, i) => i);
@@ -924,6 +998,16 @@ export class GalleryStore {
     const ordered = order.map(i => paths[i]);
     this.pinnedGroups.set(new Map(groups ? order.map(i => [paths[i], groups[i]] as const) : []));
     this.pinnedMarks.set(new Map(marks ? order.map(i => [paths[i], marks[i]] as const) : []));
+    // Labels and kinds arrive per path but belong to the group: the first path of a group speaks for it.
+    const perGroup = <T>(values: readonly T[] | undefined): ReadonlyMap<number, T> => {
+      const byGroup = new Map<number, T>();
+      if (groups && values) for (const i of order) if (!byGroup.has(groups[i]) && values[i] !== undefined) byGroup.set(groups[i], values[i]);
+      return byGroup;
+    };
+    this.pinnedLabels.set(perGroup(labels));
+    this.pinnedKinds.set(perGroup(kinds));
+    this.pinnedReasons.set(new Map(reasons ? order.map(i => [paths[i], reasons[i]] as const) : []));
+    this.visitedGroups.set(new Set());
     // A pin without marks starts a fresh review; one with marks keeps the user's absolute choices.
     if (!marks) this.userMarks.set(new Map());
     this.pinnedPaths.set(ordered);
@@ -939,10 +1023,52 @@ export class GalleryStore {
     this.userMarks.update(current => new Map(current).set(path, mark));
   }
 
+  /** Note that the user has looked at these groups. Ignores the ones already seen, so a scroll event costs nothing. */
+  markGroupsVisited(groups: Iterable<number>): void {
+    const seen = this.visitedGroups();
+    const fresh = [...groups].filter(group => !seen.has(group));
+    if (fresh.length) this.visitedGroups.set(new Set([...seen, ...fresh]));
+  }
+
+  /**
+   * Whether a group is a bracket / panorama set, which the cull keeps whole: removing frames of it
+   * (Remove all, Keep best only) is not offered.
+   */
+  isGroupKeptWhole(group: number): boolean {
+    return REVIEW_KEEP_WHOLE_KINDS.has(this.pinnedKinds().get(group) ?? '');
+  }
+
+  /**
+   * Set the user's mark on every photo of one group at once; no HTTP. The best photo is the group's
+   * first keep in the assistant's order, else its first photo. A keep-whole group refuses the modes
+   * that would remove one of its frames. One journal entry covers the whole action.
+   */
+  setGroupMarks(group: number, mode: ReviewGroupMode): void {
+    if (this.pinnedMarks().size === 0) return;
+    if (mode !== 'keep_all' && this.isGroupKeptWhole(group)) return;
+    const groups = this.pinnedGroups();
+    const agent = this.pinnedMarks();
+    const inGroup = (this.pinnedPaths() ?? []).filter(path => groups.get(path) === group);
+    if (inGroup.length === 0) return;
+    const best = inGroup.find(path => agent.get(path) === 'keep') ?? inGroup[0];
+    const markOf = (path: string): ReviewMark =>
+      mode === 'keep_all' || (mode === 'keep_best' && path === best) ? 'keep' : 'remove';
+    this.journal.record('review_group', inGroup, { group, mode });
+    this.userMarks.update(current => {
+      const next = new Map(current);
+      for (const path of inGroup) next.set(path, markOf(path));
+      return next;
+    });
+  }
+
   private dropReview(): void {
     this.pinnedGroups.set(new Map());
     this.pinnedMarks.set(new Map());
     this.userMarks.set(new Map());
+    this.pinnedLabels.set(new Map());
+    this.pinnedKinds.set(new Map());
+    this.pinnedReasons.set(new Map());
+    this.visitedGroups.set(new Set());
   }
 
   /**
@@ -1026,6 +1152,12 @@ export class GalleryStore {
     this.pinnedGroups.update(without);
     this.pinnedMarks.update(without);
     this.userMarks.update(without);
+    this.pinnedReasons.update(without);
+    const remaining = new Set(this.pinnedGroups().values());
+    const stillThere = <T>(map: ReadonlyMap<number, T>): ReadonlyMap<number, T> =>
+      new Map([...map].filter(([group]) => remaining.has(group)));
+    this.pinnedLabels.update(stillThere);
+    this.pinnedKinds.update(stillThere);
     this.pinnedMissing.update(current => [...new Set([...current, ...missing])]);
   }
 

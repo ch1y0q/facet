@@ -1062,7 +1062,18 @@
         "group_header_plural": "Gruppo {group} — {count} foto · {keep} da tenere · {remove} da rimuovere",
         "changed_by_you": "Modificato da te",
         "keep_aria_ungrouped": "Tieni. Attiva per segnare da rimuovere",
-        "remove_aria_ungrouped": "Rimuovi. Attiva per tenere"
+        "remove_aria_ungrouped": "Rimuovi. Attiva per tenere",
+        "copy_for_assistant": "Copia per l'assistente",
+        "copy_text_auto_cull": "Ho rivisto le foto in Facet: ne ho modificate {changed} ({keep} da tenere, {remove} da rimuovere), visitato {visited} gruppi su {total}. Applica auto_cull con i miei segni.",
+        "copy_text_plain": "Ho rivisto le foto in Facet: ne ho modificate {changed} ({keep} da tenere, {remove} da rimuovere), visitato {visited} gruppi su {total}. Usa i miei segni.",
+        "copied": "Copiato",
+        "keep_all": "Tieni tutte",
+        "keep_best": "Tieni solo la migliore",
+        "remove_all": "Rimuovi tutte",
+        "keep_all_aria": "Tieni tutte nel gruppo {group}",
+        "keep_best_aria": "Tieni solo la migliore nel gruppo {group}",
+        "remove_all_aria": "Rimuovi tutte nel gruppo {group}",
+        "group_kept_whole": "Non disponibile: questo gruppo viene tenuto per intero"
       }
     },
     "all_photos": "Tutte le foto",
@@ -2161,6 +2172,16 @@
       "rerun_done": "Rilevazione terminata: ricarica per vedere le nuove etichette",
       "rerun_failed": "Impossibile avviare la rilevazione",
       "rerun_busy": "Un’altra operazione sta usando la libreria; riprova al termine"
+    },
+    "group_reason": {
+      "burst": "Raffica",
+      "burst_seconds": "raffica di {seconds} s",
+      "burst_minutes": "raffica di {minutes} min",
+      "similar_percent": "{percent}% simili",
+      "photo_count": "{n} foto",
+      "bracket_span": "{frames} scatti, intervallo di {ev_span} EV",
+      "frame_count": "{frames} scatti",
+      "moment": "{moment}"
     }
   },
   "scenes": {

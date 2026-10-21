@@ -1062,7 +1062,18 @@
         "group_header_plural": "Groupe {group} — {count} photos · {keep} à garder · {remove} à retirer",
         "changed_by_you": "Modifié par vous",
         "keep_aria_ungrouped": "Garder. Activer pour marquer à retirer",
-        "remove_aria_ungrouped": "Retirer. Activer pour garder"
+        "remove_aria_ungrouped": "Retirer. Activer pour garder",
+        "copy_for_assistant": "Copier pour l'assistant",
+        "copy_text_auto_cull": "J'ai passé en revue les photos dans Facet : j'en ai modifié {changed} ({keep} à garder, {remove} à retirer), visité {visited} groupes sur {total}. Applique auto_cull avec mes marques.",
+        "copy_text_plain": "J'ai passé en revue les photos dans Facet : j'en ai modifié {changed} ({keep} à garder, {remove} à retirer), visité {visited} groupes sur {total}. Utilise mes marques.",
+        "copied": "Copié",
+        "keep_all": "Tout garder",
+        "keep_best": "Garder la meilleure seule",
+        "remove_all": "Tout retirer",
+        "keep_all_aria": "Tout garder dans le groupe {group}",
+        "keep_best_aria": "Garder seulement la meilleure du groupe {group}",
+        "remove_all_aria": "Tout retirer dans le groupe {group}",
+        "group_kept_whole": "Indisponible : ce groupe est conservé en entier"
       }
     },
     "all_photos": "Toutes les photos",
@@ -2161,6 +2172,16 @@
       "rerun_done": "Détection terminée — rechargez pour voir les nouvelles étiquettes",
       "rerun_failed": "Impossible de lancer la détection",
       "rerun_busy": "Une autre tâche occupe la bibliothèque ; réessayez à la fin"
+    },
+    "group_reason": {
+      "burst": "Rafale",
+      "burst_seconds": "rafale de {seconds} s",
+      "burst_minutes": "rafale de {minutes} min",
+      "similar_percent": "{percent} % de similarité",
+      "photo_count": "{n} photos",
+      "bracket_span": "{frames} vues, écart de {ev_span} IL",
+      "frame_count": "{frames} vues",
+      "moment": "{moment}"
     }
   },
   "scenes": {

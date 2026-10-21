@@ -1062,7 +1062,18 @@
         "group_header_plural": "Grupo {group} — {count} fotos · {keep} conservar · {remove} quitar",
         "changed_by_you": "Cambiado por ti",
         "keep_aria_ungrouped": "Conservar. Activa para marcar para quitar",
-        "remove_aria_ungrouped": "Quitar. Activa para conservar"
+        "remove_aria_ungrouped": "Quitar. Activa para conservar",
+        "copy_for_assistant": "Copiar para el asistente",
+        "copy_text_auto_cull": "He revisado las fotos en Facet: he cambiado {changed} ({keep} para conservar, {remove} para quitar) y he visitado {visited} de {total} grupos. Aplica auto_cull con mis marcas.",
+        "copy_text_plain": "He revisado las fotos en Facet: he cambiado {changed} ({keep} para conservar, {remove} para quitar) y he visitado {visited} de {total} grupos. Usa mis marcas.",
+        "copied": "Copiado",
+        "keep_all": "Conservar todas",
+        "keep_best": "Conservar solo la mejor",
+        "remove_all": "Quitar todas",
+        "keep_all_aria": "Conservar todas en el grupo {group}",
+        "keep_best_aria": "Conservar solo la mejor del grupo {group}",
+        "remove_all_aria": "Quitar todas en el grupo {group}",
+        "group_kept_whole": "No disponible: este grupo se conserva entero"
       }
     },
     "all_photos": "Todas las fotos",
@@ -2161,6 +2172,16 @@
       "rerun_done": "Detección terminada: recargue para ver las nuevas etiquetas",
       "rerun_failed": "No se pudo iniciar la detección",
       "rerun_busy": "Otra tarea está usando la biblioteca; inténtelo cuando termine"
+    },
+    "group_reason": {
+      "burst": "Ráfaga",
+      "burst_seconds": "ráfaga de {seconds} s",
+      "burst_minutes": "ráfaga de {minutes} min",
+      "similar_percent": "{percent} % similares",
+      "photo_count": "{n} fotos",
+      "bracket_span": "{frames} tomas, rango de {ev_span} EV",
+      "frame_count": "{frames} tomas",
+      "moment": "{moment}"
     }
   },
   "scenes": {

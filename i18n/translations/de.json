@@ -1062,7 +1062,18 @@
         "group_header_plural": "Gruppe {group} — {count} Fotos · {keep} behalten · {remove} entfernen",
         "changed_by_you": "Von Ihnen geändert",
         "keep_aria_ungrouped": "Behalten. Aktivieren, um zum Entfernen zu markieren",
-        "remove_aria_ungrouped": "Entfernen. Aktivieren, um zu behalten"
+        "remove_aria_ungrouped": "Entfernen. Aktivieren, um zu behalten",
+        "copy_for_assistant": "Für Assistent kopieren",
+        "copy_text_auto_cull": "Ich habe die Fotos in Facet geprüft: Ich habe {changed} geändert ({keep} behalten, {remove} entfernen) und {visited} von {total} Gruppen besucht. Wende auto_cull mit meinen Markierungen an.",
+        "copy_text_plain": "Ich habe die Fotos in Facet geprüft: Ich habe {changed} geändert ({keep} behalten, {remove} entfernen) und {visited} von {total} Gruppen besucht. Verwende meine Markierungen.",
+        "copied": "Kopiert",
+        "keep_all": "Alle behalten",
+        "keep_best": "Nur das beste behalten",
+        "remove_all": "Alle entfernen",
+        "keep_all_aria": "Alle in Gruppe {group} behalten",
+        "keep_best_aria": "In Gruppe {group} nur das beste behalten",
+        "remove_all_aria": "Alle in Gruppe {group} entfernen",
+        "group_kept_whole": "Nicht verfügbar: Diese Gruppe wird als Ganzes behalten"
       }
     },
     "all_photos": "Alle Fotos",
@@ -2161,6 +2172,16 @@
       "rerun_done": "Erkennung abgeschlossen — neu laden, um die neuen Kennzeichnungen zu sehen",
       "rerun_failed": "Erkennung konnte nicht gestartet werden",
       "rerun_busy": "Ein anderer Bibliotheksauftrag läuft; versuchen Sie es danach erneut"
+    },
+    "group_reason": {
+      "burst": "Serie",
+      "burst_seconds": "Serie über {seconds} s",
+      "burst_minutes": "Serie über {minutes} min",
+      "similar_percent": "{percent} % ähnlich",
+      "photo_count": "{n} Fotos",
+      "bracket_span": "{frames} Aufnahmen, {ev_span} EV Spanne",
+      "frame_count": "{frames} Aufnahmen",
+      "moment": "{moment}"
     }
   },
   "scenes": {

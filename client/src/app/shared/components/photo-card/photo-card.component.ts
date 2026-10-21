@@ -9,6 +9,8 @@ import type { ReviewMark } from '../../../features/gallery/gallery.store';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { ThumbnailUrlPipe, PersonThumbnailUrlPipe } from '../../pipes/thumbnail-url.pipe';
 import { ReviewAriaKeyPipe } from '../../pipes/review.pipes';
+import { CullReasonPipe } from '../../../features/gallery/burst-culling.pipes';
+import type { CullReason } from '../../../features/gallery/burst-culling.pipes';
 import { SequenceOverrideBadgeKeyPipe } from '../../pipes/sequence-kind.pipe';
 import { PhotoSetKindIconPipe, PhotoSetKindBestLabelPipe } from '../../pipes/photo-set-kind.pipe';
 import { FixedPipe } from '../../pipes/fixed.pipe';
@@ -124,6 +126,7 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
     TranslatePipe,
     ThumbnailUrlPipe,
     ReviewAriaKeyPipe,
+    CullReasonPipe,
     SequenceOverrideBadgeKeyPipe,
     PhotoSetKindIconPipe,
     PhotoSetKindBestLabelPipe,
@@ -255,12 +258,13 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
              (brightness-50), never grayscale: that means a real reject. The amber dot
              marks a mark the user changed from the assistant's. -->
         @if (reviewMark(); as mark) {
+          @let reasonText = reviewReason() | cullReason;
           <button type="button"
                   class="absolute inset-x-0 bottom-0 z-30 h-7 flex items-center justify-center gap-1 text-white text-xs font-medium cursor-pointer"
                   [class.bg-emerald-600/90]="mark === 'keep'"
                   [class.bg-red-600/90]="mark === 'remove'"
-                  [attr.aria-label]="(mark | reviewAriaKey:reviewGroup()) | translate:{ n: reviewGroup() ?? 0 }"
-                  [matTooltip]="'gallery.pinned.review.toggle_tooltip' | translate"
+                  [attr.aria-label]="((mark | reviewAriaKey:reviewGroup()) | translate:{ n: reviewGroup() ?? 0 }) + (reasonText ? ': ' + reasonText : '')"
+                  [matTooltip]="('gallery.pinned.review.toggle_tooltip' | translate) + (reasonText ? ': ' + reasonText : '')"
                   (click)="onReviewMarkClick($event)"
                   (dblclick)="$event.stopPropagation()"
                   (keydown.enter)="$event.stopPropagation()"
@@ -697,6 +701,8 @@ export class PhotoCardComponent {
   readonly reviewGroup = input<number | null>(null);
   /** The user's mark differs from the assistant's; shows an amber dot in the strip. */
   readonly reviewChanged = input(false);
+  /** The assistant's reason for this photo (`best` for a keeper), appended to the strip's label and tooltip. */
+  readonly reviewReason = input<CullReason | null>(null);
   /** Bottom offset of the persistent badges: one strip row higher while the review strip shows. */
   protected readonly badgeBottom = computed(() => (this.reviewMark() ? 'bottom-8' : 'bottom-1'));
   protected readonly I18N = i18nKeys();

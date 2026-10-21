@@ -1,6 +1,8 @@
 import { Pipe, PipeTransform } from '@angular/core';
 
-import type { ReviewMark } from '../../features/gallery/gallery.store';
+import type { CullReason } from '../../features/gallery/burst-culling.pipes';
+import { REVIEW_KEEP_WHOLE_KINDS } from '../../features/gallery/gallery.store';
+import type { ReviewGroupLabel, ReviewMark, ReviewReason } from '../../features/gallery/gallery.store';
 
 /**
  * The effective keep/remove mark of one photo on an annotated pin: the user's own
@@ -83,5 +85,31 @@ export class ReviewAriaKeyPipe implements PipeTransform {
   transform(mark: ReviewMark, group: number | null): string {
     const base = mark === 'keep' ? 'gallery.pinned.review.keep_aria' : 'gallery.pinned.review.remove_aria';
     return group === null ? `${base}_ungrouped` : base;
+  }
+}
+
+/** Translation key plus params of one group's assistant heading, or null when the pin carries none. */
+@Pipe({ name: 'reviewGroupLabel', standalone: true, pure: true })
+export class ReviewGroupLabelPipe implements PipeTransform {
+  transform(group: number, labels: ReadonlyMap<number, ReviewGroupLabel>): ReviewGroupLabel | null {
+    const label = labels.get(group);
+    return label ? { key: `culling.group_reason.${label.key}`, params: label.params } : null;
+  }
+}
+
+/** The assistant's reason for one photo in the shape the cull-reason pipe translates, or null. */
+@Pipe({ name: 'reviewReason', standalone: true, pure: true })
+export class ReviewReasonPipe implements PipeTransform {
+  transform(path: string, reasons: ReadonlyMap<string, ReviewReason>): CullReason | null {
+    const reason = reasons.get(path);
+    return reason ? { key: reason.key, value: reason.value ?? null } : null;
+  }
+}
+
+/** Whether a group is a bracket / panorama set the cull keeps whole. */
+@Pipe({ name: 'reviewGroupKeptWhole', standalone: true, pure: true })
+export class ReviewGroupKeptWholePipe implements PipeTransform {
+  transform(group: number, kinds: ReadonlyMap<number, string>): boolean {
+    return REVIEW_KEEP_WHOLE_KINDS.has(kinds.get(group) ?? '');
   }
 }

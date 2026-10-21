@@ -1,7 +1,7 @@
 import { LEVEL_RANK, agentLevel } from './agent-level';
 import { Router } from '@angular/router';
 import { AuthService } from '../services/auth.service';
-import { GalleryStore, ReviewMark } from '../../features/gallery/gallery.store';
+import { GalleryStore, ReviewMark, ReviewReason } from '../../features/gallery/gallery.store';
 import {
   DEFAULT_FILTERS,
   GalleryFilters,
@@ -166,6 +166,26 @@ export function applicableActions(
     if (tools.length) out.push({ id: row.id, summary: row.summary, tools });
   }
   return out;
+}
+
+interface GroupLabelArg {
+  key: string;
+  params?: Record<string, string | number>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isGroupLabel(value: unknown): value is GroupLabelArg {
+  return isRecord(value) && typeof value['key'] === 'string' && value['key'].length > 0
+    && (value['params'] === undefined || (isRecord(value['params'])
+      && Object.values(value['params']).every(v => typeof v === 'string' || typeof v === 'number')));
+}
+
+function isReviewReason(value: unknown): value is ReviewReason {
+  return isRecord(value) && typeof value['key'] === 'string' && value['key'].length > 0
+    && (value['value'] === undefined || value['value'] === null || typeof value['value'] === 'number');
 }
 
 function stringList(value: unknown): string[] {
@@ -357,11 +377,26 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
         || !marks.every(m => m === 'keep' || m === 'remove'))) {
         throw new UiToolError('invalid_input', "marks must hold one of 'keep' or 'remove' per path.");
       }
+      const labels = args['labels'];
+      const reasons = args['reasons'];
+      const kinds = args['kinds'];
+      if (labels !== undefined && (!Array.isArray(labels) || labels.length !== paths.length || !labels.every(isGroupLabel))) {
+        throw new UiToolError('invalid_input', 'labels must hold one {key, params} object per path.');
+      }
+      if (reasons !== undefined && (!Array.isArray(reasons) || reasons.length !== paths.length || !reasons.every(isReviewReason))) {
+        throw new UiToolError('invalid_input', 'reasons must hold one {key, value?} object per path.');
+      }
+      if (kinds !== undefined && (!Array.isArray(kinds) || kinds.length !== paths.length || !kinds.every(k => typeof k === 'string'))) {
+        throw new UiToolError('invalid_input', 'kinds must hold one string per path.');
+      }
       await leaveAlbum();
       await ensureGalleryView();
       const missing = await gallery.showPaths(paths, {
         groups: groups as number[] | undefined,
         marks: marks as ReviewMark[] | undefined,
+        labels: labels === undefined ? undefined : (labels as GroupLabelArg[]).map(l => ({ key: l.key, params: l.params ?? {} })),
+        reasons: reasons as ReviewReason[] | undefined,
+        kinds: kinds as string[] | undefined,
       });
       if (gallery.loadError()) throw new UiToolError('upstream_error', 'The gallery could not load these photos.');
       return {

@@ -512,6 +512,42 @@ describe('UI tool registry and handlers', () => {
       expect(result).toMatchObject({ ok: true, data: { annotated: 2 } });
     });
 
+    it('passes labels, reasons and kinds through to the store and pins them', async () => {
+      byPaths(['/a.jpg', '/b.jpg'], []);
+      const spy = vi.spyOn(store, 'showPaths');
+      const labels = [{ key: 'bracket_span', params: { frames: 4, ev_span: 1.3 } }, { key: 'bracket_span', params: { frames: 4, ev_span: 1.3 } }];
+      const reasons = [{ key: 'best' }, { key: 'soft', value: 2 }];
+      const result = await run('ui_show_photos', {
+        paths: ['/a.jpg', '/b.jpg'], groups: [1, 1], marks: ['keep', 'remove'], labels, reasons, kinds: ['bracket', 'bracket'],
+      });
+      expect(spy).toHaveBeenCalledWith(['/a.jpg', '/b.jpg'], {
+        groups: [1, 1], marks: ['keep', 'remove'], labels, reasons, kinds: ['bracket', 'bracket'],
+      });
+      expect(result).toMatchObject({ ok: true });
+      expect(store.pinnedLabels().get(1)).toEqual(labels[0]);
+      expect(store.pinnedReasons().get('/b.jpg')).toEqual({ key: 'soft', value: 2 });
+      expect(store.pinnedKinds().get(1)).toBe('bracket');
+    });
+
+    it.each([
+      ['labels', [{ key: 'burst' }]],
+      ['reasons', [{ key: 'best' }]],
+      ['kinds', ['burst']],
+    ])('refuses %s whose length differs from paths (invalid_input through the registry)', async (field, value) => {
+      const post = byPaths(['/a.jpg', '/b.jpg'], []);
+      expect(await run('ui_show_photos', { paths: ['/a.jpg', '/b.jpg'], [field]: value })).toMatchObject({ ok: false, error: 'invalid_input' });
+      await expect(direct()['ui_show_photos']({ paths: ['/a.jpg', '/b.jpg'], [field]: value })).rejects.toMatchObject({ code: 'invalid_input' });
+      expect(post).not.toHaveBeenCalled();
+    });
+
+    it('refuses a label that is not an object with a key, and a reason with a non-numeric value', async () => {
+      const post = byPaths(['/a.jpg'], []);
+      const handler = direct();
+      await expect(handler['ui_show_photos']({ paths: ['/a.jpg'], labels: ['burst'] })).rejects.toMatchObject({ code: 'invalid_input' });
+      await expect(handler['ui_show_photos']({ paths: ['/a.jpg'], reasons: [{ key: 'soft', value: 'x' }] })).rejects.toMatchObject({ code: 'invalid_input' });
+      expect(post).not.toHaveBeenCalled();
+    });
+
     it('refuses groups or marks whose length differs from paths, before touching the gallery', async () => {
       const post = byPaths(['/a.jpg', '/b.jpg'], []);
       const handler = direct();
@@ -649,6 +685,20 @@ describe('UI tool registry and handlers', () => {
           journal: TestBed.inject(UserActivityJournal), culling: TestBed.inject(CullingStore),
         })['ui_get_context'](since === undefined ? {} : { activity_since: since }) as
           { user_activity: { items: { kind: string; seq: number }[]; until: number; truncated: boolean } }).user_activity;
+
+      it('reads activity_since through the registry: the contract accepts it, and the review numbers ride along', async () => {
+        await store.loadPhotos();
+        await store.setRating('/a.jpg', 4);
+        const first = ((await run('ui_get_context')) as { data: { user_activity: { until: number; items: unknown[] }; review: Record<string, number> } }).data;
+        expect(first.user_activity.items).toHaveLength(1);
+        const since = (await run('ui_get_context', { activity_since: first.user_activity.until })) as { ok: boolean; data: { user_activity: { items: unknown[]; until: number } } };
+        expect(since.ok).toBe(true);
+        expect(since.data.user_activity.items).toEqual([]);
+        expect(since.data.user_activity.until).toBe(first.user_activity.until);
+        expect(first.review).toMatchObject({ groups_total: 0, groups_visited: 0, groups_changed: 0 });
+        expect(await run('ui_get_context', { activity_since: -1 })).toMatchObject({ ok: false, error: 'invalid_input' });
+        expect(await run('ui_get_context', { activity_since: 'x' })).toMatchObject({ ok: false, error: 'invalid_input' });
+      });
 
       it('lists a rating made through the store, and a second call without the argument returns the same', async () => {
         await store.loadPhotos();

@@ -16,7 +16,7 @@ import { makePhoto } from '../../../../testing/photo.fixture';
                              [collapsedSetKinds]="collapsedSetKinds()"
                              [isEditionMode]="isEditionMode()"
                              [reviewGroup]="reviewGroup()" [reviewMark]="reviewMark()"
-                             [reviewChanged]="reviewChanged()"
+                             [reviewChanged]="reviewChanged()" [reviewReason]="reviewReason()"
                              (reviewMarkToggle)="toggled.push($event)"
                              (selectionChange)="selected.push($event.photo.path)"
                              (doubleClicked)="opened.push($event.path)" />`,
@@ -29,6 +29,7 @@ class TestHostComponent {
   isEditionMode = signal(false);
   reviewGroup = signal<number | null>(null);
   reviewChanged = signal(false);
+  reviewReason = signal<{ key: string; value: number | null } | null>(null);
   reviewMark = signal<'keep' | 'remove' | null>(null);
   toggled: string[] = [];
   selected: string[] = [];
@@ -552,6 +553,29 @@ describe('PhotoCardComponent', () => {
       expect(strip()?.className).toContain('bg-emerald-600/90');
       expect(strip()?.textContent).toContain('gallery.pinned.review.keep');
       expect(mockI18n.t).toHaveBeenCalledWith('gallery.pinned.review.keep_aria', { n: 3 });
+    });
+
+    it('appends the translated reason to the strip aria-label and tooltip', () => {
+      fixture.componentInstance.reviewGroup.set(3);
+      fixture.componentInstance.reviewMark.set('remove');
+      fixture.componentInstance.reviewReason.set({ key: 'soft', value: null });
+      fixture.detectChanges();
+      expect(strip()?.getAttribute('aria-label')).toContain('culling.reason.soft');
+      expect(strip()?.getAttribute('aria-label')).toContain('gallery.pinned.review.remove_aria');
+      expect(mockI18n.t).toHaveBeenCalledWith('culling.reason.soft', undefined);
+    });
+
+    it('passes the reason value to the translation', () => {
+      fixture.componentInstance.reviewMark.set('remove');
+      fixture.componentInstance.reviewReason.set({ key: 'lower_aesthetic', value: 1.5 });
+      fixture.detectChanges();
+      expect(mockI18n.t).toHaveBeenCalledWith('culling.reason.lower_aesthetic', { value: 1.5 });
+    });
+
+    it('renders a pin without reasons exactly as before', () => {
+      fixture.componentInstance.reviewMark.set('remove');
+      fixture.detectChanges();
+      expect(strip()?.getAttribute('aria-label')).toBe('gallery.pinned.review.remove_aria_ungrouped');
     });
 
     it('uses the aria variant without a group part when the pin carries no groups', () => {

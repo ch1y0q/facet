@@ -1062,7 +1062,18 @@
         "group_header_plural": "Group {group} — {count} photos · {keep} keep · {remove} remove",
         "changed_by_you": "Changed by you",
         "keep_aria_ungrouped": "Keep. Activate to mark for removal",
-        "remove_aria_ungrouped": "Remove. Activate to keep"
+        "remove_aria_ungrouped": "Remove. Activate to keep",
+        "copy_for_assistant": "Copy for assistant",
+        "copy_text_auto_cull": "I reviewed the photos in Facet: I changed {changed} ({keep} keep, {remove} remove), visited {visited} of {total} groups. Apply auto_cull using my marks.",
+        "copy_text_plain": "I reviewed the photos in Facet: I changed {changed} ({keep} keep, {remove} remove), visited {visited} of {total} groups. Use my marks.",
+        "copied": "Copied",
+        "keep_all": "Keep all",
+        "keep_best": "Keep best only",
+        "remove_all": "Remove all",
+        "keep_all_aria": "Keep all in group {group}",
+        "keep_best_aria": "Keep best only in group {group}",
+        "remove_all_aria": "Remove all in group {group}",
+        "group_kept_whole": "Unavailable: this group is kept whole"
       }
     },
     "all_photos": "All Photos",
@@ -2161,6 +2172,16 @@
       "rerun_done": "Detection finished — reload to see the new labels",
       "rerun_failed": "Could not run detection",
       "rerun_busy": "Another library job is running; try again when it finishes"
+    },
+    "group_reason": {
+      "burst": "Burst",
+      "burst_seconds": "{seconds}s burst",
+      "burst_minutes": "{minutes} min burst",
+      "similar_percent": "{percent}% similar",
+      "photo_count": "{n} photos",
+      "bracket_span": "{frames} frames, {ev_span} EV span",
+      "frame_count": "{frames} frames",
+      "moment": "{moment}"
     }
   },
   "scenes": {
