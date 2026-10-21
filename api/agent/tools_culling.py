@@ -13,11 +13,12 @@ frame it names.
 """
 
 from dataclasses import dataclass
-from typing import Annotated, Any, Literal, Optional
+from typing import Annotated, Any, Literal, Optional, cast
 
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.types import CallToolResult, ToolAnnotations
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.requests import Request
 
 from api.agent import limits, nonce
 from api.agent import show as relay
@@ -389,7 +390,7 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
         show: bool = True,
         tab_id: Annotated[Optional[str], Field(pattern=TAB_ID_PATTERN)] = None,
     ) -> CallToolResult:
-        snapshot = ctx.request_context.request.scope.get(REVIEW_SCOPE_KEY)
+        snapshot = cast(Request, ctx.request_context.request).scope.get(REVIEW_SCOPE_KEY)
 
         async def handler(grant, resolved, settings):
             since, until, bad = normalise_window(date_from, date_to)

@@ -75,28 +75,27 @@ def fit_review(result: dict, max_bytes: int) -> None:
 
     The tab caps each review list at 1000 paths and the activity at 50 items, far more than the envelope
     allows. The biggest of the three is halved (activity drops its OLDEST half) until the whole result fits;
-    the true review sizes stay in ``review.keep_count`` / ``review.remove_count``, ``review.truncated`` and
-    ``user_activity.truncated`` are set. Everything is edited in place, so the review's other keys
+    whichever is cut is flagged: the review keeps its true sizes in ``review.keep_count`` /
+    ``review.remove_count`` and sets ``review.truncated``, the activity sets ``user_activity.truncated``. Everything is edited in place, so the review's other keys
     (``groups_total`` / ``groups_visited`` / ``groups_changed``) and ``user_activity.until`` are untouched.
     """
     data = result.get("data") if result.get("ok") else None
     if not isinstance(data, dict):
         return
-    activity = data.get("user_activity")
-    if isinstance(activity, dict):
+    found = data.get("user_activity")
+    activity: dict = found if isinstance(found, dict) else {}
+    if activity:
         _cap_activity(activity)
     if encoded_size(result) <= max_bytes:
         return
-    review = data.get("review")
-    lists = {side: review[side] for side in ("keep", "remove")
-             if isinstance(review, dict) and isinstance(review.get(side), list)} if isinstance(review, dict) else {}
-    if len(lists) == 2:
-        review["keep_count"], review["remove_count"] = len(lists["keep"]), len(lists["remove"])
-        review["truncated"] = True
-    items = activity.get("items") if isinstance(activity, dict) else None
+    found = data.get("review")
+    review: dict = found if isinstance(found, dict) else {}
+    lists = [side for side in ("keep", "remove") if isinstance(review.get(side), list)]
+    # The true sizes are recorded on the first cut only, so a review the activity's trim spares stays unflagged.
+    counted = len(lists) < 2
     while encoded_size(result) > max_bytes:
         sizes = {side: encoded_size(review[side]) for side in lists if review[side]}
-        if isinstance(items, list) and activity["items"]:
+        if isinstance(activity.get("items"), list) and activity["items"]:
             sizes["activity"] = encoded_size(activity["items"])
         if not sizes:
             return
@@ -104,9 +103,12 @@ def fit_review(result: dict, max_bytes: int) -> None:
         if biggest == "activity":
             activity["items"] = activity["items"][(len(activity["items"]) + 1) // 2:]
             activity["truncated"] = True
-        else:
-            review[biggest] = review[biggest][:len(review[biggest]) // 2]
-            lists[biggest] = review[biggest]
+            continue
+        if not counted:
+            review["keep_count"], review["remove_count"] = len(review["keep"]), len(review["remove"])
+            review["truncated"] = True
+            counted = True
+        review[biggest] = review[biggest][:len(review[biggest]) // 2]
 
 
 def register_ui_tools(server: MCPServer, registry: TabRegistry) -> None:

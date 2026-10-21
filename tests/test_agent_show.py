@@ -484,3 +484,11 @@ class TestReviewProgressSurvivesTrimming:
         assert result["data"]["review"] is review and review["truncated"] is True
         assert (review["groups_total"], review["groups_visited"], review["groups_changed"]) == (12, 7, 3)
         assert len(review["keep"]) < 300 and review["keep_count"] == 300
+
+    def test_a_review_left_whole_is_not_flagged_when_trimming_the_activity_suffices(self):
+        from api.agent.tools_ui import fit_review
+        review = {"keep": ["/lib/a.jpg"], "remove": ["/lib/b.jpg"], "groups_total": 1}
+        result = {"ok": True, "data": _context(review, _activity(50, 90, 20))}
+        fit_review(result, 20000)
+        assert result["data"]["user_activity"]["truncated"] is True
+        assert review == {"keep": ["/lib/a.jpg"], "remove": ["/lib/b.jpg"], "groups_total": 1}
