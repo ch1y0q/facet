@@ -19,6 +19,8 @@ Facet hat zwei Arbeitslasten:
 
 Nur der Viewer muss auf dem Server laufen. Bewerten Sie auf einer Workstation und synchronisieren Sie dann die Datenbank.
 
+> **Warnung:** Solange `viewer.password` leer ist (Standardwert), kann jeder, der den Port des Viewers erreicht, die gesamte Bibliothek durchsuchen und die Originalfotos herunterladen, egal wie Sie ihn unten starten. Setzen Sie `viewer.password`, bevor Sie den Port über den Rechner hinaus öffnen; siehe den Hinweis im [Einzelbenutzermodus](VIEWER.md#einzelbenutzermodus-standard).
+
 ## Pfadzuordnung
 
 Wenn die Bewertungsmaschine und der Viewer-Server über unterschiedliche Einhängepunkte auf Fotos zugreifen, konfigurieren Sie `viewer.path_mapping` in `scoring_config.json`, um Datenbankpfade in lokale Festplattenpfade zu übersetzen.

@@ -42,6 +42,12 @@ logger = logging.getLogger(__name__)
 # viewer.py's own setup, so the factory configures logging there itself.
 CONFIGURE_LOGGING_ENV = "FACET_VIEWER_CONFIGURE_LOGGING"
 
+# Also set by viewer.py: the address it asked uvicorn to bind. The app cannot see
+# that from inside a worker, and ``create_app`` needs it to tell an open install
+# that is reachable beyond this machine from one bound to loopback. Absent when
+# the app was started by uvicorn directly (``uvicorn api:create_app --factory``).
+BIND_HOST_ENV = "FACET_VIEWER_BIND_HOST"
+
 
 def configure_logging():
     """Set up structured logging. Level comes from (in priority order):
@@ -474,6 +480,14 @@ def create_app() -> FastAPI:
     """FastAPI application factory."""
     if os.environ.get(CONFIGURE_LOGGING_ENV) == "1":
         configure_logging()
+
+    # Once per worker process, whichever way the server was launched: the
+    # factory is the one place every launch (viewer.py, `uvicorn api:create_app
+    # --factory`, Docker) goes through.
+    from api.auth import open_install_exposure_warning
+    exposure_warning = open_install_exposure_warning(os.environ.get(BIND_HOST_ENV))
+    if exposure_warning:
+        logger.warning("%s", exposure_warning)
 
     from api.db_helpers import warm_schema_caches
     app = FastAPI(

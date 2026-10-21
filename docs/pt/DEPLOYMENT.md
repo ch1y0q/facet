@@ -18,6 +18,8 @@ O Facet tem duas cargas de trabalho:
 
 Apenas o visualizador precisa rodar no servidor. Pontue em uma estação de trabalho e, em seguida, sincronize o banco de dados.
 
+> **Aviso:** enquanto `viewer.password` estiver vazio (o padrão), qualquer pessoa que alcance a porta do visualizador pode navegar por toda a biblioteca e baixar as fotos originais, qualquer que seja a forma de iniciá-lo abaixo. Defina `viewer.password` antes de expor a porta além da máquina; veja a nota em [Modo de Usuário Único](VIEWER.md#modo-de-usuário-único-padrão).
+
 ## Mapeamento de caminhos
 
 Quando a máquina de pontuação e o servidor do visualizador acessam as fotos a partir de pontos de montagem diferentes, configure `viewer.path_mapping` em `scoring_config.json` para traduzir os caminhos do banco de dados em caminhos de disco locais.

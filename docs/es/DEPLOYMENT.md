@@ -18,6 +18,8 @@ Facet tiene dos cargas de trabajo:
 
 Solo la galería web necesita ejecutarse en el servidor. Puntúa en una estación de trabajo y luego sincroniza la base de datos.
 
+> **Advertencia:** mientras `viewer.password` esté vacío (el valor por defecto), cualquiera que pueda llegar al puerto de la galería web puede explorar toda la biblioteca y descargar las fotos originales, sea cual sea la forma de lanzarla más abajo. Define `viewer.password` antes de exponer el puerto más allá de la máquina; consulta la nota de [Modo de un solo usuario](VIEWER.md#modo-de-un-solo-usuario-predeterminado).
+
 ## Mapeo de rutas
 
 Cuando la máquina de puntuación y el servidor de la galería web acceden a las fotos desde puntos de montaje diferentes, configura `viewer.path_mapping` en `scoring_config.json` para traducir las rutas de la base de datos a rutas locales en disco.

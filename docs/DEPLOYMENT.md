@@ -18,6 +18,8 @@ Facet has two workloads:
 
 Only the viewer needs to run on the server. Score on a workstation, then sync the database.
 
+> **Warning:** while `viewer.password` is empty (the shipped default), anyone who can reach the viewer's port can browse the whole library and download the original photos, however you launch it below. Set `viewer.password` before exposing the port beyond the machine; see the [Single-User Mode](VIEWER.md#single-user-mode-default) note.
+
 ## Path Mapping
 
 When the scoring machine and the viewer server access photos from different mount points, configure `viewer.path_mapping` in `scoring_config.json` to translate database paths to local disk paths.
