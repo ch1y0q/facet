@@ -62,10 +62,10 @@ def fit_review(result: dict, max_bytes: int) -> None:
     review = data.get("review") if isinstance(data, dict) else None
     if not isinstance(review, dict) or encoded_size(result) <= max_bytes:
         return
-    lists = {side: review.get(side) for side in ("keep", "remove")}
-    if not all(isinstance(v, list) for v in lists.values()):
+    keep, remove = review.get("keep"), review.get("remove")
+    if not isinstance(keep, list) or not isinstance(remove, list):
         return
-    review["keep_count"], review["remove_count"] = len(lists["keep"]), len(lists["remove"])
+    review["keep_count"], review["remove_count"] = len(keep), len(remove)
     review["truncated"] = True
     while encoded_size(result) > max_bytes and (review["keep"] or review["remove"]):
         side = "keep" if len(review["keep"]) >= len(review["remove"]) else "remove"
