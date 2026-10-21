@@ -8,6 +8,7 @@ viewer inside Metal exactly as two searches do. CUDA and CPU stay unserialized.
 
 import contextlib
 import io
+import sys
 import threading
 import time
 from unittest import mock
@@ -223,19 +224,20 @@ def test_a_cold_search_behind_a_busy_mps_lock_gives_up_loading_the_encoder():
     from api.routers import search
 
     config = {"backend": "open_clip", "model_name": "ViT-L-14", "pretrained": "openai"}
+    open_clip = mock.MagicMock()
     with (
         _mps_lock_held_elsewhere(),
         mock.patch.object(search, "_text_encoder", None),
         mock.patch.object(search, "_MPS_WAIT_SECONDS", 0.05),
         mock.patch.object(search, "_resolve_clip_config", return_value=config),
         mock.patch("utils.device.get_device", return_value="mps"),
-        mock.patch("open_clip.create_model_and_transforms") as load,
+        mock.patch.dict(sys.modules, {"open_clip": open_clip}),
     ):
         with pytest.raises(AcceleratorBusy):
             search._encode_texts(["beach"])
         assert search._text_encoder is None
         assert not search._text_encoder_lock.locked()
-    load.assert_not_called()
+    open_clip.create_model_and_transforms.assert_not_called()
 
 
 @pytest.mark.parametrize("device", ["cuda", "cpu"])
