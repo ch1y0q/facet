@@ -465,6 +465,11 @@ only what reading those two will NOT tell you.
   frames, burst members (similar / scene members only when grouped, best effort; scene only under
   `--cull-group-by scene`), earlier-culled and favourited / star-rated photos; `--copy-keepers` copies every
   non-rejected in-scope frame with its same-stem RAW / `.xmp` companions, never a rejected one's.
+- **Every model the viewer runs on MPS takes `api.model_cache.accelerator_lock(device)`** around
+  both its load and its inference. PyTorch's MPS backend is not thread-safe and all models share the
+  one device, so two unlocked ones running together (two searches, a search and a saliency overlay)
+  abort the whole viewer inside Metal with no Python traceback. Take a model's own lock first and
+  this one second; on CUDA and CPU it is a no-op.
 - **`/api/frame/*` ids are signed rowids, never filesystem paths**, and `/dav` authenticates with
   HTTP Basic against `upload.*` — never a user session or JWT — with every path realpath-contained
   to `upload.inbox_dir`.

@@ -27,6 +27,7 @@ from api.model_cache import (
     resolve_vlm_config,
     translate_text,
     translation_target,
+    vlm_accelerator_lock,
     vlm_generate_lock,
 )
 
@@ -197,7 +198,7 @@ def _generate_caption(photo_path: str) -> Optional[str]:
             return None
         img.thumbnail((640, 640))
 
-        with vlm_generate_lock:
+        with vlm_generate_lock, vlm_accelerator_lock(tagger):
             caption = tagger.generate(
                 img,
                 "Describe this photo in one concise sentence.",

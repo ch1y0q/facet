@@ -82,6 +82,8 @@ def _max_coordinate(faces):
 
 
 class _FakeSaliency:
+    device = "cpu"
+
     def get_saliency_soft(self, pil_img):
         w, h = pil_img.size
         return np.linspace(0, 1, w * h, dtype=np.float32).reshape(h, w)
