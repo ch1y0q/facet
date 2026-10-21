@@ -30,7 +30,7 @@ const GROUPS_RESPONSE = {
 
 const PREVIEW = {
   groups_processed: 2, kept: 2, rejected: 2, highlights_added: 0,
-  dry_run: true, preview: [], preview_truncated: false,
+  dry_run: true, preview: [], next_cursor: null, plan_digest: 'digest',
 };
 
 // The component spec's original feed, kept verbatim so the moved tests read the same.

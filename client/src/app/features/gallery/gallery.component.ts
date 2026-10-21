@@ -41,6 +41,7 @@ import {
 } from '../../shared/pipes/sequence-kind.pipe';
 import { isBracketLadderRejection } from '../../shared/utils/sequence-ladder';
 import { IsSelectedPipe } from '../../shared/pipes/selection.pipe';
+import { ReviewGroupPipe, ReviewMarkPipe } from '../../shared/pipes/review.pipes';
 import { PhotoSetKindIconPipe, PhotoSetKindLabelPipe } from '../../shared/pipes/photo-set-kind.pipe';
 import { AuthService } from '../../core/services/auth.service';
 import { useDesktopSignal, DETAILS_RAIL_MIN_WIDTH_PX } from '../../shared/utils/media-query';
@@ -100,6 +101,8 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
     TranslatePipe,
     SequenceKindIconPipe,
     IsSelectedPipe,
+    ReviewGroupPipe,
+    ReviewMarkPipe,
     PhotoSetKindIconPipe,
     PhotoSetKindLabelPipe,
     MatSnackBarModule,
@@ -272,6 +275,12 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
             <mat-icon class="opacity-70 !text-base !w-5 !h-5">auto_awesome</mat-icon>
             <span class="flex-1">
               {{ store.total() | pluralKey:I18N.gallery.pinned.chip:I18N.gallery.pinned.chip_plural | translate:{ count: store.total() } }}
+              @if (store.hasReview()) {
+                @let legend = store.reviewLegend();
+                <span class="ml-2 opacity-80" data-testid="pinned-review-legend">
+                  {{ 'gallery.pinned.review.legend' | translate:{ groups: legend.groups, keep: legend.keep, remove: legend.remove } }}
+                </span>
+              }
             </span>
             <button mat-button class="!min-w-0" (click)="store.clearPinned()">
               {{ I18N.gallery.pinned.clear | translate }}
@@ -340,6 +349,9 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                   [collapsedSetKinds]="collapsedSetKinds()"
                   [burstFramesVisible]="burstFramesVisible()"
                       [photo]="photo"
+                      [groupNumber]="photo.path | reviewGroup:store.pinnedGroups()"
+                      [reviewMark]="photo.path | reviewMark:store.userMarks():store.pinnedMarks()"
+                      (reviewMarkToggle)="toggleReviewMark($event)"
                       [attr.data-pidx]="row.startIndex + i"
                       [style.width.px]="row.widths[i]"
                       [style.height.px]="row.height"
@@ -396,6 +408,9 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                   [collapsedSetKinds]="collapsedSetKinds()"
                   [burstFramesVisible]="burstFramesVisible()"
                   [photo]="photo"
+                  [groupNumber]="photo.path | reviewGroup:store.pinnedGroups()"
+                  [reviewMark]="photo.path | reviewMark:store.userMarks():store.pinnedMarks()"
+                  (reviewMarkToggle)="toggleReviewMark($event)"
                   [attr.data-pidx]="i"
                   [config]="store.config()"
                   [isSelected]="photo.path | isSelected:viewScoped():selectedPaths():excludedPaths()"
@@ -454,6 +469,9 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                   [collapsedSetKinds]="collapsedSetKinds()"
                   [burstFramesVisible]="burstFramesVisible()"
                       [photo]="photo"
+                      [groupNumber]="photo.path | reviewGroup:store.pinnedGroups()"
+                      [reviewMark]="photo.path | reviewMark:store.userMarks():store.pinnedMarks()"
+                      (reviewMarkToggle)="toggleReviewMark($event)"
                       [attr.data-pidx]="row.startIndex + i"
                       [style.width.px]="row.widths[i]"
                       [style.height.px]="row.height"
@@ -1272,6 +1290,12 @@ export class GalleryComponent implements OnInit, OnDestroy {
    *  it out loud makes the rule hold for any caller. It is also what lifts the
    *  newly current card clear of the action bar that this very selection has
    *  just raised over it. */
+  /** Flip a card's effective keep/remove mark into the user's absolute choice; no HTTP. */
+  protected toggleReviewMark(path: string): void {
+    const current = this.store.userMarks().get(path) ?? this.store.pinnedMarks().get(path);
+    this.store.setReviewMark(path, current === 'keep' ? 'remove' : 'keep');
+  }
+
   protected toggleSelection(photo: Photo, event: MouseEvent | undefined, index: number): void {
     this.store.toggleSelection(photo, event);
     this.setCursor(index);

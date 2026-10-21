@@ -247,6 +247,119 @@ class TestAutoCull:
         assert result["error"] == "confirmation_required"
 
 
+BIG_PREFIX = PREFIX + "big/" + "d" * 70 + "/"
+BIG_WINDOW = {"date_from": "1996-01-01", "date_to": "1996-01-01"}
+BIG_GROUPS = 120
+
+
+def _big_rows():
+    return [{"path": f"{BIG_PREFIX}{'f' * 24}_{g:03d}_{i}.jpg", "filename": f"{g}_{i}.jpg",
+             "date_taken": f"1996:01:01 {g // 60:02d}:{g % 60:02d}:{i:02d}",
+             "aggregate": 9.0 - 3 * i, "aesthetic": 9.0 - 3 * i, "tech_sharpness": 9.0 - 3 * i,
+             "burst_group_id": 7000 + g, "is_burst_lead": int(i == 0)}
+            for g in range(BIG_GROUPS) for i in range(3)]
+
+
+@pytest.fixture()
+def big(env_token, seed_photos_prefix):
+    seed_photos_prefix(BIG_PREFIX, _big_rows())
+    return env_token
+
+
+def _big_pages(env, token, **extra):
+    pages, cursor = [], 0
+    while True:
+        result = env.call(token, "auto_cull", {"group_by": "burst", "strictness": 100, "cursor": cursor,
+                                               **BIG_WINDOW, **extra})
+        assert result["ok"], result
+        pages.append(result)
+        cursor = result["data"]["next_cursor"]
+        if cursor is None:
+            return pages
+        assert len(pages) < 20
+
+
+class TestAutoCullPaging:
+    def test_a_page_fits_the_envelope_with_long_paths(self, big):
+        env, token = big
+        first = _big_pages(env, token)[0]
+        photos = sum(len(r["keep_paths"]) + len(r["reject_paths"]) for r in first["data"]["rows"])
+        assert 150 < photos <= 200 and len(first["data"]["rows"]) <= 100
+        assert max(len(p) for r in first["data"]["rows"] for p in r["keep_paths"]) >= 120
+        assert "truncated" not in first and "next_offset" not in first
+        assert len(first["data"]["rows"]) == first["data"]["next_cursor"]
+        assert tools_culling.encoded_size(first) <= 60000
+
+    def test_auto_cull_large_plan_confirmable(self, big):
+        env, token = big
+        pages = _big_pages(env, token)
+        assert len(pages) >= 2 and all(p["confirm"] for p in pages)
+        planned = {p for page in pages for g in page["data"]["rows"] for p in g["reject_paths"]}
+        assert len(planned) == BIG_GROUPS * 2
+        result = env.call(token, "auto_cull", {"group_by": "burst", "strictness": 100, "dry_run": False,
+                                               "confirm": pages[0]["confirm"], **BIG_WINDOW})
+        assert result["ok"], result
+        assert {p for p in _rejected() if p.startswith(BIG_PREFIX)} == planned
+
+    def test_the_apply_is_refused_when_the_plan_moved_after_the_nonce_check(self, big):
+        env, token = big
+        pages = _big_pages(env, token)
+        with sqlite3.connect(_TEST_DB_FILE.name) as conn:
+            conn.execute("UPDATE photos SET aggregate = 9.9, aesthetic = 9.9, tech_sharpness = 9.9 "
+                         "WHERE path LIKE ? AND path LIKE '%\\_001\\_2.jpg' ESCAPE '\\'", (BIG_PREFIX + "%",))
+        result = env.call(token, "auto_cull", {"group_by": "burst", "strictness": 100, "dry_run": False,
+                                               "confirm": pages[0]["confirm"], **BIG_WINDOW})
+        assert result["error"] == "confirmation_required"
+        assert not {p for p in _rejected() if p.startswith(BIG_PREFIX)}
+
+
+class TestAutoCullOverrides:
+    def args(self, **extra):
+        return {"group_by": "burst", "strictness": 0, **SCOPE, **extra}
+
+    def test_description_documents_the_protocol(self, env_token):
+        env, token = env_token
+        tools = env.rpc(token, "tools/list").json()["result"]["tools"]
+        text = next(t["description"] for t in tools if t["name"] == "auto_cull")
+        for needle in ("keep_paths", "remove_paths", "ui_get_context", "SAME", "next_cursor", "300"):
+            assert needle in text, needle
+
+    def test_overrides_are_applied_under_the_same_confirm(self, env_token):
+        env, token = env_token
+        overrides = {"keep_paths": [BURST_PATHS[2]], "remove_paths": [BURST_PATHS[1]]}
+        preview = env.call(token, "auto_cull", self.args(**overrides))
+        assert preview["ok"], preview
+        row = preview["data"]["rows"][0]
+        assert row["reject_paths"] == [BURST_PATHS[1]] and BURST_PATHS[2] in row["keep_paths"]
+        result = env.call(token, "auto_cull", self.args(dry_run=False, confirm=preview["confirm"], **overrides))
+        assert result["ok"], result
+        assert _rejected() == {BURST_PATHS[1]}
+
+    def test_a_confirm_does_not_cover_different_overrides(self, env_token):
+        env, token = env_token
+        preview = env.call(token, "auto_cull", self.args(remove_paths=[BURST_PATHS[1]]))
+        result = env.call(token, "auto_cull", self.args(dry_run=False, confirm=preview["confirm"]))
+        assert result["error"] == "confirmation_required"
+        assert _rejected() == set()
+
+    def test_stale_paths_are_reported_not_applied(self, env_token):
+        env, token = env_token
+        result = env.call(token, "auto_cull", self.args(remove_paths=["/not/in/plan.jpg"]))
+        assert result["ok"] and result["data"]["ignored_overrides"] == ["/not/in/plan.jpg"]
+
+    def test_refusals_name_the_paths_and_groups(self, env_token):
+        env, token = env_token
+        both = env.call(token, "auto_cull", self.args(keep_paths=[BURST_PATHS[0]], remove_paths=[BURST_PATHS[0]]))
+        assert both["error"] == "invalid_input" and BURST_PATHS[0] in both["message"]
+        zero = env.call(token, "auto_cull", self.args(remove_paths=BURST_PATHS[:2]))
+        assert zero["error"] == "invalid_input" and "4242" in zero["message"]
+
+    def test_too_many_override_paths_are_invalid(self, env_token):
+        env, token = env_token
+        result = env.call(token, "auto_cull", self.args(remove_paths=[f"/p{i}" for i in range(1001)]))
+        assert result["error"] == "invalid_input"
+
+
 class TestConfirm:
     def group(self, type_, paths, keep):
         return {"type": type_, "group_id": 4242 if type_ == "burst" else 77, "paths": paths,

@@ -150,7 +150,7 @@ class TestDryRun:
         assert body["groups_processed"] == 2
         assert body["kept"] == 4
         assert body["rejected"] == 1
-        assert body["preview_truncated"] is False
+        assert body["next_cursor"] is None
         # No writes of any kind.
         assert conn.execute("SELECT COUNT(*) FROM photos WHERE is_rejected = 1").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM photos WHERE burst_reviewed = 1").fetchone()[0] == 0
@@ -733,3 +733,163 @@ class TestAutoCullMixedSequenceGroup:
         assert paired == {self.PLAIN_BEST, self.PLAIN_WEAK}, (
             f"expected exactly the two ordinary frames to pair, got {paired}"
         )
+
+
+def _many_groups(n, size=3, prefix="/m"):
+    """``n`` burst groups of ``size`` photos, best first, one second apart per group."""
+    rows = []
+    for g in range(1, n + 1):
+        for i in range(size):
+            rows.append((f"{prefix}{g:03d}_{i}.jpg", f"2024:07:01 {g // 60:02d}:{g % 60:02d}:{i:02d}",
+                         9.0 - 3 * i, g))
+    return rows
+
+
+def _pages(client, conn, body):
+    """Follow ``next_cursor`` to the end; returns the list of response bodies."""
+    pages, cursor = [], 0
+    while True:
+        resp, _ = _post(client, conn, {**body, "cursor": cursor})
+        assert resp.status_code == 200, resp.text
+        pages.append(resp.json())
+        cursor = pages[-1]["next_cursor"]
+        if cursor is None:
+            return pages
+        assert len(pages) < 50
+
+
+class TestPaging:
+    BODY = {"group_by": "burst", "strictness": 100}
+
+    def test_auto_cull_pages_whole_groups(self, edition_client):
+        conn = _db(_many_groups(100))
+        pages = _pages(edition_client, conn, self.BODY)
+        assert len(pages) == 2
+        numbers = [row["number"] for page in pages for row in page["preview"]]
+        assert numbers == list(range(1, 101))
+        ids = [row["group_id"] for page in pages for row in page["preview"]]
+        assert len(set(ids)) == 100
+        for page in pages:
+            photos = sum(len(r["keep_paths"]) + len(r["reject_paths"]) for r in page["preview"])
+            assert 0 < photos <= 200
+            assert all(len(r["keep_paths"]) + len(r["reject_paths"]) == 3 for r in page["preview"])
+            assert page["groups_processed"] == 100 and page["kept"] == 100 and page["rejected"] == 200
+        assert pages[0]["next_cursor"] == len(pages[0]["preview"])
+        assert len({page["plan_digest"] for page in pages}) == 1 and pages[0]["plan_digest"]
+
+    def test_a_group_over_the_page_limit_gets_a_page_of_its_own(self, edition_client):
+        rows = _many_groups(2, size=3) + [
+            (f"/big{i:03d}.jpg", f"2024:08:01 10:{i // 60:02d}:{i % 60:02d}", 9.0 - i / 100, 900)
+            for i in range(230)]
+        conn = _db(rows)
+        pages = _pages(edition_client, conn, self.BODY)
+        sizes = [[len(r["keep_paths"]) + len(r["reject_paths"]) for r in p["preview"]] for p in pages]
+        assert [230] in sizes and sum(map(len, sizes)) == 3
+
+    def test_cursor_past_the_end_is_an_empty_final_page(self, edition_client):
+        conn = _db()
+        resp, _ = _post(edition_client, conn, {**self.BODY, "cursor": 99})
+        assert resp.status_code == 200
+        assert resp.json()["preview"] == [] and resp.json()["next_cursor"] is None
+
+
+class TestAtomicApply:
+    def test_auto_cull_apply_digest_mismatch_writes_nothing(self, edition_client):
+        conn = _db()
+        resp, retrain = _post(edition_client, conn, {
+            "group_by": "burst", "strictness": 50, "dry_run": False, "expected_digest": "0" * 64})
+        assert resp.status_code == 412, resp.text
+        assert conn.execute("SELECT COUNT(*) FROM photos WHERE is_rejected = 1").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM photos WHERE burst_reviewed = 1").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM comparisons").fetchone()[0] == 0
+        retrain.assert_not_called()
+
+    def test_a_matching_digest_applies(self, edition_client):
+        conn = _db()
+        body = {"group_by": "burst", "strictness": 50}
+        digest = _post(edition_client, conn, body)[0].json()["plan_digest"]
+        resp, _ = _post(edition_client, conn, {**body, "dry_run": False, "expected_digest": digest})
+        assert resp.status_code == 200, resp.text
+        assert [r["path"] for r in conn.execute("SELECT path FROM photos WHERE is_rejected = 1")] == ["/g1c.jpg"]
+
+    def test_a_changed_plan_changes_the_digest(self, edition_client):
+        conn = _db()
+        body = {"group_by": "burst", "strictness": 50}
+        before = _post(edition_client, conn, body)[0].json()["plan_digest"]
+        conn.execute("UPDATE photos SET aggregate = 9.9, aesthetic = 9.9, tech_sharpness = 9.9 "
+                     "WHERE path = '/g1c.jpg'")
+        conn.commit()
+        assert _post(edition_client, conn, body)[0].json()["plan_digest"] != before
+
+
+class TestOverrides:
+    BODY = {"group_by": "burst", "strictness": 50}
+
+    def _plan(self, client, conn, **extra):
+        resp, _ = _post(client, conn, {**self.BODY, **extra})
+        return resp
+
+    def test_auto_cull_overrides_applied(self, edition_client):
+        conn = _db()
+        base = self._plan(edition_client, conn).json()
+        resp = self._plan(edition_client, conn, remove_paths=["/g1b.jpg"], keep_paths=["/g1c.jpg"])
+        body = resp.json()
+        rows = {r["group_id"]: r for r in body["preview"]}
+        assert rows[1]["keep_paths"] == ["/g1a.jpg", "/g1c.jpg"]
+        assert rows[1]["reject_paths"] == ["/g1b.jpg"]
+        assert body["kept"] == base["kept"] and body["rejected"] == base["rejected"]
+        applied, _ = _post(edition_client, conn, {
+            **self.BODY, "dry_run": False, "remove_paths": ["/g1b.jpg"], "keep_paths": ["/g1c.jpg"],
+            "expected_digest": body["plan_digest"]})
+        assert applied.status_code == 200, applied.text
+        assert [r["path"] for r in conn.execute("SELECT path FROM photos WHERE is_rejected = 1")] == ["/g1b.jpg"]
+
+    def test_auto_cull_overrides_ignored(self, edition_client):
+        conn = _db()
+        base = self._plan(edition_client, conn).json()
+        body = self._plan(edition_client, conn, remove_paths=["/gone.jpg"],
+                          keep_paths=["/also-gone.jpg"]).json()
+        assert sorted(body["ignored_overrides"]) == ["/also-gone.jpg", "/gone.jpg"]
+        assert body["plan_digest"] == base["plan_digest"]
+        assert base["ignored_overrides"] == []
+
+    def test_an_override_equal_to_the_plan_is_a_no_op(self, edition_client):
+        conn = _db()
+        base = self._plan(edition_client, conn).json()
+        body = self._plan(edition_client, conn, keep_paths=["/g1a.jpg"], remove_paths=["/g1c.jpg"]).json()
+        assert body["plan_digest"] == base["plan_digest"] and body["ignored_overrides"] == []
+
+    def test_auto_cull_overrides_keep_whole_removal_names_the_path(self, edition_client):
+        conn = _db(photos=[])
+        for i in range(3):
+            conn.execute(
+                "INSERT INTO photos (path, filename, date_taken, aggregate, aesthetic, tech_sharpness, "
+                "is_blink, is_burst_lead, burst_group_id, sequence_kind, sequence_group_id) "
+                "VALUES (?, ?, ?, 5, 5, 5, 0, 0, 5, 'panorama', 1)",
+                (f"/pan{i}.jpg", f"pan{i}.jpg", f"2024:09:01 10:00:0{i}"))
+        conn.commit()
+        resp = self._plan(edition_client, conn, remove_paths=["/pan1.jpg"])
+        assert resp.status_code == 400 and "/pan1.jpg" in resp.text, resp.text
+
+    def test_auto_cull_overrides_zero_keeper_names_the_group(self, edition_client):
+        conn = _db()
+        resp = self._plan(edition_client, conn, remove_paths=["/g2a.jpg", "/g2b.jpg"])
+        assert resp.status_code == 400, resp.text
+        assert "group 2" in resp.text and "burst" in resp.text
+
+    def test_auto_cull_overrides_both_lists_refused(self, edition_client):
+        conn = _db()
+        resp = self._plan(edition_client, conn, remove_paths=["/g1a.jpg"], keep_paths=["/g1a.jpg"])
+        assert resp.status_code == 400 and "/g1a.jpg" in resp.text
+
+    def test_auto_cull_overrides_change_the_digest(self, edition_client):
+        conn = _db()
+        base = self._plan(edition_client, conn).json()["plan_digest"]
+        one = self._plan(edition_client, conn, remove_paths=["/g1b.jpg"]).json()["plan_digest"]
+        two = self._plan(edition_client, conn, keep_paths=["/g1c.jpg"]).json()["plan_digest"]
+        assert len({base, one, two}) == 3
+
+    def test_override_lists_are_capped_at_1000(self, edition_client):
+        conn = _db()
+        resp = self._plan(edition_client, conn, remove_paths=[f"/x{i}" for i in range(1001)])
+        assert resp.status_code == 422

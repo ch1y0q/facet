@@ -88,11 +88,7 @@ def _fit_groups(rows: list[dict], budget: int) -> list[dict]:
     return rows
 
 
-def _plan_digest(options: dict, preview: list[dict]) -> str:
-    """Digest of the options plus the RESOLVED keep/reject split of every group."""
-    tagged = [f"{g.get('type')}:{g.get('group_id')}:{side}:{path}" for g in preview
-              for side in ("keep", "reject") for path in g.get(f"{side}_paths", [])]
-    return nonce.digest(tagged, options)
+PLAN_CHANGED = "The plan changed since it was previewed"
 
 
 def _confirm_digest(groups: list[ConfirmGroup]) -> str:
@@ -215,6 +211,9 @@ def register_culling_tools(server: MCPServer, app: Any) -> None:
         highlights_album: Annotated[str, Field(max_length=200)] = "",
         dry_run: bool = True,
         confirm: Optional[str] = None,
+        cursor: Annotated[int, Field(ge=0)] = 0,
+        keep_paths: Annotated[Optional[list[str]], Field(max_length=1000)] = None,
+        remove_paths: Annotated[Optional[list[str]], Field(max_length=1000)] = None,
     ) -> CallToolResult:
         async def handler(grant, resolved, settings):
             since, until, bad = normalise_window(date_from, date_to)
@@ -223,41 +222,45 @@ def register_culling_tools(server: MCPServer, app: Any) -> None:
             options = {"group_by": group_by, "album_id": album_id, "date_from": since,
                        "date_to": until, "strictness": strictness,
                        "min_keep_per_group": min_keep_per_group, "profile": profile,
-                       "trim_brackets": trim_brackets, "highlights_album": highlights_album}
+                       "trim_brackets": trim_brackets, "highlights_album": highlights_album,
+                       "keep_paths": keep_paths or [], "remove_paths": remove_paths or []}
             timeout = settings["call_timeout_s"]
-            preview = await client.call(grant, "culling.auto", json={**options, "dry_run": True},
+            preview = await client.call(grant, "culling.auto",
+                                        json={**options, "dry_run": True, "cursor": cursor if dry_run else 0},
                                         timeout=timeout)
             if not preview["ok"] or dry_run:
-                return _preview_result(grant, preview, options)
-            body = preview["data"] or {}
-            if body.get("preview_truncated"):
+                return _preview_result(grant, preview)
+            digest = (preview["data"] or {}).get("plan_digest")
+            if not digest or not (preview["data"] or {}).get("rejected") \
+                    or not nonce.check(grant.nonce_owner, "auto_cull", digest, confirm):
                 return err("confirmation_required",
-                           "The plan is too large to confirm as one set; narrow it with "
-                           "album_id, date_from/date_to or group_by")
-            if not nonce.check(grant.nonce_owner, "auto_cull", _plan_digest(options, body.get("preview", [])), confirm):
-                return err("confirmation_required",
-                           "Preview with dry_run=true first and pass its `confirm` value; the "
-                           "plan must be unchanged since that preview")
-            return await client.call(grant, "culling.auto", json={**options, "dry_run": False}, timeout=timeout)
+                           "Preview with dry_run=true first and pass its `confirm` value, with the "
+                           "same overrides; the plan must be unchanged since that preview")
+            applied = await client.call(grant, "culling.auto",
+                                        json={**options, "dry_run": False, "expected_digest": digest},
+                                        timeout=timeout)
+            if not applied["ok"] and PLAN_CHANGED in applied.get("message", ""):
+                return err("confirmation_required", applied["message"])
+            return applied
         return await run_tool(ctx, "auto_cull", handler, write=not dry_run)
 
-    def _preview_result(grant, upstream: dict, options: dict) -> dict:
+    def _preview_result(grant, upstream: dict) -> dict:
         if not upstream["ok"]:
             return upstream
         body = upstream["data"] or {}
-        groups = body.get("preview", [])
-        data = {**body, "rows": [{"type": g["type"], "group_id": g["group_id"],
-                                  "keep_paths": g["keep_paths"], "reject_paths": g["reject_paths"],
-                                  "best_path": g["best_path"]} for g in groups]}
+        data = {**body, "rows": body.get("preview", [])}
         data.pop("preview", None)
         kinds = body.get("scope_dependent_kinds")
-        scope_note = (f"Groups of kind {', '.join(kinds)} depend on the date range / candidate pool: "
-                      "cull the whole range in one call." if kinds else None)
-        if body.get("preview_truncated") or not body.get("rejected"):
-            note = ("Nothing to apply" if not body.get("rejected")
-                    else "Plan truncated: narrow the scope to get a confirmable preview")
-            return ok(data, note=f"{note}. {scope_note}" if scope_note else note)
-        return ok(data, **({"note": scope_note} if scope_note else {}), confirm=nonce.issue(grant.nonce_owner, "auto_cull", _plan_digest(options, groups)))
+        notes = []
+        if not body.get("rejected"):
+            notes.append("Nothing to apply")
+        if kinds:
+            notes.append(f"Groups of kind {', '.join(kinds)} depend on the date range / candidate pool: "
+                         "cull the whole range in one call.")
+        extra = {"note": " ".join(notes)} if notes else {}
+        if not body.get("rejected"):
+            return ok(data, **extra)
+        return ok(data, **extra, confirm=nonce.issue(grant.nonce_owner, "auto_cull", body["plan_digest"]))
 
     async def confirm_culling_groups(
         ctx: Context,
@@ -311,7 +314,14 @@ def register_culling_tools(server: MCPServer, app: Any) -> None:
         "Auto-cull a scope under a keeper budget. dry_run=true (default) only previews the split "
         "and returns a `confirm` value; show the user the counts, then call again with "
         "dry_run=false and that `confirm` to reject the planned frames. The apply is refused when "
-        "the plan changed since the preview. Brackets and panoramas are kept whole. date_from/date_to "
+        "the plan changed since the preview. The preview is paged by whole groups: repeat the call "
+        "with `cursor` set to the result's `next_cursor` until it is null; counts cover the full "
+        "plan and ONE confirm covers all of it (valid 300 s, single use). To honour the user's "
+        "review, pass the `review` lists from ui_get_context as keep_paths / remove_paths (up to "
+        "1000 each): paths outside the plan come back as `ignored_overrides`, and removing a frame "
+        "of a bracket or panorama, emptying a group of keepers or listing a path in both is refused. "
+        "Pass the SAME overrides on the dry run that issues the confirm and on the apply. "
+        "Brackets and panoramas are kept whole. date_from/date_to "
         "accept 'YYYY-MM-DD' (date_to covers the whole day) or 'YYYY-MM-DD HH:MM:SS'. Cull a whole "
         "range in ONE call: do not split it by month, because similar and scene groups depend on "
         "the date range (see `scope_dependent_kinds` in the result)." + SEE_GROUP,

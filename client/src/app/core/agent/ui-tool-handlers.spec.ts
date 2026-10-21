@@ -492,6 +492,31 @@ describe('UI tool registry and handlers', () => {
       expect(await run('ui_select_photos', { select_view: true })).toMatchObject({ ok: false, error: 'invalid_input' });
     });
 
+    it('passes groups and marks to the store and reports annotated', async () => {
+      byPaths(['/a.jpg', '/b.jpg'], []);
+      const spy = vi.spyOn(store, 'showPaths');
+      const result = await run('ui_show_photos', { paths: ['/a.jpg', '/b.jpg'], groups: [1, 1], marks: ['keep', 'remove'] });
+      expect(spy).toHaveBeenCalledWith(['/a.jpg', '/b.jpg'], { groups: [1, 1], marks: ['keep', 'remove'] });
+      expect(result).toMatchObject({ ok: true, data: { annotated: 2 } });
+    });
+
+    it('refuses groups or marks whose length differs from paths, before touching the gallery', async () => {
+      const post = byPaths(['/a.jpg', '/b.jpg'], []);
+      const handler = direct();
+      await expect(handler['ui_show_photos']({ paths: ['/a.jpg', '/b.jpg'], groups: [1] })).rejects.toMatchObject({ code: 'invalid_input' });
+      await expect(handler['ui_show_photos']({ paths: ['/a.jpg', '/b.jpg'], marks: ['keep'] })).rejects.toMatchObject({ code: 'invalid_input' });
+      expect(post).not.toHaveBeenCalled();
+    });
+
+    it('returns the user review at the top level of ui_get_context, even off the gallery', async () => {
+      router.url = '/photo?path=a.jpg';
+      store.setReviewMark('/a.jpg', 'keep');
+      store.setReviewMark('/b.jpg', 'remove');
+      expect(await run('ui_get_context')).toMatchObject({
+        ok: true, data: { gallery: null, review: { keep: ['/a.jpg'], remove: ['/b.jpg'] } },
+      });
+    });
+
     it('is reported as pinned by ui_get_context', async () => {
       byPaths(['/a.jpg'], []);
       await run('ui_show_photos', { paths: ['/a.jpg'] });

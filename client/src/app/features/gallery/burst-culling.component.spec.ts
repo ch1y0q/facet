@@ -545,7 +545,7 @@ describe('BurstCullingComponent', () => {
   describe('auto-cull (one-button cull with keeper budget)', () => {
     const preview = {
       groups_processed: 3, kept: 4, rejected: 5, highlights_added: 2,
-      dry_run: true, preview: [], preview_truncated: false,
+      dry_run: true, preview: [], next_cursor: null, plan_digest: 'digest',
     };
 
     it('openAutoCull dry-runs the current scope and stores the preview', async () => {
@@ -2090,7 +2090,7 @@ describe('BurstCullingComponent', () => {
     ];
     const preview = {
       groups_processed: 2, kept: 3, rejected: 4, highlights_added: 0,
-      dry_run: true, preview: [], preview_truncated: false,
+      dry_run: true, preview: [], next_cursor: null, plan_digest: 'digest',
     };
     const suggestion = (profile: string | null) =>
       ({ profile, confidence: 0.8, evidence: { photos: 40, wedding: 32 } });
@@ -2672,7 +2672,7 @@ describe('BurstCullingComponent modals (rendered)', () => {
   };
   const preview = {
     groups_processed: 3, kept: 4, rejected: 5, highlights_added: 0,
-    dry_run: true, preview: [], preview_truncated: false,
+    dry_run: true, preview: [], next_cursor: null, plan_digest: 'digest',
   };
 
   beforeEach(() => {

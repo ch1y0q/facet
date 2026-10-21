@@ -105,6 +105,12 @@ describe('GalleryComponent', () => {
       filterPayload: vi.fn(() => ({ page: '1' })),
       viewSnapshot: signal(null),
       pinnedPaths: signal<string[] | null>(null),
+      pinnedGroups: signal(new Map<string, number>()),
+      pinnedMarks: signal(new Map<string, 'keep' | 'remove'>()),
+      userMarks: signal(new Map<string, 'keep' | 'remove'>()),
+      hasReview: signal(false),
+      reviewLegend: signal({ groups: 0, keep: 0, remove: 0 }),
+      setReviewMark: vi.fn(),
       clearPinned: vi.fn(() => Promise.resolve()),
       filterKey: vi.fn((f?: GalleryFilters) => JSON.stringify(buildApiParams(f ?? mockStore.filters(), false))),
       hiddenSummary: signal({ total: 0, blinks: 0, bursts: 0, duplicates: 0 }),
@@ -1063,6 +1069,22 @@ describe('GalleryComponent', () => {
       fixture.detectChanges();
       expect((fixture.nativeElement as HTMLElement).querySelector(`[aria-label="${I18N.gallery.keep_top.label}"]`)).toBeNull();
       mockStore.canScopeSelectionToView.set(true);
+    });
+
+    it('renders the review legend in the chip only when the pin has marks', () => {
+      mockStore.pinnedPaths.set(['/a.jpg', '/b.jpg']);
+      mockStore.total.set(2);
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const html = fixture.nativeElement as HTMLElement;
+      expect(html.querySelector('[data-testid="pinned-review-legend"]')).toBeNull();
+      mockStore.hasReview.set(true);
+      mockStore.reviewLegend.set({ groups: 2, keep: 3, remove: 4 });
+      fixture.detectChanges();
+      const legend = html.querySelector('[data-testid="pinned-review-legend"]');
+      expect(legend).toBeTruthy();
+      expect(html.querySelector('[role="status"]')?.contains(legend)).toBe(true);
     });
 
     it('uses the singular chip text for one photo', () => {

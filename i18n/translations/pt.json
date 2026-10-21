@@ -1047,7 +1047,16 @@
     "pinned": {
       "chip": "{count} foto escolhida pelo seu assistente",
       "chip_plural": "{count} fotos escolhidas pelo seu assistente",
-      "clear": "Voltar à vista habitual"
+      "clear": "Voltar à vista habitual",
+      "review": {
+        "keep": "Manter",
+        "remove": "Remover",
+        "group": "Grupo {n}",
+        "legend": "{groups} grupos · {keep} a manter · {remove} a remover",
+        "keep_aria": "Manter, grupo {n}. Ativar para marcar como remover",
+        "remove_aria": "Remover, grupo {n}. Ativar para manter",
+        "toggle_tooltip": "Clique para alternar entre manter e remover"
+      }
     },
     "all_photos": "Todas as fotos",
     "sort": "Ordenar por",

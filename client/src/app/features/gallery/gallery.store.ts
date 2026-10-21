@@ -29,6 +29,11 @@ export { DEFAULT_FILTERS, SMART_ALBUM_EXCLUDE_KEYS, anyHideToggleActive };
 export type HiddenFilterFlags = Pick<GalleryFilters,
   'hide_blinks' | 'hide_bursts' | 'hide_duplicates' | 'hide_brackets' | 'hide_panoramas'>;
 
+/** An agent's (or the user's) verdict on one photo of an annotated pinned list. */
+export type ReviewMark = 'keep' | 'remove';
+/** Cap per list in the review snapshot handed back to the assistant. */
+export const REVIEW_CAP = 1000;
+
 export const FILTER_OPTIONS_TIMEOUT_MS = 20000;
 
 /**
@@ -296,6 +301,36 @@ export class GalleryStore {
   /** Requested paths the server did not return for the current pin (invisible, unknown). */
   readonly pinnedMissing = signal<string[]>([]);
   private pinnedLoad = false;
+  /** The agent's per-path group number for the current pin (empty when the pin carries none). */
+  readonly pinnedGroups = signal<ReadonlyMap<string, number>>(new Map());
+  /** The agent's per-path keep/remove mark for the current pin. */
+  readonly pinnedMarks = signal<ReadonlyMap<string, ReviewMark>>(new Map());
+  /** The user's ABSOLUTE chosen mark per path, accumulated across pins (never a flip of the agent's). */
+  readonly userMarks = signal<ReadonlyMap<string, ReviewMark>>(new Map());
+  /** Legend counts over the pinned list: distinct groups, and photos effectively kept / removed. */
+  readonly reviewLegend = computed(() => {
+    const agent = this.pinnedMarks();
+    const user = this.userMarks();
+    let keep = 0;
+    let remove = 0;
+    for (const path of this.pinnedPaths() ?? []) {
+      const mark = user.get(path) ?? agent.get(path);
+      if (mark === 'keep') keep++;
+      else if (mark === 'remove') remove++;
+    }
+    return { groups: new Set(this.pinnedGroups().values()).size, keep, remove };
+  });
+  /** Whether the current pin carries any review annotation. */
+  readonly hasReview = computed(() => this.pinnedGroups().size > 0 || this.pinnedMarks().size > 0);
+  /** What the user chose, for the assistant: only paths they set themselves, capped. */
+  readonly review = computed(() => {
+    const keep: string[] = [];
+    const remove: string[] = [];
+    for (const [path, mark] of this.userMarks()) {
+      (mark === 'keep' ? keep : remove).push(path);
+    }
+    return { keep: keep.slice(0, REVIEW_CAP), remove: remove.slice(0, REVIEW_CAP) };
+  });
   readonly hasMore = signal(false);
   readonly config = signal<ViewerConfig | null>(null);
   readonly filterDrawerOpen = signal(localStorage.getItem(DRAWER_STATE_KEY) === 'true');
@@ -673,6 +708,7 @@ export class GalleryStore {
   async loadConfig(): Promise<void> {
     // loadConfig replaces `filters` wholesale, so an explicit list shown under the old ones is stale.
     this.pinnedPaths.set(null);
+    this.dropReview();
     try {
       const cfg = await firstValueFrom(this.api.get<ViewerConfig>('/config'));
       this.config.set(cfg);
@@ -731,7 +767,10 @@ export class GalleryStore {
     // Always load from page 1 — only nextPage() uses page > 1
     const pinned = this.pinnedLoad ? this.pinnedPaths() : null;
     this.pinnedLoad = false;
-    if (!pinned) this.pinnedPaths.set(null);
+    if (!pinned) {
+      this.pinnedPaths.set(null);
+      this.dropReview();
+    }
     this.resetViewScope();
     this.filters.update(current => ({ ...current, page: 1 }));
     const seq = ++this._loadSeq;
@@ -819,12 +858,32 @@ export class GalleryStore {
    * Show exactly these photos, in this order, until any filter change reloads the view.
    * Resolves with the requested paths the server did not return.
    */
-  async showPaths(paths: string[]): Promise<string[]> {
+  async showPaths(
+    paths: string[],
+    review?: { groups?: number[]; marks?: ReviewMark[] },
+  ): Promise<string[]> {
+    const groups = review?.groups;
+    const marks = review?.marks;
+    this.pinnedGroups.set(new Map(groups ? paths.map((p, i) => [p, groups[i]] as const) : []));
+    this.pinnedMarks.set(new Map(marks ? paths.map((p, i) => [p, marks[i]] as const) : []));
+    // A pin without marks starts a fresh review; one with marks keeps the user's absolute choices.
+    if (!marks) this.userMarks.set(new Map());
     this.pinnedPaths.set([...paths]);
     this.pinnedMissing.set([]);
     this.pinnedLoad = true;
     await this.loadPhotos();
     return this.pinnedMissing();
+  }
+
+  /** Record the user's absolute mark for one photo of the pinned list; no HTTP. */
+  setReviewMark(path: string, mark: ReviewMark): void {
+    this.userMarks.update(current => new Map(current).set(path, mark));
+  }
+
+  private dropReview(): void {
+    this.pinnedGroups.set(new Map());
+    this.pinnedMarks.set(new Map());
+    this.userMarks.set(new Map());
   }
 
   /** Reload what is on screen without it counting as a filter change: a pinned list stays pinned. */

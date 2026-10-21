@@ -1047,7 +1047,16 @@
     "pinned": {
       "chip": "{count} vom Assistenten ausgewähltes Foto",
       "chip_plural": "{count} vom Assistenten ausgewählte Fotos",
-      "clear": "Zur üblichen Ansicht zurück"
+      "clear": "Zur üblichen Ansicht zurück",
+      "review": {
+        "keep": "Behalten",
+        "remove": "Entfernen",
+        "group": "Gruppe {n}",
+        "legend": "{groups} Gruppen · {keep} behalten · {remove} entfernen",
+        "keep_aria": "Behalten, Gruppe {n}. Aktivieren, um zum Entfernen zu markieren",
+        "remove_aria": "Entfernen, Gruppe {n}. Aktivieren, um zu behalten",
+        "toggle_tooltip": "Klicken, um zwischen Behalten und Entfernen zu wechseln"
+      }
     },
     "all_photos": "Alle Fotos",
     "sort": "Sortieren nach",

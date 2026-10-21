@@ -242,6 +242,33 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
           </div>
         }
 
+        <!-- Review annotation from the assistant's annotated pin. Sits on the
+             bottom-10 row, one row above the bottom-1 badges (which are full),
+             and above the hover overlay (z-10). A real <button> so it is
+             keyboard reachable; every event is stopped so toggling a mark never
+             selects or opens the card. Green/red ring + icon + text, never
+             grayscale (that means a real reject). -->
+        @if (groupNumber() !== null) {
+          <div class="absolute bottom-10 left-1.5 z-30 px-1.5 py-0.5 rounded bg-black/70 text-white text-xs font-medium pointer-events-none">
+            {{ 'gallery.pinned.review.group' | translate:{ n: groupNumber() ?? 0 } }}
+          </div>
+        }
+        @if (reviewMark(); as mark) {
+          <button type="button"
+                  class="absolute bottom-10 right-1.5 z-30 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-black/70 text-white text-xs font-medium ring-2 cursor-pointer"
+                  [class.ring-green-400]="mark === 'keep'"
+                  [class.ring-red-400]="mark === 'remove'"
+                  [attr.aria-label]="(mark === 'keep' ? 'gallery.pinned.review.keep_aria' : 'gallery.pinned.review.remove_aria') | translate:{ n: groupNumber() ?? 0 }"
+                  [matTooltip]="'gallery.pinned.review.toggle_tooltip' | translate"
+                  (click)="onReviewMarkClick($event)"
+                  (dblclick)="$event.stopPropagation()"
+                  (keydown.enter)="$event.stopPropagation()"
+                  (keydown.space)="$event.stopPropagation()">
+            <mat-icon class="!text-base !w-4 !h-4 !leading-4" [class.!text-green-400]="mark === 'keep'" [class.!text-red-400]="mark === 'remove'" aria-hidden="true">{{ mark === 'keep' ? 'check' : 'close' }}</mat-icon>
+            {{ (mark === 'keep' ? 'gallery.pinned.review.keep' : 'gallery.pinned.review.remove') | translate }}
+          </button>
+        }
+
         <!-- Keeper hint: a better shot exists in this group (learned keeper head) -->
         @if (badges().keeper_hint && photo().keeper_hint?.has_better) {
           <div class="absolute top-1.5 left-3 z-20 pointer-events-none flex items-center gap-1 px-1.5 py-0.5 rounded bg-black/60 transition-opacity md:group-hover/img:opacity-0">
@@ -660,6 +687,18 @@ export class PhotoCardComponent {
   }
 
   // Events
+  /** Number of the assistant's group this photo belongs to, or null off an annotated pin. */
+  readonly groupNumber = input<number | null>(null);
+  /** Effective keep/remove mark, or null when the pin carries none. */
+  readonly reviewMark = input<'keep' | 'remove' | null>(null);
+  /** The user clicked the mark badge; emits the photo path. */
+  readonly reviewMarkToggle = output<string>();
+
+  onReviewMarkClick(event: Event): void {
+    event.stopPropagation();
+    this.reviewMarkToggle.emit(this.photo().path);
+  }
+
   readonly selectionChange = output<{ photo: Photo; event: MouseEvent }>();
 
   onSelect(event: MouseEvent): void {

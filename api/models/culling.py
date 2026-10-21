@@ -124,6 +124,7 @@ class SuggestCullProfileResponse(BaseModel):
 
 
 class AutoCullPreviewItem(BaseModel):
+    number: int
     group_id: int
     type: str
     keep_paths: list[str]
@@ -140,7 +141,9 @@ class AutoCullResponse(BaseModel):
     highlights_added: int
     dry_run: bool
     preview: list[AutoCullPreviewItem]
-    preview_truncated: bool
+    next_cursor: Optional[int] = None
+    plan_digest: str
+    ignored_overrides: list[str] = []
     scope_dependent_kinds: list[str] = []
 
 

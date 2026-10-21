@@ -6,6 +6,7 @@ Uses precomputed burst_group_id from the database (populated by --recompute-burs
 Groups marked as burst_reviewed=1 are skipped so confirmed decisions persist.
 """
 
+import hashlib
 import json
 import logging
 import random
@@ -140,6 +141,10 @@ class AutoCullBody(BaseModel):
     dry_run: bool = True
     profile: Optional[str] = None
     trim_brackets: bool = False
+    cursor: int = Field(0, ge=0)
+    keep_paths: list[str] = Field(default_factory=list, max_length=1000)
+    remove_paths: list[str] = Field(default_factory=list, max_length=1000)
+    expected_digest: Optional[str] = None
 
 
 # --- Helpers ---
@@ -1831,7 +1836,10 @@ def confirm_culling_group(
 
 # --- One-button auto-cull ---
 
-_AUTO_CULL_PREVIEW_CAP = 200
+# A preview page is whole groups until the next one would pass either bound; a single
+# group larger than the photo bound still gets a page of its own.
+_AUTO_CULL_PAGE_PHOTOS = 200
+_AUTO_CULL_PAGE_BYTES = 50_000
 
 # Decision order for overlapping photos: brackets first (their keep is a fact
 # about the exposure ladder, not a judgement), then burst leads, then similar,
@@ -2355,11 +2363,141 @@ def suggest_cull_profile(
     }
 
 
+class AutoCullPlanChanged(Exception):
+    """The plan no longer matches the digest the caller confirmed."""
+
+
+class AutoCullOverrideError(ValueError):
+    """An override the plan cannot honour; the message names the paths or groups."""
+
+
+def _plan_entry(group, keep, reject):
+    return {'group': group, 'keep': keep, 'reject': reject,
+            'keep_paths': [p['path'] for p in keep], 'reject_paths': [p['path'] for p in reject]}
+
+
+def _plan_group_name(entry):
+    return f"{entry['group']['type']} group {entry['group']['group_id']}"
+
+
+def _plan_keeps_whole(entry):
+    return entry['group'].get('sequence_kind') in _KEEP_WHOLE_KINDS
+
+
+def _plan_auto_cull_groups(groups, decided, strictness, min_keep):
+    """Split every undecided group; no writes. ``decided`` is not modified."""
+    seen = set(decided)
+    plan = []
+    for group in groups:
+        photos = [p for p in group['photos'] if p['path'] not in seen]
+        if len(photos) < 2:
+            continue
+        if group['type'] == 'bracket':
+            keep, reject = _bracket_keep_split(photos)
+        elif group.get('sequence_kind') in _KEEP_WHOLE_KINDS:
+            # Reached through the `all`/`burst` feed, where a sweep is
+            # still burst-grouped and arrives typed 'burst'. Judging it
+            # on `type` alone auto-rejected every frame but the
+            # top-scored one -- destroying the set this feature exists
+            # to protect, and from a granularity the user never chose.
+            keep, reject = photos, []
+        else:
+            keep, reject = _auto_keep_split(photos, strictness, min_keep)
+        seen.update(p['path'] for p in keep)
+        seen.update(p['path'] for p in reject)
+        plan.append(_plan_entry(group, keep, reject))
+    return plan
+
+
+def _apply_plan_overrides(plan, keep_override, remove_override):
+    """Move frames between the sides of ``plan`` in place.
+
+    Returns ``(effective, ignored)``: the overrides that changed the plan, and those naming a
+    path the plan does not contain. An override that restates the plan is neither. Refuses
+    (``AutoCullOverrideError``) a path in both lists, a removal inside a keep-whole set and a
+    group left without a keeper, naming each.
+    """
+    both = [p for p in keep_override if p in set(remove_override)]
+    if both:
+        raise AutoCullOverrideError(
+            f"Paths in both keep_paths and remove_paths: {', '.join(both)}")
+    owner = {}
+    for entry in plan:
+        for path in entry['keep_paths'] + entry['reject_paths']:
+            owner[path] = entry
+    ignored = [p for p in keep_override + remove_override if p not in owner]
+    whole = [p for p in remove_override if p in owner and _plan_keeps_whole(owner[p])]
+    if whole:
+        raise AutoCullOverrideError(
+            'Frames of a bracket or panorama set are kept whole and cannot be removed: '
+            + ', '.join(whole))
+    effective = {'keep': [], 'remove': []}
+    touched = {}
+    for path in keep_override:
+        entry = owner.get(path)
+        if entry is not None and path in entry['reject_paths']:
+            photo = next(p for p in entry['reject'] if p['path'] == path)
+            entry['reject'].remove(photo)
+            entry['keep'].append(photo)
+            effective['keep'].append(path)
+            touched[id(entry)] = entry
+    for path in remove_override:
+        entry = owner.get(path)
+        if entry is not None and path in entry['keep_paths'] and path not in entry['reject_paths']:
+            photo = next(p for p in entry['keep'] if p['path'] == path)
+            entry['keep'].remove(photo)
+            entry['reject'].append(photo)
+            effective['remove'].append(path)
+            touched[id(entry)] = entry
+    empty = [_plan_group_name(e) for e in touched.values() if not e['keep']]
+    if empty:
+        raise AutoCullOverrideError(
+            'The overrides would leave no keeper in: ' + ', '.join(empty))
+    for entry in touched.values():
+        entry['keep_paths'] = [p['path'] for p in entry['keep']]
+        entry['reject_paths'] = [p['path'] for p in entry['reject']]
+    return effective, ignored
+
+
+def _auto_cull_plan_digest(plan, options, effective):
+    tagged = [f"{e['group']['type']}:{e['group']['group_id']}:{side}:{path}" for e in plan
+              for side in ('keep', 'reject') for path in e[f'{side}_paths']]
+    body = json.dumps({'plan': sorted(tagged), 'options': options,
+                       'overrides': {k: sorted(v) for k, v in effective.items()}},
+                      sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+    return hashlib.sha256(body.encode('utf-8')).hexdigest()
+
+
+def _auto_cull_page(plan, cursor):
+    """One page of preview rows from ``cursor`` and the next cursor (None at the end).
+
+    Whole groups only: stops before the group that would pass 200 photos or ~50 KB of
+    serialised rows; the first group of a page is always taken, so an oversized group
+    gets a page of its own.
+    """
+    rows, photos, size = [], 0, 0
+    index = cursor
+    while index < len(plan):
+        entry = plan[index]
+        row = {'number': entry['number'], 'group_id': entry['group']['group_id'],
+               'type': entry['group']['type'], 'keep_paths': entry['keep_paths'],
+               'reject_paths': entry['reject_paths'], 'best_path': entry['keep_paths'][0]}
+        count = len(entry['keep_paths']) + len(entry['reject_paths'])
+        row_size = len(json.dumps(row))
+        if rows and (photos + count > _AUTO_CULL_PAGE_PHOTOS or size + row_size > _AUTO_CULL_PAGE_BYTES):
+            break
+        rows.append(row)
+        photos += count
+        size += row_size
+        index += 1
+    return rows, (index if index < len(plan) else None)
+
+
 @dataclass
 class AutoCullResult:
     """What one auto-cull sweep decided, with the full path lists.
 
-    The wire response caps ``preview`` at ``_AUTO_CULL_PREVIEW_CAP`` groups; a
+    The wire response carries one page of ``preview`` (``cursor`` / ``next_cursor``); a
     headless caller needs every path, so those lists live here instead of on the
     response model. ``collected`` is every path that appeared in any collected
     group (before groups were scoped or skipped), ``decided`` the keep and
@@ -2371,7 +2509,9 @@ class AutoCullResult:
     highlights_added: int = 0
     total_pairs: int = 0
     preview: list = field(default_factory=list)
-    preview_truncated: bool = False
+    next_cursor: Optional[int] = None
+    plan_digest: str = ''
+    ignored_overrides: list = field(default_factory=list)
     keep_paths: list = field(default_factory=list)
     reject_paths: list = field(default_factory=list)
     decided: set = field(default_factory=set)
@@ -2414,7 +2554,8 @@ def _confine_groups_to_scope(groups, path_scope):
 def run_auto_cull(conn, db_path, user_id, *, group_by, strictness, min_keep,
                   trim_brackets=False, highlights_album='', dry_run=True,
                   album_id=None, date_from=None, date_to=None, path_scope=None,
-                  use_cache=True, membership_groups=False, record=True):
+                  use_cache=True, membership_groups=False, record=True, cursor=0,
+                  keep_override=None, remove_override=None, expected_digest=None):
     """Collect, split and (unless ``dry_run``) apply one auto-cull sweep.
 
     Shared by ``POST /api/culling/auto`` and ``facet.py --auto-cull``. Raises
@@ -2467,50 +2608,40 @@ def run_auto_cull(conn, db_path, user_id, *, group_by, strictness, min_keep,
     # earlier group keeps/rejects is never re-decided by a later one.
     groups.sort(key=lambda g: _AUTO_CULL_TYPE_ORDER.get(g['type'], 99))
 
-    highlight_paths = []
-    for group in groups:
-        photos = [p for p in group['photos'] if p['path'] not in result.decided]
-        if len(photos) < 2:
-            continue
-        if group['type'] == 'bracket':
-            keep, reject = _bracket_keep_split(photos)
-        elif group.get('sequence_kind') in _KEEP_WHOLE_KINDS:
-            # Reached through the `all`/`burst` feed, where a sweep is
-            # still burst-grouped and arrives typed 'burst'. Judging it
-            # on `type` alone auto-rejected every frame but the
-            # top-scored one -- destroying the set this feature exists
-            # to protect, and from a granularity the user never chose.
-            keep, reject = photos, []
-        else:
-            keep, reject = _auto_keep_split(
-                photos, strictness, min_keep,
-            )
-        keep_paths = [p['path'] for p in keep]
-        reject_paths = [p['path'] for p in reject]
-        result.decided.update(keep_paths)
-        result.decided.update(reject_paths)
-        result.keep_paths += keep_paths
-        result.reject_paths += reject_paths
+    plan = _plan_auto_cull_groups(groups, result.decided, strictness, min_keep)
+    keep_override = list(dict.fromkeys(keep_override or []))
+    remove_override = list(dict.fromkeys(remove_override or []))
+    effective, result.ignored_overrides = _apply_plan_overrides(plan, keep_override, remove_override)
+    for number, entry in enumerate(plan, start=1):
+        entry['number'] = number
+        result.decided.update(entry['keep_paths'])
+        result.decided.update(entry['reject_paths'])
+        result.keep_paths += entry['keep_paths']
+        result.reject_paths += entry['reject_paths']
         result.processed += 1
-        result.kept += len(keep_paths)
-        result.rejected += len(reject_paths)
-        if highlights_album and _highlight_quality(keep[0]) >= cfg['highlights_min']:
-            highlight_paths.append(keep_paths[0])
-        if len(result.preview) < _AUTO_CULL_PREVIEW_CAP:
-            result.preview.append({
-                'group_id': group['group_id'],
-                'type': group['type'],
-                'keep_paths': keep_paths,
-                'reject_paths': reject_paths,
-                'best_path': keep_paths[0],
-            })
-        if not dry_run:
+        result.kept += len(entry['keep_paths'])
+        result.rejected += len(entry['reject_paths'])
+    result.plan_digest = _auto_cull_plan_digest(plan, {
+        'group_by': group_by, 'album_id': album_id, 'date_from': date_from,
+        'date_to': date_to, 'strictness': strictness, 'min_keep': min_keep,
+        'trim_brackets': trim_brackets, 'highlights_album': highlights_album,
+    }, effective)
+    if expected_digest is not None and expected_digest != result.plan_digest:
+        raise AutoCullPlanChanged(
+            'The plan changed since it was previewed; nothing was written. Preview it again.')
+    result.preview, result.next_cursor = _auto_cull_page(plan, cursor)
+    highlight_paths = [
+        entry['keep_paths'][0] for entry in plan
+        if highlights_album and _highlight_quality(entry['keep'][0]) >= cfg['highlights_min']
+    ]
+    if not dry_run:
+        for entry in plan:
             result.total_pairs += _apply_auto_cull_group(
-                conn, group, keep_paths, reject_paths, user_id, vis_sql, vis_params, record,
+                conn, entry['group'], entry['keep_paths'], entry['reject_paths'],
+                user_id, vis_sql, vis_params, record,
             )
 
     result.highlights_added = len(highlight_paths)
-    result.preview_truncated = result.processed > _AUTO_CULL_PREVIEW_CAP
     if not dry_run:
         if highlight_paths:
             result.highlights_added = _fill_highlights_album(
@@ -2572,6 +2703,8 @@ def auto_cull(
                 dry_run=body.dry_run, album_id=body.album_id,
                 date_from=body.date_from, date_to=body.date_to,
                 record=not (user and user.is_agent_request),
+                cursor=body.cursor, keep_override=body.keep_paths,
+                remove_override=body.remove_paths, expected_digest=body.expected_digest,
             )
             return {
                 'groups_processed': result.processed,
@@ -2580,12 +2713,18 @@ def auto_cull(
                 'highlights_added': result.highlights_added,
                 'dry_run': body.dry_run,
                 'preview': result.preview,
-                'preview_truncated': result.preview_truncated,
+                'next_cursor': result.next_cursor,
+                'plan_digest': result.plan_digest,
+                'ignored_overrides': result.ignored_overrides,
                 'scope_dependent_kinds': result.scope_dependent_kinds,
             }
 
         except HTTPException:
             raise
+        except AutoCullOverrideError as ex:
+            raise HTTPException(status_code=400, detail=str(ex))
+        except AutoCullPlanChanged as ex:
+            raise HTTPException(status_code=412, detail=str(ex))
         except sqlite3.Error:
             conn.rollback()
             logger.exception("Auto-cull failed")

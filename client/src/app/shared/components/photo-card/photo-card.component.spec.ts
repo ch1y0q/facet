@@ -14,7 +14,11 @@ import { makePhoto } from '../../../../testing/photo.fixture';
   template: `<app-photo-card [photo]="photo()" [config]="config()"
                              [burstFramesVisible]="burstFramesVisible()"
                              [collapsedSetKinds]="collapsedSetKinds()"
-                             [isEditionMode]="isEditionMode()" />`,
+                             [isEditionMode]="isEditionMode()"
+                             [groupNumber]="groupNumber()" [reviewMark]="reviewMark()"
+                             (reviewMarkToggle)="toggled.push($event)"
+                             (selectionChange)="selected.push($event.photo.path)"
+                             (doubleClicked)="opened.push($event.path)" />`,
 })
 class TestHostComponent {
   photo = signal<Photo>(makePhoto());
@@ -22,6 +26,11 @@ class TestHostComponent {
   burstFramesVisible = signal(false);
   collapsedSetKinds = signal<readonly string[]>([]);
   isEditionMode = signal(false);
+  groupNumber = signal<number | null>(null);
+  reviewMark = signal<'keep' | 'remove' | null>(null);
+  toggled: string[] = [];
+  selected: string[] = [];
+  opened: string[] = [];
 }
 
 describe('PhotoCardComponent', () => {
@@ -515,6 +524,36 @@ describe('PhotoCardComponent', () => {
       expect(badgeElement().className).not.toContain('md:group-hover/img:right-[4.125rem]');
     });
   });
+  describe('review annotation', () => {
+    const badge = () => fixture.nativeElement.querySelector('button[aria-label]') as HTMLButtonElement | null;
+
+    it('renders neither pill nor badge without the inputs', () => {
+      expect(badge()).toBeNull();
+      expect(fixture.nativeElement.textContent).not.toContain('gallery.pinned.review.group');
+    });
+
+    it('renders the group pill and a labelled badge when the inputs are set', () => {
+      fixture.componentInstance.groupNumber.set(3);
+      fixture.componentInstance.reviewMark.set('remove');
+      fixture.detectChanges();
+      expect(fixture.nativeElement.textContent).toContain('gallery.pinned.review.group');
+      expect(badge()?.getAttribute('aria-label')).toBe('gallery.pinned.review.remove_aria');
+      expect(badge()?.textContent).toContain('gallery.pinned.review.remove');
+      expect(fixture.nativeElement.querySelector('.grayscale')).toBeNull();
+    });
+
+    it('click emits reviewMarkToggle and neither selects nor opens', () => {
+      fixture.componentInstance.reviewMark.set('keep');
+      fixture.detectChanges();
+      badge()?.click();
+      badge()?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      badge()?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      badge()?.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+      expect(fixture.componentInstance.toggled).toEqual([getCard().photo().path]);
+      expect(fixture.componentInstance.selected).toEqual([]);
+      expect(fixture.componentInstance.opened).toEqual([]);
+    });
+  });
 });
 
 describe('PhotoCardComponent unassigned faces action', () => {
@@ -838,4 +877,5 @@ describe('PhotoCardComponent current-photo marker', () => {
     const classes = host(createCard({ isActive: false, gridHasActiveCard: true })).classList;
     expect(classes.contains('reduce-transparency:opacity-100')).toBe(true);
   });
+
 });

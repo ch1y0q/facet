@@ -78,8 +78,11 @@ export interface AutoCullResponse {
   rejected: number;
   highlights_added: number;
   dry_run: boolean;
-  preview: { group_id: number; type: string; keep_paths: string[]; reject_paths: string[]; best_path: string }[];
-  preview_truncated: boolean;
+  /** One page of whole groups; `number` is the 1-based position in the full plan. */
+  preview: { number: number; group_id: number; type: string; keep_paths: string[]; reject_paths: string[]; best_path: string }[];
+  /** Cursor of the next page, null when the preview is complete. */
+  next_cursor: number | null;
+  plan_digest: string;
 }
 
 /** Request body of POST /culling/auto. The dry run's body is kept verbatim so

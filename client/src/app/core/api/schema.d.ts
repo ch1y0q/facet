@@ -4703,6 +4703,11 @@ export interface components {
         AutoCullBody: {
             /** Album Id */
             album_id?: number | null;
+            /**
+             * Cursor
+             * @default 0
+             */
+            cursor?: number;
             /** Date From */
             date_from?: string | null;
             /** Date To */
@@ -4712,6 +4717,8 @@ export interface components {
              * @default true
              */
             dry_run?: boolean;
+            /** Expected Digest */
+            expected_digest?: string | null;
             /**
              * Group By
              * @default all
@@ -4723,10 +4730,14 @@ export interface components {
              * @default
              */
             highlights_album?: string;
+            /** Keep Paths */
+            keep_paths?: string[];
             /** Min Keep Per Group */
             min_keep_per_group?: number | null;
             /** Profile */
             profile?: string | null;
+            /** Remove Paths */
+            remove_paths?: string[];
             /** Strictness */
             strictness?: number | null;
             /**
@@ -4743,6 +4754,8 @@ export interface components {
             group_id: number;
             /** Keep Paths */
             keep_paths: string[];
+            /** Number */
+            number: number;
             /** Reject Paths */
             reject_paths: string[];
             /** Type */
@@ -4759,14 +4772,26 @@ export interface components {
             groups_processed: number;
             /** Highlights Added */
             highlights_added: number;
+            /**
+             * Ignored Overrides
+             * @default []
+             */
+            ignored_overrides?: string[];
             /** Kept */
             kept: number;
+            /** Next Cursor */
+            next_cursor?: number | null;
+            /** Plan Digest */
+            plan_digest: string;
             /** Preview */
             preview: components["schemas"]["AutoCullPreviewItem"][];
-            /** Preview Truncated */
-            preview_truncated: boolean;
             /** Rejected */
             rejected: number;
+            /**
+             * Scope Dependent Kinds
+             * @default []
+             */
+            scope_dependent_kinds?: string[];
         };
         /** AvatarRequest */
         AvatarRequest: {

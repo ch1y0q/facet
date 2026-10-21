@@ -1047,7 +1047,16 @@
     "pinned": {
       "chip": "助手挑选了 {count} 张照片",
       "chip_plural": "助手挑选了 {count} 张照片",
-      "clear": "返回常规视图"
+      "clear": "返回常规视图",
+      "review": {
+        "keep": "保留",
+        "remove": "移除",
+        "group": "第 {n} 组",
+        "legend": "{groups} 组 · {keep} 保留 · {remove} 移除",
+        "keep_aria": "保留，第 {n} 组。激活后标记为移除",
+        "remove_aria": "移除，第 {n} 组。激活后改为保留",
+        "toggle_tooltip": "点击在保留和移除之间切换"
+      }
     },
     "all_photos": "全部照片",
     "sort": "排序方式",

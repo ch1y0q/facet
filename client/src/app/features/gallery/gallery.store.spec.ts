@@ -1129,6 +1129,54 @@ describe('GalleryStore', () => {
       apiGet.mockClear();
     });
 
+    describe('review annotations', () => {
+      const marks = ['keep', 'remove'] as const;
+      const annotated = () => store.showPaths(paths, { groups: [1, 1], marks: [...marks] });
+
+      it('derives the effective legend from agent marks and user marks', async () => {
+        await annotated();
+        expect(store.reviewLegend()).toEqual({ groups: 1, keep: 1, remove: 1 });
+        store.setReviewMark('/a.jpg', 'keep');
+        expect(store.reviewLegend()).toEqual({ groups: 1, keep: 2, remove: 0 });
+      });
+
+      it('keeps the user absolute marks across a re-pin that carries marks', async () => {
+        await annotated();
+        store.setReviewMark('/b.jpg', 'remove');
+        store.setReviewMark('/a.jpg', 'keep');
+        // The plan now already includes the user's override: it must not invert them.
+        await store.showPaths(paths, { groups: [1, 1], marks: ['remove', 'keep'] });
+        expect(store.userMarks().get('/b.jpg')).toBe('remove');
+        expect(store.userMarks().get('/a.jpg')).toBe('keep');
+        expect(store.review()).toEqual({ keep: ['/a.jpg'], remove: ['/b.jpg'] });
+      });
+
+      it('clears the user marks on a pin without marks', async () => {
+        await annotated();
+        store.setReviewMark('/b.jpg', 'keep');
+        await store.showPaths(paths);
+        expect(store.userMarks().size).toBe(0);
+        expect(store.hasReview()).toBe(false);
+      });
+
+      it('clears everything on clearPinned', async () => {
+        await annotated();
+        store.setReviewMark('/b.jpg', 'keep');
+        await store.clearPinned();
+        expect(store.userMarks().size).toBe(0);
+        expect(store.pinnedGroups().size).toBe(0);
+        expect(store.pinnedMarks().size).toBe(0);
+      });
+
+      it('caps each review snapshot list at 1000', async () => {
+        await annotated();
+        for (let n = 0; n < 1100; n++) store.setReviewMark(`/k${n}.jpg`, 'keep');
+        for (let n = 0; n < 1100; n++) store.setReviewMark(`/r${n}.jpg`, 'remove');
+        expect(store.review().keep).toHaveLength(1000);
+        expect(store.review().remove).toHaveLength(1000);
+      });
+    });
+
     const expectFilteredReload = () => {
       expect(store.pinnedPaths()).toBeNull();
       expect(apiGet.mock.calls.some(c => c[0] === '/photos')).toBe(true);

@@ -1047,7 +1047,16 @@
     "pinned": {
       "chip": "{count} photo chosen by your assistant",
       "chip_plural": "{count} photos chosen by your assistant",
-      "clear": "Show the usual view"
+      "clear": "Show the usual view",
+      "review": {
+        "keep": "Keep",
+        "remove": "Remove",
+        "group": "Group {n}",
+        "legend": "{groups} groups · {keep} keep · {remove} remove",
+        "keep_aria": "Keep, group {n}. Activate to mark for removal",
+        "remove_aria": "Remove, group {n}. Activate to keep",
+        "toggle_tooltip": "Click to switch between keep and remove"
+      }
     },
     "all_photos": "All Photos",
     "sort": "Sort by",

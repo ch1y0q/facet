@@ -1,7 +1,7 @@
 import { LEVEL_RANK, agentLevel } from './agent-level';
 import { Router } from '@angular/router';
 import { AuthService } from '../services/auth.service';
-import { GalleryStore } from '../../features/gallery/gallery.store';
+import { GalleryStore, ReviewMark } from '../../features/gallery/gallery.store';
 import {
   DEFAULT_FILTERS,
   GalleryFilters,
@@ -341,11 +341,29 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       if (paths.length === 0 || paths.length > MAX_SHOW_PATHS) {
         throw new UiToolError('invalid_input', `Give 1 to ${MAX_SHOW_PATHS} paths.`);
       }
+      const groups = args['groups'];
+      const marks = args['marks'];
+      if (groups !== undefined && (!Array.isArray(groups) || groups.length !== paths.length
+        || !groups.every(g => Number.isInteger(g) && (g as number) >= 1))) {
+        throw new UiToolError('invalid_input', 'groups must hold one integer >= 1 per path.');
+      }
+      if (marks !== undefined && (!Array.isArray(marks) || marks.length !== paths.length
+        || !marks.every(m => m === 'keep' || m === 'remove'))) {
+        throw new UiToolError('invalid_input', "marks must hold one of 'keep' or 'remove' per path.");
+      }
       await leaveAlbum();
       await ensureGalleryView();
-      const missing = await gallery.showPaths(paths);
+      const missing = await gallery.showPaths(paths, {
+        groups: groups as number[] | undefined,
+        marks: marks as ReviewMark[] | undefined,
+      });
       if (gallery.loadError()) throw new UiToolError('upstream_error', 'The gallery could not load these photos.');
-      return { shown: gallery.photos().length, missing: missing.slice(0, 50), total: gallery.total() };
+      return {
+        shown: gallery.photos().length,
+        missing: missing.slice(0, 50),
+        total: gallery.total(),
+        annotated: groups !== undefined || marks !== undefined ? gallery.photos().length : 0,
+      };
     },
 
     ui_get_gallery_view: async args => {
@@ -442,6 +460,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
         gallery: inGallery
           ? { total: gallery.total(), loaded: gallery.photos().length, has_more: gallery.hasMore(), pinned }
           : null,
+        review: gallery.review(),
         mounted_actions: viewActions.names(),
         level,
         actions: applicableActions(actions(), actionFacts(route, gallery.selectionCount(), pinned), level),
