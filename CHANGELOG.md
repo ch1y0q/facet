@@ -4,6 +4,8 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+## [1.22.1] "Hypo" — 2026-10-21
+
 ### Fixed
 
 - **The Docker images build again, so 1.22.0's ship as 1.22.1.** `virtualenv` 21.14.7 requires `python-discovery>=1.6.1`, but both lock files still pinned `python-discovery==1.6.0`, so `pip install -r` failed in every image and v1.22.0 published none. Both locks now pin `python-discovery==1.6.4`. CI gains a job that resolves each lock with `pip install --dry-run` on its image's Python, so a lock that cannot install fails the pull request instead of the release.
