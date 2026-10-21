@@ -1972,6 +1972,7 @@
     "error_loading": "加载照片组失败",
     "error_confirming": "确认选片结果失败",
     "error_auto_select": "自动选择失败",
+    "assistant_changed": "助手更改了此视图中的照片。",
     "burst_groups": "连拍分组",
     "similar_groups": "相似照片分组",
     "similarity_threshold": "相似度阈值",

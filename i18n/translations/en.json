@@ -1972,6 +1972,7 @@
     "error_loading": "Failed to load groups",
     "error_confirming": "Failed to confirm selection",
     "error_auto_select": "Failed to auto-select",
+    "assistant_changed": "The assistant changed photos in this view.",
     "burst_groups": "Burst Groups",
     "similar_groups": "Similar Groups",
     "similarity_threshold": "Similarity Threshold",

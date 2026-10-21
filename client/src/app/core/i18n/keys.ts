@@ -1986,6 +1986,7 @@ export const I18N = {
     error_loading: "culling.error_loading",
     error_confirming: "culling.error_confirming",
     error_auto_select: "culling.error_auto_select",
+    assistant_changed: "culling.assistant_changed",
     burst_groups: "culling.burst_groups",
     similar_groups: "culling.similar_groups",
     similarity_threshold: "culling.similarity_threshold",

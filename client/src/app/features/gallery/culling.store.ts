@@ -143,8 +143,6 @@ export interface CullingNotice {
   key: string;
   params?: Record<string, string | number>;
   duration: number;
-  /** One action button on the snackbar (label is an i18n key). */
-  action?: { labelKey: string; run: () => void };
 }
 
 /** `POST /photos/by_paths` accepts at most this many paths (BY_PATHS_MAX). */
@@ -164,6 +162,13 @@ export class CullingStore {
   private readonly api = inject(ApiService);
   private readonly i18n = inject(I18nService);
 
+  /**
+   * An assistant write the loaded feed cannot absorb (a filter-scoped write, a cull move) landed while
+   * the user held decisions a reload would discard. Persistent state rather than a snackbar: the next
+   * batch's notice would replace a snackbar and lose the only way to apply the write. Cleared by any
+   * full reload of the feed.
+   */
+  readonly pendingReload = signal(false);
   /** Messages for the component to show (error and success toasts). */
   readonly notice$ = new Subject<CullingNotice>();
 
@@ -365,6 +370,7 @@ export class CullingStore {
     this.loadGenerationId++;
     // The superseded loadMore's finally no longer matches the generation, so it will not clear this itself.
     this.loadingMore.set(false);
+    this.pendingReload.set(false);
     this.currentPage.set(1);
     this.groups.set([]);
     this.confirmedGroups.set(new Set());
@@ -712,22 +718,28 @@ export class CullingStore {
    * group's selection, and a group left empty is hidden. `null` means the scope is not enumerable
    * (a filter-scoped write, a cull move): reload when nothing is at stake, otherwise tell the user.
    */
-  async applyExternalChanges(
+  applyExternalChanges(
     paths: string[] | null,
     options: { lightboxOpen?: boolean; count?: number } = {},
+  ): Promise<void> {
+    // Chained so overlapping batches land in arrival order; a failure never blocks the next one.
+    const run = this.externalChain.then(() => this.applyExternal(paths, options));
+    this.externalChain = run.catch(() => undefined);
+    return run;
+  }
+
+  private externalChain: Promise<void> = Promise.resolve();
+
+  private async applyExternal(
+    paths: string[] | null,
+    options: { lightboxOpen?: boolean; count?: number },
   ): Promise<void> {
     if (paths === null) {
       if (!this.hasUserDecisions() && !options.lightboxOpen) {
         this.resetForReload();
         return;
       }
-      const count = options.count ?? 0;
-      this.notice$.next({
-        key: count === 1 ? I18N.dialog.connect_assistant.inpage_changed : I18N.dialog.connect_assistant.inpage_changed_plural,
-        params: { count },
-        duration: 12000,
-        action: { labelKey: I18N.pwa.reload, run: () => this.resetForReload() },
-      });
+      this.pendingReload.set(true);
       return;
     }
     const loaded = new Set(this.groups().flatMap(g => g.photos.map(p => p.path)));

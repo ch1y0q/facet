@@ -1972,6 +1972,7 @@
     "error_loading": "Error al cargar los grupos",
     "error_confirming": "Error al confirmar la selección",
     "error_auto_select": "Error en la selección automática",
+    "assistant_changed": "El asistente ha cambiado fotos en esta vista.",
     "burst_groups": "Grupos de ráfagas",
     "similar_groups": "Grupos similares",
     "similarity_threshold": "Umbral de similitud",

@@ -463,6 +463,13 @@ interface ShortcutRow {
         </div>
       }
 
+      @if (cull.pendingReload()) {
+        <div role="status" data-testid="assistant-reload-banner" class="flex items-center justify-between gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 mb-2 text-sm">
+          <span>{{ I18N.culling.assistant_changed | translate }}</span>
+          <button mat-stroked-button type="button" (click)="cull.resetForReload()">{{ I18N.pwa.reload | translate }}</button>
+        </div>
+      }
+
       <!-- Scrollable group list; the header above stays fixed -->
       <div class="flex-1 min-h-0 overflow-y-auto -mx-4 px-4 md:-mx-8 md:px-8 pb-4 max-lg:pb-24" data-culling-scroll>
       <!-- Content -->
@@ -1326,7 +1333,6 @@ export class BurstCullingComponent implements OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly snackBar = inject(MatSnackBar);
   private readonly i18n = inject(I18nService);
-  private readonly destroyRef = inject(DestroyRef);
   protected readonly pageHelp = inject(PageHelpService);
   private readonly headerSlot = inject(HeaderSlotService);
   private readonly albumService = inject(AlbumService);
@@ -1825,8 +1831,7 @@ export class BurstCullingComponent implements OnDestroy {
     this.pageHelp.setDescription(null);
     this.cull.notice$.pipe(takeUntilDestroyed()).subscribe(notice => {
       const text = notice.params ? this.i18n.t(notice.key, notice.params) : this.i18n.t(notice.key);
-      const ref = this.snackBar.open(text, notice.action ? this.i18n.t(notice.action.labelKey) : '', { duration: notice.duration, horizontalPosition: 'right', verticalPosition: 'bottom' });
-      if (notice.action) ref.onAction().pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => notice.action?.run());
+      this.snackBar.open(text, '', { duration: notice.duration, horizontalPosition: 'right', verticalPosition: 'bottom' });
     });
     this.assistantChanges.batch$.pipe(takeUntilDestroyed()).subscribe(batch => {
       void this.cull.applyExternalChanges(batch.paths, { lightboxOpen: this.lightboxGroupId() !== null, count: batch.count });

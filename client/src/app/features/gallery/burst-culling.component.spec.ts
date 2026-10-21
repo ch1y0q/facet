@@ -103,20 +103,32 @@ describe('BurstCullingComponent', () => {
       expect(apply).toHaveBeenCalledWith(['/photo1.jpg'], expect.objectContaining({ lightboxOpen: false }));
     });
 
-    it('offers a Reload action for a null batch when decisions exist, and reloads on that action', async () => {
-      const onAction = new Subject<void>();
-      mockSnackBar.open.mockReturnValue({ onAction: () => onAction, afterDismissed: () => new Subject<void>() });
-      await store.loadGroups();
-      store.setPhotoKept(store.groups()[0], '/photo2.jpg', true);
-      const reload = vi.spyOn(store, 'resetForReload').mockImplementation(() => undefined);
+    it('keeps an inline Reload banner for a null batch across later batches, and Reload clears it', async () => {
+      const fixture = TestBed.createComponent(BurstCullingComponent);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      const cull = fixture.debugElement.injector.get(CullingStore);
+      await cull.loadGroups();
+      cull.setPhotoKept(cull.groups()[0], '/photo2.jpg', true);
+      const banner = () => fixture.nativeElement.querySelector('[data-testid="assistant-reload-banner"]') as HTMLElement | null;
+      expect(banner()).toBeNull();
       changes$.next({ paths: null, count: 12 });
-      await Promise.resolve();
-      expect(reload).not.toHaveBeenCalled();
-      const [text, action] = mockSnackBar.open.mock.calls.at(-1)!;
-      expect(text).toBe('dialog.connect_assistant.inpage_changed_plural');
-      expect(action).toBe('pwa.reload');
-      onAction.next();
+      await new Promise(resolve => setTimeout(resolve));
+      fixture.detectChanges();
+      expect(banner()).not.toBeNull();
+      expect(banner()?.getAttribute('role')).toBe('status');
+      expect(banner()?.textContent).toContain('culling.assistant_changed');
+      mockApi.post.mockReturnValue(of({ photos: [], total: 0, missing: [] }));
+      changes$.next({ paths: ['/photo1.jpg'], count: 1 });
+      await new Promise(resolve => setTimeout(resolve));
+      fixture.detectChanges();
+      expect(banner()).not.toBeNull();
+      const reload = vi.spyOn(cull, 'resetForReload');
+      (banner()?.querySelector('button') as HTMLButtonElement).click();
       expect(reload).toHaveBeenCalledTimes(1);
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(banner()).toBeNull();
     });
 
     it('clamps the lightbox index when its photo disappears, and closes it when the group empties', async () => {

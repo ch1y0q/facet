@@ -559,21 +559,31 @@ describe('CullingStore', () => {
       expect(store.selectionsMap().get(2)?.size ?? 0).toBe(0);
     });
 
-    it('a null batch with a user decision keeps state, emits a reload notice and does not reload', async () => {
+    it('a null batch with a user decision keeps state, raises pendingReload and does not reload', async () => {
       store.setPhotoKept(store.groups()[0], '/b.jpg', true);
+      expect(store.pendingReload()).toBe(false);
       await store.applyExternalChanges(null);
       expect(api.get).not.toHaveBeenCalled();
-      expect(notices).toHaveLength(1);
-      expect(notices[0].action).toBeTruthy();
-      notices[0].action!.run();
+      expect(store.pendingReload()).toBe(true);
+      expect(notices).toHaveLength(0);
+      store.resetForReload();
       await Promise.resolve();
+      expect(store.pendingReload()).toBe(false);
       expect(api.get).toHaveBeenCalledWith('/culling-groups', expect.anything());
     });
 
-    it('a null batch with the lightbox open is treated as a decision', async () => {
+    it('a path batch after a null batch leaves pendingReload raised', async () => {
+      store.setPhotoKept(store.groups()[0], '/b.jpg', true);
+      await store.applyExternalChanges(null);
+      api.post.mockReturnValue(of({ photos: [fresh('/a.jpg', { star_rating: 3 })], total: 1, missing: [] }));
+      await store.applyExternalChanges(['/a.jpg']);
+      expect(store.pendingReload()).toBe(true);
+    });
+
+    it('a null batch with the lightbox open raises pendingReload', async () => {
       await store.applyExternalChanges(null, { lightboxOpen: true });
       expect(api.get).not.toHaveBeenCalled();
-      expect(notices[0].action).toBeTruthy();
+      expect(store.pendingReload()).toBe(true);
     });
 
     it('a null batch with no user-touched group reloads the feed (the auto-selection does not count)', async () => {
@@ -586,6 +596,54 @@ describe('CullingStore', () => {
     it('counts selectExclusive and confirm as user-touched', async () => {
       store.selectExclusive('/a.jpg', store.groups()[0]);
       expect(store.hasUserDecisions()).toBe(true);
+    });
+
+    it('replaces the selections map instead of mutating it when a selected photo goes missing', async () => {
+      const before = store.selectionsMap();
+      expect(before.get(1)?.has('/a.jpg')).toBe(true);
+      api.post.mockReturnValue(of({ photos: [], total: 0, missing: ['/a.jpg'] }));
+      await store.applyExternalChanges(['/a.jpg']);
+      expect(store.selectionsMap()).not.toBe(before);
+      expect(before.get(1)?.has('/a.jpg')).toBe(true);
+      expect(store.selectionsMap().get(1)?.has('/a.jpg')).toBe(false);
+    });
+
+    it('does not merge rows fetched before a reload into the new feed', async () => {
+      const slow = new Subject<{ photos: unknown[] }>();
+      api.post.mockReturnValue(slow);
+      const pending = store.applyExternalChanges(['/a.jpg']);
+      await new Promise(resolve => setTimeout(resolve));
+      expect(api.post).toHaveBeenCalledTimes(1);
+      store.resetForReload();
+      await Promise.resolve();
+      await Promise.resolve();
+      slow.next({ photos: [fresh('/a.jpg', { is_rejected: 1, star_rating: 5 })] });
+      slow.complete();
+      await pending;
+      const a = store.groups()[0].photos[0];
+      expect(a.is_rejected ?? 0).toBe(0);
+      expect(a.star_rating ?? 0).toBe(0);
+    });
+
+    it('lands overlapping batches in arrival order (a slow older one never overwrites a newer one)', async () => {
+      const older = new Subject<{ photos: unknown[] }>();
+      api.post.mockReturnValueOnce(older).mockReturnValueOnce(of({ photos: [fresh('/a.jpg', { is_rejected: 0, star_rating: 4 })] }));
+      const first = store.applyExternalChanges(['/a.jpg']);
+      const second = store.applyExternalChanges(['/a.jpg']);
+      await Promise.resolve();
+      older.next({ photos: [fresh('/a.jpg', { is_rejected: 1, star_rating: 1 })] });
+      older.complete();
+      await Promise.all([first, second]);
+      const a = store.groups()[0].photos[0];
+      expect(a.is_rejected).toBe(0);
+      expect(a.star_rating).toBe(4);
+    });
+
+    it('a failed batch does not block the next one', async () => {
+      api.post.mockReturnValueOnce(throwError(() => ({ status: 500 }))).mockReturnValueOnce(of({ photos: [fresh('/a.jpg', { star_rating: 2 })] }));
+      await store.applyExternalChanges(['/a.jpg']);
+      await store.applyExternalChanges(['/a.jpg']);
+      expect(store.groups()[0].photos[0].star_rating).toBe(2);
     });
 
     it('a failed refresh keeps the rows as they were', async () => {
