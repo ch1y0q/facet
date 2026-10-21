@@ -141,6 +141,7 @@ class AutoCullResponse(BaseModel):
     dry_run: bool
     preview: list[AutoCullPreviewItem]
     preview_truncated: bool
+    scope_dependent_kinds: list[str] = []
 
 
 class KeeperHint(BaseModel):

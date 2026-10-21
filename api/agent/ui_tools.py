@@ -154,6 +154,22 @@ class UiShowPhotos(UiArgs):
         min_length=1, max_length=MAX_SHOW_PATHS,
         description="Photo paths to show, in this order, as the gallery's own list. The user's "
                     "filters and sort are left untouched; any filter change replaces the list.")
+    groups: Optional[list[Annotated[int, Field(ge=1)]]] = Field(
+        default=None, max_length=MAX_SHOW_PATHS,
+        description="Optional, one per path: the group number to show as a pill on that photo "
+                    "(plan order, 1-based: 'Group n').")
+    marks: Optional[list[Literal["keep", "remove"]]] = Field(
+        default=None, max_length=MAX_SHOW_PATHS,
+        description="Optional, one per path: the planned 'keep' or 'remove', shown as a badge.")
+
+    @model_validator(mode="after")
+    def _parallel_to_paths(self) -> "UiShowPhotos":
+        for name in ("groups", "marks"):
+            value = getattr(self, name)
+            if value is not None and len(value) != len(self.paths):
+                raise ValueError(f"`{name}` must have exactly one entry per path "
+                                 f"({len(value)} given for {len(self.paths)} paths)")
+        return self
 
 
 class UiSelectPhotos(UiArgs):
@@ -238,7 +254,10 @@ UI_TOOLS: tuple[UiTool, ...] = (
     UiTool("ui_show_photos",
            "Show exactly these photos, in this order, as the gallery's list (max 200). Photos the "
            "user cannot see are skipped and returned as `missing`. Any filter change by the user "
-           "or the assistant replaces the list.",
+           "or the assistant replaces the list. Optional `groups` (one number per path, shown as a "
+           "'Group n' pill you choose) and `marks` ('keep'/'remove' per path, the planned decision "
+           "shown as a badge the user can flip); read the user's flips back with ui_get_context "
+           "`review`.",
            UiShowPhotos, False),
     UiTool("ui_select_photos",
            "Change the selection in the user's tab: explicit `paths`, or the whole filtered view "

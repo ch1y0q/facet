@@ -1489,10 +1489,31 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Show exactly these photos, in this order, as the gallery's list (max 200). Photos the user cannot see are skipped and returned as `missing`. Any filter change by the user or the assistant replaces the list.",
+      "description": "Show exactly these photos, in this order, as the gallery's list (max 200). Photos the user cannot see are skipped and returned as `missing`. Any filter change by the user or the assistant replaces the list. Optional `groups` (one number per path, shown as a 'Group n' pill you choose) and `marks` ('keep'/'remove' per path, the planned decision shown as a badge the user can flip); read the user's flips back with ui_get_context `review`.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
+          "groups": {
+            "description": "Optional, one per path: the group number to show as a pill on that photo (plan order, 1-based: 'Group n').",
+            "items": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "maxItems": 200,
+            "type": "array"
+          },
+          "marks": {
+            "description": "Optional, one per path: the planned 'keep' or 'remove', shown as a badge.",
+            "items": {
+              "enum": [
+                "keep",
+                "remove"
+              ],
+              "type": "string"
+            },
+            "maxItems": 200,
+            "type": "array"
+          },
           "paths": {
             "description": "Photo paths to show, in this order, as the gallery's own list. The user's filters and sort are left untouched; any filter change replaces the list.",
             "items": {
@@ -1679,5 +1700,5 @@
       "name": "ui_show_comparison"
     }
   ],
-  "version": "ebb1fd0929bb883d"
+  "version": "a21c2fc85f14df63"
 }

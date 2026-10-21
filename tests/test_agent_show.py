@@ -3,6 +3,8 @@
 [REAL] ``agent_app`` (real auth chain, real lifespan) and a ``FakeTab`` on the real bridge.
 """
 
+import asyncio
+
 import pytest
 
 from api import config as api_config
@@ -340,3 +342,19 @@ class TestSemanticFilters:
         result = env.call(env.token(env.login()), "semantic_search",
                           {"query": "q", "limit": 10, "show": False, "filters": {"min_aggregate": 5.5}})
         assert "note" in result["data"]
+
+
+def test_show_paths_in_tab_forwards_groups_and_marks(monkeypatch):
+    sent = {}
+
+    async def fake_call_tab(registry, resolved, settings, tool, args, tab_id, *, timeout):
+        sent.update(tool=tool, args=args)
+        return {"ok": True, "data": {"total": 2}, "tab": {"tab_id": "t"}}
+
+    monkeypatch.setattr(show, "call_tab", fake_call_tab)
+    monkeypatch.setattr(show, "comparison_open", lambda *a: False)
+    result = asyncio.run(show.show_paths_in_tab(
+        None, None, {"bridge": True}, None, ["a", "b"], timeout=1.0, groups=[1, 2], marks=["keep", "remove"]))
+    assert result["applied"] is True
+    assert sent["tool"] == "ui_show_photos"
+    assert sent["args"] == {"paths": ["a", "b"], "groups": [1, 2], "marks": ["keep", "remove"]}

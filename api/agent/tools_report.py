@@ -19,9 +19,10 @@ from api.agent.internal_client import InternalClient, err, ok
 from api.agent.limits import encoded_size
 from api.agent.runtime import run_tool
 from api.agent.tools_common import READ_ANNOTATIONS, register_tool
-from api.agent.tools_culling import CULLING_ROUTES, EXIF_TIMESTAMP
+from api.agent.tools_culling import CULLING_ROUTES, normalise_window
 from api.agent.tools_write import WRITE_TOOL_LEVELS
 from api.agent.tools_read import SearchFilters, _hide_defaults
+from api.db_helpers import to_day_granularity
 from api.models.gallery import query_value
 
 COUNT_CONCURRENCY = 4
@@ -85,6 +86,15 @@ def register_report_tools(server: MCPServer, app: Any, client: InternalClient) -
                            "Describe the scope with `filters` (path_prefix, date_from/date_to, album_id ...)")
             timeout = settings["call_timeout_s"]
             scope = _scope(filters)
+            window = (scope.get("date_from"), scope.get("date_to"))
+            since, until, bad = normalise_window(*window)
+            if bad:
+                return bad
+            try:
+                scope.update({k: to_day_granularity(v) for k, v in zip(("date_from", "date_to"), window)
+                              if v is not None})
+            except ValueError as ex:
+                return err("invalid_input", f"date_from/date_to: {ex}")
             gate = asyncio.Semaphore(COUNT_CONCURRENCY)
             table = REPORT_COUNTS + (("low_score", {"max_score": low_score_below}),)
             numbers = await asyncio.gather(*(_count(client, grant, timeout, gate, {**scope, **extra})
@@ -106,12 +116,16 @@ def register_report_tools(server: MCPServer, app: Any, client: InternalClient) -
                 groups = await culling.call(grant, "culling.groups", timeout=timeout, query={
                     "group_by": "all", "page": 1, "per_page": SETS_MAX, "sort": "easiest",
                     "album_id": scope.get("album_id"),
-                    **{k: scope[k] for k in ("date_from", "date_to") if EXIF_TIMESTAMP.match(str(scope.get(k, "")))}})
+                    "date_from": since, "date_to": until})
                 sets_note = None if groups["ok"] else "the darkroom feed could not be read"
                 sets = [{"type": g.get("type"), "group_id": g.get("group_id"), "photo_count": len(g.get("photos") or []),
                          "keeper_best_path": g.get("keeper_best_path")}
                         for g in ((groups["data"] or {}).get("groups") or [])[:SETS_MAX]] if groups["ok"] else None
-            report = {"total": total, "kept": kept, "rejected": rejected, "favorites": counts["favorites"],
+            basis = {"counts": "every filter given, minus the hide toggles (hidden members are counted)",
+                     "filters_applied": sorted(scope), "top_keepers": "the same filters, with the viewer's default hide toggles",
+                     "sets": ("the darkroom feed, scoped by album_id and the date window only (path_prefix and other "
+                              "filters are not applied)" if sets is not None else "not read")}
+            report = {"basis": basis, "total": total, "kept": kept, "rejected": rejected, "favorites": counts["favorites"],
                       "rated": counts["rated"], "unreviewed": unreviewed, "reasons": reasons,
                       "top_keepers": [{k: p.get(k) for k in TOP_KEYS}
                                       for p in ((top["data"] or {}).get("photos") or [])[:top_n]] if top["ok"] else None,

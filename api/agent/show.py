@@ -152,11 +152,17 @@ async def show_in_tab(registry: TabRegistry, resolved: ResolvedGrant, settings: 
 
 
 async def show_paths_in_tab(registry: TabRegistry, resolved: ResolvedGrant, settings: dict,
-                            tab_id: Optional[str], paths: list[str], *, timeout: float) -> dict:
-    """Pin exactly ``paths`` (in order) as the user's gallery list; describe the outcome, never raise."""
+                            tab_id: Optional[str], paths: list[str], *, timeout: float,
+                            groups: Optional[list[int]] = None,
+                            marks: Optional[list[str]] = None) -> dict:
+    """Pin exactly ``paths`` (in order) as the user's gallery list; describe the outcome, never raise.
+
+    ``groups`` / ``marks`` (one per path) label each card with a group pill and a keep/remove badge.
+    """
     return await _show(
         registry, resolved, settings, tab_id, "ui_show_photos", "Show paths",
-        lambda: UiShowPhotos.model_validate({"paths": paths}).forward(),
+        lambda: UiShowPhotos.model_validate(
+            {"paths": paths, "groups": groups, "marks": marks}).forward(),
         lambda data, tab: {"applied": True, "tab_id": tab.get("tab_id"), "keys": None,
                            "total": data.get("total"), "missing": data.get("missing") or []},
         timeout=timeout)

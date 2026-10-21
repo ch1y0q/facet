@@ -150,13 +150,49 @@ class TestListGroups:
 
     def test_bad_timestamp_is_invalid_input_before_any_call(self, env_token):
         env, token = env_token
-        result = env.call(token, "list_culling_groups", {"date_from": "1999-01-01"})
-        assert result["error"] == "invalid_input"
+        result = env.call(token, "list_culling_groups", {"date_from": "yesterday"})
+        assert result["error"] == "invalid_input" and "YYYY-MM-DD" in result["message"]
+
+    def test_iso_dates_are_accepted_and_scope_the_feed(self, env_token):
+        env, token = env_token
+        rows = env.call(token, "list_culling_groups", {
+            "group_by": "burst", "date_from": "1999-01-01", "date_to": "1999-01-01"})["data"]["rows"]
+        assert [g["photo_count"] for g in rows] == [3]
+        none = env.call(token, "list_culling_groups", {
+            "group_by": "burst", "date_from": "2001-01-01", "date_to": "2001-01-01"})
+        assert none["ok"] and none["data"]["rows"] == []
 
 
 class TestAutoCull:
     def args(self, **extra):
         return {"group_by": "all", **SCOPE, **extra}
+
+    def test_auto_cull_accepts_iso_date(self, env_token):
+        env, token = env_token
+        result = env.call(token, "auto_cull", {"group_by": "burst", "date_from": "1999-01-01",
+                                               "date_to": "1999-01-01"})
+        assert result["ok"], result
+        assert {g["group_id"] for g in result["data"]["rows"]} == {4242}
+
+    def test_auto_cull_bad_date_is_invalid_input_naming_the_forms(self, env_token):
+        env, token = env_token
+        result = env.call(token, "auto_cull", {"date_from": "1999-13-45"})
+        assert result["error"] == "invalid_input" and "YYYY-MM-DD" in result["message"]
+
+    @pytest.mark.parametrize("group_by,kinds", [("burst", []), ("similar", ["similar"]),
+                                                ("scene", ["scene"]), ("all", ["similar"])])
+    def test_auto_cull_scope_dependent_kinds(self, env_token, group_by, kinds):
+        env, token = env_token
+        result = env.call(token, "auto_cull", {"group_by": group_by, **SCOPE})
+        assert result["ok"], result
+        assert result["data"]["scope_dependent_kinds"] == kinds
+        assert ("whole range in one call" in result.get("note", "")) == bool(kinds)
+
+    def test_auto_cull_description_says_one_call(self, env_token):
+        env, token = env_token
+        tools = env.rpc(token, "tools/list").json()["result"]["tools"]
+        text = next(t["description"] for t in tools if t["name"] == "auto_cull")
+        assert "ONE call" in text and "month" in text
 
     def test_preview_writes_nothing_and_issues_a_nonce(self, env_token):
         env, token = env_token

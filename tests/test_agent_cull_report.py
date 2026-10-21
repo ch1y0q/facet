@@ -128,3 +128,27 @@ def test_multi_user_counts_only_the_owners_library(agent_app, seed_photos_prefix
 def test_readonly_token_sees_the_tool(world):
     env, token, _ = world
     assert "cull_report" in env.tool_names(token)
+
+
+def test_cull_report_basis_names_what_each_block_covers(world):
+    env, token, edition = world
+    basis = report(env, edition)["data"]["basis"]
+    assert basis["filters_applied"] == ["path_prefix"]
+    assert "hide toggles" in basis["counts"] and "darkroom" in basis["sets"]
+    assert report(env, token)["data"]["basis"]["sets"] == "not read"
+
+
+def test_cull_report_time_of_day_is_refused_on_the_day_granular_counts(world):
+    env, token, _ = world
+    result = env.call(token, "cull_report", {"filters": {**SCOPE, "date_from": "1996-06-06 10:00:00"}})
+    assert result["error"] == "invalid_input" and "YYYY-MM-DD" in result["message"]
+
+
+def test_cull_report_iso_dates_scope_the_totals_and_the_sets_alike(world):
+    env, _, edition = world
+    inside = env.call(edition, "cull_report", {"filters": {**SCOPE, "date_from": "1996-06-06", "date_to": "1996-06-06"}})
+    assert inside["data"]["total"] == 8
+    outside = env.call(edition, "cull_report", {"filters": {"date_from": "2001-01-01", "date_to": "2001-01-01"}})
+    assert outside["data"]["total"] == 0 and outside["data"]["sets"] == []
+    exif = env.call(edition, "cull_report", {"filters": {"date_from": "2001:01:01", "date_to": "2001:01:01"}})
+    assert exif["data"]["sets"] == []

@@ -11,10 +11,12 @@ import math
 import ntpath
 import os
 import random
+import re
 import sqlite3
 import sys
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -316,6 +318,46 @@ def to_exif_date(iso_date: str) -> str:
 def to_iso_date(exif_date: str) -> str:
     """Convert EXIF date prefix (2024:03:11...) to ISO (2024-03-11)."""
     return exif_date[:10].replace(':', '-')
+
+
+_TIMESTAMP_FORMS = "'YYYY-MM-DD', 'YYYY-MM-DD HH:MM[:SS]', 'YYYY-MM-DDTHH:MM[:SS]', 'YYYY:MM:DD' or 'YYYY:MM:DD HH:MM:SS'"
+_TIMESTAMP_RE = re.compile(
+    r"^(\d{4})([-:])(\d{2})\2(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?$")
+
+
+def parse_timestamp(value: str) -> tuple[datetime, bool]:
+    """Parse a date or datetime in ISO or EXIF notation; returns ``(moment, has_time)``.
+
+    Accepts ``YYYY-MM-DD``, ``YYYY-MM-DD[T ]HH:MM[:SS]``, ``YYYY:MM:DD`` and
+    ``YYYY:MM:DD HH:MM:SS``. Raises ``ValueError`` naming the accepted forms.
+    """
+    match = _TIMESTAMP_RE.match(value.strip()) if isinstance(value, str) else None
+    if not match:
+        raise ValueError(f"{value!r} is not a date; use {_TIMESTAMP_FORMS}")
+    year, _, month, day, hour, minute, second = match.groups()
+    try:
+        moment = datetime(int(year), int(month), int(day), int(hour or 0), int(minute or 0),
+                          int(second or 0))
+    except ValueError:
+        raise ValueError(f"{value!r} is not a real date; use {_TIMESTAMP_FORMS}") from None
+    return moment, hour is not None
+
+
+def to_second_granularity(value: str, end_of_day: bool = False) -> str:
+    """Normalise to ``YYYY:MM:DD HH:MM:SS``; a date-only value gets 00:00:00 (23:59:59 if ``end_of_day``)."""
+    moment, has_time = parse_timestamp(value)
+    if end_of_day and not has_time:
+        moment = moment.replace(hour=23, minute=59, second=59)
+    return moment.strftime("%Y:%m:%d %H:%M:%S")
+
+
+def to_day_granularity(value: str) -> str:
+    """Normalise to ``YYYY-MM-DD``; refuses a time component (the route compares whole days)."""
+    moment, has_time = parse_timestamp(value)
+    if has_time:
+        raise ValueError(f"{value!r} has a time of day, but this filter works on whole days; "
+                         "use 'YYYY-MM-DD'")
+    return moment.strftime("%Y-%m-%d")
 
 
 def format_date(date_str):

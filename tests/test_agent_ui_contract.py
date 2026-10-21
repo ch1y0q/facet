@@ -69,3 +69,28 @@ def test_ui_show_photos_path_bound_is_in_the_contract_and_enforced():
         UiShowPhotos(paths=["x" * 4097])
     with pytest.raises(ValueError):
         UiShowPhotos(paths=[""])
+
+
+def test_ui_show_photos_groups_and_marks_must_match_paths_length():
+    from api.agent.ui_tools import UiShowPhotos
+    with pytest.raises(ValueError, match="`groups` must have exactly one entry per path"):
+        UiShowPhotos(paths=["a", "b"], groups=[1])
+    with pytest.raises(ValueError, match="`marks` must have exactly one entry per path"):
+        UiShowPhotos(paths=["a", "b"], marks=["keep"])
+    with pytest.raises(ValueError):
+        UiShowPhotos(paths=["a"], marks=["maybe"])
+    with pytest.raises(ValueError):
+        UiShowPhotos(paths=["a"], groups=[0])
+    ok = UiShowPhotos(paths=["a", "b"], groups=[1, 1], marks=["keep", "remove"])
+    assert ok.forward() == {"paths": ["a", "b"], "groups": [1, 1], "marks": ["keep", "remove"]}
+    assert UiShowPhotos(paths=["a"]).forward() == {"paths": ["a"]}
+
+
+def test_ui_show_photos_schema_has_plain_groups_and_marks_arrays():
+    from api.agent.ui_tools import UI_TOOLS, input_schema
+    schema = input_schema(next(t for t in UI_TOOLS if t.name == "ui_show_photos"))
+    text = json.dumps(schema)
+    assert "$ref" not in text and "anyOf" not in text
+    assert schema["additionalProperties"] is False
+    assert schema["properties"]["groups"]["type"] == "array"
+    assert schema["properties"]["marks"]["items"]["enum"] == ["keep", "remove"]

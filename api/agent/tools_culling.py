@@ -12,7 +12,6 @@ plan, and ``confirm_culling_groups`` needs one whenever a group would reject eve
 frame it names.
 """
 
-import re
 from typing import Annotated, Any, Literal, Optional
 
 from mcp.server.mcpserver import Context, MCPServer
@@ -24,6 +23,7 @@ from api.agent.internal_client import InternalClient, RouteSpec, err, ok
 from api.agent.limits import encoded_size
 from api.agent.runtime import run_tool
 from api.agent.tools_common import DESTRUCTIVE_ANNOTATIONS, READ_ANNOTATIONS, register_tool
+from api.db_helpers import to_second_granularity
 
 CULLING_ROUTES: dict[str, RouteSpec] = {
     "culling.groups": RouteSpec("GET", "/api/culling-groups", "edition"),
@@ -39,7 +39,6 @@ CULLING_LEVEL = "edition"
 
 GroupType = Literal["burst", "similar", "scene", "bracket", "panorama", "hdr_panorama"]
 KEEP_WHOLE_TYPES = ("bracket", "panorama", "hdr_panorama")
-EXIF_TIMESTAMP = re.compile(r"^\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}$")
 GROUP_PHOTO_LIMIT = 12
 GROUP_PHOTO_KEYS = ("path", "filename", "date_taken", "aggregate", "aesthetic", "tech_sharpness",
                     "is_blink", "sequence_ev_offset", "keeper_prob")
@@ -102,11 +101,16 @@ def _confirm_digest(groups: list[ConfirmGroup]) -> str:
     return nonce.digest(tagged, "confirm_culling_groups")
 
 
-def _check_timestamps(**stamps: Optional[str]) -> Optional[dict]:
-    for name, value in stamps.items():
-        if value is not None and not EXIF_TIMESTAMP.match(value):
-            return err("invalid_input", f"{name} must look like 'YYYY:MM:DD HH:MM:SS'")
-    return None
+def normalise_window(date_from: Optional[str], date_to: Optional[str]) -> tuple[Optional[str], Optional[str], Optional[dict]]:
+    """``(date_from, date_to, error)``: the darkroom routes' ``YYYY:MM:DD HH:MM:SS`` form.
+
+    Accepts ISO dates, ISO datetimes and EXIF forms; a date-only ``date_to`` becomes 23:59:59.
+    """
+    try:
+        return (to_second_granularity(date_from) if date_from is not None else None,
+                to_second_granularity(date_to, end_of_day=True) if date_to is not None else None, None)
+    except ValueError as ex:
+        return None, None, err("invalid_input", f"date_from/date_to: {ex}")
 
 
 def _validate_confirm(groups: list[ConfirmGroup]) -> Optional[dict]:
@@ -147,14 +151,14 @@ def register_culling_tools(server: MCPServer, app: Any) -> None:
         date_to: Optional[str] = None,
     ) -> CallToolResult:
         async def handler(grant, resolved, settings):
-            bad = _check_timestamps(date_from=date_from, date_to=date_to)
+            since, until, bad = normalise_window(date_from, date_to)
             if bad:
                 return bad
             upstream = await client.call(
                 grant, "culling.groups", timeout=settings["call_timeout_s"],
                 query={"group_by": group_by, "page": page, "per_page": per_page, "sort": sort,
                        "direction": direction, "exclude_rejected": "1" if exclude_rejected else "0",
-                       "album_id": album_id, "date_from": date_from, "date_to": date_to})
+                       "album_id": album_id, "date_from": since, "date_to": until})
             if not upstream["ok"]:
                 return upstream
             body = upstream["data"] or {}
@@ -177,12 +181,12 @@ def register_culling_tools(server: MCPServer, app: Any) -> None:
         date_from: Optional[str] = None, date_to: Optional[str] = None,
     ) -> CallToolResult:
         async def handler(grant, resolved, settings):
-            bad = _check_timestamps(date_from=date_from, date_to=date_to)
+            since, until, bad = normalise_window(date_from, date_to)
             if bad:
                 return bad
             return await client.call(
                 grant, "culling.suggest_profile", timeout=settings["call_timeout_s"],
-                query={"album_id": album_id, "date_from": date_from, "date_to": date_to})
+                query={"album_id": album_id, "date_from": since, "date_to": until})
         return await run_tool(ctx, "suggest_culling_profile", handler)
 
     async def keeper_hints(
@@ -213,11 +217,11 @@ def register_culling_tools(server: MCPServer, app: Any) -> None:
         confirm: Optional[str] = None,
     ) -> CallToolResult:
         async def handler(grant, resolved, settings):
-            bad = _check_timestamps(date_from=date_from, date_to=date_to)
+            since, until, bad = normalise_window(date_from, date_to)
             if bad:
                 return bad
-            options = {"group_by": group_by, "album_id": album_id, "date_from": date_from,
-                       "date_to": date_to, "strictness": strictness,
+            options = {"group_by": group_by, "album_id": album_id, "date_from": since,
+                       "date_to": until, "strictness": strictness,
                        "min_keep_per_group": min_keep_per_group, "profile": profile,
                        "trim_brackets": trim_brackets, "highlights_album": highlights_album}
             timeout = settings["call_timeout_s"]
@@ -246,10 +250,14 @@ def register_culling_tools(server: MCPServer, app: Any) -> None:
                                   "keep_paths": g["keep_paths"], "reject_paths": g["reject_paths"],
                                   "best_path": g["best_path"]} for g in groups]}
         data.pop("preview", None)
+        kinds = body.get("scope_dependent_kinds")
+        scope_note = (f"Groups of kind {', '.join(kinds)} depend on the date range / candidate pool: "
+                      "cull the whole range in one call." if kinds else None)
         if body.get("preview_truncated") or not body.get("rejected"):
-            return ok(data, note="Nothing to apply" if not body.get("rejected")
-                      else "Plan truncated: narrow the scope to get a confirmable preview")
-        return ok(data, confirm=nonce.issue(grant.nonce_owner, "auto_cull", _plan_digest(options, groups)))
+            note = ("Nothing to apply" if not body.get("rejected")
+                    else "Plan truncated: narrow the scope to get a confirmable preview")
+            return ok(data, note=f"{note}. {scope_note}" if scope_note else note)
+        return ok(data, **({"note": scope_note} if scope_note else {}), confirm=nonce.issue(grant.nonce_owner, "auto_cull", _plan_digest(options, groups)))
 
     async def confirm_culling_groups(
         ctx: Context,
@@ -293,8 +301,9 @@ def register_culling_tools(server: MCPServer, app: Any) -> None:
         "culled frame by frame." + SEE_GROUP)
     add(culling_profiles, "culling_profiles", "The genre-aware culling presets and the default one.")
     add(suggest_culling_profile, "suggest_culling_profile",
-        "Name the preset that fits an album or capture-time window. date_from/date_to are "
-        "'YYYY:MM:DD HH:MM:SS'.")
+        "Name the preset that fits an album or capture-time window. date_from/date_to accept "
+        "'YYYY-MM-DD', 'YYYY-MM-DD HH:MM:SS' or the EXIF 'YYYY:MM:DD HH:MM:SS'; a date-only "
+        "date_to covers the whole day.")
     add(keeper_hints, "keeper_hints",
         "Per-photo 'a better shot exists in this burst' hints for up to 100 paths. Empty when no "
         "keeper head is trained.")
@@ -302,7 +311,10 @@ def register_culling_tools(server: MCPServer, app: Any) -> None:
         "Auto-cull a scope under a keeper budget. dry_run=true (default) only previews the split "
         "and returns a `confirm` value; show the user the counts, then call again with "
         "dry_run=false and that `confirm` to reject the planned frames. The apply is refused when "
-        "the plan changed since the preview. Brackets and panoramas are kept whole." + SEE_GROUP,
+        "the plan changed since the preview. Brackets and panoramas are kept whole. date_from/date_to "
+        "accept 'YYYY-MM-DD' (date_to covers the whole day) or 'YYYY-MM-DD HH:MM:SS'. Cull a whole "
+        "range in ONE call: do not split it by month, because similar and scene groups depend on "
+        "the date range (see `scope_dependent_kinds` in the result)." + SEE_GROUP,
         DESTRUCTIVE_ANNOTATIONS)
     add(confirm_culling_groups, "confirm_culling_groups",
         "Confirm up to 20 groups, each keyed by (type, group_id) with the group's `paths` and the "

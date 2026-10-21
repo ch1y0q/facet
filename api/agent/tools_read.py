@@ -26,7 +26,7 @@ from api.agent.ui_tools import TAB_ID_PATTERN
 from api.models.gallery import query_value
 from api.routers.face_matches import FACE_SCAN_TIMEOUT_S
 from api.config import CORRELATION_X_AXES, CORRELATION_Y_METRICS, VIEWER_CONFIG
-from api.db_helpers import PHOTO_BASE_COLS, PHOTO_OPTIONAL_COLS
+from api.db_helpers import PHOTO_BASE_COLS, PHOTO_OPTIONAL_COLS, to_day_granularity
 
 HIDE_DEFAULT_KEYS = ("hide_blinks", "hide_bursts", "hide_duplicates", "hide_brackets", "hide_panoramas",
                      "hide_rejected")
@@ -100,6 +100,12 @@ SEMANTIC_CANDIDATES = 200
 CAPTION_LIMIT = 240
 TAG_LIMIT = 5
 FILTER_OPTION_LIMIT = 200
+
+
+def _day_window(date_from: Optional[str], date_to: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """Both bounds as ``YYYY-MM-DD`` (the stats and face routes compare whole days); ``ValueError`` on a time."""
+    return (to_day_granularity(date_from) if date_from is not None else None,
+            to_day_granularity(date_to) if date_to is not None else None)
 
 
 def compact_photo(photo: dict, extra_fields: tuple = ()) -> dict:
@@ -301,16 +307,20 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
         min_similarity: Annotated[float, Field(ge=0.0, le=1.0)] = 0.30,
         limit: Annotated[int, Field(ge=1, le=100)] = 30,
         path_prefix: Annotated[Optional[str], Field(max_length=4096)] = None,
-        date_from: Annotated[Optional[str], Field(pattern=r"^\d{4}-\d{2}-\d{2}$")] = None,
-        date_to: Annotated[Optional[str], Field(pattern=r"^\d{4}-\d{2}-\d{2}$")] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
         show: Annotated[bool, Field(description=SHOW_DESCRIPTION)] = True,
         tab_id: Optional[str] = None,
     ) -> CallToolResult:
         async def handler(grant, resolved, settings):
+            try:
+                since, until = _day_window(date_from, date_to)
+            except ValueError as ex:
+                return err("invalid_input", f"date_from/date_to: {ex}")
             upstream = await client.call(
                 grant, "possible_faces", path_args={"person_id": person_id},
                 query={"scope": scope, "min_similarity": min_similarity, "limit": limit,
-                       "path_prefix": path_prefix, "date_from": date_from, "date_to": date_to},
+                       "path_prefix": path_prefix, "date_from": since, "date_to": until},
                 timeout=FACE_SCAN_TIMEOUT_S)
             if not upstream["ok"]:
                 return upstream
@@ -427,6 +437,10 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
                      "month": month, "x": x, "y": y, "group_by": group_by, "min_samples": min_samples}
             refused = [key for key, value in given.items()
                        if value is not None and key not in STATS_KIND_PARAMS[kind]]
+            try:
+                given["date_from"], given["date_to"] = _day_window(date_from, date_to)
+            except ValueError as ex:
+                return err("invalid_input", f"date_from/date_to: {ex}")
             if refused:
                 return err("invalid_input", f"kind={kind} does not take {', '.join(refused)}",
                            issues=[{"field": key, "message": f"not a parameter of kind={kind}"}
@@ -440,7 +454,10 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
                     return counts
                 if not overview["ok"]:
                     return overview
-                return ok({"type_counts": counts["data"], "overview": overview["data"]})
+                basis = {"total_photos": "whole library: hide toggles ignored, rejected photos included",
+                         "type_counts": "hide toggles applied (rejected, bursts ... hidden); date_from/date_to "
+                                        "and category are ignored"}
+                return ok({"type_counts": counts["data"], "overview": {**overview["data"], "basis": basis}})
             bad = _stats_params_error(kind, year, x, y, group_by)
             if bad is not None:
                 return bad

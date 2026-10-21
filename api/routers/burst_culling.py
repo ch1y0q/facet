@@ -2377,6 +2377,12 @@ class AutoCullResult:
     decided: set = field(default_factory=set)
     collected: set = field(default_factory=set)
     spanning_skipped: int = 0
+    scope_dependent_kinds: list = field(default_factory=list)
+
+
+# Group kinds whose membership depends on the date window / candidate pool (similar and scene
+# groups are computed over the pool); burst, bracket and panorama members are fetched without it.
+_SCOPE_DEPENDENT_KINDS = {'all': ['similar'], 'similar': ['similar'], 'scene': ['scene'], 'burst': []}
 
 
 def _confine_groups_to_scope(groups, path_scope):
@@ -2441,6 +2447,7 @@ def run_auto_cull(conn, db_path, user_id, *, group_by, strictness, min_keep,
             redundant_only=True,
         )
     result = AutoCullResult()
+    result.scope_dependent_kinds = list(_SCOPE_DEPENDENT_KINDS.get(group_by, []))
     result.collected = {p['path'] for g in groups for p in g['photos']}
     if membership_groups and group_by != 'all':
         # Burst and similar membership, whatever `group_by` was. Scene groups are
@@ -2574,6 +2581,7 @@ def auto_cull(
                 'dry_run': body.dry_run,
                 'preview': result.preview,
                 'preview_truncated': result.preview_truncated,
+                'scope_dependent_kinds': result.scope_dependent_kinds,
             }
 
         except HTTPException:
