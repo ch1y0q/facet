@@ -347,7 +347,7 @@ if [[ "$COMMERCIAL" -eq 0 ]]; then
     CORE_IMPORTS="$CORE_IMPORTS, insightface"
 fi
 IMPORTS_FAILED=0
-if $PYTHON -c "import $CORE_IMPORTS" 2>/dev/null; then
+if $PYTHON -c "import $CORE_IMPORTS; cv2.__version__" 2>/dev/null; then
     ok "All core imports successful"
 else
     IMPORTS_FAILED=1

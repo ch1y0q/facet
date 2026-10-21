@@ -480,11 +480,11 @@ def _import_opencv():
     """``(module, None)``, or ``(None, why it is unusable)``; never raises.
 
     ``opencv-python`` links ``libGL.so.1``, which Debian/WSL and slim hosts lack, so its ``cv2``
-    fails to import there. The ``__version__`` guard is a defensive case, not observed behaviour:
-    pip 24 and uv 0.8 delete ``cv2/`` entirely when only one build is uninstalled (a
-    ``ModuleNotFoundError``, which the ``except`` below reports), but an empty ``cv2/`` left by an interrupted
-    uninstall or a hand-edited tree would import as a namespace package with no ``__version__``,
-    and that must read as a broken install, not a working one.
+    fails to import there. Uninstalling one build of two can also leave a ``cv2/`` that imports
+    as an empty namespace package: installing ``opencv-python`` over the headless build and then
+    uninstalling the headless one leaves only the GUI build's ``cv2/qt/`` behind (observed with
+    pip on a GPU host), and ``import cv2`` then succeeds with no ``__version__``. That must read
+    as a broken install, not a working one.
     """
     try:
         cv2 = importlib.import_module("cv2")

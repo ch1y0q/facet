@@ -81,6 +81,10 @@ class TestInstallShVerify:
         assert "get_available_providers" not in code
         assert callable(diagnostics.verify_onnx_runtime)
 
+    def test_the_core_import_check_rejects_an_empty_cv2_namespace_package(self):
+        """A cv2/ holding only the GUI build's qt/ imports fine and has no __version__."""
+        assert 'import $CORE_IMPORTS; cv2.__version__"' in _code("install.sh")
+
     def test_the_fix_text_comes_from_the_helper_not_from_install_sh(self):
         assert 'pip install "onnxruntime-gpu' not in _text("install.sh")
 

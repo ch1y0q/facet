@@ -1385,7 +1385,7 @@ class TestDoctorOpenCV:
         assert "--no-deps" not in section
 
     def test_an_empty_namespace_package_is_a_broken_install_not_a_working_one(self, capsys, tmp_path, monkeypatch):
-        """Defensive: pip 24 and uv 0.8 delete cv2/ whole (ModuleNotFoundError), but an empty cv2/ must still not read as OK."""
+        """GUI build over the headless one, then the headless one uninstalled, leaves only cv2/qt/: it imports, empty."""
         section = self._run(capsys, tmp_path, monkeypatch, types.ModuleType("cv2"),
                             {"opencv-python-headless": "5.0.0.93"})
         assert "[!!] cv2: cannot be imported: module 'cv2' has no attribute '__version__'" in section
