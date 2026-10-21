@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, provideRouter } from '@angular/router';
 import { Component } from '@angular/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { of } from 'rxjs';
+import { NEVER, of } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { AuthService } from '../services/auth.service';
 import { AlbumService } from '../services/album.service';
@@ -17,6 +17,7 @@ import { DEFAULT_FILTERS } from '../../features/gallery/gallery-filters.util';
 import { applicableActions, createUiToolHandlers } from './ui-tool-handlers';
 import { CompareFiltersService } from '../../features/comparison/compare-filters.service';
 import { ViewActionRegistry } from './view-action-registry.service';
+import { AssistantChangesService } from './assistant-changes.service';
 import contractFile from './ui-tools.schema.json';
 import { UI_TOOL_ERROR_CODES, UiToolContractFile, UiToolEnvelope } from './ui-tool.types';
 
@@ -72,6 +73,8 @@ describe('UI tool registry and handlers', () => {
         { provide: Router, useValue: router },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
         { provide: AuthService, useValue: { isEdition: () => edition, isMultiUser: () => multiUser, isAuthenticated: () => true } },
+        // The real GalleryStore subscribes to assistant write batches; none arrive here.
+        { provide: AssistantChangesService, useValue: { batch$: NEVER } },
         { provide: AlbumService, useValue: { list: vi.fn(() => of({ albums: [] })), update: vi.fn(() => of({})) } },
         { provide: MatSnackBar, useValue: { open: vi.fn() } },
         { provide: I18nService, useValue: { t: (k: string) => k } },

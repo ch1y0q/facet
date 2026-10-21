@@ -325,7 +325,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
               role="grid"
               tabindex="0"
               [attr.aria-label]="I18N.gallery.photo_grid | translate"
-              [attr.aria-rowcount]="rowsModel().length"
+              [attr.aria-rowcount]="photoRowCount()"
               class="flex flex-col p-2 md:p-4 outline-none"
               (keydown)="onGridKeydown($event)"
               (focusout)="onGridFocusOut($event)"
@@ -334,8 +334,8 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
               @for (row of visibleRows(); track row.kind === 'header' ? 'h' + row.group : row.photos[0].path) {
                 @if (row.kind === 'header') {
                   @let header = row.group! | reviewGroupHeader:store.reviewGroupCounts():(store.pinnedMarks().size > 0);
-                  <div role="row" class="flex items-end mb-2 px-1" [style.height.px]="row.height">
-                    <div role="rowheader" class="truncate text-sm font-semibold pb-1" data-testid="review-group-header">
+                  <div class="flex items-end mb-2 px-1" [style.height.px]="row.height">
+                    <div role="heading" aria-level="3" class="truncate text-sm font-semibold pb-1" data-testid="review-group-header">
                       {{ header.key | translate:header.params }}
                     </div>
                   </div>
@@ -1056,6 +1056,9 @@ export class GalleryComponent implements OnInit, OnDestroy {
     const groups = this.store.pinnedGroups();
     return buildSectionedRows(photos, p => groups.get(p.path), build, GROUP_HEADER_HEIGHT_PX, gap);
   });
+
+  /** Photo rows only: group headings are not grid rows. */
+  protected readonly photoRowCount = computed(() => this.rowsModel().filter(row => row.kind !== 'header').length);
 
   readonly totalRowsHeight = computed(() => totalRowsHeight(this.rowsModel()));
 

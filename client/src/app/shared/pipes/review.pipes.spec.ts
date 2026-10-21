@@ -1,3 +1,8 @@
+import { TestBed } from '@angular/core/testing';
+import { HttpClient } from '@angular/common/http';
+import { of } from 'rxjs';
+import { I18nService } from '../../core/services/i18n.service';
+import { TranslatePipe } from './translate.pipe';
 import { ReviewAriaKeyPipe, ReviewChangedPipe, ReviewGroupHeaderPipe, ReviewGroupPipe, ReviewMarkPipe } from './review.pipes';
 
 describe('review pipes', () => {
@@ -50,5 +55,30 @@ describe('ReviewAriaKeyPipe', () => {
     const pipe = new ReviewAriaKeyPipe();
     expect(pipe.transform('keep', 3)).toBe('gallery.pinned.review.keep_aria');
     expect(pipe.transform('remove', null)).toBe('gallery.pinned.review.remove_aria_ungrouped');
+  });
+});
+
+describe('ReviewGroupHeaderPipe through the real i18n bundles', () => {
+  const header = new ReviewGroupHeaderPipe();
+  const counts = new Map([[2, { count: 3, keep: 1, remove: 2 }], [5, { count: 1, keep: 1, remove: 0 }]]);
+
+  async function render(lang: string, group: number): Promise<string> {
+    const bundle = (await import(`../../../../../i18n/translations/${lang}.json`)).default as Record<string, unknown>;
+    TestBed.configureTestingModule({
+      providers: [{ provide: HttpClient, useValue: { get: () => of(bundle) } }],
+    });
+    const i18n = TestBed.inject(I18nService);
+    await i18n.setLocale(lang);
+    const { key, params } = header.transform(group, counts, true);
+    return TestBed.runInInjectionContext(() => new TranslatePipe().transform(key, params));
+  }
+
+  it.each([
+    ['en', 2, 'Group 2 \u2014 3 photos \u00b7 1 keep \u00b7 2 remove'],
+    ['en', 5, 'Group 5 \u2014 1 photo \u00b7 1 keep \u00b7 0 remove'],
+    ['fr', 2, 'Groupe 2 \u2014 3 photos \u00b7 1 \u00e0 garder \u00b7 2 \u00e0 retirer'],
+    ['fr', 5, 'Groupe 5 \u2014 1 photo \u00b7 1 \u00e0 garder \u00b7 0 \u00e0 retirer'],
+  ])('%s group %i renders %s', async (lang, group, expected) => {
+    expect(await render(lang, group)).toBe(expected);
   });
 });

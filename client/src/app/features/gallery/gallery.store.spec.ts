@@ -4,10 +4,12 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Router, ActivatedRoute } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { NEVER, Subject, of, throwError } from 'rxjs';
+import { take } from 'rxjs/operators';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { Album, AlbumService } from '../../core/services/album.service';
 import { I18nService } from '../../core/services/i18n.service';
+import { AssistantChangesService, AssistantChangeBatch } from '../../core/agent/assistant-changes.service';
 import { I18N } from '../../core/i18n/keys';
 import {
   GalleryStore,
@@ -80,6 +82,7 @@ describe('GalleryStore', () => {
   let snackOpen: Mock;
   let routerNavigate: Mock;
   let queryParams: Record<string, string>;
+  let assistantBatches: Subject<AssistantChangeBatch>;
 
   beforeEach(() => {
     apiGet = vi.fn();
@@ -87,6 +90,7 @@ describe('GalleryStore', () => {
     snackOpen = vi.fn();
     routerNavigate = vi.fn();
     queryParams = {};
+    assistantBatches = new Subject<AssistantChangeBatch>();
 
     TestBed.configureTestingModule({
       providers: [
@@ -101,6 +105,7 @@ describe('GalleryStore', () => {
         { provide: AlbumService, useValue: { list: vi.fn(() => of({ albums: [] })), update: vi.fn(() => of({})) } },
         { provide: MatSnackBar, useValue: { open: snackOpen } },
         { provide: I18nService, useValue: { t: (k: string) => k } },
+        { provide: AssistantChangesService, useValue: { batch$: assistantBatches.asObservable() } },
       ],
     });
 
@@ -1344,6 +1349,334 @@ describe('GalleryStore', () => {
       expect(params).not.toHaveProperty('hide_blinks');
     });
   });
+  describe('refreshPaths (assistant writes, in place)', () => {
+    const paths = ['/b.jpg', '/a.jpg', '/c.jpg'];
+    const byPathsBodies = () => apiPost.mock.calls
+      .filter(c => c[0] === '/photos/by_paths')
+      .map(c => c[1] as { paths: string[]; filters?: Record<string, unknown> });
+    const echoByPaths = (override: (p: string) => Partial<Photo> = () => ({}), missing: string[] = []) =>
+      apiPost.mockImplementation((path: string, body?: { paths?: string[] }) => path === '/photos/by_paths'
+        ? of({
+          photos: (body?.paths ?? []).filter(p => !missing.includes(p)).map(p => makePhoto({ path: p, ...override(p) })),
+          total: 0,
+          missing: missing.filter(p => (body?.paths ?? []).includes(p)),
+        })
+        : of({}));
+
+    describe('pinned view', () => {
+      beforeEach(async () => {
+        apiGet.mockImplementation((path: string) => of(path === '/config' ? makeConfig() : makePhotosResponse()));
+        echoByPaths();
+        await store.showPaths(paths, { groups: [1, 1, 2], marks: ['keep', 'remove', 'keep'] });
+        store.setReviewMark('/c.jpg', 'remove');
+        apiPost.mockClear();
+      });
+
+      it('changes only the named photo and leaves the review state intact', async () => {
+        const groups = store.pinnedGroups();
+        const marks = store.pinnedMarks();
+        const user = store.userMarks();
+        const order = store.pinnedPaths();
+        const before = store.photos();
+        echoByPaths(() => ({ is_rejected: true }));
+        await store.refreshPaths(['/a.jpg']);
+        const after = store.photos();
+        expect(after.find(p => p.path === '/a.jpg')?.is_rejected).toBeTruthy();
+        expect(after.filter(p => p.path !== '/a.jpg')).toEqual(before.filter(p => p.path !== '/a.jpg'));
+        expect(after.map(p => p.path)).toEqual(before.map(p => p.path));
+        expect(store.pinnedGroups()).toBe(groups);
+        expect(store.pinnedMarks()).toBe(marks);
+        expect(store.userMarks()).toBe(user);
+        expect(store.pinnedPaths()).toEqual(order);
+        expect(byPathsBodies()).toEqual([{ paths: ['/a.jpg'] }]);
+      });
+
+      it('removes a photo the server reports missing from the grid, the pin, the marks and the selection', async () => {
+        store.selectedPaths.set(new Set(['/a.jpg', '/b.jpg']));
+        echoByPaths(() => ({}), ['/a.jpg']);
+        await store.refreshPaths(['/a.jpg']);
+        expect(store.photos().map(p => p.path)).not.toContain('/a.jpg');
+        expect(store.pinnedPaths()).not.toContain('/a.jpg');
+        expect(store.pinnedGroups().has('/a.jpg')).toBe(false);
+        expect(store.pinnedMarks().has('/a.jpg')).toBe(false);
+        expect(store.selectedPaths().has('/a.jpg')).toBe(false);
+        expect(store.selectedPaths().has('/b.jpg')).toBe(true);
+        expect(store.userMarks().get('/c.jpg')).toBe('remove');
+      });
+
+      it('also drops a missing photo from the user marks', async () => {
+        store.setReviewMark('/a.jpg', 'keep');
+        echoByPaths(() => ({}), ['/a.jpg']);
+        await store.refreshPaths(['/a.jpg']);
+        expect(store.userMarks().has('/a.jpg')).toBe(false);
+      });
+
+      it('on a null batch posts the full pinned list once and keeps the review state', async () => {
+        const order = store.pinnedPaths();
+        const seen: number[] = [];
+        const stop = setInterval(() => seen.push(store.photos().length), 0);
+        echoByPaths(() => ({ is_rejected: true }));
+        await store.refreshPaths(null);
+        clearInterval(stop);
+        expect(byPathsBodies()).toEqual([{ paths }]);
+        expect(store.pinnedPaths()).toEqual(order);
+        expect(store.userMarks().get('/c.jpg')).toBe('remove');
+        expect(store.pinnedGroups().size).toBe(3);
+        expect(store.photos().map(p => p.path)).toEqual(paths);
+        expect(store.photos().every(p => p.is_rejected)).toBe(true);
+        expect(seen.every(n => n === 3)).toBe(true);
+      });
+
+      it('a null reload keeps the pin order and fields the refetch did not return (C17)', async () => {
+        store.photos.update(rows => rows.map(p => ({ ...p, caption: `old-${p.path}` })));
+        echoByPaths();
+        apiPost.mockImplementation((path: string, body?: { paths?: string[] }) => of({
+          photos: [...(body?.paths ?? [])].reverse().map(p => ({ path: p, star_rating: 2 })),
+          total: 0,
+          missing: [],
+        }));
+        await store.refreshPaths(null);
+        expect(store.photos().map(p => p.path)).toEqual(paths);
+        expect(store.photos().every(p => p.caption === `old-${p.path}` && p.star_rating === 2)).toBe(true);
+      });
+
+      it('sends nothing for a path that is not loaded', async () => {
+        await store.refreshPaths(['/elsewhere.jpg']);
+        expect(apiPost).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('filter view', () => {
+      const many = Array.from({ length: 600 }, (_, n) => `/p${n}.jpg`);
+      beforeEach(async () => {
+        apiGet.mockImplementation((path: string) => of(path === '/config'
+          ? makeConfig()
+          : makePhotosResponse({ photos: many.map(p => makePhoto({ path: p })), total: 600 })));
+        store.filters.set({ ...DEFAULT_FILTERS, hide_rejected: true, camera: 'Canon', album_id: '4', type: '' });
+        await store.loadConfig();
+        store.filters.update(f => ({ ...f, hide_rejected: true, camera: 'Canon', album_id: '4', type: 'portrait' }));
+        await store.loadPhotos();
+        apiGet.mockClear();
+        apiPost.mockClear();
+        echoByPaths();
+      });
+
+      it('sends the view filters (hide_rejected, camera, album, type) and no paging or sort', async () => {
+        await store.refreshPaths(['/p1.jpg']);
+        const [body] = byPathsBodies();
+        expect(body.paths).toEqual(['/p1.jpg']);
+        expect(body.filters).toMatchObject({ hide_rejected: true, camera: 'Canon', album_id: '4', type: 'portrait' });
+        for (const key of ['page', 'per_page', 'sort', 'sort_direction']) expect(body.filters).not.toHaveProperty(key);
+      });
+
+      it('sends the viewer default type explicitly when the filter has none', async () => {
+        store.config.set(makeConfig({ defaults: { ...makeConfig().defaults, type: 'top_picks' } }));
+        store.filters.update(f => ({ ...f, type: '' }));
+        await store.refreshPaths(['/p1.jpg']);
+        expect(byPathsBodies()[0].filters).toMatchObject({ type: 'top_picks' });
+      });
+
+      it('chunks 600 loaded paths into two requests of at most 500', async () => {
+        await store.refreshPaths(many);
+        const bodies = byPathsBodies();
+        expect(bodies.map(b => b.paths.length)).toEqual([500, 100]);
+      });
+
+      it('removes a photo that no longer matches the filters', async () => {
+        echoByPaths(() => ({}), ['/p2.jpg']);
+        store.selectedPaths.set(new Set(['/p2.jpg']));
+        await store.refreshPaths(['/p2.jpg', '/p3.jpg']);
+        expect(store.photos().some(p => p.path === '/p2.jpg')).toBe(false);
+        expect(store.photos().some(p => p.path === '/p3.jpg')).toBe(true);
+        expect(store.total()).toBe(599);
+        expect(store.selectedPaths().size).toBe(0);
+      });
+
+      it('applies two overlapping refreshes for different paths in arrival order (S1)', async () => {
+        const slow = new Subject<unknown>();
+        apiPost.mockReturnValueOnce(slow);
+        const first = store.refreshPaths(['/p1.jpg']);
+        echoByPaths(() => ({ star_rating: 5 }));
+        const second = store.refreshPaths(['/p2.jpg']);
+        await Promise.resolve();
+        slow.next({ photos: [makePhoto({ path: '/p1.jpg', star_rating: 3 })], total: 1, missing: [] });
+        slow.complete();
+        await Promise.all([first, second]);
+        expect(store.photos().find(p => p.path === '/p1.jpg')?.star_rating).toBe(3);
+        expect(store.photos().find(p => p.path === '/p2.jpg')?.star_rating).toBe(5);
+      });
+
+      it('lets a later batch win for the same path because refreshes run in order', async () => {
+        const slow = new Subject<unknown>();
+        apiPost.mockReturnValueOnce(slow);
+        const first = store.refreshPaths(['/p1.jpg']);
+        echoByPaths(() => ({ star_rating: 5 }));
+        const second = store.refreshPaths(['/p1.jpg']);
+        slow.next({ photos: [makePhoto({ path: '/p1.jpg', star_rating: 1 })], total: 1, missing: [] });
+        slow.complete();
+        await Promise.all([first, second]);
+        expect(store.photos().find(p => p.path === '/p1.jpg')?.star_rating).toBe(5);
+      });
+
+      it('applies a slow null batch even when a fast path batch follows it (S2)', async () => {
+        const reply = new Subject<PhotosResponse>();
+        apiGet.mockImplementation((path: string) => path === '/photos' ? reply : of({}));
+        const first = store.refreshPaths(null);
+        echoByPaths(() => ({ star_rating: 4 }));
+        const second = store.refreshPaths(['/p9.jpg']);
+        await Promise.resolve();
+        reply.next(makePhotosResponse({ photos: [makePhoto({ path: '/p9.jpg' })], total: 1, has_more: false }));
+        reply.complete();
+        await Promise.all([first, second]);
+        expect(store.photos().map(p => p.path)).toEqual(['/p9.jpg']);
+        expect(store.photos()[0].star_rating).toBe(4);
+      });
+
+      it('a failed refresh does not block the next one', async () => {
+        apiPost.mockReturnValueOnce(throwError(() => new Error('boom')));
+        const first = store.refreshPaths(['/p1.jpg']);
+        echoByPaths(() => ({ star_rating: 2 }));
+        const second = store.refreshPaths(['/p2.jpg']);
+        await Promise.all([first, second]);
+        expect(store.photos().find(p => p.path === '/p2.jpg')?.star_rating).toBe(2);
+      });
+
+      it('keeps the appended page when the user pages during the view refetch (S3)', async () => {
+        const page1 = Array.from({ length: 2 }, (_, n) => makePhoto({ path: `/q${n}.jpg` }));
+        const page2 = Array.from({ length: 2 }, (_, n) => makePhoto({ path: `/q${n + 2}.jpg` }));
+        apiGet.mockImplementation((path: string) => of(path === '/photos'
+          ? makePhotosResponse({ photos: page1, total: 4, has_more: true })
+          : {}));
+        await store.loadPhotos();
+        const slow = new Subject<PhotosResponse>();
+        let slowUsed = 0;
+        apiGet.mockImplementation((path: string, params?: { page?: number }) => {
+          if (path !== '/photos') return of({});
+          if (params?.page === 2) return of(makePhotosResponse({ photos: page2, total: 4, has_more: false }));
+          return slowUsed++ === 0 ? slow.pipe(take(1)) : of(makePhotosResponse({ photos: page1, total: 4, has_more: true }));
+        });
+        const run = store.refreshPaths(null);
+        await Promise.resolve();
+        await store.nextPage();
+        expect(store.photos().length).toBe(4);
+        slow.next(makePhotosResponse({ photos: page1, total: 4, has_more: true }));
+        await run;
+        expect(store.photos().map(p => p.path)).toEqual(['/q0.jpg', '/q1.jpg', '/q2.jpg', '/q3.jpg']);
+      });
+
+      it('never duplicates rows when a null batch arrives during an in-flight nextPage (S4)', async () => {
+        const page1 = Array.from({ length: 2 }, (_, n) => makePhoto({ path: `/q${n}.jpg` }));
+        const page2 = Array.from({ length: 2 }, (_, n) => makePhoto({ path: `/q${n + 2}.jpg` }));
+        apiGet.mockImplementation((path: string) => of(path === '/photos'
+          ? makePhotosResponse({ photos: page1, total: 4, has_more: true })
+          : {}));
+        await store.loadPhotos();
+        const pageTwo = new Subject<PhotosResponse>();
+        apiGet.mockImplementation((path: string, params?: { page?: number }) => {
+          if (path !== '/photos') return of({});
+          return params?.page === 2 ? pageTwo.pipe(take(1)) : of(makePhotosResponse({ photos: page1, total: 4, has_more: true }));
+        });
+        const paging = store.nextPage();
+        const refresh = store.refreshPaths(null);
+        await refresh;
+        apiGet.mockImplementation((path: string, params?: { page?: number }) => path === '/photos'
+          ? of(params?.page === 2
+            ? makePhotosResponse({ photos: page2, total: 4, has_more: false })
+            : makePhotosResponse({ photos: page1, total: 4, has_more: true }))
+          : of({}));
+        pageTwo.next(makePhotosResponse({ photos: page2, total: 4, has_more: false }));
+        await paging;
+        await vi.waitFor(() => expect(store.photos().length).toBe(4));
+        const seen = store.photos().map(p => p.path);
+        expect(new Set(seen).size).toBe(seen.length);
+        expect(seen).toEqual(['/q0.jpg', '/q1.jpg', '/q2.jpg', '/q3.jpg']);
+      });
+
+      it('discards a refresh when the view was reloaded meanwhile', async () => {
+        const pending = new Subject<unknown>();
+        apiPost.mockReturnValueOnce(pending);
+        const run = store.refreshPaths(['/p1.jpg']);
+        await store.loadPhotos();
+        pending.next({ photos: [makePhoto({ path: '/p1.jpg', star_rating: 5 })], total: 1, missing: [] });
+        pending.complete();
+        await run;
+        expect(store.photos().find(p => p.path === '/p1.jpg')?.star_rating).not.toBe(5);
+      });
+
+      it('on a null batch reloads in place: view scope, exclusions and rows survive, no by_paths', async () => {
+        store.selectWholeView();
+        store.excludedPaths.set(new Set(['/p5.jpg']));
+        const lengths: number[] = [];
+        const reply = new Subject<PhotosResponse>();
+        apiGet.mockImplementation((path: string) => {
+          lengths.push(store.photos().length);
+          return path === '/photos' ? reply : of({});
+        });
+        const run = store.refreshPaths(null);
+        expect(store.photos().length).toBe(600);
+        await Promise.resolve();
+        reply.next(makePhotosResponse({ photos: [makePhoto({ path: '/p9.jpg' })], total: 1, has_more: false }));
+        reply.complete();
+        await run;
+        expect(store.viewScopeSelected()).toBe(true);
+        expect(store.excludedPaths().has('/p5.jpg')).toBe(true);
+        expect(store.photos().map(p => p.path)).toEqual(['/p9.jpg']);
+        expect(lengths.every(n => n === 600)).toBe(true);
+        expect(apiPost.mock.calls.some(c => c[0] === '/photos/by_paths')).toBe(false);
+      });
+    });
+
+    describe('search views', () => {
+      it('merges returned rows but never removes one the server did not return', async () => {
+        apiGet.mockImplementation((path: string) => of(path === '/search'
+          ? { photos: [makePhoto({ path: '/s1.jpg' }), makePhoto({ path: '/s2.jpg' })], total: 2, query: 'x' }
+          : makeConfig()));
+        store.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'dog' });
+        await store.loadPhotos();
+        echoByPaths(() => ({ star_rating: 4 }), ['/s2.jpg']);
+        await store.refreshPaths(['/s1.jpg', '/s2.jpg']);
+        expect(store.photos().map(p => p.path)).toEqual(['/s1.jpg', '/s2.jpg']);
+        expect(store.photos()[0].star_rating).toBe(4);
+        expect(byPathsBodies()[0]).toEqual({ paths: ['/s1.jpg', '/s2.jpg'] });
+      });
+    });
+
+    describe('search views, null batch', () => {
+      it('refreshes the rows already loaded without filters and removes none (C15)', async () => {
+        apiGet.mockImplementation((path: string) => of(path === '/search'
+          ? { photos: [makePhoto({ path: '/s1.jpg' }), makePhoto({ path: '/s2.jpg' })], total: 2, query: 'x' }
+          : makeConfig()));
+        store.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'dog' });
+        await store.loadPhotos();
+        apiPost.mockClear();
+        apiGet.mockClear();
+        echoByPaths(() => ({ star_rating: 4 }), ['/s2.jpg']);
+        await store.refreshPaths(null);
+        expect(byPathsBodies()).toEqual([{ paths: ['/s1.jpg', '/s2.jpg'] }]);
+        expect(apiGet).not.toHaveBeenCalled();
+        expect(store.photos().map(p => p.path)).toEqual(['/s1.jpg', '/s2.jpg']);
+        expect(store.photos()[0].star_rating).toBe(4);
+      });
+    });
+
+    describe('batch$ subscription', () => {
+      it('does not load the gallery for a null batch before its first load', async () => {
+        assistantBatches.next({ paths: null });
+        await Promise.resolve();
+        expect(apiGet).not.toHaveBeenCalled();
+        expect(apiPost).not.toHaveBeenCalled();
+      });
+
+      it('refreshes in place when a batch arrives after the first load', async () => {
+        apiGet.mockImplementation((path: string) => of(path === '/config' ? makeConfig() : makePhotosResponse()));
+        await store.loadPhotos();
+        apiPost.mockClear();
+        echoByPaths(() => ({ star_rating: 2 }));
+        assistantBatches.next({ paths: ['/test.jpg'] });
+        await vi.waitFor(() => expect(store.photos()[0].star_rating).toBe(2));
+      });
+    });
+  });
 });
 
 describe('GalleryStore selection', () => {
@@ -2145,6 +2478,7 @@ describe('GalleryStore smart-album auto-save', () => {
         { provide: AlbumService, useValue: { list: vi.fn(() => of({ albums: [] })), update: albumUpdate } },
         { provide: MatSnackBar, useValue: { open: snackOpen } },
         { provide: I18nService, useValue: { t: (k: string) => k } },
+        { provide: AssistantChangesService, useValue: { batch$: NEVER } },
       ],
     });
     store = TestBed.inject(GalleryStore);

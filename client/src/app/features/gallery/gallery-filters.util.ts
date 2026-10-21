@@ -564,6 +564,32 @@ export function buildApiParams(
   return params;
 }
 
+/** Largest `paths` list `POST /photos/by_paths` accepts (server `BY_PATHS_MAX`). */
+export const BY_PATHS_MAX = 500;
+
+/** Paging and ordering keys of `buildApiParams`: meaningless when the caller names the rows itself. */
+export const BY_PATHS_PAGING_KEYS: ReadonlySet<string> = new Set(['page', 'per_page', 'sort', 'sort_direction']);
+
+/**
+ * The `filters` member of a `POST /photos/by_paths` body for the gallery view: everything
+ * `buildApiParams` sends except paging and sort, so a photo that no longer matches (rejected under
+ * `hide_rejected`, out of the album or score range) comes back missing exactly as a reload would
+ * drop it. `type` is sent explicitly because the endpoint defaults it to '' while `GET /photos`
+ * resolves the viewer's default (and '' for a person view).
+ */
+export function buildByPathsFilters(
+  f: GalleryFilters,
+  isSmartAlbum: boolean,
+  defaultType: string,
+): Record<string, string | number | boolean> {
+  const filters: Record<string, string | number | boolean> = {};
+  for (const [key, value] of Object.entries(buildApiParams(f, isSmartAlbum))) {
+    if (!BY_PATHS_PAGING_KEYS.has(key)) filters[key] = value;
+  }
+  filters['type'] = f.type || (f.person_id ? '' : defaultType);
+  return filters;
+}
+
 /** Wire projection of the five hide toggles as explicit '1'/'0' strings.
  *  Views fetched independently of the gallery grid (timeline, folders, type
  *  counts) must send the gallery's EFFECTIVE toggle state rather than omitting

@@ -6,6 +6,8 @@ import {
   anyHideToggleActive,
   applyQueryParams,
   buildApiParams,
+  buildByPathsFilters,
+  BY_PATHS_MAX,
   buildSyncParams,
   seededSearchThreshold,
   countActiveFilters,
@@ -276,5 +278,169 @@ describe('anyHideToggleActive', () => {
 
   it.each(keys)('returns true when only %s is on', key => {
     expect(anyHideToggleActive({ ...allOff, [key]: '1' })).toBe(true);
+  });
+});
+
+// Snapshot of `gallery_filter_keys()` (api/models/gallery.py): the only keys POST /photos/by_paths accepts in
+// `filters` (any other is a 422). Regenerate with:
+//   venv/bin/python -c "from api.models.gallery import gallery_filter_keys as g; print(sorted(g()))"
+const SERVER_FILTER_KEYS: ReadonlySet<string> = new Set([
+  'album_id',
+  'burst_group_id',
+  'burst_only',
+  'camera',
+  'category',
+  'color_temp',
+  'composition_pattern',
+  'date_from',
+  'date_to',
+  'dir',
+  'duplicate_group_id',
+  'exclude_art',
+  'exclude_tags',
+  'favorites_only',
+  'gps_lat',
+  'gps_lng',
+  'gps_radius_km',
+  'hide_blinks',
+  'hide_brackets',
+  'hide_bursts',
+  'hide_duplicates',
+  'hide_panoramas',
+  'hide_rejected',
+  'hue_bucket',
+  'is_monochrome',
+  'is_silhouette',
+  'junk_kind',
+  'lens',
+  'max_aesthetic',
+  'max_aesthetic_iaa',
+  'max_aesthetic_v25',
+  'max_aperture',
+  'max_bg_separation',
+  'max_channel_clip_highlight',
+  'max_channel_clip_shadow',
+  'max_color',
+  'max_composition',
+  'max_contrast',
+  'max_deqa',
+  'max_dynamic_range',
+  'max_exposure',
+  'max_eye_sharpness',
+  'max_face_confidence',
+  'max_face_count',
+  'max_face_quality',
+  'max_face_quality_iqa',
+  'max_face_ratio',
+  'max_face_sharpness',
+  'max_focal_length',
+  'max_histogram_spread',
+  'max_iso',
+  'max_isolation',
+  'max_leading_lines',
+  'max_liqe',
+  'max_luminance',
+  'max_moment_confidence',
+  'max_noise',
+  'max_power_point',
+  'max_qrealign',
+  'max_quality_score',
+  'max_saturation',
+  'max_score',
+  'max_sharpness',
+  'max_star_rating',
+  'max_subject_placement',
+  'max_subject_prominence',
+  'max_subject_sharpness',
+  'max_topiq',
+  'min_aesthetic',
+  'min_aesthetic_iaa',
+  'min_aesthetic_v25',
+  'min_aggregate',
+  'min_aperture',
+  'min_bg_separation',
+  'min_channel_clip_highlight',
+  'min_channel_clip_shadow',
+  'min_color',
+  'min_composition',
+  'min_contrast',
+  'min_deqa',
+  'min_dynamic_range',
+  'min_exposure',
+  'min_eye_sharpness',
+  'min_face_confidence',
+  'min_face_count',
+  'min_face_quality',
+  'min_face_quality_iqa',
+  'min_face_ratio',
+  'min_face_sharpness',
+  'min_focal_length',
+  'min_histogram_spread',
+  'min_iso',
+  'min_isolation',
+  'min_leading_lines',
+  'min_liqe',
+  'min_luminance',
+  'min_moment_confidence',
+  'min_noise',
+  'min_power_point',
+  'min_qrealign',
+  'min_quality_score',
+  'min_rating',
+  'min_saturation',
+  'min_score',
+  'min_sharpness',
+  'min_star_rating',
+  'min_subject_placement',
+  'min_subject_prominence',
+  'min_subject_sharpness',
+  'min_topiq',
+  'narrative_moment',
+  'no_blink',
+  'page',
+  'path_prefix',
+  'per_page',
+  'person',
+  'person_id',
+  'quality',
+  'quality_tier',
+  'require_tags',
+  'search',
+  'sequence_group_id',
+  'sequence_kind',
+  'sequence_override',
+  'show_rejected',
+  'sort',
+  'sort_direction',
+  'tag',
+  'top_picks_filter',
+  'type',
+]);
+
+describe('buildByPathsFilters', () => {
+  it('carries the view filters but no paging or sort', () => {
+    const p = buildByPathsFilters(filters({ hide_rejected: true, camera: 'Canon', album_id: '4', min_score: '7' }), false, '');
+    expect(p).toMatchObject({ hide_rejected: true, camera: 'Canon', album_id: '4', min_score: '7' });
+    for (const key of ['page', 'per_page', 'sort', 'sort_direction']) expect(p).not.toHaveProperty(key);
+  });
+  it('sends the viewer default type explicitly when the filter has none', () => {
+    expect(buildByPathsFilters(filters(), false, 'top_picks')['type']).toBe('top_picks');
+    expect(buildByPathsFilters(filters({ type: 'portrait' }), false, 'top_picks')['type']).toBe('portrait');
+  });
+  it('sends an empty type for a person view, as GET /photos resolves it', () => {
+    expect(buildByPathsFilters(filters({ person_id: '3' }), false, 'top_picks')['type']).toBe('');
+  });
+  it('drops album_id for a smart album', () => {
+    expect(buildByPathsFilters(filters({ album_id: '4' }), true, '')).not.toHaveProperty('album_id');
+  });
+  it('emits only keys the server accepts, so none can 422', () => {
+    const every: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(DEFAULT_FILTERS)) every[key] = typeof value === 'boolean' ? true : 'x';
+    const emitted = Object.keys(buildByPathsFilters(filters(every as Partial<GalleryFilters>), false, 'x'));
+    expect(emitted.length).toBeGreaterThan(20);
+    expect(emitted.filter(key => !SERVER_FILTER_KEYS.has(key))).toEqual([]);
+  });
+  it('chunks at the server cap', () => {
+    expect(BY_PATHS_MAX).toBe(500);
   });
 });

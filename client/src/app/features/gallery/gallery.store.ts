@@ -1,4 +1,5 @@
 import { Injectable, inject, signal, computed, effect, untracked } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Router, ActivatedRoute } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
@@ -7,6 +8,7 @@ import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { AlbumService, Album } from '../../core/services/album.service';
 import { I18nService } from '../../core/services/i18n.service';
+import { AssistantChangesService } from '../../core/agent/assistant-changes.service';
 import { Photo, KeeperHint, normalisePhotoFlagsAll } from '../../shared/models/photo.model';
 import { I18N } from '../../core/i18n/keys';
 import type { components } from '../../core/api/schema';
@@ -18,7 +20,7 @@ import {
   loadDisplayOptionsFromStorage, saveDisplayOptionsToStorage,
   countActiveFilters, applyQueryParams, buildSyncParams, buildApiParams,
   buildViewFilterParams, viewFilterParamsEqual, anyHideToggleActive,
-  seededSearchThreshold,
+  seededSearchThreshold, buildByPathsFilters, BY_PATHS_MAX,
 } from './gallery-filters.util';
 
 // Re-export the filter types/consts so existing importers of gallery.store keep working.
@@ -272,6 +274,7 @@ export class GalleryStore {
   private route = inject(ActivatedRoute);
   private snackBar = inject(MatSnackBar);
   private i18n = inject(I18nService);
+  private assistantChanges = inject(AssistantChangesService);
 
   // --- State signals ---
   readonly filters = signal<GalleryFilters>({ ...DEFAULT_FILTERS });
@@ -291,6 +294,12 @@ export class GalleryStore {
    *  with nothing to compare), shown instead of the generic failure message. */
   readonly loadErrorKey = signal<string | undefined>(undefined);
   private _loadSeq = 0;
+  /** In-place refreshes run one after another so batches land in arrival order; a failure never blocks the next. */
+  private refreshChain: Promise<void> = Promise.resolve();
+  /** A null batch arrived while a page fetch was in flight: `nextPage` runs the view refetch when it completes. */
+  private viewRefreshOwed = false;
+  /** False until the gallery has asked for photos once: a write seen from /culling or /stats must not load it. */
+  private loadedOnce = false;
   /**
    * An explicit, ordered photo list shown in place of the filtered view (set by the
    * assistant's `ui_show_photos`). Deliberately NOT a GalleryFilters key: it never reaches
@@ -684,6 +693,7 @@ export class GalleryStore {
   readonly activeFilterCount = computed(() => countActiveFilters(this.filters()));
 
   constructor() {
+    this.assistantChanges.batch$.pipe(takeUntilDestroyed()).subscribe(batch => void this.refreshPaths(batch.paths));
     // Auto-save album filters on change (debounced) — persists filter state for all albums
     effect(() => {
       const f = this.filters();
@@ -796,6 +806,7 @@ export class GalleryStore {
     this.resetViewScope();
     this.filters.update(current => ({ ...current, page: 1 }));
     const seq = ++this._loadSeq;
+    this.loadedOnce = true;
     this.photos.set([]);
     this.loadError.set(false);
     this.loadErrorKey.set(undefined);
@@ -917,6 +928,142 @@ export class GalleryStore {
     this.userMarks.set(new Map());
   }
 
+  /**
+   * Bring the rows an assistant write changed up to date WITHOUT reloading the grid: the review pin
+   * (groups, marks, the user's own marks), the scroll position and the selection all survive.
+   * `paths` null means the write's scope is not enumerable, so the whole view is refetched and swapped
+   * in when it lands. Best effort: a failed refetch leaves the rows as they are. A no-op until the
+   * gallery has loaded once, so a write seen from /culling or /stats never loads it behind the user.
+   */
+  async refreshPaths(paths: string[] | null): Promise<void> {
+    if (!this.loadedOnce) return;
+    const loadSeq = this._loadSeq;
+    const run = this.refreshChain.then(() => this.runRefresh(paths, loadSeq));
+    this.refreshChain = run.catch(() => undefined);
+    await run;
+  }
+
+  private async runRefresh(paths: string[] | null, loadSeq: number): Promise<void> {
+    try {
+      if (paths === null) {
+        if (this.pinnedPaths() !== null) await this.refreshPinnedList(loadSeq);
+        else await this.refreshViewInPlace(loadSeq);
+        return;
+      }
+      const loaded = new Set(this.photos().map(p => p.path));
+      const wanted = [...new Set(paths)].filter(path => loaded.has(path));
+      if (wanted.length === 0) return;
+      const pinned = this.pinnedPaths() !== null;
+      const f = this.filters();
+      const membership = !pinned && !f.similar_to && !f.semanticQuery;
+      const filters = membership
+        ? buildByPathsFilters(f, this.currentAlbum()?.is_smart ?? false, this.config()?.defaults?.type ?? '')
+        : undefined;
+      const { rows, missing } = await this.fetchByPaths(wanted, filters);
+      if (!this.claimRefresh(loadSeq)) return;
+      this.mergeRows(rows);
+      // A search ranks outside the gallery's WHERE clause: by_paths cannot say a photo left it.
+      if (pinned || membership) this.dropMissing(missing);
+    } catch {
+      // Best effort: the rows stay as they were.
+    }
+  }
+
+  /** True when this refresh may land: the view was not reloaded since it started. */
+  private claimRefresh(loadSeq: number): boolean {
+    return loadSeq === this._loadSeq;
+  }
+
+  /** POST the paths in chunks of the server cap; `missing` is requested minus returned. */
+  private async fetchByPaths(
+    paths: string[],
+    filters?: Record<string, string | number | boolean>,
+  ): Promise<{ rows: Photo[]; missing: string[] }> {
+    const chunks: string[][] = [];
+    for (let i = 0; i < paths.length; i += BY_PATHS_MAX) chunks.push(paths.slice(i, i + BY_PATHS_MAX));
+    const responses = await Promise.all(chunks.map(chunk => firstValueFrom(
+      this.api.post<{ photos: Photo[] }>('/photos/by_paths', filters ? { paths: chunk, filters } : { paths: chunk }),
+    )));
+    const rows = normalisePhotoFlagsAll(responses.flatMap(res => res.photos));
+    const returned = new Set(rows.map(p => p.path));
+    return { rows, missing: paths.filter(path => !returned.has(path)) };
+  }
+
+  private mergeRows(rows: Photo[]): void {
+    const fresh = new Map(rows.map(p => [p.path, p] as const));
+    this.photos.update(current => current.map(p => {
+      const next = fresh.get(p.path);
+      return next ? { ...p, ...next } : p;
+    }));
+  }
+
+  /** Remove photos that are no longer part of the view, and out of the review pin with them. */
+  private dropMissing(missing: string[]): void {
+    if (missing.length === 0) return;
+    const gone = new Set(missing);
+    this.removePhotos(gone);
+    if (this.pinnedPaths() === null) return;
+    this.pinnedPaths.update(current => current && current.filter(path => !gone.has(path)));
+    const without = <T>(map: ReadonlyMap<string, T>): ReadonlyMap<string, T> =>
+      new Map([...map].filter(([path]) => !gone.has(path)));
+    this.pinnedGroups.update(without);
+    this.pinnedMarks.update(without);
+    this.userMarks.update(without);
+    this.pinnedMissing.update(current => [...new Set([...current, ...missing])]);
+  }
+
+  /** Refetch the whole pinned list quietly: the pin, its marks and the grid stay up until the rows swap. */
+  private async refreshPinnedList(loadSeq: number): Promise<void> {
+    const pinned = this.pinnedPaths() ?? [];
+    if (pinned.length === 0) return;
+    const { rows, missing } = await this.fetchByPaths(pinned);
+    if (!this.claimRefresh(loadSeq)) return;
+    const fresh = new Map(rows.map(p => [p.path, p] as const));
+    const old = new Map(this.photos().map(p => [p.path, p] as const));
+    this.photos.set(pinned.filter(path => fresh.has(path)).map(path => ({ ...old.get(path), ...fresh.get(path) }) as Photo));
+    this.total.set(rows.length);
+    this.dropMissing(missing);
+  }
+
+  /**
+   * Refetch the loaded pages of a filter view and swap them in when they land. Unlike `loadPhotos`
+   * this blanks nothing and leaves `selectedPaths`, `excludedPaths` and a view-scoped selection alone.
+   * A similarity or semantic-search view keeps its rows: its membership is not a filter.
+   */
+  private async refreshViewInPlace(loadSeq: number): Promise<void> {
+    if (this.filters().similar_to || this.filters().semanticQuery) {
+      // A search view keeps its membership: refresh the rows on screen without filters and never remove one.
+      const { rows } = await this.fetchByPaths(this.photos().map(p => p.path));
+      if (this.claimRefresh(loadSeq)) this.mergeRows(rows);
+      return;
+    }
+    // One re-run when the user paged mid-fetch; a page fetch in flight defers the refetch to `nextPage`.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (this.loading()) {
+        this.viewRefreshOwed = true;
+        return;
+      }
+      const f = this.filters();
+      const base = buildApiParams(f, this.currentAlbum()?.is_smart ?? false);
+      const pages: PhotosResponse[] = [];
+      for (let page = 1; page <= f.page; page++) {
+        pages.push(await firstValueFrom(this.api.get<PhotosResponse>('/photos', { ...base, page })));
+      }
+      if (!this.claimRefresh(loadSeq)) return;
+      if (this.filters().page !== f.page) continue;
+      const last = pages[pages.length - 1];
+      const rows = normalisePhotoFlagsAll(pages.flatMap(res => res.photos));
+      this.photos.set(rows);
+      this.total.set(last.total);
+      this.hasMore.set(last.has_more);
+      this.hiddenSummary.set(
+        pages[0].hidden_summary ?? { total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 },
+      );
+      void this.fetchKeeperHints(rows.map(p => p.path));
+      return;
+    }
+  }
+
   /** Reload what is on screen without it counting as a filter change: a pinned list stays pinned. */
   async reloadPhotos(): Promise<void> {
     this.pinnedLoad = this.pinnedPaths() !== null;
@@ -966,6 +1113,10 @@ export class GalleryStore {
     } finally {
       if (seq === this._loadSeq) {
         this.loading.set(false);
+      }
+      if (this.viewRefreshOwed) {
+        this.viewRefreshOwed = false;
+        if (seq === this._loadSeq) void this.refreshPaths(null);
       }
     }
   }

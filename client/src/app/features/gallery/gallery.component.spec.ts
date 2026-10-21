@@ -3518,7 +3518,7 @@ describe('GalleryComponent', () => {
       return fixture.nativeElement as HTMLElement;
     }
 
-    const headers = (html: HTMLElement) => [...html.querySelectorAll('[role="rowheader"]')] as HTMLElement[];
+    const headers = (html: HTMLElement) => [...html.querySelectorAll('[role="heading"]')] as HTMLElement[];
 
     for (const [name, mode, virtual] of [
       ['virtual scroll off', 'grid', false],
@@ -3529,7 +3529,8 @@ describe('GalleryComponent', () => {
         pin({});
         const html = render(mode, virtual);
         expect(headers(html)).toHaveLength(2);
-        expect(html.querySelectorAll('[role="row"] [role="rowheader"]')).toHaveLength(2);
+        expect(html.querySelectorAll('[role="heading"][aria-level]')).toHaveLength(2);
+        expect(html.querySelector('[role="row"], [role="rowheader"]')).toBeNull();
         expect(html.querySelectorAll('app-photo-card')).toHaveLength(7);
         expect(headers(html)[0].textContent).toContain('gallery.pinned.review.group_header_plural');
       });
@@ -3555,12 +3556,38 @@ describe('GalleryComponent', () => {
       expect(headers(html)).toHaveLength(2);
     });
 
-    it('counts headers in aria-rowcount', () => {
+    it('counts photo rows only in aria-rowcount, not the group headings', () => {
       pin({});
       const html = render('grid', false);
-      const rowCount = fixture!.componentInstance.rowsModel().length;
-      expect(rowCount).toBe(5);
-      expect(html.querySelector('#gallery-rows-host')?.getAttribute('aria-rowcount')).toBe('5');
+      const rows = fixture!.componentInstance.rowsModel();
+      expect(rows.length).toBe(5);
+      expect(rows.filter(r => r.kind !== 'header').length).toBe(3);
+      expect(html.querySelector('#gallery-rows-host')?.getAttribute('aria-rowcount')).toBe('3');
+    });
+
+    it('renders every card of a review taller than the window when virtual scroll is off (C30)', () => {
+      const many = Array.from({ length: 60 }, (_, n) => `/m${n}.jpg`);
+      mockStore.photos.set(many.map(path => ({ path, filename: path, image_width: 4000, image_height: 3000, tags_list: [], persons: [] })));
+      mockStore.pinnedPaths.set(many);
+      mockStore.pinnedGroups.set(new Map(many.map((p, i) => [p, i + 1] as [string, number])));
+      mockStore.pinnedMarks.set(new Map());
+      mockStore.hasReview.set(true);
+      mockStore.reviewGroupCounts.set(new Map());
+      const html = render('grid', false);
+      const model = fixture!.componentInstance.rowsModel();
+      expect(model[model.length - 1].offset).toBeGreaterThan(20000);
+      expect(html.querySelectorAll('app-photo-card')).toHaveLength(60);
+      expect(headers(html)).toHaveLength(60);
+    });
+
+    it('shows card details in the row branch when hide_details is off (C32)', () => {
+      pin({});
+      mockStore.filters.set({ ...DEFAULT_FILTERS, hide_details: false });
+      const html = render('grid', false);
+      const cards = [...html.querySelectorAll('app-photo-card')] as HTMLElement[];
+      expect(cards).toHaveLength(7);
+      expect(cards.every((card, i) => card.textContent?.includes(paths[i]))).toBe(true);
+      mockStore.filters.set({ ...DEFAULT_FILTERS });
     });
 
     it('shows only the title when the pin has groups but no marks', () => {
