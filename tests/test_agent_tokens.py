@@ -145,6 +145,38 @@ class TestTokenService:
         resolved = tokens.verify(plaintext).resolve()
         assert resolved.principal == "_anonymous" and resolved.level == "readonly"
 
+    def test_open_install_edition_token_is_edition_only_when_trusted_local(self, agent_app):
+        agent_app("open")
+        cfg = api_config.VIEWER_CONFIG
+        cfg["trusted_local_editing"] = True
+        _, plaintext = tokens.mint("_anonymous", "laptop", "edition", "edition")
+        local = tokens.verify(plaintext, trusted_local=True).resolve()
+        assert local.level == "edition" and local.local_trusted and local.minted_level == "edition"
+        # REGRESSION GUARD half: without the request fact (the default) it is readonly, as before.
+        plain = tokens.verify(plaintext).resolve()
+        assert plain.level == "readonly" and not plain.local_trusted and plain.minted_level == "readonly"
+        cfg["trusted_local_editing"] = False
+        off = tokens.verify(plaintext, trusted_local=True).resolve()
+        assert off.level == "readonly" and not off.local_trusted
+
+    def test_a_password_lowers_the_open_install_edition_token_and_clearing_it_revives_it(self, agent_app):
+        agent_app("open")
+        cfg = api_config.VIEWER_CONFIG
+        cfg["trusted_local_editing"] = True
+        row, plaintext = tokens.mint("_anonymous", "laptop", "edition", "edition")
+        grant = tokens.verify(plaintext, trusted_local=True)
+        assert grant.resolve().level == "edition"
+        cfg["edition_password"] = "ed"
+        assert tokens.install_mode() == "open"
+        assert grant.resolve().level == "readonly"
+        cfg["edition_password"] = ""
+        assert grant.resolve().level == "edition"
+        cfg["password"] = "view"
+        assert tokens.install_mode() == "legacy" and grant.resolve() is None
+        cfg["password"] = ""
+        revived = tokens.verify(plaintext, trusted_local=True)
+        assert revived.id == row["id"] and revived.resolve().level == "edition"
+
     def test_open_install_token_dies_when_a_password_is_set(self, agent_app):
         agent_app("open")
         _, plaintext = tokens.mint("_anonymous", "laptop", "readonly")

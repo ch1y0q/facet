@@ -146,19 +146,23 @@ def test_multi_user_needs_a_superadmin_not_just_an_admin(agent_app, monkeypatch)
 @pytest.mark.parametrize("superadmin", [False, True])
 @pytest.mark.parametrize("edition", [False, True])
 @pytest.mark.parametrize("open_install", [False, True])
+@pytest.mark.parametrize("flag", [False, True])
+@pytest.mark.parametrize("trusted_local", [False, True])
 def test_the_tool_gate_and_the_route_gate_are_one_rule(
-        monkeypatch, multi, superadmin, edition, open_install):
-    monkeypatch.setitem(api_config.VIEWER_CONFIG.setdefault("features", {}), "show_scan_button", True)
+        monkeypatch, multi, superadmin, edition, open_install, flag, trusted_local):
+    monkeypatch.setitem(api_config.VIEWER_CONFIG.setdefault("features", {}), "show_scan_button", flag)
     for module in (requirements, api_auth):
         monkeypatch.setattr(module, "is_multi_user_enabled", lambda: multi, raising=False)
         monkeypatch.setattr(module, "_is_open_install", lambda key: open_install)
-    resolved = SimpleNamespace(role="superadmin" if superadmin else "user", level="edition" if edition else "readonly")
-    user = SimpleNamespace(is_superadmin=superadmin, is_edition=edition)
+    resolved = SimpleNamespace(role="superadmin" if superadmin else "user", level="edition" if edition else "readonly",
+                               local_trusted=trusted_local)
+    user = SimpleNamespace(is_superadmin=superadmin, is_edition=edition, trusted_local_editing=trusted_local)
     tool_refusal = requirements.scan_available(resolved, {})
     try:
         asyncio.run(api_auth.require_scan_access(user))
-        route_status = None
+        route_status = 403 if scan.scan_feature_refusal(user) is not None else None
     except HTTPException as ex:
         route_status = ex.status_code
     assert (tool_refusal is None) == (route_status is None)
-    assert route_status in (None, 403) and (tool_refusal is None or tool_refusal[0] == "forbidden_level")
+    assert route_status in (None, 403) and (
+        tool_refusal is None or tool_refusal[0] in ("forbidden_level", "feature_disabled"))

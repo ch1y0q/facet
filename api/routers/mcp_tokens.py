@@ -46,9 +46,14 @@ def _granted_level(user: CurrentUser, requested: str) -> str:
     ``readonly`` is always allowed. ``edition`` needs an edition session. ``user``
     is a multi-user concept (an account's own per-photo rights); on a single
     password it has no meaning -- the rating routes demand edition -- so it is
-    capped to ``readonly``. An open install can never hold more than ``readonly``.
+    capped to ``readonly``. An open install holds ``readonly`` only, except under
+    ``viewer.trusted_local_editing``: a session whose own request passed the loopback boundary
+    (``user.trusted_local_editing``) may mint ``edition``; the token then resolves to edition only
+    for a /mcp request that passes the same boundary.
     """
     mode = tokens.install_mode()
+    if mode == 'open' and requested == 'edition' and user.trusted_local_editing and user.is_edition:
+        return 'edition'
     if mode in ('open', 'unreadable'):
         return 'readonly'
     if requested == 'edition':

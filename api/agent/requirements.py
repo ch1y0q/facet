@@ -24,10 +24,15 @@ def destructive_allowed(resolved: Any, settings: dict) -> Optional[tuple[str, st
 
 
 def scan_available(resolved: Any, settings: dict) -> Optional[tuple[str, str]]:
-    """The scan route's own rule: the feature flag, then ``scan_access_refusal`` (shared with the route)."""
-    if not VIEWER_CONFIG.get("features", {}).get("show_scan_button", False):
+    """The scan route's own rule: the feature flag, then ``scan_access_refusal`` (shared with the route).
+
+    Both are waived for a grant whose /mcp request passed the trusted-local boundary
+    (``resolved.local_trusted``), exactly as the route waives them for ``user.trusted_local_editing``.
+    """
+    local = bool(resolved.local_trusted)
+    if not local and not VIEWER_CONFIG.get("features", {}).get("show_scan_button", False):
         return "feature_disabled", f"Scanning is off: the operator must set {SCAN_KEY} to true"
     refusal = scan_access_refusal(
         is_multi_user_enabled(), resolved.role == "superadmin", resolved.level == "edition",
-        _is_open_install(EDITION_PASSWORD_KEY))
+        _is_open_install(EDITION_PASSWORD_KEY), local)
     return None if refusal is None else ("forbidden_level", refusal[1])

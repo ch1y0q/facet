@@ -134,7 +134,7 @@ async def read_resource(request: Any, uri: str, client: Optional[InternalClient]
     spec = RESOURCES.get(str(uri))
     if spec is None or client is None:
         raise MCPError(INVALID_PARAMS, f"Unknown resource: {str(uri)[:64]}", data={"uri": str(uri)[:64]})
-    grant = await asyncio.to_thread(tokens.verify, bearer_token(request.headers))
+    grant = await asyncio.to_thread(tokens.verify_request, bearer_token(request.headers), request)
     settings = request.scope[SETTINGS_SCOPE_KEY]
     data, truncated = _limit(await spec.read(client, grant, settings["call_timeout_s"]))
     text = json.dumps({"uri": spec.uri, "truncated": truncated, "data": data}, ensure_ascii=False, default=str)

@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from starlette.responses import StreamingResponse
 
-from api.auth import CurrentUser, create_access_token, decode_access_token, require_edition, require_scan_access
+from api.auth import CurrentUser, _trusted_local_editing_enabled, create_access_token, decode_access_token, require_edition, require_scan_access
 from api.config import VIEWER_CONFIG, FACET_SCRIPT, _CONFIG_PATH, get_all_scan_directories, get_user_directories, _photo_types_cache, _stats_cache
 from api.models.scan import (
     LibraryJobStartResponse,
@@ -34,6 +34,8 @@ router = APIRouter(prefix="/api/scan", tags=["scan"])
 logger = logging.getLogger(__name__)
 
 SCAN_STREAM_PURPOSE = 'scan_stream'
+# Set on a stream token minted for a caller the trusted-local boundary waived the scan flag for.
+SCAN_STREAM_LOCAL_CLAIM = 'trusted_local'
 SCAN_STREAM_TOKEN_TTL_SECONDS = 60
 
 JOB_KIND_SCAN = 'scan'
@@ -136,6 +138,18 @@ class RecomputeRequest(BaseModel):
     confirm: bool
 
 
+def scan_feature_refusal(user) -> Optional[str]:
+    """The 403 detail when scanning is off for ``user``, else None.
+
+    ``features.show_scan_button`` is the operator's switch, waived only for a caller that passed the
+    ``viewer.trusted_local_editing`` boundary: the human browser request, or the agent carrying the
+    signed ``mcp_local`` claim. Both share one rule, ``user.trusted_local_editing``.
+    """
+    if user.trusted_local_editing or VIEWER_CONFIG.get('features', {}).get('show_scan_button', False):
+        return None
+    return "Scan feature not enabled"
+
+
 @router.post("/start", response_model=ScanStartResponse, response_model_exclude_unset=True)
 def start_scan(
     body: ScanStartRequest,
@@ -150,8 +164,8 @@ def start_scan(
     this process can vouch for: the subprocess was spawned. Whether it went on
     to hold the lock and run is what ``GET /api/scan/status`` reports.
     """
-    if not VIEWER_CONFIG.get('features', {}).get('show_scan_button', False):
-        raise HTTPException(status_code=403, detail="Scan feature not enabled")
+    if (refusal := scan_feature_refusal(user)) is not None:
+        raise HTTPException(status_code=403, detail=refusal)
 
     if not _scan_lock.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="A scan is already running")
@@ -222,8 +236,8 @@ def scan_status(
     user: CurrentUser = Depends(require_scan_access),
 ):
     """Poll scan progress. Returns last N lines of output."""
-    if not VIEWER_CONFIG.get('features', {}).get('show_scan_button', False):
-        raise HTTPException(status_code=403, detail="Scan feature not enabled")
+    if (refusal := scan_feature_refusal(user)) is not None:
+        raise HTTPException(status_code=403, detail=refusal)
 
     return _build_scan_snapshot(lines)
 
@@ -237,21 +251,23 @@ def scan_stream_token(
     Header-authenticated (require_scan_access), so the long-lived JWT never
     travels in a URL. The stream URL then carries only this 60-second token.
     """
-    if not VIEWER_CONFIG.get('features', {}).get('show_scan_button', False):
-        raise HTTPException(status_code=403, detail="Scan feature not enabled")
+    if (refusal := scan_feature_refusal(user)) is not None:
+        raise HTTPException(status_code=403, detail=refusal)
     token = create_access_token(
-        {'sub': user.user_id or '_legacy', 'purpose': SCAN_STREAM_PURPOSE},
+        {'sub': user.user_id or '_legacy', 'purpose': SCAN_STREAM_PURPOSE,
+         SCAN_STREAM_LOCAL_CLAIM: bool(user.trusted_local_editing)},
         expires_delta=timedelta(seconds=SCAN_STREAM_TOKEN_TTL_SECONDS),
     )
     return {'token': token}
 
 
-def _verify_scan_stream_token(token: Optional[str]) -> None:
+def _verify_scan_stream_token(token: Optional[str]) -> dict:
     if not token:
         raise HTTPException(status_code=401, detail="Authentication required")
     payload = decode_access_token(token)
     if not payload or payload.get('purpose') != SCAN_STREAM_PURPOSE:
         raise HTTPException(status_code=403, detail="Invalid or expired scan stream token")
+    return payload
 
 
 def _build_scan_snapshot(lines: int) -> dict:
@@ -276,9 +292,10 @@ async def scan_stream(
 ):
     """SSE progress stream. Requires a short-lived scan_stream-purpose token
     minted by GET /stream_token; the long-lived session JWT is rejected."""
-    if not VIEWER_CONFIG.get('features', {}).get('show_scan_button', False):
+    payload = _verify_scan_stream_token(token)
+    if not (payload.get(SCAN_STREAM_LOCAL_CLAIM) is True and _trusted_local_editing_enabled()) and not \
+            VIEWER_CONFIG.get('features', {}).get('show_scan_button', False):
         raise HTTPException(status_code=403, detail="Scan feature not enabled")
-    _verify_scan_stream_token(token)
 
     async def event_generator():
         import time as _time
@@ -331,8 +348,8 @@ def scan_directories(
     user: CurrentUser = Depends(require_scan_access),
 ):
     """List all configured directories available for scanning."""
-    if not VIEWER_CONFIG.get('features', {}).get('show_scan_button', False):
-        raise HTTPException(status_code=403, detail="Scan feature not enabled")
+    if (refusal := scan_feature_refusal(user)) is not None:
+        raise HTTPException(status_code=403, detail=refusal)
 
     all_dirs = get_all_scan_directories()
     user_dirs = get_user_directories(user.user_id) if user.user_id else []

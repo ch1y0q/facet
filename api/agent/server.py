@@ -26,6 +26,7 @@ from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import ValidationError
 from starlette.datastructures import Headers
+from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -249,7 +250,7 @@ class AgentAuthMiddleware:
         client = scope.get("client")
         ip = client[0] if client else "unknown"
         presented = bearer_token(headers)
-        grant = await asyncio.to_thread(tokens.verify, presented) if presented else None
+        grant = await asyncio.to_thread(tokens.verify_request, presented, Request(scope)) if presented else None
         resolved = await asyncio.to_thread(grant.resolve) if grant else None
         if resolved is None:
             if limits.auth_blocked(ip):

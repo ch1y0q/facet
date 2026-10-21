@@ -7,8 +7,10 @@ are revocable, and they are bound to the credentials of their owner at mint time
 * multi-user -- ``user_gen`` digests the user's ``password_hash`` (the role is live);
 * single password -- ``user_gen`` is the viewer-password generation and
   ``edition_gen`` the edition-password generation (``api.auth.password_generation``);
-* open install -- the principal is the fixed ``_anonymous`` and the token is
-  read-only for good.
+* open install -- the principal is the fixed ``_anonymous`` and the token is read-only, except
+  under ``viewer.trusted_local_editing``: an ``edition`` token then resolves to ``edition`` for a
+  /mcp request that passed the loopback boundary (``TokenGrant.trusted_local``, set by
+  :func:`verify_request`). Any password lowers it again, and clearing the password revives it.
 
 ``TokenGrant.resolve`` re-derives the EFFECTIVE level on EVERY call as
 ``min(token.level, live level)``. The internal JWT is minted fresh with CURRENT
@@ -26,7 +28,8 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from api.auth import (
-    EDITION_PASSWORD_KEY, CurrentUser, VIEWER_PASSWORD_KEY, _is_open_install, password_generation,
+    EDITION_PASSWORD_KEY, CurrentUser, VIEWER_PASSWORD_KEY, _is_open_install, _trusted_local_editing_enabled,
+    password_generation, trusted_local_for,
 )
 from api.config import config_load_failed, get_user_config, is_multi_user_enabled
 from api.database import get_db
@@ -170,11 +173,13 @@ def mint(principal: str, name: str, level: str, minted_level: str = "readonly",
         return _public(row), plaintext
 
 
-def verify(plaintext: Optional[str]) -> Optional["TokenGrant"]:
+def verify(plaintext: Optional[str], trusted_local: bool = False) -> Optional["TokenGrant"]:
     """The grant behind ``plaintext``, or None when unknown, malformed or revoked.
 
     Liveness against the owner's credentials is NOT decided here -- that is
-    :meth:`TokenGrant.resolve`, which runs on every call.
+    :meth:`TokenGrant.resolve`, which runs on every call. ``trusted_local`` is the fact that the
+    request presenting the token passed the ``viewer.trusted_local_editing`` boundary; it defaults
+    to False, so a caller that cannot see the request stays read-only on an open install.
     """
     if not isinstance(plaintext, str) or not plaintext.startswith(TOKEN_PREFIX) \
             or len(plaintext) > MAX_TOKEN_LENGTH:
@@ -186,7 +191,13 @@ def verify(plaintext: Optional[str]) -> Optional["TokenGrant"]:
     if row is None:
         return None
     return TokenGrant(row["id"], row["user_id"], row["name"], row["level"],
-                      row["user_gen"], row["edition_gen"], row["minted_level"] or row["level"])
+                      row["user_gen"], row["edition_gen"], row["minted_level"] or row["level"], trusted_local)
+
+
+def verify_request(plaintext: Optional[str], request: Any) -> Optional["TokenGrant"]:
+    """:func:`verify`, with ``trusted_local`` derived from the /mcp ``request`` itself (a Request or a WebSocket)."""
+    grant = verify(plaintext)
+    return None if grant is None else replace(grant, trusted_local=trusted_local_for(request))
 
 
 def list_tokens(user_id: Optional[str] = None) -> list[dict]:
@@ -242,15 +253,25 @@ class ResolvedGrant:
     inpage: bool = False
     # The calling tab's own selection (``ui_get_selection`` data), sent with an in-page call.
     selection_snapshot: Optional[dict] = None
+    # An open-install grant whose /mcp request passed the trusted-local boundary (see TokenGrant.resolve).
+    local_trusted: bool = False
 
     def jwt_claims(self) -> Optional[dict]:
         """Claims for the 60-second internal JWT, or None on an open install.
+
+        The one open-install exception is a local Full-editing grant: it signs NO ``sub`` (the
+        open-install browser's own identity is ``user_id=None``; PyJWT refuses a null ``sub``, and an
+        undecodable bearer would fall through to the anonymous human path) plus ``mcp_local``, the only way a request-derived trust
+        reaches an agent JWT (see ``CurrentUser.from_payload``).
 
         Role and ``edition`` MATCH the effective level: ``CurrentUser.is_edition``
         is derived from the ROLE, so a read-only token of an admin must not carry
         ``admin`` through, or it would reach edition routes on the role alone.
         """
         if self.anonymous:
+            if self.level == "edition" and self.local_trusted:
+                return {"role": self.role, "display_name": "", "edition": True, "mcp": True,
+                        "mcp_local": True, "mcp_token_id": self.token_id}
             return None
         return {
             "sub": self.principal,
@@ -364,6 +385,8 @@ class TokenGrant:
     user_gen: str
     edition_gen: str
     minted_level: str = "readonly"
+    # The /mcp request presenting this token passed the trusted-local boundary. Default False: fail closed.
+    trusted_local: bool = False
 
     @property
     def rate_key(self) -> int:
@@ -395,7 +418,11 @@ class TokenGrant:
         if mode == "open":
             if self.user_id != OPEN_PRINCIPAL:
                 return None
-            return ResolvedGrant(self.id, OPEN_PRINCIPAL, "readonly", "user", "", True, "readonly")
+            local = self.trusted_local and _trusted_local_editing_enabled()
+            if not local:
+                return ResolvedGrant(self.id, OPEN_PRINCIPAL, "readonly", "user", "", True, "readonly")
+            return ResolvedGrant(self.id, OPEN_PRINCIPAL, "edition" if self.level == "edition" else "readonly",
+                                 "user", "", True, self.minted_level, local_trusted=True)
         if self.user_id != LEGACY_PRINCIPAL:
             return None
         level = _legacy_level(self.level, self.edition_gen)

@@ -161,7 +161,7 @@ def record(token_id: Any, name: str, ok: bool) -> None:
 async def authorize(request: Request, name: str, audit: bool = True) -> tokens.ResolvedGrant:
     """The same bearer check, rate limit and audit line as a tool call; refuses with an ``MCPError``."""
     settings = request.scope[SETTINGS_SCOPE_KEY]
-    grant = await asyncio.to_thread(tokens.verify, bearer_token(request.headers))
+    grant = await asyncio.to_thread(tokens.verify_request, bearer_token(request.headers), request)
     resolved = await asyncio.to_thread(grant.resolve) if grant else None
     if grant is None or resolved is None:
         logger.info("MCP prompt token=- name=%s ok=False", name)
@@ -197,7 +197,7 @@ def _sdk_prompt(spec: PromptSpec) -> Prompt:
 
 def resolve_request(request: Request) -> tokens.ResolvedGrant:
     """The request's live grant (the bearer was already gated by the middleware)."""
-    grant = tokens.verify(bearer_token(request.headers))
+    grant = tokens.verify_request(bearer_token(request.headers), request)
     resolved = grant.resolve() if grant else None
     if resolved is None:
         raise MCPError(INVALID_PARAMS, "This token is revoked or no longer valid")

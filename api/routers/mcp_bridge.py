@@ -38,7 +38,7 @@ from api.agent.bridge import TabConn, TabRegistry
 from api.agent.tokens import OPEN_PRINCIPAL
 from api.agent.ui_tools import TAB_ID_PATTERN, tools_version
 from api.auth import (
-    SHARE_CLIENT_ROLE, VIEWER_PASSWORD_KEY, CurrentUser, _is_open_install, decode_access_token,
+    SHARE_CLIENT_ROLE, VIEWER_PASSWORD_KEY, CurrentUser, _is_open_install, decode_access_token, trusted_local_for,
 )
 from api.config import VIEWER_CONFIG, mcp_settings
 
@@ -79,7 +79,20 @@ def _level_of(payload: dict) -> Optional[str]:
     return None if resolved is None else resolved.level
 
 
-def _authenticate(token: Any) -> Optional[tuple[str, str, Optional[str], Optional[float]]]:
+def _open_install_level(level: str, ws: WebSocket) -> str:
+    """``level``, raised to ``edition`` on an open install when the handshake passes the trusted-local boundary.
+
+    Only the handshake's own request (loopback peer, local Host, same Origin, no proxy header) can
+    raise it, and only while ``viewer.trusted_local_editing`` is on and no password is set. A LAN or
+    forwarded tab of the same ``_anonymous`` principal stays ``readonly``, so an edition token never
+    reaches it and the reach floor for ``_anonymous`` tabs is unchanged.
+    """
+    if level == "readonly" and tokens.install_mode() == "open" and trusted_local_for(ws):
+        return "edition"
+    return level
+
+
+def _authenticate(token: Any, ws: WebSocket) -> Optional[tuple[str, str, Optional[str], Optional[float]]]:
     """``(principal, level, session_token, exp)`` for an auth frame's token, else None.
 
     The principal is the one a token is minted for (``tokens.session_principal``): the fixed
@@ -87,7 +100,8 @@ def _authenticate(token: Any) -> Optional[tuple[str, str, Optional[str], Optiona
     there still mints ``_legacy``), ``_legacy`` on a single password, else the account.
     """
     if token is None:
-        return (OPEN_PRINCIPAL, "readonly", None, None) if _is_open_install(VIEWER_PASSWORD_KEY) else None
+        return ((OPEN_PRINCIPAL, _open_install_level("readonly", ws), None, None)
+                if _is_open_install(VIEWER_PASSWORD_KEY) else None)
     if not isinstance(token, str) or not token:
         return None
     payload = decode_access_token(token)
@@ -100,15 +114,17 @@ def _authenticate(token: Any) -> Optional[tuple[str, str, Optional[str], Optiona
     level = _level_of(payload)
     if level is None:
         return None
-    return tokens.session_principal(sub), level, token, float(exp) if isinstance(exp, (int, float)) else None
+    return (tokens.session_principal(sub), _open_install_level(level, ws), token,
+            float(exp) if isinstance(exp, (int, float)) else None)
 
 
-def _session_level(session_token: Optional[str]) -> Optional[str]:
+def _session_level(session_token: Optional[str], ws: WebSocket) -> Optional[str]:
     """The session's current level, or None when it is no longer valid."""
     if session_token is None:
-        return "readonly" if _is_open_install(VIEWER_PASSWORD_KEY) else None
+        return _open_install_level("readonly", ws) if _is_open_install(VIEWER_PASSWORD_KEY) else None
     payload = decode_access_token(session_token)
-    return None if payload is None else _level_of(payload)
+    level = None if payload is None else _level_of(payload)
+    return None if level is None else _open_install_level(level, ws)
 
 
 _RESULT_ID = re.compile(r'"id"\s*:\s*"([0-9a-f]{1,32})"')
@@ -165,7 +181,7 @@ async def _handshake(ws: WebSocket, registry: TabRegistry) -> Optional[tuple[Tab
     except ProtocolError:
         await ws.close(bridge.CLOSE_PROTOCOL)
         return None
-    identity = _authenticate(frame.get("token", object())) if frame.get("type") == "auth" else None
+    identity = _authenticate(frame.get("token", object()), ws) if frame.get("type") == "auth" else None
     announced = _announced(frame)
     route = _route_of(frame)
     tab_id = frame.get("tab_id")
@@ -249,7 +265,7 @@ async def _keepalive(ws: WebSocket, conn: TabConn, session_token: Optional[str],
         if not (settings["enabled"] and settings["bridge"]):
             await ws.close(bridge.CLOSE_DISABLED)
             return
-        level = _session_level(session_token)
+        level = _session_level(session_token, ws)
         if level is None:
             await ws.close(bridge.CLOSE_UNAUTHORIZED)
             return

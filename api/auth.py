@@ -15,7 +15,7 @@ import re
 import threading
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, cast
 from urllib.parse import urlsplit
 
 import jwt
@@ -252,6 +252,30 @@ def _trusted_local_editing(request: Request) -> bool:
         return False
 
 
+class _HttpView:
+    """The three request attributes ``_trusted_local_editing`` reads, with a WebSocket's scheme mapped."""
+
+    __slots__ = ('headers', 'client', 'url')
+
+    def __init__(self, connection):
+        self.headers = connection.headers
+        self.client = connection.client
+        self.url = connection.url.replace(scheme={'ws': 'http', 'wss': 'https'}.get(connection.url.scheme, connection.url.scheme))
+
+
+def trusted_local_for(request) -> bool:
+    """``_trusted_local_editing`` for anything that carries the request's headers, peer and URL.
+
+    Accepts a ``Request``, a ``WebSocket`` or an ASGI scope's ``Request``. A WebSocket handshake
+    addresses ``ws://`` or ``wss://``, which ``_local_target_origin`` would refuse outright, so the
+    scheme is mapped to its HTTP twin first. Fails closed on anything it cannot read.
+    """
+    try:
+        return _trusted_local_editing(cast(Request, _HttpView(request)))
+    except (AttributeError, TypeError, ValueError):
+        return False
+
+
 class CurrentUser:
     """Represents the current authenticated user."""
     __slots__ = ('user_id', 'role', 'display_name', 'edition_authenticated', 'agent',
@@ -270,16 +294,22 @@ class CurrentUser:
     def from_payload(cls, payload, trusted_local_editing=False):
         """The user a decoded access-token payload describes.
 
-        An agent request (the ``mcp`` claim) is never trusted for local editing: its level is its grant.
+        A REQUEST-derived trust (``trusted_local_editing``) is never applied to an agent request (the
+        ``mcp`` claim): its level is its grant. The one local path for an agent is the server-signed
+        ``mcp_local`` claim, which ``ResolvedGrant.jwt_claims`` writes only for a grant whose real /mcp
+        request passed the boundary; it still needs the opt-in to be on and the install passwordless NOW.
         """
         agent = bool(payload.get('mcp'))
+        if agent:
+            trusted_local_editing = (payload.get('mcp_local') is True and payload.get('sub') is None
+                                     and payload.get('edition') is True and _trusted_local_editing_enabled())
         return cls(
             user_id=payload.get('sub'),
             role=payload.get('role', 'user'),
             display_name=payload.get('display_name', ''),
             edition_authenticated=payload.get('edition', False),
             agent=agent,
-            trusted_local_editing=trusted_local_editing and not agent,
+            trusted_local_editing=trusted_local_editing,
         )
 
     @property
@@ -431,17 +461,19 @@ async def require_superadmin(
     return user
 
 
-def scan_access_refusal(multi_user, is_superadmin, is_edition, open_install):
+def scan_access_refusal(multi_user, is_superadmin, is_edition, open_install, trusted_local=False):
     """The ``(status, detail)`` that refuses a scan trigger, or None when it is allowed.
 
     One pure rule shared by ``require_scan_access`` and the agent's ``start_scan`` /
     ``scan_status`` tools, so the tool and the route cannot disagree. Multi-user mode:
     superadmin only. Single-user mode: edition AND a locked install (an open install is refused
-    even for a caller presenting an edition claim, because the route starts an OS subprocess).
+    even for a caller presenting an edition claim, because the route starts an OS subprocess),
+    unless ``trusted_local`` -- the caller passed the ``viewer.trusted_local_editing`` boundary (a
+    human browser request, or an agent carrying the signed ``mcp_local`` claim).
     """
     if multi_user:
         return None if is_superadmin else (status.HTTP_403_FORBIDDEN, "Superadmin access required")
-    if open_install:
+    if open_install and not trusted_local:
         return status.HTTP_403_FORBIDDEN, "Set viewer.edition_password to enable the scan trigger"
     if not is_edition:
         return status.HTTP_403_FORBIDDEN, "Edition access required"
@@ -457,11 +489,13 @@ async def require_scan_access(
     access AND a locked install — an open install (empty
     viewer.edition_password) is refused even for a caller presenting an
     edition claim, with the actionable detail below, because this route
-    starts an OS subprocess. Raises 403 in both refusal cases; never 401
+    starts an OS subprocess -- unless the caller passed the ``viewer.trusted_local_editing``
+    boundary (``user.trusted_local_editing``). Raises 403 in both refusal cases; never 401
     (require_authenticated already covers "no session").
     """
     refusal = scan_access_refusal(
-        is_multi_user_enabled(), user.is_superadmin, user.is_edition, _is_open_install(EDITION_PASSWORD_KEY))
+        is_multi_user_enabled(), user.is_superadmin, user.is_edition, _is_open_install(EDITION_PASSWORD_KEY),
+        user.trusted_local_editing)
     if refusal is not None:
         raise HTTPException(status_code=refusal[0], detail=refusal[1])
     return user

@@ -59,15 +59,17 @@ def level_refusal(name: str, resolved: Any, floor: Optional[str] = None) -> Opti
     if resolved.inpage:
         return err("forbidden_level", f"This session's level is {resolved.level}; {name} needs "
                    f"{needs}" + (": unlock edition in Facet" if needs == "edition" else ""))
-    hint = (" (an open install cannot grant it: set viewer.password and mint an "
-            "edition token)" if needs == "edition" and tokens.install_mode() == "open" else "")
+    hint = (" (an open install grants it only to a local request under viewer.trusted_local_editing, "
+            "addressed as http://localhost:<port>; otherwise set viewer.password and mint an edition token)"
+            if needs == "edition" and tokens.install_mode() == "open" else "")
     return err("forbidden_level", f"This token's level is {resolved.level}; {name} needs {needs}{hint}")
 
 
 async def resolve_context(ctx: Any) -> tuple[Any, Any]:
     """``(grant, resolved)`` for a tool call's context, ``(None, None)`` when it is not valid."""
     session = cast(Request, ctx.request_context.request).scope.get(INPAGE_SCOPE_KEY)
-    grant = session if session is not None else await asyncio.to_thread(tokens.verify, bearer_token(ctx.headers))
+    grant = session if session is not None else await asyncio.to_thread(
+        tokens.verify_request, bearer_token(ctx.headers), ctx.request_context.request)
     return grant, (await asyncio.to_thread(grant.resolve) if grant else None)
 
 

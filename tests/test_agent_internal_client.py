@@ -7,6 +7,7 @@ from types import MappingProxyType
 
 import pytest
 from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
 from fastapi.responses import JSONResponse
 
 from api import config as api_config
@@ -50,6 +51,52 @@ def photo(seed_photos_prefix):
 def _client(env, **allow):
     counting = CountingApp(env.app)
     return InternalClient(counting, allowlist={**allow}), counting
+
+
+class TestLocalEditionGrant:
+    """An open-install edition token that the /mcp boundary judged local (``trusted_local``)."""
+
+    @staticmethod
+    def _local_grant(env, trusted):
+        api_config.VIEWER_CONFIG["trusted_local_editing"] = True
+        _, plaintext = tokens.mint("_anonymous", "laptop", "edition", "edition")
+        return tokens.verify(plaintext, trusted_local=trusted)
+
+    def test_local_edition_grant_reaches_edition_route(self, agent_app, photo):
+        env = agent_app("open")
+        client, counting = _client(env, rate=RATE_ROUTE)
+        result = _run(client.call(self._local_grant(env, True), "rate", json={"photo_path": photo}))
+        assert result["ok"] is True, result
+        assert counting.hits == 1
+
+    def test_send_takes_the_fact_from_the_grant_it_is_handed(self, agent_app, photo):
+        # REGRESSION GUARD: the same token WITHOUT the fact stays readonly, the route is never reached.
+        env = agent_app("open")
+        client, counting = _client(env, rate=RATE_ROUTE)
+        result = _run(client.call(self._local_grant(env, False), "rate", json={"photo_path": photo}))
+        assert result["error"] == "forbidden_level" and counting.hits == 0
+
+    def test_the_signed_claims_name_the_local_edition_grant_only(self, agent_app):
+        env = agent_app("open")
+        claims = self._local_grant(env, True).resolve().jwt_claims()
+        assert claims is not None and "sub" not in claims and claims["edition"] is True
+        assert claims["mcp"] is True and claims["mcp_local"] is True
+        # REGRESSION GUARD: an untrusted edition token and a readonly one still send no credential.
+        assert self._local_grant(env, False).resolve().jwt_claims() is None
+        _, readonly = tokens.mint("_anonymous", "ro", "readonly", "edition")
+        assert tokens.verify(readonly, trusted_local=True).resolve().jwt_claims() is None
+
+    def test_the_opt_in_going_off_inside_the_jwt_lifetime_refuses(self, agent_app, photo):
+        env = agent_app("open")
+        resolved_claims = self._local_grant(env, True).resolve().jwt_claims()
+        assert resolved_claims is not None
+        api_config.VIEWER_CONFIG["trusted_local_editing"] = False
+        from api.auth import create_access_token
+        jwt_str = create_access_token(resolved_claims, expires_delta=timedelta(seconds=60))
+        probe = TestClient(env.app, base_url="http://facet.internal", client=("127.0.0.1", 0))
+        refused = probe.post("/api/photo/toggle_favorite", json={"photo_path": photo},
+                             headers={"Authorization": "Bearer " + jwt_str})
+        assert refused.status_code == 403
 
 
 class TestAllowlist:
