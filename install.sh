@@ -123,7 +123,8 @@ ONNX_PACKAGE="onnxruntime>=1.15.0"
 # onnxruntime-gpu is split by CUDA major on PyPI: 1.19-1.26 are CUDA 12 builds and
 # 1.27 onwards are CUDA 13 builds, which cannot load beside the CUDA 12 PyTorch
 # (cu124/cu126/cu128) installed below. The ONNX Runtime major follows PyTorch's CUDA
-# build, never the driver's CUDA version. Keep in step with utils/onnx_runtime.py
+# build, never the driver's CUDA version. CUDA 11 (cu118) has no working GPU build and
+# keeps the CPU one. Keep in step with utils/onnx_runtime.py
 # (tests/test_onnx_runtime_install_consistency.py fails when they drift).
 ORT_GPU_CUDA12="onnxruntime-gpu>=1.19.0,<1.27"
 HOST_OS="$(uname -s)"
@@ -147,14 +148,17 @@ elif [[ "$HOST_OS" == "Darwin" && "$HOST_ARCH" == "arm64" ]]; then
 else
     # Auto-detect via nvidia-smi
     if command -v nvidia-smi &>/dev/null; then
-        CUDA_VERSION=$(nvidia-smi 2>/dev/null | grep -oP 'CUDA Version: \K[0-9.]+' || true)
+        # Newer drivers label the field "CUDA UMD Version" (beside a "KMD Version"), older ones
+        # "CUDA Version"; matching only the old label ended on CPU torch with a GPU present.
+        CUDA_VERSION=$(nvidia-smi 2>/dev/null | grep -oP 'CUDA (UMD )?Version: \K[0-9.]+' | head -1 || true)
         # The wheel has to cover the WEAKEST installed card, and the driver's
         # CUDA version says nothing about it: a GTX 1080 (sm_61) behind driver
         # 570 reports "CUDA Version: 12.8" just like an RTX 5090 does. Empty
-        # when nvidia-smi predates --query-gpu=compute_cap, in which case the
-        # ladder below falls back to the driver version alone.
+        # when nvidia-smi predates --query-gpu=compute_cap (or cannot initialise NVML, so the
+        # grep matches nothing and pipefail would abort the script), in which case the ladder
+        # below falls back to the driver version alone.
         GPU_MIN_ARCH=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null \
-            | tr -d '[:blank:]' | grep -E '^[0-9]+\.[0-9]+$' | sort -V | head -1)
+            | tr -d '[:blank:]' | grep -E '^[0-9]+\.[0-9]+$' | sort -V | head -1 || true)
         if [[ -n "$CUDA_VERSION" ]]; then
             ok "CUDA detected: $CUDA_VERSION"
             [[ -n "$GPU_MIN_ARCH" ]] && info "Lowest GPU compute capability: $GPU_MIN_ARCH"
@@ -205,8 +209,11 @@ if [[ -n "$CUDA_VERSION" ]]; then
         ok "PyTorch variant: cu124"
     elif [[ "$cuda_major" -eq 12 ]] || [[ "$cuda_major" -eq 11 && "$cuda_minor" -ge 8 ]]; then
         TORCH_INDEX="https://download.pytorch.org/whl/cu118"
-        ONNX_PACKAGE="onnxruntime-gpu>=1.15.0,<1.18"
         ok "PyTorch variant: cu118"
+        # The only onnxruntime-gpu for CUDA 11 (1.17) links libcudnn.so.8, while the cu118
+        # PyTorch wheels depend on cuDNN 9, so its CUDA provider never loads: ONNX_PACKAGE
+        # stays the CPU build instead of installing a GPU wheel that silently runs on the CPU.
+        info "No onnxruntime-gpu build matches this PyTorch's CUDA 11.8 + cuDNN 9; face detection runs on the CPU — update the NVIDIA driver to one reporting CUDA 12.4+ for GPU face detection"
     else
         warn "CUDA $CUDA_VERSION is too old — using CPU-only PyTorch"
         TORCH_INDEX="https://download.pytorch.org/whl/cpu"
@@ -259,13 +266,12 @@ ok "Transformers installed"
 # the plain CPU `onnxruntime`, and the CPU and GPU distributions install into the same
 # onnxruntime/ tree, so whichever pip installs last wins. Installing the GPU build before
 # the dependencies left it overwritten by the CPU one (issue #229). Both names are
-# uninstalled first because uninstalling only the CPU one afterwards would remove files
-# the GPU wheel shares with it.
+# uninstalled first, whichever variant follows, because uninstalling only the CPU one
+# would remove files the GPU wheel shares with it, and installing one variant over a venv
+# holding the other (a re-run with --cpu over a GPU venv, or the reverse) would leave both.
 if [[ "$COMMERCIAL" -eq 0 ]]; then
     info "Installing ONNX Runtime ($ONNX_PACKAGE) last: insightface pulls the CPU build and would overwrite the GPU one..."
-    if [[ "$ONNX_PACKAGE" == onnxruntime-gpu* ]]; then
-        $UNINSTALLER onnxruntime onnxruntime-gpu
-    fi
+    $UNINSTALLER onnxruntime onnxruntime-gpu
     $INSTALLER install "$ONNX_PACKAGE"
     ok "ONNX Runtime installed"
 else
@@ -314,38 +320,44 @@ else
     err "Some imports failed — run 'python facet.py --doctor' for diagnostics"
 fi
 
-# A GPU install must end on the CUDA build of ONNX Runtime, alone. torch is imported first
-# because it maps the CUDA libraries the ONNX Runtime CUDA provider then reuses, which is
-# the order Facet itself runs in. This proves the provider is LISTED and that no CPU build
-# overwrote it; `python facet.py --doctor` creates a real CUDA session to prove it loads.
-# The fix text comes from utils/onnx_runtime.py so it has exactly one source.
+# A GPU install must end on the CUDA build of ONNX Runtime, alone, and actually running on
+# it: a CUDA 13 wheel or a cuDNN mismatch still LISTS the provider, then falls back to the
+# CPU when a session is created. So this runs diagnostics.verify_onnx_runtime from the repo
+# root, which creates the same one-node CUDA session `python facet.py --doctor` does (and
+# takes the fix text from utils/onnx_runtime.py, so it has exactly one source). It prints a
+# report and exits with one of four codes, which tests/test_onnx_runtime_install_consistency.py
+# keeps in step with VERIFY_* in diagnostics.py:
+#   0  a CUDA test session runs on CUDAExecutionProvider
+#   3  the provider is listed and onnxruntime-gpu is alone, but no session could be created
+#      (PyTorch sees no GPU on this machine, or the onnx package is missing)
+#   1  ONNX Runtime is not on CUDA (broken, doubled, CPU-only, or the session fell back)
+#   2  the check itself could not run (anything else, a crash included)
+# Only 1 is a verdict about the install; 2 says so without guessing at one.
+report_lines() {  # report_lines PRINTER TEXT: the first line through PRINTER, the rest indented under it
+    local printer="$1" line first=1
+    while IFS= read -r line; do
+        if [[ "$first" -eq 1 ]]; then "$printer" "$line"; first=0; else echo "       $line"; fi
+    done <<< "$2"
+}
 if [[ "$COMMERCIAL" -eq 0 && "$ONNX_PACKAGE" == onnxruntime-gpu* ]]; then
-    if ORT_REPORT=$($PYTHON -c '
+    ort_rc=0
+    ORT_REPORT=$($PYTHON -c '
 import sys
-import torch
-from utils.onnx_runtime import installed_distributions, repair_hint
 try:
-    import onnxruntime as ort
-    providers, version = ort.get_available_providers(), ort.__version__
+    from diagnostics import verify_onnx_runtime
 except Exception as ex:
-    providers, version = [], "import failed: %s" % ex
-dists = installed_distributions()
-if "CUDAExecutionProvider" in providers and dists == ["onnxruntime-gpu"]:
-    print("onnxruntime-gpu %s" % version)
-    sys.exit(0)
-print("onnxruntime %s, providers %s, distributions %s" % (version, providers, dists))
-print(repair_hint(torch.version.cuda))
-sys.exit(1)
-' 2>/dev/null); then
-        ok "ONNX Runtime: $ORT_REPORT, CUDA provider listed; run 'python facet.py --doctor' for a real CUDA session test"
-    else
-        err "ONNX Runtime is not the CUDA build, so face detection will run on the CPU:"
-        if [[ -n "$ORT_REPORT" ]]; then
-            while IFS= read -r line; do echo "       $line"; done <<< "$ORT_REPORT"
-        else
-            echo "       the check could not run — see 'python facet.py --doctor'"
-        fi
-    fi
+    print("%s: %s" % (type(ex).__name__, ex))
+    sys.exit(2)
+sys.exit(verify_onnx_runtime())
+' 2>/dev/null) || ort_rc=$?
+    case "$ort_rc" in
+        0|3) report_lines ok "ONNX Runtime: $ORT_REPORT" ;;
+        1) report_lines err "ONNX Runtime is not running on CUDA, so face detection will use the CPU:"$'\n'"$ORT_REPORT" ;;
+        *)
+            report_lines warn "Could not check whether ONNX Runtime runs on CUDA (the check itself failed, so this is not a verdict):"$'\n'"${ORT_REPORT:-exit code $ort_rc, no output}"
+            echo "       run 'python facet.py --doctor' to check it"
+            ;;
+    esac
 fi
 
 # --- Commercial mode: licensing.mode is configuration, not an install side effect ---

@@ -406,7 +406,7 @@ pip install -r requirements.txt -r requirements.restricted.txt
 #    compilación de PyTorch CUDA (consulta la tabla siguiente), no a la CUDA de tu controlador.
 pip uninstall -y onnxruntime onnxruntime-gpu
 pip install "onnxruntime-gpu>=1.19.0,<1.27"   # PyTorch con CUDA 12.x (cu124, cu126, cu128)
-# Solo CPU: conserva lo que instaló el paso 3, o reinstálalo con
+# Solo CPU, o CUDA 11.8 (cu118): conserva lo que instaló el paso 3, o reinstálalo con
 # pip install "onnxruntime>=1.15.0"
 
 # 5. Compila la galería web
@@ -476,19 +476,21 @@ instalarlo (`requirements.restricted.txt`, `pip install -e .[all]`, el extra
 máquina CUDA, por tanto, el paquete de GPU se instala **después** de esos requisitos, tras
 eliminar ambos nombres.
 
-`bash install.sh` lo hace por ti en x86_64: cuando detecta CUDA, instala ONNX Runtime al
-final y comprueba el resultado (vuelve a ejecutarlo para reparar un `venv` sobrescrito).
-Las imágenes Docker CUDA hacen lo mismo. Las instalaciones de CPU, macOS y la imagen de
-CPU conservan `onnxruntime`. No existe un wheel de `onnxruntime-gpu` para CUDA 12 en
-aarch64, así que allí `install.sh` conserva la compilación de CPU y lo indica.
+`bash install.sh` lo hace por ti en x86_64: cuando instala un PyTorch para CUDA 12,
+instala ONNX Runtime al final, quitando siempre antes los dos paquetes (vuelve a
+ejecutarlo para reparar un `venv` sobrescrito o para pasar de CPU a GPU), y luego
+comprueba el resultado con una sesión de prueba CUDA real, la misma que ejecuta
+`--doctor`. Las imágenes Docker CUDA hacen lo mismo. Las instalaciones de CPU, CUDA 11.8
+(cu118), macOS y la imagen de CPU conservan `onnxruntime`. No existe un wheel de
+`onnxruntime-gpu` para CUDA 12 en aarch64, así que allí `install.sh` conserva la
+compilación de CPU y lo indica.
 
 A mano, elige la fila de tu compilación de CUDA de **PyTorch**:
 
 | Compilación de PyTorch | Comando |
 |---------------|---------|
-| Solo CPU | `pip uninstall -y onnxruntime onnxruntime-gpu && pip install "onnxruntime>=1.15.0"` |
+| Solo CPU, o CUDA 11.8 (cu118) | `pip uninstall -y onnxruntime onnxruntime-gpu && pip install "onnxruntime>=1.15.0"` |
 | CUDA 12.x (cu124, cu126, cu128) | `pip uninstall -y onnxruntime onnxruntime-gpu && pip install "onnxruntime-gpu>=1.19.0,<1.27"` |
-| CUDA 11.8 (cu118) | `pip uninstall -y onnxruntime onnxruntime-gpu && pip install "onnxruntime-gpu>=1.15.0,<1.18"` |
 
 Elige la fila según la compilación de CUDA de PyTorch, no según la versión de CUDA que
 `nvidia-smi` muestra en la esquina superior derecha: esa es la CUDA más reciente que
@@ -505,9 +507,20 @@ CUDA incluyen la 1.26.0, la última compilación para CUDA 12. Si instalaste a m
 PyTorch para CUDA 13, `"onnxruntime-gpu>=1.27.0"` es el requisito equivalente (sin probar:
 el instalador de Facet nunca instala uno).
 
-Entrecomilla el requisito. Sin comillas, el shell interpreta `>=1.19.0` como una
-redirección: pip recibe solo el nombre del paquete, sin versión, y aparece en el
-directorio actual un archivo llamado `=1.19.0`.
+CUDA 11.8 (cu118) no tiene ninguna compilación de GPU que instalar. El único
+`onnxruntime-gpu` para CUDA 11 (1.17 y anteriores) necesita cuDNN 8, mientras que los
+wheels de PyTorch cu118 que instala Facet dependen de cuDNN 9: su proveedor CUDA nunca
+se carga y la detección de rostros se ejecutaría igualmente en la CPU. Por eso
+`install.sh` conserva allí el `onnxruntime` de CPU y lo indica. Para detectar rostros en
+la GPU, actualiza el controlador de NVIDIA a uno que indique CUDA 12.4 o posterior y
+vuelve a ejecutar `install.sh`: instalará un PyTorch para CUDA 12 y el `onnxruntime-gpu`
+correspondiente.
+
+Entrecomilla el requisito. Sin comillas, el shell interpreta `>` y `<` como
+redirecciones: `pip install onnxruntime-gpu>=1.19.0,<1.27` crea en el directorio actual
+un archivo vacío llamado `=1.19.0,` y luego se detiene con
+`1.27: No such file or directory` antes de que pip se ejecute. Borra ese archivo tras un
+error así.
 
 No cambies con `pip uninstall onnxruntime` seguido de `pip install onnxruntime-gpu`. La
 desinstalación borra archivos que también pertenecen al paquete de GPU, pip responde
@@ -530,7 +543,11 @@ sesión se ejecuta de verdad en `CUDAExecutionProvider`; si no, el diagnóstico 
 motivo del propio ONNX Runtime y la solución. La sesión de prueba necesita el paquete
 `onnx` (sin él, el diagnóstico indica que no probó) y se omite en la CPU y en modo
 comercial, donde no se usa InsightFace. Un escaneo en CUDA también registra una
-advertencia cuando las sesiones de InsightFace se ejecutan en la CPU.
+advertencia cuando las sesiones de InsightFace se ejecutan en la CPU. En un contenedor
+Docker, el comando de reparación que imprime el diagnóstico se pierde en el siguiente
+`docker run`: descarga una imagen actual o reconstrúyela (las imágenes CUDA incluyen
+`onnxruntime-gpu` 1.26.0 mediante el argumento de compilación `ORT_GPU_VERSION`; no
+establezcas nunca un valor 1.27 o posterior, porque son compilaciones para CUDA 13).
 
 ## Agrupación de rostros en GPU con RAPIDS cuML
 

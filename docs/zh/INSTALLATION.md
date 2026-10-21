@@ -369,7 +369,7 @@ pip install -r requirements.txt -r requirements.restricted.txt
 #    而不是按驱动的 CUDA 版本。
 pip uninstall -y onnxruntime onnxruntime-gpu
 pip install "onnxruntime-gpu>=1.19.0,<1.27"   # CUDA 12.x 版 PyTorch（cu124、cu126、cu128）
-# 仅 CPU：保留第 3 步装好的版本，或用下面的命令重装
+# 仅 CPU，或 CUDA 11.8（cu118）：保留第 3 步装好的版本，或用下面的命令重装
 # pip install "onnxruntime>=1.15.0"
 
 # 5. 构建网页照片库
@@ -429,27 +429,28 @@ JPEG/TIFF/DNG）。
 
 人脸检测（InsightFace）运行在 ONNX Runtime 上，它以两个包的形式发布：`onnxruntime`（CPU）和 `onnxruntime-gpu`（CUDA）。它们安装到同一个 `onnxruntime/` 目录并共用文件，因此无法共存：pip 最后安装的那个生效。`insightface` 依赖 CPU 版 `onnxruntime`，所以安装它（`requirements.restricted.txt`、`pip install -e .[all]`、`faces-insightface` extra）总会把 CPU 版重新覆盖到 GPU 版之上。因此在 CUDA 机器上，GPU 包要在这些依赖**之后**安装，并且要先把两个名称都卸载。
 
-`bash install.sh` 在 x86_64 上会替你完成这件事：检测到 CUDA 时，它最后才安装 ONNX Runtime 并检查结果（重新运行它即可修复被覆盖的 `venv`）。CUDA Docker 镜像也是如此。CPU 安装、macOS 和 CPU 镜像保留 `onnxruntime`。aarch64 上没有适用于 CUDA 12 的 `onnxruntime-gpu` wheel，所以 `install.sh` 在那里保留 CPU 版并给出提示。
+`bash install.sh` 在 x86_64 上会替你完成这件事：安装 CUDA 12 版 PyTorch 时，它最后才安装 ONNX Runtime，并且总会先卸载两个包（重新运行它即可修复被覆盖的 `venv`，或在 CPU 与 GPU 之间切换），然后用一个真实的 CUDA 测试会话检查结果，与 `--doctor` 运行的相同。CUDA Docker 镜像也是如此。CPU 安装、CUDA 11.8（cu118）、macOS 和 CPU 镜像保留 `onnxruntime`。aarch64 上没有适用于 CUDA 12 的 `onnxruntime-gpu` wheel，所以 `install.sh` 在那里保留 CPU 版并给出提示。
 
 手动安装时，请按 **PyTorch** 的 CUDA 构建选择对应的一行：
 
 | PyTorch 构建 | 命令 |
 |---------------|---------|
-| 仅 CPU | `pip uninstall -y onnxruntime onnxruntime-gpu && pip install "onnxruntime>=1.15.0"` |
+| 仅 CPU，或 CUDA 11.8（cu118） | `pip uninstall -y onnxruntime onnxruntime-gpu && pip install "onnxruntime>=1.15.0"` |
 | CUDA 12.x（cu124、cu126、cu128） | `pip uninstall -y onnxruntime onnxruntime-gpu && pip install "onnxruntime-gpu>=1.19.0,<1.27"` |
-| CUDA 11.8（cu118） | `pip uninstall -y onnxruntime onnxruntime-gpu && pip install "onnxruntime-gpu>=1.15.0,<1.18"` |
 
 请按 PyTorch 的 CUDA 构建选行，而不是按 `nvidia-smi` 在右上角显示的 CUDA 版本：那是驱动支持的最新 CUDA，CUDA 13 的驱动仍然运行 `install.sh` 安装的 CUDA 12 版 PyTorch（cu128）。`python facet.py --doctor` 会在 `CUDA (compiled)` 一行显示 PyTorch 的构建。
 
 版本范围很重要。`onnxruntime-gpu` 的 1.19 到 1.26 是 CUDA 12 构建；1.27 及以后是 CUDA 13 构建，需要 CUDA 13 库，而 CUDA 12 版 PyTorch 并不提供这些库。这样的 wheel 仍会列出 `CUDAExecutionProvider`，但在创建会话时回退到 CPU，所以不加上限的 `onnxruntime-gpu` 看起来已安装，实际却跑在 CPU 上。CUDA Docker 镜像内置 1.26.0，即最后一个 CUDA 12 构建。如果你手动装了 CUDA 13 版 PyTorch，对应的要求是 `"onnxruntime-gpu>=1.27.0"`（未经测试：Facet 的安装脚本从不安装它）。
 
-要给版本要求加引号。不加引号时，shell 会把 `>=1.19.0` 当作重定向：pip 只收到不带版本的包名，当前目录里还会多出一个名为 `=1.19.0` 的文件。
+CUDA 11.8（cu118）没有可安装的 GPU 构建。唯一适用于 CUDA 11 的 `onnxruntime-gpu`（1.17 及更早）需要 cuDNN 8，而 Facet 安装的 cu118 版 PyTorch wheel 依赖 cuDNN 9，所以它的 CUDA provider 永远加载不了，人脸检测照样会跑在 CPU 上。因此 `install.sh` 在那里保留 CPU 版 `onnxruntime` 并给出提示。若想用 GPU 做人脸检测，请把 NVIDIA 驱动更新到报告 CUDA 12.4 或更新版本的驱动，然后重新运行 `install.sh`：它会安装 CUDA 12 版 PyTorch 和匹配的 `onnxruntime-gpu`。
+
+要给版本要求加引号。不加引号时，shell 会把 `>` 和 `<` 当作重定向：`pip install onnxruntime-gpu>=1.19.0,<1.27` 会在当前目录创建一个名为 `=1.19.0,` 的空文件，然后在 pip 运行之前就以 `1.27: No such file or directory` 中止。出现这种错误后请删除那个文件。
 
 不要先 `pip uninstall onnxruntime` 再 `pip install onnxruntime-gpu` 来切换。卸载会删掉 GPU 包同样拥有的文件，之后 pip 会提示 "Requirement already satisfied"，而 `import onnxruntime` 只剩一个空包：InsightFace 会报错 `module 'onnxruntime' has no attribute 'InferenceSession'`。请像表中那样把两个名称都卸载。
 
 替换之后，`pip check` 会报告 "insightface ... requires onnxruntime, which is not installed"（`uv pip check`："The package `insightface` requires `onnxruntime`, but it's not installed"）。这是预期的，也无害：`onnxruntime-gpu` 提供的是同一个 `onnxruntime` 模块。
 
-要检查结果，请运行 `python facet.py --doctor` 并查看其 **ONNX Runtime** 一节。它会列出已安装的包、版本和执行提供程序，并在两个包同时安装或包无法导入时给出警告，每次都附带修复命令。当 Facet 运行在 CUDA 上时，它还会比较 ONNX Runtime 编译时针对的 CUDA 构建与 PyTorch 的构建，并运行一个单节点测试会话。只有该会话确实运行在 `CUDAExecutionProvider` 上时，`CUDA session` 一行才是 OK；否则诊断会连同 ONNX Runtime 自己给出的原因和修复方法一起发出警告。测试会话需要 `onnx` 包（没有它时诊断会说明未做探测），在 CPU 上和商业模式下（此时不使用 InsightFace）会被跳过。在 CUDA 上扫描时，若 InsightFace 的会话运行在 CPU 上，也会记录一条警告。
+要检查结果，请运行 `python facet.py --doctor` 并查看其 **ONNX Runtime** 一节。它会列出已安装的包、版本和执行提供程序，并在两个包同时安装或包无法导入时给出警告，每次都附带修复命令。当 Facet 运行在 CUDA 上时，它还会比较 ONNX Runtime 编译时针对的 CUDA 构建与 PyTorch 的构建，并运行一个单节点测试会话。只有该会话确实运行在 `CUDAExecutionProvider` 上时，`CUDA session` 一行才是 OK；否则诊断会连同 ONNX Runtime 自己给出的原因和修复方法一起发出警告。测试会话需要 `onnx` 包（没有它时诊断会说明未做探测），在 CPU 上和商业模式下（此时不使用 InsightFace）会被跳过。在 CUDA 上扫描时，若 InsightFace 的会话运行在 CPU 上，也会记录一条警告。在 Docker 容器里，诊断打印的修复命令会在下一次 `docker run` 时丢失：请改为拉取最新镜像或重新构建镜像（CUDA 镜像通过构建参数 `ORT_GPU_VERSION` 内置 `onnxruntime-gpu` 1.26.0；切勿设成 1.27 及更高版本，那些是 CUDA 13 构建）。
 
 ## 使用 RAPIDS cuML 在 GPU 上做人脸聚类
 

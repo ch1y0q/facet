@@ -246,8 +246,13 @@ def _captured_stderr_fd():
     captured = []
     try:
         sink = tempfile.TemporaryFile()
+    except OSError:
+        yield captured
+        return
+    try:
         saved = os.dup(2)
     except OSError:
+        sink.close()
         yield captured
         return
     try:
@@ -336,6 +341,15 @@ def _probe_cuda_session(ort):
     return list(session.get_providers()), _probe_reason(lines)
 
 
+def _runs_on_cuda(providers):
+    """True when a session's providers put CUDA first: it is the one that runs the graph.
+
+    A session that lists CUDA behind the CPU provider (or only somewhere in the list) runs
+    its nodes on the CPU, so presence alone is not a verdict.
+    """
+    return bool(providers) and providers[0] == _CUDA_PROVIDER
+
+
 def _report_cuda_session(ort, torch_cuda):
     """The doctor's verdict on whether ONNX Runtime really runs on CUDA."""
     from utils.onnx_runtime import repair_hint
@@ -349,7 +363,7 @@ def _report_cuda_session(ort, torch_cuda):
         _info("CUDA session", "not probed: the 'onnx' package is not installed")
         return
     providers, reason = probe
-    if providers and providers[0] == _CUDA_PROVIDER:
+    if _runs_on_cuda(providers):
         _ok("CUDA session", f"a test InferenceSession runs on {_CUDA_PROVIDER}")
         return
     _warn("CUDA session", f"fell back to {providers}" + (f": {reason}" if reason else ""))
@@ -358,13 +372,14 @@ def _report_cuda_session(ort, torch_cuda):
 
 def _report_onnx_runtime_cuda(ort, torch_cuda):
     """CUDA checks, for a runtime device of ``cuda`` only."""
-    from utils.onnx_runtime import repair_hint
+    from utils.onnx_runtime import cuda_major, repair_hint
     if not torch_cuda:
         _info("ONNX Runtime CUDA", "not applicable: this PyTorch build reports no CUDA version")
         return
     ort_cuda = getattr(ort, "cuda_version", None)
     # No attribute or an empty string is the CPU wheel (or an old build): nothing to compare.
-    if ort_cuda and str(ort_cuda).split(".")[0] != str(torch_cuda).split(".")[0]:
+    ort_major = cuda_major(ort_cuda)
+    if ort_major is not None and ort_major != cuda_major(torch_cuda):
         _warn("ONNX Runtime CUDA build", f"onnxruntime is built for CUDA {ort_cuda} but PyTorch uses CUDA {torch_cuda}")
         _log_fix(repair_hint(torch_cuda))
     if _CUDA_PROVIDER not in ort.get_available_providers():
@@ -420,7 +435,9 @@ def _report_onnx_runtime(config_path, torch, selected_device):
         else:
             _warn("onnxruntime", "NOT INSTALLED - InsightFace face detection is unavailable")
         return
-    _ok("onnxruntime", f"{ort.__version__} ({', '.join(distributions) or 'distribution unknown'})")
+    # Not [OK]: whether this install is healthy is only known once the lines below ran, and a
+    # green version line above a "both packages installed" warning contradicts it.
+    _info("onnxruntime", f"{ort.__version__} ({', '.join(distributions) or 'distribution unknown'})")
     _info("ONNX Runtime device", ort.get_device())
     _info("Execution providers", ", ".join(ort.get_available_providers()))
     if len(distributions) > 1:
@@ -430,6 +447,74 @@ def _report_onnx_runtime(config_path, torch, selected_device):
         _log_distribution_fix(torch_cuda)
     if selected_device == 'cuda':
         _report_onnx_runtime_cuda(ort, torch_cuda)
+
+
+# Exit codes of verify_onnx_runtime, read by install.sh's final check; the numbers in its `case`
+# are kept in step with these by tests/test_onnx_runtime_install_consistency.py.
+VERIFY_ON_CUDA = 0
+VERIFY_NOT_ON_CUDA = 1
+VERIFY_COULD_NOT_RUN = 2
+VERIFY_LISTED_ONLY = 3
+
+
+def verify_onnx_runtime():
+    """install.sh's last check after a GPU install: print a short report, return a ``VERIFY_*`` code.
+
+    Four outcomes, because "the check failed" and "ONNX Runtime is not on CUDA" call for
+    different messages and the first must never be reported as the second:
+    ``VERIFY_ON_CUDA`` a test session really runs on CUDA (the doctor's probe);
+    ``VERIFY_LISTED_ONLY`` the CUDA provider is listed and ``onnxruntime-gpu`` is alone, but no
+    session could be created (PyTorch sees no GPU on this machine, or the ``onnx`` package is
+    missing), which is the strongest check possible there;
+    ``VERIFY_NOT_ON_CUDA`` ONNX Runtime is broken, doubled, CPU-only or falls back to the CPU,
+    with the repair text; ``VERIFY_COULD_NOT_RUN`` anything unexpected (torch fails to import,
+    the session cannot be built). ``get_available_providers()`` alone is not enough: a CUDA 13
+    wheel beside a CUDA 12 PyTorch lists the provider and then falls back.
+    """
+    try:
+        # torch first: it maps the CUDA libraries the provider then reuses, as at scan time.
+        import torch
+
+        from utils.onnx_runtime import installed_distributions, repair_hint
+        hint = repair_hint(_torch_cuda_version(torch))
+        distributions = installed_distributions()
+        ort, import_error = _import_onnxruntime()
+        if ort is None:
+            print(f"onnxruntime cannot be imported: {import_error} (distributions: {distributions})")
+            print(hint)
+            return VERIFY_NOT_ON_CUDA
+        if distributions != ["onnxruntime-gpu"]:
+            print(f"onnxruntime {ort.__version__}, distributions {distributions}: expected onnxruntime-gpu alone")
+            print(hint)
+            return VERIFY_NOT_ON_CUDA
+        if _CUDA_PROVIDER not in ort.get_available_providers():
+            print(f"onnxruntime-gpu {ort.__version__} does not offer {_CUDA_PROVIDER} "
+                  f"(providers: {ort.get_available_providers()})")
+            print(hint)
+            return VERIFY_NOT_ON_CUDA
+        listed = f"onnxruntime-gpu {ort.__version__}, {_CUDA_PROVIDER} listed"
+        if not torch.cuda.is_available():
+            print(listed)
+            print("no CUDA session was created: PyTorch sees no GPU on this machine, so only the provider "
+                  "listing was checked. Run 'python facet.py --doctor' on the GPU machine to prove it loads")
+            return VERIFY_LISTED_ONLY
+        probe = _probe_cuda_session(ort)
+        if probe is None:
+            print(listed)
+            print("no CUDA session was created: the 'onnx' package is not installed, so only the provider "
+                  "listing was checked")
+            return VERIFY_LISTED_ONLY
+        providers, reason = probe
+        if _runs_on_cuda(providers):
+            print(f"onnxruntime-gpu {ort.__version__}: a CUDA test session runs on {_CUDA_PROVIDER}")
+            return VERIFY_ON_CUDA
+        print(f"onnxruntime-gpu {ort.__version__}: the CUDA test session fell back to {providers}"
+              + (f": {reason}" if reason else ""))
+        print(hint)
+        return VERIFY_NOT_ON_CUDA
+    except Exception as ex:
+        print(f"{type(ex).__name__}: {ex}")
+        return VERIFY_COULD_NOT_RUN
 
 
 def run_doctor(config_path=None, db_path=None, simulate_gpu=None, simulate_vram=None):
@@ -599,7 +684,10 @@ def run_doctor(config_path=None, db_path=None, simulate_gpu=None, simulate_vram=
 
     # --- ONNX Runtime ---
     _section("ONNX Runtime")
-    _report_onnx_runtime(config_path, torch, selected_device)
+    try:
+        _report_onnx_runtime(config_path, torch, selected_device)
+    except Exception as e:
+        _warn("ONNX Runtime check", f"failed unexpectedly: {e}")
 
     # --- VRAM Profile ---
     _section("VRAM Profile")

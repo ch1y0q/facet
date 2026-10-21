@@ -929,6 +929,11 @@ def _session_on_cuda(requested):
     return ["CUDAExecutionProvider", "CPUExecutionProvider"]
 
 
+def _session_cuda_behind_cpu(requested):
+    """CUDA is offered, but the CPU provider is first: the nodes run on the CPU."""
+    return ["CPUExecutionProvider", "CUDAExecutionProvider"]
+
+
 def _session_falls_back_to_cpu(requested):
     """What ONNX Runtime does with a CUDA 13 build beside CUDA 12 libraries: the C++ logger names the library."""
     os.write(2, _CUDA13_LOAD_FAILURE)
@@ -1047,11 +1052,13 @@ class TestDoctorOnnxRuntime:
         assert built == []
 
     def test_a_session_on_cuda_is_the_only_ok_verdict(self, capsys, tmp_path):
+        """The version line is information: it prints before the checks that decide whether the install is healthy."""
         built = []
         ort = _fake_onnxruntime(["CUDAExecutionProvider", "CPUExecutionProvider"], _session_on_cuda, built)
         section = self._run(capsys, tmp_path, ort)
         assert "[OK] CUDA session: a test InferenceSession runs on CUDAExecutionProvider" in section
-        assert "[OK] onnxruntime: 1.26.0 (onnxruntime-gpu)" in section
+        assert "[--] onnxruntime: 1.26.0 (onnxruntime-gpu)" in section
+        assert section.count("[OK]") == 1
         assert "[!!]" not in section
         assert built == [["CUDAExecutionProvider", "CPUExecutionProvider"]]
 
@@ -1150,7 +1157,7 @@ class TestDoctorOnnxRuntime:
         built = []
         ort = _fake_onnxruntime(["CUDAExecutionProvider", "CPUExecutionProvider"], _session_raises, built)
         section = self._run(capsys, tmp_path, ort)
-        assert "[OK] onnxruntime" in section
+        assert "[--] onnxruntime: 1.26.0" in section
         assert "CUDA session" not in section
         assert built == []
 
@@ -1166,7 +1173,7 @@ class TestDoctorOnnxRuntime:
         built = []
         ort = _fake_onnxruntime(["CUDAExecutionProvider", "CPUExecutionProvider"], _session_raises, built)
         section = self._run(capsys, tmp_path, ort, simulate_gpu="RTX 5070 Ti", simulate_vram=16.0)
-        assert "[OK] onnxruntime" in section
+        assert "[--] onnxruntime: 1.26.0" in section
         assert "CUDA session" not in section
         assert "CUDAExecutionProvider: missing" not in section
         assert built == []
@@ -1188,6 +1195,13 @@ class TestDoctorOnnxRuntime:
         section = self._run(capsys, tmp_path, ort, distributions=["onnxruntime", "onnxruntime-gpu"])
         assert "[!!] ONNX Runtime packages: onnxruntime and onnxruntime-gpu are both installed" in section
         assert _REPAIR_COMMAND in section
+
+    def test_both_distributions_installed_never_print_a_green_version_line(self, capsys, tmp_path):
+        """'[OK] onnxruntime: 1.31.0 (onnxruntime, onnxruntime-gpu)' above the warning that says it is broken."""
+        ort = _fake_onnxruntime(["CPUExecutionProvider"], _session_on_cuda, [])
+        section = self._run(capsys, tmp_path, ort, distributions=["onnxruntime", "onnxruntime-gpu"])
+        assert "[--] onnxruntime: 1.26.0 (onnxruntime, onnxruntime-gpu)" in section
+        assert "[OK]" not in section
 
     def test_both_distributions_with_a_cpu_torch_get_the_cpu_fix(self, capsys, tmp_path):
         cpu_torch = _make_mock_torch_module()
@@ -1243,6 +1257,161 @@ class TestDoctorOnnxRuntime:
         assert "[!!] CUDAExecutionProvider: missing" in section
         assert "no onnxruntime-gpu wheel built for CUDA 12 exists for aarch64" in section
         assert "<1.27" not in section
+
+    def test_only_a_session_that_puts_cuda_first_counts_as_running_on_cuda(self, capsys, tmp_path):
+        """A session listing CUDA behind the CPU provider runs its nodes on the CPU: ``in`` is not the verdict."""
+        ort = _fake_onnxruntime(["CUDAExecutionProvider", "CPUExecutionProvider"], _session_cuda_behind_cpu, [])
+        section = self._run(capsys, tmp_path, ort)
+        assert "[!!] CUDA session: fell back to ['CPUExecutionProvider', 'CUDAExecutionProvider']" in section
+        assert "[OK] CUDA session" not in section
+        assert _REPAIR_COMMAND in section
+
+    def test_a_cuda_11_torch_is_told_why_no_gpu_build_applies_and_gets_the_cpu_repair(self, capsys, tmp_path):
+        cuda11 = _make_cuda_torch()
+        cuda11.version = types.SimpleNamespace(cuda="11.8")
+        ort = _fake_onnxruntime(["CPUExecutionProvider"], _session_on_cuda, [])
+        section = self._run(capsys, tmp_path, ort, torch=cuda11, distributions=["onnxruntime"])
+        assert "[!!] CUDAExecutionProvider: missing" in section
+        assert "cuDNN 9" in section
+        assert _CPU_REPAIR_COMMAND in section
+        assert "onnxruntime-gpu>=" not in section
+
+    def test_an_unexpected_failure_in_the_section_is_one_warning_and_the_doctor_carries_on(self, capsys, tmp_path):
+        with mock.patch("diagnostics._report_onnx_runtime", side_effect=RuntimeError("boom")):
+            section = self._run(capsys, tmp_path, None)
+        assert [line for line in section.splitlines() if "[!!]" in line] == [
+            "  [!!] ONNX Runtime check: failed unexpectedly: boom"]
+
+
+class TestCapturedStderrFd:
+    def test_the_temp_file_is_closed_when_the_descriptor_cannot_be_duplicated(self, monkeypatch):
+        import diagnostics
+        opened = []
+        real_temporary_file = diagnostics.tempfile.TemporaryFile
+
+        def tracking_temporary_file():
+            handle = real_temporary_file()
+            opened.append(handle)
+            return handle
+
+        def refuse(fd):
+            raise OSError("too many open files")
+
+        monkeypatch.setattr(diagnostics.tempfile, "TemporaryFile", tracking_temporary_file)
+        monkeypatch.setattr(diagnostics.os, "dup", refuse)
+        with diagnostics._captured_stderr_fd() as captured:
+            pass
+        assert captured == []
+        assert len(opened) == 1
+        assert opened[0].closed
+
+    def test_the_block_runs_uncaptured_when_there_is_no_temp_file(self, monkeypatch):
+        import diagnostics
+
+        def refuse():
+            raise OSError("no space left on device")
+
+        monkeypatch.setattr(diagnostics.tempfile, "TemporaryFile", refuse)
+        ran = []
+        with diagnostics._captured_stderr_fd() as captured:
+            ran.append(True)
+        assert ran == [True]
+        assert captured == []
+
+
+class TestVerifyOnnxRuntime:
+    """install.sh's final check: the doctor's real CUDA session, with 'could not run' kept apart from 'not on CUDA'."""
+
+    def _verify(self, capsys, ort, *, torch=None, onnx=_UNSET, distributions=None):
+        import diagnostics
+        modules = {"torch": torch if torch is not None else _make_cuda_torch(),
+                   "onnx": _fake_onnx() if onnx is _UNSET else onnx}
+        if ort == "missing":
+            modules["onnxruntime"] = None
+        else:
+            modules["onnxruntime"] = ort
+        with mock.patch.dict("sys.modules", modules), \
+             mock.patch("utils.onnx_runtime.installed_distributions",
+                        return_value=distributions if distributions is not None else ["onnxruntime-gpu"]):
+            code = diagnostics.verify_onnx_runtime()
+        return code, capsys.readouterr().out
+
+    @staticmethod
+    def _no_gpu_torch():
+        torch = _make_cuda_torch()
+        torch.cuda.is_available = lambda: False
+        return torch
+
+    def test_a_session_on_cuda_is_the_only_clean_pass(self, capsys):
+        built = []
+        ort = _fake_onnxruntime(["CUDAExecutionProvider", "CPUExecutionProvider"], _session_on_cuda, built)
+        code, out = self._verify(capsys, ort)
+        assert code == 0
+        assert out == "onnxruntime-gpu 1.26.0: a CUDA test session runs on CUDAExecutionProvider\n"
+        assert built == [["CUDAExecutionProvider", "CPUExecutionProvider"]]
+
+    def test_a_listed_provider_that_falls_back_is_not_on_cuda(self, capsys):
+        """The case a provider listing cannot see: CUDA 13 wheel beside CUDA 12 libraries."""
+        ort = _fake_onnxruntime(["CUDAExecutionProvider", "CPUExecutionProvider"], _session_falls_back_to_cpu, [])
+        code, out = self._verify(capsys, ort)
+        assert code == 1
+        assert "the CUDA test session fell back to ['CPUExecutionProvider']: libcublasLt.so.13" in out
+        assert _REPAIR_COMMAND in out
+
+    def test_cuda_behind_the_cpu_provider_is_not_on_cuda(self, capsys):
+        ort = _fake_onnxruntime(["CUDAExecutionProvider", "CPUExecutionProvider"], _session_cuda_behind_cpu, [])
+        code, out = self._verify(capsys, ort)
+        assert code == 1
+        assert "fell back to ['CPUExecutionProvider', 'CUDAExecutionProvider']" in out
+
+    def test_without_a_gpu_visible_to_torch_only_the_listing_is_checked_and_it_says_so(self, capsys):
+        built = []
+        ort = _fake_onnxruntime(["CUDAExecutionProvider", "CPUExecutionProvider"], _session_falls_back_to_cpu, built)
+        code, out = self._verify(capsys, ort, torch=self._no_gpu_torch())
+        assert code == 3
+        assert "onnxruntime-gpu 1.26.0, CUDAExecutionProvider listed" in out
+        assert "no CUDA session was created: PyTorch sees no GPU" in out
+        assert built == []
+
+    def test_without_the_onnx_package_only_the_listing_is_checked_and_it_says_so(self, capsys):
+        ort = _fake_onnxruntime(["CUDAExecutionProvider", "CPUExecutionProvider"], _session_on_cuda, [])
+        code, out = self._verify(capsys, ort, onnx=None)
+        assert code == 3
+        assert "the 'onnx' package is not installed" in out
+
+    def test_a_cpu_only_wheel_is_not_on_cuda_even_without_a_gpu(self, capsys):
+        ort = _fake_onnxruntime(["CPUExecutionProvider"], _session_on_cuda, [])
+        code, out = self._verify(capsys, ort, torch=self._no_gpu_torch())
+        assert code == 1
+        assert "does not offer CUDAExecutionProvider" in out
+        assert _REPAIR_COMMAND in out
+
+    def test_both_distributions_installed_are_not_on_cuda(self, capsys):
+        ort = _fake_onnxruntime(["CUDAExecutionProvider", "CPUExecutionProvider"], _session_on_cuda, [])
+        code, out = self._verify(capsys, ort, distributions=["onnxruntime", "onnxruntime-gpu"])
+        assert code == 1
+        assert "expected onnxruntime-gpu alone" in out
+
+    def test_an_unimportable_onnxruntime_is_not_on_cuda(self, capsys):
+        code, out = self._verify(capsys, types.ModuleType("onnxruntime"))
+        assert code == 1
+        assert "onnxruntime cannot be imported" in out
+        assert "InferenceSession" in out
+
+    def test_a_session_that_cannot_be_built_is_the_check_failing_not_a_verdict(self, capsys):
+        ort = _fake_onnxruntime(["CUDAExecutionProvider", "CPUExecutionProvider"], _session_raises, [])
+        code, out = self._verify(capsys, ort)
+        assert code == 2
+        assert "RuntimeError: Failed to create the session" in out
+        assert "fell back" not in out
+
+    def test_a_torch_that_cannot_be_imported_is_the_check_failing_not_a_verdict(self, capsys):
+        ort = _fake_onnxruntime(["CUDAExecutionProvider", "CPUExecutionProvider"], _session_on_cuda, [])
+        import diagnostics
+        with mock.patch.dict("sys.modules", {"torch": None, "onnxruntime": ort}):
+            code = diagnostics.verify_onnx_runtime()
+        assert code == 2
+        assert "ModuleNotFoundError" in capsys.readouterr().out
 
 
 class TestProbeReason:

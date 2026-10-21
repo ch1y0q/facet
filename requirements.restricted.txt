@@ -6,14 +6,13 @@
 # Face Detection
 insightface>=0.7.0
 # ONNX Runtime — install.sh auto-detects nvidia-smi and installs the right
-# variant AFTER this file (onnxruntime-gpu for CUDA 11.8/12.x, plain onnxruntime on CPU).
+# variant AFTER this file (onnxruntime-gpu for CUDA 12.x, plain onnxruntime on CPU and CUDA 11.8).
 # insightface depends on the CPU `onnxruntime`, and the CPU and GPU distributions share one
 # onnxruntime/ directory, so installing this file re-adds the CPU build over a GPU one
 # (issue #229). If you bypass install.sh, uninstall BOTH names after this file and install
 # exactly ONE of (the GPU major must match your PyTorch CUDA build, not the driver's):
-#   onnxruntime>=1.15.0              # CPU only
+#   onnxruntime>=1.15.0              # CPU only, and CUDA 11.8 PyTorch (no onnxruntime-gpu matches its cuDNN 9)
 #   onnxruntime-gpu>=1.19.0,<1.27    # GPU acceleration for CUDA 12.x PyTorch (cu124/cu126/cu128)
-#   onnxruntime-gpu>=1.15.0,<1.18    # GPU acceleration for CUDA 11.8 PyTorch
 # e.g. pip uninstall -y onnxruntime onnxruntime-gpu && pip install "onnxruntime-gpu>=1.19.0,<1.27"
 
 # Quality Assessment (PyIQA models: TOPIQ, HyperIQA, DBCNN, MUSIQ).
