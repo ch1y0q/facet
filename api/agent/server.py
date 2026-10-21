@@ -53,7 +53,7 @@ INSTRUCTIONS = (
     "Facet is a photo library with quality scores (aesthetic, composition, technical, faces). "
     "Use search_photos to filter it the way the viewer does, get_photo for one photo's detail, "
     "and status to see your effective permission level. Searches (search_photos, semantic_search, "
-    "similar_photos) are shown in the user's open Facet tab automatically (show=true): never ask "
+    "similar_photos, and auto_cull's dry run) are shown in the user's open Facet tab automatically (show=true): never ask "
     "whether to open or show results, report what you found. Use show=false only for intermediate "
     "probes or counts (and for any search that feeds a write tool's expected_count); the last shown "
     "search is what the user sees, and the result's shown_in_tab says whether it was applied and why "
@@ -268,7 +268,7 @@ def register_all_tools(server: MCPServer, app: Any, client: InternalClient, stat
     register_read_tools(server, client, status_extra, registry)
     register_write_tools(server, client, registry)
     register_ui_tools(server, registry)
-    register_culling_tools(server, app)
+    register_culling_tools(server, app, registry)
     register_correction_tools(server, client)
     register_report_tools(server, app, client)
     prompts.register_prompts(server)

@@ -188,6 +188,51 @@ class TestAutoCull:
         assert result["data"]["scope_dependent_kinds"] == kinds
         assert ("whole range in one call" in result.get("note", "")) == bool(kinds)
 
+    def _spy(self, monkeypatch, reply=None):
+        from api.agent import show as relay
+        calls = []
+
+        async def fake(registry, resolved, settings, tab_id, paths, *, timeout, groups=None, marks=None):
+            calls.append({"paths": paths, "groups": groups, "marks": marks, "tab_id": tab_id})
+            return reply or {"applied": True, "tab_id": "t", "total": len(paths)}
+        monkeypatch.setattr(relay, "show_paths_in_tab", fake)
+        return calls
+
+    def test_auto_cull_dry_run_pins_annotated_page(self, env_token, monkeypatch):
+        env, token = env_token
+        calls = self._spy(monkeypatch)
+        result = env.call(token, "auto_cull", {"group_by": "burst", **SCOPE, "tab_id": "abcd"})
+        assert result["ok"], result
+        row = result["data"]["rows"][0]
+        assert len(calls) == 1 and calls[0]["tab_id"] == "abcd"
+        paths = row["keep_paths"] + row["reject_paths"]
+        assert calls[0]["paths"] == paths
+        assert calls[0]["groups"] == [row["number"]] * len(paths)
+        assert calls[0]["marks"] == ["keep"] * len(row["keep_paths"]) + ["remove"] * len(row["reject_paths"])
+        assert result["shown_in_tab"]["applied"] is True
+
+    def test_auto_cull_show_failure_does_not_fail(self, env_token, monkeypatch):
+        env, token = env_token
+        self._spy(monkeypatch, reply={"applied": False, "reason": "no_tab"})
+        result = env.call(token, "auto_cull", {"group_by": "burst", **SCOPE})
+        assert result["ok"] and result["shown_in_tab"] == {"applied": False, "reason": "no_tab"}
+        assert result["confirm"]
+
+    def test_auto_cull_show_false_skips(self, env_token, monkeypatch):
+        env, token = env_token
+        calls = self._spy(monkeypatch)
+        result = env.call(token, "auto_cull", {"group_by": "burst", **SCOPE, "show": False})
+        assert result["ok"] and not calls and "shown_in_tab" not in result
+
+    def test_auto_cull_apply_never_shows(self, env_token, monkeypatch):
+        env, token = env_token
+        first = env.call(token, "auto_cull", {"group_by": "burst", **SCOPE})
+        calls = self._spy(monkeypatch)
+        result = env.call(token, "auto_cull", {"group_by": "burst", **SCOPE, "dry_run": False,
+                                               "confirm": first["confirm"]})
+        assert result["ok"], result
+        assert not calls and "shown_in_tab" not in result
+
     def test_auto_cull_description_says_one_call(self, env_token):
         env, token = env_token
         tools = env.rpc(token, "tools/list").json()["result"]["tools"]
@@ -416,3 +461,12 @@ class TestProfiles:
         assert env.call(token, "suggest_culling_profile", {"date_to": "x"})["error"] == "invalid_input"
         hints = env.call(token, "keeper_hints", {"paths": BURST_PATHS})
         assert hints["ok"] and isinstance(hints["data"]["rows"], list)
+
+
+def test_pinned_page_past_the_cap_pins_keepers_first():
+    rows = [{"number": n, "keep_paths": [f"/k{n}"], "reject_paths": [f"/r{n}a", f"/r{n}b"]}
+            for n in range(1, 101)]
+    paths, groups, marks, unpinned = tools_culling._pinned_page(rows)
+    assert len(paths) == tools_culling.SHOW_PIN_MAX and unpinned == 100
+    assert marks[:100] == ["keep"] * 100 and marks[100:] == ["remove"] * 100
+    assert paths[0] == "/k1" and groups[0] == 1 and paths[100] == "/r1a" and groups[100] == 1

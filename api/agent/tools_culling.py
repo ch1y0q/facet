@@ -19,9 +19,12 @@ from mcp.types import CallToolResult, ToolAnnotations
 from pydantic import BaseModel, ConfigDict, Field
 
 from api.agent import nonce
+from api.agent import show as relay
+from api.agent.bridge import TabRegistry
 from api.agent.internal_client import InternalClient, RouteSpec, err, ok
 from api.agent.limits import encoded_size
 from api.agent.runtime import run_tool
+from api.agent.ui_tools import TAB_ID_PATTERN
 from api.agent.tools_common import DESTRUCTIVE_ANNOTATIONS, READ_ANNOTATIONS, register_tool
 from api.db_helpers import to_second_granularity
 
@@ -43,6 +46,28 @@ GROUP_PHOTO_LIMIT = 12
 GROUP_PHOTO_KEYS = ("path", "filename", "date_taken", "aggregate", "aesthetic", "tech_sharpness",
                     "is_blink", "sequence_ev_offset", "keeper_prob")
 SEE_GROUP = " Call ui_show_culling_group to show a group to the user."
+SHOW_PIN_MAX = 200
+AUTO_CULL_SHOW = (
+    " A successful dry run with rows pins its current page in the user's open Facet tab (`show`, "
+    "default true; never ask whether to show it): the user sees the photos numbered by group and "
+    "flagged Keep or Remove, and can flip Keep/Remove on the cards. Read those flips with "
+    "ui_get_context (`review`) and pass them as keep_paths / remove_paths on BOTH the dry run and "
+    "the apply. Report `shown_in_tab` (applied, or the reason it was not, including `unpinned` when "
+    "a page holds more than 200 photos). The apply never shows; show=false skips it.")
+
+
+def _pinned_page(rows: list[dict]) -> tuple[list[str], list[int], list[str], int]:
+    """``(paths, groups, marks, unpinned)`` for a page of plan rows, capped at ``SHOW_PIN_MAX``.
+
+    Plan order; past the cap the keepers come first so every keeper is pinned before any removal.
+    """
+    cards = [(path, row["number"], mark) for row in rows
+             for paths, mark in ((row.get("keep_paths") or [], "keep"), (row.get("reject_paths") or [], "remove"))
+             for path in paths]
+    unpinned = max(0, len(cards) - SHOW_PIN_MAX)
+    if unpinned:
+        cards = ([c for c in cards if c[2] == "keep"] + [c for c in cards if c[2] == "remove"])[:SHOW_PIN_MAX]
+    return [c[0] for c in cards], [c[1] for c in cards], [c[2] for c in cards], unpinned
 
 
 class ConfirmGroup(BaseModel):
@@ -125,7 +150,7 @@ def _validate_confirm(groups: list[ConfirmGroup]) -> Optional[dict]:
     return None
 
 
-def register_culling_tools(server: MCPServer, app: Any) -> None:
+def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry) -> None:
     """Register the darkroom tools. ``app`` is the FastAPI app the routes live on."""
     client = InternalClient(app, CULLING_ROUTES)
 
@@ -214,6 +239,8 @@ def register_culling_tools(server: MCPServer, app: Any) -> None:
         cursor: Annotated[int, Field(ge=0)] = 0,
         keep_paths: Annotated[Optional[list[str]], Field(max_length=1000)] = None,
         remove_paths: Annotated[Optional[list[str]], Field(max_length=1000)] = None,
+        show: bool = True,
+        tab_id: Annotated[Optional[str], Field(pattern=TAB_ID_PATTERN)] = None,
     ) -> CallToolResult:
         async def handler(grant, resolved, settings):
             since, until, bad = normalise_window(date_from, date_to)
@@ -229,7 +256,11 @@ def register_culling_tools(server: MCPServer, app: Any) -> None:
                                         json={**options, "dry_run": True, "cursor": cursor if dry_run else 0},
                                         timeout=timeout)
             if not preview["ok"] or dry_run:
-                return _preview_result(grant, preview)
+                result = _preview_result(grant, preview)
+                if show and dry_run and result["ok"]:
+                    result["shown_in_tab"] = await _show_page(
+                        result["data"].get("rows") or [], resolved, settings, tab_id, timeout)
+                return result
             digest = (preview["data"] or {}).get("plan_digest")
             if not digest or not (preview["data"] or {}).get("rejected") \
                     or not nonce.check(grant.nonce_owner, "auto_cull", digest, confirm):
@@ -243,6 +274,16 @@ def register_culling_tools(server: MCPServer, app: Any) -> None:
                 return err("confirmation_required", applied["message"])
             return applied
         return await run_tool(ctx, "auto_cull", handler, write=not dry_run)
+
+    async def _show_page(rows: list[dict], resolved, settings, tab_id: Optional[str], timeout: float) -> dict:
+        paths, groups, marks, unpinned = _pinned_page(rows)
+        if not paths:
+            return relay.not_shown("empty_result")
+        shown = await relay.show_paths_in_tab(registry, resolved, settings, tab_id, paths,
+                                              timeout=timeout, groups=groups, marks=marks)
+        if unpinned:
+            shown["unpinned"] = unpinned
+        return shown
 
     def _preview_result(grant, upstream: dict) -> dict:
         if not upstream["ok"]:
@@ -324,7 +365,7 @@ def register_culling_tools(server: MCPServer, app: Any) -> None:
         "Brackets and panoramas are kept whole. date_from/date_to "
         "accept 'YYYY-MM-DD' (date_to covers the whole day) or 'YYYY-MM-DD HH:MM:SS'. Cull a whole "
         "range in ONE call: do not split it by month, because similar and scene groups depend on "
-        "the date range (see `scope_dependent_kinds` in the result)." + SEE_GROUP,
+        "the date range (see `scope_dependent_kinds` in the result)." + AUTO_CULL_SHOW + SEE_GROUP,
         DESTRUCTIVE_ANNOTATIONS)
     add(confirm_culling_groups, "confirm_culling_groups",
         "Confirm up to 20 groups, each keyed by (type, group_id) with the group's `paths` and the "
