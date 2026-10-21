@@ -7,6 +7,7 @@ from unittest import mock
 
 import numpy as np
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from api import create_app
@@ -26,11 +27,11 @@ def _cm(conn):
     return _ctx
 
 
-def _make_jpeg_bytes() -> bytes:
-    """Create a minimal valid 1x1 JPEG image."""
+def _make_jpeg_bytes(size=(1, 1)) -> bytes:
+    """Create a minimal valid JPEG image, 1x1 unless ``size`` says otherwise."""
     from PIL import Image
     buf = BytesIO()
-    img = Image.new("RGB", (1, 1), (255, 0, 0))
+    img = Image.new("RGB", size, (255, 0, 0))
     img.save(buf, format="JPEG")
     return buf.getvalue()
 
@@ -99,6 +100,88 @@ class TestGetThumbnail:
         assert resp.headers["content-type"] == "image/jpeg"
         # Resized image should be smaller than the original 640x640
         assert len(resp.content) < len(large_jpeg)
+
+
+def _image_size(image_bytes):
+    from PIL import Image
+    return Image.open(BytesIO(image_bytes)).size
+
+
+class TestThumbnailAboveStoredSize:
+    """GET /thumbnail?size=N where N exceeds the stored thumbnail.
+
+    The darkroom and compare panes ask for 1920 px; the stored thumbnail is
+    640 px, and serving it as-is left the browser to upscale it.
+    """
+
+    STORED = (640, 427)
+
+    def _get(self, client, original, size, sequence_kind=None):
+        mock_conn = mock.MagicMock()
+        mock_conn.execute.return_value.fetchone.return_value = {
+            "thumbnail": _make_jpeg_bytes(self.STORED), "sequence_kind": sequence_kind,
+        }
+        resolve = mock.patch("api.routers.thumbnails.resolve_photo_disk_path",
+                             return_value=str(original),
+                             side_effect=None if original else HTTPException(status_code=404))
+        with mock.patch("api.routers.thumbnails.get_db", _cm(mock_conn)), resolve as resolved:
+            resp = client.get("/thumbnail", params={"path": "/library/photo.jpg", "size": size})
+        return resp, resolved
+
+    def test_renders_requested_size_from_original(self, client, tmp_path):
+        original = tmp_path / "photo.jpg"
+        original.write_bytes(_make_jpeg_bytes((3000, 2000)))
+
+        resp, _ = self._get(client, original, 1920)
+
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "image/jpeg"
+        assert _image_size(resp.content) == (1920, 1280)
+
+    def test_never_upscales_a_small_original(self, client, tmp_path):
+        original = tmp_path / "photo.jpg"
+        original.write_bytes(_make_jpeg_bytes((1200, 800)))
+
+        resp, _ = self._get(client, original, 1920)
+
+        assert _image_size(resp.content) == (1200, 800)
+
+    def test_size_within_stored_thumbnail_does_not_touch_disk(self, client, tmp_path):
+        resp, resolved = self._get(client, tmp_path / "unused.jpg", 640)
+
+        assert _image_size(resp.content) == self.STORED
+        resolved.assert_not_called()
+
+    def test_unavailable_original_serves_stored_thumbnail(self, client):
+        resp, _ = self._get(client, None, 1920)
+
+        assert resp.status_code == 200
+        assert _image_size(resp.content) == self.STORED
+
+    def test_undecodable_original_serves_stored_thumbnail(self, client, tmp_path):
+        original = tmp_path / "photo.jpg"
+        original.write_bytes(b"not an image")
+
+        resp, _ = self._get(client, original, 1920)
+
+        assert resp.status_code == 200
+        assert _image_size(resp.content) == self.STORED
+
+    def test_raw_renders_through_display_loader_with_sequence_kind(self, client, tmp_path):
+        from PIL import Image
+        from api.routers import thumbnails
+
+        original = tmp_path / "photo.cr2"
+        original.write_bytes(b"raw bytes")
+        thumbnails._render_from_original_cached.cache_clear()
+
+        with mock.patch("utils.image_loading.load_display_image",
+                        return_value=Image.new("RGB", (6000, 4000))) as load:
+            resp, _ = self._get(client, original, 1920, sequence_kind="bracket")
+
+        assert _image_size(resp.content) == (1920, 1280)
+        assert load.call_args.kwargs["sequence_kind"] == "bracket"
+        assert load.call_args.kwargs["decode_budget"] == "viewer"
 
 
 # ---------------------------------------------------------------------------

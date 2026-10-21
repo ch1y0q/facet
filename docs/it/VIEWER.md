@@ -1148,7 +1148,7 @@ I tipi TypeScript del client sono generati da questo schema in `client/src/app/c
 
 | Endpoint | Descrizione |
 |----------|-------------|
-| `GET /thumbnail` | Miniatura della foto |
+| `GET /thumbnail` | Miniatura della foto. Un `size` maggiore della miniatura memorizzata viene generato dall'originale; se l'originale non è disponibile, viene servita la miniatura memorizzata |
 | `GET /face_thumbnail/{id}` | Miniatura del ritaglio del volto |
 | `GET /person_thumbnail/{id}` | Miniatura rappresentativa della persona |
 | `GET /image` | Immagine a piena risoluzione |

@@ -1208,7 +1208,7 @@ python database.py --stats-info
 
 | 端点 | 说明 |
 |----------|-------------|
-| `GET /thumbnail` | 照片缩略图 |
+| `GET /thumbnail` | 照片缩略图。`size` 大于已存储的缩略图时，从原图渲染该尺寸；原图不可用时返回已存储的缩略图 |
 | `GET /face_thumbnail/{id}` | 人脸裁切缩略图 |
 | `GET /person_thumbnail/{id}` | 人物代表缩略图 |
 | `GET /image` | 全分辨率图片 |

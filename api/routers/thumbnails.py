@@ -140,6 +140,47 @@ def _get_or_resize(photo_path: str, thumbnail_bytes: bytes, size: int) -> bytes:
     return resized
 
 
+def _long_edge(image_bytes: bytes) -> int:
+    from PIL import Image
+    return max(Image.open(BytesIO(image_bytes)).size)
+
+
+@lru_cache(maxsize=32)
+def _render_from_original_cached(file_path: str, mtime: float, size: int, quality: int,
+                                 sequence_kind: Optional[str]) -> bytes:
+    """Render the original at ``size`` on its long edge, through the same
+    display loader ``/image`` uses (RAW preview vs. demosaic, bracket rendering,
+    EXIF orientation, HDR PQ tone mapping)."""
+    from PIL import Image
+    from utils.image_loading import get_raw_decode_settings, load_display_image
+
+    ratio = float(get_raw_decode_settings()['preview_min_sensor_ratio'])
+    img = load_display_image(file_path, min_preview_sensor_ratio=ratio,
+                             decode_budget='viewer', sequence_kind=sequence_kind)
+    if img is None:
+        raise RuntimeError(f"Display decode failed: {file_path}")
+    img.thumbnail((size, size), Image.Resampling.LANCZOS)
+    buf = BytesIO()
+    img.save(buf, format='JPEG', quality=quality)
+    return buf.getvalue()
+
+
+def _render_from_original(path: str, size: int, sequence_kind: Optional[str]) -> Optional[bytes]:
+    """None when the original is unavailable or will not decode, so the caller
+    can serve the stored thumbnail instead."""
+    try:
+        disk = resolve_photo_disk_path(path)
+    except HTTPException:
+        return None
+    try:
+        return _render_from_original_cached(disk, os.path.getmtime(disk), size,
+                                            _get_image_jpeg_quality(), sequence_kind)
+    except (OSError, ValueError, RuntimeError):
+        logger.warning("Could not render %s at %dpx, serving the stored thumbnail", disk, size,
+                       exc_info=True)
+        return None
+
+
 @router.get("/thumbnail")
 def get_thumbnail(
     request: Request,
@@ -147,11 +188,16 @@ def get_thumbnail(
     size: Optional[int] = Query(None),
     user: Optional[CurrentUser] = Depends(get_optional_user),
 ):
-    """Get photo thumbnail."""
+    """Get photo thumbnail.
+
+    A ``size`` larger than the stored thumbnail (the darkroom and compare panes
+    ask for 1920 px) is rendered from the original rather than served as the
+    stored one for the browser to upscale.
+    """
     vis_sql, vis_params = get_visibility_clause(user.user_id if user else None)
     with get_db() as conn:
         row = conn.execute(
-            f"SELECT thumbnail FROM photos WHERE path = ? AND {vis_sql}",
+            f"SELECT thumbnail, sequence_kind FROM photos WHERE path = ? AND {vis_sql}",
             [path, *vis_params],
         ).fetchone()
 
@@ -159,6 +205,10 @@ def get_thumbnail(
         if size and 0 < size < 640:
             resized = _get_or_resize(path, row['thumbnail'], size)
             return _cached_image_response(resized, request)
+        if size and size > _long_edge(row['thumbnail']):
+            rendered = _render_from_original(path, size, row['sequence_kind'])
+            if rendered is not None:
+                return _cached_image_response(rendered, request)
         return _cached_image_response(row['thumbnail'], request)
     return Response(content="Thumbnail not found", status_code=404)
 

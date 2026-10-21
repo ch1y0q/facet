@@ -1219,7 +1219,7 @@ The client's TypeScript types are generated from that schema into `client/src/ap
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /thumbnail` | Photo thumbnail |
+| `GET /thumbnail` | Photo thumbnail. A `size` larger than the stored thumbnail is rendered from the original; when the original is unavailable, the stored thumbnail is served |
 | `GET /face_thumbnail/{id}` | Face crop thumbnail |
 | `GET /person_thumbnail/{id}` | Person representative thumbnail |
 | `GET /image` | Full-resolution image |

@@ -1147,7 +1147,7 @@ Die TypeScript-Typen des Clients werden mit `cd client && npm run gen:api` aus d
 
 | Endpunkt | Beschreibung |
 |----------|-------------|
-| `GET /thumbnail` | Foto-Vorschaubild |
+| `GET /thumbnail` | Foto-Vorschaubild. Ein `size` größer als das gespeicherte Vorschaubild wird aus dem Original gerendert; ist das Original nicht verfügbar, wird das gespeicherte Vorschaubild geliefert |
 | `GET /face_thumbnail/{id}` | Gesichts-Ausschnitt-Vorschaubild |
 | `GET /person_thumbnail/{id}` | Repräsentatives Personen-Vorschaubild |
 | `GET /image` | Bild in voller Auflösung |

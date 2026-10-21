@@ -1147,7 +1147,7 @@ Los tipos TypeScript del cliente se generan a partir de ese esquema en `client/s
 
 | Endpoint | Descripción |
 |----------|-------------|
-| `GET /thumbnail` | Miniatura de foto |
+| `GET /thumbnail` | Miniatura de foto. Un `size` mayor que la miniatura almacenada se genera a partir del original; si el original no está disponible, se sirve la miniatura almacenada |
 | `GET /face_thumbnail/{id}` | Miniatura del recorte de cara |
 | `GET /person_thumbnail/{id}` | Miniatura representativa de persona |
 | `GET /image` | Imagen a resolución completa |

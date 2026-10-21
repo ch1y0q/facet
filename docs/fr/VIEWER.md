@@ -1150,7 +1150,7 @@ Les types TypeScript du client sont générés à partir de ce schéma dans `cli
 
 | Point d'accès | Description |
 |----------|-------------|
-| `GET /thumbnail` | Vignette de photo |
+| `GET /thumbnail` | Vignette de photo. Un `size` supérieur à la vignette stockée est rendu à partir de l'original ; si l'original est indisponible, la vignette stockée est servie |
 | `GET /face_thumbnail/{id}` | Vignette de recadrage de visage |
 | `GET /person_thumbnail/{id}` | Vignette représentative d'une personne |
 | `GET /image` | Image pleine résolution |
