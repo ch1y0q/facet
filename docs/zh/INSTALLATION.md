@@ -305,10 +305,10 @@ RAW/darktable 配置文件下载功能会保持不可用，除非你自行在镜
 `ghcr.io/ncoevoet/facet:latest-cuda-legacy` 带有 CUDA 12.6 和 PyTorch 的
 `sm_50`-`sm_90` 构建 —— Maxwell、Pascal（GTX 900/10 系列）以及从 Volta 到 Hopper
 （解包后 13.8 GB）—— 面向 `latest-cuda` 不再覆盖的显卡；见上面的
-[较旧的 NVIDIA 显卡](#较旧的-nvidia-显卡-maxwell-pascal-volta)。这三个镜像都只有
+[较旧的 NVIDIA 显卡](#较旧的-nvidia-显卡-maxwell-pascal-volta)。两个 CUDA 镜像都内置 `onnxruntime-gpu`（1.26.0，一个 CUDA 12 构建）来取代 `onnxruntime`，因此人脸检测运行在 GPU 上；CPU 镜像保留 `onnxruntime`。这三个镜像都只有
 `linux/amd64` 版本 —— 在 ARM 机器上请改用 `docker compose build` 本地构建，而不是
 拉取。`docker compose build`（或 `up --build`）始终基于本仓库构建；相关的
-`BASE_IMAGE`、`STRIP_TORCH`、`INSTALL_CUML` 和 `REQUIREMENTS_LOCK` 构建参数见
+`BASE_IMAGE`、`STRIP_TORCH`、`INSTALL_CUML`、`REQUIREMENTS_LOCK` 和 `ORT_GPU_VERSION` 构建参数见
 `Dockerfile`。
 
 不使用 Docker 时，同样的选择由一个环境变量或一个配置键完成：
@@ -332,6 +332,8 @@ FACET_VRAM_PROFILE=8gb python facet.py /path/to/photos
 | 可用于商业用途 | `bash install.sh --commercial` |
 | 商业用途，手动 | `pip install -r requirements.txt`，然后 `pip install -e .[commercial]` 和 `pip install mediapipe==0.10.35 --no-deps` |
 | 商业用途，Docker | `docker build --build-arg FACET_LICENSING=commercial .` |
+
+`pip install -e .[all]` 和 `faces-insightface` extra 安装的是 CPU 版 `onnxruntime`，因为 `insightface` 依赖它。在 CUDA 机器上，请在这两种方式之后再执行[用于人脸检测的 ONNX Runtime](#用于人脸检测的-onnx-runtime)中的 GPU 命令；`bash install.sh` 和 CUDA Docker 镜像已经替你做了。
 
 `mediapipe` 必须始终使用 `--no-deps` 安装：它自带的 `opencv-contrib-python` 会让 `cv2` 命名空间被重复安装。`commercial` extra 只声明其运行时依赖（`absl-py`、`flatbuffers`）。`python-ofiq`（OFIQ 人脸质量绑定）已发布到 PyPI，但只提供 Linux x86-64 和 macOS arm64 的 wheel，因此不在该 extra 中；有 wheel 的平台上请手动 `pip install python-ofiq`。
 
@@ -361,8 +363,14 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 #    使用的 SigLIP/BiRefNet/VLM 模型需要它们。
 pip install -r requirements.txt -r requirements.restricted.txt
 
-# 4. 只安装一个用于人脸检测的 ONNX Runtime（见下表）
-pip install onnxruntime-gpu>=1.17.0   # 或：pip install onnxruntime>=1.15.0
+# 4. 人脸检测运行在 ONNX Runtime 上。insightface（第 3 步）安装的是 CPU 版，
+#    因此在 CUDA 机器上要在第 3 步之后换成 GPU 版：两个包共用文件，最后安装的那个生效。
+#    请按 PyTorch 的 CUDA 构建选择版本范围（见下表），
+#    而不是按驱动的 CUDA 版本。
+pip uninstall -y onnxruntime onnxruntime-gpu
+pip install "onnxruntime-gpu>=1.19.0,<1.27"   # CUDA 12.x 版 PyTorch（cu124、cu126、cu128）
+# 仅 CPU：保留第 3 步装好的版本，或用下面的命令重装
+# pip install "onnxruntime>=1.15.0"
 
 # 5. 构建网页照片库
 cd client && npm install && npx ng build && cd ..
@@ -383,8 +391,8 @@ python -c "import torch, cv2, fastapi, insightface, open_clip, pyiqa, numpy, sci
 ## install.sh 选项与 Makefile 快捷命令
 
 `install.sh` 会定位一个 Python 3.10+，创建 `venv`，检测操作系统和 GPU（Apple
-Silicon → Metal，否则用 `nvidia-smi` → 匹配的 CUDA 构建），安装 PyTorch、对应的
-ONNX Runtime、`requirements.txt`、`transformers` 和 `accelerate`，检查
+Silicon → Metal，否则用 `nvidia-smi` → 匹配的 CUDA 构建），安装 PyTorch、`requirements.txt`、`transformers` 和 `accelerate`，最后安装对应的
+ONNX Runtime（见[用于人脸检测的 ONNX Runtime](#用于人脸检测的-onnx-runtime)），检查
 `exiftool`，构建 Angular 客户端，并验证每一处导入。
 
 | 参数 | 作用 |
@@ -419,22 +427,29 @@ JPEG/TIFF/DNG）。
 
 ## 用于人脸检测的 ONNX Runtime
 
-人脸检测（InsightFace）运行在 ONNX Runtime 上，它有 CPU 和 GPU 两种版本。
-请只安装其中一个：
+人脸检测（InsightFace）运行在 ONNX Runtime 上，它以两个包的形式发布：`onnxruntime`（CPU）和 `onnxruntime-gpu`（CUDA）。它们安装到同一个 `onnxruntime/` 目录并共用文件，因此无法共存：pip 最后安装的那个生效。`insightface` 依赖 CPU 版 `onnxruntime`，所以安装它（`requirements.restricted.txt`、`pip install -e .[all]`、`faces-insightface` extra）总会把 CPU 版重新覆盖到 GPU 版之上。因此在 CUDA 机器上，GPU 包要在这些依赖**之后**安装，并且要先把两个名称都卸载。
 
-| 环境 | 命令 |
-|--------|---------|
-| 仅 CPU | `pip install onnxruntime>=1.15.0` |
-| CUDA 12.x | `pip install onnxruntime-gpu>=1.17.0` |
-| CUDA 11.8 | `pip install onnxruntime-gpu>=1.15.0,<1.18` |
+`bash install.sh` 在 x86_64 上会替你完成这件事：检测到 CUDA 时，它最后才安装 ONNX Runtime 并检查结果（重新运行它即可修复被覆盖的 `venv`）。CUDA Docker 镜像也是如此。CPU 安装、macOS 和 CPU 镜像保留 `onnxruntime`。aarch64 上没有适用于 CUDA 12 的 `onnxruntime-gpu` wheel，所以 `install.sh` 在那里保留 CPU 版并给出提示。
 
-用 `nvidia-smi` 查看你的 CUDA 版本 —— 它印在右上角。要把已有的安装从 CPU 版
-切换到 GPU 版：
+手动安装时，请按 **PyTorch** 的 CUDA 构建选择对应的一行：
 
-```bash
-pip uninstall onnxruntime
-pip install onnxruntime-gpu>=1.17.0
-```
+| PyTorch 构建 | 命令 |
+|---------------|---------|
+| 仅 CPU | `pip uninstall -y onnxruntime onnxruntime-gpu && pip install "onnxruntime>=1.15.0"` |
+| CUDA 12.x（cu124、cu126、cu128） | `pip uninstall -y onnxruntime onnxruntime-gpu && pip install "onnxruntime-gpu>=1.19.0,<1.27"` |
+| CUDA 11.8（cu118） | `pip uninstall -y onnxruntime onnxruntime-gpu && pip install "onnxruntime-gpu>=1.15.0,<1.18"` |
+
+请按 PyTorch 的 CUDA 构建选行，而不是按 `nvidia-smi` 在右上角显示的 CUDA 版本：那是驱动支持的最新 CUDA，CUDA 13 的驱动仍然运行 `install.sh` 安装的 CUDA 12 版 PyTorch（cu128）。`python facet.py --doctor` 会在 `CUDA (compiled)` 一行显示 PyTorch 的构建。
+
+版本范围很重要。`onnxruntime-gpu` 的 1.19 到 1.26 是 CUDA 12 构建；1.27 及以后是 CUDA 13 构建，需要 CUDA 13 库，而 CUDA 12 版 PyTorch 并不提供这些库。这样的 wheel 仍会列出 `CUDAExecutionProvider`，但在创建会话时回退到 CPU，所以不加上限的 `onnxruntime-gpu` 看起来已安装，实际却跑在 CPU 上。CUDA Docker 镜像内置 1.26.0，即最后一个 CUDA 12 构建。如果你手动装了 CUDA 13 版 PyTorch，对应的要求是 `"onnxruntime-gpu>=1.27.0"`（未经测试：Facet 的安装脚本从不安装它）。
+
+要给版本要求加引号。不加引号时，shell 会把 `>=1.19.0` 当作重定向：pip 只收到不带版本的包名，当前目录里还会多出一个名为 `=1.19.0` 的文件。
+
+不要先 `pip uninstall onnxruntime` 再 `pip install onnxruntime-gpu` 来切换。卸载会删掉 GPU 包同样拥有的文件，之后 pip 会提示 "Requirement already satisfied"，而 `import onnxruntime` 只剩一个空包：InsightFace 会报错 `module 'onnxruntime' has no attribute 'InferenceSession'`。请像表中那样把两个名称都卸载。
+
+替换之后，`pip check` 会报告 "insightface ... requires onnxruntime, which is not installed"（`uv pip check`："The package `insightface` requires `onnxruntime`, but it's not installed"）。这是预期的，也无害：`onnxruntime-gpu` 提供的是同一个 `onnxruntime` 模块。
+
+要检查结果，请运行 `python facet.py --doctor` 并查看其 **ONNX Runtime** 一节。它会列出已安装的包、版本和执行提供程序，并在两个包同时安装或包无法导入时给出警告，每次都附带修复命令。当 Facet 运行在 CUDA 上时，它还会比较 ONNX Runtime 编译时针对的 CUDA 构建与 PyTorch 的构建，并运行一个单节点测试会话。只有该会话确实运行在 `CUDAExecutionProvider` 上时，`CUDA session` 一行才是 OK；否则诊断会连同 ONNX Runtime 自己给出的原因和修复方法一起发出警告。测试会话需要 `onnx` 包（没有它时诊断会说明未做探测），在 CPU 上和商业模式下（此时不使用 InsightFace）会被跳过。在 CUDA 上扫描时，若 InsightFace 的会话运行在 CPU 上，也会记录一条警告。
 
 ## 使用 RAPIDS cuML 在 GPU 上做人脸聚类
 
@@ -630,7 +645,7 @@ SAMP-Net 权重来自本项目的
 | `pillow-heif` | HEIF/HEIC 解码 | 跳过 HEIF/HEIC 文件 |
 | `rawpy` | RAW 解码（CR2/CR3/NEF/ARW/……） | 跳过 RAW 文件（已包含在基础的 `requirements.txt` 中） |
 | `cuml`、`cupy` | GPU 加速的人脸聚类（conda + CUDA） | 聚类通过 `hdbscan` 在 CPU 上运行（默认） |
-| `onnxruntime-gpu` | GPU 加速的人脸检测 | 使用 CPU 版 `onnxruntime`（较慢） |
+| `onnxruntime-gpu` | GPU 加速的人脸检测——**替换** `onnxruntime` 安装，不与之并存；参见[用于人脸检测的 ONNX Runtime](#用于人脸检测的-onnx-runtime) | 使用 CPU 版 `onnxruntime`（较慢） |
 | `aesthetic-predictor-v2-5` | 扩展 IQA 层 —— `aesthetic_v25` 评分器（`pip install -e .[iqa-extended]`；对应 `scoring_config.json` 中的 `iqa_extended.aesthetic_v25`，默认关闭）。**已弃用** —— AGPL-3.0，上游自 2024-12-18 起无人维护；建议改用 `qrealign`，它不需要额外软件包（通过 `transformers` 原生加载） | `aesthetic_v25` 不可用 |
 | `darktable-cli`（系统） | 从照片库导出 RAW/darktable 配置文件 | 只提供原图/内嵌图下载 |
 | `exiftool`（系统） | 最佳的 EXIF/GPS 提取 | 回退到 `exifread`，再回退到 PIL |

@@ -321,11 +321,13 @@ slim CPU build (3.34 GB unpacked on disk; see [Download sizes](#download-sizes))
 `ghcr.io/ncoevoet/facet:latest-cuda-legacy` carries CUDA 12.6 and PyTorch's `sm_50`-`sm_90`
 build — Maxwell, Pascal (GTX 900/10-series) and Volta through Hopper (13.8 GB unpacked) —
 for cards `latest-cuda` no longer covers; see
-[Older NVIDIA card](#older-nvidia-card-maxwell-pascal-volta) above. All three are
+[Older NVIDIA card](#older-nvidia-card-maxwell-pascal-volta) above. Both CUDA images
+ship `onnxruntime-gpu` (1.26.0, a CUDA 12 build) in place of `onnxruntime`, so face
+detection runs on the GPU; the CPU image keeps `onnxruntime`. All three are
 `linux/amd64` only — on an ARM machine, build locally with `docker compose build` instead
 of pulling. `docker compose build` (or `up --build`) always builds from this repository;
-see the `BASE_IMAGE`, `STRIP_TORCH`, `INSTALL_CUML` and `REQUIREMENTS_LOCK` build args in
-the `Dockerfile`.
+see the `BASE_IMAGE`, `STRIP_TORCH`, `INSTALL_CUML`, `REQUIREMENTS_LOCK` and
+`ORT_GPU_VERSION` build args in the `Dockerfile`.
 
 Without Docker, the same choice is an environment variable or a config key:
 
@@ -348,6 +350,8 @@ The exact thresholds `auto` applies are in
 | Commercial-safe | `bash install.sh --commercial` |
 | Commercial-safe, by hand | `pip install -r requirements.txt`, then `pip install -e .[commercial]` and `pip install mediapipe==0.10.35 --no-deps` |
 | Commercial-safe, Docker | `docker build --build-arg FACET_LICENSING=commercial .` |
+
+`pip install -e .[all]` and the `faces-insightface` extra install the CPU `onnxruntime`, because `insightface` depends on it. On a CUDA machine, follow either with the GPU command from [ONNX Runtime for face detection](#onnx-runtime-for-face-detection); `bash install.sh` and the CUDA Docker images already do.
 
 `mediapipe` must always be installed with `--no-deps`: its bundled `opencv-contrib-python` would otherwise double-install the `cv2` namespace. The `commercial` extra declares only its runtime dependencies (`absl-py`, `flatbuffers`). `python-ofiq` (the OFIQ face-quality bindings) is published on PyPI but ships wheels for Linux x86-64 and macOS arm64 only, so it is not part of the extra; install it by hand with `pip install python-ofiq` where a wheel exists.
 
@@ -377,8 +381,14 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 #    SigLIP/BiRefNet/VLM models the 8gb+ profiles use.
 pip install -r requirements.txt -r requirements.restricted.txt
 
-# 4. Install ONE ONNX Runtime for face detection (see the table below)
-pip install onnxruntime-gpu>=1.17.0   # or: pip install onnxruntime>=1.15.0
+# 4. Face detection runs on ONNX Runtime. insightface (step 3) installed the CPU build,
+#    so on a CUDA machine swap it for the GPU build now, AFTER step 3: the two packages
+#    share files and the last one installed wins. Match the range to your PyTorch CUDA
+#    build (see the table below), not to the CUDA version of your driver.
+pip uninstall -y onnxruntime onnxruntime-gpu
+pip install "onnxruntime-gpu>=1.19.0,<1.27"   # CUDA 12.x PyTorch (cu124, cu126, cu128)
+# CPU only: keep what step 3 installed, or reinstall it with
+# pip install "onnxruntime>=1.15.0"
 
 # 5. Build the web gallery
 cd client && npm install && npx ng build && cd ..
@@ -399,8 +409,9 @@ Hitting errors? See [Troubleshooting dependency conflicts](#troubleshooting-depe
 ## install.sh options and Makefile shortcuts
 
 `install.sh` locates a Python 3.10+, creates the `venv`, detects the OS and GPU (Apple
-Silicon → Metal, otherwise `nvidia-smi` → matching CUDA build), installs PyTorch, the
-right ONNX Runtime, `requirements.txt`, `transformers` and `accelerate`, checks for
+Silicon → Metal, otherwise `nvidia-smi` → matching CUDA build), installs PyTorch,
+`requirements.txt`, `transformers` and `accelerate`, then the right ONNX Runtime last
+(see [ONNX Runtime for face detection](#onnx-runtime-for-face-detection)), checks for
 `exiftool`, builds the Angular client and verifies every import.
 
 | Flag | Effect |
@@ -435,22 +446,66 @@ only).
 
 ## ONNX Runtime for face detection
 
-Face detection (InsightFace) runs on ONNX Runtime, which ships in CPU and GPU variants.
-Install exactly one:
+Face detection (InsightFace) runs on ONNX Runtime, which ships as two packages:
+`onnxruntime` (CPU) and `onnxruntime-gpu` (CUDA). They install into the same
+`onnxruntime/` directory and share files, so they cannot coexist: whichever pip
+installs last wins. `insightface` depends on the CPU `onnxruntime`, so installing it
+(`requirements.restricted.txt`, `pip install -e .[all]`, the `faces-insightface` extra)
+always brings the CPU build back over a GPU one. On a CUDA machine the GPU package
+therefore goes in **after** those requirements, with both names removed first.
 
-| Setup | Command |
-|--------|---------|
-| CPU only | `pip install onnxruntime>=1.15.0` |
-| CUDA 12.x | `pip install onnxruntime-gpu>=1.17.0` |
-| CUDA 11.8 | `pip install onnxruntime-gpu>=1.15.0,<1.18` |
+`bash install.sh` does this for you on x86_64: when it detects CUDA it installs ONNX
+Runtime last and checks the result (re-run it to repair a clobbered `venv`). The CUDA
+Docker images do the same. CPU installs, macOS and the CPU image keep `onnxruntime`.
+There is no CUDA 12 `onnxruntime-gpu` wheel for aarch64, so there `install.sh` keeps
+the CPU build and says so.
 
-Check your CUDA version with `nvidia-smi` — it is printed in the top-right corner. To
-switch an existing install from CPU to GPU:
+By hand, pick the row for your **PyTorch** CUDA build:
 
-```bash
-pip uninstall onnxruntime
-pip install onnxruntime-gpu>=1.17.0
-```
+| PyTorch build | Command |
+|---------------|---------|
+| CPU only | `pip uninstall -y onnxruntime onnxruntime-gpu && pip install "onnxruntime>=1.15.0"` |
+| CUDA 12.x (cu124, cu126, cu128) | `pip uninstall -y onnxruntime onnxruntime-gpu && pip install "onnxruntime-gpu>=1.19.0,<1.27"` |
+| CUDA 11.8 (cu118) | `pip uninstall -y onnxruntime onnxruntime-gpu && pip install "onnxruntime-gpu>=1.15.0,<1.18"` |
+
+Match the row to PyTorch's CUDA build, not to the CUDA version `nvidia-smi` prints in
+its top-right corner: that is the newest CUDA the driver supports, and a CUDA 13 driver
+still runs the CUDA 12 PyTorch (cu128) that `install.sh` installs.
+`python facet.py --doctor` shows PyTorch's build on its `CUDA (compiled)` line.
+
+The range matters. `onnxruntime-gpu` 1.19 to 1.26 are CUDA 12 builds; 1.27 and later
+are CUDA 13 builds and need CUDA 13 libraries, which a CUDA 12 PyTorch does not provide.
+Such a wheel still lists `CUDAExecutionProvider`, then falls back to the CPU when a
+session is created, so an unpinned `onnxruntime-gpu` looks installed and runs on the
+CPU. The CUDA Docker images ship 1.26.0, the last CUDA 12 build. If you installed a
+CUDA 13 PyTorch by hand, `"onnxruntime-gpu>=1.27.0"` is the matching requirement
+(untested: Facet's installer never installs one).
+
+Quote the requirement. Unquoted, the shell reads `>=1.19.0` as a redirect: pip receives
+the bare package name, unpinned, and a file named `=1.19.0` appears in the current
+directory.
+
+Do not switch with `pip uninstall onnxruntime` followed by `pip install onnxruntime-gpu`.
+The uninstall deletes files the GPU package also owns, pip then reports "Requirement
+already satisfied", and `import onnxruntime` is left an empty package: InsightFace fails
+with `module 'onnxruntime' has no attribute 'InferenceSession'`. Uninstall both names, as
+in the table.
+
+After the swap, `pip check` reports "insightface ... requires onnxruntime, which is not
+installed" (`uv pip check`: "The package `insightface` requires `onnxruntime`, but it's
+not installed"). That is expected and harmless: `onnxruntime-gpu` provides the same
+`onnxruntime` module.
+
+To check the result, run `python facet.py --doctor` and read its **ONNX Runtime**
+section. It lists the installed package and version and the execution providers, and
+warns when both packages are installed or the package cannot be imported, each time with
+the command that repairs it. When Facet runs on CUDA it also compares the CUDA build
+ONNX Runtime was compiled for with PyTorch's and runs a one-node test session. The
+`CUDA session` line is OK only when that session really runs on `CUDAExecutionProvider`;
+otherwise the doctor warns with ONNX Runtime's own reason and the fix. The test session
+needs the `onnx` package (without it the doctor says it did not probe) and is skipped
+on the processor and in commercial mode, where InsightFace is not used. A scan on CUDA
+also logs one warning when InsightFace's sessions are on the CPU.
 
 ## GPU face clustering with RAPIDS cuML
 
@@ -650,7 +705,7 @@ Each unlocks a feature; without it the feature is skipped or a fallback is used.
 | `pillow-heif` | HEIF/HEIC decode | HEIF/HEIC files skipped |
 | `rawpy` | RAW decode (CR2/CR3/NEF/ARW/…) | RAW files skipped (already in base `requirements.txt`) |
 | `cuml`, `cupy` | GPU-accelerated face clustering (conda + CUDA) | Clustering runs on CPU via `hdbscan` (default) |
-| `onnxruntime-gpu` | GPU-accelerated face detection | CPU `onnxruntime` (slower) |
+| `onnxruntime-gpu` | GPU-accelerated face detection — installed **instead of** `onnxruntime`, never beside it; see [ONNX Runtime for face detection](#onnx-runtime-for-face-detection) | CPU `onnxruntime` (slower) |
 | `aesthetic-predictor-v2-5` | Extended IQA tier — `aesthetic_v25` scorer (`pip install -e .[iqa-extended]`; `iqa_extended.aesthetic_v25` in `scoring_config.json`, off by default). **Deprecated** — AGPL-3.0, unmaintained upstream since 2024-12-18; prefer `qrealign`, which needs no extra package (it loads natively through `transformers`) | `aesthetic_v25` unavailable |
 | `darktable-cli` (system) | RAW/darktable profile export from the viewer | Only original/embedded download offered |
 | `exiftool` (system) | Best EXIF/GPS extraction | Falls back to `exifread`, then PIL |

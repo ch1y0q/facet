@@ -104,11 +104,28 @@ if [[ "$NO_UV" -eq 0 ]]; then
 else
     ok "Package installer: pip (--no-uv)"
 fi
+# uv's uninstall has no -y (it never prompts); pip's needs it. Both exit 0 when a
+# name is not installed, which the ONNX Runtime swap below relies on.
+if [[ "$INSTALLER" == "uv pip" ]]; then
+    UNINSTALLER="uv pip uninstall"
+else
+    UNINSTALLER="pip uninstall -y"
+fi
 
 # --- Step 4: Detect GPU / CUDA ---
 CUDA_VERSION=""
 TORCH_INDEX=""
+# Lowest GPU compute capability. Only the nvidia-smi branch below measures it; it
+# is initialised here because `--cuda VERSION` skips that branch and the ladder
+# reads it under `set -u`.
+GPU_MIN_ARCH=""
 ONNX_PACKAGE="onnxruntime>=1.15.0"
+# onnxruntime-gpu is split by CUDA major on PyPI: 1.19-1.26 are CUDA 12 builds and
+# 1.27 onwards are CUDA 13 builds, which cannot load beside the CUDA 12 PyTorch
+# (cu124/cu126/cu128) installed below. The ONNX Runtime major follows PyTorch's CUDA
+# build, never the driver's CUDA version. Keep in step with utils/onnx_runtime.py
+# (tests/test_onnx_runtime_install_consistency.py fails when they drift).
+ORT_GPU_CUDA12="onnxruntime-gpu>=1.19.0,<1.27"
 HOST_OS="$(uname -s)"
 HOST_ARCH="$(uname -m)"
 APPLE_MPS=0
@@ -171,20 +188,20 @@ if [[ -n "$CUDA_VERSION" ]]; then
 
     if [[ "$arch_needs_legacy_wheel" -eq 1 ]]; then
         TORCH_INDEX="https://download.pytorch.org/whl/cu126"
-        ONNX_PACKAGE="onnxruntime-gpu>=1.17.0"
+        ONNX_PACKAGE="$ORT_GPU_CUDA12"
         ok "PyTorch variant: cu126 (pre-Turing GPU, compute capability $GPU_MIN_ARCH)"
         info "cu128 ships no kernels below sm_75 — pinned to cu126 despite CUDA $CUDA_VERSION"
     elif [[ "$cuda_major" -ge 13 ]] || [[ "$cuda_major" -eq 12 && "$cuda_minor" -ge 8 ]]; then
         TORCH_INDEX="https://download.pytorch.org/whl/cu128"
-        ONNX_PACKAGE="onnxruntime-gpu>=1.17.0"
+        ONNX_PACKAGE="$ORT_GPU_CUDA12"
         ok "PyTorch variant: cu128"
     elif [[ "$cuda_major" -eq 12 && "$cuda_minor" -ge 6 ]]; then
         TORCH_INDEX="https://download.pytorch.org/whl/cu126"
-        ONNX_PACKAGE="onnxruntime-gpu>=1.17.0"
+        ONNX_PACKAGE="$ORT_GPU_CUDA12"
         ok "PyTorch variant: cu126"
     elif [[ "$cuda_major" -eq 12 && "$cuda_minor" -ge 4 ]]; then
         TORCH_INDEX="https://download.pytorch.org/whl/cu124"
-        ONNX_PACKAGE="onnxruntime-gpu>=1.17.0"
+        ONNX_PACKAGE="$ORT_GPU_CUDA12"
         ok "PyTorch variant: cu124"
     elif [[ "$cuda_major" -eq 12 ]] || [[ "$cuda_major" -eq 11 && "$cuda_minor" -ge 8 ]]; then
         TORCH_INDEX="https://download.pytorch.org/whl/cu118"
@@ -198,6 +215,15 @@ elif [[ -z "$TORCH_INDEX" && "$APPLE_MPS" -eq 0 && "$HOST_OS" != "Darwin" ]]; th
     TORCH_INDEX="https://download.pytorch.org/whl/cpu"
 fi
 
+# Every onnxruntime-gpu wheel the pins above can select (1.15-1.26) is published for
+# x86_64 only; PyPI's aarch64 GPU wheels start at 1.29, which are CUDA 13 builds. Keep the
+# CPU build there instead of letting the install abort on a missing wheel; everything
+# below keys off ONNX_PACKAGE, so the swap and the verify step follow.
+if [[ "$ONNX_PACKAGE" == onnxruntime-gpu* && "$HOST_ARCH" != "x86_64" ]]; then
+    info "No CUDA 12 onnxruntime-gpu wheel exists for $HOST_ARCH — keeping CPU onnxruntime (face detection runs on the CPU)"
+    ONNX_PACKAGE="onnxruntime>=1.15.0"
+fi
+
 # --- Step 5: Install PyTorch ---
 info "Installing PyTorch..."
 if [[ -n "$TORCH_INDEX" ]]; then
@@ -208,16 +234,7 @@ else
 fi
 ok "PyTorch installed"
 
-# --- Step 6: Install ONNX Runtime (insightface only; skipped with --commercial) ---
-if [[ "$COMMERCIAL" -eq 0 ]]; then
-    info "Installing ONNX Runtime ($ONNX_PACKAGE)..."
-    $INSTALLER install "$ONNX_PACKAGE"
-    ok "ONNX Runtime installed"
-else
-    info "Skipping ONNX Runtime (--commercial: insightface is not installed)"
-fi
-
-# --- Step 7: Install project dependencies ---
+# --- Step 6: Install project dependencies ---
 info "Installing Facet dependencies..."
 if [[ "$COMMERCIAL" -eq 0 ]]; then
     # Default: base + restricted (insightface, pyiqa) — the full feature set.
@@ -232,10 +249,28 @@ else
 fi
 ok "Dependencies installed"
 
-# --- Step 8: Install transformers + accelerate (needed for 8gb+ profiles) ---
+# --- Step 7: Install transformers + accelerate (needed for 8gb+ profiles) ---
 info "Installing transformers + accelerate..."
 $INSTALLER install "transformers>=5.3.0,<5.16" "accelerate>=0.25.0"
 ok "Transformers installed"
+
+# --- Step 8: Install ONNX Runtime (insightface only; skipped with --commercial) ---
+# Deliberately LAST of the installs: insightface (requirements.restricted.txt) requires
+# the plain CPU `onnxruntime`, and the CPU and GPU distributions install into the same
+# onnxruntime/ tree, so whichever pip installs last wins. Installing the GPU build before
+# the dependencies left it overwritten by the CPU one (issue #229). Both names are
+# uninstalled first because uninstalling only the CPU one afterwards would remove files
+# the GPU wheel shares with it.
+if [[ "$COMMERCIAL" -eq 0 ]]; then
+    info "Installing ONNX Runtime ($ONNX_PACKAGE) last: insightface pulls the CPU build and would overwrite the GPU one..."
+    if [[ "$ONNX_PACKAGE" == onnxruntime-gpu* ]]; then
+        $UNINSTALLER onnxruntime onnxruntime-gpu
+    fi
+    $INSTALLER install "$ONNX_PACKAGE"
+    ok "ONNX Runtime installed"
+else
+    info "Skipping ONNX Runtime (--commercial: insightface is not installed)"
+fi
 
 # --- Step 9: Check exiftool ---
 echo ""
@@ -277,6 +312,40 @@ if $PYTHON -c "import $CORE_IMPORTS" 2>/dev/null; then
     ok "All core imports successful"
 else
     err "Some imports failed — run 'python facet.py --doctor' for diagnostics"
+fi
+
+# A GPU install must end on the CUDA build of ONNX Runtime, alone. torch is imported first
+# because it maps the CUDA libraries the ONNX Runtime CUDA provider then reuses, which is
+# the order Facet itself runs in. This proves the provider is LISTED and that no CPU build
+# overwrote it; `python facet.py --doctor` creates a real CUDA session to prove it loads.
+# The fix text comes from utils/onnx_runtime.py so it has exactly one source.
+if [[ "$COMMERCIAL" -eq 0 && "$ONNX_PACKAGE" == onnxruntime-gpu* ]]; then
+    if ORT_REPORT=$($PYTHON -c '
+import sys
+import torch
+from utils.onnx_runtime import installed_distributions, repair_hint
+try:
+    import onnxruntime as ort
+    providers, version = ort.get_available_providers(), ort.__version__
+except Exception as ex:
+    providers, version = [], "import failed: %s" % ex
+dists = installed_distributions()
+if "CUDAExecutionProvider" in providers and dists == ["onnxruntime-gpu"]:
+    print("onnxruntime-gpu %s" % version)
+    sys.exit(0)
+print("onnxruntime %s, providers %s, distributions %s" % (version, providers, dists))
+print(repair_hint(torch.version.cuda))
+sys.exit(1)
+' 2>/dev/null); then
+        ok "ONNX Runtime: $ORT_REPORT, CUDA provider listed; run 'python facet.py --doctor' for a real CUDA session test"
+    else
+        err "ONNX Runtime is not the CUDA build, so face detection will run on the CPU:"
+        if [[ -n "$ORT_REPORT" ]]; then
+            while IFS= read -r line; do echo "       $line"; done <<< "$ORT_REPORT"
+        else
+            echo "       the check could not run — see 'python facet.py --doctor'"
+        fi
+    fi
 fi
 
 # --- Commercial mode: licensing.mode is configuration, not an install side effect ---

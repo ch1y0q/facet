@@ -339,11 +339,13 @@ einschließlich RTX-50er-Serie (13,1 GB entpackt) — und ist das, was die
 `ghcr.io/ncoevoet/facet:latest-cuda-legacy` bringt CUDA 12.6 und PyTorchs
 `sm_50`-`sm_90`-Build mit — Maxwell, Pascal (GTX-900/10-Serie) und Volta bis Hopper
 (13,8 GB entpackt) — für Karten, die `latest-cuda` nicht mehr abdeckt; siehe
-[Ältere NVIDIA-Karte](#ältere-nvidia-karte-maxwell-pascal-volta) oben. Alle drei sind
+[Ältere NVIDIA-Karte](#ältere-nvidia-karte-maxwell-pascal-volta) oben. Beide CUDA-Images liefern `onnxruntime-gpu` (1.26.0, ein CUDA-12-Build) anstelle von
+`onnxruntime` mit, sodass die Gesichtserkennung auf der GPU läuft; das CPU-Image behält
+`onnxruntime`. Alle drei sind
 ausschließlich `linux/amd64` — bauen Sie auf einem ARM-Rechner lokal mit
 `docker compose build`, statt zu ziehen. `docker compose build` (oder `up --build`)
 baut immer aus diesem Repository; siehe die Build-Argumente `BASE_IMAGE`,
-`STRIP_TORCH`, `INSTALL_CUML` und `REQUIREMENTS_LOCK` im `Dockerfile`.
+`STRIP_TORCH`, `INSTALL_CUML`, `REQUIREMENTS_LOCK` und `ORT_GPU_VERSION` im `Dockerfile`.
 
 Ohne Docker ist dieselbe Wahl eine Umgebungsvariable oder ein Konfigurationsschlüssel:
 
@@ -366,6 +368,12 @@ Die genauen Schwellenwerte, die `auto` anwendet, finden Sie unter
 | Kommerziell unbedenklich | `bash install.sh --commercial` |
 | Kommerziell, von Hand | `pip install -r requirements.txt`, dann `pip install -e .[commercial]` und `pip install mediapipe==0.10.35 --no-deps` |
 | Kommerziell, Docker | `docker build --build-arg FACET_LICENSING=commercial .` |
+
+`pip install -e .[all]` und das Extra `faces-insightface` installieren das
+CPU-`onnxruntime`, weil `insightface` davon abhängt. Führen Sie auf einem CUDA-Rechner
+danach den GPU-Befehl aus [ONNX Runtime für die
+Gesichtserkennung](#onnx-runtime-für-die-gesichtserkennung) aus; `bash install.sh` und die
+CUDA-Docker-Images tun das bereits.
 
 `mediapipe` muss immer mit `--no-deps` installiert werden: Das mitgelieferte `opencv-contrib-python` würde sonst den `cv2`-Namensraum doppelt installieren. Das Extra `commercial` deklariert nur dessen Laufzeitabhängigkeiten (`absl-py`, `flatbuffers`). `python-ofiq` (die OFIQ-Gesichtsqualitäts-Bindings) liegt auf PyPI, bietet aber nur Wheels für Linux x86-64 und macOS arm64 und ist daher nicht Teil des Extras; installieren Sie es dort, wo ein Wheel existiert, manuell mit `pip install python-ofiq`.
 
@@ -395,8 +403,14 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 #    SigLIP/BiRefNet/VLM-Modelle, die von den 8gb+-Profilen verwendet werden.
 pip install -r requirements.txt -r requirements.restricted.txt
 
-# 4. EINE ONNX Runtime für die Gesichtserkennung installieren (siehe Tabelle unten)
-pip install onnxruntime-gpu>=1.17.0   # oder: pip install onnxruntime>=1.15.0
+# 4. Die Gesichtserkennung läuft über ONNX Runtime. insightface (Schritt 3) hat den CPU-Build
+#    installiert, also tauschen Sie ihn auf einem CUDA-Rechner NACH Schritt 3 gegen den GPU-Build:
+#    Die Pakete teilen sich Dateien, und das zuletzt installierte gewinnt. Wählen Sie den Bereich
+#    passend zu Ihrem PyTorch-CUDA-Build (siehe Tabelle unten), nicht zum CUDA Ihres Treibers.
+pip uninstall -y onnxruntime onnxruntime-gpu
+pip install "onnxruntime-gpu>=1.19.0,<1.27"   # CUDA-12.x-PyTorch (cu124, cu126, cu128)
+# Nur CPU: Behalten Sie, was Schritt 3 installiert hat, oder installieren Sie es neu mit
+# pip install "onnxruntime>=1.15.0"
 
 # 5. Die Web-Galerie bauen
 cd client && npm install && npx ng build && cd ..
@@ -418,7 +432,8 @@ Stoßen Sie auf Fehler? Siehe [Abhängigkeitskonflikte beheben](#abhängigkeitsk
 
 `install.sh` sucht ein Python 3.10+, legt das `venv` an, erkennt das Betriebssystem und
 die GPU (Apple Silicon → Metal, sonst `nvidia-smi` → passender CUDA-Build), installiert
-PyTorch, die richtige ONNX Runtime, `requirements.txt`, `transformers` und `accelerate`,
+PyTorch, `requirements.txt`, `transformers` und `accelerate`, danach als Letztes die richtige
+ONNX Runtime (siehe [ONNX Runtime für die Gesichtserkennung](#onnx-runtime-für-die-gesichtserkennung)),
 prüft auf `exiftool`, baut den Angular-Client und verifiziert jeden Import.
 
 | Flag | Wirkung |
@@ -453,22 +468,72 @@ PIL (nur JPEG/TIFF/DNG).
 
 ## ONNX Runtime für die Gesichtserkennung
 
-Die Gesichtserkennung (InsightFace) läuft über ONNX Runtime, das es in CPU- und
-GPU-Varianten gibt. Installieren Sie genau eine:
+Die Gesichtserkennung (InsightFace) läuft über ONNX Runtime, das als zwei Pakete
+ausgeliefert wird: `onnxruntime` (CPU) und `onnxruntime-gpu` (CUDA). Beide installieren
+sich in dasselbe Verzeichnis `onnxruntime/` und teilen sich Dateien, sodass sie nicht
+nebeneinander bestehen können: Was pip zuletzt installiert, gewinnt. `insightface` hängt
+vom CPU-Paket `onnxruntime` ab; wer es installiert (`requirements.restricted.txt`,
+`pip install -e .[all]`, das Extra `faces-insightface`), bringt daher stets den CPU-Build
+zurück und überschreibt damit einen GPU-Build. Auf einem CUDA-Rechner kommt das GPU-Paket
+deshalb **nach** diesen Anforderungen, nachdem zuvor beide Namen entfernt wurden.
 
-| Setup | Befehl |
-|--------|---------|
-| Nur CPU | `pip install onnxruntime>=1.15.0` |
-| CUDA 12.x | `pip install onnxruntime-gpu>=1.17.0` |
-| CUDA 11.8 | `pip install onnxruntime-gpu>=1.15.0,<1.18` |
+`bash install.sh` erledigt das auf x86_64 für Sie: Erkennt es CUDA, installiert es ONNX
+Runtime zuletzt und prüft das Ergebnis (führen Sie es erneut aus, um ein überschriebenes
+`venv` zu reparieren). Die CUDA-Docker-Images machen dasselbe. CPU-Installationen, macOS
+und das CPU-Image behalten `onnxruntime`. Für aarch64 gibt es kein CUDA-12-Wheel von
+`onnxruntime-gpu`; dort behält `install.sh` den CPU-Build und sagt das.
 
-Prüfen Sie Ihre CUDA-Version mit `nvidia-smi` — sie wird oben rechts angezeigt. So
-wechseln Sie eine bestehende Installation von CPU auf GPU:
+Wählen Sie von Hand die Zeile für Ihren **PyTorch**-CUDA-Build:
 
-```bash
-pip uninstall onnxruntime
-pip install onnxruntime-gpu>=1.17.0
-```
+| PyTorch-Build | Befehl |
+|---------------|---------|
+| Nur CPU | `pip uninstall -y onnxruntime onnxruntime-gpu && pip install "onnxruntime>=1.15.0"` |
+| CUDA 12.x (cu124, cu126, cu128) | `pip uninstall -y onnxruntime onnxruntime-gpu && pip install "onnxruntime-gpu>=1.19.0,<1.27"` |
+| CUDA 11.8 (cu118) | `pip uninstall -y onnxruntime onnxruntime-gpu && pip install "onnxruntime-gpu>=1.15.0,<1.18"` |
+
+Richten Sie sich nach dem CUDA-Build von PyTorch, nicht nach der CUDA-Version, die
+`nvidia-smi` oben rechts anzeigt: Das ist die neueste CUDA-Version, die der Treiber
+unterstützt, und ein CUDA-13-Treiber führt weiterhin das CUDA-12-PyTorch (cu128) aus, das
+`install.sh` installiert. `python facet.py --doctor` zeigt den PyTorch-Build in der Zeile
+`CUDA (compiled)`.
+
+Der Bereich ist wichtig. `onnxruntime-gpu` 1.19 bis 1.26 sind CUDA-12-Builds; 1.27 und
+neuer sind CUDA-13-Builds und benötigen CUDA-13-Bibliotheken, die ein CUDA-12-PyTorch
+nicht mitbringt. Ein solches Wheel listet weiterhin `CUDAExecutionProvider`, fällt aber
+beim Erzeugen einer Sitzung auf die CPU zurück; ein unbegrenztes `onnxruntime-gpu` wirkt
+also installiert und läuft auf der CPU. Die CUDA-Docker-Images enthalten 1.26.0, den
+letzten CUDA-12-Build. Haben Sie von Hand ein CUDA-13-PyTorch installiert, ist
+`"onnxruntime-gpu>=1.27.0"` die passende Anforderung (ungetestet: Der Installer von Facet
+installiert nie eines).
+
+Setzen Sie die Anforderung in Anführungszeichen. Ohne sie liest die Shell `>=1.19.0` als
+Umleitung: pip erhält nur den Paketnamen, ohne Versionsangabe, und im aktuellen
+Verzeichnis entsteht eine Datei namens `=1.19.0`.
+
+Wechseln Sie nicht mit `pip uninstall onnxruntime` gefolgt von
+`pip install onnxruntime-gpu`. Die Deinstallation löscht Dateien, die auch dem GPU-Paket
+gehören, pip meldet dann „Requirement already satisfied“, und `import onnxruntime` liefert
+nur noch ein leeres Paket: InsightFace scheitert mit
+`module 'onnxruntime' has no attribute 'InferenceSession'`. Deinstallieren Sie beide
+Namen, wie in der Tabelle.
+
+Nach dem Tausch meldet `pip check`: „insightface ... requires onnxruntime, which is not
+installed“ (`uv pip check`: „The package `insightface` requires `onnxruntime`, but it's
+not installed“). Das ist erwartet und harmlos: `onnxruntime-gpu` stellt dasselbe Modul
+`onnxruntime` bereit.
+
+Prüfen Sie das Ergebnis mit `python facet.py --doctor` und lesen Sie den Abschnitt **ONNX
+Runtime**. Er listet das installierte Paket samt Version und die Execution Providers und
+warnt, wenn beide Pakete installiert sind oder sich das Paket nicht importieren lässt,
+jeweils mit dem Befehl, der es repariert. Läuft Facet auf CUDA, vergleicht er außerdem den
+CUDA-Build, für den ONNX Runtime kompiliert wurde, mit dem von PyTorch und führt eine
+Testsitzung mit einem einzigen Knoten aus. Die Zeile `CUDA session` ist nur dann OK, wenn
+diese Sitzung wirklich auf `CUDAExecutionProvider` läuft; andernfalls warnt die Diagnose
+mit der eigenen Begründung von ONNX Runtime und der Korrektur. Die Testsitzung benötigt
+das Paket `onnx` (ohne es meldet die Diagnose, dass sie nicht geprüft hat) und entfällt
+auf der CPU und im kommerziellen Modus, in dem InsightFace nicht verwendet wird. Ein Scan
+auf CUDA protokolliert außerdem eine Warnung, wenn die Sitzungen von InsightFace auf der
+CPU laufen.
 
 ## GPU-Gesichtsclustering mit RAPIDS cuML
 
@@ -682,7 +747,7 @@ Fallback verwendet.
 | `pillow-heif` | HEIF/HEIC-Dekodierung | HEIF/HEIC-Dateien werden übersprungen |
 | `rawpy` | RAW-Dekodierung (CR2/CR3/NEF/ARW/…) | RAW-Dateien werden übersprungen (bereits in der Basis-`requirements.txt`) |
 | `cuml`, `cupy` | GPU-gestütztes Gesichtsclustering (conda + CUDA) | Clustering läuft auf der CPU via `hdbscan` (Standard) |
-| `onnxruntime-gpu` | GPU-gestützte Gesichtserkennung | CPU-`onnxruntime` (langsamer) |
+| `onnxruntime-gpu` | GPU-gestützte Gesichtserkennung — wird **anstelle von** `onnxruntime` installiert, nie daneben; siehe [ONNX Runtime für die Gesichtserkennung](#onnx-runtime-für-die-gesichtserkennung) | CPU-`onnxruntime` (langsamer) |
 | `aesthetic-predictor-v2-5` | Erweiterte IQA-Stufe — `aesthetic_v25`-Bewerter (`pip install -e .[iqa-extended]`; `iqa_extended.aesthetic_v25` in `scoring_config.json`, standardmäßig aus). **Veraltet** — AGPL-3.0, seit dem 2024-12-18 unmaintained; bevorzugen Sie `qrealign`, das kein zusätzliches Paket benötigt (es wird nativ über `transformers` geladen) | `aesthetic_v25` nicht verfügbar |
 | `darktable-cli` (System) | RAW-/Darktable-Profil-Export aus dem Viewer | Nur Original-/eingebetteter Download angeboten |
 | `exiftool` (System) | Beste EXIF-/GPS-Extraktion | Greift auf `exifread`, dann PIL zurück |

@@ -265,10 +265,10 @@ Die Zählung im Banner stammt aus einem `stats_cache`-Eintrag mit einer TTL von 
 
 | Befehl | Beschreibung |
 |---------|-------------|
-| `python facet.py --doctor` | Diagnoseprüfungen ausführen (Python, GPU, Abhängigkeiten, Konfiguration, Datenbank) |
+| `python facet.py --doctor` | Diagnoseprüfungen ausführen (Python, GPU, ONNX Runtime, Abhängigkeiten, Konfiguration, Datenbank) |
 | `python facet.py --doctor --simulate-gpu "RTX 5070 Ti" --simulate-vram 16` | GPU-Hardware für die Diagnose simulieren |
 
-Berichtet die Python-Version, den PyTorch/CUDA-Build, die GPU-Erkennung und den Treiber, die Empfehlung für das VRAM-Profil, optionale Abhängigkeiten und den Konfigurations-/Datenbankstatus. Wenn PyTorch die GPU nicht sehen kann, `nvidia-smi` aber schon, gibt es den `pip install`-Befehl zur Behebung des CUDA-Builds aus.
+Berichtet die Python-Version, den PyTorch/CUDA-Build, die GPU-Erkennung und den Treiber, das ONNX-Runtime-Paket mit Version und Execution Providers (läuft Facet auf CUDA, zusätzlich eine Testsitzung mit einem einzigen Knoten, die belegt, dass der GPU-Build wirklich lädt), die Empfehlung für das VRAM-Profil, optionale Abhängigkeiten und den Konfigurations-/Datenbankstatus. Wenn PyTorch die GPU nicht sehen kann, `nvidia-smi` aber schon, gibt es den `pip install`-Befehl zur Behebung des CUDA-Builds aus. Ist ONNX Runtime der falsche Build, kann es auf CUDA nicht laden oder ist es defekt (beide Pakete installiert oder der Import scheitert), gibt es den Befehl zur Reparatur aus (siehe [Installation › ONNX Runtime für die Gesichtserkennung](INSTALLATION.md#onnx-runtime-für-die-gesichtserkennung)).
 
 `--simulate-gpu NAME` und `--simulate-vram GB` testen das Verhalten mit anderer Hardware. Beide erfordern `--doctor`; `--simulate-vram` erfordert `--simulate-gpu`.
 

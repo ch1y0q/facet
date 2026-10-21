@@ -62,7 +62,17 @@ ARG REQUIREMENTS_LOCK=requirements.lock.txt
 # The restricted lock is derived from REQUIREMENTS_LOCK, so the pair cannot drift:
 #   requirements.lock.txt        -> requirements.restricted.lock.txt
 #   requirements.legacy.lock.txt -> requirements.legacy.restricted.lock.txt
+# The restricted locks pin the CPU `onnxruntime` that insightface requires; the CUDA
+# variants replace it with onnxruntime-gpu in the same step (see ORT_GPU_VERSION below).
 ARG FACET_LICENSING=default
+# ORT_GPU_VERSION is the onnxruntime-gpu the CUDA variants end up with (issue #229).
+# 1.26.0 is the LAST CUDA 12 build: 1.27 and later are CUDA 13 builds that need CUDA 13
+# libraries, which neither CUDA 12 base provides, so they list CUDAExecutionProvider and
+# then fall back to the CPU when a session is created. Deliberately not in a requirements
+# file: Dependabot bumps minors and would move it onto a CUDA 13 build. It moves together
+# with BASE_IMAGE; tests/test_onnx_runtime_install_consistency.py checks it against
+# utils/onnx_runtime.py. Unused on the CPU variant and in the commercial image.
+ARG ORT_GPU_VERSION=1.26.0
 
 WORKDIR /app
 
@@ -131,13 +141,27 @@ RUN pip install --no-cache-dir --break-system-packages -r "${REQUIREMENTS_LOCK}"
 # Restricted (non-commercial) packages: installed by default, skipped when
 # FACET_LICENSING=commercial. Same pip flags, and still BEFORE the torch guard
 # below so that guard covers this install too.
+# The restricted locks pin the CPU `onnxruntime` that insightface requires, which is
+# right for the CPU image and wrong for the CUDA ones: the CPU and GPU distributions
+# share one onnxruntime/ tree and the last install wins (issue #229). So on a CUDA torch
+# on x86_64 both are uninstalled and onnxruntime-gpu is installed in their place, LAST.
+# The condition is "torch is a CUDA build", true on both CUDA bases and false on the slim
+# CPU base (STRIP_TORCH=0), plus x86_64 because PyPI has no CUDA 12 onnxruntime-gpu wheel
+# for any other architecture. The shell has no `set -e`, so every command in the swap is
+# &&-chained or inside the final if: a failed install must fail the build, not be skipped.
 RUN case "$(printf %s "$FACET_LICENSING" | tr '[:upper:]' '[:lower:]')" in \
         commercial) restricted=0 ;; \
         default|"") restricted=1 ;; \
         *) echo "FACET_LICENSING must be commercial or default, got: $FACET_LICENSING" >&2 ; exit 1 ;; \
     esac ; \
     if [ "$restricted" = 1 ]; then \
-        pip install --no-cache-dir --break-system-packages -r "${REQUIREMENTS_LOCK%.lock.txt}.restricted.lock.txt" ; \
+        pip install --no-cache-dir --break-system-packages -r "${REQUIREMENTS_LOCK%.lock.txt}.restricted.lock.txt" \
+        && if python -c 'import sys, torch; sys.exit(0 if torch.version.cuda else 1)' && [ "$(uname -m)" = x86_64 ]; then \
+            pip uninstall -y --break-system-packages onnxruntime onnxruntime-gpu \
+            && pip install --no-cache-dir --break-system-packages "onnxruntime-gpu==${ORT_GPU_VERSION}" ; \
+        else \
+            echo "Keeping CPU onnxruntime: onnxruntime-gpu needs a CUDA build of torch and an x86_64 host (machine: $(uname -m))" ; \
+        fi ; \
     fi
 # Nothing else makes BASE_IMAGE and REQUIREMENTS_LOCK move together, and a
 # mismatched pair does not fail the install above — it silently swaps the torch
