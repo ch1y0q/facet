@@ -7,6 +7,7 @@ import { Album, AlbumService } from '../../core/services/album.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { I18N } from '../../core/i18n/keys';
 import { CULLING_GROUP_TYPES, type CullingGroup } from './burst-culling.pipes';
+import type { Photo } from '../../shared/models/photo.model';
 
 export interface CullingGroupsResponse {
   groups: CullingGroup[];
@@ -142,7 +143,12 @@ export interface CullingNotice {
   key: string;
   params?: Record<string, string | number>;
   duration: number;
+  /** One action button on the snackbar (label is an i18n key). */
+  action?: { labelKey: string; run: () => void };
 }
+
+/** `POST /photos/by_paths` accepts at most this many paths (BY_PATHS_MAX). */
+export const BY_PATHS_CHUNK = 500;
 
 /**
  * Data state and API calls of the darkroom (`BurstCullingComponent`).
@@ -217,6 +223,12 @@ export class CullingStore {
   readonly passingGroups = signal<Map<string, number>>(new Map());
   /** Set of group keys hidden after pass timeout */
   readonly hiddenGroups = signal<Set<string>>(new Set());
+  /**
+   * Group keys the user has decided something in (a keep toggle, an exclusive pick, a confirm or skip).
+   * `loadGroups` seeds `selectionsMap` with the auto-selection, so that map is never empty and cannot
+   * tell "the user decided" from "the machine decided".
+   */
+  readonly touchedGroups = signal<Set<string>>(new Set());
   readonly confirming = signal(false);
 
   /** Group keys in the feed carrying a correction the detector has not applied yet. */
@@ -357,6 +369,7 @@ export class CullingStore {
     this.groups.set([]);
     this.confirmedGroups.set(new Set());
     this.selectionsMap.set(new Map());
+    this.touchedGroups.set(new Set());
   }
 
   /** Reload the feed from page 1 under the current filters. */
@@ -513,6 +526,7 @@ export class CullingStore {
   /** The one write behind every darkroom decision: the ↑ / ↓ keys, a swipe, and
    *  the per-pane buttons a compare grid needs. */
   setPhotoKept(group: CullingGroup, path: string, keep: boolean): void {
+    addToSetSignal(this.touchedGroups, this.groupKey(group));
     const map = new Map(this.selectionsMap());
     const kept = new Set(map.get(group.group_id) ?? []);
     if (keep) kept.add(path); else kept.delete(path);
@@ -531,6 +545,7 @@ export class CullingStore {
    */
   selectExclusive(path: string, group: CullingGroup): void {
     if (group.sequence_kind && SEQUENCE_KINDS_KEPT_WHOLE.includes(group.sequence_kind)) return;
+    addToSetSignal(this.touchedGroups, this.groupKey(group));
     updateMapSignal(this.selectionsMap, group.group_id, new Set([path]));
   }
 
@@ -554,6 +569,7 @@ export class CullingStore {
     if (!kept || kept.size === 0) return false;
     const key = this.groupKey(group);
     const keepPaths = [...kept];
+    addToSetSignal(this.touchedGroups, key);
     addToSetSignal(this.confirmedGroups, key);
     this.startCountdown(key, () => {
       void firstValueFrom(this.api.post('/culling-groups/confirm', this.confirmBody(group, keepPaths)))
@@ -584,6 +600,7 @@ export class CullingStore {
     try {
       const confirmed = this.confirmedGroups();
       const remaining = visible.filter(g => !confirmed.has(this.groupKey(g)));
+      for (const g of remaining) addToSetSignal(this.touchedGroups, this.groupKey(g));
       const toConfirm = remaining.filter(g => {
         const kept = this.selectionsMap().get(g.group_id);
         return kept && kept.size > 0;
@@ -618,6 +635,7 @@ export class CullingStore {
 
   skipGroup(group: CullingGroup): void {
     const key = this.groupKey(group);
+    addToSetSignal(this.touchedGroups, key);
     this.startCountdown(key, () => addToSetSignal(this.hiddenGroups, key));
   }
 
@@ -677,6 +695,84 @@ export class CullingStore {
     this.passingGroups.set(new Map());
     this.hiddenGroups.set(new Set());
     for (const commit of pendingCommits) commit();
+  }
+
+  /** Whether the user has decisions a reload would discard (or one still counting down / committing). */
+  hasUserDecisions(): boolean {
+    return this.touchedGroups().size > 0 || this.confirmedGroups().size > 0
+      || this.passingGroups().size > 0 || this.confirming();
+  }
+
+  /**
+   * Fold an assistant's write into the loaded feed without losing the user's decisions.
+   *
+   * A listed path is re-read through `POST /photos/by_paths` and only its rating/favorite/reject fields
+   * are merged into the loaded row (a fresh `groups` array; selections and confirmations are never
+   * touched). A path the server no longer returns was moved or deleted: it leaves its group and the
+   * group's selection, and a group left empty is hidden. `null` means the scope is not enumerable
+   * (a filter-scoped write, a cull move): reload when nothing is at stake, otherwise tell the user.
+   */
+  async applyExternalChanges(
+    paths: string[] | null,
+    options: { lightboxOpen?: boolean; count?: number } = {},
+  ): Promise<void> {
+    if (paths === null) {
+      if (!this.hasUserDecisions() && !options.lightboxOpen) {
+        this.resetForReload();
+        return;
+      }
+      const count = options.count ?? 0;
+      this.notice$.next({
+        key: count === 1 ? I18N.dialog.connect_assistant.inpage_changed : I18N.dialog.connect_assistant.inpage_changed_plural,
+        params: { count },
+        duration: 12000,
+        action: { labelKey: I18N.pwa.reload, run: () => this.resetForReload() },
+      });
+      return;
+    }
+    const loaded = new Set(this.groups().flatMap(g => g.photos.map(p => p.path)));
+    const wanted = [...new Set(paths)].filter(path => loaded.has(path));
+    if (wanted.length === 0) return;
+    const gen = this.loadGenerationId;
+    const fresh = new Map<string, Photo>();
+    try {
+      for (let i = 0; i < wanted.length; i += BY_PATHS_CHUNK) {
+        const response = await firstValueFrom(
+          this.api.post<{ photos: Photo[] }>('/photos/by_paths', { paths: wanted.slice(i, i + BY_PATHS_CHUNK) }),
+        );
+        for (const photo of response.photos) fresh.set(photo.path, photo);
+      }
+    } catch {
+      return;
+    }
+    if (gen !== this.loadGenerationId) return;
+    const missing = new Set(wanted.filter(path => !fresh.has(path)));
+    this.mergeExternal(fresh, missing);
+  }
+
+  private mergeExternal(fresh: Map<string, Photo>, missing: Set<string>): void {
+    const emptied: string[] = [];
+    const selections = new Map(this.selectionsMap());
+    let selectionsChanged = false;
+    const next = this.groups().map(group => {
+      if (!group.photos.some(p => fresh.has(p.path) || missing.has(p.path))) return group;
+      const photos = group.photos
+        .filter(p => !missing.has(p.path))
+        .map(p => {
+          const row = fresh.get(p.path);
+          return row ? { ...p, is_rejected: row.is_rejected ? 1 : 0, is_favorite: row.is_favorite ? 1 : 0, star_rating: row.star_rating ?? 0 } : p;
+        });
+      const kept = selections.get(group.group_id);
+      if (kept && group.photos.some(p => missing.has(p.path) && kept.has(p.path))) {
+        selections.set(group.group_id, new Set([...kept].filter(path => !missing.has(path))));
+        selectionsChanged = true;
+      }
+      if (photos.length === 0) emptied.push(this.groupKey(group));
+      return { ...group, photos, count: photos.length };
+    });
+    this.groups.set(next);
+    if (selectionsChanged) this.selectionsMap.set(selections);
+    if (emptied.length > 0) this.hiddenGroups.update(s => new Set([...s, ...emptied]));
   }
 
   /** Set one override value on the named frames, wherever they sit in the feed. */

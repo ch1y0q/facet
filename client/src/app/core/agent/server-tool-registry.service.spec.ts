@@ -5,7 +5,8 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, Subject, of, throwError } from 'rxjs';
 import { AuthService, AuthStatus } from '../services/auth.service';
 import { AgentWebMcpService } from './agent-web-mcp.service';
-import { InpageChangeNotifier } from './inpage-change-notifier.service';
+import { AssistantChangesService } from './assistant-changes.service';
+import { AgentBridgeService } from './agent-bridge.service';
 import { INPAGE_OPT_IN_KEY, INPAGE_RETRY_MS, ServerToolRegistry, SESSION_HEADER, inpageLevel } from './server-tool-registry.service';
 import { WebMcpToolRegistry } from './webmcp-registry.service';
 import { McpInpageTool } from '../api/types';
@@ -36,7 +37,7 @@ describe('ServerToolRegistry', () => {
   let live: Map<string, Registered>;
   let get: Mock;
   let post: Mock;
-  let notify: Mock;
+  let report: Mock;
   let uiExecute: Mock;
   let service: ServerToolRegistry;
 
@@ -56,7 +57,8 @@ describe('ServerToolRegistry', () => {
         { provide: AuthService, useValue: { status: authStatus } },
         { provide: AgentWebMcpService, useValue: { sessionInjector: session } },
         { provide: HttpClient, useValue: { get, post } },
-        { provide: InpageChangeNotifier, useValue: { notify } },
+        { provide: AssistantChangesService, useValue: { report } },
+        { provide: AgentBridgeService, useValue: { tabId: 'tab-1' } },
         { provide: WebMcpToolRegistry, useValue: { execute: uiExecute } },
       ],
     });
@@ -79,7 +81,7 @@ describe('ServerToolRegistry', () => {
     });
     get = vi.fn(() => of({ level: 'edition', tools: TOOLS }));
     post = vi.fn(() => of({ ok: true, data: {} }));
-    notify = vi.fn();
+    report = vi.fn();
     uiExecute = vi.fn(async () => ({ ok: true as const, data: { scope: 'paths', count: 1, paths: ['/a.jpg'] } }));
   });
 
@@ -180,6 +182,7 @@ describe('ServerToolRegistry', () => {
     expect(body).toEqual({
       tool: 'set_rating',
       arguments: { target: 'selection', rating: 4 },
+      tab_id: 'tab-1',
       selection_snapshot: { scope: 'paths', count: 1, paths: ['/a.jpg'] },
     });
     expect(options.headers.get(SESSION_HEADER)).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
@@ -193,15 +196,33 @@ describe('ServerToolRegistry', () => {
     expect(post.mock.calls[0][1]).not.toHaveProperty('selection_snapshot');
   });
 
-  it('reports a changed write to the notifier, but not a read', async () => {
+  it('reports a write carrying changed_paths to AssistantChanges, not a read, and sends the tab id', async () => {
     setup(status({ edition_authenticated: true }));
     await settle();
-    post.mockReturnValue(of({ ok: true, changed: 3 }));
+    post.mockReturnValue(of({ ok: true, changed: 3, changed_paths: ['/a', '/b', '/c'] }));
     await live.get('set_rating')!.execute({ rating: 1 }, {});
-    expect(notify).toHaveBeenCalledWith(3);
-    notify.mockClear();
+    expect(report).toHaveBeenCalledTimes(1);
+    expect(report).toHaveBeenCalledWith({ paths: ['/a', '/b', '/c'], count: 3 });
+    expect(post.mock.calls[0][1].tab_id).toBe('tab-1');
+    report.mockClear();
+    post.mockReturnValue(of({ ok: true }));
     await live.get('search_photos')!.execute({ query: 'x' }, {});
-    expect(notify).not.toHaveBeenCalled();
+    expect(report).not.toHaveBeenCalled();
+  });
+
+  it('reports on key presence: null paths, ok:false outcome_unknown, and no report when the key is absent', async () => {
+    setup(status({ edition_authenticated: true }));
+    await settle();
+    post.mockReturnValueOnce(of({ ok: true, changed_paths: null, changed: 12 }));
+    await live.get('set_rating')!.execute({ rating: 1 }, {});
+    expect(report).toHaveBeenLastCalledWith({ paths: null, count: 12 });
+    post.mockReturnValueOnce(of({ ok: false, error: 'outcome_unknown', changed_paths: ['/z'] }));
+    await live.get('set_rating')!.execute({ rating: 1 }, {});
+    expect(report).toHaveBeenLastCalledWith({ paths: ['/z'], count: 1 });
+    report.mockClear();
+    post.mockReturnValueOnce(of({ ok: true, changed: 2 }));
+    await live.get('set_rating')!.execute({ rating: 1 }, {});
+    expect(report).not.toHaveBeenCalled();
   });
 
   it('turns a 403 into an error envelope and a transport failure into upstream_error', async () => {

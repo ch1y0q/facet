@@ -12,8 +12,11 @@ import { I18nService } from '../../core/services/i18n.service';
 import { GalleryStore } from './gallery.store';
 import { CullingStore } from './culling.store';
 import { BurstCullingComponent } from './burst-culling.component';
+import { AssistantChangesService, AssistantChangeBatch } from '../../core/agent/assistant-changes.service';
 import { SyncedZoomComponent } from './synced-zoom.component';
 import { SwipeDecisionDirective, SWIPE_SETTLE_MS } from '../../shared/directives/swipe-decision.directive';
+
+let changes$ = new Subject<AssistantChangeBatch>();
 
 describe('BurstCullingComponent', () => {
   let component: BurstCullingComponent;
@@ -55,6 +58,7 @@ describe('BurstCullingComponent', () => {
   };
 
   beforeEach(() => {
+    changes$ = new Subject<AssistantChangeBatch>();
     localStorage.clear();
     mockApi = {
       get: vi.fn(() => of(mockCullingGroupsResponse)),
@@ -80,6 +84,7 @@ describe('BurstCullingComponent', () => {
         { provide: I18nService, useValue: mockI18n },
         { provide: GalleryStore, useValue: { config: () => null } },
         { provide: AuthService, useValue: { isEdition: () => true } },
+        { provide: AssistantChangesService, useValue: { batch$: changes$.asObservable() } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: { get: () => null } } } },
       ],
     });
@@ -89,6 +94,46 @@ describe('BurstCullingComponent', () => {
 
   afterEach(() => {
     component.ngOnDestroy();
+  });
+
+  describe('assistant changes', () => {
+    it('folds a batch of paths into the store in place', () => {
+      const apply = vi.spyOn(store, 'applyExternalChanges').mockResolvedValue();
+      changes$.next({ paths: ['/photo1.jpg'], count: 1 });
+      expect(apply).toHaveBeenCalledWith(['/photo1.jpg'], expect.objectContaining({ lightboxOpen: false }));
+    });
+
+    it('offers a Reload action for a null batch when decisions exist, and reloads on that action', async () => {
+      const onAction = new Subject<void>();
+      mockSnackBar.open.mockReturnValue({ onAction: () => onAction, afterDismissed: () => new Subject<void>() });
+      await store.loadGroups();
+      store.setPhotoKept(store.groups()[0], '/photo2.jpg', true);
+      const reload = vi.spyOn(store, 'resetForReload').mockImplementation(() => undefined);
+      changes$.next({ paths: null, count: 12 });
+      await Promise.resolve();
+      expect(reload).not.toHaveBeenCalled();
+      const [text, action] = mockSnackBar.open.mock.calls.at(-1)!;
+      expect(text).toBe('dialog.connect_assistant.inpage_changed_plural');
+      expect(action).toBe('pwa.reload');
+      onAction.next();
+      expect(reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('clamps the lightbox index when its photo disappears, and closes it when the group empties', async () => {
+      await store.loadGroups();
+      const group = store.groups()[0];
+      component['lightboxGroupId'].set(store.groupKey(group));
+      component['lightboxIndex'].set(2);
+      TestBed.tick();
+      mockApi.post.mockReturnValue(of({ photos: [], total: 0, missing: ['/photo3.jpg'] }));
+      await store.applyExternalChanges(['/photo3.jpg']);
+      TestBed.tick();
+      expect(component['lightboxIndex']()).toBe(1);
+      mockApi.post.mockReturnValue(of({ photos: [], total: 0, missing: ['/photo1.jpg', '/photo2.jpg'] }));
+      await store.applyExternalChanges(['/photo1.jpg', '/photo2.jpg']);
+      TestBed.tick();
+      expect(component['lightboxGroupId']()).toBeNull();
+    });
   });
 
   describe('loadGroups', () => {
@@ -408,6 +453,7 @@ describe('BurstCullingComponent', () => {
           { provide: I18nService, useValue: mockI18n },
           { provide: GalleryStore, useValue: { config: () => null } },
           { provide: AuthService, useValue: { isEdition: () => true } },
+          { provide: AssistantChangesService, useValue: { batch$: changes$.asObservable() } },
           { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: { get: () => null } } } },
         ],
       });
@@ -444,6 +490,7 @@ describe('BurstCullingComponent', () => {
           { provide: I18nService, useValue: mockI18n },
           { provide: GalleryStore, useValue: { config: () => null } },
           { provide: AuthService, useValue: { isEdition: () => true } },
+          { provide: AssistantChangesService, useValue: { batch$: changes$.asObservable() } },
           { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: { get: () => null } } } },
         ],
       });
@@ -1098,6 +1145,7 @@ describe('BurstCullingComponent', () => {
           { provide: I18nService, useValue: mockI18n },
           { provide: GalleryStore, useValue: { config: () => null } },
           { provide: AuthService, useValue: { isEdition: () => true } },
+          { provide: AssistantChangesService, useValue: { batch$: changes$.asObservable() } },
           { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: { get: () => null } } } },
         ],
       });
@@ -1295,6 +1343,7 @@ describe('BurstCullingComponent', () => {
           { provide: I18nService, useValue: mockI18n },
           { provide: GalleryStore, useValue: { config: () => config } },
           { provide: AuthService, useValue: { isEdition: () => isEdition } },
+          { provide: AssistantChangesService, useValue: { batch$: changes$.asObservable() } },
           { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: { get: () => null } } } },
         ],
       });
@@ -1494,6 +1543,7 @@ describe('BurstCullingComponent', () => {
           { provide: I18nService, useValue: mockI18n },
           { provide: GalleryStore, useValue: { config: () => null } },
           { provide: AuthService, useValue: { isEdition: () => true } },
+          { provide: AssistantChangesService, useValue: { batch$: changes$.asObservable() } },
           { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: { get: () => null } } } },
         ],
       });
@@ -2693,6 +2743,7 @@ describe('BurstCullingComponent modals (rendered)', () => {
         { provide: I18nService, useValue: { t: (key: string) => key, translations: () => ({}) } },
         { provide: GalleryStore, useValue: { config: () => null } },
         { provide: AuthService, useValue: { isEdition: () => true } },
+        { provide: AssistantChangesService, useValue: { batch$: changes$.asObservable() } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: { get: () => null } } } },
       ],
     });
@@ -2746,6 +2797,15 @@ describe('BurstCullingComponent modals (rendered)', () => {
   /** A per-pane keep button: a real control, deep inside a keydown shield. */
   const paneKeepButton = (): HTMLElement => fixture.debugElement
     .query(By.css('button[aria-label$="culling.lightbox.keep"]')).nativeElement;
+
+  it('renders a reject marker on a rejected photo card only', () => {
+    store.groups.set([{
+      group_id: 1, type: 'burst', reason: '', best_path: '/p1.jpg', count: 2,
+      photos: [{ ...photo('/p1.jpg'), is_rejected: 1 }, photo('/p2.jpg')],
+    }]);
+    fixture.detectChanges();
+    expect(fixture.debugElement.queryAll(By.css('[data-testid="reject-marker"]'))).toHaveLength(1);
+  });
 
   it('closes the auto-cull dialog on Escape despite its keydown shield', () => {
     openAutoCullDialog();
@@ -3026,6 +3086,7 @@ describe('BurstCullingComponent swipe-to-decide (rendered, touch)', () => {
         { provide: I18nService, useValue: { t: (key: string) => key, translations: () => ({}) } },
         { provide: GalleryStore, useValue: { config: () => null } },
         { provide: AuthService, useValue: { isEdition: () => true } },
+        { provide: AssistantChangesService, useValue: { batch$: changes$.asObservable() } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: { get: () => null } } } },
       ],
     });
@@ -3232,6 +3293,7 @@ describe('BurstCullingComponent compare panes (rendered)', () => {
         { provide: I18nService, useValue: { t: (key: string) => key, translations: () => ({}) } },
         { provide: GalleryStore, useValue: { config: () => null } },
         { provide: AuthService, useValue: { isEdition: () => true } },
+        { provide: AssistantChangesService, useValue: { batch$: changes$.asObservable() } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: { get: () => null } } } },
       ],
     });

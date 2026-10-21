@@ -10,7 +10,9 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom } from 'rxjs';
+import { AssistantChangeBatch, AssistantChangesService } from '../../core/agent/assistant-changes.service';
 import { ExtendedQualityComponent } from '../../shared/components/extended-quality/extended-quality.component';
 import { Photo, KeeperHint, PhotoSet, normalisePhotoFlags } from '../../shared/models/photo.model';
 import { AuthService } from '../../core/services/auth.service';
@@ -624,6 +626,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly assistantChanges = inject(AssistantChangesService);
   private readonly photoActions = inject(PhotoActionsService);
 
   readonly photo = signal<Photo | null>(null);
@@ -801,6 +804,23 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
       if (this.locationMapTimeout !== null) clearTimeout(this.locationMapTimeout);
       if (this.locationMap) { this.locationMap.remove(); this.locationMap = null; }
     });
+    this.assistantChanges.batch$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(batch => void this.refreshAfterAssistant(batch));
+  }
+
+  /** An assistant write touched this page's photo (or an unenumerable scope): refetch the full detail row. */
+  private async refreshAfterAssistant(batch: AssistantChangeBatch): Promise<void> {
+    const path = this.photo()?.path;
+    if (!path || (batch.paths !== null && !batch.paths.includes(path))) return;
+    try {
+      const fresh = await this.fetchPhoto(path);
+      // The user moved to another photo (ArrowRight) while this was in flight.
+      if (this.photo()?.path === path) this.photo.set(fresh);
+    } catch (err) {
+      if (this.photo()?.path !== path) return;
+      // Only a missing photo has no page left; any other failure keeps the page the user is on.
+      if ((err as { status?: number }).status === 404) this.goBack();
+      else this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
+    }
   }
 
   async ngOnInit(): Promise<void> {

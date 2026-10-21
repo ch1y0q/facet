@@ -12,6 +12,7 @@ import {
   SUPERSEDED_COOLDOWN_MS,
 } from './agent-bridge.service';
 import { WebMcpToolRegistry } from './webmcp-registry.service';
+import { AssistantChangesService } from './assistant-changes.service';
 
 class FakeSocket implements BridgeSocket {
   static instances: FakeSocket[] = [];
@@ -57,6 +58,7 @@ describe('AgentBridgeService', () => {
   let loginRequired: boolean;
   let routerEvents: Subject<unknown>;
   let execute: Mock;
+  let report: Mock;
   let bridge: AgentBridgeService;
 
   const last = (): FakeSocket => FakeSocket.instances[FakeSocket.instances.length - 1];
@@ -76,6 +78,7 @@ describe('AgentBridgeService', () => {
     authStatus = signal<AuthStatus | null>(status());
     routerEvents = new Subject();
     execute = vi.fn(async () => ({ ok: true, data: { hello: 'world' } }));
+    report = vi.fn();
     TestBed.configureTestingModule({
       providers: [
         { provide: BRIDGE_SOCKET_FACTORY, useValue: (url: string) => new FakeSocket(url) },
@@ -87,6 +90,7 @@ describe('AgentBridgeService', () => {
             loginPasswordRequired: () => loginRequired,
           },
         },
+        { provide: AssistantChangesService, useValue: { report } },
         { provide: Router, useValue: { url: '/persons?x=1', events: routerEvents } },
         { provide: WebMcpToolRegistry, useValue: { toolNames: ['ui_navigate', 'ui_get_selection'], toolsVersion: 'v1', execute, ready: signal(true), load: () => Promise.resolve() } },
       ],
@@ -214,6 +218,34 @@ describe('AgentBridgeService', () => {
     socket.receive({ type: 'call', id: 'bi', tool: 'ui_get_selection', args: {} });
     await vi.advanceTimersByTimeAsync(0);
     expect(socket.sent.at(-1)).toMatchObject({ type: 'result', id: 'bi', ok: false, error: 'upstream_error' });
+  });
+
+  it('reports a changed frame to AssistantChanges', () => {
+    const socket = connectReady();
+    socket.receive({ type: 'changed', tool: 'set_rating', paths: ['/a', '/b'], count: 2 });
+    socket.receive({ type: 'changed', tool: 'cull_apply', paths: null, count: 9 });
+    socket.receive({ type: 'changed', tool: 'x', paths: null, count: null });
+    expect(report.mock.calls).toEqual([
+      [{ paths: ['/a', '/b'], count: 2 }],
+      [{ paths: null, count: 9 }],
+      [{ paths: null, count: null }],
+    ]);
+  });
+
+  it('ignores a malformed changed frame', () => {
+    const socket = connectReady();
+    socket.receive({ type: 'changed', tool: 't', paths: 'nope', count: 1 });
+    socket.receive({ type: 'changed', tool: 't', paths: [1, 2], count: 1 });
+    socket.receive({ type: 'changed', tool: 't', paths: ['/a'], count: { n: 1 } });
+    socket.receive({ type: 'changed', tool: 't', paths: Array.from({ length: 201 }, (_, i) => `/p${i}`), count: 201 });
+    socket.receive({ type: 'changed', tool: 't', count: 1 });
+    expect(report).not.toHaveBeenCalled();
+  });
+
+  it('regression guard: an unknown frame type is ignored', () => {
+    const socket = connectReady();
+    socket.receive({ type: 'mystery', paths: ['/a'] });
+    expect(report).not.toHaveBeenCalled();
   });
 
   it('ignores malformed, non-string and id-less-typed frames without answering', async () => {

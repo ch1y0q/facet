@@ -4,6 +4,7 @@ import { NavigationEnd, Router } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 import { WebMcpToolRegistry, contractReadyWhen } from './webmcp-registry.service';
 import { UiToolEnvelope } from './ui-tool.types';
+import { AssistantChangesService } from './assistant-changes.service';
 
 /** Minimal socket surface the bridge uses; the browser `WebSocket` satisfies it, tests pass a fake. */
 export interface BridgeSocket {
@@ -44,6 +45,7 @@ const OPEN = 1;
 const MAX_TOOLS = 64;
 /** The server turns a result frame above 256 KiB into `too_large`; stay under it. */
 const RESULT_FRAME_LIMIT = 250 * 1024;
+const MAX_CHANGED_PATHS = 200;
 
 function newTabId(): string {
   const bytes = new Uint8Array(12);
@@ -69,6 +71,7 @@ export class AgentBridgeService {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly registry = inject(WebMcpToolRegistry);
+  private readonly changes = inject(AssistantChangesService);
   private readonly socketFactory = inject(BRIDGE_SOCKET_FACTORY);
 
   /** Fresh per page load: a reload that reused the id would be seen as a second connection of the same tab (4409). */
@@ -197,9 +200,9 @@ export class AgentBridgeService {
 
   private onFrame(data: unknown): void {
     if (typeof data !== 'string') return;
-    let frame: { type?: string };
+    let frame: { type?: string; paths?: unknown; count?: unknown };
     try {
-      frame = JSON.parse(data) as { type?: string };
+      frame = JSON.parse(data) as typeof frame;
     } catch {
       return;
     }
@@ -214,9 +217,20 @@ export class AgentBridgeService {
       case 'call':
         void this.answer(frame as CallFrame);
         break;
+      case 'changed':
+        this.onChanged(frame);
+        break;
       default:
         break;
     }
+  }
+
+  private onChanged(frame: { paths?: unknown; count?: unknown }): void {
+    const { paths, count } = frame;
+    const pathsOk = paths === null || (Array.isArray(paths) && paths.length <= MAX_CHANGED_PATHS && paths.every(p => typeof p === 'string'));
+    const countOk = count === null || (typeof count === 'number' && Number.isFinite(count));
+    if (!pathsOk || !countOk) return;
+    this.changes.report({ paths: paths as string[] | null, count: count as number | null });
   }
 
   private async answer(call: CallFrame): Promise<void> {

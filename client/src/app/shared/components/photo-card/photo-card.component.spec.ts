@@ -15,7 +15,8 @@ import { makePhoto } from '../../../../testing/photo.fixture';
                              [burstFramesVisible]="burstFramesVisible()"
                              [collapsedSetKinds]="collapsedSetKinds()"
                              [isEditionMode]="isEditionMode()"
-                             [groupNumber]="groupNumber()" [reviewMark]="reviewMark()"
+                             [reviewGroup]="reviewGroup()" [reviewMark]="reviewMark()"
+                             [reviewChanged]="reviewChanged()"
                              (reviewMarkToggle)="toggled.push($event)"
                              (selectionChange)="selected.push($event.photo.path)"
                              (doubleClicked)="opened.push($event.path)" />`,
@@ -26,7 +27,8 @@ class TestHostComponent {
   burstFramesVisible = signal(false);
   collapsedSetKinds = signal<readonly string[]>([]);
   isEditionMode = signal(false);
-  groupNumber = signal<number | null>(null);
+  reviewGroup = signal<number | null>(null);
+  reviewChanged = signal(false);
   reviewMark = signal<'keep' | 'remove' | null>(null);
   toggled: string[] = [];
   selected: string[] = [];
@@ -525,33 +527,101 @@ describe('PhotoCardComponent', () => {
     });
   });
   describe('review annotation', () => {
-    const badge = () => fixture.nativeElement.querySelector('button[aria-label]') as HTMLButtonElement | null;
+    const strip = () => fixture.nativeElement.querySelector('button[aria-label]') as HTMLButtonElement | null;
+    const img = () => fixture.nativeElement.querySelector('img') as HTMLImageElement;
 
-    it('renders neither pill nor badge without the inputs', () => {
-      expect(badge()).toBeNull();
-      expect(fixture.nativeElement.textContent).not.toContain('gallery.pinned.review.group');
+    it('renders no strip without a mark', () => {
+      expect(strip()).toBeNull();
     });
 
-    it('renders the group pill and a labelled badge when the inputs are set', () => {
-      fixture.componentInstance.groupNumber.set(3);
+    it('renders no group pill any more', () => {
+      fixture.componentInstance.reviewGroup.set(3);
       fixture.componentInstance.reviewMark.set('remove');
       fixture.detectChanges();
-      expect(fixture.nativeElement.textContent).toContain('gallery.pinned.review.group');
-      expect(badge()?.getAttribute('aria-label')).toBe('gallery.pinned.review.remove_aria');
-      expect(badge()?.textContent).toContain('gallery.pinned.review.remove');
-      expect(fixture.nativeElement.querySelector('.grayscale')).toBeNull();
+      expect(fixture.nativeElement.textContent).not.toContain('gallery.pinned.review.group');
+      expect(fixture.nativeElement.querySelector('.bottom-10')).toBeNull();
+    });
+
+    it('renders a full-width bottom strip button with the Keep text and the group in its label', () => {
+      fixture.componentInstance.reviewGroup.set(3);
+      fixture.componentInstance.reviewMark.set('keep');
+      fixture.detectChanges();
+      expect(strip()?.getAttribute('type')).toBe('button');
+      expect(strip()?.className).toContain('inset-x-0');
+      expect(strip()?.className).toContain('bottom-0');
+      expect(strip()?.className).toContain('bg-emerald-600/90');
+      expect(strip()?.textContent).toContain('gallery.pinned.review.keep');
+      expect(mockI18n.t).toHaveBeenCalledWith('gallery.pinned.review.keep_aria', { n: 3 });
+    });
+
+    it('uses the aria variant without a group part when the pin carries no groups', () => {
+      fixture.componentInstance.reviewMark.set('remove');
+      fixture.detectChanges();
+      expect(strip()?.getAttribute('aria-label')).toBe('gallery.pinned.review.remove_aria_ungrouped');
     });
 
     it('click emits reviewMarkToggle and neither selects nor opens', () => {
       fixture.componentInstance.reviewMark.set('keep');
       fixture.detectChanges();
-      badge()?.click();
-      badge()?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-      badge()?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-      badge()?.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+      strip()?.click();
+      strip()?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      strip()?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      strip()?.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
       expect(fixture.componentInstance.toggled).toEqual([getCard().photo().path]);
       expect(fixture.componentInstance.selected).toEqual([]);
       expect(fixture.componentInstance.opened).toEqual([]);
+    });
+
+    it('dims a removed photo with brightness-50, never grayscale', () => {
+      fixture.componentInstance.reviewMark.set('remove');
+      fixture.detectChanges();
+      expect(img().className).toContain('brightness-50');
+      expect(img().className).not.toContain('grayscale');
+      fixture.componentInstance.reviewMark.set('keep');
+      fixture.detectChanges();
+      expect(img().className).not.toContain('brightness-50');
+    });
+
+    it('keeps grayscale opacity-60 for a real reject', () => {
+      fixture.componentInstance.isEditionMode.set(true);
+      fixture.componentInstance.photo.set(makePhoto({ is_rejected: true }));
+      fixture.detectChanges();
+      expect(img().className).toContain('grayscale');
+      expect(img().className).toContain('opacity-60');
+    });
+
+    it('shows the changed dot with its sr-only text only when reviewChanged is set', () => {
+      fixture.componentInstance.reviewMark.set('keep');
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.bg-amber-400')).toBeNull();
+      fixture.componentInstance.reviewChanged.set(true);
+      fixture.detectChanges();
+      const dot = fixture.nativeElement.querySelector('.bg-amber-400') as HTMLElement;
+      expect(dot).toBeTruthy();
+      expect(strip()?.contains(dot)).toBe(true);
+      expect(strip()?.querySelector('.sr-only')?.textContent).toContain('gallery.pinned.review.changed_by_you');
+    });
+
+    it('lifts the badges to bottom-8 and the hover bar to bottom-7 while the strip shows', () => {
+      fixture.componentInstance.isEditionMode.set(true);
+      fixture.componentInstance.config.set({ features: { show_rating_controls: true } });
+      fixture.componentInstance.photo.set(makePhoto({ star_rating: 3, is_favorite: true, is_rejected: true }));
+      fixture.detectChanges();
+      const badges = () => [...fixture.nativeElement.querySelectorAll('div.absolute.w-7.h-7')] as HTMLElement[];
+      expect(badges().length).toBeGreaterThanOrEqual(3);
+      for (const b of badges()) {
+        expect(b.className).toContain('bottom-1');
+        expect(b.className).not.toContain('bottom-8');
+      }
+      const overlay = () => fixture.nativeElement.querySelector('div.z-10.inset-x-0') as HTMLElement;
+      expect(overlay().className).toContain('bottom-0');
+      fixture.componentInstance.reviewMark.set('keep');
+      fixture.detectChanges();
+      for (const b of badges()) {
+        expect(b.className).toContain('bottom-8');
+        expect(b.className).not.toMatch(/(^| )bottom-1( |$)/);
+      }
+      expect(overlay().className).toContain('bottom-7');
     });
   });
 });

@@ -1051,13 +1051,18 @@
       "review": {
         "keep": "Tieni",
         "remove": "Rimuovi",
-        "group": "Gruppo {n}",
         "legend": "{groups} · {keep} da tenere · {remove} da rimuovere",
         "legend_groups": "{count} gruppo",
         "legend_groups_plural": "{count} gruppi",
         "keep_aria": "Tieni, gruppo {n}. Attiva per segnare come da rimuovere",
         "remove_aria": "Rimuovi, gruppo {n}. Attiva per tenere",
-        "toggle_tooltip": "Clicca per passare da tenere a rimuovere"
+        "toggle_tooltip": "Clicca per passare da tenere a rimuovere",
+        "group_title": "Gruppo {group}",
+        "group_header": "Gruppo {group} — {count} foto · {keep} da tenere · {remove} da rimuovere",
+        "group_header_plural": "Gruppo {group} — {count} foto · {keep} da tenere · {remove} da rimuovere",
+        "changed_by_you": "Modificato da te",
+        "keep_aria_ungrouped": "Tieni. Attiva per segnare da rimuovere",
+        "remove_aria_ungrouped": "Rimuovi. Attiva per tenere"
       }
     },
     "all_photos": "Tutte le foto",
@@ -2521,7 +2526,9 @@
     "reject": "Rifiuta",
     "favorite": "Attiva/disattiva preferito",
     "comp_left_wins": "Vince la foto a sinistra",
-    "comp_right_wins": "Vince la foto a destra"
+    "comp_right_wins": "Vince la foto a destra",
+    "review_keep": "Tieni la foto segnata",
+    "review_remove": "Rimuovi la foto segnata"
   },
   "pwa": {
     "update_available": "È disponibile una nuova versione",

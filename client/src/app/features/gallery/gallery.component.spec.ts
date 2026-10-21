@@ -112,6 +112,7 @@ describe('GalleryComponent', () => {
       userMarks: signal(new Map<string, 'keep' | 'remove'>()),
       hasReview: signal(false),
       reviewLegend: signal({ groups: 0, keep: 0, remove: 0 }),
+      reviewGroupCounts: signal(new Map<number, { count: number; keep: number; remove: number }>()),
       setReviewMark: vi.fn(),
       clearPinned: vi.fn(() => Promise.resolve()),
       filterKey: vi.fn((f?: GalleryFilters) => JSON.stringify(buildApiParams(f ?? mockStore.filters(), false))),
@@ -3473,6 +3474,255 @@ describe('GalleryComponent', () => {
       fixture!.detectChanges();
 
       expect(cards[4].contains(document.activeElement)).toBe(false);
+    });
+  });
+
+  describe('grouped review layout', () => {
+    let fixture: ComponentFixture<GalleryComponent> | null = null;
+    const paths = ['/g0.jpg', '/g1.jpg', '/g2.jpg', '/g3.jpg', '/g4.jpg', '/g5.jpg', '/g6.jpg'];
+    const groupOf = [1, 1, 1, 1, 2, 2, 2];
+    const photos = paths.map(path => ({ path, filename: path, image_width: 4000, image_height: 3000, tags_list: [], persons: [] }));
+
+    afterEach(() => {
+      fixture?.destroy();
+      fixture = null;
+      vi.unstubAllGlobals();
+    });
+
+    function pin(opts: { groups?: boolean; marks?: boolean }): void {
+      mockStore.photos.set(photos);
+      mockStore.pinnedPaths.set(paths);
+      mockStore.pinnedGroups.set(new Map(opts.groups === false ? [] : paths.map((p, i) => [p, groupOf[i]] as [string, number])));
+      mockStore.pinnedMarks.set(new Map(opts.marks === false ? [] : paths.map((p, i) => [p, i % 2 ? 'remove' : 'keep'] as [string, 'keep' | 'remove'])));
+      mockStore.hasReview.set(true);
+      mockStore.reviewGroupCounts.set(opts.marks === false
+        ? new Map()
+        : new Map([[1, { count: 4, keep: 2, remove: 2 }], [2, { count: 3, keep: 2, remove: 1 }]]));
+    }
+
+    function render(mode: 'grid' | 'mosaic', virtual: boolean): HTMLElement {
+      mockStore.config.set({ features: { show_rating_controls: true } });
+      mockStore.galleryMode.set(mode);
+      mockStore.virtualScroll.set(virtual);
+      vi.stubGlobal('matchMedia', (media: string) => ({
+        matches: true, media, addEventListener() {}, removeEventListener() {},
+      }));
+      fixture = TestBed.createComponent(GalleryComponent);
+      const instance = fixture.componentInstance as unknown as {
+        desktop: { setup(): void };
+        containerWidth: { set(v: number): void };
+      };
+      instance.desktop.setup();
+      instance.containerWidth.set(1200);
+      fixture.detectChanges();
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    const headers = (html: HTMLElement) => [...html.querySelectorAll('[role="rowheader"]')] as HTMLElement[];
+
+    for (const [name, mode, virtual] of [
+      ['virtual scroll off', 'grid', false],
+      ['virtual scroll on', 'grid', true],
+      ['mosaic', 'mosaic', false],
+    ] as const) {
+      it(`renders one header per group, every row and every card (${name})`, () => {
+        pin({});
+        const html = render(mode, virtual);
+        expect(headers(html)).toHaveLength(2);
+        expect(html.querySelectorAll('[role="row"] [role="rowheader"]')).toHaveLength(2);
+        expect(html.querySelectorAll('app-photo-card')).toHaveLength(7);
+        expect(headers(html)[0].textContent).toContain('gallery.pinned.review.group_header_plural');
+      });
+    }
+
+    it('feeds the header text from the effective counts', () => {
+      pin({});
+      mockI18n.t.mockImplementation((key: string, vars?: Record<string, unknown>) =>
+        vars ? `${key} ${JSON.stringify(vars)}` : key);
+      const html = render('grid', false);
+      expect(headers(html)[1].textContent)
+        .toContain('{"group":2,"count":3,"keep":2,"remove":1}');
+    });
+
+    it('updates the counts on a mark flip without rebuilding the rows', () => {
+      pin({});
+      const html = render('grid', false);
+      const before = fixture!.componentInstance.rowsModel();
+      mockStore.reviewGroupCounts.set(new Map([[1, { count: 4, keep: 1, remove: 3 }], [2, { count: 3, keep: 2, remove: 1 }]]));
+      mockStore.userMarks.set(new Map([['/g0.jpg', 'remove']]));
+      fixture!.detectChanges();
+      expect(fixture!.componentInstance.rowsModel()).toBe(before);
+      expect(headers(html)).toHaveLength(2);
+    });
+
+    it('counts headers in aria-rowcount', () => {
+      pin({});
+      const html = render('grid', false);
+      const rowCount = fixture!.componentInstance.rowsModel().length;
+      expect(rowCount).toBe(5);
+      expect(html.querySelector('#gallery-rows-host')?.getAttribute('aria-rowcount')).toBe('5');
+    });
+
+    it('shows only the title when the pin has groups but no marks', () => {
+      pin({ marks: false });
+      mockStore.pinnedMarks.set(new Map());
+      const html = render('grid', false);
+      expect(headers(html)).toHaveLength(2);
+      expect(headers(html)[0].textContent).toContain('gallery.pinned.review.group_title');
+      expect(headers(html)[0].textContent).not.toContain('group_header');
+    });
+
+    it('renders no header for marks without groups and keeps the existing branch', () => {
+      pin({ groups: false });
+      const html = render('grid', false);
+      expect(headers(html)).toHaveLength(0);
+      expect(html.querySelector('#gallery-rows-host')).toBeNull();
+      expect(html.querySelectorAll('app-photo-card')).toHaveLength(7);
+    });
+
+    it('renders a pin with no review at all as before', () => {
+      mockStore.photos.set(photos);
+      mockStore.hasReview.set(false);
+      const html = render('grid', false);
+      expect(headers(html)).toHaveLength(0);
+    });
+
+    it('builds rows with the real hide_details setting', () => {
+      pin({});
+      mockStore.filters.set({ ...DEFAULT_FILTERS, hide_details: false });
+      render('grid', false);
+      const photoRow = fixture!.componentInstance.rowsModel().find(r => r.kind !== 'header')!;
+      const cellW = photoRow.widths[0];
+      expect(photoRow.height).toBeGreaterThan(Math.round(cellW * 3 / 4));
+      mockStore.filters.set({ ...DEFAULT_FILTERS });
+    });
+
+    describe('keyboard', () => {
+      const inst = () => fixture!.componentInstance as unknown as {
+        activeIndex: { (): number; set(v: number): void };
+        onGridKeydown(e: KeyboardEvent): void;
+      };
+      const pressOn = (key: string) => {
+        const ev = new KeyboardEvent('keydown', { key });
+        Object.defineProperty(ev, 'target', { value: null, configurable: true });
+        inst().onGridKeydown(ev);
+      };
+      beforeEach(() => {
+        pin({});
+        render('grid', false);
+        Element.prototype.scrollIntoView = vi.fn();
+      });
+
+      it('ArrowDown from the last photo of group 1 lands on the first row of group 2', () => {
+        inst().activeIndex.set(3);
+        pressOn('ArrowDown');
+        expect(inst().activeIndex()).toBe(4);
+      });
+
+      it('ArrowUp from group 2 first row lands in group 1', () => {
+        inst().activeIndex.set(4);
+        pressOn('ArrowUp');
+        expect(inst().activeIndex()).toBe(3);
+      });
+
+      it('ArrowDown within a group still steps one row', () => {
+        inst().activeIndex.set(1);
+        pressOn('ArrowDown');
+        expect(inst().activeIndex()).toBe(3);
+      });
+
+      it('ArrowDown on the last row stays put', () => {
+        inst().activeIndex.set(5);
+        pressOn('ArrowDown');
+        expect(inst().activeIndex()).toBe(5);
+      });
+    });
+  });
+
+  describe('review keys (K / R)', () => {
+    function keyEvent(key: string, init: KeyboardEventInit = {}): KeyboardEvent {
+      const ev = new KeyboardEvent('keydown', { key, cancelable: true, ...init });
+      Object.defineProperty(ev, 'target', { value: null, configurable: true });
+      return ev;
+    }
+    function fire(ev: KeyboardEvent): void {
+      (component as unknown as { onGridKeydown(e: KeyboardEvent): void }).onGridKeydown(ev);
+    }
+
+    beforeEach(() => {
+      mockStore.photos.set([{ path: '/a.jpg' }, { path: '/b.jpg' }, { path: '/c.jpg' }]);
+      mockStore.config.set({ features: { show_rating_controls: true } });
+      (mockAuth as { isEdition: unknown }).isEdition = vi.fn(() => true);
+      mockStore.hasReview.set(true);
+      mockStore.pinnedMarks.set(new Map([['/a.jpg', 'remove'], ['/b.jpg', 'keep']]));
+      mockStore.userMarks.set(new Map());
+      mockStore.setReviewMark.mockClear();
+      mockStore.toggleRejected.mockClear();
+      (component as unknown as { activeIndex: { set(v: number): void } }).activeIndex.set(0);
+    });
+
+    afterEach(() => {
+      mockStore.hasReview.set(false);
+      mockStore.pinnedMarks.set(new Map());
+    });
+
+    it('K sets keep on the marked cursor photo and advances', () => {
+      const ev = keyEvent('k');
+      fire(ev);
+      expect(mockStore.setReviewMark).toHaveBeenCalledWith('/a.jpg', 'keep');
+      expect(activeIndex()).toBe(1);
+      expect(ev.defaultPrevented).toBe(true);
+    });
+
+    it('R sets remove and advances', () => {
+      fire(keyEvent('R'));
+      expect(mockStore.setReviewMark).toHaveBeenCalledWith('/a.jpg', 'remove');
+      expect(activeIndex()).toBe(1);
+    });
+
+    it('does nothing on an unmarked photo and does not preventDefault', () => {
+      (component as unknown as { activeIndex: { set(v: number): void } }).activeIndex.set(2);
+      const ev = keyEvent('k');
+      fire(ev);
+      expect(mockStore.setReviewMark).not.toHaveBeenCalled();
+      expect(ev.defaultPrevented).toBe(false);
+      expect(activeIndex()).toBe(2);
+    });
+
+    it('does nothing without a review pin', () => {
+      mockStore.hasReview.set(false);
+      const ev = keyEvent('r');
+      fire(ev);
+      expect(mockStore.setReviewMark).not.toHaveBeenCalled();
+      expect(ev.defaultPrevented).toBe(false);
+    });
+
+    it('uses the user mark over the assistant mark to decide the cursor photo is marked', () => {
+      mockStore.pinnedMarks.set(new Map());
+      mockStore.userMarks.set(new Map([['/a.jpg', 'keep']]));
+      fire(keyEvent('r'));
+      expect(mockStore.setReviewMark).toHaveBeenCalledWith('/a.jpg', 'remove');
+    });
+
+    it('X still rejects for real and never sets a review mark', () => {
+      fire(keyEvent('x'));
+      expect(mockStore.toggleRejected).toHaveBeenCalledWith('/a.jpg');
+      expect(mockStore.setReviewMark).not.toHaveBeenCalled();
+    });
+
+    it('ignores Ctrl+K', () => {
+      const ev = keyEvent('k', { ctrlKey: true });
+      fire(ev);
+      expect(mockStore.setReviewMark).not.toHaveBeenCalled();
+      expect(ev.defaultPrevented).toBe(false);
+    });
+
+    it('does not advance past the last photo', () => {
+      mockStore.pinnedMarks.set(new Map([['/c.jpg', 'keep']]));
+      (component as unknown as { activeIndex: { set(v: number): void } }).activeIndex.set(2);
+      fire(keyEvent('r'));
+      expect(mockStore.setReviewMark).toHaveBeenCalledWith('/c.jpg', 'remove');
+      expect(activeIndex()).toBe(2);
     });
   });
 });

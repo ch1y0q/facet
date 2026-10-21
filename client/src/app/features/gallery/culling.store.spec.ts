@@ -516,4 +516,83 @@ describe('CullingStore', () => {
       });
     });
   });
+  describe('applyExternalChanges', () => {
+    const fresh = (path: string, extra: Record<string, unknown>) => ({ path, is_rejected: 0, is_favorite: 0, star_rating: 0, ...extra });
+
+    beforeEach(async () => {
+      await store.loadGroups();
+      api.get.mockClear();
+    });
+
+    it('patches rating/favorite/reject in place, leaving selections and confirmations untouched', async () => {
+      const selections = store.selectionsMap();
+      const confirmed = store.confirmedGroups();
+      api.post.mockReturnValue(of({ photos: [fresh('/a.jpg', { is_rejected: 1, star_rating: 2, is_favorite: 1 })], total: 1, missing: [] }));
+      await store.applyExternalChanges(['/a.jpg']);
+      const a = store.groups()[0].photos[0];
+      expect(a.is_rejected).toBe(1);
+      expect(a.star_rating).toBe(2);
+      expect(a.is_favorite).toBe(1);
+      expect(store.groups()[0].photos[1].path).toBe('/b.jpg');
+      expect(store.selectionsMap()).toBe(selections);
+      expect(store.confirmedGroups()).toBe(confirmed);
+      expect(api.post).toHaveBeenCalledWith('/photos/by_paths', { paths: ['/a.jpg'] });
+    });
+
+    it('chunks requests at 500 paths and ignores paths that are not loaded', async () => {
+      api.post.mockReturnValue(of({ photos: [], total: 0, missing: [] }));
+      await store.applyExternalChanges(['/not-loaded.jpg']);
+      expect(api.post).not.toHaveBeenCalled();
+      const many = Array.from({ length: 1200 }, (_, i) => `/x${i}.jpg`);
+      store.groups.set([makeGroup(9, 'burst', many, '/x0.jpg')]);
+      await store.applyExternalChanges(many);
+      expect(api.post.mock.calls.map(c => (c[1] as { paths: string[] }).paths.length)).toEqual([500, 500, 200]);
+    });
+
+    it('removes a missing path from its group and selection, and hides an emptied group', async () => {
+      api.post.mockReturnValue(of({ photos: [], total: 0, missing: ['/c.jpg', '/d.jpg', '/b.jpg'] }));
+      await store.applyExternalChanges(['/b.jpg', '/c.jpg', '/d.jpg']);
+      expect(store.groups()[0].photos.map(p => p.path)).toEqual(['/a.jpg']);
+      expect(store.selectionsMap().get(1)?.has('/b.jpg') ?? false).toBe(false);
+      expect(store.groups()[1].photos).toHaveLength(0);
+      expect(store.hiddenGroups().has(store.groupKey(store.groups()[1]))).toBe(true);
+      expect(store.selectionsMap().get(2)?.size ?? 0).toBe(0);
+    });
+
+    it('a null batch with a user decision keeps state, emits a reload notice and does not reload', async () => {
+      store.setPhotoKept(store.groups()[0], '/b.jpg', true);
+      await store.applyExternalChanges(null);
+      expect(api.get).not.toHaveBeenCalled();
+      expect(notices).toHaveLength(1);
+      expect(notices[0].action).toBeTruthy();
+      notices[0].action!.run();
+      await Promise.resolve();
+      expect(api.get).toHaveBeenCalledWith('/culling-groups', expect.anything());
+    });
+
+    it('a null batch with the lightbox open is treated as a decision', async () => {
+      await store.applyExternalChanges(null, { lightboxOpen: true });
+      expect(api.get).not.toHaveBeenCalled();
+      expect(notices[0].action).toBeTruthy();
+    });
+
+    it('a null batch with no user-touched group reloads the feed (the auto-selection does not count)', async () => {
+      expect(store.selectionsMap().size).toBeGreaterThan(0);
+      await store.applyExternalChanges(null);
+      expect(api.get).toHaveBeenCalledWith('/culling-groups', expect.anything());
+      expect(notices).toHaveLength(0);
+    });
+
+    it('counts selectExclusive and confirm as user-touched', async () => {
+      store.selectExclusive('/a.jpg', store.groups()[0]);
+      expect(store.hasUserDecisions()).toBe(true);
+    });
+
+    it('a failed refresh keeps the rows as they were', async () => {
+      const before = store.groups();
+      api.post.mockReturnValue(throwError(() => ({ status: 500 })));
+      await store.applyExternalChanges(['/a.jpg']);
+      expect(store.groups()).toBe(before);
+    });
+  });
 });

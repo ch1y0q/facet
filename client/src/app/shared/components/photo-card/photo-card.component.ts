@@ -8,6 +8,7 @@ import { i18nKeys } from '../../../core/i18n/keys';
 import type { ReviewMark } from '../../../features/gallery/gallery.store';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { ThumbnailUrlPipe, PersonThumbnailUrlPipe } from '../../pipes/thumbnail-url.pipe';
+import { ReviewAriaKeyPipe } from '../../pipes/review.pipes';
 import { SequenceOverrideBadgeKeyPipe } from '../../pipes/sequence-kind.pipe';
 import { PhotoSetKindIconPipe, PhotoSetKindBestLabelPipe } from '../../pipes/photo-set-kind.pipe';
 import { FixedPipe } from '../../pipes/fixed.pipe';
@@ -122,6 +123,7 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
     MatMenuModule,
     TranslatePipe,
     ThumbnailUrlPipe,
+    ReviewAriaKeyPipe,
     SequenceOverrideBadgeKeyPipe,
     PhotoSetKindIconPipe,
     PhotoSetKindBestLabelPipe,
@@ -166,6 +168,7 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
           [class.md:object-cover]="hideDetails()"
           [class.grayscale]="isEditionMode() && photo().is_rejected"
           [class.opacity-60]="isEditionMode() && photo().is_rejected"
+          [class.brightness-50]="reviewMark() === 'remove'"
           [style.opacity]="imageLoaded() ? (isEditionMode() && photo().is_rejected ? '0.6' : '1') : '0'"
           (load)="imageLoaded.set(true)"
         />
@@ -177,7 +180,7 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
              6px off before, which read as the icons jumping every time the
              pointer entered or left the tile. -->
         @if (showsFavoriteBadge()) {
-          <div class="absolute bottom-1 right-1.5 w-7 h-7 z-20 pointer-events-none inline-flex items-center justify-center transition-opacity md:group-hover/img:opacity-0">
+          <div [class]="'absolute right-1.5 w-7 h-7 z-20 pointer-events-none inline-flex items-center justify-center transition-opacity md:group-hover/img:opacity-0 ' + badgeBottom()">
             <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-red-400 drop-shadow-md">favorite</mat-icon>
           </div>
         }
@@ -186,7 +189,7 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
              should not take a hover to see it. Carries the same count bubble the
              control does. -->
         @if (badges().star_rating && isEditionMode() && photo().star_rating) {
-          <div class="absolute bottom-1 left-1.5 w-7 h-7 z-20 pointer-events-none inline-flex items-center justify-center transition-opacity md:group-hover/img:opacity-0"
+          <div [class]="'absolute left-1.5 w-7 h-7 z-20 pointer-events-none inline-flex items-center justify-center transition-opacity md:group-hover/img:opacity-0 ' + badgeBottom()"
                [attr.aria-label]="'rating.rating_badge' | translate:{ stars: photo().star_rating ?? 0 }">
             <mat-icon class="!text-lg !w-[18px] !h-[18px] !leading-[18px] !text-yellow-400 drop-shadow-md"
                       aria-hidden="true">star</mat-icon>
@@ -209,7 +212,7 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
              and in edition mode it also steps clear on hover, since that is
              when the bar's own heart/reject buttons occupy those slots. -->
         @if (badges().sequence_kind && collapsedSetKind(); as kind) {
-          <div [class]="'absolute bottom-1 w-7 h-7 z-30 inline-flex items-center justify-center ' + setKindBadgePosition()"
+          <div [class]="'absolute w-7 h-7 z-30 inline-flex items-center justify-center ' + badgeBottom() + ' ' + setKindBadgePosition()"
                [matTooltip]="kind | photoSetKindBestLabel | translate"
                [attr.aria-label]="kind | photoSetKindBestLabel | translate">
             <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-white drop-shadow-md"
@@ -223,7 +226,7 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
              Unconditional, unlike the badge above -- a correction is not
              collapsed behind anything, so a hide toggle says nothing about it. -->
         @if (badges().sequence_override_pending && photo().sequence_override_pending && photo().sequence_override; as pending) {
-          <div class="absolute bottom-1 left-[4.5rem] w-7 h-7 z-30 inline-flex items-center justify-center"
+          <div [class]="'absolute left-[4.5rem] w-7 h-7 z-30 inline-flex items-center justify-center ' + badgeBottom()"
                [matTooltip]="(pending | sequenceOverrideBadgeKey) | translate"
                [attr.aria-label]="(pending | sequenceOverrideBadgeKey) | translate">
             <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-amber-300 drop-shadow-md"
@@ -238,36 +241,37 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
              the only signal -- which conveys nothing to a screen reader and
              nothing at all on an already-monochrome photo. -->
         @if (showsRejectedBadge()) {
-          <div class="absolute bottom-1 right-9 w-7 h-7 z-20 pointer-events-none inline-flex items-center justify-center transition-opacity md:group-hover/img:opacity-0"
+          <div [class]="'absolute right-9 w-7 h-7 z-20 pointer-events-none inline-flex items-center justify-center transition-opacity md:group-hover/img:opacity-0 ' + badgeBottom()"
                [attr.aria-label]="'rating.rejected_badge' | translate">
             <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-red-400 drop-shadow-md" aria-hidden="true">thumb_down</mat-icon>
           </div>
         }
 
-        <!-- Review annotation from the assistant's annotated pin. Sits on the
-             bottom-10 row, one row above the bottom-1 badges (which are full),
-             and above the hover overlay (z-10). A real <button> so it is
-             keyboard reachable; every event is stopped so toggling a mark never
-             selects or opens the card. Green/red ring + icon + text, never
-             grayscale (that means a real reject). -->
-        @if (groupNumber() !== null) {
-          <div class="absolute bottom-10 left-1.5 z-30 px-1.5 py-0.5 rounded bg-black/70 text-white text-xs font-medium pointer-events-none">
-            {{ 'gallery.pinned.review.group' | translate:{ n: groupNumber() ?? 0 } }}
-          </div>
-        }
+        <!-- Review annotation from the assistant's annotated pin: a full-width
+             28px strip flush with the bottom edge (Keep green / Remove red). A real
+             <button> so it is keyboard reachable; every event is stopped so toggling a
+             mark never selects or opens the card. The badges and the hover bar shift up
+             while it shows (badgeBottom, bottom-7). A removed photo is dimmed
+             (brightness-50), never grayscale: that means a real reject. The amber dot
+             marks a mark the user changed from the assistant's. -->
         @if (reviewMark(); as mark) {
           <button type="button"
-                  class="absolute bottom-10 right-1.5 z-30 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-black/70 text-white text-xs font-medium ring-2 cursor-pointer"
-                  [class.ring-green-400]="mark === 'keep'"
-                  [class.ring-red-400]="mark === 'remove'"
-                  [attr.aria-label]="(mark === 'keep' ? I18N.gallery.pinned.review.keep_aria : I18N.gallery.pinned.review.remove_aria) | translate:{ n: groupNumber() ?? 0 }"
+                  class="absolute inset-x-0 bottom-0 z-30 h-7 flex items-center justify-center gap-1 text-white text-xs font-medium cursor-pointer"
+                  [class.bg-emerald-600/90]="mark === 'keep'"
+                  [class.bg-red-600/90]="mark === 'remove'"
+                  [attr.aria-label]="(mark | reviewAriaKey:reviewGroup()) | translate:{ n: reviewGroup() ?? 0 }"
                   [matTooltip]="'gallery.pinned.review.toggle_tooltip' | translate"
                   (click)="onReviewMarkClick($event)"
                   (dblclick)="$event.stopPropagation()"
                   (keydown.enter)="$event.stopPropagation()"
                   (keydown.space)="$event.stopPropagation()">
-            <mat-icon class="!text-base !w-4 !h-4 !leading-4" [class.!text-green-400]="mark === 'keep'" [class.!text-red-400]="mark === 'remove'" aria-hidden="true">{{ mark === 'keep' ? 'check' : 'close' }}</mat-icon>
+            <mat-icon class="!text-base !w-4 !h-4 !leading-4" aria-hidden="true">{{ mark === 'keep' ? 'check' : 'close' }}</mat-icon>
             {{ (mark === 'keep' ? I18N.gallery.pinned.review.keep : I18N.gallery.pinned.review.remove) | translate }}
+            @if (reviewChanged()) {
+              <span class="absolute right-2 top-1/2 -translate-y-1/2 size-2 rounded-full bg-amber-400"
+                    [matTooltip]="I18N.gallery.pinned.review.changed_by_you | translate"></span>
+              <span class="sr-only">{{ I18N.gallery.pinned.review.changed_by_you | translate }}</span>
+            }
           </button>
         }
 
@@ -294,7 +298,7 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
         }
 
         <!-- Hover overlay (image area only, md+ only, disabled when tooltip hidden) -->
-        <div class="absolute inset-0 opacity-0 transition-opacity flex flex-col justify-between pointer-events-none z-10 md:group-hover/img:opacity-100 md:group-hover/img:pointer-events-auto">
+        <div [class]="'absolute inset-x-0 top-0 opacity-0 transition-opacity flex flex-col justify-between pointer-events-none z-10 md:group-hover/img:opacity-100 md:group-hover/img:pointer-events-auto ' + (reviewMark() ? 'bottom-7' : 'bottom-0')">
           <!-- Top row: similar + person_add -->
           <div class="flex justify-end items-center gap-1 p-1.5">
             @if (config()?.features?.show_similar_button) {
@@ -689,8 +693,12 @@ export class PhotoCardComponent {
   }
 
   // Events
-  /** Number of the assistant's group this photo belongs to, or null off an annotated pin. */
-  readonly groupNumber = input<number | null>(null);
+  /** Number of the assistant's group this photo belongs to, or null when the pin carries no groups. */
+  readonly reviewGroup = input<number | null>(null);
+  /** The user's mark differs from the assistant's; shows an amber dot in the strip. */
+  readonly reviewChanged = input(false);
+  /** Bottom offset of the persistent badges: one strip row higher while the review strip shows. */
+  protected readonly badgeBottom = computed(() => (this.reviewMark() ? 'bottom-8' : 'bottom-1'));
   protected readonly I18N = i18nKeys();
   /** Effective keep/remove mark, or null when the pin carries none. */
   readonly reviewMark = input<ReviewMark | null>(null);

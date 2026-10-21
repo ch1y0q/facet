@@ -1051,13 +1051,18 @@
       "review": {
         "keep": "Keep",
         "remove": "Remove",
-        "group": "Group {n}",
         "legend": "{groups} · {keep} keep · {remove} remove",
         "legend_groups": "{count} group",
         "legend_groups_plural": "{count} groups",
         "keep_aria": "Keep, group {n}. Activate to mark for removal",
         "remove_aria": "Remove, group {n}. Activate to keep",
-        "toggle_tooltip": "Click to switch between keep and remove"
+        "toggle_tooltip": "Click to switch between keep and remove",
+        "group_title": "Group {group}",
+        "group_header": "Group {group} — {count} photo · {keep} keep · {remove} remove",
+        "group_header_plural": "Group {group} — {count} photos · {keep} keep · {remove} remove",
+        "changed_by_you": "Changed by you",
+        "keep_aria_ungrouped": "Keep. Activate to mark for removal",
+        "remove_aria_ungrouped": "Remove. Activate to keep"
       }
     },
     "all_photos": "All Photos",
@@ -2521,7 +2526,9 @@
     "reject": "Reject",
     "favorite": "Toggle favorite",
     "comp_left_wins": "Left photo wins",
-    "comp_right_wins": "Right photo wins"
+    "comp_right_wins": "Right photo wins",
+    "review_keep": "Keep the marked photo",
+    "review_remove": "Remove the marked photo"
   },
   "pwa": {
     "update_available": "A new version is available",

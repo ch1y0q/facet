@@ -23,6 +23,10 @@ export interface CullingPhoto {
   eyes_open_score?: number | null;
   expression_score?: number | null;
   cull_reason?: CullReason;
+  /** The viewing user's own state (per-user in multi-user mode), 0/1 straight from SQLite. */
+  is_rejected?: number | null;
+  is_favorite?: number | null;
+  star_rating?: number | null;
   /** Set when the frame belongs to a deliberate multi-frame sequence ('bracket'). */
   sequence_kind?: string | null;
   /** Stops away from that sequence's base exposure; 0 on the base frame itself. */

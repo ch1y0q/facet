@@ -1051,13 +1051,18 @@
       "review": {
         "keep": "Behalten",
         "remove": "Entfernen",
-        "group": "Gruppe {n}",
         "legend": "{groups} · {keep} behalten · {remove} entfernen",
         "legend_groups": "{count} Gruppe",
         "legend_groups_plural": "{count} Gruppen",
         "keep_aria": "Behalten, Gruppe {n}. Aktivieren, um zum Entfernen zu markieren",
         "remove_aria": "Entfernen, Gruppe {n}. Aktivieren, um zu behalten",
-        "toggle_tooltip": "Klicken, um zwischen Behalten und Entfernen zu wechseln"
+        "toggle_tooltip": "Klicken, um zwischen Behalten und Entfernen zu wechseln",
+        "group_title": "Gruppe {group}",
+        "group_header": "Gruppe {group} — {count} Foto · {keep} behalten · {remove} entfernen",
+        "group_header_plural": "Gruppe {group} — {count} Fotos · {keep} behalten · {remove} entfernen",
+        "changed_by_you": "Von Ihnen geändert",
+        "keep_aria_ungrouped": "Behalten. Aktivieren, um zum Entfernen zu markieren",
+        "remove_aria_ungrouped": "Entfernen. Aktivieren, um zu behalten"
       }
     },
     "all_photos": "Alle Fotos",
@@ -2521,7 +2526,9 @@
     "reject": "Ablehnen",
     "favorite": "Favorit umschalten",
     "comp_left_wins": "Linkes Foto gewinnt",
-    "comp_right_wins": "Rechtes Foto gewinnt"
+    "comp_right_wins": "Rechtes Foto gewinnt",
+    "review_keep": "Markiertes Foto behalten",
+    "review_remove": "Markiertes Foto entfernen"
   },
   "pwa": {
     "update_available": "Eine neue Version ist verfügbar",

@@ -1051,13 +1051,18 @@
       "review": {
         "keep": "保留",
         "remove": "移除",
-        "group": "第 {n} 组",
         "legend": "{groups} · {keep} 保留 · {remove} 移除",
         "legend_groups": "{count} 组",
         "legend_groups_plural": "{count} 组",
         "keep_aria": "保留，第 {n} 组。激活后标记为移除",
         "remove_aria": "移除，第 {n} 组。激活后改为保留",
-        "toggle_tooltip": "点击在保留和移除之间切换"
+        "toggle_tooltip": "点击在保留和移除之间切换",
+        "group_title": "第 {group} 组",
+        "group_header": "第 {group} 组 — {count} 张照片 · 保留 {keep} · 移除 {remove}",
+        "group_header_plural": "第 {group} 组 — {count} 张照片 · 保留 {keep} · 移除 {remove}",
+        "changed_by_you": "由你更改",
+        "keep_aria_ungrouped": "保留。激活以标记为移除",
+        "remove_aria_ungrouped": "移除。激活以保留"
       }
     },
     "all_photos": "全部照片",
@@ -2521,7 +2526,9 @@
     "reject": "淘汰",
     "favorite": "切换收藏状态",
     "comp_left_wins": "左侧照片更好",
-    "comp_right_wins": "右侧照片更好"
+    "comp_right_wins": "右侧照片更好",
+    "review_keep": "保留已标记的照片",
+    "review_remove": "移除已标记的照片"
   },
   "pwa": {
     "update_available": "有新版本可用",

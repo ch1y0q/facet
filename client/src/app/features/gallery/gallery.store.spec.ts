@@ -1140,6 +1140,37 @@ describe('GalleryStore', () => {
         expect(store.reviewLegend()).toEqual({ groups: 1, keep: 2, remove: 0 });
       });
 
+      it('gathers an interleaved group contiguously in first-seen order, stable within a group', async () => {
+        const four = ['/p1.jpg', '/p2.jpg', '/p3.jpg', '/p4.jpg'];
+        apiPost.mockImplementation((path: string, body?: { paths?: string[] }) => path === '/photos/by_paths'
+          ? of({ photos: (body?.paths ?? []).map(p => makePhoto({ path: p })), total: 4, missing: [] })
+          : of({}));
+        await store.showPaths(four, { groups: [1, 2, 1, 2], marks: ['keep', 'remove', 'remove', 'keep'] });
+        expect(store.pinnedPaths()).toEqual(['/p1.jpg', '/p3.jpg', '/p2.jpg', '/p4.jpg']);
+        expect(store.pinnedGroups().get('/p3.jpg')).toBe(1);
+        expect(store.pinnedMarks().get('/p3.jpg')).toBe('remove');
+        expect(store.pinnedMarks().get('/p2.jpg')).toBe('remove');
+        expect(store.photos().map(p => p.path)).toEqual(['/p1.jpg', '/p3.jpg', '/p2.jpg', '/p4.jpg']);
+      });
+
+      it('leaves a pin without groups in the order given', async () => {
+        await store.showPaths(paths, { marks: ['keep', 'remove'] });
+        expect(store.pinnedPaths()).toEqual(paths);
+      });
+
+      it('derives per-group counts from effective marks (user over agent) without storing them', async () => {
+        await store.showPaths(['/a.jpg', '/b.jpg', '/c.jpg'], { groups: [1, 1, 2], marks: ['keep', 'remove', 'remove'] });
+        expect(store.reviewGroupCounts().get(1)).toEqual({ count: 2, keep: 1, remove: 1 });
+        expect(store.reviewGroupCounts().get(2)).toEqual({ count: 1, keep: 0, remove: 1 });
+        store.setReviewMark('/b.jpg', 'keep');
+        expect(store.reviewGroupCounts().get(1)).toEqual({ count: 2, keep: 2, remove: 0 });
+      });
+
+      it('has no group counts for a pin without groups', async () => {
+        await store.showPaths(paths, { marks: ['keep', 'remove'] });
+        expect(store.reviewGroupCounts().size).toBe(0);
+      });
+
       it('keeps the user absolute marks across a re-pin that carries marks', async () => {
         await annotated();
         store.setReviewMark('/b.jpg', 'remove');

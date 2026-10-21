@@ -15,7 +15,8 @@ import { McpCallRequest, McpCallResponse, McpInpageLevel, McpInpageTool, McpInpa
 import { LEVEL_TIERS, agentLevel } from './agent-level';
 import { WebMcpDescriptor, registerWebMcpTools, toHex, toWebMcpDescriptor } from './webmcp-descriptor';
 import { AgentWebMcpService } from './agent-web-mcp.service';
-import { InpageChangeNotifier } from './inpage-change-notifier.service';
+import { AgentBridgeService } from './agent-bridge.service';
+import { AssistantChangesService } from './assistant-changes.service';
 import { WebMcpToolRegistry } from './webmcp-registry.service';
 
 export const INPAGE_OPT_IN_KEY = 'facet_agent_inpage_tools';
@@ -63,7 +64,8 @@ export class ServerToolRegistry {
   private readonly web = inject(AgentWebMcpService);
   private readonly ui = inject(WebMcpToolRegistry);
   private readonly http = inject(HttpClient);
-  private readonly notifier = inject(InpageChangeNotifier);
+  private readonly changes = inject(AssistantChangesService);
+  private readonly bridge = inject(AgentBridgeService);
 
   /** Per-browser opt-in, default off. */
   readonly optedIn = signal(readOptIn());
@@ -177,7 +179,7 @@ export class ServerToolRegistry {
   private async call(tool: McpInpageTool, args: unknown): Promise<string> {
     const input = { ...((args && typeof args === 'object' ? args : {}) as Record<string, unknown>) };
     for (const key of STRIPPED_ARGS) delete input[key];
-    const body: McpCallRequest = { tool: tool.name, arguments: input };
+    const body: McpCallRequest = { tool: tool.name, arguments: input, tab_id: this.bridge.tabId };
     const properties = (tool.inputSchema['properties'] ?? {}) as Record<string, unknown>;
     if ('target' in properties && input['target'] === 'selection') {
       const selection = await this.ui.execute('ui_get_selection', {});
@@ -188,7 +190,11 @@ export class ServerToolRegistry {
       const response = await firstValueFrom(this.http.post<McpCallResponse>('/api/mcp/call', body, {
         headers: new HttpHeaders({ [SESSION_HEADER]: this.sessionId ??= newSessionId() }),
       }));
-      if (response.ok && tool.annotations.readOnlyHint !== true && response.changed) this.notifier.notify(response.changed);
+      // The key is present only when a photo-changing write ran (even an ok:false outcome_unknown one).
+      if ('changed_paths' in response) {
+        const paths = response.changed_paths ?? null;
+        this.changes.report({ paths, count: response.changed ?? paths?.length ?? null });
+      }
       return JSON.stringify(response);
     } catch (err) {
       // A 401 already reached the interceptor (logout); a 403 just reports, without ending the session.

@@ -10,6 +10,7 @@ import { signal } from '@angular/core';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
+import { AssistantChangesService, AssistantChangeBatch } from '../../core/agent/assistant-changes.service';
 
 // Mock Leaflet via vi.doMock + dynamic import: the component pulls in shared/leaflet
 // (which runs L.Icon.Default.mergeOptions at module load). Without this mock, importing
@@ -26,6 +27,7 @@ let PhotoDetailComponent: typeof import('./photo-detail.component').PhotoDetailC
 describe('PhotoDetailComponent', () => {
    
   let component: any;
+  let changes$: Subject<AssistantChangeBatch>;
   let mockApi: { get: Mock; post: Mock; put: Mock; delete: Mock; imageUrl: Mock; downloadUrl: Mock; getRaw: Mock };
   let mockRouter: { navigate: Mock };
   let mockLocation: { back: Mock };
@@ -69,6 +71,7 @@ describe('PhotoDetailComponent', () => {
     TestBed.configureTestingModule({
       providers: [
         PhotoDetailComponent,
+        { provide: AssistantChangesService, useValue: { batch$: changes$.asObservable() } },
         { provide: ApiService, useValue: mockApi },
         { provide: Router, useValue: mockRouter },
         { provide: Location, useValue: mockLocation },
@@ -90,6 +93,7 @@ describe('PhotoDetailComponent', () => {
   }, 20000);
 
   beforeEach(() => {
+    changes$ = new Subject<AssistantChangeBatch>();
     mockApi = {
       get: vi.fn(() => of(samplePhoto)),
       post: vi.fn(() => of({})),
@@ -114,6 +118,7 @@ describe('PhotoDetailComponent', () => {
     TestBed.configureTestingModule({
       imports: [PhotoDetailComponent],
       providers: [
+        { provide: AssistantChangesService, useValue: { batch$: changes$.asObservable() } },
         { provide: ApiService, useValue: mockApi },
         { provide: Router, useValue: mockRouter },
         { provide: Location, useValue: mockLocation },
@@ -257,6 +262,76 @@ describe('PhotoDetailComponent', () => {
       component.onFullImageLoad();
 
       expect(component.fullImageLoaded()).toBe(true);
+    });
+  });
+
+  describe('assistant change refresh', () => {
+    const flushAsync = async (): Promise<void> => { await new Promise(resolve => setTimeout(resolve, 0)); };
+    const fresh = { ...samplePhoto, star_rating: 5 };
+    const photoGets = (): unknown[][] => mockApi.get.mock.calls.filter(c => c[0] === '/photo');
+
+    beforeEach(() => {
+      createComponent();
+      component.photo.set(samplePhoto);
+      mockApi.get.mockClear();
+      mockApi.get.mockImplementation(() => of(fresh));
+    });
+
+    it('refetches /photo once when the batch contains the path and updates the rating', async () => {
+      changes$.next({ paths: [samplePhoto.path, '/other.jpg'] });
+      await flushAsync();
+      expect(photoGets()).toEqual([['/photo', { path: samplePhoto.path }]]);
+      expect(component.photo().star_rating).toBe(5);
+    });
+
+    it('ignores a batch of other paths', async () => {
+      changes$.next({ paths: ['/other.jpg'] });
+      await flushAsync();
+      expect(photoGets()).toHaveLength(0);
+    });
+
+    it('refetches once on a null batch', async () => {
+      changes$.next({ paths: null });
+      await flushAsync();
+      expect(photoGets()).toHaveLength(1);
+    });
+
+    it('goes back on a 404', async () => {
+      mockApi.get.mockImplementation(() => throwError(() => ({ status: 404 })));
+      changes$.next({ paths: [samplePhoto.path] });
+      await flushAsync();
+      expect(mockLocation.back).toHaveBeenCalled();
+    });
+
+    it('stays on the page on a 500', async () => {
+      mockApi.get.mockImplementation(() => throwError(() => ({ status: 500 })));
+      changes$.next({ paths: [samplePhoto.path] });
+      await flushAsync();
+      expect(mockLocation.back).not.toHaveBeenCalled();
+      expect(component.photo().path).toBe(samplePhoto.path);
+    });
+
+    it('discards a result when the photo changed during flight', async () => {
+      const inflight = new Subject<unknown>();
+      mockApi.get.mockImplementation(() => inflight);
+      changes$.next({ paths: [samplePhoto.path] });
+      const next = { ...samplePhoto, path: '/photos/next.jpg' };
+      component.photo.set(next);
+      inflight.next(fresh);
+      inflight.complete();
+      await flushAsync();
+      expect(component.photo().path).toBe('/photos/next.jpg');
+      expect(component.photo().star_rating).toBe(samplePhoto.star_rating);
+    });
+
+    it('does not go back on a 404 that lands after the photo changed', async () => {
+      const inflight = new Subject<unknown>();
+      mockApi.get.mockImplementation(() => inflight);
+      changes$.next({ paths: [samplePhoto.path] });
+      component.photo.set({ ...samplePhoto, path: '/photos/next.jpg' });
+      inflight.error({ status: 404 });
+      await flushAsync();
+      expect(mockLocation.back).not.toHaveBeenCalled();
     });
   });
 
@@ -862,7 +937,8 @@ describe('PhotoDetailComponent', () => {
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({
         providers: [
-          { provide: ApiService, useValue: mockApi },
+          { provide: AssistantChangesService, useValue: { batch$: changes$.asObservable() } },
+        { provide: ApiService, useValue: mockApi },
           { provide: Router, useValue: mockRouter },
           { provide: Location, useValue: mockLocation },
           { provide: ActivatedRoute, useValue: mockRoute },

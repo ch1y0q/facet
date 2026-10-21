@@ -8,6 +8,12 @@ import { Photo } from '../../shared/models/photo.model';
  * Deterministic offsets make scroll windowing and restoration exact.
  */
 export interface GalleryRow {
+  /** 'header' marks a review-group title row (`photos` is empty); absent means a photo row. */
+  kind?: 'photos' | 'header';
+  /** Review group number, on header rows. */
+  group?: number;
+  /** Photos in the group, on header rows. Counts of marks are never stored here. */
+  groupPhotoCount?: number;
   photos: Photo[];
   /** Per-photo pixel widths (justified for mosaic, equal cells for grid). */
   widths: number[];
@@ -200,4 +206,47 @@ export function windowRange(
     last++;
   }
   return { first, last };
+}
+
+/** Height of a review-group header row. */
+export const GROUP_HEADER_HEIGHT_PX = 32;
+
+/**
+ * Split `photos` into runs of equal group and lay each run out with `buildRows`, preceded by a
+ * header row (`photos: []`). Offsets and start indexes are shifted so `totalRowsHeight` and
+ * `windowRange` work unchanged. A run whose group is null/undefined gets no header, so with no
+ * groups at all the result equals `buildRows(photos)`. The caller gathers a group contiguously.
+ */
+export function buildSectionedRows(
+  photos: Photo[],
+  groupOf: (photo: Photo) => number | null | undefined,
+  buildRows: (photos: Photo[]) => GalleryRow[],
+  headerHeight: number,
+  gap: number,
+): GalleryRow[] {
+  const rows: GalleryRow[] = [];
+  let offset = 0;
+  let start = 0;
+  while (start < photos.length) {
+    const group = groupOf(photos[start]) ?? null;
+    let end = start + 1;
+    while (end < photos.length && (groupOf(photos[end]) ?? null) === group) end++;
+    if (group !== null) {
+      rows.push({
+        kind: 'header', group, groupPhotoCount: end - start,
+        photos: [], widths: [], height: headerHeight, offset, startIndex: start,
+      });
+      offset += headerHeight + gap;
+    }
+    const built = buildRows(photos.slice(start, end));
+    for (const row of built) {
+      rows.push({ ...row, offset: row.offset + offset, startIndex: row.startIndex + start });
+    }
+    if (built.length) {
+      const last = built[built.length - 1];
+      offset += last.offset + last.height + gap;
+    }
+    start = end;
+  }
+  return rows;
 }

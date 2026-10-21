@@ -41,7 +41,7 @@ import {
 } from '../../shared/pipes/sequence-kind.pipe';
 import { isBracketLadderRejection } from '../../shared/utils/sequence-ladder';
 import { IsSelectedPipe } from '../../shared/pipes/selection.pipe';
-import { ReviewGroupPipe, ReviewMarkPipe } from '../../shared/pipes/review.pipes';
+import { ReviewChangedPipe, ReviewGroupHeaderPipe, ReviewGroupPipe, ReviewMarkPipe } from '../../shared/pipes/review.pipes';
 import { PhotoSetKindIconPipe, PhotoSetKindLabelPipe } from '../../shared/pipes/photo-set-kind.pipe';
 import { AuthService } from '../../core/services/auth.service';
 import { ScanService } from '../../core/services/scan.service';
@@ -62,8 +62,8 @@ import type { SheetAction } from './gallery-actions-sheet.component';
 import { PhotoCardComponent } from '../../shared/components/photo-card/photo-card.component';
 import { PhotoSkeletonComponent } from '../../shared/components/photo-skeleton/photo-skeleton.component';
 import {
-  GalleryRow, aspectOf, buildGridRows, buildMosaicRows, gridColumnCount, totalRowsHeight,
-  windowRange,
+  GROUP_HEADER_HEIGHT_PX, GalleryRow, aspectOf, buildGridRows, buildMosaicRows, buildSectionedRows,
+  gridColumnCount, totalRowsHeight, windowRange,
 } from './gallery-rows.util';
 import { GalleryFilters, applyQueryParams, loadDisplayOptionsFromStorage } from './gallery-filters.util';
 import { AlbumService, Album } from '../../core/services/album.service';
@@ -102,6 +102,8 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
     TranslatePipe,
     SequenceKindIconPipe,
     IsSelectedPipe,
+    ReviewChangedPipe,
+    ReviewGroupHeaderPipe,
     ReviewGroupPipe,
     ReviewMarkPipe,
     PhotoSetKindIconPipe,
@@ -315,7 +317,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
 
         <!-- Photo grid / mosaic -->
         @if (store.photos().length) {
-          @if (virtualOn()) {
+          @if (rowLayoutOn()) {
             <!-- Windowed rendering: only rows near the viewport are in the DOM,
                  spacers preserve the scroll geometry -->
             <div
@@ -329,21 +331,30 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
               (focusout)="onGridFocusOut($event)"
             >
               <div [style.height.px]="topSpacer()" aria-hidden="true"></div>
-              @for (row of visibleRows(); track row.photos[0].path) {
+              @for (row of visibleRows(); track row.kind === 'header' ? 'h' + row.group : row.photos[0].path) {
+                @if (row.kind === 'header') {
+                  @let header = row.group! | reviewGroupHeader:store.reviewGroupCounts():(store.pinnedMarks().size > 0);
+                  <div role="row" class="flex items-end mb-2 px-1" [style.height.px]="row.height">
+                    <div role="rowheader" class="truncate text-sm font-semibold pb-1" data-testid="review-group-header">
+                      {{ header.key | translate:header.params }}
+                    </div>
+                  </div>
+                } @else {
                 <div class="flex gap-2 mb-2" [style.height.px]="row.height">
                   @for (photo of row.photos; track photo.path; let i = $index) {
                     <app-photo-card
                   [collapsedSetKinds]="collapsedSetKinds()"
                   [burstFramesVisible]="burstFramesVisible()"
                       [photo]="photo"
-                      [groupNumber]="photo.path | reviewGroup:store.pinnedGroups()"
+                      [reviewGroup]="photo.path | reviewGroup:store.pinnedGroups()"
+                      [reviewChanged]="photo.path | reviewChanged:store.userMarks():store.pinnedMarks()"
                       [reviewMark]="photo.path | reviewMark:store.userMarks():store.pinnedMarks()"
                       (reviewMarkToggle)="toggleReviewMark($event)"
                       [attr.data-pidx]="row.startIndex + i"
                       [style.width.px]="row.widths[i]"
                       [style.height.px]="row.height"
                       class="shrink-0"
-                      [hideDetails]="true"
+                      [hideDetails]="rowCardHideDetails()"
                       [mosaicMode]="effectiveGalleryMode() === 'mosaic'"
                       [config]="store.config()"
                       [isSelected]="photo.path | isSelected:viewScoped():selectedPaths():excludedPaths()"
@@ -377,6 +388,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                     />
                   }
                 </div>
+                }
               }
               <div [style.height.px]="bottomSpacer()" aria-hidden="true"></div>
             </div>
@@ -395,7 +407,8 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                   [collapsedSetKinds]="collapsedSetKinds()"
                   [burstFramesVisible]="burstFramesVisible()"
                   [photo]="photo"
-                  [groupNumber]="photo.path | reviewGroup:store.pinnedGroups()"
+                  [reviewGroup]="photo.path | reviewGroup:store.pinnedGroups()"
+                  [reviewChanged]="photo.path | reviewChanged:store.userMarks():store.pinnedMarks()"
                   [reviewMark]="photo.path | reviewMark:store.userMarks():store.pinnedMarks()"
                   (reviewMarkToggle)="toggleReviewMark($event)"
                   [attr.data-pidx]="i"
@@ -456,7 +469,8 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                   [collapsedSetKinds]="collapsedSetKinds()"
                   [burstFramesVisible]="burstFramesVisible()"
                       [photo]="photo"
-                      [groupNumber]="photo.path | reviewGroup:store.pinnedGroups()"
+                      [reviewGroup]="photo.path | reviewGroup:store.pinnedGroups()"
+                      [reviewChanged]="photo.path | reviewChanged:store.userMarks():store.pinnedMarks()"
                       [reviewMark]="photo.path | reviewMark:store.userMarks():store.pinnedMarks()"
                       (reviewMarkToggle)="toggleReviewMark($event)"
                       [attr.data-pidx]="row.startIndex + i"
@@ -1017,26 +1031,40 @@ export class GalleryComponent implements OnInit, OnDestroy {
     && (this.effectiveGalleryMode() === 'mosaic' || this.effectiveHideDetails()),
   );
 
-  /** Unified row model for the active mode. */
+  /** The pin carries review groups: they need header rows, which CSS grid cannot place. */
+  readonly groupedReview = computed(() => this.store.hasReview() && this.store.pinnedGroups().size > 0);
+
+  /** Row-based rendering: windowed, or forced (rendering every row) while a grouped review is shown. */
+  readonly rowLayoutOn = computed(() => this.virtualOn() || this.groupedReview());
+
+  /** Cards in the row branch hide their details except in grid mode with details switched on. */
+  protected readonly rowCardHideDetails = computed(
+    () => this.effectiveGalleryMode() === 'mosaic' || this.effectiveHideDetails(),
+  );
+
+  /** Unified row model for the active mode. Header rows exist only for a grouped review. */
   readonly rowsModel = computed<GalleryRow[]>(() => {
     const photos = this.store.photos();
     // Rows live inside the p-2 md:p-4 container - subtract its padding
     const width = this.containerWidth() - (this.isDesktop() ? 32 : 16);
     if (!photos.length || width <= 0) return [];
-    if (this.effectiveGalleryMode() === 'mosaic') {
-      return buildMosaicRows(photos, width, this.cardWidth(), GalleryComponent.ROW_GAP);
-    }
-    return buildGridRows(
-      photos, width, this.cardWidth(), GalleryComponent.ROW_GAP,
-      this.effectiveHideDetails(), this.isDesktop(),
-    );
+    const gap = GalleryComponent.ROW_GAP;
+    const build = this.effectiveGalleryMode() === 'mosaic'
+      ? (ps: Photo[]) => buildMosaicRows(ps, width, this.cardWidth(), gap)
+      : (ps: Photo[]) => buildGridRows(ps, width, this.cardWidth(), gap, this.effectiveHideDetails(), this.isDesktop());
+    if (!this.groupedReview()) return build(photos);
+    const groups = this.store.pinnedGroups();
+    return buildSectionedRows(photos, p => groups.get(p.path), build, GROUP_HEADER_HEIGHT_PX, gap);
   });
 
   readonly totalRowsHeight = computed(() => totalRowsHeight(this.rowsModel()));
 
-  private readonly visibleRange = computed(() =>
-    windowRange(this.rowsModel(), this.relScrollTop(), this.viewportH() || 900, GalleryComponent.OVERSCAN),
-  );
+  private readonly visibleRange = computed(() => {
+    const rows = this.rowsModel();
+    // Forced row layout (grouped review with windowing off): every row is rendered.
+    if (!this.virtualOn()) return { first: 0, last: rows.length - 1 };
+    return windowRange(rows, this.relScrollTop(), this.viewportH() || 900, GalleryComponent.OVERSCAN);
+  });
 
   readonly visibleRows = computed(() => {
     const { first, last } = this.visibleRange();
@@ -2235,14 +2263,18 @@ export class GalleryComponent implements OnInit, OnDestroy {
   /** Vertical step for the active index: grid = ±columns, mosaic = same offset in adjacent row. */
   private verticalTarget(index: number, dir: 1 | -1): number {
     const count = this.store.photos().length;
-    if (this.effectiveGalleryMode() === 'grid' && !this.virtualOn()) {
+    if (this.effectiveGalleryMode() === 'grid' && !this.rowLayoutOn()) {
       const next = index + dir * this.gridColumns();
       return Math.max(0, Math.min(count - 1, next));
     }
-    const rows = this.virtualOn() ? this.rowsModel() : this.mosaicRows();
+    const rows = this.rowLayoutOn() ? this.rowsModel() : this.mosaicRows();
     const rowIdx = rows.findIndex(r => index >= r.startIndex && index < r.startIndex + r.photos.length);
-    const targetRow = rows[rowIdx + dir];
-    if (rowIdx < 0 || !targetRow) return index;
+    if (rowIdx < 0) return index;
+    // Header rows hold no photo: step over them to the neighbouring photo row.
+    let target = rowIdx + dir;
+    while (rows[target] && rows[target].kind === 'header') target += dir;
+    const targetRow = rows[target];
+    if (!targetRow) return index;
     const offset = index - rows[rowIdx].startIndex;
     return targetRow.startIndex + Math.min(offset, targetRow.photos.length - 1);
   }
@@ -2275,6 +2307,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
         }
         return;
       default:
+        if (this.handleReviewKey(event, photos, index)) return;
         this.handleRatingKey(event, photos, index);
         return;
     }
@@ -2282,6 +2315,24 @@ export class GalleryComponent implements OnInit, OnDestroy {
     event.preventDefault();
     this.setCursor(next);
     this.focusCard(next);
+  }
+
+  /** K / R on a marked photo of a review pin: set keep / remove, then advance. Like the card's
+   *  strip it is ungated (a review mark is client-only, no HTTP). Returns whether it handled the key. */
+  private handleReviewKey(event: KeyboardEvent, photos: Photo[], index: number): boolean {
+    if (event.ctrlKey || event.metaKey || event.altKey) return false;
+    const key = event.key.toLowerCase();
+    if (key !== 'k' && key !== 'r') return false;
+    if (!this.store.hasReview()) return false;
+    const photo = photos[index];
+    if (!photo) return false;
+    if (!(this.store.userMarks().get(photo.path) ?? this.store.pinnedMarks().get(photo.path))) return false;
+    this.store.setReviewMark(photo.path, key === 'k' ? 'keep' : 'remove');
+    event.preventDefault();
+    const next = Math.min(photos.length - 1, index + 1);
+    this.setCursor(next);
+    this.focusCard(next);
+    return true;
   }
 
   /** Rate-and-advance shortcuts on the focused card: 1-5 set stars, 0/X reject

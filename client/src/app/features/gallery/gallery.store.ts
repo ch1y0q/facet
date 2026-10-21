@@ -320,6 +320,28 @@ export class GalleryStore {
     }
     return { groups: new Set(this.pinnedGroups().values()).size, keep, remove };
   });
+  /**
+   * Per-group photo count and effective keep/remove counts (user mark over assistant mark),
+   * derived so a mark flip never rebuilds the gallery rows. Empty when the pin carries no groups.
+   */
+  readonly reviewGroupCounts = computed(() => {
+    const groups = this.pinnedGroups();
+    const counts = new Map<number, { count: number; keep: number; remove: number }>();
+    if (!groups.size) return counts;
+    const agent = this.pinnedMarks();
+    const user = this.userMarks();
+    for (const path of this.pinnedPaths() ?? []) {
+      const group = groups.get(path);
+      if (group === undefined) continue;
+      const entry = counts.get(group) ?? { count: 0, keep: 0, remove: 0 };
+      entry.count++;
+      const mark = user.get(path) ?? agent.get(path);
+      if (mark === 'keep') entry.keep++;
+      else if (mark === 'remove') entry.remove++;
+      counts.set(group, entry);
+    }
+    return counts;
+  });
   /** Whether the current pin carries any review annotation. */
   readonly hasReview = computed(() => this.pinnedGroups().size > 0 || this.pinnedMarks().size > 0);
   /** What the user chose, for the assistant: only paths they set themselves, capped. */
@@ -864,11 +886,20 @@ export class GalleryStore {
   ): Promise<string[]> {
     const groups = review?.groups;
     const marks = review?.marks;
-    this.pinnedGroups.set(new Map(groups ? paths.map((p, i) => [p, groups[i]] as const) : []));
-    this.pinnedMarks.set(new Map(marks ? paths.map((p, i) => [p, marks[i]] as const) : []));
+    // Gather each group contiguously (first-seen group order, stable within a group) so the
+    // gallery draws one header per group.
+    let order = paths.map((_, i) => i);
+    if (groups) {
+      const rank = new Map<number, number>();
+      for (const g of groups) if (!rank.has(g)) rank.set(g, rank.size);
+      order = order.sort((a, b) => (rank.get(groups[a]) ?? 0) - (rank.get(groups[b]) ?? 0) || a - b);
+    }
+    const ordered = order.map(i => paths[i]);
+    this.pinnedGroups.set(new Map(groups ? order.map(i => [paths[i], groups[i]] as const) : []));
+    this.pinnedMarks.set(new Map(marks ? order.map(i => [paths[i], marks[i]] as const) : []));
     // A pin without marks starts a fresh review; one with marks keeps the user's absolute choices.
     if (!marks) this.userMarks.set(new Map());
-    this.pinnedPaths.set([...paths]);
+    this.pinnedPaths.set(ordered);
     this.pinnedMissing.set([]);
     this.pinnedLoad = true;
     await this.loadPhotos();

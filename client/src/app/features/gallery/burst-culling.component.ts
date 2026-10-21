@@ -37,6 +37,7 @@ import { SequenceOverrideService, SequenceKind } from '../../core/services/seque
 import { UndoService } from '../../core/services/undo.service';
 import { SequenceKindLabelPipe, SUPPRESSED_OVERRIDE } from '../../shared/pipes/sequence-kind.pipe';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { AssistantChangesService } from '../../core/agent/assistant-changes.service';
 import { firstValueFrom } from 'rxjs';
 import {
   CullingStore, RunGeneration, GroupBy, GROUP_BY_VALUES,
@@ -578,6 +579,11 @@ interface ShortcutRow {
                       <span class="px-2 py-0.5 rounded bg-black/60 text-white text-xs font-medium">
                         {{ photo.aggregate | number:'1.1-1' }}
                       </span>
+                      @if (photo.is_rejected) {
+                        <span data-testid="reject-marker" class="px-2 py-0.5 rounded bg-red-700 text-white text-xs font-bold">
+                          {{ I18N.rating.rejected_badge | translate }}
+                        </span>
+                      }
                       @if (photo.sequence_kind === 'bracket') {
                         <span class="px-2 py-0.5 rounded bg-amber-600 text-white text-xs font-bold">
                           {{ photo.sequence_ev_offset | evOffset }}
@@ -1320,6 +1326,7 @@ export class BurstCullingComponent implements OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly snackBar = inject(MatSnackBar);
   private readonly i18n = inject(I18nService);
+  private readonly destroyRef = inject(DestroyRef);
   protected readonly pageHelp = inject(PageHelpService);
   private readonly headerSlot = inject(HeaderSlotService);
   private readonly albumService = inject(AlbumService);
@@ -1332,6 +1339,7 @@ export class BurstCullingComponent implements OnDestroy {
   private readonly sceneDate = new SceneDatePipe();
   /** Data state + API calls; provided per component, so it lives one darkroom visit. */
   protected readonly cull = inject(CullingStore);
+  private readonly assistantChanges = inject(AssistantChangesService);
 
   /** Min posterior below which a moment label is shown dimmed + "(uncertain)". */
   protected readonly momentConfidenceMin = computed(
@@ -1817,7 +1825,20 @@ export class BurstCullingComponent implements OnDestroy {
     this.pageHelp.setDescription(null);
     this.cull.notice$.pipe(takeUntilDestroyed()).subscribe(notice => {
       const text = notice.params ? this.i18n.t(notice.key, notice.params) : this.i18n.t(notice.key);
-      this.snackBar.open(text, '', { duration: notice.duration, horizontalPosition: 'right', verticalPosition: 'bottom' });
+      const ref = this.snackBar.open(text, notice.action ? this.i18n.t(notice.action.labelKey) : '', { duration: notice.duration, horizontalPosition: 'right', verticalPosition: 'bottom' });
+      if (notice.action) ref.onAction().pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => notice.action?.run());
+    });
+    this.assistantChanges.batch$.pipe(takeUntilDestroyed()).subscribe(batch => {
+      void this.cull.applyExternalChanges(batch.paths, { lightboxOpen: this.lightboxGroupId() !== null, count: batch.count });
+    });
+    // A photo an assistant moved or deleted can vanish from the group the darkroom is showing.
+    effect(() => {
+      const group = this.lightboxGroup();
+      if (group === null) return;
+      untracked(() => {
+        if (group.photos.length === 0) this.lightboxGroupId.set(null);
+        else if (this.lightboxIndex() >= group.photos.length) this.lightboxIndex.set(group.photos.length - 1);
+      });
     });
     this.coarsePointer.setup();
     inject(DestroyRef).onDestroy(
