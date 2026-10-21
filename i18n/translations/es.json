@@ -1052,7 +1052,9 @@
         "keep": "Conservar",
         "remove": "Quitar",
         "group": "Grupo {n}",
-        "legend": "{groups} grupos · {keep} a conservar · {remove} a quitar",
+        "legend": "{groups} · {keep} a conservar · {remove} a quitar",
+        "legend_groups": "{count} grupo",
+        "legend_groups_plural": "{count} grupos",
         "keep_aria": "Conservar, grupo {n}. Activar para marcar como quitar",
         "remove_aria": "Quitar, grupo {n}. Activar para conservar",
         "toggle_tooltip": "Haz clic para alternar entre conservar y quitar"

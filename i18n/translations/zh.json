@@ -1052,7 +1052,9 @@
         "keep": "保留",
         "remove": "移除",
         "group": "第 {n} 组",
-        "legend": "{groups} 组 · {keep} 保留 · {remove} 移除",
+        "legend": "{groups} · {keep} 保留 · {remove} 移除",
+        "legend_groups": "{count} 组",
+        "legend_groups_plural": "{count} 组",
         "keep_aria": "保留，第 {n} 组。激活后标记为移除",
         "remove_aria": "移除，第 {n} 组。激活后改为保留",
         "toggle_tooltip": "点击在保留和移除之间切换"

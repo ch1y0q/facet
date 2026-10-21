@@ -1052,7 +1052,9 @@
         "keep": "Manter",
         "remove": "Remover",
         "group": "Grupo {n}",
-        "legend": "{groups} grupos · {keep} a manter · {remove} a remover",
+        "legend": "{groups} · {keep} a manter · {remove} a remover",
+        "legend_groups": "{count} grupo",
+        "legend_groups_plural": "{count} grupos",
         "keep_aria": "Manter, grupo {n}. Ativar para marcar como remover",
         "remove_aria": "Remover, grupo {n}. Ativar para manter",
         "toggle_tooltip": "Clique para alternar entre manter e remover"

@@ -4,6 +4,7 @@
 """
 
 import asyncio
+import json
 
 import pytest
 
@@ -358,3 +359,33 @@ def test_show_paths_in_tab_forwards_groups_and_marks(monkeypatch):
     assert result["applied"] is True
     assert sent["tool"] == "ui_show_photos"
     assert sent["args"] == {"paths": ["a", "b"], "groups": [1, 2], "marks": ["keep", "remove"]}
+
+
+@pytest.mark.parametrize("per_list,path_len", [(300, 100), (1000, 60)])
+def test_a_large_review_is_trimmed_not_refused(agent_app, fake_tab, per_list, path_len):
+    env = agent_app("open")
+
+    def path(tag, i):
+        stem = f"/photos/{tag}/{i:05d}.jpg"
+        return "/lib/" + "x" * (path_len - len(stem) - 5) + stem
+    review = {"keep": [path("k", i) for i in range(per_list)], "remove": [path("r", i) for i in range(per_list)]}
+    body = {"route": "/", "query_path": None, "selection": {"scope": "paths", "count": 0},
+            "gallery": {"total": 200, "loaded": 200, "has_more": False, "pinned": True},
+            "review": review, "mounted_actions": [], "level": "readonly", "actions": []}
+    fake_tab(env, None, reply=lambda call: {"ok": True, "data": body})
+    result = env.call(env.token(env.login()), "ui_get_context")
+    assert result["ok"], result
+    got = result["data"]["review"]
+    assert got["truncated"] is True and got["keep_count"] == per_list and got["remove_count"] == per_list
+    assert 0 < len(got["keep"]) < per_list and result["data"]["route"] == "/"
+    assert len(json.dumps(result, separators=(",", ":"))) <= 60000
+
+
+def test_a_small_review_is_left_whole(agent_app, fake_tab):
+    env = agent_app("open")
+    review = {"keep": ["/a.jpg"], "remove": ["/b.jpg"]}
+    body = {"route": "/", "query_path": None, "selection": {"scope": "paths", "count": 0},
+            "gallery": None, "review": review, "mounted_actions": [], "level": "readonly", "actions": []}
+    fake_tab(env, None, reply=lambda call: {"ok": True, "data": body})
+    got = env.call(env.token(env.login()), "ui_get_context")["data"]["review"]
+    assert got == review

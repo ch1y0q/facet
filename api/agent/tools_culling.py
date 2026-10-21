@@ -56,6 +56,31 @@ AUTO_CULL_SHOW = (
     "a page holds more than 200 photos). The apply never shows; show=false skips it.")
 
 
+SUMMARY_PATHS = 20
+CONFIRM_WIDTH = 40
+APPLY_KEYS = ("groups_processed", "kept", "rejected", "highlights_added", "dry_run")
+# Room kept for what the tool adds after the page is fitted (`shown_in_tab`).
+SHOWN_RESERVE = 4096
+
+
+def _fit_page(data: dict, extra: dict, settings: dict) -> None:
+    """Drop whole rows from the end of ``data['rows']`` until the envelope fits the runtime caps.
+
+    The tool owns the page budget: ``fit_envelope`` would otherwise cut rows while the route's
+    ``next_cursor`` still points past them. Rows dropped here move ``next_cursor`` back to the last
+    returned row's ``number`` (the next group's 0-based plan index). At least one row stays.
+    """
+    rows = data["rows"]
+    budget = max(settings["max_bytes"] - SHOWN_RESERVE, settings["max_bytes"] // 2)
+    shown = len(rows)
+    while shown > 1 and (shown > settings["max_rows"]
+                         or encoded_size(ok({**data, "rows": rows[:shown]}, **extra)) > budget):
+        shown -= 1
+    if shown < len(rows):
+        data["rows"] = rows[:shown]
+        data["next_cursor"] = rows[shown - 1]["number"]
+
+
 def _pinned_page(rows: list[dict]) -> tuple[list[str], list[int], list[str], int]:
     """``(paths, groups, marks, unpinned)`` for a page of plan rows, capped at ``SHOW_PIN_MAX``.
 
@@ -237,6 +262,7 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry) -
         dry_run: bool = True,
         confirm: Optional[str] = None,
         cursor: Annotated[int, Field(ge=0)] = 0,
+        plan_digest: Optional[str] = None,
         keep_paths: Annotated[Optional[list[str]], Field(max_length=1000)] = None,
         remove_paths: Annotated[Optional[list[str]], Field(max_length=1000)] = None,
         show: bool = True,
@@ -252,11 +278,19 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry) -
                        "trim_brackets": trim_brackets, "highlights_album": highlights_album,
                        "keep_paths": keep_paths or [], "remove_paths": remove_paths or []}
             timeout = settings["call_timeout_s"]
-            preview = await client.call(grant, "culling.auto",
-                                        json={**options, "dry_run": True, "cursor": cursor if dry_run else 0},
-                                        timeout=timeout)
+            if dry_run and cursor > 0 and not plan_digest:
+                return err("invalid_input", "plan_digest is required when cursor > 0: pass the "
+                           "`plan_digest` of the cursor-0 page, so every page comes from the same plan")
+            page_call = {**options, "dry_run": True, "cursor": cursor if dry_run else 0}
+            if dry_run and plan_digest:
+                page_call["expected_digest"] = plan_digest
+            preview = await client.call(grant, "culling.auto", json=page_call, timeout=timeout)
+            if not preview["ok"] and PLAN_CHANGED in preview.get("message", ""):
+                return err("confirmation_required",
+                           "The plan changed since the first page; nothing was written. Restart the "
+                           "preview from cursor 0 (without plan_digest) and use its new `confirm`")
             if not preview["ok"] or dry_run:
-                result = _preview_result(grant, preview)
+                result = _preview_result(grant, preview, settings, cursor)
                 if show and dry_run and result["ok"]:
                     result["shown_in_tab"] = await _show_page(
                         result["data"].get("rows") or [], resolved, settings, tab_id, timeout)
@@ -270,9 +304,12 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry) -
             applied = await client.call(grant, "culling.auto",
                                         json={**options, "dry_run": False, "expected_digest": digest},
                                         timeout=timeout)
-            if not applied["ok"] and PLAN_CHANGED in applied.get("message", ""):
-                return err("confirmation_required", applied["message"])
-            return applied
+            if not applied["ok"]:
+                if PLAN_CHANGED in applied.get("message", ""):
+                    return err("confirmation_required", applied["message"])
+                return applied
+            body = applied["data"] or {}
+            return ok({key: body.get(key) for key in APPLY_KEYS if key in body})
         return await run_tool(ctx, "auto_cull", handler, write=not dry_run)
 
     async def _show_page(rows: list[dict], resolved, settings, tab_id: Optional[str], timeout: float) -> dict:
@@ -281,16 +318,25 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry) -
             return relay.not_shown("empty_result")
         shown = await relay.show_paths_in_tab(registry, resolved, settings, tab_id, paths,
                                               timeout=timeout, groups=groups, marks=marks)
+        missing = shown.get("missing")
+        if isinstance(missing, list) and len(missing) > SUMMARY_PATHS:
+            shown["missing_count"] = len(missing)
+            shown["missing"] = missing[:SUMMARY_PATHS]
         if unpinned:
             shown["unpinned"] = unpinned
         return shown
 
-    def _preview_result(grant, upstream: dict) -> dict:
+    def _preview_result(grant, upstream: dict, settings: dict, cursor: int) -> dict:
         if not upstream["ok"]:
             return upstream
         body = upstream["data"] or {}
-        data = {**body, "rows": body.get("preview", [])}
+        data = {**body, "rows": list(body.get("preview", []))}
         data.pop("preview", None)
+        ignored = body.get("ignored_overrides") or []
+        if len(ignored) > SUMMARY_PATHS:
+            data["ignored_overrides"] = ignored[:SUMMARY_PATHS]
+        if ignored:
+            data["ignored_overrides_count"] = len(ignored)
         kinds = body.get("scope_dependent_kinds")
         notes = []
         if not body.get("rejected"):
@@ -299,9 +345,13 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry) -
             notes.append(f"Groups of kind {', '.join(kinds)} depend on the date range / candidate pool: "
                          "cull the whole range in one call.")
         extra = {"note": " ".join(notes)} if notes else {}
-        if not body.get("rejected"):
-            return ok(data, **extra)
-        return ok(data, **extra, confirm=nonce.issue(grant.nonce_owner, "auto_cull", body["plan_digest"]))
+        issues = bool(body.get("rejected")) and cursor == 0
+        if issues:
+            extra["confirm"] = "x" * CONFIRM_WIDTH
+        _fit_page(data, extra, settings)
+        if issues:
+            extra["confirm"] = nonce.issue(grant.nonce_owner, "auto_cull", body["plan_digest"])
+        return ok(data, **extra)
 
     async def confirm_culling_groups(
         ctx: Context,
@@ -356,10 +406,14 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry) -
         "and returns a `confirm` value; show the user the counts, then call again with "
         "dry_run=false and that `confirm` to reject the planned frames. The apply is refused when "
         "the plan changed since the preview. The preview is paged by whole groups: repeat the call "
-        "with `cursor` set to the result's `next_cursor` until it is null; counts cover the full "
-        "plan and ONE confirm covers all of it (valid 300 s, single use). To honour the user's "
+        "with `cursor` set to the result's `next_cursor` and `plan_digest` set to the cursor-0 "
+        "page's `plan_digest` (required when cursor > 0; a changed plan is refused, restart from "
+        "cursor 0) until next_cursor is null; a page is cut by whole groups to fit the result size. "
+        "Counts cover the full plan and ONE confirm, issued on the cursor-0 page only, covers all "
+        "of it (valid 300 s, single use). The apply returns counts only. To honour the user's "
         "review, pass the `review` lists from ui_get_context as keep_paths / remove_paths (up to "
-        "1000 each): paths outside the plan come back as `ignored_overrides`, and removing a frame "
+        "1000 each): paths outside the plan come back as `ignored_overrides` (the first 20, with "
+        "`ignored_overrides_count`), and removing a frame "
         "of a bracket or panorama, emptying a group of keepers or listing a path in both is refused. "
         "Pass the SAME overrides on the dry run that issues the confirm and on the apply. "
         "Brackets and panoramas are kept whole. date_from/date_to "

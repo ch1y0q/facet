@@ -454,7 +454,7 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
                     return counts
                 if not overview["ok"]:
                     return overview
-                basis = {"total_photos": "whole library: hide toggles ignored, rejected photos included",
+                basis = {"total_photos": "photos you can see within date_from/date_to and category (every date and category when none is given); hide toggles ignored, rejected photos included",
                          "type_counts": "hide toggles applied (rejected, bursts ... hidden); date_from/date_to "
                                         "and category are ignored"}
                 return ok({"type_counts": counts["data"], "overview": {**overview["data"], "basis": basis}})

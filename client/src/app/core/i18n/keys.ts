@@ -1067,6 +1067,8 @@ export const I18N = {
         remove: "gallery.pinned.review.remove",
         group: "gallery.pinned.review.group",
         legend: "gallery.pinned.review.legend",
+        legend_groups: "gallery.pinned.review.legend_groups",
+        legend_groups_plural: "gallery.pinned.review.legend_groups_plural",
         keep_aria: "gallery.pinned.review.keep_aria",
         remove_aria: "gallery.pinned.review.remove_aria",
         toggle_tooltip: "gallery.pinned.review.toggle_tooltip",

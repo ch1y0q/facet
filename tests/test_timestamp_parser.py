@@ -43,3 +43,9 @@ def test_day_granularity_refuses_a_time_and_names_the_form(value):
 def test_garbage_is_refused_naming_the_accepted_forms(value):
     with pytest.raises(ValueError, match="YYYY-MM-DD"):
         parse_timestamp(value)
+
+
+def test_years_before_1000_are_zero_padded():
+    assert to_second_granularity("0999-01-01") == "0999:01:01 00:00:00"
+    assert to_second_granularity("0999-01-01", end_of_day=True) == "0999:01:01 23:59:59"
+    assert to_day_granularity("0999-01-01") == "0999-01-01"

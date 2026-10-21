@@ -278,7 +278,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
               @if (store.hasReview()) {
                 @let legend = store.reviewLegend();
                 <span class="ml-2 opacity-80" data-testid="pinned-review-legend">
-                  {{ 'gallery.pinned.review.legend' | translate:{ groups: legend.groups, keep: legend.keep, remove: legend.remove } }}
+                  {{ I18N.gallery.pinned.review.legend | translate:{ groups: (legend.groups | pluralKey:I18N.gallery.pinned.review.legend_groups:I18N.gallery.pinned.review.legend_groups_plural | translate:{ count: legend.groups }), keep: legend.keep, remove: legend.remove } }}
                 </span>
               }
             </span>
@@ -1275,6 +1275,12 @@ export class GalleryComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** Flip a card's effective keep/remove mark into the user's absolute choice; no HTTP. */
+  protected toggleReviewMark(path: string): void {
+    const current = this.store.userMarks().get(path) ?? this.store.pinnedMarks().get(path);
+    this.store.setReviewMark(path, current === 'keep' ? 'remove' : 'keep');
+  }
+
   /** Selecting a photo with the pointer also moves the grid's cursor onto it,
    *  so the next rating keystroke lands on the photo the user just clicked
    *  rather than on wherever the arrow keys were left. The index comes from the
@@ -1290,12 +1296,6 @@ export class GalleryComponent implements OnInit, OnDestroy {
    *  it out loud makes the rule hold for any caller. It is also what lifts the
    *  newly current card clear of the action bar that this very selection has
    *  just raised over it. */
-  /** Flip a card's effective keep/remove mark into the user's absolute choice; no HTTP. */
-  protected toggleReviewMark(path: string): void {
-    const current = this.store.userMarks().get(path) ?? this.store.pinnedMarks().get(path);
-    this.store.setReviewMark(path, current === 'keep' ? 'remove' : 'keep');
-  }
-
   protected toggleSelection(photo: Photo, event: MouseEvent | undefined, index: number): void {
     this.store.toggleSelection(photo, event);
     this.setCursor(index);

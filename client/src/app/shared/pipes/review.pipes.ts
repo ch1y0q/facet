@@ -1,6 +1,6 @@
 import { Pipe, PipeTransform } from '@angular/core';
 
-export type ReviewMarkValue = 'keep' | 'remove';
+import type { ReviewMark } from '../../features/gallery/gallery.store';
 
 /**
  * The effective keep/remove mark of one photo on an annotated pin: the user's own
@@ -11,9 +11,9 @@ export type ReviewMarkValue = 'keep' | 'remove';
 export class ReviewMarkPipe implements PipeTransform {
   transform(
     path: string,
-    userMarks: ReadonlyMap<string, ReviewMarkValue>,
-    agentMarks: ReadonlyMap<string, ReviewMarkValue>,
-  ): ReviewMarkValue | null {
+    userMarks: ReadonlyMap<string, ReviewMark>,
+    agentMarks: ReadonlyMap<string, ReviewMark>,
+  ): ReviewMark | null {
     return userMarks.get(path) ?? agentMarks.get(path) ?? null;
   }
 }

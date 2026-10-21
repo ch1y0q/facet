@@ -1608,7 +1608,7 @@
         "readOnlyHint": true,
         "untrustedContentHint": true
       },
-      "description": "Where the user's tab is, from any page: route, the open photo, the selection (scope and count), a gallery summary (total, loaded, has_more, pinned list) when the gallery is open, the mounted page actions and the jobs that apply now (`actions`, with their tools).",
+      "description": "Where the user's tab is, from any page: route, the open photo, the selection (scope and count), a gallery summary (total, loaded, has_more, pinned list) when the gallery is open, the mounted page actions and the jobs that apply now (`actions`, with their tools), and `review`, the user's Keep/Remove flips on a pinned auto-cull page. When the review is too large for one answer its lists are cut: `review.truncated` is true and `review.keep_count` / `review.remove_count` hold the true sizes.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {},
@@ -1700,5 +1700,5 @@
       "name": "ui_show_comparison"
     }
   ],
-  "version": "a21c2fc85f14df63"
+  "version": "abffbeeba56ed5b5"
 }

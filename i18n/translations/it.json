@@ -1052,7 +1052,9 @@
         "keep": "Tieni",
         "remove": "Rimuovi",
         "group": "Gruppo {n}",
-        "legend": "{groups} gruppi · {keep} da tenere · {remove} da rimuovere",
+        "legend": "{groups} · {keep} da tenere · {remove} da rimuovere",
+        "legend_groups": "{count} gruppo",
+        "legend_groups_plural": "{count} gruppi",
         "keep_aria": "Tieni, gruppo {n}. Attiva per segnare come da rimuovere",
         "remove_aria": "Rimuovi, gruppo {n}. Attiva per tenere",
         "toggle_tooltip": "Clicca per passare da tenere a rimuovere"

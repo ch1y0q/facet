@@ -312,12 +312,14 @@ def big(env_token, seed_photos_prefix):
 
 
 def _big_pages(env, token, **extra):
-    pages, cursor = [], 0
+    pages, cursor, digest = [], 0, None
     while True:
-        result = env.call(token, "auto_cull", {"group_by": "burst", "strictness": 100, "cursor": cursor,
-                                               **BIG_WINDOW, **extra})
+        paging = {"cursor": cursor, "plan_digest": digest} if cursor else {}
+        result = env.call(token, "auto_cull", {"group_by": "burst", "strictness": 100,
+                                               **BIG_WINDOW, **paging, **extra})
         assert result["ok"], result
         pages.append(result)
+        digest = result["data"]["plan_digest"]
         cursor = result["data"]["next_cursor"]
         if cursor is None:
             return pages
@@ -338,7 +340,7 @@ class TestAutoCullPaging:
     def test_auto_cull_large_plan_confirmable(self, big):
         env, token = big
         pages = _big_pages(env, token)
-        assert len(pages) >= 2 and all(p["confirm"] for p in pages)
+        assert len(pages) >= 2 and pages[0]["confirm"] and all("confirm" not in p for p in pages[1:])
         planned = {p for page in pages for g in page["data"]["rows"] for p in g["reject_paths"]}
         assert len(planned) == BIG_GROUPS * 2
         result = env.call(token, "auto_cull", {"group_by": "burst", "strictness": 100, "dry_run": False,
@@ -356,6 +358,130 @@ class TestAutoCullPaging:
                                                "confirm": pages[0]["confirm"], **BIG_WINDOW})
         assert result["error"] == "confirmation_required"
         assert not {p for p in _rejected() if p.startswith(BIG_PREFIX)}
+
+
+@pytest.fixture()
+def big_env(agent_app, seed_photos_prefix):
+    def make(**mcp):
+        nonce.reset()
+        seed_photos_prefix(BIG_PREFIX, _big_rows())
+        env = agent_app("legacy", **mcp)
+        return env, env.token(env.login(edition=True), "edition")
+    return make
+
+
+def _big_rejected():
+    return {p for p in _rejected() if p.startswith(BIG_PREFIX)}
+
+
+def _assert_every_group_once(pages):
+    numbers = [row["number"] for page in pages for row in page["data"]["rows"]]
+    assert numbers == list(range(1, BIG_GROUPS + 1))
+    assert not any("truncated" in page or "returned" in page for page in pages)
+
+
+class TestAutoCullPageBudget:
+    def test_stale_overrides_do_not_make_the_envelope_drop_groups(self, big_env):
+        env, token = big_env()
+        stale = [f"/agent-seeded/old-session/{'x' * 90}/{i:04d}.jpg" for i in range(300)]
+        pages = _big_pages(env, token, remove_paths=stale)
+        _assert_every_group_once(pages)
+        data = pages[0]["data"]
+        assert len(data["ignored_overrides"]) == 20 and data["ignored_overrides_count"] == 300
+        result = env.call(token, "auto_cull", {"group_by": "burst", "strictness": 100, "dry_run": False,
+                                               "remove_paths": stale, "confirm": pages[0]["confirm"],
+                                               **BIG_WINDOW})
+        assert result["ok"], result
+        assert _big_rejected() == {p for page in pages for r in page["data"]["rows"]
+                                   for p in r["reject_paths"]}
+
+    def test_a_small_operator_max_bytes_pages_by_whole_groups(self, big_env):
+        env, token = big_env(max_bytes=30000)
+        pages = _big_pages(env, token)
+        _assert_every_group_once(pages)
+        assert len(pages) > 2 and all(tools_culling.encoded_size(p) <= 30000 for p in pages)
+
+    def test_the_apply_returns_counts_only(self, big_env):
+        env, token = big_env(max_bytes=30000)
+        first = env.call(token, "auto_cull", {"group_by": "burst", "strictness": 100, "show": False,
+                                              **BIG_WINDOW})
+        result = env.call(token, "auto_cull", {"group_by": "burst", "strictness": 100, "dry_run": False,
+                                               "confirm": first["confirm"], **BIG_WINDOW})
+        assert result["ok"], result
+        assert set(result["data"]) <= {"groups_processed", "kept", "rejected", "highlights_added", "dry_run"}
+        assert result["data"]["rejected"] == BIG_GROUPS * 2 and len(_big_rejected()) == BIG_GROUPS * 2
+
+    def test_a_later_page_needs_the_plan_digest(self, big_env):
+        env, token = big_env()
+        first = env.call(token, "auto_cull", {"group_by": "burst", "strictness": 100, "show": False,
+                                              **BIG_WINDOW})
+        result = env.call(token, "auto_cull", {"group_by": "burst", "strictness": 100, "show": False,
+                                               "cursor": first["data"]["next_cursor"], **BIG_WINDOW})
+        assert result["error"] == "invalid_input" and "plan_digest" in result["message"]
+
+    def test_a_plan_that_moves_between_pages_refuses_the_next_page(self, big_env):
+        env, token = big_env()
+        args = {"group_by": "burst", "strictness": 100, "show": False, **BIG_WINDOW}
+        first = env.call(token, "auto_cull", args)
+        with sqlite3.connect(_TEST_DB_FILE.name) as conn:
+            conn.execute("UPDATE photos SET burst_reviewed = 1 WHERE burst_group_id = 7000 AND path LIKE ?",
+                         (BIG_PREFIX + "%",))
+        second = env.call(token, "auto_cull", {**args, "cursor": first["data"]["next_cursor"],
+                                               "plan_digest": first["data"]["plan_digest"]})
+        assert second["error"] == "confirmation_required" and "cursor 0" in second["message"]
+
+    def test_only_the_first_page_issues_a_confirm_so_many_pages_keep_it_valid(self, big_env):
+        env, token = big_env()
+        first = env.call(token, "auto_cull", {"group_by": "burst", "strictness": 100, "show": False,
+                                              **BIG_WINDOW})
+        for _ in range(nonce.MAX_PENDING_PER_OWNER + 4):
+            later = env.call(token, "auto_cull", {
+                "group_by": "burst", "strictness": 100, "show": False, **BIG_WINDOW,
+                "cursor": first["data"]["next_cursor"], "plan_digest": first["data"]["plan_digest"]})
+            assert later["ok"] and "confirm" not in later
+        result = env.call(token, "auto_cull", {"group_by": "burst", "strictness": 100, "dry_run": False,
+                                               "confirm": first["confirm"], **BIG_WINDOW})
+        assert result["ok"], result
+
+    def test_the_plan_moving_after_the_nonce_check_is_refused_by_expected_digest(self, big_env, monkeypatch):
+        from api.agent.internal_client import InternalClient
+        env, token = big_env()
+        first = env.call(token, "auto_cull", {"group_by": "burst", "strictness": 100, "show": False,
+                                              **BIG_WINDOW})
+        real = InternalClient.call
+
+        async def call(self, grant, name, *a, **kw):
+            body = kw.get("json")
+            if name == "culling.auto" and isinstance(body, dict) and body.get("dry_run") is False:
+                with sqlite3.connect(_TEST_DB_FILE.name) as conn:
+                    conn.execute("UPDATE photos SET aggregate = 9.9, aesthetic = 9.9, tech_sharpness = 9.9 "
+                                 "WHERE path LIKE ? AND path LIKE '%\\_001\\_2.jpg' ESCAPE '\\'",
+                                 (BIG_PREFIX + "%",))
+            return await real(self, grant, name, *a, **kw)
+        monkeypatch.setattr(InternalClient, "call", call)
+        result = env.call(token, "auto_cull", {"group_by": "burst", "strictness": 100, "dry_run": False,
+                                               "confirm": first["confirm"], **BIG_WINDOW})
+        assert result["error"] == "confirmation_required"
+        assert not _big_rejected()
+
+    def test_a_restated_removal_of_a_trimmed_bracket_rung_is_not_refused(self):
+        from api.routers import burst_culling as bc
+        photos = [{"path": "/b/k0.jpg", "sequence_ev_offset": 0},
+                  {"path": "/b/k-2.jpg", "sequence_ev_offset": -2},
+                  {"path": "/b/k+2.jpg", "sequence_ev_offset": 2}]
+        plan = bc._plan_auto_cull_groups(
+            [{"type": "bracket", "group_id": 9, "sequence_kind": "bracket", "photos": photos}], set(), 50, 1)
+        assert "/b/k-2.jpg" in plan[0]["reject_paths"]
+        effective, ignored = bc._apply_plan_overrides(plan, [], ["/b/k-2.jpg"])
+        assert ignored == [] and effective == {"keep": [], "remove": []}
+        with pytest.raises(bc.AutoCullOverrideError):
+            bc._apply_plan_overrides(plan, [], ["/b/k0.jpg"])
+
+    def test_trim_brackets_makes_bracket_scope_dependent(self, env_token):
+        env, token = env_token
+        result = env.call(token, "auto_cull", {"group_by": "burst", "trim_brackets": True, **SCOPE})
+        assert result["ok"], result
+        assert result["data"]["scope_dependent_kinds"] == ["bracket"]
 
 
 class TestAutoCullOverrides:

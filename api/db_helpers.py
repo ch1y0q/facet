@@ -348,7 +348,7 @@ def to_second_granularity(value: str, end_of_day: bool = False) -> str:
     moment, has_time = parse_timestamp(value)
     if end_of_day and not has_time:
         moment = moment.replace(hour=23, minute=59, second=59)
-    return moment.strftime("%Y:%m:%d %H:%M:%S")
+    return f"{moment.year:04d}" + moment.strftime(":%m:%d %H:%M:%S")
 
 
 def to_day_granularity(value: str) -> str:
@@ -357,7 +357,7 @@ def to_day_granularity(value: str) -> str:
     if has_time:
         raise ValueError(f"{value!r} has a time of day, but this filter works on whole days; "
                          "use 'YYYY-MM-DD'")
-    return moment.strftime("%Y-%m-%d")
+    return f"{moment.year:04d}" + moment.strftime("-%m-%d")
 
 
 def format_date(date_str):

@@ -17,6 +17,7 @@ from pydantic import ValidationError
 from api.agent import actions
 from api.agent.bridge import TabRegistry
 from api.agent.internal_client import err, validation_issues
+from api.agent.limits import encoded_size
 from api.agent.runtime import run_tool
 from api.agent.tools_common import TOOL_LEVELS, UNTRUSTED_META, UNTRUSTED_NOTE
 from api.agent.ui_tools import UI_TOOLS, UiTool
@@ -50,6 +51,27 @@ def restrict_context(result: dict, level: str) -> None:
                        for row in rows]
 
 
+def fit_review(result: dict, max_bytes: int) -> None:
+    """Trim ``review.keep`` / ``review.remove`` so the context fits ``max_bytes``, rather than refusing it.
+
+    The tab caps each list at 1000 paths, far more than the envelope allows. The longer list is
+    halved until the whole result fits; the true sizes stay in ``review.keep_count`` /
+    ``review.remove_count`` and ``review.truncated`` is set.
+    """
+    data = result.get("data") if result.get("ok") else None
+    review = data.get("review") if isinstance(data, dict) else None
+    if not isinstance(review, dict) or encoded_size(result) <= max_bytes:
+        return
+    lists = {side: review.get(side) for side in ("keep", "remove")}
+    if not all(isinstance(v, list) for v in lists.values()):
+        return
+    review["keep_count"], review["remove_count"] = len(lists["keep"]), len(lists["remove"])
+    review["truncated"] = True
+    while encoded_size(result) > max_bytes and (review["keep"] or review["remove"]):
+        side = "keep" if len(review["keep"]) >= len(review["remove"]) else "remove"
+        review[side] = review[side][:len(review[side]) // 2]
+
+
 def register_ui_tools(server: MCPServer, registry: TabRegistry) -> None:
     for tool in UI_TOOLS:
         TOOL_LEVELS[tool.name] = UI_TOOL_LEVEL
@@ -78,6 +100,7 @@ def _make_tool(tool: UiTool, registry: TabRegistry) -> Any:
                 max_level=resolved.minted_level)
             if tool.name == "ui_get_context":
                 restrict_context(result, resolved.level)
+                fit_review(result, settings["max_bytes"])
             return result
         return await run_tool(ctx, tool.name, handler)
 

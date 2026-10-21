@@ -4,6 +4,8 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatMenuModule } from '@angular/material/menu';
 import { Photo } from '../../models/photo.model';
+import { i18nKeys } from '../../../core/i18n/keys';
+import type { ReviewMark } from '../../../features/gallery/gallery.store';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { ThumbnailUrlPipe, PersonThumbnailUrlPipe } from '../../pipes/thumbnail-url.pipe';
 import { SequenceOverrideBadgeKeyPipe } from '../../pipes/sequence-kind.pipe';
@@ -258,14 +260,14 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
                   class="absolute bottom-10 right-1.5 z-30 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-black/70 text-white text-xs font-medium ring-2 cursor-pointer"
                   [class.ring-green-400]="mark === 'keep'"
                   [class.ring-red-400]="mark === 'remove'"
-                  [attr.aria-label]="(mark === 'keep' ? 'gallery.pinned.review.keep_aria' : 'gallery.pinned.review.remove_aria') | translate:{ n: groupNumber() ?? 0 }"
+                  [attr.aria-label]="(mark === 'keep' ? I18N.gallery.pinned.review.keep_aria : I18N.gallery.pinned.review.remove_aria) | translate:{ n: groupNumber() ?? 0 }"
                   [matTooltip]="'gallery.pinned.review.toggle_tooltip' | translate"
                   (click)="onReviewMarkClick($event)"
                   (dblclick)="$event.stopPropagation()"
                   (keydown.enter)="$event.stopPropagation()"
                   (keydown.space)="$event.stopPropagation()">
             <mat-icon class="!text-base !w-4 !h-4 !leading-4" [class.!text-green-400]="mark === 'keep'" [class.!text-red-400]="mark === 'remove'" aria-hidden="true">{{ mark === 'keep' ? 'check' : 'close' }}</mat-icon>
-            {{ (mark === 'keep' ? 'gallery.pinned.review.keep' : 'gallery.pinned.review.remove') | translate }}
+            {{ (mark === 'keep' ? I18N.gallery.pinned.review.keep : I18N.gallery.pinned.review.remove) | translate }}
           </button>
         }
 
@@ -689,8 +691,9 @@ export class PhotoCardComponent {
   // Events
   /** Number of the assistant's group this photo belongs to, or null off an annotated pin. */
   readonly groupNumber = input<number | null>(null);
+  protected readonly I18N = i18nKeys();
   /** Effective keep/remove mark, or null when the pin carries none. */
-  readonly reviewMark = input<'keep' | 'remove' | null>(null);
+  readonly reviewMark = input<ReviewMark | null>(null);
   /** The user clicked the mark badge; emits the photo path. */
   readonly reviewMarkToggle = output<string>();
 

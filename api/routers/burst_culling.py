@@ -2426,7 +2426,8 @@ def _apply_plan_overrides(plan, keep_override, remove_override):
         for path in entry['keep_paths'] + entry['reject_paths']:
             owner[path] = entry
     ignored = [p for p in keep_override + remove_override if p not in owner]
-    whole = [p for p in remove_override if p in owner and _plan_keeps_whole(owner[p])]
+    whole = [p for p in remove_override
+             if p in owner and _plan_keeps_whole(owner[p]) and p in owner[p]['keep_paths']]
     if whole:
         raise AutoCullOverrideError(
             'Frames of a bracket or panorama set are kept whole and cannot be removed: '
@@ -2521,7 +2522,8 @@ class AutoCullResult:
 
 
 # Group kinds whose membership depends on the date window / candidate pool (similar and scene
-# groups are computed over the pool); burst, bracket and panorama members are fetched without it.
+# groups are computed over the pool); burst and panorama members are fetched without it. Trimmed brackets (`trim_brackets`) are
+# windowed like the rest, so run_auto_cull appends 'bracket' when that option is on.
 _SCOPE_DEPENDENT_KINDS = {'all': ['similar'], 'similar': ['similar'], 'scene': ['scene'], 'burst': []}
 
 
@@ -2589,6 +2591,8 @@ def run_auto_cull(conn, db_path, user_id, *, group_by, strictness, min_keep,
         )
     result = AutoCullResult()
     result.scope_dependent_kinds = list(_SCOPE_DEPENDENT_KINDS.get(group_by, []))
+    if trim_brackets:
+        result.scope_dependent_kinds.append('bracket')
     result.collected = {p['path'] for g in groups for p in g['photos']}
     if membership_groups and group_by != 'all':
         # Burst and similar membership, whatever `group_by` was. Scene groups are

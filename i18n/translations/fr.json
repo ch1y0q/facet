@@ -1052,7 +1052,9 @@
         "keep": "Garder",
         "remove": "Retirer",
         "group": "Groupe {n}",
-        "legend": "{groups} groupes · {keep} à garder · {remove} à retirer",
+        "legend": "{groups} · {keep} à garder · {remove} à retirer",
+        "legend_groups": "{count} groupe",
+        "legend_groups_plural": "{count} groupes",
         "keep_aria": "Garder, groupe {n}. Activer pour marquer comme à retirer",
         "remove_aria": "Retirer, groupe {n}. Activer pour garder",
         "toggle_tooltip": "Cliquer pour basculer entre garder et retirer"
