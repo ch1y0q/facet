@@ -263,10 +263,10 @@ A contagem do banner vem de uma entrada de `stats_cache` com um TTL de uma hora,
 
 | Comando | Descrição |
 |---------|-------------|
-| `python facet.py --doctor` | Executa verificações de diagnóstico (Python, GPU, dependências, configuração, banco de dados) |
+| `python facet.py --doctor` | Executa verificações de diagnóstico (Python, GPU, ONNX Runtime, dependências, configuração, banco de dados) |
 | `python facet.py --doctor --simulate-gpu "RTX 5070 Ti" --simulate-vram 16` | Simula o hardware de GPU para diagnóstico |
 
-Reporta a versão do Python, o build do PyTorch/CUDA, a detecção e o driver da GPU, a recomendação de perfil de VRAM, as dependências opcionais e o status da configuração/banco de dados. Quando o PyTorch não consegue enxergar a GPU mas o `nvidia-smi` consegue, ele imprime o comando `pip install` para corrigir o build do CUDA.
+Reporta a versão do Python, o build do PyTorch/CUDA, a detecção e o driver da GPU, o pacote ONNX Runtime com sua versão e seus provedores de execução (e, quando o Facet roda em CUDA, uma sessão de teste de um único nó que comprova que o build de GPU realmente carrega), a recomendação de perfil de VRAM, as dependências opcionais e o status da configuração/banco de dados. Quando o PyTorch não consegue enxergar a GPU mas o `nvidia-smi` consegue, ele imprime o comando `pip install` para corrigir o build do CUDA; quando o ONNX Runtime é o build errado, não consegue carregar em CUDA ou está quebrado (os dois pacotes instalados, ou a importação falha), ele imprime o comando que o repara (veja [Instalação › ONNX Runtime para detecção de faces](INSTALLATION.md#onnx-runtime-para-detecção-de-faces)).
 
 `--simulate-gpu NAME` e `--simulate-vram GB` testam o comportamento com hardware diferente. Ambos requerem `--doctor`; `--simulate-vram` requer `--simulate-gpu`.
 
