@@ -277,7 +277,7 @@ Diferente de Selecionar para pasta, que deixa a linha do banco de dados intacta 
 - **Modo de Layout** - Alterne entre **Grade** (cartões uniformes) e **Mosaico** (linhas justificadas preservando as proporções). O Mosaico é apenas para desktop; o mobile sempre usa grade.
 - **Tamanho da Miniatura** - Controle deslizante para ajustar a altura do cartão/linha (120–400px, persistido no localStorage)
 - **Ocultar Detalhes** - Oculta os metadados da foto nos cartões (apenas no modo grade)
-- **Dica** - Como os detalhes são mostrados: **Ao passar** (predefinição), **Ao clicar**, **Desativado** ou **Painel lateral**. O painel lateral fixa os mesmos detalhes na gaveta da direita em vez de seguir o cursor: um dado fica assim sempre no mesmo sítio de uma foto para a outra, e o painel mantém a última foto sobre a qual passou em vez de esvaziar quando o cursor sai da grelha. Clicar numa foto fixa o painel nela — passar sobre outras fotos deixa de o mudar — até premir **Desmarcar** no topo do painel, o que também retira essa foto da seleção. Partilha essa gaveta com a barra de filtros: abrir os filtros oculta-o até os fechar, e a grelha mantém exatamente a largura que tem com os filtros abertos. Requer uma janela de pelo menos 1280 px.
+- **Dica** - Como os detalhes são mostrados: **Ao passar** (predefinição), **Ao clicar**, **Desativado** ou **Painel lateral**. O painel lateral fixa os mesmos detalhes na gaveta da direita em vez de seguir o cursor: um dado fica assim sempre no mesmo sítio de uma foto para a outra, e o painel mantém a última foto sobre a qual passou em vez de esvaziar quando o cursor sai da grelha. Clicar numa foto fixa o painel nela — passar sobre outras fotos deixa de o mudar — até premir **Desmarcar** no topo do painel, o que também retira essa foto da seleção. **Esc** faz o mesmo e limpa também o resto da seleção; nunca fecha o painel. Partilha essa gaveta com a barra de filtros: abrir os filtros oculta-o até os fechar, e a grelha mantém exatamente a largura que tem com os filtros abertos. Requer uma janela de pelo menos 1280 px.
 - **Ocultar Piscadas** - Filtra fotos com piscadas detectadas
 - **Melhor da Sequência** - Mostra apenas a foto com maior pontuação de cada sequência (burst)
 - **Melhor do bracketing** - Mostra apenas a exposição base de cada bracketing detetado, ocultando as fotos laterais. **Ativo por predefinição.** Independente de «Melhor da Sequência»: um quarto dos bracketings partilha uma sequência com fotos alheias, onde a principal não é a exposição base.
@@ -819,7 +819,7 @@ Todas as estatísticas são sensíveis ao usuário no modo multiusuário — cad
 | `Enter` | Abre a foto em foco |
 | `Space` | Seleciona / desseleciona a foto em foco |
 | `Ctrl+A` | Selecionar tudo — toda a visualização filtrada a partir de uma seleção vazia (sem requisição), senão as fotos carregadas |
-| `Escape` | Limpa a seleção / fecha a gaveta de filtros |
+| `Escape` | Limpa a seleção (no modo painel lateral, liberta também a foto fixada) / fecha a gaveta de filtros |
 | `Shift+Click` | Seleciona em intervalo as fotos entre a última selecionada e a clicada |
 | `Double-click` | Abre a foto |
 | `Shift+F10` / `Menu` | Abre o menu de contexto do cartão de foto com foco (o clique direito faz o mesmo) |

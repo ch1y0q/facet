@@ -277,7 +277,7 @@ A differenza di Scarta in cartella, che lascia intatta la riga del database fino
 - **Modalità layout** - Passa tra **Griglia** (schede uniformi) e **Mosaico** (righe giustificate che preservano le proporzioni). Il mosaico è solo per desktop; su mobile si usa sempre la griglia.
 - **Dimensione miniatura** - Cursore per regolare l'altezza delle schede/righe (120–400px, salvato in localStorage)
 - **Nascondi dettagli** - Nascondi i metadati delle foto sulle schede (solo modalità griglia)
-- **Tooltip** - Come vengono mostrati i dettagli: **Al passaggio** (predefinito), **Al clic**, **Disattivato** o **Pannello laterale**. Il pannello laterale ancora gli stessi dettagli nel cassetto di destra invece di seguire il cursore: un dato si trova così sempre nello stesso punto da una foto all'altra, e il pannello conserva l'ultima foto sfiorata invece di svuotarsi quando il cursore lascia la griglia. Un clic su una foto blocca il pannello su di essa — sfiorare altre foto non lo cambia più — finché non premi **Deseleziona** in cima al pannello, che toglie anche quella foto dalla selezione. Condivide quel cassetto con la barra dei filtri: aprire i filtri lo nasconde finché non li richiudi, e la griglia mantiene esattamente la larghezza che ha con i filtri aperti. Richiede una finestra di almeno 1280 px.
+- **Tooltip** - Come vengono mostrati i dettagli: **Al passaggio** (predefinito), **Al clic**, **Disattivato** o **Pannello laterale**. Il pannello laterale ancora gli stessi dettagli nel cassetto di destra invece di seguire il cursore: un dato si trova così sempre nello stesso punto da una foto all'altra, e il pannello conserva l'ultima foto sfiorata invece di svuotarsi quando il cursore lascia la griglia. Un clic su una foto blocca il pannello su di essa — sfiorare altre foto non lo cambia più — finché non premi **Deseleziona** in cima al pannello, che toglie anche quella foto dalla selezione. **Esc** fa lo stesso e cancella anche il resto della selezione; non chiude mai il pannello. Condivide quel cassetto con la barra dei filtri: aprire i filtri lo nasconde finché non li richiudi, e la griglia mantiene esattamente la larghezza che ha con i filtri aperti. Richiede una finestra di almeno 1280 px.
 - **Nascondi occhi chiusi** - Filtra le foto con battiti di ciglia rilevati
 - **Migliore della raffica** - Mostra solo la foto con il punteggio più alto di ogni raffica
 - **Migliore del bracketing** - Mostra solo l'esposizione di base di ogni bracketing rilevato, nascondendo gli scatti laterali. **Attivo per impostazione predefinita.** Indipendente da «Migliore della raffica»: un quarto dei bracketing condivide una raffica con scatti estranei, dove la foto guida non è l'esposizione di base.
@@ -820,7 +820,7 @@ Tutte le statistiche sono consapevoli dell'utente in modalità multiutente — o
 | `Enter` | Apri la foto a fuoco |
 | `Space` | Seleziona / deseleziona la foto a fuoco |
 | `Ctrl+A` | Seleziona tutto — l'intera vista filtrata da una selezione vuota (nessuna richiesta), altrimenti le foto caricate |
-| `Escape` | Cancella la selezione / chiudi il pannello dei filtri |
+| `Escape` | Cancella la selezione (in modalità pannello laterale sblocca anche la foto bloccata) / chiudi il pannello dei filtri |
 | `Shift+Click` | Selezione di un intervallo di foto tra l'ultima selezionata e quella cliccata |
 | `Double-click` | Apri la foto |
 | `Shift+F10` / `Menu` | Apri il menu contestuale della scheda foto con il focus (il clic destro fa lo stesso) |

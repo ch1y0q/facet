@@ -8,6 +8,7 @@ import { Subject, of, throwError } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
 import { MatBottomSheet } from '@angular/material/bottom-sheet';
 import { MatTooltip } from '@angular/material/tooltip';
+import { MatSidenav } from '@angular/material/sidenav';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
@@ -1252,6 +1253,37 @@ describe('GalleryComponent', () => {
           expect(mockStore.toggleSelection).not.toHaveBeenCalled();
         });
 
+        it('Escape in the grid releases the photo like Deselect, then clears the rest of the selection', () => {
+          mockStore.selectedPaths.set(new Set([a.path, b.path]));
+          mockStore.selectionCount.set(2);
+          component.showTooltip(hoverEvent, b as never);
+          press('Escape');
+          expect(hasActivePhoto()).toBe(false);
+          expect(mockStore.toggleSelection).toHaveBeenLastCalledWith(a);
+          expect(mockStore.clearSelection).toHaveBeenCalled();
+          expect(panelPhoto()).toBe(a);
+        });
+
+        it('Escape in the grid releases a photo the cursor holds without any selection', () => {
+          mockStore.toggleSelection.mockClear();
+          press('Escape');
+          expect(hasActivePhoto()).toBe(false);
+          expect(mockStore.toggleSelection).not.toHaveBeenCalled();
+          expect(mockStore.clearSelection).not.toHaveBeenCalled();
+        });
+
+        it('Escape with one photo in a view-scoped selection still clears the store selection', () => {
+          mockStore.photos.set([a]);
+          mockStore.viewScopeSelected.set(true);
+          // The store's count is "loaded photos minus exclusions"; the release excludes the only one.
+          mockStore.selectionCount.set(0);
+          mockStore.clearSelection.mockClear();
+          press('Escape');
+          expect(mockStore.clearSelection).toHaveBeenCalled();
+          mockStore.viewScopeSelected.set(false);
+          mockStore.selectionCount.set(0);
+        });
+
         it('focus moving into the rail keeps the cursor', () => {
           const rail = document.createElement('div');
           rail.setAttribute('data-details-rail', '');
@@ -1262,6 +1294,137 @@ describe('GalleryComponent', () => {
             .onGridFocusOut({ relatedTarget: button } as unknown as FocusEvent);
           expect(activeIndex()).toBe(0);
           rail.remove();
+        });
+      });
+
+      describe('after Escape released a held card that still has focus', () => {
+        const four = [{ path: '/a.jpg' }, { path: '/b.jpg' }, { path: '/c.jpg' }, { path: '/d.jpg' }];
+        let card: HTMLElement;
+        let inner: HTMLElement;
+        const fire = (key: string, target: HTMLElement) => {
+          const ev = new KeyboardEvent('keydown', { key, cancelable: true });
+          Object.defineProperty(ev, 'target', { value: target, configurable: true });
+          (component as unknown as { onGridKeydown(e: KeyboardEvent): void }).onGridKeydown(ev);
+        };
+
+        beforeEach(() => {
+          mockStore.photos.set(four);
+          mockStore.config.set({ features: { show_rating_controls: true } });
+          (mockAuth as { isEdition: unknown }).isEdition = vi.fn(() => true);
+          card = document.createElement('div');
+          card.setAttribute('data-pidx', '2');
+          inner = document.createElement('span');
+          card.appendChild(inner);
+          click(four[2], 2);
+          fire('Escape', inner);
+          expect(activeIndex()).toBe(-1);
+        });
+
+        it('a rating key rates the card that has focus, not photo 0', () => {
+          fire('5', inner);
+          expect(mockStore.setRating).toHaveBeenCalledWith('/c.jpg', 5);
+          expect(mockStore.setRating).not.toHaveBeenCalledWith('/a.jpg', 5);
+        });
+
+        it('ArrowRight moves on from the card that has focus', () => {
+          fire('ArrowRight', inner);
+          expect(activeIndex()).toBe(3);
+        });
+      });
+
+      it('Escape in Hover mode never touches the panel hold: it only clears the selection', () => {
+        mockStore.filters.set({ ...DEFAULT_FILTERS, tooltip_mode: 'hover' });
+        mockStore.photos.set([{ path: '/a.jpg' }, { path: '/b.jpg' }]);
+        click({ path: '/b.jpg' }, 1);
+        mockStore.selectionCount.set(1);
+        mockStore.toggleSelection.mockClear();
+        mockStore.clearSelection.mockClear();
+        press('Escape');
+        expect(mockStore.clearSelection).toHaveBeenCalled();
+        expect(mockStore.toggleSelection).not.toHaveBeenCalled();
+        expect(activeIndex()).toBe(1);
+        mockStore.selectionCount.set(0);
+      });
+
+      it('disableClose follows the rail: false while the filters occupy the drawer', () => {
+        const fixture = TestBed.createComponent(GalleryComponent);
+        (fixture.componentInstance as unknown as { railWide: { setup(): void } }).railWide.setup();
+        fixture.detectChanges();
+        const drawer = fixture.debugElement.query(By.directive(MatSidenav)).componentInstance as MatSidenav;
+        expect(fixture.componentInstance.detailsRailVisible()).toBe(true);
+        expect(drawer.disableClose).toBe(true);
+        mockStore.filterDrawerOpen.set(true);
+        fixture.detectChanges();
+        expect(fixture.componentInstance.detailsRailVisible()).toBe(false);
+        expect(drawer.disableClose).toBe(false);
+        fixture.destroy();
+      });
+
+      describe('rail rendered with a held photo', () => {
+        interface RailInstance {
+          railWide: { setup(): void };
+          hasActivePhoto(): boolean;
+          setCursor(index: number): void;
+        }
+        let fixture: ComponentFixture<GalleryComponent>;
+        let instance: RailInstance;
+        let rail: HTMLElement;
+
+        beforeEach(() => {
+          const a = {
+            path: '/a.jpg', filename: 'a.jpg', image_width: 4000, image_height: 3000, tags_list: [], persons: [],
+          };
+          mockStore.photos.set([a]);
+          // The docked tooltip fetches its own extras (histogram, captions) once it renders.
+          Object.assign(mockApi, { get: vi.fn(() => of({})) });
+          fixture = TestBed.createComponent(GalleryComponent);
+          instance = fixture.componentInstance as unknown as RailInstance;
+          instance.railWide.setup();
+          fixture.detectChanges();
+          instance.setCursor(0);
+          fixture.detectChanges();
+          expect(instance.hasActivePhoto()).toBe(true);
+          rail = fixture.nativeElement.querySelector('[data-details-rail]') as HTMLElement;
+        });
+
+        afterEach(() => fixture.destroy());
+
+        const escape = (target: HTMLElement) => target.dispatchEvent(new KeyboardEvent('keydown', {
+          key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, cancelable: true,
+        }));
+
+        it('Escape releases the photo and the drawer is not closed (rendered)', () => {
+          // MatDrawer closes itself on an Escape from inside it unless disableClose is set;
+          // the open/close effect would then reopen it, so the rail would flicker.
+          const drawer = fixture.debugElement.query(By.directive(MatSidenav)).componentInstance as MatSidenav;
+          const close = vi.spyOn(drawer, 'close');
+          escape(rail);
+          fixture.detectChanges();
+          expect(instance.hasActivePhoto()).toBe(false);
+          expect(close).not.toHaveBeenCalled();
+        });
+
+        it('focus leaving the rail for the outside releases the hold', () => {
+          const outside = document.createElement('button');
+          document.body.appendChild(outside);
+          rail.dispatchEvent(new FocusEvent('focusout', { relatedTarget: outside, bubbles: true }));
+          expect(instance.hasActivePhoto()).toBe(false);
+          outside.remove();
+        });
+
+        it('focus moving within the rail keeps the hold', () => {
+          const inside = rail.querySelector('button') as HTMLElement;
+          rail.dispatchEvent(new FocusEvent('focusout', { relatedTarget: inside, bubbles: true }));
+          expect(instance.hasActivePhoto()).toBe(true);
+        });
+
+        it('Escape on the focused Deselect button leaves focus on the rail', () => {
+          document.body.appendChild(fixture.nativeElement);
+          const button = rail.querySelector('button') as HTMLElement;
+          button.focus();
+          escape(button);
+          fixture.detectChanges();
+          expect(document.activeElement).toBe(rail);
         });
       });
 

@@ -277,7 +277,7 @@ A diferencia de Descartar a carpeta, que deja intacta la fila de la base de dato
 - **Modo de diseño** - Alterna entre **Cuadrícula** (tarjetas uniformes) y **Mosaico** (filas justificadas que preservan las proporciones). El mosaico es solo para escritorio; el móvil siempre usa cuadrícula.
 - **Tamaño de miniatura** - Control deslizante para ajustar la altura de la tarjeta/fila (120–400px, persistido en localStorage)
 - **Ocultar detalles** - Oculta los metadatos de la foto en las tarjetas (solo en modo cuadrícula)
-- **Información** - Cómo se muestran los detalles: **Al pasar** (predeterminado), **Al hacer clic**, **Desactivada** o **Panel lateral**. El panel lateral fija los mismos detalles en el cajón derecho en vez de seguir al cursor: así un dato concreto está siempre en el mismo sitio de una foto a otra, y el panel conserva la última foto sobre la que pasaste en lugar de vaciarse al salir de la cuadrícula. Hacer clic en una foto fija el panel en ella —pasar sobre otras fotos ya no lo cambia— hasta que pulses **Deseleccionar** en la parte superior del panel, que además quita esa foto de la selección. Comparte ese cajón con la barra de filtros: abrir los filtros lo oculta hasta que los cierres, y la cuadrícula mantiene exactamente el ancho que tiene con los filtros abiertos. Requiere una ventana de al menos 1280 px.
+- **Información** - Cómo se muestran los detalles: **Al pasar** (predeterminado), **Al hacer clic**, **Desactivada** o **Panel lateral**. El panel lateral fija los mismos detalles en el cajón derecho en vez de seguir al cursor: así un dato concreto está siempre en el mismo sitio de una foto a otra, y el panel conserva la última foto sobre la que pasaste en lugar de vaciarse al salir de la cuadrícula. Hacer clic en una foto fija el panel en ella —pasar sobre otras fotos ya no lo cambia— hasta que pulses **Deseleccionar** en la parte superior del panel, que además quita esa foto de la selección. **Esc** hace lo mismo y además borra el resto de la selección; nunca cierra el panel. Comparte ese cajón con la barra de filtros: abrir los filtros lo oculta hasta que los cierres, y la cuadrícula mantiene exactamente el ancho que tiene con los filtros abiertos. Requiere una ventana de al menos 1280 px.
 - **Ocultar parpadeos** - Filtra las fotos con parpadeos detectados
 - **Mejor de la ráfaga** - Muestra solo la foto mejor puntuada de cada ráfaga
 - **Mejor del horquillado** - Muestra solo la exposición base de cada horquillado detectado y oculta las tomas laterales. **Activado por defecto.** Independiente de «Mejor de la ráfaga»: un cuarto de los horquillados comparte ráfaga con tomas ajenas, donde la principal no es la exposición base.
@@ -819,7 +819,7 @@ Todas las estadísticas tienen conciencia de usuario en modo multiusuario: cada 
 | `Enter` | Abrir la foto enfocada |
 | `Space` | Seleccionar / deseleccionar la foto enfocada |
 | `Ctrl+A` | Seleccionar todo — toda la vista filtrada desde una selección vacía (sin petición), si no, las fotos cargadas |
-| `Escape` | Borrar la selección / cerrar el cajón de filtros |
+| `Escape` | Borrar la selección (en modo panel lateral, también libera la foto fijada) / cerrar el cajón de filtros |
 | `Shift+Click` | Seleccionar el rango de fotos entre la última seleccionada y la pulsada |
 | `Double-click` | Abrir la foto |
 | `Shift+F10` / `Menu` | Abrir el menú contextual de la tarjeta de foto con el foco (el clic derecho hace lo mismo) |

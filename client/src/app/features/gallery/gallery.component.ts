@@ -186,10 +186,11 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
            filters compete for the same strip, so opening the filters hides the
            rail and closing them brings it back, without either changing how much
            room the grid gets. -->
-      <mat-sidenav #filterDrawer disableClose="false" [mode]="isDesktop() ? 'side' : 'over'" position="end" class="w-[min(320px,100vw)] p-0"
+      <mat-sidenav #filterDrawer [disableClose]="detailsRailVisible()" [mode]="isDesktop() ? 'side' : 'over'" position="end" class="w-[min(320px,100vw)] p-0"
         (openedChange)="onFilterDrawerChange($event)">
         @if (detailsRailVisible()) {
-          <div class="p-2" data-details-rail>
+          <div class="p-2" data-details-rail tabindex="-1" (keydown.escape)="onRailEscape($event)"
+               (focusout)="onGridFocusOut($event)">
             @if (hasActivePhoto()) {
               <button mat-button class="!min-w-0 mb-2" (click)="releasePanel()">
                 <mat-icon>arrow_back</mat-icon> {{ I18N.gallery.tooltip_mode.panel_deselect | translate }}
@@ -2229,6 +2230,26 @@ export class GalleryComponent implements OnInit, OnDestroy {
     this.setCursor(-1);
   }
 
+  /** Escape: with the docked rail, first what Deselect does -- the held photo,
+   *  its frame and the dimming go -- then, as everywhere, the rest of the selection.
+   *  A view-scoped selection is cleared even when the release emptied it (one photo in
+   *  view), so the store does not keep a view scope with a leftover exclusion set. */
+  private escapeSelection(): void {
+    if (this.panelMode()) this.releasePanel();
+    if (this.selectionCount() || this.viewScoped()) this.clearSelection();
+  }
+
+  /** Escape from inside the rail. The drawer is kept open by `disableClose` while the
+   *  rail occupies it (it would otherwise close and be reopened by the open/close
+   *  effect, a flicker and a focus jump); propagation is left alone so an open
+   *  tooltip's overlay handler still closes. The Deselect button is removed by the
+   *  release, so focus is parked on the rail rather than dropping to the body. */
+  protected onRailEscape(event: Event): void {
+    event.preventDefault();
+    this.escapeSelection();
+    (event.currentTarget as HTMLElement | null)?.focus();
+  }
+
   /** Columns per row in grid mode (mirrors the CSS auto-fill column math). */
   private gridColumns(): number {
     const width = this.containerWidth() - (this.isDesktop() ? 32 : 16);
@@ -2250,11 +2271,18 @@ export class GalleryComponent implements OnInit, OnDestroy {
     return targetRow.startIndex + Math.min(offset, targetRow.photos.length - 1);
   }
 
+  /** The photo index of the card an event came from (`data-pidx`), 0 when it came from none. */
+  private indexOfCard(target: EventTarget | null): number {
+    const raw = (target as HTMLElement | null)?.closest?.('[data-pidx]')?.getAttribute('data-pidx');
+    const parsed = raw == null ? NaN : Number(raw);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : 0;
+  }
+
   protected onGridKeydown(event: KeyboardEvent): void {
     if (isTypingContext(event)) return;
     const photos = this.store.photos();
     if (!photos.length) return;
-    const index = Math.max(0, this.activeIndex());
+    const index = this.activeIndex() >= 0 ? this.activeIndex() : this.indexOfCard(event.target);
     let next: number | null = null;
 
     switch (event.key) {
@@ -2265,9 +2293,9 @@ export class GalleryComponent implements OnInit, OnDestroy {
       case 'Home': next = 0; break;
       case 'End': next = photos.length - 1; break;
       case 'Escape':
-        if (this.selectionCount()) {
+        if (this.selectionCount() || (this.panelMode() && this.hasActivePhoto())) {
           event.preventDefault();
-          this.clearSelection();
+          this.escapeSelection();
         }
         return;
       default:
