@@ -55,9 +55,11 @@ interface CullResponse {
   imports: [MatDialogModule, MatButtonModule, MatIconModule, MatCheckboxModule,
             MatProgressSpinnerModule, TranslatePipe],
   template: `
-    <h2 mat-dialog-title>{{ I18N.cull.title | translate }}</h2>
+    <h2 mat-dialog-title>{{ (data.action ? 'cull.' + data.action : I18N.cull.title) | translate }}</h2>
     <mat-dialog-content class="!pt-2 min-w-[22rem] max-w-[32rem]">
-      <p class="text-sm opacity-70 mb-3">{{ count }} {{ I18N.cull.selected | translate }}</p>
+      @if (count) {
+        <p class="text-sm opacity-70 mb-3">{{ count }} {{ I18N.cull.selected | translate }}</p>
+      }
 
       <div class="flex flex-col gap-1 mb-3">
         @for (a of actions; track a) {
@@ -147,12 +149,15 @@ export class CullDialogComponent {
     count?: number;
     trashAvailable?: boolean;
     allowTrash?: boolean;
+    /** Offer only this action and preview it as soon as the dialog opens. */
+    action?: CullAction;
   }>(MAT_DIALOG_DATA);
 
-  protected readonly actions: CullAction[] = this.data.trashAvailable
-    ? ['copy_keeps', 'move_rejects', 'trash_rejects']
-    : ['copy_keeps', 'move_rejects'];
-  protected readonly action = signal<CullAction>('copy_keeps');
+  protected readonly actions: CullAction[] = this.data.action ? [this.data.action]
+    : this.data.trashAvailable
+      ? ['copy_keeps', 'move_rejects', 'trash_rejects']
+      : ['copy_keeps', 'move_rejects'];
+  protected readonly action = signal<CullAction>(this.data.action ?? 'copy_keeps');
   protected readonly targetDir = signal('');
   protected readonly includeCompanions = signal(false);
   protected readonly includeSequenceSiblings = signal(false);
@@ -164,6 +169,10 @@ export class CullDialogComponent {
 
   protected readonly needsTarget = computed(() => this.action() !== 'trash_rejects');
   protected readonly count = this.data.count ?? this.data.paths.length;
+
+  constructor() {
+    if (this.data.action) void this.runPreview();
+  }
 
   protected setAction(a: CullAction): void {
     this.action.set(a);

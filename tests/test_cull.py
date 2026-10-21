@@ -340,6 +340,39 @@ class TestCullApplyFilterScope:
         assert resp.status_code == 200
         assert resp.json()["would_copy"] == [field]
 
+    def test_the_darkroom_all_rejects_scope_reaches_hidden_rejects_only(self, client, tmp_path):
+        """The darkroom's "Trash rejects" button sends this scope (``ALL_REJECTS_SCOPE``
+        in burst-culling.component.ts); a rejected non-lead burst frame, hidden by
+        default, must still be reached, and no kept photo may enter the scope."""
+        kept = _make_file(tmp_path, "kept.jpg")
+        rejected = _make_file(tmp_path, "rejected.jpg")
+        burst_reject = _make_file(tmp_path, "burst.jpg")
+        db = str(tmp_path / "rejects.db")
+        init_database(db)
+        conn = sqlite3.connect(db)
+        conn.executemany(
+            "INSERT INTO photos (path, filename, is_rejected, burst_group_id, is_burst_lead) "
+            "VALUES (?, ?, ?, ?, ?)",
+            [(kept, "kept.jpg", 0, 1, 1), (rejected, "rejected.jpg", 1, None, 0),
+             (burst_reject, "burst.jpg", 1, 1, 0)],
+        )
+        conn.commit()
+        conn.close()
+        scope = {"show_rejected": "1", "hide_blinks": "false", "hide_bursts": "false",
+                 "hide_duplicates": "false", "hide_brackets": "false", "hide_panoramas": "false"}
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}._allowed_export_roots", return_value=[str(tmp_path)]),
+        ):
+            resp = client.post("/api/cull/apply", json={
+                "filters": scope, "action": "move_rejects",
+                "target_dir": str(tmp_path / "out"), "dry_run": True,
+            })
+        assert resp.status_code == 200
+        body = resp.json()
+        assert sorted(body["would_move"]) == sorted([rejected, burst_reject])
+        assert body["excluded_by_state"] == 0
+
     def test_exclude_narrows_the_filter_set(self, client, tmp_path):
         keep = _make_file(tmp_path, "keep.jpg")
         drop = _make_file(tmp_path, "drop.jpg")

@@ -63,6 +63,28 @@ describe('CullDialogComponent', () => {
     expect(actions()).toContain('trash_rejects');
   });
 
+  it('a preset action is the only one offered and previews on open', () => {
+    post = vi.fn(() => of({ would_trash: ['/r.jpg'], skipped: [], matched: 1 }));
+    const filters = { show_rejected: '1' };
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: ApiService, useValue: { post } },
+        { provide: MatSnackBar, useValue: { open: vi.fn() } },
+        { provide: I18nService, useValue: { t: (k: string) => k } },
+        { provide: MatDialogRef, useValue: { close: vi.fn() } },
+        { provide: MAT_DIALOG_DATA,
+          useValue: { paths: [], filters, trashAvailable: true, action: 'trash_rejects' } },
+      ],
+    });
+    component = TestBed.runInInjectionContext(() => new CullDialogComponent());
+
+    expect(actions()).toEqual(['trash_rejects']);
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post).toHaveBeenCalledWith('/cull/apply', expect.objectContaining({
+      action: 'trash_rejects', filters, dry_run: true, include_companions: false,
+    }));
+  });
+
   describe('trash availability message', () => {
     function buildRendered(trashAvailable?: boolean, allowTrash?: boolean) {
       TestBed.configureTestingModule({
