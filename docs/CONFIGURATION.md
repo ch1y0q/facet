@@ -1697,8 +1697,8 @@ Web gallery display and behavior.
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `default_category` | `""` | Default category filter |
-| `edition_password` | `""` | Password to unlock edition mode (empty = every edit is refused; the install is read-only, except to a direct local browser under `trusted_local_editing`) |
-| `trusted_local_editing` | `false` | Grant edition rights, without an edition password, to a browser on the same computer reaching the viewer directly over loopback. Applies only while BOTH `password` and `edition_password` are empty on a single-user install; covers every edition-gated route except the scan trigger. **Never enable behind a reverse proxy on the same host.** See [Trusted Local Editing](#trusted-local-editing) |
+| `edition_password` | `""` | Password to unlock edition mode (empty = every edit is refused; the install is read-only, except to a direct local browser or a local Full-editing assistant under `trusted_local_editing`) |
+| `trusted_local_editing` | `false` | Grant edition rights, without an edition password, to a browser on the same computer reaching the viewer directly over loopback. Applies only while BOTH `password` and `edition_password` are empty on a single-user install; covers every edition-gated route, the scan trigger included, and lets the Connect dialog mint a Full-editing assistant token for same-machine `/mcp` requests. **Never enable behind a reverse proxy on the same host.** See [Trusted Local Editing](#trusted-local-editing) |
 | **comparison_mode** | | |
 | `min_comparisons_for_optimization` | `50` | Minimum number of decisive comparisons (one photo won; ties do not count) in the category before weights are suggested |
 | `pair_selection_strategy` | `"learning"` | Pair strategy: `learning` (embedding-diversity cold-start + rank-disagreement once trained), `uncertainty`, `boundary`, `active`, `random` |
@@ -1868,7 +1868,7 @@ Toggle optional features to reduce memory usage or simplify the UI:
 | `show_similar_button` | `true` | Show "Find Similar" button on photo cards (uses numpy for CLIP similarity) |
 | `show_merge_suggestions` | `true` | Enable merge suggestions feature on manage persons page |
 | `show_rating_controls` | `true` | Show star rating and favorite controls |
-| `show_scan_button` | `false` | Show the scan trigger button (superadmin in multi-user mode; a locked edition session in single-user mode) — no GPU required: the scan runs CPU-only on the `legacy` profile |
+| `show_scan_button` | `false` | Show the scan trigger button (superadmin in multi-user mode; a locked edition session in single-user mode) — no GPU required: the scan runs CPU-only on the `legacy` profile; waived for a trusted-local session under `trusted_local_editing` |
 | `metrics_enabled` | `false` | Enable the public `GET /metrics` Prometheus endpoint. Off by default — it exposes photo/person/face counts, DB size, and process memory; enable only when the endpoint is reachable from the scraper network, not from the public internet. |
 | `show_semantic_search` | `true` | Show semantic search bar (text-to-image search using CLIP/SigLIP embeddings) |
 | `show_albums` | `true` | Show albums feature (create, manage, and browse photo albums) |
@@ -1977,7 +1977,9 @@ Access is decided per request, never from a token claim. A request is trusted on
 - the request carries no `Forwarded`, `Via`, `X-Real-IP`, `X-Client-IP`, `True-Client-IP`, `CF-Connecting-IP`, `X-Original-Forwarded-For` or `X-Forwarded-*` header;
 - an `Origin` or `Referer`, when present, names the exact scheme, host and port the request was sent to, without credentials (an `Origin` with a path, query or fragment is refused), and a `Sec-Fetch-Site`, when present, is `same-origin` or `none`.
 
-A trusted request holds full edition rights: every route that otherwise needs an edition session, not only ratings. That covers ratings, favorites and rejects, comparison mode, culling (including **Cull to folder**, which moves or trashes files, and per-photo delete), albums, person and face management, weight, priority and scoring-context changes, metadata embedding and exports, the fixed-argument recompute and panorama-detection jobs, and on-demand caption and critique generation. The scan trigger is the one exception: it still requires `viewer.edition_password`, which can never be set while this option applies, so it stays refused.
+A trusted request holds full edition rights: every route that otherwise needs an edition session, not only ratings. That covers ratings, favorites and rejects, comparison mode, culling (including **Cull to folder**, which moves or trashes files, and per-photo delete), albums, person and face management, weight, priority and scoring-context changes, metadata embedding and exports, the fixed-argument recompute and panorama-detection jobs, and on-demand caption and critique generation. The scan trigger is included: a trusted-local browser session, and a local assistant holding a Full-editing token, may scan without `viewer.features.show_scan_button`. The scan progress stream accepts a trusted-local stream token only from the same local machine.
+
+**Assistants.** The same opt-in lets the Connect dialog mint a **Full editing** token on an open install (`viewer.mcp.enabled` and a token are still required). The token is `edition` only for `/mcp` requests passing the boundary above, so it works from `http://localhost:<port>` or `127.0.0.1` on `:5000` and on the `ng serve` dev proxy `:4200`, and resolves to `readonly` from a LAN client, a hostname or `0.0.0.0` URL, or a Docker deployment. Any password lowers it to `readonly`; clearing the password revives it. Delete tools still need `viewer.mcp.allow_destructive`. `ng serve --host 0.0.0.0` or any unmarked same-host proxy lets a LAN client sending `Host: localhost` pass, leaving only the token protecting `/mcp`. See [AI Agents (MCP)](AGENTS.md).
 
 > **Warning:** the loopback peer is the only real boundary. `Host`, `Origin`, `Referer` and `Sec-Fetch-Site` are set by the client and can only refuse a request, and a reverse proxy, tunnel or port forward on the same host that adds none of the headers above is indistinguishable from your browser. Never enable this option behind any reverse proxy on the same host. Every local process and every account on the computer can edit while it is on.
 
@@ -2602,7 +2604,7 @@ The `target_dir` goes through the exact same allow-list as the copy/move export 
 
 ## Agent Endpoint (MCP)
 
-Exposes the tools described in [AI Agents (MCP)](AGENTS.md) at `POST /mcp`: reading, driving your open tab and, depending on the token's level, changing ratings, tags and albums, culling and deleting. It is on by default; set `enabled` to `false` to switch it off (every route then answers 404). On an open install (no `viewer.password`) `/mcp` serves only a read-only anonymous key, which grants nothing the open `/api` does not already grant.
+Exposes the tools described in [AI Agents (MCP)](AGENTS.md) at `POST /mcp`: reading, driving your open tab and, depending on the token's level, changing ratings, tags and albums, culling and deleting. It is on by default; set `enabled` to `false` to switch it off (every route then answers 404). On an open install (no `viewer.password`) `/mcp` serves only a read-only anonymous key, which grants nothing the open `/api` does not already grant. A token minted on an open install is `readonly` unless `viewer.trusted_local_editing` is on, which allows a Full-editing token for same-machine requests.
 
 ```json
 {
@@ -2628,7 +2630,7 @@ Exposes the tools described in [AI Agents (MCP)](AGENTS.md) at `POST /mcp`: read
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `enabled` | `true` | Master switch for `/mcp` and `/api/mcp/*`. Off means `/mcp` and `/api/mcp/*` answer 404 (the bridge closes with code 4404). On an open install (no `viewer.password`) the endpoint serves only a read-only anonymous key: no new authority, since the open `/api` already exposes the same data. |
+| `enabled` | `true` | Master switch for `/mcp` and `/api/mcp/*`. Off means `/mcp` and `/api/mcp/*` answer 404 (the bridge closes with code 4404). On an open install (no `viewer.password`) the endpoint serves only a read-only anonymous key: no new authority, since the open `/api` already exposes the same data. A token minted on an open install is `readonly` unless `viewer.trusted_local_editing` is on, which allows a Full-editing token for same-machine requests. |
 | `bridge` | `true` | Whether the browser-tab bridge (`/api/mcp/bridge`) accepts WebSockets and the `ui_*` tools can reach a tab. When `false`, the bridge refuses the connection (close code 4404) and `ui_*` tools return an error saying so. Needs a single worker. |
 | `max_rows` | `100` | Maximum rows in one tool result (1 to 500). Extra rows are dropped and `truncated: true` is set. |
 | `max_bytes` | `60000` | Maximum serialized size of one tool result in bytes (4000 to 500000). |

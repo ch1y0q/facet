@@ -422,7 +422,7 @@ HDR 之间重新标注。**漏检**则从照片库修正，因为未被检测到
 
 ## 触发扫描
 
-当以下**两个**条件同时满足时，才会提供扫描入口：`viewer.features.show_scan_button` 为 `true`（在 `scoring_config.json` 中出厂设置为 **`false`**，需主动开启），**并且**调用者拥有扫描权限——多用户模式下为 `superadmin` 角色，或单用户模式下在已锁定的单用户安装（`viewer.edition_password` 非空）上通过编辑模式身份验证的会话。满足后，照片库会在两处提供扫描入口，二者都会打开扫描启动器对话框（`ScanLauncherComponent`）：照片库为空时的**扫描照片以开始使用**按钮，以及照片库有照片可显示时位于照片网格右上角的**扫描新照片**图标按钮（任何屏幕宽度下都可见）。在开放的单用户安装上（`viewer.edition_password` 为空，出厂默认值），全部四个扫描路由都会对任何调用者返回 403，即便调用者持有有效的编辑模式生成 JWT，这两个入口也绝不会渲染——启动扫描子进程绝不能被匿名访问到。
+当以下**两个**条件同时满足时，才会提供扫描入口：`viewer.features.show_scan_button` 为 `true`（在 `scoring_config.json` 中出厂设置为 **`false`**，需主动开启），**并且**调用者拥有扫描权限——多用户模式下为 `superadmin` 角色，或单用户模式下在已锁定的单用户安装（`viewer.edition_password` 非空）上通过编辑模式身份验证的会话。满足后，照片库会在两处提供扫描入口，二者都会打开扫描启动器对话框（`ScanLauncherComponent`）：照片库为空时的**扫描照片以开始使用**按钮，以及照片库有照片可显示时位于照片网格右上角的**扫描新照片**图标按钮（任何屏幕宽度下都可见）。在开放的单用户安装上（`viewer.edition_password` 为空，出厂默认值），全部四个扫描路由都会对任何调用者返回 403，即便调用者持有有效的编辑模式生成 JWT，这两个入口也绝不会渲染——启动扫描子进程绝不能被匿名访问到。例外是 `viewer.trusted_local_editing`：受信任的本地浏览器会话，以及持有完全编辑令牌的本地助手，无需 `show_scan_button` 和编辑密码即可扫描。
 
 - 从启动器的列表中选择一个目录，直接在应用内开始扫描
 - 启动器会把实时进度（SSE，并自动回退到轮询）推送到一个由结构化 `progress` 字段驱动的 `mat-progress-bar`，另外还有一段输出日志尾部，扫描结束时会刷新照片库
@@ -1361,7 +1361,7 @@ python database.py --stats-info
 | `POST /api/similar-groups/select` | 从一个相似分组中选出要保留的照片 |
 | `GET /api/culling-groups?group_by=all\|burst\|similar\|scene\|bracket\|panorama\|hdr_panorama&exclude_rejected=true&similarity_threshold=&page=&per_page=` | 用于选片的连拍／相似／场景／序列分组。`group_by`（默认 `all`）用于选择连拍+相似合并、仅连拍、仅相似、按时间顺序的场景分组（场景分组会额外带上 `type`/`start`/`end`/`moment`/`moment_confidence`；场景模式下会忽略 `sort` 参数），或某一种整组保留的序列类型（`bracket`、`panorama`、`hdr_panorama`——各自独立成一种粒度，绝不并入 `all`）。`exclude_rejected`（默认 `true`）会隐藏 `is_rejected=1` 的照片；剩余不足 2 张照片的分组会被剔除。当已训练出保留照片排序头时，每张照片还会带上 `keeper_prob`，每个分组还会带上 `keeper_best_path` |
 | `POST /api/culling-groups/confirm` | 确认选片结果。请求体 `{group_id, type, paths, keep_paths}`；`type` 为 `burst \| similar \| scene \| bracket \| panorama \| hdr_panorama`。`type:'scene'` 会记录场景选片的比较行；三种序列类型会像其他类型一样执行淘汰，但不记录任何比较对，因为在一组阶梯中偏好某一档、或在一次扫拍中偏好某一帧，说明不了任何审美偏好 |
-| `POST /api/culling/auto` | `[Edition]` 针对整个作用域的一键自动选片。请求体 `{group_by, album_id?, date_from?, date_to?, strictness?, min_keep_per_group, highlights_album, dry_run, profile?, trim_brackets, cursor?, keep_paths?, remove_paths?, expected_digest?}`；`group_by` 为 `all \| burst \| similar \| scene`（序列类型在这里不是合法的作用域——参见 `trim_brackets`）。`profile` 指定一个 `cull_profiles` 预设，在省略 `strictness`／`min_keep_per_group` 时从中取值。`dry_run`（默认 `true`）返回每组的保留／淘汰预览，实际执行则会淘汰其余照片并记录选片比较对。`trim_brackets`（默认 `false`）会额外把基准曝光既无暗部裁切也无高光裁切的包围曝光组修剪到只剩基准帧——这是自动选片中唯一会缩减序列照片组的路径。该路由每次调用都会规划整个范围,并按完整分组分页返回(输入 `cursor`,输出 `next_cursor`,完成时为 `null`;每页最多 200 张照片),附带总数和 `plan_digest`。`keep_paths` / `remove_paths`(各最多 1000 个)可覆盖单个画面;过期路径以 `ignored_overrides` 返回。应用调用可携带 `expected_digest`,若方案已变化,会在任何写入之前以 412 拒绝。 |
+| `POST /api/culling/auto` | `[Edition]` 针对整个作用域的一键自动选片。请求体 `{group_by, album_id?, date_from?, date_to?, strictness?, min_keep_per_group, highlights_album, dry_run, profile?, trim_brackets, cursor?, keep_paths?, remove_paths?, expected_digest?}`；`group_by` 为 `all \| burst \| similar \| scene`（序列类型在这里不是合法的作用域——参见 `trim_brackets`）。`profile` 指定一个 `cull_profiles` 预设，在省略 `strictness`／`min_keep_per_group` 时从中取值。`dry_run`（默认 `true`）返回每组的保留／淘汰预览，实际执行则会淘汰其余照片并记录选片比较对。`trim_brackets`（默认 `false`）会额外把基准曝光既无暗部裁切也无高光裁切的包围曝光组修剪到只剩基准帧——这是自动选片中唯一会缩减序列照片组的路径。该路由每次调用都会规划整个范围,并按完整分组分页返回(输入 `cursor`,输出 `next_cursor`,完成时为 `null`;路由按 200 张照片分页,单个更大的分组独占一页),附带总数和 `plan_digest`。`keep_paths` / `remove_paths`(各最多 1000 个)可覆盖单个画面;过期路径以 `ignored_overrides` 返回。移除方案在包围曝光、全景或 HDR 全景组中保留的画面会以 400 拒绝;重复方案已有的移除则不起作用。应用调用可携带 `expected_digest`,若方案已变化,会在任何写入之前以 412 拒绝。 |
 | `GET /api/culling/suggest_profile?album_id=&date_from=&date_to=` | 根据作用域内已存储的类别、叙事时刻、人脸数量和拍摄时段推断其占主导的拍摄类型，并指出与之匹配的 `cull_profiles` 预设，附带置信度及其所依据的证据数量；按作用域缓存。当低于主导度下限、或匹配的预设未配置时，`profile` 为 `null` |
 | `POST /api/culling-groups/override_sequence` | `[Edition]` 记录一条关于一组帧究竟是什么的持久修正。请求体 `{paths, kind?}`；`kind` 为 `panorama \| hdr_panorama \| bracket`，省略则表示把这些帧标记为都不是。`bracket` 标记要满足曝光阶梯规则（至少 2 帧，每一帧都要有可用的曝光元数据，且没有两帧曝光值相同），不满足时返回 400 及具体原因。它落在 `photo_sequence_overrides` 中（能挺过检测器每次运行时对 `photos.sequence_*` 的清除与重写）；在下一次 `POST /api/scan/detect_panoramas` 时生效 |
 | `POST /api/culling-groups/clear_sequence_override` | `[Edition]` 撤销指定帧的手动序列修正，把它们交还给检测器。请求体 `{paths}` |
@@ -1509,7 +1509,7 @@ python database.py --stats-info
 | 没有“比较”按钮 | 设置非空的 `edition_password`（单用户），或使用 `admin`／`superadmin` 角色（多用户） |
 | 密码不生效 | 检查 `viewer.password`（单用户），或核对密码哈希（多用户） |
 | 用户看不到照片 | 检查其用户配置中的 `directories` 以及 `shared_directories` |
-| 没有扫描按钮 | 需要 `viewer.features.show_scan_button: true`，外加扫描权限：多用户模式下的 `superadmin` 角色，或单用户模式下在已锁定安装（`viewer.edition_password` 已设置）上通过编辑模式身份验证的会话——开放的单用户安装永远不会显示该按钮 |
+| 没有扫描按钮 | 需要 `viewer.features.show_scan_button: true`，外加扫描权限：多用户模式下的 `superadmin` 角色，或单用户模式下在已锁定安装（`viewer.edition_password` 已设置）上通过编辑模式身份验证的会话——开放的单用户安装永远不会显示该按钮，启用 `viewer.trusted_local_editing` 的受信任本地浏览器除外，它无需该标志即可显示 |
 | 搜索没有结果 | 确认照片已有 `clip_embedding` 数据（请先运行评分） |
 | VLM 点评不可用 | 需要 16gb/24gb VRAM 配置档以及 `viewer.features.show_vlm_critique: true`，另外生成时还需要编辑会话（没有时只提供已缓存的点评） |
 | 地图上没有照片 | 运行 `--extract-gps` 填充 GPS 列，并确认照片带有 EXIF GPS 数据 |

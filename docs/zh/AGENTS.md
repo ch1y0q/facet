@@ -6,13 +6,13 @@ Facet 可以充当 [Model Context Protocol](https://modelcontextprotocol.io/)（
 
 ## 启用
 
-该端点**默认开启**。要关闭它，请在 `scoring_config.json` 中把 `viewer.mcp.enabled` 设为 `false`（参见 [智能体端点（MCP）](CONFIGURATION.md#智能体端点mcp)），然后重启查看器或重新加载配置；此后 `/mcp` 和所有 `/api/mcp/*` 路由都返回 404。没有 `viewer.password` 时，即使设置了 `viewer.edition_password`，该安装也视为开放安装，其令牌只能是 `readonly`。在开放安装上，该端点只提供一个只读匿名密钥，它不授予开放的 `/api` 本来没有授予的任何权限。
+该端点**默认开启**。要关闭它，请在 `scoring_config.json` 中把 `viewer.mcp.enabled` 设为 `false`（参见 [智能体端点（MCP）](CONFIGURATION.md#智能体端点mcp)），然后重启查看器或重新加载配置；此后 `/mcp` 和所有 `/api/mcp/*` 路由都返回 404。没有 `viewer.password` 时，即使设置了 `viewer.edition_password`，该安装也视为开放安装，其令牌为 `readonly`，除非启用了 `viewer.trusted_local_editing`。在开放安装上，该端点只提供一个只读匿名密钥，它不授予开放的 `/api` 本来没有授予的任何权限。
 
 端点是查看器自身端口上的 `POST /mcp`：Streamable HTTP、无状态、纯 JSON 响应。`GET` 返回 405。只有标签页桥接 `/api/mcp/bridge` 是 WebSocket，参见[控制已打开的标签页](#控制已打开的标签页)。
 
 ## 创建令牌
 
-最简单的方式是在浏览器中操作。启用 `viewer.mcp.enabled` 后，打开账户菜单并选择**连接助手**。输入**名称**，选择**助手可执行的操作**：**仅读取和操作界面**；若当前会话具备相应级别，还可选择**代表我操作**或**完全编辑**（令牌的级别不能高于创建它的会话），然后点击**创建令牌**。对话框随后会显示**将此内容粘贴到您的助手中**，并附带一段包含令牌的现成提示词。它只显示一次：请点击**复制提示词**，粘贴到您的助手中，再点击**完成**。**管理令牌（N）**列出您的令牌及其最近使用时间，并可撤销其中一个；状态行则说明此标签页是否已连接、能否被助手操控。级别列表仅限服务器会授予的范围：开放安装只提供**仅读取和操作界面**，**代表我操作**仅出现在多用户安装中，**完全编辑**仅在编辑会话中提供。提示词中会写明实际授予的级别。
+最简单的方式是在浏览器中操作。启用 `viewer.mcp.enabled` 后，打开账户菜单并选择**连接助手**。输入**名称**，选择**助手可执行的操作**：**仅读取和操作界面**；若当前会话具备相应级别，还可选择**代表我操作**或**完全编辑**（令牌的级别不能高于创建它的会话），然后点击**创建令牌**。对话框随后会显示**将此内容粘贴到您的助手中**，并附带一段包含令牌的现成提示词。它只显示一次：请点击**复制提示词**，粘贴到您的助手中，再点击**完成**。**管理令牌（N）**列出您的令牌及其最近使用时间，并可撤销其中一个；状态行则说明此标签页是否已连接、能否被助手操控。级别列表仅限服务器会授予的范围：开放安装只提供**仅读取和操作界面**，**代表我操作**仅出现在多用户安装中，**完全编辑**仅在编辑会话中提供；在开放安装中，这意味着在同一台计算机上的浏览器且启用了 `viewer.trusted_local_editing`。提示词中会写明实际授予的级别。
 
 通过脚本创建（curl）：
 
@@ -35,7 +35,9 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 
 - 单密码安装：`user` 在创建时被限制为 `readonly`，因为该模式没有中间级别。`edition` 令牌需要编辑会话，且只在编辑密码未变更期间有效。
 - 多用户安装：之后被降级的用户的 `edition` 令牌会降为 `user`；升级绝不会让令牌超过其授予级别。
-- 开放安装（未设置 `viewer.password`，即使设置了 `viewer.edition_password`）：令牌始终为 `readonly`，并归属于共享所有者 `_anonymous`。
+- 开放安装（未设置 `viewer.password`，即使设置了 `viewer.edition_password`）：令牌归属于共享所有者 `_anonymous`，为 `readonly`，除非启用了 `viewer.trusted_local_editing`（见下一条）。
+- **开放安装上的本地编辑。** 启用 `viewer.trusted_local_editing` 后，“连接助手”对话框可在同一台计算机的浏览器中创建**完全编辑**令牌（仍需 `viewer.mcp.enabled` 和令牌：不带令牌的调用仍为 401）。该令牌仅对来自同一台机器的 `/mcp` 请求为 `edition`：对端为环回地址，URL 为 `http://localhost:<port>` 或 `127.0.0.1`，且没有代理头；`:4200`（`ng serve` 开发代理）和 `:5000` 均符合。使用同一令牌的任何其他请求（包括局域网客户端）都会降为 `readonly`，主机名或 `0.0.0.0` 的 URL 以及 Docker 部署也一样，即使提示词写的是完全编辑。任何密码都会把令牌降为 `readonly`，清除密码后令牌恢复（令牌本身未被改动）。删除类工具仍需要 `viewer.mcp.allow_destructive`。本地助手与本地浏览器一样，无需 `viewer.features.show_scan_button` 即可扫描（`start_scan`、`scan_status`）。
+- **注意。** `ng serve --host 0.0.0.0` 或同一主机上任何未加标记的代理，会让发送 `Host: localhost` 的局域网客户端越过边界，此时只剩令牌保护 `/mcp`。
 - 单密码安装没有 `user` 级别：有效级别只有 `edition` 或 `readonly`，因此[修改内容](#修改内容)中标为 `user` 的工具在那里同样需要 `edition` 令牌。 用较低级别的令牌调用 `user` 工具时，返回 `forbidden_level` 并说明需要 `edition`。
 - 每个工具都有自己的最低级别，在读取或写入任何内容之前检查；级别更低的令牌会收到 `forbidden_level`。
 
@@ -70,9 +72,9 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 - 只显示第一页（标签页在你滚动时自行分页），空结果不会显示，因此你保留之前的视图。使用图库侧栏没有对应控件的筛选（`exclude_tags`、`require_tags`、`is_silhouette`、`junk_kind`、`narrative_moment`、`min_rating`、`min_aggregate`、`show_rejected: true`）的搜索不会被部分应用，带 `scope: "text"` 的 `semantic_search` 也不会显示。
 - 显示会离开 `/culling`、`/compare` 和 `/photo` 并回到图库，清除整个视图的选择；在相册页面上会先回到图库，因此相册已保存的筛选绝不会被覆盖。其数量要用作写入工具 `expected_count` 的搜索应使用 `show: false`。
 - `ui_show_photos` 固定一份精确的照片列表:图库按你的顺序显示它们,直到任何筛选变更替换该列表。`ui_get_context` 会报告是否显示了固定列表。 可选的 `groups`(每个路径一个分组编号)和 `marks`(每个路径 `keep` 或 `remove`)会为固定的照片添加标注:每张卡片显示“第 n 组”标签和可点击切换的保留/移除徽章,芯片图例统计分组数、保留数和移除数。您的切换会保留在标签页中,直到列表被清除;`ui_get_context.review` 以 `{keep, remove}` 形式返回它们(各最多 1000 个路径),以便助手按您的修改行事。
-- **日期。** 筛选工具(`auto_cull`、`list_culling_groups`、`suggest_culling_profile`)以及 `cull_report` 的暗房集合接受 ISO 日期(`2026-06-01`)、ISO 日期时间(`2026-06-01T08:30:00` 或用空格分隔)或 EXIF 形式(`2026:06:01 08:30:00`);仅有日期的 `date_to` 覆盖整天。按天粒度的工具(`library_stats`、`possible_faces`、`cull_report` 的计数)只接受日期,带时间会以 `invalid_input` 拒绝。
+- **日期。** 筛选工具(`auto_cull`、`list_culling_groups`、`suggest_culling_profile`)接受 ISO 日期(`2026-06-01`)、ISO 日期时间(`2026-06-01T08:30:00` 或用空格分隔)或 EXIF 形式(`2026:06:01 08:30:00`);仅有日期的 `date_to` 覆盖整天。按天粒度的工具(`library_stats`、`possible_faces`、`cull_report` 的计数和暗房集合均如此)只接受日期,带时间会以 `invalid_input` 拒绝。
 - 每行包含相机、镜头、光圈、快门速度、ISO、焦距和 `is_monochrome`。三个搜索工具上的 `fields` 可添加任何其他照片列（图像和嵌入数据除外），例如 `leading_lines_score`；`learned_score` 仅在按其排序时才有值。字节上限截短行数时，结果会增加 `returned`（以及 `next_offset` 或 `suggested_per_page`）。
-- `library_stats` 接受 `kind`（默认 `overview`：规模、各类型数量和评分概览）。概览包含 `basis`，说明每个总数的统计口径：`total_photos` 忽略隐藏开关并包含已拒绝的照片，而 `type_counts` 应用隐藏开关并忽略日期和类别过滤器。其他取值均为只读，返回统计页面的数据；过长的列表会在 50 项处截断并带 `truncated: true`：
+- `library_stats` 接受 `kind`（默认 `overview`：规模、各类型数量和评分概览）。概览包含 `basis`，说明每个总数的统计口径：`total_photos` 统计在 `date_from`/`date_to` 和类别范围内您可见的照片（未指定时为所有日期和类别），忽略隐藏开关并包含已拒绝的照片，而 `type_counts` 应用隐藏开关并忽略日期和类别过滤器。其他取值均为只读，返回统计页面的数据；过长的列表会在 50 项处截断并带 `truncated: true`：
 
 | kind 取值 | 数据 |
 |------|------|
@@ -105,7 +107,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 - 只要你已登录，且 `viewer.mcp.enabled` 与 `viewer.mcp.bridge` 都为 `true`，每个 Facet 标签页都会向 `/api/mcp/bridge` 打开一个同源 WebSocket，并在第一条消息中用你的会话完成认证。桥接默认开启；把 `viewer.mcp.bridge` 设为 `false` 即可关闭，此时 `ui_*` 工具会返回明确的错误。
 - `ui_get_context` 读取已打开的页面、图库状态、所选照片数量,以及适用于此页面和该令牌的 `actions`;`available_actions` 由服务器针对你已打开的标签页回答同一问题。超出令牌级别的工具不会列出。
 - 工具只能到达令牌所有者的标签页。单密码安装中所有会话是同一个用户；开放安装中每个标签页都属于共享用户 `_anonymous`，包括 edition 登录。
-- 每个标签页都带有打开它的会话的级别，令牌只能控制级别不低于其有效级别的标签页：`edition` 令牌绝不会使用仅有查看会话的标签页，而 `readonly` 令牌可以控制 `edition` 标签页。在单密码安装中，令牌还受创建它的会话限制：由仅查看会话创建的令牌只能到达查看级标签页，绝不会到达 `edition` 标签页（此规则之前创建的令牌被限制在其自身级别）。在开放安装中，令牌同样被限制在查看级别：只能到达查看级标签页，绝不会到达 `edition` 标签页。标签页只能被同级或更高级的标签页替换：仅查看会话重用 `edition` 标签页的 `tab_id` 会被以 4409 拒绝，超过每用户标签页上限时最低级别的标签页最先被移除。`status` 只列出该令牌能控制的标签页。 `status` 还会返回 `out_of_reach_tabs`，即此令牌无法驱动的已打开标签页数量。
+- 每个标签页都带有打开它的会话的级别，令牌只能控制级别不低于其有效级别的标签页：`edition` 令牌绝不会使用仅有查看会话的标签页，而 `readonly` 令牌可以控制 `edition` 标签页。在单密码安装中，令牌还受创建它的会话限制：由仅查看会话创建的令牌只能到达查看级标签页，绝不会到达 `edition` 标签页（此规则之前创建的令牌被限制在其自身级别）。在开放安装中，令牌同样被限制在查看级别：只能到达查看级标签页，绝不会到达 `edition` 标签页，本地编辑标签页除外（见下）。标签页只能被同级或更高级的标签页替换：仅查看会话重用 `edition` 标签页的 `tab_id` 会被以 4409 拒绝，超过每用户标签页上限时最低级别的标签页最先被移除。`status` 只列出该令牌能控制的标签页。 `status` 还会返回 `out_of_reach_tabs`，即此令牌无法驱动的已打开标签页数量。在开放安装上启用 `viewer.trusted_local_editing` 时，握手通过同机边界的标签页以 `edition` 注册，并在该选项关闭后一次 ping 内降为 `readonly`；局域网或被转发的标签页保持 `readonly`。从本机使用的令牌无论创建时是什么级别，都能到达该本地编辑标签页；从另一台机器（局域网）使用的令牌永远无法到达它，并得到 `no_tab`，附带说明非本地请求无法操控本地编辑标签页的消息。
 - 打开多个标签页时，使用最近获得焦点的那个，结果中的 `tab` 字段会说明。传入 `tab_id`（由 `status` 列出）可选择其他标签页。
 - 标签页会拒绝其账户无权执行的操作（例如非编辑账户访问 `/culling`），工具会返回该拒绝信息。
 - 标签页返回的内容不可信：深度、字符串长度和列表长度都有上限，整体还受 `max_bytes` 限制。
@@ -197,7 +199,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 - **修正**（`edition`）。`override_sequence`（`kind`：`panorama`、`bracket`、`hdr_panorama` 或 `suppress`；除 `suppress` 外至少 2 个路径）和 `clear_sequence_override` 记录一项在下一次检测遍历时生效的修正（结果报告 `pending`）。`override_category` 和 `clear_category_override` 设置或清除持久的类别，它在重新扫描后依然保留并保持评分上下文。
 - **比较画面**（`readonly`）。`group_compare` 比较一个选片分组中的画面（最多 12 个路径），`by: "faces"`（每帧：人脸数、眨眼、最低睁眼度、最佳笑容、`best_path_by_eyes`）或 `by: "subjects"`（主体清晰度与突出度、`sharpest_path`）。这只是建议，不是决定。`cull_report` 用一次调用汇总一个范围：总数、保留、淘汰、收藏、已评分、未审阅、隐藏开关会隐藏的内容、垃圾、低分、最佳照片，以及（使用 edition 令牌时）暗房的前几个分组。各原因相互重叠。 它包含 `basis`,说明每个计数遵循哪些过滤器(隐藏开关不适用于这些计数)。
 - **品味。** `comparison_status`（`edition`）报告你做了多少次成对比较以及它们对照片库的覆盖程度。没有任何工具能提交、编辑或删除比较：每一对的答案是你自己的点击。助手所做的写入（评分、淘汰、暗房确认、`auto_cull`）从不记录比较，也从不触发自动重新训练；你本人在图库中做同样的操作仍会如此。 助手写入的评分、收藏和淘汰，在个人排序器依据你的评分重建时同样不会进入训练对；一旦你自己给该照片评分，它们就会重新计入。这份记录保存在单独的表中，永不导出。
-- **扫描。** `start_scan` 和 `scan_status`（`edition`）启动并跟踪对已配置目录的扫描。仅当 `viewer.features.show_scan_button` 开启且安装已锁定（多用户模式下为超级管理员密钥）时才会列出。扫描是追加式的，并在另一项任务运行时被拒绝（`conflict`）。与 Immich 的同步仍通过命令行进行。
+- **扫描。** `start_scan` 和 `scan_status`（`edition`）启动并跟踪对已配置目录的扫描。仅当 `viewer.features.show_scan_button` 开启且安装已锁定（多用户模式下为超级管理员密钥）时才会列出；在 `viewer.trusted_local_editing` 下，本机的完全编辑令牌无需 `show_scan_button` 也会列出。扫描是追加式的，并在另一项任务运行时被拒绝（`conflict`）。与 Immich 的同步仍通过命令行进行。
 - **资源。** 除工具外，服务器还列出五个只读的 `facet://` 资源：`facet://categories`、`facet://tags`、`facet://persons`、`facet://filters`（每个搜索筛选条件及其取值范围，加上指标范围）和 `facet://scoring-contexts`。每个资源按密钥所有者看到的照片库读取，上限 200 行和 32 KiB（`truncated` 会标明）。
 - **选择列出的内容。** `viewer.mcp.tool_profile` 为 `full`（默认）或 `core`：`core` 只列出面向小模型的 11 个工具（`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`）。它只改变列表，不改变密钥可调用的内容。`viewer.mcp.allow_destructive`（默认 `false`）控制 `delete_photos`（关闭时不列出）、`cull_apply` 的 `move_rejects` 与 `trash_rejects` 操作，以及带 `allow_reassign` 的 `assign_faces`；被拒绝的调用返回 `feature_disabled`。令牌级别无法调用的工具同样不会列出。
 - **另外两个错误代码。** `feature_disabled`：该路由被某个配置键关闭，消息中会指出该键。`conflict`：照片库正忙于与此冲突的任务（例如已有扫描在运行）。
@@ -232,11 +234,11 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 - **页面通过缩短每个分组的 `photos` 列表来适应 `max_bytes`，绝不会丢弃分组。** `photo_count` 仍是真实大小，`photos_truncated` 标记列表被截断的分组，`has_more` 表示后面是否还有一页。
 - **包围曝光、全景和 HDR 全景整组保留。** 在 `confirm_culling_groups` 中，这些类型的 `keep_paths` 必须等于 `paths`（否则 `invalid_input`），`auto_cull` 也从不拆分它们。
 - **空的 `keep_paths` 会淘汰该分组的每一帧。** 此时第一次调用返回 `confirmation_required` 并附带一个 `confirm` 值；先展示给用户，再带上该值重复调用。若批量调用在 `forbidden_level`、`library_busy` 或 `rate_limited` 处停止，会报告已完成的分组。
-- **`auto_cull` 默认只预览**,返回每组的保留与拒绝划分,以及一个 `confirm` 值(仅在有内容将被拒绝时)。每次调用都会规划整个范围,并按完整分组分页返回(每页最多 200 张照片):用上一次的 `next_cursor` 作为 `cursor` 重复调用,直到它为 `null`。每一行带有全方案范围的 `number`,总数涵盖完整方案。整个日期范围请在一次调用中筛选,不要按月拆分。
-- **一个 `confirm` 覆盖完整方案**(有效期 300 秒,仅可使用一次)。应用时会重新计算方案,若自预览以来已变化,则以 `confirmation_required` 拒绝。与您在图库中进行的同样筛选不同,助手做出的拒绝从不进入个人排序器。
-- **覆盖。** `keep_paths` 和 `remove_paths`(各最多 1000 个;通常是 `ui_get_context` 的 `review` 列表)可覆盖方案中的单个画面。在签发 `confirm` 的试运行和应用调用中传入相同的覆盖。不在方案中的路径会被忽略并报告为 `ignored_overrides`;移除包围曝光、全景或 HDR 全景中的某个画面、让某组没有保留项,或同一路径同时出现在两个列表中,都会以 `invalid_input` 拒绝,并指明路径或分组。
-- **`scope_dependent_kinds`** 列出成员取决于日期范围或候选池的分组类型(`similar`、`scene`),并附说明:请在一次调用中筛选整个范围。连拍、包围曝光和全景不随范围变化。
-- **`show`**(默认 `true`,可配合 `tab_id`)。试运行时,当前页会固定到您打开的标签页中,带有分组编号和保留/移除标记,结果包含 `shown_in_tab`。在卡片上切换标记;助手通过 `ui_get_context.review` 读取。显示失败绝不会使调用失败。
+- **`auto_cull` 默认只预览**,返回每组的保留与拒绝划分,以及一个 `confirm` 值(仅在有内容将被拒绝时)。每次调用都会规划整个范围,并按完整分组分页返回(路由按 200 张照片分页,但单个更大的分组会独占一页,工具为适应结果大小可能返回更少的分组):用上一次的 `next_cursor` 作为 `cursor`、并用 cursor 为 0 那一页的 `plan_digest` 作为 `plan_digest`(`cursor` > 0 时必填)重复调用,直到 `next_cursor` 为 `null`。自第一页以来已变化的方案会以 `confirmation_required` 拒绝:请从 cursor 0 重新开始。每一行带有全方案范围的 `number`,总数涵盖完整方案。整个日期范围请在一次调用中筛选,不要按月拆分。
+- **一个 `confirm` 覆盖完整方案**(有效期 300 秒,仅可使用一次)。应用时会重新计算方案,若自预览以来已变化,则以 `confirmation_required` 拒绝。与您在图库中进行的同样筛选不同,助手做出的拒绝从不进入个人排序器。`confirm` 仅在 cursor 为 0 的那一页签发。应用只返回计数(`groups_processed`、`kept`、`rejected`、`highlights_added`)。
+- **覆盖。** `keep_paths` 和 `remove_paths`(各最多 1000 个;通常是 `ui_get_context` 的 `review` 列表)可覆盖方案中的单个画面。在签发 `confirm` 的试运行和应用调用中传入相同的覆盖。不在方案中的路径会被忽略并报告为 `ignored_overrides`(前 20 个,另附 `ignored_overrides_count`)。移除方案在包围曝光、全景或 HDR 全景组中保留的某个画面、让某组没有保留项,或同一路径同时出现在两个列表中,都会以 `invalid_input` 拒绝,并指明路径或分组;移除方案本来就拒绝的画面则不起作用。该组规则适用于完全由同一种组类型构成的分组:混有普通画面和组内画面的分组不会整体保留,其画面可像任何连拍一样被覆盖。
+- **`scope_dependent_kinds`** 列出成员取决于日期范围或候选池的分组类型(`similar`、`scene`,开启 `trim_brackets` 时还有 `bracket`),并附说明:请在一次调用中筛选整个范围。连拍和全景不随范围变化,包围曝光在 `trim_brackets` 关闭时也不随范围变化。
+- **`show`**(默认 `true`,可配合 `tab_id`)。试运行时,当前页会固定到您打开的标签页中,带有分组编号和保留/移除标记,结果包含 `shown_in_tab`。在卡片上切换标记;助手通过 `ui_get_context.review` 读取。显示失败绝不会使调用失败。`shown_in_tab.missing` 最多列出 20 个路径,真实数量见 `missing_count`。对回复而言过大的复核结果会被 `ui_get_context` 截断并带 `review.truncated: true`,真实数量仍在 `review.keep_count` / `review.remove_count` 中。
 - 调用 `ui_show_culling_group` 可在用户已打开的标签页中向其展示某个分组（参见[控制已打开的标签页](#控制已打开的标签页)）。
 
 ## 结果、限制与错误
@@ -259,7 +261,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 
 ## 已知限制
 
-- 在开放安装（无密码）上，任何能访问查看器的人都可以创建和吊销共享的 `_anonymous` 令牌。在网络上启用该端点之前请先设置密码。标签页桥接会放大这一风险：非浏览器客户端可以发送伪造的 `Origin` 和空令牌，注册一个处于焦点的 `_anonymous` 标签页，用任意数据应答 `ui_*` 调用，并通过 8 个标签页的上限挤掉真实的标签页。
+- 在开放安装（无密码）上，任何能访问查看器的人都可以创建和吊销共享的 `_anonymous` 令牌。在网络上启用该端点之前请先设置密码。标签页桥接会放大这一风险：非浏览器客户端可以发送伪造的 `Origin` 和空令牌，注册一个处于焦点的 `_anonymous` 标签页，用任意数据应答 `ui_*` 调用，并通过 8 个标签页的上限挤掉真实的标签页。启用 `viewer.trusted_local_editing` 时，本地进程还可以注册一个伪造的 `edition` 标签页（它能在 WebSocket 上伪造 `Host` 和 `Origin`），但它本来就能充当浏览器；局域网客户端做不到，因为要求对端为环回地址。
 - 速率限制和认证失败计数器保存在各进程内存中；使用 `viewer.py --workers N` 时每个 worker 各自计数。
 - 标签页注册表保存在单个进程的内存中。依赖 `ui_*` 工具时请使用单个 worker（`viewer.py --workers 1`，默认值）；有多个 worker 时，调用可能落到不认识你标签页的进程并返回 `no_tab`。
 - 每位用户最多可同时连接 8 个标签页；打开第 9 个会关闭最旧的一个。
