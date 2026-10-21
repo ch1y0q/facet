@@ -69,9 +69,10 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 - 结果带有 `shown_in_tab`：`{"applied": true, "tab_id", "keys", "total"}`，或 `{"applied": false, "reason"}`，原因为 `no_tab`、`bridge_disabled`、`tab_outdated`、`tab_timeout`（标签页仍可能应用它）、`forbidden`、`page_not_first`、`empty_result`、`unsupported_filters`（附带 `keys`）或 `invalid_combination`。显示失败绝不会使搜索失败。传入 `tab_id` 可选择标签页。全部原因：`error`（显示本身失败）、`bridge_disabled`、`page_not_first`、`empty_result`、`invalid_combination`、`unsupported_filters`（附带 `keys`；对 `semantic_search`，键为 `scope` 或 `threshold`，即侧栏滑块无法表达的大于 0.5 的阈值），以及标签页桥返回的代码（`no_tab`、`tab_outdated`、`tab_timeout`、`forbidden`、`invalid_input`、`upstream_error`）。标签页自行分页，因此对语义搜索，它显示的行数可能多于助手收到的。行被截短时，`next_page`（连同 `suggested_per_page`）给出恰好接在最后一行之后的页码；若页码无法表达该位置，则由 `next_offset` 以行偏移给出。
 - 只显示第一页（标签页在你滚动时自行分页），空结果不会显示，因此你保留之前的视图。使用图库侧栏没有对应控件的筛选（`exclude_tags`、`require_tags`、`is_silhouette`、`junk_kind`、`narrative_moment`、`min_rating`、`min_aggregate`、`show_rejected: true`）的搜索不会被部分应用，带 `scope: "text"` 的 `semantic_search` 也不会显示。
 - 显示会离开 `/culling`、`/compare` 和 `/photo` 并回到图库，清除整个视图的选择；在相册页面上会先回到图库，因此相册已保存的筛选绝不会被覆盖。其数量要用作写入工具 `expected_count` 的搜索应使用 `show: false`。
-- `ui_show_photos` 固定一份精确的照片列表:图库按你的顺序显示它们,直到任何筛选变更替换该列表。`ui_get_context` 会报告是否显示了固定列表。
+- `ui_show_photos` 固定一份精确的照片列表:图库按你的顺序显示它们,直到任何筛选变更替换该列表。`ui_get_context` 会报告是否显示了固定列表。 可选的 `groups`(每个路径一个分组编号)和 `marks`(每个路径 `keep` 或 `remove`)会为固定的照片添加标注:每张卡片显示“第 n 组”标签和可点击切换的保留/移除徽章,芯片图例统计分组数、保留数和移除数。您的切换会保留在标签页中,直到列表被清除;`ui_get_context.review` 以 `{keep, remove}` 形式返回它们(各最多 1000 个路径),以便助手按您的修改行事。
+- **日期。** 筛选工具(`auto_cull`、`list_culling_groups`、`suggest_culling_profile`)以及 `cull_report` 的暗房集合接受 ISO 日期(`2026-06-01`)、ISO 日期时间(`2026-06-01T08:30:00` 或用空格分隔)或 EXIF 形式(`2026:06:01 08:30:00`);仅有日期的 `date_to` 覆盖整天。按天粒度的工具(`library_stats`、`possible_faces`、`cull_report` 的计数)只接受日期,带时间会以 `invalid_input` 拒绝。
 - 每行包含相机、镜头、光圈、快门速度、ISO、焦距和 `is_monochrome`。三个搜索工具上的 `fields` 可添加任何其他照片列（图像和嵌入数据除外），例如 `leading_lines_score`；`learned_score` 仅在按其排序时才有值。字节上限截短行数时，结果会增加 `returned`（以及 `next_offset` 或 `suggested_per_page`）。
-- `library_stats` 接受 `kind`（默认 `overview`：规模、各类型数量和评分概览）。其他取值均为只读，返回统计页面的数据；过长的列表会在 50 项处截断并带 `truncated: true`：
+- `library_stats` 接受 `kind`（默认 `overview`：规模、各类型数量和评分概览）。概览包含 `basis`，说明每个总数的统计口径：`total_photos` 忽略隐藏开关并包含已拒绝的照片，而 `type_counts` 应用隐藏开关并忽略日期和类别过滤器。其他取值均为只读，返回统计页面的数据；过长的列表会在 50 项处截断并带 `truncated: true`：
 
 | kind 取值 | 数据 |
 |------|------|
@@ -91,7 +92,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 | `ui_get_gallery_view` | 路由、当前筛选、匹配总数、前若干个可见照片路径以及已选数量 |
 | `ui_get_context` | 已打开的页面(路由)、图库状态(总数、已加载数量、是否显示固定列表)、所选照片数量,以及此处适用于你的令牌的 `actions` |
 | `ui_open_photo` | 打开一张照片 |
-| `ui_show_photos` | 按此顺序精确显示这些 `paths`(最多 200 个)作为图库列表;无法访问的以 `missing` 返回。任何筛选变更都会替换该列表 |
+| `ui_show_photos` | 按此顺序精确显示这些 `paths`(最多 200 个)作为图库列表;无法访问的以 `missing` 返回。任何筛选变更都会替换该列表。可选的 `groups` 和 `marks`(每个路径一项)为照片编号并标记保留或移除;您可以在卡片上切换标记,`ui_get_context.review` 会返回您的选择 |
 | `ui_select_photos` | 选择明确的 `paths`，或用 `select_view: true` 选择整个筛选视图，模式为 `replace`、`add` 或 `remove` |
 | `ui_clear_selection` | 清空选择 |
 | `ui_get_selection` | `scope`（`paths` 或 `view`）和 `count`，附带 `paths`；视图范围则附带 `filters` 和 `excluded_paths` |
@@ -194,7 +195,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 ## 修正与参考数据
 
 - **修正**（`edition`）。`override_sequence`（`kind`：`panorama`、`bracket`、`hdr_panorama` 或 `suppress`；除 `suppress` 外至少 2 个路径）和 `clear_sequence_override` 记录一项在下一次检测遍历时生效的修正（结果报告 `pending`）。`override_category` 和 `clear_category_override` 设置或清除持久的类别，它在重新扫描后依然保留并保持评分上下文。
-- **比较画面**（`readonly`）。`group_compare` 比较一个选片分组中的画面（最多 12 个路径），`by: "faces"`（每帧：人脸数、眨眼、最低睁眼度、最佳笑容、`best_path_by_eyes`）或 `by: "subjects"`（主体清晰度与突出度、`sharpest_path`）。这只是建议，不是决定。`cull_report` 用一次调用汇总一个范围：总数、保留、淘汰、收藏、已评分、未审阅、隐藏开关会隐藏的内容、垃圾、低分、最佳照片，以及（使用 edition 令牌时）暗房的前几个分组。各原因相互重叠。
+- **比较画面**（`readonly`）。`group_compare` 比较一个选片分组中的画面（最多 12 个路径），`by: "faces"`（每帧：人脸数、眨眼、最低睁眼度、最佳笑容、`best_path_by_eyes`）或 `by: "subjects"`（主体清晰度与突出度、`sharpest_path`）。这只是建议，不是决定。`cull_report` 用一次调用汇总一个范围：总数、保留、淘汰、收藏、已评分、未审阅、隐藏开关会隐藏的内容、垃圾、低分、最佳照片，以及（使用 edition 令牌时）暗房的前几个分组。各原因相互重叠。 它包含 `basis`,说明每个计数遵循哪些过滤器(隐藏开关不适用于这些计数)。
 - **品味。** `comparison_status`（`edition`）报告你做了多少次成对比较以及它们对照片库的覆盖程度。没有任何工具能提交、编辑或删除比较：每一对的答案是你自己的点击。助手所做的写入（评分、淘汰、暗房确认、`auto_cull`）从不记录比较，也从不触发自动重新训练；你本人在图库中做同样的操作仍会如此。 助手写入的评分、收藏和淘汰，在个人排序器依据你的评分重建时同样不会进入训练对；一旦你自己给该照片评分，它们就会重新计入。这份记录保存在单独的表中，永不导出。
 - **扫描。** `start_scan` 和 `scan_status`（`edition`）启动并跟踪对已配置目录的扫描。仅当 `viewer.features.show_scan_button` 开启且安装已锁定（多用户模式下为超级管理员密钥）时才会列出。扫描是追加式的，并在另一项任务运行时被拒绝（`conflict`）。与 Immich 的同步仍通过命令行进行。
 - **资源。** 除工具外，服务器还列出五个只读的 `facet://` 资源：`facet://categories`、`facet://tags`、`facet://persons`、`facet://filters`（每个搜索筛选条件及其取值范围，加上指标范围）和 `facet://scoring-contexts`。每个资源按密钥所有者看到的照片库读取，上限 200 行和 32 KiB（`truncated` 会标明）。
@@ -223,7 +224,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 | `culling_profiles` | 按题材划分的选片预设以及默认预设 |
 | `suggest_culling_profile` | 指出适合某个相册或拍摄时间段的预设 |
 | `keeper_hints` | 逐张照片的“这组连拍中有更好的一张”提示，最多 100 个路径（未训练保留者排序头时为空） |
-| `auto_cull` | 在保留预算下对某个范围自动选片：先预览，再带 `confirm` 值应用 |
+| `auto_cull` | 在保留预算下对某个范围自动筛选:逐页预览方案,再用 `confirm` 值应用 |
 | `confirm_culling_groups` | 确认最多 20 个分组：保留其 `keep_paths`，淘汰 `paths` 中的其余照片 |
 
 - **分组由 `(type, group_id)` 这一对标识**，绝不能只用 `group_id`：相似分组的 id 在与连拍合并时会被偏移。
@@ -231,7 +232,11 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 - **页面通过缩短每个分组的 `photos` 列表来适应 `max_bytes`，绝不会丢弃分组。** `photo_count` 仍是真实大小，`photos_truncated` 标记列表被截断的分组，`has_more` 表示后面是否还有一页。
 - **包围曝光、全景和 HDR 全景整组保留。** 在 `confirm_culling_groups` 中，这些类型的 `keep_paths` 必须等于 `paths`（否则 `invalid_input`），`auto_cull` 也从不拆分它们。
 - **空的 `keep_paths` 会淘汰该分组的每一帧。** 此时第一次调用返回 `confirmation_required` 并附带一个 `confirm` 值；先展示给用户，再带上该值重复调用。若批量调用在 `forbidden_level`、`library_busy` 或 `rate_limited` 处停止，会报告已完成的分组。
-- **`auto_cull` 默认只预览**，返回每组的保留/淘汰划分，以及一个 `confirm` 值（仅当有照片会被淘汰时）。应用时会重新计算方案，若预览后发生变化，或方案太大无法作为一个集合确认，则以 `confirmation_required` 拒绝（用 `album_id`、`date_from` 和 `date_to` 或 `group_by` 缩小范围）。助手所做的淘汰绝不会训练个人排序器，这与你在图库中亲自进行的同样选片不同。
+- **`auto_cull` 默认只预览**,返回每组的保留与拒绝划分,以及一个 `confirm` 值(仅在有内容将被拒绝时)。每次调用都会规划整个范围,并按完整分组分页返回(每页最多 200 张照片):用上一次的 `next_cursor` 作为 `cursor` 重复调用,直到它为 `null`。每一行带有全方案范围的 `number`,总数涵盖完整方案。整个日期范围请在一次调用中筛选,不要按月拆分。
+- **一个 `confirm` 覆盖完整方案**(有效期 300 秒,仅可使用一次)。应用时会重新计算方案,若自预览以来已变化,则以 `confirmation_required` 拒绝。与您在图库中进行的同样筛选不同,助手做出的拒绝从不进入个人排序器。
+- **覆盖。** `keep_paths` 和 `remove_paths`(各最多 1000 个;通常是 `ui_get_context` 的 `review` 列表)可覆盖方案中的单个画面。在签发 `confirm` 的试运行和应用调用中传入相同的覆盖。不在方案中的路径会被忽略并报告为 `ignored_overrides`;移除包围曝光、全景或 HDR 全景中的某个画面、让某组没有保留项,或同一路径同时出现在两个列表中,都会以 `invalid_input` 拒绝,并指明路径或分组。
+- **`scope_dependent_kinds`** 列出成员取决于日期范围或候选池的分组类型(`similar`、`scene`),并附说明:请在一次调用中筛选整个范围。连拍、包围曝光和全景不随范围变化。
+- **`show`**(默认 `true`,可配合 `tab_id`)。试运行时,当前页会固定到您打开的标签页中,带有分组编号和保留/移除标记,结果包含 `shown_in_tab`。在卡片上切换标记;助手通过 `ui_get_context.review` 读取。显示失败绝不会使调用失败。
 - 调用 `ui_show_culling_group` 可在用户已打开的标签页中向其展示某个分组（参见[控制已打开的标签页](#控制已打开的标签页)）。
 
 ## 结果、限制与错误
