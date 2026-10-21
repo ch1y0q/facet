@@ -331,3 +331,127 @@ class TestPathArgs:
         token = env.token(env.login())
         result = env.call(token, "similar_photos", {"path": ".."})
         assert result["ok"] is False and result["error"] == "invalid_input"
+
+
+def _write_app():
+    app = FastAPI()
+
+    @app.post("/w/{code}")
+    async def write(code: int, body: dict):
+        if code >= 400:
+            raise HTTPException(status_code=code, detail=f"detail {code}")
+        return {"count": 2, "echo": body}
+
+    @app.get("/r")
+    async def read():
+        return {"ok": 1}
+
+    @app.post("/slowwrite")
+    async def slow_write():
+        await asyncio.sleep(2)
+        return {}
+
+    return app
+
+
+WRITE_SPEC = RouteSpec("POST", "/w/{code}", "edition", write=True)
+
+
+class TestOnWriteSink:
+    @staticmethod
+    def _setup(agent_app, sink, **allow):
+        env = agent_app("legacy")
+        grant = tokens.verify(env.token(env.login(edition=True), "edition"))
+        return grant, InternalClient(_write_app(), allowlist={**allow}, on_write=sink)
+
+    def test_a_successful_write_calls_the_sink_once_with_principal_tool_body_and_response(self, agent_app):
+        seen = []
+        grant, client = self._setup(agent_app, lambda *args: seen.append(args), w=WRITE_SPEC)
+        result = _run(client.call(grant, "w", path_args={"code": 200}, json={"photo_path": "/a"}))
+        assert result["ok"] is True
+        assert seen == [("_legacy", "w", {"photo_path": "/a"}, {"count": 2, "echo": {"photo_path": "/a"}})]
+
+    def test_a_read_never_calls_the_sink(self, agent_app):
+        seen = []
+        grant, client = self._setup(agent_app, lambda *args: seen.append(args),
+                                    r=RouteSpec("GET", "/r", "readonly"))
+        assert _run(client.call(grant, "r"))["ok"] is True
+        assert seen == []
+
+    @pytest.mark.parametrize("code", [403, 404, 422, 500])
+    def test_a_refused_write_never_calls_the_sink(self, agent_app, code):
+        seen = []
+        grant, client = self._setup(agent_app, lambda *args: seen.append(args), w=WRITE_SPEC)
+        result = _run(client.call(grant, "w", path_args={"code": code}, json={}))
+        assert result["ok"] is False and seen == []
+
+    def test_a_write_timeout_calls_the_sink_with_the_body_and_no_response(self, agent_app):
+        seen = []
+        grant, client = self._setup(agent_app, lambda *args: seen.append(args),
+                                    slow=RouteSpec("POST", "/slowwrite", "edition", write=True))
+        result = _run(client.call(grant, "slow", json={"paths": ["/a"]}, timeout=0.05))
+        assert result["error"] == "outcome_unknown"
+        assert seen == [("_legacy", "slow", {"paths": ["/a"]}, None)]
+
+    def test_a_transport_error_on_a_write_calls_the_sink_and_on_a_read_does_not(self, agent_app, monkeypatch):
+        import httpx
+
+        async def boom(self, *args, **kwargs):
+            raise httpx.ConnectError("down")
+
+        monkeypatch.setattr(httpx.AsyncClient, "request", boom)
+        seen = []
+        grant, client = self._setup(agent_app, lambda *args: seen.append(args), w=WRITE_SPEC,
+                                    r=RouteSpec("GET", "/r", "readonly"))
+        assert _run(client.call(grant, "w", path_args={"code": 200}, json={"paths": ["/a"]}))["error"] == "outcome_unknown"
+        assert len(seen) == 1
+        assert _run(client.call(grant, "r"))["error"] == "upstream_error"
+        assert len(seen) == 1
+
+    def test_a_read_timeout_never_calls_the_sink(self, agent_app):
+        seen = []
+        grant, client = self._setup(agent_app, lambda *args: seen.append(args),
+                                    slow=RouteSpec("GET", "/slowwrite", "readonly"))
+        _run(client.call(grant, "slow", timeout=0.05))
+        assert seen == []
+
+    def test_a_raising_sink_never_changes_the_result(self, agent_app):
+        def sink(*args):
+            raise RuntimeError("tab exploded")
+
+        grant, client = self._setup(agent_app, sink, w=WRITE_SPEC)
+        assert _run(client.call(grant, "w", path_args={"code": 200}, json={}))["ok"] is True
+
+    def test_an_async_sink_is_awaited(self, agent_app):
+        seen = []
+
+        async def sink(*args):
+            seen.append(args)
+
+        grant, client = self._setup(agent_app, sink, w=WRITE_SPEC)
+        _run(client.call(grant, "w", path_args={"code": 200}, json={}))
+        assert len(seen) == 1
+
+    def test_a_non_write_spec_never_calls_the_sink(self, agent_app):
+        seen = []
+        grant, client = self._setup(agent_app, lambda *args: seen.append(args),
+                                    preview=RouteSpec("POST", "/w/{code}", "edition"))
+        assert _run(client.call(grant, "preview", path_args={"code": 200}, json={}))["ok"] is True
+        assert seen == []
+
+    def test_the_context_override_takes_precedence(self, agent_app):
+        from api.agent.live_updates import LIVE_SINK_OVERRIDE
+        own, override = [], []
+        grant, client = self._setup(agent_app, lambda *args: own.append(args), w=WRITE_SPEC)
+        marker = LIVE_SINK_OVERRIDE.set(lambda *args: override.append(args))
+        try:
+            _run(client.call(grant, "w", path_args={"code": 200}, json={}))
+        finally:
+            LIVE_SINK_OVERRIDE.reset(marker)
+        assert own == [] and len(override) == 1
+
+    def test_no_sink_is_the_default(self, agent_app):
+        env = agent_app("legacy")
+        grant = tokens.verify(env.token(env.login(edition=True), "edition"))
+        client = InternalClient(_write_app(), allowlist={"w": WRITE_SPEC})
+        assert _run(client.call(grant, "w", path_args={"code": 200}, json={}))["ok"] is True

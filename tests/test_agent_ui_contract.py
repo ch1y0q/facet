@@ -94,3 +94,19 @@ def test_ui_show_photos_schema_has_plain_groups_and_marks_arrays():
     assert schema["additionalProperties"] is False
     assert schema["properties"]["groups"]["type"] == "array"
     assert schema["properties"]["marks"]["items"]["enum"] == ["keep", "remove"]
+
+
+def test_show_photos_contract_describes_group_sections_not_a_pill():
+    from api.agent import show
+    from api.agent.ui_tools import UiShowPhotos
+    descriptions = [t.description for t in UI_TOOLS] + [
+        field.description or "" for field in UiShowPhotos.model_fields.values()] + [show.show_paths_in_tab.__doc__ or ""]
+    assert not any("pill" in text or "Group n" in text for text in descriptions)
+    show_tool = next(t for t in UI_TOOLS if t.name == "ui_show_photos").description
+    assert "section" in show_tool and "keep/remove" in show_tool
+    assert "section" in (UiShowPhotos.model_fields["groups"].description or "")
+
+
+def test_tools_version_moved_with_the_review_rendering():
+    # The version before the group pill became section headers + a per-card keep/remove strip.
+    assert tools_version() != "abffbeeba56ed5b5"

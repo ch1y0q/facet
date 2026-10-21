@@ -156,11 +156,13 @@ class UiShowPhotos(UiArgs):
                     "filters and sort are left untouched; any filter change replaces the list.")
     groups: Optional[list[Annotated[int, Field(ge=1)]]] = Field(
         default=None, max_length=MAX_SHOW_PATHS,
-        description="Optional, one per path: the group number to show as a pill on that photo "
-                    "(plan order, 1-based: 'Group n').")
+        description="Optional, one per path: the 1-based group number (plan order). The pin lays each "
+                    "group out as its own section under a header with its keep/remove "
+                    "counts; photos of one group are gathered together, in your order.")
     marks: Optional[list[Literal["keep", "remove"]]] = Field(
         default=None, max_length=MAX_SHOW_PATHS,
-        description="Optional, one per path: the planned 'keep' or 'remove', shown as a badge.")
+        description="Optional, one per path: the planned 'keep' or 'remove', shown as a keep/remove strip "
+                    "on the card that the user can flip.")
 
     @model_validator(mode="after")
     def _parallel_to_paths(self) -> "UiShowPhotos":
@@ -254,9 +256,10 @@ UI_TOOLS: tuple[UiTool, ...] = (
     UiTool("ui_show_photos",
            "Show exactly these photos, in this order, as the gallery's list (max 200). Photos the "
            "user cannot see are skipped and returned as `missing`. Any filter change by the user "
-           "or the assistant replaces the list. Optional `groups` (one number per path, shown as a "
-           "'Group n' pill you choose) and `marks` ('keep'/'remove' per path, the planned decision "
-           "shown as a badge the user can flip); read the user's flips back with ui_get_context "
+           "or the assistant replaces the list. Optional `groups` (one number per path: each group "
+           "becomes a section under its own header, with its keep/remove counts) and `marks` "
+           "('keep'/'remove' per path, the planned decision shown as a keep/remove strip on the "
+           "card that the user can flip); read the user's flips back with ui_get_context "
            "`review`.",
            UiShowPhotos, False),
     UiTool("ui_select_photos",

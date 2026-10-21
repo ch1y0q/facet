@@ -33,6 +33,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from api.agent import limits, prompts, resources, tokens
 from api.agent.internal_client import InternalClient, err, validation_issues
+from api.agent.live_updates import WriteSink, make_emitter
 from api.agent.bridge import TabRegistry, same_origin
 from api.agent.runtime import SETTINGS_SCOPE_KEY, bearer_token, level_refusal, resolve_context, to_result
 from api.agent.tools_common import TOOL_LEVELS, tool_visible
@@ -264,14 +265,14 @@ class AgentAuthMiddleware:
 
 
 def register_all_tools(server: MCPServer, app: Any, client: InternalClient, status_extra: Any,
-                       registry: TabRegistry) -> None:
+                       registry: TabRegistry, on_write: Optional[WriteSink] = None) -> None:
     """The one registration list, shared by the mounted server and the levels builder."""
     register_read_tools(server, client, status_extra, registry)
     register_write_tools(server, client, registry)
     register_ui_tools(server, registry)
-    register_culling_tools(server, app, registry)
+    register_culling_tools(server, app, registry, on_write)
     register_correction_tools(server, client)
-    register_report_tools(server, app, client)
+    register_report_tools(server, app, client, on_write)
     prompts.register_prompts(server)
 
 
@@ -304,11 +305,11 @@ def mount_agent(app: FastAPI) -> StreamableHTTPSessionManager:
     require_sdk_prompt_hook()
     with _preserve_root_logging():
         server = AgentMCPServer(SERVER_NAME, instructions=INSTRUCTIONS, cache_hints=PRIVATE_NO_CACHE)
-    client = InternalClient(app)
+    registry: TabRegistry = app.state.tab_registry
+    emit = make_emitter(registry)
+    client = InternalClient(app, on_write=emit)
     server.resource_client = client
     version = _server_version()
-
-    registry: TabRegistry = app.state.tab_registry
 
     def status_extra(resolved: ResolvedGrant) -> dict[str, Any]:
         if resolved.inpage:
@@ -319,7 +320,7 @@ def mount_agent(app: FastAPI) -> StreamableHTTPSessionManager:
                 "out_of_reach_tabs": out_of_reach,
                 "ui_tools_version": tools_version()}
 
-    register_all_tools(server, app, client, status_extra, registry)
+    register_all_tools(server, app, client, status_extra, registry, emit)
     app.state.mcp_server = server
     sdk_app = server.streamable_http_app(
         streamable_http_path=MCP_PATH,

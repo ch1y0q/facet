@@ -726,3 +726,57 @@ class TestLiveSdkClient:
             envelope = asyncio.run(drive())
         assert envelope["ok"] is True and envelope["data"] == {"total": 3}
         assert seen[0]["tool"] == "ui_get_gallery_view" and seen[0]["args"] == {"limit": 5}
+
+
+class TestBroadcast:
+    @staticmethod
+    def _frames(tab):
+        return [m for m in tab.inbox if m.get("type") == "changed"]
+
+    @staticmethod
+    def _wait(tab, count, timeout=5.0):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline and len(TestBroadcast._frames(tab)) < count:
+            time.sleep(0.05)
+        return TestBroadcast._frames(tab)
+
+    FRAME = {"type": "changed", "tool": "batch_reject", "paths": ["/a"], "count": 1}
+
+    def test_every_tab_of_the_user_gets_the_frame(self, agent_app, fake_tab):
+        env = agent_app("open")
+        jwt = jwt_of(env.login())
+        first, second = fake_tab(env, jwt, "tab-a"), fake_tab(env, jwt, "tab-b")
+        asyncio.run(env.app.state.tab_registry.broadcast("_anonymous", self.FRAME))
+        assert self._wait(first, 1) == [self.FRAME] and self._wait(second, 1) == [self.FRAME]
+
+    def test_exclude_tab_id_skips_only_that_tab(self, agent_app, fake_tab):
+        env = agent_app("open")
+        jwt = jwt_of(env.login())
+        caller, other = fake_tab(env, jwt, "tab-a"), fake_tab(env, jwt, "tab-b")
+        asyncio.run(env.app.state.tab_registry.broadcast("_anonymous", self.FRAME, exclude_tab_id="tab-a"))
+        assert self._wait(other, 1) == [self.FRAME]
+        time.sleep(0.4)
+        assert self._frames(caller) == []
+
+    def test_a_broken_connection_never_raises_or_blocks_the_others(self, agent_app, fake_tab):
+        env = agent_app("open")
+        jwt = jwt_of(env.login())
+        broken, healthy = fake_tab(env, jwt, "tab-a"), fake_tab(env, jwt, "tab-b")
+        registry = env.app.state.tab_registry
+        conn = next(c for c in registry.tabs_for("_anonymous") if c.tab_id == "tab-a")
+
+        original = conn.send
+
+        async def explode(frame):
+            if frame.get("type") == "changed":
+                raise RuntimeError("socket gone")
+            await original(frame)
+
+        conn.send = explode
+        asyncio.run(registry.broadcast("_anonymous", self.FRAME))
+        assert self._wait(healthy, 1) == [self.FRAME]
+        assert self._frames(broken) == []
+
+    def test_no_tabs_is_a_no_op(self, agent_app):
+        env = agent_app("open")
+        asyncio.run(env.app.state.tab_registry.broadcast("nobody", self.FRAME))

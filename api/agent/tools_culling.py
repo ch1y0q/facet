@@ -22,6 +22,7 @@ from api.agent import nonce
 from api.agent import show as relay
 from api.agent.bridge import TabRegistry
 from api.agent.internal_client import InternalClient, RouteSpec, err, ok
+from api.agent.live_updates import WriteSink
 from api.agent.limits import encoded_size
 from api.agent.runtime import run_tool
 from api.agent.ui_tools import TAB_ID_PATTERN
@@ -197,9 +198,10 @@ def _validate_confirm(groups: list[ConfirmGroup]) -> Optional[dict]:
     return None
 
 
-def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry) -> None:
+def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
+                           on_write: Optional[WriteSink] = None) -> None:
     """Register the darkroom tools. ``app`` is the FastAPI app the routes live on."""
-    client = InternalClient(app, CULLING_ROUTES)
+    client = InternalClient(app, CULLING_ROUTES, on_write=on_write)
 
     def add(fn, name: str, description: str, annotations: ToolAnnotations = READ_ANNOTATIONS) -> None:
         register_tool(server, fn, name, description, annotations, CULLING_LEVEL)

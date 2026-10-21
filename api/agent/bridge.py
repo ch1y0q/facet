@@ -12,7 +12,8 @@ session manager on different loops (Starlette's TestClient portal, or uvicorn
 started without the app lifespan).
 
 The registry is per process: with several uvicorn workers a tab and an agent call
-may land in different processes. The bridge needs ``--workers 1`` (the default).
+may land in different processes. The bridge needs ``--workers 1`` (the default); the same goes for
+the ``changed`` broadcast, which reaches only the tabs of the process that served the write.
 """
 
 import asyncio
@@ -274,6 +275,17 @@ class TabRegistry:
         if focused:
             return max(focused, key=lambda t: t.last_active), "focused"
         return max(tabs, key=lambda t: t.last_active), "most_recent"
+
+    async def broadcast(self, user_id: str, frame: dict, exclude_tab_id: Optional[str] = None) -> None:
+        """Send ``frame`` to every tab of ``user_id`` (except ``exclude_tab_id``). Never raises.
+
+        A tab that cannot be written to is logged at debug and skipped; it cannot delay or fail the others.
+        """
+        targets = [t for t in self.tabs_for(user_id) if t.tab_id != exclude_tab_id and not t.closed]
+        results = await asyncio.gather(*(t.send(frame) for t in targets), return_exceptions=True)
+        for conn, outcome in zip(targets, results):
+            if isinstance(outcome, BaseException):
+                logger.debug("Broadcast to tab %s failed: %r", conn.tab_id, outcome)
 
     async def call(self, user_id: str, tool: str, args: dict, *, level: str, tab_id: Optional[str],
                    timeout: float, max_level: Optional[str] = None) -> dict:

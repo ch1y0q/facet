@@ -11,20 +11,24 @@ The in-page agent drives the user's own tab, so a few things are fixed server-si
 the snapshot the CALLER tab sent (never a bridge tab), and the image tools are not offered.
 """
 
+import asyncio
 import copy
 import json
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional
 
 from mcp.server.mcpserver.exceptions import UnexpectedToolError
 
 from api.agent import tokens
 from api.agent.internal_client import err
+from api.agent.live_updates import LIVE_SINK_OVERRIDE, WriteCollector
 from api.agent.runtime import INPAGE_SCOPE_KEY, SETTINGS_SCOPE_KEY
 from api.agent.tools_common import TOOL_LEVELS, tool_visible
 from api.agent.ui_tools import UI_TOOLS
 
 # An image block does not survive the JSON-string WebMCP result; ``available_actions`` is covered by the
 # tab's own ``ui_get_context.actions``.
+_broadcasts: set[asyncio.Task] = set()
+
 EXCLUDED_TOOLS = frozenset({"get_thumbnail", "contact_sheet", "available_actions"})
 STRIPPED_ARGS = ("show", "tab_id")
 SESSION_HEADER = "X-Facet-Agent-Session"
@@ -102,9 +106,28 @@ def _changed(name: str, envelope: dict) -> dict:
     return extra
 
 
+def _broadcast_to_other_tabs(registry: Any, collector: WriteCollector, tab_id: str) -> None:
+    """Tell the principal's OTHER tabs about the writes this call made (fire-and-forget, one frame per write)."""
+    if collector.principal is None:
+        return
+
+    async def send() -> None:
+        for frame in collector.frames:
+            await registry.broadcast(collector.principal, frame, exclude_tab_id=tab_id)
+
+    task = asyncio.get_running_loop().create_task(send())
+    _broadcasts.add(task)
+    task.add_done_callback(_broadcasts.discard)
+
+
 async def call(server: Any, grant: tokens.SessionGrant, settings: dict, name: str,
-               arguments: dict) -> dict:
-    """Run tool ``name`` for ``grant`` and return its envelope (never an exception)."""
+               arguments: dict, registry: Any = None, tab_id: Optional[str] = None) -> dict:
+    """Run tool ``name`` for ``grant`` and return its envelope (never an exception).
+
+    Every photo-changing write the call makes is collected, not broadcast to the caller: the caller IS
+    the tab, so the envelope carries ``changed_paths`` (present only when a write ran) and the page applies
+    it. The user's other tabs get the same writes as ``changed`` frames when ``tab_id`` names the caller.
+    """
     if excluded(name):
         return err("invalid_input", f"{name[:64]} is not available to an in-page agent")
     if "tab_id" in arguments:
@@ -114,10 +137,18 @@ async def call(server: Any, grant: tokens.SessionGrant, settings: dict, name: st
     tool = server._tool_manager.get_tool(name)
     if tool is not None and "show" not in (tool.parameters or {}).get("properties", {}):
         del forced["show"]
+    collector = WriteCollector()
+    marker = LIVE_SINK_OVERRIDE.set(collector)
     try:
         result = await server.call_tool(name, forced, SessionContext(grant, settings))
     except UnexpectedToolError:
         return err("upstream_error", "The tool failed unexpectedly")
+    finally:
+        LIVE_SINK_OVERRIDE.reset(marker)
     envelope = _envelope(result)
     envelope.update(_changed(name, envelope))
+    if collector.wrote:
+        envelope["changed_paths"] = collector.paths()
+        if registry is not None and tab_id is not None:
+            _broadcast_to_other_tabs(registry, collector, tab_id)
     return envelope

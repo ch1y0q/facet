@@ -72,6 +72,10 @@ class CullingGroupsResponse(BaseModel):
     was not built from, or duplicate every fetcher's dict-building logic here
     just to keep it in sync -- exactly the "tidy the handler to fit the model"
     the phase rules out. The outer pagination envelope is still fully typed.
+
+    Every photo in a page also carries the caller's ``is_rejected`` and ``is_favorite`` (0/1 ints, SQLite
+    has no boolean) and ``star_rating`` (0-5), from ``user_preferences`` in multi-user mode and the
+    ``photos`` columns otherwise (``attach_user_marks``); ``tests/test_burst_culling.py`` pins the wire types.
     """
 
     groups: list[dict[str, Any]]

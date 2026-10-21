@@ -505,3 +505,119 @@ class TestTasteModel:
         resp = env.client.post("/api/photo/set_rating", json={"photo_path": taste.PATHS[2], "rating": 5},
                                headers=headers)
         assert resp.status_code == 200 and len(mints) == 1, "a person's own rating still trains"
+
+
+def post_json(env, headers, tool, arguments=None, tab_id=None, sid="tab-a"):
+    body = {"tool": tool, "arguments": arguments or {}}
+    if tab_id is not None:
+        body["tab_id"] = tab_id
+    resp = env.client.post("/api/mcp/call", json=body, headers={**headers, SESSION_HEADER: sid})
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def changed_frames(tab):
+    return [m for m in tab.inbox if m.get("type") == "changed"]
+
+
+def frames_within(tab, count, timeout=5.0):
+    import time
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline and len(changed_frames(tab)) < count:
+        time.sleep(0.05)
+    return changed_frames(tab)
+
+
+class TestChangedPaths:
+    """``changed_paths`` on ``/api/mcp/call``: present iff a write ran; the caller tab is never broadcast to."""
+
+    @pytest.fixture()
+    def edition_session(self, agent_app, photos):
+        env = agent_app("legacy", allow_destructive=True)
+        return env, env.login(edition=True)
+
+    def test_a_batch_write_carries_changed_paths(self, edition_session):
+        env, headers = edition_session
+        out = post_json(env, headers, "batch_set_rejected", {"paths": P[:2]})
+        assert out["ok"] and out["changed_paths"] == P[:2] and out["changed"] == 2
+
+    def test_a_write_whose_envelope_has_no_affected_still_carries_the_key(self, edition_session):
+        env, headers = edition_session
+        out = post_json(env, headers, "set_caption", {"path": P[0], "caption": "inpage live caption"})
+        assert out["ok"], out
+        assert "changed" not in out and out["changed_paths"] == [P[0]]
+
+    def test_a_filter_scoped_write_has_the_key_with_null(self, edition_session):
+        env, headers = edition_session
+        out = post_json(env, headers, "batch_set_rejected",
+                        {"filters": {"path_prefix": AGENT_DIR}, "expected_count": len(P)})
+        assert out["ok"], out
+        assert "changed_paths" in out and out["changed_paths"] is None
+
+    def test_a_read_has_no_key(self, edition_session):
+        env, headers = edition_session
+        out = post_json(env, headers, "search_photos", {})
+        assert out["ok"] and "changed_paths" not in out
+
+    def test_a_preview_has_no_key(self, edition_session):
+        env, headers = edition_session
+        out = post_json(env, headers, "delete_photos", {"paths": P[:1]})
+        assert "changed_paths" not in out, out
+
+    def test_a_refused_write_has_no_key(self, agent_app, photos):
+        env = agent_app("legacy")
+        headers = env.login()
+        out = post_json(env, headers, "set_caption", {"path": P[0], "caption": "x"})
+        assert not out["ok"] and "changed_paths" not in out
+
+    def test_an_outcome_unknown_write_still_carries_the_key(self, edition_session, monkeypatch):
+        import httpx
+        original = httpx.AsyncClient.request
+
+        async def flaky(self, method, url, *args, **kwargs):
+            if str(url).endswith("/api/photos/batch_reject"):
+                raise httpx.ConnectError("dropped")
+            return await original(self, method, url, *args, **kwargs)
+
+        monkeypatch.setattr(httpx.AsyncClient, "request", flaky)
+        env, headers = edition_session
+        out = post_json(env, headers, "batch_set_rejected", {"paths": P[:2]})
+        assert out["ok"] is False and out["error"] == "outcome_unknown"
+        assert out["changed_paths"] == P[:2]
+
+    def test_other_tabs_get_the_frame_and_the_caller_tab_does_not(self, edition_session, fake_tab):
+        env, headers = edition_session
+        jwt = headers["Authorization"].split(" ", 1)[1]
+        caller, other = fake_tab(env, jwt, "tab-caller"), fake_tab(env, jwt, "tab-other")
+        out = post_json(env, headers, "batch_set_rejected", {"paths": P[:2]}, tab_id="tab-caller")
+        assert out["changed_paths"] == P[:2]
+        frames = frames_within(other, 1)
+        assert frames == [{"type": "changed", "tool": "batch_reject", "paths": P[:2], "count": 2}]
+        import time
+        time.sleep(0.5)
+        assert changed_frames(caller) == []
+
+    def test_a_dry_run_broadcasts_nothing(self, edition_session, fake_tab):
+        env, headers = edition_session
+        jwt = headers["Authorization"].split(" ", 1)[1]
+        other = fake_tab(env, jwt, "tab-other")
+        post_json(env, headers, "delete_photos", {"paths": P[:1]}, tab_id="tab-caller")
+        import time
+        time.sleep(0.5)
+        assert changed_frames(other) == []
+
+    def test_no_tab_id_broadcasts_to_nobody(self, edition_session, fake_tab):
+        env, headers = edition_session
+        jwt = headers["Authorization"].split(" ", 1)[1]
+        other = fake_tab(env, jwt, "tab-other")
+        out = post_json(env, headers, "batch_set_rejected", {"paths": P[:1]})
+        assert out["changed_paths"] == P[:1]
+        import time
+        time.sleep(0.5)
+        assert changed_frames(other) == []
+
+    def test_a_malformed_tab_id_is_a_422(self, edition_session):
+        env, headers = edition_session
+        resp = env.client.post("/api/mcp/call", json={"tool": "search_photos", "tab_id": "bad id!"},
+                               headers={**headers, SESSION_HEADER: "tab-a"})
+        assert resp.status_code == 422

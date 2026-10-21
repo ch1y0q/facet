@@ -5398,6 +5398,10 @@ export interface components {
          *     was not built from, or duplicate every fetcher's dict-building logic here
          *     just to keep it in sync -- exactly the "tidy the handler to fit the model"
          *     the phase rules out. The outer pagination envelope is still fully typed.
+         *
+         *     Every photo in a page also carries the caller's ``is_rejected`` and ``is_favorite`` (0/1 ints, SQLite
+         *     has no boolean) and ``star_rating`` (0-5), from ``user_preferences`` in multi-user mode and the
+         *     ``photos`` columns otherwise (``attach_user_marks``); ``tests/test_burst_culling.py`` pins the wire types.
          */
         CullingGroupsResponse: {
             /** Groups */
@@ -5820,6 +5824,11 @@ export interface components {
             selection_snapshot?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Tab Id
+             * @description The calling tab's bridge id. A write's `changed` frame goes to the user's OTHER tabs, never to this one, which applies `changed_paths` from the response.
+             */
+            tab_id?: string | null;
             /** Tool */
             tool: string;
         };
@@ -5833,6 +5842,11 @@ export interface components {
              * @description Photos a write changed (0 for a dry run).
              */
             changed?: number | null;
+            /**
+             * Changed Paths
+             * @description Present ONLY when the call ran a photo-changing write (even one whose outcome is unknown): the paths it named, or null when it did not name them (a filter-scoped write, more than 200 paths). An absent key means nothing was written.
+             */
+            changed_paths?: string[] | null;
             /** Data */
             data?: unknown | null;
             /** Error */

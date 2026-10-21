@@ -157,7 +157,7 @@ async def show_paths_in_tab(registry: TabRegistry, resolved: ResolvedGrant, sett
                             marks: Optional[list[str]] = None) -> dict:
     """Pin exactly ``paths`` (in order) as the user's gallery list; describe the outcome, never raise.
 
-    ``groups`` / ``marks`` (one per path) label each card with a group pill and a keep/remove badge.
+    ``groups`` / ``marks`` (one per path) lay the pin out as group sections (a header each) and put a keep/remove strip on every card.
     """
     return await _show(
         registry, resolved, settings, tab_id, "ui_show_photos", "Show paths",

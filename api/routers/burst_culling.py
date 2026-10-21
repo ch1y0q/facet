@@ -299,6 +299,34 @@ def attach_keeper_probs(conn, groups, user_id):
     _for_each_group_probs(conn, groups, user_id, apply)
 
 
+def attach_user_marks(conn, groups, user_id):
+    """Stamp each photo of ``groups`` with the caller's ``is_rejected`` / ``is_favorite`` / ``star_rating``.
+
+    Read per request from the gallery's own per-user source (``user_preferences`` in multi-user mode, the
+    ``photos`` columns otherwise), never taken from the memoised enrichment: a mark the user or an assistant
+    set a moment ago must show on the next page fetch. 0/1 ints and a 0-5 rating, like the gallery rows.
+    """
+    paths = [p['path'] for g in groups for p in g.get('photos') or [] if p.get('path')]
+    if not paths:
+        return
+    from_clause, from_params = get_photos_from_clause(user_id)
+    cols = get_preference_columns(user_id)
+    marks = {
+        row[0]: (row[1] or 0, row[2] or 0, row[3] or 0)
+        for row in select_in_chunks(
+            conn,
+            f"SELECT photos.path, {cols['is_rejected']}, {cols['is_favorite']}, {cols['star_rating']} "
+            f"FROM {from_clause} WHERE photos.path IN ({{placeholders}})",
+            set(paths), before=from_params)
+    }
+    for group in groups:
+        for photo in group.get('photos') or []:
+            rejected, favorite, rating = marks.get(photo.get('path'), (0, 0, 0))
+            photo['is_rejected'] = int(rejected)
+            photo['is_favorite'] = int(favorite)
+            photo['star_rating'] = int(rating)
+
+
 def _get_face_thresholds(profile=None):
     """Culling face-signal cutoffs from scoring_config face_detection.
 
@@ -1623,6 +1651,7 @@ def api_culling_groups(
             total_pages, offset = paginate(total_groups, page, per_page)
             page_groups = all_groups[offset:offset + per_page]
             attach_keeper_probs(conn, page_groups, user_id)
+            attach_user_marks(conn, page_groups, user_id)
 
             return {
                 'groups': page_groups,

@@ -1540,3 +1540,87 @@ class TestCullingGroupsMemoAcrossConfirm:
         # The next GET recomputes from the confirmed set instead of the memo.
         assert len(reads) == 2
         assert after.json()["total_groups"] == 0
+
+
+class TestCullingGroupsUserMarks:
+    """``GET /api/culling-groups`` photos carry the caller's reject / favourite / rating so the darkroom can show them."""
+
+    PREFIX = "/cgmarks-b4/"
+    GID = 61616
+    MARK_KEYS = ("is_rejected", "is_favorite", "star_rating")
+
+    @classmethod
+    def _rows(cls):
+        def row(name, second, **extra):
+            return {"path": cls.PREFIX + name, "filename": name, "date_taken": f"1998:03:03 10:00:{second:02d}",
+                    "aggregate": 6.0 + second, "aesthetic": 6.0, "tech_sharpness": 6.0,
+                    "burst_group_id": cls.GID, "is_burst_lead": int(second == 1), **extra}
+        return [row("a.jpg", 1, is_rejected=1, is_favorite=0, star_rating=0),
+                row("b.jpg", 2, is_rejected=0, is_favorite=1, star_rating=4),
+                row("c.jpg", 3, is_rejected=0, is_favorite=0, star_rating=0)]
+
+    @pytest.fixture()
+    def client(self, seed_photos_prefix):
+        from fastapi.testclient import TestClient
+        from api import create_app
+        from api.auth import get_optional_user, require_edition, CurrentUser
+        from api.routers.burst_culling import _invalidate_culling_groups_cache
+
+        seed_photos_prefix(self.PREFIX, self._rows())
+        app = create_app()
+        fake_user = CurrentUser(user_id="cgmarks-user", edition_authenticated=True)
+        app.dependency_overrides[get_optional_user] = lambda: fake_user
+        app.dependency_overrides[require_edition] = lambda: fake_user
+        _invalidate_culling_groups_cache()
+        yield TestClient(app)
+        _invalidate_culling_groups_cache()
+        app.dependency_overrides.clear()
+
+    def _photos(self, client):
+        resp = client.get("/api/culling-groups?group_by=burst&exclude_rejected=false"
+                          "&date_from=1998:03:03 00:00:00&date_to=1998:03:03 23:59:59")
+        assert resp.status_code == 200, resp.text
+        group = next(g for g in resp.json()["groups"] if any(p["path"].startswith(self.PREFIX) for p in g["photos"]))
+        return {p["path"]: p for p in group["photos"]}
+
+    def test_single_user_reads_the_photos_columns_as_zero_or_one_ints(self, client):
+        photos = self._photos(client)
+        a, b, c = (photos[self.PREFIX + n] for n in ("a.jpg", "b.jpg", "c.jpg"))
+        assert (a["is_rejected"], a["is_favorite"], a["star_rating"]) == (1, 0, 0)
+        assert (b["is_rejected"], b["is_favorite"], b["star_rating"]) == (0, 1, 4)
+        assert (c["is_rejected"], c["is_favorite"], c["star_rating"]) == (0, 0, 0)
+        for photo in photos.values():
+            for key in self.MARK_KEYS:
+                assert type(photo[key]) is int, (key, photo[key])
+
+    def test_multi_user_reads_user_preferences_not_the_photos_columns(self, client):
+        from tests.conftest import _TEST_DB_FILE
+        path = self.PREFIX + "c.jpg"
+        conn = sqlite3.connect(_TEST_DB_FILE.name)
+        conn.execute("INSERT OR REPLACE INTO user_preferences (user_id, photo_path, star_rating, is_favorite, "
+                     "is_rejected) VALUES ('cgmarks-user', ?, 5, 1, 1)", (path,))
+        conn.commit()
+        conn.close()
+        try:
+            with (
+                mock.patch("api.db_helpers.is_multi_user_enabled", return_value=True),
+                mock.patch("api.routers.burst_culling.is_multi_user_enabled", return_value=True),
+                mock.patch("api.routers.burst_culling.get_visibility_clause", return_value=("1=1", [])),
+                mock.patch("api.db_helpers.get_visibility_clause", return_value=("1=1", [])),
+            ):
+                photos = self._photos(client)
+        finally:
+            conn = sqlite3.connect(_TEST_DB_FILE.name)
+            conn.execute("DELETE FROM user_preferences WHERE photo_path LIKE ?", (self.PREFIX + "%",))
+            conn.commit()
+            conn.close()
+        c = photos[path]
+        assert (c["is_rejected"], c["is_favorite"], c["star_rating"]) == (1, 1, 5)
+        # The photos-table values (a rejected, b favourite) belong to nobody in multi-user mode.
+        assert (photos[self.PREFIX + "a.jpg"]["is_rejected"], photos[self.PREFIX + "b.jpg"]["star_rating"]) == (0, 0)
+
+    def test_a_group_with_no_photos_is_untouched(self):
+        from api.routers.burst_culling import attach_user_marks
+        groups = [{"group_id": 1, "photos": []}]
+        attach_user_marks(mock.MagicMock(), groups, None)
+        assert groups == [{"group_id": 1, "photos": []}]

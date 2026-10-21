@@ -32,6 +32,10 @@ class McpCallRequest(BaseModel):
     arguments: dict[str, Any] = Field(default_factory=dict)
     selection_snapshot: Optional[dict[str, Any]] = Field(
         default=None, description="The calling tab's `ui_get_selection` data; read by `target: \"selection\"`.")
+    tab_id: Optional[str] = Field(
+        default=None, pattern=r"^[A-Za-z0-9_-]{1,64}$",
+        description="The calling tab's bridge id. A write's `changed` frame goes to the user's OTHER tabs, "
+                    "never to this one, which applies `changed_paths` from the response.")
 
 
 class McpCallResponse(BaseModel):
@@ -44,3 +48,8 @@ class McpCallResponse(BaseModel):
     error: Optional[str] = None
     message: Optional[str] = None
     changed: Optional[int] = Field(default=None, description="Photos a write changed (0 for a dry run).")
+    changed_paths: Optional[list[str]] = Field(
+        default=None,
+        description="Present ONLY when the call ran a photo-changing write (even one whose outcome is unknown): "
+                    "the paths it named, or null when it did not name them (a filter-scoped write, more than 200 "
+                    "paths). An absent key means nothing was written.")

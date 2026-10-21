@@ -16,6 +16,7 @@ from pydantic import Field
 
 from api.agent import tokens
 from api.agent.internal_client import InternalClient, err, ok
+from api.agent.live_updates import WriteSink
 from api.agent.limits import encoded_size
 from api.agent.runtime import run_tool
 from api.agent.tools_common import READ_ANNOTATIONS, register_tool
@@ -71,8 +72,9 @@ def _minus(total: Optional[int], part: Optional[int]) -> Optional[int]:
     return None if total is None or part is None else total - part
 
 
-def register_report_tools(server: MCPServer, app: Any, client: InternalClient) -> None:
-    culling = InternalClient(app, CULLING_ROUTES)
+def register_report_tools(server: MCPServer, app: Any, client: InternalClient,
+                          on_write: Optional[WriteSink] = None) -> None:
+    culling = InternalClient(app, CULLING_ROUTES, on_write=on_write)
 
     async def cull_report(
         ctx: Context, filters: Optional[Any] = None,

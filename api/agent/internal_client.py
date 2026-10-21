@@ -13,17 +13,19 @@ call; (3) mint a 60-second JWT whose role/edition MATCH the effective level.
 """
 
 import asyncio
+import inspect
 import logging
 from dataclasses import dataclass
 from datetime import timedelta
 from types import MappingProxyType
-from typing import Any, Mapping, Optional
+from typing import Any, Callable, Mapping, Optional
 from urllib.parse import quote
 
 import httpx
 from pydantic import ValidationError
 
 from api.agent import tokens
+from api.agent.live_updates import LIVE_SINK_OVERRIDE
 from api.auth import create_access_token
 
 logger = logging.getLogger(__name__)
@@ -174,32 +176,47 @@ class InternalClient:
     """Calls allow-listed routes of ``app`` in-process, as the token's owner."""
 
     def __init__(self, app: Any, allowlist: Mapping[str, RouteSpec] = ROUTE_ALLOWLIST,
-                 peer_ip: str = "127.0.0.1"):
+                 peer_ip: str = "127.0.0.1", on_write: Optional[Callable[[str, str, Any, Any], Any]] = None):
         self._app = app
         self._allowlist = allowlist
         self._peer_ip = peer_ip
+        self._on_write = on_write
+
+    async def _notify_write(self, resolved: Optional[tokens.ResolvedGrant], tool: str, body: Any,
+                            response: Any) -> None:
+        """Hand a write that landed (or may have) to the live-update sink; it never changes the result."""
+        sink = LIVE_SINK_OVERRIDE.get() or self._on_write
+        if sink is None or resolved is None:
+            return
+        try:
+            outcome = sink(resolved.principal, tool, body, response)
+            if inspect.isawaitable(outcome):
+                await outcome
+        except Exception as ex:
+            logger.warning("Live-update sink failed for %s: %r", tool, ex)
 
     async def _send(self, grant: tokens.TokenGrant, tool: str, query: Optional[Mapping[str, Any]],
                     path_args: Optional[Mapping[str, Any]], json: Any, timeout: float):
         """The allow-list, level and path checks, then the in-process request.
 
-        Returns ``(error_envelope, None)`` or ``(None, response)``.
+        Returns ``(error_envelope, None, resolved)`` or ``(None, response, resolved)``; ``resolved`` is
+        None until the grant resolved.
         """
         spec = self._allowlist.get(tool)
         if spec is None:
             raise NotAllowedError(tool)
         resolved = await asyncio.to_thread(grant.resolve)
         if resolved is None:
-            return err("forbidden_level", "This token is no longer valid"), None
+            return err("forbidden_level", "This token is no longer valid"), None, None
         if tokens.level_rank(resolved.level) < tokens.level_rank(spec.min_level):
             return err("forbidden_level",
                        f"This token's level is {resolved.level}; {tool} needs "
-                       f"{tokens.effective_requirement(spec.min_level)}"), None
+                       f"{tokens.effective_requirement(spec.min_level)}"), None, resolved
         for value in (path_args or {}).values():
             text = str(value)
             if not text or any(part in (".", "..") for part in text.split("/")):
                 return err("invalid_input",
-                           "A path argument may not be empty or contain '.' or '..' segments"), None
+                           "A path argument may not be empty or contain '.' or '..' segments"), None, resolved
         headers = {}
         claims = resolved.jwt_claims()
         if claims is not None:
@@ -215,11 +232,11 @@ class InternalClient:
                 response = await asyncio.wait_for(client.request(
                     spec.method, path, params=params or None, json=json, headers=headers), timeout)
         except asyncio.TimeoutError:
-            return self._timed_out(spec, tool), None
+            return self._timed_out(spec, tool), None, resolved
         except (httpx.HTTPError, OSError) as ex:
             logger.warning("Agent upstream call %s failed: %r", tool, ex)
-            return self._timed_out(spec, tool), None
-        return None, response
+            return self._timed_out(spec, tool), None, resolved
+        return None, response, resolved
 
     async def call(
         self,
@@ -231,8 +248,10 @@ class InternalClient:
         json: Any = None,
         timeout: float = 30.0,
     ) -> dict:
-        failure, response = await self._send(grant, tool, query, path_args, json, timeout)
+        failure, response, resolved = await self._send(grant, tool, query, path_args, json, timeout)
         if response is None:
+            if failure and failure.get("error") == "outcome_unknown":
+                await self._notify_write(resolved, tool, json, None)
             return failure
         try:
             body = response.json() if response.content else None
@@ -241,6 +260,8 @@ class InternalClient:
         if response.status_code >= 400:
             detail = body.get("detail") if isinstance(body, dict) else None
             return _status_to_error(response.status_code, detail)
+        if self._allowlist[tool].write:
+            await self._notify_write(resolved, tool, json, body)
         return ok(body)
 
     async def call_bytes(
@@ -252,7 +273,7 @@ class InternalClient:
         timeout: float = 30.0,
     ) -> dict:
         """Like ``call`` for a route that answers image bytes: ``ok({"bytes", "mime"})``."""
-        failure, response = await self._send(grant, tool, query, None, None, timeout)
+        failure, response, _ = await self._send(grant, tool, query, None, None, timeout)
         if response is None:
             return failure
         if response.status_code >= 400:
