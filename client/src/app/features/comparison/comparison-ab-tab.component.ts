@@ -67,7 +67,7 @@ interface LearnedWeightsResponse {
       <div class="flex flex-wrap items-center gap-3 mb-4">
         <mat-form-field class="w-56" subscriptSizing="dynamic">
           <mat-label>{{ I18N.compare.strategy | translate }}</mat-label>
-          <mat-select [value]="strategy()" (selectionChange)="onStrategyChange($event.value)">
+          <mat-select [value]="shownStrategy()" (selectionChange)="onStrategyChange($event.value)">
             @for (s of strategies; track s) {
               <mat-option [value]="s">{{ ('compare.strategies.' + s) | translate }}</mat-option>
             }
@@ -296,6 +296,8 @@ export class ComparisonAbTabComponent {
   protected readonly comparisonCount = signal(0);
   protected readonly strategy = this.compareFilters.strategy;
   protected readonly comparisonStats = signal<ComparisonStats | null>(null);
+  /** The strategy in effect: the user's pick, else the one the server is configured with. */
+  protected readonly shownStrategy = computed(() => this.strategy() || this.comparisonStats()?.pair_selection_strategy || '');
   protected readonly learnedWeights = signal<LearnedWeightsResponse | null>(null);
   protected readonly learnedWeightsLoading = signal(false);
   protected readonly showStrategyHelp = signal(false);

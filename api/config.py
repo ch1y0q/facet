@@ -1493,7 +1493,7 @@ def get_comparison_mode_settings():
     """Get comparison mode settings from config."""
     defaults = {
         'min_comparisons_for_optimization': 30,
-        'pair_selection_strategy': 'uncertainty',
+        'pair_selection_strategy': 'learning',
         'show_current_scores': False
     }
     settings = _FULL_CONFIG.get('viewer', {}).get('comparison_mode', {})

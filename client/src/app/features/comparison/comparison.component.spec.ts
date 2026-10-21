@@ -50,10 +50,10 @@ describe('ComparisonComponent', () => {
   });
 
   describe('leaving the page', () => {
-    it('resets the strategy the root service kept from this visit', () => {
+    it('resets the strategy to the server-configured default (empty) the root service kept from this visit', () => {
       compareFilters.strategy.set('boundary');
       TestBed.resetTestingModule();
-      expect(compareFilters.strategy()).toBe('uncertainty');
+      expect(compareFilters.strategy()).toBe('');
     });
   });
 

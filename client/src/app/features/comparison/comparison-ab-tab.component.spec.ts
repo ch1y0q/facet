@@ -2,6 +2,8 @@ import type { Mock } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { of, throwError } from 'rxjs';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
@@ -352,5 +354,54 @@ describe('ComparisonAbTabComponent', () => {
 
       expect(spy).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('ComparisonAbTabComponent pair-selection strategy on the wire', () => {
+  let http: HttpTestingController;
+  let component: any;
+  let filters: CompareFiltersService;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        ComparisonAbTabComponent,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: MatSnackBar, useValue: { open: vi.fn() } },
+        { provide: I18nService, useValue: { t: vi.fn((key: string) => key) } },
+        { provide: AuthService, useValue: { isEdition: vi.fn(() => true) } },
+      ],
+    });
+    http = TestBed.inject(HttpTestingController);
+    filters = TestBed.inject(CompareFiltersService);
+    filters.selectedCategory.set('portrait');
+    component = TestBed.inject(ComparisonAbTabComponent);
+  });
+
+  afterEach(() => {
+    http.match(() => true);
+  });
+
+  it('sends no strategy while it is unset, so the server uses its configured default', () => {
+    void component.loadNextPair();
+    const req = http.expectOne((r) => r.url === '/api/comparison/next_pair');
+    expect(req.request.params.keys()).not.toContain('strategy');
+    expect(req.request.params.get('category')).toBe('portrait');
+  });
+
+  it('sends the strategy the user picked', () => {
+    component.onStrategyChange('boundary');
+    void component.loadNextPair();
+    const req = http.expectOne((r) => r.url === '/api/comparison/next_pair');
+    expect(req.request.params.get('strategy')).toBe('boundary');
+  });
+
+  it('shows the server-configured strategy from the stats while none is picked', () => {
+    expect(component.shownStrategy()).toBe('');
+    component.comparisonStats.set({ pair_selection_strategy: 'learning' });
+    expect(component.shownStrategy()).toBe('learning');
+    component.onStrategyChange('boundary');
+    expect(component.shownStrategy()).toBe('boundary');
   });
 });

@@ -646,6 +646,7 @@ def api_comparison_stats(
     stats = manager.get_statistics()
     settings = get_comparison_mode_settings()
     stats['min_comparisons_for_optimization'] = settings.get('min_comparisons_for_optimization', 30)
+    stats['pair_selection_strategy'] = settings.get('pair_selection_strategy', 'learning')
     return stats
 
 

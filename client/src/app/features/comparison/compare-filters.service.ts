@@ -3,8 +3,8 @@ import { Injectable, signal } from '@angular/core';
 /** Index of the A/B compare tab inside the comparison page's tab group. */
 export const COMPARE_AB_TAB_INDEX = 1;
 
-/** Pair-selection strategy the A/B tab starts with. */
-export const DEFAULT_COMPARE_STRATEGY = 'uncertainty';
+/** Strategy the A/B tab starts with: '' means the server's configured default (the request omits it). */
+export const DEFAULT_COMPARE_STRATEGY = '';
 
 @Injectable({ providedIn: 'root' })
 export class CompareFiltersService {

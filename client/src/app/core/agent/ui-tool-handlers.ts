@@ -499,7 +499,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       return {
         route: '/compare',
         category: compareFilters.selectedCategory() || null,
-        strategy: compareFilters.strategy(),
+        strategy: compareFilters.strategy() || null,
         tab: 'ab',
       };
     },

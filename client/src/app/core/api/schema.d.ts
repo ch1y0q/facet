@@ -5162,6 +5162,8 @@ export interface components {
             category_breakdown?: components["schemas"]["ComparisonCategoryCount"][];
             /** Min Comparisons For Optimization */
             min_comparisons_for_optimization?: number | null;
+            /** Pair Selection Strategy */
+            pair_selection_strategy?: string | null;
             /**
              * Recent Optimization Runs
              * @default []

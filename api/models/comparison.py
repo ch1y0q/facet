@@ -63,6 +63,7 @@ class ComparisonStatsResponse(BaseModel):
     unique_photos_compared: Optional[int] = None
     recent_optimization_runs: list[dict] = []
     min_comparisons_for_optimization: Optional[int] = None
+    pair_selection_strategy: Optional[str] = None
 
 
 class CategoryWeightsResponse(BaseModel):
