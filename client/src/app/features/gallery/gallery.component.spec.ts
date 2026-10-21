@@ -142,7 +142,15 @@ describe('GalleryComponent', () => {
       getRaw: vi.fn(() => of(new Blob(['x']))),
     };
 
-    mockAuth = { isEdition: vi.fn(() => false), downloadProfiles: vi.fn(() => []) };
+    mockAuth = {
+      isEdition: vi.fn(() => false),
+      downloadProfiles: vi.fn(() => []),
+      hasFeature: vi.fn(() => false),
+      isMultiUser: vi.fn(() => false),
+      isSuperadmin: vi.fn(() => false),
+      editionPasswordRequired: vi.fn(() => false),
+      loginPasswordRequired: vi.fn(() => false),
+    };
 
     mockI18n = {
       t: vi.fn((key: string) => key),
@@ -2551,8 +2559,10 @@ describe('GalleryComponent', () => {
       isSuperadmin?: boolean;
       editionPasswordRequired?: boolean;
       isEdition?: boolean;
+      loginPasswordRequired?: boolean;
       hasFeature?: boolean;
     }): void {
+      mockAuth['loginPasswordRequired'] = vi.fn(() => overrides.loginPasswordRequired ?? false);
       mockAuth['isMultiUser'] = vi.fn(() => overrides.isMultiUser ?? false);
       mockAuth['isSuperadmin'] = vi.fn(() => overrides.isSuperadmin ?? false);
       mockAuth['editionPasswordRequired'] = vi.fn(() => overrides.editionPasswordRequired ?? false);
@@ -2579,11 +2589,20 @@ describe('GalleryComponent', () => {
       expect(canShowScanButton()).toBe(true);
     });
 
-    // Defence in depth: the server no longer reports edition on an open install,
-    // but the scan gate must not depend on that — editionPasswordRequired is false
-    // there, so the button stays hidden even if isEdition() ever read true.
-    it('hides the button on an open single-user install even if the caller were to read as edition-authenticated', () => {
-      setAuth({ isMultiUser: false, editionPasswordRequired: false, isEdition: true, hasFeature: true });
+    // On an open install the server reports edition only for a trusted-local session
+    // (viewer.trusted_local_editing), so that session may scan without the flag.
+    it('shows the scan button for an open-install edition session without the flag', () => {
+      setAuth({ isMultiUser: false, editionPasswordRequired: false, isEdition: true, hasFeature: false });
+      expect(canShowScanButton()).toBe(true);
+    });
+
+    it('keeps the scan button hidden for an open-install non-edition session without the flag', () => {
+      setAuth({ isMultiUser: false, editionPasswordRequired: false, isEdition: false, hasFeature: false });
+      expect(canShowScanButton()).toBe(false);
+    });
+
+    it('keeps the scan button hidden for an edition session behind a login password without the flag', () => {
+      setAuth({ isMultiUser: false, editionPasswordRequired: false, loginPasswordRequired: true, isEdition: true, hasFeature: false });
       expect(canShowScanButton()).toBe(false);
     });
 
@@ -2607,6 +2626,7 @@ describe('GalleryComponent', () => {
       isSuperadmin: boolean;
       editionPasswordRequired: boolean;
       isEdition: boolean;
+      loginPasswordRequired?: boolean;
     }
     // A locked single-user install with an unlocked edition session.
     const ALLOWED: ScanAccess = {
@@ -2634,6 +2654,7 @@ describe('GalleryComponent', () => {
       mockAuth['isSuperadmin'] = vi.fn(() => access.isSuperadmin);
       mockAuth['editionPasswordRequired'] = vi.fn(() => access.editionPasswordRequired);
       mockAuth['isEdition'] = vi.fn(() => access.isEdition);
+      mockAuth['loginPasswordRequired'] = vi.fn(() => access.loginPasswordRequired ?? false);
       mockAuth['downloadProfiles'] = vi.fn(() => []);
       mockStore.photos.set(library);
       mockStore.total.set(library.length);
@@ -2693,8 +2714,8 @@ describe('GalleryComponent', () => {
     for (const [name, access] of [
       ['the feature flag is off', { ...ALLOWED, hasFeature: false }],
       ['a multi-user admin is not a superadmin', { ...SUPERADMIN, isSuperadmin: false }],
-      ['a single-user install has no edition password, even if the caller read as edition',
-        { ...ALLOWED, editionPasswordRequired: false }],
+      ['a login-password install has no edition password, even if the caller read as edition',
+        { ...ALLOWED, editionPasswordRequired: false, loginPasswordRequired: true }],
       ['a locked single-user install has no edition session', { ...ALLOWED, isEdition: false }],
     ] as const) {
       it(`is withheld when ${name}`, () => {

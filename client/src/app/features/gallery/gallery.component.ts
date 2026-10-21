@@ -750,10 +750,12 @@ export class GalleryComponent implements OnInit, OnDestroy {
   protected readonly store = inject(GalleryStore);
   protected readonly auth = inject(AuthService);
   protected readonly canShowScanButton = computed(() => {
-    if (!this.auth.hasFeature('show_scan_button')) return false;
-    return this.auth.isMultiUser()
+    const flagged = this.auth.hasFeature('show_scan_button') && (this.auth.isMultiUser()
       ? this.auth.isSuperadmin()
-      : this.auth.editionPasswordRequired() && this.auth.isEdition();
+      : this.auth.editionPasswordRequired() && this.auth.isEdition());
+    // On an open install the server reports edition only for a trusted-local session.
+    return flagged || (!this.auth.isMultiUser() && !this.auth.editionPasswordRequired()
+      && !this.auth.loginPasswordRequired() && this.auth.isEdition());
   });
   private readonly snackBar = inject(MatSnackBar);
   private readonly bottomSheet = inject(MatBottomSheet);

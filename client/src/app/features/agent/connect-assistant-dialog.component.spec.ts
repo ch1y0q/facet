@@ -243,9 +243,16 @@ describe('ConnectAssistantDialogComponent', () => {
   });
 
   describe('grants the server will honour', () => {
-    it('offers readonly only on an open install, even for an edition session', async () => {
+    it('open install + edition session offers Full editing', async () => {
       loginRequired = false;
       edition = true;
+      await create();
+      const options = queryAll('select[name="token-level"] option').map(o => o.textContent?.trim());
+      expect(options).toEqual(['dialog.connect_assistant.level_readonly', 'dialog.connect_assistant.level_edition']);
+    });
+
+    it('offers readonly only on an open install without an edition session', async () => {
+      loginRequired = false;
       await create();
       expect(queryAll('select[name="token-level"] option')).toHaveLength(1);
     });

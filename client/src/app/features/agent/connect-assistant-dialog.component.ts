@@ -172,7 +172,7 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
    */
   protected readonly levelOptions = computed<LevelOption[]>(() => {
     const options: LevelOption[] = [{ value: 'readonly', label: this.I18N.dialog.connect_assistant.level_readonly }];
-    if (!this.auth.isMultiUser() && !this.auth.loginPasswordRequired()) return options;
+    if (!this.auth.isMultiUser() && !this.auth.loginPasswordRequired() && !this.auth.isEdition()) return options;
     if (this.auth.isMultiUser()) options.push({ value: 'user', label: this.I18N.dialog.connect_assistant.level_user });
     if (this.auth.isEdition()) options.push({ value: 'edition', label: this.I18N.dialog.connect_assistant.level_edition });
     return options;
