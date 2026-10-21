@@ -4,6 +4,8 @@ import { AuthService } from '../services/auth.service';
 import { GalleryStore } from '../../features/gallery/gallery.store';
 import { CompareFiltersService } from '../../features/comparison/compare-filters.service';
 import { validateAgainstSchema, withDefaults } from './schema-validate';
+import { CullingStore } from '../../features/gallery/culling.store';
+import { UserActivityJournal } from './user-activity-journal.service';
 import { createUiToolHandlers } from './ui-tool-handlers';
 import { ViewActionRegistry } from './view-action-registry.service';
 import {
@@ -63,7 +65,10 @@ export class WebMcpToolRegistry {
     viewActions: inject(ViewActionRegistry),
     actions: () => this.actions,
     compareFilters: inject(CompareFiltersService),
+    journal: inject(UserActivityJournal),
+    culling: inject(CullingStore),
   });
+  private readonly journal = inject(UserActivityJournal);
   private loading: Promise<void> | null = null;
 
   /**
@@ -105,7 +110,8 @@ export class WebMcpToolRegistry {
       const input = args === undefined || args === null ? {} : args;
       const issues = validateAgainstSchema(tool.inputSchema, input);
       if (issues.length) return { ok: false, error: 'invalid_input', message: issues.slice(0, 5).join('; ').slice(0, 500) };
-      const data = await handler(withDefaults(tool.inputSchema, input as Record<string, unknown>));
+      // The agent driving the tab is not the user: nothing it does is journaled as user activity.
+      const data = await this.journal.suppress(() => handler(withDefaults(tool.inputSchema, input as Record<string, unknown>)));
       return { ok: true, data };
     } catch (err) {
       if (err instanceof UiToolError && UI_TOOL_ERROR_CODES.includes(err.code)) {

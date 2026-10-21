@@ -4,6 +4,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Router, ActivatedRoute } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { NEVER, Subject, of, throwError } from 'rxjs';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { take } from 'rxjs/operators';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -96,7 +97,7 @@ describe('GalleryStore', () => {
       providers: [
         GalleryStore,
         { provide: ApiService, useValue: { get: apiGet, post: apiPost } },
-        { provide: Router, useValue: { navigate: routerNavigate } },
+        { provide: Router, useValue: { navigate: routerNavigate, events: NEVER } },
         {
           provide: ActivatedRoute,
           useValue: { snapshot: { queryParams } },
@@ -1691,7 +1692,7 @@ describe('GalleryStore selection', () => {
       providers: [
         GalleryStore,
         { provide: ApiService, useValue: { get: apiGet, post: apiPost } },
-        { provide: Router, useValue: { navigate: vi.fn() } },
+        { provide: Router, useValue: { navigate: vi.fn(), events: NEVER } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
         { provide: AuthService, useValue: { isEdition: vi.fn(() => false) } },
         { provide: AlbumService, useValue: { list: vi.fn(() => of({ albums: [] })), update: vi.fn(() => of({})) } },
@@ -1981,7 +1982,7 @@ describe('GalleryStore batch mutations by selection scope', () => {
       providers: [
         GalleryStore,
         { provide: ApiService, useValue: { get: vi.fn(() => of(makePhotosResponse())), post: apiPost } },
-        { provide: Router, useValue: { navigate: vi.fn() } },
+        { provide: Router, useValue: { navigate: vi.fn(), events: NEVER } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
         { provide: AuthService, useValue: { isEdition: vi.fn(() => false) } },
         { provide: AlbumService, useValue: { list: vi.fn(() => of({ albums: [] })), update: vi.fn(() => of({})) } },
@@ -2161,7 +2162,7 @@ describe('GalleryStore optimistic mutations', () => {
       providers: [
         GalleryStore,
         { provide: ApiService, useValue: { get: vi.fn(), post: apiPost } },
-        { provide: Router, useValue: { navigate: vi.fn() } },
+        { provide: Router, useValue: { navigate: vi.fn(), events: NEVER } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
         { provide: AuthService, useValue: { isEdition: vi.fn(() => false) } },
         { provide: AlbumService, useValue: { list: vi.fn(() => of({ albums: [] })), update: vi.fn(() => of({})) } },
@@ -2174,6 +2175,35 @@ describe('GalleryStore optimistic mutations', () => {
       makePhoto({ path: '/a.jpg', is_favorite: false, is_rejected: false, star_rating: 3 }),
       makePhoto({ path: '/b.jpg', is_favorite: true, is_rejected: false, star_rating: null }),
     ]);
+  });
+
+  describe('user activity journal', () => {
+    const kinds = (): string[] => TestBed.inject(UserActivityJournal).since().items.map(i => i.kind);
+
+    it('records a rating, a favorite toggle, a reject toggle and a review mark', async () => {
+      apiPost.mockReturnValue(of({ is_favorite: true, is_rejected: true, star_rating: null }));
+      await store.setRating('/a.jpg', 3);
+      await store.toggleFavorite('/a.jpg');
+      await store.toggleRejected('/b.jpg');
+      store.setReviewMark('/a.jpg', 'keep');
+      expect(kinds()).toEqual(['rating', 'favorite', 'reject', 'review_mark']);
+    });
+
+    it('records a batch action but not a failed one', async () => {
+      apiPost.mockReturnValue(of({ count: 2 }));
+      await store.batchFavorite(['/a.jpg', '/b.jpg']);
+      apiPost.mockReturnValue(throwError(() => new Error('boom')));
+      await store.batchReject(['/a.jpg']);
+      const items = TestBed.inject(UserActivityJournal).since().items;
+      expect(items.map(i => i.kind)).toEqual(['favorite']);
+      expect(items[0].paths).toEqual(['/a.jpg', '/b.jpg']);
+    });
+
+    it('records nothing for a failed rating', async () => {
+      apiPost.mockReturnValue(throwError(() => new Error('boom')));
+      await store.setRating('/a.jpg', 3);
+      expect(kinds()).toEqual([]);
+    });
   });
 
   it('toggleFavorite applies the flag synchronously before the API resolves', () => {
@@ -2317,7 +2347,7 @@ describe('GalleryStore restoreSnapshot', () => {
       providers: [
         GalleryStore,
         { provide: ApiService, useValue: { get: vi.fn(), post: apiPost } },
-        { provide: Router, useValue: { navigate: vi.fn() } },
+        { provide: Router, useValue: { navigate: vi.fn(), events: NEVER } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
         { provide: AuthService, useValue: { isEdition: vi.fn(() => false) } },
         { provide: AlbumService, useValue: { list: vi.fn(() => of({ albums: [] })), update: vi.fn(() => of({})) } },
@@ -2472,7 +2502,7 @@ describe('GalleryStore smart-album auto-save', () => {
       providers: [
         GalleryStore,
         { provide: ApiService, useValue: { get: vi.fn(() => of({})), post: vi.fn(() => of({})) } },
-        { provide: Router, useValue: { navigate: vi.fn() } },
+        { provide: Router, useValue: { navigate: vi.fn(), events: NEVER } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
         { provide: AuthService, useValue: { isEdition: vi.fn(() => true) } },
         { provide: AlbumService, useValue: { list: vi.fn(() => of({ albums: [] })), update: albumUpdate } },

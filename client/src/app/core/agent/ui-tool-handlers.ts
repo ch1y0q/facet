@@ -12,6 +12,8 @@ import {
 } from '../../features/gallery/gallery-filters.util';
 import { COMPARE_AB_TAB_INDEX, CompareFiltersService } from '../../features/comparison/compare-filters.service';
 import { ViewActionRegistry } from './view-action-registry.service';
+import { CullingStore } from '../../features/gallery/culling.store';
+import { UserActivityJournal } from './user-activity-journal.service';
 import { UiActionRow, UiToolError, UiToolHandler } from './ui-tool.types';
 
 export interface UiToolDeps {
@@ -23,6 +25,10 @@ export interface UiToolDeps {
   actions: () => readonly UiActionRow[];
   /** Category / strategy / tab state of the comparison page. */
   compareFilters: CompareFiltersService;
+  /** What the user did in this tab; read by `ui_get_context`. */
+  journal: UserActivityJournal;
+  /** The darkroom's store, for the focused photo. */
+  culling: CullingStore;
 }
 
 /** The contract's cap on `ui_show_photos` paths (api/agent/ui_tools.py MAX_SHOW_PATHS). */
@@ -167,7 +173,7 @@ function stringList(value: unknown): string[] {
 }
 
 export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHandler> {
-  const { gallery, router, auth, viewActions, actions, compareFilters } = deps;
+  const { gallery, router, auth, viewActions, actions, compareFilters, journal, culling } = deps;
 
   const requireGalleryView = (): void => {
     if (!isGalleryUrl(router.url)) {
@@ -444,7 +450,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
 
     ui_get_selection: async () => selectionSnapshot(),
 
-    ui_get_context: async () => {
+    ui_get_context: async args => {
       const route = pathOf(router.url) || '/';
       const inGallery = isGalleryUrl(router.url);
       const albumMatch = /^\/album\/(\d+)$/.exec(route);
@@ -452,8 +458,18 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       const selection = selectionSnapshot();
       const pinned = gallery.pinnedPaths() !== null;
       const level = sessionLevel();
+      const since = typeof args['activity_since'] === 'number' ? args['activity_since'] : 0;
+      const focusedPath = inGallery
+        ? gallery.focusedPath()
+        : route === '/photo'
+          ? params.get('path')
+          : route === '/culling'
+            ? culling.focusedPath()
+            : null;
       return {
         route,
+        focused: focusedPath ? { path: focusedPath } : null,
+        user_activity: journal.since(since),
         ...(route === '/photo' && params.get('path') ? { query_path: params.get('path') } : {}),
         ...(albumMatch ? { album_id: Number(albumMatch[1]) } : {}),
         selection: { scope: selection['scope'], count: selection['count'] },

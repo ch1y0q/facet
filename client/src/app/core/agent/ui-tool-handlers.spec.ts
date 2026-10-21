@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, provideRouter } from '@angular/router';
 import { Component } from '@angular/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { NEVER, of } from 'rxjs';
+import { Subject, of } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { AuthService } from '../services/auth.service';
 import { AlbumService } from '../services/album.service';
@@ -17,7 +17,9 @@ import { DEFAULT_FILTERS } from '../../features/gallery/gallery-filters.util';
 import { applicableActions, createUiToolHandlers } from './ui-tool-handlers';
 import { CompareFiltersService } from '../../features/comparison/compare-filters.service';
 import { ViewActionRegistry } from './view-action-registry.service';
-import { AssistantChangesService } from './assistant-changes.service';
+import { AssistantChangeBatch, AssistantChangesService } from './assistant-changes.service';
+import { UserActivityJournal } from './user-activity-journal.service';
+import { CullingStore } from '../../features/gallery/culling.store';
 import contractFile from './ui-tools.schema.json';
 import { UI_TOOL_ERROR_CODES, UiToolContractFile, UiToolEnvelope } from './ui-tool.types';
 
@@ -50,6 +52,8 @@ describe('UI tool registry and handlers', () => {
   let edition: boolean;
   let multiUser: boolean;
   let viewActions: ViewActionRegistry;
+  let routerEvents: Subject<unknown>;
+  let assistantBatches: Subject<AssistantChangeBatch>;
 
   const run = (name: string, args: unknown = {}): Promise<UiToolEnvelope> => registry.execute(name, args);
   /** The handlers without the registry's schema gate, to prove each one defends itself. */
@@ -57,6 +61,7 @@ describe('UI tool registry and handlers', () => {
     gallery: store, router: router as unknown as Router,
     auth: { isEdition: () => edition } as unknown as AuthService, viewActions, actions: () => [],
     compareFilters: TestBed.inject(CompareFiltersService),
+    journal: TestBed.inject(UserActivityJournal), culling: TestBed.inject(CullingStore),
   });
 
   afterEach(() => localStorage.clear());
@@ -66,7 +71,9 @@ describe('UI tool registry and handlers', () => {
     multiUser = false;
     apiGet = vi.fn(() => of(photosResponse(['/a.jpg', '/b.jpg', '/c.jpg'])));
     navigate = vi.fn(() => Promise.resolve(true));
-    router = { navigate, url: '/', events: of(), config: routes };
+    routerEvents = new Subject<unknown>();
+    assistantBatches = new Subject<AssistantChangeBatch>();
+    router = { navigate, url: '/', events: routerEvents, config: routes };
     TestBed.configureTestingModule({
       providers: [
         { provide: ApiService, useValue: { get: apiGet, post: vi.fn(() => of({})) } },
@@ -74,7 +81,7 @@ describe('UI tool registry and handlers', () => {
         { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
         { provide: AuthService, useValue: { isEdition: () => edition, isMultiUser: () => multiUser, isAuthenticated: () => true } },
         // The real GalleryStore subscribes to assistant write batches; none arrive here.
-        { provide: AssistantChangesService, useValue: { batch$: NEVER } },
+        { provide: AssistantChangesService, useValue: { batch$: assistantBatches } },
         { provide: AlbumService, useValue: { list: vi.fn(() => of({ albums: [] })), update: vi.fn(() => of({})) } },
         { provide: MatSnackBar, useValue: { open: vi.fn() } },
         { provide: I18nService, useValue: { t: (k: string) => k } },
@@ -93,6 +100,7 @@ describe('UI tool registry and handlers', () => {
         gallery: store, router: router as unknown as Router,
         auth: { isEdition: () => edition } as unknown as AuthService, viewActions, actions: () => [],
         compareFilters: TestBed.inject(CompareFiltersService),
+        journal: TestBed.inject(UserActivityJournal), culling: TestBed.inject(CullingStore),
       });
       const mismatch = contractHandlerMismatch((contractFile as unknown as UiToolContractFile).tools, handlers);
       expect(mismatch).toEqual({ missingHandlers: [], missingContract: [] });
@@ -203,6 +211,7 @@ describe('UI tool registry and handlers', () => {
       const handlers = createUiToolHandlers({
         gallery: store, router: realRouter, auth: { isEdition: () => false } as unknown as AuthService, viewActions, actions: () => [],
         compareFilters: TestBed.inject(CompareFiltersService),
+        journal: TestBed.inject(UserActivityJournal), culling: TestBed.inject(CullingStore),
       });
       await expect(handlers['ui_navigate']({ route: '/stats' })).resolves.toEqual({ route: '/stats' });
     });
@@ -630,6 +639,89 @@ describe('UI tool registry and handlers', () => {
     const context = async (): Promise<Record<string, unknown>> =>
       ((await run('ui_get_context')) as { data: Record<string, unknown> }).data;
     const jobIds = (data: Record<string, unknown>): string[] => (data['actions'] as { id: string }[]).map(a => a.id);
+
+    describe('user_activity', () => {
+      /** Straight to the handler: the generated contract does not list `activity_since` until the server side merges. */
+      const activity = async (since?: number): Promise<{ items: { kind: string; seq: number }[]; until: number; truncated: boolean }> =>
+        (await createUiToolHandlers({
+          gallery: store, router: router as unknown as Router, auth: TestBed.inject(AuthService), viewActions, actions: () => [],
+          compareFilters: TestBed.inject(CompareFiltersService),
+          journal: TestBed.inject(UserActivityJournal), culling: TestBed.inject(CullingStore),
+        })['ui_get_context'](since === undefined ? {} : { activity_since: since }) as
+          { user_activity: { items: { kind: string; seq: number }[]; until: number; truncated: boolean } }).user_activity;
+
+      it('lists a rating made through the store, and a second call without the argument returns the same', async () => {
+        await store.loadPhotos();
+        await store.setRating('/a.jpg', 4);
+        const first = await activity();
+        expect(first.items.map(i => i.kind)).toEqual(['rating']);
+        expect(await activity()).toEqual(first);
+        expect((await activity(first.until)).items).toEqual([]);
+      });
+
+      it('keeps the newest 50 of 60 actions and flags the cut', async () => {
+        await store.loadPhotos();
+        for (let i = 0; i < 60; i++) await store.setRating('/a.jpg', (i % 5) + 1);
+        const report = await activity();
+        expect(report.items).toHaveLength(50);
+        expect(report.truncated).toBe(true);
+        expect(report.until).toBe(60);
+      });
+
+      it('does not list an assistant change batch', async () => {
+        await store.loadPhotos();
+        assistantBatches.next({ paths: ['/a.jpg'] });
+        await Promise.resolve();
+        expect((await activity()).items).toEqual([]);
+      });
+
+      it('lists a route change as navigate', async () => {
+        const { NavigationEnd } = await import('@angular/router');
+        routerEvents.next(new NavigationEnd(1, '/stats', '/stats'));
+        expect((await activity()).items.map(i => i.kind)).toEqual(['navigate']);
+      });
+
+      it('adds nothing for an agent ui_show_photos or ui_navigate run through the registry', async () => {
+        const { NavigationEnd } = await import('@angular/router');
+        navigate.mockImplementationOnce(async () => {
+          routerEvents.next(new NavigationEnd(2, '/stats', '/stats'));
+          return true;
+        });
+        expect((await run('ui_navigate', { route: '/stats' })).ok).toBe(true);
+        const post = TestBed.inject(ApiService).post as unknown as Mock;
+        post.mockImplementation(() => of({ photos: [makePhoto({ path: '/a.jpg' })], total: 1, missing: [] }));
+        expect((await run('ui_show_photos', { paths: ['/a.jpg'] })).ok).toBe(true);
+        expect((await activity()).items).toEqual([]);
+      });
+    });
+
+    describe('focused', () => {
+      const focused = async (): Promise<unknown> => (await context())['focused'];
+
+      it('is null on the gallery with no cursor, then the cursor photo', async () => {
+        await store.loadPhotos();
+        expect(await focused()).toBeNull();
+        store.focusedPath.set('/b.jpg');
+        expect(await focused()).toEqual({ path: '/b.jpg' });
+      });
+
+      it('is the query path on /photo', async () => {
+        router.url = '/photo?path=x.jpg';
+        expect(await focused()).toEqual({ path: 'x.jpg' });
+      });
+
+      it('is the lightbox photo in the darkroom', async () => {
+        router.url = '/culling';
+        TestBed.inject(CullingStore).focusedPath.set('/c.jpg');
+        expect(await focused()).toEqual({ path: '/c.jpg' });
+      });
+
+      it('is null on any other route', async () => {
+        store.focusedPath.set('/b.jpg');
+        router.url = '/stats';
+        expect(await focused()).toBeNull();
+      });
+    });
 
     it('reports the open photo of the detail route', async () => {
       router.url = '/photo?path=a.jpg';

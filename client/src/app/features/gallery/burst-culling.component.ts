@@ -1836,6 +1836,11 @@ export class BurstCullingComponent implements OnDestroy {
     this.assistantChanges.batch$.pipe(takeUntilDestroyed()).subscribe(batch => {
       void this.cull.applyExternalChanges(batch.paths, { lightboxOpen: this.lightboxGroupId() !== null, count: batch.count });
     });
+    // Mirror the lightbox photo for `ui_get_context`; no lightbox, or leaving the page, means none.
+    effect(() => {
+      this.cull.focusedPath.set(this.lightboxGroup()?.photos[this.lightboxIndex()]?.path ?? null);
+    });
+    inject(DestroyRef).onDestroy(() => this.cull.focusedPath.set(null));
     // A photo an assistant moved or deleted can vanish from the group the darkroom is showing.
     effect(() => {
       const group = this.lightboxGroup();

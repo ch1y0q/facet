@@ -52,6 +52,7 @@ describe('GalleryComponent', () => {
         { id: 'macro', label: 'Macro', count: 50 },
       ]),
       photos: signal([]),
+      focusedPath: signal<string | null>(null),
       total: signal(0),
       loading: signal(false),
       loadError: signal(false),
@@ -339,6 +340,59 @@ describe('GalleryComponent', () => {
       mockStore.photos.set([{ path: '/a.jpg' }, { path: '/b.jpg' }, { path: '/c.jpg' }]);
       mockStore.config.set({ features: { show_rating_controls: true } });
       (mockAuth as { isEdition: unknown }).isEdition = vi.fn(() => true);
+    });
+
+    describe('the focused-photo mirror read by ui_get_context', () => {
+      const setCursor = (index: number): void =>
+        (component as unknown as { setCursor(i: number): void }).setCursor(index);
+      let hasFocus: ReturnType<typeof vi.spyOn>;
+      beforeEach(() => {
+        hasFocus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      });
+      afterEach(() => hasFocus.mockRestore());
+
+      it('follows the keyboard cursor', () => {
+        click({ path: '/a.jpg' }, 0);
+        press('ArrowRight');
+        expect(mockStore.focusedPath()).toBe('/b.jpg');
+      });
+
+      it('clears on setCursor(-1) while the window has focus', () => {
+        click({ path: '/b.jpg' }, 1);
+        setCursor(-1);
+        expect(mockStore.focusedPath()).toBeNull();
+      });
+
+      it('clears when the panel is released', () => {
+        click({ path: '/b.jpg' }, 1);
+        (component as unknown as { releasePanel(): void }).releasePanel();
+        expect(mockStore.focusedPath()).toBeNull();
+      });
+
+      it('survives the window losing focus, although the cursor itself goes', () => {
+        click({ path: '/b.jpg' }, 1);
+        hasFocus.mockReturnValue(false);
+        (component as unknown as { onGridFocusOut(e: FocusEvent): void })
+          .onGridFocusOut({ relatedTarget: null } as unknown as FocusEvent);
+        expect(activeIndex()).toBe(-1);
+        expect(mockStore.focusedPath()).toBe('/b.jpg');
+      });
+
+      it('is not touched by hover', () => {
+        click({ path: '/b.jpg' }, 1);
+        (component as unknown as { tooltipPhoto: { set(p: unknown): void } }).tooltipPhoto.set({ path: '/c.jpg' });
+        expect(mockStore.focusedPath()).toBe('/b.jpg');
+      });
+
+      it('clears once its photo leaves the list, even with the cursor already dropped', () => {
+        click({ path: '/b.jpg' }, 1);
+        hasFocus.mockReturnValue(false);
+        (component as unknown as { onGridFocusOut(e: FocusEvent): void })
+          .onGridFocusOut({ relatedTarget: null } as unknown as FocusEvent);
+        mockStore.photos.set([{ path: '/a.jpg' }, { path: '/c.jpg' }]);
+        TestBed.tick();
+        expect(mockStore.focusedPath()).toBeNull();
+      });
     });
 
     it('marks nothing before the cursor has ever moved, so nothing is dimmed at rest', () => {

@@ -9,6 +9,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { AlbumService, Album } from '../../core/services/album.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { AssistantChangesService } from '../../core/agent/assistant-changes.service';
+import { UserActivityJournal, UserActivityKind } from '../../core/agent/user-activity-journal.service';
 import { Photo, KeeperHint, normalisePhotoFlagsAll } from '../../shared/models/photo.model';
 import { I18N } from '../../core/i18n/keys';
 import type { components } from '../../core/api/schema';
@@ -265,6 +266,13 @@ const SIMILAR_REASON_KEYS = {
   no_faces: I18N.similar.no_faces,
 } as const;
 
+/** The journal entry a batch endpoint stands for, with the value the user chose. */
+const BATCH_ACTIVITY: Record<string, { kind: UserActivityKind; value: (extra: Record<string, unknown>) => unknown }> = {
+  '/photos/batch_favorite': { kind: 'favorite', value: () => true },
+  '/photos/batch_reject': { kind: 'reject', value: () => true },
+  '/photos/batch_rating': { kind: 'rating', value: extra => extra['rating'] ?? null },
+};
+
 @Injectable({ providedIn: 'root' })
 export class GalleryStore {
   private api = inject(ApiService);
@@ -275,6 +283,7 @@ export class GalleryStore {
   private snackBar = inject(MatSnackBar);
   private i18n = inject(I18nService);
   private assistantChanges = inject(AssistantChangesService);
+  private journal = inject(UserActivityJournal);
 
   // --- State signals ---
   readonly filters = signal<GalleryFilters>({ ...DEFAULT_FILTERS });
@@ -313,6 +322,13 @@ export class GalleryStore {
   /** The agent's per-path group number for the current pin (empty when the pin carries none). */
   readonly pinnedGroups = signal<ReadonlyMap<string, number>>(new Map());
   /** The agent's per-path keep/remove mark for the current pin. */
+  /**
+   * The photo the keyboard cursor last stood on, mirrored by the gallery's `setCursor` for
+   * `ui_get_context`. Unlike the cursor it survives the window losing focus (the user switching to
+   * the agent), and goes only when its photo leaves the list or the cursor is dropped on purpose.
+   * Hover never sets it.
+   */
+  readonly focusedPath = signal<string | null>(null);
   readonly pinnedMarks = signal<ReadonlyMap<string, ReviewMark>>(new Map());
   /** The user's ABSOLUTE chosen mark per path, accumulated across pins (never a flip of the agent's). */
   readonly userMarks = signal<ReadonlyMap<string, ReviewMark>>(new Map());
@@ -919,6 +935,7 @@ export class GalleryStore {
 
   /** Record the user's absolute mark for one photo of the pinned list; no HTTP. */
   setReviewMark(path: string, mark: ReviewMark): void {
+    this.journal.record('review_mark', [path], mark);
     this.userMarks.update(current => new Map(current).set(path, mark));
   }
 
@@ -1450,6 +1467,7 @@ export class GalleryStore {
     this.patchPhoto(photoPath, { star_rating: rating || null });
     try {
       await firstValueFrom(this.api.post('/photo/set_rating', { photo_path: photoPath, rating }));
+      this.journal.record('rating', [photoPath], rating);
     } catch {
       this.revertSnapshot(snap);
       this.notifyActionFailed();
@@ -1489,6 +1507,7 @@ export class GalleryStore {
           is_favorite: res.is_favorite,
           is_rejected: res.is_favorite ? false : prev.is_rejected,
         });
+        this.journal.record('favorite', [photoPath], res.is_favorite);
       } catch {
         this.revertSnapshot(snap);
         this.notifyActionFailed();
@@ -1521,6 +1540,7 @@ export class GalleryStore {
           is_favorite: res.is_rejected ? false : prev.is_favorite,
           star_rating: res.star_rating === null ? prev.star_rating : res.star_rating,
         });
+        this.journal.record('reject', [photoPath], res.is_rejected);
       } catch {
         this.revertSnapshot(snap);
         this.notifyActionFailed();
@@ -1599,6 +1619,8 @@ export class GalleryStore {
         return null;
       }
     }
+    const kind = BATCH_ACTIVITY[endpoint];
+    if (kind) this.journal.record(kind.kind, paths, kind.value(extraBody));
     return { snapshot, targeted, count };
   }
 

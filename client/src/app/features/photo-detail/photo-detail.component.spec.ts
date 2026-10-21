@@ -5,7 +5,8 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Location } from '@angular/common';
 import { MatDialog } from '@angular/material/dialog';
-import { of, Subject, throwError } from 'rxjs';
+import { NEVER, Observable, of, Subject, throwError } from 'rxjs';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { signal } from '@angular/core';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -29,7 +30,7 @@ describe('PhotoDetailComponent', () => {
   let component: any;
   let changes$: Subject<AssistantChangeBatch>;
   let mockApi: { get: Mock; post: Mock; put: Mock; delete: Mock; imageUrl: Mock; downloadUrl: Mock; getRaw: Mock };
-  let mockRouter: { navigate: Mock };
+  let mockRouter: { navigate: Mock; events: Observable<unknown> };
   let mockLocation: { back: Mock };
   let mockRoute: { snapshot: { queryParamMap: { get: Mock } } };
   let mockAuth: { isEdition: ReturnType<typeof signal>; downloadProfiles: ReturnType<typeof signal> };
@@ -103,7 +104,7 @@ describe('PhotoDetailComponent', () => {
       downloadUrl: vi.fn((path: string, type = 'original', profile?: string) => `/api/download?path=${encodeURIComponent(path)}&type=${type}${profile ? '&profile=' + profile : ''}`),
       getRaw: vi.fn(() => of(new Blob(['test'], { type: 'image/jpeg' }))),
     };
-    mockRouter = { navigate: vi.fn() };
+    mockRouter = { navigate: vi.fn(), events: NEVER };
     mockLocation = { back: vi.fn() };
     mockRoute = {
       snapshot: {
@@ -394,6 +395,34 @@ describe('PhotoDetailComponent', () => {
       appendSpy.mockRestore();
       removeSpy.mockRestore();
       clickSpy.mockRestore();
+    });
+  });
+
+  describe('user activity journal', () => {
+    const kinds = (): string[] => TestBed.inject(UserActivityJournal).since().items.map(i => i.kind);
+
+    it('records rating, favorite, reject and manual-tag edits', async () => {
+      createComponent();
+      component.photo.set({ ...samplePhoto, star_rating: 0, manual_tags: [] });
+      mockApi.post.mockReturnValue(of({}));
+      await component.setRating('/photos/test.jpg', 4);
+      mockApi.post.mockReturnValue(of({ is_favorite: true, is_rejected: null }));
+      await component.toggleFavorite('/photos/test.jpg');
+      mockApi.post.mockReturnValue(of({ is_rejected: true, is_favorite: null, star_rating: null }));
+      await component.toggleRejected('/photos/test.jpg');
+      mockApi.put.mockReturnValue(of({ tag: 'x', skipped_existing: false }));
+      await component['addManualTag'](component.photo()!, 'x');
+      mockApi.delete.mockReturnValue(of({}));
+      await component['removeManualTag'](component.photo()!, 'x');
+      expect(kinds()).toEqual(['rating', 'favorite', 'reject', 'tags', 'tags']);
+    });
+
+    it('records nothing when the call fails', async () => {
+      createComponent();
+      component.photo.set({ ...samplePhoto });
+      mockApi.post.mockReturnValue(throwError(() => new Error('boom')));
+      await component.setRating('/photos/test.jpg', 4);
+      expect(kinds()).toEqual([]);
     });
   });
 

@@ -1,6 +1,6 @@
 import type { Mock } from 'vitest';
 import { TestBed } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
+import { NEVER, of, throwError } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { ChartHeightPipe } from './chart-height.pipe';
@@ -118,7 +118,7 @@ describe('StatsComponent', () => {
       providers: [
         { provide: ApiService, useValue: mockApi },
         { provide: I18nService, useValue: { t: (key: string) => key } },
-        { provide: Router, useValue: { navigate: vi.fn() } },
+        { provide: Router, useValue: { navigate: vi.fn(), events: NEVER } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
       ],
     });

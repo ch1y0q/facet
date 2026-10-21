@@ -148,6 +148,28 @@ describe('BurstCullingComponent', () => {
     });
   });
 
+  describe('focusedPath mirror (ui_get_context)', () => {
+    const grp = {
+      group_id: 1, type: 'burst', size: 2, best_path: '/photo1.jpg', best_score: 8, photos: [
+        { path: '/photo1.jpg', filename: 'photo1.jpg', aggregate: 8, is_blink: 0, is_burst_lead: 1, date_taken: '2024-01-01', burst_score: 8 },
+        { path: '/photo2.jpg', filename: 'photo2.jpg', aggregate: 7, is_blink: 0, is_burst_lead: 0, date_taken: '2024-01-01', burst_score: 7 },
+      ],
+    } as unknown as ReturnType<typeof store.groups>[number];
+
+    it('follows the lightbox photo and is null with no lightbox', () => {
+      store.groups.set([grp]);
+      TestBed.tick();
+      expect(store.focusedPath()).toBeNull();
+      component['lightboxGroupId'].set(store.groupKey(grp));
+      component['lightboxIndex'].set(1);
+      TestBed.tick();
+      expect(store.focusedPath()).toBe('/photo2.jpg');
+      component['lightboxGroupId'].set(null);
+      TestBed.tick();
+      expect(store.focusedPath()).toBeNull();
+    });
+  });
+
   describe('loadGroups', () => {
     it('should load culling groups from API', async () => {
       await store.loadGroups();

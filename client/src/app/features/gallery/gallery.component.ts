@@ -66,6 +66,7 @@ import {
   gridColumnCount, totalRowsHeight, windowRange,
 } from './gallery-rows.util';
 import { GalleryFilters, applyQueryParams, loadDisplayOptionsFromStorage } from './gallery-filters.util';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { AlbumService, Album } from '../../core/services/album.service';
 import { CreateAlbumDialogComponent } from '../albums/create-album-dialog.component';
 import { ExportEditorDialogComponent } from './export-editor-dialog.component';
@@ -756,6 +757,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly i18n = inject(I18nService);
   private readonly dialog = inject(MatDialog);
   private readonly albumService = inject(AlbumService);
+  private readonly journal = inject(UserActivityJournal);
   private readonly photoActions = inject(PhotoActionsService);
   private readonly undoService = inject(UndoService);
   private readonly sequenceOverrides = inject(SequenceOverrideService);
@@ -1791,6 +1793,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
       ?? await this.resolveSelectionPaths(I18N.gallery.selection.view_scope_album_message);
     if (!paths?.length) return;
     await firstValueFrom(this.albumService.addPhotos(albumId, paths));
+    this.journal.record('album', paths, { album_id: albumId, action: 'add' });
     this.snackBar.open(this.i18n.t(I18N.albums.photos_added), '', { duration: 2000 });
     // Explicit paths come from the context menu on one photo: the user's
     // selection is theirs to keep.
@@ -1855,6 +1858,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     });
     const written = await firstValueFrom(ref.afterClosed());
     if (!written) return;
+    this.journal.record('tags', paths, { count: written });
     const kept = viewScoped ? new Set(this.excludedPaths()) : new Set(this.selectedPaths());
     await this.store.reloadPhotos();
     this.restoreSelectionWithout(viewScoped, kept, []);
@@ -2158,8 +2162,12 @@ export class GalleryComponent implements OnInit, OnDestroy {
   /** Move the cursor onto `index`, keeping the photo it means in step with it.
    *  -1 -- or any index past the end -- clears both. */
   private setCursor(index: number): void {
+    const path = this.store.photos()[index]?.path ?? null;
     this.activeIndex.set(index);
-    this.activePath.set(this.store.photos()[index]?.path ?? null);
+    this.activePath.set(path);
+    // The mirror outlives a blur: a drop with the window unfocused (the user went to the agent) keeps it.
+    if (path !== null) this.store.focusedPath.set(path);
+    else if (document.hasFocus()) this.store.focusedPath.set(null);
   }
 
   /** Re-find the marked photo whenever the result set changes, so the cursor
@@ -2172,6 +2180,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly cursorFollowsPhoto = effect(() => {
     const photos = this.store.photos();
     untracked(() => {
+      const focused = this.store.focusedPath();
+      if (focused !== null && !photos.some(p => p.path === focused)) this.store.focusedPath.set(null);
       const path = this.activePath();
       if (path === null) return;
       const at = photos.findIndex(p => p.path === path);
