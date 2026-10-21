@@ -596,3 +596,29 @@ def test_pinned_page_past_the_cap_pins_keepers_first():
     assert len(paths) == tools_culling.SHOW_PIN_MAX and unpinned == 100
     assert marks[:100] == ["keep"] * 100 and marks[100:] == ["remove"] * 100
     assert paths[0] == "/k1" and groups[0] == 1 and paths[100] == "/r1a" and groups[100] == 1
+
+
+class TestAutoCullOversizedGroup:
+    def test_a_single_group_over_the_budget_is_clipped_not_dropped(self, agent_app, seed_photos_prefix):
+        nonce.reset()
+        prefix = PREFIX + "huge/"
+        rows = [{"path": f"{prefix}{'h' * 120}_{i:04d}.jpg", "filename": f"h{i}.jpg",
+                 "date_taken": f"1997:02:02 00:{i // 60:02d}:{i % 60:02d}",
+                 "aggregate": 5.0, "aesthetic": 5.0, "tech_sharpness": 5.0,
+                 "burst_group_id": 9000, "is_burst_lead": int(i == 0)} for i in range(800)]
+        rows += [{"path": f"{prefix}small_{i}.jpg", "filename": f"s{i}.jpg",
+                  "date_taken": f"1997:02:02 05:00:{i:02d}", "aggregate": 9.0 - 3 * i,
+                  "aesthetic": 9.0 - 3 * i, "tech_sharpness": 9.0 - 3 * i,
+                  "burst_group_id": 9001, "is_burst_lead": int(i == 0)} for i in range(3)]
+        seed_photos_prefix(prefix, rows)
+        env = agent_app("legacy")
+        token = env.token(env.login(edition=True), "edition")
+        result = env.call(token, "auto_cull", {"group_by": "burst", "strictness": 100, "show": False,
+                                               "date_from": "1997-02-02", "date_to": "1997-02-02"})
+        assert result["ok"], result
+        got = result["data"]["rows"]
+        assert len(got) == 1 and got[0]["paths_clipped"] is True
+        assert got[0]["keep_count"] + got[0]["reject_count"] == 800
+        assert len(got[0]["keep_paths"]) + len(got[0]["reject_paths"]) < 800
+        assert result["data"]["next_cursor"] == got[0]["number"]
+        assert "truncated" not in result

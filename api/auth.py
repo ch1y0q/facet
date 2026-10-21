@@ -327,9 +327,9 @@ class CurrentUser:
 
     @property
     def is_edition(self):
-        # viewer.trusted_local_editing: set per request by get_optional_user,
-        # and only ever true on a single-user install with no passwords at all
-        # (see _trusted_local_editing_enabled), so it overrides nothing below.
+        # viewer.trusted_local_editing: derived per request (get_optional_user, or the signed
+        # ``mcp_local`` claim for an agent), and only ever true on a single-user install with no
+        # passwords at all (see _trusted_local_editing_enabled), so it overrides nothing below.
         if self.trusted_local_editing:
             return True
         if is_multi_user_enabled():
@@ -459,6 +459,15 @@ async def require_superadmin(
     if not user.is_superadmin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superadmin access required")
     return user
+
+
+def scan_feature_enabled(trusted_local, viewer_config):
+    """The one scan-feature rule: ``features.show_scan_button``, waived for a trusted-local caller.
+
+    ``trusted_local`` is the ``viewer.trusted_local_editing`` boundary (a human browser request, or an
+    agent whose /mcp request passed it). ``viewer_config`` is the caller's own viewer config dict.
+    """
+    return bool(trusted_local) or bool(viewer_config.get('features', {}).get('show_scan_button', False))
 
 
 def scan_access_refusal(multi_user, is_superadmin, is_edition, open_install, trusted_local=False):

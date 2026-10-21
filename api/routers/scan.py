@@ -14,11 +14,11 @@ from collections import deque
 from datetime import timedelta
 from typing import Optional, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from starlette.responses import StreamingResponse
 
-from api.auth import CurrentUser, _trusted_local_editing_enabled, create_access_token, decode_access_token, require_edition, require_scan_access
+from api.auth import CurrentUser, _trusted_local_editing_enabled, create_access_token, decode_access_token, require_edition, require_scan_access, scan_feature_enabled, trusted_local_for
 from api.config import VIEWER_CONFIG, FACET_SCRIPT, _CONFIG_PATH, get_all_scan_directories, get_user_directories, _photo_types_cache, _stats_cache
 from api.models.scan import (
     LibraryJobStartResponse,
@@ -145,7 +145,7 @@ def scan_feature_refusal(user) -> Optional[str]:
     ``viewer.trusted_local_editing`` boundary: the human browser request, or the agent carrying the
     signed ``mcp_local`` claim. Both share one rule, ``user.trusted_local_editing``.
     """
-    if user.trusted_local_editing or VIEWER_CONFIG.get('features', {}).get('show_scan_button', False):
+    if scan_feature_enabled(user.trusted_local_editing, VIEWER_CONFIG):
         return None
     return "Scan feature not enabled"
 
@@ -287,14 +287,17 @@ def _build_scan_snapshot(lines: int) -> dict:
 
 @router.get("/stream")
 async def scan_stream(
+    request: Request,
     token: Optional[str] = Query(None),
     lines: int = Query(20),
 ):
     """SSE progress stream. Requires a short-lived scan_stream-purpose token
     minted by GET /stream_token; the long-lived session JWT is rejected."""
     payload = _verify_scan_stream_token(token)
-    if not (payload.get(SCAN_STREAM_LOCAL_CLAIM) is True and _trusted_local_editing_enabled()) and not \
-            VIEWER_CONFIG.get('features', {}).get('show_scan_button', False):
+    # The claim only counts while THIS request also passes the boundary: a replayed token from elsewhere is not local.
+    local = payload.get(SCAN_STREAM_LOCAL_CLAIM) is True and _trusted_local_editing_enabled() \
+        and trusted_local_for(request)
+    if not scan_feature_enabled(local, VIEWER_CONFIG):
         raise HTTPException(status_code=403, detail="Scan feature not enabled")
 
     async def event_generator():

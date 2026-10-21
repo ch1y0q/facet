@@ -8,7 +8,7 @@ predicate is a pure function of the resolved grant and the request's ``mcp_setti
 
 from typing import Any, Optional
 
-from api.auth import EDITION_PASSWORD_KEY, _is_open_install, scan_access_refusal
+from api.auth import EDITION_PASSWORD_KEY, _is_open_install, scan_access_refusal, scan_feature_enabled
 from api.config import VIEWER_CONFIG, is_multi_user_enabled
 
 DESTRUCTIVE_KEY = "viewer.mcp.allow_destructive"
@@ -27,10 +27,10 @@ def scan_available(resolved: Any, settings: dict) -> Optional[tuple[str, str]]:
     """The scan route's own rule: the feature flag, then ``scan_access_refusal`` (shared with the route).
 
     Both are waived for a grant whose /mcp request passed the trusted-local boundary
-    (``resolved.local_trusted``), exactly as the route waives them for ``user.trusted_local_editing``.
+    (``resolved.trusted_local``), exactly as the route waives them for ``user.trusted_local_editing``.
     """
-    local = bool(resolved.local_trusted)
-    if not local and not VIEWER_CONFIG.get("features", {}).get("show_scan_button", False):
+    local = bool(resolved.trusted_local)
+    if not scan_feature_enabled(local, VIEWER_CONFIG):
         return "feature_disabled", f"Scanning is off: the operator must set {SCAN_KEY} to true"
     refusal = scan_access_refusal(
         is_multi_user_enabled(), resolved.role == "superadmin", resolved.level == "edition",

@@ -155,7 +155,7 @@ def test_the_tool_gate_and_the_route_gate_are_one_rule(
         monkeypatch.setattr(module, "is_multi_user_enabled", lambda: multi, raising=False)
         monkeypatch.setattr(module, "_is_open_install", lambda key: open_install)
     resolved = SimpleNamespace(role="superadmin" if superadmin else "user", level="edition" if edition else "readonly",
-                               local_trusted=trusted_local)
+                               trusted_local=trusted_local)
     user = SimpleNamespace(is_superadmin=superadmin, is_edition=edition, trusted_local_editing=trusted_local)
     tool_refusal = requirements.scan_available(resolved, {})
     try:

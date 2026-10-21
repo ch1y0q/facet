@@ -1,6 +1,7 @@
 """The internal ASGI client: allowlist, grant enforcement, JWT, status mapping, caps."""
 
 import asyncio
+import dataclasses
 import json
 from datetime import timedelta
 from types import MappingProxyType
@@ -60,7 +61,7 @@ class TestLocalEditionGrant:
     def _local_grant(env, trusted):
         api_config.VIEWER_CONFIG["trusted_local_editing"] = True
         _, plaintext = tokens.mint("_anonymous", "laptop", "edition", "edition")
-        return tokens.verify(plaintext, trusted_local=trusted)
+        return dataclasses.replace(tokens.verify(plaintext), trusted_local=trusted)
 
     def test_local_edition_grant_reaches_edition_route(self, agent_app, photo):
         env = agent_app("open")
@@ -84,7 +85,7 @@ class TestLocalEditionGrant:
         # REGRESSION GUARD: an untrusted edition token and a readonly one still send no credential.
         assert self._local_grant(env, False).resolve().jwt_claims() is None
         _, readonly = tokens.mint("_anonymous", "ro", "readonly", "edition")
-        assert tokens.verify(readonly, trusted_local=True).resolve().jwt_claims() is None
+        assert dataclasses.replace(tokens.verify(readonly), trusted_local=True).resolve().jwt_claims() is None
 
     def test_the_opt_in_going_off_inside_the_jwt_lifetime_refuses(self, agent_app, photo):
         env = agent_app("open")

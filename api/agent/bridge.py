@@ -258,6 +258,9 @@ class TabRegistry:
         if mode == "legacy":
             return (f"Only tabs signed in with less than {level} rights are open. Ask the user to "
                     "unlock edition in the viewer, or use a read-only token.")
+        if mode == "open" and max_level is not None and LEVEL_RANK[max_level] < LEVEL_RANK["edition"]:
+            return ("A tab of this install is open but runs at a higher level than this token may reach "
+                    "(a non-local request cannot steer a local editing tab).")
         return "No open tab is reachable by this token."
 
     @staticmethod

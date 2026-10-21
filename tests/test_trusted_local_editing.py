@@ -16,7 +16,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api import auth, db_helpers
+from api import auth, config as api_config, db_helpers
 from api.routers import auth as auth_routes, comparison, faces, scan
 from db import DEFAULT_DB_PATH
 
@@ -138,7 +138,9 @@ def test_trusted_local_human_can_trigger_a_scan_without_flag(local, monkeypatch)
     cfg, app, manager = local
     _idle_scan_snapshot(monkeypatch)
     c = _client(app)
-    assert "show_scan_button" not in cfg["features"]
+    # scan.py reads api.config.VIEWER_CONFIG, not the dict the fixture patches into auth.
+    monkeypatch.delitem(api_config.VIEWER_CONFIG.setdefault("features", {}), "show_scan_button", raising=False)
+    assert "show_scan_button" not in scan.VIEWER_CONFIG["features"]
     assert c.get("/api/scan/status").status_code == 200
     assert c.get("/api/scan/directories").status_code == 200
     token = c.get("/api/scan/stream_token")

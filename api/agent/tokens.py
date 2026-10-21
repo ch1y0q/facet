@@ -173,13 +173,12 @@ def mint(principal: str, name: str, level: str, minted_level: str = "readonly",
         return _public(row), plaintext
 
 
-def verify(plaintext: Optional[str], trusted_local: bool = False) -> Optional["TokenGrant"]:
+def verify(plaintext: Optional[str]) -> Optional["TokenGrant"]:
     """The grant behind ``plaintext``, or None when unknown, malformed or revoked.
 
     Liveness against the owner's credentials is NOT decided here -- that is
-    :meth:`TokenGrant.resolve`, which runs on every call. ``trusted_local`` is the fact that the
-    request presenting the token passed the ``viewer.trusted_local_editing`` boundary; it defaults
-    to False, so a caller that cannot see the request stays read-only on an open install.
+    :meth:`TokenGrant.resolve`, which runs on every call. The grant is never trusted-local: only
+    :func:`verify_request` sets that fact, from the request itself.
     """
     if not isinstance(plaintext, str) or not plaintext.startswith(TOKEN_PREFIX) \
             or len(plaintext) > MAX_TOKEN_LENGTH:
@@ -191,7 +190,7 @@ def verify(plaintext: Optional[str], trusted_local: bool = False) -> Optional["T
     if row is None:
         return None
     return TokenGrant(row["id"], row["user_id"], row["name"], row["level"],
-                      row["user_gen"], row["edition_gen"], row["minted_level"] or row["level"], trusted_local)
+                      row["user_gen"], row["edition_gen"], row["minted_level"] or row["level"])
 
 
 def verify_request(plaintext: Optional[str], request: Any) -> Optional["TokenGrant"]:
@@ -254,7 +253,7 @@ class ResolvedGrant:
     # The calling tab's own selection (``ui_get_selection`` data), sent with an in-page call.
     selection_snapshot: Optional[dict] = None
     # An open-install grant whose /mcp request passed the trusted-local boundary (see TokenGrant.resolve).
-    local_trusted: bool = False
+    trusted_local: bool = False
 
     def jwt_claims(self) -> Optional[dict]:
         """Claims for the 60-second internal JWT, or None on an open install.
@@ -269,7 +268,7 @@ class ResolvedGrant:
         ``admin`` through, or it would reach edition routes on the role alone.
         """
         if self.anonymous:
-            if self.level == "edition" and self.local_trusted:
+            if self.level == "edition" and self.trusted_local:
                 return {"role": self.role, "display_name": "", "edition": True, "mcp": True,
                         "mcp_local": True, "mcp_token_id": self.token_id}
             return None
@@ -421,8 +420,10 @@ class TokenGrant:
             local = self.trusted_local and _trusted_local_editing_enabled()
             if not local:
                 return ResolvedGrant(self.id, OPEN_PRINCIPAL, "readonly", "user", "", True, "readonly")
+            # A local process is as trusted as the local browser: its reach ceiling is edition whatever
+            # the row was minted at. A non-local grant keeps the readonly ceiling above.
             return ResolvedGrant(self.id, OPEN_PRINCIPAL, "edition" if self.level == "edition" else "readonly",
-                                 "user", "", True, self.minted_level, local_trusted=True)
+                                 "user", "", True, "edition", trusted_local=True)
         if self.user_id != LEGACY_PRINCIPAL:
             return None
         level = _legacy_level(self.level, self.edition_gen)

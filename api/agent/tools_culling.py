@@ -68,7 +68,9 @@ def _fit_page(data: dict, extra: dict, settings: dict) -> None:
 
     The tool owns the page budget: ``fit_envelope`` would otherwise cut rows while the route's
     ``next_cursor`` still points past them. Rows dropped here move ``next_cursor`` back to the last
-    returned row's ``number`` (the next group's 0-based plan index). At least one row stays.
+    returned row's ``number`` (the next group's 0-based plan index). At least one row stays; if that
+    one row alone is still over budget its path lists are clipped (``keep_count`` / ``reject_count``
+    carry the full sizes, ``paths_clipped`` is true) so the group is never silently dropped.
     """
     rows = data["rows"]
     budget = max(settings["max_bytes"] - SHOWN_RESERVE, settings["max_bytes"] // 2)
@@ -79,6 +81,26 @@ def _fit_page(data: dict, extra: dict, settings: dict) -> None:
     if shown < len(rows):
         data["rows"] = rows[:shown]
         data["next_cursor"] = rows[shown - 1]["number"]
+    if shown == 1 and encoded_size(ok(data, **extra)) > budget:
+        _clip_row(data, extra, budget)
+
+
+def _clip_row(data: dict, extra: dict, budget: int) -> None:
+    """Clip the only row's path lists to the longest prefix that fits ``budget``."""
+    row = dict(data["rows"][0])
+    keep, reject = row.get("keep_paths") or [], row.get("reject_paths") or []
+    row.update(keep_count=len(keep), reject_count=len(reject), paths_clipped=True)
+
+    def fits(n: int) -> bool:
+        trial = {**row, "keep_paths": keep[:n], "reject_paths": reject[:n]}
+        return encoded_size(ok({**data, "rows": [trial]}, **extra)) <= budget
+
+    low, high = 0, max(len(keep), len(reject))
+    while low < high:
+        mid = (low + high + 1) // 2
+        low, high = (mid, high) if fits(mid) else (low, mid - 1)
+    row.update(keep_paths=keep[:low], reject_paths=reject[:low])
+    data["rows"] = [row]
 
 
 def _pinned_page(rows: list[dict]) -> tuple[list[str], list[int], list[str], int]:
@@ -408,7 +430,8 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry) -
         "the plan changed since the preview. The preview is paged by whole groups: repeat the call "
         "with `cursor` set to the result's `next_cursor` and `plan_digest` set to the cursor-0 "
         "page's `plan_digest` (required when cursor > 0; a changed plan is refused, restart from "
-        "cursor 0) until next_cursor is null; a page is cut by whole groups to fit the result size. "
+        "cursor 0) until next_cursor is null; a page is cut by whole groups to fit the result size (a single group too big for it has its "
+        "path lists clipped: `paths_clipped`, with `keep_count` / `reject_count`). "
         "Counts cover the full plan and ONE confirm, issued on the cursor-0 page only, covers all "
         "of it (valid 300 s, single use). The apply returns counts only. To honour the user's "
         "review, pass the `review` lists from ui_get_context as keep_paths / remove_paths (up to "

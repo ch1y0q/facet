@@ -5,6 +5,7 @@ because token liveness is decided by password generations and user records that 
 ``dependency_overrides`` client would never consult.
 """
 
+import dataclasses
 import sqlite3
 from datetime import timedelta
 
@@ -14,6 +15,10 @@ from api import config as api_config
 from api.agent import tokens
 from api.auth import create_access_token, hash_password
 from tests.conftest import _TEST_DB_FILE
+
+
+def _local(grant):
+    return dataclasses.replace(grant, trusted_local=True)
 
 
 def _rows():
@@ -150,21 +155,37 @@ class TestTokenService:
         cfg = api_config.VIEWER_CONFIG
         cfg["trusted_local_editing"] = True
         _, plaintext = tokens.mint("_anonymous", "laptop", "edition", "edition")
-        local = tokens.verify(plaintext, trusted_local=True).resolve()
-        assert local.level == "edition" and local.local_trusted and local.minted_level == "edition"
+        local = _local(tokens.verify(plaintext)).resolve()
+        assert local.level == "edition" and local.trusted_local and local.minted_level == "edition"
         # REGRESSION GUARD half: without the request fact (the default) it is readonly, as before.
         plain = tokens.verify(plaintext).resolve()
-        assert plain.level == "readonly" and not plain.local_trusted and plain.minted_level == "readonly"
+        assert plain.level == "readonly" and not plain.trusted_local and plain.minted_level == "readonly"
         cfg["trusted_local_editing"] = False
-        off = tokens.verify(plaintext, trusted_local=True).resolve()
-        assert off.level == "readonly" and not off.local_trusted
+        off = _local(tokens.verify(plaintext)).resolve()
+        assert off.level == "readonly" and not off.trusted_local
+
+    def test_a_readonly_token_minted_before_the_opt_in_reaches_the_local_edition_tab(self, agent_app):
+        agent_app("open")
+        cfg = api_config.VIEWER_CONFIG
+        cfg["trusted_local_editing"] = False
+        _, plaintext = tokens.mint("_anonymous", "laptop", "readonly", "readonly")
+        cfg["trusted_local_editing"] = True
+        resolved = _local(tokens.verify(plaintext)).resolve()
+        assert resolved.level == "readonly" and resolved.trusted_local
+        assert resolved.minted_level == "edition"
+
+    def test_guard_a_non_local_open_grant_keeps_the_readonly_reach_ceiling(self, agent_app):
+        agent_app("open")
+        api_config.VIEWER_CONFIG["trusted_local_editing"] = True
+        _, plaintext = tokens.mint("_anonymous", "laptop", "readonly", "edition")
+        assert tokens.verify(plaintext).resolve().minted_level == "readonly"
 
     def test_a_password_lowers_the_open_install_edition_token_and_clearing_it_revives_it(self, agent_app):
         agent_app("open")
         cfg = api_config.VIEWER_CONFIG
         cfg["trusted_local_editing"] = True
         row, plaintext = tokens.mint("_anonymous", "laptop", "edition", "edition")
-        grant = tokens.verify(plaintext, trusted_local=True)
+        grant = _local(tokens.verify(plaintext))
         assert grant.resolve().level == "edition"
         cfg["edition_password"] = "ed"
         assert tokens.install_mode() == "open"
@@ -174,7 +195,7 @@ class TestTokenService:
         cfg["password"] = "view"
         assert tokens.install_mode() == "legacy" and grant.resolve() is None
         cfg["password"] = ""
-        revived = tokens.verify(plaintext, trusted_local=True)
+        revived = _local(tokens.verify(plaintext))
         assert revived.id == row["id"] and revived.resolve().level == "edition"
 
     def test_open_install_token_dies_when_a_password_is_set(self, agent_app):

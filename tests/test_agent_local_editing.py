@@ -272,3 +272,46 @@ def test_untrusted_anonymous_tab_stays_readonly_and_unreachable(build, fake_tab,
     # The edition token a local agent holds reaches no tab: a UI tool finds none.
     unreached = local.call(edition_token(local), "ui_get_context")
     assert unreached["ok"] is False and unreached["error"] == "no_tab", unreached
+
+
+def test_a_readonly_token_minted_before_the_opt_in_reaches_the_local_edition_tab(build, fake_tab):
+    local, _ = build(opt_in=False)
+    readonly = local.token(local.login(), "readonly")
+    api_config.VIEWER_CONFIG["trusted_local_editing"] = True
+    fake_tab(local, None, origin="http://localhost")
+    assert _level_of_tabs(local) == ["edition"]
+    result = local.call(readonly, "ui_get_context")
+    assert result.get("error") != "no_tab", result
+
+
+def test_guard_a_lan_readonly_token_never_reaches_the_local_edition_tab(build, fake_tab):
+    local, remote = build()
+    fake_tab(local, None, origin="http://localhost")
+    result = remote.call(remote.token(remote.login(), "readonly"), "ui_get_context")
+    assert result["ok"] is False and result["error"] == "no_tab"
+    assert "higher level" in result["message"] and "non-local" in result["message"], result
+
+
+@pytest.mark.parametrize("claims", [
+    {"mcp": True, "mcp_local": True, "edition": True, "sub": "_anonymous"},
+    {"mcp": True, "mcp_local": True, "edition": False},
+    {"mcp": True, "mcp_local": "true", "edition": True},
+    {"mcp": True, "edition": True},
+    {"mcp_local": True, "edition": True},
+])
+def test_from_payload_only_honours_the_exact_signed_shape(build, claims):
+    local, remote = build()
+    from api import auth
+    tok = auth.create_access_token({"role": "user", **claims})
+    response = remote.client.get("/api/scan/status", headers={"Authorization": "Bearer " + tok})
+    assert response.status_code == 403
+
+
+def test_a_lan_replay_of_a_local_stream_token_is_refused(build, monkeypatch):
+    for key, value in (("running", False), ("directories", []), ("exit_code", None), ("progress", None),
+                       ("started_at", None), ("output_lines", deque(maxlen=500))):
+        monkeypatch.setitem(scan._scan_state, key, value)
+    local, remote = build()
+    token = local.client.get("/api/scan/stream_token").json()["token"]
+    assert local.client.get("/api/scan/stream", params={"token": token, "lines": 1}).status_code == 200
+    assert remote.client.get("/api/scan/stream", params={"token": token, "lines": 1}).status_code == 403
