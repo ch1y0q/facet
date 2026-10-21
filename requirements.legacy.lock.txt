@@ -106,7 +106,7 @@ pytest-asyncio==1.4.0
 pytest-timeout==2.4.0
 pytest==9.1.1
 python-dateutil==2.9.0.post0
-python-discovery==1.6.0
+python-discovery==1.6.4
 python-etcd==0.4.5
 PyWavelets==1.9.0
 rawpy==0.27.1
