@@ -25,6 +25,7 @@ from api.model_cache import (
     resolve_vlm_config,
     translate_text,
     translation_target,
+    vlm_accelerator_lock,
     vlm_generate_lock,
 )
 
@@ -678,7 +679,7 @@ def _get_vlm_critique(photo, rule_critique, thumbnail_bytes):
         img = _load_critique_image(photo['path'], thumbnail_bytes)
 
         max_new_tokens = int(_FULL_CONFIG.get('critique', {}).get('vlm', {}).get('max_new_tokens', 320))
-        with vlm_generate_lock:
+        with vlm_generate_lock, vlm_accelerator_lock(tagger):
             response = tagger.generate(img, prompt, max_new_tokens=max_new_tokens)
         response = (response or '').strip()
         return response or None

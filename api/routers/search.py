@@ -22,6 +22,7 @@ from api.db_helpers import (
     build_photo_select_columns, is_manual_tags_available,
     split_photo_tags, attach_person_data_async, format_date, sanitize_float_values,
 )
+from api.model_cache import accelerator_lock
 from api.models.discovery import PhotoSearchResponse
 from db.connection import HAS_SQLITE_VEC
 from db.manual_tags import ManualTagError, normalize_manual_tag
@@ -30,6 +31,10 @@ router = APIRouter(tags=["search"])
 logger = logging.getLogger(__name__)
 
 _text_encoder = None
+# Each search encodes on its own asyncio.to_thread worker, so concurrent first
+# searches would each load the model. Inference is serialized separately, on
+# MPS only, by api.model_cache.accelerator_lock.
+_text_encoder_lock = threading.Lock()
 # (stored embedding dim, torch-free resolved models.clip[_legacy] block). Keyed
 # rather than bare, which is what lets the embedding-less answer be cached too --
 # see _resolve_clip_config.
@@ -188,7 +193,8 @@ def _reset_text_encoder_cache():
     resolved for.
     """
     global _text_encoder
-    _text_encoder = None
+    with _text_encoder_lock:
+        _text_encoder = None
     _reset_clip_config_cache()
 
 
@@ -319,35 +325,36 @@ def _load_text_encoder():
     backend = clip_config.get('backend', 'open_clip')
     model_name = clip_config.get('model_name')
 
-    if backend == 'transformers':
-        # Deliberately fp32 and NOT routed through utils.siglip.load_siglip_model
-        # (which loads fp16 on CUDA): this is the text-only query encoder, it
-        # lives for the API process outside the scan's VRAM planner, and it
-        # must be re-measured against search ranking before it is ever moved
-        # onto the shared helper. The single-site test in
-        # tests/test_siglip_loader.py allow-lists this file for that reason.
-        from transformers import AutoModel
-        logger.info(f"Loading SigLIP text encoder: {model_name}")
-        model = AutoModel.from_pretrained(model_name, dtype=torch.float32).to(device)
-        model.eval()
-        _text_encoder = {
-            'backend': 'transformers',
-            'model': model,
-            'model_name': model_name,
-            'device': device,
-        }
-    else:
-        import open_clip
-        pretrained = clip_config.get('pretrained', 'openai')
-        logger.info(f"Loading CLIP text encoder: {model_name}")
-        model, _, _ = open_clip.create_model_and_transforms(model_name, pretrained=pretrained, device=device)
-        model.eval()
-        _text_encoder = {
-            'backend': 'open_clip',
-            'model': model,
-            'model_name': model_name,
-            'device': device,
-        }
+    with accelerator_lock(device):
+        if backend == 'transformers':
+            # Deliberately fp32 and NOT routed through utils.siglip.load_siglip_model
+            # (which loads fp16 on CUDA): this is the text-only query encoder, it
+            # lives for the API process outside the scan's VRAM planner, and it
+            # must be re-measured against search ranking before it is ever moved
+            # onto the shared helper. The single-site test in
+            # tests/test_siglip_loader.py allow-lists this file for that reason.
+            from transformers import AutoModel
+            logger.info(f"Loading SigLIP text encoder: {model_name}")
+            model = AutoModel.from_pretrained(model_name, dtype=torch.float32).to(device)
+            model.eval()
+            _text_encoder = {
+                'backend': 'transformers',
+                'model': model,
+                'model_name': model_name,
+                'device': device,
+            }
+        else:
+            import open_clip
+            pretrained = clip_config.get('pretrained', 'openai')
+            logger.info(f"Loading CLIP text encoder: {model_name}")
+            model, _, _ = open_clip.create_model_and_transforms(model_name, pretrained=pretrained, device=device)
+            model.eval()
+            _text_encoder = {
+                'backend': 'open_clip',
+                'model': model,
+                'model_name': model_name,
+                'device': device,
+            }
 
     return _text_encoder
 
@@ -368,11 +375,13 @@ def _encode_texts(queries: list[str]) -> np.ndarray:
     """
     from models.tagger import encode_text_prompts
 
-    enc = _load_text_encoder()
-    text_features = encode_text_prompts(
-        enc['model'], enc['model_name'], enc['backend'], enc['device'], list(queries)
-    )
-    return text_features.cpu().numpy().astype(np.float32)
+    with _text_encoder_lock:
+        enc = _load_text_encoder()
+    with accelerator_lock(enc['device']):
+        text_features = encode_text_prompts(
+            enc['model'], enc['model_name'], enc['backend'], enc['device'], list(queries)
+        )
+        return text_features.cpu().numpy().astype(np.float32)
 
 
 async def _search_vec(conn, text_emb, limit, threshold, vis_sql, vis_params):

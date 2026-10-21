@@ -202,6 +202,85 @@ class TestEncodeTextsDelegatesToTagger:
         assert out.shape == (1, 4)
 
 
+class TestEncoderServesOneQueryAtATime:
+    """Concurrent first searches must load the encoder once, and on MPS never
+    run it at the same time.
+
+    Each ``/api/search`` encodes on its own ``asyncio.to_thread`` worker. On
+    Apple Silicon two first searches in flight both loaded the model and ran it
+    on MPS at once, and Metal aborted the whole viewer (``failed assertion
+    _status < MTLCommandBufferStatusCommitted``). ``torch`` and ``open_clip``
+    are stubbed so this runs on CI, which installs neither.
+    """
+
+    def test_concurrent_queries_load_once_and_never_overlap_on_mps(self):
+        import sys
+        import threading
+        import time
+        import types
+
+        from api.routers import search
+
+        state = {"inside": 0, "peak": 0, "loads": 0}
+        guard = threading.Lock()
+
+        def _occupy():
+            with guard:
+                state["inside"] += 1
+                state["peak"] = max(state["peak"], state["inside"])
+            time.sleep(0.02)
+            with guard:
+                state["inside"] -= 1
+
+        class _Features:
+            def cpu(self):
+                return self
+
+            def numpy(self):
+                return np.ones((1, 4))
+
+        class _FakeModel:
+            def eval(self):
+                return self
+
+        def _fake_create(*_a, **_k):
+            state["loads"] += 1
+            _occupy()
+            return _FakeModel(), None, None
+
+        def _fake_encode(*_a, **_k):
+            _occupy()
+            return _Features()
+
+        start = threading.Barrier(4)
+        errors = []
+
+        def _query():
+            start.wait()
+            try:
+                search._encode_texts(["person"])
+            except Exception as exc:  # surfaced below; a thread swallows it otherwise
+                errors.append(exc)
+
+        fake_open_clip = types.SimpleNamespace(create_model_and_transforms=_fake_create)
+        with mock.patch.dict(sys.modules, {"torch": types.ModuleType("torch"),
+                                           "open_clip": fake_open_clip}), \
+             mock.patch.object(search, "_resolve_clip_config",
+                               return_value={"backend": "open_clip", "model_name": "ViT-L-14"}), \
+             mock.patch("utils.device.get_device", return_value="mps"), \
+             mock.patch("models.tagger.encode_text_prompts", side_effect=_fake_encode):
+            threads = [threading.Thread(target=_query) for _ in range(4)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+
+        assert errors == []
+        assert state["loads"] == 1
+        assert state["peak"] == 1
+
+
+
 # ---------------------------------------------------------------------------
 # 2. search_threshold_default() / _resolve_clip_config() resolution
 # ---------------------------------------------------------------------------
