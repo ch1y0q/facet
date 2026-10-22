@@ -1014,6 +1014,8 @@ export class GalleryStore {
     this.visitedGroups.set(new Set());
     // A pin without marks starts a fresh review; one with marks keeps the user's absolute choices.
     if (!marks) this.userMarks.set(new Map());
+    // The previous view's selection names photos this list may not hold.
+    this.clearSelection();
     this.pinnedPaths.set(ordered);
     this.pinnedMissing.set([]);
     this.pinnedLoad = true;

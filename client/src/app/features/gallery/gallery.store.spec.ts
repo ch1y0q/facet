@@ -1135,6 +1135,21 @@ describe('GalleryStore', () => {
       apiGet.mockClear();
     });
 
+    it('clears a path selection so the previous view does not carry over', async () => {
+      store.selectedPaths.set(new Set(['/old.jpg']));
+      await store.showPaths(paths);
+      expect(store.selectedPaths().size).toBe(0);
+    });
+
+    it('clears a view-scoped selection too', async () => {
+      store.selectionScope.set('view');
+      store.excludedPaths.set(new Set(['/x.jpg']));
+      await store.showPaths(paths);
+      expect(store.viewScopeSelected()).toBe(false);
+      expect(store.selectionScope()).toBe('paths');
+      expect(store.excludedPaths().size).toBe(0);
+    });
+
     describe('review annotations', () => {
       const marks = ['keep', 'remove'] as const;
       const annotated = () => store.showPaths(paths, { groups: [1, 1], marks: [...marks] });

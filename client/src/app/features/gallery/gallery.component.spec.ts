@@ -1,6 +1,6 @@
 import type { Mock } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { computed, signal, WritableSignal } from '@angular/core';
+import { computed, signal, TemplateRef, WritableSignal } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { By } from '@angular/platform-browser';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -1120,6 +1120,45 @@ describe('GalleryComponent', () => {
       expect(mockStore.clearPinned).toHaveBeenCalled();
     });
 
+    function toolbarView(): HTMLElement {
+      const tpl = (fixture!.componentInstance as unknown as { galleryToolbar(): TemplateRef<unknown> }).galleryToolbar();
+      const view = tpl.createEmbeddedView({});
+      view.detectChanges();
+      const host = document.createElement('div');
+      view.rootNodes.forEach((n: Node) => host.appendChild(n));
+      return host;
+    }
+    const hasTypeAndSearch = (host: HTMLElement) =>
+      host.textContent?.includes(I18N.ui.filters.type) === true
+      && !!host.querySelector(`input[placeholder="${I18N.gallery.search_placeholder}"]`);
+
+    it('hides the header Type select and search field while pinned and restores them after', () => {
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      mockStore.pinnedPaths.set(['/a.jpg']);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      expect(hasTypeAndSearch(toolbarView())).toBe(false);
+      mockStore.pinnedPaths.set(null);
+      fixture.detectChanges();
+      expect(hasTypeAndSearch(toolbarView())).toBe(true);
+    });
+
+    it('keeps the filter drawer shut while pinned without touching the persisted flag, and reopens it after', () => {
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      mockStore.filterDrawerOpen.set(true);
+      mockStore.pinnedPaths.set(['/a.jpg']);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const drawer = fixture.debugElement.query(By.directive(MatSidenav)).componentInstance as MatSidenav;
+      expect(drawer.opened).toBe(false);
+      expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
+      expect(mockStore.filterDrawerOpen()).toBe(true);
+      mockStore.pinnedPaths.set(null);
+      fixture.detectChanges();
+      expect(drawer.opened).toBe(true);
+      mockStore.filterDrawerOpen.set(false);
+    });
+
     it('the load-error Retry button reloads without dropping the pin', () => {
       mockStore.pinnedPaths.set(['/a.jpg']);
       mockStore.loadError.set(true);
@@ -1310,6 +1349,26 @@ describe('GalleryComponent', () => {
           expect(panelPhoto()).toBe(a);
           component.showTooltip(hoverEvent, b as never);
           expect(panelPhoto()).toBe(b);
+        });
+
+        it('a new pin empties the rail and drops the cursor, so nothing of the previous view carries over', () => {
+          TestBed.tick();
+          component.showTooltip(hoverEvent, a as never);
+          expect(panelPhoto()).toBe(a);
+          mockStore.pinnedPaths.set(['/a.jpg']);
+          TestBed.tick();
+          expect(panelPhoto()).toBeFalsy();
+          expect(hasActivePhoto()).toBe(false);
+          expect(component['tooltipPhoto']()).toBeNull();
+        });
+
+        it('a plain filter reload with no pin leaves the held photo alone', () => {
+          TestBed.tick();
+          component.showTooltip(hoverEvent, a as never);
+          mockStore.pinnedPaths.set(null);
+          TestBed.tick();
+          expect(component['tooltipPhoto']()).toBe(a);
+          expect(hasActivePhoto()).toBe(true);
         });
 
         it('Deselect leaves an already-unselected photo unselected', () => {

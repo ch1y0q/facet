@@ -38,6 +38,7 @@ function createApp(routerUrl = '/', extraProviders: Provider[] = []) {
     loadTypeCounts: vi.fn(() => Promise.resolve()),
     loadConfig: vi.fn(),
     viewFilterParams: viewFilterParamsSignal,
+    pinnedPaths: signal<string[] | null>(null),
     showAllHidden: vi.fn(),
   };
 
@@ -556,7 +557,7 @@ describe('App', () => {
       TestBed.configureTestingModule({
         providers: [
           { provide: Router, useValue: mockRouter },
-          { provide: GalleryStore, useValue: { filters: signal({ ...DEFAULT_FILTERS }), persons: signal([]), selectionCount: signal(0), config: signal(null), types: signal([]), loadTypeCounts: vi.fn(), loadConfig: vi.fn(), viewFilterParams: signal({}) } },
+          { provide: GalleryStore, useValue: { filters: signal({ ...DEFAULT_FILTERS }), persons: signal([]), selectionCount: signal(0), config: signal(null), types: signal([]), loadTypeCounts: vi.fn(), loadConfig: vi.fn(), viewFilterParams: signal({}), pinnedPaths: signal<string[] | null>(null) } },
           { provide: AuthService, useValue: { identity: () => '0|', isAuthenticated: signal(false), isReadOnlyInstall: signal(isReadOnlyInstall), isEdition: signal(false), status: signal(null), editionPasswordRequired: signal(false), isMultiUser: signal(false), loginPasswordRequired: signal(false), checkStatus: vi.fn(() => Promise.resolve()) } },
           { provide: I18nService, useValue: { load: vi.fn(() => Promise.resolve()), loadLanguages: vi.fn(() => Promise.resolve()), languages: signal([]), t: vi.fn((k: string) => k), translations: signal({}) } },
           { provide: StatsFiltersService, useValue: { filterCategory: signal(''), dateFrom: signal(''), dateTo: signal('') } },
@@ -593,7 +594,7 @@ describe('App', () => {
         filters: signal({ ...DEFAULT_FILTERS }), persons: signal([]), selectionCount: signal(0), config: signal(null),
         types: signal([]), total: signal(0), loadTypeCounts: vi.fn(() => Promise.resolve()), reloadPhotos, loadConfig: vi.fn(),
         viewFilterParams: signal({}), activeFilterCount: signal(0), filterDrawerOpen: signal(false), hiddenFiltersStash: signal(null),
-        slideshowActive: signal(false), setFilterDrawerOpen: vi.fn(), updateFilter: vi.fn(), resetFilters: vi.fn(), restoreHidden: vi.fn(), showAllHidden: vi.fn(),
+        slideshowActive: signal(false), pinnedPaths: signal<string[] | null>(null), setFilterDrawerOpen: vi.fn(), updateFilter: vi.fn(), resetFilters: vi.fn(), restoreHidden: vi.fn(), showAllHidden: vi.fn(),
       };
       TestBed.configureTestingModule({
         providers: [
@@ -680,6 +681,68 @@ describe('App', () => {
       expect(render(false).buttons).toHaveLength(0);
     });
   });
+
+  describe('filter bar while an assistant-pinned list is shown', () => {
+    function render() {
+      const store = {
+        filters: signal({ ...DEFAULT_FILTERS }), persons: signal([]), selectionCount: signal(0), config: signal(null),
+        types: signal([]), total: signal(0), loadTypeCounts: vi.fn(() => Promise.resolve()), reloadPhotos: vi.fn(), loadConfig: vi.fn(),
+        viewFilterParams: signal({}), activeFilterCount: signal(0), filterDrawerOpen: signal(true), hiddenFiltersStash: signal(null),
+        slideshowActive: signal(false), pinnedPaths: signal<string[] | null>(null), setFilterDrawerOpen: vi.fn(), updateFilter: vi.fn(),
+        resetFilters: vi.fn(), restoreHidden: vi.fn(), showAllHidden: vi.fn(),
+      };
+      TestBed.configureTestingModule({
+        providers: [
+          provideRouter([]),
+          { provide: GalleryStore, useValue: store },
+          { provide: ScanService, useValue: { canLaunch: signal(true), openLauncher: vi.fn() } },
+          { provide: AuthService, useValue: { identity: () => '0|', isAuthenticated: signal(true), isReadOnlyInstall: signal(false), features: signal({}), user: signal(null), logout: vi.fn(), isEdition: signal(false), status: signal(null), editionPasswordRequired: signal(false), isMultiUser: signal(false), loginPasswordRequired: signal(false), checkStatus: vi.fn(() => Promise.resolve()) } },
+          { provide: I18nService, useValue: { load: vi.fn(() => Promise.resolve()), loadLanguages: vi.fn(() => Promise.resolve()), languages: signal([]), t: vi.fn((k: string) => k), translations: signal({}) } },
+          { provide: StatsFiltersService, useValue: { filterCategory: signal(''), dateFrom: signal(''), dateTo: signal('') } },
+          { provide: CompareFiltersService, useValue: { selectedCategory: signal('') } },
+          { provide: MatDialog, useValue: { open: vi.fn() } },
+          { provide: ApiService, useValue: { get: vi.fn(() => NEVER), post: vi.fn(() => NEVER) } },
+          { provide: ThemeService, useValue: { theme: signal(''), darkMode: signal(true), THEMES: [], setTheme: vi.fn(), toggleDarkMode: vi.fn(), accentColor: signal('#ff6600'), complementaryColor: signal('#0099ff') } },
+        ],
+      });
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      return { fixture, root: fixture.nativeElement as HTMLElement, store };
+    }
+
+    const sortFields = (root: HTMLElement) => Array.from(root.querySelectorAll('mat-form-field'))
+      .filter(el => el.textContent?.includes(I18N.gallery.sort));
+    const byLabel = (root: HTMLElement, key: string) => root.querySelectorAll(`button[aria-label="${key}"]`);
+
+    it('shows the sort field, sort direction and filter toggle (header and mobile bar) otherwise', () => {
+      const { root } = render();
+      expect(sortFields(root)).toHaveLength(2);
+      expect(byLabel(root, I18N.gallery.sort_desc)).toHaveLength(2);
+      expect(byLabel(root, I18N.gallery.filters)).toHaveLength(1);
+      expect(byLabel(root, I18N.ui.buttons.filters)).toHaveLength(1);
+      expect(byLabel(root, I18N.ui.filters.search)).toHaveLength(1);
+    });
+
+    it('hides them all while pinned, and brings them back when the pin clears', () => {
+      const { fixture, root, store } = render();
+      store.pinnedPaths.set(['/a.jpg']);
+      fixture.detectChanges();
+      expect(sortFields(root)).toHaveLength(0);
+      expect(byLabel(root, I18N.gallery.sort_desc)).toHaveLength(0);
+      expect(byLabel(root, I18N.gallery.filters)).toHaveLength(0);
+      expect(byLabel(root, I18N.ui.buttons.filters)).toHaveLength(0);
+      expect(byLabel(root, I18N.ui.filters.search)).toHaveLength(0);
+      expect(byLabel(root, I18N.gallery.scan_action).length).toBeGreaterThan(0);
+      expect(byLabel(root, I18N.slideshow.start).length).toBeGreaterThan(0);
+      expect(byLabel(root, I18N.gallery.tooltip_mode.label).length).toBeGreaterThan(0);
+      store.pinnedPaths.set(null);
+      fixture.detectChanges();
+      expect(sortFields(root)).toHaveLength(2);
+      expect(byLabel(root, I18N.gallery.filters)).toHaveLength(1);
+      expect(store.setFilterDrawerOpen).not.toHaveBeenCalled();
+    });
+  });
+
 
   describe('lockEdition', () => {
     it('leaves a page the route table flags data.edition, and only those', async () => {

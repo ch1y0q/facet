@@ -128,33 +128,35 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
     <!-- Header-slot toolbar: the app shell renders this in the global header on lg+.
          Type filter + semantic search, rebound to the gallery store. -->
     <ng-template #galleryToolbar>
-      <mat-form-field class="!hidden lg:!inline-flex w-52 ml-2 2xl:shrink-0" subscriptSizing="dynamic">
-        <mat-label>{{ I18N.ui.filters.type | translate }}</mat-label>
-        <mat-select panelWidth="auto" panelClass="nowrap-panel !max-h-[70vh]" [value]="store.filters().type" (selectionChange)="onTypeChange($event.value)">
-          <mat-option value="">{{ I18N.gallery.all_photos | translate }}</mat-option>
-          @for (t of store.types(); track t.id) {
-            <mat-option [value]="t.id">{{ (t.id === 'top_picks' ? 'photo_types.top_picks' : 'category_names.' + t.id) | translate }} ({{ t.count }})</mat-option>
-          }
-        </mat-select>
-      </mat-form-field>
+      @if (!pinned()) {
+        <mat-form-field class="!hidden lg:!inline-flex w-52 ml-2 2xl:shrink-0" subscriptSizing="dynamic">
+          <mat-label>{{ I18N.ui.filters.type | translate }}</mat-label>
+          <mat-select panelWidth="auto" panelClass="nowrap-panel !max-h-[70vh]" [value]="store.filters().type" (selectionChange)="onTypeChange($event.value)">
+            <mat-option value="">{{ I18N.gallery.all_photos | translate }}</mat-option>
+            @for (t of store.types(); track t.id) {
+              <mat-option [value]="t.id">{{ (t.id === 'top_picks' ? 'photo_types.top_picks' : 'category_names.' + t.id) | translate }} ({{ t.count }})</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
 
-      <!-- Search -->
-      <mat-form-field class="!hidden 2xl:!inline-flex w-64 min-w-0 shrink" subscriptSizing="dynamic">
-        <input
-          matInput
-          [placeholder]="I18N.gallery.search_placeholder | translate"
-          [value]="store.filters().search"
-          (keyup.enter)="onSearchChange($event)"
-          (blur)="onSearchChange($event)"
-        />
-        @if (store.filters().search) {
-          <button matSuffix mat-icon-button (click)="clearSearch()" [attr.aria-label]="I18N.gallery.clear_search | translate">
-            <mat-icon>close</mat-icon>
-          </button>
-        } @else {
-          <mat-icon matSuffix>search</mat-icon>
-        }
-      </mat-form-field>
+        <!-- Search -->
+        <mat-form-field class="!hidden 2xl:!inline-flex w-64 min-w-0 shrink" subscriptSizing="dynamic">
+          <input
+            matInput
+            [placeholder]="I18N.gallery.search_placeholder | translate"
+            [value]="store.filters().search"
+            (keyup.enter)="onSearchChange($event)"
+            (blur)="onSearchChange($event)"
+          />
+          @if (store.filters().search) {
+            <button matSuffix mat-icon-button (click)="clearSearch()" [attr.aria-label]="I18N.gallery.clear_search | translate">
+              <mat-icon>close</mat-icon>
+            </button>
+          } @else {
+            <mat-icon matSuffix>search</mat-icon>
+          }
+        </mat-form-field>
+      }
 
       <!-- Keep top N%: server-rank the current view by the current sort and
            select the bottom (100-N)% for review/rejection via the selection bar. -->
@@ -946,6 +948,9 @@ export class GalleryComponent implements OnInit, OnDestroy {
   /** Docked rail needs real width, not merely "not a phone". */
   readonly panelMode = computed(() => this.tooltipMode() === 'panel' && this.railWide.isDesktop());
 
+  /** An assistant-pinned list is shown: the filter controls are hidden so no edit can drop it. */
+  protected readonly pinned = computed(() => this.store.pinnedPaths() !== null);
+
   /**
    * Whether the end drawer currently shows details rather than filters.
    *
@@ -953,7 +958,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
    * and the rail is a standing preference to come back to once they are closed.
    */
   readonly detailsRailVisible = computed(
-    () => this.panelMode() && !this.store.filterDrawerOpen(),
+    () => this.panelMode() && (!this.store.filterDrawerOpen() || this.pinned()),
   );
 
   /** Set kinds whose sets are currently collapsed behind one frame.
@@ -1202,7 +1207,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
     // Sync store.filterDrawerOpen signal → mat-sidenav. The details rail shares
     // this drawer, so it keeps the strip open on its own once the filters close.
     effect(() => {
-      const open = this.store.filterDrawerOpen() || this.panelMode();
+      // The persisted flag is left alone while pinned: the drawer only stays shut.
+      const open = (this.store.filterDrawerOpen() && !this.pinned()) || this.panelMode();
       const drawer = this.filterDrawer();
       if (!drawer) return;
       if (open) drawer.open();
@@ -1351,6 +1357,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
     // must not be recorded as "the user asked for filters" — otherwise closing
     // the filters would immediately re-open them and the toggle would be stuck.
     if (open && this.detailsRailVisible()) return;
+    // A close caused by the pin is not the user's choice; keep the persisted flag.
+    if (this.pinned()) return;
     this.store.setFilterDrawerOpen(open);
     const sidebarEl = document.querySelector('app-gallery-filter-sidebar div[data-scroll]') as HTMLElement | null;
     if (!sidebarEl) return;
@@ -2284,6 +2292,25 @@ export class GalleryComponent implements OnInit, OnDestroy {
       if (at < 0) this.activePath.set(null);
     });
   });
+
+  /** A new pin (or the pin ending) is a different list: the photo the docked rail holds and the
+   *  keyboard cursor belong to the previous view, so both are dropped. The first run is skipped --
+   *  mounting over an existing pin has nothing to reset -- and a filter reload that leaves the
+   *  pin null does not notify. setCursor only writes signals; it never moves DOM focus. */
+  private readonly resetOnPinChange = (() => {
+    let previous: string[] | null | undefined;
+    return effect(() => {
+      const pin = this.store.pinnedPaths();
+      untracked(() => {
+        const first = previous === undefined;
+        const changed = pin !== previous;
+        previous = pin;
+        if (first || !changed) return;
+        this.tooltipPhoto.set(null);
+        this.setCursor(-1);
+      });
+    });
+  })();
 
   /** Drop the cursor when focus genuinely leaves a grid.
    *

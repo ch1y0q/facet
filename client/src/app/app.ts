@@ -228,6 +228,9 @@ export class App implements OnInit {
     () => anyHideToggleActive(this.store.viewFilterParams()),
   );
 
+  /** An assistant-pinned list is on screen: the filter bar is hidden so no filter edit can drop it. */
+  protected readonly pinned = computed(() => this.store.pinnedPaths() !== null);
+
   /** On mobile the selection action bar replaces the route's bottom bar rather than
    *  stacking on top of it, so the two can never overlap (issue #73). */
   protected readonly mobileGalleryBarVisible = computed(() => this.isGalleryRoute() && !this.store.selectionCount());
