@@ -2,7 +2,7 @@
 
 > 🌐 [English](../AGENTS.md) · [Français](../fr/AGENTS.md) · [Deutsch](../de/AGENTS.md) · [Italiano](../it/AGENTS.md) · [Español](../es/AGENTS.md) · [Português](../pt/AGENTS.md) · **简体中文**
 
-Facet 可以充当 [Model Context Protocol](https://modelcontextprotocol.io/)（MCP）服务器，让支持 MCP 的 AI 助手使用与图库相同的筛选条件搜索和查看你的照片库。它提供十三个不会改动照片库的只读工具，以及十二个 `ui_*` 工具：它们操作你已经打开的浏览器标签页（页面、筛选条件、选择），从不写入照片库数据。获得授权的令牌还可以[修改内容](#修改内容)（评分、标记、标签、相册、选片和删除）并操作[暗房](#暗房选片分组)。
+Facet 可以充当 [Model Context Protocol](https://modelcontextprotocol.io/)（MCP）服务器，让支持 MCP 的 AI 助手使用与图库相同的筛选条件搜索和查看你的照片库。它提供十三个不会改动照片库的只读工具，以及十三个 `ui_*` 工具：它们操作你已经打开的浏览器标签页（页面、筛选条件、选择），从不写入照片库数据。获得授权的令牌还可以[修改内容](#修改内容)（评分、标记、标签、相册、选片和删除）并操作[暗房](#暗房选片分组)。
 
 ## 启用
 
@@ -71,9 +71,9 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 - 结果带有 `shown_in_tab`：`{"applied": true, "tab_id", "keys", "total"}`，或 `{"applied": false, "reason"}`，原因为 `no_tab`、`bridge_disabled`、`tab_outdated`、`tab_timeout`（标签页仍可能应用它）、`forbidden`、`page_not_first`、`empty_result`、`unsupported_filters`（附带 `keys`）或 `invalid_combination`。显示失败绝不会使搜索失败。传入 `tab_id` 可选择标签页。全部原因：`error`（显示本身失败）、`bridge_disabled`、`page_not_first`、`empty_result`、`invalid_combination`、`unsupported_filters`（附带 `keys`；对 `semantic_search`，键为 `scope` 或 `threshold`，即侧栏滑块无法表达的大于 0.5 的阈值），以及标签页桥返回的代码（`no_tab`、`tab_outdated`、`tab_timeout`、`forbidden`、`invalid_input`、`upstream_error`）。标签页自行分页，因此对语义搜索，它显示的行数可能多于助手收到的。行被截短时，`next_page`（连同 `suggested_per_page`）给出恰好接在最后一行之后的页码；若页码无法表达该位置，则由 `next_offset` 以行偏移给出。
 - 只显示第一页（标签页在你滚动时自行分页），空结果不会显示，因此你保留之前的视图。使用图库侧栏没有对应控件的筛选（`exclude_tags`、`require_tags`、`is_silhouette`、`junk_kind`、`narrative_moment`、`min_rating`、`min_aggregate`、`show_rejected: true`）的搜索不会被部分应用，带 `scope: "text"` 的 `semantic_search` 也不会显示。
 - 显示会离开 `/culling`、`/compare` 和 `/photo` 并回到图库，清除整个视图的选择；在相册页面上会先回到图库，因此相册已保存的筛选绝不会被覆盖。其数量要用作写入工具 `expected_count` 的搜索应使用 `show: false`。
-- `ui_show_photos` 固定一份精确的照片列表:图库按你的顺序显示它们,直到任何筛选变更替换该列表。`ui_get_context` 会报告是否显示了固定列表。 可选的 `groups`(每个路径一个分组编号)和 `marks`(每个路径 `keep` 或 `remove`)会为固定的照片添加标注:每个分组从自己的一行开始,上方有标题(“第 3 组 — 4 张照片 · 保留 2 · 移除 1”,按当前标记统计;固定列表没有标记时仅显示“第 3 组”),每张已标记的卡片底部边缘都有一条全宽的保留/移除条,点击即可切换。标记为移除的照片会变暗(灰色仅用于真正的拒绝),圆点表示您更改过的标记,芯片图例统计分组数、保留数和移除数。光标位于已标记的照片上时,`K` 标记为保留,`R` 标记为移除,然后跳到下一张照片;`X` 仍是真正的拒绝。您的切换会保留在标签页中,直到列表被清除;`ui_get_context.review` 以 `{keep, remove}` 形式返回它们(各最多 1000 个路径),以便助手按您的修改行事。
-- **理由、类型与标题操作。** 可选的 `labels`、`reasons` 和 `kinds`(与 `groups` 一样,每个路径一项)用于丰富审阅。`labels` 为每个分组提供一个由标签页翻译的标题(“相似度 73%”“4 张,1.3 EV 范围”),显示在分组标题的计数之后。`reasons` 为每张照片提供一个理由(“闭眼”“较模糊”),附加到保留/移除条的提示和无障碍名称中。`kinds` 给出每个分组的类型。每个分组标题还提供 **全部保留**、**仅保留最佳**(该分组的第一张保留,否则为第一张照片)和 **全部移除**;它们只修改标记、不写入任何数据,**仅保留最佳** 和 **全部移除** 对包围曝光、全景和 HDR 全景(整组保留)禁用,没有标记的固定列表则没有这些按钮。长度与 `paths` 不同的数组会以 `invalid_input` 拒绝。`auto_cull` 会填充这三项。这些字段改变了界面工具的契约,因此已打开的标签页在重新加载之前会返回 `tab_outdated`。
-- **审阅进度与“复制给助手”。** 有标记时,`ui_get_context.review` 还包含 `groups_total`、`groups_visited`(用户滚动到可见区域或用键盘光标到达过的分组)和 `groups_changed`(至少有一张照片的标记与助手不同的分组;改回原标记不计)。标签页本身不显示这些数字,它们供助手读取。 `review.keep` / `review.remove` 只是待处理的标记:用户已在标签页中用 **应用** 提交的照片会从中移出,并出现在 `review.applied` 中,形式为 `{keep, remove, truncated}`(已应用的保留/移除;`truncated` 时 `keep_count` / `remove_count` 给出真实数量),`groups_applied` 统计完全应用的分组数。不要重新决定已应用的照片。已经被拒绝的整组保留画面(包围曝光、全景)在这里算作已应用的移除;其他整组保留的画面算作保留。在固定列表的状态栏中,**返回常规视图** 旁边,审阅列表有一个 **复制给助手** 按钮,复制一句使用用户语言的话,例如“我在 Facet 中检查了照片:修改了 5 张(3 张保留,2 张移除),访问了 12 个分组中的 8 个。请按我的标记执行 auto_cull。”(“修改”统计标记与助手不同的照片,再分为保留和移除)。带有分组类型的列表(如 `auto_cull` 发送的)以“请按我的标记执行 auto_cull。”结尾;其他审阅以“请使用我的标记。”结尾。这是一次粘贴式交接:用户把它粘贴到助手的对话中。它不会唤醒助手。
+- `ui_show_photos` 固定一份精确的照片列表:图库按你的顺序显示这些照片,直到筛选条件的更改替换该列表。`ui_get_context` 会报告当前是否显示了固定列表。该列表很朴素:不带分组、标记或标签。要复核选片方案,助手使用 `auto_cull`,它会改为在[暗房](#暗房选片分组)(`/culling`)中打开方案。
+- **`/culling` 上的方案模式。** `ui_show_culling_plan`(由 `auto_cull` 在试运行时调用)把 `auto_cull` 方案载入暗房:分组、保留/剔除边框、放大镜和对比与手动选片相同,方案的保留照片已预先选中。横幅显示“助手方案 · 已确认 x/y · 退出”,每个分组带有一枚标签“#n · 理由 · 建议:保留 N / 剔除 M”,与方案不同的帧上会出现一个圆点。你按暗房的常规方式逐组确认:同样的空格键、倒计时和撤销;方案显示期间,严格程度、排序和阈值被禁用。点击**退出**,或更改分组、范围或排序,即退出方案模式;重新加载会丢弃它。照片库已超前于方案时,会显示过期提示。方案模式中的确认从不添加精选。参见[助手方案模式](VIEWER.md#助手方案模式)。
+- **读取你的进度。** 方案模式之外,`ui_get_context.culling` 为 `null`。在方案模式中它返回 `{plan_digest, groups_total, confirmed, pending, changed, untouched, truncated}`:`confirmed` 列出确认已生效的方案分组编号,`pending` 列出你已与方案不同但尚未确认的分组,`untouched` 统计其余分组,`changed` 以 `{type, group_id, number, keep_paths, reject_paths}` 列出每个保留照片与方案不同的分组(过大而无法一次返回的块会被截断,`culling.truncated` 为 `true`,真实数量保留在 `groups_total` 和各 `*_count` 字段中)。切勿重新决定已确认的分组。`ui_get_context` 还会返回 `culling_defaults`,即 `{profile, strictness}`:此浏览器中保存的选片配置,否则为页面默认的严格程度(100);`auto_cull` 在两者都未给出时使用它。
 - **日期。** 筛选工具(`auto_cull`、`list_culling_groups`、`suggest_culling_profile`)接受 ISO 日期(`2026-06-01`)、ISO 日期时间(`2026-06-01T08:30:00` 或用空格分隔)或 EXIF 形式(`2026:06:01 08:30:00`);仅有日期的 `date_to` 覆盖整天。按天粒度的工具(`library_stats`、`possible_faces`、`cull_report` 的计数和暗房集合均如此)只接受日期,带时间会以 `invalid_input` 拒绝。
 - 每行包含相机、镜头、光圈、快门速度、ISO、焦距和 `is_monochrome`。三个搜索工具上的 `fields` 可添加任何其他照片列（图像和嵌入数据除外），例如 `leading_lines_score`；`learned_score` 仅在按其排序时才有值。字节上限截短行数时，结果会增加 `returned`（以及 `next_offset` 或 `suggested_per_page`）。
 - `library_stats` 接受 `kind`（默认 `overview`：规模、各类型数量和评分概览）。概览包含 `basis`，说明每个总数的统计口径：`total_photos` 统计在 `date_from`/`date_to` 和类别范围内您可见的照片（未指定时为所有日期和类别），忽略隐藏开关并包含已拒绝的照片，而 `type_counts` 应用隐藏开关并忽略日期和类别过滤器。其他取值均为只读，返回统计页面的数据；过长的列表会在 50 项处截断并带 `truncated: true`：
@@ -87,21 +87,22 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 
 ## 控制已打开的标签页
 
-除数据工具外，服务器始终列出十二个 `ui_*` 工具，它们作用于你在浏览器中打开的 Facet 标签页：切换页面、修改筛选或选择，并读回你看到的内容。它们从不写入照片库数据，因此 `readonly` 令牌就够了。
+除数据工具外，服务器始终列出十三个 `ui_*` 工具，它们作用于你在浏览器中打开的 Facet 标签页：切换页面、修改筛选或选择，并读回你看到的内容。它们从不写入照片库数据，因此 `readonly` 令牌就够了。
 
 | 工具 | 作用 |
 |------|------|
 | `ui_navigate` | 前往某个页面（图库、人物、相册、统计等） |
 | `ui_set_gallery_filters` | 把补丁合并到图库的筛选和排序中（`null` 移除某个筛选，`replace: true` 从零开始） |
 | `ui_get_gallery_view` | 路由、当前筛选、匹配总数、前若干个可见照片路径以及已选数量 |
-| `ui_get_context` | 已打开的页面(路由)、图库状态(总数、已加载数量、是否显示固定列表)、所选照片数量,以及此处适用于你的令牌的 `actions`;还会返回 `focused`(用户所在的照片)和 `user_activity`(用户做过的操作),并接受 `activity_since`(见下文) |
+| `ui_get_context` | 已打开的页面(路由)、图库状态(总数、已加载数量、是否显示固定列表)、已选照片数量,以及此处适用于你的令牌的 `actions`;还有 `focused`(用户所在的照片)、`culling`(助手在 `/culling` 上的方案:已确认、待确认和已更改的分组)、`culling_defaults`(`{profile, strictness}`)和 `user_activity`(用户做过的操作),并接受 `activity_since`(见下文) |
 | `ui_open_photo` | 打开一张照片 |
-| `ui_show_photos` | 按此顺序精确显示这些 `paths`(最多 200 个)作为图库列表;无法访问的以 `missing` 返回。任何筛选变更都会替换该列表。可选的 `groups` 和 `marks`(每个路径一项)为照片编号并标记保留或移除;您可以在卡片上切换标记,`ui_get_context.review` 会返回您的选择;可选的 `labels`、`reasons` 和 `kinds`(每个路径一项)用于添加分组标题、每张照片的理由和分组类型 |
+| `ui_show_photos` | 按此顺序精确显示这些 `paths`(最多 200 个)作为图库列表;无法访问的会在 `missing` 中返回。任何筛选条件的更改都会替换该列表 |
 | `ui_select_photos` | 选择明确的 `paths`，或用 `select_view: true` 选择整个筛选视图，模式为 `replace`、`add` 或 `remove` |
 | `ui_clear_selection` | 清空选择 |
 | `ui_get_selection` | `scope`（`paths` 或 `view`）和 `count`，附带 `paths`；视图范围则附带 `filters` 和 `excluded_paths` |
 | `ui_next_page` | 加载图库的下一页 |
 | `ui_show_culling_group` | 在暗房中打开某个分组，由 `(type, group_id)` 标识（编辑账户） |
+| `ui_show_culling_plan` | 在暗房中打开一个 `auto_cull` 方案(预览中的 `plan_digest` 和 `request`,可选 `focus` 为分组编号),方案的保留照片已预先选中,供你调整并确认(编辑账户)。试运行时 `auto_cull` 会替你调用它。与已显示方案相同的摘要只会移动焦点;不同的摘要会替换方案,若你持有未确认的决定则被拒绝为 `unsaved_decisions`,若照片库自预览以来发生变化则拒绝为 `plan_changed` |
 | `ui_show_comparison` | 打开成对比较页面，可选指定类别和策略；它只负责打开页面，由您自己选出胜者 |
 
 工作方式：
@@ -117,7 +118,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 - 桥接先接受 WebSocket，再以关闭码而非 HTTP 状态码拒绝：端点或桥接关闭时为 4404（此后标签页保持断开，直到重新加载页面），`Origin` 缺失或不被允许时为 4403，会话缺失或被拒绝时为 4401。
 - 反向代理必须为 `/api/mcp/bridge` 转发 WebSocket 升级；参见[部署](DEPLOYMENT.md)。如果它改写了 `Host` 头，请把公开来源写入 `viewer.mcp.allowed_origins`（例如 `["https://photos.example.com"]`），因为页面的来源必须与主机匹配或在列表中。
 - 标签页注册表按进程保存，因此桥接需要单个 worker（默认值）。
-- **用户正在做什么。** `ui_get_context` 还会返回 `focused`,即 `{path}`:图库中键盘光标所在的照片、照片页中打开的照片或暗房中的当前照片(否则为 `null`;悬停不算,切换到助手窗口时保留,照片离开列表时清除),以及 `user_activity`,即 `{items, until, truncated}`:用户在标签页中做过的操作(评分、拒绝、收藏、审阅标记、应用审阅及其撤销(`review_apply`、`review_apply_undo`)、标签、相册、导航),最多 50 项、每项最多 20 个路径,保留最新的。它是无状态的:把上一次回答中的 `until` 作为 `activity_since` 传入,只获取更新的内容;不带它的两次调用返回相同的项。助手自己的写入和它自己的 `ui_*` 导航从不列出。该日志存放在标签页内存中,重新加载后丢失。标签页保留最近 500 个操作。
+- **用户正在做什么。** `ui_get_context` 还会返回 `focused`,即 `{path}`:图库中键盘光标所在的照片、照片页中打开的照片或暗房中的当前照片(否则为 `null`;悬停不算,切换到助手窗口时保留,照片离开列表时清除),以及 `user_activity`,即 `{items, until, truncated}`:用户在标签页中做过的操作(评分、拒绝、收藏、暗房中的确认和跳过(`cull_confirm`、`cull_skip`)、标签、相册、导航),最多 50 项、每项最多 20 个路径,保留最新的。它是无状态的:把上一次回答中的 `until` 作为 `activity_since` 传入,只获取更新的内容;不带它的两次调用返回相同的项。助手自己的写入和它自己的 `ui_*` 导航从不列出。该日志存放在标签页内存中,重新加载后丢失。标签页保留最近 500 个操作。
 
 补充说明：
 
@@ -134,7 +135,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 
 助手通过写入工具更改照片时,您已打开的 Facet 标签页无需重新加载即可同步。
 
-- **哪些内容会刷新。** 图库原地更新有变化的卡片,保留助手的复核固定列表及其标记,并移除从图库中删除的照片(`delete_photos`)。被 `cull_apply` 移动或移入回收站的照片仍保留其图库记录,因此会留在固定的复核列表中,而隐藏已拒绝照片的视图(默认设置)本来就会隐藏它。无法指明具体照片的写入(见下文)会改为重新加载视图,并在新数据到达前保持当前行和您的选择显示在屏幕上,因此网格不会变空。语义搜索和相似照片视图会刷新已显示的照片,从不移除任何照片,对无法指明具体照片的写入也是如此。照片页面会重新获取该照片(照片从图库中删除时会返回上一页)。暗房(`/culling`)原地更新拒绝、收藏和评分,显示“已拒绝”标记并保留您自己的决定;遇到无法界定范围的更改时,仅在没有任何风险时才重新加载,否则显示一个“重新加载”横幅,直到您重新加载才会消失。
+- **哪些内容会刷新。** 图库原地更新有变化的卡片,保留助手的固定列表,并移除从图库中删除的照片(`delete_photos`)。被 `cull_apply` 移动或移入回收站的照片仍保留其图库记录,因此会留在固定列表中,而隐藏已拒绝照片的视图(默认设置)本来就会隐藏它。无法指明具体照片的写入(见下文)会改为重新加载视图,并在新数据到达前保持当前行和您的选择显示在屏幕上,因此网格不会变空。语义搜索和相似照片视图会刷新已显示的照片,从不移除任何照片,对无法指明具体照片的写入也是如此。照片页面会重新获取该照片(照片从图库中删除时会返回上一页)。暗房(`/culling`)原地更新拒绝、收藏和评分,显示“已拒绝”标记并保留您自己的决定;遇到无法界定范围的更改时,仅在没有任何风险时才重新加载,否则显示一个“重新加载”横幅,直到您重新加载才会消失。
 - **每一波只提示一次。** 更改会被合并(400 毫秒尾部防抖,最长 2 秒),只显示一条“助手更改了 N 张照片”的提示。
 - **每次助手调用对应一条记录。** 写入多张照片的一次调用在活动面板中只出现一次,标签为助手工具名称的你所用语言译文(没有标签的工具显示原始名称),整次调用的照片合并计数。超过 200 张时,该条记录不列出任何照片,视图会重新加载,且没有 **显示照片** 按钮。应用 `auto_cull` 之后,**显示照片** 会固定它所拒绝的照片(最多 200 张)。
 - **哪些写入。** 评分、收藏、拒绝、标签、说明、相册成员、筛选整理、删除、序列与类别的修正、人脸指派、清除垃圾标记以及暗房确认。读取、试运行、被拒绝的写入、创建相册、导出元数据和扫描不会触发。超时的写入(`outcome_unknown`)仍会刷新,因为该写入可能已经生效;此刻仍在运行的写入会在下一次刷新或重新加载时显示。
@@ -250,13 +251,14 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 - **页面通过缩短每个分组的 `photos` 列表来适应 `max_bytes`，绝不会丢弃分组。** `photo_count` 仍是真实大小，`photos_truncated` 标记列表被截断的分组，`has_more` 表示后面是否还有一页。
 - **包围曝光、全景和 HDR 全景整组保留。** 在 `confirm_culling_groups` 中，这些类型的 `keep_paths` 必须等于 `paths`（否则 `invalid_input`），`auto_cull` 也从不拆分它们。
 - **空的 `keep_paths` 会淘汰该分组的每一帧。** 此时第一次调用返回 `confirmation_required` 并附带一个 `confirm` 值；先展示给用户，再带上该值重复调用。若批量调用在 `forbidden_level`、`library_busy` 或 `rate_limited` 处停止，会报告已完成的分组。
-- **`auto_cull` 默认只预览**,返回每组的保留与拒绝划分,以及一个 `confirm` 值(仅在还有内容待拒绝时)。每次调用都会规划整个范围,并按完整分组分页返回(路由按 200 张照片分页,但单个更大的分组会独占一页,工具为适应结果大小可能返回更少的分组):用上一次的 `next_cursor` 作为 `cursor`、并用 cursor 为 0 那一页的 `plan_digest` 作为 `plan_digest`(`cursor` > 0 时必填)重复调用,直到 `next_cursor` 为 `null`。自第一页以来已变化的方案会以 `confirmation_required` 拒绝:请从 cursor 0 重新开始。每一行带有全方案范围的 `number`,`kept` 和 `rejected` 涵盖完整方案减去用户已在标签页中应用的照片(标签页以其已应用的内容作出答复后 `totals_exclude_applied` 即为 `true`,即使一张也没有;标签页未答复或其列表不可用时为 `false`,此时总数包含它们;所有保留照片都已应用的分组按整体已应用计)。整个日期范围请在一次调用中筛选,不要按月拆分。
+- **`auto_cull` 默认只预览**,返回每组的保留与拒绝划分,以及一个 `confirm` 值(仅在还有内容待拒绝时)。每次调用都会规划整个范围,并按完整分组分页返回(路由按 200 张照片分页,但单个更大的分组会独占一页,工具为适应结果大小可能返回更少的分组):用上一次的 `next_cursor` 作为 `cursor`、并用 cursor 为 0 那一页的 `plan_digest` 作为 `plan_digest`(`cursor` > 0 时必填)重复调用,直到 `next_cursor` 为 `null`。自第一页以来已变化的方案会以 `confirmation_required` 拒绝:请从 cursor 0 重新开始。每一行带有全方案范围的 `number`,`kept` 和 `rejected` 涵盖完整方案。整个日期范围请在一次调用中筛选,不要按月拆分。
 - **一个 `confirm` 覆盖完整方案**(有效期 300 秒,仅可使用一次)。应用时会重新计算方案,若自预览以来已变化,则以 `confirmation_required` 拒绝。与您在图库中进行的同样筛选不同,助手做出的拒绝从不进入个人排序器。`confirm` 仅在 cursor 为 0 的那一页签发。应用只返回计数(`groups_processed`、`kept`、`rejected`、`highlights_added`)。
-- **覆盖。** `keep_paths` 和 `remove_paths`(各最多 1000 个)覆盖方案中的单个帧。两者都省略则使用已打开标签页中的标记(见下一条);只要传入其中一个,就只用你的列表,绝不与标签页的标记合并。在发出 `confirm` 的试运行和应用时传入相同的覆盖。不在方案中的路径会被忽略,并作为 `ignored_overrides` 报告(前 20 个,附 `ignored_overrides_count`)。移除方案在包围曝光、全景或 HDR 全景中保留的帧、让某个分组没有保留的照片、或在两个列表中都列出同一路径,会以 `invalid_input` 拒绝并指出相关路径或分组;移除方案本来就拒绝的帧则不起作用。成组规则适用于完全由同一种成组类型构成的分组:混有普通帧和成组帧的分组不会整组保留,其帧可以像任何连拍一样被覆盖。
-- **来自标签页的用户标记。** 在两个列表都未给出、桥接开启且有标签页打开时,`auto_cull` 会在第一页从标签页读取固定列表的审阅标记,并在后续页面复用(页与页之间的切换不会改变任何内容)。结果以 `{keep, remove, dropped}` 报告 `overrides_from_tab`。无法应用的标记会被丢弃并列在 `dropped` 中,而不是让调用失败:同一路径同时在两个列表中、对包围曝光、全景或 HDR 全景的帧标记移除、或会让某个分组没有保留照片的移除。达到标签页 1000 个路径上限的列表不可信:此时 `overrides_from_tab` 为 `{skipped: "truncated"}`。页面内代理会随调用一起发送它的标记(`review_snapshot`),而不是去询问桥接。没有标签页、桥接关闭或标签页过旧时:方案不带标记运行。 `keep` 与 `remove` 只统计把照片移出计划一侧的标记:重复计划的标记、针对计划之外照片的标记以及被丢弃的标记都不计入。固定了审阅时,页面内代理总是发送你的标记快照,即使没有任何标记;某个列表超过 1000 时带上 `truncated`:预览之后你清除或翻转的标记会在应用时被采纳,而不是被拒绝。 用户在标签页中用 **应用** 应用过的照片总是被排除,即使给出了显式的 `keep_paths` / `remove_paths`(这种调用形式只从标签页读取已应用的照片,从不读取其待处理标记),`overrides_from_tab.applied`(预览的 `kept` / `rejected` 会将它们排除) 会统计它们;如果标签页的已应用列表无法完整读取,调用会以 `confirmation_required` 被拒绝。如果预览之后因为应用了分组而使计划发生变化,应用同样会以 `confirmation_required` 被拒绝:请用 `dry_run=true` 重新预览,新的预览会排除已应用的分组。
-- **如果用户在预览与应用之间做了更改。** 应用时会与预览比对。自预览以来用户更改过评分、收藏或拒绝状态、或翻转过标记的照片会被排除,并作为 `skipped_user_changed` 报告(前 50 个路径,附 `skipped_user_changed_count`);变得没有保留照片的分组整组跳过,并计入 `skipped_user_changed_groups`。工具把翻转的标记作为 `skip_paths` 发送(最多 1000 个,不计入方案摘要)。按照片跳过仅在未给出 `keep_paths` 与 `remove_paths` 时适用;给出显式列表时,应用会重新执行试运行,任何方案变化(包括手动拒绝)都会被拒绝。预览与应用之间任何人写入的评分、收藏或拒绝(包括助手自己的写入)都算作更改。若预览使用了标签页的标记而应用时无法重新读取(或更改过多),应用会以 `confirmation_required` 拒绝,必须重新预览。无法由这些照片解释的方案变化仍以 `confirmation_required` 拒绝。当服务器不再持有该预览(超过 15 分钟、被淘汰或在另一个进程中)时,回答会给出 `state_guard: "unavailable"`,并适用全有或全无的拒绝。该保护仅适用于助手的请求;命令行 `--auto-cull` 不变。 保护机制最多记住所有页面合计 12000 张照片的计划;更大的计划不会被记住,预览会给出 `state_guard: "unavailable"`,并适用全有或全无的拒绝。
+- **覆盖。** `keep_paths` 和 `remove_paths`(各最多 1000 个)覆盖方案中的单帧。在签发 `confirm` 的试运行和应用时传入相同的覆盖。不在方案中的路径会被忽略,并以 `ignored_overrides` 报告(前 20 个,附 `ignored_overrides_count`)。移除方案在包围曝光、全景或 HDR 全景组中保留的帧、使某个分组没有保留照片,或把同一路径同时列入两个列表,都会被拒绝为 `invalid_input`,并指明相关路径或分组;移除方案本来就剔除的帧则不起作用。成组规则适用于完全由单一序列类型构成的分组:把普通帧与序列帧混合的分组不会整体保留,所以其中的帧可以像任何连拍一样被覆盖。
+- **应用不会读回用户的调整。** 应用从不读取标签页。要尊重用户对方案所做的更改,请读取 `ui_get_context.culling.changed`,并把这些分组的 `keep_paths` / `reject_paths` 作为 `keep_paths` / `remove_paths` 传给下一次试运行及其应用(两次的列表必须相同)。在标签页中已确认的分组会离开方案:方案摘要随之改变,因此待处理的 `confirm` 会被拒绝为 `confirmation_required`,你需要重新预览;新的预览不再包含已确认的分组,你也绝不要重新决定它们。
+- **如果用户在预览与应用之间改动了内容。** 应用会与预览比对。用户自预览以来更改了评分、收藏或拒绝状态的照片会被排除,并以 `skipped_user_changed` 报告(前 50 个路径,附 `skipped_user_changed_count`);没有保留照片的分组会被整体跳过,并计入 `skipped_user_changed_groups`。逐照片的排除仅在既未给出 `keep_paths` 也未给出 `remove_paths` 时适用;给出显式列表时,应用会重新运行试运行,方案的任何变化(包括手动拒绝)都会被拒绝。任何人在预览与应用之间写入的评分、收藏或拒绝(包括助手自己的写入)都算作更改。无法由这些照片解释的方案变化仍会被拒绝为 `confirmation_required`。当服务器不再保存该预览(超过 15 分钟、被淘汰,或由另一进程持有)时,答复会给出 `state_guard: "unavailable"`,并适用全有或全无的拒绝。该保护只覆盖助手的请求;命令行 `--auto-cull` 不变。该保护最多记住所有页面合计 12000 张照片的方案;更大的方案不会被记住,预览会给出 `state_guard: "unavailable"`,并适用全有或全无的拒绝。
 - **`scope_dependent_kinds`** 列出成员取决于日期范围或候选池的分组类型(`similar`、`scene`,开启 `trim_brackets` 时还有 `bracket`),并附说明:请在一次调用中筛选整个范围。连拍和全景不随范围变化,包围曝光在 `trim_brackets` 关闭时也不随范围变化。
-- **`show`**(默认 `true`,可配合 `tab_id`)。试运行时,当前页会固定到您打开的标签页中,带有分组编号和保留/移除标记,结果包含 `shown_in_tab`。在卡片上切换标记;助手通过 `ui_get_context.review` 读取。显示失败绝不会使调用失败。`shown_in_tab.missing` 最多列出 20 个路径,真实数量见 `missing_count`。对回复而言过大的复核结果会被 `ui_get_context` 截断并带 `review.truncated: true`,真实数量仍在 `review.keep_count` / `review.remove_count` 中。 在已标记的卡片上按 `K` 或 `R`,即可不用鼠标设置保留或移除。 应用的实时更新(在页面内则是 `/api/mcp/call` 响应的 `show_paths`)携带被拒绝的照片,最多 200 张,以便活动记录的 **显示照片** 可以固定它们;工具结果本身只有计数。未拒绝任何照片的应用不提供 **显示照片**,试运行不会触发实时更新。 `review.truncated` 始终存在:当标签页自身每个列表 1000 的上限或服务器的大小裁剪截断了某个列表时为 `true`,而 `keep_count` / `remove_count` 在其为 `true` 时始终包含真实大小。
+- **`show`**(默认 `true`,可配合 `tab_id`)。试运行时,方案通过 `ui_show_culling_plan` 在用户的 `/culling` 页面中打开(见上文 `/culling` 上的方案模式),结果带有 `shown_in_tab`:`{"applied": true, ...}` 或 `{"applied": false, "reason"}`,其中包含显示失败的各种原因,以及方案特有的 `unsaved_decisions`(用户在页面上持有未确认的决定)、`plan_changed`(照片库自预览以来发生变化)和 `too_large`(覆盖过大,无法发送到标签页)。只有第一页(`cursor` 为 0)会加载方案;`cursor` > 0 的页面只会把标签页的焦点移到该页的第一个分组。显示失败不会使调用失败。应用从不显示。应用的实时更新(以及在页面内,`/api/mcp/call` 响应的 `show_paths`)携带它拒绝的照片,最多 200 张,以便活动条目的**显示照片**可以固定它们;工具结果本身仍只有计数。没有拒绝任何照片的应用不提供**显示照片**,试运行也不发出实时更新。
+- **取自标签页的设置。** 既未给出 `strictness` 也未给出 `profile` 时,`auto_cull` 使用已打开标签页的 `/culling` 页面起始所用的设置:此浏览器中保存的选片配置,否则为页面默认的严格程度(100)。没有可达的标签页时,使用服务器的 `auto_cull.default_strictness`。结果以 `knobs_from_tab`(`{profile}` 或 `{strictness}`)报告所用设置;应用沿用它所确认预览的设置。`ui_get_context.culling_defaults` 显示同一对值。
 - 调用 `ui_show_culling_group` 可在用户已打开的标签页中向其展示某个分组（参见[控制已打开的标签页](#控制已打开的标签页)）。
 
 ## 结果、限制与错误
@@ -283,5 +285,5 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 - 速率限制和认证失败计数器保存在各进程内存中；使用 `viewer.py --workers N` 时每个 worker 各自计数。
 - 标签页注册表保存在单个进程的内存中。依赖 `ui_*` 工具时请使用单个 worker（`viewer.py --workers 1`，默认值）；有多个 worker 时，调用可能落到不认识你标签页的进程并返回 `no_tab`。
 - 每位用户最多可同时连接 8 个标签页；打开第 9 个会关闭最旧的一个。
-- 标签页不会向外部助手推送任何内容:助手只能通过调用 `ui_get_context`(或自己读取标记的 `auto_cull`)了解用户的标记和活动。**复制给助手** 是粘贴式交接,而不是通知。
+- 标签页不会向外部助手推送任何内容:助手只能通过调用 `ui_get_context` 了解方案进度和用户活动。`auto_cull` 的应用不会读取标签页。
 - `auto_cull` 的状态保护为每个用户保留 8 个方案、15 分钟;工具的预览记忆与之分开,持续 300 秒,所有用户共计 64 条。两者都存放在单个进程的内存中。使用多个 worker 时,应用可能落到不持有它们的进程上;此时回答会给出 `state_guard: "unavailable"`。
