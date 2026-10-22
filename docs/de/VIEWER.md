@@ -836,9 +836,9 @@ Produktions-Builds): Sie kann auf dem Startbildschirm installiert werden, die Ap
 lädt offline, und bis zu 1000 Vorschaubilder werden 7 Tage lang LRU-zwischengespeichert
 (Größen über 640 px, die Renderings der Dunkelkammer mit bis zu 1920 px, umgehen ihn und nutzen den Browser-Cache).
 API-Antworten werden nie zwischengespeichert (außer i18n-Bundles mit einer Aktualitätsstrategie),
-und das Abmelden leert den Vorschaubild-Cache des Service Workers, sodass Mehrbenutzer-Setups, die sich einen
-Browser teilen, keine gespeicherten Vorschaubilder zwischen Konten preisgeben können (die Renderings in voller Größe
-der Dunkelkammer bleiben im HTTP-Cache des Browsers, den das Abmelden nicht leert). Eine Snackbar bietet
+und das Abmelden leert den Vorschaubild-Cache des Service Workers, aber nicht den eigenen HTTP-Cache des
+Browsers, in dem jedes vom Viewer ausgelieferte Bild (gespeicherte Vorschaubilder, die Renderings der Dunkelkammer mit bis zu 1920 px,
+Bilder in voller Auflösung) bis zu einem Jahr verbleiben kann; Konten, die einander nicht sehen dürfen, sollten sich daher kein Browserprofil teilen. Eine Snackbar bietet
 einen Neuladen an, wenn eine neue Version bereitgestellt wurde.
 
 ## Mobil

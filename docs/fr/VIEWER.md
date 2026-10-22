@@ -839,9 +839,9 @@ production uniquement) : elle peut être installée sur l'écran d'accueil, le s
 charge hors ligne, et jusqu'à 1000 vignettes sont mises en cache LRU pendant 7 jours (les tailles au-delà de 640 px,
 les rendus de la chambre noire (jusqu'à 1920 px), le contournent et s'appuient sur le cache du navigateur). Les réponses API
 ne sont jamais mises en cache (sauf les bundles i18n avec une stratégie de fraîcheur), et la déconnexion
-efface le cache des vignettes du service worker afin que les configurations multi-utilisateurs partageant un navigateur ne
-puissent pas fuiter de vignettes stockées entre les comptes (les rendus pleine taille de la chambre noire
-restent dans le cache HTTP du navigateur, que la déconnexion n'efface pas). Une infobulle propose un rechargement lorsqu'une nouvelle
+efface le cache des vignettes du service worker, mais pas le cache HTTP propre du navigateur, où
+toute image servie par le visualiseur (vignettes stockées, rendus de la chambre noire jusqu'à 1920 px,
+images pleine résolution) peut rester jusqu'à un an ; les comptes qui ne doivent pas voir les photos les uns des autres ne doivent donc pas partager un profil de navigateur. Une infobulle propose un rechargement lorsqu'une nouvelle
 version a été déployée.
 
 ## Mobile

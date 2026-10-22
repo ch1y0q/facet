@@ -837,9 +837,9 @@ builds de produção): ele pode ser instalado na tela inicial, o app shell carre
 offline, e até 1000 miniaturas são armazenadas em cache LRU por 7 dias (tamanhos acima de 640 px,
 os renders de até 1920 px da câmara escura, o ignoram e usam o cache do navegador). As respostas da API
 nunca são armazenadas em cache (exceto os bundles de i18n com uma estratégia de atualização), e o logout
-limpa o cache de miniaturas do service worker para que configurações multiusuário compartilhando um navegador não vazem
-miniaturas armazenadas entre contas (os renders em tamanho completo da câmara escura permanecem no cache HTTP do navegador,
-que o logout não limpa). Uma snackbar oferece um recarregamento quando uma nova versão é
+limpa o cache de miniaturas do service worker, mas não o cache HTTP próprio do navegador, onde
+toda imagem servida pelo visualizador (miniaturas armazenadas, renders de até 1920 px da câmara escura,
+imagens em resolução total) pode permanecer por até um ano, portanto contas que não devem ver as fotos umas das outras não devem compartilhar um perfil do navegador. Uma snackbar oferece um recarregamento quando uma nova versão é
 implantada.
 
 ## Mobile

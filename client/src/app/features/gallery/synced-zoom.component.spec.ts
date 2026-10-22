@@ -396,14 +396,20 @@ describe('SyncedZoomComponent', () => {
       const img = imgEl(f);
       Object.defineProperty(img, 'complete', { value: state.complete, configurable: true });
       Object.defineProperty(img, 'naturalWidth', { value: state.naturalWidth, configurable: true });
-      Object.defineProperty(img, 'currentSrc', { value: new URL(state.currentSrc, document.baseURI).href, configurable: true });
+      Object.defineProperty(img, 'currentSrc', {
+        get: () => (state.currentSrc === 'follow-src'
+          ? new URL(img.getAttribute('src')!, document.baseURI).href
+          : new URL(state.currentSrc, document.baseURI).href),
+        configurable: true,
+      });
     }
 
     it('does not hide the pane on a step onto an image the browser already holds', () => {
       const f = makeProgressive();
       browserLoaded(f, '/thumb-a.jpg');
-      // Cached: complete, decoded and already resolved to the new frame's URL when the step lands.
-      stubImage(f, { complete: true, naturalWidth: 640, currentSrc: '/thumb-b.jpg' });
+      // Cached: complete and decoded; currentSrc tracks the element's own src attribute, so only a
+      // read made after [src] was applied can match the new frame's URL.
+      stubImage(f, { complete: true, naturalWidth: 640, currentSrc: 'follow-src' });
       setInputs(f, { src: '/render-b.jpg', placeholderSrc: '/thumb-b.jpg', frameKey: 'b' });
       TestBed.tick();
       expect(imgEl(f).classList.contains('opacity-0')).toBe(false);

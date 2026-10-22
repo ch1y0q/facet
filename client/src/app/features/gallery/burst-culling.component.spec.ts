@@ -3621,7 +3621,6 @@ describe('BurstCullingComponent progressive darkroom frames (rendered)', () => {
     fixture.detectChanges();
     const farSide = FakeImage.instances.find(i => i.src === render('/p0.jpg'))!;
     const stepTarget = FakeImage.instances.find(i => i.src === render('/p2.jpg'))!;
-    const created = FakeImage.instances.length;
 
     component['lightboxIndex'].set(2);
     fixture.detectChanges();
@@ -3634,8 +3633,22 @@ describe('BurstCullingComponent progressive darkroom frames (rendered)', () => {
     expect(farSide.src).toBe('');
     expect(farSide.onload).toBeNull();
     expect(farSide.onerror).toBeNull();
-    // Nothing new was requested for the frame stepped onto.
-    expect(FakeImage.instances.slice(created).map(i => i.src)).not.toContain(render('/p2.jpg'));
+  });
+
+  it('does not create a second image for a render still in flight when stepping back', () => {
+    open(1);
+    component['onSharpLoaded'](render('/p1.jpg'));
+    fixture.detectChanges();
+    const p2Render = FakeImage.instances.find(i => i.src === render('/p2.jpg'))!;
+    component['lightboxIndex'].set(2);
+    fixture.detectChanges();
+    component['lightboxIndex'].set(1);
+    fixture.detectChanges();
+    const live = (url: string) => FakeImage.instances.filter(i => i.src === url);
+    for (const url of new Set(FakeImage.instances.map(i => i.src).filter(u => u !== ''))) {
+      expect(live(url), url).toHaveLength(1);
+    }
+    expect(live(render('/p2.jpg'))[0]).toBe(p2Render);
   });
 
   it('keeps the stored thumbnail in flight for the frame stepped onto', () => {

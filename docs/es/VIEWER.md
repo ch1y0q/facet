@@ -837,9 +837,9 @@ de producción): se puede instalar en la pantalla de inicio, el shell de la apli
 sin conexión, y hasta 1000 miniaturas se almacenan en caché LRU durante 7 días (los tamaños por encima de 640 px,
 los renders de hasta 1920 px del cuarto oscuro, lo omiten y usan la caché del navegador). Las respuestas de la API
 nunca se almacenan en caché (excepto los paquetes de i18n con una estrategia de frescura), y al cerrar sesión
-se borra la caché de miniaturas del service worker para que las configuraciones multiusuario que comparten un navegador no puedan filtrar
-miniaturas almacenadas entre cuentas (los renders a tamaño completo del cuarto oscuro permanecen en la caché HTTP del navegador,
-que cerrar sesión no borra). Una barra de notificación ofrece recargar cuando se ha desplegado una nueva versión.
+se borra la caché de miniaturas del service worker, pero no la caché HTTP propia del navegador, donde
+cada imagen que sirvió el visor (miniaturas almacenadas, los renders de hasta 1920 px del cuarto oscuro,
+imágenes a resolución completa) puede permanecer hasta un año, por lo que las cuentas que no deben ver las fotos de las demás no deben compartir un perfil del navegador. Una barra de notificación ofrece recargar cuando se ha desplegado una nueva versión.
 
 ## Móvil
 

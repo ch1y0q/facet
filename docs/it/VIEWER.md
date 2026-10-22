@@ -838,10 +838,10 @@ produzione): può essere installata nella schermata principale, lo shell dell'ap
 offline e fino a 1000 miniature vengono memorizzate in cache LRU per 7 giorni (le dimensioni oltre 640 px,
 i render della camera oscura (fino a 1920 px), lo saltano e usano la cache del browser). Le risposte
 API non vengono mai memorizzate in cache (tranne i bundle i18n con una strategia di
-aggiornamento), e la disconnessione cancella la cache delle miniature del service worker in modo che le
-configurazioni multiutente che condividono un browser non possano far trapelare le miniature memorizzate
-tra gli account (i render a dimensione piena della camera oscura restano nella cache HTTP del browser,
-che la disconnessione non cancella). Una snackbar offre un ricaricamento quando è stata distribuita una nuova versione.
+aggiornamento), e la disconnessione cancella la cache delle miniature del service worker, ma non la cache HTTP propria
+del browser, dove ogni immagine servita dal visualizzatore (miniature memorizzate, render della camera oscura fino a 1920 px,
+immagini a piena risoluzione) può restare fino a un anno, quindi gli account che non devono vedere le foto degli altri non devono condividere un profilo del browser.
+Una snackbar offre un ricaricamento quando è stata distribuita una nuova versione.
 
 ## Mobile
 
