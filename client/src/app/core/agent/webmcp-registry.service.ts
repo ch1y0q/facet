@@ -6,6 +6,7 @@ import { CompareFiltersService } from '../../features/comparison/compare-filters
 import { validateAgainstSchema, withDefaults } from './schema-validate';
 import { UserActivityJournal } from './user-activity-journal.service';
 import { createUiToolHandlers } from './ui-tool-handlers';
+import { AssistantCullPlanService } from './assistant-cull-plan.service';
 import { ViewActionRegistry } from './view-action-registry.service';
 import {
   UI_TOOL_ERROR_CODES,
@@ -65,6 +66,7 @@ export class WebMcpToolRegistry {
     actions: () => this.actions,
     compareFilters: inject(CompareFiltersService),
     journal: inject(UserActivityJournal),
+    plan: inject(AssistantCullPlanService),
   });
   private readonly journal = inject(UserActivityJournal);
   private loading: Promise<void> | null = null;

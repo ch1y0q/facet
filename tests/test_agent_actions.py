@@ -183,6 +183,7 @@ class TestAvailableActions:
         rows = tool_rows(data)
         assert data["tab"]["route"] == "/culling"
         assert "confirm_culling_groups" in rows["work_darkroom"]
+        assert "ui_show_culling_plan" in rows["work_darkroom"]
         assert "edit_many" not in rows and "batch_set_rating" not in {n for r in rows.values() for n in r}
 
     def test_a_selection_in_the_gallery_lists_the_editing_jobs(self, agent_app, fake_tab):

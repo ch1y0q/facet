@@ -2744,6 +2744,7 @@
       "ui_clear_selection": "Selezione annullata",
       "ui_next_page": "Pagina successiva aperta",
       "ui_show_culling_group": "Gruppo di selezione mostrato",
+      "ui_show_culling_plan": "Piano di selezione automatica mostrato nella pagina di selezione",
       "ui_show_comparison": "Confronto mostrato"
     }
   }

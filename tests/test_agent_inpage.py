@@ -678,28 +678,7 @@ class TestChangedPaths:
 
 
 class TestAutoCullReviewSnapshot:
-    """C1 in-page: the caller tab's `ui_get_context.review` rides the call; a bridge tab is never read."""
-
-    def test_the_snapshot_is_used_and_the_bridge_is_never_queried(self, agent_app, fake_tab, seed_photos_prefix,
-                                                                   monkeypatch):
-        from tests import test_agent_culling as culling
-        seed_photos_prefix(culling.PREFIX, culling.ROWS)
-        nonce.reset()
-        env = agent_app("legacy")
-        headers = env.login(edition=True)
-        tab = fake_tab(env, headers["Authorization"].split(" ", 1)[1])
-        seen = []
-        intercept_internal_call(monkeypatch, lambda tool, kw: seen.append((tool, kw)) and None)
-        body = {"tool": "auto_cull", "arguments": {"group_by": "burst", "strictness": 0, **culling.SCOPE},
-                "review_snapshot": {"keep": [culling.BURST_PATHS[2]], "remove": [culling.BURST_PATHS[1]]}}
-        resp = env.client.post("/api/mcp/call", json=body, headers={**headers, SESSION_HEADER: "tab-a"})
-        assert resp.status_code == 200, resp.text
-        result = resp.json()
-        assert result["ok"], result
-        sent = next(kw["json"] for tool, kw in seen if tool == "culling.auto")
-        assert sent["keep_paths"] == [culling.BURST_PATHS[2]] and sent["remove_paths"] == [culling.BURST_PATHS[1]]
-        assert result["overrides_from_tab"] == {"keep": 1, "remove": 1}
-        assert not [c for c in tab.calls if c["tool"] == "ui_get_context"]
+    """In-page: the caller tab's review snapshot is no longer read by auto_cull (Step 4 removes the field)."""
 
     def test_no_snapshot_in_page_means_no_marks_and_no_bridge_read(self, agent_app, fake_tab, seed_photos_prefix,
                                                                     monkeypatch):
@@ -712,59 +691,6 @@ class TestAutoCullReviewSnapshot:
         result = call(env, headers, "auto_cull", {"group_by": "burst", "strictness": 0, **culling.SCOPE})
         assert result["ok"], result
         assert "overrides_from_tab" not in result
-        assert not [c for c in tab.calls if c["tool"] == "ui_get_context"]
-
-    def test_an_empty_but_present_snapshot_on_the_apply_honours_the_flips(self, agent_app, seed_photos_prefix):
-        """The tab cleared every mark after the preview: the apply carries ``{keep: [], remove: []}`` (not None)
-        and ``apply_preview`` treats that as the user's current marks, so the flips are honoured, not refused."""
-        from tests import test_agent_culling as culling
-        seed_photos_prefix(culling.PREFIX, culling.ROWS)
-        nonce.reset()
-        env = agent_app("legacy")
-        headers = env.login(edition=True)
-        args = {"group_by": "burst", "strictness": 0, **culling.SCOPE}
-        b2, b3 = culling.BURST_PATHS[1], culling.BURST_PATHS[2]
-        resp = env.client.post("/api/mcp/call", json={
-            "tool": "auto_cull", "arguments": args, "review_snapshot": {"keep": [b3], "remove": [b2]}},
-            headers={**headers, SESSION_HEADER: "tab-a"})
-        assert resp.status_code == 200, resp.text
-        preview = resp.json()
-        assert preview["ok"] and preview["confirm"] and preview["overrides_from_tab"] == {"keep": 1, "remove": 1}, preview
-        resp = env.client.post("/api/mcp/call", json={
-            "tool": "auto_cull", "arguments": {**args, "dry_run": False, "confirm": preview["confirm"]},
-            "review_snapshot": {"keep": [], "remove": []}}, headers={**headers, SESSION_HEADER: "tab-a"})
-        assert resp.status_code == 200, resp.text
-        applied = resp.json()
-        assert applied["ok"], applied
-        assert applied["data"]["skipped_user_changed_count"] == 2
-        assert culling._rejected() == set()
-
-    def test_an_applied_block_in_the_snapshot_becomes_the_skip_list(self, agent_app, fake_tab, seed_photos_prefix,
-                                                                     monkeypatch):
-        from tests import test_agent_culling as culling
-        seed_photos_prefix(culling.PREFIX, culling.ROWS)
-        nonce.reset()
-        env = agent_app("legacy")
-        headers = env.login(edition=True)
-        tab = fake_tab(env, headers["Authorization"].split(" ", 1)[1])
-        seen = []
-        intercept_internal_call(monkeypatch, lambda tool, kw: seen.append((tool, kw)) and None)
-        b2 = culling.BURST_PATHS[1]
-        args = {"group_by": "burst", "strictness": 0, **culling.SCOPE}
-        # Only the reject b2 is applied: applying the plan's sole keeper b1 too would drop the whole
-        # group from the apply, leaving nothing to reject and so no confirm to spend.
-        snapshot = {"keep": [], "remove": [], "applied": {"keep": [], "remove": [b2], "truncated": False}}
-        resp = env.client.post("/api/mcp/call", json={"tool": "auto_cull", "arguments": args,
-                                                      "review_snapshot": snapshot},
-                               headers={**headers, SESSION_HEADER: "tab-a"})
-        preview = resp.json()
-        assert preview["ok"] and preview["overrides_from_tab"] == {"applied": 1}, preview
-        resp = env.client.post("/api/mcp/call", json={
-            "tool": "auto_cull", "arguments": {**args, "dry_run": False, "confirm": preview["confirm"]},
-            "review_snapshot": snapshot}, headers={**headers, SESSION_HEADER: "tab-a"})
-        assert resp.json()["ok"], resp.json()
-        sent = [kw["json"] for tool, kw in seen if tool == "culling.auto"][-1]
-        assert sent["skip_paths"] == [b2] and sent["applied_paths"] == [b2]
         assert not [c for c in tab.calls if c["tool"] == "ui_get_context"]
 
     def test_the_request_model_documents_the_field(self):

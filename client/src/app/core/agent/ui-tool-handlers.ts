@@ -13,6 +13,7 @@ import {
 import { COMPARE_AB_TAB_INDEX, CompareFiltersService } from '../../features/comparison/compare-filters.service';
 import { ViewActionRegistry } from './view-action-registry.service';
 import { UserActivityJournal } from './user-activity-journal.service';
+import { AssistantCullPlanService, type CullPlanRequest } from './assistant-cull-plan.service';
 import { UiActionRow, UiToolError, UiToolHandler } from './ui-tool.types';
 
 export interface UiToolDeps {
@@ -26,7 +27,8 @@ export interface UiToolDeps {
   compareFilters: CompareFiltersService;
   /** What the user did in this tab; read by `ui_get_context`. */
   journal: UserActivityJournal;
-  /** The darkroom's store, for the focused photo. */
+  /** The assistant's culling plan: the pin `ui_show_culling_plan` sets and the read model `ui_get_context` reports. */
+  plan: AssistantCullPlanService;
 }
 
 /** The contract's cap on `ui_show_photos` paths (api/agent/ui_tools.py MAX_SHOW_PATHS). */
@@ -191,7 +193,7 @@ function stringList(value: unknown): string[] {
 }
 
 export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHandler> {
-  const { gallery, router, auth, viewActions, actions, compareFilters, journal } = deps;
+  const { gallery, router, auth, viewActions, actions, compareFilters, journal, plan } = deps;
 
   const requireGalleryView = (): void => {
     if (!isGalleryUrl(router.url)) {
@@ -509,7 +511,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
         gallery: inGallery
           ? { total: gallery.total(), loaded: gallery.photos().length, has_more: gallery.hasMore(), pinned }
           : null,
-        review: gallery.review(),
+        culling: plan.snapshot(),
         mounted_actions: viewActions.names(),
         level,
         actions: applicableActions(actions(), actionFacts(route, gallery.selectionCount(), pinned), level),
@@ -564,6 +566,42 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       const action = viewActions.get(name);
       if (!action) throw new UiToolError('no_active_view', 'The darkroom did not open.');
       return action(args);
+    },
+
+    /**
+     * Pins the assistant's culling plan and opens /culling on it. The tab reproduces the plan itself (the
+     * store posts `request` and `plan_digest` to `/culling/plan`), so no group data crosses the bridge.
+     * The same digest as the held pin only moves the focus: nothing is re-fetched or re-seeded. A different
+     * digest replaces the plan, which would throw away what the user decided but has not committed, so it
+     * is refused with `unsaved_decisions` first. A plan the library has moved past is `plan_changed`.
+     */
+    ui_show_culling_plan: async args => {
+      if (!auth.isEdition()) throw new UiToolError('forbidden_level', 'The darkroom needs an edition session.');
+      const digest = args['plan_digest'] as string;
+      const focus = typeof args['focus'] === 'number' ? args['focus'] : undefined;
+      if (plan.pin()?.digest === digest) {
+        if (focus !== undefined) plan.setFocus(focus);
+      } else {
+        if (plan.hasUnsavedDecisions()) {
+          throw new UiToolError('unsaved_decisions', 'The user has decisions on the darkroom they have not confirmed; ask them to confirm or leave them first.');
+        }
+        plan.setPin({ digest, request: args['request'] as CullPlanRequest, focusNumber: focus });
+      }
+      const name = 'ui_show_culling_group';
+      if (pathOf(router.url) !== '/culling' || !viewActions.get(name)) {
+        if (!await router.navigate(['/culling'])) {
+          plan.clear();
+          throw new UiToolError('forbidden_level', 'The tab refused to open the darkroom.');
+        }
+        await waitFor(() => viewActions.get(name) !== undefined);
+      }
+      const loaded = (): boolean => plan.pin()?.digest !== digest || plan.snapshot()?.plan_digest === digest;
+      if (!await waitFor(loaded)) throw new UiToolError('upstream_error', 'The plan did not load.');
+      const snapshot = plan.snapshot();
+      if (plan.pin()?.digest !== digest || !snapshot) {
+        throw new UiToolError('plan_changed', 'The library changed since the plan was previewed; preview again.');
+      }
+      return { route: '/culling', plan_digest: digest, groups_total: snapshot.groups_total };
     },
   };
 }

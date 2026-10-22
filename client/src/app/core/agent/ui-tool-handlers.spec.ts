@@ -19,6 +19,7 @@ import { CompareFiltersService } from '../../features/comparison/compare-filters
 import { ViewActionRegistry } from './view-action-registry.service';
 import { AssistantChangeBatch, AssistantChangesService } from './assistant-changes.service';
 import { UserActivityJournal } from './user-activity-journal.service';
+import { AssistantCullPlanService, type CullPlanEntryInput } from './assistant-cull-plan.service';
 import contractFile from './ui-tools.schema.json';
 import { UI_TOOL_ERROR_CODES, UiToolContractFile, UiToolEnvelope } from './ui-tool.types';
 
@@ -61,6 +62,7 @@ describe('UI tool registry and handlers', () => {
     auth: { isEdition: () => edition } as unknown as AuthService, viewActions, actions: () => [],
     compareFilters: TestBed.inject(CompareFiltersService),
     journal: TestBed.inject(UserActivityJournal),
+    plan: TestBed.inject(AssistantCullPlanService),
   });
 
   afterEach(() => localStorage.clear());
@@ -100,6 +102,7 @@ describe('UI tool registry and handlers', () => {
         auth: { isEdition: () => edition } as unknown as AuthService, viewActions, actions: () => [],
         compareFilters: TestBed.inject(CompareFiltersService),
         journal: TestBed.inject(UserActivityJournal),
+        plan: TestBed.inject(AssistantCullPlanService),
       });
       const mismatch = contractHandlerMismatch((contractFile as unknown as UiToolContractFile).tools, handlers);
       expect(mismatch).toEqual({ missingHandlers: [], missingContract: [] });
@@ -211,6 +214,7 @@ describe('UI tool registry and handlers', () => {
         gallery: store, router: realRouter, auth: { isEdition: () => false } as unknown as AuthService, viewActions, actions: () => [],
         compareFilters: TestBed.inject(CompareFiltersService),
         journal: TestBed.inject(UserActivityJournal),
+        plan: TestBed.inject(AssistantCullPlanService),
       });
       await expect(handlers['ui_navigate']({ route: '/stats' })).resolves.toEqual({ route: '/stats' });
     });
@@ -555,37 +559,6 @@ describe('UI tool registry and handlers', () => {
       expect(post).not.toHaveBeenCalled();
     });
 
-    it('returns the user review at the top level of ui_get_context, even off the gallery', async () => {
-      router.url = '/photo?path=a.jpg';
-      store.setReviewMark('/a.jpg', 'keep');
-      store.setReviewMark('/b.jpg', 'remove');
-      expect(await run('ui_get_context')).toMatchObject({
-        ok: true, data: { gallery: null, review: { keep: ['/a.jpg'], remove: ['/b.jpg'] } },
-      });
-    });
-
-    it('carries what the user applied under review.applied, not in the pending keep / remove lists', async () => {
-      router.url = '/photo?path=a.jpg';
-      store.setReviewMark('/b.jpg', 'remove');
-      store.setReviewMark('/c.jpg', 'keep');
-      store.appliedMarks.set(new Map([
-        ['/a.jpg', { mark: 'keep' as const, receiptId: 'r1' }],
-        ['/c.jpg', { mark: 'keep' as const, receiptId: 'r1' }],
-        ['/d.jpg', { mark: 'remove' as const, receiptId: 'r1' }],
-      ]));
-      expect(await run('ui_get_context')).toMatchObject({
-        ok: true,
-        data: {
-          review: {
-            keep: [],
-            remove: ['/b.jpg'],
-            applied: { keep: ['/a.jpg', '/c.jpg'], remove: ['/d.jpg'], truncated: false },
-            groups_applied: 0,
-          },
-        },
-      });
-    });
-
     it('is reported as pinned by ui_get_context', async () => {
       byPaths(['/a.jpg'], []);
       await run('ui_show_photos', { paths: ['/a.jpg'] });
@@ -704,20 +677,21 @@ describe('UI tool registry and handlers', () => {
           gallery: store, router: router as unknown as Router, auth: TestBed.inject(AuthService), viewActions, actions: () => [],
           compareFilters: TestBed.inject(CompareFiltersService),
           journal: TestBed.inject(UserActivityJournal),
+          plan: TestBed.inject(AssistantCullPlanService),
         })['ui_get_context'](since === undefined ? {} : { activity_since: since }) as
           { user_activity: { items: { kind: string; seq: number }[]; until: number; truncated: boolean } }).user_activity;
 
-      it('reads activity_since through the registry: the contract accepts it, and the review numbers ride along', async () => {
+      it('reads activity_since through the registry: the contract accepts it, and culling is null outside plan mode', async () => {
         await store.loadPhotos();
         await store.setRating('/a.jpg', 4);
-        const first = ((await run('ui_get_context')) as { data: { user_activity: { until: number; items: unknown[] }; review: Record<string, number> } }).data;
+        const first = ((await run('ui_get_context')) as { data: { user_activity: { until: number; items: unknown[] }; culling: unknown; review?: unknown } }).data;
         expect(first.user_activity.items).toHaveLength(1);
         const since = (await run('ui_get_context', { activity_since: first.user_activity.until })) as { ok: boolean; data: { user_activity: { items: unknown[]; until: number } } };
         expect(since.ok).toBe(true);
         expect(since.data.user_activity.items).toEqual([]);
         expect(since.data.user_activity.until).toBe(first.user_activity.until);
-        expect(first.review).toMatchObject({ groups_total: 0, groups_visited: 0, groups_changed: 0, groups_applied: 0 });
-        expect((first.review as unknown as { applied: unknown }).applied).toEqual({ keep: [], remove: [], truncated: false });
+        expect(first.culling).toBeNull();
+        expect(first).not.toHaveProperty('review');
         expect(await run('ui_get_context', { activity_since: -1 })).toMatchObject({ ok: false, error: 'invalid_input' });
         expect(await run('ui_get_context', { activity_since: 'x' })).toMatchObject({ ok: false, error: 'invalid_input' });
       });
@@ -917,6 +891,133 @@ describe('UI tool registry and handlers', () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+  });
+
+  describe('ui_show_culling_plan', () => {
+    const REQUEST = { group_by: 'burst' as const, strictness: 40 };
+    const entry = (number: number, id: number, paths: string[], keep: string[]): CullPlanEntryInput => ({
+      key: `${id}_burst`, type: 'burst', group_id: id, number, paths, keep_paths: keep,
+    });
+    let plan: AssistantCullPlanService;
+
+    /** Stand in for the darkroom: once /culling is requested it registers its action and loads the plan the pin names. */
+    const darkroomLoads = (outcome: 'landed' | 'stale'): void => {
+      navigate.mockImplementation(async (commands: string[]) => {
+        router.url = commands[0];
+        viewActions.register('ui_show_culling_group', async () => ({}));
+        const pin = plan.pin();
+        if (pin && outcome === 'landed') plan.register([entry(1, 5, ['/a.jpg', '/b.jpg'], ['/a.jpg'])], { total: 3, truncated: false });
+        if (pin && outcome === 'stale') plan.clear();
+        return true;
+      });
+    };
+
+    beforeEach(() => {
+      edition = true;
+      plan = TestBed.inject(AssistantCullPlanService);
+    });
+
+    it('is refused for a non-edition session and pins nothing', async () => {
+      edition = false;
+      expect(await run('ui_show_culling_plan', { plan_digest: 'd1', request: REQUEST })).toMatchObject({ ok: false, error: 'forbidden_level' });
+      expect(plan.pin()).toBeNull();
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('pins the digest and the request, opens /culling and answers once the plan loaded', async () => {
+      darkroomLoads('landed');
+      const result = await run('ui_show_culling_plan', { plan_digest: 'd1', request: REQUEST });
+      expect(result).toEqual({ ok: true, data: { route: '/culling', plan_digest: 'd1', groups_total: 3 } });
+      expect(navigate).toHaveBeenCalledWith(['/culling']);
+      expect(plan.pin()).toEqual({ digest: 'd1', request: REQUEST, focusNumber: undefined });
+    });
+
+    it('carries the requested focus on the new pin', async () => {
+      darkroomLoads('landed');
+      await run('ui_show_culling_plan', { plan_digest: 'd1', request: REQUEST, focus: 4 });
+      expect(plan.pin()?.focusNumber).toBe(4);
+    });
+
+    it('with the same digest only moves the focus: no navigation, no new pin, the read model survives', async () => {
+      darkroomLoads('landed');
+      await run('ui_show_culling_plan', { plan_digest: 'd1', request: REQUEST });
+      navigate.mockClear();
+      const setPin = vi.spyOn(plan, 'setPin');
+      const result = await run('ui_show_culling_plan', { plan_digest: 'd1', request: REQUEST, focus: 3 });
+      expect(result).toMatchObject({ ok: true, data: { plan_digest: 'd1', groups_total: 3 } });
+      expect(plan.pin()?.focusNumber).toBe(3);
+      expect(setPin).not.toHaveBeenCalled();
+      expect(navigate).not.toHaveBeenCalled();
+      expect(plan.snapshot()).not.toBeNull();
+    });
+
+    it('refuses a different digest while the darkroom holds manual decisions', async () => {
+      router.url = '/culling';
+      viewActions.register('ui_show_culling_group', async () => ({}));
+      plan.registerDecisionsProbe(() => true);
+      const result = await run('ui_show_culling_plan', { plan_digest: 'd2', request: REQUEST });
+      expect(result).toMatchObject({ ok: false, error: 'unsaved_decisions' });
+      expect(plan.pin()).toBeNull();
+    });
+
+    it('refuses a different digest while an unconfirmed plan group is flipped, but not once it is confirmed', async () => {
+      router.url = '/culling';
+      viewActions.register('ui_show_culling_group', async () => ({}));
+      plan.registerDecisionsProbe(() => false);
+      plan.setPin({ digest: 'd1', request: REQUEST });
+      plan.register([entry(1, 5, ['/a.jpg', '/b.jpg'], ['/a.jpg'])], { total: 1, truncated: false });
+      plan.recordSelection('5_burst', ['/b.jpg']);
+      expect(await run('ui_show_culling_plan', { plan_digest: 'd2', request: REQUEST })).toMatchObject({ ok: false, error: 'unsaved_decisions' });
+      expect(plan.pin()?.digest).toBe('d1');
+      plan.recordConfirm('5_burst', ['/b.jpg']);
+      // The mounted darkroom follows the new pin on its own and registers the plan it loaded.
+      const setPin = plan.setPin.bind(plan);
+      vi.spyOn(plan, 'setPin').mockImplementation(pin => {
+        setPin(pin);
+        plan.register([entry(1, 6, ['/c.jpg', '/d.jpg'], ['/c.jpg'])], { total: 2, truncated: false });
+      });
+      expect(await run('ui_show_culling_plan', { plan_digest: 'd2', request: REQUEST })).toMatchObject({ ok: true });
+      expect(plan.pin()?.digest).toBe('d2');
+    });
+
+    it('does not count decisions of a darkroom that is no longer mounted', async () => {
+      darkroomLoads('landed');
+      const unregister = plan.registerDecisionsProbe(() => true);
+      unregister();
+      expect(await run('ui_show_culling_plan', { plan_digest: 'd1', request: REQUEST })).toMatchObject({ ok: true });
+    });
+
+    it('maps a plan the store dropped (412) to plan_changed', async () => {
+      darkroomLoads('stale');
+      const result = await run('ui_show_culling_plan', { plan_digest: 'd1', request: REQUEST });
+      expect(result).toMatchObject({ ok: false, error: 'plan_changed' });
+      expect(plan.pin()).toBeNull();
+    });
+
+    it('drops the pin when the tab refuses to open /culling', async () => {
+      navigate.mockResolvedValue(false);
+      expect(await run('ui_show_culling_plan', { plan_digest: 'd1', request: REQUEST })).toMatchObject({ ok: false, error: 'forbidden_level' });
+      expect(plan.pin()).toBeNull();
+    });
+
+    it('rejects a call without the digest or with a focus below 1 before touching anything', async () => {
+      expect(await run('ui_show_culling_plan', { request: REQUEST })).toMatchObject({ ok: false, error: 'invalid_input' });
+      expect(await run('ui_show_culling_plan', { plan_digest: 'd1', request: REQUEST, focus: 0 })).toMatchObject({ ok: false, error: 'invalid_input' });
+      expect(plan.pin()).toBeNull();
+    });
+
+    it('reports culling from the plan service in ui_get_context, with the changed groups carrying their paths', async () => {
+      expect(((await run('ui_get_context')) as { data: Record<string, unknown> }).data['culling']).toBeNull();
+      plan.setPin({ digest: 'd1', request: REQUEST });
+      plan.register([entry(1, 5, ['/a.jpg', '/b.jpg'], ['/a.jpg'])], { total: 1, truncated: false });
+      plan.recordSelection('5_burst', ['/b.jpg']);
+      const data = ((await run('ui_get_context')) as { data: Record<string, unknown> }).data;
+      expect(data).not.toHaveProperty('review');
+      expect(data['culling']).toEqual({
+        plan_digest: 'd1', groups_total: 1, confirmed: [], pending: [1], untouched: 0, truncated: false,
+        changed: [{ type: 'burst', group_id: 5, number: 1, keep_paths: ['/b.jpg'], reject_paths: ['/a.jpg'] }],
+      });
     });
   });
 });

@@ -76,4 +76,39 @@ describe('AssistantCullPlanService', () => {
     service.setFocus(7);
     expect(service.pin()).toEqual({ digest: 'd', request: { group_by: 'all' }, focusNumber: 7 });
   });
+
+  it('a pin with another digest forgets the previous plan, the same digest keeps it', () => {
+    service.setPin({ digest: 'd1', request: { group_by: 'all' } });
+    service.register([entry(1, 'burst', 5, ['/a', '/b'], ['/a'])], { total: 1, truncated: false });
+    service.setPin({ digest: 'd1', request: { group_by: 'all' }, focusNumber: 1 });
+    expect(service.snapshot()).not.toBeNull();
+    service.setPin({ digest: 'd2', request: { group_by: 'all' } });
+    expect(service.snapshot()).toBeNull();
+  });
+
+  it('counts unsaved decisions only while a darkroom is mounted', () => {
+    service.setPin({ digest: 'd', request: { group_by: 'all' } });
+    service.register([entry(1, 'burst', 5, ['/a', '/b'], ['/a'])], { total: 1, truncated: false });
+    service.recordSelection('5_burst', ['/b']);
+    expect(service.hasUnsavedDecisions()).toBe(false);
+    let manual = false;
+    const unregister = service.registerDecisionsProbe(() => manual);
+    expect(service.hasUnsavedDecisions()).toBe(true);
+    service.recordConfirm('5_burst', ['/b']);
+    expect(service.hasUnsavedDecisions()).toBe(false);
+    manual = true;
+    expect(service.hasUnsavedDecisions()).toBe(true);
+    unregister();
+    expect(service.hasUnsavedDecisions()).toBe(false);
+  });
+
+  it('a probe withdrawn after a newer one registered leaves the newer one in place', () => {
+    const first = service.registerDecisionsProbe(() => true);
+    service.registerDecisionsProbe(() => false);
+    first();
+    expect(service.hasUnsavedDecisions()).toBe(false);
+    const second = service.registerDecisionsProbe(() => true);
+    expect(service.hasUnsavedDecisions()).toBe(true);
+    second();
+  });
 });

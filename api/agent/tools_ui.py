@@ -126,6 +126,53 @@ def fit_review(result: dict, max_bytes: int) -> None:
         review[biggest] = review[biggest][:len(review[biggest]) // 2]
 
 
+CULLING_LISTS = ("confirmed", "pending", "changed")
+
+
+def fit_culling(result: dict, max_bytes: int) -> None:
+    """Trim ``culling.confirmed`` / ``pending`` / ``changed`` and ``user_activity.items`` to fit ``max_bytes``.
+
+    The tab reports every plan group the user touched, far more than the envelope can hold on a large plan.
+    The biggest of the four lists is halved (activity drops its OLDEST half, the culling lists their tail)
+    until the whole result fits. A cut culling list sets ``culling.truncated`` and records the true size of
+    EVERY list in ``confirmed_count`` / ``pending_count`` / ``changed_count`` on the first cut;
+    ``groups_total`` and ``untouched`` are never touched, so they stay true. The activity sets
+    ``user_activity.truncated`` when it is cut and keeps its ``until``.
+    """
+    data = result.get("data") if result.get("ok") else None
+    if not isinstance(data, dict):
+        return
+    found = data.get("user_activity")
+    activity: dict = found if isinstance(found, dict) else {}
+    if activity:
+        _cap_activity(activity)
+    if encoded_size(result) <= max_bytes:
+        return
+    found = data.get("culling")
+    culling: dict = found if isinstance(found, dict) else {}
+    lists = [name for name in CULLING_LISTS if isinstance(culling.get(name), list)]
+    if not lists:
+        return
+    counted = False
+    while encoded_size(result) > max_bytes:
+        sizes = {name: encoded_size(culling[name]) for name in lists if culling[name]}
+        if isinstance(activity.get("items"), list) and activity["items"]:
+            sizes["activity"] = encoded_size(activity["items"])
+        if not sizes:
+            return
+        biggest = max(sizes, key=lambda name: sizes[name])
+        if biggest == "activity":
+            activity["items"] = activity["items"][(len(activity["items"]) + 1) // 2:]
+            activity["truncated"] = True
+            continue
+        if not counted:
+            for name in lists:
+                culling.setdefault(f"{name}_count", len(culling[name]))
+            culling["truncated"] = True
+            counted = True
+        culling[biggest] = culling[biggest][:len(culling[biggest]) // 2]
+
+
 def register_ui_tools(server: MCPServer, registry: TabRegistry) -> None:
     for tool in UI_TOOLS:
         TOOL_LEVELS[tool.name] = UI_TOOL_LEVEL
@@ -154,6 +201,7 @@ def _make_tool(tool: UiTool, registry: TabRegistry) -> Any:
                 max_level=resolved.minted_level)
             if tool.name == "ui_get_context":
                 restrict_context(result, resolved.level)
+                fit_culling(result, settings["max_bytes"])
                 fit_review(result, settings["max_bytes"])
             return result
         return await run_tool(ctx, tool.name, handler)

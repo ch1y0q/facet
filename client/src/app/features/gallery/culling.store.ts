@@ -1,5 +1,5 @@
 import { SEQUENCE_KINDS_KEPT_WHOLE } from '../../shared/pipes/sequence-kind.pipe';
-import { Injectable, inject, signal, computed, WritableSignal } from '@angular/core';
+import { DestroyRef, Injectable, inject, signal, computed, WritableSignal } from '@angular/core';
 import { Subject, firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import type { ComparisonStats } from '../../core/api/types';
@@ -175,6 +175,14 @@ export class CullingStore {
   private readonly api = inject(ApiService);
   private readonly i18n = inject(I18nService);
   private readonly plan = inject(AssistantCullPlanService);
+
+  constructor() {
+    // Lets `ui_show_culling_plan` refuse to replace what this visit's user has decided but not committed.
+    // In plan mode the committed groups are the assistant's to re-plan, so only a commit in flight counts.
+    inject(DestroyRef).onDestroy(this.plan.registerDecisionsProbe(() => this.planActive()
+      ? this.passingGroups().size > 0 || this.confirming()
+      : this.hasUserDecisions()));
+  }
 
   /** True while the darkroom shows the assistant's plan instead of the feed. */
   readonly planActive = signal(false);

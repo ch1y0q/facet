@@ -79,8 +79,14 @@ export class AssistantCullPlanService {
 
   private entries = new Map<string, Entry>();
   private meta: Meta | null = null;
+  private decisionsProbe: (() => boolean) | null = null;
 
+  /** Hold a plan. A different digest forgets what was learned about the previous one, so a snapshot never mixes two plans. */
   setPin(pin: CullPlanPin): void {
+    if (this.pin()?.digest !== pin.digest) {
+      this.entries = new Map();
+      this.meta = null;
+    }
     this.pin.set(pin);
   }
 
@@ -131,6 +137,27 @@ export class AssistantCullPlanService {
     if (!entry) return;
     entry.status = 'skipped';
     this.journal.record('cull_skip', entry.paths, { type: entry.type, group_id: entry.group_id, number: entry.number });
+  }
+
+  /**
+   * The mounted darkroom reports whether it holds decisions a new plan would discard (a manual feed's
+   * choices, a confirm still counting down). Returns the function that withdraws the probe.
+   */
+  registerDecisionsProbe(probe: () => boolean): () => void {
+    this.decisionsProbe = probe;
+    return () => {
+      if (this.decisionsProbe === probe) this.decisionsProbe = null;
+    };
+  }
+
+  /**
+   * True when swapping the plan would discard something the user did on the darkroom now on screen: its
+   * own probe says so, or an unconfirmed plan group sits flipped. With no darkroom mounted those decisions
+   * went with it, so nothing is at stake.
+   */
+  hasUnsavedDecisions(): boolean {
+    const probe = this.decisionsProbe;
+    return probe !== null && (probe() || this.hasUnconfirmedFlips());
   }
 
   /** True when an unconfirmed group's keepers differ from the plan: re-seeding would throw that away. */

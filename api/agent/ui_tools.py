@@ -22,15 +22,18 @@ from typing import Annotated, Any, Literal, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field, create_model, field_validator, model_validator
 
 from api.agent.tools_common import MCP_FILTER_KEYS, FilterValue, SortColumn
+from api.models.culling import CullPlanRequest
 
 TAB_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
 MAX_SELECT_PATHS = 1000
 MAX_QUERY_ENTRIES = 20
 # Codes a tab may report; anything else becomes upstream_error. `no_active_view` is the
-# darkroom action registry's "that view is not mounted". Emitted into the client JSON
-# so the client's own list is checked against it.
+# darkroom action registry's "that view is not mounted"; `unsaved_decisions` and `plan_changed` are
+# `ui_show_culling_plan`'s two refusals. Emitted into the client JSON so the client's own list is
+# checked against it.
 TAB_ERROR_CODES = frozenset({
     "invalid_input", "not_found", "forbidden_level", "no_active_view", "upstream_error", "too_large",
+    "unsaved_decisions", "plan_changed",
 })
 
 UiRoute = Literal[
@@ -260,6 +263,16 @@ class UiShowCullingGroup(UiArgs):
     group_id: int = Field(ge=0, description="The `group_id` from list_culling_groups.")
 
 
+class UiShowCullingPlan(UiArgs):
+    plan_digest: str = Field(
+        min_length=1, max_length=128,
+        description="The `plan_digest` of the `auto_cull` dry run being shown; the tab verifies it.")
+    request: CullPlanRequest = Field(
+        description="The dry run's own inputs, so the tab reproduces the same plan: the shared auto-cull request.")
+    focus: Optional[int] = Field(
+        default=None, ge=1, description="1-based plan group number to land on (default: leave the focus).")
+
+
 ComparisonStrategy = Literal["learning", "uncertainty", "boundary", "active", "random"]
 
 
@@ -299,8 +312,7 @@ UI_TOOLS: tuple[UiTool, ...] = (
            "becomes a section under its own header, with its keep/remove counts), `marks` "
            "('keep'/'remove' per path, the planned decision shown as a keep/remove strip on the "
            "card that the user can flip), `labels` ({key, params} heading per path), `reasons` "
-           "({key, value} per path) and `kinds` (group kind per path), all parallel to `paths`; read "
-           "the user's flips back with ui_get_context `review`.",
+           "({key, value} per path) and `kinds` (group kind per path), all parallel to `paths`.",
            UiShowPhotos, False),
     UiTool("ui_select_photos",
            "Change the selection in the user's tab: explicit `paths`, or the whole filtered view "
@@ -315,18 +327,18 @@ UI_TOOLS: tuple[UiTool, ...] = (
            "Where the user's tab is, from any page: route, the open photo, the selection (scope and "
            "count), a gallery summary (total, loaded, has_more, pinned list) when the gallery is open, "
            "the mounted page actions and the jobs that apply now (`actions`, with their tools), and "
-           "`review`, the user's Keep/Remove flips on a pinned auto-cull page. When the review is "
-           "too large for one answer its lists are cut: `review.truncated` is true when the tab's "
-           "1000-per-list cap or the server's size trim cut a list, and `review.keep_count` / "
-           "`review.remove_count` hold the true sizes whenever `review.truncated` is true; `review.groups_total` / "
-           "`groups_visited` / `groups_changed` report the review's progress. `review.keep` / "
-           "`review.remove` are the PENDING marks only: the photos the user already committed with the tab's "
-           "Apply are in `review.applied` ({keep, remove, truncated}, the Keep/Remove they applied; "
-           "`keep_count` / `remove_count` hold the true sizes when `truncated`), and `groups_applied` counts "
-           "the groups fully applied. Never re-decide an applied photo. `user_activity` "
+           "`culling`, the assistant's plan on the /culling page (null outside plan mode): "
+           "`{plan_digest, groups_total, confirmed, pending, changed, untouched, truncated}`. `confirmed` "
+           "and `pending` list plan group numbers (confirmed: the user's confirm has landed; pending: "
+           "flipped away from the plan and not yet confirmed); `untouched` counts the rest. `changed` lists "
+           "every group whose keepers differ from the plan as `{type, group_id, number, keep_paths, "
+           "reject_paths}`: pass those paths as `keep_paths` / `remove_paths` on the next `auto_cull` dry "
+           "run and on its apply. When the block is too large for one answer its lists are cut: "
+           "`culling.truncated` is true and `groups_total` / the list lengths stay the true counts. "
+           "Never re-decide a confirmed group. `user_activity` "
            "({items, until, truncated}) lists what the user did in the tab after `activity_since` "
-           "(rating, reject, favorite, review marks, review_apply, review_apply_undo, tags, album, "
-           "navigation; at most 50 items of 20 paths); "
+           "(rating, reject, favorite, cull_confirm, cull_skip, tags, album, navigation; at most 50 items "
+           "of 20 paths); "
            "pass the answer's `until` as the next `activity_since`.",
            UiGetContext, True),
     UiTool("ui_next_page", "Load the next page of the gallery in the user's tab (infinite scroll).",
@@ -335,6 +347,15 @@ UI_TOOLS: tuple[UiTool, ...] = (
            "Open the darkroom (/culling) and focus one group, identified by (type, group_id). "
            "Edition accounts only.",
            UiShowCullingGroup, False),
+    UiTool("ui_show_culling_plan",
+           "Open the darkroom (/culling) on an `auto_cull` plan: the same groups, keep/reject borders, loupe "
+           "and compare as manual culling, with the plan's keepers pre-selected for the user to flip and "
+           "confirm. `auto_cull` calls this for you on a dry run; call it yourself only to re-show a plan. "
+           "The same `plan_digest` as the plan already shown only moves the focus. A different one replaces "
+           "the plan and is refused with `unsaved_decisions` while the user holds decisions they have not "
+           "confirmed; `plan_changed` means the library moved since the preview (preview again). "
+           "Edition accounts only.",
+           UiShowCullingPlan, False),
     UiTool("ui_show_comparison",
            "Open the /compare page in the user's tab, optionally on one category and strategy. It "
            "only opens the page: the user picks the winners, nothing is submitted for them.",

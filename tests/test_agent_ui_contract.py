@@ -61,10 +61,45 @@ def test_version_changes_with_a_description():
     assert tools_version() == before
 
 
-def test_ui_get_context_describes_the_applied_review_and_the_apply_activity_kinds():
+def test_ui_get_context_describes_the_culling_block_and_its_activity_kinds():
     description = next(t for t in UI_TOOLS if t.name == "ui_get_context").description
-    for term in ("review.applied", "groups_applied", "review_apply", "review_apply_undo"):
+    for term in ("culling", "plan_digest", "groups_total", "confirmed", "pending", "changed", "untouched",
+                 "cull_confirm", "cull_skip"):
         assert term in description, term
+    for gone in ("review.applied", "groups_applied", "review_apply", "review_apply_undo", "`review`"):
+        assert gone not in description, gone
+
+
+def test_ui_show_culling_plan_takes_the_digest_the_shared_request_and_a_focus():
+    from api.agent.ui_tools import UiShowCullingPlan, input_schema
+    from api.models.culling import CullPlanRequest
+    assert UiShowCullingPlan.model_fields["request"].annotation is CullPlanRequest
+    args = UiShowCullingPlan(plan_digest="abc", request={"group_by": "burst", "strictness": 40}, focus=3)
+    forwarded = args.forward()
+    assert forwarded["plan_digest"] == "abc" and forwarded["focus"] == 3
+    assert forwarded["request"]["group_by"] == "burst" and forwarded["request"]["strictness"] == 40
+    assert "focus" not in UiShowCullingPlan(plan_digest="abc", request={}).forward()
+    for bad in ({"plan_digest": "abc", "request": {}, "focus": 0}, {"request": {}},
+                {"plan_digest": "abc"}, {"plan_digest": "abc", "request": {"group_by": "weird"}},
+                {"plan_digest": "abc", "request": {}, "extra": 1}):
+        with pytest.raises(ValueError):
+            UiShowCullingPlan(**bad)
+    schema = input_schema(next(t for t in UI_TOOLS if t.name == "ui_show_culling_plan"))
+    text = json.dumps(schema)
+    assert "$ref" not in text and "anyOf" not in text and schema["required"] == ["plan_digest", "request"]
+    assert schema["properties"]["request"]["properties"]["keep_paths"]["maxItems"] == 1000
+
+
+def test_ui_show_culling_plan_is_an_edition_write_free_tool():
+    tool = next(t for t in UI_TOOLS if t.name == "ui_show_culling_plan")
+    assert tool.read_only is False
+    assert "/culling" in tool.description and "unsaved_decisions" in tool.description \
+        and "plan_changed" in tool.description
+
+
+def test_the_tab_may_report_the_plan_refusals():
+    from api.agent.ui_tools import TAB_ERROR_CODES
+    assert {"unsaved_decisions", "plan_changed"} <= TAB_ERROR_CODES
 
 
 def test_ui_show_photos_path_bound_is_in_the_contract_and_enforced():

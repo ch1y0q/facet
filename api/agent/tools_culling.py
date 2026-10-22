@@ -12,25 +12,24 @@ plan, and ``confirm_culling_groups`` needs one whenever a group would reject eve
 frame it names.
 """
 
-from dataclasses import dataclass, replace
-from typing import Annotated, Any, Literal, Optional, Sequence, cast
+from dataclasses import dataclass
+from typing import Annotated, Any, Literal, Optional
 
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.types import CallToolResult, ToolAnnotations
 from pydantic import BaseModel, ConfigDict, Field
-from starlette.requests import Request
 
 from api.agent import limits, nonce
 from api.agent import show as relay
-from api.agent.bridge import TabRegistry
-from api.agent.inpage import REVIEW_SCOPE_KEY
+from api.agent.bridge import MAX_FRAME_BYTES, TabRegistry
 from api.agent.internal_client import InternalClient, RouteSpec, err, ok
 from api.agent.live_updates import WriteSink
 from api.agent.limits import encoded_size
 from api.agent.runtime import run_tool
-from api.agent.ui_tools import TAB_ID_PATTERN
+from api.agent.ui_tools import TAB_ID_PATTERN, UiShowCullingPlan
 from api.agent.tools_common import DESTRUCTIVE_ANNOTATIONS, READ_ANNOTATIONS, register_tool
 from api.db_helpers import to_second_granularity
+from api.models.culling import CullPlanRequest
 
 CULLING_ROUTES: dict[str, RouteSpec] = {
     "culling.groups": RouteSpec("GET", "/api/culling-groups", "edition"),
@@ -52,108 +51,59 @@ GROUP_PHOTO_KEYS = ("path", "filename", "date_taken", "aggregate", "aesthetic", 
 SEE_GROUP = " Call ui_show_culling_group to show a group to the user."
 SHOW_PIN_MAX = 200
 AUTO_CULL_SHOW = (
-    " A successful dry run with rows pins its current page in the user's open Facet tab (`show`, "
-    "default true; never ask whether to show it): the user sees the photos numbered by group and "
-    "flagged Keep or Remove, and can flip Keep/Remove on the cards. Their flips are read from the tab "
-    "for you: OMIT keep_paths and remove_paths to use them (`overrides_from_tab` counts only the marks that "
-    "change the plan, not ones restating it, and lists any in `dropped` that could not be honoured; "
-    "`{skipped: truncated}` means the tab held too many to trust). Report `shown_in_tab` (applied, or the reason it was not, including `unpinned` when "
-    "a page holds more than 200 photos). The apply never shows; show=false skips it. Photos the user already "
-    "committed with the tab's Apply (`review.applied`; `overrides_from_tab.applied` counts them) are never "
-    "re-decided: the apply leaves them out, and an Apply made after the preview makes it stale (preview again).")
-
+    " A successful dry run with rows opens its plan on the user's /culling page in their open Facet tab "
+    "(`show`, default true; never ask whether to show it): the same groups, keep/reject borders, loupe and "
+    "compare as manual culling, with the plan's keepers pre-selected for the user to flip and confirm group "
+    "by group. Report `shown_in_tab` (applied, or the reason it was not: `unsaved_decisions` when the user "
+    "holds unconfirmed decisions on the page, `plan_changed` when the library moved since the preview, "
+    "`too_large` when the overrides are too big to send). A page with `cursor` > 0 only moves the tab's focus "
+    "to that page's first group. `ui_get_context` reports the user's progress as `culling` (confirmed groups, "
+    "pending flips, and `culling.changed`: every group whose keepers differ from the plan, with its "
+    "keep_paths and reject_paths). Their flips are NOT read back by the apply: pass the `changed` groups' "
+    "paths as keep_paths / remove_paths on the next dry run and on the apply (explicit lists must be the SAME "
+    "on both). Groups the user confirmed leave the plan, so the digest moves and the apply is refused until "
+    "you preview again. The apply never shows; show=false skips it.")
 
 SUMMARY_PATHS = 20
 CONFIRM_WIDTH = 40
 APPLY_KEYS = ("groups_processed", "kept", "rejected", "highlights_added", "dry_run",
               "skipped_user_changed", "skipped_user_changed_count", "skipped_user_changed_groups",
               "state_guard")
-# The tab caps each review list here, so a list this long may have been cut and is not trusted.
-TAB_REVIEW_CAP = 1000
-SKIP_PATHS_MAX = 1000
 MAX_REMEMBERED = 64
 
 
 @dataclass(frozen=True)
-class Marks:
-    """The user's Keep/Remove marks as the tab reported them; ``truncated`` marks are never used.
-
-    ``applied`` are the photos the user already committed with the tab's Apply (keep and remove together):
-    decided, so never pending marks and never re-decided by an ``auto_cull`` apply. ``applied_truncated``
-    says the tab cut that list, which is not trusted either.
-    """
-    keep: tuple = ()
-    remove: tuple = ()
-    truncated: bool = False
-    applied: tuple = ()
-    applied_truncated: bool = False
-    applied_known: bool = False
-
-    @property
-    def usable(self) -> bool:
-        return not self.truncated and bool(self.keep or self.remove)
-
-    @property
-    def has_applied(self) -> bool:
-        return bool(self.applied)
-
-
-@dataclass(frozen=True)
 class _Preview:
+    """What a dry run issued a ``confirm`` for: the plan digest it was computed from, until ``expires``."""
     digest: str
-    marks: Marks
     expires: float
 
 
 _previews: dict[tuple, _Preview] = {}
-_page_marks: dict[tuple, tuple[Marks, float]] = {}
 
 
 def reset_preview_memory() -> None:
     _previews.clear()
-    _page_marks.clear()
 
 
-def _remember(store: dict, key: tuple, value: Any) -> None:
-    """Insert into ``store``, shedding expired entries first and then the oldest past ``MAX_REMEMBERED``."""
+def _remember(key: tuple, value: _Preview) -> None:
+    """Insert into ``_previews``, shedding expired entries first and then the oldest past ``MAX_REMEMBERED``."""
     current = limits.now()
-    for stale in [k for k, v in store.items() if (v.expires if isinstance(v, _Preview) else v[1]) <= current]:
-        del store[stale]
-    store[key] = value
-    while len(store) > MAX_REMEMBERED:
-        del store[next(iter(store))]
+    for stale in [k for k, v in _previews.items() if v.expires <= current]:
+        del _previews[stale]
+    _previews[key] = value
+    while len(_previews) > MAX_REMEMBERED:
+        del _previews[next(iter(_previews))]
 
 
-def _recall(store: dict, key: tuple) -> Any:
-    value = store.get(key)
-    if value is None or (value.expires if isinstance(value, _Preview) else value[1]) <= limits.now():
-        store.pop(key, None)
+def _recall(key: tuple) -> Optional[_Preview]:
+    value = _previews.get(key)
+    if value is None or value.expires <= limits.now():
+        _previews.pop(key, None)
         return None
     return value
 
 
-def marks_from_review(review: Any) -> Optional[Marks]:
-    """``Marks`` of a tab's ``ui_get_context`` ``review`` (empty when it holds none), or None when it is absent."""
-    if not isinstance(review, dict):
-        return None
-    lists = [[p for p in (review.get(side) or []) if isinstance(p, str)]
-             if isinstance(review.get(side) or [], list) else [] for side in ("keep", "remove")]
-    cut = bool(review.get("truncated")) or any(len(item) >= TAB_REVIEW_CAP for item in lists)
-    block = review.get("applied")
-    block = block if isinstance(block, dict) else {}
-    done = [[p for p in (block.get(side) or []) if isinstance(p, str)]
-            if isinstance(block.get(side) or [], list) else [] for side in ("keep", "remove")]
-    applied_cut = bool(block.get("truncated")) or any(len(item) >= TAB_REVIEW_CAP for item in done)
-    return Marks(tuple(lists[0]), tuple(lists[1]), cut, tuple(dict.fromkeys(done[0] + done[1])), applied_cut,
-                 isinstance(review.get("applied"), dict))
-
-
-def flips_since(before: Marks, now: Optional[Marks]) -> list[str]:
-    """Paths whose Keep/Remove mark differs between ``before`` and ``now`` (unknown ``now`` flips nothing)."""
-    if now is None or now.truncated:
-        return []
-    old, new = (before.keep, before.remove), (now.keep, now.remove)
-    return sorted({p for a, b in zip(old, new) for p in set(a) ^ set(b)})
 # Room kept for what the tool adds after the page is fitted (`shown_in_tab`).
 SHOWN_RESERVE = 4096
 
@@ -417,8 +367,6 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
         show: bool = True,
         tab_id: Annotated[Optional[str], Field(pattern=TAB_ID_PATTERN)] = None,
     ) -> CallToolResult:
-        snapshot = cast(Request, ctx.request_context.request).scope.get(REVIEW_SCOPE_KEY)
-
         async def handler(grant, resolved, settings):
             since, until, bad = normalise_window(date_from, date_to)
             if bad:
@@ -429,39 +377,17 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
             if dry_run and cursor > 0 and not plan_digest:
                 return err("invalid_input", "plan_digest is required when cursor > 0: pass the "
                            "`plan_digest` of the cursor-0 page, so every page comes from the same plan")
-            memory = None if dry_run or explicit or not confirm else _recall(_previews, (owner, confirm))
-            marks: Optional[Marks] = None
-            if explicit:
-                # Only what the user already applied is taken from the tab: their pending marks are replaced
-                # by the explicit lists, but a photo they committed is never re-decided.
-                tab = await read_marks(resolved, settings, tab_id, timeout, snapshot)
-                marks = Marks(applied=tab.applied, applied_truncated=tab.applied_truncated,
-                              applied_known=tab.applied_known) if tab else None
-            elif memory is not None:
-                marks = memory.marks
-            elif dry_run and cursor > 0:
-                recalled = _recall(_page_marks, (owner, plan_digest))
-                marks = recalled[0] if recalled else None
-            else:
-                marks = await read_marks(resolved, settings, tab_id, timeout, snapshot)
-            used = marks is not None and marks.usable
+            memory = None if dry_run or explicit or not confirm else _recall((owner, confirm))
             options = {"group_by": group_by, "album_id": album_id, "date_from": since,
                        "date_to": until, "strictness": strictness,
                        "min_keep_per_group": min_keep_per_group, "profile": profile,
                        "trim_brackets": trim_brackets, "highlights_album": highlights_album,
-                       "keep_paths": list(marks.keep) if used else (keep_paths or []),
-                       "remove_paths": list(marks.remove) if used else (remove_paths or [])}
-            if used:
-                options["lenient_overrides"] = True
+                       "keep_paths": keep_paths or [], "remove_paths": remove_paths or []}
             page_call = {**options, "dry_run": True, "cursor": cursor if dry_run else 0}
             if dry_run and plan_digest:
                 page_call["expected_digest"] = plan_digest
-            applied_sent = applied_skip(marks)
-            if applied_sent:
-                page_call["applied_paths"] = applied_sent
             if memory is not None:
-                return await apply_preview(grant, memory, options, confirm, resolved, settings, tab_id, timeout,
-                                           snapshot)
+                return await apply_preview(grant, memory, options, confirm, timeout)
             preview = await client.call(grant, "culling.auto", json=page_call, timeout=timeout)
             if not preview["ok"] and PLAN_CHANGED_BY_APPLY in preview.get("message", ""):
                 return err("confirmation_required", PLAN_CHANGED_BY_APPLY_HINT)
@@ -470,17 +396,14 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
                            "The plan changed since the first page; nothing was written. Restart the "
                            "preview from cursor 0 (without plan_digest) and use its new `confirm`")
             if not preview["ok"] or dry_run:
-                result = _preview_result(grant, preview, settings, cursor,
-                                         marks is not None and marks.applied_known and applied_sent is not None)
+                result = _preview_result(grant, preview, settings, cursor)
                 if result["ok"]:
-                    attach_tab_marks(result, marks, preview["data"] or {})
-                    if not explicit:
-                        remember_marks(owner, result, marks or Marks())
+                    digest = (result.get("data") or {}).get("plan_digest")
+                    if not explicit and digest and result.get("confirm"):
+                        _remember((owner, result["confirm"]), _Preview(digest, limits.now() + nonce.TTL_SECONDS))
                 if show and dry_run and result["ok"]:
-                    result["shown_in_tab"] = await _show_page(
-                        result["data"].get("rows") or [], resolved, settings, tab_id, timeout)
-                if result["ok"]:
-                    annotate_skipped_applied(result, marks)
+                    result["shown_in_tab"] = await _show_plan(
+                        result["data"], options, cursor, resolved, settings, tab_id, timeout)
                 return result
             digest = (preview["data"] or {}).get("plan_digest")
             if not digest or not _left_to_reject(preview["data"] or {}) \
@@ -488,92 +411,12 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
                 return err("confirmation_required",
                            "Preview with dry_run=true first and pass its `confirm` value, with the "
                            "same overrides; the plan must be unchanged since that preview")
-            skip = applied_skip(marks)
-            if skip is None:
-                return err("confirmation_required", APPLIED_UNREADABLE)
-            return await send_apply(grant, options, digest, marks, timeout, skip, marks.applied if marks else ())
+            return await send_apply(grant, options, digest, timeout)
         return await run_tool(ctx, "auto_cull", handler, write=not dry_run)
 
-    async def read_marks(resolved, settings, tab_id: Optional[str], timeout: float,
-                         snapshot: Optional[dict]) -> Optional[Marks]:
-        """The user's current marks: the in-page caller's own snapshot, else the bridge tab (never both).
-
-        Any failure (no tab, bridge off, outdated tab, timeout) reads as no marks. The read passes no
-        ``activity_since``, so it consumes nothing of what ``ui_get_context`` reports to the agent.
-        """
-        if resolved.inpage:
-            return marks_from_review(snapshot)
-        if not settings["bridge"]:
-            return None
-        envelope = await relay.call_tab(registry, resolved, settings, "ui_get_context", {}, tab_id,
-                                        timeout=timeout)
-        data = envelope.get("data") if envelope.get("ok") else None
-        return marks_from_review(data.get("review")) if isinstance(data, dict) else None
-
-    def attach_tab_marks(result: dict, marks: Optional[Marks], body: dict) -> None:
-        """Add ``overrides_from_tab`` to ``result``: the marks that changed the plan, the dropped ones or the skip."""
-        if marks is None or not (marks.usable or marks.truncated or marks.has_applied):
-            return
-        if marks.truncated:
-            result["overrides_from_tab"] = {"skipped": "truncated"}
-            return
-        report: dict = {}
-        if marks.usable:
-            dropped = body.get("dropped_overrides") or []
-            effective = body.get("effective_overrides") or {}
-            report = {"keep": effective.get("keep", 0), "remove": effective.get("remove", 0)}
-            if dropped:
-                report["dropped"] = dropped[:SUMMARY_PATHS]
-                if len(dropped) > SUMMARY_PATHS:
-                    report["dropped_count"] = len(dropped)
-            result.get("data", {}).pop("dropped_overrides", None)
-        if marks.has_applied:
-            report["applied"] = len(marks.applied)
-        result["overrides_from_tab"] = report
-
-    def annotate_skipped_applied(result: dict, marks: Optional[Marks]) -> None:
-        """Take the photos the user already applied out of the SHOWN per-group lists and report them as
-        ``skipped_applied``. Annotation only: the plan, its digest and the confirm token are untouched."""
-        if marks is None or not marks.has_applied:
-            return
-        done = set(marks.applied)
-        found: dict[str, None] = {}
-        for row in result.get("data", {}).get("rows") or []:
-            for key in ("keep_paths", "reject_paths"):
-                listed = row.get(key)
-                if not listed:
-                    continue
-                for path in listed:
-                    if path in done:
-                        found.setdefault(path)
-                row[key] = [path for path in listed if path not in done]
-        if found:
-            result["data"]["skipped_applied"] = {"count": len(found), "paths": list(found)[:SUMMARY_PATHS]}
-
-    def remember_marks(owner, result: dict, marks: Marks) -> None:
-        """Keep the cursor-0 marks for later pages (by plan digest) and for the apply (by ``confirm``)."""
-        digest = (result.get("data") or {}).get("plan_digest")
-        if not digest:
-            return
-        expires = limits.now() + nonce.TTL_SECONDS
-        _remember(_page_marks, (owner, digest), (marks, expires))
-        if result.get("confirm"):
-            _remember(_previews, (owner, result["confirm"]), _Preview(digest, marks, expires))
-
-    def applied_skip(marks: Optional[Marks], flips: Sequence[str] = ()) -> Optional[list[str]]:
-        """The photos an apply leaves out (``flips`` plus what the user applied), or None when that cannot be trusted."""
-        if marks is not None and marks.applied_truncated:
-            return None
-        skip = list(dict.fromkeys([*flips, *(marks.applied if marks else ())]))
-        return None if len(skip) > SKIP_PATHS_MAX else skip
-
-    async def send_apply(grant, options: dict, digest: str, marks: Optional[Marks], timeout: float,
-                         skip: Optional[list[str]] = None, applied_paths: Sequence[str] = ()) -> dict:
+    async def send_apply(grant, options: dict, digest: str, timeout: float) -> dict:
         applied = await client.call(
-            grant, "culling.auto",
-            json={**options, "dry_run": False, "expected_digest": digest,
-                  **({"skip_paths": skip} if skip else {}),
-                  **({"applied_paths": list(applied_paths)} if applied_paths else {})},
+            grant, "culling.auto", json={**options, "dry_run": False, "expected_digest": digest},
             timeout=timeout)
         if not applied["ok"]:
             if PLAN_CHANGED_BY_APPLY in applied.get("message", ""):
@@ -582,14 +425,10 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
                 return err("confirmation_required", applied["message"])
             return applied
         body = applied["data"] or {}
-        result = ok({key: body.get(key) for key in APPLY_KEYS if key in body})
-        attach_tab_marks(result, marks, body)
-        return result
+        return ok({key: body.get(key) for key in APPLY_KEYS if key in body})
 
-    async def apply_preview(grant, memory: _Preview, options: dict, confirm: Optional[str],
-                            resolved, settings, tab_id: Optional[str], timeout: float,
-                            snapshot: Optional[dict]) -> dict:
-        """Apply the plan the user was shown: the ORIGINAL preview's digest, its marks, and the flips since.
+    async def apply_preview(grant, memory: _Preview, options: dict, confirm: Optional[str], timeout: float) -> dict:
+        """Apply the plan the user was shown: the ORIGINAL preview's digest.
 
         No dry run is re-run (it would hand the route a new digest and, for a plan the user's own edit
         moved, a nonce that cannot match); the route compares the plan with its preview-time snapshot.
@@ -598,21 +437,27 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
             return err("confirmation_required",
                        "Preview with dry_run=true first and pass its `confirm` value, with the "
                        "same overrides; the plan must be unchanged since that preview")
-        current = await read_marks(resolved, settings, tab_id, timeout, snapshot)
-        flips = flips_since(memory.marks, current)
-        if memory.marks.usable and (current is None or current.truncated or len(flips) > SKIP_PATHS_MAX):
-            return err("confirmation_required",
-                       "The marks in the tab could not be re-read in full (or too many changed since the "
-                       "preview), so a photo you flipped to Keep could still be rejected: preview again "
-                       "with dry_run=true")
-        done = tuple(dict.fromkeys([*memory.marks.applied, *(current.applied if current else ())]))
-        skip = applied_skip(Marks(applied=done, applied_truncated=bool(current and current.applied_truncated)),
-                            flips)
-        if skip is None:
-            return err("confirmation_required", APPLIED_UNREADABLE)
-        # The report names what the tab has applied NOW, not what it had applied at preview time.
-        reported = replace(memory.marks, applied=done, applied_truncated=bool(current and current.applied_truncated))
-        return await send_apply(grant, options, memory.digest, reported, timeout, skip, done)
+        return await send_apply(grant, options, memory.digest, timeout)
+
+    async def _show_plan(data: dict, options: dict, page_cursor: int, resolved, settings, tab_id: Optional[str],
+                         timeout: float) -> dict:
+        """Open the dry run's plan on the user's /culling page; the first page pins it, a later one moves the focus."""
+        rows = data.get("rows") or []
+        digest = data.get("plan_digest")
+        if not rows or not digest:
+            return relay.not_shown("empty_result")
+        request = CullPlanRequest.model_validate({key: options[key] for key in CullPlanRequest.model_fields})
+        payload = {"plan_digest": digest, "request": request.model_dump(mode="json"),
+                   **({"focus": rows[0]["number"]} if page_cursor > 0 else {})}
+        if encoded_size(payload) > MAX_FRAME_BYTES:
+            return relay.not_shown("too_large", note="The overrides are too large to send to the tab; "
+                                                       "the plan was not shown.")
+        return await relay._show(
+            registry, resolved, settings, tab_id, "ui_show_culling_plan", "Show culling plan",
+            lambda: UiShowCullingPlan.model_validate(payload).forward(),
+            lambda reply, tab: {"applied": True, "tab_id": tab.get("tab_id"), "route": reply.get("route"),
+                                "groups_total": reply.get("groups_total")},
+            timeout=timeout)
 
     async def _show_page(rows: list[dict], resolved, settings, tab_id: Optional[str], timeout: float) -> dict:
         page = _pinned_page(rows)
@@ -631,10 +476,10 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
         return shown
 
     def _left_to_reject(body: dict) -> int:
-        """The planned rejects the apply would still act on: the plan's, less the ones the user already applied."""
-        return (body.get("rejected") or 0) - (body.get("applied_in_plan") or {}).get("rejected", 0)
+        """The frames the plan would reject."""
+        return body.get("rejected") or 0
 
-    def _preview_result(grant, upstream: dict, settings: dict, cursor: int, tab_answered: bool) -> dict:
+    def _preview_result(grant, upstream: dict, settings: dict, cursor: int) -> dict:
         if not upstream["ok"]:
             return upstream
         body = upstream["data"] or {}
@@ -643,11 +488,6 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
         data.pop("effective_overrides", None)
         data.pop("applied_in_plan", None)
         left = _left_to_reject(body)
-        data["totals_exclude_applied"] = tab_answered
-        if tab_answered:
-            done = body.get("applied_in_plan") or {}
-            data["kept"] = (body.get("kept") or 0) - done.get("kept", 0)
-            data["rejected"] = left
         ignored = body.get("ignored_overrides") or []
         if len(ignored) > SUMMARY_PATHS:
             data["ignored_overrides"] = ignored[:SUMMARY_PATHS]
@@ -727,15 +567,12 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
         "page's `plan_digest` (required when cursor > 0; a changed plan is refused, restart from "
         "cursor 0) until next_cursor is null; a page is cut by whole groups to fit the result size (a single group too big for it has its "
         "path lists clipped: `paths_clipped`, with `keep_count` / `reject_count`). "
-        "`kept` and `rejected` cover the full plan minus the photos the user already applied from their "
-        "tab, and a group whose keepers were all applied counts as applied whole, rejects included, as the "
-        "apply drops it (`totals_exclude_applied` is true once the tab answered with its marks, even with none applied; "
-        "false when it did not or its list was unusable, and then they include them), "
+        "`kept` and `rejected` cover the full plan, "
         "and ONE confirm, issued on the cursor-0 page only and only when something is left to reject, covers all "
-        "of it (valid 300 s, single use). The apply returns counts only. To honour the user's review, "
-        "OMIT keep_paths and remove_paths: the user's Keep/Remove flips are read from their open tab "
-        "(`ui_get_context` shows the same `review`). Pass explicit lists (up to 1000 each) only to replace "
-        "the tab's marks, never merged: paths outside the plan come back as `ignored_overrides` (the first 20, "
+        "of it (valid 300 s, single use). The apply returns counts only. The user's own Keep/Remove flips "
+        "are not read back: to honour them pass explicit lists (up to 1000 each; `ui_get_context` `culling.changed` "
+        "gives the paths), which replace the plan's decisions, never merged: paths outside the plan come back as "
+        "`ignored_overrides` (the first 20, "
         "with `ignored_overrides_count`), and removing a frame of a bracket or panorama, emptying a group of "
         "keepers or listing a path in both is refused. Explicit lists must be the SAME on the dry run that "
         "issues the confirm and on the apply. "

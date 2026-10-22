@@ -370,7 +370,8 @@ class TestShowGuidance:
             "protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}})
         text = init.json()["result"]["instructions"]
         assert "never ask whether to open or show results" in text and "shown_in_tab" in text and "show=false" in text
-        assert "auto_cull's dry run" in text
+        assert "auto_cull's dry run" in text and "/culling" in text and "culling.changed" in text
+        assert "ui_show_culling_plan" not in text and "pinned" not in text
         tools = {t["name"]: t for t in env.rpc(token, "tools/list").json()["result"]["tools"]}
         for name in ("search_photos", "semantic_search", "similar_photos"):
             description = tools[name]["description"]

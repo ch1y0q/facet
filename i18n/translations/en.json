@@ -2744,6 +2744,7 @@
       "ui_clear_selection": "Cleared the selection",
       "ui_next_page": "Went to the next page",
       "ui_show_culling_group": "Showed a culling group",
+      "ui_show_culling_plan": "Showed the auto-cull plan on the culling page",
       "ui_show_comparison": "Showed a comparison"
     }
   }

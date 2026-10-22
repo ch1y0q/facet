@@ -2758,6 +2758,7 @@ export const I18N = {
       ui_clear_selection: "assistant_activity.ui.ui_clear_selection",
       ui_next_page: "assistant_activity.ui.ui_next_page",
       ui_show_culling_group: "assistant_activity.ui.ui_show_culling_group",
+      ui_show_culling_plan: "assistant_activity.ui.ui_show_culling_plan",
       ui_show_comparison: "assistant_activity.ui.ui_show_comparison",
     },
   },

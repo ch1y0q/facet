@@ -2744,6 +2744,7 @@
       "ui_clear_selection": "已清除选择",
       "ui_next_page": "已翻到下一页",
       "ui_show_culling_group": "已显示筛选分组",
+      "ui_show_culling_plan": "已在筛选页面显示自动筛选方案",
       "ui_show_comparison": "已显示对比"
     }
   }

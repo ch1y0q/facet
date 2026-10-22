@@ -2744,6 +2744,7 @@
       "ui_clear_selection": "Auswahl aufgehoben",
       "ui_next_page": "Zur nächsten Seite gewechselt",
       "ui_show_culling_group": "Auswahlgruppe angezeigt",
+      "ui_show_culling_plan": "Auto-Auswahlplan auf der Auswahlseite angezeigt",
       "ui_show_comparison": "Vergleich angezeigt"
     }
   }

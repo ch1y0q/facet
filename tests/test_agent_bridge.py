@@ -606,7 +606,7 @@ class TestUiTools:
             assert listed["_meta"]["facet/untrusted_content"] is True, tool.name
             assert tool.name == tool.name.lower() and len(tool.name) < 40
             assert "tab_id" in listed["inputSchema"]["properties"]
-        assert "ui_show_culling_group" in tools
+        assert "ui_show_culling_group" in tools and "ui_show_culling_plan" in tools
 
     @pytest.mark.parametrize("tool,args", [
         ("ui_navigate", {"route": "/admin"}),
@@ -619,6 +619,10 @@ class TestUiTools:
         ("ui_select_photos", {"select_view": True, "mode": "remove"}),
         ("ui_show_culling_group", {"type": "weird", "group_id": 1}),
         ("ui_show_culling_group", {"type": "burst", "group_id": -1}),
+        ("ui_show_culling_plan", {"request": {}}),
+        ("ui_show_culling_plan", {"plan_digest": "abc"}),
+        ("ui_show_culling_plan", {"plan_digest": "abc", "request": {}, "focus": 0}),
+        ("ui_show_culling_plan", {"plan_digest": "abc", "request": {"group_by": "weird"}}),
     ])
     def test_invalid_args_never_reach_the_tab(self, agent_app, fake_tab, tool, args):
         env = agent_app("open")
@@ -650,6 +654,43 @@ class TestUiTools:
         tab = fake_tab(env, None)
         result = env.call(env.token(env.login()), "ui_show_culling_group", {"type": "bracket", "group_id": 4})
         assert result["ok"] is True and tab.calls[0]["args"] == {"type": "bracket", "group_id": 4}
+
+    def test_a_huge_culling_block_is_cut_with_true_counts_and_flagged(self):
+        from api.agent.limits import encoded_size
+        from api.agent.tools_ui import fit_culling
+        changed = [{"type": "burst", "group_id": n, "number": n, "keep_paths": [f"/k/{n}/{'a' * 80}.jpg"],
+                    "reject_paths": [f"/r/{n}/{'b' * 80}.jpg" for _ in range(5)]} for n in range(1, 301)]
+        culling = {"plan_digest": "d", "groups_total": 400, "confirmed": list(range(1, 50)),
+                   "pending": list(range(50, 90)), "changed": changed, "untouched": 260, "truncated": False}
+        result = {"ok": True, "data": {"route": "/culling", "culling": culling}}
+        fit_culling(result, 20000)
+        assert encoded_size(result) <= 20000
+        assert culling["truncated"] is True and culling["groups_total"] == 400 and culling["untouched"] == 260
+        assert culling["changed_count"] == 300 and culling["confirmed_count"] == 49 and culling["pending_count"] == 40
+        assert 0 < len(culling["changed"]) < 300 and culling["changed"] == changed[:len(culling["changed"])]
+        small = {"ok": True, "data": {"culling": {"plan_digest": "d", "confirmed": [1], "changed": [], "truncated": False}}}
+        fit_culling(small, 20000)
+        assert small["data"]["culling"]["truncated"] is False and "changed_count" not in small["data"]["culling"]
+
+    def test_show_culling_plan_forwards_digest_request_and_focus(self, agent_app, fake_tab):
+        env = agent_app("open")
+        tab = fake_tab(env, None)
+        request = {"group_by": "burst", "strictness": 40, "keep_paths": ["/a.jpg"]}
+        result = env.call(env.token(env.login()), "ui_show_culling_plan",
+                          {"plan_digest": "abc", "request": request, "focus": 2})
+        assert result["ok"] is True
+        sent = tab.calls[0]["args"]
+        assert sent["plan_digest"] == "abc" and sent["focus"] == 2
+        assert sent["request"]["group_by"] == "burst" and sent["request"]["keep_paths"] == ["/a.jpg"]
+
+    def test_tab_plan_refusals_pass_through(self, agent_app, fake_tab):
+        env = agent_app("open")
+        for code in ("unsaved_decisions", "plan_changed"):
+            fake_tab(env, None, tab_id=f"t-{code}", reply=lambda call, code=code: {
+                "ok": False, "error": code, "message": "no"})
+            result = env.call(env.token(env.login()), "ui_show_culling_plan",
+                              {"plan_digest": "abc", "request": {}, "tab_id": f"t-{code}"})
+            assert result["error"] == code
 
     def test_get_context_is_one_empty_frame_and_the_tab_answer_passes_through(self, agent_app, fake_tab):
         env = agent_app("open")
