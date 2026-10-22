@@ -716,9 +716,9 @@ API：参见下文的 [API 端点](#api-端点)一节。
 - 横幅显示**助手方案 · 已确认 x/y · 退出**,统计你已确认的方案分组数。
 - 每个分组带有一枚标签,如 **#3 · 理由 · 建议:保留 2 / 剔除 1**:分组在方案中的编号、助手这样分组的原因,以及它建议的拆分。
 - 帧上的圆点表示你已将它与方案的建议反向调整。
-- 你像手动选片一样逐组确认:同样的确认键、同样的倒计时和同样的**撤销**。方案模式中的确认从不把照片加入精选相册。已确认的分组会离开方案,因此助手的下一次预览不再包含它。
-- 方案显示期间,严格程度、排序和阈值被禁用,因为它们由助手确定。点击**退出**,或更改分组、范围或排序,即退出方案模式;重新加载页面同样会丢弃它。
-- 若照片库自预览以来发生变化,会有提示说明方案已过期。助手必须重新预览;在你持有未确认的决定时,它无法替换方案。
+- 你像手动选片一样逐组确认:同样的确认键、同样的倒计时和同样的**撤销**。方案模式中的确认从不把照片加入精选相册。已确认的 burst 或 similar 分组会离开方案(它被标记为已审阅),因此助手的下一次预览不再包含它。已确认的 scene 分组不会被记录在任何地方,因此下一次预览可能再次提出它;只有助手从 `culling.changed` 取得并传入的 `keep_paths` 才能保护你保留的照片。确认 burst 只会剔除该次确认中显示的成员(其 `paths`);burst 中位于显示范围之外的成员(例如在相册或日期窗口之外)保持不动。
+- 方案显示期间,严格程度、排序和阈值被禁用,因为它们由助手确定。点击**退出**,或更改分组、范围或排序,即退出方案模式。离开 `/culling`(例如去打开一张照片)再返回,会根据标签页中已加载的方案恢复方案模式,无需重新加载,并保留你已确认的 x/y;重新加载页面则会丢弃它。
+- 若照片库自预览以来发生变化,会有提示说明方案已过期。助手必须重新预览;在你持有未确认的决定时,它无法替换方案。因其他原因加载失败的方案会显示加载错误,而不是该提示。
 - 过大而无法在此确认的分组会从方案中略去,并在提示中计数。
 
 助手通过 `ui_get_context`(`culling`:已确认、待确认和已更改的分组)读取你的进度,不会从标签页应用任何内容。参见[`/culling` 上的方案模式](AGENTS.md#结果会显示在你的标签页中)。
@@ -1381,7 +1381,7 @@ python database.py --stats-info
 | `GET /api/similar-groups?threshold=&page=&per_page=` | 视觉相似照片的分组 |
 | `POST /api/similar-groups/select` | 从一个相似分组中选出要保留的照片 |
 | `GET /api/culling-groups?group_by=all\|burst\|similar\|scene\|bracket\|panorama\|hdr_panorama&exclude_rejected=true&similarity_threshold=&page=&per_page=&date_from=&date_to=` | 用于选片的连拍／相似／场景／序列分组。`group_by`（默认 `all`）用于选择连拍+相似合并、仅连拍、仅相似、按时间顺序的场景分组（场景分组会额外带上 `type`/`start`/`end`/`moment`/`moment_confidence`；场景模式下会忽略 `sort` 参数），或某一种整组保留的序列类型（`bracket`、`panorama`、`hdr_panorama`——各自独立成一种粒度，绝不并入 `all`）。`exclude_rejected`（默认 `true`）会隐藏 `is_rejected=1` 的照片；剩余不足 2 张照片的分组会被剔除。当已训练出保留照片排序头时，每张照片还会带上 `keeper_prob`，每个分组还会带上 `keeper_best_path`。`date_from` / `date_to` 接受 ISO 日期(`2026-06-01`)、ISO 日期时间或 EXIF 形式(只有日期的 `date_to` 覆盖整天);无法解析的值返回 400 |
-| `POST /api/culling-groups/confirm` | 确认选片结果。请求体 `{group_id, type, paths, keep_paths}`；`type` 为 `burst \| similar \| scene \| bracket \| panorama \| hdr_panorama`。`type:'scene'` 会记录场景选片的比较行；三种序列类型会像其他类型一样执行淘汰，但不记录任何比较对，因为在一组阶梯中偏好某一档、或在一次扫拍中偏好某一帧，说明不了任何审美偏好 |
+| `POST /api/culling-groups/confirm` | 确认选片结果。请求体 `{group_id, type, paths, keep_paths}`；`type` 为 `burst \| similar \| scene \| bracket \| panorama \| hdr_panorama`。`type:'scene'` 会记录场景选片的比较行；三种序列类型会像其他类型一样执行淘汰，但不记录任何比较对，因为在一组阶梯中偏好某一档、或在一次扫拍中偏好某一帧，说明不了任何审美偏好确认 `burst` 只会剔除 `paths` 中列出的成员:调用方未列出的 burst 成员既不会被剔除,也不会被标记为已审阅 |
 | `POST /api/culling/auto` | `[Edition]` 针对整个作用域的一键自动选片。请求体 `{group_by, album_id?, date_from?, date_to?, strictness?, min_keep_per_group, highlights_album, dry_run, profile?, trim_brackets, cursor?, keep_paths?, remove_paths?, expected_digest?}`；`group_by` 为 `all \| burst \| similar \| scene`（序列类型在这里不是合法的作用域——参见 `trim_brackets`）。`profile` 指定一个 `cull_profiles` 预设，在省略 `strictness`／`min_keep_per_group` 时从中取值。`dry_run`（默认 `true`）返回每组的保留／淘汰预览，实际执行则会淘汰其余照片并记录选片比较对。`trim_brackets`（默认 `false`）会额外把基准曝光既无暗部裁切也无高光裁切的包围曝光组修剪到只剩基准帧——这是自动选片中唯一会缩减序列照片组的路径。该路由每次调用都会规划整个范围,并按完整分组分页返回(输入 `cursor`,输出 `next_cursor`,完成时为 `null`;路由按 200 张照片分页,单个更大的分组独占一页),附带总数和 `plan_digest`。`keep_paths` / `remove_paths`(各最多 1000 个)可覆盖单个画面;过期路径以 `ignored_overrides` 返回。移除方案在包围曝光、全景或 HDR 全景组中保留的画面会以 400 拒绝;重复方案已有的移除则不起作用。应用调用可携带 `expected_digest`,若方案已变化,会在任何写入之前以 412 拒绝。`date_from` / `date_to` 接受 ISO 日期(`2026-06-01`)、ISO 日期时间或 EXIF 形式(只有日期的 `date_to` 覆盖整天);无法解析的值返回 400 |
 | `POST /api/culling/plan` | `[Edition]` 以选片分组的形式返回助手的自动选片方案,供 `/culling` 方案模式使用。请求体沿用 `POST /api/culling/auto` 的方案输入(`group_by, album_id?, date_from?, date_to?, strictness?, min_keep_per_group, highlights_album, profile?, trim_brackets, keep_paths?, remove_paths?`),另加必填的 `expected_digest`。以试运行方式重新计算方案,若其摘要不是 `expected_digest` 则返回 412(标签页只显示助手所描述的方案)。不写入任何内容。返回 `{groups, total_groups, plan_digest, truncated, oversize_groups}`:每个分组是一个选片分组,并增加 `plan: {number, keep_paths, group_reason}`,其照片先列保留的;`truncated` 表示列表在分组数或照片数上限处停止,`oversize_groups` 统计因超出确认路由的每组照片上限而被略去的分组 |
 | `GET /api/culling/suggest_profile?album_id=&date_from=&date_to=` | 根据作用域内已存储的类别、叙事时刻、人脸数量和拍摄时段推断其占主导的拍摄类型，并指出与之匹配的 `cull_profiles` 预设，附带置信度及其所依据的证据数量；按作用域缓存。当低于主导度下限、或匹配的预设未配置时，`profile` 为 `null`。`date_from` / `date_to` 接受 ISO 日期(`2026-06-01`)、ISO 日期时间或 EXIF 形式(只有日期的 `date_to` 覆盖整天);无法解析的值返回 400 |

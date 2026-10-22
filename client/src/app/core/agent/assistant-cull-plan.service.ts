@@ -46,10 +46,21 @@ export interface CullPlanSnapshot {
   changed: CullPlanChangedGroup[];
   /** Plan groups neither confirmed, skipped nor flipped. */
   untouched: number;
-  truncated: boolean;
+  /** The plan itself was cut (group or photo cap); distinct from the list trimming `ui_get_context` may add. */
+  plan_truncated: boolean;
 }
 
-type EntryStatus = 'open' | 'confirmed' | 'skipped';
+/** Why the last plan load failed: `out_of_date` is the 412 (the digest moved), `failed` anything else. */
+export type CullPlanLoadFailure = 'out_of_date' | 'failed';
+
+/** A plan response the store keeps so a re-mounted darkroom rebuilds the plan without posting its digest again. */
+export interface HeldPlan<T> {
+  data: T;
+  /** Status and current keepers per group key, as the user left them. */
+  state: Map<string, { status: EntryStatus; current: string[] }>;
+}
+
+export type EntryStatus = 'open' | 'confirmed' | 'skipped';
 
 interface Entry extends CullPlanEntryInput {
   status: EntryStatus;
@@ -80,12 +91,16 @@ export class AssistantCullPlanService {
   private entries = new Map<string, Entry>();
   private meta: Meta | null = null;
   private decisionsProbe: (() => boolean) | null = null;
+  private held: { digest: string; data: unknown } | null = null;
+  private failure: { digest: string; reason: CullPlanLoadFailure } | null = null;
 
   /** Hold a plan. A different digest forgets what was learned about the previous one, so a snapshot never mixes two plans. */
   setPin(pin: CullPlanPin): void {
     if (this.pin()?.digest !== pin.digest) {
       this.entries = new Map();
       this.meta = null;
+      this.held = null;
+      this.failure = null;
     }
     this.pin.set(pin);
   }
@@ -100,11 +115,41 @@ export class AssistantCullPlanService {
     this.pin.set(null);
     this.entries = new Map();
     this.meta = null;
+    this.held = null;
+  }
+
+  /** Keep the loaded plan response for `digest` so leaving /culling and coming back does not re-post it. */
+  hold(digest: string, data: unknown): void {
+    this.held = { digest, data };
+  }
+
+  /** The held response for `digest` with the user's per-group state, or null when none is held for it. */
+  heldPlan<T>(digest: string): HeldPlan<T> | null {
+    if (!this.held || this.held.digest !== digest || !this.meta) return null;
+    return {
+      data: this.held.data as T,
+      state: new Map([...this.entries].map(([key, e]) => [key, { status: e.status, current: [...e.current] }])),
+    };
+  }
+
+  /** Record why the plan for `digest` did not load; the handler of `ui_show_culling_plan` reads it. */
+  recordLoadFailure(digest: string, reason: CullPlanLoadFailure): void {
+    this.failure = { digest, reason };
+  }
+
+  /** The failure recorded for `digest`, if any. */
+  loadFailure(digest: string): CullPlanLoadFailure | null {
+    return this.failure?.digest === digest ? this.failure.reason : null;
   }
 
   /** The plan loaded: replace the read model with its groups. `meta.total` counts the whole plan, not only `entries`. */
   register(entries: CullPlanEntryInput[], meta: Meta): void {
-    this.entries = new Map(entries.map(e => [e.key, { ...e, status: 'open' as const, current: [...e.keep_paths] }]));
+    // Compared over the group's own photos only: a keeper the group does not list can never be toggled.
+    this.entries = new Map(entries.map(e => {
+      const own = new Set(e.paths);
+      const keep = e.keep_paths.filter(path => own.has(path));
+      return [e.key, { ...e, keep_paths: keep, status: 'open' as const, current: [...keep] }];
+    }));
     this.meta = meta;
   }
 
@@ -187,7 +232,7 @@ export class AssistantCullPlanService {
       pending,
       changed,
       untouched: Math.max(0, this.meta.total - confirmed.length - skipped - pending.length),
-      truncated: this.meta.truncated,
+      plan_truncated: this.meta.truncated,
     };
   }
 }

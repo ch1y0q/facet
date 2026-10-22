@@ -714,6 +714,46 @@ describe('CullingStore', () => {
       expect(api.get).toHaveBeenCalledWith('/culling-groups', expect.anything());
     });
 
+    it('records why the load failed so the tool handler can tell a 412 from the rest', async () => {
+      api.post.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 412 })));
+      await store.enterPlan(pin);
+      expect(plan.loadFailure('dg')).toBe('out_of_date');
+      plan.setPin({ digest: 'dg2', request: pin.request });
+      api.post.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
+      await store.enterPlan({ ...pin, digest: 'dg2' });
+      expect(plan.loadFailure('dg2')).toBe('failed');
+    });
+
+    it('re-entering the same digest after a confirm rebuilds the plan from the held response without posting', async () => {
+      vi.useFakeTimers();
+      await store.enterPlan(pin);
+      store.toggleSelection('/a.jpg', store.groups()[1]);
+      store.confirmGroup(store.groups()[0]);
+      await vi.advanceTimersByTimeAsync(7000);
+      expect(plan.snapshot()?.confirmed).toEqual([1]);
+      api.post.mockClear();
+      expect(await store.enterPlan(pin)).toBe('landed');
+      expect(api.post).not.toHaveBeenCalled();
+      expect(store.planActive()).toBe(true);
+      expect(store.confirmedGroups()).toEqual(new Set(['5_burst']));
+      expect(store.hiddenGroups()).toEqual(new Set(['5_burst']));
+      expect(store.totalGroups()).toBe(2);
+      expect(plan.snapshot()?.confirmed).toEqual([1]);
+      expect(plan.snapshot()?.groups_total).toBe(2);
+    });
+
+    it('re-entry keeps an unconfirmed flip and hides a skipped group', async () => {
+      vi.useFakeTimers();
+      await store.enterPlan(pin);
+      store.toggleSelection('/a.jpg', store.groups()[0]);
+      store.skipGroup(store.groups()[1]);
+      await vi.advanceTimersByTimeAsync(7000);
+      expect(await store.enterPlan(pin)).toBe('landed');
+      expect([...store.selectionsMap().get('5_burst') ?? []].sort()).toEqual(['/a.jpg', '/b.jpg']);
+      expect(store.hiddenGroups()).toEqual(new Set(['5_similar']));
+      expect(plan.snapshot()?.pending).toEqual([1]);
+    });
+
     it('any other error exits plan mode with the generic load error', async () => {
       api.post.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
       expect(await store.enterPlan(pin)).toBe('failed');

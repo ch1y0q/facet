@@ -227,7 +227,7 @@ class TestAutoCull:
         assert result["ok"] and result["shown_in_tab"]["applied"] is False and result["shown_in_tab"]["reason"] == "no_tab"
         assert result["confirm"]
 
-    @pytest.mark.parametrize("code", ["unsaved_decisions", "plan_changed", "too_large"])
+    @pytest.mark.parametrize("code", ["unsaved_decisions", "plan_changed", "plan_load_failed", "too_large"])
     def test_a_tab_refusal_becomes_the_reason(self, agent_app, photos, fake_tab, code):
         nonce.reset()
         env = agent_app("legacy")
@@ -792,6 +792,19 @@ class TestAutoCullTabDefaults:
         assert shown[0]["args"]["request"]["profile"] == "sports"
         assert [c["tool"] for c in r.tab.calls].count("ui_get_context") == 1
         r.env.call(r.token, "auto_cull", self.args(dry_run=False, confirm=first["confirm"], show=False))
+        assert r.sent[-1]["profile"] == "sports" and r.sent[-1]["dry_run"] is False
+
+    def test_an_apply_with_explicit_overrides_uses_the_previews_knobs_and_never_reads_the_tab(self, rig):
+        r = rig({"profile": "sports", "strictness": 100})
+        over = {"keep_paths": [BURST_PATHS[1]]}
+        first = r.env.call(r.token, "auto_cull", self.args(**over))
+        assert first["ok"] and first.get("confirm"), first
+        r.tab.reply = lambda call: {"ok": True, "data": {"culling_defaults": {"profile": None, "strictness": 100}}}
+        before = [c["tool"] for c in r.tab.calls].count("ui_get_context")
+        result = r.env.call(r.token, "auto_cull",
+                            self.args(dry_run=False, confirm=first["confirm"], show=False, **over))
+        assert result["ok"], result
+        assert [c["tool"] for c in r.tab.calls].count("ui_get_context") == before
         assert r.sent[-1]["profile"] == "sports" and r.sent[-1]["dry_run"] is False
 
     def test_a_changed_tab_default_refuses_the_apply(self, rig):

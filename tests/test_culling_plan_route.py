@@ -182,7 +182,7 @@ class TestKindsAndCollisions:
 
 
 class TestBurstConfirmKeepsWhatThePlanNeverSaw:
-    """Confirming a burst rejects every visible DB member outside keep_paths (R2)."""
+    """Confirming a burst rejects only the members the body lists in ``paths`` (R2)."""
 
     ALBUM = 80890
 
@@ -217,33 +217,36 @@ class TestBurstConfirmKeepsWhatThePlanNeverSaw:
             "type": group["type"], "group_id": group["group_id"],
             "paths": [p["path"] for p in group["photos"]], "keep_paths": group["plan"]["keep_paths"]})
 
-    def test_a_visible_member_outside_the_window_is_kept_and_a_rejected_one_is_not_revived(
-            self, seed_photos_prefix, edition_client):
+    def test_plan_keep_paths_stay_within_the_groups_own_photos(self, seed_photos_prefix, edition_client):
         self._scene(seed_photos_prefix)
         scope = {"album_id": self.ALBUM}
         auto = _digest(edition_client, **scope)
         body = _plan(edition_client, auto["plan_digest"], **scope).json()
         group = next(g for g in body["groups"] if g["group_id"] == BURST_A)
         listed = [p["path"] for p in group["photos"]]
-        assert PREFIX + "a4.jpg" not in listed and PREFIX + "a5.jpg" not in listed
-        assert PREFIX + "a4.jpg" in group["plan"]["keep_paths"]
-        assert PREFIX + "a5.jpg" not in group["plan"]["keep_paths"]
-        resp = self._confirm(edition_client, group)
+        assert set(group["plan"]["keep_paths"]) <= set(listed)
+
+    def test_confirm_rejects_only_members_in_paths(self, seed_photos_prefix, edition_client):
+        self._scene(seed_photos_prefix)
+        a = [PREFIX + n for n in ("a1.jpg", "a2.jpg", "a3.jpg")]
+        resp = edition_client.post("/api/culling-groups/confirm", json={
+            "type": "burst", "group_id": BURST_A, "paths": a, "keep_paths": [a[0]]})
         assert resp.status_code == 200, resp.text
         conn = _db()
         try:
-            state = {r["path"]: (r["is_rejected"], r["is_burst_lead"]) for r in conn.execute(
-                "SELECT path, is_rejected, is_burst_lead FROM photos WHERE path LIKE ?", (PREFIX + "a%",))}
+            state = {r["path"]: (r["is_rejected"], r["is_burst_lead"], r["burst_reviewed"]) for r in conn.execute(
+                "SELECT path, is_rejected, is_burst_lead, burst_reviewed FROM photos WHERE path LIKE ?",
+                (PREFIX + "a%",))}
             winners = {r[0] for r in conn.execute(
                 "SELECT CASE winner WHEN 'a' THEN photo_a_path WHEN 'b' THEN photo_b_path END FROM comparisons "
                 "WHERE photo_a_path LIKE ? OR photo_b_path LIKE ?", (PREFIX + "%", PREFIX + "%"))}
         finally:
             conn.close()
+        assert state[PREFIX + "a1.jpg"][:2] == (0, 1)
         assert state[PREFIX + "a2.jpg"][0] == 1 and state[PREFIX + "a3.jpg"][0] == 1
-        assert state[PREFIX + "a1.jpg"] == (0, 1)
-        assert state[PREFIX + "a4.jpg"][0] == 0
-        assert state[PREFIX + "a5.jpg"] == (1, 0)
-        assert PREFIX + "a5.jpg" not in winners
+        assert state[PREFIX + "a4.jpg"] == (0, 0, 0)
+        assert state[PREFIX + "a5.jpg"][0] == 1 and PREFIX + "a5.jpg" not in winners
+        assert PREFIX + "a4.jpg" not in winners
 
     def test_similar_plan_group_posted_unchanged_rejects_exactly_the_plan_rejects(
             self, seeded, edition_client, monkeypatch):

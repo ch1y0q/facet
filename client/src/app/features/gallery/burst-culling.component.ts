@@ -47,7 +47,7 @@ import {
 } from './culling.store';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
 import {
-  CullGroupKeyPipe, CullPlanGroupReasonPipe, PlanDiffersPipe,
+  CullGroupKeyPipe, CullPlanGroupReasonPipe, PlanDiffersPipe, PlanRejectCountPipe,
   IsKeptPipe, IsDecidedPipe, IsConfirmedPipe, IsPassingPipe, PassCountdownPipe,
   CullReasonPipe, FacesForPathPipe, FacePoorExpressionPipe, FaceRingClassPipe,
   FaceDimmedPipe, WeightRemainingPipe, CullGroupIconPipe, CullGroupLabelPipe,
@@ -154,6 +154,7 @@ interface ShortcutRow {
     CullGroupKeyPipe,
     CullPlanGroupReasonPipe,
     PlanDiffersPipe,
+    PlanRejectCountPipe,
     IsKeptPipe,
     IsDecidedPipe,
     IsConfirmedPipe,
@@ -518,7 +519,7 @@ interface ShortcutRow {
                   @if (group | cullPlanGroupReason; as reason) {
                     <span class="opacity-80">{{ reason.key | translate:reason.params }}</span>
                   }
-                  <span class="opacity-80">{{ I18N.culling.plan.suggestion | translate:{ keep: plan.keep_paths.length, reject: group.photos.length - plan.keep_paths.length } }}</span>
+                  <span class="opacity-80">{{ I18N.culling.plan.suggestion | translate:{ keep: plan.keep_paths.length, reject: group | planRejectCount } }}</span>
                 </div>
               }
               @if (group.start) {

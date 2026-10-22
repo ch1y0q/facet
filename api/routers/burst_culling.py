@@ -99,6 +99,9 @@ router = APIRouter(tags=["burst_culling"])
 class BurstSelectionBody(BaseModel):
     burst_id: int
     keep_paths: list[str]
+    # The members the caller showed. When given, only those are decided; a member of the group outside it
+    # is neither rejected nor marked reviewed.
+    paths: Optional[list[str]] = None
     seed: int = 0
 
 
@@ -721,8 +724,9 @@ def select_burst_photos(
                 )
 
             # Batch update burst lead status and mark as reviewed
+            decided = group_paths if body.paths is None else group_paths & set(body.paths)
             keep_paths = list(keep_set)
-            reject_paths = list(group_paths - keep_set)
+            reject_paths = list(decided - keep_set)
             _mark_burst_reviewed(conn, keep_paths, reject_paths)
             if reject_paths:
                 set_photos_rejected(conn, reject_paths, user_id, agent=bool(user and user.is_agent_request))
@@ -732,7 +736,7 @@ def select_burst_photos(
                 user_id=user_id, group_type='burst', record=not user.is_agent_request,
             )
             _invalidate_culling_groups_cache()
-            return {'status': 'ok', 'kept': len(keep_set), 'rejected': len(group_paths - keep_set)}
+            return {'status': 'ok', 'kept': len(keep_set), 'rejected': len(reject_paths)}
 
         except HTTPException:
             raise
@@ -1841,6 +1845,7 @@ def confirm_culling_group(
         burst_body = BurstSelectionBody(
             burst_id=body.group_id,
             keep_paths=body.keep_paths,
+            paths=body.paths,
         )
         return select_burst_photos(burst_body, user)
     elif body.type == 'similar':
@@ -2987,24 +2992,6 @@ CULLING_PLAN_MAX_PHOTOS = 5000
 CULLING_PLAN_MAX_GROUP_PHOTOS = 1000
 
 
-def _burst_members_missing_from_plan(conn, user_id, vis_sql, vis_params, entry):
-    """Visible, not-rejected DB members of a burst entry's group that the plan group does not list.
-
-    Confirming a burst rejects every visible member of ``burst_group_id`` outside ``keep_paths``, so a
-    member the plan never saw (outside the date window, say) would be rejected silently. Keeping it is
-    the only way to leave it alone; a member the user already rejected is NOT added back, because
-    ``select_burst_photos`` would promote every ``keep_paths`` entry to a lead and a winner.
-    """
-    listed = set(entry['keep_paths']) | set(entry['reject_paths'])
-    from_clause, from_params = get_photos_from_clause(user_id)
-    rejected = get_preference_columns(user_id)['is_rejected']
-    rows = conn.execute(
-        f"SELECT photos.path FROM {from_clause} WHERE photos.burst_group_id = ? AND {vis_sql} "
-        f"AND COALESCE({rejected}, 0) = 0 ORDER BY photos.path",
-        [*from_params, entry['group']['group_id'], *vis_params]).fetchall()
-    return [row[0] for row in rows if row[0] not in listed]
-
-
 def _plan_as_culling_groups(conn, user_id, plan):
     """``(groups, truncated, oversize)``: the plan's entries shaped like ``GET /api/culling-groups`` rows.
 
@@ -3012,7 +2999,6 @@ def _plan_as_culling_groups(conn, user_id, plan):
     group's best. Caps: ``CULLING_PLAN_MAX_GROUPS`` groups and ``CULLING_PLAN_MAX_PHOTOS`` photos
     (``truncated``); a group over ``CULLING_PLAN_MAX_GROUP_PHOTOS`` is left out and counted in ``oversize``.
     """
-    vis_sql, vis_params = get_visibility_clause(user_id)
     groups, photos_total, truncated, oversize = [], 0, False, 0
     for entry in plan:
         count = len(entry['keep']) + len(entry['reject'])
@@ -3025,8 +3011,6 @@ def _plan_as_culling_groups(conn, user_id, plan):
         best = entry['keep'][0]
         photos = [{**p, 'cull_reason': _compute_cull_reason(p, best)} for p in entry['keep'] + entry['reject']]
         keep_paths = list(entry['keep_paths'])
-        if entry['group']['type'] == 'burst':
-            keep_paths += _burst_members_missing_from_plan(conn, user_id, vis_sql, vis_params, entry)
         groups.append({
             **entry['group'], 'photos': photos, 'count': len(photos), 'best_path': keep_paths[0],
             'plan': {'number': entry['number'], 'keep_paths': keep_paths,

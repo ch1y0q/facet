@@ -28,12 +28,12 @@ TAB_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
 MAX_SELECT_PATHS = 1000
 MAX_QUERY_ENTRIES = 20
 # Codes a tab may report; anything else becomes upstream_error. `no_active_view` is the
-# darkroom action registry's "that view is not mounted"; `unsaved_decisions` and `plan_changed` are
-# `ui_show_culling_plan`'s two refusals. Emitted into the client JSON so the client's own list is
+# darkroom action registry's "that view is not mounted"; `unsaved_decisions`, `plan_changed`
+# (a 412: the library moved) and `plan_load_failed` (any other load failure) are `ui_show_culling_plan`'s refusals. Emitted into the client JSON so the client's own list is
 # checked against it.
 TAB_ERROR_CODES = frozenset({
     "invalid_input", "not_found", "forbidden_level", "no_active_view", "upstream_error", "too_large",
-    "unsaved_decisions", "plan_changed",
+    "unsaved_decisions", "plan_changed", "plan_load_failed",
 })
 
 UiRoute = Literal[
@@ -271,13 +271,14 @@ UI_TOOLS: tuple[UiTool, ...] = (
            "count), a gallery summary (total, loaded, has_more, pinned list) when the gallery is open, "
            "the mounted page actions and the jobs that apply now (`actions`, with their tools), and "
            "`culling`, the assistant's plan on the /culling page (null outside plan mode): "
-           "`{plan_digest, groups_total, confirmed, pending, changed, untouched, truncated}`. `confirmed` "
+           "`{plan_digest, groups_total, confirmed, pending, changed, untouched, plan_truncated}`. `confirmed` "
            "and `pending` list plan group numbers (confirmed: the user's confirm has landed; pending: "
            "flipped away from the plan and not yet confirmed); `untouched` counts the rest. `changed` lists "
            "every group whose keepers differ from the plan as `{type, group_id, number, keep_paths, "
            "reject_paths}`: pass those paths as `keep_paths` / `remove_paths` on the next `auto_cull` dry "
-           "run and on its apply. When the block is too large for one answer its lists are cut: "
-           "`culling.truncated` is true and `groups_total` / the list lengths stay the true counts. "
+           "run and on its apply. `plan_truncated` is true when the plan itself was capped (500 groups / 5000 "
+           "photos) so it lists only part of the library's groups. When the block is too large for one "
+           "answer its lists are cut: `culling.truncated` is true (it means only that) and `groups_total` / the list lengths stay the true counts. "
            "Never re-decide a confirmed group. `user_activity` "
            "({items, until, truncated}) lists what the user did in the tab after `activity_since` "
            "(rating, reject, favorite, cull_confirm, cull_skip, tags, album, navigation; at most 50 items "
@@ -298,7 +299,8 @@ UI_TOOLS: tuple[UiTool, ...] = (
            "confirm. `auto_cull` calls this for you on a dry run; call it yourself only to re-show a plan. "
            "The same `plan_digest` as the plan already shown only moves the focus. A different one replaces "
            "the plan and is refused with `unsaved_decisions` while the user holds decisions they have not "
-           "confirmed; `plan_changed` means the library moved since the preview (preview again). "
+           "confirmed; `plan_changed` means the library moved since the preview (preview again); "
+           "`plan_load_failed` means the tab could not load the plan for any other reason. "
            "Edition accounts only.",
            UiShowCullingPlan, False),
     UiTool("ui_show_comparison",

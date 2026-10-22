@@ -35,7 +35,7 @@ describe('AssistantCullPlanService', () => {
     service.recordConfirm('6_burst', ['/f']);
     service.recordConfirm('7_burst', ['/g']);
     expect(service.snapshot()).toEqual({
-      plan_digest: 'd', groups_total: 10, truncated: true,
+      plan_digest: 'd', groups_total: 10, plan_truncated: true,
       confirmed: [3, 4], pending: [2], untouched: 7,
       changed: [
         { type: 'similar', group_id: 5, number: 2, keep_paths: ['/c', '/d'], reject_paths: [] },
@@ -43,6 +43,44 @@ describe('AssistantCullPlanService', () => {
       ],
     });
     expect(record).toHaveBeenCalledWith('cull_confirm', ['/f'], { type: 'burst', group_id: 6, number: 3, keep: 1, reject: 1 });
+  });
+
+  it('compares keepers over the group\'s own photos: an unchanged confirm is not changed, a flip back is not pending', () => {
+    service.setPin({ digest: 'd', request: { group_by: 'all' } });
+    service.register([
+      entry(1, 'burst', 1, ['/a1', '/a2', '/a3'], ['/a1', '/a4']),
+      entry(2, 'burst', 2, ['/b1', '/b2'], ['/b1', '/b9']),
+    ], { total: 2, truncated: false });
+    service.registerDecisionsProbe(() => false);
+    service.recordSelection('2_burst', ['/b1', '/b2']);
+    service.recordSelection('2_burst', ['/b1']);
+    service.recordConfirm('1_burst', ['/a1']);
+    const snap = service.snapshot()!;
+    expect(snap.changed).toEqual([]);
+    expect(snap.pending).toEqual([]);
+    expect(service.hasUnsavedDecisions()).toBe(false);
+    expect(record).toHaveBeenCalledWith('cull_confirm', ['/a1'], expect.objectContaining({ keep: 1, reject: 2 }));
+  });
+
+  it('holds a loaded plan with the user state per digest and forgets it on a new digest or clear', () => {
+    service.setPin({ digest: 'd', request: { group_by: 'all' } });
+    service.register([entry(1, 'burst', 1, ['/a', '/b'], ['/a'])], { total: 1, truncated: false });
+    service.hold('d', { groups: [] });
+    service.recordConfirm('1_burst', ['/b']);
+    expect(service.heldPlan('d')).toEqual({ data: { groups: [] }, state: new Map([['1_burst', { status: 'confirmed', current: ['/b'] }]]) });
+    expect(service.heldPlan('other')).toBeNull();
+    service.setPin({ digest: 'd', request: { group_by: 'all' } });
+    expect(service.heldPlan('d')).not.toBeNull();
+    service.setPin({ digest: 'e', request: { group_by: 'all' } });
+    expect(service.heldPlan('d')).toBeNull();
+  });
+
+  it('reports why a load failed, per digest', () => {
+    service.recordLoadFailure('d', 'failed');
+    expect(service.loadFailure('d')).toBe('failed');
+    expect(service.loadFailure('e')).toBeNull();
+    service.setPin({ digest: 'e', request: { group_by: 'all' } });
+    expect(service.loadFailure('d')).toBeNull();
   });
 
   it('a skipped group is neither pending nor untouched, and journals cull_skip', () => {

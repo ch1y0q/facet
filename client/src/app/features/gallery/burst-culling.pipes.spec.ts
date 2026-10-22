@@ -8,7 +8,7 @@ import {
   peakingGradientField, peakingThreshold, paintPeakingField,
   loadFrameImage, computePeakingOverlay, computePooledPeakingOverlays,
   peakingCanvasSize, PEAKING_FIT_EDGE, KEY_SUBJECT_COORDINATE_SPACE,
-  CullGroupKeyPipe, CullPlanGroupReasonPipe, PlanDiffersPipe,
+  CullGroupKeyPipe, CullPlanGroupReasonPipe, PlanDiffersPipe, PlanRejectCountPipe,
   CullingGroup, CullingFace, CullingSubject, FaceThresholds, FrameSize, KeySubject,
 } from './burst-culling.pipes';
 
@@ -29,6 +29,25 @@ const keySubject = (overrides: Partial<KeySubject> = {}): KeySubject => ({
 
 const group = (overrides: Partial<CullingGroup> = {}): CullingGroup => ({
   group_id: 1, type: 'burst', reason: '', photos: [], best_path: '', count: 0, ...overrides,
+});
+
+describe('PlanRejectCountPipe', () => {
+  const pipe = new PlanRejectCountPipe();
+  const photos = (...paths: string[]) => paths.map(path => ({ path })) as CullingGroup['photos'];
+
+  it('counts the group\'s photos the plan does not keep', () => {
+    const g = group({ photos: photos('/a', '/b', '/c'), plan: { number: 1, keep_paths: ['/a', '/x'], group_reason: { key: 'burst', params: {} } } });
+    expect(pipe.transform(g)).toBe(2);
+  });
+
+  it('is never negative when keep_paths outnumbers the photos', () => {
+    const g = group({ photos: photos('/a', '/b'), plan: { number: 1, keep_paths: ['/a', '/b', '/x', '/y', '/z'], group_reason: { key: 'burst', params: {} } } });
+    expect(pipe.transform(g)).toBe(0);
+  });
+
+  it('counts every photo as a reject for a group without a plan block', () => {
+    expect(pipe.transform(group({ photos: photos('/a') }))).toBe(1);
+  });
 });
 
 describe('IsKeptPipe', () => {

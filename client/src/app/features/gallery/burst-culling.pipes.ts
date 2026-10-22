@@ -125,6 +125,15 @@ export class CullPlanGroupReasonPipe implements PipeTransform {
   }
 }
 
+/** How many of a plan group's photos the plan rejects: those not in `plan.keep_paths`, never negative. */
+@Pipe({ name: 'planRejectCount' })
+export class PlanRejectCountPipe implements PipeTransform {
+  transform(group: CullingGroup): number {
+    const keep = new Set(group.plan?.keep_paths ?? []);
+    return group.photos.filter(p => !keep.has(p.path)).length;
+  }
+}
+
 /** Whether a photo's current keep state differs from what the plan suggested. */
 @Pipe({ name: 'planDiffers' })
 export class PlanDiffersPipe implements PipeTransform {

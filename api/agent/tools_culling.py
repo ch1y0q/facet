@@ -54,7 +54,8 @@ AUTO_CULL_SHOW = (
     "(`show`, default true; never ask whether to show it): the same groups, keep/reject borders, loupe and "
     "compare as manual culling, with the plan's keepers pre-selected for the user to flip and confirm group "
     "by group. Report `shown_in_tab` (applied, or the reason it was not: `unsaved_decisions` when the user "
-    "holds unconfirmed decisions on the page, `plan_changed` when the library moved since the preview, "
+    "holds unconfirmed decisions on the page, `plan_changed` when the library moved since the preview, `plan_load_failed` when the tab could not "
+    "load the plan for another reason, "
     "`too_large` when the overrides are too big to send). A page with `cursor` > 0 only moves the tab's focus "
     "to that page's first group. `ui_get_context` reports the user's progress as `culling` (confirmed groups, "
     "pending flips, and `culling.changed`: every group whose keepers differ from the plan, with its "
@@ -329,11 +330,10 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
                 return bad
             timeout = settings["call_timeout_s"]
             owner = grant.nonce_owner
-            explicit = keep_paths is not None or remove_paths is not None
             if dry_run and cursor > 0 and not plan_digest:
                 return err("invalid_input", "plan_digest is required when cursor > 0: pass the "
                            "`plan_digest` of the cursor-0 page, so every page comes from the same plan")
-            memory = None if dry_run or explicit or not confirm else _recall((owner, confirm))
+            memory = None if dry_run or not confirm else _recall((owner, confirm))
             knobs = None
             use_strictness, use_profile = strictness, profile
             if strictness is None and profile is None:
@@ -362,7 +362,7 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
                 result = _preview_result(grant, preview, settings, cursor)
                 if result["ok"]:
                     digest = (result.get("data") or {}).get("plan_digest")
-                    if not explicit and digest and result.get("confirm"):
+                    if digest and result.get("confirm"):
                         _remember((owner, result["confirm"]),
                                   _Preview(digest, limits.now() + nonce.TTL_SECONDS, knobs))
                 if knobs and result["ok"]:

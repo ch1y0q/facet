@@ -672,6 +672,17 @@ class TestUiTools:
         fit_culling(small, 20000)
         assert small["data"]["culling"]["truncated"] is False and "changed_count" not in small["data"]["culling"]
 
+    def test_the_capped_plan_flag_is_never_confused_with_a_cut_list(self):
+        from api.agent.tools_ui import fit_culling
+        from api.agent.ui_tools import UI_TOOLS
+        capped = {"ok": True, "data": {"culling": {"plan_digest": "d", "confirmed": [1], "changed": [],
+                                                   "plan_truncated": True}}}
+        fit_culling(capped, 20000)
+        culling = capped["data"]["culling"]
+        assert culling["plan_truncated"] is True and "truncated" not in culling
+        text = next(t.description for t in UI_TOOLS if t.name == "ui_get_context")
+        assert "plan_truncated" in text and "{plan_digest, groups_total, confirmed, pending, changed, untouched, plan_truncated}" in text
+
     def test_show_culling_plan_forwards_digest_request_and_focus(self, agent_app, fake_tab):
         env = agent_app("open")
         tab = fake_tab(env, None)
@@ -685,7 +696,7 @@ class TestUiTools:
 
     def test_tab_plan_refusals_pass_through(self, agent_app, fake_tab):
         env = agent_app("open")
-        for code in ("unsaved_decisions", "plan_changed"):
+        for code in ("unsaved_decisions", "plan_changed", "plan_load_failed"):
             fake_tab(env, None, tab_id=f"t-{code}", reply=lambda call, code=code: {
                 "ok": False, "error": code, "message": "no"})
             result = env.call(env.token(env.login()), "ui_show_culling_plan",

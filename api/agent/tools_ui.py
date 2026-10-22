@@ -78,7 +78,8 @@ def fit_culling(result: dict, max_bytes: int) -> None:
 
     The tab reports every plan group the user touched, far more than the envelope can hold on a large plan.
     The biggest of the four lists is halved (activity drops its OLDEST half, the culling lists their tail)
-    until the whole result fits. A cut culling list sets ``culling.truncated`` and records the true size of
+    until the whole result fits. A cut culling list sets ``culling.truncated`` (only that: the tab's own capped-plan flag is
+    ``culling.plan_truncated``, which is never touched here) and records the true size of
     EVERY list in ``confirmed_count`` / ``pending_count`` / ``changed_count`` on the first cut;
     ``groups_total`` and ``untouched`` are never touched, so they stay true. The activity sets
     ``user_activity.truncated`` when it is cut and keeps its ``until``. A context without a ``culling`` block

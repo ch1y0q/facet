@@ -493,19 +493,56 @@ export class CullingStore {
     this.scopeTo.set(to ?? null);
     this.scopeScene.set(null);
     this.groupBy.set(groupBy ?? 'all');
+    const held = this.plan.heldPlan<CullingPlanResponse>(pin.digest);
+    if (held) {
+      this.showPlan(held.data, held.state);
+      return 'landed';
+    }
     this.loading.set(true);
     try {
       const data = await firstValueFrom(
         this.api.post<CullingPlanResponse>('/culling/plan', { ...pin.request, expected_digest: pin.digest }),
       );
       if (gen !== this.loadGenerationId) return 'superseded';
-      this.planAll = data.groups;
-      this.groups.set(data.groups.slice(0, CULL_PAGE_SIZE));
-      this.totalGroups.set(data.total_groups);
-      this.totalPages.set(Math.max(1, Math.ceil(data.groups.length / CULL_PAGE_SIZE)));
-      this.currentPage.set(1);
-      this.planOversize.set(data.oversize_groups);
-      this.selectionsMap.set(new Map(data.groups.map(g => [this.groupKey(g), new Set(g.plan?.keep_paths ?? [])])));
+      this.showPlan(data, null);
+      this.plan.hold(pin.digest, data);
+      return 'landed';
+    } catch (err) {
+      if (gen !== this.loadGenerationId) return 'superseded';
+      const outOfDate = (err as { status?: number } | null)?.status === 412;
+      this.plan.recordLoadFailure(pin.digest, outOfDate ? 'out_of_date' : 'failed');
+      this.notice$.next(outOfDate
+        ? { key: I18N.culling.plan.out_of_date, duration: 4000 }
+        : { key: I18N.culling.error_loading, duration: 2000 });
+      void this.loadGroups();
+      return outOfDate ? 'out_of_date' : 'failed';
+    }
+  }
+
+  /**
+   * Show a loaded plan as the feed. `state` is what the user left of an earlier visit (a re-mount): the
+   * confirmed and skipped groups stay hidden, the confirmed ones count in the banner, and a flipped group
+   * keeps its keepers. A fresh load passes null and registers the plan with the read model.
+   */
+  private showPlan(data: CullingPlanResponse, state: Map<string, { status: string; current: string[] }> | null): void {
+    this.planAll = data.groups;
+    this.groups.set(data.groups.slice(0, CULL_PAGE_SIZE));
+    this.totalGroups.set(data.total_groups);
+    this.totalPages.set(Math.max(1, Math.ceil(data.groups.length / CULL_PAGE_SIZE)));
+    this.currentPage.set(1);
+    this.planOversize.set(data.oversize_groups);
+    this.selectionsMap.set(new Map(data.groups.map(g => {
+      const key = this.groupKey(g);
+      const current = state?.get(key)?.current;
+      return [key, new Set(current ?? g.plan?.keep_paths ?? [])];
+    })));
+    if (state) {
+      const done = (status: string) => data.groups.map(g => this.groupKey(g)).filter(key => state.get(key)?.status === status);
+      const confirmed = done('confirmed');
+      this.confirmedGroups.set(new Set(confirmed));
+      this.hiddenGroups.set(new Set([...confirmed, ...done('skipped')]));
+      this.touchedGroups.set(new Set(this.hiddenGroups()));
+    } else {
       this.plan.register(
         data.groups.map(g => ({
           key: this.groupKey(g),
@@ -517,17 +554,8 @@ export class CullingStore {
         })),
         { total: data.total_groups, truncated: data.truncated },
       );
-      this.loading.set(false);
-      return 'landed';
-    } catch (err) {
-      if (gen !== this.loadGenerationId) return 'superseded';
-      const outOfDate = (err as { status?: number } | null)?.status === 412;
-      this.notice$.next(outOfDate
-        ? { key: I18N.culling.plan.out_of_date, duration: 4000 }
-        : { key: I18N.culling.error_loading, duration: 2000 });
-      void this.loadGroups();
-      return outOfDate ? 'out_of_date' : 'failed';
     }
+    this.loading.set(false);
   }
 
   /** Leave plan mode if in it: the plan, its pin and its read model go; the caller reloads the feed. */

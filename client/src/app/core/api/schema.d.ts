@@ -5041,6 +5041,8 @@ export interface components {
             burst_id: number;
             /** Keep Paths */
             keep_paths: string[];
+            /** Paths */
+            paths?: string[] | null;
             /**
              * Seed
              * @default 0

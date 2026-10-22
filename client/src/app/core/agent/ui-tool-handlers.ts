@@ -15,6 +15,7 @@ import { COMPARE_AB_TAB_INDEX, CompareFiltersService } from '../../features/comp
 import { ViewActionRegistry } from './view-action-registry.service';
 import { UserActivityJournal } from './user-activity-journal.service';
 import { AssistantCullPlanService, type CullPlanRequest } from './assistant-cull-plan.service';
+import type { CullPlanSnapshot } from './assistant-cull-plan.service';
 import { UiActionRow, UiToolError, UiToolHandler } from './ui-tool.types';
 
 export interface UiToolDeps {
@@ -463,7 +464,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
         gallery: inGallery
           ? { total: gallery.total(), loaded: gallery.photos().length, has_more: gallery.hasMore(), pinned }
           : null,
-        culling: plan.snapshot(),
+        culling: capCullingSnapshot(plan.snapshot()),
         culling_defaults: { profile: localStorage.getItem(CULL_PROFILE_KEY) || null, strictness: CULL_DEFAULT_STRICTNESS },
         mounted_actions: viewActions.names(),
         level,
@@ -552,9 +553,56 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       if (!await waitFor(loaded)) throw new UiToolError('upstream_error', 'The plan did not load.');
       const snapshot = plan.snapshot();
       if (plan.pin()?.digest !== digest || !snapshot) {
+        if (plan.loadFailure(digest) === 'failed') {
+          throw new UiToolError('plan_load_failed', 'The tab could not load the plan; try again.');
+        }
         throw new UiToolError('plan_changed', 'The library changed since the plan was previewed; preview again.');
       }
       return { route: '/culling', plan_digest: digest, groups_total: snapshot.groups_total };
     },
   };
+}
+
+/**
+ * Byte budget of the `culling` block in `ui_get_context`. The bridge replaces a whole result above
+ * 250 KiB with `too_large`, so the block is cut here, well under that, and the rest (activity,
+ * actions) keeps its room.
+ */
+export const CULLING_BLOCK_BUDGET = 100 * 1024;
+
+const CULLING_LISTS = ['confirmed', 'pending', 'changed'] as const;
+
+/**
+ * Trim the snapshot's lists from the tail until its JSON fits `CULLING_BLOCK_BUDGET`. The biggest list is
+ * halved each round. A cut records the true size of every list in `<name>_count` (the fields the server's
+ * `fit_culling` emits) and sets `truncated`; `groups_total` and `untouched` stay true. `plan_truncated`
+ * is the plan's own cap and is never touched.
+ */
+export function capCullingSnapshot(snapshot: CullPlanSnapshot | null, budget = CULLING_BLOCK_BUDGET): Record<string, unknown> | null {
+  if (!snapshot) return null;
+  const size = (value: unknown): number => new TextEncoder().encode(JSON.stringify(value)).length;
+  if (size(snapshot) <= budget) return { ...snapshot };
+  const out: Record<string, unknown> = {
+    ...snapshot,
+    confirmed_count: snapshot.confirmed.length,
+    pending_count: snapshot.pending.length,
+    changed_count: snapshot.changed.length,
+    truncated: true,
+  };
+  while (size(out) > budget) {
+    let biggest: (typeof CULLING_LISTS)[number] | null = null;
+    let biggestSize = 0;
+    for (const name of CULLING_LISTS) {
+      const list = out[name] as unknown[];
+      const listSize = list.length ? size(list) : 0;
+      if (listSize > biggestSize) {
+        biggest = name;
+        biggestSize = listSize;
+      }
+    }
+    if (!biggest) break;
+    const list = out[biggest] as unknown[];
+    out[biggest] = list.slice(0, Math.floor(list.length / 2));
+  }
+  return out;
 }

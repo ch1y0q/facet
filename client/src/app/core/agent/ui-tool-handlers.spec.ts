@@ -971,6 +971,56 @@ describe('UI tool registry and handlers', () => {
       expect(plan.pin()).toBeNull();
     });
 
+    it('maps a failed plan load that is not a 412 to plan_load_failed', async () => {
+      navigate.mockImplementation(async (commands: string[]) => {
+        router.url = commands[0];
+        viewActions.register('ui_show_culling_group', async () => ({}));
+        plan.recordLoadFailure('d1', 'failed');
+        plan.clear();
+        return true;
+      });
+      expect(await run('ui_show_culling_plan', { plan_digest: 'd1', request: REQUEST })).toMatchObject({ ok: false, error: 'plan_load_failed' });
+    });
+
+    it('maps a recorded 412 to plan_changed', async () => {
+      navigate.mockImplementation(async (commands: string[]) => {
+        router.url = commands[0];
+        viewActions.register('ui_show_culling_group', async () => ({}));
+        plan.recordLoadFailure('d1', 'out_of_date');
+        plan.clear();
+        return true;
+      });
+      expect(await run('ui_show_culling_plan', { plan_digest: 'd1', request: REQUEST })).toMatchObject({ ok: false, error: 'plan_changed' });
+    });
+
+    it('caps a large culling block in ui_get_context under the bridge frame limit, keeping true counts', async () => {
+      plan.setPin({ digest: 'd1', request: REQUEST });
+      const groups = Array.from({ length: 5 }, (_, i) => {
+        const paths = Array.from({ length: 1000 }, (_, j) => `/library/2026/some/long/folder/name/photo_${i}_${j}.jpg`);
+        return entry(i + 1, i + 1, paths, [paths[0]]);
+      });
+      plan.register(groups, { total: 5, truncated: false });
+      for (const g of groups) plan.recordSelection(g.key, [g.paths[1]]);
+      const data = ((await run('ui_get_context')) as { data: Record<string, unknown> }).data;
+      const culling = data['culling'] as Record<string, unknown>;
+      expect(new TextEncoder().encode(JSON.stringify(data)).length).toBeLessThan(250 * 1024);
+      expect(culling['truncated']).toBe(true);
+      expect(culling['changed_count']).toBe(5);
+      expect(culling['pending_count']).toBe(5);
+      expect(culling['confirmed_count']).toBe(0);
+      expect((culling['changed'] as unknown[]).length).toBeLessThan(5);
+      expect(culling['groups_total']).toBe(5);
+      expect(culling['plan_truncated']).toBe(false);
+    });
+
+    it('leaves a small culling block untouched: no counts, no truncated', async () => {
+      plan.setPin({ digest: 'd1', request: REQUEST });
+      plan.register([entry(1, 5, ['/a.jpg', '/b.jpg'], ['/a.jpg'])], { total: 1, truncated: false });
+      const culling = (((await run('ui_get_context')) as { data: Record<string, unknown> }).data['culling']) as Record<string, unknown>;
+      expect(culling).not.toHaveProperty('truncated');
+      expect(culling).not.toHaveProperty('changed_count');
+    });
+
     it('drops the pin when the tab refuses to open /culling', async () => {
       navigate.mockResolvedValue(false);
       expect(await run('ui_show_culling_plan', { plan_digest: 'd1', request: REQUEST })).toMatchObject({ ok: false, error: 'forbidden_level' });
@@ -991,7 +1041,7 @@ describe('UI tool registry and handlers', () => {
       const data = ((await run('ui_get_context')) as { data: Record<string, unknown> }).data;
       expect(data).not.toHaveProperty('review');
       expect(data['culling']).toEqual({
-        plan_digest: 'd1', groups_total: 1, confirmed: [], pending: [1], untouched: 0, truncated: false,
+        plan_digest: 'd1', groups_total: 1, confirmed: [], pending: [1], untouched: 0, plan_truncated: false,
         changed: [{ type: 'burst', group_id: 5, number: 1, keep_paths: ['/b.jpg'], reject_paths: ['/a.jpg'] }],
       });
     });
