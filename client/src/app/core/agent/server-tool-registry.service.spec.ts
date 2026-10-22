@@ -8,7 +8,6 @@ import { AgentWebMcpService } from './agent-web-mcp.service';
 import { AssistantChangesService } from './assistant-changes.service';
 import { AgentBridgeService } from './agent-bridge.service';
 import { INPAGE_OPT_IN_KEY, INPAGE_RETRY_MS, ServerToolRegistry, SESSION_HEADER, inpageLevel } from './server-tool-registry.service';
-import { GalleryStore } from '../../features/gallery/gallery.store';
 import { WebMcpToolRegistry } from './webmcp-registry.service';
 import { McpInpageTool } from '../api/types';
 
@@ -40,9 +39,6 @@ describe('ServerToolRegistry', () => {
   let post: Mock;
   let report: Mock;
   let uiExecute: Mock;
-  let review: ReturnType<typeof signal<{ keep: string[]; remove: string[]; truncated: boolean; applied?: { keep: string[]; remove: string[]; truncated: boolean } }>>;
-  let hasReview: ReturnType<typeof signal<boolean>>;
-  let appliedMarks: ReturnType<typeof signal<ReadonlyMap<string, unknown>>>;
   let service: ServerToolRegistry;
 
   const settle = async (): Promise<void> => {
@@ -56,9 +52,6 @@ describe('ServerToolRegistry', () => {
     if (optIn) localStorage.setItem(INPAGE_OPT_IN_KEY, '1');
     authStatus = signal(initial);
     session = signal<EnvironmentInjector | null>(null);
-    review = signal({ keep: [] as string[], remove: [] as string[], truncated: false });
-    hasReview = signal(false);
-    appliedMarks = signal<ReadonlyMap<string, unknown>>(new Map());
     TestBed.configureTestingModule({
       providers: [
         { provide: AuthService, useValue: { status: authStatus } },
@@ -67,7 +60,6 @@ describe('ServerToolRegistry', () => {
         { provide: AssistantChangesService, useValue: { report } },
         { provide: AgentBridgeService, useValue: { tabId: 'tab-1' } },
         { provide: WebMcpToolRegistry, useValue: { execute: uiExecute } },
-        { provide: GalleryStore, useValue: { review, hasReview, appliedMarks } },
       ],
     });
     service = TestBed.inject(ServerToolRegistry);
@@ -196,32 +188,11 @@ describe('ServerToolRegistry', () => {
     expect(options.headers.get(SESSION_HEADER)).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
   });
 
-  it('sends the tab review as review_snapshot whenever a review exists, even with empty lists, and omits it otherwise', async () => {
+  it('sends no tab review with a call: the body carries only the tool, arguments and tab id', async () => {
     setup(status({ edition_authenticated: true }));
     await settle();
     await live.get('set_rating')!.execute({ rating: 4 }, {});
-    expect(post.mock.calls[0][1]).not.toHaveProperty('review_snapshot');
-    hasReview.set(true);
-    await live.get('set_rating')!.execute({ rating: 4 }, {});
-    expect(post.mock.calls[1][1].review_snapshot).toEqual({ keep: [], remove: [], truncated: false });
-    review.set({ keep: ['/k.jpg'], remove: ['/r.jpg'], truncated: false });
-    await live.get('set_rating')!.execute({ rating: 4 }, {});
-    expect(post.mock.calls[2][1].review_snapshot).toEqual({ keep: ['/k.jpg'], remove: ['/r.jpg'], truncated: false });
-    const applied = { keep: ['/ak.jpg'], remove: ['/ar.jpg'], truncated: false };
-    review.set({ keep: [], remove: [], truncated: false, applied });
-    await live.get('set_rating')!.execute({ rating: 4 }, {});
-    expect(post.mock.calls[3][1].review_snapshot).toEqual({ keep: [], remove: [], truncated: false, applied });
-  });
-
-  it('still sends the snapshot with its applied record after the pin was replaced by one without marks', async () => {
-    setup(status({ edition_authenticated: true }));
-    await settle();
-    const applied = { keep: ['/ak.jpg'], remove: ['/ar.jpg'], truncated: false };
-    review.set({ keep: [], remove: [], truncated: false, applied });
-    appliedMarks.set(new Map([['/ak.jpg', { mark: 'keep', receiptId: 'r' }]]));
-    expect(hasReview()).toBe(false);
-    await live.get('set_rating')!.execute({ rating: 4 }, {});
-    expect(post.mock.calls[0][1].review_snapshot).toEqual({ keep: [], remove: [], truncated: false, applied });
+    expect(post.mock.calls[0][1]).toEqual({ tool: 'set_rating', arguments: { rating: 4 }, tab_id: 'tab-1' });
   });
 
   it('counts an auto_cull apply by its show_paths when the envelope has no changed', async () => {

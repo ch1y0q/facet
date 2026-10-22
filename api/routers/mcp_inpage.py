@@ -85,4 +85,4 @@ async def call_tool(
     return await inpage.call(
         request.app.state.mcp_server, grant.with_call(session_id, body.selection_snapshot),
         mcp_settings(), body.tool, body.arguments,
-        registry=request.app.state.tab_registry, tab_id=body.tab_id, review_snapshot=body.review_snapshot)
+        registry=request.app.state.tab_registry, tab_id=body.tab_id)

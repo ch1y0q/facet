@@ -677,10 +677,10 @@ class TestChangedPaths:
         assert resp.status_code == 422
 
 
-class TestAutoCullReviewSnapshot:
-    """In-page: the caller tab's review snapshot is no longer read by auto_cull (Step 4 removes the field)."""
+class TestAutoCullReadsNothingFromTheTab:
+    """In-page: auto_cull reads no state back from the caller tab, and the call body has no field to carry one."""
 
-    def test_no_snapshot_in_page_means_no_marks_and_no_bridge_read(self, agent_app, fake_tab, seed_photos_prefix,
+    def test_an_in_page_auto_cull_makes_no_bridge_read(self, agent_app, fake_tab, seed_photos_prefix,
                                                                     monkeypatch):
         from tests import test_agent_culling as culling
         seed_photos_prefix(culling.PREFIX, culling.ROWS)
@@ -690,10 +690,11 @@ class TestAutoCullReviewSnapshot:
         tab = fake_tab(env, headers["Authorization"].split(" ", 1)[1])
         result = call(env, headers, "auto_cull", {"group_by": "burst", "strictness": 0, **culling.SCOPE})
         assert result["ok"], result
-        assert "overrides_from_tab" not in result
         assert not [c for c in tab.calls if c["tool"] == "ui_get_context"]
 
-    def test_the_request_model_documents_the_field(self):
+    def test_the_request_body_carries_only_the_call_and_the_selection(self):
+        from pydantic import ValidationError
         from api.models.mcp_inpage import McpCallRequest
-        description = McpCallRequest.model_fields["review_snapshot"].description
-        assert description.startswith("The calling tab's `ui_get_context` `review`")
+        assert set(McpCallRequest.model_fields) == {"tool", "arguments", "selection_snapshot", "tab_id"}
+        with pytest.raises(ValidationError):
+            McpCallRequest.model_validate({"tool": "auto_cull", "review": {"keep": []}})

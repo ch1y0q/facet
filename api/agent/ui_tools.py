@@ -152,64 +152,11 @@ class UiOpenPhoto(UiArgs):
 MAX_SHOW_PATHS = 200
 
 
-MAX_LABEL_PARAMS = 8
-LabelParam = Union[str, int, float]
-
-
-class UiGroupLabel(BaseModel):
-    """A group's heading as a KEY plus params, translated by the tab (server text is data, never HTML)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    key: str = Field(min_length=1, max_length=64, description="Stable key, e.g. `burst_seconds`.")
-    params: dict[Annotated[str, Field(max_length=32)], Annotated[LabelParam, Field(union_mode="left_to_right")]] = Field(
-        default_factory=dict, max_length=MAX_LABEL_PARAMS, description="Values the translation interpolates.")
-
-
-class UiCullReason(BaseModel):
-    """Why a photo ranks below its group's best, as the machine key the tab translates."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    key: str = Field(min_length=1, max_length=64, description="`best`, `soft`, `eyes_closed`, ...")
-    value: Optional[float] = Field(default=None, description="The number the translation shows, when it has one.")
-
-
 class UiShowPhotos(UiArgs):
     paths: list[Annotated[str, Field(min_length=1, max_length=4096)]] = Field(
         min_length=1, max_length=MAX_SHOW_PATHS,
         description="Photo paths to show, in this order, as the gallery's own list. The user's "
                     "filters and sort are left untouched; any filter change replaces the list.")
-    groups: Optional[list[Annotated[int, Field(ge=1)]]] = Field(
-        default=None, max_length=MAX_SHOW_PATHS,
-        description="Optional, one per path: the 1-based group number (plan order). The pin lays each "
-                    "group out as its own section under a header with its keep/remove "
-                    "counts; photos of one group are gathered together, in your order.")
-    marks: Optional[list[Literal["keep", "remove"]]] = Field(
-        default=None, max_length=MAX_SHOW_PATHS,
-        description="Optional, one per path: the planned 'keep' or 'remove', shown as a keep/remove strip "
-                    "on the card that the user can flip.")
-    labels: Optional[list[UiGroupLabel]] = Field(
-        default=None, max_length=MAX_SHOW_PATHS,
-        description="Optional, one per path: the heading of the path's group as {key, params}; it is "
-                    "appended to the section header after the counts.")
-    reasons: Optional[list[UiCullReason]] = Field(
-        default=None, max_length=MAX_SHOW_PATHS,
-        description="Optional, one per path: why the photo is planned for removal as {key, value} "
-                    "(`best` for a keeper); shown on the card's keep/remove strip.")
-    kinds: Optional[list[CullingGroupType]] = Field(
-        default=None, max_length=MAX_SHOW_PATHS,
-        description="Optional, one per path: the kind of the path's group (bracket / panorama / "
-                    "hdr_panorama sets are kept whole).")
-
-    @model_validator(mode="after")
-    def _parallel_to_paths(self) -> "UiShowPhotos":
-        for name in ("groups", "marks", "labels", "reasons", "kinds"):
-            value = getattr(self, name)
-            if value is not None and len(value) != len(self.paths):
-                raise ValueError(f"`{name}` must have exactly one entry per path "
-                                 f"({len(value)} given for {len(self.paths)} paths)")
-        return self
 
 
 class UiSelectPhotos(UiArgs):
@@ -308,11 +255,7 @@ UI_TOOLS: tuple[UiTool, ...] = (
     UiTool("ui_show_photos",
            "Show exactly these photos, in this order, as the gallery's list (max 200). Photos the "
            "user cannot see are skipped and returned as `missing`. Any filter change by the user "
-           "or the assistant replaces the list. Optional `groups` (one number per path: each group "
-           "becomes a section under its own header, with its keep/remove counts), `marks` "
-           "('keep'/'remove' per path, the planned decision shown as a keep/remove strip on the "
-           "card that the user can flip), `labels` ({key, params} heading per path), `reasons` "
-           "({key, value} per path) and `kinds` (group kind per path), all parallel to `paths`.",
+           "or the assistant replaces the list.",
            UiShowPhotos, False),
     UiTool("ui_select_photos",
            "Change the selection in the user's tab: explicit `paths`, or the whole filtered view "

@@ -32,112 +32,6 @@ export { DEFAULT_FILTERS, SMART_ALBUM_EXCLUDE_KEYS, anyHideToggleActive };
 export type HiddenFilterFlags = Pick<GalleryFilters,
   'hide_blinks' | 'hide_bursts' | 'hide_duplicates' | 'hide_brackets' | 'hide_panoramas'>;
 
-/** An agent's (or the user's) verdict on one photo of an annotated pinned list. */
-export type ReviewMark = 'keep' | 'remove';
-/** Cap per list in the review snapshot handed back to the assistant. */
-export const REVIEW_CAP = 1000;
-
-/** A group's heading as a translation key plus params, sent by the assistant (server text is data). */
-export interface ReviewGroupLabel {
-  key: string;
-  params: Record<string, string | number>;
-}
-
-/** Why one photo is planned for removal: the machine key the cull-reason pipe translates (`best` for a keeper). */
-export interface ReviewReason {
-  key: string;
-  value?: number | null;
-}
-
-/** What `setGroupMarks` does to the marks of one group. */
-export type ReviewGroupMode = 'keep_all' | 'keep_best' | 'remove_all';
-
-/** Group kinds the cull keeps whole (mirrors the server's `_KEEP_WHOLE_KINDS`): a frame of them is never removed alone. */
-export const REVIEW_KEEP_WHOLE_KINDS: ReadonlySet<string> = new Set(['bracket', 'panorama', 'hdr_panorama']);
-
-type ApplyKind = NonNullable<components['schemas']['ApplyGroup']['kind']>;
-type ApplyMarksResponse = components['schemas']['ApplyMarksResponse'];
-type UndoApplyMarksResponse = components['schemas']['UndoApplyMarksResponse'];
-/** Group kinds `POST /culling/apply_marks` accepts; any other pin kind is sent as no kind. */
-const APPLY_KINDS: ReadonlySet<string> = new Set(['burst', 'similar', 'scene', 'bracket', 'panorama', 'hdr_panorama']);
-
-/** One path the user already applied: the effective mark at apply time and the receipt that can undo it. */
-export interface AppliedMark {
-  mark: ReviewMark;
-  receiptId: string;
-}
-
-/** What the tab keeps of one apply (one group): enough to label and undo it after the pin is replaced. */
-export interface AppliedReceipt {
-  receiptId: string;
-  paths: string[];
-  group: number | null;
-  kind: string | null;
-  label: ReviewGroupLabel | null;
-  firstFilename: string;
-  /** Kept-whole frames the apply really left kept (not the ones that stay rejected). */
-  keptWholePaths: string[];
-  /** The server no longer holds the receipt (404): the group stays locked, Undo is gone. */
-  unavailable?: boolean;
-}
-
-/** The pin as it was when Apply was pressed. */
-interface PinSnapshot {
-  labels: ReadonlyMap<number, ReviewGroupLabel>;
-  groups: ReadonlyMap<string, number>;
-  paths: readonly string[];
-}
-
-/**
- * The group number an applied receipt has on the CURRENT pin: set when at least one receipt path is pinned and
- * every pinned path shares one number, else null. The number frozen at apply time goes stale on a re-pin.
- */
-export function currentReceiptGroup(receipt: AppliedReceipt, groups: ReadonlyMap<string, number>): number | null {
-  let found: number | null = null;
-  for (const path of receipt.paths) {
-    const group = groups.get(path);
-    if (group === undefined) continue;
-    if (found !== null && found !== group) return null;
-    found = group;
-  }
-  return found;
-}
-
-/** A group (or, for a marks-only pin, the whole list) as one unit of an apply request. */
-export interface ApplyUnit {
-  group: number | null;
-  kind: string | null;
-  ungrouped: boolean;
-  keep: string[];
-  reject: string[];
-  /** Keep-marked photos currently shown rejected: the server un-rejects them. */
-  unreject: string[];
-}
-
-export interface ApplyPlan {
-  units: ApplyUnit[];
-  byGroup: ReadonlyMap<number, ApplyUnit>;
-  counts: { groups: number; reject: number; unreject: number };
-}
-
-/** A group all of whose pinned photos were applied by one receipt. */
-export interface AppliedGroup {
-  receiptId: string;
-  keptWhole: number;
-  unavailable: boolean;
-}
-
-const EMPTY_APPLY_PLAN: ApplyPlan = { units: [], byGroup: new Map(), counts: { groups: 0, reject: 0, unreject: 0 } };
-
-/** The optional annotations of a pin, each parallel to its paths. */
-export interface PinReview {
-  groups?: number[];
-  marks?: ReviewMark[];
-  labels?: ReviewGroupLabel[];
-  reasons?: ReviewReason[];
-  kinds?: string[];
-}
-
 export const FILTER_OPTIONS_TIMEOUT_MS = 20000;
 
 /**
@@ -420,9 +314,6 @@ export class GalleryStore {
   /** Requested paths the server did not return for the current pin (invisible, unknown). */
   readonly pinnedMissing = signal<string[]>([]);
   private pinnedLoad = false;
-  /** The agent's per-path group number for the current pin (empty when the pin carries none). */
-  readonly pinnedGroups = signal<ReadonlyMap<string, number>>(new Map());
-  /** The agent's per-path keep/remove mark for the current pin. */
   /**
    * The photo the keyboard cursor last stood on, mirrored by the gallery's `setCursor` for
    * `ui_get_context`. Unlike the cursor it survives the window losing focus (the user switching to
@@ -430,212 +321,6 @@ export class GalleryStore {
    * Hover never sets it.
    */
   readonly focusedPath = signal<string | null>(null);
-  readonly pinnedMarks = signal<ReadonlyMap<string, ReviewMark>>(new Map());
-  /** The assistant's heading per group number (empty when the pin carries none). */
-  readonly pinnedLabels = signal<ReadonlyMap<number, ReviewGroupLabel>>(new Map());
-  /** The assistant's kind per group number (bracket / panorama / burst ...). */
-  readonly pinnedKinds = signal<ReadonlyMap<number, string>>(new Map());
-  /** The assistant's reason per photo. */
-  readonly pinnedReasons = signal<ReadonlyMap<string, ReviewReason>>(new Map());
-  /** Groups the user has looked at in this pin: header on screen, or a card of it under the cursor. */
-  readonly visitedGroups = signal<ReadonlySet<number>>(new Set());
-  /** The user's ABSOLUTE chosen mark per path, accumulated across pins (never a flip of the agent's). */
-  readonly userMarks = signal<ReadonlyMap<string, ReviewMark>>(new Map());
-  /**
-   * Paths the user applied with "Apply", keyed by path. Survives every re-pin (an assistant re-preview must
-   * not resurrect them as pending marks); only a filter change, "Show the usual view" or a reload drops it.
-   */
-  readonly appliedMarks = signal<ReadonlyMap<string, AppliedMark>>(new Map());
-  /** One receipt per applied group, keyed by the server's receipt id, in apply order. */
-  readonly appliedReceipts = signal<ReadonlyMap<string, AppliedReceipt>>(new Map());
-  /** An apply request is in flight. */
-  readonly applying = signal(false);
-  /** Every receipt, oldest first: the status line's "Applied" menu and the per-group Undo read it. */
-  readonly appliedReceiptList = computed(() => [...this.appliedReceipts().values()]);
-  /** Groups of the current pin that are fully applied, with the receipt that did it. */
-  readonly appliedGroups = computed<ReadonlyMap<number, AppliedGroup>>(() => {
-    const applied = this.appliedMarks();
-    const result = new Map<number, AppliedGroup>();
-    if (applied.size === 0) return result;
-    const groups = this.pinnedGroups();
-    const receipts = this.appliedReceipts();
-    const agent = this.pinnedMarks();
-    const user = this.userMarks();
-    // A group is applied when it holds an applied path and no pending one (not applied, effectively marked);
-    // a photo nobody marked stays outside the apply and does not block it.
-    const state = new Map<number, { receiptId: string | null; pending: boolean }>();
-    for (const path of this.pinnedPaths() ?? []) {
-      const group = groups.get(path);
-      if (group === undefined) continue;
-      const seen = state.get(group) ?? { receiptId: null, pending: false };
-      state.set(group, seen);
-      const entry = applied.get(path);
-      if (!entry) {
-        if (user.get(path) ?? agent.get(path)) seen.pending = true;
-        continue;
-      }
-      if (seen.receiptId === null) seen.receiptId = entry.receiptId;
-      else if (seen.receiptId !== entry.receiptId) seen.pending = true;
-    }
-    for (const [group, { receiptId, pending }] of state) {
-      const receipt = receiptId && !pending ? receipts.get(receiptId) : undefined;
-      if (receipt) result.set(group, { receiptId: receipt.receiptId, keptWhole: receipt.keptWholePaths.length, unavailable: !!receipt.unavailable });
-    }
-    return result;
-  });
-  /**
-   * What "Apply" would send: per group, the not-yet-applied paths split by their effective mark. A keep-whole
-   * kind's Remove marks travel as Remove too and the server keeps those frames whole (`skipped_keep_whole`);
-   * only the dialog's reject count leaves them out. A Keep-marked photo shown rejected is un-rejected.
-   */
-  readonly applyPlan = computed<ApplyPlan>(() => {
-    const agent = this.pinnedMarks();
-    if (agent.size === 0) return EMPTY_APPLY_PLAN;
-    const user = this.userMarks();
-    const applied = this.appliedMarks();
-    const groups = this.pinnedGroups();
-    const kinds = this.pinnedKinds();
-    const rejected = new Set<string>();
-    for (const photo of this.photos()) if (photo.is_rejected) rejected.add(photo.path);
-    const groupless = groups.size === 0;
-    const units = new Map<number | null, ApplyUnit>();
-    let reject = 0;
-    let unreject = 0;
-    for (const path of this.pinnedPaths() ?? []) {
-      if (applied.has(path)) continue;
-      const mark = user.get(path) ?? agent.get(path);
-      if (!mark) continue;
-      const group = groupless ? null : (groups.get(path) ?? null);
-      if (!groupless && group === null) continue;
-      let unit = units.get(group);
-      if (!unit) {
-        const rawKind = group === null ? '' : (kinds.get(group) ?? '');
-        unit = { group, kind: APPLY_KINDS.has(rawKind) ? rawKind : null, ungrouped: groupless, keep: [], reject: [], unreject: [] };
-        units.set(group, unit);
-      }
-      if (mark === 'keep') {
-        unit.keep.push(path);
-        if (rejected.has(path)) {
-          unit.unreject.push(path);
-          unreject++;
-        }
-      } else {
-        unit.reject.push(path);
-        // The server keeps a bracket / panorama frame whole, so it is not a photo this Apply will reject.
-        if (!rejected.has(path) && !REVIEW_KEEP_WHOLE_KINDS.has(unit.kind ?? '')) reject++;
-      }
-    }
-    const list = [...units.values()];
-    return {
-      units: list,
-      byGroup: new Map(list.filter(unit => unit.group !== null).map(unit => [unit.group!, unit] as const)),
-      counts: { groups: list.length, reject, unreject },
-    };
-  });
-  /** Legend counts over the pinned list: distinct groups, and photos effectively kept / removed. */
-  readonly reviewLegend = computed(() => {
-    const agent = this.pinnedMarks();
-    const user = this.userMarks();
-    const applied = this.appliedMarks();
-    let keep = 0;
-    let remove = 0;
-    for (const path of this.pinnedPaths() ?? []) {
-      const mark = applied.get(path)?.mark ?? user.get(path) ?? agent.get(path);
-      if (mark === 'keep') keep++;
-      else if (mark === 'remove') remove++;
-    }
-    return { groups: new Set(this.pinnedGroups().values()).size, keep, remove };
-  });
-  /**
-   * Per-group photo count and effective keep/remove counts (user mark over assistant mark),
-   * derived so a mark flip never rebuilds the gallery rows. Empty when the pin carries no groups.
-   */
-  readonly reviewGroupCounts = computed(() => {
-    const groups = this.pinnedGroups();
-    const counts = new Map<number, { count: number; keep: number; remove: number }>();
-    if (!groups.size) return counts;
-    const agent = this.pinnedMarks();
-    const user = this.userMarks();
-    const applied = this.appliedMarks();
-    for (const path of this.pinnedPaths() ?? []) {
-      const group = groups.get(path);
-      if (group === undefined) continue;
-      const entry = counts.get(group) ?? { count: 0, keep: 0, remove: 0 };
-      entry.count++;
-      // What Apply committed (a kept-whole frame reads Keep, or Remove when it stays rejected), else the user's mark, else the assistant's.
-      const mark = applied.get(path)?.mark ?? user.get(path) ?? agent.get(path);
-      if (mark === 'keep') entry.keep++;
-      else if (mark === 'remove') entry.remove++;
-      counts.set(group, entry);
-    }
-    return counts;
-  });
-  /** Distinct groups of the pin. */
-  readonly groupsTotal = computed(() => new Set(this.pinnedGroups().values()).size);
-  /** Groups holding at least one photo whose effective user mark differs from the assistant's (a flip back is not counted). */
-  readonly groupsChanged = computed(() => {
-    const groups = this.pinnedGroups();
-    const agent = this.pinnedMarks();
-    const changed = new Set<number>();
-    for (const [path, mark] of this.userMarks()) {
-      const planned = agent.get(path);
-      const group = groups.get(path);
-      if (planned !== undefined && group !== undefined && planned !== mark) changed.add(group);
-    }
-    return changed.size;
-  });
-  /** Photos whose effective mark differs from the assistant's, and what the user made of them. */
-  readonly reviewChanges = computed(() => {
-    const agent = this.pinnedMarks();
-    const applied = this.appliedMarks();
-    let keep = 0;
-    let remove = 0;
-    for (const [path, mark] of this.userMarks()) {
-      const planned = agent.get(path);
-      if (planned === undefined || planned === mark || applied.has(path)) continue;
-      if (mark === 'keep') keep++;
-      else remove++;
-    }
-    return { changed: keep + remove, keep, remove };
-  });
-  /** Whether the current pin carries any review annotation. */
-  readonly hasReview = computed(() => this.pinnedGroups().size > 0 || this.pinnedMarks().size > 0);
-  /** What the user chose, for the assistant: only paths they set themselves, capped. */
-  readonly review = computed(() => {
-    const applied = this.appliedMarks();
-    const keep: string[] = [];
-    const remove: string[] = [];
-    // An applied path is decided, not pending: it leaves the pending lists and shows up under `applied`.
-    for (const [path, mark] of this.userMarks()) {
-      if (applied.has(path)) continue;
-      (mark === 'keep' ? keep : remove).push(path);
-    }
-    const appliedKeep: string[] = [];
-    const appliedRemove: string[] = [];
-    for (const [path, { mark }] of applied) (mark === 'keep' ? appliedKeep : appliedRemove).push(path);
-    const groups = new Set(this.pinnedGroups().values());
-    let visited = 0;
-    for (const group of this.visitedGroups()) if (groups.has(group)) visited++;
-    const truncated = keep.length > REVIEW_CAP || remove.length > REVIEW_CAP;
-    const appliedTruncated = appliedKeep.length > REVIEW_CAP || appliedRemove.length > REVIEW_CAP;
-    return {
-      keep: keep.slice(0, REVIEW_CAP),
-      remove: remove.slice(0, REVIEW_CAP),
-      truncated,
-      // The true sizes, only when the cap cut a list, so the server's own trim cannot report the cut lengths.
-      ...(truncated ? { keep_count: keep.length, remove_count: remove.length } : {}),
-      applied: {
-        keep: appliedKeep.slice(0, REVIEW_CAP),
-        remove: appliedRemove.slice(0, REVIEW_CAP),
-        truncated: appliedTruncated,
-        ...(appliedTruncated ? { keep_count: appliedKeep.length, remove_count: appliedRemove.length } : {}),
-      },
-      groups_applied: this.appliedGroups().size,
-      groups_total: groups.size,
-      groups_visited: visited,
-      groups_changed: this.groupsChanged(),
-    };
-  });
   readonly hasMore = signal(false);
   readonly config = signal<ViewerConfig | null>(null);
   readonly filterDrawerOpen = signal(localStorage.getItem(DRAWER_STATE_KEY) === 'true');
@@ -1014,7 +699,6 @@ export class GalleryStore {
   async loadConfig(): Promise<void> {
     // loadConfig replaces `filters` wholesale, so an explicit list shown under the old ones is stale.
     this.pinnedPaths.set(null);
-    this.dropReview();
     try {
       const cfg = await firstValueFrom(this.api.get<ViewerConfig>('/config'));
       this.config.set(cfg);
@@ -1075,7 +759,6 @@ export class GalleryStore {
     this.pinnedLoad = false;
     if (!pinned) {
       this.pinnedPaths.set(null);
-      this.dropReview();
     }
     this.resetViewScope();
     this.filters.update(current => ({ ...current, page: 1 }));
@@ -1165,231 +848,19 @@ export class GalleryStore {
    * Show exactly these photos, in this order, until any filter change reloads the view.
    * Resolves with the requested paths the server did not return.
    */
-  async showPaths(
-    paths: string[],
-    review?: PinReview,
-  ): Promise<string[]> {
-    const groups = review?.groups;
-    const marks = review?.marks;
-    const labels = review?.labels;
-    const kinds = review?.kinds;
-    const reasons = review?.reasons;
-    // Gather each group contiguously (first-seen group order, stable within a group) so the
-    // gallery draws one header per group.
-    let order = paths.map((_, i) => i);
-    if (groups) {
-      const rank = new Map<number, number>();
-      for (const g of groups) if (!rank.has(g)) rank.set(g, rank.size);
-      order = order.sort((a, b) => (rank.get(groups[a]) ?? 0) - (rank.get(groups[b]) ?? 0) || a - b);
-    }
-    const ordered = order.map(i => paths[i]);
-    this.pinnedGroups.set(new Map(groups ? order.map(i => [paths[i], groups[i]] as const) : []));
-    this.pinnedMarks.set(new Map(marks ? order.map(i => [paths[i], marks[i]] as const) : []));
-    // Labels and kinds arrive per path but belong to the group: the first path of a group speaks for it.
-    const perGroup = <T>(values: readonly T[] | undefined): ReadonlyMap<number, T> => {
-      const byGroup = new Map<number, T>();
-      if (groups && values) for (const i of order) if (!byGroup.has(groups[i]) && values[i] !== undefined) byGroup.set(groups[i], values[i]);
-      return byGroup;
-    };
-    this.pinnedLabels.set(perGroup(labels));
-    this.pinnedKinds.set(perGroup(kinds));
-    this.pinnedReasons.set(new Map(reasons ? order.map(i => [paths[i], reasons[i]] as const) : []));
-    this.visitedGroups.set(new Set());
-    // A pin without marks starts a fresh review; one with marks keeps the user's absolute choices.
-    if (!marks) this.userMarks.set(new Map());
+  async showPaths(paths: string[]): Promise<string[]> {
     // The previous view's selection names photos this list may not hold.
     this.clearSelection();
-    this.pinnedPaths.set(ordered);
+    this.pinnedPaths.set(paths);
     this.pinnedMissing.set([]);
     this.pinnedLoad = true;
     await this.loadPhotos();
     return this.pinnedMissing();
   }
 
-  /** Record the user's absolute mark for one photo of the pinned list; no HTTP. */
-  setReviewMark(path: string, mark: ReviewMark): void {
-    if (this.appliedMarks().has(path)) return;
-    this.journal.record('review_mark', [path], mark);
-    this.userMarks.update(current => new Map(current).set(path, mark));
-  }
-
-  /** Note that the user has looked at these groups. Ignores the ones already seen, so a scroll event costs nothing. */
-  markGroupsVisited(groups: Iterable<number>): void {
-    const seen = this.visitedGroups();
-    const fresh = [...groups].filter(group => !seen.has(group));
-    if (fresh.length) this.visitedGroups.set(new Set([...seen, ...fresh]));
-  }
-
   /**
-   * Whether a group is a bracket / panorama set, which the cull keeps whole: removing frames of it
-   * (Remove all, Keep best only) is not offered.
-   */
-  isGroupKeptWhole(group: number): boolean {
-    return REVIEW_KEEP_WHOLE_KINDS.has(this.pinnedKinds().get(group) ?? '');
-  }
-
-  /**
-   * Set the user's mark on every photo of one group at once; no HTTP. The best photo is the group's
-   * first keep in the assistant's order, else its first photo. A keep-whole group refuses the modes
-   * that would remove one of its frames. One journal entry covers the whole action.
-   */
-  setGroupMarks(group: number, mode: ReviewGroupMode): void {
-    if (this.pinnedMarks().size === 0) return;
-    if (mode !== 'keep_all' && this.isGroupKeptWhole(group)) return;
-    const groups = this.pinnedGroups();
-    const agent = this.pinnedMarks();
-    const applied = this.appliedMarks();
-    const inGroup = (this.pinnedPaths() ?? []).filter(path => groups.get(path) === group && !applied.has(path));
-    if (inGroup.length === 0) return;
-    const best = inGroup.find(path => agent.get(path) === 'keep') ?? inGroup[0];
-    const markOf = (path: string): ReviewMark =>
-      mode === 'keep_all' || (mode === 'keep_best' && path === best) ? 'keep' : 'remove';
-    this.journal.record('review_group', inGroup, { group, mode });
-    this.userMarks.update(current => {
-      const next = new Map(current);
-      for (const path of inGroup) next.set(path, markOf(path));
-      return next;
-    });
-  }
-
-  /**
-   * Commit the user's marks for these units in ONE request: Remove-marked photos are rejected, Keep-marked
-   * rejected ones un-rejected, and the server records the split. Cards are patched from the answer only (never
-   * optimistically: the server refuses to reject a keep-whole frame), and each group gets its own receipt.
-   * Resolves whether the request succeeded.
-   */
-  async applyGroups(units: readonly ApplyUnit[]): Promise<boolean> {
-    if (units.length === 0 || this.applying()) return false;
-    this.applying.set(true);
-    // The receipt describes the pin as it was when Apply was pressed, whatever a re-pin does before the answer.
-    const pin: PinSnapshot = {
-      labels: this.pinnedLabels(),
-      groups: this.pinnedGroups(),
-      paths: this.pinnedPaths() ?? [],
-    };
-    try {
-      const body: components['schemas']['ApplyMarksBody'] = {
-        groups: units.map(unit => ({
-          ...(unit.kind ? { kind: unit.kind as ApplyKind } : {}),
-          ungrouped: unit.ungrouped,
-          keep_paths: unit.keep,
-          reject_paths: unit.reject,
-        })),
-      };
-      const res = await firstValueFrom(this.api.post<ApplyMarksResponse>('/culling/apply_marks', body));
-      this.recordApplied(units, res, pin);
-      return true;
-    } catch {
-      this.snackBar.open(this.i18n.t(I18N.gallery.pinned.review.apply_failed), '', { duration: 4000 });
-      return false;
-    } finally {
-      this.applying.set(false);
-    }
-  }
-
-  private recordApplied(units: readonly ApplyUnit[], res: ApplyMarksResponse, pin: PinSnapshot): void {
-    const rejectedNow = new Set<string>();
-    const unrejectedNow = new Set<string>();
-    const marksNow = new Map(this.appliedMarks());
-    const receiptsNow = new Map(this.appliedReceipts());
-    for (const group of res.groups) {
-      const unit = units[group.index];
-      if (!unit) continue;
-      for (const path of group.rejected_paths) rejectedNow.add(path);
-      for (const path of group.unrejected_paths) unrejectedNow.add(path);
-      const whole = new Set(group.skipped_keep_whole);
-      const rejectedWhole = new Set(group.rejected_keep_whole);
-      const paths = [...unit.keep, ...unit.reject];
-      const kept = new Set(unit.keep);
-      for (const path of paths) {
-        // A frame the server kept whole was kept by Apply, whatever the user marked, unless it was already
-        // rejected: it stays rejected, which is a Remove.
-        const mark: ReviewMark = kept.has(path) || (whole.has(path) && !rejectedWhole.has(path)) ? 'keep' : 'remove';
-        marksNow.set(path, { mark, receiptId: group.receipt_id });
-      }
-      receiptsNow.set(group.receipt_id, {
-        receiptId: group.receipt_id,
-        paths,
-        group: unit.group,
-        kind: unit.kind,
-        label: unit.group === null ? null : (pin.labels.get(unit.group) ?? null),
-        firstFilename: (pin.paths.find(path => unit.group === null || pin.groups.get(path) === unit.group) ?? paths[0] ?? '').split('/').pop() ?? '',
-        keptWholePaths: group.skipped_keep_whole.filter(path => !rejectedWhole.has(path)),
-        unavailable: false,
-      });
-      this.journal.record('review_apply', paths, {
-        group: unit.group,
-        rejected: group.rejected,
-        unrejected: group.unrejected,
-        kept_whole: group.skipped_keep_whole.length - rejectedWhole.size,
-      });
-    }
-    this.photos.update(photos => photos.map(p =>
-      rejectedNow.has(p.path) ? { ...p, is_rejected: true } : unrejectedNow.has(p.path) ? { ...p, is_rejected: false } : p));
-    this.appliedMarks.set(marksNow);
-    this.appliedReceipts.set(receiptsNow);
-  }
-
-  /**
-   * Reverse one applied group through the server's receipt. The group goes back to its pre-apply, editable
-   * state (the user's marks stay); a 404 means the server no longer holds the receipt: the group stays locked.
-   */
-  async undoApplied(receiptId: string): Promise<void> {
-    const receipt = this.appliedReceipts().get(receiptId);
-    if (!receipt || receipt.unavailable || this.applying()) return;
-    this.applying.set(true);
-    const review = I18N.gallery.pinned.review;
-    try {
-      const res = await firstValueFrom(
-        this.api.post<UndoApplyMarksResponse>('/culling/undo_apply_marks', { receipt_id: receiptId }),
-      );
-      const rejectedBack = new Set(res.restored_unrejected);
-      const clearedBack = new Set(res.restored_rejected);
-      this.photos.update(photos => photos.map(p =>
-        clearedBack.has(p.path) ? { ...p, is_rejected: false } : rejectedBack.has(p.path) ? { ...p, is_rejected: true } : p));
-      this.appliedMarks.update(current => new Map([...current].filter(([, entry]) => entry.receiptId !== receiptId)));
-      this.appliedReceipts.update(current => {
-        const next = new Map(current);
-        next.delete(receiptId);
-        return next;
-      });
-      this.journal.record('review_apply_undo', receipt.paths, {
-        group: currentReceiptGroup(receipt, this.pinnedGroups()),
-        restored_rejected: res.restored_rejected.length,
-        restored_unrejected: res.restored_unrejected.length,
-        skipped_changed: res.skipped_changed,
-      });
-      if (res.skipped_changed > 0) {
-        const key = res.skipped_changed === 1 ? review.undo_skipped : review.undo_skipped_plural;
-        this.snackBar.open(this.i18n.t(key, { count: res.skipped_changed }), '', { duration: 5000 });
-      }
-    } catch (err) {
-      if (err instanceof HttpErrorResponse && err.status === 404) {
-        this.appliedReceipts.update(current => new Map(current).set(receiptId, { ...receipt, unavailable: true }));
-        this.snackBar.open(this.i18n.t(review.undo_unavailable), '', { duration: 5000 });
-      } else {
-        this.notifyActionFailed();
-      }
-    } finally {
-      this.applying.set(false);
-    }
-  }
-
-  private dropReview(): void {
-    this.appliedMarks.set(new Map());
-    this.appliedReceipts.set(new Map());
-    this.pinnedGroups.set(new Map());
-    this.pinnedMarks.set(new Map());
-    this.userMarks.set(new Map());
-    this.pinnedLabels.set(new Map());
-    this.pinnedKinds.set(new Map());
-    this.pinnedReasons.set(new Map());
-    this.visitedGroups.set(new Set());
-  }
-
-  /**
-   * Bring the rows an assistant write changed up to date WITHOUT reloading the grid: the review pin
-   * (groups, marks, the user's own marks), the scroll position and the selection all survive.
+   * Bring the rows an assistant write changed up to date WITHOUT reloading the grid: the pin,
+   * the scroll position and the selection all survive.
    * `paths` null means the write's scope is not enumerable, so the whole view is refetched and swapped
    * in when it lands. Best effort: a failed refetch leaves the rows as they are. A no-op until the
    * gallery has loaded once, so a write seen from /culling or /stats never loads it behind the user.
@@ -1456,32 +927,17 @@ export class GalleryStore {
     }));
   }
 
-  /** Remove photos that are no longer part of the view, and out of the review pin with them. */
+  /** Remove photos that are no longer part of the view, and out of the pin with them. */
   private dropMissing(missing: string[]): void {
     if (missing.length === 0) return;
     const gone = new Set(missing);
     this.removePhotos(gone);
     if (this.pinnedPaths() === null) return;
     this.pinnedPaths.update(current => current && current.filter(path => !gone.has(path)));
-    const without = <T>(map: ReadonlyMap<string, T>): ReadonlyMap<string, T> =>
-      new Map([...map].filter(([path]) => !gone.has(path)));
-    this.pinnedGroups.update(without);
-    this.pinnedMarks.update(without);
-    this.userMarks.update(without);
-    this.appliedMarks.update(without);
-    this.appliedReceipts.update(current => new Map([...current]
-      .map(([id, receipt]) => [id, { ...receipt, paths: receipt.paths.filter(path => !gone.has(path)) }] as const)
-      .filter(([, receipt]) => receipt.paths.length > 0)));
-    this.pinnedReasons.update(without);
-    const remaining = new Set(this.pinnedGroups().values());
-    const stillThere = <T>(map: ReadonlyMap<number, T>): ReadonlyMap<number, T> =>
-      new Map([...map].filter(([group]) => remaining.has(group)));
-    this.pinnedLabels.update(stillThere);
-    this.pinnedKinds.update(stillThere);
     this.pinnedMissing.update(current => [...new Set([...current, ...missing])]);
   }
 
-  /** Refetch the whole pinned list quietly: the pin, its marks and the grid stay up until the rows swap. */
+  /** Refetch the whole pinned list quietly: the pin and the grid stay up until the rows swap. */
   private async refreshPinnedList(loadSeq: number): Promise<void> {
     const pinned = this.pinnedPaths() ?? [];
     if (pinned.length === 0) return;

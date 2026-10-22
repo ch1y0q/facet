@@ -60,8 +60,6 @@ export class ShortcutsDialogComponent {
         { keys: ['1', '–', '5'], labelKey: 'shortcuts.rate' },
         { keys: ['0', 'X'], labelKey: 'shortcuts.reject' },
         { keys: ['F'], labelKey: 'shortcuts.favorite' },
-        { keys: ['K'], labelKey: 'shortcuts.review_keep' },
-        { keys: ['R'], labelKey: 'shortcuts.review_remove' },
         { keys: ['Esc'], labelKey: 'shortcuts.clear_selection' },
         { keys: ['Shift', 'F10'], labelKey: 'shortcuts.context_menu' },
       ],

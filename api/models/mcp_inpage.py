@@ -32,10 +32,6 @@ class McpCallRequest(BaseModel):
     arguments: dict[str, Any] = Field(default_factory=dict)
     selection_snapshot: Optional[dict[str, Any]] = Field(
         default=None, description="The calling tab's `ui_get_selection` data; read by `target: \"selection\"`.")
-    review_snapshot: Optional[dict[str, Any]] = Field(
-        default=None,
-        description="The calling tab's `ui_get_context` `review`; read on every auto_cull call: its keep/remove "
-                    "marks only when auto_cull is given neither list, its `applied` record always.")
     tab_id: Optional[str] = Field(
         default=None, pattern=r"^[A-Za-z0-9_-]{1,64}$",
         description="The calling tab's bridge id. A write's `changed` frame goes to the user's OTHER tabs, "

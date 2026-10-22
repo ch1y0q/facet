@@ -70,62 +70,6 @@ def _cap_activity(activity: dict) -> None:
             item["truncated"] = True
 
 
-def fit_review(result: dict, max_bytes: int) -> None:
-    """Trim ``review.keep`` / ``review.remove`` / ``review.applied.*`` and ``user_activity.items`` to fit ``max_bytes``.
-
-    The tab caps each review list at 1000 paths and the activity at 50 items, far more than the envelope
-    allows. The biggest of the three is halved (activity drops its OLDEST half) until the whole result fits;
-    whichever is cut is flagged: the review keeps its true sizes (the tab's, when its cap already cut) in ``review.keep_count`` /
-    ``review.remove_count`` and sets ``review.truncated``, the activity sets ``user_activity.truncated``. Everything is edited in place, so the review's other keys
-    (``groups_total`` / ``groups_visited`` / ``groups_changed`` / ``groups_applied``) and ``user_activity.until``
-    are untouched. The applied lists are cut the same way and flagged inside their block
-    (``review.applied.truncated`` with its own ``keep_count`` / ``remove_count``).
-    """
-    data = result.get("data") if result.get("ok") else None
-    if not isinstance(data, dict):
-        return
-    found = data.get("user_activity")
-    activity: dict = found if isinstance(found, dict) else {}
-    if activity:
-        _cap_activity(activity)
-    if encoded_size(result) <= max_bytes:
-        return
-    found = data.get("review")
-    review: dict = found if isinstance(found, dict) else {}
-    lists = [side for side in ("keep", "remove") if isinstance(review.get(side), list)]
-    found = review.get("applied")
-    applied: dict = found if isinstance(found, dict) else {}
-    applied_lists = [side for side in ("keep", "remove") if isinstance(applied.get(side), list)]
-    # The true sizes are recorded on the first cut only, so a review the activity's trim spares stays unflagged.
-    counted = len(lists) < 2
-    while encoded_size(result) > max_bytes:
-        sizes = {side: encoded_size(review[side]) for side in lists if review[side]}
-        sizes.update({f"applied.{side}": encoded_size(applied[side]) for side in applied_lists if applied[side]})
-        if isinstance(activity.get("items"), list) and activity["items"]:
-            sizes["activity"] = encoded_size(activity["items"])
-        if not sizes:
-            return
-        biggest = max(sizes, key=lambda name: sizes[name])
-        if biggest == "activity":
-            activity["items"] = activity["items"][(len(activity["items"]) + 1) // 2:]
-            activity["truncated"] = True
-            continue
-        if biggest.startswith("applied."):
-            side = biggest.split(".", 1)[1]
-            for name in applied_lists:
-                applied.setdefault(f"{name}_count", len(applied[name]))
-            applied["truncated"] = True
-            applied[side] = applied[side][:len(applied[side]) // 2]
-            continue
-        if not counted:
-            # The tab already recorded the true sizes when its own cap cut a list; keep those.
-            review.setdefault("keep_count", len(review["keep"]))
-            review.setdefault("remove_count", len(review["remove"]))
-            review["truncated"] = True
-            counted = True
-        review[biggest] = review[biggest][:len(review[biggest]) // 2]
-
-
 CULLING_LISTS = ("confirmed", "pending", "changed")
 
 
@@ -137,7 +81,8 @@ def fit_culling(result: dict, max_bytes: int) -> None:
     until the whole result fits. A cut culling list sets ``culling.truncated`` and records the true size of
     EVERY list in ``confirmed_count`` / ``pending_count`` / ``changed_count`` on the first cut;
     ``groups_total`` and ``untouched`` are never touched, so they stay true. The activity sets
-    ``user_activity.truncated`` when it is cut and keeps its ``until``.
+    ``user_activity.truncated`` when it is cut and keeps its ``until``. A context without a ``culling`` block
+    still has its activity capped and trimmed.
     """
     data = result.get("data") if result.get("ok") else None
     if not isinstance(data, dict):
@@ -151,8 +96,6 @@ def fit_culling(result: dict, max_bytes: int) -> None:
     found = data.get("culling")
     culling: dict = found if isinstance(found, dict) else {}
     lists = [name for name in CULLING_LISTS if isinstance(culling.get(name), list)]
-    if not lists:
-        return
     counted = False
     while encoded_size(result) > max_bytes:
         sizes = {name: encoded_size(culling[name]) for name in lists if culling[name]}
@@ -202,7 +145,6 @@ def _make_tool(tool: UiTool, registry: TabRegistry) -> Any:
             if tool.name == "ui_get_context":
                 restrict_context(result, resolved.level)
                 fit_culling(result, settings["max_bytes"])
-                fit_review(result, settings["max_bytes"])
             return result
         return await run_tool(ctx, tool.name, handler)
 

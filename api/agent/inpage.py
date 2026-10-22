@@ -32,8 +32,6 @@ _broadcasts: set[asyncio.Task] = set()
 EXCLUDED_TOOLS = frozenset({"get_thumbnail", "contact_sheet", "available_actions"})
 STRIPPED_ARGS = ("show", "tab_id")
 SESSION_HEADER = "X-Facet-Agent-Session"
-# Scope key under which the calling tab's `ui_get_context` `review` rides to the tool (like the selection snapshot).
-REVIEW_SCOPE_KEY = "facet.inpage_review"
 
 
 def excluded(name: str) -> bool:
@@ -83,9 +81,9 @@ class _RequestContext:
 class SessionContext:
     """What a tool function and ``run_tool`` read from the SDK's ``Context``: ``headers`` and the scope."""
 
-    def __init__(self, grant: tokens.SessionGrant, settings: dict, review_snapshot: Optional[dict] = None):
+    def __init__(self, grant: tokens.SessionGrant, settings: dict):
         self.request_context = _RequestContext(_Request({
-            INPAGE_SCOPE_KEY: grant, SETTINGS_SCOPE_KEY: settings, REVIEW_SCOPE_KEY: review_snapshot}))
+            INPAGE_SCOPE_KEY: grant, SETTINGS_SCOPE_KEY: settings}))
         self.headers: dict = {}
 
 
@@ -124,8 +122,7 @@ def _broadcast_to_other_tabs(registry: Any, collector: WriteCollector, tab_id: s
 
 
 async def call(server: Any, grant: tokens.SessionGrant, settings: dict, name: str,
-               arguments: dict, registry: Any = None, tab_id: Optional[str] = None,
-               review_snapshot: Optional[dict] = None) -> dict:
+               arguments: dict, registry: Any = None, tab_id: Optional[str] = None) -> dict:
     """Run tool ``name`` for ``grant`` and return its envelope (never an exception).
 
     Every photo-changing write the call makes is collected, not broadcast to the caller: the caller IS
@@ -144,7 +141,7 @@ async def call(server: Any, grant: tokens.SessionGrant, settings: dict, name: st
     collector = WriteCollector()
     marker = LIVE_SINK_OVERRIDE.set(collector)
     try:
-        result = await server.call_tool(name, forced, SessionContext(grant, settings, review_snapshot))
+        result = await server.call_tool(name, forced, SessionContext(grant, settings))
     except UnexpectedToolError:
         result = None
     finally:

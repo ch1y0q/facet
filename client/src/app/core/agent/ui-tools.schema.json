@@ -1495,83 +1495,10 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Show exactly these photos, in this order, as the gallery's list (max 200). Photos the user cannot see are skipped and returned as `missing`. Any filter change by the user or the assistant replaces the list. Optional `groups` (one number per path: each group becomes a section under its own header, with its keep/remove counts), `marks` ('keep'/'remove' per path, the planned decision shown as a keep/remove strip on the card that the user can flip), `labels` ({key, params} heading per path), `reasons` ({key, value} per path) and `kinds` (group kind per path), all parallel to `paths`.",
+      "description": "Show exactly these photos, in this order, as the gallery's list (max 200). Photos the user cannot see are skipped and returned as `missing`. Any filter change by the user or the assistant replaces the list.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
-          "groups": {
-            "description": "Optional, one per path: the 1-based group number (plan order). The pin lays each group out as its own section under a header with its keep/remove counts; photos of one group are gathered together, in your order.",
-            "items": {
-              "minimum": 1,
-              "type": "integer"
-            },
-            "maxItems": 200,
-            "type": "array"
-          },
-          "kinds": {
-            "description": "Optional, one per path: the kind of the path's group (bracket / panorama / hdr_panorama sets are kept whole).",
-            "items": {
-              "enum": [
-                "burst",
-                "similar",
-                "scene",
-                "bracket",
-                "panorama",
-                "hdr_panorama"
-              ],
-              "type": "string"
-            },
-            "maxItems": 200,
-            "type": "array"
-          },
-          "labels": {
-            "description": "Optional, one per path: the heading of the path's group as {key, params}; it is appended to the section header after the counts.",
-            "items": {
-              "additionalProperties": false,
-              "description": "A group's heading as a KEY plus params, translated by the tab (server text is data, never HTML).",
-              "properties": {
-                "key": {
-                  "description": "Stable key, e.g. `burst_seconds`.",
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "params": {
-                  "additionalProperties": {
-                    "type": [
-                      "string",
-                      "integer",
-                      "number"
-                    ]
-                  },
-                  "description": "Values the translation interpolates.",
-                  "maxProperties": 8,
-                  "propertyNames": {
-                    "maxLength": 32
-                  },
-                  "type": "object"
-                }
-              },
-              "required": [
-                "key"
-              ],
-              "type": "object"
-            },
-            "maxItems": 200,
-            "type": "array"
-          },
-          "marks": {
-            "description": "Optional, one per path: the planned 'keep' or 'remove', shown as a keep/remove strip on the card that the user can flip.",
-            "items": {
-              "enum": [
-                "keep",
-                "remove"
-              ],
-              "type": "string"
-            },
-            "maxItems": 200,
-            "type": "array"
-          },
           "paths": {
             "description": "Photo paths to show, in this order, as the gallery's own list. The user's filters and sort are left untouched; any filter change replaces the list.",
             "items": {
@@ -1581,31 +1508,6 @@
             },
             "maxItems": 200,
             "minItems": 1,
-            "type": "array"
-          },
-          "reasons": {
-            "description": "Optional, one per path: why the photo is planned for removal as {key, value} (`best` for a keeper); shown on the card's keep/remove strip.",
-            "items": {
-              "additionalProperties": false,
-              "description": "Why a photo ranks below its group's best, as the machine key the tab translates.",
-              "properties": {
-                "key": {
-                  "description": "`best`, `soft`, `eyes_closed`, ...",
-                  "maxLength": 64,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "value": {
-                  "description": "The number the translation shows, when it has one.",
-                  "type": "number"
-                }
-              },
-              "required": [
-                "key"
-              ],
-              "type": "object"
-            },
-            "maxItems": 200,
             "type": "array"
           }
         },
@@ -1879,5 +1781,5 @@
       "name": "ui_show_comparison"
     }
   ],
-  "version": "b208458b91435039"
+  "version": "e069ea76d0bd8a66"
 }

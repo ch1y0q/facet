@@ -621,21 +621,6 @@ class TestProfiles:
         assert hints["ok"] and isinstance(hints["data"]["rows"], list)
 
 
-def test_pinned_page_past_the_cap_pins_keepers_first():
-    rows = [{"number": n, "keep_paths": [f"/k{n}"], "reject_paths": [f"/r{n}a", f"/r{n}b"],
-             "group_reason": {"key": "photo_count", "params": {"n": 3}}, "kind": "burst",
-             "reasons": {f"/r{n}a": {"key": "soft", "value": None}, f"/r{n}b": {"key": "lower_overall", "value": 1.5}}}
-            for n in range(1, 101)]
-    page = tools_culling._pinned_page(rows)
-    assert len(page.paths) == tools_culling.SHOW_PIN_MAX and page.unpinned == 100
-    assert page.marks[:100] == ["keep"] * 100 and page.marks[100:] == ["remove"] * 100
-    assert page.paths[0] == "/k1" and page.groups[0] == 1 and page.paths[100] == "/r1a" and page.groups[100] == 1
-    assert len(page.labels) == len(page.reasons) == len(page.kinds) == len(page.paths)
-    assert page.reasons[0] == {"key": "best"} and page.reasons[100] == {"key": "soft", "value": None}
-    assert page.reasons[101] == {"key": "lower_overall", "value": 1.5}
-    assert page.labels[100] == {"key": "photo_count", "params": {"n": 3}} and page.kinds[100] == "burst"
-
-
 class TestAutoCullRowsCarryReasons:
     def test_rows_have_a_group_reason_key_reject_only_reasons_and_a_kind(self, env_token):
         env, token = env_token
@@ -728,7 +713,7 @@ class TestAutoCullDescriptionTeachesThePlanPage:
         text = next(t["description"] for t in tools if t["name"] == "auto_cull")
         for needle in ("/culling", "culling.changed", "keep_paths", "remove_paths", "shown_in_tab"):
             assert needle in text, needle
-        assert "`review`" not in text and "overrides_from_tab" not in text and "read from their open tab" not in text
+        assert "`review`" not in text and "read from their open tab" not in text
 
 
 class TestAutoCullStateGuardThroughTheTool:
@@ -784,11 +769,12 @@ class TestAutoCullStateGuardThroughTheTool:
         assert [c["dry_run"] for c in sent] == [True, False]
         assert sent[1]["expected_digest"] == preview["data"]["plan_digest"]
 
-    def test_the_apply_sends_no_tab_derived_lists(self, rig):
+    def test_the_apply_sends_only_the_plan_request_and_its_guards(self, rig):
+        from api.routers.burst_culling import AutoCullBody
         preview = rig.env.call(rig.token, "auto_cull", self.args())
         self.apply(rig, preview)
         for sent in self.auto_calls(rig):
-            assert not {"lenient_overrides", "applied_paths", "skip_paths"} & set(sent)
+            assert set(sent) <= set(AutoCullBody.model_fields)
 
     def test_without_memory_of_the_confirm_the_apply_keeps_todays_path(self, rig):
         preview = rig.env.call(rig.token, "auto_cull", self.args())
@@ -802,8 +788,3 @@ class TestAutoCullStateGuardThroughTheTool:
         preview = rig.env.call(rig.token, "auto_cull", self.args())
         assert self.apply(rig, preview)["ok"]
         assert self.apply(rig, preview)["error"] == "confirmation_required"
-
-
-def test_a_pinned_card_without_a_group_reason_labels_the_photo_count():
-    page = tools_culling._pinned_page([{"number": 1, "keep_paths": ["/k"], "reject_paths": ["/r1", "/r2"]}])
-    assert page.labels[0] == {"key": "photo_count", "params": {"n": 3}}

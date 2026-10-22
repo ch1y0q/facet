@@ -66,7 +66,7 @@ def test_ui_get_context_describes_the_culling_block_and_its_activity_kinds():
     for term in ("culling", "plan_digest", "groups_total", "confirmed", "pending", "changed", "untouched",
                  "cull_confirm", "cull_skip"):
         assert term in description, term
-    for gone in ("review.applied", "groups_applied", "review_apply", "review_apply_undo", "`review`"):
+    for gone in ("review.applied", "groups_applied", "`review`"):
         assert gone not in description, gone
 
 
@@ -112,81 +112,25 @@ def test_ui_show_photos_path_bound_is_in_the_contract_and_enforced():
         UiShowPhotos(paths=[""])
 
 
-def test_ui_show_photos_groups_and_marks_must_match_paths_length():
+def test_ui_show_photos_takes_only_paths_and_rejects_the_removed_review_fields():
     from api.agent.ui_tools import UiShowPhotos
-    with pytest.raises(ValueError, match="`groups` must have exactly one entry per path"):
-        UiShowPhotos(paths=["a", "b"], groups=[1])
-    with pytest.raises(ValueError, match="`marks` must have exactly one entry per path"):
-        UiShowPhotos(paths=["a", "b"], marks=["keep"])
-    with pytest.raises(ValueError):
-        UiShowPhotos(paths=["a"], marks=["maybe"])
-    with pytest.raises(ValueError):
-        UiShowPhotos(paths=["a"], groups=[0])
-    ok = UiShowPhotos(paths=["a", "b"], groups=[1, 1], marks=["keep", "remove"])
-    assert ok.forward() == {"paths": ["a", "b"], "groups": [1, 1], "marks": ["keep", "remove"]}
-    assert UiShowPhotos(paths=["a"]).forward() == {"paths": ["a"]}
+    assert UiShowPhotos(paths=["a", "b"]).forward() == {"paths": ["a", "b"]}
+    assert set(UiShowPhotos.model_fields) == {"paths", "tab_id"}
+    for name, value in (("groups", [1]), ("marks", ["keep"]), ("labels", [{"key": "burst"}]),
+                        ("reasons", [{"key": "best"}]), ("kinds", ["burst"])):
+        with pytest.raises(ValueError):
+            UiShowPhotos(paths=["a"], **{name: value})
 
 
-def test_ui_show_photos_schema_has_plain_groups_and_marks_arrays():
-    from api.agent.ui_tools import UI_TOOLS, input_schema
-    schema = input_schema(next(t for t in UI_TOOLS if t.name == "ui_show_photos"))
-    text = json.dumps(schema)
-    assert "$ref" not in text and "anyOf" not in text
-    assert schema["additionalProperties"] is False
-    assert schema["properties"]["groups"]["type"] == "array"
-    assert schema["properties"]["marks"]["items"]["enum"] == ["keep", "remove"]
-
-
-def test_show_photos_contract_describes_group_sections_not_a_pill():
-    from api.agent import show
-    from api.agent.ui_tools import UiShowPhotos
-    descriptions = [t.description for t in UI_TOOLS] + [
-        field.description or "" for field in UiShowPhotos.model_fields.values()] + [show.show_paths_in_tab.__doc__ or ""]
-    assert not any("pill" in text or "Group n" in text for text in descriptions)
-    show_tool = next(t for t in UI_TOOLS if t.name == "ui_show_photos").description
-    assert "section" in show_tool and "keep/remove" in show_tool
-    assert "section" in (UiShowPhotos.model_fields["groups"].description or "")
-
-
-def test_tools_version_moved_with_the_review_rendering():
-    # The version before the group pill became section headers + a per-card keep/remove strip.
-    assert tools_version() != "abffbeeba56ed5b5"
-
-
-def test_tools_version_moved_with_labels_reasons_kinds_and_activity_since():
-    # The version before ui_show_photos gained labels / reasons / kinds and ui_get_context activity_since.
-    assert tools_version() != "698f8fbb2300cdf8"
-
-
-def test_ui_show_photos_labels_reasons_kinds_must_match_paths_length():
-    from api.agent.ui_tools import UiShowPhotos
-    for name, value in (("labels", [{"key": "burst"}]), ("reasons", [{"key": "best"}]), ("kinds", ["burst"])):
-        with pytest.raises(ValueError, match=f"`{name}` must have exactly one entry per path"):
-            UiShowPhotos(paths=["a", "b"], **{name: value})
-
-
-def test_ui_show_photos_forwards_the_parallel_arrays_as_data():
-    from api.agent.ui_tools import UiShowPhotos
-    args = UiShowPhotos(
-        paths=["a", "b"], groups=[1, 1], marks=["keep", "remove"],
-        labels=[{"key": "bracket_span", "params": {"frames": 4, "ev_span": 1.3}}] * 2,
-        reasons=[{"key": "best"}, {"key": "soft", "value": None}], kinds=["bracket", "bracket"])
-    assert args.forward()["labels"][0] == {"key": "bracket_span", "params": {"frames": 4, "ev_span": 1.3}}
-    assert args.forward()["reasons"] == [{"key": "best"}, {"key": "soft"}]
-    assert args.forward()["kinds"] == ["bracket", "bracket"]
-    with pytest.raises(ValueError):
-        UiShowPhotos(paths=["a"], kinds=["not_a_kind"])
-    with pytest.raises(ValueError):
-        UiShowPhotos(paths=["a"], labels=[{"key": "x", "params": {"p": ["nested"]}}])
-
-
-def test_ui_show_photos_schema_stays_plain_with_the_new_arrays():
+def test_ui_show_photos_schema_is_a_plain_paths_array():
     from api.agent.ui_tools import input_schema
     schema = input_schema(next(t for t in UI_TOOLS if t.name == "ui_show_photos"))
     text = json.dumps(schema)
     assert "$ref" not in text and "anyOf" not in text
-    for name in ("labels", "reasons", "kinds"):
-        assert schema["properties"][name]["type"] == "array"
+    assert schema["additionalProperties"] is False
+    assert list(schema["properties"]) == ["paths"]
+    description = next(t for t in UI_TOOLS if t.name == "ui_show_photos").description
+    assert "keep/remove" not in description and "section" not in description
 
 
 def test_ui_get_context_takes_an_optional_activity_since():

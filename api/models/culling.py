@@ -191,19 +191,9 @@ class AutoCullPreviewItem(BaseModel):
     reasons: dict[str, AutoCullCullReason] = {}
 
 
-class AutoCullDroppedOverride(BaseModel):
-    path: str
-    reason: Literal['in_both_lists', 'keep_whole_set', 'would_leave_no_keeper']
-
-
 class AutoCullEffectiveOverrides(BaseModel):
     keep: int
     remove: int
-
-
-class AutoCullAppliedInPlan(BaseModel):
-    kept: int
-    rejected: int
 
 
 class AutoCullResponse(BaseModel):
@@ -218,7 +208,6 @@ class AutoCullResponse(BaseModel):
     next_cursor: Optional[int] = None
     plan_digest: str
     ignored_overrides: list[str] = []
-    dropped_overrides: list[AutoCullDroppedOverride] = []
     skipped_user_changed: list[str] = []
     skipped_user_changed_count: int = 0
     skipped_user_changed_groups: int = 0
@@ -230,13 +219,7 @@ class AutoCullResponse(BaseModel):
     effective_overrides: Optional[AutoCullEffectiveOverrides] = Field(
         default=None,
         description="Present when keep/remove overrides were sent: how many marks moved a photo away from its "
-                    "planned side (a mark restating the plan is not counted, nor is a dropped one).")
-    applied_in_plan: Optional[AutoCullAppliedInPlan] = Field(
-        default=None,
-        description="Present on a dry run that was sent applied_paths and found some of them in the plan: how "
-                    "many planned keeps and rejects an apply would leave out because the caller already applied "
-                    "them; a group whose keepers were all applied counts whole, rejects included. kept and "
-                    "rejected still count the full plan.")
+                    "planned side (a mark restating the plan is not counted).")
 
 
 class KeeperHint(BaseModel):

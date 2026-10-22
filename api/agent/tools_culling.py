@@ -49,7 +49,6 @@ GROUP_PHOTO_LIMIT = 12
 GROUP_PHOTO_KEYS = ("path", "filename", "date_taken", "aggregate", "aesthetic", "tech_sharpness",
                     "is_blink", "sequence_ev_offset", "keeper_prob")
 SEE_GROUP = " Call ui_show_culling_group to show a group to the user."
-SHOW_PIN_MAX = 200
 AUTO_CULL_SHOW = (
     " A successful dry run with rows opens its plan on the user's /culling page in their open Facet tab "
     "(`show`, default true; never ask whether to show it): the same groups, keep/reject borders, loupe and "
@@ -151,41 +150,6 @@ def _clip_row(data: dict, extra: dict, budget: int) -> None:
     data["rows"] = [row]
 
 
-@dataclass(frozen=True)
-class PinnedPage:
-    """The parallel arrays ``ui_show_photos`` takes, all aligned with ``paths``."""
-    paths: list[str]
-    groups: list[int]
-    marks: list[str]
-    labels: list[dict]
-    reasons: list[dict]
-    kinds: list[str]
-    unpinned: int
-
-
-def _pinned_page(rows: list[dict]) -> PinnedPage:
-    """A page of plan rows as a pin, capped at ``SHOW_PIN_MAX``.
-
-    Plan order; past the cap the keepers come first so every keeper is pinned before any removal. A keeper's
-    reason is ``best``; a removal's is the row's ``{key, value}`` (``near_duplicate`` when the row has none).
-    """
-    cards = []
-    for row in rows:
-        count = (row.get("keep_count") or 0) + (row.get("reject_count") or 0) or (
-            len(row.get("keep_paths") or []) + len(row.get("reject_paths") or []))
-        label = row.get("group_reason") or {"key": "photo_count", "params": {"n": count}}
-        reasons = row.get("reasons") or {}
-        for paths, mark in ((row.get("keep_paths") or [], "keep"), (row.get("reject_paths") or [], "remove")):
-            for path in paths:
-                reason = {"key": "best"} if mark == "keep" else reasons.get(path) or {"key": "near_duplicate"}
-                cards.append((path, row["number"], mark, label, reason, row.get("kind") or "burst"))
-    unpinned = max(0, len(cards) - SHOW_PIN_MAX)
-    if unpinned:
-        cards = ([c for c in cards if c[2] == "keep"] + [c for c in cards if c[2] == "remove"])[:SHOW_PIN_MAX]
-    return PinnedPage([c[0] for c in cards], [c[1] for c in cards], [c[2] for c in cards],
-                      [c[3] for c in cards], [c[4] for c in cards], [c[5] for c in cards], unpinned)
-
-
 class ConfirmGroup(BaseModel):
     model_config = ConfigDict(extra="forbid")
     type: GroupType
@@ -230,15 +194,6 @@ def _fit_groups(rows: list[dict], budget: int) -> list[dict]:
 
 
 PLAN_CHANGED = "The plan changed since it was previewed"
-PLAN_CHANGED_BY_APPLY = "The plan changed because groups were applied"
-PLAN_CHANGED_BY_APPLY_HINT = (
-    "You applied groups in the tab since the preview; preview again with dry_run=true (the re-preview "
-    "leaves out the groups you applied, and skip_paths protects the rest).")
-APPLIED_UNREADABLE = (
-    "The photos you applied in the tab could not be read in full (or there are too many to leave out), so "
-    "one of them could still be rejected: preview again with dry_run=true")
-
-
 def _confirm_digest(groups: list[ConfirmGroup]) -> str:
     tagged = [f"{g.type}:{g.group_id}:{side}:{path}" for g in groups
               for side, paths in (("all", g.paths), ("keep", g.keep_paths)) for path in paths]
@@ -389,8 +344,6 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
             if memory is not None:
                 return await apply_preview(grant, memory, options, confirm, timeout)
             preview = await client.call(grant, "culling.auto", json=page_call, timeout=timeout)
-            if not preview["ok"] and PLAN_CHANGED_BY_APPLY in preview.get("message", ""):
-                return err("confirmation_required", PLAN_CHANGED_BY_APPLY_HINT)
             if not preview["ok"] and PLAN_CHANGED in preview.get("message", ""):
                 return err("confirmation_required",
                            "The plan changed since the first page; nothing was written. Restart the "
@@ -419,8 +372,6 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
             grant, "culling.auto", json={**options, "dry_run": False, "expected_digest": digest},
             timeout=timeout)
         if not applied["ok"]:
-            if PLAN_CHANGED_BY_APPLY in applied.get("message", ""):
-                return err("confirmation_required", PLAN_CHANGED_BY_APPLY_HINT)
             if PLAN_CHANGED in applied.get("message", ""):
                 return err("confirmation_required", applied["message"])
             return applied
@@ -459,22 +410,6 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
                                 "groups_total": reply.get("groups_total")},
             timeout=timeout)
 
-    async def _show_page(rows: list[dict], resolved, settings, tab_id: Optional[str], timeout: float) -> dict:
-        page = _pinned_page(rows)
-        unpinned = page.unpinned
-        if not page.paths:
-            return relay.not_shown("empty_result")
-        shown = await relay.show_paths_in_tab(registry, resolved, settings, tab_id, page.paths,
-                                              timeout=timeout, groups=page.groups, marks=page.marks,
-                                              labels=page.labels, reasons=page.reasons, kinds=page.kinds)
-        missing = shown.get("missing")
-        if isinstance(missing, list) and len(missing) > SUMMARY_PATHS:
-            shown["missing_count"] = len(missing)
-            shown["missing"] = missing[:SUMMARY_PATHS]
-        if unpinned:
-            shown["unpinned"] = unpinned
-        return shown
-
     def _left_to_reject(body: dict) -> int:
         """The frames the plan would reject."""
         return body.get("rejected") or 0
@@ -486,7 +421,6 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
         data = {**body, "rows": list(body.get("preview", []))}
         data.pop("preview", None)
         data.pop("effective_overrides", None)
-        data.pop("applied_in_plan", None)
         left = _left_to_reject(body)
         ignored = body.get("ignored_overrides") or []
         if len(ignored) > SUMMARY_PATHS:

@@ -345,7 +345,7 @@ class TestSemanticFilters:
         assert "note" in result["data"]
 
 
-def test_show_paths_in_tab_forwards_groups_and_marks(monkeypatch):
+def test_show_paths_in_tab_forwards_only_the_paths(monkeypatch):
     sent = {}
 
     async def fake_call_tab(registry, resolved, settings, tool, args, tab_id, *, timeout):
@@ -354,75 +354,24 @@ def test_show_paths_in_tab_forwards_groups_and_marks(monkeypatch):
 
     monkeypatch.setattr(show, "call_tab", fake_call_tab)
     monkeypatch.setattr(show, "comparison_open", lambda *a: False)
-    result = asyncio.run(show.show_paths_in_tab(
-        None, None, {"bridge": True}, None, ["a", "b"], timeout=1.0, groups=[1, 2], marks=["keep", "remove"]))
+    result = asyncio.run(show.show_paths_in_tab(None, None, {"bridge": True}, None, ["a", "b"], timeout=1.0))
     assert result["applied"] is True
     assert sent["tool"] == "ui_show_photos"
-    assert sent["args"] == {"paths": ["a", "b"], "groups": [1, 2], "marks": ["keep", "remove"]}
+    assert sent["args"] == {"paths": ["a", "b"]}
 
 
-@pytest.mark.parametrize("per_list,path_len", [(300, 100), (1000, 60)])
-def test_a_large_review_is_trimmed_not_refused(agent_app, fake_tab, per_list, path_len):
-    env = agent_app("open")
-
-    def path(tag, i):
-        stem = f"/photos/{tag}/{i:05d}.jpg"
-        return "/lib/" + "x" * (path_len - len(stem) - 5) + stem
-    review = {"keep": [path("k", i) for i in range(per_list)], "remove": [path("r", i) for i in range(per_list)]}
-    body = {"route": "/", "query_path": None, "selection": {"scope": "paths", "count": 0},
-            "gallery": {"total": 200, "loaded": 200, "has_more": False, "pinned": True},
-            "review": review, "mounted_actions": [], "level": "readonly", "actions": []}
-    fake_tab(env, None, reply=lambda call: {"ok": True, "data": body})
-    result = env.call(env.token(env.login()), "ui_get_context")
-    assert result["ok"], result
-    got = result["data"]["review"]
-    assert got["truncated"] is True and got["keep_count"] == per_list and got["remove_count"] == per_list
-    assert 0 < len(got["keep"]) < per_list and result["data"]["route"] == "/"
-    assert len(json.dumps(result, separators=(",", ":"))) <= 60000
-
-
-def test_a_small_review_is_left_whole(agent_app, fake_tab):
-    env = agent_app("open")
-    review = {"keep": ["/a.jpg"], "remove": ["/b.jpg"]}
-    body = {"route": "/", "query_path": None, "selection": {"scope": "paths", "count": 0},
-            "gallery": None, "review": review, "mounted_actions": [], "level": "readonly", "actions": []}
-    fake_tab(env, None, reply=lambda call: {"ok": True, "data": body})
-    got = env.call(env.token(env.login()), "ui_get_context")["data"]["review"]
-    assert got == review
-
-
-def test_show_paths_in_tab_forwards_labels_reasons_and_kinds(monkeypatch):
-    sent = {}
-
-    async def fake_call_tab(registry, resolved, settings, tool, args, tab_id, *, timeout):
-        sent.update(args=args)
-        return {"ok": True, "data": {"total": 2}, "tab": {"tab_id": "t"}}
-
-    monkeypatch.setattr(show, "call_tab", fake_call_tab)
-    monkeypatch.setattr(show, "comparison_open", lambda *a: False)
-    label = {"key": "burst_seconds", "params": {"seconds": 1.5}}
-    result = asyncio.run(show.show_paths_in_tab(
-        None, None, {"bridge": True}, None, ["a", "b"], timeout=1.0, groups=[1, 1], marks=["keep", "remove"],
-        labels=[label, label], reasons=[{"key": "best"}, {"key": "soft", "value": 1.2}], kinds=["burst", "burst"]))
-    assert result["applied"] is True
-    assert sent["args"]["labels"] == [label, label] and sent["args"]["kinds"] == ["burst", "burst"]
-    assert sent["args"]["reasons"] == [{"key": "best"}, {"key": "soft", "value": 1.2}]
-
-
-def test_the_agent_tool_refuses_mismatched_reasons_as_invalid_input(agent_app, fake_tab):
+def test_the_agent_tool_refuses_the_removed_review_fields_as_invalid_input(agent_app, fake_tab):
     env = agent_app("open")
     tab = fake_tab(env, None, reply=lambda call: {"ok": True, "data": {"total": 2}})
     refused = env.call(env.token(env.login()), "ui_show_photos", {
-        "paths": ["/a.jpg", "/b.jpg"], "reasons": [{"key": "best"}]})
+        "paths": ["/a.jpg", "/b.jpg"], "reasons": [{"key": "best"}, {"key": "soft"}]})
     assert refused["ok"] is False and refused["error"] == "invalid_input" and not tab.calls
 
 
-def _context(review=None, activity=None):
+def _context(activity=None):
     body = {"route": "/", "query_path": None, "selection": {"scope": "paths", "count": 0},
             "gallery": {"total": 200, "loaded": 200, "has_more": False, "pinned": True},
             "mounted_actions": [], "level": "readonly", "actions": []}
-    if review is not None:
-        body["review"] = review
     if activity is not None:
         body["user_activity"] = activity
     return body
@@ -438,28 +387,24 @@ class TestUserActivityInTheContext:
     def test_a_small_activity_is_left_whole(self, agent_app, fake_tab):
         env = agent_app("open")
         activity = _activity(3)
-        fake_tab(env, None, reply=lambda call: {"ok": True, "data": _context({"keep": ["/a"], "remove": []}, activity)})
+        fake_tab(env, None, reply=lambda call: {"ok": True, "data": _context(activity)})
         data = env.call(env.token(env.login()), "ui_get_context")["data"]
         assert data["user_activity"] == activity
 
-    def test_an_oversized_context_trims_the_activity_with_the_review_and_flags_it(self, agent_app, fake_tab):
+    def test_an_oversized_activity_is_trimmed_to_fit_and_flagged(self, agent_app, fake_tab):
         env = agent_app("open")
-        review = {"keep": [f"/lib/{'k' * 150}{i}.jpg" for i in range(200)],
-                  "remove": [f"/lib/{'r' * 150}{i}.jpg" for i in range(200)], "groups_total": 9,
-                  "groups_visited": 4, "groups_changed": 2}
-        fake_tab(env, None, reply=lambda call: {"ok": True, "data": _context(review, _activity(50, 90, 20))})
+        fake_tab(env, None, reply=lambda call: {"ok": True, "data": _context(_activity(50, 90, 20))})
         result = env.call(env.token(env.login()), "ui_get_context")
         assert result["ok"], result
         assert len(json.dumps(result, separators=(",", ":"))) <= 60000
         got = result["data"]
         assert got["user_activity"]["truncated"] is True and 0 < len(got["user_activity"]["items"]) < 50
-        assert got["user_activity"]["until"] == 50
-        assert got["review"]["truncated"] is True
+        assert got["user_activity"]["until"] == 50 and got["route"] == "/"
 
     def test_activity_is_capped_at_fifty_items_of_twenty_paths(self):
-        from api.agent.tools_ui import fit_review
-        result = {"ok": True, "data": _context(None, _activity(60, 5, 30))}
-        fit_review(result, 10 ** 7)
+        from api.agent.tools_ui import fit_culling
+        result = {"ok": True, "data": _context(_activity(60, 5, 30))}
+        fit_culling(result, 10 ** 7)
         activity = result["data"]["user_activity"]
         assert len(activity["items"]) == 50 and activity["truncated"] is True
         assert activity["items"][0]["seq"] == 11 and activity["items"][-1]["seq"] == 60
@@ -472,60 +417,3 @@ class TestUserActivityInTheContext:
         env.call(token, "ui_get_context")
         env.call(token, "ui_get_context", {"activity_since": 12})
         assert [c["args"] for c in tab.calls] == [{}, {"activity_since": 12}]
-
-
-class TestTabCountsSurviveTheServerTrim:
-    def test_the_tabs_true_sizes_are_kept_when_the_server_cuts_further(self):
-        from api.agent.tools_ui import fit_review
-        review = {"keep": [], "remove": [f"/lib/{'r' * 200}{i}.jpg" for i in range(1000)],
-                  "truncated": True, "remove_count": 1200, "keep_count": 0}
-        result = {"ok": True, "data": _context(review)}
-        fit_review(result, 20000)
-        assert review["truncated"] is True and review["remove_count"] == 1200 and review["keep_count"] == 0
-        assert 0 < len(review["remove"]) < 1000
-
-
-class TestReviewProgressSurvivesTrimming:
-    def test_the_group_counters_are_left_intact_by_the_trim(self):
-        from api.agent.tools_ui import fit_review
-        review = {"keep": [f"/lib/{'k' * 200}{i}.jpg" for i in range(300)], "remove": [],
-                  "groups_total": 12, "groups_visited": 7, "groups_changed": 3}
-        result = {"ok": True, "data": _context(review)}
-        fit_review(result, 20000)
-        assert result["data"]["review"] is review and review["truncated"] is True
-        assert (review["groups_total"], review["groups_visited"], review["groups_changed"]) == (12, 7, 3)
-        assert len(review["keep"]) < 300 and review["keep_count"] == 300
-
-    def test_a_review_left_whole_is_not_flagged_when_trimming_the_activity_suffices(self):
-        from api.agent.tools_ui import fit_review
-        review = {"keep": ["/lib/a.jpg"], "remove": ["/lib/b.jpg"], "groups_total": 1}
-        result = {"ok": True, "data": _context(review, _activity(50, 90, 20))}
-        fit_review(result, 20000)
-        assert result["data"]["user_activity"]["truncated"] is True
-        assert review == {"keep": ["/lib/a.jpg"], "remove": ["/lib/b.jpg"], "groups_total": 1}
-
-
-class TestAppliedSurvivesTrimming:
-    def test_the_applied_lists_are_halved_and_flagged_with_their_true_sizes(self):
-        from api.agent.tools_ui import fit_review
-        applied = {"keep": [f"/lib/{'k' * 200}{i}.jpg" for i in range(300)],
-                   "remove": [f"/lib/{'r' * 200}{i}.jpg" for i in range(100)], "truncated": False}
-        review = {"keep": ["/lib/a.jpg"], "remove": [], "applied": applied,
-                  "groups_total": 12, "groups_visited": 7, "groups_changed": 3, "groups_applied": 2}
-        result = {"ok": True, "data": _context(review)}
-        fit_review(result, 20000)
-        assert len(json.dumps(result, separators=(",", ":"))) <= 20000
-        assert applied["truncated"] is True
-        assert applied["keep_count"] == 300 and applied["remove_count"] == 100
-        assert 0 < len(applied["keep"]) < 300
-        assert review["keep"] == ["/lib/a.jpg"] and "truncated" not in review
-        assert (review["groups_total"], review["groups_visited"], review["groups_changed"],
-                review["groups_applied"]) == (12, 7, 3, 2)
-
-    def test_an_applied_block_that_fits_is_left_whole(self):
-        from api.agent.tools_ui import fit_review
-        applied = {"keep": ["/lib/a.jpg"], "remove": ["/lib/b.jpg"], "truncated": False}
-        review = {"keep": [], "remove": [], "applied": applied, "groups_applied": 1}
-        result = {"ok": True, "data": _context(review)}
-        fit_review(result, 20000)
-        assert applied == {"keep": ["/lib/a.jpg"], "remove": ["/lib/b.jpg"], "truncated": False}

@@ -237,24 +237,6 @@ class TestEmptiedAndCapped:
         assert len(_rejected(conn)) == 12
 
 
-class TestSkipPaths:
-    def test_skip_paths_are_not_part_of_the_digest_and_are_dropped_from_the_apply(self, tmp_path):
-        db, conn = _library(tmp_path)
-        preview = _preview(conn, db)
-        result = run_auto_cull(conn, db, "_anonymous", **_kwargs(), dry_run=False, state_guard=True,
-                               expected_digest=preview.plan_digest, skip_paths=[_p(tmp_path, "b2.jpg")])
-        assert result.plan_digest == preview.plan_digest
-        assert _rejected(conn) == {"b3.jpg"}
-        assert result.skipped_user_changed == [_p(tmp_path, "b2.jpg")]
-
-    def test_a_skip_path_outside_the_plan_is_not_reported(self, tmp_path):
-        db, conn = _library(tmp_path)
-        preview = _preview(conn, db)
-        result = run_auto_cull(conn, db, "_anonymous", **_kwargs(), dry_run=False, state_guard=True,
-                               expected_digest=preview.plan_digest, skip_paths=["/elsewhere.jpg"])
-        assert result.skipped_user_changed == [] and _rejected(conn) == {"b2.jpg", "b3.jpg"}
-
-
 class TestMultiUser:
     @pytest.fixture()
     def multi(self, tmp_path, monkeypatch):
@@ -291,203 +273,6 @@ class TestMultiUser:
         assert {r[0] for r in conn.execute(
             "SELECT photo_path FROM user_preferences WHERE user_id = 'alice' AND is_rejected = 1")
         } == {_p(tmp_path, "b3.jpg")}
-
-
-class TestLenientOverrides:
-    def test_offending_marks_are_dropped_and_named_instead_of_refused(self, tmp_path):
-        db, conn = _library(tmp_path)
-        all_three = [_p(tmp_path, n) for n in SCORES]
-        with pytest.raises(burst_culling.AutoCullOverrideError):
-            run_auto_cull(conn, db, "_anonymous", **_kwargs(), dry_run=True, remove_override=all_three)
-        result = run_auto_cull(conn, db, "_anonymous", **_kwargs(), dry_run=True, remove_override=all_three,
-                               lenient_overrides=True)
-        assert [d["path"] for d in result.dropped_overrides] == [all_three[0]]
-        assert result.dropped_overrides[0]['reason'] == 'would_leave_no_keeper'
-        plain = run_auto_cull(conn, db, "_anonymous", **_kwargs(), dry_run=True)
-        assert result.plan_digest == plain.plan_digest
-
-    def test_a_path_in_both_lists_is_dropped_from_both(self, tmp_path):
-        db, conn = _library(tmp_path)
-        b2 = _p(tmp_path, "b2.jpg")
-        result = run_auto_cull(conn, db, "_anonymous", **_kwargs(), dry_run=True, keep_override=[b2],
-                               remove_override=[b2], lenient_overrides=True)
-        assert result.dropped_overrides == [{"path": b2, "reason": "in_both_lists"}]
-
-
-    def test_a_keep_whole_frame_removal_is_dropped_and_reported(self):
-        photos = [{"path": "/b/k0.jpg", "sequence_ev_offset": 0},
-                  {"path": "/b/k-2.jpg", "sequence_ev_offset": -2},
-                  {"path": "/b/k+2.jpg", "sequence_ev_offset": 2}]
-        plan = burst_culling._plan_auto_cull_groups(
-            [{"type": "bracket", "group_id": 9, "sequence_kind": "bracket", "photos": photos}], set(), 50, 1)
-        dropped = []
-        effective, ignored = burst_culling._apply_plan_overrides(plan, [], ["/b/k0.jpg"], dropped)
-        assert dropped == [{"path": "/b/k0.jpg", "reason": "keep_whole_set"}]
-        assert effective == {"keep": [], "remove": []} and ignored == []
-
-
-class TestPlanChangedByApply:
-    """The user applied groups from the tab after the assistant's preview: refused with its own reason."""
-
-    @staticmethod
-    def _apply_in_the_tab(conn, keep, reject, kind, user="_anonymous"):
-        """What ``POST /api/culling/apply_marks`` does for one group, on this test's connection."""
-        group = burst_culling.ApplyGroup(kind=kind, keep_paths=keep, reject_paths=reject)
-        by_path = burst_culling._mark_rows(conn, keep + reject, user)
-        burst_culling._write_apply_group(conn, group, by_path, user, "1=1", [])
-        burst_culling._after_marks_write(conn)
-        conn.commit()
-
-    @staticmethod
-    def _second_burst(conn, tmp_path):
-        for second, (name, score) in enumerate({"c1.jpg": 9.0, "c2.jpg": 3.0}.items()):
-            conn.execute(
-                "INSERT INTO photos (path, filename, date_taken, aggregate, aesthetic, tech_sharpness, is_blink, "
-                "burst_group_id, is_burst_lead) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)",
-                (str(tmp_path / name), name, f"2024:06:16 10:00:{second:02d}", score, score, score, BURST + 1,
-                 1 if name == "c1.jpg" else 0))
-        conn.commit()
-
-    def test_a_burst_group_applied_after_the_preview_is_refused_for_that_reason(self, tmp_path):
-        db, conn = _library(tmp_path)
-        self._second_burst(conn, tmp_path)
-        preview = _preview(conn, db)
-        mine = [_p(tmp_path, n) for n in SCORES]
-        self._apply_in_the_tab(conn, mine[:1], mine[1:], "burst")
-        with pytest.raises(AutoCullPlanChanged) as refusal:
-            run_auto_cull(conn, db, "_anonymous", **_kwargs(), dry_run=False, state_guard=True,
-                          expected_digest=preview.plan_digest, skip_paths=mine, applied_paths=mine)
-        assert str(refusal.value) == burst_culling.PLAN_CHANGED_BY_APPLY
-        assert _rejected(conn) == {"b2.jpg", "b3.jpg"}
-
-    def test_the_re_preview_leaves_the_applied_group_out_and_the_rest_applies(self, tmp_path):
-        db, conn = _library(tmp_path)
-        self._second_burst(conn, tmp_path)
-        preview = _preview(conn, db)
-        mine = [_p(tmp_path, n) for n in SCORES]
-        self._apply_in_the_tab(conn, mine[:1], mine[1:], "burst")
-        fresh = _preview(conn, db)
-        assert {os.path.basename(p) for p in fresh.reject_paths} == {"c2.jpg"}
-        result = run_auto_cull(conn, db, "_anonymous", **_kwargs(), dry_run=False, state_guard=True,
-                               expected_digest=fresh.plan_digest, skip_paths=mine, applied_paths=mine)
-        assert _rejected(conn) == {"b2.jpg", "b3.jpg", "c2.jpg"}
-        assert result.skipped_user_changed == []
-        assert preview.plan_digest != fresh.plan_digest
-
-    def test_a_similar_group_applied_after_the_preview_is_refused_even_though_the_others_renumber(self, tmp_path):
-        db, conn = _similar_library(tmp_path)
-        preview = _preview(conn, db, group_by="similar")
-        assert len(preview.preview) == 2
-        group_a = [_p(tmp_path, "a1.jpg"), _p(tmp_path, "a2.jpg")]
-        self._apply_in_the_tab(conn, group_a[:1], group_a[1:], "similar")
-        with pytest.raises(AutoCullPlanChanged) as refusal:
-            run_auto_cull(conn, db, "_anonymous", **_kwargs(group_by="similar"), dry_run=False, state_guard=True,
-                          expected_digest=preview.plan_digest, skip_paths=group_a, applied_paths=group_a)
-        assert str(refusal.value) == burst_culling.PLAN_CHANGED_BY_APPLY
-        fresh = _preview(conn, db, group_by="similar")
-        assert len(fresh.preview) == 1
-        run_auto_cull(conn, db, "_anonymous", **_kwargs(group_by="similar"), dry_run=False, state_guard=True,
-                      expected_digest=fresh.plan_digest, skip_paths=group_a, applied_paths=group_a)
-        assert _rejected(conn) == {"a2.jpg", "b2.jpg"}
-
-    def test_without_a_snapshot_the_existing_refusal_text_is_returned(self, tmp_path, clock):
-        db, conn = _library(tmp_path)
-        preview = _preview(conn, db)
-        clock[0] += burst_culling.GUARD_TTL_S + 1
-        mine = [_p(tmp_path, n) for n in SCORES]
-        self._apply_in_the_tab(conn, mine[:1], mine[1:], "burst")
-        with pytest.raises(AutoCullPlanChanged) as refusal:
-            run_auto_cull(conn, db, "_anonymous", **_kwargs(), dry_run=False, state_guard=True,
-                          expected_digest=preview.plan_digest, applied_paths=mine)
-        assert str(refusal.value) != burst_culling.PLAN_CHANGED_BY_APPLY
-        assert str(refusal.value).startswith("The plan changed since it was previewed")
-
-    def test_applied_paths_outside_the_preview_do_not_change_the_refusal(self, tmp_path):
-        db, conn = _library(tmp_path)
-        preview = _preview(conn, db)
-        conn.execute("UPDATE photos SET aggregate = 9.9, aesthetic = 9.9, tech_sharpness = 9.9 WHERE path = ?",
-                     (_p(tmp_path, "b3.jpg"),))
-        conn.commit()
-        with pytest.raises(AutoCullPlanChanged) as refusal:
-            run_auto_cull(conn, db, "_anonymous", **_kwargs(), dry_run=False, state_guard=True,
-                          expected_digest=preview.plan_digest, applied_paths=["/elsewhere.jpg"])
-        assert str(refusal.value).startswith("The plan changed since it was previewed")
-
-    def test_the_route_accepts_applied_paths_and_caps_them(self, edition_client, seed_photos_prefix):
-        prefix = AGENT_DIR + "guard-applied/"
-        rows = [{"path": prefix + n, "filename": n, "date_taken": f"1997:01:01 10:00:0{i}", "aggregate": s,
-                 "aesthetic": s, "tech_sharpness": s, "burst_group_id": 5252, "is_burst_lead": 1 if i == 1 else 0}
-                for i, (n, s) in enumerate(SCORES.items(), start=1)]
-        seed_photos_prefix(prefix, rows)
-        body = {"group_by": "burst", "strictness": 0, "date_from": "1997:01:01 00:00:00",
-                "date_to": "1997:01:01 23:59:59"}
-        preview = edition_client.post("/api/culling/auto", json=body)
-        assert preview.status_code == 200, preview.text
-        applied = edition_client.post("/api/culling/auto", json={
-            **body, "dry_run": False, "expected_digest": preview.json()["plan_digest"],
-            "applied_paths": [prefix + "b2.jpg"]})
-        assert applied.status_code == 200, applied.text
-        assert applied.json()["skipped_user_changed"] == [prefix + "b2.jpg"]
-        too_many = edition_client.post("/api/culling/auto", json={**body, "applied_paths": ["/x"] * 1001})
-        assert too_many.status_code == 422
-
-
-class TestAppliedInPlan:
-    """A dry run sent ``applied_paths`` counts the planned keeps / rejects the user already applied."""
-
-    def test_the_counts_cover_the_full_plan_and_the_digest_ignores_applied_paths(self, tmp_path):
-        db, conn = _library(tmp_path)
-        mine = [_p(tmp_path, n) for n in SCORES]
-        plain = _preview(conn, db)
-        with_applied = _preview(conn, db, applied_paths=[mine[0], mine[2], "/elsewhere.jpg"])
-        assert with_applied.applied_in_plan == {"kept": 1, "rejected": 2}
-        assert (with_applied.kept, with_applied.rejected) == (plain.kept, plain.rejected)
-        assert with_applied.plan_digest == plain.plan_digest
-
-    def test_none_of_them_in_the_plan_leaves_the_field_unset(self, tmp_path):
-        db, conn = _library(tmp_path)
-        assert _preview(conn, db, applied_paths=["/elsewhere.jpg"]).applied_in_plan is None
-        assert _preview(conn, db).applied_in_plan is None
-
-    def test_the_route_returns_applied_in_plan_on_a_dry_run_and_omits_it_otherwise(
-            self, edition_client, seed_photos_prefix):
-        prefix = AGENT_DIR + "guard-in-plan/"
-        rows = [{"path": prefix + n, "filename": n, "date_taken": f"1996:01:01 10:00:0{i}", "aggregate": s,
-                 "aesthetic": s, "tech_sharpness": s, "burst_group_id": 5353, "is_burst_lead": 1 if i == 1 else 0}
-                for i, (n, s) in enumerate(SCORES.items(), start=1)]
-        seed_photos_prefix(prefix, rows)
-        body = {"group_by": "burst", "strictness": 0, "date_from": "1996:01:01 00:00:00",
-                "date_to": "1996:01:01 23:59:59"}
-        plain = edition_client.post("/api/culling/auto", json=body)
-        assert plain.status_code == 200, plain.text
-        assert "applied_in_plan" not in plain.json()
-        sent = edition_client.post("/api/culling/auto", json={
-            **body, "applied_paths": [prefix + "b3.jpg", prefix + "b1.jpg"]})
-        assert sent.status_code == 200, sent.text
-        assert sent.json()["applied_in_plan"] == {"kept": 1, "rejected": 2}
-        assert sent.json()["plan_digest"] == plain.json()["plan_digest"]
-        assert sent.json()["kept"] == plain.json()["kept"] and sent.json()["rejected"] == plain.json()["rejected"]
-        elsewhere = edition_client.post("/api/culling/auto", json={**body, "applied_paths": ["/x.jpg"]})
-        assert "applied_in_plan" not in elsewhere.json()
-
-
-class TestHttp:
-    def test_skip_paths_and_the_report_ride_the_route(self, edition_client, seed_photos_prefix):
-        prefix = AGENT_DIR + "guard/"
-        rows = [{"path": prefix + n, "filename": n, "date_taken": f"1998:01:01 10:00:0{i}", "aggregate": s,
-                 "aesthetic": s, "tech_sharpness": s, "burst_group_id": 5151, "is_burst_lead": 1 if i == 1 else 0}
-                for i, (n, s) in enumerate(SCORES.items(), start=1)]
-        seed_photos_prefix(prefix, rows)
-        body = {"group_by": "burst", "strictness": 0, "date_from": "1998:01:01 00:00:00",
-                "date_to": "1998:01:01 23:59:59"}
-        preview = edition_client.post("/api/culling/auto", json=body)
-        assert preview.status_code == 200, preview.text
-        applied = edition_client.post("/api/culling/auto", json={
-            **body, "dry_run": False, "expected_digest": preview.json()["plan_digest"],
-            "skip_paths": [prefix + "b2.jpg"]})
-        assert applied.status_code == 200, applied.text
-        assert applied.json()["skipped_user_changed"] == [prefix + "b2.jpg"]
-        assert applied.json()["skipped_user_changed_count"] == 1
 
 
 class TestRejectedPathsOnTheRoute:
@@ -541,15 +326,15 @@ class TestRejectedPathsOnTheRoute:
 
     def test_an_apply_that_rejects_nothing_has_no_show_paths(self, edition_client, library):
         from api.agent.live_updates import frame_for
-        preview = edition_client.post("/api/culling/auto", json=self.BODY)
+        body = {**self.BODY, "min_keep_per_group": 4}
+        preview = edition_client.post("/api/culling/auto", json=body)
         assert preview.status_code == 200, preview.text
         applied = edition_client.post("/api/culling/auto", json={
-            **self.BODY, "dry_run": False, "expected_digest": preview.json()["plan_digest"],
-            "skip_paths": library})
+            **body, "dry_run": False, "expected_digest": preview.json()["plan_digest"]})
         assert applied.status_code == 200, applied.text
-        body = applied.json()
-        assert body["rejected"] == 0
-        frame = frame_for("culling.auto", {"dry_run": False}, body)
+        result = applied.json()
+        assert result["rejected"] == 0
+        frame = frame_for("culling.auto", {"dry_run": False}, result)
         assert frame["paths"] is None and frame["show_paths"] is None
 
 

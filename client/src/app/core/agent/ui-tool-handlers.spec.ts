@@ -507,56 +507,20 @@ describe('UI tool registry and handlers', () => {
       expect(await run('ui_select_photos', { select_view: true })).toMatchObject({ ok: false, error: 'invalid_input' });
     });
 
-    it('passes groups and marks to the store and reports annotated', async () => {
+    it('pins exactly the requested paths and reports no annotation', async () => {
       byPaths(['/a.jpg', '/b.jpg'], []);
       const spy = vi.spyOn(store, 'showPaths');
-      const result = await run('ui_show_photos', { paths: ['/a.jpg', '/b.jpg'], groups: [1, 1], marks: ['keep', 'remove'] });
-      expect(spy).toHaveBeenCalledWith(['/a.jpg', '/b.jpg'], { groups: [1, 1], marks: ['keep', 'remove'] });
-      expect(result).toMatchObject({ ok: true, data: { annotated: 2 } });
+      const result = await run('ui_show_photos', { paths: ['/a.jpg', '/b.jpg'] });
+      expect(spy.mock.calls).toEqual([[['/a.jpg', '/b.jpg']]]);
+      expect(result).toMatchObject({ ok: true, data: { shown: 2 } });
+      expect((result as { data: object }).data).not.toHaveProperty('annotated');
     });
 
-    it('passes labels, reasons and kinds through to the store and pins them', async () => {
+    it('ignores the removed annotation arguments instead of forwarding them to the store', async () => {
       byPaths(['/a.jpg', '/b.jpg'], []);
       const spy = vi.spyOn(store, 'showPaths');
-      const labels = [{ key: 'bracket_span', params: { frames: 4, ev_span: 1.3 } }, { key: 'bracket_span', params: { frames: 4, ev_span: 1.3 } }];
-      const reasons = [{ key: 'best' }, { key: 'soft', value: 2 }];
-      const result = await run('ui_show_photos', {
-        paths: ['/a.jpg', '/b.jpg'], groups: [1, 1], marks: ['keep', 'remove'], labels, reasons, kinds: ['bracket', 'bracket'],
-      });
-      expect(spy).toHaveBeenCalledWith(['/a.jpg', '/b.jpg'], {
-        groups: [1, 1], marks: ['keep', 'remove'], labels, reasons, kinds: ['bracket', 'bracket'],
-      });
-      expect(result).toMatchObject({ ok: true });
-      expect(store.pinnedLabels().get(1)).toEqual(labels[0]);
-      expect(store.pinnedReasons().get('/b.jpg')).toEqual({ key: 'soft', value: 2 });
-      expect(store.pinnedKinds().get(1)).toBe('bracket');
-    });
-
-    it.each([
-      ['labels', [{ key: 'burst' }]],
-      ['reasons', [{ key: 'best' }]],
-      ['kinds', ['burst']],
-    ])('refuses %s whose length differs from paths (invalid_input through the registry)', async (field, value) => {
-      const post = byPaths(['/a.jpg', '/b.jpg'], []);
-      expect(await run('ui_show_photos', { paths: ['/a.jpg', '/b.jpg'], [field]: value })).toMatchObject({ ok: false, error: 'invalid_input' });
-      await expect(direct()['ui_show_photos']({ paths: ['/a.jpg', '/b.jpg'], [field]: value })).rejects.toMatchObject({ code: 'invalid_input' });
-      expect(post).not.toHaveBeenCalled();
-    });
-
-    it('refuses a label that is not an object with a key, and a reason with a non-numeric value', async () => {
-      const post = byPaths(['/a.jpg'], []);
-      const handler = direct();
-      await expect(handler['ui_show_photos']({ paths: ['/a.jpg'], labels: ['burst'] })).rejects.toMatchObject({ code: 'invalid_input' });
-      await expect(handler['ui_show_photos']({ paths: ['/a.jpg'], reasons: [{ key: 'soft', value: 'x' }] })).rejects.toMatchObject({ code: 'invalid_input' });
-      expect(post).not.toHaveBeenCalled();
-    });
-
-    it('refuses groups or marks whose length differs from paths, before touching the gallery', async () => {
-      const post = byPaths(['/a.jpg', '/b.jpg'], []);
-      const handler = direct();
-      await expect(handler['ui_show_photos']({ paths: ['/a.jpg', '/b.jpg'], groups: [1] })).rejects.toMatchObject({ code: 'invalid_input' });
-      await expect(handler['ui_show_photos']({ paths: ['/a.jpg', '/b.jpg'], marks: ['keep'] })).rejects.toMatchObject({ code: 'invalid_input' });
-      expect(post).not.toHaveBeenCalled();
+      await direct()['ui_show_photos']({ paths: ['/a.jpg', '/b.jpg'], groups: [1, 1], marks: ['keep', 'remove'], kinds: ['burst', 'burst'] });
+      expect(spy.mock.calls).toEqual([[['/a.jpg', '/b.jpg']]]);
     });
 
     it('is reported as pinned by ui_get_context', async () => {

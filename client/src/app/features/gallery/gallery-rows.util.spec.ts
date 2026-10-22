@@ -7,10 +7,6 @@ import {
   aspectOf,
   buildGridRows,
   buildMosaicRows,
-  buildSectionedRows,
-  GROUP_HEADER_ACTIONS_HEIGHT_PX,
-  GROUP_HEADER_HEIGHT_PX,
-  groupHeaderHeight,
   gridColumnCount,
   totalRowsHeight,
   windowRange,
@@ -282,83 +278,5 @@ describe('totalRowsHeight', () => {
 
   it('is zero for no rows', () => {
     expect(totalRowsHeight([])).toBe(0);
-  });
-});
-
-describe('groupHeaderHeight', () => {
-  it('is one line on desktop, or when the pin has no marks', () => {
-    expect(groupHeaderHeight(true, true)).toBe(GROUP_HEADER_HEIGHT_PX);
-    expect(groupHeaderHeight(true, false)).toBe(32);
-    expect(groupHeaderHeight(false, false)).toBe(32);
-  });
-
-  it('adds the actions line below md when the pin has marks', () => {
-    expect(groupHeaderHeight(false, true)).toBe(GROUP_HEADER_HEIGHT_PX + GROUP_HEADER_ACTIONS_HEIGHT_PX);
-    expect(groupHeaderHeight(false, true)).toBe(60);
-  });
-});
-
-describe('buildSectionedRows', () => {
-  const W = 800;
-  const grid = (ps: Photo[]) => buildGridRows(ps, W, 200, 8, true);
-  const groupOfIdx = (groups: number[], all: Photo[]) => (p: Photo) => groups[all.indexOf(p)];
-
-  it('lays two groups out as header, photos, header, photos with shifted offsets and startIndex', () => {
-    const all = photos(5);
-    const rows = buildSectionedRows(all, groupOfIdx([1, 1, 1, 2, 2], all), grid, 32, 8);
-    expect(rows.map(r => r.kind ?? 'photos')).toEqual(['header', 'photos', 'header', 'photos']);
-    expect(rows.map(r => r.photos.length)).toEqual([0, 3, 0, 2]);
-    expect(rows[0]).toMatchObject({ group: 1, groupPhotoCount: 3, height: 32, offset: 0, startIndex: 0 });
-    const cell = rows[1].height;
-    expect(rows[1].offset).toBe(32 + 8);
-    expect(rows[1].startIndex).toBe(0);
-    expect(rows[2]).toMatchObject({ group: 2, groupPhotoCount: 2, offset: 40 + cell + 8, startIndex: 3 });
-    expect(rows[3].offset).toBe(rows[2].offset + 32 + 8);
-    expect(rows[3].startIndex).toBe(3);
-  });
-
-  it('advances the offsets by the two-line header height below md', () => {
-    const all = photos(5);
-    const tall = groupHeaderHeight(false, true);
-    const rows = buildSectionedRows(all, groupOfIdx([1, 1, 1, 2, 2], all), grid, tall, 8);
-    expect(rows[0].height).toBe(60);
-    expect(rows[1].offset).toBe(60 + 8);
-    expect(rows[3].offset).toBe(rows[2].offset + 60 + 8);
-  });
-
-  it('counts headers in totalRowsHeight', () => {
-    const all = photos(5);
-    const rows = buildSectionedRows(all, groupOfIdx([1, 1, 1, 2, 2], all), grid, 32, 8);
-    const plain = grid(all);
-    expect(totalRowsHeight(rows)).toBeGreaterThan(totalRowsHeight(plain) + 60);
-  });
-
-  it('windowRange returns a header row when it is in view', () => {
-    const all = photos(5);
-    const rows = buildSectionedRows(all, groupOfIdx([1, 1, 1, 2, 2], all), grid, 32, 8);
-    const win = windowRange(rows, rows[2].offset, 10, 0);
-    expect(win.first).toBeLessThanOrEqual(2);
-    expect(win.last).toBeGreaterThanOrEqual(2);
-  });
-
-  it('is deep-equal to the plain builder when no photo has a group', () => {
-    const all = photos(7);
-    expect(buildSectionedRows(all, () => null, grid, 32, 8)).toEqual(grid(all));
-  });
-
-  it('works with the mosaic builder', () => {
-    const all = photos(6);
-    const mosaic = (ps: Photo[]) => buildMosaicRows(ps, W, 200, 8);
-    const rows = buildSectionedRows(all, groupOfIdx([1, 1, 1, 2, 2, 2], all), mosaic, 32, 8);
-    const kinds = rows.map(r => r.kind ?? 'photos');
-    expect(kinds.filter(k => k === 'header')).toHaveLength(2);
-    const photoRows = rows.filter(r => r.kind !== 'header');
-    expect(photoRows.reduce((n, r) => n + r.photos.length, 0)).toBe(6);
-    for (let i = 1; i < rows.length; i++) expect(rows[i].offset).toBeGreaterThan(rows[i - 1].offset);
-    expect(rows.find(r => r.kind === 'header' && r.group === 2)?.startIndex).toBe(3);
-  });
-
-  it('returns nothing for no photos', () => {
-    expect(buildSectionedRows([], () => 1, grid, 32, 8)).toEqual([]);
   });
 });

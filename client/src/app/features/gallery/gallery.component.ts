@@ -44,16 +44,12 @@ import {
 } from '../../shared/pipes/sequence-kind.pipe';
 import { isBracketLadderRejection } from '../../shared/utils/sequence-ladder';
 import { IsSelectedPipe } from '../../shared/pipes/selection.pipe';
-import {
-  ReviewApplyPlanPipe, ReviewChangedPipe, ReviewGroupHeaderPipe, ReviewGroupKeptWholePipe, ReviewGroupLabelPipe,
-  ReviewGroupPipe, ReviewGroupReceiptPipe, ReviewMarkPipe, ReviewPathLockedPipe, ReviewReasonPipe, ReviewReceiptLabelPipe, ReviewReceiptTitlePipe,
-} from '../../shared/pipes/review.pipes';
 import { PhotoSetKindIconPipe, PhotoSetKindLabelPipe } from '../../shared/pipes/photo-set-kind.pipe';
 import { AuthService } from '../../core/services/auth.service';
 import { ScanService } from '../../core/services/scan.service';
 import { useDesktopSignal, DETAILS_RAIL_MIN_WIDTH_PX } from '../../shared/utils/media-query';
 import { downloadAll } from '../../shared/utils/download';
-import { basename, copyLines, copyText } from '../../shared/utils/clipboard';
+import { basename, copyLines } from '../../shared/utils/clipboard';
 import { I18nService } from '../../core/services/i18n.service';
 import { ApiService } from '../../core/services/api.service';
 import { PluralKeyPipe } from '../../shared/pipes/plural-key.pipe';
@@ -68,7 +64,7 @@ import type { SheetAction } from './gallery-actions-sheet.component';
 import { PhotoCardComponent } from '../../shared/components/photo-card/photo-card.component';
 import { PhotoSkeletonComponent } from '../../shared/components/photo-skeleton/photo-skeleton.component';
 import {
-  GalleryRow, aspectOf, buildGridRows, buildMosaicRows, buildSectionedRows, groupHeaderHeight,
+  GalleryRow, aspectOf, buildGridRows, buildMosaicRows,
   gridColumnCount, totalRowsHeight, windowRange,
 } from './gallery-rows.util';
 import { GalleryFilters, applyQueryParams, loadDisplayOptionsFromStorage } from './gallery-filters.util';
@@ -88,9 +84,6 @@ function assertNever(action: never): never {
 }
 
 const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
-/** The toolbar's Apply my marks control: where the focus lands when a failed Apply left it nowhere. */
-const APPLY_ALL_SELECTOR = '[data-testid="apply-my-marks"]:not(:disabled)';
-
 
 @Component({
   selector: 'app-gallery',
@@ -111,18 +104,6 @@ const APPLY_ALL_SELECTOR = '[data-testid="apply-my-marks"]:not(:disabled)';
     TranslatePipe,
     SequenceKindIconPipe,
     IsSelectedPipe,
-    ReviewApplyPlanPipe,
-    ReviewChangedPipe,
-    ReviewGroupHeaderPipe,
-    ReviewGroupKeptWholePipe,
-    ReviewGroupLabelPipe,
-    ReviewGroupPipe,
-    ReviewGroupReceiptPipe,
-    ReviewMarkPipe,
-    ReviewPathLockedPipe,
-    ReviewReasonPipe,
-    ReviewReceiptLabelPipe,
-    ReviewReceiptTitlePipe,
     PhotoSetKindIconPipe,
     PhotoSetKindLabelPipe,
     MatSnackBarModule,
@@ -287,48 +268,7 @@ const APPLY_ALL_SELECTOR = '[data-testid="apply-my-marks"]:not(:disabled)';
             <mat-icon class="opacity-70 !text-base !w-5 !h-5">auto_awesome</mat-icon>
             <span class="min-w-[12rem] flex-1">
               {{ store.total() | pluralKey:I18N.gallery.pinned.chip:I18N.gallery.pinned.chip_plural | translate:{ count: store.total() } }}
-              @if (store.hasReview()) {
-                @let legend = store.reviewLegend();
-                <span class="ml-2 opacity-80" data-testid="pinned-review-legend">
-                  {{ I18N.gallery.pinned.review.legend | translate:{ groups: (legend.groups | pluralKey:I18N.gallery.pinned.review.legend_groups:I18N.gallery.pinned.review.legend_groups_plural | translate:{ count: legend.groups }), keep: legend.keep, remove: legend.remove } }}
-                </span>
-              }
             </span>
-            @if (store.hasReview()) {
-              <button mat-button class="!min-w-0" data-testid="copy-for-assistant" (click)="copyForAssistant()">
-                {{ I18N.gallery.pinned.review.copy_for_assistant | translate }}
-              </button>
-            }
-            @if (auth.isEdition() && store.pinnedMarks().size > 0) {
-              <button mat-button class="!min-w-0" data-testid="apply-my-marks"
-                      [disabled]="store.applying() || store.applyPlan().counts.groups === 0"
-                      [matTooltip]="store.pinnedGroups().size === 0 ? (I18N.gallery.pinned.review.apply_marks_only_hint | translate) : ''"
-                      (click)="applyAll()">
-                {{ I18N.gallery.pinned.review.apply_all | translate }}
-              </button>
-            }
-            @if (auth.isEdition() && store.appliedReceiptList().length > 0) {
-              @let receipts = store.appliedReceiptList();
-              <button mat-button class="!min-w-0" data-testid="applied-menu" [matMenuTriggerFor]="appliedMenu">
-                {{ receipts.length | pluralKey:I18N.gallery.pinned.review.applied_menu:I18N.gallery.pinned.review.applied_menu_plural | translate:{ count: receipts.length } }}
-              </button>
-              <mat-menu #appliedMenu="matMenu">
-                @for (receipt of receipts; track receipt.receiptId) {
-                  @let receiptLabel = receipt | reviewReceiptLabel:store.pinnedGroups();
-                  <button mat-menu-item data-testid="applied-menu-undo"
-                          [disabled]="!!receipt.unavailable || store.applying()"
-                          [matTooltip]="receipt.unavailable ? (I18N.gallery.pinned.review.undo_unavailable | translate) : ''"
-                          (click)="store.undoApplied(receipt.receiptId)">
-                    @let receiptTitle = receipt | reviewReceiptTitle:store.pinnedGroups();
-                    @if (receiptTitle) {
-                      {{ I18N.gallery.pinned.review.applied_menu_entry_titled | translate:{ title: (receiptTitle.key | translate:receiptTitle.params), label: (receiptLabel.key | translate:receiptLabel.params), filename: receipt.firstFilename } }}
-                    } @else {
-                      {{ I18N.gallery.pinned.review.applied_menu_entry | translate:{ label: (receiptLabel.key | translate:receiptLabel.params), filename: receipt.firstFilename } }}
-                    }
-                  </button>
-                }
-              </mat-menu>
-            }
             <button mat-button class="!min-w-0" (click)="store.clearPinned()">
               {{ I18N.gallery.pinned.clear | translate }}
             </button>
@@ -375,7 +315,7 @@ const APPLY_ALL_SELECTOR = '[data-testid="apply-my-marks"]:not(:disabled)';
 
         <!-- Photo grid / mosaic -->
         @if (store.photos().length) {
-          @if (rowLayoutOn()) {
+          @if (virtualOn()) {
             <!-- Windowed rendering: only rows near the viewport are in the DOM,
                  spacers preserve the scroll geometry -->
             <div
@@ -383,151 +323,58 @@ const APPLY_ALL_SELECTOR = '[data-testid="apply-my-marks"]:not(:disabled)';
               role="grid"
               tabindex="0"
               [attr.aria-label]="I18N.gallery.photo_grid | translate"
-              [attr.aria-rowcount]="photoRowCount()"
+              [attr.aria-rowcount]="rowsModel().length"
               class="flex flex-col p-2 md:p-4 outline-none"
               (keydown)="onGridKeydown($event)"
               (focusout)="onGridFocusOut($event)"
             >
               <div [style.height.px]="topSpacer()" aria-hidden="true"></div>
-              @for (row of visibleRows(); track row.kind === 'header' ? 'h' + row.group : row.photos[0].path) {
-                @if (row.kind === 'header') {
-                  @let header = row.group! | reviewGroupHeader:store.reviewGroupCounts():(store.pinnedMarks().size > 0);
-                  @let groupLabel = row.group! | reviewGroupLabel:store.pinnedLabels();
-                  <div class="flex items-end gap-2 mb-2 px-1 max-md:flex-col max-md:items-stretch max-md:justify-end" [style.height.px]="row.height">
-                    <div role="heading" aria-level="3" class="min-w-[5rem] flex-1 truncate text-sm font-semibold pb-1 max-md:flex-none" data-testid="review-group-header">
-                      {{ header.key | translate:header.params }}
-                      @if (groupLabel) {
-                        <span class="font-normal opacity-80" data-testid="review-group-label"> · {{ groupLabel.key | translate:groupLabel.params }}</span>
-                      }
-                    </div>
-                    @if (store.pinnedMarks().size > 0) {
-                      @let keptWhole = row.group! | reviewGroupKeptWhole:store.pinnedKinds();
-                      @let appliedGroup = row.group! | reviewGroupReceipt:store.appliedGroups();
-                      @let applyUnit = row.group! | reviewApplyPlan:store.applyPlan().byGroup;
-                      <!-- Real buttons, ungated like the card strip (a review mark is client-only). The grid
-                           keydown handler ignores events from [data-review-group-actions]. A kept-whole
-                           group (bracket / panorama) cannot lose a frame: those two are aria-disabled (not
-                           [disabled], which would leave the tab order) and a tooltip says why. -->
-                      <div class="flex min-w-0 items-center gap-1 whitespace-nowrap pb-0.5 *:shrink-0 max-md:w-full" data-review-group-actions [attr.data-group]="row.group" role="group">
-                        <button type="button" data-mode="keep_all"
-                                class="h-6 px-2 inline-flex items-center justify-center rounded border border-[var(--mat-sys-outline-variant)] text-xs cursor-pointer hover:bg-[var(--mat-sys-surface-container-high)] aria-disabled:hover:bg-transparent aria-disabled:cursor-not-allowed aria-disabled:opacity-50 max-md:w-6 max-md:px-0"
-                                [class.max-md:hidden]="!!appliedGroup"
-                                [attr.aria-disabled]="appliedGroup ? 'true' : null"
-                                [attr.aria-label]="I18N.gallery.pinned.review.keep_all_aria | translate:{ group: row.group! }"
-                                (click)="!appliedGroup && store.setGroupMarks(row.group!, 'keep_all')">
-                          <mat-icon aria-hidden="true" class="!text-base !w-5 !h-5 md:!hidden">done_all</mat-icon>
-                          <span class="hidden md:inline">{{ I18N.gallery.pinned.review.keep_all | translate }}</span>
-                        </button>
-                        <button type="button" data-mode="keep_best"
-                                class="h-6 px-2 inline-flex items-center justify-center rounded border border-[var(--mat-sys-outline-variant)] text-xs cursor-pointer hover:bg-[var(--mat-sys-surface-container-high)] aria-disabled:hover:bg-transparent aria-disabled:cursor-not-allowed aria-disabled:opacity-50 max-md:w-6 max-md:px-0"
-                                [class.max-md:hidden]="!!appliedGroup"
-                                [attr.aria-disabled]="(keptWhole || appliedGroup) ? 'true' : null"
-                                [matTooltip]="keptWhole ? (I18N.gallery.pinned.review.group_kept_whole | translate) : ''"
-                                [attr.aria-label]="I18N.gallery.pinned.review.keep_best_aria | translate:{ group: row.group! }"
-                                [attr.aria-description]="keptWhole ? (I18N.gallery.pinned.review.group_kept_whole | translate) : null"
-                                (click)="!keptWhole && !appliedGroup && store.setGroupMarks(row.group!, 'keep_best')">
-                          <mat-icon aria-hidden="true" class="!text-base !w-5 !h-5 md:!hidden">emoji_events</mat-icon>
-                          <span class="hidden md:inline">{{ I18N.gallery.pinned.review.keep_best | translate }}</span>
-                        </button>
-                        <button type="button" data-mode="remove_all"
-                                class="h-6 px-2 inline-flex items-center justify-center rounded border border-[var(--mat-sys-outline-variant)] text-xs cursor-pointer hover:bg-[var(--mat-sys-surface-container-high)] aria-disabled:hover:bg-transparent aria-disabled:cursor-not-allowed aria-disabled:opacity-50 max-md:w-6 max-md:px-0"
-                                [class.max-md:hidden]="!!appliedGroup"
-                                [attr.aria-disabled]="(keptWhole || appliedGroup) ? 'true' : null"
-                                [matTooltip]="keptWhole ? (I18N.gallery.pinned.review.group_kept_whole | translate) : ''"
-                                [attr.aria-label]="I18N.gallery.pinned.review.remove_all_aria | translate:{ group: row.group! }"
-                                [attr.aria-description]="keptWhole ? (I18N.gallery.pinned.review.group_kept_whole | translate) : null"
-                                (click)="!keptWhole && !appliedGroup && store.setGroupMarks(row.group!, 'remove_all')">
-                          <mat-icon aria-hidden="true" class="!text-base !w-5 !h-5 md:!hidden">delete_sweep</mat-icon>
-                          <span class="hidden md:inline">{{ I18N.gallery.pinned.review.remove_all | translate }}</span>
-                        </button>
-                        @if (auth.isEdition()) {
-                          @if (appliedGroup) {
-                            <span class="h-6 px-2 inline-flex items-center rounded bg-emerald-600/90 text-white text-xs" data-testid="review-applied-chip"
-                                  [attr.aria-describedby]="appliedGroup.keptWhole > 0 ? 'review-kept-whole-note-' + row.group : null">
-                              {{ I18N.gallery.pinned.review.applied | translate }}
-                            </span>
-                            @if (appliedGroup.keptWhole > 0) {
-                              @let noteText = appliedGroup.keptWhole | pluralKey:I18N.gallery.pinned.review.kept_whole_note:I18N.gallery.pinned.review.kept_whole_note_plural | translate:{ count: appliedGroup.keptWhole };
-                              <span class="min-w-0 flex-1 !shrink truncate text-xs opacity-80" data-testid="review-kept-whole-note"
-                                    [id]="'review-kept-whole-note-' + row.group" [matTooltip]="noteText">
-                                {{ noteText }}
-                              </span>
-                            }
-                            <button type="button" data-testid="review-undo-group"
-                                    class="h-6 px-2 shrink-0 rounded border border-[var(--mat-sys-outline-variant)] text-xs cursor-pointer hover:bg-[var(--mat-sys-surface-container-high)] disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
-                                    [disabled]="store.applying()"
-                                    [attr.aria-disabled]="appliedGroup.unavailable ? 'true' : null"
-                                    [matTooltip]="appliedGroup.unavailable ? (I18N.gallery.pinned.review.undo_unavailable | translate) : ''"
-                                    [attr.aria-label]="I18N.gallery.pinned.review.undo_apply_aria | translate:{ group: row.group! }"
-                                    (click)="!appliedGroup.unavailable && undoGroup(row.group!, appliedGroup.receiptId)">
-                              {{ I18N.gallery.pinned.review.undo_apply | translate }}
-                            </button>
-                          } @else {
-                            <button type="button" data-testid="review-apply-group"
-                                    class="h-6 px-2 rounded border border-[var(--mat-sys-primary)] bg-[var(--mat-sys-primary)] text-[var(--mat-sys-on-primary)] text-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                                    [disabled]="!applyUnit || store.applying()"
-                                    [attr.aria-label]="I18N.gallery.pinned.review.apply_aria | translate:{ group: row.group! }"
-                                    (click)="applyGroup(row.group!)">
-                              {{ I18N.gallery.pinned.review.apply | translate }}
-                            </button>
-                          }
-                        }
-                      </div>
-                    }
-                  </div>
-                } @else {
-                <div class="flex gap-2 mb-2" [style.height.px]="row.height">
-                  @for (photo of row.photos; track photo.path; let i = $index) {
-                    <app-photo-card
-                  [collapsedSetKinds]="collapsedSetKinds()"
-                  [burstFramesVisible]="burstFramesVisible()"
-                      [photo]="photo"
-                      [reviewGroup]="photo.path | reviewGroup:store.pinnedGroups()"
-                      [reviewChanged]="photo.path | reviewChanged:store.userMarks():store.pinnedMarks()"
-                      [reviewReason]="photo.path | reviewReason:store.pinnedReasons()"
-                      [reviewMark]="photo.path | reviewMark:store.userMarks():store.pinnedMarks():store.appliedMarks()"
-                      [reviewLocked]="photo.path | reviewPathLocked:store.appliedMarks()"
-                      (reviewMarkToggle)="toggleReviewMark($event)"
-                      [attr.data-pidx]="row.startIndex + i"
-                      [style.width.px]="row.widths[i]"
-                      [style.height.px]="row.height"
-                      class="shrink-0"
-                      [hideDetails]="rowCardHideDetails()"
-                      [mosaicMode]="effectiveGalleryMode() === 'mosaic'"
-                      [config]="store.config()"
-                      [isSelected]="photo.path | isSelected:viewScoped():selectedPaths():excludedPaths()"
-                      [isActive]="row.startIndex + i === activeIndex()"
-                      [gridHasActiveCard]="hasActivePhoto()"
-                      [currentSort]="store.filters().sort"
-                      [thumbSize]="thumbSize()"
-                      [isEditionMode]="auth.isEdition()"
-                      [personFilterId]="store.filters().person_id"
-                      [tooltipMode]="tooltipMode()"
-                      [panelActivation]="panelActivation()"
-                      (selectionChange)="toggleSelection($event.photo, $event.event, row.startIndex + i)"
-                      (tooltipShow)="showTooltip($event.event, $event.photo)"
-                      (tooltipHide)="hideTooltip()"
-                      [filterLinks]="!pinned()"
-                  (tagClicked)="store.updateFilter('tag', $event)"
-                      (personFilterClicked)="filterByPerson($event)"
-                      (personRemoveClicked)="removePerson($event.photo, $event.personId)"
-                      (openSimilarClicked)="openSimilar($event.photo, $event.mode)"
-                      (openCritiqueClicked)="openCritique($event)"
-                      (embedMetadataClicked)="embedMetadata($event)"
-                      (openAddPersonClicked)="openAddPerson($event)"
-                      (favoriteToggled)="store.toggleFavorite($event)"
-                      (rejectedToggled)="store.toggleRejected($event)"
-                      (starClicked)="store.setRating($event.photo.path, $event.star)"
-                      [matContextMenuTriggerFor]="photoMenu.menu()"
-                      [matContextMenuTriggerData]="{ photo: photo, index: row.startIndex + i, bulk: (photo.path | isSelected:viewScoped():selectedPaths():excludedPaths()) && selectionCount() > 1 }"
-                      [matContextMenuTriggerDisabled]="touchOnly()"
-                      [matContextMenuTriggerRestoreFocus]="false"
-                      (contextmenu)="onCardContextMenu(row.startIndex + i)"
-                      (doubleClicked)="downloadPhoto($event)"
-                    />
-                  }
-                </div>
+              @for (row of visibleRows(); track row.photos[0].path) {
+              <div class="flex gap-2 mb-2" [style.height.px]="row.height">
+                @for (photo of row.photos; track photo.path; let i = $index) {
+                  <app-photo-card
+                [collapsedSetKinds]="collapsedSetKinds()"
+                [burstFramesVisible]="burstFramesVisible()"
+                    [photo]="photo"
+                    [attr.data-pidx]="row.startIndex + i"
+                    [style.width.px]="row.widths[i]"
+                    [style.height.px]="row.height"
+                    class="shrink-0"
+                    [hideDetails]="rowCardHideDetails()"
+                    [mosaicMode]="effectiveGalleryMode() === 'mosaic'"
+                    [config]="store.config()"
+                    [isSelected]="photo.path | isSelected:viewScoped():selectedPaths():excludedPaths()"
+                    [isActive]="row.startIndex + i === activeIndex()"
+                    [gridHasActiveCard]="hasActivePhoto()"
+                    [currentSort]="store.filters().sort"
+                    [thumbSize]="thumbSize()"
+                    [isEditionMode]="auth.isEdition()"
+                    [personFilterId]="store.filters().person_id"
+                    [tooltipMode]="tooltipMode()"
+                    [panelActivation]="panelActivation()"
+                    (selectionChange)="toggleSelection($event.photo, $event.event, row.startIndex + i)"
+                    (tooltipShow)="showTooltip($event.event, $event.photo)"
+                    (tooltipHide)="hideTooltip()"
+                    [filterLinks]="!pinned()"
+                (tagClicked)="store.updateFilter('tag', $event)"
+                    (personFilterClicked)="filterByPerson($event)"
+                    (personRemoveClicked)="removePerson($event.photo, $event.personId)"
+                    (openSimilarClicked)="openSimilar($event.photo, $event.mode)"
+                    (openCritiqueClicked)="openCritique($event)"
+                    (embedMetadataClicked)="embedMetadata($event)"
+                    (openAddPersonClicked)="openAddPerson($event)"
+                    (favoriteToggled)="store.toggleFavorite($event)"
+                    (rejectedToggled)="store.toggleRejected($event)"
+                    (starClicked)="store.setRating($event.photo.path, $event.star)"
+                    [matContextMenuTriggerFor]="photoMenu.menu()"
+                    [matContextMenuTriggerData]="{ photo: photo, index: row.startIndex + i, bulk: (photo.path | isSelected:viewScoped():selectedPaths():excludedPaths()) && selectionCount() > 1 }"
+                    [matContextMenuTriggerDisabled]="touchOnly()"
+                    [matContextMenuTriggerRestoreFocus]="false"
+                    (contextmenu)="onCardContextMenu(row.startIndex + i)"
+                    (doubleClicked)="downloadPhoto($event)"
+                  />
                 }
+              </div>
               }
               <div [style.height.px]="bottomSpacer()" aria-hidden="true"></div>
             </div>
@@ -546,12 +393,6 @@ const APPLY_ALL_SELECTOR = '[data-testid="apply-my-marks"]:not(:disabled)';
                   [collapsedSetKinds]="collapsedSetKinds()"
                   [burstFramesVisible]="burstFramesVisible()"
                   [photo]="photo"
-                  [reviewGroup]="photo.path | reviewGroup:store.pinnedGroups()"
-                  [reviewChanged]="photo.path | reviewChanged:store.userMarks():store.pinnedMarks()"
-                  [reviewReason]="photo.path | reviewReason:store.pinnedReasons()"
-                  [reviewMark]="photo.path | reviewMark:store.userMarks():store.pinnedMarks():store.appliedMarks()"
-                  [reviewLocked]="photo.path | reviewPathLocked:store.appliedMarks()"
-                  (reviewMarkToggle)="toggleReviewMark($event)"
                   [attr.data-pidx]="i"
                   [config]="store.config()"
                   [isSelected]="photo.path | isSelected:viewScoped():selectedPaths():excludedPaths()"
@@ -611,12 +452,6 @@ const APPLY_ALL_SELECTOR = '[data-testid="apply-my-marks"]:not(:disabled)';
                   [collapsedSetKinds]="collapsedSetKinds()"
                   [burstFramesVisible]="burstFramesVisible()"
                       [photo]="photo"
-                      [reviewGroup]="photo.path | reviewGroup:store.pinnedGroups()"
-                      [reviewChanged]="photo.path | reviewChanged:store.userMarks():store.pinnedMarks()"
-                      [reviewReason]="photo.path | reviewReason:store.pinnedReasons()"
-                      [reviewMark]="photo.path | reviewMark:store.userMarks():store.pinnedMarks():store.appliedMarks()"
-                      [reviewLocked]="photo.path | reviewPathLocked:store.appliedMarks()"
-                      (reviewMarkToggle)="toggleReviewMark($event)"
                       [attr.data-pidx]="row.startIndex + i"
                       [style.width.px]="row.widths[i]"
                       [style.height.px]="row.height"
@@ -1180,8 +1015,6 @@ export class GalleryComponent implements OnInit, OnDestroy {
   /** Scroll offset relative to the rows container, and viewport height. */
   protected readonly relScrollTop = signal(0);
   protected readonly viewportH = signal(0);
-  /** Px of the scroller's top the rows host starts below (pinned-review banner): that strip shows no row. */
-  protected readonly rowsHostGap = signal(0);
 
   /**
    * Windowing active: user flag on, AND heights are deterministic - mosaic
@@ -1194,18 +1027,12 @@ export class GalleryComponent implements OnInit, OnDestroy {
     && (this.effectiveGalleryMode() === 'mosaic' || this.effectiveHideDetails()),
   );
 
-  /** The pin carries review groups: they need header rows, which CSS grid cannot place. */
-  readonly groupedReview = computed(() => this.store.hasReview() && this.store.pinnedGroups().size > 0);
-
-  /** Row-based rendering: windowed, or forced (rendering every row) while a grouped review is shown. */
-  readonly rowLayoutOn = computed(() => this.virtualOn() || this.groupedReview());
-
   /** Cards in the row branch hide their details except in grid mode with details switched on. */
   protected readonly rowCardHideDetails = computed(
     () => this.effectiveGalleryMode() === 'mosaic' || this.effectiveHideDetails(),
   );
 
-  /** Unified row model for the active mode. Header rows exist only for a grouped review. */
+  /** Unified row model for the active mode. */
   readonly rowsModel = computed<GalleryRow[]>(() => {
     const photos = this.store.photos();
     // Rows live inside the p-2 md:p-4 container - subtract its padding
@@ -1215,39 +1042,15 @@ export class GalleryComponent implements OnInit, OnDestroy {
     const build = this.effectiveGalleryMode() === 'mosaic'
       ? (ps: Photo[]) => buildMosaicRows(ps, width, this.cardWidth(), gap)
       : (ps: Photo[]) => buildGridRows(ps, width, this.cardWidth(), gap, this.effectiveHideDetails(), this.isDesktop());
-    if (!this.groupedReview()) return build(photos);
-    const groups = this.store.pinnedGroups();
-    return buildSectionedRows(photos, p => groups.get(p.path), build, groupHeaderHeight(this.isDesktop(), this.store.pinnedMarks().size > 0), gap);
+    return build(photos);
   });
-
-  /** Photo rows only: group headings are not grid rows. */
-  protected readonly photoRowCount = computed(() => this.rowsModel().filter(row => row.kind !== 'header').length);
 
   readonly totalRowsHeight = computed(() => totalRowsHeight(this.rowsModel()));
 
   private readonly visibleRange = computed(() => {
     const rows = this.rowsModel();
-    // Forced row layout (grouped review with windowing off): every row is rendered.
     if (!this.virtualOn()) return { first: 0, last: rows.length - 1 };
     return windowRange(rows, this.relScrollTop(), this.viewportH() || 900, GalleryComponent.OVERSCAN);
-  });
-
-  /**
-   * A group is visited once its header row is inside the viewport the user actually sees (the window
-   * with NO overscan, unlike the render window) -- or a card of it takes the keyboard cursor (setCursor).
-   */
-  private readonly trackVisitedGroups = effect(() => {
-    if (!this.groupedReview()) return;
-    // Width 0 means the container is not measured yet: no row is laid out, so nothing was seen.
-    if (this.containerWidth() === 0) return;
-    const rows = this.rowsModel();
-    const { first, last } = windowRange(rows, this.relScrollTop(), Math.max(0, (this.viewportH() || 900) - this.rowsHostGap()), 0);
-    const seen: number[] = [];
-    for (let i = first; i <= last; i++) {
-      const row = rows[i];
-      if (row?.kind === 'header' && row.group !== undefined) seen.push(row.group);
-    }
-    untracked(() => this.store.markGroupsVisited(seen));
   });
 
   readonly visibleRows = computed(() => {
@@ -1278,7 +1081,6 @@ export class GalleryComponent implements OnInit, OnDestroy {
     if (rowsHost) {
       const rel = viewport.getBoundingClientRect().top - rowsHost.getBoundingClientRect().top;
       this.relScrollTop.set(Math.max(0, rel));
-      this.rowsHostGap.set(Math.max(0, -rel));
     }
   }
 
@@ -1527,85 +1329,6 @@ export class GalleryComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** Apply one group's marks: reject its Remove photos, un-reject its rejected Keep photos, record the pairs. */
-  protected async applyGroup(group: number): Promise<void> {
-    const unit = this.store.applyPlan().byGroup.get(group);
-    if (!unit) return;
-    if (await this.store.applyGroups([unit])) {
-      this.focusAfterRender(`${this.groupActions(group)} [data-testid="review-undo-group"]`);
-      return;
-    }
-    // A failed request leaves the pressed control, disabled while it ran, without the focus: give it back, or
-    // to the nearest live control when a re-pin removed or renumbered the unit meanwhile.
-    this.focusAfterRender(
-      `${this.groupActions(group)} [data-testid="review-apply-group"]:not(:disabled)`,
-      `${this.groupActions(group)} button:not(:disabled):not([aria-disabled="true"])`,
-      APPLY_ALL_SELECTOR,
-    );
-  }
-
-  /** Undo one applied group, then hand the focus to what replaced the button that held it. */
-  protected async undoGroup(group: number, receiptId: string): Promise<void> {
-    await this.store.undoApplied(receiptId);
-    const actions = this.groupActions(group);
-    this.focusAfterRender(
-      `${actions} [data-testid="review-apply-group"]:not(:disabled)`,
-      `${actions} [data-testid="review-undo-group"]:not(:disabled)`,
-      `${actions} button:not(:disabled):not([aria-disabled="true"])`,
-    );
-  }
-
-  private groupActions(group: number): string {
-    return `[data-review-group-actions][data-group="${group}"]`;
-  }
-
-  /** Focus the first selector that matches once the next render has replaced the button that held the focus. */
-  private focusAfterRender(...selectors: string[]): void {
-    afterNextRender(() => {
-      for (const selector of selectors) {
-        const target = this.document.querySelector<HTMLElement>(selector);
-        if (target) {
-          target.focus();
-          return;
-        }
-      }
-    }, { injector: this.injector });
-  }
-
-  /** The confirm text: counts when something changes, else the no-change wording (the apply still records a receipt). */
-  private applyAllMessageKey(noChange: boolean, single: boolean): string {
-    const review = I18N.gallery.pinned.review;
-    if (noChange) return single ? review.apply_all_confirm_nochange : review.apply_all_confirm_nochange_plural;
-    return single ? review.apply_all_confirm : review.apply_all_confirm_plural;
-  }
-
-  /** Apply every group's marks after a confirm that names the counts; Cancel posts nothing. */
-  protected async applyAll(): Promise<void> {
-    const plan = this.store.applyPlan();
-    if (plan.units.length === 0) return;
-    const review = I18N.gallery.pinned.review;
-    const { reject, unreject, groups } = plan.counts;
-    const ref = this.dialog.open(ConfirmDialogComponent, {
-      data: {
-        title: this.i18n.t(review.apply_all_title),
-        message: this.i18n.t(this.applyAllMessageKey(reject + unreject === 0, groups === 1), { reject, unreject, groups }),
-        confirmLabel: this.i18n.t(review.apply),
-      },
-    });
-    if (!(await firstValueFrom(ref.afterClosed()))) return;
-    if (await this.store.applyGroups(this.store.applyPlan().units)) {
-      this.focusAfterRender('[data-testid="applied-menu"]');
-      return;
-    }
-    this.focusAfterRender(APPLY_ALL_SELECTOR, '[data-review-group-actions] button:not(:disabled):not([aria-disabled="true"])');
-  }
-
-  /** Flip a card's effective keep/remove mark into the user's absolute choice; no HTTP. */
-  protected toggleReviewMark(path: string): void {
-    const current = this.store.userMarks().get(path) ?? this.store.pinnedMarks().get(path);
-    this.store.setReviewMark(path, current === 'keep' ? 'remove' : 'keep');
-  }
-
   /** Selecting a photo with the pointer also moves the grid's cursor onto it,
    *  so the next rating keystroke lands on the photo the user just clicked
    *  rather than on wherever the arrow keys were left. The index comes from the
@@ -1773,28 +1496,6 @@ export class GalleryComponent implements OnInit, OnDestroy {
       return null;
     }
     return this.store.pathsInView();
-  }
-
-  /**
-   * Put a hand-off for the assistant on the clipboard: what the user changed and how far they got.
-   * The user pastes it into the agent chat -- the tab cannot push to an external agent. A pin that
-   * carries group kinds is an auto_cull plan, so the text names that tool; any other pin just asks
-   * the assistant to use the marks.
-   */
-  protected async copyForAssistant(): Promise<void> {
-    const { changed, keep, remove } = this.store.reviewChanges();
-    const progress = this.store.review();
-    const review = I18N.gallery.pinned.review;
-    const params = { changed, keep, remove, visited: progress.groups_visited, total: progress.groups_total };
-    const autoCull = this.store.pinnedKinds().size > 0;
-    // Groups the user already applied are decided: say so, and ask the assistant to act only when marks remain.
-    const text = progress.groups_applied > 0
-      ? [
-        this.i18n.t(review.copy_text_applied, { ...params, applied: progress.groups_applied }),
-        this.store.applyPlan().units.length > 0 ? this.i18n.t(autoCull ? review.copy_text_tail_auto_cull : review.copy_text_tail_plain) : '',
-      ].filter(Boolean).join(' ')
-      : this.i18n.t(autoCull ? review.copy_text_auto_cull : review.copy_text_plain, params);
-    if (await copyText(text)) this.snackBar.open(this.i18n.t(review.copied), '', { duration: 2000 });
   }
 
   protected async copyPaths(explicitPaths?: string[]): Promise<void> {
@@ -2504,8 +2205,6 @@ export class GalleryComponent implements OnInit, OnDestroy {
     const path = this.store.photos()[index]?.path ?? null;
     this.activeIndex.set(index);
     this.activePath.set(path);
-    const group = path === null ? undefined : this.store.pinnedGroups().get(path);
-    if (group !== undefined) this.store.markGroupsVisited([group]);
     // The mirror outlives a blur: a drop with the window unfocused (the user went to the agent) keeps it.
     if (path !== null) this.store.focusedPath.set(path);
     else if (document.hasFocus()) this.store.focusedPath.set(null);
@@ -2636,17 +2335,14 @@ export class GalleryComponent implements OnInit, OnDestroy {
   /** Vertical step for the active index: grid = ±columns, mosaic = same offset in adjacent row. */
   private verticalTarget(index: number, dir: 1 | -1): number {
     const count = this.store.photos().length;
-    if (this.effectiveGalleryMode() === 'grid' && !this.rowLayoutOn()) {
+    if (this.effectiveGalleryMode() === 'grid' && !this.virtualOn()) {
       const next = index + dir * this.gridColumns();
       return Math.max(0, Math.min(count - 1, next));
     }
-    const rows = this.rowLayoutOn() ? this.rowsModel() : this.mosaicRows();
+    const rows = this.virtualOn() ? this.rowsModel() : this.mosaicRows();
     const rowIdx = rows.findIndex(r => index >= r.startIndex && index < r.startIndex + r.photos.length);
     if (rowIdx < 0) return index;
-    // Header rows hold no photo: step over them to the neighbouring photo row.
-    let target = rowIdx + dir;
-    while (rows[target] && rows[target].kind === 'header') target += dir;
-    const targetRow = rows[target];
+    const targetRow = rows[rowIdx + dir];
     if (!targetRow) return index;
     const offset = index - rows[rowIdx].startIndex;
     return targetRow.startIndex + Math.min(offset, targetRow.photos.length - 1);
@@ -2660,9 +2356,6 @@ export class GalleryComponent implements OnInit, OnDestroy {
   }
 
   protected onGridKeydown(event: KeyboardEvent): void {
-    // A group header's buttons live inside the grid: their keys (Space, Enter, Tab) are theirs, and
-    // K / R / the arrows must not act on the photo the cursor stands on while one has focus.
-    if ((event.target as HTMLElement | null)?.closest?.('[data-review-group-actions]')) return;
     if (isTypingContext(event)) return;
     const photos = this.store.photos();
     if (!photos.length) return;
@@ -2683,7 +2376,6 @@ export class GalleryComponent implements OnInit, OnDestroy {
         }
         return;
       default:
-        if (this.handleReviewKey(event, photos, index)) return;
         this.handleRatingKey(event, photos, index);
         return;
     }
@@ -2691,26 +2383,6 @@ export class GalleryComponent implements OnInit, OnDestroy {
     event.preventDefault();
     this.setCursor(next);
     this.focusCard(next);
-  }
-
-  /** K / R on a marked photo of a review pin: set keep / remove, then advance. Like the card's
-   *  strip it is ungated (a review mark is client-only, no HTTP). Returns whether it handled the key. */
-  private handleReviewKey(event: KeyboardEvent, photos: Photo[], index: number): boolean {
-    if (event.ctrlKey || event.metaKey || event.altKey) return false;
-    const key = event.key.toLowerCase();
-    if (key !== 'k' && key !== 'r') return false;
-    if (!this.store.hasReview()) return false;
-    const photo = photos[index];
-    if (!photo) return false;
-    // An applied photo is decided: K / R fall through like on an unmarked one.
-    if (this.store.appliedMarks().has(photo.path)) return false;
-    if (!(this.store.userMarks().get(photo.path) ?? this.store.pinnedMarks().get(photo.path))) return false;
-    this.store.setReviewMark(photo.path, key === 'k' ? 'keep' : 'remove');
-    event.preventDefault();
-    const next = Math.min(photos.length - 1, index + 1);
-    this.setCursor(next);
-    this.focusCard(next);
-    return true;
   }
 
   /** Rate-and-advance shortcuts on the focused card: 1-5 set stars, 0/X reject
