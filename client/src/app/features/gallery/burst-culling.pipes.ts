@@ -489,7 +489,8 @@ const GRID_LINES: Record<string, string[]> = {
  *  a frame's worth of latency. */
 const PEAKING_MAX_PIXELS = 2_000_000;
 /** Fit view is measured at 640 px, the thumbnail size the thresholds below were
- *  tuned on; the 1920 px frame would paint well under half the red. */
+ *  tuned on; the 1920 px frame would paint well under half the red. A tuning
+ *  constant with its own literal: it must not follow the stored thumbnail edge. */
 export const PEAKING_FIT_EDGE = 640;
 /** Absolute gradient floor, on the 0-255 Sobel scale: what counts as "in focus"
  *  at all. It is the primary threshold, and being absolute it is the only reason

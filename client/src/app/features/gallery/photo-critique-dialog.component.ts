@@ -10,7 +10,7 @@ import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
-import { ThumbnailUrlPipe } from '../../shared/pipes/thumbnail-url.pipe';
+import { ThumbnailUrlPipe, STORED_THUMBNAIL_EDGE } from '../../shared/pipes/thumbnail-url.pipe';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
 import type { MediaCritiqueResponse } from '../../core/api/types';
 
@@ -155,7 +155,7 @@ export class DistortionLabelPipe implements PipeTransform {
         @if (overlaySupported()) {
           <div class="relative mb-4 rounded-lg overflow-hidden bg-black/20">
             <!-- Stored thumbnail: the saliency overlay is computed from it. -->
-            <img [src]="data.photoPath | thumbnailUrl:640" class="block w-full" alt="" />
+            <img [src]="data.photoPath | thumbnailUrl:storedEdge" class="block w-full" alt="" />
             @if (overlayOn()) {
               <img [src]="overlayUrl()" (error)="onOverlayError()" class="absolute inset-0 w-full h-full opacity-60 mix-blend-multiply" alt="" />
               <svg class="absolute inset-0 w-full h-full" viewBox="0 0 1 1" preserveAspectRatio="none">
@@ -347,6 +347,7 @@ export class DistortionLabelPipe implements PipeTransform {
 })
 export class PhotoCritiqueDialogComponent implements OnInit {
   protected readonly I18N = i18nKeys();
+  protected readonly storedEdge = STORED_THUMBNAIL_EDGE;
   private readonly api = inject(ApiService);
   private readonly auth = inject(AuthService);
   private readonly i18n = inject(I18nService);

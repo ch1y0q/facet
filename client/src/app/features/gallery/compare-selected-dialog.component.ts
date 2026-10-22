@@ -4,7 +4,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Photo } from '../../shared/models/photo.model';
-import { ThumbnailUrlPipe, ImageUrlPipe } from '../../shared/pipes/thumbnail-url.pipe';
+import { ThumbnailUrlPipe, ImageUrlPipe, STORED_THUMBNAIL_EDGE, RENDERED_THUMBNAIL_EDGE } from '../../shared/pipes/thumbnail-url.pipe';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { SyncedZoomComponent, ZoomState, FIT_ZOOM, MAX_COMPARE_PANES } from './synced-zoom.component';
 
@@ -56,8 +56,8 @@ export interface CompareSelectedData {
         @for (photo of panes(); track photo.path) {
           <div class="relative w-full h-full min-h-0 rounded overflow-hidden">
             <app-synced-zoom class="w-full h-full min-h-0"
-                             [src]="photo.path | thumbnailUrl:1920"
-                             [placeholderSrc]="photo.path | thumbnailUrl:640"
+                             [src]="photo.path | thumbnailUrl:renderedEdge"
+                             [placeholderSrc]="photo.path | thumbnailUrl:storedEdge"
                              [frameKey]="photo.path"
                              [fullResSrc]="photo.path | imageUrl:true"
                              [zoom]="zoom()"
@@ -80,6 +80,9 @@ export interface CompareSelectedData {
 export class CompareSelectedDialogComponent {
   private readonly dialogRef = inject(MatDialogRef<CompareSelectedDialogComponent>);
   private readonly data = inject<CompareSelectedData>(MAT_DIALOG_DATA);
+
+  protected readonly storedEdge = STORED_THUMBNAIL_EDGE;
+  protected readonly renderedEdge = RENDERED_THUMBNAIL_EDGE;
 
   /** Pan/zoom shared by every pane, so a gesture on one moves them all in lockstep. */
   protected readonly zoom = signal<ZoomState>({ ...FIT_ZOOM });

@@ -17,7 +17,7 @@ import { AlbumService, Album } from '../../core/services/album.service';
 import { GalleryStore } from './gallery.store';
 import { SceneDatePipe, MomentLabelPipe, MomentUncertainPipe } from '../scenes/scenes.pipes';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
-import { ThumbnailUrlPipe, FaceThumbnailUrlPipe, ImageUrlPipe } from '../../shared/pipes/thumbnail-url.pipe';
+import { ThumbnailUrlPipe, FaceThumbnailUrlPipe, ImageUrlPipe, STORED_THUMBNAIL_EDGE, RENDERED_THUMBNAIL_EDGE } from '../../shared/pipes/thumbnail-url.pipe';
 import { LoupeDirective } from '../../shared/directives/loupe.directive';
 import { SwipeDecisionDirective } from '../../shared/directives/swipe-decision.directive';
 import { I18nService } from '../../core/services/i18n.service';
@@ -161,10 +161,9 @@ const SORT_VALUES = ['easiest', 'redundant', 'best', 'recent', 'needs_comparison
 /** Edge of the render the darkroom's fit view asks `/thumbnail` for. The pane
  *  shows the stored 640 px thumbnail first and swaps to this once it has
  *  loaded; peaking measures a PEAKING_FIT_EDGE downscale of the same render. */
-const DARKROOM_THUMB_SIZE = 1920;
-/** Stored thumbnail edge, shown as the placeholder and prefetched for the
- *  neighbouring frames. */
-const PLACEHOLDER_EDGE = 640;
+const DARKROOM_THUMB_SIZE = RENDERED_THUMBNAIL_EDGE;
+/** Stored thumbnail edge: the grid cards' image and the darkroom's placeholder. */
+const STORED_EDGE = STORED_THUMBNAIL_EDGE;
 
 /** Stable empty overlay map, so clearing an already-empty one is a no-op
  *  instead of a change-detection round for every darkroom navigation. */
@@ -659,7 +658,7 @@ class RunGeneration {
                        (keydown.enter)="toggleSelection(photo.path, group); $event.stopPropagation()"
                        (keydown.space)="toggleSelection(photo.path, group); $event.stopPropagation(); $event.preventDefault()"
                        (dblclick)="selectExclusive(photo.path, group); $event.stopPropagation()">
-                    <img [src]="photo.path | thumbnailUrl:640"
+                    <img [src]="photo.path | thumbnailUrl:storedEdge"
                          [appLoupe]="photo.path | imageUrl:true"
                          [loupeActive]="loupeActive()"
                          [loupeZoom]="loupeZoom()"
@@ -1029,7 +1028,7 @@ class RunGeneration {
                  (keydown)="onDarkroomKeydown($event)">
               <app-synced-zoom #singlePane class="w-full h-full"
                                [src]="(activeStyle() && !previewLoading()) ? (lbPhoto.path | cullPreviewUrl:activeStyle()) : (lbPhoto.path | thumbnailUrl:darkroomThumbSize)"
-                               [placeholderSrc]="activeStyle() ? null : (lbPhoto.path | thumbnailUrl:640)"
+                               [placeholderSrc]="activeStyle() ? null : (lbPhoto.path | thumbnailUrl:storedEdge)"
                                [frameKey]="lbPhoto.path"
                                [loadedSources]="loadedRenders"
                                (sharpLoaded)="onSharpLoaded($event)"
@@ -1094,7 +1093,7 @@ class RunGeneration {
                 <div class="relative w-full h-full min-h-0 rounded overflow-hidden">
                   <app-synced-zoom #pane class="w-full h-full min-h-0"
                                    [src]="photo.path | thumbnailUrl:darkroomThumbSize"
-                                   [placeholderSrc]="photo.path | thumbnailUrl:640"
+                                   [placeholderSrc]="photo.path | thumbnailUrl:storedEdge"
                                    [frameKey]="photo.path"
                                    [loadedSources]="loadedRenders"
                                    [fullResSrc]="photo.path | imageUrl:true"
@@ -1694,6 +1693,7 @@ export class BurstCullingComponent implements OnDestroy {
   private readonly peakingRun = new RunGeneration();
 
   protected readonly darkroomThumbSize = DARKROOM_THUMB_SIZE;
+  protected readonly storedEdge = STORED_EDGE;
 
   /** Renders already fetched into the browser cache (the panes' own preloaders
    *  and the neighbour prefetch fill it), so a revisited frame skips the
@@ -2223,7 +2223,7 @@ export class BurstCullingComponent implements OnDestroy {
     effect(() => {
       const paths = this.neighbourPaths();
       untracked(() => {
-        this.neighbourThumbs = this.prefetch(paths.map(p => this.thumbnailUrl.transform(p, PLACEHOLDER_EDGE)), this.neighbourThumbs);
+        this.neighbourThumbs = this.prefetch(paths.map(p => this.thumbnailUrl.transform(p, STORED_EDGE)), this.neighbourThumbs);
       });
     });
     effect(() => {
