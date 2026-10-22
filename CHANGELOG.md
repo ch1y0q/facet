@@ -6,6 +6,7 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- **Going back from a photo to the gallery is near instant.** Opening a photo destroyed the gallery, so Back or Escape rebuilt all of it, closed filter sidebar included. The gallery now stays alive behind the photo and comes back where you left it, with the photo you opened focused so the arrow keys carry on from there. The filter sidebar is also built only once the browser is idle or the drawer opens.
 - **The culling darkroom and Compare show sharp frames before you zoom in** (PR #230). Both ask `/thumbnail` for 1920 px, but the endpoint only returned the stored 640 px thumbnail, which the browser stretched across the pane. A `size` above 640 now gets a render of the original at up to 1920 px (never upscaled) through the same decode `/image` uses, cached by modification time. If the original is offline, won't decode, or decodes to a frame with no signal (a truncated RW2 comes out all black), the stored thumbnail is served with a 60-second `max-age`, and `/image?fallback=thumbnail` now does the same. The panes show the stored thumbnail first and swap to the sharp render once it has loaded, never another frame's pixels, and the next and previous frames are fetched ahead in single view (not with the browser's Data Saver on).
 
 ## [1.22.1] "Hypo" — 2026-10-21
