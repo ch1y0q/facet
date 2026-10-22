@@ -89,7 +89,13 @@ def _match_password_generations(payload: dict) -> Optional[dict]:
     everywhere without logging anyone out. A token carrying neither claim was
     minted before tokens were bound at all and is likewise stale — accepting it
     would leave exactly the hole the claims exist to close.
+
+    While the config cannot be read no token is accepted: the empty config it
+    degrades to hashes to the same generation an open-install token carries, so
+    the comparison below would wave that token through.
     """
+    if config_load_failed():
+        return None
     viewer_generation = payload.get(VIEWER_GENERATION_CLAIM)
     edition_generation = payload.get(EDITION_GENERATION_CLAIM)
     if viewer_generation is None or edition_generation is None:

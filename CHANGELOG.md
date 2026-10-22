@@ -35,6 +35,10 @@ All notable changes to Facet are documented in this file.
 - **A token on an open install could drive an edition tab.** On an open install with `viewer.edition_password` set, an anonymous token shared its principal with the edition login and so reached that session's tab. An open-install token is now bounded by its own `readonly` grant, like a viewer-minted token on a single password. The per-user token cap is also enforced inside the INSERT, so concurrent mints can no longer overshoot it.
 - **The culling feed no longer lags up to 45 seconds behind the library.** `/api/culling-groups` memoizes its enriched, sorted groups, and the memo was cleared only by culling confirms: photos a scan added in another process, or a frame rejected or favorited from the gallery, stayed invisible until the 45-second backstop expired. The memo key now carries a cheap library fingerprint (latest scan run plus photo count), and every reject and favorite write clears it. Grouping passes run from the CLI (burst, bracket, panorama) change neither, so they still show only after the memo expires.
 
+### Security
+
+- **A sign-in made while the install was open no longer works once the configuration cannot be read.** When the configuration file stopped parsing, or a named configuration path was missing, the server correctly refused requests without a session, but a session started earlier on an install with no viewer password was still accepted for up to 48 hours and could read the library. Every session is now refused until the configuration can be read again, and sessions work again as soon as it can.
+
 ## [1.22.1] "Hypo" — 2026-10-21
 
 ### Fixed
