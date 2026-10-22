@@ -61,6 +61,17 @@ describe('PhotoCardComponent', () => {
     expect(card.config()).toBeNull();
   });
 
+  it('never asks for a thumbnail above the stored 640 px', () => {
+    const cardFixture = TestBed.createComponent(PhotoCardComponent);
+    cardFixture.componentRef.setInput('photo', makePhoto());
+    cardFixture.componentRef.setInput('thumbSize', 900);
+    cardFixture.detectChanges();
+
+    expect(cardFixture.componentInstance.thumbSize()).toBe(640);
+    const img: HTMLImageElement = cardFixture.nativeElement.querySelector('img[src*="/thumbnail"]');
+    expect(img.getAttribute('src')).toContain('size=640');
+  });
+
   it('should reflect updated photo input', () => {
     fixture.componentInstance.photo.set(makePhoto({ filename: 'updated.jpg', aggregate: 9.0 }));
     fixture.detectChanges();

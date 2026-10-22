@@ -486,8 +486,12 @@ const GRID_LINES: Record<string, string[]> = {
 };
 
 /** Working-canvas pixel budget for the edge map: a 2 MP convolution stays under
- *  a frame's worth of latency, and peaking is judged at screen resolution. */
+ *  a frame's worth of latency. */
 const PEAKING_MAX_PIXELS = 2_000_000;
+/** Fit view is measured at 640 px, the thumbnail size the thresholds below were
+ *  tuned on; the 1920 px frame would paint well under half the red. A tuning
+ *  constant with its own literal: it must not follow the stored thumbnail edge. */
+export const PEAKING_FIT_EDGE = 640;
 /** Absolute gradient floor, on the 0-255 Sobel scale: what counts as "in focus"
  *  at all. It is the primary threshold, and being absolute it is the only reason
  *  two frames of the same subject can be compared by how much red each shows. */
@@ -627,22 +631,29 @@ interface PeakingFrame {
  * exactly the same pixels under the same transform, with no per-pane
  * measurement.
  */
-async function rasterPeakingFrame(src: string): Promise<PeakingFrame | null> {
+async function rasterPeakingFrame(src: string, maxEdge?: number): Promise<PeakingFrame | null> {
   const img = await loadFrameImage(src);
   const naturalW = img.naturalWidth || img.width;
   const naturalH = img.naturalHeight || img.height;
   if (!naturalW || !naturalH) return null;
-  const scale = Math.min(1, Math.sqrt(PEAKING_MAX_PIXELS / (naturalW * naturalH)));
-  const width = Math.max(1, Math.round(naturalW * scale));
-  const height = Math.max(1, Math.round(naturalH * scale));
+  const { w: width, h: height } = peakingCanvasSize(naturalW, naturalH, maxEdge);
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
+  // 'low' smoothing aliases on a 3x reduction, and aliasing reads as edges.
+  if (maxEdge) ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(img, 0, 0, width, height);
   const pixels = ctx.getImageData(0, 0, width, height);
   return { field: peakingGradientField(pixels.data, width, height), canvas, ctx };
+}
+
+/** Canvas size within the pixel budget and, if given, `maxEdge`. */
+export function peakingCanvasSize(naturalW: number, naturalH: number, maxEdge = Infinity): FrameSize {
+  const scale = Math.min(1, Math.sqrt(PEAKING_MAX_PIXELS / (naturalW * naturalH)),
+    maxEdge / Math.max(naturalW, naturalH));
+  return { w: Math.max(1, Math.round(naturalW * scale)), h: Math.max(1, Math.round(naturalH * scale)) };
 }
 
 /** Paint a measured frame at `threshold` and hand it back as a PNG data URL. */
@@ -655,8 +666,8 @@ function peakingDataUrl(frame: PeakingFrame, threshold: number): string {
 }
 
 /** Build the focus-peaking overlay for one frame as a PNG data URL. */
-export async function computePeakingOverlay(src: string): Promise<string | null> {
-  const frame = await rasterPeakingFrame(src);
+export async function computePeakingOverlay(src: string, maxEdge?: number): Promise<string | null> {
+  const frame = await rasterPeakingFrame(src, maxEdge);
   return frame ? peakingDataUrl(frame, peakingThreshold([frame.field])) : null;
 }
 
@@ -670,10 +681,10 @@ export async function computePeakingOverlay(src: string): Promise<string | null>
  * is left out rather than failing the set.
  */
 export async function computePooledPeakingOverlays(
-  srcs: readonly string[],
+  srcs: readonly string[], maxEdge?: number,
 ): Promise<Map<string, string>> {
   const frames = await Promise.all(
-    srcs.map(src => rasterPeakingFrame(src).catch(() => null)),
+    srcs.map(src => rasterPeakingFrame(src, maxEdge).catch(() => null)),
   );
   const threshold = peakingThreshold(
     frames.filter((frame): frame is PeakingFrame => frame !== null).map(frame => frame.field),

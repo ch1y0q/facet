@@ -6,6 +6,7 @@ Thumbnail router — photo thumbnails, face thumbnails, person thumbnails, full 
 import hashlib
 import logging
 import os
+import threading
 from io import BytesIO
 from functools import lru_cache
 from pathlib import Path
@@ -26,6 +27,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["thumbnails"])
 
 _thumbnail_cache_size = VIEWER_CONFIG.get('performance', {}).get('thumbnail_cache_size', 2000)
+
+# Anything above 640 gets one fixed-size render, so `size` can't pull the full
+# original or fill the cache with one entry per value.
+_STORED_THUMBNAIL_SIZE = 640
+_RENDERED_SIZE = 1920
+_RENDERED_JPEG_QUALITY = 85
+# Renders decode originals on the shared threadpool, so cap them.
+_render_slots = threading.BoundedSemaphore(4)
+_RENDER_WAIT_SECONDS = 5
+# Short, so the sharp render shows up once the original is back.
+_FALLBACK_MAX_AGE = 60
 
 
 def _face_join_visible(column: str, value: int, user: Optional[CurrentUser]) -> bool:
@@ -55,7 +67,8 @@ def _person_visible(person_id: int, user: Optional[CurrentUser]) -> bool:
     return _face_join_visible('f.person_id', person_id, user)
 
 
-def _cached_image_response(image_bytes: bytes, request: Request) -> Response:
+def _cached_image_response(image_bytes: bytes, request: Request,
+                           max_age: int = 31536000) -> Response:
     """Build a cached JPEG response with ETag and conditional 304."""
     etag = hashlib.md5(image_bytes).hexdigest()
     if request.headers.get('if-none-match') == etag:
@@ -64,7 +77,7 @@ def _cached_image_response(image_bytes: bytes, request: Request) -> Response:
         content=image_bytes,
         media_type='image/jpeg',
         headers={
-            'Cache-Control': 'public, max-age=31536000',
+            'Cache-Control': f'public, max-age={max_age}',
             'ETag': etag,
         }
     )
@@ -140,6 +153,65 @@ def _get_or_resize(photo_path: str, thumbnail_bytes: bytes, size: int) -> bytes:
     return resized
 
 
+@lru_cache(maxsize=32)
+def _render_from_original_cached(file_path: str, mtime: float,
+                                 sequence_kind: Optional[str]) -> bytes:
+    from api.raw_processing import load_viewer_image
+    from utils import image_transforms
+
+    if not _render_slots.acquire(timeout=_RENDER_WAIT_SECONDS):
+        raise RuntimeError("every render slot is busy")
+    try:
+        img = load_viewer_image(file_path, sequence_kind, max_edge=_RENDERED_SIZE)
+        # The slot covers the resize and encode too: the decoded frame is the
+        # large allocation the cap exists to bound.
+        blob = image_transforms.generate_photo_thumbnail(
+            img, _RENDERED_SIZE, _RENDERED_JPEG_QUALITY)
+        del img
+    finally:
+        _render_slots.release()
+    if not image_transforms.thumbnail_has_signal(blob):
+        # A truncated RW2 decodes to an all-zero frame without raising.
+        raise _NoSignalError("render carries no signal")
+    return blob
+
+
+class _NoSignalError(RuntimeError):
+    """The original decoded, but to a frame with no image signal."""
+
+
+# Renders that came out with no signal, keyed like the render cache. An
+# exception is not memoised by lru_cache, so without this every revalidation
+# would decode the same broken original again.
+_NO_SIGNAL_CACHE_SIZE = 32
+_no_signal_renders: dict[tuple, bool] = {}
+_no_signal_lock = threading.Lock()
+
+
+def _render_from_original(path: str, sequence_kind: Optional[str]) -> Optional[bytes]:
+    """None when the original can't be rendered."""
+    try:
+        disk = resolve_photo_disk_path(path)
+    except HTTPException:
+        return None
+    try:
+        key = (disk, os.path.getmtime(disk), sequence_kind)
+        if key in _no_signal_renders:
+            return None
+        return _render_from_original_cached(*key)
+    except _NoSignalError as e:
+        with _no_signal_lock:
+            if len(_no_signal_renders) >= _NO_SIGNAL_CACHE_SIZE:
+                _no_signal_renders.pop(next(iter(_no_signal_renders)), None)
+            _no_signal_renders[key] = True
+        logger.warning("Could not render %s (%s), serving the stored thumbnail", disk, e)
+        return None
+    except (OSError, ValueError, RuntimeError) as e:
+        # No traceback: this repeats on every revalidation.
+        logger.warning("Could not render %s (%s), serving the stored thumbnail", disk, e)
+        return None
+
+
 @router.get("/thumbnail")
 def get_thumbnail(
     request: Request,
@@ -147,20 +219,33 @@ def get_thumbnail(
     size: Optional[int] = Query(None),
     user: Optional[CurrentUser] = Depends(get_optional_user),
 ):
-    """Get photo thumbnail."""
+    """Get photo thumbnail.
+
+    A ``size`` above 640 is rendered from the original at up to 1920 px. If that
+    fails, or the render has no signal, the stored thumbnail is served with a
+    short ``max-age``.
+    """
     vis_sql, vis_params = get_visibility_clause(user.user_id if user else None)
     with get_db() as conn:
         row = conn.execute(
-            f"SELECT thumbnail FROM photos WHERE path = ? AND {vis_sql}",
+            f"SELECT thumbnail, sequence_kind FROM photos WHERE path = ? AND {vis_sql}",
             [path, *vis_params],
         ).fetchone()
 
-    if row and row['thumbnail']:
-        if size and 0 < size < 640:
-            resized = _get_or_resize(path, row['thumbnail'], size)
-            return _cached_image_response(resized, request)
-        return _cached_image_response(row['thumbnail'], request)
-    return Response(content="Thumbnail not found", status_code=404)
+    if not (row and row['thumbnail']):
+        return Response(content="Thumbnail not found", status_code=404)
+    if size and 0 < size < _STORED_THUMBNAIL_SIZE:
+        resized = _get_or_resize(path, row['thumbnail'], size)
+        return _cached_image_response(resized, request)
+    if size and size > _STORED_THUMBNAIL_SIZE:
+        rendered = _render_from_original(path, row['sequence_kind'])
+        if rendered is not None:
+            # Kept at the one-year default like /image and the stored thumbnail:
+            # the bytes depend on (mtime, sequence_kind) and the client's `v=`
+            # query is the invalidation lever. A bad render never gets here.
+            return _cached_image_response(rendered, request)
+        return _cached_image_response(row['thumbnail'], request, max_age=_FALLBACK_MAX_AGE)
+    return _cached_image_response(row['thumbnail'], request)
 
 
 _face_cache_size = VIEWER_CONFIG.get('performance', {}).get('face_cache_size', 500)
@@ -288,7 +373,7 @@ def _stored_thumbnail_response(path, request):
     with get_db() as conn:
         row = conn.execute("SELECT thumbnail FROM photos WHERE path = ?", (path,)).fetchone()
     if row and row['thumbnail']:
-        return _cached_image_response(row['thumbnail'], request)
+        return _cached_image_response(row['thumbnail'], request, max_age=_FALLBACK_MAX_AGE)
     return Response(content="Not found", status_code=404)
 
 

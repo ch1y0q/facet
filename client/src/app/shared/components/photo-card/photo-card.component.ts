@@ -5,7 +5,7 @@ import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
 import { MatMenuModule } from '@angular/material/menu';
 import { Photo } from '../../models/photo.model';
 import { TranslatePipe } from '../../pipes/translate.pipe';
-import { ThumbnailUrlPipe, PersonThumbnailUrlPipe } from '../../pipes/thumbnail-url.pipe';
+import { ThumbnailUrlPipe, PersonThumbnailUrlPipe, STORED_THUMBNAIL_EDGE } from '../../pipes/thumbnail-url.pipe';
 import { SequenceOverrideBadgeKeyPipe } from '../../pipes/sequence-kind.pipe';
 import { PhotoSetKindIconPipe, PhotoSetKindBestLabelPipe } from '../../pipes/photo-set-kind.pipe';
 import { FixedPipe } from '../../pipes/fixed.pipe';
@@ -591,7 +591,8 @@ export class PhotoCardComponent {
   readonly hideDetails = input(false);
   readonly mosaicMode = input(false);
   readonly currentSort = input('aggregate');
-  readonly thumbSize = input(240);
+  /** Capped at the stored edge: larger sizes make the server decode the original. */
+  readonly thumbSize = input(240, { transform: (size: number) => Math.min(size, STORED_THUMBNAIL_EDGE) });
 
   /** Every card except the current one, and only once there is a current one.
    *

@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { thumbnailUrl } from '../../shared/pipes/thumbnail-url.pipe';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -40,9 +41,7 @@ export class ApiService {
 
   /** Build thumbnail URL */
   thumbnailUrl(path: string, size?: number): string {
-    const params = new URLSearchParams({ path });
-    if (size) params.set('size', String(size));
-    return `/thumbnail?${params}`;
+    return thumbnailUrl(path, size);
   }
 
   /** Build face thumbnail URL */

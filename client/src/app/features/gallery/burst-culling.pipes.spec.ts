@@ -7,7 +7,7 @@ import {
   KeySubjectForPathPipe, IsKeyFacePipe, CanMarkBracketPipe, peakingEdgeOverlay,
   peakingGradientField, peakingThreshold, paintPeakingField,
   loadFrameImage, computePeakingOverlay, computePooledPeakingOverlays,
-  KEY_SUBJECT_COORDINATE_SPACE,
+  peakingCanvasSize, PEAKING_FIT_EDGE, KEY_SUBJECT_COORDINATE_SPACE,
   CullingGroup, CullingFace, CullingSubject, FaceThresholds, FrameSize, KeySubject,
 } from './burst-culling.pipes';
 
@@ -821,5 +821,21 @@ describe('GridLinesPipe', () => {
 
   it('draws the golden ratio', () => {
     expect(pipe.transform('golden')).toEqual(['38.197%', '61.803%']);
+  });
+});
+
+describe('peakingCanvasSize', () => {
+  it('measures a fit-view frame at the 640 px field, whatever size it displays at', () => {
+    expect(peakingCanvasSize(1920, 1280, PEAKING_FIT_EDGE)).toEqual({ w: 640, h: 427 });
+    expect(peakingCanvasSize(1280, 1920, PEAKING_FIT_EDGE)).toEqual({ w: 427, h: 640 });
+    expect(peakingCanvasSize(640, 427, PEAKING_FIT_EDGE)).toEqual({ w: 640, h: 427 });
+  });
+
+  it('never upscales a frame smaller than the field', () => {
+    expect(peakingCanvasSize(320, 213, PEAKING_FIT_EDGE)).toEqual({ w: 320, h: 213 });
+  });
+
+  it('bounds a full-resolution frame by the pixel budget alone', () => {
+    expect(peakingCanvasSize(6000, 4000)).toEqual({ w: 1732, h: 1155 });
   });
 });

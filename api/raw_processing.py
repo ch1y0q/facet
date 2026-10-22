@@ -218,8 +218,9 @@ def _find_companion_raw_cached(stem: str, parent_dir: str, raw_extensions: Colle
 # Internal backends
 # ---------------------------------------------------------------------------
 
-def _convert_rawpy(file_path: str, quality: int, sequence_kind: str | None = None) -> bytes:
-    """Convert via rawpy/libraw.
+def load_viewer_image(file_path: str, sequence_kind: str | None = None,
+                      max_edge: int | None = None):
+    """Decode a photo the way the viewer shows it.
 
     Serves the camera-embedded preview when it covers enough of the sensor to
     pass for the full frame; the rest demosaic. Preview coverage is a body
@@ -230,11 +231,17 @@ def _convert_rawpy(file_path: str, quality: int, sequence_kind: str | None = Non
 
     ratio = float(get_raw_decode_settings()['preview_min_sensor_ratio'])
     pil_img = load_display_image(file_path, min_preview_sensor_ratio=ratio,
-                                decode_budget='viewer', sequence_kind=sequence_kind)
+                                decode_budget='viewer', sequence_kind=sequence_kind,
+                                draft_edge=max_edge)
     if pil_img is None:
-        raise RuntimeError(f"RAW decode failed: {file_path}")
+        raise RuntimeError(f"Display decode failed: {file_path}")
+    return pil_img
+
+
+def _convert_rawpy(file_path: str, quality: int, sequence_kind: str | None = None) -> bytes:
+    """Convert via rawpy/libraw."""
     buffer = BytesIO()
-    pil_img.save(buffer, format='JPEG', quality=quality)
+    load_viewer_image(file_path, sequence_kind).save(buffer, format='JPEG', quality=quality)
     return buffer.getvalue()
 
 

@@ -1,5 +1,7 @@
 """Tests for the thumbnails API router (api/routers/thumbnails.py)."""
 
+import os
+import threading
 from contextlib import contextmanager
 from io import BytesIO
 from pathlib import Path
@@ -26,11 +28,11 @@ def _cm(conn):
     return _ctx
 
 
-def _make_jpeg_bytes() -> bytes:
-    """Create a minimal valid 1x1 JPEG image."""
+def _make_jpeg_bytes(size=(1, 1)) -> bytes:
+    """Create a minimal valid JPEG image, 1x1 unless ``size`` says otherwise."""
     from PIL import Image
     buf = BytesIO()
-    img = Image.new("RGB", (1, 1), (255, 0, 0))
+    img = Image.new("RGB", size, (255, 0, 0))
     img.save(buf, format="JPEG")
     return buf.getvalue()
 
@@ -101,6 +103,286 @@ class TestGetThumbnail:
         assert len(resp.content) < len(large_jpeg)
 
 
+def _image_size(image_bytes):
+    from PIL import Image
+    return Image.open(BytesIO(image_bytes)).size
+
+
+def _noise(size):
+    """Noisy, so a change to the resize or JPEG quality changes the bytes."""
+    from PIL import Image
+    pixels = np.random.default_rng(0).integers(0, 256, (size[1], size[0], 3), dtype=np.uint8)
+    return Image.fromarray(pixels)
+
+
+class TestThumbnailRenderedFromOriginal:
+    """GET /thumbnail?size=N above 640 renders the original. Real rows, so the
+    visibility-filtered SELECT runs."""
+
+    STORED = (640, 427)
+
+    @pytest.fixture(autouse=True)
+    def _fresh_render_cache(self):
+        from api.routers import thumbnails
+        thumbnails._render_from_original_cached.cache_clear()
+        thumbnails._no_signal_renders.clear()
+        yield
+        thumbnails._render_from_original_cached.cache_clear()
+        thumbnails._no_signal_renders.clear()
+
+    @pytest.fixture()
+    def photo(self, tmp_path, seed_photos_prefix):
+        """Seed one row whose original is ``tmp_path/<name>``; returns that path."""
+        def make(name="photo.jpg", original=None, stored=self.STORED, sequence_kind=None):
+            path = tmp_path / name
+            if original is not None:
+                path.write_bytes(original)
+            seed_photos_prefix(str(tmp_path) + "/", [{
+                "path": str(path), "filename": name,
+                "thumbnail": _make_jpeg_bytes(stored), "sequence_kind": sequence_kind,
+            }])
+            return path
+        return make
+
+    def _get(self, client, path, size):
+        return client.get("/thumbnail", params={"path": str(path), "size": size})
+
+    def test_renders_from_the_original(self, client, photo):
+        path = photo(original=_make_jpeg_bytes((3000, 2000)))
+
+        resp = self._get(client, path, 1920)
+
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "image/jpeg"
+        assert _image_size(resp.content) == (1920, 1280)
+        assert resp.headers["cache-control"] == "public, max-age=31536000"
+
+    def test_every_size_above_640_shares_one_1920_render(self, client, photo):
+        path = photo(original=_make_jpeg_bytes((3000, 2000)))
+
+        with mock.patch("utils.image_loading.load_display_image",
+                        wraps=image_loading.load_display_image) as load:
+            sizes = {_image_size(self._get(client, path, size).content)
+                     for size in (641, 1280, 1920, 100000)}
+
+        assert sizes == {(1920, 1280)}
+        assert load.call_count == 1
+
+    def test_never_upscales_a_small_original(self, client, photo):
+        path = photo(original=_make_jpeg_bytes((1200, 800)))
+
+        assert _image_size(self._get(client, path, 1920).content) == (1200, 800)
+
+    # A viewer DB export stores 320 px thumbnails and grids ask for 640.
+    @pytest.mark.parametrize("stored", [(640, 427), (320, 213)])
+    @pytest.mark.parametrize("size", [None, -1, 0, 320, 640])
+    def test_sizes_up_to_640_never_read_the_original(self, client, photo, stored, size):
+        path = photo(original=_make_jpeg_bytes((3000, 2000)), stored=stored)
+
+        with mock.patch("utils.image_loading.load_display_image") as load:
+            resp = client.get("/thumbnail", params={"path": str(path),
+                                                    **({"size": size} if size is not None else {})})
+
+        assert resp.status_code == 200
+        assert _image_size(resp.content) == (stored if size != 320
+                                             else (320, round(320 * stored[1] / stored[0])))
+        load.assert_not_called()
+
+    def test_a_small_stored_thumbnail_still_renders_above_640(self, client, photo):
+        path = photo(original=_make_jpeg_bytes((3000, 2000)), stored=(320, 213))
+
+        assert _image_size(self._get(client, path, 1920).content) == (1920, 1280)
+
+    def test_a_missing_original_serves_the_stored_thumbnail_briefly(self, client, photo):
+        path = photo(original=None)
+
+        resp = self._get(client, path, 1920)
+
+        assert resp.status_code == 200
+        assert _image_size(resp.content) == self.STORED
+        assert resp.headers["cache-control"] == "public, max-age=60"
+
+    def test_an_undecodable_original_serves_the_stored_thumbnail_briefly(self, client, photo):
+        path = photo(original=b"not an image")
+
+        resp = self._get(client, path, 1920)
+
+        assert resp.status_code == 200
+        assert _image_size(resp.content) == self.STORED
+        assert resp.headers["cache-control"] == "public, max-age=60"
+
+    @pytest.mark.parametrize("error", [OSError, ValueError, RuntimeError])
+    def test_a_failing_render_serves_the_stored_thumbnail(self, client, photo, error):
+        path = photo(original=_make_jpeg_bytes((3000, 2000)))
+
+        with mock.patch("utils.image_loading.load_display_image",
+                        side_effect=error("boom")) as load:
+            resp = self._get(client, path, 1920)
+
+        load.assert_called_once()
+        assert resp.status_code == 200
+        assert _image_size(resp.content) == self.STORED
+
+    def test_the_render_is_cached_until_the_original_changes(self, client, photo):
+        path = photo(original=_make_jpeg_bytes((3000, 2000)))
+
+        with mock.patch("utils.image_loading.load_display_image",
+                        wraps=image_loading.load_display_image) as load:
+            first = self._get(client, path, 1920).content
+            assert self._get(client, path, 1920).content == first
+            assert load.call_count == 1
+
+            path.write_bytes(_make_jpeg_bytes((2000, 3000)))
+            mtime = path.stat().st_mtime + 10
+            os.utime(path, (mtime, mtime))
+            second = self._get(client, path, 1920).content
+
+        assert load.call_count == 2
+        assert _image_size(second) == (1280, 1920)
+
+    def test_raw_renders_through_the_viewer_display_loader(self, client, photo):
+        path = photo(name="photo.cr2", original=b"raw bytes", sequence_kind="bracket")
+
+        with mock.patch("utils.image_loading.get_raw_decode_settings",
+                        return_value={"preview_min_sensor_ratio": 0.37}), \
+             mock.patch("utils.image_loading.load_display_image",
+                        return_value=_noise((3000, 2000))) as load:
+            resp = self._get(client, path, 1920)
+
+        load.assert_called_once_with(os.path.realpath(path), min_preview_sensor_ratio=0.37,
+                                     decode_budget="viewer", sequence_kind="bracket",
+                                     draft_edge=1920)
+        from PIL import Image
+        expected = _noise((3000, 2000))
+        expected.thumbnail((1920, 1920), Image.Resampling.LANCZOS)
+        buf = BytesIO()
+        expected.save(buf, format="JPEG", quality=85)
+        assert resp.content == buf.getvalue()
+
+    def test_renders_are_bounded_to_four_at_once(self, tmp_path):
+        import time
+        from api.routers import thumbnails
+
+        state = {"inside": 0, "peak": 0}
+        guard = threading.Lock()
+        release = threading.Event()
+
+        def _held_load(*_a, **_k):
+            with guard:
+                state["inside"] += 1
+                state["peak"] = max(state["peak"], state["inside"])
+            release.wait(5)
+            with guard:
+                state["inside"] -= 1
+            return _noise((8, 8))
+
+        with mock.patch("utils.image_loading.load_display_image", side_effect=_held_load):
+            threads = [threading.Thread(target=thumbnails._render_from_original_cached,
+                                        args=(str(tmp_path / f"{i}.jpg"), 0.0, None))
+                       for i in range(8)]
+            for t in threads:
+                t.start()
+            deadline = time.monotonic() + 5
+            while state["inside"] < 4 and time.monotonic() < deadline:
+                time.sleep(0.01)
+            # Give a fifth render the chance to get in.
+            time.sleep(0.1)
+            peak_while_held = state["peak"]
+            release.set()
+            for t in threads:
+                t.join()
+
+        assert peak_while_held == 4
+
+    def test_a_render_that_cannot_start_in_time_serves_the_stand_in(self, client, photo):
+        from api.routers import thumbnails
+
+        path = photo(original=_make_jpeg_bytes((3000, 2000)))
+
+        with mock.patch.object(thumbnails, "_RENDER_WAIT_SECONDS", 0.01), \
+             mock.patch.object(thumbnails, "_render_slots", threading.BoundedSemaphore(0)), \
+             mock.patch("utils.image_loading.load_display_image") as load:
+            # In a thread, so a wait that never times out fails instead of hanging.
+            result = {}
+            worker = threading.Thread(
+                target=lambda: result.update(resp=self._get(client, path, 1920)), daemon=True)
+            worker.start()
+            worker.join(2)
+            assert not worker.is_alive(), "the render waited for a slot instead of standing in"
+
+        load.assert_not_called()
+        assert _image_size(result["resp"].content) == self.STORED
+        assert result["resp"].headers["cache-control"] == "public, max-age=60"
+
+    @staticmethod
+    def _black_render(*_a, **_k):
+        from PIL import Image
+        return Image.new("RGB", (3000, 2000), (0, 0, 0))
+
+    def _assert_stand_in(self, resp):
+        assert resp.status_code == 200
+        assert _image_size(resp.content) == self.STORED
+        assert resp.headers["cache-control"] == "public, max-age=60"
+        from PIL import Image
+        assert Image.open(BytesIO(resp.content)).convert("L").getextrema()[1] > 0
+
+    def test_a_render_with_no_signal_serves_the_stored_thumbnail_briefly(self, client, photo):
+        path = photo(original=_make_jpeg_bytes((3000, 2000)))
+
+        with mock.patch("api.raw_processing.load_viewer_image", side_effect=self._black_render):
+            resp = self._get(client, path, 1920)
+
+        self._assert_stand_in(resp)
+
+    @pytest.mark.raw_brand_samples
+    def test_a_truncated_rw2_serves_the_stored_thumbnail_briefly(self, client, photo, tmp_path):
+        pytest.importorskip("rawpy")
+        sample = Path(os.environ.get("FACET_RAW_SAMPLE_DIR", ".")) / "sample.rw2"
+        if not sample.exists():
+            pytest.skip("sample.rw2 not available")
+        path = photo(name="truncated.rw2", original=sample.read_bytes()[:4096])
+
+        resp = self._get(client, path, 1920)
+
+        self._assert_stand_in(resp)
+
+    def test_the_render_slot_is_held_until_the_jpeg_is_encoded(self, client, photo):
+        from api.routers import thumbnails
+        from utils import image_transforms
+
+        path = photo(original=_make_jpeg_bytes((3000, 2000)))
+        real = image_transforms.generate_photo_thumbnail
+        seen = {}
+
+        def _probe(img, size, quality):
+            got = thumbnails._render_slots.acquire(blocking=False)
+            seen["acquired"] = got
+            if got:
+                thumbnails._render_slots.release()
+            return real(img, size, quality)
+
+        with mock.patch.object(thumbnails, "_render_slots", threading.BoundedSemaphore(1)), \
+             mock.patch("utils.image_transforms.generate_photo_thumbnail", side_effect=_probe):
+            resp = self._get(client, path, 1920)
+
+        assert resp.status_code == 200
+        assert seen["acquired"] is False
+
+    def test_a_no_signal_render_is_not_decoded_twice(self, client, photo, caplog):
+        path = photo(original=_make_jpeg_bytes((3000, 2000)))
+
+        with mock.patch("api.raw_processing.load_viewer_image",
+                        side_effect=self._black_render) as load:
+            first = self._get(client, path, 1920)
+            caplog.clear()
+            second = self._get(client, path, 1920)
+
+        assert load.call_count == 1
+        self._assert_stand_in(first)
+        self._assert_stand_in(second)
+        assert not [r for r in caplog.records if r.levelname == "WARNING"]
+
+
 # ---------------------------------------------------------------------------
 # GET /face_thumbnail/{face_id}
 # ---------------------------------------------------------------------------
@@ -165,6 +447,7 @@ class TestImage:
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "image/jpeg"
         assert resp.content == jpeg_bytes
+        assert resp.headers["cache-control"] == "public, max-age=60"
 
     def test_image_raw_decode_failure_without_fallback_returns_500(self, client, tmp_path):
         """Without fallback=thumbnail, a RAW decode failure still surfaces as a 500."""

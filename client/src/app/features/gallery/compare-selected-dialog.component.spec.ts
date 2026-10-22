@@ -1,10 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
+import { By } from '@angular/platform-browser';
 import { vi } from 'vitest';
 import { CompareSelectedDialogComponent } from './compare-selected-dialog.component';
 import { FIT_ZOOM, MAX_COMPARE_PANES, SyncedZoomComponent } from './synced-zoom.component';
 import { Photo } from '../../shared/models/photo.model';
 import { I18nService } from '../../core/services/i18n.service';
+import { ThumbnailUrlPipe } from '../../shared/pipes/thumbnail-url.pipe';
 
 const photo = (path: string): Photo => ({ path, filename: path.slice(1) } as Photo);
 
@@ -42,6 +44,15 @@ describe('CompareSelectedDialogComponent', () => {
     const { fixture } = build(paths);
     expect(fixture.debugElement.nativeElement.querySelectorAll('app-synced-zoom').length)
       .toBe(MAX_COMPARE_PANES);
+  });
+
+  it('gives each pane its own stored thumbnail as placeholder, keyed by its frame', () => {
+    const { fixture } = build(['/a.jpg', '/b.jpg']);
+    const urls = new ThumbnailUrlPipe();
+    const panes = fixture.debugElement.queryAll(By.directive(SyncedZoomComponent))
+      .map(de => de.componentInstance as SyncedZoomComponent);
+    expect(panes.map(p => p.placeholderSrc())).toEqual([urls.transform('/a.jpg', 640), urls.transform('/b.jpg', 640)]);
+    expect(panes.map(p => p.frameKey())).toEqual(['/a.jpg', '/b.jpg']);
   });
 
   it('a zoom from one pane drives every other pane', () => {

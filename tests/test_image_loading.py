@@ -884,3 +884,51 @@ def test_pq_gradient_ramp_native_decode_has_no_posterisation_gaps():
     # revision of the fixture must not make this test brittle.
     assert _empty_interior_luma_bins(eight_bit) >= 40
     assert _empty_interior_luma_bins(native) == 0
+
+
+def test_open_nonraw_image_drafts_a_jpeg_down_to_the_edge_asked_for(tmp_path):
+    """The long edge still covers ``draft_edge``, and EXIF orientation applies."""
+    path = tmp_path / "portrait.jpg"
+    exif = Image.Exif()
+    exif[0x0112] = 6  # rotate 90 CW on display
+    Image.new("RGB", (4000, 3000), (90, 120, 150)).save(path, exif=exif)
+
+    full = image_loading.open_nonraw_image(path)
+    drafted = image_loading.open_nonraw_image(path, draft_edge=1000)
+
+    assert full.size == (3000, 4000)
+    assert drafted.size == (750, 1000)
+    assert drafted.mode == "RGB"
+
+
+def test_open_nonraw_image_drafts_a_panorama_by_its_long_edge(tmp_path):
+    """A square box would leave a panorama decoding in full."""
+    path = tmp_path / "pano.jpg"
+    Image.new("RGB", (12000, 3000), (40, 80, 120)).save(path)
+
+    assert image_loading.open_nonraw_image(path, draft_edge=1920).size == (3000, 750)
+
+
+def test_open_nonraw_image_drafts_a_phone_mpo_like_a_jpeg(tmp_path):
+    """Phone JPEGs with gain maps open as MPO."""
+    path = tmp_path / "phone.jpg"
+    frames = [Image.new("RGB", (4000, 3000), (10, 20, 30)), Image.new("RGB", (400, 300))]
+    frames[0].save(path, format="MPO", save_all=True, append_images=frames[1:])
+    with Image.open(path) as probe:
+        assert probe.format == "MPO"
+
+    assert image_loading.open_nonraw_image(path, draft_edge=1000).size == (1000, 750)
+
+
+def test_open_nonraw_image_drafts_only_a_jpeg(tmp_path):
+    """pillow-heif's ``draft`` returns the embedded thumbnail instead."""
+    from PIL.PngImagePlugin import PngImageFile
+
+    path = tmp_path / "frame.png"
+    Image.new("RGB", (4000, 3000)).save(path)
+
+    with mock.patch.object(PngImageFile, "draft") as draft:
+        out = image_loading.open_nonraw_image(path, draft_edge=1000)
+
+    draft.assert_not_called()
+    assert out.size == (4000, 3000)
