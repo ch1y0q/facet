@@ -2210,6 +2210,14 @@
       "bracket_span": "{frames} vues, écart de {ev_span} IL",
       "frame_count": "{frames} vues",
       "moment": "{moment}"
+    },
+    "plan": {
+      "banner": "Plan de l'assistant · {confirmed}/{total} confirmés",
+      "exit": "Quitter",
+      "suggestion": "suggestion : garder {keep} / rejeter {reject}",
+      "differs": "Diffère de la suggestion de l'assistant",
+      "oversize": "Groupes écartés (trop grands pour être confirmés ici) : {count}",
+      "out_of_date": "Le plan de l'assistant est périmé - demandez-lui de le prévisualiser à nouveau"
     }
   },
   "scenes": {

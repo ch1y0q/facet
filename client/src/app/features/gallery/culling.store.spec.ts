@@ -5,6 +5,9 @@ import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { CullingStore, CullingNotice } from './culling.store';
 import type { CullingGroup } from './burst-culling.pipes';
+import { HttpErrorResponse } from '@angular/common/http';
+import { AssistantCullPlanService } from '../../core/agent/assistant-cull-plan.service';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 
 function makeGroup(id: number, type: string, paths: string[], best: string): CullingGroup {
   return {
@@ -59,8 +62,10 @@ describe('CullingStore', () => {
   let store: CullingStore;
   let api: { get: Mock; post: Mock };
   let notices: CullingNotice[];
+  let journalRecord: Mock;
 
   beforeEach(() => {
+    journalRecord = vi.fn();
     localStorage.clear();
     api = {
       get: vi.fn((path: string) => of(path === '/culling-groups' ? GROUPS_RESPONSE : {})),
@@ -70,6 +75,7 @@ describe('CullingStore', () => {
       providers: [
         { provide: ApiService, useValue: api },
         { provide: I18nService, useValue: { t: vi.fn((key: string) => key) } },
+        { provide: UserActivityJournal, useValue: { record: journalRecord } },
       ],
     });
     store = TestBed.inject(CullingStore);
@@ -90,7 +96,7 @@ describe('CullingStore', () => {
       expect(store.groups()).toHaveLength(2);
       expect(store.totalGroups()).toBe(2);
       expect(store.loading()).toBe(false);
-      expect([...store.selectionsMap().get(1) ?? []]).toEqual(['/a.jpg']);
+      expect([...store.selectionsMap().get('1_burst') ?? []]).toEqual(['/a.jpg']);
     });
 
     it('reports a failed load as a notice and leaves the feed untouched', async () => {
@@ -132,8 +138,8 @@ describe('CullingStore', () => {
       await store.loadMore();
       expect(store.groups().map(g => g.group_id)).toEqual([1, 2, 3]);
       expect(store.currentPage()).toBe(2);
-      expect(store.selectionsMap().has(1)).toBe(true);
-      expect(store.selectionsMap().has(3)).toBe(true);
+      expect(store.selectionsMap().has('1_burst')).toBe(true);
+      expect(store.selectionsMap().has('3_burst')).toBe(true);
     });
 
     it('clears loadingMore when a feed reset overtakes a page request, so scrolling works again', async () => {
@@ -174,7 +180,7 @@ describe('CullingStore', () => {
     });
 
     it('refuses a group with nothing kept', () => {
-      store.selectionsMap.set(new Map([[1, new Set<string>()]]));
+      store.selectionsMap.set(new Map([['1_burst', new Set<string>()]]));
       expect(store.confirmGroup(store.groups()[0])).toBe(false);
       expect(api.post).not.toHaveBeenCalled();
     });
@@ -218,7 +224,7 @@ describe('CullingStore', () => {
     });
 
     it('confirms all remaining groups with their own payloads and marks the unkept ones done', async () => {
-      store.selectionsMap.set(new Map([[1, new Set(['/a.jpg', '/b.jpg'])]]));
+      store.selectionsMap.set(new Map([['1_burst', new Set(['/a.jpg', '/b.jpg'])]]));
       await store.confirmAllRemaining(store.groups());
       expect(api.post).toHaveBeenCalledTimes(1);
       expect(api.post).toHaveBeenCalledWith('/culling-groups/confirm', {
@@ -393,7 +399,7 @@ describe('CullingStore', () => {
         const group = store.groups()[0];
         store.toggleSelection('/photo2.jpg', group);
 
-        const kept = store.selectionsMap().get(1);
+        const kept = store.selectionsMap().get('1_burst');
         expect(kept?.has('/photo2.jpg')).toBe(true);
       });
 
@@ -402,7 +408,7 @@ describe('CullingStore', () => {
         // photo1.jpg is auto-selected as best_path
         store.toggleSelection('/photo1.jpg', group);
 
-        const kept = store.selectionsMap().get(1);
+        const kept = store.selectionsMap().get('1_burst');
         expect(kept?.has('/photo1.jpg')).toBe(false);
       });
 
@@ -411,7 +417,7 @@ describe('CullingStore', () => {
         store.toggleSelection('/photo2.jpg', group);
         store.toggleSelection('/photo3.jpg', group);
 
-        const kept = store.selectionsMap().get(1);
+        const kept = store.selectionsMap().get('1_burst');
         expect(kept?.has('/photo1.jpg')).toBe(true); // auto-selected
         expect(kept?.has('/photo2.jpg')).toBe(true);
         expect(kept?.has('/photo3.jpg')).toBe(true);
@@ -451,12 +457,12 @@ describe('CullingStore', () => {
         const group = buildKeepWholeGroup('bracket');
         store.groups.set([group] as never);
         store.selectionsMap.set(
-          new Map([[group.group_id, new Set(group.photos.map(p => p.path))]]),
+          new Map([[store.groupKey(group), new Set(group.photos.map(p => p.path))]]),
         );
 
         store.selectExclusive('/kw1.jpg', group as never);
 
-        const kept = store.selectionsMap().get(group.group_id);
+        const kept = store.selectionsMap().get(store.groupKey(group));
         expect(kept?.size).toBe(3);
         expect([...(kept ?? [])].sort()).toEqual(['/kw0.jpg', '/kw1.jpg', '/kw2.jpg']);
       });
@@ -465,12 +471,12 @@ describe('CullingStore', () => {
         const group = buildKeepWholeGroup('panorama');
         store.groups.set([group] as never);
         store.selectionsMap.set(
-          new Map([[group.group_id, new Set(group.photos.map(p => p.path))]]),
+          new Map([[store.groupKey(group), new Set(group.photos.map(p => p.path))]]),
         );
 
         store.selectExclusive('/kw1.jpg', group as never);
 
-        const kept = store.selectionsMap().get(group.group_id);
+        const kept = store.selectionsMap().get(store.groupKey(group));
         expect(kept?.size).toBe(3);
         expect([...(kept ?? [])].sort()).toEqual(['/kw0.jpg', '/kw1.jpg', '/kw2.jpg']);
       });
@@ -479,12 +485,12 @@ describe('CullingStore', () => {
         const group = buildKeepWholeGroup('hdr_panorama');
         store.groups.set([group] as never);
         store.selectionsMap.set(
-          new Map([[group.group_id, new Set(group.photos.map(p => p.path))]]),
+          new Map([[store.groupKey(group), new Set(group.photos.map(p => p.path))]]),
         );
 
         store.selectExclusive('/kw1.jpg', group as never);
 
-        const kept = store.selectionsMap().get(group.group_id);
+        const kept = store.selectionsMap().get(store.groupKey(group));
         expect(kept?.size).toBe(3);
         expect([...(kept ?? [])].sort()).toEqual(['/kw0.jpg', '/kw1.jpg', '/kw2.jpg']);
       });
@@ -495,7 +501,7 @@ describe('CullingStore', () => {
 
         store.selectExclusive('/photo2.jpg', group);
 
-        const kept = store.selectionsMap().get(group.group_id);
+        const kept = store.selectionsMap().get(store.groupKey(group));
         expect(kept?.size).toBe(1);
         expect(kept?.has('/photo2.jpg')).toBe(true);
       });
@@ -553,10 +559,10 @@ describe('CullingStore', () => {
       api.post.mockReturnValue(of({ photos: [], total: 0, missing: ['/c.jpg', '/d.jpg', '/b.jpg'] }));
       await store.applyExternalChanges(['/b.jpg', '/c.jpg', '/d.jpg']);
       expect(store.groups()[0].photos.map(p => p.path)).toEqual(['/a.jpg']);
-      expect(store.selectionsMap().get(1)?.has('/b.jpg') ?? false).toBe(false);
+      expect(store.selectionsMap().get('1_burst')?.has('/b.jpg') ?? false).toBe(false);
       expect(store.groups()[1].photos).toHaveLength(0);
       expect(store.hiddenGroups().has(store.groupKey(store.groups()[1]))).toBe(true);
-      expect(store.selectionsMap().get(2)?.size ?? 0).toBe(0);
+      expect(store.selectionsMap().get('2_similar')?.size ?? 0).toBe(0);
     });
 
     it('a null batch with a user decision keeps state, raises pendingReload and does not reload', async () => {
@@ -600,12 +606,12 @@ describe('CullingStore', () => {
 
     it('replaces the selections map instead of mutating it when a selected photo goes missing', async () => {
       const before = store.selectionsMap();
-      expect(before.get(1)?.has('/a.jpg')).toBe(true);
+      expect(before.get('1_burst')?.has('/a.jpg')).toBe(true);
       api.post.mockReturnValue(of({ photos: [], total: 0, missing: ['/a.jpg'] }));
       await store.applyExternalChanges(['/a.jpg']);
       expect(store.selectionsMap()).not.toBe(before);
-      expect(before.get(1)?.has('/a.jpg')).toBe(true);
-      expect(store.selectionsMap().get(1)?.has('/a.jpg')).toBe(false);
+      expect(before.get('1_burst')?.has('/a.jpg')).toBe(true);
+      expect(store.selectionsMap().get('1_burst')?.has('/a.jpg')).toBe(false);
     });
 
     it('does not merge rows fetched before a reload into the new feed', async () => {
@@ -651,6 +657,182 @@ describe('CullingStore', () => {
       api.post.mockReturnValue(throwError(() => ({ status: 500 })));
       await store.applyExternalChanges(['/a.jpg']);
       expect(store.groups()).toBe(before);
+    });
+  });
+
+  describe('plan mode', () => {
+    const planGroup = (id: number, type: string, paths: string[], keep: string[], number: number) => ({
+      ...makeGroup(id, type, paths, paths[0]),
+      plan: { number, keep_paths: keep, group_reason: { key: 'burst', params: {} } },
+    });
+    const planResponse = (groups: unknown[], extra: Record<string, unknown> = {}) => ({
+      groups, total_groups: groups.length, plan_digest: 'dg', truncated: false, oversize_groups: 0, ...extra,
+    });
+    const PLAN = planResponse([
+      planGroup(5, 'burst', ['/a.jpg', '/b.jpg'], ['/b.jpg'], 1),
+      planGroup(5, 'similar', ['/c.jpg', '/d.jpg'], ['/c.jpg', '/d.jpg'], 2),
+    ]);
+    const pin = { digest: 'dg', request: { group_by: 'all' as const, strictness: 80 } };
+    let plan: AssistantCullPlanService;
+
+    beforeEach(() => {
+      plan = TestBed.inject(AssistantCullPlanService);
+      plan.setPin(pin);
+      api.post.mockImplementation((path: string) => of(path === '/culling/plan' ? PLAN : {}));
+    });
+
+    it('posts the request with expected_digest and seeds selections from plan.keep_paths, not autoSelectBest', async () => {
+      expect(await store.enterPlan(pin)).toBe('landed');
+      expect(api.post).toHaveBeenCalledWith('/culling/plan', { group_by: 'all', strictness: 80, expected_digest: 'dg' });
+      expect(store.planActive()).toBe(true);
+      expect([...store.selectionsMap().get('5_burst') ?? []]).toEqual(['/b.jpg']);
+      expect([...store.selectionsMap().get('5_similar') ?? []]).toEqual(['/c.jpg', '/d.jpg']);
+    });
+
+    it('keeps burst 5 and similar 5 apart under their groupKey', async () => {
+      await store.enterPlan(pin);
+      expect([...store.selectionsMap().keys()]).toEqual(['5_burst', '5_similar']);
+      store.toggleSelection('/a.jpg', store.groups()[0]);
+      expect(store.selectionsMap().get('5_burst')?.has('/a.jpg')).toBe(true);
+      expect(store.selectionsMap().get('5_similar')?.has('/a.jpg')).toBe(false);
+    });
+
+    it('sets scope and group_by from the request and never calls the feed', async () => {
+      await store.enterPlan({ digest: 'dg', request: { group_by: 'burst', album_id: 9, date_from: '2025-04-16', date_to: '2025-04-16' } });
+      expect(store.groupBy()).toBe('burst');
+      expect(store.scopeAlbum()).toBe('9');
+      expect(store.scopeFrom()).toBe('2025-04-16');
+      expect(api.get).not.toHaveBeenCalledWith('/culling-groups', expect.anything());
+    });
+
+    it('412 exits plan mode, drops the pin, notifies out_of_date and reloads the manual feed', async () => {
+      api.post.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 412 })));
+      expect(await store.enterPlan(pin)).toBe('out_of_date');
+      expect(store.planActive()).toBe(false);
+      expect(plan.pin()).toBeNull();
+      expect(notices).toEqual([{ key: 'culling.plan.out_of_date', duration: 4000 }]);
+      expect(api.get).toHaveBeenCalledWith('/culling-groups', expect.anything());
+    });
+
+    it('any other error exits plan mode with the generic load error', async () => {
+      api.post.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
+      expect(await store.enterPlan(pin)).toBe('failed');
+      expect(store.planActive()).toBe(false);
+      expect(notices).toEqual([{ key: 'culling.error_loading', duration: 2000 }]);
+    });
+
+    it('a grouping or scope change (resetForReload) leaves plan mode and drops the pin', async () => {
+      await store.enterPlan(pin);
+      store.resetForReload();
+      expect(store.planActive()).toBe(false);
+      expect(plan.pin()).toBeNull();
+      expect(plan.snapshot()).toBeNull();
+      expect(api.get).toHaveBeenCalledWith('/culling-groups', expect.anything());
+    });
+
+    it('loadGroups (scope exit) also leaves plan mode', async () => {
+      await store.enterPlan(pin);
+      await store.loadGroups();
+      expect(store.planActive()).toBe(false);
+      expect(plan.pin()).toBeNull();
+    });
+
+    it('reveals 20 groups at a time through loadMore', async () => {
+      const many = Array.from({ length: 45 }, (_, i) => planGroup(i + 1, 'burst', [`/p${i}a.jpg`, `/p${i}b.jpg`], [`/p${i}a.jpg`], i + 1));
+      api.post.mockImplementation(() => of(planResponse(many)));
+      await store.enterPlan(pin);
+      expect(store.groups()).toHaveLength(20);
+      expect(store.hasMore()).toBe(true);
+      await store.loadMore();
+      expect(store.groups()).toHaveLength(40);
+      await store.loadMore();
+      expect(store.groups()).toHaveLength(45);
+      expect(store.hasMore()).toBe(false);
+      expect(store.totalGroups()).toBe(45);
+    });
+
+    it('does not re-select from strictness', async () => {
+      await store.enterPlan(pin);
+      store.strictness.set(0);
+      store.reselectFromStrictness();
+      expect([...store.selectionsMap().get('5_burst') ?? []]).toEqual(['/b.jpg']);
+    });
+
+    it('confirm posts the plan group unchanged and journals only once the commit lands', async () => {
+      vi.useFakeTimers();
+      await store.enterPlan(pin);
+      const group = store.groups()[0];
+      api.post.mockClear();
+      expect(store.confirmGroup(group)).toBe(true);
+      expect(api.post).not.toHaveBeenCalled();
+      expect(journalRecord).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(7000);
+      expect(api.post).toHaveBeenCalledWith('/culling-groups/confirm', {
+        group_id: 5, type: 'burst', paths: ['/a.jpg', '/b.jpg'], keep_paths: ['/b.jpg'],
+      });
+      expect(journalRecord).toHaveBeenCalledWith('cull_confirm', ['/b.jpg'], expect.objectContaining({ type: 'burst', group_id: 5 }));
+      expect(plan.snapshot()?.confirmed).toEqual([1]);
+    });
+
+    it('an undone confirm records no cull_confirm', async () => {
+      vi.useFakeTimers();
+      await store.enterPlan(pin);
+      const group = store.groups()[0];
+      api.post.mockClear();
+      store.confirmGroup(group);
+      store.cancelPass(group);
+      await vi.advanceTimersByTimeAsync(8000);
+      expect(api.post).not.toHaveBeenCalled();
+      expect(journalRecord).not.toHaveBeenCalled();
+      expect(plan.snapshot()?.confirmed).toEqual([]);
+    });
+
+    it('confirm then Exit inside the cooldown still commits but hides nothing and journals nothing', async () => {
+      vi.useFakeTimers();
+      await store.enterPlan(pin);
+      const group = store.groups()[0];
+      api.post.mockClear();
+      store.confirmGroup(group);
+      store.resetForReload();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(api.post).toHaveBeenCalledWith('/culling-groups/confirm', expect.objectContaining({ group_id: 5, type: 'burst' }));
+      await vi.advanceTimersByTimeAsync(8000);
+      expect(store.hiddenGroups().size).toBe(0);
+      expect(journalRecord).not.toHaveBeenCalled();
+    });
+
+    it('a skip journals cull_skip only when the cooldown elapses', async () => {
+      vi.useFakeTimers();
+      await store.enterPlan(pin);
+      const group = store.groups()[1];
+      store.skipGroup(group);
+      expect(journalRecord).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(7000);
+      expect(journalRecord).toHaveBeenCalledWith('cull_skip', ['/c.jpg', '/d.jpg'], expect.objectContaining({ group_id: 5, type: 'similar' }));
+    });
+
+    it('does not journal in manual mode', async () => {
+      vi.useFakeTimers();
+      await store.loadGroups();
+      store.confirmGroup(store.groups()[0]);
+      await vi.advanceTimersByTimeAsync(7000);
+      expect(journalRecord).not.toHaveBeenCalled();
+    });
+
+    it('reports a flipped keep to the plan service as pending and changed', async () => {
+      await store.enterPlan(pin);
+      store.toggleSelection('/a.jpg', store.groups()[0]);
+      expect(plan.snapshot()).toEqual(expect.objectContaining({
+        pending: [1],
+        changed: [{ type: 'burst', group_id: 5, number: 1, keep_paths: ['/a.jpg', '/b.jpg'], reject_paths: [] }],
+      }));
+    });
+
+    it('treats a null assistant batch as pending reload rather than silently leaving the plan', async () => {
+      await store.enterPlan(pin);
+      await store.applyExternalChanges(null);
+      expect(store.planActive()).toBe(true);
+      expect(store.pendingReload()).toBe(true);
     });
   });
 });

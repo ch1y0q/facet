@@ -12,6 +12,7 @@ import { I18nService } from '../../core/services/i18n.service';
 import { GalleryStore } from './gallery.store';
 import { CullingStore } from './culling.store';
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
+import { AssistantCullPlanService } from '../../core/agent/assistant-cull-plan.service';
 import { BurstCullingComponent } from './burst-culling.component';
 import { AssistantChangesService, AssistantChangeBatch } from '../../core/agent/assistant-changes.service';
 import { SyncedZoomComponent, LoadedSources, SHARP_PRELOAD_DEBOUNCE_MS } from './synced-zoom.component';
@@ -205,8 +206,8 @@ describe('BurstCullingComponent', () => {
       await store.loadGroups();
 
       const selections = store.selectionsMap();
-      expect(selections.get(1)?.has('/photo1.jpg')).toBe(true);
-      expect(selections.get(2)?.has('/photo4.jpg')).toBe(true);
+      expect(selections.get('1_burst')?.has('/photo1.jpg')).toBe(true);
+      expect(selections.get('2_similar')?.has('/photo4.jpg')).toBe(true);
     });
 
     it('should not create selection entry for groups without best_path', async () => {
@@ -218,7 +219,7 @@ describe('BurstCullingComponent', () => {
       await store.loadGroups();
 
       const selections = store.selectionsMap();
-      expect(selections.has(10)).toBe(false);
+      expect(selections.has('10_burst')).toBe(false);
     });
 
     it('should set loading false on error', async () => {
@@ -284,10 +285,10 @@ describe('BurstCullingComponent', () => {
       component['lightboxIndex'].set(0);
 
       store.setPhotoKept(group, '/photo3.jpg', true);
-      expect([...store.selectionsMap().get(1)!]).toContain('/photo3.jpg');
+      expect([...store.selectionsMap().get('1_burst')!]).toContain('/photo3.jpg');
 
       store.setPhotoKept(group, '/photo3.jpg', false);
-      expect([...store.selectionsMap().get(1)!]).not.toContain('/photo3.jpg');
+      expect([...store.selectionsMap().get('1_burst')!]).not.toContain('/photo3.jpg');
       expect(component['lightboxIndex']()).toBe(0);
     });
 
@@ -299,7 +300,7 @@ describe('BurstCullingComponent', () => {
 
       component['onArrowUp'](event);
 
-      expect([...store.selectionsMap().get(1)!]).toContain('/photo2.jpg');
+      expect([...store.selectionsMap().get('1_burst')!]).toContain('/photo2.jpg');
     });
 
     it('never mutates the map in place', () => {
@@ -2798,6 +2799,106 @@ describe('BurstCullingComponent', () => {
       expect(component['gridMode']()).toBe('thirds');
     });
   });
+
+  describe('assistant plan mode', () => {
+    const planPhoto = (path: string, i: number) => ({
+      path, filename: path.slice(1), aggregate: 8, aesthetic: 7, tech_sharpness: 6,
+      is_blink: 0, is_burst_lead: i === 0 ? 1 : 0, date_taken: '2024-01-01', burst_score: 9 - i,
+    });
+    const planGroup = (id: number, type: string, paths: string[], keep: string[], number: number) => ({
+      group_id: id, type, reason: '', best_path: paths[0], count: paths.length,
+      photos: paths.map(planPhoto),
+      plan: { number, keep_paths: keep, group_reason: { key: 'similar_percent', params: { percent: 91 } } },
+    });
+    const planOf = (groups: unknown[], extra: Record<string, unknown> = {}) => ({
+      groups, total_groups: groups.length, plan_digest: 'dg', truncated: false, oversize_groups: 0, ...extra,
+    });
+    const pin = { digest: 'dg', request: { group_by: 'all' as const } };
+    let plan: AssistantCullPlanService;
+    let response: ReturnType<typeof planOf>;
+
+    const mount = async () => {
+      Element.prototype.scrollIntoView = vi.fn();
+      const fixture = TestBed.createComponent(BurstCullingComponent);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      return fixture;
+    };
+    const el = (fixture: ComponentFixture<BurstCullingComponent>, id: string) =>
+      fixture.nativeElement.querySelector(`[data-testid="${id}"]`) as HTMLElement | null;
+
+    beforeEach(() => {
+      plan = TestBed.inject(AssistantCullPlanService);
+      response = planOf([
+        planGroup(5, 'burst', ['/a.jpg', '/b.jpg'], ['/b.jpg'], 1),
+        planGroup(5, 'similar', ['/c.jpg', '/d.jpg'], ['/c.jpg'], 2),
+      ]);
+      mockApi.post.mockImplementation((path: string) => of(path === '/culling/plan' ? response : {}));
+    });
+
+    it('renders the banner with x/y confirmed, the chip per group, and no differs dot until a keep flips', async () => {
+      plan.setPin(pin);
+      const fixture = await mount();
+      expect(el(fixture, 'cull-plan-banner')?.textContent).toContain('culling.plan.banner');
+      expect(fixture.nativeElement.querySelectorAll('[data-testid="cull-plan-chip"]').length).toBe(2);
+      expect(el(fixture, 'cull-plan-chip')?.textContent).toContain('#1');
+      expect(el(fixture, 'cull-plan-chip')?.textContent).toContain('culling.group_reason.similar_percent');
+      expect(fixture.nativeElement.querySelectorAll('[data-testid="plan-differs-dot"]').length).toBe(0);
+      const cull = fixture.debugElement.injector.get(CullingStore);
+      cull.toggleSelection('/a.jpg', cull.groups()[0]);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelectorAll('[data-testid="plan-differs-dot"]').length).toBe(1);
+    });
+
+    it('shows the oversize note only when groups were left out', async () => {
+      response = planOf(response.groups, { oversize_groups: 2 });
+      plan.setPin(pin);
+      const fixture = await mount();
+      expect(el(fixture, 'cull-plan-oversize')).not.toBeNull();
+    });
+
+    it('shows no banner in manual mode', async () => {
+      const fixture = await mount();
+      expect(el(fixture, 'cull-plan-banner')).toBeNull();
+      expect(el(fixture, 'cull-plan-chip')).toBeNull();
+    });
+
+    it('switches to plan mode when a pin is set on an already-mounted page', async () => {
+      const fixture = await mount();
+      const cull = fixture.debugElement.injector.get(CullingStore);
+      expect(cull.planActive()).toBe(false);
+      plan.setPin(pin);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(cull.planActive()).toBe(true);
+      expect(el(fixture, 'cull-plan-banner')).not.toBeNull();
+    });
+
+    it('Exit restores the manual feed and drops the pin', async () => {
+      plan.setPin(pin);
+      const fixture = await mount();
+      mockApi.get.mockClear();
+      (el(fixture, 'cull-plan-exit') as HTMLButtonElement).click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(mockApi.get).toHaveBeenCalledWith('/culling-groups', expect.anything());
+      expect(plan.pin()).toBeNull();
+      expect(el(fixture, 'cull-plan-banner')).toBeNull();
+    });
+
+    it('showGroupForAgent still pages plan groups in', async () => {
+      response = planOf(Array.from({ length: 25 }, (_, i) => planGroup(i + 1, 'burst', [`/p${i}a.jpg`, `/p${i}b.jpg`], [`/p${i}a.jpg`], i + 1)));
+      plan.setPin(pin);
+      const fixture = await mount();
+      const cull = fixture.debugElement.injector.get(CullingStore);
+      expect(cull.groups()).toHaveLength(20);
+      await fixture.componentInstance['showGroupForAgent']({ type: 'burst', group_id: 25 });
+      expect(cull.groups()).toHaveLength(25);
+      expect(fixture.componentInstance['lightboxGroupId']()).toBe('25_burst');
+    });
+  });
 });
 
 // The IsKept/IsDecided/IsConfirmed/IsPassing/PassCountdown pipe tests moved to
@@ -3233,7 +3334,7 @@ describe('BurstCullingComponent swipe-to-decide (rendered, touch)', () => {
 
   /** The decision lands when the card has flown out, not when the finger lifts. */
   const settle = () => new Promise(resolve => setTimeout(resolve, SWIPE_SETTLE_MS + 20));
-  const keptPaths = () => [...(store.selectionsMap().get(1) ?? [])];
+  const keptPaths = () => [...(store.selectionsMap().get('1_burst') ?? [])];
 
   it('keeps the frame on a right swipe past the threshold, then steps to the next', async () => {
     openDarkroom();
@@ -3249,7 +3350,7 @@ describe('BurstCullingComponent swipe-to-decide (rendered, touch)', () => {
   // group's kept set, not adding it to a second one.
   it('rejects the frame on a left swipe past the threshold, then steps to the next', async () => {
     openDarkroom();
-    store.selectionsMap.set(new Map([[1, new Set(['/s1.jpg', '/s2.jpg', '/s3.jpg'])]]));
+    store.selectionsMap.set(new Map([['1_burst', new Set(['/s1.jpg', '/s2.jpg', '/s3.jpg'])]]));
 
     drag(-OVER);
     await settle();
@@ -3264,7 +3365,7 @@ describe('BurstCullingComponent swipe-to-decide (rendered, touch)', () => {
     drag(UNDER);
     await settle();
 
-    expect(store.selectionsMap().get(1)).toBeUndefined();
+    expect(store.selectionsMap().get('1_burst')).toBeUndefined();
     expect(component['lightboxIndex']()).toBe(0);
   });
 
@@ -3276,7 +3377,7 @@ describe('BurstCullingComponent swipe-to-decide (rendered, touch)', () => {
     drag(OVER, 400);
     await settle();
 
-    expect(store.selectionsMap().get(1)).toBeUndefined();
+    expect(store.selectionsMap().get('1_burst')).toBeUndefined();
     expect(component['lightboxIndex']()).toBe(0);
   });
 
@@ -3317,7 +3418,7 @@ describe('BurstCullingComponent swipe-to-decide (rendered, touch)', () => {
     // How far it panned depends on when change detection pushes the shared zoom
     // back down into the pane; that it panned at all is the point.
     expect(component['zoom']().tx).toBeGreaterThan(0);
-    expect(store.selectionsMap().get(1)).toBeUndefined();
+    expect(store.selectionsMap().get('1_burst')).toBeUndefined();
     expect(component['lightboxIndex']()).toBe(0);
   });
 
@@ -3416,7 +3517,7 @@ describe('BurstCullingComponent compare panes (rendered)', () => {
   const buttonFor = (label: string): HTMLButtonElement | undefined =>
     [...(fixture.nativeElement as HTMLElement).querySelectorAll('button')]
       .find(b => b.getAttribute('aria-label') === label);
-  const keptPaths = () => [...(store.selectionsMap().get(1) ?? [])];
+  const keptPaths = () => [...(store.selectionsMap().get('1_burst') ?? [])];
 
   it('offers a keep and a reject button naming the frame of each pane', () => {
     openCompare();
@@ -3441,7 +3542,7 @@ describe('BurstCullingComponent compare panes (rendered)', () => {
 
   it('writes the same state the arrow keys do, so rejecting drops the frame', () => {
     openCompare();
-    store.selectionsMap.set(new Map([[1, new Set(['/c1.jpg', '/c2.jpg'])]]));
+    store.selectionsMap.set(new Map([['1_burst', new Set(['/c1.jpg', '/c2.jpg'])]]));
     fixture.detectChanges();
 
     buttonFor('c2.jpg, culling.lightbox.reject')!.click();
@@ -3452,7 +3553,7 @@ describe('BurstCullingComponent compare panes (rendered)', () => {
 
   it('marks the decided pane with the solid badge the tiles use', () => {
     openCompare();
-    store.selectionsMap.set(new Map([[1, new Set(['/c1.jpg'])]]));
+    store.selectionsMap.set(new Map([['1_burst', new Set(['/c1.jpg'])]]));
     fixture.detectChanges();
 
     const host: HTMLElement = fixture.nativeElement;
@@ -3594,7 +3695,7 @@ describe('BurstCullingComponent progressive darkroom frames (rendered)', () => {
       expect(shown()).toBe(thumb(path));
       // The decision target, through the real keyboard path: reject, then keep,
       // must land on the frame on screen and on no other.
-      const kept = () => [...(component['cull'].selectionsMap().get(group.group_id) ?? [])];
+      const kept = () => [...(component['cull'].selectionsMap().get(component['cull'].groupKey(group)) ?? [])];
       component['onArrowDown'](new KeyboardEvent('keydown', { key: 'ArrowDown' }));
       expect(kept()).not.toContain(path);
       component['onArrowUp'](new KeyboardEvent('keydown', { key: 'ArrowUp' }));

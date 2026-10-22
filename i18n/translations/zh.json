@@ -2210,6 +2210,14 @@
       "bracket_span": "{frames} 张，{ev_span} EV 范围",
       "frame_count": "{frames} 张",
       "moment": "{moment}"
+    },
+    "plan": {
+      "banner": "助手方案 · 已确认 {confirmed}/{total}",
+      "exit": "退出",
+      "suggestion": "建议：保留 {keep} / 剔除 {reject}",
+      "differs": "与助手的建议不同",
+      "oversize": "已略过的分组（过大，无法在此确认）：{count}",
+      "out_of_date": "助手的方案已过期 - 请让它重新预览"
     }
   },
   "scenes": {

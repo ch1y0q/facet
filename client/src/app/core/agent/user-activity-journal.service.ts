@@ -10,6 +10,8 @@ export type UserActivityKind =
   | 'review_group'
   | 'review_apply'
   | 'review_apply_undo'
+  | 'cull_confirm'
+  | 'cull_skip'
   | 'tags'
   | 'album'
   | 'navigate';

@@ -2210,6 +2210,14 @@
       "bracket_span": "{frames} frames, {ev_span} EV span",
       "frame_count": "{frames} frames",
       "moment": "{moment}"
+    },
+    "plan": {
+      "banner": "Assistant plan · {confirmed}/{total} confirmed",
+      "exit": "Exit",
+      "suggestion": "suggested keep {keep} / reject {reject}",
+      "differs": "Differs from the assistant's suggestion",
+      "oversize": "Groups left out (too large to confirm here): {count}",
+      "out_of_date": "The assistant's plan is out of date - ask it to preview again"
     }
   },
   "scenes": {

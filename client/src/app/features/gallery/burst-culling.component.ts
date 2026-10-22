@@ -39,6 +39,7 @@ import { SequenceKindLabelPipe, SUPPRESSED_OVERRIDE } from '../../shared/pipes/s
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AssistantChangesService } from '../../core/agent/assistant-changes.service';
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
+import { AssistantCullPlanService, type CullPlanPin } from '../../core/agent/assistant-cull-plan.service';
 import { firstValueFrom } from 'rxjs';
 import {
   CullingStore, RunGeneration, GroupBy, GROUP_BY_VALUES,
@@ -46,6 +47,7 @@ import {
 } from './culling.store';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
 import {
+  CullGroupKeyPipe, CullPlanGroupReasonPipe, PlanDiffersPipe,
   IsKeptPipe, IsDecidedPipe, IsConfirmedPipe, IsPassingPipe, PassCountdownPipe,
   CullReasonPipe, FacesForPathPipe, FacePoorExpressionPipe, FaceRingClassPipe,
   FaceDimmedPipe, WeightRemainingPipe, CullGroupIconPipe, CullGroupLabelPipe,
@@ -149,6 +151,9 @@ interface ShortcutRow {
     FaceThumbnailUrlPipe,
     ImageUrlPipe,
     SyncedZoomComponent,
+    CullGroupKeyPipe,
+    CullPlanGroupReasonPipe,
+    PlanDiffersPipe,
     IsKeptPipe,
     IsDecidedPipe,
     IsConfirmedPipe,
@@ -292,7 +297,7 @@ interface ShortcutRow {
               </button>
             </mat-menu>
             @if (cull.groupBy() !== 'scene') {
-              <button mat-icon-button [matMenuTriggerFor]="cullSortMenu"
+              <button mat-icon-button [matMenuTriggerFor]="cullSortMenu" [disabled]="cull.planActive()"
                       [class.!text-[var(--mat-sys-primary)]]="cull.sortMode() !== 'easiest'"
                       [matTooltip]="'culling.sort.' + cull.sortMode() | translate"
                       [attr.aria-label]="'culling.sort.' + cull.sortMode() | translate">
@@ -306,7 +311,7 @@ interface ShortcutRow {
                   </button>
                 }
               </mat-menu>
-              <button mat-icon-button (click)="toggleSortDirection()"
+              <button mat-icon-button (click)="toggleSortDirection()" [disabled]="cull.planActive()"
                       [class.!text-[var(--mat-sys-primary)]]="cull.sortDirection() !== ''"
                       [matTooltip]="(sortAscending() ? I18N.culling.sort.ascending : I18N.culling.sort.descending) | translate"
                       [attr.aria-label]="(sortAscending() ? I18N.culling.sort.ascending : I18N.culling.sort.descending) | translate">
@@ -334,7 +339,7 @@ interface ShortcutRow {
               </mat-menu>
             }
             @if (cull.groupBy() === 'similar' || cull.groupBy() === 'all') {
-              <button mat-icon-button [matMenuTriggerFor]="thresholdMenu"
+              <button mat-icon-button [matMenuTriggerFor]="thresholdMenu" [disabled]="cull.planActive()"
                       [matTooltip]="(I18N.culling.threshold | translate) + ' · ' + cull.similarityThreshold() + '%'"
                       [attr.aria-label]="I18N.culling.threshold | translate">
                 <mat-icon>compare</mat-icon>
@@ -350,7 +355,7 @@ interface ShortcutRow {
               </mat-menu>
             }
             @if (cull.cullProfiles().length > 0) {
-              <button mat-icon-button [matMenuTriggerFor]="profileMenu"
+              <button mat-icon-button [matMenuTriggerFor]="profileMenu" [disabled]="cull.planActive()"
                       [class.!text-[var(--mat-sys-primary)]]="cull.selectedProfile() !== ''"
                       [matTooltip]="selectedProfileLabel() | translate"
                       [attr.aria-label]="selectedProfileLabel() | translate">
@@ -365,7 +370,7 @@ interface ShortcutRow {
                 }
               </mat-menu>
             }
-            <button mat-icon-button [matMenuTriggerFor]="strictnessMenu"
+            <button mat-icon-button [matMenuTriggerFor]="strictnessMenu" [disabled]="cull.planActive()"
                     [matTooltip]="(I18N.culling.strictness_tooltip | translate) + ' · ' + cull.strictness() + '%'"
                     [attr.aria-label]="I18N.culling.strictness | translate">
               <mat-icon>tune</mat-icon>
@@ -478,6 +483,17 @@ interface ShortcutRow {
         </div>
       }
 
+      @if (cull.planActive()) {
+        <div role="status" data-testid="cull-plan-banner" class="shrink-0 flex flex-wrap items-center gap-3 rounded-lg border border-[var(--mat-sys-primary)]/40 bg-[var(--mat-sys-primary)]/10 px-4 py-2 mb-2 text-sm">
+          <mat-icon class="!text-base !w-5 !h-5 !leading-5 text-[var(--mat-sys-primary)]" aria-hidden="true">smart_toy</mat-icon>
+          <span class="font-medium">{{ I18N.culling.plan.banner | translate:{ confirmed: cull.confirmedGroups().size, total: cull.totalGroups() } }}</span>
+          @if (cull.planOversize() > 0) {
+            <span data-testid="cull-plan-oversize" class="opacity-80">{{ I18N.culling.plan.oversize | translate:{ count: cull.planOversize() } }}</span>
+          }
+          <button mat-stroked-button type="button" data-testid="cull-plan-exit" class="ml-auto" (click)="exitPlan()">{{ I18N.culling.plan.exit | translate }}</button>
+        </div>
+      }
+
       <!-- Scrollable group list; the header above stays fixed -->
       <div class="flex-1 min-h-0 overflow-y-auto -mx-4 px-4 md:-mx-8 md:px-8 pb-4 max-lg:pb-24" data-culling-scroll>
       <!-- Content -->
@@ -490,11 +506,21 @@ interface ShortcutRow {
       } @else {
         <div class="space-y-3 pb-4">
           @for (group of visibleGroups(); track group.group_id + '_' + group.type; let i = $index) {
+            @let groupKey = group | cullGroupKey;
             <div class="rounded-xl border-2 overflow-hidden transition-colors duration-300"
                  [attr.data-gidx]="i"
                  [ngClass]="i === selectedGroupIndex()
                    ? 'bg-[var(--mat-sys-surface-container-high)] border-[var(--mat-sys-surface-container-high)]'
                    : 'bg-[var(--mat-sys-surface-container)] border-[var(--mat-sys-surface-container)]'">
+              @if (group.plan; as plan) {
+                <div data-testid="cull-plan-chip" class="flex flex-wrap items-center gap-2 px-4 pt-2 text-xs">
+                  <span class="font-bold">#{{ plan.number }}</span>
+                  @if (group | cullPlanGroupReason; as reason) {
+                    <span class="opacity-80">{{ reason.key | translate:reason.params }}</span>
+                  }
+                  <span class="opacity-80">{{ I18N.culling.plan.suggestion | translate:{ keep: plan.keep_paths.length, reject: group.photos.length - plan.keep_paths.length } }}</span>
+                </div>
+              }
               @if (group.start) {
                 <div class="flex items-center gap-2 px-4 pt-2 text-xs">
                   <mat-icon class="!text-base text-[var(--mat-sys-primary)]">schedule</mat-icon>
@@ -551,18 +577,18 @@ interface ShortcutRow {
                    [class.opacity-40]="(group | isConfirmed:cull.confirmedGroups())">
                 @for (photo of group.photos; track photo.path; let pIdx = $index) {
                   <div class="group/photo relative inline-block cursor-pointer rounded-lg overflow-hidden border-2 transition-colors flex-shrink-0"
-                       [class.border-green-500]="photo.path | isKept:cull.selectionsMap():group.group_id"
-                       [class.border-red-500]="!(photo.path | isKept:cull.selectionsMap():group.group_id) && (photo.path | isDecided:cull.selectionsMap():group.group_id)"
-                       [class.border-transparent]="!(photo.path | isDecided:cull.selectionsMap():group.group_id)"
+                       [class.border-green-500]="photo.path | isKept:cull.selectionsMap():groupKey"
+                       [class.border-red-500]="!(photo.path | isKept:cull.selectionsMap():groupKey) && (photo.path | isDecided:cull.selectionsMap():groupKey)"
+                       [class.border-transparent]="!(photo.path | isDecided:cull.selectionsMap():groupKey)"
                        role="button"
                        tabindex="0"
                        [attr.aria-label]="photo.filename + ', ' + (
-                         (photo.path | isKept:cull.selectionsMap():group.group_id)
+                         (photo.path | isKept:cull.selectionsMap():groupKey)
                            ? (I18N.culling.lightbox.kept | translate)
-                           : (photo.path | isDecided:cull.selectionsMap():group.group_id)
+                           : (photo.path | isDecided:cull.selectionsMap():groupKey)
                              ? (I18N.culling.lightbox.rejected | translate)
                              : (I18N.culling.lightbox.undecided | translate))"
-                       [attr.aria-pressed]="photo.path | isKept:cull.selectionsMap():group.group_id"
+                       [attr.aria-pressed]="photo.path | isKept:cull.selectionsMap():groupKey"
                        (click)="cull.toggleSelection(photo.path, group)"
                        (keydown.enter)="cull.toggleSelection(photo.path, group); $event.stopPropagation()"
                        (keydown.space)="cull.toggleSelection(photo.path, group); $event.stopPropagation(); $event.preventDefault()"
@@ -581,14 +607,20 @@ interface ShortcutRow {
                         {{ reason | cullReason }}
                       </div>
                     }
-                    @if (photo.path | isKept:cull.selectionsMap():group.group_id) {
+                    @if (photo.path | isKept:cull.selectionsMap():groupKey) {
                       <div class="absolute top-2 right-2 w-7 h-7 rounded-full bg-green-600 inline-flex items-center justify-center">
                         <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-white">check</mat-icon>
                       </div>
-                    } @else if (photo.path | isDecided:cull.selectionsMap():group.group_id) {
+                    } @else if (photo.path | isDecided:cull.selectionsMap():groupKey) {
                       <div class="absolute top-2 right-2 w-7 h-7 rounded-full bg-red-600 inline-flex items-center justify-center">
                         <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-white">close</mat-icon>
                       </div>
+                    }
+                    @if (photo.path | planDiffers:group:cull.selectionsMap()) {
+                      <span data-testid="plan-differs-dot"
+                            class="absolute top-2 right-11 w-3 h-3 rounded-full bg-amber-400 ring-2 ring-black/60"
+                            [matTooltip]="I18N.culling.plan.differs | translate"
+                            [attr.aria-label]="I18N.culling.plan.differs | translate"></span>
                     }
                     <div class="absolute bottom-2 left-2 flex items-center gap-1">
                       <span class="px-2 py-0.5 rounded bg-black/60 text-white text-xs font-medium">
@@ -610,7 +642,7 @@ interface ShortcutRow {
                         {{ I18N.ui.badges.blink | translate }}
                       </div>
                     }
-                    @if (!(photo.path | isKept:cull.selectionsMap():group.group_id)) {
+                    @if (!(photo.path | isKept:cull.selectionsMap():groupKey)) {
                       <button class="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 inline-flex items-center justify-center opacity-0 group-hover/photo:opacity-100 transition-opacity cursor-pointer"
                               [matTooltip]="I18N.culling.view_detail | translate"
                               [attr.aria-label]="I18N.culling.view_detail | translate"
@@ -778,6 +810,7 @@ interface ShortcutRow {
 
     <!-- Lightbox overlay -->
     @if (lightboxGroup(); as lbGroup) {
+      @let lbKey = lbGroup | cullGroupKey;
       <!-- cdkTrapFocus without auto-capture: the effect below focuses the container
            itself, so Space/arrows reach the darkroom shortcuts instead of whichever
            toolbar button auto-capture would have landed on. -->
@@ -963,8 +996,8 @@ interface ShortcutRow {
                    [style.left.px]="singlePane.fitInsetX()" [style.right.px]="singlePane.fitInsetX()">
                 <ng-container [ngTemplateOutlet]="frameState"
                               [ngTemplateOutletContext]="{
-                                kept: (lbPhoto.path | isKept:cull.selectionsMap():lbGroup.group_id),
-                                decided: (lbPhoto.path | isDecided:cull.selectionsMap():lbGroup.group_id) }" />
+                                kept: (lbPhoto.path | isKept:cull.selectionsMap():lbKey),
+                                decided: (lbPhoto.path | isDecided:cull.selectionsMap():lbKey) }" />
               </div>
               @if (previewLoading()) {
                 <div class="absolute inset-0 flex items-center justify-center bg-black/40 pointer-events-none"
@@ -1032,16 +1065,16 @@ interface ShortcutRow {
                        [class.ring-amber-400]="photo.path === lbPhoto.path">
                     <ng-container [ngTemplateOutlet]="frameState"
                                   [ngTemplateOutletContext]="{
-                                    kept: (photo.path | isKept:cull.selectionsMap():lbGroup.group_id),
-                                    decided: (photo.path | isDecided:cull.selectionsMap():lbGroup.group_id) }" />
+                                    kept: (photo.path | isKept:cull.selectionsMap():lbKey),
+                                    decided: (photo.path | isDecided:cull.selectionsMap():lbKey) }" />
                     <!-- The ↑ / ↓ keys only ever reach the focused frame, so a
                          compare grid needs a way to decide the pane the user is
                          actually looking at. Same write as those keys. -->
                     <div class="absolute bottom-2 right-2 flex items-center gap-2 pointer-events-auto">
                       <button type="button"
                               class="w-7 h-7 rounded-full bg-green-600 inline-flex items-center justify-center shadow transition-opacity hover:opacity-100 cursor-pointer"
-                              [class.opacity-70]="!(photo.path | isKept:cull.selectionsMap():lbGroup.group_id)"
-                              [attr.aria-pressed]="photo.path | isKept:cull.selectionsMap():lbGroup.group_id"
+                              [class.opacity-70]="!(photo.path | isKept:cull.selectionsMap():lbKey)"
+                              [attr.aria-pressed]="photo.path | isKept:cull.selectionsMap():lbKey"
                               [matTooltip]="I18N.culling.lightbox.keep | translate"
                               [attr.aria-label]="photo.filename + ', ' + (I18N.culling.lightbox.keep | translate)"
                               (click)="cull.setPhotoKept(lbGroup, photo.path, true)">
@@ -1049,8 +1082,8 @@ interface ShortcutRow {
                       </button>
                       <button type="button"
                               class="w-7 h-7 rounded-full bg-red-600 inline-flex items-center justify-center shadow transition-opacity hover:opacity-100 cursor-pointer"
-                              [class.opacity-70]="!(photo.path | isDecided:cull.selectionsMap():lbGroup.group_id)"
-                              [attr.aria-pressed]="photo.path | isDecided:cull.selectionsMap():lbGroup.group_id"
+                              [class.opacity-70]="!(photo.path | isDecided:cull.selectionsMap():lbKey)"
+                              [attr.aria-pressed]="photo.path | isDecided:cull.selectionsMap():lbKey"
                               [matTooltip]="I18N.culling.lightbox.reject | translate"
                               [attr.aria-label]="photo.filename + ', ' + (I18N.culling.lightbox.reject | translate)"
                               (click)="cull.setPhotoKept(lbGroup, photo.path, false)">
@@ -1073,12 +1106,12 @@ interface ShortcutRow {
                    verdict on all of them. -->
               <span class="text-white/60 text-sm mr-2">{{ lbPhoto.filename }}</span>
             }
-            @if (lbPhoto.path | isKept:cull.selectionsMap():lbGroup.group_id) {
+            @if (lbPhoto.path | isKept:cull.selectionsMap():lbKey) {
               <span class="inline-flex items-center gap-1 text-green-400 text-sm">
                 <mat-icon class="!text-base !w-4 !h-4 !leading-4">check</mat-icon>
                 {{ I18N.culling.lightbox.kept | translate }}
               </span>
-            } @else if (lbPhoto.path | isDecided:cull.selectionsMap():lbGroup.group_id) {
+            } @else if (lbPhoto.path | isDecided:cull.selectionsMap():lbKey) {
               <span class="inline-flex items-center gap-1 text-red-400 text-sm">
                 <mat-icon class="!text-base !w-4 !h-4 !leading-4">close</mat-icon>
                 {{ I18N.culling.lightbox.rejected | translate }}
@@ -1362,6 +1395,7 @@ export class BurstCullingComponent implements OnDestroy {
   protected readonly cull = inject(CullingStore);
   private readonly journal = inject(UserActivityJournal);
   private readonly assistantChanges = inject(AssistantChangesService);
+  private readonly planService = inject(AssistantCullPlanService);
 
   /** Min posterior below which a moment label is shown dimmed + "(uncertain)". */
   protected readonly momentConfidenceMin = computed(
@@ -1955,7 +1989,12 @@ export class BurstCullingComponent implements OnDestroy {
     // Validated against the shared list, not a repeated literal union: the
     // hand-written one silently dropped every granularity added after it.
     if (gb && (GROUP_BY_VALUES as readonly string[]).includes(gb)) this.cull.groupBy.set(gb as GroupBy);
-    void this.cull.loadGroups();
+    // A held plan wins over the URL-driven feed: the effect below enters it with its own scope and granularity.
+    if (!this.planService.pin()) void this.cull.loadGroups();
+    effect(() => {
+      const pin = this.planService.pin();
+      if (pin) untracked(() => { void this.followPin(pin); });
+    });
     void this.loadAlbums();
     void this.cull.loadCullProfiles();
     void this.cull.refreshComparisonStats();
@@ -2125,6 +2164,35 @@ export class BurstCullingComponent implements OnDestroy {
     }
     const tpl = this.cullToolbar();
     if (tpl) this.headerSlot.clear(tpl);
+  }
+
+  /** Enter the assistant's plan when the pin is a new one, then land on the group it asked for. */
+  private async followPin(pin: CullPlanPin): Promise<void> {
+    if (this.cull.planDigest() !== pin.digest) {
+      this.selectedGroupIndex.set(0);
+      if (await this.cull.enterPlan(pin) !== 'landed') return;
+    }
+    if (pin.focusNumber !== undefined) await this.focusPlanGroup(pin.focusNumber);
+  }
+
+  /** Move the keyboard selection onto plan group `number`, paging more groups in if it is not shown yet. */
+  private async focusPlanGroup(number: number): Promise<void> {
+    const find = () => this.cull.groups().find(g => g.plan?.number === number);
+    while (!find() && this.cull.hasMore()) {
+      const before = this.cull.currentPage();
+      await this.cull.loadMore();
+      if (this.cull.currentPage() === before) break;
+    }
+    const group = find();
+    if (!group) return;
+    const index = this.visibleGroups().findIndex(g => this.cull.groupKey(g) === this.cull.groupKey(group));
+    if (index >= 0) this.selectedGroupIndex.set(index);
+  }
+
+  /** Leave the assistant's plan for the manual feed. */
+  protected exitPlan(): void {
+    this.selectedGroupIndex.set(0);
+    this.cull.resetForReload();
   }
 
   /** Clear the scene/album scope and return to the full unreviewed feed. */
@@ -2577,7 +2645,7 @@ export class BurstCullingComponent implements OnDestroy {
   protected onSwipeDecision(group: CullingGroup, keep: boolean): void {
     const photo = group.photos[this.lightboxIndex()];
     if (!photo) return;
-    const previousKept = new Set(this.cull.selectionsMap().get(group.group_id) ?? []);
+    const previousKept = new Set(this.cull.selectionsMap().get(this.cull.groupKey(group)) ?? []);
     const previousIndex = this.lightboxIndex();
     this.setCurrentLightboxPhotoKept(group, keep);
     this.stepLightbox(group, 1);
@@ -2585,7 +2653,7 @@ export class BurstCullingComponent implements OnDestroy {
       labelKey: keep ? I18N.culling.swipe.kept : I18N.culling.swipe.rejected,
       labelParams: { filename: photo.filename },
       undo: () => {
-        updateMapSignal(this.cull.selectionsMap, group.group_id, previousKept);
+        this.cull.restoreSelection(group, previousKept);
         this.lightboxIndex.set(previousIndex);
         this.zoom.set(FIT_ZOOM);
         return Promise.resolve();

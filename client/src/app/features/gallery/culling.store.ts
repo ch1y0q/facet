@@ -6,7 +6,9 @@ import type { ComparisonStats } from '../../core/api/types';
 import { Album, AlbumService } from '../../core/services/album.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { I18N } from '../../core/i18n/keys';
-import { CULLING_GROUP_TYPES, type CullingGroup } from './burst-culling.pipes';
+import { CULLING_GROUP_TYPES, cullingGroupKey, type CullingGroup } from './burst-culling.pipes';
+import { AssistantCullPlanService, type CullPlanPin } from '../../core/agent/assistant-cull-plan.service';
+import type { components } from '../../core/api/schema';
 import type { Photo } from '../../shared/models/photo.model';
 
 export interface CullingGroupsResponse {
@@ -16,6 +18,17 @@ export interface CullingGroupsResponse {
   per_page: number;
   total_pages: number;
 }
+
+/** Response of POST /culling/plan: the groups come back as feed rows plus their `plan` block. */
+export interface CullingPlanResponse extends Omit<components['schemas']['CullingPlanResponse'], 'groups'> {
+  groups: CullingGroup[];
+}
+
+/** How a plan load ended: `out_of_date` is the 412 (the digest moved), `superseded` a newer load or reset overtook it. */
+export type CullPlanLoadOutcome = 'landed' | 'out_of_date' | 'failed' | 'superseded';
+
+/** Groups revealed per step; the feed's page size, which plan mode reuses so `loadMore` behaves the same. */
+export const CULL_PAGE_SIZE = 20;
 
 /** A genre culling preset (GET /api/culling/profiles) bundling the culling knobs. */
 export interface CullProfile {
@@ -161,6 +174,16 @@ export const BY_PATHS_CHUNK = 500;
 export class CullingStore {
   private readonly api = inject(ApiService);
   private readonly i18n = inject(I18nService);
+  private readonly plan = inject(AssistantCullPlanService);
+
+  /** True while the darkroom shows the assistant's plan instead of the feed. */
+  readonly planActive = signal(false);
+  /** Digest of the plan on screen (or loading); lets the page tell a new pin from the one it already holds. */
+  readonly planDigest = signal<string | null>(null);
+  /** Groups the plan left out because one exceeds the confirm route's photo cap. */
+  readonly planOversize = signal(0);
+  /** The whole plan as loaded; `groups` shows a growing prefix of it. */
+  private planAll: CullingGroup[] = [];
 
   /**
    * An assistant write the loaded feed cannot absorb (a filter-scoped write, a cull move) landed while
@@ -219,8 +242,8 @@ export class CullingStore {
   readonly totalPages = signal(1);
   readonly hasMore = computed(() => this.currentPage() < this.totalPages());
 
-  /** group_id -> set of kept paths */
-  readonly selectionsMap = signal<Map<number, Set<string>>>(new Map());
+  /** groupKey -> set of kept paths (ids collide across types, so the type is part of the key) */
+  readonly selectionsMap = signal<Map<string, Set<string>>>(new Map());
   /** Set of confirmed group keys (group_id + '_' + type) */
   readonly confirmedGroups = signal<Set<string>>(new Set());
 
@@ -336,13 +359,13 @@ export class CullingStore {
   private readonly similarSeed = Math.floor(Math.random() * 1_000_000);
 
   groupKey(group: CullingGroup): string {
-    return `${group.group_id}_${group.type}`;
+    return cullingGroupKey(group);
   }
 
   buildParams(page: number): Record<string, string | number | boolean> {
     const params: Record<string, string | number | boolean> = {
       page,
-      per_page: 20,
+      per_page: CULL_PAGE_SIZE,
       similarity_threshold: (this.similarityThreshold() / 100).toString(),
       seed: this.similarSeed,
       exclude_rejected: this.excludeRejected(),
@@ -382,12 +405,14 @@ export class CullingStore {
 
   /** Reload the feed from page 1 under the current filters. */
   resetForReload(): void {
+    this.dropPlan();
     this.resetFeed();
     this.clearAllPassTimers();
     void this.loadGroups();
   }
 
   async loadGroups(): Promise<void> {
+    this.dropPlan();
     const gen = this.loadGenerationId;
     this.loading.set(true);
     try {
@@ -410,6 +435,13 @@ export class CullingStore {
 
   async loadMore(): Promise<void> {
     if (!this.hasMore() || this.loadingMore()) return;
+    if (this.planActive()) {
+      // The plan arrived whole; revealing is a slice, so a shown group never moves under the user.
+      const nextPage = this.currentPage() + 1;
+      this.groups.update(existing => [...existing, ...this.planAll.slice(existing.length, nextPage * CULL_PAGE_SIZE)]);
+      this.currentPage.set(nextPage);
+      return;
+    }
     const gen = this.loadGenerationId;
     this.loadingMore.set(true);
     try {
@@ -428,6 +460,79 @@ export class CullingStore {
     } finally {
       if (gen === this.loadGenerationId) this.loadingMore.set(false);
     }
+  }
+
+  /**
+   * Enter plan mode: reproduce the assistant's plan through `POST /culling/plan` and show it as the feed.
+   *
+   * Scope and granularity come from the request (the URL-driven feed load is skipped); selections are seeded
+   * from each group's `plan.keep_paths`, never from `autoSelectBest`. A 412 means the library moved since the
+   * assistant previewed: the pin is dropped, the user is told, and the manual feed loads instead.
+   */
+  async enterPlan(pin: CullPlanPin): Promise<CullPlanLoadOutcome> {
+    this.resetFeed();
+    this.clearAllPassTimers();
+    const gen = this.loadGenerationId;
+    this.planAll = [];
+    this.planActive.set(true);
+    this.planDigest.set(pin.digest);
+    this.planOversize.set(0);
+    const { album_id: album, date_from: from, date_to: to, group_by: groupBy } = pin.request;
+    this.scopeAlbum.set(album != null ? String(album) : null);
+    this.scopeFrom.set(from ?? null);
+    this.scopeTo.set(to ?? null);
+    this.scopeScene.set(null);
+    this.groupBy.set(groupBy ?? 'all');
+    this.loading.set(true);
+    try {
+      const data = await firstValueFrom(
+        this.api.post<CullingPlanResponse>('/culling/plan', { ...pin.request, expected_digest: pin.digest }),
+      );
+      if (gen !== this.loadGenerationId) return 'superseded';
+      this.planAll = data.groups;
+      this.groups.set(data.groups.slice(0, CULL_PAGE_SIZE));
+      this.totalGroups.set(data.total_groups);
+      this.totalPages.set(Math.max(1, Math.ceil(data.groups.length / CULL_PAGE_SIZE)));
+      this.currentPage.set(1);
+      this.planOversize.set(data.oversize_groups);
+      this.selectionsMap.set(new Map(data.groups.map(g => [this.groupKey(g), new Set(g.plan?.keep_paths ?? [])])));
+      this.plan.register(
+        data.groups.map(g => ({
+          key: this.groupKey(g),
+          type: g.type,
+          group_id: g.group_id,
+          number: g.plan?.number ?? 0,
+          paths: g.photos.map(p => p.path),
+          keep_paths: g.plan?.keep_paths ?? [],
+        })),
+        { total: data.total_groups, truncated: data.truncated },
+      );
+      this.loading.set(false);
+      return 'landed';
+    } catch (err) {
+      if (gen !== this.loadGenerationId) return 'superseded';
+      const outOfDate = (err as { status?: number } | null)?.status === 412;
+      this.notice$.next(outOfDate
+        ? { key: I18N.culling.plan.out_of_date, duration: 4000 }
+        : { key: I18N.culling.error_loading, duration: 2000 });
+      void this.loadGroups();
+      return outOfDate ? 'out_of_date' : 'failed';
+    }
+  }
+
+  /** Leave plan mode if in it: the plan, its pin and its read model go; the caller reloads the feed. */
+  private dropPlan(): void {
+    if (!this.planActive()) return;
+    this.planActive.set(false);
+    this.planDigest.set(null);
+    this.planOversize.set(0);
+    this.planAll = [];
+    this.plan.clear();
+  }
+
+  /** Tell the plan's read model about a group's keepers; a no-op outside plan mode. */
+  private reportSelection(key: string, kept: Iterable<string>): void {
+    if (this.planActive()) this.plan.recordSelection(key, kept);
   }
 
   /** Fetch the genre presets; null when the list cannot load. */
@@ -463,13 +568,14 @@ export class CullingStore {
     }
   }
 
-  private autoSelectBest(groups: CullingGroup[], base?: Map<number, Set<string>>): Map<number, Set<string>> {
-    const map = base ? new Map(base) : new Map<number, Set<string>>();
+  private autoSelectBest(groups: CullingGroup[], base?: Map<string, Set<string>>): Map<string, Set<string>> {
+    const map = base ? new Map(base) : new Map<string, Set<string>>();
     for (const group of groups) {
-      if (!map.has(group.group_id)) {
+      const key = this.groupKey(group);
+      if (!map.has(key)) {
         const kept = this.computeAutoKeep(group);
         if (kept.size > 0) {
-          map.set(group.group_id, kept);
+          map.set(key, kept);
         }
       }
     }
@@ -517,16 +623,19 @@ export class CullingStore {
    * returned — no backend round-trip. Confirmed groups are left untouched.
    */
   reselectFromStrictness(): void {
+    // The plan's keepers are the assistant's decision, not a strictness derivation.
+    if (this.planActive()) return;
     const confirmed = this.confirmedGroups();
-    const map = new Map<number, Set<string>>();
+    const map = new Map<string, Set<string>>();
     for (const group of this.groups()) {
-      if (confirmed.has(this.groupKey(group))) {
-        const existing = this.selectionsMap().get(group.group_id);
-        if (existing) map.set(group.group_id, existing);
+      const key = this.groupKey(group);
+      if (confirmed.has(key)) {
+        const existing = this.selectionsMap().get(key);
+        if (existing) map.set(key, existing);
         continue;
       }
       const kept = this.computeAutoKeep(group);
-      if (kept.size > 0) map.set(group.group_id, kept);
+      if (kept.size > 0) map.set(key, kept);
     }
     this.selectionsMap.set(map);
   }
@@ -534,16 +643,25 @@ export class CullingStore {
   /** The one write behind every darkroom decision: the ↑ / ↓ keys, a swipe, and
    *  the per-pane buttons a compare grid needs. */
   setPhotoKept(group: CullingGroup, path: string, keep: boolean): void {
-    addToSetSignal(this.touchedGroups, this.groupKey(group));
+    const key = this.groupKey(group);
+    addToSetSignal(this.touchedGroups, key);
     const map = new Map(this.selectionsMap());
-    const kept = new Set(map.get(group.group_id) ?? []);
+    const kept = new Set(map.get(key) ?? []);
     if (keep) kept.add(path); else kept.delete(path);
-    map.set(group.group_id, kept);
+    map.set(key, kept);
     this.selectionsMap.set(map);
+    this.reportSelection(key, kept);
+  }
+
+  /** Put a group's keepers back to an earlier set (a swipe's Undo); not a new decision, so `touchedGroups` is left alone. */
+  restoreSelection(group: CullingGroup, kept: Set<string>): void {
+    const key = this.groupKey(group);
+    updateMapSignal(this.selectionsMap, key, kept);
+    this.reportSelection(key, kept);
   }
 
   toggleSelection(path: string, group: CullingGroup): void {
-    this.setPhotoKept(group, path, !(this.selectionsMap().get(group.group_id)?.has(path) ?? false));
+    this.setPhotoKept(group, path, !(this.selectionsMap().get(this.groupKey(group))?.has(path) ?? false));
   }
 
   /**
@@ -553,8 +671,10 @@ export class CullingStore {
    */
   selectExclusive(path: string, group: CullingGroup): void {
     if (group.sequence_kind && SEQUENCE_KINDS_KEPT_WHOLE.includes(group.sequence_kind)) return;
-    addToSetSignal(this.touchedGroups, this.groupKey(group));
-    updateMapSignal(this.selectionsMap, group.group_id, new Set([path]));
+    const key = this.groupKey(group);
+    addToSetSignal(this.touchedGroups, key);
+    updateMapSignal(this.selectionsMap, key, new Set([path]));
+    this.reportSelection(key, [path]);
   }
 
   /** The body of POST /culling-groups/confirm for one group. */
@@ -573,15 +693,20 @@ export class CullingStore {
    * false when the group has nothing kept (nothing to confirm).
    */
   confirmGroup(group: CullingGroup): boolean {
-    const kept = this.selectionsMap().get(group.group_id);
-    if (!kept || kept.size === 0) return false;
     const key = this.groupKey(group);
+    const kept = this.selectionsMap().get(key);
+    if (!kept || kept.size === 0) return false;
     const keepPaths = [...kept];
+    // A commit that lands after the feed was reset (Exit, a scope change) belongs to a feed that is gone:
+    // it still reaches the server, but must not hide a same-keyed group of the new feed or journal a confirm.
+    const gen = this.loadGenerationId;
     addToSetSignal(this.touchedGroups, key);
     addToSetSignal(this.confirmedGroups, key);
     this.startCountdown(key, () => {
       void firstValueFrom(this.api.post('/culling-groups/confirm', this.confirmBody(group, keepPaths)))
         .then(() => {
+          if (gen !== this.loadGenerationId) return;
+          if (this.planActive()) this.plan.recordConfirm(key, keepPaths);
           addToSetSignal(this.hiddenGroups, key);
           void this.refreshComparisonStats();
           void this.refreshRankerStatus();
@@ -610,16 +735,20 @@ export class CullingStore {
       const remaining = visible.filter(g => !confirmed.has(this.groupKey(g)));
       for (const g of remaining) addToSetSignal(this.touchedGroups, this.groupKey(g));
       const toConfirm = remaining.filter(g => {
-        const kept = this.selectionsMap().get(g.group_id);
+        const kept = this.selectionsMap().get(this.groupKey(g));
         return kept && kept.size > 0;
       });
+      const gen = this.loadGenerationId;
       // Process in batches of 5 to avoid overwhelming the server
       const batchSize = 5;
       for (let i = 0; i < toConfirm.length; i += batchSize) {
         const batch = toConfirm.slice(i, i + batchSize);
         await Promise.all(batch.map(g => {
-          const kept = this.selectionsMap().get(g.group_id)!;
-          return firstValueFrom(this.api.post('/culling-groups/confirm', this.confirmBody(g, [...kept])));
+          const kept = [...this.selectionsMap().get(this.groupKey(g))!];
+          return firstValueFrom(this.api.post('/culling-groups/confirm', this.confirmBody(g, kept)))
+            .then(() => {
+              if (gen === this.loadGenerationId && this.planActive()) this.plan.recordConfirm(this.groupKey(g), kept);
+            });
         }));
         this.confirmedGroups.update(s => {
           const next = new Set(s);
@@ -644,7 +773,12 @@ export class CullingStore {
   skipGroup(group: CullingGroup): void {
     const key = this.groupKey(group);
     addToSetSignal(this.touchedGroups, key);
-    this.startCountdown(key, () => addToSetSignal(this.hiddenGroups, key));
+    const gen = this.loadGenerationId;
+    this.startCountdown(key, () => {
+      if (gen !== this.loadGenerationId) return;
+      if (this.planActive()) this.plan.recordSkip(key);
+      addToSetSignal(this.hiddenGroups, key);
+    });
   }
 
   cancelPass(group: CullingGroup): void {
@@ -737,7 +871,8 @@ export class CullingStore {
     options: { lightboxOpen?: boolean; count?: number },
   ): Promise<void> {
     if (paths === null) {
-      if (!this.hasUserDecisions() && !options.lightboxOpen) {
+      // A plan on screen is the assistant's whole proposal; reloading would quietly end it.
+      if (!this.hasUserDecisions() && !options.lightboxOpen && !this.planActive()) {
         this.resetForReload();
         return;
       }
@@ -776,9 +911,12 @@ export class CullingStore {
           const row = fresh.get(p.path);
           return row ? { ...p, is_rejected: row.is_rejected ? 1 : 0, is_favorite: row.is_favorite ? 1 : 0, star_rating: row.star_rating ?? 0 } : p;
         });
-      const kept = selections.get(group.group_id);
+      const key = this.groupKey(group);
+      const kept = selections.get(key);
       if (kept && group.photos.some(p => missing.has(p.path) && kept.has(p.path))) {
-        selections.set(group.group_id, new Set([...kept].filter(path => !missing.has(path))));
+        const remaining = new Set([...kept].filter(path => !missing.has(path)));
+        selections.set(key, remaining);
+        this.reportSelection(key, remaining);
         selectionsChanged = true;
       }
       if (photos.length === 0) emptied.push(this.groupKey(group));

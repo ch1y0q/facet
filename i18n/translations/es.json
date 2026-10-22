@@ -2210,6 +2210,14 @@
       "bracket_span": "{frames} tomas, rango de {ev_span} EV",
       "frame_count": "{frames} tomas",
       "moment": "{moment}"
+    },
+    "plan": {
+      "banner": "Plan del asistente · {confirmed}/{total} confirmados",
+      "exit": "Salir",
+      "suggestion": "sugerido: conservar {keep} / descartar {reject}",
+      "differs": "Difiere de la sugerencia del asistente",
+      "oversize": "Grupos omitidos (demasiado grandes para confirmarlos aquí): {count}",
+      "out_of_date": "El plan del asistente está desactualizado - pídele que genere la vista previa de nuevo"
     }
   },
   "scenes": {

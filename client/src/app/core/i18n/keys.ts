@@ -2225,6 +2225,14 @@ export const I18N = {
       frame_count: "culling.group_reason.frame_count",
       moment: "culling.group_reason.moment",
     },
+    plan: {
+      banner: "culling.plan.banner",
+      exit: "culling.plan.exit",
+      suggestion: "culling.plan.suggestion",
+      differs: "culling.plan.differs",
+      oversize: "culling.plan.oversize",
+      out_of_date: "culling.plan.out_of_date",
+    },
   },
   scenes: {
     title: "scenes.title",

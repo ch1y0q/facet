@@ -74,6 +74,15 @@ export interface CullingSubject {
 export const CULLING_GROUP_TYPES = ['burst', 'similar', 'scene', 'bracket', 'panorama', 'hdr_panorama'] as const;
 export type CullingGroupType = typeof CULLING_GROUP_TYPES[number];
 
+/** What the assistant's plan says about one group (rows of `POST /culling/plan`). */
+export interface CullingGroupPlan {
+  /** 1-based position in the whole plan. */
+  number: number;
+  keep_paths: string[];
+  /** `{key, params}` of a `culling.group_reason.*` translation, or null. */
+  group_reason: { key: string; params: Record<string, string | number> } | null;
+}
+
 /** A burst, similar, scene, bracket or panorama group surfaced for culling. */
 export interface CullingGroup {
   group_id: number;
@@ -91,6 +100,40 @@ export interface CullingGroup {
   end?: string | null;
   moment?: string | null;
   moment_confidence?: number | null;
+  /** Present only on the rows of the assistant's plan. */
+  plan?: CullingGroupPlan;
+}
+
+/** Identity of a group across the feed: ids collide between types (burst 5 and similar 5), so the pair is the key. */
+export function cullingGroupKey(group: Pick<CullingGroup, 'group_id' | 'type'>): string {
+  return `${group.group_id}_${group.type}`;
+}
+
+@Pipe({ name: 'cullGroupKey' })
+export class CullGroupKeyPipe implements PipeTransform {
+  transform(group: Pick<CullingGroup, 'group_id' | 'type'>): string {
+    return cullingGroupKey(group);
+  }
+}
+
+/** Translation key plus params of a plan group's reason chip, or null when the group has none. */
+@Pipe({ name: 'cullPlanGroupReason' })
+export class CullPlanGroupReasonPipe implements PipeTransform {
+  transform(group: CullingGroup): { key: string; params: Record<string, string | number> } | null {
+    const reason = group.plan?.group_reason;
+    return reason ? { key: `culling.group_reason.${reason.key}`, params: reason.params } : null;
+  }
+}
+
+/** Whether a photo's current keep state differs from what the plan suggested. */
+@Pipe({ name: 'planDiffers' })
+export class PlanDiffersPipe implements PipeTransform {
+  transform(path: string, group: CullingGroup, selectionsMap: Map<string, Set<string>>): boolean {
+    const plan = group.plan;
+    const kept = selectionsMap.get(cullingGroupKey(group));
+    if (!plan || !kept) return false;
+    return kept.has(path) !== plan.keep_paths.includes(path);
+  }
 }
 
 /** Render a bracket frame's exposure offset as a signed badge ("+2 EV", "0 EV").
@@ -107,16 +150,16 @@ export class EvOffsetPipe implements PipeTransform {
 
 @Pipe({ name: 'isKept' })
 export class IsKeptPipe implements PipeTransform {
-  transform(path: string, selectionsMap: Map<number, Set<string>>, burstId: number): boolean {
-    const kept = selectionsMap.get(burstId);
+  transform(path: string, selectionsMap: Map<string, Set<string>>, groupKey: string): boolean {
+    const kept = selectionsMap.get(groupKey);
     return kept?.has(path) ?? false;
   }
 }
 
 @Pipe({ name: 'isDecided' })
 export class IsDecidedPipe implements PipeTransform {
-  transform(path: string, selectionsMap: Map<number, Set<string>>, burstId: number): boolean {
-    const kept = selectionsMap.get(burstId);
+  transform(path: string, selectionsMap: Map<string, Set<string>>, groupKey: string): boolean {
+    const kept = selectionsMap.get(groupKey);
     return kept !== undefined && kept.size > 0 && !kept.has(path);
   }
 }
@@ -124,21 +167,21 @@ export class IsDecidedPipe implements PipeTransform {
 @Pipe({ name: 'isConfirmed' })
 export class IsConfirmedPipe implements PipeTransform {
   transform(group: CullingGroup, confirmedGroups: Set<string>): boolean {
-    return confirmedGroups.has(`${group.group_id}_${group.type}`);
+    return confirmedGroups.has(cullingGroupKey(group));
   }
 }
 
 @Pipe({ name: 'isPassing' })
 export class IsPassingPipe implements PipeTransform {
   transform(group: CullingGroup, passingGroups: Map<string, number>): boolean {
-    return passingGroups.has(`${group.group_id}_${group.type}`);
+    return passingGroups.has(cullingGroupKey(group));
   }
 }
 
 @Pipe({ name: 'passCountdown' })
 export class PassCountdownPipe implements PipeTransform {
   transform(group: CullingGroup, passingGroups: Map<string, number>): number {
-    return passingGroups.get(`${group.group_id}_${group.type}`) ?? 0;
+    return passingGroups.get(cullingGroupKey(group)) ?? 0;
   }
 }
 

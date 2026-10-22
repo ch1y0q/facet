@@ -2210,6 +2210,14 @@
       "bracket_span": "{frames} fotos, intervalo de {ev_span} EV",
       "frame_count": "{frames} fotos",
       "moment": "{moment}"
+    },
+    "plan": {
+      "banner": "Plano do assistente · {confirmed}/{total} confirmados",
+      "exit": "Sair",
+      "suggestion": "sugerido: manter {keep} / rejeitar {reject}",
+      "differs": "Difere da sugestão do assistente",
+      "oversize": "Grupos omitidos (grandes demais para confirmar aqui): {count}",
+      "out_of_date": "O plano do assistente está desatualizado - peça-lhe para gerar a pré-visualização novamente"
     }
   },
   "scenes": {

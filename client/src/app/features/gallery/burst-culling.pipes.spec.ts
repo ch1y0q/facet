@@ -8,6 +8,7 @@ import {
   peakingGradientField, peakingThreshold, paintPeakingField,
   loadFrameImage, computePeakingOverlay, computePooledPeakingOverlays,
   peakingCanvasSize, PEAKING_FIT_EDGE, KEY_SUBJECT_COORDINATE_SPACE,
+  CullGroupKeyPipe, CullPlanGroupReasonPipe, PlanDiffersPipe,
   CullingGroup, CullingFace, CullingSubject, FaceThresholds, FrameSize, KeySubject,
 } from './burst-culling.pipes';
 
@@ -34,17 +35,17 @@ describe('IsKeptPipe', () => {
   const pipe = new IsKeptPipe();
 
   it('returns true when path is in the kept set for the burst', () => {
-    const map = new Map<number, Set<string>>([[1, new Set(['/photo1.jpg'])]]);
-    expect(pipe.transform('/photo1.jpg', map, 1)).toBe(true);
+    const map = new Map<string, Set<string>>([['1_burst', new Set(['/photo1.jpg'])]]);
+    expect(pipe.transform('/photo1.jpg', map, '1_burst')).toBe(true);
   });
 
   it('returns false when path is not in the kept set', () => {
-    const map = new Map<number, Set<string>>([[1, new Set(['/photo1.jpg'])]]);
-    expect(pipe.transform('/photo2.jpg', map, 1)).toBe(false);
+    const map = new Map<string, Set<string>>([['1_burst', new Set(['/photo1.jpg'])]]);
+    expect(pipe.transform('/photo2.jpg', map, '1_burst')).toBe(false);
   });
 
   it('returns false when burst_id has no entry', () => {
-    expect(pipe.transform('/photo1.jpg', new Map(), 99)).toBe(false);
+    expect(pipe.transform('/photo1.jpg', new Map(), '99_burst')).toBe(false);
   });
 });
 
@@ -52,22 +53,22 @@ describe('IsDecidedPipe', () => {
   const pipe = new IsDecidedPipe();
 
   it('returns true when burst has selections and path is not kept', () => {
-    const map = new Map<number, Set<string>>([[1, new Set(['/photo1.jpg'])]]);
-    expect(pipe.transform('/photo2.jpg', map, 1)).toBe(true);
+    const map = new Map<string, Set<string>>([['1_burst', new Set(['/photo1.jpg'])]]);
+    expect(pipe.transform('/photo2.jpg', map, '1_burst')).toBe(true);
   });
 
   it('returns false when path is kept', () => {
-    const map = new Map<number, Set<string>>([[1, new Set(['/photo1.jpg'])]]);
-    expect(pipe.transform('/photo1.jpg', map, 1)).toBe(false);
+    const map = new Map<string, Set<string>>([['1_burst', new Set(['/photo1.jpg'])]]);
+    expect(pipe.transform('/photo1.jpg', map, '1_burst')).toBe(false);
   });
 
   it('returns false when burst has no entry', () => {
-    expect(pipe.transform('/photo1.jpg', new Map(), 1)).toBe(false);
+    expect(pipe.transform('/photo1.jpg', new Map(), '1_burst')).toBe(false);
   });
 
   it('returns false when kept set is empty', () => {
-    const map = new Map<number, Set<string>>([[1, new Set<string>()]]);
-    expect(pipe.transform('/photo1.jpg', map, 1)).toBe(false);
+    const map = new Map<string, Set<string>>([['1_burst', new Set<string>()]]);
+    expect(pipe.transform('/photo1.jpg', map, '1_burst')).toBe(false);
   });
 });
 
@@ -837,5 +838,49 @@ describe('peakingCanvasSize', () => {
 
   it('bounds a full-resolution frame by the pixel budget alone', () => {
     expect(peakingCanvasSize(6000, 4000)).toEqual({ w: 1732, h: 1155 });
+  });
+});
+
+describe('CullGroupKeyPipe', () => {
+  it('keys a group by id and type so burst 5 and similar 5 differ', () => {
+    const pipe = new CullGroupKeyPipe();
+    expect(pipe.transform(group({ group_id: 5, type: 'burst' }))).toBe('5_burst');
+    expect(pipe.transform(group({ group_id: 5, type: 'similar' }))).toBe('5_similar');
+  });
+});
+
+describe('CullPlanGroupReasonPipe', () => {
+  const pipe = new CullPlanGroupReasonPipe();
+
+  it('maps the plan reason to a culling.group_reason key plus params', () => {
+    const g = group({ plan: { number: 1, keep_paths: [], group_reason: { key: 'similar_percent', params: { percent: 91 } } } });
+    expect(pipe.transform(g)).toEqual({ key: 'culling.group_reason.similar_percent', params: { percent: 91 } });
+  });
+
+  it('is null without a plan or without a reason', () => {
+    expect(pipe.transform(group())).toBeNull();
+    expect(pipe.transform(group({ plan: { number: 1, keep_paths: [], group_reason: null } }))).toBeNull();
+  });
+});
+
+describe('PlanDiffersPipe', () => {
+  const pipe = new PlanDiffersPipe();
+  const planned = group({ plan: { number: 1, keep_paths: ['/a.jpg'], group_reason: null } });
+
+  it('is false while the keep state matches the plan', () => {
+    const map = new Map([['1_burst', new Set(['/a.jpg'])]]);
+    expect(pipe.transform('/a.jpg', planned, map)).toBe(false);
+    expect(pipe.transform('/b.jpg', planned, map)).toBe(false);
+  });
+
+  it('is true only on the flipped photos', () => {
+    const map = new Map([['1_burst', new Set(['/b.jpg'])]]);
+    expect(pipe.transform('/a.jpg', planned, map)).toBe(true);
+    expect(pipe.transform('/b.jpg', planned, map)).toBe(true);
+    expect(pipe.transform('/c.jpg', planned, map)).toBe(false);
+  });
+
+  it('is false for a group without a plan', () => {
+    expect(pipe.transform('/a.jpg', group(), new Map([['1_burst', new Set(['/a.jpg'])]]))).toBe(false);
   });
 });

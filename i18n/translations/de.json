@@ -2210,6 +2210,14 @@
       "bracket_span": "{frames} Aufnahmen, {ev_span} EV Spanne",
       "frame_count": "{frames} Aufnahmen",
       "moment": "{moment}"
+    },
+    "plan": {
+      "banner": "Plan des Assistenten · {confirmed}/{total} bestätigt",
+      "exit": "Beenden",
+      "suggestion": "Vorschlag: {keep} behalten / {reject} verwerfen",
+      "differs": "Weicht vom Vorschlag des Assistenten ab",
+      "oversize": "Ausgelassene Gruppen (zu groß, um hier bestätigt zu werden): {count}",
+      "out_of_date": "Der Plan des Assistenten ist veraltet - bitten Sie ihn, die Vorschau erneut zu erstellen"
     }
   },
   "scenes": {
