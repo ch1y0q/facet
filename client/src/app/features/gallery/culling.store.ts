@@ -49,6 +49,8 @@ export const CULL_GROUP_BY_KEY = 'facet_culling_group_by';
 export const CULL_SORT_KEY = 'facet_culling_sort';
 export const CULL_SORT_DIR_KEY = 'facet_culling_sort_direction';
 export const CULL_PROFILE_KEY = 'facet_culling_profile';
+/** The auto-keep strictness the page starts at; the assistant's `auto_cull` plans with it when the user stored no profile. */
+export const CULL_DEFAULT_STRICTNESS = 100;
 
 export const GROUP_BY_VALUES = ['all', ...CULLING_GROUP_TYPES] as const;
 export type GroupBy = typeof GROUP_BY_VALUES[number];
@@ -232,7 +234,7 @@ export class CullingStore {
 
   readonly similarityThreshold = signal(85);
   /** Auto-keep strictness (0-100): higher keeps fewer photos below the best. */
-  readonly strictness = signal(100);
+  readonly strictness = signal(CULL_DEFAULT_STRICTNESS);
   readonly excludeRejected = signal(true);
   /** Server-side ordering of culling groups. */
   readonly sortMode = signal(readStoredSort());

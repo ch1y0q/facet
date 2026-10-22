@@ -10,6 +10,7 @@ import {
   buildApiParams,
   seededSearchThreshold,
 } from '../../features/gallery/gallery-filters.util';
+import { CULL_DEFAULT_STRICTNESS, CULL_PROFILE_KEY } from '../../features/gallery/culling.store';
 import { COMPARE_AB_TAB_INDEX, CompareFiltersService } from '../../features/comparison/compare-filters.service';
 import { ViewActionRegistry } from './view-action-registry.service';
 import { UserActivityJournal } from './user-activity-journal.service';
@@ -463,6 +464,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
           ? { total: gallery.total(), loaded: gallery.photos().length, has_more: gallery.hasMore(), pinned }
           : null,
         culling: plan.snapshot(),
+        culling_defaults: { profile: localStorage.getItem(CULL_PROFILE_KEY) || null, strictness: CULL_DEFAULT_STRICTNESS },
         mounted_actions: viewActions.names(),
         level,
         actions: applicableActions(actions(), actionFacts(route, gallery.selectionCount(), pinned), level),

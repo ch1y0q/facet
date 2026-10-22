@@ -192,7 +192,8 @@ class TestAutoCull:
         headers = env.login(edition=True)
         tab = fake_tab(env, _jwt_of(headers), reply=reply or (
             lambda call: {"ok": True, "data": {"route": "/culling", "plan_digest": call["args"]["plan_digest"],
-                                               "groups_total": 1}}))
+                                               "groups_total": 1}} if call["tool"] == "ui_show_culling_plan"
+            else {"ok": True, "data": {"route": "/"}}))
         return tab, env.token(headers, "edition")
 
     def test_auto_cull_dry_run_opens_the_plan_in_the_tab(self, agent_app, photos, fake_tab):
@@ -252,7 +253,8 @@ class TestAutoCull:
         env = agent_app("legacy")
         tab, token = self._tab(env, fake_tab)
         result = env.call(token, "auto_cull", {"group_by": "burst", **SCOPE, "show": False})
-        assert result["ok"] and not tab.calls and "shown_in_tab" not in result
+        assert result["ok"] and "ui_show_culling_plan" not in [c["tool"] for c in tab.calls]
+        assert "shown_in_tab" not in result
 
     def test_auto_cull_apply_never_shows_and_never_reads_the_tab(self, agent_app, photos, fake_tab):
         nonce.reset()
@@ -263,7 +265,7 @@ class TestAutoCull:
         result = env.call(token, "auto_cull", {"group_by": "burst", **SCOPE, "dry_run": False,
                                                "confirm": first["confirm"]})
         assert result["ok"], result
-        assert len(tab.calls) == shown == 1 and "shown_in_tab" not in result
+        assert len(tab.calls) == shown == 2 and "shown_in_tab" not in result
 
     def test_auto_cull_description_says_one_call(self, env_token):
         env, token = env_token
@@ -714,6 +716,97 @@ class TestAutoCullDescriptionTeachesThePlanPage:
         for needle in ("/culling", "culling.changed", "keep_paths", "remove_paths", "shown_in_tab"):
             assert needle in text, needle
         assert "`review`" not in text and "read from their open tab" not in text
+
+
+class TestAutoCullTabDefaults:
+    """With neither strictness nor profile, auto_cull uses what the tab's /culling page would start at."""
+
+    @pytest.fixture()
+    def rig(self, agent_app, photos, fake_tab, monkeypatch):
+        from tests.conftest import intercept_internal_call
+        nonce.reset()
+        tools_culling.reset_preview_memory()
+        sent = []
+        intercept_internal_call(monkeypatch, lambda tool, kw: sent.append(kw["json"]) if tool == "culling.auto" else None)
+        env = agent_app("legacy")
+        headers = env.login(edition=True)
+
+        def build(defaults):
+            def reply(call):
+                if call["tool"] == "ui_get_context":
+                    return {"ok": True, "data": {"route": "/", "culling_defaults": defaults}}
+                return {"ok": True, "data": {"route": "/culling", "plan_digest": call["args"]["plan_digest"],
+                                             "groups_total": 1}}
+            tab = fake_tab(env, _jwt_of(headers), reply=reply)
+            return type("Rig", (), {"env": env, "token": env.token(headers, "edition"), "tab": tab, "sent": sent})
+        build.env, build.headers, build.sent = env, headers, sent
+        return build
+
+    @staticmethod
+    def args(**extra):
+        return {"group_by": "burst", **SCOPE, **extra}
+
+    def test_the_tabs_stored_profile_is_used(self, rig):
+        r = rig({"profile": "sports", "strictness": 100})
+        result = r.env.call(r.token, "auto_cull", self.args())
+        assert result["ok"], result
+        assert r.sent[0]["profile"] == "sports" and r.sent[0]["strictness"] is None
+        assert result["data"]["knobs_from_tab"] == {"profile": "sports"}
+
+    def test_without_a_profile_the_page_default_strictness_is_used(self, rig):
+        r = rig({"profile": None, "strictness": 100})
+        result = r.env.call(r.token, "auto_cull", self.args())
+        assert r.sent[0]["strictness"] == 100 and r.sent[0]["profile"] is None
+        assert result["data"]["knobs_from_tab"] == {"strictness": 100}
+
+    def test_an_unknown_stored_profile_falls_back_to_strictness(self, rig):
+        r = rig({"profile": "nope", "strictness": 100})
+        result = r.env.call(r.token, "auto_cull", self.args())
+        assert r.sent[0]["strictness"] == 100 and r.sent[0]["profile"] is None
+        assert result["data"]["knobs_from_tab"] == {"strictness": 100}
+
+    @pytest.mark.parametrize("extra", [{"strictness": 30}, {"profile": "wedding"}])
+    def test_an_explicit_knob_never_consults_the_tab(self, rig, extra):
+        r = rig({"profile": "sports", "strictness": 100})
+        result = r.env.call(r.token, "auto_cull", self.args(show=False, **extra))
+        assert result["ok"], result
+        assert [c["tool"] for c in r.tab.calls] == []
+        assert "knobs_from_tab" not in result["data"]
+
+    def test_no_tab_keeps_the_server_default(self, agent_app, photos, monkeypatch):
+        from tests.conftest import intercept_internal_call
+        nonce.reset()
+        sent = []
+        intercept_internal_call(monkeypatch, lambda tool, kw: sent.append(kw["json"]) if tool == "culling.auto" else None)
+        env = agent_app("legacy")
+        token = env.token(env.login(edition=True), "edition")
+        result = env.call(token, "auto_cull", self.args())
+        assert result["ok"], result
+        assert sent[0]["strictness"] is None and sent[0]["profile"] is None
+        assert "knobs_from_tab" not in result["data"]
+
+    def test_the_shown_request_and_the_apply_carry_the_resolved_knobs(self, rig):
+        r = rig({"profile": "sports", "strictness": 100})
+        first = r.env.call(r.token, "auto_cull", self.args())
+        shown = [c for c in r.tab.calls if c["tool"] == "ui_show_culling_plan"]
+        assert shown[0]["args"]["request"]["profile"] == "sports"
+        assert [c["tool"] for c in r.tab.calls].count("ui_get_context") == 1
+        r.env.call(r.token, "auto_cull", self.args(dry_run=False, confirm=first["confirm"], show=False))
+        assert r.sent[-1]["profile"] == "sports" and r.sent[-1]["dry_run"] is False
+
+    def test_a_changed_tab_default_refuses_the_apply(self, rig):
+        r = rig({"profile": "sports", "strictness": 100})
+        first = r.env.call(r.token, "auto_cull", self.args())
+        tools_culling.reset_preview_memory()
+        r.tab.reply = lambda call: {"ok": True, "data": {"culling_defaults": {"profile": "wedding", "strictness": 100}}}
+        result = r.env.call(r.token, "auto_cull", self.args(dry_run=False, confirm=first["confirm"]))
+        assert not result["ok"] and result["error"] == "confirmation_required"
+
+    def test_the_description_states_the_rule(self, env_token):
+        env, token = env_token
+        tools = env.rpc(token, "tools/list").json()["result"]["tools"]
+        text = next(t for t in tools if t["name"] == "auto_cull")["description"]
+        assert "/culling defaults" in text
 
 
 class TestAutoCullStateGuardThroughTheTool:

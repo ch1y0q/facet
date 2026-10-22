@@ -1593,7 +1593,7 @@
         "readOnlyHint": true,
         "untrustedContentHint": true
       },
-      "description": "Where the user's tab is, from any page: route, the open photo, the selection (scope and count), a gallery summary (total, loaded, has_more, pinned list) when the gallery is open, the mounted page actions and the jobs that apply now (`actions`, with their tools), and `culling`, the assistant's plan on the /culling page (null outside plan mode): `{plan_digest, groups_total, confirmed, pending, changed, untouched, truncated}`. `confirmed` and `pending` list plan group numbers (confirmed: the user's confirm has landed; pending: flipped away from the plan and not yet confirmed); `untouched` counts the rest. `changed` lists every group whose keepers differ from the plan as `{type, group_id, number, keep_paths, reject_paths}`: pass those paths as `keep_paths` / `remove_paths` on the next `auto_cull` dry run and on its apply. When the block is too large for one answer its lists are cut: `culling.truncated` is true and `groups_total` / the list lengths stay the true counts. Never re-decide a confirmed group. `user_activity` ({items, until, truncated}) lists what the user did in the tab after `activity_since` (rating, reject, favorite, cull_confirm, cull_skip, tags, album, navigation; at most 50 items of 20 paths); pass the answer's `until` as the next `activity_since`.",
+      "description": "Where the user's tab is, from any page: route, the open photo, the selection (scope and count), a gallery summary (total, loaded, has_more, pinned list) when the gallery is open, the mounted page actions and the jobs that apply now (`actions`, with their tools), and `culling`, the assistant's plan on the /culling page (null outside plan mode): `{plan_digest, groups_total, confirmed, pending, changed, untouched, truncated}`. `confirmed` and `pending` list plan group numbers (confirmed: the user's confirm has landed; pending: flipped away from the plan and not yet confirmed); `untouched` counts the rest. `changed` lists every group whose keepers differ from the plan as `{type, group_id, number, keep_paths, reject_paths}`: pass those paths as `keep_paths` / `remove_paths` on the next `auto_cull` dry run and on its apply. When the block is too large for one answer its lists are cut: `culling.truncated` is true and `groups_total` / the list lengths stay the true counts. Never re-decide a confirmed group. `user_activity` ({items, until, truncated}) lists what the user did in the tab after `activity_since` (rating, reject, favorite, cull_confirm, cull_skip, tags, album, navigation; at most 50 items of 20 paths); pass the answer's `until` as the next `activity_since`. `culling_defaults` ({profile, strictness}) is what the /culling page starts at: the profile the user stored (null if none) and the default strictness; `auto_cull` plans with it when given neither.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1781,5 +1781,5 @@
       "name": "ui_show_comparison"
     }
   ],
-  "version": "e069ea76d0bd8a66"
+  "version": "ee158dc473ddf182"
 }

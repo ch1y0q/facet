@@ -76,6 +76,7 @@ class _Preview:
     """What a dry run issued a ``confirm`` for: the plan digest it was computed from, until ``expires``."""
     digest: str
     expires: float
+    knobs: Optional[dict] = None
 
 
 _previews: dict[tuple, _Preview] = {}
@@ -333,9 +334,18 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
                 return err("invalid_input", "plan_digest is required when cursor > 0: pass the "
                            "`plan_digest` of the cursor-0 page, so every page comes from the same plan")
             memory = None if dry_run or explicit or not confirm else _recall((owner, confirm))
+            knobs = None
+            use_strictness, use_profile = strictness, profile
+            if strictness is None and profile is None:
+                if memory is not None:
+                    knobs = memory.knobs
+                else:
+                    knobs = await _tab_knobs(grant, resolved, settings, tab_id, timeout)
+                if knobs:
+                    use_strictness, use_profile = knobs.get("strictness"), knobs.get("profile")
             options = {"group_by": group_by, "album_id": album_id, "date_from": since,
-                       "date_to": until, "strictness": strictness,
-                       "min_keep_per_group": min_keep_per_group, "profile": profile,
+                       "date_to": until, "strictness": use_strictness,
+                       "min_keep_per_group": min_keep_per_group, "profile": use_profile,
                        "trim_brackets": trim_brackets, "highlights_album": highlights_album,
                        "keep_paths": keep_paths or [], "remove_paths": remove_paths or []}
             page_call = {**options, "dry_run": True, "cursor": cursor if dry_run else 0}
@@ -353,7 +363,10 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
                 if result["ok"]:
                     digest = (result.get("data") or {}).get("plan_digest")
                     if not explicit and digest and result.get("confirm"):
-                        _remember((owner, result["confirm"]), _Preview(digest, limits.now() + nonce.TTL_SECONDS))
+                        _remember((owner, result["confirm"]),
+                                  _Preview(digest, limits.now() + nonce.TTL_SECONDS, knobs))
+                if knobs and result["ok"]:
+                    result["data"]["knobs_from_tab"] = knobs
                 if show and dry_run and result["ok"]:
                     result["shown_in_tab"] = await _show_plan(
                         result["data"], options, cursor, resolved, settings, tab_id, timeout)
@@ -366,6 +379,26 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
                            "same overrides; the plan must be unchanged since that preview")
             return await send_apply(grant, options, digest, timeout)
         return await run_tool(ctx, "auto_cull", handler, write=not dry_run)
+
+    async def _tab_knobs(grant, resolved, settings, tab_id: Optional[str], timeout: float) -> Optional[dict]:
+        """The knobs the tab's /culling page would start at (its stored profile, else its default strictness).
+
+        None on any failure or an unusable answer: the server default then applies.
+        """
+        context = await relay.call_tab(registry, resolved, settings, "ui_get_context", {}, tab_id, timeout=timeout)
+        defaults = (context.get("data") or {}).get("culling_defaults") if context.get("ok") else None
+        if not isinstance(defaults, dict):
+            return None
+        stored = defaults.get("profile")
+        if isinstance(stored, str) and stored:
+            known = await client.call(grant, "culling.profiles", timeout=timeout)
+            ids = {row.get("id") for row in ((known.get("data") or {}).get("profiles") or [])} if known["ok"] else set()
+            if stored in ids:
+                return {"profile": stored}
+        strictness = defaults.get("strictness")
+        if isinstance(strictness, int) and not isinstance(strictness, bool) and 0 <= strictness <= 100:
+            return {"strictness": strictness}
+        return None
 
     async def send_apply(grant, options: dict, digest: str, timeout: float) -> dict:
         applied = await client.call(
@@ -492,7 +525,10 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
         "Per-photo 'a better shot exists in this burst' hints for up to 100 paths. Empty when no "
         "keeper head is trained.")
     add(auto_cull, "auto_cull",
-        "Auto-cull a scope under a keeper budget. dry_run=true (default) only previews the split "
+        "Auto-cull a scope under a keeper budget. With neither `strictness` nor `profile` and a Facet tab "
+        "open, the plan uses that tab's /culling defaults (its stored profile, else strictness 100), "
+        "reported as `knobs_from_tab`; with no tab the server default (50) applies. "
+        "dry_run=true (default) only previews the split "
         "and returns a `confirm` value; show the user the counts, then call again with "
         "dry_run=false and that `confirm` to reject the planned frames. The apply leaves out the photos "
         "the user rated, favourited or rejected since the preview (`skipped_user_changed`, with "

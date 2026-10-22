@@ -282,7 +282,9 @@ UI_TOOLS: tuple[UiTool, ...] = (
            "({items, until, truncated}) lists what the user did in the tab after `activity_since` "
            "(rating, reject, favorite, cull_confirm, cull_skip, tags, album, navigation; at most 50 items "
            "of 20 paths); "
-           "pass the answer's `until` as the next `activity_since`.",
+           "pass the answer's `until` as the next `activity_since`. `culling_defaults` "
+           "({profile, strictness}) is what the /culling page starts at: the profile the user stored "
+           "(null if none) and the default strictness; `auto_cull` plans with it when given neither.",
            UiGetContext, True),
     UiTool("ui_next_page", "Load the next page of the gallery in the user's tab (infinite scroll).",
            UiNextPage, False),

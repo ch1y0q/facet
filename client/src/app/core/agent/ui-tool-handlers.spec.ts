@@ -13,6 +13,7 @@ import { GalleryStore, PhotosResponse, ViewerConfig } from '../../features/galle
 import { makePhoto } from '../../../testing/photo.fixture';
 import { contractHandlerMismatch, WebMcpToolRegistry } from './webmcp-registry.service';
 import { routes } from '../../app.routes';
+import { CULL_DEFAULT_STRICTNESS, CULL_PROFILE_KEY } from '../../features/gallery/culling.store';
 import { DEFAULT_FILTERS } from '../../features/gallery/gallery-filters.util';
 import { applicableActions, createUiToolHandlers } from './ui-tool-handlers';
 import { CompareFiltersService } from '../../features/comparison/compare-filters.service';
@@ -633,6 +634,17 @@ describe('UI tool registry and handlers', () => {
     const context = async (): Promise<Record<string, unknown>> =>
       ((await run('ui_get_context')) as { data: Record<string, unknown> }).data;
     const jobIds = (data: Record<string, unknown>): string[] => (data['actions'] as { id: string }[]).map(a => a.id);
+
+    describe('culling_defaults', () => {
+      it('reports the stored profile and the page default strictness', async () => {
+        localStorage.setItem(CULL_PROFILE_KEY, 'sports');
+        expect((await context())['culling_defaults']).toEqual({ profile: 'sports', strictness: CULL_DEFAULT_STRICTNESS });
+      });
+
+      it('reports a null profile when none is stored', async () => {
+        expect((await context())['culling_defaults']).toEqual({ profile: null, strictness: 100 });
+      });
+    });
 
     describe('user_activity', () => {
       /** Straight to the handler: the generated contract does not list `activity_since` until the server side merges. */
