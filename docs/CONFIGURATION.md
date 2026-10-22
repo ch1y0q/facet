@@ -854,7 +854,7 @@ no usable preview exists.
 | `bright` | `1.62` | Fixed exposure gain applied to every demosaic (`1.0` = LibRaw's own level). The one arbitrary constant here: it matches darktable's +0.7 EV default, and nothing in the file dictates it — validate it on your own library with `--check-raw-rendering` before a large scan |
 | `prefer_embedded_preview` | `true` | Render display images from the camera preview when there is one. `false` demosaics everything, which is slower and drops the camera's tone curve |
 | `preview_min_sensor_ratio` | `0.5` | How much of the sensor a preview must cover for `/image` to serve it instead of demosaicing. Nikon, Pentax, Samsung and Canon CR3 embed a near-full-size preview (0.98-0.99); Panasonic sits at 0.52, while Olympus, Fuji, Sony and DNG embed a small one (0.29-0.49) and therefore demosaic |
-| `viewer_concurrency` | `3` | Max simultaneous RAW demosaics for the `/image` viewer path, on its own budget separate from `processing.raw_decode_concurrency` above, so a viewer request never queues behind scan or CLI decode work |
+| `viewer_concurrency` | `3` | Max simultaneous RAW demosaics for the viewer's `/image` and `/thumbnail` renders, on its own budget separate from `processing.raw_decode_concurrency` above, so a viewer request never queues behind scan or CLI decode work |
 | `faithful_bracket_render` | `true` | Render a bracketed frame with no correction at all — no camera preview, no `bright` gain. See [below](#bracketed-frames-render-uncorrected). `false` renders brackets like any other photo |
 
 ### Memory tradeoff

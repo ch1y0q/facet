@@ -2504,6 +2504,22 @@ describe('BurstCullingComponent', () => {
       expect(component['peakingOverlays']().size).toBe(1);
     });
 
+    it('measures fit view at the tuned field and the full-resolution swap at full size', async () => {
+      openDarkroom();
+      component['peakingActive'].set(true);
+      await settle();
+      expect(renderPeaking.mock.calls.at(-1)?.[1]).toBe(640);
+
+      component['zoom'].set({ scale: 2, tx: 0, ty: 0 });
+      await settle();
+      expect(renderPeaking.mock.calls.at(-1)?.[1]).toBeUndefined();
+
+      component['setCompareMode']('2up');
+      component['zoom'].set({ scale: 1, tx: 0, ty: 0 });
+      await settle();
+      expect(renderPooledPeaking.mock.calls.at(-1)?.[1]).toBe(640);
+    });
+
     it('builds nothing while peaking is off', async () => {
       openDarkroom();
 

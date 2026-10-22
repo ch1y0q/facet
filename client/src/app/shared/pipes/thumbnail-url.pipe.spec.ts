@@ -18,6 +18,16 @@ describe('ThumbnailUrlPipe', () => {
     expect(url).toContain('size=640');
   });
 
+  it('versions URLs the server renders from the original and keeps them off the service worker', () => {
+    for (const size of [641, 1920]) {
+      const params = new URL(pipe.transform('/photos/test.jpg', size), 'http://x').searchParams;
+      expect(params.get('v')).toBe('2');
+      expect(params.has('ngsw-bypass')).toBe(true);
+    }
+    expect(pipe.transform('/photos/test.jpg', 640)).not.toMatch(/v=|ngsw-bypass/);
+    expect(pipe.transform('/photos/test.jpg')).not.toMatch(/v=|ngsw-bypass/);
+  });
+
   it('omits size param when not provided', () => {
     const url = pipe.transform('/photos/test.jpg');
     expect(url).not.toContain('size=');

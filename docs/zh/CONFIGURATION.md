@@ -851,7 +851,7 @@ RAW 文件如何被转换成像素。这里有两套配置档，而且它们
 | `bright` | `1.62` | 施加于每一次去马赛克的固定曝光增益（`1.0` = LibRaw 自身的电平）。这是本文件中唯一一个任意常数：它对应 darktable 的 +0.7 EV 默认值，文件里没有任何东西决定它 — 在大批量扫描之前，请用 `--check-raw-rendering` 在你自己的图库上验证它 |
 | `prefer_embedded_preview` | `true` | 有相机预览图时用它来渲染显示图像。设为 `false` 则一律去马赛克，速度更慢，而且会丢掉相机的色调曲线 |
 | `preview_min_sensor_ratio` | `0.5` | 预览图必须覆盖多大比例的传感器，`/image` 才会直接使用它而不去马赛克。尼康、宾得、三星和佳能 CR3 内嵌接近全尺寸的预览（0.98-0.99）；松下为 0.52，而奥林巴斯、富士、索尼和 DNG 内嵌的预览很小（0.29-0.49），因此会去马赛克 |
-| `viewer_concurrency` | `3` | `/image` 查看路径同时进行的 RAW 去马赛克数上限，它有独立于上文 `processing.raw_decode_concurrency` 的预算，因此查看器请求绝不会排在扫描或命令行解码作业后面 |
+| `viewer_concurrency` | `3` | 查看器 `/image` 与 `/thumbnail` 渲染同时进行的 RAW 去马赛克数上限，它有独立于上文 `processing.raw_decode_concurrency` 的预算，因此查看器请求绝不会排在扫描或命令行解码作业后面 |
 | `faithful_bracket_render` | `true` | 渲染包围曝光照片时完全不做任何校正 — 既不用相机预览，也不施加 `bright` 增益。见[下文](#包围曝光照片按未校正方式渲染)。设为 `false` 则把包围曝光照片当作普通照片渲染 |
 
 ### 内存取舍

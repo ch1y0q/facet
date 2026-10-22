@@ -6,6 +6,7 @@ Thumbnail router — photo thumbnails, face thumbnails, person thumbnails, full 
 import hashlib
 import logging
 import os
+import threading
 from io import BytesIO
 from functools import lru_cache
 from pathlib import Path
@@ -26,6 +27,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["thumbnails"])
 
 _thumbnail_cache_size = VIEWER_CONFIG.get('performance', {}).get('thumbnail_cache_size', 2000)
+
+# Anything above 640 gets one fixed-size render, so `size` can't pull the full
+# original or fill the cache with one entry per value.
+_STORED_THUMBNAIL_SIZE = 640
+_RENDERED_SIZE = 1920
+_RENDERED_JPEG_QUALITY = 85
+# Renders decode originals on the shared threadpool, so cap them.
+_render_slots = threading.BoundedSemaphore(4)
+_RENDER_WAIT_SECONDS = 5
+# Short, so the sharp render shows up once the original is back.
+_FALLBACK_MAX_AGE = 60
 
 
 def _face_join_visible(column: str, value: int, user: Optional[CurrentUser]) -> bool:
@@ -55,7 +67,8 @@ def _person_visible(person_id: int, user: Optional[CurrentUser]) -> bool:
     return _face_join_visible('f.person_id', person_id, user)
 
 
-def _cached_image_response(image_bytes: bytes, request: Request) -> Response:
+def _cached_image_response(image_bytes: bytes, request: Request,
+                           max_age: int = 31536000) -> Response:
     """Build a cached JPEG response with ETag and conditional 304."""
     etag = hashlib.md5(image_bytes).hexdigest()
     if request.headers.get('if-none-match') == etag:
@@ -64,7 +77,7 @@ def _cached_image_response(image_bytes: bytes, request: Request) -> Response:
         content=image_bytes,
         media_type='image/jpeg',
         headers={
-            'Cache-Control': 'public, max-age=31536000',
+            'Cache-Control': f'public, max-age={max_age}',
             'ETag': etag,
         }
     )
@@ -140,44 +153,35 @@ def _get_or_resize(photo_path: str, thumbnail_bytes: bytes, size: int) -> bytes:
     return resized
 
 
-def _long_edge(image_bytes: bytes) -> int:
-    from PIL import Image
-    return max(Image.open(BytesIO(image_bytes)).size)
-
-
 @lru_cache(maxsize=32)
-def _render_from_original_cached(file_path: str, mtime: float, size: int, quality: int,
+def _render_from_original_cached(file_path: str, mtime: float,
                                  sequence_kind: Optional[str]) -> bytes:
-    """Render the original at ``size`` on its long edge, through the same
-    display loader ``/image`` uses (RAW preview vs. demosaic, bracket rendering,
-    EXIF orientation, HDR PQ tone mapping)."""
     from PIL import Image
-    from utils.image_loading import get_raw_decode_settings, load_display_image
+    from api.raw_processing import load_viewer_image
 
-    ratio = float(get_raw_decode_settings()['preview_min_sensor_ratio'])
-    img = load_display_image(file_path, min_preview_sensor_ratio=ratio,
-                             decode_budget='viewer', sequence_kind=sequence_kind)
-    if img is None:
-        raise RuntimeError(f"Display decode failed: {file_path}")
-    img.thumbnail((size, size), Image.Resampling.LANCZOS)
+    if not _render_slots.acquire(timeout=_RENDER_WAIT_SECONDS):
+        raise RuntimeError("every render slot is busy")
+    try:
+        img = load_viewer_image(file_path, sequence_kind, max_edge=_RENDERED_SIZE)
+    finally:
+        _render_slots.release()
+    img.thumbnail((_RENDERED_SIZE, _RENDERED_SIZE), Image.Resampling.LANCZOS)
     buf = BytesIO()
-    img.save(buf, format='JPEG', quality=quality)
+    img.save(buf, format='JPEG', quality=_RENDERED_JPEG_QUALITY)
     return buf.getvalue()
 
 
-def _render_from_original(path: str, size: int, sequence_kind: Optional[str]) -> Optional[bytes]:
-    """None when the original is unavailable or will not decode, so the caller
-    can serve the stored thumbnail instead."""
+def _render_from_original(path: str, sequence_kind: Optional[str]) -> Optional[bytes]:
+    """None when the original can't be rendered."""
     try:
         disk = resolve_photo_disk_path(path)
     except HTTPException:
         return None
     try:
-        return _render_from_original_cached(disk, os.path.getmtime(disk), size,
-                                            _get_image_jpeg_quality(), sequence_kind)
-    except (OSError, ValueError, RuntimeError):
-        logger.warning("Could not render %s at %dpx, serving the stored thumbnail", disk, size,
-                       exc_info=True)
+        return _render_from_original_cached(disk, os.path.getmtime(disk), sequence_kind)
+    except (OSError, ValueError, RuntimeError) as e:
+        # No traceback: this repeats on every revalidation.
+        logger.warning("Could not render %s (%s), serving the stored thumbnail", disk, e)
         return None
 
 
@@ -190,9 +194,8 @@ def get_thumbnail(
 ):
     """Get photo thumbnail.
 
-    A ``size`` larger than the stored thumbnail (the darkroom and compare panes
-    ask for 1920 px) is rendered from the original rather than served as the
-    stored one for the browser to upscale.
+    A ``size`` above 640 is rendered from the original at 1920 px. If that
+    fails, the stored thumbnail is served with a short ``max-age``.
     """
     vis_sql, vis_params = get_visibility_clause(user.user_id if user else None)
     with get_db() as conn:
@@ -201,16 +204,17 @@ def get_thumbnail(
             [path, *vis_params],
         ).fetchone()
 
-    if row and row['thumbnail']:
-        if size and 0 < size < 640:
-            resized = _get_or_resize(path, row['thumbnail'], size)
-            return _cached_image_response(resized, request)
-        if size and size > _long_edge(row['thumbnail']):
-            rendered = _render_from_original(path, size, row['sequence_kind'])
-            if rendered is not None:
-                return _cached_image_response(rendered, request)
-        return _cached_image_response(row['thumbnail'], request)
-    return Response(content="Thumbnail not found", status_code=404)
+    if not (row and row['thumbnail']):
+        return Response(content="Thumbnail not found", status_code=404)
+    if size and 0 < size < _STORED_THUMBNAIL_SIZE:
+        resized = _get_or_resize(path, row['thumbnail'], size)
+        return _cached_image_response(resized, request)
+    if size and size > _STORED_THUMBNAIL_SIZE:
+        rendered = _render_from_original(path, row['sequence_kind'])
+        if rendered is not None:
+            return _cached_image_response(rendered, request)
+        return _cached_image_response(row['thumbnail'], request, max_age=_FALLBACK_MAX_AGE)
+    return _cached_image_response(row['thumbnail'], request)
 
 
 _face_cache_size = VIEWER_CONFIG.get('performance', {}).get('face_cache_size', 500)
@@ -338,7 +342,7 @@ def _stored_thumbnail_response(path, request):
     with get_db() as conn:
         row = conn.execute("SELECT thumbnail FROM photos WHERE path = ?", (path,)).fetchone()
     if row and row['thumbnail']:
-        return _cached_image_response(row['thumbnail'], request)
+        return _cached_image_response(row['thumbnail'], request, max_age=_FALLBACK_MAX_AGE)
     return Response(content="Not found", status_code=404)
 
 

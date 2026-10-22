@@ -4361,6 +4361,9 @@ export interface paths {
         /**
          * Get Thumbnail
          * @description Get photo thumbnail.
+         *
+         *     A ``size`` above 640 is rendered from the original at 1920 px. If that
+         *     fails, the stored thumbnail is served with a short ``max-age``.
          */
         get: operations["get_thumbnail_thumbnail_get"];
         put?: never;

@@ -154,7 +154,8 @@ export class DistortionLabelPipe implements PipeTransform {
         <!-- Visual "why this score" overlay -->
         @if (overlaySupported()) {
           <div class="relative mb-4 rounded-lg overflow-hidden bg-black/20">
-            <img [src]="data.photoPath | thumbnailUrl:1280" class="block w-full" alt="" />
+            <!-- Stored thumbnail: the saliency overlay is computed from it. -->
+            <img [src]="data.photoPath | thumbnailUrl:640" class="block w-full" alt="" />
             @if (overlayOn()) {
               <img [src]="overlayUrl()" (error)="onOverlayError()" class="absolute inset-0 w-full h-full opacity-60 mix-blend-multiply" alt="" />
               <svg class="absolute inset-0 w-full h-full" viewBox="0 0 1 1" preserveAspectRatio="none">

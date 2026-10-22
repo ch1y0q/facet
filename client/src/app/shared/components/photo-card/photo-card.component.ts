@@ -591,7 +591,8 @@ export class PhotoCardComponent {
   readonly hideDetails = input(false);
   readonly mosaicMode = input(false);
   readonly currentSort = input('aggregate');
-  readonly thumbSize = input(240);
+  /** Capped at 640: larger sizes make the server decode the original. */
+  readonly thumbSize = input(240, { transform: (size: number) => Math.min(size, 640) });
 
   /** Every card except the current one, and only once there is a current one.
    *

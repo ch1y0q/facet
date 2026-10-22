@@ -6,6 +6,7 @@ Handles RAW (via rawpy/libraw) and JPEG loading with EXIF transpose.
 
 import json
 import logging
+import math
 import os
 import re
 import struct
@@ -643,7 +644,7 @@ def _decode_pq_native(photo, settings):
         return None
 
 
-def open_nonraw_image(photo):
+def open_nonraw_image(photo, draft_edge=None):
     """Open a non-RAW image with EXIF orientation and HDR PQ tone mapping.
 
     The single decode for every non-RAW consumer -- the batch scorer, the
@@ -676,6 +677,9 @@ def open_nonraw_image(photo):
     grey PNG/TIFF) is scaled to 8-bit rather than left to clip to white --
     see the inline comments below for the two measured defects this fixes.
 
+    ``draft_edge`` lets a JPEG decode at a reduced scale that still covers that
+    long edge. HEIF is left alone: its ``draft`` returns the embedded thumbnail.
+
     Raises:
         ValueError: the frame exceeds ``Image.MAX_IMAGE_PIXELS``.
     """
@@ -696,6 +700,10 @@ def open_nonraw_image(photo):
                 f"{photo}: {pixel_count} pixels exceeds the "
                 f"MAX_IMAGE_PIXELS limit of {Image.MAX_IMAGE_PIXELS}"
             )
+        if draft_edge and source.format in ('JPEG', 'MPO') and max(width, height) > draft_edge:
+            # Pillow scales until both sides cover the box, so keep the aspect.
+            scale = draft_edge / max(width, height)
+            source.draft(None, (math.ceil(width * scale), math.ceil(height * scale)))
         is_heif_pq = _heif_is_pq(source)
         # Pillow's native AVIF plugin exposes no colour metadata (verified
         # in-session: pil_img.info on a PQ AVIF has no CICP field at all), so
@@ -1335,7 +1343,7 @@ def _decode_raw_bounded(photo, use_thumbnail=False, decode_budget='library', bri
 
 
 def load_display_image(photo_path, min_preview_sensor_ratio=0.0, decode_budget='library',
-                       sequence_kind=None):
+                       sequence_kind=None, draft_edge=None):
     """Load an image in display space: what a viewer or a thumbnail should show.
 
     A RAW file renders from its camera-embedded preview when one is usable,
@@ -1363,6 +1371,7 @@ def load_display_image(photo_path, min_preview_sensor_ratio=0.0, decode_budget='
                        for the /image endpoint, which must never queue behind it
         sequence_kind: The row's ``photos.sequence_kind``, or None when it
                        belongs to no detected set
+        draft_edge: Long edge the caller needs (JPEG only); None decodes in full
 
     Returns:
         PIL Image in RGB, or None on error.
@@ -1375,7 +1384,7 @@ def load_display_image(photo_path, min_preview_sensor_ratio=0.0, decode_budget='
                                            bright=FAITHFUL_BRIGHT)
             preview = _display_preview(photo, min_preview_sensor_ratio)
             return preview if preview is not None else _decode_raw_bounded(photo, decode_budget=decode_budget)
-        return open_nonraw_image(photo)
+        return open_nonraw_image(photo, draft_edge)
     except RuntimeError:
         raise
     except Exception as e:

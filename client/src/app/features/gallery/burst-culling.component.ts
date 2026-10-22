@@ -45,6 +45,7 @@ import {
   GroupOverridePendingPipe, PeakingOverlayPipe, FrameViewBoxPipe, GridLinesPipe,
   KeySubjectForPathPipe, IsKeyFacePipe, CanMarkBracketPipe,
   cullPreviewUrl, computePeakingOverlay, computePooledPeakingOverlays, loadFrameImage, GRID_MODES,
+  PEAKING_FIT_EDGE,
   KEY_SUBJECT_COORDINATE_SPACE,
   CullingGroup, CullingPhoto, CullingFace, CullingSubject, FaceThresholds, CullStyle,
   FrameSize, GridMode, KeySubject,
@@ -1782,7 +1783,7 @@ export class BurstCullingComponent implements OnDestroy {
       const cached = this.peakingCache.get(path);
       let url = cached?.src === src ? cached.url : null;
       if (!url) {
-        url = await this.renderPeaking(src);
+        url = await this.renderPeaking(src, hiRes ? undefined : PEAKING_FIT_EDGE);
         if (!this.peakingRun.isCurrent(run)) return;
         if (url) {
           this.peakingCache.set(path, { src, url });
@@ -1810,7 +1811,7 @@ export class BurstCullingComponent implements OnDestroy {
       this.peakingOverlays.set(new Map(paths.map((path, i) => [path, cached[i]!.url])));
       return;
     }
-    const urls = await this.renderPooledPeaking(srcs);
+    const urls = await this.renderPooledPeaking(srcs, hiRes ? undefined : PEAKING_FIT_EDGE);
     if (!this.peakingRun.isCurrent(run)) return;
     const overlays = new Map<string, string>();
     paths.forEach((path, i) => {
@@ -1834,13 +1835,13 @@ export class BurstCullingComponent implements OnDestroy {
   }
 
   /** Seam over the raster pipeline, so it can be stubbed where no canvas exists. */
-  private renderPeaking(src: string): Promise<string | null> {
-    return computePeakingOverlay(src).catch(() => null);
+  private renderPeaking(src: string, maxEdge?: number): Promise<string | null> {
+    return computePeakingOverlay(src, maxEdge).catch(() => null);
   }
 
   /** The same seam for the pooled pass. */
-  private renderPooledPeaking(srcs: string[]): Promise<Map<string, string>> {
-    return computePooledPeakingOverlays(srcs).catch(() => new Map<string, string>());
+  private renderPooledPeaking(srcs: string[], maxEdge?: number): Promise<Map<string, string>> {
+    return computePooledPeakingOverlays(srcs, maxEdge).catch(() => new Map<string, string>());
   }
 
   /** Measure a frame once, for the composition grid's viewBox. */

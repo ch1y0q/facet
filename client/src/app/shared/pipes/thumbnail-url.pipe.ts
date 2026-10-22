@@ -1,11 +1,22 @@
 import { Pipe, PipeTransform } from '@angular/core';
 
+/** Above 640 the server renders the original. `v` skips the soft frame browsers
+ *  cached under the old URL; `ngsw-bypass` because the service worker ignores
+ *  Cache-Control. */
+export function thumbnailUrl(path: string, size?: number): string {
+  const params = new URLSearchParams({ path });
+  if (size) params.set('size', String(size));
+  if (size && size > 640) {
+    params.set('v', '2');
+    params.set('ngsw-bypass', '1');
+  }
+  return `/thumbnail?${params}`;
+}
+
 @Pipe({ name: 'thumbnailUrl', standalone: true, pure: true })
 export class ThumbnailUrlPipe implements PipeTransform {
   transform(path: string, size?: number): string {
-    const params = new URLSearchParams({ path });
-    if (size) params.set('size', String(size));
-    return `/thumbnail?${params}`;
+    return thumbnailUrl(path, size);
   }
 }
 
