@@ -28,7 +28,7 @@ import { isTypingContext } from '../../shared/utils/keyboard';
 import { isBracketLadderRejection } from '../../shared/utils/sequence-ladder';
 import { createLoupeState } from '../../shared/utils/loupe-state';
 import { useCoarsePointerSignal } from '../../shared/utils/media-query';
-import { SyncedZoomComponent, ZoomState, FIT_ZOOM } from './synced-zoom.component';
+import { SyncedZoomComponent, ZoomState, FIT_ZOOM, LoadedSources, SHARP_PRELOAD_DEBOUNCE_MS } from './synced-zoom.component';
 import { CompareFiltersService } from '../comparison/compare-filters.service';
 import { PanoramaSettingsService } from '../comparison/panorama-settings.service';
 import { SequenceOverrideService, SequenceKind } from '../../core/services/sequence-override.service';
@@ -158,9 +158,13 @@ type GroupBy = typeof GROUP_BY_VALUES[number];
 const KEEP_WHOLE_KINDS: readonly string[] = ['bracket', 'panorama', 'hdr_panorama'];
 const SORT_VALUES = ['easiest', 'redundant', 'best', 'recent', 'needs_comparisons', 'chronological'];
 
-/** Thumbnail width the darkroom displays. Shared with the peaking pipeline so
- *  the edge map is computed from the very pixels on screen. */
+/** Edge of the render the darkroom's fit view asks `/thumbnail` for. The pane
+ *  shows the stored 640 px thumbnail first and swaps to this once it has
+ *  loaded; peaking measures a PEAKING_FIT_EDGE downscale of the same render. */
 const DARKROOM_THUMB_SIZE = 1920;
+/** Stored thumbnail edge, shown as the placeholder and prefetched for the
+ *  neighbouring frames. */
+const PLACEHOLDER_EDGE = 640;
 
 /** Stable empty overlay map, so clearing an already-empty one is a no-op
  *  instead of a change-detection round for every darkroom navigation. */
@@ -1025,6 +1029,10 @@ class RunGeneration {
                  (keydown)="onDarkroomKeydown($event)">
               <app-synced-zoom #singlePane class="w-full h-full"
                                [src]="(activeStyle() && !previewLoading()) ? (lbPhoto.path | cullPreviewUrl:activeStyle()) : (lbPhoto.path | thumbnailUrl:darkroomThumbSize)"
+                               [placeholderSrc]="activeStyle() ? null : (lbPhoto.path | thumbnailUrl:640)"
+                               [frameKey]="lbPhoto.path"
+                               [loadedSources]="loadedRenders"
+                               (sharpLoaded)="onSharpLoaded($event)"
                                [fullResSrc]="activeStyle() ? null : (lbPhoto.path | imageUrl:true)"
                                [zoom]="zoom()"
                                [focusPoint]="(lbPhoto.path | keySubjectForPath:keySubjectMap())?.center ?? null"
@@ -1086,6 +1094,9 @@ class RunGeneration {
                 <div class="relative w-full h-full min-h-0 rounded overflow-hidden">
                   <app-synced-zoom #pane class="w-full h-full min-h-0"
                                    [src]="photo.path | thumbnailUrl:darkroomThumbSize"
+                                   [placeholderSrc]="photo.path | thumbnailUrl:640"
+                                   [frameKey]="photo.path"
+                                   [loadedSources]="loadedRenders"
                                    [fullResSrc]="photo.path | imageUrl:true"
                                    [zoom]="zoom()"
                                    [focusPoint]="(photo.path | keySubjectForPath:keySubjectMap())?.center ?? null"
@@ -1684,6 +1695,61 @@ export class BurstCullingComponent implements OnDestroy {
 
   protected readonly darkroomThumbSize = DARKROOM_THUMB_SIZE;
 
+  /** Renders already fetched into the browser cache (the panes' own preloaders
+   *  and the neighbour prefetch fill it), so a revisited frame skips the
+   *  panes' debounce. */
+  protected readonly loadedRenders = new LoadedSources();
+  /** The path whose render the single pane has finished loading. Peaking and
+   *  the neighbour prefetch wait for it, so the current frame is first in the
+   *  server's render queue. */
+  private readonly sharpPath = signal<string | null>(null);
+  /** Neighbour preloaders in flight, kept so they are not collected mid-fetch
+   *  and can be aborted when the frame changes. */
+  private neighbourThumbs = new Set<HTMLImageElement>();
+  private neighbourRenders = new Set<HTMLImageElement>();
+
+  /** The single pane reports the render it swapped to; map it back to a path. */
+  protected onSharpLoaded(src: string): void {
+    const path = this.lightboxGroup()?.photos[this.lightboxIndex()]?.path;
+    if (path && src === this.thumbnailUrl.transform(path, DARKROOM_THUMB_SIZE)) this.sharpPath.set(path);
+  }
+
+  /** Paths of the previous and next frame in single view; none in compare mode,
+   *  with a darktable style active (that pane waits for its own render), or on a
+   *  metered connection. */
+  private readonly neighbourPaths = computed<string[]>(() => {
+    const group = this.lightboxGroup();
+    if (!group || this.compareMode() !== 'single' || this.activeStyle()) return [];
+    const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
+    if (connection?.saveData) return [];
+    const idx = this.lightboxIndex();
+    return [group.photos[idx - 1]?.path, group.photos[idx + 1]?.path].filter((p): p is string => !!p);
+  });
+
+  /** Fetch `urls` into the browser cache; the previous batch in `sink` is
+   *  aborted first (handlers cleared before `src`, so a late load is inert). */
+  private prefetch(urls: string[], sink: Set<HTMLImageElement>, onLoaded?: (url: string) => void): Set<HTMLImageElement> {
+    this.abortPrefetch(sink);
+    const next = new Set<HTMLImageElement>();
+    for (const url of urls) {
+      const img = new Image();
+      img.onload = () => onLoaded?.(url);
+      img.onerror = () => {};
+      img.src = url;
+      next.add(img);
+    }
+    return next;
+  }
+
+  private abortPrefetch(sink: Set<HTMLImageElement>): void {
+    for (const img of sink) {
+      img.onload = null;
+      img.onerror = null;
+      img.src = '';
+    }
+    sink.clear();
+  }
+
   /** The image transform of every pane, shared with the peaking overlay so the
    *  edge map pans and zooms with the frame instead of being recomputed. */
   protected readonly frameTransform = computed(() => {
@@ -1747,8 +1813,9 @@ export class BurstCullingComponent implements OnDestroy {
     this.gridMode.set(GRID_MODES[(GRID_MODES.indexOf(this.gridMode()) + 1) % GRID_MODES.length]);
   }
 
-  /** The source a pane is actually displaying: the darkroom thumbnail until it
-   *  swaps to full resolution past the fit scale (SyncedZoomComponent's rule). */
+  /** The source peaking measures: the 1920 render at fit (the pane shows it once
+   *  loaded) or the full-resolution image past the fit scale (SyncedZoomComponent's
+   *  rule). */
   private frameSource(path: string, hiRes: boolean): string {
     return hiRes
       ? this.fullResUrl.transform(path, true)
@@ -2151,6 +2218,23 @@ export class BurstCullingComponent implements OnDestroy {
       }
       this.preloadDevelopedPreview(photo.path, style);
     });
+    // Prefetch the neighbours' stored thumbnails at once (cheap), and their
+    // renders only after the current frame's own render has loaded.
+    effect(() => {
+      const paths = this.neighbourPaths();
+      untracked(() => {
+        this.neighbourThumbs = this.prefetch(paths.map(p => this.thumbnailUrl.transform(p, PLACEHOLDER_EDGE)), this.neighbourThumbs);
+      });
+    });
+    effect(() => {
+      const paths = this.neighbourPaths();
+      const current = this.lightboxGroup()?.photos[this.lightboxIndex()]?.path;
+      const sharp = this.sharpPath() === current;
+      untracked(() => {
+        const urls = sharp ? paths.map(p => this.thumbnailUrl.transform(p, DARKROOM_THUMB_SIZE)) : [];
+        this.neighbourRenders = this.prefetch(urls, this.neighbourRenders, url => this.loadedRenders.add(url));
+      });
+    });
     // Rebuild the peaking edge map when the toggle, the displayed frames or the
     // pane's source resolution change. Panning never lands here: the transform
     // moves the existing overlay, and the hi-res flag is a computed boolean, so
@@ -2159,8 +2243,12 @@ export class BurstCullingComponent implements OnDestroy {
       const active = this.peakingActive();
       const paths = this.darkroomFramePaths();
       const hiRes = this.darkroomHiRes();
+      // In plain single view the edge map waits for the sharp render, so it never
+      // lands on a frame that is still the stretched thumbnail. Compare mode and
+      // a darktable style keep their own timing.
+      const awaitingSharp = this.compareMode() === 'single' && !this.activeStyle() && this.sharpPath() !== paths[0];
       untracked(() => {
-        if (!active || paths.length === 0) {
+        if (!active || paths.length === 0 || awaitingSharp) {
           this.clearPeaking();
           return;
         }
@@ -2169,12 +2257,15 @@ export class BurstCullingComponent implements OnDestroy {
     });
     // Measure the frames the composition grid is about to cover, so its viewBox
     // letterboxes onto the image exactly like the pane's object-contain does.
-    effect(() => {
+    // Debounced like the panes' own render requests: measuring fetches the same
+    // 1920 render, which a held arrow key must not queue per frame.
+    effect(onCleanup => {
       if (!this.gridMode()) return;
       const paths = this.darkroomFramePaths();
-      untracked(() => {
+      const timer = setTimeout(() => {
         for (const path of paths) void this.ensureFrameSize(path);
-      });
+      }, SHARP_PRELOAD_DEBOUNCE_MS);
+      onCleanup(() => clearTimeout(timer));
     });
   }
 
@@ -2228,6 +2319,8 @@ export class BurstCullingComponent implements OnDestroy {
     this.coarsePointer.cleanup();
     this.clearAllPassTimers();
     this.stopDetectionPolling();
+    this.abortPrefetch(this.neighbourThumbs);
+    this.abortPrefetch(this.neighbourRenders);
     if (document.fullscreenElement) {
       void document.exitFullscreen().catch(() => {});
     }

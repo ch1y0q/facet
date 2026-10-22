@@ -57,6 +57,8 @@ export interface CompareSelectedData {
           <div class="relative w-full h-full min-h-0 rounded overflow-hidden">
             <app-synced-zoom class="w-full h-full min-h-0"
                              [src]="photo.path | thumbnailUrl:1920"
+                             [placeholderSrc]="photo.path | thumbnailUrl:640"
+                             [frameKey]="photo.path"
                              [fullResSrc]="photo.path | imageUrl:true"
                              [zoom]="zoom()"
                              (zoomChange)="zoom.set($event)"
