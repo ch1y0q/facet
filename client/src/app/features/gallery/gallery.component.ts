@@ -28,8 +28,8 @@ import { MatBottomSheet, MatBottomSheetModule } from '@angular/material/bottom-s
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { ActivatedRoute, Router } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
+import { ActivatedRoute, NavigationStart, Router, RouterOutlet } from '@angular/router';
+import { filter, firstValueFrom } from 'rxjs';
 import { GalleryStore, BatchResult } from './gallery.store';
 import { Photo } from '../../shared/models/photo.model';
 import { isTypingContext } from '../../shared/utils/keyboard';
@@ -202,7 +202,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
             }
           </div>
         } @else {
-          <!-- Usually closed, and heavy enough that building it eagerly slowed every return from a photo. -->
+          <!-- Usually closed, and heavy enough that building it eagerly holds up the grid's first paint. -->
           @defer (on idle; when store.filterDrawerOpen()) {
             <app-gallery-filter-sidebar />
           }
@@ -732,6 +732,11 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly sequenceOverrides = inject(SequenceOverrideService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly outlet = inject(RouterOutlet, { optional: true });
+  /** True while GalleryReuseStrategy holds this view detached behind an open photo. */
+  private parked = false;
+  /** Where the user was when they opened a photo; a detached view forgets both. */
+  private returnTo: { scroll: number; focus: Element | null } | null = null;
   private readonly api = inject(ApiService);
   private readonly pageHelp = inject(PageHelpService);
   private readonly headerSlot = inject(HeaderSlotService);
@@ -1079,6 +1084,36 @@ export class GalleryComponent implements OnInit, OnDestroy {
       if (t) this.headerSlot.set(t);
     });
 
+    // GalleryReuseStrategy detaches this view behind an open photo and reattaches it on Back.
+    // By the time the outlet says so the DOM may be gone, so note where the user was first.
+    this.router.events.pipe(filter(e => e instanceof NavigationStart), takeUntilDestroyed()).subscribe(() => {
+      if (this.parked) return;
+      this.returnTo = { scroll: this.scrollContent()?.measureScrollOffset('top') ?? 0, focus: document.activeElement };
+    });
+    this.outlet?.detachEvents.pipe(takeUntilDestroyed()).subscribe(component => {
+      if (component !== this) return;
+      this.parked = true;
+      this.pageHelp.setDescription(null);
+      const t = this.galleryToolbar();
+      if (t) this.headerSlot.clear(t);
+    });
+    this.outlet?.attachEvents.pipe(takeUntilDestroyed()).subscribe(component => {
+      if (component !== this) return;
+      this.parked = false;
+      this.pageHelp.setDescription(I18N.gallery.help);
+      const t = this.galleryToolbar();
+      if (t) this.headerSlot.set(t);
+      this.tooltipPhoto.set(null);
+      const back = this.returnTo;
+      this.returnTo = null;
+      if (back) {
+        this.scrollContent()?.scrollTo({ top: back.scroll });
+        if (back.focus instanceof HTMLElement && back.focus.isConnected) back.focus.focus({ preventScroll: true });
+      }
+      void this.store.loadTypeCounts();
+      void this.store.loadFilterOptions();
+    });
+
     // Sync store.filterDrawerOpen signal → mat-sidenav. The details rail shares
     // this drawer, so it keeps the strip open on its own once the filters close.
     effect(() => {
@@ -1177,7 +1212,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private saveViewSnapshot(): void {
     if (!this.store.photos().length) return;
     this.store.viewSnapshot.set({
-      scrollTop: this.scrollContent()?.measureScrollOffset('top') ?? 0,
+      scrollTop: this.parked ? this.returnTo?.scroll ?? 0 : this.scrollContent()?.measureScrollOffset('top') ?? 0,
       albumId: this.route.snapshot.paramMap.get('albumId'),
       filterKey: this.store.filterKey(),
     });
@@ -1373,6 +1408,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   /** Ctrl+A selects all loaded photos unless focus is in an input or a dialog is open. */
   protected onSelectAllShortcut(event: Event): void {
+    if (this.parked) return;
     const target = event.target as HTMLElement | null;
     if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
     if (target?.isContentEditable) return;
@@ -2073,6 +2109,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   private setupResizeObserver(): void {
     this.resizeObserver = new ResizeObserver(entries => {
+      // A parked gallery measures 0; keep its layout for the return.
+      if (this.parked) return;
       for (const entry of entries) {
         this.containerWidth.set(Math.floor(entry.contentRect.width));
       }

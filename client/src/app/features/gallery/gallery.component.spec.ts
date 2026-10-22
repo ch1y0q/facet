@@ -1,7 +1,7 @@
 import type { Mock } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { computed, signal, WritableSignal } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Event as RouterEvent, NavigationStart, Router, RouterOutlet } from '@angular/router';
 import { By } from '@angular/platform-browser';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Subject, of, throwError } from 'rxjs';
@@ -24,6 +24,7 @@ import { MAX_COMPARE_PANES } from './synced-zoom.component';
 import { gridColumnCount } from './gallery-rows.util';
 import { UndoService } from '../../core/services/undo.service';
 import { SequenceKind } from '../../core/services/sequence-override.service';
+import { HeaderSlotService } from '../../core/services/header-slot.service';
 
 describe('GalleryComponent', () => {
   let component: GalleryComponent;
@@ -40,6 +41,7 @@ describe('GalleryComponent', () => {
     lang: WritableSignal<string>;
   };
   let routeMock: { snapshot: { paramMap: { get: Mock }; queryParams: Record<string, string> } };
+  let outletMock: { attachEvents: Subject<unknown>; detachEvents: Subject<unknown> };
 
   beforeEach(async () => {
     mockStore = {
@@ -141,6 +143,7 @@ describe('GalleryComponent', () => {
     };
 
     routeMock = { snapshot: { paramMap: { get: vi.fn(() => null) }, queryParams: {} } };
+    outletMock = { attachEvents: new Subject(), detachEvents: new Subject() };
 
     await TestBed.configureTestingModule({
       imports: [GalleryComponent],
@@ -159,6 +162,7 @@ describe('GalleryComponent', () => {
           },
         },
         { provide: ActivatedRoute, useValue: routeMock },
+        { provide: RouterOutlet, useValue: outletMock },
         { provide: MatDialog, useValue: { open: vi.fn() } },
         { provide: MatBottomSheet, useValue: { open: vi.fn() } },
         { provide: LiveAnnouncer, useValue: { announce: vi.fn(() => Promise.resolve()) } },
@@ -3277,6 +3281,87 @@ describe('GalleryComponent', () => {
       fixture!.detectChanges();
 
       expect(cards[4].contains(document.activeElement)).toBe(false);
+    });
+  });
+
+  // GalleryReuseStrategy detaches the gallery behind an open photo; the outlet's
+  // detach/attach events are the only signal the gallery gets.
+  describe('kept alive behind an open photo (rendered)', () => {
+    const photos = Array.from({ length: 3 }, (_, n) => ({
+      path: `/p${n}.jpg`, filename: `p${n}.jpg`, image_width: 4000, image_height: 3000,
+    }));
+    let fixture: ComponentFixture<GalleryComponent>;
+    let gallery: GalleryComponent;
+    let content: { measureScrollOffset(from: 'top'): number; scrollTo(options: ScrollToOptions): void };
+    let scrollTo: Mock;
+
+    beforeEach(() => {
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      mockStore.photos.set(photos);
+      mockStore.total.set(photos.length);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      gallery = fixture.componentInstance;
+      content = (gallery as unknown as { scrollContent(): typeof content }).scrollContent();
+      // jsdom has no Element.scrollTo.
+      scrollTo = vi.spyOn(content, 'scrollTo').mockImplementation(() => {}) as unknown as Mock;
+    });
+
+    afterEach(() => fixture.destroy());
+
+    function openPhoto(index: number): HTMLElement {
+      const tile = fixture.nativeElement.querySelector(`[data-pidx="${index}"] [tabindex]`) as HTMLElement;
+      tile.focus();
+      // Real navigation needs routes this spec does not have; the gallery only listens for the start.
+      (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(1, `/photo?path=${photos[index].path}`));
+      outletMock.detachEvents.next(gallery);
+      tile.blur();
+      return tile;
+    }
+
+    it('hands the header toolbar back while a photo is open, and takes it again on return', () => {
+      const header = TestBed.inject(HeaderSlotService);
+      expect(header.template()).not.toBeNull();
+      openPhoto(1);
+      expect(header.template()).toBeNull();
+      outletMock.attachEvents.next(gallery);
+      expect(header.template()).not.toBeNull();
+    });
+
+    it('returns to the scroll position and the card the photo was opened from', () => {
+      const measure = vi.spyOn(content, 'measureScrollOffset').mockReturnValue(640);
+      const tile = openPhoto(1);
+      // The Back navigation starts while the gallery is still detached and reads 0.
+      measure.mockReturnValue(0);
+      (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(2, '/', 'popstate'));
+      outletMock.attachEvents.next(gallery);
+      expect(scrollTo).toHaveBeenCalledWith({ top: 640 });
+      expect(document.activeElement).toBe(tile);
+    });
+
+    it('ignores Ctrl+A while parked, so the photo page cannot select the hidden grid', () => {
+      const ctrlA = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true }));
+      openPhoto(0);
+      ctrlA();
+      expect(mockStore.selectAll).not.toHaveBeenCalled();
+      outletMock.attachEvents.next(gallery);
+      ctrlA();
+      expect(mockStore.selectAll).toHaveBeenCalledOnce();
+    });
+
+    it('snapshots the opening scroll position when a parked gallery is destroyed', () => {
+      const measure = vi.spyOn(content, 'measureScrollOffset').mockReturnValue(640);
+      openPhoto(1);
+      // Detached, the viewport reads 0.
+      measure.mockReturnValue(0);
+      fixture.destroy();
+      expect((mockStore.viewSnapshot() as { scrollTop: number } | null)?.scrollTop).toBe(640);
+    });
+
+    it('ignores another gallery being detached', () => {
+      const header = TestBed.inject(HeaderSlotService);
+      outletMock.detachEvents.next({});
+      expect(header.template()).not.toBeNull();
     });
   });
 });
