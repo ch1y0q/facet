@@ -202,7 +202,10 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
             }
           </div>
         } @else {
-          <app-gallery-filter-sidebar />
+          <!-- Usually closed, and heavy enough that building it eagerly slowed every return from a photo. -->
+          @defer (on idle; when store.filterDrawerOpen()) {
+            <app-gallery-filter-sidebar />
+          }
         }
       </mat-sidenav>
 

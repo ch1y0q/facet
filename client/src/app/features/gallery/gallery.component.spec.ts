@@ -41,7 +41,7 @@ describe('GalleryComponent', () => {
   };
   let routeMock: { snapshot: { paramMap: { get: Mock }; queryParams: Record<string, string> } };
 
-  beforeEach(() => {
+  beforeEach(async () => {
     mockStore = {
       filters: signal<GalleryFilters>({ ...DEFAULT_FILTERS }),
       types: signal([
@@ -142,7 +142,8 @@ describe('GalleryComponent', () => {
 
     routeMock = { snapshot: { paramMap: { get: vi.fn(() => null) }, queryParams: {} } };
 
-    TestBed.configureTestingModule({
+    await TestBed.configureTestingModule({
+      imports: [GalleryComponent],
       providers: [
         provideNativeDateAdapter(),
         { provide: GalleryStore, useValue: mockStore },
@@ -173,7 +174,7 @@ describe('GalleryComponent', () => {
           },
         },
       ],
-    });
+    }).compileComponents();
     component = TestBed.runInInjectionContext(() => new GalleryComponent());
   });
 

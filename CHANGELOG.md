@@ -4,6 +4,10 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Going back from a photo to the gallery is faster.** The filter sidebar was rebuilt every time the gallery came back, even while closed. It now waits until the browser is idle or the drawer opens, which cuts the return roughly in three in Firefox and Chrome.
+
 ## [1.22.1] "Hypo" — 2026-10-21
 
 ### Fixed
