@@ -17,6 +17,7 @@ import { makePhoto } from '../../../../testing/photo.fixture';
                              [isEditionMode]="isEditionMode()"
                              [reviewGroup]="reviewGroup()" [reviewMark]="reviewMark()"
                              [reviewChanged]="reviewChanged()" [reviewReason]="reviewReason()"
+                             [reviewLocked]="reviewLocked()"
                              (reviewMarkToggle)="toggled.push($event)"
                              (selectionChange)="selected.push($event.photo.path)"
                              (doubleClicked)="opened.push($event.path)" />`,
@@ -31,6 +32,7 @@ class TestHostComponent {
   reviewChanged = signal(false);
   reviewReason = signal<{ key: string; value: number | null } | null>(null);
   reviewMark = signal<'keep' | 'remove' | null>(null);
+  reviewLocked = signal(false);
   toggled: string[] = [];
   selected: string[] = [];
   opened: string[] = [];
@@ -594,6 +596,22 @@ describe('PhotoCardComponent', () => {
       expect(fixture.componentInstance.toggled).toEqual([getCard().photo().path]);
       expect(fixture.componentInstance.selected).toEqual([]);
       expect(fixture.componentInstance.opened).toEqual([]);
+    });
+
+    it('a locked strip is aria-disabled, emits nothing and neither selects nor opens', () => {
+      fixture.componentInstance.reviewMark.set('remove');
+      fixture.componentInstance.reviewLocked.set(true);
+      fixture.detectChanges();
+      expect(strip()?.getAttribute('aria-disabled')).toBe('true');
+      strip()?.click();
+      expect(fixture.componentInstance.toggled).toEqual([]);
+      expect(fixture.componentInstance.selected).toEqual([]);
+      expect(fixture.componentInstance.opened).toEqual([]);
+      fixture.componentInstance.reviewLocked.set(false);
+      fixture.detectChanges();
+      expect(strip()?.getAttribute('aria-disabled')).toBeNull();
+      strip()?.click();
+      expect(fixture.componentInstance.toggled).toEqual([getCard().photo().path]);
     });
 
     it('dims a removed photo with brightness-50, never grayscale', () => {

@@ -40,7 +40,7 @@ describe('ServerToolRegistry', () => {
   let post: Mock;
   let report: Mock;
   let uiExecute: Mock;
-  let review: ReturnType<typeof signal<{ keep: string[]; remove: string[]; truncated: boolean }>>;
+  let review: ReturnType<typeof signal<{ keep: string[]; remove: string[]; truncated: boolean; applied?: { keep: string[]; remove: string[]; truncated: boolean } }>>;
   let hasReview: ReturnType<typeof signal<boolean>>;
   let service: ServerToolRegistry;
 
@@ -205,6 +205,10 @@ describe('ServerToolRegistry', () => {
     review.set({ keep: ['/k.jpg'], remove: ['/r.jpg'], truncated: false });
     await live.get('set_rating')!.execute({ rating: 4 }, {});
     expect(post.mock.calls[2][1].review_snapshot).toEqual({ keep: ['/k.jpg'], remove: ['/r.jpg'], truncated: false });
+    const applied = { keep: ['/ak.jpg'], remove: ['/ar.jpg'], truncated: false };
+    review.set({ keep: [], remove: [], truncated: false, applied });
+    await live.get('set_rating')!.execute({ rating: 4 }, {});
+    expect(post.mock.calls[3][1].review_snapshot).toEqual({ keep: [], remove: [], truncated: false, applied });
   });
 
   it('counts an auto_cull apply by its show_paths when the envelope has no changed', async () => {

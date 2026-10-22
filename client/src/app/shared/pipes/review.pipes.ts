@@ -2,7 +2,9 @@ import { Pipe, PipeTransform } from '@angular/core';
 
 import type { CullReason } from '../../features/gallery/burst-culling.pipes';
 import { REVIEW_KEEP_WHOLE_KINDS } from '../../features/gallery/gallery.store';
-import type { ReviewGroupLabel, ReviewMark, ReviewReason } from '../../features/gallery/gallery.store';
+import type {
+  AppliedGroup, AppliedMark, AppliedReceipt, ApplyUnit, ReviewGroupLabel, ReviewMark, ReviewReason,
+} from '../../features/gallery/gallery.store';
 
 /**
  * The effective keep/remove mark of one photo on an annotated pin: the user's own
@@ -111,5 +113,47 @@ export class ReviewReasonPipe implements PipeTransform {
 export class ReviewGroupKeptWholePipe implements PipeTransform {
   transform(group: number, kinds: ReadonlyMap<number, string>): boolean {
     return REVIEW_KEEP_WHOLE_KINDS.has(kinds.get(group) ?? '');
+  }
+}
+
+/** Whether the user already applied this photo: its Keep / Remove strip and the K / R keys are inert. */
+@Pipe({ name: 'reviewPathLocked', standalone: true, pure: true })
+export class ReviewPathLockedPipe implements PipeTransform {
+  transform(path: string, applied: ReadonlyMap<string, AppliedMark>): boolean {
+    return applied.has(path);
+  }
+}
+
+/** Whether every pinned photo of a group was applied. */
+@Pipe({ name: 'reviewGroupApplied', standalone: true, pure: true })
+export class ReviewGroupAppliedPipe implements PipeTransform {
+  transform(group: number, groups: ReadonlyMap<number, AppliedGroup>): boolean {
+    return groups.has(group);
+  }
+}
+
+/** The receipt summary of an applied group (kept-whole count, availability), or null when it is not applied. */
+@Pipe({ name: 'reviewGroupReceipt', standalone: true, pure: true })
+export class ReviewGroupReceiptPipe implements PipeTransform {
+  transform(group: number, groups: ReadonlyMap<number, AppliedGroup>): AppliedGroup | null {
+    return groups.get(group) ?? null;
+  }
+}
+
+/** What Apply would send for one group, or null when the group has nothing left to apply. */
+@Pipe({ name: 'reviewApplyPlan', standalone: true, pure: true })
+export class ReviewApplyPlanPipe implements PipeTransform {
+  transform(group: number, plan: ReadonlyMap<number, ApplyUnit>): ApplyUnit | null {
+    return plan.get(group) ?? null;
+  }
+}
+
+/** Key plus params naming an applied group in the status line's menu: its assistant heading, else its number. */
+@Pipe({ name: 'reviewReceiptLabel', standalone: true, pure: true })
+export class ReviewReceiptLabelPipe implements PipeTransform {
+  transform(receipt: AppliedReceipt): ReviewGroupLabel {
+    if (receipt.label) return { key: `culling.group_reason.${receipt.label.key}`, params: receipt.label.params };
+    if (receipt.group === null) return { key: 'gallery.pinned.review.applied_marks_only', params: {} };
+    return { key: 'gallery.pinned.review.group_title', params: { group: receipt.group } };
   }
 }

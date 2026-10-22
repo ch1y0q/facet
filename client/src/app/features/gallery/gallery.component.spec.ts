@@ -121,6 +121,13 @@ describe('GalleryComponent', () => {
       pinnedKinds: signal(new Map<number, string>()),
       pinnedReasons: signal(new Map<string, { key: string; value?: number }>()),
       reviewChanges: signal({ changed: 0, keep: 0, remove: 0 }),
+      appliedMarks: signal(new Map<string, { mark: 'keep' | 'remove'; receiptId: string }>()),
+      appliedGroups: signal(new Map<number, { receiptId: string; keptWhole: number; unavailable: boolean }>()),
+      appliedReceiptList: signal([] as Record<string, unknown>[]),
+      applyPlan: signal({ units: [] as Record<string, unknown>[], byGroup: new Map<number, Record<string, unknown>>(), counts: { groups: 0, reject: 0, unreject: 0 } }),
+      applying: signal(false),
+      applyGroups: vi.fn(() => Promise.resolve(true)),
+      undoApplied: vi.fn(() => Promise.resolve()),
       review: signal({ keep: [] as string[], remove: [] as string[], groups_total: 0, groups_visited: 0, groups_changed: 0 }),
       markGroupsVisited: vi.fn(),
       setGroupMarks: vi.fn(),
@@ -3939,6 +3946,286 @@ describe('GalleryComponent', () => {
         });
       });
 
+      describe('apply my marks', () => {
+        const unit = (group: number, keep: string[], reject: string[], kind = 'burst') =>
+          ({ group, kind, ungrouped: false, keep, reject, unreject: [] as string[] });
+        const u1 = unit(1, ['/g0.jpg', '/g2.jpg'], ['/g1.jpg', '/g3.jpg']);
+        const u2 = unit(2, ['/g4.jpg', '/g6.jpg'], ['/g5.jpg']);
+        const byTest = (html: ParentNode, id: string) => [...html.querySelectorAll(`[data-testid="${id}"]`)] as HTMLButtonElement[];
+        const strips = (html: HTMLElement) => [...html.querySelectorAll('app-photo-card button[class*="z-30"][class*="h-7"]')] as HTMLButtonElement[];
+        const edition = (on = true) => { (mockAuth as { isEdition: unknown }).isEdition = vi.fn(() => on); };
+        const planOf = (...units: (typeof u1)[]) => mockStore.applyPlan.set({
+          units, byGroup: new Map(units.map(u => [u.group, u])),
+          counts: { groups: units.length, reject: units.reduce((n, u) => n + u.reject.length, 0), unreject: 0 },
+        });
+        const fakeApply = () => mockStore.applyGroups.mockImplementation(async (units: (typeof u1)[]) => {
+          for (const u of units) {
+            const id = `r${u.group}`;
+            const paths = [...u.keep, ...u.reject];
+            mockStore.appliedGroups.update((m: Map<number, unknown>) => new Map(m).set(u.group, { receiptId: id, keptWhole: 0, unavailable: false }));
+            mockStore.appliedReceiptList.update((l: unknown[]) => [...l, {
+              receiptId: id, paths, group: u.group, kind: u.kind, label: null, firstFilename: `first-${u.group}.jpg`, skippedKeepWhole: [],
+            }]);
+            mockStore.appliedMarks.update((m: Map<string, unknown>) => new Map([...m, ...paths.map(p => [p, { mark: 'keep' as const, receiptId: id }] as const)]));
+          }
+          return true;
+        });
+        const dialogOpen = (confirmed: boolean) => {
+          const dialog = (fixture!.componentInstance as unknown as { dialog: { open(...a: unknown[]): unknown } }).dialog;
+          return vi.spyOn(dialog, 'open').mockReturnValue({ afterClosed: () => of(confirmed) } as never);
+        };
+
+        afterEach(() => {
+          edition(false);
+          mockStore.appliedMarks.set(new Map());
+          mockStore.appliedGroups.set(new Map());
+          mockStore.appliedReceiptList.set([]);
+          mockStore.applying.set(false);
+          planOf();
+          mockStore.applyGroups.mockReset();
+          mockStore.applyGroups.mockResolvedValue(true);
+          mockStore.undoApplied.mockClear();
+        });
+
+        it('shows Apply per group and Apply my marks for edition users on a pin with marks, and nothing otherwise', () => {
+          pin({});
+          planOf(u1, u2);
+          let html = render('grid', false);
+          expect(byTest(html, 'review-apply-group')).toHaveLength(0);
+          expect(byTest(html, 'apply-my-marks')).toHaveLength(0);
+          fixture!.destroy();
+          edition();
+          html = render('grid', false);
+          expect(byTest(html, 'review-apply-group')).toHaveLength(2);
+          expect(byTest(html, 'apply-my-marks')).toHaveLength(1);
+          fixture!.destroy();
+          pin({ marks: false });
+          planOf();
+          html = render('grid', false);
+          expect(byTest(html, 'review-apply-group')).toHaveLength(0);
+          expect(byTest(html, 'apply-my-marks')).toHaveLength(0);
+        });
+
+        it('Apply on a group sends exactly that group\'s unit', () => {
+          pin({});
+          edition();
+          planOf(u1, u2);
+          const html = render('grid', false);
+          byTest(html, 'review-apply-group')[1].click();
+          expect(mockStore.applyGroups.mock.calls).toEqual([[[u2]]]);
+        });
+
+        it('disables Apply while a request is in flight', () => {
+          pin({});
+          edition();
+          planOf(u1, u2);
+          mockStore.applying.set(true);
+          const html = render('grid', false);
+          expect(byTest(html, 'review-apply-group').every(b => b.disabled)).toBe(true);
+          expect(byTest(html, 'apply-my-marks')[0].disabled).toBe(true);
+        });
+
+        it('after Apply the row stays: Applied chip, a persistent Undo, locked mark buttons, and the kept-whole note', () => {
+          pin({});
+          echo();
+          edition();
+          planOf(u1, u2);
+          const html = render('grid', false);
+          fakeApply();
+          mockStore.appliedGroups.set(new Map());
+          byTest(html, 'review-apply-group')[0].click();
+          mockStore.appliedGroups.update((m: Map<number, unknown>) => new Map(m).set(1, { receiptId: 'r1', keptWhole: 2, unavailable: false }));
+          planOf(u2);
+          fixture!.detectChanges();
+          expect(headers(html)).toHaveLength(2);
+          expect(byTest(html, 'review-applied-chip')).toHaveLength(1);
+          expect(byTest(html, 'review-undo-group')).toHaveLength(1);
+          expect(byTest(html, 'review-apply-group')).toHaveLength(1);
+          expect(byTest(html, 'review-undo-group')[0].getAttribute('aria-label')).toBe('gallery.pinned.review.undo_apply_aria {"group":1}');
+          expect(byTest(html, 'review-kept-whole-note')[0].textContent).toContain('gallery.pinned.review.kept_whole_note');
+          const first = [...html.querySelectorAll('[data-review-group-actions]')][0];
+          for (const mode of ['keep_all', 'keep_best', 'remove_all']) {
+            expect(first.querySelector(`[data-mode="${mode}"]`)!.getAttribute('aria-disabled')).toBe('true');
+          }
+          byTest(html, 'review-undo-group')[0].click();
+          expect(mockStore.undoApplied).toHaveBeenCalledWith('r1');
+        });
+
+        it('keeps both Undo buttons when group 1 is applied and then group 2 (B3)', () => {
+          pin({});
+          edition();
+          planOf(u1, u2);
+          const html = render('grid', false);
+          fakeApply();
+          byTest(html, 'review-apply-group')[0].click();
+          fixture!.detectChanges();
+          byTest(html, 'review-apply-group')[0].click();
+          fixture!.detectChanges();
+          const undos = byTest(html, 'review-undo-group');
+          expect(undos).toHaveLength(2);
+          undos[0].click();
+          undos[1].click();
+          expect(mockStore.undoApplied.mock.calls).toEqual([['r1'], ['r2']]);
+        });
+
+        it('disables the Undo of a receipt the server no longer holds', () => {
+          pin({});
+          edition();
+          mockStore.appliedGroups.set(new Map([[1, { receiptId: 'r1', keptWhole: 0, unavailable: true }]]));
+          const html = render('grid', false);
+          expect(byTest(html, 'review-undo-group')[0].getAttribute('aria-disabled')).toBe('true');
+          byTest(html, 'review-undo-group')[0].click();
+          expect(mockStore.undoApplied).not.toHaveBeenCalled();
+        });
+
+        for (const [name, mode, grouped] of [
+          ['row instance (grouped review)', 'grid', true],
+          ['grid instance', 'grid', false],
+          ['mosaic instance', 'mosaic', false],
+        ] as const) {
+          it(`locks the Keep / Remove strip of applied photos on the ${name}, and only those`, () => {
+            pin({ groups: grouped });
+            edition();
+            mockStore.appliedMarks.set(new Map([
+              ['/g0.jpg', { mark: 'keep' as const, receiptId: 'r1' }],
+              ['/g1.jpg', { mark: 'remove' as const, receiptId: 'r1' }],
+            ]));
+            const html = render(mode, false);
+            const all = strips(html);
+            expect(all).toHaveLength(7);
+            const locked = all.filter(b => b.getAttribute('aria-disabled') === 'true');
+            expect(locked).toHaveLength(2);
+            const cards = [...html.querySelectorAll('app-photo-card')];
+            expect(locked.map(b => cards.find(c => c.contains(b))!.getAttribute('data-pidx'))).toEqual(['0', '1']);
+            locked[0].click();
+            fixture!.detectChanges();
+            expect(mockStore.setReviewMark).not.toHaveBeenCalled();
+            expect(mockStore.userMarks().size).toBe(0);
+          });
+        }
+
+        it('K and R fall through on an applied photo', () => {
+          pin({});
+          edition();
+          mockStore.appliedMarks.set(new Map([['/g0.jpg', { mark: 'keep' as const, receiptId: 'r1' }]]));
+          render('grid', false);
+          mockStore.setReviewMark.mockClear();
+          inst().activeIndex.set(0);
+          const ev = new KeyboardEvent('keydown', { key: 'k', cancelable: true });
+          Object.defineProperty(ev, 'target', { value: null, configurable: true });
+          inst().onGridKeydown(ev);
+          expect(mockStore.setReviewMark).not.toHaveBeenCalled();
+          expect(ev.defaultPrevented).toBe(false);
+          inst().activeIndex.set(1);
+          const ev2 = new KeyboardEvent('keydown', { key: 'r', cancelable: true });
+          Object.defineProperty(ev2, 'target', { value: null, configurable: true });
+          inst().onGridKeydown(ev2);
+          expect(mockStore.setReviewMark).toHaveBeenCalledWith('/g1.jpg', 'remove');
+        });
+
+        describe('Apply my marks', () => {
+          it('names the three counts in a confirm dialog, and Cancel posts nothing', () => {
+            pin({});
+            echo();
+            edition();
+            planOf(u1, u2);
+            mockStore.applyPlan.update((plan: Record<string, unknown>) => ({ ...plan, counts: { groups: 2, reject: 3, unreject: 1 } }));
+            const html = render('grid', false);
+            const open = dialogOpen(false);
+            byTest(html, 'apply-my-marks')[0].click();
+            expect(open).toHaveBeenCalledTimes(1);
+            const data = (open.mock.calls[0][1] as { data: { title: string; message: string } }).data;
+            expect(data.title).toBe('gallery.pinned.review.apply_all_title');
+            expect(data.message).toBe('gallery.pinned.review.apply_all_confirm_plural {"reject":3,"unreject":1,"groups":2}');
+            expect(mockStore.applyGroups).not.toHaveBeenCalled();
+          });
+
+          it('Confirm posts every appliable group once', async () => {
+            pin({});
+            edition();
+            planOf(u1, u2);
+            const html = render('grid', false);
+            dialogOpen(true);
+            byTest(html, 'apply-my-marks')[0].click();
+            await vi.waitFor(() => expect(mockStore.applyGroups).toHaveBeenCalledTimes(1));
+            expect(mockStore.applyGroups).toHaveBeenCalledWith([u1, u2]);
+          });
+
+          it('uses the singular wording for one group', () => {
+            pin({});
+            echo();
+            edition();
+            planOf(u1);
+            const html = render('grid', false);
+            const open = dialogOpen(false);
+            byTest(html, 'apply-my-marks')[0].click();
+            expect((open.mock.calls[0][1] as { data: { message: string } }).data.message)
+              .toMatch(/^gallery\.pinned\.review\.apply_all_confirm \{/);
+          });
+
+          it('is disabled when nothing is left to apply', () => {
+            pin({});
+            edition();
+            planOf();
+            const html = render('grid', false);
+            expect(byTest(html, 'apply-my-marks')[0].disabled).toBe(true);
+          });
+
+          it('is the only control of a marks-only pin: no group headers, no per-group Apply', () => {
+            pin({ groups: false });
+            edition();
+            const only = { group: null, kind: null, ungrouped: true, keep: ['/g0.jpg'], reject: ['/g1.jpg'], unreject: [] as string[] };
+            mockStore.applyPlan.set({ units: [only], byGroup: new Map(), counts: { groups: 1, reject: 1, unreject: 0 } });
+            const html = render('grid', false);
+            expect(headers(html)).toHaveLength(0);
+            expect(byTest(html, 'review-apply-group')).toHaveLength(0);
+            expect(byTest(html, 'apply-my-marks')).toHaveLength(1);
+          });
+        });
+
+        describe('Applied menu', () => {
+          const receipts = [
+            { receiptId: 'r3', paths: ['/x.jpg'], group: 3, kind: 'burst', label: { key: 'burst', params: { n: 2 } }, firstFilename: 'IMG_0003.jpg', skippedKeepWhole: [] },
+            { receiptId: 'r4', paths: ['/y.jpg'], group: 4, kind: 'similar', label: null, firstFilename: 'IMG_0004.jpg', skippedKeepWhole: [] },
+          ];
+          const open = (html: HTMLElement) => {
+            byTest(html, 'applied-menu')[0].click();
+            fixture!.detectChanges();
+            return [...document.body.querySelectorAll('[data-testid="applied-menu-undo"]')] as HTMLButtonElement[];
+          };
+
+          it('still lists a group after a different pin replaced the list, labelled, and Undo from it calls the route (NEW-B1)', async () => {
+            pin({});
+            edition();
+            echo();
+            mockStore.appliedReceiptList.set(receipts);
+            const html = render('grid', false);
+            const items = open(html);
+            await fixture!.whenStable();
+            expect(byTest(html, 'applied-menu')[0].textContent).toContain('gallery.pinned.review.applied_menu_plural {"count":2}');
+            expect(items).toHaveLength(2);
+            expect(items[0].textContent).toContain('gallery.pinned.review.applied_menu_entry');
+            expect(items[0].textContent).toContain('IMG_0003.jpg');
+            expect(items[0].textContent).toContain('culling.group_reason.burst');
+            expect(items[1].textContent).toContain('gallery.pinned.review.group_title');
+            items[0].click();
+            expect(mockStore.undoApplied).toHaveBeenCalledWith('r3');
+          });
+
+          it('is absent for a non-edition user and when there is no receipt', () => {
+            pin({});
+            mockStore.appliedReceiptList.set(receipts);
+            let html = render('grid', false);
+            expect(byTest(html, 'applied-menu')).toHaveLength(0);
+            fixture!.destroy();
+            edition();
+            mockStore.appliedReceiptList.set([]);
+            html = render('grid', false);
+            expect(byTest(html, 'applied-menu')).toHaveLength(0);
+          });
+        });
+      });
+
       describe('group actions', () => {
         it('renders three real buttons per header, each naming its group, that call setGroupMarks', () => {
           pin({});
@@ -4128,6 +4415,26 @@ describe('GalleryComponent', () => {
           await vi.waitFor(() => expect(writeText).toHaveBeenCalled());
           expect(writeText).toHaveBeenCalledWith(
             'I reviewed the photos in Facet: I changed 3 (2 keep, 1 remove), visited 4 of 5 groups. Use my marks.');
+        });
+
+        it('labels applied groups and keeps the tail only while marks remain pending', async () => {
+          const html = await setup(true);
+          mockStore.review.set({ keep: [], remove: [], groups_total: 5, groups_visited: 4, groups_changed: 2, groups_applied: 2 } as never);
+          mockStore.applyPlan.set({ units: [{ group: 3 }], byGroup: new Map(), counts: { groups: 1, reject: 0, unreject: 0 } });
+          copyButton(html)!.click();
+          await vi.waitFor(() => expect(writeText).toHaveBeenCalled());
+          expect(writeText).toHaveBeenCalledWith(
+            'I reviewed the photos in Facet: I changed 3 (2 keep, 1 remove), visited 4 of 5 groups and already applied 2 of them myself; leave those alone. Apply auto_cull using my marks.');
+        });
+
+        it('drops the tail when everything is applied', async () => {
+          const html = await setup(true);
+          mockStore.review.set({ keep: [], remove: [], groups_total: 5, groups_visited: 4, groups_changed: 2, groups_applied: 5 } as never);
+          mockStore.applyPlan.set({ units: [], byGroup: new Map(), counts: { groups: 0, reject: 0, unreject: 0 } });
+          copyButton(html)!.click();
+          await vi.waitFor(() => expect(writeText).toHaveBeenCalled());
+          expect(writeText).toHaveBeenCalledWith(
+            'I reviewed the photos in Facet: I changed 3 (2 keep, 1 remove), visited 4 of 5 groups and already applied 5 of them myself; leave those alone.');
         });
 
         it('falls back to a hidden textarea and execCommand when navigator.clipboard is undefined', async () => {

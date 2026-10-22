@@ -260,11 +260,14 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
         @if (reviewMark(); as mark) {
           @let reasonText = reviewReason() | cullReason;
           <button type="button"
-                  class="absolute inset-x-0 bottom-0 z-30 h-7 flex items-center justify-center gap-1 text-white text-xs font-medium cursor-pointer"
+                  class="absolute inset-x-0 bottom-0 z-30 h-7 flex items-center justify-center gap-1 text-white text-xs font-medium"
+                  [class.cursor-pointer]="!reviewLocked()"
+                  [class.cursor-not-allowed]="reviewLocked()"
+                  [attr.aria-disabled]="reviewLocked() ? 'true' : null"
                   [class.bg-emerald-600/90]="mark === 'keep'"
                   [class.bg-red-600/90]="mark === 'remove'"
                   [attr.aria-label]="((mark | reviewAriaKey:reviewGroup()) | translate:{ n: reviewGroup() ?? 0 }) + (reasonText ? ': ' + reasonText : '')"
-                  [matTooltip]="('gallery.pinned.review.toggle_tooltip' | translate) + (reasonText ? ': ' + reasonText : '')"
+                  [matTooltip]="((reviewLocked() ? 'gallery.pinned.review.applied' : 'gallery.pinned.review.toggle_tooltip') | translate) + (reasonText ? ': ' + reasonText : '')"
                   (click)="onReviewMarkClick($event)"
                   (dblclick)="$event.stopPropagation()"
                   (keydown.enter)="$event.stopPropagation()"
@@ -718,9 +721,12 @@ export class PhotoCardComponent {
   readonly reviewMark = input<ReviewMark | null>(null);
   /** The user clicked the mark badge; emits the photo path. */
   readonly reviewMarkToggle = output<string>();
+  /** The user already applied this photo: the strip stays visible but is inert. */
+  readonly reviewLocked = input(false);
 
   onReviewMarkClick(event: Event): void {
     event.stopPropagation();
+    if (this.reviewLocked()) return;
     this.reviewMarkToggle.emit(this.photo().path);
   }
 

@@ -564,6 +564,28 @@ describe('UI tool registry and handlers', () => {
       });
     });
 
+    it('carries what the user applied under review.applied, not in the pending keep / remove lists', async () => {
+      router.url = '/photo?path=a.jpg';
+      store.setReviewMark('/b.jpg', 'remove');
+      store.setReviewMark('/c.jpg', 'keep');
+      store.appliedMarks.set(new Map([
+        ['/a.jpg', { mark: 'keep' as const, receiptId: 'r1' }],
+        ['/c.jpg', { mark: 'keep' as const, receiptId: 'r1' }],
+        ['/d.jpg', { mark: 'remove' as const, receiptId: 'r1' }],
+      ]));
+      expect(await run('ui_get_context')).toMatchObject({
+        ok: true,
+        data: {
+          review: {
+            keep: [],
+            remove: ['/b.jpg'],
+            applied: { keep: ['/a.jpg', '/c.jpg'], remove: ['/d.jpg'], truncated: false },
+            groups_applied: 0,
+          },
+        },
+      });
+    });
+
     it('is reported as pinned by ui_get_context', async () => {
       byPaths(['/a.jpg'], []);
       await run('ui_show_photos', { paths: ['/a.jpg'] });
@@ -694,7 +716,8 @@ describe('UI tool registry and handlers', () => {
         expect(since.ok).toBe(true);
         expect(since.data.user_activity.items).toEqual([]);
         expect(since.data.user_activity.until).toBe(first.user_activity.until);
-        expect(first.review).toMatchObject({ groups_total: 0, groups_visited: 0, groups_changed: 0 });
+        expect(first.review).toMatchObject({ groups_total: 0, groups_visited: 0, groups_changed: 0, groups_applied: 0 });
+        expect((first.review as unknown as { applied: unknown }).applied).toEqual({ keep: [], remove: [], truncated: false });
         expect(await run('ui_get_context', { activity_since: -1 })).toMatchObject({ ok: false, error: 'invalid_input' });
         expect(await run('ui_get_context', { activity_since: 'x' })).toMatchObject({ ok: false, error: 'invalid_input' });
       });

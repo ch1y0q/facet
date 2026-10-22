@@ -8,6 +8,8 @@ export type UserActivityKind =
   | 'favorite'
   | 'review_mark'
   | 'review_group'
+  | 'review_apply'
+  | 'review_apply_undo'
   | 'tags'
   | 'album'
   | 'navigate';

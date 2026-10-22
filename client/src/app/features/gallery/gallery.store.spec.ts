@@ -1313,7 +1313,10 @@ describe('GalleryStore', () => {
       describe('progress', () => {
         it('counts visited groups, resets on showPaths and reports the three numbers in review()', async () => {
           await pin();
-          expect(store.review()).toEqual({ keep: [], remove: [], groups_total: 3, groups_visited: 0, groups_changed: 0, truncated: false });
+          expect(store.review()).toEqual({
+            keep: [], remove: [], groups_total: 3, groups_visited: 0, groups_changed: 0, groups_applied: 0, truncated: false,
+            applied: { keep: [], remove: [], truncated: false },
+          });
           store.markGroupsVisited([1]);
           expect(store.review().groups_visited).toBe(1);
           store.markGroupsVisited([1, 3]);
@@ -1494,6 +1497,318 @@ describe('GalleryStore', () => {
     it('clearPinned reloads the filtered view', async () => {
       await store.clearPinned();
       expectFilteredReload();
+    });
+  });
+
+  describe('apply my marks (applyPlan, applyGroups, undoApplied)', () => {
+    const seven = ['/p1.jpg', '/p2.jpg', '/p3.jpg', '/p4.jpg', '/p5.jpg', '/p6.jpg', '/p7.jpg'];
+    const groups = [1, 1, 1, 2, 2, 3, 3];
+    const kinds = ['burst', 'burst', 'burst', 'bracket', 'bracket', 'similar', 'similar'];
+    const marks = ['keep', 'remove', 'remove', 'keep', 'remove', 'keep', 'remove'] as const;
+    const labels = seven.map((_, i) => ({ key: i < 3 ? 'burst' : 'frame_count', params: { n: i } }));
+    const journalItems = () => TestBed.inject(UserActivityJournal).since().items;
+    const applyRoute = '/culling/apply_marks';
+    const undoRoute = '/culling/undo_apply_marks';
+    const result = (index: number, o: { rej?: string[]; unrej?: string[]; whole?: string[] } = {}) => ({
+      index,
+      rejected: o.rej?.length ?? 0,
+      unrejected: o.unrej?.length ?? 0,
+      noop: 0,
+      rejected_paths: o.rej ?? [],
+      unrejected_paths: o.unrej ?? [],
+      skipped_keep_whole: o.whole ?? [],
+      pairs: 1,
+      receipt_id: `rcpt-${index}`,
+    });
+    const answer = (groupsOut: ReturnType<typeof result>[]) => of({ groups: groupsOut, rejected: 0, unrejected: 0, noop: 0, pairs: 0 });
+    const pin = (extra: Record<string, unknown> = {}) => {
+      apiPost.mockImplementation((path: string, body?: { paths?: string[] }) => path === '/photos/by_paths'
+        ? of({
+          photos: (body?.paths ?? []).map(p => makePhoto({ path: p, star_rating: 3, is_rejected: p === '/p6.jpg' ? true : null })),
+          total: 7,
+          missing: [],
+        })
+        : of({}));
+      return store.showPaths(seven, { groups, marks: [...marks], kinds, labels, ...extra });
+    };
+    const posts = (route: string) => apiPost.mock.calls.filter(c => c[0] === route);
+    const photo = (path: string) => store.photos().find(p => p.path === path)!;
+    const unitOf = (group: number) => store.applyPlan().byGroup.get(group)!;
+
+    beforeEach(async () => {
+      apiGet.mockImplementation((path: string) => of(path === '/config' ? makeConfig() : makePhotosResponse()));
+      await pin();
+    });
+
+    describe('applyPlan', () => {
+      it('splits each group into keep / reject / un-reject from the effective marks, never rejecting a keep-whole kind', () => {
+        expect(unitOf(1)).toEqual({ group: 1, kind: 'burst', ungrouped: false, keep: ['/p1.jpg'], reject: ['/p2.jpg', '/p3.jpg'], unreject: [] });
+        // bracket: the Remove-marked frame travels as a Keep, the cull keeps the set whole
+        expect(unitOf(2)).toEqual({ group: 2, kind: 'bracket', ungrouped: false, keep: ['/p4.jpg', '/p5.jpg'], reject: [], unreject: [] });
+        // a Keep-marked photo that is rejected is un-rejected
+        expect(unitOf(3)).toEqual({ group: 3, kind: 'similar', ungrouped: false, keep: ['/p6.jpg'], reject: ['/p7.jpg'], unreject: ['/p6.jpg'] });
+        expect(store.applyPlan().counts).toEqual({ groups: 3, reject: 3, unreject: 1 });
+      });
+
+      it('lets the user mark win over the assistant mark and leaves out unmarked and applied paths', async () => {
+        store.setReviewMark('/p1.jpg', 'remove');
+        expect(unitOf(1).reject).toEqual(['/p1.jpg', '/p2.jpg', '/p3.jpg']);
+        apiPost.mockImplementation((p: string) => p === applyRoute ? answer([result(0, { rej: ['/p1.jpg'] })]) : of({}));
+        await store.applyGroups([unitOf(1)]);
+        expect(store.applyPlan().byGroup.has(1)).toBe(false);
+        expect(store.applyPlan().counts.groups).toBe(2);
+      });
+
+      it('is empty for a pin without marks', async () => {
+        await store.showPaths(seven, { groups });
+        expect(store.applyPlan().units).toEqual([]);
+        expect(store.applyPlan().counts).toEqual({ groups: 0, reject: 0, unreject: 0 });
+      });
+
+      it('is one synthetic unit without a kind for a marks-only pin', async () => {
+        await store.showPaths(['/p1.jpg', '/p2.jpg'], { marks: ['keep', 'remove'] });
+        expect(store.applyPlan().units).toEqual([
+          { group: null, kind: null, ungrouped: true, keep: ['/p1.jpg'], reject: ['/p2.jpg'], unreject: [] },
+        ]);
+      });
+    });
+
+    describe('applyGroups', () => {
+      it('posts the exact body once for several groups and patches only is_rejected from the answer', async () => {
+        apiPost.mockClear();
+        apiPost.mockImplementation((p: string) => p === applyRoute
+          ? answer([result(0, { rej: ['/p2.jpg', '/p3.jpg'] }), result(1), result(2, { rej: ['/p7.jpg'], unrej: ['/p6.jpg'] })])
+          : of({}));
+        const ok = await store.applyGroups(store.applyPlan().units);
+        expect(ok).toBe(true);
+        expect(posts(applyRoute)).toHaveLength(1);
+        expect(posts(applyRoute)[0][1]).toEqual({
+          groups: [
+            { kind: 'burst', ungrouped: false, keep_paths: ['/p1.jpg'], reject_paths: ['/p2.jpg', '/p3.jpg'] },
+            { kind: 'bracket', ungrouped: false, keep_paths: ['/p4.jpg', '/p5.jpg'], reject_paths: [] },
+            { kind: 'similar', ungrouped: false, keep_paths: ['/p6.jpg'], reject_paths: ['/p7.jpg'] },
+          ],
+        });
+        expect(photo('/p2.jpg').is_rejected).toBe(true);
+        expect(photo('/p7.jpg').is_rejected).toBe(true);
+        expect(photo('/p6.jpg').is_rejected).toBe(false);
+        expect(photo('/p1.jpg').is_rejected).toBeNull();
+        for (const p of seven) expect(photo(p).star_rating).toBe(3);
+      });
+
+      it('posts a marks-only pin as one ungrouped unit with no kind', async () => {
+        await store.showPaths(['/p1.jpg', '/p2.jpg'], { marks: ['keep', 'remove'] });
+        apiPost.mockClear();
+        apiPost.mockImplementation((p: string) => p === applyRoute ? answer([result(0, { rej: ['/p2.jpg'] })]) : of({}));
+        await store.applyGroups(store.applyPlan().units);
+        expect(posts(applyRoute)[0][1]).toEqual({ groups: [{ ungrouped: true, keep_paths: ['/p1.jpg'], reject_paths: ['/p2.jpg'] }] });
+        expect(store.appliedReceipts().get('rcpt-0')).toMatchObject({ group: null, kind: null });
+      });
+
+      it('changes nothing and says so when the request fails', async () => {
+        apiPost.mockImplementation((p: string) => p === applyRoute ? throwError(() => new HttpErrorResponse({ status: 500 })) : of({}));
+        const ok = await store.applyGroups([unitOf(1)]);
+        expect(ok).toBe(false);
+        expect(store.appliedMarks().size).toBe(0);
+        expect(store.appliedReceipts().size).toBe(0);
+        expect(photo('/p2.jpg').is_rejected).toBeNull();
+        expect(snackOpen).toHaveBeenCalledWith('gallery.pinned.review.apply_failed', '', expect.anything());
+        expect(store.applying()).toBe(false);
+        expect(journalItems().filter(i => i.kind === 'review_apply')).toHaveLength(0);
+      });
+
+      it('records the frames the server kept whole as keep and does not show them rejected', async () => {
+        apiPost.mockImplementation((p: string) => p === applyRoute
+          ? answer([result(0, { rej: ['/p3.jpg'], whole: ['/p2.jpg'] })])
+          : of({}));
+        await store.applyGroups([unitOf(1)]);
+        expect(store.appliedMarks().get('/p2.jpg')).toEqual({ mark: 'keep', receiptId: 'rcpt-0' });
+        expect(store.appliedMarks().get('/p3.jpg')).toEqual({ mark: 'remove', receiptId: 'rcpt-0' });
+        expect(photo('/p2.jpg').is_rejected).toBeNull();
+        expect(photo('/p3.jpg').is_rejected).toBe(true);
+        expect(store.appliedReceipts().get('rcpt-0')?.skippedKeepWhole).toEqual(['/p2.jpg']);
+        expect(store.appliedGroups().get(1)).toEqual({ receiptId: 'rcpt-0', keptWhole: 1, unavailable: false });
+      });
+
+      it('ignores a second call while one is in flight', async () => {
+        const reply = new Subject<unknown>();
+        apiPost.mockClear();
+        apiPost.mockImplementation((p: string) => p === applyRoute ? reply.asObservable().pipe(take(1)) : of({}));
+        const first = store.applyGroups([unitOf(1)]);
+        expect(store.applying()).toBe(true);
+        expect(await store.applyGroups([unitOf(2)])).toBe(false);
+        reply.next({ groups: [result(0)], rejected: 0, unrejected: 0, noop: 0, pairs: 0 });
+        await first;
+        expect(posts(applyRoute)).toHaveLength(1);
+        expect(store.applying()).toBe(false);
+      });
+
+      it('keeps both receipts and both applied groups when one group is applied and then another (B3)', async () => {
+        apiPost.mockImplementation((p: string) => p === applyRoute ? answer([result(0, { rej: ['/p2.jpg', '/p3.jpg'] })]) : of({}));
+        await store.applyGroups([unitOf(1)]);
+        apiPost.mockImplementation((p: string) => p === applyRoute ? answer([{ ...result(0), receipt_id: 'rcpt-b' }]) : of({}));
+        await store.applyGroups([unitOf(2)]);
+        expect([...store.appliedReceipts().keys()].sort()).toEqual(['rcpt-0', 'rcpt-b']);
+        expect(store.appliedGroups().get(1)?.receiptId).toBe('rcpt-0');
+        expect(store.appliedGroups().get(2)?.receiptId).toBe('rcpt-b');
+        expect(store.appliedReceiptList()).toHaveLength(2);
+      });
+
+      it('journals one review_apply entry per group', async () => {
+        apiPost.mockImplementation((p: string) => p === applyRoute
+          ? answer([result(0, { rej: ['/p2.jpg', '/p3.jpg'] }), result(1, { whole: ['/p5.jpg'] })])
+          : of({}));
+        await store.applyGroups([unitOf(1), unitOf(2)]);
+        const items = journalItems().filter(i => i.kind === 'review_apply');
+        expect(items).toHaveLength(2);
+        expect(items[0].value).toEqual({ group: 1, rejected: 2, unrejected: 0, kept_whole: 0 });
+        expect(items[1].value).toEqual({ group: 2, rejected: 0, unrejected: 0, kept_whole: 1 });
+      });
+    });
+
+    describe('locks and the applied record', () => {
+      beforeEach(async () => {
+        apiPost.mockImplementation((p: string) => p === applyRoute ? answer([result(0, { rej: ['/p2.jpg', '/p3.jpg'] })]) : of({}));
+        await store.applyGroups([unitOf(1)]);
+      });
+
+      it('skips applied paths in setReviewMark and setGroupMarks', () => {
+        store.setReviewMark('/p2.jpg', 'keep');
+        expect(store.userMarks().has('/p2.jpg')).toBe(false);
+        store.setGroupMarks(1, 'keep_all');
+        expect(store.userMarks().has('/p1.jpg')).toBe(false);
+        store.setGroupMarks(2, 'keep_all');
+        expect(store.userMarks().get('/p4.jpg')).toBe('keep');
+        store.setReviewMark('/p4.jpg', 'remove');
+        expect(store.userMarks().get('/p4.jpg')).toBe('remove');
+      });
+
+      it('survives a marked re-pin, an unmarked re-pin and a different page, and review() leaves applied paths out of keep / remove', async () => {
+        store.setReviewMark('/p4.jpg', 'remove');
+        await pin();
+        expect(store.appliedMarks().size).toBe(3);
+        expect(store.review().keep).not.toContain('/p1.jpg');
+        expect(store.review().remove).not.toContain('/p2.jpg');
+        expect(store.review().remove).toEqual(['/p4.jpg']);
+        await store.showPaths(['/p1.jpg', '/p2.jpg'], { marks: ['keep', 'remove'] });
+        expect(store.appliedMarks().size).toBe(3);
+        await store.showPaths(['/p4.jpg', '/p5.jpg']);
+        expect(store.appliedMarks().size).toBe(3);
+        expect(store.appliedReceipts().size).toBe(1);
+      });
+
+      it('is dropped by a filter change / the usual view, with the receipts', async () => {
+        await store.clearPinned();
+        expect(store.appliedMarks().size).toBe(0);
+        expect(store.appliedReceipts().size).toBe(0);
+      });
+
+      it('prunes vanished paths and empty receipts', async () => {
+        apiPost.mockImplementation((p: string, body?: { paths?: string[] }) => p === '/photos/by_paths'
+          ? of({ photos: [], total: 0, missing: body?.paths ?? [] })
+          : of({}));
+        await store.refreshPaths(['/p1.jpg', '/p2.jpg', '/p3.jpg']);
+        expect(store.appliedMarks().size).toBe(0);
+        expect(store.appliedReceipts().size).toBe(0);
+      });
+    });
+
+    describe('review()', () => {
+      it('always carries applied with the effective marks at apply time, including untouched agent keepers', async () => {
+        expect(store.review().applied).toEqual({ keep: [], remove: [], truncated: false });
+        expect(store.review().groups_applied).toBe(0);
+        store.setReviewMark('/p1.jpg', 'remove');
+        apiPost.mockImplementation((p: string) => p === applyRoute ? answer([result(0, { rej: ['/p1.jpg', '/p2.jpg', '/p3.jpg'] })]) : of({}));
+        await store.applyGroups([unitOf(1)]);
+        expect(store.review().applied).toEqual({ keep: [], remove: ['/p1.jpg', '/p2.jpg', '/p3.jpg'], truncated: false });
+        expect(store.review().groups_applied).toBe(1);
+        expect(store.review().groups_total).toBe(3);
+      });
+
+      it('lists an agent keeper the user never touched as an applied keep', async () => {
+        apiPost.mockImplementation((p: string) => p === applyRoute ? answer([result(0, { rej: ['/p2.jpg', '/p3.jpg'] })]) : of({}));
+        await store.applyGroups([unitOf(1)]);
+        expect(store.review().applied.keep).toEqual(['/p1.jpg']);
+        expect(store.review().keep).toEqual([]);
+      });
+
+      it('caps each applied list at 1000 and reports the true counts', () => {
+        const many = new Map(Array.from({ length: 1200 }, (_, i) => [`/m${i}.jpg`, { mark: 'remove' as const, receiptId: 'x' }]));
+        store.appliedMarks.set(many);
+        const applied = store.review().applied;
+        expect(applied.remove).toHaveLength(1000);
+        expect(applied).toMatchObject({ truncated: true, remove_count: 1200, keep_count: 0 });
+      });
+    });
+
+    describe('undoApplied', () => {
+      beforeEach(async () => {
+        apiPost.mockImplementation((p: string) => p === applyRoute
+          ? answer([result(0, { rej: ['/p2.jpg', '/p3.jpg'] }), result(1), result(2, { rej: ['/p7.jpg'], unrej: ['/p6.jpg'] })])
+          : of({}));
+        await store.applyGroups(store.applyPlan().units);
+      });
+
+      const undoAnswer = (o: Partial<{ rr: string[]; ru: string[]; skipped: number }> = {}) =>
+        of({ restored_rejected: o.rr ?? [], restored_unrejected: o.ru ?? [], pairs_deleted: 1, flags_restored: 0, skipped_changed: o.skipped ?? 0 });
+
+      it('posts the id only, unlocks only that group and patches the cards from the answer', async () => {
+        apiPost.mockClear();
+        apiPost.mockImplementation((p: string) => p === undoRoute ? undoAnswer({ rr: ['/p7.jpg'], ru: ['/p6.jpg'] }) : of({}));
+        await store.undoApplied('rcpt-2');
+        expect(posts(undoRoute)).toHaveLength(1);
+        expect(posts(undoRoute)[0][1]).toEqual({ receipt_id: 'rcpt-2' });
+        expect(photo('/p7.jpg').is_rejected).toBe(false);
+        expect(photo('/p6.jpg').is_rejected).toBe(true);
+        expect(store.appliedMarks().has('/p6.jpg')).toBe(false);
+        expect(store.appliedMarks().has('/p1.jpg')).toBe(true);
+        expect(store.appliedReceipts().has('rcpt-2')).toBe(false);
+        expect(store.appliedReceipts().has('rcpt-0')).toBe(true);
+        expect(store.userMarks().size).toBe(0);
+        expect(store.appliedGroups().has(3)).toBe(false);
+        expect(store.appliedGroups().has(1)).toBe(true);
+        expect(journalItems().filter(i => i.kind === 'review_apply_undo')).toHaveLength(1);
+      });
+
+      it('says how many photos it left alone when the server skipped some', async () => {
+        apiPost.mockImplementation((p: string) => p === undoRoute ? undoAnswer({ skipped: 2 }) : of({}));
+        await store.undoApplied('rcpt-0');
+        expect(snackOpen).toHaveBeenCalledWith('gallery.pinned.review.undo_skipped', '', expect.anything());
+      });
+
+      it('marks the receipt unavailable on a 404, keeps the group locked and never retries', async () => {
+        apiPost.mockClear();
+        apiPost.mockImplementation((p: string) => p === undoRoute ? throwError(() => new HttpErrorResponse({ status: 404 })) : of({}));
+        await store.undoApplied('rcpt-0');
+        expect(store.appliedReceipts().get('rcpt-0')?.unavailable).toBe(true);
+        expect(store.appliedMarks().has('/p1.jpg')).toBe(true);
+        expect(store.appliedGroups().get(1)?.unavailable).toBe(true);
+        expect(snackOpen).toHaveBeenCalledWith('gallery.pinned.review.undo_unavailable', '', expect.anything());
+        await store.undoApplied('rcpt-0');
+        expect(posts(undoRoute)).toHaveLength(1);
+      });
+
+      it('leaves everything in place and notifies on another failure', async () => {
+        apiPost.mockImplementation((p: string) => p === undoRoute ? throwError(() => new HttpErrorResponse({ status: 500 })) : of({}));
+        await store.undoApplied('rcpt-0');
+        expect(store.appliedReceipts().get('rcpt-0')?.unavailable).toBeFalsy();
+        expect(store.appliedMarks().has('/p1.jpg')).toBe(true);
+        expect(snackOpen).toHaveBeenCalledWith(I18N.errors.action_failed, '', expect.anything());
+      });
+
+      it('still lists every receipt, labelled, after a different pin replaced the list, and Undo from it calls the route (NEW-B1)', async () => {
+        await store.showPaths(['/z1.jpg', '/z2.jpg'], { groups: [1, 1], marks: ['keep', 'remove'], kinds: ['burst', 'burst'] });
+        const list = store.appliedReceiptList();
+        expect(list.map(r => r.receiptId)).toEqual(['rcpt-0', 'rcpt-1', 'rcpt-2']);
+        expect(list[0]).toMatchObject({
+          group: 1, kind: 'burst', firstFilename: 'p1.jpg', label: { key: 'burst', params: { n: 0 } },
+        });
+        apiPost.mockClear();
+        apiPost.mockImplementation((p: string) => p === undoRoute ? undoAnswer({ rr: ['/p2.jpg'] }) : of({}));
+        await store.undoApplied('rcpt-0');
+        expect(posts(undoRoute)[0][1]).toEqual({ receipt_id: 'rcpt-0' });
+        expect(store.appliedReceiptList().map(r => r.receiptId)).toEqual(['rcpt-1', 'rcpt-2']);
+      });
     });
   });
 

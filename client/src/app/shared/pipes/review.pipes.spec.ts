@@ -6,7 +6,9 @@ import { TranslatePipe } from './translate.pipe';
 import {
   ReviewAriaKeyPipe, ReviewChangedPipe, ReviewGroupHeaderPipe, ReviewGroupKeptWholePipe, ReviewGroupLabelPipe,
   ReviewGroupPipe, ReviewMarkPipe, ReviewReasonPipe,
+  ReviewApplyPlanPipe, ReviewGroupAppliedPipe, ReviewGroupReceiptPipe, ReviewPathLockedPipe, ReviewReceiptLabelPipe,
 } from './review.pipes';
+import type { AppliedGroup, AppliedMark, AppliedReceipt, ApplyUnit } from '../../features/gallery/gallery.store';
 
 describe('review pipes', () => {
   it('prefers the user mark over the assistant mark', () => {
@@ -139,5 +141,41 @@ describe('ReviewGroupKeptWholePipe', () => {
 
   it('is false for a group without a kind', () => {
     expect(pipe.transform(1, new Map())).toBe(false);
+  });
+});
+
+describe('apply pipes', () => {
+  const group: AppliedGroup = { receiptId: 'r1', keptWhole: 2, unavailable: false };
+  const receipt = (over: Partial<AppliedReceipt> = {}): AppliedReceipt => ({
+    receiptId: 'r1', paths: ['/a.jpg'], group: 3, kind: 'burst', label: null, firstFilename: 'a.jpg', skippedKeepWhole: [], ...over,
+  });
+
+  it('ReviewPathLockedPipe is true only for a path in the applied record', () => {
+    const pipe = new ReviewPathLockedPipe();
+    const applied = new Map<string, AppliedMark>([['/a.jpg', { mark: 'keep', receiptId: 'r1' }]]);
+    expect(pipe.transform('/a.jpg', applied)).toBe(true);
+    expect(pipe.transform('/b.jpg', applied)).toBe(false);
+    expect(pipe.transform('/a.jpg', new Map())).toBe(false);
+  });
+
+  it('ReviewGroupAppliedPipe / ReviewGroupReceiptPipe read the applied groups', () => {
+    const groups = new Map([[3, group]]);
+    expect(new ReviewGroupAppliedPipe().transform(3, groups)).toBe(true);
+    expect(new ReviewGroupAppliedPipe().transform(4, groups)).toBe(false);
+    expect(new ReviewGroupReceiptPipe().transform(3, groups)).toBe(group);
+    expect(new ReviewGroupReceiptPipe().transform(4, groups)).toBeNull();
+  });
+
+  it('ReviewApplyPlanPipe returns the unit of a group, else null', () => {
+    const unit: ApplyUnit = { group: 1, kind: 'burst', ungrouped: false, keep: ['/a'], reject: [], unreject: [] };
+    expect(new ReviewApplyPlanPipe().transform(1, new Map([[1, unit]]))).toBe(unit);
+    expect(new ReviewApplyPlanPipe().transform(2, new Map([[1, unit]]))).toBeNull();
+  });
+
+  it('ReviewReceiptLabelPipe prefers the assistant label, then the group title, then the marks-only text', () => {
+    const pipe = new ReviewReceiptLabelPipe();
+    expect(pipe.transform(receipt({ label: { key: 'burst', params: { n: 2 } } }))).toEqual({ key: 'culling.group_reason.burst', params: { n: 2 } });
+    expect(pipe.transform(receipt())).toEqual({ key: 'gallery.pinned.review.group_title', params: { group: 3 } });
+    expect(pipe.transform(receipt({ group: null }))).toEqual({ key: 'gallery.pinned.review.applied_marks_only', params: {} });
   });
 });

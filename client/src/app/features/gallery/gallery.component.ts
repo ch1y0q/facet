@@ -42,8 +42,8 @@ import {
 import { isBracketLadderRejection } from '../../shared/utils/sequence-ladder';
 import { IsSelectedPipe } from '../../shared/pipes/selection.pipe';
 import {
-  ReviewChangedPipe, ReviewGroupHeaderPipe, ReviewGroupKeptWholePipe, ReviewGroupLabelPipe, ReviewGroupPipe,
-  ReviewMarkPipe, ReviewReasonPipe,
+  ReviewApplyPlanPipe, ReviewChangedPipe, ReviewGroupHeaderPipe, ReviewGroupKeptWholePipe, ReviewGroupLabelPipe,
+  ReviewGroupPipe, ReviewGroupReceiptPipe, ReviewMarkPipe, ReviewPathLockedPipe, ReviewReasonPipe, ReviewReceiptLabelPipe,
 } from '../../shared/pipes/review.pipes';
 import { PhotoSetKindIconPipe, PhotoSetKindLabelPipe } from '../../shared/pipes/photo-set-kind.pipe';
 import { AuthService } from '../../core/services/auth.service';
@@ -106,13 +106,17 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
     TranslatePipe,
     SequenceKindIconPipe,
     IsSelectedPipe,
+    ReviewApplyPlanPipe,
     ReviewChangedPipe,
     ReviewGroupHeaderPipe,
     ReviewGroupKeptWholePipe,
     ReviewGroupLabelPipe,
     ReviewGroupPipe,
+    ReviewGroupReceiptPipe,
     ReviewMarkPipe,
+    ReviewPathLockedPipe,
     ReviewReasonPipe,
+    ReviewReceiptLabelPipe,
     PhotoSetKindIconPipe,
     PhotoSetKindLabelPipe,
     MatSnackBarModule,
@@ -286,6 +290,31 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                 {{ I18N.gallery.pinned.review.copy_for_assistant | translate }}
               </button>
             }
+            @if (auth.isEdition() && store.pinnedMarks().size > 0) {
+              <button mat-button class="!min-w-0" data-testid="apply-my-marks"
+                      [disabled]="store.applying() || store.applyPlan().counts.groups === 0"
+                      [matTooltip]="store.pinnedGroups().size === 0 ? (I18N.gallery.pinned.review.apply_marks_only_hint | translate) : ''"
+                      (click)="applyAll()">
+                {{ I18N.gallery.pinned.review.apply_all | translate }}
+              </button>
+            }
+            @if (auth.isEdition() && store.appliedReceiptList().length > 0) {
+              @let receipts = store.appliedReceiptList();
+              <button mat-button class="!min-w-0" data-testid="applied-menu" [matMenuTriggerFor]="appliedMenu">
+                {{ receipts.length | pluralKey:I18N.gallery.pinned.review.applied_menu:I18N.gallery.pinned.review.applied_menu_plural | translate:{ count: receipts.length } }}
+              </button>
+              <mat-menu #appliedMenu="matMenu">
+                @for (receipt of receipts; track receipt.receiptId) {
+                  @let receiptLabel = receipt | reviewReceiptLabel;
+                  <button mat-menu-item data-testid="applied-menu-undo"
+                          [disabled]="!!receipt.unavailable || store.applying()"
+                          [matTooltip]="receipt.unavailable ? (I18N.gallery.pinned.review.undo_unavailable | translate) : ''"
+                          (click)="store.undoApplied(receipt.receiptId)">
+                    {{ I18N.gallery.pinned.review.applied_menu_entry | translate:{ label: (receiptLabel.key | translate:receiptLabel.params), filename: receipt.firstFilename } }}
+                  </button>
+                }
+              </mat-menu>
+            }
             <button mat-button class="!min-w-0" (click)="store.clearPinned()">
               {{ I18N.gallery.pinned.clear | translate }}
             </button>
@@ -359,35 +388,67 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                     </div>
                     @if (store.pinnedMarks().size > 0) {
                       @let keptWhole = row.group! | reviewGroupKeptWhole:store.pinnedKinds();
+                      @let appliedGroup = row.group! | reviewGroupReceipt:store.appliedGroups();
+                      @let applyUnit = row.group! | reviewApplyPlan:store.applyPlan().byGroup;
                       <!-- Real buttons, ungated like the card strip (a review mark is client-only). The grid
                            keydown handler ignores events from [data-review-group-actions]. A kept-whole
                            group (bracket / panorama) cannot lose a frame: those two are aria-disabled (not
                            [disabled], which would leave the tab order) and a tooltip says why. -->
                       <div class="flex shrink-0 items-center gap-1 pb-0.5" data-review-group-actions role="group">
                         <button type="button" data-mode="keep_all"
-                                class="h-6 px-2 rounded border border-[var(--mat-sys-outline-variant)] text-xs cursor-pointer hover:bg-[var(--mat-sys-surface-container-high)]"
+                                class="h-6 px-2 rounded border border-[var(--mat-sys-outline-variant)] text-xs cursor-pointer hover:bg-[var(--mat-sys-surface-container-high)] aria-disabled:hover:bg-transparent aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+                                [attr.aria-disabled]="appliedGroup ? 'true' : null"
                                 [attr.aria-label]="I18N.gallery.pinned.review.keep_all_aria | translate:{ group: row.group! }"
-                                (click)="store.setGroupMarks(row.group!, 'keep_all')">
+                                (click)="!appliedGroup && store.setGroupMarks(row.group!, 'keep_all')">
                           {{ I18N.gallery.pinned.review.keep_all | translate }}
                         </button>
                         <button type="button" data-mode="keep_best"
                                 class="h-6 px-2 rounded border border-[var(--mat-sys-outline-variant)] text-xs cursor-pointer hover:bg-[var(--mat-sys-surface-container-high)] aria-disabled:hover:bg-transparent aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
-                                [attr.aria-disabled]="keptWhole ? 'true' : null"
+                                [attr.aria-disabled]="(keptWhole || appliedGroup) ? 'true' : null"
                                 [matTooltip]="keptWhole ? (I18N.gallery.pinned.review.group_kept_whole | translate) : ''"
                                 [attr.aria-label]="I18N.gallery.pinned.review.keep_best_aria | translate:{ group: row.group! }"
                                 [attr.aria-description]="keptWhole ? (I18N.gallery.pinned.review.group_kept_whole | translate) : null"
-                                (click)="!keptWhole && store.setGroupMarks(row.group!, 'keep_best')">
+                                (click)="!keptWhole && !appliedGroup && store.setGroupMarks(row.group!, 'keep_best')">
                           {{ I18N.gallery.pinned.review.keep_best | translate }}
                         </button>
                         <button type="button" data-mode="remove_all"
                                 class="h-6 px-2 rounded border border-[var(--mat-sys-outline-variant)] text-xs cursor-pointer hover:bg-[var(--mat-sys-surface-container-high)] aria-disabled:hover:bg-transparent aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
-                                [attr.aria-disabled]="keptWhole ? 'true' : null"
+                                [attr.aria-disabled]="(keptWhole || appliedGroup) ? 'true' : null"
                                 [matTooltip]="keptWhole ? (I18N.gallery.pinned.review.group_kept_whole | translate) : ''"
                                 [attr.aria-label]="I18N.gallery.pinned.review.remove_all_aria | translate:{ group: row.group! }"
                                 [attr.aria-description]="keptWhole ? (I18N.gallery.pinned.review.group_kept_whole | translate) : null"
-                                (click)="!keptWhole && store.setGroupMarks(row.group!, 'remove_all')">
+                                (click)="!keptWhole && !appliedGroup && store.setGroupMarks(row.group!, 'remove_all')">
                           {{ I18N.gallery.pinned.review.remove_all | translate }}
                         </button>
+                        @if (auth.isEdition()) {
+                          @if (appliedGroup) {
+                            <span class="h-6 px-2 inline-flex items-center rounded bg-emerald-600/90 text-white text-xs" data-testid="review-applied-chip">
+                              {{ I18N.gallery.pinned.review.applied | translate }}
+                            </span>
+                            @if (appliedGroup.keptWhole > 0) {
+                              <span class="text-xs opacity-80" data-testid="review-kept-whole-note">
+                                {{ appliedGroup.keptWhole | pluralKey:I18N.gallery.pinned.review.kept_whole_note:I18N.gallery.pinned.review.kept_whole_note_plural | translate:{ count: appliedGroup.keptWhole } }}
+                              </span>
+                            }
+                            <button type="button" data-testid="review-undo-group"
+                                    class="h-6 px-2 rounded border border-[var(--mat-sys-outline-variant)] text-xs cursor-pointer hover:bg-[var(--mat-sys-surface-container-high)] disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
+                                    [disabled]="store.applying()"
+                                    [attr.aria-disabled]="appliedGroup.unavailable ? 'true' : null"
+                                    [matTooltip]="appliedGroup.unavailable ? (I18N.gallery.pinned.review.undo_unavailable | translate) : ''"
+                                    [attr.aria-label]="I18N.gallery.pinned.review.undo_apply_aria | translate:{ group: row.group! }"
+                                    (click)="!appliedGroup.unavailable && store.undoApplied(appliedGroup.receiptId)">
+                              {{ I18N.gallery.pinned.review.undo_apply | translate }}
+                            </button>
+                          } @else {
+                            <button type="button" data-testid="review-apply-group"
+                                    class="h-6 px-2 rounded border border-[var(--mat-sys-primary)] bg-[var(--mat-sys-primary)] text-[var(--mat-sys-on-primary)] text-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                    [disabled]="!applyUnit || store.applying()"
+                                    [attr.aria-label]="I18N.gallery.pinned.review.apply_aria | translate:{ group: row.group! }"
+                                    (click)="applyGroup(row.group!)">
+                              {{ I18N.gallery.pinned.review.apply | translate }}
+                            </button>
+                          }
+                        }
                       </div>
                     }
                   </div>
@@ -402,6 +463,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                       [reviewChanged]="photo.path | reviewChanged:store.userMarks():store.pinnedMarks()"
                       [reviewReason]="photo.path | reviewReason:store.pinnedReasons()"
                       [reviewMark]="photo.path | reviewMark:store.userMarks():store.pinnedMarks()"
+                      [reviewLocked]="photo.path | reviewPathLocked:store.appliedMarks()"
                       (reviewMarkToggle)="toggleReviewMark($event)"
                       [attr.data-pidx]="row.startIndex + i"
                       [style.width.px]="row.widths[i]"
@@ -465,6 +527,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                   [reviewChanged]="photo.path | reviewChanged:store.userMarks():store.pinnedMarks()"
                   [reviewReason]="photo.path | reviewReason:store.pinnedReasons()"
                   [reviewMark]="photo.path | reviewMark:store.userMarks():store.pinnedMarks()"
+                  [reviewLocked]="photo.path | reviewPathLocked:store.appliedMarks()"
                   (reviewMarkToggle)="toggleReviewMark($event)"
                   [attr.data-pidx]="i"
                   [config]="store.config()"
@@ -529,6 +592,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                       [reviewChanged]="photo.path | reviewChanged:store.userMarks():store.pinnedMarks()"
                       [reviewReason]="photo.path | reviewReason:store.pinnedReasons()"
                       [reviewMark]="photo.path | reviewMark:store.userMarks():store.pinnedMarks()"
+                      [reviewLocked]="photo.path | reviewPathLocked:store.appliedMarks()"
                       (reviewMarkToggle)="toggleReviewMark($event)"
                       [attr.data-pidx]="row.startIndex + i"
                       [style.width.px]="row.widths[i]"
@@ -1377,6 +1441,29 @@ export class GalleryComponent implements OnInit, OnDestroy {
   }
 
   /** Flip a card's effective keep/remove mark into the user's absolute choice; no HTTP. */
+  /** Apply one group's marks: reject its Remove photos, un-reject its rejected Keep photos, record the pairs. */
+  protected applyGroup(group: number): void {
+    const unit = this.store.applyPlan().byGroup.get(group);
+    if (unit) void this.store.applyGroups([unit]);
+  }
+
+  /** Apply every group's marks after a confirm that names the counts; Cancel posts nothing. */
+  protected async applyAll(): Promise<void> {
+    const plan = this.store.applyPlan();
+    if (plan.units.length === 0) return;
+    const review = I18N.gallery.pinned.review;
+    const { reject, unreject, groups } = plan.counts;
+    const ref = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: this.i18n.t(review.apply_all_title),
+        message: this.i18n.t(groups === 1 ? review.apply_all_confirm : review.apply_all_confirm_plural, { reject, unreject, groups }),
+        confirmLabel: this.i18n.t(review.apply),
+      },
+    });
+    if (!(await firstValueFrom(ref.afterClosed()))) return;
+    await this.store.applyGroups(this.store.applyPlan().units);
+  }
+
   protected toggleReviewMark(path: string): void {
     const current = this.store.userMarks().get(path) ?? this.store.pinnedMarks().get(path);
     this.store.setReviewMark(path, current === 'keep' ? 'remove' : 'keep');
@@ -1560,9 +1647,15 @@ export class GalleryComponent implements OnInit, OnDestroy {
     const { changed, keep, remove } = this.store.reviewChanges();
     const progress = this.store.review();
     const review = I18N.gallery.pinned.review;
-    const text = this.i18n.t(this.store.pinnedKinds().size > 0 ? review.copy_text_auto_cull : review.copy_text_plain, {
-      changed, keep, remove, visited: progress.groups_visited, total: progress.groups_total,
-    });
+    const params = { changed, keep, remove, visited: progress.groups_visited, total: progress.groups_total };
+    const autoCull = this.store.pinnedKinds().size > 0;
+    // Groups the user already applied are decided: say so, and ask the assistant to act only when marks remain.
+    const text = progress.groups_applied > 0
+      ? [
+        this.i18n.t(review.copy_text_applied, { ...params, applied: progress.groups_applied }),
+        this.store.applyPlan().units.length > 0 ? this.i18n.t(autoCull ? review.copy_text_tail_auto_cull : review.copy_text_tail_plain) : '',
+      ].filter(Boolean).join(' ')
+      : this.i18n.t(autoCull ? review.copy_text_auto_cull : review.copy_text_plain, params);
     if (await copyText(text)) this.snackBar.open(this.i18n.t(review.copied), '', { duration: 2000 });
   }
 
@@ -2469,6 +2562,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
     if (!this.store.hasReview()) return false;
     const photo = photos[index];
     if (!photo) return false;
+    // An applied photo is decided: K / R fall through like on an unmarked one.
+    if (this.store.appliedMarks().has(photo.path)) return false;
     if (!(this.store.userMarks().get(photo.path) ?? this.store.pinnedMarks().get(photo.path))) return false;
     this.store.setReviewMark(photo.path, key === 'k' ? 'keep' : 'remove');
     event.preventDefault();
