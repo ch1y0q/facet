@@ -57,6 +57,26 @@ def _library(tmp_path, extra=0):
     return db, conn
 
 
+def _similar_library(tmp_path):
+    """Two unrelated similar pairs (a1/a2 and b1/b2) with distinct embeddings, no burst ids."""
+    import numpy as np
+    db = str(tmp_path / "similar.db")
+    init_database(db)
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    for second, (name, score, axis) in enumerate([("a1.jpg", 9.0, 0), ("a2.jpg", 3.0, 0),
+                                                   ("b1.jpg", 9.0, 1), ("b2.jpg", 3.0, 1)]):
+        vector = np.zeros(768, dtype=np.float32)
+        vector[axis] = 1.0
+        conn.execute(
+            "INSERT INTO photos (path, filename, date_taken, aggregate, aesthetic, tech_sharpness, is_blink, "
+            "clip_embedding) VALUES (?, ?, ?, ?, ?, ?, 0, ?)",
+            (str(tmp_path / name), name, f"2024:06:15 1{axis}:00:{second:02d}", score, score, score,
+             vector.tobytes()))
+    conn.commit()
+    return db, conn
+
+
 def _p(tmp_path, name):
     return str(tmp_path / name)
 
@@ -304,6 +324,112 @@ class TestLenientOverrides:
         effective, ignored = burst_culling._apply_plan_overrides(plan, [], ["/b/k0.jpg"], dropped)
         assert dropped == [{"path": "/b/k0.jpg", "reason": "keep_whole_set"}]
         assert effective == {"keep": [], "remove": []} and ignored == []
+
+
+class TestPlanChangedByApply:
+    """The user applied groups from the tab after the assistant's preview: refused with its own reason."""
+
+    @staticmethod
+    def _apply_in_the_tab(conn, keep, reject, kind, user="_anonymous"):
+        """What ``POST /api/culling/apply_marks`` does for one group, on this test's connection."""
+        group = burst_culling.ApplyGroup(kind=kind, keep_paths=keep, reject_paths=reject)
+        by_path = burst_culling._mark_rows(conn, keep + reject, user)
+        burst_culling._write_apply_group(conn, group, by_path, user, "1=1", [])
+        burst_culling._after_marks_write(conn)
+        conn.commit()
+
+    @staticmethod
+    def _second_burst(conn, tmp_path):
+        for second, (name, score) in enumerate({"c1.jpg": 9.0, "c2.jpg": 3.0}.items()):
+            conn.execute(
+                "INSERT INTO photos (path, filename, date_taken, aggregate, aesthetic, tech_sharpness, is_blink, "
+                "burst_group_id, is_burst_lead) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)",
+                (str(tmp_path / name), name, f"2024:06:16 10:00:{second:02d}", score, score, score, BURST + 1,
+                 1 if name == "c1.jpg" else 0))
+        conn.commit()
+
+    def test_a_burst_group_applied_after_the_preview_is_refused_for_that_reason(self, tmp_path):
+        db, conn = _library(tmp_path)
+        self._second_burst(conn, tmp_path)
+        preview = _preview(conn, db)
+        mine = [_p(tmp_path, n) for n in SCORES]
+        self._apply_in_the_tab(conn, mine[:1], mine[1:], "burst")
+        with pytest.raises(AutoCullPlanChanged) as refusal:
+            run_auto_cull(conn, db, "_anonymous", **_kwargs(), dry_run=False, state_guard=True,
+                          expected_digest=preview.plan_digest, skip_paths=mine, applied_paths=mine)
+        assert str(refusal.value) == burst_culling.PLAN_CHANGED_BY_APPLY
+        assert _rejected(conn) == {"b2.jpg", "b3.jpg"}
+
+    def test_the_re_preview_leaves_the_applied_group_out_and_the_rest_applies(self, tmp_path):
+        db, conn = _library(tmp_path)
+        self._second_burst(conn, tmp_path)
+        preview = _preview(conn, db)
+        mine = [_p(tmp_path, n) for n in SCORES]
+        self._apply_in_the_tab(conn, mine[:1], mine[1:], "burst")
+        fresh = _preview(conn, db)
+        assert {os.path.basename(p) for p in fresh.reject_paths} == {"c2.jpg"}
+        result = run_auto_cull(conn, db, "_anonymous", **_kwargs(), dry_run=False, state_guard=True,
+                               expected_digest=fresh.plan_digest, skip_paths=mine, applied_paths=mine)
+        assert _rejected(conn) == {"b2.jpg", "b3.jpg", "c2.jpg"}
+        assert result.skipped_user_changed == []
+        assert preview.plan_digest != fresh.plan_digest
+
+    def test_a_similar_group_applied_after_the_preview_is_refused_even_though_the_others_renumber(self, tmp_path):
+        db, conn = _similar_library(tmp_path)
+        preview = _preview(conn, db, group_by="similar")
+        assert len(preview.preview) == 2
+        group_a = [_p(tmp_path, "a1.jpg"), _p(tmp_path, "a2.jpg")]
+        self._apply_in_the_tab(conn, group_a[:1], group_a[1:], "similar")
+        with pytest.raises(AutoCullPlanChanged) as refusal:
+            run_auto_cull(conn, db, "_anonymous", **_kwargs(group_by="similar"), dry_run=False, state_guard=True,
+                          expected_digest=preview.plan_digest, skip_paths=group_a, applied_paths=group_a)
+        assert str(refusal.value) == burst_culling.PLAN_CHANGED_BY_APPLY
+        fresh = _preview(conn, db, group_by="similar")
+        assert len(fresh.preview) == 1
+        run_auto_cull(conn, db, "_anonymous", **_kwargs(group_by="similar"), dry_run=False, state_guard=True,
+                      expected_digest=fresh.plan_digest, skip_paths=group_a, applied_paths=group_a)
+        assert _rejected(conn) == {"a2.jpg", "b2.jpg"}
+
+    def test_without_a_snapshot_the_existing_refusal_text_is_returned(self, tmp_path, clock):
+        db, conn = _library(tmp_path)
+        preview = _preview(conn, db)
+        clock[0] += burst_culling.GUARD_TTL_S + 1
+        mine = [_p(tmp_path, n) for n in SCORES]
+        self._apply_in_the_tab(conn, mine[:1], mine[1:], "burst")
+        with pytest.raises(AutoCullPlanChanged) as refusal:
+            run_auto_cull(conn, db, "_anonymous", **_kwargs(), dry_run=False, state_guard=True,
+                          expected_digest=preview.plan_digest, applied_paths=mine)
+        assert str(refusal.value) != burst_culling.PLAN_CHANGED_BY_APPLY
+        assert str(refusal.value).startswith("The plan changed since it was previewed")
+
+    def test_applied_paths_outside_the_preview_do_not_change_the_refusal(self, tmp_path):
+        db, conn = _library(tmp_path)
+        preview = _preview(conn, db)
+        conn.execute("UPDATE photos SET aggregate = 9.9, aesthetic = 9.9, tech_sharpness = 9.9 WHERE path = ?",
+                     (_p(tmp_path, "b3.jpg"),))
+        conn.commit()
+        with pytest.raises(AutoCullPlanChanged) as refusal:
+            run_auto_cull(conn, db, "_anonymous", **_kwargs(), dry_run=False, state_guard=True,
+                          expected_digest=preview.plan_digest, applied_paths=["/elsewhere.jpg"])
+        assert str(refusal.value).startswith("The plan changed since it was previewed")
+
+    def test_the_route_accepts_applied_paths_and_caps_them(self, edition_client, seed_photos_prefix):
+        prefix = AGENT_DIR + "guard-applied/"
+        rows = [{"path": prefix + n, "filename": n, "date_taken": f"1997:01:01 10:00:0{i}", "aggregate": s,
+                 "aesthetic": s, "tech_sharpness": s, "burst_group_id": 5252, "is_burst_lead": 1 if i == 1 else 0}
+                for i, (n, s) in enumerate(SCORES.items(), start=1)]
+        seed_photos_prefix(prefix, rows)
+        body = {"group_by": "burst", "strictness": 0, "date_from": "1997:01:01 00:00:00",
+                "date_to": "1997:01:01 23:59:59"}
+        preview = edition_client.post("/api/culling/auto", json=body)
+        assert preview.status_code == 200, preview.text
+        applied = edition_client.post("/api/culling/auto", json={
+            **body, "dry_run": False, "expected_digest": preview.json()["plan_digest"],
+            "applied_paths": [prefix + "b2.jpg"]})
+        assert applied.status_code == 200, applied.text
+        assert applied.json()["skipped_user_changed"] == [prefix + "b2.jpg"]
+        too_many = edition_client.post("/api/culling/auto", json={**body, "applied_paths": ["/x"] * 1001})
+        assert too_many.status_code == 422
 
 
 class TestHttp:

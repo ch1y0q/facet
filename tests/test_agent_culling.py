@@ -726,13 +726,13 @@ class TestAutoCullTabMarks:
         assert result["overrides_from_tab"] == {"keep": 1, "remove": 1}
         assert len(self.context_calls(rig)) == 1 and "activity_since" not in self.context_calls(rig)[0]["args"]
 
-    def test_an_explicit_list_wins_with_no_merge_and_the_tab_is_never_asked(self, rig):
+    def test_an_explicit_list_wins_with_no_merge_of_the_tab_s_marks(self, rig):
         rig.state["review"] = {"keep": [BURST_PATHS[0]], "remove": [BURST_PATHS[1]]}
         result = rig.env.call(rig.token, "auto_cull", self.args(keep_paths=[BURST_PATHS[2]]))
         assert result["ok"], result
         sent = self.auto_calls(rig)[0]
         assert sent["keep_paths"] == [BURST_PATHS[2]] and sent["remove_paths"] == []
-        assert not self.context_calls(rig) and "overrides_from_tab" not in result
+        assert "overrides_from_tab" not in result
 
     def test_no_tab_keeps_today_s_behaviour(self, agent_app, photos, monkeypatch):
         from tests.conftest import intercept_internal_call
@@ -976,3 +976,131 @@ class TestAutoCullApplyWithUnreadableMarks:
         result = self.apply(rig, preview)
         assert result["ok"], result
         assert len(self.applies(rig)) == 1 and _rejected() == {BURST_PATHS[2]}
+
+
+class TestAutoCullAppliedFromTheTab:
+    """The user's own Apply in the tab: the photos they applied are never re-decided, whatever the call shape."""
+
+    @pytest.fixture()
+    def rig(self, agent_app, photos, fake_tab, monkeypatch):
+        from tests.conftest import intercept_internal_call
+        nonce.reset()
+        tools_culling.reset_preview_memory()
+        state = {"review": {"keep": [], "remove": []}, "upstream": []}
+        env = agent_app("legacy")
+        headers = env.login(edition=True)
+
+        def reply(call):
+            if call["tool"] == "ui_get_context":
+                return {"ok": True, "data": {"review": state["review"]}}
+            return {"ok": True, "data": {"echo": call["tool"]}}
+        tab = fake_tab(env, _jwt_of(headers), reply=reply)
+        intercept_internal_call(monkeypatch, lambda tool, kw: state["upstream"].append((tool, kw)) and None)
+        token = env.token(headers, "edition")
+        yield type("Rig", (), {"env": env, "token": token, "tab": tab, "state": state})
+        with sqlite3.connect(_TEST_DB_FILE.name) as conn:
+            conn.execute("UPDATE photos SET burst_reviewed = 0, is_rejected = 0 WHERE path LIKE ?", (PREFIX + "%",))
+
+    @staticmethod
+    def args(**extra):
+        return {"group_by": "burst", "strictness": 0, "show": False, **SCOPE, **extra}
+
+    @staticmethod
+    def applied(keep=(), remove=(), truncated=False):
+        return {"keep": list(keep), "remove": list(remove), "truncated": truncated}
+
+    def sent(self, rig):
+        return [kw["json"] for tool, kw in rig.state["upstream"] if tool == "culling.auto"]
+
+    def apply(self, rig, preview, **extra):
+        return rig.env.call(rig.token, "auto_cull", self.args(dry_run=False, confirm=preview["confirm"], **extra))
+
+    def test_marks_from_review_parses_the_applied_block(self):
+        marks = tools_culling.marks_from_review({
+            "keep": ["/a"], "remove": [],
+            "applied": {"keep": ["/k"], "remove": ["/r"], "truncated": False}})
+        assert marks.applied == ("/k", "/r") and marks.applied_truncated is False and marks.has_applied
+        assert tools_culling.marks_from_review({"keep": [], "remove": []}).has_applied is False
+        cut = tools_culling.marks_from_review({"applied": {"keep": ["/k"], "remove": [], "truncated": True}})
+        assert cut.applied_truncated is True
+
+    def test_applied_with_no_pending_marks_is_not_usable_but_is_reported(self, rig):
+        rig.state["review"] = {"keep": [], "remove": [], "applied": self.applied(keep=[BURST_PATHS[0]])}
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        assert preview["ok"], preview
+        assert preview["overrides_from_tab"] == {"applied": 1}
+        result = self.apply(rig, preview)
+        assert result["ok"], result
+        assert self.sent(rig)[-1]["skip_paths"] == [BURST_PATHS[0]]
+        assert self.sent(rig)[-1]["applied_paths"] == [BURST_PATHS[0]]
+
+    def test_the_marked_branch_skips_the_applied_paths_and_reports_the_count(self, rig):
+        rig.state["review"] = {"keep": [BURST_PATHS[0]], "remove": [BURST_PATHS[1]],
+                               "applied": self.applied(remove=[BURST_PATHS[2]])}
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        assert preview["overrides_from_tab"]["applied"] == 1 and "keep" in preview["overrides_from_tab"]
+        result = self.apply(rig, preview)
+        assert result["ok"], result
+        sent = self.sent(rig)[-1]
+        assert sent["skip_paths"] == [BURST_PATHS[2]] and sent["applied_paths"] == [BURST_PATHS[2]]
+
+    def test_the_explicit_branch_reads_only_the_applied_block(self, rig):
+        rig.state["review"] = {"keep": [BURST_PATHS[0]], "remove": [BURST_PATHS[1]],
+                               "applied": self.applied(keep=[BURST_PATHS[2]])}
+        preview = rig.env.call(rig.token, "auto_cull", self.args(keep_paths=[BURST_PATHS[0]]))
+        assert preview["ok"], preview
+        assert preview["overrides_from_tab"] == {"applied": 1}
+        result = self.apply(rig, preview, keep_paths=[BURST_PATHS[0]])
+        assert result["ok"], result
+        sent = self.sent(rig)[-1]
+        assert sent["keep_paths"] == [BURST_PATHS[0]] and sent["remove_paths"] == []
+        assert sent["skip_paths"] == [BURST_PATHS[2]]
+
+    def test_flips_and_applied_paths_are_one_deduplicated_skip_list(self, rig):
+        rig.state["review"] = {"keep": [], "remove": [BURST_PATHS[1]],
+                               "applied": self.applied(keep=[BURST_PATHS[2]])}
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        rig.state["review"] = {"keep": [], "remove": [],
+                               "applied": self.applied(keep=[BURST_PATHS[2], BURST_PATHS[1]])}
+        result = self.apply(rig, preview)
+        assert result["ok"], result
+        assert sorted(self.sent(rig)[-1]["skip_paths"]) == sorted([BURST_PATHS[1], BURST_PATHS[2]])
+
+    def test_a_truncated_applied_block_refuses_the_apply(self, rig):
+        rig.state["review"] = {"keep": [], "remove": [], "applied": self.applied(keep=[BURST_PATHS[0]])}
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        rig.state["review"] = {"keep": [], "remove": [],
+                               "applied": self.applied(keep=[BURST_PATHS[0]], truncated=True)}
+        result = self.apply(rig, preview)
+        assert result["error"] == "confirmation_required", result
+        assert not [c for c in self.sent(rig) if not c["dry_run"]] and _rejected() == set()
+
+    def test_more_applied_paths_than_the_skip_list_holds_refuses_the_apply(self, rig):
+        rig.state["review"] = {"keep": [], "remove": [],
+                               "applied": self.applied(keep=[f"/a{i}" for i in range(600)],
+                                                       remove=[f"/b{i}" for i in range(600)])}
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        result = self.apply(rig, preview)
+        assert result["error"] == "confirmation_required", result
+        assert not [c for c in self.sent(rig) if not c["dry_run"]]
+
+    def test_an_apply_without_memory_of_the_confirm_still_skips_the_applied_paths(self, rig):
+        rig.state["review"] = {"keep": [], "remove": [], "applied": self.applied(keep=[BURST_PATHS[0]])}
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        tools_culling.reset_preview_memory()
+        result = self.apply(rig, preview)
+        assert result["ok"], result
+        assert self.sent(rig)[-1]["skip_paths"] == [BURST_PATHS[0]]
+
+    def test_a_plan_moved_by_the_users_apply_tells_the_assistant_to_preview_again(self, rig):
+        rig.state["review"] = {"keep": [], "remove": [], "applied": self.applied()}
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        assert preview["ok"], preview
+        with sqlite3.connect(_TEST_DB_FILE.name) as conn:
+            conn.execute("UPDATE photos SET burst_reviewed = 1 WHERE path LIKE ?", (PREFIX + "%",))
+        rig.state["review"] = {"keep": [], "remove": [],
+                               "applied": self.applied(keep=[BURST_PATHS[0]], remove=BURST_PATHS[1:])}
+        result = self.apply(rig, preview)
+        assert result["error"] == "confirmation_required", result
+        assert "applied groups in the tab" in result["message"] and "dry_run=true" in result["message"]
+        assert _rejected() == set()

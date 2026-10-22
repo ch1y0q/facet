@@ -503,3 +503,29 @@ class TestReviewProgressSurvivesTrimming:
         fit_review(result, 20000)
         assert result["data"]["user_activity"]["truncated"] is True
         assert review == {"keep": ["/lib/a.jpg"], "remove": ["/lib/b.jpg"], "groups_total": 1}
+
+
+class TestAppliedSurvivesTrimming:
+    def test_the_applied_lists_are_halved_and_flagged_with_their_true_sizes(self):
+        from api.agent.tools_ui import fit_review
+        applied = {"keep": [f"/lib/{'k' * 200}{i}.jpg" for i in range(300)],
+                   "remove": [f"/lib/{'r' * 200}{i}.jpg" for i in range(100)], "truncated": False}
+        review = {"keep": ["/lib/a.jpg"], "remove": [], "applied": applied,
+                  "groups_total": 12, "groups_visited": 7, "groups_changed": 3, "groups_applied": 2}
+        result = {"ok": True, "data": _context(review)}
+        fit_review(result, 20000)
+        assert len(json.dumps(result, separators=(",", ":"))) <= 20000
+        assert applied["truncated"] is True
+        assert applied["keep_count"] == 300 and applied["remove_count"] == 100
+        assert 0 < len(applied["keep"]) < 300
+        assert review["keep"] == ["/lib/a.jpg"] and "truncated" not in review
+        assert (review["groups_total"], review["groups_visited"], review["groups_changed"],
+                review["groups_applied"]) == (12, 7, 3, 2)
+
+    def test_an_applied_block_that_fits_is_left_whole(self):
+        from api.agent.tools_ui import fit_review
+        applied = {"keep": ["/lib/a.jpg"], "remove": ["/lib/b.jpg"], "truncated": False}
+        review = {"keep": [], "remove": [], "applied": applied, "groups_applied": 1}
+        result = {"ok": True, "data": _context(review)}
+        fit_review(result, 20000)
+        assert applied == {"keep": ["/lib/a.jpg"], "remove": ["/lib/b.jpg"], "truncated": False}

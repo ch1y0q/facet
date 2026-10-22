@@ -13,7 +13,7 @@ frame it names.
 """
 
 from dataclasses import dataclass
-from typing import Annotated, Any, Literal, Optional, cast
+from typing import Annotated, Any, Literal, Optional, Sequence, cast
 
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.types import CallToolResult, ToolAnnotations
@@ -58,7 +58,9 @@ AUTO_CULL_SHOW = (
     "for you: OMIT keep_paths and remove_paths to use them (`overrides_from_tab` counts only the marks that "
     "change the plan, not ones restating it, and lists any in `dropped` that could not be honoured; "
     "`{skipped: truncated}` means the tab held too many to trust). Report `shown_in_tab` (applied, or the reason it was not, including `unpinned` when "
-    "a page holds more than 200 photos). The apply never shows; show=false skips it.")
+    "a page holds more than 200 photos). The apply never shows; show=false skips it. Photos the user already "
+    "committed with the tab's Apply (`review.applied`; `overrides_from_tab.applied` counts them) are never "
+    "re-decided: the apply leaves them out, and an Apply made after the preview makes it stale (preview again).")
 
 
 SUMMARY_PATHS = 20
@@ -74,14 +76,25 @@ MAX_REMEMBERED = 64
 
 @dataclass(frozen=True)
 class Marks:
-    """The user's Keep/Remove marks as the tab reported them; ``truncated`` marks are never used."""
+    """The user's Keep/Remove marks as the tab reported them; ``truncated`` marks are never used.
+
+    ``applied`` are the photos the user already committed with the tab's Apply (keep and remove together):
+    decided, so never pending marks and never re-decided by an ``auto_cull`` apply. ``applied_truncated``
+    says the tab cut that list, which is not trusted either.
+    """
     keep: tuple = ()
     remove: tuple = ()
     truncated: bool = False
+    applied: tuple = ()
+    applied_truncated: bool = False
 
     @property
     def usable(self) -> bool:
         return not self.truncated and bool(self.keep or self.remove)
+
+    @property
+    def has_applied(self) -> bool:
+        return bool(self.applied)
 
 
 @dataclass(frozen=True)
@@ -125,7 +138,12 @@ def marks_from_review(review: Any) -> Optional[Marks]:
     lists = [[p for p in (review.get(side) or []) if isinstance(p, str)]
              if isinstance(review.get(side) or [], list) else [] for side in ("keep", "remove")]
     cut = bool(review.get("truncated")) or any(len(item) >= TAB_REVIEW_CAP for item in lists)
-    return Marks(tuple(lists[0]), tuple(lists[1]), cut)
+    block = review.get("applied")
+    block = block if isinstance(block, dict) else {}
+    done = [[p for p in (block.get(side) or []) if isinstance(p, str)]
+            if isinstance(block.get(side) or [], list) else [] for side in ("keep", "remove")]
+    applied_cut = bool(block.get("truncated")) or any(len(item) >= TAB_REVIEW_CAP for item in done)
+    return Marks(tuple(lists[0]), tuple(lists[1]), cut, tuple(dict.fromkeys(done[0] + done[1])), applied_cut)
 
 
 def flips_since(before: Marks, now: Optional[Marks]) -> list[str]:
@@ -260,6 +278,13 @@ def _fit_groups(rows: list[dict], budget: int) -> list[dict]:
 
 
 PLAN_CHANGED = "The plan changed since it was previewed"
+PLAN_CHANGED_BY_APPLY = "The plan changed because groups were applied"
+PLAN_CHANGED_BY_APPLY_HINT = (
+    "You applied groups in the tab since the preview; preview again with dry_run=true (the re-preview "
+    "leaves out the groups you applied, and skip_paths protects the rest).")
+APPLIED_UNREADABLE = (
+    "The photos you applied in the tab could not be read in full (or there are too many to leave out), so "
+    "one of them could still be rejected: preview again with dry_run=true")
 
 
 def _confirm_digest(groups: list[ConfirmGroup]) -> str:
@@ -405,7 +430,10 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
             memory = None if dry_run or explicit or not confirm else _recall(_previews, (owner, confirm))
             marks: Optional[Marks] = None
             if explicit:
-                pass
+                # Only what the user already applied is taken from the tab: their pending marks are replaced
+                # by the explicit lists, but a photo they committed is never re-decided.
+                tab = await read_marks(resolved, settings, tab_id, timeout, snapshot)
+                marks = Marks(applied=tab.applied, applied_truncated=tab.applied_truncated) if tab else None
             elif memory is not None:
                 marks = memory.marks
             elif dry_run and cursor > 0:
@@ -429,6 +457,8 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
                 return await apply_preview(grant, memory, options, confirm, resolved, settings, tab_id, timeout,
                                            snapshot)
             preview = await client.call(grant, "culling.auto", json=page_call, timeout=timeout)
+            if not preview["ok"] and PLAN_CHANGED_BY_APPLY in preview.get("message", ""):
+                return err("confirmation_required", PLAN_CHANGED_BY_APPLY_HINT)
             if not preview["ok"] and PLAN_CHANGED in preview.get("message", ""):
                 return err("confirmation_required",
                            "The plan changed since the first page; nothing was written. Restart the "
@@ -449,7 +479,10 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
                 return err("confirmation_required",
                            "Preview with dry_run=true first and pass its `confirm` value, with the "
                            "same overrides; the plan must be unchanged since that preview")
-            return await send_apply(grant, options, digest, marks, timeout)
+            skip = applied_skip(marks)
+            if skip is None:
+                return err("confirmation_required", APPLIED_UNREADABLE)
+            return await send_apply(grant, options, digest, marks, timeout, skip, marks.applied if marks else ())
         return await run_tool(ctx, "auto_cull", handler, write=not dry_run)
 
     async def read_marks(resolved, settings, tab_id: Optional[str], timeout: float,
@@ -470,20 +503,24 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
 
     def attach_tab_marks(result: dict, marks: Optional[Marks], body: dict) -> None:
         """Add ``overrides_from_tab`` to ``result``: the marks that changed the plan, the dropped ones or the skip."""
-        if marks is None or not (marks.usable or marks.truncated):
+        if marks is None or not (marks.usable or marks.truncated or marks.has_applied):
             return
         if marks.truncated:
             result["overrides_from_tab"] = {"skipped": "truncated"}
             return
-        dropped = body.get("dropped_overrides") or []
-        effective = body.get("effective_overrides") or {}
-        report: dict = {"keep": effective.get("keep", 0), "remove": effective.get("remove", 0)}
-        if dropped:
-            report["dropped"] = dropped[:SUMMARY_PATHS]
-            if len(dropped) > SUMMARY_PATHS:
-                report["dropped_count"] = len(dropped)
+        report: dict = {}
+        if marks.usable:
+            dropped = body.get("dropped_overrides") or []
+            effective = body.get("effective_overrides") or {}
+            report = {"keep": effective.get("keep", 0), "remove": effective.get("remove", 0)}
+            if dropped:
+                report["dropped"] = dropped[:SUMMARY_PATHS]
+                if len(dropped) > SUMMARY_PATHS:
+                    report["dropped_count"] = len(dropped)
+            result.get("data", {}).pop("dropped_overrides", None)
+        if marks.has_applied:
+            report["applied"] = len(marks.applied)
         result["overrides_from_tab"] = report
-        result.get("data", {}).pop("dropped_overrides", None)
 
     def remember_marks(owner, result: dict, marks: Marks) -> None:
         """Keep the cursor-0 marks for later pages (by plan digest) and for the apply (by ``confirm``)."""
@@ -495,13 +532,24 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
         if result.get("confirm"):
             _remember(_previews, (owner, result["confirm"]), _Preview(digest, marks, expires))
 
+    def applied_skip(marks: Optional[Marks], flips: Sequence[str] = ()) -> Optional[list[str]]:
+        """The photos an apply leaves out (``flips`` plus what the user applied), or None when that cannot be trusted."""
+        if marks is not None and marks.applied_truncated:
+            return None
+        skip = list(dict.fromkeys([*flips, *(marks.applied if marks else ())]))
+        return None if len(skip) > SKIP_PATHS_MAX else skip
+
     async def send_apply(grant, options: dict, digest: str, marks: Optional[Marks], timeout: float,
-                         skip: Optional[list[str]] = None) -> dict:
+                         skip: Optional[list[str]] = None, applied_paths: Sequence[str] = ()) -> dict:
         applied = await client.call(
             grant, "culling.auto",
-            json={**options, "dry_run": False, "expected_digest": digest, **({"skip_paths": skip} if skip else {})},
+            json={**options, "dry_run": False, "expected_digest": digest,
+                  **({"skip_paths": skip} if skip else {}),
+                  **({"applied_paths": list(applied_paths)} if applied_paths else {})},
             timeout=timeout)
         if not applied["ok"]:
+            if PLAN_CHANGED_BY_APPLY in applied.get("message", ""):
+                return err("confirmation_required", PLAN_CHANGED_BY_APPLY_HINT)
             if PLAN_CHANGED in applied.get("message", ""):
                 return err("confirmation_required", applied["message"])
             return applied
@@ -529,7 +577,12 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
                        "The marks in the tab could not be re-read in full (or too many changed since the "
                        "preview), so a photo you flipped to Keep could still be rejected: preview again "
                        "with dry_run=true")
-        return await send_apply(grant, options, memory.digest, memory.marks, timeout, flips)
+        done = tuple(dict.fromkeys([*memory.marks.applied, *(current.applied if current else ())]))
+        skip = applied_skip(Marks(applied=done, applied_truncated=bool(current and current.applied_truncated)),
+                            flips)
+        if skip is None:
+            return err("confirmation_required", APPLIED_UNREADABLE)
+        return await send_apply(grant, options, memory.digest, memory.marks, timeout, skip, done)
 
     async def _show_page(rows: list[dict], resolved, settings, tab_id: Optional[str], timeout: float) -> dict:
         page = _pinned_page(rows)

@@ -71,13 +71,15 @@ def _cap_activity(activity: dict) -> None:
 
 
 def fit_review(result: dict, max_bytes: int) -> None:
-    """Trim ``review.keep`` / ``review.remove`` and ``user_activity.items`` so the context fits ``max_bytes``.
+    """Trim ``review.keep`` / ``review.remove`` / ``review.applied.*`` and ``user_activity.items`` to fit ``max_bytes``.
 
     The tab caps each review list at 1000 paths and the activity at 50 items, far more than the envelope
     allows. The biggest of the three is halved (activity drops its OLDEST half) until the whole result fits;
     whichever is cut is flagged: the review keeps its true sizes (the tab's, when its cap already cut) in ``review.keep_count`` /
     ``review.remove_count`` and sets ``review.truncated``, the activity sets ``user_activity.truncated``. Everything is edited in place, so the review's other keys
-    (``groups_total`` / ``groups_visited`` / ``groups_changed``) and ``user_activity.until`` are untouched.
+    (``groups_total`` / ``groups_visited`` / ``groups_changed`` / ``groups_applied``) and ``user_activity.until``
+    are untouched. The applied lists are cut the same way and flagged inside their block
+    (``review.applied.truncated`` with its own ``keep_count`` / ``remove_count``).
     """
     data = result.get("data") if result.get("ok") else None
     if not isinstance(data, dict):
@@ -91,10 +93,14 @@ def fit_review(result: dict, max_bytes: int) -> None:
     found = data.get("review")
     review: dict = found if isinstance(found, dict) else {}
     lists = [side for side in ("keep", "remove") if isinstance(review.get(side), list)]
+    found = review.get("applied")
+    applied: dict = found if isinstance(found, dict) else {}
+    applied_lists = [side for side in ("keep", "remove") if isinstance(applied.get(side), list)]
     # The true sizes are recorded on the first cut only, so a review the activity's trim spares stays unflagged.
     counted = len(lists) < 2
     while encoded_size(result) > max_bytes:
         sizes = {side: encoded_size(review[side]) for side in lists if review[side]}
+        sizes.update({f"applied.{side}": encoded_size(applied[side]) for side in applied_lists if applied[side]})
         if isinstance(activity.get("items"), list) and activity["items"]:
             sizes["activity"] = encoded_size(activity["items"])
         if not sizes:
@@ -103,6 +109,13 @@ def fit_review(result: dict, max_bytes: int) -> None:
         if biggest == "activity":
             activity["items"] = activity["items"][(len(activity["items"]) + 1) // 2:]
             activity["truncated"] = True
+            continue
+        if biggest.startswith("applied."):
+            side = biggest.split(".", 1)[1]
+            for name in applied_lists:
+                applied.setdefault(f"{name}_count", len(applied[name]))
+            applied["truncated"] = True
+            applied[side] = applied[side][:len(applied[side]) // 2]
             continue
         if not counted:
             # The tab already recorded the true sizes when its own cap cut a list; keep those.

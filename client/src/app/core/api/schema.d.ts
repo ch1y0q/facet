@@ -1386,6 +1386,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/culling/apply_marks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Marks
+         * @description Commit the Keep/Remove marks the user set on an assistant-pinned review.
+         *
+         *     Per group, in one transaction: Remove-marked photos are rejected, a Keep-marked photo that is rejected
+         *     is un-rejected (both in the caller's own storage, rating and favourite untouched), the keep/reject split
+         *     is recorded as comparison pairs exactly as the darkroom records it, and the group is marked reviewed per
+         *     its kind. Frames of a keep-whole sequence set are never rejected and enter no pair. Every path must be
+         *     visible to the caller and appear once in the body, else 400 and nothing is written. The response carries
+         *     one opaque receipt id per group for ``/api/culling/undo_apply_marks``; it is held in server memory.
+         */
+        post: operations["apply_marks_api_culling_apply_marks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/culling/auto": {
         parameters: {
             query?: never;
@@ -1482,6 +1509,31 @@ export interface paths {
         get: operations["suggest_cull_profile_api_culling_suggest_profile_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/culling/undo_apply_marks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo Apply Marks
+         * @description Reverse one group of ``/api/culling/apply_marks`` from the receipt the server kept.
+         *
+         *     Takes only the receipt id: what to write back comes from server memory, so a caller can neither widen
+         *     it nor point it at photos outside its visibility (every path is re-filtered). Compare-and-set: a photo
+         *     whose rejected state, or a reviewed flag, no longer equals what the apply wrote is left alone and counted
+         *     in ``skipped_changed``. An unknown, expired, consumed or foreign id is the same 404.
+         */
+        post: operations["undo_apply_marks_api_culling_undo_apply_marks_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4633,6 +4685,59 @@ export interface components {
             /** Scoring Context */
             scoring_context: string;
         };
+        /** ApplyGroup */
+        ApplyGroup: {
+            /** Keep Paths */
+            keep_paths?: string[];
+            /** Kind */
+            kind?: ("burst" | "similar" | "scene" | "bracket" | "panorama" | "hdr_panorama") | null;
+            /** Reject Paths */
+            reject_paths?: string[];
+            /**
+             * Ungrouped
+             * @default false
+             */
+            ungrouped?: boolean;
+        };
+        /** ApplyGroupResult */
+        ApplyGroupResult: {
+            /** Index */
+            index: number;
+            /** Noop */
+            noop: number;
+            /** Pairs */
+            pairs: number;
+            /** Receipt Id */
+            receipt_id: string;
+            /** Rejected */
+            rejected: number;
+            /** Rejected Paths */
+            rejected_paths: string[];
+            /** Skipped Keep Whole */
+            skipped_keep_whole: string[];
+            /** Unrejected */
+            unrejected: number;
+            /** Unrejected Paths */
+            unrejected_paths: string[];
+        };
+        /** ApplyMarksBody */
+        ApplyMarksBody: {
+            /** Groups */
+            groups: components["schemas"]["ApplyGroup"][];
+        };
+        /** ApplyMarksResponse */
+        ApplyMarksResponse: {
+            /** Groups */
+            groups: components["schemas"]["ApplyGroupResult"][];
+            /** Noop */
+            noop: number;
+            /** Pairs */
+            pairs: number;
+            /** Rejected */
+            rejected: number;
+            /** Unrejected */
+            unrejected: number;
+        };
         /** AssignAllFacesRequest */
         AssignAllFacesRequest: {
             /** Person Id */
@@ -4703,6 +4808,8 @@ export interface components {
         AutoCullBody: {
             /** Album Id */
             album_id?: number | null;
+            /** Applied Paths */
+            applied_paths?: string[];
             /**
              * Cursor
              * @default 0
@@ -7982,6 +8089,24 @@ export interface components {
             /** Photo Path */
             photo_path: string;
         };
+        /** UndoApplyMarksBody */
+        UndoApplyMarksBody: {
+            /** Receipt Id */
+            receipt_id: string;
+        };
+        /** UndoApplyMarksResponse */
+        UndoApplyMarksResponse: {
+            /** Flags Restored */
+            flags_restored: number;
+            /** Pairs Deleted */
+            pairs_deleted: number;
+            /** Restored Rejected */
+            restored_rejected: string[];
+            /** Restored Unrejected */
+            restored_unrejected: string[];
+            /** Skipped Changed */
+            skipped_changed: number;
+        };
         /** UpdateAlbumRequest */
         UpdateAlbumRequest: {
             /** Cover Photo Path */
@@ -10267,6 +10392,39 @@ export interface operations {
             };
         };
     };
+    apply_marks_api_culling_apply_marks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyMarksBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplyMarksResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     auto_cull_api_culling_auto_post: {
         parameters: {
             query?: never;
@@ -10340,6 +10498,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SuggestCullProfileResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_apply_marks_api_culling_undo_apply_marks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UndoApplyMarksBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UndoApplyMarksResponse"];
                 };
             };
             /** @description Validation Error */

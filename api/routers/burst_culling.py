@@ -11,6 +11,7 @@ import json
 import logging
 import random
 import re
+import secrets
 import sqlite3
 import threading
 import time
@@ -20,7 +21,7 @@ from itertools import groupby
 from typing import Literal, Optional, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from api.agent import live_updates
 from api.auth import CurrentUser, get_optional_user, require_edition
@@ -29,7 +30,7 @@ from api.subject_bbox import parse_subject_bbox
 from api.db_helpers import (
     get_visibility_clause, paginate, is_multi_user_enabled, get_photos_from_clause,
     get_preference_columns, read_labels,
-    trigger_auto_retrain, record_culling_decision, set_photos_rejected,
+    trigger_auto_retrain, record_culling_decision, set_photos_rejected, set_photos_unrejected,
     album_filter_clause, time_window_clauses,
     select_in_chunks, scope_cache_key, scope_sql as path_scope_sql, NO_VISIBILITY_SQL,
     SEQUENCE_OVERRIDE_SELECT, SEQUENCE_OVERRIDE_PENDING_SELECT,
@@ -151,6 +152,9 @@ class AutoCullBody(BaseModel):
     skip_paths: list[str] = Field(default_factory=list, max_length=1000)
     # Drop an override the plan cannot honour (and report it) instead of answering 400.
     lenient_overrides: bool = False
+    # Photos the user applied from the tab's pinned review since the preview: left out of the apply like
+    # ``skip_paths``, and, when the plan moved while naming one of them, the reason the refusal gives.
+    applied_paths: list[str] = Field(default_factory=list, max_length=1000)
 
 
 # --- Helpers ---
@@ -1869,6 +1873,333 @@ def confirm_culling_group(
         raise HTTPException(status_code=400, detail=f'Unknown group type: {body.type}')
 
 
+# --- Apply the user's own marks from an assistant-pinned review ---
+
+ApplyKind = Literal['burst', 'similar', 'scene', 'bracket', 'panorama', 'hdr_panorama']
+APPLY_MAX_GROUPS = 200
+APPLY_MAX_PATHS = 1000
+# Undo is for second thoughts inside one review session: the state guard's 15 minutes is too short for a
+# review read slowly, a day would hold memory for nothing.
+RECEIPT_TTL_S = 4 * 3600
+RECEIPT_MAX_PER_USER = 256
+# ~450 bytes per path, as the state guard budgets: ~9 MB per user at the cap.
+RECEIPT_MAX_PATHS = 20000
+_receipt_clock = time.monotonic
+_receipt_lock = threading.Lock()
+# user_id -> {receipt_id: (stored_at, receipt)}, oldest first. In server memory on purpose: the receipt holds
+# the values Undo writes back, and a client-held copy could be forged into editing flags of any photo.
+_apply_receipts: dict = {}
+
+
+class ApplyGroup(BaseModel):
+    # None for a pin that carries no kind: pairs are recorded, no reviewed flag is written.
+    kind: Optional[ApplyKind] = None
+    # The marks-only unit of a pin without groups: it must be the only group and carry no kind.
+    ungrouped: bool = False
+    keep_paths: list[str] = Field(default_factory=list, max_length=APPLY_MAX_PATHS)
+    reject_paths: list[str] = Field(default_factory=list, max_length=APPLY_MAX_PATHS)
+
+
+class ApplyMarksBody(BaseModel):
+    groups: list[ApplyGroup] = Field(min_length=1, max_length=APPLY_MAX_GROUPS)
+
+    @field_validator('groups')
+    @classmethod
+    def _bounded_total(cls, groups):
+        if sum(len(g.keep_paths) + len(g.reject_paths) for g in groups) > APPLY_MAX_PATHS:
+            raise ValueError(f'at most {APPLY_MAX_PATHS} paths in total')
+        return groups
+
+
+class ApplyGroupResult(BaseModel):
+    index: int
+    rejected: int
+    unrejected: int
+    noop: int
+    rejected_paths: list[str]
+    unrejected_paths: list[str]
+    skipped_keep_whole: list[str]
+    pairs: int
+    receipt_id: str
+
+
+class ApplyMarksResponse(BaseModel):
+    groups: list[ApplyGroupResult]
+    rejected: int
+    unrejected: int
+    noop: int
+    pairs: int
+
+
+class UndoApplyMarksBody(BaseModel):
+    receipt_id: str = Field(min_length=1, max_length=200)
+
+
+class UndoApplyMarksResponse(BaseModel):
+    restored_rejected: list[str]
+    restored_unrejected: list[str]
+    pairs_deleted: int
+    flags_restored: int
+    skipped_changed: int
+
+
+def reset_apply_receipts():
+    with _receipt_lock:
+        _apply_receipts.clear()
+
+
+def _receipt_weight(receipt):
+    return sum(len(receipt[key]) for key in ('rejected', 'unrejected', 'pair_ids', 'burst', 'similar'))
+
+
+def _receipt_live(entries):
+    """Drop expired receipts from one user's ordered ``entries``."""
+    cutoff = _receipt_clock() - RECEIPT_TTL_S
+    for key in [k for k, (stored_at, _) in entries.items() if stored_at <= cutoff]:
+        del entries[key]
+
+
+def _receipt_store(user_id, receipt):
+    """Keep ``receipt`` for ``user_id`` and return its opaque id; the oldest receipts go first past the caps."""
+    token = secrets.token_urlsafe(16)
+    with _receipt_lock:
+        entries = _apply_receipts.setdefault(user_id, {})
+        _receipt_live(entries)
+        entries[token] = (_receipt_clock(), receipt)
+        weight = sum(_receipt_weight(r) for _, r in entries.values())
+        while len(entries) > 1 and (len(entries) > RECEIPT_MAX_PER_USER or weight > RECEIPT_MAX_PATHS):
+            oldest = next(iter(entries))
+            weight -= _receipt_weight(entries.pop(oldest)[1])
+    return token
+
+
+def _receipt_peek(user_id, receipt_id):
+    with _receipt_lock:
+        entries = _apply_receipts.get(user_id, {})
+        _receipt_live(entries)
+        entry = entries.get(receipt_id)
+        return entry[1] if entry else None
+
+
+def _receipt_take(user_id, receipt_id):
+    with _receipt_lock:
+        entries = _apply_receipts.get(user_id, {})
+        _receipt_live(entries)
+        entry = entries.pop(receipt_id, None)
+        return entry[1] if entry else None
+
+
+def _mark_rows(conn, paths, user_id):
+    """``path -> row`` of the caller's visible subset of ``paths``, with the user's own rejected state and
+    the reviewed flags a mark can move."""
+    from_clause, from_params, is_rejected_col = _rejected_clause(user_id)
+    vis_sql, vis_params = get_visibility_clause(user_id)
+    rows = select_in_chunks(
+        conn,
+        "SELECT photos.path AS path, photos.sequence_kind AS sequence_kind, "
+        "photos.burst_group_id AS burst_group_id, photos.burst_reviewed AS burst_reviewed, "
+        "photos.is_burst_lead AS is_burst_lead, photos.similarity_reviewed AS similarity_reviewed, "
+        f"{is_rejected_col} AS rejected FROM {from_clause} "
+        f"WHERE photos.path IN ({{placeholders}}) AND {vis_sql}",
+        paths, before=from_params, after=vis_params,
+    )
+    return {r['path']: r for r in rows}
+
+
+def _check_apply_body(body):
+    """The semantic checks pydantic cannot state: 400 before anything is read or written."""
+    ungrouped = [g for g in body.groups if g.ungrouped]
+    if ungrouped and (len(body.groups) != 1 or ungrouped[0].kind is not None):
+        raise HTTPException(
+            status_code=400,
+            detail='An ungrouped (marks-only) unit must be the only group and carry no kind')
+    counts = Counter(p for g in body.groups for p in g.keep_paths + g.reject_paths)
+    repeated = sorted(p for p, n in counts.items() if n > 1)
+    if repeated:
+        raise HTTPException(status_code=400, detail=f'Paths listed more than once: {repeated[:3]}')
+
+
+def _burst_flag_split(group, rows, keep_paths, reject_effective, skipped_keep_whole):
+    """``(keeps, rejects)`` to hand ``_mark_burst_reviewed`` for a group, or None when no burst flag applies."""
+    if group.ungrouped:
+        return None
+    if group.kind == 'burst':
+        return keep_paths + skipped_keep_whole, reject_effective
+    if group.kind in _KEEP_WHOLE_KINDS:
+        # The pin's kind has lost the feed the set arrived by. A set shredded across one burst group is
+        # still reached through the burst feed; any other shape cannot be derived and is left alone.
+        ids = {r['burst_group_id'] for r in rows}
+        if len(ids) == 1 and None not in ids:
+            return [r['path'] for r in rows], []
+    return None
+
+
+def _write_apply_group(conn, group, by_path, user_id, vis_sql, vis_params):
+    """Apply one group inside the caller's transaction. Returns ``(result, receipt)``; the commit,
+    cache invalidation and retrain nudge belong to the caller."""
+    paths = group.keep_paths + group.reject_paths
+    rows = [by_path[p] for p in paths]
+    keep_whole = _sequence_members(rows)
+    skipped = [p for p in group.reject_paths if p in keep_whole]
+    reject_effective = [p for p in group.reject_paths if p not in keep_whole]
+    to_reject = [p for p in reject_effective if not by_path[p]['rejected']]
+    to_unreject = [p for p in group.keep_paths if by_path[p]['rejected']]
+    receipt = {'rejected': to_reject, 'unrejected': to_unreject, 'pair_ids': [], 'burst': [], 'similar': []}
+    split = _burst_flag_split(group, rows, group.keep_paths, reject_effective, skipped)
+    if split is not None:
+        for role, role_paths, written in (('keep', split[0], (1, 1)), ('reject', split[1], (0, 1))):
+            for path in role_paths:
+                row = by_path[path]
+                if ((row['is_burst_lead'] or 0), (row['burst_reviewed'] or 0)) != written:
+                    receipt['burst'].append({'path': path, 'role': role, 'lead_before': row['is_burst_lead'],
+                                             'reviewed_before': row['burst_reviewed']})
+        _mark_burst_reviewed(conn, *split)
+    elif group.kind == 'similar' and not group.ungrouped:
+        receipt['similar'] = [{'path': p, 'reviewed_before': by_path[p]['similarity_reviewed']}
+                              for p in paths if (by_path[p]['similarity_reviewed'] or 0) != 1]
+        _mark_similarity_reviewed(conn, paths, vis_sql, vis_params)
+    set_photos_rejected(conn, to_reject, user_id)
+    set_photos_unrejected(conn, to_unreject, user_id)
+    pairs = 0
+    if not group.ungrouped:
+        last_id = conn.execute("SELECT COALESCE(MAX(id), 0) FROM comparisons").fetchone()[0]
+        pairs = record_culling_decision(
+            conn, group.keep_paths, reject_effective, keep_whole,
+            user_id=user_id, group_type='review', commit=False,
+        )
+        if pairs:
+            members = set(paths)
+            receipt['pair_ids'] = [
+                r[0] for r in conn.execute(
+                    "SELECT id, photo_a_path, photo_b_path FROM comparisons WHERE id > ? AND source = 'culling' "
+                    "AND session_id = 'cull-review' AND user_id IS ?", (last_id, user_id))
+                if r[1] in members and r[2] in members
+            ]
+    result = {
+        'rejected': len(to_reject), 'unrejected': len(to_unreject),
+        'noop': len(group.keep_paths) + len(reject_effective) - len(to_reject) - len(to_unreject),
+        'rejected_paths': to_reject, 'unrejected_paths': to_unreject,
+        'skipped_keep_whole': skipped, 'pairs': pairs,
+    }
+    return result, receipt
+
+
+def _after_marks_write(conn):
+    """Drop the memoised culling feeds a marks write invalidates, as an auto-cull apply does."""
+    conn.execute("DELETE FROM stats_cache WHERE key LIKE 'scenes_%'")
+    conn.execute("DELETE FROM stats_cache WHERE key LIKE 'similarity_groups_%'")
+
+
+@router.post("/api/culling/apply_marks", response_model=ApplyMarksResponse, response_model_exclude_unset=True)
+def apply_marks(
+    body: ApplyMarksBody,
+    user: CurrentUser = Depends(require_edition),
+):
+    """Commit the Keep/Remove marks the user set on an assistant-pinned review.
+
+    Per group, in one transaction: Remove-marked photos are rejected, a Keep-marked photo that is rejected
+    is un-rejected (both in the caller's own storage, rating and favourite untouched), the keep/reject split
+    is recorded as comparison pairs exactly as the darkroom records it, and the group is marked reviewed per
+    its kind. Frames of a keep-whole sequence set are never rejected and enter no pair. Every path must be
+    visible to the caller and appear once in the body, else 400 and nothing is written. The response carries
+    one opaque receipt id per group for ``/api/culling/undo_apply_marks``; it is held in server memory.
+    """
+    user_id = user.user_id if user else None
+    _check_apply_body(body)
+    with get_db() as conn:
+        try:
+            from db import DEFAULT_DB_PATH
+            vis_sql, vis_params = get_visibility_clause(user_id)
+            paths = [p for g in body.groups for p in g.keep_paths + g.reject_paths]
+            by_path = _mark_rows(conn, paths, user_id)
+            invisible = [p for p in paths if p not in by_path]
+            if invisible:
+                raise HTTPException(status_code=400, detail=f'Unknown or invisible paths: {invisible[:3]}')
+            written = [_write_apply_group(conn, g, by_path, user_id, vis_sql, vis_params) for g in body.groups]
+            _after_marks_write(conn)
+            conn.commit()
+        except HTTPException:
+            raise
+        except sqlite3.Error:
+            conn.rollback()
+            logger.exception("Apply marks failed")
+            raise HTTPException(status_code=500, detail='Internal server error')
+        _invalidate_culling_groups_cache()
+        from api.config import invalidate_stats_cache
+        invalidate_stats_cache()
+        groups = [{'index': index, **result, 'receipt_id': _receipt_store(user_id, receipt)}
+                  for index, (result, receipt) in enumerate(written)]
+        total_pairs = sum(g['pairs'] for g in groups)
+        trigger_auto_retrain(DEFAULT_DB_PATH, user_id, total_pairs, conn=conn)
+        return {'groups': groups, 'rejected': sum(g['rejected'] for g in groups),
+                'unrejected': sum(g['unrejected'] for g in groups), 'noop': sum(g['noop'] for g in groups),
+                'pairs': total_pairs}
+
+
+@router.post("/api/culling/undo_apply_marks", response_model=UndoApplyMarksResponse,
+             response_model_exclude_unset=True)
+def undo_apply_marks(
+    body: UndoApplyMarksBody,
+    user: CurrentUser = Depends(require_edition),
+):
+    """Reverse one group of ``/api/culling/apply_marks`` from the receipt the server kept.
+
+    Takes only the receipt id: what to write back comes from server memory, so a caller can neither widen
+    it nor point it at photos outside its visibility (every path is re-filtered). Compare-and-set: a photo
+    whose rejected state, or a reviewed flag, no longer equals what the apply wrote is left alone and counted
+    in ``skipped_changed``. An unknown, expired, consumed or foreign id is the same 404.
+    """
+    user_id = user.user_id if user else None
+    receipt = _receipt_peek(user_id, body.receipt_id)
+    if receipt is None:
+        raise HTTPException(status_code=404, detail='receipt_not_found')
+    with get_db() as conn:
+        try:
+            wanted = (receipt['rejected'] + receipt['unrejected'] + [e['path'] for e in receipt['burst']]
+                      + [e['path'] for e in receipt['similar']])
+            by_path = _mark_rows(conn, wanted, user_id)
+            unreject = [p for p in receipt['rejected'] if p in by_path and by_path[p]['rejected']]
+            reject = [p for p in receipt['unrejected'] if p in by_path and not by_path[p]['rejected']]
+            changed = (len([p for p in receipt['rejected'] if p in by_path]) - len(unreject)
+                       + len([p for p in receipt['unrejected'] if p in by_path]) - len(reject))
+            set_photos_unrejected(conn, unreject, user_id)
+            set_photos_rejected(conn, reject, user_id)
+            flags = 0
+            for entry in receipt['burst']:
+                row = by_path.get(entry['path'])
+                written = (1, 1) if entry['role'] == 'keep' else (0, 1)
+                if row is not None and row['burst_group_id'] is not None \
+                        and ((row['is_burst_lead'] or 0), (row['burst_reviewed'] or 0)) == written:
+                    conn.execute("UPDATE photos SET is_burst_lead = ?, burst_reviewed = ? WHERE path = ?",
+                                 (entry['lead_before'], entry['reviewed_before'], entry['path']))
+                    flags += 1
+            for entry in receipt['similar']:
+                row = by_path.get(entry['path'])
+                if row is not None and (row['similarity_reviewed'] or 0) == 1:
+                    conn.execute("UPDATE photos SET similarity_reviewed = ? WHERE path = ?",
+                                 (entry['reviewed_before'], entry['path']))
+                    flags += 1
+            deleted = 0
+            for start in range(0, len(receipt['pair_ids']), 500):
+                chunk = receipt['pair_ids'][start:start + 500]
+                deleted += conn.execute(
+                    f"DELETE FROM comparisons WHERE id IN ({','.join('?' * len(chunk))}) "
+                    "AND source = 'culling' AND session_id = 'cull-review' AND user_id IS ?",
+                    [*chunk, user_id]).rowcount
+            _after_marks_write(conn)
+            conn.commit()
+        except sqlite3.Error:
+            conn.rollback()
+            logger.exception("Undo apply marks failed")
+            raise HTTPException(status_code=500, detail='Internal server error')
+    _receipt_take(user_id, body.receipt_id)
+    _invalidate_culling_groups_cache()
+    from api.config import invalidate_stats_cache
+    invalidate_stats_cache()
+    return {'restored_rejected': unreject, 'restored_unrejected': reject, 'pairs_deleted': deleted,
+            'flags_restored': flags, 'skipped_changed': changed}
+
+
 # --- One-button auto-cull ---
 
 # A preview page is whole groups until the next one would pass either bound; a single
@@ -2497,13 +2828,17 @@ def _remember_plan(conn, user_id, digest, plan, rest, result):
         tags, rest, read_labels(conn, user_id, [t[3] for t in tags]), _guard_clock()))
 
 
-def _reconcile_plan(conn, user_id, plan, result, expected_digest, rest, explicit_skip, state_guard):
+def _reconcile_plan(conn, user_id, plan, result, expected_digest, rest, explicit_skip, state_guard,
+                    applied=frozenset()):
     """The paths to leave out of an apply, or ``AutoCullPlanChanged`` when the plan moved for another reason.
 
     ``changed`` is every path whose rating / favourite / reject differs from the preview's snapshot plus the
     caller's ``explicit_skip``. A different plan digest is tolerated only when the difference between the two
     plans' tags names nothing but ``changed`` and the options / overrides part is identical; without a
-    snapshot (expired, another worker) it is the plain refusal.
+    snapshot (expired, another worker) it is the plain refusal. A plan that moved while ``applied`` (photos the
+    user applied from the tab since the preview) names a path of the preview is refused with
+    ``PLAN_CHANGED_BY_APPLY`` instead, even when the difference is all ``changed``: their group renumbers the
+    groups after it, so the preview the caller holds describes a list that no longer exists.
     """
     snapshot = _guard_load(user_id, expected_digest) if state_guard and expected_digest is not None else None
     if state_guard and expected_digest is not None and snapshot is None:
@@ -2514,6 +2849,8 @@ def _reconcile_plan(conn, user_id, plan, result, expected_digest, rest, explicit
         fresh = read_labels(conn, user_id, snapshot.labels)
         changed |= {path for path, labels in snapshot.labels.items() if fresh[path] != labels}
     if expected_digest is not None and expected_digest != result.plan_digest:
+        if snapshot is not None and applied & {tag[3] for tag in snapshot.tags}:
+            raise AutoCullPlanChanged(PLAN_CHANGED_BY_APPLY)
         if snapshot is None or snapshot.rest != rest or \
                 any(tag[3] not in changed for tag in snapshot.tags ^ tags):
             raise AutoCullPlanChanged(
@@ -2537,6 +2874,10 @@ def _drop_skipped(plan, skipped):
         entry['keep_paths'] = [p['path'] for p in entry['keep']]
         entry['reject_paths'] = [p['path'] for p in entry['reject']]
     return emptied
+
+
+PLAN_CHANGED_BY_APPLY = ('The plan changed because groups were applied in the tab since it was previewed; '
+                         'nothing was written. Preview it again.')
 
 
 class AutoCullPlanChanged(Exception):
@@ -2806,7 +3147,7 @@ def run_auto_cull(conn, db_path, user_id, *, group_by, strictness, min_keep,
                   album_id=None, date_from=None, date_to=None, path_scope=None,
                   use_cache=True, membership_groups=False, record=True, cursor=0,
                   keep_override=None, remove_override=None, expected_digest=None,
-                  lenient_overrides=False, state_guard=False, skip_paths=None):
+                  lenient_overrides=False, state_guard=False, skip_paths=None, applied_paths=None):
     """Collect, split and (unless ``dry_run``) apply one auto-cull sweep.
 
     Shared by ``POST /api/culling/auto`` and ``facet.py --auto-cull``. Raises
@@ -2882,8 +3223,10 @@ def run_auto_cull(conn, db_path, user_id, *, group_by, strictness, min_keep,
         if state_guard:
             _remember_plan(conn, user_id, result.plan_digest, plan, rest, result)
     else:
+        applied = set(applied_paths or [])
         changed, reported = _reconcile_plan(
-            conn, user_id, plan, result, expected_digest, rest, set(skip_paths or []), state_guard)
+            conn, user_id, plan, result, expected_digest, rest, set(skip_paths or []) | applied, state_guard,
+            applied)
         if changed:
             result.skipped_user_changed_groups = _drop_skipped(plan, changed)
         result.skipped_user_changed_count = len(reported)
@@ -2991,6 +3334,7 @@ def auto_cull(
                 cursor=body.cursor, keep_override=body.keep_paths,
                 remove_override=body.remove_paths, expected_digest=body.expected_digest,
                 lenient_overrides=body.lenient_overrides, skip_paths=body.skip_paths,
+                applied_paths=body.applied_paths,
                 state_guard=bool(user and user.is_agent_request),
             )
             rejected_paths = ({'rejected_paths': result.reject_paths}

@@ -61,6 +61,12 @@ def test_version_changes_with_a_description():
     assert tools_version() == before
 
 
+def test_ui_get_context_describes_the_applied_review_and_the_apply_activity_kinds():
+    description = next(t for t in UI_TOOLS if t.name == "ui_get_context").description
+    for term in ("review.applied", "groups_applied", "review_apply", "review_apply_undo"):
+        assert term in description, term
+
+
 def test_ui_show_photos_path_bound_is_in_the_contract_and_enforced():
     from api.agent.ui_tools import UiShowPhotos
     items = UiShowPhotos.model_json_schema()["properties"]["paths"]["items"]

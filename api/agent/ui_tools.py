@@ -319,9 +319,14 @@ UI_TOOLS: tuple[UiTool, ...] = (
            "too large for one answer its lists are cut: `review.truncated` is true when the tab's "
            "1000-per-list cap or the server's size trim cut a list, and `review.keep_count` / "
            "`review.remove_count` hold the true sizes whenever `review.truncated` is true; `review.groups_total` / "
-           "`groups_visited` / `groups_changed` report the review's progress. `user_activity` "
+           "`groups_visited` / `groups_changed` report the review's progress. `review.keep` / "
+           "`review.remove` are the PENDING marks only: the photos the user already committed with the tab's "
+           "Apply are in `review.applied` ({keep, remove, truncated}, the Keep/Remove they applied; "
+           "`keep_count` / `remove_count` hold the true sizes when `truncated`), and `groups_applied` counts "
+           "the groups fully applied. Never re-decide an applied photo. `user_activity` "
            "({items, until, truncated}) lists what the user did in the tab after `activity_since` "
-           "(rating, reject, favorite, review marks, tags, album, navigation; at most 50 items of 20 paths); "
+           "(rating, reject, favorite, review marks, review_apply, review_apply_undo, tags, album, "
+           "navigation; at most 50 items of 20 paths); "
            "pass the answer's `until` as the next `activity_since`.",
            UiGetContext, True),
     UiTool("ui_next_page", "Load the next page of the gallery in the user's tab (infinite scroll).",

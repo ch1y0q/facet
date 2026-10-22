@@ -739,6 +739,32 @@ class TestAutoCullReviewSnapshot:
         assert applied["data"]["skipped_user_changed_count"] == 2
         assert culling._rejected() == set()
 
+    def test_an_applied_block_in_the_snapshot_becomes_the_skip_list(self, agent_app, fake_tab, seed_photos_prefix,
+                                                                     monkeypatch):
+        from tests import test_agent_culling as culling
+        seed_photos_prefix(culling.PREFIX, culling.ROWS)
+        nonce.reset()
+        env = agent_app("legacy")
+        headers = env.login(edition=True)
+        tab = fake_tab(env, headers["Authorization"].split(" ", 1)[1])
+        seen = []
+        intercept_internal_call(monkeypatch, lambda tool, kw: seen.append((tool, kw)) and None)
+        b1, b2 = culling.BURST_PATHS[0], culling.BURST_PATHS[1]
+        args = {"group_by": "burst", "strictness": 0, **culling.SCOPE}
+        snapshot = {"keep": [], "remove": [], "applied": {"keep": [b1], "remove": [b2], "truncated": False}}
+        resp = env.client.post("/api/mcp/call", json={"tool": "auto_cull", "arguments": args,
+                                                      "review_snapshot": snapshot},
+                               headers={**headers, SESSION_HEADER: "tab-a"})
+        preview = resp.json()
+        assert preview["ok"] and preview["overrides_from_tab"] == {"applied": 2}, preview
+        resp = env.client.post("/api/mcp/call", json={
+            "tool": "auto_cull", "arguments": {**args, "dry_run": False, "confirm": preview["confirm"]},
+            "review_snapshot": snapshot}, headers={**headers, SESSION_HEADER: "tab-a"})
+        assert resp.json()["ok"], resp.json()
+        sent = [kw["json"] for tool, kw in seen if tool == "culling.auto"][-1]
+        assert sorted(sent["skip_paths"]) == sorted([b1, b2]) and sorted(sent["applied_paths"]) == sorted([b1, b2])
+        assert not [c for c in tab.calls if c["tool"] == "ui_get_context"]
+
     def test_the_request_model_documents_the_field(self):
         from api.models.mcp_inpage import McpCallRequest
         description = McpCallRequest.model_fields["review_snapshot"].description

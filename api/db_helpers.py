@@ -1753,6 +1753,38 @@ def set_photos_rejected(conn, paths, user_id, agent=False):
     return len(visible)
 
 
+def set_photos_unrejected(conn, paths, user_id, agent=False):
+    """Clear the rejected flag, the exact inverse of :func:`set_photos_rejected`.
+
+    Same per-user storage (``user_preferences`` in multi-user mode, ``photos`` otherwise), same visibility
+    filter, and like it the rating and favourite are left alone. Returns the number of visible photos
+    written, which counts ones that were not rejected to begin with.
+    """
+    if not paths:
+        return 0
+    vis_sql, vis_params = get_visibility_clause(user_id)
+    placeholders = ','.join('?' * len(paths))
+    visible = [r[0] for r in conn.execute(
+        f"SELECT path FROM photos WHERE path IN ({placeholders}) AND {vis_sql}",
+        list(paths) + vis_params,
+    ).fetchall()]
+    if not visible:
+        return 0
+    before = snapshot_labels(conn, agent, user_id, visible)
+    if user_id and is_multi_user_enabled():
+        conn.executemany(
+            "INSERT INTO user_preferences (user_id, photo_path, is_rejected) "
+            "VALUES (?, ?, 0) "
+            "ON CONFLICT(user_id, photo_path) DO UPDATE SET is_rejected = 0",
+            [(user_id, p) for p in visible],
+        )
+    else:
+        ph = ','.join('?' * len(visible))
+        conn.execute(f"UPDATE photos SET is_rejected = 0 WHERE path IN ({ph})", visible)
+    record_label_origin(conn, agent, user_id, visible, before)
+    return len(visible)
+
+
 # How far outside the frame a face box may legitimately reach. InsightFace does
 # not clip its boxes, so a face at the edge overhangs a little; a box beyond this
 # is not an overhang but a coordinate-space mismatch — the stored dimensions are
