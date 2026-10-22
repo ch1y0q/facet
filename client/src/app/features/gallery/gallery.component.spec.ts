@@ -10,6 +10,7 @@ import { MatBottomSheet } from '@angular/material/bottom-sheet';
 import { MatTooltip } from '@angular/material/tooltip';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { MatSidenav, MatSidenavContainer, MatSidenavContent } from '@angular/material/sidenav';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { GalleryStore, GalleryFilters, DEFAULT_FILTERS } from './gallery.store';
 import { buildApiParams, DISPLAY_OPTIONS_KEY } from './gallery-filters.util';
@@ -3312,6 +3313,60 @@ describe('GalleryComponent', () => {
       fixture!.detectChanges();
 
       expect(cards[4].contains(document.activeElement)).toBe(false);
+    });
+  });
+
+  describe('side drawer margins across a park (rendered)', () => {
+    let fixture: ComponentFixture<GalleryComponent> | null = null;
+
+    afterEach(() => {
+      fixture?.destroy();
+      fixture = null;
+      vi.unstubAllGlobals();
+    });
+
+    it('recomputes the content margin on return after a resize measured the detached drawer as 0', async () => {
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      mockStore.photos.set([{ path: '/p0.jpg', filename: 'p0.jpg', image_width: 4000, image_height: 3000 }]);
+      mockStore.total.set(1);
+      mockStore.filterDrawerOpen.set(true);
+      vi.stubGlobal('matchMedia', (media: string) => ({ matches: true, media, addEventListener() {}, removeEventListener() {} }));
+      fixture = TestBed.createComponent(GalleryComponent);
+      (fixture.componentInstance as unknown as { desktop: { setup(): void } }).desktop.setup();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      const sidenav = fixture.debugElement.query(By.directive(MatSidenav)).componentInstance as unknown as {
+        mode: string; opened: boolean; _getWidth: () => number; _elementRef: { nativeElement: HTMLElement };
+      };
+      const container = fixture.debugElement.query(By.directive(MatSidenavContainer)).componentInstance as unknown as {
+        updateContentMargins(): void; _contentMargins: { left: number | null; right: number | null };
+      };
+      const contentEl = fixture.debugElement.query(By.directive(MatSidenavContent)).nativeElement as HTMLElement;
+      expect(sidenav.mode).toBe('side');
+      expect(sidenav.opened).toBe(true);
+      // jsdom has no layout: emulate a 320px drawer that measures 0 once out of the document.
+      sidenav._getWidth = () => (sidenav._elementRef.nativeElement.isConnected ? 320 : 0);
+      container.updateContentMargins();
+      fixture.detectChanges();
+      expect(container._contentMargins.right).toBe(320);
+      expect(contentEl.style.marginRight).toBe('320px');
+      // Park: the outlet takes the DOM out, then emits detach.
+      const host = fixture.nativeElement as HTMLElement;
+      const parent = host.parentNode as Node;
+      host.remove();
+      outletMock.detachEvents.next(fixture.componentInstance);
+      window.dispatchEvent(new Event('resize'));
+      await new Promise(resolve => setTimeout(resolve, 60));
+      expect(container._contentMargins.right).toBeNull();
+      // Return: the outlet re-inserts the DOM, then emits attach.
+      parent.appendChild(host);
+      outletMock.attachEvents.next(fixture.componentInstance);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(container._contentMargins.right).toBe(320);
+      expect(contentEl.style.marginRight).toBe('320px');
     });
   });
 

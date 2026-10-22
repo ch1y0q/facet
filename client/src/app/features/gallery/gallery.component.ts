@@ -16,7 +16,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
-import { MatSidenav, MatSidenavModule, MatSidenavContent } from '@angular/material/sidenav';
+import { MatSidenav, MatSidenavContainer, MatSidenavModule, MatSidenavContent } from '@angular/material/sidenav';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -761,6 +761,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
   private readonly scrollContent = viewChild(MatSidenavContent);
+  private readonly sidenavContainer = viewChild(MatSidenavContainer);
 
   /** True once the gallery content is scrolled far enough to show the scroll-to-top button. */
   protected readonly showScrollTop = signal(false);
@@ -1116,6 +1117,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
       const t = this.galleryToolbar();
       if (t) this.headerSlot.set(t);
       this.tooltipPhoto.set(null);
+      // A resize while parked measured the detached drawer as 0 and zeroed the content margin.
+      this.sidenavContainer()?.updateContentMargins();
       const back = this.returnTo;
       this.returnTo = null;
       if (back) {
