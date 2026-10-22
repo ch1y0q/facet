@@ -36,6 +36,8 @@ _AUTH_MODULE = "api.routers.auth"
 # of /api/auth/status only proves what the status payload reports, not what an
 # unauthorized caller can actually do.
 _EDITION_ENDPOINT = "/api/albums"
+# A require_authenticated library read (/api/photos is not gated, so it cannot probe a session).
+_GATED_READ_ENDPOINT = "/api/filter_options/metric_ranges"
 _EDITION_BODY = {"name": "regression"}
 _INCOMPLETE_EDITION_BODY = {}
 _FOREIGN_JWT_SECRET = "other-secret-never-issued-by-this-server"
@@ -552,7 +554,9 @@ class TestUnparseableConfigFailsClosed:
             json=_EDITION_BODY,
             headers={"Authorization": f"Bearer {create_access_token({'sub': '_legacy', 'role': 'user'})}"},
         )
-        assert resp.status_code == 403
+        # No session is accepted while the config is unreadable, so this is 401, not the
+        # 403 an accepted session without edition rights would get.
+        assert resp.status_code == 401
 
     def test_corrupt_config_rejects_an_anonymous_edition_route(self, tmp_path, load_config_from):
         load_config_from(self._corrupt_config(tmp_path))
@@ -560,6 +564,23 @@ class TestUnparseableConfigFailsClosed:
 
         resp = client.post(_EDITION_ENDPOINT, json=_EDITION_BODY)
         assert resp.status_code == 401
+
+    @pytest.mark.parametrize("peer", ["203.0.113.9", "127.0.0.1"])
+    def test_an_open_period_session_is_refused_while_the_config_is_unreadable(
+            self, tmp_path, load_config_from, peer):
+        """The empty config hashes to the same generation an open-install token
+        carries, so without a guard that token read the library for 48 h."""
+        open_token = create_access_token({"sub": "_anonymous", "role": "user"})
+        client = TestClient(create_app(), raise_server_exceptions=False, client=(peer, 12345))
+        readable = tmp_path / "readable.json"
+        readable.write_text("{}")
+        load_config_from(readable)
+        assert client.get(_GATED_READ_ENDPOINT, headers=_bearer(open_token)).status_code == 200
+        load_config_from(self._corrupt_config(tmp_path))
+        assert client.get(_GATED_READ_ENDPOINT, headers=_bearer(open_token)).status_code == 401
+        assert client.get(_GATED_READ_ENDPOINT).status_code == 401
+        load_config_from(readable)
+        assert client.get(_GATED_READ_ENDPOINT, headers=_bearer(open_token)).status_code == 200
 
     def test_absent_config_is_an_open_install_that_refuses_edits(self, tmp_path, load_config_from):
         """The same request, with the flag disarmed, is an open install: the
