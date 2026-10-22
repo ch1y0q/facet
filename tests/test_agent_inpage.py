@@ -749,20 +749,22 @@ class TestAutoCullReviewSnapshot:
         tab = fake_tab(env, headers["Authorization"].split(" ", 1)[1])
         seen = []
         intercept_internal_call(monkeypatch, lambda tool, kw: seen.append((tool, kw)) and None)
-        b1, b2 = culling.BURST_PATHS[0], culling.BURST_PATHS[1]
+        b2 = culling.BURST_PATHS[1]
         args = {"group_by": "burst", "strictness": 0, **culling.SCOPE}
-        snapshot = {"keep": [], "remove": [], "applied": {"keep": [b1], "remove": [b2], "truncated": False}}
+        # Only the reject b2 is applied: applying the plan's sole keeper b1 too would drop the whole
+        # group from the apply, leaving nothing to reject and so no confirm to spend.
+        snapshot = {"keep": [], "remove": [], "applied": {"keep": [], "remove": [b2], "truncated": False}}
         resp = env.client.post("/api/mcp/call", json={"tool": "auto_cull", "arguments": args,
                                                       "review_snapshot": snapshot},
                                headers={**headers, SESSION_HEADER: "tab-a"})
         preview = resp.json()
-        assert preview["ok"] and preview["overrides_from_tab"] == {"applied": 2}, preview
+        assert preview["ok"] and preview["overrides_from_tab"] == {"applied": 1}, preview
         resp = env.client.post("/api/mcp/call", json={
             "tool": "auto_cull", "arguments": {**args, "dry_run": False, "confirm": preview["confirm"]},
             "review_snapshot": snapshot}, headers={**headers, SESSION_HEADER: "tab-a"})
         assert resp.json()["ok"], resp.json()
         sent = [kw["json"] for tool, kw in seen if tool == "culling.auto"][-1]
-        assert sorted(sent["skip_paths"]) == sorted([b1, b2]) and sorted(sent["applied_paths"]) == sorted([b1, b2])
+        assert sent["skip_paths"] == [b2] and sent["applied_paths"] == [b2]
         assert not [c for c in tab.calls if c["tool"] == "ui_get_context"]
 
     def test_the_request_model_documents_the_field(self):
