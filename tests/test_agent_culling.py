@@ -1118,6 +1118,19 @@ class TestAutoCullAppliedFromTheTab:
         assert preview["data"]["rejected"] == 0 and preview["data"]["kept"] == 2
         assert "Nothing to apply" in preview["note"] and "confirm" not in preview
 
+    def test_every_keeper_of_the_group_applied_leaves_nothing_to_reject_since_the_apply_drops_the_group(self, rig):
+        rig.state["review"] = {"keep": [], "remove": [], "applied": self.applied(keep=[BURST_PATHS[0], BURST_PATHS[1]])}
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        assert preview["ok"], preview
+        assert (preview["data"]["kept"], preview["data"]["rejected"]) == (0, 0)
+        assert "Nothing to apply" in preview["note"] and "confirm" not in preview
+
+    def test_an_answering_tab_with_nothing_applied_still_says_the_totals_exclude_applied(self, rig):
+        rig.state["review"] = {"keep": [], "remove": [], "applied": self.applied()}
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        assert preview["data"]["totals_exclude_applied"] is True
+        assert (preview["data"]["kept"], preview["data"]["rejected"]) == (2, 1)
+
     def test_an_apply_without_memory_is_refused_when_everything_left_to_reject_is_applied(self, rig):
         plain = rig.env.call(rig.token, "auto_cull", self.args())
         rig.state["review"] = {"keep": [], "remove": [], "applied": self.applied(remove=[BURST_PATHS[2]])}

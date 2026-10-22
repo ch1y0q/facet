@@ -554,3 +554,39 @@ class TestEditionPasswordOnlyInstall:
     def test_with_no_password_at_all_the_detail_does_not_mention_the_edition_password(self, agent_app):
         env = agent_app("open")
         assert _remote(env).get("/api/mcp/tokens", headers=env.login()).json()["detail"] == LOCAL_ONLY
+
+
+class TestUnreadableInstallLocalBoundary:
+    def test_a_remote_peer_with_an_open_period_session_cannot_touch_tokens_while_the_config_is_unreadable(
+            self, agent_app, monkeypatch):
+        env = agent_app("open")
+        headers = env.login()
+        kept = env.token(headers, "readonly", "local-users-token")
+        kept_id = tokens.list_tokens("_anonymous")[0]["id"]
+        monkeypatch.setattr(api_config, "_config_load_failed", True)
+        remote = _remote(env)
+        responses = [
+            remote.get("/api/mcp/tokens", headers=headers),
+            remote.delete(f"/api/mcp/tokens/{kept_id}", headers=headers),
+            remote.post("/api/mcp/tokens", json={"name": "x", "level": "readonly"}, headers=headers),
+        ]
+        assert [r.status_code in (401, 403) for r in responses] == [True] * 3, [r.status_code for r in responses]
+        monkeypatch.setattr(api_config, "_config_load_failed", False)
+        assert tokens.install_mode() == "open"
+        assert tokens.verify(kept) is not None
+        assert [t["id"] for t in tokens.list_tokens("_anonymous")] == [kept_id]
+
+    def test_the_dependency_refuses_a_non_local_non_edition_caller_in_unreadable_mode(self, agent_app, monkeypatch):
+        from types import SimpleNamespace
+
+        from fastapi import HTTPException
+
+        from api.routers.mcp_tokens import _require_local_on_open_install
+        agent_app("open")
+        monkeypatch.setattr(api_config, "_config_load_failed", True)
+        assert tokens.install_mode() == "unreadable"
+        request = SimpleNamespace(client=SimpleNamespace(host="192.0.2.7"),
+                                  headers={"host": "localhost:5000"}, url=SimpleNamespace(hostname="localhost"))
+        with pytest.raises(HTTPException) as refused:
+            _require_local_on_open_install(request, SimpleNamespace(is_edition=False))
+        assert refused.value.status_code == 403

@@ -49,7 +49,10 @@ OPEN_INSTALL_LOCAL_OR_EDITION_DETAIL = (
 
 
 def _require_local_on_open_install(request: Request, user: CurrentUser = Depends(require_human_session)) -> None:
-    """403 on an open install (no ``viewer.password``) unless the caller is local or holds edition.
+    """403 on an open or unreadable install unless the caller is local or holds edition.
+
+    Unreadable means the config failed to parse: the password state is unknown, so it is treated as
+    open rather than as passworded.
 
     Every caller there is the shared ``_anonymous`` principal, so without this any peer that
     reaches the viewer could list and revoke the local user's tokens, or fill their cap. Allowed:
@@ -58,7 +61,7 @@ def _require_local_on_open_install(request: Request, user: CurrentUser = Depends
     routes use, so an agent credential still gets its own refusal first). The opt-in
     ``viewer.trusted_local_editing`` is not consulted: this is a boundary, not the editing opt-in.
     """
-    if tokens.install_mode() != "open" or user.is_edition or request_is_local(request):
+    if tokens.install_mode() not in ("open", "unreadable") or user.is_edition or request_is_local(request):
         return
     raise HTTPException(
         status_code=403,

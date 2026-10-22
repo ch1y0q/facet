@@ -440,7 +440,7 @@ class TestAppliedInPlan:
         mine = [_p(tmp_path, n) for n in SCORES]
         plain = _preview(conn, db)
         with_applied = _preview(conn, db, applied_paths=[mine[0], mine[2], "/elsewhere.jpg"])
-        assert with_applied.applied_in_plan == {"kept": 1, "rejected": 1}
+        assert with_applied.applied_in_plan == {"kept": 1, "rejected": 2}
         assert (with_applied.kept, with_applied.rejected) == (plain.kept, plain.rejected)
         assert with_applied.plan_digest == plain.plan_digest
 
@@ -464,7 +464,7 @@ class TestAppliedInPlan:
         sent = edition_client.post("/api/culling/auto", json={
             **body, "applied_paths": [prefix + "b3.jpg", prefix + "b1.jpg"]})
         assert sent.status_code == 200, sent.text
-        assert sent.json()["applied_in_plan"] == {"kept": 1, "rejected": 1}
+        assert sent.json()["applied_in_plan"] == {"kept": 1, "rejected": 2}
         assert sent.json()["plan_digest"] == plain.json()["plan_digest"]
         assert sent.json()["kept"] == plain.json()["kept"] and sent.json()["rejected"] == plain.json()["rejected"]
         elsewhere = edition_client.post("/api/culling/auto", json={**body, "applied_paths": ["/x.jpg"]})

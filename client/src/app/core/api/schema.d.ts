@@ -4949,7 +4949,7 @@ export interface components {
          * @description ``POST /api/culling/auto``.
          */
         AutoCullResponse: {
-            /** @description Present on a dry run that was sent applied_paths and found some of them in the plan: how many planned keeps and rejects the caller already applied. kept and rejected still count the full plan. */
+            /** @description Present on a dry run that was sent applied_paths and found some of them in the plan: how many planned keeps and rejects an apply would leave out because the caller already applied them; a group whose keepers were all applied counts whole, rejects included. kept and rejected still count the full plan. */
             applied_in_plan?: components["schemas"]["AutoCullAppliedInPlan"] | null;
             /**
              * Dropped Overrides

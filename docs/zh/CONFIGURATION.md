@@ -2616,7 +2616,7 @@ python facet.py --recompute-text   # 重新读取整个图库
 
 | 键 | 默认值 | 说明 |
 |-----|---------|-------------|
-| `enabled` | `true` | `/mcp` 与 `/api/mcp/*` 的总开关。关闭时它们返回 404（桥接以关闭码 4404 断开）。在开放安装（没有 `viewer.password`）上，该端点只提供一个只读匿名密钥：不增加任何新权限，因为开放的 `/api` 本就暴露相同的数据。在开放安装上创建的令牌为 `readonly`，除非启用了 `viewer.trusted_local_editing`，此时可为来自同一台机器的请求使用完全编辑令牌。 |在开放安装上，令牌只能在运行 Facet 的电脑上创建、列出和吊销（设置了 `viewer.edition_password` 时，也可在编辑会话中进行）。
+| `enabled` | `true` | `/mcp` 与 `/api/mcp/*` 的总开关。关闭时它们返回 404（桥接以关闭码 4404 断开）。在开放安装（没有 `viewer.password`）上，该端点只提供一个只读匿名密钥：不增加任何新权限，因为开放的 `/api` 本就暴露相同的数据。在开放安装上创建的令牌为 `readonly`，除非启用了 `viewer.trusted_local_editing`，此时可为来自同一台机器的请求使用完全编辑令牌。 在开放安装上，令牌只能在运行 Facet 的电脑上创建、列出和吊销（设置了 `viewer.edition_password` 时，也可在编辑会话中进行）。 |
 | `bridge` | `true` | 浏览器标签页桥接（`/api/mcp/bridge`）是否接受 WebSocket、`ui_*` 工具能否到达标签页。为 `false` 时桥接拒绝连接（关闭码 4404），`ui_*` 工具会返回相应错误。需要单个 worker。 |
 | `max_rows` | `100` | 单次工具结果的最大行数（1 到 500）。多余的行被丢弃并设置 `truncated: true`。 |
 | `max_bytes` | `60000` | 单次工具结果序列化后的最大字节数（4000 到 500000）。 |

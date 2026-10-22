@@ -2911,6 +2911,18 @@ def _drop_skipped(plan, skipped):
     return emptied
 
 
+def _applied_in_plan(plan, applied, kept, rejected):
+    """The planned keeps / rejects an apply would leave out because the user already applied them.
+
+    Runs the apply's own ``_drop_skipped`` on a copy, so a group whose keepers are all applied counts
+    its rejects too: the apply drops that whole group.
+    """
+    left = [dict(entry) for entry in plan]
+    _drop_skipped(left, applied)
+    return {'kept': kept - sum(len(entry['keep_paths']) for entry in left),
+            'rejected': rejected - sum(len(entry['reject_paths']) for entry in left)}
+
+
 PLAN_CHANGED_BY_APPLY = ('The plan changed because groups were applied in the tab since it was previewed; '
                          'nothing was written. Preview it again.')
 
@@ -3278,9 +3290,7 @@ def run_auto_cull(conn, db_path, user_id, *, group_by, strictness, min_keep,
         result.kept += len(entry['keep_paths'])
         result.rejected += len(entry['reject_paths'])
     if dry_run and applied_paths:
-        applied = set(applied_paths)
-        counts = {'kept': sum(p in applied for p in result.keep_paths),
-                  'rejected': sum(p in applied for p in result.reject_paths)}
+        counts = _applied_in_plan(plan, set(applied_paths), result.kept, result.rejected)
         if counts['kept'] or counts['rejected']:
             result.applied_in_plan = counts
     result.preview, result.next_cursor = _auto_cull_page(plan, cursor)

@@ -87,6 +87,7 @@ class Marks:
     truncated: bool = False
     applied: tuple = ()
     applied_truncated: bool = False
+    applied_known: bool = False
 
     @property
     def usable(self) -> bool:
@@ -143,7 +144,8 @@ def marks_from_review(review: Any) -> Optional[Marks]:
     done = [[p for p in (block.get(side) or []) if isinstance(p, str)]
             if isinstance(block.get(side) or [], list) else [] for side in ("keep", "remove")]
     applied_cut = bool(block.get("truncated")) or any(len(item) >= TAB_REVIEW_CAP for item in done)
-    return Marks(tuple(lists[0]), tuple(lists[1]), cut, tuple(dict.fromkeys(done[0] + done[1])), applied_cut)
+    return Marks(tuple(lists[0]), tuple(lists[1]), cut, tuple(dict.fromkeys(done[0] + done[1])), applied_cut,
+                 isinstance(review.get("applied"), dict))
 
 
 def flips_since(before: Marks, now: Optional[Marks]) -> list[str]:
@@ -433,7 +435,8 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
                 # Only what the user already applied is taken from the tab: their pending marks are replaced
                 # by the explicit lists, but a photo they committed is never re-decided.
                 tab = await read_marks(resolved, settings, tab_id, timeout, snapshot)
-                marks = Marks(applied=tab.applied, applied_truncated=tab.applied_truncated) if tab else None
+                marks = Marks(applied=tab.applied, applied_truncated=tab.applied_truncated,
+                              applied_known=tab.applied_known) if tab else None
             elif memory is not None:
                 marks = memory.marks
             elif dry_run and cursor > 0:
@@ -467,7 +470,8 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
                            "The plan changed since the first page; nothing was written. Restart the "
                            "preview from cursor 0 (without plan_digest) and use its new `confirm`")
             if not preview["ok"] or dry_run:
-                result = _preview_result(grant, preview, settings, cursor, bool(applied_sent))
+                result = _preview_result(grant, preview, settings, cursor,
+                                         marks is not None and marks.applied_known and applied_sent is not None)
                 if result["ok"]:
                     attach_tab_marks(result, marks, preview["data"] or {})
                     if not explicit:
@@ -630,7 +634,7 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
         """The planned rejects the apply would still act on: the plan's, less the ones the user already applied."""
         return (body.get("rejected") or 0) - (body.get("applied_in_plan") or {}).get("rejected", 0)
 
-    def _preview_result(grant, upstream: dict, settings: dict, cursor: int, applied_sent: bool) -> dict:
+    def _preview_result(grant, upstream: dict, settings: dict, cursor: int, tab_answered: bool) -> dict:
         if not upstream["ok"]:
             return upstream
         body = upstream["data"] or {}
@@ -639,8 +643,8 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
         data.pop("effective_overrides", None)
         data.pop("applied_in_plan", None)
         left = _left_to_reject(body)
-        data["totals_exclude_applied"] = applied_sent
-        if applied_sent:
+        data["totals_exclude_applied"] = tab_answered
+        if tab_answered:
             done = body.get("applied_in_plan") or {}
             data["kept"] = (body.get("kept") or 0) - done.get("kept", 0)
             data["rejected"] = left
@@ -724,7 +728,9 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
         "cursor 0) until next_cursor is null; a page is cut by whole groups to fit the result size (a single group too big for it has its "
         "path lists clipped: `paths_clipped`, with `keep_count` / `reject_count`). "
         "`kept` and `rejected` cover the full plan minus the photos the user already applied from their "
-        "tab (`totals_exclude_applied` says whether that was possible; when false they include them), "
+        "tab, and a group whose keepers were all applied counts as applied whole, rejects included, as the "
+        "apply drops it (`totals_exclude_applied` is true once the tab answered with its marks, even with none applied; "
+        "false when it did not or its list was unusable, and then they include them), "
         "and ONE confirm, issued on the cursor-0 page only and only when something is left to reject, covers all "
         "of it (valid 300 s, single use). The apply returns counts only. To honour the user's review, "
         "OMIT keep_paths and remove_paths: the user's Keep/Remove flips are read from their open tab "
