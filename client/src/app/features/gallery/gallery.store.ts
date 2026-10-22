@@ -75,9 +75,32 @@ export interface AppliedReceipt {
   kind: string | null;
   label: ReviewGroupLabel | null;
   firstFilename: string;
-  skippedKeepWhole: string[];
+  /** Kept-whole frames the apply really left kept (not the ones that stay rejected). */
+  keptWholePaths: string[];
   /** The server no longer holds the receipt (404): the group stays locked, Undo is gone. */
   unavailable?: boolean;
+}
+
+/** The pin as it was when Apply was pressed. */
+interface PinSnapshot {
+  labels: ReadonlyMap<number, ReviewGroupLabel>;
+  groups: ReadonlyMap<string, number>;
+  paths: readonly string[];
+}
+
+/**
+ * The group number an applied receipt has on the CURRENT pin: set when at least one receipt path is pinned and
+ * every pinned path shares one number, else null. The number frozen at apply time goes stale on a re-pin.
+ */
+export function currentReceiptGroup(receipt: AppliedReceipt, groups: ReadonlyMap<string, number>): number | null {
+  let found: number | null = null;
+  for (const path of receipt.paths) {
+    const group = groups.get(path);
+    if (group === undefined) continue;
+    if (found !== null && found !== group) return null;
+    found = group;
+  }
+  return found;
 }
 
 /** A group (or, for a marks-only pin, the whole list) as one unit of an apply request. */
@@ -456,7 +479,7 @@ export class GalleryStore {
     }
     for (const [group, { receiptId, pending }] of state) {
       const receipt = receiptId && !pending ? receipts.get(receiptId) : undefined;
-      if (receipt) result.set(group, { receiptId: receipt.receiptId, keptWhole: receipt.skippedKeepWhole.length, unavailable: !!receipt.unavailable });
+      if (receipt) result.set(group, { receiptId: receipt.receiptId, keptWhole: receipt.keptWholePaths.length, unavailable: !!receipt.unavailable });
     }
     return result;
   });
@@ -539,7 +562,7 @@ export class GalleryStore {
       if (group === undefined) continue;
       const entry = counts.get(group) ?? { count: 0, keep: 0, remove: 0 };
       entry.count++;
-      // What Apply committed (a frame the server kept whole reads Keep), else the user's mark, else the assistant's.
+      // What Apply committed (a kept-whole frame reads Keep, or Remove when it stays rejected), else the user's mark, else the assistant's.
       const mark = applied.get(path)?.mark ?? user.get(path) ?? agent.get(path);
       if (mark === 'keep') entry.keep++;
       else if (mark === 'remove') entry.remove++;
@@ -1238,6 +1261,12 @@ export class GalleryStore {
   async applyGroups(units: readonly ApplyUnit[]): Promise<boolean> {
     if (units.length === 0 || this.applying()) return false;
     this.applying.set(true);
+    // The receipt describes the pin as it was when Apply was pressed, whatever a re-pin does before the answer.
+    const pin: PinSnapshot = {
+      labels: this.pinnedLabels(),
+      groups: this.pinnedGroups(),
+      paths: this.pinnedPaths() ?? [],
+    };
     try {
       const body: components['schemas']['ApplyMarksBody'] = {
         groups: units.map(unit => ({
@@ -1248,7 +1277,7 @@ export class GalleryStore {
         })),
       };
       const res = await firstValueFrom(this.api.post<ApplyMarksResponse>('/culling/apply_marks', body));
-      this.recordApplied(units, res);
+      this.recordApplied(units, res, pin);
       return true;
     } catch {
       this.snackBar.open(this.i18n.t(I18N.gallery.pinned.review.apply_failed), '', { duration: 4000 });
@@ -1258,25 +1287,24 @@ export class GalleryStore {
     }
   }
 
-  private recordApplied(units: readonly ApplyUnit[], res: ApplyMarksResponse): void {
+  private recordApplied(units: readonly ApplyUnit[], res: ApplyMarksResponse, pin: PinSnapshot): void {
     const rejectedNow = new Set<string>();
     const unrejectedNow = new Set<string>();
     const marksNow = new Map(this.appliedMarks());
     const receiptsNow = new Map(this.appliedReceipts());
-    const labels = this.pinnedLabels();
-    const pinGroups = this.pinnedGroups();
-    const pinPaths = this.pinnedPaths() ?? [];
     for (const group of res.groups) {
       const unit = units[group.index];
       if (!unit) continue;
       for (const path of group.rejected_paths) rejectedNow.add(path);
       for (const path of group.unrejected_paths) unrejectedNow.add(path);
       const whole = new Set(group.skipped_keep_whole);
+      const rejectedWhole = new Set(group.rejected_keep_whole);
       const paths = [...unit.keep, ...unit.reject];
       const kept = new Set(unit.keep);
       for (const path of paths) {
-        // A frame the server kept whole was kept by Apply, whatever the user marked.
-        const mark: ReviewMark = whole.has(path) || kept.has(path) ? 'keep' : 'remove';
+        // A frame the server kept whole was kept by Apply, whatever the user marked, unless it was already
+        // rejected: it stays rejected, which is a Remove.
+        const mark: ReviewMark = kept.has(path) || (whole.has(path) && !rejectedWhole.has(path)) ? 'keep' : 'remove';
         marksNow.set(path, { mark, receiptId: group.receipt_id });
       }
       receiptsNow.set(group.receipt_id, {
@@ -1284,16 +1312,16 @@ export class GalleryStore {
         paths,
         group: unit.group,
         kind: unit.kind,
-        label: unit.group === null ? null : (labels.get(unit.group) ?? null),
-        firstFilename: (pinPaths.find(path => unit.group === null || pinGroups.get(path) === unit.group) ?? paths[0] ?? '').split('/').pop() ?? '',
-        skippedKeepWhole: group.skipped_keep_whole,
+        label: unit.group === null ? null : (pin.labels.get(unit.group) ?? null),
+        firstFilename: (pin.paths.find(path => unit.group === null || pin.groups.get(path) === unit.group) ?? paths[0] ?? '').split('/').pop() ?? '',
+        keptWholePaths: group.skipped_keep_whole.filter(path => !rejectedWhole.has(path)),
         unavailable: false,
       });
       this.journal.record('review_apply', paths, {
         group: unit.group,
         rejected: group.rejected,
         unrejected: group.unrejected,
-        kept_whole: group.skipped_keep_whole.length,
+        kept_whole: group.skipped_keep_whole.length - rejectedWhole.size,
       });
     }
     this.photos.update(photos => photos.map(p =>
@@ -1326,7 +1354,7 @@ export class GalleryStore {
         return next;
       });
       this.journal.record('review_apply_undo', receipt.paths, {
-        group: receipt.group,
+        group: currentReceiptGroup(receipt, this.pinnedGroups()),
         restored_rejected: res.restored_rejected.length,
         restored_unrejected: res.restored_unrejected.length,
         skipped_changed: res.skipped_changed,

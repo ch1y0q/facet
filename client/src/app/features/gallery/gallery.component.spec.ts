@@ -3964,7 +3964,7 @@ describe('GalleryComponent', () => {
             const paths = [...u.keep, ...u.reject];
             mockStore.appliedGroups.update((m: Map<number, unknown>) => new Map(m).set(u.group, { receiptId: id, keptWhole: 0, unavailable: false }));
             mockStore.appliedReceiptList.update((l: unknown[]) => [...l, {
-              receiptId: id, paths, group: u.group, kind: u.kind, label: null, firstFilename: `first-${u.group}.jpg`, skippedKeepWhole: [],
+              receiptId: id, paths, group: u.group, kind: u.kind, label: null, firstFilename: `first-${u.group}.jpg`, keptWholePaths: [],
             }]);
             mockStore.appliedMarks.update((m: Map<string, unknown>) => new Map([...m, ...paths.map(p => [p, { mark: 'keep' as const, receiptId: id }] as const)]));
           }
@@ -3985,6 +3985,115 @@ describe('GalleryComponent', () => {
           mockStore.applyGroups.mockReset();
           mockStore.applyGroups.mockResolvedValue(true);
           mockStore.undoApplied.mockClear();
+        });
+
+        describe('group header below md', () => {
+          const renderNarrow = (): HTMLElement => {
+            mockStore.config.set({ features: { show_rating_controls: true } });
+            mockStore.galleryMode.set('grid');
+            mockStore.virtualScroll.set(false);
+            vi.stubGlobal('matchMedia', (media: string) => ({
+              matches: false, media, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {},
+            }));
+            fixture = TestBed.createComponent(GalleryComponent);
+            const instance = fixture.componentInstance as unknown as {
+              desktop: { setup(): void };
+              containerWidth: { set(v: number): void };
+            };
+            instance.desktop.setup();
+            instance.containerWidth.set(360);
+            fixture.detectChanges();
+            return fixture.nativeElement as HTMLElement;
+          };
+          const headerBoxes = (html: HTMLElement) =>
+            [...html.querySelectorAll('[role="heading"]')].map(h => h.parentElement as HTMLElement);
+
+          it('sizes the DOM header and the virtual row to the same two-line height, with no scroller on the actions', () => {
+            pin({});
+            edition();
+            planOf(u1, u2);
+            const html = renderNarrow();
+            const model = fixture!.componentInstance.rowsModel().filter(r => r.kind === 'header');
+            expect(model.map(r => r.height)).toEqual([60, 60]);
+            expect(headerBoxes(html).map(box => box.style.height)).toEqual(['60px', '60px']);
+            for (const row of html.querySelectorAll('[data-review-group-actions]')) {
+              expect(row.className).not.toContain('overflow-x-auto');
+              expect(row.className).not.toContain('max-w-[75%]');
+            }
+          });
+
+          it('keeps the one-line header on desktop', () => {
+            pin({});
+            edition();
+            planOf(u1, u2);
+            const html = render('grid', false);
+            expect(fixture!.componentInstance.rowsModel().filter(r => r.kind === 'header').map(r => r.height)).toEqual([32, 32]);
+            expect(headerBoxes(html).map(box => box.style.height)).toEqual(['32px', '32px']);
+          });
+
+          it('keeps a one-line header below md when the pin carries no marks', () => {
+            pin({ marks: false });
+            planOf();
+            renderNarrow();
+            expect(fixture!.componentInstance.rowsModel().filter(r => r.kind === 'header').map(r => r.height)).toEqual([32, 32]);
+          });
+
+          it('gives each mark button an icon and a label hidden below md, and keeps the aria-label', () => {
+            pin({});
+            echo();
+            edition();
+            planOf(u1, u2);
+            const html = renderNarrow();
+            const first = html.querySelector('[data-review-group-actions]')!;
+            for (const [mode, glyph, aria] of [
+              ['keep_all', 'done_all', 'keep_all_aria'],
+              ['keep_best', 'emoji_events', 'keep_best_aria'],
+              ['remove_all', 'delete_sweep', 'remove_all_aria'],
+            ] as const) {
+              const button = first.querySelector(`[data-mode="${mode}"]`)!;
+              expect(button.querySelector('mat-icon')?.textContent?.trim()).toBe(glyph);
+              expect(button.querySelector('mat-icon')?.getAttribute('aria-hidden')).toBe('true');
+              expect(button.classList.contains('max-md:w-6')).toBe(true);
+              const label = button.querySelector('span')!;
+              expect(label.classList.contains('hidden')).toBe(true);
+              expect(label.classList.contains('md:inline')).toBe(true);
+              expect(button.getAttribute('aria-label')).toBe(`gallery.pinned.review.${aria} {"group":1}`);
+            }
+          });
+
+          it('keeps the kept-whole explanation on Keep best and Remove all', () => {
+            pin({});
+            echo();
+            edition();
+            planOf(u1, u2);
+            mockStore.pinnedKinds.set(new Map([[1, 'bracket'], [2, 'burst']]));
+            const html = renderNarrow();
+            const first = html.querySelector('[data-review-group-actions]')!;
+            for (const mode of ['keep_best', 'remove_all']) {
+              const button = first.querySelector(`[data-mode="${mode}"]`)!;
+              expect(button.getAttribute('aria-disabled')).toBe('true');
+              expect(button.getAttribute('aria-description')).toBe('gallery.pinned.review.group_kept_whole');
+            }
+            mockStore.pinnedKinds.set(new Map());
+          });
+
+          it('truncates the applied note, pins Undo and ties the chip to the note', () => {
+            pin({});
+            echo();
+            edition();
+            planOf(u2);
+            mockStore.appliedGroups.set(new Map([[1, { receiptId: 'r1', keptWhole: 2, unavailable: false }]]));
+            const html = renderNarrow();
+            const note = byTest(html, 'review-kept-whole-note')[0];
+            expect(note.classList.contains('truncate')).toBe(true);
+            expect(note.classList.contains('min-w-0')).toBe(true);
+            expect(note.id).not.toBe('');
+            expect(byTest(html, 'review-applied-chip')[0].getAttribute('aria-describedby')).toBe(note.id);
+            expect(byTest(html, 'review-undo-group')[0].classList.contains('shrink-0')).toBe(true);
+            for (const mode of ['keep_all', 'keep_best', 'remove_all']) {
+              expect(html.querySelector(`[data-review-group-actions] [data-mode="${mode}"]`)?.classList.contains('max-md:hidden')).toBe(true);
+            }
+          });
         });
 
         it('shows Apply per group and Apply my marks for edition users on a pin with marks, and nothing otherwise', () => {
@@ -4051,6 +4160,97 @@ describe('GalleryComponent', () => {
           expect(mockStore.undoApplied).toHaveBeenCalledWith('r1');
         });
 
+        describe('focus after a failed Apply', () => {
+          // jsdom keeps the focus on a button that turns disabled, and blur() is a no-op on a disabled one; Chrome
+          // drops the focus to <body>. Reproduce Chrome by parking the focus on a node and removing it.
+          const dropFocus = () => {
+            const parked = document.createElement('button');
+            document.body.appendChild(parked);
+            parked.focus();
+            parked.remove();
+            expect(document.activeElement).toBe(document.body);
+          };
+          const failing = () => mockStore.applyGroups.mockImplementation(async () => {
+            mockStore.applying.set(true);
+            fixture!.detectChanges();
+            dropFocus();
+            mockStore.applying.set(false);
+            return false;
+          });
+
+          it('puts the focus back on the group Apply after a failure', async () => {
+            pin({});
+            edition();
+            planOf(u1, u2);
+            const html = render('grid', false);
+            document.body.appendChild(html);
+            try {
+              failing();
+              const apply = byTest(html, 'review-apply-group')[1];
+              apply.focus();
+              apply.click();
+              await vi.waitFor(() => expect(mockStore.applyGroups).toHaveBeenCalled());
+              await fixture!.whenStable();
+              fixture!.detectChanges();
+              await fixture!.whenStable();
+              expect(document.activeElement).toBe(byTest(html, 'review-apply-group')[1]);
+            } finally {
+              html.remove();
+            }
+          });
+
+          it('falls back to Apply my marks when the failed group left the pin meanwhile', async () => {
+            pin({});
+            edition();
+            planOf(u1, u2);
+            const html = render('grid', false);
+            document.body.appendChild(html);
+            try {
+              mockStore.applyGroups.mockImplementation(async () => {
+                mockStore.applying.set(true);
+                fixture!.detectChanges();
+                dropFocus();
+                mockStore.pinnedGroups.set(new Map(paths.slice(0, 4).map(p => [p, 1] as [string, number])));
+                planOf(u1);
+                mockStore.applying.set(false);
+                return false;
+              });
+              const apply = byTest(html, 'review-apply-group')[1];
+              apply.focus();
+              apply.click();
+              await vi.waitFor(() => expect(mockStore.applyGroups).toHaveBeenCalled());
+              await fixture!.whenStable();
+              fixture!.detectChanges();
+              await fixture!.whenStable();
+              expect(document.activeElement).toBe(byTest(html, 'apply-my-marks')[0]);
+            } finally {
+              html.remove();
+            }
+          });
+
+          it('puts the focus back on Apply my marks after a failed apply-all', async () => {
+            pin({});
+            edition();
+            planOf(u1, u2);
+            const html = render('grid', false);
+            document.body.appendChild(html);
+            try {
+              dialogOpen(true);
+              failing();
+              const all = byTest(html, 'apply-my-marks')[0];
+              all.focus();
+              all.click();
+              await vi.waitFor(() => expect(mockStore.applyGroups).toHaveBeenCalled());
+              await fixture!.whenStable();
+              fixture!.detectChanges();
+              await fixture!.whenStable();
+              expect(document.activeElement).toBe(byTest(html, 'apply-my-marks')[0]);
+            } finally {
+              html.remove();
+            }
+          });
+        });
+
         it('moves the focus from a group Apply to its Undo, and from the Undo back to the Apply', async () => {
           pin({});
           echo();
@@ -4115,7 +4315,7 @@ describe('GalleryComponent', () => {
           const html = render('grid', false);
           mockStore.appliedReceiptList.set([{
             receiptId: 'r1', paths: ['/g0.jpg'], group: 1, kind: 'burst', label: { key: 'burst', params: { n: 2 } },
-            firstFilename: 'IMG_0012.jpg', skippedKeepWhole: [],
+            firstFilename: 'IMG_0012.jpg', keptWholePaths: [],
           }]);
           fixture!.detectChanges();
           byTest(html, 'applied-menu')[0].click();
@@ -4237,6 +4437,51 @@ describe('GalleryComponent', () => {
               .toMatch(/^gallery\.pinned\.review\.apply_all_confirm \{/);
           });
 
+          it('uses the no-change wording, with the group count only, when nothing would be rejected or un-rejected', () => {
+            pin({});
+            echo();
+            edition();
+            const keepOnly = unit(1, ['/g0.jpg', '/g2.jpg'], []);
+            const two = unit(2, ['/g4.jpg'], []);
+            mockStore.applyPlan.set({ units: [keepOnly], byGroup: new Map([[1, keepOnly]]), counts: { groups: 1, reject: 0, unreject: 0 } });
+            const html = render('grid', false);
+            const open = dialogOpen(false);
+            byTest(html, 'apply-my-marks')[0].click();
+            expect((open.mock.calls[0][1] as { data: { message: string } }).data.message)
+              .toBe('gallery.pinned.review.apply_all_confirm_nochange {"reject":0,"unreject":0,"groups":1}');
+            mockStore.applyPlan.set({ units: [keepOnly, two], byGroup: new Map([[1, keepOnly], [2, two]]), counts: { groups: 2, reject: 0, unreject: 0 } });
+            fixture!.detectChanges();
+            byTest(html, 'apply-my-marks')[0].click();
+            expect((open.mock.calls[1][1] as { data: { message: string } }).data.message)
+              .toMatch(/^gallery\.pinned\.review\.apply_all_confirm_nochange_plural \{/);
+          });
+
+          it('uses the no-change wording for a marks-only pin with nothing to change', () => {
+            pin({ groups: false });
+            echo();
+            edition();
+            const only = { group: null, kind: null, ungrouped: true, keep: ['/g0.jpg'], reject: [] as string[], unreject: [] as string[] };
+            mockStore.applyPlan.set({ units: [only], byGroup: new Map(), counts: { groups: 1, reject: 0, unreject: 0 } });
+            const html = render('grid', false);
+            const open = dialogOpen(false);
+            byTest(html, 'apply-my-marks')[0].click();
+            expect((open.mock.calls[0][1] as { data: { message: string } }).data.message)
+              .toMatch(/^gallery\.pinned\.review\.apply_all_confirm_nochange \{/);
+          });
+
+          it('keeps the counted wording as soon as one photo would change', () => {
+            pin({});
+            echo();
+            edition();
+            const unrejectOnly = { ...unit(1, ['/g0.jpg'], []), unreject: ['/g0.jpg'] };
+            mockStore.applyPlan.set({ units: [unrejectOnly], byGroup: new Map([[1, unrejectOnly]]), counts: { groups: 1, reject: 0, unreject: 1 } });
+            const html = render('grid', false);
+            const open = dialogOpen(false);
+            byTest(html, 'apply-my-marks')[0].click();
+            expect((open.mock.calls[0][1] as { data: { message: string } }).data.message)
+              .toBe('gallery.pinned.review.apply_all_confirm {"reject":0,"unreject":1,"groups":1}');
+          });
+
           it('is disabled when nothing is left to apply', () => {
             pin({});
             edition();
@@ -4259,8 +4504,8 @@ describe('GalleryComponent', () => {
 
         describe('Applied menu', () => {
           const receipts = [
-            { receiptId: 'r3', paths: ['/x.jpg'], group: 3, kind: 'burst', label: { key: 'burst', params: { n: 2 } }, firstFilename: 'IMG_0003.jpg', skippedKeepWhole: [] },
-            { receiptId: 'r4', paths: ['/y.jpg'], group: 4, kind: 'similar', label: null, firstFilename: 'IMG_0004.jpg', skippedKeepWhole: [] },
+            { receiptId: 'r3', paths: ['/x.jpg'], group: 3, kind: 'burst', label: { key: 'burst', params: { n: 2 } }, firstFilename: 'IMG_0003.jpg', keptWholePaths: [] },
+            { receiptId: 'r4', paths: ['/y.jpg'], group: 4, kind: 'similar', label: null, firstFilename: 'IMG_0004.jpg', keptWholePaths: [] },
           ];
           const open = (html: HTMLElement) => {
             byTest(html, 'applied-menu')[0].click();
@@ -4281,9 +4526,27 @@ describe('GalleryComponent', () => {
             expect(items[0].textContent).toContain('gallery.pinned.review.applied_menu_entry');
             expect(items[0].textContent).toContain('IMG_0003.jpg');
             expect(items[0].textContent).toContain('culling.group_reason.burst');
-            expect(items[1].textContent).toContain('gallery.pinned.review.group_title');
+            // Neither receipt's photos are on the pin, so no group number may name them any more.
+            expect(items[0].textContent).not.toContain('group_title');
+            expect(items[1].textContent).toContain('gallery.pinned.review.applied_group_untitled');
+            expect(items[1].textContent).not.toContain('group_title');
             items[0].click();
             expect(mockStore.undoApplied).toHaveBeenCalledWith('r3');
+          });
+
+          it('names a receipt by the group its photos have on the current pin, not the number frozen at apply time', async () => {
+            pin({});
+            edition();
+            echo();
+            mockStore.pinnedGroups.update((m: Map<string, number>) => new Map(m).set('/x.jpg', 7).set('/y.jpg', 2));
+            mockStore.appliedReceiptList.set(receipts);
+            const html = render('grid', false);
+            const items = open(html);
+            await fixture!.whenStable();
+            expect(items[0].textContent).toContain('gallery.pinned.review.applied_menu_entry_titled');
+            expect(items[0].textContent).toContain('\\"group\\":7');
+            expect(items[1].textContent).toContain('gallery.pinned.review.group_title {\\"group\\":2}');
+            expect(items[1].textContent).not.toContain('\\"group\\":4');
           });
 
           it('is absent for a non-edition user and when there is no receipt', () => {

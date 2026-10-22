@@ -1046,7 +1046,7 @@ class TestAutoCullAppliedFromTheTab:
 
     def test_the_explicit_branch_reads_only_the_applied_block(self, rig):
         rig.state["review"] = {"keep": [BURST_PATHS[0]], "remove": [BURST_PATHS[1]],
-                               "applied": self.applied(keep=[BURST_PATHS[2]])}
+                               "applied": self.applied(keep=[BURST_PATHS[1]])}
         preview = rig.env.call(rig.token, "auto_cull", self.args(keep_paths=[BURST_PATHS[0]]))
         assert preview["ok"], preview
         assert preview["overrides_from_tab"] == {"applied": 1}
@@ -1054,7 +1054,7 @@ class TestAutoCullAppliedFromTheTab:
         assert result["ok"], result
         sent = self.sent(rig)[-1]
         assert sent["keep_paths"] == [BURST_PATHS[0]] and sent["remove_paths"] == []
-        assert sent["skip_paths"] == [BURST_PATHS[2]]
+        assert sent["skip_paths"] == [BURST_PATHS[1]]
 
     def test_flips_and_applied_paths_are_one_deduplicated_skip_list(self, rig):
         rig.state["review"] = {"keep": [], "remove": [BURST_PATHS[1]],
@@ -1086,9 +1086,61 @@ class TestAutoCullAppliedFromTheTab:
         assert victim not in shown
         assert preview["data"]["skipped_applied"] == {"count": 1, "paths": [victim]}
         assert preview["data"]["plan_digest"] == plain["data"]["plan_digest"]
-        result = self.apply(rig, preview)
+        # The victim was the only planned reject, so the re-preview has nothing left to confirm: the apply
+        # still runs on the earlier preview's confirm and leaves the applied photo out.
+        result = self.apply(rig, plain)
         assert result["ok"], result
         assert self.sent(rig)[-1]["skip_paths"] == [victim]
+
+    def test_a_re_preview_totals_exclude_the_applied_photos_and_the_flag_says_so(self, rig):
+        plain = rig.env.call(rig.token, "auto_cull", self.args())
+        assert plain["data"]["totals_exclude_applied"] is False
+        assert (plain["data"]["kept"], plain["data"]["rejected"]) == (2, 1)
+        rig.state["review"] = {"keep": [], "remove": [], "applied": self.applied(keep=[BURST_PATHS[0]])}
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        data = preview["data"]
+        assert (data["kept"], data["rejected"]) == (1, 1) and data["totals_exclude_applied"] is True
+        assert "applied_in_plan" not in data and "note" not in preview and preview["confirm"]
+        assert self.sent(rig)[-1]["applied_paths"] == [BURST_PATHS[0]]
+        assert data["plan_digest"] == plain["data"]["plan_digest"]
+
+    def test_a_confirm_from_an_adjusted_preview_is_accepted_by_the_apply(self, rig):
+        rig.state["review"] = {"keep": [], "remove": [], "applied": self.applied(keep=[BURST_PATHS[0]])}
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        result = self.apply(rig, preview)
+        assert result["ok"], result
+        assert _rejected() == {BURST_PATHS[2]}
+
+    def test_everything_left_being_applied_says_nothing_to_apply_and_issues_no_confirm(self, rig):
+        rig.state["review"] = {"keep": [], "remove": [], "applied": self.applied(remove=[BURST_PATHS[2]])}
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        assert preview["ok"], preview
+        assert preview["data"]["rejected"] == 0 and preview["data"]["kept"] == 2
+        assert "Nothing to apply" in preview["note"] and "confirm" not in preview
+
+    def test_an_apply_without_memory_is_refused_when_everything_left_to_reject_is_applied(self, rig):
+        plain = rig.env.call(rig.token, "auto_cull", self.args())
+        rig.state["review"] = {"keep": [], "remove": [], "applied": self.applied(remove=[BURST_PATHS[2]])}
+        tools_culling.reset_preview_memory()
+        result = self.apply(rig, plain)
+        assert result["error"] == "confirmation_required", result
+        assert not [c for c in self.sent(rig) if not c["dry_run"]] and _rejected() == set()
+
+    def test_applied_marks_over_the_cap_trim_the_rows_but_leave_the_totals_alone(self, rig):
+        victim = BURST_PATHS[2]
+        rig.state["review"] = {"keep": [], "remove": [], "applied": self.applied(
+            keep=[f"/a{i}" for i in range(600)], remove=[victim, *[f"/b{i}" for i in range(600)]])}
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        data = preview["data"]
+        assert data["totals_exclude_applied"] is False and (data["kept"], data["rejected"]) == (2, 1)
+        assert "applied_paths" not in self.sent(rig)[-1]
+        assert victim not in [p for row in data["rows"] for p in row["reject_paths"]]
+        assert data["skipped_applied"] == {"count": 1, "paths": [victim]}
+
+    def test_explicit_lists_with_no_applied_marks_leave_the_totals_alone(self, rig):
+        preview = rig.env.call(rig.token, "auto_cull", self.args(keep_paths=[BURST_PATHS[0]]))
+        assert preview["data"]["totals_exclude_applied"] is False
+        assert "applied_paths" not in self.sent(rig)[-1]
 
     def test_a_truncated_applied_block_refuses_the_apply(self, rig):
         rig.state["review"] = {"keep": [], "remove": [], "applied": self.applied(keep=[BURST_PATHS[0]])}
@@ -1128,3 +1180,40 @@ class TestAutoCullAppliedFromTheTab:
         assert result["error"] == "confirmation_required", result
         assert "applied groups in the tab" in result["message"] and "dry_run=true" in result["message"]
         assert _rejected() == set()
+
+
+class TestAutoCullAppliedTotalsAcrossPages:
+    """The adjusted totals are the same on every page of a paged preview, recalled marks included."""
+
+    @pytest.fixture()
+    def rig(self, agent_app, seed_photos_prefix, fake_tab, monkeypatch):
+        from tests.conftest import intercept_internal_call
+        nonce.reset()
+        tools_culling.reset_preview_memory()
+        seed_photos_prefix(BIG_PREFIX, _big_rows())
+        state = {"review": {"keep": [], "remove": []}, "upstream": []}
+        env = agent_app("legacy")
+        headers = env.login(edition=True)
+
+        def reply(call):
+            if call["tool"] == "ui_get_context":
+                return {"ok": True, "data": {"review": state["review"]}}
+            return {"ok": True, "data": {"echo": call["tool"]}}
+        fake_tab(env, _jwt_of(headers), reply=reply)
+        intercept_internal_call(monkeypatch, lambda tool, kw: state["upstream"].append((tool, kw)) and None)
+        yield type("Rig", (), {"env": env, "token": env.token(headers, "edition"), "state": state})
+
+    def test_every_page_reports_the_same_adjusted_totals(self, rig):
+        planned = [p for page in _big_pages(rig.env, rig.token) for r in page["data"]["rows"] for p in r["reject_paths"]]
+        assert len(planned) == BIG_GROUPS * 2
+        done = planned[:3]
+        rig.state["review"] = {"keep": [], "remove": [],
+                               "applied": {"keep": [], "remove": done, "truncated": False}}
+        pages = _big_pages(rig.env, rig.token)
+        assert len(pages) >= 2
+        for page in pages:
+            assert page["data"]["rejected"] == BIG_GROUPS * 2 - 3
+            assert page["data"]["kept"] == BIG_GROUPS
+            assert page["data"]["totals_exclude_applied"] is True
+        shown = [p for page in pages for r in page["data"]["rows"] for p in r["reject_paths"]]
+        assert not set(done) & set(shown)

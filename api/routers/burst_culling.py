@@ -1919,6 +1919,7 @@ class ApplyGroupResult(BaseModel):
     rejected_paths: list[str]
     unrejected_paths: list[str]
     skipped_keep_whole: list[str]
+    rejected_keep_whole: list[str]
     pairs: int
     receipt_id: str
 
@@ -2025,18 +2026,22 @@ def _check_apply_body(body):
         raise HTTPException(status_code=400, detail=f'Paths listed more than once: {repeated[:3]}')
 
 
-def _burst_flag_split(group, rows, keep_paths, reject_effective, skipped_keep_whole):
-    """``(keeps, rejects)`` to hand ``_mark_burst_reviewed`` for a group, or None when no burst flag applies."""
+def _burst_flag_split(group, rows, keep_paths, reject_effective, skipped_keep_whole, rejected_keep_whole):
+    """``(keeps, rejects)`` to hand ``_mark_burst_reviewed`` for a group, or None when no burst flag applies.
+
+    Both branches split by the rejected state the frames end in: a kept-whole frame that stays rejected is
+    flagged a reject beside the frames this apply rejects."""
     if group.ungrouped:
         return None
+    rejects = reject_effective + rejected_keep_whole
     if group.kind == 'burst':
-        return keep_paths + skipped_keep_whole, reject_effective
+        return keep_paths + [p for p in skipped_keep_whole if p not in rejected_keep_whole], rejects
     if group.kind in _KEEP_WHOLE_KINDS:
         # The pin's kind has lost the feed the set arrived by. A set shredded across one burst group is
         # still reached through the burst feed; any other shape cannot be derived and is left alone.
         ids = {r['burst_group_id'] for r in rows}
         if len(ids) == 1 and None not in ids:
-            return [r['path'] for r in rows], []
+            return [r['path'] for r in rows if r['path'] not in rejects], rejects
     return None
 
 
@@ -2050,8 +2055,9 @@ def _write_apply_group(conn, group, by_path, user_id, vis_sql, vis_params):
     reject_effective = [p for p in group.reject_paths if p not in keep_whole]
     to_reject = [p for p in reject_effective if not by_path[p]['rejected']]
     to_unreject = [p for p in group.keep_paths if by_path[p]['rejected']]
+    rejected_keep_whole = [p for p in skipped if by_path[p]['rejected']]
     receipt = {'rejected': to_reject, 'unrejected': to_unreject, 'pair_ids': [], 'burst': [], 'similar': []}
-    split = _burst_flag_split(group, rows, group.keep_paths, reject_effective, skipped)
+    split = _burst_flag_split(group, rows, group.keep_paths, reject_effective, skipped, rejected_keep_whole)
     if split is not None:
         for role, role_paths, written in (('keep', split[0], (1, 1)), ('reject', split[1], (0, 1))):
             for path in role_paths:
@@ -2085,7 +2091,7 @@ def _write_apply_group(conn, group, by_path, user_id, vis_sql, vis_params):
         'rejected': len(to_reject), 'unrejected': len(to_unreject),
         'noop': len(group.keep_paths) + len(reject_effective) - len(to_reject) - len(to_unreject),
         'rejected_paths': to_reject, 'unrejected_paths': to_unreject,
-        'skipped_keep_whole': skipped, 'pairs': pairs,
+        'skipped_keep_whole': skipped, 'rejected_keep_whole': rejected_keep_whole, 'pairs': pairs,
     }
     return result, receipt
 
@@ -3137,6 +3143,8 @@ class AutoCullResult:
     collected: set = field(default_factory=set)
     spanning_skipped: int = 0
     scope_dependent_kinds: list = field(default_factory=list)
+    # A dry run only: how many planned keeps / rejects the caller already applied (``applied_paths``).
+    applied_in_plan: Optional[dict] = None
 
 
 # Group kinds whose membership depends on the date window / candidate pool (similar and scene
@@ -3269,6 +3277,12 @@ def run_auto_cull(conn, db_path, user_id, *, group_by, strictness, min_keep,
         result.processed += 1
         result.kept += len(entry['keep_paths'])
         result.rejected += len(entry['reject_paths'])
+    if dry_run and applied_paths:
+        applied = set(applied_paths)
+        counts = {'kept': sum(p in applied for p in result.keep_paths),
+                  'rejected': sum(p in applied for p in result.reject_paths)}
+        if counts['kept'] or counts['rejected']:
+            result.applied_in_plan = counts
     result.preview, result.next_cursor = _auto_cull_page(plan, cursor)
     highlight_paths = [
         entry['keep_paths'][0] for entry in plan
@@ -3309,6 +3323,8 @@ def _guard_report(result):
         report['state_guard'] = result.state_guard
     if result.effective_overrides is not None:
         report['effective_overrides'] = result.effective_overrides
+    if result.applied_in_plan is not None:
+        report['applied_in_plan'] = result.applied_in_plan
     return report
 
 

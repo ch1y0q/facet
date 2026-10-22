@@ -4715,6 +4715,8 @@ export interface components {
             receipt_id: string;
             /** Rejected */
             rejected: number;
+            /** Rejected Keep Whole */
+            rejected_keep_whole: string[];
             /** Rejected Paths */
             rejected_paths: string[];
             /** Skipped Keep Whole */
@@ -4807,6 +4809,13 @@ export interface components {
             user_id?: string | null;
             /** User Role */
             user_role?: string | null;
+        };
+        /** AutoCullAppliedInPlan */
+        AutoCullAppliedInPlan: {
+            /** Kept */
+            kept: number;
+            /** Rejected */
+            rejected: number;
         };
         /** AutoCullBody */
         AutoCullBody: {
@@ -4936,6 +4945,8 @@ export interface components {
          * @description ``POST /api/culling/auto``.
          */
         AutoCullResponse: {
+            /** @description Present on a dry run that was sent applied_paths and found some of them in the plan: how many planned keeps and rejects the caller already applied. kept and rejected still count the full plan. */
+            applied_in_plan?: components["schemas"]["AutoCullAppliedInPlan"] | null;
             /**
              * Dropped Overrides
              * @default []

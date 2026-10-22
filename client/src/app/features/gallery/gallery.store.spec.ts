@@ -1509,7 +1509,7 @@ describe('GalleryStore', () => {
     const journalItems = () => TestBed.inject(UserActivityJournal).since().items;
     const applyRoute = '/culling/apply_marks';
     const undoRoute = '/culling/undo_apply_marks';
-    const result = (index: number, o: { rej?: string[]; unrej?: string[]; whole?: string[] } = {}) => ({
+    const result = (index: number, o: { rej?: string[]; unrej?: string[]; whole?: string[]; rejWhole?: string[] } = {}) => ({
       index,
       rejected: o.rej?.length ?? 0,
       unrejected: o.unrej?.length ?? 0,
@@ -1517,6 +1517,7 @@ describe('GalleryStore', () => {
       rejected_paths: o.rej ?? [],
       unrejected_paths: o.unrej ?? [],
       skipped_keep_whole: o.whole ?? [],
+      rejected_keep_whole: o.rejWhole ?? [],
       pairs: 1,
       receipt_id: `rcpt-${index}`,
     });
@@ -1664,8 +1665,43 @@ describe('GalleryStore', () => {
         expect(store.appliedMarks().get('/p3.jpg')).toEqual({ mark: 'remove', receiptId: 'rcpt-0' });
         expect(photo('/p2.jpg').is_rejected).toBeNull();
         expect(photo('/p3.jpg').is_rejected).toBe(true);
-        expect(store.appliedReceipts().get('rcpt-0')?.skippedKeepWhole).toEqual(['/p2.jpg']);
+        expect(store.appliedReceipts().get('rcpt-0')?.keptWholePaths).toEqual(['/p2.jpg']);
         expect(store.appliedGroups().get(1)).toEqual({ receiptId: 'rcpt-0', keptWhole: 1, unavailable: false });
+      });
+
+      it('records a kept-whole frame that was already rejected as remove and leaves it out of the kept-whole note', async () => {
+        apiPost.mockImplementation((p: string) => p === applyRoute
+          ? answer([result(0, { whole: ['/p4.jpg', '/p5.jpg'], rejWhole: ['/p5.jpg'] })])
+          : of({}));
+        await store.applyGroups([unitOf(2)]);
+        expect(store.appliedMarks().get('/p4.jpg')).toEqual({ mark: 'keep', receiptId: 'rcpt-0' });
+        expect(store.appliedMarks().get('/p5.jpg')).toEqual({ mark: 'remove', receiptId: 'rcpt-0' });
+        expect(store.appliedGroups().get(2)).toEqual({ receiptId: 'rcpt-0', keptWhole: 1, unavailable: false });
+        expect(store.reviewGroupCounts().get(2)).toEqual({ count: 2, keep: 1, remove: 1 });
+        expect(store.review().applied.remove).toContain('/p5.jpg');
+        expect(store.review().applied.keep).toContain('/p4.jpg');
+        expect(journalItems().filter(i => i.kind === 'review_apply')[0].value).toMatchObject({ kept_whole: 1 });
+      });
+
+      it('shows no kept-whole count when every kept-whole frame stayed rejected', async () => {
+        apiPost.mockImplementation((p: string) => p === applyRoute
+          ? answer([result(0, { whole: ['/p4.jpg', '/p5.jpg'], rejWhole: ['/p4.jpg', '/p5.jpg'] })])
+          : of({}));
+        await store.applyGroups([unitOf(2)]);
+        expect(store.appliedGroups().get(2)?.keptWhole).toBe(0);
+        expect(store.reviewLegend()).toMatchObject({ remove: 4 });
+      });
+
+      it('labels the receipt with the pin Apply was pressed on when a re-pin lands before the answer', async () => {
+        const reply = new Subject<unknown>();
+        apiPost.mockImplementation((p: string) => p === applyRoute ? reply.asObservable().pipe(take(1)) : of({}));
+        const pending = store.applyGroups([unitOf(1)]);
+        await store.showPaths(['/z1.jpg', '/z2.jpg'], { groups: [1, 1], marks: ['keep', 'remove'], kinds: ['burst', 'burst'], labels: [{ key: 'other', params: { n: 9 } }, { key: 'other', params: { n: 9 } }] });
+        reply.next({ groups: [result(0, { rej: ['/p2.jpg', '/p3.jpg'] })], rejected: 0, unrejected: 0, noop: 0, pairs: 0 });
+        await pending;
+        const receipt = store.appliedReceipts().get('rcpt-0')!;
+        expect(receipt.label).toEqual({ key: 'burst', params: { n: 0 } });
+        expect(receipt.firstFilename).toBe('p1.jpg');
       });
 
       it('ignores a second call while one is in flight', async () => {
@@ -1806,6 +1842,20 @@ describe('GalleryStore', () => {
         expect(store.appliedGroups().has(3)).toBe(false);
         expect(store.appliedGroups().has(1)).toBe(true);
         expect(journalItems().filter(i => i.kind === 'review_apply_undo')).toHaveLength(1);
+      });
+
+      it('journals the current group number of an Undo after a re-pin, and none when the group left the pin', async () => {
+        await store.showPaths(['/p2.jpg', '/p3.jpg'], { groups: [3, 3], marks: ['keep', 'remove'], kinds: ['burst', 'burst'] });
+        apiPost.mockImplementation((p: string) => p === undoRoute ? undoAnswer({}) : of({}));
+        await store.undoApplied('rcpt-0');
+        expect(journalItems().filter(i => i.kind === 'review_apply_undo')[0].value).toMatchObject({ group: 3 });
+      });
+
+      it('journals no group for an Undo whose photos are no longer pinned', async () => {
+        await store.showPaths(['/z1.jpg', '/z2.jpg'], { groups: [1, 1], marks: ['keep', 'remove'], kinds: ['burst', 'burst'] });
+        apiPost.mockImplementation((p: string) => p === undoRoute ? undoAnswer({}) : of({}));
+        await store.undoApplied('rcpt-0');
+        expect(journalItems().filter(i => i.kind === 'review_apply_undo')[0].value).toMatchObject({ group: null });
       });
 
       it('says how many photos it left alone when the server skipped some', async () => {

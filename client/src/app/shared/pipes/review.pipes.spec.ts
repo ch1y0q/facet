@@ -8,6 +8,7 @@ import {
   ReviewGroupPipe, ReviewMarkPipe, ReviewReasonPipe,
   ReviewApplyPlanPipe, ReviewGroupAppliedPipe, ReviewGroupReceiptPipe, ReviewPathLockedPipe, ReviewReceiptLabelPipe, ReviewReceiptTitlePipe,
 } from './review.pipes';
+import { currentReceiptGroup } from '../../features/gallery/gallery.store';
 import type { AppliedGroup, AppliedMark, AppliedReceipt, ApplyUnit } from '../../features/gallery/gallery.store';
 
 describe('review pipes', () => {
@@ -154,7 +155,7 @@ describe('ReviewGroupKeptWholePipe', () => {
 describe('apply pipes', () => {
   const group: AppliedGroup = { receiptId: 'r1', keptWhole: 2, unavailable: false };
   const receipt = (over: Partial<AppliedReceipt> = {}): AppliedReceipt => ({
-    receiptId: 'r1', paths: ['/a.jpg'], group: 3, kind: 'burst', label: null, firstFilename: 'a.jpg', skippedKeepWhole: [], ...over,
+    receiptId: 'r1', paths: ['/a.jpg'], group: 3, kind: 'burst', label: null, firstFilename: 'a.jpg', keptWholePaths: [], ...over,
   });
 
   it('ReviewPathLockedPipe is true only for a path in the applied record', () => {
@@ -179,17 +180,38 @@ describe('apply pipes', () => {
     expect(new ReviewApplyPlanPipe().transform(2, new Map([[1, unit]]))).toBeNull();
   });
 
-  it('ReviewReceiptLabelPipe prefers the assistant label, then the group title, then the marks-only text', () => {
-    const pipe = new ReviewReceiptLabelPipe();
-    expect(pipe.transform(receipt({ label: { key: 'burst', params: { n: 2 } } }))).toEqual({ key: 'culling.group_reason.burst', params: { n: 2 } });
-    expect(pipe.transform(receipt())).toEqual({ key: 'gallery.pinned.review.group_title', params: { group: 3 } });
-    expect(pipe.transform(receipt({ group: null }))).toEqual({ key: 'gallery.pinned.review.applied_marks_only', params: {} });
+  it('currentReceiptGroup is the group number on the current pin when every present path shares one', () => {
+    const r = receipt({ paths: ['/a.jpg', '/b.jpg'], group: 4 });
+    expect(currentReceiptGroup(r, new Map([['/a.jpg', 3], ['/b.jpg', 3]]))).toBe(3);
+    expect(currentReceiptGroup(r, new Map([['/a.jpg', 3]]))).toBe(3);
+    expect(currentReceiptGroup(r, new Map())).toBeNull();
+    expect(currentReceiptGroup(r, new Map([['/a.jpg', 3], ['/b.jpg', 5]]))).toBeNull();
+    expect(currentReceiptGroup(r, new Map([['/other.jpg', 4]]))).toBeNull();
   });
 
-  it('ReviewReceiptTitlePipe gives the group number only when a heading also names the entry', () => {
+  it('ReviewReceiptLabelPipe prefers the assistant label, then the current group title, then the untitled text', () => {
+    const pipe = new ReviewReceiptLabelPipe();
+    const here = new Map([['/a.jpg', 3]]);
+    expect(pipe.transform(receipt({ label: { key: 'burst', params: { n: 2 } } }), here)).toEqual({ key: 'culling.group_reason.burst', params: { n: 2 } });
+    expect(pipe.transform(receipt(), here)).toEqual({ key: 'gallery.pinned.review.group_title', params: { group: 3 } });
+    expect(pipe.transform(receipt({ group: null }), here)).toEqual({ key: 'gallery.pinned.review.applied_marks_only', params: {} });
+  });
+
+  it('ReviewReceiptLabelPipe renumbers a receipt whose group moved and drops the number when it left the pin', () => {
+    const pipe = new ReviewReceiptLabelPipe();
+    expect(pipe.transform(receipt({ group: 4 }), new Map([['/a.jpg', 3]]))).toEqual({ key: 'gallery.pinned.review.group_title', params: { group: 3 } });
+    expect(pipe.transform(receipt({ group: 4 }), new Map())).toEqual({ key: 'gallery.pinned.review.applied_group_untitled', params: {} });
+    expect(pipe.transform(receipt({ group: null }), new Map())).toEqual({ key: 'gallery.pinned.review.applied_marks_only', params: {} });
+  });
+
+  it('ReviewReceiptTitlePipe gives the current group number only when a heading also names the entry', () => {
     const pipe = new ReviewReceiptTitlePipe();
-    expect(pipe.transform(receipt({ label: { key: 'burst', params: {} } }))).toEqual({ key: 'gallery.pinned.review.group_title', params: { group: 3 } });
-    expect(pipe.transform(receipt())).toBeNull();
-    expect(pipe.transform(receipt({ group: null, label: { key: 'burst', params: {} } }))).toBeNull();
+    const here = new Map([['/a.jpg', 3]]);
+    const heading = { key: 'burst', params: {} };
+    expect(pipe.transform(receipt({ label: heading }), here)).toEqual({ key: 'gallery.pinned.review.group_title', params: { group: 3 } });
+    expect(pipe.transform(receipt({ label: heading, group: 4 }), here)).toEqual({ key: 'gallery.pinned.review.group_title', params: { group: 3 } });
+    expect(pipe.transform(receipt({ label: heading, group: 4 }), new Map())).toBeNull();
+    expect(pipe.transform(receipt(), here)).toBeNull();
+    expect(pipe.transform(receipt({ group: null, label: heading }), here)).toBeNull();
   });
 });

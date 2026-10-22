@@ -432,6 +432,45 @@ class TestPlanChangedByApply:
         assert too_many.status_code == 422
 
 
+class TestAppliedInPlan:
+    """A dry run sent ``applied_paths`` counts the planned keeps / rejects the user already applied."""
+
+    def test_the_counts_cover_the_full_plan_and_the_digest_ignores_applied_paths(self, tmp_path):
+        db, conn = _library(tmp_path)
+        mine = [_p(tmp_path, n) for n in SCORES]
+        plain = _preview(conn, db)
+        with_applied = _preview(conn, db, applied_paths=[mine[0], mine[2], "/elsewhere.jpg"])
+        assert with_applied.applied_in_plan == {"kept": 1, "rejected": 1}
+        assert (with_applied.kept, with_applied.rejected) == (plain.kept, plain.rejected)
+        assert with_applied.plan_digest == plain.plan_digest
+
+    def test_none_of_them_in_the_plan_leaves_the_field_unset(self, tmp_path):
+        db, conn = _library(tmp_path)
+        assert _preview(conn, db, applied_paths=["/elsewhere.jpg"]).applied_in_plan is None
+        assert _preview(conn, db).applied_in_plan is None
+
+    def test_the_route_returns_applied_in_plan_on_a_dry_run_and_omits_it_otherwise(
+            self, edition_client, seed_photos_prefix):
+        prefix = AGENT_DIR + "guard-in-plan/"
+        rows = [{"path": prefix + n, "filename": n, "date_taken": f"1996:01:01 10:00:0{i}", "aggregate": s,
+                 "aesthetic": s, "tech_sharpness": s, "burst_group_id": 5353, "is_burst_lead": 1 if i == 1 else 0}
+                for i, (n, s) in enumerate(SCORES.items(), start=1)]
+        seed_photos_prefix(prefix, rows)
+        body = {"group_by": "burst", "strictness": 0, "date_from": "1996:01:01 00:00:00",
+                "date_to": "1996:01:01 23:59:59"}
+        plain = edition_client.post("/api/culling/auto", json=body)
+        assert plain.status_code == 200, plain.text
+        assert "applied_in_plan" not in plain.json()
+        sent = edition_client.post("/api/culling/auto", json={
+            **body, "applied_paths": [prefix + "b3.jpg", prefix + "b1.jpg"]})
+        assert sent.status_code == 200, sent.text
+        assert sent.json()["applied_in_plan"] == {"kept": 1, "rejected": 1}
+        assert sent.json()["plan_digest"] == plain.json()["plan_digest"]
+        assert sent.json()["kept"] == plain.json()["kept"] and sent.json()["rejected"] == plain.json()["rejected"]
+        elsewhere = edition_client.post("/api/culling/auto", json={**body, "applied_paths": ["/x.jpg"]})
+        assert "applied_in_plan" not in elsewhere.json()
+
+
 class TestHttp:
     def test_skip_paths_and_the_report_ride_the_route(self, edition_client, seed_photos_prefix):
         prefix = AGENT_DIR + "guard/"

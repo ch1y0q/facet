@@ -163,6 +163,11 @@ class AutoCullEffectiveOverrides(BaseModel):
     remove: int
 
 
+class AutoCullAppliedInPlan(BaseModel):
+    kept: int
+    rejected: int
+
+
 class AutoCullResponse(BaseModel):
     """``POST /api/culling/auto``."""
 
@@ -188,6 +193,11 @@ class AutoCullResponse(BaseModel):
         default=None,
         description="Present when keep/remove overrides were sent: how many marks moved a photo away from its "
                     "planned side (a mark restating the plan is not counted, nor is a dropped one).")
+    applied_in_plan: Optional[AutoCullAppliedInPlan] = Field(
+        default=None,
+        description="Present on a dry run that was sent applied_paths and found some of them in the plan: how "
+                    "many planned keeps and rejects the caller already applied. kept and rejected still count "
+                    "the full plan.")
 
 
 class KeeperHint(BaseModel):

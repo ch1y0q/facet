@@ -1,7 +1,7 @@
 import { Pipe, PipeTransform } from '@angular/core';
 
 import type { CullReason } from '../../features/gallery/burst-culling.pipes';
-import { REVIEW_KEEP_WHOLE_KINDS } from '../../features/gallery/gallery.store';
+import { REVIEW_KEEP_WHOLE_KINDS, currentReceiptGroup } from '../../features/gallery/gallery.store';
 import type {
   AppliedGroup, AppliedMark, AppliedReceipt, ApplyUnit, ReviewGroupLabel, ReviewMark, ReviewReason,
 } from '../../features/gallery/gallery.store';
@@ -149,22 +149,27 @@ export class ReviewApplyPlanPipe implements PipeTransform {
   }
 }
 
-/** Key plus params naming an applied group in the status line's menu: its assistant heading, else its number. */
+/**
+ * Key plus params naming an applied group in the status line's menu: its assistant heading, else its number on
+ * the current pin, else (the group left the pin, so a number would name another set) no number.
+ */
 @Pipe({ name: 'reviewReceiptLabel', standalone: true, pure: true })
 export class ReviewReceiptLabelPipe implements PipeTransform {
-  transform(receipt: AppliedReceipt): ReviewGroupLabel {
+  transform(receipt: AppliedReceipt, groups: ReadonlyMap<string, number>): ReviewGroupLabel {
     if (receipt.label) return { key: `culling.group_reason.${receipt.label.key}`, params: receipt.label.params };
     if (receipt.group === null) return { key: 'gallery.pinned.review.applied_marks_only', params: {} };
-    return { key: 'gallery.pinned.review.group_title', params: { group: receipt.group } };
+    const group = currentReceiptGroup(receipt, groups);
+    return group === null
+      ? { key: 'gallery.pinned.review.applied_group_untitled', params: {} }
+      : { key: 'gallery.pinned.review.group_title', params: { group } };
   }
 }
 
-/** The "Group N" title of an applied receipt whose menu entry also carries the assistant's heading, else null. */
+/** The "Group N" title (N on the current pin) of an applied receipt whose menu entry also carries the assistant's heading, else null. */
 @Pipe({ name: 'reviewReceiptTitle', standalone: true, pure: true })
 export class ReviewReceiptTitlePipe implements PipeTransform {
-  transform(receipt: AppliedReceipt): ReviewGroupLabel | null {
-    return receipt.label && receipt.group !== null
-      ? { key: 'gallery.pinned.review.group_title', params: { group: receipt.group } }
-      : null;
+  transform(receipt: AppliedReceipt, groups: ReadonlyMap<string, number>): ReviewGroupLabel | null {
+    const group = receipt.label && receipt.group !== null ? currentReceiptGroup(receipt, groups) : null;
+    return group === null ? null : { key: 'gallery.pinned.review.group_title', params: { group } };
   }
 }

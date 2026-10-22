@@ -8,6 +8,9 @@ import {
   buildGridRows,
   buildMosaicRows,
   buildSectionedRows,
+  GROUP_HEADER_ACTIONS_HEIGHT_PX,
+  GROUP_HEADER_HEIGHT_PX,
+  groupHeaderHeight,
   gridColumnCount,
   totalRowsHeight,
   windowRange,
@@ -282,6 +285,19 @@ describe('totalRowsHeight', () => {
   });
 });
 
+describe('groupHeaderHeight', () => {
+  it('is one line on desktop, or when the pin has no marks', () => {
+    expect(groupHeaderHeight(true, true)).toBe(GROUP_HEADER_HEIGHT_PX);
+    expect(groupHeaderHeight(true, false)).toBe(32);
+    expect(groupHeaderHeight(false, false)).toBe(32);
+  });
+
+  it('adds the actions line below md when the pin has marks', () => {
+    expect(groupHeaderHeight(false, true)).toBe(GROUP_HEADER_HEIGHT_PX + GROUP_HEADER_ACTIONS_HEIGHT_PX);
+    expect(groupHeaderHeight(false, true)).toBe(60);
+  });
+});
+
 describe('buildSectionedRows', () => {
   const W = 800;
   const grid = (ps: Photo[]) => buildGridRows(ps, W, 200, 8, true);
@@ -299,6 +315,15 @@ describe('buildSectionedRows', () => {
     expect(rows[2]).toMatchObject({ group: 2, groupPhotoCount: 2, offset: 40 + cell + 8, startIndex: 3 });
     expect(rows[3].offset).toBe(rows[2].offset + 32 + 8);
     expect(rows[3].startIndex).toBe(3);
+  });
+
+  it('advances the offsets by the two-line header height below md', () => {
+    const all = photos(5);
+    const tall = groupHeaderHeight(false, true);
+    const rows = buildSectionedRows(all, groupOfIdx([1, 1, 1, 2, 2], all), grid, tall, 8);
+    expect(rows[0].height).toBe(60);
+    expect(rows[1].offset).toBe(60 + 8);
+    expect(rows[3].offset).toBe(rows[2].offset + 60 + 8);
   });
 
   it('counts headers in totalRowsHeight', () => {

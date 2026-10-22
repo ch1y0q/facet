@@ -453,6 +453,9 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
             page_call = {**options, "dry_run": True, "cursor": cursor if dry_run else 0}
             if dry_run and plan_digest:
                 page_call["expected_digest"] = plan_digest
+            applied_sent = applied_skip(marks)
+            if applied_sent:
+                page_call["applied_paths"] = applied_sent
             if memory is not None:
                 return await apply_preview(grant, memory, options, confirm, resolved, settings, tab_id, timeout,
                                            snapshot)
@@ -464,7 +467,7 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
                            "The plan changed since the first page; nothing was written. Restart the "
                            "preview from cursor 0 (without plan_digest) and use its new `confirm`")
             if not preview["ok"] or dry_run:
-                result = _preview_result(grant, preview, settings, cursor)
+                result = _preview_result(grant, preview, settings, cursor, bool(applied_sent))
                 if result["ok"]:
                     attach_tab_marks(result, marks, preview["data"] or {})
                     if not explicit:
@@ -476,7 +479,7 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
                     annotate_skipped_applied(result, marks)
                 return result
             digest = (preview["data"] or {}).get("plan_digest")
-            if not digest or not (preview["data"] or {}).get("rejected") \
+            if not digest or not _left_to_reject(preview["data"] or {}) \
                     or not nonce.check(grant.nonce_owner, "auto_cull", digest, confirm):
                 return err("confirmation_required",
                            "Preview with dry_run=true first and pass its `confirm` value, with the "
@@ -623,13 +626,24 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
             shown["unpinned"] = unpinned
         return shown
 
-    def _preview_result(grant, upstream: dict, settings: dict, cursor: int) -> dict:
+    def _left_to_reject(body: dict) -> int:
+        """The planned rejects the apply would still act on: the plan's, less the ones the user already applied."""
+        return (body.get("rejected") or 0) - (body.get("applied_in_plan") or {}).get("rejected", 0)
+
+    def _preview_result(grant, upstream: dict, settings: dict, cursor: int, applied_sent: bool) -> dict:
         if not upstream["ok"]:
             return upstream
         body = upstream["data"] or {}
         data = {**body, "rows": list(body.get("preview", []))}
         data.pop("preview", None)
         data.pop("effective_overrides", None)
+        data.pop("applied_in_plan", None)
+        left = _left_to_reject(body)
+        data["totals_exclude_applied"] = applied_sent
+        if applied_sent:
+            done = body.get("applied_in_plan") or {}
+            data["kept"] = (body.get("kept") or 0) - done.get("kept", 0)
+            data["rejected"] = left
         ignored = body.get("ignored_overrides") or []
         if len(ignored) > SUMMARY_PATHS:
             data["ignored_overrides"] = ignored[:SUMMARY_PATHS]
@@ -637,13 +651,13 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
             data["ignored_overrides_count"] = len(ignored)
         kinds = body.get("scope_dependent_kinds")
         notes = []
-        if not body.get("rejected"):
+        if not left:
             notes.append("Nothing to apply")
         if kinds:
             notes.append(f"Groups of kind {', '.join(kinds)} depend on the date range / candidate pool: "
                          "cull the whole range in one call.")
         extra = {"note": " ".join(notes)} if notes else {}
-        issues = bool(body.get("rejected")) and cursor == 0
+        issues = bool(left) and cursor == 0
         if issues:
             extra["confirm"] = "x" * CONFIRM_WIDTH
         _fit_page(data, extra, settings)
@@ -709,7 +723,9 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
         "page's `plan_digest` (required when cursor > 0; a changed plan is refused, restart from "
         "cursor 0) until next_cursor is null; a page is cut by whole groups to fit the result size (a single group too big for it has its "
         "path lists clipped: `paths_clipped`, with `keep_count` / `reject_count`). "
-        "Counts cover the full plan and ONE confirm, issued on the cursor-0 page only, covers all "
+        "`kept` and `rejected` cover the full plan minus the photos the user already applied from their "
+        "tab (`totals_exclude_applied` says whether that was possible; when false they include them), "
+        "and ONE confirm, issued on the cursor-0 page only and only when something is left to reject, covers all "
         "of it (valid 300 s, single use). The apply returns counts only. To honour the user's review, "
         "OMIT keep_paths and remove_paths: the user's Keep/Remove flips are read from their open tab "
         "(`ui_get_context` shows the same `review`). Pass explicit lists (up to 1000 each) only to replace "

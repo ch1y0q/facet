@@ -221,6 +221,77 @@ class TestKeepWhole:
         assert {_photo_row(n)["burst_reviewed"] for n in ("p0.jpg", "p1.jpg")} == {0}
 
 
+def _undo(client, receipt_id):
+    resp = client.post(UNDO, json={"receipt_id": receipt_id})
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+class TestRejectedKeepWhole:
+    """A kept-whole frame that is already rejected stays rejected, is reported as such, and is flagged as a reject."""
+
+    @pytest.fixture()
+    def mixed(self, seed_photos_prefix):
+        return seed_photos_prefix(PREFIX, [
+            _photo("b1.jpg", burst_group_id=BURST),
+            _photo("b2.jpg", burst_group_id=BURST),
+            _photo("k1.jpg", burst_group_id=BURST, sequence_kind="bracket", sequence_ev_offset=-2,
+                   sequence_group_id=1, is_rejected=1, is_burst_lead=1),
+            _photo("k2.jpg", burst_group_id=BURST, sequence_kind="panorama", sequence_group_id=2),
+        ])
+
+    @staticmethod
+    def _flags(name):
+        row = _photo_row(name)
+        return row["is_burst_lead"] or 0, row["burst_reviewed"] or 0
+
+    def test_a_keep_whole_kind_flags_by_effective_rejected_state(self, edition_client, mixed):
+        group = _apply(edition_client, _group(["b1.jpg"], ["b2.jpg", "k1.jpg"], kind="bracket"))["groups"][0]
+        assert group["rejected_keep_whole"] == [_p("k1.jpg")]
+        assert group["skipped_keep_whole"] == [_p("k1.jpg")]
+        assert (self._flags("k1.jpg"), self._flags("b2.jpg"), self._flags("b1.jpg")) == ((0, 1), (0, 1), (1, 1))
+
+    def test_a_non_rejected_keep_whole_frame_is_not_reported_rejected(self, edition_client, mixed):
+        group = _apply(edition_client, _group(["b1.jpg"], ["b2.jpg", "k2.jpg"], kind="bracket"))["groups"][0]
+        assert group["rejected_keep_whole"] == [] and group["skipped_keep_whole"] == [_p("k2.jpg")]
+        assert self._flags("k2.jpg") == (1, 1)
+
+    def test_a_burst_kind_flags_a_rejected_keep_whole_frame_as_a_reject_and_a_plain_one_as_a_keep(
+            self, edition_client, mixed):
+        group = _apply(edition_client, _group(["b1.jpg"], ["b2.jpg", "k1.jpg", "k2.jpg"]))["groups"][0]
+        assert group["rejected_keep_whole"] == [_p("k1.jpg")]
+        assert (self._flags("k1.jpg"), self._flags("k2.jpg"), self._flags("b2.jpg")) == ((0, 1), (1, 1), (0, 1))
+
+    def test_a_keep_marked_rejected_keep_whole_frame_is_unrejected_and_flagged_a_keep(self, edition_client, mixed):
+        group = _apply(edition_client, _group(["b1.jpg", "k1.jpg"], ["b2.jpg"], kind="bracket"))["groups"][0]
+        assert group["rejected_keep_whole"] == [] and group["unrejected_paths"] == [_p("k1.jpg")]
+        assert _photo_row("k1.jpg")["is_rejected"] == 0
+        assert self._flags("k1.jpg") == (1, 1)
+
+    def test_undo_restores_the_flags_exactly(self, edition_client, mixed):
+        before = {n: self._flags(n) for n in ("b1.jpg", "b2.jpg", "k1.jpg")}
+        body = _apply(edition_client, _group(["b1.jpg"], ["b2.jpg", "k1.jpg"], kind="bracket"))
+        result = _undo(edition_client, body["groups"][0]["receipt_id"])
+        assert result["skipped_changed"] == 0 and result["flags_restored"] >= 1
+        assert {n: self._flags(n) for n in before} == before
+
+    def test_undo_counts_a_flag_a_later_write_moved(self, edition_client, mixed):
+        body = _apply(edition_client, _group(["b1.jpg"], ["b2.jpg", "k1.jpg"], kind="bracket"))
+        with _db() as conn:
+            conn.execute("UPDATE photos SET is_burst_lead = 1 WHERE path = ?", (_p("k1.jpg"),))
+        result = _undo(edition_client, body["groups"][0]["receipt_id"])
+        assert result["skipped_changed"] == 1
+
+    def test_multi_user_reports_the_callers_own_rejected_state(self, edition_client, mixed, multi):
+        with _db() as conn:
+            conn.execute("UPDATE photos SET is_rejected = 0 WHERE path = ?", (_p("k1.jpg"),))
+            conn.execute("INSERT INTO user_preferences (user_id, photo_path, is_rejected) VALUES ('test', ?, 1)",
+                         (_p("k1.jpg"),))
+        group = _apply(edition_client, _group(["b1.jpg"], ["b2.jpg", "k1.jpg"], kind="bracket"))["groups"][0]
+        assert group["rejected_keep_whole"] == [_p("k1.jpg")]
+        assert self._flags("k1.jpg") == (0, 1)
+
+
 class TestReviewedFlags:
     def test_burst_kind_sets_reviewed_and_leads(self, edition_client, burst):
         _apply(edition_client, _group(["b1.jpg"], ["b2.jpg", "b3.jpg"]))

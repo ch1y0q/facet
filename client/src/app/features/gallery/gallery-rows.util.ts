@@ -210,6 +210,16 @@ export function windowRange(
 
 /** Height of a review-group header row. */
 export const GROUP_HEADER_HEIGHT_PX = 32;
+/** The second header line (the group actions) below `md`. */
+export const GROUP_HEADER_ACTIONS_HEIGHT_PX = 28;
+
+/**
+ * Height of a review-group header: one line on desktop, and below `md` two lines (title, then the actions)
+ * when the pin carries marks. The template sizes the DOM box from the same row height.
+ */
+export function groupHeaderHeight(isDesktop: boolean, hasActions: boolean): number {
+  return isDesktop || !hasActions ? GROUP_HEADER_HEIGHT_PX : GROUP_HEADER_HEIGHT_PX + GROUP_HEADER_ACTIONS_HEIGHT_PX;
+}
 
 /**
  * Split `photos` into runs of equal group and lay each run out with `buildRows`, preceded by a
