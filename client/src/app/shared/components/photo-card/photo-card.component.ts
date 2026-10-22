@@ -1,7 +1,7 @@
-import { Component, computed, effect, input, output, signal, untracked } from '@angular/core';
+import { Component, computed, effect, input, output, signal, untracked, viewChildren } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
-import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
 import { MatMenuModule } from '@angular/material/menu';
 import { Photo } from '../../models/photo.model';
 import { TranslatePipe } from '../../pipes/translate.pipe';
@@ -706,6 +706,13 @@ export class PhotoCardComponent {
   readonly rejectedToggled = output<string>();
   readonly starClicked = output<{ photo: Photo; star: number }>();
   readonly doubleClicked = output<Photo>();
+
+  private readonly tooltips = viewChildren(MatTooltip);
+
+  /** Hide every tooltip this card owns, for a gallery parking behind a photo page. */
+  hideTooltips(): void {
+    for (const tooltip of this.tooltips()) tooltip.hide(0);
+  }
 
   cycleStarRating(): void {
     const current = this.photo().star_rating ?? 0;

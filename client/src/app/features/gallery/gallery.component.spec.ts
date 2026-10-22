@@ -1,6 +1,6 @@
 import type { Mock } from 'vitest';
 import { ComponentFixture, DeferBlockState, TestBed } from '@angular/core/testing';
-import { ChangeDetectorRef, computed, DestroyRef, signal, WritableSignal } from '@angular/core';
+import { ChangeDetectorRef, computed, DebugElement, DestroyRef, signal, WritableSignal } from '@angular/core';
 import { ActivatedRoute, Event as RouterEvent, NavigationStart, Router, RouterOutlet } from '@angular/router';
 import { By } from '@angular/platform-browser';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -8,7 +8,8 @@ import { Subject, of, throwError } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
 import { MatBottomSheet } from '@angular/material/bottom-sheet';
 import { MatTooltip } from '@angular/material/tooltip';
-import { provideNativeDateAdapter } from '@angular/material/core';
+import { MATERIAL_ANIMATIONS, provideNativeDateAdapter } from '@angular/material/core';
+import { OverlayContainer } from '@angular/cdk/overlay';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatSidenav, MatSidenavContainer, MatSidenavContent } from '@angular/material/sidenav';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
@@ -19,6 +20,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { AlbumService } from '../../core/services/album.service';
 import { GalleryComponent } from './gallery.component';
+import { PhotoCardComponent } from '../../shared/components/photo-card/photo-card.component';
 import { GalleryFilterSidebarComponent } from './gallery-filter-sidebar.component';
 import { SlideshowComponent } from './slideshow.component';
 import { I18N } from '../../core/i18n/keys';
@@ -152,6 +154,8 @@ describe('GalleryComponent', () => {
       imports: [GalleryComponent],
       providers: [
         provideNativeDateAdapter(),
+        // Tooltip hides wait for an animationend jsdom never fires unless animations are off.
+        { provide: MATERIAL_ANIMATIONS, useValue: { animationsDisabled: true } },
         { provide: GalleryStore, useValue: mockStore },
         { provide: ApiService, useValue: mockApi },
         { provide: AuthService, useValue: mockAuth },
@@ -3580,6 +3584,53 @@ describe('GalleryComponent', () => {
         outletMock.attachEvents.next(gallery);
         expect(cursor().activeIndex()).toBe(2);
         expect(document.activeElement).toBe(tileAt(2));
+      });
+    });
+
+    describe('tooltips', () => {
+      const overlay = () => TestBed.inject(OverlayContainer).getContainerElement();
+      const settle = () => new Promise(resolve => setTimeout(resolve, 30));
+      const tooltipsOf = (root: DebugElement) => root.queryAll(By.directive(MatTooltip)).map(d => d.injector.get(MatTooltip));
+
+      async function expectParkHides(tooltip: MatTooltip): Promise<void> {
+        tooltip.show(0);
+        await settle();
+        expect(overlay().querySelector('.mat-mdc-tooltip')).not.toBeNull();
+        outletMock.detachEvents.next(gallery);
+        await settle();
+        expect(overlay().querySelector('.mat-mdc-tooltip')).toBeNull();
+        expect(tooltip._isTooltipVisible()).toBe(false);
+        const seen = vi.fn();
+        document.addEventListener('keydown', seen);
+        try {
+          document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, cancelable: true }));
+        } finally {
+          document.removeEventListener('keydown', seen);
+        }
+        expect(seen).toHaveBeenCalledOnce();
+      }
+
+      it('hides a card tooltip when the gallery is parked', async () => {
+        const card = fixture.debugElement.query(By.directive(PhotoCardComponent));
+        await expectParkHides(tooltipsOf(card)[0]);
+      });
+
+      it('hides a tooltip of the gallery\'s own template when the gallery is parked', async () => {
+        mockStore.selectionCount.set(1);
+        mockStore.selectedPaths.set(new Set(['/p0.jpg']));
+        fixture.detectChanges();
+        const own = fixture.debugElement.queryAll(By.directive(MatTooltip))
+          .filter(d => !d.nativeElement.closest('app-photo-card'))
+          .map(d => d.injector.get(MatTooltip));
+        expect(own.length).toBeGreaterThan(0);
+        await expectParkHides(own[0]);
+      });
+
+      it('hides a filter sidebar tooltip when the gallery is parked', async () => {
+        const [sidebarBlock] = await fixture.getDeferBlocks();
+        await sidebarBlock.render(DeferBlockState.Complete);
+        const sidebar = fixture.debugElement.query(By.directive(GalleryFilterSidebarComponent));
+        await expectParkHides(tooltipsOf(sidebar)[0]);
       });
     });
 

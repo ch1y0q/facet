@@ -7,6 +7,7 @@ import {
   OnInit,
   OnDestroy,
   viewChild,
+  viewChildren,
   afterNextRender,
   effect,
   untracked,
@@ -28,7 +29,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatBottomSheet, MatBottomSheetModule } from '@angular/material/bottom-sheet';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatMenuModule } from '@angular/material/menu';
-import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, NavigationStart, Router, RouterOutlet } from '@angular/router';
 import { filter, firstValueFrom } from 'rxjs';
 import { GalleryStore, BatchResult } from './gallery.store';
@@ -762,6 +763,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly injector = inject(Injector);
   private readonly scrollContent = viewChild(MatSidenavContent);
   private readonly sidenavContainer = viewChild(MatSidenavContainer);
+  private readonly ownTooltips = viewChildren(MatTooltip);
+  private readonly cards = viewChildren(PhotoCardComponent);
 
   /** True once the gallery content is scrolled far enough to show the scroll-to-top button. */
   protected readonly showScrollTop = signal(false);
@@ -1106,6 +1109,10 @@ export class GalleryComponent implements OnInit, OnDestroy {
         // Detached views need an explicit render to release slideshow timers and listeners.
         this.changeDetector.detectChanges();
       }
+      // A tooltip left showing would sit over the photo page and swallow its first Escape.
+      for (const tooltip of this.ownTooltips()) tooltip.hide(0);
+      for (const card of this.cards()) card.hideTooltips();
+      this.filterSidebar()?.hideTooltips();
       this.pageHelp.setDescription(null);
       const t = this.galleryToolbar();
       if (t) this.headerSlot.clear(t);

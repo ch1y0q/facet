@@ -1,4 +1,4 @@
-import { Component, computed, DestroyRef, effect, ElementRef, inject, signal, viewChild } from '@angular/core';
+import { Component, computed, DestroyRef, effect, ElementRef, inject, signal, viewChild, viewChildren } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatSelectModule } from '@angular/material/select';
@@ -8,7 +8,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatInputModule } from '@angular/material/input';
-import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatDatepickerModule, MatDatepickerInputEvent } from '@angular/material/datepicker';
 import { toIsoDateString } from '../../shared/utils/date-format';
@@ -1102,6 +1102,13 @@ export class GalleryFilterSidebarComponent {
       this.cancelPendingSearch();
       this.coarsePointer.cleanup();
     });
+  }
+
+  private readonly tooltips = viewChildren(MatTooltip);
+
+  /** Hide every tooltip the sidebar owns, for a gallery parking behind a photo page. */
+  hideTooltips(): void {
+    for (const tooltip of this.tooltips()) tooltip.hide(0);
   }
 
   cancelPendingSearch(): void {
