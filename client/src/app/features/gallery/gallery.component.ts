@@ -1,5 +1,6 @@
 import {
   Component,
+  ChangeDetectorRef,
   inject,
   computed,
   signal,
@@ -733,9 +734,9 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly outlet = inject(RouterOutlet, { optional: true });
-  /** True while GalleryReuseStrategy holds this view detached behind an open photo. */
+  private readonly changeDetector = inject(ChangeDetectorRef);
   private parked = false;
-  /** Where the user was when they opened a photo; a detached view forgets both. */
+  // Detaching loses the DOM scroll position and focus.
   private returnTo: { scroll: number; focus: Element | null } | null = null;
   private readonly api = inject(ApiService);
   private readonly pageHelp = inject(PageHelpService);
@@ -755,6 +756,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   private resizeObserver: ResizeObserver | null = null;
   private readonly scrollDirective = viewChild(InfiniteScrollDirective);
+  private readonly filterSidebar = viewChild(GalleryFilterSidebarComponent);
   private readonly filterDrawer = viewChild<MatSidenav>('filterDrawer');
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
@@ -1084,8 +1086,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
       if (t) this.headerSlot.set(t);
     });
 
-    // GalleryReuseStrategy detaches this view behind an open photo and reattaches it on Back.
-    // By the time the outlet says so the DOM may be gone, so note where the user was first.
+    // Capture before the outlet detaches the DOM and loses scroll and focus.
     this.router.events.pipe(filter(e => e instanceof NavigationStart), takeUntilDestroyed()).subscribe(() => {
       if (this.parked) return;
       this.returnTo = { scroll: this.scrollContent()?.measureScrollOffset('top') ?? 0, focus: document.activeElement };
@@ -1093,6 +1094,13 @@ export class GalleryComponent implements OnInit, OnDestroy {
     this.outlet?.detachEvents.pipe(takeUntilDestroyed()).subscribe(component => {
       if (component !== this) return;
       this.parked = true;
+      // Pending filter edits would otherwise replace the photo URL.
+      this.filterSidebar()?.cancelPendingSearch();
+      if (this.store.slideshowActive()) {
+        this.store.slideshowActive.set(false);
+        // Detached views need an explicit render to release slideshow timers and listeners.
+        this.changeDetector.detectChanges();
+      }
       this.pageHelp.setDescription(null);
       const t = this.galleryToolbar();
       if (t) this.headerSlot.clear(t);

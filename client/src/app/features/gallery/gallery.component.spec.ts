@@ -1,6 +1,6 @@
 import type { Mock } from 'vitest';
-import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { computed, signal, WritableSignal } from '@angular/core';
+import { ComponentFixture, DeferBlockState, TestBed } from '@angular/core/testing';
+import { ChangeDetectorRef, computed, DestroyRef, signal, WritableSignal } from '@angular/core';
 import { ActivatedRoute, Event as RouterEvent, NavigationStart, Router, RouterOutlet } from '@angular/router';
 import { By } from '@angular/platform-browser';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -18,6 +18,8 @@ import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { AlbumService } from '../../core/services/album.service';
 import { GalleryComponent } from './gallery.component';
+import { GalleryFilterSidebarComponent } from './gallery-filter-sidebar.component';
+import { SlideshowComponent } from './slideshow.component';
 import { I18N } from '../../core/i18n/keys';
 import { ScoreClassPipe } from '../../shared/pipes/score.pipes';
 import { MAX_COMPARE_PANES } from './synced-zoom.component';
@@ -163,6 +165,7 @@ describe('GalleryComponent', () => {
         },
         { provide: ActivatedRoute, useValue: routeMock },
         { provide: RouterOutlet, useValue: outletMock },
+        { provide: ChangeDetectorRef, useValue: { detectChanges: vi.fn() } },
         { provide: MatDialog, useValue: { open: vi.fn() } },
         { provide: MatBottomSheet, useValue: { open: vi.fn() } },
         { provide: LiveAnnouncer, useValue: { announce: vi.fn(() => Promise.resolve()) } },
@@ -3284,8 +3287,6 @@ describe('GalleryComponent', () => {
     });
   });
 
-  // GalleryReuseStrategy detaches the gallery behind an open photo; the outlet's
-  // detach/attach events are the only signal the gallery gets.
   describe('kept alive behind an open photo (rendered)', () => {
     const photos = Array.from({ length: 3 }, (_, n) => ({
       path: `/p${n}.jpg`, filename: `p${n}.jpg`, image_width: 4000, image_height: 3000,
@@ -3318,6 +3319,81 @@ describe('GalleryComponent', () => {
       tile.blur();
       return tile;
     }
+
+    it('defers the filter sidebar until its block is rendered', async () => {
+      expect(fixture.debugElement.query(By.directive(GalleryFilterSidebarComponent))).toBeNull();
+      const blocks = await fixture.getDeferBlocks();
+      expect(blocks).toHaveLength(1);
+      await blocks[0].render(DeferBlockState.Complete);
+      expect(fixture.debugElement.query(By.directive(GalleryFilterSidebarComponent))).not.toBeNull();
+    });
+
+    it('cancels pending sidebar searches when the gallery is parked', async () => {
+      mockStore.config.set({ features: { show_semantic_search: true } });
+      const [sidebarBlock] = await fixture.getDeferBlocks();
+      await sidebarBlock.render(DeferBlockState.Complete);
+      const sidebar = fixture.debugElement.query(By.directive(GalleryFilterSidebarComponent)).componentInstance as GalleryFilterSidebarComponent;
+      vi.useFakeTimers();
+      try {
+        const search = fixture.nativeElement.querySelector(`input[placeholder="${I18N.gallery.semantic_search_placeholder}"]`) as HTMLInputElement;
+        search.value = 'sunset';
+        search.dispatchEvent(new Event('input', { bubbles: true }));
+        sidebar.onSearchThresholdChange(30);
+        mockStore.updateFilter.mockClear();
+        openPhoto(0);
+        vi.advanceTimersByTime(400);
+        expect(mockStore.updateFilter).not.toHaveBeenCalled();
+        expect((sidebar as any).searchThresholdValue()).not.toBe(30);
+        expect(search.value).toBe(mockStore.filters().semanticQuery);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('preserves the mosaic width while parked and accepts a resize after return', () => {
+      let resize!: ResizeObserverCallback;
+      const observer = { observe: vi.fn(), disconnect: vi.fn(), unobserve: vi.fn() };
+      vi.spyOn(globalThis, 'ResizeObserver').mockImplementation(function (callback) {
+        resize = callback;
+        return observer;
+      });
+      (gallery as any).setupResizeObserver();
+      const notify = (width: number) => resize([{ contentRect: { width } } as ResizeObserverEntry], observer as ResizeObserver);
+      notify(1000);
+      const rows = gallery.mosaicRows();
+      expect(rows.length).toBeGreaterThan(0);
+      openPhoto(0);
+      notify(0);
+      expect(gallery.mosaicRows()).toBe(rows);
+      outletMock.attachEvents.next(gallery);
+      notify(800);
+      expect(gallery.mosaicRows()).not.toBe(rows);
+    });
+
+    it('ignores another gallery being attached and refreshes counts only on its own return', () => {
+      openPhoto(0);
+      mockStore.loadTypeCounts.mockClear();
+      mockStore.loadFilterOptions.mockClear();
+      outletMock.attachEvents.next({});
+      expect(TestBed.inject(HeaderSlotService).template()).toBeNull();
+      expect(mockStore.loadTypeCounts).not.toHaveBeenCalled();
+      expect(mockStore.loadFilterOptions).not.toHaveBeenCalled();
+      outletMock.attachEvents.next(gallery);
+      expect(TestBed.inject(HeaderSlotService).template()).not.toBeNull();
+      expect(mockStore.loadTypeCounts).toHaveBeenCalledOnce();
+      expect(mockStore.loadFilterOptions).toHaveBeenCalledOnce();
+    });
+
+    it('destroys an active slideshow when the gallery is parked', () => {
+      mockStore.slideshowActive.set(true);
+      fixture.detectChanges();
+      const slideshow = fixture.debugElement.query(By.directive(SlideshowComponent));
+      const destroy = vi.fn();
+      slideshow.injector.get(DestroyRef).onDestroy(destroy);
+      openPhoto(0);
+      expect(mockStore.slideshowActive()).toBe(false);
+      expect(destroy).toHaveBeenCalledOnce();
+    });
 
     it('hands the header toolbar back while a photo is open, and takes it again on return', () => {
       const header = TestBed.inject(HeaderSlotService);

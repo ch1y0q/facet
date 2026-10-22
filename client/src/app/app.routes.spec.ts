@@ -23,6 +23,8 @@ describe('route table', () => {
   });
 
   it('has the gallery and photo routes GalleryReuseStrategy keeps alive', async () => {
+    expect(GALLERY_PATHS).toEqual(['', 'album/:albumId']);
+    expect(PHOTO_PATH).toBe('photo');
     for (const path of GALLERY_PATHS) {
       expect(await routes.find(r => r.path === path)?.loadComponent?.(), path).toBe(GalleryComponent);
     }

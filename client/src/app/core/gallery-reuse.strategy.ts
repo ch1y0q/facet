@@ -1,8 +1,9 @@
-import { ComponentRef, Injectable, Injector, inject } from '@angular/core';
+import { Injectable, Injector, OnDestroy, inject } from '@angular/core';
 import {
   ActivatedRouteSnapshot,
   BaseRouteReuseStrategy,
   DetachedRouteHandle,
+  destroyDetachedRouteHandle,
   Router,
 } from '@angular/router';
 
@@ -11,13 +12,9 @@ export const PHOTO_PATH = 'photo';
 
 const isGallery = (route: ActivatedRouteSnapshot) => GALLERY_PATHS.includes(route.routeConfig?.path ?? '-');
 
-/**
- * Keeps the gallery alive while a photo is open, so going back reattaches it
- * instead of rebuilding it. Only a history back to the same gallery URL
- * reattaches; any other way out of the photo destroys the kept gallery.
- */
+// Reattaching avoids rebuilding the gallery DOM on return from a photo.
 @Injectable()
-export class GalleryReuseStrategy extends BaseRouteReuseStrategy {
+export class GalleryReuseStrategy extends BaseRouteReuseStrategy implements OnDestroy {
   // The Router injects this strategy, so it can only be looked up lazily.
   private readonly injector = inject(Injector);
   private kept: { key: string; handle: DetachedRouteHandle } | null = null;
@@ -43,13 +40,11 @@ export class GalleryReuseStrategy extends BaseRouteReuseStrategy {
   override shouldAttach(route: ActivatedRouteSnapshot): boolean {
     if (!this.kept) return false;
     if (isGallery(route) && this.isBackToKept(route)) return true;
-    // Leaving the photo any other way: free the gallery before the next page is
-    // built. The photo itself is asked about right after the gallery is stored.
+    // Activation asks about the photo immediately after storing the gallery.
     if (route.routeConfig?.path !== PHOTO_PATH) this.drop();
     return false;
   }
 
-  // The router only asks after shouldAttach said yes.
   override retrieve(): DetachedRouteHandle | null {
     return this.kept?.handle ?? null;
   }
@@ -64,9 +59,12 @@ export class GalleryReuseStrategy extends BaseRouteReuseStrategy {
     ));
   }
 
+  ngOnDestroy(): void {
+    this.drop();
+  }
+
   private drop(): void {
-    // A detached handle is the outlet's { componentRef }; nothing else frees it.
-    (this.kept?.handle as { componentRef?: ComponentRef<unknown> } | undefined)?.componentRef?.destroy();
+    if (this.kept) destroyDetachedRouteHandle(this.kept.handle);
     this.kept = null;
   }
 }
