@@ -16,13 +16,14 @@ import { makePhoto, makePhotoFull } from '../../../testing/photo.fixture';
   imports: [PhotoTooltipComponent],
   changeDetection: ChangeDetectionStrategy.Eager,
   template: `<app-photo-tooltip [photo]="photo()" [x]="0" [y]="0" [flipped]="flipped()"
-                                 [pinned]="pinned()" [docked]="docked()" />`,
+                                 [pinned]="pinned()" [docked]="docked()" [personLinks]="personLinks()" />`,
 })
 class TestHostComponent {
   photo = signal<Photo | null>(null);
   flipped = signal(false);
   pinned = signal(false);
   docked = signal(false);
+  personLinks = signal(true);
 }
 
 describe('PhotoTooltipComponent', () => {
@@ -343,6 +344,22 @@ describe('PhotoTooltipComponent', () => {
   });
 
   describe('Person avatars', () => {
+    it('renders docked avatars as filter buttons by default', () => {
+      fixture.componentInstance.docked.set(true);
+      fixture.componentInstance.photo.set(makePhoto({ persons: [{ id: 1, name: 'Alice' }] }));
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelectorAll('button img[alt="Alice"]').length).toBe(1);
+    });
+
+    it('renders docked avatars as plain images when personLinks is false', () => {
+      fixture.componentInstance.docked.set(true);
+      fixture.componentInstance.personLinks.set(false);
+      fixture.componentInstance.photo.set(makePhoto({ persons: [{ id: 1, name: 'Alice' }] }));
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelectorAll('button img[alt="Alice"]').length).toBe(0);
+      expect(fixture.nativeElement.querySelectorAll('img[alt="Alice"]').length).toBe(1);
+    });
+
     it('renders person avatar images when persons are present', () => {
       fixture.componentInstance.photo.set(makePhoto({
         persons: [

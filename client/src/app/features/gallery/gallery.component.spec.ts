@@ -3,6 +3,9 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { computed, signal, TemplateRef, WritableSignal } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { By } from '@angular/platform-browser';
+import { PhotoCardComponent } from '../../shared/components/photo-card/photo-card.component';
+import { GalleryPhotoMenuComponent } from './gallery-photo-menu.component';
+import { PhotoTooltipComponent } from './photo-tooltip.component';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Subject, of, throwError } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
@@ -1131,6 +1134,26 @@ describe('GalleryComponent', () => {
     const hasTypeAndSearch = (host: HTMLElement) =>
       host.textContent?.includes(I18N.ui.filters.type) === true
       && !!host.querySelector(`input[placeholder="${I18N.gallery.search_placeholder}"]`);
+
+    it('offers no filter links while pinned (tag chips, person avatars, Find similar) and restores them after', () => {
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      mockStore.photos.set([{ path: '/a.jpg', filename: 'a.jpg', image_width: 4000, image_height: 3000 }]);
+      mockStore.pinnedPaths.set(['/a.jpg']);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const cards = () => fixture!.debugElement.queryAll(By.directive(PhotoCardComponent));
+      const menu = () => fixture!.debugElement.query(By.directive(GalleryPhotoMenuComponent)).componentInstance as GalleryPhotoMenuComponent;
+      const tooltips = () => fixture!.debugElement.queryAll(By.directive(PhotoTooltipComponent));
+      expect(cards().length).toBeGreaterThan(0);
+      expect(cards().every(c => (c.componentInstance as PhotoCardComponent).filterLinks() === false)).toBe(true);
+      expect(menu().findSimilar()).toBe(false);
+      expect(tooltips().every(t => (t.componentInstance as PhotoTooltipComponent).personLinks() === false)).toBe(true);
+      mockStore.pinnedPaths.set(null);
+      fixture.detectChanges();
+      expect(cards().every(c => (c.componentInstance as PhotoCardComponent).filterLinks() === true)).toBe(true);
+      expect(menu().findSimilar()).toBe(true);
+      expect(tooltips().every(t => (t.componentInstance as PhotoTooltipComponent).personLinks() === true)).toBe(true);
+    });
 
     it('hides the header Type select and search field while pinned and restores them after', () => {
       mockAuth['hasFeature'] = vi.fn(() => false);
@@ -3656,6 +3679,26 @@ describe('GalleryComponent', () => {
         expect(headers(html)[0].textContent).toContain('gallery.pinned.review.group_header_plural');
       });
     }
+
+    it('offers no filter links on any rendered card, tooltip or menu in a pinned grouped review, and restores them after the pin ends', () => {
+      pin({});
+      render('grid', false);
+      const f = fixture!;
+      const cards = () => f.debugElement.queryAll(By.directive(PhotoCardComponent)).map(c => c.componentInstance as PhotoCardComponent);
+      const tips = () => f.debugElement.queryAll(By.directive(PhotoTooltipComponent)).map(t => t.componentInstance as PhotoTooltipComponent);
+      const menu = () => f.debugElement.query(By.directive(GalleryPhotoMenuComponent)).componentInstance as GalleryPhotoMenuComponent;
+      expect(cards()).toHaveLength(7);
+      expect(cards().map(c => c.filterLinks())).toEqual(Array(7).fill(false));
+      expect(tips().map(t => t.personLinks()).every(v => v === false)).toBe(true);
+      expect(menu().findSimilar()).toBe(false);
+      mockStore.pinnedPaths.set(null);
+      mockStore.pinnedGroups.set(new Map());
+      f.detectChanges();
+      expect(cards().length).toBeGreaterThan(0);
+      expect(cards().map(c => c.filterLinks()).every(v => v === true)).toBe(true);
+      expect(tips().map(t => t.personLinks()).every(v => v === true)).toBe(true);
+      expect(menu().findSimilar()).toBe(true);
+    });
 
     it('feeds the header text from the effective counts', () => {
       pin({});

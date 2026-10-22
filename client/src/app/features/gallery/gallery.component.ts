@@ -212,7 +212,8 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
               <app-photo-tooltip [photo]="p" [docked]="true" [pinned]="true"
                                  [histogramDefaultMode]="tooltipHistogramDefaultMode()"
                                  [indicatorPercent]="clippingIndicatorPercent()"
-                                 (personSelected)="store.updateFilter('person_id', $event)" />
+                                 [personLinks]="!pinned()"
+        (personSelected)="store.updateFilter('person_id', $event)" />
             } @else {
               <div class="rounded-xl p-4 text-sm opacity-60 text-center"
                    style="background: var(--facet-tooltip-bg); border: 1px solid var(--facet-tooltip-border)">
@@ -421,7 +422,8 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                       (selectionChange)="toggleSelection($event.photo, $event.event, row.startIndex + i)"
                       (tooltipShow)="showTooltip($event.event, $event.photo)"
                       (tooltipHide)="hideTooltip()"
-                      (tagClicked)="store.updateFilter('tag', $event)"
+                      [filterLinks]="!pinned()"
+                  (tagClicked)="store.updateFilter('tag', $event)"
                       (personFilterClicked)="filterByPerson($event)"
                       (personRemoveClicked)="removePerson($event.photo, $event.personId)"
                       (openSimilarClicked)="openSimilar($event.photo, $event.mode)"
@@ -481,7 +483,8 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                   (selectionChange)="toggleSelection($event.photo, $event.event, i)"
                   (tooltipShow)="showTooltip($event.event, $event.photo)"
                   (tooltipHide)="hideTooltip()"
-                  (tagClicked)="store.updateFilter('tag', $event)"
+                  [filterLinks]="!pinned()"
+                      (tagClicked)="store.updateFilter('tag', $event)"
                   (personFilterClicked)="filterByPerson($event)"
                   (personRemoveClicked)="removePerson($event.photo, $event.personId)"
                   (openSimilarClicked)="openSimilar($event.photo, $event.mode)"
@@ -545,6 +548,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                       (selectionChange)="toggleSelection($event.photo, $event.event, row.startIndex + i)"
                       (tooltipShow)="showTooltip($event.event, $event.photo)"
                       (tooltipHide)="hideTooltip()"
+                      [filterLinks]="!pinned()"
                       (tagClicked)="store.updateFilter('tag', $event)"
                       (personFilterClicked)="filterByPerson($event)"
                       (personRemoveClicked)="removePerson($event.photo, $event.personId)"
@@ -666,6 +670,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
         [pinned]="tooltipMode() === 'click'"
         [histogramDefaultMode]="tooltipHistogramDefaultMode()"
         [indicatorPercent]="clippingIndicatorPercent()"
+        [personLinks]="!pinned()"
         (personSelected)="store.updateFilter('person_id', $event)"
       />
     }
@@ -676,6 +681,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
          in scope of all three grid branches. -->
     <app-gallery-photo-menu
       #photoMenu
+      [findSimilar]="!pinned()"
       [isEdition]="auth.isEdition()"
       [config]="store.config()"
       [albums]="albumOptions()"

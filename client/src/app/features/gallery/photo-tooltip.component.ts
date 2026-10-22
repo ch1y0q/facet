@@ -397,7 +397,7 @@ export class CategoryLabelPipe implements PipeTransform {
         @if (p.persons.length) {
           <div class="flex items-center gap-1.5 flex-wrap mt-2 pt-1.5 border-t border-[var(--facet-tooltip-divider)]">
             @for (person of p.persons; track person.id) {
-              @if (showInteractiveControls()) {
+              @if (personLinks() && showInteractiveControls()) {
                 <button type="button"
                         class="rounded-full ring-1 ring-[var(--facet-tooltip-divider)] cursor-pointer hover:opacity-80 transition-opacity overflow-hidden"
                         [class.w-11]="docked()" [class.h-11]="docked()"
@@ -448,6 +448,8 @@ export class PhotoTooltipComponent {
    * before a click could ever land.
    */
   readonly pinned = input(false);
+  /** False renders person avatars as plain images instead of filter buttons. */
+  readonly personLinks = input(true);
   /** House default for the tooltip's OWN histogram channel mode, from
    *  `viewer.clipping.tooltip_histogram_mode` -- independent of the detail
    *  panel's default and of the user's per-surface persisted choice. */

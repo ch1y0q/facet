@@ -973,3 +973,59 @@ describe('PhotoCardComponent current-photo marker', () => {
   });
 
 });
+
+describe('PhotoCardComponent filter links', () => {
+  const mockI18n = { t: vi.fn((key: string) => key), currentLang: vi.fn(() => 'en'), locale: vi.fn(() => 'en'), translations: vi.fn(() => ({})) };
+  function create(inputs: Record<string, unknown>): HTMLElement {
+    TestBed.configureTestingModule({
+      imports: [PhotoCardComponent],
+      providers: [{ provide: I18nService, useValue: mockI18n }],
+    });
+    const fixture = TestBed.createComponent(PhotoCardComponent);
+    fixture.componentRef.setInput('photo', makePhoto({ tags_list: ['sunset'] }));
+    fixture.componentRef.setInput('config', { features: { show_similar_button: true } });
+    for (const [name, value] of Object.entries(inputs)) fixture.componentRef.setInput(name, value);
+    fixture.detectChanges();
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  const chip = (el: HTMLElement) =>
+    Array.from(el.querySelectorAll('span')).find(s => s.textContent?.trim() === 'sunset') as HTMLElement;
+  const similar = (el: HTMLElement) => el.querySelector('button[aria-label="similar.find_similar"]');
+
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('keeps tag chips clickable and Find similar available by default', () => {
+    const el = create({});
+    expect(chip(el).getAttribute('role')).toBe('button');
+    expect(chip(el).getAttribute('tabindex')).toBe('0');
+    expect(similar(el)).not.toBeNull();
+  });
+
+  it('renders tag chips as plain text and drops Find similar when filterLinks is false', () => {
+    const el = create({ filterLinks: false });
+    const c = chip(el);
+    expect(c).toBeTruthy();
+    expect(c.hasAttribute('role')).toBe(false);
+    expect(c.hasAttribute('tabindex')).toBe(false);
+    expect(c.className).not.toContain('cursor-pointer');
+    expect(c.className).not.toContain('hover:');
+    expect(similar(el)).toBeNull();
+  });
+
+  it('does not emit tagClicked from a plain chip', () => {
+    TestBed.configureTestingModule({
+      imports: [PhotoCardComponent],
+      providers: [{ provide: I18nService, useValue: mockI18n }],
+    });
+    const fixture = TestBed.createComponent(PhotoCardComponent);
+    fixture.componentRef.setInput('photo', makePhoto({ tags_list: ['sunset'] }));
+    fixture.componentRef.setInput('filterLinks', false);
+    const emitted: string[] = [];
+    fixture.componentInstance.tagClicked.subscribe(t => emitted.push(t));
+    fixture.detectChanges();
+    chip(fixture.nativeElement as HTMLElement).click();
+    expect(emitted).toEqual([]);
+  });
+});
+

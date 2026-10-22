@@ -39,6 +39,7 @@ function makePhoto(over: Partial<Photo> = {}): Photo {
       [canCompare]="canCompare()"
       [viewScoped]="viewScoped()"
       [downloading]="downloading()"
+      [findSimilar]="findSimilar()"
       (action)="events.push($event); order.push('action')"
       (closed)="order.push('closed')"
     />
@@ -53,6 +54,7 @@ class HostComponent {
   readonly canCompare = signal(true);
   readonly viewScoped = signal(false);
   readonly downloading = signal(false);
+  readonly findSimilar = signal(true);
   readonly data = signal<{ photo: Photo; bulk: boolean; index: number }>({
     photo: makePhoto(), bulk: false, index: 0,
   });
@@ -191,6 +193,15 @@ describe('GalleryPhotoMenuComponent', () => {
         }
       });
     }
+  });
+
+  describe('find similar visibility', () => {
+    it('is hidden when findSimilar is false, though the config enables it', () => {
+      host.findSimilar.set(false);
+      openMenu(makePhoto(), false);
+      expect(labels()).not.toContain(I18N.similar.find_similar);
+      expect(labels()).toContain(I18N.shortcuts.open_detail);
+    });
   });
 
   describe('delete gating', () => {

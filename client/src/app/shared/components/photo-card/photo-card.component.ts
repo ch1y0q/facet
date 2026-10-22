@@ -305,7 +305,7 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
         <div [class]="'absolute inset-x-0 top-0 opacity-0 transition-opacity flex flex-col justify-between pointer-events-none z-10 md:group-hover/img:opacity-100 md:group-hover/img:pointer-events-auto ' + (reviewMark() ? 'bottom-7' : 'bottom-0')">
           <!-- Top row: similar + person_add -->
           <div class="flex justify-end items-center gap-1 p-1.5">
-            @if (config()?.features?.show_similar_button) {
+            @if (filterLinks() && config()?.features?.show_similar_button) {
               <button
                 class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
                 [matMenuTriggerFor]="similarMenu"
@@ -445,14 +445,20 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
           @if (photo().tags_list.length) {
             <div class="flex gap-0.5 flex-wrap mt-0.5">
               @for (tag of photo().tags_list; track tag) {
-                <span class="px-1.5 py-0.5 bg-[var(--facet-accent-badge)] text-[var(--facet-accent-text)] rounded text-[11px] cursor-pointer hover:bg-[var(--facet-accent-dim)] transition-colors"
-                      role="button"
-                      tabindex="0"
-                      (click)="tagClicked.emit(tag); $event.stopPropagation()"
-                      (keydown.enter)="tagClicked.emit(tag); $event.stopPropagation()"
-                      (keydown.space)="tagClicked.emit(tag); $event.preventDefault(); $event.stopPropagation()">
-                  {{ tag }}
-                </span>
+                @if (filterLinks()) {
+                  <span class="px-1.5 py-0.5 bg-[var(--facet-accent-badge)] text-[var(--facet-accent-text)] rounded text-[11px] cursor-pointer hover:bg-[var(--facet-accent-dim)] transition-colors"
+                        role="button"
+                        tabindex="0"
+                        (click)="tagClicked.emit(tag); $event.stopPropagation()"
+                        (keydown.enter)="tagClicked.emit(tag); $event.stopPropagation()"
+                        (keydown.space)="tagClicked.emit(tag); $event.preventDefault(); $event.stopPropagation()">
+                    {{ tag }}
+                  </span>
+                } @else {
+                  <span class="px-1.5 py-0.5 bg-[var(--facet-accent-badge)] text-[var(--facet-accent-text)] rounded text-[11px]">
+                    {{ tag }}
+                  </span>
+                }
               }
             </div>
           }
@@ -626,6 +632,8 @@ export class PhotoCardComponent {
    *  false until the grid's cursor first lands somewhere, which is what keeps
    *  a gallery nobody has navigated yet from rendering every tile faded. */
   readonly gridHasActiveCard = input(false);
+  /** False hides every control that replaces the list with a new filter: tag chips render as plain text and Find similar is not offered. */
+  readonly filterLinks = input(true);
   readonly hideDetails = input(false);
   readonly mosaicMode = input(false);
   readonly currentSort = input('aggregate');
