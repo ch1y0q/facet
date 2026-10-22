@@ -1,14 +1,19 @@
 """Facet diagnostic tool — checks Python, PyTorch, GPU, dependencies, config, and database."""
 
+import contextlib
 import importlib.metadata
+import io
 import logging
 import os
 import pathlib
 import platform
+import re
 import shutil
 import sqlite3
 import subprocess
 import sys
+import tempfile
+import warnings
 
 logger = logging.getLogger("facet.diagnostics")
 
@@ -197,6 +202,390 @@ def _warn_face_model_mismatch(db_path, active_model):
         _warn("Face embedding model", face_model_mismatch_message(model, count, active_model))
 
 
+_CUDA_PROVIDER = "CUDAExecutionProvider"
+_CPU_PROVIDER = "CPUExecutionProvider"
+_PROBE_REASON_LIMIT = 300
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
+# What ONNX Runtime writes when the provider cannot load, when a library it needs is missing,
+# and when the provider loads but the session fails at runtime, most specific cause first.
+_PROBE_CAUSES = (
+    re.compile(r"Failed to load library .*? with error:\s*(.+)"),
+    re.compile(r"(\S+: cannot open shared object file.*)"),
+    re.compile(r"(CUDA failure \d+:[^;]*)"),
+    re.compile(r"(Error loading .*)"),
+)
+
+
+def _torch_cuda_version(torch_module):
+    """``torch.version.cuda``, or None for a CPU build, a ROCm build and a missing torch."""
+    return getattr(getattr(torch_module, "version", None), "cuda", None)
+
+
+def _log_fix(text):
+    logger.warning("    %s", text)
+
+
+def _log_distribution_fix(torch_cuda):
+    """Fix line for a broken or doubled install: the GPU build when one applies, else the CPU build.
+
+    ``repair_hint`` explains why no GPU wheel applies, which is not a way out of
+    a state that has to be repaired, so the CPU command stands in for it.
+    """
+    from utils.onnx_runtime import CPU_REPAIR_COMMAND, repair_command
+    _log_fix(f"Fix: {repair_command(torch_cuda) or CPU_REPAIR_COMMAND}")
+
+
+@contextlib.contextmanager
+def _captured_stderr_fd():
+    """Collect what native code writes to file descriptor 2 inside the block, as one string in a list.
+
+    ONNX Runtime reports a provider that fails to load from its C++ logger, so the
+    reason never reaches Python's ``sys.stderr`` or the ``warnings`` machinery. If
+    the descriptor cannot be redirected the block simply runs uncaptured.
+    """
+    captured = []
+    try:
+        sink = tempfile.TemporaryFile()
+    except OSError:
+        yield captured
+        return
+    try:
+        saved = os.dup(2)
+    except OSError:
+        sink.close()
+        yield captured
+        return
+    try:
+        os.dup2(sink.fileno(), 2)
+    except OSError:
+        os.close(saved)
+        sink.close()
+        yield captured
+        return
+    try:
+        yield captured
+    finally:
+        os.dup2(saved, 2)
+        os.close(saved)
+        sink.seek(0)
+        captured.append(sink.read().decode("utf-8", "replace"))
+        sink.close()
+
+
+def _probe_reason(lines):
+    """Short reason the CUDA provider did not load, from the captured output lines; "" when there is none.
+
+    ONNX Runtime colours its log lines with ANSI escapes, and those lines run to
+    about 500 characters with the library name near the end, so the escapes go
+    first and the cause is cut out of the line rather than the line truncated:
+    ``... Failed to load library <path> with error: libcublasLt.so.13: cannot open
+    shared object file ...`` yields ``libcublasLt.so.13: cannot ...``. A provider
+    that loads but fails at runtime is reported by ONNX Runtime's Python layer on
+    stdout as ``EP Error ... CUDA failure 35: CUDA driver version is insufficient
+    ...``. Anything else falls back to the first line, truncated.
+    """
+    lines = [_ANSI_ESCAPE.sub("", line).strip() for line in lines]
+    lines = [line for line in lines if line and not line.startswith("****")]
+    for cause in _PROBE_CAUSES:
+        for line in lines:
+            match = cause.search(line)
+            if match:
+                return match.group(1).strip()[:_PROBE_REASON_LIMIT]
+    return lines[0][:_PROBE_REASON_LIMIT] if lines else ""
+
+
+def _probe_model_bytes():
+    """A one-node Identity model, serialised; the lowest common denominator any ONNX Runtime loads.
+
+    ``make_model`` stamps the newest IR version the installed ``onnx`` knows, which
+    an older ONNX Runtime rejects, so the IR version is pinned.
+    """
+    from onnx import TensorProto, helper
+    graph = helper.make_graph(
+        [helper.make_node("Identity", ["x"], ["y"])], "facet_ort_probe",
+        [helper.make_tensor_value_info("x", TensorProto.FLOAT, [1])],
+        [helper.make_tensor_value_info("y", TensorProto.FLOAT, [1])],
+    )
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+    model.ir_version = 8
+    return model.SerializeToString()
+
+
+def _probe_cuda_session(ort):
+    """Build a tiny session asking for CUDA; ``(providers it really uses, reason)``, or None without ``onnx``.
+
+    ``get_available_providers()`` lists what the wheel was compiled with, so it
+    reads green for a CUDA 13 build beside a CUDA 12 PyTorch; only a session shows
+    whether the provider loads. Called only on the CUDA runtime path, i.e. after the
+    PyTorch section imported torch: torch maps the CUDA libraries that the provider
+    then reuses, exactly as at scan time. The verdict is the first provider alone;
+    the reason text is best effort and comes from three channels: the C++ logger
+    (file descriptor 2), Python warnings, and the ``EP Error`` banner that the
+    Python layer prints on stdout before retrying on the CPU. All three are
+    captured so none reaches the doctor's own output.
+    """
+    try:
+        model_bytes = _probe_model_bytes()
+    except ImportError:
+        return None
+    options = ort.SessionOptions()
+    options.log_severity_level = 3
+    with warnings.catch_warnings(record=True) as caught, contextlib.redirect_stdout(io.StringIO()) as stdout, \
+            _captured_stderr_fd() as stderr_text:
+        warnings.simplefilter("always")
+        session = ort.InferenceSession(model_bytes, sess_options=options,
+                                       providers=[_CUDA_PROVIDER, _CPU_PROVIDER])
+    lines = [line for text in stderr_text for line in text.splitlines()]
+    lines.extend(line for warning in caught for line in str(warning.message).splitlines())
+    lines.extend(stdout.getvalue().splitlines())
+    return list(session.get_providers()), _probe_reason(lines)
+
+
+def _runs_on_cuda(providers):
+    """True when a session's providers put CUDA first: it is the one that runs the graph.
+
+    A session that lists CUDA behind the CPU provider (or only somewhere in the list) runs
+    its nodes on the CPU, so presence alone is not a verdict.
+    """
+    return bool(providers) and providers[0] == _CUDA_PROVIDER
+
+
+def _report_cuda_session(ort, torch_cuda):
+    """The doctor's verdict on whether ONNX Runtime really runs on CUDA."""
+    from utils.onnx_runtime import repair_hint
+    try:
+        probe = _probe_cuda_session(ort)
+    except Exception as ex:
+        _warn("CUDA session", f"could not be created: {ex}")
+        _log_fix(repair_hint(torch_cuda))
+        return
+    if probe is None:
+        _info("CUDA session", "not probed: the 'onnx' package is not installed")
+        return
+    providers, reason = probe
+    if _runs_on_cuda(providers):
+        _ok("CUDA session", f"a test InferenceSession runs on {_CUDA_PROVIDER}")
+        return
+    _warn("CUDA session", f"fell back to {providers}" + (f": {reason}" if reason else ""))
+    _log_fix(repair_hint(torch_cuda))
+
+
+def _report_onnx_runtime_cuda(ort, torch_cuda):
+    """CUDA checks, for a runtime device of ``cuda`` only."""
+    from utils.onnx_runtime import cuda_major, repair_hint
+    if not torch_cuda:
+        _info("ONNX Runtime CUDA", "not applicable: this PyTorch build reports no CUDA version")
+        return
+    ort_cuda = getattr(ort, "cuda_version", None)
+    # No attribute or an empty string is the CPU wheel (or an old build): nothing to compare.
+    ort_major = cuda_major(ort_cuda)
+    if ort_major is not None and ort_major != cuda_major(torch_cuda):
+        _warn("ONNX Runtime CUDA build", f"onnxruntime is built for CUDA {ort_cuda} but PyTorch uses CUDA {torch_cuda}")
+        _log_fix(repair_hint(torch_cuda))
+    if _CUDA_PROVIDER not in ort.get_available_providers():
+        _warn(_CUDA_PROVIDER, "missing - InsightFace runs on the CPU although Facet uses CUDA")
+        _log_fix(repair_hint(torch_cuda))
+        return
+    _report_cuda_session(ort, torch_cuda)
+
+
+def _import_onnxruntime():
+    """``(module, None)``, or ``(None, why it is unusable)``; never raises.
+
+    ``pip uninstall onnxruntime`` with ``onnxruntime-gpu`` still recorded removes
+    the shared files but leaves the directory, and the import then succeeds as an
+    empty namespace package: no version, no ``InferenceSession``, which is what
+    InsightFace fails on. A plain ``pip install onnxruntime-gpu`` is a no-op in
+    that state, so it has to read as a broken install, not a working one.
+    """
+    try:
+        import onnxruntime as ort
+    except Exception as ex:
+        return None, ex
+    missing = [name for name in ("__version__", "InferenceSession") if not hasattr(ort, name)]
+    if missing:
+        return None, f"module 'onnxruntime' has no attribute '{missing[-1]}' (an empty namespace package)"
+    return ort, None
+
+
+def _report_onnx_runtime(config_path, torch, selected_device):
+    """InsightFace's inference engine: what is installed, and whether it really runs on CUDA (issue #229).
+
+    ``onnxruntime`` and ``onnxruntime-gpu`` share files, ``insightface`` requires
+    the CPU one, and nothing else tells the user when face detection silently ran
+    on the CPU. ``torch`` is the module the PyTorch section imported, or None.
+    """
+    import licensing
+    from utils.onnx_runtime import installed_distributions
+    try:
+        from config_resolve import load_resolved
+        insightface_allowed = licensing.allowed('insightface', licensing.resolve_policy(load_resolved(config_path)))
+    except Exception:
+        insightface_allowed = True  # a configuration that cannot be resolved is reported by the licences section
+    if not insightface_allowed:
+        _info("ONNX Runtime", "not used in commercial mode (face detection runs on YuNet/SFace)")
+        return
+    torch_cuda = _torch_cuda_version(torch)
+    distributions = installed_distributions()
+    ort, import_error = _import_onnxruntime()
+    if ort is None:
+        if distributions:
+            _warn("onnxruntime", f"installed ({', '.join(distributions)}) but cannot be imported: {import_error}")
+            _log_distribution_fix(torch_cuda)
+        else:
+            _warn("onnxruntime", "NOT INSTALLED - InsightFace face detection is unavailable")
+        return
+    # Not [OK]: whether this install is healthy is only known once the lines below ran, and a
+    # green version line above a "both packages installed" warning contradicts it.
+    _info("onnxruntime", f"{ort.__version__} ({', '.join(distributions) or 'distribution unknown'})")
+    _info("ONNX Runtime device", ort.get_device())
+    _info("Execution providers", ", ".join(ort.get_available_providers()))
+    if len(distributions) > 1:
+        _warn("ONNX Runtime packages",
+              "onnxruntime and onnxruntime-gpu are both installed; the CPU wheel overwrites the GPU wheel's "
+              "shared libraries (issue #229)")
+        _log_distribution_fix(torch_cuda)
+    if selected_device == 'cuda':
+        _report_onnx_runtime_cuda(ort, torch_cuda)
+
+
+_OPENCV_HEADLESS = "opencv-python-headless"
+_OPENCV_DISTRIBUTIONS = ("opencv-python", _OPENCV_HEADLESS)
+
+
+def _installed_versions(names):
+    """``{name: version}`` for those of ``names`` that pip has installed, in the order given."""
+    found = {}
+    for name in names:
+        try:
+            found[name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            continue
+    return found
+
+
+def _opencv_fix(versions):
+    """The command that leaves only the headless OpenCV build, at the version already installed.
+
+    The headless distribution's version wins, as in ``install.sh``, so the repair does not move
+    ``cv2`` to another release. With no distribution recorded there is nothing to uninstall.
+    """
+    version = versions.get(_OPENCV_HEADLESS) or versions.get("opencv-python")
+    if version is None:
+        return f"pip install {_OPENCV_HEADLESS}"
+    return f'pip uninstall -y opencv-python opencv-python-headless && pip install --no-deps "{_OPENCV_HEADLESS}=={version}"'
+
+
+def _import_opencv():
+    """``(module, None)``, or ``(None, why it is unusable)``; never raises.
+
+    ``opencv-python`` links ``libGL.so.1``, which Debian/WSL and slim hosts lack, so its ``cv2``
+    fails to import there. Uninstalling one build of two can also leave a ``cv2/`` that imports
+    as an empty namespace package: installing ``opencv-python`` over the headless build and then
+    uninstalling the headless one leaves only the GUI build's ``cv2/qt/`` behind (observed with
+    pip on a GPU host), and ``import cv2`` then succeeds with no ``__version__``. That must read
+    as a broken install, not a working one.
+    """
+    try:
+        cv2 = importlib.import_module("cv2")
+    except Exception as ex:
+        return None, f"{type(ex).__name__}: {ex}"
+    if not hasattr(cv2, "__version__"):
+        return None, "module 'cv2' has no attribute '__version__' (an empty namespace package)"
+    return cv2, None
+
+
+def _report_opencv():
+    """Whether ``cv2`` imports, and which OpenCV distributions provide it.
+
+    ``opencv-python`` and ``opencv-python-headless`` share one ``cv2/`` directory and the one
+    installed last wins; ``insightface`` and ``facexlib`` pull the GUI build back in over the
+    headless one ``pyiqa`` wants. Facet uses no OpenCV GUI, so only the headless build is needed.
+    """
+    versions = _installed_versions(_OPENCV_DISTRIBUTIONS)
+    cv2, import_error = _import_opencv()
+    if cv2 is None:
+        _warn("cv2", f"cannot be imported: {import_error}")
+        _log_fix(f"Fix: {_opencv_fix(versions)}")
+        return
+    described = f"{cv2.__version__} ({', '.join(versions) or 'distribution unknown'})"
+    if len(versions) < len(_OPENCV_DISTRIBUTIONS):
+        _ok("cv2", described)
+        return
+    # Not a warning: the Docker images ship both on purpose, with libgl1 installed.
+    _info("cv2", described)
+    _info("OpenCV packages", "both are installed and share cv2/; the one installed last provides it "
+                             "(fine where libGL is present, as in the Docker images)")
+
+
+# Exit codes of verify_onnx_runtime, read by install.sh's final check; the numbers in its `case`
+# are kept in step with these by tests/test_onnx_runtime_install_consistency.py.
+VERIFY_ON_CUDA = 0
+VERIFY_NOT_ON_CUDA = 1
+VERIFY_COULD_NOT_RUN = 2
+VERIFY_LISTED_ONLY = 3
+
+
+def verify_onnx_runtime():
+    """install.sh's last check after a GPU install: print a short report, return a ``VERIFY_*`` code.
+
+    Four outcomes, because "the check failed" and "ONNX Runtime is not on CUDA" call for
+    different messages and the first must never be reported as the second:
+    ``VERIFY_ON_CUDA`` a test session really runs on CUDA (the doctor's probe);
+    ``VERIFY_LISTED_ONLY`` the CUDA provider is listed and ``onnxruntime-gpu`` is alone, but no
+    session could be created (PyTorch sees no GPU on this machine, or the ``onnx`` package is
+    missing), which is the strongest check possible there;
+    ``VERIFY_NOT_ON_CUDA`` ONNX Runtime is broken, doubled, CPU-only or falls back to the CPU,
+    with the repair text; ``VERIFY_COULD_NOT_RUN`` anything unexpected (torch fails to import,
+    the session cannot be built). ``get_available_providers()`` alone is not enough: a CUDA 13
+    wheel beside a CUDA 12 PyTorch lists the provider and then falls back.
+    """
+    try:
+        # torch first: it maps the CUDA libraries the provider then reuses, as at scan time.
+        import torch
+
+        from utils.onnx_runtime import installed_distributions, repair_hint
+        hint = repair_hint(_torch_cuda_version(torch))
+        distributions = installed_distributions()
+        ort, import_error = _import_onnxruntime()
+        if ort is None:
+            print(f"onnxruntime cannot be imported: {import_error} (distributions: {distributions})")
+            print(hint)
+            return VERIFY_NOT_ON_CUDA
+        if distributions != ["onnxruntime-gpu"]:
+            print(f"onnxruntime {ort.__version__}, distributions {distributions}: expected onnxruntime-gpu alone")
+            print(hint)
+            return VERIFY_NOT_ON_CUDA
+        if _CUDA_PROVIDER not in ort.get_available_providers():
+            print(f"onnxruntime-gpu {ort.__version__} does not offer {_CUDA_PROVIDER} "
+                  f"(providers: {ort.get_available_providers()})")
+            print(hint)
+            return VERIFY_NOT_ON_CUDA
+        listed = f"onnxruntime-gpu {ort.__version__}, {_CUDA_PROVIDER} listed"
+        if not torch.cuda.is_available():
+            print(listed)
+            print("no CUDA session was created: PyTorch sees no GPU on this machine, so only the provider "
+                  "listing was checked. Run 'python facet.py --doctor' on the GPU machine to prove it loads")
+            return VERIFY_LISTED_ONLY
+        probe = _probe_cuda_session(ort)
+        if probe is None:
+            print(listed)
+            print("no CUDA session was created: the 'onnx' package is not installed, so only the provider "
+                  "listing was checked")
+            return VERIFY_LISTED_ONLY
+        providers, reason = probe
+        if _runs_on_cuda(providers):
+            print(f"onnxruntime-gpu {ort.__version__}: a CUDA test session runs on {_CUDA_PROVIDER}")
+            return VERIFY_ON_CUDA
+        print(f"onnxruntime-gpu {ort.__version__}: the CUDA test session fell back to {providers}"
+              + (f": {reason}" if reason else ""))
+        print(hint)
+        return VERIFY_NOT_ON_CUDA
+    except Exception as ex:
+        print(f"{type(ex).__name__}: {ex}")
+        return VERIFY_COULD_NOT_RUN
+
+
 def run_doctor(config_path=None, db_path=None, simulate_gpu=None, simulate_vram=None):
     """Run full diagnostic report.
 
@@ -361,6 +750,20 @@ def run_doctor(config_path=None, db_path=None, simulate_gpu=None, simulate_vram=
             logger.warning("  Install the NVIDIA driver for your GPU, then reinstall PyTorch with CUDA.")
         except Exception as e:
             _warn("nvidia-smi", f"error: {e}")
+
+    # --- OpenCV --- (its own section: core in every mode, unlike ONNX Runtime, which commercial mode drops)
+    _section("OpenCV")
+    try:
+        _report_opencv()
+    except Exception as e:
+        _warn("OpenCV check", f"failed unexpectedly: {e}")
+
+    # --- ONNX Runtime ---
+    _section("ONNX Runtime")
+    try:
+        _report_onnx_runtime(config_path, torch, selected_device)
+    except Exception as e:
+        _warn("ONNX Runtime check", f"failed unexpectedly: {e}")
 
     # --- VRAM Profile ---
     _section("VRAM Profile")

@@ -262,10 +262,10 @@ API 会将其呈现在 `/api/scan/status` 的 `progress` 字段以及 SSE 数据
 
 | 命令 | 说明 |
 |---------|-------------|
-| `python facet.py --doctor` | 运行诊断检查（Python、GPU、依赖、配置、数据库） |
+| `python facet.py --doctor` | 运行诊断检查（Python、GPU、ONNX Runtime、依赖、配置、数据库） |
 | `python facet.py --doctor --simulate-gpu "RTX 5070 Ti" --simulate-vram 16` | 为诊断模拟 GPU 硬件 |
 
-报告 Python 版本、PyTorch/CUDA 构建、GPU 检测与驱动、VRAM 档位建议、可选依赖，以及配置／数据库状态。当 PyTorch 看不到 GPU 而 `nvidia-smi` 能看到时，它会打印用于修复 CUDA 构建的 `pip install` 命令。
+报告 Python 版本、PyTorch/CUDA 构建、GPU 检测与驱动、ONNX Runtime 包及其版本和执行提供程序（当 Facet 运行在 CUDA 上时，还有一个证明 GPU 构建确实能加载的单节点测试会话）、VRAM 档位建议、可选依赖，以及配置／数据库状态。当 PyTorch 看不到 GPU 而 `nvidia-smi` 能看到时，它会打印用于修复 CUDA 构建的 `pip install` 命令；当 ONNX Runtime 构建不对、无法在 CUDA 上加载或已损坏（两个包同时安装，或导入失败）时，它会打印修复命令（参见[安装 › 用于人脸检测的 ONNX Runtime](INSTALLATION.md#用于人脸检测的-onnx-runtime)）。
 
 `--simulate-gpu NAME` 与 `--simulate-vram GB` 用于测试在不同硬件下的行为。两者都需要配合 `--doctor`；`--simulate-vram` 需要配合 `--simulate-gpu`。
 

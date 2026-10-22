@@ -37,6 +37,11 @@ jobs:
             expect_torch: ""
             expect_cuda: ""
             expect_arch: ""
+            # ONNX Runtime (issue #229): "1" = onnxruntime-gpu alone, "0" = onnxruntime
+            # alone. onnxruntime and onnxruntime-gpu share one onnxruntime/ directory and
+            # insightface requires the CPU one, so a CUDA image only ends on the GPU
+            # build if the Dockerfile swaps it in after the restricted lock.
+            expect_ort_cuda: "0"
           # Full CUDA + RAPIDS cuML image, same as a local `docker build` with
           # the Dockerfile's own defaults. CUDA 12.8 / torch 2.11.0 ships
           # sm_75...sm_120, so this is the Blackwell-capable tag (issue #119) and
@@ -52,6 +57,7 @@ jobs:
             expect_torch: "2.11.0+cu128"
             expect_cuda: "12.8"
             expect_arch: "sm_120"
+            expect_ort_cuda: "1"
           # Previous CUDA image, kept as its own tag because the 12.8 wheel above
           # DROPS sm_50/sm_60/sm_70: CUDA 12.6 / torch 2.6.0 ships sm_50...sm_90,
           # which is the only build Maxwell, Pascal and Volta cards can run. It
@@ -67,6 +73,7 @@ jobs:
             expect_torch: "2.6.0+cu126"
             expect_cuda: "12.6"
             expect_arch: "sm_50"
+            expect_ort_cuda: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -147,6 +154,7 @@ jobs:
           EXPECT_TORCH: ${{ matrix.expect_torch }}
           EXPECT_CUDA: ${{ matrix.expect_cuda }}
           EXPECT_ARCH: ${{ matrix.expect_arch }}
+          EXPECT_ORT_CUDA: ${{ matrix.expect_ort_cuda }}
         run: |
           set -euo pipefail
           image="${IMAGE_TAGS%%$'\n'*}"
@@ -182,6 +190,39 @@ jobs:
             fail=1
           fi
 
+          # ONNX Runtime (issue #229). onnxruntime and onnxruntime-gpu install into the
+          # same onnxruntime/ directory, so exactly one may be present, and insightface
+          # requires the CPU one: a CUDA image that ran the restricted lock last would
+          # silently ship the CPU build and run face detection on the CPU.
+          if [ "$EXPECT_ORT_CUDA" = 1 ]; then expect_ort=onnxruntime-gpu; else expect_ort=onnxruntime; fi
+          ort_dists=$(docker run --rm --entrypoint python "$image" -c 'import importlib.metadata as m; print(" ".join(n for n in ("onnxruntime", "onnxruntime-gpu") if any(d.metadata["Name"] == n for d in m.distributions())))')
+          echo "ONNX Runtime distributions: ${ort_dists:-none} (expected $expect_ort)"
+          if [ "$ort_dists" != "$expect_ort" ]; then
+            echo "::error::ONNX Runtime distributions are '${ort_dists:-none}', expected '$expect_ort' for the $VARIANT variant (issue #229). onnxruntime and onnxruntime-gpu share one onnxruntime/ directory and insightface requires the CPU one, so the CUDA images must install onnxruntime-gpu after the restricted lock and the CPU image must not carry the GPU build."
+            fail=1
+          fi
+          # torch first, as Facet does at scan time: it maps the CUDA libraries the ONNX
+          # Runtime CUDA provider then reuses. This lists what the wheel was COMPILED
+          # with; the link check below is what proves its libraries resolve.
+          ort_cuda_listed=$(docker run --rm --entrypoint python "$image" -c 'import torch, onnxruntime; print(int("CUDAExecutionProvider" in onnxruntime.get_available_providers()))')
+          echo "CUDAExecutionProvider listed: $ort_cuda_listed (expected $EXPECT_ORT_CUDA)"
+          if [ "$ort_cuda_listed" != "$EXPECT_ORT_CUDA" ]; then
+            echo "::error::onnxruntime lists CUDAExecutionProvider=$ort_cuda_listed, expected $EXPECT_ORT_CUDA for the $VARIANT variant (issue #229)."
+            fail=1
+          fi
+          # No GPU on the runner, so no CUDA session can be created: ask the dynamic
+          # linker whether the provider library's CUDA dependencies resolve against the
+          # libraries torch maps. onnxruntime-gpu 1.27+ is a CUDA 13 build and fails here
+          # on its *.so.13 libraries; exit 2 means the check itself went vacuous.
+          if [ "$EXPECT_ORT_CUDA" = 1 ]; then
+            if docker run --rm -i --entrypoint python "$image" - < scripts/check_ort_cuda_link.py; then
+              echo "onnxruntime CUDA provider libraries resolve"
+            else
+              echo "::error::the onnxruntime CUDA provider's libraries do not resolve in the $VARIANT image (scripts/check_ort_cuda_link.py exited non-zero; 1 = unresolved library or no provider, 2 = the check went vacuous). An onnxruntime-gpu 1.27+ wheel is a CUDA 13 build and cannot load beside CUDA 12 torch (issue #229)."
+              fail=1
+            fi
+          fi
+
           # exiftool 13.23-13.27 corrupts XMP sidecars with darktable history
           # (issue #176); the image pins a release past that, and this fails
           # the job if a base-image or Dockerfile change ever swaps it back.
@@ -198,6 +239,21 @@ jobs:
           else
             echo "::error::facet.py --doctor failed inside the image — the entrypoint, the privilege drop, or the app itself is broken."
             tail -40 doctor.log
+            fail=1
+          fi
+          # The doctor's ONNX Runtime section (issue #229). A GPU-less runner selects the
+          # CPU device, so the section never reaches its CUDA session probe here and a grep
+          # for its warnings could not fail; assert instead that it exists and that its
+          # providers line agrees with the wheel this variant ships.
+          if ! grep -Eq '[[:space:]]ONNX Runtime[[:space:]]*$' doctor.log; then
+            echo "::error::facet.py --doctor printed no 'ONNX Runtime' section in the $VARIANT image (issue #229)."
+            fail=1
+          fi
+          ort_providers=$(grep -E 'Execution providers:' doctor.log || true)
+          echo "doctor: ${ort_providers:-no Execution providers line}"
+          if printf '%s' "$ort_providers" | grep -q CUDAExecutionProvider; then doctor_lists_cuda=1; else doctor_lists_cuda=0; fi
+          if [ -z "$ort_providers" ] || [ "$doctor_lists_cuda" != "$EXPECT_ORT_CUDA" ]; then
+            echo "::error::the doctor's 'Execution providers' line is '${ort_providers:-missing}'; CUDAExecutionProvider should be listed exactly when EXPECT_ORT_CUDA=$EXPECT_ORT_CUDA (issue #229)."
             fail=1
           fi
 

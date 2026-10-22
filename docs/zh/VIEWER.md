@@ -65,6 +65,8 @@ cd client && npx ng serve
 
 设置之后，用户必须先通过身份验证才能访问查看器。任何编辑操作都需要 `edition_password`：评分、收藏与拒绝、选片、相册、人物与人脸管理、比较模式、权重与优先级修改以及导出。未设置 `edition_password`（出厂默认）时，安装为**只读**：所有编辑都会被 `403` 拒绝（“Set viewer.edition_password to enable editing”）。按需 AI 生成（描述、VLM 点评）同样需要它，但属于降级而非拒绝：调用返回 `200`，只提供已缓存的内容（`source: "edition_required"` 或 `vlm_available: false`）。谁可以*浏览*由 `viewer.password` 决定：未设置时任何人都可浏览整个照片库；设置后只有已通过身份验证的用户可以。在这样的安装上，图库也不再显示已有的星级、收藏和拒绝徽标，与已锁定安装上没有编辑权限的查看器一致。设置 `viewer.edition_password` 之后请重启查看器：配置不会热重载。
 
+> **警告：** 当 `viewer.password` 为空（出厂默认）时，任何能够访问查看器端口的人都可以浏览整个照片库并下载原始照片。自 1.19.0 版本起，安装为只读，但读取不受限制。`viewer.py` 默认监听所有网络接口（`--host 0.0.0.0`，Docker 镜像依赖这一点）：在将其暴露到本机之外之前，请先设置 `viewer.password`，或将其绑定到 127.0.0.1（`--host 127.0.0.1`）；在 Docker 中，请将端口发布为 `127.0.0.1:5000:5000`。无论以何种方式启动，只要未设置 `viewer.password`，查看器都会在启动时记录一条警告（若让 `viewer.py` 绑定到 loopback 地址，则它保持静默）。
+
 登录时还会把会话令牌镜像写入一个 `HttpOnly`、`SameSite=Lax` 的 Cookie，这样那些无法携带 `Authorization` 请求头的浏览器原生请求（加载缩略图的 `<img>` 标签、扫描进度流）在已加锁的部署上也能通过验证。该 Cookie 仅对只读请求（GET/HEAD）生效；任何会改变状态的调用仍然要求 Bearer 令牌，因此不会增加 CSRF 攻击面。退出登录会调用 `POST /api/auth/logout`，该接口会清除此 Cookie。
 
 ### 多用户模式

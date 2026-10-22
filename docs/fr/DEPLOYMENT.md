@@ -18,6 +18,8 @@ Facet comporte deux charges de travail :
 
 Seule la galerie web doit tourner sur le serveur. Notez les photos sur un poste de travail, puis synchronisez la base de données.
 
+> **Avertissement :** tant que `viewer.password` est vide (valeur livrée par défaut), toute personne pouvant atteindre le port de la galerie web peut parcourir toute la bibliothèque et télécharger les photos originales, quelle que soit la façon de la lancer ci-dessous. Définissez `viewer.password` avant d'exposer le port au-delà de la machine ; voir la note du [mode mono-utilisateur](VIEWER.md#mode-mono-utilisateur-par-défaut).
+
 ## Mappage des chemins
 
 Lorsque la machine de scoring et le serveur de la galerie accèdent aux photos depuis des points de montage différents, configurez `viewer.path_mapping` dans `scoring_config.json` pour traduire les chemins de la base de données en chemins de disque local.

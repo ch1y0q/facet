@@ -18,6 +18,8 @@ Facet ha due carichi di lavoro:
 
 Solo il viewer deve essere eseguito sul server. Esegui lo scoring su una workstation, poi sincronizza il database.
 
+> **Attenzione:** finché `viewer.password` è vuoto (valore predefinito), chiunque raggiunga la porta del viewer può sfogliare l'intera libreria e scaricare le foto originali, in qualunque modo lo avvii qui sotto. Imposta `viewer.password` prima di aprire la porta oltre la macchina; vedi la nota in [Modalità utente singolo](VIEWER.md#modalità-utente-singolo-predefinita).
+
 ## Mappatura dei percorsi
 
 Quando la macchina di scoring e il server viewer accedono alle foto da punti di mount diversi, configura `viewer.path_mapping` in `scoring_config.json` per tradurre i percorsi del database in percorsi del disco locale.

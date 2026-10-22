@@ -213,6 +213,7 @@ cómo cambiarla y la referencia completa de dependencias.
 - [Opciones de install.sh y atajos de Makefile](#opciones-de-installsh-y-atajos-de-makefile)
 - [exiftool](#exiftool)
 - [ONNX Runtime para la detección de rostros](#onnx-runtime-para-la-detección-de-rostros)
+- [Compilación headless de OpenCV](#compilación-headless-de-opencv)
 - [Agrupación de rostros en GPU con RAPIDS cuML](#agrupación-de-rostros-en-gpu-con-rapids-cuml)
 - [Apple Silicon (Metal/MPS)](#apple-silicon-metalmps)
 - [Tamaños de descarga](#tamaños-de-descarga)
@@ -336,10 +337,12 @@ descargan por defecto los archivos compose `8gb`/`16gb`/`24gb`.
 PyTorch `sm_50`-`sm_90` — de Maxwell, Pascal (serie GTX 900/10) y Volta a Hopper
 (13,8 GB descomprimidos) — para las tarjetas que `latest-cuda` ya no cubre; ver
 [Tarjeta NVIDIA más antigua](#tarjeta-nvidia-más-antigua-maxwell-pascal-volta) más
-arriba. Las tres son únicamente `linux/amd64` — en una máquina ARM, compila en local
+arriba. Las dos imágenes CUDA incluyen `onnxruntime-gpu` (1.26.0, una compilación para CUDA 12)
+en lugar de `onnxruntime`, así que la detección de rostros se ejecuta en la GPU; la imagen
+de CPU conserva `onnxruntime`. Las tres son únicamente `linux/amd64` — en una máquina ARM, compila en local
 con `docker compose build` en lugar de descargar. `docker compose build`
 (o `up --build`) siempre compila desde este repositorio; consulta los argumentos de
-compilación `BASE_IMAGE`, `STRIP_TORCH`, `INSTALL_CUML` y `REQUIREMENTS_LOCK` en el
+compilación `BASE_IMAGE`, `STRIP_TORCH`, `INSTALL_CUML`, `REQUIREMENTS_LOCK` y `ORT_GPU_VERSION` en el
 `Dockerfile`.
 
 Sin Docker, la misma elección es una variable de entorno o una clave de configuración:
@@ -363,6 +366,12 @@ Los umbrales exactos que aplica `auto` están en
 | Apto para uso comercial | `bash install.sh --commercial` |
 | Comercial, a mano | `pip install -r requirements.txt`, luego `pip install -e .[commercial]` y `pip install mediapipe==0.10.35 --no-deps` |
 | Comercial, Docker | `docker build --build-arg FACET_LICENSING=commercial .` |
+
+`pip install -e .[all]` y el extra `faces-insightface` instalan el `onnxruntime` de CPU,
+porque `insightface` depende de él. En una máquina CUDA, completa cualquiera de los dos
+con el comando de GPU de [ONNX Runtime para la detección de
+rostros](#onnx-runtime-para-la-detección-de-rostros); `bash install.sh` y las imágenes
+Docker CUDA ya lo hacen.
 
 `mediapipe` debe instalarse siempre con `--no-deps`: su `opencv-contrib-python` incluido duplicaría el espacio de nombres `cv2`. El extra `commercial` declara solo sus dependencias de ejecución (`absl-py`, `flatbuffers`). `python-ofiq` (los bindings de calidad facial OFIQ) está en PyPI pero solo ofrece wheels para Linux x86-64 y macOS arm64, por lo que no forma parte del extra; instálelo a mano con `pip install python-ofiq` donde exista un wheel.
 
@@ -392,13 +401,27 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 #    los modelos SigLIP/BiRefNet/VLM que usan los perfiles 8gb+.
 pip install -r requirements.txt -r requirements.restricted.txt
 
-# 4. Instala UN ÚNICO ONNX Runtime para la detección de rostros (consulta la tabla siguiente)
-pip install onnxruntime-gpu>=1.17.0   # o bien: pip install onnxruntime>=1.15.0
+# 4. La detección de rostros se ejecuta sobre ONNX Runtime. insightface (paso 3) instaló la
+#    compilación de CPU, así que en una máquina CUDA cámbiala por la de GPU DESPUÉS del paso 3:
+#    los dos paquetes comparten archivos y gana el último instalado. Ajusta el rango a tu
+#    compilación de PyTorch CUDA (consulta la tabla siguiente), no a la CUDA de tu controlador.
+pip uninstall -y onnxruntime onnxruntime-gpu
+pip install "onnxruntime-gpu>=1.19.0,<1.27"   # PyTorch con CUDA 12.x (cu124, cu126, cu128)
+# Solo CPU, o CUDA 11.8 (cu118): conserva lo que instaló el paso 3, o reinstálalo con
+# pip install "onnxruntime>=1.15.0"
 
-# 5. Compila la galería web
+# 5. Conserva solo la compilación headless de OpenCV. El paso 3 instaló opencv-python, la compilación con
+#    interfaz gráfica, que necesita libGL.so.1 (Debian, WSL y los hosts mínimos no la tienen y `import cv2` falla);
+#    los paquetes comparten cv2/ y gana el último instalado. Hazlo DESPUÉS de los pasos 3 y 4: elimina ambos
+#    y reinstala la compilación headless en la misma versión.
+CV_VER=$(pip show opencv-python-headless opencv-python 2>/dev/null | awk '/^Version:/ {print $2; exit}')
+pip uninstall -y opencv-python opencv-python-headless
+pip install --no-deps "opencv-python-headless==$CV_VER"
+
+# 6. Compila la galería web
 cd client && npm install && npx ng build && cd ..
 
-# 6. Ejecútalo
+# 7. Ejecútalo
 python facet.py /path/to/photos
 python viewer.py
 ```
@@ -416,9 +439,11 @@ python -c "import torch, cv2, fastapi, insightface, open_clip, pyiqa, numpy, sci
 
 `install.sh` localiza un Python 3.10+, crea el `venv`, detecta el sistema operativo y la
 GPU (Apple Silicon → Metal, o si no, `nvidia-smi` → la compilación de CUDA
-correspondiente), instala PyTorch, el ONNX Runtime adecuado, `requirements.txt`,
-`transformers` y `accelerate`, comprueba si existe `exiftool`, compila el cliente de
-Angular y verifica todas las importaciones.
+correspondiente), instala PyTorch, `requirements.txt`, `transformers` y `accelerate`, y después de todo
+lo demás cambia al ONNX Runtime adecuado (consulta [ONNX Runtime para la detección de rostros](#onnx-runtime-para-la-detección-de-rostros))
+y a la compilación headless de OpenCV (consulta [Compilación headless de OpenCV](#compilación-headless-de-opencv)),
+comprueba si existe `exiftool`, compila el cliente de
+Angular y verifica todas las importaciones; si alguna falla, termina con estado 1.
 
 | Opción | Efecto |
 |------|--------|
@@ -452,22 +477,125 @@ luego a PIL (solo JPEG/TIFF/DNG).
 
 ## ONNX Runtime para la detección de rostros
 
-La detección de rostros (InsightFace) se ejecuta sobre ONNX Runtime, que se distribuye
-en variantes de CPU y de GPU. Instala exactamente una:
+La detección de rostros (InsightFace) se ejecuta sobre ONNX Runtime, que se distribuye en
+dos paquetes: `onnxruntime` (CPU) y `onnxruntime-gpu` (CUDA). Se instalan en el mismo
+directorio `onnxruntime/` y comparten archivos, así que no pueden coexistir: gana el
+último que instala pip. `insightface` depende del `onnxruntime` de CPU, de modo que al
+instalarlo (`requirements.restricted.txt`, `pip install -e .[all]`, el extra
+`faces-insightface`) siempre vuelve la compilación de CPU por encima de una de GPU. En una
+máquina CUDA, por tanto, el paquete de GPU se instala **después** de esos requisitos, tras
+eliminar ambos nombres.
 
-| Configuración | Comando |
-|--------|---------|
-| Solo CPU | `pip install onnxruntime>=1.15.0` |
-| CUDA 12.x | `pip install onnxruntime-gpu>=1.17.0` |
-| CUDA 11.8 | `pip install onnxruntime-gpu>=1.15.0,<1.18` |
+`bash install.sh` lo hace por ti en x86_64: cuando instala un PyTorch para CUDA 12,
+instala ONNX Runtime al final, quitando siempre antes los dos paquetes (vuelve a
+ejecutarlo para reparar un `venv` sobrescrito o para pasar de CPU a GPU), y luego
+comprueba el resultado con una sesión de prueba CUDA real, la misma que ejecuta
+`--doctor`. Las imágenes Docker CUDA hacen lo mismo. Las instalaciones de CPU, CUDA 11.8
+(cu118), macOS y la imagen de CPU conservan `onnxruntime`. No existe un wheel de
+`onnxruntime-gpu` para CUDA 12 en aarch64, así que allí `install.sh` conserva la
+compilación de CPU y lo indica.
 
-Comprueba tu versión de CUDA con `nvidia-smi` — se muestra en la esquina superior
-derecha. Para cambiar una instalación existente de CPU a GPU:
+A mano, elige la fila de tu compilación de CUDA de **PyTorch**:
+
+| Compilación de PyTorch | Comando |
+|---------------|---------|
+| Solo CPU, o CUDA 11.8 (cu118) | `pip uninstall -y onnxruntime onnxruntime-gpu && pip install "onnxruntime>=1.15.0"` |
+| CUDA 12.x (cu124, cu126, cu128) | `pip uninstall -y onnxruntime onnxruntime-gpu && pip install "onnxruntime-gpu>=1.19.0,<1.27"` |
+
+Elige la fila según la compilación de CUDA de PyTorch, no según la versión de CUDA que
+`nvidia-smi` muestra en la esquina superior derecha: esa es la CUDA más reciente que
+admite el controlador, y un controlador con CUDA 13 sigue ejecutando el PyTorch para CUDA
+12 (cu128) que instala `install.sh`. `python facet.py --doctor` muestra la compilación de
+PyTorch en su línea `CUDA (compiled)`.
+
+El rango importa. Las versiones 1.19 a 1.26 de `onnxruntime-gpu` son compilaciones para
+CUDA 12; de la 1.27 en adelante son compilaciones para CUDA 13 y necesitan bibliotecas de
+CUDA 13, que un PyTorch para CUDA 12 no proporciona. Un wheel así sigue listando
+`CUDAExecutionProvider`, pero vuelve a la CPU al crear una sesión, de modo que un
+`onnxruntime-gpu` sin acotar parece instalado y se ejecuta en la CPU. Las imágenes Docker
+CUDA incluyen la 1.26.0, la última compilación para CUDA 12. Si instalaste a mano un
+PyTorch para CUDA 13, `"onnxruntime-gpu>=1.27.0"` es el requisito equivalente (sin probar:
+el instalador de Facet nunca instala uno).
+
+CUDA 11.8 (cu118) no tiene ninguna compilación de GPU que instalar. El único
+`onnxruntime-gpu` para CUDA 11 (1.17 y anteriores) necesita cuDNN 8, mientras que los
+wheels de PyTorch cu118 que instala Facet dependen de cuDNN 9: su proveedor CUDA nunca
+se carga y la detección de rostros se ejecutaría igualmente en la CPU. Por eso
+`install.sh` conserva allí el `onnxruntime` de CPU y lo indica. Para detectar rostros en
+la GPU, actualiza el controlador de NVIDIA a uno que indique CUDA 12.4 o posterior y
+vuelve a ejecutar `install.sh`: instalará un PyTorch para CUDA 12 y el `onnxruntime-gpu`
+correspondiente.
+
+Entrecomilla el requisito. Sin comillas, el shell interpreta `>` y `<` como
+redirecciones: `pip install onnxruntime-gpu>=1.19.0,<1.27` crea en el directorio actual
+un archivo vacío llamado `=1.19.0,` y luego se detiene con
+`1.27: No such file or directory` antes de que pip se ejecute. Borra ese archivo tras un
+error así.
+
+No cambies con `pip uninstall onnxruntime` seguido de `pip install onnxruntime-gpu`. La
+desinstalación borra archivos que también pertenecen al paquete de GPU, pip responde
+entonces "Requirement already satisfied" y `import onnxruntime` queda como un paquete
+vacío: InsightFace falla con `module 'onnxruntime' has no attribute 'InferenceSession'`.
+Desinstala ambos nombres, como en la tabla.
+
+Tras el cambio, `pip check` informa "insightface ... requires onnxruntime, which is not
+installed" (`uv pip check`: "The package `insightface` requires `onnxruntime`, but it's
+not installed"). Es lo esperado e inofensivo: `onnxruntime-gpu` proporciona el mismo
+módulo `onnxruntime`.
+
+El cambio de OpenCV deja el mismo tipo de aviso: `pip check` también informa de que
+`insightface` y `facexlib` requieren `opencv-python`. Eso también es lo esperado, porque
+`opencv-python-headless` proporciona el mismo módulo `cv2`. Un `pip install -r
+requirements.txt` manual posterior trae de vuelta la compilación con interfaz gráfica;
+vuelve a ejecutar el cambio de [Compilación headless de OpenCV](#compilación-headless-de-opencv)
+o `install.sh` para corregirlo.
+
+Para comprobar el resultado, ejecuta `python facet.py --doctor` y lee su sección **ONNX
+Runtime**. Muestra el paquete instalado, su versión y los proveedores de ejecución, y
+avisa cuando están instalados ambos paquetes o el paquete no se puede importar, en cada
+caso con el comando que lo repara. Cuando Facet se ejecuta en CUDA, además compara la
+compilación de CUDA para la que se compiló ONNX Runtime con la de PyTorch y ejecuta una
+sesión de prueba de un solo nodo. La línea `CUDA session` figura como correcta solo si esa
+sesión se ejecuta de verdad en `CUDAExecutionProvider`; si no, el diagnóstico avisa con el
+motivo del propio ONNX Runtime y la solución. La sesión de prueba necesita el paquete
+`onnx` (sin él, el diagnóstico indica que no probó) y se omite en la CPU y en modo
+comercial, donde no se usa InsightFace. Un escaneo en CUDA también registra una
+advertencia cuando las sesiones de InsightFace se ejecutan en la CPU. En un contenedor
+Docker, el comando de reparación que imprime el diagnóstico se pierde en el siguiente
+`docker run`: descarga una imagen actual o reconstrúyela (las imágenes CUDA incluyen
+`onnxruntime-gpu` 1.26.0 mediante el argumento de compilación `ORT_GPU_VERSION`; no
+establezcas nunca un valor 1.27 o posterior, porque son compilaciones para CUDA 13).
+
+## Compilación headless de OpenCV
+
+`opencv-python` y `opencv-python-headless` se instalan en el mismo directorio `cv2/` y
+comparten archivos, así que no pueden coexistir: gana el último que instala pip. Los
+requisitos de Facet piden ambos (`requirements.txt` pide `opencv-python`, `pyiqa` la
+compilación headless, e `insightface` y `facexlib` vuelven a pedir `opencv-python`), de
+modo que cuál aporta `cv2` depende del orden de instalación. `opencv-python` es la
+compilación con interfaz gráfica y enlaza con `libGL.so.1`, que Debian, WSL y los hosts
+mínimos no incluyen: entonces `import cv2` falla con
+`ImportError: libGL.so.1: cannot open shared object file`. Facet no llama a ninguna
+función de ventanas de OpenCV, así que la compilación headless siempre basta.
+
+`bash install.sh` conserva solo esa compilación, en todos los modos, incluido
+`--commercial`: tras la última instalación de dependencias elimina ambos paquetes y
+vuelve a instalar `opencv-python-headless` en la versión que encontró. Las imágenes
+Docker no se ven afectadas (instalan `libgl1`). Para reparar a mano un `venv` existente,
+sustituye `<version>` por la versión que `pip list` muestra para cualquiera de los dos
+paquetes:
 
 ```bash
-pip uninstall onnxruntime
-pip install onnxruntime-gpu>=1.17.0
+pip uninstall -y opencv-python opencv-python-headless && pip install --no-deps "opencv-python-headless==<version>"
 ```
+
+`python facet.py --doctor` tiene una sección **OpenCV** para esto. Muestra `[OK]` cuando
+`cv2` se importa. Cuando no, avisa con el error de importación e imprime el comando
+anterior con tu versión instalada. Que ambos paquetes estén instalados con una
+importación que funciona es información, no un aviso: las imágenes Docker incluyen
+ambos, con `libgl1`. Si al final de `install.sh` falla alguna importación básica (`cv2`
+incluida), el script imprime "Installation finished with errors" y termina con estado 1
+en lugar de "Installation complete!".
 
 ## Agrupación de rostros en GPU con RAPIDS cuML
 
@@ -480,6 +608,10 @@ conda activate facet
 conda install -c rapidsai -c conda-forge -c nvidia cuml cuda-version=12.0
 # o bien: pip install --extra-index-url https://pypi.nvidia.com/ "cuml-cu12"
 pip install -r requirements.txt
+# requirements.txt instala opencv-python, la compilación con interfaz gráfica (necesita libGL.so.1): conserva solo la headless
+CV_VER=$(pip show opencv-python-headless opencv-python 2>/dev/null | awk '/^Version:/ {print $2; exit}')
+pip uninstall -y opencv-python opencv-python-headless
+pip install --no-deps "opencv-python-headless==$CV_VER"
 ```
 
 Cuando cuML está disponible, la agrupación usa la GPU automáticamente
@@ -675,7 +807,7 @@ alternativa.
 | `pillow-heif` | Decodificación HEIF/HEIC | Los archivos HEIF/HEIC se omiten |
 | `rawpy` | Decodificación RAW (CR2/CR3/NEF/ARW/…) | Los archivos RAW se omiten (ya incluido en `requirements.txt` base) |
 | `cuml`, `cupy` | Agrupación de rostros acelerada por GPU (conda + CUDA) | La agrupación se ejecuta en CPU mediante `hdbscan` (predeterminado) |
-| `onnxruntime-gpu` | Detección de rostros acelerada por GPU | `onnxruntime` en CPU (más lento) |
+| `onnxruntime-gpu` | Detección de rostros acelerada por GPU — se instala **en lugar de** `onnxruntime`, nunca junto a él; consulta [ONNX Runtime para la detección de rostros](#onnx-runtime-para-la-detección-de-rostros) | `onnxruntime` en CPU (más lento) |
 | `aesthetic-predictor-v2-5` | Nivel de IQA extendido — puntuador `aesthetic_v25` (`pip install -e .[iqa-extended]`; `iqa_extended.aesthetic_v25` en `scoring_config.json`, desactivado de forma predeterminada). **Obsoleto** — AGPL-3.0, sin mantenimiento desde el 2024-12-18; prefiere `qrealign`, que no necesita ningún paquete adicional (se carga de forma nativa a través de `transformers`) | `aesthetic_v25` no disponible |
 | `darktable-cli` (sistema) | Exportación de perfiles RAW/darktable desde el visor | Solo se ofrece descarga original/incrustada |
 | `exiftool` (sistema) | Mejor extracción de EXIF/GPS | Recurre a `exifread` y luego a PIL |

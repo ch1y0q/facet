@@ -52,10 +52,11 @@ def _render_overlay(thumbnail: bytes) -> bytes:
     bytes, so a re-scanned thumbnail naturally produces a fresh cache entry.
     """
     pil = Image.open(io.BytesIO(thumbnail)).convert("RGB")
-    from api.model_cache import get_or_load_saliency_scorer
+    from api.model_cache import accelerator_lock, get_or_load_saliency_scorer
 
     scorer = get_or_load_saliency_scorer()
-    soft = scorer.get_saliency_soft(pil)  # HxW float 0..1
+    with accelerator_lock(scorer.device):
+        soft = scorer.get_saliency_soft(pil)  # HxW float 0..1
     heat = (np.clip(soft, 0.0, 1.0) * 255).astype(np.uint8)
     colored = cv2.applyColorMap(heat, cv2.COLORMAP_JET)  # BGR
     bgra = np.dstack([colored, heat])  # alpha = saliency -> background transparent
