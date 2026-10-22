@@ -121,6 +121,7 @@ EXPECTED_EDITION_ROUTES = frozenset({
     ('POST', '/api/culling-groups/override_sequence'),
     ('POST', '/api/culling/apply_marks'),
     ('POST', '/api/culling/auto'),
+    ('POST', '/api/culling/plan'),
     ('POST', '/api/culling/undo_apply_marks'),
     ('POST', '/api/export/sidecars'),
     ('POST', '/api/face/{face_id}/assign'),

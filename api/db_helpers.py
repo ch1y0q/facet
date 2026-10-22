@@ -20,7 +20,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Query
+from fastapi import HTTPException, Query
 from fastapi.requests import HTTPConnection
 
 from api.config import (
@@ -349,6 +349,20 @@ def to_second_granularity(value: str, end_of_day: bool = False) -> str:
     if end_of_day and not has_time:
         moment = moment.replace(hour=23, minute=59, second=59)
     return f"{moment.year:04d}" + moment.strftime(":%m:%d %H:%M:%S")
+
+
+def window_or_400(date_from: Optional[str], date_to: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """The culling routes' capture-time window in the stored ``YYYY:MM:DD HH:MM:SS`` form.
+
+    ``date_taken`` is EXIF text compared lexicographically, so an ISO bound would match
+    nothing. A date-only ``date_to`` covers the whole day. Idempotent on EXIF input; an
+    unparseable bound is a 400 naming the accepted forms.
+    """
+    try:
+        return (to_second_granularity(date_from) if date_from else None,
+                to_second_granularity(date_to, end_of_day=True) if date_to else None)
+    except ValueError as ex:
+        raise HTTPException(status_code=400, detail=f"date_from/date_to: {ex}") from None
 
 
 def to_day_granularity(value: str) -> str:

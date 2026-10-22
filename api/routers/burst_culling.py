@@ -31,7 +31,7 @@ from api.db_helpers import (
     get_visibility_clause, paginate, is_multi_user_enabled, get_photos_from_clause,
     get_preference_columns, read_labels,
     trigger_auto_retrain, record_culling_decision, set_photos_rejected, set_photos_unrejected,
-    album_filter_clause, time_window_clauses,
+    album_filter_clause, time_window_clauses, window_or_400,
     select_in_chunks, scope_cache_key, scope_sql as path_scope_sql, NO_VISIBILITY_SQL,
     SEQUENCE_OVERRIDE_SELECT, SEQUENCE_OVERRIDE_PENDING_SELECT,
 )
@@ -46,8 +46,8 @@ from db.sequence_overrides import (
 from utils.panorama import HDR_PANORAMA, PANORAMA
 from utils.sequence import BRACKET as BRACKET_KIND, exposure_value, ladder_gate_error
 from api.models.culling import (
-    AutoCullResponse, BurstGroupsResponse, CullingGroupsResponse,
-    CullProfilesResponse, KeeperHint, SuggestCullProfileResponse,
+    AutoCullResponse, BurstGroupsResponse, CullingGroupsResponse, CullingPlanResponse,
+    CullPlanRequest, CullProfilesResponse, KeeperHint, SuggestCullProfileResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -133,20 +133,9 @@ class KeeperHintsBody(BaseModel):
     paths: list[str] = Field(max_length=1000)
 
 
-class AutoCullBody(BaseModel):
-    group_by: Literal['all', 'burst', 'similar', 'scene'] = 'all'
-    album_id: Optional[int] = None
-    date_from: Optional[str] = None
-    date_to: Optional[str] = None
-    strictness: Optional[int] = Field(None, ge=0, le=100)
-    min_keep_per_group: Optional[int] = Field(None, ge=1)
-    highlights_album: str = ''
+class AutoCullBody(CullPlanRequest):
     dry_run: bool = True
-    profile: Optional[str] = None
-    trim_brackets: bool = False
     cursor: int = Field(0, ge=0)
-    keep_paths: list[str] = Field(default_factory=list, max_length=1000)
-    remove_paths: list[str] = Field(default_factory=list, max_length=1000)
     expected_digest: Optional[str] = None
     # Photos the caller saw the user touch since the preview: dropped from the apply, never part of the digest.
     skip_paths: list[str] = Field(default_factory=list, max_length=1000)
@@ -155,6 +144,10 @@ class AutoCullBody(BaseModel):
     # Photos the user applied from the tab's pinned review since the preview: left out of the apply like
     # ``skip_paths``, and, when the plan moved while naming one of them, the reason the refusal gives.
     applied_paths: list[str] = Field(default_factory=list, max_length=1000)
+
+
+class CullingPlanBody(CullPlanRequest):
+    expected_digest: str
 
 
 # --- Helpers ---
@@ -1561,6 +1554,7 @@ def api_culling_groups(
         direction = ''
     if group_by not in _CULLING_GROUP_BY:
         group_by = 'all'
+    date_from, date_to = window_or_400(date_from, date_to)
     with get_db() as conn:
         try:
             user_id = user.user_id if user else None
@@ -2579,14 +2573,6 @@ _SUGGEST_NIGHT_TO_HOUR = 6
 # worse than the default the user already has.
 _SUGGEST_MIN_SHARE = 0.25
 
-# The capture-time window the darkroom scopes to is a pair of raw EXIF
-# timestamps: the scenes feed hands the client ``photos.date_taken`` verbatim
-# (``YYYY:MM:DD HH:MM:SS``, the only shape a scan writes) and the culling page
-# passes it straight back as ``from``/``to``. Pinning that shape is what keeps
-# the cached scope a bounded set of windows the library could actually contain,
-# rather than whatever string a caller cares to invent; a mismatch is a 422.
-_EXIF_TIMESTAMP_PATTERN = r"^\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}$"
-
 # Cache-only, like compute_scenes: the aggregate walks every visible photo, so
 # on a large library it is worth sparing repeat calls for the same scope. A
 # suggestion does not need to track a scan to the second, hence the 1h TTL.
@@ -2713,8 +2699,8 @@ def _score_shoot_types(rows):
 @router.get("/api/culling/suggest_profile", response_model=SuggestCullProfileResponse, response_model_exclude_unset=True)
 def suggest_cull_profile(
     album_id: Optional[int] = Query(None),
-    date_from: Optional[str] = Query(None, pattern=_EXIF_TIMESTAMP_PATTERN),
-    date_to: Optional[str] = Query(None, pattern=_EXIF_TIMESTAMP_PATTERN),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
     user: Optional[CurrentUser] = Depends(get_optional_user),
 ):
     """Infer the dominant shoot type of a scope and name the preset that fits it.
@@ -2728,10 +2714,10 @@ def suggest_cull_profile(
     orders scopes the way a photographer would — a whole wedding outranks a
     wedding inside a year of holidays.
 
-    ``date_from``/``date_to`` must be raw EXIF timestamps
-    (``YYYY:MM:DD HH:MM:SS``) — the shape the scenes feed emits and the only one
-    that sorts against ``date_taken``; anything else is a 422 rather than a
-    silently empty window that would still be cached.
+    ``date_from``/``date_to`` take ISO dates or datetimes as well as raw EXIF
+    timestamps; they are normalised to ``YYYY:MM:DD HH:MM:SS`` (the only shape that
+    sorts against ``date_taken``) before use, and anything unparseable is a 400
+    rather than a silently empty window that would still be cached.
 
     ``profile`` is null when the scope is empty, when no genre reaches
     ``_SUGGEST_MIN_SHARE``, or when the matching preset is not configured (a
@@ -2740,6 +2726,7 @@ def suggest_cull_profile(
     tooltip shows, ``evidence`` the per-genre counts behind it, for a caller
     that wants to explain the answer rather than just consume ``profile``.
     """
+    date_from, date_to = window_or_400(date_from, date_to)
     user_id = user.user_id if user else None
     with get_db() as conn:
         if album_id is not None:
@@ -3157,6 +3144,8 @@ class AutoCullResult:
     scope_dependent_kinds: list = field(default_factory=list)
     # A dry run only: how many planned keeps / rejects the caller already applied (``applied_paths``).
     applied_in_plan: Optional[dict] = None
+    # Every plan entry (the whole plan, not the page ``preview`` carries), numbered 1..n.
+    plan: list = field(default_factory=list)
 
 
 # Group kinds whose membership depends on the date window / candidate pool (similar and scene
@@ -3293,6 +3282,7 @@ def run_auto_cull(conn, db_path, user_id, *, group_by, strictness, min_keep,
         counts = _applied_in_plan(plan, set(applied_paths), result.kept, result.rejected)
         if counts['kept'] or counts['rejected']:
             result.applied_in_plan = counts
+    result.plan = plan
     result.preview, result.next_cursor = _auto_cull_page(plan, cursor)
     highlight_paths = [
         entry['keep_paths'][0] for entry in plan
@@ -3338,6 +3328,25 @@ def _guard_report(result):
     return report
 
 
+def _resolve_auto_cull_knobs(body):
+    """``(strictness, min_keep)`` for an auto-cull body: explicit value, else the profile's, else the default."""
+    cfg = _get_auto_cull_config()
+    prof = _resolve_cull_profile(body.profile)
+    if body.strictness is not None:
+        strictness = body.strictness
+    elif prof and prof.get('strictness') is not None:
+        strictness = int(prof['strictness'])
+    else:
+        strictness = cfg['default_strictness']
+    if body.min_keep_per_group is not None:
+        min_keep = body.min_keep_per_group
+    elif prof and prof.get('keep_min_per_group') is not None:
+        min_keep = max(1, int(prof['keep_min_per_group']))
+    else:
+        min_keep = 1
+    return strictness, min_keep
+
+
 @router.post("/api/culling/auto", response_model=AutoCullResponse, response_model_exclude_unset=True)
 def auto_cull(
     body: AutoCullBody,
@@ -3362,20 +3371,8 @@ def auto_cull(
     Plain ``def`` so FastAPI runs the CPU-heavy collect/split/apply in a
     threadpool instead of stalling the event loop (like GET /api/burst-groups).
     """
-    cfg = _get_auto_cull_config()
-    prof = _resolve_cull_profile(body.profile)
-    if body.strictness is not None:
-        strictness = body.strictness
-    elif prof and prof.get('strictness') is not None:
-        strictness = int(prof['strictness'])
-    else:
-        strictness = cfg['default_strictness']
-    if body.min_keep_per_group is not None:
-        min_keep = body.min_keep_per_group
-    elif prof and prof.get('keep_min_per_group') is not None:
-        min_keep = max(1, int(prof['keep_min_per_group']))
-    else:
-        min_keep = 1
+    strictness, min_keep = _resolve_auto_cull_knobs(body)
+    date_from, date_to = window_or_400(body.date_from, body.date_to)
     with get_db() as conn:
         try:
             from db import DEFAULT_DB_PATH
@@ -3384,7 +3381,7 @@ def auto_cull(
                 group_by=body.group_by, strictness=strictness, min_keep=min_keep,
                 trim_brackets=body.trim_brackets, highlights_album=body.highlights_album,
                 dry_run=body.dry_run, album_id=body.album_id,
-                date_from=body.date_from, date_to=body.date_to,
+                date_from=date_from, date_to=date_to,
                 record=not (user and user.is_agent_request),
                 cursor=body.cursor, keep_override=body.keep_paths,
                 remove_override=body.remove_paths, expected_digest=body.expected_digest,
@@ -3419,6 +3416,104 @@ def auto_cull(
         except sqlite3.Error:
             conn.rollback()
             logger.exception("Auto-cull failed")
+            raise HTTPException(status_code=500, detail='Internal server error')
+
+
+CULLING_PLAN_MAX_GROUPS = 500
+CULLING_PLAN_MAX_PHOTOS = 5000
+# The confirm route refuses more paths than this per group (``CullingConfirmBody.paths``).
+CULLING_PLAN_MAX_GROUP_PHOTOS = 1000
+
+
+def _burst_members_missing_from_plan(conn, user_id, vis_sql, vis_params, entry):
+    """Visible, not-rejected DB members of a burst entry's group that the plan group does not list.
+
+    Confirming a burst rejects every visible member of ``burst_group_id`` outside ``keep_paths``, so a
+    member the plan never saw (outside the date window, say) would be rejected silently. Keeping it is
+    the only way to leave it alone; a member the user already rejected is NOT added back, because
+    ``select_burst_photos`` would promote every ``keep_paths`` entry to a lead and a winner.
+    """
+    listed = set(entry['keep_paths']) | set(entry['reject_paths'])
+    from_clause, from_params = get_photos_from_clause(user_id)
+    rejected = get_preference_columns(user_id)['is_rejected']
+    rows = conn.execute(
+        f"SELECT photos.path FROM {from_clause} WHERE photos.burst_group_id = ? AND {vis_sql} "
+        f"AND COALESCE({rejected}, 0) = 0 ORDER BY photos.path",
+        [*from_params, entry['group']['group_id'], *vis_params]).fetchall()
+    return [row[0] for row in rows if row[0] not in listed]
+
+
+def _plan_as_culling_groups(conn, user_id, plan):
+    """``(groups, truncated, oversize)``: the plan's entries shaped like ``GET /api/culling-groups`` rows.
+
+    Photos are listed keepers first, then rejects, each reject carrying the reason it ranks below the
+    group's best. Caps: ``CULLING_PLAN_MAX_GROUPS`` groups and ``CULLING_PLAN_MAX_PHOTOS`` photos
+    (``truncated``); a group over ``CULLING_PLAN_MAX_GROUP_PHOTOS`` is left out and counted in ``oversize``.
+    """
+    vis_sql, vis_params = get_visibility_clause(user_id)
+    groups, photos_total, truncated, oversize = [], 0, False, 0
+    for entry in plan:
+        count = len(entry['keep']) + len(entry['reject'])
+        if count > CULLING_PLAN_MAX_GROUP_PHOTOS:
+            oversize += 1
+            continue
+        if len(groups) >= CULLING_PLAN_MAX_GROUPS or photos_total + count > CULLING_PLAN_MAX_PHOTOS:
+            truncated = True
+            break
+        best = entry['keep'][0]
+        photos = [{**p, 'cull_reason': _compute_cull_reason(p, best)} for p in entry['keep'] + entry['reject']]
+        keep_paths = list(entry['keep_paths'])
+        if entry['group']['type'] == 'burst':
+            keep_paths += _burst_members_missing_from_plan(conn, user_id, vis_sql, vis_params, entry)
+        groups.append({
+            **entry['group'], 'photos': photos, 'count': len(photos), 'best_path': keep_paths[0],
+            'plan': {'number': entry['number'], 'keep_paths': keep_paths,
+                     'group_reason': _group_reason(entry['group'])},
+        })
+        photos_total += count
+    attach_keeper_probs(conn, groups, user_id)
+    attach_user_marks(conn, groups, user_id)
+    return groups, truncated, oversize
+
+
+@router.post("/api/culling/plan", response_model=CullingPlanResponse, response_model_exclude_unset=True)
+def culling_plan(
+    body: CullingPlanBody,
+    user: CurrentUser = Depends(require_edition),
+):
+    """The assistant's auto-cull plan as culling groups, for the /culling page to show and confirm.
+
+    Recomputes the plan exactly as ``POST /api/culling/auto`` (dry run) would and refuses with 412 when
+    its digest is not ``expected_digest``: the tab shows only the plan the assistant described. Writes
+    nothing. Plain ``def`` so the collect/split runs in a threadpool.
+    """
+    strictness, min_keep = _resolve_auto_cull_knobs(body)
+    date_from, date_to = window_or_400(body.date_from, body.date_to)
+    user_id = user.user_id if user else None
+    with get_db() as conn:
+        try:
+            from db import DEFAULT_DB_PATH
+            result = run_auto_cull(
+                conn, DEFAULT_DB_PATH, user_id,
+                group_by=body.group_by, strictness=strictness, min_keep=min_keep,
+                trim_brackets=body.trim_brackets, highlights_album=body.highlights_album,
+                dry_run=True, album_id=body.album_id, date_from=date_from, date_to=date_to,
+                keep_override=body.keep_paths, remove_override=body.remove_paths,
+                expected_digest=body.expected_digest,
+            )
+            groups, truncated, oversize = _plan_as_culling_groups(conn, user_id, result.plan)
+            return {
+                'groups': groups, 'total_groups': len(result.plan), 'plan_digest': result.plan_digest,
+                'truncated': truncated, 'oversize_groups': oversize,
+            }
+        except HTTPException:
+            raise
+        except AutoCullOverrideError as ex:
+            raise HTTPException(status_code=400, detail=str(ex))
+        except AutoCullPlanChanged as ex:
+            raise HTTPException(status_code=412, detail=str(ex))
+        except sqlite3.Error:
+            logger.exception("Culling plan failed")
             raise HTTPException(status_code=500, detail='Internal server error')
 
 

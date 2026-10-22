@@ -1450,6 +1450,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/culling/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Culling Plan
+         * @description The assistant's auto-cull plan as culling groups, for the /culling page to show and confirm.
+         *
+         *     Recomputes the plan exactly as ``POST /api/culling/auto`` (dry run) would and refuses with 412 when
+         *     its digest is not ``expected_digest``: the tab shows only the plan the assistant described. Writes
+         *     nothing. Plain ``def`` so the collect/split runs in a threadpool.
+         */
+        post: operations["culling_plan_api_culling_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/culling/profiles": {
         parameters: {
             query?: never;
@@ -1494,10 +1518,10 @@ export interface paths {
          *     orders scopes the way a photographer would — a whole wedding outranks a
          *     wedding inside a year of holidays.
          *
-         *     ``date_from``/``date_to`` must be raw EXIF timestamps
-         *     (``YYYY:MM:DD HH:MM:SS``) — the shape the scenes feed emits and the only one
-         *     that sorts against ``date_taken``; anything else is a 422 rather than a
-         *     silently empty window that would still be cached.
+         *     ``date_from``/``date_to`` take ISO dates or datetimes as well as raw EXIF
+         *     timestamps; they are normalised to ``YYYY:MM:DD HH:MM:SS`` (the only shape that
+         *     sorts against ``date_taken``) before use, and anything unparseable is a 400
+         *     rather than a silently empty window that would still be cached.
          *
          *     ``profile`` is null when the scope is empty, when no genre reaches
          *     ``_SUGGEST_MIN_SHARE``, or when the matching preset is not configured (a
@@ -5630,6 +5654,66 @@ export interface components {
             total_groups: number;
             /** Total Pages */
             total_pages: number;
+        };
+        /** CullingPlanBody */
+        CullingPlanBody: {
+            /** Album Id */
+            album_id?: number | null;
+            /** Date From */
+            date_from?: string | null;
+            /** Date To */
+            date_to?: string | null;
+            /** Expected Digest */
+            expected_digest: string;
+            /**
+             * Group By
+             * @default all
+             * @enum {string}
+             */
+            group_by?: "all" | "burst" | "similar" | "scene";
+            /**
+             * Highlights Album
+             * @default
+             */
+            highlights_album?: string;
+            /** Keep Paths */
+            keep_paths?: string[];
+            /** Min Keep Per Group */
+            min_keep_per_group?: number | null;
+            /** Profile */
+            profile?: string | null;
+            /** Remove Paths */
+            remove_paths?: string[];
+            /** Strictness */
+            strictness?: number | null;
+            /**
+             * Trim Brackets
+             * @default false
+             */
+            trim_brackets?: boolean;
+        };
+        /**
+         * CullingPlanResponse
+         * @description ``POST /api/culling/plan``: the plan as culling groups.
+         *
+         *     ``groups`` stays loosely typed like ``CullingGroupsResponse`` (the rows are the feed's group dicts); each
+         *     one adds ``plan: {number, keep_paths, group_reason}`` and its photos are listed keepers first, then rejects.
+         *     ``total_groups`` counts the whole plan; ``truncated`` says ``groups`` stopped at the group or photo cap, and
+         *     ``oversize_groups`` counts groups left out for exceeding the confirm route's per-group photo cap.
+         */
+        CullingPlanResponse: {
+            /** Groups */
+            groups: {
+                [key: string]: unknown;
+            }[];
+            /** Oversize Groups */
+            oversize_groups: number;
+            /** Plan Digest */
+            plan_digest: string;
+            /** Total Groups */
+            total_groups: number;
+            /** Truncated */
+            truncated: boolean;
         };
         /** CullingSubjectsBody */
         CullingSubjectsBody: {
@@ -10464,6 +10548,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AutoCullResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    culling_plan_api_culling_plan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CullingPlanBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CullingPlanResponse"];
                 };
             };
             /** @description Validation Error */

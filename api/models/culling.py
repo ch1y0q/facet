@@ -85,6 +85,44 @@ class CullingGroupsResponse(BaseModel):
     total_pages: int
 
 
+class CullPlanRequest(BaseModel):
+    """The inputs of one auto-cull plan, shared by every surface that reproduces it.
+
+    ``POST /api/culling/auto`` (as the base of its body), ``POST /api/culling/plan`` and the assistant's
+    ``auto_cull`` tool build the same plan from these fields, so the digest one of them reports is the digest
+    the others recompute. ``highlights_album`` only feeds the digest; a plan confirmed in the tab never adds
+    highlights.
+    """
+
+    group_by: Literal['all', 'burst', 'similar', 'scene'] = 'all'
+    album_id: Optional[int] = None
+    date_from: Optional[str] = None
+    date_to: Optional[str] = None
+    strictness: Optional[int] = Field(None, ge=0, le=100)
+    min_keep_per_group: Optional[int] = Field(None, ge=1)
+    profile: Optional[str] = None
+    trim_brackets: bool = False
+    highlights_album: str = ''
+    keep_paths: list[str] = Field(default_factory=list, max_length=1000)
+    remove_paths: list[str] = Field(default_factory=list, max_length=1000)
+
+
+class CullingPlanResponse(BaseModel):
+    """``POST /api/culling/plan``: the plan as culling groups.
+
+    ``groups`` stays loosely typed like ``CullingGroupsResponse`` (the rows are the feed's group dicts); each
+    one adds ``plan: {number, keep_paths, group_reason}`` and its photos are listed keepers first, then rejects.
+    ``total_groups`` counts the whole plan; ``truncated`` says ``groups`` stopped at the group or photo cap, and
+    ``oversize_groups`` counts groups left out for exceeding the confirm route's per-group photo cap.
+    """
+
+    groups: list[dict[str, Any]]
+    total_groups: int
+    plan_digest: str
+    truncated: bool
+    oversize_groups: int
+
+
 class CullProfile(BaseModel):
     id: str
     label_key: str
