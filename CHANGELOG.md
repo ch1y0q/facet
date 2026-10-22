@@ -6,7 +6,7 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
-- **The culling darkroom and Compare show sharp frames before you zoom in** (PR #230). Both ask `/thumbnail` for 1920 px, but the endpoint only returned the stored 640 px thumbnail, which the browser stretched across the pane. A `size` above 640 now gets a 1920 px render of the original through the same decode `/image` uses, cached by modification time. If the original is offline or won't decode, the stored thumbnail is served with a 60-second `max-age`, and `/image?fallback=thumbnail` now does the same.
+- **The culling darkroom and Compare show sharp frames before you zoom in** (PR #230). Both ask `/thumbnail` for 1920 px, but the endpoint only returned the stored 640 px thumbnail, which the browser stretched across the pane. A `size` above 640 now gets a render of the original at up to 1920 px (never upscaled) through the same decode `/image` uses, cached by modification time. If the original is offline, won't decode, or decodes to a frame with no signal (a truncated RW2 comes out all black), the stored thumbnail is served with a 60-second `max-age`, and `/image?fallback=thumbnail` now does the same.
 
 ## [1.22.1] "Hypo" — 2026-10-21
 

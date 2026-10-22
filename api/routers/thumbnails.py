@@ -156,19 +156,36 @@ def _get_or_resize(photo_path: str, thumbnail_bytes: bytes, size: int) -> bytes:
 @lru_cache(maxsize=32)
 def _render_from_original_cached(file_path: str, mtime: float,
                                  sequence_kind: Optional[str]) -> bytes:
-    from PIL import Image
     from api.raw_processing import load_viewer_image
+    from utils import image_transforms
 
     if not _render_slots.acquire(timeout=_RENDER_WAIT_SECONDS):
         raise RuntimeError("every render slot is busy")
     try:
         img = load_viewer_image(file_path, sequence_kind, max_edge=_RENDERED_SIZE)
+        # The slot covers the resize and encode too: the decoded frame is the
+        # large allocation the cap exists to bound.
+        blob = image_transforms.generate_photo_thumbnail(
+            img, _RENDERED_SIZE, _RENDERED_JPEG_QUALITY)
+        del img
     finally:
         _render_slots.release()
-    img.thumbnail((_RENDERED_SIZE, _RENDERED_SIZE), Image.Resampling.LANCZOS)
-    buf = BytesIO()
-    img.save(buf, format='JPEG', quality=_RENDERED_JPEG_QUALITY)
-    return buf.getvalue()
+    if not image_transforms.thumbnail_has_signal(blob):
+        # A truncated RW2 decodes to an all-zero frame without raising.
+        raise _NoSignalError("render carries no signal")
+    return blob
+
+
+class _NoSignalError(RuntimeError):
+    """The original decoded, but to a frame with no image signal."""
+
+
+# Renders that came out with no signal, keyed like the render cache. An
+# exception is not memoised by lru_cache, so without this every revalidation
+# would decode the same broken original again.
+_NO_SIGNAL_CACHE_SIZE = 32
+_no_signal_renders: dict[tuple, bool] = {}
+_no_signal_lock = threading.Lock()
 
 
 def _render_from_original(path: str, sequence_kind: Optional[str]) -> Optional[bytes]:
@@ -178,7 +195,17 @@ def _render_from_original(path: str, sequence_kind: Optional[str]) -> Optional[b
     except HTTPException:
         return None
     try:
-        return _render_from_original_cached(disk, os.path.getmtime(disk), sequence_kind)
+        key = (disk, os.path.getmtime(disk), sequence_kind)
+        if key in _no_signal_renders:
+            return None
+        return _render_from_original_cached(*key)
+    except _NoSignalError as e:
+        with _no_signal_lock:
+            if len(_no_signal_renders) >= _NO_SIGNAL_CACHE_SIZE:
+                _no_signal_renders.pop(next(iter(_no_signal_renders)), None)
+            _no_signal_renders[key] = True
+        logger.warning("Could not render %s (%s), serving the stored thumbnail", disk, e)
+        return None
     except (OSError, ValueError, RuntimeError) as e:
         # No traceback: this repeats on every revalidation.
         logger.warning("Could not render %s (%s), serving the stored thumbnail", disk, e)
@@ -194,8 +221,9 @@ def get_thumbnail(
 ):
     """Get photo thumbnail.
 
-    A ``size`` above 640 is rendered from the original at 1920 px. If that
-    fails, the stored thumbnail is served with a short ``max-age``.
+    A ``size`` above 640 is rendered from the original at up to 1920 px. If that
+    fails, or the render has no signal, the stored thumbnail is served with a
+    short ``max-age``.
     """
     vis_sql, vis_params = get_visibility_clause(user.user_id if user else None)
     with get_db() as conn:
@@ -212,6 +240,9 @@ def get_thumbnail(
     if size and size > _STORED_THUMBNAIL_SIZE:
         rendered = _render_from_original(path, row['sequence_kind'])
         if rendered is not None:
+            # Kept at the one-year default like /image and the stored thumbnail:
+            # the bytes depend on (mtime, sequence_kind) and the client's `v=`
+            # query is the invalidation lever. A bad render never gets here.
             return _cached_image_response(rendered, request)
         return _cached_image_response(row['thumbnail'], request, max_age=_FALLBACK_MAX_AGE)
     return _cached_image_response(row['thumbnail'], request)

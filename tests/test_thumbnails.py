@@ -125,8 +125,10 @@ class TestThumbnailRenderedFromOriginal:
     def _fresh_render_cache(self):
         from api.routers import thumbnails
         thumbnails._render_from_original_cached.cache_clear()
+        thumbnails._no_signal_renders.clear()
         yield
         thumbnails._render_from_original_cached.cache_clear()
+        thumbnails._no_signal_renders.clear()
 
     @pytest.fixture()
     def photo(self, tmp_path, seed_photos_prefix):
@@ -311,6 +313,74 @@ class TestThumbnailRenderedFromOriginal:
         load.assert_not_called()
         assert _image_size(result["resp"].content) == self.STORED
         assert result["resp"].headers["cache-control"] == "public, max-age=60"
+
+    @staticmethod
+    def _black_render(*_a, **_k):
+        from PIL import Image
+        return Image.new("RGB", (3000, 2000), (0, 0, 0))
+
+    def _assert_stand_in(self, resp):
+        assert resp.status_code == 200
+        assert _image_size(resp.content) == self.STORED
+        assert resp.headers["cache-control"] == "public, max-age=60"
+        from PIL import Image
+        assert Image.open(BytesIO(resp.content)).convert("L").getextrema()[1] > 0
+
+    def test_a_render_with_no_signal_serves_the_stored_thumbnail_briefly(self, client, photo):
+        path = photo(original=_make_jpeg_bytes((3000, 2000)))
+
+        with mock.patch("api.raw_processing.load_viewer_image", side_effect=self._black_render):
+            resp = self._get(client, path, 1920)
+
+        self._assert_stand_in(resp)
+
+    @pytest.mark.raw_brand_samples
+    def test_a_truncated_rw2_serves_the_stored_thumbnail_briefly(self, client, photo, tmp_path):
+        pytest.importorskip("rawpy")
+        sample = Path(os.environ.get("FACET_RAW_SAMPLE_DIR", ".")) / "sample.rw2"
+        if not sample.exists():
+            pytest.skip("sample.rw2 not available")
+        path = photo(name="truncated.rw2", original=sample.read_bytes()[:4096])
+
+        resp = self._get(client, path, 1920)
+
+        self._assert_stand_in(resp)
+
+    def test_the_render_slot_is_held_until_the_jpeg_is_encoded(self, client, photo):
+        from api.routers import thumbnails
+        from utils import image_transforms
+
+        path = photo(original=_make_jpeg_bytes((3000, 2000)))
+        real = image_transforms.generate_photo_thumbnail
+        seen = {}
+
+        def _probe(img, size, quality):
+            got = thumbnails._render_slots.acquire(blocking=False)
+            seen["acquired"] = got
+            if got:
+                thumbnails._render_slots.release()
+            return real(img, size, quality)
+
+        with mock.patch.object(thumbnails, "_render_slots", threading.BoundedSemaphore(1)), \
+             mock.patch("utils.image_transforms.generate_photo_thumbnail", side_effect=_probe):
+            resp = self._get(client, path, 1920)
+
+        assert resp.status_code == 200
+        assert seen["acquired"] is False
+
+    def test_a_no_signal_render_is_not_decoded_twice(self, client, photo, caplog):
+        path = photo(original=_make_jpeg_bytes((3000, 2000)))
+
+        with mock.patch("api.raw_processing.load_viewer_image",
+                        side_effect=self._black_render) as load:
+            first = self._get(client, path, 1920)
+            caplog.clear()
+            second = self._get(client, path, 1920)
+
+        assert load.call_count == 1
+        self._assert_stand_in(first)
+        self._assert_stand_in(second)
+        assert not [r for r in caplog.records if r.levelname == "WARNING"]
 
 
 # ---------------------------------------------------------------------------
