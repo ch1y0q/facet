@@ -1091,6 +1091,7 @@
         "applied_menu": "Appliqué : {count} groupe",
         "applied_menu_plural": "Appliqué : {count} groupes",
         "applied_menu_entry": "{label} · {filename}",
+        "applied_menu_entry_titled": "{title} · {label} · {filename}",
         "applied_marks_only": "Marques de la liste",
         "apply_failed": "Impossible d'appliquer vos marques — rien n'a été modifié",
         "apply_marks_only_hint": "Cette liste n'a pas de groupes : vos marques sont appliquées en un seul bloc et aucune paire d'apprentissage n'est enregistrée",

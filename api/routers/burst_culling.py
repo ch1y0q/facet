@@ -1982,11 +1982,17 @@ def _receipt_peek(user_id, receipt_id):
 
 
 def _receipt_take(user_id, receipt_id):
+    """Remove and return ``(stored_at, receipt)``, or None: of two concurrent takers only one gets it."""
     with _receipt_lock:
         entries = _apply_receipts.get(user_id, {})
         _receipt_live(entries)
-        entry = entries.pop(receipt_id, None)
-        return entry[1] if entry else None
+        return entries.pop(receipt_id, None)
+
+
+def _receipt_restore(user_id, receipt_id, entry):
+    """Put a taken ``(stored_at, receipt)`` back under its id with its original ``stored_at``."""
+    with _receipt_lock:
+        _apply_receipts.setdefault(user_id, {})[receipt_id] = entry
 
 
 def _mark_rows(conn, paths, user_id):
@@ -2145,59 +2151,82 @@ def undo_apply_marks(
     """Reverse one group of ``/api/culling/apply_marks`` from the receipt the server kept.
 
     Takes only the receipt id: what to write back comes from server memory, so a caller can neither widen
-    it nor point it at photos outside its visibility (every path is re-filtered). Compare-and-set: a photo
-    whose rejected state, or a reviewed flag, no longer equals what the apply wrote is left alone and counted
-    in ``skipped_changed``. An unknown, expired, consumed or foreign id is the same 404.
+    it nor point it at photos outside its visibility (every path is re-filtered). Compare-and-set: what no
+    longer equals what the apply wrote is left alone. ``skipped_changed`` is the number of distinct photos
+    of the receipt that Undo left at least partly alone: a rejected or un-rejected photo whose state no
+    longer matches, a photo that is no longer visible or present, a burst entry whose row is missing, has
+    no burst group any more or no longer holds the written (lead, reviewed) pair, and a similar entry whose
+    flag is no longer 1. The receipt is taken before anything is written (a second concurrent Undo is a
+    404) and put back if the write fails. An unknown, expired, consumed or foreign id is the same 404.
     """
     user_id = user.user_id if user else None
-    receipt = _receipt_peek(user_id, body.receipt_id)
-    if receipt is None:
+    taken = _receipt_take(user_id, body.receipt_id)
+    if taken is None:
         raise HTTPException(status_code=404, detail='receipt_not_found')
-    with get_db() as conn:
-        try:
-            wanted = (receipt['rejected'] + receipt['unrejected'] + [e['path'] for e in receipt['burst']]
-                      + [e['path'] for e in receipt['similar']])
-            by_path = _mark_rows(conn, wanted, user_id)
-            unreject = [p for p in receipt['rejected'] if p in by_path and by_path[p]['rejected']]
-            reject = [p for p in receipt['unrejected'] if p in by_path and not by_path[p]['rejected']]
-            changed = (len([p for p in receipt['rejected'] if p in by_path]) - len(unreject)
-                       + len([p for p in receipt['unrejected'] if p in by_path]) - len(reject))
-            set_photos_unrejected(conn, unreject, user_id)
-            set_photos_rejected(conn, reject, user_id)
-            flags = 0
-            for entry in receipt['burst']:
-                row = by_path.get(entry['path'])
-                written = (1, 1) if entry['role'] == 'keep' else (0, 1)
-                if row is not None and row['burst_group_id'] is not None \
-                        and ((row['is_burst_lead'] or 0), (row['burst_reviewed'] or 0)) == written:
-                    conn.execute("UPDATE photos SET is_burst_lead = ?, burst_reviewed = ? WHERE path = ?",
-                                 (entry['lead_before'], entry['reviewed_before'], entry['path']))
-                    flags += 1
-            for entry in receipt['similar']:
-                row = by_path.get(entry['path'])
-                if row is not None and (row['similarity_reviewed'] or 0) == 1:
-                    conn.execute("UPDATE photos SET similarity_reviewed = ? WHERE path = ?",
-                                 (entry['reviewed_before'], entry['path']))
-                    flags += 1
-            deleted = 0
-            for start in range(0, len(receipt['pair_ids']), 500):
-                chunk = receipt['pair_ids'][start:start + 500]
-                deleted += conn.execute(
-                    f"DELETE FROM comparisons WHERE id IN ({','.join('?' * len(chunk))}) "
-                    "AND source = 'culling' AND session_id = 'cull-review' AND user_id IS ?",
-                    [*chunk, user_id]).rowcount
-            _after_marks_write(conn)
-            conn.commit()
-        except sqlite3.Error:
-            conn.rollback()
-            logger.exception("Undo apply marks failed")
-            raise HTTPException(status_code=500, detail='Internal server error')
-    _receipt_take(user_id, body.receipt_id)
+    receipt = taken[1]
+    committed = False
+    try:
+        with get_db() as conn:
+            try:
+                wanted = (receipt['rejected'] + receipt['unrejected'] + [e['path'] for e in receipt['burst']]
+                          + [e['path'] for e in receipt['similar']])
+                by_path = _mark_rows(conn, wanted, user_id)
+                left_alone = set()
+                unreject = []
+                for p in receipt['rejected']:
+                    if p in by_path and by_path[p]['rejected']:
+                        unreject.append(p)
+                    else:
+                        left_alone.add(p)
+                reject = []
+                for p in receipt['unrejected']:
+                    if p in by_path and not by_path[p]['rejected']:
+                        reject.append(p)
+                    else:
+                        left_alone.add(p)
+                set_photos_unrejected(conn, unreject, user_id)
+                set_photos_rejected(conn, reject, user_id)
+                flags = 0
+                for entry in receipt['burst']:
+                    row = by_path.get(entry['path'])
+                    written = (1, 1) if entry['role'] == 'keep' else (0, 1)
+                    if row is not None and row['burst_group_id'] is not None \
+                            and ((row['is_burst_lead'] or 0), (row['burst_reviewed'] or 0)) == written:
+                        conn.execute("UPDATE photos SET is_burst_lead = ?, burst_reviewed = ? WHERE path = ?",
+                                     (entry['lead_before'], entry['reviewed_before'], entry['path']))
+                        flags += 1
+                    else:
+                        left_alone.add(entry['path'])
+                for entry in receipt['similar']:
+                    row = by_path.get(entry['path'])
+                    if row is not None and (row['similarity_reviewed'] or 0) == 1:
+                        conn.execute("UPDATE photos SET similarity_reviewed = ? WHERE path = ?",
+                                     (entry['reviewed_before'], entry['path']))
+                        flags += 1
+                    else:
+                        left_alone.add(entry['path'])
+                deleted = 0
+                for start in range(0, len(receipt['pair_ids']), 500):
+                    chunk = receipt['pair_ids'][start:start + 500]
+                    deleted += conn.execute(
+                        f"DELETE FROM comparisons WHERE id IN ({','.join('?' * len(chunk))}) "
+                        "AND source = 'culling' AND session_id = 'cull-review' AND user_id IS ?",
+                        [*chunk, user_id]).rowcount
+                _after_marks_write(conn)
+                conn.commit()
+                committed = True
+            except sqlite3.Error:
+                conn.rollback()
+                logger.exception("Undo apply marks failed")
+                raise HTTPException(status_code=500, detail='Internal server error')
+    finally:
+        if not committed:
+            _receipt_restore(user_id, body.receipt_id, taken)
     _invalidate_culling_groups_cache()
     from api.config import invalidate_stats_cache
     invalidate_stats_cache()
     return {'restored_rejected': unreject, 'restored_unrejected': reject, 'pairs_deleted': deleted,
-            'flags_restored': flags, 'skipped_changed': changed}
+            'flags_restored': flags, 'skipped_changed': len(left_alone)}
 
 
 # --- One-button auto-cull ---

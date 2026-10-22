@@ -1105,6 +1105,7 @@ export const I18N = {
         applied_menu: "gallery.pinned.review.applied_menu",
         applied_menu_plural: "gallery.pinned.review.applied_menu_plural",
         applied_menu_entry: "gallery.pinned.review.applied_menu_entry",
+        applied_menu_entry_titled: "gallery.pinned.review.applied_menu_entry_titled",
         applied_marks_only: "gallery.pinned.review.applied_marks_only",
         apply_failed: "gallery.pinned.review.apply_failed",
         apply_marks_only_hint: "gallery.pinned.review.apply_marks_only_hint",

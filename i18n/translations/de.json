@@ -1091,6 +1091,7 @@
         "applied_menu": "Angewendet: {count} Gruppe",
         "applied_menu_plural": "Angewendet: {count} Gruppen",
         "applied_menu_entry": "{label} · {filename}",
+        "applied_menu_entry_titled": "{title} · {label} · {filename}",
         "applied_marks_only": "Markierungen der Liste",
         "apply_failed": "Ihre Markierungen konnten nicht angewendet werden — nichts wurde geändert",
         "apply_marks_only_hint": "Diese Liste hat keine Gruppen: Ihre Markierungen werden als eine Einheit angewendet, und es werden keine Ranker-Paare aufgezeichnet",

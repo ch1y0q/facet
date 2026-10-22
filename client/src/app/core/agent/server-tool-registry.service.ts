@@ -188,7 +188,7 @@ export class ServerToolRegistry {
       if (!selection.ok) return JSON.stringify(selection);
       body.selection_snapshot = selection.data && typeof selection.data === 'object' ? selection.data as Record<string, unknown> : null;
     }
-    if (this.gallery.hasReview()) body.review_snapshot = { ...this.gallery.review() };
+    if (this.gallery.hasReview() || this.gallery.appliedMarks().size > 0) body.review_snapshot = { ...this.gallery.review() };
     const callId = newSessionId();
     try {
       const response = await firstValueFrom(this.http.post<McpCallResponse>('/api/mcp/call', body, {

@@ -436,24 +436,34 @@ export class GalleryStore {
     if (applied.size === 0) return result;
     const groups = this.pinnedGroups();
     const receipts = this.appliedReceipts();
-    const state = new Map<number, { receiptId: string | null }>();
+    const agent = this.pinnedMarks();
+    const user = this.userMarks();
+    // A group is applied when it holds an applied path and no pending one (not applied, effectively marked);
+    // a photo nobody marked stays outside the apply and does not block it.
+    const state = new Map<number, { receiptId: string | null; pending: boolean }>();
     for (const path of this.pinnedPaths() ?? []) {
       const group = groups.get(path);
       if (group === undefined) continue;
-      const receiptId = applied.get(path)?.receiptId ?? null;
-      const seen = state.get(group);
-      if (!seen) state.set(group, { receiptId });
-      else if (seen.receiptId !== receiptId) seen.receiptId = null;
+      const seen = state.get(group) ?? { receiptId: null, pending: false };
+      state.set(group, seen);
+      const entry = applied.get(path);
+      if (!entry) {
+        if (user.get(path) ?? agent.get(path)) seen.pending = true;
+        continue;
+      }
+      if (seen.receiptId === null) seen.receiptId = entry.receiptId;
+      else if (seen.receiptId !== entry.receiptId) seen.pending = true;
     }
-    for (const [group, { receiptId }] of state) {
-      const receipt = receiptId ? receipts.get(receiptId) : undefined;
+    for (const [group, { receiptId, pending }] of state) {
+      const receipt = receiptId && !pending ? receipts.get(receiptId) : undefined;
       if (receipt) result.set(group, { receiptId: receipt.receiptId, keptWhole: receipt.skippedKeepWhole.length, unavailable: !!receipt.unavailable });
     }
     return result;
   });
   /**
    * What "Apply" would send: per group, the not-yet-applied paths split by their effective mark. A keep-whole
-   * kind never rejects (its Remove marks travel as Keep); a Keep-marked photo shown rejected is un-rejected.
+   * kind's Remove marks travel as Remove too and the server keeps those frames whole (`skipped_keep_whole`);
+   * only the dialog's reject count leaves them out. A Keep-marked photo shown rejected is un-rejected.
    */
   readonly applyPlan = computed<ApplyPlan>(() => {
     const agent = this.pinnedMarks();
@@ -464,7 +474,7 @@ export class GalleryStore {
     const kinds = this.pinnedKinds();
     const rejected = new Set<string>();
     for (const photo of this.photos()) if (photo.is_rejected) rejected.add(photo.path);
-    const markless = groups.size === 0;
+    const groupless = groups.size === 0;
     const units = new Map<number | null, ApplyUnit>();
     let reject = 0;
     let unreject = 0;
@@ -472,23 +482,24 @@ export class GalleryStore {
       if (applied.has(path)) continue;
       const mark = user.get(path) ?? agent.get(path);
       if (!mark) continue;
-      const group = markless ? null : (groups.get(path) ?? null);
-      if (!markless && group === null) continue;
+      const group = groupless ? null : (groups.get(path) ?? null);
+      if (!groupless && group === null) continue;
       let unit = units.get(group);
       if (!unit) {
         const rawKind = group === null ? '' : (kinds.get(group) ?? '');
-        unit = { group, kind: APPLY_KINDS.has(rawKind) ? rawKind : null, ungrouped: markless, keep: [], reject: [], unreject: [] };
+        unit = { group, kind: APPLY_KINDS.has(rawKind) ? rawKind : null, ungrouped: groupless, keep: [], reject: [], unreject: [] };
         units.set(group, unit);
       }
-      if (mark === 'keep' || REVIEW_KEEP_WHOLE_KINDS.has(unit.kind ?? '')) {
+      if (mark === 'keep') {
         unit.keep.push(path);
-        if (mark === 'keep' && rejected.has(path)) {
+        if (rejected.has(path)) {
           unit.unreject.push(path);
           unreject++;
         }
       } else {
         unit.reject.push(path);
-        if (!rejected.has(path)) reject++;
+        // The server keeps a bracket / panorama frame whole, so it is not a photo this Apply will reject.
+        if (!rejected.has(path) && !REVIEW_KEEP_WHOLE_KINDS.has(unit.kind ?? '')) reject++;
       }
     }
     const list = [...units.values()];
@@ -502,10 +513,11 @@ export class GalleryStore {
   readonly reviewLegend = computed(() => {
     const agent = this.pinnedMarks();
     const user = this.userMarks();
+    const applied = this.appliedMarks();
     let keep = 0;
     let remove = 0;
     for (const path of this.pinnedPaths() ?? []) {
-      const mark = user.get(path) ?? agent.get(path);
+      const mark = applied.get(path)?.mark ?? user.get(path) ?? agent.get(path);
       if (mark === 'keep') keep++;
       else if (mark === 'remove') remove++;
     }
@@ -521,12 +533,14 @@ export class GalleryStore {
     if (!groups.size) return counts;
     const agent = this.pinnedMarks();
     const user = this.userMarks();
+    const applied = this.appliedMarks();
     for (const path of this.pinnedPaths() ?? []) {
       const group = groups.get(path);
       if (group === undefined) continue;
       const entry = counts.get(group) ?? { count: 0, keep: 0, remove: 0 };
       entry.count++;
-      const mark = user.get(path) ?? agent.get(path);
+      // What Apply committed (a frame the server kept whole reads Keep), else the user's mark, else the assistant's.
+      const mark = applied.get(path)?.mark ?? user.get(path) ?? agent.get(path);
       if (mark === 'keep') entry.keep++;
       else if (mark === 'remove') entry.remove++;
       counts.set(group, entry);
@@ -1250,6 +1264,8 @@ export class GalleryStore {
     const marksNow = new Map(this.appliedMarks());
     const receiptsNow = new Map(this.appliedReceipts());
     const labels = this.pinnedLabels();
+    const pinGroups = this.pinnedGroups();
+    const pinPaths = this.pinnedPaths() ?? [];
     for (const group of res.groups) {
       const unit = units[group.index];
       if (!unit) continue;
@@ -1269,7 +1285,7 @@ export class GalleryStore {
         group: unit.group,
         kind: unit.kind,
         label: unit.group === null ? null : (labels.get(unit.group) ?? null),
-        firstFilename: (paths[0] ?? '').split('/').pop() ?? '',
+        firstFilename: (pinPaths.find(path => unit.group === null || pinGroups.get(path) === unit.group) ?? paths[0] ?? '').split('/').pop() ?? '',
         skippedKeepWhole: group.skipped_keep_whole,
         unavailable: false,
       });
@@ -1316,7 +1332,8 @@ export class GalleryStore {
         skipped_changed: res.skipped_changed,
       });
       if (res.skipped_changed > 0) {
-        this.snackBar.open(this.i18n.t(review.undo_skipped, { count: res.skipped_changed }), '', { duration: 5000 });
+        const key = res.skipped_changed === 1 ? review.undo_skipped : review.undo_skipped_plural;
+        this.snackBar.open(this.i18n.t(key, { count: res.skipped_changed }), '', { duration: 5000 });
       }
     } catch (err) {
       if (err instanceof HttpErrorResponse && err.status === 404) {

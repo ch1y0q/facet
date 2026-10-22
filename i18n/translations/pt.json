@@ -1091,6 +1091,7 @@
         "applied_menu": "Aplicado: {count} grupo",
         "applied_menu_plural": "Aplicado: {count} grupos",
         "applied_menu_entry": "{label} · {filename}",
+        "applied_menu_entry_titled": "{title} · {label} · {filename}",
         "applied_marks_only": "Marcas da lista",
         "apply_failed": "Não foi possível aplicar as suas marcas — nada foi alterado",
         "apply_marks_only_hint": "Esta lista não tem grupos: as suas marcas são aplicadas como uma só unidade e nenhum par para o ranker é registado",

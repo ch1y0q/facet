@@ -137,14 +137,6 @@ class TestWrites:
         _apply(edition_client, _group(["b1.jpg"], ["b2.jpg"]), _group(["b4.jpg"], ["b3.jpg"], kind=None))
         assert len(retrains) == 1
 
-    def test_no_live_update_frame_is_published(self, edition_client, burst, monkeypatch):
-        from api.agent import live_updates
-        seen = []
-        for name in ("frame_for", "changed_paths", "make_emitter"):
-            monkeypatch.setattr(live_updates, name, lambda *a, _n=name, **k: seen.append(_n))
-        _apply(edition_client, _group(["b1.jpg"], ["b2.jpg"]))
-        assert seen == []
-
 
 class TestPerUser:
     def test_multi_user_writes_only_the_callers_preferences(self, edition_client, burst, multi):
@@ -186,6 +178,16 @@ class TestKeepWhole:
         assert _photo_row("k1.jpg")["is_rejected"] in (0, None) and _photo_row("k2.jpg")["is_rejected"] in (0, None)
         assert _photo_row("b2.jpg")["is_rejected"] == 1
         assert group["rejected_paths"] == [_p("b2.jpg")]
+
+    def test_a_rejected_keep_whole_frame_sent_as_remove_stays_rejected_and_is_never_unrejected(
+            self, edition_client, mixed):
+        with _db() as conn:
+            conn.execute("UPDATE photos SET is_rejected = 1 WHERE path = ?", (_p("k1.jpg"),))
+        body = _apply(edition_client, _group(["b1.jpg"], ["b2.jpg", "k1.jpg"], kind="bracket"))
+        group = body["groups"][0]
+        assert group["skipped_keep_whole"] == [_p("k1.jpg")]
+        assert group["unrejected_paths"] == [] and group["unrejected"] == 0
+        assert _photo_row("k1.jpg")["is_rejected"] == 1
 
     def test_no_pair_names_a_keep_whole_frame(self, edition_client, mixed):
         _apply(edition_client, _group(["b1.jpg"], ["b2.jpg", "k1.jpg", "k2.jpg"]))
@@ -272,6 +274,28 @@ class TestReviewedFlags:
         with _db() as conn:
             scenes = burst_culling._fetch_scene_groups(conn, user_id=None, use_cache=False)
         assert any(_p("c0.jpg") in {p["path"] for p in g["photos"]} for g in scenes)
+
+
+class TestCacheInvalidation:
+    def _seed_cache(self):
+        with _db() as conn:
+            conn.executemany("INSERT OR REPLACE INTO stats_cache (key, value, updated_at) VALUES (?, '{}', 0)",
+                             [("scenes_apply_marks_test",), ("similarity_groups_apply_marks_test",)])
+
+    def _cached(self):
+        with _db() as conn:
+            return sorted(r[0] for r in conn.execute(
+                "SELECT key FROM stats_cache WHERE key IN ('scenes_apply_marks_test', "
+                "'similarity_groups_apply_marks_test')"))
+
+    def test_apply_and_undo_drop_the_scene_and_similarity_feed_caches(self, edition_client, burst):
+        self._seed_cache()
+        assert len(self._cached()) == 2
+        body = _apply(edition_client, _group(["b1.jpg"], ["b2.jpg"]))
+        assert self._cached() == []
+        self._seed_cache()
+        edition_client.post(UNDO, json={"receipt_id": body["groups"][0]["receipt_id"]})
+        assert self._cached() == []
 
 
 class TestPairsAndReceipts:
@@ -476,6 +500,66 @@ class TestUndo:
         assert self._undo(edition_client, rid)["pairs_deleted"] == 0
         assert len(_pairs()) == 2
 
+    def test_a_later_flag_change_is_counted_and_the_flag_is_left_alone(self, edition_client, burst):
+        body = _apply(edition_client, _group(["b1.jpg"], ["b2.jpg"]))
+        with _db() as conn:
+            conn.execute("UPDATE photos SET burst_reviewed = 0, is_burst_lead = 1 WHERE path = ?", (_p("b1.jpg"),))
+        result = self._undo(edition_client, body["groups"][0]["receipt_id"])
+        assert result["skipped_changed"] == 1
+        assert (_photo_row("b1.jpg")["is_burst_lead"], _photo_row("b1.jpg")["burst_reviewed"]) == (1, 0)
+
+    def test_a_changed_similar_flag_is_counted(self, edition_client, seed_photos_prefix):
+        seed_photos_prefix(PREFIX, [_photo("s1.jpg"), _photo("s2.jpg", similarity_reviewed=0)])
+        body = _apply(edition_client, _group(["s1.jpg"], ["s2.jpg"], kind="similar"))
+        with _db() as conn:
+            conn.execute("UPDATE photos SET similarity_reviewed = 0 WHERE path = ?", (_p("s1.jpg"),))
+        result = self._undo(edition_client, body["groups"][0]["receipt_id"])
+        assert result["skipped_changed"] == 1 and result["flags_restored"] == 1
+
+    def test_a_receipt_path_that_became_invisible_is_counted(self, edition_client, burst):
+        body = _apply(edition_client, _group(["b1.jpg"], ["b2.jpg", "b3.jpg"]))
+        with _db() as conn:
+            conn.execute("DELETE FROM photos WHERE path = ?", (_p("b3.jpg"),))
+        result = self._undo(edition_client, body["groups"][0]["receipt_id"])
+        assert result["restored_rejected"] == [_p("b2.jpg")]
+        assert result["skipped_changed"] == 1
+
+    def test_a_photo_both_rejected_and_flagged_is_counted_once(self, edition_client, burst):
+        body = _apply(edition_client, _group(["b1.jpg"], ["b2.jpg"]))
+        with _db() as conn:
+            conn.execute("UPDATE photos SET is_rejected = 0, burst_reviewed = 0 WHERE path = ?", (_p("b2.jpg"),))
+        result = self._undo(edition_client, body["groups"][0]["receipt_id"])
+        assert result["skipped_changed"] == 1
+
+    def test_a_clean_undo_skips_nothing(self, edition_client, burst):
+        body = _apply(edition_client, _group(["b1.jpg", "b4.jpg"], ["b2.jpg"]))
+        assert self._undo(edition_client, body["groups"][0]["receipt_id"])["skipped_changed"] == 0
+
+    def test_the_receipt_is_consumed_by_a_successful_undo(self, edition_client, burst):
+        rid = _apply(edition_client, _group(["b1.jpg"], ["b2.jpg"]))["groups"][0]["receipt_id"]
+        assert burst_culling._receipt_peek("test", rid) is not None
+        self._undo(edition_client, rid)
+        assert burst_culling._receipt_peek("test", rid) is None
+
+    def test_a_failed_write_puts_the_receipt_back_so_a_retry_works(self, edition_client, burst, monkeypatch):
+        rid = _apply(edition_client, _group(["b1.jpg"], ["b2.jpg"]))["groups"][0]["receipt_id"]
+        stored_at = burst_culling._apply_receipts["test"][rid][0]
+        real = burst_culling._after_marks_write
+
+        during = []
+
+        def boom(conn):
+            during.append(burst_culling._receipt_peek("test", rid))
+            raise sqlite3.OperationalError("injected")
+        monkeypatch.setattr(burst_culling, "_after_marks_write", boom)
+        self._undo(edition_client, rid, status=500)
+        assert during == [None]
+        assert burst_culling._apply_receipts["test"][rid][0] == stored_at
+        assert _photo_row("b2.jpg")["is_rejected"] == 1
+        monkeypatch.setattr(burst_culling, "_after_marks_write", real)
+        assert self._undo(edition_client, rid)["restored_rejected"] == [_p("b2.jpg")]
+        self._undo(edition_client, rid, status=404)
+
     def test_a_second_undo_is_404(self, edition_client, burst):
         rid = _apply(edition_client, _group(["b1.jpg"], ["b2.jpg"]))["groups"][0]["receipt_id"]
         self._undo(edition_client, rid)
@@ -497,7 +581,7 @@ class TestUndo:
 
     def test_another_users_receipt_is_404_and_nothing_changes(self, edition_client, burst):
         rid = _apply(edition_client, _group(["b1.jpg"], ["b2.jpg"]))["groups"][0]["receipt_id"]
-        receipt = burst_culling._receipt_take("test", rid)
+        _, receipt = burst_culling._receipt_take("test", rid)
         foreign = burst_culling._receipt_store("someone-else", receipt)
         self._undo(edition_client, foreign, status=404)
         assert _photo_row("b2.jpg")["is_rejected"] == 1

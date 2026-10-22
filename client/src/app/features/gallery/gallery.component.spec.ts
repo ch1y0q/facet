@@ -4051,6 +4051,80 @@ describe('GalleryComponent', () => {
           expect(mockStore.undoApplied).toHaveBeenCalledWith('r1');
         });
 
+        it('moves the focus from a group Apply to its Undo, and from the Undo back to the Apply', async () => {
+          pin({});
+          echo();
+          edition();
+          planOf(u1, u2);
+          const html = render('grid', false);
+          document.body.appendChild(html);
+          try {
+            fakeApply();
+            const apply = byTest(html, 'review-apply-group')[0];
+            apply.focus();
+            expect(document.activeElement).toBe(apply);
+            apply.click();
+            await fixture!.whenStable();
+            planOf(u2);
+            fixture!.detectChanges();
+            await fixture!.whenStable();
+            const undo = byTest(html, 'review-undo-group')[0];
+            expect(document.activeElement).toBe(undo);
+            mockStore.undoApplied.mockImplementation(async () => {
+              mockStore.appliedGroups.set(new Map());
+              planOf(u1, u2);
+            });
+            undo.click();
+            await fixture!.whenStable();
+            fixture!.detectChanges();
+            await fixture!.whenStable();
+            expect(document.activeElement).toBe(byTest(html, 'review-apply-group')[0]);
+            expect(byTest(html, 'review-apply-group')[0].closest('[data-review-group-actions]')!.getAttribute('data-group')).toBe('1');
+          } finally {
+            html.remove();
+          }
+        });
+
+        it('moves the focus from Apply my marks to the Applied menu trigger', async () => {
+          pin({});
+          echo();
+          edition();
+          planOf(u1, u2);
+          const html = render('grid', false);
+          document.body.appendChild(html);
+          try {
+            dialogOpen(true);
+            fakeApply();
+            byTest(html, 'apply-my-marks')[0].focus();
+            byTest(html, 'apply-my-marks')[0].click();
+            for (let i = 0; i < 4; i += 1) {
+              await fixture!.whenStable();
+              fixture!.detectChanges();
+            }
+            expect(document.activeElement).toBe(byTest(html, 'applied-menu')[0]);
+          } finally {
+            html.remove();
+          }
+        });
+
+        it('names an Applied menu entry by its group number, heading and first filename', () => {
+          pin({});
+          echo();
+          edition();
+          planOf(u1);
+          const html = render('grid', false);
+          mockStore.appliedReceiptList.set([{
+            receiptId: 'r1', paths: ['/g0.jpg'], group: 1, kind: 'burst', label: { key: 'burst', params: { n: 2 } },
+            firstFilename: 'IMG_0012.jpg', skippedKeepWhole: [],
+          }]);
+          fixture!.detectChanges();
+          byTest(html, 'applied-menu')[0].click();
+          fixture!.detectChanges();
+          const item = document.body.querySelector('[data-testid="applied-menu-undo"]')!;
+          expect(item.textContent).toContain('gallery.pinned.review.applied_menu_entry_titled');
+          expect(item.textContent).toContain('"title":"gallery.pinned.review.group_title {\\"group\\":1}"');
+        });
+
         it('keeps both Undo buttons when group 1 is applied and then group 2 (B3)', () => {
           pin({});
           edition();

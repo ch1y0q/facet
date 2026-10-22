@@ -7,7 +7,7 @@ import type {
 } from '../../features/gallery/gallery.store';
 
 /**
- * The effective keep/remove mark of one photo on an annotated pin: the user's own
+ * The effective keep/remove mark of one photo on an annotated pin: what Apply committed, else the user's own
  * absolute choice, else the assistant's. Pure pipes (not component methods) so a
  * card re-evaluates only when a map is replaced, which is how the store updates them.
  */
@@ -17,8 +17,9 @@ export class ReviewMarkPipe implements PipeTransform {
     path: string,
     userMarks: ReadonlyMap<string, ReviewMark>,
     agentMarks: ReadonlyMap<string, ReviewMark>,
+    applied: ReadonlyMap<string, AppliedMark> = new Map(),
   ): ReviewMark | null {
-    return userMarks.get(path) ?? agentMarks.get(path) ?? null;
+    return applied.get(path)?.mark ?? userMarks.get(path) ?? agentMarks.get(path) ?? null;
   }
 }
 
@@ -155,5 +156,15 @@ export class ReviewReceiptLabelPipe implements PipeTransform {
     if (receipt.label) return { key: `culling.group_reason.${receipt.label.key}`, params: receipt.label.params };
     if (receipt.group === null) return { key: 'gallery.pinned.review.applied_marks_only', params: {} };
     return { key: 'gallery.pinned.review.group_title', params: { group: receipt.group } };
+  }
+}
+
+/** The "Group N" title of an applied receipt whose menu entry also carries the assistant's heading, else null. */
+@Pipe({ name: 'reviewReceiptTitle', standalone: true, pure: true })
+export class ReviewReceiptTitlePipe implements PipeTransform {
+  transform(receipt: AppliedReceipt): ReviewGroupLabel | null {
+    return receipt.label && receipt.group !== null
+      ? { key: 'gallery.pinned.review.group_title', params: { group: receipt.group } }
+      : null;
   }
 }

@@ -12,7 +12,7 @@ plan, and ``confirm_culling_groups`` needs one whenever a group would reject eve
 frame it names.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Annotated, Any, Literal, Optional, Sequence, cast
 
 from mcp.server.mcpserver import Context, MCPServer
@@ -472,6 +472,8 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
                 if show and dry_run and result["ok"]:
                     result["shown_in_tab"] = await _show_page(
                         result["data"].get("rows") or [], resolved, settings, tab_id, timeout)
+                if result["ok"]:
+                    annotate_skipped_applied(result, marks)
                 return result
             digest = (preview["data"] or {}).get("plan_digest")
             if not digest or not (preview["data"] or {}).get("rejected") \
@@ -521,6 +523,25 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
         if marks.has_applied:
             report["applied"] = len(marks.applied)
         result["overrides_from_tab"] = report
+
+    def annotate_skipped_applied(result: dict, marks: Optional[Marks]) -> None:
+        """Take the photos the user already applied out of the SHOWN per-group lists and report them as
+        ``skipped_applied``. Annotation only: the plan, its digest and the confirm token are untouched."""
+        if marks is None or not marks.has_applied:
+            return
+        done = set(marks.applied)
+        found: dict[str, None] = {}
+        for row in result.get("data", {}).get("rows") or []:
+            for key in ("keep_paths", "reject_paths"):
+                listed = row.get(key)
+                if not listed:
+                    continue
+                for path in listed:
+                    if path in done:
+                        found.setdefault(path)
+                row[key] = [path for path in listed if path not in done]
+        if found:
+            result["data"]["skipped_applied"] = {"count": len(found), "paths": list(found)[:SUMMARY_PATHS]}
 
     def remember_marks(owner, result: dict, marks: Marks) -> None:
         """Keep the cursor-0 marks for later pages (by plan digest) and for the apply (by ``confirm``)."""
@@ -582,7 +603,9 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
                             flips)
         if skip is None:
             return err("confirmation_required", APPLIED_UNREADABLE)
-        return await send_apply(grant, options, memory.digest, memory.marks, timeout, skip, done)
+        # The report names what the tab has applied NOW, not what it had applied at preview time.
+        reported = replace(memory.marks, applied=done, applied_truncated=bool(current and current.applied_truncated))
+        return await send_apply(grant, options, memory.digest, reported, timeout, skip, done)
 
     async def _show_page(rows: list[dict], resolved, settings, tab_id: Optional[str], timeout: float) -> dict:
         page = _pinned_page(rows)

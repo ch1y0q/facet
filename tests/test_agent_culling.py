@@ -1066,6 +1066,30 @@ class TestAutoCullAppliedFromTheTab:
         assert result["ok"], result
         assert sorted(self.sent(rig)[-1]["skip_paths"]) == sorted([BURST_PATHS[1], BURST_PATHS[2]])
 
+    def test_the_apply_reports_what_the_tab_applied_after_the_preview(self, rig):
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        assert "overrides_from_tab" not in preview
+        rig.state["review"] = {"keep": [], "remove": [], "applied": self.applied(keep=[BURST_PATHS[0]])}
+        result = self.apply(rig, preview)
+        assert result["ok"], result
+        assert result["overrides_from_tab"] == {"applied": 1}
+        assert self.sent(rig)[-1]["skip_paths"] == [BURST_PATHS[0]]
+
+    def test_a_re_preview_lists_an_applied_photo_as_skipped_not_as_a_reject(self, rig):
+        plain = rig.env.call(rig.token, "auto_cull", self.args())
+        listed = [p for row in plain["data"]["rows"] for p in row["keep_paths"] + row["reject_paths"]]
+        victim = BURST_PATHS[2]
+        assert victim in listed
+        rig.state["review"] = {"keep": [], "remove": [], "applied": self.applied(remove=[victim])}
+        preview = rig.env.call(rig.token, "auto_cull", self.args())
+        shown = [p for row in preview["data"]["rows"] for p in row["keep_paths"] + row["reject_paths"]]
+        assert victim not in shown
+        assert preview["data"]["skipped_applied"] == {"count": 1, "paths": [victim]}
+        assert preview["data"]["plan_digest"] == plain["data"]["plan_digest"]
+        result = self.apply(rig, preview)
+        assert result["ok"], result
+        assert self.sent(rig)[-1]["skip_paths"] == [victim]
+
     def test_a_truncated_applied_block_refuses_the_apply(self, rig):
         rig.state["review"] = {"keep": [], "remove": [], "applied": self.applied(keep=[BURST_PATHS[0]])}
         preview = rig.env.call(rig.token, "auto_cull", self.args())

@@ -14,6 +14,7 @@ import {
   TemplateRef,
   ChangeDetectionStrategy
 } from '@angular/core';
+import { DOCUMENT } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { MatSidenav, MatSidenavModule, MatSidenavContent } from '@angular/material/sidenav';
@@ -43,7 +44,7 @@ import { isBracketLadderRejection } from '../../shared/utils/sequence-ladder';
 import { IsSelectedPipe } from '../../shared/pipes/selection.pipe';
 import {
   ReviewApplyPlanPipe, ReviewChangedPipe, ReviewGroupHeaderPipe, ReviewGroupKeptWholePipe, ReviewGroupLabelPipe,
-  ReviewGroupPipe, ReviewGroupReceiptPipe, ReviewMarkPipe, ReviewPathLockedPipe, ReviewReasonPipe, ReviewReceiptLabelPipe,
+  ReviewGroupPipe, ReviewGroupReceiptPipe, ReviewMarkPipe, ReviewPathLockedPipe, ReviewReasonPipe, ReviewReceiptLabelPipe, ReviewReceiptTitlePipe,
 } from '../../shared/pipes/review.pipes';
 import { PhotoSetKindIconPipe, PhotoSetKindLabelPipe } from '../../shared/pipes/photo-set-kind.pipe';
 import { AuthService } from '../../core/services/auth.service';
@@ -117,6 +118,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
     ReviewPathLockedPipe,
     ReviewReasonPipe,
     ReviewReceiptLabelPipe,
+    ReviewReceiptTitlePipe,
     PhotoSetKindIconPipe,
     PhotoSetKindLabelPipe,
     MatSnackBarModule,
@@ -274,9 +276,9 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
         <!-- Pinned-list chip: the assistant's ui_show_photos list replaces the filtered
              view; this is the way back to it (any filter change drops the list too). -->
         @if (store.pinnedPaths() !== null) {
-          <div role="status" class="mx-2 md:mx-4 mt-2 md:mt-4 px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] border border-[var(--mat-sys-outline-variant)] flex items-center gap-3 text-sm">
+          <div role="status" class="mx-2 md:mx-4 mt-2 md:mt-4 px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] border border-[var(--mat-sys-outline-variant)] flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
             <mat-icon class="opacity-70 !text-base !w-5 !h-5">auto_awesome</mat-icon>
-            <span class="flex-1">
+            <span class="min-w-[12rem] flex-1">
               {{ store.total() | pluralKey:I18N.gallery.pinned.chip:I18N.gallery.pinned.chip_plural | translate:{ count: store.total() } }}
               @if (store.hasReview()) {
                 @let legend = store.reviewLegend();
@@ -310,7 +312,12 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                           [disabled]="!!receipt.unavailable || store.applying()"
                           [matTooltip]="receipt.unavailable ? (I18N.gallery.pinned.review.undo_unavailable | translate) : ''"
                           (click)="store.undoApplied(receipt.receiptId)">
-                    {{ I18N.gallery.pinned.review.applied_menu_entry | translate:{ label: (receiptLabel.key | translate:receiptLabel.params), filename: receipt.firstFilename } }}
+                    @let receiptTitle = receipt | reviewReceiptTitle;
+                    @if (receiptTitle) {
+                      {{ I18N.gallery.pinned.review.applied_menu_entry_titled | translate:{ title: (receiptTitle.key | translate:receiptTitle.params), label: (receiptLabel.key | translate:receiptLabel.params), filename: receipt.firstFilename } }}
+                    } @else {
+                      {{ I18N.gallery.pinned.review.applied_menu_entry | translate:{ label: (receiptLabel.key | translate:receiptLabel.params), filename: receipt.firstFilename } }}
+                    }
                   </button>
                 }
               </mat-menu>
@@ -380,7 +387,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                   @let header = row.group! | reviewGroupHeader:store.reviewGroupCounts():(store.pinnedMarks().size > 0);
                   @let groupLabel = row.group! | reviewGroupLabel:store.pinnedLabels();
                   <div class="flex items-end gap-2 mb-2 px-1" [style.height.px]="row.height">
-                    <div role="heading" aria-level="3" class="min-w-0 flex-1 truncate text-sm font-semibold pb-1" data-testid="review-group-header">
+                    <div role="heading" aria-level="3" class="min-w-[5rem] flex-1 truncate text-sm font-semibold pb-1" data-testid="review-group-header">
                       {{ header.key | translate:header.params }}
                       @if (groupLabel) {
                         <span class="font-normal opacity-80" data-testid="review-group-label"> · {{ groupLabel.key | translate:groupLabel.params }}</span>
@@ -394,7 +401,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                            keydown handler ignores events from [data-review-group-actions]. A kept-whole
                            group (bracket / panorama) cannot lose a frame: those two are aria-disabled (not
                            [disabled], which would leave the tab order) and a tooltip says why. -->
-                      <div class="flex shrink-0 items-center gap-1 pb-0.5" data-review-group-actions role="group">
+                      <div class="flex min-w-0 max-w-[75%] items-center gap-1 overflow-x-auto whitespace-nowrap pb-0.5 [scrollbar-width:none] *:shrink-0 sm:max-w-none sm:overflow-visible" data-review-group-actions [attr.data-group]="row.group" role="group">
                         <button type="button" data-mode="keep_all"
                                 class="h-6 px-2 rounded border border-[var(--mat-sys-outline-variant)] text-xs cursor-pointer hover:bg-[var(--mat-sys-surface-container-high)] aria-disabled:hover:bg-transparent aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
                                 [attr.aria-disabled]="appliedGroup ? 'true' : null"
@@ -436,7 +443,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                                     [attr.aria-disabled]="appliedGroup.unavailable ? 'true' : null"
                                     [matTooltip]="appliedGroup.unavailable ? (I18N.gallery.pinned.review.undo_unavailable | translate) : ''"
                                     [attr.aria-label]="I18N.gallery.pinned.review.undo_apply_aria | translate:{ group: row.group! }"
-                                    (click)="!appliedGroup.unavailable && store.undoApplied(appliedGroup.receiptId)">
+                                    (click)="!appliedGroup.unavailable && undoGroup(row.group!, appliedGroup.receiptId)">
                               {{ I18N.gallery.pinned.review.undo_apply | translate }}
                             </button>
                           } @else {
@@ -462,7 +469,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                       [reviewGroup]="photo.path | reviewGroup:store.pinnedGroups()"
                       [reviewChanged]="photo.path | reviewChanged:store.userMarks():store.pinnedMarks()"
                       [reviewReason]="photo.path | reviewReason:store.pinnedReasons()"
-                      [reviewMark]="photo.path | reviewMark:store.userMarks():store.pinnedMarks()"
+                      [reviewMark]="photo.path | reviewMark:store.userMarks():store.pinnedMarks():store.appliedMarks()"
                       [reviewLocked]="photo.path | reviewPathLocked:store.appliedMarks()"
                       (reviewMarkToggle)="toggleReviewMark($event)"
                       [attr.data-pidx]="row.startIndex + i"
@@ -526,7 +533,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                   [reviewGroup]="photo.path | reviewGroup:store.pinnedGroups()"
                   [reviewChanged]="photo.path | reviewChanged:store.userMarks():store.pinnedMarks()"
                   [reviewReason]="photo.path | reviewReason:store.pinnedReasons()"
-                  [reviewMark]="photo.path | reviewMark:store.userMarks():store.pinnedMarks()"
+                  [reviewMark]="photo.path | reviewMark:store.userMarks():store.pinnedMarks():store.appliedMarks()"
                   [reviewLocked]="photo.path | reviewPathLocked:store.appliedMarks()"
                   (reviewMarkToggle)="toggleReviewMark($event)"
                   [attr.data-pidx]="i"
@@ -591,7 +598,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                       [reviewGroup]="photo.path | reviewGroup:store.pinnedGroups()"
                       [reviewChanged]="photo.path | reviewChanged:store.userMarks():store.pinnedMarks()"
                       [reviewReason]="photo.path | reviewReason:store.pinnedReasons()"
-                      [reviewMark]="photo.path | reviewMark:store.userMarks():store.pinnedMarks()"
+                      [reviewMark]="photo.path | reviewMark:store.userMarks():store.pinnedMarks():store.appliedMarks()"
                       [reviewLocked]="photo.path | reviewPathLocked:store.appliedMarks()"
                       (reviewMarkToggle)="toggleReviewMark($event)"
                       [attr.data-pidx]="row.startIndex + i"
@@ -907,6 +914,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly filterDrawer = viewChild<MatSidenav>('filterDrawer');
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
+  private readonly document = inject(DOCUMENT);
   private readonly scrollContent = viewChild(MatSidenavContent);
 
   /** True once the gallery content is scrolled far enough to show the scroll-to-top button. */
@@ -1440,11 +1448,39 @@ export class GalleryComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** Flip a card's effective keep/remove mark into the user's absolute choice; no HTTP. */
   /** Apply one group's marks: reject its Remove photos, un-reject its rejected Keep photos, record the pairs. */
-  protected applyGroup(group: number): void {
+  protected async applyGroup(group: number): Promise<void> {
     const unit = this.store.applyPlan().byGroup.get(group);
-    if (unit) void this.store.applyGroups([unit]);
+    if (!unit) return;
+    if (await this.store.applyGroups([unit])) this.focusAfterRender(`${this.groupActions(group)} [data-testid="review-undo-group"]`);
+  }
+
+  /** Undo one applied group, then hand the focus to what replaced the button that held it. */
+  protected async undoGroup(group: number, receiptId: string): Promise<void> {
+    await this.store.undoApplied(receiptId);
+    const actions = this.groupActions(group);
+    this.focusAfterRender(
+      `${actions} [data-testid="review-apply-group"]:not(:disabled)`,
+      `${actions} [data-testid="review-undo-group"]:not(:disabled)`,
+      `${actions} button:not(:disabled):not([aria-disabled="true"])`,
+    );
+  }
+
+  private groupActions(group: number): string {
+    return `[data-review-group-actions][data-group="${group}"]`;
+  }
+
+  /** Focus the first selector that matches once the next render has replaced the button that held the focus. */
+  private focusAfterRender(...selectors: string[]): void {
+    afterNextRender(() => {
+      for (const selector of selectors) {
+        const target = this.document.querySelector<HTMLElement>(selector);
+        if (target) {
+          target.focus();
+          return;
+        }
+      }
+    }, { injector: this.injector });
   }
 
   /** Apply every group's marks after a confirm that names the counts; Cancel posts nothing. */
@@ -1461,9 +1497,10 @@ export class GalleryComponent implements OnInit, OnDestroy {
       },
     });
     if (!(await firstValueFrom(ref.afterClosed()))) return;
-    await this.store.applyGroups(this.store.applyPlan().units);
+    if (await this.store.applyGroups(this.store.applyPlan().units)) this.focusAfterRender('[data-testid="applied-menu"]');
   }
 
+  /** Flip a card's effective keep/remove mark into the user's absolute choice; no HTTP. */
   protected toggleReviewMark(path: string): void {
     const current = this.store.userMarks().get(path) ?? this.store.pinnedMarks().get(path);
     this.store.setReviewMark(path, current === 'keep' ? 'remove' : 'keep');

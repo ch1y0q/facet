@@ -42,6 +42,7 @@ describe('ServerToolRegistry', () => {
   let uiExecute: Mock;
   let review: ReturnType<typeof signal<{ keep: string[]; remove: string[]; truncated: boolean; applied?: { keep: string[]; remove: string[]; truncated: boolean } }>>;
   let hasReview: ReturnType<typeof signal<boolean>>;
+  let appliedMarks: ReturnType<typeof signal<ReadonlyMap<string, unknown>>>;
   let service: ServerToolRegistry;
 
   const settle = async (): Promise<void> => {
@@ -57,6 +58,7 @@ describe('ServerToolRegistry', () => {
     session = signal<EnvironmentInjector | null>(null);
     review = signal({ keep: [] as string[], remove: [] as string[], truncated: false });
     hasReview = signal(false);
+    appliedMarks = signal<ReadonlyMap<string, unknown>>(new Map());
     TestBed.configureTestingModule({
       providers: [
         { provide: AuthService, useValue: { status: authStatus } },
@@ -65,7 +67,7 @@ describe('ServerToolRegistry', () => {
         { provide: AssistantChangesService, useValue: { report } },
         { provide: AgentBridgeService, useValue: { tabId: 'tab-1' } },
         { provide: WebMcpToolRegistry, useValue: { execute: uiExecute } },
-        { provide: GalleryStore, useValue: { review, hasReview } },
+        { provide: GalleryStore, useValue: { review, hasReview, appliedMarks } },
       ],
     });
     service = TestBed.inject(ServerToolRegistry);
@@ -209,6 +211,17 @@ describe('ServerToolRegistry', () => {
     review.set({ keep: [], remove: [], truncated: false, applied });
     await live.get('set_rating')!.execute({ rating: 4 }, {});
     expect(post.mock.calls[3][1].review_snapshot).toEqual({ keep: [], remove: [], truncated: false, applied });
+  });
+
+  it('still sends the snapshot with its applied record after the pin was replaced by one without marks', async () => {
+    setup(status({ edition_authenticated: true }));
+    await settle();
+    const applied = { keep: ['/ak.jpg'], remove: ['/ar.jpg'], truncated: false };
+    review.set({ keep: [], remove: [], truncated: false, applied });
+    appliedMarks.set(new Map([['/ak.jpg', { mark: 'keep', receiptId: 'r' }]]));
+    expect(hasReview()).toBe(false);
+    await live.get('set_rating')!.execute({ rating: 4 }, {});
+    expect(post.mock.calls[0][1].review_snapshot).toEqual({ keep: [], remove: [], truncated: false, applied });
   });
 
   it('counts an auto_cull apply by its show_paths when the envelope has no changed', async () => {

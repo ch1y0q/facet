@@ -1529,9 +1529,13 @@ export interface paths {
          * @description Reverse one group of ``/api/culling/apply_marks`` from the receipt the server kept.
          *
          *     Takes only the receipt id: what to write back comes from server memory, so a caller can neither widen
-         *     it nor point it at photos outside its visibility (every path is re-filtered). Compare-and-set: a photo
-         *     whose rejected state, or a reviewed flag, no longer equals what the apply wrote is left alone and counted
-         *     in ``skipped_changed``. An unknown, expired, consumed or foreign id is the same 404.
+         *     it nor point it at photos outside its visibility (every path is re-filtered). Compare-and-set: what no
+         *     longer equals what the apply wrote is left alone. ``skipped_changed`` is the number of distinct photos
+         *     of the receipt that Undo left at least partly alone: a rejected or un-rejected photo whose state no
+         *     longer matches, a photo that is no longer visible or present, a burst entry whose row is missing, has
+         *     no burst group any more or no longer holds the written (lead, reviewed) pair, and a similar entry whose
+         *     flag is no longer 1. The receipt is taken before anything is written (a second concurrent Undo is a
+         *     404) and put back if the write fails. An unknown, expired, consumed or foreign id is the same 404.
          */
         post: operations["undo_apply_marks_api_culling_undo_apply_marks_post"];
         delete?: never;
@@ -6014,7 +6018,7 @@ export interface components {
             };
             /**
              * Review Snapshot
-             * @description The calling tab's `ui_get_context` `review`; read by auto_cull when it is given neither list.
+             * @description The calling tab's `ui_get_context` `review`; read on every auto_cull call: its keep/remove marks only when auto_cull is given neither list, its `applied` record always.
              */
             review_snapshot?: {
                 [key: string]: unknown;

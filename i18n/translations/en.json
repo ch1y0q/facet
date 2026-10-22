@@ -1091,6 +1091,7 @@
         "applied_menu": "Applied: {count} group",
         "applied_menu_plural": "Applied: {count} groups",
         "applied_menu_entry": "{label} · {filename}",
+        "applied_menu_entry_titled": "{title} · {label} · {filename}",
         "applied_marks_only": "Marks on the list",
         "apply_failed": "Couldn't apply your marks — nothing was changed",
         "apply_marks_only_hint": "This list has no groups: your marks are applied as one unit and no ranker pairs are recorded",

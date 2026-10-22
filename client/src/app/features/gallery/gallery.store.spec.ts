@@ -1543,11 +1543,49 @@ describe('GalleryStore', () => {
     describe('applyPlan', () => {
       it('splits each group into keep / reject / un-reject from the effective marks, never rejecting a keep-whole kind', () => {
         expect(unitOf(1)).toEqual({ group: 1, kind: 'burst', ungrouped: false, keep: ['/p1.jpg'], reject: ['/p2.jpg', '/p3.jpg'], unreject: [] });
-        // bracket: the Remove-marked frame travels as a Keep, the cull keeps the set whole
-        expect(unitOf(2)).toEqual({ group: 2, kind: 'bracket', ungrouped: false, keep: ['/p4.jpg', '/p5.jpg'], reject: [], unreject: [] });
+        // bracket: the Remove-marked frame travels as a Remove, the server keeps the set whole
+        expect(unitOf(2)).toEqual({ group: 2, kind: 'bracket', ungrouped: false, keep: ['/p4.jpg'], reject: ['/p5.jpg'], unreject: [] });
         // a Keep-marked photo that is rejected is un-rejected
         expect(unitOf(3)).toEqual({ group: 3, kind: 'similar', ungrouped: false, keep: ['/p6.jpg'], reject: ['/p7.jpg'], unreject: ['/p6.jpg'] });
         expect(store.applyPlan().counts).toEqual({ groups: 3, reject: 3, unreject: 1 });
+      });
+
+      it('sends a keep-whole unit\'s Remove frames as reject_paths but does not count them as photos to reject', async () => {
+        store.setReviewMark('/p4.jpg', 'remove');
+        expect(unitOf(2).reject).toEqual(['/p4.jpg', '/p5.jpg']);
+        expect(unitOf(2).keep).toEqual([]);
+        expect(store.applyPlan().counts).toEqual({ groups: 3, reject: 3, unreject: 1 });
+        apiPost.mockClear();
+        apiPost.mockImplementation((p: string) => p === applyRoute ? answer([result(0, { whole: ['/p4.jpg', '/p5.jpg'] })]) : of({}));
+        await store.applyGroups([unitOf(2)]);
+        expect(posts(applyRoute)[0][1]).toEqual({
+          groups: [{ kind: 'bracket', ungrouped: false, keep_paths: [], reject_paths: ['/p4.jpg', '/p5.jpg'] }],
+        });
+        expect(store.appliedMarks().get('/p5.jpg')).toEqual({ mark: 'keep', receiptId: 'rcpt-0' });
+        expect(store.appliedGroups().get(2)).toEqual({ receiptId: 'rcpt-0', keptWhole: 2, unavailable: false });
+      });
+
+      it('shows a group applied once its marked photos are, even with an unmarked photo left in it', async () => {
+        const six = ['/q1.jpg', '/q2.jpg', '/q3.jpg'];
+        await store.showPaths(six, { groups: [1, 1, 1], marks: ['keep', 'remove', null as never], kinds: ['burst', 'burst', 'burst'] });
+        apiPost.mockImplementation((p: string) => p === applyRoute ? answer([result(0, { rej: ['/q2.jpg'] })]) : of({}));
+        await store.applyGroups(store.applyPlan().units);
+        expect(store.appliedGroups().get(1)).toMatchObject({ receiptId: 'rcpt-0' });
+      });
+
+      it('counts an applied group by what Apply committed: frames kept whole read keep in the header counts', async () => {
+        apiPost.mockImplementation((p: string) => p === applyRoute ? answer([result(0, { whole: ['/p5.jpg'] })]) : of({}));
+        expect(store.reviewGroupCounts().get(2)).toEqual({ count: 2, keep: 1, remove: 1 });
+        await store.applyGroups([unitOf(2)]);
+        expect(store.reviewGroupCounts().get(2)).toEqual({ count: 2, keep: 2, remove: 0 });
+        expect(store.reviewLegend()).toMatchObject({ keep: 4, remove: 3 });
+      });
+
+      it('labels an applied receipt with the first photo of its group, not its first keep', async () => {
+        await store.showPaths(['/q1.jpg', '/q2.jpg', '/q3.jpg'], { groups: [1, 1, 1], marks: ['remove', 'keep', 'keep'], kinds: ['burst', 'burst', 'burst'] });
+        apiPost.mockImplementation((p: string) => p === applyRoute ? answer([result(0, { rej: ['/q1.jpg'] })]) : of({}));
+        await store.applyGroups(store.applyPlan().units);
+        expect(store.appliedReceipts().get('rcpt-0')?.firstFilename).toBe('q1.jpg');
       });
 
       it('lets the user mark win over the assistant mark and leaves out unmarked and applied paths', async () => {
@@ -1585,7 +1623,7 @@ describe('GalleryStore', () => {
         expect(posts(applyRoute)[0][1]).toEqual({
           groups: [
             { kind: 'burst', ungrouped: false, keep_paths: ['/p1.jpg'], reject_paths: ['/p2.jpg', '/p3.jpg'] },
-            { kind: 'bracket', ungrouped: false, keep_paths: ['/p4.jpg', '/p5.jpg'], reject_paths: [] },
+            { kind: 'bracket', ungrouped: false, keep_paths: ['/p4.jpg'], reject_paths: ['/p5.jpg'] },
             { kind: 'similar', ungrouped: false, keep_paths: ['/p6.jpg'], reject_paths: ['/p7.jpg'] },
           ],
         });
@@ -1773,7 +1811,19 @@ describe('GalleryStore', () => {
       it('says how many photos it left alone when the server skipped some', async () => {
         apiPost.mockImplementation((p: string) => p === undoRoute ? undoAnswer({ skipped: 2 }) : of({}));
         await store.undoApplied('rcpt-0');
+        expect(snackOpen).toHaveBeenCalledWith('gallery.pinned.review.undo_skipped_plural', '', expect.anything());
+      });
+
+      it('uses the singular wording when exactly one photo was left alone', async () => {
+        apiPost.mockImplementation((p: string) => p === undoRoute ? undoAnswer({ skipped: 1 }) : of({}));
+        await store.undoApplied('rcpt-0');
         expect(snackOpen).toHaveBeenCalledWith('gallery.pinned.review.undo_skipped', '', expect.anything());
+      });
+
+      it('uses the plural wording for three', async () => {
+        apiPost.mockImplementation((p: string) => p === undoRoute ? undoAnswer({ skipped: 3 }) : of({}));
+        await store.undoApplied('rcpt-0');
+        expect(snackOpen).toHaveBeenCalledWith('gallery.pinned.review.undo_skipped_plural', '', expect.anything());
       });
 
       it('marks the receipt unavailable on a 404, keeps the group locked and never retries', async () => {
