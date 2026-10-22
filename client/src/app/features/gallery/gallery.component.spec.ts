@@ -30,6 +30,7 @@ import { gridColumnCount } from './gallery-rows.util';
 import { UndoService } from '../../core/services/undo.service';
 import { SequenceKind } from '../../core/services/sequence-override.service';
 import { HeaderSlotService } from '../../core/services/header-slot.service';
+import { PageHelpService } from '../../core/services/page-help.service';
 
 describe('GalleryComponent', () => {
   let component: GalleryComponent;
@@ -3632,6 +3633,25 @@ describe('GalleryComponent', () => {
         const sidebar = fixture.debugElement.query(By.directive(GalleryFilterSidebarComponent));
         await expectParkHides(tooltipsOf(sidebar)[0]);
       });
+    });
+
+    it('hands the page help back while a photo is open, and takes it again only on its own return', () => {
+      const help = TestBed.inject(PageHelpService);
+      expect(help.descriptionKey()).toBe(I18N.gallery.help);
+      openPhoto(0);
+      expect(help.descriptionKey()).toBeNull();
+      outletMock.attachEvents.next({});
+      expect(help.descriptionKey()).toBeNull();
+      outletMock.attachEvents.next(gallery);
+      expect(help.descriptionKey()).toBe(I18N.gallery.help);
+    });
+
+    it('drops a hover tooltip photo left behind while parked', () => {
+      const state = gallery as unknown as { tooltipPhoto: WritableSignal<unknown> };
+      openPhoto(0);
+      state.tooltipPhoto.set(photos[1]);
+      outletMock.attachEvents.next(gallery);
+      expect(state.tooltipPhoto()).toBeNull();
     });
 
     it('ignores Ctrl+A while parked, so the photo page cannot select the hidden grid', () => {
