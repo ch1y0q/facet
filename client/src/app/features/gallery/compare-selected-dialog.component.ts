@@ -8,6 +8,12 @@ import { ThumbnailUrlPipe, ImageUrlPipe, STORED_THUMBNAIL_EDGE, RENDERED_THUMBNA
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { SyncedZoomComponent, ZoomState, FIT_ZOOM, MAX_COMPARE_PANES } from './synced-zoom.component';
 
+// Module-level consts, not direct class-field initializers: Vite's test transform
+// snapshots an imported binding used as a field initializer before a
+// lazily-initialised shared chunk sets it.
+const STORED_EDGE = STORED_THUMBNAIL_EDGE;
+const RENDERED_EDGE = RENDERED_THUMBNAIL_EDGE;
+
 export interface CompareSelectedData {
   photos: Photo[];
 }
@@ -81,8 +87,8 @@ export class CompareSelectedDialogComponent {
   private readonly dialogRef = inject(MatDialogRef<CompareSelectedDialogComponent>);
   private readonly data = inject<CompareSelectedData>(MAT_DIALOG_DATA);
 
-  protected readonly storedEdge = STORED_THUMBNAIL_EDGE;
-  protected readonly renderedEdge = RENDERED_THUMBNAIL_EDGE;
+  protected readonly storedEdge = STORED_EDGE;
+  protected readonly renderedEdge = RENDERED_EDGE;
 
   /** Pan/zoom shared by every pane, so a gesture on one moves them all in lockstep. */
   protected readonly zoom = signal<ZoomState>({ ...FIT_ZOOM });

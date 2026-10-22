@@ -162,7 +162,10 @@ const SORT_VALUES = ['easiest', 'redundant', 'best', 'recent', 'needs_comparison
  *  shows the stored 640 px thumbnail first and swaps to this once it has
  *  loaded; peaking measures a PEAKING_FIT_EDGE downscale of the same render. */
 const DARKROOM_THUMB_SIZE = RENDERED_THUMBNAIL_EDGE;
-/** Stored thumbnail edge: the grid cards' image and the darkroom's placeholder. */
+/** Stored thumbnail edge: the grid cards' image and the darkroom's placeholder.
+ *  Read through a module-level const, not straight into a class field: Vite's test
+ *  transform snapshots an imported binding used as a field initializer before a
+ *  lazily-initialised shared chunk sets it. */
 const STORED_EDGE = STORED_THUMBNAIL_EDGE;
 
 /** Stable empty overlay map, so clearing an already-empty one is a no-op
@@ -1705,8 +1708,8 @@ export class BurstCullingComponent implements OnDestroy {
   private readonly sharpPath = signal<string | null>(null);
   /** Neighbour preloaders in flight, kept so they are not collected mid-fetch
    *  and can be aborted when the frame changes. */
-  private neighbourThumbs = new Set<HTMLImageElement>();
-  private neighbourRenders = new Set<HTMLImageElement>();
+  private neighbourThumbs = new Map<string, HTMLImageElement>();
+  private neighbourRenders = new Map<string, HTMLImageElement>();
 
   /** The single pane reports the render it swapped to; map it back to a path. */
   protected onSharpLoaded(src: string): void {
@@ -1724,30 +1727,49 @@ export class BurstCullingComponent implements OnDestroy {
     if (connection?.saveData) return [];
     const idx = this.lightboxIndex();
     return [group.photos[idx - 1]?.path, group.photos[idx + 1]?.path].filter((p): p is string => !!p);
-  });
+  }, { equal: (a, b) => a.length === b.length && a.every((p, i) => p === b[i]) });
 
-  /** Fetch `urls` into the browser cache; the previous batch in `sink` is
-   *  aborted first (handlers cleared before `src`, so a late load is inert). */
-  private prefetch(urls: string[], sink: Set<HTMLImageElement>, onLoaded?: (url: string) => void): Set<HTMLImageElement> {
-    this.abortPrefetch(sink);
-    const next = new Set<HTMLImageElement>();
+  /** Path of the frame the single pane shows. A string, so a new group object
+   *  holding the same frame does not notify the prefetch effects. */
+  private readonly currentPath = computed(() => this.lightboxGroup()?.photos[this.lightboxIndex()]?.path);
+
+  /** Fetch `urls` into the browser cache, diffing the previous batch in `sink`
+   *  by URL: a fetch still wanted, or listed in `keep` (the frame being stepped
+   *  onto, whose own pane is about to ask for the same URL), carries on
+   *  untouched, so the browser never cancels and restarts it. The rest is
+   *  aborted (handlers cleared before `src`, so a late load is inert). */
+  private prefetch(
+    urls: string[],
+    sink: Map<string, HTMLImageElement>,
+    onLoaded?: (url: string) => void,
+    keep: readonly string[] = [],
+  ): Map<string, HTMLImageElement> {
+    const retained = new Set<string>([...urls, ...keep]);
+    const next = new Map<string, HTMLImageElement>();
+    for (const [url, img] of sink) {
+      if (retained.has(url)) next.set(url, img);
+      else this.abortImage(img);
+    }
     for (const url of urls) {
+      if (next.has(url)) continue;
       const img = new Image();
       img.onload = () => onLoaded?.(url);
       img.onerror = () => {};
       img.src = url;
-      next.add(img);
+      next.set(url, img);
     }
     return next;
   }
 
-  private abortPrefetch(sink: Set<HTMLImageElement>): void {
-    for (const img of sink) {
-      img.onload = null;
-      img.onerror = null;
-      img.src = '';
-    }
+  private abortPrefetch(sink: Map<string, HTMLImageElement>): void {
+    for (const img of sink.values()) this.abortImage(img);
     sink.clear();
+  }
+
+  private abortImage(img: HTMLImageElement): void {
+    img.onload = null;
+    img.onerror = null;
+    img.src = '';
   }
 
   /** The image transform of every pane, shared with the peaking overlay so the
@@ -2222,17 +2244,20 @@ export class BurstCullingComponent implements OnDestroy {
     // renders only after the current frame's own render has loaded.
     effect(() => {
       const paths = this.neighbourPaths();
+      const current = this.currentPath();
       untracked(() => {
-        this.neighbourThumbs = this.prefetch(paths.map(p => this.thumbnailUrl.transform(p, STORED_EDGE)), this.neighbourThumbs);
+        const keep = current ? [this.thumbnailUrl.transform(current, STORED_EDGE)] : [];
+        this.neighbourThumbs = this.prefetch(paths.map(p => this.thumbnailUrl.transform(p, STORED_EDGE)), this.neighbourThumbs, undefined, keep);
       });
     });
     effect(() => {
       const paths = this.neighbourPaths();
-      const current = this.lightboxGroup()?.photos[this.lightboxIndex()]?.path;
+      const current = this.currentPath();
       const sharp = this.sharpPath() === current;
       untracked(() => {
         const urls = sharp ? paths.map(p => this.thumbnailUrl.transform(p, DARKROOM_THUMB_SIZE)) : [];
-        this.neighbourRenders = this.prefetch(urls, this.neighbourRenders, url => this.loadedRenders.add(url));
+        const keep = current ? [this.thumbnailUrl.transform(current, DARKROOM_THUMB_SIZE)] : [];
+        this.neighbourRenders = this.prefetch(urls, this.neighbourRenders, url => this.loadedRenders.add(url), keep);
       });
     });
     // Rebuild the peaking edge map when the toggle, the displayed frames or the
@@ -2248,7 +2273,14 @@ export class BurstCullingComponent implements OnDestroy {
       // a darktable style keep their own timing.
       const awaitingSharp = this.compareMode() === 'single' && !this.activeStyle() && this.sharpPath() !== paths[0];
       untracked(() => {
-        if (!active || paths.length === 0 || awaitingSharp) {
+        if (active && paths.length > 0 && awaitingSharp) {
+          // Hide, but keep the edge maps of frames already seen: stepping back to
+          // one is then served from the cache instead of re-convolved.
+          this.peakingRun.cancel();
+          if (this.peakingOverlays().size > 0) this.peakingOverlays.set(NO_PEAKING_OVERLAYS);
+          return;
+        }
+        if (!active || paths.length === 0) {
           this.clearPeaking();
           return;
         }

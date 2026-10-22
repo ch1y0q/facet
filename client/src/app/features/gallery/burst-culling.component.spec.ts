@@ -2527,6 +2527,31 @@ describe('BurstCullingComponent', () => {
       expect(renderPooledPeaking.mock.calls.at(-1)?.[1]).toBe(640);
     });
 
+    it('keeps the edge maps of frames already seen while a step waits for the sharp render', async () => {
+      openDarkroom(0);
+      component['peakingActive'].set(true);
+      await settle();
+      expect(renderPeaking).toHaveBeenCalledTimes(1);
+
+      // Step on, passing through the awaiting-sharp state (no markSharp yet).
+      component['lightboxIndex'].set(1);
+      TestBed.tick();
+      await flush();
+      expect(component['peakingOverlays']().size).toBe(0);
+      await settle();
+      expect(renderPeaking).toHaveBeenCalledTimes(2);
+
+      // Step back: awaiting again, then sharp. The first frame is not re-convolved.
+      component['lightboxIndex'].set(0);
+      TestBed.tick();
+      await flush();
+      expect(component['peakingOverlays']().size).toBe(0);
+      await settle();
+
+      expect(renderPeaking).toHaveBeenCalledTimes(2);
+      expect(component['peakingOverlays']().get('/f1.jpg')).toBeDefined();
+    });
+
     it('builds nothing while peaking is off', async () => {
       openDarkroom();
 
@@ -3558,6 +3583,16 @@ describe('BurstCullingComponent progressive darkroom frames (rendered)', () => {
       expect(component['lightboxGroup']().photos[component['lightboxIndex']()].path).toBe(path);
       expect(shown()).toContain(encodeURIComponent(path));
       expect(shown()).toBe(thumb(path));
+      // The decision target, through the real keyboard path: reject, then keep,
+      // must land on the frame on screen and on no other.
+      const kept = () => [...(component['selectionsMap']().get(group.group_id) ?? [])];
+      component['onArrowDown'](new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+      expect(kept()).not.toContain(path);
+      component['onArrowUp'](new KeyboardEvent('keydown', { key: 'ArrowUp' }));
+      expect(kept()).toContain(path);
+      for (const other of ['/p0.jpg', '/p1.jpg', '/p2.jpg'].filter(p => p !== path && p > path)) {
+        expect(kept()).not.toContain(other);
+      }
     }
     FakeImage.instances = [];
     // The render of frame 1 reports in after the user is already on frame 2.
@@ -3580,16 +3615,54 @@ describe('BurstCullingComponent progressive darkroom frames (rendered)', () => {
     expect(srcs().filter(u => u.includes('size=1920'))).toEqual([render('/p1.jpg')]);
   });
 
-  it('aborts the neighbour preloaders of the frame it leaves', () => {
+  it('keeps the in-flight render of the frame stepped onto and aborts the one left behind', () => {
     open(1);
-    const first = [...FakeImage.instances];
+    component['onSharpLoaded'](render('/p1.jpg'));
+    fixture.detectChanges();
+    const farSide = FakeImage.instances.find(i => i.src === render('/p0.jpg'))!;
+    const stepTarget = FakeImage.instances.find(i => i.src === render('/p2.jpg'))!;
+    const created = FakeImage.instances.length;
+
     component['lightboxIndex'].set(2);
     fixture.detectChanges();
-    for (const img of first) {
-      expect(img.onload).toBeNull();
-      expect(img.onerror).toBeNull();
-      expect(img.src).toBe('');
-    }
+
+    // The render being fetched for the frame stepped onto carries on, with its handler.
+    expect(stepTarget.src).toBe(render('/p2.jpg'));
+    expect(stepTarget.onload).not.toBeNull();
+    expect(FakeImage.instances.filter(i => i.src === render('/p2.jpg'))).toHaveLength(1);
+    // The far side is not wanted any more.
+    expect(farSide.src).toBe('');
+    expect(farSide.onload).toBeNull();
+    expect(farSide.onerror).toBeNull();
+    // Nothing new was requested for the frame stepped onto.
+    expect(FakeImage.instances.slice(created).map(i => i.src)).not.toContain(render('/p2.jpg'));
+  });
+
+  it('keeps the stored thumbnail in flight for the frame stepped onto', () => {
+    open(1);
+    const stepTarget = FakeImage.instances.find(i => i.src === thumb('/p2.jpg'))!;
+
+    component['lightboxIndex'].set(2);
+    fixture.detectChanges();
+
+    expect(stepTarget.src).toBe(thumb('/p2.jpg'));
+    expect(FakeImage.instances.filter(i => i.src === thumb('/p2.jpg'))).toHaveLength(1);
+  });
+
+  it('does not restart the neighbour fetches when a new group object has the same neighbours', () => {
+    open(1);
+    component['onSharpLoaded'](render('/p1.jpg'));
+    fixture.detectChanges();
+    const before = [...FakeImage.instances];
+    // A re-run of either prefetch effect goes through prefetch().
+    const prefetch = vi.spyOn(component as any, 'prefetch');
+
+    component['groups'].set([{ ...group, photos: [...group.photos] }]);
+    fixture.detectChanges();
+
+    expect(prefetch).not.toHaveBeenCalled();
+    expect(FakeImage.instances).toEqual(before);
+    expect(before.every(i => i.src !== '')).toBe(true);
   });
 
   it('records a neighbour render it has fetched so the pane can skip its debounce', () => {

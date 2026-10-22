@@ -908,8 +908,9 @@ builds only): it can be installed to the home screen, the app shell loads
 offline, and up to 1000 thumbnails are LRU-cached for 7 days (sizes above 640 px,
 the darkroom's renders of up to 1920 px, skip it and rely on the browser cache). API responses
 are never cached (except i18n bundles with a freshness strategy), and logout
-clears the thumbnail cache so multi-user setups sharing a browser can't leak
-previews across accounts. A snackbar offers a reload when a new version has
+clears the service worker's thumbnail cache so multi-user setups sharing a browser
+can't leak stored thumbnails across accounts (the darkroom's full-size renders
+stay in the browser's HTTP cache, which logout does not clear). A snackbar offers a reload when a new version has
 been deployed.
 
 ## Mobile

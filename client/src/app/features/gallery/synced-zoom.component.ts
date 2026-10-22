@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, afterRenderEffect, DestroyRef, ElementRef, computed, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
 import { LoupeDirective } from '../../shared/directives/loupe.directive';
 
 export interface ZoomState {
@@ -184,6 +184,24 @@ export class SyncedZoomComponent {
             img.src = '';
           }
         });
+      });
+    });
+    // A step onto an image the browser already holds (memory cache) has it
+    // complete as soon as the new `src` is applied, but its `load` event only
+    // fires later, which would keep the pane `opacity-0` for a frame or two.
+    // After the render that applied `src`, read the element: when it is
+    // complete, decoded and resolved to the CURRENT effective URL, those pixels
+    // are the new frame's, so mark it painted now. The URL match is what keeps
+    // the previous frame's pixels from ever showing under the new key.
+    afterRenderEffect(() => {
+      const key = this.frameKey();
+      const src = this.effectiveSrc();
+      const img = this.frame()?.nativeElement;
+      if (key === null || !img) return;
+      untracked(() => {
+        if (img.complete && img.naturalWidth > 0 && img.currentSrc === new URL(src, document.baseURI).href) {
+          this.paintedKey.set(key);
+        }
       });
     });
     // No ResizeObserver in a browser-less test env; the zero fallback below is

@@ -125,6 +125,11 @@ export class DistortionLabelPipe implements PipeTransform {
   }
 }
 
+// Module-level consts, not direct class-field initializers: Vite's test transform
+// snapshots an imported binding used as a field initializer before a
+// lazily-initialised shared chunk sets it.
+const STORED_EDGE = STORED_THUMBNAIL_EDGE;
+
 @Component({
   selector: 'app-photo-critique-dialog',
   standalone: true,
@@ -347,7 +352,7 @@ export class DistortionLabelPipe implements PipeTransform {
 })
 export class PhotoCritiqueDialogComponent implements OnInit {
   protected readonly I18N = i18nKeys();
-  protected readonly storedEdge = STORED_THUMBNAIL_EDGE;
+  protected readonly storedEdge = STORED_EDGE;
   private readonly api = inject(ApiService);
   private readonly auth = inject(AuthService);
   private readonly i18n = inject(I18nService);
