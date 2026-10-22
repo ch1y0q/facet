@@ -1,11 +1,13 @@
 import {
   Component,
+  ChangeDetectorRef,
   inject,
   computed,
   signal,
   OnInit,
   OnDestroy,
   viewChild,
+  viewChildren,
   afterNextRender,
   effect,
   untracked,
@@ -17,7 +19,7 @@ import {
 import { DOCUMENT } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
-import { MatSidenav, MatSidenavModule, MatSidenavContent } from '@angular/material/sidenav';
+import { MatSidenav, MatSidenavContainer, MatSidenavModule, MatSidenavContent } from '@angular/material/sidenav';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -29,9 +31,9 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatBottomSheet, MatBottomSheetModule } from '@angular/material/bottom-sheet';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatMenuModule } from '@angular/material/menu';
-import { MatTooltipModule } from '@angular/material/tooltip';
-import { ActivatedRoute, Router } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
+import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
+import { ActivatedRoute, NavigationStart, Router, RouterOutlet } from '@angular/router';
+import { filter, firstValueFrom } from 'rxjs';
 import { GalleryStore, BatchResult } from './gallery.store';
 import { Photo } from '../../shared/models/photo.model';
 import { isTypingContext } from '../../shared/utils/keyboard';
@@ -230,7 +232,10 @@ const APPLY_ALL_SELECTOR = '[data-testid="apply-my-marks"]:not(:disabled)';
             }
           </div>
         } @else {
-          <app-gallery-filter-sidebar />
+          <!-- Usually closed, and heavy enough that building it eagerly holds up the grid's first paint. -->
+          @defer (on idle; when store.filterDrawerOpen()) {
+            <app-gallery-filter-sidebar />
+          }
         }
       </mat-sidenav>
 
@@ -904,6 +909,11 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly sequenceOverrides = inject(SequenceOverrideService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly outlet = inject(RouterOutlet, { optional: true });
+  private readonly changeDetector = inject(ChangeDetectorRef);
+  private parked = false;
+  // Detaching loses the DOM scroll position and focus.
+  private returnTo: { scroll: number; focus: Element | null; path: string | null } | null = null;
   private readonly api = inject(ApiService);
   private readonly pageHelp = inject(PageHelpService);
   private readonly headerSlot = inject(HeaderSlotService);
@@ -922,11 +932,15 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   private resizeObserver: ResizeObserver | null = null;
   private readonly scrollDirective = viewChild(InfiniteScrollDirective);
+  private readonly filterSidebar = viewChild(GalleryFilterSidebarComponent);
   private readonly filterDrawer = viewChild<MatSidenav>('filterDrawer');
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
   private readonly document = inject(DOCUMENT);
   private readonly scrollContent = viewChild(MatSidenavContent);
+  private readonly sidenavContainer = viewChild(MatSidenavContainer);
+  private readonly ownTooltips = viewChildren(MatTooltip);
+  private readonly cards = viewChildren(PhotoCardComponent);
 
   /** True once the gallery content is scrolled far enough to show the scroll-to-top button. */
   protected readonly showScrollTop = signal(false);
@@ -1293,6 +1307,60 @@ export class GalleryComponent implements OnInit, OnDestroy {
       if (t) this.headerSlot.set(t);
     });
 
+    // Capture before the outlet detaches the DOM and loses scroll and focus.
+    this.router.events.pipe(filter(e => e instanceof NavigationStart), takeUntilDestroyed()).subscribe(() => {
+      if (this.parked) return;
+      const focus = document.activeElement;
+      const index = Number((focus?.closest('[data-pidx]') as HTMLElement | null)?.dataset['pidx']);
+      // The photo the focused card belongs to, or the cursor's when focus is elsewhere.
+      const path = Number.isInteger(index) ? this.store.photos()[index]?.path ?? null : this.activePath();
+      this.returnTo = { scroll: this.scrollContent()?.measureScrollOffset('top') ?? 0, focus, path };
+    });
+    this.outlet?.detachEvents.pipe(takeUntilDestroyed()).subscribe(component => {
+      if (component !== this) return;
+      this.parked = true;
+      // Pending filter edits would otherwise replace the photo URL.
+      this.filterSidebar()?.cancelPendingSearch();
+      if (this.store.slideshowActive()) {
+        this.store.slideshowActive.set(false);
+        // Detached views need an explicit render to release slideshow timers and listeners.
+        this.changeDetector.detectChanges();
+      }
+      // A tooltip left showing would sit over the photo page and swallow its first Escape.
+      for (const tooltip of this.ownTooltips()) tooltip.hide(0);
+      for (const card of this.cards()) card.hideTooltips();
+      this.filterSidebar()?.hideTooltips();
+      this.pageHelp.setDescription(null);
+      const t = this.galleryToolbar();
+      if (t) this.headerSlot.clear(t);
+    });
+    this.outlet?.attachEvents.pipe(takeUntilDestroyed()).subscribe(component => {
+      if (component !== this) return;
+      this.parked = false;
+      this.pageHelp.setDescription(I18N.gallery.help);
+      const t = this.galleryToolbar();
+      if (t) this.headerSlot.set(t);
+      this.tooltipPhoto.set(null);
+      // A resize while parked measured the detached drawer as 0 and zeroed the content margin.
+      this.sidenavContainer()?.updateContentMargins();
+      const back = this.returnTo;
+      this.returnTo = null;
+      if (back) {
+        this.scrollContent()?.scrollTo({ top: back.scroll });
+        // The detach blurred the focused card and `onGridFocusOut` cleared the cursor, so put it back first.
+        const at = back.path === null ? -1 : this.store.photos().findIndex(p => p.path === back.path);
+        this.setCursor(at);
+        const onCard = !!back.focus?.closest('[data-pidx]');
+        // A card whose photo is gone is about to be destroyed: do not focus it.
+        if (back.focus instanceof HTMLElement && back.focus.isConnected && (!onCard || at >= 0)) {
+          back.focus.focus({ preventScroll: true });
+        }
+        if (at >= 0 && !onCard) this.restoreCursorFocus();
+      }
+      void this.store.loadTypeCounts();
+      void this.store.loadFilterOptions();
+    });
+
     // Sync store.filterDrawerOpen signal → mat-sidenav. The details rail shares
     // this drawer, so it keeps the strip open on its own once the filters close.
     effect(() => {
@@ -1393,7 +1461,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private saveViewSnapshot(): void {
     if (!this.store.photos().length) return;
     this.store.viewSnapshot.set({
-      scrollTop: this.scrollContent()?.measureScrollOffset('top') ?? 0,
+      scrollTop: this.parked ? this.returnTo?.scroll ?? 0 : this.scrollContent()?.measureScrollOffset('top') ?? 0,
       albumId: this.route.snapshot.paramMap.get('albumId'),
       filterKey: this.store.filterKey(),
     });
@@ -1670,6 +1738,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   /** Ctrl+A selects all loaded photos unless focus is in an input or a dialog is open. */
   protected onSelectAllShortcut(event: Event): void {
+    if (this.parked) return;
     const target = event.target as HTMLElement | null;
     if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
     if (target?.isContentEditable) return;
@@ -2391,6 +2460,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   private setupResizeObserver(): void {
     this.resizeObserver = new ResizeObserver(entries => {
+      // A parked gallery measures 0; keep its layout for the return.
+      if (this.parked) return;
       for (const entry of entries) {
         this.containerWidth.set(Math.floor(entry.contentRect.width));
       }

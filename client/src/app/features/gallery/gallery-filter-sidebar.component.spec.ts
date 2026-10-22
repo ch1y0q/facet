@@ -2,7 +2,10 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { of } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
-import { provideNativeDateAdapter } from '@angular/material/core';
+import { MATERIAL_ANIMATIONS, provideNativeDateAdapter } from '@angular/material/core';
+import { MatTooltip } from '@angular/material/tooltip';
+import { By } from '@angular/platform-browser';
+import { OverlayContainer } from '@angular/cdk/overlay';
 import { GalleryStore } from './gallery.store';
 import { GalleryFilterSidebarComponent } from './gallery-filter-sidebar.component';
 import { I18nService } from '../../core/services/i18n.service';
@@ -391,6 +394,8 @@ describe('GalleryFilterSidebarComponent', () => {
       TestBed.configureTestingModule({
         providers: [
           provideNativeDateAdapter(),
+          // Tooltip hides wait for an animationend jsdom never fires unless animations are off.
+          { provide: MATERIAL_ANIMATIONS, useValue: { animationsDisabled: true } },
           { provide: GalleryStore, useValue: renderedStore },
           { provide: I18nService, useValue: { t: vi.fn((k: string) => k), currentLang: vi.fn(() => 'en'), translations: vi.fn(() => ({})) } },
           { provide: AuthService, useValue: { isEdition: vi.fn(() => false) } },
@@ -410,6 +415,18 @@ describe('GalleryFilterSidebarComponent', () => {
       expect(thumb.getAttribute('aria-valuetext')).toBe('5%');
       expect(thumb.getAttribute('aria-describedby')).toBe('semantic-search-threshold-hint');
       expect(fixture.nativeElement.querySelector('#semantic-search-threshold-hint')).toBeTruthy();
+    });
+
+    it('hideTooltips takes a showing tooltip off the page', async () => {
+      const tooltip = fixture.debugElement.queryAll(By.directive(MatTooltip))[0].injector.get(MatTooltip);
+      tooltip.show(0);
+      await new Promise(resolve => setTimeout(resolve, 30));
+      const container = TestBed.inject(OverlayContainer).getContainerElement();
+      expect(container.querySelector('.mat-mdc-tooltip')).not.toBeNull();
+      fixture.componentInstance.hideTooltips();
+      await new Promise(resolve => setTimeout(resolve, 30));
+      expect(container.querySelector('.mat-mdc-tooltip')).toBeNull();
+      expect(tooltip._isTooltipVisible()).toBe(false);
     });
 
     it('wires the thumb back to the component, readout and valuetext following the drag', () => {

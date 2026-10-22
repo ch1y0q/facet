@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { SyncedZoomComponent, ZoomState, FIT_ZOOM } from './synced-zoom.component';
+import { SyncedZoomComponent, ZoomState, FIT_ZOOM, LoadedSources, SHARP_PRELOAD_DEBOUNCE_MS } from './synced-zoom.component';
 
 describe('SyncedZoomComponent', () => {
   function make(zoom: ZoomState = FIT_ZOOM): ComponentFixture<SyncedZoomComponent> {
@@ -254,6 +254,219 @@ describe('SyncedZoomComponent', () => {
       const host: HTMLElement = loaded(FIT_ZOOM, { width: 4000, height: 1000 }).nativeElement;
       expect(host.style.getPropertyValue('--fit-inset-y')).toBe('200px');
       expect(host.style.getPropertyValue('--fit-inset-x')).toBe('0px');
+    });
+  });
+  describe('progressive load', () => {
+    class FakeImage {
+      static instances: FakeImage[] = [];
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      src = '';
+      constructor() { FakeImage.instances.push(this); }
+    }
+
+    beforeEach(() => {
+      FakeImage.instances = [];
+      vi.useFakeTimers();
+      vi.stubGlobal('Image', FakeImage);
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    });
+
+    function makeProgressive(inputs: Record<string, unknown> = {}): ComponentFixture<SyncedZoomComponent> {
+      const fixture = TestBed.createComponent(SyncedZoomComponent);
+      const all: Record<string, unknown> = {
+        src: '/render-a.jpg', placeholderSrc: '/thumb-a.jpg', frameKey: 'a', zoom: FIT_ZOOM, ...inputs };
+      for (const [k, v] of Object.entries(all)) fixture.componentRef.setInput(k, v);
+      fixture.detectChanges();
+      return fixture;
+    }
+
+    function setInputs(f: ComponentFixture<SyncedZoomComponent>, inputs: Record<string, unknown>): void {
+      for (const [k, v] of Object.entries(inputs)) f.componentRef.setInput(k, v);
+      f.detectChanges();
+    }
+
+    function startPreload(f: ComponentFixture<SyncedZoomComponent>): FakeImage {
+      vi.advanceTimersByTime(SHARP_PRELOAD_DEBOUNCE_MS);
+      f.detectChanges();
+      return FakeImage.instances[FakeImage.instances.length - 1];
+    }
+
+    function imgEl(f: ComponentFixture<SyncedZoomComponent>): HTMLImageElement {
+      return f.nativeElement.querySelector('img');
+    }
+
+    /** Pretend the browser finished loading `url` into the pane's <img>. */
+    function browserLoaded(f: ComponentFixture<SyncedZoomComponent>, url: string): void {
+      const img = imgEl(f);
+      Object.defineProperty(img, 'complete', { value: true, configurable: true });
+      Object.defineProperty(img, 'currentSrc', { value: new URL(url, document.baseURI).href, configurable: true });
+      img.dispatchEvent(new Event('load'));
+      f.detectChanges();
+    }
+
+    it('shows the placeholder first, then the render once the preloader has loaded it', () => {
+      const f = makeProgressive();
+      expect(imgEl(f).getAttribute('src')).toBe('/thumb-a.jpg');
+      const emitted: string[] = [];
+      f.componentInstance.sharpLoaded.subscribe(s => emitted.push(s));
+      const pre = startPreload(f);
+      expect(pre.src).toBe('/render-a.jpg');
+      expect(imgEl(f).getAttribute('src')).toBe('/thumb-a.jpg');
+      pre.onload!();
+      f.detectChanges();
+      expect(imgEl(f).getAttribute('src')).toBe('/render-a.jpg');
+      expect(emitted).toEqual(['/render-a.jpg']);
+    });
+
+    it('does not request the render before the debounce has elapsed', () => {
+      makeProgressive();
+      vi.advanceTimersByTime(SHARP_PRELOAD_DEBOUNCE_MS - 1);
+      expect(FakeImage.instances).toHaveLength(0);
+    });
+
+    it('never shows the previous frame render for the next frame, and a late onload promotes nothing', () => {
+      const f = makeProgressive();
+      const pre = startPreload(f);
+      const lateOnload = pre.onload!;
+      const emitted: string[] = [];
+      f.componentInstance.sharpLoaded.subscribe(s => emitted.push(s));
+      setInputs(f, { src: '/render-b.jpg', placeholderSrc: '/thumb-b.jpg', frameKey: 'b' });
+      expect(imgEl(f).getAttribute('src')).toBe('/thumb-b.jpg');
+      // The superseded preloader is aborted, then its handler fires anyway.
+      expect(pre.onload).toBeNull();
+      expect(pre.onerror).toBeNull();
+      expect(pre.src).toBe('');
+      lateOnload();
+      f.detectChanges();
+      expect(imgEl(f).getAttribute('src')).toBe('/thumb-b.jpg');
+      expect(emitted).toEqual([]);
+    });
+
+    it('skips the debounce for a render already known to be loaded', () => {
+      const loaded = new LoadedSources();
+      loaded.add('/render-a.jpg');
+      // The effect runs on the first change detection, so subscribe before it.
+      const f = TestBed.createComponent(SyncedZoomComponent);
+      const inputs: Record<string, unknown> = {
+        src: '/render-a.jpg', placeholderSrc: '/thumb-a.jpg', frameKey: 'a', zoom: FIT_ZOOM, loadedSources: loaded };
+      for (const [k, v] of Object.entries(inputs)) f.componentRef.setInput(k, v);
+      const emitted: string[] = [];
+      f.componentInstance.sharpLoaded.subscribe(s => emitted.push(s));
+      f.detectChanges();
+      expect(FakeImage.instances).toHaveLength(0);
+      expect(imgEl(f).getAttribute('src')).toBe('/render-a.jpg');
+      expect(emitted).toEqual(['/render-a.jpg']);
+    });
+
+    it('records a fetched render so a later pane can skip the debounce', () => {
+      const loaded = new LoadedSources();
+      const f = makeProgressive({ loadedSources: loaded });
+      startPreload(f).onload!();
+      expect(loaded.has('/render-a.jpg')).toBe(true);
+    });
+
+    it('past the fit scale still uses the full-resolution source', () => {
+      const f = makeProgressive({ fullResSrc: '/full-a.jpg', zoom: { scale: 2, tx: 0, ty: 0 } });
+      expect(imgEl(f).getAttribute('src')).toBe('/full-a.jpg');
+    });
+
+    it('builds no preloader and behaves as before without a placeholder', () => {
+      const f = makeProgressive({ placeholderSrc: null, frameKey: null });
+      vi.advanceTimersByTime(SHARP_PRELOAD_DEBOUNCE_MS * 2);
+      expect(FakeImage.instances).toHaveLength(0);
+      expect(imgEl(f).getAttribute('src')).toBe('/render-a.jpg');
+      expect(imgEl(f).classList.contains('opacity-0')).toBe(false);
+    });
+
+    it('hides the pane until the image of the current frame has loaded', () => {
+      const f = makeProgressive();
+      expect(imgEl(f).classList.contains('opacity-0')).toBe(true);
+      browserLoaded(f, '/thumb-a.jpg');
+      expect(imgEl(f).classList.contains('opacity-0')).toBe(false);
+      setInputs(f, { src: '/render-b.jpg', placeholderSrc: '/thumb-b.jpg', frameKey: 'b' });
+      expect(imgEl(f).classList.contains('opacity-0')).toBe(true);
+    });
+
+    /** Make the <img> report what the browser would for an image it already holds. */
+    function stubImage(f: ComponentFixture<SyncedZoomComponent>, state: { complete: boolean; naturalWidth: number; currentSrc: string }): void {
+      const img = imgEl(f);
+      Object.defineProperty(img, 'complete', { value: state.complete, configurable: true });
+      Object.defineProperty(img, 'naturalWidth', { value: state.naturalWidth, configurable: true });
+      Object.defineProperty(img, 'currentSrc', {
+        get: () => (state.currentSrc === 'follow-src'
+          ? new URL(img.getAttribute('src')!, document.baseURI).href
+          : new URL(state.currentSrc, document.baseURI).href),
+        configurable: true,
+      });
+    }
+
+    it('does not hide the pane on a step onto an image the browser already holds', () => {
+      const f = makeProgressive();
+      browserLoaded(f, '/thumb-a.jpg');
+      // Cached: complete and decoded; currentSrc tracks the element's own src attribute, so only a
+      // read made after [src] was applied can match the new frame's URL.
+      stubImage(f, { complete: true, naturalWidth: 640, currentSrc: 'follow-src' });
+      setInputs(f, { src: '/render-b.jpg', placeholderSrc: '/thumb-b.jpg', frameKey: 'b' });
+      TestBed.tick();
+      expect(imgEl(f).classList.contains('opacity-0')).toBe(false);
+    });
+
+    it('still hides the pane on a step onto an image that is not loaded yet, until it loads', () => {
+      const f = makeProgressive();
+      browserLoaded(f, '/thumb-a.jpg');
+      // Mid-download: dimensions known, but not complete.
+      stubImage(f, { complete: false, naturalWidth: 640, currentSrc: '/thumb-b.jpg' });
+      setInputs(f, { src: '/render-b.jpg', placeholderSrc: '/thumb-b.jpg', frameKey: 'b' });
+      TestBed.tick();
+      expect(imgEl(f).classList.contains('opacity-0')).toBe(true);
+      browserLoaded(f, '/thumb-b.jpg');
+      expect(imgEl(f).classList.contains('opacity-0')).toBe(false);
+    });
+
+    it('never shows the previous frame pixels under the new key, even when the old image is complete', () => {
+      const f = makeProgressive();
+      browserLoaded(f, '/thumb-a.jpg');
+      // The element still reports frame A as complete and decoded.
+      stubImage(f, { complete: true, naturalWidth: 640, currentSrc: '/thumb-a.jpg' });
+      setInputs(f, { src: '/render-b.jpg', placeholderSrc: '/thumb-b.jpg', frameKey: 'b' });
+      TestBed.tick();
+      expect(imgEl(f).classList.contains('opacity-0')).toBe(true);
+    });
+
+    it('does not hide the pane again for a source change inside one frame', () => {
+      const f = makeProgressive();
+      browserLoaded(f, '/thumb-a.jpg');
+      startPreload(f).onload!();
+      f.detectChanges();
+      expect(imgEl(f).getAttribute('src')).toBe('/render-a.jpg');
+      expect(imgEl(f).classList.contains('opacity-0')).toBe(false);
+    });
+
+    it('ignores a load for a URL the pane has moved on from', () => {
+      const f = makeProgressive();
+      setInputs(f, { src: '/render-b.jpg', placeholderSrc: '/thumb-b.jpg', frameKey: 'b' });
+      browserLoaded(f, '/thumb-a.jpg');
+      expect(imgEl(f).classList.contains('opacity-0')).toBe(true);
+      browserLoaded(f, '/thumb-b.jpg');
+      expect(imgEl(f).classList.contains('opacity-0')).toBe(false);
+    });
+
+    it('shows a broken image of the current frame rather than staying hidden', () => {
+      const f = makeProgressive();
+      imgEl(f).dispatchEvent(new Event('error'));
+      f.detectChanges();
+      expect(imgEl(f).classList.contains('opacity-0')).toBe(false);
+    });
+
+    it('caps the loaded-sources set', () => {
+      const loaded = new LoadedSources();
+      for (let i = 0; i < LoadedSources.MAX + 5; i++) loaded.add(`/r${i}.jpg`);
+      expect(loaded.has('/r0.jpg')).toBe(false);
+      expect(loaded.has(`/r${LoadedSources.MAX + 4}.jpg`)).toBe(true);
     });
   });
 });

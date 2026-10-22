@@ -199,6 +199,20 @@ class TestMultiUserIsolation:
             assert client.get("/face_thumbnail/2").status_code == 404
             assert client.get("/person_thumbnail/2").status_code == 404
 
+    def test_a_rendered_size_never_reads_a_foreign_original(self, db_path):
+        """The visibility clause must refuse the row before any disk read."""
+        alice = CurrentUser(user_id="alice", role="user")
+        dirs = {"alice": ["/photos/alice"], "bob": ["/photos/bob"]}
+        with _env(db_path, alice, multi_user=True, dirs_map=dirs) as client, \
+             mock.patch(f"{_ROUTER}._render_from_original", return_value=None) as render:
+            assert client.get(
+                "/thumbnail", params={"path": BOB_PHOTO, "size": 1920}
+            ).status_code == 404
+            render.assert_not_called()
+            _expect_image(client.get("/thumbnail", params={"path": ALICE_PHOTO, "size": 1920}),
+                          ALICE_THUMB, "/thumbnail alice 1920 fallback")
+            render.assert_called_once_with(ALICE_PHOTO, None)
+
 
 # --- fixture integrity ------------------------------------------------------
 

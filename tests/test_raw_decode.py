@@ -424,8 +424,9 @@ class TestViewerDecodeBudget:
         captured = {}
 
         def fake_load_display_image(path, min_preview_sensor_ratio=0.0, decode_budget='library',
-                                    sequence_kind=None):
+                                    sequence_kind=None, draft_edge=None):
             captured['decode_budget'] = decode_budget
+            captured['draft_edge'] = draft_edge
             return Image.new('RGB', (4, 4))
 
         monkeypatch.setattr(image_loading, 'load_display_image', fake_load_display_image)
@@ -433,6 +434,8 @@ class TestViewerDecodeBudget:
         raw_processing._convert_rawpy(str(tmp_path / "shot.cr3"), 90)
 
         assert captured['decode_budget'] == 'viewer'
+        # /image stays full resolution.
+        assert captured['draft_edge'] is None
 
     def test_facet_style_callers_default_to_the_library_budget(self, monkeypatch, tmp_path):
         _install_stub_rawpy(monkeypatch, RuntimeError("no thumb"))

@@ -1,5 +1,9 @@
 import { Component, signal, ChangeDetectionStrategy } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { OverlayContainer } from '@angular/cdk/overlay';
+import { MATERIAL_ANIMATIONS } from '@angular/material/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { I18nService } from '../../../core/services/i18n.service';
 import { PhotoCardComponent } from './photo-card.component';
 import type { Photo } from '../../models/photo.model';
@@ -70,6 +74,17 @@ describe('PhotoCardComponent', () => {
     expect(card.isEditionMode()).toBe(false);
     expect(card.personFilterId()).toBe('');
     expect(card.config()).toBeNull();
+  });
+
+  it('never asks for a thumbnail above the stored 640 px', () => {
+    const cardFixture = TestBed.createComponent(PhotoCardComponent);
+    cardFixture.componentRef.setInput('photo', makePhoto());
+    cardFixture.componentRef.setInput('thumbSize', 900);
+    cardFixture.detectChanges();
+
+    expect(cardFixture.componentInstance.thumbSize()).toBe(640);
+    const img: HTMLImageElement = cardFixture.nativeElement.querySelector('img[src*="/thumbnail"]');
+    expect(img.getAttribute('src')).toContain('size=640');
   });
 
   it('should reflect updated photo input', () => {
@@ -1047,3 +1062,46 @@ describe('PhotoCardComponent filter links', () => {
   });
 });
 
+describe('PhotoCardComponent hideTooltips', () => {
+  const mockI18n = { t: vi.fn((key: string) => key), currentLang: vi.fn(() => 'en'), locale: vi.fn(() => 'en'), translations: vi.fn(() => ({})) };
+  let fixture: ComponentFixture<TestHostComponent>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [TestHostComponent],
+      providers: [
+        { provide: I18nService, useValue: mockI18n },
+        // Without this the hide waits for an animationend jsdom never fires.
+        { provide: MATERIAL_ANIMATIONS, useValue: { animationsDisabled: true } },
+      ],
+    }).compileComponents();
+    fixture = TestBed.createComponent(TestHostComponent);
+    fixture.detectChanges();
+  });
+
+  afterEach(() => fixture.destroy());
+
+  const settle = () => new Promise(resolve => setTimeout(resolve, 30));
+
+  it('takes a showing tooltip off the page and lets Escape through', async () => {
+    const tooltip = fixture.debugElement.queryAll(By.directive(MatTooltip))[0].injector.get(MatTooltip);
+    tooltip.show(0);
+    await settle();
+    const container = TestBed.inject(OverlayContainer).getContainerElement();
+    expect(tooltip._isTooltipVisible()).toBe(true);
+    expect(container.querySelector('.mat-mdc-tooltip')).not.toBeNull();
+    const card = fixture.debugElement.children[0].componentInstance as PhotoCardComponent;
+    card.hideTooltips();
+    await settle();
+    expect(container.querySelector('.mat-mdc-tooltip')).toBeNull();
+    expect(tooltip._isTooltipVisible()).toBe(false);
+    const seen = vi.fn();
+    document.addEventListener('keydown', seen);
+    try {
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, cancelable: true }));
+    } finally {
+      document.removeEventListener('keydown', seen);
+    }
+    expect(seen).toHaveBeenCalledOnce();
+  });
+});

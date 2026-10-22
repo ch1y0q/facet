@@ -14,7 +14,8 @@ import { CullingStore } from './culling.store';
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { BurstCullingComponent } from './burst-culling.component';
 import { AssistantChangesService, AssistantChangeBatch } from '../../core/agent/assistant-changes.service';
-import { SyncedZoomComponent } from './synced-zoom.component';
+import { SyncedZoomComponent, LoadedSources, SHARP_PRELOAD_DEBOUNCE_MS } from './synced-zoom.component';
+import { ThumbnailUrlPipe } from '../../shared/pipes/thumbnail-url.pipe';
 import { SwipeDecisionDirective, SWIPE_SETTLE_MS } from '../../shared/directives/swipe-decision.directive';
 
 let changes$ = new Subject<AssistantChangeBatch>();
@@ -2467,8 +2468,14 @@ describe('BurstCullingComponent', () => {
       component['lightboxGroupId'].set(store.groupKey(grp));
       component['lightboxIndex'].set(index);
     };
+    /** The single pane reports its render as loaded, which peaking waits for. */
+    const markSharp = () => {
+      const photo = component['lightboxGroup']()?.photos[component['lightboxIndex']()];
+      if (photo) component['sharpPath'].set(photo.path);
+    };
     /** Run the overlay effects and let their async raster work settle. */
     const settle = async () => {
+      markSharp();
       TestBed.tick();
       await flush();
     };
@@ -2491,6 +2498,47 @@ describe('BurstCullingComponent', () => {
 
       expect(component['peakingOverlays']().get('/f1.jpg')).toContain('size=1920');
       expect(component['peakingOverlays']().size).toBe(1);
+    });
+
+    it('measures fit view at the tuned field and the full-resolution swap at full size', async () => {
+      openDarkroom();
+      component['peakingActive'].set(true);
+      await settle();
+      expect(renderPeaking.mock.calls.at(-1)?.[1]).toBe(640);
+
+      component['zoom'].set({ scale: 2, tx: 0, ty: 0 });
+      await settle();
+      expect(renderPeaking.mock.calls.at(-1)?.[1]).toBeUndefined();
+
+      component['setCompareMode']('2up');
+      component['zoom'].set({ scale: 1, tx: 0, ty: 0 });
+      await settle();
+      expect(renderPooledPeaking.mock.calls.at(-1)?.[1]).toBe(640);
+    });
+
+    it('keeps the edge maps of frames already seen while a step waits for the sharp render', async () => {
+      openDarkroom(0);
+      component['peakingActive'].set(true);
+      await settle();
+      expect(renderPeaking).toHaveBeenCalledTimes(1);
+
+      // Step on, passing through the awaiting-sharp state (no markSharp yet).
+      component['lightboxIndex'].set(1);
+      TestBed.tick();
+      await flush();
+      expect(component['peakingOverlays']().size).toBe(0);
+      await settle();
+      expect(renderPeaking).toHaveBeenCalledTimes(2);
+
+      // Step back: awaiting again, then sharp. The first frame is not re-convolved.
+      component['lightboxIndex'].set(0);
+      TestBed.tick();
+      await flush();
+      expect(component['peakingOverlays']().size).toBe(0);
+      await settle();
+
+      expect(renderPeaking).toHaveBeenCalledTimes(2);
+      expect(component['peakingOverlays']().get('/f1.jpg')).toBeDefined();
     });
 
     it('builds nothing while peaking is off', async () => {
@@ -2686,6 +2734,7 @@ describe('BurstCullingComponent', () => {
       component['cycleGrid']();
 
       await settle();
+      await new Promise(resolve => setTimeout(resolve, SHARP_PRELOAD_DEBOUNCE_MS + 50));
 
       expect(component['frameSizes']().get('/f1.jpg')).toEqual({ w: 6000, h: 4000 });
     });
@@ -2709,9 +2758,11 @@ describe('BurstCullingComponent', () => {
       rendered['lightboxIndex'].set(0);
       rendered['peakingActive'].set(true);
       rendered['gridMode'].set('thirds');
+      rendered['sharpPath'].set('/f1.jpg');
 
       fixture.detectChanges();
       await flush();
+      await new Promise(resolve => setTimeout(resolve, SHARP_PRELOAD_DEBOUNCE_MS + 50));
       fixture.detectChanges();
 
       const host: HTMLElement = fixture.nativeElement;
@@ -3442,5 +3493,250 @@ describe('BurstCullingComponent compare panes (rendered)', () => {
 
     expect(footer.querySelectorAll('app-synced-zoom')).toHaveLength(1);
     expect(footer.textContent).not.toContain('c1.jpg');
+  });
+});
+
+describe('BurstCullingComponent progressive darkroom frames (rendered)', () => {
+  class FakeImage {
+    static instances: FakeImage[] = [];
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    src = '';
+    constructor() { FakeImage.instances.push(this); }
+  }
+  let fixture: ComponentFixture<BurstCullingComponent>;
+  let component: any;
+  const urls = new ThumbnailUrlPipe();
+  const thumb = (path: string) => urls.transform(path, 640);
+  const render = (path: string) => urls.transform(path, 1920);
+  const photo = (path: string) => ({
+    path, filename: path.slice(1), aggregate: 8, aesthetic: 7, tech_sharpness: 6,
+    is_blink: 0, is_burst_lead: 1, date_taken: '2024-01-01', burst_score: 8,
+  });
+  const group = {
+    group_id: 1, type: 'burst', reason: '', best_path: '/p0.jpg', count: 3,
+    photos: [photo('/p0.jpg'), photo('/p1.jpg'), photo('/p2.jpg')],
+  };
+  const emptyFeed = { groups: [], total_groups: 0, page: 1, per_page: 20, total_pages: 1 };
+  const srcs = () => FakeImage.instances.map(i => i.src).filter(Boolean);
+
+  beforeEach(() => {
+    FakeImage.instances = [];
+    vi.stubGlobal('Image', FakeImage);
+    localStorage.clear();
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([]),
+        { provide: ApiService, useValue: {
+          get: vi.fn(() => of(emptyFeed)), post: vi.fn(() => of({})),
+          thumbnailUrl: vi.fn(() => '/thumb'), imageUrl: vi.fn(() => '/image'),
+        } },
+        { provide: MatSnackBar, useValue: { open: vi.fn(() => ({
+          onAction: () => new Subject<void>(), afterDismissed: () => new Subject<void>(),
+        })) } },
+        { provide: I18nService, useValue: { t: (key: string) => key, translations: () => ({}) } },
+        { provide: GalleryStore, useValue: { config: () => null } },
+        { provide: AuthService, useValue: { isEdition: () => true, identity: () => '0|' } },
+        { provide: AssistantChangesService, useValue: { batch$: changes$.asObservable() } },
+        { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: { get: () => null } } } },
+      ],
+    });
+    fixture = TestBed.createComponent(BurstCullingComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  });
+
+  afterEach(() => {
+    fixture.destroy();
+    vi.unstubAllGlobals();
+    Object.defineProperty(navigator, 'connection', { value: undefined, configurable: true });
+    vi.restoreAllMocks();
+  });
+
+  const open = (index: number) => {
+    component['cull'].groups.set([group]);
+    component['lightboxGroupId'].set(component['cull'].groupKey(group));
+    component['lightboxIndex'].set(index);
+    fixture.detectChanges();
+    FakeImage.instances = FakeImage.instances.filter(i => i.src);
+    fixture.detectChanges();
+  };
+  const pane = (): SyncedZoomComponent =>
+    fixture.debugElement.query(By.directive(SyncedZoomComponent)).componentInstance;
+
+  it('shows the stored thumbnail as the placeholder of the render, keyed by the frame', () => {
+    open(1);
+
+    expect(pane().src()).toBe(render('/p1.jpg'));
+    expect(pane().placeholderSrc()).toBe(thumb('/p1.jpg'));
+    expect(pane().frameKey()).toBe('/p1.jpg');
+  });
+
+  it('fetches the neighbours thumbnails at once and their renders only after the frame is sharp', () => {
+    open(1);
+    expect(srcs()).toEqual(expect.arrayContaining([thumb('/p0.jpg'), thumb('/p2.jpg')]));
+    expect(srcs()).not.toContain(render('/p0.jpg'));
+
+    component['onSharpLoaded'](render('/p1.jpg'));
+    fixture.detectChanges();
+
+    expect(srcs()).toEqual(expect.arrayContaining([render('/p0.jpg'), render('/p2.jpg')]));
+  });
+
+  it('keeps the displayed frame and the decision target in step while walking, and a late sharp event preloads nothing', () => {
+    open(0);
+    const shown = () => fixture.nativeElement.querySelector('app-synced-zoom img').getAttribute('src');
+    for (const [idx, path] of [[0, '/p0.jpg'], [1, '/p1.jpg'], [2, '/p2.jpg']] as const) {
+      component['lightboxIndex'].set(idx);
+      fixture.detectChanges();
+      expect(component['lightboxGroup']().photos[component['lightboxIndex']()].path).toBe(path);
+      expect(shown()).toContain(encodeURIComponent(path));
+      expect(shown()).toBe(thumb(path));
+      // The decision target, through the real keyboard path: reject, then keep,
+      // must land on the frame on screen and on no other.
+      const kept = () => [...(component['cull'].selectionsMap().get(group.group_id) ?? [])];
+      component['onArrowDown'](new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+      expect(kept()).not.toContain(path);
+      component['onArrowUp'](new KeyboardEvent('keydown', { key: 'ArrowUp' }));
+      expect(kept()).toContain(path);
+      for (const other of ['/p0.jpg', '/p1.jpg', '/p2.jpg'].filter(p => p !== path && p > path)) {
+        expect(kept()).not.toContain(other);
+      }
+    }
+    FakeImage.instances = [];
+    // The render of frame 1 reports in after the user is already on frame 2.
+    component['onSharpLoaded'](render('/p1.jpg'));
+    fixture.detectChanges();
+    expect(srcs().filter(u => u.includes('size=1920'))).toEqual([]);
+  });
+
+  it('prefetches one neighbour at either end of the group', () => {
+    open(0);
+    component['onSharpLoaded'](render('/p0.jpg'));
+    fixture.detectChanges();
+    expect(srcs().filter(u => u.includes('size=1920'))).toEqual([render('/p1.jpg')]);
+
+    FakeImage.instances = [];
+    component['lightboxIndex'].set(2);
+    fixture.detectChanges();
+    component['onSharpLoaded'](render('/p2.jpg'));
+    fixture.detectChanges();
+    expect(srcs().filter(u => u.includes('size=1920'))).toEqual([render('/p1.jpg')]);
+  });
+
+  it('keeps the in-flight render of the frame stepped onto and aborts the one left behind', () => {
+    open(1);
+    component['onSharpLoaded'](render('/p1.jpg'));
+    fixture.detectChanges();
+    const farSide = FakeImage.instances.find(i => i.src === render('/p0.jpg'))!;
+    const stepTarget = FakeImage.instances.find(i => i.src === render('/p2.jpg'))!;
+
+    component['lightboxIndex'].set(2);
+    fixture.detectChanges();
+
+    // The render being fetched for the frame stepped onto carries on, with its handler.
+    expect(stepTarget.src).toBe(render('/p2.jpg'));
+    expect(stepTarget.onload).not.toBeNull();
+    expect(FakeImage.instances.filter(i => i.src === render('/p2.jpg'))).toHaveLength(1);
+    // The far side is not wanted any more.
+    expect(farSide.src).toBe('');
+    expect(farSide.onload).toBeNull();
+    expect(farSide.onerror).toBeNull();
+  });
+
+  it('does not create a second image for a render still in flight when stepping back', () => {
+    open(1);
+    component['onSharpLoaded'](render('/p1.jpg'));
+    fixture.detectChanges();
+    const p2Render = FakeImage.instances.find(i => i.src === render('/p2.jpg'))!;
+    component['lightboxIndex'].set(2);
+    fixture.detectChanges();
+    component['lightboxIndex'].set(1);
+    fixture.detectChanges();
+    const live = (url: string) => FakeImage.instances.filter(i => i.src === url);
+    for (const url of new Set(FakeImage.instances.map(i => i.src).filter(u => u !== ''))) {
+      expect(live(url), url).toHaveLength(1);
+    }
+    expect(live(render('/p2.jpg'))[0]).toBe(p2Render);
+  });
+
+  it('keeps the stored thumbnail in flight for the frame stepped onto', () => {
+    open(1);
+    const stepTarget = FakeImage.instances.find(i => i.src === thumb('/p2.jpg'))!;
+
+    component['lightboxIndex'].set(2);
+    fixture.detectChanges();
+
+    expect(stepTarget.src).toBe(thumb('/p2.jpg'));
+    expect(FakeImage.instances.filter(i => i.src === thumb('/p2.jpg'))).toHaveLength(1);
+  });
+
+  it('does not restart the neighbour fetches when a new group object has the same neighbours', () => {
+    open(1);
+    component['onSharpLoaded'](render('/p1.jpg'));
+    fixture.detectChanges();
+    const before = [...FakeImage.instances];
+    // A re-run of either prefetch effect goes through prefetch().
+    const prefetch = vi.spyOn(component as any, 'prefetch');
+
+    component['cull'].groups.set([{ ...group, photos: [...group.photos] }]);
+    fixture.detectChanges();
+
+    expect(prefetch).not.toHaveBeenCalled();
+    expect(FakeImage.instances).toEqual(before);
+    expect(before.every(i => i.src !== '')).toBe(true);
+  });
+
+  it('records a neighbour render it has fetched so the pane can skip its debounce', () => {
+    open(1);
+    component['onSharpLoaded'](render('/p1.jpg'));
+    fixture.detectChanges();
+    const neighbour = FakeImage.instances.find(i => i.src === render('/p2.jpg'))!;
+    neighbour.onload!();
+    expect((component['loadedRenders'] as LoadedSources).has(render('/p2.jpg'))).toBe(true);
+  });
+
+  it('prefetches no neighbours and shows no placeholder while a darktable style is active', () => {
+    component['activeStyle'].set('portra');
+    open(1);
+    component['onSharpLoaded'](render('/p1.jpg'));
+    fixture.detectChanges();
+
+    expect(pane().placeholderSrc()).toBeNull();
+    expect(srcs().filter(u => u.includes('path=%2Fp0.jpg') || u.includes('path=%2Fp2.jpg'))).toEqual([]);
+  });
+
+  it('prefetches no neighbours when the browser asks to save data', () => {
+    Object.defineProperty(navigator, 'connection', { value: { saveData: true }, configurable: true });
+    open(1);
+    component['onSharpLoaded'](render('/p1.jpg'));
+    fixture.detectChanges();
+
+    expect(srcs().filter(u => u.includes('path=%2Fp0.jpg') || u.includes('path=%2Fp2.jpg'))).toEqual([]);
+  });
+
+  it('gives every compare pane its own thumbnail as placeholder and prefetches no neighbours', () => {
+    open(0);
+    component['setCompareMode']('2up');
+    fixture.detectChanges();
+    const panes = fixture.debugElement.queryAll(By.directive(SyncedZoomComponent)).map(d => d.componentInstance as SyncedZoomComponent);
+
+    expect(panes.map(p => p.placeholderSrc())).toEqual([thumb('/p0.jpg'), thumb('/p1.jpg')]);
+    expect(panes.map(p => p.frameKey())).toEqual(['/p0.jpg', '/p1.jpg']);
+    expect(srcs().filter(u => u.includes('path=%2Fp2.jpg'))).toEqual([]);
+  });
+
+  it('waits for the sharp render before building the peaking overlay in single view', async () => {
+    const renderPeaking = vi.spyOn(component as any, 'renderPeaking').mockResolvedValue('overlay');
+    open(1);
+    component['peakingActive'].set(true);
+    fixture.detectChanges();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(renderPeaking).not.toHaveBeenCalled();
+
+    component['onSharpLoaded'](render('/p1.jpg'));
+    fixture.detectChanges();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(renderPeaking).toHaveBeenCalledTimes(1);
   });
 });

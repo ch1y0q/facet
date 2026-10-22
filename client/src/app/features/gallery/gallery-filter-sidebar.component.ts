@@ -1,4 +1,4 @@
-import { Component, computed, DestroyRef, effect, ElementRef, inject, signal, viewChild, ChangeDetectionStrategy } from '@angular/core';
+import { Component, computed, DestroyRef, effect, ElementRef, inject, signal, viewChild, viewChildren, ChangeDetectionStrategy } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatSelectModule } from '@angular/material/select';
@@ -8,7 +8,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatInputModule } from '@angular/material/input';
-import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatDatepickerModule, MatDatepickerInputEvent } from '@angular/material/datepicker';
 import { toIsoDateString } from '../../shared/utils/date-format';
@@ -235,7 +235,7 @@ function saveSectionStates(states: Record<string, boolean>): void {
             <mat-form-field subscriptSizing="dynamic" class="w-full">
               <mat-label>{{ I18N.gallery.semantic_search | translate }}</mat-label>
               <mat-icon matPrefix class="mr-1 opacity-60">image_search</mat-icon>
-              <input matInput
+              <input #semanticSearchInput matInput
                 [value]="store.filters().semanticQuery"
                 (input)="onSemanticSearch($event)"
                 [placeholder]="I18N.gallery.semantic_search_placeholder | translate" />
@@ -1084,6 +1084,7 @@ export class GalleryFilterSidebarComponent {
     this.store.updateFilter(key, toIsoDateString(event.value));
   }
 
+  private readonly semanticSearchInput = viewChild<ElementRef<HTMLInputElement>>('semanticSearchInput');
   private searchTimeout: ReturnType<typeof setTimeout> | null = null;
   // Kept separate from searchTimeout so a slider drag can't cancel a pending
   // text search (or vice versa) -- they debounce independent filter keys.
@@ -1099,10 +1100,26 @@ export class GalleryFilterSidebarComponent {
       }
     });
     inject(DestroyRef).onDestroy(() => {
-      if (this.searchTimeout) clearTimeout(this.searchTimeout);
-      if (this.thresholdTimeout) clearTimeout(this.thresholdTimeout);
+      this.cancelPendingSearch();
       this.coarsePointer.cleanup();
     });
+  }
+
+  private readonly tooltips = viewChildren(MatTooltip);
+
+  /** Hide every tooltip the sidebar owns, for a gallery parking behind a photo page. */
+  hideTooltips(): void {
+    for (const tooltip of this.tooltips()) tooltip.hide(0);
+  }
+
+  cancelPendingSearch(): void {
+    if (this.searchTimeout) clearTimeout(this.searchTimeout);
+    if (this.thresholdTimeout) clearTimeout(this.thresholdTimeout);
+    this.searchTimeout = null;
+    this.thresholdTimeout = null;
+    this.thresholdDraft.set(null);
+    const input = this.semanticSearchInput()?.nativeElement;
+    if (input) input.value = this.store.filters().semanticQuery;
   }
 
   private refreshAlbums(): void {

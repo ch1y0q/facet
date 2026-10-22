@@ -1,13 +1,13 @@
-import { Component, computed, effect, input, output, signal, untracked, ChangeDetectionStrategy } from '@angular/core';
+import { Component, computed, effect, input, output, signal, untracked, viewChildren, ChangeDetectionStrategy } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
-import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
 import { MatMenuModule } from '@angular/material/menu';
 import { Photo } from '../../models/photo.model';
 import { i18nKeys } from '../../../core/i18n/keys';
 import type { ReviewMark } from '../../../features/gallery/gallery.store';
 import { TranslatePipe } from '../../pipes/translate.pipe';
-import { ThumbnailUrlPipe, PersonThumbnailUrlPipe } from '../../pipes/thumbnail-url.pipe';
+import { ThumbnailUrlPipe, PersonThumbnailUrlPipe, STORED_THUMBNAIL_EDGE } from '../../pipes/thumbnail-url.pipe';
 import { ReviewAriaKeyPipe } from '../../pipes/review.pipes';
 import { CullReasonPipe } from '../../../features/gallery/burst-culling.pipes';
 import type { CullReason } from '../../../features/gallery/burst-culling.pipes';
@@ -640,7 +640,8 @@ export class PhotoCardComponent {
   readonly hideDetails = input(false);
   readonly mosaicMode = input(false);
   readonly currentSort = input('aggregate');
-  readonly thumbSize = input(240);
+  /** Capped at the stored edge: larger sizes make the server decode the original. */
+  readonly thumbSize = input(240, { transform: (size: number) => Math.min(size, STORED_THUMBNAIL_EDGE) });
 
   /** Every card except the current one, and only once there is a current one.
    *
@@ -777,6 +778,13 @@ export class PhotoCardComponent {
   readonly rejectedToggled = output<string>();
   readonly starClicked = output<{ photo: Photo; star: number }>();
   readonly doubleClicked = output<Photo>();
+
+  private readonly tooltips = viewChildren(MatTooltip);
+
+  /** Hide every tooltip this card owns, for a gallery parking behind a photo page. */
+  hideTooltips(): void {
+    for (const tooltip of this.tooltips()) tooltip.hide(0);
+  }
 
   cycleStarRating(): void {
     const current = this.photo().star_rating ?? 0;

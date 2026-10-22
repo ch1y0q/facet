@@ -1,11 +1,33 @@
 import { Pipe, PipeTransform } from '@angular/core';
 
+/** Largest `size` served from the stored thumbnail. Mirrors the server's render
+ *  THRESHOLD (`_STORED_THUMBNAIL_SIZE` in api/routers/thumbnails.py), not the
+ *  configurable edge the thumbnails are stored at. */
+export const STORED_THUMBNAIL_EDGE = 640;
+/** Edge of the single render the server produces above the threshold (mirrors
+ *  `_RENDERED_SIZE`). */
+export const RENDERED_THUMBNAIL_EDGE = 1920;
+/** Cache-buster for render URLs: bump it to skip every soft frame browsers cached
+ *  under the previous URL. */
+export const RENDER_URL_VERSION = '2';
+
+/** Above the stored edge the server renders the original. `v` skips the soft
+ *  frame browsers cached under the old URL; `ngsw-bypass` because the service
+ *  worker ignores Cache-Control. */
+export function thumbnailUrl(path: string, size?: number): string {
+  const params = new URLSearchParams({ path });
+  if (size) params.set('size', String(size));
+  if (size && size > STORED_THUMBNAIL_EDGE) {
+    params.set('v', RENDER_URL_VERSION);
+    params.set('ngsw-bypass', '1');
+  }
+  return `/thumbnail?${params}`;
+}
+
 @Pipe({ name: 'thumbnailUrl', standalone: true, pure: true })
 export class ThumbnailUrlPipe implements PipeTransform {
   transform(path: string, size?: number): string {
-    const params = new URLSearchParams({ path });
-    if (size) params.set('size', String(size));
-    return `/thumbnail?${params}`;
+    return thumbnailUrl(path, size);
   }
 }
 

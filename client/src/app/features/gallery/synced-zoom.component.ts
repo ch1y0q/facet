@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, inject, input, output, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, afterRenderEffect, DestroyRef, ElementRef, computed, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
 import { LoupeDirective } from '../../shared/directives/loupe.directive';
 
 export interface ZoomState {
@@ -13,6 +13,31 @@ export const FIT_ZOOM: ZoomState = { scale: 1, tx: 0, ty: 0 };
  *  in the compare dialog so a caller can enforce the bound without eagerly
  *  importing that lazily-loaded dialog. */
 export const MAX_COMPARE_PANES = 4;
+
+/** How long a frame must stay current before its sharp render is requested, so
+ *  a held arrow key does not queue one render per frame it passes. */
+export const SHARP_PRELOAD_DEBOUNCE_MS = 150;
+
+/** Sources already fetched into the browser cache, bounded so a long session
+ *  does not grow it without limit. A pane consults it to skip the debounce for
+ *  a render it can show instantly. */
+export class LoadedSources {
+  static readonly MAX = 64;
+  private readonly urls = new Set<string>();
+
+  has(url: string): boolean {
+    return this.urls.has(url);
+  }
+
+  add(url: string): void {
+    this.urls.delete(url);
+    this.urls.add(url);
+    if (this.urls.size > LoadedSources.MAX) {
+      const oldest = this.urls.values().next().value;
+      if (oldest !== undefined) this.urls.delete(oldest);
+    }
+  }
+}
 
 /**
  * One pane of a synced compare view. It is presentational: the pan/zoom
@@ -31,6 +56,14 @@ export const MAX_COMPARE_PANES = 4;
  * badge pinned to the pane's corner can land far off the image — published here
  * as `fitInsetX` / `fitInsetY` and as the `--fit-inset-x` / `--fit-inset-y`
  * custom properties, so chrome can trace the rendered image instead.
+ *
+ * Progressive load: with `placeholderSrc` set the pane shows that (cheap, usually
+ * already cached) source first and swaps to `src` only once a preloader `Image`
+ * has fetched it, so the sharp render never paints in progressively over the
+ * stretched thumbnail. With `frameKey` set the pane stays `opacity-0` until the
+ * image of the CURRENT frame has loaded, so a slow load shows the pane
+ * background rather than the previous frame. Both are opt-in: left null, the
+ * pane shows `src` as soon as the browser paints it.
  */
 @Component({
   selector: 'app-synced-zoom',
@@ -50,7 +83,8 @@ export const MAX_COMPARE_PANES = 4;
   template: `
     <img #frame [src]="effectiveSrc()" [alt]="alt()"
          class="absolute inset-0 w-full h-full object-contain origin-center will-change-transform select-none"
-         [style.transform]="transform()" draggable="false" (load)="onFrameLoad()"
+         [class.opacity-0]="hidden()"
+         [style.transform]="transform()" draggable="false" (load)="onFrameLoad()" (error)="onFrameError()"
          [appLoupe]="loupeSrc() ?? effectiveSrc()" [loupeActive]="loupeActive()"
          [loupeZoom]="loupeZoom()" loupeFit="contain" />
   `,
@@ -64,6 +98,18 @@ export class SyncedZoomComponent {
    *  in past fit; null keeps the frame's own centre. */
   readonly focusPoint = input<[number, number] | null>(null);
   readonly zoomChange = output<ZoomState>();
+
+  /** Shown until `src` has been fetched by a preloader; null disables the
+   *  progressive load entirely (no `Image` is ever constructed). */
+  readonly placeholderSrc = input<string | null>(null);
+  /** Identity of the frame (its photo path). While set, the pane is hidden until
+   *  the image of the current frame has loaded. A source change inside one frame
+   *  (placeholder to render, render to full-res) never hides it again. */
+  readonly frameKey = input<string | null>(null);
+  /** Sources known to be in the browser cache already; skips the debounce. */
+  readonly loadedSources = input<LoadedSources | null>(null);
+  /** Emits `src` once the preloader has fetched it and the pane swapped to it. */
+  readonly sharpLoaded = output<string>();
 
   /** Hover loupe over this pane. `loupeSrc` defaults to the pane's own
    *  effective source (so a caller need not track full-res separately);
@@ -94,7 +140,70 @@ export class SyncedZoomComponent {
   private readonly paneSize = signal<{ w: number; h: number }>({ w: 0, h: 0 });
   private readonly naturalSize = signal<{ w: number; h: number }>({ w: 0, h: 0 });
 
+  /** The `src` whose preload has finished; the pane shows the placeholder until
+   *  it equals the current `src`. */
+  private readonly readySrc = signal<string | null>(null);
+  /** The frame whose own image last finished loading in this pane. */
+  private readonly paintedKey = signal<string | null>(null);
+
+  protected readonly hidden = computed(() => {
+    const key = this.frameKey();
+    return key !== null && this.paintedKey() !== key;
+  });
+
   constructor() {
+    effect(onCleanup => {
+      const src = this.src();
+      if (!this.placeholderSrc()) return;
+      untracked(() => {
+        const loaded = this.loadedSources();
+        if (loaded?.has(src)) {
+          this.readySrc.set(src);
+          this.sharpLoaded.emit(src);
+          return;
+        }
+        let img: HTMLImageElement | null = null;
+        const timer = setTimeout(() => {
+          const preloader = new Image();
+          img = preloader;
+          // Handlers first: a cached image may fire `load` as soon as `src` is set.
+          preloader.onload = () => {
+            if (this.src() !== src) return;
+            loaded?.add(src);
+            this.readySrc.set(src);
+            this.sharpLoaded.emit(src);
+          };
+          preloader.onerror = () => {};
+          preloader.src = src;
+        }, SHARP_PRELOAD_DEBOUNCE_MS);
+        onCleanup(() => {
+          clearTimeout(timer);
+          if (img) {
+            img.onload = null;
+            img.onerror = null;
+            img.src = '';
+          }
+        });
+      });
+    });
+    // A step onto an image the browser already holds (memory cache) has it
+    // complete as soon as the new `src` is applied, but its `load` event only
+    // fires later, which would keep the pane `opacity-0` for a frame or two.
+    // After the render that applied `src`, read the element: when it is
+    // complete, decoded and resolved to the CURRENT effective URL, those pixels
+    // are the new frame's, so mark it painted now. The URL match is what keeps
+    // the previous frame's pixels from ever showing under the new key.
+    afterRenderEffect(() => {
+      const key = this.frameKey();
+      const src = this.effectiveSrc();
+      const img = this.frame()?.nativeElement;
+      if (key === null || !img) return;
+      untracked(() => {
+        if (img.complete && img.naturalWidth > 0 && img.currentSrc === new URL(src, document.baseURI).href) {
+          this.paintedKey.set(key);
+        }
+      });
+    });
     // No ResizeObserver in a browser-less test env; the zero fallback below is
     // what a pane that has never been measured reports anyway.
     if (typeof ResizeObserver === 'undefined') return;
@@ -117,6 +226,18 @@ export class SyncedZoomComponent {
 
   protected onFrameLoad(): void {
     this.measurePane();
+    const img = this.frame()?.nativeElement;
+    // A `load` for a URL the pane has already moved on from must not mark the
+    // new frame painted.
+    if (img?.complete && img.currentSrc === new URL(this.effectiveSrc(), document.baseURI).href) {
+      this.paintedKey.set(this.frameKey());
+    }
+  }
+
+  /** A broken image of the right frame is shown as such rather than leaving the
+   *  pane hidden forever. */
+  protected onFrameError(): void {
+    this.paintedKey.set(this.frameKey());
   }
 
   /** The `object-contain` fit scale: how much `content` (natural image size)
@@ -165,9 +286,11 @@ export class SyncedZoomComponent {
 
   protected readonly effectiveSrc = computed(() => {
     const full = this.fullResSrc();
-    // Past the fit scale the 1920px thumbnail is too soft to judge sharpness;
-    // swap to the full-res source for the actual pixel peek.
-    return this.zoom().scale > SyncedZoomComponent.MIN_SCALE && full ? full : this.src();
+    // Past the fit scale the render is too soft to judge sharpness; swap to
+    // the full-res source for the actual pixel peek.
+    if (this.zoom().scale > SyncedZoomComponent.MIN_SCALE && full) return full;
+    const placeholder = this.placeholderSrc();
+    return placeholder && this.readySrc() !== this.src() ? placeholder : this.src();
   });
 
   private clampScale(scale: number): number {
