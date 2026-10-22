@@ -1,15 +1,17 @@
 import type { Mock } from 'vitest';
-import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { computed, signal, WritableSignal } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { ComponentFixture, DeferBlockState, TestBed } from '@angular/core/testing';
+import { ChangeDetectorRef, computed, DebugElement, DestroyRef, signal, WritableSignal } from '@angular/core';
+import { ActivatedRoute, Event as RouterEvent, NavigationStart, Router, RouterOutlet } from '@angular/router';
 import { By } from '@angular/platform-browser';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Subject, of, throwError } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
 import { MatBottomSheet } from '@angular/material/bottom-sheet';
 import { MatTooltip } from '@angular/material/tooltip';
-import { provideNativeDateAdapter } from '@angular/material/core';
+import { MATERIAL_ANIMATIONS, provideNativeDateAdapter } from '@angular/material/core';
+import { OverlayContainer } from '@angular/cdk/overlay';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { MatSidenav, MatSidenavContainer, MatSidenavContent } from '@angular/material/sidenav';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { GalleryStore, GalleryFilters, DEFAULT_FILTERS } from './gallery.store';
 import { buildApiParams, DISPLAY_OPTIONS_KEY } from './gallery-filters.util';
@@ -18,12 +20,17 @@ import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { AlbumService } from '../../core/services/album.service';
 import { GalleryComponent } from './gallery.component';
+import { PhotoCardComponent } from '../../shared/components/photo-card/photo-card.component';
+import { GalleryFilterSidebarComponent } from './gallery-filter-sidebar.component';
+import { SlideshowComponent } from './slideshow.component';
 import { I18N } from '../../core/i18n/keys';
 import { ScoreClassPipe } from '../../shared/pipes/score.pipes';
 import { MAX_COMPARE_PANES } from './synced-zoom.component';
 import { gridColumnCount } from './gallery-rows.util';
 import { UndoService } from '../../core/services/undo.service';
 import { SequenceKind } from '../../core/services/sequence-override.service';
+import { HeaderSlotService } from '../../core/services/header-slot.service';
+import { PageHelpService } from '../../core/services/page-help.service';
 
 describe('GalleryComponent', () => {
   let component: GalleryComponent;
@@ -40,8 +47,9 @@ describe('GalleryComponent', () => {
     lang: WritableSignal<string>;
   };
   let routeMock: { snapshot: { paramMap: { get: Mock }; queryParams: Record<string, string> } };
+  let outletMock: { attachEvents: Subject<unknown>; detachEvents: Subject<unknown> };
 
-  beforeEach(() => {
+  beforeEach(async () => {
     mockStore = {
       filters: signal<GalleryFilters>({ ...DEFAULT_FILTERS }),
       types: signal([
@@ -141,10 +149,14 @@ describe('GalleryComponent', () => {
     };
 
     routeMock = { snapshot: { paramMap: { get: vi.fn(() => null) }, queryParams: {} } };
+    outletMock = { attachEvents: new Subject(), detachEvents: new Subject() };
 
-    TestBed.configureTestingModule({
+    await TestBed.configureTestingModule({
+      imports: [GalleryComponent],
       providers: [
         provideNativeDateAdapter(),
+        // Tooltip hides wait for an animationend jsdom never fires unless animations are off.
+        { provide: MATERIAL_ANIMATIONS, useValue: { animationsDisabled: true } },
         { provide: GalleryStore, useValue: mockStore },
         { provide: ApiService, useValue: mockApi },
         { provide: AuthService, useValue: mockAuth },
@@ -158,6 +170,8 @@ describe('GalleryComponent', () => {
           },
         },
         { provide: ActivatedRoute, useValue: routeMock },
+        { provide: RouterOutlet, useValue: outletMock },
+        { provide: ChangeDetectorRef, useValue: { detectChanges: vi.fn() } },
         { provide: MatDialog, useValue: { open: vi.fn() } },
         { provide: MatBottomSheet, useValue: { open: vi.fn() } },
         { provide: LiveAnnouncer, useValue: { announce: vi.fn(() => Promise.resolve()) } },
@@ -173,7 +187,7 @@ describe('GalleryComponent', () => {
           },
         },
       ],
-    });
+    }).compileComponents();
     component = TestBed.runInInjectionContext(() => new GalleryComponent());
   });
 
@@ -3268,6 +3282,34 @@ describe('GalleryComponent', () => {
       expect(focusedCard).toBe(true);
     });
 
+    for (const [name, mode, virtual] of [
+      ['plain grid', 'grid', false],
+      ['mosaic', 'mosaic', false],
+      ['windowed rows', 'mosaic', true],
+    ] as const) {
+      it(`keeps the cursor on the right-clicked card after Open and Back (${name})`, () => {
+        const cards = render(mode, virtual);
+        const events = TestBed.inject(Router).events as Subject<RouterEvent>;
+        vi.spyOn(TestBed.inject(Router), 'navigate').mockImplementation(() => {
+          events.next(new NavigationStart(1, '/photo'));
+          return Promise.resolve(true);
+        });
+        const gallery = fixture!.componentInstance as unknown as { activeIndex(): number; scrollContent(): { scrollTo(o: ScrollToOptions): void } };
+        // jsdom has no Element.scrollTo.
+        vi.spyOn(gallery.scrollContent(), 'scrollTo').mockImplementation(() => {});
+        const tile = cards[4].querySelector('[tabindex]') as HTMLElement;
+        rightClick(cards[4]);
+        const open = [...document.querySelectorAll('.mat-mdc-menu-item')]
+          .find(e => e.textContent?.includes(I18N.shortcuts.open_detail)) as HTMLElement;
+        open.click();
+        fixture!.detectChanges();
+        outletMock.detachEvents.next(fixture!.componentInstance);
+        tile.blur();
+        outletMock.attachEvents.next(fixture!.componentInstance);
+        expect(gallery.activeIndex()).toBe(4);
+      });
+    }
+
     it('does not steal focus when the menu is dismissed from its backdrop', () => {
       const cards = render('grid', false);
       rightClick(cards[4]);
@@ -3276,6 +3318,365 @@ describe('GalleryComponent', () => {
       fixture!.detectChanges();
 
       expect(cards[4].contains(document.activeElement)).toBe(false);
+    });
+  });
+
+  describe('side drawer margins across a park (rendered)', () => {
+    let fixture: ComponentFixture<GalleryComponent> | null = null;
+
+    afterEach(() => {
+      fixture?.destroy();
+      fixture = null;
+      vi.unstubAllGlobals();
+    });
+
+    it('recomputes the content margin on return after a resize measured the detached drawer as 0', async () => {
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      mockStore.photos.set([{ path: '/p0.jpg', filename: 'p0.jpg', image_width: 4000, image_height: 3000 }]);
+      mockStore.total.set(1);
+      mockStore.filterDrawerOpen.set(true);
+      vi.stubGlobal('matchMedia', (media: string) => ({ matches: true, media, addEventListener() {}, removeEventListener() {} }));
+      fixture = TestBed.createComponent(GalleryComponent);
+      (fixture.componentInstance as unknown as { desktop: { setup(): void } }).desktop.setup();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      const sidenav = fixture.debugElement.query(By.directive(MatSidenav)).componentInstance as unknown as {
+        mode: string; opened: boolean; _getWidth: () => number; _elementRef: { nativeElement: HTMLElement };
+      };
+      const container = fixture.debugElement.query(By.directive(MatSidenavContainer)).componentInstance as unknown as {
+        updateContentMargins(): void; _contentMargins: { left: number | null; right: number | null };
+      };
+      const contentEl = fixture.debugElement.query(By.directive(MatSidenavContent)).nativeElement as HTMLElement;
+      expect(sidenav.mode).toBe('side');
+      expect(sidenav.opened).toBe(true);
+      // jsdom has no layout: emulate a 320px drawer that measures 0 once out of the document.
+      sidenav._getWidth = () => (sidenav._elementRef.nativeElement.isConnected ? 320 : 0);
+      container.updateContentMargins();
+      fixture.detectChanges();
+      expect(container._contentMargins.right).toBe(320);
+      expect(contentEl.style.marginRight).toBe('320px');
+      // Park: the outlet takes the DOM out, then emits detach.
+      const host = fixture.nativeElement as HTMLElement;
+      const parent = host.parentNode as Node;
+      host.remove();
+      outletMock.detachEvents.next(fixture.componentInstance);
+      window.dispatchEvent(new Event('resize'));
+      await new Promise(resolve => setTimeout(resolve, 60));
+      expect(container._contentMargins.right).toBeNull();
+      // Return: the outlet re-inserts the DOM, then emits attach.
+      parent.appendChild(host);
+      outletMock.attachEvents.next(fixture.componentInstance);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(container._contentMargins.right).toBe(320);
+      expect(contentEl.style.marginRight).toBe('320px');
+    });
+  });
+
+  describe('kept alive behind an open photo (rendered)', () => {
+    const photos = Array.from({ length: 3 }, (_, n) => ({
+      path: `/p${n}.jpg`, filename: `p${n}.jpg`, image_width: 4000, image_height: 3000,
+    }));
+    let fixture: ComponentFixture<GalleryComponent>;
+    let gallery: GalleryComponent;
+    let content: { measureScrollOffset(from: 'top'): number; scrollTo(options: ScrollToOptions): void };
+    let scrollTo: Mock;
+
+    beforeEach(() => {
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      mockAuth['isEdition'] = vi.fn(() => true);
+      mockStore.config.set({ features: { show_rating_controls: true } });
+      mockStore.photos.set(photos);
+      mockStore.total.set(photos.length);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      gallery = fixture.componentInstance;
+      // jsdom has no scrollIntoView; stub it per card, never on the prototype.
+      for (const host of fixture.nativeElement.querySelectorAll('[data-pidx]') as NodeListOf<HTMLElement>) {
+        host.scrollIntoView = () => {};
+      }
+      content = (gallery as unknown as { scrollContent(): typeof content }).scrollContent();
+      // jsdom has no Element.scrollTo.
+      scrollTo = vi.spyOn(content, 'scrollTo').mockImplementation(() => {}) as unknown as Mock;
+    });
+
+    afterEach(() => fixture.destroy());
+
+    function openPhoto(index: number): HTMLElement {
+      const tile = fixture.nativeElement.querySelector(`[data-pidx="${index}"] [tabindex]`) as HTMLElement;
+      tile.focus();
+      // Real navigation needs routes this spec does not have; the gallery only listens for the start.
+      (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(1, `/photo?path=${photos[index].path}`));
+      outletMock.detachEvents.next(gallery);
+      tile.blur();
+      return tile;
+    }
+
+    it('defers the filter sidebar until its block is rendered', async () => {
+      expect(fixture.debugElement.query(By.directive(GalleryFilterSidebarComponent))).toBeNull();
+      const blocks = await fixture.getDeferBlocks();
+      expect(blocks).toHaveLength(1);
+      await blocks[0].render(DeferBlockState.Complete);
+      expect(fixture.debugElement.query(By.directive(GalleryFilterSidebarComponent))).not.toBeNull();
+    });
+
+    it('cancels pending sidebar searches when the gallery is parked', async () => {
+      mockStore.config.set({ features: { show_semantic_search: true } });
+      const [sidebarBlock] = await fixture.getDeferBlocks();
+      await sidebarBlock.render(DeferBlockState.Complete);
+      const sidebar = fixture.debugElement.query(By.directive(GalleryFilterSidebarComponent)).componentInstance as GalleryFilterSidebarComponent;
+      vi.useFakeTimers();
+      try {
+        const search = fixture.nativeElement.querySelector(`input[placeholder="${I18N.gallery.semantic_search_placeholder}"]`) as HTMLInputElement;
+        search.value = 'sunset';
+        search.dispatchEvent(new Event('input', { bubbles: true }));
+        sidebar.onSearchThresholdChange(30);
+        mockStore.updateFilter.mockClear();
+        openPhoto(0);
+        vi.advanceTimersByTime(400);
+        expect(mockStore.updateFilter).not.toHaveBeenCalled();
+        expect((sidebar as any).searchThresholdValue()).not.toBe(30);
+        expect(search.value).toBe(mockStore.filters().semanticQuery);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('preserves the mosaic width while parked and accepts a resize after return', () => {
+      let resize!: ResizeObserverCallback;
+      const observer = { observe: vi.fn(), disconnect: vi.fn(), unobserve: vi.fn() };
+      vi.spyOn(globalThis, 'ResizeObserver').mockImplementation(function (callback) {
+        resize = callback;
+        return observer;
+      });
+      (gallery as any).setupResizeObserver();
+      const notify = (width: number) => resize([{ contentRect: { width } } as ResizeObserverEntry], observer as ResizeObserver);
+      notify(1000);
+      const rows = gallery.mosaicRows();
+      expect(rows.length).toBeGreaterThan(0);
+      openPhoto(0);
+      notify(0);
+      expect(gallery.mosaicRows()).toBe(rows);
+      outletMock.attachEvents.next(gallery);
+      notify(800);
+      expect(gallery.mosaicRows()).not.toBe(rows);
+    });
+
+    it('ignores another gallery being attached and refreshes counts only on its own return', () => {
+      openPhoto(0);
+      mockStore.loadTypeCounts.mockClear();
+      mockStore.loadFilterOptions.mockClear();
+      outletMock.attachEvents.next({});
+      expect(TestBed.inject(HeaderSlotService).template()).toBeNull();
+      expect(mockStore.loadTypeCounts).not.toHaveBeenCalled();
+      expect(mockStore.loadFilterOptions).not.toHaveBeenCalled();
+      outletMock.attachEvents.next(gallery);
+      expect(TestBed.inject(HeaderSlotService).template()).not.toBeNull();
+      expect(mockStore.loadTypeCounts).toHaveBeenCalledOnce();
+      expect(mockStore.loadFilterOptions).toHaveBeenCalledOnce();
+    });
+
+    it('destroys an active slideshow when the gallery is parked', () => {
+      mockStore.slideshowActive.set(true);
+      fixture.detectChanges();
+      const slideshow = fixture.debugElement.query(By.directive(SlideshowComponent));
+      const destroy = vi.fn();
+      slideshow.injector.get(DestroyRef).onDestroy(destroy);
+      openPhoto(0);
+      expect(mockStore.slideshowActive()).toBe(false);
+      expect(destroy).toHaveBeenCalledOnce();
+    });
+
+    it('hands the header toolbar back while a photo is open, and takes it again on return', () => {
+      const header = TestBed.inject(HeaderSlotService);
+      expect(header.template()).not.toBeNull();
+      openPhoto(1);
+      expect(header.template()).toBeNull();
+      outletMock.attachEvents.next(gallery);
+      expect(header.template()).not.toBeNull();
+    });
+
+    it('returns to the scroll position and the card the photo was opened from', () => {
+      const measure = vi.spyOn(content, 'measureScrollOffset').mockReturnValue(640);
+      const tile = openPhoto(1);
+      // The Back navigation starts while the gallery is still detached and reads 0.
+      measure.mockReturnValue(0);
+      (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(2, '/', 'popstate'));
+      outletMock.attachEvents.next(gallery);
+      expect(scrollTo).toHaveBeenCalledWith({ top: 640 });
+      expect(document.activeElement).toBe(tile);
+      expect((gallery as unknown as { activeIndex(): number }).activeIndex()).toBe(1);
+    });
+
+    describe('keyboard cursor', () => {
+      const cursor = () => gallery as unknown as {
+        activeIndex(): number;
+        activePath(): string | null;
+        toggleSelection(photo: unknown, event: undefined, index: number): void;
+      };
+      const tileAt = (index: number) => fixture.nativeElement.querySelector(`[data-pidx="${index}"] [tabindex]`) as HTMLElement;
+      const navigationStart = () =>
+        (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(1, '/photo'));
+
+      it('rates the photo that was open, not photo 0, after the focus loss of the detach', () => {
+        cursor().toggleSelection(photos[2], undefined, 2);
+        const tile = openPhoto(2);
+        outletMock.attachEvents.next(gallery);
+        fixture.detectChanges();
+        expect(cursor().activeIndex()).toBe(2);
+        expect(cursor().activePath()).toBe('/p2.jpg');
+        expect(document.activeElement).toBe(tile);
+        mockStore.setRating.mockClear();
+        tile.dispatchEvent(new KeyboardEvent('keydown', { key: '3', bubbles: true }));
+        expect(mockStore.setRating).toHaveBeenCalledWith('/p2.jpg', 3);
+        expect(mockStore.setRating).not.toHaveBeenCalledWith('/p0.jpg', expect.anything());
+      });
+
+      it('restores the cursor when only the focus, not the cursor, was on the card', () => {
+        expect(cursor().activeIndex()).toBe(-1);
+        openPhoto(2);
+        outletMock.attachEvents.next(gallery);
+        expect(cursor().activeIndex()).toBe(2);
+        expect(cursor().activePath()).toBe('/p2.jpg');
+      });
+
+      it('follows the photo when the list changed while parked', () => {
+        openPhoto(2);
+        mockStore.photos.set([photos[0], photos[2]]);
+        outletMock.attachEvents.next(gallery);
+        expect(cursor().activeIndex()).toBe(1);
+        expect(cursor().activePath()).toBe('/p2.jpg');
+      });
+
+      it('leaves no cursor and no stale card focused when the photo was removed while parked', () => {
+        cursor().toggleSelection(photos[2], undefined, 2);
+        const tile = openPhoto(2);
+        mockStore.photos.set([photos[0], photos[1]]);
+        expect(() => outletMock.attachEvents.next(gallery)).not.toThrow();
+        expect(cursor().activeIndex()).toBe(-1);
+        expect(document.activeElement).not.toBe(tile);
+      });
+
+      it('gives the same result when the focus is lost before the detach event', () => {
+        cursor().toggleSelection(photos[2], undefined, 2);
+        const tile = tileAt(2);
+        navigationStart();
+        tile.blur();
+        outletMock.detachEvents.next(gallery);
+        outletMock.attachEvents.next(gallery);
+        expect(cursor().activeIndex()).toBe(2);
+        expect(cursor().activePath()).toBe('/p2.jpg');
+      });
+
+      it('puts the focus back on the cursor card when the focus was not on a card', () => {
+        cursor().toggleSelection(photos[2], undefined, 2);
+        const bar = document.createElement('div');
+        bar.setAttribute('data-selection-bar', '');
+        const button = document.createElement('button');
+        bar.appendChild(button);
+        document.body.appendChild(bar);
+        button.focus();
+        expect(cursor().activeIndex()).toBe(2);
+        navigationStart();
+        outletMock.detachEvents.next(gallery);
+        bar.remove();
+        outletMock.attachEvents.next(gallery);
+        expect(cursor().activeIndex()).toBe(2);
+        expect(document.activeElement).toBe(tileAt(2));
+      });
+    });
+
+    describe('tooltips', () => {
+      const overlay = () => TestBed.inject(OverlayContainer).getContainerElement();
+      const settle = () => new Promise(resolve => setTimeout(resolve, 30));
+      const tooltipsOf = (root: DebugElement) => root.queryAll(By.directive(MatTooltip)).map(d => d.injector.get(MatTooltip));
+
+      async function expectParkHides(tooltip: MatTooltip): Promise<void> {
+        tooltip.show(0);
+        await settle();
+        expect(overlay().querySelector('.mat-mdc-tooltip')).not.toBeNull();
+        outletMock.detachEvents.next(gallery);
+        await settle();
+        expect(overlay().querySelector('.mat-mdc-tooltip')).toBeNull();
+        expect(tooltip._isTooltipVisible()).toBe(false);
+        const seen = vi.fn();
+        document.addEventListener('keydown', seen);
+        try {
+          document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, cancelable: true }));
+        } finally {
+          document.removeEventListener('keydown', seen);
+        }
+        expect(seen).toHaveBeenCalledOnce();
+      }
+
+      it('hides a card tooltip when the gallery is parked', async () => {
+        const card = fixture.debugElement.query(By.directive(PhotoCardComponent));
+        await expectParkHides(tooltipsOf(card)[0]);
+      });
+
+      it('hides a tooltip of the gallery\'s own template when the gallery is parked', async () => {
+        mockStore.selectionCount.set(1);
+        mockStore.selectedPaths.set(new Set(['/p0.jpg']));
+        fixture.detectChanges();
+        const own = fixture.debugElement.queryAll(By.directive(MatTooltip))
+          .filter(d => !d.nativeElement.closest('app-photo-card'))
+          .map(d => d.injector.get(MatTooltip));
+        expect(own.length).toBeGreaterThan(0);
+        await expectParkHides(own[0]);
+      });
+
+      it('hides a filter sidebar tooltip when the gallery is parked', async () => {
+        const [sidebarBlock] = await fixture.getDeferBlocks();
+        await sidebarBlock.render(DeferBlockState.Complete);
+        const sidebar = fixture.debugElement.query(By.directive(GalleryFilterSidebarComponent));
+        await expectParkHides(tooltipsOf(sidebar)[0]);
+      });
+    });
+
+    it('hands the page help back while a photo is open, and takes it again only on its own return', () => {
+      const help = TestBed.inject(PageHelpService);
+      expect(help.descriptionKey()).toBe(I18N.gallery.help);
+      openPhoto(0);
+      expect(help.descriptionKey()).toBeNull();
+      outletMock.attachEvents.next({});
+      expect(help.descriptionKey()).toBeNull();
+      outletMock.attachEvents.next(gallery);
+      expect(help.descriptionKey()).toBe(I18N.gallery.help);
+    });
+
+    it('drops a hover tooltip photo left behind while parked', () => {
+      const state = gallery as unknown as { tooltipPhoto: WritableSignal<unknown> };
+      openPhoto(0);
+      state.tooltipPhoto.set(photos[1]);
+      outletMock.attachEvents.next(gallery);
+      expect(state.tooltipPhoto()).toBeNull();
+    });
+
+    it('ignores Ctrl+A while parked, so the photo page cannot select the hidden grid', () => {
+      const ctrlA = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true }));
+      openPhoto(0);
+      ctrlA();
+      expect(mockStore.selectAll).not.toHaveBeenCalled();
+      outletMock.attachEvents.next(gallery);
+      ctrlA();
+      expect(mockStore.selectAll).toHaveBeenCalledOnce();
+    });
+
+    it('snapshots the opening scroll position when a parked gallery is destroyed', () => {
+      const measure = vi.spyOn(content, 'measureScrollOffset').mockReturnValue(640);
+      openPhoto(1);
+      // Detached, the viewport reads 0.
+      measure.mockReturnValue(0);
+      fixture.destroy();
+      expect((mockStore.viewSnapshot() as { scrollTop: number } | null)?.scrollTop).toBe(640);
+    });
+
+    it('ignores another gallery being detached', () => {
+      const header = TestBed.inject(HeaderSlotService);
+      outletMock.detachEvents.next({});
+      expect(header.template()).not.toBeNull();
     });
   });
 });
