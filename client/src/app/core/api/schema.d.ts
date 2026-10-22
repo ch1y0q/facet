@@ -11393,7 +11393,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Superadmin access required, or an agent credential was used. */
+            /** @description Superadmin access required, an agent credential was used, or the install is open and the request is not local. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -11447,7 +11447,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The session may not hold the requested level, or an agent credential was used. */
+            /** @description The session may not hold the requested level, an agent credential was used, or the install is open and the request is not local. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -11506,7 +11506,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description An agent credential was used, or the token's level is above the session's. */
+            /** @description An agent credential was used, the token's level is above the session's, or the install is open and the request is not local. */
             403: {
                 headers: {
                     [name: string]: unknown;

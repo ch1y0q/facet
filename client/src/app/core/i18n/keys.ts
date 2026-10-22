@@ -116,6 +116,7 @@ export const I18N = {
       mint_failed: "dialog.connect_assistant.mint_failed",
       revoke_failed: "dialog.connect_assistant.revoke_failed",
       mint_limit: "dialog.connect_assistant.mint_limit",
+      open_install_remote: "dialog.connect_assistant.open_install_remote",
       copied: "dialog.connect_assistant.copied",
       revoke_aria: "dialog.connect_assistant.revoke_aria",
       revoke_confirm_yes_aria: "dialog.connect_assistant.revoke_confirm_yes_aria",

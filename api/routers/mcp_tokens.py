@@ -12,7 +12,10 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from api.agent import tokens
-from api.auth import CurrentUser, _edition_refusal, decode_access_token, require_human_session
+from api.auth import (
+    EDITION_PASSWORD_KEY, CurrentUser, _edition_refusal, _is_open_install, decode_access_token,
+    request_is_local, require_human_session,
+)
 from api.config import get_user_config, is_multi_user_enabled, mcp_settings
 from api.models.mcp import (
     McpTokenCreate, McpTokenCreated, McpTokenList, McpTokenRevoked,
@@ -36,8 +39,36 @@ def _refuse_agent_token(request: Request) -> None:
         raise HTTPException(status_code=403, detail="Agent credentials cannot manage agent tokens")
 
 
+OPEN_INSTALL_LOCAL_ONLY_DETAIL = (
+    "Agent tokens on an open install can only be managed from the computer running Facet; "
+    "set viewer.password to manage them from another machine")
+OPEN_INSTALL_LOCAL_OR_EDITION_DETAIL = (
+    "Agent tokens on an open install can only be managed from the computer running Facet "
+    "or after logging in with the edition password; "
+    "set viewer.password to manage them from another machine")
+
+
+def _require_local_on_open_install(request: Request, user: CurrentUser = Depends(require_human_session)) -> None:
+    """403 on an open install (no ``viewer.password``) unless the caller is local or holds edition.
+
+    Every caller there is the shared ``_anonymous`` principal, so without this any peer that
+    reaches the viewer could list and revoke the local user's tokens, or fill their cap. Allowed:
+    a request from the machine itself (``request_is_local``), or a session whose edition claim an
+    edition password backs (``user.is_edition``, from the same ``require_human_session`` the
+    routes use, so an agent credential still gets its own refusal first). The opt-in
+    ``viewer.trusted_local_editing`` is not consulted: this is a boundary, not the editing opt-in.
+    """
+    if tokens.install_mode() != "open" or user.is_edition or request_is_local(request):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=(OPEN_INSTALL_LOCAL_ONLY_DETAIL if _is_open_install(EDITION_PASSWORD_KEY)
+                else OPEN_INSTALL_LOCAL_OR_EDITION_DETAIL))
+
+
 router = APIRouter(prefix="/api/mcp", tags=["mcp"],
-                   dependencies=[Depends(_require_enabled), Depends(_refuse_agent_token)])
+                   dependencies=[Depends(_require_enabled), Depends(_refuse_agent_token),
+                                 Depends(_require_local_on_open_install)])
 
 
 def _granted_level(user: CurrentUser, requested: str) -> str:
@@ -89,7 +120,7 @@ def _shared_principal_scope(user: CurrentUser) -> Optional[int]:
     response_model=McpTokenCreated,
     responses={
         401: {"description": "Authentication required."},
-        403: {"description": "The session may not hold the requested level, or an agent credential was used."},
+        403: {"description": "The session may not hold the requested level, an agent credential was used, or the install is open and the request is not local."},
         404: {"description": "The agent endpoint is disabled (viewer.mcp.enabled)."},
         412: {"description": "The owner already has the maximum number of live tokens."},
     },
@@ -116,7 +147,7 @@ def create_token(body: McpTokenCreate, user: CurrentUser = Depends(require_human
     response_model=McpTokenList,
     responses={
         401: {"description": "Authentication required."},
-        403: {"description": "Superadmin access required, or an agent credential was used."},
+        403: {"description": "Superadmin access required, an agent credential was used, or the install is open and the request is not local."},
         404: {"description": "The agent endpoint is disabled (viewer.mcp.enabled)."},
     },
 )
@@ -141,7 +172,7 @@ def list_tokens(
     response_model=McpTokenRevoked,
     responses={
         401: {"description": "Authentication required."},
-        403: {"description": "An agent credential was used, or the token's level is above the session's."},
+        403: {"description": "An agent credential was used, the token's level is above the session's, or the install is open and the request is not local."},
         404: {"description": "No such live token, or the endpoint is disabled."},
     },
 )

@@ -10,11 +10,13 @@ import sqlite3
 from datetime import timedelta
 
 import pytest
+from fastapi.testclient import TestClient
 
 from api import config as api_config
 from api.agent import tokens
 from api.auth import create_access_token, hash_password
-from tests.conftest import _TEST_DB_FILE
+from tests.conftest import _TEST_DB_FILE, AGENT_EDITION_PASSWORD
+from tests.test_open_install_refusal import _depends_on, _walk_routes
 
 
 def _local(grant):
@@ -227,7 +229,7 @@ class TestTokenRoutes:
 
     def test_open_install_cookie_only_post_mints_a_readonly_token(self, agent_app):
         env = agent_app("open")
-        resp = env.client.post("/api/mcp/tokens", json={"name": "x", "level": "edition"})
+        resp = env.mint_client.post("/api/mcp/tokens", json={"name": "x", "level": "edition"})
         assert resp.status_code == 200
         assert resp.json()["level"] == "readonly"
 
@@ -358,7 +360,7 @@ class TestTokenCap:
         codes = []
 
         def mint():
-            codes.append(env.client.post("/api/mcp/tokens", json={"name": "x", "level": "readonly"}).status_code)
+            codes.append(env.mint_client.post("/api/mcp/tokens", json={"name": "x", "level": "readonly"}).status_code)
 
         threads = [threading.Thread(target=mint) for _ in range(8)]
         for thread in threads:
@@ -367,3 +369,188 @@ class TestTokenCap:
             thread.join()
         assert sorted(codes) == [200] * 3 + [412] * 5
         assert len(tokens.list_tokens("_anonymous")) == 3
+
+
+LOCAL_ONLY = ("Agent tokens on an open install can only be managed from the computer running Facet; "
+              "set viewer.password to manage them from another machine")
+LOCAL_OR_EDITION = ("Agent tokens on an open install can only be managed from the computer running Facet "
+                    "or after logging in with the edition password; "
+                    "set viewer.password to manage them from another machine")
+TOKEN_ROUTES = {("POST", "/api/mcp/tokens"), ("GET", "/api/mcp/tokens"), ("DELETE", "/api/mcp/tokens/{token_id}")}
+
+
+def _peer(env, host="http://localhost", peer="127.0.0.1"):
+    """The env's app addressed from ``peer`` with ``Host`` taken from ``host`` (own cookie jar)."""
+    return TestClient(env.app, base_url=host, client=(peer, 12345))
+
+
+def _remote(env):
+    """A LAN attacker: a non-loopback peer that forges a local ``Host`` and sends no browser metadata."""
+    return _peer(env, "http://localhost:5000", "192.0.2.7")
+
+
+def _refused_calls(client, headers, token_id=1):
+    return [
+        client.post("/api/mcp/tokens", json={"name": "x", "level": "readonly"}, headers=headers),
+        client.get("/api/mcp/tokens", headers=headers),
+        client.get("/api/mcp/tokens?all=1", headers=headers),
+        client.delete(f"/api/mcp/tokens/{token_id}", headers=headers),
+    ]
+
+
+def _edition_headers(env):
+    resp = env.client.post("/api/auth/edition/login", json={"password": AGENT_EDITION_PASSWORD})
+    assert resp.status_code == 200, resp.text
+    env.client.cookies.clear()
+    return {"Authorization": "Bearer " + resp.json()["access_token"]}
+
+
+# Each case names how the request differs from a browser on the machine: (Host base, peer, headers).
+REFUSED = [
+    pytest.param("http://localhost:5000", "192.0.2.7", [], id="forged-host-remote-peer"),
+    pytest.param("http://localhost", "10.0.0.1", [], id="private-peer"),
+    pytest.param("http://localhost", "::ffff:192.0.2.1", [], id="ipv4-mapped-non-loopback-peer"),
+    pytest.param("http://localhost", "testclient", [], id="non-ip-peer"),
+    pytest.param("http://evil.example", "127.0.0.1", [], id="foreign-host"),
+    pytest.param("http://localhost.evil.example", "127.0.0.1", [], id="suffixed-host"),
+    pytest.param("http://127.0.0.2", "127.0.0.1", [], id="other-loopback-host"),
+    pytest.param("http://localhost", "127.0.0.1", [("Host", "localhost"), ("Host", "localhost")],
+                 id="duplicate-host"),
+    pytest.param("http://localhost", "127.0.0.1", [("Origin", "https://evil.example")], id="foreign-origin"),
+    pytest.param("http://localhost", "127.0.0.1", [("Origin", "null")], id="null-origin"),
+    pytest.param("http://localhost", "127.0.0.1", [("Origin", "http://localhost:9999")], id="port-mismatch"),
+    pytest.param("http://localhost", "127.0.0.1", [("Origin", "https://localhost:80")], id="scheme-mismatch"),
+    pytest.param("http://localhost", "127.0.0.1", [("X-Forwarded-For", "203.0.113.9")], id="x-forwarded-for"),
+    pytest.param("http://localhost", "127.0.0.1", [("X-Forwarded-For", "127.0.0.1")], id="x-forwarded-for-loopback"),
+    pytest.param("http://localhost", "127.0.0.1", [("Forwarded", "for=127.0.0.1")], id="forwarded"),
+    pytest.param("http://localhost", "127.0.0.1", [("X-Real-IP", "192.0.2.1")], id="x-real-ip"),
+]
+ALLOWED = [
+    pytest.param("http://localhost", "127.0.0.1", [], id="ipv4-loopback"),
+    pytest.param("http://localhost", "::1", [("Host", "[::1]:9000"), ("Origin", "http://[::1]:9000")],
+                 id="ipv6-loopback"),
+    pytest.param("http://localhost", "::ffff:127.0.0.1", [], id="ipv4-mapped-loopback"),
+    pytest.param("http://127.0.0.1:9000", "127.0.0.1",
+                 [("Origin", "http://127.0.0.1:9000"), ("Sec-Fetch-Site", "same-origin")], id="same-origin-browser"),
+]
+
+
+class TestOpenInstallLocalBoundary:
+    @pytest.mark.parametrize("host,peer,extra", REFUSED)
+    def test_a_non_local_caller_cannot_mint_list_or_revoke(self, agent_app, host, peer, extra):
+        env = agent_app("open")
+        headers = {**env.login()}
+        keep = env.token(headers, "readonly", "kept")
+        client = _peer(env, host, peer)
+        responses = _refused_calls(client, [*headers.items(), *extra], token_id=tokens.list_tokens("_anonymous")[0]["id"])
+        assert [r.status_code for r in responses] == [403] * 4
+        assert {r.json()["detail"] for r in responses} == {LOCAL_ONLY}
+        assert [t["name"] for t in tokens.list_tokens("_anonymous")] == ["kept"]
+        assert tokens.verify(keep) is not None
+
+    @pytest.mark.parametrize("host,peer,extra", ALLOWED)
+    def test_a_local_caller_mints_lists_and_revokes(self, agent_app, host, peer, extra):
+        env = agent_app("open")
+        headers = [*env.login().items(), *extra]
+        client = _peer(env, host, peer)
+        minted = client.post("/api/mcp/tokens", json={"name": "mine", "level": "readonly"}, headers=headers)
+        assert minted.status_code == 200, minted.text
+        listed = client.get("/api/mcp/tokens", headers=headers).json()["tokens"]
+        assert [t["id"] for t in listed] == [minted.json()["id"]]
+        assert tokens.verify(minted.json()["token"]) is not None
+        assert client.delete(f"/api/mcp/tokens/{minted.json()['id']}", headers=headers).status_code == 200
+        assert tokens.verify(minted.json()["token"]) is None
+
+    def test_a_remote_peer_cannot_see_or_revoke_the_local_users_token(self, agent_app):
+        env = agent_app("open")
+        headers = env.login()
+        token_id = env.mint(headers).json()["id"]
+        remote = _remote(env)
+        assert remote.get("/api/mcp/tokens", headers=headers).status_code == 403
+        assert remote.delete(f"/api/mcp/tokens/{token_id}", headers=headers).status_code == 403
+        assert [t["id"] for t in tokens.list_tokens("_anonymous")] == [token_id]
+
+    def test_a_hostile_peer_cannot_fill_the_cap(self, agent_app):
+        env = agent_app("open")
+        headers = env.login()
+        for index in range(tokens.MAX_LIVE_TOKENS_PER_USER - 1):
+            assert env.mint(headers, name=f"t{index}").status_code == 200
+        remote = _remote(env)
+        for _ in range(50):
+            assert remote.post("/api/mcp/tokens", json={"name": "x", "level": "readonly"},
+                               headers=headers).status_code == 403
+        assert len(tokens.list_tokens("_anonymous")) == tokens.MAX_LIVE_TOKENS_PER_USER - 1
+        assert env.mint(headers, name="last").status_code == 200
+        assert env.mint(headers, name="over").status_code == 412
+
+    @pytest.mark.parametrize("opt_in", [True, False])
+    def test_trusted_local_editing_does_not_change_the_gate(self, agent_app, opt_in):
+        env = agent_app("open")
+        api_config.VIEWER_CONFIG["trusted_local_editing"] = opt_in
+        headers = env.login()
+        assert env.mint(headers).status_code == 200
+        assert [r.status_code for r in _refused_calls(_remote(env), headers)] == [403] * 4
+
+    @pytest.mark.parametrize("mode", ["legacy", "multi"])
+    def test_a_password_install_does_not_look_at_the_peer(self, agent_app, mode):
+        env = agent_app(mode)
+        headers = env.login("alice") if mode == "multi" else env.login()
+        remote = _remote(env)
+        minted = remote.post("/api/mcp/tokens", json={"name": "x", "level": "readonly"}, headers=headers)
+        assert minted.status_code == 200, minted.text
+        assert remote.get("/api/mcp/tokens", headers=headers).status_code == 200
+        assert remote.delete(f"/api/mcp/tokens/{minted.json()['id']}", headers=headers).status_code == 200
+
+    def test_the_gate_is_attached_to_exactly_the_token_routes(self, agent_app):
+        from api.routers import mcp_tokens
+        gate = getattr(mcp_tokens, "_require_local_on_open_install", None)
+        assert gate is not None
+        gated, token_routes = set(), set()
+        for route in _walk_routes(agent_app("legacy").app.routes):
+            dependant = getattr(route, "dependant", None)
+            methods = getattr(route, "methods", None)
+            if dependant is None or not methods:
+                continue
+            for method in methods - {"HEAD", "OPTIONS"}:
+                if route.path.startswith("/api/mcp/tokens"):
+                    token_routes.add((method, route.path))
+                if _depends_on(dependant, gate):
+                    gated.add((method, route.path))
+        assert gated == TOKEN_ROUTES
+        assert token_routes == TOKEN_ROUTES
+
+
+class TestEditionPasswordOnlyInstall:
+    """No ``viewer.password`` but an edition password: still an open install for tokens."""
+
+    def _env(self, agent_app):
+        env = agent_app("open")
+        api_config.VIEWER_CONFIG["edition_password"] = AGENT_EDITION_PASSWORD
+        return env
+
+    def test_a_remote_edition_session_manages_tokens(self, agent_app):
+        env = self._env(agent_app)
+        headers = _edition_headers(env)
+        remote = _remote(env)
+        minted = remote.post("/api/mcp/tokens", json={"name": "x", "level": "readonly"}, headers=headers)
+        assert minted.status_code == 200, minted.text
+        assert [t["id"] for t in remote.get("/api/mcp/tokens", headers=headers).json()["tokens"]] == [minted.json()["id"]]
+        assert remote.delete(f"/api/mcp/tokens/{minted.json()['id']}", headers=headers).status_code == 200
+
+    def test_a_remote_session_without_the_edition_claim_is_refused(self, agent_app):
+        env = self._env(agent_app)
+        headers = env.login()
+        responses = _refused_calls(_remote(env), headers)
+        assert [r.status_code for r in responses] == [403] * 4
+        assert {r.json()["detail"] for r in responses} == {LOCAL_OR_EDITION}
+        assert tokens.list_tokens("_anonymous") == []
+
+    def test_a_local_session_without_the_edition_claim_manages_tokens(self, agent_app):
+        env = self._env(agent_app)
+        headers = env.login()
+        assert env.mint(headers).status_code == 200
+        assert _peer(env).get("/api/mcp/tokens", headers=headers).status_code == 200
+
+    def test_with_no_password_at_all_the_detail_does_not_mention_the_edition_password(self, agent_app):
+        env = agent_app("open")
+        assert _remote(env).get("/api/mcp/tokens", headers=env.login()).json()["detail"] == LOCAL_ONLY

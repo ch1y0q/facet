@@ -438,6 +438,85 @@ describe('ConnectAssistantDialogComponent', () => {
     expect(listMcpTokens).toHaveBeenCalledTimes(2);
   });
 
+  describe('token management refused on an open install', () => {
+    const forbidden = (): HttpErrorResponse => new HttpErrorResponse({ status: 403 });
+    const REMOTE = 'dialog.connect_assistant.open_install_remote';
+
+    beforeEach(() => {
+      loginRequired = false;
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('replaces the form and the token list with the explanation after a refused list', async () => {
+      listMcpTokens.mockReturnValue(throwError(forbidden));
+      await create();
+      expect(query('[data-testid="management-refused"]')?.textContent).toContain(REMOTE);
+      expect(query('input[name="token-name"]')).toBeNull();
+      expect(query('[data-testid="tokens-disclosure"]')).toBeNull();
+      expect(query('[role="alert"]')?.textContent).not.toContain('load_failed');
+    });
+
+    it('stops the poll and the bridge-connect refresh after the first refusal', async () => {
+      vi.useFakeTimers();
+      listMcpTokens.mockReturnValue(throwError(forbidden));
+      await create();
+      expect(listMcpTokens).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(TOKENS_POLL_MS * 3);
+      connected.set(true);
+      fixture.detectChanges();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(listMcpTokens).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('explains a refused mint', async () => {
+      createMcpToken.mockReturnValueOnce(throwError(forbidden));
+      await create();
+      await mintAs('x');
+      expect(query('[data-testid="management-refused"]')?.textContent).toContain(REMOTE);
+      expect(query('[data-testid="reveal"]')).toBeNull();
+    });
+
+    it('explains a refused revoke', async () => {
+      revokeMcpToken.mockReturnValueOnce(throwError(forbidden));
+      await create();
+      buttonByText('dialog.connect_assistant.revoke')!.click();
+      fixture.detectChanges();
+      buttonByText('dialog.connect_assistant.revoke_confirm_yes')!.click();
+      await flush();
+      expect(query('[data-testid="management-refused"]')?.textContent).toContain(REMOTE);
+    });
+
+    it('still reports the token limit on a 412', async () => {
+      createMcpToken.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 412 })));
+      await create();
+      await mintAs('x');
+      expect(query('[role="alert"]')?.textContent).toContain('dialog.connect_assistant.mint_limit');
+      expect(query('[data-testid="management-refused"]')).toBeNull();
+    });
+
+    it('keeps mint_failed for a 403 on an install with a password', async () => {
+      loginRequired = true;
+      createMcpToken.mockReturnValueOnce(throwError(forbidden));
+      await create();
+      await mintAs('x');
+      expect(query('[role="alert"]')?.textContent).toContain('dialog.connect_assistant.mint_failed');
+      expect(query('[data-testid="management-refused"]')).toBeNull();
+    });
+
+    it('keeps load_failed and revoke_failed for a 403 on a multi-user install', async () => {
+      loginRequired = false;
+      multiUser = true;
+      listMcpTokens.mockReturnValue(throwError(forbidden));
+      await create();
+      expect(query('[role="alert"]')?.textContent).toContain('dialog.connect_assistant.load_failed');
+      expect(query('[data-testid="management-refused"]')).toBeNull();
+    });
+  });
+
   describe('token list polling', () => {
     afterEach(() => {
       vi.useRealTimers();

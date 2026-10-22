@@ -19,7 +19,7 @@ Facet hat zwei Arbeitslasten:
 
 Nur der Viewer muss auf dem Server laufen. Bewerten Sie auf einer Workstation und synchronisieren Sie dann die Datenbank.
 
-> **Warnung:** Solange `viewer.password` leer ist (Standardwert), kann jeder, der den Port des Viewers erreicht, die gesamte Bibliothek durchsuchen und die Originalfotos herunterladen, egal wie Sie ihn unten starten. Setzen Sie `viewer.password`, bevor Sie den Port über den Rechner hinaus öffnen; siehe den Hinweis im [Einzelbenutzermodus](VIEWER.md#einzelbenutzermodus-standard).
+> **Warnung:** Solange `viewer.password` leer ist (Standardwert), kann jeder, der den Port des Viewers erreicht, die gesamte Bibliothek durchsuchen und die Originalfotos herunterladen, egal wie Sie ihn unten starten. Setzen Sie `viewer.password`, bevor Sie den Port über den Rechner hinaus öffnen; siehe den Hinweis im [Einzelbenutzermodus](VIEWER.md#einzelbenutzermodus-standard). Auf einer offenen Installation lassen sich auch die Assistenten-Tokens (**Assistent verbinden**) nur auf dem Rechner erstellen, auflisten und widerrufen, auf dem Facet läuft: Eine Docker-Bereitstellung (der Browser erreicht den Container über das Bridge-Gateway) oder ein Reverse-Proxy kann sie nicht verwalten. Setzen Sie dort `viewer.password` oder führen Sie die Anfrage auf dem Host aus (`docker compose exec facet python -c "import urllib.request ..."`). Ein Reverse-Proxy muss `X-Forwarded-For` oder `Forwarded` senden, sonst wird er wie der lokale Rechner behandelt.
 
 ## Pfadzuordnung
 

@@ -102,6 +102,7 @@
       "mint_failed": "Das Token konnte nicht erstellt werden",
       "revoke_failed": "Das Token konnte nicht widerrufen werden",
       "mint_limit": "Sie haben bereits die maximale Anzahl aktiver Token. Widerrufen Sie zuerst eines.",
+      "open_install_remote": "Bei einer offenen Installation lassen sich Assistenten-Token nur auf dem Rechner verwalten, auf dem Facet läuft. Setzen Sie viewer.password, um sie von einem anderen Rechner aus zu verwalten.",
       "copied": "Kopiert",
       "revoke_aria": "Token {name} widerrufen",
       "revoke_confirm_yes_aria": "Ja, widerrufen: Token {name}",

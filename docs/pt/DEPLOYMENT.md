@@ -18,7 +18,7 @@ O Facet tem duas cargas de trabalho:
 
 Apenas o visualizador precisa rodar no servidor. Pontue em uma estação de trabalho e, em seguida, sincronize o banco de dados.
 
-> **Aviso:** enquanto `viewer.password` estiver vazio (o padrão), qualquer pessoa que alcance a porta do visualizador pode navegar por toda a biblioteca e baixar as fotos originais, qualquer que seja a forma de iniciá-lo abaixo. Defina `viewer.password` antes de expor a porta além da máquina; veja a nota em [Modo de Usuário Único](VIEWER.md#modo-de-usuário-único-padrão).
+> **Aviso:** enquanto `viewer.password` estiver vazio (o padrão), qualquer pessoa que alcance a porta do visualizador pode navegar por toda a biblioteca e baixar as fotos originais, qualquer que seja a forma de iniciá-lo abaixo. Defina `viewer.password` antes de expor a porta além da máquina; veja a nota em [Modo de Usuário Único](VIEWER.md#modo-de-usuário-único-padrão). Numa instalação aberta, os tokens do assistente (**Ligar um assistente**) também só se criam, listam e revogam a partir do computador onde o Facet está a correr: uma implementação Docker (o navegador alcança o contentor pelo gateway da rede bridge) ou um proxy inverso não os consegue gerir, por isso defina aí `viewer.password` ou execute o pedido no anfitrião (`docker compose exec facet python -c "import urllib.request ..."`). Um proxy inverso tem de enviar `X-Forwarded-For` ou `Forwarded`; caso contrário é tratado como a máquina local.
 
 ## Mapeamento de caminhos
 

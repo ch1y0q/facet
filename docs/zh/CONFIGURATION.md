@@ -1965,7 +1965,7 @@ python facet.py --recompute-tags-vlm   # 用 VLM 标签模型重新打标签
 
 受信任的请求拥有完整的编辑权限：凡是原本需要编辑会话的路由都包括在内，而不只是评分。这涵盖评分、收藏与拒绝、比较模式、选片（包括会移动文件或将其移入回收站的**选片后导出／清理**，以及单张照片删除）、相册、人物与人脸管理、权重、优先级与评分情境的修改、元数据嵌入与导出、参数固定的重算与全景检测任务，以及按需生成描述与点评。扫描触发也包含在内：受信任的本地浏览器会话，以及持有完全编辑令牌的本地助手，无需 `viewer.features.show_scan_button` 即可扫描。扫描进度流只接受来自同一台本地机器的受信任本地流令牌。
 
-**助手。** 同一选项让“连接助手”对话框可在开放安装上创建**完全编辑**令牌（仍需 `viewer.mcp.enabled` 和令牌）。该令牌仅对通过上述边界的 `/mcp` 请求为 `edition`，因此可从 `:5000` 上的 `http://localhost:<port>` 或 `127.0.0.1` 以及 `ng serve` 开发代理 `:4200` 使用；来自局域网客户端、主机名或 `0.0.0.0` 的 URL 或 Docker 部署时则降为 `readonly`。任何密码都会把它降为 `readonly`，清除密码后恢复。删除类工具仍需要 `viewer.mcp.allow_destructive`。`ng serve --host 0.0.0.0` 或同一主机上任何未加标记的代理，会让发送 `Host: localhost` 的局域网客户端通过，此时只剩令牌保护 `/mcp`。参见 [AI 智能体（MCP）](AGENTS.md)。
+**助手。** 同一选项让“连接助手”对话框可在开放安装上创建**完全编辑**令牌（仍需 `viewer.mcp.enabled` 和令牌）。该令牌仅对通过上述边界的 `/mcp` 请求为 `edition`，因此可从 `:5000` 上的 `http://localhost:<port>` 或 `127.0.0.1` 以及 `ng serve` 开发代理 `:4200` 使用；来自局域网客户端、主机名或 `0.0.0.0` 的 URL 或 Docker 部署时则降为 `readonly`。任何密码都会把它降为 `readonly`，清除密码后恢复。删除类工具仍需要 `viewer.mcp.allow_destructive`。`ng serve --host 0.0.0.0` 或同一主机上任何未加标记的代理，会让发送 `Host: localhost` 的局域网客户端通过，此时只剩令牌保护 `/mcp`。参见 [AI 智能体（MCP）](AGENTS.md)。无论 `trusted_local_editing` 取何值，同一道边界都管控开放安装上的助手令牌管理：创建、列出和吊销令牌只对通过该边界的请求有效（设置了 `viewer.edition_password` 时，也可在编辑会话中进行）。反向代理必须发送 `X-Forwarded-For` 或 `Forwarded`，否则会被当作本机。
 
 > **警告：** loopback 对端是唯一真正的边界。`Host`、`Origin`、`Referer` 和 `Sec-Fetch-Site` 由客户端设置，只能用来拒绝请求；同一主机上不添加上述任何头的反向代理、隧道或端口转发与你的浏览器无法区分。切勿在同一主机的任何反向代理之后启用此选项。启用期间，本机的任何本地进程和任何账户都可以编辑。
 
@@ -2590,7 +2590,7 @@ python facet.py --recompute-text   # 重新读取整个图库
 
 ## 智能体端点（MCP）
 
-在 `POST /mcp` 上提供 [AI 智能体（MCP）](AGENTS.md) 中描述的工具：读取、控制已打开的标签页，并按令牌级别修改评分、标签和相册、筛选与删除。默认开启；将 `enabled` 设为 `false` 可关闭它（所有路由随即返回 404）。在开放安装（没有 `viewer.password`）上，`/mcp` 只提供一个只读匿名密钥，它不授予开放的 `/api` 本来没有授予的任何权限。在开放安装上创建的令牌为 `readonly`，除非启用了 `viewer.trusted_local_editing`，此时可为来自同一台机器的请求使用完全编辑令牌。
+在 `POST /mcp` 上提供 [AI 智能体（MCP）](AGENTS.md) 中描述的工具：读取、控制已打开的标签页，并按令牌级别修改评分、标签和相册、筛选与删除。默认开启；将 `enabled` 设为 `false` 可关闭它（所有路由随即返回 404）。在开放安装（没有 `viewer.password`）上，`/mcp` 只提供一个只读匿名密钥，它不授予开放的 `/api` 本来没有授予的任何权限。在开放安装上创建的令牌为 `readonly`，除非启用了 `viewer.trusted_local_editing`，此时可为来自同一台机器的请求使用完全编辑令牌。在开放安装上，令牌只能在运行 Facet 的电脑上创建、列出和吊销（设置了 `viewer.edition_password` 时，也可在编辑会话中进行）。
 
 ```json
 {
@@ -2616,7 +2616,7 @@ python facet.py --recompute-text   # 重新读取整个图库
 
 | 键 | 默认值 | 说明 |
 |-----|---------|-------------|
-| `enabled` | `true` | `/mcp` 与 `/api/mcp/*` 的总开关。关闭时它们返回 404（桥接以关闭码 4404 断开）。在开放安装（没有 `viewer.password`）上，该端点只提供一个只读匿名密钥：不增加任何新权限，因为开放的 `/api` 本就暴露相同的数据。在开放安装上创建的令牌为 `readonly`，除非启用了 `viewer.trusted_local_editing`，此时可为来自同一台机器的请求使用完全编辑令牌。 |
+| `enabled` | `true` | `/mcp` 与 `/api/mcp/*` 的总开关。关闭时它们返回 404（桥接以关闭码 4404 断开）。在开放安装（没有 `viewer.password`）上，该端点只提供一个只读匿名密钥：不增加任何新权限，因为开放的 `/api` 本就暴露相同的数据。在开放安装上创建的令牌为 `readonly`，除非启用了 `viewer.trusted_local_editing`，此时可为来自同一台机器的请求使用完全编辑令牌。 |在开放安装上，令牌只能在运行 Facet 的电脑上创建、列出和吊销（设置了 `viewer.edition_password` 时，也可在编辑会话中进行）。
 | `bridge` | `true` | 浏览器标签页桥接（`/api/mcp/bridge`）是否接受 WebSocket、`ui_*` 工具能否到达标签页。为 `false` 时桥接拒绝连接（关闭码 4404），`ui_*` 工具会返回相应错误。需要单个 worker。 |
 | `max_rows` | `100` | 单次工具结果的最大行数（1 到 500）。多余的行被丢弃并设置 `truncated: true`。 |
 | `max_bytes` | `60000` | 单次工具结果序列化后的最大字节数（4000 到 500000）。 |

@@ -25,6 +25,8 @@ CONFIGURED = [AGENT_DIR + "scan-a/"]
 PHOTO = AGENT_DIR + "local-edit.jpg"
 LOCAL = {"base_url": "http://localhost", "client": ("127.0.0.1", 5000)}
 FORWARDED = {"X-Forwarded-For": "203.0.113.9"}
+LOCAL_ONLY = ("Agent tokens on an open install can only be managed from the computer running Facet; "
+              "set viewer.password to manage them from another machine")
 
 
 class FakeProc:
@@ -87,7 +89,9 @@ def edition_token(local):
 def test_mint_edition_on_open_install_requires_trusted_local(build):
     local, remote = build()
     assert local.mint(local.login(), "edition").json()["level"] == "edition"
-    assert remote.mint(remote.login(), "edition").json()["level"] == "readonly"
+    refused = remote.mint(remote.login(), "edition")
+    assert refused.status_code == 403 and refused.json()["detail"] == LOCAL_ONLY
+    assert len(tokens.list_tokens("_anonymous")) == 1
     assert local.mint(local.login(), "edition").status_code == 200
 
 
@@ -97,11 +101,12 @@ def test_mint_edition_is_readonly_when_the_opt_in_is_off(build):
     assert local.mint(local.login(), "edition").json()["level"] == "readonly"
 
 
-def test_mint_edition_from_a_forwarded_local_request_is_readonly(build):
-    # REGRESSION GUARD: passes before and after.
+def test_mint_edition_from_a_forwarded_local_request_is_refused(build):
     local, _ = build()
     headers = {**local.login(), **FORWARDED}
-    assert local.mint(headers, "edition").json()["level"] == "readonly"
+    refused = local.mint(headers, "edition")
+    assert refused.status_code == 403 and refused.json()["detail"] == LOCAL_ONLY
+    assert tokens.list_tokens("_anonymous") == []
 
 
 def test_a_local_edition_token_writes_and_the_row_changes(build, photo):
@@ -287,7 +292,7 @@ def test_a_readonly_token_minted_before_the_opt_in_reaches_the_local_edition_tab
 def test_guard_a_lan_readonly_token_never_reaches_the_local_edition_tab(build, fake_tab):
     local, remote = build()
     fake_tab(local, None, origin="http://localhost")
-    result = remote.call(remote.token(remote.login(), "readonly"), "ui_get_context")
+    result = remote.call(local.token(local.login(), "readonly"), "ui_get_context")
     assert result["ok"] is False and result["error"] == "no_tab"
     assert "higher level" in result["message"] and "non-local" in result["message"], result
 

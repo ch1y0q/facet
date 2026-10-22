@@ -102,6 +102,7 @@
       "mint_failed": "Não foi possível criar o token",
       "revoke_failed": "Não foi possível revogar o token",
       "mint_limit": "Já tem o número máximo de tokens ativos. Revogue um primeiro.",
+      "open_install_remote": "Numa instalação aberta, os tokens do assistente só podem ser geridos a partir do computador onde o Facet está a correr. Defina viewer.password para os gerir a partir de outra máquina.",
       "copied": "Copiado",
       "revoke_aria": "Revogar o token {name}",
       "revoke_confirm_yes_aria": "Sim, revogar o token {name}",

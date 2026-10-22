@@ -18,7 +18,7 @@ Facet has two workloads:
 
 Only the viewer needs to run on the server. Score on a workstation, then sync the database.
 
-> **Warning:** while `viewer.password` is empty (the shipped default), anyone who can reach the viewer's port can browse the whole library and download the original photos, however you launch it below. Set `viewer.password` before exposing the port beyond the machine; see the [Single-User Mode](VIEWER.md#single-user-mode-default) note.
+> **Warning:** while `viewer.password` is empty (the shipped default), anyone who can reach the viewer's port can browse the whole library and download the original photos, however you launch it below. Set `viewer.password` before exposing the port beyond the machine; see the [Single-User Mode](VIEWER.md#single-user-mode-default) note. On an open install, assistant tokens (**Connect an assistant**) can likewise be minted, listed and revoked only from the computer running Facet: a Docker deployment (the browser reaches the container through the bridge gateway) or a reverse proxy cannot manage them, so set `viewer.password` there or run the request on the host (`docker compose exec facet python -c "import urllib.request ..."`). A reverse proxy must send `X-Forwarded-For` or `Forwarded`, otherwise it is treated as the local machine.
 
 ## Path Mapping
 

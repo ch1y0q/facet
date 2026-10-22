@@ -56,6 +56,9 @@ interface LevelOption {
           </div>
         </section>
       } @else {
+        @if (managementRefused()) {
+          <p class="text-sm" role="alert" data-testid="management-refused">{{ I18N.dialog.connect_assistant.open_install_remote | translate }}</p>
+        } @else {
         <p class="text-sm opacity-80">{{ I18N.dialog.connect_assistant.intro | translate }}</p>
         <div class="flex flex-col gap-3">
           <label class="flex flex-col gap-1 text-sm">
@@ -78,6 +81,7 @@ interface LevelOption {
             </button>
           </div>
         </div>
+        }
         <p class="flex items-center gap-2 text-sm" data-testid="bridge-status">
           <mat-icon class="shrink-0 !w-4 !h-4 !text-[16px] !leading-4" [class.text-green-600]="bridgeConnected()" [class.opacity-60]="!bridgeConnected()">{{ bridgeConnected() ? 'link' : 'link_off' }}</mat-icon>
           <span>{{ bridgeStatusKey() | translate }}</span>
@@ -91,6 +95,7 @@ interface LevelOption {
             </span>
           </label>
         }
+        @if (!managementRefused()) {
         <details #tokensDetails data-testid="tokens-disclosure" [open]="tokensOpen()" (toggle)="tokensOpen.set(tokensDetails.open)">
           <summary #tokensSummary class="cursor-pointer py-1 text-sm font-medium">{{ I18N.dialog.connect_assistant.manage_tokens | translate: { count: tokens().length } }}</summary>
         <div class="flex flex-col gap-2 pt-2">
@@ -120,6 +125,7 @@ interface LevelOption {
         }
         </div>
         </details>
+        }
       }
     </mat-dialog-content>
     <mat-dialog-actions align="end">
@@ -157,6 +163,8 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
   private announceTimer: ReturnType<typeof setTimeout> | undefined;
   protected readonly copied = signal(false);
   protected readonly tokensOpen = signal(false);
+  /** Set by the first 403 on an open install: token management there is local-only, so stop asking and say why. */
+  protected readonly managementRefused = signal(false);
   protected readonly inpageAvailable = computed(() => this.auth.status()?.features['mcp_inpage'] === true);
   protected readonly inpageOptIn = computed(() => this.serverTools.optedIn());
   protected readonly bridgeConnected = computed(() => this.bridge.connected());
@@ -218,11 +226,22 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
     this.createdToken.set(null);
   }
 
+  /** True (and the dialog switches to the explanation, with the poll stopped) for a 403 on an open install. */
+  private refuseIfNotLocal(err: unknown): boolean {
+    const openInstall = !this.auth.loginPasswordRequired() && !this.auth.isMultiUser();
+    if (!openInstall || !(err instanceof HttpErrorResponse) || err.status !== 403) return false;
+    this.managementRefused.set(true);
+    this.error.set(null);
+    clearInterval(this.pollTimer);
+    return true;
+  }
+
   private async refresh(quiet = false): Promise<void> {
+    if (this.managementRefused()) return;
     try {
       this.tokens.set((await firstValueFrom(this.api.listMcpTokens())).tokens.filter(t => !t.revoked));
-    } catch {
-      if (!quiet) this.error.set(this.I18N.dialog.connect_assistant.load_failed);
+    } catch (err) {
+      if (!this.refuseIfNotLocal(err) && !quiet) this.error.set(this.I18N.dialog.connect_assistant.load_failed);
     }
   }
 
@@ -239,6 +258,7 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
       afterNextRender(() => this.promptHeading()?.nativeElement.focus(), { injector: this.injector });
       await this.refresh();
     } catch (err) {
+      if (this.refuseIfNotLocal(err)) return;
       this.error.set(err instanceof HttpErrorResponse && err.status === 412
         ? this.I18N.dialog.connect_assistant.mint_limit
         : this.I18N.dialog.connect_assistant.mint_failed);
@@ -261,8 +281,8 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
       this.announce(this.i18n.t(this.I18N.dialog.connect_assistant.revoked));
       // The revoked row (and its focused button) is gone; land on the disclosure's summary rather than on <body>.
       afterNextRender(() => this.tokensSummary()?.nativeElement.focus(), { injector: this.injector });
-    } catch {
-      this.error.set(this.I18N.dialog.connect_assistant.revoke_failed);
+    } catch (err) {
+      if (!this.refuseIfNotLocal(err)) this.error.set(this.I18N.dialog.connect_assistant.revoke_failed);
     }
   }
 

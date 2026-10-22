@@ -6,13 +6,13 @@ Facet 可以充当 [Model Context Protocol](https://modelcontextprotocol.io/)（
 
 ## 启用
 
-该端点**默认开启**。要关闭它，请在 `scoring_config.json` 中把 `viewer.mcp.enabled` 设为 `false`（参见 [智能体端点（MCP）](CONFIGURATION.md#智能体端点mcp)），然后重启查看器或重新加载配置；此后 `/mcp` 和所有 `/api/mcp/*` 路由都返回 404。没有 `viewer.password` 时，即使设置了 `viewer.edition_password`，该安装也视为开放安装，其令牌为 `readonly`，除非启用了 `viewer.trusted_local_editing`。在开放安装上，该端点只提供一个只读匿名密钥，它不授予开放的 `/api` 本来没有授予的任何权限。
+该端点**默认开启**。要关闭它，请在 `scoring_config.json` 中把 `viewer.mcp.enabled` 设为 `false`（参见 [智能体端点（MCP）](CONFIGURATION.md#智能体端点mcp)），然后重启查看器或重新加载配置；此后 `/mcp` 和所有 `/api/mcp/*` 路由都返回 404。没有 `viewer.password` 时，即使设置了 `viewer.edition_password`，该安装也视为开放安装，其令牌为 `readonly`，除非启用了 `viewer.trusted_local_editing`。在开放安装上，该端点只提供一个只读匿名密钥，它不授予开放的 `/api` 本来没有授予的任何权限。在开放安装上，助手令牌只能在运行 Facet 的电脑上创建、列出和吊销（设置了 `viewer.edition_password` 时，也可在编辑会话中进行）；其他任何请求都会被 403 拒绝。
 
 端点是查看器自身端口上的 `POST /mcp`：Streamable HTTP、无状态、纯 JSON 响应。`GET` 返回 405。只有标签页桥接 `/api/mcp/bridge` 是 WebSocket，参见[控制已打开的标签页](#控制已打开的标签页)。
 
 ## 创建令牌
 
-最简单的方式是在浏览器中操作。启用 `viewer.mcp.enabled` 后，打开账户菜单并选择**连接助手**。输入**名称**，选择**助手可执行的操作**：**仅读取和操作界面**；若当前会话具备相应级别，还可选择**代表我操作**或**完全编辑**（令牌的级别不能高于创建它的会话），然后点击**创建令牌**。对话框随后会显示**将此内容粘贴到您的助手中**，并附带一段包含令牌的现成提示词。它只显示一次：请点击**复制提示词**，粘贴到您的助手中，再点击**完成**。**管理令牌（N）**列出您的令牌及其最近使用时间，并可撤销其中一个；状态行则说明此标签页是否已连接、能否被助手操控。级别列表仅限服务器会授予的范围：开放安装只提供**仅读取和操作界面**，**代表我操作**仅出现在多用户安装中，**完全编辑**仅在编辑会话中提供；在开放安装中，这意味着在同一台计算机上的浏览器且启用了 `viewer.trusted_local_editing`。提示词中会写明实际授予的级别。
+最简单的方式是在浏览器中操作。启用 `viewer.mcp.enabled` 后，打开账户菜单并选择**连接助手**。输入**名称**，选择**助手可执行的操作**：**仅读取和操作界面**；若当前会话具备相应级别，还可选择**代表我操作**或**完全编辑**（令牌的级别不能高于创建它的会话），然后点击**创建令牌**。对话框随后会显示**将此内容粘贴到您的助手中**，并附带一段包含令牌的现成提示词。它只显示一次：请点击**复制提示词**，粘贴到您的助手中，再点击**完成**。**管理令牌（N）**列出您的令牌及其最近使用时间，并可撤销其中一个；状态行则说明此标签页是否已连接、能否被助手操控。级别列表仅限服务器会授予的范围：开放安装只提供**仅读取和操作界面**，**代表我操作**仅出现在多用户安装中，**完全编辑**仅在编辑会话中提供；在开放安装中，这意味着在同一台计算机上的浏览器且启用了 `viewer.trusted_local_editing`。提示词中会写明实际授予的级别。在开放安装上，该对话框只能在运行 Facet 的电脑上使用（设置了 `viewer.edition_password` 时，也可在编辑会话中使用）；在其他设备上，它会显示“在开放安装中，助手令牌只能在运行 Facet 的电脑上管理。设置 viewer.password 后即可从其他设备管理。”以取代表单，并不再向服务器发起请求。
 
 通过脚本创建（curl）：
 
@@ -23,7 +23,7 @@ TOKEN=$(curl -s -X POST http://localhost:5000/api/auth/login -H 'Content-Type: a
 curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"name": "my-assistant", "level": "readonly"}'
 ```
 
-响应的 `token` 字段包含明文令牌。`GET /api/mcp/tokens` 列出你的令牌（绝不包含密钥本身），`DELETE /api/mcp/tokens/{id}` 吊销其中一个。超级管理员可以用 `?all=1` 列出所有所有者的令牌并吊销任意一个。每位所有者最多持有 20 个有效令牌（超出返回 412）。这些路由会以 403 拒绝智能体自己的凭据，因此助手永远无法创建、列出或吊销令牌。
+响应的 `token` 字段包含明文令牌。`GET /api/mcp/tokens` 列出你的令牌（绝不包含密钥本身），`DELETE /api/mcp/tokens/{id}` 吊销其中一个。超级管理员可以用 `?all=1` 列出所有所有者的令牌并吊销任意一个。每位所有者最多持有 20 个有效令牌（超出返回 412）。这些路由会以 403 拒绝智能体自己的凭据，因此助手永远无法创建、列出或吊销令牌。在开放安装（无 `viewer.password`）上，凡不是来自运行 Facet 的电脑的请求，这些路由同样返回 403：经过反向代理的请求（任何 `Forwarded`、`X-Forwarded-*` 或 `X-Real-IP` 头）、使用局域网 IP 或主机名而不是 `localhost`、`127.0.0.1` 或 `[::1]` 寻址的请求，以及经由 Docker 桥接网络到达的请求。请在 Facet 主机上运行上面的示例（NAS 上通过 SSH；在 Docker 中使用 `docker compose exec facet python -c "import urllib.request ..."`，因为镜像里没有 curl），或者设置 `viewer.password`。使用 `viewer.edition_password` 登录的会话可从任何设备接受。反向代理必须发送 `X-Forwarded-For` 或 `Forwarded`，否则会被当作本机。
 
 ## 连接您的助手
 
@@ -35,7 +35,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 
 - 单密码安装：`user` 在创建时被限制为 `readonly`，因为该模式没有中间级别。`edition` 令牌需要编辑会话，且只在编辑密码未变更期间有效。
 - 多用户安装：之后被降级的用户的 `edition` 令牌会降为 `user`；升级绝不会让令牌超过其授予级别。
-- 开放安装（未设置 `viewer.password`，即使设置了 `viewer.edition_password`）：令牌归属于共享所有者 `_anonymous`，为 `readonly`，除非启用了 `viewer.trusted_local_editing`（见下一条）。
+- 开放安装（未设置 `viewer.password`，即使设置了 `viewer.edition_password`）：令牌归属于共享所有者 `_anonymous`，为 `readonly`，除非启用了 `viewer.trusted_local_editing`（见下一条）。它们只能在同一台电脑上创建、列出和吊销。
 - **开放安装上的本地编辑。** 启用 `viewer.trusted_local_editing` 后，“连接助手”对话框可在同一台计算机的浏览器中创建**完全编辑**令牌（仍需 `viewer.mcp.enabled` 和令牌：不带令牌的调用仍为 401）。该令牌仅对来自同一台机器的 `/mcp` 请求为 `edition`：对端为环回地址，URL 为 `http://localhost:<port>` 或 `127.0.0.1`，且没有代理头；`:4200`（`ng serve` 开发代理）和 `:5000` 均符合。使用同一令牌的任何其他请求（包括局域网客户端）都会降为 `readonly`，主机名或 `0.0.0.0` 的 URL 以及 Docker 部署也一样，即使提示词写的是完全编辑。任何密码都会把令牌降为 `readonly`，清除密码后令牌恢复（令牌本身未被改动）。删除类工具仍需要 `viewer.mcp.allow_destructive`。本地助手与本地浏览器一样，无需 `viewer.features.show_scan_button` 即可扫描（`start_scan`、`scan_status`）。
 - **注意。** `ng serve --host 0.0.0.0` 或同一主机上任何未加标记的代理，会让发送 `Host: localhost` 的局域网客户端越过边界，此时只剩令牌保护 `/mcp`。
 - 单密码安装没有 `user` 级别：有效级别只有 `edition` 或 `readonly`，因此[修改内容](#修改内容)中标为 `user` 的工具在那里同样需要 `edition` 令牌。 用较低级别的令牌调用 `user` 工具时，返回 `forbidden_level` 并说明需要 `edition`。
@@ -269,7 +269,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 - **速率限制：** 每个令牌每分钟 `rate_per_min` 次读取调用。写入工具使用单独的 `write_rate_per_min` 预算（默认 30），因此搜索不会挤占写入，反之亦然；`cull_apply` 和 `delete_photos` 的试运行算作写入，`auto_cull` 的预览算作读取。超出后返回 `rate_limited` 并附带 `retry_after_s`。同一地址每分钟十次失败的 bearer 尝试会收到 429。
 - **错误码：** `forbidden_level`（端点已禁用、令牌失效或级别过低）、`invalid_input`、`not_found`、`rate_limited`、`library_busy`、`upstream_error`、`outcome_unknown`、`confirmation_required`、`too_large`、`no_tab`、`tab_timeout`、`tab_outdated`。
 - **较新的错误码：** `confirmation_required`（破坏性调用没有针对这一确切集合的有效 `confirm` 值：重新试运行，把结果展示给用户，然后再试）、`outcome_unknown`（写入超时或连接中断，可能已生效也可能没有：重试前先重新读取状态，切勿盲目重试）、`library_busy`（照片库正忙于其他任务：稍后再试）。
-- **入口处的 HTTP 状态码：** 令牌缺失或未知返回 401，跨源的浏览器请求或智能体自身凭据访问 `/api/mcp/tokens` 时返回 403，端点关闭时返回 404。标签页桥接则改用关闭码。
+- **入口处的 HTTP 状态码：** 令牌缺失或未知返回 401，跨源的浏览器请求或智能体自身凭据访问 `/api/mcp/tokens` 时返回 403，端点关闭时返回 404。标签页桥接则改用关闭码。在开放安装上，对不是来自运行 Facet 的电脑的请求，`/api/mcp/tokens` 也返回 403。
 
 ## 安全说明
 
@@ -279,7 +279,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 
 ## 已知限制
 
-- 在开放安装（无密码）上，任何能访问查看器的人都可以创建和吊销共享的 `_anonymous` 令牌。在网络上启用该端点之前请先设置密码。标签页桥接会放大这一风险：非浏览器客户端可以发送伪造的 `Origin` 和空令牌，注册一个处于焦点的 `_anonymous` 标签页，用任意数据应答 `ui_*` 调用，并通过 8 个标签页的上限挤掉真实的标签页。启用 `viewer.trusted_local_editing` 时，本地进程还可以注册一个伪造的 `edition` 标签页（它能在 WebSocket 上伪造 `Host` 和 `Origin`），但它本来就能充当浏览器；局域网客户端做不到，因为要求对端为环回地址。
+- 在开放安装（无密码）上，共享的 `_anonymous` 令牌只能在运行 Facet 的电脑上创建、列出和吊销（设置了 `viewer.edition_password` 时，也可在编辑会话中进行）；其他任何请求都会得到 403，因此网络上的其他设备无法占满 20 个令牌的上限。`/mcp`、页内工具和标签页桥接仍可被任何能访问查看器的人以同一个匿名主体访问：在网络上启用该端点之前请先设置密码。标签页桥接会放大这一风险：非浏览器客户端可以发送伪造的 `Origin` 和空令牌，注册一个处于焦点的 `_anonymous` 标签页，用任意数据应答 `ui_*` 调用，并通过 8 个标签页的上限挤掉真实的标签页。启用 `viewer.trusted_local_editing` 时，本地进程还可以注册一个伪造的 `edition` 标签页（它能在 WebSocket 上伪造 `Host` 和 `Origin`），但它本来就能充当浏览器；局域网客户端做不到，因为要求对端为环回地址。
 - 速率限制和认证失败计数器保存在各进程内存中；使用 `viewer.py --workers N` 时每个 worker 各自计数。
 - 标签页注册表保存在单个进程的内存中。依赖 `ui_*` 工具时请使用单个 worker（`viewer.py --workers 1`，默认值）；有多个 worker 时，调用可能落到不认识你标签页的进程并返回 `no_tab`。
 - 每位用户最多可同时连接 8 个标签页；打开第 9 个会关闭最旧的一个。

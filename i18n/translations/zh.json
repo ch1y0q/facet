@@ -102,6 +102,7 @@
       "mint_failed": "无法创建令牌",
       "revoke_failed": "无法撤销令牌",
       "mint_limit": "您的有效令牌已达上限，请先撤销一个。",
+      "open_install_remote": "在开放安装中，助手令牌只能在运行 Facet 的电脑上管理。设置 viewer.password 后即可从其他设备管理。",
       "copied": "已复制",
       "revoke_aria": "撤销令牌 {name}",
       "revoke_confirm_yes_aria": "是，撤销令牌 {name}",

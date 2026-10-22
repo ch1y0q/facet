@@ -279,24 +279,32 @@ def _same_origin_browser_metadata(request: Request, target_origin) -> bool:
     return True
 
 
-def _trusted_local_editing(request: Request) -> bool:
-    """Whether ``viewer.trusted_local_editing`` grants this request edition.
+def request_is_local(request: Request) -> bool:
+    """The request came from a browser or tool on the machine running Facet.
 
-    Derived from the request alone, never from a token claim. Every check
-    fails closed. The loopback peer is the real boundary: Host, Origin,
-    Referer and Sec-Fetch-Site are client-controlled and only refuse, and an
-    unmarked reverse proxy on the same host is indistinguishable from the
-    user's browser -- which is why the option must never run behind one.
+    The boundary only, independent of any opt-in: no proxy header, a loopback TCP peer,
+    a loopback ``Host`` over http(s), and same-origin browser metadata. Every check fails
+    closed. The loopback peer is the real boundary: Host, Origin, Referer and
+    Sec-Fetch-Site are client-controlled and only refuse, and an unmarked reverse proxy
+    on the same host is indistinguishable from the user's browser.
     """
-    if not _trusted_local_editing_enabled() or _is_proxied(request):
-        return False
     try:
-        if not _is_loopback_peer(request):
+        if _is_proxied(request) or not _is_loopback_peer(request):
             return False
         target_origin = _local_target_origin(request)
         return target_origin is not None and _same_origin_browser_metadata(request, target_origin)
     except (ValueError, TypeError):
         return False
+
+
+def _trusted_local_editing(request: Request) -> bool:
+    """Whether ``viewer.trusted_local_editing`` grants this request edition.
+
+    Derived from the request alone, never from a token claim: the opt-in is on, the
+    install has no passwords, and the request passes :func:`request_is_local`. That is
+    why the option must never run behind a reverse proxy.
+    """
+    return _trusted_local_editing_enabled() and request_is_local(request)
 
 
 class _HttpView:

@@ -102,6 +102,7 @@
       "mint_failed": "Impossible de créer le jeton",
       "revoke_failed": "Impossible de révoquer le jeton",
       "mint_limit": "Vous avez déjà le nombre maximal de jetons actifs. Révoquez-en un d'abord.",
+      "open_install_remote": "Sur une installation ouverte, les jetons d'assistant ne se gèrent que depuis l'ordinateur qui exécute Facet. Définissez viewer.password pour les gérer depuis une autre machine.",
       "copied": "Copié",
       "revoke_aria": "Révoquer le jeton {name}",
       "revoke_confirm_yes_aria": "Oui, révoquer le jeton {name}",

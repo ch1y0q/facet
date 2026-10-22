@@ -18,7 +18,7 @@ Facet tiene dos cargas de trabajo:
 
 Solo la galería web necesita ejecutarse en el servidor. Puntúa en una estación de trabajo y luego sincroniza la base de datos.
 
-> **Advertencia:** mientras `viewer.password` esté vacío (el valor por defecto), cualquiera que pueda llegar al puerto de la galería web puede explorar toda la biblioteca y descargar las fotos originales, sea cual sea la forma de lanzarla más abajo. Define `viewer.password` antes de exponer el puerto más allá de la máquina; consulta la nota de [Modo de un solo usuario](VIEWER.md#modo-de-un-solo-usuario-predeterminado).
+> **Advertencia:** mientras `viewer.password` esté vacío (el valor por defecto), cualquiera que pueda llegar al puerto de la galería web puede explorar toda la biblioteca y descargar las fotos originales, sea cual sea la forma de lanzarla más abajo. Define `viewer.password` antes de exponer el puerto más allá de la máquina; consulta la nota de [Modo de un solo usuario](VIEWER.md#modo-de-un-solo-usuario-predeterminado). En una instalación abierta, los tokens del asistente (**Conectar un asistente**) también solo se crean, se listan y se revocan desde el ordenador donde se ejecuta Facet: un despliegue de Docker (el navegador alcanza el contenedor por la puerta de enlace del puente) o un proxy inverso no puede gestionarlos, así que define allí `viewer.password` o ejecuta la petición en el host (`docker compose exec facet python -c "import urllib.request ..."`). Un proxy inverso debe enviar `X-Forwarded-For` o `Forwarded`; de lo contrario se trata como la máquina local.
 
 ## Mapeo de rutas
 

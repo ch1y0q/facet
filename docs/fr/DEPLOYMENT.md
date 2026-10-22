@@ -18,7 +18,7 @@ Facet comporte deux charges de travail :
 
 Seule la galerie web doit tourner sur le serveur. Notez les photos sur un poste de travail, puis synchronisez la base de données.
 
-> **Avertissement :** tant que `viewer.password` est vide (valeur livrée par défaut), toute personne pouvant atteindre le port de la galerie web peut parcourir toute la bibliothèque et télécharger les photos originales, quelle que soit la façon de la lancer ci-dessous. Définissez `viewer.password` avant d'exposer le port au-delà de la machine ; voir la note du [mode mono-utilisateur](VIEWER.md#mode-mono-utilisateur-par-défaut).
+> **Avertissement :** tant que `viewer.password` est vide (valeur livrée par défaut), toute personne pouvant atteindre le port de la galerie web peut parcourir toute la bibliothèque et télécharger les photos originales, quelle que soit la façon de la lancer ci-dessous. Définissez `viewer.password` avant d'exposer le port au-delà de la machine ; voir la note du [mode mono-utilisateur](VIEWER.md#mode-mono-utilisateur-par-défaut). Sur une installation ouverte, les jetons d'assistant (**Connecter un assistant**) ne se créent, ne se listent et ne se révoquent eux aussi que depuis l'ordinateur qui exécute Facet : un déploiement Docker (le navigateur atteint le conteneur par la passerelle du réseau pont) ou un proxy inverse ne peut pas les gérer, donc définissez `viewer.password` ou exécutez la requête sur l'hôte (`docker compose exec facet python -c "import urllib.request ..."`). Un proxy inverse doit envoyer `X-Forwarded-For` ou `Forwarded`, sinon il est traité comme la machine locale.
 
 ## Mappage des chemins
 

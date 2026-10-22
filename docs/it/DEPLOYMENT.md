@@ -18,7 +18,7 @@ Facet ha due carichi di lavoro:
 
 Solo il viewer deve essere eseguito sul server. Esegui lo scoring su una workstation, poi sincronizza il database.
 
-> **Attenzione:** finché `viewer.password` è vuoto (valore predefinito), chiunque raggiunga la porta del viewer può sfogliare l'intera libreria e scaricare le foto originali, in qualunque modo lo avvii qui sotto. Imposta `viewer.password` prima di aprire la porta oltre la macchina; vedi la nota in [Modalità utente singolo](VIEWER.md#modalità-utente-singolo-predefinita).
+> **Attenzione:** finché `viewer.password` è vuoto (valore predefinito), chiunque raggiunga la porta del viewer può sfogliare l'intera libreria e scaricare le foto originali, in qualunque modo lo avvii qui sotto. Imposta `viewer.password` prima di aprire la porta oltre la macchina; vedi la nota in [Modalità utente singolo](VIEWER.md#modalità-utente-singolo-predefinita). In un'installazione aperta anche i token dell'assistente (**Collega un assistente**) si creano, si elencano e si revocano solo dal computer su cui gira Facet: un deployment Docker (il browser raggiunge il container tramite il gateway bridge) o un reverse proxy non può gestirli, quindi imposta lì `viewer.password` oppure esegui la richiesta sull'host (`docker compose exec facet python -c "import urllib.request ..."`). Un reverse proxy deve inviare `X-Forwarded-For` o `Forwarded`, altrimenti viene trattato come la macchina locale.
 
 ## Mappatura dei percorsi
 

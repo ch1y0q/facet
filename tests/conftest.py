@@ -529,10 +529,14 @@ class AgentEnv:
     generations are only meaningful when the real ``Depends()`` chain runs.
     """
 
-    def __init__(self, client, mode):
+    def __init__(self, client, mode, mint_client=None):
         self.client = client
         self.app = client.app
         self.mode = mode
+        # The client that calls the token routes. ``agent_app.build`` hands an open install a
+        # loopback browser here (those routes are local-only there); every other env mints
+        # through its own peer.
+        self.mint_client = mint_client or client
 
     def login(self, user=None, edition=False):
         """Bearer headers for a real session, obtained through the real login routes."""
@@ -551,7 +555,7 @@ class AgentEnv:
         return {"Authorization": "Bearer " + resp.json()["access_token"]}
 
     def mint(self, headers, level="readonly", name="test"):
-        return self.client.post("/api/mcp/tokens", json={"name": name, "level": level}, headers=headers)
+        return self.mint_client.post("/api/mcp/tokens", json={"name": name, "level": level}, headers=headers)
 
     def token(self, headers, level="readonly", name="test"):
         resp = self.mint(headers, level, name)
@@ -626,7 +630,8 @@ def agent_app():
         client = TestClient(app)
         client.__enter__()
         entered.append(client)
-        return AgentEnv(client, mode)
+        local = TestClient(app, base_url="http://localhost", client=("127.0.0.1", 12345)) if mode == "open" else None
+        return AgentEnv(client, mode, mint_client=local)
 
     yield build
     for client in reversed(entered):

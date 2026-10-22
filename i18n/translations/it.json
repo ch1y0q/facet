@@ -102,6 +102,7 @@
       "mint_failed": "Impossibile creare il token",
       "revoke_failed": "Impossibile revocare il token",
       "mint_limit": "Hai già il numero massimo di token attivi. Revocane prima uno.",
+      "open_install_remote": "In un'installazione aperta i token dell'assistente si gestiscono solo dal computer su cui gira Facet. Imposta viewer.password per gestirli da un'altra macchina.",
       "copied": "Copiato",
       "revoke_aria": "Revoca il token {name}",
       "revoke_confirm_yes_aria": "Sì, revoca il token {name}",
