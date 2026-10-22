@@ -128,7 +128,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
     <!-- Header-slot toolbar: the app shell renders this in the global header on lg+.
          Type filter + semantic search, rebound to the gallery store. -->
     <ng-template #galleryToolbar>
-      <mat-form-field class="!hidden lg:!inline-flex w-52 ml-2" subscriptSizing="dynamic">
+      <mat-form-field class="!hidden lg:!inline-flex w-52 ml-2 2xl:shrink-0" subscriptSizing="dynamic">
         <mat-label>{{ I18N.ui.filters.type | translate }}</mat-label>
         <mat-select panelWidth="auto" panelClass="nowrap-panel !max-h-[70vh]" [value]="store.filters().type" (selectionChange)="onTypeChange($event.value)">
           <mat-option value="">{{ I18N.gallery.all_photos | translate }}</mat-option>
@@ -139,7 +139,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
       </mat-form-field>
 
       <!-- Search -->
-      <mat-form-field class="!hidden 2xl:!inline-flex w-64" subscriptSizing="dynamic">
+      <mat-form-field class="!hidden 2xl:!inline-flex w-64 min-w-0 shrink" subscriptSizing="dynamic">
         <input
           matInput
           [placeholder]="I18N.gallery.search_placeholder | translate"
@@ -358,7 +358,8 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                       @let keptWhole = row.group! | reviewGroupKeptWhole:store.pinnedKinds();
                       <!-- Real buttons, ungated like the card strip (a review mark is client-only). The grid
                            keydown handler ignores events from [data-review-group-actions]. A kept-whole
-                           group (bracket / panorama) cannot lose a frame: those two are disabled and say why. -->
+                           group (bracket / panorama) cannot lose a frame: those two are aria-disabled (not
+                           [disabled], which would leave the tab order) and a tooltip says why. -->
                       <div class="flex shrink-0 items-center gap-1 pb-0.5" data-review-group-actions role="group">
                         <button type="button" data-mode="keep_all"
                                 class="h-6 px-2 rounded border border-[var(--mat-sys-outline-variant)] text-xs cursor-pointer hover:bg-[var(--mat-sys-surface-container-high)]"
@@ -367,19 +368,21 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                           {{ I18N.gallery.pinned.review.keep_all | translate }}
                         </button>
                         <button type="button" data-mode="keep_best"
-                                class="h-6 px-2 rounded border border-[var(--mat-sys-outline-variant)] text-xs cursor-pointer hover:bg-[var(--mat-sys-surface-container-high)] disabled:cursor-not-allowed disabled:opacity-50"
-                                [disabled]="keptWhole"
+                                class="h-6 px-2 rounded border border-[var(--mat-sys-outline-variant)] text-xs cursor-pointer hover:bg-[var(--mat-sys-surface-container-high)] aria-disabled:hover:bg-transparent aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+                                [attr.aria-disabled]="keptWhole ? 'true' : null"
+                                [matTooltip]="keptWhole ? (I18N.gallery.pinned.review.group_kept_whole | translate) : ''"
                                 [attr.aria-label]="I18N.gallery.pinned.review.keep_best_aria | translate:{ group: row.group! }"
                                 [attr.aria-description]="keptWhole ? (I18N.gallery.pinned.review.group_kept_whole | translate) : null"
-                                (click)="store.setGroupMarks(row.group!, 'keep_best')">
+                                (click)="!keptWhole && store.setGroupMarks(row.group!, 'keep_best')">
                           {{ I18N.gallery.pinned.review.keep_best | translate }}
                         </button>
                         <button type="button" data-mode="remove_all"
-                                class="h-6 px-2 rounded border border-[var(--mat-sys-outline-variant)] text-xs cursor-pointer hover:bg-[var(--mat-sys-surface-container-high)] disabled:cursor-not-allowed disabled:opacity-50"
-                                [disabled]="keptWhole"
+                                class="h-6 px-2 rounded border border-[var(--mat-sys-outline-variant)] text-xs cursor-pointer hover:bg-[var(--mat-sys-surface-container-high)] aria-disabled:hover:bg-transparent aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+                                [attr.aria-disabled]="keptWhole ? 'true' : null"
+                                [matTooltip]="keptWhole ? (I18N.gallery.pinned.review.group_kept_whole | translate) : ''"
                                 [attr.aria-label]="I18N.gallery.pinned.review.remove_all_aria | translate:{ group: row.group! }"
                                 [attr.aria-description]="keptWhole ? (I18N.gallery.pinned.review.group_kept_whole | translate) : null"
-                                (click)="store.setGroupMarks(row.group!, 'remove_all')">
+                                (click)="!keptWhole && store.setGroupMarks(row.group!, 'remove_all')">
                           {{ I18N.gallery.pinned.review.remove_all | translate }}
                         </button>
                       </div>
@@ -1069,6 +1072,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
   /** Scroll offset relative to the rows container, and viewport height. */
   protected readonly relScrollTop = signal(0);
   protected readonly viewportH = signal(0);
+  /** Px of the scroller's top the rows host starts below (pinned-review banner): that strip shows no row. */
+  protected readonly rowsHostGap = signal(0);
 
   /**
    * Windowing active: user flag on, AND heights are deterministic - mosaic
@@ -1125,8 +1130,10 @@ export class GalleryComponent implements OnInit, OnDestroy {
    */
   private readonly trackVisitedGroups = effect(() => {
     if (!this.groupedReview()) return;
+    // Width 0 means the container is not measured yet: no row is laid out, so nothing was seen.
+    if (this.containerWidth() === 0) return;
     const rows = this.rowsModel();
-    const { first, last } = windowRange(rows, this.relScrollTop(), this.viewportH() || 900, 0);
+    const { first, last } = windowRange(rows, this.relScrollTop(), Math.max(0, (this.viewportH() || 900) - this.rowsHostGap()), 0);
     const seen: number[] = [];
     for (let i = first; i <= last; i++) {
       const row = rows[i];
@@ -1163,6 +1170,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     if (rowsHost) {
       const rel = viewport.getBoundingClientRect().top - rowsHost.getBoundingClientRect().top;
       this.relScrollTop.set(Math.max(0, rel));
+      this.rowsHostGap.set(Math.max(0, -rel));
     }
   }
 
@@ -2216,6 +2224,10 @@ export class GalleryComponent implements OnInit, OnDestroy {
     // Observe the sidenav-content area for width changes
     const content = document.querySelector('mat-sidenav-content');
     if (content) {
+      // Measure now so the first frame is laid out for the real width, not after the observer's first tick.
+      const style = getComputedStyle(content);
+      const measured = Math.floor(content.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0));
+      if (measured > 0) this.containerWidth.set(measured);
       this.resizeObserver.observe(content);
     }
   }

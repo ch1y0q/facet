@@ -178,9 +178,9 @@
 
       <!-- Gallery: photo count + active filters + filter toggle (right side, lg+ only) -->
       @if (auth.isAuthenticated() && isGalleryRoute()) {
-        <span class="!hidden lg:!inline text-sm opacity-70">{{ I18N.gallery.photo_count | translate:{ count: store.total() } }}</span>
+        <span class="!hidden min-[1360px]:!inline text-sm opacity-70">{{ I18N.gallery.photo_count | translate:{ count: store.total() } }}</span>
 
-        <mat-form-field class="!hidden lg:!inline-flex w-48" subscriptSizing="dynamic">
+        <mat-form-field class="!hidden lg:!inline-flex w-48 shrink-0" subscriptSizing="dynamic">
           <mat-label>{{ I18N.gallery.sort | translate }}</mat-label>
           <mat-select panelWidth="auto" panelClass="nowrap-panel" [value]="store.filters().sort" (selectionChange)="onSortChange($event.value)">
             @if (store.config()?.features?.show_my_taste) {
@@ -540,9 +540,9 @@
           </mat-form-field>
         </div>
       }
-      <div class="flex items-center gap-1 px-2 py-1 border-t border-[var(--mat-sys-outline-variant)]">
+      <div class="flex items-center gap-0.5 px-2 py-1 border-t border-[var(--mat-sys-outline-variant)]">
         <!-- Search toggle -->
-        <button mat-icon-button class="!w-10 !h-10 shrink-0" (click)="mobileSearchOpen.set(!mobileSearchOpen())" [matTooltip]="I18N.ui.filters.search | translate" [attr.aria-label]="I18N.ui.filters.search | translate">
+        <button mat-icon-button class="!w-9 !h-9 shrink-0" (click)="mobileSearchOpen.set(!mobileSearchOpen())" [matTooltip]="I18N.ui.filters.search | translate" [attr.aria-label]="I18N.ui.filters.search | translate">
           <mat-icon>search</mat-icon>
         </button>
 
@@ -570,13 +570,13 @@
         </mat-form-field>
 
         @if (scan.canLaunch()) {
-          <button mat-icon-button class="!w-10 !h-10 shrink-0 !bg-[var(--mat-sys-primary-container)] !text-[var(--mat-sys-on-primary-container)]" (click)="openScanLauncher()" [matTooltip]="I18N.gallery.scan_action | translate" [attr.aria-label]="I18N.gallery.scan_action | translate">
+          <button mat-icon-button class="!w-9 !h-9 shrink-0 !bg-[var(--mat-sys-primary-container)] !text-[var(--mat-sys-on-primary-container)]" (click)="openScanLauncher()" [matTooltip]="I18N.gallery.scan_action | translate" [attr.aria-label]="I18N.gallery.scan_action | translate">
             <mat-icon>add_photo_alternate</mat-icon>
           </button>
         }
 
         <!-- Tooltip-mode menu (mobile, first in icon cluster) -->
-        <button mat-icon-button class="!w-10 !h-10 shrink-0"
+        <button mat-icon-button class="!w-9 !h-9 shrink-0"
                 [matMenuTriggerFor]="tooltipModeMenuMobile"
                 [matTooltip]="I18N.gallery.tooltip_mode.label | translate"
                 [attr.aria-label]="I18N.gallery.tooltip_mode.label | translate">
@@ -633,20 +633,20 @@
         </mat-menu>
 
         <!-- Sort direction toggle -->
-        <button mat-icon-button class="!w-10 !h-10 shrink-0" (click)="toggleSortDirection()"
+        <button mat-icon-button class="!w-9 !h-9 shrink-0" (click)="toggleSortDirection()"
           [matTooltip]="store.filters().sort_direction === 'DESC' ? (I18N.gallery.sort_desc | translate) : (I18N.gallery.sort_asc | translate)"
           [attr.aria-label]="store.filters().sort_direction === 'DESC' ? (I18N.gallery.sort_desc | translate) : (I18N.gallery.sort_asc | translate)">
           <mat-icon>{{ store.filters().sort_direction === 'DESC' ? 'arrow_downward' : 'arrow_upward' }}</mat-icon>
         </button>
 
         <!-- Slideshow toggle -->
-        <button mat-icon-button class="!w-10 !h-10 shrink-0" (click)="store.slideshowActive.set(!store.slideshowActive())" [matTooltip]="I18N.slideshow.start | translate" [attr.aria-label]="I18N.slideshow.start | translate">
+        <button mat-icon-button class="!w-9 !h-9 shrink-0" (click)="store.slideshowActive.set(!store.slideshowActive())" [matTooltip]="I18N.slideshow.start | translate" [attr.aria-label]="I18N.slideshow.start | translate">
           <mat-icon [style.color]="store.slideshowActive() ? 'var(--mat-sys-primary)' : ''">slideshow</mat-icon>
         </button>
 
         <!-- Filter drawer toggle -->
         <button
-          mat-icon-button class="!w-10 !h-10 shrink-0"
+          mat-icon-button class="!w-9 !h-9 shrink-0"
           (click)="store.setFilterDrawerOpen(!store.filterDrawerOpen())"
           [matTooltip]="I18N.ui.buttons.filters | translate"
           [attr.aria-label]="I18N.ui.buttons.filters | translate"

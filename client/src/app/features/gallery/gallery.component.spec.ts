@@ -3652,6 +3652,54 @@ describe('GalleryComponent', () => {
       mockStore.filters.set({ ...DEFAULT_FILTERS });
     });
 
+    describe('first frame width', () => {
+      function renderMeasured(width: number): ComponentFixture<GalleryComponent> {
+        const host = document.createElement('mat-sidenav-content');
+        // The box the ResizeObserver reports: the client width (no scrollbar) less the horizontal padding.
+        Object.defineProperty(host, 'clientWidth', { value: width + 32 });
+        host.style.paddingLeft = '16px';
+        host.style.paddingRight = '16px';
+        host.getBoundingClientRect = () => ({ width: width + 17, height: 600, top: 0, left: 0, right: width, bottom: 600, x: 0, y: 0, toJSON() { return {}; } });
+        document.body.appendChild(host);
+        vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+        vi.stubGlobal('matchMedia', (media: string) => ({
+          matches: true, media, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {},
+        }));
+        mockStore.config.set({ features: { show_rating_controls: true } });
+        mockStore.galleryMode.set('grid');
+        mockStore.virtualScroll.set(false);
+        fixture = TestBed.createComponent(GalleryComponent);
+        fixture.detectChanges();
+        TestBed.tick();
+        return fixture;
+      }
+
+      afterEach(() => document.querySelectorAll('mat-sidenav-content').forEach(el => el.remove()));
+
+      it('lays the first rowsModel out for the measured width, with no ResizeObserver tick', () => {
+        pin({});
+        const f = renderMeasured(800);
+        const rows = f.componentInstance.rowsModel();
+        expect(rows.length).toBeGreaterThan(0);
+        const photoRows = rows.filter(r => r.kind !== 'header');
+        expect(photoRows.length).toBeGreaterThan(0);
+        for (const row of photoRows) {
+          expect(row.widths.reduce((x, y) => x + y, 0)).toBeLessThanOrEqual(768);
+        }
+        expect((f.componentInstance as unknown as { containerWidth: () => number }).containerWidth()).toBe(800);
+      });
+
+      it('marks no group visited while the width is still 0', () => {
+        pin({});
+        mockStore.markGroupsVisited.mockClear();
+        renderMeasured(0);
+        expect(f_width()).toBe(0);
+        expect(mockStore.markGroupsVisited).not.toHaveBeenCalled();
+      });
+
+      const f_width = () => (fixture!.componentInstance as unknown as { containerWidth: () => number }).containerWidth();
+    });
+
     it('shows only the title when the pin has groups but no marks', () => {
       pin({ marks: false });
       mockStore.pinnedMarks.set(new Map());
@@ -3690,6 +3738,7 @@ describe('GalleryComponent', () => {
       interface Inst {
         viewportH: { set(v: number): void };
         relScrollTop: { set(v: number): void };
+        rowsHostGap: { set(v: number): void };
         activeIndex: { (): number; set(v: number): void };
         onGridKeydown(e: KeyboardEvent): void;
       }
@@ -3760,6 +3809,21 @@ describe('GalleryComponent', () => {
           expect(mockStore.markGroupsVisited).toHaveBeenLastCalledWith([2]);
         });
 
+        it('does not mark a group whose header lies under the strip above the rows host', () => {
+          pin({});
+          render('grid', false);
+          const second = fixture!.componentInstance.rowsModel().find(r => r.kind === 'header' && r.group === 2)!;
+          inst().relScrollTop.set(0);
+          inst().rowsHostGap.set(0);
+          inst().viewportH.set(second.offset + 10);
+          fixture!.detectChanges();
+          expect(mockStore.markGroupsVisited).toHaveBeenLastCalledWith([1, 2]);
+          mockStore.markGroupsVisited.mockClear();
+          inst().rowsHostGap.set(70);
+          fixture!.detectChanges();
+          expect(mockStore.markGroupsVisited).toHaveBeenLastCalledWith([1]);
+        });
+
         it('marks the group of the photo the keyboard cursor lands on', () => {
           pin({});
           render('grid', false);
@@ -3797,12 +3861,47 @@ describe('GalleryComponent', () => {
           mockStore.pinnedKinds.set(new Map([[1, 'bracket'], [2, 'burst']]));
           const all = actions(render('grid', false));
           expect(all[0].disabled).toBe(false);
-          expect(all[1].disabled).toBe(true);
-          expect(all[2].disabled).toBe(true);
+          expect(all[1].getAttribute('aria-disabled')).toBe('true');
+          expect(all[2].getAttribute('aria-disabled')).toBe('true');
           expect(all[1].getAttribute('aria-description')).toBe('gallery.pinned.review.group_kept_whole');
           expect(all[2].getAttribute('aria-description')).toBe('gallery.pinned.review.group_kept_whole');
           expect(all[0].getAttribute('aria-description')).toBeNull();
           expect(all[3].disabled || all[4].disabled || all[5].disabled).toBe(false);
+        });
+
+        it('keeps the disabled keep-whole buttons focusable, carries the reason as tooltip and ignores clicks', () => {
+          pin({});
+          echo();
+          mockStore.pinnedKinds.set(new Map([[1, 'bracket'], [2, 'burst']]));
+          const html = render('grid', false);
+          const all = actions(html);
+          mockStore.setGroupMarks.mockClear();
+          all[1].focus();
+          expect(document.activeElement).toBe(all[1]);
+          expect(all[1].disabled).toBe(false);
+          expect(all[1].tabIndex).toBe(0);
+          expect(all[1].getAttribute('aria-disabled')).toBe('true');
+          all[1].click();
+          all[2].click();
+          expect(mockStore.setGroupMarks).not.toHaveBeenCalled();
+          const tips = fixture!.debugElement.queryAll(By.directive(MatTooltip))
+            .filter(d => d.nativeElement.closest('[data-review-group-actions]'))
+            .map(d => ({ el: d.nativeElement as HTMLElement, message: d.injector.get(MatTooltip).message }));
+          expect(tips.filter(t => t.message === 'gallery.pinned.review.group_kept_whole').map(t => t.el))
+            .toEqual([all[1], all[2]]);
+        });
+
+        it('has no tooltip and no aria-disabled on the enabled buttons', () => {
+          pin({});
+          echo();
+          mockStore.pinnedKinds.set(new Map([[1, 'burst'], [2, 'burst']]));
+          const html = render('grid', false);
+          const all = actions(html);
+          expect(all.every(b => b.getAttribute('aria-disabled') === null)).toBe(true);
+          const tips = fixture!.debugElement.queryAll(By.directive(MatTooltip))
+            .filter(d => d.nativeElement.closest('[data-review-group-actions]'))
+            .filter(d => d.injector.get(MatTooltip).message);
+          expect(tips).toHaveLength(0);
         });
 
         it('offers no actions when the pin carries no marks', () => {
