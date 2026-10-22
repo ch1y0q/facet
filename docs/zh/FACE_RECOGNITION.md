@@ -481,7 +481,7 @@ HDBSCAN），但**尚未实现**，因为没有真实数据就无法验证。要
 ### 混合库、重新提取与未知值
 
 - **混合库。**同一个库可以同时包含 ArcFace（512 维）和 SFace（128 维）人脸。聚类、合并建议、相似人物搜索和人物质心每次都只使用一个模型（`persons.centroid_model` 记录质心由哪个模型生成）；增量聚类与仅保留已命名人物的聚类模式不会改动另一个模型的人脸和人物，但 `--cluster-faces-force` 会清除所有人脸→人物的归属并删除所有人物（包括已命名的），不论其模型。要把库迁移到当前模型，请运行 `--extract-faces-gpu-force`（商用模式下使用宽松许可的提取器；已命名人物会保留），然后运行 `--cluster-faces-incremental`。
-- **警告。**扫描时若存储的人脸属于非当前模型，会记录一条警告；`--doctor` 会针对当前模型报告同样的不一致。在商业模式下，`--doctor` 会列出扫描实际会加载的组件（YuNet、SFace、Q-ReAlign，以及已安装 `python-ofiq` 时的 OFIQ），而不是 VRAM 配置档仅仅点名的那些，因此 TOPIQ、LIQE 和 InsightFace 不再显示为警告。
+- **警告。**扫描时若存储的人脸属于非当前模型，会记录一条警告；`--doctor` 会针对当前模型报告同样的不一致。在商业模式下，`--doctor` 会列出扫描实际会加载的组件（YuNet、SFace、Q-ReAlign，以及已安装 `python-ofiq` 时的 OFIQ），而不是 VRAM 配置档仅仅点名的那些，因此 TOPIQ、LIQE 和 InsightFace 不再显示为警告。在 CUDA 上扫描时，若 InsightFace 的 ONNX Runtime 会话运行在 CPU 上（仅 CPU 的 `onnxruntime` 构建，或 CUDA 库无法加载的 GPU 构建），也会记录一条警告；`--doctor` 的 ONNX Runtime 一节会给出原因，修复方法见[安装 › 用于人脸检测的 ONNX Runtime](INSTALLATION.md#用于人脸检测的-onnx-runtime)。
 - **已命名人物在重新提取后保留。**在 `--extract-faces-gpu-force` 删除人脸行之前，Facet 会记住已命名人物每张人脸的边框；之后，每张重新检测到的人脸会还给与其旧边框 IoU >= 0.5 的人物（一对一，重叠最大者优先），并按模型重建质心。没有匹配旧边框的人脸保持未分配，等待下次聚类。被记住的边框与删除操作在同一事务中写入 `face_reextract_snapshot` 表，因此中断的运行会由下一次提取接续。重新扫描照片时，已命名人物同样会被保留。重新扫描后变得过时的人物质心会在扫描结束时重建一次（即使扫描被中断），而不是每个批次重建一次；计数和代表性人脸仍按批次更新。
 - **未知不等于零。**没有 MediaPipe 时，宽松分析器无法测量眼睛、微笑和眨眼，这些值存为 NULL（不是 0，也不是“眨眼”）；眨眼过滤和眨眼扣分把 NULL 视为“不是眨眼”。106 点关键点的读取方会跳过没有关键点的人脸。人脸处理失败的照片，其 `face_count`、`face_ratio` 和 `is_group_portrait` 会存为 NULL（未知）而不是 0，并保留其已存储的人脸；在重新扫描之前，评分会将其视为没有人脸。
 

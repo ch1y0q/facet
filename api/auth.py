@@ -159,6 +159,53 @@ def _is_open_install(password_key):
     return not VIEWER_CONFIG.get(password_key, '')
 
 
+def _is_loopback_host(host):
+    """True when binding ``host`` keeps the server reachable from this machine only.
+
+    ``localhost`` and every loopback address qualify (an IPv4-mapped IPv6 one
+    included, which ``ipaddress`` only recognises from Python 3.13). A wildcard
+    (``0.0.0.0``, ``::``, empty) or any other hostname does not: it resolves to
+    whatever interface the operator named, which is not known to be local.
+    """
+    if host.lower() == 'localhost':
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return (getattr(address, 'ipv4_mapped', None) or address).is_loopback
+
+
+def open_install_exposure_warning(bind_host):
+    """The startup warning for an open install that may be reachable beyond loopback, else None.
+
+    An empty ``viewer.password`` (the shipped default) serves every request
+    anonymously, originals included; ``viewer.py`` binds ``0.0.0.0`` by default
+    and the Docker image relies on that. ``_is_open_install`` is the verdict the
+    server itself uses for an anonymous caller, so this cannot disagree with it:
+    a multi-user install or one whose config failed to load is locked, not open.
+
+    ``bind_host`` is what ``viewer.py`` exported for its children
+    (``api.BIND_HOST_ENV``). ``None`` or empty means the app was started some
+    other way (``uvicorn api:create_app --factory ...``), whose bind address
+    this process cannot see: the warning is then host-agnostic, because staying
+    silent would hide the exposure from exactly the launches that bypass
+    ``viewer.py``.
+    """
+    if not _is_open_install(VIEWER_PASSWORD_KEY):
+        return None
+    advice = ("Set viewer.password, or keep it local (--host 127.0.0.1; in Docker, "
+              "publish the port as 127.0.0.1:5000:5000).")
+    if not bind_host:
+        return ("viewer.password is empty: anyone who can reach the viewer's port can browse "
+                f"and download the whole library. {advice}")
+    if _is_loopback_host(bind_host):
+        return None
+    shown = f"[{bind_host}]" if ':' in bind_host else bind_host
+    return (f"viewer.password is empty and the viewer listens on {shown}: anyone who can reach "
+            f"this port can browse and download the whole library. {advice}")
+
+
 # Headers a reverse proxy or CDN adds to name the original client. Their
 # presence means the loopback peer is a relay, not the user's browser.
 _PROXY_HEADERS = frozenset({

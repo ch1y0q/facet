@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import ipaddress
 import json
 import logging
 import os
@@ -44,7 +45,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from urllib import request as urllib_request
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,53 @@ SUPPORTED_EVENTS = frozenset({
     "on_burst_detected",
     "on_high_score",
 })
+
+
+class _NoRedirectHandler(urllib_request.HTTPRedirectHandler):
+    """Refuse every redirect.
+
+    The webhook URL is SSRF-validated once, before the request; a 3xx would
+    send the request to a ``Location`` that never went through that check
+    (loopback, link-local, a private subnet).  A redirect therefore fails the
+    delivery, as an ``HTTPError`` (a ``URLError`` subclass) the callers
+    already handle, whose message says why so the log is not a bare
+    ``HTTP Error 307``.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise HTTPError(
+            req.full_url,
+            code,
+            "redirect to another URL refused (webhook SSRF guard)",
+            headers,
+            fp,
+        )
+
+
+_WEBHOOK_OPENER = urllib_request.build_opener(_NoRedirectHandler)
+
+# 64:ff9b::/96 (NAT64 well-known prefix) and ::/96 (IPv4-compatible) carry an
+# IPv4 address in their low 32 bits.  Python's ``is_global`` calls the former
+# routable whatever it embeds and the latter global for every value past ``::1``,
+# so a host resolving to ``64:ff9b::7f00:1`` or ``::127.0.0.1`` would pass a
+# check that rejects 127.0.0.1 itself.
+_NAT64_PREFIX = ipaddress.ip_network("64:ff9b::/96")
+_IPV4_COMPATIBLE = ipaddress.ip_network("::/96")
+
+
+def _embedded_ipv4_unwrapped(addr):
+    """The IPv4 address *addr* carries (IPv4-mapped, NAT64, IPv4-compatible), else *addr*.
+
+    ``::`` and ``::1`` are the unspecified and loopback addresses of the
+    ``::/96`` block, not IPv4-compatible ones: they stay as they are.
+    """
+    if addr.version != 6:
+        return addr
+    if addr.ipv4_mapped is not None:
+        return addr.ipv4_mapped
+    if addr in _NAT64_PREFIX or (addr in _IPV4_COMPATIBLE and int(addr) > 1):
+        return ipaddress.IPv4Address(int(addr) & 0xFFFFFFFF)
+    return addr
 
 
 class PluginManager:
@@ -333,7 +381,7 @@ class PluginManager:
             method="POST",
         )
         try:
-            with urllib_request.urlopen(req, timeout=10) as resp:
+            with _WEBHOOK_OPENER.open(req, timeout=10) as resp:
                 logger.info(
                     "Webhook %s — %s responded %s",
                     event_name,
@@ -395,10 +443,13 @@ class PluginManager:
     def _validate_webhook_url(url: str) -> str:
         """Reject URLs targeting private/loopback networks (SSRF prevention).
 
+        A host is accepted only when every address it resolves to is globally
+        routable (``ipaddress``' ``is_global``) and not multicast, after
+        unwrapping an IPv4 address embedded in an IPv6 one.
+
         Returns the first safe resolved IP address so callers can connect
         directly to it, avoiding DNS-rebinding TOCTOU attacks.
         """
-        import ipaddress
         import socket
         from urllib.parse import urlparse
 
@@ -416,8 +467,13 @@ class PluginManager:
             raise ValueError("DNS resolution failed") from exc
         for info in addr_infos:
             addr = ipaddress.ip_address(info[4][0])
-            if addr.is_private or addr.is_loopback or addr.is_link_local:
-                raise ValueError(f"URL resolves to private address: {addr}")
+            # Judge the IPv4 address an IPv6 one embeds, not its wrapper; then
+            # accept only what is globally routable.  ``is_global`` alone
+            # lets multicast through, and "not private" alone lets the shared
+            # address space (100.64.0.0/10, 100.100.100.200 on Alibaba Cloud) through.
+            effective = _embedded_ipv4_unwrapped(addr)
+            if not effective.is_global or effective.is_multicast:
+                raise ValueError(f"URL resolves to private or non-public address: {addr}")
             if resolved_ip is None:
                 resolved_ip = str(addr)
 
@@ -480,7 +536,7 @@ class PluginManager:
             method="POST",
         )
         try:
-            with urllib_request.urlopen(req, timeout=10) as resp:  # lgtm[py/full-ssrf]
+            with _WEBHOOK_OPENER.open(req, timeout=10) as resp:  # lgtm[py/full-ssrf]
                 return {"ok": True, "status": resp.status, "url": url}
         except URLError as exc:
             logger.warning("test_webhook connection failed for %s: %s", url, exc)

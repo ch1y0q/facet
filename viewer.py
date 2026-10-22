@@ -27,12 +27,18 @@ def main():
     parser.add_argument('--workers', type=int, default=1, help='Number of workers (production)')
     args = parser.parse_args()
 
-    from api import CONFIGURE_LOGGING_ENV, configure_logging
+    from api import BIND_HOST_ENV, CONFIGURE_LOGGING_ENV, configure_logging
     configure_logging()
     # uvicorn serves from processes it spawns (each --workers worker, the --reload
     # child); they inherit the environment, and the app factory configures their
     # logging from this flag, so the app's INFO lines reach the log there too.
     os.environ[CONFIGURE_LOGGING_ENV] = "1"
+    # The same inheritance carries the bind address to the factory, which warns
+    # when an install with no viewer.password is reachable beyond this machine.
+    # It is not decided here: importing the auth module would run the config
+    # bootstrap in this launcher too, doubling its warnings and, under --reload,
+    # taking the reloader down on a broken config the child merely survives.
+    os.environ[BIND_HOST_ENV] = args.host
 
     import uvicorn
 

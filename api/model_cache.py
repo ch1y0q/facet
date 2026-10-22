@@ -7,6 +7,7 @@ the shared VLM config resolution and the inference lock that serializes
 concurrent generate() calls on the single cached model instance.
 """
 
+import contextlib
 import logging
 import threading
 
@@ -26,6 +27,46 @@ _saliency_lock = threading.Lock()
 _resolved_profile = None
 
 vlm_generate_lock = threading.Lock()
+
+# PyTorch's MPS backend is not thread-safe: two threads running work on it at
+# once abort the whole viewer inside Metal (`failed assertion _status <
+# MTLCommandBufferStatusCommitted`), and every model shares the one device. So
+# every load and inference the viewer runs on MPS takes this lock. Take a
+# model's own lock first and this one second, never the reverse.
+_mps_lock = threading.Lock()
+
+
+class AcceleratorBusy(TimeoutError):
+    """The MPS lock was not free within the caller's ``timeout``."""
+
+
+@contextlib.contextmanager
+def _bounded_mps_lock(timeout):
+    if not _mps_lock.acquire(timeout=timeout):
+        raise AcceleratorBusy(f"MPS is busy with another model task (waited {timeout}s)")
+    try:
+        yield
+    finally:
+        _mps_lock.release()
+
+
+def accelerator_lock(device, timeout=None):
+    """The process-wide MPS lock when ``device`` is MPS, else a no-op context.
+
+    CUDA and CPU are not serialized, and ``None`` (a remote backend, nothing
+    on the local GPU) is a no-op too. ``timeout`` (seconds) bounds the wait for
+    the MPS lock: entering the context raises ``AcceleratorBusy`` when it cannot
+    be had in time. ``None`` waits as long as it takes, and off MPS there is
+    nothing to wait for.
+    """
+    if not str(device or '').startswith('mps'):
+        return contextlib.nullcontext()
+    return _mps_lock if timeout is None else _bounded_mps_lock(timeout)
+
+
+def vlm_accelerator_lock(tagger):
+    """``accelerator_lock`` for a VLM tagger; a remote backend runs nothing locally."""
+    return accelerator_lock(None if tagger.backend is not None else tagger.device)
 
 SUPPORTED_TRANSLATION_LANGS = frozenset(LANG_MODELS)
 
@@ -116,7 +157,8 @@ def get_or_load_saliency_scorer():
         from models.saliency_scorer import SaliencyScorer
 
         scorer = SaliencyScorer()
-        scorer.load()
+        with accelerator_lock(scorer.device):
+            scorer.load()
         _saliency_scorer = scorer
         logger.info("Saliency scorer loaded and cached for API use")
         return _saliency_scorer
@@ -130,8 +172,9 @@ def get_or_load_vlm_tagger(vlm_config):
 
     Returns:
         A loaded VLMTagger instance ready for ``.generate()`` calls. Callers
-        must hold ``vlm_generate_lock`` around ``.generate()`` — the cache
-        lock only guards loading, not inference.
+        must hold ``vlm_generate_lock`` and then ``vlm_accelerator_lock(tagger)``
+        around ``.generate()`` — the cache lock only guards loading, not
+        inference.
     """
     global _vlm_tagger
     if _vlm_tagger is not None:
@@ -152,7 +195,8 @@ def get_or_load_vlm_tagger(vlm_config):
             return _vlm_tagger
 
         tagger = VLMTagger(vlm_config)
-        tagger.load()
+        with accelerator_lock(tagger.device):
+            tagger.load()
         _vlm_tagger = tagger
         logger.info("VLM tagger loaded and cached for API use")
         return _vlm_tagger

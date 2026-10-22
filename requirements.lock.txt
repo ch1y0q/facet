@@ -96,7 +96,7 @@ opencv-python==4.14.0.94
 open_clip_torch==3.3.0
 optree==0.20.0
 pandas==3.0.3
-pillow==12.3.0
+pillow==13.0.0
 pillow_heif==1.5.0
 pre_commit==4.6.2
 propcache==0.5.2
@@ -110,7 +110,7 @@ pytest-asyncio==1.4.0
 pytest-timeout==2.4.0
 pytest==9.1.1
 python-dateutil==2.9.0.post0
-python-discovery==1.6.0
+python-discovery==1.6.4
 python-etcd==0.4.5
 PyWavelets==1.9.0
 rawpy==0.27.1
@@ -149,8 +149,8 @@ types-dataclasses==0.6.6
 typing-inspection==0.4.4
 typing_extensions==4.16.0
 uvicorn==0.52.4
-virtualenv==21.7.13
+virtualenv==21.14.7
 Werkzeug==3.1.9
 xxhash==3.8.1
-yarl==1.24.5
+yarl==1.25.1
 zstandard==0.25.0

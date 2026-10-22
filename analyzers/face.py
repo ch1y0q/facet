@@ -17,6 +17,11 @@ logger = logging.getLogger("facet.face_analyzer")
 from utils.image_transforms import crop_face_with_padding
 from analyzers.face_blendshapes import crop_face_region, get_blendshape_scorer
 
+# Set once the CPU-sessions warning has been logged. The model manager builds a
+# fresh FaceAnalyzer per chunk on CUDA (insightface is not RAM-cached there), so
+# an instance flag would repeat the warning for every chunk of a scan.
+_cpu_session_warned = False
+
 class FaceAnalyzer:
     """Uses InsightFace to detect people and evaluate facial features."""
 
@@ -74,6 +79,37 @@ class FaceAnalyzer:
         except Exception as e:
             licensing.reraise_if_refused()
             logger.warning("InsightFace not available: %s", e)
+        if self.available and device == 'cuda':
+            self._warn_if_sessions_on_cpu()
+
+    def _warn_if_sessions_on_cpu(self):
+        """Log once per process when CUDA was selected but InsightFace runs on the CPU.
+
+        InsightFace silently drops a provider ONNX Runtime cannot offer, so a
+        CPU-only ``onnxruntime`` build (or a GPU build whose CUDA libraries do not
+        load) leaves face detection on the CPU with only a UserWarning per session
+        (issue #229). The sessions' own providers are the only signal that covers
+        both: ``get_available_providers()`` lists what the wheel was compiled with,
+        not what loaded. Best effort: a future InsightFace layout change must never
+        fail a scan, so any error here is logged at debug level and ignored.
+        """
+        global _cpu_session_warned
+        if _cpu_session_warned:
+            return
+        try:
+            providers = {p for model in self.face_app.models.values()
+                         for p in model.session.get_providers()}
+            if 'CUDAExecutionProvider' in providers:
+                return
+            import torch
+            from utils.onnx_runtime import repair_hint
+            _cpu_session_warned = True
+            logger.warning(
+                "InsightFace is running on the CPU although Facet selected CUDA: its ONNX Runtime "
+                "sessions use %s. 'python facet.py --doctor' shows the ONNX Runtime state. %s",
+                ", ".join(sorted(providers)), repair_hint(torch.version.cuda))
+        except Exception as ex:
+            logger.debug("Could not read the InsightFace session providers: %s", ex)
 
     def _crop_face_thumbnail(self, img_cv, bbox, padding=0.3):
         """Crop face region from full-res image with padding and resize to thumbnail.
