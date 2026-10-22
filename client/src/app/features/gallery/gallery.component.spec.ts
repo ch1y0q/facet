@@ -3276,6 +3276,34 @@ describe('GalleryComponent', () => {
       expect(focusedCard).toBe(true);
     });
 
+    for (const [name, mode, virtual] of [
+      ['plain grid', 'grid', false],
+      ['mosaic', 'mosaic', false],
+      ['windowed rows', 'mosaic', true],
+    ] as const) {
+      it(`keeps the cursor on the right-clicked card after Open and Back (${name})`, () => {
+        const cards = render(mode, virtual);
+        const events = TestBed.inject(Router).events as Subject<RouterEvent>;
+        vi.spyOn(TestBed.inject(Router), 'navigate').mockImplementation(() => {
+          events.next(new NavigationStart(1, '/photo'));
+          return Promise.resolve(true);
+        });
+        const gallery = fixture!.componentInstance as unknown as { activeIndex(): number; scrollContent(): { scrollTo(o: ScrollToOptions): void } };
+        // jsdom has no Element.scrollTo.
+        vi.spyOn(gallery.scrollContent(), 'scrollTo').mockImplementation(() => {});
+        const tile = cards[4].querySelector('[tabindex]') as HTMLElement;
+        rightClick(cards[4]);
+        const open = [...document.querySelectorAll('.mat-mdc-menu-item')]
+          .find(e => e.textContent?.includes(I18N.shortcuts.open_detail)) as HTMLElement;
+        open.click();
+        fixture!.detectChanges();
+        outletMock.detachEvents.next(fixture!.componentInstance);
+        tile.blur();
+        outletMock.attachEvents.next(fixture!.componentInstance);
+        expect(gallery.activeIndex()).toBe(4);
+      });
+    }
+
     it('does not steal focus when the menu is dismissed from its backdrop', () => {
       const cards = render('grid', false);
       rightClick(cards[4]);
@@ -3298,11 +3326,17 @@ describe('GalleryComponent', () => {
 
     beforeEach(() => {
       mockAuth['hasFeature'] = vi.fn(() => false);
+      mockAuth['isEdition'] = vi.fn(() => true);
+      mockStore.config.set({ features: { show_rating_controls: true } });
       mockStore.photos.set(photos);
       mockStore.total.set(photos.length);
       fixture = TestBed.createComponent(GalleryComponent);
       fixture.detectChanges();
       gallery = fixture.componentInstance;
+      // jsdom has no scrollIntoView; stub it per card, never on the prototype.
+      for (const host of fixture.nativeElement.querySelectorAll('[data-pidx]') as NodeListOf<HTMLElement>) {
+        host.scrollIntoView = () => {};
+      }
       content = (gallery as unknown as { scrollContent(): typeof content }).scrollContent();
       // jsdom has no Element.scrollTo.
       scrollTo = vi.spyOn(content, 'scrollTo').mockImplementation(() => {}) as unknown as Mock;
@@ -3413,6 +3447,85 @@ describe('GalleryComponent', () => {
       outletMock.attachEvents.next(gallery);
       expect(scrollTo).toHaveBeenCalledWith({ top: 640 });
       expect(document.activeElement).toBe(tile);
+      expect((gallery as unknown as { activeIndex(): number }).activeIndex()).toBe(1);
+    });
+
+    describe('keyboard cursor', () => {
+      const cursor = () => gallery as unknown as {
+        activeIndex(): number;
+        activePath(): string | null;
+        toggleSelection(photo: unknown, event: undefined, index: number): void;
+      };
+      const tileAt = (index: number) => fixture.nativeElement.querySelector(`[data-pidx="${index}"] [tabindex]`) as HTMLElement;
+      const navigationStart = () =>
+        (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(1, '/photo'));
+
+      it('rates the photo that was open, not photo 0, after the focus loss of the detach', () => {
+        cursor().toggleSelection(photos[2], undefined, 2);
+        const tile = openPhoto(2);
+        outletMock.attachEvents.next(gallery);
+        fixture.detectChanges();
+        expect(cursor().activeIndex()).toBe(2);
+        expect(cursor().activePath()).toBe('/p2.jpg');
+        expect(document.activeElement).toBe(tile);
+        mockStore.setRating.mockClear();
+        tile.dispatchEvent(new KeyboardEvent('keydown', { key: '3', bubbles: true }));
+        expect(mockStore.setRating).toHaveBeenCalledWith('/p2.jpg', 3);
+        expect(mockStore.setRating).not.toHaveBeenCalledWith('/p0.jpg', expect.anything());
+      });
+
+      it('restores the cursor when only the focus, not the cursor, was on the card', () => {
+        expect(cursor().activeIndex()).toBe(-1);
+        openPhoto(2);
+        outletMock.attachEvents.next(gallery);
+        expect(cursor().activeIndex()).toBe(2);
+        expect(cursor().activePath()).toBe('/p2.jpg');
+      });
+
+      it('follows the photo when the list changed while parked', () => {
+        openPhoto(2);
+        mockStore.photos.set([photos[0], photos[2]]);
+        outletMock.attachEvents.next(gallery);
+        expect(cursor().activeIndex()).toBe(1);
+        expect(cursor().activePath()).toBe('/p2.jpg');
+      });
+
+      it('leaves no cursor and no stale card focused when the photo was removed while parked', () => {
+        cursor().toggleSelection(photos[2], undefined, 2);
+        const tile = openPhoto(2);
+        mockStore.photos.set([photos[0], photos[1]]);
+        expect(() => outletMock.attachEvents.next(gallery)).not.toThrow();
+        expect(cursor().activeIndex()).toBe(-1);
+        expect(document.activeElement).not.toBe(tile);
+      });
+
+      it('gives the same result when the focus is lost before the detach event', () => {
+        cursor().toggleSelection(photos[2], undefined, 2);
+        const tile = tileAt(2);
+        navigationStart();
+        tile.blur();
+        outletMock.detachEvents.next(gallery);
+        outletMock.attachEvents.next(gallery);
+        expect(cursor().activeIndex()).toBe(2);
+        expect(cursor().activePath()).toBe('/p2.jpg');
+      });
+
+      it('puts the focus back on the cursor card when the focus was not on a card', () => {
+        cursor().toggleSelection(photos[2], undefined, 2);
+        const bar = document.createElement('div');
+        bar.setAttribute('data-selection-bar', '');
+        const button = document.createElement('button');
+        bar.appendChild(button);
+        document.body.appendChild(bar);
+        button.focus();
+        expect(cursor().activeIndex()).toBe(2);
+        navigationStart();
+        outletMock.detachEvents.next(gallery);
+        bar.remove();
+        outletMock.attachEvents.next(gallery);
+        expect(cursor().activeIndex()).toBe(2);
+        expect(document.activeElement).toBe(tileAt(2));
+      });
     });
 
     it('ignores Ctrl+A while parked, so the photo page cannot select the hidden grid', () => {

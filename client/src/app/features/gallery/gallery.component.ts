@@ -737,7 +737,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly changeDetector = inject(ChangeDetectorRef);
   private parked = false;
   // Detaching loses the DOM scroll position and focus.
-  private returnTo: { scroll: number; focus: Element | null } | null = null;
+  private returnTo: { scroll: number; focus: Element | null; path: string | null } | null = null;
   private readonly api = inject(ApiService);
   private readonly pageHelp = inject(PageHelpService);
   private readonly headerSlot = inject(HeaderSlotService);
@@ -1089,7 +1089,11 @@ export class GalleryComponent implements OnInit, OnDestroy {
     // Capture before the outlet detaches the DOM and loses scroll and focus.
     this.router.events.pipe(filter(e => e instanceof NavigationStart), takeUntilDestroyed()).subscribe(() => {
       if (this.parked) return;
-      this.returnTo = { scroll: this.scrollContent()?.measureScrollOffset('top') ?? 0, focus: document.activeElement };
+      const focus = document.activeElement;
+      const index = Number((focus?.closest('[data-pidx]') as HTMLElement | null)?.dataset['pidx']);
+      // The photo the focused card belongs to, or the cursor's when focus is elsewhere.
+      const path = Number.isInteger(index) ? this.store.photos()[index]?.path ?? null : this.activePath();
+      this.returnTo = { scroll: this.scrollContent()?.measureScrollOffset('top') ?? 0, focus, path };
     });
     this.outlet?.detachEvents.pipe(takeUntilDestroyed()).subscribe(component => {
       if (component !== this) return;
@@ -1116,7 +1120,15 @@ export class GalleryComponent implements OnInit, OnDestroy {
       this.returnTo = null;
       if (back) {
         this.scrollContent()?.scrollTo({ top: back.scroll });
-        if (back.focus instanceof HTMLElement && back.focus.isConnected) back.focus.focus({ preventScroll: true });
+        // The detach blurred the focused card and `onGridFocusOut` cleared the cursor, so put it back first.
+        const at = back.path === null ? -1 : this.store.photos().findIndex(p => p.path === back.path);
+        this.setCursor(at);
+        const onCard = !!back.focus?.closest('[data-pidx]');
+        // A card whose photo is gone is about to be destroyed: do not focus it.
+        if (back.focus instanceof HTMLElement && back.focus.isConnected && (!onCard || at >= 0)) {
+          back.focus.focus({ preventScroll: true });
+        }
+        if (at >= 0 && !onCard) this.restoreCursorFocus();
       }
       void this.store.loadTypeCounts();
       void this.store.loadFilterOptions();
