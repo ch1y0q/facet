@@ -4,7 +4,7 @@ import { NavigationEnd, Router } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 import { WebMcpToolRegistry, contractReadyWhen } from './webmcp-registry.service';
 import { UiToolEnvelope } from './ui-tool.types';
-import { AssistantChangesService } from './assistant-changes.service';
+import { AssistantChangesService, MAX_CHANGED_PATHS } from './assistant-changes.service';
 
 /** Minimal socket surface the bridge uses; the browser `WebSocket` satisfies it, tests pass a fake. */
 export interface BridgeSocket {
@@ -45,7 +45,6 @@ const OPEN = 1;
 const MAX_TOOLS = 64;
 /** The server turns a result frame above 256 KiB into `too_large`; stay under it. */
 const RESULT_FRAME_LIMIT = 250 * 1024;
-const MAX_CHANGED_PATHS = 200;
 
 function newTabId(): string {
   const bytes = new Uint8Array(12);
@@ -225,12 +224,22 @@ export class AgentBridgeService {
     }
   }
 
-  private onChanged(frame: { tool?: unknown; paths?: unknown; count?: unknown }): void {
+  private onChanged(frame: { tool?: unknown; agent_tool?: unknown; call_id?: unknown; paths?: unknown; show_paths?: unknown; count?: unknown }): void {
     const { tool, paths, count } = frame;
-    const pathsOk = paths === null || (Array.isArray(paths) && paths.length <= MAX_CHANGED_PATHS && paths.every(p => typeof p === 'string'));
+    const isPathList = (value: unknown): boolean => Array.isArray(value) && value.length <= MAX_CHANGED_PATHS && value.every(p => typeof p === 'string');
+    const pathsOk = paths === null || isPathList(paths);
+    // A malformed display hint must not cost the frame its data refresh.
+    const showPaths = isPathList(frame.show_paths) ? (frame.show_paths as string[]) : undefined;
     const countOk = count === null || (typeof count === 'number' && Number.isFinite(count));
     if (!pathsOk || !countOk) return;
-    this.changes.report({ tool: typeof tool === 'string' ? tool : undefined, paths: paths as string[] | null, count: count as number | null });
+    this.changes.report({
+      tool: typeof tool === 'string' ? tool : undefined,
+      agentTool: typeof frame.agent_tool === 'string' ? frame.agent_tool : undefined,
+      callId: typeof frame.call_id === 'string' ? frame.call_id : undefined,
+      showPaths,
+      paths: paths as string[] | null,
+      count: count as number | null,
+    });
   }
 
   private async answer(call: CallFrame): Promise<void> {

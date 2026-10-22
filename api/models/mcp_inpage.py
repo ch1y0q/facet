@@ -56,3 +56,7 @@ class McpCallResponse(BaseModel):
         description="Present ONLY when the call ran a photo-changing write (even one whose outcome is unknown): "
                     "the paths it named, or null when it did not name them (a filter-scoped write, more than 200 "
                     "paths). An absent key means nothing was written.")
+    show_paths: Optional[list[str]] = Field(
+        default=None,
+        description="Present ONLY when the call ran an auto-cull apply: the photos it rejected, for the tab's "
+                    "\"Show photos\", or null above 200 (or when unknown). `changed_paths` stays null for it.")

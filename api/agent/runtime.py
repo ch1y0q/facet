@@ -12,6 +12,7 @@ import base64
 import json
 import logging
 import time
+import uuid
 from typing import Any, Awaitable, Callable, Optional, cast
 
 from mcp.server.mcpserver import Context
@@ -20,6 +21,7 @@ from starlette.requests import Request
 
 from api.agent import limits, nonce, tokens
 from api.agent.internal_client import err
+from api.agent.live_updates import CALL_CONTEXT
 from api.agent.tokens import bearer_token
 from api.agent.tools_common import TOOL_LEVELS, tool_refusal
 
@@ -93,6 +95,7 @@ async def run_tool(ctx: Context, name: str, handler: Handler, *, write: bool = F
     settings = cast(Request, ctx.request_context.request).scope[SETTINGS_SCOPE_KEY]
     token_id = None
     actor: Any = "-"
+    call_marker = CALL_CONTEXT.set((name, uuid.uuid4().hex))
     try:
         grant, resolved = await resolve_context(ctx)
         if grant is None or resolved is None:
@@ -130,6 +133,8 @@ async def run_tool(ctx: Context, name: str, handler: Handler, *, write: bool = F
                 await asyncio.to_thread(tokens.touch, token_id)
             except Exception as ex:
                 logger.warning("Could not stamp last_used_at for MCP token %s: %r", token_id, ex)
+    finally:
+        CALL_CONTEXT.reset(call_marker)
     # Counts and codes only: never arguments (paths) and never the token.
     logger.info("MCP call actor=%s tool=%s ok=%s code=%s rows=%d ms=%d", actor, name,
                 envelope.get("ok"), envelope.get("error", "-"), _row_count(envelope),

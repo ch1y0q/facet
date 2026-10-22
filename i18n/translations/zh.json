@@ -2671,6 +2671,44 @@
     "unknown_tool": "助手",
     "photo_one": "{count} 张照片",
     "photo_other": "{count} 张照片",
-    "show_photos": "显示照片"
+    "show_photos": "显示照片",
+    "tools": {
+      "add_tags": "已添加标签",
+      "album_add_photos": "已添加到相册",
+      "album_remove_photos": "已从相册移除",
+      "assign_faces": "已指定人脸",
+      "auto_cull": "已运行自动筛选",
+      "batch_set_favorite": "已更改收藏",
+      "batch_set_rating": "已评分",
+      "batch_set_rejected": "已拒绝",
+      "clear_category_override": "已清除类别覆盖",
+      "clear_sequence_override": "已清除序列修正",
+      "confirm_culling_groups": "已确认筛选分组",
+      "create_album": "已创建相册",
+      "cull_apply": "已应用筛选",
+      "delete_photos": "已删除照片",
+      "export_metadata": "已导出元数据",
+      "junk_clear": "已清除废片标记",
+      "junk_reject": "已拒绝废片",
+      "override_category": "已覆盖类别",
+      "override_sequence": "已修正序列",
+      "remove_tags": "已移除标签",
+      "set_caption": "已设置说明",
+      "set_favorite": "已更改收藏",
+      "set_rating": "已评分",
+      "set_rejected": "已拒绝",
+      "start_scan": "已开始扫描"
+    },
+    "ui": {
+      "ui_navigate": "已打开页面",
+      "ui_set_gallery_filters": "已设置图库筛选",
+      "ui_open_photo": "已打开照片",
+      "ui_show_photos": "已显示照片",
+      "ui_select_photos": "已选择照片",
+      "ui_clear_selection": "已清除选择",
+      "ui_next_page": "已翻到下一页",
+      "ui_show_culling_group": "已显示筛选分组",
+      "ui_show_comparison": "已显示对比"
+    }
   }
 }

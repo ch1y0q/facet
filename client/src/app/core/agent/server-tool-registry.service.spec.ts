@@ -40,7 +40,8 @@ describe('ServerToolRegistry', () => {
   let post: Mock;
   let report: Mock;
   let uiExecute: Mock;
-  let review: ReturnType<typeof signal<{ keep: string[]; remove: string[] }>>;
+  let review: ReturnType<typeof signal<{ keep: string[]; remove: string[]; truncated: boolean }>>;
+  let hasReview: ReturnType<typeof signal<boolean>>;
   let service: ServerToolRegistry;
 
   const settle = async (): Promise<void> => {
@@ -54,7 +55,8 @@ describe('ServerToolRegistry', () => {
     if (optIn) localStorage.setItem(INPAGE_OPT_IN_KEY, '1');
     authStatus = signal(initial);
     session = signal<EnvironmentInjector | null>(null);
-    review = signal({ keep: [] as string[], remove: [] as string[] });
+    review = signal({ keep: [] as string[], remove: [] as string[], truncated: false });
+    hasReview = signal(false);
     TestBed.configureTestingModule({
       providers: [
         { provide: AuthService, useValue: { status: authStatus } },
@@ -63,7 +65,7 @@ describe('ServerToolRegistry', () => {
         { provide: AssistantChangesService, useValue: { report } },
         { provide: AgentBridgeService, useValue: { tabId: 'tab-1' } },
         { provide: WebMcpToolRegistry, useValue: { execute: uiExecute } },
-        { provide: GalleryStore, useValue: { review } },
+        { provide: GalleryStore, useValue: { review, hasReview } },
       ],
     });
     service = TestBed.inject(ServerToolRegistry);
@@ -192,14 +194,39 @@ describe('ServerToolRegistry', () => {
     expect(options.headers.get(SESSION_HEADER)).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
   });
 
-  it('sends the tab review as review_snapshot when one exists, and omits it otherwise', async () => {
+  it('sends the tab review as review_snapshot whenever a review exists, even with empty lists, and omits it otherwise', async () => {
     setup(status({ edition_authenticated: true }));
     await settle();
     await live.get('set_rating')!.execute({ rating: 4 }, {});
     expect(post.mock.calls[0][1]).not.toHaveProperty('review_snapshot');
-    review.set({ keep: ['/k.jpg'], remove: ['/r.jpg'] });
+    hasReview.set(true);
     await live.get('set_rating')!.execute({ rating: 4 }, {});
-    expect(post.mock.calls[1][1].review_snapshot).toEqual({ keep: ['/k.jpg'], remove: ['/r.jpg'] });
+    expect(post.mock.calls[1][1].review_snapshot).toEqual({ keep: [], remove: [], truncated: false });
+    review.set({ keep: ['/k.jpg'], remove: ['/r.jpg'], truncated: false });
+    await live.get('set_rating')!.execute({ rating: 4 }, {});
+    expect(post.mock.calls[2][1].review_snapshot).toEqual({ keep: ['/k.jpg'], remove: ['/r.jpg'], truncated: false });
+  });
+
+  it('counts an auto_cull apply by its show_paths when the envelope has no changed', async () => {
+    setup(status({ edition_authenticated: true }));
+    await settle();
+    post.mockReturnValue(of({ ok: true, changed_paths: null, show_paths: ['/a', '/b'] }));
+    await live.get('set_rating')!.execute({ rating: 1 }, {});
+    expect(report).toHaveBeenCalledWith(expect.objectContaining({ paths: null, count: 2, showPaths: ['/a', '/b'] }));
+  });
+
+  it('reports agentTool, a per-call callId and showPaths from the response', async () => {
+    setup(status({ edition_authenticated: true }));
+    await settle();
+    post.mockReturnValue(of({ ok: true, changed: 2, changed_paths: null, show_paths: ['/a', '/b'] }));
+    await live.get('set_rating')!.execute({ rating: 1 }, {});
+    await live.get('set_rating')!.execute({ rating: 1 }, {});
+    const first = report.mock.calls[0][0];
+    const second = report.mock.calls[1][0];
+    expect(first).toMatchObject({ agentTool: 'set_rating', showPaths: ['/a', '/b'], paths: null, count: 2 });
+    expect(typeof first.callId).toBe('string');
+    expect(first.callId.length).toBeGreaterThan(0);
+    expect(second.callId).not.toBe(first.callId);
   });
 
   it('sends no snapshot when the target is not the selection', async () => {
@@ -216,7 +243,7 @@ describe('ServerToolRegistry', () => {
     post.mockReturnValue(of({ ok: true, changed: 3, changed_paths: ['/a', '/b', '/c'] }));
     await live.get('set_rating')!.execute({ rating: 1 }, {});
     expect(report).toHaveBeenCalledTimes(1);
-    expect(report).toHaveBeenCalledWith({ tool: 'set_rating', paths: ['/a', '/b', '/c'], count: 3 });
+    expect(report).toHaveBeenCalledWith({ tool: 'set_rating', agentTool: 'set_rating', callId: expect.any(String), paths: ['/a', '/b', '/c'], count: 3 });
     expect(post.mock.calls[0][1].tab_id).toBe('tab-1');
     report.mockClear();
     post.mockReturnValue(of({ ok: true }));
@@ -229,10 +256,10 @@ describe('ServerToolRegistry', () => {
     await settle();
     post.mockReturnValueOnce(of({ ok: true, changed_paths: null, changed: 12 }));
     await live.get('set_rating')!.execute({ rating: 1 }, {});
-    expect(report).toHaveBeenLastCalledWith({ tool: 'set_rating', paths: null, count: 12 });
+    expect(report).toHaveBeenLastCalledWith({ tool: 'set_rating', agentTool: 'set_rating', callId: expect.any(String), paths: null, count: 12 });
     post.mockReturnValueOnce(of({ ok: false, error: 'outcome_unknown', changed_paths: ['/z'] }));
     await live.get('set_rating')!.execute({ rating: 1 }, {});
-    expect(report).toHaveBeenLastCalledWith({ tool: 'set_rating', paths: ['/z'], count: 1 });
+    expect(report).toHaveBeenLastCalledWith({ tool: 'set_rating', agentTool: 'set_rating', callId: expect.any(String), paths: ['/z'], count: 1 });
     report.mockClear();
     post.mockReturnValueOnce(of({ ok: true, changed: 2 }));
     await live.get('set_rating')!.execute({ rating: 1 }, {});

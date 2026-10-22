@@ -592,10 +592,38 @@ class TestChangedPaths:
         out = post_json(env, headers, "batch_set_rejected", {"paths": P[:2]}, tab_id="tab-caller")
         assert out["changed_paths"] == P[:2]
         frames = frames_within(other, 1)
-        assert frames == [{"type": "changed", "tool": "batch_reject", "paths": P[:2], "count": 2}]
+        assert frames[0].pop("call_id")
+        assert frames == [{"type": "changed", "tool": "batch_reject", "paths": P[:2], "count": 2,
+                           "agent_tool": "batch_set_rejected"}]
         import time
         time.sleep(0.5)
         assert changed_frames(caller) == []
+
+    def test_a_two_photo_write_shares_one_call_id_across_other_tabs_frames(self, edition_session, fake_tab):
+        env, headers = edition_session
+        jwt = headers["Authorization"].split(" ", 1)[1]
+        other = fake_tab(env, jwt, "tab-other")
+        out = post_json(env, headers, "set_rejected", {"paths": P[:2], "value": True}, tab_id="tab-caller")
+        assert out["changed_paths"] == P[:2]
+        frames = frames_within(other, 2)
+        assert len(frames) == 2
+        assert {f["agent_tool"] for f in frames} == {"set_rejected"}
+        assert len({f["call_id"] for f in frames}) == 1 and frames[0]["call_id"]
+
+    def test_an_auto_cull_apply_carries_show_paths_and_a_null_changed_paths(self, agent_app, seed_photos_prefix):
+        from tests import test_agent_culling as culling
+        seed_photos_prefix(culling.PREFIX, culling.ROWS)
+        nonce.reset()
+        env = agent_app("legacy")
+        headers = env.login(edition=True)
+        args = {"group_by": "burst", "strictness": 0, **culling.SCOPE}
+        preview = call(env, headers, "auto_cull", args)
+        assert preview["ok"] and preview["confirm"], preview
+        assert "show_paths" not in preview
+        applied = call(env, headers, "auto_cull", {**args, "dry_run": False, "confirm": preview["confirm"]})
+        assert applied["ok"], applied
+        assert applied["changed_paths"] is None
+        assert applied["show_paths"] == [culling.BURST_PATHS[2]]
 
     def test_an_unexpected_error_after_a_write_still_carries_the_paths_and_broadcasts(
             self, edition_session, fake_tab, monkeypatch):
@@ -685,6 +713,31 @@ class TestAutoCullReviewSnapshot:
         assert result["ok"], result
         assert "overrides_from_tab" not in result
         assert not [c for c in tab.calls if c["tool"] == "ui_get_context"]
+
+    def test_an_empty_but_present_snapshot_on_the_apply_honours_the_flips(self, agent_app, seed_photos_prefix):
+        """The tab cleared every mark after the preview: the apply carries ``{keep: [], remove: []}`` (not None)
+        and ``apply_preview`` treats that as the user's current marks, so the flips are honoured, not refused."""
+        from tests import test_agent_culling as culling
+        seed_photos_prefix(culling.PREFIX, culling.ROWS)
+        nonce.reset()
+        env = agent_app("legacy")
+        headers = env.login(edition=True)
+        args = {"group_by": "burst", "strictness": 0, **culling.SCOPE}
+        b2, b3 = culling.BURST_PATHS[1], culling.BURST_PATHS[2]
+        resp = env.client.post("/api/mcp/call", json={
+            "tool": "auto_cull", "arguments": args, "review_snapshot": {"keep": [b3], "remove": [b2]}},
+            headers={**headers, SESSION_HEADER: "tab-a"})
+        assert resp.status_code == 200, resp.text
+        preview = resp.json()
+        assert preview["ok"] and preview["confirm"] and preview["overrides_from_tab"] == {"keep": 1, "remove": 1}, preview
+        resp = env.client.post("/api/mcp/call", json={
+            "tool": "auto_cull", "arguments": {**args, "dry_run": False, "confirm": preview["confirm"]},
+            "review_snapshot": {"keep": [], "remove": []}}, headers={**headers, SESSION_HEADER: "tab-a"})
+        assert resp.status_code == 200, resp.text
+        applied = resp.json()
+        assert applied["ok"], applied
+        assert applied["data"]["skipped_user_changed_count"] == 2
+        assert culling._rejected() == set()
 
     def test_the_request_model_documents_the_field(self):
         from api.models.mcp_inpage import McpCallRequest

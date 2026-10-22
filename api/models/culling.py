@@ -158,6 +158,11 @@ class AutoCullDroppedOverride(BaseModel):
     reason: Literal['in_both_lists', 'keep_whole_set', 'would_leave_no_keeper']
 
 
+class AutoCullEffectiveOverrides(BaseModel):
+    keep: int
+    remove: int
+
+
 class AutoCullResponse(BaseModel):
     """``POST /api/culling/auto``."""
 
@@ -176,6 +181,13 @@ class AutoCullResponse(BaseModel):
     skipped_user_changed_groups: int = 0
     state_guard: Optional[Literal['unavailable']] = None
     scope_dependent_kinds: list[str] = []
+    rejected_paths: Optional[list[str]] = Field(
+        default=None,
+        description="Present on an apply only: the photos it rejected; absent (not null) above 200 photos, empty when it rejected none. Feeds \"Show photos\".")
+    effective_overrides: Optional[AutoCullEffectiveOverrides] = Field(
+        default=None,
+        description="Present when keep/remove overrides were sent: how many marks moved a photo away from its "
+                    "planned side (a mark restating the plan is not counted, nor is a dropped one).")
 
 
 class KeeperHint(BaseModel):

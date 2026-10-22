@@ -441,9 +441,13 @@ export class GalleryStore {
     const groups = new Set(this.pinnedGroups().values());
     let visited = 0;
     for (const group of this.visitedGroups()) if (groups.has(group)) visited++;
+    const truncated = keep.length > REVIEW_CAP || remove.length > REVIEW_CAP;
     return {
       keep: keep.slice(0, REVIEW_CAP),
       remove: remove.slice(0, REVIEW_CAP),
+      truncated,
+      // The true sizes, only when the cap cut a list, so the server's own trim cannot report the cut lengths.
+      ...(truncated ? { keep_count: keep.length, remove_count: remove.length } : {}),
       groups_total: groups.size,
       groups_visited: visited,
       groups_changed: this.groupsChanged(),

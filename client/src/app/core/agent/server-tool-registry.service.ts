@@ -20,9 +20,6 @@ import { AgentBridgeService } from './agent-bridge.service';
 import { AssistantChangesService } from './assistant-changes.service';
 import { WebMcpToolRegistry } from './webmcp-registry.service';
 
-/** `review_snapshot` is added to the server's `McpCallRequest` in a parallel change; typed here until `gen:api` runs. */
-type McpCallBody = McpCallRequest & { review_snapshot?: Record<string, unknown> };
-
 export const INPAGE_OPT_IN_KEY = 'facet_agent_inpage_tools';
 export const SESSION_HEADER = 'X-Facet-Agent-Session';
 const TIERS: readonly McpInpageLevel[] = LEVEL_TIERS;
@@ -184,15 +181,15 @@ export class ServerToolRegistry {
   private async call(tool: McpInpageTool, args: unknown): Promise<string> {
     const input = { ...((args && typeof args === 'object' ? args : {}) as Record<string, unknown>) };
     for (const key of STRIPPED_ARGS) delete input[key];
-    const body: McpCallBody = { tool: tool.name, arguments: input, tab_id: this.bridge.tabId };
+    const body: McpCallRequest = { tool: tool.name, arguments: input, tab_id: this.bridge.tabId };
     const properties = (tool.inputSchema['properties'] ?? {}) as Record<string, unknown>;
     if ('target' in properties && input['target'] === 'selection') {
       const selection = await this.ui.execute('ui_get_selection', {});
       if (!selection.ok) return JSON.stringify(selection);
       body.selection_snapshot = selection.data && typeof selection.data === 'object' ? selection.data as Record<string, unknown> : null;
     }
-    const review = this.gallery.review();
-    if (review.keep.length || review.remove.length) body.review_snapshot = { ...review };
+    if (this.gallery.hasReview()) body.review_snapshot = { ...this.gallery.review() };
+    const callId = newSessionId();
     try {
       const response = await firstValueFrom(this.http.post<McpCallResponse>('/api/mcp/call', body, {
         headers: new HttpHeaders({ [SESSION_HEADER]: this.sessionId ??= newSessionId() }),
@@ -200,7 +197,14 @@ export class ServerToolRegistry {
       // The key is present only when a photo-changing write ran (even an ok:false outcome_unknown one).
       if ('changed_paths' in response) {
         const paths = response.changed_paths ?? null;
-        this.changes.report({ tool: tool.name, paths, count: response.changed ?? paths?.length ?? null });
+        this.changes.report({
+          tool: tool.name,
+          agentTool: tool.name,
+          callId,
+          ...(response.show_paths !== undefined ? { showPaths: response.show_paths } : {}),
+          paths,
+          count: response.changed ?? paths?.length ?? response.show_paths?.length ?? null,
+        });
       }
       return JSON.stringify(response);
     } catch (err) {

@@ -2671,6 +2671,44 @@
     "unknown_tool": "Asistente",
     "photo_one": "{count} foto",
     "photo_other": "{count} fotos",
-    "show_photos": "Mostrar las fotos"
+    "show_photos": "Mostrar las fotos",
+    "tools": {
+      "add_tags": "Etiquetas añadidas",
+      "album_add_photos": "Adición a un álbum",
+      "album_remove_photos": "Retirada de un álbum",
+      "assign_faces": "Rostros asignados",
+      "auto_cull": "Selección automática ejecutada",
+      "batch_set_favorite": "Favoritos modificados",
+      "batch_set_rating": "Valoración",
+      "batch_set_rejected": "Rechazo",
+      "clear_category_override": "Categoría forzada eliminada",
+      "clear_sequence_override": "Corrección de secuencia eliminada",
+      "confirm_culling_groups": "Grupos de selección confirmados",
+      "create_album": "Álbum creado",
+      "cull_apply": "Selección aplicada",
+      "delete_photos": "Fotos eliminadas",
+      "export_metadata": "Metadatos exportados",
+      "junk_clear": "Marcas de descarte quitadas",
+      "junk_reject": "Rechazo de descartes",
+      "override_category": "Categoría forzada",
+      "override_sequence": "Secuencia corregida",
+      "remove_tags": "Etiquetas quitadas",
+      "set_caption": "Descripción establecida",
+      "set_favorite": "Favoritos modificados",
+      "set_rating": "Valoración",
+      "set_rejected": "Rechazo",
+      "start_scan": "Análisis iniciado"
+    },
+    "ui": {
+      "ui_navigate": "Página abierta",
+      "ui_set_gallery_filters": "Filtros de la galería establecidos",
+      "ui_open_photo": "Foto abierta",
+      "ui_show_photos": "Fotos mostradas",
+      "ui_select_photos": "Fotos seleccionadas",
+      "ui_clear_selection": "Selección borrada",
+      "ui_next_page": "Página siguiente abierta",
+      "ui_show_culling_group": "Grupo de selección mostrado",
+      "ui_show_comparison": "Comparación mostrada"
+    }
   }
 }

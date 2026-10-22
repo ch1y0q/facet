@@ -11,8 +11,13 @@ export interface AssistantChangeBatch {
 }
 
 export interface AssistantChangeReport {
-  /** The tool that wrote, for the activity log. */
+  /** The route key that wrote (e.g. `toggle_rejected`), the label fallback when no assistant tool is known. */
   tool?: string;
+  /** The MCP tool the assistant called; frames of one call share `callId`. */
+  agentTool?: string;
+  callId?: string;
+  /** Photos the "Show photos" button selects when `paths` is null (an `auto_cull` apply's rejects). */
+  showPaths?: string[] | null;
   paths: string[] | null;
   count: number | null;
 }
@@ -25,9 +30,15 @@ export interface ActivityEntry {
   tool: string;
   count: number | null;
   paths: string[] | null;
+  callId?: string;
+  showPaths: string[] | null;
+  /** Set once a frame's show list was null or the union overflowed; later frames cannot restore it. */
+  showCut?: true;
 }
 
 export const ACTIVITY_LIMIT = 50;
+/** The most paths one `changed` frame (and so one merged activity entry) may carry. */
+export const MAX_CHANGED_PATHS = 200;
 export const ACTIVE_MS = 4000;
 export const CHANGES_DEBOUNCE_MS = 400;
 export const CHANGES_MAX_WAIT_MS = 2000;
@@ -76,7 +87,7 @@ export class AssistantChangesService {
   /** A tool call reached this tab. Read-only `ui_get_*` calls light the chip but are not listed. */
   noteCall(tool: string): void {
     this.light();
-    if (!tool.startsWith('ui_get_')) this.append('ui', tool, null, null);
+    if (!tool.startsWith('ui_get_')) this.append({ kind: 'ui', tool, count: null, paths: null, showPaths: null });
   }
 
   private light(): void {
@@ -88,14 +99,44 @@ export class AssistantChangesService {
     }, ACTIVE_MS);
   }
 
-  private append(kind: ActivityEntry['kind'], tool: string, count: number | null, paths: string[] | null): void {
-    const entry: ActivityEntry = { id: this.nextId++, at: Date.now(), kind, tool, count, paths };
+  private append(fields: Omit<ActivityEntry, 'id' | 'at'>): void {
+    const entry: ActivityEntry = { id: this.nextId++, at: Date.now(), ...fields };
     this.entries.update(list => [entry, ...list].slice(0, ACTIVITY_LIMIT));
+  }
+
+  /** One entry per assistant tool call: a later frame of the same call folds into the entry still in the ring. */
+  private appendWrite(report: AssistantChangeReport): void {
+    const paths = report.paths;
+    const showPaths = report.showPaths ?? null;
+    const count = report.count ?? paths?.length ?? null;
+    const tool = report.agentTool ?? report.tool ?? '';
+    const existing = report.callId === undefined ? undefined : this.entries().find(e => e.kind === 'write' && e.callId === report.callId);
+    if (!existing) {
+      this.append({ kind: 'write', tool, count, paths, showPaths: showPaths?.length ? showPaths : null, callId: report.callId, ...(report.showPaths === null ? { showCut: true as const } : {}) });
+      return;
+    }
+    const merged: ActivityEntry = {
+      ...existing,
+      at: Date.now(),
+      count: existing.count === null && count === null ? null : (existing.count ?? 0) + (count ?? 0),
+      paths: unionPaths(existing.paths, paths),
+      ...this.mergeShowPaths(existing, report),
+    };
+    this.entries.update(list => [merged, ...list.filter(e => e !== existing)]);
+  }
+
+  /** Mirrors the server's WriteCollector.show_paths(): a frame without the key adds nothing, a null or oversized list makes the union unknown, an empty union is null. */
+  private mergeShowPaths(existing: ActivityEntry, report: AssistantChangeReport): Pick<ActivityEntry, 'showPaths' | 'showCut'> {
+    if (existing.showCut) return { showPaths: null, showCut: true };
+    if (report.showPaths === undefined) return { showPaths: existing.showPaths };
+    const union = report.showPaths === null ? null : unionPaths(existing.showPaths ?? [], report.showPaths);
+    if (union === null) return { showPaths: null, showCut: true };
+    return { showPaths: union.length ? union : null };
   }
 
   report(report: AssistantChangeReport): void {
     this.light();
-    this.append('write', report.tool ?? '', report.count ?? report.paths?.length ?? null, report.paths);
+    this.appendWrite(report);
     const now = Date.now();
     if (!this.pending) {
       this.pending = true;
@@ -136,4 +177,11 @@ export class AssistantChangesService {
     this.extra = 0;
     this.pending = false;
   }
+}
+
+/** Union of two path lists; null when either is unknown or the union outgrows what a frame may carry. */
+function unionPaths(a: string[] | null, b: string[] | null): string[] | null {
+  if (a === null || b === null) return null;
+  const union = [...new Set([...a, ...b])];
+  return union.length > MAX_CHANGED_PATHS ? null : union;
 }

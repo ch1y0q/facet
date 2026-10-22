@@ -5,6 +5,9 @@ successful (or outcome-unknown) write route call to a sink. This module classifi
 the photo paths the request named, and builds the frame ``{type: "changed", tool, paths, count}``.
 ``paths`` is ``None`` when the request did not name its photos (a filter-scoped write, a sibling-widened
 move, a face assignment) or named more than ``MAX_LIVE_PATHS``: the tab then reloads its view.
+``culling.auto`` frames also carry ``show_paths`` (the photos the apply rejected, for "Show photos"; ``None`` when
+there are none or above the cap), and every frame written inside an agent tool call carries ``agent_tool`` and
+``call_id`` naming that call.
 
 The browser's own in-page agent route does not broadcast to its caller (the caller IS the tab and applies
 the response); see ``api.agent.inpage``.
@@ -38,6 +41,10 @@ WriteSink = Callable[[str, str, Any, Any], Any]
 
 # Takes precedence over the client's own sink for the current context (the in-page route collects here).
 LIVE_SINK_OVERRIDE: ContextVar[Optional[WriteSink]] = ContextVar("facet_live_sink_override", default=None)
+
+# ``(assistant tool name, call id)`` of the MCP tool call running in this context, set by ``run_tool``.
+# Every frame the call's writes produce carries both, so a tab can fold them into one activity entry.
+CALL_CONTEXT: ContextVar[Optional[tuple[str, str]]] = ContextVar("facet_call_context", default=None)
 
 
 def changed_paths(tool: str, body: Any) -> Optional[list[str]]:
@@ -85,7 +92,15 @@ def frame_for(tool: str, body: Any, response: Any) -> Optional[dict]:
         return None
     paths = None if _rejects_whole_burst(tool, body) else changed_paths(tool, body)
     count = len(paths) if paths is not None else _response_count(response)
-    return {"type": "changed", "tool": tool, "paths": paths, "count": count}
+    frame = {"type": "changed", "tool": tool, "paths": paths, "count": count}
+    if tool == "culling.auto":
+        # The photos an auto-cull apply rejected, for the tab's "Show photos"; ``paths`` stays null so the tab
+        # still reloads (an apply also moves burst leads and reviewed marks that no row patch covers).
+        shown = response.get("rejected_paths") if isinstance(response, dict) else None
+        frame["show_paths"] = shown if isinstance(shown, list) and shown else None
+    if (call := CALL_CONTEXT.get()) is not None:
+        frame["agent_tool"], frame["call_id"] = call
+    return frame
 
 
 def make_emitter(registry: Any) -> WriteSink:
@@ -128,3 +143,18 @@ class WriteCollector:
                 return None
             union.update(dict.fromkeys(frame["paths"]))
         return list(union) if len(union) <= MAX_LIVE_PATHS else None
+
+    def show_paths(self) -> Optional[list[str]]:
+        """The union of the frames' ``show_paths``, or ``None`` when no frame has any or one lacks its list."""
+        union: dict[str, None] = {}
+        for frame in self.frames:
+            if "show_paths" not in frame:
+                continue
+            if frame["show_paths"] is None:
+                return None
+            union.update(dict.fromkeys(frame["show_paths"]))
+        return list(union) if union and len(union) <= MAX_LIVE_PATHS else None
+
+    @property
+    def has_show_paths(self) -> bool:
+        return any("show_paths" in frame for frame in self.frames)

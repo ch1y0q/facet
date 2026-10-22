@@ -323,3 +323,141 @@ class TestHttp:
         assert applied.status_code == 200, applied.text
         assert applied.json()["skipped_user_changed"] == [prefix + "b2.jpg"]
         assert applied.json()["skipped_user_changed_count"] == 1
+
+
+class TestRejectedPathsOnTheRoute:
+    """``rejected_paths`` feeds the tab's "Show photos"; the frame's ``paths`` stays null so the tab reloads."""
+
+    PREFIX = AGENT_DIR + "showpaths/"
+    BODY = {"group_by": "burst", "strictness": 0, "date_from": "1997:01:01 00:00:00",
+            "date_to": "1997:01:01 23:59:59"}
+
+    @pytest.fixture()
+    def library(self, seed_photos_prefix):
+        scores = {"s1.jpg": 9.0, "s2.jpg": 5.0, "s3.jpg": 3.0, "s4.jpg": 1.0}
+        seed_photos_prefix(self.PREFIX, [
+            {"path": self.PREFIX + n, "filename": n, "date_taken": f"1997:01:01 10:00:0{i}", "aggregate": s,
+             "aesthetic": s, "tech_sharpness": s, "burst_group_id": 6161, "is_burst_lead": 1 if i == 1 else 0}
+            for i, (n, s) in enumerate(scores.items(), start=1)])
+        return [self.PREFIX + n for n in ("s3.jpg", "s4.jpg")]
+
+    def _apply(self, client):
+        preview = client.post("/api/culling/auto", json=self.BODY)
+        assert preview.status_code == 200, preview.text
+        assert "rejected_paths" not in preview.json()
+        return preview, client.post("/api/culling/auto", json={
+            **self.BODY, "dry_run": False, "expected_digest": preview.json()["plan_digest"]})
+
+    def test_an_apply_lists_the_rejected_paths_and_the_frame_carries_show_paths(self, edition_client, library):
+        from api.agent.live_updates import frame_for
+        _, applied = self._apply(edition_client)
+        assert applied.status_code == 200, applied.text
+        body = applied.json()
+        assert sorted(body["rejected_paths"]) == sorted(library)
+        frame = frame_for("culling.auto", {"dry_run": False}, body)
+        assert frame["paths"] is None and sorted(frame["show_paths"]) == sorted(library)
+
+    def test_over_the_cap_the_route_lists_nothing(self, edition_client, library, monkeypatch):
+        from api.agent import live_updates
+        from api.agent.live_updates import frame_for
+        monkeypatch.setattr(live_updates, "MAX_LIVE_PATHS", 1)
+        _, applied = self._apply(edition_client)
+        assert applied.status_code == 200, applied.text
+        body = applied.json()
+        assert body["rejected"] == 2 and body.get("rejected_paths") is None
+        assert frame_for("culling.auto", {"dry_run": False}, body)["show_paths"] is None
+
+    def test_exactly_at_the_cap_the_route_still_lists_the_paths(self, edition_client, library, monkeypatch):
+        from api.agent import live_updates
+        monkeypatch.setattr(live_updates, "MAX_LIVE_PATHS", 2)
+        _, applied = self._apply(edition_client)
+        assert applied.status_code == 200, applied.text
+        assert sorted(applied.json()["rejected_paths"]) == sorted(library)
+
+    def test_an_apply_that_rejects_nothing_has_no_show_paths(self, edition_client, library):
+        from api.agent.live_updates import frame_for
+        preview = edition_client.post("/api/culling/auto", json=self.BODY)
+        assert preview.status_code == 200, preview.text
+        applied = edition_client.post("/api/culling/auto", json={
+            **self.BODY, "dry_run": False, "expected_digest": preview.json()["plan_digest"],
+            "skip_paths": library})
+        assert applied.status_code == 200, applied.text
+        body = applied.json()
+        assert body["rejected"] == 0
+        frame = frame_for("culling.auto", {"dry_run": False}, body)
+        assert frame["paths"] is None and frame["show_paths"] is None
+
+
+class TestGuardBuild:
+    """The snapshot is built outside ``_guard_lock``, tags once, capped, through the shared label reader."""
+
+    def test_a_slow_label_read_does_not_block_another_threads_lookup(self, tmp_path, monkeypatch):
+        import threading
+        import api.db_helpers as helpers
+        db, conn = _library(tmp_path)
+        started, release = threading.Event(), threading.Event()
+        original = helpers._read_label_tuples
+
+        def slow(*args, **kwargs):
+            started.set()
+            assert release.wait(10)
+            return original(*args, **kwargs)
+        monkeypatch.setattr(helpers, "_read_label_tuples", slow)
+
+        def preview_in_thread():
+            own = sqlite3.connect(db)
+            own.row_factory = sqlite3.Row
+            _preview(own, db)
+        worker = threading.Thread(target=preview_in_thread)
+        worker.start()
+        try:
+            assert started.wait(10)
+            probe = threading.Thread(target=lambda: burst_culling.state_guard_has("_anonymous", "x"))
+            probe.start()
+            probe.join(2)
+            assert not probe.is_alive(), "state_guard_has blocked behind a label read"
+        finally:
+            release.set()
+            worker.join(10)
+
+    def test_plan_tags_is_computed_once_per_remember_and_per_reconcile(self, tmp_path, monkeypatch):
+        db, conn = _library(tmp_path)
+        calls = []
+        original = burst_culling._plan_tags
+        monkeypatch.setattr(burst_culling, "_plan_tags", lambda plan: calls.append(1) or original(plan))
+        preview = _preview(conn, db)
+        assert len(calls) == 1
+        del calls[:]
+        _apply(conn, db, preview)
+        assert len(calls) == 1
+
+    def test_a_later_page_with_a_live_snapshot_reads_no_labels(self, tmp_path, monkeypatch):
+        import api.db_helpers as helpers
+        db, conn = _library(tmp_path)
+        _preview(conn, db)
+        reads = []
+        original = helpers._read_label_tuples
+        monkeypatch.setattr(helpers, "_read_label_tuples", lambda *a, **k: reads.append(1) or original(*a, **k))
+        _preview(conn, db)
+        assert reads == []
+
+    def test_a_plan_above_the_cap_stores_nothing_and_says_unavailable(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(burst_culling, "GUARD_MAX_PATHS", 2)
+        db, conn = _library(tmp_path)
+        preview = _preview(conn, db)
+        assert preview.state_guard == "unavailable"
+        assert not burst_culling.state_guard_has("_anonymous", preview.plan_digest)
+        assert _apply(conn, db, preview).state_guard == "unavailable"
+
+    def test_a_plan_at_the_cap_is_stored(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(burst_culling, "GUARD_MAX_PATHS", len(SCORES))
+        db, conn = _library(tmp_path)
+        preview = _preview(conn, db)
+        assert preview.state_guard is None
+        assert burst_culling.state_guard_has("_anonymous", preview.plan_digest)
+
+    def test_the_private_label_reader_is_gone(self):
+        import pathlib
+        root = pathlib.Path(burst_culling.__file__).resolve().parents[1]
+        hits = [str(p) for p in root.rglob("*.py") if "_label_fingerprints" in p.read_text()]
+        assert hits == []

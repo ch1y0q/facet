@@ -154,6 +154,8 @@ async def call(server: Any, grant: tokens.SessionGrant, settings: dict, name: st
         envelope.update(_changed(name, envelope))
     if collector.wrote:
         envelope["changed_paths"] = collector.paths()
+        if collector.has_show_paths:
+            envelope["show_paths"] = collector.show_paths()
         if registry is not None and tab_id is not None:
             _broadcast_to_other_tabs(registry, collector, tab_id)
     return envelope

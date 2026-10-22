@@ -243,6 +243,26 @@ describe('AgentBridgeService', () => {
     ]);
   });
 
+  it('passes agent_tool, call_id and show_paths into the report', () => {
+    const socket = connectReady();
+    socket.receive({ type: 'changed', tool: 'toggle_rejected', agent_tool: 'set_rejected', call_id: 'abc', paths: ['/a'], count: 1 });
+    socket.receive({ type: 'changed', tool: 'culling.auto', agent_tool: 'auto_cull', call_id: 'def', paths: null, show_paths: ['/r'], count: 1 });
+    expect(report.mock.calls).toEqual([
+      [{ tool: 'toggle_rejected', agentTool: 'set_rejected', callId: 'abc', showPaths: undefined, paths: ['/a'], count: 1 }],
+      [{ tool: 'culling.auto', agentTool: 'auto_cull', callId: 'def', showPaths: ['/r'], paths: null, count: 1 }],
+    ]);
+  });
+
+  it('keeps a changed frame whose show_paths is malformed, without the hint', () => {
+    const socket = connectReady();
+    socket.receive({ type: 'changed', tool: 't', paths: ['/a'], show_paths: 'nope', count: 1 });
+    socket.receive({ type: 'changed', tool: 't', paths: null, show_paths: Array.from({ length: 201 }, (_, i) => `/p${i}`), count: 1 });
+    expect(report.mock.calls).toEqual([
+      [{ tool: 't', agentTool: undefined, callId: undefined, showPaths: undefined, paths: ['/a'], count: 1 }],
+      [{ tool: 't', agentTool: undefined, callId: undefined, showPaths: undefined, paths: null, count: 1 }],
+    ]);
+  });
+
   it('ignores a malformed changed frame', () => {
     const socket = connectReady();
     socket.receive({ type: 'changed', tool: 't', paths: 'nope', count: 1 });

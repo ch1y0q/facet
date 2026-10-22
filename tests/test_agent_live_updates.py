@@ -94,7 +94,24 @@ class TestFrameFor:
 
     def test_culling_auto_apply_emits(self):
         frame = frame_for("culling.auto", {"dry_run": False}, {"rejected": 3, "kept": 9})
-        assert frame == {"type": "changed", "tool": "culling.auto", "paths": None, "count": 3}
+        assert frame == {"type": "changed", "tool": "culling.auto", "paths": None, "count": 3,
+                         "show_paths": None}
+
+    def test_culling_auto_apply_carries_the_rejected_paths_as_show_paths(self):
+        frame = frame_for("culling.auto", {"dry_run": False}, {"rejected": 2, "rejected_paths": ["/a", "/b"]})
+        assert frame["paths"] is None and frame["show_paths"] == ["/a", "/b"] and frame["count"] == 2
+
+    def test_only_culling_auto_has_show_paths(self):
+        assert "show_paths" not in frame_for("batch_reject", {"photo_paths": ["/a"]}, {"rejected_paths": ["/a"]})
+
+    def test_the_collector_unions_show_paths_and_nulls_on_any_null(self):
+        collector = live_updates.WriteCollector()
+        assert collector.show_paths() is None
+        collector("u", "culling.auto", {"dry_run": False}, {"rejected": 1, "rejected_paths": ["/a"]})
+        collector("u", "culling.auto", {"dry_run": False}, {"rejected": 1, "rejected_paths": ["/a", "/b"]})
+        assert collector.show_paths() == ["/a", "/b"]
+        collector("u", "culling.auto", {"dry_run": False}, {"rejected": 9})
+        assert collector.show_paths() is None
 
     def test_culling_confirm_emits_its_paths(self):
         frame = frame_for("culling.confirm", {"group_id": 1, "type": "similar", "paths": ["/a", "/b"],
@@ -106,6 +123,30 @@ class TestFrameFor:
 
     def test_a_dry_run_flag_that_is_not_true_still_emits(self):
         assert frame_for("cull_apply", {"paths": ["/a"], "dry_run": False}, {})["paths"] == ["/a"]
+
+
+class TestCallContext:
+    def test_frame_carries_the_agent_tool_and_call_id_when_set(self):
+        marker = live_updates.CALL_CONTEXT.set(("set_rejected", "abc"))
+        try:
+            frame = frame_for("toggle_rejected", {"photo_path": "/a"}, {})
+        finally:
+            live_updates.CALL_CONTEXT.reset(marker)
+        assert frame == {"type": "changed", "tool": "toggle_rejected", "paths": ["/a"], "count": 1,
+                         "agent_tool": "set_rejected", "call_id": "abc"}
+
+    def test_frame_omits_both_keys_without_a_context(self):
+        frame = frame_for("toggle_rejected", {"photo_path": "/a"}, {})
+        assert "agent_tool" not in frame and "call_id" not in frame
+
+    def test_the_collector_frames_carry_the_context(self):
+        collector = live_updates.WriteCollector()
+        marker = live_updates.CALL_CONTEXT.set(("set_rejected", "abc"))
+        try:
+            collector("_legacy", "toggle_rejected", {"photo_path": "/a"}, {})
+        finally:
+            live_updates.CALL_CONTEXT.reset(marker)
+        assert collector.frames[0]["call_id"] == "abc" and collector.frames[0]["agent_tool"] == "set_rejected"
 
 
 class TestClassification:
@@ -168,7 +209,9 @@ class TestBroadcastOverMcp:
         assert result["ok"], result
         frames = wait_frames(tab, 1)
         assert len(settle(tab)) == 1
-        assert frames[0] == {"type": "changed", "tool": "batch_reject", "paths": P[:2], "count": 2}
+        assert frames[0].pop("call_id")
+        assert frames[0] == {"type": "changed", "tool": "batch_reject", "paths": P[:2], "count": 2,
+                             "agent_tool": "batch_set_rejected"}
 
     def test_per_photo_write_sends_one_frame_per_path(self, edition, photos, fake_tab):
         env, token, headers = edition
@@ -178,6 +221,19 @@ class TestBroadcastOverMcp:
         assert len(settle(tab)) == 4
         assert sorted(f["paths"][0] for f in frames) == sorted(P[:4])
         assert all(f["tool"] == "toggle_rejected" and f["count"] == 1 for f in frames)
+
+    def test_one_call_stamps_every_frame_with_one_call_id(self, edition, photos, fake_tab):
+        env, token, headers = edition
+        tab = fake_tab(env, jwt_of(headers))
+        assert env.call(token, "set_rejected", {"paths": P[:4], "value": True})["ok"]
+        first = wait_frames(tab, 4)
+        assert len(settle(tab)) == 4
+        assert {f["agent_tool"] for f in first} == {"set_rejected"}
+        assert len({f["call_id"] for f in first}) == 1 and first[0]["call_id"]
+        assert env.call(token, "set_rejected", {"paths": P[:2], "value": False})["ok"]
+        both = wait_frames(tab, 6)
+        assert len(settle(tab)) == 6
+        assert len({f["call_id"] for f in both}) == 2
 
     def test_another_principal_receives_nothing(self, agent_app, photos, fake_tab):
         env = agent_app("multi", allow_destructive=True)

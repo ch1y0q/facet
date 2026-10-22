@@ -29,7 +29,7 @@ const CLOCK_MS = 15000;
       <button
         mat-stroked-button
         type="button"
-        class="!h-8 !px-3 !text-xs gap-1"
+        class="!h-8 !px-2 min-[1700px]:!px-3 !text-xs gap-1 !min-w-0"
         data-testid="assistant-chip"
         [matMenuTriggerFor]="panel"
         [attr.aria-label]="I18N.assistant_activity.chip | translate"
@@ -37,22 +37,23 @@ const CLOCK_MS = 15000;
         (menuClosed)="onClosed()"
       >
         <mat-icon class="!text-base !w-4 !h-4 !leading-4">smart_toy</mat-icon>
-        <span class="hidden sm:inline">{{ I18N.assistant_activity.chip | translate }}</span>
+        <span class="hidden min-[1700px]:inline">{{ I18N.assistant_activity.chip | translate }}</span>
       </button>
     }
     <mat-menu #panel="matMenu" xPosition="before">
       <div class="px-4 py-2 text-sm font-medium" role="presentation">{{ I18N.assistant_activity.title | translate }}</div>
       @for (entry of changes.activity(); track entry.id) {
+        @let label = (entry.tool | activityToolLabel: entry.kind) || (I18N.assistant_activity.unknown_tool | translate);
         <div class="px-4 py-2 text-sm flex flex-col gap-1 max-w-80" data-testid="activity-entry">
           <div class="flex items-baseline gap-2">
-            <span class="font-medium truncate">{{ (entry.tool | activityToolLabel) || (I18N.assistant_activity.unknown_tool | translate) }}</span>
+            <span class="font-medium truncate" data-testid="activity-label">{{ label }}</span>
             @if (entry.count !== null) {
               <span class="opacity-70 shrink-0">{{ (entry.count === 1 ? I18N.assistant_activity.photo_one : I18N.assistant_activity.photo_other) | translate: { count: entry.count } }}</span>
             }
             <span class="ml-auto opacity-60 text-xs shrink-0">{{ entry.at | relativeTime: now() : i18n.locale() }}</span>
           </div>
-          @if (entry.paths) {
-            <button mat-menu-item type="button" data-testid="activity-show" (click)="show(entry)">
+          @if ((entry.showPaths ?? entry.paths)?.length) {
+            <button mat-menu-item type="button" data-testid="activity-show" [attr.aria-label]="(I18N.assistant_activity.show_photos | translate) + ': ' + label" (click)="show(entry)">
               <mat-icon>photo_library</mat-icon>
               {{ I18N.assistant_activity.show_photos | translate }}
             </button>
@@ -91,10 +92,11 @@ export class AssistantActivityChipComponent {
   }
 
   protected async show(entry: ActivityEntry): Promise<void> {
-    if (!entry.paths) return;
+    const paths = entry.showPaths ?? entry.paths;
+    if (!paths?.length) return;
     const path = this.router.url.split(/[?#]/)[0];
     if (path !== '/' && !path.startsWith('/album/')) await this.router.navigate(['/']);
-    await this.gallery.showPaths(entry.paths);
+    await this.gallery.showPaths(paths);
   }
 
   private stopClock(): void {

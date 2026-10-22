@@ -22,12 +22,13 @@ from typing import Literal, Optional, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from api.agent import live_updates
 from api.auth import CurrentUser, get_optional_user, require_edition
 from api.database import get_db
 from api.subject_bbox import parse_subject_bbox
 from api.db_helpers import (
     get_visibility_clause, paginate, is_multi_user_enabled, get_photos_from_clause,
-    get_preference_columns,
+    get_preference_columns, read_labels,
     trigger_auto_retrain, record_culling_decision, set_photos_rejected,
     album_filter_clause, time_window_clauses,
     select_in_chunks, scope_cache_key, scope_sql as path_scope_sql, NO_VISIBILITY_SQL,
@@ -2405,9 +2406,14 @@ DROPPED_NO_KEEPER = 'would_leave_no_keeper'
 
 GUARD_TTL_S = 15 * 60
 GUARD_MAX_PER_USER = 8
+# A snapshot holds one tag tuple and one label tuple per planned path. Measured with sys.getsizeof on
+# 1000/5000-path snapshots of ~60-character paths: ~314/~381 bytes per path (we budget 450). The cap
+# bounds the WHOLE multi-page plan, so the worst case per user is GUARD_MAX_PER_USER (8) x 12000 paths x
+# 450 bytes = ~43 MB, under the ~50 MB budget. Above it nothing is stored and the preview reports
+# ``state_guard: "unavailable"`` (the apply then falls back to the legacy all-or-nothing digest refusal).
+GUARD_MAX_PATHS = 12000
 SKIPPED_REPORT_CAP = 50
 GUARD_UNAVAILABLE = 'unavailable'
-_LABEL_CHUNK_SIZE = 500
 _guard_clock = time.monotonic
 _guard_lock = threading.Lock()
 # user_id -> {plan_digest: _GuardSnapshot}, least recently used first.
@@ -2448,14 +2454,14 @@ def state_guard_has(user_id, digest):
         return digest in entries
 
 
-def _guard_store(user_id, digest, build):
-    """Store ``build()`` under ``digest`` unless a live snapshot already holds it (first write wins)."""
+def _guard_store(user_id, digest, snapshot):
+    """Store ``snapshot`` under ``digest`` unless a live snapshot already holds it (first write wins)."""
     with _guard_lock:
         entries = _guard_snapshots.setdefault(user_id, {})
         _guard_live(entries)
         if digest in entries:
             return
-        entries[digest] = build()
+        entries[digest] = snapshot
         while len(entries) > GUARD_MAX_PER_USER:
             del entries[next(iter(entries))]
 
@@ -2470,27 +2476,25 @@ def _guard_load(user_id, digest):
         return snapshot
 
 
-def _label_fingerprints(conn, user_id, paths):
-    """``{path: (star_rating, is_favorite, is_rejected)}`` from the per-user source (``user_preferences`` in
-    multi-user mode, the ``photos`` columns otherwise): the same reader the assistant-label provenance uses."""
-    from api.db_helpers import _label_scope, _read_label_tuples
-    paths = list(paths)
-    scope = _label_scope(user_id)
-    labels = {}
-    for start in range(0, len(paths), _LABEL_CHUNK_SIZE):
-        labels.update(_read_label_tuples(conn, scope, paths[start:start + _LABEL_CHUNK_SIZE]))
-    return labels
-
-
 def _plan_tags(plan):
     return frozenset((e['group']['type'], e['group']['group_id'], side, path) for e in plan
                      for side in ('keep', 'reject') for path in e[f'{side}_paths'])
 
 
-def _remember_plan(conn, user_id, digest, plan, rest):
-    _guard_store(user_id, digest, lambda: _GuardSnapshot(
-        _plan_tags(plan), rest,
-        _label_fingerprints(conn, user_id, [t[3] for t in _plan_tags(plan)]), _guard_clock()))
+def _remember_plan(conn, user_id, digest, plan, rest, result):
+    """Snapshot the plan's tags and labels for the apply's guard, built outside ``_guard_lock``.
+
+    A live snapshot for ``digest`` is kept as is (every later page of a preview lands here again and must
+    not re-read labels); a plan above ``GUARD_MAX_PATHS`` stores nothing and flags ``result.state_guard``.
+    """
+    if state_guard_has(user_id, digest):
+        return
+    tags = _plan_tags(plan)
+    if len(tags) > GUARD_MAX_PATHS:
+        result.state_guard = GUARD_UNAVAILABLE
+        return
+    _guard_store(user_id, digest, _GuardSnapshot(
+        tags, rest, read_labels(conn, user_id, [t[3] for t in tags]), _guard_clock()))
 
 
 def _reconcile_plan(conn, user_id, plan, result, expected_digest, rest, explicit_skip, state_guard):
@@ -2505,15 +2509,16 @@ def _reconcile_plan(conn, user_id, plan, result, expected_digest, rest, explicit
     if state_guard and expected_digest is not None and snapshot is None:
         result.state_guard = GUARD_UNAVAILABLE
     changed = set(explicit_skip)
+    tags = _plan_tags(plan)
     if snapshot is not None:
-        fresh = _label_fingerprints(conn, user_id, snapshot.labels)
+        fresh = read_labels(conn, user_id, snapshot.labels)
         changed |= {path for path, labels in snapshot.labels.items() if fresh[path] != labels}
     if expected_digest is not None and expected_digest != result.plan_digest:
         if snapshot is None or snapshot.rest != rest or \
-                any(tag[3] not in changed for tag in snapshot.tags ^ _plan_tags(plan)):
+                any(tag[3] not in changed for tag in snapshot.tags ^ tags):
             raise AutoCullPlanChanged(
                 'The plan changed since it was previewed; nothing was written. Preview it again.')
-    known = {t[3] for t in _plan_tags(plan)} | (set(snapshot.labels) if snapshot is not None else set())
+    known = {t[3] for t in tags} | (set(snapshot.labels) if snapshot is not None else set())
     return changed, changed & known
 
 
@@ -2755,6 +2760,7 @@ class AutoCullResult:
     skipped_user_changed_count: int = 0
     skipped_user_changed_groups: int = 0
     state_guard: Optional[str] = None
+    effective_overrides: Optional[dict] = None
     keep_paths: list = field(default_factory=list)
     reject_paths: list = field(default_factory=list)
     decided: set = field(default_factory=set)
@@ -2860,6 +2866,8 @@ def run_auto_cull(conn, db_path, user_id, *, group_by, strictness, min_keep,
     remove_override = list(dict.fromkeys(remove_override or []))
     effective, result.ignored_overrides = _apply_plan_overrides(
         plan, keep_override, remove_override, result.dropped_overrides if lenient_overrides else None)
+    if keep_override or remove_override:
+        result.effective_overrides = {side: len(paths) for side, paths in effective.items()}
     digest_options = {
         'group_by': group_by, 'album_id': album_id, 'date_from': date_from,
         'date_to': date_to, 'strictness': strictness, 'min_keep': min_keep,
@@ -2872,7 +2880,7 @@ def run_auto_cull(conn, db_path, user_id, *, group_by, strictness, min_keep,
             raise AutoCullPlanChanged(
                 'The plan changed since it was previewed; nothing was written. Preview it again.')
         if state_guard:
-            _remember_plan(conn, user_id, result.plan_digest, plan, rest)
+            _remember_plan(conn, user_id, result.plan_digest, plan, rest, result)
     else:
         changed, reported = _reconcile_plan(
             conn, user_id, plan, result, expected_digest, rest, set(skip_paths or []), state_guard)
@@ -2927,6 +2935,8 @@ def _guard_report(result):
         report['skipped_user_changed_groups'] = result.skipped_user_changed_groups
     if result.state_guard:
         report['state_guard'] = result.state_guard
+    if result.effective_overrides is not None:
+        report['effective_overrides'] = result.effective_overrides
     return report
 
 
@@ -2983,6 +2993,9 @@ def auto_cull(
                 lenient_overrides=body.lenient_overrides, skip_paths=body.skip_paths,
                 state_guard=bool(user and user.is_agent_request),
             )
+            rejected_paths = ({'rejected_paths': result.reject_paths}
+                              if not body.dry_run and len(result.reject_paths) <= live_updates.MAX_LIVE_PATHS
+                              else {})
             return {
                 'groups_processed': result.processed,
                 'kept': result.kept,
@@ -2994,6 +3007,7 @@ def auto_cull(
                 'plan_digest': result.plan_digest,
                 'ignored_overrides': result.ignored_overrides,
                 'scope_dependent_kinds': result.scope_dependent_kinds,
+                **rejected_paths,
                 **_guard_report(result),
             }
 

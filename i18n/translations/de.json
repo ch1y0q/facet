@@ -2671,6 +2671,44 @@
     "unknown_tool": "Assistent",
     "photo_one": "{count} Foto",
     "photo_other": "{count} Fotos",
-    "show_photos": "Fotos anzeigen"
+    "show_photos": "Fotos anzeigen",
+    "tools": {
+      "add_tags": "Tags hinzugefügt",
+      "album_add_photos": "Zu einem Album hinzugefügt",
+      "album_remove_photos": "Aus einem Album entfernt",
+      "assign_faces": "Gesichter zugeordnet",
+      "auto_cull": "Auto-Auswahl ausgeführt",
+      "batch_set_favorite": "Favoriten geändert",
+      "batch_set_rating": "Bewertet",
+      "batch_set_rejected": "Abgelehnt",
+      "clear_category_override": "Kategorie-Überschreibung entfernt",
+      "clear_sequence_override": "Sequenz-Korrektur entfernt",
+      "confirm_culling_groups": "Auswahlgruppen bestätigt",
+      "create_album": "Album erstellt",
+      "cull_apply": "Auswahl angewendet",
+      "delete_photos": "Fotos gelöscht",
+      "export_metadata": "Metadaten exportiert",
+      "junk_clear": "Ausschuss-Markierungen entfernt",
+      "junk_reject": "Ausschuss abgelehnt",
+      "override_category": "Kategorie überschrieben",
+      "override_sequence": "Sequenz korrigiert",
+      "remove_tags": "Tags entfernt",
+      "set_caption": "Beschriftung gesetzt",
+      "set_favorite": "Favoriten geändert",
+      "set_rating": "Bewertet",
+      "set_rejected": "Abgelehnt",
+      "start_scan": "Scan gestartet"
+    },
+    "ui": {
+      "ui_navigate": "Seite geöffnet",
+      "ui_set_gallery_filters": "Galeriefilter gesetzt",
+      "ui_open_photo": "Foto geöffnet",
+      "ui_show_photos": "Fotos angezeigt",
+      "ui_select_photos": "Fotos ausgewählt",
+      "ui_clear_selection": "Auswahl aufgehoben",
+      "ui_next_page": "Zur nächsten Seite gewechselt",
+      "ui_show_culling_group": "Auswahlgruppe angezeigt",
+      "ui_show_comparison": "Vergleich angezeigt"
+    }
   }
 }

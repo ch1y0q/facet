@@ -474,6 +474,17 @@ class TestUserActivityInTheContext:
         assert [c["args"] for c in tab.calls] == [{}, {"activity_since": 12}]
 
 
+class TestTabCountsSurviveTheServerTrim:
+    def test_the_tabs_true_sizes_are_kept_when_the_server_cuts_further(self):
+        from api.agent.tools_ui import fit_review
+        review = {"keep": [], "remove": [f"/lib/{'r' * 200}{i}.jpg" for i in range(1000)],
+                  "truncated": True, "remove_count": 1200, "keep_count": 0}
+        result = {"ok": True, "data": _context(review)}
+        fit_review(result, 20000)
+        assert review["truncated"] is True and review["remove_count"] == 1200 and review["keep_count"] == 0
+        assert 0 < len(review["remove"]) < 1000
+
+
 class TestReviewProgressSurvivesTrimming:
     def test_the_group_counters_are_left_intact_by_the_trim(self):
         from api.agent.tools_ui import fit_review

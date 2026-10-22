@@ -1649,6 +1649,17 @@ def _label_scope(user_id):
     return user_id if (user_id and is_multi_user_enabled()) else ''
 
 
+def read_labels(conn, user_id, paths):
+    """``{path: (star_rating, is_favorite, is_rejected)}`` from the per-user source (``user_preferences`` in
+    multi-user mode, the ``photos`` columns otherwise), read in chunks."""
+    paths = list(paths)
+    scope = _label_scope(user_id)
+    labels = {}
+    for start in range(0, len(paths), _LABEL_CHUNK):
+        labels.update(_read_label_tuples(conn, scope, paths[start:start + _LABEL_CHUNK]))
+    return labels
+
+
 def snapshot_labels(conn, agent, user_id, paths):
     """The label tuples of ``paths`` BEFORE a write, for :func:`record_label_origin`'s ``before``.
 
@@ -1658,11 +1669,7 @@ def snapshot_labels(conn, agent, user_id, paths):
     paths = list(paths)
     if not agent or not paths:
         return {}
-    scope = _label_scope(user_id)
-    before = {}
-    for start in range(0, len(paths), _LABEL_CHUNK):
-        before.update(_read_label_tuples(conn, scope, paths[start:start + _LABEL_CHUNK]))
-    return before
+    return read_labels(conn, user_id, paths)
 
 
 def record_label_origin(conn, agent, user_id, paths, before=None):

@@ -4773,6 +4773,13 @@ export interface components {
              */
             reason: "in_both_lists" | "keep_whole_set" | "would_leave_no_keeper";
         };
+        /** AutoCullEffectiveOverrides */
+        AutoCullEffectiveOverrides: {
+            /** Keep */
+            keep: number;
+            /** Remove */
+            remove: number;
+        };
         /**
          * AutoCullGroupReason
          * @description A group's reason as a translatable key plus its params.
@@ -4825,6 +4832,8 @@ export interface components {
             dropped_overrides?: components["schemas"]["AutoCullDroppedOverride"][];
             /** Dry Run */
             dry_run: boolean;
+            /** @description Present when keep/remove overrides were sent: how many marks moved a photo away from its planned side (a mark restating the plan is not counted, nor is a dropped one). */
+            effective_overrides?: components["schemas"]["AutoCullEffectiveOverrides"] | null;
             /** Groups Processed */
             groups_processed: number;
             /** Highlights Added */
@@ -4844,6 +4853,11 @@ export interface components {
             preview: components["schemas"]["AutoCullPreviewItem"][];
             /** Rejected */
             rejected: number;
+            /**
+             * Rejected Paths
+             * @description Present on an apply only: the photos it rejected; absent (not null) above 200 photos, empty when it rejected none. Feeds "Show photos".
+             */
+            rejected_paths?: string[] | null;
             /**
              * Scope Dependent Kinds
              * @default []
@@ -5936,6 +5950,11 @@ export interface components {
             message?: string | null;
             /** Ok */
             ok: boolean;
+            /**
+             * Show Paths
+             * @description Present ONLY when the call ran an auto-cull apply: the photos it rejected, for the tab's "Show photos", or null above 200 (or when unknown). `changed_paths` stays null for it.
+             */
+            show_paths?: string[] | null;
         } & {
             [key: string]: unknown;
         };

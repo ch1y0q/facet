@@ -723,7 +723,7 @@ class TestAutoCullTabMarks:
         assert result["ok"], result
         sent = self.auto_calls(rig)[0]
         assert sent["keep_paths"] == [BURST_PATHS[0], BURST_PATHS[2]] and sent["remove_paths"] == [BURST_PATHS[1]]
-        assert result["overrides_from_tab"] == {"keep": 2, "remove": 1}
+        assert result["overrides_from_tab"] == {"keep": 1, "remove": 1}
         assert len(self.context_calls(rig)) == 1 and "activity_since" not in self.context_calls(rig)[0]["args"]
 
     def test_an_explicit_list_wins_with_no_merge_and_the_tab_is_never_asked(self, rig):
@@ -768,7 +768,29 @@ class TestAutoCullTabMarks:
         rig.state["review"] = {"keep": [], "remove": ["/not/in/plan.jpg"]}
         result = rig.env.call(rig.token, "auto_cull", self.args())
         assert result["ok"] and result["data"]["ignored_overrides"] == ["/not/in/plan.jpg"]
-        assert result["overrides_from_tab"]["remove"] == 1
+        assert result["overrides_from_tab"]["remove"] == 0
+
+    def test_marks_that_restate_the_plan_are_not_counted(self, rig):
+        rig.state["review"] = {"keep": [BURST_PATHS[0], BURST_PATHS[1]], "remove": [BURST_PATHS[2]]}
+        result = rig.env.call(rig.token, "auto_cull", self.args())
+        assert result["ok"], result
+        assert result["overrides_from_tab"] == {"keep": 0, "remove": 0}
+
+    def test_a_dropped_mark_is_not_counted_as_effective(self, rig):
+        rig.state["review"] = {"keep": [], "remove": list(BURST_PATHS)}
+        result = rig.env.call(rig.token, "auto_cull", self.args())
+        assert result["ok"], result
+        assert result["overrides_from_tab"]["remove"] == 0 and result["overrides_from_tab"]["dropped"]
+
+    def test_effective_overrides_never_reaches_the_tool_result(self, rig):
+        rig.state["review"] = {"keep": [BURST_PATHS[2]], "remove": [BURST_PATHS[1]]}
+        with_marks = rig.env.call(rig.token, "auto_cull", self.args())
+        explicit = rig.env.call(rig.token, "auto_cull", self.args(keep_paths=[BURST_PATHS[2]]))
+        rig.state["review"] = {"keep": [], "remove": []}
+        without = rig.env.call(rig.token, "auto_cull", self.args())
+        for result in (with_marks, explicit, without):
+            assert result["ok"], result
+            assert "effective_overrides" not in result["data"]
 
     def test_a_remove_all_group_mark_is_dropped_and_reported_not_refused(self, rig):
         rig.state["review"] = {"keep": [], "remove": list(BURST_PATHS)}

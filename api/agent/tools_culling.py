@@ -55,9 +55,9 @@ AUTO_CULL_SHOW = (
     " A successful dry run with rows pins its current page in the user's open Facet tab (`show`, "
     "default true; never ask whether to show it): the user sees the photos numbered by group and "
     "flagged Keep or Remove, and can flip Keep/Remove on the cards. Their flips are read from the tab "
-    "for you: OMIT keep_paths and remove_paths to use them (`overrides_from_tab` counts the marks used "
-    "and lists any in `dropped` that could not be honoured; `{skipped: truncated}` means the tab held too "
-    "many to trust). Report `shown_in_tab` (applied, or the reason it was not, including `unpinned` when "
+    "for you: OMIT keep_paths and remove_paths to use them (`overrides_from_tab` counts only the marks that "
+    "change the plan, not ones restating it, and lists any in `dropped` that could not be honoured; "
+    "`{skipped: truncated}` means the tab held too many to trust). Report `shown_in_tab` (applied, or the reason it was not, including `unpinned` when "
     "a page holds more than 200 photos). The apply never shows; show=false skips it.")
 
 
@@ -469,16 +469,15 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
         return marks_from_review(data.get("review")) if isinstance(data, dict) else None
 
     def attach_tab_marks(result: dict, marks: Optional[Marks], body: dict) -> None:
-        """Add ``overrides_from_tab`` to ``result``: counts of the marks used, the dropped ones or the skip."""
+        """Add ``overrides_from_tab`` to ``result``: the marks that changed the plan, the dropped ones or the skip."""
         if marks is None or not (marks.usable or marks.truncated):
             return
         if marks.truncated:
             result["overrides_from_tab"] = {"skipped": "truncated"}
             return
         dropped = body.get("dropped_overrides") or []
-        gone = {d["path"] for d in dropped}
-        report: dict = {"keep": len([p for p in marks.keep if p not in gone]),
-                        "remove": len([p for p in marks.remove if p not in gone])}
+        effective = body.get("effective_overrides") or {}
+        report: dict = {"keep": effective.get("keep", 0), "remove": effective.get("remove", 0)}
         if dropped:
             report["dropped"] = dropped[:SUMMARY_PATHS]
             if len(dropped) > SUMMARY_PATHS:
@@ -554,6 +553,7 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
         body = upstream["data"] or {}
         data = {**body, "rows": list(body.get("preview", []))}
         data.pop("preview", None)
+        data.pop("effective_overrides", None)
         ignored = body.get("ignored_overrides") or []
         if len(ignored) > SUMMARY_PATHS:
             data["ignored_overrides"] = ignored[:SUMMARY_PATHS]

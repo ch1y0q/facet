@@ -2671,6 +2671,44 @@
     "unknown_tool": "Assistant",
     "photo_one": "{count} photo",
     "photo_other": "{count} photos",
-    "show_photos": "Show photos"
+    "show_photos": "Show photos",
+    "tools": {
+      "add_tags": "Added tags",
+      "album_add_photos": "Added to an album",
+      "album_remove_photos": "Removed from an album",
+      "assign_faces": "Assigned faces",
+      "auto_cull": "Ran auto-cull",
+      "batch_set_favorite": "Changed favorites",
+      "batch_set_rating": "Rated",
+      "batch_set_rejected": "Rejected",
+      "clear_category_override": "Cleared a category override",
+      "clear_sequence_override": "Cleared a sequence override",
+      "confirm_culling_groups": "Confirmed culling groups",
+      "create_album": "Created an album",
+      "cull_apply": "Applied a cull",
+      "delete_photos": "Deleted photos",
+      "export_metadata": "Exported metadata",
+      "junk_clear": "Cleared junk flags",
+      "junk_reject": "Rejected junk",
+      "override_category": "Overrode a category",
+      "override_sequence": "Corrected a sequence",
+      "remove_tags": "Removed tags",
+      "set_caption": "Set a caption",
+      "set_favorite": "Changed a favorite",
+      "set_rating": "Rated",
+      "set_rejected": "Rejected",
+      "start_scan": "Started a scan"
+    },
+    "ui": {
+      "ui_navigate": "Opened a page",
+      "ui_set_gallery_filters": "Set gallery filters",
+      "ui_open_photo": "Opened a photo",
+      "ui_show_photos": "Showed photos",
+      "ui_select_photos": "Selected photos",
+      "ui_clear_selection": "Cleared the selection",
+      "ui_next_page": "Went to the next page",
+      "ui_show_culling_group": "Showed a culling group",
+      "ui_show_comparison": "Showed a comparison"
+    }
   }
 }

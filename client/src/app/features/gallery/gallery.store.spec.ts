@@ -1211,6 +1211,23 @@ describe('GalleryStore', () => {
         for (let n = 0; n < 1100; n++) store.setReviewMark(`/r${n}.jpg`, 'remove');
         expect(store.review().keep).toHaveLength(1000);
         expect(store.review().remove).toHaveLength(1000);
+        expect(store.review().truncated).toBe(true);
+      });
+
+      it('reports the true sizes when a list is cut', async () => {
+        await annotated();
+        for (let n = 0; n < 1200; n++) store.setReviewMark(`/r${n}.jpg`, 'remove');
+        const review = store.review();
+        expect(review.truncated).toBe(true);
+        expect(review.remove).toHaveLength(1000);
+        expect(review).toMatchObject({ remove_count: 1200, keep_count: 0 });
+      });
+
+      it('reports truncated false under the cap', async () => {
+        await annotated();
+        store.setReviewMark('/k.jpg', 'keep');
+        expect(store.review().truncated).toBe(false);
+        expect(store.review()).not.toHaveProperty('remove_count');
       });
     });
 
@@ -1281,7 +1298,7 @@ describe('GalleryStore', () => {
       describe('progress', () => {
         it('counts visited groups, resets on showPaths and reports the three numbers in review()', async () => {
           await pin();
-          expect(store.review()).toEqual({ keep: [], remove: [], groups_total: 3, groups_visited: 0, groups_changed: 0 });
+          expect(store.review()).toEqual({ keep: [], remove: [], groups_total: 3, groups_visited: 0, groups_changed: 0, truncated: false });
           store.markGroupsVisited([1]);
           expect(store.review().groups_visited).toBe(1);
           store.markGroupsVisited([1, 3]);

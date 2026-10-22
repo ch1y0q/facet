@@ -75,7 +75,7 @@ def fit_review(result: dict, max_bytes: int) -> None:
 
     The tab caps each review list at 1000 paths and the activity at 50 items, far more than the envelope
     allows. The biggest of the three is halved (activity drops its OLDEST half) until the whole result fits;
-    whichever is cut is flagged: the review keeps its true sizes in ``review.keep_count`` /
+    whichever is cut is flagged: the review keeps its true sizes (the tab's, when its cap already cut) in ``review.keep_count`` /
     ``review.remove_count`` and sets ``review.truncated``, the activity sets ``user_activity.truncated``. Everything is edited in place, so the review's other keys
     (``groups_total`` / ``groups_visited`` / ``groups_changed``) and ``user_activity.until`` are untouched.
     """
@@ -105,7 +105,9 @@ def fit_review(result: dict, max_bytes: int) -> None:
             activity["truncated"] = True
             continue
         if not counted:
-            review["keep_count"], review["remove_count"] = len(review["keep"]), len(review["remove"])
+            # The tab already recorded the true sizes when its own cap cut a list; keep those.
+            review.setdefault("keep_count", len(review["keep"]))
+            review.setdefault("remove_count", len(review["remove"]))
             review["truncated"] = True
             counted = True
         review[biggest] = review[biggest][:len(review[biggest]) // 2]

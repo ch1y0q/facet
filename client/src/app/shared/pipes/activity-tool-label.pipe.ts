@@ -1,10 +1,20 @@
-import { Pipe, PipeTransform } from '@angular/core';
+import { Pipe, PipeTransform, inject } from '@angular/core';
+import { I18nService } from '../../core/services/i18n.service';
 
-/** `ui_show_photos` -> "Show photos": the tool name as a sentence, without the `ui_` prefix. */
-@Pipe({ name: 'activityToolLabel' })
+/**
+ * An activity entry's tool name as a translated past-tense label: `assistant_activity.tools.<mcp tool>` for a
+ * write, `assistant_activity.ui.<ui tool>` for a UI call. Falls back to the raw tool name when the key is missing
+ * (`I18nService.t` returns the key itself then). Impure like `ScoringContextLabelPipe`: the locale is set before
+ * its bundle loads, so a pure pipe keyed on the locale would go stale.
+ */
+@Pipe({ name: 'activityToolLabel', pure: false })
 export class ActivityToolLabelPipe implements PipeTransform {
-  transform(tool: string): string {
-    const words = tool.replace(/^ui_/, '').replace(/_/g, ' ').trim();
-    return words.charAt(0).toUpperCase() + words.slice(1);
+  private readonly i18n = inject(I18nService);
+
+  transform(tool: string, kind: 'write' | 'ui'): string {
+    if (!tool) return '';
+    const key = `assistant_activity.${kind === 'ui' ? 'ui' : 'tools'}.${tool}`;
+    const translated = this.i18n.t(key);
+    return translated === key ? tool : translated;
   }
 }
