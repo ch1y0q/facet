@@ -469,7 +469,7 @@ python facet.py --translate-captions     # Translate captions to configured targ
 
 La traduction des légendes utilise MarianMT (CPU, pas de GPU requis). Configurez la langue cible dans `scoring_config.json` sous `translation.target_language` (par défaut : `"fr"`). Langues prises en charge : français, allemand, espagnol, italien.
 
-Contrôlé par `viewer.features.show_captions` (par défaut : `true`). Nécessite un profil VRAM 16gb ou 24gb pour le légendage basé sur VLM.
+Contrôlé par `viewer.features.show_captions` (par défaut : `true`). Nécessite un profil VRAM 16gb ou 24gb pour le légendage basé sur VLM. Sans l'un d'eux, ou un `vlm_backend` distant, le bouton de génération de légende est masqué et les critiques restent basées sur des règles.
 
 ## Souvenirs (« Ce jour-là »)
 

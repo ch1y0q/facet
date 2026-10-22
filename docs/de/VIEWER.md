@@ -469,7 +469,7 @@ python facet.py --translate-captions     # Bildbeschreibungen in die konfigurier
 
 Die Übersetzung von Beschreibungen verwendet MarianMT (CPU, keine GPU erforderlich). Konfigurieren Sie die Zielsprache in `scoring_config.json` unter `translation.target_language` (Standard: `"fr"`). Unterstützte Sprachen: Französisch, Deutsch, Spanisch, Italienisch.
 
-Gesteuert über `viewer.features.show_captions` (Standard: `true`). Erfordert das 16gb- oder 24gb-VRAM-Profil für VLM-basierte Bildbeschreibungen.
+Gesteuert über `viewer.features.show_captions` (Standard: `true`). Erfordert das 16gb- oder 24gb-VRAM-Profil für VLM-basierte Bildbeschreibungen. Ohne eines davon oder ein entferntes `vlm_backend` wird die Schaltfläche zum Erzeugen der Bildbeschreibung ausgeblendet, und Kritiken bleiben regelbasiert.
 
 ## Erinnerungen ("Heute vor Jahren")
 
