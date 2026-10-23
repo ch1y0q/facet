@@ -1537,6 +1537,7 @@ def api_config(user: Optional[CurrentUser] = Depends(get_optional_user)):
     """Get viewer configuration for Angular client initialization."""
     from api.config import is_multi_user_enabled, server_scoring_config
     from api.auth import is_edition_enabled, is_edition_authenticated
+    from api.model_cache import vlm_known_unavailable
     from api.raw_processing import get_cull_styles
     from api.routers.search import search_threshold_default
     from api.types import QUALITY_LEVELS, TYPE_LABELS, available_sort_options, populated_gated_cols, unavailable_columns
@@ -1553,6 +1554,9 @@ def api_config(user: Optional[CurrentUser] = Depends(get_optional_user)):
             features['show_semantic_search'] = False
         else:
             features.setdefault('show_semantic_search', True)
+        if vlm_known_unavailable():
+            features['show_captions'] = False
+            features['show_vlm_critique'] = False
         features.setdefault('show_albums', True)
         features.setdefault('show_critique', True)
         features.setdefault('show_vlm_critique', False)

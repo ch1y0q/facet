@@ -527,7 +527,7 @@ python facet.py --translate-captions     # 把描述翻译成所配置的目标�
 
 描述翻译使用 MarianMT（CPU，无需 GPU）。在 `scoring_config.json` 的 `translation.target_language` 下配置目标语言（默认：`"fr"`）。支持的语言：法语、德语、西班牙语、意大利语。
 
-由 `viewer.features.show_captions` 控制（默认：`true`）。基于 VLM 的照片描述需要 16gb 或 24gb VRAM 配置档。
+由 `viewer.features.show_captions` 控制（默认：`true`）。基于 VLM 的照片描述需要 16gb 或 24gb VRAM 配置档。两者都没有且未配置远程 `vlm_backend` 时，“生成描述”按钮会隐藏，点评仅使用规则。
 
 ## 回忆（“那年今日”）
 

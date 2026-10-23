@@ -1024,6 +1024,8 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
       }
     } catch {
       this.snackBar.open(this.i18n.t(I18N.photo_detail.caption_error), '', { duration: 3000 });
+      // A failed request resolves an 'auto' VRAM profile, so the config can now hide the button.
+      await this.store.refreshConfig();
     } finally {
       this.generatingCaption.set(false);
     }

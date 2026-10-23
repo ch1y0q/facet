@@ -468,7 +468,7 @@ python facet.py --translate-captions     # Translate captions to configured targ
 
 La traducción de subtítulos usa MarianMT (CPU, no requiere GPU). Configura el idioma de destino en `scoring_config.json` en `translation.target_language` (predeterminado: `"fr"`). Idiomas admitidos: francés, alemán, español, italiano.
 
-Controlado por `viewer.features.show_captions` (predeterminado: `true`). Requiere el perfil de VRAM de 16gb o 24gb para el subtitulado basado en VLM.
+Controlado por `viewer.features.show_captions` (predeterminado: `true`). Requiere el perfil de VRAM de 16gb o 24gb para el subtitulado basado en VLM. Sin uno de ellos, o un `vlm_backend` remoto, el botón para generar la descripción se oculta y las críticas siguen basadas en reglas.
 
 ## Recuerdos ("En este día")
 

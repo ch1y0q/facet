@@ -469,7 +469,7 @@ python facet.py --translate-captions     # Traduci le didascalie nella lingua di
 
 La traduzione delle didascalie usa MarianMT (CPU, nessuna GPU richiesta). Configura la lingua di destinazione in `scoring_config.json` sotto `translation.target_language` (predefinito: `"fr"`). Lingue supportate: francese, tedesco, spagnolo, italiano.
 
-Controllato da `viewer.features.show_captions` (predefinito: `true`). Richiede il profilo VRAM 16gb o 24gb per le didascalie basate su VLM.
+Controllato da `viewer.features.show_captions` (predefinito: `true`). Richiede il profilo VRAM 16gb o 24gb per le didascalie basate su VLM. Senza uno di questi, o un `vlm_backend` remoto, il pulsante per generare la didascalia è nascosto e le critiche restano basate su regole.
 
 ## Ricordi ("In questo giorno")
 

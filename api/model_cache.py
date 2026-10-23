@@ -120,6 +120,15 @@ def resolve_vlm_config():
     return vlm_config if vlm_config.get('model_path') else None
 
 
+def vlm_known_unavailable():
+    """True when no VLM is configured; an unresolved 'auto' answers False, since resolving it imports torch."""
+    from api.config import _FULL_CONFIG
+
+    if _FULL_CONFIG.get('models', {}).get('vram_profile', 'legacy') == 'auto' and _resolved_profile is None:
+        return False
+    return resolve_vlm_config() is None
+
+
 def translation_target(lang):
     """Return the configured translation target when ``lang`` requests it, else None."""
     from api.config import _FULL_CONFIG

@@ -537,7 +537,7 @@ python facet.py --translate-captions     # Translate captions to configured targ
 
 Caption translation uses MarianMT (CPU, no GPU required). Configure the target language in `scoring_config.json` under `translation.target_language` (default: `"fr"`). Supported languages: French, German, Spanish, Italian.
 
-Controlled by `viewer.features.show_captions` (default: `true`). Requires 16gb or 24gb VRAM profile for VLM-based captioning.
+Controlled by `viewer.features.show_captions` (default: `true`). Requires 16gb or 24gb VRAM profile for VLM-based captioning. Without one, or a remote `vlm_backend`, the Generate caption button is hidden and critiques stay rule-based.
 
 ## Memories ("On This Day")
 
