@@ -4,6 +4,7 @@ import { of, throwError } from 'rxjs';
 import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { ApiService } from '../../core/services/api.service';
+import { GalleryStore } from '../gallery/gallery.store';
 import { I18nService } from '../../core/services/i18n.service';
 import type { GpsEditDialogComponent, GpsEditDialogData } from './gps-edit-dialog.component';
 
@@ -18,6 +19,7 @@ describe('GpsEditDialogComponent', () => {
   let GpsEditDialogComponentClass: typeof GpsEditDialogComponent;
   let component: GpsEditDialogComponent;
   let mockDialogRef: { close: Mock };
+  let mockStore: { patchPhoto: Mock };
   let mockApi: { put: Mock };
   let mockSnackBar: { open: Mock };
 
@@ -28,6 +30,7 @@ describe('GpsEditDialogComponent', () => {
   function createComponent(data: GpsEditDialogData) {
     TestBed.resetTestingModule();
     mockDialogRef = { close: vi.fn() };
+    mockStore = { patchPhoto: vi.fn() };
     mockApi = { put: vi.fn(() => of({})) };
     mockSnackBar = { open: vi.fn() };
 
@@ -37,6 +40,7 @@ describe('GpsEditDialogComponent', () => {
         { provide: MatDialogRef, useValue: mockDialogRef },
         { provide: MAT_DIALOG_DATA, useValue: data },
         { provide: ApiService, useValue: mockApi },
+        { provide: GalleryStore, useValue: mockStore },
         { provide: MatSnackBar, useValue: mockSnackBar },
         { provide: I18nService, useValue: { t: (k: string) => k, translations: () => ({}) } },
       ],
@@ -95,6 +99,13 @@ describe('GpsEditDialogComponent', () => {
         gps_latitude: 48.8566,
         gps_longitude: 2.3522,
       });
+    });
+
+    it('writes the location to the gallery copy even if Back already closed the dialog', async () => {
+      createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 48.8566, lng: 2.3522 });
+      await component.save();
+
+      expect(mockStore.patchPhoto).toHaveBeenCalledWith('/photo.jpg', { gps_latitude: 48.8566, gps_longitude: 2.3522 });
     });
 
     it('should send null coordinates when cleared', async () => {

@@ -75,7 +75,7 @@ describe('PhotoDetailComponent', () => {
         { provide: ActivatedRoute, useValue: mockRoute },
         { provide: AuthService, useValue: mockAuth },
         { provide: MatDialog, useValue: mockDialog },
-        { provide: I18nService, useValue: { t: (k: string) => k, locale: () => 'en' } },
+        { provide: I18nService, useValue: { t: (k: string) => k, locale: () => 'en', translations: () => ({}) } },
       ],
     });
     component = TestBed.inject(PhotoDetailComponent);
@@ -186,7 +186,61 @@ describe('PhotoDetailComponent', () => {
       createComponent();
       await component.ngOnInit();
 
-      expect(mockRouter.navigate).toHaveBeenCalledWith(['/']);
+      expect(mockRouter.navigate).toHaveBeenCalledWith(['/'], { replaceUrl: true });
+    });
+
+    it('a link to a photo that no longer loads goes to the gallery without leaving the dead entry behind', async () => {
+      history.replaceState({}, '', location.href);
+      mockApi.get.mockReturnValue(throwError(() => new Error('404')));
+
+      createComponent();
+      await component.ngOnInit();
+
+      expect(mockRouter.navigate).toHaveBeenCalledWith(['/'], { replaceUrl: true });
+    });
+
+    it('drops a first load that lands after Back moved the address', async () => {
+      history.replaceState({}, '', location.href);
+      const response = new Subject<typeof samplePhoto>();
+      mockApi.get.mockReturnValue(response);
+
+      createComponent();
+      const init = component.ngOnInit();
+      mockRoute.snapshot.queryParamMap.get = vi.fn((key: string) => key === 'path' ? '/photos/other.jpg' : null);
+      response.next(samplePhoto);
+      await init;
+
+      expect(component.photo()).toBeNull();
+    });
+
+    it('a first load that fails after the page was left does not replace where the user went', async () => {
+      history.replaceState({}, '', location.href);
+      const response = new Subject<typeof samplePhoto>();
+      mockApi.get.mockReturnValue(response);
+
+      createComponent();
+      const view = TestBed.createComponent(PhotoDetailComponent);
+      view.detectChanges();
+      view.destroy();
+      response.error(new Error('404'));
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+
+      expect(mockApi.get).toHaveBeenCalledWith('/photo', { path: '/photos/test.jpg' });
+      expect(mockRouter.navigate).not.toHaveBeenCalled();
+    });
+
+    it('a first load that fails after Back moved the address does not leave for the gallery', async () => {
+      history.replaceState({}, '', location.href);
+      const response = new Subject<typeof samplePhoto>();
+      mockApi.get.mockReturnValue(response);
+
+      createComponent();
+      const init = component.ngOnInit();
+      mockRoute.snapshot.queryParamMap.get = vi.fn((key: string) => key === 'path' ? '/photos/other.jpg' : null);
+      response.error(new Error('404'));
+      await init;
+
+      expect(mockRouter.navigate).not.toHaveBeenCalled();
     });
 
     it('should populate tags_list from tags when missing', async () => {
@@ -262,18 +316,30 @@ describe('PhotoDetailComponent', () => {
       expect(component.photo().path).toBe(samplePhoto.path);
     });
 
-    it('says nothing about a failed fetch once the URL has moved on', async () => {
+    it('the not-found page has a way back', () => {
+      createComponent();
+      const view = TestBed.createComponent(PhotoDetailComponent);
+      vi.spyOn(view.componentInstance, 'ngOnInit').mockResolvedValue(undefined);
+      (view.componentInstance as unknown as { photoMissing: { set(v: boolean): void } }).photoMissing.set(true);
+      view.detectChanges();
+
+      (view.nativeElement.querySelector('button') as HTMLButtonElement).click();
+
+      expect(mockLocation.back).toHaveBeenCalled();
+    });
+
+    it('a fetch that fails after the URL moved on leaves the photo shown alone', async () => {
       await openedFromGallery();
       const response = new Subject<typeof earlier>();
       mockApi.get.mockReturnValue(response);
-      const snackBar = vi.spyOn(component.snackBar, 'open');
 
       await urlMovesTo(earlier.path);
       await urlMovesTo(samplePhoto.path);
       response.error(new Error('404'));
       await flush();
 
-      expect(snackBar).not.toHaveBeenCalled();
+      expect(component.photo().path).toBe(samplePhoto.path);
+      expect(component.photoMissing()).toBe(false);
     });
 
     it('ignores a URL change to the photo already shown', async () => {
@@ -285,14 +351,19 @@ describe('PhotoDetailComponent', () => {
       expect(mockApi.get).not.toHaveBeenCalledWith('/photo', expect.anything());
     });
 
-    it('Forward to a photo that no longer loads points the address back at the one shown', async () => {
+    it('Forward to a photo that no longer loads says so, and Back still works', async () => {
       await openedFromGallery();
+      component.store.photos.set([samplePhoto]);
       mockApi.get.mockReturnValue(throwError(() => new Error('404')));
 
       await urlMovesTo(earlier.path);
+      expect(component.photo()).toBeNull();
+      expect(component.photoMissing()).toBe(true);
 
-      expect(mockRouter.navigate).toHaveBeenCalledWith(['/photo'], { queryParams: { path: samplePhoto.path }, replaceUrl: true });
+      await urlMovesTo(samplePhoto.path);
       expect(component.photo().path).toBe(samplePhoto.path);
+      expect(component.photoMissing()).toBe(false);
+      expect(mockRouter.navigate).not.toHaveBeenCalled();
     });
 
     it('a face assigned before moving on does not change the next photo', async () => {

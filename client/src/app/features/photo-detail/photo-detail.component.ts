@@ -606,6 +606,15 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
           }
         </div>
       </div>
+    } @else if (photoMissing()) {
+      <div class="flex flex-col items-center justify-center gap-2 h-full text-[var(--mat-sys-on-surface-variant)]">
+        <mat-icon class="!text-4xl">image_not_supported</mat-icon>
+        {{ I18N.errors.photo_not_found | translate }}
+        <button mat-button (click)="goBack()">
+          <mat-icon>arrow_back</mat-icon>
+          {{ I18N.photo_detail.back | translate }}
+        </button>
+      </div>
     } @else {
       <div class="flex items-center justify-center h-full">
         <mat-icon class="!text-4xl text-[var(--mat-sys-on-surface-variant)]">hourglass_empty</mat-icon>
@@ -627,6 +636,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   private readonly photoActions = inject(PhotoActionsService);
 
   readonly photo = signal<Photo | null>(null);
+  protected readonly photoMissing = signal(false);
   protected readonly downloading = signal(false);
   protected readonly downloadOptions = signal<DownloadOption[]>([]);
   protected readonly generatingCaption = signal(false);
@@ -819,13 +829,13 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
       // Fallback: load from API using query param
       const path = this.route.snapshot.queryParamMap.get('path');
       if (path) {
-        try {
-          this.photo.set(await this.fetchPhoto(path));
-        } catch {
-          this.router.navigate(['/']);
-        }
+        // The user may leave, or Back may move the address, while this loads; replacing keeps a dead entry out of history.
+        const photo = await this.fetchPhoto(path).catch(() => undefined);
+        if (this.destroyRef.destroyed || this.route.snapshot.queryParamMap.get('path') !== path) return;
+        if (photo) this.photo.set(photo);
+        else this.router.navigate(['/'], { replaceUrl: true });
       } else {
-        this.router.navigate(['/']);
+        this.router.navigate(['/'], { replaceUrl: true });
       }
     }
   }
@@ -850,11 +860,12 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     const photo = this.store.photos().find(p => p.path === path) ?? await this.fetchPhoto(path).catch(() => undefined);
     if (this.route.snapshot.queryParamMap.get('path') !== path) return;
     if (!photo) {
-      this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
-      // Point the address back at the photo still on screen (e.g. Forward to one deleted since).
-      this.router.navigate(['/photo'], { queryParams: { path: this.photo()?.path }, replaceUrl: true });
+      // Say so rather than keep the previous photo under this address (e.g. Forward to one deleted since).
+      this.photo.set(null);
+      this.photoMissing.set(true);
       return;
     }
+    this.photoMissing.set(false);
     this.photo.set(photo);
     this.fullImageLoaded.set(false);
   }

@@ -7,6 +7,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
+import { GalleryStore } from '../gallery/gallery.store';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { i18nKeys } from '../../core/i18n/keys';
 
@@ -40,6 +41,7 @@ export interface CaptionEditDialogData {
 export class CaptionEditDialogComponent {
   protected readonly I18N = i18nKeys();
   private readonly api = inject(ApiService);
+  private readonly store = inject(GalleryStore);
   private readonly dialogRef = inject(MatDialogRef<CaptionEditDialogComponent>);
   readonly data: CaptionEditDialogData = inject(MAT_DIALOG_DATA);
 
@@ -50,6 +52,8 @@ export class CaptionEditDialogComponent {
     this.saving.set(true);
     try {
       await firstValueFrom(this.api.put('/caption', { path: this.data.path, caption: this.captionText }));
+      // Back closes this dialog before the save lands, so the caller would never hear of it.
+      this.store.patchPhoto(this.data.path, { caption: this.captionText || null, caption_translated: undefined });
       this.dialogRef.close(this.captionText);
     } catch {
       // Error handling — dialog stays open

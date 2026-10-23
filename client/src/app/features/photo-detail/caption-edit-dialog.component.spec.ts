@@ -3,12 +3,14 @@ import { TestBed } from '@angular/core/testing';
 import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { of, throwError } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
+import { GalleryStore } from '../gallery/gallery.store';
 import { I18nService } from '../../core/services/i18n.service';
 import { CaptionEditDialogComponent } from './caption-edit-dialog.component';
 
 describe('CaptionEditDialogComponent', () => {
   let component: CaptionEditDialogComponent;
   let mockDialogRef: { close: Mock };
+  let mockStore: { patchPhoto: Mock };
   let mockApi: { put: Mock };
 
   const dialogData = {
@@ -19,6 +21,7 @@ describe('CaptionEditDialogComponent', () => {
 
   beforeEach(() => {
     mockDialogRef = { close: vi.fn() };
+    mockStore = { patchPhoto: vi.fn() };
     mockApi = { put: vi.fn(() => of({})) };
 
     TestBed.configureTestingModule({
@@ -27,6 +30,7 @@ describe('CaptionEditDialogComponent', () => {
         { provide: MatDialogRef, useValue: mockDialogRef },
         { provide: MAT_DIALOG_DATA, useValue: dialogData },
         { provide: ApiService, useValue: mockApi },
+        { provide: GalleryStore, useValue: mockStore },
         { provide: I18nService, useValue: { t: (k: string) => k, translations: () => ({}) } },
       ],
     });
@@ -63,6 +67,13 @@ describe('CaptionEditDialogComponent', () => {
     });
     expect(mockDialogRef.close).toHaveBeenCalledWith('Updated caption');
     expect(component.saving()).toBe(false);
+  });
+
+  it('save writes the caption to the gallery copy even if Back already closed the dialog', async () => {
+    component.captionText = '';
+    await component.save();
+
+    expect(mockStore.patchPhoto).toHaveBeenCalledWith('/photo.jpg', { caption: null, caption_translated: undefined });
   });
 
   it('should not close dialog on save error', async () => {
