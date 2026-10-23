@@ -26,7 +26,7 @@ from api.subject_bbox import parse_subject_bbox
 from api.db_helpers import (
     get_visibility_clause, paginate, is_multi_user_enabled, get_photos_from_clause,
     get_preference_columns,
-    trigger_auto_retrain, record_culling_decision, set_photos_rejected,
+    trigger_auto_retrain, record_culling_decision, set_photos_rejected, set_photos_kept,
     album_filter_clause, time_window_clauses,
     select_in_chunks, scope_cache_key, scope_sql as path_scope_sql, NO_VISIBILITY_SQL,
     SEQUENCE_OVERRIDE_SELECT, SEQUENCE_OVERRIDE_PENDING_SELECT,
@@ -1757,6 +1757,7 @@ def _confirm_sequence_group(body, user, kind):
         elif body.type == 'similar':
             _mark_similarity_reviewed(conn, keep_paths + reject_paths, vis_sql, vis_params)
         set_photos_rejected(conn, reject_paths, user_id)
+        set_photos_kept(conn, keep_paths, user_id)
         conn.commit()
     _invalidate_culling_groups_cache()
     return {
@@ -2057,6 +2058,7 @@ def _apply_auto_cull_group(conn, group, keep_paths, reject_paths, user_id, vis_s
         _mark_similarity_reviewed(conn, keep_paths + reject_paths, vis_sql, vis_params)
     set_photos_rejected(conn, reject_paths, user_id)
     if keep_whole:
+        set_photos_kept(conn, keep_paths, user_id)
         # Deliberately no comparison pairs. Dropping the flanking exposures of a
         # bracket says nothing about taste -- feeding "base beat -2 EV" to the
         # ranker would teach it that correctly exposed frames win, which is an

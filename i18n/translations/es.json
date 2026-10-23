@@ -2564,5 +2564,16 @@
       "shadow": "Sombras recortadas: {channels}",
       "highlight": "Altas luces recortadas: {channels}"
     }
+  },
+  "review": {
+    "status": "Estado de revisión",
+    "all": "Todas las decisiones",
+    "needs_review": "Por revisar",
+    "kept": "Conservadas",
+    "rejected": "Rechazadas",
+    "keep": "Conservar",
+    "reset": "Restablecer decisión",
+    "updated": "Decisiones actualizadas para {{count}} fotos",
+    "shortcut": "Conservar foto"
   }
 }

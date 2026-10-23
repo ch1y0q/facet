@@ -3080,6 +3080,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/photos/batch_review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Api Batch Review
+         * @description Set review decisions while preserving ratings and favorites.
+         */
+        post: operations["api_batch_review_api_photos_batch_review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/photos/count": {
         parameters: {
             query?: never;
@@ -4710,6 +4730,32 @@ export interface components {
             /** Rating */
             rating: number;
         };
+        /** BatchReviewRequest */
+        BatchReviewRequest: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "kept" | "undecided" | "rejected";
+            /**
+             * Exclude
+             * @description Paths to drop from whichever target is sent: subtracted from `photo_paths`, or bound out of the `filters` scope. Only ever narrows.
+             */
+            exclude?: string[] | null;
+            /** Filters */
+            filters?: {
+                [key: string]: unknown;
+            } | null;
+            /** Photo Paths */
+            photo_paths?: string[] | null;
+        };
+        /** BatchUpdateResponse */
+        BatchUpdateResponse: {
+            /** Count */
+            count: number;
+            /** Success */
+            success: boolean;
+        };
         /** BurstGroup */
         BurstGroup: {
             /** Best Path */
@@ -6254,6 +6300,8 @@ export interface components {
             is_favorite?: number | null;
             /** Is Group Portrait */
             is_group_portrait?: number | null;
+            /** Is Kept */
+            is_kept?: number | null;
             /** Is Monochrome */
             is_monochrome?: number | null;
             /** Is Rejected */
@@ -7469,6 +7517,8 @@ export interface components {
         ToggleRejectedResponse: {
             /** Is Favorite */
             is_favorite?: boolean | null;
+            /** Is Kept */
+            is_kept?: boolean | null;
             /** Is Rejected */
             is_rejected: boolean;
             /** Star Rating */
@@ -12007,6 +12057,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    api_batch_review_api_photos_batch_review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchUpdateResponse"];
                 };
             };
             /** @description Validation Error */

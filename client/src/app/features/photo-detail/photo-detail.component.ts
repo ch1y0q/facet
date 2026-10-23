@@ -271,7 +271,18 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
                 [attr.aria-pressed]="!!p.is_favorite">
                 <mat-icon class="!text-red-400">{{ p.is_favorite ? 'favorite' : 'favorite_border' }}</mat-icon>
               </button>
-              <!-- Reject -->
+              <!-- Review decisions -->
+              <button mat-icon-button (click)="reviewPhoto('kept')" [class.text-green-400]="p.is_kept"
+                [matTooltip]="'review.keep' | translate"
+                [attr.aria-label]="'review.keep' | translate"
+                [attr.aria-pressed]="!!p.is_kept">
+                <mat-icon>check_circle</mat-icon>
+              </button>
+              <button mat-icon-button (click)="reviewPhoto('undecided')"
+                [matTooltip]="'review.reset' | translate"
+                [attr.aria-label]="'review.reset' | translate">
+                <mat-icon>restart_alt</mat-icon>
+              </button>
               <button mat-icon-button (click)="toggleRejected(p.path)" [class.text-orange-400]="p.is_rejected"
                 [matTooltip]="(p.is_rejected ? I18N.rating.unmark_rejected : I18N.rating.mark_rejected) | translate"
                 [attr.aria-label]="(p.is_rejected ? I18N.rating.unmark_rejected : I18N.rating.mark_rejected) | translate"
@@ -964,8 +975,11 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
    * revert path.
    */
   private applyConfirmed(p: Photo, confirmed: Partial<Photo>): void {
-    this.photo.set({ ...p, ...confirmed });
     this.store.patchPhoto(p.path, confirmed);
+    const current = this.photo();
+    if (!this.destroyRef.destroyed && current?.path === p.path) {
+      this.photo.set({ ...current, ...confirmed });
+    }
   }
 
   protected async setRating(path: string, rating: number): Promise<void> {
@@ -978,6 +992,42 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     } catch {
       this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
     }
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  protected onReviewKey(event: KeyboardEvent): void {
+    if (isTypingContext(event) || event.ctrlKey || event.metaKey || event.altKey || event.key.toLowerCase() !== 'k' || !this.auth.isEdition()) return;
+    event.preventDefault();
+    void this.reviewPhoto('kept');
+  }
+
+  protected async reviewPhoto(decision: 'kept' | 'undecided'): Promise<void> {
+    const p = this.photo();
+    if (!p || this.reviewSaving) return;
+    this.reviewSaving = true;
+    const photos = this.store.photos();
+    const index = photos.findIndex(photo => photo.path === p.path);
+    const next = photos[index + 1];
+    try {
+      await firstValueFrom(this.api.post('/photos/batch_review', { photo_paths: [p.path], decision }));
+      this.applyConfirmed(p, { is_kept: decision === 'kept', is_rejected: false });
+      await this.advanceAfterReview(p, index, next);
+    } catch {
+      this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
+    } finally { this.reviewSaving = false; }
+  }
+
+  private reviewSaving = false;
+
+  private async advanceAfterReview(previous: Photo, index: number, next?: Photo): Promise<void> {
+    if (!this.store.filters().review_status) return;
+    await this.store.refreshReviewResults();
+    if (this.destroyRef.destroyed || this.photo()?.path !== previous.path) return;
+    const target = this.store.photos().find(photo => photo.path === next?.path) ?? this.store.photos()[index] ?? this.store.photos()[0];
+    if (!target) { this.router.navigate(['/']); return; }
+    this.router.navigate(['/photo'], { queryParams: { path: target.path }, state: { photo: target }, replaceUrl: true });
+    this.photo.set(target);
+    this.fullImageLoaded.set(false);
   }
 
   protected async toggleFavorite(path: string): Promise<void> {
@@ -999,12 +1049,16 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   protected async toggleRejected(path: string): Promise<void> {
     const p = this.photo();
     if (!p) return;
+    const photos = this.store.photos();
+    const index = photos.findIndex(photo => photo.path === p.path);
+    const next = photos[index + 1];
     try {
       const res = await firstValueFrom(this.api.post<{ is_rejected: boolean; is_favorite: boolean | null; star_rating: number | null }>('/photo/toggle_rejected', { photo_path: path }));
-      const confirmed: Partial<Photo> = { is_rejected: res.is_rejected };
+      const confirmed: Partial<Photo> = { is_rejected: res.is_rejected, is_kept: false };
       if (res.is_favorite !== null) confirmed.is_favorite = res.is_favorite;
       if (res.star_rating !== null) confirmed.star_rating = res.star_rating;
       this.applyConfirmed(p, confirmed);
+      await this.advanceAfterReview(p, index, next);
     } catch {
       this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
     }

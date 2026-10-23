@@ -1,6 +1,7 @@
 """Tests for burst culling helpers and endpoints (api/routers/burst_culling.py)."""
 
 import sqlite3
+from tests.conftest import initialize_photo_database
 from contextlib import contextmanager
 from unittest import mock
 
@@ -53,12 +54,6 @@ def _real_schema_db(tmp_path, var_limit=None):
 
 # Every culling feed reports each frame's pending panorama correction, so this
 # side table is part of the schema they query even when no correction exists.
-_SEQUENCE_OVERRIDES_SCHEMA = """
-    CREATE TABLE photo_sequence_overrides (
-        photo_path TEXT PRIMARY KEY, sequence_kind TEXT, override_group_key TEXT,
-        source TEXT, created_at TEXT, created_by TEXT, applied_at TEXT
-    );
-"""
 
 
 # ---------------------------------------------------------------------------
@@ -545,23 +540,13 @@ class TestConfirmBracketGroup:
     malformed body must not be able to reject arbitrary photos through it.
     """
 
-    _SCHEMA = """
-        CREATE TABLE photos (
-            path TEXT PRIMARY KEY, filename TEXT, sequence_group_id INTEGER,
-            sequence_kind TEXT, sequence_ev_offset REAL, is_rejected INTEGER DEFAULT 0
-        );
-        CREATE TABLE comparisons (
-            id INTEGER PRIMARY KEY, photo_a_path TEXT, photo_b_path TEXT, winner TEXT,
-            category TEXT, session_id TEXT, user_id TEXT, source TEXT
-        );
-    """ + _SEQUENCE_OVERRIDES_SCHEMA
 
     @staticmethod
     def _db():
         import sqlite3
         conn = sqlite3.connect(":memory:", check_same_thread=False)
         conn.row_factory = sqlite3.Row
-        conn.executescript(TestConfirmBracketGroup._SCHEMA)
+        initialize_photo_database(conn)
         rungs = (('/k0.jpg', -2.0), ('/k1.jpg', 0.0), ('/k2.jpg', 2.0))
         for path, ev in rungs:
             conn.execute(
@@ -673,13 +658,9 @@ class TestConfirmPanoramaServedAsBurst(TestConfirmBracketGroup):
         import sqlite3
         conn = sqlite3.connect(":memory:", check_same_thread=False)
         conn.row_factory = sqlite3.Row
-        conn.executescript(TestConfirmBracketGroup._SCHEMA)
-        conn.execute("ALTER TABLE photos ADD COLUMN burst_group_id INTEGER")
-        conn.execute("ALTER TABLE photos ADD COLUMN burst_reviewed INTEGER DEFAULT 0")
-        conn.execute("ALTER TABLE photos ADD COLUMN is_burst_lead INTEGER DEFAULT 0")
+        initialize_photo_database(conn)
         # `record_culling_pairs` reads it, so without it the pair-writing path
         # raises and "no pairs were written" would hold for the wrong reason.
-        conn.execute("ALTER TABLE photos ADD COLUMN category TEXT DEFAULT 'default'")
         conn.execute("ALTER TABLE photos ADD COLUMN timestamp TEXT")
         for index in range(3):
             conn.execute(
@@ -1200,18 +1181,6 @@ class TestSelectSimilarInvalidatesCache:
 # ---------------------------------------------------------------------------
 
 class TestQueryBurstGroupsScope:
-    _SCHEMA = """
-        CREATE TABLE photos (
-            path TEXT PRIMARY KEY, filename TEXT, date_taken TEXT, aggregate REAL,
-            aesthetic REAL, tech_sharpness REAL, is_blink INTEGER, is_burst_lead INTEGER, is_sequence_lead INTEGER DEFAULT 0,
-            burst_group_id INTEGER, burst_reviewed INTEGER, eyes_open_score REAL,
-            expression_score REAL, face_count INTEGER, category TEXT,
-            sequence_kind TEXT, sequence_ev_offset REAL
-        );
-        CREATE TABLE album_photos (
-            id INTEGER PRIMARY KEY, album_id INTEGER, photo_path TEXT
-        );
-    """ + _SEQUENCE_OVERRIDES_SCHEMA
 
     # g1: two frames inside the window; g2: outside; g3: two frames inside +
     # a tail frame 3s AFTER the window end (boundary burst).
@@ -1229,7 +1198,7 @@ class TestQueryBurstGroupsScope:
         import sqlite3
         conn = sqlite3.connect(":memory:", check_same_thread=False)
         conn.row_factory = sqlite3.Row
-        conn.executescript(self._SCHEMA)
+        initialize_photo_database(conn)
         conn.executemany(
             "INSERT INTO photos (path, filename, date_taken, aggregate, aesthetic, "
             "tech_sharpness, is_blink, is_burst_lead, burst_group_id, burst_reviewed, "
@@ -1303,24 +1272,13 @@ class TestFetchBracketGroups:
     and the small-set exclusion — had no coverage of its own.
     """
 
-    _SCHEMA = """
-        CREATE TABLE photos (
-            path TEXT PRIMARY KEY, filename TEXT, date_taken TEXT, aggregate REAL,
-            aesthetic REAL, tech_sharpness REAL, is_blink INTEGER DEFAULT 0,
-            is_burst_lead INTEGER DEFAULT 0, burst_group_id INTEGER,
-            eyes_open_score REAL, expression_score REAL, face_count INTEGER DEFAULT 0,
-            category TEXT, is_rejected INTEGER DEFAULT 0,
-            sequence_group_id INTEGER, sequence_kind TEXT, sequence_ev_offset REAL,
-            shadow_clipped INTEGER, highlight_clipped INTEGER
-        );
-    """ + _SEQUENCE_OVERRIDES_SCHEMA
 
     @staticmethod
     def _db(rows):
         import sqlite3
         conn = sqlite3.connect(":memory:", check_same_thread=False)
         conn.row_factory = sqlite3.Row
-        conn.executescript(TestFetchBracketGroups._SCHEMA)
+        initialize_photo_database(conn)
         conn.executemany(
             "INSERT INTO photos (path, filename, date_taken, aggregate, aesthetic, "
             "tech_sharpness, sequence_group_id, sequence_kind, sequence_ev_offset, "
@@ -1398,22 +1356,12 @@ class TestPanoramaGroupsCarryTheOverride:
     feed would look exactly as it did before the click.
     """
 
-    _SCHEMA = """
-        CREATE TABLE photos (
-            path TEXT PRIMARY KEY, filename TEXT, date_taken TEXT, aggregate REAL,
-            aesthetic REAL, tech_sharpness REAL, is_blink INTEGER DEFAULT 0,
-            is_burst_lead INTEGER DEFAULT 0, burst_group_id INTEGER,
-            eyes_open_score REAL, expression_score REAL, face_count INTEGER DEFAULT 0,
-            category TEXT, is_rejected INTEGER DEFAULT 0,
-            sequence_group_id INTEGER, sequence_kind TEXT, sequence_ev_offset REAL
-        );
-    """ + _SEQUENCE_OVERRIDES_SCHEMA
 
     def _db(self, overrides=()):
         import sqlite3
         conn = sqlite3.connect(":memory:", check_same_thread=False)
         conn.row_factory = sqlite3.Row
-        conn.executescript(self._SCHEMA)
+        initialize_photo_database(conn)
         conn.executemany(
             "INSERT INTO photos (path, filename, date_taken, aggregate, aesthetic, "
             "tech_sharpness, sequence_group_id, sequence_kind) VALUES (?,?,?,5.0,5.0,5.0,1,'panorama')",

@@ -260,7 +260,7 @@ def trigger_auto_retrain(db_path, user_id, added=1, conn=None):
 
 def record_culling_decision(conn, keep_paths, reject_paths, sequence_members,
                             user_id=None, group_type='burst', commit=True):
-    """Turn a culling confirm into ranker training pairs, commit, nudge retrain.
+    """Persist keepers, record ranker training pairs, commit, nudge retrain.
 
     ``sequence_members`` are the paths belonging to a keep-whole sequence set
     (bracket/panorama/hdr_panorama, resolved by
@@ -286,6 +286,7 @@ def record_culling_decision(conn, keep_paths, reject_paths, sequence_members,
 
     Returns the number of comparison rows inserted.
     """
+    set_photos_kept(conn, keep_paths, user_id)
     pairable_keep = [p for p in keep_paths if p not in sequence_members]
     pairable_reject = [p for p in reject_paths if p not in sequence_members]
     added = record_culling_pairs(
@@ -527,7 +528,7 @@ PHOTO_OPTIONAL_COLS = [
     'aesthetic_iaa', 'face_quality_iqa', 'liqe_score',
     'qrealign_score', 'aesthetic_v25', 'deqa_score',
     'subject_sharpness', 'subject_prominence', 'subject_placement', 'bg_separation',
-    'star_rating', 'is_favorite', 'is_rejected',
+    'star_rating', 'is_favorite', 'is_rejected', 'is_kept',
     'duplicate_group_id', 'is_duplicate_lead',
     'burst_group_id',
     'caption', 'caption_translated', 'gps_latitude', 'gps_longitude',
@@ -987,12 +988,12 @@ def build_photo_select_columns(conn, user_id=None, include_manual_tags=True):
     (share-link routes): ``split_photo_tags`` then reports ``manual_tags == []``.
 
     Resolves existing columns, applies user-preference overrides for
-    star_rating / is_favorite / is_rejected, and returns a list of SQL
+    star_rating / is_favorite / is_rejected / is_kept, and returns a list of SQL
     column expressions ready to join into a SELECT clause.
     """
     existing_cols = get_existing_columns(conn)
     pref_cols = get_preference_columns(user_id)
-    pref_col_names = {'star_rating', 'is_favorite', 'is_rejected'}
+    pref_col_names = {'star_rating', 'is_favorite', 'is_rejected', 'is_kept'}
 
     # Skip caption_translated when translation is disabled (target_language empty or "en")
     target_lang = _FULL_CONFIG.get('translation', {}).get('target_language', '')
@@ -1568,11 +1569,13 @@ def get_preference_columns(user_id=None):
             'star_rating': 'COALESCE(up.star_rating, 0)',
             'is_favorite': 'COALESCE(up.is_favorite, 0)',
             'is_rejected': 'COALESCE(up.is_rejected, 0)',
+            'is_kept': 'COALESCE(up.is_kept, 0)',
         }
     return {
         'star_rating': 'photos.star_rating',
         'is_favorite': 'photos.is_favorite',
         'is_rejected': 'photos.is_rejected',
+        'is_kept': 'photos.is_kept',
     }
 
 
@@ -1597,14 +1600,36 @@ def set_photos_rejected(conn, paths, user_id):
         return 0
     if user_id and is_multi_user_enabled():
         conn.executemany(
-            "INSERT INTO user_preferences (user_id, photo_path, is_rejected) "
-            "VALUES (?, ?, 1) "
-            "ON CONFLICT(user_id, photo_path) DO UPDATE SET is_rejected = 1",
+            "INSERT INTO user_preferences (user_id, photo_path, is_rejected, is_kept) "
+            "VALUES (?, ?, 1, 0) "
+            "ON CONFLICT(user_id, photo_path) DO UPDATE SET is_rejected = 1, is_kept = 0",
             [(user_id, p) for p in visible],
         )
     else:
         ph = ','.join('?' * len(visible))
-        conn.execute(f"UPDATE photos SET is_rejected = 1 WHERE path IN ({ph})", visible)
+        conn.execute(f"UPDATE photos SET is_rejected = 1, is_kept = 0 WHERE path IN ({ph})", visible)
+    return len(visible)
+
+
+def set_photos_kept(conn, paths, user_id):
+    """Persist visible culling keepers without changing favorites or ratings."""
+    if not paths:
+        return 0
+    vis_sql, vis_params = get_visibility_clause(user_id)
+    visible = [row[0] for row in select_in_chunks(
+        conn, f"SELECT path FROM photos WHERE path IN ({{placeholders}}) AND {vis_sql}",
+        list(paths), after=vis_params,
+    )]
+    if user_id and is_multi_user_enabled():
+        conn.executemany(
+            "INSERT INTO user_preferences (user_id, photo_path, is_kept, is_rejected) "
+            "VALUES (?, ?, 1, 0) ON CONFLICT(user_id, photo_path) "
+            "DO UPDATE SET is_kept = 1, is_rejected = 0",
+            [(user_id, path) for path in visible],
+        )
+    else:
+        conn.executemany("UPDATE photos SET is_kept = 1, is_rejected = 0 WHERE path = ?",
+                         [(path,) for path in visible])
     return len(visible)
 
 

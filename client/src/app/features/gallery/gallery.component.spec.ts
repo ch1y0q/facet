@@ -2098,6 +2098,18 @@ describe('GalleryComponent', () => {
 
     const reject = () => (component as unknown as { batchReject: () => Promise<void> }).batchReject();
 
+    it.each(['kept', 'undecided'] as const)('offers Undo for a single %s decision without changing selection', async decision => {
+      const snapshot = new Map([['/a.jpg', { ...snap, is_kept: false }]]);
+      mockStore.batchReview = vi.fn().mockResolvedValue({ snapshot, targeted: 1, count: 1 });
+      mockStore.restoreSnapshot.mockResolvedValue(undefined);
+      await (component as unknown as { reviewSingle: (path: string, decision: 'kept' | 'undecided') => Promise<unknown> }).reviewSingle('/a.jpg', decision);
+      expect(mockStore.batchReview).toHaveBeenCalledWith(['/a.jpg'], decision, false);
+      expect(undoRegister).toHaveBeenCalledWith(expect.objectContaining({ labelKey: 'review.updated', labelParams: { count: 1 } }));
+      await undoRegister.mock.calls[0][0].undo();
+      expect(mockStore.restoreSnapshot).toHaveBeenCalledWith(snapshot);
+      expect(mockStore.restoreSelection).not.toHaveBeenCalled();
+    });
+
     it('offers undo when the snapshot covers every photo the action touched', async () => {
       mockStore.selectedPaths.set(new Set(['/a.jpg', '/b.jpg']));
       mockStore.selectionCount.set(2);

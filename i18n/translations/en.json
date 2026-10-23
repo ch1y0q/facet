@@ -2564,5 +2564,16 @@
       "shadow": "Shadow clipping: {channels}",
       "highlight": "Highlight clipping: {channels}"
     }
+  },
+  "review": {
+    "status": "Review status",
+    "all": "All decisions",
+    "needs_review": "Needs review",
+    "kept": "Kept",
+    "rejected": "Rejected",
+    "keep": "Keep",
+    "reset": "Reset decision",
+    "updated": "Updated {{count}} photo decisions",
+    "shortcut": "Keep photo"
   }
 }

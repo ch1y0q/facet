@@ -278,3 +278,22 @@ describe('anyHideToggleActive', () => {
     expect(anyHideToggleActive({ ...allOff, [key]: '1' })).toBe(true);
   });
 });
+
+ describe('review status codec', () => {
+  it.each(['undecided', 'kept', 'rejected'] as const)('round trips %s and overrides hide rejected', review_status => {
+    const f = filters({ review_status });
+    expect(applyQueryParams(DEFAULT_FILTERS, buildSyncParams(f, undefined)).review_status).toBe(review_status);
+    expect(buildApiParams(f, false)).toMatchObject({ review_status });
+    expect(buildApiParams(f, false)['hide_rejected']).toBeUndefined();
+  });
+  it('ignores invalid review statuses', () => {
+    expect(applyQueryParams(DEFAULT_FILTERS, { review_status: 'bad' }).review_status).toBe('');
+  });
+});
+
+describe('review URL normalization', () => {
+  it('clears ranked searches and retains ordinary filters', () => {
+    expect(applyQueryParams(DEFAULT_FILTERS, { review_status: 'kept', semanticQuery: 'sunset', similar_to: '/a.jpg', search: 'beach', album_id: '3' }))
+      .toMatchObject({ review_status: 'kept', semanticQuery: '', similar_to: '', search: 'beach', album_id: '3' });
+  });
+});

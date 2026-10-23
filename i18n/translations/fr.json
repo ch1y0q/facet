@@ -2564,5 +2564,16 @@
       "shadow": "Écrêtage des ombres : {channels}",
       "highlight": "Écrêtage des hautes lumières : {channels}"
     }
+  },
+  "review": {
+    "status": "Décision de tri",
+    "all": "Toutes les décisions",
+    "needs_review": "À examiner",
+    "kept": "Conservées",
+    "rejected": "Rejetées",
+    "keep": "Conserver",
+    "reset": "Réinitialiser la décision",
+    "updated": "Décision mise à jour pour {{count}} photos",
+    "shortcut": "Conserver la photo"
   }
 }

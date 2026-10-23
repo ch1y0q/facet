@@ -2564,5 +2564,16 @@
       "shadow": "Schatten beschnitten: {channels}",
       "highlight": "Lichter beschnitten: {channels}"
     }
+  },
+  "review": {
+    "status": "Auswahlstatus",
+    "all": "Alle Entscheidungen",
+    "needs_review": "Zu prüfen",
+    "kept": "Behalten",
+    "rejected": "Abgelehnt",
+    "keep": "Behalten",
+    "reset": "Entscheidung zurücksetzen",
+    "updated": "Entscheidung für {{count}} Fotos aktualisiert",
+    "shortcut": "Foto behalten"
   }
 }

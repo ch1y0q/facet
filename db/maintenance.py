@@ -643,7 +643,7 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
     # the current destination value so a re-export never overwrites that
     # GPU-expensive cache with a NULL from source.
     _CACHE_COLS = {'vlm_critique', 'vlm_critique_translated', 'caption', 'caption_translated'}
-    _RATING_COLS = {'star_rating', 'is_favorite', 'is_rejected'}
+    _RATING_COLS = {'star_rating', 'is_favorite', 'is_rejected', 'is_kept'}
     update_cols = [c for c in src_photo_cols if c not in _STRIP_COLS and c in dest_photo_col_set]
 
     def _photo_set_expr(col):

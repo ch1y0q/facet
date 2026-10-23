@@ -168,6 +168,7 @@ export interface GalleryFilters {
   hide_duplicates: boolean;
   hide_brackets: boolean;
   hide_panoramas: boolean;
+  review_status: '' | 'undecided' | 'kept' | 'rejected';
   hide_rejected: boolean;
   favorites_only: boolean;
   is_monochrome: boolean;
@@ -232,7 +233,7 @@ export const SMART_ALBUM_EXCLUDE_KEYS = new Set([
 /** Common string-typed filter keys shared across URL sync, API params, and filter counting. */
 export const RANGE_AND_SELECT_KEYS: (keyof GalleryFilters)[] = [
   'type', 'camera', 'lens', 'tag', 'person_id', 'composition_pattern', 'search',
-  'color_temp', 'hue_bucket', 'quality_tier', 'sequence_override',
+  'color_temp', 'hue_bucket', 'quality_tier', 'sequence_override', 'review_status',
   'min_score', 'max_score', 'min_aesthetic', 'max_aesthetic',
   'min_quality_score', 'max_quality_score', 'min_topiq', 'max_topiq',
   'min_face_quality', 'max_face_quality', 'min_composition', 'max_composition',
@@ -377,6 +378,7 @@ export const DEFAULT_FILTERS: GalleryFilters = {
   hide_duplicates: true,
   hide_brackets: true,
   hide_panoramas: true,
+  review_status: '',
   hide_rejected: true,
   favorites_only: false,
   is_monochrome: false,
@@ -439,6 +441,7 @@ export function applyQueryParams(
   for (const key of stringKeys) {
     if (params[key]) (result as Record<string, unknown>)[key] = params[key];
   }
+  if (!['', 'undecided', 'kept', 'rejected'].includes(result.review_status)) result.review_status = '';
   // Parsed rather than copied: this one is sent to the API as a NUMBER
   // (`+value / 100`), so a mangled shared link carrying `search_threshold=abc`
   // became `threshold=NaN`, which the server rejects with a 422 the gallery
@@ -474,6 +477,10 @@ export function applyQueryParams(
   }
   if (params['page']) result.page = parseInt(params['page'], 10) || 1;
 
+  if (result.review_status) {
+    result.similar_to = '';
+    result.semanticQuery = '';
+  }
   return result;
 }
 
@@ -551,7 +558,7 @@ export function buildApiParams(
   if (f.hide_duplicates) params['hide_duplicates'] = true;
   if (f.hide_brackets) params['hide_brackets'] = true;
   if (f.hide_panoramas) params['hide_panoramas'] = true;
-  if (f.hide_rejected) params['hide_rejected'] = true;
+  if (f.hide_rejected && !f.review_status) params['hide_rejected'] = true;
   if (f.favorites_only) params['favorites_only'] = '1';
   if (f.is_monochrome) params['is_monochrome'] = '1';
 

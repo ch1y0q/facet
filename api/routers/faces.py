@@ -9,7 +9,7 @@ import sqlite3
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Optional, Any
+from typing import Literal, Optional, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, ValidationError, model_validator
@@ -88,6 +88,15 @@ class BatchPhotoRequest(BaseModel):
         if (self.photo_paths is None) == (self.filters is None):
             raise ValueError("exactly one of photo_paths or filters is required")
         return self
+
+
+class BatchUpdateResponse(BaseModel):
+    success: bool
+    count: int
+
+
+class BatchReviewRequest(BatchPhotoRequest):
+    decision: Literal['kept', 'undecided', 'rejected']
 
 
 class BatchRatingRequest(BatchPhotoRequest):
@@ -543,9 +552,9 @@ def api_toggle_rejected(
                 new_value = 0 if current else 1
                 if new_value == 1:
                     conn.execute("""
-                        INSERT INTO user_preferences (user_id, photo_path, is_rejected, star_rating, is_favorite)
-                        VALUES (?, ?, 1, 0, 0)
-                        ON CONFLICT(user_id, photo_path) DO UPDATE SET is_rejected = 1, star_rating = 0, is_favorite = 0
+                        INSERT INTO user_preferences (user_id, photo_path, is_rejected, star_rating, is_favorite, is_kept)
+                        VALUES (?, ?, 1, 0, 0, 0)
+                        ON CONFLICT(user_id, photo_path) DO UPDATE SET is_rejected = 1, star_rating = 0, is_favorite = 0, is_kept = 0
                     """, (user.user_id, body.photo_path))
                 else:
                     conn.execute("""
@@ -557,13 +566,13 @@ def api_toggle_rejected(
                 row = conn.execute("SELECT is_rejected FROM photos WHERE path = ?", (body.photo_path,)).fetchone()
                 new_value = 0 if row['is_rejected'] else 1
                 if new_value == 1:
-                    conn.execute("UPDATE photos SET is_rejected = 1, star_rating = 0, is_favorite = 0 WHERE path = ?", (body.photo_path,))
+                    conn.execute("UPDATE photos SET is_rejected = 1, star_rating = 0, is_favorite = 0, is_kept = 0 WHERE path = ?", (body.photo_path,))
                 else:
                     conn.execute("UPDATE photos SET is_rejected = 0 WHERE path = ?", (body.photo_path,))
             conn.commit()
             _stats_cache.clear()
             _mint_rating_comparisons(user.user_id)
-            return {'success': True, 'is_rejected': new_value == 1, 'star_rating': 0 if new_value == 1 else None, 'is_favorite': False if new_value == 1 else None}
+            return {'success': True, 'is_rejected': new_value == 1, 'is_kept': False if new_value == 1 else None, 'star_rating': 0 if new_value == 1 else None, 'is_favorite': False if new_value == 1 else None}
         except HTTPException:
             raise
         except sqlite3.Error as ex:
@@ -775,6 +784,37 @@ def api_batch_favorite(
     ))
 
 
+@router.post("/api/photos/batch_review", response_model=BatchUpdateResponse)
+def api_batch_review(
+    body: BatchReviewRequest,
+    user: CurrentUser = Depends(require_edition),
+):
+    """Set review decisions while preserving ratings and favorites."""
+    kept = int(body.decision == 'kept')
+    rejected = int(body.decision == 'rejected')
+    return _batch_update(body, user, BatchWriteSql(
+        multi_user=(
+            "INSERT INTO user_preferences (user_id, photo_path, is_kept, is_rejected) "
+            "VALUES (?, ?, ?, ?) ON CONFLICT(user_id, photo_path) "
+            "DO UPDATE SET is_kept = excluded.is_kept, is_rejected = excluded.is_rejected"
+        ),
+        multi_user_row=lambda path: (user.user_id, path, kept, rejected),
+        single_user="UPDATE photos SET is_kept = ?, is_rejected = ? WHERE path IN ({placeholders})",
+        single_user_prefix=(kept, rejected),
+        filter_multi_user=(
+            "INSERT INTO user_preferences (user_id, photo_path, is_kept, is_rejected) "
+            "SELECT ?, photos.path, ?, ? FROM {scope} "
+            "ON CONFLICT(user_id, photo_path) "
+            "DO UPDATE SET is_kept = excluded.is_kept, is_rejected = excluded.is_rejected"
+        ),
+        filter_multi_user_prefix=(user.user_id, kept, rejected),
+        filter_single_user=(
+            "UPDATE photos SET is_kept = ?, is_rejected = ? "
+            "WHERE path IN (SELECT photos.path FROM {scope})"
+        ),
+    ))
+
+
 @router.post("/api/photos/batch_reject")
 def api_batch_reject(
     body: BatchPhotoRequest,
@@ -783,20 +823,20 @@ def api_batch_reject(
     """Mark multiple photos as rejected (clears favorite and rating)."""
     return _batch_update(body, user, BatchWriteSql(
         multi_user="""
-            INSERT INTO user_preferences (user_id, photo_path, is_rejected, star_rating, is_favorite)
-            VALUES (?, ?, 1, 0, 0)
-            ON CONFLICT(user_id, photo_path) DO UPDATE SET is_rejected = 1, star_rating = 0, is_favorite = 0
+            INSERT INTO user_preferences (user_id, photo_path, is_rejected, star_rating, is_favorite, is_kept)
+            VALUES (?, ?, 1, 0, 0, 0)
+            ON CONFLICT(user_id, photo_path) DO UPDATE SET is_rejected = 1, star_rating = 0, is_favorite = 0, is_kept = 0
         """,
         multi_user_row=lambda path: (user.user_id, path),
-        single_user="UPDATE photos SET is_rejected = 1, star_rating = 0, is_favorite = 0 WHERE path IN ({placeholders})",
+        single_user="UPDATE photos SET is_rejected = 1, star_rating = 0, is_favorite = 0, is_kept = 0 WHERE path IN ({placeholders})",
         filter_multi_user="""
-            INSERT INTO user_preferences (user_id, photo_path, is_rejected, star_rating, is_favorite)
-            SELECT ?, photos.path, 1, 0, 0 FROM {scope}
-            ON CONFLICT(user_id, photo_path) DO UPDATE SET is_rejected = 1, star_rating = 0, is_favorite = 0
+            INSERT INTO user_preferences (user_id, photo_path, is_rejected, star_rating, is_favorite, is_kept)
+            SELECT ?, photos.path, 1, 0, 0, 0 FROM {scope}
+            ON CONFLICT(user_id, photo_path) DO UPDATE SET is_rejected = 1, star_rating = 0, is_favorite = 0, is_kept = 0
         """,
         filter_multi_user_prefix=(user.user_id,),
         filter_single_user=(
-            "UPDATE photos SET is_rejected = 1, star_rating = 0, is_favorite = 0 "
+            "UPDATE photos SET is_rejected = 1, star_rating = 0, is_favorite = 0, is_kept = 0 "
             "WHERE path IN (SELECT photos.path FROM {scope})"
         ),
     ))

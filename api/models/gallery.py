@@ -103,6 +103,7 @@ class Photo(BaseModel):
     star_rating: CoercedInt = None
     is_favorite: CoercedInt = None
     is_rejected: CoercedInt = None
+    is_kept: CoercedInt = None
     duplicate_group_id: CoercedInt = None
     is_duplicate_lead: CoercedInt = None
     burst_group_id: CoercedInt = None
@@ -290,6 +291,7 @@ class GalleryParams(BaseModel):
     favorites_only: str = ''
     hide_rejected: str = ''
     show_rejected: str = ''
+    review_status: Literal['', 'undecided', 'kept', 'rejected'] = ''
     # Extended scores
     min_dynamic_range: str = ''
     max_dynamic_range: str = ''
