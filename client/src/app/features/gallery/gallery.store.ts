@@ -16,17 +16,17 @@ import type { components } from '../../core/api/schema';
 import {
   type GalleryFilters, type GalleryMode, type TooltipMode, type PanelActivation, type DisplayOptions,
   type ViewFilterParams,
-  DEFAULT_FILTERS, SMART_ALBUM_EXCLUDE_KEYS, DISPLAY_OPTION_KEYS,
+  DEFAULT_FILTERS, DISPLAY_OPTION_KEYS,
   GALLERY_MODE_KEY, DRAWER_STATE_KEY, CARD_WIDTH_KEY,
   loadDisplayOptionsFromStorage, saveDisplayOptionsToStorage,
   countActiveFilters, applyQueryParams, buildSyncParams, buildApiParams,
   buildViewFilterParams, viewFilterParamsEqual, anyHideToggleActive,
-  seededSearchThreshold, buildByPathsFilters, BY_PATHS_MAX, semanticSortPatch,
+  seededSearchThreshold, buildByPathsFilters, BY_PATHS_MAX, semanticSortPatch, smartAlbumFilterJson,
 } from './gallery-filters.util';
 
 // Re-export the filter types/consts so existing importers of gallery.store keep working.
 export type { GalleryFilters, GalleryMode, TooltipMode, PanelActivation, DisplayOptions, ViewFilterParams };
-export { DEFAULT_FILTERS, SMART_ALBUM_EXCLUDE_KEYS, anyHideToggleActive };
+export { DEFAULT_FILTERS, anyHideToggleActive };
 
 /** The five hide toggles the hidden-photos banner clears and restores together. */
 export type HiddenFilterFlags = Pick<GalleryFilters,
@@ -663,13 +663,7 @@ export class GalleryStore {
       const isEdition = untracked(() => this.auth.isEdition());
       if (!isEdition) return;
 
-      const filterJson: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(f)) {
-        if (v && v !== '' && !SMART_ALBUM_EXCLUDE_KEYS.has(k)) {
-          filterJson[k] = v;
-        }
-      }
-      const json = JSON.stringify(filterJson);
+      const json = smartAlbumFilterJson(f);
 
       untracked(() => {
         if (this.smartSaveTimer) clearTimeout(this.smartSaveTimer);

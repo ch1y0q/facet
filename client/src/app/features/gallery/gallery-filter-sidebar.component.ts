@@ -15,7 +15,7 @@ import { toIsoDateString } from '../../shared/utils/date-format';
 import { MatAutocompleteModule, MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { firstValueFrom } from 'rxjs';
-import { GalleryStore, SMART_ALBUM_EXCLUDE_KEYS } from './gallery.store';
+import { GalleryStore } from './gallery.store';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { FilterDisplayPipe } from '../../shared/pipes/filter-display.pipe';
 import { PersonThumbnailUrlPipe } from '../../shared/pipes/thumbnail-url.pipe';
@@ -23,7 +23,7 @@ import { AdditionalFilterDef } from '../../shared/models/filter-def.model';
 import { computeRangeFilterUpdate } from '../../shared/utils/range-filter';
 import { useCoarsePointerSignal } from '../../shared/utils/media-query';
 import { MOBILE_MIN_CARD_WIDTH_PX } from './gallery-rows.util';
-import { SEARCH_THRESHOLD_MAX, seededSearchThreshold } from './gallery-filters.util';
+import { SEARCH_THRESHOLD_MAX, seededSearchThreshold, smartAlbumFilterJson } from './gallery-filters.util';
 import { AlbumService, Album } from '../../core/services/album.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
@@ -1198,16 +1198,9 @@ export class GalleryFilterSidebarComponent {
   }
 
   saveAsSmartAlbum(): void {
-    const f = this.store.filters();
-    const filterJson: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(f)) {
-      if (v && v !== '' && !SMART_ALBUM_EXCLUDE_KEYS.has(k)) {
-        filterJson[k] = v;
-      }
-    }
     const ref = this.dialog.open(SaveSmartAlbumDialogComponent, {
       width: '400px',
-      data: { filterJson: JSON.stringify(filterJson) },
+      data: { filterJson: smartAlbumFilterJson(this.store.filters()) },
     });
     ref.afterClosed().subscribe(result => {
       if (result) {

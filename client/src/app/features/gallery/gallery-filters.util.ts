@@ -179,7 +179,6 @@ export interface GalleryFilters {
   quality_tier: string; // excellent | good | fair | poor
 }
 
-/** Subset of viewer config defaults the URL/sync codec compares against. */
 /** Sort that ranks a semantic query's matches by similarity; meaningful only while a query is set. */
 export const RELEVANCE_SORT = 'relevance';
 
@@ -203,6 +202,7 @@ export function semanticSortPatch(
   return {};
 }
 
+/** Subset of viewer config defaults the URL/sync codec compares against. */
 export interface FilterDefaults {
   sort?: string;
   sort_direction?: string;
@@ -227,8 +227,8 @@ export const SEARCH_THRESHOLD_MAX = 50;
  *
  *  Returns `''` when the server did not answer with a usable number -- an
  *  older backend, or a field that arrived missing. `''` is the meaningful
- *  value, not a fallback percent: it is what makes `/api/search` omit
- *  `threshold` entirely and resolve its own per-model default. Guessing a
+ *  value, not a fallback percent: it is what makes `/api/photos` omit
+ *  `semantic_threshold` entirely and resolve its own per-model default. Guessing a
  *  number here instead would silently diverge from the server's calibration,
  *  and `String(Math.round(undefined * 100))` produced the string `'NaN'`,
  *  which is truthy and reached the API as `threshold=NaN` -> 422.
@@ -251,6 +251,19 @@ export const SMART_ALBUM_EXCLUDE_KEYS = new Set([
   'gps_lat', 'gps_lng', 'gps_radius_km',
   'sequence_group_id', 'sequence_kind', 'burst_group_id', 'duplicate_group_id',
 ]);
+
+/** The smart-album JSON for a filter state. Relevance is dropped with the semantic query it ranks,
+ *  so a reopened album never asks `/api/photos` for `sort=relevance` without `semantic_q` (a 400). */
+export function smartAlbumFilterJson(filters: GalleryFilters): string {
+  const dropSort = filters.sort === RELEVANCE_SORT;
+  const filterJson: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(filters)) {
+    if (v && v !== '' && !SMART_ALBUM_EXCLUDE_KEYS.has(k) && !(dropSort && (k === 'sort' || k === 'sort_direction'))) {
+      filterJson[k] = v;
+    }
+  }
+  return JSON.stringify(filterJson);
+}
 
 /** Common string-typed filter keys shared across URL sync, API params, and filter counting. */
 export const RANGE_AND_SELECT_KEYS: (keyof GalleryFilters)[] = [
@@ -462,11 +475,6 @@ export function applyQueryParams(
   for (const key of stringKeys) {
     if (params[key]) (result as Record<string, unknown>)[key] = params[key];
   }
-  // Parsed rather than copied: this one is sent to the API as a NUMBER
-  // (`+value / 100`), so a mangled shared link carrying `search_threshold=abc`
-  // became `threshold=NaN`, which the server rejects with a 422 the gallery
-  // surfaces only as a bare load error. Out-of-range is clamped to the
-  // slider's own span so a seeded value is always reachable from the thumb.
   // Relevance is the implied sort of a semantic query, and meaningless without one.
   if (result.semanticQuery && !params['sort']) {
     result.sort = RELEVANCE_SORT;
@@ -475,6 +483,11 @@ export function applyQueryParams(
     result.sort = base.sort === RELEVANCE_SORT ? 'aggregate' : base.sort;
     result.sort_direction = base.sort === RELEVANCE_SORT ? 'DESC' : base.sort_direction;
   }
+  // Parsed rather than copied: this one is sent to the API as a NUMBER
+  // (`+value / 100`), so a mangled shared link carrying `search_threshold=abc`
+  // became `threshold=NaN`, which the server rejects with a 422 the gallery
+  // surfaces only as a bare load error. Out-of-range is clamped to the
+  // slider's own span so a seeded value is always reachable from the thumb.
   if (params['search_threshold']) {
     const parsed = Number(params['search_threshold']);
     result.search_threshold = Number.isFinite(parsed)

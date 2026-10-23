@@ -13,6 +13,7 @@ import {
   seededSearchThreshold,
   semanticSortPatch,
   RELEVANCE_SORT,
+  smartAlbumFilterJson,
   countActiveFilters,
   loadDisplayOptionsFromStorage,
   saveDisplayOptionsToStorage,
@@ -216,6 +217,21 @@ describe('applyQueryParams', () => {
     expect(applyQueryParams(DEFAULT_FILTERS, { search_threshold: '900' }).search_threshold).toBe('50');
     expect(applyQueryParams(DEFAULT_FILTERS, { search_threshold: '-3' }).search_threshold).toBe('0');
     expect(applyQueryParams(DEFAULT_FILTERS, { search_threshold: '7.6' }).search_threshold).toBe('8');
+  });
+});
+
+describe('smartAlbumFilterJson', () => {
+  it('drops the relevance sort with the semantic query it ranks', () => {
+    const saved = JSON.parse(smartAlbumFilterJson(filters({
+      semanticQuery: 'sunset', sort: RELEVANCE_SORT, sort_direction: 'DESC', camera: 'X100V',
+    })));
+    expect(saved).toEqual({ camera: 'X100V' });
+  });
+
+  it('keeps an ordinary sort', () => {
+    const saved = JSON.parse(smartAlbumFilterJson(filters({ sort: 'date_taken', sort_direction: 'ASC' })));
+    expect(saved.sort).toBe('date_taken');
+    expect(saved.sort_direction).toBe('ASC');
   });
 });
 
