@@ -117,17 +117,17 @@ export class GpsEditDialogComponent {
   }
 
   async save(): Promise<void> {
+    if (this.saving()) return;
+    const saved = { gps_latitude: this.selectedLat(), gps_longitude: this.selectedLng() };
     this.saving.set(true);
     try {
       await firstValueFrom(this.api.put('/photo/gps', {
         path: this.data.path,
-        gps_latitude: this.selectedLat(),
-        gps_longitude: this.selectedLng(),
+        ...saved,
       }));
-      const saved = { gps_latitude: this.selectedLat(), gps_longitude: this.selectedLng() };
       // Back closes this dialog before the save lands, so the caller would never hear of it.
       this.store.patchPhoto(this.data.path, saved);
-      this.dialogRef.close(saved);
+      if (!this.destroyRef.destroyed) this.dialogRef.close(saved);
     } catch {
       this.snackBar.open(this.i18n.t(I18N.notifications.connection_error), '', { duration: 3000 });
     } finally {

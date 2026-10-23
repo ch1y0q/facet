@@ -1,6 +1,6 @@
 import type { Mock } from 'vitest';
 import { TestBed } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
+import { of, throwError, Subject } from 'rxjs';
 import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { ApiService } from '../../core/services/api.service';
@@ -146,4 +146,21 @@ describe('GpsEditDialogComponent', () => {
       expect(component.saving()).toBe(false);
     });
   });
+  it.each([false, true])('keeps submitted coordinates while inputs change (destroyed: %s)', async destroyed => {
+    createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 1, lng: 2 });
+    const pending = new Subject<unknown>();
+    mockApi.put.mockReturnValue(pending);
+    const saving = component.save();
+    component.selectedLat.set(30);
+    component.selectedLng.set(40);
+    const duplicate = component.save();
+    if (destroyed) TestBed.resetTestingModule();
+    pending.next({});
+    await Promise.all([saving, duplicate]);
+    expect(mockStore.patchPhoto).toHaveBeenCalledWith('/photo.jpg', { gps_latitude: 1, gps_longitude: 2 });
+    expect(mockApi.put).toHaveBeenCalledExactlyOnceWith('/photo/gps', { path: '/photo.jpg', gps_latitude: 1, gps_longitude: 2 });
+    if (destroyed) expect(mockDialogRef.close).not.toHaveBeenCalled();
+    else expect(mockDialogRef.close).toHaveBeenCalledWith({ gps_latitude: 1, gps_longitude: 2 });
+  });
+
 });

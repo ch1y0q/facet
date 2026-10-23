@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, DestroyRef } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
@@ -41,6 +41,7 @@ export interface CaptionEditDialogData {
 export class CaptionEditDialogComponent {
   protected readonly I18N = i18nKeys();
   private readonly api = inject(ApiService);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly store = inject(GalleryStore);
   private readonly dialogRef = inject(MatDialogRef<CaptionEditDialogComponent>);
   readonly data: CaptionEditDialogData = inject(MAT_DIALOG_DATA);
@@ -49,12 +50,14 @@ export class CaptionEditDialogComponent {
   readonly saving = signal(false);
 
   async save(): Promise<void> {
+    if (this.saving()) return;
+    const caption = this.captionText;
     this.saving.set(true);
     try {
-      await firstValueFrom(this.api.put('/caption', { path: this.data.path, caption: this.captionText }));
+      await firstValueFrom(this.api.put('/caption', { path: this.data.path, caption }));
       // Back closes this dialog before the save lands, so the caller would never hear of it.
-      this.store.patchPhoto(this.data.path, { caption: this.captionText || null, caption_translated: undefined });
-      this.dialogRef.close(this.captionText);
+      this.store.patchPhoto(this.data.path, { caption: caption || null, caption_translated: undefined });
+      if (!this.destroyRef.destroyed) this.dialogRef.close(caption);
     } catch {
       // Error handling — dialog stays open
     } finally {

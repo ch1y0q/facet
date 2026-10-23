@@ -1,7 +1,7 @@
 import type { Mock } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
-import { of, throwError } from 'rxjs';
+import { of, throwError, Subject } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { GalleryStore } from '../gallery/gallery.store';
 import { I18nService } from '../../core/services/i18n.service';
@@ -96,4 +96,20 @@ describe('CaptionEditDialogComponent', () => {
 
     expect(savingDuringRequest).toBe(true);
   });
+  it.each([false, true])('keeps the submitted caption while inputs change (destroyed: %s)', async destroyed => {
+    const pending = new Subject<unknown>();
+    mockApi.put.mockReturnValue(pending);
+    component.captionText = 'Submitted';
+    const saving = component.save();
+    component.captionText = 'Unsaved edit';
+    const duplicate = component.save();
+    if (destroyed) TestBed.resetTestingModule();
+    pending.next({});
+    await Promise.all([saving, duplicate]);
+    expect(mockStore.patchPhoto).toHaveBeenCalledWith('/photo.jpg', { caption: 'Submitted', caption_translated: undefined });
+    expect(mockApi.put).toHaveBeenCalledExactlyOnceWith('/caption', { path: '/photo.jpg', caption: 'Submitted' });
+    if (destroyed) expect(mockDialogRef.close).not.toHaveBeenCalled();
+    else expect(mockDialogRef.close).toHaveBeenCalledWith('Submitted');
+  });
+
 });
