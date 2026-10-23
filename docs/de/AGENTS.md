@@ -2,7 +2,7 @@
 
 > 🌐 [English](../AGENTS.md) · [Français](../fr/AGENTS.md) · **Deutsch** · [Italiano](../it/AGENTS.md) · [Español](../es/AGENTS.md) · [Português](../pt/AGENTS.md) · [简体中文](../zh/AGENTS.md)
 
-Facet kann als [Model Context Protocol](https://modelcontextprotocol.io/)-Server (MCP) auftreten, sodass ein MCP-fähiger KI-Assistent Ihre Bibliothek mit denselben Filtern wie die Galerie durchsuchen und prüfen kann. Er stellt dreizehn Lesewerkzeuge bereit, die nichts in Ihrer Bibliothek ändern, und vierzehn `ui_*`-Werkzeuge, die den bereits geöffneten Browser-Tab steuern (Seite, Filter, Auswahl) und nie Bibliotheksdaten schreiben. Dafür freigegebene Tokens können außerdem [Änderungen vornehmen](#änderungen-vornehmen) (Bewertungen, Markierungen, Tags, Alben, Auswahl und Löschen) und die [Dunkelkammer](#dunkelkammer-auswahlgruppen) bedienen.
+Facet kann als [Model Context Protocol](https://modelcontextprotocol.io/)-Server (MCP) auftreten, sodass ein MCP-fähiger KI-Assistent Ihre Bibliothek mit denselben Filtern wie die Galerie durchsuchen und prüfen kann. Er stellt dreizehn Lesewerkzeuge bereit, die nichts in Ihrer Bibliothek ändern, und fünfzehn `ui_*`-Werkzeuge, die den bereits geöffneten Browser-Tab steuern (Seite, Filter, Auswahl) und nie Bibliotheksdaten schreiben. Dafür freigegebene Tokens können außerdem [Änderungen vornehmen](#änderungen-vornehmen) (Bewertungen, Markierungen, Tags, Alben, Auswahl und Löschen) und die [Dunkelkammer](#dunkelkammer-auswahlgruppen) bedienen.
 
 ## Aktivieren
 
@@ -87,7 +87,7 @@ In jedem Filterobjekt ist `show_rejected` ein Boolean: `true` listet nur die abg
 
 ## Den geöffneten Tab steuern
 
-Neben den Datenwerkzeugen listet der Server immer vierzehn `ui_*`-Werkzeuge, die auf den Facet-Tab wirken, den Sie im Browser geöffnet haben: Sie wechseln die Seite, ändern Filter oder Auswahl und lesen zurück, was Sie sehen. Sie schreiben nie Bibliotheksdaten, ein `readonly`-Token genügt also.
+Neben den Datenwerkzeugen listet der Server immer fünfzehn `ui_*`-Werkzeuge, die auf den Facet-Tab wirken, den Sie im Browser geöffnet haben: Sie wechseln die Seite, ändern Filter oder Auswahl und lesen zurück, was Sie sehen. Sie schreiben nie Bibliotheksdaten, ein `readonly`-Token genügt also.
 
 | Werkzeug | Was es tut |
 |----------|------------|
@@ -96,6 +96,7 @@ Neben den Datenwerkzeugen listet der Server immer vierzehn `ui_*`-Werkzeuge, die
 | `ui_get_gallery_view` | Route, aktive Filter, Gesamttreffer, die ersten sichtbaren Fotopfade und die Zahl der ausgewählten Fotos; liefert außerdem `album_filter_json` (die Filter, wie ein Smart-Album sie speichern würde) und `filters_scopable` (ob sie die ganze Ansicht beschreiben) |
 | `ui_get_context` | Die offene Seite (Route), der Galeriezustand (Gesamtzahl, geladene Anzahl, ob eine angeheftete Liste angezeigt wird), die Zahl der ausgewählten Fotos und die `actions`, die hier für Ihr Token gelten; außerdem `focused` (das Foto, auf dem der Benutzer steht), `culling` (der Plan des Assistenten auf `/culling`: bestätigte, ausstehende und geänderte Gruppen sowie der `scope`, für den er berechnet wurde), `culling_defaults` (`{profile, strictness}`: das gespeicherte Profil und die aktuelle, gespeicherte Strenge des Reglers, je Browser; `auto_cull` verwendet beides, wenn keines von beiden angegeben ist) und `user_activity` (was der Benutzer getan hat), und akzeptiert `activity_since` (siehe unten) |
 | `ui_open_photo` | Ein Foto öffnen |
+| `ui_open_album` | Ein Album (fest oder smart) per `album_id` öffnen; eine unbekannte oder nicht zugängliche ID antwortet `not_found` |
 | `ui_show_photos` | Zeigt genau diese `paths` (bis zu 200) in dieser Reihenfolge als Liste der Galerie; nicht erreichbare kommen als `missing` zurück. Jede Filteränderung ersetzt die Liste |
 | `ui_select_photos` | Explizite `paths` auswählen, oder mit `select_view: true` die ganze gefilterte Ansicht, im Modus `replace`, `add` oder `remove` |
 | `ui_clear_selection` | Die Auswahl leeren |
@@ -129,7 +130,7 @@ Ergänzend:
 - Ein Tab verbindet sich nicht mehr neu, sobald seine Sitzung abgelehnt wurde (erneut anmelden), und wartet, bis Sie zu ihm zurückkehren, wenn ein anderer Ihrer Tabs übernommen hat.
 - Die Tab-Brücke verbindet sich nur, wenn der Server sie als verfügbar meldet (der Endpunkt ist an und `viewer.mcp.bridge` ist true); bei abgeschalteter Brücke verbinden sich Tabs gar nicht.
 - `ui_set_gallery_filters` lehnt einen unbekannten Filternamen mit `invalid_input` ab, ebenso einen Patch mit sowohl `category` als auch `type` oder sowohl `person` als auch `person_id`. Er bietet nur die Filter an, die die Galerie anzeigen kann; für die übrigen nutzen Sie `search_photos`.
-- `ui_navigate` öffnet nur die statischen Seiten der App: Anmeldeseite, geteilte Seiten, externe URLs und unbekannte Pfade werden abgelehnt (`invalid_input`), und Seiten nur für die Bearbeitung werden einer Sitzung ohne Bearbeitung verweigert.
+- `ui_navigate` öffnet nur die statischen Seiten der App: Anmeldeseite, geteilte Seiten, externe URLs und unbekannte Pfade werden abgelehnt (`invalid_input`), und Seiten nur für die Bearbeitung werden einer Sitzung ohne Bearbeitung verweigert. `/timeline` nimmt außerdem `year` und `month` (1-12) entgegen, um dieses Jahr oder diesen Monat zu öffnen; `ui_get_context` liefert dort `timeline`.
 - `ui_select_photos` im Modus `remove` unter einer Auswahl der ganzen Ansicht ignoriert Pfade außerhalb der geladenen Ansicht und listet sie im Ergebnis als `not_in_view`.
 
 ## Live-Aktualisierung

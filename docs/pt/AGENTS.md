@@ -2,7 +2,7 @@
 
 > 🌐 [English](../AGENTS.md) · [Français](../fr/AGENTS.md) · [Deutsch](../de/AGENTS.md) · [Italiano](../it/AGENTS.md) · [Español](../es/AGENTS.md) · **Português** · [简体中文](../zh/AGENTS.md)
 
-O Facet pode atuar como servidor [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), de modo que um assistente de IA compatível com MCP possa pesquisar e inspecionar a sua biblioteca com os mesmos filtros da galeria. Expõe treze ferramentas de leitura que não alteram nada na biblioteca e catorze ferramentas `ui_*` que movem o separador do navegador que já tem aberto (página, filtros, seleção) e nunca escrevem dados da biblioteca. Os tokens autorizados também podem [alterar a biblioteca](#alterar-a-biblioteca) (classificações, marcadores, etiquetas, álbuns, triagem e eliminação) e usar a [câmara escura](#câmara-escura-grupos-de-triagem).
+O Facet pode atuar como servidor [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), de modo que um assistente de IA compatível com MCP possa pesquisar e inspecionar a sua biblioteca com os mesmos filtros da galeria. Expõe treze ferramentas de leitura que não alteram nada na biblioteca e quinze ferramentas `ui_*` que movem o separador do navegador que já tem aberto (página, filtros, seleção) e nunca escrevem dados da biblioteca. Os tokens autorizados também podem [alterar a biblioteca](#alterar-a-biblioteca) (classificações, marcadores, etiquetas, álbuns, triagem e eliminação) e usar a [câmara escura](#câmara-escura-grupos-de-triagem).
 
 ## Ativá-lo
 
@@ -87,7 +87,7 @@ Em cada objeto de filtros, `show_rejected` é um booleano: `true` lista apenas a
 
 ## Controlar o separador aberto
 
-Ao lado das ferramentas de dados, o servidor lista sempre catorze ferramentas `ui_*` que atuam sobre o separador do Facet que tem aberto num navegador: mudam de página, alteram os filtros ou a seleção e voltam a ler o que vê. Nunca escrevem dados da biblioteca, por isso basta um token `readonly`.
+Ao lado das ferramentas de dados, o servidor lista sempre quinze ferramentas `ui_*` que atuam sobre o separador do Facet que tem aberto num navegador: mudam de página, alteram os filtros ou a seleção e voltam a ler o que vê. Nunca escrevem dados da biblioteca, por isso basta um token `readonly`.
 
 | Ferramenta | O que faz |
 |------------|-----------|
@@ -96,6 +96,7 @@ Ao lado das ferramentas de dados, o servidor lista sempre catorze ferramentas `u
 | `ui_get_gallery_view` | Rota, filtros ativos, total de resultados, os primeiros caminhos de fotos visíveis e o número de fotos selecionadas; devolve também `album_filter_json` (os filtros como um álbum inteligente os guardaria) e `filters_scopable` (se descrevem toda a vista) |
 | `ui_get_context` | A página aberta (rota), o estado da galeria (total, quantidade carregada, se uma lista fixada é mostrada), o número de fotos selecionadas e as `actions` que aqui se aplicam ao seu token; também `focused` (a foto em que o utilizador está), `culling` (o plano do assistente em `/culling`: grupos confirmados, pendentes e alterados, e o `scope` para o qual foi calculado), `culling_defaults` (`{profile, strictness}`: o perfil guardado e o rigor vivo e guardado do controlo deslizante, por navegador; `auto_cull` usa ambos quando não lhe é dado nenhum) e `user_activity` (o que o utilizador fez), e aceita `activity_since` (ver abaixo) |
 | `ui_open_photo` | Abrir uma foto |
+| `ui_open_album` | Abrir um álbum (fixo ou inteligente) por `album_id`; um id desconhecido ou inacessível responde `not_found` |
 | `ui_show_photos` | Mostra exatamente estes `paths` (até 200) por esta ordem como lista da galeria; os inalcançáveis voltam em `missing`. Qualquer alteração de filtros substitui a lista |
 | `ui_select_photos` | Selecionar `paths` explícitos, ou toda a vista filtrada com `select_view: true`, em modo `replace`, `add` ou `remove` |
 | `ui_clear_selection` | Limpar a seleção |
@@ -129,7 +130,7 @@ Em complemento:
 - Um separador deixa de se religar quando a sua sessão é recusada (inicie sessão de novo) e espera que volte a ele se outro dos seus separadores tomou o seu lugar.
 - A ponte do separador só se liga se o servidor a declarar disponível (o endpoint está ativo e `viewer.mcp.bridge` é true); com a ponte desativada, os separadores não se ligam de todo.
 - `ui_set_gallery_filters` recusa um nome de filtro desconhecido com `invalid_input`, e também um patch que indique em simultâneo `category` e `type`, ou `person` e `person_id`. Só oferece os filtros que a galeria sabe mostrar; para os outros use `search_photos`.
-- `ui_navigate` abre apenas as páginas estáticas da aplicação: a página de início de sessão, as páginas partilhadas, os URL externos e os caminhos desconhecidos são recusados (`invalid_input`), e as páginas só de edição são recusadas a uma sessão sem edição.
+- `ui_navigate` abre apenas as páginas estáticas da aplicação: a página de início de sessão, as páginas partilhadas, os URL externos e os caminhos desconhecidos são recusados (`invalid_input`), e as páginas só de edição são recusadas a uma sessão sem edição. `/timeline` aceita também `year` e `month` (1-12) para abrir esse ano ou esse mês; `ui_get_context` devolve aí `timeline`.
 - `ui_select_photos` em modo `remove` com uma seleção de toda a vista ignora os caminhos fora da vista carregada e lista-os como `not_in_view` no resultado.
 
 ## Atualizações em direto

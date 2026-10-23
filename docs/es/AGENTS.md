@@ -2,7 +2,7 @@
 
 > 🌐 [English](../AGENTS.md) · [Français](../fr/AGENTS.md) · [Deutsch](../de/AGENTS.md) · [Italiano](../it/AGENTS.md) · **Español** · [Português](../pt/AGENTS.md) · [简体中文](../zh/AGENTS.md)
 
-Facet puede actuar como servidor [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), de modo que un asistente de IA compatible con MCP pueda buscar e inspeccionar tu biblioteca con los mismos filtros que la galería. Expone trece herramientas de lectura que no cambian nada en tu biblioteca y catorce herramientas `ui_*` que mueven la pestaña del navegador que ya tienes abierta (página, filtros, selección) y nunca escriben datos de la biblioteca. Los tokens autorizados también pueden [modificar la biblioteca](#modificar-la-biblioteca) (valoraciones, indicadores, etiquetas, álbumes, descarte y borrado) y manejar el [cuarto oscuro](#cuarto-oscuro-grupos-de-descarte).
+Facet puede actuar como servidor [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), de modo que un asistente de IA compatible con MCP pueda buscar e inspeccionar tu biblioteca con los mismos filtros que la galería. Expone trece herramientas de lectura que no cambian nada en tu biblioteca y quince herramientas `ui_*` que mueven la pestaña del navegador que ya tienes abierta (página, filtros, selección) y nunca escriben datos de la biblioteca. Los tokens autorizados también pueden [modificar la biblioteca](#modificar-la-biblioteca) (valoraciones, indicadores, etiquetas, álbumes, descarte y borrado) y manejar el [cuarto oscuro](#cuarto-oscuro-grupos-de-descarte).
 
 ## Activarlo
 
@@ -87,7 +87,7 @@ En cada objeto de filtros, `show_rejected` es un booleano: `true` lista solo las
 
 ## Controlar tu pestaña abierta
 
-Junto a las herramientas de datos, el servidor siempre lista catorce herramientas `ui_*` que actúan sobre la pestaña de Facet que tienes abierta en un navegador: cambian de página, modifican los filtros o la selección y releen lo que ves. Nunca escriben datos de la biblioteca, así que basta un token `readonly`.
+Junto a las herramientas de datos, el servidor siempre lista quince herramientas `ui_*` que actúan sobre la pestaña de Facet que tienes abierta en un navegador: cambian de página, modifican los filtros o la selección y releen lo que ves. Nunca escriben datos de la biblioteca, así que basta un token `readonly`.
 
 | Herramienta | Qué hace |
 |-------------|----------|
@@ -96,6 +96,7 @@ Junto a las herramientas de datos, el servidor siempre lista catorce herramienta
 | `ui_get_gallery_view` | Ruta, filtros activos, total de resultados, las primeras rutas de fotos visibles y el número de fotos seleccionadas; devuelve también `album_filter_json` (los filtros tal como los guardaría un álbum inteligente) y `filters_scopable` (si describen toda la vista) |
 | `ui_get_context` | La página abierta (ruta), el estado de la galería (total, cantidad cargada, si se muestra una lista fijada), el número de fotos seleccionadas y las `actions` que aquí se aplican a tu token; además `focused` (la foto en la que está el usuario), `culling` (el plan del asistente en `/culling`: grupos confirmados, pendientes y modificados, y el `scope` para el que se calculó), `culling_defaults` (`{profile, strictness}`: el perfil guardado y el rigor vivo y guardado del control deslizante, por navegador; `auto_cull` usa ambos cuando no se le da ninguno) y `user_activity` (lo que ha hecho el usuario), y acepta `activity_since` (véase abajo) |
 | `ui_open_photo` | Abrir una foto |
+| `ui_open_album` | Abrir un álbum (fijo o inteligente) por `album_id`; un id desconocido o inaccesible responde `not_found` |
 | `ui_show_photos` | Muestra exactamente estos `paths` (hasta 200) en este orden como lista de la galería; los inalcanzables vuelven en `missing`. Cualquier cambio de filtros reemplaza la lista |
 | `ui_select_photos` | Seleccionar `paths` explícitos, o toda la vista filtrada con `select_view: true`, en modo `replace`, `add` o `remove` |
 | `ui_clear_selection` | Vaciar la selección |
@@ -129,7 +130,7 @@ Además:
 - Una pestaña deja de reconectarse cuando se rechaza su sesión (inicia sesión de nuevo) y espera a que vuelvas a ella si otra de tus pestañas tomó el relevo.
 - El puente de la pestaña solo se conecta si el servidor lo declara disponible (el endpoint está activo y `viewer.mcp.bridge` es true); con el puente desactivado, las pestañas no se conectan en absoluto.
 - `ui_set_gallery_filters` rechaza un nombre de filtro desconocido con `invalid_input`, y también un parche que dé a la vez `category` y `type`, o a la vez `person` y `person_id`. Solo ofrece los filtros que la galería puede mostrar; para los demás usa `search_photos`.
-- `ui_navigate` abre solo las páginas estáticas de la aplicación: la página de inicio de sesión, las páginas compartidas, las URL externas y las rutas desconocidas se rechazan (`invalid_input`), y las páginas exclusivas de edición se rechazan a una sesión sin edición.
+- `ui_navigate` abre solo las páginas estáticas de la aplicación: la página de inicio de sesión, las páginas compartidas, las URL externas y las rutas desconocidas se rechazan (`invalid_input`), y las páginas exclusivas de edición se rechazan a una sesión sin edición. `/timeline` también acepta `year` y `month` (1-12) para abrir ese año o ese mes; `ui_get_context` devuelve ahí `timeline`.
 - `ui_select_photos` en modo `remove` con una selección de toda la vista ignora las rutas fuera de la vista cargada y las lista como `not_in_view` en el resultado.
 
 ## Actualizaciones en vivo

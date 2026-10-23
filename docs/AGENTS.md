@@ -2,7 +2,7 @@
 
 > 🌐 **English** · [Français](fr/AGENTS.md) · [Deutsch](de/AGENTS.md) · [Italiano](it/AGENTS.md) · [Español](es/AGENTS.md) · [Português](pt/AGENTS.md) · [简体中文](zh/AGENTS.md)
 
-Facet can act as a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server, so an MCP-capable AI assistant can search and inspect your library with the same filters the gallery uses. It exposes thirteen read tools that change nothing in your library and fourteen `ui_*` tools that move the browser tab you already have open (page, filters, selection) and never write library data. Tokens that are allowed to can also [change things](#changing-things) (ratings, flags, tags, albums, culling and deletion) and work the [darkroom](#darkroom-culling-groups).
+Facet can act as a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server, so an MCP-capable AI assistant can search and inspect your library with the same filters the gallery uses. It exposes thirteen read tools that change nothing in your library and fifteen `ui_*` tools that move the browser tab you already have open (page, filters, selection) and never write library data. Tokens that are allowed to can also [change things](#changing-things) (ratings, flags, tags, albums, culling and deletion) and work the [darkroom](#darkroom-culling-groups).
 
 ## Enable it
 
@@ -87,7 +87,7 @@ In every filter object, `show_rejected` is a boolean: `true` lists only the reje
 
 ## Control your open tab
 
-Next to the data tools, the server always lists fourteen `ui_*` tools that act on the Facet tab you have open in a browser: they move the page, change the filters or the selection, and read back what you see. They never write library data, so a `readonly` token is enough.
+Next to the data tools, the server always lists fifteen `ui_*` tools that act on the Facet tab you have open in a browser: they move the page, change the filters or the selection, and read back what you see. They never write library data, so a `readonly` token is enough.
 
 | Tool | What it does |
 |------|--------------|
@@ -96,6 +96,7 @@ Next to the data tools, the server always lists fourteen `ui_*` tools that act o
 | `ui_get_gallery_view` | Route, active filters, total matches, the first visible photo paths and the selection count; also `album_filter_json` (the filters as a smart album would store them) and `filters_scopable` (whether they describe the whole view) |
 | `ui_get_context` | The open page (route), the gallery state (total, loaded count, whether a pinned list is shown), the selection count and the `actions` that apply to your token here; also `focused` (the photo the user is on), `culling` (the assistant's plan on `/culling`: confirmed, pending and changed groups, and the `scope` it was computed for), `culling_defaults` (`{profile, strictness}`: the stored profile and the slider's live, stored strictness, per browser; `auto_cull` uses both when given neither) and `user_activity` (what the user did), and accepts `activity_since` (see below) |
 | `ui_open_photo` | Open one photo |
+| `ui_open_album` | Open one album (fixed or smart) by `album_id`; an unknown or inaccessible id answers `not_found` |
 | `ui_show_photos` | Show exactly these `paths` (up to 200) in this order as the gallery's list; unreachable ones come back as `missing`. Any filter change replaces the list |
 | `ui_select_photos` | Select explicit `paths`, or the whole filtered view with `select_view: true`, with mode `replace`, `add` or `remove` |
 | `ui_clear_selection` | Clear the selection |
@@ -129,7 +130,7 @@ Beyond the basics above:
 - A tab stops reconnecting once its session is rejected (sign in again), and waits until you return to it after another tab of yours took over.
 - The tab bridge connects only when the server reports the bridge as available (the endpoint is on and `viewer.mcp.bridge` is true); with the bridge off, tabs do not connect at all.
 - `ui_set_gallery_filters` refuses an unknown filter name with `invalid_input`, and also a patch giving both `category` and `type`, or both `person` and `person_id`. It offers only the filters the gallery can show; use `search_photos` for the others.
-- `ui_navigate` opens only the app's own static pages: the login page, shared pages, external URLs and unknown paths are refused (`invalid_input`), and edition-only pages are refused for a non-edition session.
+- `ui_navigate` opens only the app's own static pages: the login page, shared pages, external URLs and unknown paths are refused (`invalid_input`), and edition-only pages are refused for a non-edition session. `/timeline` also takes `year` and `month` (1-12) to open that year or month; `ui_get_context` reports `timeline` there.
 - `ui_select_photos` with mode `remove` under a whole-view selection ignores paths outside the loaded view and lists them as `not_in_view` in the result.
 
 ## Live updates

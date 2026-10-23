@@ -3,7 +3,8 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, provideRouter } from '@angular/router';
 import { Component } from '@angular/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { Subject, of } from 'rxjs';
+import { HttpBackend, HttpErrorResponse, HttpRequest, HttpResponse } from '@angular/common/http';
+import { Subject, of, throwError } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { AuthService } from '../services/auth.service';
 import { AlbumService } from '../services/album.service';
@@ -55,6 +56,7 @@ describe('UI tool registry and handlers', () => {
   let viewActions: ViewActionRegistry;
   let routerEvents: Subject<unknown>;
   let assistantBatches: Subject<AssistantChangeBatch>;
+  let fetchAlbum: Mock;
 
   const run = (name: string, args: unknown = {}): Promise<UiToolEnvelope> => registry.execute(name, args);
   /** The handlers without the registry's schema gate, to prove each one defends itself. */
@@ -64,6 +66,7 @@ describe('UI tool registry and handlers', () => {
     compareFilters: TestBed.inject(CompareFiltersService),
     journal: TestBed.inject(UserActivityJournal),
     plan: TestBed.inject(AssistantCullPlanService),
+    fetchAlbum,
   });
 
   afterEach(() => localStorage.clear());
@@ -71,6 +74,7 @@ describe('UI tool registry and handlers', () => {
   beforeEach(async () => {
     edition = false;
     multiUser = false;
+    fetchAlbum = vi.fn((id: number) => Promise.resolve({ id, name: 'Iceland', is_smart: false } as Album));
     apiGet = vi.fn(() => of(photosResponse(['/a.jpg', '/b.jpg', '/c.jpg'])));
     navigate = vi.fn(() => Promise.resolve(true));
     routerEvents = new Subject<unknown>();
@@ -104,6 +108,7 @@ describe('UI tool registry and handlers', () => {
         compareFilters: TestBed.inject(CompareFiltersService),
         journal: TestBed.inject(UserActivityJournal),
         plan: TestBed.inject(AssistantCullPlanService),
+        fetchAlbum,
       });
       const mismatch = contractHandlerMismatch((contractFile as unknown as UiToolContractFile).tools, handlers);
       expect(mismatch).toEqual({ missingHandlers: [], missingContract: [] });
@@ -222,8 +227,190 @@ describe('UI tool registry and handlers', () => {
         compareFilters: TestBed.inject(CompareFiltersService),
         journal: TestBed.inject(UserActivityJournal),
         plan: TestBed.inject(AssistantCullPlanService),
+        fetchAlbum,
       });
       await expect(handlers['ui_navigate']({ route: '/stats' })).resolves.toEqual({ route: '/stats' });
+    });
+  });
+
+  /** A navigation that mounts a fresh gallery which finishes loading `album` after a short delay, as the real page does. */
+  const mountsAlbum = (target: GalleryStore, album: { id: number; name: string; is_smart: boolean }): void => {
+    navigate.mockImplementation(() => {
+      target.galleryMounts.update(n => n + 1);
+      target.currentAlbum.set(null);
+      target.initializing.set(true);
+      setTimeout(() => {
+        target.currentAlbum.set(album as Album);
+        target.initializing.set(false);
+      }, 40);
+      return Promise.resolve(true);
+    });
+  };
+
+  describe('ui_open_album', () => {
+    beforeEach(() => mountsAlbum(store, { id: 5, name: 'Iceland', is_smart: false }));
+
+    it('resolves only once the gallery shows the requested album', async () => {
+      router.url = '/album/2';
+      store.currentAlbum.set({ id: 2, name: 'Old', is_smart: true } as Album);
+      await direct()['ui_open_album']({ album_id: 5 });
+      expect(store.initializing()).toBe(false);
+      expect(store.currentAlbum()?.id).toBe(5);
+    });
+
+    it('refuses with unsaved_decisions when decisions appear while the album is being read', async () => {
+      router.url = '/culling';
+      const plan = TestBed.inject(AssistantCullPlanService);
+      let unsaved = false;
+      plan.hasUnsavedDecisions = () => unsaved;
+      let release: (album: Album) => void = () => undefined;
+      fetchAlbum.mockReturnValueOnce(new Promise<Album>(resolve => { release = resolve; }));
+      const pending = direct()['ui_open_album']({ album_id: 5 });
+      unsaved = true;
+      release({ id: 5, name: 'Iceland', is_smart: false } as Album);
+      await expect(pending).rejects.toMatchObject({ code: 'unsaved_decisions' });
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('treats a status 0 failure as a network error', async () => {
+      fetchAlbum.mockRejectedValueOnce({ status: 0 });
+      await expect(direct()['ui_open_album']({ album_id: 5 })).rejects.toMatchObject({ code: 'upstream_error', message: expect.stringContaining('network error') });
+    });
+
+    it('opens a fixed album and a smart album, reporting name and kind', async () => {
+      expect(await direct()['ui_open_album']({ album_id: 5 })).toEqual({ route: '/album/5', album_id: 5, name: 'Iceland', is_smart: false });
+      expect(navigate).toHaveBeenCalledWith(['/album', 5], { onSameUrlNavigation: 'reload' });
+      mountsAlbum(store, { id: 6, name: 'Best of', is_smart: true });
+      fetchAlbum.mockResolvedValueOnce({ id: 6, name: 'Best of', is_smart: true });
+      expect(await direct()['ui_open_album']({ album_id: 6 })).toEqual({ route: '/album/6', album_id: 6, name: 'Best of', is_smart: true });
+    });
+
+    it('answers not_found for an unknown (404) or another user\'s (403) album and does not navigate', async () => {
+      for (const status of [404, 403]) {
+        fetchAlbum.mockRejectedValueOnce({ status });
+        await expect(direct()['ui_open_album']({ album_id: 99 })).rejects.toMatchObject({ code: 'not_found' });
+      }
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('answers upstream_error for a server failure and does not navigate', async () => {
+      fetchAlbum.mockRejectedValueOnce({ status: 500 });
+      await expect(direct()['ui_open_album']({ album_id: 5 })).rejects.toMatchObject({ code: 'upstream_error' });
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('reports a declined navigation as navigation_refused', async () => {
+      navigate.mockResolvedValueOnce(false);
+      await expect(direct()['ui_open_album']({ album_id: 5 })).rejects.toMatchObject({ code: 'navigation_refused' });
+    });
+
+    it('refuses a bad id as invalid_input before any request', async () => {
+      for (const album_id of [0, -1, 1.5, '5', 2 ** 31, null]) {
+        await expect(direct()['ui_open_album']({ album_id })).rejects.toMatchObject({ code: 'invalid_input' });
+      }
+      expect(fetchAlbum).not.toHaveBeenCalled();
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('is refused with unsaved_decisions on /culling before the album is fetched', async () => {
+      router.url = '/culling';
+      TestBed.inject(AssistantCullPlanService).hasUnsavedDecisions = () => true;
+      await expect(direct()['ui_open_album']({ album_id: 5 })).rejects.toMatchObject({ code: 'unsaved_decisions' });
+      expect(fetchAlbum).not.toHaveBeenCalled();
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('answers already_open without fetching or navigating when the album is on screen', async () => {
+      router.url = '/album/5?sort=date';
+      expect(await direct()['ui_open_album']({ album_id: 5 })).toEqual({ route: '/album/5', album_id: 5, already_open: true });
+      expect(fetchAlbum).not.toHaveBeenCalled();
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('keeps parameterised and shared paths unreachable as a bare route', async () => {
+      for (const route of ['/album/5', '/timeline/2024/3', '/shared/album/5']) {
+        await expect(direct()['ui_navigate']({ route })).rejects.toMatchObject({ code: 'invalid_input' });
+      }
+    });
+  });
+
+  describe('ui_navigate timeline year and month', () => {
+    it('lands on the unpadded month, the year alone, or the plain timeline', async () => {
+      await direct()['ui_navigate']({ route: '/timeline', year: 2024, month: 3 });
+      expect(navigate).toHaveBeenLastCalledWith(['/timeline', '2024', '3'], { queryParams: {}, onSameUrlNavigation: 'reload' });
+      await direct()['ui_navigate']({ route: '/timeline', year: 2024 });
+      expect(navigate).toHaveBeenLastCalledWith(['/timeline', '2024'], { queryParams: {}, onSameUrlNavigation: 'reload' });
+      await direct()['ui_navigate']({ route: '/timeline' });
+      expect(navigate).toHaveBeenLastCalledWith(['/timeline'], { queryParams: {}, onSameUrlNavigation: 'reload' });
+    });
+
+    it('refuses month without year, out-of-range values, another route and a query, without navigating', async () => {
+      const bad = [
+        { route: '/timeline', month: 3 },
+        { route: '/timeline', year: 2024, month: 13 },
+        { route: '/timeline', year: 2024, month: 0 },
+        { route: '/timeline', year: 1800 },
+        { route: '/timeline', year: 2024.5 },
+        { route: '/stats', year: 2024 },
+        { route: '/stats', year: 2024, month: 3 },
+        { route: '/timeline', year: 2024, query: { a: 1 } },
+      ];
+      for (const args of bad) await expect(direct()['ui_navigate'](args)).rejects.toMatchObject({ code: 'invalid_input' });
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('is refused with unsaved_decisions when it would leave /culling', async () => {
+      router.url = '/culling';
+      TestBed.inject(AssistantCullPlanService).hasUnsavedDecisions = () => true;
+      await expect(direct()['ui_navigate']({ route: '/timeline', year: 2024, month: 3 })).rejects.toMatchObject({ code: 'unsaved_decisions' });
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('ui_get_context reports the timeline year and month, and null elsewhere', async () => {
+      router.url = '/timeline/2024/3';
+      expect(((await run('ui_get_context')) as { data: unknown }).data).toMatchObject({ timeline: { year: 2024, month: 3 } });
+      router.url = '/timeline/2024';
+      expect(((await run('ui_get_context')) as { data: unknown }).data).toMatchObject({ timeline: { year: 2024, month: null } });
+      router.url = '/timeline';
+      expect(((await run('ui_get_context')) as { data: unknown }).data).toMatchObject({ timeline: null });
+      router.url = '/stats';
+      expect(((await run('ui_get_context')) as { data: unknown }).data).toMatchObject({ timeline: null });
+    });
+  });
+
+  describe('ui_open_album probe through the registry', () => {
+    it('reads the album without an interceptor toast, revalidation or crash report', async () => {
+      const handle = vi.fn(() => of(new HttpResponse({ status: 200, body: { id: 5, name: 'Iceland', is_smart: false } })));
+      TestBed.resetTestingModule();
+      const open = vi.fn();
+      const revalidate = vi.fn();
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: HttpBackend, useValue: { handle } },
+          { provide: Router, useValue: router },
+          { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
+          { provide: AuthService, useValue: { token: 'tok', identity: () => '0|', isEdition: () => false, isMultiUser: () => false, isAuthenticated: () => true, revalidate } },
+          { provide: AssistantChangesService, useValue: { batch$: assistantBatches } },
+          { provide: AlbumService, useValue: { list: vi.fn(() => of({ albums: [] })) } },
+          { provide: ApiService, useValue: { get: apiGet, post: vi.fn(() => of({})) } },
+          { provide: MatSnackBar, useValue: { open } },
+          { provide: I18nService, useValue: { t: (k: string) => k } },
+        ],
+      });
+      mountsAlbum(TestBed.inject(GalleryStore), { id: 5, name: 'Iceland', is_smart: false });
+      const fresh = TestBed.inject(WebMcpToolRegistry);
+      await fresh.load();
+      expect(await fresh.execute('ui_open_album', { album_id: 5 })).toMatchObject({ ok: true, data: { name: 'Iceland' } });
+      const sent = (handle.mock.calls[0] as unknown as [HttpRequest<unknown>])[0];
+      expect(sent.url).toBe('/api/albums/5');
+      expect(sent.headers.get('Authorization')).toBe('Bearer tok');
+      handle.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 500, url: '/api/albums/5' })));
+      expect(await fresh.execute('ui_open_album', { album_id: 6 })).toMatchObject({ ok: false, error: 'upstream_error' });
+      handle.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 403, url: '/api/albums/7' })));
+      expect(await fresh.execute('ui_open_album', { album_id: 7 })).toMatchObject({ ok: false, error: 'not_found' });
+      expect(open).not.toHaveBeenCalled();
+      expect(revalidate).not.toHaveBeenCalled();
+      expect(handle).toHaveBeenCalledTimes(3);
     });
   });
 
@@ -734,6 +921,7 @@ describe('UI tool registry and handlers', () => {
           compareFilters: TestBed.inject(CompareFiltersService),
           journal: TestBed.inject(UserActivityJournal),
           plan: TestBed.inject(AssistantCullPlanService),
+          fetchAlbum,
         })['ui_get_context'](since === undefined ? {} : { activity_since: since }) as
           { user_activity: { items: { kind: string; seq: number }[]; until: number; truncated: boolean } }).user_activity;
 

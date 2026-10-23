@@ -1,6 +1,9 @@
 import { Injectable, inject, signal, untracked } from '@angular/core';
 import { Router } from '@angular/router';
+import { HttpBackend, HttpClient, HttpHeaders } from '@angular/common/http';
+import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../services/auth.service';
+import type { Album } from '../services/album.service';
 import { GalleryStore } from '../../features/gallery/gallery.store';
 import { CompareFiltersService } from '../../features/comparison/compare-filters.service';
 import { validateAgainstSchema, withDefaults } from './schema-validate';
@@ -58,15 +61,21 @@ export class WebMcpToolRegistry {
   /** The generated jobs table; `ui_get_context` reports the ones that apply. */
   actions: readonly UiActionRow[] = [];
   private readonly byName = new Map<string, UiToolDefinition>();
+  // Interceptor-free: a refused probe is the tool's answer, not a toast, a logout check or a crash report.
+  private readonly rawHttp = new HttpClient(inject(HttpBackend));
+  private readonly auth = inject(AuthService);
   private readonly handlers = createUiToolHandlers({
     gallery: inject(GalleryStore),
     router: inject(Router),
-    auth: inject(AuthService),
+    auth: this.auth,
     viewActions: inject(ViewActionRegistry),
     actions: () => this.actions,
     compareFilters: inject(CompareFiltersService),
     journal: inject(UserActivityJournal),
     plan: inject(AssistantCullPlanService),
+    fetchAlbum: id => firstValueFrom(this.rawHttp.get<Album>(`/api/albums/${id}`, {
+      headers: new HttpHeaders(this.auth.token ? { Authorization: `Bearer ${this.auth.token}` } : {}),
+    })),
   });
   private readonly journal = inject(UserActivityJournal);
   private loading: Promise<void> | null = null;

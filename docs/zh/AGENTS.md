@@ -2,7 +2,7 @@
 
 > 🌐 [English](../AGENTS.md) · [Français](../fr/AGENTS.md) · [Deutsch](../de/AGENTS.md) · [Italiano](../it/AGENTS.md) · [Español](../es/AGENTS.md) · [Português](../pt/AGENTS.md) · **简体中文**
 
-Facet 可以充当 [Model Context Protocol](https://modelcontextprotocol.io/)（MCP）服务器，让支持 MCP 的 AI 助手使用与图库相同的筛选条件搜索和查看你的照片库。它提供十三个不会改动照片库的只读工具，以及十四个 `ui_*` 工具：它们操作你已经打开的浏览器标签页（页面、筛选条件、选择），从不写入照片库数据。获得授权的令牌还可以[修改内容](#修改内容)（评分、标记、标签、相册、选片和删除）并操作[暗房](#暗房选片分组)。
+Facet 可以充当 [Model Context Protocol](https://modelcontextprotocol.io/)（MCP）服务器，让支持 MCP 的 AI 助手使用与图库相同的筛选条件搜索和查看你的照片库。它提供十三个不会改动照片库的只读工具，以及十五个 `ui_*` 工具：它们操作你已经打开的浏览器标签页（页面、筛选条件、选择），从不写入照片库数据。获得授权的令牌还可以[修改内容](#修改内容)（评分、标记、标签、相册、选片和删除）并操作[暗房](#暗房选片分组)。
 
 ## 启用
 
@@ -87,7 +87,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 
 ## 控制已打开的标签页
 
-除数据工具外，服务器始终列出十四个 `ui_*` 工具，它们作用于你在浏览器中打开的 Facet 标签页：切换页面、修改筛选或选择，并读回你看到的内容。它们从不写入照片库数据，因此 `readonly` 令牌就够了。
+除数据工具外，服务器始终列出十五个 `ui_*` 工具，它们作用于你在浏览器中打开的 Facet 标签页：切换页面、修改筛选或选择，并读回你看到的内容。它们从不写入照片库数据，因此 `readonly` 令牌就够了。
 
 | 工具 | 作用 |
 |------|------|
@@ -96,6 +96,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 | `ui_get_gallery_view` | 路由、当前筛选、匹配总数、前若干个可见照片路径以及已选数量；还返回 `album_filter_json`（智能相册会保存的筛选）和 `filters_scopable`（这些筛选是否描述整个视图） |
 | `ui_get_context` | 已打开的页面(路由)、图库状态(总数、已加载数量、是否显示固定列表)、已选照片数量,以及此处适用于你的令牌的 `actions`;还有 `focused`(用户所在的照片)、`culling`(助手在 `/culling` 上的方案:已确认、待确认和已更改的分组,以及它所对应的 `scope`)、`culling_defaults`(`{profile, strictness}`:已保存的配置和滑块当前保存的实时严格程度,按浏览器;两者都未给出时 `auto_cull` 同时使用二者)和 `user_activity`(用户做过的操作),并接受 `activity_since`(见下文) |
 | `ui_open_photo` | 打开一张照片 |
+| `ui_open_album` | 按 `album_id` 打开一个相册（固定或智能）；未知或无权访问的 id 返回 `not_found` |
 | `ui_show_photos` | 按此顺序精确显示这些 `paths`(最多 200 个)作为图库列表;无法访问的会在 `missing` 中返回。任何筛选条件的更改都会替换该列表 |
 | `ui_select_photos` | 选择明确的 `paths`，或用 `select_view: true` 选择整个筛选视图，模式为 `replace`、`add` 或 `remove` |
 | `ui_clear_selection` | 清空选择 |
@@ -129,7 +130,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 - 标签页的会话被拒绝后会停止重连（请重新登录）；如果您的另一个标签页接管了连接，它会等到您回到该标签页再重连。
 - 仅当服务器声明桥接可用（端点已启用且 `viewer.mcp.bridge` 为 true）时，标签页桥接才会连接；桥接关闭时，标签页完全不会连接。
 - `ui_set_gallery_filters` 会以 `invalid_input` 拒绝未知的筛选名称，也会拒绝同时给出 `category` 与 `type`、或同时给出 `person` 与 `person_id` 的补丁。它只提供图库能够显示的筛选条件；其他条件请使用 `search_photos`。
-- `ui_navigate` 只打开应用自身的静态页面：登录页、共享页、外部 URL 和未知路径会被拒绝（`invalid_input`），仅限编辑的页面会对非编辑会话拒绝。
+- `ui_navigate` 只打开应用自身的静态页面：登录页、共享页、外部 URL 和未知路径会被拒绝（`invalid_input`），仅限编辑的页面会对非编辑会话拒绝。`/timeline` 还接受 `year` 和 `month`（1-12），用于打开该年或该月；`ui_get_context` 在该页返回 `timeline`。
 - 在整个视图被选中的状态下，`ui_select_photos` 的 `remove` 模式会忽略已加载视图之外的路径，并在结果中以 `not_in_view` 列出。
 
 ## 实时更新

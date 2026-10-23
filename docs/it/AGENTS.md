@@ -2,7 +2,7 @@
 
 > 🌐 [English](../AGENTS.md) · [Français](../fr/AGENTS.md) · [Deutsch](../de/AGENTS.md) · **Italiano** · [Español](../es/AGENTS.md) · [Português](../pt/AGENTS.md) · [简体中文](../zh/AGENTS.md)
 
-Facet può fungere da server [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), così un assistente IA compatibile con MCP può cercare e ispezionare la tua libreria con gli stessi filtri della galleria. Espone tredici strumenti di lettura che non modificano nulla nella libreria e quattordici strumenti `ui_*` che muovono la scheda del browser già aperta (pagina, filtri, selezione) e non scrivono mai dati della libreria. I token autorizzati possono anche [modificare la libreria](#modificare-la-libreria) (valutazioni, indicatori, tag, album, selezione ed eliminazione) e usare la [camera oscura](#camera-oscura-gruppi-di-selezione).
+Facet può fungere da server [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), così un assistente IA compatibile con MCP può cercare e ispezionare la tua libreria con gli stessi filtri della galleria. Espone tredici strumenti di lettura che non modificano nulla nella libreria e quindici strumenti `ui_*` che muovono la scheda del browser già aperta (pagina, filtri, selezione) e non scrivono mai dati della libreria. I token autorizzati possono anche [modificare la libreria](#modificare-la-libreria) (valutazioni, indicatori, tag, album, selezione ed eliminazione) e usare la [camera oscura](#camera-oscura-gruppi-di-selezione).
 
 ## Attivarlo
 
@@ -87,7 +87,7 @@ In ogni oggetto filtro, `show_rejected` è un booleano: `true` elenca solo le fo
 
 ## Controllare la scheda aperta
 
-Accanto agli strumenti dati, il server elenca sempre quattordici strumenti `ui_*` che agiscono sulla scheda Facet che hai aperto in un browser: cambiano pagina, modificano filtri o selezione e rileggono ciò che vedi. Non scrivono mai dati della libreria, quindi basta un token `readonly`.
+Accanto agli strumenti dati, il server elenca sempre quindici strumenti `ui_*` che agiscono sulla scheda Facet che hai aperto in un browser: cambiano pagina, modificano filtri o selezione e rileggono ciò che vedi. Non scrivono mai dati della libreria, quindi basta un token `readonly`.
 
 | Strumento | Cosa fa |
 |-----------|---------|
@@ -96,6 +96,7 @@ Accanto agli strumenti dati, il server elenca sempre quattordici strumenti `ui_*
 | `ui_get_gallery_view` | Route, filtri attivi, totale dei risultati, primi percorsi di foto visibili e numero di foto selezionate; restituisce anche `album_filter_json` (i filtri come li memorizzerebbe un album intelligente) e `filters_scopable` (se descrivono l'intera vista) |
 | `ui_get_context` | La pagina aperta (route), lo stato della galleria (totale, numero caricato, se è mostrato un elenco fissato), il numero di foto selezionate e le `actions` che qui si applicano al tuo token; inoltre `focused` (la foto su cui si trova l'utente), `culling` (il piano dell'assistente su `/culling`: gruppi confermati, in sospeso e modificati, e lo `scope` per cui è stato calcolato), `culling_defaults` (`{profile, strictness}`: il profilo memorizzato e il rigore vivo e memorizzato del cursore, per browser; `auto_cull` usa entrambi quando non gliene viene dato nessuno) e `user_activity` (ciò che l'utente ha fatto), e accetta `activity_since` (vedi sotto) |
 | `ui_open_photo` | Aprire una foto |
+| `ui_open_album` | Aprire un album (fisso o smart) tramite `album_id`; un id sconosciuto o inaccessibile risponde `not_found` |
 | `ui_show_photos` | Mostra esattamente questi `paths` (fino a 200) in questo ordine come elenco della galleria; quelli irraggiungibili tornano in `missing`. Qualsiasi modifica dei filtri sostituisce l'elenco |
 | `ui_select_photos` | Selezionare `paths` espliciti, o l'intera vista filtrata con `select_view: true`, in modalità `replace`, `add` o `remove` |
 | `ui_clear_selection` | Svuotare la selezione |
@@ -129,7 +130,7 @@ In aggiunta:
 - Una scheda smette di riconnettersi quando la sua sessione viene rifiutata (accedi di nuovo), e aspetta il tuo ritorno se un'altra tua scheda ha preso il suo posto.
 - Il ponte della scheda si connette solo se il server lo dichiara disponibile (l'endpoint è attivo e `viewer.mcp.bridge` è true); con il ponte disattivato le schede non si connettono affatto.
 - `ui_set_gallery_filters` rifiuta un nome di filtro sconosciuto con `invalid_input`, e anche una patch che indica sia `category` sia `type`, oppure sia `person` sia `person_id`. Offre solo i filtri che la galleria sa mostrare; per gli altri usa `search_photos`.
-- `ui_navigate` apre solo le pagine statiche dell'app: pagina di accesso, pagine condivise, URL esterni e percorsi sconosciuti sono rifiutati (`invalid_input`), e le pagine riservate alla modifica sono rifiutate a una sessione senza modifica.
+- `ui_navigate` apre solo le pagine statiche dell'app: pagina di accesso, pagine condivise, URL esterni e percorsi sconosciuti sono rifiutati (`invalid_input`), e le pagine riservate alla modifica sono rifiutate a una sessione senza modifica. `/timeline` accetta anche `year` e `month` (1-12) per aprire quell'anno o quel mese; `ui_get_context` vi riporta `timeline`.
 - `ui_select_photos` in modalità `remove` con una selezione dell'intera vista ignora i percorsi fuori dalla vista caricata e li elenca come `not_in_view` nel risultato.
 
 ## Aggiornamenti in tempo reale

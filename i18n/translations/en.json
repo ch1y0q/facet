@@ -2708,6 +2708,7 @@
       "ui_navigate": "Opened a page",
       "ui_set_gallery_filters": "Set gallery filters",
       "ui_open_photo": "Opened a photo",
+      "ui_open_album": "Opened an album",
       "ui_show_photos": "Showed photos",
       "ui_select_photos": "Selected photos",
       "ui_clear_selection": "Cleared the selection",

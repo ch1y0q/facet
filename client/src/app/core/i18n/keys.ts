@@ -2722,6 +2722,7 @@ export const I18N = {
       ui_navigate: "assistant_activity.ui.ui_navigate",
       ui_set_gallery_filters: "assistant_activity.ui.ui_set_gallery_filters",
       ui_open_photo: "assistant_activity.ui.ui_open_photo",
+      ui_open_album: "assistant_activity.ui.ui_open_album",
       ui_show_photos: "assistant_activity.ui.ui_show_photos",
       ui_select_photos: "assistant_activity.ui.ui_select_photos",
       ui_clear_selection: "assistant_activity.ui.ui_clear_selection",

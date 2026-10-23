@@ -105,7 +105,7 @@ def test_the_tab_may_report_the_plan_refusals():
 def test_the_navigating_tools_describe_the_leave_culling_refusal():
     from api.agent.ui_tools import UI_TOOLS
     by_name = {tool.name: tool for tool in UI_TOOLS}
-    for name in ("ui_navigate", "ui_open_photo", "ui_show_photos", "ui_set_gallery_filters", "ui_show_comparison"):
+    for name in ("ui_navigate", "ui_open_photo", "ui_open_album", "ui_show_photos", "ui_set_gallery_filters", "ui_show_comparison"):
         assert "unsaved_decisions" in by_name[name].description, name
 
 
@@ -185,3 +185,46 @@ def test_json_carries_the_filter_key_tables_the_client_is_checked_against():
     data = json.loads(render_client_json())
     assert data["filter_key_map"] == CONTRACT_TO_CLIENT_KEY
     assert data["smart_album_exclude_keys"] == sorted(SMART_ALBUM_EXCLUDE_KEYS)
+
+
+def test_ui_open_album_takes_a_bounded_positive_id_and_forwards_only_it():
+    from api.agent.ui_tools import UiOpenAlbum
+    assert UiOpenAlbum(album_id=3).forward() == {"album_id": 3}
+    for bad in (0, -1, 2**31):
+        with pytest.raises(ValueError):
+            UiOpenAlbum(album_id=bad)
+
+
+def test_ui_open_album_names_where_the_id_comes_from():
+    tool = next(t for t in UI_TOOLS if t.name == "ui_open_album")
+    assert "list_albums" in tool.description and "create_album" in tool.description
+    assert "not_found" in tool.description
+
+
+def test_ui_navigate_timeline_year_and_month():
+    from api.agent.ui_tools import UiNavigate
+    assert UiNavigate(route="/timeline", year=2024, month=3).forward() == {
+        "route": "/timeline", "year": 2024, "month": 3}
+    assert UiNavigate(route="/timeline", year=2024).forward() == {"route": "/timeline", "year": 2024}
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"route": "/stats", "year": 2024},
+    {"route": "/stats", "month": 3, "year": 2024},
+    {"route": "/timeline", "month": 3},
+    {"route": "/timeline", "year": 1899},
+    {"route": "/timeline", "year": 2101},
+    {"route": "/timeline", "year": 2024, "month": 13},
+    {"route": "/timeline", "year": 2024, "month": 0},
+    {"route": "/timeline", "year": 2024, "query": {"a": 1}},
+])
+def test_ui_navigate_rejects_a_bad_timeline_combination(kwargs):
+    from api.agent.ui_tools import UiNavigate
+    with pytest.raises(ValueError):
+        UiNavigate(**kwargs)
+
+
+def test_drive_tab_includes_the_album_tool():
+    from api.agent.actions import ACTIONS
+    drive = next(a for a in ACTIONS if a.id == "drive_tab")
+    assert "ui_open_album" in drive.tools

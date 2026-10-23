@@ -2,7 +2,7 @@
 
 > 🌐 [English](../AGENTS.md) · **Français** · [Deutsch](../de/AGENTS.md) · [Italiano](../it/AGENTS.md) · [Español](../es/AGENTS.md) · [Português](../pt/AGENTS.md) · [简体中文](../zh/AGENTS.md)
 
-Facet peut jouer le rôle de serveur [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) : un assistant IA compatible MCP peut ainsi rechercher et inspecter votre bibliothèque avec les mêmes filtres que la galerie. Il expose treize outils de lecture qui ne modifient rien dans votre bibliothèque et quatorze outils `ui_*` qui pilotent l'onglet du navigateur que vous avez déjà ouvert (page, filtres, sélection) et n'écrivent jamais de données de la bibliothèque. Les jetons qui y sont autorisés peuvent aussi [modifier des éléments](#modifier-la-bibliothèque) (notes, indicateurs, étiquettes, albums, tri et suppression) et piloter la [chambre noire](#chambre-noire-groupes-de-tri).
+Facet peut jouer le rôle de serveur [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) : un assistant IA compatible MCP peut ainsi rechercher et inspecter votre bibliothèque avec les mêmes filtres que la galerie. Il expose treize outils de lecture qui ne modifient rien dans votre bibliothèque et quinze outils `ui_*` qui pilotent l'onglet du navigateur que vous avez déjà ouvert (page, filtres, sélection) et n'écrivent jamais de données de la bibliothèque. Les jetons qui y sont autorisés peuvent aussi [modifier des éléments](#modifier-la-bibliothèque) (notes, indicateurs, étiquettes, albums, tri et suppression) et piloter la [chambre noire](#chambre-noire-groupes-de-tri).
 
 ## L'activer
 
@@ -87,7 +87,7 @@ Dans tout objet de filtres, `show_rejected` est un booléen : `true` ne liste qu
 
 ## Piloter votre onglet ouvert
 
-En plus des outils de données, le serveur liste toujours quatorze outils `ui_*` qui agissent sur l'onglet Facet que vous avez ouvert dans un navigateur : ils changent de page, modifient les filtres ou la sélection et relisent ce que vous voyez. Ils n'écrivent jamais de données de la bibliothèque, un jeton `readonly` suffit donc.
+En plus des outils de données, le serveur liste toujours quinze outils `ui_*` qui agissent sur l'onglet Facet que vous avez ouvert dans un navigateur : ils changent de page, modifient les filtres ou la sélection et relisent ce que vous voyez. Ils n'écrivent jamais de données de la bibliothèque, un jeton `readonly` suffit donc.
 
 | Outil | Ce qu'il fait |
 |-------|---------------|
@@ -96,6 +96,7 @@ En plus des outils de données, le serveur liste toujours quatorze outils `ui_*`
 | `ui_get_gallery_view` | Route, filtres actifs, total des résultats, premiers chemins de photos visibles et nombre de photos sélectionnées ; renvoie aussi `album_filter_json` (les filtres tels qu'un album intelligent les stockerait) et `filters_scopable` (si ces filtres décrivent toute la vue) |
 | `ui_get_context` | La page ouverte (route), l'état de la galerie (total, nombre chargé, présence d'une liste épinglée), le nombre de photos sélectionnées et les `actions` qui s'appliquent à votre jeton ici ; aussi `focused` (la photo sur laquelle se trouve l'utilisateur), `culling` (le plan de l'assistant sur `/culling` : groupes confirmés, en attente et modifiés, et le `scope` pour lequel il a été calculé), `culling_defaults` (`{profile, strictness}` : le profil mémorisé et la rigueur vive et mémorisée du curseur, par navigateur ; `auto_cull` utilise les deux quand on ne lui en donne aucun) et `user_activity` (ce que l'utilisateur a fait), et accepte `activity_since` (voir plus bas) |
 | `ui_open_photo` | Ouvrir une photo |
+| `ui_open_album` | Ouvrir un album (fixe ou intelligent) par `album_id` ; un identifiant inconnu ou inaccessible répond `not_found` |
 | `ui_show_photos` | Affiche exactement ces `paths` (jusqu'à 200) dans cet ordre comme liste de la galerie ; les introuvables reviennent dans `missing`. Tout changement de filtre remplace la liste |
 | `ui_select_photos` | Sélectionner des `paths` explicites, ou toute la vue filtrée avec `select_view: true`, en mode `replace`, `add` ou `remove` |
 | `ui_clear_selection` | Vider la sélection |
@@ -129,7 +130,7 @@ En complément :
 - Un onglet cesse de se reconnecter dès que sa session est rejetée (reconnectez-vous), et attend votre retour sur lui lorsqu'un autre de vos onglets a pris la place.
 - Le pont d'onglet ne se connecte que si le serveur le déclare disponible (le point d'accès est activé et `viewer.mcp.bridge` vaut true) ; pont désactivé, les onglets ne se connectent pas du tout.
 - `ui_set_gallery_filters` refuse un nom de filtre inconnu avec `invalid_input`, ainsi qu'un patch donnant à la fois `category` et `type`, ou à la fois `person` et `person_id`. Il ne propose que les filtres que la galerie sait afficher ; utilisez `search_photos` pour les autres.
-- `ui_navigate` n'ouvre que les pages statiques de l'application : la page de connexion, les pages partagées, les URL externes et les chemins inconnus sont refusés (`invalid_input`), et les pages réservées à l'édition sont refusées à une session sans édition.
+- `ui_navigate` n'ouvre que les pages statiques de l'application : la page de connexion, les pages partagées, les URL externes et les chemins inconnus sont refusés (`invalid_input`), et les pages réservées à l'édition sont refusées à une session sans édition. `/timeline` accepte aussi `year` et `month` (1-12) pour ouvrir cette année ou ce mois ; `ui_get_context` y renvoie `timeline`.
 - `ui_select_photos` en mode `remove` sous une sélection de toute la vue ignore les chemins hors de la vue chargée et les liste dans `not_in_view` dans le résultat.
 
 ## Mises à jour en direct

@@ -133,6 +133,10 @@ class UiNavigate(UiArgs):
                                        "/merge-suggestions) are refused by the tab for other users.")
     query: Optional[dict[str, QueryValue]] = Field(
         default=None, description="Query-string parameters for the route.")
+    year: Optional[int] = Field(
+        default=None, ge=1900, le=2100, description="Only with route /timeline: open that year's months.")
+    month: Optional[int] = Field(
+        default=None, ge=1, le=12, description="Only with route /timeline and `year`: open that month (1-12).")
 
     @field_validator("query")
     @classmethod
@@ -140,6 +144,18 @@ class UiNavigate(UiArgs):
         if value is not None and len(value) > MAX_QUERY_ENTRIES:
             raise ValueError(f"at most {MAX_QUERY_ENTRIES} query parameters")
         return value
+
+    @model_validator(mode="after")
+    def _timeline_drill_down(self) -> "UiNavigate":
+        if self.year is None and self.month is None:
+            return self
+        if self.route != "/timeline":
+            raise ValueError("`year` and `month` are only valid with route /timeline")
+        if self.month is not None and self.year is None:
+            raise ValueError("`month` needs `year`")
+        if self.query:
+            raise ValueError("`query` cannot be combined with `year` or `month`")
+        return self
 
 
 class UiSetGalleryFilters(UiArgs):
@@ -165,6 +181,12 @@ class UiGetGalleryView(UiArgs):
 
 class UiOpenPhoto(UiArgs):
     path: str = Field(min_length=1, max_length=4096, description="Path of the photo to open.")
+
+
+class UiOpenAlbum(UiArgs):
+    album_id: int = Field(
+        ge=1, le=2**31 - 1,
+        description="Id of the album to open, fixed or smart: the `album_id` from `list_albums` or `create_album`.")
 
 
 MAX_SHOW_PATHS = 200
@@ -300,6 +322,7 @@ class UiTool:
 UI_TOOLS: tuple[UiTool, ...] = (
     UiTool("ui_navigate",
            "Move the user's open Facet tab to another page (gallery, persons, albums, stats, ...)."
+           " `/timeline` also takes `year` (and `month` 1-12 with it) to open that year or month."
            " Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
            UiNavigate, False),
     UiTool("ui_set_gallery_filters",
@@ -314,6 +337,11 @@ UI_TOOLS: tuple[UiTool, ...] = (
            UiGetGalleryView, True),
     UiTool("ui_open_photo", "Open one photo in the user's tab (the detail view)."
            " Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.", UiOpenPhoto, False),
+    UiTool("ui_open_album",
+           "Open one album (fixed or smart) in the user's tab, by `album_id` (from `list_albums` or `create_album`)."
+           " An unknown or inaccessible album answers `not_found` and nothing navigates."
+           " Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
+           UiOpenAlbum, False),
     UiTool("ui_show_photos",
            "Show exactly these photos, in this order, as the gallery's list (max 200). Photos the "
            "user cannot see are skipped and returned as `missing`. Any filter change by the user "
@@ -356,7 +384,8 @@ UI_TOOLS: tuple[UiTool, ...] = (
            "`plan_digest`), so read `ui_get_context` again and pass `culling.scope`'s dates and "
            "`culling.changed` on your next dry run. `culling` also carries `suggestions_open` ([{path, action}]), "
            "`suggestions_accepted` and `suggestions_total`: your `ui_suggest_culling` marks still waiting, "
-           "the ones the user took, and the number held (photo suggestions only, not group notes).",
+           "the ones the user took, and the number held (photo suggestions only, not group notes). "
+           "`timeline` ({year, month}; month null on a year page) is set on the /timeline pages, else null.",
            UiGetContext, True),
     UiTool("ui_next_page", "Load the next page of the gallery in the user's tab (infinite scroll).",
            UiNextPage, False),

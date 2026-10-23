@@ -1,6 +1,7 @@
 import { LEVEL_RANK, agentLevel } from './agent-level';
 import { Router } from '@angular/router';
 import { AuthService } from '../services/auth.service';
+import type { Album } from '../services/album.service';
 import { GalleryStore } from '../../features/gallery/gallery.store';
 import {
   DEFAULT_FILTERS,
@@ -33,10 +34,15 @@ export interface UiToolDeps {
   journal: UserActivityJournal;
   /** The assistant's culling plan: the pin `ui_show_culling_plan` sets and the read model `ui_get_context` reports. */
   plan: AssistantCullPlanService;
+  /** Reads one album as the album page would; rejects with the HTTP status. Bypasses the app's HTTP interceptors. */
+  fetchAlbum: (id: number) => Promise<Album>;
 }
 
 /** The contract's cap on `ui_show_photos` paths (api/agent/ui_tools.py MAX_SHOW_PATHS). */
 const MAX_SHOW_PATHS = 200;
+/** The contract's bounds on `ui_open_album.album_id` and the timeline `year` (api/agent/ui_tools.py). */
+const MAX_ALBUM_ID = 2 ** 31 - 1;
+const TIMELINE_YEARS = { min: 1900, max: 2100 };
 
 /**
  * The pages `ui_navigate` may open, read from the live router config so a new page
@@ -54,6 +60,25 @@ function appRoutes(router: Router): { allowed: Set<string>; editionOnly: Set<str
     if ((route.data as { edition?: boolean } | undefined)?.edition === true) editionOnly.add(`/${path}`);
   }
   return { allowed, editionOnly };
+}
+
+/**
+ * The path segments after `/timeline` for `ui_navigate`'s `year` / `month` (unpadded: the timeline page reads the
+ * number it finds in the URL). Anything the contract forbids is `invalid_input`, checked before any side effect.
+ */
+function timelineSegments(route: string, args: Record<string, unknown>, query: Record<string, unknown>): string[] {
+  const { year, month } = args;
+  if (year === undefined && month === undefined) return [];
+  if (route !== '/timeline') throw new UiToolError('invalid_input', 'year and month are only valid with the /timeline route.');
+  if (Object.keys(query).length > 0) throw new UiToolError('invalid_input', 'query cannot be combined with year or month.');
+  if (typeof year !== 'number' || !Number.isInteger(year) || year < TIMELINE_YEARS.min || year > TIMELINE_YEARS.max) {
+    throw new UiToolError('invalid_input', `year must be an integer from ${TIMELINE_YEARS.min} to ${TIMELINE_YEARS.max}, and month needs it.`);
+  }
+  if (month === undefined) return [String(year)];
+  if (typeof month !== 'number' || !Number.isInteger(month) || month < 1 || month > 12) {
+    throw new UiToolError('invalid_input', 'month must be an integer from 1 to 12.');
+  }
+  return [String(year), String(month)];
 }
 
 /** The contract names a filter the way the server's `GalleryParams` does; the tab stores a few under another name. */
@@ -179,7 +204,7 @@ function stringList(value: unknown): string[] {
 }
 
 export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHandler> {
-  const { gallery, router, auth, viewActions, actions, compareFilters, journal, plan } = deps;
+  const { gallery, router, auth, viewActions, actions, compareFilters, journal, plan, fetchAlbum } = deps;
 
   const requireGalleryView = (): void => {
     if (!isGalleryUrl(router.url)) {
@@ -341,8 +366,9 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       }
       const query = (args['query'] ?? {}) as Record<string, string | number | boolean>;
       const queryParams = Object.fromEntries(Object.entries(query).map(([k, v]) => [k, String(v)]));
+      const commands = [route, ...timelineSegments(route, args, query)];
       leaveCullingGuard(route);
-      const ok = await router.navigate([route], { queryParams, onSameUrlNavigation: 'reload' });
+      const ok = await router.navigate(commands, { queryParams, onSameUrlNavigation: 'reload' });
       if (!ok) throw new UiToolError('navigation_refused', `The tab refused to open ${route}.`);
       return { route: pathOf(router.url) || '/' };
     },
@@ -399,7 +425,8 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
         photos,
         selection_count: gallery.selectionCount(),
         hidden_summary: gallery.hiddenSummary(),
-        loading: gallery.loading(),
+        // The page's own init (filters reset, album applied, first page requested) is loading too, though the store's flag is still false.
+        loading: gallery.loading() || gallery.initializing(),
         // What the gallery itself would save for a smart album of this view, and whether the view is one a
         // stored album can express (not similar / semantic / an assistant-pinned list): `create_album` target "view".
         album_filter_json: smartAlbumFilterJson(gallery.filters()),
@@ -413,6 +440,31 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       const ok = await router.navigate(['/photo'], { queryParams: { path }, onSameUrlNavigation: 'reload' });
       if (!ok) throw new UiToolError('navigation_refused', 'The tab could not open that photo.');
       return { route: '/photo', path };
+    },
+
+    ui_open_album: async args => {
+      const id = args['album_id'];
+      if (typeof id !== 'number' || !Number.isInteger(id) || id < 1 || id > MAX_ALBUM_ID) {
+        throw new UiToolError('invalid_input', `album_id must be an integer from 1 to ${MAX_ALBUM_ID}.`);
+      }
+      leaveCullingGuard();
+      const route = `/album/${id}`;
+      if (pathOf(router.url) === route) return { route, album_id: id, already_open: true };
+      // The gallery page swallows a failed album read and would show a gallery scoped to nothing, so existence is checked here.
+      const album = await fetchAlbum(id).catch((err: unknown) => {
+        const status = (err as { status?: number } | null)?.status;
+        if (status === 404 || status === 403) throw new UiToolError('not_found', `There is no album ${id} for this account.`);
+        throw new UiToolError('upstream_error', `The album could not be read (${status ? status : 'network error'}).`);
+      });
+      // The user may have flipped a group while the album was being read; /culling has no deactivation guard of its own.
+      leaveCullingGuard();
+      const mounts = gallery.galleryMounts();
+      const ok = await router.navigate(['/album', id], { onSameUrlNavigation: 'reload' });
+      if (!ok) throw new UiToolError('navigation_refused', 'The tab could not open that album.');
+      // Resolve only once the page shows this album: its filters applied and its first page loaded.
+      const shown = await waitFor(() => gallery.galleryMounts() > mounts && !gallery.initializing() && gallery.currentAlbum()?.id === id);
+      if (!shown) throw new UiToolError('upstream_error', 'The album did not finish loading.');
+      return { route, album_id: id, name: album.name, is_smart: album.is_smart };
     },
 
     ui_select_photos: async args => {
@@ -468,6 +520,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       const route = pathOf(router.url) || '/';
       const inGallery = isGalleryUrl(router.url);
       const albumMatch = /^\/album\/(\d+)$/.exec(route);
+      const timelineMatch = /^\/timeline\/(\d+)(?:\/(\d+))?$/.exec(route);
       const params = new URLSearchParams(router.url.split('#')[0].split('?')[1] ?? '');
       const selection = selectionSnapshot();
       const pinned = gallery.pinnedPaths() !== null;
@@ -487,6 +540,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
         user_activity: journal.since(since),
         ...(route === '/photo' && params.get('path') ? { query_path: params.get('path') } : {}),
         ...(albumMatch ? { album_id: Number(albumMatch[1]) } : {}),
+        timeline: timelineMatch ? { year: Number(timelineMatch[1]), month: timelineMatch[2] ? Number(timelineMatch[2]) : null } : null,
         selection: { scope: selection['scope'], count: selection['count'] },
         gallery: inGallery
           ? { total: gallery.total(), loaded: gallery.photos().length, has_more: gallery.hasMore(), pinned }

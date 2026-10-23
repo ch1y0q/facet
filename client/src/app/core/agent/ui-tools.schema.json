@@ -108,7 +108,7 @@
     },
     {
       "id": "drive_tab",
-      "summary": "Move the user's tab to another page or open a photo",
+      "summary": "Move the user's tab to another page, an album or a timeline month, or open a photo",
       "tools": [
         {
           "name": "ui_navigate",
@@ -116,6 +116,10 @@
         },
         {
           "name": "ui_open_photo",
+          "required_level": "readonly"
+        },
+        {
+          "name": "ui_open_album",
           "required_level": "readonly"
         }
       ],
@@ -580,10 +584,16 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Move the user's open Facet tab to another page (gallery, persons, albums, stats, ...). Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
+      "description": "Move the user's open Facet tab to another page (gallery, persons, albums, stats, ...). `/timeline` also takes `year` (and `month` 1-12 with it) to open that year or month. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
+          "month": {
+            "description": "Only with route /timeline and `year`: open that month (1-12).",
+            "maximum": 12,
+            "minimum": 1,
+            "type": "integer"
+          },
           "query": {
             "additionalProperties": {
               "type": [
@@ -614,6 +624,12 @@
               "/map"
             ],
             "type": "string"
+          },
+          "year": {
+            "description": "Only with route /timeline: open that year's months.",
+            "maximum": 2100,
+            "minimum": 1900,
+            "type": "integer"
           }
         },
         "required": [
@@ -1616,6 +1632,31 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
+      "description": "Open one album (fixed or smart) in the user's tab, by `album_id` (from `list_albums` or `create_album`). An unknown or inaccessible album answers `not_found` and nothing navigates. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "album_id": {
+            "description": "Id of the album to open, fixed or smart: the `album_id` from `list_albums` or `create_album`.",
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "album_id"
+        ],
+        "type": "object"
+      },
+      "name": "ui_open_album"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "readOnlyHint": false,
+        "untrustedContentHint": true
+      },
       "description": "Show exactly these photos, in this order, as the gallery's list (max 200). Photos the user cannot see are skipped and returned as `missing`. Any filter change by the user or the assistant replaces the list. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
       "inputSchema": {
         "additionalProperties": false,
@@ -1714,7 +1755,7 @@
         "readOnlyHint": true,
         "untrustedContentHint": true
       },
-      "description": "Where the user's tab is, from any page: route, the open photo, the selection (scope and count), a gallery summary (total, loaded, has_more, pinned list) when the gallery is open, the mounted page actions and the jobs that apply now (`actions`, with their tools), and `culling`, the assistant's plan on the /culling page (null outside plan mode): `{plan_digest, groups_total, confirmed, pending, changed, untouched, plan_truncated}`. `confirmed` and `pending` list plan group numbers (confirmed: the user's confirm has landed; pending: flipped away from the plan and not yet confirmed); `untouched` counts the rest. `changed` lists every group whose keepers differ from the plan as `{type, group_id, number, keep_paths, reject_paths}`: pass those paths as `keep_paths` / `remove_paths` on the next `auto_cull` dry run and on its apply. `plan_truncated` is true when the plan itself was capped (500 groups / 5000 photos) so it lists only part of the library's groups. When the block is too large for one answer its lists are cut: `culling.truncated` is true (it means only that) and `groups_total` / the list lengths stay the true counts. Never re-decide a confirmed group. `user_activity` ({items, until, truncated}) lists what the user did in the tab after `activity_since` (rating, reject, favorite, cull_confirm, cull_skip, tags, album, navigation; at most 50 items of 20 paths); pass the answer's `until` as the next `activity_since`. `culling_defaults` ({profile, strictness}) is the /culling page's current setting: the profile the user stored (null if none) and the slider's live, stored strictness; `auto_cull` plans with both (the strictness wins, the profile supplies its other settings) when given neither knob. Showing a plan moves the slider to the plan's strictness; moving the slider or the date range while a plan is shown re-plans it, so `culling.plan_digest` changes (read `ui_get_context` again before the next dry run). `culling.scope` ({album_id, date_from, date_to}) is the window the plan was computed for; the user can change it from the /culling toolbar, which re-plans (a new `plan_digest`), so read `ui_get_context` again and pass `culling.scope`'s dates and `culling.changed` on your next dry run. `culling` also carries `suggestions_open` ([{path, action}]), `suggestions_accepted` and `suggestions_total`: your `ui_suggest_culling` marks still waiting, the ones the user took, and the number held (photo suggestions only, not group notes).",
+      "description": "Where the user's tab is, from any page: route, the open photo, the selection (scope and count), a gallery summary (total, loaded, has_more, pinned list) when the gallery is open, the mounted page actions and the jobs that apply now (`actions`, with their tools), and `culling`, the assistant's plan on the /culling page (null outside plan mode): `{plan_digest, groups_total, confirmed, pending, changed, untouched, plan_truncated}`. `confirmed` and `pending` list plan group numbers (confirmed: the user's confirm has landed; pending: flipped away from the plan and not yet confirmed); `untouched` counts the rest. `changed` lists every group whose keepers differ from the plan as `{type, group_id, number, keep_paths, reject_paths}`: pass those paths as `keep_paths` / `remove_paths` on the next `auto_cull` dry run and on its apply. `plan_truncated` is true when the plan itself was capped (500 groups / 5000 photos) so it lists only part of the library's groups. When the block is too large for one answer its lists are cut: `culling.truncated` is true (it means only that) and `groups_total` / the list lengths stay the true counts. Never re-decide a confirmed group. `user_activity` ({items, until, truncated}) lists what the user did in the tab after `activity_since` (rating, reject, favorite, cull_confirm, cull_skip, tags, album, navigation; at most 50 items of 20 paths); pass the answer's `until` as the next `activity_since`. `culling_defaults` ({profile, strictness}) is the /culling page's current setting: the profile the user stored (null if none) and the slider's live, stored strictness; `auto_cull` plans with both (the strictness wins, the profile supplies its other settings) when given neither knob. Showing a plan moves the slider to the plan's strictness; moving the slider or the date range while a plan is shown re-plans it, so `culling.plan_digest` changes (read `ui_get_context` again before the next dry run). `culling.scope` ({album_id, date_from, date_to}) is the window the plan was computed for; the user can change it from the /culling toolbar, which re-plans (a new `plan_digest`), so read `ui_get_context` again and pass `culling.scope`'s dates and `culling.changed` on your next dry run. `culling` also carries `suggestions_open` ([{path, action}]), `suggestions_accepted` and `suggestions_total`: your `ui_suggest_culling` marks still waiting, the ones the user took, and the number held (photo suggestions only, not group notes). `timeline` ({year, month}; month null on a year page) is set on the /timeline pages, else null.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1996,5 +2037,5 @@
       "name": "ui_show_comparison"
     }
   ],
-  "version": "1e956ceb09049ecc"
+  "version": "5e71a1fe8b30bdf3"
 }
