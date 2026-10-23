@@ -19,6 +19,7 @@ import {
 } from './gallery.store';
 import { Photo } from '../../shared/models/photo.model';
 import { makePhoto } from '../../../testing/photo.fixture';
+import { applyQueryParams, buildSyncParams } from './gallery-filters.util';
 
 function makePhotosResponse(overrides: Partial<PhotosResponse> = {}): PhotosResponse {
   return {
@@ -2092,6 +2093,27 @@ describe('GalleryStore restoreSnapshot', () => {
     expect(store.photos().find(p => p.path === '/b.jpg')!.is_rejected).toBe(true);
     expect(snackOpen).toHaveBeenCalled();
   });
+  it.each(['semanticQuery', 'similar_to'] as const)('activating %s clears review filtering through both update APIs', async key => {
+    vi.spyOn(store, 'loadPhotos').mockResolvedValue();
+    const value = key === 'semanticQuery' ? 'sunset' : '/a.jpg';
+    for (const bulk of [false, true]) {
+      store.filters.set({ ...DEFAULT_FILTERS, review_status: 'undecided', camera: 'Canon' });
+      if (bulk) await store.updateFilters({ [key]: value });
+      else await store.updateFilter(key, value);
+      expect(store.filters()).toMatchObject({ review_status: '', [key]: value, camera: 'Canon' });
+      const restored = applyQueryParams(DEFAULT_FILTERS, buildSyncParams(store.filters(), undefined));
+      expect(restored).toMatchObject({ review_status: '', [key]: value });
+    }
+  });
+
+  it('explicit bulk review activation wins over ranked modes and uses the review ordering', async () => {
+    vi.spyOn(store, 'loadPhotos').mockResolvedValue();
+    await store.updateFilters({ review_status: 'undecided', similar_to: '/a.jpg', semanticQuery: 'sunset', camera: 'Canon' });
+    expect(store.filters()).toMatchObject({ review_status: 'undecided', similar_to: '', semanticQuery: '', sort: 'date_taken', sort_direction: 'ASC', camera: 'Canon' });
+    const restored = applyQueryParams(DEFAULT_FILTERS, buildSyncParams(store.filters(), undefined));
+    expect(restored).toMatchObject({ review_status: 'undecided', similar_to: '', semanticQuery: '' });
+  });
+
 });
 
 describe('GalleryStore smart-album auto-save', () => {

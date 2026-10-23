@@ -838,6 +838,7 @@ export class GalleryStore {
   ): Promise<void> {
     const extra: Partial<GalleryFilters> = {};
     if (key === 'review_status' && value) { extra.similar_to = ''; extra.semanticQuery = ''; }
+    else if ((key === 'semanticQuery' || key === 'similar_to') && value) extra.review_status = '';
     if (key === 'review_status' && value === 'undecided') { extra.sort = 'date_taken'; extra.sort_direction = 'ASC'; }
     if (key === 'hide_rejected' && value) extra.favorites_only = false;
     if (key === 'favorites_only' && value) extra.hide_rejected = false;
@@ -889,6 +890,9 @@ export class GalleryStore {
   /** Update multiple filters at once and reload */
   async updateFilters(updates: Partial<GalleryFilters>): Promise<void> {
     const extra: Partial<GalleryFilters> = {};
+    if (updates.review_status) { extra.similar_to = ''; extra.semanticQuery = ''; }
+    else if (updates.semanticQuery || updates.similar_to) extra.review_status = '';
+    if (updates.review_status === 'undecided') { extra.sort = 'date_taken'; extra.sort_direction = 'ASC'; }
     if (updates.hide_rejected) extra.favorites_only = false;
     if (updates.favorites_only) extra.hide_rejected = false;
     this.filters.update(current => ({ ...current, ...updates, ...extra, page: 1 }));
