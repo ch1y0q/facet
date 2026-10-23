@@ -249,6 +249,13 @@ describe('GpsEditDialogComponent', () => {
       });
     });
 
+    it('writes the location to the gallery copy even if Back already closed the dialog', async () => {
+      createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 48.8566, lng: 2.3522 });
+      await component.save();
+
+      expect(mockStore.patchPhoto).toHaveBeenCalledWith('/photo.jpg', { gps_latitude: 48.8566, gps_longitude: 2.3522, gps_manually_set: 1 });
+    });
+
     it('should send null coordinates when cleared', async () => {
       createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: null, lng: null });
 
