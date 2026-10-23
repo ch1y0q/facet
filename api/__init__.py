@@ -175,7 +175,8 @@ async def validation_exception_handler(request: Request, exc: Exception) -> JSON
 
     FastAPI's default 422 is silent server-side, which makes a malformed client
     request hard to diagnose. This logs the failure at WARNING and returns
-    FastAPI's standard 422 body unchanged, so clients see no difference.
+    FastAPI's standard 422 body. Nonfinite input floats become strings so the
+    error itself can be encoded as valid JSON.
 
     Typed ``exc: Exception`` because that is the handler signature Starlette's
     ``add_exception_handler`` accepts; it is registered for
@@ -568,6 +569,7 @@ def create_app() -> FastAPI:
     from api.routers.caption import router as caption_router
     from api.routers.manual_tags import router as manual_tags_router
     from api.routers.timeline import router as timeline_router
+    from api.routers.places import router as places_router
     from api.routers.map import router as map_router
     from api.routers.manual_faces import router as manual_faces_router
     from api.routers.capsules import router as capsules_router
@@ -610,6 +612,7 @@ def create_app() -> FastAPI:
     app.include_router(timeline_router)
     app.include_router(map_router)
     app.include_router(manual_faces_router)
+    app.include_router(places_router)
     app.include_router(capsules_router)
     app.include_router(folders_router)
     app.include_router(export_router)

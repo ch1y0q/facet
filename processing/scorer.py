@@ -58,7 +58,11 @@ def _photos_upsert(insert_sql):
     """
     cols_match = _re.search(r'INTO\s+photos\s*\((.*?)\)\s*VALUES', insert_sql, _re.S | _re.I)
     columns = [c.strip() for c in cols_match.group(1).split(',')]
-    updates = ', '.join(f"{c}=excluded.{c}" for c in columns if c != 'path')
+    updates = ', '.join(
+        (f"{c}=CASE WHEN photos.gps_manually_set=1 THEN photos.{c} ELSE excluded.{c} END"
+         if c in ('gps_latitude', 'gps_longitude') else f"{c}=excluded.{c}")
+        for c in columns if c != 'path'
+    )
     base = _re.sub(r'INSERT\s+OR\s+REPLACE\s+INTO\s+photos', 'INSERT INTO photos', insert_sql, flags=_re.I)
     return f"{base}\nON CONFLICT(path) DO UPDATE SET {updates}"
 
@@ -89,7 +93,11 @@ def _photos_partial_upsert(computed_columns):
     insert_cols = list(_PARTIAL_CORE_COLUMNS) + list(computed_columns)
     placeholders = [f":{c}" for c in insert_cols] + ["datetime('now')", str(DISPLAY_RENDER_VERSION)]
     all_cols = insert_cols + ['scanned_at', 'render_version']
-    updates = ', '.join(f"{c}=excluded.{c}" for c in computed_columns)
+    updates = ', '.join(
+        (f"{c}=CASE WHEN photos.gps_manually_set=1 THEN photos.{c} ELSE excluded.{c} END"
+         if c in ('gps_latitude', 'gps_longitude') else f"{c}=excluded.{c}")
+        for c in computed_columns
+    )
     return (
         f"INSERT INTO photos ({', '.join(all_cols)}) "
         f"VALUES ({', '.join(placeholders)}) "

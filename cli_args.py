@@ -428,9 +428,11 @@ Configuration:
     ai_group.add_argument('--translate-captions', action='store_true',
                         help='Translate English captions to the configured target language (CPU, MarianMT)')
     ai_group.add_argument('--extract-gps', action='store_true',
-                        help='Backfill GPS coordinates from EXIF data for photos missing GPS')
+                        help='Backfill GPS coordinates from EXIF data for photos missing GPS '
+                             '(photos whose location was set in the viewer are skipped)')
     ai_group.add_argument('--rescan-gps', action='store_true',
-                        help='Re-extract GPS coordinates from EXIF for ALL photos (overwrites existing)')
+                        help='Re-extract GPS coordinates from EXIF for all photos, overwriting existing ones '
+                             '(photos whose location was set in the viewer are skipped)')
 
     # Configuration
     config_group = parser.add_argument_group('Configuration')

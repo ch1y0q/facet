@@ -1193,6 +1193,7 @@
     "subject_prominence_range": "Proeminência do sujeito",
     "subject_placement_range": "Posicionamento do sujeito",
     "bg_separation_range": "Separação do fundo",
+    "no_geolocation": "Sem geolocalização",
     "gps_clear": "Limpar localização",
     "choose_folder": "Escolher pasta…",
     "folder_clear": "Limpar pasta",
@@ -2340,6 +2341,28 @@
       "include_siblings": "Incluir toda a série",
       "success": "Foto enviada para a lixeira",
       "error": "Falha ao excluir"
+    },
+    "gps": {
+      "preview_hint": "Escolha um local e depois Guardar para o aplicar a esta foto.",
+      "search": "Pesquisar locais guardados",
+      "loading": "A carregar locais…",
+      "retry": "Tentar novamente",
+      "saved": "Locais guardados",
+      "name": "Nome do local",
+      "rename": "Renomear",
+      "delete": "Eliminar",
+      "no_places": "Nenhum local guardado correspondente.",
+      "recent": "Locais recentes",
+      "map_unavailable": "O mapa está indisponível. Use locais guardados ou coordenadas.",
+      "latitude": "Latitude",
+      "longitude": "Longitude",
+      "invalid_coordinates": "Introduza ambas as coordenadas válidas ou limpe o local.",
+      "save_place": "Guardar este local",
+      "updating": "A atualizar locais…",
+      "load_error": "Não foi possível carregar os locais.",
+      "place_error": "Não foi possível atualizar o local. Verifique o nome, o limite e a ligação.",
+      "save_error": "Não foi possível guardar o local da foto. Tente novamente.",
+      "use_file_location": "Usar a localização do arquivo"
     }
   },
   "manual_tags": {

@@ -530,6 +530,20 @@ API: veja a seção [Endpoints da API](#endpoints-da-api) abaixo.
 
 Acesse pela rota `/map`. Controlado por `viewer.features.show_map` (padrão: `true`).
 
+### Lugares salvos e GPS manual
+
+Nos filtros da galeria, abra **Localização** e ative **Sem geolocalização** para encontrar fotos sem uma coordenada GPS. Ao adicionar uma localização, a foto sai destes resultados. Este filtro limpa a seleção de raio no mapa. O filtro pode ser salvo num álbum inteligente. Iniciar uma pesquisa semântica ou de fotos semelhantes, ou selecionar um raio no mapa, desativa-o.
+
+Abra **Adicionar localização** ou **Editar localização** em uma foto no modo de edição. Pesquise um nome em **Lugares salvos** ou escolha um ponto em **Localizações recentes**. A seleção mostra uma prévia; **Salvar** aplica o ponto à foto. Cancelar mantém a foto inalterada.
+
+Para salvar «Trabalho» uma vez, escolha um ponto no mapa ou digite latitude e longitude e use **Salvar este lugar** com um nome. Você também pode salvar o ponto de uma foto já geolocalizada. Renomear ou excluir um lugar não move fotos já atribuídas. Em instalações multiusuário, cada editor tem sua lista privada: até 100 lugares e 20 pontos recentes distintos. Apenas uma atribuição salva com sucesso atualiza os recentes.
+
+Uma localização definida no visualizador fica marcada, e a caixa de diálogo oferece então **Usar a localização do arquivo**: ela remove a marca e relê o GPS do arquivo de imagem (ou o apaga se o arquivo não tiver nenhum), de modo que novas varreduras possam voltar a atualizá-la.
+
+O aplicativo instalado carrega os fundos do mapa diretamente do OpenStreetMap, fora do cache offline. Novas áreas do mapa precisam de conexão com a internet.
+
+A lista e a entrada de coordenadas continuam funcionando se o mapa estiver indisponível. A pesquisa usa nomes salvos localmente. Edições manuais, inclusive limpar o GPS, permanecem após novas análises e extração EXIF. Os arquivos originais não são alterados.
+
 ## Cápsulas
 
 Diaporamas (apresentações de slides) de fotos curadas, agrupadas por tema, lugar, pessoas e tempo — clique em uma cápsula para reproduzi-la. Acesse pela rota `/capsules`.
@@ -838,7 +852,7 @@ Todas as estatísticas são sensíveis ao usuário no modo multiusuário — cad
 | `Shift+F10` / `Menu` | Abre o menu de contexto do cartão de foto com foco (o clique direito faz o mesmo) |
 | `?` | Mostra a referência de atalhos de teclado (funciona em todas as páginas) |
 
-A foto atual — aquela sobre a qual agem os atalhos de avaliação, favorito e rejeição — é marcada com um contorno de 4px em volta do seu cartão; todos os outros cartões passam a 50% de opacidade. Nada fica marcado até o cursor se mover de fato para uma foto dos resultados, por isso uma galeria que você ainda não percorreu permanece em intensidade total. Clicar numa foto move o marcador para ela, de modo que um atalho digitado logo após um clique se aplica à foto clicada, não àquela onde as setas o tinham deixado. Ao voltar de uma foto (Voltar ou Esc) o marcador permanece na foto que você abriu, de modo que os atalhos continuam a partir dali.
+A foto atual — aquela sobre a qual agem os atalhos de avaliação, favorito e rejeição — é marcada com um contorno de 4px em volta do seu cartão; todos os outros cartões passam a 50% de opacidade. Nada fica marcado até o cursor se mover de fato para uma foto dos resultados, por isso uma galeria que você ainda não percorreu permanece em intensidade total. Clicar numa foto move o marcador para ela, de modo que um atalho digitado logo após um clique se aplica à foto clicada, não àquela onde as setas o tinham deixado. Ao voltar de uma foto (Voltar ou Esc) o marcador permanece na última foto que você viu, de modo que os atalhos continuam a partir dali.
 
 ## Desfazer
 
@@ -1255,6 +1269,12 @@ Os tipos TypeScript do cliente são gerados a partir desse esquema em `client/sr
 | `GET /api/timeline/months?hide_blinks=&hide_bursts=&hide_duplicates=&hide_brackets=&hide_panoramas=` | Meses disponíveis para um ano (mesmo fallback `hide_*`) |
 | `GET /api/photos/map?bounds=&zoom=&limit=` | Fotos geolocalizadas dentro dos limites |
 | `GET /api/photos/map/count` | Contagem de fotos geolocalizadas |
+| `PUT /api/photo/gps` | `[Edição]` Define ou apaga o GPS de uma foto com `{path, gps_latitude, gps_longitude, saved_place_id?}`. As duas coordenadas devem ser nulas ou valores finitos (latitude ±90, longitude ±180); retorna as coordenadas salvas |
+| `DELETE /api/photo/gps?path=` | `[Edição]` Descarta uma localização definida manualmente e relê o GPS do próprio arquivo (NULL se não tiver); retorna as coordenadas salvas |
+| `GET /api/places` | `[Edição]` Locais salvos do editor atual e os 20 últimos pontos atribuídos |
+| `POST /api/places` | `[Edição]` Salva `{name, latitude, longitude}` como um alfinete privado com nome (até 100 locais; nome de 1 a 120 caracteres) |
+| `PUT /api/places/{id}` | `[Edição]` Atualiza um alfinete com nome próprio; as fotos existentes mantêm suas coordenadas |
+| `DELETE /api/places/{id}` | `[Edição]` Exclui um alfinete próprio; as fotos existentes mantêm suas coordenadas |
 
 ### Cápsulas
 
@@ -1449,6 +1469,8 @@ O endpoint `/api/download/options` detecta automaticamente arquivos RAW companhe
 | `GET /api/filter_options/location_name?lat=&lng=` | Geocodifica coordenadas reversamente para um nome de lugar |
 
 ## Solução de Problemas
+
+Se a busca semântica informar que a aceleração Apple Silicon está ocupada, tente novamente após a tarefa atual do modelo terminar. As buscas simultâneas compartilham um limite de espera de 15 segundos para carregar o codificador e acessar o acelerador.
 
 | Problema | Solução |
 |-------|----------|

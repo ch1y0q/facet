@@ -220,3 +220,32 @@ def test_real_save_keeps_manual_faces(scored_db, restricted):
         facet.save_photos_batch([(result, _IMG)])
     with get_connection(db, row_factory=False) as conn:
         assert conn.execute('SELECT person_id FROM faces WHERE id=?', (fid,)).fetchone() == (pid,)
+
+
+@pytest.mark.parametrize('coordinates', [(12.5, -44.5), (None, None)])
+@pytest.mark.parametrize('restricted', [False, True])
+def test_real_save_preserves_manual_gps(scored_db, coordinates, restricted):
+    db, facet = scored_db
+    with get_connection(db, row_factory=False) as conn:
+        conn.execute('UPDATE photos SET gps_latitude=?, gps_longitude=?, gps_manually_set=1 WHERE path=?',
+                     (*coordinates, '/p/a.jpg'))
+        conn.commit()
+    result = _base_result('/p/a.jpg', 9.1)
+    result.update(gps_latitude=1, gps_longitude=2)
+    if restricted:
+        facet.save_photos_partial([(result, _IMG, ('aggregate',))], refresh_faces=False)
+    else:
+        facet.save_photos_batch([(result, _IMG)])
+    with get_connection(db, row_factory=False) as conn:
+        assert conn.execute('SELECT gps_latitude,gps_longitude,gps_manually_set,aggregate FROM photos WHERE path=?',
+                            ('/p/a.jpg',)).fetchone() == (*coordinates, 1, 9.1)
+
+
+def test_real_full_save_refreshes_unedited_exif_gps(scored_db):
+    db, facet = scored_db
+    result = _base_result('/p/a.jpg', 9.1)
+    result.update(gps_latitude=1, gps_longitude=2)
+    facet.save_photos_batch([(result, _IMG)])
+    with get_connection(db, row_factory=False) as conn:
+        assert conn.execute('SELECT gps_latitude,gps_longitude,gps_manually_set FROM photos WHERE path=?',
+                            ('/p/a.jpg',)).fetchone() == (1, 2, 0)

@@ -140,6 +140,8 @@ export interface Photo {
   caption_translated?: string | null;
   gps_latitude?: number | null;
   gps_longitude?: number | null;
+  /** 1 when the location was set in the viewer; rescans then keep it. */
+  gps_manually_set?: number | null;
 }
 
 /** One sibling frame within a `PhotoSet`, from `GET /api/photo/set`. */

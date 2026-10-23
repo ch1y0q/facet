@@ -144,8 +144,8 @@ Diese Befehle aktualisieren bestimmte Metriken, leiten neue Daten ab (KI-Bildunt
 | `python facet.py --sweep-dedup-thresholds [labels.json]` | Kosinus-Schwellenwerte für Beinahe-Duplikate auswerten (Präzisions-/Recall-Tabelle mit Labels, sonst Verteilung der Kandidaten-Kosinuswerte) |
 | `python facet.py --generate-captions` | `[GPU]` `[16gb/24gb]` KI-Bildunterschriften für Fotos mit VLM erzeugen. Wenn `narrative_moments.caption_min_confidence > 0`, werden nicht gekennzeichnete / `other` / unter dem Schwellenwert liegende Fotos übersprungen (derselbe Filter gilt für den On-Demand-Bildunterschrift-Endpunkt) |
 | `python facet.py --translate-captions` | Englische Bildunterschriften in die konfigurierte Zielsprache übersetzen (CPU, MarianMT) |
-| `python facet.py --extract-gps` | GPS-Koordinaten aus EXIF-Daten in Datenbankspalten extrahieren |
-| `python facet.py --rescan-gps` | GPS-Koordinaten aus EXIF für alle Fotos neu extrahieren (überschreibt vorhandene) |
+| `python facet.py --extract-gps` | GPS-Koordinaten aus EXIF-Daten in Datenbankspalten extrahieren. Fotos, deren Standort im Viewer gesetzt wurde, werden übersprungen. |
+| `python facet.py --rescan-gps` | GPS-Koordinaten aus EXIF für alle Fotos neu extrahieren (überschreibt vorhandene). Fotos, deren Standort im Viewer gesetzt wurde, werden übersprungen. |
 | `python facet.py --recompute-embeddings` | CLIP/SigLIP-Embeddings für alle Fotos neu berechnen (nach Modellwechsel erforderlich) |
 | `python facet.py --score-topiq` | `topiq_score` mit TOPIQ für jedes Foto mit gespeichertem Thumbnail neu berechnen (GPU erforderlich). Es gibt keinen NULL-Filter, bestehende Werte werden daher überschrieben; ein Foto, das TOPIQ nicht bewerten kann, behält seinen gespeicherten Wert |
 | `python facet.py --backfill-focal-35mm` | 35-mm-äquivalente Brennweite aus EXIF für Fotos nachfüllen, denen sie fehlt |

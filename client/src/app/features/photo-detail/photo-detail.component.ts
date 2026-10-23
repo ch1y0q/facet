@@ -10,7 +10,8 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, skip } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ExtendedQualityComponent } from '../../shared/components/extended-quality/extended-quality.component';
 import { Photo, KeeperHint, PhotoSet, normalisePhotoFlags } from '../../shared/models/photo.model';
 import { AuthService } from '../../core/services/auth.service';
@@ -612,6 +613,15 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
           }
         </div>
       </div>
+    } @else if (photoMissing()) {
+      <div class="flex flex-col items-center justify-center gap-2 h-full text-[var(--mat-sys-on-surface-variant)]">
+        <mat-icon class="!text-4xl">image_not_supported</mat-icon>
+        {{ I18N.errors.photo_not_found | translate }}
+        <button mat-button (click)="goBack()">
+          <mat-icon>arrow_back</mat-icon>
+          {{ I18N.photo_detail.back | translate }}
+        </button>
+      </div>
     } @else {
       <div class="flex items-center justify-center h-full">
         <mat-icon class="!text-4xl text-[var(--mat-sys-on-surface-variant)]">hourglass_empty</mat-icon>
@@ -633,6 +643,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   private readonly photoActions = inject(PhotoActionsService);
 
   readonly photo = signal<Photo | null>(null);
+  protected readonly photoMissing = signal(false);
   protected readonly downloading = signal(false);
   protected readonly downloadOptions = signal<DownloadOption[]>([]);
   protected readonly generatingCaption = signal(false);
@@ -810,6 +821,12 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   }
 
   async ngOnInit(): Promise<void> {
+    // Back/Forward between two photos reuses this component instead of creating a new one.
+    this.route.queryParamMap.pipe(skip(1), takeUntilDestroyed(this.destroyRef)).subscribe(params => {
+      const path = params.get('path');
+      if (path && path !== this.photo()?.path) void this.showPhotoAt(path);
+    });
+
     // Try router state (passed from gallery via navigate(..., { state }))
     const statePhoto = history.state?.['photo'] as Photo | undefined;
 
@@ -819,13 +836,13 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
       // Fallback: load from API using query param
       const path = this.route.snapshot.queryParamMap.get('path');
       if (path) {
-        try {
-          this.photo.set(await this.fetchPhoto(path));
-        } catch {
-          this.router.navigate(['/']);
-        }
+        // The user may leave, or Back may move the address, while this loads; replacing keeps a dead entry out of history.
+        const photo = await this.fetchPhoto(path).catch(() => undefined);
+        if (this.destroyRef.destroyed || this.route.snapshot.queryParamMap.get('path') !== path) return;
+        if (photo) this.photo.set(photo);
+        else this.router.navigate(['/'], { replaceUrl: true });
       } else {
-        this.router.navigate(['/']);
+        this.router.navigate(['/'], { replaceUrl: true });
       }
     }
   }
@@ -845,11 +862,26 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     return photo;
   }
 
+  private async showPhotoAt(path: string): Promise<void> {
+    // Store copy carries edits made since; history.state is the photo as opened.
+    const photo = this.store.photos().find(p => p.path === path) ?? await this.fetchPhoto(path).catch(() => undefined);
+    if (this.route.snapshot.queryParamMap.get('path') !== path) return;
+    if (!photo) {
+      // Say so rather than keep the previous photo under this address (e.g. Forward to one deleted since).
+      this.photo.set(null);
+      this.photoMissing.set(true);
+      return;
+    }
+    this.photoMissing.set(false);
+    this.photo.set(photo);
+    this.fullImageLoaded.set(false);
+  }
+
   protected async openSetMember(path: string): Promise<void> {
     if (this.photo()?.path === path) return;
     try {
       const photo = await this.fetchPhoto(path);
-      this.router.navigate(['/photo'], { queryParams: { path }, state: { photo } });
+      this.router.navigate(['/photo'], { queryParams: { path }, state: { photo }, replaceUrl: true });
       this.photo.set(photo);
       this.fullImageLoaded.set(false);
     } catch {
@@ -897,28 +929,37 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   @HostListener('document:keydown.arrowleft', ['$event'])
   protected prevPhoto(event: Event): void {
     if (isTypingContext(event)) return;
-    this.navigateAdjacentPhoto(-1);
+    void this.navigateAdjacentPhoto(-1);
   }
 
   @HostListener('document:keydown.arrowright', ['$event'])
   protected nextPhoto(event: Event): void {
     if (isTypingContext(event)) return;
-    this.navigateAdjacentPhoto(1);
+    void this.navigateAdjacentPhoto(1);
   }
 
-  private navigateAdjacentPhoto(delta: number): void {
+  private async navigateAdjacentPhoto(delta: number): Promise<void> {
     const current = this.photo();
     if (!current) return;
-    const photos = this.store.photos();
-    if (photos.length === 0) return;
-    const idx = photos.findIndex(p => p.path === current.path);
+    const indexOf = () => this.store.photos().findIndex(p => p.path === current.path);
+    let idx = indexOf();
     if (idx === -1) return;
-    const nextIdx = idx + delta;
-    if (nextIdx < 0 || nextIdx >= photos.length) return;
-    const next = photos[nextIdx];
+    // The store only holds the pages the grid has scrolled through, so stepping past the last one fetches the next.
+    if (idx + delta >= this.store.photos().length && this.store.hasMore()) {
+      await this.store.nextPage();
+      // Back between two photos reuses this component, so the URL is checked as well as destroyed.
+      if (this.destroyRef.destroyed || this.photo()?.path !== current.path
+        || this.route.snapshot.queryParamMap.get('path') !== current.path) return;
+      idx = indexOf();
+      if (idx === -1) return;
+    }
+    const next = this.store.photos()[idx + delta];
+    if (!next) return;
+    // Replace, so Escape (history back) leaves the photo page instead of stepping back through every photo.
     this.router.navigate(['/photo'], {
       queryParams: { path: next.path },
       state: { photo: next },
+      replaceUrl: true,
     });
     this.photo.set(next);
     this.fullImageLoaded.set(false);
@@ -990,7 +1031,9 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   }
 
   private applyConfirmed(p: Photo, confirmed: Partial<Photo>): void {
-    this.photo.set({ ...p, ...confirmed });
+    // The page may have moved on, or taken another edit, since p was read.
+    const current = this.photo();
+    if (current?.path === p.path) this.photo.set({ ...current, ...confirmed });
     this.store.patchPhoto(p.path, confirmed);
   }
 
@@ -1220,26 +1263,28 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
 
   protected openAddPerson(photo: Photo): void {
     this.photoActions.openAddPerson(photo, () => {
-      this.photo.update(p => p ? { ...p, unassigned_faces: Math.max(0, p.unassigned_faces - 1) } : p);
+      this.photo.update(p => p?.path === photo.path ? { ...p, unassigned_faces: Math.max(0, p.unassigned_faces - 1) } : p);
     });
   }
 
   protected editGps(p: Photo): void {
     import('./gps-edit-dialog.component').then(m => {
+      if (this.destroyRef.destroyed || this.photo()?.path !== p.path) return;
       const ref = this.dialog.open(m.GpsEditDialogComponent, {
         width: '95vw',
-        maxWidth: '500px',
+        maxWidth: '640px',
         data: {
           path: p.path,
           filename: p.filename,
           lat: p.gps_latitude ?? null,
           lng: p.gps_longitude ?? null,
+          manuallySet: p.gps_manually_set === 1,
         },
       });
-      ref.afterClosed().subscribe((result: { gps_latitude: number | null; gps_longitude: number | null } | undefined) => {
+      ref.afterClosed().subscribe((result: { gps_latitude: number | null; gps_longitude: number | null; gps_manually_set?: number } | undefined) => {
         if (result !== undefined) {
-          this.photo.set({ ...p, gps_latitude: result.gps_latitude ?? undefined, gps_longitude: result.gps_longitude ?? undefined });
-          this.locationName.set('');
+          this.applyConfirmed(p, { gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude, gps_manually_set: result.gps_manually_set ?? 1 });
+          if (this.photo()?.path === p.path) this.locationName.set('');
         }
       });
     });

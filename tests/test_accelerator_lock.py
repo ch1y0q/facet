@@ -241,6 +241,45 @@ def test_a_cold_search_behind_a_busy_mps_lock_gives_up_loading_the_encoder():
     open_clip.create_model_and_transforms.assert_not_called()
 
 
+def test_concurrent_cold_searches_share_one_mps_wait_budget():
+    from api.routers import search
+
+    config = {"backend": "open_clip", "model_name": "ViT-L-14", "pretrained": "openai"}
+    open_clip = mock.MagicMock()
+    start = threading.Barrier(8)
+    elapsed, errors = [], []
+
+    def query():
+        start.wait()
+        began = time.monotonic()
+        try:
+            search._encode_texts(["beach"])
+        except Exception as exc:
+            errors.append(exc)
+        finally:
+            elapsed.append(time.monotonic() - began)
+
+    with (
+        _mps_lock_held_elsewhere(),
+        mock.patch.object(search, "_text_encoder", None),
+        mock.patch.object(search, "_MPS_WAIT_SECONDS", 0.1),
+        mock.patch.object(search, "_resolve_clip_config", return_value=config),
+        mock.patch("utils.device.get_device", return_value="mps"),
+        mock.patch.dict(sys.modules, {"open_clip": open_clip, "torch": mock.MagicMock()}),
+    ):
+        threads = [threading.Thread(target=query) for _ in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=2)
+        assert all(not thread.is_alive() for thread in threads)
+    assert len(errors) == 8
+    assert all(isinstance(exc, AcceleratorBusy) for exc in errors)
+    assert max(elapsed) < 0.3
+    assert not search._text_encoder_lock.locked()
+    open_clip.create_model_and_transforms.assert_not_called()
+
+
 @pytest.mark.parametrize("device", ["cuda", "cpu"])
 def test_a_search_on_cuda_or_cpu_never_times_out_on_the_mps_lock(device):
     from api.routers import search
@@ -252,6 +291,36 @@ def test_a_search_on_cuda_or_cpu_never_times_out_on_the_mps_lock(device):
         mock.patch("models.tagger.encode_text_prompts", return_value=_Features()),
     ):
         assert search._encode_texts(["beach"]).shape == (1, 4)
+
+
+@pytest.mark.parametrize("device", ["cuda", "cpu"])
+def test_warm_searches_still_encode_concurrently_off_mps(device):
+    from api.routers import search
+
+    encode_together = threading.Barrier(2)
+    errors = []
+
+    def encode(*_args):
+        encode_together.wait(timeout=1)
+        return _Features()
+
+    def query():
+        try:
+            search._encode_texts(["beach"])
+        except Exception as exc:
+            errors.append(exc)
+
+    with (
+        mock.patch.object(search, "_text_encoder", _encoder(device)),
+        mock.patch("models.tagger.encode_text_prompts", side_effect=encode),
+    ):
+        threads = [threading.Thread(target=query) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=2)
+        assert all(not thread.is_alive() for thread in threads)
+    assert errors == []
 
 
 class _MpsTagger:

@@ -836,6 +836,12 @@ export class GalleryStore {
     value: GalleryFilters[K],
   ): Promise<void> {
     const extra: Partial<GalleryFilters> = {};
+    if (key === 'no_gps' && value) {
+      extra.gps_lat = ''; extra.gps_lng = ''; extra.gps_radius_km = '';
+      extra.similar_to = ''; extra.semanticQuery = '';
+    } else if (value && ['semanticQuery', 'similar_to', 'gps_lat', 'gps_lng', 'gps_radius_km'].includes(key)) {
+      extra.no_gps = '';
+    }
     if (key === 'hide_rejected' && value) extra.favorites_only = false;
     if (key === 'favorites_only' && value) extra.hide_rejected = false;
     // Reload person dropdown when person filter is cleared (was seeded with filtered subset)
@@ -886,6 +892,12 @@ export class GalleryStore {
   /** Update multiple filters at once and reload */
   async updateFilters(updates: Partial<GalleryFilters>): Promise<void> {
     const extra: Partial<GalleryFilters> = {};
+    if (updates.no_gps) {
+      extra.gps_lat = ''; extra.gps_lng = ''; extra.gps_radius_km = '';
+      extra.similar_to = ''; extra.semanticQuery = '';
+    } else if (updates.semanticQuery || updates.similar_to || updates.gps_lat || updates.gps_lng || updates.gps_radius_km) {
+      extra.no_gps = '';
+    }
     if (updates.hide_rejected) extra.favorites_only = false;
     if (updates.favorites_only) extra.hide_rejected = false;
     this.filters.update(current => ({ ...current, ...updates, ...extra, page: 1 }));

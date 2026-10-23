@@ -1,13 +1,16 @@
 import type { Mock } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
-import { of, throwError } from 'rxjs';
+import { of, throwError, Subject } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
+import { GalleryStore } from '../gallery/gallery.store';
+import { I18nService } from '../../core/services/i18n.service';
 import { CaptionEditDialogComponent } from './caption-edit-dialog.component';
 
 describe('CaptionEditDialogComponent', () => {
   let component: CaptionEditDialogComponent;
   let mockDialogRef: { close: Mock };
+  let mockStore: { patchPhoto: Mock };
   let mockApi: { put: Mock };
 
   const dialogData = {
@@ -18,6 +21,7 @@ describe('CaptionEditDialogComponent', () => {
 
   beforeEach(() => {
     mockDialogRef = { close: vi.fn() };
+    mockStore = { patchPhoto: vi.fn() };
     mockApi = { put: vi.fn(() => of({})) };
 
     TestBed.configureTestingModule({
@@ -26,9 +30,20 @@ describe('CaptionEditDialogComponent', () => {
         { provide: MatDialogRef, useValue: mockDialogRef },
         { provide: MAT_DIALOG_DATA, useValue: dialogData },
         { provide: ApiService, useValue: mockApi },
+        { provide: GalleryStore, useValue: mockStore },
+        { provide: I18nService, useValue: { t: (k: string) => k, translations: () => ({}) } },
       ],
     });
     component = TestBed.inject(CaptionEditDialogComponent);
+  });
+
+  it('Cancel closes without a result, so the caller keeps the caption', () => {
+    const fixture = TestBed.createComponent(CaptionEditDialogComponent);
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('mat-dialog-actions button') as HTMLButtonElement).click();
+
+    expect(mockDialogRef.close).toHaveBeenCalledWith(undefined);
   });
 
   it('should initialize with data from dialog', () => {
@@ -54,6 +69,13 @@ describe('CaptionEditDialogComponent', () => {
     expect(component.saving()).toBe(false);
   });
 
+  it('save writes the caption to the gallery copy even if Back already closed the dialog', async () => {
+    component.captionText = '';
+    await component.save();
+
+    expect(mockStore.patchPhoto).toHaveBeenCalledWith('/photo.jpg', { caption: null, caption_translated: undefined });
+  });
+
   it('should not close dialog on save error', async () => {
     mockApi.put.mockReturnValue(throwError(() => new Error('Server error')));
 
@@ -74,4 +96,20 @@ describe('CaptionEditDialogComponent', () => {
 
     expect(savingDuringRequest).toBe(true);
   });
+  it.each([false, true])('keeps the submitted caption while inputs change (destroyed: %s)', async destroyed => {
+    const pending = new Subject<unknown>();
+    mockApi.put.mockReturnValue(pending);
+    component.captionText = 'Submitted';
+    const saving = component.save();
+    component.captionText = 'Unsaved edit';
+    const duplicate = component.save();
+    if (destroyed) TestBed.resetTestingModule();
+    pending.next({});
+    await Promise.all([saving, duplicate]);
+    expect(mockStore.patchPhoto).toHaveBeenCalledWith('/photo.jpg', { caption: 'Submitted', caption_translated: undefined });
+    expect(mockApi.put).toHaveBeenCalledExactlyOnceWith('/caption', { path: '/photo.jpg', caption: 'Submitted' });
+    if (destroyed) expect(mockDialogRef.close).not.toHaveBeenCalled();
+    else expect(mockDialogRef.close).toHaveBeenCalledWith('Submitted');
+  });
+
 });

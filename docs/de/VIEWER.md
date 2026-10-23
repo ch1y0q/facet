@@ -531,6 +531,20 @@ API: siehe den Abschnitt [API-Endpunkte](#api-endpunkte) weiter unten.
 
 Zugriff über die Route `/map`. Gesteuert über `viewer.features.show_map` (Standard: `true`).
 
+### Gespeicherte Orte und manuelles GPS
+
+Öffne in den Galeriefiltern **Standort** und aktiviere **Ohne Standort**, um Fotos mit fehlenden GPS-Koordinaten zu finden. Nach dem Hinzufügen eines Standorts verschwindet das Foto aus diesen Ergebnissen. Der Filter hebt eine Umkreissuche auf. Der Filter kann in einem intelligenten Album gespeichert werden. Eine semantische Suche, die Suche nach ähnlichen Fotos oder eine Umkreissuche deaktiviert ihn.
+
+Öffne bei einem Foto im Bearbeitungsmodus **Ort hinzufügen** oder **Ort bearbeiten**. Suche unter **Gespeicherte Orte** nach einem Namen oder wähle einen **Zuletzt verwendeten Ort**. Die Auswahl zeigt eine Vorschau; erst **Speichern** übernimmt sie für das Foto. Abbrechen ändert das Foto nicht.
+
+Um „Arbeit“ einmal zu speichern, wähle einen Kartenpunkt oder gib Breiten- und Längengrad ein und nutze **Diesen Ort speichern** mit einem Namen. Auch der Punkt eines bereits verorteten Fotos lässt sich speichern. Umbenennen oder Löschen eines Ortes verschiebt keine bereits zugeordneten Fotos. Auf Mehrbenutzerinstallationen hat jeder Bearbeiter eine private Liste mit höchstens 100 Orten und 20 verschiedenen zuletzt verwendeten Punkten. Nur erfolgreich gespeicherte Fotozuweisungen ergänzen den Verlauf.
+
+Ein im Viewer gesetzter Standort wird markiert, und der Dialog bietet dann **Standort aus der Datei verwenden** an: Das hebt die Markierung auf und liest das GPS erneut aus der Bilddatei (oder löscht es, wenn die Datei keines enthält), sodass spätere Neuscans es wieder aktualisieren können.
+
+Die installierte App lädt Kartenhintergründe direkt von OpenStreetMap, außerhalb ihres Offline-Caches. Für neue Kartenausschnitte ist eine Internetverbindung nötig.
+
+Liste und Koordinateneingabe funktionieren auch bei nicht verfügbarer Karte. Die Suche verwendet lokal gespeicherte Namen. Manuelle Änderungen einschließlich des Löschens von GPS bleiben bei erneuten Scans und EXIF-Extraktion erhalten. Die Originaldateien werden nicht verändert.
+
 ## Kapseln
 
 Kuratierte Foto-Diaschows (Slideshows), gruppiert nach Thema, Ort, Personen und Zeit — klicken Sie auf eine Kapsel, um sie abzuspielen. Zugriff über die Route `/capsules`.
@@ -839,7 +853,7 @@ Alle Statistiken sind im Mehrbenutzermodus benutzerbewusst — jeder Benutzer si
 | `Shift+F10` / `Menu` | Kontextmenü der fokussierten Fotokarte öffnen (der Rechtsklick tut dasselbe) |
 | `?` | Die Tastenkürzel-Referenz anzeigen (funktioniert auf jeder Seite) |
 
-Das aktuelle Foto — das, auf das die Tastenkürzel für Sternebewertung, Favorit und Ablehnen wirken — ist mit einer 4px breiten Umrandung um seine Karte markiert; alle anderen Karten werden auf 50 % Deckkraft abgedunkelt. Markiert wird erst, wenn der Cursor sich tatsächlich auf ein Foto in den Ergebnissen bewegt hat, sodass eine noch nicht durchgeblätterte Galerie in voller Stärke bleibt. Ein Klick auf ein Foto verschiebt die Markierung darauf, sodass ein direkt nach einem Klick getipptes Tastenkürzel das angeklickte Foto trifft und nicht das, wo die Pfeiltasten zuletzt standen. Die Rückkehr von einem Foto (Zurück oder Esc) lässt die Markierung auf dem geöffneten Foto, sodass die Tastenkürzel von dort aus weiterarbeiten.
+Das aktuelle Foto — das, auf das die Tastenkürzel für Sternebewertung, Favorit und Ablehnen wirken — ist mit einer 4px breiten Umrandung um seine Karte markiert; alle anderen Karten werden auf 50 % Deckkraft abgedunkelt. Markiert wird erst, wenn der Cursor sich tatsächlich auf ein Foto in den Ergebnissen bewegt hat, sodass eine noch nicht durchgeblätterte Galerie in voller Stärke bleibt. Ein Klick auf ein Foto verschiebt die Markierung darauf, sodass ein direkt nach einem Klick getipptes Tastenkürzel das angeklickte Foto trifft und nicht das, wo die Pfeiltasten zuletzt standen. Die Rückkehr von einem Foto (Zurück oder Esc) lässt die Markierung auf dem zuletzt angesehenen Foto, sodass die Tastenkürzel von dort aus weiterarbeiten.
 
 ## Rückgängig
 
@@ -1256,6 +1270,12 @@ Die TypeScript-Typen des Clients werden mit `cd client && npm run gen:api` aus d
 | `GET /api/timeline/months?hide_blinks=&hide_bursts=&hide_duplicates=&hide_brackets=&hide_panoramas=` | Verfügbare Monate für ein Jahr (gleicher `hide_*`-Rückfall) |
 | `GET /api/photos/map?bounds=&zoom=&limit=` | Georeferenzierte Fotos innerhalb der Grenzen |
 | `GET /api/photos/map/count` | Anzahl georeferenzierter Fotos |
+| `PUT /api/photo/gps` | `[Edition]` GPS eines Fotos setzen oder löschen mit `{path, gps_latitude, gps_longitude, saved_place_id?}`. Beide Koordinaten müssen null oder endliche Werte sein (Breitengrad ±90, Längengrad ±180); gibt die gespeicherten Koordinaten zurück |
+| `DELETE /api/photo/gps?path=` | `[Edition]` Einen von Hand gesetzten Standort verwerfen und das GPS der Datei selbst erneut lesen (NULL, wenn sie keines hat); gibt die gespeicherten Koordinaten zurück |
+| `GET /api/places` | `[Edition]` Gespeicherte Orte des aktuellen Editors und die 20 zuletzt zugewiesenen Punkte |
+| `POST /api/places` | `[Edition]` `{name, latitude, longitude}` als privaten benannten Pin speichern (bis zu 100 Orte; Name mit 1–120 Zeichen) |
+| `PUT /api/places/{id}` | `[Edition]` Einen eigenen benannten Pin aktualisieren; vorhandene Fotos behalten ihre Koordinaten |
+| `DELETE /api/places/{id}` | `[Edition]` Einen eigenen Pin löschen; vorhandene Fotos behalten ihre Koordinaten |
 
 ### Kapseln
 
@@ -1450,6 +1470,8 @@ Der Endpunkt `/api/download/options` erkennt begleitende RAW-Dateien automatisch
 | `GET /api/filter_options/location_name?lat=&lng=` | Koordinaten per umgekehrter Geocodierung in einen Ortsnamen umwandeln |
 
 ## Fehlerbehebung
+
+Meldet die semantische Suche, dass die Apple-Silicon-Beschleunigung belegt ist, versuche es nach Abschluss der laufenden Modellaufgabe erneut. Gleichzeitige Suchanfragen teilen sich ein Wartebudget von 15 Sekunden für das Laden des Encoders und den Beschleunigerzugriff.
 
 | Problem | Lösung |
 |-------|----------|

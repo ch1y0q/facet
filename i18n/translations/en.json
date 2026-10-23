@@ -1193,6 +1193,7 @@
     "subject_prominence_range": "Subject Prominence",
     "subject_placement_range": "Subject Placement",
     "bg_separation_range": "BG Separation",
+    "no_geolocation": "No geolocation",
     "gps_clear": "Clear location",
     "choose_folder": "Choose folder…",
     "folder_clear": "Clear folder",
@@ -2340,6 +2341,28 @@
       "include_siblings": "Include the whole set",
       "success": "Photo sent to trash",
       "error": "Delete failed"
+    },
+    "gps": {
+      "preview_hint": "Choose a location, then Save to apply it to this photo.",
+      "search": "Search saved places",
+      "loading": "Loading places…",
+      "retry": "Retry",
+      "saved": "Saved places",
+      "name": "Place name",
+      "rename": "Rename",
+      "delete": "Delete",
+      "no_places": "No matching saved places.",
+      "recent": "Recent locations",
+      "map_unavailable": "The map is unavailable. Use saved places or coordinates.",
+      "latitude": "Latitude",
+      "longitude": "Longitude",
+      "invalid_coordinates": "Enter both valid coordinates, or clear the location.",
+      "save_place": "Save this place",
+      "updating": "Updating places…",
+      "load_error": "Could not load places.",
+      "place_error": "Could not update place. Check the name, limit and connection.",
+      "save_error": "Could not save the photo location. Please try again.",
+      "use_file_location": "Use the file's location"
     }
   },
   "manual_tags": {

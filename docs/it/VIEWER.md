@@ -531,6 +531,20 @@ API: vedi la sezione [Endpoint API](#endpoint-api) più sotto.
 
 Accessibile tramite la rotta `/map`. Controllato da `viewer.features.show_map` (predefinito: `true`).
 
+### Luoghi salvati e GPS manuale
+
+Nei filtri della galleria, apri **Posizione** e attiva **Senza geolocalizzazione** per trovare le foto prive di una coordinata GPS. Dopo aver aggiunto una posizione, la foto scompare dai risultati. Il filtro annulla la selezione del raggio sulla mappa. Il filtro può essere salvato in un album intelligente. Si disattiva avviando una ricerca semantica o di foto simili, oppure scegliendo un raggio sulla mappa.
+
+Apri **Aggiungi posizione** o **Modifica posizione** da una foto in modalità modifica. Cerca un nome in **Luoghi salvati** oppure scegli un punto da **Posizioni recenti**. La scelta mostra un’anteprima; **Salva** la applica alla foto. Annulla lascia la foto invariata.
+
+Per memorizzare «Lavoro» una volta, scegli un punto sulla mappa o inserisci latitudine e longitudine, poi usa **Salva questo luogo** con un nome. Puoi anche salvare la posizione di una foto già geolocalizzata. Rinominare o eliminare un luogo non sposta le foto già assegnate. In modalità multiutente ogni editor ha una lista privata: massimo 100 luoghi e 20 punti recenti distinti. Solo un’assegnazione salvata correttamente aggiorna i recenti.
+
+Una posizione impostata nel visualizzatore viene contrassegnata, e la finestra offre allora **Usa la posizione del file**: rimuove il contrassegno e rilegge il GPS dal file immagine (o lo cancella se il file non ne ha), così le successive riscansioni possono aggiornarla di nuovo.
+
+L’app installata carica gli sfondi della mappa direttamente da OpenStreetMap, al di fuori della cache offline. Per caricare nuove aree serve una connessione a Internet.
+
+La lista e l’inserimento delle coordinate restano utilizzabili se la mappa non è disponibile. La ricerca usa i nomi salvati localmente. Le modifiche manuali, compresa la rimozione del GPS, sopravvivono a nuove scansioni e all’estrazione EXIF. I file originali non vengono modificati.
+
 ## Capsule
 
 Diaporama di foto curati (presentazioni) raggruppati per tema, luogo, persone e tempo — clicca su una capsula per riprodurla. Accessibile tramite la rotta `/capsules`.
@@ -839,7 +853,7 @@ Tutte le statistiche sono consapevoli dell'utente in modalità multiutente — o
 | `Shift+F10` / `Menu` | Apri il menu contestuale della scheda foto con il focus (il clic destro fa lo stesso) |
 | `?` | Mostra il riferimento delle scorciatoie da tastiera (funziona su ogni pagina) |
 
-La foto corrente — quella su cui agiscono le scorciatoie di valutazione, preferito e scarto — è contrassegnata da un contorno di 4px attorno alla sua scheda; tutte le altre schede si affievoliscono al 50% di opacità. Nulla è contrassegnato finché il cursore non si è effettivamente spostato su una foto tra i risultati, quindi una galleria che non hai ancora esplorato resta a piena intensità. Cliccare su una foto sposta il marcatore su di essa, così una scorciatoia digitata subito dopo un clic si applica alla foto cliccata, non a quella dove le frecce l'avevano lasciata. Tornando da una foto (Indietro o Esc) il marcatore resta sulla foto che hai aperto, così le scorciatoie proseguono da lì.
+La foto corrente — quella su cui agiscono le scorciatoie di valutazione, preferito e scarto — è contrassegnata da un contorno di 4px attorno alla sua scheda; tutte le altre schede si affievoliscono al 50% di opacità. Nulla è contrassegnato finché il cursore non si è effettivamente spostato su una foto tra i risultati, quindi una galleria che non hai ancora esplorato resta a piena intensità. Cliccare su una foto sposta il marcatore su di essa, così una scorciatoia digitata subito dopo un clic si applica alla foto cliccata, non a quella dove le frecce l'avevano lasciata. Tornando da una foto (Indietro o Esc) il marcatore resta sull'ultima foto che hai visto, così le scorciatoie proseguono da lì.
 
 ## Annulla
 
@@ -1255,6 +1269,12 @@ I tipi TypeScript del client sono generati da questo schema in `client/src/app/c
 | `GET /api/timeline/months?hide_blinks=&hide_bursts=&hide_duplicates=&hide_brackets=&hide_panoramas=` | Mesi disponibili per un anno (stesso fallback `hide_*`) |
 | `GET /api/photos/map?bounds=&zoom=&limit=` | Foto geolocalizzate entro i confini |
 | `GET /api/photos/map/count` | Conteggio delle foto geolocalizzate |
+| `PUT /api/photo/gps` | `[Edizione]` Imposta o cancella il GPS di una foto con `{path, gps_latitude, gps_longitude, saved_place_id?}`. Le due coordinate devono essere entrambe nulle o valori finiti (latitudine ±90, longitudine ±180); restituisce le coordinate salvate |
+| `DELETE /api/photo/gps?path=` | `[Edizione]` Scarta una posizione impostata a mano e rilegge il GPS del file stesso (NULL se non ne ha); restituisce le coordinate salvate |
+| `GET /api/places` | `[Edizione]` Luoghi salvati dell’editor corrente e ultimi 20 punti assegnati |
+| `POST /api/places` | `[Edizione]` Salva `{name, latitude, longitude}` come segnaposto privato con nome (fino a 100 luoghi; nome da 1 a 120 caratteri) |
+| `PUT /api/places/{id}` | `[Edizione]` Aggiorna un segnaposto con nome di tua proprietà; le foto esistenti mantengono le loro coordinate |
+| `DELETE /api/places/{id}` | `[Edizione]` Elimina un segnaposto di tua proprietà; le foto esistenti mantengono le loro coordinate |
 
 ### Capsule
 
@@ -1449,6 +1469,8 @@ L'endpoint `/api/download/options` rileva automaticamente i file RAW associati e
 | `GET /api/filter_options/location_name?lat=&lng=` | Geocodifica inversa delle coordinate in un nome di luogo |
 
 ## Risoluzione dei problemi
+
+Se la ricerca semantica segnala che l’accelerazione Apple Silicon è occupata, riprova al termine dell’attività del modello in corso. Le ricerche simultanee condividono un’attesa massima di 15 secondi per il caricamento del codificatore e l’accesso all’acceleratore.
 
 | Problema | Soluzione |
 |-------|----------|

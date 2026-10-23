@@ -531,6 +531,20 @@ API : voir la section [Points d'accès API](#points-daccès-api) ci-dessous.
 
 Accessible via la route `/map`. Contrôlé par `viewer.features.show_map` (par défaut : `true`).
 
+### Lieux enregistrés et GPS manuel
+
+Dans les filtres de la galerie, ouvre **Localisation** et active **Sans géolocalisation** pour trouver les photos dont une coordonnée GPS manque. Ajouter une position retire la photo de ces résultats. Ce filtre annule la sélection de rayon sur la carte. Ce filtre peut être enregistré dans un album intelligent. Une recherche sémantique, de photos similaires ou par rayon sur la carte le désactive.
+
+Ouvrez **Ajouter un lieu** ou **Modifier le lieu** depuis une photo en mode édition. Recherchez un nom dans **Lieux enregistrés**, ou choisissez un point parmi les **Lieux récents**. La sélection affiche un aperçu ; **Enregistrer** applique le point à la photo. Annuler ne modifie pas la photo.
+
+Pour mémoriser « Travail », choisissez un point sur la carte ou saisissez sa latitude et sa longitude, puis utilisez **Enregistrer ce lieu** avec un nom. Vous pouvez aussi enregistrer le point d’une photo déjà géolocalisée. Renommer ou supprimer un lieu ne déplace pas les photos existantes. En mode multi-utilisateur, chaque éditeur possède sa liste privée : 100 lieux et 20 points récents distincts au maximum. Seul l’enregistrement réussi d’une photo ajoute un point récent.
+
+Une position définie dans la visionneuse est marquée comme telle, et la boîte de dialogue propose alors **Utiliser le lieu du fichier** : elle retire ce marquage et relit le GPS depuis le fichier image (ou l’efface si le fichier n’en contient pas), de sorte que les réanalyses ultérieures peuvent de nouveau le mettre à jour.
+
+L’application installée charge les fonds de carte directement depuis OpenStreetMap, en dehors de son cache hors connexion. Une connexion Internet est nécessaire pour charger de nouvelles zones.
+
+La liste et la saisie de coordonnées restent utilisables si la carte est indisponible. La recherche porte sur les noms enregistrés localement. Les corrections manuelles, y compris l’effacement du GPS, survivent aux nouvelles analyses et à l’extraction EXIF. Les fichiers images d’origine ne sont pas modifiés.
+
 ## Capsules
 
 Diaporamas de photos sélectionnées regroupés par thème, lieu, personnes et période — cliquez sur une capsule pour la lire. Accessible via la route `/capsules`.
@@ -840,7 +854,7 @@ Toutes les statistiques tiennent compte de l'utilisateur en mode multi-utilisate
 | `Shift+F10` / `Menu` | Ouvrir le menu contextuel de la carte de photo ayant le focus (le clic droit fait de même) |
 | `?` | Afficher la référence des raccourcis clavier (fonctionne sur chaque page) |
 
-La photo courante — celle sur laquelle agissent les raccourcis de note, de favori et de rejet — est marquée par un contour de 4px autour de sa carte ; toutes les autres cartes passent à 50% d'opacité. Rien n'est marqué tant que le curseur ne s'est pas réellement déplacé sur une photo des résultats, si bien qu'une galerie que vous n'avez pas encore parcourue reste à pleine intensité. Cliquer sur une photo y déplace le marqueur, si bien qu'un raccourci tapé juste après un clic s'applique à la photo cliquée, et non à celle où les flèches l'avaient laissé. Revenir d'une photo (Retour ou Échap) laisse le marqueur sur la photo que vous avez ouverte, si bien que les raccourcis reprennent à partir de là.
+La photo courante — celle sur laquelle agissent les raccourcis de note, de favori et de rejet — est marquée par un contour de 4px autour de sa carte ; toutes les autres cartes passent à 50% d'opacité. Rien n'est marqué tant que le curseur ne s'est pas réellement déplacé sur une photo des résultats, si bien qu'une galerie que vous n'avez pas encore parcourue reste à pleine intensité. Cliquer sur une photo y déplace le marqueur, si bien qu'un raccourci tapé juste après un clic s'applique à la photo cliquée, et non à celle où les flèches l'avaient laissé. Revenir d'une photo (Retour ou Échap) laisse le marqueur sur la dernière photo que vous y avez vue, si bien que les raccourcis reprennent à partir de là.
 
 ## Annuler
 
@@ -1257,6 +1271,12 @@ Les types TypeScript du client sont générés à partir de ce schéma dans `cli
 | `GET /api/timeline/months?hide_blinks=&hide_bursts=&hide_duplicates=&hide_brackets=&hide_panoramas=` | Mois disponibles pour une année (même repli `hide_*`) |
 | `GET /api/photos/map?bounds=&zoom=&limit=` | Photos géolocalisées dans les limites |
 | `GET /api/photos/map/count` | Nombre de photos géolocalisées |
+| `PUT /api/photo/gps` | `[Édition]` Définit ou efface le GPS d’une photo avec `{path, gps_latitude, gps_longitude, saved_place_id?}`. Les deux coordonnées doivent être nulles ou finies, avec une latitude dans ±90 et une longitude dans ±180 ; renvoie les coordonnées enregistrées |
+| `DELETE /api/photo/gps?path=` | `[Édition]` Abandonne une position définie à la main et relit le GPS du fichier lui-même (NULL s’il n’en a pas) ; renvoie les coordonnées enregistrées |
+| `GET /api/places` | `[Édition]` Lieux enregistrés de l’éditeur courant et 20 derniers points attribués |
+| `POST /api/places` | `[Édition]` Enregistre `{name, latitude, longitude}` comme repère privé nommé (jusqu’à 100 lieux ; nom de 1 à 120 caractères) |
+| `PUT /api/places/{id}` | `[Édition]` Met à jour un repère nommé dont vous êtes propriétaire ; les photos existantes conservent leurs coordonnées |
+| `DELETE /api/places/{id}` | `[Édition]` Supprime un repère dont vous êtes propriétaire ; les photos existantes conservent leurs coordonnées |
 
 ### Capsules
 
@@ -1451,6 +1471,8 @@ Le point d'accès `/api/download/options` détecte automatiquement les fichiers 
 | `GET /api/filter_options/location_name?lat=&lng=` | Géocoder en sens inverse des coordonnées en nom de lieu |
 
 ## Dépannage
+
+Si la recherche sémantique indique que l’accélération Apple Silicon est occupée, réessaie après la tâche en cours du modèle. Les recherches simultanées partagent un délai d’attente de 15 secondes pour le chargement de l’encodeur et l’accès à l’accélérateur.
 
 | Problème | Solution |
 |-------|----------|
