@@ -2,6 +2,10 @@ import type { Mock } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of, throwError, Subject } from 'rxjs';
 import { GalleryStore } from '../gallery/gallery.store';
+import { Router, ActivatedRoute } from '@angular/router';
+import { AuthService } from '../../core/services/auth.service';
+import { AlbumService } from '../../core/services/album.service';
+import { makePhoto } from '../../../testing/photo.fixture';
 import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { ApiService } from '../../core/services/api.service';
@@ -326,4 +330,72 @@ describe('GpsEditDialogComponent', () => {
       expect(component.saveError()).toBe('photo_detail.gps.save_error');
     });
   });
+  describe('missing-location membership with the real gallery store', () => {
+    let store: GalleryStore;
+    const photo = makePhoto({ path: '/photo.jpg', gps_latitude: null, gps_longitude: null, gps_manually_set: 1 });
+    let serverPhotos = [photo];
+
+    beforeEach(() => {
+      TestBed.resetTestingModule();
+      serverPhotos = [photo];
+      mockApi = {
+        get: vi.fn((url: string) => of(url === '/places' ? { places: [], recent: [] } : {
+          photos: serverPhotos, total: serverPhotos.length, page: 1, per_page: 64, total_pages: 1, has_more: false,
+        })),
+        put: vi.fn(), delete: vi.fn(), post: vi.fn(() => of({})),
+      };
+      mockDialogRef = { close: vi.fn() };
+      TestBed.configureTestingModule({
+        providers: [
+          GpsEditDialogComponentClass, GalleryStore,
+          { provide: MAT_DIALOG_DATA, useValue: { path: '/photo.jpg', filename: 'photo.jpg', lat: null, lng: null, manuallySet: true } },
+          { provide: MatDialogRef, useValue: mockDialogRef },
+          { provide: ApiService, useValue: mockApi },
+          { provide: Router, useValue: { navigate: vi.fn() } },
+          { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
+          { provide: AuthService, useValue: { isEdition: () => true } },
+          { provide: AlbumService, useValue: { list: () => of({ albums: [] }), update: () => of({}) } },
+          { provide: I18nService, useValue: { t: (key: string) => key } },
+        ],
+      });
+      component = TestBed.inject(GpsEditDialogComponentClass);
+      store = TestBed.inject(GalleryStore);
+      store.filters.update(f => ({ ...f, no_gps: '1', camera: 'Canon' }));
+      store.photos.set([photo]);
+      store.total.set(1);
+    });
+
+    it('returns a photo to missing-location results after saving coordinates and then clearing them', async () => {
+      component.setLatitude(0);
+      component.setLongitude(0);
+      mockApi.put.mockReturnValueOnce(of({ gps_latitude: 0, gps_longitude: 0 }));
+      serverPhotos = [];
+      await component.save();
+      expect(store.photos()).toEqual([]);
+      expect(store.total()).toBe(0);
+
+      component.clearLocation();
+      mockApi.put.mockReturnValueOnce(of({ gps_latitude: null, gps_longitude: null }));
+      serverPhotos = [photo];
+      await component.save();
+      expect(store.photos().map(p => p.path)).toEqual(['/photo.jpg']);
+      expect(store.total()).toBe(1);
+      expect(store.filters()).toMatchObject({ no_gps: '1', camera: 'Canon' });
+    });
+
+    it.each([
+      { result: { gps_latitude: 0, gps_longitude: 0 }, visible: false },
+      { result: { gps_latitude: null, gps_longitude: null }, visible: true },
+    ])('refreshes membership from the file-location response: %j', async ({ result, visible }) => {
+      if (visible) { store.photos.set([]); store.total.set(0); }
+      serverPhotos = visible ? [{ ...photo, gps_manually_set: 0 }] : [];
+      mockApi.delete.mockReturnValue(of(result));
+      await component.useFileLocation();
+      expect(store.photos().map(p => p.path)).toEqual(visible ? ['/photo.jpg'] : []);
+      expect(store.total()).toBe(visible ? 1 : 0);
+      expect(mockApi.get).toHaveBeenCalledWith('/photos', expect.objectContaining({ no_gps: '1', camera: 'Canon' }));
+      expect(store.filters()).toMatchObject({ no_gps: '1', camera: 'Canon' });
+    });
+  });
+
 });

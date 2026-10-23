@@ -9,7 +9,7 @@ import sqlite3
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, ValidationError, model_validator
 
 from api.auth import CurrentUser, get_optional_user, require_edition
 from api.database import get_async_db, get_db
@@ -296,13 +296,29 @@ def api_reset_gps(
     lat, lng = exif.get('gps_latitude'), exif.get('gps_longitude')
     if lat is None or lng is None:
         lat = lng = None
-    with get_db() as conn:
+    try:
+        restored = GpsUpdateRequest(path=path, gps_latitude=lat, gps_longitude=lng)
+    except ValidationError as exc:
+        raise HTTPException(status_code=409, detail="File GPS is invalid; the manual location was kept") from exc
+    lat, lng = restored.gps_latitude, restored.gps_longitude
+    with get_db() as conn, conn:
         try:
             conn.execute("BEGIN IMMEDIATE")
-            conn.execute(
+            # ExifTool runs outside the lock. Access or the photo itself may
+            # have disappeared since the initial read; never reuse that scope.
+            vis_sql, vis_params = get_visibility_clause(user_id)
+            row = conn.execute(
+                f"SELECT 1 FROM photos WHERE path = ? AND {vis_sql}",
+                [path] + vis_params,
+            ).fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Photo not found")
+            cursor = conn.execute(
                 f"UPDATE photos SET gps_latitude = ?, gps_longitude = ?, gps_manually_set = 0 WHERE path = ? AND {vis_sql}",
                 [lat, lng, path] + vis_params,
             )
+            if cursor.rowcount != 1:
+                raise HTTPException(status_code=404, detail="Photo not found")
             conn.commit()
         except sqlite3.Error:
             logger.exception("Database error resetting GPS for photo %s", path)
