@@ -2162,7 +2162,12 @@
       "banner": "Plan des Assistenten · {confirmed}/{total} bestätigt",
       "exit": "Beenden",
       "suggestion": "Vorschlag: {keep} behalten / {reject} verwerfen",
-      "differs": "Weicht vom Vorschlag des Assistenten ab",
+      "differs": "Weicht vom Plan des Assistenten ab",
+      "accepted": "Vom Vorschlag des Assistenten übernommen",
+      "suggest_keep": "Assistent: behalten",
+      "suggest_reject": "Assistent: verwerfen",
+      "accept_keep": "Vorschlag des Assistenten annehmen, dieses Foto zu behalten: {reason}",
+      "accept_reject": "Vorschlag des Assistenten annehmen, dieses Foto zu verwerfen: {reason}",
       "oversize": "Ausgelassene Gruppen (zu groß, um hier bestätigt zu werden): {count}",
       "out_of_date": "Der Plan des Assistenten ist veraltet - bitten Sie ihn, die Vorschau erneut zu erstellen",
       "replan_flips_dropped": "{count} Ihrer Änderungen passen zu keiner Gruppe mehr und wurden verworfen."
@@ -2691,6 +2696,7 @@
       "ui_next_page": "Zur nächsten Seite gewechselt",
       "ui_show_culling_group": "Auswahlgruppe angezeigt",
       "ui_show_culling_plan": "Auto-Auswahlplan auf der Auswahlseite angezeigt",
+      "ui_suggest_culling": "Vorschläge im Auswahlplan markiert",
       "ui_show_comparison": "Vergleich angezeigt"
     }
   }

@@ -2851,6 +2851,119 @@ describe('BurstCullingComponent', () => {
       expect(fixture.nativeElement.querySelectorAll('[data-testid="plan-differs-dot"]').length).toBe(1);
     });
 
+    describe('assistant suggestion badges', () => {
+      const key = (e: HTMLElement, type: string) => e.querySelector(`[data-testid="${type}"]`) as HTMLElement | null;
+      const badges = (fixture: ComponentFixture<BurstCullingComponent>) =>
+        Array.from(fixture.nativeElement.querySelectorAll('[data-testid="plan-suggestion-badge"]')) as HTMLButtonElement[];
+      const mountWithSuggestions = async () => {
+        plan.setPin(pin);
+        const fixture = await mount();
+        plan.suggest([{ path: '/b.jpg', action: 'reject', reason: 'soft focus' }], [{ path: '/a.jpg', note: 'tight call' }], false);
+        fixture.detectChanges();
+        return fixture;
+      };
+      const press = (target: HTMLElement, pressed: string) => {
+        const event = new KeyboardEvent('keydown', { key: pressed, bubbles: true, cancelable: true });
+        target.dispatchEvent(event);
+        return event;
+      };
+
+      it('shows a badge on the differing photo and the group note in the chip row, as plain text', async () => {
+        plan.setPin(pin);
+        const fixture = await mount();
+        plan.suggest([{ path: '/b.jpg', action: 'reject', reason: '<img src=x onerror=alert(1)>' }], [{ path: '/a.jpg', note: '<b>x</b>' }], false);
+        fixture.detectChanges();
+        expect(badges(fixture)).toHaveLength(1);
+        expect(badges(fixture)[0].getAttribute('aria-label')).toContain('culling.plan.accept_reject');
+        const note = key(fixture.nativeElement, 'cull-plan-note')!;
+        expect(note.textContent).toContain('<b>x</b>');
+        expect(note.querySelector('b')).toBeNull();
+        expect(fixture.nativeElement.querySelector('img[src="x"]')).toBeNull();
+      });
+
+      it('a click on the badge accepts through the store and does not also toggle the tile', async () => {
+        const fixture = await mountWithSuggestions();
+        const cull = fixture.debugElement.injector.get(CullingStore);
+        const accept = vi.spyOn(cull, 'acceptSuggestion');
+        const toggle = vi.spyOn(cull, 'toggleSelection');
+        badges(fixture)[0].click();
+        fixture.detectChanges();
+        expect(accept).toHaveBeenCalledWith(cull.groups()[0], '/b.jpg', 'reject');
+        expect(toggle).not.toHaveBeenCalled();
+        expect([...cull.selectionsMap().get('5_burst') ?? []]).toEqual([]);
+        expect(badges(fixture)).toHaveLength(0);
+        expect(plan.snapshot()?.changed).toHaveLength(1);
+      });
+
+      it('a double-click on the badge does not make the photo the only keeper', async () => {
+        const fixture = await mountWithSuggestions();
+        const cull = fixture.debugElement.injector.get(CullingStore);
+        const exclusive = vi.spyOn(cull, 'selectExclusive');
+        badges(fixture)[0].dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+        expect(exclusive).not.toHaveBeenCalled();
+      });
+
+      it('a real double-click on a badge (click, badge unmounts, click and dblclick land on the tile) leaves the other keepers alone', async () => {
+        plan.setPin(pin);
+        const fixture = await mount();
+        const cull = fixture.debugElement.injector.get(CullingStore);
+        plan.suggest([{ path: '/d.jpg', action: 'keep', reason: 'sharper' }], [], false);
+        fixture.detectChanges();
+        const badge = badges(fixture)[0];
+        const tile = badge.parentElement as HTMLElement;
+        badge.click();
+        fixture.detectChanges();
+        expect(badges(fixture)).toHaveLength(0);
+        tile.click();
+        tile.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+        fixture.detectChanges();
+        expect([...cull.selectionsMap().get('5_similar') ?? []].sort()).toEqual(['/c.jpg', '/d.jpg']);
+      });
+
+      it('moves focus to the photo tile after an accept, instead of letting it fall to the body', async () => {
+        const fixture = await mountWithSuggestions();
+        const badge = badges(fixture)[0];
+        const tile = badge.parentElement as HTMLElement;
+        badge.focus();
+        badge.click();
+        fixture.detectChanges();
+        expect(document.activeElement).toBe(tile);
+      });
+
+      it('names the badge starting with its visible text', async () => {
+        const fixture = await mountWithSuggestions();
+        const badge = badges(fixture)[0];
+        expect(badge.getAttribute('aria-label')!.startsWith(badge.querySelector('span')!.textContent!.trim())).toBe(true);
+      });
+
+      it('Enter on the badge neither toggles the tile nor opens the lightbox', async () => {
+        const fixture = await mountWithSuggestions();
+        const cull = fixture.debugElement.injector.get(CullingStore);
+        const toggle = vi.spyOn(cull, 'toggleSelection');
+        press(badges(fixture)[0], 'Enter');
+        expect(toggle).not.toHaveBeenCalled();
+        expect(fixture.componentInstance['lightboxGroup']()).toBeNull();
+      });
+
+      it('Space on the badge neither toggles the tile nor confirms the group', async () => {
+        const fixture = await mountWithSuggestions();
+        const cull = fixture.debugElement.injector.get(CullingStore);
+        const toggle = vi.spyOn(cull, 'toggleSelection');
+        press(badges(fixture)[0], ' ');
+        expect(toggle).not.toHaveBeenCalled();
+        expect(cull.confirmedGroups().size).toBe(0);
+        expect(cull.passingGroups().size).toBe(0);
+      });
+
+      it('renders no badge in a group that is counting down to a confirm', async () => {
+        const fixture = await mountWithSuggestions();
+        const cull = fixture.debugElement.injector.get(CullingStore);
+        expect(cull.confirmGroup(cull.groups()[0])).toBe(true);
+        fixture.detectChanges();
+        expect(badges(fixture)).toHaveLength(0);
+      });
+    });
+
     it('shows the oversize note only when groups were left out', async () => {
       response = planOf(response.groups, { oversize_groups: 2 });
       plan.setPin(pin);

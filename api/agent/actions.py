@@ -82,7 +82,8 @@ ACTIONS: tuple[Action, ...] = (
            ("cull_apply", "delete_photos"), _when("gallery", "selection")),
     Action("work_darkroom", "Work through culling groups and confirm what to keep",
            ("list_culling_groups", "culling_profiles", "suggest_culling_profile", "keeper_hints",
-            "auto_cull", "confirm_culling_groups", "ui_show_culling_group", "ui_show_culling_plan"),
+            "auto_cull", "confirm_culling_groups", "ui_show_culling_group", "ui_show_culling_plan",
+            "ui_suggest_culling"),
            _when("culling")),
 )
 

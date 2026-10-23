@@ -434,6 +434,10 @@
         {
           "name": "ui_show_culling_plan",
           "required_level": "readonly"
+        },
+        {
+          "name": "ui_suggest_culling",
+          "required_level": "readonly"
         }
       ],
       "when": [
@@ -445,6 +449,7 @@
     "forbidden_level",
     "invalid_input",
     "no_active_view",
+    "no_plan",
     "not_found",
     "plan_changed",
     "plan_load_failed",
@@ -1594,7 +1599,7 @@
         "readOnlyHint": true,
         "untrustedContentHint": true
       },
-      "description": "Where the user's tab is, from any page: route, the open photo, the selection (scope and count), a gallery summary (total, loaded, has_more, pinned list) when the gallery is open, the mounted page actions and the jobs that apply now (`actions`, with their tools), and `culling`, the assistant's plan on the /culling page (null outside plan mode): `{plan_digest, groups_total, confirmed, pending, changed, untouched, plan_truncated}`. `confirmed` and `pending` list plan group numbers (confirmed: the user's confirm has landed; pending: flipped away from the plan and not yet confirmed); `untouched` counts the rest. `changed` lists every group whose keepers differ from the plan as `{type, group_id, number, keep_paths, reject_paths}`: pass those paths as `keep_paths` / `remove_paths` on the next `auto_cull` dry run and on its apply. `plan_truncated` is true when the plan itself was capped (500 groups / 5000 photos) so it lists only part of the library's groups. When the block is too large for one answer its lists are cut: `culling.truncated` is true (it means only that) and `groups_total` / the list lengths stay the true counts. Never re-decide a confirmed group. `user_activity` ({items, until, truncated}) lists what the user did in the tab after `activity_since` (rating, reject, favorite, cull_confirm, cull_skip, tags, album, navigation; at most 50 items of 20 paths); pass the answer's `until` as the next `activity_since`. `culling_defaults` ({profile, strictness}) is the /culling page's current setting: the profile the user stored (null if none) and the slider's live, stored strictness; `auto_cull` plans with both (the strictness wins, the profile supplies its other settings) when given neither knob. Showing a plan moves the slider to the plan's strictness; moving the slider while a plan is shown re-plans it, so `culling.plan_digest` changes (read `ui_get_context` again before the next dry run).",
+      "description": "Where the user's tab is, from any page: route, the open photo, the selection (scope and count), a gallery summary (total, loaded, has_more, pinned list) when the gallery is open, the mounted page actions and the jobs that apply now (`actions`, with their tools), and `culling`, the assistant's plan on the /culling page (null outside plan mode): `{plan_digest, groups_total, confirmed, pending, changed, untouched, plan_truncated}`. `confirmed` and `pending` list plan group numbers (confirmed: the user's confirm has landed; pending: flipped away from the plan and not yet confirmed); `untouched` counts the rest. `changed` lists every group whose keepers differ from the plan as `{type, group_id, number, keep_paths, reject_paths}`: pass those paths as `keep_paths` / `remove_paths` on the next `auto_cull` dry run and on its apply. `plan_truncated` is true when the plan itself was capped (500 groups / 5000 photos) so it lists only part of the library's groups. When the block is too large for one answer its lists are cut: `culling.truncated` is true (it means only that) and `groups_total` / the list lengths stay the true counts. Never re-decide a confirmed group. `user_activity` ({items, until, truncated}) lists what the user did in the tab after `activity_since` (rating, reject, favorite, cull_confirm, cull_skip, tags, album, navigation; at most 50 items of 20 paths); pass the answer's `until` as the next `activity_since`. `culling_defaults` ({profile, strictness}) is the /culling page's current setting: the profile the user stored (null if none) and the slider's live, stored strictness; `auto_cull` plans with both (the strictness wins, the profile supplies its other settings) when given neither knob. Showing a plan moves the slider to the plan's strictness; moving the slider while a plan is shown re-plans it, so `culling.plan_digest` changes (read `ui_get_context` again before the next dry run). `culling` also carries `suggestions_open` ([{path, action}]), `suggestions_accepted` and `suggestions_total`: your `ui_suggest_culling` marks still waiting, the ones the user took, and the number held (photo suggestions only, not group notes).",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1757,6 +1762,90 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
+      "description": "While the assistant's plan is shown on /culling, mark photos you would keep or reject (`photos`: path, action, reason) and groups you want to comment (`groups`: the path of any photo of the group, note). The user sees a badge per photo and a chip per group and accepts a badge with one click; nothing changes unless they do. It never changes the plan, its digest or any selection. Calls merge by path; `replace: true` drops every earlier suggestion first, and with empty `photos` and `groups` it clears them. They survive the user moving the strictness slider and a re-show of the same plan; a different plan shown or leaving plan mode clears them, so send them again after a new `auto_cull` dry run. A suggestion is stored only for a photo in the plan, in a group the user has not confirmed or skipped, and differing from the plan's own choice. Answer: `{plan_digest, applied, redundant, closed, missing, groups_applied, groups_missing, groups_closed, suggestions_total, notes_total}`; `redundant` (already the plan's own choice, even if the user has flipped it: see `culling.changed`), `closed` (a group the user confirmed, skipped or is confirming), `groups_closed` (the same, for notes) and `missing` (not in the plan) list paths and store nothing. `suggestions_total` counts the photo suggestions held, as in `ui_get_context.culling`; `notes_total` counts the group notes. Refusals: `no_plan` (the tab holds no plan), `too_large` (the tab holds at most 300 suggestions and 100 notes: use `replace`), `forbidden_level`. With several tabs pass the `tab_id` from `shown_in_tab` or `status`. Edition accounts only.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "groups": {
+            "description": "Per-group notes.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "note": {
+                  "description": "Short note on the group (shown as text).",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "path": {
+                  "description": "Path of any photo of the group to annotate.",
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "note"
+              ],
+              "type": "object"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "photos": {
+            "description": "Per-photo keep/reject suggestions.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "description": "What you suggest for this photo.",
+                  "enum": [
+                    "keep",
+                    "reject"
+                  ],
+                  "type": "string"
+                },
+                "path": {
+                  "description": "Path of a photo in the shown plan.",
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "reason": {
+                  "description": "Why, in a few words (shown as text).",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "action",
+                "reason"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "replace": {
+            "default": false,
+            "description": "true: drop every existing suggestion and note first. With empty `photos` and `groups` it clears them all.",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "name": "ui_suggest_culling"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "readOnlyHint": false,
+        "untrustedContentHint": true
+      },
       "description": "Open the /compare page in the user's tab, optionally on one category and strategy. It only opens the page: the user picks the winners, nothing is submitted for them.",
       "inputSchema": {
         "additionalProperties": false,
@@ -1782,5 +1871,5 @@
       "name": "ui_show_comparison"
     }
   ],
-  "version": "5d1a5e0be82e45ad"
+  "version": "1acbca2da268f630"
 }

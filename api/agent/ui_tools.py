@@ -29,11 +29,12 @@ MAX_SELECT_PATHS = 1000
 MAX_QUERY_ENTRIES = 20
 # Codes a tab may report; anything else becomes upstream_error. `no_active_view` is the
 # darkroom action registry's "that view is not mounted"; `unsaved_decisions`, `plan_changed`
-# (a 412: the library moved) and `plan_load_failed` (any other load failure) are `ui_show_culling_plan`'s refusals. Emitted into the client JSON so the client's own list is
+# (a 412: the library moved) and `plan_load_failed` (any other load failure) are `ui_show_culling_plan`'s refusals;
+# `no_plan` is `ui_suggest_culling`'s (the tab holds no plan to annotate). Emitted into the client JSON so the client's own list is
 # checked against it.
 TAB_ERROR_CODES = frozenset({
     "invalid_input", "not_found", "forbidden_level", "no_active_view", "upstream_error", "too_large",
-    "unsaved_decisions", "plan_changed", "plan_load_failed",
+    "unsaved_decisions", "plan_changed", "plan_load_failed", "no_plan",
 })
 
 UiRoute = Literal[
@@ -220,6 +221,42 @@ class UiShowCullingPlan(UiArgs):
         default=None, ge=1, description="1-based plan group number to land on (default: leave the focus).")
 
 
+MAX_SUGGEST_PHOTOS = 100
+MAX_SUGGEST_GROUPS = 50
+MAX_SUGGEST_TEXT = 200
+
+
+class UiCullingSuggestion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1, max_length=4096, description="Path of a photo in the shown plan.")
+    action: Literal["keep", "reject"] = Field(description="What you suggest for this photo.")
+    reason: str = Field(min_length=1, max_length=MAX_SUGGEST_TEXT, description="Why, in a few words (shown as text).")
+
+
+class UiCullingGroupNote(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1, max_length=4096, description="Path of any photo of the group to annotate.")
+    note: str = Field(min_length=1, max_length=MAX_SUGGEST_TEXT, description="Short note on the group (shown as text).")
+
+
+class UiSuggestCulling(UiArgs):
+    photos: list[UiCullingSuggestion] = Field(
+        default_factory=list, max_length=MAX_SUGGEST_PHOTOS, description="Per-photo keep/reject suggestions.")
+    groups: list[UiCullingGroupNote] = Field(
+        default_factory=list, max_length=MAX_SUGGEST_GROUPS, description="Per-group notes.")
+    replace: bool = Field(
+        default=False, description="true: drop every existing suggestion and note first. "
+                                   "With empty `photos` and `groups` it clears them all.")
+
+    @model_validator(mode="after")
+    def _something_to_suggest(self) -> "UiSuggestCulling":
+        if not self.photos and not self.groups and not self.replace:
+            raise ValueError("nothing to suggest: give `photos`, `groups` or `replace: true`")
+        return self
+
+
 ComparisonStrategy = Literal["learning", "uncertainty", "boundary", "active", "random"]
 
 
@@ -288,7 +325,9 @@ UI_TOOLS: tuple[UiTool, ...] = (
            "(null if none) and the slider's live, stored strictness; `auto_cull` plans with both (the strictness wins, the profile supplies its other "
            "settings) when given neither knob. Showing a plan moves the slider to the plan's strictness; moving the slider while a plan "
            "is shown re-plans it, so `culling.plan_digest` changes (read `ui_get_context` again before the "
-           "next dry run).",
+           "next dry run). `culling` also carries `suggestions_open` ([{path, action}]), "
+           "`suggestions_accepted` and `suggestions_total`: your `ui_suggest_culling` marks still waiting, "
+           "the ones the user took, and the number held (photo suggestions only, not group notes).",
            UiGetContext, True),
     UiTool("ui_next_page", "Load the next page of the gallery in the user's tab (infinite scroll).",
            UiNextPage, False),
@@ -306,6 +345,26 @@ UI_TOOLS: tuple[UiTool, ...] = (
            "`plan_load_failed` means the tab could not load the plan for any other reason. "
            "Edition accounts only.",
            UiShowCullingPlan, False),
+    UiTool("ui_suggest_culling",
+           "While the assistant's plan is shown on /culling, mark photos you would keep or reject "
+           "(`photos`: path, action, reason) and groups you want to comment (`groups`: the path of any "
+           "photo of the group, note). The user sees a badge per photo and a chip per group and accepts a "
+           "badge with one click; nothing changes unless they do. It never changes the plan, its digest or "
+           "any selection. Calls merge by path; `replace: true` drops every earlier suggestion first, and "
+           "with empty `photos` and `groups` it clears them. They survive the user moving the strictness "
+           "slider and a re-show of the same plan; a different plan shown or leaving plan mode clears them, "
+           "so send them again after a new `auto_cull` dry run. A suggestion is stored only for a photo in "
+           "the plan, in a group the user has not confirmed or skipped, and differing from the plan's own "
+           "choice. Answer: `{plan_digest, applied, redundant, closed, missing, groups_applied, "
+           "groups_missing, groups_closed, suggestions_total, notes_total}`; `redundant` (already the "
+           "plan's own choice, even if the user has flipped it: see `culling.changed`), `closed` "
+           "(a group the user confirmed, skipped or is confirming), `groups_closed` (the same, for notes) and "
+           "`missing` (not in the plan) list paths and store nothing. `suggestions_total` counts the photo "
+           "suggestions held, as in `ui_get_context.culling`; `notes_total` counts the group notes. Refusals: "
+           "`no_plan` (the tab holds no plan), `too_large` (the tab holds at most 300 suggestions and 100 "
+           "notes: use `replace`), `forbidden_level`. With several tabs pass the `tab_id` from "
+           "`shown_in_tab` or `status`. Edition accounts only.",
+           UiSuggestCulling, False),
     UiTool("ui_show_comparison",
            "Open the /compare page in the user's tab, optionally on one category and strategy. It "
            "only opens the page: the user picks the winners, nothing is submitted for them.",

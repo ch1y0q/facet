@@ -959,6 +959,84 @@ describe('CullingStore', () => {
       expect(store.planActive()).toBe(true);
       expect(store.pendingReload()).toBe(true);
     });
+    describe('accepting an assistant suggestion', () => {
+      const suggestion = (path: string, action: 'keep' | 'reject') => ({ path, action, reason: 'why' });
+
+      it('is the same flip as a manual toggle: touched group, selection, pending and changed', async () => {
+        await store.enterPlan(pin);
+        plan.suggest([suggestion('/d.jpg', 'reject')], [], false);
+        expect(plan.snapshot()?.suggestions_open).toEqual([{ path: '/d.jpg', action: 'reject' }]);
+        const group = store.groups()[1];
+        store.acceptSuggestion(group, '/d.jpg', 'reject');
+        expect([...store.selectionsMap().get('5_similar') ?? []]).toEqual(['/c.jpg']);
+        expect(store.touchedGroups().has('5_similar')).toBe(true);
+        expect(plan.snapshot()).toMatchObject({
+          pending: [2], suggestions_open: [], suggestions_accepted: 1,
+          changed: [{ type: 'similar', group_id: 5, number: 2, keep_paths: ['/c.jpg'], reject_paths: ['/d.jpg']}],
+        });
+        store.toggleSelection('/d.jpg', group);
+        expect(plan.snapshot()).toMatchObject({ suggestions_open: [{ path: '/d.jpg', action: 'reject' }], suggestions_accepted: 0 });
+      });
+
+      it('does nothing outside plan mode', () => {
+        const group = makeGroup(5, 'similar', ['/c.jpg', '/d.jpg'], '/c.jpg');
+        store.acceptSuggestion(group, '/d.jpg', 'reject');
+        expect(store.touchedGroups().size).toBe(0);
+      });
+
+      it('does nothing in a group that is counting down, confirmed or hidden', async () => {
+        vi.useFakeTimers();
+        await store.enterPlan(pin);
+        plan.suggest([suggestion('/b.jpg', 'reject'), suggestion('/d.jpg', 'reject')], [], false);
+        const [burst, similar] = store.groups();
+        expect(store.confirmGroup(burst)).toBe(true);
+        expect(store.passingGroups().size).toBe(1);
+        store.acceptSuggestion(burst, '/b.jpg', 'reject');
+        expect([...store.selectionsMap().get('5_burst') ?? []]).toEqual(['/b.jpg']);
+        await vi.advanceTimersByTimeAsync(7000);
+        expect(store.hiddenGroups().has('5_burst')).toBe(true);
+        store.acceptSuggestion(burst, '/b.jpg', 'reject');
+        expect([...store.selectionsMap().get('5_burst') ?? []]).toEqual(['/b.jpg']);
+        expect(plan.snapshot()?.changed).toEqual([]);
+        store.acceptSuggestion(similar, '/d.jpg', 'reject');
+        expect([...store.selectionsMap().get('5_similar') ?? []]).toEqual(['/c.jpg']);
+      });
+
+      it('does nothing while a "confirm all" is running', async () => {
+        await store.enterPlan(pin);
+        plan.suggest([suggestion('/d.jpg', 'reject')], [], false);
+        store.confirming.set(true);
+        store.acceptSuggestion(store.groups()[1], '/d.jpg', 'reject');
+        expect([...store.selectionsMap().get('5_similar') ?? []].sort()).toEqual(['/c.jpg', '/d.jpg']);
+      });
+
+      it('does nothing in a group counting down to a skip, and the service stops offering it', async () => {
+        vi.useFakeTimers();
+        await store.enterPlan(pin);
+        plan.suggest([suggestion('/d.jpg', 'reject')], [], false);
+        const similar = store.groups()[1];
+        store.skipGroup(similar);
+        expect(store.passingGroups().size).toBe(1);
+        store.acceptSuggestion(similar, '/d.jpg', 'reject');
+        expect([...store.selectionsMap().get('5_similar') ?? []].sort()).toEqual(['/c.jpg', '/d.jpg']);
+        expect(plan.snapshot()?.suggestions_open).toEqual([]);
+        expect(plan.suggest([suggestion('/c.jpg', 'reject')], [], false)).toMatchObject({ closed: ['/c.jpg'], applied: [] });
+      });
+
+      it('confirming afterwards posts the post-accept keepers', async () => {
+        vi.useFakeTimers();
+        await store.enterPlan(pin);
+        plan.suggest([suggestion('/d.jpg', 'reject')], [], false);
+        const similar = store.groups()[1];
+        store.acceptSuggestion(similar, '/d.jpg', 'reject');
+        store.confirmGroup(similar);
+        await vi.advanceTimersByTimeAsync(7000);
+        const call = api.post.mock.calls.find(c => c[0] === '/culling-groups/confirm');
+        expect((call?.[1] as { keep_paths: string[] }).keep_paths).toEqual(['/c.jpg']);
+        expect(plan.snapshot()?.confirmed).toEqual([2]);
+      });
+    });
+
     describe('adopting the plan knobs', () => {
       const profile = (id: string, strictness: number | null, threshold: number | null): CullProfile => ({
         id, label_key: `culling.profiles.${id}`, strictness, eyes_closed_max: null, poor_expression_min: null,
@@ -1166,6 +1244,23 @@ describe('CullingStore', () => {
         await settle();
         expect(plan.snapshot()?.changed).toEqual([]);
         expect(notices).toEqual([{ key: 'culling.plan.replan_flips_dropped', params: { count: 1 }, duration: 4000 }]);
+      });
+
+      it('accepts a suggestion while a re-plan is in flight and the re-plan carries the flip over', async () => {
+        const slow = new Subject<unknown>();
+        routePlan(slow);
+        plan.suggest([{ path: '/b.jpg', action: 'reject', reason: 'soft' }], [], false);
+        move(50);
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS);
+        expect(store.replanning()).toBe(true);
+        store.acceptSuggestion(store.groups()[0], '/b.jpg', 'reject');
+        slow.next(planResponse([
+          planGroup(7, 'burst', ['/a.jpg', '/b.jpg'], ['/b.jpg'], 1),
+        ], { plan_digest: 'dg2' }));
+        slow.complete();
+        await settle();
+        expect([...store.selectionsMap().get('7_burst') ?? []]).toEqual([]);
+        expect(plan.snapshot()).toMatchObject({ plan_digest: 'dg2', pending: [1], suggestions_accepted: 1, suggestions_open: [] });
       });
 
       it('resets the page decision sets, so a new group reusing a confirmed key renders unconfirmed', async () => {

@@ -48,6 +48,7 @@ import {
 import { I18N, i18nKeys } from '../../core/i18n/keys';
 import {
   CullGroupKeyPipe, CullPlanGroupReasonPipe, PlanDiffersPipe, PlanRejectCountPipe,
+  PlanSuggestionPipe, PlanAcceptedPipe, PlanGroupNotePipe,
   IsKeptPipe, IsDecidedPipe, IsConfirmedPipe, IsPassingPipe, PassCountdownPipe,
   CullReasonPipe, FacesForPathPipe, FacePoorExpressionPipe, FaceRingClassPipe,
   FaceDimmedPipe, WeightRemainingPipe, CullGroupIconPipe, CullGroupLabelPipe,
@@ -155,6 +156,9 @@ interface ShortcutRow {
     CullPlanGroupReasonPipe,
     PlanDiffersPipe,
     PlanRejectCountPipe,
+    PlanSuggestionPipe,
+    PlanAcceptedPipe,
+    PlanGroupNotePipe,
     IsKeptPipe,
     IsDecidedPipe,
     IsConfirmedPipe,
@@ -516,6 +520,11 @@ interface ShortcutRow {
                     <span class="opacity-80">{{ reason.key | translate:reason.params }}</span>
                   }
                   <span class="opacity-80">{{ I18N.culling.plan.suggestion | translate:{ keep: plan.keep_paths.length, reject: group | planRejectCount } }}</span>
+                  @if (group | planGroupNote:cull.suggestions().notes; as note) {
+                    <span data-testid="cull-plan-note"
+                          class="max-w-[40ch] truncate rounded-full bg-sky-500/20 px-2 py-0.5 text-sky-800 dark:text-sky-200"
+                          [matTooltip]="note">{{ note }}</span>
+                  }
                 </div>
               }
               @if (group.start) {
@@ -573,7 +582,7 @@ interface ShortcutRow {
                    [class.pointer-events-none]="(group | isConfirmed:cull.confirmedGroups())"
                    [class.opacity-40]="(group | isConfirmed:cull.confirmedGroups())">
                 @for (photo of group.photos; track photo.path; let pIdx = $index) {
-                  <div class="group/photo relative inline-block cursor-pointer rounded-lg overflow-hidden border-2 transition-colors flex-shrink-0"
+                  <div #tile class="group/photo relative inline-block cursor-pointer rounded-lg overflow-hidden border-2 transition-colors flex-shrink-0"
                        [class.border-green-500]="photo.path | isKept:cull.selectionsMap():groupKey"
                        [class.border-red-500]="!(photo.path | isKept:cull.selectionsMap():groupKey) && (photo.path | isDecided:cull.selectionsMap():groupKey)"
                        [class.border-transparent]="!(photo.path | isDecided:cull.selectionsMap():groupKey)"
@@ -586,10 +595,10 @@ interface ShortcutRow {
                              ? (I18N.culling.lightbox.rejected | translate)
                              : (I18N.culling.lightbox.undecided | translate))"
                        [attr.aria-pressed]="photo.path | isKept:cull.selectionsMap():groupKey"
-                       (click)="cull.toggleSelection(photo.path, group)"
+                       (click)="cull.tileClick(photo.path, group)"
                        (keydown.enter)="cull.toggleSelection(photo.path, group); $event.stopPropagation()"
                        (keydown.space)="cull.toggleSelection(photo.path, group); $event.stopPropagation(); $event.preventDefault()"
-                       (dblclick)="cull.selectExclusive(photo.path, group); $event.stopPropagation()">
+                       (dblclick)="cull.tileDoubleClick(photo.path, group); $event.stopPropagation()">
                     <img [src]="photo.path | thumbnailUrl:storedEdge"
                          [appLoupe]="photo.path | imageUrl:true"
                          [loupeActive]="loupeActive()"
@@ -614,10 +623,29 @@ interface ShortcutRow {
                       </div>
                     }
                     @if (photo.path | planDiffers:group:cull.selectionsMap()) {
+                      @let accepted = photo.path | planAccepted:group:cull.selectionsMap():cull.suggestions().photos;
                       <span data-testid="plan-differs-dot"
                             class="absolute top-2 right-11 w-3 h-3 rounded-full bg-amber-400 ring-2 ring-black/60"
-                            [matTooltip]="I18N.culling.plan.differs | translate"
-                            [attr.aria-label]="I18N.culling.plan.differs | translate"></span>
+                            [matTooltip]="(accepted ? I18N.culling.plan.accepted : I18N.culling.plan.differs) | translate"
+                            [attr.aria-label]="(accepted ? I18N.culling.plan.accepted : I18N.culling.plan.differs) | translate"></span>
+                    }
+                    @if (photo.path | planSuggestion:group:cull.selectionsMap():cull.suggestions().photos:cull.closedGroupKeys(); as suggestion) {
+                      <!-- A native button: Enter and Space become a click that accepts. Every event the tile
+                           or the document also handles stops here, or accepting would toggle the tile too. -->
+                      <button type="button" data-testid="plan-suggestion-badge"
+                              class="absolute top-10 left-2 inline-flex items-center gap-1 rounded border border-dashed px-2 py-0.5 text-xs font-medium max-w-[160px]"
+                              [ngClass]="suggestion.action === 'keep'
+                                ? 'border-green-300 bg-green-900/80 text-green-100'
+                                : 'border-red-300 bg-red-900/80 text-red-100'"
+                              [matTooltip]="suggestion.reason"
+                              [attr.aria-label]="((suggestion.action === 'keep' ? I18N.culling.plan.suggest_keep : I18N.culling.plan.suggest_reject) | translate) + '. ' + ((suggestion.action === 'keep' ? I18N.culling.plan.accept_keep : I18N.culling.plan.accept_reject) | translate:{ reason: suggestion.reason })"
+                              (click)="cull.acceptSuggestion(group, photo.path, suggestion.action); tile.focus(); $event.stopPropagation()"
+                              (dblclick)="$event.stopPropagation()"
+                              (keydown.enter)="$event.stopPropagation()"
+                              (keydown.space)="$event.stopPropagation()">
+                        <mat-icon class="!text-sm !w-4 !h-4 !leading-4" aria-hidden="true">{{ suggestion.action === 'keep' ? 'check' : 'close' }}</mat-icon>
+                        <span class="truncate">{{ (suggestion.action === 'keep' ? I18N.culling.plan.suggest_keep : I18N.culling.plan.suggest_reject) | translate }}</span>
+                      </button>
                     }
                     <div class="absolute bottom-2 left-2 flex items-center gap-1">
                       <span class="px-2 py-0.5 rounded bg-black/60 text-white text-xs font-medium">

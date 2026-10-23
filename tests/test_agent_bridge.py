@@ -623,6 +623,8 @@ class TestUiTools:
         ("ui_show_culling_plan", {"plan_digest": "abc"}),
         ("ui_show_culling_plan", {"plan_digest": "abc", "request": {}, "focus": 0}),
         ("ui_show_culling_plan", {"plan_digest": "abc", "request": {"group_by": "weird"}}),
+        ("ui_suggest_culling", {}),
+        ("ui_suggest_culling", {"photos": [{"path": "a", "action": "maybe", "reason": "x"}]}),
     ])
     def test_invalid_args_never_reach_the_tab(self, agent_app, fake_tab, tool, args):
         env = agent_app("open")
@@ -672,6 +674,20 @@ class TestUiTools:
         fit_culling(small, 20000)
         assert small["data"]["culling"]["truncated"] is False and "changed_count" not in small["data"]["culling"]
 
+    def test_a_huge_suggestions_list_is_halved_and_counted(self):
+        from api.agent.limits import encoded_size
+        from api.agent.tools_ui import fit_culling
+        opened = [{"path": f"/p/{n}/{'a' * 120}.jpg", "action": "reject"} for n in range(300)]
+        culling = {"plan_digest": "d", "groups_total": 4, "confirmed": [], "pending": [], "changed": [],
+                   "suggestions_open": opened, "suggestions_accepted": 2, "suggestions_total": 300,
+                   "truncated": False}
+        result = {"ok": True, "data": {"culling": culling}}
+        fit_culling(result, 8000)
+        assert encoded_size(result) <= 8000
+        assert culling["truncated"] is True and culling["suggestions_open_count"] == 300
+        assert 0 < len(culling["suggestions_open"]) < 300 and culling["suggestions_total"] == 300
+        assert culling["suggestions_open"] == opened[:len(culling["suggestions_open"])]
+
     def test_the_capped_plan_flag_is_never_confused_with_a_cut_list(self):
         from api.agent.tools_ui import fit_culling
         from api.agent.ui_tools import UI_TOOLS
@@ -693,6 +709,16 @@ class TestUiTools:
         sent = tab.calls[0]["args"]
         assert sent["plan_digest"] == "abc" and sent["focus"] == 2
         assert sent["request"]["group_by"] == "burst" and sent["request"]["keep_paths"] == ["/a.jpg"]
+
+    def test_suggest_culling_forwards_suggestions_and_notes(self, agent_app, fake_tab):
+        env = agent_app("open")
+        tab = fake_tab(env, None)
+        photo = {"path": "/a.jpg", "action": "keep", "reason": "sharper eyes"}
+        result = env.call(env.token(env.login()), "ui_suggest_culling",
+                          {"photos": [photo], "groups": [{"path": "/a.jpg", "note": "tight call"}], "replace": True})
+        assert result["ok"] is True
+        assert tab.calls[0]["args"] == {"photos": [photo], "groups": [{"path": "/a.jpg", "note": "tight call"}],
+                                        "replace": True}
 
     def test_tab_plan_refusals_pass_through(self, agent_app, fake_tab):
         env = agent_app("open")

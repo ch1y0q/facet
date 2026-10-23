@@ -2162,7 +2162,12 @@
       "banner": "Piano dell'assistente · {confirmed}/{total} confermati",
       "exit": "Esci",
       "suggestion": "suggerito: tenere {keep} / scartare {reject}",
-      "differs": "Diverso dal suggerimento dell'assistente",
+      "differs": "Diverso dal piano dell'assistente",
+      "accepted": "Accettato dal suggerimento dell'assistente",
+      "suggest_keep": "Assistente: tenere",
+      "suggest_reject": "Assistente: scartare",
+      "accept_keep": "Accetta il suggerimento dell'assistente di tenere questa foto: {reason}",
+      "accept_reject": "Accetta il suggerimento dell'assistente di scartare questa foto: {reason}",
       "oversize": "Gruppi esclusi (troppo grandi per essere confermati qui): {count}",
       "out_of_date": "Il piano dell'assistente è obsoleto - chiedigli di generare di nuovo l'anteprima",
       "replan_flips_dropped": "{count} delle tue modifiche non corrispondono più a nessun gruppo e sono state scartate."
@@ -2691,6 +2696,7 @@
       "ui_next_page": "Pagina successiva aperta",
       "ui_show_culling_group": "Gruppo di selezione mostrato",
       "ui_show_culling_plan": "Piano di selezione automatica mostrato nella pagina di selezione",
+      "ui_suggest_culling": "Suggerimenti segnati sul piano di selezione",
       "ui_show_comparison": "Confronto mostrato"
     }
   }

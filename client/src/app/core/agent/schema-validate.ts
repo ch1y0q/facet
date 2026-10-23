@@ -26,8 +26,8 @@ function check(schema: JsonSchema, value: unknown, path: string, issues: string[
     return;
   }
   if (typeof value === 'string') {
-    if (schema.minLength !== undefined && value.length < schema.minLength) issues.push(`${path}: too short`);
-    if (schema.maxLength !== undefined && value.length > schema.maxLength) issues.push(`${path}: too long`);
+    if (schema.minLength !== undefined && [...value].length < schema.minLength) issues.push(`${path}: too short`);
+    if (schema.maxLength !== undefined && [...value].length > schema.maxLength) issues.push(`${path}: too long`);
   }
   if (typeof value === 'number') {
     if (schema.minimum !== undefined && value < schema.minimum) issues.push(`${path}: below ${schema.minimum}`);

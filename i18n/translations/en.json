@@ -2162,7 +2162,12 @@
       "banner": "Assistant plan · {confirmed}/{total} confirmed",
       "exit": "Exit",
       "suggestion": "suggested keep {keep} / reject {reject}",
-      "differs": "Differs from the assistant's suggestion",
+      "differs": "Differs from the assistant's plan",
+      "accepted": "Accepted from the assistant's suggestion",
+      "suggest_keep": "Assistant: keep",
+      "suggest_reject": "Assistant: reject",
+      "accept_keep": "Accept the assistant's suggestion to keep this photo: {reason}",
+      "accept_reject": "Accept the assistant's suggestion to reject this photo: {reason}",
       "oversize": "Groups left out (too large to confirm here): {count}",
       "out_of_date": "The assistant's plan is out of date - ask it to preview again",
       "replan_flips_dropped": "{count} of your changes no longer match a group and were dropped."
@@ -2691,6 +2696,7 @@
       "ui_next_page": "Went to the next page",
       "ui_show_culling_group": "Showed a culling group",
       "ui_show_culling_plan": "Showed the auto-cull plan on the culling page",
+      "ui_suggest_culling": "Marked suggestions on the culling plan",
       "ui_show_comparison": "Showed a comparison"
     }
   }

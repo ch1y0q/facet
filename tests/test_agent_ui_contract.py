@@ -143,3 +143,31 @@ def test_ui_get_context_takes_an_optional_activity_since():
     assert schema["properties"]["activity_since"]["type"] == "integer"
     text = next(t.description for t in UI_TOOLS if t.name == "ui_get_context")
     assert "activity_since" in text and "user_activity" in text
+
+
+def test_ui_suggest_culling_bounds():
+    from api.agent.ui_tools import UiSuggestCulling
+    photo = {"path": "/a.jpg", "action": "reject", "reason": "blink"}
+    assert UiSuggestCulling(photos=[photo], groups=[{"path": "/a.jpg", "note": "close call"}]).forward() == {
+        "photos": [photo], "groups": [{"path": "/a.jpg", "note": "close call"}], "replace": False}
+    assert UiSuggestCulling(replace=True).forward() == {"replace": True, "photos": [], "groups": []}
+    for bad in ({}, {"photos": [dict(photo)] * 101}, {"groups": [{"path": "/a", "note": "n"}] * 51},
+                {"photos": [{**photo, "reason": "x" * 201}]}, {"groups": [{"path": "/a", "note": "x" * 201}]},
+                {"photos": [{**photo, "action": "maybe"}]}, {"photos": [{**photo, "why": "x"}]},
+                {"groups": [{"path": "/a", "note": "n", "why": "x"}]}, {"photos": [{**photo, "reason": ""}]},
+                {"photos": [{**photo, "path": ""}]}, {"photos": [photo], "extra": 1}):
+        with pytest.raises(ValueError):
+            UiSuggestCulling(**bad)
+
+
+def test_ui_suggest_culling_is_an_edition_tool_not_read_only():
+    tool = next(t for t in UI_TOOLS if t.name == "ui_suggest_culling")
+    assert tool.read_only is False
+    names = [t.name for t in UI_TOOLS]
+    assert names.index("ui_suggest_culling") == names.index("ui_show_culling_plan") + 1
+    for term in ("no_plan", "too_large", "replace", "tab_id", "plan_digest", "forbidden_level"):
+        assert term in tool.description, term
+    assert "no_plan" in json.loads(render_client_json())["error_codes"]
+    context = next(t for t in UI_TOOLS if t.name == "ui_get_context").description
+    for term in ("suggestions_open", "suggestions_accepted", "suggestions_total"):
+        assert term in context, term

@@ -15,7 +15,7 @@ import { contractHandlerMismatch, WebMcpToolRegistry } from './webmcp-registry.s
 import { routes } from '../../app.routes';
 import { CULL_DEFAULT_STRICTNESS, CULL_PROFILE_KEY, CULL_STRICTNESS_KEY } from '../../features/gallery/culling.store';
 import { DEFAULT_FILTERS } from '../../features/gallery/gallery-filters.util';
-import { applicableActions, createUiToolHandlers } from './ui-tool-handlers';
+import { applicableActions, capCullingSnapshot, createUiToolHandlers } from './ui-tool-handlers';
 import { CompareFiltersService } from '../../features/comparison/compare-filters.service';
 import { ViewActionRegistry } from './view-action-registry.service';
 import { AssistantChangeBatch, AssistantChangesService } from './assistant-changes.service';
@@ -1077,8 +1077,153 @@ describe('UI tool registry and handlers', () => {
       expect(data).not.toHaveProperty('review');
       expect(data['culling']).toEqual({
         plan_digest: 'd1', groups_total: 1, confirmed: [], pending: [1], untouched: 0, plan_truncated: false,
+        suggestions_total: 0, suggestions_accepted: 0, suggestions_open: [],
         changed: [{ type: 'burst', group_id: 5, number: 1, keep_paths: ['/b.jpg'], reject_paths: ['/a.jpg'] }],
       });
+    });
+  });
+
+  describe('ui_suggest_culling', () => {
+    const REQUEST = { group_by: 'burst' as const, strictness: 40 };
+    const entry = (number: number, id: number, paths: string[], keep: string[]): CullPlanEntryInput => ({
+      key: `${id}_burst`, type: 'burst', group_id: id, number, paths, keep_paths: keep,
+    });
+    const reject = (path: string, reason = 'soft') => ({ path, action: 'reject', reason });
+    let plan: AssistantCullPlanService;
+
+    const loadPlan = (): void => {
+      plan.setPin({ digest: 'd1', request: REQUEST });
+      plan.register([entry(1, 5, ['/a.jpg', '/b.jpg'], ['/a.jpg']), entry(2, 6, ['/c.jpg', '/d.jpg'], ['/c.jpg'])], { total: 2, truncated: false });
+    };
+
+    beforeEach(() => {
+      edition = true;
+      plan = TestBed.inject(AssistantCullPlanService);
+    });
+
+    it('is refused for a non-edition session', async () => {
+      edition = false;
+      loadPlan();
+      expect(await run('ui_suggest_culling', { photos: [reject('/a.jpg')] })).toMatchObject({ ok: false, error: 'forbidden_level' });
+      expect(plan.suggestions().photos.size).toBe(0);
+    });
+
+    it('answers no_plan when the tab holds no plan', async () => {
+      expect(await run('ui_suggest_culling', { photos: [reject('/a.jpg')] })).toMatchObject({ ok: false, error: 'no_plan' });
+    });
+
+    it('stores what differs, answers the counts and lists, and never touches the plan or its digest', async () => {
+      loadPlan();
+      const before = plan.snapshot();
+      const result = await run('ui_suggest_culling', {
+        photos: [reject('/a.jpg'), reject('/b.jpg'), reject('/zzz.jpg')], groups: [{ path: '/c.jpg', note: 'tight' }],
+      });
+      expect(result).toEqual({ ok: true, data: {
+        plan_digest: 'd1', applied: ['/a.jpg'], redundant: ['/b.jpg'], closed: [], missing: ['/zzz.jpg'],
+        groups_applied: ['/c.jpg'], groups_missing: [], groups_closed: [], suggestions_total: 1, notes_total: 1,
+      } });
+      expect(plan.pin()?.digest).toBe('d1');
+      expect(plan.snapshot()).toMatchObject({ ...before, suggestions_total: 1, suggestions_open: [{ path: '/a.jpg', action: 'reject' }] });
+    });
+
+    it('merges a second call, and replace with nothing clears', async () => {
+      loadPlan();
+      await run('ui_suggest_culling', { photos: [reject('/a.jpg')] });
+      await run('ui_suggest_culling', { photos: [reject('/c.jpg')] });
+      expect([...plan.suggestions().photos.keys()]).toEqual(['/a.jpg', '/c.jpg']);
+      await run('ui_suggest_culling', { photos: [reject('/d.jpg')], replace: true });
+      expect([...plan.suggestions().photos.keys()]).toEqual([]);
+      await run('ui_suggest_culling', { photos: [reject('/a.jpg')] });
+      expect(await run('ui_suggest_culling', { replace: true })).toMatchObject({ ok: true, data: { suggestions_total: 0, notes_total: 0 } });
+      expect(plan.suggestions().photos.size).toBe(0);
+    });
+
+    it('refuses an over-cap merge as too_large, naming the suggestion cap, and applies nothing', async () => {
+      plan.setPin({ digest: 'd1', request: REQUEST });
+      const paths = Array.from({ length: 301 }, (_, i) => `/p${i}.jpg`);
+      plan.register([entry(1, 5, paths, [])], { total: 1, truncated: false });
+      const keep = (p: string) => ({ path: p, action: 'keep', reason: 'ok' });
+      for (let i = 0; i < 3; i++) {
+        expect(await run('ui_suggest_culling', { photos: paths.slice(i * 100, i * 100 + 100).map(keep) })).toMatchObject({ ok: true });
+      }
+      const result = await run('ui_suggest_culling', { photos: [keep('/p300.jpg')] });
+      expect(result).toMatchObject({ ok: false, error: 'too_large' });
+      expect((result as { message: string }).message).toContain('300');
+      expect(plan.suggestions().photos.size).toBe(300);
+    });
+
+    it('is cleared by showing a different plan, kept by the same digest, and kept by a refused show', async () => {
+      loadPlan();
+      await run('ui_suggest_culling', { photos: [reject('/a.jpg')] });
+      router.url = '/culling';
+      viewActions.register('ui_show_culling_group', async () => ({}));
+      expect(await run('ui_show_culling_plan', { plan_digest: 'd1', request: REQUEST, focus: 2 })).toMatchObject({ ok: true });
+      expect(plan.suggestions().photos.size).toBe(1);
+      plan.registerDecisionsProbe(() => false);
+      plan.recordSelection('5_burst', ['/b.jpg']);
+      expect(await run('ui_show_culling_plan', { plan_digest: 'd2', request: REQUEST })).toMatchObject({ ok: false, error: 'unsaved_decisions' });
+      expect(plan.suggestions().photos.size).toBe(1);
+      plan.recordSelection('5_burst', ['/a.jpg']);
+      const setPin = plan.setPin.bind(plan);
+      vi.spyOn(plan, 'setPin').mockImplementation(pin => {
+        setPin(pin);
+        plan.register([entry(1, 7, ['/e.jpg', '/f.jpg'], ['/e.jpg'])], { total: 1, truncated: false });
+      });
+      expect(await run('ui_show_culling_plan', { plan_digest: 'd2', request: REQUEST })).toMatchObject({ ok: true });
+      expect(plan.suggestions().photos.size).toBe(0);
+    });
+
+    it('survives a store-style re-plan that pins a new digest', async () => {
+      loadPlan();
+      await run('ui_suggest_culling', { photos: [reject('/a.jpg')], groups: [{ path: '/a.jpg', note: 'n' }] });
+      plan.setPin({ digest: 'd-slider', request: REQUEST });
+      expect(plan.suggestions().photos.size).toBe(1);
+      expect(plan.suggestions().notes.size).toBe(1);
+    });
+
+    it('counts length in code points like the server model: 200 emoji pass', async () => {
+      loadPlan();
+      const result = await run('ui_suggest_culling', { photos: [reject('/a.jpg', '😀'.repeat(200))] });
+      expect(result).toMatchObject({ ok: true, data: { applied: ['/a.jpg'] } });
+    });
+
+    it('validates its own arguments, since the in-page path never runs the server model', async () => {
+      loadPlan();
+      const handler = direct()['ui_suggest_culling'];
+      const bad: Record<string, unknown>[] = [
+        {},
+        { photos: [{ path: '/a.jpg', action: 'reject', reason: 'x', why: 'y' }] },
+        { groups: [{ path: '/a.jpg', note: 'n', why: 'y' }] },
+        { photos: [reject('/a.jpg', 'x'.repeat(201))] },
+        { photos: Array.from({ length: 101 }, () => reject('/a.jpg')) },
+        { groups: Array.from({ length: 51 }, () => ({ path: '/a.jpg', note: 'n' })) },
+        { photos: [{ path: 5, action: 'reject', reason: 'x' }] },
+        { photos: [{ path: '', action: 'reject', reason: 'x' }] },
+        { photos: [{ path: '/a.jpg', action: 'maybe', reason: 'x' }] },
+        { photos: [reject('/a.jpg', '')] },
+        { photos: [reject('/a.jpg', '😀'.repeat(201))] },
+        { photos: 'nope' },
+        { photos: [reject('/a.jpg')], replace: 'yes' },
+      ];
+      for (const args of bad) {
+        await expect(handler(args), JSON.stringify(args).slice(0, 80)).rejects.toMatchObject({ code: 'invalid_input' });
+      }
+      expect(plan.suggestions().photos.size).toBe(0);
+    });
+  });
+
+  describe('capCullingSnapshot suggestions', () => {
+    it('halves a huge suggestions_open list, flags the cut and records the true count', () => {
+      const open = Array.from({ length: 2000 }, (_, i) => ({ path: `/photos/${'a'.repeat(80)}/${i}.jpg`, action: 'reject' as const }));
+      const snap = {
+        plan_digest: 'd', groups_total: 3, confirmed: [], pending: [], changed: [], untouched: 3, plan_truncated: false,
+        suggestions_total: 2000, suggestions_accepted: 1, suggestions_open: open,
+      };
+      const out = capCullingSnapshot(snap, 20 * 1024)!;
+      expect(out['truncated']).toBe(true);
+      expect(out['suggestions_open_count']).toBe(2000);
+      expect((out['suggestions_open'] as unknown[]).length).toBeLessThan(2000);
+      expect(out['suggestions_total']).toBe(2000);
     });
   });
 });

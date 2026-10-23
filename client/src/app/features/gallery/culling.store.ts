@@ -8,7 +8,7 @@ import { I18nService } from '../../core/services/i18n.service';
 import { I18N } from '../../core/i18n/keys';
 import { CULLING_GROUP_TYPES, cullingGroupKey, type CullingGroup } from './burst-culling.pipes';
 import {
-  AssistantCullPlanService, type CullPlanFlip, type CullPlanPin, type CullPlanRequest,
+  AssistantCullPlanService, type CullPlanFlip, type CullPlanPin, type CullPlanRequest, type CullSuggestionAction,
 } from '../../core/agent/assistant-cull-plan.service';
 import type { components } from '../../core/api/schema';
 import type { Photo } from '../../shared/models/photo.model';
@@ -196,6 +196,9 @@ export const BY_PATHS_CHUNK = 500;
  * plain service by a test bed, which ignores component-level providers.
  * View state (zoom, focus, keyboard, layout, DOM) stays in the component.
  */
+/** How long after an accept a click or double-click on that photo's tile is taken as the rest of the badge's double-click. */
+const ACCEPT_DOUBLE_CLICK_MS = 500;
+
 @Injectable({ providedIn: 'root' })
 export class CullingStore {
   private readonly api = inject(ApiService);
@@ -209,8 +212,12 @@ export class CullingStore {
     destroyRef.onDestroy(this.plan.registerDecisionsProbe(() => this.planActive()
       ? this.passingGroups().size > 0 || this.confirming()
       : this.hasUncommittedDecisions()));
+    destroyRef.onDestroy(this.plan.registerClosedGroupsProbe(() => this.closedGroupKeys()));
     destroyRef.onDestroy(() => this.cancelReplan());
   }
+
+  /** The assistant's suggestions on the plan on screen (the service stays private to the store). */
+  readonly suggestions = this.plan.suggestions;
 
   /** True while the darkroom shows the assistant's plan instead of the feed. */
   readonly planActive = signal(false);
@@ -310,6 +317,10 @@ export class CullingStore {
    * tell "the user decided" from "the machine decided".
    */
   readonly touchedGroups = signal<Set<string>>(new Set());
+  /** Keys of groups no decision can change any more: confirmed, counting down to a confirm or skip, or hidden. */
+  readonly closedGroupKeys = computed(() => new Set([
+    ...this.confirmedGroups(), ...this.passingGroups().keys(), ...this.hiddenGroups(),
+  ]));
   readonly confirming = signal(false);
 
   /** Group keys in the feed carrying a correction the detector has not applied yet. */
@@ -897,6 +908,36 @@ export class CullingStore {
     map.set(key, kept);
     this.selectionsMap.set(map);
     this.reportSelection(key, kept);
+  }
+
+  /**
+   * Take the assistant's suggestion for a photo: a plain manual flip, so the group becomes touched and
+   * `culling.changed` / `pending` follow with no second code path. Refused outside plan mode and for a
+   * group already confirmed, counting down or hidden, and while a "confirm all" runs: its keepers were captured for the commit and a late
+   * flip would desync the page from what the server was told. Allowed while a re-plan is in flight, which
+   * carries open flips over.
+   */
+  acceptSuggestion(group: CullingGroup, path: string, action: CullSuggestionAction): void {
+    if (!this.planActive() || this.confirming() || this.closedGroupKeys().has(this.groupKey(group))) return;
+    this.setPhotoKept(group, path, action === 'keep');
+    this.lastAccept = { path, at: Date.now() };
+  }
+
+  /** The photo the last accept flipped. The badge unmounts on that click, so the rest of a double-click lands on the tile. */
+  private lastAccept: { path: string; at: number } | null = null;
+
+  private justAccepted(path: string): boolean {
+    return this.lastAccept?.path === path && Date.now() - this.lastAccept.at < ACCEPT_DOUBLE_CLICK_MS;
+  }
+
+  /** A click on a photo tile; the tail of a double-click on a just-accepted badge is not a decision. */
+  tileClick(path: string, group: CullingGroup): void {
+    if (!this.justAccepted(path)) this.toggleSelection(path, group);
+  }
+
+  /** A double-click on a photo tile; see `tileClick`. */
+  tileDoubleClick(path: string, group: CullingGroup): void {
+    if (!this.justAccepted(path)) this.selectExclusive(path, group);
   }
 
   /** Put a group's keepers back to an earlier set (a swipe's Undo); not a new decision, so `touchedGroups` is left alone. */

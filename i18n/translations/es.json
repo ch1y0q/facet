@@ -2162,7 +2162,12 @@
       "banner": "Plan del asistente · {confirmed}/{total} confirmados",
       "exit": "Salir",
       "suggestion": "sugerido: conservar {keep} / descartar {reject}",
-      "differs": "Difiere de la sugerencia del asistente",
+      "differs": "Difiere del plan del asistente",
+      "accepted": "Aceptado de la sugerencia del asistente",
+      "suggest_keep": "Asistente: conservar",
+      "suggest_reject": "Asistente: descartar",
+      "accept_keep": "Aceptar la sugerencia del asistente de conservar esta foto: {reason}",
+      "accept_reject": "Aceptar la sugerencia del asistente de descartar esta foto: {reason}",
       "oversize": "Grupos omitidos (demasiado grandes para confirmarlos aquí): {count}",
       "out_of_date": "El plan del asistente está desactualizado - pídele que genere la vista previa de nuevo",
       "replan_flips_dropped": "{count} de tus cambios ya no corresponden a ningún grupo y se han descartado."
@@ -2691,6 +2696,7 @@
       "ui_next_page": "Página siguiente abierta",
       "ui_show_culling_group": "Grupo de selección mostrado",
       "ui_show_culling_plan": "Plan de selección automática mostrado en la página de selección",
+      "ui_suggest_culling": "Sugerencias marcadas en el plan de selección",
       "ui_show_comparison": "Comparación mostrada"
     }
   }

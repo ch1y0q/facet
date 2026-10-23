@@ -9,6 +9,7 @@ import {
   loadFrameImage, computePeakingOverlay, computePooledPeakingOverlays,
   peakingCanvasSize, PEAKING_FIT_EDGE, KEY_SUBJECT_COORDINATE_SPACE,
   CullGroupKeyPipe, CullPlanGroupReasonPipe, PlanDiffersPipe, PlanRejectCountPipe,
+  PlanSuggestionPipe, PlanAcceptedPipe, PlanGroupNotePipe,
   CullingGroup, CullingFace, CullingSubject, FaceThresholds, FrameSize, KeySubject,
 } from './burst-culling.pipes';
 
@@ -901,5 +902,61 @@ describe('PlanDiffersPipe', () => {
 
   it('is false for a group without a plan', () => {
     expect(pipe.transform('/a.jpg', group(), new Map([['1_burst', new Set(['/a.jpg'])]]))).toBe(false);
+  });
+});
+
+describe('PlanSuggestionPipe', () => {
+  const pipe = new PlanSuggestionPipe();
+  const planned = group({ plan: { number: 1, keep_paths: ['/a.jpg'], group_reason: null } });
+  const suggestions = new Map([
+    ['/a.jpg', { action: 'reject' as const, reason: 'soft' }],
+    ['/b.jpg', { action: 'keep' as const, reason: 'sharp' }],
+  ]);
+  const none = new Set<string>();
+  const kept = (...paths: string[]) => new Map([['1_burst', new Set(paths)]]);
+
+  it('offers the suggestion while the photo is not yet in the suggested state', () => {
+    expect(pipe.transform('/a.jpg', planned, kept('/a.jpg'), suggestions, none)).toEqual({ action: 'reject', reason: 'soft' });
+    expect(pipe.transform('/b.jpg', planned, kept('/a.jpg'), suggestions, none)).toEqual({ action: 'keep', reason: 'sharp' });
+  });
+
+  it('is null once the current state equals the action, and comes back when the user flips away again', () => {
+    expect(pipe.transform('/a.jpg', planned, kept(), suggestions, none)).toBeNull();
+    expect(pipe.transform('/b.jpg', planned, kept('/a.jpg', '/b.jpg'), suggestions, none)).toBeNull();
+    expect(pipe.transform('/a.jpg', planned, kept('/a.jpg'), suggestions, none)).not.toBeNull();
+  });
+
+  it('is null without a suggestion, without a plan, or in a closed group', () => {
+    expect(pipe.transform('/c.jpg', planned, kept('/a.jpg'), suggestions, none)).toBeNull();
+    expect(pipe.transform('/a.jpg', group(), kept('/a.jpg'), suggestions, none)).toBeNull();
+    expect(pipe.transform('/a.jpg', planned, kept('/a.jpg'), suggestions, new Set(['1_burst']))).toBeNull();
+  });
+});
+
+describe('PlanAcceptedPipe', () => {
+  const pipe = new PlanAcceptedPipe();
+  const planned = group({ plan: { number: 1, keep_paths: ['/a.jpg'], group_reason: null } });
+  const suggestions = new Map([['/a.jpg', { action: 'reject' as const, reason: 'soft' }]]);
+
+  it('is true only when the photo sits in the suggested state and the plan chose otherwise', () => {
+    expect(pipe.transform('/a.jpg', planned, new Map([['1_burst', new Set<string>()]]), suggestions)).toBe(true);
+    expect(pipe.transform('/a.jpg', planned, new Map([['1_burst', new Set(['/a.jpg'])]]), suggestions)).toBe(false);
+    expect(pipe.transform('/b.jpg', planned, new Map([['1_burst', new Set<string>()]]), suggestions)).toBe(false);
+    expect(pipe.transform('/a.jpg', group(), new Map(), suggestions)).toBe(false);
+  });
+});
+
+describe('PlanGroupNotePipe', () => {
+  const pipe = new PlanGroupNotePipe();
+  const photos = ['/a.jpg', '/b.jpg', '/c.jpg'].map(path => ({ path })) as CullingGroup['photos'];
+
+  it('returns the note of the first photo of the group that has one', () => {
+    const notes = new Map([['/c.jpg', 'late'], ['/b.jpg', 'tight call']]);
+    expect(pipe.transform(group({ photos }), notes)).toBe('tight call');
+  });
+
+  it('is null without a note', () => {
+    expect(pipe.transform(group({ photos }), new Map([['/z.jpg', 'x']]))).toBeNull();
+    expect(pipe.transform(group({ photos }), new Map())).toBeNull();
   });
 });

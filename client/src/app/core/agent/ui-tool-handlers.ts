@@ -15,7 +15,7 @@ import { CULL_DEFAULT_STRICTNESS, CULL_PROFILE_KEY, readStoredStrictnessOrNull }
 import { COMPARE_AB_TAB_INDEX, CompareFiltersService } from '../../features/comparison/compare-filters.service';
 import { ViewActionRegistry } from './view-action-registry.service';
 import { UserActivityJournal } from './user-activity-journal.service';
-import { AssistantCullPlanService, type CullPlanRequest } from './assistant-cull-plan.service';
+import { AssistantCullPlanService, type CullPlanRequest, type CullSuggestionAction, MAX_STORED_NOTES, MAX_STORED_SUGGESTIONS } from './assistant-cull-plan.service';
 import type { CullPlanSnapshot } from './assistant-cull-plan.service';
 import { UiActionRow, UiToolError, UiToolHandler } from './ui-tool.types';
 
@@ -553,6 +553,8 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
         if (plan.hasUnsavedDecisions()) {
           throw new UiToolError('unsaved_decisions', 'The user has decisions on the darkroom they have not confirmed; ask them to confirm or leave them first.');
         }
+        // A different plan is a different set of photos: the assistant's marks on the old one go with it.
+        plan.clearSuggestions();
         plan.setPin({ digest, request: args['request'] as CullPlanRequest, focusNumber: focus });
       }
       const name = 'ui_show_culling_group';
@@ -574,7 +576,80 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       }
       return { route: '/culling', plan_digest: digest, groups_total: snapshot.groups_total };
     },
+
+    /**
+     * Annotates the plan the tab holds with the assistant's per-photo suggestions and per-group notes. It
+     * never changes the plan, its digest or a selection: the user accepts a badge with a click. The in-page
+     * WebMCP path validates only against the JSON schema, so the model's own rules are checked here too.
+     */
+    ui_suggest_culling: async args => {
+      if (!auth.isEdition()) throw new UiToolError('forbidden_level', 'The darkroom needs an edition session.');
+      const { photos, groups, replace } = parseSuggestArgs(args);
+      const snapshot = plan.snapshot();
+      if (!snapshot) throw new UiToolError('no_plan', 'The tab holds no culling plan; show one with auto_cull first.');
+      const outcome = plan.suggest(photos, groups, replace);
+      if (outcome === 'too_large') {
+        throw new UiToolError('too_large', `Too many suggestions held in the tab (limit ${MAX_STORED_SUGGESTIONS} photos / ${MAX_STORED_NOTES} notes), not the result-size limit; use replace.`);
+      }
+      return { plan_digest: snapshot.plan_digest, ...outcome };
+    },
   };
+}
+
+const SUGGEST_MAX_PHOTOS = 100;
+const SUGGEST_MAX_GROUPS = 50;
+const SUGGEST_MAX_TEXT = 200;
+const SUGGEST_MAX_PATH = 4096;
+
+/** A non-empty string of at most `max` characters, or `invalid_input` naming `label`. */
+function boundedString(value: unknown, max: number, label: string): string {
+  if (typeof value !== 'string' || [...value].length < 1 || [...value].length > max) {
+    throw new UiToolError('invalid_input', `${label} must be a string of 1 to ${max} characters.`);
+  }
+  return value;
+}
+
+/** The entries of an optional array whose items are objects with exactly `keys`, at most `limit` of them. */
+function strictEntries(value: unknown, keys: readonly string[], limit: number, label: string): Record<string, unknown>[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > limit) {
+    throw new UiToolError('invalid_input', `${label} must be an array of at most ${limit} entries.`);
+  }
+  return value.map(item => {
+    const known = item !== null && typeof item === 'object' && !Array.isArray(item)
+      && Object.keys(item).length === keys.length && keys.every(key => key in item);
+    if (!known) throw new UiToolError('invalid_input', `Each ${label} entry takes exactly ${keys.join(', ')}.`);
+    return item as Record<string, unknown>;
+  });
+}
+
+function parseSuggestArgs(args: Record<string, unknown>): {
+  photos: { path: string; action: CullSuggestionAction; reason: string }[];
+  groups: { path: string; note: string }[];
+  replace: boolean;
+} {
+  const photos = strictEntries(args['photos'], ['path', 'action', 'reason'], SUGGEST_MAX_PHOTOS, 'photos').map(item => {
+    if (item['action'] !== 'keep' && item['action'] !== 'reject') {
+      throw new UiToolError('invalid_input', 'A photo action must be "keep" or "reject".');
+    }
+    return {
+      path: boundedString(item['path'], SUGGEST_MAX_PATH, 'A photo path'),
+      action: item['action'] as CullSuggestionAction,
+      reason: boundedString(item['reason'], SUGGEST_MAX_TEXT, 'A reason'),
+    };
+  });
+  const groups = strictEntries(args['groups'], ['path', 'note'], SUGGEST_MAX_GROUPS, 'groups').map(item => ({
+    path: boundedString(item['path'], SUGGEST_MAX_PATH, 'A group path'),
+    note: boundedString(item['note'], SUGGEST_MAX_TEXT, 'A note'),
+  }));
+  if (args['replace'] !== undefined && typeof args['replace'] !== 'boolean') {
+    throw new UiToolError('invalid_input', 'replace must be a boolean.');
+  }
+  const replace = args['replace'] === true;
+  if (!photos.length && !groups.length && !replace) {
+    throw new UiToolError('invalid_input', 'Nothing to suggest: give photos, groups or replace: true.');
+  }
+  return { photos, groups, replace };
 }
 
 /**
@@ -584,7 +659,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
  */
 export const CULLING_BLOCK_BUDGET = 100 * 1024;
 
-const CULLING_LISTS = ['confirmed', 'pending', 'changed'] as const;
+const CULLING_LISTS = ['confirmed', 'pending', 'changed', 'suggestions_open'] as const;
 
 /**
  * Trim the snapshot's lists from the tail until its JSON fits `CULLING_BLOCK_BUDGET`. The biggest list is
@@ -601,6 +676,7 @@ export function capCullingSnapshot(snapshot: CullPlanSnapshot | null, budget = C
     confirmed_count: snapshot.confirmed.length,
     pending_count: snapshot.pending.length,
     changed_count: snapshot.changed.length,
+    suggestions_open_count: snapshot.suggestions_open.length,
     truncated: true,
   };
   while (size(out) > budget) {

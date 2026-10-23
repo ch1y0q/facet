@@ -2,6 +2,7 @@ import { Pipe, PipeTransform, inject } from '@angular/core';
 import { I18nService } from '../../core/services/i18n.service';
 import { SEQUENCE_KIND_ICONS } from '../../shared/pipes/sequence-kind.pipe';
 import type { ComparisonStats } from '../../core/api/types';
+import type { CullSuggestion } from '../../core/agent/assistant-cull-plan.service';
 
 /** Backend-supplied machine reason key + optional value for why a photo ranks lower. */
 export interface CullReason {
@@ -142,6 +143,59 @@ export class PlanDiffersPipe implements PipeTransform {
     const kept = selectionsMap.get(cullingGroupKey(group));
     if (!plan || !kept) return false;
     return kept.has(path) !== plan.keep_paths.includes(path);
+  }
+}
+
+/**
+ * The assistant's suggestion for a photo, while there is something to accept: null without a plan, without
+ * a suggestion, in a group no decision can change any more (`closedKeys`), or once the photo already sits
+ * in the suggested state. Derived on every read, so flipping the photo back brings the badge back.
+ */
+@Pipe({ name: 'planSuggestion' })
+export class PlanSuggestionPipe implements PipeTransform {
+  transform(
+    path: string,
+    group: CullingGroup,
+    selectionsMap: Map<string, Set<string>>,
+    suggestions: ReadonlyMap<string, CullSuggestion>,
+    closedKeys: ReadonlySet<string>,
+  ): CullSuggestion | null {
+    const suggestion = suggestions.get(path);
+    if (!suggestion || !group.plan) return null;
+    const key = cullingGroupKey(group);
+    if (closedKeys.has(key)) return null;
+    const kept = selectionsMap.get(key)?.has(path) ?? false;
+    return kept === (suggestion.action === 'keep') ? null : suggestion;
+  }
+}
+
+/** Whether the photo's current state is the assistant's suggestion and not what the plan chose: the user took it. */
+@Pipe({ name: 'planAccepted' })
+export class PlanAcceptedPipe implements PipeTransform {
+  transform(
+    path: string,
+    group: CullingGroup,
+    selectionsMap: Map<string, Set<string>>,
+    suggestions: ReadonlyMap<string, CullSuggestion>,
+  ): boolean {
+    const suggestion = suggestions.get(path);
+    const plan = group.plan;
+    const kept = selectionsMap.get(cullingGroupKey(group));
+    if (!suggestion || !plan || !kept) return false;
+    const wantsKept = suggestion.action === 'keep';
+    return kept.has(path) === wantsKept && plan.keep_paths.includes(path) !== wantsKept;
+  }
+}
+
+/** The assistant's note on a group: that of the first photo (display order) carrying one. */
+@Pipe({ name: 'planGroupNote' })
+export class PlanGroupNotePipe implements PipeTransform {
+  transform(group: CullingGroup, notes: ReadonlyMap<string, string>): string | null {
+    for (const photo of group.photos) {
+      const note = notes.get(photo.path);
+      if (note) return note;
+    }
+    return null;
   }
 }
 

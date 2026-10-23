@@ -37,6 +37,7 @@ describe('AssistantCullPlanService', () => {
     expect(service.snapshot()).toEqual({
       plan_digest: 'd', groups_total: 10, plan_truncated: true,
       confirmed: [3, 4], pending: [2], untouched: 7,
+      suggestions_total: 0, suggestions_accepted: 0, suggestions_open: [],
       changed: [
         { type: 'similar', group_id: 5, number: 2, keep_paths: ['/c', '/d'], reject_paths: [] },
         { type: 'burst', group_id: 6, number: 3, keep_paths: ['/f'], reject_paths: ['/e'] },
@@ -215,6 +216,138 @@ describe('AssistantCullPlanService', () => {
       expect(snap.untouched).toBe(1);
       expect(service.openFlips()).toEqual([]);
       expect(record).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('suggestions', () => {
+    const plan = () => {
+      service.setPin({ digest: 'd', request: { group_by: 'all' } });
+      service.register([
+        entry(1, 'burst', 1, ['/a', '/b', '/c'], ['/a']),
+        entry(2, 'burst', 2, ['/d', '/e'], ['/d']),
+        entry(3, 'burst', 3, ['/f', '/g'], ['/f']),
+      ], { total: 3, truncated: false });
+    };
+    const reject = (path: string, reason = 'soft') => ({ path, action: 'reject' as const, reason });
+    const keep = (path: string, reason = 'sharp') => ({ path, action: 'keep' as const, reason });
+
+    it('stores a differing suggestion, merges by path on a later call and keeps the others', () => {
+      plan();
+      expect(service.suggest([reject('/a'), keep('/b')], [{ path: '/a', note: 'close' }], false)).toEqual({
+        applied: ['/a', '/b'], redundant: [], closed: [], missing: [], groups_applied: ['/a'], groups_missing: [], groups_closed: [], suggestions_total: 2, notes_total: 1,
+      });
+      service.suggest([reject('/a', 'blurry')], [], false);
+      const held = service.suggestions();
+      expect(held.photos.get('/a')).toEqual({ action: 'reject', reason: 'blurry' });
+      expect(held.photos.get('/b')).toEqual({ action: 'keep', reason: 'sharp' });
+      expect(held.notes.get('/a')).toBe('close');
+    });
+
+    it('lets a later call that agrees with the plan retire the earlier proposal for that photo', () => {
+      plan();
+      service.suggest([reject('/a')], [], false);
+      expect(service.suggest([keep('/a')], [], false)).toMatchObject({ redundant: ['/a'], suggestions_total: 0 });
+      expect(service.suggestions().photos.size).toBe(0);
+    });
+
+    it('replace drops the earlier ones and replace with nothing clears', () => {
+      plan();
+      service.suggest([reject('/a')], [{ path: '/d', note: 'n' }], false);
+      service.suggest([keep('/e')], [], true);
+      expect([...service.suggestions().photos.keys()]).toEqual(['/e']);
+      expect(service.suggestions().notes.size).toBe(0);
+      expect(service.suggest([], [], true)).toMatchObject({ applied: [], suggestions_total: 0, notes_total: 0 });
+      expect(service.suggestions().photos.size).toBe(0);
+    });
+
+    it('reports missing, closed and redundant paths and stores none of them', () => {
+      plan();
+      service.recordConfirm('2_burst', ['/d']);
+      service.recordSkip('3_burst');
+      const answer = service.suggest(
+        [reject('/zzz'), reject('/e'), reject('/g'), keep('/a'), keep('/b')],
+        [{ path: '/zzz', note: 'x' }, { path: '/d', note: 'closed group' }, { path: '/c', note: 'ok' }], false);
+      expect(answer).toEqual({
+        applied: ['/b'], redundant: ['/a'], closed: ['/e', '/g'], missing: ['/zzz'],
+        groups_applied: ['/c'], groups_missing: ['/zzz'], groups_closed: ['/d'], suggestions_total: 1, notes_total: 1,
+      });
+      expect([...service.suggestions().photos.keys()]).toEqual(['/b']);
+    });
+
+    it('reports a photo and a note of a group counting down to a confirm as closed, and stores neither', () => {
+      plan();
+      service.registerClosedGroupsProbe(() => new Set(['1_burst']));
+      expect(service.suggest([reject('/a')], [{ path: '/b', note: 'n' }], false)).toMatchObject({
+        applied: [], closed: ['/a'], groups_applied: [], groups_closed: ['/b'], suggestions_total: 0, notes_total: 0,
+      });
+      service.registerClosedGroupsProbe(() => new Set());
+      service.suggest([reject('/a')], [], false);
+      service.registerClosedGroupsProbe(() => new Set(['1_burst']));
+      expect(service.snapshot()?.suggestions_open).toEqual([]);
+    });
+
+    it('refuses over the cap as a whole and leaves the maps identical', () => {
+      service.setPin({ digest: 'd', request: { group_by: 'all' } });
+      const paths = Array.from({ length: 301 }, (_, i) => `/p${i}`);
+      service.register([entry(1, 'burst', 1, paths, [])], { total: 1, truncated: false });
+      const first = service.suggest(paths.slice(0, 300).map(p => keep(p)), [], false);
+      expect(first).not.toBe('too_large');
+      const before = service.suggestions();
+      expect(service.suggest([keep('/p300')], [], false)).toBe('too_large');
+      expect(service.suggestions()).toBe(before);
+      expect(service.suggest([keep('/p0', 'again')], [], false)).not.toBe('too_large');
+    });
+
+    it('clear() empties them, and a re-plan with a new digest through setPin keeps them', () => {
+      plan();
+      service.suggest([reject('/a')], [{ path: '/a', note: 'n' }], false);
+      service.setPin({ digest: 'd2', request: { group_by: 'all' } });
+      expect(service.suggestions().photos.size).toBe(1);
+      service.clear();
+      expect(service.suggestions().photos.size).toBe(0);
+      expect(service.suggestions().notes.size).toBe(0);
+    });
+
+    it('does not let a selection flip alter the stored suggestions', () => {
+      plan();
+      service.suggest([reject('/a')], [], false);
+      const before = service.suggestions();
+      service.recordSelection('1_burst', ['/b']);
+      expect(service.suggestions()).toBe(before);
+    });
+
+    it('reports open and accepted suggestions in the snapshot, with the stored total', () => {
+      plan();
+      service.suggest([reject('/a'), keep('/b'), reject('/d')], [], false);
+      expect(service.snapshot()).toMatchObject({
+        suggestions_total: 3, suggestions_accepted: 0,
+        suggestions_open: [{ path: '/a', action: 'reject' }, { path: '/b', action: 'keep' }, { path: '/d', action: 'reject' }],
+      });
+      service.recordSelection('1_burst', ['/b']);
+      expect(service.snapshot()).toMatchObject({
+        suggestions_accepted: 2, suggestions_open: [{ path: '/d', action: 'reject' }],
+      });
+    });
+
+    it('drops a confirmed group from the open list but still counts what was accepted there', () => {
+      plan();
+      service.suggest([reject('/a'), reject('/d')], [], false);
+      service.recordSelection('1_burst', ['/b']);
+      service.recordConfirm('1_burst', ['/b']);
+      service.recordSkip('2_burst');
+      const snap = service.snapshot()!;
+      expect(snap.suggestions_open).toEqual([]);
+      expect(snap.suggestions_accepted).toBe(1);
+      expect(snap.suggestions_total).toBe(2);
+    });
+
+    it('keeps them across a re-plan that holds the same paths, and does not count a plan that moved onto them as accepted', () => {
+      plan();
+      service.suggest([reject('/a')], [], false);
+      service.register([entry(1, 'burst', 1, ['/a', '/b', '/c'], ['/b'])], { total: 1, truncated: false });
+      expect(service.snapshot()).toMatchObject({ suggestions_open: [], suggestions_accepted: 0, suggestions_total: 1 });
+      service.register([entry(1, 'burst', 1, ['/a', '/b', '/c'], ['/a'])], { total: 1, truncated: false });
+      expect(service.snapshot()).toMatchObject({ suggestions_open: [{ path: '/a', action: 'reject' }], suggestions_accepted: 0 });
     });
   });
 });

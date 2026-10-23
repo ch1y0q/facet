@@ -36,6 +36,40 @@ export interface CullPlanFlip {
   current: string[];
 }
 
+export type CullSuggestionAction = 'keep' | 'reject';
+
+/** The assistant's proposal for one photo; `reason` is untrusted text and only ever rendered as text. */
+export interface CullSuggestion {
+  action: CullSuggestionAction;
+  reason: string;
+}
+
+/** The held suggestions, keyed by photo path (a note by the path of one member photo of its group). */
+export interface CullSuggestions {
+  photos: ReadonlyMap<string, CullSuggestion>;
+  notes: ReadonlyMap<string, string>;
+}
+
+/** What `ui_suggest_culling` answers, minus the digest the handler adds. */
+export interface CullSuggestOutcome {
+  applied: string[];
+  redundant: string[];
+  closed: string[];
+  missing: string[];
+  groups_applied: string[];
+  groups_missing: string[];
+  /** Notes refused because their group is confirmed, skipped or counting down. */
+  groups_closed: string[];
+  /** Photo suggestions held after the call: the same count `ui_get_context.culling.suggestions_total` reports. */
+  suggestions_total: number;
+  /** Group notes held after the call. */
+  notes_total: number;
+}
+
+/** What the tab holds at most; a merge beyond it is refused whole. */
+export const MAX_STORED_SUGGESTIONS = 300;
+export const MAX_STORED_NOTES = 100;
+
 export interface CullPlanChangedGroup {
   type: string;
   group_id: number;
@@ -58,6 +92,12 @@ export interface CullPlanSnapshot {
   untouched: number;
   /** The plan itself was cut (group or photo cap); distinct from the list trimming `ui_get_context` may add. */
   plan_truncated: boolean;
+  /** Stored photo suggestions, whether or not their photo is still in the plan. */
+  suggestions_total: number;
+  /** Suggestions whose photo the user has put in the suggested state while the plan's own state differs. */
+  suggestions_accepted: number;
+  /** Suggestions still waiting: an open group, the photo's current state differs from the suggested action. */
+  suggestions_open: { path: string; action: CullSuggestionAction }[];
 }
 
 /** Why the last plan load failed: `out_of_date` is the 412 (the digest moved), `failed` anything else. */
@@ -98,9 +138,17 @@ export class AssistantCullPlanService {
   /** The held plan, or null in manual mode. */
   readonly pin = signal<CullPlanPin | null>(null);
 
+  /**
+   * The assistant's per-photo suggestions and per-group notes. Immutable maps replaced on every change so
+   * the template pipes re-evaluate; deliberately untouched by `setPin`, because the store's slider re-plan
+   * pins a new digest and they must survive it.
+   */
+  readonly suggestions = signal<CullSuggestions>({ photos: new Map(), notes: new Map() });
+
   private entries = new Map<string, Entry>();
   private meta: Meta | null = null;
   private decisionsProbe: (() => boolean) | null = null;
+  private closedGroupsProbe: (() => ReadonlySet<string>) | null = null;
   private held: { digest: string; data: unknown } | null = null;
   private failure: { digest: string; reason: CullPlanLoadFailure } | null = null;
 
@@ -123,9 +171,65 @@ export class AssistantCullPlanService {
   /** Leave plan mode: the pin and everything learned about the plan go. */
   clear(): void {
     this.pin.set(null);
+    this.clearSuggestions();
     this.entries = new Map();
     this.meta = null;
     this.held = null;
+  }
+
+  /** Forget every suggestion and note. */
+  clearSuggestions(): void {
+    this.suggestions.set({ photos: new Map(), notes: new Map() });
+  }
+
+  /**
+   * Annotate the held plan. A photo is stored only when it is in the plan, its group is open and the
+   * suggestion differs from the plan's own choice; the rest is reported, not stored. Merges by path unless
+   * `replace`. Returns `'too_large'`, changing nothing, when the result would exceed the stored caps.
+   */
+  suggest(
+    photos: { path: string; action: CullSuggestionAction; reason: string }[],
+    notes: { path: string; note: string }[],
+    replace: boolean,
+  ): CullSuggestOutcome | 'too_large' {
+    const entryOf = new Map<string, Entry>();
+    for (const e of this.entries.values()) for (const path of e.paths) entryOf.set(path, e);
+    const nextPhotos = new Map(replace ? [] : this.suggestions().photos);
+    const nextNotes = new Map(replace ? [] : this.suggestions().notes);
+    const closedKeys = this.closedGroupsProbe?.() ?? new Set<string>();
+    const out: CullSuggestOutcome = { applied: [], redundant: [], closed: [], missing: [], groups_applied: [], groups_missing: [], groups_closed: [], suggestions_total: 0, notes_total: 0 };
+    for (const { path, action, reason } of photos) {
+      const e = entryOf.get(path);
+      if (!e) out.missing.push(path);
+      else if (this.isClosed(e, closedKeys)) out.closed.push(path);
+      else if ((action === 'keep') === e.keep_paths.includes(path)) {
+        // The later call wins: agreeing with the plan retires an earlier proposal for the same photo.
+        nextPhotos.delete(path);
+        out.redundant.push(path);
+      }
+      else {
+        nextPhotos.set(path, { action, reason });
+        out.applied.push(path);
+      }
+    }
+    for (const { path, note } of notes) {
+      const e = entryOf.get(path);
+      if (!e) {
+        out.groups_missing.push(path);
+        continue;
+      }
+      if (this.isClosed(e, closedKeys)) {
+        out.groups_closed.push(path);
+        continue;
+      }
+      nextNotes.set(path, note);
+      out.groups_applied.push(path);
+    }
+    if (nextPhotos.size > MAX_STORED_SUGGESTIONS || nextNotes.size > MAX_STORED_NOTES) return 'too_large';
+    this.suggestions.set({ photos: nextPhotos, notes: nextNotes });
+    out.suggestions_total = nextPhotos.size;
+    out.notes_total = nextNotes.size;
+    return out;
   }
 
   /** Keep the loaded plan response for `digest` so leaving /culling and coming back does not re-post it. */
@@ -209,6 +313,22 @@ export class AssistantCullPlanService {
   }
 
   /**
+   * The mounted darkroom reports the group keys no decision can change any more (confirmed, counting down,
+   * hidden), including those whose commit has not landed yet. Returns the function that withdraws the probe.
+   */
+  registerClosedGroupsProbe(probe: () => ReadonlySet<string>): () => void {
+    this.closedGroupsProbe = probe;
+    return () => {
+      if (this.closedGroupsProbe === probe) this.closedGroupsProbe = null;
+    };
+  }
+
+  /** True when the group takes no more decisions: settled, or counting down to a confirm or skip. */
+  private isClosed(entry: Entry, closedKeys: ReadonlySet<string>): boolean {
+    return entry.status !== 'open' || closedKeys.has(entry.key);
+  }
+
+  /**
    * True when swapping the plan would discard something the user did on the darkroom now on screen: its
    * own probe says so, or an unconfirmed plan group sits flipped. With no darkroom mounted those decisions
    * went with it, so nothing is at stake.
@@ -252,6 +372,20 @@ export class AssistantCullPlanService {
       keep_paths: e.current,
       reject_paths: e.paths.filter(path => !e.current.includes(path)),
     }));
+    const stored = this.suggestions().photos;
+    const closedKeys = this.closedGroupsProbe?.() ?? new Set<string>();
+    const open: { path: string; action: CullSuggestionAction }[] = [];
+    let accepted = 0;
+    for (const e of all) {
+      for (const path of e.paths) {
+        const suggestion = stored.get(path);
+        if (!suggestion) continue;
+        const kept = e.current.includes(path);
+        if (kept === (suggestion.action === 'keep')) {
+          if (e.keep_paths.includes(path) !== kept) accepted++;
+        } else if (!this.isClosed(e, closedKeys)) open.push({ path, action: suggestion.action });
+      }
+    }
     return {
       plan_digest: pin.digest,
       groups_total: this.meta.total,
@@ -260,6 +394,9 @@ export class AssistantCullPlanService {
       changed,
       untouched: Math.max(0, this.meta.total - confirmed.length - skipped - pending.length),
       plan_truncated: this.meta.truncated,
+      suggestions_total: stored.size,
+      suggestions_accepted: accepted,
+      suggestions_open: open,
     };
   }
 }

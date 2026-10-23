@@ -2162,7 +2162,12 @@
       "banner": "Plan de l'assistant · {confirmed}/{total} confirmés",
       "exit": "Quitter",
       "suggestion": "suggestion : garder {keep} / rejeter {reject}",
-      "differs": "Diffère de la suggestion de l'assistant",
+      "differs": "Diffère du plan de l'assistant",
+      "accepted": "Accepté depuis la suggestion de l'assistant",
+      "suggest_keep": "Assistant : garder",
+      "suggest_reject": "Assistant : rejeter",
+      "accept_keep": "Accepter la suggestion de l'assistant de garder cette photo : {reason}",
+      "accept_reject": "Accepter la suggestion de l'assistant de rejeter cette photo : {reason}",
       "oversize": "Groupes écartés (trop grands pour être confirmés ici) : {count}",
       "out_of_date": "Le plan de l'assistant est périmé - demandez-lui de le prévisualiser à nouveau",
       "replan_flips_dropped": "{count} de vos modifications ne correspondent plus à aucun groupe et ont été abandonnées."
@@ -2691,6 +2696,7 @@
       "ui_next_page": "Page suivante affichée",
       "ui_show_culling_group": "Groupe de tri affiché",
       "ui_show_culling_plan": "Plan d'auto-tri affiché sur la page de tri",
+      "ui_suggest_culling": "Suggestions marquées sur le plan d'auto-tri",
       "ui_show_comparison": "Comparaison affichée"
     }
   }
