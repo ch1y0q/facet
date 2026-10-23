@@ -7,6 +7,7 @@ import { signal } from '@angular/core';
 import { AuthService } from '../../core/services/auth.service';
 import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { GalleryStore } from '../gallery/gallery.store';
 import { MergeSuggestionsComponent } from './merge-suggestions.component';
 
@@ -16,6 +17,7 @@ describe('MergeSuggestionsComponent', () => {
   let mockI18n: { t: Mock };
   let mockDialog: { open: Mock };
   let mockSnackBar: { open: Mock };
+  let journal: { record: Mock };
   const storeConfig = signal<{ face_merge_threshold?: number } | null>(null);
 
   const makeSuggestion = (
@@ -43,6 +45,7 @@ describe('MergeSuggestionsComponent', () => {
       open: vi.fn(() => ({ afterClosed: () => of(null) })),
     };
     mockSnackBar = { open: vi.fn() };
+    journal = { record: vi.fn() };
 
     TestBed.configureTestingModule({
       providers: [
@@ -52,6 +55,7 @@ describe('MergeSuggestionsComponent', () => {
         { provide: I18nService, useValue: mockI18n },
         { provide: MatDialog, useValue: mockDialog },
         { provide: MatSnackBar, useValue: mockSnackBar },
+        { provide: UserActivityJournal, useValue: journal },
         { provide: GalleryStore, useValue: { config: storeConfig } },
       ],
     });
@@ -177,6 +181,36 @@ describe('MergeSuggestionsComponent', () => {
       await component.mergeInto(suggestion, suggestion.person1);
 
       expect(component.merging()).toBe(false);
+    });
+  });
+
+  describe('user activity journal', () => {
+    it('journals a single merge with its pair, and nothing when it fails', async () => {
+      const suggestion = makeSuggestion(1, 'Alice', 10, 2, 'Bob', 5);
+      component.suggestions.set([suggestion]);
+      mockApi.post.mockReturnValueOnce(throwError(() => new Error('fail')));
+      await component.mergeInto(suggestion, suggestion.person1);
+      expect(journal.record).not.toHaveBeenCalled();
+      await component.mergeInto(suggestion, suggestion.person1);
+      expect(journal.record).toHaveBeenCalledTimes(1);
+      expect(journal.record).toHaveBeenCalledWith('person', [], { action: 'merge', count: 1, pairs: [[2, 1]] });
+    });
+
+    it('journals a batch merge as one entry, partial when the server folded fewer', async () => {
+      const list = [makeSuggestion(1, 'Alice', 10, 2, 'Bob', 5), makeSuggestion(3, 'Carol', 3, 4, 'Dave', 8)];
+      component.suggestions.set(list);
+      mockApi.post.mockReturnValueOnce(of({ merged_count: 2 }));
+      await component.acceptAll();
+      expect(journal.record).toHaveBeenLastCalledWith('person', [], { action: 'merge', count: 2 });
+      component.suggestions.set(list);
+      mockApi.post.mockReturnValueOnce(of({ merged_count: 1 }));
+      await component.acceptAll();
+      expect(journal.record).toHaveBeenLastCalledWith('person', [], { action: 'merge', count: 1, partial: true });
+      journal.record.mockClear();
+      component.suggestions.set(list);
+      mockApi.post.mockReturnValueOnce(throwError(() => new Error('fail')));
+      await component.acceptAll();
+      expect(journal.record).not.toHaveBeenCalled();
     });
   });
 

@@ -16,6 +16,7 @@ import { I18nService } from '../../core/services/i18n.service';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { FixedPipe } from '../../shared/pipes/fixed.pipe';
 import { ThumbnailUrlPipe } from '../../shared/pipes/thumbnail-url.pipe';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { CompareFiltersService } from './compare-filters.service';
 import { WeightLabelKeyPipe } from './comparison.pipes';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
@@ -261,6 +262,7 @@ interface LearnedWeightsResponse {
 export class ComparisonAbTabComponent {
   protected readonly I18N = i18nKeys();
   private readonly api = inject(ApiService);
+  private readonly journal = inject(UserActivityJournal);
   private readonly i18n = inject(I18nService);
   private readonly snackBar = inject(MatSnackBar);
   protected readonly auth = inject(AuthService);
@@ -373,6 +375,7 @@ export class ComparisonAbTabComponent {
       await firstValueFrom(
         this.api.post('/comparison/submit', { photo_a: a, photo_b: b, winner, category: cat }),
       );
+      this.journal.record('compare', [a, b], { category: cat, winner });
       this.comparisonCount.update(c => c + 1);
       void this.loadComparisonStats();
       await this.loadNextPair();
@@ -394,6 +397,7 @@ export class ComparisonAbTabComponent {
       await firstValueFrom(
         this.api.post('/comparison/submit', { photo_a: a, photo_b: b, winner: 'skip', category: cat }),
       );
+      this.journal.record('compare', [a, b], { category: cat, winner: 'skip' });
       void this.loadComparisonStats();
       await this.loadNextPair();
     } catch {

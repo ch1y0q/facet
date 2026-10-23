@@ -9,7 +9,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { AlbumService, Album } from '../../core/services/album.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { AssistantChangesService } from '../../core/agent/assistant-changes.service';
-import { UserActivityJournal, UserActivityKind } from '../../core/agent/user-activity-journal.service';
+import { UserActivityJournal, UserActivityKind, activityName } from '../../core/agent/user-activity-journal.service';
 import { Photo, KeeperHint, normalisePhotoFlagsAll } from '../../shared/models/photo.model';
 import { I18N } from '../../core/i18n/keys';
 import type { components } from '../../core/api/schema';
@@ -1022,6 +1022,12 @@ export class GalleryStore {
     'hide_details', 'tooltip_mode', 'panel_activation',
   ]);
 
+  private static readonly JOURNAL_SKIPPED_KEYS: ReadonlySet<string> = new Set([
+    'page', 'per_page', ...GalleryStore.DISPLAY_ONLY_KEYS,
+  ]);
+
+  private static readonly SORT_KEYS: ReadonlySet<string> = new Set(['sort', 'sort_direction']);
+
   /** Update a single filter and reload photos from page 1 */
   async updateFilter<K extends keyof GalleryFilters>(
     key: K,
@@ -1039,9 +1045,11 @@ export class GalleryStore {
     // reload -- treat it as display-only until a query is actually set.
     const isDisplayOnly = GalleryStore.DISPLAY_ONLY_KEYS.has(key)
       || (key === 'search_threshold' && !this.filters().semanticQuery);
+    const before = this.filters();
     this.filters.update(current => ({
       ...current, [key]: value, ...extra, ...(isDisplayOnly ? {} : { page: 1 }),
     }));
+    this.journalFilters(before, this.filters());
     if ((DISPLAY_OPTION_KEYS as string[]).includes(key as string)) {
       saveDisplayOptionsToStorage(this.filters());
     }
@@ -1057,9 +1065,22 @@ export class GalleryStore {
 
   /** Update a range filter; reload is debounced so a slider drag fires one request. */
   updateFilterDebounced<K extends keyof GalleryFilters>(key: K, value: GalleryFilters[K]): void {
+    const before = this.filters();
     this.filters.update(current => ({ ...current, [key]: value, page: 1 }));
+    this.journalFilters(before, this.filters());
     this.syncUrl();
     this.scheduleRangeLoad();
+  }
+
+  /** Records what a user edit changed; `page` and display-only keys (layout, tooltip) are noise, and so is a change of sort alone. */
+  private journalFilters(before: GalleryFilters, after: GalleryFilters): void {
+    const changed: Record<string, unknown> = {};
+    for (const key of Object.keys(after) as (keyof GalleryFilters)[]) {
+      if (GalleryStore.JOURNAL_SKIPPED_KEYS.has(key) || before[key] === after[key]) continue;
+      changed[key] = after[key];
+    }
+    if (Object.keys(changed).every(key => GalleryStore.SORT_KEYS.has(key))) return;
+    this.journal.recordFilters({ changed });
   }
 
   private scheduleRangeLoad(): void {
@@ -1083,7 +1104,9 @@ export class GalleryStore {
       ...semanticSortPatch(this.filters(), updates, this.config()?.defaults),
       ...exclusiveHidePatch(updates),
     };
+    const before = this.filters();
     this.filters.update(current => ({ ...current, ...updates, ...extra, page: 1 }));
+    this.journalFilters(before, this.filters());
     if (Object.keys(updates).some(k => (DISPLAY_OPTION_KEYS as string[]).includes(k))) {
       saveDisplayOptionsToStorage(this.filters());
     }
@@ -1123,6 +1146,7 @@ export class GalleryStore {
   /** Reset all filters to config defaults */
   async resetFilters(): Promise<void> {
     this.currentAlbum.set(null);
+    this.journal.recordFilters({ reset: true });
     const cfg = this.config();
     const defaults = cfg?.defaults;
     this.filters.set({
@@ -1652,6 +1676,7 @@ export class GalleryStore {
   async unassignPerson(photoPath: string, personId: number): Promise<void> {
     try {
       await firstValueFrom(this.api.post('/photo/unassign_person', { photo_path: photoPath, person_id: personId }));
+      this.journal.record('person', [photoPath], { action: 'unassign', person_id: personId });
       this.photos.update(photos =>
         photos.map(p => p.path === photoPath
           ? { ...p, persons: p.persons.filter(pr => pr.id !== personId) }
@@ -1674,6 +1699,9 @@ export class GalleryStore {
           { name: trimmed, face_ids: faceIds },
         ),
       );
+      this.journal.record('person', photoPath ? [photoPath] : [], {
+        action: 'create', person_id: res.id, name: activityName(trimmed), count: faceIds.length,
+      });
       const newPerson: PersonOption = { id: res.id, name: res.name, face_count: res.face_count };
       this.persons.update(list => [newPerson, ...list]);
       if (photoPath && faceIds.length > 0) {
@@ -1698,6 +1726,7 @@ export class GalleryStore {
   async assignFace(faceId: number, personId: number, photoPath: string, personName: string): Promise<boolean> {
     try {
       await firstValueFrom(this.api.post(`/face/${faceId}/assign`, { person_id: personId }));
+      this.journal.record('person', [photoPath], { action: 'assign', person_id: personId });
       this.photos.update(photos =>
         photos.map(p => {
           if (p.path !== photoPath) return p;

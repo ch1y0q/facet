@@ -968,6 +968,85 @@ describe('GalleryStore', () => {
     });
   });
 
+  describe('filter journal', () => {
+    const journal = () => TestBed.inject(UserActivityJournal);
+    const filterEntries = () => journal().since().items.filter(i => i.kind === 'filters');
+
+    beforeEach(() => {
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+    });
+
+    it('records typing a search through updateFilter', async () => {
+      await store.updateFilter('search', 'sunset');
+      expect(filterEntries().map(i => i.value)).toEqual([{ changed: { search: 'sunset' } }]);
+    });
+
+    it('records a slider drag as one merged entry', () => {
+      vi.useFakeTimers();
+      try {
+        for (const v of ['4', '5', '6', '7']) store.updateFilterDebounced('min_score', v);
+      } finally {
+        vi.useRealTimers();
+      }
+      expect(filterEntries().map(i => i.value)).toEqual([{ changed: { min_score: '7' } }]);
+    });
+
+    it('records updateFilters and a reset as {reset: true}', async () => {
+      await store.updateFilters({ camera: 'Canon', lens: '50mm' });
+      expect(filterEntries().map(i => i.value)).toEqual([{ changed: { camera: 'Canon', lens: '50mm' } }]);
+      await store.resetFilters();
+      expect(filterEntries().map(i => i.value)).toEqual([{ changed: { camera: 'Canon', lens: '50mm' } }, { reset: true }]);
+    });
+
+    it('includes the sort side-change of a semantic query, but not a sort-only change', async () => {
+      await store.updateFilter('sort', 'date_taken');
+      expect(filterEntries()).toEqual([]);
+      await store.updateFilter('semanticQuery', 'dog');
+      expect(filterEntries().map(i => i.value)).toEqual([
+        { changed: { semanticQuery: 'dog', sort: 'relevance' } },
+      ]);
+    });
+
+    it('records the hide toggles, favorites_only and showAllHidden, which are real query filters', async () => {
+      await store.updateFilter('hide_rejected', false);
+      await store.updateFilter('favorites_only', true);
+      expect(filterEntries().map(i => i.value)).toEqual([
+        { changed: { hide_rejected: false, favorites_only: true } },
+      ]);
+      store.showAllHidden();
+      await Promise.resolve();
+      const last = filterEntries().at(-1)!.value as { changed: Record<string, boolean> };
+      expect(last.changed['hide_bursts']).toBe(false);
+    });
+
+    it('records nothing for page, layout or an unchanged value', async () => {
+      await store.updateFilter('hide_details', false);
+      await store.updateFilter('camera', '');
+      expect(filterEntries()).toEqual([]);
+    });
+
+    it('records nothing for an edit made inside a UI tool scope', async () => {
+      await journal().suppress(async () => {
+        await store.updateFilter('search', 'agent');
+        await store.updateFilters({ camera: 'Sony' });
+        await store.resetFilters();
+      });
+      expect(filterEntries()).toEqual([]);
+    });
+
+    it('does not touch the journal when the config and the URL are restored, and does on a user edit', async () => {
+      const spy = vi.spyOn(store as unknown as { journalFilters: () => void }, 'journalFilters');
+      Object.assign(queryParams, { camera: 'Sony A7' });
+      apiGet.mockReturnValue(of(makeConfig()));
+      await store.loadConfig();
+      expect(store.filters().camera).toBe('Sony A7');
+      expect(spy).not.toHaveBeenCalled();
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+      await store.updateFilter('tag', 'x');
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('viewFilterParams', () => {
     it('projects the five hide toggles as explicit "1"/"0" strings', () => {
       store.filters.set({
@@ -2179,6 +2258,23 @@ describe('GalleryStore optimistic mutations', () => {
       const items = TestBed.inject(UserActivityJournal).since().items;
       expect(items.map(i => i.kind)).toEqual(['favorite']);
       expect(items[0].paths).toEqual(['/a.jpg', '/b.jpg']);
+    });
+
+    it('records the person actions with ids, and nothing for a failed one', async () => {
+      apiPost.mockReturnValue(of({ id: 9, name: 'Anna', face_count: 2 }));
+      expect(await store.createPerson(' Anna ', [1, 2], '/a.jpg')).not.toBeNull();
+      await store.assignFace(5, 9, '/a.jpg', 'Anna');
+      await store.unassignPerson('/a.jpg', 9);
+      apiPost.mockReturnValue(throwError(() => new Error('boom')));
+      await store.assignFace(6, 9, '/a.jpg', 'Anna');
+      await store.unassignPerson('/a.jpg', 9);
+      await store.createPerson('Bob');
+      const items = TestBed.inject(UserActivityJournal).since().items;
+      expect(items.map(i => [i.kind, i.paths, i.value])).toEqual([
+        ['person', ['/a.jpg'], { action: 'create', person_id: 9, name: 'Anna', count: 2 }],
+        ['person', ['/a.jpg'], { action: 'assign', person_id: 9 }],
+        ['person', ['/a.jpg'], { action: 'unassign', person_id: 9 }],
+      ]);
     });
 
     it('records nothing for a failed rating', async () => {

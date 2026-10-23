@@ -8,6 +8,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { AuthService } from '../../core/services/auth.service';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { CompareFiltersService } from './compare-filters.service';
 import { ComparisonAbTabComponent } from './comparison-ab-tab.component';
 
@@ -18,6 +19,7 @@ describe('ComparisonAbTabComponent', () => {
   let mockSnackBar: { open: Mock };
   let mockI18n: { t: Mock };
   let mockAuth: { isEdition: Mock };
+  let journal: { record: Mock };
   let compareFilters: { selectedCategory: ReturnType<typeof signal<string>>; strategy: ReturnType<typeof signal<string>>; activeTab: ReturnType<typeof signal<number>> };
 
   beforeEach(() => {
@@ -28,6 +30,7 @@ describe('ComparisonAbTabComponent', () => {
     mockSnackBar = { open: vi.fn() };
     mockI18n = { t: vi.fn((key: string) => key) };
     mockAuth = { isEdition: vi.fn(() => true) };
+    journal = { record: vi.fn() };
     compareFilters = { selectedCategory: signal('portrait'), strategy: signal('uncertainty'), activeTab: signal(0) };
 
     TestBed.configureTestingModule({
@@ -37,6 +40,7 @@ describe('ComparisonAbTabComponent', () => {
         { provide: MatSnackBar, useValue: mockSnackBar },
         { provide: I18nService, useValue: mockI18n },
         { provide: AuthService, useValue: mockAuth },
+        { provide: UserActivityJournal, useValue: journal },
         { provide: CompareFiltersService, useValue: compareFilters },
       ],
     });
@@ -115,6 +119,21 @@ describe('ComparisonAbTabComponent', () => {
         winner: 'a',
         category: 'portrait',
       });
+    });
+
+    it.each(['a', 'b', 'tie'])('journals the %s answer with both paths and the category', async winner => {
+      await component.submitComparison(winner);
+
+      expect(journal.record).toHaveBeenCalledTimes(1);
+      expect(journal.record).toHaveBeenCalledWith('compare', ['/photo1.jpg', '/photo2.jpg'], { category: 'portrait', winner });
+    });
+
+    it('journals nothing when the submit fails', async () => {
+      mockApi.post.mockReturnValue(throwError(() => new Error('fail')));
+
+      await component.submitComparison('a');
+
+      expect(journal.record).not.toHaveBeenCalled();
     });
 
     it('should increment comparisonCount', async () => {
@@ -256,6 +275,12 @@ describe('ComparisonAbTabComponent', () => {
         category: 'portrait',
       });
       expect(component.pairA()).toBe('/photo3.jpg');
+    });
+
+    it('journals a skip, so unseen pairs cannot be inferred', async () => {
+      await component.skipPair();
+
+      expect(journal.record).toHaveBeenCalledWith('compare', ['/photo1.jpg', '/photo2.jpg'], { category: 'portrait', winner: 'skip' });
     });
 
     it('should not increment comparisonCount', async () => {

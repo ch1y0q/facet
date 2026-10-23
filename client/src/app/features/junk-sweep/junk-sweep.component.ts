@@ -20,6 +20,7 @@ import { createLoupeState } from '../../shared/utils/loupe-state';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { JunkKindLabelPipe, JunkKindIconPipe } from './junk-sweep.pipes';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { chunkPhotoPaths, type PhotosResponse } from '../gallery/gallery.store';
 import { normalisePhotoFlagsAll, type Photo } from '../../shared/models/photo.model';
 
@@ -151,6 +152,7 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
   protected readonly I18N = i18nKeys();
   protected readonly ANY_KIND = ANY_KIND;
   private readonly api = inject(ApiService);
+  private readonly journal = inject(UserActivityJournal);
   private readonly snack = inject(MatSnackBar);
   private readonly i18n = inject(I18nService);
   private readonly dialog = inject(MatDialog);
@@ -255,6 +257,7 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
     this.removeLocal(photo);
     try {
       await firstValueFrom(this.api.post('/photo/clear_junk', { photo_path: photo.path }));
+      this.journal.record('junk', [photo.path], { action: 'clear', count: 1 });
       this.notify(I18N.junk.kept, 1500);
     } catch {
       this.restoreLocal(photo);
@@ -267,6 +270,7 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
     this.removeLocal(photo);
     try {
       await firstValueFrom(this.api.post('/photos/batch_reject', { photo_paths: [photo.path] }));
+      this.journal.record('junk', [photo.path], { action: 'reject', count: 1 });
       this.notify(I18N.junk.rejected, 1500);
     } catch {
       this.restoreLocal(photo);
@@ -290,12 +294,13 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
     // the server's photo_paths cap one POST of the lot is a 422, so it goes out
     // in request-sized chunks like every other batch write.
     const paths = shown.map(p => p.path);
-    let sent = 0;
+    const rejected: string[] = [];
     try {
       for (const chunk of chunkPhotoPaths(paths)) {
         await firstValueFrom(this.api.post('/photos/batch_reject', { photo_paths: chunk }));
-        sent += chunk.length;
+        rejected.push(...chunk);
       }
+      this.journal.record('junk', rejected, { action: 'reject', count: rejected.length });
       this.notify(I18N.junk.rejected_bulk, 2000, { count: paths.length });
       const removedByKind = new Map<string, number>();
       for (const p of shown) {
@@ -310,7 +315,8 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
       this.notifyError();
       // Earlier chunks already landed server-side, so the list on screen no
       // longer matches it — re-read rather than leave rejected rows shown.
-      if (sent > 0) {
+      if (rejected.length > 0) {
+        this.journal.record('junk', rejected, { action: 'reject', count: rejected.length, partial: true });
         this.page = 1;
         this.photos.set([]);
         await this.load();

@@ -21,6 +21,7 @@ import { ClientPicksDialogComponent, ClientPicksDialogData } from './client-pick
 import { PortfolioExportDialogComponent, PortfolioExportDialogData } from './portfolio-export-dialog.component';
 import { AlbumScoringContextDialogComponent, AlbumScoringContextDialogData } from './album-scoring-context-dialog.component';
 import { AlbumsFiltersService } from './albums-filters.service';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { registerPageContext } from '../../core/agent/page-context.service';
 import { ShareDialogComponent, ShareDialogData } from '../../shared/components/share-dialog/share-dialog.component';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
@@ -191,6 +192,7 @@ import { HeaderSlotService } from '../../core/services/header-slot.service';
 })
 export class AlbumsComponent {
   private readonly albumService = inject(AlbumService);
+  private readonly journal = inject(UserActivityJournal);
   private readonly dialog = inject(MatDialog);
   private readonly i18n = inject(I18nService);
   protected readonly auth = inject(AuthService);
@@ -317,6 +319,7 @@ export class AlbumsComponent {
     const confirmed = await firstValueFrom(ref.afterClosed());
     if (!confirmed) return;
     await firstValueFrom(this.albumService.delete(album.id));
+    this.journal.record('album', [], { album_id: album.id, action: 'delete' });
     this.albums.update(list => list.filter(a => a.id !== album.id));
     this.total.update(t => t - 1);
   }

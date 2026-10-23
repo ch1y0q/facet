@@ -2,9 +2,10 @@ import type { Mock } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatDialog } from '@angular/material/dialog';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { JunkSweepComponent } from './junk-sweep.component';
 
 describe('JunkSweepComponent', () => {
@@ -15,6 +16,7 @@ describe('JunkSweepComponent', () => {
   let mockSnackBar: { open: Mock };
   let mockDialog: { open: Mock };
   let photosCall: number;
+  let journal: { record: Mock };
 
   const initialPhotos = [
     { path: '/p/meme.jpg', filename: 'meme.jpg', junk_kind: 'meme', aggregate: 2.1 },
@@ -43,6 +45,7 @@ describe('JunkSweepComponent', () => {
     mockI18n = { t: vi.fn((k: string) => k) };
     mockSnackBar = { open: vi.fn() };
     mockDialog = { open: vi.fn(() => ({ afterClosed: () => of(true) })) };
+    journal = { record: vi.fn() };
 
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
@@ -52,6 +55,7 @@ describe('JunkSweepComponent', () => {
         { provide: I18nService, useValue: mockI18n },
         { provide: MatSnackBar, useValue: mockSnackBar },
         { provide: MatDialog, useValue: mockDialog },
+        { provide: UserActivityJournal, useValue: journal },
       ],
     });
     component = TestBed.inject(JunkSweepComponent);
@@ -107,6 +111,44 @@ describe('JunkSweepComponent', () => {
       .map(c => (c[1] as { photo_paths: string[] }).photo_paths);
     expect(chunks.map(c => c.length)).toEqual([1000, 500]);
     expect(chunks.flat()).toEqual(many.map(p => p.path));
+  });
+
+  it('journals a single reject and a clear, and nothing when either fails', async () => {
+    createComponent();
+    await component.ngOnInit();
+
+    await component.reject(initialPhotos[0]);
+    await component.keep(initialPhotos[1]);
+    expect(journal.record).toHaveBeenNthCalledWith(1, 'junk', ['/p/meme.jpg'], { action: 'reject', count: 1 });
+    expect(journal.record).toHaveBeenNthCalledWith(2, 'junk', ['/p/s1.jpg'], { action: 'clear', count: 1 });
+
+    journal.record.mockClear();
+    mockApi.post.mockReturnValue(throwError(() => new Error('boom')));
+    await component.reject(initialPhotos[2]);
+    await component.keep(initialPhotos[3]);
+    expect(journal.record).not.toHaveBeenCalled();
+  });
+
+  it('journals one entry for a reject-all, and only the chunks that landed when a later one fails', async () => {
+    const many = Array.from({ length: 1500 }, (_, i) => ({
+      path: `/p/j${i}.jpg`, filename: `j${i}.jpg`, junk_kind: 'meme', aggregate: 1.0,
+    }));
+    createComponent({ photos: many, total: 1500, total_pages: 32, page: 1, has_more: true });
+    await component.ngOnInit();
+    await component.rejectAllShown();
+    expect(journal.record).toHaveBeenCalledTimes(1);
+    const [kind, paths, value] = journal.record.mock.calls[0];
+    expect([kind, paths.length, value]).toEqual(['junk', 1500, { action: 'reject', count: 1500 }]);
+
+    journal.record.mockClear();
+    createComponent({ photos: many, total: 1500, total_pages: 32, page: 1, has_more: true });
+    await component.ngOnInit();
+    mockApi.post.mockReturnValueOnce(of({})).mockReturnValueOnce(throwError(() => new Error('boom')));
+    await component.rejectAllShown();
+    expect(journal.record).toHaveBeenCalledTimes(1);
+    const [, partialPaths, partialValue] = journal.record.mock.calls[0];
+    expect(partialPaths).toEqual(many.slice(0, 1000).map(p => p.path));
+    expect(partialValue).toEqual({ action: 'reject', count: 1000, partial: true });
   });
 
   it('feeds the count of *shown* candidates (not the API total) into the reject-all tooltip', async () => {

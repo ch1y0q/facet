@@ -28,6 +28,7 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/c
 import { InfiniteScrollDirective } from '../../shared/directives/infinite-scroll.directive';
 import { PersonsFiltersService } from './persons-filters.service';
 import { registerPageContext } from '../../core/agent/page-context.service';
+import { UserActivityJournal, activityName } from '../../core/agent/user-activity-journal.service';
 import { GalleryStore } from '../gallery/gallery.store';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
 
@@ -404,6 +405,7 @@ export class ManagePersonsComponent implements OnInit {
   readonly auth = inject(AuthService);
   protected readonly store = inject(GalleryStore);
   private readonly api = inject(ApiService);
+  private readonly journal = inject(UserActivityJournal);
   private readonly i18n = inject(I18nService);
   private readonly pageHelp = inject(PageHelpService);
   private readonly headerSlot = inject(HeaderSlotService);
@@ -493,6 +495,7 @@ export class ManagePersonsComponent implements OnInit {
     if (!trimmed) return;
     try {
       await firstValueFrom(this.api.post(`/persons/${id}/rename`, { name: trimmed }));
+      this.journal.record('person', [], { action: 'rename', person_id: id, name: activityName(trimmed) });
       // Drop the now-named person from the needs-naming section.
       this.needsNaming.update(list => list.filter(p => p.id !== id));
       // Mirror the new name into the main grid if the same person is rendered there.
@@ -521,6 +524,7 @@ export class ManagePersonsComponent implements OnInit {
           { name, face_ids: [] },
         ),
       );
+      this.journal.record('person', [], { action: 'create', person_id: created.id, name: activityName(created.name) });
       const newPerson: Person = {
         id: created.id,
         name: created.name,
@@ -596,6 +600,7 @@ export class ManagePersonsComponent implements OnInit {
 
     try {
       await firstValueFrom(this.api.post(`/persons/${person.id}/rename`, { name: trimmed }));
+      this.journal.record('person', [], { action: 'rename', person_id: person.id, name: activityName(trimmed) });
       this.persons.update((list) =>
         list.map((p) => (p.id === person.id ? { ...p, name: trimmed } : p)),
       );
@@ -624,6 +629,7 @@ export class ManagePersonsComponent implements OnInit {
 
     try {
       await firstValueFrom(this.api.post(`/persons/${person.id}/delete`));
+      this.journal.record('person', [], { action: 'delete', person_id: person.id });
       this.persons.update((list) => list.filter((p) => p.id !== person.id));
       this.total.update((t) => t - 1);
       this.selectedIds.update((s) => {
@@ -681,6 +687,7 @@ export class ManagePersonsComponent implements OnInit {
       await firstValueFrom(
         this.api.post(`/persons/${personId}/${hidden ? 'hide' : 'unhide'}`),
       );
+      this.journal.record('person', [], { action: hidden ? 'hide' : 'unhide', person_id: personId });
       if (hidden && !this.personsFilters.showHidden()) {
         // Drop the person from the list when hidden persons are not shown.
         this.persons.update((list) => list.filter((p) => p.id !== personId));
@@ -726,6 +733,7 @@ export class ManagePersonsComponent implements OnInit {
         }),
       );
 
+      this.journal.record('person', [], { action: 'split', person_id: person.id, count: result.faceIds.length });
       const sourceEmptied = res.source_count <= 0;
       this.persons.update((list) => {
         const newPerson: Person = {
@@ -785,6 +793,7 @@ export class ManagePersonsComponent implements OnInit {
 
     try {
       await firstValueFrom(this.api.post('/persons/delete_batch', { person_ids: ids }));
+      this.journal.record('person', [], { action: 'delete', count: ids.length });
       this.persons.update((list) => list.filter((p) => !ids.includes(p.id)));
       this.total.update((t) => t - ids.length);
       this.selectedIds.set(new Set());
@@ -820,6 +829,7 @@ export class ManagePersonsComponent implements OnInit {
     if (sourceIds.length === 0) return;
 
     let totalMergedFaces = 0;
+    let merged = 0;
     try {
       for (const sourceId of sourceIds) {
         const sourcePerson = this.persons().find((p) => p.id === sourceId);
@@ -827,7 +837,9 @@ export class ManagePersonsComponent implements OnInit {
         await firstValueFrom(
           this.api.post('/persons/merge', { source_id: sourceId, target_id: targetId }),
         );
+        merged += 1;
       }
+      this.journal.record('person', [], mergeActivity(merged, sourceIds.length === 1 ? [[sourceIds[0], targetId]] : null, false));
 
       this.persons.update((list) =>
         list
@@ -840,7 +852,13 @@ export class ManagePersonsComponent implements OnInit {
       this.selectedIds.set(new Set());
       this.snackBar.open(this.i18n.t(I18N.persons.merged), '', { duration: 2000 });
     } catch {
+      if (merged > 0) this.journal.record('person', [], mergeActivity(merged, null, true));
       this.snackBar.open(this.i18n.t(I18N.persons.merge_error), '', { duration: 3000 });
     }
   }
+}
+
+/** A merge entry: `pairs` only for a single merge, `count` always, `partial` when a later one failed. */
+function mergeActivity(count: number, pairs: number[][] | null, partial: boolean): Record<string, unknown> {
+  return { action: 'merge', count, ...(pairs ? { pairs } : {}), ...(partial ? { partial: true } : {}) };
 }

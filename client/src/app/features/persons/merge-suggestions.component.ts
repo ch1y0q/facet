@@ -20,6 +20,7 @@ import { FixedPipe } from '../../shared/pipes/fixed.pipe';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { HeaderSlotService } from '../../core/services/header-slot.service';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { GalleryStore } from '../gallery/gallery.store';
 import type { MergeSuggestionsResponse } from '../../core/api/types';
 
@@ -183,6 +184,7 @@ type SuggestionPerson = MergeSuggestion['person1'];
 export class MergeSuggestionsComponent implements OnInit, OnDestroy {
   protected readonly I18N = i18nKeys();
   private readonly api = inject(ApiService);
+  private readonly journal = inject(UserActivityJournal);
   /** Merge, reject and accept-all call edition-only routes. */
   protected readonly canEdit = inject(AuthService).isEdition;
   private readonly i18n = inject(I18nService);
@@ -264,6 +266,7 @@ export class MergeSuggestionsComponent implements OnInit, OnDestroy {
         this.api.post('/persons/merge', { source_id: sourceId, target_id: target.id }),
       );
 
+      this.journal.record('person', [], { action: 'merge', count: 1, pairs: [[sourceId, target.id]] });
       this.removeSuggestion(suggestion);
       this.snackBar.open(this.i18n.t(I18N.persons.merged), '', { duration: 2000 });
     } catch {
@@ -317,7 +320,14 @@ export class MergeSuggestionsComponent implements OnInit, OnDestroy {
         return { source_id: source.id, target_id: target.id };
       });
 
-      await firstValueFrom(this.api.post('/persons/merge_batch', { merges }));
+      const res = await firstValueFrom(this.api.post<{ merged_count: number }>('/persons/merge_batch', { merges }));
+      if (res.merged_count > 0) {
+        this.journal.record('person', [], {
+          action: 'merge',
+          count: res.merged_count,
+          ...(res.merged_count < merges.length ? { partial: true } : {}),
+        });
+      }
 
       const count = this.suggestions().length;
       this.suggestions.set([]);
