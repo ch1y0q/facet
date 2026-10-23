@@ -82,18 +82,6 @@ class TestMappers:
     def test_type_together_with_category_is_an_invalid_combination(self):
         assert show.search_patch({"type": "portrait", "category": "macro"}, None, None)[1]["reason"] == "invalid_combination"
 
-    def test_semantic_patch_always_sends_the_knobs(self):
-        patch, reason = show.semantic_patch("red sunset", 0.25, None, "aggregate", "desc")
-        assert reason is None
-        assert patch == {"semantic_query": "red sunset", "semantic_threshold": 0.25, "similar_to": None,
-                         "similarity_mode": None, "min_similarity": None,
-                         "sort": "aggregate", "sort_direction": "desc"}
-
-    def test_semantic_text_scope_and_a_threshold_over_the_slider_are_unsupported(self):
-        assert show.semantic_patch("x", None, "text")[1] == {
-            "applied": False, "reason": "unsupported_filters", "keys": ["scope"]}
-        assert show.semantic_patch("x", 0.9, None)[1]["keys"] == ["threshold"]
-
     @pytest.mark.parametrize("mode,floor", [("visual", 0.40), ("color", 0.40), ("person", 0.0)])
     def test_similar_patch_sends_the_floor_the_route_used(self, mode, floor):
         patch = show.similar_patch("/a.jpg", mode, None, "aggregate", "desc")
@@ -207,23 +195,22 @@ class TestSearchRelay:
 
 
 class TestSemanticAndSimilarRelay:
-    def test_semantic_search_shows_the_query(self, agent_app, fake_tab, photos, monkeypatch):
+    def test_semantic_search_pins_exactly_the_returned_rows(self, agent_app, fake_tab, photos, monkeypatch):
         stub_semantic_search(monkeypatch, [(0, None)])
         env = agent_app("open")
-        tab = fake_tab(env, None, reply=reply_total(1))
+        tab = fake_tab(env, None, reply=lambda call: {"ok": True, "data": {"total": 1}})
         result = env.call(env.token(env.login()), "semantic_search", {"query": "red sunset", "threshold": 0.2})
         assert result["ok"] is True and result["shown_in_tab"]["applied"] is True
-        assert tab.calls[0]["args"] == {"patch": {
-            "semantic_query": "red sunset", "semantic_threshold": 0.2, "similar_to": None,
-            "similarity_mode": None, "min_similarity": None, **sort_pair()}, "replace": True}
+        assert result["shown_in_tab"]["mode"] == "paths"
+        assert [(c["tool"], c["args"]) for c in tab.calls] == [("ui_show_photos", {"paths": [ROWS[0]["path"]]})]
 
-    def test_text_scope_is_reported_not_shown(self, agent_app, fake_tab, photos):
+    def test_text_scope_is_pinned_like_any_other_semantic_search(self, agent_app, fake_tab, photos, monkeypatch):
+        stub_semantic_search(monkeypatch, [(1, None)])
         env = agent_app("open")
-        tab = fake_tab(env, None, reply=reply_total())
+        tab = fake_tab(env, None, reply=lambda call: {"ok": True, "data": {"total": 1}})
         result = env.call(env.token(env.login()), "semantic_search", {"query": "sunset", "scope": "text"})
-        assert result["ok"] is True
-        assert result["shown_in_tab"] == {"applied": False, "reason": "unsupported_filters", "keys": ["scope"]}
-        assert tab.calls == []
+        assert result["ok"] is True and result["shown_in_tab"]["mode"] == "paths"
+        assert [c["tool"] for c in tab.calls] == ["ui_show_photos"]
 
     def test_similar_photos_shows_with_the_floor_the_route_used(self, agent_app, fake_tab, photos, monkeypatch):
         from api.routers import gallery
@@ -324,13 +311,14 @@ class TestSemanticFilters:
         assert tab.calls == []
         assert empty["data"]["rows"] == [] and empty["shown_in_tab"]["reason"] == "empty_result"
 
-    def test_unfiltered_search_still_shows_the_semantic_patch_and_keeps_scores(self, agent_app, fake_tab, photos, monkeypatch):
+    def test_unfiltered_search_pins_the_rows_in_similarity_order_and_keeps_scores(self, agent_app, fake_tab, photos, monkeypatch):
         stub_semantic_search(monkeypatch, self.HITS)
         env = agent_app("open")
-        tab = fake_tab(env, None, reply=reply_total(3))
+        tab = fake_tab(env, None, reply=lambda call: {"ok": True, "data": {"total": 3}})
         result = env.call(env.token(env.login()), "semantic_search", {"query": "q"})
-        assert [c["tool"] for c in tab.calls] == ["ui_set_gallery_filters"]
-        assert result["shown_in_tab"]["mode"] == "semantic"
+        assert [(c["tool"], c["args"]) for c in tab.calls] == [
+            ("ui_show_photos", {"paths": [ROWS[i]["path"] for i in (2, 0, 1)]})]
+        assert result["shown_in_tab"]["mode"] == "paths"
         assert [r["similarity"] for r in result["data"]["rows"]] == [0.9, 0.8, 0.7]
         assert "candidates" not in result["data"]
 

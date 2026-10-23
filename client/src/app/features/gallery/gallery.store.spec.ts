@@ -279,7 +279,7 @@ describe('GalleryStore', () => {
       expect(store.filters().search_threshold).toBe('');
     });
 
-    it('leaves search_threshold empty on config load failure, so /search omits threshold', async () => {
+    it('leaves search_threshold empty on config load failure, so /photos omits semantic_threshold', async () => {
       apiGet.mockReturnValue(throwError(() => new Error('Network error')));
 
       await store.loadConfig();
@@ -290,8 +290,9 @@ describe('GalleryStore', () => {
       apiGet.mockReturnValue(of(makePhotosResponse()));
       await store.loadPhotos();
 
-      const searchCall = apiGet.mock.calls.find(([path]) => path === '/search');
-      expect(searchCall?.[1]).not.toHaveProperty('threshold');
+      const call = apiGet.mock.calls.find(([path]) => path === '/photos');
+      expect(call?.[1]).toMatchObject({ semantic_q: 'sunset' });
+      expect(call?.[1]).not.toHaveProperty('semantic_threshold');
     });
 
     it('should apply URL query params even on config error', async () => {
@@ -418,61 +419,89 @@ describe('GalleryStore', () => {
       });
     }
 
-    it('should surface the error when the semantic-search branch fails', async () => {
+    it('should surface the error when a semantic /photos load fails (400 or 503)', async () => {
       store.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'sunset' });
-      apiGet.mockReturnValue(throwError(() => new Error('Network error')));
+      apiGet.mockReturnValue(throwError(() => new Error('503')));
 
       await store.loadPhotos();
 
-      expect(apiGet).toHaveBeenCalledWith('/search', expect.objectContaining({ q: 'sunset' }));
+      expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({ semantic_q: 'sunset' }));
       expect(store.photos()).toEqual([]);
       expect(store.loadError()).toBe(true);
       expect(store.loading()).toBe(false);
     });
 
-    it('forwards search_threshold as a fraction of the percent string', async () => {
-      store.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'sunset', search_threshold: '5' });
-      apiGet.mockReturnValue(of({ photos: [], total: 0, query: 'sunset' }));
+    it('sends semantic_q with the other gallery filters to /photos and never calls /search', async () => {
+      store.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'sunset', camera: 'Canon', hide_rejected: true });
+      apiGet.mockReturnValue(of(makePhotosResponse({ total: 130, has_more: true })));
 
       await store.loadPhotos();
 
-      expect(apiGet).toHaveBeenCalledWith('/search', expect.objectContaining({ threshold: 0.05 }));
+      expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({
+        semantic_q: 'sunset', camera: 'Canon', hide_rejected: true, page: 1,
+      }));
+      expect(apiGet.mock.calls.some(([path]) => path === '/search')).toBe(false);
+      expect(store.total()).toBe(130);
+      expect(store.hasMore()).toBe(true);
     });
 
-    it('omits threshold from /search while the slider still sits on the server seed', async () => {
+    it('pages a semantic view through /photos with the same semantic_q', async () => {
+      store.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'sunset' });
+      apiGet.mockReturnValue(of(makePhotosResponse({ photos: [makePhoto({ path: '/a.jpg' })], total: 2, has_more: true })));
+      await store.loadPhotos();
+      apiGet.mockClear();
+      apiGet.mockReturnValue(of(makePhotosResponse({ photos: [makePhoto({ path: '/b.jpg' })], total: 2, has_more: false })));
+
+      await store.nextPage();
+
+      expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({ semantic_q: 'sunset', page: 2 }));
+      expect(store.photos().map(p => p.path)).toEqual(['/a.jpg', '/b.jpg']);
+      expect(store.hasMore()).toBe(false);
+    });
+
+    it('reloads a semantic view when a hide toggle changes', async () => {
+      store.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'sunset', hide_bursts: true });
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+
+      await store.updateFilter('hide_bursts', false);
+
+      const call = apiGet.mock.calls.find(([path]) => path === '/photos');
+      expect(call?.[1]).toMatchObject({ semantic_q: 'sunset' });
+      expect(call?.[1]).not.toHaveProperty('hide_bursts');
+    });
+
+    it('omits semantic_threshold while the slider still sits on the server seed', async () => {
       // The seed is a rounded percent of the server's own fraction, so sending it
       // back would both freeze a later recalibration out and re-gate 0.075 at 0.08.
       apiGet.mockReturnValue(of(makeConfig({ search_threshold_default: 0.05 })));
       await store.loadConfig();
       store.filters.update(f => ({ ...f, semanticQuery: 'sunset' }));
       expect(store.filters().search_threshold).toBe('5');
-      apiGet.mockReturnValue(of({ photos: [], total: 0, query: 'sunset' }));
+      apiGet.mockReturnValue(of(makePhotosResponse()));
 
       await store.loadPhotos();
 
-      const searchCall = apiGet.mock.calls.find(([path]) => path === '/search');
-      expect(searchCall?.[1]).not.toHaveProperty('threshold');
+      const call = apiGet.mock.calls.find(([path]) => path === '/photos');
+      expect(call?.[1]).not.toHaveProperty('semantic_threshold');
     });
 
-    it('sends threshold once the user moves the slider off the seed', async () => {
+    it('sends semantic_threshold once the user moves the slider off the seed', async () => {
       apiGet.mockReturnValue(of(makeConfig({ search_threshold_default: 0.05 })));
       await store.loadConfig();
       store.filters.update(f => ({ ...f, semanticQuery: 'sunset', search_threshold: '12' }));
-      apiGet.mockReturnValue(of({ photos: [], total: 0, query: 'sunset' }));
+      apiGet.mockReturnValue(of(makePhotosResponse()));
 
       await store.loadPhotos();
 
-      expect(apiGet).toHaveBeenCalledWith('/search', expect.objectContaining({ threshold: 0.12 }));
+      expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({ semantic_threshold: 0.12 }));
     });
 
-    it('omits threshold from /search when search_threshold is unseeded', async () => {
-      store.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'sunset', search_threshold: '' });
-      apiGet.mockReturnValue(of({ photos: [], total: 0, query: 'sunset' }));
+    it('filterKey changes on a slider-only move', async () => {
+      apiGet.mockReturnValue(of(makeConfig({ search_threshold_default: 0.05 })));
+      await store.loadConfig();
+      const base = { ...store.filters(), semanticQuery: 'sunset' };
 
-      await store.loadPhotos();
-
-      const searchCall = apiGet.mock.calls.find(([path]) => path === '/search');
-      expect(searchCall?.[1]).not.toHaveProperty('threshold');
+      expect(store.filterKey({ ...base, search_threshold: '12' })).not.toBe(store.filterKey(base));
     });
 
     it('should clear the error when a retried load succeeds', async () => {
@@ -738,8 +767,8 @@ describe('GalleryStore', () => {
       await store.updateFilter('search_threshold', '20');
 
       expect(store.filters().search_threshold).toBe('20');
-      // Unchanged: nothing to reload for -- the value only feeds the /search
-      // branch of loadPhotos(), which never runs without a query.
+      // Unchanged: nothing to reload for -- the value only feeds
+      // semantic_threshold, which is not sent without a query.
       expect(store.filters().page).toBe(3);
       expect(apiGet).not.toHaveBeenCalled();
     });
@@ -751,7 +780,7 @@ describe('GalleryStore', () => {
 
       expect(store.filters().search_threshold).toBe('20');
       expect(store.filters().page).toBe(1);
-      expect(apiGet).toHaveBeenCalledWith('/search', expect.objectContaining({ threshold: 0.2 }));
+      expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({ semantic_q: 'sunset', semantic_threshold: 0.2 }));
     });
   });
 
@@ -1544,36 +1573,34 @@ describe('GalleryStore', () => {
       });
     });
 
-    describe('search views', () => {
-      it('merges returned rows but never removes one the server did not return', async () => {
-        apiGet.mockImplementation((path: string) => of(path === '/search'
-          ? { photos: [makePhoto({ path: '/s1.jpg' }), makePhoto({ path: '/s2.jpg' })], total: 2, query: 'x' }
-          : makeConfig()));
-        store.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'dog' });
+    describe('semantic views', () => {
+      const semanticReply = () => makePhotosResponse({
+        photos: [makePhoto({ path: '/s1.jpg' }), makePhoto({ path: '/s2.jpg' })], total: 2,
+      });
+
+      it('refreshes a rating via by_paths without semantic keys and drops a row the filters no longer match', async () => {
+        apiGet.mockImplementation((path: string) => of(path === '/photos' ? semanticReply() : makeConfig()));
+        store.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'dog', search_threshold: '12' });
         await store.loadPhotos();
         echoByPaths(() => ({ star_rating: 4 }), ['/s2.jpg']);
         await store.refreshPaths(['/s1.jpg', '/s2.jpg']);
-        expect(store.photos().map(p => p.path)).toEqual(['/s1.jpg', '/s2.jpg']);
+        const filters = byPathsBodies()[0].filters ?? {};
+        expect(filters).not.toHaveProperty('semantic_q');
+        expect(filters).not.toHaveProperty('semantic_threshold');
+        expect(store.photos().map(p => p.path)).toEqual(['/s1.jpg']);
         expect(store.photos()[0].star_rating).toBe(4);
-        expect(byPathsBodies()[0]).toEqual({ paths: ['/s1.jpg', '/s2.jpg'] });
       });
-    });
 
-    describe('search views, null batch', () => {
-      it('refreshes the rows already loaded without filters and removes none (C15)', async () => {
-        apiGet.mockImplementation((path: string) => of(path === '/search'
-          ? { photos: [makePhoto({ path: '/s1.jpg' }), makePhoto({ path: '/s2.jpg' })], total: 2, query: 'x' }
-          : makeConfig()));
+      it('refetches the loaded pages through /photos on a null batch', async () => {
+        apiGet.mockImplementation((path: string) => of(path === '/photos' ? semanticReply() : makeConfig()));
         store.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'dog' });
         await store.loadPhotos();
         apiPost.mockClear();
         apiGet.mockClear();
-        echoByPaths(() => ({ star_rating: 4 }), ['/s2.jpg']);
         await store.refreshPaths(null);
-        expect(byPathsBodies()).toEqual([{ paths: ['/s1.jpg', '/s2.jpg'] }]);
-        expect(apiGet).not.toHaveBeenCalled();
-        expect(store.photos().map(p => p.path)).toEqual(['/s1.jpg', '/s2.jpg']);
-        expect(store.photos()[0].star_rating).toBe(4);
+        expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({ semantic_q: 'dog', page: 1 }));
+        expect(apiGet.mock.calls.some(([path]) => path === '/search')).toBe(false);
+        expect(byPathsBodies()).toEqual([]);
       });
     });
 
@@ -1813,6 +1840,16 @@ describe('GalleryStore selection', () => {
 
       expect(store.selectionScope()).toBe('paths');
       expect(store.selectionCount()).toBe(4);
+      expect(apiGet).not.toHaveBeenCalled();
+    });
+
+    it('select-all still refuses the view scope under a semantic search', () => {
+      store.filters.update(f => ({ ...f, semanticQuery: 'sunset' }));
+
+      store.selectAll();
+
+      expect(store.canScopeSelectionToView()).toBe(false);
+      expect(store.selectionScope()).toBe('paths');
       expect(apiGet).not.toHaveBeenCalled();
     });
 

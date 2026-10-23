@@ -267,8 +267,11 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
 
   const viewFilters = (): Record<string, string | number | boolean> => {
     const f = gallery.filters();
-    const params = buildApiParams(f, gallery.currentAlbum()?.is_smart ?? false);
+    const params = buildApiParams(f, gallery.currentAlbum()?.is_smart ?? false, gallery.config()?.search_threshold_default);
     delete params['page'];
+    // The contract names these `semantic_query` / `semantic_threshold` (api/agent/show.py); added below.
+    delete params['semantic_q'];
+    delete params['semantic_threshold'];
     delete params['per_page'];
     const out: Record<string, string | number | boolean> = {};
     for (const [key, value] of Object.entries(params)) out[Object.hasOwn(CLIENT_TO_CONTRACT_KEY, key) ? CLIENT_TO_CONTRACT_KEY[key] : key] = value;

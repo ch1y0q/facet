@@ -221,6 +221,19 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
     search_photos.__annotations__["fields"] = FIELDS_ANNOTATION
     search_photos.__annotations__["tab_id"] = Annotated[Optional[str], Field(pattern=TAB_ID_PATTERN)]
 
+    async def show_rows(result: dict, paths: list[str], resolved, settings, tab_id: Optional[str],
+                        timeout: float) -> None:
+        """Pin exactly ``paths`` (the rows the tool returned, in order) as the user's list.
+
+        The tab's own semantic view is hide-filtered and sort-ordered, so it would differ from the rows.
+        """
+        if paths:
+            result["shown_in_tab"] = await relay.show_paths_in_tab(
+                registry, resolved, settings, tab_id, paths, timeout=timeout)
+        else:
+            result["shown_in_tab"] = relay.not_shown("empty_result")
+        _tag_mode(result, "paths")
+
     async def semantic_search(
         ctx: Context,
         query: Annotated[str, Field(min_length=1, max_length=500)],
@@ -250,10 +263,7 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
                 result = _list_result(upstream, tuple(fields or ()))
                 _attach_similarity(result["data"]["rows"], similarity)
                 if show:
-                    await show_result(result, resolved, settings, tab_id, first_page=True,
-                                      patch_or_reason=relay.semantic_patch(query, threshold, scope),
-                                      timeout=timeout)
-                    _tag_mode(result, "semantic")
+                    await show_rows(result, [p["path"] for p in hits], resolved, settings, tab_id, timeout)
                 return result
             kept = hits
             if hits:
@@ -278,12 +288,7 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
                     f"Only the {SEMANTIC_CANDIDATES} best semantic matches were filtered; more matching "
                     "photos may exist beyond them. Loosen the query or the filters.")
             if show:
-                if not cut:
-                    result["shown_in_tab"] = relay.not_shown("empty_result")
-                else:
-                    result["shown_in_tab"] = await relay.show_paths_in_tab(
-                        registry, resolved, settings, tab_id, [row["path"] for row in cut], timeout=timeout)
-                _tag_mode(result, "paths")
+                await show_rows(result, [row["path"] for row in cut], resolved, settings, tab_id, timeout)
             return result
         return await run_tool(ctx, "semantic_search", handler)
 
@@ -531,9 +536,8 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
         "Rows carry their `similarity`. `filters` (the `search_photos` filters, no hide defaults) narrows "
         "the best 200 matches and keeps similarity order; the result adds `candidates` and "
         "`filtered_out`, and a `note` when the 200 limit may have hidden more. "
-        + SHOW_RULE + " scope='text' without `filters` is not shown (`unsupported_filters`); with "
-        "`filters` the exact photos are shown as an assistant-chosen list (`shown_in_tab.mode` "
-        "'paths').")
+        + SHOW_RULE + " The exact rows returned (similarity order, at most `limit`) are shown as an "
+        "assistant-chosen list (`shown_in_tab.mode` 'paths'), with or without `filters`.")
     add(get_photo, "get_photo", "Full detail of one photo by its path.")
     add(get_thumbnail, "get_thumbnail",
         "Look at one photo: its thumbnail as an image (size 160 to 640, default 512; a smaller size is "

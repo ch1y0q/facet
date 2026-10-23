@@ -19,7 +19,7 @@ from api.agent.tokens import ResolvedGrant
 from api.agent.tools_common import SortColumn
 from api.agent.tools_ui import BRIDGE_DISABLED
 from api.agent.ui_tools import (
-    SEMANTIC_THRESHOLD_MAX, TAB_UNSUPPORTED_FILTER_KEYS, UiSetGalleryFilters, UiShowPhotos,
+    TAB_UNSUPPORTED_FILTER_KEYS, UiSetGalleryFilters, UiShowPhotos,
 )
 from api.config import VIEWER_CONFIG
 
@@ -67,16 +67,6 @@ def search_patch(filters: dict, sort: Optional[str], sort_direction: Optional[st
     if "type" in effective and "category" in effective:
         return {}, not_shown("invalid_combination", keys=["type", "category"])
     return {**effective, **effective_sort(sort, sort_direction)}, None
-
-
-def semantic_patch(query: str, threshold: Optional[float], scope: Optional[str],
-                   sort: Optional[str] = None, sort_direction: Optional[str] = None) -> tuple[dict, Optional[dict]]:
-    unsupported = (["scope"] if scope else []) + (
-        ["threshold"] if threshold is not None and threshold > SEMANTIC_THRESHOLD_MAX else [])
-    if unsupported:
-        return {}, not_shown("unsupported_filters", keys=unsupported)
-    return {"semantic_query": query, "semantic_threshold": threshold, "similar_to": None,
-            "similarity_mode": None, "min_similarity": None, **effective_sort(sort, sort_direction)}, None
 
 
 def similar_patch(path: str, mode: str, min_similarity: Optional[float],

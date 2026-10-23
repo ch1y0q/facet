@@ -530,6 +530,7 @@ export function buildSyncParams(
 export function buildApiParams(
   f: GalleryFilters,
   isSmartAlbum: boolean,
+  searchThresholdDefault: number | null | undefined,
 ): Record<string, string | number | boolean> {
   const params: Record<string, string | number | boolean> = {
     page: f.page,
@@ -555,6 +556,15 @@ export function buildApiParams(
   if (f.favorites_only) params['favorites_only'] = '1';
   if (f.is_monochrome) params['is_monochrome'] = '1';
 
+  // Semantic search is a filter of `GET /photos`. The threshold travels only when
+  // the slider left the server's seed, so the server resolves its own calibrated
+  // default; the seed is a required argument so `filterKey` sees a slider-only move.
+  if (f.semanticQuery) {
+    params['semantic_q'] = f.semanticQuery;
+    if (f.search_threshold && f.search_threshold !== seededSearchThreshold(searchThresholdDefault))
+      params['semantic_threshold'] = +f.search_threshold / 100;
+  }
+
   // Smart albums apply their filters directly — don't send album_id
   // (server would do an empty album_photos JOIN otherwise).
   if (isSmartAlbum) {
@@ -567,8 +577,10 @@ export function buildApiParams(
 /** Largest `paths` list `POST /photos/by_paths` accepts (server `BY_PATHS_MAX`). */
 export const BY_PATHS_MAX = 500;
 
-/** Paging and ordering keys of `buildApiParams`: meaningless when the caller names the rows itself. */
-export const BY_PATHS_PAGING_KEYS: ReadonlySet<string> = new Set(['page', 'per_page', 'sort', 'sort_direction']);
+/** Paging, ordering and semantic-search keys of `buildApiParams`: meaningless (and a 422 on `by_paths`) when the caller names the rows itself. */
+export const BY_PATHS_PAGING_KEYS: ReadonlySet<string> = new Set([
+  'page', 'per_page', 'sort', 'sort_direction', 'semantic_q', 'semantic_threshold',
+]);
 
 /**
  * The `filters` member of a `POST /photos/by_paths` body for the gallery view: everything
@@ -581,9 +593,10 @@ export function buildByPathsFilters(
   f: GalleryFilters,
   isSmartAlbum: boolean,
   defaultType: string,
+  searchThresholdDefault: number | null | undefined,
 ): Record<string, string | number | boolean> {
   const filters: Record<string, string | number | boolean> = {};
-  for (const [key, value] of Object.entries(buildApiParams(f, isSmartAlbum))) {
+  for (const [key, value] of Object.entries(buildApiParams(f, isSmartAlbum, searchThresholdDefault))) {
     if (!BY_PATHS_PAGING_KEYS.has(key)) filters[key] = value;
   }
   filters['type'] = f.type || (f.person_id ? '' : defaultType);

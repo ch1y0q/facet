@@ -360,7 +360,7 @@ export class GalleryStore {
 
   /** Cheap equality token for the current query state (or an explicit candidate filter set). */
   filterKey(f: GalleryFilters = this.filters()): string {
-    return JSON.stringify(buildApiParams(f, this.currentAlbum()?.is_smart ?? false));
+    return JSON.stringify(buildApiParams(f, this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default));
   }
 
   // --- Selection state (store-level so it survives navigation and is visible to services) ---
@@ -389,8 +389,9 @@ export class GalleryStore {
   /**
    * Whether the current view can be handed to the server AS a filter.
    *
-   * `similar_to` and `semanticQuery` rank server-side outside the gallery's
-   * WHERE clause: no filter payload reproduces them, so a 'view'-scoped
+   * `similar_to` ranks server-side outside the gallery's WHERE clause, and the
+   * filter-scoped endpoints (cull, export, writes, select_bottom_percent) do not
+   * know `semantic_q`: no payload reproduces either, so a 'view'-scoped
    * selection under either would quietly stand for a different set of photos
    * than the one on screen. Select-all falls back to the loaded photos there —
    * a shortcut that does less is still better than one that no-ops.
@@ -550,7 +551,7 @@ export class GalleryStore {
    */
   filterPayload(): Record<string, string> | null {
     if (!this.canScopeSelectionToView()) return null;
-    const params = buildApiParams(this.filters(), this.currentAlbum()?.is_smart ?? false);
+    const params = buildApiParams(this.filters(), this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
     return Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)]));
   }
 
@@ -798,31 +799,7 @@ export class GalleryStore {
         return;
       }
 
-      if (f.semanticQuery) {
-        // Omit `threshold` whenever the slider still sits on the server's own
-        // seed -- unseeded ('') or untouched alike. The server then resolves
-        // the active encoder's default (api/routers/search.py
-        // search_threshold_default()) at its exact configured precision,
-        // rather than the client echoing back the percent-rounded copy it was
-        // given for display.
-        const searchParams: Record<string, string | number> = {
-          q: f.semanticQuery,
-          limit: f.per_page,
-        };
-        if (f.search_threshold
-          && f.search_threshold !== seededSearchThreshold(this.config()?.search_threshold_default))
-          searchParams['threshold'] = +f.search_threshold / 100;
-        const res = await firstValueFrom(
-          this.api.get<{ photos: Photo[]; total: number; query: string }>('/search', searchParams),
-        );
-        if (seq !== this._loadSeq) return;
-        this.photos.set(normalisePhotoFlagsAll(res.photos));
-        this.total.set(res.total);
-        this.hasMore.set(false);
-        return;
-      }
-
-      const params = buildApiParams(f, this.currentAlbum()?.is_smart ?? false);
+      const params = buildApiParams(f, this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
       const res = await firstValueFrom(this.api.get<PhotosResponse>('/photos', params));
       if (seq !== this._loadSeq) return;
       this.photos.set(normalisePhotoFlagsAll(res.photos));
@@ -885,14 +862,14 @@ export class GalleryStore {
       if (wanted.length === 0) return;
       const pinned = this.pinnedPaths() !== null;
       const f = this.filters();
-      const membership = !pinned && !f.similar_to && !f.semanticQuery;
+      const membership = !pinned && !f.similar_to;
       const filters = membership
-        ? buildByPathsFilters(f, this.currentAlbum()?.is_smart ?? false, this.config()?.defaults?.type ?? '')
+        ? buildByPathsFilters(f, this.currentAlbum()?.is_smart ?? false, this.config()?.defaults?.type ?? '', this.config()?.search_threshold_default)
         : undefined;
       const { rows, missing } = await this.fetchByPaths(wanted, filters);
       if (!this.claimRefresh(loadSeq)) return;
       this.mergeRows(rows);
-      // A search ranks outside the gallery's WHERE clause: by_paths cannot say a photo left it.
+      // A similarity view ranks outside the gallery's WHERE clause: by_paths cannot say a photo left it.
       if (pinned || membership) this.dropMissing(missing);
     } catch {
       // Best effort: the rows stay as they were.
@@ -953,11 +930,11 @@ export class GalleryStore {
   /**
    * Refetch the loaded pages of a filter view and swap them in when they land. Unlike `loadPhotos`
    * this blanks nothing and leaves `selectedPaths`, `excludedPaths` and a view-scoped selection alone.
-   * A similarity or semantic-search view keeps its rows: its membership is not a filter.
+   * A similarity view keeps its rows: its membership is not a filter. A semantic search is a filter.
    */
   private async refreshViewInPlace(loadSeq: number): Promise<void> {
-    if (this.filters().similar_to || this.filters().semanticQuery) {
-      // A search view keeps its membership: refresh the rows on screen without filters and never remove one.
+    if (this.filters().similar_to) {
+      // A similarity view keeps its membership: refresh the rows on screen without filters and never remove one.
       const { rows } = await this.fetchByPaths(this.photos().map(p => p.path));
       if (this.claimRefresh(loadSeq)) this.mergeRows(rows);
       return;
@@ -969,7 +946,7 @@ export class GalleryStore {
         return;
       }
       const f = this.filters();
-      const base = buildApiParams(f, this.currentAlbum()?.is_smart ?? false);
+      const base = buildApiParams(f, this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
       const pages: PhotosResponse[] = [];
       for (let page = 1; page <= f.page; page++) {
         pages.push(await firstValueFrom(this.api.get<PhotosResponse>('/photos', { ...base, page })));
@@ -1019,7 +996,7 @@ export class GalleryStore {
         this.total.set(res.total);
         this.hasMore.set(res.has_more);
       } else {
-        const params = buildApiParams(this.filters(), this.currentAlbum()?.is_smart ?? false);
+        const params = buildApiParams(this.filters(), this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
         const res = await firstValueFrom(this.api.get<PhotosResponse>('/photos', params));
         if (seq !== this._loadSeq) return;
         this.photos.update(current => [...current, ...normalisePhotoFlagsAll(res.photos)]);
@@ -1565,7 +1542,7 @@ export class GalleryStore {
       this.notifyActionFailed();
       return null;
     }
-    const params = buildApiParams(f, this.currentAlbum()?.is_smart ?? false);
+    const params = buildApiParams(f, this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
     try {
       const res = await firstValueFrom(
         this.api.get<{ total: number; keep: number; cut: number; truncated: boolean; paths: string[] }>(

@@ -47,28 +47,52 @@ describe('countActiveFilters', () => {
 
 describe('buildApiParams', () => {
   it('always includes pagination + sort', () => {
-    expect(buildApiParams(DEFAULT_FILTERS, false)).toMatchObject({
+    expect(buildApiParams(DEFAULT_FILTERS, false, undefined)).toMatchObject({
       page: 1, per_page: 64, sort: 'aggregate', sort_direction: 'DESC',
     });
   });
   it('omits empty string filters but includes non-empty ones', () => {
-    const p = buildApiParams(filters({ camera: 'Canon' }), false);
+    const p = buildApiParams(filters({ camera: 'Canon' }), false, undefined);
     expect(p['camera']).toBe('Canon');
     expect(p['lens']).toBeUndefined();
   });
   it('encodes hide_* booleans only when true', () => {
-    const p = buildApiParams(filters({ hide_blinks: true, hide_bursts: false }), false);
+    const p = buildApiParams(filters({ hide_blinks: true, hide_bursts: false }), false, undefined);
     expect(p['hide_blinks']).toBe(true);
     expect(p['hide_bursts']).toBeUndefined();
   });
   it('drops album_id for smart albums but keeps it otherwise', () => {
-    expect(buildApiParams(filters({ album_id: '7' }), true)['album_id']).toBeUndefined();
-    expect(buildApiParams(filters({ album_id: '7' }), false)['album_id']).toBe('7');
+    expect(buildApiParams(filters({ album_id: '7' }), true, undefined)['album_id']).toBeUndefined();
+    expect(buildApiParams(filters({ album_id: '7' }), false, undefined)['album_id']).toBe('7');
   });
   it('sends the set-scope fields to the API when set', () => {
-    const p = buildApiParams(filters({ sequence_kind: 'bracket', sequence_group_id: '1' }), false);
+    const p = buildApiParams(filters({ sequence_kind: 'bracket', sequence_group_id: '1' }), false, undefined);
     expect(p['sequence_kind']).toBe('bracket');
     expect(p['sequence_group_id']).toBe('1');
+  });
+});
+
+describe('buildApiParams semantic search', () => {
+  it('emits semantic_q alone while the slider sits on the seed', () => {
+    const p = buildApiParams(filters({ semanticQuery: 'sunset', search_threshold: '5' }), false, 0.05);
+    expect(p['semantic_q']).toBe('sunset');
+    expect(p).not.toHaveProperty('semantic_threshold');
+  });
+  it('emits semantic_threshold as a fraction once off the seed', () => {
+    expect(buildApiParams(filters({ semanticQuery: 'sunset', search_threshold: '12' }), false, 0.05)['semantic_threshold']).toBe(0.12);
+  });
+  it('omits the threshold when the seed is unknown and the slider unset', () => {
+    expect(buildApiParams(filters({ semanticQuery: 'sunset', search_threshold: '' }), false, undefined))
+      .not.toHaveProperty('semantic_threshold');
+  });
+  it('emits neither key without a query', () => {
+    const p = buildApiParams(filters({ search_threshold: '12' }), false, 0.05);
+    expect(p).not.toHaveProperty('semantic_q');
+    expect(p).not.toHaveProperty('semantic_threshold');
+  });
+  it('changes the serialised params on a slider-only move', () => {
+    const at = (t: string) => JSON.stringify(buildApiParams(filters({ semanticQuery: 'x', search_threshold: t }), false, 0.05));
+    expect(at('12')).not.toBe(at('5'));
   });
 });
 
@@ -234,7 +258,7 @@ describe('per-channel clipping filters', () => {
   };
 
   it('reaches the API', () => {
-    const p = buildApiParams(filters(CLIPPING), false);
+    const p = buildApiParams(filters(CLIPPING), false, undefined);
     expect(p['min_channel_clip_highlight']).toBe('5');
     expect(p['max_channel_clip_shadow']).toBe('2');
   });
@@ -257,7 +281,7 @@ describe('per-channel clipping filters', () => {
 
   it('is absent from the defaults, so it never filters until asked for', () => {
     expect(DEFAULT_FILTERS.min_channel_clip_highlight).toBe('');
-    expect(buildApiParams(DEFAULT_FILTERS, false)['min_channel_clip_highlight']).toBeUndefined();
+    expect(buildApiParams(DEFAULT_FILTERS, false, undefined)['min_channel_clip_highlight']).toBeUndefined();
   });
 });
 
@@ -288,24 +312,30 @@ const SERVER_FILTER_KEYS: ReadonlySet<string> = new Set<string>(serverFilterKeys
 
 describe('buildByPathsFilters', () => {
   it('carries the view filters but no paging or sort', () => {
-    const p = buildByPathsFilters(filters({ hide_rejected: true, camera: 'Canon', album_id: '4', min_score: '7' }), false, '');
+    const p = buildByPathsFilters(filters({ hide_rejected: true, camera: 'Canon', album_id: '4', min_score: '7' }), false, '', undefined);
     expect(p).toMatchObject({ hide_rejected: true, camera: 'Canon', album_id: '4', min_score: '7' });
     for (const key of ['page', 'per_page', 'sort', 'sort_direction']) expect(p).not.toHaveProperty(key);
   });
+  it('strips both semantic keys, which by_paths would 422', () => {
+    const p = buildByPathsFilters(filters({ semanticQuery: 'sunset', search_threshold: '12', camera: 'Canon' }), false, '', 0.05);
+    expect(p).toMatchObject({ camera: 'Canon' });
+    expect(p).not.toHaveProperty('semantic_q');
+    expect(p).not.toHaveProperty('semantic_threshold');
+  });
   it('sends the viewer default type explicitly when the filter has none', () => {
-    expect(buildByPathsFilters(filters(), false, 'top_picks')['type']).toBe('top_picks');
-    expect(buildByPathsFilters(filters({ type: 'portrait' }), false, 'top_picks')['type']).toBe('portrait');
+    expect(buildByPathsFilters(filters(), false, 'top_picks', undefined)['type']).toBe('top_picks');
+    expect(buildByPathsFilters(filters({ type: 'portrait' }), false, 'top_picks', undefined)['type']).toBe('portrait');
   });
   it('sends an empty type for a person view, as GET /photos resolves it', () => {
-    expect(buildByPathsFilters(filters({ person_id: '3' }), false, 'top_picks')['type']).toBe('');
+    expect(buildByPathsFilters(filters({ person_id: '3' }), false, 'top_picks', undefined)['type']).toBe('');
   });
   it('drops album_id for a smart album', () => {
-    expect(buildByPathsFilters(filters({ album_id: '4' }), true, '')).not.toHaveProperty('album_id');
+    expect(buildByPathsFilters(filters({ album_id: '4' }), true, '', undefined)).not.toHaveProperty('album_id');
   });
   it('emits only keys the server accepts, so none can 422', () => {
     const every: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(DEFAULT_FILTERS)) every[key] = typeof value === 'boolean' ? true : 'x';
-    const emitted = Object.keys(buildByPathsFilters(filters(every as Partial<GalleryFilters>), false, 'x'));
+    const emitted = Object.keys(buildByPathsFilters(filters(every as Partial<GalleryFilters>), false, 'x', undefined));
     expect(emitted.length).toBeGreaterThan(20);
     expect(emitted.filter(key => !SERVER_FILTER_KEYS.has(key))).toEqual([]);
   });

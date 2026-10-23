@@ -17,6 +17,7 @@ from api import database as _database
 from api.change_token import db_change_token
 from api.config import VIEWER_CONFIG, _FULL_CONFIG, cull_allow_trash
 from api.database import get_async_db, get_db
+from api.model_cache import AcceleratorBusy
 from api.models.gallery import (
     BY_PATHS_MISSING_CAP, GALLERY_PAGING_KEYS, GalleryParams, Photo, PhotoCountResponse,
     PhotoPathsResponse, PhotosByPathsRequest, PhotosByPathsResponse, PhotosResponse,
@@ -33,6 +34,7 @@ from api.db_helpers import (
     build_photo_select_columns, album_filter_clause,
     format_date, to_exif_date, paginate,
 )
+from api.routers.search import semantic_candidates
 from api.top_picks import get_top_picks_score_sql, get_top_picks_threshold, with_top_picks_alias
 from api.types import (
     VALID_SORT_COLS, TYPE_FILTERS, normalize_params, get_photo_types, order_by_clause,
@@ -1060,6 +1062,39 @@ async def api_photos_paths(
     return {"total": len(paths), "paths": paths}
 
 
+SEMANTIC_QUERY_MAX = 500
+_SEMANTIC_CLAUSE = " photos.path IN (SELECT value FROM json_each(?))"
+
+
+def _semantic_params(qp: dict) -> tuple[Optional[str], Optional[float]]:
+    """``(semantic_q, semantic_threshold)`` from the query string, validated; ``(None, None)`` when absent.
+
+    Read raw rather than through ``GalleryParams`` on purpose: the model also defines
+    ``by_paths`` / ``gallery_filter_keys``, and a semantic gate is not a filter either may carry.
+    """
+    raw = qp.get('semantic_q')
+    if raw is None:
+        if qp.get('semantic_threshold') is not None:
+            raise HTTPException(status_code=400, detail="semantic_threshold needs semantic_q")
+        return None, None
+    query = raw.strip()
+    if not 1 <= len(query) <= SEMANTIC_QUERY_MAX:
+        raise HTTPException(status_code=400, detail=f"semantic_q must be 1 to {SEMANTIC_QUERY_MAX} characters")
+    threshold = None
+    if qp.get('semantic_threshold') not in (None, ''):
+        try:
+            threshold = float(qp['semantic_threshold'])
+        except ValueError:
+            threshold = math.nan
+        if not 0.0 <= threshold <= 1.0:
+            raise HTTPException(status_code=400, detail="semantic_threshold must be a number between 0 and 1")
+    return query, threshold
+
+
+def _with_semantic_clause(where_str: str) -> str:
+    return f"{where_str} AND{_SEMANTIC_CLAUSE}" if where_str else f" WHERE{_SEMANTIC_CLAUSE}"
+
+
 async def _assemble_gallery_rows(rows, conn) -> list[dict]:
     """Gallery rows as the wire carries them: tags split, date formatted, persons attached.
 
@@ -1099,6 +1134,9 @@ async def api_photos(
 
     sort_col = params['sort'] if params['sort'] in VALID_SORT_COLS else 'aggregate'
     order_by_clause = _resolve_order_by(params)
+    semantic_q, semantic_threshold = _semantic_params(qp)
+    if semantic_q is not None and not VIEWER_CONFIG.get('features', {}).get('show_semantic_search', True):
+        raise HTTPException(status_code=400, detail="Semantic search is disabled")
 
     try:
         async with get_async_db() as conn:
@@ -1110,6 +1148,21 @@ async def api_photos(
             from_clause, where_str, all_params = await gallery_scope_sql_async(
                 conn, qp, user_id, prepared=params
             )
+            candidates = None
+            if semantic_q is not None:
+                # Never degrade to the whole library: a gate that cannot be resolved is a 503.
+                try:
+                    candidates = await semantic_candidates(conn, semantic_q, semantic_threshold, user_id)
+                except AcceleratorBusy:
+                    logger.warning("Semantic gallery search gave up waiting for the MPS lock: %s", semantic_q)
+                    raise HTTPException(status_code=503, detail="Search model is busy with another task, try again in a moment")
+                except sqlite3.Error:
+                    raise
+                except Exception:
+                    logger.exception("Semantic gallery search failed for query: %s", semantic_q)
+                    raise HTTPException(status_code=503, detail="Semantic search failed")
+                where_str = _with_semantic_clause(where_str)
+                all_params = all_params + [candidates.paths_json]
 
             total_count = await get_cached_count_async(conn, where_str, all_params, from_clause=from_clause)
             total_pages, offset = paginate(total_count, page, per_page)
@@ -1132,6 +1185,9 @@ async def api_photos(
                 where_str_no_hide = (
                     f" WHERE {' AND '.join(where_no_hide)}" if where_no_hide else ""
                 )
+                if candidates is not None:
+                    where_str_no_hide = _with_semantic_clause(where_str_no_hide)
+                    all_params_no_hide = all_params_no_hide + [candidates.paths_json]
                 agg = await get_cached_hidden_aggregates_async(
                     conn, where_str_no_hide, all_params_no_hide, from_clause=from_clause
                 )
@@ -1172,6 +1228,11 @@ async def api_photos(
                 rows = []
 
             photos = await _assemble_gallery_rows(rows, conn)
+            if candidates is not None:
+                for photo in photos:
+                    photo['similarity'] = round(candidates.blended.get(photo['path'], 0.0), 4)
+                    if photo['path'] in candidates.embedding:
+                        photo['embedding_similarity'] = round(candidates.embedding[photo['path']], 4)
 
     except sqlite3.Error:
         logger.exception("Failed to fetch gallery photos")

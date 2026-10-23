@@ -397,6 +397,7 @@ describe('UI tool registry and handlers', () => {
       data = ((await run('ui_get_gallery_view', {})) as { data: { filters: Record<string, unknown> } }).data;
       expect(data.filters).toMatchObject({ semantic_query: 'x', semantic_threshold: 0.25 });
       expect(data.filters).not.toHaveProperty('search_threshold');
+      expect(data.filters).not.toHaveProperty('semantic_q');
     });
   });
 
