@@ -189,7 +189,7 @@ interface ShortcutRow {
     CdkTrapFocus,
   ],
   template: `
-    <div class="px-2 pt-2 md:px-8 md:pt-3 mx-auto w-full lg:max-w-[96%] h-full flex flex-col">
+    <div class="px-2 pt-2 md:px-3 md:pt-3 w-full h-full flex flex-col">
       <!-- Header (sticky: only the group list below scrolls) -->
       <!-- The toolbar projects into the global header on lg+ (HeaderSlotService) and
            renders as a fixed bottom bar on small screens (same #cullToolbar template).
