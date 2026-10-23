@@ -206,14 +206,10 @@ interface ShortcutRow {
           <!-- Secondary controls scroll; the actions after this row stay pinned, so no
                viewport can push the primary action out of reach or paint it over the
                shell controls the toolbar is projected next to.
-               The fade is unconditional: this row overflows at desktop widths too
-               (a 1366px window clipped the last control with only a hairline native
-               scrollbar to say so), and whether it overflows right now is not
-               something CSS can ask -- the toolbar renders twice (inline and
-               projected into the shell header), so no single element measurement
-               would answer for both. -->
-          <div class="flex flex-nowrap items-center gap-3 md:gap-4 min-w-0 flex-1 overflow-x-auto
-                      [mask-image:linear-gradient(to_right,black_calc(100%_-_1.5rem),transparent)]">
+               py-1.5 / pr-1.5 leave room for the icon buttons' 48px touch targets: they
+               overhang the 36px buttons, and in a scrolling row that overhang alone
+               produced a scrollbar on a header with plenty of free width. -->
+          <div class="flex flex-nowrap items-center gap-3 md:gap-4 min-w-0 flex-1 overflow-x-auto py-1.5 pr-1.5">
             @if (scoped()) {
               <button mat-icon-button (click)="exitScope()"
                       [matTooltip]="I18N.culling.exit_scene | translate"
