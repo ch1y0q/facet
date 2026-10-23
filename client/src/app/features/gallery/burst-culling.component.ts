@@ -1,5 +1,5 @@
 import { SEQUENCE_KINDS_KEPT_WHOLE } from '../../shared/pipes/sequence-kind.pipe';
-import { Component, DestroyRef, inject, signal, computed, effect, untracked, viewChild, ElementRef, OnDestroy, HostListener, TemplateRef, ChangeDetectionStrategy } from '@angular/core';
+import { Component, DestroyRef, inject, signal, linkedSignal, computed, effect, untracked, viewChild, ElementRef, OnDestroy, HostListener, TemplateRef, ChangeDetectionStrategy } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
 import { ViewActionRegistry } from '../../core/agent/view-action-registry.service';
 import { UiToolError } from '../../core/agent/ui-tool.types';
@@ -627,6 +627,10 @@ interface ShortcutRow {
                    [class.opacity-40]="(group | isConfirmed:cull.confirmedGroups())">
                 @for (photo of group.photos; track photo.path; let pIdx = $index) {
                   <div #tile class="group/photo relative inline-block cursor-pointer rounded-lg overflow-hidden border-2 transition-colors flex-shrink-0"
+                       [attr.data-pidx]="pIdx"
+                       [ngClass]="i === selectedGroupIndex() && pIdx === selectedPhotoIndex()
+                         ? 'ring-4 ring-[var(--mat-sys-primary)] ring-offset-2 ring-offset-[var(--mat-sys-surface-container-high)]'
+                         : ''"
                        [class.border-green-500]="photo.path | isKept:cull.selectionsMap():groupKey"
                        [class.border-red-500]="!(photo.path | isKept:cull.selectionsMap():groupKey) && (photo.path | isDecided:cull.selectionsMap():groupKey)"
                        [class.border-transparent]="!(photo.path | isDecided:cull.selectionsMap():groupKey)"
@@ -1984,6 +1988,8 @@ export class BurstCullingComponent implements OnDestroy {
 
   /** Index of the keyboard-selected group (page-level nav when the lightbox is closed). */
   protected readonly selectedGroupIndex = signal(0);
+  /** The list view's photo cursor inside the selected group: ← / → move it, Space toggles it. Back to the first photo whenever the group changes. */
+  protected readonly selectedPhotoIndex = linkedSignal({ source: this.selectedGroupIndex, computation: () => 0 });
 
   protected readonly sortModes = ['easiest', 'redundant', 'best', 'recent', 'needs_comparisons', 'chronological'] as const;
 
@@ -2032,8 +2038,10 @@ export class BurstCullingComponent implements OnDestroy {
       titleKey: 'culling.shortcuts.page_title',
       rows: [
         { keys: ['↑', '↓'], labelKey: 'culling.shortcuts.select' },
+        { keys: ['←', '→'], labelKey: 'culling.shortcuts.navigate' },
+        { keys: ['Space'], labelKey: 'culling.shortcuts.toggle' },
+        { keys: ['Shift+Space'], labelKey: 'culling.shortcuts.confirm_next' },
         { keys: ['Enter'], labelKey: 'culling.shortcuts.open' },
-        { keys: ['Space'], labelKey: 'culling.shortcuts.confirm_next' },
       ],
     },
     { titleKey: 'culling.shortcuts.darkroom_title', rows: this.darkroomShortcuts },
@@ -2121,8 +2129,10 @@ export class BurstCullingComponent implements OnDestroy {
     effect(() => {
       if (this.lightboxGroup()) return;
       const idx = this.selectedGroupIndex();
+      const pIdx = this.selectedPhotoIndex();
       queueMicrotask(() => {
         document.querySelector(`[data-gidx="${idx}"]`)?.scrollIntoView({ block: 'nearest' });
+        document.querySelector(`[data-gidx="${idx}"] [data-pidx="${pIdx}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
       });
     });
     // Move focus onto the darkroom dialog when it opens so the photo tiles behind
@@ -2696,17 +2706,32 @@ export class BurstCullingComponent implements OnDestroy {
   @HostListener('document:keydown.arrowleft', ['$event'])
   protected onArrowLeft(event: Event): void {
     const group = this.lightboxGroup();
-    if (!group) return;
-    event.preventDefault();
-    this.stepLightbox(group, -1);
+    if (group) {
+      event.preventDefault();
+      this.stepLightbox(group, -1);
+      return;
+    }
+    this.stepPhotoCursor(event, -1);
   }
 
   @HostListener('document:keydown.arrowright', ['$event'])
   protected onArrowRight(event: Event): void {
     const group = this.lightboxGroup();
+    if (group) {
+      event.preventDefault();
+      this.stepLightbox(group, 1);
+      return;
+    }
+    this.stepPhotoCursor(event, 1);
+  }
+
+  /** List view: move the photo cursor within the selected group, stopping at its edges. */
+  private stepPhotoCursor(event: Event, delta: number): void {
+    if (isTypingContext(event)) return;
+    const group = this.visibleGroups()[this.selectedGroupIndex()];
     if (!group) return;
     event.preventDefault();
-    this.stepLightbox(group, 1);
+    this.selectedPhotoIndex.update(i => this.clampIndex(i + delta, group.photos.length));
   }
 
   /** Z toggles the darkroom zoom (fit ↔ 2×) when open, else the grid hover loupe.
@@ -2860,7 +2885,20 @@ export class BurstCullingComponent implements OnDestroy {
       }
       return;
     }
-    // List: confirm the selected group and move the selection to the next one.
+    // List: toggle the photo under the cursor. A confirmed group is locked, as it is to the mouse.
+    if (isTypingContext(event) || isControlActivation(event)) return;
+    const selected = this.visibleGroups()[this.selectedGroupIndex()];
+    const photo = selected?.photos[this.selectedPhotoIndex()];
+    if (!selected || !photo) return;
+    event.preventDefault();
+    if (this.cull.confirmedGroups().has(this.cull.groupKey(selected))) return;
+    this.cull.toggleSelection(photo.path, selected);
+  }
+
+  /** List: confirm the selected group and move the selection to the next one. */
+  @HostListener('document:keydown.shift.space', ['$event'])
+  protected onShiftSpace(event: Event): void {
+    if (this.lightboxGroup()) return;
     if (isTypingContext(event) || isControlActivation(event)) return;
     const selected = this.visibleGroups()[this.selectedGroupIndex()];
     if (!selected) return;

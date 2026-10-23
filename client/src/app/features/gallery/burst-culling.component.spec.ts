@@ -404,14 +404,66 @@ describe('BurstCullingComponent', () => {
       expect(component['lightboxGroupId']()).toBeNull();
     });
 
-    it('list mode: Space confirms the selected group and advances the selection', () => {
+    it('list mode: Shift+Space confirms the selected group and advances the selection', () => {
       // Lightbox closed, first group selected.
       component['selectedGroupIndex'].set(0);
-      component['onSpace'](new KeyboardEvent('keydown'));
+      component['onShiftSpace'](new KeyboardEvent('keydown'));
 
       expect(store.confirmedGroups().has('1_burst')).toBe(true);
       expect(component['lightboxGroupId']()).toBeNull();
       expect(component['selectedGroupIndex']()).toBe(1);
+    });
+
+    it('list mode: Space toggles the photo under the cursor and confirms nothing', () => {
+      component['selectedGroupIndex'].set(0);
+      component['onArrowRight'](new KeyboardEvent('keydown'));
+      const group = store.groups()[0];
+      const wasKept = store.selectionsMap().get('1_burst')?.has('/photo2.jpg') ?? false;
+
+      component['onSpace'](new KeyboardEvent('keydown'));
+      expect(store.selectionsMap().get('1_burst')?.has('/photo2.jpg') ?? false).toBe(!wasKept);
+      component['onSpace'](new KeyboardEvent('keydown'));
+      expect(store.selectionsMap().get('1_burst')?.has('/photo2.jpg') ?? false).toBe(wasKept);
+
+      expect(store.confirmedGroups().size).toBe(0);
+      expect(group.photos[component['selectedPhotoIndex']()].path).toBe('/photo2.jpg');
+    });
+
+    it('list mode: Space leaves a confirmed group untouched', () => {
+      component['selectedGroupIndex'].set(0);
+      expect(store.confirmGroup(store.groups()[0])).toBe(true);
+      const before = new Set(store.selectionsMap().get('1_burst') ?? []);
+
+      component['onSpace'](new KeyboardEvent('keydown'));
+
+      expect(new Set(store.selectionsMap().get('1_burst') ?? [])).toEqual(before);
+    });
+
+    it('list mode: ← / → move the photo cursor, stop at the group edges, and reset on a group change', () => {
+      component['selectedGroupIndex'].set(0);
+      component['onArrowLeft'](new KeyboardEvent('keydown'));
+      expect(component['selectedPhotoIndex']()).toBe(0);
+      for (let i = 0; i < 5; i++) component['onArrowRight'](new KeyboardEvent('keydown'));
+      expect(component['selectedPhotoIndex']()).toBe(2);
+
+      component['onArrowDown'](new KeyboardEvent('keydown'));
+      expect(component['selectedGroupIndex']()).toBe(1);
+      expect(component['selectedPhotoIndex']()).toBe(0);
+    });
+
+    it('list mode: ← / → are left to a text field', () => {
+      component['selectedGroupIndex'].set(0);
+      const input = document.createElement('input');
+      document.body.append(input);
+      try {
+        const event = new KeyboardEvent('keydown', { key: 'ArrowRight', cancelable: true });
+        Object.defineProperty(event, 'target', { value: input });
+        component['onArrowRight'](event);
+        expect(event.defaultPrevented).toBe(false);
+        expect(component['selectedPhotoIndex']()).toBe(0);
+      } finally {
+        input.remove();
+      }
     });
 
     it('list mode: Enter or Space on a focused control activates the control, not the page shortcut', () => {
@@ -428,6 +480,10 @@ describe('BurstCullingComponent', () => {
             if (key === 'Enter') component['onEnter'](event);
             else component['onSpace'](event);
             expect(event.defaultPrevented).toBe(false);
+            if (key === ' ') {
+              component['onShiftSpace'](event);
+              expect(event.defaultPrevented).toBe(false);
+            }
           }
         }
         expect(component['lightboxGroupId']()).toBeNull();

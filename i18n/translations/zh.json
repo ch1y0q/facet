@@ -2093,6 +2093,7 @@
       "select": "选择照片组",
       "open": "全屏打开",
       "navigate": "上一张／下一张照片",
+      "toggle": "保留 / 淘汰照片",
       "keep": "保留照片",
       "reject": "淘汰照片",
       "confirm_next": "确认并进入下一组",

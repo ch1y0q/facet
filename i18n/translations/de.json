@@ -2093,6 +2093,7 @@
       "select": "Gruppe auswählen",
       "open": "Vollbild öffnen",
       "navigate": "Vorheriges / nächstes Foto",
+      "toggle": "Foto behalten / verwerfen",
       "keep": "Foto behalten",
       "reject": "Foto ablehnen",
       "confirm_next": "Bestätigen & nächste Gruppe",

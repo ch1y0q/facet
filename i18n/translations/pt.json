@@ -2093,6 +2093,7 @@
       "select": "Selecionar grupo",
       "open": "Abrir em tela cheia",
       "navigate": "Foto anterior / próxima",
+      "toggle": "Manter / rejeitar foto",
       "keep": "Manter foto",
       "reject": "Rejeitar foto",
       "confirm_next": "Confirmar e próximo grupo",

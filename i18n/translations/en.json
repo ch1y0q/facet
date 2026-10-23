@@ -2093,6 +2093,7 @@
       "select": "Select group",
       "open": "Open fullscreen",
       "navigate": "Previous / next photo",
+      "toggle": "Keep / reject photo",
       "keep": "Keep photo",
       "reject": "Reject photo",
       "confirm_next": "Confirm & next group",
