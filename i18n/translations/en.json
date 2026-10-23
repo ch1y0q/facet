@@ -89,7 +89,7 @@
       "revoke": "Revoke",
       "revoke_confirm": "Revoke this token? Assistants using it stop working immediately.",
       "revoke_confirm_yes": "Yes, revoke",
-      "revoked": "Token revoked",
+      "revoked": "Token “{name}” revoked",
       "load_failed": "Could not load the access tokens",
       "name_label": "Name",
       "name_placeholder": "e.g. My laptop assistant",

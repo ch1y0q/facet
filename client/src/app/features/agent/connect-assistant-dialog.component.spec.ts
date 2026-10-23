@@ -230,6 +230,15 @@ describe('ConnectAssistantDialogComponent', () => {
     expect(query('[data-testid="tokens-disclosure"] summary')?.textContent).toContain('manage_tokens 0');
   });
 
+  it('names the revoked token in the snackbar', async () => {
+    await create();
+    buttonByText('dialog.connect_assistant.revoke')!.click();
+    fixture.detectChanges();
+    buttonByText('dialog.connect_assistant.revoke_confirm_yes')!.click();
+    await flush();
+    expect(TestBed.inject(MatSnackBar).open).toHaveBeenCalledWith('dialog.connect_assistant.revoked Laptop', '', { duration: 2000 });
+  });
+
   it('shows an edition badge on edition tokens', async () => {
     listMcpTokens.mockReturnValue(of({ tokens: [{ ...TOKEN_ROW, level: 'edition' }] }));
     await create();

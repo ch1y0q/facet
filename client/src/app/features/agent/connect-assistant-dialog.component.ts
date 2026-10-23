@@ -274,11 +274,13 @@ export class ConnectAssistantDialogComponent implements OnDestroy {
   /** The journal is optional on the page: a failed list simply hides the section. */
   protected async revoke(id: number): Promise<void> {
     this.confirmRevokeId.set(null);
+    const name = this.tokens().find(row => row.id === id)?.name ?? '';
     try {
       await firstValueFrom(this.api.revokeMcpToken(id));
       this.tokens.update(rows => rows.filter(row => row.id !== id));
-      this.snackBar.open(this.i18n.t(this.I18N.dialog.connect_assistant.revoked), '', { duration: 2000 });
-      this.announce(this.i18n.t(this.I18N.dialog.connect_assistant.revoked));
+      const message = this.i18n.t(this.I18N.dialog.connect_assistant.revoked, { name });
+      this.snackBar.open(message, '', { duration: 2000 });
+      this.announce(message);
       // The revoked row (and its focused button) is gone; land on the disclosure's summary rather than on <body>.
       afterNextRender(() => this.tokensSummary()?.nativeElement.focus(), { injector: this.injector });
     } catch (err) {

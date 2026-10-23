@@ -89,7 +89,7 @@
       "revoke": "Révoquer",
       "revoke_confirm": "Révoquer ce jeton ? Les assistants qui l'utilisent cessent de fonctionner immédiatement.",
       "revoke_confirm_yes": "Oui, révoquer",
-      "revoked": "Jeton révoqué",
+      "revoked": "Jeton « {name} » révoqué",
       "load_failed": "Impossible de charger les jetons d'accès",
       "name_label": "Nom",
       "name_placeholder": "p. ex. Mon assistant sur portable",

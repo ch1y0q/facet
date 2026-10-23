@@ -89,7 +89,7 @@
       "revoke": "Revocar",
       "revoke_confirm": "¿Revocar este token? Los asistentes que lo usan dejan de funcionar de inmediato.",
       "revoke_confirm_yes": "Sí, revocar",
-      "revoked": "Token revocado",
+      "revoked": "Token «{name}» revocado",
       "load_failed": "No se pudieron cargar los tokens de acceso",
       "name_label": "Nombre",
       "name_placeholder": "p. ej. Mi asistente del portátil",

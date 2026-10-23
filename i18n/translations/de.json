@@ -89,7 +89,7 @@
       "revoke": "Widerrufen",
       "revoke_confirm": "Dieses Token widerrufen? Assistenten, die es nutzen, funktionieren sofort nicht mehr.",
       "revoke_confirm_yes": "Ja, widerrufen",
-      "revoked": "Token widerrufen",
+      "revoked": "Token „{name}“ widerrufen",
       "load_failed": "Die Zugriffstoken konnten nicht geladen werden",
       "name_label": "Name",
       "name_placeholder": "z. B. Mein Laptop-Assistent",
