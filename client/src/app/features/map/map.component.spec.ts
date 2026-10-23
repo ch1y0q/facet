@@ -89,6 +89,7 @@ describe('MapComponent', () => {
       component.initMap();
 
       expect(L.map).toHaveBeenCalled();
+      expect(L.tileLayer).toHaveBeenCalledWith('https://tile.openstreetmap.org/{z}/{x}/{y}.png', expect.objectContaining({ attribution: expect.stringContaining('OpenStreetMap') }));
       expect(mockMap.setView).toHaveBeenCalledWith([48.8566, 2.3522], 5);
       expect(mockMap.on).toHaveBeenCalledWith('moveend', expect.any(Function));
     });

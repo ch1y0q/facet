@@ -3488,18 +3488,18 @@ def main():
 
         with get_connection(args.db) as conn:
             cols = {row[1] for row in conn.execute("PRAGMA table_info(photos)").fetchall()}
-            if 'gps_latitude' not in cols or 'gps_longitude' not in cols:
+            if not {'gps_latitude', 'gps_longitude', 'gps_manually_set'}.issubset(cols):
                 print("Error: GPS columns not found. Run 'python database.py' to migrate the schema first.")
                 sys.exit(1)
 
             if args.rescan_gps:
-                rows = conn.execute("SELECT path FROM photos").fetchall()
+                rows = conn.execute("SELECT path FROM photos WHERE gps_manually_set = 0").fetchall()
             else:
                 # Re-scans photos without GPS each run (idempotent). Photos lacking
                 # GPS EXIF data remain NULL and will be re-checked on subsequent runs,
                 # but the exiftool lookup is fast and this command is run manually.
                 rows = conn.execute(
-                    "SELECT path FROM photos WHERE gps_latitude IS NULL"
+                    "SELECT path FROM photos WHERE gps_latitude IS NULL AND gps_manually_set = 0"
                 ).fetchall()
             paths = [r['path'] for r in rows]
             logger.info("%s GPS for %d photos...", "Rescanning" if args.rescan_gps else "Extracting", len(paths))
@@ -3509,11 +3509,11 @@ def main():
                 lat = exif.get('gps_latitude')
                 lng = exif.get('gps_longitude')
                 if lat is not None and lng is not None:
-                    conn.execute(
-                        "UPDATE photos SET gps_latitude = ?, gps_longitude = ? WHERE path = ?",
+                    cursor = conn.execute(
+                        "UPDATE photos SET gps_latitude = ?, gps_longitude = ? WHERE path = ? AND gps_manually_set = 0",
                         (lat, lng, path)
                     )
-                    updated += 1
+                    updated += cursor.rowcount
             conn.commit()
             logger.info("Updated GPS for %d photos.", updated)
         exit()

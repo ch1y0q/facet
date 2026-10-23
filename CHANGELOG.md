@@ -4,6 +4,12 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Find photos without GPS.** The Location filters now include “No geolocation”; assigning a location removes the photo from those results.
+
+- **Reuse saved places when adding GPS.** Save a named pin once, search for it in another photo’s location dialog, or reuse a recent point. Saved lists are private to each editor, and manual GPS edits and clears survive rescans.
+
 ### Fixed
 
 - **Going back from a photo to the gallery is near instant.** Opening a photo destroyed the gallery, so Back or Escape rebuilt all of it, closed filter sidebar included. The gallery now stays alive behind the photo and comes back where you left it, with the photo you opened focused so the arrow keys carry on from there. The filter sidebar is also built only once the browser is idle or the drawer opens.

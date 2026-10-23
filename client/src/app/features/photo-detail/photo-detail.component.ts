@@ -1200,9 +1200,10 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
 
   protected editGps(p: Photo): void {
     import('./gps-edit-dialog.component').then(m => {
+      if (this.destroyRef.destroyed || this.photo()?.path !== p.path) return;
       const ref = this.dialog.open(m.GpsEditDialogComponent, {
         width: '95vw',
-        maxWidth: '500px',
+        maxWidth: '640px',
         data: {
           path: p.path,
           filename: p.filename,
@@ -1211,8 +1212,8 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
         },
       });
       ref.afterClosed().subscribe((result: { gps_latitude: number | null; gps_longitude: number | null } | undefined) => {
-        if (result !== undefined) {
-          this.photo.set({ ...p, gps_latitude: result.gps_latitude ?? undefined, gps_longitude: result.gps_longitude ?? undefined });
+        if (result !== undefined && !this.destroyRef.destroyed && this.photo()?.path === p.path) {
+          this.photo.update(current => current?.path === p.path ? { ...current, gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude } : current);
           this.locationName.set('');
         }
       });

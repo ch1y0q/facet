@@ -23,7 +23,8 @@ export function createLeafletMap(
   onTileError?: () => void,
 ): L.Map {
   const map = L.map(container, options);
-  const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  // OSM requires the canonical tile host; legacy a/b/c subdomains may be withdrawn.
+  const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     maxZoom: 19,
   });

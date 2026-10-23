@@ -1193,6 +1193,7 @@
     "quality_score_range": "Qualitätswert",
     "saturation_range": "Sättigung",
     "star_rating_range": "Sternebewertung",
+    "no_geolocation": "Ohne Standort",
     "gps_clear": "Standort entfernen",
     "choose_folder": "Ordner wählen…",
     "folder_clear": "Ordner entfernen",
@@ -2340,6 +2341,27 @@
       "include_siblings": "Ganze Serie einbeziehen",
       "success": "Foto in den Papierkorb verschoben",
       "error": "Löschen fehlgeschlagen"
+    },
+    "gps": {
+      "preview_hint": "Wählen Sie einen Ort und dann Speichern, um ihn diesem Foto zuzuweisen.",
+      "search": "Gespeicherte Orte suchen",
+      "loading": "Orte werden geladen…",
+      "retry": "Erneut versuchen",
+      "saved": "Gespeicherte Orte",
+      "name": "Ortsname",
+      "rename": "Umbenennen",
+      "delete": "Löschen",
+      "no_places": "Keine passenden gespeicherten Orte.",
+      "recent": "Zuletzt verwendete Orte",
+      "map_unavailable": "Die Karte ist nicht verfügbar. Verwenden Sie gespeicherte Orte oder Koordinaten.",
+      "latitude": "Breitengrad",
+      "longitude": "Längengrad",
+      "invalid_coordinates": "Geben Sie beide gültigen Koordinaten ein oder entfernen Sie den Ort.",
+      "save_place": "Diesen Ort speichern",
+      "updating": "Orte werden aktualisiert…",
+      "load_error": "Orte konnten nicht geladen werden.",
+      "place_error": "Ort konnte nicht aktualisiert werden. Prüfen Sie Name, Limit und Verbindung.",
+      "save_error": "Fotoort konnte nicht gespeichert werden. Bitte erneut versuchen."
     }
   },
   "manual_tags": {

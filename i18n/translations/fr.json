@@ -1193,6 +1193,7 @@
     "subject_prominence_range": "Proéminence du sujet",
     "subject_placement_range": "Placement du sujet",
     "bg_separation_range": "Séparation fond",
+    "no_geolocation": "Sans géolocalisation",
     "gps_clear": "Supprimer la position",
     "choose_folder": "Choisir un dossier…",
     "folder_clear": "Supprimer le dossier",
@@ -2340,6 +2341,27 @@
       "include_siblings": "Inclure toute la série",
       "success": "Photo envoyée à la corbeille",
       "error": "Échec de la suppression"
+    },
+    "gps": {
+      "preview_hint": "Choisissez un lieu, puis Enregistrer pour l’appliquer à cette photo.",
+      "search": "Rechercher des lieux enregistrés",
+      "loading": "Chargement des lieux…",
+      "retry": "Réessayer",
+      "saved": "Lieux enregistrés",
+      "name": "Nom du lieu",
+      "rename": "Renommer",
+      "delete": "Supprimer",
+      "no_places": "Aucun lieu enregistré correspondant.",
+      "recent": "Lieux récents",
+      "map_unavailable": "La carte est indisponible. Utilisez les lieux enregistrés ou les coordonnées.",
+      "latitude": "Latitude",
+      "longitude": "Longitude",
+      "invalid_coordinates": "Saisissez deux coordonnées valides ou effacez le lieu.",
+      "save_place": "Enregistrer ce lieu",
+      "updating": "Mise à jour des lieux…",
+      "load_error": "Impossible de charger les lieux.",
+      "place_error": "Impossible de modifier le lieu. Vérifiez le nom, la limite et la connexion.",
+      "save_error": "Impossible d’enregistrer le lieu de la photo. Réessayez."
     }
   },
   "manual_tags": {

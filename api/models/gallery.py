@@ -329,6 +329,7 @@ class GalleryParams(BaseModel):
     composition_pattern: str = ''
     album_id: str = ''
     # GPS
+    no_gps: str = ''
     gps_lat: str = ''
     gps_lng: str = ''
     gps_radius_km: str = ''

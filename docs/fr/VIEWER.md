@@ -513,6 +513,16 @@ API : voir la section [Points d'accès API](#points-daccès-api) ci-dessous.
 
 Accessible via la route `/map`. Contrôlé par `viewer.features.show_map` (par défaut : `true`).
 
+### Lieux enregistrés et GPS manuel
+
+Dans les filtres de la galerie, ouvre **Localisation** et active **Sans géolocalisation** pour trouver les photos dont une coordonnée GPS manque. Ajouter une position retire la photo de ces résultats. Ce filtre annule la sélection de rayon sur la carte. Ce filtre peut être enregistré dans un album intelligent. Une recherche sémantique, de photos similaires ou par rayon sur la carte le désactive.
+
+Ouvrez **Ajouter un lieu** ou **Modifier le lieu** depuis une photo en mode édition. Recherchez un nom dans **Lieux enregistrés**, ou choisissez un point parmi les **Lieux récents**. La sélection affiche un aperçu ; **Enregistrer** applique le point à la photo. Annuler ne modifie pas la photo.
+
+Pour mémoriser « Travail », choisissez un point sur la carte ou saisissez sa latitude et sa longitude, puis utilisez **Enregistrer ce lieu** avec un nom. Vous pouvez aussi enregistrer le point d’une photo déjà géolocalisée. Renommer ou supprimer un lieu ne déplace pas les photos existantes. En mode multi-utilisateur, chaque éditeur possède sa liste privée : 100 lieux et 20 points récents distincts au maximum. Seul l’enregistrement réussi d’une photo ajoute un point récent.
+
+La liste et la saisie de coordonnées restent utilisables si la carte est indisponible. La recherche porte sur les noms enregistrés localement. Les corrections manuelles, y compris l’effacement du GPS, survivent aux nouvelles analyses et à l’extraction EXIF. Les fichiers images d’origine ne sont pas modifiés.
+
 ## Capsules
 
 Diaporamas de photos sélectionnées regroupés par thème, lieu, personnes et période — cliquez sur une capsule pour la lire. Accessible via la route `/capsules`.

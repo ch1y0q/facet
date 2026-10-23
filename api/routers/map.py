@@ -9,12 +9,14 @@ import sqlite3
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from api.auth import CurrentUser, get_optional_user, require_edition
 from api.database import get_async_db, get_db
 from api.db_helpers import get_existing_columns, get_visibility_clause, to_exif_date
 from api.models.discovery import PhotoMapCountResponse, PhotoMapResponse
+from api.routers.places import Latitude, Longitude, place_owner
+from db import places
 
 _DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 
@@ -202,11 +204,23 @@ async def api_photos_map_count(
 
 class GpsUpdateRequest(BaseModel):
     path: str
-    gps_latitude: Optional[float] = None
-    gps_longitude: Optional[float] = None
+    gps_latitude: Latitude | None = None
+    gps_longitude: Longitude | None = None
+    saved_place_id: int | None = None
+
+    @model_validator(mode='after')
+    def paired_coordinates(self):
+        if (self.gps_latitude is None) != (self.gps_longitude is None):
+            raise ValueError('Both coordinates must be set or both null')
+        return self
 
 
-@router.put("/api/photo/gps")
+class GpsUpdateResponse(BaseModel):
+    gps_latitude: float | None
+    gps_longitude: float | None
+
+
+@router.put("/api/photo/gps", response_model=GpsUpdateResponse)
 def api_update_gps(
     body: GpsUpdateRequest,
     user: CurrentUser = Depends(require_edition),
@@ -216,11 +230,11 @@ def api_update_gps(
     if 'gps_latitude' not in existing_cols or 'gps_longitude' not in existing_cols:
         raise HTTPException(status_code=400, detail="GPS columns not available")
 
-    if (body.gps_latitude is None) != (body.gps_longitude is None):
-        raise HTTPException(status_code=400, detail="Both latitude and longitude must be set or both must be null")
+    owner = place_owner(user)
 
     with get_db() as conn:
         try:
+            conn.execute("BEGIN IMMEDIATE")
             user_id = user.user_id if user else None
             vis_sql, vis_params = get_visibility_clause(user_id)
 
@@ -231,12 +245,23 @@ def api_update_gps(
             if not row:
                 raise HTTPException(status_code=404, detail="Photo not found")
 
+            if body.saved_place_id is not None:
+                saved = places.get_place(conn, owner, body.saved_place_id)
+                if (saved['latitude'], saved['longitude']) != (body.gps_latitude, body.gps_longitude):
+                    raise places.PlaceError(409, 'Saved place coordinates changed')
             conn.execute(
-                f"UPDATE photos SET gps_latitude = ?, gps_longitude = ? WHERE path = ? AND {vis_sql}",
+                f"UPDATE photos SET gps_latitude = ?, gps_longitude = ?, gps_manually_set = 1 WHERE path = ? AND {vis_sql}",
                 [body.gps_latitude, body.gps_longitude, body.path] + vis_params,
             )
+            places.record_assignment(conn, owner, body.gps_latitude, body.gps_longitude, body.saved_place_id)
+            result = dict(conn.execute(
+                'SELECT gps_latitude, gps_longitude FROM photos WHERE path=?', (body.path,)
+            ).fetchone())
             conn.commit()
-            return {'gps_latitude': body.gps_latitude, 'gps_longitude': body.gps_longitude}
+            return result
+        except places.PlaceError as exc:
+            conn.rollback()
+            raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
         except sqlite3.Error:
             logger.exception("Database error updating GPS for photo %s", body.path)
             conn.rollback()

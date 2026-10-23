@@ -512,6 +512,16 @@ API: veja a seção [Endpoints da API](#endpoints-da-api) abaixo.
 
 Acesse pela rota `/map`. Controlado por `viewer.features.show_map` (padrão: `true`).
 
+### Lugares salvos e GPS manual
+
+Nos filtros da galeria, abra **Localização** e ative **Sem geolocalização** para encontrar fotos sem uma coordenada GPS. Ao adicionar uma localização, a foto sai destes resultados. Este filtro limpa a seleção de raio no mapa. O filtro pode ser salvo num álbum inteligente. Iniciar uma pesquisa semântica ou de fotos semelhantes, ou selecionar um raio no mapa, desativa-o.
+
+Abra **Adicionar localização** ou **Editar localização** em uma foto no modo de edição. Pesquise um nome em **Lugares salvos** ou escolha um ponto em **Localizações recentes**. A seleção mostra uma prévia; **Salvar** aplica o ponto à foto. Cancelar mantém a foto inalterada.
+
+Para salvar «Trabalho» uma vez, escolha um ponto no mapa ou digite latitude e longitude e use **Salvar este lugar** com um nome. Você também pode salvar o ponto de uma foto já geolocalizada. Renomear ou excluir um lugar não move fotos já atribuídas. Em instalações multiusuário, cada editor tem sua lista privada: até 100 lugares e 20 pontos recentes distintos. Apenas uma atribuição salva com sucesso atualiza os recentes.
+
+A lista e a entrada de coordenadas continuam funcionando se o mapa estiver indisponível. A pesquisa usa nomes salvos localmente. Edições manuais, inclusive limpar o GPS, permanecem após novas análises e extração EXIF. Os arquivos originais não são alterados.
+
 ## Cápsulas
 
 Diaporamas (apresentações de slides) de fotos curadas, agrupadas por tema, lugar, pessoas e tempo — clique em uma cápsula para reproduzi-la. Acesse pela rota `/capsules`.

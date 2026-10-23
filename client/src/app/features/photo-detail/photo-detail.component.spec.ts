@@ -616,6 +616,25 @@ describe('PhotoDetailComponent', () => {
       expect(stored().star_rating).toBe(4);
     });
 
+    it('GPS results preserve concurrent metadata and do not resurrect a navigated photo', async () => {
+      createComponent();
+      seedGrid();
+      const closed = new Subject();
+      mockDialog.open.mockReturnValue({ afterClosed: () => closed });
+      await import('./gps-edit-dialog.component');
+      component.editGps(component.photo());
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+      component.photo.update((photo: typeof edited) => ({ ...photo, star_rating: 5, is_favorite: true }));
+      closed.next({ gps_latitude: 1, gps_longitude: 2 });
+      expect(component.photo().star_rating).toBe(5);
+      expect(component.photo().is_favorite).toBe(true);
+      expect(component.photo().gps_latitude).toBe(1);
+      component.photo.set(neighbour);
+      closed.next({ gps_latitude: 3, gps_longitude: 4 });
+      expect(component.photo().path).toBe(neighbour.path);
+      expect(component.photo().gps_latitude).toBeUndefined();
+    });
+
     it('the category override dialog result reaches the store', async () => {
       createComponent();
       seedGrid();

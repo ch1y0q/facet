@@ -3261,6 +3261,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/places": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Api Places */
+        get: operations["api_places_api_places_get"];
+        put?: never;
+        /** Api Create Place */
+        post: operations["api_create_place_api_places_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/places/{place_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Api Update Place */
+        put: operations["api_update_place_api_places__place_id__put"];
+        post?: never;
+        /** Api Delete Place */
+        delete: operations["api_delete_place_api_places__place_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/plugins": {
         parameters: {
             query?: never;
@@ -5260,6 +5296,11 @@ export interface components {
             /** Person Ids */
             person_ids: number[];
         };
+        /** DeletePlaceResponse */
+        DeletePlaceResponse: {
+            /** Success */
+            success: boolean;
+        };
         /** DownloadOption */
         DownloadOption: {
             /** Extension */
@@ -5372,6 +5413,15 @@ export interface components {
             gps_longitude?: number | null;
             /** Path */
             path: string;
+            /** Saved Place Id */
+            saved_place_id?: number | null;
+        };
+        /** GpsUpdateResponse */
+        GpsUpdateResponse: {
+            /** Gps Latitude */
+            gps_latitude: number | null;
+            /** Gps Longitude */
+            gps_longitude: number | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -6615,6 +6665,22 @@ export interface components {
              */
             picked?: boolean;
         };
+        /** PlaceRequest */
+        PlaceRequest: {
+            /** Latitude */
+            latitude: number;
+            /** Longitude */
+            longitude: number;
+            /** Name */
+            name: string;
+        };
+        /** PlacesResponse */
+        PlacesResponse: {
+            /** Places */
+            places: components["schemas"]["SavedPlace"][];
+            /** Recent */
+            recent: components["schemas"]["RecentPlace"][];
+        };
         /** PortfolioExportRequest */
         PortfolioExportRequest: {
             /**
@@ -6669,6 +6735,15 @@ export interface components {
             trained: boolean;
             /** Updated At */
             updated_at?: string | null;
+        };
+        /** RecentPlace */
+        RecentPlace: {
+            /** Last Used At */
+            last_used_at: string;
+            /** Latitude */
+            latitude: number;
+            /** Longitude */
+            longitude: number;
         };
         /** RecomputeRequest */
         RecomputeRequest: {
@@ -6754,6 +6829,21 @@ export interface components {
              * @default
              */
             description?: string;
+        };
+        /** SavedPlace */
+        SavedPlace: {
+            /** Id */
+            id: number;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Latitude */
+            latitude: number;
+            /** Longitude */
+            longitude: number;
+            /** Name */
+            name: string;
+            /** Use Count */
+            use_count: number;
         };
         /**
          * ScanDirectoriesResponse
@@ -11498,7 +11588,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["GpsUpdateResponse"];
                 };
             };
             /** @description Validation Error */
@@ -12202,6 +12292,125 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    api_places_api_places_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlacesResponse"];
+                };
+            };
+        };
+    };
+    api_create_place_api_places_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedPlace"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    api_update_place_api_places__place_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                place_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedPlace"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    api_delete_place_api_places__place_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                place_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletePlaceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

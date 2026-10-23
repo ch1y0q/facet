@@ -1193,6 +1193,7 @@
     "quality_score_range": "Puntuación de calidad",
     "saturation_range": "Saturación",
     "star_rating_range": "Valoración por estrellas",
+    "no_geolocation": "Sin geolocalización",
     "gps_clear": "Borrar ubicación",
     "choose_folder": "Elegir carpeta…",
     "folder_clear": "Borrar carpeta",
@@ -2340,6 +2341,27 @@
       "include_siblings": "Incluir toda la serie",
       "success": "Foto enviada a la papelera",
       "error": "Error al eliminar"
+    },
+    "gps": {
+      "preview_hint": "Elige un lugar y pulsa Guardar para aplicarlo a esta foto.",
+      "search": "Buscar lugares guardados",
+      "loading": "Cargando lugares…",
+      "retry": "Reintentar",
+      "saved": "Lugares guardados",
+      "name": "Nombre del lugar",
+      "rename": "Renombrar",
+      "delete": "Eliminar",
+      "no_places": "No hay lugares guardados coincidentes.",
+      "recent": "Lugares recientes",
+      "map_unavailable": "El mapa no está disponible. Usa lugares guardados o coordenadas.",
+      "latitude": "Latitud",
+      "longitude": "Longitud",
+      "invalid_coordinates": "Introduce ambas coordenadas válidas o borra la ubicación.",
+      "save_place": "Guardar este lugar",
+      "updating": "Actualizando lugares…",
+      "load_error": "No se pudieron cargar los lugares.",
+      "place_error": "No se pudo actualizar el lugar. Comprueba el nombre, el límite y la conexión.",
+      "save_error": "No se pudo guardar la ubicación de la foto. Inténtalo de nuevo."
     }
   },
   "manual_tags": {

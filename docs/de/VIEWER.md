@@ -513,6 +513,16 @@ API: siehe den Abschnitt [API-Endpunkte](#api-endpunkte) weiter unten.
 
 Zugriff über die Route `/map`. Gesteuert über `viewer.features.show_map` (Standard: `true`).
 
+### Gespeicherte Orte und manuelles GPS
+
+Öffne in den Galeriefiltern **Standort** und aktiviere **Ohne Standort**, um Fotos mit fehlenden GPS-Koordinaten zu finden. Nach dem Hinzufügen eines Standorts verschwindet das Foto aus diesen Ergebnissen. Der Filter hebt eine Umkreissuche auf. Der Filter kann in einem intelligenten Album gespeichert werden. Eine semantische Suche, die Suche nach ähnlichen Fotos oder eine Umkreissuche deaktiviert ihn.
+
+Öffne bei einem Foto im Bearbeitungsmodus **Ort hinzufügen** oder **Ort bearbeiten**. Suche unter **Gespeicherte Orte** nach einem Namen oder wähle einen **Zuletzt verwendeten Ort**. Die Auswahl zeigt eine Vorschau; erst **Speichern** übernimmt sie für das Foto. Abbrechen ändert das Foto nicht.
+
+Um „Arbeit“ einmal zu speichern, wähle einen Kartenpunkt oder gib Breiten- und Längengrad ein und nutze **Diesen Ort speichern** mit einem Namen. Auch der Punkt eines bereits verorteten Fotos lässt sich speichern. Umbenennen oder Löschen eines Ortes verschiebt keine bereits zugeordneten Fotos. Auf Mehrbenutzerinstallationen hat jeder Bearbeiter eine private Liste mit höchstens 100 Orten und 20 verschiedenen zuletzt verwendeten Punkten. Nur erfolgreich gespeicherte Fotozuweisungen ergänzen den Verlauf.
+
+Liste und Koordinateneingabe funktionieren auch bei nicht verfügbarer Karte. Die Suche verwendet lokal gespeicherte Namen. Manuelle Änderungen einschließlich des Löschens von GPS bleiben bei erneuten Scans und EXIF-Extraktion erhalten. Die Originaldateien werden nicht verändert.
+
 ## Kapseln
 
 Kuratierte Foto-Diaschows (Slideshows), gruppiert nach Thema, Ort, Personen und Zeit — klicken Sie auf eine Kapsel, um sie abzuspielen. Zugriff über die Route `/capsules`.
