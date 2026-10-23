@@ -129,6 +129,36 @@ describe('PhotoDetailComponent', () => {
     expect(component.photo().persons).toEqual(next.persons);
   });
 
+  it.each([{ persons: [] }, { persons: [{ id: 8, name: 'Grace' }] }])('refreshes a person-filtered gallery after a manual mark is removed or reassigned: %j', async ({ persons }) => {
+    createComponent();
+    const original = makePhoto({ path: '/manual.jpg', persons: [{ id: 5, name: 'Ada' }] });
+    const remaining = makePhoto({ path: '/remaining.jpg', persons: [{ id: 5, name: 'Ada' }] });
+    const other = makePhoto({ path: '/other.jpg', persons: [{ id: 9, name: 'Other' }] });
+    const store = TestBed.inject(GalleryStore);
+    store.filters.update(f => ({ ...f, person_id: '5', camera: 'Canon' }));
+    store.photos.set([original, remaining]);
+    store.total.set(2);
+    vi.spyOn(store, 'reloadPersonOptions').mockResolvedValue();
+    component.photo.set(original);
+    await component.openManualFaces(original);
+    const committed = mockDialog.open.mock.calls[0][1].data.onCommitted;
+    component.photo.set(other);
+    mockApi.get.mockImplementation((url: string) => {
+      if (url === '/photo') return of({ ...original, persons });
+      if (url === '/photos') return of({ photos: [remaining], total: 1, has_more: false });
+      return of({});
+    });
+
+    await committed();
+
+    expect(store.photos().map(p => p.path)).toEqual(['/remaining.jpg']);
+    expect(store.total()).toBe(1);
+    expect(store.filters()).toMatchObject({ person_id: '5', camera: 'Canon' });
+    expect(mockApi.get).toHaveBeenCalledWith('/photos', expect.objectContaining({ person_id: '5', camera: 'Canon' }));
+    expect(component.photo()).toEqual(other);
+    expect(mockRouter.navigate).not.toHaveBeenCalled();
+  });
+
   it('refreshes persisted person membership after the detail component is destroyed', async () => {
     createComponent();
     const original = makePhoto({ path: '/zero.jpg', persons: [] });

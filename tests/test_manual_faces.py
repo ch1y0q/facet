@@ -331,3 +331,47 @@ def test_delete_failure_rolls_back_face_and_deletion_record(edition_client, manu
     with get_db() as conn:
         assert conn.execute('SELECT 1 FROM faces WHERE id=?', (region['id'],)).fetchone() is not None
         assert conn.execute('SELECT 1 FROM manual_face_deletions WHERE manual_key=?', (region['manual_key'],)).fetchone() is None
+
+
+def test_person_gallery_membership_and_warm_counts_follow_manual_changes(edition_client, manual_photo, monkeypatch):
+    from api import db_helpers
+    from pathlib import Path
+    monkeypatch.setattr(db_helpers, 'COUNT_CACHE_TTL', 300)
+    with get_db() as conn, conn:
+        ada = conn.execute("INSERT INTO persons(name) VALUES ('Gallery Ada')").lastrowid
+        bo = conn.execute("INSERT INTO persons(name) VALUES ('Gallery Bo')").lastrowid
+
+    def assert_gallery(person_id, expected):
+        params = {'person_id': str(person_id), 'path_prefix': str(Path(manual_photo).parent) + '/',
+                  'type': '', 'quality': '', 'hide_blinks': 'false', 'hide_bursts': 'false',
+                  'hide_duplicates': 'false', 'hide_brackets': 'false', 'hide_panoramas': 'false'}
+        # Repeated real requests warm the shared count cache before each write.
+        for _ in range(2):
+            listing = edition_client.get('/api/photos', params=params)
+            assert listing.status_code == 200, listing.text
+            assert {p['path'] for p in listing.json()['photos']} == expected
+            assert listing.json()['total'] == len(expected)
+            count = edition_client.get('/api/photos/count', params=params)
+            assert count.status_code == 200, count.text
+            assert count.json()['total'] == len(expected)
+        with db_helpers._count_cache_lock:
+            assert db_helpers._count_cache  # This regression must exercise warmed counts.
+
+    assert_gallery(ada, set())
+    assert_gallery(bo, set())
+    data = payload(edition_client, manual_photo, person_id=ada, new_person_name=None)
+    created = edition_client.post('/api/photo/manual-faces', json=data)
+    assert created.status_code == 201, created.text
+    region = created.json()
+    assert_gallery(ada, {manual_photo})
+    assert_gallery(bo, set())
+
+    update = {key: value for key, value in data.items() if key != 'client_id'}
+    update['person_id'] = bo
+    assert edition_client.put(f"/api/photo/manual-faces/{region['id']}", json=update).status_code == 200
+    assert_gallery(ada, set())
+    assert_gallery(bo, {manual_photo})
+
+    assert edition_client.delete(f"/api/photo/manual-faces/{region['id']}", params={'path': manual_photo}).status_code == 200
+    assert_gallery(ada, set())
+    assert_gallery(bo, set())
