@@ -540,7 +540,7 @@ interface ShortcutRow {
       }
 
       <!-- Scrollable group list; the header above stays fixed -->
-      <div class="flex-1 min-h-0 overflow-y-auto -mx-4 px-4 md:-mx-8 md:px-8 pb-4 max-lg:pb-24" data-culling-scroll>
+      <div class="flex-1 min-h-0 overflow-y-auto -mx-2 px-2 md:-mx-3 md:px-3 pb-4 max-lg:pb-24" data-culling-scroll>
       <!-- Content -->
       @if (cull.loading()) {
         <div class="flex justify-center items-center py-20">
