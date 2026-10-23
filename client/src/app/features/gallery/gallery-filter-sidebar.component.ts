@@ -683,42 +683,45 @@ function saveSectionStates(states: Record<string, boolean>): void {
       }
 
       <!-- Location filter -->
-      @if (store.config()?.features?.show_map) {
-        <mat-expansion-panel class="!mb-1" [expanded]="sectionStates()['location'] === true"
-                             (opened)="onSectionToggle('location', true)"
-                             (closed)="onSectionToggle('location', false)"
-                             [style.background-color]="sectionStates()['location'] === true ? 'var(--mat-sys-surface-container)' : null">
-          <mat-expansion-panel-header>
-            <mat-panel-title class="flex items-center gap-2">
-              <mat-icon class="!text-base !w-5 !h-5 !leading-5 opacity-60">place</mat-icon>
-              {{ I18N.gallery.sidebar.location | translate }}
-              @if (store.filters().gps_lat) {
-                <span class="text-xs rounded-full min-w-[1.25rem] h-5 px-1.5 flex items-center justify-center bg-[var(--mat-sys-primary)] text-[var(--mat-sys-on-primary)] leading-none">1</span>
-              }
-            </mat-panel-title>
-          </mat-expansion-panel-header>
-          <div class="flex flex-col gap-2 pb-2">
-            @if (store.filters().gps_lat) {
-              <div class="text-xs opacity-60 px-1">
-                @if (store.gpsLocationName()) {
-                  {{ store.gpsLocationName() }} — {{ store.filters().gps_radius_km }} km
-                } @else {
-                  {{ +store.filters().gps_lat | number:'1.4-4' }}, {{ +store.filters().gps_lng | number:'1.4-4' }}
-                  — {{ store.filters().gps_radius_km }} km
-                }
-              </div>
-              <button mat-stroked-button class="w-full" (click)="clearGpsFilter()">
-                <mat-icon>close</mat-icon>
-                {{ I18N.gallery.gps_clear | translate }}
-              </button>
+      <mat-expansion-panel class="!mb-1" [expanded]="sectionStates()['location'] === true"
+                           (opened)="onSectionToggle('location', true)"
+                           (closed)="onSectionToggle('location', false)"
+                           [style.background-color]="sectionStates()['location'] === true ? 'var(--mat-sys-surface-container)' : null">
+        <mat-expansion-panel-header>
+          <mat-panel-title class="flex items-center gap-2">
+            <mat-icon class="!text-base !w-5 !h-5 !leading-5 opacity-60">place</mat-icon>
+            {{ I18N.gallery.sidebar.location | translate }}
+            @if (store.filters().gps_lat || store.filters().no_gps) {
+              <span class="text-xs rounded-full min-w-[1.25rem] h-5 px-1.5 flex items-center justify-center bg-[var(--mat-sys-primary)] text-[var(--mat-sys-on-primary)] leading-none">1</span>
             }
+          </mat-panel-title>
+        </mat-expansion-panel-header>
+        <div class="flex flex-col gap-2 pb-2">
+          <mat-checkbox [checked]="!!store.filters().no_gps" (change)="store.updateFilter('no_gps', $event.checked ? '1' : '')">
+            {{ I18N.gallery.no_geolocation | translate }}
+          </mat-checkbox>
+          @if (store.filters().gps_lat) {
+            <div class="text-xs opacity-60 px-1">
+              @if (store.gpsLocationName()) {
+                {{ store.gpsLocationName() }} — {{ store.filters().gps_radius_km }} km
+              } @else {
+                {{ +store.filters().gps_lat | number:'1.4-4' }}, {{ +store.filters().gps_lng | number:'1.4-4' }}
+                — {{ store.filters().gps_radius_km }} km
+              }
+            </div>
+            <button mat-stroked-button class="w-full" (click)="clearGpsFilter()">
+              <mat-icon>close</mat-icon>
+              {{ I18N.gallery.gps_clear | translate }}
+            </button>
+          }
+          @if (store.config()?.features?.show_map) {
             <button mat-stroked-button class="w-full" (click)="openGpsFilterMap()">
               <mat-icon>map</mat-icon>
               {{ I18N.gallery.select_on_map | translate }}
             </button>
-          </div>
-        </mat-expansion-panel>
-      }
+          }
+        </div>
+      </mat-expansion-panel>
 
       <!-- Folder filter -->
       @if (store.config()?.features?.show_folders || store.filters().path_prefix) {
@@ -1175,6 +1178,7 @@ export class GalleryFilterSidebarComponent {
       ref.afterClosed().subscribe(result => {
         if (result) {
           this.store.updateFilters({
+            no_gps: '',
             gps_lat: String(result.lat),
             gps_lng: String(result.lng),
             gps_radius_km: String(result.radius_km),

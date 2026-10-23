@@ -75,6 +75,7 @@ AUTH_ROUTES = [
     '/api/albums',
     '/api/capsules',
     '/api/photos/map/count',
+    '/api/places',
     '/api/merge_suggestions',
     '/api/plugins',
     '/api/burst-groups',

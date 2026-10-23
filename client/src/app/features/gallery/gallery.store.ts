@@ -840,6 +840,12 @@ export class GalleryStore {
     if (key === 'review_status' && value) { extra.similar_to = ''; extra.semanticQuery = ''; }
     else if ((key === 'semanticQuery' || key === 'similar_to') && value) extra.review_status = '';
     if (key === 'review_status' && value === 'undecided') { extra.sort = 'date_taken'; extra.sort_direction = 'ASC'; }
+    if (key === 'no_gps' && value) {
+      extra.gps_lat = ''; extra.gps_lng = ''; extra.gps_radius_km = '';
+      extra.similar_to = ''; extra.semanticQuery = '';
+    } else if (value && ['semanticQuery', 'similar_to', 'gps_lat', 'gps_lng', 'gps_radius_km'].includes(key)) {
+      extra.no_gps = '';
+    }
     if (key === 'hide_rejected' && value) extra.favorites_only = false;
     if (key === 'favorites_only' && value) extra.hide_rejected = false;
     // Reload person dropdown when person filter is cleared (was seeded with filtered subset)
@@ -893,6 +899,12 @@ export class GalleryStore {
     if (updates.review_status) { extra.similar_to = ''; extra.semanticQuery = ''; }
     else if (updates.semanticQuery || updates.similar_to) extra.review_status = '';
     if (updates.review_status === 'undecided') { extra.sort = 'date_taken'; extra.sort_direction = 'ASC'; }
+    if (updates.no_gps) {
+      extra.gps_lat = ''; extra.gps_lng = ''; extra.gps_radius_km = '';
+      extra.similar_to = ''; extra.semanticQuery = '';
+    } else if (updates.semanticQuery || updates.similar_to || updates.gps_lat || updates.gps_lng || updates.gps_radius_km) {
+      extra.no_gps = '';
+    }
     if (updates.hide_rejected) extra.favorites_only = false;
     if (updates.favorites_only) extra.hide_rejected = false;
     this.filters.update(current => ({ ...current, ...updates, ...extra, page: 1 }));

@@ -819,3 +819,26 @@ class TestValidateDbCli:
         # Auto-fix on a clean DB should be a noop — exit 0.
         result = _run(VALIDATE, '--db', seeded_db, '--auto-fix')
         assert result.returncode == 0
+
+
+@pytest.mark.parametrize('flag', ['--extract-gps', '--rescan-gps'])
+def test_gps_exif_cli_preserves_manual_points_and_clears(tmp_path, flag):
+    from db.schema import init_database
+    db = str(tmp_path / 'gps.db')
+    init_database(db)
+    with sqlite3.connect(db) as conn:
+        conn.executemany('INSERT INTO photos(path,filename,gps_latitude,gps_longitude,gps_manually_set) VALUES (?,?,?,?,?)', [
+            ('/manual', 'manual', 8, 9, 1),
+            ('/cleared', 'cleared', None, None, 1),
+            ('/exif', 'exif', None, None, 0),
+        ])
+    driver = (
+        'import runpy, sys; import exiftool.exiftool_batch as exif; '
+        'exif.get_exif_batch = lambda paths: {p: {"gps_latitude": 1, "gps_longitude": 2} for p in paths}; '
+        'sys.argv=sys.argv[1:]; runpy.run_path(sys.argv[0],run_name="__main__")'
+    )
+    result = _run('-c', driver, FACET, '--db', db, flag, cwd=str(tmp_path), env_extra={'PYTHONPATH': str(REPO_ROOT)})
+    assert result.returncode == 0, result.stderr
+    with sqlite3.connect(db) as conn:
+        assert conn.execute('SELECT path,gps_latitude,gps_longitude,gps_manually_set FROM photos ORDER BY path').fetchall() == [
+            ('/cleared', None, None, 1), ('/exif', 1, 2, 0), ('/manual', 8, 9, 1)]

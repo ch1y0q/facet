@@ -4,6 +4,8 @@
 
 实用的分步指南，帮助你在 Facet 与摄影师真正在用的外部后期软件和数字资产管理（DAM）工具之间双向流转 Facet 的星级、颜色标签和标签。本页假设你已经知道 Facet *确实* 会写出 XMP —— `--export-sidecars` / `--import-sidecars` 选项的完整说明和字段对应关系（`xmp:Rating`、`xmp:Label`、`dc:subject`）请见[命令 — 预览与导出](COMMANDS.md#预览与导出)。
 
+在查看器中设置的位置只保存在 Facet 的数据库中：不会写入 XMP 附属文件或图像文件。
+
 ## RAW 附属文件命名陷阱
 
 Facet 把附属文件命名为 `<image><ext>.xmp` —— 例如 `IMG_1234.CR2.xmp` 紧挨着 `IMG_1234.CR2` —— 与 darktable 和 digiKam 使用的约定相同。**Lightroom Classic 和 Capture One 的期望恰好相反：`IMG_1234.xmp`，去掉 RAW 扩展名。** 这两个软件都不会发现 Facet 为专有 RAW 文件（CR2、CR3、NEF、ARW、RAF、RW2、ORF、SRW、PEF —— 除 DNG 以外的全部格式）写出的附属文件，而 Facet 自己的 `--import-sidecars` 同样找不到 Adobe 生态的软件为同一个 RAW 文件写出的附属文件。这是两个生态之间的命名不一致，不是任何一方的 bug。

@@ -81,7 +81,12 @@ EXPECTED_EDITION_ROUTES = frozenset({
     ('DELETE', '/api/albums/{album_id}/scoring_context'),
     ('DELETE', '/api/albums/{album_id}/share'),
     ('DELETE', '/api/config/weight_snapshots/{snapshot_id}'),
+    ('DELETE', '/api/photo/gps'),
     ('DELETE', '/api/photo/manual_tags'),
+    ('DELETE', '/api/places/{place_id}'),
+    ('GET', '/api/places'),
+    ('POST', '/api/places'),
+    ('PUT', '/api/places/{place_id}'),
     ('GET', '/api/albums/{album_id}/picks'),
     ('GET', '/api/comparison/category_weights'),
     ('GET', '/api/comparison/confidence'),
@@ -178,7 +183,13 @@ _REQUEST_BODIES = {
 
 
 def _call(client, method, path):
-    return client.request(method, _concrete(path), json=_REQUEST_BODIES.get((method, path), {}))
+    valid_bodies = {
+        **_REQUEST_BODIES,
+        ('POST', '/api/places'): {'name': 'Work', 'latitude': 0, 'longitude': 0},
+        ('PUT', '/api/places/{place_id}'): {'name': 'Work', 'latitude': 0, 'longitude': 0},
+        ('PUT', '/api/photo/gps'): {'path': '/missing', 'gps_latitude': 0, 'gps_longitude': 0},
+    }
+    return client.request(method, _concrete(path), json=valid_bodies.get((method, path), {}))
 
 
 @pytest.fixture()

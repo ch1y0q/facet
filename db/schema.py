@@ -215,6 +215,8 @@ PHOTOS_COLUMNS = [
     # the row's sequence_kind, never on its own. NULL = written before the stamp
     # existed, i.e. before the RAW exposure fix. See db/render_version.py.
     ('render_version', 'INTEGER'),
+    # Manual GPS (including intentional clears) survives EXIF rescans.
+    ('gps_manually_set', 'INTEGER NOT NULL DEFAULT 0'),
 ]
 
 FACES_COLUMNS = [
@@ -776,7 +778,26 @@ ALBUM_INDEXES = [
     ('idx_album_client_picks_album', 'album_client_picks', 'album_id'),
 ]
 
-# Per-user preferences for multi-user mode (ratings, favorites, rejected flags)
+# Named GPS places belong to an editor owner, independent of photos/rescans.
+SAVED_PLACES_COLUMNS = [
+    ('id', 'INTEGER PRIMARY KEY'),
+    ('owner', 'TEXT NOT NULL'),
+    ('name', 'TEXT NOT NULL'),
+    ('normalized_name', 'TEXT NOT NULL'),
+    ('latitude', 'REAL NOT NULL'),
+    ('longitude', 'REAL NOT NULL'),
+    ('last_used_at', 'TEXT'),
+    ('use_count', 'INTEGER NOT NULL DEFAULT 0'),
+]
+
+RECENT_PLACES_COLUMNS = [
+    ('owner', 'TEXT NOT NULL'),
+    ('latitude', 'REAL NOT NULL'),
+    ('longitude', 'REAL NOT NULL'),
+    ('last_used_at', 'TEXT NOT NULL'),
+]
+
+
 # Reverse geocoding cache — grid-cell to place name mapping
 LOCATION_NAMES_COLUMNS = [
     ('lat_grid', 'REAL NOT NULL'),
@@ -1012,6 +1033,8 @@ _MIGRATED_TABLES = [
     ('album_photos', ALBUM_PHOTOS_COLUMNS),
     ('album_client_picks', ALBUM_CLIENT_PICKS_COLUMNS),
     ('location_names', LOCATION_NAMES_COLUMNS),
+    ('saved_places', SAVED_PLACES_COLUMNS),
+    ('recent_places', RECENT_PLACES_COLUMNS),
     ('user_preferences', USER_PREFERENCES_COLUMNS),
     ('photo_scoring_overrides', PHOTO_SCORING_OVERRIDES_COLUMNS),
     ('photo_sequence_overrides', PHOTO_SEQUENCE_OVERRIDES_COLUMNS),
@@ -1157,6 +1180,13 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
         # Detect a brand-new DB before any CREATE runs, so the version ladder
         # can stamp it to SCHEMA_VERSION instead of replaying historical steps.
         is_fresh = not _table_exists(conn, 'photos')
+
+        conn.execute(_build_create_table_sql(
+            'saved_places', SAVED_PLACES_COLUMNS,
+            constraints=['UNIQUE(owner, normalized_name)']))
+        conn.execute(_build_create_table_sql(
+            'recent_places', RECENT_PLACES_COLUMNS,
+            constraints=['PRIMARY KEY(owner, latitude, longitude)']))
 
         # Create photos table
         conn.execute(_build_create_table_sql('photos', PHOTOS_COLUMNS))

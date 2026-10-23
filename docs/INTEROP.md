@@ -4,6 +4,8 @@
 
 Practical, step-by-step recipes for round-tripping Facet's ratings, labels, and tags with the external editors and DAM tools people actually use. This page assumes you already know *that* Facet writes XMP — see [Commands — Preview & Export](COMMANDS.md#preview--export) for the full `--export-sidecars` / `--import-sidecars` flag reference and the field mapping (`xmp:Rating`, `xmp:Label`, `dc:subject`).
 
+A location set in the viewer stays in Facet's database: it is not written to XMP sidecars or to the image files.
+
 ## The RAW sidecar naming gotcha
 
 Facet names a sidecar `<image><ext>.xmp` — e.g. `IMG_1234.CR2.xmp` next to `IMG_1234.CR2` — the same convention darktable and digiKam use. **Lightroom Classic and Capture One expect the opposite: `IMG_1234.xmp`, with the raw extension stripped.** Neither app will discover a Facet-written sidecar for a proprietary RAW file (CR2, CR3, NEF, ARW, RAF, RW2, ORF, SRW, PEF — everything except DNG), and Facet's own `--import-sidecars` won't find a sidecar an Adobe-ecosystem app wrote for the same RAW either. This is a naming mismatch between ecosystems, not a bug on either side.

@@ -170,6 +170,8 @@ As exportações são incrementais: se `photo_scores_viewer.db` já existir, ape
 python database.py --export-viewer-db --force-export
 ```
 
+Uma reconstrução completa forçada descarta as localizações definidas no visualizador no NAS, assim como as classificações do visualizador; apenas uma exportação incremental as mantém.
+
 O recurso "Encontrar semelhantes" não funcionará no banco de dados exportado (os embeddings CLIP são removidos). Use a máquina de pontuação para isso.
 
 **Tags manuais e a exportação.** A exportação inclui também a tabela de [tags manuais](VIEWER.md#tags-manuais) (`photo_manual_tags`), e uma exportação incremental a mescla acrescentando as linhas do banco de dados de pontuação, nunca substituindo a cópia do visualizador. Assim os tags digitados no NAS são preservados, mas com quatro limites:

@@ -297,3 +297,23 @@ describe('review URL normalization', () => {
       .toMatchObject({ review_status: 'kept', semanticQuery: '', similar_to: '', search: 'beach', album_id: '3' });
   });
 });
+
+describe('no geolocation filter', () => {
+  it('round trips through URL, API, and filter count and clears radius/search conflicts', () => {
+    const f = applyQueryParams(DEFAULT_FILTERS, { no_gps: '1', gps_lat: '0', gps_lng: '0', gps_radius_km: '5', semanticQuery: 'sunset', similar_to: '/photo.jpg' });
+    expect(f).toMatchObject({ no_gps: '1', gps_lat: '', gps_lng: '', gps_radius_km: '', semanticQuery: '', similar_to: '' });
+    expect(buildApiParams(f, false)).toMatchObject({ no_gps: '1' });
+    expect(applyQueryParams(DEFAULT_FILTERS, buildSyncParams(f, undefined)).no_gps).toBe('1');
+    expect(countActiveFilters(f)).toBe(1);
+  });
+});
+
+
+describe('review and location URL coexistence', () => {
+  it('retains both ordinary filters while clearing incompatible ranked and radius modes', () => {
+    const f = applyQueryParams(DEFAULT_FILTERS, { review_status: 'kept', no_gps: '1', semanticQuery: 'sunset', similar_to: '/a.jpg', gps_lat: '0', gps_lng: '0', gps_radius_km: '5' });
+    expect(f).toMatchObject({ review_status: 'kept', no_gps: '1', semanticQuery: '', similar_to: '', gps_lat: '', gps_lng: '', gps_radius_km: '' });
+    expect(applyQueryParams(DEFAULT_FILTERS, buildSyncParams(f, undefined))).toMatchObject({ review_status: 'kept', no_gps: '1' });
+    expect(buildApiParams(f, false)).toMatchObject({ review_status: 'kept', no_gps: '1' });
+  });
+});

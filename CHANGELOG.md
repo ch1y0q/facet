@@ -7,11 +7,14 @@ All notable changes to Facet are documented in this file.
 ### Added
 
 - **Keep photos and resume from the ones you have not reviewed.** The gallery has Keep and Reset decision actions, a `K` shortcut, Undo, and Needs review / Kept / Rejected filters. Keep is separate from stars and favorites, survives rescans, and is also saved when you confirm a culling group.
+- **Find photos without GPS.** The Location filters now include “No geolocation”; assigning a location removes the photo from those results.
+
+- **Reuse saved places when adding GPS.** Save a named pin once, search for it in another photo’s location dialog, or reuse a recent point. Saved lists are private to each editor, and manual GPS edits and clears survive rescans, and **Use the file’s location** in the dialog undoes a manual location by re-reading the GPS from the image file.
 
 ### Fixed
 
 - **Cold searches stop waiting when Apple Silicon is busy.** Concurrent requests share the existing 15-second wait budget instead of waiting through another timeout for every queued search.
-
+- **Map backgrounds load correctly in the installed app.** Map tiles now load directly from OpenStreetMap, avoiding the app’s offline-cache requests that could leave the map blank.
 - **Going back from a photo to the gallery is near instant.** Opening a photo destroyed the gallery, so Back or Escape rebuilt all of it, closed filter sidebar included. The gallery now stays alive behind the photo and comes back where you left it, with the photo you opened focused so the arrow keys carry on from there. The filter sidebar is also built only once the browser is idle or the drawer opens.
 - **The culling darkroom and Compare show sharp frames before you zoom in** (PR #230). Both ask `/thumbnail` for 1920 px, but the endpoint only returned the stored 640 px thumbnail, which the browser stretched across the pane. A `size` above 640 now gets a render of the original at up to 1920 px (never upscaled) through the same decode `/image` uses, cached by modification time. If the original is offline, won't decode, or decodes to a frame with no signal (a truncated RW2 comes out all black), the stored thumbnail is served with a 60-second `max-age`, and `/image?fallback=thumbnail` now does the same. The panes show the stored thumbnail first and swap to the sharp render once it has loaded, never another frame's pixels, and the next and previous frames are fetched ahead in single view (not with the browser's Data Saver on).
 - **The photo page no longer offers a caption it cannot generate.** On a profile without a VLM (legacy or 8gb) and no remote `vlm_backend`, the Generate caption button showed anyway and every press failed with "No cached caption and VLM is unavailable". `/api/config` now turns `show_captions` and `show_vlm_critique` off in that case. It decides without probing the GPU, so on an unresolved `auto` profile the first failed press resolves it and the page then hides the button.

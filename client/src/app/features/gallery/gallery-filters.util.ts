@@ -148,6 +148,7 @@ export interface GalleryFilters {
   // Folder filter
   path_prefix: string;
   // GPS filter
+  no_gps: string;
   gps_lat: string;
   gps_lng: string;
   gps_radius_km: string;
@@ -259,7 +260,7 @@ export const RANGE_AND_SELECT_KEYS: (keyof GalleryFilters)[] = [
   'min_iso', 'max_iso', 'min_aperture', 'max_aperture', 'min_focal_length', 'max_focal_length',
   'date_from', 'date_to',
   'path_prefix',
-  'gps_lat', 'gps_lng', 'gps_radius_km',
+  'no_gps', 'gps_lat', 'gps_lng', 'gps_radius_km',
 ];
 
 export const DEFAULT_FILTERS: GalleryFilters = {
@@ -360,6 +361,7 @@ export const DEFAULT_FILTERS: GalleryFilters = {
   semanticQuery: '',
   search_threshold: '',
   album_id: '',
+  no_gps: '',
   gps_lat: '',
   gps_lng: '',
   gps_radius_km: '',
@@ -480,6 +482,11 @@ export function applyQueryParams(
   if (result.review_status) {
     result.similar_to = '';
     result.semanticQuery = '';
+  }
+  result.no_gps = ['1', 'true'].includes(result.no_gps) ? '1' : '';
+  if (result.no_gps) {
+    result.gps_lat = ''; result.gps_lng = ''; result.gps_radius_km = '';
+    result.similar_to = ''; result.semanticQuery = '';
   }
   return result;
 }

@@ -1193,6 +1193,7 @@
     "subject_prominence_range": "主体突出程度",
     "subject_placement_range": "主体位置",
     "bg_separation_range": "背景分离度",
+    "no_geolocation": "无地理位置",
     "gps_clear": "清除位置",
     "choose_folder": "选择文件夹…",
     "folder_clear": "清除文件夹",
@@ -2340,6 +2341,28 @@
       "include_siblings": "包含整组",
       "success": "照片已发送到回收站",
       "error": "删除失败"
+    },
+    "gps": {
+      "preview_hint": "选择位置，然后点击保存以应用到此照片。",
+      "search": "搜索已保存地点",
+      "loading": "正在加载地点…",
+      "retry": "重试",
+      "saved": "已保存地点",
+      "name": "地点名称",
+      "rename": "重命名",
+      "delete": "删除",
+      "no_places": "没有匹配的已保存地点。",
+      "recent": "最近使用的位置",
+      "map_unavailable": "地图不可用。请使用已保存地点或坐标。",
+      "latitude": "纬度",
+      "longitude": "经度",
+      "invalid_coordinates": "请输入两个有效坐标，或清除位置。",
+      "save_place": "保存此地点",
+      "updating": "正在更新地点…",
+      "load_error": "无法加载地点。",
+      "place_error": "无法更新地点。请检查名称、数量限制和网络连接。",
+      "save_error": "无法保存照片位置。请重试。",
+      "use_file_location": "使用文件中的位置"
     }
   },
   "manual_tags": {

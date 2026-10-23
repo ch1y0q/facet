@@ -531,7 +531,7 @@ PHOTO_OPTIONAL_COLS = [
     'star_rating', 'is_favorite', 'is_rejected', 'is_kept',
     'duplicate_group_id', 'is_duplicate_lead',
     'burst_group_id',
-    'caption', 'caption_translated', 'gps_latitude', 'gps_longitude',
+    'caption', 'caption_translated', 'gps_latitude', 'gps_longitude', 'gps_manually_set',
     'dominant_hue', 'color_temp',
     'form_symmetry', 'form_balance', 'form_edge_entropy', 'form_fractal', 'color_harmony',
     'narrative_moment', 'narrative_moment_confidence',
