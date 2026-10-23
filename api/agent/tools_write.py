@@ -61,6 +61,8 @@ WRITE_TOOL_LEVELS: dict[str, str] = {
     "override_sequence": "edition", "clear_sequence_override": "edition",
     "override_category": "edition", "clear_category_override": "edition",
     "group_compare": "readonly", "cull_report": "readonly",
+    # Registered by tools_scoring: reads and a dry preview (nothing here writes).
+    "explain_score": "readonly", "category_weights": "edition", "preview_weights": "edition",
 }
 NONCE_ACTIONS = ("move_rejects", "trash_rejects")
 LIST_KEYS = ("would_copy", "would_move", "would_trash")

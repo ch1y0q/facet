@@ -297,6 +297,8 @@
 
 查看器在后台运行 `--recompute-category`，只更新该类别下的照片。
 
+MCP 助手可以读取这些权重并试算更改，而不会改动任何内容：`explain_score`（照片为何得到该评分）、`category_weights` 与 `preview_weights`（带排名变化的近似预览）。参见[评分与权重](AGENTS.md#评分与权重)。
+
 ### 方案 B：通过命令行
 
 #### 1. 分析当前评分

@@ -903,43 +903,23 @@ def api_comparison_preview_score(
         else:
             weights[key] = value / 100
 
-    # Simple weighted sum calculation
+    # The scorer's own feature vector and missing-value defaults (processing.scorer.build_metric_vector),
+    # weighted the way calculate_aggregate_logic does: the quality weight folded into aesthetic, the
+    # licence-unavailable metrics dropped, each value clamped to 0..10. Stored metrics only; nothing is re-scored.
+    from processing.scorer import (
+        build_metric_vector, fold_quality_weight, renormalise_weights, unavailable_for_config,
+        weighted_metric_contribution,
+    )
+    weights = fold_quality_weight(weights)
+    unavailable = unavailable_for_config(config)
+    if unavailable:
+        weights = renormalise_weights(weights, unavailable)
+    vector = build_metric_vector(metrics, config, category, unavailable=unavailable)
     preview_score = 0.0
-    weight_map = {
-        'aesthetic': 'aesthetic',
-        'face_quality': 'face_quality',
-        'eye_sharpness': 'eye_sharpness',
-        'tech_sharpness': 'tech_sharpness',
-        'exposure': 'exposure_score',
-        'composition': 'comp_score',
-        'color': 'color_score',
-        'contrast': 'contrast_score',
-        'quality': 'quality_score',
-        'dynamic_range': 'dynamic_range_stops',
-        'isolation': 'isolation_bonus',
-        'leading_lines': 'leading_lines_score',
-        # Supplementary PyIQA
-        'aesthetic_iaa': 'aesthetic_iaa',
-        'face_quality_iqa': 'face_quality_iqa',
-        'liqe': 'liqe_score',
-        # Subject saliency
-        'subject_sharpness': 'subject_sharpness',
-        'subject_prominence': 'subject_prominence',
-        'subject_placement': 'subject_placement',
-        'bg_separation': 'bg_separation',
-    }
-
-    for weight_key, metric_key in weight_map.items():
+    for weight_key, value in vector.items():
         weight = weights.get(weight_key, 0)
-        if weight > 0:
-            value = metrics.get(metric_key) or 0
-            # Special handling for isolation_bonus (scale 1-3 to 0-10)
-            if metric_key == 'isolation_bonus' and value:
-                value = min(10, (value - 1) * 5)
-            # Special handling for dynamic_range (scale to 0-10)
-            if metric_key == 'dynamic_range_stops' and value:
-                value = min(10, value / 0.6)  # Assuming 6 stops = 10
-            preview_score += value * weight
+        if isinstance(weight, (int, float)) and weight > 0:
+            preview_score += weighted_metric_contribution(value, weight)
 
     # Add bonus if present
     bonus = weights.get('bonus', 0)

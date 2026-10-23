@@ -40,6 +40,7 @@ from api.agent.tools_common import TOOL_LEVELS, tool_visible
 from api.agent.tools_corrections import register_correction_tools
 from api.agent.tools_culling import register_culling_tools
 from api.agent.tools_report import register_report_tools
+from api.agent.tools_scoring import register_scoring_tools
 from api.agent.tools_read import register_read_tools
 from api.agent.tools_ui import register_ui_tools
 from api.agent.tools_write import register_write_tools
@@ -74,6 +75,7 @@ INSTRUCTIONS = (
     "in the tab, instead of paths. create_album alone also takes target=\"view\" (the tab's open gallery view) or "
     "`filters`, to save a smart album that follows those filters instead of a fixed list; a smart album is "
     "shown with the viewer's own hide toggles, and list_albums reports its photo count as 0. "
+    "explain_score reads why a photo scored what it did; category_weights and preview_weights read and dry-run the scoring weights (an approximate preview: nothing changes). "
     "The tools offered to you are those your key may call: status reports `hidden_tools` (how many more "
     "need a higher level, and which an operator's setting turns off), so tell the user instead of guessing. "
     "Reference lists (categories, tags, "
@@ -278,6 +280,7 @@ def register_all_tools(server: MCPServer, app: Any, client: InternalClient, stat
     register_culling_tools(server, app, registry, on_write)
     register_correction_tools(server, client)
     register_report_tools(server, app, client, on_write)
+    register_scoring_tools(server, client, registry)
     prompts.register_prompts(server)
 
 

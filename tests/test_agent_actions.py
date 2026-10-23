@@ -53,6 +53,8 @@ TOOL_ROUTES = {
     "group_compare": ["photos_by_paths", "group_faces", "group_subjects"],
     "cull_report": ["photos_count", "search_photos"],
     "comparison_status": ["comparison_stats", "comparison_coverage"],
+    "explain_score": ["critique"], "category_weights": ["category_weights"],
+    "preview_weights": ["category_weights", "search_photos", "preview_score"],
     "start_scan": ["scan_directories", "scan_start"], "scan_status": ["scan_status", "scan_directories"],
     **{tool.name: [] for tool in UI_TOOLS},
 }

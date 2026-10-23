@@ -103,7 +103,9 @@ class TestLocalEditionGrant:
 class TestAllowlist:
     # Edition-only READS the allowlist carries on purpose (the routes themselves are edition-gated), and the
     # only /api/scan and /api/config routes it may name.
-    EDITION_READS = ("/api/comparison/stats", "/api/comparison/coverage", "/api/scan/status", "/api/scan/directories")
+    EDITION_READS = ("/api/comparison/stats", "/api/comparison/coverage", "/api/scan/status", "/api/scan/directories",
+                     # edition-gated reads of the scoring weights and the dry preview score (no write)
+                     "/api/comparison/category_weights", "/api/comparison/preview_score")
     ALLOWED_PREFIXED = ("/api/scan/start", "/api/scan/status", "/api/scan/directories", "/api/config/scoring_contexts")
 
     def test_allowlist_is_frozen_and_only_writes_demand_a_level(self):

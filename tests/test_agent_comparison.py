@@ -19,7 +19,9 @@ from api.agent.internal_client import InternalClient, NotAllowedError, RouteSpec
 AGENT_DIR_PATH = pathlib.Path(agent_pkg.__file__).parent
 FORBIDDEN = re.compile(r"/api/comparison/(submit|reset|edit|delete|batch|record)", re.I)
 ALLOWED_COMPARISON = {"/api/comparison/stats", "/api/comparison/coverage", "/api/comparison/override_category",
-                      "/api/comparison/clear_category_override"}
+                      "/api/comparison/clear_category_override",
+                      # Phase 1 of the scoring-weights assistant: a read of the weights and a dry preview score.
+                      "/api/comparison/category_weights", "/api/comparison/preview_score"}
 
 
 def all_route_specs():

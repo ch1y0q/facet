@@ -297,6 +297,8 @@ Exécutez `--compute-recommendations` après avoir changé de profil pour analys
 
 La galerie exécute `--recompute-category` en coulisse, ne mettant à jour que les photos de cette catégorie.
 
+Un assistant MCP peut lire ces pondérations et simuler un changement sans rien modifier : `explain_score` (pourquoi une photo a obtenu son score), `category_weights` et `preview_weights` (une simulation approximative avec les changements de rang). Voir [Scores et pondérations](AGENTS.md#scores-et-pondérations).
+
 ### Option B : via la CLI
 
 #### 1. Analyser les scores actuels

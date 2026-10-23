@@ -13,6 +13,7 @@ from api.config import VIEWER_CONFIG, is_multi_user_enabled
 
 DESTRUCTIVE_KEY = "viewer.mcp.allow_destructive"
 SCAN_KEY = "viewer.features.show_scan_button"
+CRITIQUE_KEY = "viewer.features.show_critique"
 
 
 def destructive_allowed(resolved: Any, settings: dict) -> Optional[tuple[str, str]]:
@@ -21,6 +22,13 @@ def destructive_allowed(resolved: Any, settings: dict) -> Optional[tuple[str, st
     return ("feature_disabled",
             f"Destructive actions are off for assistants: the operator must set {DESTRUCTIVE_KEY} to true. "
             "Nothing was done")
+
+
+def critique_available(resolved: Any, settings: dict) -> Optional[tuple[str, str]]:
+    """The critique route's own rule: ``viewer.features.show_critique`` (default on), else it answers 403."""
+    if VIEWER_CONFIG.get("features", {}).get("show_critique", True):
+        return None
+    return "feature_disabled", f"Score explanations are off: the operator must set {CRITIQUE_KEY} to true"
 
 
 def scan_available(resolved: Any, settings: dict) -> Optional[tuple[str, str]]:

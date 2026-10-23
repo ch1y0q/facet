@@ -98,8 +98,11 @@ class TestGrantMatrix:
         "clear_category_override": {"path": AGENT_DIR + "nope1.jpg"},
         "group_compare": {"paths": [P[0]], "by": "faces"}, "cull_report": {},
         "start_scan": {"directories": [AGENT_DIR]}, "scan_status": {}, "comparison_status": {},
+        "explain_score": {"path": P[0]}, "category_weights": {},
+        "preview_weights": {"category": "portrait", "weights": {"aesthetic": 1}},
     }
-    READ_ONLY = ("junk_list", "scan_status", "comparison_status", "group_compare", "cull_report")
+    READ_ONLY = ("junk_list", "scan_status", "comparison_status", "group_compare", "cull_report",
+                 "explain_score", "category_weights", "preview_weights")
 
     def test_every_write_tool_has_args_and_a_level(self):
         assert set(self.ARGS) == set(WRITE_TOOL_LEVELS)

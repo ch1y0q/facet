@@ -1,4 +1,4 @@
-"""MCP resources: five read-only ``facet://`` lists, served per caller through the same routes as the tools.
+"""MCP resources: five read-only ``facet://`` lists (a sixth, scoring-weights, for edition), served per caller through the same routes as the tools.
 
 [REAL] ``agent_app`` (real auth chain), real routes, rows seeded into the shared session DB.
 """
@@ -31,6 +31,13 @@ def body(env, token, uri):
 def world(agent_app):
     env = agent_app("legacy")
     return env, env.token(env.login(), "readonly")
+
+
+def test_an_edition_key_is_offered_a_sixth_resource_the_scoring_weights(agent_app):
+    env = agent_app("legacy")
+    token = env.token(env.login(edition=True), "edition")
+    listed = {r["uri"] for r in env.rpc(token, "resources/list").json()["result"]["resources"]}
+    assert listed == URIS | {"facet://scoring-weights"}
 
 
 def test_exactly_five_static_resources_and_no_templates(world):
@@ -146,3 +153,22 @@ def test_resources_list_follows_the_tool_profile_like_tools_list(agent_app):
     assert "list_persons" not in env.tool_names(token)
     listed = {r["uri"] for r in env.rpc(token, "resources/list").json()["result"]["resources"]}
     assert listed == URIS - {"facet://persons"}
+
+
+def test_a_read_depends_on_the_level_only_never_on_the_tool_profile(agent_app):
+    full = agent_app("legacy")
+    core = agent_app("legacy", tool_profile="core")
+    full_token, core_token = full.token(full.login(), "readonly"), core.token(core.login(), "readonly")
+    assert "list_persons" not in core.tool_names(core_token)
+    for uri in sorted(URIS):
+        assert body(core, core_token, uri) == body(full, full_token, uri), uri
+
+
+def test_the_edition_resource_is_refused_to_a_readonly_key_but_read_by_an_edition_key(agent_app):
+    env = agent_app("legacy")
+    readonly = env.token(env.login(), "readonly")
+    error = read(env, readonly, "facet://scoring-weights")["error"]
+    assert error["code"] == -32602 and "facet://scoring-weights" in error["message"]
+    edition = env.token(env.login(edition=True), "edition")
+    payload = body(env, edition, "facet://scoring-weights")
+    assert payload["uri"] == "facet://scoring-weights" and payload["data"]

@@ -339,6 +339,38 @@
       ]
     },
     {
+      "id": "explain_scores",
+      "summary": "Read why a photo scored what it did, metric by metric",
+      "tools": [
+        {
+          "name": "explain_score",
+          "required_level": "readonly"
+        }
+      ],
+      "when": [
+        "detail",
+        "gallery",
+        "selection"
+      ]
+    },
+    {
+      "id": "tune_weights",
+      "summary": "Read a category's scoring weights and preview a change before touching anything",
+      "tools": [
+        {
+          "name": "category_weights",
+          "required_level": "edition"
+        },
+        {
+          "name": "preview_weights",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "any"
+      ]
+    },
+    {
       "id": "compare_in_group",
       "summary": "Compare the faces or the subject sharpness of a group's frames",
       "tools": [

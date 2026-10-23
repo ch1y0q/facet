@@ -1,4 +1,4 @@
-"""MCP resources: five read-only reference lists under ``facet://``.
+"""MCP resources: six read-only reference lists under ``facet://``.
 
 They are served from this module's own table, not from the SDK's resource manager: that one has no
 request context at list time, and what a reader returns depends on WHO asks (a person hidden for a
@@ -20,7 +20,8 @@ from mcp.types import (
 from api.agent import prompts, tokens
 from api.agent.internal_client import InternalClient
 from api.agent.runtime import SETTINGS_SCOPE_KEY, bearer_token
-from api.agent.tools_common import MCP_FILTER_KEYS, UNTRUSTED_META
+from api.agent.tools_scoring import shape_category_weights
+from api.agent.tools_common import MCP_FILTER_KEYS, TOOL_LEVELS, UNTRUSTED_META
 from api.models.gallery import GalleryParams
 
 MAX_BYTES = 32 * 1024
@@ -66,6 +67,10 @@ async def _scoring_contexts(client: InternalClient, grant: Any, timeout: float) 
                                  for c in body.get("contexts") or []]}
 
 
+async def _scoring_weights(client: InternalClient, grant: Any, timeout: float) -> dict:
+    return shape_category_weights(await _route(client, grant, timeout, "category_weights") or {}, False)
+
+
 def _domain(key: str) -> dict:
     """The value domain of one gallery filter, read off ``GalleryParams`` rather than restated here."""
     field = GalleryParams.model_fields.get(key)
@@ -97,6 +102,8 @@ RESOURCES: dict[str, ResourceSpec] = {spec.uri: spec for spec in (
                  "library's metric ranges.", _filters, ("search_photos", "filter_options")),
     ResourceSpec("facet://scoring-contexts", "Scoring contexts", "Scoring contexts: promoted and excluded "
                  "categories and the resulting order.", _scoring_contexts),
+    ResourceSpec("facet://scoring-weights", "Scoring weights", "Every category's non-zero scoring weights, "
+                 "priority and bonus (edition only).", _scoring_weights, ("category_weights",)),
 )}
 
 
@@ -130,12 +137,16 @@ def list_resources(resolved: tokens.ResolvedGrant, settings: dict) -> ListResour
 
 async def read_resource(request: Any, uri: str, client: Optional[InternalClient]) -> ReadResourceResult:
     """Gate (bearer, rate limit, audit) like a prompt, then run the reader as the caller."""
-    await prompts.authorize(request, uri)
+    resolved = await prompts.authorize(request, uri)
     spec = RESOURCES.get(str(uri))
     if spec is None or client is None:
         raise MCPError(INVALID_PARAMS, f"Unknown resource: {str(uri)[:64]}", data={"uri": str(uri)[:64]})
     grant = await asyncio.to_thread(tokens.verify_request, bearer_token(request.headers), request)
     settings = request.scope[SETTINGS_SCOPE_KEY]
+    # A read is gated on the permission LEVEL of the tools it needs, not on the tool profile: the profile only
+    # trims what tools/list offers, and refusing facet://persons under "core" would be a regression.
+    if any(tokens.level_rank(resolved.level) < tokens.level_rank(TOOL_LEVELS[name]) for name in spec.required):
+        raise MCPError(INVALID_PARAMS, f"Unknown resource: {str(uri)[:64]}", data={"uri": str(uri)[:64]})
     data, truncated = _limit(await spec.read(client, grant, settings["call_timeout_s"]))
     text = json.dumps({"uri": spec.uri, "truncated": truncated, "data": data}, ensure_ascii=False, default=str)
     return ReadResourceResult(contents=[TextResourceContents(uri=spec.uri, text=text, mime_type=MIME,

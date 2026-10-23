@@ -218,9 +218,17 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 - **比较画面**（`readonly`）。`group_compare` 比较一个选片分组中的画面（最多 12 个路径），`by: "faces"`（每帧：人脸数、眨眼、最低睁眼度、最佳笑容、`best_path_by_eyes`）或 `by: "subjects"`（主体清晰度与突出度、`sharpest_path`）。这只是建议，不是决定。`cull_report` 用一次调用汇总一个范围：总数、保留、淘汰、收藏、已评分、未审阅、隐藏开关会隐藏的内容、垃圾、低分、最佳照片，以及（使用 edition 令牌时）暗房的前几个分组。各原因相互重叠。 它包含 `basis`,说明每个计数遵循哪些过滤器(隐藏开关不适用于这些计数)。
 - **品味。** `comparison_status`（`edition`）报告你做了多少次成对比较以及它们对照片库的覆盖程度。没有任何工具能提交、编辑或删除比较：每一对的答案是你自己的点击。助手所做的写入（评分、淘汰、暗房确认、`auto_cull`）从不记录比较，也从不触发自动重新训练；你本人在图库中做同样的操作仍会如此。 助手写入的评分、收藏和淘汰，在个人排序器依据你的评分重建时同样不会进入训练对；一旦你自己给该照片评分，它们就会重新计入。这份记录保存在单独的表中，永不导出。
 - **扫描。** `start_scan` 和 `scan_status`（`edition`）启动并跟踪对已配置目录的扫描。仅当 `viewer.features.show_scan_button` 开启且安装已锁定（多用户模式下为超级管理员密钥）时才会列出；在 `viewer.trusted_local_editing` 下，本机的完全编辑令牌无需 `show_scan_button` 也会列出。扫描是追加式的，并在另一项任务运行时被拒绝（`conflict`）。与 Immich 的同步仍通过命令行进行。
-- **资源。** 除工具外，服务器还列出五个只读的 `facet://` 资源：`facet://categories`、`facet://tags`、`facet://persons`、`facet://filters`（每个搜索筛选条件及其取值范围，加上指标范围）和 `facet://scoring-contexts`。每个资源按密钥所有者看到的照片库读取，上限 200 行和 32 KiB（`truncated` 会标明）。
+- **资源。** 除工具外，服务器还列出五个只读的 `facet://` 资源：`facet://categories`、`facet://tags`、`facet://persons`、`facet://filters`（每个搜索筛选条件及其取值范围，加上指标范围）和 `facet://scoring-contexts`。每个资源按密钥所有者看到的照片库读取，上限 200 行和 32 KiB（`truncated` 会标明）；另有第六个资源 `facet://scoring-weights`（每个类别的非零权重），仅向 `edition` 密钥提供。
 - **选择列出的内容。** `viewer.mcp.tool_profile` 为 `full`（默认）或 `core`：`core` 只列出面向小模型的 11 个工具（`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`）。它只改变列表，不改变密钥可调用的内容。`viewer.mcp.allow_destructive`（默认 `false`）控制 `delete_photos`（关闭时不列出）、`cull_apply` 的 `move_rejects` 与 `trash_rejects` 操作，以及带 `allow_reassign` 的 `assign_faces`；被拒绝的调用返回 `feature_disabled`。令牌级别无法调用的工具同样不会列出。
 - **另外两个错误代码。** `feature_disabled`：该路由被某个配置键关闭，消息中会指出该键。`conflict`：照片库正忙于与此冲突的任务（例如已有扫描在运行）。
+
+## 评分与权重
+
+读取评分权重并进行试算。这里的任何操作都不会改变评分或配置。
+
+- **解释评分**（`readonly`）。`explain_score`（`path`，或用 `target: "selection"` 指定恰好一张已选照片；`top_n` 为 1 到 12，默认 5）说明一张照片为何得到该评分：它所属的类别、以及为何没有被更高优先级的类别选中，已存储的综合分，以 `{metric_key, value, weight_percent, contribution}` 表示的主要指标，其余指标的数量与总和，优势、弱点与扣分项。分析基于规则且只读（从不运行 VLM）。`weight_percent` 是计算实际使用的有效权重，可能与配置的 `*_percent` 不同（`quality` 会并入 `aesthetic`，本安装未运行的指标会被重新归一化）。它需要 `viewer.features.show_critique`（默认开启）；关闭时该工具不会被列出，`status` 会在 `hidden_tools.disabled` 下指出它。
+- **读取权重**（`edition`）。`category_weights` 返回某个类别的非零权重、修饰项、筛选条件与优先级，或返回每个类别的非零权重与加分。资源 `facet://scoring-weights` 提供同样的列表。对于单个类别，它还返回 `configured_keys`，即该类别配置中实际存在的 `*_percent` 键（包括显式的零）。
+- **预览更改**（`edition`）。`preview_weights(category, weights | deltas, sample)` 是近似预览：它用当前权重和建议权重（均按计算所用的方式归一化）对该类别最多 `sample` 张照片重新打分（默认 30，最多 100），先报告排名变化，再报告平均偏移、`warnings` 和一次性的 `preview_digest`（有效期 5 分钟，保存在单个进程的内存中）。请提供 `weights`（合并到当前值之上的部分映射）或 `deltas`（带符号的百分点）。它不存储任何内容，结果带有 `basis: "approximate"`：没有百分位快照、没有扣分，评分上限为 10。只执行服务器自身的规则（每个权重为 0 到 100）；总和超出 95 到 105（配置加载器会重新缩放）以及未知键（按原样存储，并在带校验的加载时被丢弃）都以 `warnings` 返回，而不是拒绝。助手无法编辑 `bonus` 和修饰项。照片超过 100 张的类别只从按综合分排序的最好 100 张和最差 100 张中抽样（`sample_scope`）。digest 不代表同意：请先向用户展示建议、偏移和 `basis_note`。它仅使用已存储的指标，并拒绝所有权重均为 0 的方案（`all_weights_zero`）。
 
 ## Prompts
 
