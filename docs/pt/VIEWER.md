@@ -1432,6 +1432,8 @@ O endpoint `/api/download/options` detecta automaticamente arquivos RAW companhe
 
 ## Solução de Problemas
 
+Se a busca semântica informar que a aceleração Apple Silicon está ocupada, tente novamente após a tarefa atual do modelo terminar. As buscas simultâneas compartilham um limite de espera de 15 segundos para carregar o codificador e acessar o acelerador.
+
 | Problema | Solução |
 |-------|----------|
 | Carregamento lento da página | Execute `--migrate-tags` e `--optimize` |

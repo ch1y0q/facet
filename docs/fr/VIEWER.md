@@ -1434,6 +1434,8 @@ Le point d'accès `/api/download/options` détecte automatiquement les fichiers 
 
 ## Dépannage
 
+Si la recherche sémantique indique que l’accélération Apple Silicon est occupée, réessaie après la tâche en cours du modèle. Les recherches simultanées partagent un délai d’attente de 15 secondes pour le chargement de l’encodeur et l’accès à l’accélérateur.
+
 | Problème | Solution |
 |-------|----------|
 | Chargement de page lent | Lancez `--migrate-tags` et `--optimize` |
