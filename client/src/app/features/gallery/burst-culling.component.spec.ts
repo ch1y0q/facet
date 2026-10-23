@@ -3475,6 +3475,23 @@ describe('BurstCullingComponent modals (rendered)', () => {
       expect(focusSpy).toHaveBeenCalledTimes(1);
     }
   });
+
+  it('face strip: outlines the current frame and follows the arrow keys', () => {
+    openDarkroom();
+    component['faceMap'].set(new Map([
+      ['/p1.jpg', [{ id: 1, face_index: 0, eyes_open_score: 5, smile_score: 5 }]],
+      ['/p2.jpg', [{ id: 2, face_index: 0, eyes_open_score: 5, smile_score: 5 }]],
+    ]));
+    fixture.detectChanges();
+    const outlined = () => fixture.debugElement.queryAll(By.css('[data-face-frame]'))
+      .filter(el => el.nativeElement.classList.contains('outline-amber-400'))
+      .map(el => el.nativeElement.getAttribute('data-face-frame'));
+    expect(outlined()).toEqual(['0']);
+
+    component.onArrowRight(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+    fixture.detectChanges();
+    expect(outlined()).toEqual(['1']);
+  });
 });
 
 // Rendered, and with real pointer events: the gesture is a property of the

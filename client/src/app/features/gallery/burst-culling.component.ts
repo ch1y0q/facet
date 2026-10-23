@@ -1244,7 +1244,12 @@ interface ShortcutRow {
             <div class="flex gap-3 items-start">
               @for (photo of lbGroup.photos; track photo.path; let pIdx = $index) {
                 @if ((photo.path | facesForPath:faceMap()).length > 0) {
-                  <div class="flex flex-col items-center gap-1 flex-shrink-0">
+                  <!-- The face rings carry quality colours, so the current frame
+                       is outlined around its whole column instead. -->
+                  <div class="flex flex-col items-center gap-1 flex-shrink-0 rounded outline-offset-2"
+                       [attr.data-face-frame]="pIdx"
+                       [class.outline-2]="photo.path === lbGroup.photos[lightboxIndex()]?.path"
+                       [class.outline-amber-400]="photo.path === lbGroup.photos[lightboxIndex()]?.path">
                     <div class="flex gap-1">
                       @for (face of photo.path | facesForPath:faceMap(); track face.id) {
                         <div class="relative">
