@@ -890,7 +890,7 @@ All stats are user-aware in multi-user mode — each user sees analytics for the
 | `Shift+F10` / `Menu` | Open the context menu of the focused photo card (right-click does the same) |
 | `?` | Show the keyboard shortcuts reference (works on every page) |
 
-The current photo — the one star-rating, favorite and reject shortcuts act on — is marked with a 4px outline around its card; every other card dims to 50% opacity. Nothing is marked until the cursor has actually moved onto a photo in the results, so a gallery you have not navigated yet stays at full strength. Clicking a photo moves the marker onto it, so a shortcut typed right after a click lands on the photo you clicked, not on wherever the arrow keys last left it. Coming back from a photo (Back or Escape) leaves the marker on the photo you opened, so the shortcuts carry on from there.
+The current photo — the one star-rating, favorite and reject shortcuts act on — is marked with a 4px outline around its card; every other card dims to 50% opacity. Nothing is marked until the cursor has actually moved onto a photo in the results, so a gallery you have not navigated yet stays at full strength. Clicking a photo moves the marker onto it, so a shortcut typed right after a click lands on the photo you clicked, not on wherever the arrow keys last left it. Coming back from a photo (Back or Escape) leaves the marker on the last photo you viewed there, so the shortcuts carry on from there.
 
 ## Undo
 
@@ -1506,6 +1506,8 @@ The `/api/download/options` endpoint detects companion RAW files automatically a
 | `GET /api/filter_options/location_name?lat=&lng=` | Reverse geocode coordinates to place name |
 
 ## Troubleshooting
+
+If semantic search reports that Apple Silicon acceleration is busy, retry after the current model task finishes. Concurrent searches share one 15-second wait budget across encoder loading and accelerator access.
 
 | Issue | Solution |
 |-------|----------|

@@ -874,7 +874,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     if (this.photo()?.path === path) return;
     try {
       const photo = await this.fetchPhoto(path);
-      this.router.navigate(['/photo'], { queryParams: { path }, state: { photo } });
+      this.router.navigate(['/photo'], { queryParams: { path }, state: { photo }, replaceUrl: true });
       this.photo.set(photo);
       this.fullImageLoaded.set(false);
     } catch {
@@ -922,28 +922,37 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   @HostListener('document:keydown.arrowleft', ['$event'])
   protected prevPhoto(event: Event): void {
     if (isTypingContext(event)) return;
-    this.navigateAdjacentPhoto(-1);
+    void this.navigateAdjacentPhoto(-1);
   }
 
   @HostListener('document:keydown.arrowright', ['$event'])
   protected nextPhoto(event: Event): void {
     if (isTypingContext(event)) return;
-    this.navigateAdjacentPhoto(1);
+    void this.navigateAdjacentPhoto(1);
   }
 
-  private navigateAdjacentPhoto(delta: number): void {
+  private async navigateAdjacentPhoto(delta: number): Promise<void> {
     const current = this.photo();
     if (!current) return;
-    const photos = this.store.photos();
-    if (photos.length === 0) return;
-    const idx = photos.findIndex(p => p.path === current.path);
+    const indexOf = () => this.store.photos().findIndex(p => p.path === current.path);
+    let idx = indexOf();
     if (idx === -1) return;
-    const nextIdx = idx + delta;
-    if (nextIdx < 0 || nextIdx >= photos.length) return;
-    const next = photos[nextIdx];
+    // The store only holds the pages the grid has scrolled through, so stepping past the last one fetches the next.
+    if (idx + delta >= this.store.photos().length && this.store.hasMore()) {
+      await this.store.nextPage();
+      // Back between two photos reuses this component, so the URL is checked as well as destroyed.
+      if (this.destroyRef.destroyed || this.photo()?.path !== current.path
+        || this.route.snapshot.queryParamMap.get('path') !== current.path) return;
+      idx = indexOf();
+      if (idx === -1) return;
+    }
+    const next = this.store.photos()[idx + delta];
+    if (!next) return;
+    // Replace, so Escape (history back) leaves the photo page instead of stepping back through every photo.
     this.router.navigate(['/photo'], {
       queryParams: { path: next.path },
       state: { photo: next },
+      replaceUrl: true,
     });
     this.photo.set(next);
     this.fullImageLoaded.set(false);
