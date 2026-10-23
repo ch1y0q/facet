@@ -426,6 +426,20 @@ Access via header button or `/persons`:
 | **Split** | Open a person's faces, select a subset, split them into a new person |
 | **Hide** | Hide a cluster from the persons list, filters, and merge suggestions (reversible) |
 
+### Mark a missed face
+
+Deleted manual marks stay removed during later synchronization, even when an older copy still contains them. If older library copies have conflicting person identities, synchronization stops with the manual marks intact so the affected people can be reviewed.
+
+Face and person thumbnails are checked against your current photo access before reuse. Person avatars use a visible appearance, and edited manual crops refresh without reusing old public image caches.
+
+In edition mode, open a photo and choose **Mark a missing face** even when no faces were detected. Draw a rectangle around the face, or adjust its coordinates with the labeled fields. Choose an existing person or enter a new name, then **Save**. Drawing and choosing a name only preview the change; Cancel saves nothing.
+
+Use the same editor to adjust, reassign or remove a manually marked face. Manual marks remain linked to their person through rescans and viewer synchronization; they do not create recognition training data or change face-quality scores. The editor loads an upright preview from the original image so RAW and rotated-photo coordinates match the saved crop. Without the original, existing manual marks can still be listed and removed, but drawing is unavailable. If the underlying image changes, the saved mark is flagged for review rather than moved silently.
+
+Normal incremental viewer synchronization preserves manual marks and removal decisions. An explicit forced viewer database rebuild replaces viewer-only edits with the source database; export or back up those edits before rebuilding.
+
+The operation stores changes in the library database and leaves original files and sidecars unchanged. The editor keeps the image fitted while you draw.
+
 ## Scan Trigger
 
 Scan is offered when **both** of these hold: `viewer.features.show_scan_button` is `true` (it ships **`false`** in `scoring_config.json`, opt-in) **and** the caller has scan access — the `superadmin` role in multi-user mode, or an edition-authenticated session on a locked single-user install (a non-empty `viewer.edition_password`) in single-user mode. The gallery then offers it from two places, and both open the scan launcher dialog (`ScanLauncherComponent`): a **Scan photos to get started** button on the empty-gallery state, and — while the gallery has photos to show — a **Scan for new photos** icon button at the top right of the photo grid, at every screen width. On an open single-user install (`viewer.edition_password` empty, the shipped default) all four scan routes 403 for every caller, including one holding a valid edition-generation JWT, and neither entry point is ever rendered — spawning a scan subprocess must not be reachable anonymously.

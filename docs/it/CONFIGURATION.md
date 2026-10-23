@@ -2015,8 +2015,7 @@ Sovrascrive le impostazioni globali di `performance` quando si esegue il viewer.
       "mmap_size_mb": 0,
       "cache_size_mb": 4,
       "pool_size": 2,
-      "thumbnail_cache_size": 200,
-      "face_cache_size": 50
+      "thumbnail_cache_size": 200
     }
   }
 }
@@ -2028,7 +2027,6 @@ Sovrascrive le impostazioni globali di `performance` quando si esegue il viewer.
 | `cache_size_mb` | *(globale)* | Override della dimensione della cache di SQLite per le connessioni del viewer |
 | `pool_size` | `5` | Dimensione del pool di connessioni (riduci per sistemi con poca memoria) |
 | `thumbnail_cache_size` | `2000` | Numero massimo di voci nella cache in memoria del ridimensionamento delle miniature |
-| `face_cache_size` | `500` | Numero massimo di voci nella cache in memoria delle miniature dei volti |
 
 Quando non impostate, il viewer usa i valori globali di `performance`. Vedi [Deployment](DEPLOYMENT.md) per le impostazioni NAS consigliate.
 

@@ -40,27 +40,11 @@ def _write(tmp_path, name, content):
     (tmp_path / name).write_text(content, encoding="utf-8")
 
 
-def _import_db(tmp_path):
+def _test_db(tmp_path):
     db_path = str(tmp_path / "t.db")
     init_database(db_path)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    return conn
-
-
-def _export_db():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    conn.execute(
-        "CREATE TABLE photos (path TEXT PRIMARY KEY, tags TEXT, caption TEXT, category TEXT, "
-        "star_rating INTEGER, is_favorite INTEGER, is_rejected INTEGER, "
-        "image_width INTEGER, image_height INTEGER, aggregate REAL)"
-    )
-    conn.execute(
-        "CREATE TABLE user_preferences (user_id TEXT, photo_path TEXT, star_rating INTEGER "
-        "DEFAULT 0, is_favorite INTEGER DEFAULT 0, is_rejected INTEGER DEFAULT 0, "
-        "PRIMARY KEY (user_id, photo_path))"
-    )
     return conn
 
 
@@ -69,7 +53,7 @@ class TestImportPerUser:
         monkeypatch.setattr("api.config.is_multi_user_enabled", lambda: True)
         img = str(tmp_path / "p.jpg")
         _write(tmp_path, "p.jpg.xmp", _attr_xmp(rating=5, label="Yellow", subjects=["auto", "Bob"]))
-        conn = _import_db(tmp_path)
+        conn = _test_db(tmp_path)
         conn.execute(
             "INSERT INTO photos (path, tags, star_rating, is_favorite, is_rejected) "
             "VALUES (?, ?, 0, 0, 0)", (img, "auto")
@@ -102,7 +86,7 @@ class TestImportPerUser:
         monkeypatch.setattr("api.config.is_multi_user_enabled", lambda: False)
         img = str(tmp_path / "p.jpg")
         _write(tmp_path, "p.jpg.xmp", _attr_xmp(rating=4))
-        conn = _import_db(tmp_path)
+        conn = _test_db(tmp_path)
         conn.execute(
             "INSERT INTO photos (path, tags, star_rating, is_favorite, is_rejected) "
             "VALUES (?, '', 0, 0, 0)", (img,))
@@ -119,9 +103,10 @@ class TestExportPerUser:
         monkeypatch.setattr("api.config.is_multi_user_enabled", lambda: True)
         img = tmp_path / "p.jpg"
         img.write_bytes(b"x")  # file must exist for export to attempt a write
-        conn = _export_db()
+        conn = _test_db(tmp_path)
         conn.execute(
-            "INSERT INTO photos VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO photos(path,tags,caption,category,star_rating,is_favorite,is_rejected,image_width,image_height,aggregate) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (str(img), "", "", "", 0, 0, 0, 0, 0, None),  # global = unrated
         )
         conn.execute(
@@ -146,9 +131,10 @@ class TestExportPerUser:
         monkeypatch.setattr("api.config.is_multi_user_enabled", lambda: True)
         img = tmp_path / "p.jpg"
         img.write_bytes(b"x")
-        conn = _export_db()
+        conn = _test_db(tmp_path)
         conn.execute(
-            "INSERT INTO photos VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO photos(path,tags,caption,category,star_rating,is_favorite,is_rejected,image_width,image_height,aggregate) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (str(img), "", "", "", 2, 0, 0, 0, 0, None),  # global rating = 2
         )
         captured = {}
@@ -162,3 +148,29 @@ class TestExportPerUser:
         export_sidecars(conn)  # no user_id -> global columns
 
         assert captured["rating"].star_rating == 2
+
+    def test_manual_region_uses_its_frame_when_photo_dimensions_are_unknown(self, tmp_path, monkeypatch):
+        from uuid import uuid4
+        from PIL import Image
+        from db.manual_faces import source_identity
+
+        img = tmp_path / 'manual.jpg'
+        Image.new('RGB', (100, 80), 'blue').save(img)
+        conn = _test_db(tmp_path)
+        conn.execute('INSERT INTO photos(path,image_width,image_height) VALUES (?,0,0)', (str(img),))
+        pid = conn.execute("INSERT INTO persons(name) VALUES ('Manual Person')").lastrowid
+        conn.execute(
+            "INSERT INTO faces(photo_path,face_index,embedding,is_manual,manual_key,person_id,"
+            'bbox_x1,bbox_y1,bbox_x2,bbox_y2,manual_width,manual_height,manual_source) '
+            "VALUES (?,-1,X'',1,?,?,50,0,100,80,100,80,?)",
+            (str(img), str(uuid4()), pid, source_identity(str(img))))
+        captured = {}
+        def fake_write(path, rating, *, embed_original=False, timeout=60):
+            captured['rating'] = rating
+            return {'embedded': False}
+        monkeypatch.setattr('processing.xmp_export.write_metadata', fake_write)
+
+        assert export_sidecars(conn)['written'] == 1
+        regions = captured['rating'].regions
+        assert len(regions) == 1
+        assert (regions[0].name, regions[0].x, regions[0].y, regions[0].w, regions[0].h) == ('Manual Person', 0.75, 0.5, 0.5, 1)

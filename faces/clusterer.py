@@ -143,7 +143,7 @@ class FaceClusterer:
             # added later that would serve the scan in another one.
             cursor = conn.execute(f"""
                 SELECT id, embedding FROM faces
-                WHERE embedding IS NOT NULL AND {match_sql}
+                WHERE is_manual=0 AND length(embedding)>0 AND {match_sql}
                 ORDER BY id
             """, match_params)
 
@@ -161,7 +161,7 @@ class FaceClusterer:
             other_sql, other_params = model_mismatch_sql(self.embedding_model)
             other = conn.execute(f"""
                 SELECT COALESCE(embedding_model, ?), COUNT(*) FROM faces
-                WHERE embedding IS NOT NULL AND {other_sql}
+                WHERE is_manual=0 AND length(embedding)>0 AND {other_sql}
                 GROUP BY 1
             """, [ARCFACE_MODEL] + other_params).fetchall()
             if other:
@@ -433,7 +433,7 @@ class FaceClusterer:
         if not changes:
             return 0
         cursor = conn.executemany(
-            "UPDATE faces SET person_id = ? WHERE id = ? AND person_id IS ?", changes)
+            "UPDATE faces SET person_id = ? WHERE id = ? AND person_id IS ? AND is_manual=0", changes)
         # For executemany, rowcount is the sum over the statements.
         conflicts = len(changes) - cursor.rowcount
         if conflicts:
@@ -497,20 +497,22 @@ class FaceClusterer:
             # from `new_owner` is left with no owner, as the blanket reset left it.
             if force:
                 old_owner = dict(conn.execute(
-                    "SELECT id, person_id FROM faces WHERE person_id IS NOT NULL").fetchall())
+                    "SELECT id, person_id FROM faces WHERE person_id IS NOT NULL AND is_manual=0").fetchall())
             else:
                 old_owner = dict(conn.execute(
-                    f"SELECT id, person_id FROM faces WHERE person_id IS NOT NULL AND {face_match_sql}",
+                    f"SELECT id, person_id FROM faces WHERE person_id IS NOT NULL AND is_manual=0 AND {face_match_sql}",
                     face_match_params).fetchall())
             new_owner = {}
 
             if force:
                 # Full reset - delete everything
-                conn.execute("DELETE FROM persons")
+                conn.execute("DELETE FROM persons WHERE id NOT IN "
+                             "(SELECT person_id FROM faces WHERE is_manual=1 AND person_id IS NOT NULL)")
             elif preserve_named_only:
                 # Delete unnamed persons; their faces are re-matched below
                 deleted = conn.execute(
-                    f"DELETE FROM persons WHERE name IS NULL AND {person_match_sql}",
+                    f"DELETE FROM persons WHERE name IS NULL AND {person_match_sql} AND id NOT IN "
+                    "(SELECT person_id FROM faces WHERE is_manual=1 AND person_id IS NOT NULL)",
                     person_match_params).rowcount
                 logger.info("  Deleted %s unnamed auto-clustered person(s)", deleted)
 
@@ -671,6 +673,15 @@ class FaceClusterer:
                 if deleted_empty:
                     logger.info("  Removed %s empty auto-clustered person(s)", deleted_empty)
 
+            # Force clustering preserves explicit manual identities even though
+            # it discards all other persons; recount and repair their avatars too.
+            from db.person_carry_over import refresh_person_counts
+            manual_persons = {r[0] for r in conn.execute(
+                'SELECT DISTINCT person_id FROM faces WHERE is_manual=1 AND person_id IS NOT NULL')}
+            refresh_person_counts(conn, manual_persons)
+            for pid in manual_persons:
+                recompute_person_centroid(conn, pid)
+
             # ONE commit for the whole phase: the person inserts, the owner write,
             # the centroid/count update and the husk delete land together. The
             # connection closes without committing on an exception, so an interrupt
@@ -794,7 +805,7 @@ def extract_faces_from_existing(scorer, force=False):
             # as the delete: the extraction below runs for hours, and a crash in
             # it must not orphan the named persons for good.
             remembered = persist_named_snapshot(conn)
-            deleted = conn.execute("DELETE FROM faces").rowcount
+            deleted = conn.execute("DELETE FROM faces WHERE is_manual=0").rowcount
             conn.commit()
             if deleted > 0:
                 logger.info("Deleted %s existing face records (%d named-person faces remembered).",
@@ -806,7 +817,7 @@ def extract_faces_from_existing(scorer, force=False):
             # Only photos without existing face records
             cursor = conn.execute("""
                 SELECT path FROM photos
-                WHERE path NOT IN (SELECT DISTINCT photo_path FROM faces)
+                WHERE path NOT IN (SELECT DISTINCT photo_path FROM faces WHERE is_manual=0)
             """)
         photos = [row[0] for row in cursor.fetchall()]
 

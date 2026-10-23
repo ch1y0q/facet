@@ -2564,5 +2564,30 @@
       "shadow": "阴影溢出：{channels}",
       "highlight": "高光溢出：{channels}"
     }
+  },
+  "manual_faces": {
+    "title": "标记遗漏的人脸 / 管理手动人脸",
+    "instructions": "绘制矩形或输入边缘百分比。选择人物后保存。",
+    "unavailable": "原始图像不可用。仍可删除已保存的标记。",
+    "preview": "用于标记人脸的正向照片",
+    "coordinates": "矩形边缘（%）",
+    "choose_person": "选择或创建人物",
+    "remark": "请检查当前图像。保存前请重新绘制或调整坐标。",
+    "add": "新建标记",
+    "saved": "已保存的手动人脸",
+    "unnamed": "未命名人物",
+    "needs_review": "需要检查：原图已更改",
+    "edit": "编辑 / 重新分配",
+    "remove": "删除标记",
+    "empty": "尚未保存手动人脸。",
+    "close": "关闭",
+    "left": "左",
+    "top": "上",
+    "right": "右",
+    "bottom": "下",
+    "save_failed": "保存失败，草稿已保留。如果原图已更改或会话已过期，请重新加载预览。",
+    "reload": "重新加载编辑器",
+    "refresh_failed": "更改已保存，但无法刷新人物信息。请重新加载照片以查看最新信息。",
+    "detected_overlap": "此处已检测到人脸。请关闭此编辑器，使用现有的已检测人脸分配操作。草稿已保留。"
   }
 }

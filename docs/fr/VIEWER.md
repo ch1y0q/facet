@@ -358,6 +358,20 @@ Accessible via le bouton d'en-tête ou `/persons` :
 | **Scinder** | Ouvrez les visages d'une personne, sélectionnez un sous-ensemble, scindez-les en une nouvelle personne |
 | **Masquer** | Masquez un cluster de la liste des personnes, des filtres et des suggestions de fusion (réversible) |
 
+### Marquer un visage non détecté
+
+Les marques manuelles supprimées ne réapparaissent pas lors d’une synchronisation, même si une ancienne copie les contient encore. Si d’anciennes bibliothèques ont des identités de personnes contradictoires, la synchronisation s’arrête en conservant les marques pour vérification.
+
+Les miniatures des visages et personnes vérifient les droits d’accès actuels avant réutilisation. Les avatars montrent une apparition visible et les recadrages manuels modifiés ne réutilisent pas d’anciennes images des caches publics.
+
+En mode édition, ouvre une photo et choisis **Marquer un visage manquant**, même si aucun visage n’a été détecté. Trace un rectangle ou ajuste ses coordonnées dans les champs étiquetés. Choisis une personne existante ou saisis un nouveau nom, puis **Enregistrer**. Le tracé et le nom restent une prévisualisation ; Annuler n’enregistre rien.
+
+Le même éditeur permet de modifier, réattribuer ou supprimer les marques manuelles. Elles restent liées à la personne après une nouvelle analyse ou une synchronisation du visualiseur ; elles ne servent pas à entraîner la reconnaissance et ne modifient pas les scores de qualité faciale. L’aperçu orienté vient de l’original pour respecter les coordonnées des RAW et des photos pivotées. Sans original, les marques existantes restent consultables et supprimables, mais le dessin est indisponible. Un fichier modifié entraîne une demande de vérification de la marque.
+
+Les changements sont stockés dans la base de la bibliothèque sans modifier les originaux ni les fichiers annexes. L’image reste ajustée dans l’éditeur pendant le tracé.
+
+La synchronisation incrémentale normale conserve les marques manuelles et les suppressions. Une reconstruction forcée de la base du visualiseur remplace les modifications propres au visualiseur par la base source ; exportez ou sauvegardez ces modifications avant la reconstruction.
+
 ## Déclenchement d'un scan
 
 Le scan est proposé lorsque **les deux** conditions suivantes sont réunies : `viewer.features.show_scan_button` vaut `true` (livré à **`false`** dans `scoring_config.json`, activation explicite) **et** l'appelant dispose de l'accès au scan — rôle `superadmin` en mode multi-utilisateurs, ou session authentifiée en édition sur une installation mono-utilisateur verrouillée (un `viewer.edition_password` non vide) en mode mono-utilisateur. La galerie le propose alors à deux endroits, qui ouvrent tous deux la boîte de dialogue de lancement de scan (`ScanLauncherComponent`) : un bouton **Scanner des photos pour commencer** dans l'état de galerie vide et, tant que la galerie affiche des photos, un bouton-icône **Scanner de nouvelles photos** en haut à droite de la grille de photos, à toutes les largeurs d'écran. Sur une installation mono-utilisateur ouverte (`viewer.edition_password` vide, la valeur livrée par défaut), les quatre routes de scan renvoient 403 pour tout appelant, y compris celui détenant un JWT de génération d'édition valide, et aucun des deux points d'entrée ne s'affiche jamais — déclencher un sous-processus de scan ne doit pas être accessible anonymement.

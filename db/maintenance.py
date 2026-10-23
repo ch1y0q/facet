@@ -541,20 +541,23 @@ def _reinsert_faces(dest_conn, face_insert_cols, face_resync_paths, batch_size):
     face_select_exprs = ', '.join(
         'zeroblob(0)' if c == 'embedding'
         else 'NULL' if c == 'landmark_2d_106'
-        else c
+        else '(SELECT dest_id FROM source_person_map WHERE source_id=sf.person_id)' if c == 'person_id'
+        else f'sf.{c}'
         for c in face_insert_cols
     )
     face_col_list = ', '.join(face_insert_cols)
+    source_cols = {r[1] for r in dest_conn.execute('PRAGMA src.table_info(faces)')}
+    source_auto = 'sf.is_manual=0 AND ' if 'is_manual' in source_cols else ''
 
     for i in range(0, len(face_resync_paths), batch_size):
         batch = face_resync_paths[i:i + batch_size]
         placeholders = ','.join('?' * len(batch))
         dest_conn.execute(
-            f"DELETE FROM main.faces WHERE photo_path IN ({placeholders})", batch
+            f"DELETE FROM main.faces WHERE is_manual=0 AND photo_path IN ({placeholders})", batch
         )
         dest_conn.execute(
             f"INSERT OR IGNORE INTO main.faces ({face_col_list}) "
-            f"SELECT {face_select_exprs} FROM src.faces WHERE photo_path IN ({placeholders})",
+            f"SELECT {face_select_exprs} FROM src.faces sf WHERE {source_auto}sf.photo_path IN ({placeholders})",
             batch
         )
     dest_conn.commit()
@@ -607,10 +610,17 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
         logger.info("  Output exists — running incremental update...")
         logger.info("  Source: %.1f MB", source_size / 1024 / 1024)
 
+    from db.schema import init_database
+    init_database(output_path, build_photo_indexes=False)
+
     src_escaped = source_db.replace("'", "''")
     dest_conn = sqlite3.connect(output_path)
     dest_conn.execute("PRAGMA foreign_keys = ON")
     dest_conn.execute(f"ATTACH DATABASE '{src_escaped}' AS src")
+
+    from db.manual_face_export import prepare_person_sync, merge_manual_faces
+    source_face_columns = prepare_person_sync(dest_conn)
+    dest_conn.commit()
 
     # --- Delta detection ---
     new_paths = [r[0] for r in dest_conn.execute(
@@ -742,10 +752,11 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
         face_insert_cols = [c for c in src_face_cols if c != 'id' and c in dest_face_col_set]
 
         if face_insert_cols:
+            source_auto = ' AND sf.is_manual=0' if 'is_manual' in source_face_columns else ''
             face_resync_paths = [r[0] for r in dest_conn.execute(
                 "SELECT p.path FROM main.photos p WHERE "
-                "(SELECT COUNT(*) FROM src.faces sf WHERE sf.photo_path = p.path) != "
-                "(SELECT COUNT(*) FROM main.faces df WHERE df.photo_path = p.path)"
+                f"(SELECT COUNT(*) FROM src.faces sf WHERE sf.photo_path = p.path{source_auto}) != "
+                "(SELECT COUNT(*) FROM main.faces df WHERE df.photo_path = p.path AND df.is_manual=0)"
             ).fetchall()]
 
             if face_resync_paths:
@@ -765,31 +776,20 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
         face_sync_cols = [c for c in _FACE_SYNC_COLS if c in src_face_cols and c in dest_face_col_set]
         if face_sync_cols:
             face_set_clause = ', '.join(
-                f"{c} = (SELECT sf.{c} FROM src.faces AS sf "
-                f"WHERE sf.photo_path = main.faces.photo_path "
-                f"AND sf.face_index = main.faces.face_index)"
+                (f"{c} = (SELECT mp.dest_id FROM src.faces AS sf LEFT JOIN source_person_map mp ON mp.source_id=sf.person_id "
+                 if c == 'person_id' else f"{c} = (SELECT sf.{c} FROM src.faces AS sf ") +
+                "WHERE sf.photo_path = main.faces.photo_path "
+                "AND sf.face_index = main.faces.face_index)"
                 for c in face_sync_cols
             )
-            dest_conn.execute(f"UPDATE main.faces SET {face_set_clause}")
+            dest_conn.execute(f"UPDATE main.faces SET {face_set_clause} WHERE is_manual=0")
             dest_conn.commit()
             if verbose:
                 logger.info("  Updated person assignments and face signals for existing faces")
 
-    # --- Sync persons (full replace — small table) ---
-    if 'persons' in dest_tables and 'persons' in src_tables:
-        # Named columns: a fresh and an upgraded database order them differently.
-        dest_person_cols = {r[1] for r in dest_conn.execute("PRAGMA main.table_info(persons)").fetchall()}
-        person_cols = [r[1] for r in dest_conn.execute("PRAGMA src.table_info(persons)").fetchall()
-                       if r[1] in dest_person_cols]
-        dest_conn.execute("DELETE FROM main.persons")
-        if person_cols:
-            col_list = ', '.join(person_cols)
-            dest_conn.execute(
-                f"INSERT INTO main.persons ({col_list}) SELECT {col_list} FROM src.persons")
-        dest_conn.commit()
-        if verbose:
-            count = dest_conn.execute("SELECT COUNT(*) FROM main.persons").fetchone()[0]
-            logger.info("  Synced %d persons", count)
+    # Stable person identities were reconciled before face synchronization.
+    merge_manual_faces(dest_conn, source_face_columns)
+    dest_conn.commit()
 
     # --- Sync photo_tags (full replace — fast, no BLOBs) ---
     if 'photo_tags' in dest_tables and 'photo_tags' in src_tables:
@@ -970,6 +970,14 @@ def export_viewer_db(source_db='photo_scores_pro.db', output_path=None, thumbnai
     dst_conn = sqlite3.connect(output_path)
     src_conn.backup(dst_conn)
     src_conn.close()
+
+    # A copied database may contain an older active row alongside a deletion
+    # learned from another deployment. UUID deletion wins in full copies too.
+    if dst_conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='manual_face_deletions'").fetchone():
+        from db.manual_faces import prune_deleted_manual_faces
+        from db.person_carry_over import refresh_person_counts
+        refresh_person_counts(dst_conn, prune_deleted_manual_faces(dst_conn))
+        dst_conn.commit()
 
     # Strip unused columns from the copy
     if verbose:

@@ -2564,5 +2564,30 @@
       "shadow": "Schatten beschnitten: {channels}",
       "highlight": "Lichter beschnitten: {channels}"
     }
+  },
+  "manual_faces": {
+    "title": "Fehlendes Gesicht markieren / Manuelle Gesichter verwalten",
+    "instructions": "Ziehen Sie ein Rechteck oder geben Sie die Ränder in Prozent ein. Wählen Sie eine Person und speichern Sie.",
+    "unavailable": "Original nicht verfügbar. Gespeicherte Markierungen können entfernt werden.",
+    "preview": "Aufgerichtetes Foto zum Markieren von Gesichtern",
+    "coordinates": "Rechteckränder (%)",
+    "choose_person": "Person auswählen oder erstellen",
+    "remark": "Prüfen Sie das aktuelle Bild. Zeichnen Sie neu oder passen Sie die Koordinaten vor dem Speichern an.",
+    "add": "Neue Markierung",
+    "saved": "Gespeicherte manuelle Gesichter",
+    "unnamed": "Unbenannte Person",
+    "needs_review": "Prüfen: Quelle geändert",
+    "edit": "Bearbeiten / neu zuweisen",
+    "remove": "Markierung entfernen",
+    "empty": "Keine manuellen Gesichter gespeichert.",
+    "close": "Schließen",
+    "left": "Links",
+    "top": "Oben",
+    "right": "Rechts",
+    "bottom": "Unten",
+    "save_failed": "Speichern fehlgeschlagen. Entwurf erhalten. Bei geänderter Quelle oder abgelaufener Sitzung die Vorschau neu laden.",
+    "reload": "Editor neu laden",
+    "refresh_failed": "Die Änderung wurde gespeichert, aber Personeninformationen konnten nicht aktualisiert werden. Laden Sie das Foto neu.",
+    "detected_overlap": "Hier wurde bereits ein Gesicht erkannt. Schließen Sie diesen Editor und verwenden Sie die Zuweisung erkannter Gesichter. Ihr Entwurf bleibt erhalten."
   }
 }

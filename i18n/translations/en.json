@@ -2564,5 +2564,30 @@
       "shadow": "Shadow clipping: {channels}",
       "highlight": "Highlight clipping: {channels}"
     }
+  },
+  "manual_faces": {
+    "title": "Mark a missing face / Manage manual faces",
+    "instructions": "Draw a rectangle or enter its edges as percentages. Choose a person, then save.",
+    "unavailable": "Original unavailable. Saved marks can still be removed.",
+    "preview": "Upright photo for marking faces",
+    "coordinates": "Rectangle edges (%)",
+    "choose_person": "Choose or create a person",
+    "remark": "Check the current image. Draw again or adjust coordinates before saving.",
+    "add": "New mark",
+    "saved": "Saved manual faces",
+    "unnamed": "Unnamed person",
+    "needs_review": "Needs review: source changed",
+    "edit": "Edit / reassign",
+    "remove": "Remove mark",
+    "empty": "No manual faces saved.",
+    "close": "Close",
+    "left": "Left",
+    "top": "Top",
+    "right": "Right",
+    "bottom": "Bottom",
+    "save_failed": "Save failed. Your draft is retained. If the source changed or the frame expired, reload the preview.",
+    "reload": "Reload editor",
+    "refresh_failed": "The change was saved, but person information could not refresh. Reload the photo to see the latest information.",
+    "detected_overlap": "A face is already detected here. Close this editor and use the existing detected-face assignment action. Your draft is retained."
   }
 }

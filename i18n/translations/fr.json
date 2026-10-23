@@ -2564,5 +2564,30 @@
       "shadow": "Écrêtage des ombres : {channels}",
       "highlight": "Écrêtage des hautes lumières : {channels}"
     }
+  },
+  "manual_faces": {
+    "title": "Marquer un visage manquant / Gérer les visages manuels",
+    "instructions": "Tracez un rectangle ou saisissez ses bords en pourcentage. Choisissez une personne, puis enregistrez.",
+    "unavailable": "Original indisponible. Vous pouvez supprimer les marques enregistrées.",
+    "preview": "Photo redressée pour marquer les visages",
+    "coordinates": "Bords du rectangle (%)",
+    "choose_person": "Choisir ou créer une personne",
+    "remark": "Vérifiez l’image actuelle. Retracez ou ajustez les coordonnées avant d’enregistrer.",
+    "add": "Nouvelle marque",
+    "saved": "Visages manuels enregistrés",
+    "unnamed": "Personne sans nom",
+    "needs_review": "À vérifier : source modifiée",
+    "edit": "Modifier / réattribuer",
+    "remove": "Supprimer la marque",
+    "empty": "Aucun visage manuel enregistré.",
+    "close": "Fermer",
+    "left": "Gauche",
+    "top": "Haut",
+    "right": "Droite",
+    "bottom": "Bas",
+    "save_failed": "Échec de l’enregistrement. Brouillon conservé. Si la source a changé ou la session a expiré, rechargez l’aperçu.",
+    "reload": "Recharger l’éditeur",
+    "refresh_failed": "La modification est enregistrée, mais les informations des personnes n’ont pas pu être actualisées. Rechargez la photo.",
+    "detected_overlap": "Un visage est déjà détecté ici. Fermez cet éditeur et utilisez l’action d’attribution des visages détectés. Votre brouillon est conservé."
   }
 }

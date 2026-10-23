@@ -131,6 +131,13 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
           </mat-menu>
         }
 
+        @if (auth.isEdition()) {
+          <button mat-icon-button (click)="openManualFaces(p)"
+            [matTooltip]="I18N.manual_faces.title | translate" [attr.aria-label]="I18N.manual_faces.title | translate">
+            <mat-icon>crop_free</mat-icon>
+          </button>
+        }
+
         @if (auth.isEdition() && p.unassigned_faces > 0) {
           <button mat-icon-button (click)="openAddPerson(p)"
             [matTooltip]="I18N.manage_persons.assign_face | translate" [attr.aria-label]="I18N.manage_persons.assign_face | translate">
@@ -963,6 +970,24 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
    * pessimistic shape every handler here already had, and one that needs no
    * revert path.
    */
+  protected async openManualFaces(p: Photo): Promise<void> {
+    const path = p.path;
+    const { ManualFaceDialogComponent } = await import('./manual-face-dialog.component');
+    if (this.destroyRef.destroyed || this.photo()?.path !== path) return;
+    this.dialog.open(ManualFaceDialogComponent, {
+      width: '800px', maxWidth: '96vw',
+      data: { path, filename: p.filename, onCommitted: async () => {
+        const actual = await firstValueFrom(this.api.get<Photo>('/photo', { path }));
+        const patch = { persons: actual.persons, unassigned_faces: actual.unassigned_faces };
+        this.store.patchPhoto(path, patch);
+        if (!this.destroyRef.destroyed && this.photo()?.path === path) {
+          this.photo.update(current => current ? { ...current, ...patch } : current);
+        }
+        await this.store.reloadPersonOptions();
+      } },
+    });
+  }
+
   private applyConfirmed(p: Photo, confirmed: Partial<Photo>): void {
     this.photo.set({ ...p, ...confirmed });
     this.store.patchPhoto(p.path, confirmed);

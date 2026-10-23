@@ -2564,5 +2564,30 @@
       "shadow": "Ombre tagliate: {channels}",
       "highlight": "Alte luci tagliate: {channels}"
     }
+  },
+  "manual_faces": {
+    "title": "Segna un volto mancante / Gestisci i volti manuali",
+    "instructions": "Disegna un rettangolo o inserisci i bordi in percentuale. Scegli una persona e salva.",
+    "unavailable": "Originale non disponibile. Puoi rimuovere i segni salvati.",
+    "preview": "Foto orientata per segnare i volti",
+    "coordinates": "Bordi del rettangolo (%)",
+    "choose_person": "Scegli o crea una persona",
+    "remark": "Controlla l’immagine attuale. Disegna di nuovo o modifica le coordinate prima di salvare.",
+    "add": "Nuovo segno",
+    "saved": "Volti manuali salvati",
+    "unnamed": "Persona senza nome",
+    "needs_review": "Da verificare: sorgente modificata",
+    "edit": "Modifica / riassegna",
+    "remove": "Rimuovi segno",
+    "empty": "Nessun volto manuale salvato.",
+    "close": "Chiudi",
+    "left": "Sinistra",
+    "top": "Alto",
+    "right": "Destra",
+    "bottom": "Basso",
+    "save_failed": "Salvataggio non riuscito. Bozza conservata. Se la sorgente è cambiata o la sessione è scaduta, ricarica l’anteprima.",
+    "reload": "Ricarica editor",
+    "refresh_failed": "La modifica è stata salvata, ma non è stato possibile aggiornare le informazioni delle persone. Ricarica la foto.",
+    "detected_overlap": "Qui è già stato rilevato un volto. Chiudi questo editor e usa l’azione di assegnazione dei volti rilevati. La bozza è conservata."
   }
 }

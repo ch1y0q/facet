@@ -214,8 +214,7 @@ ln -sf photo_scores_viewer.db photo_scores_pro.db
       "mmap_size_mb": 0,
       "cache_size_mb": 4,
       "pool_size": 2,
-      "thumbnail_cache_size": 200,
-      "face_cache_size": 50
+      "thumbnail_cache_size": 200
     }
   }
 }

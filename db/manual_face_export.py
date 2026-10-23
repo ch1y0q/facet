@@ -1,0 +1,116 @@
+"""Reconcile viewer annotations without treating independent numeric IDs as identity."""
+from db.person_carry_over import refresh_person_counts
+from db.manual_faces import prune_deleted_manual_faces, without_manual_overlaps
+
+
+def _rows(conn, sql):
+    cursor = conn.execute(sql)
+    names = [column[0] for column in cursor.description]
+    return [dict(zip(names, row)) for row in cursor]
+
+
+def prepare_person_sync(conn):
+    """Preflight before destructive sync; then establish a source/local person map.
+
+    Old shared copies used numeric IDs. A divergent legacy name on a manual
+    target is ambiguous and deliberately stops the export, without deleting
+    annotations or guessing identity from a name.
+    """
+    source = _rows(conn, 'SELECT * FROM src.persons')
+    local = _rows(conn, 'SELECT DISTINCT p.* FROM main.persons p JOIN main.faces f '
+                  'ON f.person_id=p.id WHERE f.is_manual=1')
+    by_key = {p['person_key']: p for p in local}
+    for person in source:
+        key = person.get('person_key') or f"legacy:{person['id']}"
+        person['person_key'] = key
+        old = by_key.get(key)
+        if old and key.startswith('legacy:') and old['name'] != person['name']:
+            raise ValueError('Ambiguous legacy person identity on a manual face; reconcile the person before export')
+    source_face_columns = {r[1] for r in conn.execute('PRAGMA src.table_info(faces)')}
+    if 'manual_key' in source_face_columns:
+        if conn.execute('SELECT 1 FROM src.faces s JOIN main.faces d ON s.manual_key=d.manual_key '
+                        'WHERE s.manual_key IS NOT NULL AND s.photo_path<>d.photo_path LIMIT 1').fetchone():
+            raise ValueError('Manual face key belongs to different photos')
+
+    conn.execute('CREATE TEMP TABLE source_person_map(source_id INTEGER PRIMARY KEY,dest_id INTEGER NOT NULL)')
+    # Capture before photo cascades and tombstone pruning remove the last face.
+    conn.execute('CREATE TEMP TABLE manual_person_refresh(person_id INTEGER PRIMARY KEY)')
+    conn.execute('INSERT INTO manual_person_refresh SELECT DISTINCT person_id FROM main.faces '
+                 'WHERE is_manual=1 AND person_id IS NOT NULL')
+    if conn.execute("SELECT 1 FROM src.sqlite_master WHERE type='table' AND name='manual_face_deletions'").fetchone():
+        conn.execute('INSERT OR IGNORE INTO main.manual_face_deletions(manual_key) '
+                     'SELECT manual_key FROM src.manual_face_deletions')
+    conn.execute('DELETE FROM main.persons WHERE id NOT IN '
+                 '(SELECT person_id FROM main.faces WHERE is_manual=1 AND person_id IS NOT NULL)')
+    dest_columns = {r[1] for r in conn.execute('PRAGMA main.table_info(persons)')}
+    for person in source:
+        old = by_key.get(person['person_key'])
+        if old:
+            target = old['id']
+        else:
+            values = {k: v for k, v in person.items() if k in dest_columns and k != 'id'}
+            # A representative source ID refers to a different database's faces.
+            values['representative_face_id'] = None
+            preferred = person['id']
+            if not conn.execute('SELECT 1 FROM main.persons WHERE id=?', (preferred,)).fetchone():
+                values['id'] = preferred
+            columns = ','.join(values)
+            target = conn.execute(f'INSERT INTO main.persons({columns}) VALUES ({",".join("?" for _ in values)})',
+                                  list(values.values())).lastrowid
+        conn.execute('INSERT INTO source_person_map VALUES (?,?)', (person['id'], target))
+    if 'is_manual' in source_face_columns:
+        # A suppressed source mark can carry cached source person metadata too.
+        conn.execute('INSERT OR IGNORE INTO manual_person_refresh '
+                     'SELECT mp.dest_id FROM src.faces sf JOIN source_person_map mp ON mp.source_id=sf.person_id '
+                     'JOIN main.manual_face_deletions d ON d.manual_key=sf.manual_key WHERE sf.is_manual=1')
+    return source_face_columns
+
+
+def merge_manual_faces(conn, source_face_columns):
+    """Destination edits win; explicit UUID deletion wins over either active copy."""
+    touched = {r[0] for r in conn.execute('SELECT person_id FROM manual_person_refresh')}
+    touched.update(prune_deleted_manual_faces(conn))
+    if 'is_manual' in source_face_columns:
+        destination_columns = {r[1] for r in conn.execute('PRAGMA main.table_info(faces)')}
+        for face in _rows(conn, 'SELECT * FROM src.faces WHERE is_manual=1'):
+            if conn.execute('SELECT 1 FROM main.manual_face_deletions WHERE manual_key=?', (face['manual_key'],)).fetchone():
+                continue
+            if not conn.execute('SELECT 1 FROM main.photos WHERE path=?', (face['photo_path'],)).fetchone():
+                continue
+            if conn.execute('SELECT 1 FROM main.faces WHERE manual_key=?', (face['manual_key'],)).fetchone():
+                continue
+            values = {k: v for k, v in face.items() if k in destination_columns and k != 'id'}
+            mapped = conn.execute('SELECT dest_id FROM source_person_map WHERE source_id=?',
+                                  (face['person_id'],)).fetchone()
+            values['person_id'] = mapped[0] if mapped else None
+            smallest = conn.execute('SELECT MIN(face_index) FROM main.faces WHERE photo_path=?',
+                                    (face['photo_path'],)).fetchone()[0]
+            values['face_index'] = min(smallest or 0, 0) - 1
+            values['embedding'] = b''
+            columns = ','.join(values)
+            conn.execute(f'INSERT INTO main.faces({columns}) VALUES ({",".join("?" for _ in values)})',
+                         list(values.values()))
+    touched.update(r[0] for r in conn.execute('SELECT DISTINCT person_id FROM main.faces WHERE is_manual=1 AND person_id IS NOT NULL'))
+    # Source face IDs are local to its database too. Restore automatic-person
+    # representatives through photo/index identity rather than copying an ID.
+    conn.execute('UPDATE main.persons SET representative_face_id=('
+                 'SELECT df.id FROM src.persons sp JOIN source_person_map mp ON mp.source_id=sp.id '
+                 'JOIN src.faces sf ON sf.id=sp.representative_face_id '
+                 'JOIN main.faces df ON df.photo_path=sf.photo_path AND df.face_index=sf.face_index '
+                 'WHERE mp.dest_id=main.persons.id AND df.is_manual=0) '
+                 'WHERE id NOT IN (SELECT person_id FROM main.faces WHERE is_manual=1 AND person_id IS NOT NULL)')
+    # A scanner may newly detect a viewer-only manual mark. Apply the same
+    # current-frame overlap policy after both sources of annotations are merged.
+    for (path,) in conn.execute('SELECT DISTINCT photo_path FROM main.faces WHERE is_manual=1').fetchall():
+        records = conn.execute(
+            'SELECT photo_path,face_index,NULL,bbox_x1,bbox_y1,bbox_x2,bbox_y2,id '
+            'FROM main.faces WHERE photo_path=? AND is_manual=0 AND bbox_x1 IS NOT NULL '
+            'AND bbox_y1 IS NOT NULL AND bbox_x2 IS NOT NULL AND bbox_y2 IS NOT NULL', (path,)).fetchall()
+        kept = {row[-1] for row in without_manual_overlaps(conn, path, records)}
+        removed = [(row[-1],) for row in records if row[-1] not in kept]
+        for (face_id,) in removed:
+            pid = conn.execute('SELECT person_id FROM main.faces WHERE id=?', (face_id,)).fetchone()[0]
+            if pid is not None:
+                touched.add(pid)
+        conn.executemany('DELETE FROM main.faces WHERE id=?', removed)
+    refresh_person_counts(conn, touched)

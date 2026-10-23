@@ -372,7 +372,7 @@ async def get_optional_user(
     # require_share_client, which decodes the raw bearer itself. They must never
     # authenticate the regular surface: otherwise a shared-album link would
     # become a full authenticated session on every get_optional_user endpoint.
-    if payload.get('role') == SHARE_CLIENT_ROLE:
+    if payload.get('role') == SHARE_CLIENT_ROLE or payload.get('purpose'):
         return None
 
     return CurrentUser(

@@ -358,6 +358,20 @@ Accessibile tramite il pulsante nell'intestazione o `/persons`:
 | **Dividi** | Apri i volti di una persona, seleziona un sottoinsieme, dividili in una nuova persona |
 | **Nascondi** | Nascondi un cluster dall'elenco delle persone, dai filtri e dai suggerimenti di unione (reversibile) |
 
+### Segnare un volto non rilevato
+
+I segni manuali rimossi non ricompaiono durante le sincronizzazioni successive, anche se sono ancora presenti in una vecchia copia. Se le copie precedenti contengono identità di persone in conflitto, la sincronizzazione si interrompe conservando i segni per la verifica.
+
+Le miniature di volti e persone verificano l’accesso attuale alle foto prima del riutilizzo. Gli avatar mostrano una presenza visibile e i ritagli manuali modificati non riutilizzano vecchie immagini da cache pubbliche.
+
+In modalità modifica, apri una foto e scegli **Segna un volto mancante**, anche se non sono stati rilevati volti. Disegna un rettangolo o modifica le coordinate nei campi etichettati. Scegli una persona esistente o inserisci un nuovo nome, poi **Salva**. Disegno e nome sono solo un’anteprima finché non salvi; Annulla non cambia nulla.
+
+Nello stesso editor puoi modificare, riassegnare o rimuovere i segni manuali. Restano associati alla persona durante nuove scansioni e sincronizzazioni del visualizzatore; non addestrano il riconoscimento e non cambiano i punteggi di qualità del volto. L’anteprima orientata proviene dall’originale, così RAW e foto ruotate mantengono coordinate corrette. Senza originale puoi elencare e rimuovere i segni esistenti, ma non disegnarne altri. Se il file cambia, il segno viene indicato come da verificare.
+
+Le modifiche sono salvate nel database della libreria senza cambiare originali o file sidecar. L’immagine resta adattata all’editor durante il disegno.
+
+La normale sincronizzazione incrementale conserva i segni manuali e le eliminazioni. Una ricostruzione forzata del database del visualizzatore sostituisce le modifiche presenti solo nel visualizzatore con il database sorgente; esporta o salva tali modifiche prima di ricostruirlo.
+
 ## Avvio scansione
 
 La scansione viene proposta quando valgono **entrambe** queste condizioni: `viewer.features.show_scan_button` è `true` (viene fornito su **`false`** in `scoring_config.json`, opt-in) **e** chi chiama ha l'accesso alla scansione — ruolo `superadmin` in modalità multiutente, oppure una sessione autenticata in modalità di modifica su un'installazione a utente singolo bloccata (un `viewer.edition_password` non vuoto) in modalità utente singolo. La galleria la offre allora in due punti, che aprono entrambi la finestra di avvio della scansione (`ScanLauncherComponent`): un pulsante **Scansiona le foto per iniziare** nello stato di galleria vuota e — finché la galleria mostra foto — un pulsante a icona **Scansiona nuove foto** in alto a destra nella griglia delle foto, a qualsiasi larghezza dello schermo. Su un'installazione a utente singolo aperta (`viewer.edition_password` vuota, il valore predefinito di fabbrica) tutte e quattro le rotte di scansione restituiscono 403 per qualsiasi chiamante, incluso chi possiede un JWT di generazione della modifica valido, e nessuno dei due punti di accesso viene mai mostrato — l'avvio di un sottoprocesso di scansione non deve essere raggiungibile in modo anonimo.

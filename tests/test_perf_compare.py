@@ -63,7 +63,8 @@ def pair(tmp_path):
         _insert(conn, 'photos', PHOTOS_COLUMNS, vals)
     for idx in (0, 1):
         vals = {c: _value(t, 0) for c, t in FACES_COLUMNS if c != 'id'}
-        vals.update(photo_path=PATHS[0], face_index=idx)
+        vals.update(photo_path=PATHS[0], face_index=idx, is_manual=0,
+                    manual_key=None, manual_source=None, manual_width=None, manual_height=None)
         _insert(conn, 'faces', FACES_COLUMNS, vals)
     conn.executemany('INSERT INTO photo_tags (photo_path, tag) VALUES (?, ?)',
                      [(PATHS[0], 'dog'), (PATHS[1], 'beach')])

@@ -1029,7 +1029,7 @@ export class GalleryStore {
   }
 
   /** Reload person dropdown without filter restriction */
-  private async reloadPersonOptions(): Promise<void> {
+  async reloadPersonOptions(): Promise<void> {
     try {
       const res = await firstValueFrom(
         this.api.get<{persons: [number, string | null, number][]}>('/filter_options/persons'),

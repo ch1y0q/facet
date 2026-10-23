@@ -2011,8 +2011,7 @@ Surcharger les réglages globaux `performance` lors de l'exécution de la vision
       "mmap_size_mb": 0,
       "cache_size_mb": 4,
       "pool_size": 2,
-      "thumbnail_cache_size": 200,
-      "face_cache_size": 50
+      "thumbnail_cache_size": 200
     }
   }
 }
@@ -2024,7 +2023,6 @@ Surcharger les réglages globaux `performance` lors de l'exécution de la vision
 | `cache_size_mb` | *(global)* | Surcharge de la taille du cache SQLite pour les connexions de la visionneuse |
 | `pool_size` | `5` | Taille du pool de connexions (réduire pour les systèmes à faible mémoire) |
 | `thumbnail_cache_size` | `2000` | Nombre maximal d'entrées dans le cache de redimensionnement de vignettes en mémoire |
-| `face_cache_size` | `500` | Nombre maximal d'entrées dans le cache de vignettes de visages en mémoire |
 
 Lorsqu'ils ne sont pas définis, la visionneuse utilise les valeurs `performance` globales. Voir [Déploiement](DEPLOYMENT.md) pour les réglages NAS recommandés.
 

@@ -5,6 +5,7 @@ Replaces Flask viewer — serves JSON API + Angular static files.
 """
 
 import logging
+import math
 import os
 import sqlite3
 import sys
@@ -182,7 +183,9 @@ async def validation_exception_handler(request: Request, exc: Exception) -> JSON
     """
     assert isinstance(exc, RequestValidationError)
     logger.warning("422 %s %s — %s", request.method, request.url.path, exc.errors())
-    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors())})
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(
+        exc.errors(), custom_encoder={float: lambda value: value if math.isfinite(value) else str(value)}
+    )})
 
 
 def _locked_error_in_chain(exc):
@@ -566,6 +569,7 @@ def create_app() -> FastAPI:
     from api.routers.manual_tags import router as manual_tags_router
     from api.routers.timeline import router as timeline_router
     from api.routers.map import router as map_router
+    from api.routers.manual_faces import router as manual_faces_router
     from api.routers.capsules import router as capsules_router
     from api.routers.folders import router as folders_router
     from api.routers.export import router as export_router
@@ -605,6 +609,7 @@ def create_app() -> FastAPI:
     app.include_router(manual_tags_router)
     app.include_router(timeline_router)
     app.include_router(map_router)
+    app.include_router(manual_faces_router)
     app.include_router(capsules_router)
     app.include_router(folders_router)
     app.include_router(export_router)

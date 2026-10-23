@@ -358,6 +358,20 @@ Zugriff über die Header-Schaltfläche oder `/persons`:
 | **Aufteilen** | Die Gesichter einer Person öffnen, eine Teilmenge auswählen und in eine neue Person aufteilen |
 | **Ausblenden** | Ein Cluster aus der Personenliste, den Filtern und den Zusammenführungsvorschlägen ausblenden (umkehrbar) |
 
+### Ein übersehenes Gesicht markieren
+
+Gelöschte manuelle Markierungen bleiben bei späterer Synchronisierung gelöscht, auch wenn eine ältere Kopie sie noch enthält. Bei widersprüchlichen Personenidentitäten in älteren Bibliothekskopien stoppt die Synchronisierung und lässt die Markierungen zur Prüfung erhalten.
+
+Gesichts- und Personen-Vorschaubilder werden vor der Wiederverwendung anhand deines aktuellen Fotozugriffs geprüft. Personenbilder zeigen nur sichtbare Aufnahmen; bearbeitete manuelle Zuschnitte verwenden keine alten öffentlichen Bild-Caches.
+
+Öffne im Bearbeitungsmodus ein Foto und wähle **Fehlendes Gesicht markieren**, auch wenn keine Gesichter erkannt wurden. Ziehe ein Rechteck um das Gesicht oder passe seine Koordinaten in den beschrifteten Feldern an. Wähle eine vorhandene Person oder gib einen neuen Namen ein und klicke auf **Speichern**. Zeichnung und Namenswahl sind zunächst eine Vorschau; Abbrechen speichert nichts.
+
+Im selben Editor kannst du manuelle Markierungen ändern, neu zuweisen oder entfernen. Sie bleiben bei erneuter Erkennung und Viewer-Synchronisierung der Person zugeordnet, liefern aber keine Erkennungs-Trainingsdaten und ändern keine Qualitätswerte. Die aufrechte Vorschau wird aus dem Original erstellt, damit RAW- und gedrehte Fotos korrekt zugeschnitten werden. Ohne Original kannst du vorhandene Markierungen anzeigen und entfernen, aber keine neuen zeichnen. Bei einer geänderten Bilddatei wird die Markierung zur Prüfung gekennzeichnet.
+
+Die Änderungen werden nur in der Bibliotheksdatenbank gespeichert. Originaldateien und Sidecars bleiben unverändert. Die Vorschau bleibt beim Zeichnen eingepasst.
+
+Die normale inkrementelle Viewer-Synchronisierung erhält manuelle Markierungen und Löschentscheidungen. Ein ausdrücklich erzwungener Neuaufbau der Viewer-Datenbank ersetzt reine Viewer-Änderungen durch die Quelldatenbank; exportiere oder sichere diese Änderungen vorher.
+
 ## Scan auslösen
 
 Der Scan wird angeboten, wenn **beide** Bedingungen erfüllt sind: `viewer.features.show_scan_button` steht auf `true` (in `scoring_config.json` wird er auf **`false`** ausgeliefert, Opt-in) **und** der Aufrufer hat Scan-Zugriff — Rolle `superadmin` im Mehrbenutzermodus, oder eine edition-authentifizierte Sitzung auf einer gesperrten Einzelbenutzer-Installation (ein nicht leeres `viewer.edition_password`) im Einzelbenutzermodus. Die Galerie bietet ihn dann an zwei Stellen an, die beide den Scan-Starter-Dialog (`ScanLauncherComponent`) öffnen: eine Schaltfläche **Fotos scannen, um loszulegen** im leeren Galerie-Zustand und — solange die Galerie Fotos anzeigt — eine Symbolschaltfläche **Neue Fotos scannen** oben rechts über dem Fotoraster, bei jeder Bildschirmbreite. Bei einer offenen Einzelbenutzer-Installation (`viewer.edition_password` leer, der ausgelieferte Standardwert) liefern alle vier Scan-Routen für jeden Aufrufer 403, auch für einen mit gültigem edition-generiertem JWT, und keiner der beiden Einstiegspunkte wird je gerendert — das Starten eines Scan-Unterprozesses darf nicht anonym erreichbar sein.
