@@ -13,6 +13,7 @@ import { I18nService } from '../../core/services/i18n.service';
 import { GalleryStore } from './gallery.store';
 import { CullingStore } from './culling.store';
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
+import { PageContextService } from '../../core/agent/page-context.service';
 import { AssistantCullPlanService } from '../../core/agent/assistant-cull-plan.service';
 import { BurstCullingComponent } from './burst-culling.component';
 import { AssistantChangesService, AssistantChangeBatch } from '../../core/agent/assistant-changes.service';
@@ -99,6 +100,23 @@ describe('BurstCullingComponent', () => {
 
   afterEach(() => {
     component.ngOnDestroy();
+  });
+
+  describe('overlays', () => {
+    it('reports the auto-cull confirm as a dialog while it is shown, and nothing once it is closed', () => {
+      const context = TestBed.inject(PageContextService);
+      TestBed.tick();
+      expect(context.overlays()).toEqual([]);
+      store.autoCullPreview.set({
+        groups_processed: 1, kept: 1, rejected: 1, highlights_added: 0,
+        dry_run: true, preview: [], next_cursor: null, plan_digest: 'digest',
+      });
+      TestBed.tick();
+      expect(context.overlays()).toEqual(['dialog']);
+      store.autoCullPreview.set(null);
+      TestBed.tick();
+      expect(context.overlays()).toEqual([]);
+    });
   });
 
   describe('assistant changes', () => {

@@ -6,6 +6,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TimelineFiltersService } from './timeline-filters.service';
+import { registerPageContext } from '../../core/agent/page-context.service';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { TimelineYearsComponent } from './timeline-years.component';
 import { TimelineMonthsComponent } from './timeline-months.component';
@@ -117,6 +118,11 @@ export class TimelineComponent {
   protected readonly anyHiddenByFilters = computed(() => anyHideToggleActive(this.store.viewFilterParams()));
 
   constructor() {
+    registerPageContext('timeline', () => ({
+      date_from: this.filters.dateFrom(),
+      date_to: this.filters.dateTo(),
+      sort: this.filters.sortDirection(),
+    }));
     this.pageHelp.setDescription(I18N.timeline.help);
     effect(() => {
       const t = this.timelineToolbar();

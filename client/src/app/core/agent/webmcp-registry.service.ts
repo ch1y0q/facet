@@ -8,9 +8,10 @@ import { GalleryStore } from '../../features/gallery/gallery.store';
 import { CompareFiltersService } from '../../features/comparison/compare-filters.service';
 import { validateAgainstSchema, withDefaults } from './schema-validate';
 import { UserActivityJournal } from './user-activity-journal.service';
-import { createUiToolHandlers } from './ui-tool-handlers';
+import { MODAL_OPEN_MESSAGE, createUiToolHandlers } from './ui-tool-handlers';
 import { AssistantCullPlanService } from './assistant-cull-plan.service';
 import { ViewActionRegistry } from './view-action-registry.service';
+import { PageContextService } from './page-context.service';
 import {
   UI_TOOL_ERROR_CODES,
   UiActionRow,
@@ -64,11 +65,13 @@ export class WebMcpToolRegistry {
   // Interceptor-free: a refused probe is the tool's answer, not a toast, a logout check or a crash report.
   private readonly rawHttp = new HttpClient(inject(HttpBackend));
   private readonly auth = inject(AuthService);
+  private readonly pageContext = inject(PageContextService);
   private readonly handlers = createUiToolHandlers({
     gallery: inject(GalleryStore),
     router: inject(Router),
     auth: this.auth,
     viewActions: inject(ViewActionRegistry),
+    pageContext: this.pageContext,
     actions: () => this.actions,
     compareFilters: inject(CompareFiltersService),
     journal: inject(UserActivityJournal),
@@ -119,6 +122,9 @@ export class WebMcpToolRegistry {
       const input = args === undefined || args === null ? {} : args;
       const issues = validateAgainstSchema(tool.inputSchema, input);
       if (issues.length) return { ok: false, error: 'invalid_input', message: issues.slice(0, 5).join('; ').slice(0, 500) };
+      if (!tool.annotations.readOnlyHint && this.pageContext.overlays().length) {
+        return { ok: false, error: 'modal_open', message: MODAL_OPEN_MESSAGE };
+      }
       // The agent driving the tab is not the user: nothing it does is journaled as user activity.
       const data = await this.journal.suppress(() => handler(withDefaults(tool.inputSchema, input as Record<string, unknown>)));
       return { ok: true, data };

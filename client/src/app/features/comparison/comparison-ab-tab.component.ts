@@ -288,7 +288,7 @@ export class ComparisonAbTabComponent {
 
   readonly pairA = signal<string | null>(null);
   readonly pairLoading = signal(false);
-  protected readonly pairB = signal<string | null>(null);
+  readonly pairB = signal<string | null>(null);
   protected readonly pairScoreA = signal(0);
   protected readonly pairScoreB = signal(0);
   protected readonly pairSubmitting = signal(false);

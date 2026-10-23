@@ -17,6 +17,7 @@ import { CULL_DEFAULT_STRICTNESS, CULL_PROFILE_KEY, readStoredStrictnessOrNull }
 import { COMPARE_TAB_INDEX, CompareFiltersService, CompareTabName } from '../../features/comparison/compare-filters.service';
 import { ViewActionRegistry } from './view-action-registry.service';
 import { UserActivityJournal } from './user-activity-journal.service';
+import { PageContextService } from './page-context.service';
 import { AssistantCullPlanService, type CullPlanRequest, type CullSuggestionAction, MAX_STORED_NOTES, MAX_STORED_SUGGESTIONS } from './assistant-cull-plan.service';
 import type { CullPlanSnapshot } from './assistant-cull-plan.service';
 import { UiActionRow, UiToolError, UiToolHandler } from './ui-tool.types';
@@ -26,6 +27,8 @@ export interface UiToolDeps {
   router: Router;
   auth: AuthService;
   viewActions: ViewActionRegistry;
+  /** What the open page shows and which modal surfaces cover it; read by `ui_get_context`. */
+  pageContext: PageContextService;
   /** The generated `actions` table (empty until the contract has loaded). */
   actions: () => readonly UiActionRow[];
   /** Category / strategy / tab state of the comparison page. */
@@ -37,6 +40,9 @@ export interface UiToolDeps {
   /** Reads one album as the album page would; rejects with the HTTP status. Bypasses the app's HTTP interceptors. */
   fetchAlbum: (id: number) => Promise<Album>;
 }
+
+/** Answer of a tool refused because a dialog, bottom sheet or slideshow covers the page. */
+export const MODAL_OPEN_MESSAGE = 'A dialog, bottom sheet or slideshow is open in the tab; ask the user to close it.';
 
 /** The contract's cap on `ui_show_photos` paths (api/agent/ui_tools.py MAX_SHOW_PATHS). */
 const MAX_SHOW_PATHS = 200;
@@ -204,7 +210,7 @@ function stringList(value: unknown): string[] {
 }
 
 export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHandler> {
-  const { gallery, router, auth, viewActions, actions, compareFilters, journal, plan, fetchAlbum } = deps;
+  const { gallery, router, auth, viewActions, pageContext, actions, compareFilters, journal, plan, fetchAlbum } = deps;
 
   const requireGalleryView = (): void => {
     if (!isGalleryUrl(router.url)) {
@@ -458,6 +464,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       });
       // The user may have flipped a group while the album was being read; /culling has no deactivation guard of its own.
       leaveCullingGuard();
+      if (pageContext.overlays().length) throw new UiToolError('modal_open', MODAL_OPEN_MESSAGE);
       const mounts = gallery.galleryMounts();
       const ok = await router.navigate(['/album', id], { onSameUrlNavigation: 'reload' });
       if (!ok) throw new UiToolError('navigation_refused', 'The tab could not open that album.');
@@ -551,6 +558,8 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
           profile: storedProfile,
           strictness: readStoredStrictnessOrNull() ?? (storedProfile ? null : CULL_DEFAULT_STRICTNESS),
         },
+        page: pageContext.snapshot(),
+        overlays: pageContext.overlays(),
         mounted_actions: viewActions.names(),
         level,
         actions: applicableActions(actions(), actionFacts(route, gallery.selectionCount(), pinned), level),

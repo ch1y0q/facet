@@ -10,6 +10,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
+import { registerPageContext } from '../../core/agent/page-context.service';
 import { AlbumService, Album } from '../../core/services/album.service';
 import { AuthService } from '../../core/services/auth.service';
 import { GalleryStore } from '../gallery/gallery.store';
@@ -187,6 +188,10 @@ export class ScenesComponent implements OnInit {
   // Bumped on every load() so a slow in-flight request can't append its scenes
   // after the scope changed (fast album switching / ngOnInit race).
   private loadGeneration = 0;
+
+  constructor() {
+    registerPageContext('scenes', () => ({ album_id: this.albumId(), total: this.total() }));
+  }
 
   async ngOnInit(): Promise<void> {
     this.albumId.set(this.route.snapshot.queryParamMap.get('album'));

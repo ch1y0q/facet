@@ -172,7 +172,7 @@ class TestSearchRelay:
         result = env.call(env.token(env.login()), "search_photos", {"filters": {"path_prefix": PREFIX}})
         assert result["ok"] is True and result["shown_in_tab"] == {"applied": False, "reason": "forbidden"}
 
-    @pytest.mark.parametrize("code", ["unsaved_decisions", "navigation_refused"])
+    @pytest.mark.parametrize("code", ["unsaved_decisions", "navigation_refused", "modal_open"])
     def test_a_navigation_refusal_keeps_its_own_reason(self, agent_app, fake_tab, photos, code):
         env = agent_app("open")
         fake_tab(env, None, reply=lambda call: {"ok": False, "error": code, "message": "no"})

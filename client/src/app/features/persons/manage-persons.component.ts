@@ -27,6 +27,7 @@ import { PersonCardComponent, Person } from '../../shared/components/person-card
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { InfiniteScrollDirective } from '../../shared/directives/infinite-scroll.directive';
 import { PersonsFiltersService } from './persons-filters.service';
+import { registerPageContext } from '../../core/agent/page-context.service';
 import { GalleryStore } from '../gallery/gallery.store';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
 
@@ -427,6 +428,12 @@ export class ManagePersonsComponent implements OnInit {
   readonly hasMore = computed(() => this.persons().length < this.total());
 
   constructor() {
+    registerPageContext('persons', () => ({
+      search: this.personsFilters.search(),
+      sort: this.personsFilters.sort(),
+      sort_direction: this.personsFilters.sortDirection(),
+      show_hidden: this.personsFilters.showHidden(),
+    }));
     inject(DestroyRef).onDestroy(() => {
       this.pageHelp.setDescription(null);
       this.clearSelection();

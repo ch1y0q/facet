@@ -9,6 +9,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { PersonsFiltersService } from './persons-filters.service';
 import { ManagePersonsComponent } from './manage-persons.component';
+import { PageContextService } from '../../core/agent/page-context.service';
 
 describe('ManagePersonsComponent', () => {
   let component: ManagePersonsComponent;
@@ -52,6 +53,16 @@ describe('ManagePersonsComponent', () => {
       ],
     });
     component = TestBed.inject(ManagePersonsComponent);
+  });
+
+  describe('page context', () => {
+    it('registers the persons page and reads its filters live, without the selection', () => {
+      const context = TestBed.inject(PageContextService);
+      expect(context.snapshot()).toEqual({ id: 'persons', search: '', sort: 'count', sort_direction: 'desc', show_hidden: false });
+      TestBed.inject(PersonsFiltersService).search.set('ann');
+      TestBed.inject(PersonsFiltersService).selectedIds.set(new Set([1]));
+      expect(context.snapshot()).toEqual({ id: 'persons', search: 'ann', sort: 'count', sort_direction: 'desc', show_hidden: false });
+    });
   });
 
   describe('toggleSelect', () => {

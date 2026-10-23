@@ -32,12 +32,17 @@ MAX_QUERY_ENTRIES = 20
 # declining a navigation (never a permission: that is `forbidden_level`); `unsaved_decisions`
 # is also any navigation that would leave /culling over decisions the user has not confirmed;
 # `plan_changed` (a 412: the library moved) and `plan_load_failed` (any other load failure) are `ui_show_culling_plan`'s refusals;
-# `no_plan` is `ui_suggest_culling`'s (the tab holds no plan to annotate). Emitted into the client JSON so the client's own list is
+# `no_plan` is `ui_suggest_culling`'s (the tab holds no plan to annotate); `modal_open` is any non-read-only tool while a
+# dialog, bottom sheet or slideshow covers the page. Emitted into the client JSON so the client's own list is
 # checked against it.
 TAB_ERROR_CODES = frozenset({
     "invalid_input", "not_found", "forbidden_level", "no_active_view", "upstream_error", "too_large",
-    "unsaved_decisions", "navigation_refused", "plan_changed", "plan_load_failed", "no_plan",
+    "unsaved_decisions", "navigation_refused", "plan_changed", "plan_load_failed", "no_plan", "modal_open",
 })
+# Appended to every non-read-only tool's description, in the tab's descriptor AND the MCP registration, so an
+# external client sees it. The tab enforces it in the dispatcher on `annotations.readOnlyHint`.
+MODAL_REFUSAL = (" Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab;"
+                 " read-only tools are not affected.")
 
 UiRoute = Literal[
     "/", "/persons", "/merge-suggestions", "/compare", "/culling", "/scenes", "/junk",
@@ -385,7 +390,14 @@ UI_TOOLS: tuple[UiTool, ...] = (
            "`culling.changed` on your next dry run. `culling` also carries `suggestions_open` ([{path, action}]), "
            "`suggestions_accepted` and `suggestions_total`: your `ui_suggest_culling` marks still waiting, "
            "the ones the user took, and the number held (photo suggestions only, not group notes). "
-           "`timeline` ({year, month}; month null on a year page) is set on the /timeline pages, else null.",
+           "`timeline` ({year, month}; month null on a year page) is set on the /timeline pages, else null. "
+           "`overlays` lists what covers the page (`dialog`, `bottom_sheet`, `slideshow`; empty when nothing does): "
+           "every tool that changes the view is refused with `modal_open` until the user closes it. "
+           "`page` is `{id, ...state}` on /persons (`search`, `sort`, `sort_direction`, `show_hidden`), /albums "
+           "(`search`, `sort`, `type`), /stats (`tab` index, `category`, `date_from`, `date_to`), /map (`date_from`, "
+           "`date_to`), /timeline (`date_from`, `date_to`, `sort`), /scenes (`album_id`, `total`) and /compare "
+           "(`tab`: snapshots, ab, suggestions, weights, context or panorama; `category`, `strategy`, `pair_a`, `pair_b`, `pair_loading`; the pair is null when the A/B tab is not "
+           "shown), else null. An older tab omits both keys.",
            UiGetContext, True),
     UiTool("ui_next_page", "Load the next page of the gallery in the user's tab (infinite scroll).",
            UiNextPage, False),
@@ -495,8 +507,13 @@ def annotations(tool: UiTool) -> dict:
     }
 
 
+def tool_description(tool: UiTool) -> str:
+    """The description both surfaces show: the tool's own, plus the modal refusal for a tool that changes the view."""
+    return tool.description if tool.read_only else tool.description + MODAL_REFUSAL
+
+
 def tool_descriptors() -> list[dict]:
-    return [{"name": t.name, "description": t.description, "inputSchema": input_schema(t),
+    return [{"name": t.name, "description": tool_description(t), "inputSchema": input_schema(t),
              "annotations": annotations(t)} for t in UI_TOOLS]
 
 

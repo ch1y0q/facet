@@ -42,6 +42,7 @@ import { SequenceKindLabelPipe, SUPPRESSED_OVERRIDE } from '../../shared/pipes/s
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AssistantChangesService } from '../../core/agent/assistant-changes.service';
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
+import { PageContextService } from '../../core/agent/page-context.service';
 import { AssistantCullPlanService, type CullPlanPin } from '../../core/agent/assistant-cull-plan.service';
 import { firstValueFrom } from 'rxjs';
 import {
@@ -2061,6 +2062,11 @@ export class BurstCullingComponent implements OnDestroy {
       this.journal.darkroomFocus.set(this.lightboxGroup()?.photos[this.lightboxIndex()]?.path ?? null);
     });
     inject(DestroyRef).onDestroy(() => this.journal.darkroomFocus.set(null));
+    // The auto-cull confirm is a custom modal MatDialog cannot see; the lightbox is the page's working surface and is not one.
+    const pageContext = inject(PageContextService);
+    effect(onCleanup => {
+      if (this.cull.autoCullPreview()) onCleanup(pageContext.registerOverlay('dialog'));
+    });
     // A photo an assistant moved or deleted can vanish from the group the darkroom is showing.
     effect(() => {
       const group = this.lightboxGroup();

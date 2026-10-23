@@ -14,7 +14,8 @@ import { PageHelpService } from '../../core/services/page-help.service';
 import { GalleryStore } from '../gallery/gallery.store';
 import { HeaderSlotService } from '../../core/services/header-slot.service';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
-import { CompareFiltersService, DEFAULT_COMPARE_STRATEGY } from './compare-filters.service';
+import { COMPARE_TAB_INDEX, CompareFiltersService, DEFAULT_COMPARE_STRATEGY } from './compare-filters.service';
+import { registerPageContext } from '../../core/agent/page-context.service';
 import { ComparisonWeightsTabComponent } from './comparison-weights-tab.component';
 import { ComparisonSnapshotsTabComponent } from './comparison-snapshots-tab.component';
 import { ComparisonAbTabComponent } from './comparison-ab-tab.component';
@@ -24,6 +25,9 @@ import { PanoramaSettingsTabComponent } from './panorama-settings-tab.component'
 import { I18N, i18nKeys } from '../../core/i18n/keys';
 
 Chart.register(...registerables);
+
+/** The page's mat-tabs in template order: the four `COMPARE_TAB_INDEX` tabs, then the scoring-context and panorama tabs. */
+const COMPARE_TAB_NAMES = ['snapshots', 'ab', 'suggestions', 'weights', 'context', 'panorama'];
 
 @Component({
   selector: 'app-comparison',
@@ -217,6 +221,20 @@ export class ComparisonComponent {
   });
 
   constructor() {
+    registerPageContext('compare', () => {
+      const category = this.compareFilters.selectedCategory();
+      const activeTab = this.compareFilters.activeTab();
+      // The A/B tab is projected eagerly, so it exists (and loads pairs) while another tab is shown.
+      const abTab = activeTab === COMPARE_TAB_INDEX.ab ? this.abTab() : undefined;
+      return {
+        tab: category ? COMPARE_TAB_NAMES[activeTab] ?? null : null,
+        category,
+        strategy: this.compareFilters.strategy(),
+        pair_a: abTab?.pairA() ?? null,
+        pair_b: abTab?.pairB() ?? null,
+        pair_loading: abTab?.pairLoading() ?? false,
+      };
+    });
     this.pageHelp.setDescription(I18N.compare.help);
     inject(DestroyRef).onDestroy(() => {
       // The service outlives the page. Reset on leaving, never on entering, so what ui_show_comparison set for this visit survives the navigation it triggers.

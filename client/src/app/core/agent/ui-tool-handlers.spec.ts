@@ -19,6 +19,10 @@ import { DEFAULT_FILTERS, SMART_ALBUM_EXCLUDE_KEYS } from '../../features/galler
 import { CONTRACT_TO_CLIENT_KEY, applicableActions, capCullingSnapshot, createUiToolHandlers } from './ui-tool-handlers';
 import { CompareFiltersService } from '../../features/comparison/compare-filters.service';
 import { ViewActionRegistry } from './view-action-registry.service';
+import { PageContextService } from './page-context.service';
+import { MatBottomSheet } from '@angular/material/bottom-sheet';
+import { MatDialog } from '@angular/material/dialog';
+import { ConnectAssistantDialogComponent } from '../../features/agent/connect-assistant-dialog.component';
 import { AssistantChangeBatch, AssistantChangesService } from './assistant-changes.service';
 import { UserActivityJournal } from './user-activity-journal.service';
 import { AssistantCullPlanService, type CullPlanEntryInput } from './assistant-cull-plan.service';
@@ -57,6 +61,7 @@ describe('UI tool registry and handlers', () => {
   let routerEvents: Subject<unknown>;
   let assistantBatches: Subject<AssistantChangeBatch>;
   let fetchAlbum: Mock;
+  let openDialogs: { componentInstance: unknown }[];
 
   const run = (name: string, args: unknown = {}): Promise<UiToolEnvelope> => registry.execute(name, args);
   /** The handlers without the registry's schema gate, to prove each one defends itself. */
@@ -66,6 +71,7 @@ describe('UI tool registry and handlers', () => {
     compareFilters: TestBed.inject(CompareFiltersService),
     journal: TestBed.inject(UserActivityJournal),
     plan: TestBed.inject(AssistantCullPlanService),
+    pageContext: TestBed.inject(PageContextService),
     fetchAlbum,
   });
 
@@ -74,6 +80,7 @@ describe('UI tool registry and handlers', () => {
   beforeEach(async () => {
     edition = false;
     multiUser = false;
+    openDialogs = [];
     fetchAlbum = vi.fn((id: number) => Promise.resolve({ id, name: 'Iceland', is_smart: false } as Album));
     apiGet = vi.fn(() => of(photosResponse(['/a.jpg', '/b.jpg', '/c.jpg'])));
     navigate = vi.fn(() => Promise.resolve(true));
@@ -90,6 +97,8 @@ describe('UI tool registry and handlers', () => {
         { provide: AssistantChangesService, useValue: { batch$: assistantBatches } },
         { provide: AlbumService, useValue: { list: vi.fn(() => of({ albums: [] })), update: vi.fn(() => of({})) } },
         { provide: MatSnackBar, useValue: { open: vi.fn() } },
+        { provide: MatDialog, useValue: { get openDialogs() { return openDialogs; } } },
+        { provide: MatBottomSheet, useValue: { _openedBottomSheetRef: null } },
         { provide: I18nService, useValue: { t: (k: string) => k } },
       ],
     });
@@ -108,6 +117,7 @@ describe('UI tool registry and handlers', () => {
         compareFilters: TestBed.inject(CompareFiltersService),
         journal: TestBed.inject(UserActivityJournal),
         plan: TestBed.inject(AssistantCullPlanService),
+        pageContext: TestBed.inject(PageContextService),
         fetchAlbum,
       });
       const mismatch = contractHandlerMismatch((contractFile as unknown as UiToolContractFile).tools, handlers);
@@ -123,6 +133,69 @@ describe('UI tool registry and handlers', () => {
       const file = contractFile as unknown as UiToolContractFile;
       expect(CONTRACT_TO_CLIENT_KEY).toEqual(file.filter_key_map);
       expect([...SMART_ALBUM_EXCLUDE_KEYS].sort()).toEqual(file.smart_album_exclude_keys);
+    });
+
+    describe('modal_open', () => {
+      const file = contractFile as unknown as UiToolContractFile;
+      const CALLS: Record<string, Record<string, unknown>> = {
+        ui_navigate: { route: '/stats' },
+        ui_set_gallery_filters: { patch: {} },
+        ui_open_photo: { path: '/a.jpg' },
+        ui_open_album: { album_id: 3 },
+        ui_show_photos: { paths: ['/a.jpg'] },
+        ui_select_photos: { paths: ['/a.jpg'] },
+        ui_clear_selection: {},
+        ui_next_page: {},
+        ui_show_culling_group: { type: 'burst', group_id: 1 },
+        ui_show_culling_plan: { plan_digest: 'd1', request: { group_by: 'burst', strictness: 40 } },
+        ui_suggest_culling: {},
+        ui_show_comparison: {},
+      };
+      const mutating = file.tools.filter(tool => !tool.annotations.readOnlyHint).map(tool => tool.name);
+
+      it('has a call for every tool that changes the view', () => {
+        expect(Object.keys(CALLS).sort()).toEqual([...mutating].sort());
+      });
+
+      it.each(mutating)('%s answers modal_open under a dialog and touches nothing', async name => {
+        openDialogs.push({ componentInstance: {} });
+        const selectSpy = vi.spyOn(store, 'clearSelection');
+        edition = true;
+        const result = await run(name, CALLS[name]);
+        expect(result).toMatchObject({ ok: false, error: 'modal_open' });
+        expect(navigate).not.toHaveBeenCalled();
+        expect(selectSpy).not.toHaveBeenCalled();
+        expect(apiGet).not.toHaveBeenCalled();
+      });
+
+      it('lets the read-only tools answer under a dialog', async () => {
+        openDialogs.push({ componentInstance: {} });
+        for (const name of ['ui_get_context', 'ui_get_selection', 'ui_get_gallery_view']) {
+          expect((await run(name)).ok, name).toBe(true);
+        }
+      });
+
+      it('still answers invalid_input first, and modal_open before the unsaved-decisions guard', async () => {
+        openDialogs.push({ componentInstance: {} });
+        expect(await run('ui_navigate', { route: '/admin' })).toMatchObject({ ok: false, error: 'invalid_input' });
+        router.url = '/culling';
+        expect(await run('ui_navigate', { route: '/stats' })).toMatchObject({ ok: false, error: 'modal_open' });
+      });
+
+      it('ui_open_album re-checks the gate after the album read and does not navigate', async () => {
+        let resolveAlbum: (album: Album) => void = () => undefined;
+        fetchAlbum.mockImplementationOnce(() => new Promise<Album>(resolve => { resolveAlbum = resolve; }));
+        const pending = direct()['ui_open_album']({ album_id: 3 });
+        openDialogs.push({ componentInstance: {} });
+        resolveAlbum({ id: 3, name: 'Iceland', is_smart: false } as Album);
+        await expect(pending).rejects.toMatchObject({ code: 'modal_open' });
+        expect(navigate).not.toHaveBeenCalled();
+      });
+
+      it('does not refuse for the connect-assistant dialog alone', async () => {
+        openDialogs.push({ componentInstance: Object.create(ConnectAssistantDialogComponent.prototype) });
+        expect(await run('ui_navigate', { route: '/stats' })).toMatchObject({ ok: true });
+      });
     });
 
     it('answers invalid_input for an enum violation and never throws', async () => {
@@ -227,6 +300,7 @@ describe('UI tool registry and handlers', () => {
         compareFilters: TestBed.inject(CompareFiltersService),
         journal: TestBed.inject(UserActivityJournal),
         plan: TestBed.inject(AssistantCullPlanService),
+        pageContext: TestBed.inject(PageContextService),
         fetchAlbum,
       });
       await expect(handlers['ui_navigate']({ route: '/stats' })).resolves.toEqual({ route: '/stats' });
@@ -921,6 +995,7 @@ describe('UI tool registry and handlers', () => {
           compareFilters: TestBed.inject(CompareFiltersService),
           journal: TestBed.inject(UserActivityJournal),
           plan: TestBed.inject(AssistantCullPlanService),
+          pageContext: TestBed.inject(PageContextService),
           fetchAlbum,
         })['ui_get_context'](since === undefined ? {} : { activity_since: since }) as
           { user_activity: { items: { kind: string; seq: number }[]; until: number; truncated: boolean } }).user_activity;
@@ -1010,6 +1085,47 @@ describe('UI tool registry and handlers', () => {
         store.focusedPath.set('/b.jpg');
         router.url = '/stats';
         expect(await focused()).toBeNull();
+      });
+    });
+
+    describe('page and overlays', () => {
+      let pageContext: PageContextService;
+      beforeEach(() => {
+        pageContext = TestBed.inject(PageContextService);
+      });
+
+      it('is null on a page that registers nothing, with no overlays', async () => {
+        router.url = '/';
+        const data = await context();
+        expect(data['page']).toBeNull();
+        expect(data['overlays']).toEqual([]);
+      });
+
+      it('reports the registered page, live, and null again once it is removed', async () => {
+        router.url = '/persons';
+        let search = 'ann';
+        const unregister = pageContext.register('persons', () => ({ search, sort: 'count' }));
+        expect((await context())['page']).toEqual({ id: 'persons', search: 'ann', sort: 'count' });
+        search = 'bob';
+        expect(((await context())['page'] as Record<string, unknown>)['search']).toBe('bob');
+        unregister();
+        expect((await context())['page']).toBeNull();
+      });
+
+      it('cuts a long search to 200 characters but returns a 4096-character compare path whole', async () => {
+        router.url = '/compare';
+        pageContext.register('compare', () => ({ search: 'x'.repeat(500), pair_a: 'p'.repeat(4096), tab: null }));
+        const page = (await context())['page'] as Record<string, unknown>;
+        expect((page['search'] as string).length).toBe(200);
+        expect((page['pair_a'] as string).length).toBe(4096);
+        expect(page['tab']).toBeNull();
+      });
+
+      it('lists an open dialog and ignores the connect-assistant dialog alone', async () => {
+        openDialogs.push({ componentInstance: Object.create(ConnectAssistantDialogComponent.prototype) });
+        expect((await context())['overlays']).toEqual([]);
+        openDialogs.push({ componentInstance: {} });
+        expect((await context())['overlays']).toEqual(['dialog']);
       });
     });
 

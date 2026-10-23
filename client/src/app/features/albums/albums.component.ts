@@ -21,6 +21,7 @@ import { ClientPicksDialogComponent, ClientPicksDialogData } from './client-pick
 import { PortfolioExportDialogComponent, PortfolioExportDialogData } from './portfolio-export-dialog.component';
 import { AlbumScoringContextDialogComponent, AlbumScoringContextDialogData } from './album-scoring-context-dialog.component';
 import { AlbumsFiltersService } from './albums-filters.service';
+import { registerPageContext } from '../../core/agent/page-context.service';
 import { ShareDialogComponent, ShareDialogData } from '../../shared/components/share-dialog/share-dialog.component';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { PageHelpService } from '../../core/services/page-help.service';
@@ -210,6 +211,11 @@ export class AlbumsComponent {
   protected readonly portfolioEnabled = computed(() => this.auth.hasFeature('show_portfolio_export'));
 
   constructor() {
+    registerPageContext('albums', () => ({
+      search: this.albumsFilters.search(),
+      sort: this.albumsFilters.sort(),
+      type: this.albumsFilters.typeFilter(),
+    }));
     this.pageHelp.setDescription('albums.help');
     effect(() => {
       const t = this.albumsToolbar();

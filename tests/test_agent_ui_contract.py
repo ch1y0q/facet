@@ -228,3 +228,47 @@ def test_drive_tab_includes_the_album_tool():
     from api.agent.actions import ACTIONS
     drive = next(a for a in ACTIONS if a.id == "drive_tab")
     assert "ui_open_album" in drive.tools
+
+
+def test_modal_open_is_a_tab_error_code_and_in_the_client_json():
+    from api.agent.ui_tools import TAB_ERROR_CODES
+    assert "modal_open" in TAB_ERROR_CODES
+    assert "modal_open" in json.loads(render_client_json())["error_codes"]
+
+
+def test_only_the_non_read_only_tools_carry_the_modal_refusal_sentence():
+    from api.agent.ui_tools import MODAL_REFUSAL, tool_descriptors
+    by_name = {d["name"]: d for d in tool_descriptors()}
+    for tool in UI_TOOLS:
+        assert (MODAL_REFUSAL in by_name[tool.name]["description"]) is (not tool.read_only), tool.name
+    assert "modal_open" in MODAL_REFUSAL and "read-only" in MODAL_REFUSAL
+
+
+def test_the_mcp_registration_carries_the_same_sentence():
+    from api.agent.tools_ui import register_ui_tools
+    from api.agent.ui_tools import MODAL_REFUSAL
+
+    class Recorder:
+        def __init__(self):
+            self.descriptions = {}
+
+        def add_tool(self, fn, *, name, description, **kwargs):
+            self.descriptions[name] = description
+
+    recorder = Recorder()
+    register_ui_tools(recorder, None)
+    assert set(recorder.descriptions) == {tool.name for tool in UI_TOOLS}
+    for tool in UI_TOOLS:
+        assert (MODAL_REFUSAL in recorder.descriptions[tool.name]) is (not tool.read_only), tool.name
+
+
+@pytest.mark.parametrize("lang", ["", "fr", "de", "it", "es", "pt", "zh"])
+def test_every_agents_doc_lists_the_same_error_codes_and_modal_open(lang):
+    def codes(path):
+        line = next(row for row in path.read_text().splitlines() if re.search(r"^- \*\*[^*]+[:：]\*\* `forbidden_level`", row))
+        return set(re.findall(r"`([a-z_]+)`", line))
+    english = codes(DOCS / "AGENTS.md")
+    assert "modal_open" in english
+    assert codes(DOCS / lang / "AGENTS.md") == english
+    reasons = next(row for row in (DOCS / lang / "AGENTS.md").read_text().splitlines() if '{"applied": false, "reason"}' in row)
+    assert "modal_open" in reasons

@@ -21,6 +21,7 @@ import { HeaderSlotService } from '../../core/services/header-slot.service';
 import { DateRangeFilterComponent } from '../../shared/components/date-range-filter/date-range-filter.component';
 import { GalleryStore } from '../gallery/gallery.store';
 import { StatsFiltersService, StatsOverviewData } from './stats-filters.service';
+import { registerPageContext } from '../../core/agent/page-context.service';
 import { GearChartCardComponent, GearItem } from './gear-chart-card.component';
 import { ChartHeightPipe } from './chart-height.pipe';
 import { StatsTimelineTabComponent } from './stats-timeline-tab.component';
@@ -339,6 +340,12 @@ export class StatsComponent {
   protected readonly topCameras = signal<TopCamera[]>([]);
 
   constructor() {
+    registerPageContext('stats', () => ({
+      tab: this.selectedTab(),
+      category: this.statsFilters.filterCategory(),
+      date_from: this.statsFilters.dateFrom(),
+      date_to: this.statsFilters.dateTo(),
+    }));
     this.pageHelp.setDescription(I18N.stats.help);
 
     // Register the large-screen header toolbar into the shared header slot

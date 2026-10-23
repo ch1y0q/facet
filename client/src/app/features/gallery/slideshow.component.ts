@@ -20,6 +20,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatSliderModule } from '@angular/material/slider';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { GalleryStore } from './gallery.store';
+import { registerOverlayForLifetime } from '../../core/agent/page-context.service';
 import { Photo } from '../../shared/models/photo.model';
 import { ImageUrlPipe } from '../../shared/pipes/thumbnail-url.pipe';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
@@ -397,6 +398,7 @@ export class SlideshowComponent implements OnDestroy {
     document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
   constructor() {
+    registerOverlayForLifetime('slideshow');
     // Move focus onto the dialog container when it mounts, so cdkTrapFocus has
     // somewhere inside the overlay to trap Tab from (without this, focus stays
     // on whatever triggered the slideshow, which is now hidden behind it).

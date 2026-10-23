@@ -7,6 +7,8 @@ import { AlbumService } from '../../core/services/album.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { AlbumsComponent } from './albums.component';
+import { PageContextService } from '../../core/agent/page-context.service';
+import { AlbumsFiltersService } from './albums-filters.service';
 
 describe('AlbumsComponent', () => {
   let component: AlbumsComponent;
@@ -46,6 +48,13 @@ describe('AlbumsComponent', () => {
   });
 
   const internals = () => component as any;
+
+  it('registers the albums page and reads its filters live', () => {
+    const context = TestBed.inject(PageContextService);
+    expect(context.snapshot()).toEqual({ id: 'albums', search: '', sort: 'updated_at', type: '' });
+    TestBed.inject(AlbumsFiltersService).typeFilter.set('smart');
+    expect(context.snapshot()).toMatchObject({ type: 'smart' });
+  });
 
   it('creates', () => {
     expect(component).toBeTruthy();

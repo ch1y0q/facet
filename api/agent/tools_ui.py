@@ -20,7 +20,7 @@ from api.agent.internal_client import err, validation_issues
 from api.agent.limits import encoded_size
 from api.agent.runtime import run_tool
 from api.agent.tools_common import TOOL_LEVELS, UNTRUSTED_META, UNTRUSTED_NOTE
-from api.agent.ui_tools import UI_TOOLS, UiTool
+from api.agent.ui_tools import UI_TOOLS, UiTool, tool_description
 
 # They change what a tab shows, never library data, so the lowest grant is enough.
 UI_TOOL_LEVEL = "readonly"
@@ -122,7 +122,7 @@ def register_ui_tools(server: MCPServer, registry: TabRegistry) -> None:
         TOOL_LEVELS[tool.name] = UI_TOOL_LEVEL
         server.add_tool(
             _make_tool(tool, registry), name=tool.name,
-            description=tool.description + UNTRUSTED_NOTE,
+            description=tool_description(tool) + UNTRUSTED_NOTE,
             annotations=ToolAnnotations(
                 read_only_hint=tool.read_only, destructive_hint=False,
                 idempotent_hint=tool.read_only, open_world_hint=False),

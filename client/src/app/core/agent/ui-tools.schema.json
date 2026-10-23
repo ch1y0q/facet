@@ -534,6 +534,7 @@
   "error_codes": [
     "forbidden_level",
     "invalid_input",
+    "modal_open",
     "navigation_refused",
     "no_active_view",
     "no_plan",
@@ -584,7 +585,7 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Move the user's open Facet tab to another page (gallery, persons, albums, stats, ...). `/timeline` also takes `year` (and `month` 1-12 with it) to open that year or month. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
+      "description": "Move the user's open Facet tab to another page (gallery, persons, albums, stats, ...). `/timeline` also takes `year` (and `month` 1-12 with it) to open that year or month. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -646,7 +647,7 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Change the gallery filters and sort in the user's open tab. `patch` merges into the current filters (null removes one); `replace: true` starts from none. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
+      "description": "Change the gallery filters and sort in the user's open tab. `patch` merges into the current filters (null removes one); `replace: true` starts from none. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1607,7 +1608,7 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Open one photo in the user's tab (the detail view). Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
+      "description": "Open one photo in the user's tab (the detail view). Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1632,7 +1633,7 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Open one album (fixed or smart) in the user's tab, by `album_id` (from `list_albums` or `create_album`). An unknown or inaccessible album answers `not_found` and nothing navigates. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
+      "description": "Open one album (fixed or smart) in the user's tab, by `album_id` (from `list_albums` or `create_album`). An unknown or inaccessible album answers `not_found` and nothing navigates. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1657,7 +1658,7 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Show exactly these photos, in this order, as the gallery's list (max 200). Photos the user cannot see are skipped and returned as `missing`. Any filter change by the user or the assistant replaces the list. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
+      "description": "Show exactly these photos, in this order, as the gallery's list (max 200). Photos the user cannot see are skipped and returned as `missing`. Any filter change by the user or the assistant replaces the list. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1687,7 +1688,7 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Change the selection in the user's tab: explicit `paths`, or the whole filtered view (`select_view`). Selecting does not modify any photo.",
+      "description": "Change the selection in the user's tab: explicit `paths`, or the whole filtered view (`select_view`). Selecting does not modify any photo. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1725,7 +1726,7 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Clear the selection in the user's tab.",
+      "description": "Clear the selection in the user's tab. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {},
@@ -1755,7 +1756,7 @@
         "readOnlyHint": true,
         "untrustedContentHint": true
       },
-      "description": "Where the user's tab is, from any page: route, the open photo, the selection (scope and count), a gallery summary (total, loaded, has_more, pinned list) when the gallery is open, the mounted page actions and the jobs that apply now (`actions`, with their tools), and `culling`, the assistant's plan on the /culling page (null outside plan mode): `{plan_digest, groups_total, confirmed, pending, changed, untouched, plan_truncated}`. `confirmed` and `pending` list plan group numbers (confirmed: the user's confirm has landed; pending: flipped away from the plan and not yet confirmed); `untouched` counts the rest. `changed` lists every group whose keepers differ from the plan as `{type, group_id, number, keep_paths, reject_paths}`: pass those paths as `keep_paths` / `remove_paths` on the next `auto_cull` dry run and on its apply. `plan_truncated` is true when the plan itself was capped (500 groups / 5000 photos) so it lists only part of the library's groups. When the block is too large for one answer its lists are cut: `culling.truncated` is true (it means only that) and `groups_total` / the list lengths stay the true counts. Never re-decide a confirmed group. `user_activity` ({items, until, truncated}) lists what the user did in the tab after `activity_since` (rating, reject, favorite, cull_confirm, cull_skip, tags, album, navigation; at most 50 items of 20 paths); pass the answer's `until` as the next `activity_since`. `culling_defaults` ({profile, strictness}) is the /culling page's current setting: the profile the user stored (null if none) and the slider's live, stored strictness; `auto_cull` plans with both (the strictness wins, the profile supplies its other settings) when given neither knob. Showing a plan moves the slider to the plan's strictness; moving the slider or the date range while a plan is shown re-plans it, so `culling.plan_digest` changes (read `ui_get_context` again before the next dry run). `culling.scope` ({album_id, date_from, date_to}) is the window the plan was computed for; the user can change it from the /culling toolbar, which re-plans (a new `plan_digest`), so read `ui_get_context` again and pass `culling.scope`'s dates and `culling.changed` on your next dry run. `culling` also carries `suggestions_open` ([{path, action}]), `suggestions_accepted` and `suggestions_total`: your `ui_suggest_culling` marks still waiting, the ones the user took, and the number held (photo suggestions only, not group notes). `timeline` ({year, month}; month null on a year page) is set on the /timeline pages, else null.",
+      "description": "Where the user's tab is, from any page: route, the open photo, the selection (scope and count), a gallery summary (total, loaded, has_more, pinned list) when the gallery is open, the mounted page actions and the jobs that apply now (`actions`, with their tools), and `culling`, the assistant's plan on the /culling page (null outside plan mode): `{plan_digest, groups_total, confirmed, pending, changed, untouched, plan_truncated}`. `confirmed` and `pending` list plan group numbers (confirmed: the user's confirm has landed; pending: flipped away from the plan and not yet confirmed); `untouched` counts the rest. `changed` lists every group whose keepers differ from the plan as `{type, group_id, number, keep_paths, reject_paths}`: pass those paths as `keep_paths` / `remove_paths` on the next `auto_cull` dry run and on its apply. `plan_truncated` is true when the plan itself was capped (500 groups / 5000 photos) so it lists only part of the library's groups. When the block is too large for one answer its lists are cut: `culling.truncated` is true (it means only that) and `groups_total` / the list lengths stay the true counts. Never re-decide a confirmed group. `user_activity` ({items, until, truncated}) lists what the user did in the tab after `activity_since` (rating, reject, favorite, cull_confirm, cull_skip, tags, album, navigation; at most 50 items of 20 paths); pass the answer's `until` as the next `activity_since`. `culling_defaults` ({profile, strictness}) is the /culling page's current setting: the profile the user stored (null if none) and the slider's live, stored strictness; `auto_cull` plans with both (the strictness wins, the profile supplies its other settings) when given neither knob. Showing a plan moves the slider to the plan's strictness; moving the slider or the date range while a plan is shown re-plans it, so `culling.plan_digest` changes (read `ui_get_context` again before the next dry run). `culling.scope` ({album_id, date_from, date_to}) is the window the plan was computed for; the user can change it from the /culling toolbar, which re-plans (a new `plan_digest`), so read `ui_get_context` again and pass `culling.scope`'s dates and `culling.changed` on your next dry run. `culling` also carries `suggestions_open` ([{path, action}]), `suggestions_accepted` and `suggestions_total`: your `ui_suggest_culling` marks still waiting, the ones the user took, and the number held (photo suggestions only, not group notes). `timeline` ({year, month}; month null on a year page) is set on the /timeline pages, else null. `overlays` lists what covers the page (`dialog`, `bottom_sheet`, `slideshow`; empty when nothing does): every tool that changes the view is refused with `modal_open` until the user closes it. `page` is `{id, ...state}` on /persons (`search`, `sort`, `sort_direction`, `show_hidden`), /albums (`search`, `sort`, `type`), /stats (`tab` index, `category`, `date_from`, `date_to`), /map (`date_from`, `date_to`), /timeline (`date_from`, `date_to`, `sort`), /scenes (`album_id`, `total`) and /compare (`tab`: snapshots, ab, suggestions, weights, context or panorama; `category`, `strategy`, `pair_a`, `pair_b`, `pair_loading`; the pair is null when the A/B tab is not shown), else null. An older tab omits both keys.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1776,7 +1777,7 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Load the next page of the gallery in the user's tab (infinite scroll).",
+      "description": "Load the next page of the gallery in the user's tab (infinite scroll). Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {},
@@ -1791,7 +1792,7 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Open the darkroom (/culling) and focus one group, identified by (type, group_id). Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines. Edition accounts only.",
+      "description": "Open the darkroom (/culling) and focus one group, identified by (type, group_id). Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines. Edition accounts only. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1828,7 +1829,7 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Open the darkroom (/culling) on an `auto_cull` plan: the same groups, keep/reject borders, loupe and compare as manual culling, with the plan's keepers pre-selected for the user to flip and confirm. `auto_cull` calls this for you on a dry run; call it yourself only to re-show a plan. The same `plan_digest` as the plan already shown only moves the focus. A different one replaces the plan and is refused with `unsaved_decisions` while the user holds decisions they have not confirmed; `plan_changed` means the library moved since the preview (preview again); `plan_load_failed` means the tab could not load the plan for any other reason; `navigation_refused` means the tab declined to open /culling. Edition accounts only.",
+      "description": "Open the darkroom (/culling) on an `auto_cull` plan: the same groups, keep/reject borders, loupe and compare as manual culling, with the plan's keepers pre-selected for the user to flip and confirm. `auto_cull` calls this for you on a dry run; call it yourself only to re-show a plan. The same `plan_digest` as the plan already shown only moves the focus. A different one replaces the plan and is refused with `unsaved_decisions` while the user holds decisions they have not confirmed; `plan_changed` means the library moved since the preview (preview again); `plan_load_failed` means the tab could not load the plan for any other reason; `navigation_refused` means the tab declined to open /culling. Edition accounts only. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1918,7 +1919,7 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "While the assistant's plan is shown on /culling, mark photos you would keep or reject (`photos`: path, action, reason) and groups you want to comment (`groups`: the path of any photo of the group, note). The user sees a badge per photo and a chip per group and accepts a badge with one click; nothing changes unless they do. It never changes the plan, its digest or any selection. Calls merge by path; `replace: true` drops every earlier suggestion first, and with empty `photos` and `groups` it clears them. They survive the user moving the strictness slider and a re-show of the same plan; a different plan shown or leaving plan mode clears them, so send them again after a new `auto_cull` dry run. A suggestion is stored only for a photo in the plan, in a group the user has not confirmed or skipped, and differing from the plan's own choice. Answer: `{plan_digest, applied, redundant, closed, missing, groups_applied, groups_missing, groups_closed, suggestions_total, notes_total}`; `redundant` (already the plan's own choice, even if the user has flipped it: see `culling.changed`), `closed` (a group the user confirmed, skipped or is confirming), `groups_closed` (the same, for notes) and `missing` (not in the plan) list paths and store nothing. `suggestions_total` counts the photo suggestions held, as in `ui_get_context.culling`; `notes_total` counts the group notes. Refusals: `no_plan` (the tab holds no plan), `too_large` (the tab holds at most 300 suggestions and 100 notes: use `replace`), `forbidden_level`. With several tabs pass the `tab_id` from `shown_in_tab` or `status`. Edition accounts only.",
+      "description": "While the assistant's plan is shown on /culling, mark photos you would keep or reject (`photos`: path, action, reason) and groups you want to comment (`groups`: the path of any photo of the group, note). The user sees a badge per photo and a chip per group and accepts a badge with one click; nothing changes unless they do. It never changes the plan, its digest or any selection. Calls merge by path; `replace: true` drops every earlier suggestion first, and with empty `photos` and `groups` it clears them. They survive the user moving the strictness slider and a re-show of the same plan; a different plan shown or leaving plan mode clears them, so send them again after a new `auto_cull` dry run. A suggestion is stored only for a photo in the plan, in a group the user has not confirmed or skipped, and differing from the plan's own choice. Answer: `{plan_digest, applied, redundant, closed, missing, groups_applied, groups_missing, groups_closed, suggestions_total, notes_total}`; `redundant` (already the plan's own choice, even if the user has flipped it: see `culling.changed`), `closed` (a group the user confirmed, skipped or is confirming), `groups_closed` (the same, for notes) and `missing` (not in the plan) list paths and store nothing. `suggestions_total` counts the photo suggestions held, as in `ui_get_context.culling`; `notes_total` counts the group notes. Refusals: `no_plan` (the tab holds no plan), `too_large` (the tab holds at most 300 suggestions and 100 notes: use `replace`), `forbidden_level`. With several tabs pass the `tab_id` from `shown_in_tab` or `status`. Edition accounts only. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -2002,7 +2003,7 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Open the /compare page in the user's tab, optionally on one category, strategy and `tab` (the weights or snapshots tab shows a change you made). It only opens the page: the user picks the winners, nothing is submitted for them. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
+      "description": "Open the /compare page in the user's tab, optionally on one category, strategy and `tab` (the weights or snapshots tab shows a change you made). It only opens the page: the user picks the winners, nothing is submitted for them. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -2037,5 +2038,5 @@
       "name": "ui_show_comparison"
     }
   ],
-  "version": "5e71a1fe8b30bdf3"
+  "version": "daa4780175b2d2b5"
 }
