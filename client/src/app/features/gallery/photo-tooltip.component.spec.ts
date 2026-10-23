@@ -15,11 +15,13 @@ import { makePhoto, makePhotoFull } from '../../../testing/photo.fixture';
   selector: 'test-host',
   imports: [PhotoTooltipComponent],
   changeDetection: ChangeDetectionStrategy.Eager,
-  template: `<app-photo-tooltip [photo]="photo()" [x]="0" [y]="0" [flipped]="flipped()"
+  template: `<app-photo-tooltip [photo]="photo()" [x]="x()" [y]="y()" [flipped]="flipped()"
                                  [pinned]="pinned()" [docked]="docked()" [personLinks]="personLinks()" />`,
 })
 class TestHostComponent {
   photo = signal<Photo | null>(null);
+  x = signal(0);
+  y = signal(0);
   flipped = signal(false);
   pinned = signal(false);
   docked = signal(false);
@@ -431,6 +433,110 @@ describe('PhotoTooltipComponent', () => {
       fixture.componentInstance.photo.set(makePhoto());
       fixture.detectChanges();
       expect(container().style.pointerEvents).toBe('auto');
+    });
+  });
+
+  describe('viewport clamping', () => {
+    let observers: { cb: ResizeObserverCallback; target: Element | null; disconnected: boolean }[];
+    let size: { width: number; height: number };
+    let rectSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      observers = [];
+      size = { width: 300, height: 900 };
+      vi.stubGlobal('ResizeObserver', class {
+        private rec: { cb: ResizeObserverCallback; target: Element | null; disconnected: boolean };
+        constructor(cb: ResizeObserverCallback) {
+          this.rec = { cb, target: null, disconnected: false };
+          observers.push(this.rec);
+        }
+        observe(t: Element) { this.rec.target = t; }
+        unobserve() { /* unused */ }
+        disconnect() { this.rec.disconnected = true; }
+      });
+      rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+        () => ({ width: size.width, height: size.height, top: 0, left: 0, right: size.width, bottom: size.height, x: 0, y: 0, toJSON: () => ({}) }),
+      );
+      vi.stubGlobal('innerHeight', 1000);
+      vi.stubGlobal('innerWidth', 1200);
+    });
+
+    afterEach(() => {
+      rectSpy.mockRestore();
+      vi.unstubAllGlobals();
+    });
+
+    const root = () => fixture.nativeElement.querySelector('app-photo-tooltip > div') as HTMLElement;
+    const grow = (height: number) => {
+      size.height = height;
+      for (const o of observers) if (!o.disconnected) o.cb([], {} as ResizeObserver);
+      fixture.detectChanges();
+    };
+
+    it('keeps the box inside the viewport bottom, including after late growth', () => {
+      fixture.componentInstance.photo.set(makePhoto());
+      fixture.componentInstance.x.set(100);
+      fixture.componentInstance.y.set(900);
+      fixture.detectChanges();
+      TestBed.tick();
+      fixture.detectChanges();
+      expect(parseFloat(root().style.top) + size.height).toBeLessThanOrEqual(1000 - 16);
+      grow(850);
+      expect(parseFloat(root().style.top) + 850).toBeLessThanOrEqual(1000 - 16);
+      expect(parseFloat(root().style.top)).toBeGreaterThanOrEqual(16);
+    });
+
+    it('never lets the top go above 16px for a box taller than the viewport', () => {
+      size.height = 2000;
+      fixture.componentInstance.photo.set(makePhoto());
+      fixture.componentInstance.y.set(500);
+      fixture.detectChanges();
+      TestBed.tick();
+      fixture.detectChanges();
+      expect(root().style.top).toBe('16px');
+      expect(root().className).toContain('overflow-y-auto');
+    });
+
+    it('clamps the right edge inside the viewport', () => {
+      fixture.componentInstance.photo.set(makePhoto());
+      fixture.componentInstance.x.set(1150);
+      fixture.componentInstance.y.set(100);
+      fixture.detectChanges();
+      TestBed.tick();
+      fixture.detectChanges();
+      expect(parseFloat(root().style.left) + size.width).toBeLessThanOrEqual(1200 - 16);
+    });
+
+    it('re-clamps on window resize', () => {
+      size.height = 500;
+      fixture.componentInstance.photo.set(makePhoto());
+      fixture.componentInstance.y.set(300);
+      fixture.detectChanges();
+      TestBed.tick();
+      fixture.detectChanges();
+      expect(root().style.top).toBe('300px');
+      vi.stubGlobal('innerHeight', 600);
+      window.dispatchEvent(new Event('resize'));
+      fixture.detectChanges();
+      expect(parseFloat(root().style.top) + size.height).toBeLessThanOrEqual(600 - 16);
+    });
+
+    it('does not observe or clamp when docked, and disconnects when the photo clears', () => {
+      fixture.componentInstance.docked.set(true);
+      fixture.componentInstance.photo.set(makePhoto());
+      fixture.componentInstance.y.set(900);
+      fixture.detectChanges();
+      TestBed.tick();
+      fixture.detectChanges();
+      expect(root().style.top).toBe('');
+      fixture.componentInstance.docked.set(false);
+      fixture.detectChanges();
+      TestBed.tick();
+      expect(observers.some(o => !o.disconnected)).toBe(true);
+      fixture.componentInstance.photo.set(null);
+      fixture.detectChanges();
+      TestBed.tick();
+      expect(observers.every(o => o.disconnected)).toBe(true);
     });
   });
 
