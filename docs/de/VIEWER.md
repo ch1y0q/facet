@@ -521,6 +521,8 @@ Zugriff über die Route `/map`. Gesteuert über `viewer.features.show_map` (Stan
 
 Um „Arbeit“ einmal zu speichern, wähle einen Kartenpunkt oder gib Breiten- und Längengrad ein und nutze **Diesen Ort speichern** mit einem Namen. Auch der Punkt eines bereits verorteten Fotos lässt sich speichern. Umbenennen oder Löschen eines Ortes verschiebt keine bereits zugeordneten Fotos. Auf Mehrbenutzerinstallationen hat jeder Bearbeiter eine private Liste mit höchstens 100 Orten und 20 verschiedenen zuletzt verwendeten Punkten. Nur erfolgreich gespeicherte Fotozuweisungen ergänzen den Verlauf.
 
+Die installierte App lädt Kartenhintergründe direkt von OpenStreetMap, außerhalb ihres Offline-Caches. Für neue Kartenausschnitte ist eine Internetverbindung nötig.
+
 Liste und Koordinateneingabe funktionieren auch bei nicht verfügbarer Karte. Die Suche verwendet lokal gespeicherte Namen. Manuelle Änderungen einschließlich des Löschens von GPS bleiben bei erneuten Scans und EXIF-Extraktion erhalten. Die Originaldateien werden nicht verändert.
 
 ## Kapseln

@@ -520,6 +520,8 @@ Abre **Añadir ubicación** o **Editar ubicación** desde una foto en modo edici
 
 Para guardar «Trabajo» una vez, selecciona un punto del mapa o introduce latitud y longitud y usa **Guardar este lugar** con un nombre. También puedes guardar la posición de una foto ya geolocalizada. Renombrar o eliminar un lugar no mueve fotos asignadas anteriormente. Cada editor tiene su lista privada en instalaciones multiusuario, con un máximo de 100 lugares y 20 puntos recientes distintos. Solo una asignación guardada correctamente añade un punto reciente.
 
+La aplicación instalada carga los fondos del mapa directamente desde OpenStreetMap, fuera de su caché sin conexión. Las nuevas zonas del mapa necesitan conexión a internet.
+
 La lista y la entrada de coordenadas siguen disponibles si falla el mapa. La búsqueda usa nombres guardados localmente. Las correcciones manuales, incluido borrar el GPS, sobreviven a nuevos análisis y a la extracción EXIF. Los archivos originales no se modifican.
 
 ## Cápsulas

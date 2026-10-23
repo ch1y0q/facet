@@ -520,6 +520,8 @@ Abra **Adicionar localização** ou **Editar localização** em uma foto no modo
 
 Para salvar «Trabalho» uma vez, escolha um ponto no mapa ou digite latitude e longitude e use **Salvar este lugar** com um nome. Você também pode salvar o ponto de uma foto já geolocalizada. Renomear ou excluir um lugar não move fotos já atribuídas. Em instalações multiusuário, cada editor tem sua lista privada: até 100 lugares e 20 pontos recentes distintos. Apenas uma atribuição salva com sucesso atualiza os recentes.
 
+O aplicativo instalado carrega os fundos do mapa diretamente do OpenStreetMap, fora do cache offline. Novas áreas do mapa precisam de conexão com a internet.
+
 A lista e a entrada de coordenadas continuam funcionando se o mapa estiver indisponível. A pesquisa usa nomes salvos localmente. Edições manuais, inclusive limpar o GPS, permanecem após novas análises e extração EXIF. Os arquivos originais não são alterados.
 
 ## Cápsulas

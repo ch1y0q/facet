@@ -521,6 +521,8 @@ Ouvrez **Ajouter un lieu** ou **Modifier le lieu** depuis une photo en mode édi
 
 Pour mémoriser « Travail », choisissez un point sur la carte ou saisissez sa latitude et sa longitude, puis utilisez **Enregistrer ce lieu** avec un nom. Vous pouvez aussi enregistrer le point d’une photo déjà géolocalisée. Renommer ou supprimer un lieu ne déplace pas les photos existantes. En mode multi-utilisateur, chaque éditeur possède sa liste privée : 100 lieux et 20 points récents distincts au maximum. Seul l’enregistrement réussi d’une photo ajoute un point récent.
 
+L’application installée charge les fonds de carte directement depuis OpenStreetMap, en dehors de son cache hors connexion. Une connexion Internet est nécessaire pour charger de nouvelles zones.
+
 La liste et la saisie de coordonnées restent utilisables si la carte est indisponible. La recherche porte sur les noms enregistrés localement. Les corrections manuelles, y compris l’effacement du GPS, survivent aux nouvelles analyses et à l’extraction EXIF. Les fichiers images d’origine ne sont pas modifiés.
 
 ## Capsules

@@ -521,6 +521,8 @@ Apri **Aggiungi posizione** o **Modifica posizione** da una foto in modalità mo
 
 Per memorizzare «Lavoro» una volta, scegli un punto sulla mappa o inserisci latitudine e longitudine, poi usa **Salva questo luogo** con un nome. Puoi anche salvare la posizione di una foto già geolocalizzata. Rinominare o eliminare un luogo non sposta le foto già assegnate. In modalità multiutente ogni editor ha una lista privata: massimo 100 luoghi e 20 punti recenti distinti. Solo un’assegnazione salvata correttamente aggiorna i recenti.
 
+L’app installata carica gli sfondi della mappa direttamente da OpenStreetMap, al di fuori della cache offline. Per caricare nuove aree serve una connessione a Internet.
+
 La lista e l’inserimento delle coordinate restano utilizzabili se la mappa non è disponibile. La ricerca usa i nomi salvati localmente. Le modifiche manuali, compresa la rimozione del GPS, sopravvivono a nuove scansioni e all’estrazione EXIF. I file originali non vengono modificati.
 
 ## Capsule

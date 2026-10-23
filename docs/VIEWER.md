@@ -589,6 +589,8 @@ Open a photo’s **Add location** or **Edit location** dialog in edition mode. S
 
 To save “Work” once, choose a pin on the map or enter its latitude and longitude, then use **Save this place** and give it a name. You can also open an already geotagged photo and bookmark its current point. Rename or delete saved places from the list; changing a bookmark does not move photos previously assigned there. Each editor has a private list on multi-user installs. There are at most 100 saved places per editor and 20 recent unique points; recent points are recorded only after a successful photo save.
 
+The installed app loads map backgrounds directly from OpenStreetMap, outside its offline cache. New map areas need an internet connection.
+
 Saved places and coordinate entry remain usable when the map is unavailable. The search uses saved names locally. Coordinates are stored in Facet’s database, and manual edits—including clearing GPS—survive rescans and EXIF re-extraction. The original image files are unchanged.
 
 ## Capsules
