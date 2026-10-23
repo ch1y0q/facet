@@ -222,7 +222,7 @@ Con `licensing.mode` en `commercial`, el visor oculta las métricas cuyos modelo
 ### Selección múltiple y acciones masivas
 
 - Haz clic en las fotos para seleccionarlas, Mayús+clic para seleccionar un rango
-- Aparece una barra de acciones con el recuento de la selección y las acciones disponibles
+- Aparece una barra de acciones con el recuento de la selección y las acciones disponibles: una tarjeta flotante abajo a la izquierda de la galería, con botones solo de icono (pasa el ratón o da el foco a un botón para ver su etiqueta)
 - **Favorito** — Marca todas las seleccionadas como favoritas (quita el descartado)
 - **Descartar** — Marca todas las seleccionadas como descartadas (quita el favorito y la valoración)
 - **Valorar** — Establece la valoración por estrellas (1–5) para todas las seleccionadas, o borra la valoración
@@ -497,7 +497,7 @@ Controlado por `viewer.features.show_memories` (predeterminado: `true`).
 
 - **Descartar unas vacaciones** — abre Cápsulas → busca la cápsula `journey` autogenerada para las fechas del viaje. Cada cápsula ofrece una acción Guardar como álbum.
 - **Recorrer una revisión día a día** — abre la línea de tiempo y desciende de años a meses y a un calendario de días; haz clic en un día para abrir la galería filtrada a esa fecha. La línea de tiempo no tiene ordenación propia, pero los recuentos por día/mes/año y las miniaturas destacadas ahora respetan los mismos interruptores `hide_bursts` / `hide_duplicates` que la galería (predeterminados: activados), así que el recuento de una celda coincide con lo que abre al hacer clic.
-- **Mostrar lo que está oculto** — la galería oculta por defecto los parpadeos / ráfagas no líderes / duplicados no líderes. Cuando al menos uno de esos filtros está activo y excluiría filas, aparece una notificación flotante "N fotos ocultas por los filtros actuales · Mostrar todas" en la esquina inferior derecha de la cuadrícula (sobre la barra de selección cuando hay fotos seleccionadas).
+- **Mostrar lo que está oculto** — la galería oculta por defecto los parpadeos / ráfagas no líderes / duplicados no líderes. Cuando al menos uno de esos filtros está activo y excluiría filas, aparece una notificación flotante "N fotos ocultas por los filtros actuales · Mostrar todas" en la esquina inferior derecha de la cuadrícula (y sobre la tarjeta de selección flotante solo cuando ambas se solaparían).
 
 ## Vista de línea de tiempo
 
@@ -877,10 +877,11 @@ imágenes a resolución completa) puede permanecer hasta un año, por lo que las
 
 ## Móvil
 
-En pantallas pequeñas, la barra de selección masiva se reduce al recuento de la selección,
-los botones de borrar, seleccionar todo y un único botón **Acciones** que abre una hoja inferior
+En pantallas pequeñas, la tarjeta de selección flotante conserva el recuento de la selección y los botones de icono
+de borrar, seleccionar todo e invertir, más un único botón de icono **Acciones** que abre una hoja inferior
 apta para el tacto con todas las operaciones masivas (favorito, descartar, valorar, álbumes, copiar,
-descargar).
+descargar). Un botón de icono Comparar se añade cuando la selección cabe en la vista de comparación, y el
+botón Cerrar de la hoja la cierra sin ejecutar ninguna acción.
 
 ## Marco de fotos / Quiosco
 

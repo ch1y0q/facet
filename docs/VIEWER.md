@@ -223,7 +223,7 @@ With `licensing.mode` set to `commercial`, the viewer hides the metrics whose mo
 ### Multi-Select & Bulk Actions
 
 - Click photos to select, Shift+Click for range selection
-- Action bar appears with selection count and available actions
+- Action bar appears with selection count and available actions: a floating card at the bottom-left of the gallery with icon-only buttons (hover or focus a button for its label)
 - **Favorite** — Mark all selected as favorite (clears rejected)
 - **Reject** — Mark all selected as rejected (clears favorite and rating)
 - **Rate** — Set star rating (1–5) for all selected, or clear rating
@@ -566,7 +566,7 @@ Controlled by `viewer.features.show_memories` (default: `true`).
 
 - **Cull a vacation** — open Capsules → look for the auto-generated `journey` capsule for the trip dates. Each capsule offers a Save-as-Album action.
 - **Browse a day-by-day review** — open Timeline and drill down years → months → a calendar of days; click a day to open the gallery filtered to that date. There's no sort control in Timeline itself, but the day/month/year counts and hero thumbnails now honor the same `hide_bursts` / `hide_duplicates` toggles as the gallery (defaults: on), so a tile's count matches what clicking it opens.
-- **Show what's hidden** — the gallery hides blinks / non-lead bursts / non-lead duplicates by default. When at least one of those filters is on and would exclude rows, a "N photos hidden by current filters · Show all" notice floats at the bottom-right of the grid (above the selection bar when photos are selected).
+- **Show what's hidden** — the gallery hides blinks / non-lead bursts / non-lead duplicates by default. When at least one of those filters is on and would exclude rows, a "N photos hidden by current filters · Show all" notice floats at the bottom-right of the grid (and above the floating selection card only when the two would overlap).
 
 ## Timeline View
 
@@ -949,10 +949,11 @@ been deployed.
 
 ## Mobile
 
-On small screens the bulk-selection bar collapses to the selection count,
-clear, select-all and a single **Actions** button that opens a touch-friendly
-bottom sheet with all bulk operations (favorite, reject, rate, albums, copy,
-download).
+On small screens the floating selection card keeps the selection count and the
+clear, select-all and invert icon buttons, plus a single **Actions** icon button that opens a
+touch-friendly bottom sheet with all bulk operations (favorite, reject, rate, albums, copy,
+download). A compare icon button also appears when the selection fits the compare view, and the sheet's
+close button dismisses it without running an action.
 
 ## Photo Frame / Kiosk Endpoint
 

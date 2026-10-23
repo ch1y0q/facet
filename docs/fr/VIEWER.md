@@ -222,7 +222,7 @@ Avec `licensing.mode` réglé sur `commercial`, la visionneuse masque les métri
 ### Sélection multiple & actions groupées
 
 - Cliquez sur les photos pour les sélectionner, Maj+Clic pour une sélection par plage
-- Une barre d'actions apparaît avec le nombre d'éléments sélectionnés et les actions disponibles
+- Une barre d'actions apparaît avec le nombre d'éléments sélectionnés et les actions disponibles : une carte flottante en bas à gauche de la galerie, avec des boutons à icône seule (survolez ou donnez le focus à un bouton pour voir son libellé)
 - **Favori** — Marquer toute la sélection comme favorite (efface le rejet)
 - **Rejeter** — Marquer toute la sélection comme rejetée (efface le favori et la note)
 - **Noter** — Définir une note en étoiles (1–5) pour toute la sélection, ou effacer la note
@@ -498,7 +498,7 @@ Contrôlé par `viewer.features.show_memories` (par défaut : `true`).
 
 - **Trier des vacances** — ouvrez Capsules → recherchez la capsule `journey` générée automatiquement pour les dates du voyage. Chaque capsule offre une action Enregistrer comme album.
 - **Parcourir une revue jour par jour** — ouvrez Chronologie et descendez des années aux mois puis à un calendrier de jours ; cliquez sur un jour pour ouvrir la galerie filtrée sur cette date. Chronologie n'a pas de tri propre, mais les comptages par jour/mois/année et les vignettes vedettes respectent désormais les mêmes bascules `hide_bursts` / `hide_duplicates` que la galerie (par défaut : activées), si bien que le nombre affiché sur une case correspond à ce que son ouverture montre.
-- **Afficher ce qui est masqué** — la galerie masque par défaut les clignements / rafales non-leaders / doublons non-leaders. Lorsqu'au moins un de ces filtres est actif et exclurait des lignes, une notification « N photos masquées par les filtres actuels · Tout afficher » flotte en bas à droite de la grille (au-dessus de la barre de sélection lorsque des photos sont sélectionnées).
+- **Afficher ce qui est masqué** — la galerie masque par défaut les clignements / rafales non-leaders / doublons non-leaders. Lorsqu'au moins un de ces filtres est actif et exclurait des lignes, une notification « N photos masquées par les filtres actuels · Tout afficher » flotte en bas à droite de la grille (et au-dessus de la carte de sélection flottante seulement si les deux se chevauchent).
 
 ## Vue Chronologie
 
@@ -880,10 +880,11 @@ version a été déployée.
 
 ## Mobile
 
-Sur les petits écrans, la barre de sélection groupée se réduit au nombre d'éléments sélectionnés,
-au bouton Effacer, au bouton Tout sélectionner et à un unique bouton **Actions** qui ouvre une feuille
+Sur les petits écrans, la carte de sélection flottante conserve le nombre d'éléments sélectionnés et les
+boutons à icône Effacer, Tout sélectionner et Inverser, plus un unique bouton à icône **Actions** qui ouvre une feuille
 inférieure tactile avec toutes les opérations groupées (favori, rejet, notation, albums, copie,
-téléchargement).
+téléchargement). Un bouton à icône Comparer s'ajoute quand la sélection tient dans la vue de comparaison, et le
+bouton Fermer de la feuille la referme sans lancer d'action.
 
 ## Cadre photo / Kiosque
 

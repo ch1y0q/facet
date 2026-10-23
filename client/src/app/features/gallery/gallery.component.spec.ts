@@ -1998,16 +1998,14 @@ describe('GalleryComponent', () => {
     }
 
     function tagsButton(f: ComponentFixture<GalleryComponent>): HTMLButtonElement | null {
-      return (Array.from(f.nativeElement.querySelectorAll('button')) as HTMLButtonElement[])
-        .find(b => b.textContent?.includes(I18N.gallery.selection.edit_tags)) ?? null;
+      return f.nativeElement.querySelector(`[data-selection-bar] button[aria-label="${I18N.gallery.selection.edit_tags}"]`);
     }
 
     it('is a desktop-only button for an edition user', () => {
       const button = tagsButton(render(true));
 
       expect(button).not.toBeNull();
-      expect(button!.className).toContain('!hidden');
-      expect(button!.className).toContain('lg:!inline-flex');
+      expect(button!.closest('.max-md\\:hidden')).not.toBeNull();
     });
 
     it('is absent without edition', () => {
@@ -2256,8 +2254,7 @@ describe('GalleryComponent', () => {
     }
 
     function deleteButton(f: ComponentFixture<GalleryComponent>): HTMLButtonElement | null {
-      return (Array.from(f.nativeElement.querySelectorAll('button')) as HTMLButtonElement[])
-        .find(b => b.textContent?.includes('cull.delete_action')) ?? null;
+      return f.nativeElement.querySelector('[data-selection-bar] button[aria-label="cull.delete_action"]');
     }
 
     it('is absent when trash_available is false, even with allow_trash true', () => {
@@ -2276,10 +2273,212 @@ describe('GalleryComponent', () => {
       const f = render(true, true);
       const button = deleteButton(f);
       expect(button).not.toBeNull();
-      expect(button!.disabled).toBe(true);
+      // disabledInteractive: aria-disabled instead of the native attribute, so the tooltip still shows.
+      expect(button!.getAttribute('aria-disabled')).toBe('true');
       const tooltipDebug = f.debugElement.queryAll(By.directive(MatTooltip))
         .find(de => de.nativeElement === button);
       expect(tooltipDebug?.injector.get(MatTooltip).message).toBe(I18N.cull.delete_disabled_view_scope_tooltip);
+    });
+  });
+
+  // The selection bar is a floating, icon-only card inside the gallery host (not a
+  // fixed full-width strip): placement, label reachability and the notice baseline.
+  describe('floating selection card (rendered)', () => {
+    let fixture: ComponentFixture<GalleryComponent> | null = null;
+
+    afterEach(() => {
+      fixture?.destroy();
+      fixture = null;
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    });
+
+    function render(opts: { edition?: boolean; desktop?: boolean; viewScoped?: boolean; profiles?: string[] } = {}): ComponentFixture<GalleryComponent> {
+      const { edition = true, desktop = true, viewScoped = false, profiles = [] } = opts;
+      vi.stubGlobal('matchMedia', (media: string) => ({
+        matches: desktop && media.includes('min-width: 768px'), media, addEventListener() {}, removeEventListener() {},
+      }));
+      (mockAuth as { isEdition: unknown }).isEdition = vi.fn(() => edition);
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      mockAuth['isMultiUser'] = vi.fn(() => false);
+      mockAuth['isSuperadmin'] = vi.fn(() => false);
+      mockAuth['downloadProfiles'] = vi.fn(() => profiles);
+      mockStore.config.set({ cull: { allow_trash: true, trash_available: true }, features: { show_albums: true } });
+      mockStore.selectionCount.set(2);
+      mockStore.viewScopeSelected.set(viewScoped);
+      fixture = TestBed.createComponent(GalleryComponent);
+      // The breakpoint signal is wired in afterNextRender; wire it by hand, as the rail specs do.
+      (fixture.componentInstance as unknown as { desktop: { setup(): void } }).desktop.setup();
+      fixture.detectChanges();
+      return fixture;
+    }
+
+    const bar = (f: ComponentFixture<GalleryComponent>) => f.nativeElement.querySelector('[data-selection-bar]') as HTMLElement | null;
+    const labelled = (f: ComponentFixture<GalleryComponent>, label: string) =>
+      bar(f)?.querySelector(`button[aria-label="${label}"]`) as HTMLButtonElement | null;
+
+    it('floats absolutely inside the notice host, rounded, never fixed', () => {
+      const f = render();
+      const el = bar(f)!;
+      expect(el.closest('.relative.h-full')).not.toBeNull();
+      expect(el.classList.contains('absolute')).toBe(true);
+      expect(el.classList.contains('rounded-2xl')).toBe(true);
+      expect(el.classList.contains('fixed')).toBe(false);
+      expect(el.classList.contains('left-2')).toBe(true);
+      expect(el.classList.contains('md:left-4')).toBe(true);
+      expect(el.classList.contains('md:bottom-4')).toBe(true);
+    });
+
+    it('gives every edition action an icon button with matching tooltip and aria-label', () => {
+      const f = render();
+      const keys = [
+        I18N.gallery.selection.clear, I18N.gallery.selection.select_all, I18N.gallery.selection.invert,
+        I18N.gallery.selection.favorite, I18N.gallery.selection.reject, I18N.gallery.selection.rate,
+        I18N.albums.add_photos, I18N.gallery.selection.mark_sequence, I18N.gallery.selection.copy_filenames,
+        I18N.gallery.selection.edit_tags, I18N.export.action, I18N.cull.action, I18N.cull.delete_action,
+        I18N.gallery.selection.download, I18N.gallery.selection.actions,
+      ];
+      for (const key of keys) {
+        const button = labelled(f, key);
+        expect(button, key).not.toBeNull();
+        expect(button!.classList.contains('mat-mdc-icon-button'), key).toBe(true);
+        const tooltip = f.debugElement.queryAll(By.directive(MatTooltip)).find(d => d.nativeElement === button);
+        expect(tooltip?.injector.get(MatTooltip).message, key).toBe(key);
+      }
+    });
+
+    it('shows no text in the buttons other than the icon ligature', () => {
+      const f = render();
+      for (const button of Array.from(bar(f)!.querySelectorAll('button'))) {
+        if (button.closest('.w-full')) continue;
+        expect(button.textContent!.trim()).toMatch(/^[a-z_]*$/);
+      }
+    });
+
+    it('keeps the tooltip on the disabled delete button (disabledInteractive)', () => {
+      const f = render({ viewScoped: true });
+      const del = labelled(f, I18N.cull.delete_action)!;
+      expect(del.getAttribute('aria-disabled')).toBe('true');
+      expect(del.disabled).toBe(false);
+    });
+
+    // disabledInteractive leaves a <button> clickable, so these must stay natively
+    // disabled or a click mid-download starts a second download.
+    it('natively disables every download entry point while a download runs', () => {
+      for (const profiles of [[], ['web']]) {
+        const f = render({ profiles });
+        (f.componentInstance as unknown as { downloading: { set(v: boolean): void } }).downloading.set(true);
+        f.detectChanges();
+        expect(labelled(f, I18N.photo_detail.downloading)!.disabled).toBe(true);
+        expect(labelled(f, I18N.gallery.selection.actions)!.disabled).toBe(true);
+      }
+    });
+
+    it('uses the view-scope text as the delete tooltip when the selection is the whole view', () => {
+      const f = render({ viewScoped: true });
+      const del = labelled(f, I18N.cull.delete_action)!;
+      const tooltip = f.debugElement.queryAll(By.directive(MatTooltip)).find(d => d.nativeElement === del);
+      expect(tooltip?.injector.get(MatTooltip).message).toBe(I18N.cull.delete_disabled_view_scope_tooltip);
+    });
+
+    it('omits the edit and file actions without edition', () => {
+      const f = render({ edition: false });
+      expect(labelled(f, I18N.gallery.selection.favorite)).toBeNull();
+      expect(labelled(f, I18N.gallery.selection.edit_tags)).toBeNull();
+      expect(labelled(f, I18N.cull.delete_action)).toBeNull();
+      expect(labelled(f, I18N.gallery.selection.copy_filenames)).not.toBeNull();
+    });
+
+    it('hides the desktop group below md and keeps one Actions button', () => {
+      const f = render();
+      const fav = labelled(f, I18N.gallery.selection.favorite)!;
+      expect(fav.closest('.max-md\\:hidden')).not.toBeNull();
+      expect(labelled(f, I18N.gallery.selection.actions)!.classList.contains('md:!hidden')).toBe(true);
+    });
+
+    it('opens the actions sheet from the Actions button', () => {
+      const f = render({ desktop: false });
+      const open = vi.spyOn(f.componentInstance as unknown as { openActionsSheet(): Promise<void> }, 'openActionsSheet').mockResolvedValue(undefined);
+      labelled(f, I18N.gallery.selection.actions)!.click();
+      expect(open).toHaveBeenCalledTimes(1);
+    });
+
+    it('calls the same handlers as before for favorite, reject and copy', () => {
+      const f = render();
+      const inst = f.componentInstance as unknown as { batchFavorite(): void; batchReject(): void; copyPaths(): void };
+      const fav = vi.spyOn(inst, 'batchFavorite').mockImplementation(() => undefined);
+      const rej = vi.spyOn(inst, 'batchReject').mockImplementation(() => undefined);
+      const copy = vi.spyOn(inst, 'copyPaths').mockImplementation(() => undefined);
+      labelled(f, I18N.gallery.selection.favorite)!.click();
+      labelled(f, I18N.gallery.selection.reject)!.click();
+      labelled(f, I18N.gallery.selection.copy_filenames)!.click();
+      expect(fav).toHaveBeenCalled();
+      expect(rej).toHaveBeenCalled();
+      expect(copy).toHaveBeenCalled();
+    });
+
+    it('hides while the mobile over drawer is open and returns when it closes, keeping the selection', () => {
+      const f = render({ desktop: false });
+      mockStore.filterDrawerOpen.set(true);
+      f.detectChanges();
+      expect(bar(f)).toBeNull();
+      expect(mockStore.selectionCount()).toBe(2);
+      mockStore.filterDrawerOpen.set(false);
+      f.detectChanges();
+      expect(bar(f)).not.toBeNull();
+    });
+
+    describe('notice baseline and end spacer', () => {
+      const rect = (left: number, right: number, top: number, bottom: number) =>
+        ({ left, right, top, bottom, width: right - left, height: bottom - top, x: left, y: top, toJSON() { return {}; } }) as DOMRect;
+
+      function mockLayout(barRight: number, barTop: number) {
+        vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+        const original = HTMLElement.prototype.getBoundingClientRect;
+        vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+          if (this.classList.contains('relative') && this.classList.contains('h-full')) return rect(0, 1200, 0, 800);
+          if (this.hasAttribute('data-selection-bar')) return rect(16, barRight, barTop, 784);
+          if (this.hasAttribute('data-gallery-notices')) return rect(768, 1184, 600, 700);
+          return original.call(this);
+        });
+        mockStore.hiddenSummary.set({ total: 6, blinks: 0, bursts: 4, duplicates: 0, brackets: 2, panoramas: 0 });
+        mockStore.filters.set({ ...DEFAULT_FILTERS, hide_bursts: true });
+      }
+
+      const noticeBottom = (f: ComponentFixture<GalleryComponent>) => (f.componentInstance as unknown as { noticeBottomPx(): number }).noticeBottomPx();
+
+      it('rests the notices on the 16px desktop margin when the card is narrow', () => {
+        mockLayout(300, 740);
+        const f = render();
+        f.detectChanges();
+        expect(noticeBottom(f)).toBe(16);
+      });
+
+      it('lifts the notices by the card reach when a wide card overlaps them', () => {
+        mockLayout(1000, 740);
+        const f = render();
+        f.detectChanges();
+        expect(noticeBottom(f)).toBe(16 + (800 - 740));
+      });
+
+      it('sizes the end spacer from the measured reach, never below 112px', () => {
+        mockLayout(1000, 640);
+        const f = render();
+        f.detectChanges();
+        const spacer = f.nativeElement.querySelector('mat-sidenav-content div[aria-hidden="true"][style*="height"]') as HTMLElement;
+        expect(spacer.style.height).toBe('160px');
+      });
+
+      it('uses the 8px margin on mobile and 16px on desktop with no selection', () => {
+        mockStore.selectionCount.set(0);
+        const desktop = render();
+        expect(noticeBottom(desktop)).toBe(16);
+        desktop.destroy();
+        const mobile = render({ desktop: false });
+        mockStore.selectionCount.set(0);
+        mobile.detectChanges();
+        expect(noticeBottom(mobile)).toBe(8);
+      });
     });
   });
 

@@ -526,7 +526,7 @@
   }
 
   <!-- Main content -->
-  <main class="flex-1 overflow-auto lg:pb-0" [class.pb-14]="isGalleryRoute() || isAlbumsRoute() || isPersonsRoute() || isMapRoute() || isCapsuleRoute() || isTimelineRoute()">
+  <main class="flex-1 overflow-auto lg:pb-0" [class.pb-14]="mobileGalleryBarVisible() || isAlbumsRoute() || isPersonsRoute() || isMapRoute() || isCapsuleRoute() || isTimelineRoute()">
     <router-outlet />
   </main>
 

@@ -222,7 +222,7 @@ Con `licensing.mode` impostato su `commercial`, il visualizzatore nasconde le me
 ### Selezione multipla e azioni di gruppo
 
 - Clicca sulle foto per selezionarle, Maiusc+Clic per la selezione di un intervallo
-- Compare una barra delle azioni con il conteggio della selezione e le azioni disponibili
+- Compare una barra delle azioni con il conteggio della selezione e le azioni disponibili: una scheda flottante in basso a sinistra nella galleria, con soli pulsanti a icona (passa il mouse o dai il focus a un pulsante per vederne l'etichetta)
 - **Preferito** — Contrassegna tutte le selezionate come preferite (rimuove lo scarto)
 - **Rifiuta** — Contrassegna tutte le selezionate come scartate (rimuove preferito e valutazione)
 - **Valuta** — Imposta la valutazione a stelle (1–5) per tutte le selezionate, o azzera la valutazione
@@ -498,7 +498,7 @@ Controllato da `viewer.features.show_memories` (predefinito: `true`).
 
 - **Selezionare una vacanza** — apri Capsule → cerca la capsula `journey` generata automaticamente per le date del viaggio. Ogni capsula offre un'azione Salva come album.
 - **Eseguire una revisione giorno per giorno** — apri Cronologia e scendi da anni a mesi fino a un calendario di giorni; clicca su un giorno per aprire la galleria filtrata su quella data. Cronologia non ha un ordinamento proprio, ma i conteggi per giorno/mese/anno e le miniature in evidenza ora rispettano gli stessi interruttori `hide_bursts` / `hide_duplicates` della galleria (predefiniti: attivi), quindi il conteggio di una cella corrisponde a ciò che apre il clic.
-- **Mostrare ciò che è nascosto** — la galleria nasconde per impostazione predefinita i battiti di ciglia / le raffiche non principali / i duplicati non principali. Quando almeno uno di questi filtri è attivo ed escluderebbe delle righe, in basso a destra nella griglia compare una notifica flottante "N foto nascoste dai filtri attivi · Mostra tutte" (sopra la barra di selezione quando ci sono foto selezionate).
+- **Mostrare ciò che è nascosto** — la galleria nasconde per impostazione predefinita i battiti di ciglia / le raffiche non principali / i duplicati non principali. Quando almeno uno di questi filtri è attivo ed escluderebbe delle righe, in basso a destra nella griglia compare una notifica flottante "N foto nascoste dai filtri attivi · Mostra tutte" (e sopra la scheda di selezione flottante solo quando le due si sovrapporrebbero).
 
 ## Vista cronologia
 
@@ -879,10 +879,11 @@ Una snackbar offre un ricaricamento quando è stata distribuita una nuova versio
 
 ## Mobile
 
-Sugli schermi piccoli la barra di selezione di gruppo si riduce al conteggio della selezione,
-ai pulsanti cancella, seleziona tutto e a un unico pulsante **Azioni** che apre un foglio inferiore
+Sugli schermi piccoli la scheda di selezione flottante mantiene il conteggio della selezione e i pulsanti a icona
+cancella, seleziona tutto e inverti, più un unico pulsante a icona **Azioni** che apre un foglio inferiore
 adatto al tocco con tutte le operazioni di gruppo (preferito, rifiuto, valutazione, album, copia,
-download).
+download). Un pulsante a icona Confronta si aggiunge quando la selezione rientra nella vista di confronto, e il
+pulsante Chiudi del foglio lo chiude senza eseguire alcuna azione.
 
 ## Cornice digitale / Chiosco
 

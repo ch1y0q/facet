@@ -68,6 +68,7 @@ import {
   GalleryRow, aspectOf, buildGridRows, buildMosaicRows,
   gridColumnCount, totalRowsHeight, windowRange,
 } from './gallery-rows.util';
+import { noticeLiftPx } from './selection-bar-layout.util';
 import { GalleryFilters, applyQueryParams, applySavedAlbumFilters, loadDisplayOptionsFromStorage } from './gallery-filters.util';
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { AlbumService, Album } from '../../core/services/album.service';
@@ -513,9 +514,9 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
           </div>
         }
 
-        <!-- Room for the fixed selection bar (up to two wrapped rows) so the last row can scroll clear of it -->
+        <!-- Room for the floating selection card (its measured height plus margin) so the last row can scroll clear of it -->
         @if (selectionCount()) {
-          <div aria-hidden="true" class="h-40"></div>
+          <div aria-hidden="true" [style.height.px]="selectionBarReservePx()"></div>
         }
         <!-- Infinite scroll sentinel -->
         <div appInfiniteScroll (scrollReached)="onScrollReached()" class="h-1"></div>
@@ -528,13 +529,13 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
            and the content's own scrollbar.
            The container is its own stacking context, so a notice outside it cannot sit under the
            mobile 'over' drawer; it steps aside while that drawer is open instead.
-           Lifted above the fixed selection bar by its measured height. Order: hidden-photos
+           Lifted above the floating selection card, only when the two overlap horizontally. Order: hidden-photos
            notice first, thumbnail-migration notice below it. The migration notice is the
            only place the command that regenerates RAW thumbnails is surfaced: the grid
            reads photos.thumbnail, so browsing never regenerates it. -->
       @if (!overDrawerOpen() && (showHiddenBanner() || canRestoreHidden() || showRenderMigrationBanner())) {
         <div data-gallery-notices class="pointer-events-none absolute z-10 flex flex-col gap-2 w-[min(26rem,calc(100%-1rem))]"
-             [style.bottom.px]="noticeBottomPx()" [style.right.px]="noticeRightPx()">
+             [style.bottom.px]="noticeBottomPx()" [style.right.px]="noticeRightPx()" [style.maxWidth]="noticeMaxWidth()">
           @if (showHiddenBanner()) {
             <div role="status" class="pointer-events-auto px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] border border-[var(--mat-sys-outline-variant)] shadow-lg flex items-center gap-3 text-sm">
               <mat-icon class="opacity-70 !text-base !w-5 !h-5">visibility_off</mat-icon>
@@ -568,6 +569,117 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
               </button>
             </div>
           }
+        </div>
+      }
+
+      <!-- Selection card: floats bottom-left inside the host (absolute, never over the end drawer).
+           Its right edge stops at the same measured inset the notices use, so it wraps instead of
+           running under an open drawer. Hidden while the mobile 'over' drawer is open: the drawer
+           container is its own stacking context and a z-20 card would paint over it. -->
+      @if (selectionCount() && !overDrawerOpen()) {
+        <div #selectionBar data-selection-bar
+             class="absolute bottom-2 md:bottom-4 left-2 md:left-4 z-20 w-fit flex flex-wrap items-center gap-1 px-2 py-1 rounded-2xl bg-[var(--mat-sys-surface-container)] border border-[var(--mat-sys-outline-variant)] shadow-lg max-md:mb-[env(safe-area-inset-bottom)]"
+             [style.right.px]="noticeRightPx()">
+          <!-- Every loaded photo is selected, but the view runs past the pages
+               fetched so far. Offer the rest explicitly on its own line (w-full
+               in a wrapping row) rather than silently widening what was asked. -->
+          @if (offerWholeView()) {
+            <div class="w-full flex flex-wrap items-center gap-2 text-xs opacity-80 px-1">
+              <span>{{ I18N.gallery.selection.view_scope_offer | translate:{ count: store.photos().length } }}</span>
+              <button mat-button class="!text-xs" (click)="selectWholeView()">{{ I18N.gallery.selection.view_scope_select_all | translate:{ total: store.total() } }}</button>
+            </div>
+          }
+          <span data-selection-status tabindex="-1" class="text-sm font-medium shrink-0 px-1">{{ (viewScoped() ? I18N.gallery.selection.view_scope_active : I18N.gallery.selection.count) | translate:{ count: selectionCount() } }}</span>
+          <button mat-icon-button disabledInteractive (click)="clearSelection()" [matTooltip]="I18N.gallery.selection.clear | translate" [attr.aria-label]="I18N.gallery.selection.clear | translate"><mat-icon>close</mat-icon></button>
+          @if (!allLoadedSelected()) {
+            <button mat-icon-button disabledInteractive (click)="selectAll()" [matTooltip]="I18N.gallery.selection.select_all | translate" [attr.aria-label]="I18N.gallery.selection.select_all | translate"><mat-icon>select_all</mat-icon></button>
+          }
+          <button mat-icon-button disabledInteractive (click)="invertSelection()" [matTooltip]="I18N.gallery.selection.invert | translate" [attr.aria-label]="I18N.gallery.selection.invert | translate"><mat-icon>flip</mat-icon></button>
+          @if (canCompareSelection()) {
+            <button mat-icon-button disabledInteractive (click)="compareSelection()" [matTooltip]="I18N.gallery.selection.compare | translate" [attr.aria-label]="I18N.gallery.selection.compare | translate"><mat-icon>compare</mat-icon></button>
+          }
+          <!-- Mobile: single Actions trigger opening a touch-friendly bottom sheet -->
+          <button mat-icon-button class="md:!hidden" (click)="openActionsSheet()" [disabled]="downloading()" [matTooltip]="I18N.gallery.selection.actions | translate" [attr.aria-label]="I18N.gallery.selection.actions | translate">
+            @if (downloading()) { <mat-spinner diameter="18" [attr.aria-label]="I18N.ui.labels.loading | translate"></mat-spinner> } @else { <mat-icon>more_horiz</mat-icon> }
+          </button>
+          <!-- Desktop actions (below md they live in the Actions sheet) -->
+          <div class="contents max-md:hidden">
+            @if (auth.isEdition()) {
+              <span aria-hidden="true" class="w-px h-6 mx-1 bg-[var(--mat-sys-outline-variant)]"></span>
+              <button mat-icon-button disabledInteractive (click)="batchFavorite()" [matTooltip]="I18N.gallery.selection.favorite | translate" [attr.aria-label]="I18N.gallery.selection.favorite | translate"><mat-icon>favorite</mat-icon></button>
+              <button mat-icon-button disabledInteractive (click)="batchReject()" [matTooltip]="I18N.gallery.selection.reject | translate" [attr.aria-label]="I18N.gallery.selection.reject | translate"><mat-icon>thumb_down</mat-icon></button>
+              <button mat-icon-button disabledInteractive [matMenuTriggerFor]="rateMenu" [matTooltip]="I18N.gallery.selection.rate | translate" [attr.aria-label]="I18N.gallery.selection.rate | translate"><mat-icon>star</mat-icon></button>
+              <mat-menu #rateMenu="matMenu">
+                @for (star of [1, 2, 3, 4, 5]; track star) {
+                  <button mat-menu-item (click)="batchRate(star)">
+                    {{ '★'.repeat(star) }}
+                  </button>
+                }
+                <button mat-menu-item (click)="batchRate(0)">
+                  {{ I18N.gallery.selection.clear | translate }}
+                </button>
+              </mat-menu>
+            }
+            @if (auth.isEdition() && store.config()?.features?.show_albums) {
+              <button mat-icon-button disabledInteractive [matMenuTriggerFor]="albumMenu" [matTooltip]="I18N.albums.add_photos | translate" [attr.aria-label]="I18N.albums.add_photos | translate"><mat-icon>photo_library</mat-icon></button>
+              <mat-menu #albumMenu="matMenu">
+                @for (album of albumOptions(); track album.id) {
+                  <button mat-menu-item (click)="addToAlbum(album.id)">{{ album.name }}</button>
+                }
+                <button mat-menu-item (click)="createAlbumAndAdd()">
+                  <mat-icon>add</mat-icon>
+                  {{ I18N.albums.create | translate }}
+                </button>
+              </mat-menu>
+            }
+            <!-- The other half of the panorama correction: culling can only fix a
+                 set the detector found, and an undetected sweep appears in no
+                 culling group at all. Here the frames are in front of the user. -->
+            @if (auth.isEdition()) {
+              <button mat-icon-button disabledInteractive [matMenuTriggerFor]="sequenceMenu" [matTooltip]="I18N.gallery.selection.mark_sequence | translate" [attr.aria-label]="I18N.gallery.selection.mark_sequence | translate"><mat-icon>panorama_photosphere</mat-icon></button>
+              <mat-menu #sequenceMenu="matMenu">
+                <button mat-menu-item (click)="markAsPanorama('panorama')">
+                  <mat-icon>{{ 'panorama' | sequenceKindIcon }}</mat-icon>
+                  {{ I18N.gallery.selection.mark_panorama | translate }}
+                </button>
+                <button mat-menu-item (click)="markAsPanorama('hdr_panorama')">
+                  <mat-icon>{{ 'hdr_panorama' | sequenceKindIcon }}</mat-icon>
+                  {{ I18N.gallery.selection.mark_hdr_panorama | translate }}
+                </button>
+                <button mat-menu-item (click)="markAsPanorama('bracket')">
+                  <mat-icon>{{ 'bracket' | sequenceKindIcon }}</mat-icon>
+                  {{ I18N.gallery.selection.mark_bracket | translate }}
+                </button>
+              </mat-menu>
+            }
+            <span aria-hidden="true" class="w-px h-6 mx-1 bg-[var(--mat-sys-outline-variant)]"></span>
+            <button mat-icon-button disabledInteractive (click)="copyPaths()" [matTooltip]="I18N.gallery.selection.copy_filenames | translate" [attr.aria-label]="I18N.gallery.selection.copy_filenames | translate"><mat-icon>content_copy</mat-icon></button>
+            @if (auth.isEdition()) {
+              <button mat-icon-button disabledInteractive (click)="openManualTagsDialog()" [matTooltip]="I18N.gallery.selection.edit_tags | translate" [attr.aria-label]="I18N.gallery.selection.edit_tags | translate"><mat-icon>sell</mat-icon></button>
+              <button mat-icon-button disabledInteractive (click)="openExportDialog()" [matTooltip]="I18N.export.action | translate" [attr.aria-label]="I18N.export.action | translate"><mat-icon>drive_file_move</mat-icon></button>
+              <button mat-icon-button disabledInteractive (click)="openCullDialog()" [matTooltip]="I18N.cull.action | translate" [attr.aria-label]="I18N.cull.action | translate"><mat-icon>folder_move</mat-icon></button>
+              @if (store.config()?.cull?.trash_available) {
+                <button mat-icon-button disabledInteractive (click)="deleteSelected()"
+                        [disabled]="viewScoped()"
+                        [matTooltip]="(viewScoped() ? I18N.cull.delete_disabled_view_scope_tooltip : I18N.cull.delete_action) | translate"
+                        [attr.aria-label]="I18N.cull.delete_action | translate">
+                  <mat-icon>delete</mat-icon>
+                </button>
+              }
+            }
+            @if (auth.downloadProfiles().length) {
+              <button mat-icon-button [matMenuTriggerFor]="dlMenu" [disabled]="downloading()" [matTooltip]="(downloading() ? I18N.photo_detail.downloading : I18N.gallery.selection.download) | translate" [attr.aria-label]="(downloading() ? I18N.photo_detail.downloading : I18N.gallery.selection.download) | translate">@if (downloading()) { <mat-spinner diameter="18" [attr.aria-label]="I18N.ui.labels.loading | translate"></mat-spinner> } @else { <mat-icon>download</mat-icon> }</button>
+              <mat-menu #dlMenu="matMenu">
+                <button mat-menu-item (click)="downloadSelected()"><mat-icon>image</mat-icon> {{ I18N.download.type_original | translate }}</button>
+                @for (profile of auth.downloadProfiles(); track profile) {
+                  <button mat-menu-item (click)="downloadSelected('darktable', profile)"><mat-icon>photo_filter</mat-icon> {{ profile }}</button>
+                }
+                <button mat-menu-item (click)="downloadSelected('raw')"><mat-icon>raw_on</mat-icon> {{ I18N.download.type_raw | translate }}</button>
+              </mat-menu>
+            } @else {
+              <button mat-icon-button (click)="downloadSelected()" [disabled]="downloading()" [matTooltip]="(downloading() ? I18N.photo_detail.downloading : I18N.gallery.selection.download) | translate" [attr.aria-label]="(downloading() ? I18N.photo_detail.downloading : I18N.gallery.selection.download) | translate">@if (downloading()) { <mat-spinner diameter="18" [attr.aria-label]="I18N.ui.labels.loading | translate"></mat-spinner> } @else { <mat-icon>download</mat-icon> }</button>
+            }
+          </div>
         </div>
       }
     </div>
@@ -626,113 +738,6 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
       (action)="onPhotoMenuAction($event)"
       (closed)="onPhotoMenuClosed($event)"
     />
-
-    <!-- Selection action bar -->
-    @if (selectionCount()) {
-      <div #selectionBar data-selection-bar class="fixed bottom-0 left-0 right-0 z-50 flex flex-wrap items-center justify-center gap-1 lg:gap-3 px-2 lg:px-6 py-1 lg:py-3 max-lg:pb-[max(0.25rem,env(safe-area-inset-bottom))] bg-[var(--mat-sys-surface-container)] border-t border-[var(--mat-sys-outline-variant)] shadow-lg">
-        <!-- Every loaded photo is selected, but the view runs past the pages
-             fetched so far. Offer the rest explicitly on its own line (w-full
-             in a wrapping row) rather than silently widening what was asked. -->
-        @if (offerWholeView()) {
-          <div class="w-full flex flex-wrap items-center justify-center gap-2 text-xs opacity-80">
-            <span>{{ I18N.gallery.selection.view_scope_offer | translate:{ count: store.photos().length } }}</span>
-            <button mat-button class="!text-xs" (click)="selectWholeView()">{{ I18N.gallery.selection.view_scope_select_all | translate:{ total: store.total() } }}</button>
-          </div>
-        }
-        <span data-selection-status tabindex="-1" class="text-sm font-medium shrink-0">{{ (viewScoped() ? I18N.gallery.selection.view_scope_active : I18N.gallery.selection.count) | translate:{ count: selectionCount() } }}</span>
-        <div class="flex flex-wrap items-center justify-center gap-0 lg:gap-2">
-          <button mat-icon-button class="lg:!hidden" (click)="clearSelection()" [matTooltip]="I18N.gallery.selection.clear | translate" [attr.aria-label]="I18N.gallery.selection.clear | translate"><mat-icon>close</mat-icon></button>
-          <button mat-button class="!hidden lg:!inline-flex" (click)="clearSelection()"><mat-icon>close</mat-icon> {{ I18N.gallery.selection.clear | translate }}</button>
-          @if (!allLoadedSelected()) {
-            <button mat-icon-button class="lg:!hidden" (click)="selectAll()" [matTooltip]="I18N.gallery.selection.select_all | translate" [attr.aria-label]="I18N.gallery.selection.select_all | translate"><mat-icon>select_all</mat-icon></button>
-            <button mat-button class="!hidden lg:!inline-flex" (click)="selectAll()"><mat-icon>select_all</mat-icon> {{ I18N.gallery.selection.select_all | translate }}</button>
-          }
-          <button mat-icon-button class="lg:!hidden" (click)="invertSelection()" [matTooltip]="I18N.gallery.selection.invert | translate" [attr.aria-label]="I18N.gallery.selection.invert | translate"><mat-icon>flip</mat-icon></button>
-          <button mat-button class="!hidden lg:!inline-flex" (click)="invertSelection()"><mat-icon>flip</mat-icon> {{ I18N.gallery.selection.invert | translate }}</button>
-          @if (canCompareSelection()) {
-            <button mat-icon-button class="lg:!hidden" (click)="compareSelection()" [matTooltip]="I18N.gallery.selection.compare | translate" [attr.aria-label]="I18N.gallery.selection.compare | translate"><mat-icon>compare</mat-icon></button>
-            <button mat-button class="!hidden lg:!inline-flex" (click)="compareSelection()"><mat-icon>compare</mat-icon> {{ I18N.gallery.selection.compare | translate }}</button>
-          }
-          <!-- Mobile: single Actions trigger opening a touch-friendly bottom sheet -->
-          <button mat-flat-button class="lg:!hidden" (click)="openActionsSheet()" [disabled]="downloading()">
-            @if (downloading()) { <mat-spinner diameter="18" class="!inline-block !align-baseline" [attr.aria-label]="I18N.ui.labels.loading | translate" ></mat-spinner> } @else { <mat-icon>more_horiz</mat-icon> }
-            {{ I18N.gallery.selection.actions | translate }}
-          </button>
-          @if (auth.isEdition()) {
-            <button mat-button class="!hidden lg:!inline-flex" (click)="batchFavorite()"><mat-icon>favorite</mat-icon> {{ I18N.gallery.selection.favorite | translate }}</button>
-            <button mat-button class="!hidden lg:!inline-flex" (click)="batchReject()"><mat-icon>thumb_down</mat-icon> {{ I18N.gallery.selection.reject | translate }}</button>
-            <button mat-button class="!hidden lg:!inline-flex" [matMenuTriggerFor]="rateMenu"><mat-icon>star</mat-icon> {{ I18N.gallery.selection.rate | translate }}</button>
-            <mat-menu #rateMenu="matMenu">
-              @for (star of [1, 2, 3, 4, 5]; track star) {
-                <button mat-menu-item (click)="batchRate(star)">
-                  {{ '★'.repeat(star) }}
-                </button>
-              }
-              <button mat-menu-item (click)="batchRate(0)">
-                {{ I18N.gallery.selection.clear | translate }}
-              </button>
-            </mat-menu>
-          }
-          @if (auth.isEdition() && store.config()?.features?.show_albums) {
-            <button mat-button class="!hidden lg:!inline-flex" [matMenuTriggerFor]="albumMenu"><mat-icon>photo_library</mat-icon> {{ I18N.albums.add_photos | translate }}</button>
-            <mat-menu #albumMenu="matMenu">
-              @for (album of albumOptions(); track album.id) {
-                <button mat-menu-item (click)="addToAlbum(album.id)">{{ album.name }}</button>
-              }
-              <button mat-menu-item (click)="createAlbumAndAdd()">
-                <mat-icon>add</mat-icon>
-                {{ I18N.albums.create | translate }}
-              </button>
-            </mat-menu>
-          }
-          <!-- The other half of the panorama correction: culling can only fix a
-               set the detector found, and an undetected sweep appears in no
-               culling group at all. Here the frames are in front of the user. -->
-          @if (auth.isEdition()) {
-            <button mat-button class="!hidden lg:!inline-flex" [matMenuTriggerFor]="sequenceMenu"><mat-icon>panorama_photosphere</mat-icon> {{ I18N.gallery.selection.mark_sequence | translate }}</button>
-            <mat-menu #sequenceMenu="matMenu">
-              <button mat-menu-item (click)="markAsPanorama('panorama')">
-                <mat-icon>{{ 'panorama' | sequenceKindIcon }}</mat-icon>
-                {{ I18N.gallery.selection.mark_panorama | translate }}
-              </button>
-              <button mat-menu-item (click)="markAsPanorama('hdr_panorama')">
-                <mat-icon>{{ 'hdr_panorama' | sequenceKindIcon }}</mat-icon>
-                {{ I18N.gallery.selection.mark_hdr_panorama | translate }}
-              </button>
-              <button mat-menu-item (click)="markAsPanorama('bracket')">
-                <mat-icon>{{ 'bracket' | sequenceKindIcon }}</mat-icon>
-                {{ I18N.gallery.selection.mark_bracket | translate }}
-              </button>
-            </mat-menu>
-          }
-          <button mat-button class="!hidden lg:!inline-flex" (click)="copyPaths()"><mat-icon>content_copy</mat-icon> {{ I18N.gallery.selection.copy_filenames | translate }}</button>
-          @if (auth.isEdition()) {
-            <button mat-button class="!hidden lg:!inline-flex" (click)="openManualTagsDialog()"><mat-icon>sell</mat-icon> {{ I18N.gallery.selection.edit_tags | translate }}</button>
-            <button mat-button class="!hidden lg:!inline-flex" (click)="openExportDialog()"><mat-icon>drive_file_move</mat-icon> {{ I18N.export.action | translate }}</button>
-            <button mat-button class="!hidden lg:!inline-flex" (click)="openCullDialog()"><mat-icon>folder_move</mat-icon> {{ I18N.cull.action | translate }}</button>
-            @if (store.config()?.cull?.trash_available) {
-              <button mat-button class="!hidden lg:!inline-flex" (click)="deleteSelected()"
-                      [disabled]="viewScoped()"
-                      [matTooltip]="viewScoped() ? (I18N.cull.delete_disabled_view_scope_tooltip | translate) : null">
-                <mat-icon>delete</mat-icon> {{ I18N.cull.delete_action | translate }}
-              </button>
-            }
-          }
-          @if (auth.downloadProfiles().length) {
-            <button mat-flat-button class="!hidden lg:!inline-flex" [matMenuTriggerFor]="dlMenu" [disabled]="downloading()">@if (downloading()) { <mat-spinner diameter="18" class="!inline-block !align-baseline" [attr.aria-label]="I18N.ui.labels.loading | translate" ></mat-spinner> } @else { <mat-icon>download</mat-icon> } {{ downloading() ? (I18N.photo_detail.downloading | translate) : (I18N.gallery.selection.download | translate) }}</button>
-            <mat-menu #dlMenu="matMenu">
-              <button mat-menu-item (click)="downloadSelected()"><mat-icon>image</mat-icon> {{ I18N.download.type_original | translate }}</button>
-              @for (profile of auth.downloadProfiles(); track profile) {
-                <button mat-menu-item (click)="downloadSelected('darktable', profile)"><mat-icon>photo_filter</mat-icon> {{ profile }}</button>
-              }
-              <button mat-menu-item (click)="downloadSelected('raw')"><mat-icon>raw_on</mat-icon> {{ I18N.download.type_raw | translate }}</button>
-            </mat-menu>
-          } @else {
-            <button mat-flat-button class="!hidden lg:!inline-flex" (click)="downloadSelected()" [disabled]="downloading()">@if (downloading()) { <mat-spinner diameter="18" class="!inline-block !align-baseline" [attr.aria-label]="I18N.ui.labels.loading | translate" ></mat-spinner> } @else { <mat-icon>download</mat-icon> } {{ downloading() ? (I18N.photo_detail.downloading | translate) : (I18N.gallery.selection.download | translate) }}</button>
-          }
-        </div>
-      </div>
-    }
   `,
   changeDetection: ChangeDetectionStrategy.Eager,
   host: {
@@ -951,40 +956,67 @@ export class GalleryComponent implements OnInit, OnDestroy {
   /** The mobile filter drawer overlays the content (and anything outside the sidenav container). */
   protected readonly overDrawerOpen = computed(() => !this.isDesktop() && this.store.filterDrawerOpen());
 
-  /** How far the fixed selection bar reaches up into the gallery area (it wraps, so this varies);
-   *  0 while it is hidden. On mobile the area ends above a bottom nav the bar covers, so this is
-   *  the overlap, not the bar's own height. */
+  /** How far the notices must rise to clear the floating selection card: non-zero only while the
+   *  card exists AND overlaps the notice stack horizontally (see `noticeLiftPx`). */
   private readonly selectionBarOverlap = signal(0);
 
-  /** Bottom offset of the floating notices: a small gap, plus the selection bar when present. */
-  protected readonly noticeBottomPx = computed(() => 8 + this.selectionBarOverlap());
+  /** Card height plus its bottom margin (distance from the host bottom to the card top); sizes the
+   *  grid's end spacer. Floored so a single-row card still leaves the last row clear. */
+  protected readonly selectionBarReservePx = signal(112);
 
-  /** Track the selection bar's overlap for as long as the bar exists. */
+  /** Shared bottom margin of the card and the notices: 16px md+, 8px below. */
+  private readonly floatMarginPx = computed(() => this.isDesktop() ? 16 : 8);
+
+  /** Bottom offset of the floating notices: the shared margin, plus the card's reach when they overlap it. */
+  protected readonly noticeBottomPx = computed(() => this.floatMarginPx() + this.selectionBarOverlap());
+
+  /** Track the selection card's geometry for as long as the card exists. */
   private readonly trackSelectionBar = effect(onCleanup => {
     const bar = this.selectionBar()?.nativeElement;
     const host = this.noticeHost()?.nativeElement;
+    const content = this.scrollContent()?.getElementRef().nativeElement;
+    // Re-measure when the drawer opens/closes (changes the card's right cap and wrap).
+    this.noticeRightPx();
+    // The notice stack renders after this effect runs; re-measure once it is in the DOM.
+    const noticesShown = this.showHiddenBanner() || this.canRestoreHidden() || this.showRenderMigrationBanner();
     if (!bar || !host || typeof ResizeObserver === 'undefined') {
       this.selectionBarOverlap.set(0);
       return;
     }
-    const measure = () => this.selectionBarOverlap.set(
-      Math.max(0, Math.ceil(host.getBoundingClientRect().bottom - bar.getBoundingClientRect().top)),
-    );
+    const measure = () => {
+      const hostRect = host.getBoundingClientRect();
+      const barRect = bar.getBoundingClientRect();
+      const notices = host.querySelector('[data-gallery-notices]')?.getBoundingClientRect() ?? null;
+      this.selectionBarReservePx.set(Math.max(112, Math.ceil(hostRect.bottom - barRect.top)));
+      this.selectionBarOverlap.set(noticeLiftPx({
+        hostBottom: hostRect.bottom,
+        barTop: barRect.top,
+        barLeft: barRect.left - hostRect.left,
+        barRight: barRect.right - hostRect.left,
+        noticeLeft: notices ? notices.left - hostRect.left : null,
+        noticeRight: notices ? notices.right - hostRect.left : null,
+      }));
+    };
     measure();
+    if (noticesShown) afterNextRender(measure, { injector: this.injector });
     const observer = new ResizeObserver(measure);
     observer.observe(bar);
     observer.observe(host);
+    if (content) observer.observe(content);
     onCleanup(() => {
       observer.disconnect();
       this.selectionBarOverlap.set(0);
     });
   });
 
+  /** Keeps the stack's left edge at least one margin from the host's left edge when the right inset is large. */
+  protected readonly noticeMaxWidth = computed(() => `calc(100% - ${this.noticeRightPx() + this.floatMarginPx()}px)`);
+
   /** Gap between the gallery content's right edge (end drawer and scrollbar excluded) and the host's. */
   private readonly noticeInsetPx = signal(0);
 
   /** Right offset of the floating notices: a margin (16px md+, 8px below) plus the drawer/scrollbar gap. */
-  protected readonly noticeRightPx = computed(() => this.noticeInsetPx() + (this.isDesktop() ? 16 : 8));
+  protected readonly noticeRightPx = computed(() => this.noticeInsetPx() + this.floatMarginPx());
 
   /** Re-measure the drawer/scrollbar gap whenever the host or the content box resizes. */
   private readonly trackNoticeInset = effect(onCleanup => {

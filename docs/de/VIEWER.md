@@ -222,7 +222,7 @@ Ist `licensing.mode` auf `commercial` gesetzt, blendet der Viewer die Metriken a
 ### Mehrfachauswahl & Sammelaktionen
 
 - Fotos zum Auswählen anklicken, Umschalt+Klick für Bereichsauswahl
-- Eine Aktionsleiste erscheint mit Auswahlanzahl und verfügbaren Aktionen
+- Eine Aktionsleiste erscheint mit Auswahlanzahl und verfügbaren Aktionen: eine schwebende Karte unten links in der Galerie mit reinen Symbolschaltflächen (Maus darüber oder Fokus zeigt die Beschriftung)
 - **Favorit** — Alle ausgewählten als Favorit markieren (hebt Ablehnung auf)
 - **Ablehnen** — Alle ausgewählten als abgelehnt markieren (hebt Favorit und Bewertung auf)
 - **Bewerten** — Sternebewertung (1–5) für alle ausgewählten setzen oder Bewertung löschen
@@ -498,7 +498,7 @@ Gesteuert über `viewer.features.show_memories` (Standard: `true`).
 
 - **Einen Urlaub aussortieren** — Kapseln öffnen → nach der automatisch generierten `journey`-Kapsel für die Reisedaten suchen. Jede Kapsel bietet eine Aktion „Als Album speichern".
 - **Eine Tag-für-Tag-Durchsicht durchführen** — Zeitleiste öffnen und von Jahren über Monate zu einem Tageskalender vordringen; auf einen Tag klicken, um die Galerie gefiltert auf dieses Datum zu öffnen. Die Zeitleiste selbst hat keine Sortierung, aber die Zählungen pro Tag/Monat/Jahr und die Vorschaubilder berücksichtigen jetzt dieselben `hide_bursts` / `hide_duplicates`-Umschalter wie die Galerie (Standard: an) — die Zahl auf einer Kachel stimmt also mit dem überein, was ein Klick darauf öffnet.
-- **Ausgeblendetes anzeigen** — Die Galerie blendet Blinzler / Nicht-Leitfotos von Serienbildern / Nicht-Leitfotos von Duplikaten standardmäßig aus. Wenn mindestens einer dieser Filter aktiv ist und Zeilen ausschließen würde, erscheint unten rechts im Raster eine schwebende Meldung „N Fotos durch aktuelle Filter ausgeblendet · Alle anzeigen" (über der Auswahlleiste, wenn Fotos ausgewählt sind).
+- **Ausgeblendetes anzeigen** — Die Galerie blendet Blinzler / Nicht-Leitfotos von Serienbildern / Nicht-Leitfotos von Duplikaten standardmäßig aus. Wenn mindestens einer dieser Filter aktiv ist und Zeilen ausschließen würde, erscheint unten rechts im Raster eine schwebende Meldung „N Fotos durch aktuelle Filter ausgeblendet · Alle anzeigen" (und nur dann über der schwebenden Auswahlkarte, wenn sich beide überlappen würden).
 
 ## Zeitleisten-Ansicht
 
@@ -879,10 +879,11 @@ einen Neuladen an, wenn eine neue Version bereitgestellt wurde.
 
 ## Mobil
 
-Auf kleinen Bildschirmen klappt die Sammelauswahl-Leiste zur Auswahlanzahl, Löschen,
-Alle auswählen und einer einzigen **Aktionen**-Schaltfläche zusammen, die ein
+Auf kleinen Bildschirmen behält die schwebende Auswahlkarte die Auswahlanzahl sowie die Symbolschaltflächen Löschen,
+Alle auswählen und Umkehren und dazu eine einzige **Aktionen**-Symbolschaltfläche, die ein
 berührungsfreundliches Bottom-Sheet mit allen Sammeloperationen öffnet (favorisieren,
-ablehnen, bewerten, Alben, kopieren, herunterladen).
+ablehnen, bewerten, Alben, kopieren, herunterladen). Eine Vergleichen-Symbolschaltfläche kommt hinzu, wenn die Auswahl in die Vergleichsansicht passt,
+und die Schließen-Schaltfläche des Sheets schließt es, ohne eine Aktion auszuführen.
 
 ## Bilderrahmen / Kiosk
 

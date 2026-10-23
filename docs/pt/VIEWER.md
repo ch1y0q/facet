@@ -222,7 +222,7 @@ Com `licensing.mode` definido como `commercial`, o visualizador oculta as métri
 ### Seleção Múltipla e Ações em Lote
 
 - Clique nas fotos para selecionar, Shift+Clique para seleção de intervalo
-- A barra de ações aparece com a contagem da seleção e as ações disponíveis
+- A barra de ações aparece com a contagem da seleção e as ações disponíveis: um cartão flutuante no canto inferior esquerdo da galeria, com botões só de ícone (passe o rato ou dê foco a um botão para ver o rótulo)
 - **Favoritar** — Marca todas as selecionadas como favoritas (limpa rejeição)
 - **Rejeitar** — Marca todas as selecionadas como rejeitadas (limpa favorito e avaliação)
 - **Avaliar** — Define a avaliação por estrelas (1–5) para todas as selecionadas, ou limpa a avaliação
@@ -497,7 +497,7 @@ Controlado por `viewer.features.show_memories` (padrão: `true`).
 
 - **Triar umas férias** — abra Cápsulas → procure a cápsula `journey` gerada automaticamente para as datas da viagem. Cada cápsula oferece uma ação Salvar como Álbum.
 - **Percorrer uma revisão dia a dia** — abra a Linha do Tempo e desça de anos para meses e depois para um calendário de dias; clique em um dia para abrir a galeria filtrada para essa data. A Linha do Tempo não tem ordenação própria, mas as contagens por dia/mês/ano e as miniaturas em destaque agora respeitam as mesmas chaves `hide_bursts` / `hide_duplicates` da galeria (padrões: ativados), então a contagem de uma célula corresponde ao que o clique nela abre.
-- **Mostrar o que está oculto** — a galeria oculta piscadas / sequências não líderes / duplicatas não líderes por padrão. Quando pelo menos um desses filtros está ativo e excluiria linhas, uma notificação flutuante "N fotos ocultas pelos filtros atuais · Mostrar tudo" aparece no canto inferior direito da grade (acima da barra de seleção quando há fotos selecionadas).
+- **Mostrar o que está oculto** — a galeria oculta piscadas / sequências não líderes / duplicatas não líderes por padrão. Quando pelo menos um desses filtros está ativo e excluiria linhas, uma notificação flutuante "N fotos ocultas pelos filtros atuais · Mostrar tudo" aparece no canto inferior direito da grade (e acima do cartão de seleção flutuante apenas quando os dois se sobreporiam).
 
 ## Visão de Linha do Tempo
 
@@ -878,10 +878,11 @@ implantada.
 
 ## Mobile
 
-Em telas pequenas, a barra de seleção em lote colapsa para a contagem da seleção,
-limpar, selecionar-tudo e um único botão **Ações** que abre uma folha inferior
+Em telas pequenas, o cartão de seleção flutuante mantém a contagem da seleção e os botões de ícone
+limpar, selecionar-tudo e inverter, mais um único botão de ícone **Ações** que abre uma folha inferior
 amigável ao toque com todas as operações em lote (favoritar, rejeitar, avaliar, álbuns, copiar,
-baixar).
+baixar). Um botão de ícone Comparar aparece quando a seleção cabe na vista de comparação, e o
+botão Fechar da folha a fecha sem executar nenhuma ação.
 
 ## Moldura Digital / Quiosque
 
