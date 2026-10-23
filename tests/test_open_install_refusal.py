@@ -81,6 +81,7 @@ EXPECTED_EDITION_ROUTES = frozenset({
     ('DELETE', '/api/albums/{album_id}/scoring_context'),
     ('DELETE', '/api/albums/{album_id}/share'),
     ('DELETE', '/api/config/weight_snapshots/{snapshot_id}'),
+    ('DELETE', '/api/photo/gps'),
     ('DELETE', '/api/photo/manual_tags'),
     ('DELETE', '/api/places/{place_id}'),
     ('GET', '/api/places'),

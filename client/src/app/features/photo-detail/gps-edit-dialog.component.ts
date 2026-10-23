@@ -20,6 +20,8 @@ export interface GpsEditDialogData {
   filename: string;
   lat: number | null;
   lng: number | null;
+  /** The photo's location was set in the viewer, so a rescan keeps it. */
+  manuallySet?: boolean;
 }
 
 export type SavedPlace = components['schemas']['SavedPlace'];
@@ -95,6 +97,9 @@ type GpsResult = components['schemas']['GpsUpdateResponse'];
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button (click)="clearLocation()" class="!mr-auto">{{ I18N.photo_detail.gps_clear | translate }}</button>
+      @if (data.manuallySet) {
+        <button mat-button (click)="useFileLocation()" [disabled]="saving() || placeBusy()">{{ I18N.photo_detail.gps.use_file_location | translate }}</button>
+      }
       <button mat-button (click)="cancel()">{{ I18N.ui.buttons.cancel | translate }}</button>
       <button mat-flat-button (click)="save()" [disabled]="saving() || placeBusy() || !coordinatesValid()">{{ I18N.ui.buttons.save | translate }}</button>
     </mat-dialog-actions>
@@ -286,6 +291,20 @@ export class GpsEditDialogComponent {
 
   cancel(): void { this.dismissed = true; this.dialogRef.close(undefined); }
 
+  async useFileLocation(): Promise<void> {
+    if (this.saving() || this.placeBusy()) return;
+    this.saving.set(true);
+    this.saveError.set('');
+    try {
+      const result = await firstValueFrom(this.api.delete<GpsResult>(`/photo/gps?path=${encodeURIComponent(this.data.path)}`));
+      this.store.patchPhoto(this.data.path, { gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude, gps_manually_set: 0 });
+      if (!this.destroyed && !this.dismissed) this.dialogRef.close({ ...result, gps_manually_set: 0 });
+    } catch {
+      this.snackBar.open(this.i18n.t(I18N.notifications.connection_error), '', { duration: 3000 });
+      if (!this.destroyed) this.saveError.set(I18N.photo_detail.gps.save_error);
+    } finally { this.saving.set(false); }
+  }
+
   async save(): Promise<void> {
     if (this.saving() || this.placeBusy() || !this.coordinatesValid()) return;
     const body = {
@@ -298,7 +317,7 @@ export class GpsEditDialogComponent {
     this.saveError.set('');
     try {
       const result = await firstValueFrom(this.api.put<GpsResult>('/photo/gps', body));
-      this.store.patchPhoto(body.path, { gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude });
+      this.store.patchPhoto(body.path, { gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude, gps_manually_set: 1 });
       if (this.store.filters().no_gps && result.gps_latitude !== null && result.gps_longitude !== null) void this.store.loadPhotos();
       if (!this.destroyed && !this.dismissed) this.dialogRef.close(result);
     } catch {

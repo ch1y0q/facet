@@ -579,6 +579,8 @@ API：参见下文的 [API 端点](#api-端点)一节。
 
 要保存“工作地点”，先在地图选点或输入纬度和经度，再选择**保存此地点**并命名。也可以打开已有 GPS 的照片，将其当前坐标保存为地点。重命名或删除地点不会移动此前已分配位置的照片。多用户安装中，每位编辑者都有私有列表，最多保存 100 个地点和 20 个不同的最近位置。只有照片位置成功保存后，才会更新最近记录。
 
+在查看器中设置的位置会被标记，此时对话框会提供“**使用文件中的位置**”：它会取消该标记并重新从图像文件读取 GPS（文件没有 GPS 时则清除），之后的重新扫描就可以再次更新它。
+
 安装后的应用直接从 OpenStreetMap 加载地图底图，绕过离线缓存。加载新的地图区域需要联网。
 
 地图不可用时，仍可使用地点列表或输入坐标。搜索在本地查找已保存名称。手动位置修改（包括清除 GPS）会在重新扫描和重新提取 EXIF 后保留；原始图像文件不会改变。
@@ -1308,6 +1310,12 @@ python database.py --stats-info
 | `GET /api/timeline/months?hide_blinks=&hide_bursts=&hide_duplicates=&hide_brackets=&hide_panoramas=` | 某一年的可用月份（`hide_*` 回退规则相同） |
 | `GET /api/photos/map?bounds=&zoom=&limit=` | 指定范围内带地理标记的照片 |
 | `GET /api/photos/map/count` | 带地理标记的照片数量 |
+| `PUT /api/photo/gps` | `[编辑]` 用 `{path, gps_latitude, gps_longitude, saved_place_id?}` 设置或清除照片的 GPS。两个坐标必须同时为 null 或为有限值（纬度 ±90，经度 ±180）；返回已保存的坐标 |
+| `DELETE /api/photo/gps?path=` | `[编辑]` 放弃手动设置的位置，并重新读取文件自身的 GPS（文件没有则为 NULL）；返回已保存的坐标 |
+| `GET /api/places` | `[编辑]` 当前编辑者已保存的地点以及最近分配的 20 个点 |
+| `POST /api/places` | `[编辑]` 将 `{name, latitude, longitude}` 保存为私有的命名图钉（最多 100 个地点；名称 1–120 个字符） |
+| `PUT /api/places/{id}` | `[编辑]` 更新自己的命名图钉；已有照片保留各自的坐标 |
+| `DELETE /api/places/{id}` | `[编辑]` 删除自己的图钉；已有照片保留各自的坐标 |
 
 ### 照片胶囊
 

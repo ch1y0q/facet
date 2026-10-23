@@ -171,6 +171,8 @@ Exporte erfolgen inkrementell: Wenn `photo_scores_viewer.db` bereits existiert, 
 python database.py --export-viewer-db --force-export
 ```
 
+Eine erzwungene vollständige Neuerstellung verwirft im Viewer auf dem NAS gesetzte Standorte, ebenso wie Viewer-Bewertungen; nur ein inkrementeller Export behält sie.
+
 Die Funktion „Ähnliche finden“ funktioniert auf der exportierten Datenbank nicht (CLIP-Embeddings sind entfernt). Verwenden Sie dafür die Bewertungsmaschine.
 
 **Manuelle Tags und der Export.** Der Export enthält auch die Tabelle der [manuellen Tags](VIEWER.md#manuelle-tags) (`photo_manual_tags`), und ein inkrementeller Export führt sie zusammen, indem er die Zeilen der Scoring-Datenbank hinzufügt, nie indem er die Kopie der Web-Galerie ersetzt. So bleiben auf dem NAS eingegebene Tags erhalten, mit vier Einschränkungen:

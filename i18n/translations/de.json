@@ -2361,7 +2361,8 @@
       "updating": "Orte werden aktualisiert…",
       "load_error": "Orte konnten nicht geladen werden.",
       "place_error": "Ort konnte nicht aktualisiert werden. Prüfen Sie Name, Limit und Verbindung.",
-      "save_error": "Fotoort konnte nicht gespeichert werden. Bitte erneut versuchen."
+      "save_error": "Fotoort konnte nicht gespeichert werden. Bitte erneut versuchen.",
+      "use_file_location": "Standort aus der Datei verwenden"
     }
   },
   "manual_tags": {

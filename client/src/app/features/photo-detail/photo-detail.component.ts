@@ -1218,11 +1218,12 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
           filename: p.filename,
           lat: p.gps_latitude ?? null,
           lng: p.gps_longitude ?? null,
+          manuallySet: p.gps_manually_set === 1,
         },
       });
-      ref.afterClosed().subscribe((result: { gps_latitude: number | null; gps_longitude: number | null } | undefined) => {
+      ref.afterClosed().subscribe((result: { gps_latitude: number | null; gps_longitude: number | null; gps_manually_set?: number } | undefined) => {
         if (result !== undefined && !this.destroyRef.destroyed && this.photo()?.path === p.path) {
-          this.photo.update(current => current?.path === p.path ? { ...current, gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude } : current);
+          this.photo.update(current => current?.path === p.path ? { ...current, gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude, gps_manually_set: result.gps_manually_set ?? 1 } : current);
           this.locationName.set('');
         }
       });

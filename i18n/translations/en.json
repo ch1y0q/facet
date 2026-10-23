@@ -2361,7 +2361,8 @@
       "updating": "Updating places…",
       "load_error": "Could not load places.",
       "place_error": "Could not update place. Check the name, limit and connection.",
-      "save_error": "Could not save the photo location. Please try again."
+      "save_error": "Could not save the photo location. Please try again.",
+      "use_file_location": "Use the file's location"
     }
   },
   "manual_tags": {

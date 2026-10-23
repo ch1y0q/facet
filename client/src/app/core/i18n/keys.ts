@@ -2376,6 +2376,7 @@ export const I18N = {
       load_error: "photo_detail.gps.load_error",
       place_error: "photo_detail.gps.place_error",
       save_error: "photo_detail.gps.save_error",
+      use_file_location: "photo_detail.gps.use_file_location",
     },
   },
   manual_tags: {

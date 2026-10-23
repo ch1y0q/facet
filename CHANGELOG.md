@@ -8,7 +8,7 @@ All notable changes to Facet are documented in this file.
 
 - **Find photos without GPS.** The Location filters now include “No geolocation”; assigning a location removes the photo from those results.
 
-- **Reuse saved places when adding GPS.** Save a named pin once, search for it in another photo’s location dialog, or reuse a recent point. Saved lists are private to each editor, and manual GPS edits and clears survive rescans.
+- **Reuse saved places when adding GPS.** Save a named pin once, search for it in another photo’s location dialog, or reuse a recent point. Saved lists are private to each editor, and manual GPS edits and clears survive rescans, and **Use the file’s location** in the dialog undoes a manual location by re-reading the GPS from the image file.
 
 ### Fixed
 

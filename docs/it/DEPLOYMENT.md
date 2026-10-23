@@ -170,6 +170,8 @@ Le esportazioni sono incrementali: se `photo_scores_viewer.db` esiste già, veng
 python database.py --export-viewer-db --force-export
 ```
 
+Una ricostruzione completa forzata scarta le posizioni impostate nel visualizzatore sul NAS, come le valutazioni del visualizzatore; solo un’esportazione incrementale le conserva.
+
 La funzione "Trova simili" non funzionerà sul database esportato (gli embedding CLIP vengono rimossi). Per questo, usa la macchina di scoring.
 
 **Tag manuali ed esportazione.** L'esportazione include anche la tabella dei [tag manuali](VIEWER.md#tag-manuali) (`photo_manual_tags`), e un'esportazione incrementale la unisce aggiungendo le righe del database di scoring, mai sostituendo la copia della galleria web. I tag digitati sul NAS vengono così conservati, ma con quattro limiti:

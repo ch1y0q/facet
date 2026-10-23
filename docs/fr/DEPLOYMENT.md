@@ -170,6 +170,8 @@ Les exports sont incrémentaux : si `photo_scores_viewer.db` existe déjà, seu
 python database.py --export-viewer-db --force-export
 ```
 
+Une reconstruction complète forcée supprime les positions définies dans la visionneuse sur le NAS, tout comme les notes de la visionneuse ; seul un export incrémental les conserve.
+
 La fonctionnalité « Photos similaires » ne fonctionnera pas sur la base de données exportée (les embeddings CLIP sont supprimés). Utilisez la machine de scoring pour cela.
 
 **Tags manuels et export.** L'export embarque aussi la table des [tags manuels](VIEWER.md#tags-manuels) (`photo_manual_tags`), et un export incrémental la fusionne en ajoutant les lignes de la base de scoring, sans jamais remplacer la copie de la visionneuse. Les tags saisis sur le NAS sont ainsi conservés, mais avec quatre limites :

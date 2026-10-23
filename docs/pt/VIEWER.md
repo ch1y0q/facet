@@ -520,6 +520,8 @@ Abra **Adicionar localização** ou **Editar localização** em uma foto no modo
 
 Para salvar «Trabalho» uma vez, escolha um ponto no mapa ou digite latitude e longitude e use **Salvar este lugar** com um nome. Você também pode salvar o ponto de uma foto já geolocalizada. Renomear ou excluir um lugar não move fotos já atribuídas. Em instalações multiusuário, cada editor tem sua lista privada: até 100 lugares e 20 pontos recentes distintos. Apenas uma atribuição salva com sucesso atualiza os recentes.
 
+Uma localização definida no visualizador fica marcada, e a caixa de diálogo oferece então **Usar a localização do arquivo**: ela remove a marca e relê o GPS do arquivo de imagem (ou o apaga se o arquivo não tiver nenhum), de modo que novas varreduras possam voltar a atualizá-la.
+
 O aplicativo instalado carrega os fundos do mapa diretamente do OpenStreetMap, fora do cache offline. Novas áreas do mapa precisam de conexão com a internet.
 
 A lista e a entrada de coordenadas continuam funcionando se o mapa estiver indisponível. A pesquisa usa nomes salvos localmente. Edições manuais, inclusive limpar o GPS, permanecem após novas análises e extração EXIF. Os arquivos originais não são alterados.
@@ -1249,6 +1251,12 @@ Os tipos TypeScript do cliente são gerados a partir desse esquema em `client/sr
 | `GET /api/timeline/months?hide_blinks=&hide_bursts=&hide_duplicates=&hide_brackets=&hide_panoramas=` | Meses disponíveis para um ano (mesmo fallback `hide_*`) |
 | `GET /api/photos/map?bounds=&zoom=&limit=` | Fotos geolocalizadas dentro dos limites |
 | `GET /api/photos/map/count` | Contagem de fotos geolocalizadas |
+| `PUT /api/photo/gps` | `[Edição]` Define ou apaga o GPS de uma foto com `{path, gps_latitude, gps_longitude, saved_place_id?}`. As duas coordenadas devem ser nulas ou valores finitos (latitude ±90, longitude ±180); retorna as coordenadas salvas |
+| `DELETE /api/photo/gps?path=` | `[Edição]` Descarta uma localização definida manualmente e relê o GPS do próprio arquivo (NULL se não tiver); retorna as coordenadas salvas |
+| `GET /api/places` | `[Edição]` Locais salvos do editor atual e os 20 últimos pontos atribuídos |
+| `POST /api/places` | `[Edição]` Salva `{name, latitude, longitude}` como um alfinete privado com nome (até 100 locais; nome de 1 a 120 caracteres) |
+| `PUT /api/places/{id}` | `[Edição]` Atualiza um alfinete com nome próprio; as fotos existentes mantêm suas coordenadas |
+| `DELETE /api/places/{id}` | `[Edição]` Exclui um alfinete próprio; as fotos existentes mantêm suas coordenadas |
 
 ### Cápsulas
 

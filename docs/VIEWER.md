@@ -589,6 +589,8 @@ Open a photo’s **Add location** or **Edit location** dialog in edition mode. S
 
 To save “Work” once, choose a pin on the map or enter its latitude and longitude, then use **Save this place** and give it a name. You can also open an already geotagged photo and bookmark its current point. Rename or delete saved places from the list; changing a bookmark does not move photos previously assigned there. Each editor has a private list on multi-user installs. There are at most 100 saved places per editor and 20 recent unique points; recent points are recorded only after a successful photo save.
 
+A location set in the viewer is flagged, and the dialog then offers **Use the file's location**: it drops the flag and re-reads the GPS from the image file (or clears it when the file has none), so later rescans may update it again.
+
 The installed app loads map backgrounds directly from OpenStreetMap, outside its offline cache. New map areas need an internet connection.
 
 Saved places and coordinate entry remain usable when the map is unavailable. The search uses saved names locally. Coordinates are stored in Facet’s database, and manual edits—including clearing GPS—survive rescans and EXIF re-extraction. The original image files are unchanged.
@@ -1321,6 +1323,7 @@ The client's TypeScript types are generated from that schema into `client/src/ap
 | `GET /api/photos/map?bounds=&zoom=&limit=` | Geotagged photos within bounds |
 | `GET /api/photos/map/count` | Count of geotagged photos |
 | `PUT /api/photo/gps` | `[Edition]` Set or clear photo GPS with `{path, gps_latitude, gps_longitude, saved_place_id?}`. Coordinates must both be null or finite values within latitude ±90 and longitude ±180; returns the saved coordinates |
+| `DELETE /api/photo/gps?path=` | `[Edition]` Drop a hand-set location and re-read the file's own GPS (NULL when the file has none); returns the stored coordinates |
 | `GET /api/places` | `[Edition]` Current editor’s saved places and 20 recent assigned points |
 | `POST /api/places` | `[Edition]` Save `{name, latitude, longitude}` as a private named pin (up to 100 places; name 1–120 characters) |
 | `PUT /api/places/{id}` | `[Edition]` Update an owned named pin; existing photos keep their coordinates |

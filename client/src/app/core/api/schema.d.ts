@@ -2738,7 +2738,11 @@ export interface paths {
          */
         put: operations["api_update_gps_api_photo_gps_put"];
         post?: never;
-        delete?: never;
+        /**
+         * Api Reset Gps
+         * @description Drop a photo's hand-set location and re-read the file's own GPS (edition mode required).
+         */
+        delete: operations["api_reset_gps_api_photo_gps_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -6284,6 +6288,8 @@ export interface components {
             gps_latitude?: number | null;
             /** Gps Longitude */
             gps_longitude?: number | null;
+            /** Gps Manually Set */
+            gps_manually_set?: number | null;
             /** Highlight Clipped */
             highlight_clipped?: number | null;
             /** Histogram Spread */
@@ -11581,6 +11587,37 @@ export interface operations {
                 "application/json": components["schemas"]["GpsUpdateRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GpsUpdateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    api_reset_gps_api_photo_gps_delete: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

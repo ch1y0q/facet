@@ -2361,7 +2361,8 @@
       "updating": "A atualizar locais…",
       "load_error": "Não foi possível carregar os locais.",
       "place_error": "Não foi possível atualizar o local. Verifique o nome, o limite e a ligação.",
-      "save_error": "Não foi possível guardar o local da foto. Tente novamente."
+      "save_error": "Não foi possível guardar o local da foto. Tente novamente.",
+      "use_file_location": "Usar a localização do arquivo"
     }
   },
   "manual_tags": {

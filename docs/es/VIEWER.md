@@ -520,6 +520,8 @@ Abre **Añadir ubicación** o **Editar ubicación** desde una foto en modo edici
 
 Para guardar «Trabajo» una vez, selecciona un punto del mapa o introduce latitud y longitud y usa **Guardar este lugar** con un nombre. También puedes guardar la posición de una foto ya geolocalizada. Renombrar o eliminar un lugar no mueve fotos asignadas anteriormente. Cada editor tiene su lista privada en instalaciones multiusuario, con un máximo de 100 lugares y 20 puntos recientes distintos. Solo una asignación guardada correctamente añade un punto reciente.
 
+Una ubicación establecida en el visor queda marcada, y el diálogo ofrece entonces **Usar la ubicación del archivo**: quita la marca y vuelve a leer el GPS del archivo de imagen (o lo borra si el archivo no tiene ninguno), de modo que los reescaneos posteriores pueden volver a actualizarla.
+
 La aplicación instalada carga los fondos del mapa directamente desde OpenStreetMap, fuera de su caché sin conexión. Las nuevas zonas del mapa necesitan conexión a internet.
 
 La lista y la entrada de coordenadas siguen disponibles si falla el mapa. La búsqueda usa nombres guardados localmente. Las correcciones manuales, incluido borrar el GPS, sobreviven a nuevos análisis y a la extracción EXIF. Los archivos originales no se modifican.
@@ -1248,6 +1250,12 @@ Los tipos TypeScript del cliente se generan a partir de ese esquema en `client/s
 | `GET /api/timeline/months?hide_blinks=&hide_bursts=&hide_duplicates=&hide_brackets=&hide_panoramas=` | Meses disponibles para un año (mismo respaldo `hide_*`) |
 | `GET /api/photos/map?bounds=&zoom=&limit=` | Fotos geoetiquetadas dentro de los límites |
 | `GET /api/photos/map/count` | Recuento de fotos geoetiquetadas |
+| `PUT /api/photo/gps` | `[Edición]` Establece o borra el GPS de una foto con `{path, gps_latitude, gps_longitude, saved_place_id?}`. Ambas coordenadas deben ser nulas o valores finitos (latitud ±90, longitud ±180); devuelve las coordenadas guardadas |
+| `DELETE /api/photo/gps?path=` | `[Edición]` Descarta una ubicación establecida a mano y vuelve a leer el GPS del propio archivo (NULL si no tiene); devuelve las coordenadas guardadas |
+| `GET /api/places` | `[Edición]` Lugares guardados del editor actual y los 20 últimos puntos asignados |
+| `POST /api/places` | `[Edición]` Guarda `{name, latitude, longitude}` como chincheta privada con nombre (hasta 100 lugares; nombre de 1 a 120 caracteres) |
+| `PUT /api/places/{id}` | `[Edición]` Actualiza una chincheta con nombre propia; las fotos existentes conservan sus coordenadas |
+| `DELETE /api/places/{id}` | `[Edición]` Elimina una chincheta propia; las fotos existentes conservan sus coordenadas |
 
 ### Cápsulas
 

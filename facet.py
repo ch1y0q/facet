@@ -3492,6 +3492,7 @@ def main():
                 print("Error: GPS columns not found. Run 'python database.py' to migrate the schema first.")
                 sys.exit(1)
 
+            # Not a covering-index read on purpose: the per-photo exiftool call below dwarfs the overflow-page cost.
             if args.rescan_gps:
                 rows = conn.execute("SELECT path FROM photos WHERE gps_manually_set = 0").fetchall()
             else:

@@ -144,8 +144,8 @@ Questi comandi aggiornano metriche specifiche, derivano nuovi dati (didascalie A
 | `python facet.py --sweep-dedup-thresholds [labels.json]` | Valuta le soglie di coseno per i quasi-duplicati (tabella precisione/richiamo con le etichette, altrimenti distribuzione coseno dei candidati) |
 | `python facet.py --generate-captions` | `[GPU]` `[16gb/24gb]` Genera didascalie AI per le foto usando un VLM. Quando `narrative_moments.caption_min_confidence > 0`, salta le foto non etichettate / `other` / sotto la soglia (lo stesso filtro si applica all'endpoint di didascalia su richiesta) |
 | `python facet.py --translate-captions` | Traduce le didascalie inglesi nella lingua di destinazione configurata (CPU, MarianMT) |
-| `python facet.py --extract-gps` | Estrae le coordinate GPS dai dati EXIF nelle colonne del database |
-| `python facet.py --rescan-gps` | Riestrae le coordinate GPS dall'EXIF per tutte le foto (sovrascrive quelle esistenti) |
+| `python facet.py --extract-gps` | Estrae le coordinate GPS dai dati EXIF nelle colonne del database. Le foto la cui posizione è stata impostata nel visualizzatore vengono saltate. |
+| `python facet.py --rescan-gps` | Riestrae le coordinate GPS dall'EXIF per tutte le foto (sovrascrive quelle esistenti). Le foto la cui posizione è stata impostata nel visualizzatore vengono saltate. |
 | `python facet.py --recompute-embeddings` | Ricalcola gli embedding CLIP/SigLIP per tutte le foto (necessario dopo il cambio di modello) |
 | `python facet.py --score-topiq` | Ricalcola `topiq_score` con TOPIQ per ogni foto che ha una miniatura memorizzata (richiede GPU). Non c'è alcun filtro su NULL, quindi i valori esistenti vengono sovrascritti; una foto che TOPIQ non riesce a valutare mantiene il valore memorizzato |
 | `python facet.py --backfill-focal-35mm` | Riempie la lunghezza focale equivalente a 35mm dall'EXIF per le foto che ne sono prive |

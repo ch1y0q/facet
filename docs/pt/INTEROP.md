@@ -4,6 +4,8 @@
 
 Receitas práticas, passo a passo, para fazer as classificações, os rótulos e as tags do Facet irem e voltarem entre os editores externos e as ferramentas de gerenciamento de fotos (DAM) que os fotógrafos realmente usam. Esta página assume que você já sabe *que* o Facet grava XMP — veja [Comandos — Preview & Export](COMMANDS.md#preview--export) para a referência completa das opções `--export-sidecars` / `--import-sidecars` e o mapeamento de campos (`xmp:Rating`, `xmp:Label`, `dc:subject`).
 
+Uma localização definida no visualizador permanece no banco de dados do Facet: não é gravada nos sidecars XMP nem nos arquivos de imagem.
+
 ## A armadilha do nome dos sidecars RAW
 
 O Facet nomeia um sidecar como `<imagem><ext>.xmp` — por exemplo, `IMG_1234.CR2.xmp` ao lado de `IMG_1234.CR2` — a mesma convenção usada pelo darktable e pelo digiKam. **O Lightroom Classic e o Capture One esperam o oposto: `IMG_1234.xmp`, sem a extensão RAW.** Nenhum dos dois vai descobrir um sidecar gravado pelo Facet para um arquivo RAW proprietário (CR2, CR3, NEF, ARW, RAF, RW2, ORF, SRW, PEF — tudo exceto DNG), e o `--import-sidecars` do Facet tampouco vai encontrar um sidecar que um aplicativo do ecossistema Adobe gravou para o mesmo RAW. É uma incompatibilidade de convenções de nome entre ecossistemas, não um defeito de nenhum dos lados.

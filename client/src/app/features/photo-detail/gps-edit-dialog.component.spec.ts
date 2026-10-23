@@ -97,7 +97,7 @@ describe('GpsEditDialogComponent', () => {
     await saving;
     expect(mockApi.put).toHaveBeenCalledTimes(1);
     expect(mockApi.put).toHaveBeenCalledWith('/photo/gps', { path: '/photo.jpg', gps_latitude: 1, gps_longitude: 2 });
-    expect(mockStore.patchPhoto).toHaveBeenCalledWith('/photo.jpg', { gps_latitude: 3, gps_longitude: 4 });
+    expect(mockStore.patchPhoto).toHaveBeenCalledWith('/photo.jpg', { gps_latitude: 3, gps_longitude: 4, gps_manually_set: 1 });
     expect(mockDialogRef.close).not.toHaveBeenCalled();
   });
 
@@ -111,7 +111,7 @@ describe('GpsEditDialogComponent', () => {
     pending.complete();
     await saving;
     expect(mockDialogRef.close).toHaveBeenCalledExactlyOnceWith(undefined);
-    expect(mockStore.patchPhoto).toHaveBeenCalledWith('/photo.jpg', { gps_latitude: 3, gps_longitude: 4 });
+    expect(mockStore.patchPhoto).toHaveBeenCalledWith('/photo.jpg', { gps_latitude: 3, gps_longitude: 4, gps_manually_set: 1 });
   });
 
   it('rejects incomplete, nonfinite and out of range points but accepts zero', () => {
@@ -266,7 +266,7 @@ describe('GpsEditDialogComponent', () => {
       component.clearLocation();
       mockApi.put.mockReturnValue(of({ gps_latitude: null, gps_longitude: null }));
       await component.save();
-      expect(mockStore.patchPhoto).toHaveBeenCalledWith('/photo.jpg', { gps_latitude: null, gps_longitude: null });
+      expect(mockStore.patchPhoto).toHaveBeenCalledWith('/photo.jpg', { gps_latitude: null, gps_longitude: null, gps_manually_set: 1 });
     });
 
     it('should show snackbar on error', async () => {
@@ -289,6 +289,41 @@ describe('GpsEditDialogComponent', () => {
 
       await promise;
       expect(component.saving()).toBe(false);
+    });
+  });
+
+  describe('use the file\'s location', () => {
+    const KEY = 'photo_detail.gps.use_file_location';
+    const findButton = () => Array.from(fixture.nativeElement.querySelectorAll('mat-dialog-actions button') as NodeListOf<HTMLButtonElement>)
+      .find(b => b.textContent?.trim() === KEY);
+
+    it('is hidden when the location was not set in the viewer', () => {
+      createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 1, lng: 2 }, true);
+      expect(findButton()).toBeUndefined();
+      createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 1, lng: 2, manuallySet: false }, true);
+      expect(findButton()).toBeUndefined();
+    });
+
+    it('is shown when flagged and calls DELETE /photo/gps, then closes like a save', async () => {
+      createComponent({ path: '/a b.jpg', filename: 'a b.jpg', lat: 1, lng: 2, manuallySet: true }, true);
+      const result = { gps_latitude: 48.5, gps_longitude: 2.25 };
+      mockApi.delete.mockReturnValue(of(result));
+      const button = findButton();
+      expect(button).toBeDefined();
+      button!.click();
+      await fixture.whenStable();
+      expect(mockApi.delete).toHaveBeenCalledWith('/photo/gps?path=' + encodeURIComponent('/a b.jpg'));
+      expect(mockStore.patchPhoto).toHaveBeenCalledWith('/a b.jpg', { gps_latitude: 48.5, gps_longitude: 2.25, gps_manually_set: 0 });
+      expect(mockDialogRef.close).toHaveBeenCalledWith({ ...result, gps_manually_set: 0 });
+    });
+
+    it('keeps the dialog open and reports the failure', async () => {
+      createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 1, lng: 2, manuallySet: true });
+      mockApi.delete.mockReturnValue(throwError(() => new Error('boom')));
+      await component.useFileLocation();
+      expect(mockDialogRef.close).not.toHaveBeenCalled();
+      expect(mockStore.patchPhoto).not.toHaveBeenCalled();
+      expect(component.saveError()).toBe('photo_detail.gps.save_error');
     });
   });
 });

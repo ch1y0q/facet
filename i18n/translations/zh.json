@@ -2361,7 +2361,8 @@
       "updating": "正在更新地点…",
       "load_error": "无法加载地点。",
       "place_error": "无法更新地点。请检查名称、数量限制和网络连接。",
-      "save_error": "无法保存照片位置。请重试。"
+      "save_error": "无法保存照片位置。请重试。",
+      "use_file_location": "使用文件中的位置"
     }
   },
   "manual_tags": {

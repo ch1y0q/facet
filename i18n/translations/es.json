@@ -2361,7 +2361,8 @@
       "updating": "Actualizando lugares…",
       "load_error": "No se pudieron cargar los lugares.",
       "place_error": "No se pudo actualizar el lugar. Comprueba el nombre, el límite y la conexión.",
-      "save_error": "No se pudo guardar la ubicación de la foto. Inténtalo de nuevo."
+      "save_error": "No se pudo guardar la ubicación de la foto. Inténtalo de nuevo.",
+      "use_file_location": "Usar la ubicación del archivo"
     }
   },
   "manual_tags": {

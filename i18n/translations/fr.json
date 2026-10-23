@@ -2361,7 +2361,8 @@
       "updating": "Mise à jour des lieux…",
       "load_error": "Impossible de charger les lieux.",
       "place_error": "Impossible de modifier le lieu. Vérifiez le nom, la limite et la connexion.",
-      "save_error": "Impossible d’enregistrer le lieu de la photo. Réessayez."
+      "save_error": "Impossible d’enregistrer le lieu de la photo. Réessayez.",
+      "use_file_location": "Utiliser le lieu du fichier"
     }
   },
   "manual_tags": {

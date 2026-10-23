@@ -141,8 +141,8 @@ API 会将其呈现在 `/api/scan/status` 的 `progress` 字段以及 SSE 数据
 | `python facet.py --sweep-dedup-thresholds [labels.json]` | 评估近似重复的余弦阈值（有标注时给出精确率／召回率表格，否则给出候选余弦分布） |
 | `python facet.py --generate-captions` | `[GPU]` `[16gb/24gb]` 使用 VLM 为照片生成 AI 照片描述。当 `narrative_moments.caption_min_confidence > 0` 时，会跳过未标注／标为 `other` ／低于阈值的照片（按需生成描述的接口同样适用该门槛） |
 | `python facet.py --translate-captions` | 把英文照片描述翻译成所配置的目标语言（CPU，MarianMT） |
-| `python facet.py --extract-gps` | 从 EXIF 数据中提取 GPS 坐标写入数据库列 |
-| `python facet.py --rescan-gps` | 为全部照片重新从 EXIF 提取 GPS 坐标（覆盖已有值） |
+| `python facet.py --extract-gps` | 从 EXIF 数据中提取 GPS 坐标写入数据库列（在查看器中设置过位置的照片会被跳过。） |
+| `python facet.py --rescan-gps` | 为全部照片重新从 EXIF 提取 GPS 坐标（覆盖已有值）（在查看器中设置过位置的照片会被跳过。） |
 | `python facet.py --recompute-embeddings` | 为全部照片重新计算 CLIP/SigLIP 特征向量（更换模型后必须执行） |
 | `python facet.py --score-topiq` | 对每张带有已存储缩略图的照片，用 TOPIQ 重新计算 `topiq_score`（需要 GPU）。没有 NULL 过滤，因此会覆盖现有值；TOPIQ 无法评分的照片保留其已存储的值 |
 | `python facet.py --backfill-focal-35mm` | 为缺少等效 35mm 焦距的照片从 EXIF 回填该值 |
