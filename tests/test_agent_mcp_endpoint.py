@@ -222,6 +222,18 @@ class TestReadTools:
             "filters": {"path_prefix": AGENT_DIR + "few/"}, "per_page": 50})
         assert result["truncated"] is True and len(result["data"]["rows"]) == 5
 
+    def test_search_filters_photos_without_gps(self, agent_app, seed_photos_prefix):
+        env = agent_app("open")
+        seed_photos_prefix(AGENT_DIR + "gps/", [
+            {"path": AGENT_DIR + "gps/geo.jpg", "filename": "geo.jpg",
+             "gps_latitude": 48.85, "gps_longitude": 2.35},
+            {"path": AGENT_DIR + "gps/none.jpg", "filename": "none.jpg"}])
+        token = env.token(env.login())
+        result = env.call(token, "search_photos", {
+            "filters": {"no_gps": True, "path_prefix": AGENT_DIR + "gps/"}, "show": False})
+        assert result["ok"] is True, result
+        assert [r["filename"] for r in result["data"]["rows"]] == ["none.jpg"]
+
     def test_injection_text_round_trips_as_data(self, agent_app, photos):
         env = agent_app("open")
         token = env.token(env.login())

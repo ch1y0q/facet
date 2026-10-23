@@ -596,6 +596,20 @@ API: see the [API Endpoints](#api-endpoints) section below.
 
 Access via the `/map` route. Controlled by `viewer.features.show_map` (default: `true`).
 
+### Saved places and manual GPS
+
+In the gallery filters, open **Location** and enable **No geolocation** to find photos missing a GPS coordinate. Add a location to a photo and it leaves these results. This filter clears any map-radius selection. The filter can be saved in a smart album. Starting a semantic/similar search or selecting a map radius turns it off.
+
+Open a photo’s **Add location** or **Edit location** dialog in edition mode. Search **Saved places** by name, or choose a point from **Recent locations**. Selecting a point previews it on the map; **Save** applies it to the photo. Cancel leaves the photo unchanged.
+
+To save “Work” once, choose a pin on the map or enter its latitude and longitude, then use **Save this place** and give it a name. You can also open an already geotagged photo and bookmark its current point. Rename or delete saved places from the list; changing a bookmark does not move photos previously assigned there. Each editor has a private list on multi-user installs. There are at most 100 saved places per editor and 20 recent unique points; recent points are recorded only after a successful photo save.
+
+A location set in the viewer is flagged, and the dialog then offers **Use the file's location**: it drops the flag and re-reads the GPS from the image file (or clears it when the file has none), so later rescans may update it again.
+
+The installed app loads map backgrounds directly from OpenStreetMap, outside its offline cache. New map areas need an internet connection.
+
+Saved places and coordinate entry remain usable when the map is unavailable. The search uses saved names locally. Coordinates are stored in Facet’s database, and manual edits—including clearing GPS—survive rescans and EXIF re-extraction. The original image files are unchanged.
+
 ## Capsules
 
 Curated photo diaporamas (slideshows) grouped by theme, place, people, and time — click a capsule to play it. Access via the `/capsules` route.
@@ -1344,6 +1358,12 @@ The client's TypeScript types are generated from that schema into `client/src/ap
 | `GET /api/timeline/months?hide_blinks=&hide_bursts=&hide_duplicates=&hide_brackets=&hide_panoramas=` | Available months for a year (same `hide_*` fallback) |
 | `GET /api/photos/map?bounds=&zoom=&limit=` | Geotagged photos within bounds |
 | `GET /api/photos/map/count` | Count of geotagged photos |
+| `PUT /api/photo/gps` | `[Edition]` Set or clear photo GPS with `{path, gps_latitude, gps_longitude, saved_place_id?}`. Coordinates must both be null or finite values within latitude ±90 and longitude ±180; returns the saved coordinates |
+| `DELETE /api/photo/gps?path=` | `[Edition]` Drop a hand-set location and re-read the file's own GPS (NULL when the file has none); returns the stored coordinates |
+| `GET /api/places` | `[Edition]` Current editor’s saved places and 20 recent assigned points |
+| `POST /api/places` | `[Edition]` Save `{name, latitude, longitude}` as a private named pin (up to 100 places; name 1–120 characters) |
+| `PUT /api/places/{id}` | `[Edition]` Update an owned named pin; existing photos keep their coordinates |
+| `DELETE /api/places/{id}` | `[Edition]` Delete an owned pin; existing photos keep their coordinates |
 
 ### Capsules
 

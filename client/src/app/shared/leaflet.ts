@@ -23,7 +23,9 @@ export function createLeafletMap(
   onTileError?: () => void,
 ): L.Map {
   const map = L.map(container, options);
-  const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  // Let the browser load OSM tiles directly: the app service worker can fail
+  // these cross-origin image requests even when the tile server is reachable.
+  const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png?ngsw-bypass=1', {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     maxZoom: 19,
   });

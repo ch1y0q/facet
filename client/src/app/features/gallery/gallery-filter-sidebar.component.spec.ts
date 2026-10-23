@@ -409,6 +409,14 @@ describe('GalleryFilterSidebarComponent', () => {
       thumb = fixture.nativeElement.querySelector('mat-slider input');
     });
 
+    it('offers no geolocation without the map feature and forwards the checkbox', () => {
+      const labels = Array.from(fixture.nativeElement.querySelectorAll('mat-checkbox')) as HTMLElement[];
+      const control = labels.find(el => el.textContent?.includes('gallery.no_geolocation'))!;
+      expect(control).toBeTruthy();
+      (control.querySelector('input') as HTMLInputElement).click();
+      expect(mockStore['updateFilter']).toHaveBeenCalledWith('no_gps', '1');
+    });
+
     it('renders the thumb seeded from the config default, announced with its unit', () => {
       expect(thumb).toBeTruthy();
       expect(thumb.value).toBe('5');

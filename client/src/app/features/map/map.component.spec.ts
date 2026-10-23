@@ -99,6 +99,11 @@ describe('MapComponent', () => {
       component.initMap();
 
       expect(L.map).toHaveBeenCalled();
+      expect(L.tileLayer).toHaveBeenCalledWith('https://tile.openstreetmap.org/{z}/{x}/{y}.png?ngsw-bypass=1', expect.objectContaining({ attribution: expect.stringContaining('OpenStreetMap') }));
+      const [tileTemplate] = (L.tileLayer as Mock).mock.calls[0] as [string];
+      const tileUrl = new URL(tileTemplate.replace('{z}/{x}/{y}', '5/17/11'));
+      expect(tileUrl.searchParams.get('ngsw-bypass')).toBe('1');
+      expect(tileUrl.origin).toBe('https://tile.openstreetmap.org');
       expect(mockMap.setView).toHaveBeenCalledWith([48.8566, 2.3522], 5);
       expect(mockMap.on).toHaveBeenCalledWith('moveend', expect.any(Function));
     });

@@ -527,6 +527,20 @@ API: consulta la sección [Endpoints de la API](#endpoints-de-la-api) más abajo
 
 Accede mediante la ruta `/map`. Controlado por `viewer.features.show_map` (predeterminado: `true`).
 
+### Lugares guardados y GPS manual
+
+En los filtros de la galería, abre **Ubicación** y activa **Sin geolocalización** para encontrar fotos a las que les falta una coordenada GPS. Al añadir una ubicación, la foto sale de estos resultados. Este filtro desactiva la selección de radio del mapa. El filtro se puede guardar en un álbum inteligente. Se desactiva al iniciar una búsqueda semántica o de fotos similares, o al seleccionar un radio en el mapa.
+
+Abre **Añadir ubicación** o **Editar ubicación** desde una foto en modo edición. Busca un nombre en **Lugares guardados** o elige un punto de **Ubicaciones recientes**. La selección muestra una vista previa; **Guardar** la aplica a la foto. Cancelar deja la foto intacta.
+
+Para guardar «Trabajo» una vez, selecciona un punto del mapa o introduce latitud y longitud y usa **Guardar este lugar** con un nombre. También puedes guardar la posición de una foto ya geolocalizada. Renombrar o eliminar un lugar no mueve fotos asignadas anteriormente. Cada editor tiene su lista privada en instalaciones multiusuario, con un máximo de 100 lugares y 20 puntos recientes distintos. Solo una asignación guardada correctamente añade un punto reciente.
+
+Una ubicación establecida en el visor queda marcada, y el diálogo ofrece entonces **Usar la ubicación del archivo**: quita la marca y vuelve a leer el GPS del archivo de imagen (o lo borra si el archivo no tiene ninguno), de modo que los reescaneos posteriores pueden volver a actualizarla.
+
+La aplicación instalada carga los fondos del mapa directamente desde OpenStreetMap, fuera de su caché sin conexión. Las nuevas zonas del mapa necesitan conexión a internet.
+
+La lista y la entrada de coordenadas siguen disponibles si falla el mapa. La búsqueda usa nombres guardados localmente. Las correcciones manuales, incluido borrar el GPS, sobreviven a nuevos análisis y a la extracción EXIF. Los archivos originales no se modifican.
+
 ## Cápsulas
 
 Diaporamas (pases de diapositivas) de fotos seleccionadas agrupadas por tema, lugar, personas y tiempo: haz clic en una cápsula para reproducirla. Accede mediante la ruta `/capsules`.
@@ -1272,6 +1286,12 @@ Los tipos TypeScript del cliente se generan a partir de ese esquema en `client/s
 | `GET /api/timeline/months?hide_blinks=&hide_bursts=&hide_duplicates=&hide_brackets=&hide_panoramas=` | Meses disponibles para un año (mismo respaldo `hide_*`) |
 | `GET /api/photos/map?bounds=&zoom=&limit=` | Fotos geoetiquetadas dentro de los límites |
 | `GET /api/photos/map/count` | Recuento de fotos geoetiquetadas |
+| `PUT /api/photo/gps` | `[Edición]` Establece o borra el GPS de una foto con `{path, gps_latitude, gps_longitude, saved_place_id?}`. Ambas coordenadas deben ser nulas o valores finitos (latitud ±90, longitud ±180); devuelve las coordenadas guardadas |
+| `DELETE /api/photo/gps?path=` | `[Edición]` Descarta una ubicación establecida a mano y vuelve a leer el GPS del propio archivo (NULL si no tiene); devuelve las coordenadas guardadas |
+| `GET /api/places` | `[Edición]` Lugares guardados del editor actual y los 20 últimos puntos asignados |
+| `POST /api/places` | `[Edición]` Guarda `{name, latitude, longitude}` como chincheta privada con nombre (hasta 100 lugares; nombre de 1 a 120 caracteres) |
+| `PUT /api/places/{id}` | `[Edición]` Actualiza una chincheta con nombre propia; las fotos existentes conservan sus coordenadas |
+| `DELETE /api/places/{id}` | `[Edición]` Elimina una chincheta propia; las fotos existentes conservan sus coordenadas |
 
 ### Cápsulas
 

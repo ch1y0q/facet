@@ -60,7 +60,7 @@ _METRIC_STEMS = (
 _PLAIN_KEYS = (
     "camera", "lens", "type", "tag", "person", "search", "category", "narrative_moment",
     "junk_kind", "composition_pattern", "album_id", "path_prefix", "date_from", "date_to",
-    "gps_lat", "gps_lng", "gps_radius_km", "hide_blinks", "hide_bursts", "hide_duplicates",
+    "no_gps", "gps_lat", "gps_lng", "gps_radius_km", "hide_blinks", "hide_bursts", "hide_duplicates",
     "hide_brackets", "hide_panoramas", "is_monochrome", "is_silhouette", "favorites_only",
     "hide_rejected", "show_rejected", "min_rating", "require_tags", "exclude_tags",
     "color_temp", "quality_tier",

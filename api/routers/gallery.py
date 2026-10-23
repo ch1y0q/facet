@@ -508,7 +508,10 @@ def _apply_date_album_geo_filters(where_clauses, sql_params, params):
         where_clauses.append(album_sql)
         sql_params.extend(album_params)
 
-    if params.get('gps_lat') and params.get('gps_lng') and params.get('gps_radius_km'):
+    if params.get('no_gps') in ('1', 'true'):
+        where_clauses.append('(gps_latitude IS NULL OR gps_longitude IS NULL)')
+
+    elif params.get('gps_lat') and params.get('gps_lng') and params.get('gps_radius_km'):
         try:
             lat = float(params['gps_lat'])
             lng = float(params['gps_lng'])

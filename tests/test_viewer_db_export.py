@@ -254,3 +254,50 @@ def test_incremental_export_preserves_viewer_user_preferences(tmp_path):
 
 if __name__ == '__main__':
     raise SystemExit(pytest.main([__file__, '-v']))
+
+
+@pytest.mark.parametrize('coordinates', [(12.5, -44.5), (None, None)])
+def test_incremental_export_preserves_manual_gps_and_saved_places(tmp_path, coordinates):
+    src = str(tmp_path / 'scan.db')
+    out = str(tmp_path / 'viewer.db')
+    _make_source_db(src)
+    export_viewer_db(src, out, thumbnail_size=320, verbose=False)
+    with sqlite3.connect(out) as conn:
+        conn.execute('UPDATE photos SET gps_latitude=?,gps_longitude=?,gps_manually_set=1 WHERE path=?',
+                     (*coordinates, _A))
+        conn.execute("INSERT INTO saved_places(owner,name,normalized_name,latitude,longitude) VALUES ('installation','Home','home',1,2)")
+    with sqlite3.connect(src) as conn:
+        conn.execute('UPDATE photos SET gps_latitude=3,gps_longitude=4')
+    export_viewer_db(src, out, thumbnail_size=320, verbose=False)
+    with sqlite3.connect(out) as conn:
+        assert conn.execute('SELECT gps_latitude,gps_longitude,gps_manually_set FROM photos WHERE path=?', (_A,)).fetchone() == (*coordinates, 1)
+        assert conn.execute('SELECT gps_latitude,gps_longitude,gps_manually_set FROM photos WHERE path=?', (_B,)).fetchone() == (3, 4, 0)
+        assert conn.execute('SELECT name FROM saved_places').fetchone() == ('Home',)
+
+
+def test_full_export_carries_manual_gps_marker(tmp_path):
+    src = str(tmp_path / 'scan.db')
+    out = str(tmp_path / 'viewer.db')
+    _make_source_db(src)
+    with sqlite3.connect(src) as conn:
+        conn.execute('UPDATE photos SET gps_latitude=NULL,gps_longitude=NULL,gps_manually_set=1')
+    export_viewer_db(src, out, thumbnail_size=320, verbose=False, force=True)
+    with sqlite3.connect(out) as conn:
+        assert conn.execute('SELECT gps_latitude,gps_longitude,gps_manually_set FROM photos WHERE path=?', (_A,)).fetchone() == (None, None, 1)
+
+
+def test_incremental_export_upgrades_destination_gps_schema(tmp_path):
+    src = str(tmp_path / 'scan.db')
+    out = str(tmp_path / 'viewer.db')
+    _make_source_db(src)
+    export_viewer_db(src, out, thumbnail_size=320, verbose=False)
+    with sqlite3.connect(out) as conn:
+        conn.execute('ALTER TABLE photos DROP COLUMN gps_manually_set')
+        conn.execute('DROP TABLE saved_places')
+        conn.execute('DROP TABLE recent_places')
+    with sqlite3.connect(src) as conn:
+        conn.execute('UPDATE photos SET gps_latitude=3,gps_longitude=4,gps_manually_set=1')
+    export_viewer_db(src, out, thumbnail_size=320, verbose=False)
+    with sqlite3.connect(out) as conn:
+        assert conn.execute('SELECT gps_latitude,gps_longitude,gps_manually_set FROM photos WHERE path=?', (_A,)).fetchone() == (3, 4, 1)
+        assert conn.execute('SELECT COUNT(*) FROM saved_places').fetchone() == (0,)

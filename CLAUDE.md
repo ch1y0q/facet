@@ -306,7 +306,7 @@ as what it means rather than what it is silently rewrites the wire.
 
 Lookup and side tables: `photo_tags`, `faces`, `persons`, `albums`, `album_photos`,
 `album_client_picks`, `photo_scoring_overrides`, `photo_sequence_overrides`,
-`photo_manual_tags`, `panorama_run_cache` (derived data, rebuilt by one panorama pass, not
+`photo_manual_tags`, `saved_places` and `recent_places` (a viewer editor's private named pins and last-assigned points), `panorama_run_cache` (derived data, rebuilt by one panorama pass, not
 merged or exported), `location_names`, `comparisons`, `learned_scores`, `weight_optimization_runs`,
 `weight_config_snapshots`, `recommendation_history`, `user_preferences`, `scan_runs`,
 `scan_failures`, `iqa_declined`, `stats_cache`, plus the virtual tables `photos_fts` (FTS5) and
@@ -386,7 +386,11 @@ only what reading those two will NOT tell you.
   `DO UPDATE SET` covers every column in the save's INSERT list, so a hand-set value in such a
   column is silently overwritten on the next rescan. This is why `photo_scoring_overrides`, `photo_sequence_overrides` and
   `photo_manual_tags` (user-typed tags, kept apart from the tagger-owned `photos.tags`) exist. For the same reason `POST /api/comparison/override_category` records an override rather
-  than writing `photos.category`, which `--recompute-average` would discard.
+  than writing `photos.category`, which `--recompute-average` would discard. The one accepted
+  exception is `photos.gps_manually_set`: `PUT /api/photo/gps` sets it and `DELETE /api/photo/gps`
+  clears it, and it is honoured by `_photos_upsert`, `_photos_partial_upsert`, the incremental
+  viewer-DB export (`db/maintenance.py`) and `--extract-gps` / `--rescan-gps`. **Any new writer of
+  `gps_latitude` / `gps_longitude` must skip or preserve rows where it is 1.**
 - **`iqa_declined` rows are valid only while `scan_fingerprint` equals the photo's current
   `scanned_at || '|' || length(thumbnail)`.** The full-row save is an UPSERT, which never cascades, so
   a decline row survives a rescan; the rescan rewrites both fingerprint inputs and so silently

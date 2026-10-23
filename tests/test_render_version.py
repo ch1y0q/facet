@@ -322,5 +322,11 @@ def _now():
 
 @pytest.fixture(autouse=True)
 def _drop_stub_modules():
+    # Restore, never pop: popping the real rawpy leaves rawpy._rawpy cached, so the
+    # next import re-runs rawpy/__init__ against a half-bound package and fails.
+    saved = sys.modules.get('rawpy')
     yield
-    sys.modules.pop('rawpy', None)
+    if saved is None:
+        sys.modules.pop('rawpy', None)
+    else:
+        sys.modules['rawpy'] = saved

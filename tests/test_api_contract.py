@@ -213,6 +213,7 @@ _FULL_PHOTO_ROW = {
     "shutter_speed": "1/200", "focal_length": 50.0, "category": "portrait",
     "date_taken": "2026:01:01 12:00:00", "image_width": 6000, "image_height": 4000,
     "is_burst_lead": 1, "burst_group_id": 0, "tags": "portrait,indoor",
+    "gps_latitude": 48.5, "gps_longitude": 2.25, "gps_manually_set": 1,
     "thumbnail": b"\xff\xd8\xff\xd9",
 }
 
@@ -273,6 +274,12 @@ class TestPhotoContract:
         rows = {r['path']: r for r in resp.json()['photos']}
         assert PHOTO in rows, "seeded photo is not visible to the gallery"
         assert_satisfies(rows[PHOTO], 'Photo', 'GET /api/photos')
+
+    def test_gps_manually_set_is_a_declared_integer_flag_on_the_wire(self, edition_client, seeded):
+        assert optional_fields('Photo')['gps_manually_set'] == 'number | null'
+        resp = edition_client.get('/api/photos', params={'per_page': 50, 'hide_bursts': '0'})
+        row = {r['path']: r for r in resp.json()['photos']}[PHOTO]
+        assert row['gps_manually_set'] == 1 and type(row['gps_manually_set']) is int
 
     def test_photo_detail_satisfies_photo(self, edition_client, seeded):
         resp = edition_client.get('/api/photo', params={'path': PHOTO})

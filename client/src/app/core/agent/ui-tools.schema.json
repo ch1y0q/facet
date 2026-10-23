@@ -1431,6 +1431,16 @@
                   "null"
                 ]
               },
+              "no_gps": {
+                "description": "Gallery filter `no_gps`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
               "path_prefix": {
                 "description": "Gallery filter `path_prefix`.",
                 "type": [
@@ -2038,5 +2048,5 @@
       "name": "ui_show_comparison"
     }
   ],
-  "version": "3ae1a5eee70250aa"
+  "version": "dc969f0f704340d1"
 }

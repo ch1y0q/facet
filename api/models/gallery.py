@@ -111,6 +111,7 @@ class Photo(BaseModel):
     caption_translated: Optional[str] = None
     gps_latitude: Optional[float] = None
     gps_longitude: Optional[float] = None
+    gps_manually_set: CoercedInt = None
     dominant_hue: Optional[float] = None
     color_temp: Optional[str] = None
     form_symmetry: Optional[float] = None
@@ -332,6 +333,7 @@ class GalleryParams(BaseModel):
     composition_pattern: str = ''
     album_id: str = ''
     # GPS
+    no_gps: str = ''
     gps_lat: str = ''
     gps_lng: str = ''
     gps_radius_km: str = ''

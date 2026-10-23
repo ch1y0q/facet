@@ -177,6 +177,8 @@ Exports are incremental: if `photo_scores_viewer.db` already exists, only new an
 python database.py --export-viewer-db --force-export
 ```
 
+A forced full rebuild discards locations set in the viewer on the NAS, as it does viewer ratings; only an incremental export keeps them.
+
 The "Find Similar" feature won't work on the exported database (CLIP embeddings are stripped). Use the scoring machine for that.
 
 **Manual tags and the export.** The export carries the [manual tags](VIEWER.md#manual-tags) table (`photo_manual_tags`) too, and an incremental export merges it by adding the scoring database's rows, never by replacing the viewer's copy. That keeps tags typed on the NAS, but it has four limits:

@@ -170,6 +170,8 @@ python database.py --export-viewer-db
 python database.py --export-viewer-db --force-export
 ```
 
+强制完整重建会丢弃 NAS 上在查看器中设置的位置，与查看器中的评分一样；只有增量导出会保留它们。
+
 “查找相似照片”功能在导出的数据库上无法使用（CLIP 特征向量已被剥离）。请在评分机器上使用该功能。
 
 **手动标签与导出。** 导出同样包含[手动标签](VIEWER.md#手动标签)表（`photo_manual_tags`），增量导出通过追加评分数据库的行来合并它，而不会替换查看器的副本。这样在 NAS 上输入的标签得以保留，但有四点限制：

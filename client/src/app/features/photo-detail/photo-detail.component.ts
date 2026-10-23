@@ -1270,19 +1270,21 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
 
   protected editGps(p: Photo): void {
     import('./gps-edit-dialog.component').then(m => {
+      if (this.destroyRef.destroyed || this.photo()?.path !== p.path) return;
       const ref = this.dialog.open(m.GpsEditDialogComponent, {
         width: '95vw',
-        maxWidth: '500px',
+        maxWidth: '640px',
         data: {
           path: p.path,
           filename: p.filename,
           lat: p.gps_latitude ?? null,
           lng: p.gps_longitude ?? null,
+          manuallySet: p.gps_manually_set === 1,
         },
       });
-      ref.afterClosed().subscribe((result: { gps_latitude: number | null; gps_longitude: number | null } | undefined) => {
+      ref.afterClosed().subscribe((result: { gps_latitude: number | null; gps_longitude: number | null; gps_manually_set?: number } | undefined) => {
         if (result !== undefined) {
-          this.applyConfirmed(p, result);
+          this.applyConfirmed(p, { gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude, gps_manually_set: result.gps_manually_set ?? 1 });
           if (this.photo()?.path === p.path) this.locationName.set('');
         }
       });

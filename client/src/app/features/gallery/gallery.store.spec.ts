@@ -22,6 +22,7 @@ import {
 } from './gallery.store';
 import { Photo } from '../../shared/models/photo.model';
 import { makePhoto } from '../../../testing/photo.fixture';
+import { applyQueryParams, buildSyncParams } from './gallery-filters.util';
 
 function makePhotosResponse(overrides: Partial<PhotosResponse> = {}): PhotosResponse {
   return {
@@ -2626,4 +2627,44 @@ describe('GalleryStore smart-album auto-save', () => {
 
     expect(snackOpen).toHaveBeenCalledWith('albums.smart_save_failed', '', { duration: 5000 });
   });
+  it('selecting no geolocation clears radius and ranked modes, keeps ordinary filters, and reloads page one', async () => {
+    const get = TestBed.inject(ApiService).get as Mock;
+    get.mockReturnValue(of(makePhotosResponse()));
+    store.filters.update(f => ({ ...f, page: 3, gps_lat: '0', gps_lng: '0', gps_radius_km: '5', similar_to: '/a.jpg', semanticQuery: 'sunset', camera: 'Canon' }));
+    await store.updateFilter('no_gps', '1');
+    expect(store.filters()).toMatchObject({ no_gps: '1', page: 1, gps_lat: '', gps_lng: '', gps_radius_km: '', similar_to: '', semanticQuery: '', camera: 'Canon' });
+    expect(get).toHaveBeenCalledWith('/photos', expect.objectContaining({ no_gps: '1', camera: 'Canon' }));
+  });
+
+  it.each(['semanticQuery', 'similar_to', 'gps_lat', 'gps_lng', 'gps_radius_km'] as const)('activating %s clears missing-location filtering through either update entry point', async key => {
+    const value = key === 'semanticQuery' ? 'sunset' : key === 'similar_to' ? '/a.jpg' : '0';
+    vi.spyOn(store, 'loadPhotos').mockResolvedValue();
+    for (const bulk of [false, true]) {
+      store.filters.set({ ...DEFAULT_FILTERS, no_gps: '1', camera: 'Canon' });
+      if (bulk) await store.updateFilters({ [key]: value });
+      else await store.updateFilter(key, value);
+      expect(store.filters().no_gps).toBe('');
+      expect(store.filters()[key]).toBe(value);
+      const restored = applyQueryParams(DEFAULT_FILTERS, buildSyncParams(store.filters(), undefined));
+      expect(restored).toMatchObject({ no_gps: '', [key]: value, camera: 'Canon' });
+    }
+  });
+
+  it('enabling missing-location filtering through a multi-filter update clears incompatible modes', async () => {
+    vi.spyOn(store, 'loadPhotos').mockResolvedValue();
+    store.filters.set({ ...DEFAULT_FILTERS, gps_lat: '0', gps_lng: '0', gps_radius_km: '5', similar_to: '/a.jpg', semanticQuery: 'sunset' });
+    await store.updateFilters({ no_gps: '1' });
+    expect(store.filters()).toMatchObject({ no_gps: '1', gps_lat: '', gps_lng: '', gps_radius_km: '', similar_to: '', semanticQuery: '' });
+  });
+
+  it('persists missing-location filtering in smart albums', async () => {
+    vi.useFakeTimers();
+    try {
+      store.filters.set({ ...DEFAULT_FILTERS, no_gps: '1', camera: 'Canon' });
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(500);
+    } finally { vi.useRealTimers(); }
+    expect(JSON.parse(albumUpdate.mock.calls[0][1].smart_filter_json)).toMatchObject({ no_gps: '1', camera: 'Canon' });
+  });
+
 });

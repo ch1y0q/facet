@@ -1034,8 +1034,16 @@ export class GalleryStore {
     value: GalleryFilters[K],
   ): Promise<void> {
     const update = { [key]: value } as Partial<GalleryFilters>;
+    const gpsPatch: Partial<GalleryFilters> = {};
+    if (key === 'no_gps' && value) {
+      gpsPatch.gps_lat = ''; gpsPatch.gps_lng = ''; gpsPatch.gps_radius_km = '';
+      gpsPatch.similar_to = ''; gpsPatch.semanticQuery = '';
+    } else if (value && ['semanticQuery', 'similar_to', 'gps_lat', 'gps_lng', 'gps_radius_km'].includes(key)) {
+      gpsPatch.no_gps = '';
+    }
     const extra: Partial<GalleryFilters> = {
-      ...semanticSortPatch(this.filters(), update, this.config()?.defaults),
+      ...gpsPatch,
+      ...semanticSortPatch(this.filters(), { ...update, ...gpsPatch }, this.config()?.defaults),
       ...exclusiveHidePatch(update),
     };
     // Reload person dropdown when person filter is cleared (was seeded with filtered subset)
@@ -1100,8 +1108,16 @@ export class GalleryStore {
 
   /** Update multiple filters at once and reload */
   async updateFilters(updates: Partial<GalleryFilters>): Promise<void> {
+    const gpsPatch: Partial<GalleryFilters> = {};
+    if (updates.no_gps) {
+      gpsPatch.gps_lat = ''; gpsPatch.gps_lng = ''; gpsPatch.gps_radius_km = '';
+      gpsPatch.similar_to = ''; gpsPatch.semanticQuery = '';
+    } else if (updates.semanticQuery || updates.similar_to || updates.gps_lat || updates.gps_lng || updates.gps_radius_km) {
+      gpsPatch.no_gps = '';
+    }
     const extra: Partial<GalleryFilters> = {
-      ...semanticSortPatch(this.filters(), updates, this.config()?.defaults),
+      ...gpsPatch,
+      ...semanticSortPatch(this.filters(), { ...updates, ...gpsPatch }, this.config()?.defaults),
       ...exclusiveHidePatch(updates),
     };
     const before = this.filters();
