@@ -413,6 +413,38 @@ describe('BurstCullingComponent', () => {
       expect(component['lightboxGroupId']()).toBeNull();
       expect(component['selectedGroupIndex']()).toBe(1);
     });
+
+    it('list mode: Enter or Space on a focused control activates the control, not the page shortcut', () => {
+      component['selectedGroupIndex'].set(0);
+      const button = document.createElement('button');
+      const item = document.createElement('div');
+      item.setAttribute('role', 'menuitem');
+      document.body.append(button, item);
+      try {
+        for (const target of [button, item]) {
+          for (const key of ['Enter', ' ']) {
+            const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+            Object.defineProperty(event, 'target', { value: target });
+            if (key === 'Enter') component['onEnter'](event);
+            else component['onSpace'](event);
+            expect(event.defaultPrevented).toBe(false);
+          }
+        }
+        expect(component['lightboxGroupId']()).toBeNull();
+        expect(store.confirmedGroups().size).toBe(0);
+      } finally {
+        button.remove();
+        item.remove();
+      }
+    });
+
+    it('list mode: Enter with no focused control opens the selected group', () => {
+      component['selectedGroupIndex'].set(0);
+      const event = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
+      Object.defineProperty(event, 'target', { value: document.body });
+      component['onEnter'](event);
+      expect(component['lightboxGroupId']()).toBe('1_burst');
+    });
   });
 
   describe('fullscreen (darkroom)', () => {

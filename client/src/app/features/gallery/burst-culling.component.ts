@@ -27,7 +27,7 @@ import { I18nService } from '../../core/services/i18n.service';
 import { PageHelpService } from '../../core/services/page-help.service';
 import { HeaderSlotService } from '../../core/services/header-slot.service';
 import { InfiniteScrollDirective } from '../../shared/directives/infinite-scroll.directive';
-import { isTypingContext } from '../../shared/utils/keyboard';
+import { isControlActivation, isTypingContext } from '../../shared/utils/keyboard';
 import { toIsoDateString } from '../../shared/utils/date-format';
 import { CULL_DATE_PRESETS, presetRange, type CullDatePresetId } from './culling-date-range';
 import { isBracketLadderRejection } from '../../shared/utils/sequence-ladder';
@@ -2821,7 +2821,7 @@ export class BurstCullingComponent implements OnDestroy {
   @HostListener('document:keydown.enter', ['$event'])
   protected onEnter(event: Event): void {
     if (this.lightboxGroup()) return;
-    if (isTypingContext(event)) return;
+    if (isTypingContext(event) || isControlActivation(event)) return;
     const group = this.visibleGroups()[this.selectedGroupIndex()];
     if (!group) return;
     event.preventDefault();
@@ -2856,7 +2856,7 @@ export class BurstCullingComponent implements OnDestroy {
       return;
     }
     // List: confirm the selected group and move the selection to the next one.
-    if (isTypingContext(event)) return;
+    if (isTypingContext(event) || isControlActivation(event)) return;
     const selected = this.visibleGroups()[this.selectedGroupIndex()];
     if (!selected) return;
     event.preventDefault();
