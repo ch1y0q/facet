@@ -252,6 +252,27 @@ describe('UI tool registry and handlers', () => {
       expect(keys).toEqual([]);
     });
 
+    it.each([
+      ['snapshots', 0],
+      ['ab', 1],
+      ['suggestions', 2],
+      ['weights', 3],
+    ])('opens the %s tab (index %i) and reports it', async (tab, index) => {
+      edition = true;
+      const filters = TestBed.inject(CompareFiltersService);
+      const result = await direct()['ui_show_comparison']({ tab });
+      expect(result).toMatchObject({ route: '/compare', tab });
+      expect(filters.activeTab()).toBe(index);
+    });
+
+    it('refuses an unknown tab before touching the filters or navigating', async () => {
+      edition = true;
+      const filters = TestBed.inject(CompareFiltersService);
+      await expect(direct()['ui_show_comparison']({ tab: 'priority', category: 'portrait' })).rejects.toMatchObject({ code: 'invalid_input' });
+      expect(filters.selectedCategory()).toBe('');
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
     it('answers success without navigating when the tab is already on /compare', async () => {
       edition = true;
       router.url = '/compare?x=1';

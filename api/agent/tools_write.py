@@ -63,6 +63,10 @@ WRITE_TOOL_LEVELS: dict[str, str] = {
     "group_compare": "readonly", "cull_report": "readonly",
     # Registered by tools_scoring: reads and a dry preview (nothing here writes).
     "explain_score": "readonly", "category_weights": "edition", "preview_weights": "edition",
+    # Registered by tools_scoring: the writes (apply, restore, recompute, override) and their edition-level reads.
+    "apply_weights": "edition", "list_weight_snapshots": "edition", "restore_weight_snapshot": "edition",
+    "recompute_scores": "edition", "recompute_status": "edition", "learned_weights": "edition",
+    "misassigned_categories": "edition", "override_categories": "edition",
 }
 NONCE_ACTIONS = ("move_rejects", "trash_rejects")
 LIST_KEYS = ("would_copy", "would_move", "would_trash")

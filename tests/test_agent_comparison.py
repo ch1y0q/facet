@@ -21,7 +21,16 @@ FORBIDDEN = re.compile(r"/api/comparison/(submit|reset|edit|delete|batch|record)
 ALLOWED_COMPARISON = {"/api/comparison/stats", "/api/comparison/coverage", "/api/comparison/override_category",
                       "/api/comparison/clear_category_override",
                       # Phase 1 of the scoring-weights assistant: a read of the weights and a dry preview score.
-                      "/api/comparison/category_weights", "/api/comparison/preview_score"}
+                      "/api/comparison/category_weights", "/api/comparison/preview_score",
+                      # Phase 2: the optimizer's suggestion and its bootstrap intervals (both store nothing).
+                      "/api/comparison/learned_weights", "/api/comparison/confidence"}
+REVIEWED_SCORING_ROUTES = {
+    ("GET", "/api/config/weight_snapshots"), ("POST", "/api/config/update_weights"),
+    ("GET", "/api/config/scoring_contexts"),  # pre-existing read, not part of this feature
+    ("POST", "/api/config/restore_weights"), ("POST", "/api/scan/recompute"), ("GET", "/api/scan/recompute_status")}
+UNREVIEWED_SCORING_ROUTES = {
+    "/api/config/save_snapshot", "/api/config/weight_snapshots/{snapshot_id}", "/api/recalculate",
+    "/api/stats/categories/recompute"}
 
 
 def all_route_specs():
@@ -48,6 +57,14 @@ def test_no_route_spec_reaches_a_comparison_write():
 def test_comparison_templates_are_exactly_the_reviewed_set():
     templates = {s.template for s in all_route_specs().values() if "/api/comparison/" in s.template}
     assert templates == ALLOWED_COMPARISON
+
+
+def test_scoring_routes_are_exactly_the_reviewed_set():
+    specs = [s for s in all_route_specs().values() if s.template.startswith(("/api/config/", "/api/scan/recompute"))]
+    assert {(s.method, s.template) for s in specs} == REVIEWED_SCORING_ROUTES
+    assert all(s.min_level == "edition" for s in specs if s.template != "/api/config/scoring_contexts")
+    every = {s.template for s in all_route_specs().values()}
+    assert not (every & UNREVIEWED_SCORING_ROUTES)
 
 
 def test_no_string_constant_in_the_agent_package_names_a_comparison_write():

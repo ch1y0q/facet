@@ -1,7 +1,9 @@
 import { Injectable, signal } from '@angular/core';
 
-/** Index of the A/B compare tab inside the comparison page's tab group. */
-export const COMPARE_AB_TAB_INDEX = 1;
+/** Index of each tab a UI tool may open, inside the comparison page's tab group. */
+export const COMPARE_TAB_INDEX = { snapshots: 0, ab: 1, suggestions: 2, weights: 3 } as const;
+
+export type CompareTabName = keyof typeof COMPARE_TAB_INDEX;
 
 /** Strategy the A/B tab starts with: '' means the server's configured default (the request omits it). */
 export const DEFAULT_COMPARE_STRATEGY = '';

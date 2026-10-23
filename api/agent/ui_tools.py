@@ -275,6 +275,7 @@ class UiSuggestCulling(UiArgs):
 
 
 ComparisonStrategy = Literal["learning", "uncertainty", "boundary", "active", "random"]
+ComparisonTab = Literal["ab", "snapshots", "suggestions", "weights"]
 
 
 class UiShowComparison(UiArgs):
@@ -282,6 +283,9 @@ class UiShowComparison(UiArgs):
         default=None, description="Category to compare within (a name from `facet://categories`).")
     strategy: Optional[ComparisonStrategy] = Field(
         default=None, description="Pair-selection strategy. Default: the tab's current one.")
+    tab: Optional[ComparisonTab] = Field(
+        default=None, description="Page tab to open: `ab` (default), `snapshots`, `suggestions` or `weights`. "
+                                  "`suggestions` stays locked until enough comparisons exist.")
 
 
 @dataclass(frozen=True)
@@ -392,7 +396,8 @@ UI_TOOLS: tuple[UiTool, ...] = (
            "`shown_in_tab` or `status`. Edition accounts only.",
            UiSuggestCulling, False),
     UiTool("ui_show_comparison",
-           "Open the /compare page in the user's tab, optionally on one category and strategy. It "
+           "Open the /compare page in the user's tab, optionally on one category, strategy and `tab` "
+           "(the weights or snapshots tab shows a change you made). It "
            "only opens the page: the user picks the winners, nothing is submitted for them."
            " Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
            UiShowComparison, False),

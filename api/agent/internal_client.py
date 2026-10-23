@@ -117,6 +117,18 @@ ROUTE_ALLOWLIST: Mapping[str, RouteSpec] = MappingProxyType({
     "critique": RouteSpec("GET", "/api/critique", "readonly"),
     "category_weights": RouteSpec("GET", "/api/comparison/category_weights", "edition"),
     "preview_score": RouteSpec("POST", "/api/comparison/preview_score", "edition"),
+    # Weight tuning. ``learned_weights`` / ``weight_confidence`` run the optimizer but store nothing. The two config
+    # writers are the ONLY way an agent tool changes ``scoring_config.json``: each route owns CONFIG_WRITE_LOCK, the
+    # automatic weight snapshot and ``write_user_config``. Deliberately absent: save_snapshot, snapshot delete,
+    # /api/recalculate and /api/stats/categories/recompute (synchronous, up to 300 s).
+    "learned_weights": RouteSpec("GET", "/api/comparison/learned_weights", "edition"),
+    "weight_confidence": RouteSpec("GET", "/api/comparison/confidence", "edition"),
+    "weight_snapshots": RouteSpec("GET", "/api/config/weight_snapshots", "edition"),
+    "update_weights": RouteSpec("POST", "/api/config/update_weights", "edition", write=True),
+    "restore_weights": RouteSpec("POST", "/api/config/restore_weights", "edition", write=True),
+    # The background recompute: returns after the spawn, so a slow job can never read as outcome_unknown.
+    "recompute_start": RouteSpec("POST", "/api/scan/recompute", "edition", write=True),
+    "recompute_status": RouteSpec("GET", "/api/scan/recompute_status", "edition"),
     # The same two routes with ``dry_run=true``: nothing is written, so a timeout is a
     # plain upstream error rather than ``outcome_unknown``.
     "cull_apply.preview": RouteSpec("POST", "/api/cull/apply", "edition"),

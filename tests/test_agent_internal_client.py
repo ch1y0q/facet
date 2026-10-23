@@ -105,8 +105,13 @@ class TestAllowlist:
     # only /api/scan and /api/config routes it may name.
     EDITION_READS = ("/api/comparison/stats", "/api/comparison/coverage", "/api/scan/status", "/api/scan/directories",
                      # edition-gated reads of the scoring weights and the dry preview score (no write)
-                     "/api/comparison/category_weights", "/api/comparison/preview_score")
-    ALLOWED_PREFIXED = ("/api/scan/start", "/api/scan/status", "/api/scan/directories", "/api/config/scoring_contexts")
+                     "/api/comparison/category_weights", "/api/comparison/preview_score",
+                     # the optimizer's suggestion (stores nothing), the snapshot list and the recompute status
+                     "/api/comparison/learned_weights", "/api/comparison/confidence", "/api/config/weight_snapshots",
+                     "/api/scan/recompute_status")
+    ALLOWED_PREFIXED = ("/api/scan/start", "/api/scan/status", "/api/scan/directories", "/api/config/scoring_contexts",
+                        "/api/config/weight_snapshots", "/api/config/update_weights", "/api/config/restore_weights",
+                        "/api/scan/recompute", "/api/scan/recompute_status")
 
     def test_allowlist_is_frozen_and_only_writes_demand_a_level(self):
         assert isinstance(ROUTE_ALLOWLIST, MappingProxyType)

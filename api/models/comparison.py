@@ -140,6 +140,7 @@ class WeightSnapshotItem(BaseModel):
     accuracy_after: Optional[float] = None
     comparisons_used: Optional[int] = None
     created_by: Optional[str] = None
+    category_bonus: Optional[float] = None
 
 
 class WeightSnapshotsResponse(BaseModel):

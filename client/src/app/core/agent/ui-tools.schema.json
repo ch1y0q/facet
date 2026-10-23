@@ -355,7 +355,7 @@
     },
     {
       "id": "tune_weights",
-      "summary": "Read a category's scoring weights and preview a change before touching anything",
+      "summary": "Read a category's scoring weights, preview a change, apply it once the user agrees and undo it",
       "tools": [
         {
           "name": "category_weights",
@@ -363,6 +363,56 @@
         },
         {
           "name": "preview_weights",
+          "required_level": "edition"
+        },
+        {
+          "name": "learned_weights",
+          "required_level": "edition"
+        },
+        {
+          "name": "apply_weights",
+          "required_level": "edition"
+        },
+        {
+          "name": "list_weight_snapshots",
+          "required_level": "edition"
+        },
+        {
+          "name": "restore_weight_snapshot",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "any"
+      ]
+    },
+    {
+      "id": "recompute_scores",
+      "summary": "Re-score the library (or one category) with the current weights and follow the job",
+      "tools": [
+        {
+          "name": "recompute_scores",
+          "required_level": "edition"
+        },
+        {
+          "name": "recompute_status",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "any"
+      ]
+    },
+    {
+      "id": "fix_categories",
+      "summary": "Find photos filed in the wrong category and pin several to the right one",
+      "tools": [
+        {
+          "name": "misassigned_categories",
+          "required_level": "edition"
+        },
+        {
+          "name": "override_categories",
           "required_level": "edition"
         }
       ],
@@ -1911,7 +1961,7 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Open the /compare page in the user's tab, optionally on one category and strategy. It only opens the page: the user picks the winners, nothing is submitted for them. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
+      "description": "Open the /compare page in the user's tab, optionally on one category, strategy and `tab` (the weights or snapshots tab shows a change you made). It only opens the page: the user picks the winners, nothing is submitted for them. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1929,6 +1979,16 @@
               "random"
             ],
             "type": "string"
+          },
+          "tab": {
+            "description": "Page tab to open: `ab` (default), `snapshots`, `suggestions` or `weights`. `suggestions` stays locked until enough comparisons exist.",
+            "enum": [
+              "ab",
+              "snapshots",
+              "suggestions",
+              "weights"
+            ],
+            "type": "string"
           }
         },
         "type": "object"
@@ -1936,5 +1996,5 @@
       "name": "ui_show_comparison"
     }
   ],
-  "version": "95a1d09b23b035af"
+  "version": "1e956ceb09049ecc"
 }

@@ -100,9 +100,17 @@ class TestGrantMatrix:
         "start_scan": {"directories": [AGENT_DIR]}, "scan_status": {}, "comparison_status": {},
         "explain_score": {"path": P[0]}, "category_weights": {},
         "preview_weights": {"category": "portrait", "weights": {"aesthetic": 1}},
+        # Arguments that stop at the tool's own guard (no digest, no snapshot, an unknown category): the matrix
+        # must never start a recompute or write the install's config.
+        "apply_weights": {"category": "portrait", "weights": {"aesthetic": 1}},
+        "list_weight_snapshots": {}, "restore_weight_snapshot": {"snapshot_id": 999999},
+        "recompute_scores": {"category": "zzz-no-such-category"}, "recompute_status": {},
+        "learned_weights": {"category": "portrait"}, "misassigned_categories": {"category": "portrait", "scan": 1},
+        "override_categories": {"category": "zzz-no-such-category", "paths": [AGENT_DIR + "nope1.jpg"]},
     }
     READ_ONLY = ("junk_list", "scan_status", "comparison_status", "group_compare", "cull_report",
-                 "explain_score", "category_weights", "preview_weights")
+                 "explain_score", "category_weights", "preview_weights", "list_weight_snapshots",
+                 "recompute_status", "learned_weights", "misassigned_categories")
 
     def test_every_write_tool_has_args_and_a_level(self):
         assert set(self.ARGS) == set(WRITE_TOOL_LEVELS)

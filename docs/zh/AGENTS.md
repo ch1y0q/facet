@@ -104,7 +104,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 | `ui_show_culling_group` | 在暗房中打开某个分组，由 `(type, group_id)` 标识（编辑账户） |
 | `ui_show_culling_plan` | 在暗房中打开一个 `auto_cull` 方案(预览中的 `plan_digest` 和 `request`,可选 `focus` 为分组编号),方案的保留照片已预先选中,供你调整并确认(编辑账户)。试运行时 `auto_cull` 会替你调用它。与已显示方案相同的摘要只会移动焦点;不同的摘要会替换方案,若你持有未确认的决定则被拒绝为 `unsaved_decisions`,若照片库自预览以来发生变化则拒绝为 `plan_changed`,若标签页因其他原因无法加载方案则拒绝为 `plan_load_failed` |
 | `ui_suggest_culling` | 在 `/culling` 显示方案期间,标记你会保留或剔除的照片(`photos`:`path`、`action`、`reason`,最多 100 项)以及想要评注的分组(`groups`:该分组中任一照片的 `path` 和一条 `note`,最多 50 项);理由或备注最长 200 个字符。你会看到每张照片一个徽标、每个分组一枚标签,不点击徽标就不会有任何改变。多次调用按路径合并,`replace: true` 先丢弃已保留的全部内容,`replace` 配合空列表则全部清除。返回 `{plan_digest, applied, redundant, closed, missing, groups_applied, groups_missing, groups_closed, suggestions_total, notes_total}`;拒绝情形为 `no_plan`(该标签页没有方案)、`too_large`(标签页最多保留 300 条建议和 100 条备注:请使用 `replace`)和 `forbidden_level`(仅限编辑账户)。打开多个标签页时,请传入 `shown_in_tab` 或 `status` 中的 `tab_id` |
-| `ui_show_comparison` | 打开成对比较页面，可选指定类别和策略；它只负责打开页面，由您自己选出胜者 |
+| `ui_show_comparison` | 打开成对比较页面，可选指定类别、策略和 `tab`（`ab`、`snapshots`、`suggestions`、`weights`）；它只负责打开页面，由您自己选出胜者 |
 
 工作方式：
 
@@ -224,11 +224,16 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 
 ## 评分与权重
 
-读取评分权重并进行试算。这里的任何操作都不会改变评分或配置。
+读取评分权重并进行试算。有四个工具会写入：`apply_weights` 和 `restore_weight_snapshot` 修改配置，`recompute_scores` 重写评分，`override_categories` 固定照片类别。它们都需要 `edition` 级别，以及来自演练或预览的两步 `confirm`；读取类工具不会改变任何内容。
 
 - **解释评分**（`readonly`）。`explain_score`（`path`，或用 `target: "selection"` 指定恰好一张已选照片；`top_n` 为 1 到 12，默认 5）说明一张照片为何得到该评分：它所属的类别、以及为何没有被更高优先级的类别选中，已存储的综合分，以 `{metric_key, value, weight_percent, contribution}` 表示的主要指标，其余指标的数量与总和，优势、弱点与扣分项。分析基于规则且只读（从不运行 VLM）。`weight_percent` 是计算实际使用的有效权重，可能与配置的 `*_percent` 不同（`quality` 会并入 `aesthetic`，本安装未运行的指标会被重新归一化）。它需要 `viewer.features.show_critique`（默认开启）；关闭时该工具不会被列出，`status` 会在 `hidden_tools.disabled` 下指出它。
 - **读取权重**（`edition`）。`category_weights` 返回某个类别的非零权重、修饰项、筛选条件与优先级，或返回每个类别的非零权重与加分。资源 `facet://scoring-weights` 提供同样的列表。对于单个类别，它还返回 `configured_keys`，即该类别配置中实际存在的 `*_percent` 键（包括显式的零）。
 - **预览更改**（`edition`）。`preview_weights(category, weights | deltas, sample)` 是近似预览：它用当前权重和建议权重（均按计算所用的方式归一化）对该类别最多 `sample` 张照片重新打分（默认 30，最多 100），先报告排名变化，再报告平均偏移、`warnings` 和一次性的 `preview_digest`（有效期 5 分钟，保存在单个进程的内存中）。请提供 `weights`（合并到当前值之上的部分映射）或 `deltas`（带符号的百分点）。它不存储任何内容，结果带有 `basis: "approximate"`：没有百分位快照、没有扣分，评分上限为 10。只执行服务器自身的规则（每个权重为 0 到 100）；总和超出 95 到 105（配置加载器会重新缩放）以及未知键（按原样存储，并在带校验的加载时被丢弃）都以 `warnings` 返回，而不是拒绝。助手无法编辑 `bonus` 和修饰项。照片超过 100 张的类别只从按综合分排序的最好 100 张和最差 100 张中抽样（`sample_scope`）。digest 不代表同意：请先向用户展示建议、偏移和 `basis_note`。它仅使用已存储的指标，并拒绝所有权重均为 0 的方案（`all_weights_zero`）。
+- **应用更改**（`edition`）。`apply_weights(category, weights | deltas, preview_digest)` 写入已预览的更改。请重复传给 `preview_weights` 的相同 `weights` 或 `deltas`，并传入其 `preview_digest`：没有这一确切提案在当前权重上的摘要时，调用返回 `confirmation_required` 且不写入任何内容（摘要只能使用一次，绑定到发起预览的令牌，且在预览之后权重发生变化时作废）。写入走与网页界面相同的路由，因此旧权重会先保存为快照（`auto:edit`），结果会给出该 `snapshot`。它不会重新评分任何照片：回答带有 `scores_stale: true` 和 `next: "recompute_scores"`，已存的分数、排名和图库只有在该任务之后才会改变。结果会被读回确认（`verified`）。已知限制：已经打开的 /compare 页面仍持有旧向量，并会在下一次编辑时把它写回，因此回答带有 `reload_compare: true`，助手会请用户重新加载该页面。
+- **快照**（`edition`）。`list_weight_snapshots(category, limit, offset)` 按从新到旧列出已保存的快照，附带非零权重和 `restorable` 标志。`restore_weight_snapshot(snapshot_id)` 默认是演练：列出更改并返回一次性的 `confirm`；真正执行（`dry_run: false` 加该 `confirm`）时，若权重在此期间已变化，则返回 `confirmation_required`。在覆盖任何内容之前，它会把当前权重保存为 `auto:pre_restore`（`undo_snapshot_id`），因此一次恢复本身也可以被恢复。网页界面以其他格式保存的快照（使用裸指标名而非 `*_percent` 键）无法原样写回，两种执行都会返回 `unsupported_snapshot`：请在 /compare 中恢复它。
+- **重新计算**（`edition`）。权重更改在运行 `recompute_scores(category | all: true)` 之前不会重新评分任何内容。它立即启动后台任务（请先询问用户）并返回 `started_at`；随后 `recompute_status(started_at)` 报告 `running`、`succeeded`、`failed`、`busy`（另一进程持有图库锁）或 `idle`，`matches_started_job` 说明该状态是否描述所启动的任务。同一时间只运行一个任务（`conflict`）。按类别重新计算只重写该类别，不会刷新连拍或序列分组（`all` 会）；两种运行都会保存百分位快照，供每个类别下一次归一化读取。状态保存在单个进程中：使用多个 worker 时，一次轮询可能落到不知道该任务的进程上。
+- **用户的比较偏向什么**（`edition`）。`learned_weights(category, with_confidence)` 在用户自己的 A/B 比较上运行优化器，只返回非零的 `changes` 和可交给 `preview_weights` 的 `proposal`；不会存储任何内容。它不会凭空编造建议，而是返回 `available: false` 及 `reason`（`not_enough_comparisons`、学习后端为外部时的 `unavailable_if_external`、`optimizer_unavailable`），并在优化器没有发现改进时告诉助手不要提出更改。
+- **修正类别**（`edition`）。`misassigned_categories(category, limit, scan)` 在得分最高的 `scan` 张照片中，列出某类别里可能属于别处的照片：`stale` 表示当前配置把这张照片归入另一类别（解决办法：`recompute_scores`，而不是覆盖）；`near_miss` 表示它在更高优先级类别第一个未通过的数值边界上只差不到 10%。这只是启发式判断（`confidence_basis: "heuristic"`），不是证明；它不写入任何内容，跳过已手动指定类别的照片，并在关闭 `show_critique` 时隐藏。`override_categories(category, paths, dry_run, confirm, expected_count)` 最多固定 50 张照片的类别：演练列出将会改变的照片（`would_change`、`already`、`missing`）并返回一次性的 `confirm`；真正执行需要它以及等于 `would_pin` 的 `expected_count`（已在该类别中的照片也会被固定，使该选择在之后的重新计算中保留），遇到第一个失败即停止，并报告 `affected`、`remaining` 和 `failed_path`。每次固定都是持久的，并会重新计算该照片的综合分；`clear_category_override` 可撤销一张。`ui_show_comparison` 接受 `tab`（`ab`、`snapshots`、`suggestions`、`weights`），以便助手打开用户复核更改的页面。
 
 ## Prompts
 

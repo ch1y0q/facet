@@ -13,7 +13,7 @@ import {
   smartAlbumFilterJson,
 } from '../../features/gallery/gallery-filters.util';
 import { CULL_DEFAULT_STRICTNESS, CULL_PROFILE_KEY, readStoredStrictnessOrNull } from '../../features/gallery/culling.store';
-import { COMPARE_AB_TAB_INDEX, CompareFiltersService } from '../../features/comparison/compare-filters.service';
+import { COMPARE_TAB_INDEX, CompareFiltersService, CompareTabName } from '../../features/comparison/compare-filters.service';
 import { ViewActionRegistry } from './view-action-registry.service';
 import { UserActivityJournal } from './user-activity-journal.service';
 import { AssistantCullPlanService, type CullPlanRequest, type CullSuggestionAction, MAX_STORED_NOTES, MAX_STORED_SUGGESTIONS } from './assistant-cull-plan.service';
@@ -516,19 +516,25 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
     },
 
     /**
-     * Puts the compare page on the A/B tab for the user to answer. It only sets the page's own
+     * Puts the compare page on a tab (A/B by default; snapshots, suggestions or weights to review a change
+     * the assistant made) for the user to answer. A locked suggestions tab is not checked here: the page shows its
+     * own locked state. It only sets the page's own
      * state through the service: it never submits a comparison and sends no key event, so the
      * answer stays the user's click (ArrowLeft / ArrowRight / T are the page's answer shortcuts).
      */
     ui_show_comparison: async args => {
       if (!auth.isEdition()) throw new UiToolError('forbidden_level', 'The comparison page needs an edition session.');
+      const tab = args['tab'] === undefined ? 'ab' : args['tab'];
+      if (typeof tab !== 'string' || !Object.hasOwn(COMPARE_TAB_INDEX, tab)) {
+        throw new UiToolError('invalid_input', `Unknown comparison tab; use one of ${Object.keys(COMPARE_TAB_INDEX).join(', ')}.`);
+      }
       // Before any compareFilters write, so a refusal leaves no side effect.
       leaveCullingGuard();
       const category = typeof args['category'] === 'string' ? args['category'] : '';
       const strategy = typeof args['strategy'] === 'string' ? args['strategy'] : '';
       if (category) compareFilters.selectedCategory.set(category);
       if (strategy) compareFilters.strategy.set(strategy);
-      compareFilters.activeTab.set(COMPARE_AB_TAB_INDEX);
+      compareFilters.activeTab.set(COMPARE_TAB_INDEX[tab as CompareTabName]);
       // Already there: navigating to the same URL resolves false, which is not a refusal.
       if (router.url.split(/[?#]/)[0] !== '/compare') {
         const ok = await router.navigate(['/compare']);
@@ -538,7 +544,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
         route: '/compare',
         category: compareFilters.selectedCategory() || null,
         strategy: compareFilters.strategy() || null,
-        tab: 'ab',
+        tab,
       };
     },
 

@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from starlette.responses import StreamingResponse
 
 from api.auth import CurrentUser, _trusted_local_editing_enabled, create_access_token, decode_access_token, require_edition, require_scan_access, scan_feature_enabled, trusted_local_for
-from api.config import VIEWER_CONFIG, FACET_SCRIPT, _CONFIG_PATH, get_all_scan_directories, get_user_directories, _photo_types_cache, _stats_cache
+from api.config import VIEWER_CONFIG, FACET_SCRIPT, _CONFIG_PATH, get_all_scan_directories, get_user_directories, invalidate_stats_cache, server_scoring_config, _photo_types_cache
 from api.models.scan import (
     LibraryJobStartResponse,
     RecomputeStatusResponse,
@@ -53,6 +53,8 @@ _scan_state: dict[str, Any] = {
     'directories': [],
     'exit_code': None,
     'progress': None,
+    # What a recompute was asked for: 'all' or 'category:<name>' (None for any other job).
+    'scope': None,
 }
 
 
@@ -125,9 +127,10 @@ def _read_scan_output(proc):
     proc.wait()
     _scan_state['exit_code'] = proc.returncode
     _scan_state['running'] = False
-    # Invalidate caches after scan adds/updates photos
+    # Invalidate caches after scan adds/updates photos; a finished recompute changed every score it touched,
+    # so the category counts and score distributions must stop serving the old values.
     _photo_types_cache['expires'] = 0
-    _stats_cache.clear()
+    invalidate_stats_cache()
 
 
 class ScanStartRequest(BaseModel):
@@ -136,6 +139,16 @@ class ScanStartRequest(BaseModel):
 
 class RecomputeRequest(BaseModel):
     confirm: bool
+
+
+class RecomputeScoresRequest(BaseModel):
+    """Body of ``POST /recompute``: ``category`` narrows the run to one category.
+
+    A model of its own so ``/detect_panoramas``, which shares ``RecomputeRequest``, cannot be handed a category.
+    """
+
+    confirm: bool
+    category: Optional[str] = None
 
 
 def scan_feature_refusal(user) -> Optional[str]:
@@ -209,6 +222,7 @@ def start_scan(
         _scan_state['directories'] = directories
         _scan_state['exit_code'] = None
         _scan_state['progress'] = None
+        _scan_state['scope'] = None
 
         reader = threading.Thread(target=_read_scan_output, args=(proc,), daemon=True)
         reader.start()
@@ -367,10 +381,15 @@ def scan_directories(
 
 @router.post("/recompute", response_model=LibraryJobStartResponse, response_model_exclude_unset=True)
 def start_recompute(
-    body: RecomputeRequest,
+    body: RecomputeScoresRequest,
     user: CurrentUser = Depends(require_edition),
 ):
-    """Spawn a full-library aggregate recompute as a background subprocess.
+    """Spawn an aggregate recompute (the whole library, or one ``category``) as a background subprocess.
+
+    ``category`` runs ``--recompute-category``: only that category's scores are rewritten, and burst and
+    sequence detection are skipped (the whole-library run does them). Either way the run persists the
+    library's percentile snapshot, which every category's next normalisation reads. An unknown category is
+    a 400 before anything is spawned.
 
     Reuses the scan job machinery (``_scan_lock``, ``_scan_state``,
     ``_read_scan_output``) so a scan and a recompute stay mutually exclusive
@@ -394,16 +413,27 @@ def start_recompute(
     password-less install. Requiring a JSON body forces the preflight that the
     other write endpoints get for free.
     """
+    if not body.confirm:
+        raise HTTPException(status_code=400, detail="This job must be explicitly confirmed")
+    if body.category is None:
+        return _spawn_fixed_library_job(
+            body, '--recompute-average', JOB_KIND_RECOMPUTE,
+            'Recompute spawned; poll /api/scan/recompute_status to see it run', scope='all')
+    if body.category not in {c.get('name') for c in server_scoring_config().get_categories()}:
+        raise HTTPException(status_code=400, detail=f"Unknown category: {body.category}")
     return _spawn_fixed_library_job(
-        body, '--recompute-average', JOB_KIND_RECOMPUTE,
-        'Recompute spawned; poll /api/scan/recompute_status to see it run')
+        body, '--recompute-category', JOB_KIND_RECOMPUTE,
+        'Recompute spawned; poll /api/scan/recompute_status to see it run',
+        flag_args=(body.category,), scope=f'category:{body.category}')
 
 
-def _spawn_fixed_library_job(body, flag, kind, message):
+def _spawn_fixed_library_job(body, flag, kind, message, flag_args=(), scope=None):
     """Spawn a library-rewriting facet.py job whose argv is fixed server-side.
 
     Shared by every endpoint of this shape so the locking, the cross-process
     conflict check and the state bookkeeping cannot drift apart between them.
+    ``flag_args`` follow the flag in the argv and are server-validated by the caller; ``scope`` names
+    what the job was asked for so a poller can tell its own job from another.
     """
     if not body.confirm:
         raise HTTPException(status_code=400, detail="This job must be explicitly confirmed")
@@ -419,7 +449,7 @@ def _spawn_fixed_library_job(body, flag, kind, message):
         if conflict:
             raise HTTPException(status_code=409, detail=conflict)
 
-        cmd = [sys.executable, FACET_SCRIPT, flag, '--config', str(_CONFIG_PATH)]
+        cmd = [sys.executable, FACET_SCRIPT, flag, *flag_args, '--config', str(_CONFIG_PATH)]
 
         proc = subprocess.Popen(
             cmd,
@@ -438,11 +468,13 @@ def _spawn_fixed_library_job(body, flag, kind, message):
         _scan_state['directories'] = []
         _scan_state['exit_code'] = None
         _scan_state['progress'] = None
+        _scan_state['scope'] = scope
 
         reader = threading.Thread(target=_read_scan_output, args=(proc,), daemon=True)
         reader.start()
 
-        return {'success': True, 'message': message, 'pid': proc.pid}
+        started = {'success': True, 'message': message, 'pid': proc.pid, 'started_at': _scan_state['started_at']}
+        return {**started, 'scope': scope} if scope else started
 
     except HTTPException:
         raise
@@ -520,6 +552,8 @@ def recompute_status(
             'kind': _scan_state.get('kind'),
             'progress': _scan_state.get('progress'),
             'exit_code': None,
+            'started_at': _scan_state.get('started_at'),
+            'scope': _scan_state.get('scope'),
         }
     if holder is not None:
         return {
@@ -537,4 +571,6 @@ def recompute_status(
         'kind': _scan_state.get('kind'),
         'progress': _scan_state.get('progress'),
         'exit_code': _scan_state.get('exit_code'),
+        'started_at': _scan_state.get('started_at'),
+        'scope': _scan_state.get('scope'),
     }

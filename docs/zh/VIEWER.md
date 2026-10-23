@@ -1415,8 +1415,8 @@ python database.py --stats-info
 | `GET /api/scan/status` | 查询扫描进度（结构化的 `progress`：`{phase, current, total, eta_seconds}`）；访问规则与 `/start` 相同 |
 | `GET /api/scan/stream?token=<jwt>` | 通过 Server-Sent Events 推送实时进度；令牌由 `GET /api/scan/stream_token` 签发（访问规则与 `/start` 相同），并作为查询参数传递（`EventSource` API 无法设置请求头），并会自动回退到轮询 `/status` |
 | `GET /api/scan/directories` | 列出已配置的扫描目录；访问规则与 `/start` 相同 |
-| `POST /api/scan/recompute` | `[Edition]` 以后台作业方式触发整个照片库的综合评分重新计算（`--recompute-average`）；由 `facet.LibraryLock` 做跨进程保护，因此当已有扫描或重新计算从终端（而不只是另一个查看器标签页）运行时，它同样会拒绝（409，并指出持有者）。与 `/start` 不同，它的 argv 在服务端固定、不接受任何请求输入，因此不受上述依赖模式的访问规则约束 |
-| `GET /api/scan/recompute_status` | `[Edition]` 轮询重新计算的进度：`{running, kind, progress, exit_code}`——不包含 `/status` 会返回的 `output_lines` 日志流，该日志流的访问规则与 `/start` 相同 |
+| `POST /api/scan/recompute` | `[Edition]` 以后台作业方式触发整个照片库的综合评分重新计算（`--recompute-average`）；由 `facet.LibraryLock` 做跨进程保护，因此当已有扫描或重新计算从终端（而不只是另一个查看器标签页）运行时，它同样会拒绝（409，并指出持有者）。与 `/start` 不同，它的 argv 在服务端固定、只接受 `confirm` 和可选的 `category`（它运行 `--recompute-category`：只重写该类别的评分，并跳过连拍与序列检测；未知名称返回 400），因此不受上述依赖模式的访问规则约束 |
+| `GET /api/scan/recompute_status` | `[Edition]` 轮询重新计算的进度：`{running, kind, scope, started_at, progress, exit_code}`（`scope` 为 `all` 或 `category:<名称>`；`started_at` 让轮询者认出自己的作业）——不包含 `/status` 会返回的 `output_lines` 日志流，该日志流的访问规则与 `/start` 相同 |
 
 ### 人脸管理
 

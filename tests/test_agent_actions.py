@@ -55,6 +55,13 @@ TOOL_ROUTES = {
     "comparison_status": ["comparison_stats", "comparison_coverage"],
     "explain_score": ["critique"], "category_weights": ["category_weights"],
     "preview_weights": ["category_weights", "search_photos", "preview_score"],
+    "apply_weights": ["category_weights", "weight_snapshots", "update_weights"],
+    "list_weight_snapshots": ["weight_snapshots"],
+    "restore_weight_snapshot": ["weight_snapshots", "category_weights", "restore_weights"],
+    "recompute_scores": ["recompute_start"], "recompute_status": ["recompute_status"],
+    "learned_weights": ["learned_weights", "weight_confidence"],
+    "misassigned_categories": ["category_weights", "search_photos", "critique"],
+    "override_categories": ["photos_by_paths", "override_category"],
     "start_scan": ["scan_directories", "scan_start"], "scan_status": ["scan_status", "scan_directories"],
     **{tool.name: [] for tool in UI_TOOLS},
 }

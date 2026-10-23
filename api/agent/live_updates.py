@@ -34,7 +34,8 @@ PHOTO_EFFECT_TOOLS = frozenset({
     "cull_apply", "delete_photos", "override_sequence", "clear_sequence_override", "override_category",
     "clear_category_override", "assign_faces", "culling.auto", "culling.confirm",
 })
-NO_PHOTO_EFFECT_TOOLS = frozenset({"create_album", "export_metadata", "scan_start"})
+NO_PHOTO_EFFECT_TOOLS = frozenset({"create_album", "export_metadata", "scan_start", "update_weights", "restore_weights",
+                                   "recompute_start"})
 
 # ``(principal, tool, request body, response body)``, sync or async.
 WriteSink = Callable[[str, str, Any, Any], Any]

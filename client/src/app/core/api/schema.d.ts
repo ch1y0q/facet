@@ -3595,7 +3595,12 @@ export interface paths {
         put?: never;
         /**
          * Start Recompute
-         * @description Spawn a full-library aggregate recompute as a background subprocess.
+         * @description Spawn an aggregate recompute (the whole library, or one ``category``) as a background subprocess.
+         *
+         *     ``category`` runs ``--recompute-category``: only that category's scores are rewritten, and burst and
+         *     sequence detection are skipped (the whole-library run does them). Either way the run persists the
+         *     library's percentile snapshot, which every category's next normalisation reads. An unknown category is
+         *     a 400 before anything is spawned.
          *
          *     Reuses the scan job machinery (``_scan_lock``, ``_scan_state``,
          *     ``_read_scan_output``) so a scan and a recompute stay mutually exclusive
@@ -5833,6 +5838,10 @@ export interface components {
             message: string;
             /** Pid */
             pid: number;
+            /** Scope */
+            scope?: string | null;
+            /** Started At */
+            started_at?: number | null;
             /** Success */
             success: boolean;
         };
@@ -7240,6 +7249,18 @@ export interface components {
             confirm: boolean;
         };
         /**
+         * RecomputeScoresRequest
+         * @description Body of ``POST /recompute``: ``category`` narrows the run to one category.
+         *
+         *     A model of its own so ``/detect_panoramas``, which shares ``RecomputeRequest``, cannot be handed a category.
+         */
+        RecomputeScoresRequest: {
+            /** Category */
+            category?: string | null;
+            /** Confirm */
+            confirm: boolean;
+        };
+        /**
          * RecomputeStatusResponse
          * @description ``GET /api/scan/recompute_status`` -- see ``ScanStatusResponse`` for why
          *     ``progress`` stays an untyped passthrough.
@@ -7255,6 +7276,10 @@ export interface components {
             } | null;
             /** Running */
             running: boolean;
+            /** Scope */
+            scope?: string | null;
+            /** Started At */
+            started_at?: number | null;
         };
         /** RejectMergeRequest */
         RejectMergeRequest: {
@@ -8216,6 +8241,8 @@ export interface components {
             accuracy_before?: number | null;
             /** Category */
             category?: string | null;
+            /** Category Bonus */
+            category_bonus?: number | null;
             /** Comparisons Used */
             comparisons_used?: number | null;
             /** Created By */
@@ -13355,7 +13382,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RecomputeRequest"];
+                "application/json": components["schemas"]["RecomputeScoresRequest"];
             };
         };
         responses: {

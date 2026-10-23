@@ -119,3 +119,104 @@ class TestRankChanges:
     def test_evenly_spaced_covers_the_whole_range(self):
         assert weights.evenly_spaced(list(range(100)), 5) == [0, 20, 40, 60, 80]
         assert weights.evenly_spaced(list(range(3)), 30) == [0, 1, 2]
+
+
+class TestSnapshotRestorable:
+    def test_a_percent_snapshot_of_valid_metrics_is_restorable(self):
+        assert weights.snapshot_unrestorable_reason({"aesthetic_percent": 40, "composition_percent": 60}) is None
+
+    def test_a_decimal_snapshot_saved_by_the_web_ui_is_not(self):
+        reason = weights.snapshot_unrestorable_reason({"aesthetic": 0.4, "composition": 0.6, "bonus": 0.5})
+        assert reason and "_percent" in reason
+
+    def test_one_unknown_percent_key_makes_it_unrestorable(self):
+        reason = weights.snapshot_unrestorable_reason({"aesthetic_percent": 40, "aestethic_percent": 60})
+        assert reason and "aestethic_percent" in reason
+
+    def test_an_empty_or_non_numeric_snapshot_is_not(self):
+        assert weights.snapshot_unrestorable_reason({})
+        assert weights.snapshot_unrestorable_reason({"aesthetic_percent": "40"})
+        assert weights.snapshot_unrestorable_reason({"aesthetic_percent": True})
+
+    def test_every_key_of_every_shipped_category_is_restorable(self):
+        import json
+        from config_resolve import defaults_path
+        with open(defaults_path()) as handle:
+            shipped = json.load(handle)
+        for category in shipped["categories"]:
+            assert weights.snapshot_unrestorable_reason(category["weights"]) is None, category["name"]
+
+
+class TestJobState:
+    def test_running_is_running_whatever_the_kind(self):
+        out = weights.job_state({"running": True, "kind": "scan", "progress": {"current": 1}}, None)
+        assert out["state"] == "running" and out["kind"] == "scan" and out["reason"] == "not_this_job"
+
+    def test_exit_zero_succeeded(self):
+        out = weights.job_state({"running": False, "kind": "recompute", "exit_code": 0, "started_at": 5.0,
+                                 "scope": "all"}, 5.0)
+        assert out["state"] == "succeeded" and out["reason"] == "ok" and out["matches_started_job"] is True
+
+    def test_the_lock_held_exit_code_is_busy_not_failed(self):
+        out = weights.job_state({"running": False, "kind": "recompute", "exit_code": 75}, None)
+        assert out["state"] == "busy" and out["reason"] == "lock_held"
+
+    def test_any_other_exit_code_failed(self):
+        out = weights.job_state({"running": False, "kind": "recompute", "exit_code": 1}, None)
+        assert out["state"] == "failed" and out["reason"] == "failed"
+
+    def test_no_job_is_idle(self):
+        out = weights.job_state({"running": False, "kind": None, "exit_code": None}, None)
+        assert out["state"] == "idle" and out["reason"] == "no_job"
+
+    def test_another_job_than_the_one_started_is_not_this_job(self):
+        out = weights.job_state({"running": True, "kind": "recompute", "started_at": 9.0}, 5.0)
+        assert out["matches_started_job"] is False and out["reason"] == "not_this_job"
+
+    def test_a_status_without_a_start_time_cannot_say(self):
+        out = weights.job_state({"running": True, "kind": "recompute"}, 5.0)
+        assert out["matches_started_job"] is None
+
+
+class TestLearnedChanges:
+    def test_only_non_zero_deltas_are_listed_and_the_proposal_carries_them(self):
+        current = {"aesthetic_percent": 40, "composition_percent": 60, "color_percent": 0}
+        suggested = {"aesthetic_percent": 50, "composition_percent": 60, "color_percent": 5}
+        changes, proposal = weights.learned_changes(current, suggested)
+        assert changes == [{"key": "aesthetic_percent", "current": 40, "suggested": 50, "delta": 10},
+                           {"key": "color_percent", "current": 0, "suggested": 5, "delta": 5}]
+        assert proposal == {"aesthetic_percent": 50, "color_percent": 5}
+
+    def test_the_proposal_passes_the_server_equal_validation(self):
+        current = {"aesthetic_percent": 40, "composition_percent": 60}
+        _, proposal = weights.learned_changes(current, {"aesthetic_percent": 55, "composition_percent": 45})
+        issues, vector = weights.resulting_vector(current, proposal, None)
+        assert issues == [] and vector == {"aesthetic_percent": 55, "composition_percent": 45}
+
+
+class TestNearMiss:
+    def rejected(self, key, required, actual, category="wide"):
+        return {"category": category, "mismatch": {"key": key, "required": required, "actual": actual}}
+
+    def test_a_numeric_bound_missed_by_under_ten_percent_is_a_near_miss(self):
+        hit = weights.near_miss([self.rejected("face_ratio_min", 0.10, 0.095)])
+        assert hit["suggested"] == "wide" and hit["mismatch"]["gap"] == pytest.approx(0.05)
+
+    def test_ten_percent_or_more_is_not(self):
+        assert weights.near_miss([self.rejected("face_ratio_min", 0.10, 0.09)]) is None
+        assert weights.near_miss([self.rejected("face_ratio_min", 0.10, 0.02)]) is None
+
+    def test_a_max_bound_works_the_same_way(self):
+        assert weights.near_miss([self.rejected("face_ratio_max", 0.05, 0.052)])["suggested"] == "wide"
+
+    def test_missing_values_booleans_and_tags_never_count(self):
+        assert weights.near_miss([self.rejected("face_ratio_min", 0.10, None)]) is None
+        assert weights.near_miss([self.rejected("is_silhouette", True, False)]) is None
+        assert weights.near_miss([self.rejected("required_tags", ["a"], [])]) is None
+        assert weights.near_miss([self.rejected("face_ratio_min", 0, 0.0)]) is None
+
+    def test_the_first_qualifying_category_in_priority_order_wins(self):
+        hit = weights.near_miss([self.rejected("face_ratio_min", 0.10, 0.02, "far"),
+                                 self.rejected("face_ratio_min", 0.10, 0.099, "close"),
+                                 self.rejected("face_ratio_min", 0.10, 0.098, "later")])
+        assert hit["suggested"] == "close"
