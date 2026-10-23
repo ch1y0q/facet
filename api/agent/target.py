@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from api.agent import show as relay
+from api.agent.album_filters import query_form
 from api.agent.album_filters import unsupported as unsupported_filters
 from api.agent.bridge import TabRegistry
 from api.agent.internal_client import InternalClient, err
@@ -64,7 +65,7 @@ def view_filters(raw: Any) -> tuple[Optional[dict], dict[str, str]]:
                    f"{', '.join(unknown[:10])}"), {}
     if any(not isinstance(value, _SCALAR) for value in raw.values()):
         return err("invalid_input", "The tab's view filters must be plain values"), {}
-    return None, {key: query_value(value) for key, value in raw.items() if key not in GALLERY_PAGING_KEYS}
+    return None, query_form({key: value for key, value in raw.items() if key not in GALLERY_PAGING_KEYS})
 
 
 async def read_selection(registry: TabRegistry, resolved: ResolvedGrant, settings: dict,
@@ -234,8 +235,7 @@ def _stored_view(raw: Any) -> tuple[Optional[dict], dict]:
     unknown = sorted(str(key) for key in parsed if key not in gallery_filter_keys())
     if unknown:
         return _view_refusal(f"The tab's view carries filters this server does not know: {', '.join(unknown[:10])}"), {}
-    refused = [key for key in parsed if key in SMART_ALBUM_EXCLUDE_KEYS or key in TAB_UNSUPPORTED_FILTER_KEYS
-               or key == "album_id"]
+    refused = [key for key in parsed if key in SMART_ALBUM_EXCLUDE_KEYS or key in TAB_UNSUPPORTED_FILTER_KEYS]
     if refused:
         return unsupported_filters(refused), {}
     return None, parsed
@@ -282,7 +282,7 @@ async def resolve_view(
     if refusal is not None:
         return refusal, "", 0, None
     tab_filters = data.get("filters") if isinstance(data.get("filters"), dict) else {}
-    query = {key: query_value(value) for key, value in stored.items() if key not in GALLERY_PAGING_KEYS}
+    query = query_form({key: value for key, value in stored.items() if key not in GALLERY_PAGING_KEYS})
     query.update({key: query_value(tab_filters[key]) for key in VIEW_HIDE_KEYS if key in tab_filters})
     counted = await client.call(grant, "photos_count", query=query, timeout=settings["call_timeout_s"])
     if not counted["ok"]:

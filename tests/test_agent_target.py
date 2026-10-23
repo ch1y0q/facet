@@ -336,11 +336,17 @@ class TestCreateAlbumFromTheView:
         assert result["error"] == "invalid_input" and fragment in result["message"]
         assert albums_named(ALBUM_PREFIX + "refused") == []
 
-    @pytest.mark.parametrize("key", ["hide_bursts", "gps_lat", "album_id", "similar_to", "per_page"])
+    @pytest.mark.parametrize("key", ["hide_bursts", "gps_lat", "album_id", "per_page"])
     def test_a_display_only_or_album_key_in_the_stored_json_is_unsupported(self, setup, made_albums, key):
         env, token, _ = setup(gallery_view({"path_prefix": PFX, key: "1"}))
         result = env.call(token, "create_album", {"name": ALBUM_PREFIX + "keys", "target": "view"})
-        assert result["error"] in ("unsupported_filters", "invalid_input"), result
+        assert result["error"] == "unsupported_filters" and result["keys"] == [key], result
+        assert albums_named(ALBUM_PREFIX + "keys") == []
+
+    def test_a_key_the_server_does_not_know_is_invalid_input_naming_it(self, setup, made_albums):
+        env, token, _ = setup(gallery_view({"path_prefix": PFX, "similar_to": "1"}))
+        result = env.call(token, "create_album", {"name": ALBUM_PREFIX + "keys", "target": "view"})
+        assert result["error"] == "invalid_input" and "similar_to" in result["message"], result
         assert albums_named(ALBUM_PREFIX + "keys") == []
 
     def test_view_cannot_be_combined_with_paths(self, setup, made_albums):

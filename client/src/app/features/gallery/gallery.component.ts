@@ -537,7 +537,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
         <div data-gallery-notices class="pointer-events-none absolute z-10 flex flex-col gap-2 w-[min(26rem,calc(100%-1rem))]"
              [style.bottom.px]="noticeBottomPx()" [style.right.px]="noticeRightPx()" [style.maxWidth]="noticeMaxWidth()">
           @if (showHiddenBanner()) {
-            <div role="status" class="pointer-events-auto px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] border border-[var(--mat-sys-outline-variant)] shadow-lg flex items-center gap-3 text-sm">
+            <div role="status" [class]="NOTICE_CARD_CLASS">
               <mat-icon class="opacity-70 !text-base !w-5 !h-5">visibility_off</mat-icon>
               <span class="flex-1">
                 {{ I18N.gallery.hidden_banner.message | translate:{ n: store.hiddenSummary().total } }}
@@ -547,7 +547,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
               </button>
             </div>
           } @else if (canRestoreHidden()) {
-            <div role="status" class="pointer-events-auto px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] border border-[var(--mat-sys-outline-variant)] shadow-lg flex items-center gap-3 text-sm">
+            <div role="status" [class]="NOTICE_CARD_CLASS">
               <mat-icon class="opacity-70 !text-base !w-5 !h-5">visibility</mat-icon>
               <span class="flex-1">
                 {{ I18N.gallery.hidden_banner.showing_all | translate }}
@@ -558,7 +558,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
             </div>
           }
           @if (showRenderMigrationBanner()) {
-            <div role="status" class="pointer-events-auto px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] border border-[var(--mat-sys-outline-variant)] shadow-lg flex items-center gap-3 text-sm">
+            <div role="status" [class]="NOTICE_CARD_CLASS">
               <mat-icon class="opacity-70 !text-base !w-5 !h-5">auto_fix_high</mat-icon>
               <span class="flex-1">
                 {{ I18N.gallery.render_migration.message | translate:{ n: renderMigrationPending() } }}
@@ -1067,6 +1067,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   /** The command that migrates the whole library in one go. */
   protected readonly REFRESH_THUMBNAILS_COMMAND = 'python facet.py --refresh-thumbnails';
+  /** Shell shared by the cards of the floating notice stack. */
+  protected readonly NOTICE_CARD_CLASS = 'pointer-events-auto px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] border border-[var(--mat-sys-outline-variant)] shadow-lg flex items-center gap-3 text-sm';
 
   /** RAW rows still on the pre-fix rendering, as of the last config load. */
   readonly renderMigrationPending = computed(

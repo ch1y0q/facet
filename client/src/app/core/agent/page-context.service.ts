@@ -1,7 +1,9 @@
 import { DestroyRef, Injectable, inject } from '@angular/core';
 import { MatBottomSheet } from '@angular/material/bottom-sheet';
 import { MatDialog } from '@angular/material/dialog';
-import { ConnectAssistantDialogComponent } from '../../features/agent/connect-assistant-dialog.component';
+
+/** Id the connect-assistant dialog opens with, so the overlay check can recognise it without importing the lazily loaded component. */
+export const CONNECT_ASSISTANT_DIALOG_ID = 'connect-assistant-dialog';
 
 export type PageContextValue = string | number | boolean | null;
 export type PageContextReader = () => Record<string, unknown>;
@@ -62,7 +64,7 @@ export class PageContextService {
   /** What covers the page now. The connect-assistant dialog is the assistant's own setup surface and does not count. */
   overlays(): OverlayKind[] {
     const kinds = new Set<OverlayKind>(this.owned);
-    if (this.dialog.openDialogs.some(ref => !(ref.componentInstance instanceof ConnectAssistantDialogComponent))) kinds.add('dialog');
+    if (this.dialog.openDialogs.some(ref => ref.id !== CONNECT_ASSISTANT_DIALOG_ID)) kinds.add('dialog');
     if (this.bottomSheet._openedBottomSheetRef) kinds.add('bottom_sheet');
     return [...kinds];
   }

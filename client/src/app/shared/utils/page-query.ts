@@ -13,19 +13,23 @@ import { filter } from 'rxjs';
  */
 export function onPageQuery(path: string, keys: readonly string[], apply: (query: ParamMap) => void): void {
   const router = inject(Router);
+  let cleaning = false;
   router.events.pipe(
     filter((event): event is NavigationEnd => event instanceof NavigationEnd),
     takeUntilDestroyed(),
   ).subscribe(event => {
+    // The cleanup navigation below is ours: re-running `apply` for it would hand the page an empty query.
+    if (cleaning) return;
     const tree = router.parseUrl(event.urlAfterRedirects);
     if (`/${tree.root.children['primary']?.segments.map(s => s.path).join('/') ?? ''}` !== path) return;
     apply(tree.queryParamMap);
     const carried = keys.filter(key => tree.queryParamMap.has(key));
     if (carried.length === 0) return;
-    void router.navigate([path], {
+    cleaning = true;
+    void Promise.resolve(router.navigate([path], {
       queryParams: Object.fromEntries(carried.map(key => [key, null])),
       queryParamsHandling: 'merge',
       replaceUrl: true,
-    });
+    })).finally(() => { cleaning = false; });
   });
 }

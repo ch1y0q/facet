@@ -406,6 +406,10 @@ def register_write_tools(server: MCPServer, client: InternalClient, registry: Ta
                 refusal, stored = album_filters.to_stored(filters.model_dump(exclude_none=True))
                 if refusal is not None:
                     return refusal
+                if not stored:
+                    return err("invalid_input", "`filters` holds no storable filter, so the smart album would list the "
+                               "whole library; give at least one effective filter, or omit `filters` for an empty "
+                               "album; nothing was created")
                 counted = await client.call(grant, "photos_count", query=_scope_filters(filters), timeout=timeout)
                 if not counted["ok"]:
                     return counted

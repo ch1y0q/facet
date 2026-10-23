@@ -2,8 +2,7 @@ import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatBottomSheet } from '@angular/material/bottom-sheet';
 import { MatDialog } from '@angular/material/dialog';
-import { ConnectAssistantDialogComponent } from '../../features/agent/connect-assistant-dialog.component';
-import { PageContextService, registerOverlayForLifetime, registerPageContext } from './page-context.service';
+import { CONNECT_ASSISTANT_DIALOG_ID, PageContextService, registerOverlayForLifetime, registerPageContext } from './page-context.service';
 
 @Component({ selector: 'app-probe', template: '' })
 class ProbeComponent {
@@ -14,7 +13,7 @@ class ProbeComponent {
 }
 
 describe('PageContextService', () => {
-  let openDialogs: { componentInstance: unknown }[];
+  let openDialogs: { id?: string; componentInstance?: unknown }[];
   let sheet: { _openedBottomSheetRef: unknown };
   let service: PageContextService;
 
@@ -66,7 +65,7 @@ describe('PageContextService', () => {
   });
 
   it('reports a dialog of any type but the connect-assistant one', () => {
-    openDialogs.push({ componentInstance: Object.create(ConnectAssistantDialogComponent.prototype) });
+    openDialogs.push({ id: CONNECT_ASSISTANT_DIALOG_ID });
     expect(service.overlays()).toEqual([]);
     openDialogs.push({ componentInstance: {} });
     expect(service.overlays()).toEqual(['dialog']);

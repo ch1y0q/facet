@@ -1,6 +1,7 @@
 import { DestroyRef, Injectable, effect, inject, signal, untracked } from '@angular/core';
 import { NavigationEnd, Router } from '@angular/router';
 import { AuthService } from '../services/auth.service';
+import { pathOf } from '../../shared/utils/url-path';
 
 export type UserActivityKind =
   | 'rating'
@@ -89,11 +90,14 @@ export class UserActivityJournal {
     inject(DestroyRef).onDestroy(() => this.dropPendingFilters());
     this.router.events.subscribe(event => {
       if (!(event instanceof NavigationEnd)) return;
-      const path = event.urlAfterRedirects.split(/[?#]/)[0];
-      const samePath = path === this.lastPath;
-      this.lastPath = path;
-      // A query-only navigation is the URL sync of a filter edit (or a tab switch): the edit has its own entry.
-      if (!samePath) this.record('navigate', [], event.urlAfterRedirects);
+      const url = event.urlAfterRedirects;
+      const path = pathOf(url);
+      // The photo detail's query names the photo it shows, so stepping to another one is a real navigation.
+      const page = path === '/photo' ? `${path}?path=${new URLSearchParams(url.split('#')[0].split('?')[1] ?? '').get('path') ?? ''}` : path;
+      const samePage = page === this.lastPath;
+      this.lastPath = page;
+      // Any other query-only navigation is the URL sync of a filter edit (or a tab switch): the edit has its own entry.
+      if (!samePage) this.record('navigate', [], event.urlAfterRedirects);
     });
   }
 

@@ -37,6 +37,7 @@ import { MapFiltersService } from './features/map/map-filters.service';
 import { CapsuleFiltersService } from './features/capsules/capsule-filters.service';
 import { TranslatePipe } from './shared/pipes/translate.pipe';
 import { AssistantActivityChipComponent } from './features/agent/assistant-activity-chip.component';
+import { CONNECT_ASSISTANT_DIALOG_ID } from './core/agent/page-context.service';
 import { SortGroupKeyPipe } from './shared/pipes/sort-group-key.pipe';
 import { PersonThumbnailUrlPipe, ThumbnailUrlPipe } from './shared/pipes/thumbnail-url.pipe';
 import { SlideshowComponent } from './features/gallery/slideshow.component';
@@ -590,7 +591,7 @@ export class App implements OnInit {
 
   protected async showConnectAssistantDialog(): Promise<void> {
     const { ConnectAssistantDialogComponent } = await import('./features/agent/connect-assistant-dialog.component');
-    this.dialog.open(ConnectAssistantDialogComponent, { width: '95vw', maxWidth: '640px' });
+    this.dialog.open(ConnectAssistantDialogComponent, { id: CONNECT_ASSISTANT_DIALOG_ID, width: '95vw', maxWidth: '640px' });
   }
 
   protected showEditionDialog(): void {

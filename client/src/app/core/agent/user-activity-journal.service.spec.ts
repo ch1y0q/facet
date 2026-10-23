@@ -58,6 +58,13 @@ describe('UserActivityJournal', () => {
     expect(item.value).toBe('/b');
   });
 
+  it('records stepping from one photo to another, but not a query-only change elsewhere', () => {
+    events.next(new NavigationEnd(1, '/photo?path=a', '/photo?path=a'));
+    events.next(new NavigationEnd(2, '/photo?path=b', '/photo?path=b'));
+    events.next(new NavigationEnd(3, '/photo?path=b', '/photo?path=b&x=1'));
+    expect(journal.since().items.map(i => i.value)).toEqual(['/photo?path=a', '/photo?path=b']);
+  });
+
   it('records nothing inside a suppression scope, and resumes after it', async () => {
     await journal.suppress(async () => {
       journal.record('rating', ['a'], 1);

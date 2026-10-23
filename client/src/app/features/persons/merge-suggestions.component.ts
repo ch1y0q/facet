@@ -322,11 +322,8 @@ export class MergeSuggestionsComponent implements OnInit, OnDestroy {
 
       const res = await firstValueFrom(this.api.post<{ merged_count: number }>('/persons/merge_batch', { merges }));
       if (res.merged_count > 0) {
-        this.journal.record('person', [], {
-          action: 'merge',
-          count: res.merged_count,
-          ...(res.merged_count < merges.length ? { partial: true } : {}),
-        });
+        // Never `partial`: the endpoint is one transaction (a failure throws), and it folds overlapping pairs into fewer merges.
+        this.journal.record('person', [], { action: 'merge', count: res.merged_count });
       }
 
       const count = this.suggestions().length;

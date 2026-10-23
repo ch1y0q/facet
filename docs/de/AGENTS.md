@@ -178,7 +178,7 @@ Schreibwerkzeuge stehen neben den Lesewerkzeugen in derselben `/mcp`-Liste. Jede
 | `batch_set_rejected` | `edition` | Lehnt viele Fotos ab | 1000 Pfade oder `filters` |
 | `add_tags` | `edition` | Fügt manuelle Tags hinzu (getrennt von den KI-Tags) | 10 Tags; 1000 Pfade oder `filters` |
 | `remove_tags` | `edition` | Entfernt manuelle Tags | 10 Tags; 1000 Pfade oder `filters` |
-| `create_album` | `edition` | Legt ein Album an (nicht idempotent: zweimal ergibt zwei Alben): leer, oder aus `filters` / `target: "view"` als Smart-Album, das diesen Filtern folgt, oder aus `paths` / `target: "selection"` als festes Album, im selben Aufruf befüllt (`added`, `skipped`). Ein Smart-Album nutzt die Ausblend-Schalter des Viewers und zeigt in `list_albums` 0 Fotos | |
+| `create_album` | `edition` | Legt ein Album an (nicht idempotent: zweimal ergibt zwei Alben): leer, oder aus `filters` / `target: "view"` als Smart-Album, das diesen Filtern folgt, oder aus `paths` / `target: "selection"` als festes Album, im selben Aufruf befüllt (`added`, `skipped`). Ein Smart-Album nutzt die Ausblend-Schalter des Viewers und zeigt in `list_albums` 0 Fotos. `filters` ohne wirksamen Filter (`{}` oder nur ausgeschaltete Anzeige-Schalter) werden als `invalid_input` abgewiesen: lassen Sie `filters` für ein leeres Album weg | |
 | `album_add_photos` | `edition` | Fügt einem Album Fotos hinzu (bereits enthaltene werden ignoriert) | 1000 Pfade |
 | `album_remove_photos` | `edition` | Entfernt Fotos aus einem Album; die Fotos selbst bleiben unberührt | 1000 Pfade |
 | `assign_faces` | `edition` | Verschiebt Gesichter zu einer Person; Gesichter einer anderen Person bleiben unberührt, außer `allow_reassign` ist gesetzt, und das Ergebnis listet das Übersprungene | 50 Gesichts-IDs |

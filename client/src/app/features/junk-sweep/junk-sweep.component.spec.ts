@@ -87,6 +87,18 @@ describe('JunkSweepComponent', () => {
       expect(selectKind).toHaveBeenCalledWith('screenshot');
     });
 
+    it('keeps the requested kind when the kind list answers after the URL cleanup navigation', async () => {
+      const kinds = gate();
+      createComponent(defaultFirstPage, kinds.reply);
+      void component.ngOnInit();
+      await go('/junk?kind=screenshot');
+      await vi.waitFor(() => expect(TestBed.inject(Router).url).toBe('/junk'));
+      await new Promise(resolve => setTimeout(resolve, 20));
+      expect(component.activeKind()).toBe('any');
+      kinds.release(kindsList);
+      await vi.waitFor(() => expect(component.activeKind()).toBe('screenshot'));
+    });
+
     it('ignores a kind the list does not hold, and "any" goes back to every kind', async () => {
       createComponent();
       await component.ngOnInit();

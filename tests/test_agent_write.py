@@ -862,7 +862,6 @@ PARITY_CASES = {
     "path_prefix": {"path_prefix": ALBUM_DIR},
     "score_range": {"min_score": 5, "max_score": 7.5},
     "star_rating": {"min_star_rating": 3},
-    "empty": {},
 }
 
 
@@ -953,11 +952,21 @@ class TestSmartAlbumParity:
         assert refused["error"] == "unsupported_filters" and refused["keys"] == sorted(filters)
         assert db_row("SELECT COUNT(*) FROM albums")[0] == before
 
-    def test_an_ineffective_unsupported_value_is_not_a_refusal(self, edition, album_photos, album_cleanup):
+    def test_an_ineffective_unsupported_value_is_not_an_unsupported_refusal(self, edition, album_photos, album_cleanup):
         env, token = edition
-        created = env.call(token, "create_album", {"name": "ok", "filters": {"show_rejected": False}})
+        created = env.call(token, "create_album", {"name": "ok", "filters": {"show_rejected": False, "min_score": 5}})
         assert created["ok"], created
         album_cleanup.append(created["data"]["id"])
+
+    @pytest.mark.parametrize("filters", [{}, {"show_rejected": False}, {"type": ""}, {"favorites_only": False},
+                                         {"tag": ""}, {"path_prefix": ""}, {"camera": ""}])
+    def test_filters_that_store_nothing_are_refused_not_saved_as_the_whole_library(
+            self, edition, album_photos, filters):
+        env, token = edition
+        before = db_row("SELECT COUNT(*) FROM albums")[0]
+        refused = env.call(token, "create_album", {"name": "everything", "filters": filters})
+        assert refused["error"] == "invalid_input" and "no storable filter" in refused["message"], refused
+        assert db_row("SELECT COUNT(*) FROM albums")[0] == before
 
     def test_type_with_category_and_unknown_category_are_invalid_input(self, edition, album_photos):
         env, token = edition

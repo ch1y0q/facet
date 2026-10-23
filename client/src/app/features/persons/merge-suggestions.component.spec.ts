@@ -196,7 +196,7 @@ describe('MergeSuggestionsComponent', () => {
       expect(journal.record).toHaveBeenCalledWith('person', [], { action: 'merge', count: 1, pairs: [[2, 1]] });
     });
 
-    it('journals a batch merge as one entry, partial when the server folded fewer', async () => {
+    it('journals a batch merge as one entry, never partial: the endpoint is atomic and folds overlapping pairs', async () => {
       const list = [makeSuggestion(1, 'Alice', 10, 2, 'Bob', 5), makeSuggestion(3, 'Carol', 3, 4, 'Dave', 8)];
       component.suggestions.set(list);
       mockApi.post.mockReturnValueOnce(of({ merged_count: 2 }));
@@ -205,7 +205,7 @@ describe('MergeSuggestionsComponent', () => {
       component.suggestions.set(list);
       mockApi.post.mockReturnValueOnce(of({ merged_count: 1 }));
       await component.acceptAll();
-      expect(journal.record).toHaveBeenLastCalledWith('person', [], { action: 'merge', count: 1, partial: true });
+      expect(journal.record).toHaveBeenLastCalledWith('person', [], { action: 'merge', count: 1 });
       journal.record.mockClear();
       component.suggestions.set(list);
       mockApi.post.mockReturnValueOnce(throwError(() => new Error('fail')));

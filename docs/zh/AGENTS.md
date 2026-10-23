@@ -178,7 +178,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 | `batch_set_rejected` | `edition` | 淘汰大量照片 | 1000 个路径，或 `filters` |
 | `add_tags` | `edition` | 添加手动标签（与 AI 标签分开保存） | 10 个标签；1000 个路径，或 `filters` |
 | `remove_tags` | `edition` | 移除手动标签 | 10 个标签；1000 个路径，或 `filters` |
-| `create_album` | `edition` | 创建相册（不幂等：调用两次会创建两个相册）：可为空，也可由 `filters` / `target: "view"` 创建跟随这些筛选条件的智能相册，或由 `paths` / `target: "selection"` 创建并在同一次调用中填充的固定相册（`added`、`skipped`）。智能相册使用查看器自身的隐藏开关，在 `list_albums` 中显示 0 张照片 | |
+| `create_album` | `edition` | 创建相册（不幂等：调用两次会创建两个相册）：可为空，也可由 `filters` / `target: "view"` 创建跟随这些筛选条件的智能相册，或由 `paths` / `target: "selection"` 创建并在同一次调用中填充的固定相册（`added`、`skipped`）。智能相册使用查看器自身的隐藏开关，在 `list_albums` 中显示 0 张照片。不含任何有效筛选条件的 `filters`（`{}`，或仅含已关闭的显示开关）会被拒绝并返回 `invalid_input`：要创建空相册请省略 `filters` | |
 | `album_add_photos` | `edition` | 向相册添加照片（已有的会被忽略） | 1000 个路径 |
 | `album_remove_photos` | `edition` | 从相册移除照片；照片本身不受影响 | 1000 个路径 |
 | `assign_faces` | `edition` | 将人脸移到某个人物;属于其他人物的人脸保持不变,除非设置 `allow_reassign`,结果会列出被跳过的内容 | 50 个人脸 id |

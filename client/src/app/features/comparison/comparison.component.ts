@@ -27,7 +27,7 @@ import { I18N, i18nKeys } from '../../core/i18n/keys';
 Chart.register(...registerables);
 
 /** The page's mat-tabs in template order: the four `COMPARE_TAB_INDEX` tabs, then the scoring-context and panorama tabs. */
-const COMPARE_TAB_NAMES = ['snapshots', 'ab', 'suggestions', 'weights', 'context', 'panorama'];
+const COMPARE_TAB_NAMES: string[] = [...Object.keys(COMPARE_TAB_INDEX), 'context', 'panorama'];
 
 @Component({
   selector: 'app-comparison',
@@ -226,8 +226,10 @@ export class ComparisonComponent {
       const activeTab = this.compareFilters.activeTab();
       // The A/B tab is projected eagerly, so it exists (and loads pairs) while another tab is shown.
       const abTab = activeTab === COMPARE_TAB_INDEX.ab ? this.abTab() : undefined;
+      let tab: string | null = null;
+      if (category) tab = COMPARE_TAB_NAMES[activeTab] ?? null;
       return {
-        tab: category ? COMPARE_TAB_NAMES[activeTab] ?? null : null,
+        tab,
         category,
         strategy: this.compareFilters.strategy(),
         pair_a: abTab?.pairA() ?? null,

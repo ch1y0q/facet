@@ -142,6 +142,52 @@ class TestApplyWeights:
         assert stored_weights(cfg) == {"aesthetic_percent": 50, "composition_percent": 40, "color_percent": 10}
         assert db("SELECT path, aggregate FROM photos WHERE path LIKE ? ORDER BY path", PREFIX + "%") == aggregates
 
+    def test_a_read_back_that_differs_from_the_proposal_is_not_verified(self, world, monkeypatch):
+        from api.agent.internal_client import ok
+        env, edition, _, _ = world
+        digest = preview(env, edition)
+        written = []
+
+        def stale_read_back(tool, kw):
+            if tool == "update_weights":
+                written.append(True)
+            if tool == "category_weights" and written:
+                return ok({"weights": {"aesthetic_percent": 60, "composition_percent": 40}})
+            return None
+
+        intercept_internal_call(monkeypatch, stale_read_back)
+        result = apply(env, edition, digest)
+        assert result["ok"] and written, result
+        assert result["data"]["verified"] is False
+
+    def test_a_failed_read_back_is_not_verified(self, world, monkeypatch):
+        from api.agent.internal_client import err
+        env, edition, _, _ = world
+        digest = preview(env, edition)
+        written = []
+
+        def failing_read_back(tool, kw):
+            if tool == "update_weights":
+                written.append(True)
+            if tool == "category_weights" and written:
+                return err("upstream_error", "boom")
+            return None
+
+        intercept_internal_call(monkeypatch, failing_read_back)
+        result = apply(env, edition, digest)
+        assert result["ok"] and result["data"]["verified"] is False
+
+    def test_a_write_with_no_new_snapshot_warns_that_undo_is_not_guaranteed(self, world, monkeypatch):
+        from api.agent.internal_client import ok
+        env, edition, _, cfg = world
+        digest = preview(env, edition)
+        intercept_internal_call(monkeypatch, lambda tool, kw: ok({"snapshots": []}) if tool == "weight_snapshots" else None)
+        result = apply(env, edition, digest)
+        assert result["ok"], result
+        assert result["data"]["snapshot"] is None
+        assert "no_undo_snapshot" in [w["code"] for w in result["data"]["warnings"]]
+        assert stored_weights(cfg)["aesthetic_percent"] == 50
+
     def test_only_the_configured_keys_and_the_changed_ones_are_sent_never_the_zero_padding(self, world, monkeypatch):
         env, edition, _, cfg = world
         sent = []
@@ -607,6 +653,21 @@ class TestLearnedWeights:
         data = env.call(edition, "learned_weights", {"category": "base", "with_confidence": True})["data"]
         assert data["confidence"]["stable_components"] == ["aesthetic"] and data["confidence"]["n_bootstrap"] == 50
 
+    def test_an_unavailable_confidence_carries_the_reason(self, optimizer):
+        env, edition, _, _ = optimizer
+        FakeOptimizer.confidence = {"error": "too few comparisons for a bootstrap"}
+        data = env.call(edition, "learned_weights", {"category": "base", "with_confidence": True})["data"]
+        assert data["confidence"] == {"available": False, "message": "too few comparisons for a bootstrap"}
+
+    def test_a_failed_confidence_call_is_unavailable_with_the_error_message(self, optimizer, monkeypatch):
+        from api.agent.internal_client import err
+        env, edition, _, _ = optimizer
+        intercept_internal_call(monkeypatch, lambda tool, kw: err("upstream_error", "bootstrap blew up")
+                                if tool == "weight_confidence" else None)
+        data = env.call(edition, "learned_weights", {"category": "base", "with_confidence": True})["data"]
+        assert data["confidence"] == {"available": False, "message": "bootstrap blew up"}
+        assert data["available"] is True
+
     def test_the_category_is_required_and_readonly_is_refused(self, optimizer, monkeypatch):
         env, edition, readonly, _ = optimizer
         assert env.call(edition, "learned_weights", {})["error"] == "invalid_input"
@@ -660,6 +721,13 @@ class TestMisassigned:
         data = env.call(edition, "misassigned_categories", {"category": "base"})["data"]
         assert data["failed"] == 1 and data["scanned"] == 3 and data["of_total"] == 4
         assert data["partial"] is True and "could not be examined" in data["note"]
+
+    def test_when_every_critique_fails_the_upstream_error_is_returned_not_an_empty_scan(self, fixing, monkeypatch):
+        from api.agent.internal_client import err
+        env, edition, _, _ = fixing
+        intercept_internal_call(monkeypatch, lambda tool, kw: err("upstream_error", "boom") if tool == "critique" else None)
+        out = env.call(edition, "misassigned_categories", {"category": "base"})
+        assert out["ok"] is False and out["error"] == "upstream_error", out
 
     def test_the_limit_caps_the_list_and_reports_the_total(self, fixing):
         env, edition, _, _ = fixing

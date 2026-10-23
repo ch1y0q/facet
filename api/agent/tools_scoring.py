@@ -29,7 +29,7 @@ from api.agent.internal_client import InternalClient, err, ok
 from api.agent.requirements import critique_available
 from api.agent.runtime import run_tool
 from api.agent import photo_io
-from api.agent.target import read_selection
+from api.agent.target import resolve_selected_paths
 from api.agent.tools_common import READ_ANNOTATIONS, WRITE_ANNOTATIONS, register_tool
 from api.agent.tools_write import PER_PHOTO_CAP, WRITE_TOOL_LEVELS, Paths, TabId, Target, _too_large
 from api.config import server_scoring_config
@@ -43,7 +43,6 @@ SAMPLE_MAX = 100
 SAMPLE_PAGE = 100
 PREVIEW_CONCURRENCY = 4
 SKIP_LIMIT = 0.2
-CATEGORIES_SHOWN_KEYS = ("name", "priority", "weights", "bonus")
 SNAPSHOT_LIST_DEFAULT = 10
 SNAPSHOT_PAGE_SIZE = 100
 SNAPSHOT_PAGES = 5
@@ -82,8 +81,6 @@ RESTORE_CONFIRMATION_MESSAGE = ("the weights moved since the dry run, `confirm` 
 OVERRIDE_CONFIRMATION_MESSAGE = ("a photo's category changed since the dry run, `confirm` is missing or wrong, or it "
                                  f"expired after {int(nonce.TTL_SECONDS // 60)} minutes; dry-run again, show the user "
                                  "the list and retry with the new `confirm`")
-PENDING_MESSAGE = ("Too many unconfirmed previews or dry runs are pending; finish one or wait "
-                   f"{int(nonce.TTL_SECONDS // 60)} minutes")
 RECOMPUTE_NOTE = ("A category recompute rewrites only that category's scores and does not refresh burst or sequence groups "
                   "(`all` does). Either run also saves the library's percentile snapshot, which every category's next "
                   "normalisation reads. Poll recompute_status; do not start another job meanwhile")
@@ -93,12 +90,6 @@ MISASSIGNED_NOTE = ("A heuristic, not a probability: each candidate is only wort
                     "category. `stale` means the CURRENT config files the photo elsewhere (fix: recompute_scores, not an "
                     "override); `near_miss` means it missed a higher-priority category's first failing numeric bound by "
                     f"under {int(wm.NEAR_MISS_FRACTION * 100)}% (only the first five rejected categories are examined)")
-
-
-def _non_zero(raw: Any) -> dict:
-    """The ``*_percent`` weights of a route body that are not zero (the route pads every metric with 0)."""
-    return {k: v for k, v in (raw or {}).items()
-            if k.endswith(wm.SUFFIX) and isinstance(v, (int, float)) and v != 0}
 
 
 def configured_keys(category: str) -> list[str]:
@@ -150,49 +141,29 @@ def _shape_explanation(path: str, body: dict, top_n: int) -> dict:
     return shaped
 
 
-async def _one_path(client: InternalClient, grant: Any, registry: TabRegistry, resolved: Any, settings: dict,
-                    tab_id: Optional[str]) -> tuple[Optional[dict], Optional[str]]:
-    """``(error, path)`` for the tab's selection when it holds exactly one photo."""
-    refusal, selection = await read_selection(registry, resolved, settings, tab_id)
-    if refusal is not None or selection is None:
-        return refusal, None
-    if selection.count != 1:
-        return err("invalid_input", f"explain_score takes one photo; the selection holds {selection.count}"), None
-    if selection.scope == "paths":
-        return None, selection.paths[0]
-    listed = await client.call(grant, "photos_paths", query=selection.filters or {}, timeout=settings["call_timeout_s"])
-    if not listed["ok"]:
-        return listed, None
-    left = [p for p in (listed["data"] or {}).get("paths") or [] if p not in set(selection.excluded)]
-    if len(left) != 1:
-        return err("invalid_input", "selection_changed: the view no longer holds the one photo the tab "
-                   "selected; nothing was done. Re-read the selection and retry"), None
-    return None, left[0]
-
-
 async def _current_weights(client: InternalClient, grant: Any, category: str, timeout: float) -> tuple[Optional[dict], dict]:
     got = await client.call(grant, "category_weights", query={"category": category}, timeout=timeout)
     return (got, {}) if not got["ok"] else (None, got["data"] or {})
 
 
 async def _proposal(client: InternalClient, grant: Any, category: str, weights: Optional[dict], deltas: Optional[dict],
-                    timeout: float) -> tuple[Optional[dict], dict, dict, dict]:
-    """``(error, route_row, current, resulting)``: the category's weights and the vector the proposal produces.
+                    timeout: float) -> tuple[Optional[dict], dict, dict]:
+    """``(error, current, resulting)``: the category's weights and the vector the proposal produces.
 
     Shared by the preview and the apply, so both validate exactly alike (the server's own rule plus the
     modifier refusal) and bind their digest to the same two vectors.
     """
     failure, row = await _current_weights(client, grant, category, timeout)
     if failure is not None:
-        return failure, {}, {}, {}
-    current = _non_zero(row.get("weights"))
+        return failure, {}, {}
+    current = wm.nonzero(row.get("weights"), True)
     problems, resulting = wm.resulting_vector(current, weights, deltas)
     if problems:
-        return _issues(problems), {}, {}, {}
+        return _issues(problems), {}, {}
     if wm.weights_sum(resulting) <= 0:
         return err("invalid_input", "all_weights_zero: the proposal leaves every weight at 0, so no photo "
-                   "could be scored; give at least one metric a positive weight"), {}, {}, {}
-    return None, row, current, resulting
+                   "could be scored; give at least one metric a positive weight"), {}, {}
+    return None, current, resulting
 
 
 async def _newest_snapshot(client: InternalClient, grant: Any, category: str,
@@ -237,14 +208,14 @@ def _shape_snapshot(snapshot: dict) -> dict:
     return shaped
 
 
-async def _find_snapshot(client: InternalClient, grant: Any, snapshot_id: int, category: Optional[str],
+async def _find_snapshot(client: InternalClient, grant: Any, snapshot_id: int,
                          timeout: float) -> tuple[Optional[dict], Optional[dict], list[int], bool]:
     """``(error, snapshot, ids_seen, window_full)``: the list route has no id filter, so page it (newest first)."""
     seen: list[int] = []
     more = False
     for page in range(SNAPSHOT_PAGES):
         got = await client.call(grant, "weight_snapshots", timeout=timeout, query={
-            "category": category, "limit": SNAPSHOT_PAGE_SIZE, "offset": page * SNAPSHOT_PAGE_SIZE})
+            "limit": SNAPSHOT_PAGE_SIZE, "offset": page * SNAPSHOT_PAGE_SIZE})
         if not got["ok"]:
             return got, None, seen, False
         body = got["data"] or {}
@@ -302,9 +273,11 @@ def register_scoring_tools(server: MCPServer, client: InternalClient, registry: 
                 return err("invalid_input", "Give exactly one of `path` or `target: \"selection\"`")
             photo = path
             if photo is None:
-                failure, photo = await _one_path(client, grant, registry, resolved, settings, tab_id)
-                if failure is not None or photo is None:
+                failure, chosen, _ = await resolve_selected_paths(
+                    client, grant, registry, resolved, settings, tab_id=tab_id, cap=1, exact_one=True)
+                if failure is not None or not chosen:
                     return failure or err("invalid_input", "Nothing is selected in the tab")
+                photo = chosen[0]
             got = await client.call(grant, "critique", query={"path": photo, "mode": "rule"},
                                     timeout=settings["call_timeout_s"])
             if not got["ok"]:
@@ -334,7 +307,7 @@ def register_scoring_tools(server: MCPServer, client: InternalClient, registry: 
     ) -> CallToolResult:
         async def handler(grant, resolved, settings):
             timeout = settings["call_timeout_s"]
-            failure, _, current, resulting = await _proposal(client, grant, category, weights, deltas, timeout)
+            failure, current, resulting = await _proposal(client, grant, category, weights, deltas, timeout)
             if failure is not None:
                 return failure
             before, after = wm.route_vectors(current, resulting)
@@ -354,10 +327,7 @@ def register_scoring_tools(server: MCPServer, client: InternalClient, registry: 
                            "the preview would be skewed, try again")
             shifts = [b - a for _, a, b in scored]
             digest = nonce.digest([], wm.digest_options(category, current, resulting))
-            try:
-                token = nonce.issue(grant.nonce_owner, "apply_weights", digest)
-            except nonce.NonceCapacityError:
-                return err("too_many_pending", PENDING_MESSAGE)
+            token = nonce.issue(grant.nonce_owner, "apply_weights", digest)
             return ok({
                 "category": category, "basis": "approximate", "basis_note": BASIS_NOTE, "clamp_note": CLAMP_NOTE,
                 "warnings": wm.warnings_for(resulting), "weights_sum": wm.weights_sum(resulting),
@@ -378,7 +348,7 @@ def register_scoring_tools(server: MCPServer, client: InternalClient, registry: 
     ) -> CallToolResult:
         async def handler(grant, resolved, settings):
             timeout = settings["call_timeout_s"]
-            failure, _, current, resulting = await _proposal(client, grant, category, weights, deltas, timeout)
+            failure, current, resulting = await _proposal(client, grant, category, weights, deltas, timeout)
             if failure is not None:
                 return failure
             digest = nonce.digest([], wm.digest_options(category, current, resulting))
@@ -392,7 +362,7 @@ def register_scoring_tools(server: MCPServer, client: InternalClient, registry: 
             if not written["ok"]:
                 return written
             failure, row = await _current_weights(client, grant, category, timeout)
-            stored = {} if failure is not None else _non_zero(row.get("weights"))
+            stored = {} if failure is not None else wm.nonzero(row.get("weights"), True)
             known = {k for k in resulting if wm.base_key(k) in VALID_WEIGHT_COLUMNS}
             verified = failure is None and all(stored.get(k, 0) == resulting.get(k, 0) for k in known)
             snapshot = await _made_snapshot(client, grant, category, timeout, before, "auto:edit")
@@ -425,7 +395,7 @@ def register_scoring_tools(server: MCPServer, client: InternalClient, registry: 
     ) -> CallToolResult:
         async def handler(grant, resolved, settings):
             timeout = settings["call_timeout_s"]
-            failure, snapshot, seen, window_full = await _find_snapshot(client, grant, snapshot_id, None, timeout)
+            failure, snapshot, seen, window_full = await _find_snapshot(client, grant, snapshot_id, timeout)
             if failure is not None:
                 return failure
             if snapshot is None:
@@ -442,7 +412,7 @@ def register_scoring_tools(server: MCPServer, client: InternalClient, registry: 
                 if failure.get("error") == "not_found":
                     return err("not_found", f"The snapshot's category `{category}` no longer exists in the config")
                 return failure
-            current, target = _non_zero(row.get("weights")), wm.nonzero(snapshot["weights"])
+            current, target = wm.nonzero(row.get("weights"), True), wm.nonzero(snapshot["weights"])
             changed = wm.changed_keys(current, target)
             bonus_now, bonus_then = (row.get("modifiers") or {}).get("bonus") or 0, snapshot.get("category_bonus")
             # No bonus and a bonus of 0 are the same to the scorer, so a recorded 0 over an absent bonus is no change.
@@ -453,10 +423,7 @@ def register_scoring_tools(server: MCPServer, client: InternalClient, registry: 
             digest = nonce.digest([], {"snapshot_id": snapshot_id, "category": category, "bonus": [bonus_now, bonus_then],
                                        "current": dict(sorted(current.items())), "target": dict(sorted(target.items()))})
             if dry_run:
-                try:
-                    token = nonce.issue(grant.nonce_owner, "restore_weight_snapshot", digest)
-                except nonce.NonceCapacityError:
-                    return err("too_many_pending", PENDING_MESSAGE)
+                token = nonce.issue(grant.nonce_owner, "restore_weight_snapshot", digest)
                 return ok({"category": category, "snapshot": {k: snapshot.get(k) for k in (
                                "id", "created_by", "timestamp", "description")},
                            "would_change": changed, "bonus_change": bonus_change,
@@ -471,7 +438,7 @@ def register_scoring_tools(server: MCPServer, client: InternalClient, registry: 
                 return restored
             failure, after_row = await _current_weights(client, grant, category, timeout)
             bonus_ok = bonus_change is None or (after_row.get("modifiers") or {}).get("bonus") == bonus_then
-            verified = failure is None and _non_zero(after_row.get("weights")) == target and bonus_ok
+            verified = failure is None and wm.nonzero(after_row.get("weights"), True) == target and bonus_ok
             undo = await _made_snapshot(client, grant, category, timeout, before, "auto:pre_restore")
             return ok({"category": category, "restored_snapshot_id": snapshot_id, "verified": verified,
                        "would_have_changed": changed, "bonus_change": bonus_change,
@@ -647,10 +614,7 @@ def register_scoring_tools(server: MCPServer, client: InternalClient, registry: 
                                   "them. Show the user the list and retry with dry_run=false, `confirm` and "
                                   "`expected_count` equal to would_pin"}
                 if pin:
-                    try:
-                        shaped["confirm"] = nonce.issue(grant.nonce_owner, "override_categories", digest)
-                    except nonce.NonceCapacityError:
-                        return err("too_many_pending", PENDING_MESSAGE)
+                    shaped["confirm"] = nonce.issue(grant.nonce_owner, "override_categories", digest)
                     shaped["confirm_expires_in_s"] = int(nonce.TTL_SECONDS)
                 return ok(shaped)
             if expected_count is None:
@@ -734,13 +698,13 @@ def register_scoring_tools(server: MCPServer, client: InternalClient, registry: 
 def shape_category_weights(body: dict, single: bool) -> dict:
     """The route body as the tool and the ``facet://scoring-weights`` resource report it: zero weights dropped."""
     if single:
-        shown = _non_zero(body.get("weights"))
+        shown = wm.nonzero(body.get("weights"), True)
         return {"category": body.get("category"), "weights": shown, "weights_sum": wm.weights_sum(shown),
                 "modifiers": body.get("modifiers") or {}, "filters": body.get("filters") or {},
                 "priority": body.get("priority"),
                 "zero_keys_count": sum(1 for k in (body.get("weights") or {}) if k not in shown),
                 "valid_keys": [wm.percent_key(c) for c in VALID_WEIGHT_COLUMNS]}
     return {"categories": [{"name": c.get("name"), "priority": c.get("priority"),
-                            "weights": _non_zero(c.get("weights")),
+                            "weights": wm.nonzero(c.get("weights"), True),
                             "bonus": (c.get("modifiers") or {}).get("bonus")}
                            for c in body.get("categories") or []]}

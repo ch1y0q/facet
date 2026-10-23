@@ -178,7 +178,7 @@ Las herramientas de escritura figuran junto a las de lectura en la misma lista `
 | `batch_set_rejected` | `edition` | Descarta muchas fotos | 1000 rutas, o `filters` |
 | `add_tags` | `edition` | Añade etiquetas manuales (aparte de las etiquetas de IA) | 10 etiquetas; 1000 rutas, o `filters` |
 | `remove_tags` | `edition` | Quita etiquetas manuales | 10 etiquetas; 1000 rutas, o `filters` |
-| `create_album` | `edition` | Crea un álbum (no idempotente: dos veces crea dos álbumes): vacío, o desde `filters` / `target: "view"` como álbum inteligente que sigue esos filtros, o desde `paths` / `target: "selection"` como álbum fijo rellenado en la misma llamada (`added`, `skipped`). Un álbum inteligente usa los interruptores de ocultación del visor y en `list_albums` muestra 0 fotos | |
+| `create_album` | `edition` | Crea un álbum (no idempotente: dos veces crea dos álbumes): vacío, o desde `filters` / `target: "view"` como álbum inteligente que sigue esos filtros, o desde `paths` / `target: "selection"` como álbum fijo rellenado en la misma llamada (`added`, `skipped`). Un álbum inteligente usa los interruptores de ocultación del visor y en `list_albums` muestra 0 fotos. Unos `filters` sin ningún filtro efectivo (`{}`, o solo interruptores de visualización desactivados) se rechazan como `invalid_input`: omite `filters` para un álbum vacío | |
 | `album_add_photos` | `edition` | Añade fotos a un álbum (las ya presentes se ignoran) | 1000 rutas |
 | `album_remove_photos` | `edition` | Quita fotos de un álbum; las fotos no se tocan | 1000 rutas |
 | `assign_faces` | `edition` | Mueve rostros a una persona; los de otra persona se dejan como están salvo `allow_reassign`, y el resultado lista lo omitido | 50 ids de rostro |

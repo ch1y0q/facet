@@ -116,7 +116,7 @@ class TestExplainScore:
         fake_tab(env, jwt, reply=lambda call: {"ok": True, "data": {
             "scope": "paths", "count": 2, "paths": [PHOTOS[0]["path"], PHOTOS[1]["path"]]}})
         refused = env.call(edition, "explain_score", {"target": "selection"})
-        assert refused["error"] == "invalid_input" and "holds 2" in refused["message"]
+        assert refused["error"] == "invalid_input" and "exactly one photo" in refused["message"]
 
     def test_a_selection_of_one_is_explained(self, world, fake_tab):
         env, edition, _ = world
@@ -125,6 +125,67 @@ class TestExplainScore:
             "scope": "paths", "count": 1, "paths": [PHOTOS[2]["path"]]}})
         result = env.call(edition, "explain_score", {"target": "selection"})
         assert result["ok"] and result["data"]["path"] == PHOTOS[2]["path"]
+
+
+    @staticmethod
+    def view_selection(env, fake_tab, count=1, excluded=()):
+        jwt = env.login(edition=True)["Authorization"].split(" ", 1)[1]
+        fake_tab(env, jwt, reply=lambda call: {"ok": True, "data": {
+            "scope": "view", "count": count, "filters": {"path_prefix": PREFIX},
+            "excluded_paths": list(excluded), "excluded_count": len(excluded)}})
+
+    def test_a_whole_view_selection_of_one_is_expanded_and_explained(self, world, fake_tab, monkeypatch):
+        from api.agent.internal_client import ok
+        from tests.conftest import intercept_internal_call
+        env, edition, _ = world
+        self.view_selection(env, fake_tab)
+        seen = []
+        intercept_internal_call(monkeypatch, lambda tool, kw: (
+            seen.append((tool, kw.get("query"))), ok({"paths": [PHOTOS[2]["path"]], "total": 1}))[1]
+            if tool == "photos_paths" else None)
+        result = env.call(edition, "explain_score", {"target": "selection"})
+        assert result["ok"] and result["data"]["path"] == PHOTOS[2]["path"], result
+        assert seen and seen[0][0] == "photos_paths" and seen[0][1]["path_prefix"] == PREFIX
+
+    def test_a_view_whose_listing_no_longer_matches_the_selection_is_refused(self, world, fake_tab, monkeypatch):
+        from api.agent.internal_client import ok
+        from tests.conftest import intercept_internal_call
+        env, edition, _ = world
+        self.view_selection(env, fake_tab)
+        intercept_internal_call(monkeypatch, lambda tool, kw: ok({
+            "paths": [PHOTOS[0]["path"], PHOTOS[1]["path"]], "total": 2}) if tool == "photos_paths" else None)
+        refused = env.call(edition, "explain_score", {"target": "selection"})
+        assert refused["error"] == "invalid_input" and "selection_changed" in refused["message"]
+
+    def test_the_excluded_paths_are_taken_out_of_the_expanded_view(self, world, fake_tab, monkeypatch):
+        from api.agent.internal_client import ok
+        from tests.conftest import intercept_internal_call
+        env, edition, _ = world
+        self.view_selection(env, fake_tab, count=1, excluded=[PHOTOS[0]["path"]])
+        intercept_internal_call(monkeypatch, lambda tool, kw: ok({
+            "paths": [PHOTOS[0]["path"], PHOTOS[1]["path"]], "total": 2}) if tool == "photos_paths" else None)
+        result = env.call(edition, "explain_score", {"target": "selection"})
+        assert result["ok"] and result["data"]["path"] == PHOTOS[1]["path"], result
+
+    def test_an_exclusion_that_leaves_nothing_is_a_changed_selection(self, world, fake_tab, monkeypatch):
+        from api.agent.internal_client import ok
+        from tests.conftest import intercept_internal_call
+        env, edition, _ = world
+        self.view_selection(env, fake_tab, count=1, excluded=[PHOTOS[0]["path"]])
+        intercept_internal_call(monkeypatch, lambda tool, kw: ok({
+            "paths": [PHOTOS[0]["path"]], "total": 2}) if tool == "photos_paths" else None)
+        refused = env.call(edition, "explain_score", {"target": "selection"})
+        assert refused["error"] == "invalid_input" and "selection_changed" in refused["message"]
+
+    def test_a_failing_listing_is_passed_through(self, world, fake_tab, monkeypatch):
+        from api.agent.internal_client import err
+        from tests.conftest import intercept_internal_call
+        env, edition, _ = world
+        self.view_selection(env, fake_tab)
+        intercept_internal_call(monkeypatch, lambda tool, kw: err("upstream_error", "listing down")
+                                if tool == "photos_paths" else None)
+        refused = env.call(edition, "explain_score", {"target": "selection"})
+        assert refused["error"] == "upstream_error" and refused["message"] == "listing down"
 
 
 class TestCategoryWeights:
@@ -328,8 +389,11 @@ class TestPreviewWeights:
     def test_an_unknown_key_and_an_odd_sum_are_warned_not_refused(self, world):
         env, edition, _ = world
         category = native_category(env, edition)
-        data = env.call(edition, "preview_weights", {"category": category, "weights": {"aestethic": 3}})["data"]
-        assert [w["code"] for w in data["warnings"] if w["code"] == "unknown_key"] == ["unknown_key"]
+        result = env.call(edition, "preview_weights", {
+            "category": category, "weights": {"aestethic": 3, "aesthetic": 100, "composition": 100}})
+        assert result["ok"], result
+        codes = [w["code"] for w in result["data"]["warnings"]]
+        assert codes.count("unknown_key") == 1 and codes.count("sum_outside_95_105") == 1
 
     def test_an_unknown_category_is_not_found(self, world):
         env, edition, _ = world
@@ -354,14 +418,14 @@ class TestPreviewWeights:
         live = {v for v in (a["data"]["preview_digest"] for a in answers) if v in nonce._pending}
         assert len(live) == 16 and answers[0]["data"]["preview_digest"] not in live
 
-    def test_a_full_nonce_table_answers_too_many_pending_not_a_rate_limit(self, world, monkeypatch):
+    def test_a_full_nonce_table_answers_rate_limited_like_every_other_confirm_tool(self, world, monkeypatch):
         from api.agent import nonce
         env, edition, _ = world
         category = native_category(env, edition)
         nonce.issue("someone-else", "apply_weights", "x")
         monkeypatch.setattr(nonce, "MAX_PENDING", 1)
         full = env.call(edition, "preview_weights", {"category": category, "deltas": {"aesthetic": -1}})
-        assert full["error"] == "too_many_pending" and "unconfirmed" in full["message"]
+        assert full["error"] == "rate_limited" and full["retry_after_s"] == int(nonce.TTL_SECONDS)
 
 
 class TestDocs:

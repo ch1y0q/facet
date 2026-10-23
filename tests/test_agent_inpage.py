@@ -678,7 +678,7 @@ class TestChangedPaths:
 
 
 class TestAutoCullReadsNothingFromTheTab:
-    """In-page: auto_cull reads no state back from the caller tab, and the call body has no field to carry one."""
+    """In-page: auto_cull reads no review state back from the caller tab, and the call body has no field to carry one."""
 
     def test_an_in_page_auto_cull_makes_no_bridge_read(self, agent_app, fake_tab, seed_photos_prefix,
                                                                     monkeypatch):
@@ -690,7 +690,9 @@ class TestAutoCullReadsNothingFromTheTab:
         tab = fake_tab(env, headers["Authorization"].split(" ", 1)[1])
         result = call(env, headers, "auto_cull", {"group_by": "burst", "strictness": 0, **culling.SCOPE})
         assert result["ok"], result
-        assert not [c for c in tab.calls if c["tool"] == "ui_get_context"]
+        # The one read is the plan digest the tab has pinned, kept so an apply can check the tab still shows
+        # this plan; nothing it returns feeds the plan, and no review state is read back.
+        assert [c["tool"] for c in tab.calls] == ["ui_get_context"]
 
     def test_the_request_body_carries_only_the_call_and_the_selection(self):
         from pydantic import ValidationError

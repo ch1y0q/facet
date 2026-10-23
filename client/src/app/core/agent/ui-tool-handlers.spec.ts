@@ -19,10 +19,9 @@ import { DEFAULT_FILTERS, SMART_ALBUM_EXCLUDE_KEYS } from '../../features/galler
 import { CONTRACT_TO_CLIENT_KEY, applicableActions, capCullingSnapshot, createUiToolHandlers } from './ui-tool-handlers';
 import { CompareFiltersService } from '../../features/comparison/compare-filters.service';
 import { ViewActionRegistry } from './view-action-registry.service';
-import { PageContextService } from './page-context.service';
+import { CONNECT_ASSISTANT_DIALOG_ID, PageContextService } from './page-context.service';
 import { MatBottomSheet } from '@angular/material/bottom-sheet';
 import { MatDialog } from '@angular/material/dialog';
-import { ConnectAssistantDialogComponent } from '../../features/agent/connect-assistant-dialog.component';
 import { AssistantChangeBatch, AssistantChangesService } from './assistant-changes.service';
 import { UserActivityJournal } from './user-activity-journal.service';
 import { AssistantCullPlanService, type CullPlanEntryInput } from './assistant-cull-plan.service';
@@ -61,7 +60,7 @@ describe('UI tool registry and handlers', () => {
   let routerEvents: Subject<unknown>;
   let assistantBatches: Subject<AssistantChangeBatch>;
   let fetchAlbum: Mock;
-  let openDialogs: { componentInstance: unknown }[];
+  let openDialogs: { id?: string; componentInstance?: unknown }[];
 
   const run = (name: string, args: unknown = {}): Promise<UiToolEnvelope> => registry.execute(name, args);
   /** The handlers without the registry's schema gate, to prove each one defends itself. */
@@ -193,7 +192,7 @@ describe('UI tool registry and handlers', () => {
       });
 
       it('does not refuse for the connect-assistant dialog alone', async () => {
-        openDialogs.push({ componentInstance: Object.create(ConnectAssistantDialogComponent.prototype) });
+        openDialogs.push({ id: CONNECT_ASSISTANT_DIALOG_ID });
         expect(await run('ui_navigate', { route: '/stats' })).toMatchObject({ ok: true });
       });
     });
@@ -1130,7 +1129,7 @@ describe('UI tool registry and handlers', () => {
       });
 
       it('lists an open dialog and ignores the connect-assistant dialog alone', async () => {
-        openDialogs.push({ componentInstance: Object.create(ConnectAssistantDialogComponent.prototype) });
+        openDialogs.push({ id: CONNECT_ASSISTANT_DIALOG_ID });
         expect((await context())['overlays']).toEqual([]);
         openDialogs.push({ componentInstance: {} });
         expect((await context())['overlays']).toEqual(['dialog']);

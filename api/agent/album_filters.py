@@ -24,8 +24,6 @@ BOOLEAN_KEYS = frozenset({"favorites_only", "is_monochrome"})
 # (``semantic_query`` -> ``semanticQuery``), so a semantic or similar view is refused in both name forms.
 REFUSED_KEYS = SMART_ALBUM_EXCLUDE_KEYS | frozenset(
     contract for contract, client in CONTRACT_TO_CLIENT_KEY.items() if client in SMART_ALBUM_EXCLUDE_KEYS)
-# The inverse of ``CONTRACT_TO_CLIENT_KEY``: a stored key back to the name the gallery routes read.
-CLIENT_TO_CONTRACT_KEY = {client: contract for contract, client in CONTRACT_TO_CLIENT_KEY.items()}
 
 
 def unsupported(keys: list[str]) -> dict:
@@ -64,7 +62,7 @@ def to_stored(filters: dict) -> tuple[Optional[dict], dict]:
                 return err("invalid_input", f"`{key}` {value!r} is not a configured category or photo type; "
                            "see the facet://categories resource"), {}
             stored[name] = str(value)
-        else:
+        elif str(value) != "":
             stored[name] = query_value(value)
     return None, stored
 

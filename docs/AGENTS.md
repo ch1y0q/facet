@@ -178,7 +178,7 @@ Write tools sit next to the read tools in the same `/mcp` list. Each one goes th
 | `batch_set_rejected` | `edition` | Reject many photos | 1000 paths, or `filters` |
 | `add_tags` | `edition` | Add manual tags (kept apart from the AI tags) | 10 tags; 1000 paths, or `filters` |
 | `remove_tags` | `edition` | Remove manual tags | 10 tags; 1000 paths, or `filters` |
-| `create_album` | `edition` | Create an album (not idempotent: twice makes two albums): empty, or from `filters` / `target: "view"` as a smart album that follows those filters, or from `paths` / `target: "selection"` as a fixed album filled in the same call (`added`, `skipped`). Smart albums show the viewer's own hide toggles and read 0 photos in `list_albums` | |
+| `create_album` | `edition` | Create an album (not idempotent: twice makes two albums): empty, or from `filters` / `target: "view"` as a smart album that follows those filters, or from `paths` / `target: "selection"` as a fixed album filled in the same call (`added`, `skipped`). Smart albums show the viewer's own hide toggles and read 0 photos in `list_albums`. `filters` that hold no effective filter (`{}`, or only display toggles set to off) are refused as `invalid_input`: omit `filters` for an empty album | |
 | `album_add_photos` | `edition` | Add photos to an album (already present ones are ignored) | 1000 paths |
 | `album_remove_photos` | `edition` | Remove photos from an album; the photos are untouched | 1000 paths |
 | `assign_faces` | `edition` | Move faces to a person; faces another person owns are left alone unless `allow_reassign` is set, and the result lists what was skipped | 50 face ids |

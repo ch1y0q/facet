@@ -139,9 +139,14 @@ BOUND_SUFFIXES = ("_min", "_max")
 TERMINAL_KINDS = ("recompute", "panoramas")
 
 
-def nonzero(vector: Any) -> dict:
-    """The numeric, non-zero entries of a stored weight block, whatever the key format."""
-    return {k: v for k, v in (vector or {}).items() if _number(v) and v != 0}
+def nonzero(vector: Any, percent_only: bool = False) -> dict:
+    """The numeric, non-zero entries of a stored weight block; ``percent_only`` keeps just the ``*_percent`` keys.
+
+    A route body pads every metric with 0 and carries other keys, so the live blocks are read ``percent_only``; a
+    stored snapshot is shown in whatever key format it was saved in.
+    """
+    return {k: v for k, v in (vector or {}).items()
+            if _number(v) and v != 0 and (not percent_only or k.endswith(SUFFIX))}
 
 
 def snapshot_unrestorable_reason(stored: Any) -> Optional[str]:

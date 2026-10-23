@@ -1,5 +1,6 @@
 import { LEVEL_RANK, agentLevel } from './agent-level';
-import { Router } from '@angular/router';
+import { NavigationExtras, Router } from '@angular/router';
+import { pathOf } from '../../shared/utils/url-path';
 import { AuthService } from '../services/auth.service';
 import type { Album } from '../services/album.service';
 import { GalleryStore } from '../../features/gallery/gallery.store';
@@ -146,10 +147,6 @@ async function waitFor(condition: () => boolean, timeoutMs = WAIT_TIMEOUT_MS): P
   return true;
 }
 
-function pathOf(url: string): string {
-  return url.split('?')[0].split('#')[0];
-}
-
 function isGalleryUrl(url: string): boolean {
   const path = pathOf(url);
   return path === '/' || path === '' || path.startsWith('/album/');
@@ -228,6 +225,26 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
   };
 
   /**
+   * Navigate, and throw `navigation_refused` when the router resolves false. With `sameUrlOk` a resolve of
+   * false while the tab already shows the target is not a refusal (navigating to the same URL resolves false);
+   * `onRefuse` runs just before the throw. Returns the router's result.
+   */
+  const navigateOrRefuse = async (
+    commands: (string | number)[],
+    extras: NavigationExtras | undefined,
+    message: string,
+    options: { sameUrlOk?: boolean; onRefuse?: () => void } = {},
+  ): Promise<boolean> => {
+    const alreadyThere = options.sameUrlOk === true && pathOf(router.url) === commands[0];
+    const ok = await (extras ? router.navigate(commands, extras) : router.navigate(commands));
+    if (!ok && !alreadyThere) {
+      options.onRefuse?.();
+      throw new UiToolError('navigation_refused', message);
+    }
+    return ok;
+  };
+
+  /**
    * Bring the tab to the gallery and wait until its first load has settled, so a
    * filter patch is not overwritten by the page's own init. The signal is the
    * store's mount counter (bumped when the gallery page initialises), never a delay.
@@ -236,8 +253,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
     if (!isGalleryUrl(router.url)) {
       leaveCullingGuard();
       const mounts = gallery.galleryMounts();
-      const ok = await router.navigate(['/']);
-      if (!ok) throw new UiToolError('navigation_refused', 'The tab could not open the gallery.');
+      await navigateOrRefuse(['/'], undefined, 'The tab could not open the gallery.');
       if (!await waitFor(() => gallery.galleryMounts() > mounts)) {
         throw new UiToolError('upstream_error', 'The gallery did not open.');
       }
@@ -250,7 +266,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
   const leaveAlbum = async (): Promise<void> => {
     if (!pathOf(router.url).startsWith('/album/')) return;
     const mounts = gallery.galleryMounts();
-    if (!await router.navigate(['/'])) throw new UiToolError('navigation_refused', 'The tab could not leave the album.');
+    await navigateOrRefuse(['/'], undefined, 'The tab could not leave the album.');
     if (!await waitFor(() => gallery.galleryMounts() > mounts)) throw new UiToolError('upstream_error', 'The gallery did not open.');
   };
 
@@ -382,8 +398,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       const queryParams = Object.fromEntries(Object.entries(query).map(([k, v]) => [k, String(v)]));
       const commands = [route, ...timelineSegments(route, args, query)];
       leaveCullingGuard(route);
-      const ok = await router.navigate(commands, { queryParams, onSameUrlNavigation: 'reload' });
-      if (!ok) throw new UiToolError('navigation_refused', `The tab refused to open ${route}.`);
+      await navigateOrRefuse(commands, { queryParams, onSameUrlNavigation: 'reload' }, `The tab refused to open ${route}.`);
       return { route: pathOf(router.url) || '/' };
     },
 
@@ -451,8 +466,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
     ui_open_photo: async args => {
       const path = args['path'] as string;
       leaveCullingGuard();
-      const ok = await router.navigate(['/photo'], { queryParams: { path }, onSameUrlNavigation: 'reload' });
-      if (!ok) throw new UiToolError('navigation_refused', 'The tab could not open that photo.');
+      await navigateOrRefuse(['/photo'], { queryParams: { path }, onSameUrlNavigation: 'reload' }, 'The tab could not open that photo.');
       return { route: '/photo', path };
     },
 
@@ -474,8 +488,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       leaveCullingGuard();
       if (pageContext.overlays().length) throw new UiToolError('modal_open', MODAL_OPEN_MESSAGE);
       const mounts = gallery.galleryMounts();
-      const ok = await router.navigate(['/album', id], { onSameUrlNavigation: 'reload' });
-      if (!ok) throw new UiToolError('navigation_refused', 'The tab could not open that album.');
+      await navigateOrRefuse(['/album', id], { onSameUrlNavigation: 'reload' }, 'The tab could not open that album.');
       // Resolve only once the page shows this album: its filters applied and its first page loaded.
       const shown = await waitFor(() => gallery.galleryMounts() > mounts && !gallery.initializing() && gallery.currentAlbum()?.id === id);
       if (!shown) throw new UiToolError('upstream_error', 'The album did not finish loading.');
@@ -607,9 +620,8 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       if (strategy) compareFilters.strategy.set(strategy);
       compareFilters.activeTab.set(COMPARE_TAB_INDEX[tab as CompareTabName]);
       // Already there: navigating to the same URL resolves false, which is not a refusal.
-      if (router.url.split(/[?#]/)[0] !== '/compare') {
-        const ok = await router.navigate(['/compare']);
-        if (!ok) throw new UiToolError('navigation_refused', 'The tab refused to open the comparison page.');
+      if (pathOf(router.url) !== '/compare') {
+        await navigateOrRefuse(['/compare'], undefined, 'The tab refused to open the comparison page.');
       }
       return {
         route: '/compare',
@@ -623,10 +635,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       if (!auth.isEdition()) throw new UiToolError('forbidden_level', 'The darkroom needs an edition session.');
       const name = 'ui_show_culling_group';
       if (!viewActions.get(name)) {
-        // Already on /culling: navigating to the same URL resolves false, which is not a refusal.
-        const onCulling = pathOf(router.url) === '/culling';
-        const ok = await router.navigate(['/culling']);
-        if (!ok && !onCulling) throw new UiToolError('navigation_refused', 'The tab refused to open the darkroom.');
+        await navigateOrRefuse(['/culling'], undefined, 'The tab refused to open the darkroom.', { sameUrlOk: true });
         await waitFor(() => viewActions.get(name) !== undefined);
       }
       const action = viewActions.get(name);
@@ -657,13 +666,10 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       }
       const name = 'ui_show_culling_group';
       if (pathOf(router.url) !== '/culling' || !viewActions.get(name)) {
-        // Already on /culling: navigating to the same URL resolves false, which is not a refusal.
-        const onCulling = pathOf(router.url) === '/culling';
-        const ok = await router.navigate(['/culling']);
-        if (!ok && !onCulling) {
-          plan.clear();
-          throw new UiToolError('navigation_refused', 'The tab refused to open the darkroom.');
-        }
+        const ok = await navigateOrRefuse(['/culling'], undefined, 'The tab refused to open the darkroom.', {
+          sameUrlOk: true,
+          onRefuse: () => plan.clear(),
+        });
         if (ok) await waitFor(() => viewActions.get(name) !== undefined);
       }
       const loaded = (): boolean => plan.pin()?.digest !== digest || plan.snapshot()?.plan_digest === digest;
