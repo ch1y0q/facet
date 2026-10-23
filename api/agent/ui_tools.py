@@ -67,6 +67,21 @@ TAB_UNSUPPORTED_FILTER_KEYS = frozenset({
     "exclude_tags", "require_tags", "is_silhouette", "junk_kind", "narrative_moment",
     "min_rating", "min_aggregate", "show_rejected",
 })
+# The contract names a filter the way the server's `GalleryParams` does; the tab's store keeps a few under
+# another name. Python is canonical: the client's own table is checked against the emitted JSON.
+CONTRACT_TO_CLIENT_KEY = {
+    "person": "person_id", "category": "type",
+    "semantic_query": "semanticQuery", "semantic_threshold": "search_threshold",
+}
+# Store keys a smart album never persists (copy of util.ts SMART_ALBUM_EXCLUDE_KEYS; the client is checked against this).
+SMART_ALBUM_EXCLUDE_KEYS = frozenset({
+    "page", "per_page", "semanticQuery", "search_threshold", "album_id",
+    "similar_to", "similarity_mode", "min_similarity",
+    "hide_details", "tooltip_mode", "panel_activation", "hide_blinks", "hide_bursts",
+    "hide_duplicates", "hide_brackets", "hide_panoramas", "hide_rejected",
+    "gps_lat", "gps_lng", "gps_radius_km",
+    "sequence_group_id", "sequence_kind", "burst_group_id", "duplicate_group_id",
+})
 _PATCH_FIELDS: dict[str, Any] = {
     key: (Optional[FilterValue], Field(default=None, description=f"Gallery filter `{key}`."))
     for key in MCP_FILTER_KEYS
@@ -290,7 +305,8 @@ UI_TOOLS: tuple[UiTool, ...] = (
            UiSetGalleryFilters, False),
     UiTool("ui_get_gallery_view",
            "What the user's tab shows now: route, active filters, total matches, the first visible "
-           "photo paths and the selection count.",
+           "photo paths and the selection count. Also `album_filter_json` (the filters as a smart album would "
+           "store them) and `filters_scopable` (whether they describe the whole view).",
            UiGetGalleryView, True),
     UiTool("ui_open_photo", "Open one photo in the user's tab (the detail view)."
            " Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.", UiOpenPhoto, False),
@@ -470,8 +486,11 @@ def tools_version() -> str:
 
 
 def render_client_json() -> str:
-    """The committed ``ui-tools.schema.json``: ``{version, tools, error_codes, actions}``."""
+    """The committed ``ui-tools.schema.json``: ``{version, tools, error_codes, actions, filter_key_map,
+    smart_album_exclude_keys}``."""
     from api.agent.actions import render_client_actions
     return json.dumps({"version": tools_version(), "tools": tool_descriptors(),
-                       "error_codes": sorted(TAB_ERROR_CODES), "actions": render_client_actions()},
+                       "error_codes": sorted(TAB_ERROR_CODES), "actions": render_client_actions(),
+                       "filter_key_map": CONTRACT_TO_CLIENT_KEY,
+                       "smart_album_exclude_keys": sorted(SMART_ALBUM_EXCLUDE_KEYS)},
                       indent=2, sort_keys=True, ensure_ascii=False) + "\n"

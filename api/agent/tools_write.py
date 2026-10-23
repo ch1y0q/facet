@@ -22,7 +22,7 @@ from mcp.server.mcpserver import Context, MCPServer
 from mcp.types import CallToolResult
 from pydantic import Field
 
-from api.agent import nonce
+from api.agent import album_filters, nonce
 from api.agent.bridge import TabRegistry
 from api.agent.internal_client import InternalClient, err, ok
 from api.agent.runtime import run_tool
@@ -30,7 +30,7 @@ from api.agent.requirements import destructive_allowed, scan_available
 from api.agent.tools_common import (
     ARG_REQUIRES, DESTRUCTIVE_ANNOTATIONS, READ_ANNOTATIONS, WRITE_ANNOTATIONS, Requirement, register_tool,
 )
-from api.agent.target import SELECTION_RULE, resolve_selection
+from api.agent.target import SELECTION_RULE, VIEW, resolve_selection, resolve_view
 from api.agent.tools_read import SearchFilters, _hide_defaults, _list_result
 from api.agent.ui_tools import TAB_ID_PATTERN
 from api.models.gallery import query_value
@@ -67,6 +67,7 @@ LIST_KEYS = ("would_copy", "would_move", "would_trash")
 
 Paths = Annotated[list[str], Field(min_length=1)]
 Target = Optional[Literal["selection"]]
+AlbumTarget = Optional[Literal["selection", "view"]]
 TabId = Annotated[Optional[str], Field(pattern=TAB_ID_PATTERN)]
 NO_PATHS_ERROR = "Name at least one path"
 
@@ -349,13 +350,78 @@ def register_write_tools(server: MCPServer, client: InternalClient, registry: Ta
 
     # ---- albums ------------------------------------------------------------------------
 
+    async def create_smart_album(grant, base: dict, filter_json: str, total: int, timeout: float,
+                                 meta: Optional[dict] = None) -> dict:
+        """POST a smart album holding ``filter_json`` (client form); the result carries the true member count."""
+        created = await client.call(
+            grant, "create_album", json={**base, "is_smart": True, "smart_filter_json": filter_json},
+            timeout=timeout)
+        if not created["ok"]:
+            return created
+        data = created["data"] or {}
+        data["photo_count"] = total
+        if total == 0:
+            data["warning"] = "The filters match no photo right now; the smart album is empty until some do."
+        return _with_target(ok(data), meta)
+
+    async def create_filled_album(grant, base: dict, body: dict, meta: Optional[dict], timeout: float) -> dict:
+        """Create a fixed album and add ``body``'s paths. A failed add leaves the (empty) album: never ``ok``."""
+        created = await client.call(grant, "create_album", json=base, timeout=timeout)
+        if not created["ok"]:
+            return created
+        album = created["data"] or {}
+        added = await client.call(grant, "album_add_photos", path_args={"album_id": album.get("id")}, json=body,
+                                  timeout=timeout)
+        if not added["ok"]:
+            extra: dict[str, Any] = {"album_id": album.get("id"), "created": True, "added": 0,
+                                     "not_attempted": len(body["photo_paths"])}
+            if added["error"] == "outcome_unknown":
+                extra["in_doubt"] = f"the photos added to album {album.get('id')}"
+            return err(added["error"], added["message"], **extra)
+        result = added["data"] or {}
+        album["photo_count"] = result.get("photo_count", 0)
+        album["added"] = result.get("added", 0)
+        album["skipped"] = result.get("skipped", [])
+        album["skipped_count"] = result.get("skipped_count", len(album["skipped"]))
+        if album["added"] == 0:
+            album["warning"] = ("None of the given paths is in the library, so nothing was added; "
+                                "the album exists and is empty.")
+        return _with_target(ok(album), meta)
+
     async def create_album(
         ctx: Context, name: Annotated[str, Field(min_length=1, max_length=200)],
         description: Annotated[str, Field(max_length=2000)] = "",
+        filters: Optional[Any] = None, paths: Optional[Paths] = None,
+        target: AlbumTarget = None, tab_id: Optional[str] = None,
     ) -> CallToolResult:
         async def handler(grant, resolved, settings):
-            return await client.call(grant, "create_album", json={"name": name, "description": description},
-                                     timeout=settings["call_timeout_s"])
+            timeout = settings["call_timeout_s"]
+            base = {"name": name, "description": description}
+            if sum(value is not None for value in (filters, paths, target)) > 1:
+                return err("invalid_input", "Give at most one of `filters`, `paths` or `target`")
+            if filters is None and paths is None and target is None:
+                return await client.call(grant, "create_album", json=base, timeout=timeout)
+            if filters is not None:
+                refusal, stored = album_filters.to_stored(filters.model_dump(exclude_none=True))
+                if refusal is not None:
+                    return refusal
+                counted = await client.call(grant, "photos_count", query=_scope_filters(filters), timeout=timeout)
+                if not counted["ok"]:
+                    return counted
+                return await create_smart_album(
+                    grant, base, album_filters.stored_json(stored), (counted["data"] or {}).get("total", 0), timeout)
+            if target == VIEW:
+                refusal, filter_json, total, meta = await resolve_view(
+                    client, grant, registry, resolved, settings, tab_id=tab_id)
+                if refusal is not None:
+                    return refusal
+                return await create_smart_album(grant, base, filter_json, total, timeout, meta)
+            refusal, body, meta = await resolve_target(
+                client, registry, grant, resolved, settings, paths=paths, filters=None, target=target,
+                tab_id=tab_id, path_cap=BATCH_CAP, need_paths=True)
+            if refusal is not None:
+                return refusal
+            return await create_filled_album(grant, base, body, meta, timeout)
         return await run_tool(ctx, "create_album", handler, write=True)
 
     async def album_paths(name: str, route: str, ctx: Context, album_id: int, paths: Optional[list[str]],
@@ -381,7 +447,15 @@ def register_write_tools(server: MCPServer, client: InternalClient, registry: Ta
         return await album_paths("album_remove_photos", "album_remove_photos", ctx, album_id, paths, target,
                                  tab_id)
 
-    add(create_album, "create_album", "Create an empty album. Not idempotent: calling twice makes two albums.")
+    add(create_album, "create_album",
+        "Create an album. Not idempotent: calling twice makes two albums. With none of the three it is empty. "
+        "At most ONE of: `filters` (the search_photos filter object) saves a SMART album that follows those filters; "
+        "`target: \"view\"` saves a smart album from the filters of the user's open gallery view; "
+        f"`paths` (<={BATCH_CAP}) or `target: \"selection\"` (the tab's selection, optional `tab_id`) creates a FIXED "
+        "album and fills it in the same call (`added`, `skipped`: paths not in the library). A smart album stores no "
+        "hide toggles (the album page applies the viewer's own), only filters the gallery sidebar has a field for "
+        "(`unsupported_filters` names the rest), and the result's `photo_count` is its true size now; "
+        "`list_albums` reports 0 for smart albums.", filtered=True)
     add(album_add_photos, "album_add_photos",
         f"Add photos to an album (<={BATCH_CAP}): `paths` OR `target: \"selection\"` (the tab's selection, "
         "optional `tab_id`). Already-present photos are ignored.")

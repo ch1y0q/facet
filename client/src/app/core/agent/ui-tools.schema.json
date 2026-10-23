@@ -458,6 +458,38 @@
     "unsaved_decisions",
     "upstream_error"
   ],
+  "filter_key_map": {
+    "category": "type",
+    "person": "person_id",
+    "semantic_query": "semanticQuery",
+    "semantic_threshold": "search_threshold"
+  },
+  "smart_album_exclude_keys": [
+    "album_id",
+    "burst_group_id",
+    "duplicate_group_id",
+    "gps_lat",
+    "gps_lng",
+    "gps_radius_km",
+    "hide_blinks",
+    "hide_brackets",
+    "hide_bursts",
+    "hide_details",
+    "hide_duplicates",
+    "hide_panoramas",
+    "hide_rejected",
+    "min_similarity",
+    "page",
+    "panel_activation",
+    "per_page",
+    "search_threshold",
+    "semanticQuery",
+    "sequence_group_id",
+    "sequence_kind",
+    "similar_to",
+    "similarity_mode",
+    "tooltip_mode"
+  ],
   "tools": [
     {
       "annotations": {
@@ -1454,7 +1486,7 @@
         "readOnlyHint": true,
         "untrustedContentHint": true
       },
-      "description": "What the user's tab shows now: route, active filters, total matches, the first visible photo paths and the selection count.",
+      "description": "What the user's tab shows now: route, active filters, total matches, the first visible photo paths and the selection count. Also `album_filter_json` (the filters as a smart album would store them) and `filters_scopable` (whether they describe the whole view).",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1872,5 +1904,5 @@
       "name": "ui_show_comparison"
     }
   ],
-  "version": "2bb359a8fb144bc2"
+  "version": "95a1d09b23b035af"
 }

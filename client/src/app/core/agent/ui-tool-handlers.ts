@@ -10,6 +10,7 @@ import {
   SEARCH_THRESHOLD_MAX,
   buildApiParams,
   seededSearchThreshold,
+  smartAlbumFilterJson,
 } from '../../features/gallery/gallery-filters.util';
 import { CULL_DEFAULT_STRICTNESS, CULL_PROFILE_KEY, readStoredStrictnessOrNull } from '../../features/gallery/culling.store';
 import { COMPARE_AB_TAB_INDEX, CompareFiltersService } from '../../features/comparison/compare-filters.service';
@@ -56,7 +57,7 @@ function appRoutes(router: Router): { allowed: Set<string>; editionOnly: Set<str
 }
 
 /** The contract names a filter the way the server's `GalleryParams` does; the tab stores a few under another name. */
-const CONTRACT_TO_CLIENT_KEY: Record<string, keyof GalleryFilters> = {
+export const CONTRACT_TO_CLIENT_KEY: Record<string, keyof GalleryFilters> = {
   person: 'person_id',
   category: 'type',
   semantic_query: 'semanticQuery',
@@ -399,6 +400,10 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
         selection_count: gallery.selectionCount(),
         hidden_summary: gallery.hiddenSummary(),
         loading: gallery.loading(),
+        // What the gallery itself would save for a smart album of this view, and whether the view is one a
+        // stored album can express (not similar / semantic / an assistant-pinned list): `create_album` target "view".
+        album_filter_json: smartAlbumFilterJson(gallery.filters()),
+        filters_scopable: gallery.canScopeSelectionToView(),
       };
     },
 

@@ -58,6 +58,10 @@ export interface UiToolContractFile {
   tools: UiToolContract[];
   error_codes: string[];
   actions: UiActionRow[];
+  /** Server contract filter name -> the tab store's name (api/agent/ui_tools.py CONTRACT_TO_CLIENT_KEY). */
+  filter_key_map: Record<string, string>;
+  /** Store keys a smart album never persists (api/agent/ui_tools.py SMART_ALBUM_EXCLUDE_KEYS). */
+  smart_album_exclude_keys: string[];
 }
 
 export type UiToolEnvelope =

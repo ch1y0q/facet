@@ -178,3 +178,10 @@ def test_ui_suggest_culling_is_an_edition_tool_not_read_only():
     context = next(t for t in UI_TOOLS if t.name == "ui_get_context").description
     for term in ("suggestions_open", "suggestions_accepted", "suggestions_total"):
         assert term in context, term
+
+
+def test_json_carries_the_filter_key_tables_the_client_is_checked_against():
+    from api.agent.ui_tools import CONTRACT_TO_CLIENT_KEY, SMART_ALBUM_EXCLUDE_KEYS
+    data = json.loads(render_client_json())
+    assert data["filter_key_map"] == CONTRACT_TO_CLIENT_KEY
+    assert data["smart_album_exclude_keys"] == sorted(SMART_ALBUM_EXCLUDE_KEYS)

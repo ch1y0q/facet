@@ -117,6 +117,10 @@ export interface paths {
         /**
          * Add Photos To Album
          * @description Add photos to an album (batch).
+         *
+         *     Only paths that exist in the library are added: ``album_photos`` has no foreign key to ``photos`` and the
+         *     insert is ``OR IGNORE``, so an unknown path used to be stored and counted as added. The rest come back as
+         *     ``skipped`` (capped at ``BY_PATHS_MISSING_CAP``, ``skipped_count`` is the full number).
          */
         post: operations["add_photos_to_album_api_albums__album_id__photos_post"];
         /**
@@ -5975,7 +5979,7 @@ export interface components {
             };
             /**
              * Selection Snapshot
-             * @description The calling tab's `ui_get_selection` data; read by `target: "selection"`.
+             * @description The calling tab's `ui_get_selection` data, read by `target: "selection"`; for `create_album` `target: "view"` its `ui_get_gallery_view` data.
              */
             selection_snapshot?: {
                 [key: string]: unknown;

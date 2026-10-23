@@ -37,7 +37,7 @@ TOOL_ROUTES = {
     "set_rejected": ["get_photo", "toggle_rejected"],
     "batch_set_rating": ["photos_count", "batch_rating"], "batch_set_favorite": ["photos_count", "batch_favorite"],
     "batch_set_rejected": ["photos_count", "batch_reject"],
-    "create_album": ["create_album"], "album_add_photos": ["album_add_photos", "photos_paths"],
+    "create_album": ["create_album", "photos_count", "album_add_photos", "photos_paths"], "album_add_photos": ["album_add_photos", "photos_paths"],
     "album_remove_photos": ["album_remove_photos", "photos_paths"],
     "add_tags": ["photos_count", "batch_manual_tags"], "remove_tags": ["photos_count", "batch_manual_tags"],
     "junk_list": ["search_photos"], "junk_reject": ["batch_reject"], "junk_clear": ["clear_junk"],

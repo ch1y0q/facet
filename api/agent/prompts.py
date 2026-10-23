@@ -93,9 +93,11 @@ def _build_album(args: dict, visible: frozenset) -> str:
     steps = [
         f"Search for photos that fit the theme \"{_clean(args.get('theme'))}\" with `search_photos` or "
         "`semantic_search`; the results appear in the user's tab.",
-        f"Create the album with `create_album` ({name}); creating it twice makes two albums.",
-        "Add the photos with `album_add_photos`, passing the paths you found"
-        + (" or `target: \"selection\"` to use what the user selected in the tab." if "ui_get_selection" in visible else "."),
+        f"Create the album with `create_album` ({name}); creating it twice makes two albums. Pass the paths you "
+        "found as `paths` to create and fill it in one call"
+        + (", `target: \"selection\"` for what the user selected in the tab, `target: \"view\"` for a smart album "
+           "that follows the tab's open filters," if "ui_get_selection" in visible else "")
+        + " or `filters` for a smart album that follows those filters; later additions go through `album_add_photos`.",
         "Tell the user the album id, its name and how many photos went in.",
     ]
     return f"Build an album in Facet.\n\n{_steps(steps)}\n\n{DATA_NOTE}"

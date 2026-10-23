@@ -4,6 +4,7 @@
 the tab's ``ui_get_selection`` reply is scripted per test.
 """
 
+import json
 import os
 import sqlite3
 
@@ -259,3 +260,140 @@ class TestExportMetadataTarget:
         # The seeded rows have no file on disk, so both are counted as skipped.
         assert result["data"]["skipped"] == 2 and result["data"]["target"]["count"] == 2
         assert [c["tool"] for c in tab.calls] == ["ui_get_selection"]
+
+
+ALBUM_PREFIX = "tgt-album "
+
+
+@pytest.fixture()
+def made_albums():
+    yield
+    conn = sqlite3.connect(_TEST_DB_FILE.name)
+    ids = [r[0] for r in conn.execute("SELECT id FROM albums WHERE name LIKE ?", (ALBUM_PREFIX + "%",))]
+    for album_id in ids:
+        conn.execute("DELETE FROM album_photos WHERE album_id = ?", (album_id,))
+        conn.execute("DELETE FROM albums WHERE id = ?", (album_id,))
+    conn.commit()
+    conn.close()
+
+
+def albums_named(name):
+    conn = sqlite3.connect(_TEST_DB_FILE.name)
+    try:
+        return conn.execute("SELECT id, is_smart, smart_filter_json FROM albums WHERE name = ?", (name,)).fetchall()
+    finally:
+        conn.close()
+
+
+def gallery_view(stored=None, total=11, **over):
+    """What the tab's ``ui_get_gallery_view`` reports: its contract filters plus the smart-album JSON of its store."""
+    stored = {"path_prefix": PFX, "sort": "aggregate", "sort_direction": "DESC"} if stored is None else stored
+    return {"route": "/", "filters": {"path_prefix": PFX, "hide_bursts": "1", "sort": "aggregate"},
+            "total": total, "loaded": 11, "has_more": False, "photos": [], "selection_count": 0, "loading": False,
+            "album_filter_json": json.dumps(stored), "filters_scopable": True, **over}
+
+
+class TestCreateAlbumFromTheView:
+    def test_the_views_store_form_filters_become_a_smart_album_as_the_tab_wrote_them(self, setup, made_albums):
+        view = gallery_view()
+        env, token, tab = setup(view)
+        result = env.call(token, "create_album", {"name": ALBUM_PREFIX + "view", "target": "view"})
+        assert result["ok"], result
+        data = result["data"]
+        assert data["is_smart"] is True and data["photo_count"] == 11
+        assert data["smart_filter_json"] == view["album_filter_json"]
+        assert data["target"] == {"source": "tab_view", "tab_id": "tab-1", "count": 11}
+        assert [(c["tool"], c["args"]) for c in tab.calls] == [("ui_get_gallery_view", {"limit": 1})]
+        assert len(albums_named(ALBUM_PREFIX + "view")) == 1
+
+    def test_a_top_picks_view_is_stored_with_its_type(self, setup, made_albums):
+        env, token, _ = setup(gallery_view({"type": "top_picks", "path_prefix": PFX}, total=0))
+        result = env.call(token, "create_album", {"name": ALBUM_PREFIX + "picks", "target": "view"})
+        assert result["ok"], result
+        assert json.loads(result["data"]["smart_filter_json"])["type"] == "top_picks"
+        assert result["data"]["photo_count"] == 0 and "warning" in result["data"]
+
+    def test_a_total_the_stored_filters_do_not_reproduce_creates_nothing(self, setup, made_albums):
+        env, token, _ = setup(gallery_view(total=5))
+        result = env.call(token, "create_album", {"name": ALBUM_PREFIX + "mismatch", "target": "view"})
+        assert result["error"] == "invalid_input" and "would list 11" in result["message"]
+        assert albums_named(ALBUM_PREFIX + "mismatch") == []
+
+    @pytest.mark.parametrize("over, fragment", [
+        ({"loading": True}, "still loading"),
+        ({"filters_scopable": False}, "cannot be saved"),
+        ({"route": "/album/3"}, "main gallery"),
+        ({"album_filter_json": "not json"}, "unusable"),
+        ({"album_filter_json": json.dumps({"path_prefix": 5})}, "unusable"),
+        ({"album_filter_json": json.dumps(["path_prefix"])}, "unusable"),
+        ({"album_filter_json": json.dumps({"drop": "1"})}, "does not know"),
+    ])
+    def test_a_view_a_stored_album_cannot_hold_is_refused(self, setup, made_albums, over, fragment):
+        env, token, _ = setup(gallery_view(**over))
+        result = env.call(token, "create_album", {"name": ALBUM_PREFIX + "refused", "target": "view"})
+        assert result["error"] == "invalid_input" and fragment in result["message"]
+        assert albums_named(ALBUM_PREFIX + "refused") == []
+
+    @pytest.mark.parametrize("key", ["hide_bursts", "gps_lat", "album_id", "similar_to", "per_page"])
+    def test_a_display_only_or_album_key_in_the_stored_json_is_unsupported(self, setup, made_albums, key):
+        env, token, _ = setup(gallery_view({"path_prefix": PFX, key: "1"}))
+        result = env.call(token, "create_album", {"name": ALBUM_PREFIX + "keys", "target": "view"})
+        assert result["error"] in ("unsupported_filters", "invalid_input"), result
+        assert albums_named(ALBUM_PREFIX + "keys") == []
+
+    def test_view_cannot_be_combined_with_paths(self, setup, made_albums):
+        env, token, _ = setup(gallery_view())
+        result = env.call(token, "create_album", {"name": ALBUM_PREFIX + "both", "target": "view", "paths": PATHS[:1]})
+        assert result["error"] == "invalid_input" and albums_named(ALBUM_PREFIX + "both") == []
+
+    def test_other_write_tools_do_not_offer_the_view_target(self, setup):
+        env, token, _ = setup(gallery_view())
+        result = env.call(token, "batch_set_rating", {"target": "view", "rating": 3})
+        assert result["error"] == "invalid_input"
+        assert set(ratings().values()) == {1}
+
+    def test_in_page_the_calls_own_snapshot_is_the_view(self, agent_app, rows, made_albums):
+        env = agent_app("legacy")
+        headers = env.login(edition=True)
+        view = gallery_view()
+        resp = env.client.post(
+            "/api/mcp/call", headers={**headers, "X-Facet-Agent-Session": "tab-a"},
+            json={"tool": "create_album", "arguments": {"name": ALBUM_PREFIX + "inpage", "target": "view"},
+                  "selection_snapshot": view})
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["ok"], body
+        assert body["data"]["smart_filter_json"] == view["album_filter_json"] and body["data"]["photo_count"] == 11
+        refused = env.client.post(
+            "/api/mcp/call", headers={**headers, "X-Facet-Agent-Session": "tab-a"},
+            json={"tool": "create_album", "arguments": {"name": ALBUM_PREFIX + "nosnap", "target": "view"}})
+        assert refused.json()["error"] == "invalid_input"
+        assert albums_named(ALBUM_PREFIX + "nosnap") == []
+
+
+class TestCreateAlbumFromTheSelection:
+    def album_paths(self, album_id):
+        conn = sqlite3.connect(_TEST_DB_FILE.name)
+        try:
+            return sorted(r[0] for r in conn.execute("SELECT photo_path FROM album_photos WHERE album_id = ?", (album_id,)))
+        finally:
+            conn.close()
+
+    def test_selected_paths_fill_a_new_fixed_album(self, setup, made_albums):
+        env, token, _ = setup(paths_selection(PATHS[:3]))
+        result = env.call(token, "create_album", {"name": ALBUM_PREFIX + "picked", "target": "selection"})
+        assert result["ok"], result
+        assert result["data"]["added"] == 3 and result["data"]["skipped"] == []
+        assert result["data"]["target"]["scope"] == "paths"
+        assert self.album_paths(result["data"]["id"]) == sorted(PATHS[:3])
+
+    def test_a_whole_view_selection_is_expanded_minus_its_exclusions(self, setup, made_albums):
+        env, token, _ = setup(view_selection(9, excluded=PATHS[:2]))
+        result = env.call(token, "create_album", {"name": ALBUM_PREFIX + "wholeview", "target": "selection"})
+        assert result["ok"], result
+        assert self.album_paths(result["data"]["id"]) == sorted(PATHS[2:])
+
+    def test_an_empty_selection_creates_no_album(self, setup, made_albums):
+        env, token, _ = setup(paths_selection([]))
+        result = env.call(token, "create_album", {"name": ALBUM_PREFIX + "nothing", "target": "selection"})
+        assert result["error"] == "invalid_input" and albums_named(ALBUM_PREFIX + "nothing") == []

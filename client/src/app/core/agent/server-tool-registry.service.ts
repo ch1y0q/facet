@@ -181,10 +181,13 @@ export class ServerToolRegistry {
     for (const key of STRIPPED_ARGS) delete input[key];
     const body: McpCallRequest = { tool: tool.name, arguments: input, tab_id: this.bridge.tabId };
     const properties = (tool.inputSchema['properties'] ?? {}) as Record<string, unknown>;
-    if ('target' in properties && input['target'] === 'selection') {
-      const selection = await this.ui.execute('ui_get_selection', {});
-      if (!selection.ok) return JSON.stringify(selection);
-      body.selection_snapshot = selection.data && typeof selection.data === 'object' ? selection.data as Record<string, unknown> : null;
+    if ('target' in properties && (input['target'] === 'selection' || input['target'] === 'view')) {
+      // "selection" carries the tab's selection; "view" (create_album) the tab's open gallery view.
+      const snapshot = input['target'] === 'view'
+        ? await this.ui.execute('ui_get_gallery_view', { limit: 1 })
+        : await this.ui.execute('ui_get_selection', {});
+      if (!snapshot.ok) return JSON.stringify(snapshot);
+      body.selection_snapshot = snapshot.data && typeof snapshot.data === 'object' ? snapshot.data as Record<string, unknown> : null;
     }
     const callId = newSessionId();
     try {

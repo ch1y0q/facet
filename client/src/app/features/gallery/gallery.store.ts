@@ -21,7 +21,7 @@ import {
   loadDisplayOptionsFromStorage, saveDisplayOptionsToStorage,
   countActiveFilters, applyQueryParams, buildSyncParams, buildApiParams,
   buildViewFilterParams, viewFilterParamsEqual, anyHideToggleActive,
-  seededSearchThreshold, buildByPathsFilters, BY_PATHS_MAX, semanticSortPatch, smartAlbumFilterJson,
+  seededSearchThreshold, buildByPathsFilters, BY_PATHS_MAX, semanticSortPatch, smartAlbumFilterJson, exclusiveHidePatch,
 } from './gallery-filters.util';
 
 // Re-export the filter types/consts so existing importers of gallery.store keep working.
@@ -1027,11 +1027,11 @@ export class GalleryStore {
     key: K,
     value: GalleryFilters[K],
   ): Promise<void> {
-    const extra: Partial<GalleryFilters> = semanticSortPatch(
-      this.filters(), { [key]: value } as Partial<GalleryFilters>, this.config()?.defaults,
-    );
-    if (key === 'hide_rejected' && value) extra.favorites_only = false;
-    if (key === 'favorites_only' && value) extra.hide_rejected = false;
+    const update = { [key]: value } as Partial<GalleryFilters>;
+    const extra: Partial<GalleryFilters> = {
+      ...semanticSortPatch(this.filters(), update, this.config()?.defaults),
+      ...exclusiveHidePatch(update),
+    };
     // Reload person dropdown when person filter is cleared (was seeded with filtered subset)
     const wasPersonFiltered = !!this.filters().person_id;
     // search_threshold only feeds the /search branch of loadPhotos(), so
@@ -1079,9 +1079,10 @@ export class GalleryStore {
 
   /** Update multiple filters at once and reload */
   async updateFilters(updates: Partial<GalleryFilters>): Promise<void> {
-    const extra: Partial<GalleryFilters> = semanticSortPatch(this.filters(), updates, this.config()?.defaults);
-    if (updates.hide_rejected) extra.favorites_only = false;
-    if (updates.favorites_only) extra.hide_rejected = false;
+    const extra: Partial<GalleryFilters> = {
+      ...semanticSortPatch(this.filters(), updates, this.config()?.defaults),
+      ...exclusiveHidePatch(updates),
+    };
     this.filters.update(current => ({ ...current, ...updates, ...extra, page: 1 }));
     if (Object.keys(updates).some(k => (DISPLAY_OPTION_KEYS as string[]).includes(k))) {
       saveDisplayOptionsToStorage(this.filters());

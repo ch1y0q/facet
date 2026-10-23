@@ -25,6 +25,7 @@ from api.db_helpers import (
     is_access_controlled_install, resolve_hide_defaults,
 )
 from api.models.albums import AlbumPhotosResponse, SharedAlbumResponse
+from api.models.gallery import BY_PATHS_MISSING_CAP
 from api.top_picks import get_top_picks_score_sql, with_top_picks_alias
 from db.stats_cache import cache_stats_best_effort
 from api.types import (
@@ -67,10 +68,16 @@ def _normalize_smart_filters(filters):
     """Normalize smart album filter keys to match _build_gallery_where() expectations.
 
     The Angular store saves person_id/type/quality, but the backend expects person/category/min_score.
+    It also writes JSON booleans (``favorites_only``, ``is_monochrome``) and a lower-case sort
+    direction, where the backend reads the string ``'1'`` and ``'ASC'``: ``True`` becomes ``'1'``,
+    ``False`` / ``None`` / ``''`` are dropped (the client never stores them), the direction is upper-cased.
     """
-    result = dict(filters)
+    result = {key: ('1' if value is True else value) for key, value in filters.items()
+              if value is not None and value is not False and value != ''}
     if 'person_id' in result:
         result['person'] = result.pop('person_id')
+    if isinstance(result.get('sort_direction'), str):
+        result['sort_direction'] = result['sort_direction'].upper()
     return normalize_params(result)
 
 
@@ -622,7 +629,10 @@ def _resolve_album_member_paths(conn, album_row):
     gallery happened to be showing": the count returned here can legitimately
     exceed what the album's own gallery view displays with those hide-*
     toggles on, and that is intentional — a burst follower of the same scene
-    is still a real member of e.g. an "action" smart album.
+    is still a real member of e.g. an "action" smart album. Agent-created smart
+    albums (the ``create_album`` tool's ``filters`` / ``target="view"``) follow the
+    same rule: they store no hide toggles, the album page applies the viewer's own,
+    and the tool reports the count with those defaults applied (what ``search_photos`` returns).
 
     Either way this is a snapshot of membership NOW: a caller that
     materializes something onto these paths (e.g. a scoring context) is
@@ -808,20 +818,30 @@ def add_photos_to_album(
     body: AlbumPhotosRequest,
     user: CurrentUser = Depends(require_edition),
 ):
-    """Add photos to an album (batch)."""
+    """Add photos to an album (batch).
+
+    Only paths that exist in the library are added: ``album_photos`` has no foreign key to ``photos`` and the
+    insert is ``OR IGNORE``, so an unknown path used to be stored and counted as added. The rest come back as
+    ``skipped`` (capped at ``BY_PATHS_MISSING_CAP``, ``skipped_count`` is the full number).
+    """
     if not body.photo_paths:
         raise HTTPException(status_code=400, detail="photo_paths must not be empty")
     with get_db() as conn:
         user_id = _get_user_id(user)
         _check_album_access(conn, album_id, user_id)
-        added = append_album_photos(conn, album_id, body.photo_paths)
+        requested = list(dict.fromkeys(body.photo_paths))
+        existing = _existing_photo_paths(conn, requested)
+        known = set(existing)
+        skipped = [path for path in requested if path not in known]
+        added = append_album_photos(conn, album_id, existing)
         conn.commit()
 
         row = conn.execute(
             "SELECT COUNT(*) FROM album_photos WHERE album_id = ?", (album_id,)
         ).fetchone()
         count = row[0] if row else 0
-        return {'ok': True, 'added': added, 'photo_count': count}
+        return {'ok': True, 'added': added, 'photo_count': count,
+                'skipped': skipped[:BY_PATHS_MISSING_CAP], 'skipped_count': len(skipped)}
 
 
 @router.delete("/api/albums/{album_id}/photos")
@@ -1152,7 +1172,7 @@ async def get_shared_album(
         saved_sort_dir = None
         if not is_manual and album['smart_filter_json']:
             try:
-                smart_filters = json.loads(album['smart_filter_json'])
+                smart_filters = _normalize_smart_filters(json.loads(album['smart_filter_json']))
                 saved_sort = smart_filters.get('sort')
                 saved_sort_dir = smart_filters.get('sort_direction')
             except (ValueError, TypeError):

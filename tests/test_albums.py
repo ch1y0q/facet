@@ -1254,3 +1254,119 @@ class TestSmartAlbumCoverAppliesHideDefaults:
         passed = self._filters_passed_to_the_gallery(
             {'sort': 'aggregate', 'hide_brackets': '0'})
         assert passed['hide_brackets'] == '0'
+
+
+class TestSmartAlbumStoredFormReader:
+    """The gallery client saves JSON booleans and lower-case sort directions; the backend reads
+    ``'1'`` / ``'true'`` strings and ``'ASC'``. Both forms must resolve to the same members."""
+
+    @staticmethod
+    def _db(tmp_path):
+        from db.connection import get_connection
+        from db.schema import init_database
+
+        db_path = str(tmp_path / "smart_form.db")
+        init_database(db_path)
+        with get_connection(db_path) as conn:
+            conn.execute(
+                "INSERT INTO photos (path, aggregate, is_favorite, is_monochrome) VALUES "
+                "('/fav_mono.jpg', 9.0, 1, 1), ('/fav.jpg', 8.0, 1, 0), ('/mono.jpg', 3.0, 0, 1), ('/plain.jpg', 5.0, 0, 0)")
+            conn.commit()
+        return db_path
+
+    @staticmethod
+    def _members(conn, smart_filter):
+        import json as _json
+
+        from api.routers.albums import _resolve_album_member_paths
+
+        album = _make_album_row(is_smart=1, smart_filter_json=_json.dumps(smart_filter))
+        with mock.patch("api.db_helpers.is_multi_user_enabled", return_value=False):
+            return sorted(_resolve_album_member_paths(conn, album))
+
+    def test_json_true_favorites_only_matches_only_favourites(self, tmp_path):
+        from db.connection import get_connection
+
+        with get_connection(self._db(tmp_path)) as conn:
+            assert self._members(conn, {"favorites_only": True}) == ["/fav.jpg", "/fav_mono.jpg"]
+
+    def test_json_true_is_monochrome_matches_only_monochrome(self, tmp_path):
+        from db.connection import get_connection
+
+        with get_connection(self._db(tmp_path)) as conn:
+            assert self._members(conn, {"is_monochrome": True}) == ["/fav_mono.jpg", "/mono.jpg"]
+
+    def test_json_false_and_empty_values_are_dropped(self, tmp_path):
+        from db.connection import get_connection
+
+        with get_connection(self._db(tmp_path)) as conn:
+            assert len(self._members(conn, {"favorites_only": False, "is_monochrome": "", "camera": None})) == 4
+
+    def test_lower_case_sort_direction_is_upper_cased(self):
+        from api.routers.albums import _normalize_smart_filters
+
+        assert _normalize_smart_filters({"sort": "aggregate", "sort_direction": "asc"})["sort_direction"] == "ASC"
+
+    def test_ascending_cover_is_the_lowest_scored(self, tmp_path):
+        import json as _json
+
+        from api.routers.albums import _compute_smart_album_cover
+        from db.connection import get_connection
+
+        with get_connection(self._db(tmp_path)) as conn:
+            album = _make_album_row(is_smart=1, smart_filter_json=_json.dumps(
+                {"sort": "aggregate", "sort_direction": "asc"}))
+            with mock.patch("api.db_helpers.is_multi_user_enabled", return_value=False):
+                assert _compute_smart_album_cover(conn, album) == "/mono.jpg"
+
+
+class TestAddPhotosSkipsUnknownPaths:
+    """``INSERT OR IGNORE`` has no foreign key to ``photos``: a path that is not in the library used to be
+    inserted and counted as added. The route now adds only existing paths and reports the rest as ``skipped``."""
+
+    def test_unknown_paths_are_skipped_not_added(self, client, seeded_photos):
+        from tests.conftest import SEEDED_PHOTOS_PREFIX
+        known = [row["path"] for row in seeded_photos[:2]]
+        unknown = "/conftest-seeded/does-not-exist.jpg"
+        album = client.post("/api/albums", json={"name": "skips unknown"}).json()
+        try:
+            resp = client.post(f"/api/albums/{album['id']}/photos",
+                               json={"photo_paths": [known[0], unknown, known[1], unknown]})
+            assert resp.status_code == 200, resp.text
+            body = resp.json()
+            assert body["added"] == 2 and body["photo_count"] == 2
+            assert body["skipped"] == [unknown]
+            listed = client.get(f"/api/albums/{album['id']}/photos").json()
+            assert sorted(p["path"] for p in listed["photos"]) == sorted(known)
+            assert SEEDED_PHOTOS_PREFIX in known[0]
+        finally:
+            client.delete(f"/api/albums/{album['id']}")
+
+    def test_all_known_paths_report_an_empty_skipped_list(self, client, seeded_photos):
+        known = [row["path"] for row in seeded_photos]
+        album = client.post("/api/albums", json={"name": "all known"}).json()
+        try:
+            body = client.post(f"/api/albums/{album['id']}/photos", json={"photo_paths": known}).json()
+            assert body["added"] == len(known) and body["skipped"] == []
+        finally:
+            client.delete(f"/api/albums/{album['id']}")
+
+    def test_only_unknown_paths_add_nothing(self, client):
+        album = client.post("/api/albums", json={"name": "only unknown"}).json()
+        try:
+            body = client.post(f"/api/albums/{album['id']}/photos",
+                               json={"photo_paths": ["/nowhere/a.jpg", "/nowhere/b.jpg"]}).json()
+            assert body["added"] == 0 and body["photo_count"] == 0
+            assert body["skipped"] == ["/nowhere/a.jpg", "/nowhere/b.jpg"]
+        finally:
+            client.delete(f"/api/albums/{album['id']}")
+
+    def test_the_skipped_list_is_capped(self, client):
+        from api.models.gallery import BY_PATHS_MISSING_CAP
+        album = client.post("/api/albums", json={"name": "many unknown"}).json()
+        try:
+            paths = [f"/nowhere/{i}.jpg" for i in range(BY_PATHS_MISSING_CAP + 50)]
+            body = client.post(f"/api/albums/{album['id']}/photos", json={"photo_paths": paths}).json()
+            assert len(body["skipped"]) == BY_PATHS_MISSING_CAP and body["skipped_count"] == len(paths)
+        finally:
+            client.delete(f"/api/albums/{album['id']}")

@@ -5,9 +5,11 @@ Moves happen in ``tmp_path``; ``send2trash`` is replaced by a delete so nothing
 reaches the developer's trash.
 """
 
+import json
 import os
 import sqlite3
 import time
+from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
@@ -743,3 +745,322 @@ class TestFilterScopedBatchBeyondTheRouteCap:
         assert result["data"]["affected"] == 1100
         assert db_row("SELECT COUNT(*) FROM photos WHERE path LIKE ? AND star_rating = 4", self.PREFIX + "%")[0] == 1100
         assert db_row("SELECT COUNT(*) FROM rating_provenance WHERE photo_path LIKE ?", self.PREFIX + "%")[0] == 1100
+
+
+# ---- create_album from filters / the view / a set of photos ------------------------------------
+
+ALBUM_DIR = "/agent-album-seeded/"
+
+
+@pytest.fixture()
+def album_headers(edition):
+    """One edition session per test (the login route is rate-limited)."""
+    return edition[0].login(edition=True)
+
+
+@pytest.fixture()
+def album_cleanup(edition, album_headers):
+    """Delete every album a test made (the shared session DB outlives the test)."""
+    env, _ = edition
+    ids = []
+    yield ids
+    headers = album_headers
+    for album_id in ids:
+        env.client.delete(f"/api/albums/{album_id}", headers=headers)
+
+
+def _album_rows():
+    from api.types import TYPE_FILTERS
+    rows = [
+        {"path": ALBUM_DIR + "lead.jpg", "filename": "lead.jpg", "aggregate": 9.0, "burst_group_id": 7,
+         "is_burst_lead": 1, "date_taken": "2026:03:01 10:00:00", "is_favorite": 1, "star_rating": 5},
+        {"path": ALBUM_DIR + "follow1.jpg", "filename": "follow1.jpg", "aggregate": 8.0, "burst_group_id": 7,
+         "is_burst_lead": 0, "date_taken": "2026:03:01 10:00:01"},
+        {"path": ALBUM_DIR + "follow2.jpg", "filename": "follow2.jpg", "aggregate": 7.0, "burst_group_id": 7,
+         "is_burst_lead": 0, "date_taken": "2026:03:01 10:00:02"},
+        {"path": ALBUM_DIR + "dup_lead.jpg", "filename": "dup_lead.jpg", "aggregate": 6.0, "duplicate_group_id": 3,
+         "is_duplicate_lead": 1, "is_monochrome": 1},
+        {"path": ALBUM_DIR + "dup_copy.jpg", "filename": "dup_copy.jpg", "aggregate": 6.0, "duplicate_group_id": 3,
+         "is_duplicate_lead": 0},
+        {"path": ALBUM_DIR + "rejected.jpg", "filename": "rejected.jpg", "aggregate": 5.0, "is_rejected": 1,
+         "star_rating": 4},
+        {"path": ALBUM_DIR + "fav_rejected.jpg", "filename": "fav_rejected.jpg", "aggregate": 4.0, "is_favorite": 1,
+         "is_rejected": 1},
+        {"path": ALBUM_DIR + "plain.jpg", "filename": "plain.jpg", "aggregate": 3.0, "star_rating": 2,
+         "date_taken": "2025:06:01 10:00:00"},
+    ]
+    for name in TYPE_FILTERS:
+        if name != "top_picks":
+            rows.append({"path": ALBUM_DIR + f"cat_{name}.jpg", "filename": f"cat_{name}.jpg", "aggregate": 4.5,
+                         "category": name})
+    return rows
+
+
+@pytest.fixture()
+def album_photos(seed_photos_prefix):
+    conn = sqlite3.connect(_TEST_DB_FILE.name)
+    seed_photos_prefix(ALBUM_DIR, _album_rows())
+    conn.execute("INSERT INTO persons (id, name) VALUES (9001, 'Album Person')")
+    conn.executemany(
+        "INSERT INTO faces (photo_path, face_index, embedding, person_id) VALUES (?, 0, x'00', 9001)",
+        [(ALBUM_DIR + "lead.jpg",), (ALBUM_DIR + "plain.jpg",)])
+    conn.commit()
+    yield
+    conn.execute("DELETE FROM faces WHERE person_id = 9001")
+    conn.execute("DELETE FROM persons WHERE id = 9001")
+    conn.commit()
+    conn.close()
+
+
+def _album_page_total(env, stored_json_text, headers, hide_toggles=True):
+    """What the album page lists: ``/api/photos`` with the stored filters + the viewer's hide toggles."""
+    import json
+    from api.agent.album_filters import query_form
+    from api.agent.tools_read import _hide_defaults
+    from api.models.gallery import query_value
+    query = query_form(json.loads(stored_json_text))
+    if hide_toggles:
+        query.update({k: query_value(v) for k, v in _hide_defaults({}).items()})
+        if "favorites_only" in query:  # the page applies the store's rule (exclusiveHidePatch): favourites win
+            query.pop("hide_rejected", None)
+    resp = env.client.get("/api/photos", params={**query, "per_page": 1}, headers=headers)
+    assert resp.status_code == 200, resp.text
+    return resp.json()["total"]
+
+
+def _album_listing_total(env, album_id, headers):
+    """What the album's OWN listing route returns: the stored JSON read back by ``_normalize_smart_filters``."""
+    resp = env.client.get(f"/api/albums/{album_id}/photos", params={"per_page": 1}, headers=headers)
+    assert resp.status_code == 200, resp.text
+    return resp.json()["total"]
+
+
+def _unhidden_search_total(env, token, filters):
+    """``search_photos`` with every hide toggle off: the row set the album listing (no display toggles) must equal."""
+    from api.agent.tools_read import HIDE_DEFAULT_KEYS
+    unhidden = {**filters, **{key: False for key in HIDE_DEFAULT_KEYS if key not in filters}}
+    return env.call(token, "search_photos", {"filters": unhidden, "show": False, "per_page": 1})["data"]["total"]
+
+
+PARITY_CASES = {
+    "person": {"person": "9001"},
+    "type_top_picks": {"type": "top_picks"},
+    "favorites_only": {"favorites_only": True},
+    "is_monochrome": {"is_monochrome": True},
+    "dates": {"date_from": "2026-03-01", "date_to": "2026-03-02"},
+    "path_prefix": {"path_prefix": ALBUM_DIR},
+    "score_range": {"min_score": 5, "max_score": 7.5},
+    "star_rating": {"min_star_rating": 3},
+    "empty": {},
+}
+
+
+class TestSmartAlbumParity:
+    """``create_album(filters)`` == ``search_photos(filters)`` == the album page (stored filters + hide toggles)."""
+
+    def test_hiding_discriminates_in_the_seed(self, edition, album_photos, album_headers):
+        env, _ = edition
+        headers = album_headers
+        with_hide = _album_page_total(env, "{}", headers, hide_toggles=True)
+        without = _album_page_total(env, "{}", headers, hide_toggles=False)
+        assert without > with_hide
+
+    @pytest.mark.parametrize("case", sorted(PARITY_CASES))
+    def test_totals_agree_on_every_surface(self, edition, album_photos, album_cleanup, album_headers, case):
+        env, token = edition
+        filters = PARITY_CASES[case]
+        created = env.call(token, "create_album", {"name": f"parity {case}", "filters": filters})
+        assert created["ok"], created
+        album_cleanup.append(created["data"]["id"])
+        searched = env.call(token, "search_photos", {"filters": filters, "show": False, "per_page": 1})
+        page = _album_page_total(env, created["data"]["smart_filter_json"], album_headers)
+        assert created["data"]["photo_count"] == searched["data"]["total"] == page
+        assert _album_listing_total(env, created["data"]["id"], album_headers) == _unhidden_search_total(
+            env, token, filters)
+        # The server reads both name forms, so only the stored keys can show a skipped rename: the Angular
+        # album page reads person_id / type / semanticQuery and ignores their contract spellings.
+        from api.agent.ui_tools import CONTRACT_TO_CLIENT_KEY
+        assert not set(json.loads(created["data"]["smart_filter_json"])) & set(CONTRACT_TO_CLIENT_KEY)
+        assert created["data"]["is_smart"] is True
+        if case not in ("type_top_picks", "empty"):
+            assert 0 < page
+
+    def test_every_configured_category_agrees(self, edition, album_photos, album_cleanup, album_headers, monkeypatch):
+        from api.types import TYPE_FILTERS
+        monkeypatch.setattr(limits, "check_rate", lambda *args: (True, 0.0))  # ~70 calls, past the write window
+        env, token = edition
+        headers = album_headers
+        for name in TYPE_FILTERS:
+            if name == "top_picks":
+                continue
+            created = env.call(token, "create_album", {"name": f"parity {name}", "filters": {"category": name}})
+            assert created["ok"], (name, created)
+            album_cleanup.append(created["data"]["id"])
+            searched = env.call(token, "search_photos", {"filters": {"category": name}, "show": False,
+                                                         "per_page": 1})
+            assert created["data"]["photo_count"] == searched["data"]["total"] >= 1, name
+            assert _album_page_total(env, created["data"]["smart_filter_json"], headers) == searched["data"]["total"], name
+            assert _album_listing_total(env, created["data"]["id"], headers) == _unhidden_search_total(
+                env, token, {"category": name}), name
+
+    def test_a_favourites_album_keeps_a_rejected_favourite_on_every_surface(self, edition, album_photos,
+                                                                           album_cleanup, album_headers):
+        """``favorites_only`` and ``hide_rejected`` are exclusive: the count, the page and the listing agree."""
+        env, token = edition
+        created = env.call(token, "create_album", {"name": "favs", "filters": {"favorites_only": True}})
+        album_cleanup.append(created["data"]["id"])
+        listing = env.client.get(f"/api/albums/{created['data']['id']}/photos", params={"per_page": 50},
+                                 headers=album_headers).json()
+        assert ALBUM_DIR + "fav_rejected.jpg" in [p["path"] for p in listing["photos"]]
+        assert created["data"]["photo_count"] == listing["total"]
+        assert _album_page_total(env, created["data"]["smart_filter_json"], album_headers) == listing["total"]
+
+    def test_stored_json_is_the_client_form_without_hide_toggles(self, edition, album_photos, album_cleanup):
+        import json
+        env, token = edition
+        created = env.call(token, "create_album", {"name": "form", "filters": {
+            "person": 9001, "category": "portrait", "favorites_only": True, "min_score": 6}})
+        album_cleanup.append(created["data"]["id"])
+        assert json.loads(created["data"]["smart_filter_json"]) == {
+            "person_id": "9001", "type": "portrait", "favorites_only": True, "min_score": "6"}
+
+    def test_unmatched_filters_warn_and_count_zero(self, edition, album_photos, album_cleanup):
+        env, token = edition
+        created = env.call(token, "create_album", {"name": "none", "filters": {"path_prefix": "/nowhere-at-all/"}})
+        album_cleanup.append(created["data"]["id"])
+        assert created["data"]["photo_count"] == 0 and "warning" in created["data"]
+
+    @pytest.mark.parametrize("filters", [
+        {"exclude_tags": "x"}, {"require_tags": "x"}, {"is_silhouette": True}, {"junk_kind": "blurry"},
+        {"narrative_moment": "other"}, {"min_rating": 3}, {"min_aggregate": 5}, {"show_rejected": True},
+        {"hide_bursts": False}, {"hide_rejected": True}, {"gps_lat": 1.0}, {"album_id": 5},
+    ])
+    def test_unsupported_filters_are_refused_and_create_nothing(self, edition, album_photos, filters):
+        env, token = edition
+        before = db_row("SELECT COUNT(*) FROM albums")[0]
+        refused = env.call(token, "create_album", {"name": "refused", "filters": filters})
+        assert refused["error"] == "unsupported_filters" and refused["keys"] == sorted(filters)
+        assert db_row("SELECT COUNT(*) FROM albums")[0] == before
+
+    def test_an_ineffective_unsupported_value_is_not_a_refusal(self, edition, album_photos, album_cleanup):
+        env, token = edition
+        created = env.call(token, "create_album", {"name": "ok", "filters": {"show_rejected": False}})
+        assert created["ok"], created
+        album_cleanup.append(created["data"]["id"])
+
+    def test_type_with_category_and_unknown_category_are_invalid_input(self, edition, album_photos):
+        env, token = edition
+        both = env.call(token, "create_album", {"name": "x", "filters": {"type": "portrait", "category": "macro"}})
+        assert both["error"] == "invalid_input"
+        unknown = env.call(token, "create_album", {"name": "x", "filters": {"category": "no-such-category"}})
+        assert unknown["error"] == "invalid_input"
+
+    def test_more_than_one_of_filters_paths_target_is_invalid_input(self, edition, album_photos):
+        env, token = edition
+        before = db_row("SELECT COUNT(*) FROM albums")[0]
+        refused = env.call(token, "create_album", {"name": "x", "filters": {}, "paths": [ALBUM_DIR + "plain.jpg"]})
+        assert refused["error"] == "invalid_input"
+        assert db_row("SELECT COUNT(*) FROM albums")[0] == before
+
+
+GOLDEN = Path(__file__).resolve().parent.parent / "client/src/app/features/gallery/testing/smart-album-stored.json"
+
+
+@pytest.mark.parametrize("key", ["semantic_query", "semanticQuery", "semantic_threshold", "search_threshold",
+                                 "similar_to", "similarity_mode", "min_similarity"])
+def test_semantic_and_similar_keys_are_refused_in_both_name_forms(key):
+    from api.agent import album_filters
+    refusal, stored = album_filters.to_stored({"min_score": 5, key: "x"})
+    assert refusal["error"] == "unsupported_filters" and refusal["keys"] == [key]
+    assert stored == {}
+
+
+def test_stored_form_equals_the_golden_fixture_the_client_loads():
+    """The same file the gallery's vitest loads: what the tool stores is what the album page reads back."""
+    from api.agent import album_filters
+    golden = json.loads(GOLDEN.read_text())
+    refusal, stored = album_filters.to_stored(golden["contract_filters"])
+    assert refusal is None
+    assert stored == golden["stored"]
+    assert json.loads(album_filters.stored_json(stored)) == golden["stored"]
+
+
+class TestCreateAlbumFromPaths:
+    """``paths`` -> a fixed album, created and filled by one call; never ``ok`` for a half-done one."""
+
+    def album_paths(self, album_id):
+        conn = sqlite3.connect(_TEST_DB_FILE.name)
+        try:
+            return [r[0] for r in conn.execute(
+                "SELECT photo_path FROM album_photos WHERE album_id = ? ORDER BY position", (album_id,))]
+        finally:
+            conn.close()
+
+    def test_created_and_filled_with_the_unknown_path_reported_as_skipped(self, edition, photos, album_cleanup):
+        env, token = edition
+        unknown = AGENT_DIR + "never-scanned.jpg"
+        result = env.call(token, "create_album", {"name": "fixed", "paths": [P[0], unknown, P[1]]})
+        assert result["ok"], result
+        album_cleanup.append(result["data"]["id"])
+        data = result["data"]
+        assert data["added"] == 2 and data["photo_count"] == 2 and data["skipped"] == [unknown]
+        assert data["skipped_count"] == 1 and "warning" not in data
+        assert data["is_smart"] is False
+        assert self.album_paths(data["id"]) == [P[0], P[1]]
+
+    def test_every_path_unknown_warns_instead_of_a_silent_ok(self, edition, photos, album_cleanup):
+        env, token = edition
+        unknown = [AGENT_DIR + "never-1.jpg", AGENT_DIR + "never-2.jpg"]
+        result = env.call(token, "create_album", {"name": "nothing", "paths": unknown})
+        assert result["ok"], result
+        album_cleanup.append(result["data"]["id"])
+        data = result["data"]
+        assert data["added"] == 0 and data["photo_count"] == 0 and data["skipped_count"] == 2
+        assert "warning" in data and self.album_paths(data["id"]) == []
+
+    def test_too_many_paths_create_no_album(self, edition, photos):
+        env, token = edition
+        before = db_row("SELECT COUNT(*) FROM albums")[0]
+        result = env.call(token, "create_album", {"name": "huge", "paths": [f"/x/{i}.jpg" for i in range(1001)]})
+        assert result["error"] == "too_large"
+        assert db_row("SELECT COUNT(*) FROM albums")[0] == before
+
+    def test_a_failed_add_keeps_the_empty_album_and_says_so(self, edition, photos, album_cleanup, monkeypatch):
+        env, token = edition
+        intercept_internal_call(monkeypatch, lambda tool, kw: {
+            "ok": False, "error": "library_busy", "message": "The library is busy; retry in a moment"
+        } if tool == "album_add_photos" else None)
+        result = env.call(token, "create_album", {"name": "half done", "paths": P[:3]})
+        assert result["ok"] is False and result["error"] == "library_busy"
+        assert result["created"] is True and result["added"] == 0 and result["not_attempted"] == 3
+        album_cleanup.append(result["album_id"])
+        assert db_row("SELECT COUNT(*) FROM albums WHERE id = ?", result["album_id"])[0] == 1
+        assert self.album_paths(result["album_id"]) == []
+
+    def test_an_unknown_outcome_is_in_doubt(self, edition, photos, album_cleanup, monkeypatch):
+        env, token = edition
+        intercept_internal_call(monkeypatch, lambda tool, kw: {
+            "ok": False, "error": "outcome_unknown", "message": "timed out"
+        } if tool == "album_add_photos" else None)
+        result = env.call(token, "create_album", {"name": "in doubt", "paths": P[:2]})
+        assert result["error"] == "outcome_unknown" and result["in_doubt"] and result["created"] is True
+        album_cleanup.append(result["album_id"])
+
+    def test_a_failed_create_adds_nothing(self, edition, photos, monkeypatch):
+        env, token = edition
+        calls = []
+        intercept_internal_call(monkeypatch, lambda tool, kw: calls.append(tool) or (
+            {"ok": False, "error": "library_busy", "message": "busy"} if tool == "create_album" else None))
+        result = env.call(token, "create_album", {"name": "never", "paths": P[:2]})
+        assert result["error"] == "library_busy" and "album_add_photos" not in calls
+
+    def test_in_page_the_add_leg_reports_changed_paths(self, edition, photos, album_cleanup, album_headers):
+        env, _ = edition
+        headers = album_headers
+        resp = env.client.post("/api/mcp/call", headers={**headers, "X-Facet-Agent-Session": "tab-a"},
+                               json={"tool": "create_album", "arguments": {"name": "inpage fixed", "paths": P[:2]}})
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["ok"], body
+        album_cleanup.append(body["data"]["id"])
+        assert body["changed_paths"] == P[:2]

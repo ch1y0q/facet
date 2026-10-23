@@ -188,6 +188,17 @@ describe('ServerToolRegistry', () => {
     expect(options.headers.get(SESSION_HEADER)).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
   });
 
+  it('injects the open gallery view, not the selection, for target "view"', async () => {
+    setup(status({ edition_authenticated: true }));
+    await settle();
+    const view = { route: '/', total: 3, loading: false, filters_scopable: true, album_filter_json: '{"camera":"X"}' };
+    uiExecute.mockResolvedValueOnce({ ok: true, data: view });
+    await live.get('set_rating')!.execute({ target: 'view', rating: 4 }, {});
+    expect(uiExecute).toHaveBeenCalledTimes(1);
+    expect(uiExecute).toHaveBeenCalledWith('ui_get_gallery_view', { limit: 1 });
+    expect(post.mock.calls[0][1]).toMatchObject({ arguments: { target: 'view', rating: 4 }, selection_snapshot: view });
+  });
+
   it('sends no tab review with a call: the body carries only the tool, arguments and tab id', async () => {
     setup(status({ edition_authenticated: true }));
     await settle();

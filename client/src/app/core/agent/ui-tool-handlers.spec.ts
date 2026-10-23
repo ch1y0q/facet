@@ -14,8 +14,8 @@ import { makePhoto } from '../../../testing/photo.fixture';
 import { contractHandlerMismatch, WebMcpToolRegistry } from './webmcp-registry.service';
 import { routes } from '../../app.routes';
 import { CULL_DEFAULT_STRICTNESS, CULL_PROFILE_KEY, CULL_STRICTNESS_KEY } from '../../features/gallery/culling.store';
-import { DEFAULT_FILTERS } from '../../features/gallery/gallery-filters.util';
-import { applicableActions, capCullingSnapshot, createUiToolHandlers } from './ui-tool-handlers';
+import { DEFAULT_FILTERS, SMART_ALBUM_EXCLUDE_KEYS } from '../../features/gallery/gallery-filters.util';
+import { CONTRACT_TO_CLIENT_KEY, applicableActions, capCullingSnapshot, createUiToolHandlers } from './ui-tool-handlers';
 import { CompareFiltersService } from '../../features/comparison/compare-filters.service';
 import { ViewActionRegistry } from './view-action-registry.service';
 import { AssistantChangeBatch, AssistantChangesService } from './assistant-changes.service';
@@ -112,6 +112,12 @@ describe('UI tool registry and handlers', () => {
 
     it('reports the error codes the server lets a tab use', () => {
       expect([...UI_TOOL_ERROR_CODES].sort()).toEqual((contractFile as unknown as UiToolContractFile).error_codes);
+    });
+
+    it('keeps the filter-name table and the smart-album exclusions equal to the server contract', () => {
+      const file = contractFile as unknown as UiToolContractFile;
+      expect(CONTRACT_TO_CLIENT_KEY).toEqual(file.filter_key_map);
+      expect([...SMART_ALBUM_EXCLUDE_KEYS].sort()).toEqual(file.smart_album_exclude_keys);
     });
 
     it('answers invalid_input for an enum violation and never throws', async () => {
@@ -459,6 +465,19 @@ describe('UI tool registry and handlers', () => {
       expect(data['filters']).toMatchObject({ min_aesthetic: '7', person: '3' });
       expect(data['filters']).not.toHaveProperty('page');
       expect(data['route']).toBe('/');
+    });
+
+    it('reports the smart-album JSON of the view and whether a stored album can express it', async () => {
+      await run('ui_set_gallery_filters', { patch: { min_aesthetic: '7', person: '3', category: 'macro', hide_bursts: true } });
+      const data = ((await run('ui_get_gallery_view', {})) as { data: Record<string, unknown> }).data;
+      const stored = JSON.parse(data['album_filter_json'] as string) as Record<string, unknown>;
+      expect(stored).toMatchObject({ min_aesthetic: '7', person_id: '3', type: 'macro' });
+      expect(stored).not.toHaveProperty('hide_bursts');
+      expect(data['filters_scopable']).toBe(true);
+      expect(data['loading']).toBe(false);
+      await run('ui_set_gallery_filters', { patch: { semantic_query: 'sunset' } });
+      const semantic = ((await run('ui_get_gallery_view', {})) as { data: Record<string, unknown> }).data;
+      expect(semantic['filters_scopable']).toBe(false);
     });
 
     it('answers no_active_view away from the gallery', async () => {

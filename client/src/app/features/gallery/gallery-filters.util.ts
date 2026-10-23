@@ -265,6 +265,26 @@ export function smartAlbumFilterJson(filters: GalleryFilters): string {
   return JSON.stringify(filterJson);
 }
 
+/** The store's filters once an album opens: the saved smart-album JSON laid over `current`, scoped to `albumId`.
+ *  The inverse of `smartAlbumFilterJson`; a golden fixture shared with the server's agent tool
+ *  (`testing/smart-album-stored.json`) pins that what an agent stores round-trips through both. */
+export function applySavedAlbumFilters(current: GalleryFilters, savedJson: string, albumId: string): GalleryFilters {
+  const saved = JSON.parse(savedJson) as Partial<GalleryFilters>;
+  return { ...current, ...saved, ...exclusiveHidePatch(saved), album_id: albumId };
+}
+
+/** The store's mutual-exclusion rule: "hide rejected" and "favourites only" cannot both hold, so
+ *  turning one on turns the other off. Returns only the companion keys to override. Shared by the
+ *  store's updates and by `applySavedAlbumFilters`, which spreads a saved album over the viewer's
+ *  defaults without going through the store (a favourites-only album would otherwise inherit
+ *  `hide_rejected` and list fewer photos than it holds). */
+export function exclusiveHidePatch(updates: Partial<GalleryFilters>): Partial<GalleryFilters> {
+  const patch: Partial<GalleryFilters> = {};
+  if (updates.hide_rejected) patch.favorites_only = false;
+  if (updates.favorites_only) patch.hide_rejected = false;
+  return patch;
+}
+
 /** Common string-typed filter keys shared across URL sync, API params, and filter counting. */
 export const RANGE_AND_SELECT_KEYS: (keyof GalleryFilters)[] = [
   'type', 'camera', 'lens', 'tag', 'person_id', 'composition_pattern', 'search',

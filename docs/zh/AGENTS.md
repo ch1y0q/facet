@@ -93,7 +93,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 |------|------|
 | `ui_navigate` | 前往某个页面（图库、人物、相册、统计等） |
 | `ui_set_gallery_filters` | 把补丁合并到图库的筛选和排序中（`null` 移除某个筛选，`replace: true` 从零开始） |
-| `ui_get_gallery_view` | 路由、当前筛选、匹配总数、前若干个可见照片路径以及已选数量 |
+| `ui_get_gallery_view` | 路由、当前筛选、匹配总数、前若干个可见照片路径以及已选数量；还返回 `album_filter_json`（智能相册会保存的筛选）和 `filters_scopable`（这些筛选是否描述整个视图） |
 | `ui_get_context` | 已打开的页面(路由)、图库状态(总数、已加载数量、是否显示固定列表)、已选照片数量,以及此处适用于你的令牌的 `actions`;还有 `focused`(用户所在的照片)、`culling`(助手在 `/culling` 上的方案:已确认、待确认和已更改的分组,以及它所对应的 `scope`)、`culling_defaults`(`{profile, strictness}`:已保存的配置和滑块当前保存的实时严格程度,按浏览器;两者都未给出时 `auto_cull` 同时使用二者)和 `user_activity`(用户做过的操作),并接受 `activity_since`(见下文) |
 | `ui_open_photo` | 打开一张照片 |
 | `ui_show_photos` | 按此顺序精确显示这些 `paths`(最多 200 个)作为图库列表;无法访问的会在 `missing` 中返回。任何筛选条件的更改都会替换该列表 |
@@ -157,7 +157,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 - **页面内的图库工具。** 标签页还提供服务器自身的工具（搜索、评分、标签、相册、暗房、报告），通过 `GET /api/mcp/inpage_tools`（列表，含每个工具的 schema、`required_level` 以及会话当前的 `level`）和 `POST /api/mcp/call`（`{tool, arguments, selection_snapshot?}`）。它们以你已登录的会话身份，经与 `/mcp` 相同的封装层运行，因此级别、预览、`confirm` 值和速率限制的行为完全一致。工具失败时返回正常的 `ok: false` 信封（HTTP 200）；调用还会报告 `changed`（已写入的照片数）。
 - **级别。** 级别取你登录时的级别与你当前角色中较低者，每次调用都会重新读取：被降级的账户立即失去写入权限，被删除的账户会被拒绝（401）。低于工具的最低要求时，答复为 `forbidden_level`（"This session's level is readonly; set_rating needs edition: unlock edition in Facet"）。在单密码安装中，执行写入的会话必须已解锁编辑权限。
 - **谁可以调用。** 仅限已登录的人。智能体自己的 `/mcp` 令牌在这些路由上会被拒绝（403），外部 `Origin` 也一样；仅有 cookie 永远不能认证。每次调用都带有 `X-Facet-Agent-Session` 头（1 到 64 个字母、数字、`_` 或 `-`；缺失或格式错误则返回 400）。它用来区分标签页：为某个标签页签发的 `confirm` 值会被拒绝给另一个标签页；该值由页面自己选择，所以它只起区分作用，不起认证作用。
-- **不包含的内容。** 图像工具（`get_thumbnail`、`contact_sheet`）和 `available_actions`（请用 `ui_get_context`）。工具的 `show` 参数始终关闭，因为调用者就是标签页本身，`tab_id` 会被拒绝。`status` 只报告服务器与界面契约的版本。`target: "selection"` 使用页面发送的 `selection_snapshot`（即 `ui_get_selection` 返回的内容），缺少它则为 `invalid_input`。破坏性操作仍遵循 `viewer.mcp.allow_destructive`。
+- **不包含的内容。** 图像工具（`get_thumbnail`、`contact_sheet`）和 `available_actions`（请用 `ui_get_context`）。工具的 `show` 参数始终关闭，因为调用者就是标签页本身，`tab_id` 会被拒绝。`status` 只报告服务器与界面契约的版本。`target: "selection"` 使用页面发送的 `selection_snapshot`（即 `ui_get_selection` 返回的内容），并且对 `target: "view"` 的 `create_album`，还包含 `ui_get_gallery_view` 返回的 `album_filter_json` 与 `filters_scopable`，缺少它则为 `invalid_input`。破坏性操作仍遵循 `viewer.mcp.allow_destructive`。
 - **品味。** 与任何助手的写入一样，从页面发起的工具调用从不记录比较，也从不触发重新训练。
 - **开关。** `viewer.mcp.inpage_tools`（默认 `true`）会关闭这两个路由（404），并将 `/api/auth/status` 中的 `features.mcp_inpage` 置为假；`viewer.mcp.enabled: false` 同样会关闭它们。
 
@@ -175,7 +175,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 | `batch_set_rejected` | `edition` | 淘汰大量照片 | 1000 个路径，或 `filters` |
 | `add_tags` | `edition` | 添加手动标签（与 AI 标签分开保存） | 10 个标签；1000 个路径，或 `filters` |
 | `remove_tags` | `edition` | 移除手动标签 | 10 个标签；1000 个路径，或 `filters` |
-| `create_album` | `edition` | 创建空相册（不幂等：调用两次会创建两个相册） | |
+| `create_album` | `edition` | 创建相册（不幂等：调用两次会创建两个相册）：可为空，也可由 `filters` / `target: "view"` 创建跟随这些筛选条件的智能相册，或由 `paths` / `target: "selection"` 创建并在同一次调用中填充的固定相册（`added`、`skipped`）。智能相册使用查看器自身的隐藏开关，在 `list_albums` 中显示 0 张照片 | |
 | `album_add_photos` | `edition` | 向相册添加照片（已有的会被忽略） | 1000 个路径 |
 | `album_remove_photos` | `edition` | 从相册移除照片；照片本身不受影响 | 1000 个路径 |
 | `assign_faces` | `edition` | 将人脸移到某个人物;属于其他人物的人脸保持不变,除非设置 `allow_reassign`,结果会列出被跳过的内容 | 50 个人脸 id |

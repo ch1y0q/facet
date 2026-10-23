@@ -68,7 +68,7 @@ import {
   GalleryRow, aspectOf, buildGridRows, buildMosaicRows,
   gridColumnCount, totalRowsHeight, windowRange,
 } from './gallery-rows.util';
-import { GalleryFilters, applyQueryParams, loadDisplayOptionsFromStorage } from './gallery-filters.util';
+import { GalleryFilters, applyQueryParams, applySavedAlbumFilters, loadDisplayOptionsFromStorage } from './gallery-filters.util';
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { AlbumService, Album } from '../../core/services/album.service';
 import { CreateAlbumDialogComponent } from '../albums/create-album-dialog.component';
@@ -1298,8 +1298,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
         const album = await firstValueFrom(this.albumService.get(+albumId));
         if (album.smart_filter_json) {
           // Apply saved filters BEFORE setting currentAlbum (avoids effect saving defaults)
-          const savedFilters = JSON.parse(album.smart_filter_json);
-          this.store.filters.update(current => ({ ...current, ...savedFilters, album_id: albumId }));
+          const savedJson = album.smart_filter_json;
+          this.store.filters.update(current => applySavedAlbumFilters(current, savedJson, albumId));
         } else {
           this.store.filters.update(current => ({ ...current, album_id: albumId }));
         }

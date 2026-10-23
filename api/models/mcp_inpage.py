@@ -31,7 +31,8 @@ class McpCallRequest(BaseModel):
     tool: str = Field(min_length=1, max_length=100)
     arguments: dict[str, Any] = Field(default_factory=dict)
     selection_snapshot: Optional[dict[str, Any]] = Field(
-        default=None, description="The calling tab's `ui_get_selection` data; read by `target: \"selection\"`.")
+        default=None, description="The calling tab's `ui_get_selection` data, read by `target: \"selection\"`; "
+                                  "for `create_album` `target: \"view\"` its `ui_get_gallery_view` data.")
     tab_id: Optional[str] = Field(
         default=None, pattern=r"^[A-Za-z0-9_-]{1,64}$",
         description="The calling tab's bridge id. A write's `changed` frame goes to the user's OTHER tabs, "

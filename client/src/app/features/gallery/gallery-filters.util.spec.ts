@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import serverFilterKeys from './gallery-filters.generated.json';
+import goldenAlbum from './testing/smart-album-stored.json';
 import {
   DEFAULT_FILTERS,
   type GalleryFilters,
@@ -14,6 +15,8 @@ import {
   semanticSortPatch,
   RELEVANCE_SORT,
   smartAlbumFilterJson,
+  applySavedAlbumFilters,
+  exclusiveHidePatch,
   countActiveFilters,
   loadDisplayOptionsFromStorage,
   saveDisplayOptionsToStorage,
@@ -232,6 +235,48 @@ describe('smartAlbumFilterJson', () => {
     const saved = JSON.parse(smartAlbumFilterJson(filters({ sort: 'date_taken', sort_direction: 'ASC' })));
     expect(saved.sort).toBe('date_taken');
     expect(saved.sort_direction).toBe('ASC');
+  });
+});
+
+describe('applySavedAlbumFilters (golden fixture shared with the agent create_album tool)', () => {
+  const stored = JSON.stringify(goldenAlbum.stored);
+
+  it('lays the stored client form over the store with booleans kept and person_id / type populated', () => {
+    const result = applySavedAlbumFilters(filters(), stored, '42');
+    expect(result.album_id).toBe('42');
+    expect(result.person_id).toBe('9001');
+    expect(result.type).toBe('portrait');
+    expect(result.favorites_only).toBe(true);
+    expect(result.is_monochrome).toBe(true);
+    const slice = Object.fromEntries(Object.keys(goldenAlbum.stored).map(k => [k, (result as unknown as Record<string, unknown>)[k]]));
+    expect(slice).toEqual(goldenAlbum.stored);
+  });
+
+  it('serialises back to the same JSON, so the album auto-save does not rewrite what the agent stored', () => {
+    const again = JSON.parse(smartAlbumFilterJson(applySavedAlbumFilters(filters(), stored, '42')));
+    // The store always carries its sort; everything the agent stored is unchanged.
+    expect(again).toEqual({ ...goldenAlbum.stored, sort: 'aggregate', sort_direction: 'DESC' });
+  });
+});
+
+describe('applySavedAlbumFilters and the hide_rejected / favorites_only exclusion', () => {
+  it('turns hide_rejected off for a favourites-only album, as the store does, so a rejected favourite is listed', () => {
+    const result = applySavedAlbumFilters({ ...filters(), hide_rejected: true }, JSON.stringify({ favorites_only: true }), '7');
+    expect(result.favorites_only).toBe(true);
+    expect(result.hide_rejected).toBe(false);
+  });
+
+  it('keeps the viewer hide_rejected for an album that is not favourites-only', () => {
+    const result = applySavedAlbumFilters({ ...filters(), hide_rejected: true }, JSON.stringify({ min_score: '6' }), '7');
+    expect(result.hide_rejected).toBe(true);
+  });
+});
+
+describe('exclusiveHidePatch', () => {
+  it('clears the companion of whichever is turned on, and nothing when both are off', () => {
+    expect(exclusiveHidePatch({ hide_rejected: true })).toEqual({ favorites_only: false });
+    expect(exclusiveHidePatch({ favorites_only: true })).toEqual({ hide_rejected: false });
+    expect(exclusiveHidePatch({ hide_rejected: false, favorites_only: false })).toEqual({});
   });
 });
 

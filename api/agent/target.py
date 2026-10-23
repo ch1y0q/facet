@@ -13,13 +13,16 @@ The tab is untrusted input, so nothing it reports is used unchecked:
   paths EXACTLY, so a view that changed since the tab last counted writes nothing.
 """
 
+import json
 from dataclasses import dataclass
 from typing import Any, Optional
 
 from api.agent import show as relay
+from api.agent.album_filters import unsupported as unsupported_filters
 from api.agent.bridge import TabRegistry
 from api.agent.internal_client import InternalClient, err
 from api.agent.tokens import ResolvedGrant
+from api.agent.ui_tools import SMART_ALBUM_EXCLUDE_KEYS, TAB_UNSUPPORTED_FILTER_KEYS
 from api.models.gallery import GALLERY_PAGING_KEYS, gallery_filter_keys, query_value
 
 SELECTION = "selection"
@@ -169,3 +172,88 @@ async def resolve_selection(
     if selection.excluded:
         body["exclude"] = list(selection.excluded)
     return None, body, meta
+
+
+VIEW = "view"
+VIEW_ROUTE = "/"
+# The hide toggles the tab applies to its list: the gallery's ``viewer.defaults`` toggles, which a stored
+# album never carries (the album page applies the viewer's own).
+VIEW_HIDE_KEYS = ("hide_blinks", "hide_bursts", "hide_duplicates", "hide_brackets", "hide_panoramas", "hide_rejected")
+
+
+def _view_refusal(message: str) -> dict:
+    return err("invalid_input", message + "; nothing was created")
+
+
+def _stored_view(raw: Any) -> tuple[Optional[dict], dict]:
+    """``(error, filters)``: the tab's smart-album JSON, parsed and whitelisted (the tab is untrusted)."""
+    try:
+        parsed = json.loads(raw) if isinstance(raw, str) else None
+    except ValueError:
+        parsed = None
+    if not isinstance(parsed, dict) or any(not isinstance(v, (str, bool)) for v in parsed.values()):
+        return _view_refusal("The tab reported its view filters in an unusable form"), {}
+    unknown = sorted(str(key) for key in parsed if key not in gallery_filter_keys())
+    if unknown:
+        return _view_refusal(f"The tab's view carries filters this server does not know: {', '.join(unknown[:10])}"), {}
+    refused = [key for key in parsed if key in SMART_ALBUM_EXCLUDE_KEYS or key in TAB_UNSUPPORTED_FILTER_KEYS
+               or key == "album_id"]
+    if refused:
+        return unsupported_filters(refused), {}
+    return None, parsed
+
+
+async def resolve_view(
+    client: InternalClient, grant: Any, registry: TabRegistry, resolved: ResolvedGrant, settings: dict, *,
+    tab_id: Optional[str],
+) -> tuple[Optional[dict], str, int, Optional[dict]]:
+    """``(error, smart_filter_json, total, target_meta)`` for ``target: "view"``: the tab's open gallery view.
+
+    The tab reports its store-form filters (``album_filter_json``, what the gallery itself would save for a
+    smart album); the server stores that string as it came, after refusing a loading tab, a view that is not a
+    plain filtered gallery (similar / semantic / assistant-pinned, an album page) and any key a stored album
+    cannot hold. It then recounts the stored filters with the tab's own hide toggles and requires the tab's
+    total EXACTLY, so a view the album page would list differently creates nothing.
+    """
+    if resolved.inpage:
+        # The in-page agent's own tab sent its view with the call: never another tab's.
+        if resolved.selection_snapshot is None:
+            return _view_refusal("The call carried no view of this tab"), "", 0, None
+        envelope = {"ok": True, "data": resolved.selection_snapshot}
+    else:
+        envelope = await relay.call_tab(registry, resolved, settings, "ui_get_gallery_view", {"limit": 1}, tab_id)
+    if not envelope.get("ok"):
+        return err(str(envelope.get("error") or "upstream_error"),
+                   str(envelope.get("message") or "The tab could not report its view")), "", 0, None
+    data = envelope.get("data")
+    if not isinstance(data, dict):
+        return err("upstream_error", "The tab reported its view in an unusable form"), "", 0, None
+    if data.get("loading") is not False:
+        return _view_refusal("The tab is still loading its view; retry in a moment"), "", 0, None
+    if data.get("route") != VIEW_ROUTE:
+        return _view_refusal("Only the main gallery page can be saved as a smart album, not an album page or "
+                             "another route; open the gallery first"), "", 0, None
+    if data.get("filters_scopable") is not True:
+        return _view_refusal("The tab's current view (similar photos, a semantic search or a list chosen by an "
+                             "assistant) cannot be saved as a smart album; use `paths` instead"), "", 0, None
+    total = data.get("total")
+    if not isinstance(total, int) or isinstance(total, bool) or total < 0:
+        return err("upstream_error", "The tab reported an unusable total"), "", 0, None
+    raw = data.get("album_filter_json")
+    refusal, stored = _stored_view(raw)
+    if refusal is not None:
+        return refusal, "", 0, None
+    tab_filters = data.get("filters") if isinstance(data.get("filters"), dict) else {}
+    query = {key: query_value(value) for key, value in stored.items() if key not in GALLERY_PAGING_KEYS}
+    query.update({key: query_value(tab_filters[key]) for key in VIEW_HIDE_KEYS if key in tab_filters})
+    counted = await client.call(grant, "photos_count", query=query, timeout=settings["call_timeout_s"])
+    if not counted["ok"]:
+        return counted, "", 0, None
+    listed = (counted["data"] or {}).get("total")
+    if listed != total:
+        return _view_refusal(
+            f"The tab shows {total} photos but its filters, saved as a smart album, would list {listed}: the "
+            "view has a filter a stored album cannot hold, or it changed while it was read"), "", 0, None
+    tab = envelope.get("tab")
+    meta = {"source": "tab_view", "tab_id": tab.get("tab_id") if isinstance(tab, dict) else None, "count": total}
+    return None, raw, total, meta
