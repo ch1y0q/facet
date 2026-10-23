@@ -47,7 +47,7 @@ export interface GpsEditDialogData {
       @if (selectedLat() !== null) {
         <button mat-button (click)="clearLocation()" class="!mr-auto">{{ I18N.photo_detail.gps_clear | translate }}</button>
       }
-      <button mat-button mat-dialog-close>{{ I18N.ui.buttons.cancel | translate }}</button>
+      <button mat-button [mat-dialog-close]="undefined">{{ I18N.ui.buttons.cancel | translate }}</button>
       <button mat-flat-button (click)="save()" [disabled]="saving()">{{ I18N.ui.buttons.save | translate }}</button>
     </mat-dialog-actions>
   `,

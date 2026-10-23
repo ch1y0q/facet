@@ -38,7 +38,7 @@ describe('GpsEditDialogComponent', () => {
         { provide: MAT_DIALOG_DATA, useValue: data },
         { provide: ApiService, useValue: mockApi },
         { provide: MatSnackBar, useValue: mockSnackBar },
-        { provide: I18nService, useValue: { t: (k: string) => k } },
+        { provide: I18nService, useValue: { t: (k: string) => k, translations: () => ({}) } },
       ],
     });
     component = TestBed.inject(GpsEditDialogComponentClass);
@@ -57,6 +57,16 @@ describe('GpsEditDialogComponent', () => {
 
     expect(component.selectedLat()).toBeNull();
     expect(component.selectedLng()).toBeNull();
+  });
+
+  it('Cancel closes without a result, so the caller keeps the location', () => {
+    createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: null, lng: null });
+    const fixture = TestBed.createComponent(GpsEditDialogComponentClass);
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('mat-dialog-actions button') as HTMLButtonElement).click();
+
+    expect(mockDialogRef.close).toHaveBeenCalledWith(undefined);
   });
 
   describe('clearLocation', () => {

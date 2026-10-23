@@ -2,10 +2,10 @@ import { GalleryStore } from '../gallery/gallery.store';
 import { makePhoto } from '../../../testing/photo.fixture';
 import type { Mock } from 'vitest';
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, ParamMap, Router, convertToParamMap } from '@angular/router';
 import { Location } from '@angular/common';
 import { MatDialog } from '@angular/material/dialog';
-import { of, Subject, throwError } from 'rxjs';
+import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
 import { signal } from '@angular/core';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -29,7 +29,7 @@ describe('PhotoDetailComponent', () => {
   let mockApi: { get: Mock; post: Mock; put: Mock; delete: Mock; imageUrl: Mock; downloadUrl: Mock; getRaw: Mock };
   let mockRouter: { navigate: Mock };
   let mockLocation: { back: Mock };
-  let mockRoute: { snapshot: { queryParamMap: { get: Mock } } };
+  let mockRoute: { snapshot: { queryParamMap: { get: Mock } }; queryParamMap: BehaviorSubject<ParamMap> };
   let mockAuth: { isEdition: ReturnType<typeof signal>; downloadProfiles: ReturnType<typeof signal> };
   let mockDialog: { open: Mock };
 
@@ -105,6 +105,7 @@ describe('PhotoDetailComponent', () => {
       snapshot: {
         queryParamMap: { get: vi.fn((key: string) => key === 'path' ? '/photos/test.jpg' : null) },
       },
+      queryParamMap: new BehaviorSubject(convertToParamMap({ path: '/photos/test.jpg' })),
     };
     mockAuth = { isEdition: signal(true), downloadProfiles: signal([]) };
     mockDialog = { open: vi.fn(() => ({ afterClosed: () => of(undefined) })) };
@@ -198,6 +199,127 @@ describe('PhotoDetailComponent', () => {
       const photo = component.photo();
       expect(photo.tags_list).toEqual(['a', 'b']);
       expect(photo.persons).toEqual([]);
+    });
+  });
+
+  describe('following the URL', () => {
+    const earlier = { ...samplePhoto, path: '/photos/earlier.jpg', filename: 'earlier.jpg' };
+    const flush = () => new Promise<void>(resolve => setTimeout(resolve, 0));
+
+    afterEach(() => {
+      history.replaceState(null, '', location.href);
+    });
+
+    async function openedFromGallery() {
+      history.replaceState({ photo: samplePhoto }, '', location.href);
+      createComponent();
+      await component.ngOnInit();
+    }
+
+    async function urlMovesTo(path: string) {
+      mockRoute.snapshot.queryParamMap.get = vi.fn((key: string) => key === 'path' ? path : null);
+      mockRoute.queryParamMap.next(convertToParamMap({ path }));
+      await flush();
+    }
+
+    it('opening the page does not fetch the photo it was handed', async () => {
+      await openedFromGallery();
+      await flush();
+
+      expect(mockApi.get).not.toHaveBeenCalledWith('/photo', expect.anything());
+    });
+
+    it('Back to a photo the gallery holds shows its current copy without fetching', async () => {
+      await openedFromGallery();
+      component.store.photos.set([{ ...earlier, star_rating: 4 }]);
+
+      await urlMovesTo(earlier.path);
+
+      expect(component.photo()).toMatchObject({ path: earlier.path, star_rating: 4 });
+      expect(mockApi.get).not.toHaveBeenCalledWith('/photo', expect.anything());
+    });
+
+    it('Back to a photo the gallery does not hold fetches it', async () => {
+      await openedFromGallery();
+      mockApi.get.mockReturnValue(of(earlier));
+
+      await urlMovesTo(earlier.path);
+
+      expect(mockApi.get).toHaveBeenCalledWith('/photo', { path: earlier.path });
+      expect(component.photo().path).toBe(earlier.path);
+    });
+
+    it('drops a fetch that lands after the URL moved on again', async () => {
+      await openedFromGallery();
+      const response = new Subject<typeof earlier>();
+      mockApi.get.mockReturnValue(response);
+
+      await urlMovesTo(earlier.path);
+      await urlMovesTo(samplePhoto.path);
+      response.next(earlier);
+      await flush();
+
+      expect(component.photo().path).toBe(samplePhoto.path);
+    });
+
+    it('says nothing about a failed fetch once the URL has moved on', async () => {
+      await openedFromGallery();
+      const response = new Subject<typeof earlier>();
+      mockApi.get.mockReturnValue(response);
+      const snackBar = vi.spyOn(component.snackBar, 'open');
+
+      await urlMovesTo(earlier.path);
+      await urlMovesTo(samplePhoto.path);
+      response.error(new Error('404'));
+      await flush();
+
+      expect(snackBar).not.toHaveBeenCalled();
+    });
+
+    it('ignores a URL change to the photo already shown', async () => {
+      await openedFromGallery();
+      mockApi.get.mockClear();
+
+      await urlMovesTo(samplePhoto.path);
+
+      expect(mockApi.get).not.toHaveBeenCalledWith('/photo', expect.anything());
+    });
+
+    it('Forward to a photo that no longer loads points the address back at the one shown', async () => {
+      await openedFromGallery();
+      mockApi.get.mockReturnValue(throwError(() => new Error('404')));
+
+      await urlMovesTo(earlier.path);
+
+      expect(mockRouter.navigate).toHaveBeenCalledWith(['/photo'], { queryParams: { path: samplePhoto.path }, replaceUrl: true });
+      expect(component.photo().path).toBe(samplePhoto.path);
+    });
+
+    it('a face assigned before moving on does not change the next photo', async () => {
+      await openedFromGallery();
+      component.store.photos.set([{ ...earlier, unassigned_faces: 2 }]);
+      let assigned = () => {};
+      vi.spyOn(component.photoActions, 'openAddPerson').mockImplementation((...args: unknown[]) => { assigned = args[1] as () => void; });
+
+      component.openAddPerson(component.photo());
+      await urlMovesTo(earlier.path);
+      assigned();
+
+      expect(component.photo().unassigned_faces).toBe(2);
+    });
+
+    it('a rating that lands after Back does not touch the photo Back showed', async () => {
+      await openedFromGallery();
+      component.store.photos.set([{ ...earlier, star_rating: 1 }]);
+      const saved = new Subject<unknown>();
+      mockApi.post.mockReturnValue(saved);
+
+      const rating = component.setRating(samplePhoto.path, 5);
+      await urlMovesTo(earlier.path);
+      saved.next({});
+      await rating;
+
+      expect(component.photo()).toMatchObject({ path: earlier.path, star_rating: 1 });
     });
   });
 
@@ -630,6 +752,35 @@ describe('PhotoDetailComponent', () => {
 
       expect(stored().category).toBe('sports');
       expect(stored().aggregate).toBe(7.9);
+    });
+
+    it('the location dialog result reaches the store, including a cleared location', async () => {
+      createComponent();
+      seedGrid({ gps_latitude: 10, gps_longitude: 20 });
+      mockDialog.open.mockReturnValue({ afterClosed: () => of({ gps_latitude: null, gps_longitude: null }) });
+      await import('./gps-edit-dialog.component');
+
+      component.editGps({ ...edited });
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+
+      expect(stored()).toMatchObject({ gps_latitude: null, gps_longitude: null });
+    });
+
+    it('two edits in flight on one photo both stick', async () => {
+      createComponent();
+      seedGrid({ star_rating: 0 });
+      const ratingSaved = new Subject<unknown>();
+      const favoriteSaved = new Subject<unknown>();
+      mockApi.post.mockReturnValueOnce(ratingSaved).mockReturnValueOnce(favoriteSaved);
+
+      const rating = component.setRating(edited.path, 5);
+      const favorite = component.toggleFavorite(edited.path);
+      ratingSaved.next({});
+      await rating;
+      favoriteSaved.next({ is_favorite: true, is_rejected: null });
+      await favorite;
+
+      expect(component.photo().star_rating).toBe(5);
     });
 
     it('clearCategoryOverride puts the recomputed category and aggregate in the store', async () => {

@@ -32,7 +32,7 @@ export interface CaptionEditDialogData {
       </mat-form-field>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
-      <button mat-button mat-dialog-close>{{ I18N.ui.buttons.cancel | translate }}</button>
+      <button mat-button [mat-dialog-close]="undefined">{{ I18N.ui.buttons.cancel | translate }}</button>
       <button mat-flat-button (click)="save()" [disabled]="saving()">{{ I18N.ui.buttons.save | translate }}</button>
     </mat-dialog-actions>
   `,

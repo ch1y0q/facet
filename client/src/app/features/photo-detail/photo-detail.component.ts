@@ -10,7 +10,8 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, skip } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ExtendedQualityComponent } from '../../shared/components/extended-quality/extended-quality.component';
 import { Photo, KeeperHint, PhotoSet, normalisePhotoFlags } from '../../shared/models/photo.model';
 import { AuthService } from '../../core/services/auth.service';
@@ -803,6 +804,12 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   }
 
   async ngOnInit(): Promise<void> {
+    // Back/Forward between two photos reuses this component instead of creating a new one.
+    this.route.queryParamMap.pipe(skip(1), takeUntilDestroyed(this.destroyRef)).subscribe(params => {
+      const path = params.get('path');
+      if (path && path !== this.photo()?.path) void this.showPhotoAt(path);
+    });
+
     // Try router state (passed from gallery via navigate(..., { state }))
     const statePhoto = history.state?.['photo'] as Photo | undefined;
 
@@ -836,6 +843,20 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
       photo.persons = [];
     }
     return photo;
+  }
+
+  private async showPhotoAt(path: string): Promise<void> {
+    // Store copy carries edits made since; history.state is the photo as opened.
+    const photo = this.store.photos().find(p => p.path === path) ?? await this.fetchPhoto(path).catch(() => undefined);
+    if (this.route.snapshot.queryParamMap.get('path') !== path) return;
+    if (!photo) {
+      this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
+      // Point the address back at the photo still on screen (e.g. Forward to one deleted since).
+      this.router.navigate(['/photo'], { queryParams: { path: this.photo()?.path }, replaceUrl: true });
+      return;
+    }
+    this.photo.set(photo);
+    this.fullImageLoaded.set(false);
   }
 
   protected async openSetMember(path: string): Promise<void> {
@@ -964,7 +985,9 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
    * revert path.
    */
   private applyConfirmed(p: Photo, confirmed: Partial<Photo>): void {
-    this.photo.set({ ...p, ...confirmed });
+    // The page may have moved on, or taken another edit, since p was read.
+    const current = this.photo();
+    if (current?.path === p.path) this.photo.set({ ...current, ...confirmed });
     this.store.patchPhoto(p.path, confirmed);
   }
 
@@ -1194,7 +1217,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
 
   protected openAddPerson(photo: Photo): void {
     this.photoActions.openAddPerson(photo, () => {
-      this.photo.update(p => p ? { ...p, unassigned_faces: Math.max(0, p.unassigned_faces - 1) } : p);
+      this.photo.update(p => p?.path === photo.path ? { ...p, unassigned_faces: Math.max(0, p.unassigned_faces - 1) } : p);
     });
   }
 
@@ -1212,8 +1235,8 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
       });
       ref.afterClosed().subscribe((result: { gps_latitude: number | null; gps_longitude: number | null } | undefined) => {
         if (result !== undefined) {
-          this.photo.set({ ...p, gps_latitude: result.gps_latitude ?? undefined, gps_longitude: result.gps_longitude ?? undefined });
-          this.locationName.set('');
+          this.applyConfirmed(p, result);
+          if (this.photo()?.path === p.path) this.locationName.set('');
         }
       });
     });

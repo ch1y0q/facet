@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { of, throwError } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
+import { I18nService } from '../../core/services/i18n.service';
 import { CaptionEditDialogComponent } from './caption-edit-dialog.component';
 
 describe('CaptionEditDialogComponent', () => {
@@ -26,9 +27,19 @@ describe('CaptionEditDialogComponent', () => {
         { provide: MatDialogRef, useValue: mockDialogRef },
         { provide: MAT_DIALOG_DATA, useValue: dialogData },
         { provide: ApiService, useValue: mockApi },
+        { provide: I18nService, useValue: { t: (k: string) => k, translations: () => ({}) } },
       ],
     });
     component = TestBed.inject(CaptionEditDialogComponent);
+  });
+
+  it('Cancel closes without a result, so the caller keeps the caption', () => {
+    const fixture = TestBed.createComponent(CaptionEditDialogComponent);
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('mat-dialog-actions button') as HTMLButtonElement).click();
+
+    expect(mockDialogRef.close).toHaveBeenCalledWith(undefined);
   });
 
   it('should initialize with data from dialog', () => {
