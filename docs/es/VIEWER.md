@@ -497,7 +497,7 @@ Controlado por `viewer.features.show_memories` (predeterminado: `true`).
 
 - **Descartar unas vacaciones** — abre Cápsulas → busca la cápsula `journey` autogenerada para las fechas del viaje. Cada cápsula ofrece una acción Guardar como álbum.
 - **Recorrer una revisión día a día** — abre la línea de tiempo y desciende de años a meses y a un calendario de días; haz clic en un día para abrir la galería filtrada a esa fecha. La línea de tiempo no tiene ordenación propia, pero los recuentos por día/mes/año y las miniaturas destacadas ahora respetan los mismos interruptores `hide_bursts` / `hide_duplicates` que la galería (predeterminados: activados), así que el recuento de una celda coincide con lo que abre al hacer clic.
-- **Mostrar lo que está oculto** — la galería oculta por defecto los parpadeos / ráfagas no líderes / duplicados no líderes. Cuando al menos uno de esos filtros está activo y excluiría filas, aparece un banner "N fotos ocultas por los filtros actuales · Mostrar todas" sobre la cuadrícula.
+- **Mostrar lo que está oculto** — la galería oculta por defecto los parpadeos / ráfagas no líderes / duplicados no líderes. Cuando al menos uno de esos filtros está activo y excluiría filas, aparece una notificación flotante "N fotos ocultas por los filtros actuales · Mostrar todas" en la esquina inferior derecha de la cuadrícula (sobre la barra de selección cuando hay fotos seleccionadas).
 
 ## Vista de línea de tiempo
 

@@ -566,7 +566,7 @@ Controlled by `viewer.features.show_memories` (default: `true`).
 
 - **Cull a vacation** — open Capsules → look for the auto-generated `journey` capsule for the trip dates. Each capsule offers a Save-as-Album action.
 - **Browse a day-by-day review** — open Timeline and drill down years → months → a calendar of days; click a day to open the gallery filtered to that date. There's no sort control in Timeline itself, but the day/month/year counts and hero thumbnails now honor the same `hide_bursts` / `hide_duplicates` toggles as the gallery (defaults: on), so a tile's count matches what clicking it opens.
-- **Show what's hidden** — the gallery hides blinks / non-lead bursts / non-lead duplicates by default. When at least one of those filters is on and would exclude rows, a "N photos hidden by current filters · Show all" banner appears above the grid.
+- **Show what's hidden** — the gallery hides blinks / non-lead bursts / non-lead duplicates by default. When at least one of those filters is on and would exclude rows, a "N photos hidden by current filters · Show all" notice floats at the bottom-right of the grid (above the selection bar when photos are selected).
 
 ## Timeline View
 

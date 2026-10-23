@@ -498,7 +498,7 @@ Contrôlé par `viewer.features.show_memories` (par défaut : `true`).
 
 - **Trier des vacances** — ouvrez Capsules → recherchez la capsule `journey` générée automatiquement pour les dates du voyage. Chaque capsule offre une action Enregistrer comme album.
 - **Parcourir une revue jour par jour** — ouvrez Chronologie et descendez des années aux mois puis à un calendrier de jours ; cliquez sur un jour pour ouvrir la galerie filtrée sur cette date. Chronologie n'a pas de tri propre, mais les comptages par jour/mois/année et les vignettes vedettes respectent désormais les mêmes bascules `hide_bursts` / `hide_duplicates` que la galerie (par défaut : activées), si bien que le nombre affiché sur une case correspond à ce que son ouverture montre.
-- **Afficher ce qui est masqué** — la galerie masque par défaut les clignements / rafales non-leaders / doublons non-leaders. Lorsqu'au moins un de ces filtres est actif et exclurait des lignes, une bannière « N photos masquées par les filtres actuels · Tout afficher » apparaît au-dessus de la grille.
+- **Afficher ce qui est masqué** — la galerie masque par défaut les clignements / rafales non-leaders / doublons non-leaders. Lorsqu'au moins un de ces filtres est actif et exclurait des lignes, une notification « N photos masquées par les filtres actuels · Tout afficher » flotte en bas à droite de la grille (au-dessus de la barre de sélection lorsque des photos sont sélectionnées).
 
 ## Vue Chronologie
 

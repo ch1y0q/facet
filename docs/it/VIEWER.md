@@ -498,7 +498,7 @@ Controllato da `viewer.features.show_memories` (predefinito: `true`).
 
 - **Selezionare una vacanza** — apri Capsule → cerca la capsula `journey` generata automaticamente per le date del viaggio. Ogni capsula offre un'azione Salva come album.
 - **Eseguire una revisione giorno per giorno** — apri Cronologia e scendi da anni a mesi fino a un calendario di giorni; clicca su un giorno per aprire la galleria filtrata su quella data. Cronologia non ha un ordinamento proprio, ma i conteggi per giorno/mese/anno e le miniature in evidenza ora rispettano gli stessi interruttori `hide_bursts` / `hide_duplicates` della galleria (predefiniti: attivi), quindi il conteggio di una cella corrisponde a ciò che apre il clic.
-- **Mostrare ciò che è nascosto** — la galleria nasconde per impostazione predefinita i battiti di ciglia / le raffiche non principali / i duplicati non principali. Quando almeno uno di questi filtri è attivo ed escluderebbe delle righe, sopra la griglia compare un banner "N foto nascoste dai filtri attivi · Mostra tutte".
+- **Mostrare ciò che è nascosto** — la galleria nasconde per impostazione predefinita i battiti di ciglia / le raffiche non principali / i duplicati non principali. Quando almeno uno di questi filtri è attivo ed escluderebbe delle righe, in basso a destra nella griglia compare una notifica flottante "N foto nascoste dai filtri attivi · Mostra tutte" (sopra la barra di selezione quando ci sono foto selezionate).
 
 ## Vista cronologia
 

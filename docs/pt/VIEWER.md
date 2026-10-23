@@ -497,7 +497,7 @@ Controlado por `viewer.features.show_memories` (padrão: `true`).
 
 - **Triar umas férias** — abra Cápsulas → procure a cápsula `journey` gerada automaticamente para as datas da viagem. Cada cápsula oferece uma ação Salvar como Álbum.
 - **Percorrer uma revisão dia a dia** — abra a Linha do Tempo e desça de anos para meses e depois para um calendário de dias; clique em um dia para abrir a galeria filtrada para essa data. A Linha do Tempo não tem ordenação própria, mas as contagens por dia/mês/ano e as miniaturas em destaque agora respeitam as mesmas chaves `hide_bursts` / `hide_duplicates` da galeria (padrões: ativados), então a contagem de uma célula corresponde ao que o clique nela abre.
-- **Mostrar o que está oculto** — a galeria oculta piscadas / sequências não líderes / duplicatas não líderes por padrão. Quando pelo menos um desses filtros está ativo e excluiria linhas, um banner "N fotos ocultas pelos filtros atuais · Mostrar tudo" aparece acima da grade.
+- **Mostrar o que está oculto** — a galeria oculta piscadas / sequências não líderes / duplicatas não líderes por padrão. Quando pelo menos um desses filtros está ativo e excluiria linhas, uma notificação flutuante "N fotos ocultas pelos filtros atuais · Mostrar tudo" aparece no canto inferior direito da grade (acima da barra de seleção quando há fotos selecionadas).
 
 ## Visão de Linha do Tempo
 

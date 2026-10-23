@@ -498,7 +498,7 @@ Gesteuert über `viewer.features.show_memories` (Standard: `true`).
 
 - **Einen Urlaub aussortieren** — Kapseln öffnen → nach der automatisch generierten `journey`-Kapsel für die Reisedaten suchen. Jede Kapsel bietet eine Aktion „Als Album speichern".
 - **Eine Tag-für-Tag-Durchsicht durchführen** — Zeitleiste öffnen und von Jahren über Monate zu einem Tageskalender vordringen; auf einen Tag klicken, um die Galerie gefiltert auf dieses Datum zu öffnen. Die Zeitleiste selbst hat keine Sortierung, aber die Zählungen pro Tag/Monat/Jahr und die Vorschaubilder berücksichtigen jetzt dieselben `hide_bursts` / `hide_duplicates`-Umschalter wie die Galerie (Standard: an) — die Zahl auf einer Kachel stimmt also mit dem überein, was ein Klick darauf öffnet.
-- **Ausgeblendetes anzeigen** — Die Galerie blendet Blinzler / Nicht-Leitfotos von Serienbildern / Nicht-Leitfotos von Duplikaten standardmäßig aus. Wenn mindestens einer dieser Filter aktiv ist und Zeilen ausschließen würde, erscheint über dem Raster ein Banner „N Fotos durch aktuelle Filter ausgeblendet · Alle anzeigen".
+- **Ausgeblendetes anzeigen** — Die Galerie blendet Blinzler / Nicht-Leitfotos von Serienbildern / Nicht-Leitfotos von Duplikaten standardmäßig aus. Wenn mindestens einer dieser Filter aktiv ist und Zeilen ausschließen würde, erscheint unten rechts im Raster eine schwebende Meldung „N Fotos durch aktuelle Filter ausgeblendet · Alle anzeigen" (über der Auswahlleiste, wenn Fotos ausgewählt sind).
 
 ## Zeitleisten-Ansicht
 

@@ -14,6 +14,7 @@ import {
   DestroyRef,
   Injector,
   TemplateRef,
+  ElementRef,
   ChangeDetectionStrategy
 } from '@angular/core';
 import { DOCUMENT } from '@angular/common';
@@ -183,6 +184,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
       }
     </ng-template>
 
+    <div #noticeHost class="relative h-full">
     <mat-sidenav-container class="h-full">
       <!-- One end drawer, two occupants. Material allows a single drawer per
            side, which is also the behaviour we want: the details rail and the
@@ -223,29 +225,6 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
       <!-- Main content. The drawer reserves its own strip, so the grid gets
            exactly the width it has whenever the filters are open. -->
       <mat-sidenav-content>
-        <!-- Hidden-photos banner -->
-        @if (showHiddenBanner()) {
-          <div class="mx-2 md:mx-4 mt-2 md:mt-4 px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] border border-[var(--mat-sys-outline-variant)] flex items-center gap-3 text-sm">
-            <mat-icon class="opacity-70 !text-base !w-5 !h-5">visibility_off</mat-icon>
-            <span class="flex-1">
-              {{ I18N.gallery.hidden_banner.message | translate:{ n: store.hiddenSummary().total } }}
-            </span>
-            <button mat-button class="!min-w-0" (click)="store.showAllHidden()">
-              {{ I18N.gallery.hidden_banner.show_all | translate }}
-            </button>
-          </div>
-        } @else if (canRestoreHidden()) {
-          <div class="mx-2 md:mx-4 mt-2 md:mt-4 px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] border border-[var(--mat-sys-outline-variant)] flex items-center gap-3 text-sm">
-            <mat-icon class="opacity-70 !text-base !w-5 !h-5">visibility</mat-icon>
-            <span class="flex-1">
-              {{ I18N.gallery.hidden_banner.showing_all | translate }}
-            </span>
-            <button mat-button class="!min-w-0" (click)="store.restoreHidden()">
-              {{ I18N.gallery.hidden_banner.restore | translate }}
-            </button>
-          </div>
-        }
-
         <!-- Set-scope chip: the photo-detail "open this set in the gallery" action.
              Never reflected in the URL (sequence_group_id is renumbered on every
              detection pass), so this is the only affordance out of it. -->
@@ -271,23 +250,6 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
             </span>
             <button mat-button class="!min-w-0" (click)="store.clearPinned()">
               {{ I18N.gallery.pinned.clear | translate }}
-            </button>
-          </div>
-        }
-
-        <!-- Thumbnail-migration notice. The grid reads photos.thumbnail, so a RAW
-             scanned before the render fix keeps showing the old rendering until it
-             is regenerated, and browsing never regenerates it. This banner is the
-             only place the command that does is surfaced. -->
-        @if (showRenderMigrationBanner()) {
-          <div class="mx-2 md:mx-4 mt-2 md:mt-4 px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] border border-[var(--mat-sys-outline-variant)] flex items-center gap-3 text-sm">
-            <mat-icon class="opacity-70 !text-base !w-5 !h-5">auto_fix_high</mat-icon>
-            <span class="flex-1">
-              {{ I18N.gallery.render_migration.message | translate:{ n: renderMigrationPending() } }}
-              {{ I18N.gallery.render_migration.command_hint | translate:{ command: REFRESH_THUMBNAILS_COMMAND } }}
-            </span>
-            <button mat-button class="!min-w-0" (click)="dismissRenderMigration()">
-              {{ I18N.ui.buttons.dismiss | translate }}
             </button>
           </div>
         }
@@ -558,7 +520,57 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
         <!-- Infinite scroll sentinel -->
         <div appInfiniteScroll (scrollReached)="onScrollReached()" class="h-1"></div>
       </mat-sidenav-content>
+
     </mat-sidenav-container>
+      <!-- Advisory notices: floating, bottom-right, out of the layout flow. Anchored to the
+           sidenav container (not the scrolling content) so they stay put with few photos,
+           and the right offset is measured so the column clears an open end drawer / details rail
+           and the content's own scrollbar.
+           The container is its own stacking context, so a notice outside it cannot sit under the
+           mobile 'over' drawer; it steps aside while that drawer is open instead.
+           Lifted above the fixed selection bar by its measured height. Order: hidden-photos
+           notice first, thumbnail-migration notice below it. The migration notice is the
+           only place the command that regenerates RAW thumbnails is surfaced: the grid
+           reads photos.thumbnail, so browsing never regenerates it. -->
+      @if (!overDrawerOpen() && (showHiddenBanner() || canRestoreHidden() || showRenderMigrationBanner())) {
+        <div data-gallery-notices class="pointer-events-none absolute z-10 flex flex-col gap-2 w-[min(26rem,calc(100%-1rem))]"
+             [style.bottom.px]="noticeBottomPx()" [style.right.px]="noticeRightPx()">
+          @if (showHiddenBanner()) {
+            <div role="status" class="pointer-events-auto px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] border border-[var(--mat-sys-outline-variant)] shadow-lg flex items-center gap-3 text-sm">
+              <mat-icon class="opacity-70 !text-base !w-5 !h-5">visibility_off</mat-icon>
+              <span class="flex-1">
+                {{ I18N.gallery.hidden_banner.message | translate:{ n: store.hiddenSummary().total } }}
+              </span>
+              <button mat-button class="!min-w-0" (click)="store.showAllHidden()">
+                {{ I18N.gallery.hidden_banner.show_all | translate }}
+              </button>
+            </div>
+          } @else if (canRestoreHidden()) {
+            <div role="status" class="pointer-events-auto px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] border border-[var(--mat-sys-outline-variant)] shadow-lg flex items-center gap-3 text-sm">
+              <mat-icon class="opacity-70 !text-base !w-5 !h-5">visibility</mat-icon>
+              <span class="flex-1">
+                {{ I18N.gallery.hidden_banner.showing_all | translate }}
+              </span>
+              <button mat-button class="!min-w-0" (click)="store.restoreHidden()">
+                {{ I18N.gallery.hidden_banner.restore | translate }}
+              </button>
+            </div>
+          }
+          @if (showRenderMigrationBanner()) {
+            <div role="status" class="pointer-events-auto px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] border border-[var(--mat-sys-outline-variant)] shadow-lg flex items-center gap-3 text-sm">
+              <mat-icon class="opacity-70 !text-base !w-5 !h-5">auto_fix_high</mat-icon>
+              <span class="flex-1">
+                {{ I18N.gallery.render_migration.message | translate:{ n: renderMigrationPending() } }}
+                {{ I18N.gallery.render_migration.command_hint | translate:{ command: REFRESH_THUMBNAILS_COMMAND } }}
+              </span>
+              <button mat-button class="!min-w-0" (click)="dismissRenderMigration()">
+                {{ I18N.ui.buttons.dismiss | translate }}
+              </button>
+            </div>
+          }
+        </div>
+      }
+    </div>
 
     <!-- Scroll-to-top button -->
     @if (showScrollTop() && !selectionCount()) {
@@ -617,7 +629,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
 
     <!-- Selection action bar -->
     @if (selectionCount()) {
-      <div data-selection-bar class="fixed bottom-0 left-0 right-0 z-50 flex flex-wrap items-center justify-center gap-1 lg:gap-3 px-2 lg:px-6 py-1 lg:py-3 max-lg:pb-[max(0.25rem,env(safe-area-inset-bottom))] bg-[var(--mat-sys-surface-container)] border-t border-[var(--mat-sys-outline-variant)] shadow-lg">
+      <div #selectionBar data-selection-bar class="fixed bottom-0 left-0 right-0 z-50 flex flex-wrap items-center justify-center gap-1 lg:gap-3 px-2 lg:px-6 py-1 lg:py-3 max-lg:pb-[max(0.25rem,env(safe-area-inset-bottom))] bg-[var(--mat-sys-surface-container)] border-t border-[var(--mat-sys-outline-variant)] shadow-lg">
         <!-- Every loaded photo is selected, but the view runs past the pages
              fetched so far. Offer the rest explicitly on its own line (w-full
              in a wrapping row) rather than silently widening what was asked. -->
@@ -769,6 +781,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly scrollDirective = viewChild(InfiniteScrollDirective);
   private readonly filterSidebar = viewChild(GalleryFilterSidebarComponent);
   private readonly filterDrawer = viewChild<MatSidenav>('filterDrawer');
+  private readonly selectionBar = viewChild<ElementRef<HTMLElement>>('selectionBar');
+  private readonly noticeHost = viewChild<ElementRef<HTMLElement>>('noticeHost');
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
   private readonly document = inject(DOCUMENT);
@@ -932,6 +946,64 @@ export class GalleryComponent implements OnInit, OnDestroy {
   readonly tooltipHistogramDefaultMode = computed<HistogramMode>(() => {
     const configured = this.store.config()?.clipping?.tooltip_histogram_mode;
     return isHistogramMode(configured) ? configured : 'luma';
+  });
+
+  /** The mobile filter drawer overlays the content (and anything outside the sidenav container). */
+  protected readonly overDrawerOpen = computed(() => !this.isDesktop() && this.store.filterDrawerOpen());
+
+  /** How far the fixed selection bar reaches up into the gallery area (it wraps, so this varies);
+   *  0 while it is hidden. On mobile the area ends above a bottom nav the bar covers, so this is
+   *  the overlap, not the bar's own height. */
+  private readonly selectionBarOverlap = signal(0);
+
+  /** Bottom offset of the floating notices: a small gap, plus the selection bar when present. */
+  protected readonly noticeBottomPx = computed(() => 8 + this.selectionBarOverlap());
+
+  /** Track the selection bar's overlap for as long as the bar exists. */
+  private readonly trackSelectionBar = effect(onCleanup => {
+    const bar = this.selectionBar()?.nativeElement;
+    const host = this.noticeHost()?.nativeElement;
+    if (!bar || !host || typeof ResizeObserver === 'undefined') {
+      this.selectionBarOverlap.set(0);
+      return;
+    }
+    const measure = () => this.selectionBarOverlap.set(
+      Math.max(0, Math.ceil(host.getBoundingClientRect().bottom - bar.getBoundingClientRect().top)),
+    );
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(bar);
+    observer.observe(host);
+    onCleanup(() => {
+      observer.disconnect();
+      this.selectionBarOverlap.set(0);
+    });
+  });
+
+  /** Gap between the gallery content's right edge (end drawer and scrollbar excluded) and the host's. */
+  private readonly noticeInsetPx = signal(0);
+
+  /** Right offset of the floating notices: a margin (16px md+, 8px below) plus the drawer/scrollbar gap. */
+  protected readonly noticeRightPx = computed(() => this.noticeInsetPx() + (this.isDesktop() ? 16 : 8));
+
+  /** Re-measure the drawer/scrollbar gap whenever the host or the content box resizes. */
+  private readonly trackNoticeInset = effect(onCleanup => {
+    const host = this.noticeHost()?.nativeElement;
+    const content = this.scrollContent()?.getElementRef().nativeElement;
+    if (!host || !content || typeof ResizeObserver === 'undefined') {
+      this.noticeInsetPx.set(0);
+      return;
+    }
+    const measure = () => this.noticeInsetPx.set(Math.max(0, Math.ceil(
+      host.getBoundingClientRect().right - (content.getBoundingClientRect().left + content.clientWidth))));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(host);
+    observer.observe(content);
+    onCleanup(() => {
+      observer.disconnect();
+      this.noticeInsetPx.set(0);
+    });
   });
 
   /** Show the hidden-photos banner when filters are hiding rows and at least one is on. */

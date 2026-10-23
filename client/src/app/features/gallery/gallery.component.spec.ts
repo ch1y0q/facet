@@ -1295,6 +1295,86 @@ describe('GalleryComponent', () => {
     });
   });
 
+  describe('floating advisory notices', () => {
+    function render(): HTMLElement {
+      const fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      return fixture.nativeElement as HTMLElement;
+    }
+    const stack = (html: HTMLElement) => html.querySelector<HTMLElement>('[data-gallery-notices]');
+    const button = (html: HTMLElement, label: string) =>
+      Array.from(html.querySelectorAll('button')).find(b => b.textContent?.includes(label));
+
+    beforeEach(() => {
+      localStorage.removeItem('facet_render_migration_dismissed');
+      mockStore.hiddenSummary.set({ total: 6, blinks: 0, bursts: 4, duplicates: 0, brackets: 2, panoramas: 0 });
+      mockStore.filters.set({ ...DEFAULT_FILTERS, hide_bursts: true });
+    });
+
+    afterEach(() => localStorage.removeItem('facet_render_migration_dismissed'));
+
+    it('renders the hidden-photos notice in the stack, outside the scrolling content, and Show all acts', () => {
+      const html = render();
+      const notices = stack(html);
+      expect(notices).toBeTruthy();
+      expect(notices!.closest('mat-sidenav-content')).toBeNull();
+      expect(notices!.querySelector('[role="status"]')?.textContent).toContain(I18N.gallery.hidden_banner.message);
+      button(html, I18N.gallery.hidden_banner.show_all)?.click();
+      expect(mockStore.showAllHidden).toHaveBeenCalled();
+    });
+
+    it('renders the restore twin once Show all has been used', () => {
+      mockStore.hiddenSummary.set({ total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 });
+      mockStore.hiddenFiltersStash.set({
+        hide_blinks: true, hide_bursts: true, hide_duplicates: true, hide_brackets: true, hide_panoramas: true,
+      });
+      mockStore.filters.set({ ...DEFAULT_FILTERS, hide_blinks: false, hide_bursts: false, hide_duplicates: false, hide_brackets: false, hide_panoramas: false });
+      const html = render();
+      expect(stack(html)?.textContent).toContain(I18N.gallery.hidden_banner.showing_all);
+      button(html, I18N.gallery.hidden_banner.restore)?.click();
+      expect(mockStore.restoreHidden).toHaveBeenCalled();
+    });
+
+    it('stacks the migration notice below the hidden notice and Dismiss removes only it', () => {
+      mockStore.config.set({ render_migration: { pending: 12 } });
+      const html = render();
+      const cards = Array.from(stack(html)!.querySelectorAll('[role="status"]'));
+      expect(cards).toHaveLength(2);
+      expect(cards[0].textContent).toContain(I18N.gallery.hidden_banner.message);
+      expect(cards[1].textContent).toContain(I18N.gallery.render_migration.message);
+      button(html, I18N.ui.buttons.dismiss)?.click();
+      expect(localStorage.getItem('facet_render_migration_dismissed')).toBe('true');
+    });
+
+    it('anchors the stack bottom-right, clear of an open end drawer and the content scrollbar', () => {
+      vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+      const rect = (left: number, right: number) => ({ left, right, top: 0, bottom: 600, width: right - left, height: 600, x: left, y: 0, toJSON() { return {}; } });
+      const original = HTMLElement.prototype.getBoundingClientRect;
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+        if (this.classList.contains('relative') && this.classList.contains('h-full')) return rect(0, 1000) as DOMRect;
+        if (this.tagName === 'MAT-SIDENAV-CONTENT') return rect(0, 700) as DOMRect;
+        return original.call(this);
+      });
+      vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (this: HTMLElement) {
+        return this.tagName === 'MAT-SIDENAV-CONTENT' ? 683 : 0;
+      });
+      try {
+        const notices = stack(render())!;
+        expect(notices.classList.contains('left-2')).toBe(false);
+        // 1000 - (0 + 683) = 317 (drawer + scrollbar) plus the margin.
+        expect(parseFloat(notices.style.right)).toBeGreaterThanOrEqual(317 + 8);
+      } finally {
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it('renders no stack when nothing is advisory', () => {
+      mockStore.hiddenSummary.set({ total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 });
+      expect(stack(render())).toBeNull();
+    });
+  });
+
   describe('docked details panel (tooltip_mode = panel)', () => {
     const hoverEvent = { currentTarget: null } as unknown as MouseEvent;
 
