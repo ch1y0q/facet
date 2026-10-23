@@ -1433,6 +1433,8 @@ Der Endpunkt `/api/download/options` erkennt begleitende RAW-Dateien automatisch
 
 ## Fehlerbehebung
 
+Meldet die semantische Suche, dass die Apple-Silicon-Beschleunigung belegt ist, versuche es nach Abschluss der laufenden Modellaufgabe erneut. Gleichzeitige Suchanfragen teilen sich ein Wartebudget von 15 Sekunden für das Laden des Encoders und den Beschleunigerzugriff.
+
 | Problem | Lösung |
 |-------|----------|
 | Langsames Laden der Seite | `--migrate-tags` und `--optimize` ausführen |

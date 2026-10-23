@@ -1432,6 +1432,8 @@ L'endpoint `/api/download/options` rileva automaticamente i file RAW associati e
 
 ## Risoluzione dei problemi
 
+Se la ricerca semantica segnala che l’accelerazione Apple Silicon è occupata, riprova al termine dell’attività del modello in corso. Le ricerche simultanee condividono un’attesa massima di 15 secondi per il caricamento del codificatore e l’accesso all’acceleratore.
+
 | Problema | Soluzione |
 |-------|----------|
 | Caricamento pagina lento | Esegui `--migrate-tags` e `--optimize` |

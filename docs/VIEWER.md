@@ -1507,6 +1507,8 @@ The `/api/download/options` endpoint detects companion RAW files automatically a
 
 ## Troubleshooting
 
+If semantic search reports that Apple Silicon acceleration is busy, retry after the current model task finishes. Concurrent searches share one 15-second wait budget across encoder loading and accelerator access.
+
 | Issue | Solution |
 |-------|----------|
 | Slow page load | Run `--migrate-tags` and `--optimize` |
