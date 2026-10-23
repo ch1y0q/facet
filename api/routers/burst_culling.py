@@ -527,7 +527,7 @@ def _query_burst_groups(conn, vis_sql, vis_params, page=None, per_page=None, exc
 
     if exclude_rejected:
         from_clause, from_params, is_rejected_col = _rejected_clause(user_id)
-        sel_where = (f"burst_group_id IS NOT NULL AND burst_reviewed = 0 "
+        sel_where = (f"burst_group_id IS NOT NULL AND burst_reviewed IS NOT 1 "
                      f"AND {vis_sql} AND {is_rejected_col} = 0{sel_sql}")
         sel_base_params = from_params + vis_params + sel_params
         count_row = conn.execute(
@@ -539,7 +539,7 @@ def _query_burst_groups(conn, vis_sql, vis_params, page=None, per_page=None, exc
         order_sql = (f"SELECT burst_group_id FROM {from_clause} WHERE {sel_where} "
                      f"GROUP BY burst_group_id HAVING COUNT(*) >= 2 ORDER BY burst_group_id")
     else:
-        sel_where = f"burst_group_id IS NOT NULL AND burst_reviewed = 0 AND {vis_sql}{sel_sql}"
+        sel_where = f"burst_group_id IS NOT NULL AND burst_reviewed IS NOT 1 AND {vis_sql}{sel_sql}"
         sel_base_params = vis_params + sel_params
         count_row = conn.execute(
             f"SELECT COUNT(DISTINCT burst_group_id) as cnt FROM photos WHERE {sel_where}",
@@ -903,7 +903,7 @@ def _count_unreviewed_burst_groups(conn, vis_sql, vis_params, exclude_rejected=F
                     SELECT burst_group_id
                     FROM {from_clause}
                     WHERE burst_group_id IS NOT NULL
-                      AND burst_reviewed = 0
+                      AND burst_reviewed IS NOT 1
                       AND {vis_sql}
                       AND {is_rejected_col} = 0
                     GROUP BY burst_group_id
@@ -917,7 +917,7 @@ def _count_unreviewed_burst_groups(conn, vis_sql, vis_params, exclude_rejected=F
             f"""SELECT COUNT(DISTINCT burst_group_id) as cnt
                 FROM photos
                 WHERE burst_group_id IS NOT NULL
-                  AND burst_reviewed = 0
+                  AND burst_reviewed IS NOT 1
                   AND {vis_sql}""",
             vis_params,
         ).fetchone()

@@ -1624,3 +1624,42 @@ class TestCullingGroupsUserMarks:
         groups = [{"group_id": 1, "photos": []}]
         attach_user_marks(mock.MagicMock(), groups, None)
         assert groups == [{"group_id": 1, "photos": []}]
+
+
+class TestLegacyNullBurstReviewed:
+    """A library upgraded before db894a6b carries ``burst_reviewed`` as a bare
+    ``INTEGER`` (the old column sweep kept only the base type), so every row is
+    NULL. NULL means *never reviewed*: the burst feed must still list the group."""
+
+    @staticmethod
+    def _legacy_db(tmp_path):
+        conn = _real_schema_db(tmp_path)
+        conn.execute("DROP INDEX IF EXISTS idx_burst_reviewed")
+        conn.execute("ALTER TABLE photos DROP COLUMN burst_reviewed")
+        conn.execute("ALTER TABLE photos ADD COLUMN burst_reviewed INTEGER")
+        conn.executemany(
+            "INSERT INTO photos (path, filename, date_taken, aggregate, burst_group_id) "
+            "VALUES (?, ?, ?, 7.0, 1)",
+            [("/b1.jpg", "b1.jpg", "2025:06:15 10:00:00"),
+             ("/b2.jpg", "b2.jpg", "2025:06:15 10:00:01")],
+        )
+        conn.commit()
+        assert conn.execute(
+            "SELECT COUNT(*) FROM photos WHERE burst_reviewed IS NULL").fetchone()[0] == 2
+        return conn
+
+    @pytest.mark.parametrize("exclude_rejected", [False, True])
+    def test_null_burst_reviewed_is_unreviewed(self, tmp_path, exclude_rejected):
+        from api.routers.burst_culling import _count_unreviewed_burst_groups, _query_burst_groups
+        conn = self._legacy_db(tmp_path)
+        groups, total, _ = _query_burst_groups(conn, "1=1", [], exclude_rejected=exclude_rejected)
+        assert total == 1
+        assert [g["burst_id"] for g in groups] == [1]
+        assert _count_unreviewed_burst_groups(conn, "1=1", [], exclude_rejected=exclude_rejected) == 1
+
+    def test_reviewed_group_stays_hidden(self, tmp_path):
+        from api.routers.burst_culling import _query_burst_groups
+        conn = self._legacy_db(tmp_path)
+        conn.execute("UPDATE photos SET burst_reviewed = 1")
+        conn.commit()
+        assert _query_burst_groups(conn, "1=1", [])[1] == 0
