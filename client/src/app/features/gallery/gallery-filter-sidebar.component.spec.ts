@@ -417,6 +417,15 @@ describe('GalleryFilterSidebarComponent', () => {
       expect(fixture.nativeElement.querySelector('#semantic-search-threshold-hint')).toBeTruthy();
     });
 
+    it('shows the grid / mosaic layout toggle below md too', () => {
+      const label = [...(fixture.nativeElement as HTMLElement).querySelectorAll('span')]
+        .find(e => e.textContent?.trim() === 'gallery.layout_mode');
+      expect(label).toBeTruthy();
+      const row = label!.parentElement!;
+      expect(row.classList.contains('hidden')).toBe(false);
+      expect(row.classList.contains('flex')).toBe(true);
+    });
+
     it('hideTooltips takes a showing tooltip off the page', async () => {
       const tooltip = fixture.debugElement.queryAll(By.directive(MatTooltip))[0].injector.get(MatTooltip);
       tooltip.show(0);

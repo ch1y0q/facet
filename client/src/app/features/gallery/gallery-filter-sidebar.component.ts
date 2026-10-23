@@ -614,7 +614,7 @@ function saveSectionStates(states: Record<string, boolean>): void {
             [checked]="store.virtualScroll()"
             (change)="store.setVirtualScroll($event.checked)"
           >{{ I18N.gallery.sidebar.virtual_scroll | translate }}</mat-checkbox>
-          <div class="hidden md:flex items-center gap-2 mt-2">
+          <div class="flex items-center gap-2 mt-2">
             <span class="text-sm opacity-70 shrink-0">{{ I18N.gallery.layout_mode | translate }}</span>
             <div class="flex gap-1 ml-auto">
               <button mat-icon-button class="!w-8 !h-8 !p-0 inline-flex items-center justify-center"

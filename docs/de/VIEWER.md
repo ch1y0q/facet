@@ -280,7 +280,7 @@ Anders als „In Ordner aussortieren“, das die Datenbankzeile bis zu einem ern
 
 ### Anzeigeoptionen
 
-- **Layout-Modus** – Wechseln zwischen **Raster** (einheitliche Karten) und **Mosaik** (justierte Zeilen, die Seitenverhältnisse beibehalten). Mosaik ist nur auf dem Desktop verfügbar; mobil wird stets das Raster verwendet.
+- **Layout-Modus** – Wechseln zwischen **Raster** (einheitliche Karten) und **Mosaik** (justierte Zeilen, die Seitenverhältnisse beibehalten). Beide sind bei jeder Bildschirmbreite verfügbar, auch mobil.
 - **Vorschaubildgröße** – Regler zum Anpassen der Karten-/Zeilenhöhe (120–400px, in localStorage gespeichert)
 - **Details ausblenden** – Foto-Metadaten auf Karten ausblenden (nur im Rastermodus)
 - **Tooltip** - Wie Fotodetails gezeigt werden: **Hover** (Standard), **Klick**, **Aus** oder **Seitenleiste**. Die Seitenleiste verankert dieselben Details in der rechten Schublade, statt dem Zeiger zu folgen: ein bestimmtes Feld steht so von Foto zu Foto immer an derselben Stelle, und die Leiste behält das zuletzt überfahrene Foto, statt zu leeren, sobald der Zeiger das Raster verlässt. Ein Klick auf ein Foto hält die Leiste darauf fest — das Überfahren anderer Fotos wechselt sie dann nicht mehr —, bis Sie oben in der Leiste **Auswahl aufheben** drücken, was das Foto auch aus der Auswahl entfernt. **Escape** wirkt genauso und hebt zusätzlich den Rest der Auswahl auf; Escape schließt die Leiste dabei nie. Sie teilt sich diese Schublade mit der Filterleiste — die Filter zu öffnen blendet sie aus, bis sie wieder geschlossen werden, und das Raster behält genau die Breite, die es bei geöffneten Filtern hat. Erfordert ein Fenster von mindestens 1280 px.

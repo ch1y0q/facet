@@ -144,7 +144,8 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
     >
       <!-- Image wrapper with hover overlay scoped to image only -->
       <div class="group/img relative"
-           [class.md:h-full]="hideDetails()">
+           [class.md:h-full]="hideDetails()"
+           [class.h-full]="mosaicMode()">
         <img
           [src]="photo().path | thumbnailUrl:thumbSize()"
           [alt]="photo().caption || photo().filename"
@@ -153,6 +154,8 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
           class="w-full bg-[var(--mat-sys-surface-container)] transition-opacity duration-500"
           [class.md:h-full]="hideDetails()"
           [class.md:object-cover]="hideDetails()"
+          [class.h-full]="mosaicMode()"
+          [class.object-cover]="mosaicMode()"
           [class.grayscale]="isEditionMode() && photo().is_rejected"
           [class.opacity-60]="isEditionMode() && photo().is_rejected"
           [style.opacity]="imageLoaded() ? (isEditionMode() && photo().is_rejected ? '0.6' : '1') : '0'"

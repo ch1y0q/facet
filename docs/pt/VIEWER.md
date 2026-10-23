@@ -280,7 +280,7 @@ Diferente de Selecionar para pasta, que deixa a linha do banco de dados intacta 
 
 ### Opções de Exibição
 
-- **Modo de Layout** - Alterne entre **Grade** (cartões uniformes) e **Mosaico** (linhas justificadas preservando as proporções). O Mosaico é apenas para desktop; o mobile sempre usa grade.
+- **Modo de Layout** - Alterne entre **Grade** (cartões uniformes) e **Mosaico** (linhas justificadas preservando as proporções). Ambos estão disponíveis em qualquer largura de tela, inclusive no mobile.
 - **Tamanho da Miniatura** - Controle deslizante para ajustar a altura do cartão/linha (120–400px, persistido no localStorage)
 - **Ocultar Detalhes** - Oculta os metadados da foto nos cartões (apenas no modo grade)
 - **Dica** - Como os detalhes são mostrados: **Ao passar** (predefinição), **Ao clicar**, **Desativado** ou **Painel lateral**. O painel lateral fixa os mesmos detalhes na gaveta da direita em vez de seguir o cursor: um dado fica assim sempre no mesmo sítio de uma foto para a outra, e o painel mantém a última foto sobre a qual passou em vez de esvaziar quando o cursor sai da grelha. Clicar numa foto fixa o painel nela — passar sobre outras fotos deixa de o mudar — até premir **Desmarcar** no topo do painel, o que também retira essa foto da seleção. **Esc** faz o mesmo e limpa também o resto da seleção; nunca fecha o painel. Partilha essa gaveta com a barra de filtros: abrir os filtros oculta-o até os fechar, e a grelha mantém exatamente a largura que tem com os filtros abertos. Requer uma janela de pelo menos 1280 px.

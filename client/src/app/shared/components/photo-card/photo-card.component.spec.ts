@@ -66,6 +66,29 @@ describe('PhotoCardComponent', () => {
     expect(card.config()).toBeNull();
   });
 
+  it('fills a mosaic tile at every width, without relying on the md: variants', () => {
+    const cardFixture = TestBed.createComponent(PhotoCardComponent);
+    cardFixture.componentRef.setInput('photo', makePhoto());
+    cardFixture.componentRef.setInput('hideDetails', true);
+    cardFixture.componentRef.setInput('mosaicMode', true);
+    cardFixture.detectChanges();
+    const el = cardFixture.nativeElement as HTMLElement;
+    const img = el.querySelector('img')!;
+    expect(img.classList.contains('h-full')).toBe(true);
+    expect(img.classList.contains('object-cover')).toBe(true);
+    expect(img.parentElement!.classList.contains('h-full')).toBe(true);
+  });
+
+  it('leaves the image at its natural height below md outside mosaic', () => {
+    const cardFixture = TestBed.createComponent(PhotoCardComponent);
+    cardFixture.componentRef.setInput('photo', makePhoto());
+    cardFixture.componentRef.setInput('hideDetails', true);
+    cardFixture.detectChanges();
+    const img = (cardFixture.nativeElement as HTMLElement).querySelector('img')!;
+    expect(img.classList.contains('h-full')).toBe(false);
+    expect(img.classList.contains('object-cover')).toBe(false);
+  });
+
   it('never asks for a thumbnail above the stored 640 px', () => {
     const cardFixture = TestBed.createComponent(PhotoCardComponent);
     cardFixture.componentRef.setInput('photo', makePhoto());

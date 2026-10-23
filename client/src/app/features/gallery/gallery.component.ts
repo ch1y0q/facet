@@ -872,7 +872,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     return Array.from({ length: cols }, (_, i) => i);
   });
 
-  /** Whether the viewport is md+ (768px) — mosaic is only available on desktop */
+  /** Whether the viewport is md+ (768px) — drives the side/over drawer, container padding and hover tooltips */
   private readonly desktop = useDesktopSignal({
     onChange: matches => { if (!matches) this.tooltipPhoto.set(null); },
   });
@@ -887,9 +887,9 @@ export class GalleryComponent implements OnInit, OnDestroy {
    */
   private readonly railWide = useDesktopSignal({ breakpointPx: DETAILS_RAIL_MIN_WIDTH_PX });
 
-  /** Effective gallery mode: force grid on small viewports */
+  /** Effective gallery mode: grid until the container has been measured, then the user's choice at every width */
   readonly effectiveGalleryMode = computed(() =>
-    (this.isDesktop() && this.containerWidth() > 0) ? this.store.galleryMode() : 'grid',
+    this.containerWidth() > 0 ? this.store.galleryMode() : 'grid',
   );
 
   /** Whether to hide photo details below the thumbnails */

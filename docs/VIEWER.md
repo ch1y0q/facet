@@ -281,7 +281,7 @@ Unlike Cull to folder, which leaves the database row alone until a rescan, Delet
 
 ### Display Options
 
-- **Layout Mode** - Switch between **Grid** (uniform cards) and **Mosaic** (justified rows preserving aspect ratios). Mosaic is desktop-only; mobile always uses grid.
+- **Layout Mode** - Switch between **Grid** (uniform cards) and **Mosaic** (justified rows preserving aspect ratios). Both are available at every screen width, mobile included.
 - **Thumbnail Size** - Slider to adjust card/row height (120–400px, persisted in localStorage)
 - **Hide Details** - Hide photo metadata on cards (grid mode only)
 - **Tooltip** - How photo details are shown: **Hover** (default), **Click**, **Off**, or **Side panel**. The side panel docks the same details in the right-hand drawer instead of following the cursor, so a given field is always in the same place from one photo to the next. It follows **both** hover and click, so it is usable on a touch screen where hover never fires; it keeps the last photo you hovered rather than blanking when the cursor leaves the grid. Clicking a photo holds the panel on it — hovering other photos no longer switches it — until you press **Deselect** at the top of the panel, which also removes that photo from the selection. **Escape** does the same and also clears the rest of the selection; it never closes the panel. It shares that drawer with the filter sidebar — opening the filters hides it until you close them again, and the grid keeps exactly the width it has with the filters open. Needs a viewport of at least 1280px.

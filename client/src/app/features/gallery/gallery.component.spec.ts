@@ -3987,6 +3987,26 @@ describe('GalleryComponent', () => {
       expect(menu().findSimilar()).toBe(true);
     });
 
+    it('honours the mosaic mode below md once the container has a width', () => {
+      pin();
+      mockStore.galleryMode.set('mosaic');
+      mockStore.virtualScroll.set(false);
+      vi.stubGlobal('matchMedia', (media: string) => ({
+        matches: false, media, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {},
+      }));
+      fixture = TestBed.createComponent(GalleryComponent);
+      const instance = fixture.componentInstance as unknown as {
+        desktop: { setup(): void };
+        containerWidth: { set(v: number): void };
+      };
+      instance.desktop.setup();
+      expect(fixture.componentInstance.effectiveGalleryMode()).toBe('grid');
+      instance.containerWidth.set(375);
+      fixture.detectChanges();
+      expect(fixture.componentInstance.effectiveGalleryMode()).toBe('mosaic');
+      expect(fixture.componentInstance.rowsModel().length).toBeGreaterThan(1);
+    });
+
     it('reports the row count in aria-rowcount on the windowed branch', () => {
       pin();
       const html = render('grid', true);

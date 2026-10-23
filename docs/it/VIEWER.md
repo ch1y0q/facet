@@ -280,7 +280,7 @@ A differenza di Scarta in cartella, che lascia intatta la riga del database fino
 
 ### Opzioni di visualizzazione
 
-- **Modalità layout** - Passa tra **Griglia** (schede uniformi) e **Mosaico** (righe giustificate che preservano le proporzioni). Il mosaico è solo per desktop; su mobile si usa sempre la griglia.
+- **Modalità layout** - Passa tra **Griglia** (schede uniformi) e **Mosaico** (righe giustificate che preservano le proporzioni). Entrambi sono disponibili a ogni larghezza di schermo, mobile incluso.
 - **Dimensione miniatura** - Cursore per regolare l'altezza delle schede/righe (120–400px, salvato in localStorage)
 - **Nascondi dettagli** - Nascondi i metadati delle foto sulle schede (solo modalità griglia)
 - **Tooltip** - Come vengono mostrati i dettagli: **Al passaggio** (predefinito), **Al clic**, **Disattivato** o **Pannello laterale**. Il pannello laterale ancora gli stessi dettagli nel cassetto di destra invece di seguire il cursore: un dato si trova così sempre nello stesso punto da una foto all'altra, e il pannello conserva l'ultima foto sfiorata invece di svuotarsi quando il cursore lascia la griglia. Un clic su una foto blocca il pannello su di essa — sfiorare altre foto non lo cambia più — finché non premi **Deseleziona** in cima al pannello, che toglie anche quella foto dalla selezione. **Esc** fa lo stesso e cancella anche il resto della selezione; non chiude mai il pannello. Condivide quel cassetto con la barra dei filtri: aprire i filtri lo nasconde finché non li richiudi, e la griglia mantiene esattamente la larghezza che ha con i filtri aperti. Richiede una finestra di almeno 1280 px.
