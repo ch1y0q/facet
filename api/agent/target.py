@@ -281,7 +281,9 @@ async def resolve_view(
     refusal, stored = _stored_view(raw)
     if refusal is not None:
         return refusal, "", 0, None
-    tab_filters = data.get("filters") if isinstance(data.get("filters"), dict) else {}
+    tab_filters = data.get("filters")
+    if not isinstance(tab_filters, dict):
+        tab_filters = {}
     query = query_form({key: value for key, value in stored.items() if key not in GALLERY_PAGING_KEYS})
     query.update({key: query_value(tab_filters[key]) for key in VIEW_HIDE_KEYS if key in tab_filters})
     counted = await client.call(grant, "photos_count", query=query, timeout=settings["call_timeout_s"])
@@ -294,4 +296,4 @@ async def resolve_view(
             "view has a filter a stored album cannot hold, or it changed while it was read"), "", 0, None
     tab = envelope.get("tab")
     meta = {"source": "tab_view", "tab_id": tab.get("tab_id") if isinstance(tab, dict) else None, "count": total}
-    return None, raw, total, meta
+    return None, str(raw), total, meta

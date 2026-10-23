@@ -1233,7 +1233,7 @@ async def api_photos(
 
             if total_count:
                 page_from, page_where, page_params = from_clause, where_str, all_params
-                if relevance:
+                if relevance and candidates is not None:
                     # The ordered array replaces the IN gate (same set), so the join is the only probe.
                     page_from = _RELEVANCE_FROM + from_clause
                     base_where = where_str[:-len(_SEMANTIC_CLAUSE) - 4] if where_str.endswith(f" AND{_SEMANTIC_CLAUSE}") else ""

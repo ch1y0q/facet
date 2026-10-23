@@ -7,7 +7,7 @@ value by 100 and ``update_weights`` would store it under ``weights``, not ``modi
 """
 
 import math
-from typing import Any, Optional
+from typing import Any, Optional, TypeGuard
 
 from config.category_filter import VALID_WEIGHT_COLUMNS
 from config.scoring_config import NORMALIZATION_TOLERANCE, normalise_percent_weights
@@ -31,7 +31,7 @@ def is_modifier(key: str) -> bool:
     return name in MODIFIER_NAMES or name.startswith("_") or name.endswith("_multiplier")
 
 
-def _number(value: Any) -> bool:
+def _number(value: Any) -> TypeGuard[float]:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
