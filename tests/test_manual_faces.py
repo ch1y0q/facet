@@ -13,7 +13,12 @@ from api.database import get_db
 
 
 @pytest.fixture
-def manual_photo(tmp_path, seed_photos_prefix):
+def manual_photo(tmp_path, seed_photos_prefix, monkeypatch):
+    from api import config
+    # Test originals belong to this temporary library, independent of any
+    # operator scan roots/path mapping in the running checkout's local config.
+    monkeypatch.setitem(config.VIEWER_CONFIG, 'path_mapping', {})
+    monkeypatch.setitem(config.VIEWER_CONFIG, 'scan_directories', [str(tmp_path)])
     path = str(tmp_path / 'manual.jpg')
     image = Image.new('RGB', (100, 80), 'red')
     image.paste('blue', (50, 0, 100, 80))
