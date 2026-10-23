@@ -444,13 +444,18 @@ HDR 之间重新标注。**漏检**则从照片库修正，因为未被检测到
 混合搜索，把 CLIP/SigLIP 嵌入向量相似度（70%）与基于照片描述和标签的 FTS5 BM25 文本匹配（30%）结合起来。输入诸如“群山之上的日落”或“在雪中玩耍的孩子”这样的查询，查看器就会按综合得分排序返回匹配的照片。
 
 - 需要已存储的 `clip_embedding` 数据（在评分过程中计算）
-- 安装了 sqlite-vec 且当前 Python 的 SQLite 能加载扩展时用它做 KNN 向量检索，否则退回到内存中的 NumPy
+- 安装了 sqlite-vec 且当前 Python 的 SQLite 能加载扩展时使用它，否则使用内存中的 NumPy 矩阵。对图库而言它不再是有上限的 KNN top-k：图库会解析出高于匹配灵敏度阈值的全部照片（先做 KNN 查询，匹配超过 4096 张时改为全量扫描，没有 sqlite-vec 时使用 NumPy 矩阵）。`GET /api/search` 仍是带排序、有上限的端点
 - 对 AI 照片描述／标签做 FTS5 文本检索，提供额外的关键词匹配（运行 `database.py --rebuild-fts` 启用）
 - 使用与当前 VRAM 配置档相同的嵌入模型（16gb/24gb 用 SigLIP 2，legacy/8gb 用 CLIP ViT-L-14），如果两者不一致，则使用 `models.clip`/`clip_legacy` 中实际匹配已存储嵌入维度的那一个（见 [docs/CONFIGURATION.md](CONFIGURATION.md)）
 - `scope=text` 会把查询限制为对 OCR／描述文本的字面 FTS5 匹配，并跳过嵌入向量检索
 - 由 `viewer.features.show_semantic_search` 控制（默认：`true`）
 - 余弦阈值默认使用 `models.clip.search_threshold_percent`（5%）／`models.clip_legacy.search_threshold_percent`（15%）——按后端分别校准的值，区别于标签匹配阈值 `tag_threshold_percent`。`/api/config` 的 `search_threshold_default` 用于初始化图库的 0-50% 阈值滑块，该滑块覆盖整个区间：既可以按次搜索把阈值收紧到默认值以上，也可以放宽回 `0%`；阈值恰好为 `0%` 时仍会拒绝负的余弦相似度，并不等于”不过滤”。SigLIP 的 5% 默认值刻意偏向召回率而非精确率——校准取舍详见 [docs/CONFIGURATION.md](CONFIGURATION.md) 中的 `clip.search_threshold_percent`
 - 每条结果会返回两个相似度字段：`similarity` 是用于排序的嵌入（70%）+ FTS（30%）综合得分；`embedding_similarity` 是实际用于和上述阈值比较的原始余弦相似度，仅当该照片计算出了嵌入得分时才会出现（在仅命中 FTS 或 `scope=text` 的结果上缺失——绝不会是 `null`）
+- **与图库的所有筛选条件组合。** 在图库中，语义查询与其他任何筛选条件一样缩小同一个结果，包括隐藏开关：使用默认值时，查询会排除被隐藏的连拍、重复、包围曝光和全景成员、眨眼照片以及已拒绝的照片，与未分组的图库完全一致
+- **分页、有真实总数、没有结果上限。** 图库像分页其他视图一样分页语义视图（“加载更多”可用），并显示真实总数：高于匹配灵敏度阈值的每张照片都是结果。在大型图库上，第一次查询可能需要几秒（查询编码加一次相似度遍历）；后续页面来自短时缓存
+- **相关性排序。** 查询处于活动状态时，默认排序是新增的**相关性**选项（最佳匹配在前；升序则显示长尾）。宽泛的查询可能匹配图库的大部分照片，其他排序仍然可用，但此时列出的是这条长尾。清除查询会恢复默认排序，带查询但不带排序的共享链接会以相关性打开
+- **API。** `GET /api/photos` 接受 `semantic_q`、`semantic_threshold`（0 到 1）和 `sort=relevance`（仅与 `semantic_q` 一起使用，否则返回 `400`）；嵌入模型繁忙或加载失败时返回 `503`
+- **选择。** 全选不覆盖整个语义视图：它只选中已加载的照片，“整个视图”范围会被拒绝
 
 ## 相册
 
@@ -1208,7 +1213,7 @@ python database.py --stats-info
 
 | 端点 | 说明 |
 |----------|-------------|
-| `GET /api/photos` | 带筛选条件的分页照片列表 |
+| `GET /api/photos` | 带筛选条件的分页照片列表。`semantic_q`、`semantic_threshold`（0 到 1）和 `sort=relevance` 把[语义查询](#语义搜索)与所有其他筛选条件组合（`sort=relevance` 需要 `semantic_q`，否则 `400`；模型繁忙或加载失败时返回 `503`） |
 | `GET /api/photos/count` | `{ total }`——有多少照片符合当前照片库的筛选条件 |
 | `GET /api/photos/paths` | `{ total, paths }`——所有匹配的路径，无序；仅由需要文件名的操作（下载、复制）按需使用，全选绝不会用到它。上限为 10000：超过此数的视图会被以 `412` 拒绝并给出数量和上限，而不是被截断——一份不完整的路径列表会让用户误以为选择是完整的——而且没有任何回退：该操作会带着一条“照片过多”的提示被放弃，让用户去缩小筛选范围后重试。只有真正需要字面路径列表的操作才会走这里；整个视图的选择本身只需计数（`GET /api/photos/count`），从来不需要路径列表，因此建立在其之上的、按筛选条件限定的操作（批量评分／淘汰写入、选片、附属文件导出）不受此上限影响，它们各有自己的上限 |
 | `POST /api/photos/by_paths` | 请求体：`{paths (1–500), filters}`。按请求顺序返回所列照片，经过图库的可见性与筛选（`filters` 接受图库自身的键；分页与排序键会被丢弃，其他键返回 `422`）。查看器的默认类型和隐藏开关不会生效：调用方指定的列表会完整显示。响应 `{photos, total, missing}`；`missing` 列出（最多 200 个）未知、不可见或被筛掉的路径 |

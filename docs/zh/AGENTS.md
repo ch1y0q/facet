@@ -50,7 +50,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 | 工具 | 作用 |
 |------|--------------|
 | `search_photos` | 像图库一样筛选和排序照片库，除非筛选条件另行设置，否则应用查看器的默认隐藏开关（闭眼、连拍、重复、包围曝光、全景、已拒绝）（会报告 `hidden_summary`）。默认显示在你打开的标签页中（见下文）；`fields` 可添加任意照片列 |
-| `semantic_search` | 按含义查找照片，或用 `scope: "text"` 按说明文字中的词查找（不会显示在标签页中）. `filters` 像图库的筛选一样缩小搜索范围,每一行都带有其 `similarity`。 |
+| `semantic_search` | 按含义查找照片，或用 `scope: "text"` 按说明文字中的词查找。它返回的行会固定在标签页中。 `filters` 像图库的筛选一样缩小搜索范围,每一行都带有其 `similarity`。 |
 | `get_photo` | 按路径获取单张照片的完整详情（不含直方图） |
 | `get_thumbnail` | 查看一张照片:其缩略图作为图像部分(`size` 160 至 640,默认 512)。若 JPEG 会超过 `viewer.mcp.max_image_bytes`,则使用更小的尺寸;都放不下则返回 `too_large` |
 | `contact_sheet` | 将 1 至 16 张照片作为一张带编号的网格图查看(`columns` 2 至 4,最长边 1024)。文本部分列出 `legend`(格子编号对应路径,按请求顺序)和 `unavailable`(因照片缺失或不可见而留空的格子) |
@@ -67,9 +67,9 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 
 ## 结果会显示在你的标签页中
 
-- `search_photos`、`semantic_search` 和 `similar_photos` 带有 `show`（默认 `true`）。第一页搜索成功后，服务器会把同一查询应用到你打开的 Facet 标签页，并替换其筛选条件，因此无需询问就能看到助手找到了什么。助手被告知不要询问是否打开或显示结果；`show: false` 用于中间探查和计数，你看到的是最后一次显示的搜索。
-- 结果带有 `shown_in_tab`：`{"applied": true, "tab_id", "keys", "total"}`，或 `{"applied": false, "reason"}`，原因为 `no_tab`、`bridge_disabled`、`tab_outdated`、`tab_timeout`（标签页仍可能应用它）、`forbidden`、`page_not_first`、`empty_result`、`unsupported_filters`（附带 `keys`）或 `invalid_combination`。显示失败绝不会使搜索失败。传入 `tab_id` 可选择标签页。全部原因：`error`（显示本身失败）、`bridge_disabled`、`page_not_first`、`empty_result`、`invalid_combination`、`unsupported_filters`（附带 `keys`；对 `semantic_search`，键为 `scope` 或 `threshold`，即侧栏滑块无法表达的大于 0.5 的阈值），以及标签页桥返回的代码（`no_tab`、`tab_outdated`、`tab_timeout`、`forbidden`、`invalid_input`、`upstream_error`）。标签页自行分页，因此对语义搜索，它显示的行数可能多于助手收到的。行被截短时，`next_page`（连同 `suggested_per_page`）给出恰好接在最后一行之后的页码；若页码无法表达该位置，则由 `next_offset` 以行偏移给出。
-- 只显示第一页（标签页在你滚动时自行分页），空结果不会显示，因此你保留之前的视图。使用图库侧栏没有对应控件的筛选（`exclude_tags`、`require_tags`、`is_silhouette`、`junk_kind`、`narrative_moment`、`min_rating`、`min_aggregate`、`show_rejected: true`）的搜索不会被部分应用，带 `scope: "text"` 的 `semantic_search` 也不会显示。
+- `search_photos`、`semantic_search` 和 `similar_photos` 带有 `show`（默认 `true`）。第一页搜索成功后，服务器会在你打开的 Facet 标签页中显示它。`search_photos` 和 `similar_photos` 把同一查询应用到该标签页并替换其筛选条件；`semantic_search` 则始终固定恰好它返回的那些行（相似度顺序，最多 `limit` 行，无论有无 `filters` 或 `scope`），作为助手选定的列表（`shown_in_tab.mode` 为 `paths`），因为标签页自身的语义视图受隐藏开关过滤且排序不同。两种情况下，无需询问你都能看到助手找到了什么。助手被告知不要询问是否打开或显示结果；`show: false` 用于中间探查和计数，你看到的是最后一次显示的搜索。
+- 结果带有 `shown_in_tab`：`{"applied": true, "tab_id", "keys", "total"}`，或 `{"applied": false, "reason"}`，原因为 `no_tab`、`bridge_disabled`、`tab_outdated`、`tab_timeout`（标签页仍可能应用它）、`forbidden`、`page_not_first`、`empty_result`、`unsupported_filters`（附带 `keys`）或 `invalid_combination`。显示失败绝不会使搜索失败。传入 `tab_id` 可选择标签页。全部原因：`error`（显示本身失败）、`bridge_disabled`、`page_not_first`、`empty_result`、`invalid_combination`、`unsupported_filters`（附带 `keys`），以及标签页桥返回的代码（`no_tab`、`tab_outdated`、`tab_timeout`、`forbidden`、`invalid_input`、`upstream_error`）。行被截短时，`next_page`（连同 `suggested_per_page`）给出恰好接在最后一行之后的页码；若页码无法表达该位置，则由 `next_offset` 以行偏移给出。
+- 只显示第一页（标签页在你滚动时自行分页），空结果不会显示，因此你保留之前的视图。使用图库侧栏没有对应控件的筛选（`exclude_tags`、`require_tags`、`is_silhouette`、`junk_kind`、`narrative_moment`、`min_rating`、`min_aggregate`、`show_rejected: true`）的搜索不会被部分应用。
 - 显示会离开 `/culling`、`/compare` 和 `/photo` 并回到图库，清除整个视图的选择；在相册页面上会先回到图库，因此相册已保存的筛选绝不会被覆盖。其数量要用作写入工具 `expected_count` 的搜索应使用 `show: false`。
 - `ui_show_photos` 固定一份精确的照片列表:图库按你的顺序显示这些照片,直到筛选条件的更改替换该列表。`ui_get_context` 会报告当前是否显示了固定列表。该列表很朴素:不带分组、标记或标签。要复核选片方案,助手使用 `auto_cull`,它会改为在[暗房](#暗房选片分组)(`/culling`)中打开方案。
 - **`/culling` 上的方案模式。** `ui_show_culling_plan`(由 `auto_cull` 在试运行时调用)把 `auto_cull` 方案载入暗房:分组、保留/剔除边框、放大镜和对比与手动选片相同,方案的保留照片已预先选中。横幅显示“助手方案 · 已确认 x/y · 退出”,每个分组带有一枚标签“#n · 理由 · 建议:保留 N / 剔除 M”,与方案不同的帧上会出现一个圆点。你按暗房的常规方式逐组确认:同样的空格键、倒计时和撤销;方案显示期间,严格程度、排序和阈值被禁用。点击**退出**,或更改分组、范围或排序,即退出方案模式。离开 `/culling`(例如去打开一张照片)再返回,会根据标签页中已加载的方案恢复方案模式,并保留你已确认的 x/y;完整重新加载页面则会丢弃它。照片库已超前于方案时,会显示过期提示。方案模式中的确认从不添加精选。参见[助手方案模式](VIEWER.md#助手方案模式)。
