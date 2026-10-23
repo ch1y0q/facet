@@ -820,7 +820,7 @@ Todas las estadísticas tienen conciencia de usuario en modo multiusuario: cada 
 | `Shift+F10` / `Menu` | Abrir el menú contextual de la tarjeta de foto con el foco (el clic derecho hace lo mismo) |
 | `?` | Mostrar la referencia de atajos de teclado (funciona en todas las páginas) |
 
-La foto actual — aquella sobre la que actúan los atajos de valoración, favorito y descarte — está marcada con un contorno de 4px alrededor de su tarjeta; el resto de las tarjetas baja al 50% de opacidad. Nada queda marcado hasta que el cursor se ha movido realmente sobre una foto de los resultados, así que una galería que aún no has recorrido permanece a intensidad completa. Al hacer clic en una foto, el marcador se mueve a ella, de modo que un atajo pulsado justo después de un clic se aplica a la foto en la que hiciste clic, no a la que dejaron las flechas. Al volver de una foto (Atrás o Esc) el marcador se queda en la foto que abriste, de modo que los atajos continúan desde ahí.
+La foto actual — aquella sobre la que actúan los atajos de valoración, favorito y descarte — está marcada con un contorno de 4px alrededor de su tarjeta; el resto de las tarjetas baja al 50% de opacidad. Nada queda marcado hasta que el cursor se ha movido realmente sobre una foto de los resultados, así que una galería que aún no has recorrido permanece a intensidad completa. Al hacer clic en una foto, el marcador se mueve a ella, de modo que un atajo pulsado justo después de un clic se aplica a la foto en la que hiciste clic, no a la que dejaron las flechas. Al volver de una foto (Atrás o Esc) el marcador se queda en la última foto que viste, de modo que los atajos continúan desde ahí.
 
 ## Deshacer
 

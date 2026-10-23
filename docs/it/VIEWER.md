@@ -821,7 +821,7 @@ Tutte le statistiche sono consapevoli dell'utente in modalità multiutente — o
 | `Shift+F10` / `Menu` | Apri il menu contestuale della scheda foto con il focus (il clic destro fa lo stesso) |
 | `?` | Mostra il riferimento delle scorciatoie da tastiera (funziona su ogni pagina) |
 
-La foto corrente — quella su cui agiscono le scorciatoie di valutazione, preferito e scarto — è contrassegnata da un contorno di 4px attorno alla sua scheda; tutte le altre schede si affievoliscono al 50% di opacità. Nulla è contrassegnato finché il cursore non si è effettivamente spostato su una foto tra i risultati, quindi una galleria che non hai ancora esplorato resta a piena intensità. Cliccare su una foto sposta il marcatore su di essa, così una scorciatoia digitata subito dopo un clic si applica alla foto cliccata, non a quella dove le frecce l'avevano lasciata. Tornando da una foto (Indietro o Esc) il marcatore resta sulla foto che hai aperto, così le scorciatoie proseguono da lì.
+La foto corrente — quella su cui agiscono le scorciatoie di valutazione, preferito e scarto — è contrassegnata da un contorno di 4px attorno alla sua scheda; tutte le altre schede si affievoliscono al 50% di opacità. Nulla è contrassegnato finché il cursore non si è effettivamente spostato su una foto tra i risultati, quindi una galleria che non hai ancora esplorato resta a piena intensità. Cliccare su una foto sposta il marcatore su di essa, così una scorciatoia digitata subito dopo un clic si applica alla foto cliccata, non a quella dove le frecce l'avevano lasciata. Tornando da una foto (Indietro o Esc) il marcatore resta sull'ultima foto che hai visto, così le scorciatoie proseguono da lì.
 
 ## Annulla
 
