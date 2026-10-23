@@ -525,6 +525,63 @@ describe('PhotoDetailComponent', () => {
     });
   });
 
+  describe('arrow navigation', () => {
+    const last = { ...samplePhoto, path: '/photos/a.jpg', filename: 'a.jpg' };
+    const onNextPage = { ...samplePhoto, path: '/photos/b.jpg', filename: 'b.jpg' };
+
+    function atEndOfLoadedPage(whileLoading: () => void = () => {}) {
+      createComponent();
+      component.store.photos.set([last]);
+      component.store.hasMore.set(true);
+      component.photo.set(last);
+      mockRoute.snapshot.queryParamMap.get.mockReturnValue(last.path);
+      vi.spyOn(component.store, 'nextPage').mockImplementation(async () => {
+        component.store.photos.set([last, onNextPage]);
+        whileLoading();
+      });
+    }
+
+    it('stepping past the last loaded photo loads the next page and moves onto it', async () => {
+      atEndOfLoadedPage();
+
+      await component.navigateAdjacentPhoto(1);
+
+      expect(component.photo().path).toBe(onNextPage.path);
+    });
+
+    it('does not navigate if the page closed while the next page loaded', async () => {
+      atEndOfLoadedPage(() => TestBed.resetTestingModule());
+
+      await component.navigateAdjacentPhoto(1);
+
+      expect(mockRouter.navigate).not.toHaveBeenCalled();
+    });
+
+    it('does not navigate if Back moved to another photo while the page loaded', async () => {
+      atEndOfLoadedPage(() => mockRoute.snapshot.queryParamMap.get.mockReturnValue(samplePhoto.path));
+
+      await component.navigateAdjacentPhoto(1);
+
+      expect(mockRouter.navigate).not.toHaveBeenCalled();
+    });
+
+    it('steps from where the photo sits in a list reloaded while the page loaded', async () => {
+      atEndOfLoadedPage(() => component.store.photos.set([samplePhoto, onNextPage, last, { ...samplePhoto, path: '/photos/c.jpg' }]));
+
+      await component.navigateAdjacentPhoto(1);
+
+      expect(component.photo().path).toBe('/photos/c.jpg');
+    });
+
+    it('does not jump ahead if another photo was opened while the page loaded', async () => {
+      atEndOfLoadedPage(() => component.photo.set(samplePhoto));
+
+      await component.navigateAdjacentPhoto(1);
+
+      expect(component.photo().path).toBe(samplePhoto.path);
+    });
+  });
+
   describe('gallery store write-back', () => {
     // The grid renders from GalleryStore.photos(), not from this component's
     // signal, so an edit that only reached the signal was shown back at its
