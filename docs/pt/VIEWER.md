@@ -483,7 +483,7 @@ python facet.py --translate-captions     # Translate captions to configured targ
 
 A tradução de legendas usa MarianMT (CPU, sem GPU necessária). Configure o idioma de destino no `scoring_config.json` em `translation.target_language` (padrão: `"fr"`). Idiomas suportados: francês, alemão, espanhol, italiano.
 
-Controlado por `viewer.features.show_captions` (padrão: `true`). Requer o perfil de VRAM 16gb ou 24gb para legendagem baseada em VLM.
+Controlado por `viewer.features.show_captions` (padrão: `true`). Requer o perfil de VRAM 16gb ou 24gb para legendagem baseada em VLM. Sem um deles, ou um `vlm_backend` remoto, o botão de gerar legenda fica oculto e as críticas continuam baseadas em regras.
 
 ## Memórias ("Neste Dia")
 
@@ -854,7 +854,7 @@ Todas as estatísticas são sensíveis ao usuário no modo multiusuário — cad
 | `Shift+F10` / `Menu` | Abre o menu de contexto do cartão de foto com foco (o clique direito faz o mesmo) |
 | `?` | Mostra a referência de atalhos de teclado (funciona em todas as páginas) |
 
-A foto atual — aquela sobre a qual agem os atalhos de avaliação, favorito e rejeição — é marcada com um contorno de 4px em volta do seu cartão; todos os outros cartões passam a 50% de opacidade. Nada fica marcado até o cursor se mover de fato para uma foto dos resultados, por isso uma galeria que você ainda não percorreu permanece em intensidade total. Clicar numa foto move o marcador para ela, de modo que um atalho digitado logo após um clique se aplica à foto clicada, não àquela onde as setas o tinham deixado. Ao voltar de uma foto (Voltar ou Esc) o marcador permanece na foto que você abriu, de modo que os atalhos continuam a partir dali.
+A foto atual — aquela sobre a qual agem os atalhos de avaliação, favorito e rejeição — é marcada com um contorno de 4px em volta do seu cartão; todos os outros cartões passam a 50% de opacidade. Nada fica marcado até o cursor se mover de fato para uma foto dos resultados, por isso uma galeria que você ainda não percorreu permanece em intensidade total. Clicar numa foto move o marcador para ela, de modo que um atalho digitado logo após um clique se aplica à foto clicada, não àquela onde as setas o tinham deixado. Ao voltar de uma foto (Voltar ou Esc) o marcador permanece na última foto que você viu, de modo que os atalhos continuam a partir dali.
 
 ## Desfazer
 
@@ -1469,6 +1469,8 @@ O endpoint `/api/download/options` detecta automaticamente arquivos RAW companhe
 | `GET /api/filter_options/location_name?lat=&lng=` | Geocodifica coordenadas reversamente para um nome de lugar |
 
 ## Solução de Problemas
+
+Se a busca semântica informar que a aceleração Apple Silicon está ocupada, tente novamente após a tarefa atual do modelo terminar. As buscas simultâneas compartilham um limite de espera de 15 segundos para carregar o codificador e acessar o acelerador.
 
 | Problema | Solução |
 |-------|----------|

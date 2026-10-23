@@ -38,6 +38,7 @@ import { filter, firstValueFrom } from 'rxjs';
 import { GalleryStore, BatchResult } from './gallery.store';
 import { Photo } from '../../shared/models/photo.model';
 import { isTypingContext } from '../../shared/utils/keyboard';
+import { PHOTO_PATH } from '../../core/gallery-reuse.strategy';
 import { UndoService } from '../../core/services/undo.service';
 import { SequenceOverrideService, SequenceKind } from '../../core/services/sequence-override.service';
 import {
@@ -1255,15 +1256,24 @@ export class GalleryComponent implements OnInit, OnDestroy {
       this.returnTo = null;
       if (back) {
         this.scrollContent()?.scrollTo({ top: back.scroll });
-        // The detach blurred the focused card and `onGridFocusOut` cleared the cursor, so put it back first.
-        const at = back.path === null ? -1 : this.store.photos().findIndex(p => p.path === back.path);
-        this.setCursor(at);
-        const onCard = !!back.focus?.closest('[data-pidx]');
-        // A card whose photo is gone is about to be destroyed: do not focus it.
-        if (back.focus instanceof HTMLElement && back.focus.isConnected && (!onCard || at >= 0)) {
-          back.focus.focus({ preventScroll: true });
+        // The photo page's arrows replace its URL, so the page being left names the photo viewed last.
+        const left = this.router.currentNavigation()?.previousNavigation?.finalUrl;
+        const viewed = left?.root.children['primary']?.segments[0]?.path === PHOTO_PATH ? left.queryParamMap.get('path') : null;
+        const viewedAt = viewed && viewed !== back.path ? this.store.photos().findIndex(p => p.path === viewed) : -1;
+        if (viewedAt >= 0) {
+          this.setCursor(viewedAt);
+          this.focusCard(viewedAt);
+        } else {
+          // The detach blurred the focused card and `onGridFocusOut` cleared the cursor, so put it back first.
+          const at = back.path === null ? -1 : this.store.photos().findIndex(p => p.path === back.path);
+          this.setCursor(at);
+          const onCard = !!back.focus?.closest('[data-pidx]');
+          // A card whose photo is gone is about to be destroyed: do not focus it.
+          if (back.focus instanceof HTMLElement && back.focus.isConnected && (!onCard || at >= 0)) {
+            back.focus.focus({ preventScroll: true });
+          }
+          if (at >= 0 && !onCard) this.restoreCursorFocus();
         }
-        if (at >= 0 && !onCard) this.restoreCursorFocus();
       }
       void this.store.loadTypeCounts();
       void this.store.loadFilterOptions();

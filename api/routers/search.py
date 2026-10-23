@@ -42,7 +42,7 @@ _text_encoder = None
 # searches would each load the model. Inference is serialized separately, on
 # MPS only, by api.model_cache.accelerator_lock.
 _text_encoder_lock = threading.Lock()
-# Seconds a search waits for the MPS lock (not for the encode) before answering "busy", so waiters cannot pin the executor.
+# Total MPS lock-wait budget, including a cold encoder waiting for its load lock.
 _MPS_WAIT_SECONDS = 15
 # (stored embedding dim, torch-free resolved models.clip[_legacy] block). Keyed
 # rather than bare, which is what lets the embedding-less answer be cached too --
@@ -321,7 +321,7 @@ def search_threshold_default() -> float:
     return min(max(percent, 0.0), 100.0) / 100
 
 
-def _load_text_encoder():
+def _load_text_encoder(mps_deadline=None):
     """Load and cache the text encoder matching the stored embeddings."""
     global _text_encoder
     if _text_encoder is not None:
@@ -336,7 +336,8 @@ def _load_text_encoder():
     backend = clip_config.get('backend', 'open_clip')
     model_name = clip_config.get('model_name')
 
-    with accelerator_lock(device, _MPS_WAIT_SECONDS):
+    wait = _MPS_WAIT_SECONDS if mps_deadline is None else max(0, mps_deadline - time.monotonic())
+    with accelerator_lock(device, wait):
         if backend == 'transformers':
             # Deliberately fp32 and NOT routed through utils.siglip.load_siglip_model
             # (which loads fp16 on CUDA): this is the text-only query encoder, it
@@ -385,10 +386,20 @@ def _encode_texts(queries: list[str]) -> np.ndarray:
     docstring. No partial re-implementation is kept here "for speed."
     """
     from models.tagger import encode_text_prompts
+    from utils.device import get_device
 
-    with _text_encoder_lock:
-        enc = _load_text_encoder()
-    with accelerator_lock(enc['device'], _MPS_WAIT_SECONDS):
+    cached = _text_encoder
+    device = cached['device'] if cached is not None else get_device()
+    deadline = time.monotonic() + _MPS_WAIT_SECONDS if str(device).startswith('mps') else None
+    wait = -1 if deadline is None else max(0, deadline - time.monotonic())
+    if not _text_encoder_lock.acquire(timeout=wait):
+        raise AcceleratorBusy('MPS is busy loading the search encoder')
+    try:
+        enc = _load_text_encoder(deadline)
+    finally:
+        _text_encoder_lock.release()
+    wait = _MPS_WAIT_SECONDS if deadline is None else max(0, deadline - time.monotonic())
+    with accelerator_lock(enc['device'], wait):
         text_features = encode_text_prompts(
             enc['model'], enc['model_name'], enc['backend'], enc['device'], list(queries)
         )

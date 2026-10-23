@@ -244,6 +244,29 @@ class TestResolveVlmConfigUngate:
             assert resolve_vlm_config()
 
 
+class TestConfigHidesVlmFeatures:
+    def _features(self, client, full_config):
+        import api.model_cache
+
+        with mock.patch("api.config._FULL_CONFIG", full_config), \
+                mock.patch("api.model_cache._resolved_profile", None):
+            features = client.get("/api/config").json()["features"]
+            assert api.model_cache._resolved_profile is None
+        return features
+
+    def test_local_legacy_hides_captions_and_vlm_critique(self, edition_client):
+        features = self._features(edition_client, _LEGACY_LOCAL)
+        assert features["show_captions"] is False
+        assert features["show_vlm_critique"] is False
+
+    def test_remote_backend_keeps_captions(self, edition_client):
+        assert self._features(edition_client, _LEGACY_REMOTE)["show_captions"] is True
+
+    def test_unresolved_auto_keeps_captions_without_probing(self, edition_client):
+        auto = {"models": {"vram_profile": "auto", "profiles": {}}}
+        assert self._features(edition_client, auto)["show_captions"] is True
+
+
 # --- Qwen2.5-VL batched generation must left-pad for correct decoding ------
 
 class _FakeTokenizer:

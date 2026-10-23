@@ -4314,6 +4314,17 @@ describe('GalleryComponent', () => {
       expect((gallery as unknown as { activeIndex(): number }).activeIndex()).toBe(1);
     });
 
+    it('returns to the photo last viewed when the arrows moved off the one opened', () => {
+      openPhoto(1);
+      const router = TestBed.inject(Router);
+      vi.spyOn(router, 'currentNavigation').mockReturnValue({
+        previousNavigation: { finalUrl: router.parseUrl(`/photo?path=${encodeURIComponent(photos[2].path)}`) },
+      } as unknown as ReturnType<Router['currentNavigation']>);
+      outletMock.attachEvents.next(gallery);
+      expect((gallery as unknown as { activeIndex(): number }).activeIndex()).toBe(2);
+      expect(document.activeElement?.closest('[data-pidx]')?.getAttribute('data-pidx')).toBe('2');
+    });
+
     describe('keyboard cursor', () => {
       const cursor = () => gallery as unknown as {
         activeIndex(): number;
