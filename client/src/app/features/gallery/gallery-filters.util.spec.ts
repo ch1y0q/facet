@@ -11,6 +11,8 @@ import {
   BY_PATHS_MAX,
   buildSyncParams,
   seededSearchThreshold,
+  semanticSortPatch,
+  RELEVANCE_SORT,
   countActiveFilters,
   loadDisplayOptionsFromStorage,
   saveDisplayOptionsToStorage,
@@ -341,5 +343,48 @@ describe('buildByPathsFilters', () => {
   });
   it('chunks at the server cap', () => {
     expect(BY_PATHS_MAX).toBe(500);
+  });
+});
+
+describe('relevance sort', () => {
+  const defaults = { sort: 'aggregate', sort_direction: 'DESC' };
+  it('is implied by a semantic query, so a link carrying only the query loads as relevance', () => {
+    const restored = applyQueryParams(DEFAULT_FILTERS, { semanticQuery: 'dog' });
+    expect(restored).toMatchObject({ sort: RELEVANCE_SORT, sort_direction: 'DESC' });
+  });
+  it('keeps an explicit sort next to the query', () => {
+    expect(applyQueryParams(DEFAULT_FILTERS, { semanticQuery: 'dog', sort: 'date_taken', sort_direction: 'ASC' }))
+      .toMatchObject({ sort: 'date_taken', sort_direction: 'ASC' });
+  });
+  it('drops a relevance sort that arrives without a query', () => {
+    expect(applyQueryParams(DEFAULT_FILTERS, { sort: RELEVANCE_SORT }).sort).toBe('aggregate');
+  });
+  it('does not write the implied sort, but writes any other one even when it equals the default', () => {
+    expect(buildSyncParams(filters({ semanticQuery: 'dog', sort: RELEVANCE_SORT }), undefined)).not.toHaveProperty('sort');
+    expect(buildSyncParams(filters({ semanticQuery: 'dog', sort: 'aggregate' }), undefined)['sort']).toBe('aggregate');
+  });
+  it('round-trips every sort/direction combination under a query', () => {
+    for (const sort of [RELEVANCE_SORT, 'aggregate', 'date_taken']) {
+      for (const sort_direction of ['DESC', 'ASC']) {
+        const original = filters({ semanticQuery: 'dog', sort, sort_direction });
+        const restored = applyQueryParams(DEFAULT_FILTERS, buildSyncParams(original, undefined));
+        expect(restored).toMatchObject({ sort, sort_direction });
+      }
+    }
+  });
+  it('sends sort=relevance to the API', () => {
+    expect(buildApiParams(filters({ semanticQuery: 'dog', sort: RELEVANCE_SORT }), false, 0.05)['sort']).toBe(RELEVANCE_SORT);
+  });
+  it('semanticSortPatch selects relevance on a new query and restores the default on clear', () => {
+    expect(semanticSortPatch(DEFAULT_FILTERS, { semanticQuery: 'dog' }, defaults)).toEqual({ sort: RELEVANCE_SORT, sort_direction: 'DESC' });
+    const active = filters({ semanticQuery: 'dog', sort: RELEVANCE_SORT, sort_direction: 'ASC' });
+    expect(semanticSortPatch(active, { semanticQuery: '' }, { sort: 'date_taken', sort_direction: 'DESC' }))
+      .toEqual({ sort: 'date_taken', sort_direction: 'DESC' });
+  });
+  it('semanticSortPatch leaves other cases alone', () => {
+    expect(semanticSortPatch(filters({ semanticQuery: 'dog' }), { semanticQuery: 'cat' }, defaults)).toEqual({});
+    expect(semanticSortPatch(filters({ semanticQuery: 'dog', sort: 'date_taken' }), { semanticQuery: '' }, defaults)).toEqual({});
+    expect(semanticSortPatch(DEFAULT_FILTERS, { semanticQuery: 'dog', sort: 'date_taken' }, defaults)).toEqual({});
+    expect(semanticSortPatch(DEFAULT_FILTERS, { camera: 'Canon' }, defaults)).toEqual({});
   });
 });

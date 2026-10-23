@@ -6,6 +6,7 @@ import {
   DEFAULT_FILTERS,
   GalleryFilters,
   RANGE_AND_SELECT_KEYS,
+  RELEVANCE_SORT,
   SEARCH_THRESHOLD_MAX,
   buildApiParams,
   seededSearchThreshold,
@@ -273,6 +274,11 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
     delete params['semantic_q'];
     delete params['semantic_threshold'];
     delete params['per_page'];
+    // Relevance is this tab's own sort for a semantic query; the contract's sort enum has no such column.
+    if (params['sort'] === RELEVANCE_SORT) {
+      delete params['sort'];
+      delete params['sort_direction'];
+    }
     const out: Record<string, string | number | boolean> = {};
     for (const [key, value] of Object.entries(params)) out[Object.hasOwn(CLIENT_TO_CONTRACT_KEY, key) ? CLIENT_TO_CONTRACT_KEY[key] : key] = value;
     if (f.semanticQuery) {

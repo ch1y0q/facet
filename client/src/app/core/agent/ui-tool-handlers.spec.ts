@@ -360,6 +360,16 @@ describe('UI tool registry and handlers', () => {
       expect(store.filters()).toMatchObject({ semanticQuery: 'red sunset', search_threshold: '25' });
     });
 
+    it('lands on relevance for a semantic query without leaking the sort into the view contract', async () => {
+      await run('ui_set_gallery_filters', { patch: { semantic_query: 'red sunset' }, replace: true });
+      expect(store.filters()).toMatchObject({ semanticQuery: 'red sunset', sort: 'relevance', sort_direction: 'DESC' });
+      const data = ((await run('ui_get_gallery_view', {})) as { data: { filters: Record<string, unknown> } }).data;
+      expect(data.filters).not.toHaveProperty('sort');
+      expect(data.filters).not.toHaveProperty('sort_direction');
+      await run('ui_set_gallery_filters', { patch: {}, replace: true });
+      expect(store.filters().sort).not.toBe('relevance');
+    });
+
     it('maps similar_to with its mode and a 0-1 floor to a percent string', async () => {
       await run('ui_set_gallery_filters', { patch: { similar_to: '/a.jpg', similarity_mode: 'color', min_similarity: 0.8 }, replace: true });
       expect(store.filters()).toMatchObject({ similar_to: '/a.jpg', similarity_mode: 'color', min_similarity: '80' });

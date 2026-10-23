@@ -470,6 +470,35 @@ describe('GalleryStore', () => {
       expect(call?.[1]).not.toHaveProperty('hide_bursts');
     });
 
+    it('switches to relevance when a query is set and restores the default sort when it is cleared', async () => {
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+      await store.updateFilter('sort', 'date_taken');
+      await store.updateFilter('semanticQuery', 'sunset');
+      expect(store.filters()).toMatchObject({ sort: 'relevance', sort_direction: 'DESC' });
+      expect(apiGet).toHaveBeenLastCalledWith('/photos', expect.objectContaining({ semantic_q: 'sunset', sort: 'relevance' }));
+      await store.updateFilter('semanticQuery', '');
+      expect(store.filters().sort).toBe(DEFAULT_FILTERS.sort);
+      expect(apiGet).toHaveBeenLastCalledWith('/photos', expect.objectContaining({ sort: DEFAULT_FILTERS.sort }));
+    });
+
+    it('keeps a sort the user picked while a query stays set and on a later clear', async () => {
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+      await store.updateFilter('semanticQuery', 'sunset');
+      await store.updateFilter('sort', 'date_taken');
+      await store.updateFilter('semanticQuery', 'dog');
+      expect(store.filters().sort).toBe('date_taken');
+      await store.updateFilter('semanticQuery', '');
+      expect(store.filters().sort).toBe('date_taken');
+    });
+
+    it('updateFilters applies the same relevance switch', async () => {
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+      await store.updateFilters({ semanticQuery: 'sunset' });
+      expect(store.filters().sort).toBe('relevance');
+      await store.updateFilters({ semanticQuery: '' });
+      expect(store.filters().sort).not.toBe('relevance');
+    });
+
     it('omits semantic_threshold while the slider still sits on the server seed', async () => {
       // The seed is a rounded percent of the server's own fraction, so sending it
       // back would both freeze a later recalibration out and re-gate 0.075 at 0.08.

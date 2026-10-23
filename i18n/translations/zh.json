@@ -1058,6 +1058,7 @@
     "sort_composition": "构图",
     "sort_face_quality": "人脸画质",
     "sort_my_taste": "我的偏好",
+    "sort_relevance": "相关度",
     "my_taste_badge_tooltip": "基于 {comparisons} 次对比训练 · 留出验证集准确率 {accuracy}%，当前评分方式为 {baseline}%",
     "sort_desc": "降序",
     "sort_asc": "升序",

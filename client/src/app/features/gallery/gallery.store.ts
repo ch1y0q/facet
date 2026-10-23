@@ -21,7 +21,7 @@ import {
   loadDisplayOptionsFromStorage, saveDisplayOptionsToStorage,
   countActiveFilters, applyQueryParams, buildSyncParams, buildApiParams,
   buildViewFilterParams, viewFilterParamsEqual, anyHideToggleActive,
-  seededSearchThreshold, buildByPathsFilters, BY_PATHS_MAX,
+  seededSearchThreshold, buildByPathsFilters, BY_PATHS_MAX, semanticSortPatch,
 } from './gallery-filters.util';
 
 // Re-export the filter types/consts so existing importers of gallery.store keep working.
@@ -1033,7 +1033,9 @@ export class GalleryStore {
     key: K,
     value: GalleryFilters[K],
   ): Promise<void> {
-    const extra: Partial<GalleryFilters> = {};
+    const extra: Partial<GalleryFilters> = semanticSortPatch(
+      this.filters(), { [key]: value } as Partial<GalleryFilters>, this.config()?.defaults,
+    );
     if (key === 'hide_rejected' && value) extra.favorites_only = false;
     if (key === 'favorites_only' && value) extra.hide_rejected = false;
     // Reload person dropdown when person filter is cleared (was seeded with filtered subset)
@@ -1083,7 +1085,7 @@ export class GalleryStore {
 
   /** Update multiple filters at once and reload */
   async updateFilters(updates: Partial<GalleryFilters>): Promise<void> {
-    const extra: Partial<GalleryFilters> = {};
+    const extra: Partial<GalleryFilters> = semanticSortPatch(this.filters(), updates, this.config()?.defaults);
     if (updates.hide_rejected) extra.favorites_only = false;
     if (updates.favorites_only) extra.hide_rejected = false;
     this.filters.update(current => ({ ...current, ...updates, ...extra, page: 1 }));

@@ -1058,6 +1058,7 @@
     "sort_composition": "Composición",
     "sort_face_quality": "Calidad facial",
     "sort_my_taste": "Mis gustos",
+    "sort_relevance": "Relevancia",
     "my_taste_badge_tooltip": "Entrenado con {comparisons} comparaciones · {accuracy}% de precisión frente al {baseline}% de la puntuación actual",
     "sort_desc": "Descendente",
     "sort_asc": "Ascendente",

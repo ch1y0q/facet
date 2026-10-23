@@ -13,7 +13,7 @@ import sqlite3
 import threading
 import time
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
@@ -657,6 +657,21 @@ class Candidates:
     embedding: dict
     blended: dict
     paths_json: str
+    _ordered_json: dict = field(default_factory=dict, compare=False, repr=False)
+
+    def ordered_json(self, descending: bool) -> str:
+        """JSON array of the candidate paths by blended similarity, ties broken by path ASC.
+
+        ``descending`` is best first; otherwise least relevant first. Built on first use per
+        direction and kept with the cached candidates, so later pages skip the sort.
+        """
+        cached = self._ordered_json.get(descending)
+        if cached is None:
+            sign = -1.0 if descending else 1.0
+            ranked = sorted(self.blended.items(), key=lambda item: (sign * item[1], item[0]))
+            cached = json.dumps([path for path, _ in ranked])
+            self._ordered_json[descending] = cached
+        return cached
 
 
 async def _vec_declared_dim_async(conn) -> Optional[int]:

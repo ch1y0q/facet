@@ -1072,6 +1072,7 @@ export const I18N = {
     sort_composition: "gallery.sort_composition",
     sort_face_quality: "gallery.sort_face_quality",
     sort_my_taste: "gallery.sort_my_taste",
+    sort_relevance: "gallery.sort_relevance",
     my_taste_badge_tooltip: "gallery.my_taste_badge_tooltip",
     sort_desc: "gallery.sort_desc",
     sort_asc: "gallery.sort_asc",

@@ -180,6 +180,29 @@ export interface GalleryFilters {
 }
 
 /** Subset of viewer config defaults the URL/sync codec compares against. */
+/** Sort that ranks a semantic query's matches by similarity; meaningful only while a query is set. */
+export const RELEVANCE_SORT = 'relevance';
+
+/**
+ * The sort change a filter patch implies for the semantic query: setting a query from empty selects
+ * Relevance (best first); clearing it while Relevance is active restores the viewer default sort.
+ * A patch that names a sort itself is never overridden.
+ */
+export function semanticSortPatch(
+  current: GalleryFilters,
+  updates: Partial<GalleryFilters>,
+  defaults: Pick<FilterDefaults, 'sort' | 'sort_direction'> | undefined,
+): Partial<GalleryFilters> {
+  if (!('semanticQuery' in updates) || 'sort' in updates) return {};
+  if (updates.semanticQuery && !current.semanticQuery) {
+    return { sort: RELEVANCE_SORT, sort_direction: updates.sort_direction ?? 'DESC' };
+  }
+  if (!updates.semanticQuery && current.sort === RELEVANCE_SORT) {
+    return { sort: defaults?.sort ?? 'aggregate', sort_direction: defaults?.sort_direction ?? 'DESC' };
+  }
+  return {};
+}
+
 export interface FilterDefaults {
   sort?: string;
   sort_direction?: string;
@@ -444,6 +467,14 @@ export function applyQueryParams(
   // became `threshold=NaN`, which the server rejects with a 422 the gallery
   // surfaces only as a bare load error. Out-of-range is clamped to the
   // slider's own span so a seeded value is always reachable from the thumb.
+  // Relevance is the implied sort of a semantic query, and meaningless without one.
+  if (result.semanticQuery && !params['sort']) {
+    result.sort = RELEVANCE_SORT;
+    if (!params['sort_direction']) result.sort_direction = 'DESC';
+  } else if (!result.semanticQuery && result.sort === RELEVANCE_SORT) {
+    result.sort = base.sort === RELEVANCE_SORT ? 'aggregate' : base.sort;
+    result.sort_direction = base.sort === RELEVANCE_SORT ? 'DESC' : base.sort_direction;
+  }
   if (params['search_threshold']) {
     const parsed = Number(params['search_threshold']);
     result.search_threshold = Number.isFinite(parsed)
@@ -484,8 +515,12 @@ export function buildSyncParams(
   searchThresholdDefault?: number | null,
 ): Record<string, string> {
   const params: Record<string, string> = {};
-  if (f.sort !== (defaults?.sort ?? 'aggregate')) params['sort'] = f.sort;
-  if (f.sort_direction !== (defaults?.sort_direction ?? 'DESC'))
+  // A semantic query implies Relevance (DESC), so that is the sort left unwritten while one is set;
+  // any other sort is written even when it equals the viewer default, or the link would reload as Relevance.
+  const impliedSort = f.semanticQuery ? RELEVANCE_SORT : (defaults?.sort ?? 'aggregate');
+  const impliedDirection = f.semanticQuery ? 'DESC' : (defaults?.sort_direction ?? 'DESC');
+  if (f.sort !== impliedSort) params['sort'] = f.sort;
+  if (f.sort_direction !== impliedDirection)
     params['sort_direction'] = f.sort_direction;
 
   const stringKeys: (keyof GalleryFilters)[] = [...RANGE_AND_SELECT_KEYS, 'similar_to', 'album_id', 'semanticQuery'];

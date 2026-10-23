@@ -1091,6 +1091,15 @@ def _semantic_params(qp: dict) -> tuple[Optional[str], Optional[float]]:
     return query, threshold
 
 
+RELEVANCE_SORT = 'relevance'
+# Candidates in similarity order, probed by primary key: the outer loop is the ordered array,
+# so ``ORDER BY sem.pos`` needs no sort and each row costs one photos PK lookup.
+# json_each exposes a ``path`` column that would make the gallery's bare ``path`` ambiguous,
+# hence the renaming subquery; ordering by its rowid (array position) is what avoids a temp B-tree.
+_RELEVANCE_FROM = "(SELECT rowid AS pos, value AS sem_path FROM json_each(?)) AS sem CROSS JOIN "
+_RELEVANCE_CLAUSE = "photos.path = sem.sem_path"
+
+
 def _with_semantic_clause(where_str: str) -> str:
     return f"{where_str} AND{_SEMANTIC_CLAUSE}" if where_str else f" WHERE{_SEMANTIC_CLAUSE}"
 
@@ -1132,9 +1141,12 @@ async def api_photos(
     page = max(1, gallery_params.page)
     per_page = gallery_params.per_page
 
-    sort_col = params['sort'] if params['sort'] in VALID_SORT_COLS else 'aggregate'
-    order_by_clause = _resolve_order_by(params)
+    relevance = params['sort'] == RELEVANCE_SORT
+    sort_col = RELEVANCE_SORT if relevance else (params['sort'] if params['sort'] in VALID_SORT_COLS else 'aggregate')
+    order_by_clause = 'sem.pos ASC' if relevance else _resolve_order_by(params)
     semantic_q, semantic_threshold = _semantic_params(qp)
+    if relevance and semantic_q is None:
+        raise HTTPException(status_code=400, detail="sort=relevance needs semantic_q")
     if semantic_q is not None and not VIEWER_CONFIG.get('features', {}).get('show_semantic_search', True):
         raise HTTPException(status_code=400, detail="Semantic search is disabled")
 
@@ -1220,8 +1232,16 @@ async def api_photos(
                 select_cols.append('learned_score')
 
             if total_count:
-                query = f"SELECT {', '.join(select_cols)} FROM {from_clause}{where_str} ORDER BY {order_by_clause} LIMIT ? OFFSET ?"
-                cur = await conn.execute(query, all_params + [per_page, offset])
+                page_from, page_where, page_params = from_clause, where_str, all_params
+                if relevance:
+                    # The ordered array replaces the IN gate (same set), so the join is the only probe.
+                    page_from = _RELEVANCE_FROM + from_clause
+                    base_where = where_str[:-len(_SEMANTIC_CLAUSE) - 4] if where_str.endswith(f" AND{_SEMANTIC_CLAUSE}") else ""
+                    page_where = f"{base_where} AND {_RELEVANCE_CLAUSE}" if base_where else f" WHERE {_RELEVANCE_CLAUSE}"
+                    descending = params['dir'] != 'ASC'
+                    page_params = [candidates.ordered_json(descending)] + all_params[:-1]
+                query = f"SELECT {', '.join(select_cols)} FROM {page_from}{page_where} ORDER BY {order_by_clause} LIMIT ? OFFSET ?"
+                cur = await conn.execute(query, page_params + [per_page, offset])
                 rows = await cur.fetchall()
                 await cur.close()
             else:

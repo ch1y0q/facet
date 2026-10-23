@@ -184,6 +184,9 @@
           <mat-form-field class="!hidden lg:!inline-flex w-48 shrink-0" subscriptSizing="dynamic">
             <mat-label>{{ I18N.gallery.sort | translate }}</mat-label>
             <mat-select panelWidth="auto" panelClass="nowrap-panel" [value]="store.filters().sort" (selectionChange)="onSortChange($event.value)">
+              @if (store.filters().semanticQuery) {
+                <mat-option value="relevance">{{ I18N.gallery.sort_relevance | translate }}</mat-option>
+              }
               @if (store.config()?.features?.show_my_taste) {
                 <mat-option value="learned_score">{{ I18N.gallery.sort_my_taste | translate }}</mat-option>
               }
@@ -559,6 +562,9 @@
           <mat-form-field class="flex-1 min-w-0" subscriptSizing="dynamic">
             <mat-label>{{ I18N.gallery.sort | translate }}</mat-label>
             <mat-select panelWidth="auto" panelClass="nowrap-panel" [value]="store.filters().sort" (selectionChange)="onSortChange($event.value)">
+              @if (store.filters().semanticQuery) {
+                <mat-option value="relevance">{{ I18N.gallery.sort_relevance | translate }}</mat-option>
+              }
               @if (store.config()?.features?.show_my_taste) {
                 <mat-option value="learned_score">{{ I18N.gallery.sort_my_taste | translate }}</mat-option>
               }
