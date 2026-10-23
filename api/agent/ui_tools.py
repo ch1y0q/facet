@@ -28,13 +28,15 @@ TAB_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
 MAX_SELECT_PATHS = 1000
 MAX_QUERY_ENTRIES = 20
 # Codes a tab may report; anything else becomes upstream_error. `no_active_view` is the
-# darkroom action registry's "that view is not mounted"; `unsaved_decisions`, `plan_changed`
-# (a 412: the library moved) and `plan_load_failed` (any other load failure) are `ui_show_culling_plan`'s refusals;
+# darkroom action registry's "that view is not mounted"; `navigation_refused` is the router
+# declining a navigation (never a permission: that is `forbidden_level`); `unsaved_decisions`
+# is also any navigation that would leave /culling over decisions the user has not confirmed;
+# `plan_changed` (a 412: the library moved) and `plan_load_failed` (any other load failure) are `ui_show_culling_plan`'s refusals;
 # `no_plan` is `ui_suggest_culling`'s (the tab holds no plan to annotate). Emitted into the client JSON so the client's own list is
 # checked against it.
 TAB_ERROR_CODES = frozenset({
     "invalid_input", "not_found", "forbidden_level", "no_active_view", "upstream_error", "too_large",
-    "unsaved_decisions", "plan_changed", "plan_load_failed", "no_plan",
+    "unsaved_decisions", "navigation_refused", "plan_changed", "plan_load_failed", "no_plan",
 })
 
 UiRoute = Literal[
@@ -278,21 +280,25 @@ class UiTool:
 
 UI_TOOLS: tuple[UiTool, ...] = (
     UiTool("ui_navigate",
-           "Move the user's open Facet tab to another page (gallery, persons, albums, stats, ...).",
+           "Move the user's open Facet tab to another page (gallery, persons, albums, stats, ...)."
+           " Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
            UiNavigate, False),
     UiTool("ui_set_gallery_filters",
            "Change the gallery filters and sort in the user's open tab. `patch` merges into the "
-           "current filters (null removes one); `replace: true` starts from none.",
+           "current filters (null removes one); `replace: true` starts from none."
+           " Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
            UiSetGalleryFilters, False),
     UiTool("ui_get_gallery_view",
            "What the user's tab shows now: route, active filters, total matches, the first visible "
            "photo paths and the selection count.",
            UiGetGalleryView, True),
-    UiTool("ui_open_photo", "Open one photo in the user's tab (the detail view).", UiOpenPhoto, False),
+    UiTool("ui_open_photo", "Open one photo in the user's tab (the detail view)."
+           " Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.", UiOpenPhoto, False),
     UiTool("ui_show_photos",
            "Show exactly these photos, in this order, as the gallery's list (max 200). Photos the "
            "user cannot see are skipped and returned as `missing`. Any filter change by the user "
-           "or the assistant replaces the list.",
+           "or the assistant replaces the list."
+           " Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
            UiShowPhotos, False),
     UiTool("ui_select_photos",
            "Change the selection in the user's tab: explicit `paths`, or the whole filtered view "
@@ -336,6 +342,7 @@ UI_TOOLS: tuple[UiTool, ...] = (
            UiNextPage, False),
     UiTool("ui_show_culling_group",
            "Open the darkroom (/culling) and focus one group, identified by (type, group_id). "
+           "Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines. "
            "Edition accounts only.",
            UiShowCullingGroup, False),
     UiTool("ui_show_culling_plan",
@@ -345,7 +352,7 @@ UI_TOOLS: tuple[UiTool, ...] = (
            "The same `plan_digest` as the plan already shown only moves the focus. A different one replaces "
            "the plan and is refused with `unsaved_decisions` while the user holds decisions they have not "
            "confirmed; `plan_changed` means the library moved since the preview (preview again); "
-           "`plan_load_failed` means the tab could not load the plan for any other reason. "
+           "`plan_load_failed` means the tab could not load the plan for any other reason; `navigation_refused` means the tab declined to open /culling. "
            "Edition accounts only.",
            UiShowCullingPlan, False),
     UiTool("ui_suggest_culling",
@@ -370,7 +377,8 @@ UI_TOOLS: tuple[UiTool, ...] = (
            UiSuggestCulling, False),
     UiTool("ui_show_comparison",
            "Open the /compare page in the user's tab, optionally on one category and strategy. It "
-           "only opens the page: the user picks the winners, nothing is submitted for them.",
+           "only opens the page: the user picks the winners, nothing is submitted for them."
+           " Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
            UiShowComparison, False),
 )
 

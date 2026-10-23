@@ -150,9 +150,9 @@ describe('UI tool registry and handlers', () => {
       expect((await run('ui_navigate', { route: '/culling' })).ok).toBe(true);
     });
 
-    it('reports a refused navigation as forbidden_level', async () => {
+    it('reports a refused navigation as navigation_refused', async () => {
       navigate.mockResolvedValueOnce(false);
-      expect(await run('ui_navigate', { route: '/stats' })).toMatchObject({ ok: false, error: 'forbidden_level' });
+      expect(await run('ui_navigate', { route: '/stats' })).toMatchObject({ ok: false, error: 'navigation_refused' });
     });
   });
 
@@ -259,7 +259,7 @@ describe('UI tool registry and handlers', () => {
       edition = true;
       router.url = '/';
       navigate.mockResolvedValue(false);
-      await expect(direct()['ui_show_comparison']({})).rejects.toMatchObject({ code: 'forbidden_level' });
+      await expect(direct()['ui_show_comparison']({})).rejects.toMatchObject({ code: 'navigation_refused' });
     });
 
     it('needs an edition session and touches nothing without one', async () => {
@@ -471,6 +471,11 @@ describe('UI tool registry and handlers', () => {
     it('navigates to /photo?path=', async () => {
       await run('ui_open_photo', { path: '/x/y.jpg' });
       expect(navigate).toHaveBeenCalledWith(['/photo'], { queryParams: { path: '/x/y.jpg' }, onSameUrlNavigation: 'reload' });
+    });
+
+    it('reports a refused navigation as navigation_refused, not not_found', async () => {
+      navigate.mockResolvedValueOnce(false);
+      expect(await run('ui_open_photo', { path: '/x/y.jpg' })).toMatchObject({ ok: false, error: 'navigation_refused' });
     });
   });
 
@@ -1068,7 +1073,7 @@ describe('UI tool registry and handlers', () => {
 
     it('drops the pin when the tab refuses to open /culling', async () => {
       navigate.mockResolvedValue(false);
-      expect(await run('ui_show_culling_plan', { plan_digest: 'd1', request: REQUEST })).toMatchObject({ ok: false, error: 'forbidden_level' });
+      expect(await run('ui_show_culling_plan', { plan_digest: 'd1', request: REQUEST })).toMatchObject({ ok: false, error: 'navigation_refused' });
       expect(plan.pin()).toBeNull();
     });
 
@@ -1091,6 +1096,150 @@ describe('UI tool registry and handlers', () => {
         suggestions_total: 0, suggestions_accepted: 0, suggestions_open: [],
         changed: [{ type: 'burst', group_id: 5, number: 1, keep_paths: ['/b.jpg'], reject_paths: ['/a.jpg'] }],
       });
+    });
+  });
+
+  describe('leaving /culling with unsaved decisions', () => {
+    const REQUEST = { group_by: 'burst' as const, strictness: 40 };
+    const entry = (): CullPlanEntryInput => ({
+      key: '5_burst', type: 'burst', group_id: 5, number: 1, paths: ['/a.jpg', '/b.jpg'], keep_paths: ['/a.jpg'],
+    });
+    let plan: AssistantCullPlanService;
+
+    beforeEach(() => {
+      edition = true;
+      plan = TestBed.inject(AssistantCullPlanService);
+      router.url = '/culling';
+    });
+
+    const leaving: [string, () => Promise<UiToolEnvelope>][] = [
+      ['ui_navigate', () => run('ui_navigate', { route: '/stats' })],
+      ['ui_open_photo', () => run('ui_open_photo', { path: '/x/y.jpg' })],
+      ['ui_show_photos', () => run('ui_show_photos', { paths: ['/a.jpg'] })],
+      ['ui_set_gallery_filters', () => run('ui_set_gallery_filters', { patch: { min_score: 7 } })],
+    ];
+
+    for (const [name, call] of leaving) {
+      it(`${name} is refused with unsaved_decisions and never navigates`, async () => {
+        plan.registerDecisionsProbe(() => true);
+        expect(await call()).toMatchObject({ ok: false, error: 'unsaved_decisions' });
+        expect(navigate).not.toHaveBeenCalled();
+      });
+    }
+
+    it('ui_show_comparison is refused first and leaves the compare filters untouched', async () => {
+      plan.registerDecisionsProbe(() => true);
+      const filters = TestBed.inject(CompareFiltersService);
+      expect(await run('ui_show_comparison', { category: 'portrait', strategy: 'boundary' })).toMatchObject({ ok: false, error: 'unsaved_decisions' });
+      expect(navigate).not.toHaveBeenCalled();
+      expect(filters.selectedCategory()).toBe('');
+      expect(filters.strategy()).toBe('');
+      expect(filters.activeTab()).toBe(0);
+    });
+
+    it('an unconfirmed flipped plan group also blocks leaving, until it is confirmed', async () => {
+      plan.registerDecisionsProbe(() => false);
+      plan.setPin({ digest: 'd1', request: REQUEST });
+      plan.register([entry()], { total: 1, truncated: false });
+      plan.recordSelection('5_burst', ['/b.jpg']);
+      expect(await run('ui_navigate', { route: '/stats' })).toMatchObject({ ok: false, error: 'unsaved_decisions' });
+      expect(navigate).not.toHaveBeenCalled();
+      plan.recordConfirm('5_burst', ['/b.jpg']);
+      expect((await run('ui_navigate', { route: '/stats' })).ok).toBe(true);
+      expect(navigate).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not block a navigation that stays on /culling', async () => {
+      plan.registerDecisionsProbe(() => true);
+      expect((await run('ui_navigate', { route: '/culling' })).ok).toBe(true);
+      expect(navigate).toHaveBeenCalledWith(['/culling'], expect.anything());
+    });
+
+    it('does not block ui_show_culling_group', async () => {
+      plan.registerDecisionsProbe(() => true);
+      viewActions.register('ui_show_culling_group', async () => ({ shown: true }));
+      expect(await run('ui_show_culling_group', { type: 'burst', group_id: 5 })).toEqual({ ok: true, data: { shown: true } });
+    });
+
+    it('does not block ui_show_culling_plan for the held digest', async () => {
+      plan.registerDecisionsProbe(() => true);
+      viewActions.register('ui_show_culling_group', async () => ({}));
+      plan.setPin({ digest: 'd1', request: REQUEST });
+      plan.register([entry()], { total: 1, truncated: false });
+      expect(await run('ui_show_culling_plan', { plan_digest: 'd1', request: REQUEST })).toMatchObject({ ok: true });
+    });
+
+    it('navigates normally when no probe is registered', async () => {
+      expect((await run('ui_navigate', { route: '/stats' })).ok).toBe(true);
+    });
+
+    it('navigates normally when the probe reports nothing to lose', async () => {
+      plan.registerDecisionsProbe(() => false);
+      expect((await run('ui_open_photo', { path: '/x/y.jpg' })).ok).toBe(true);
+    });
+
+    it('navigates normally from another page even if a probe is still registered', async () => {
+      plan.registerDecisionsProbe(() => true);
+      router.url = '/stats';
+      expect((await run('ui_open_photo', { path: '/x/y.jpg' })).ok).toBe(true);
+    });
+  });
+
+  describe('navigation_refused', () => {
+    beforeEach(() => { edition = true; });
+
+    it('is reported when the gallery cannot be opened', async () => {
+      router.url = '/stats';
+      navigate.mockResolvedValueOnce(false);
+      expect(await run('ui_show_photos', { paths: ['/a.jpg'] })).toMatchObject({ ok: false, error: 'navigation_refused' });
+    });
+
+    it('is reported when an album page cannot be left', async () => {
+      router.url = '/album/3';
+      navigate.mockResolvedValueOnce(false);
+      expect(await run('ui_set_gallery_filters', { patch: { min_score: 7 } })).toMatchObject({ ok: false, error: 'navigation_refused' });
+    });
+
+    it('is reported by ui_show_culling_group when coming from another page', async () => {
+      router.url = '/stats';
+      navigate.mockResolvedValueOnce(false);
+      expect(await run('ui_show_culling_group', { type: 'burst', group_id: 1 })).toMatchObject({ ok: false, error: 'navigation_refused' });
+    });
+
+    it('is reported by ui_show_culling_plan from another page, and the pin is dropped', async () => {
+      const plan = TestBed.inject(AssistantCullPlanService);
+      router.url = '/stats';
+      navigate.mockResolvedValueOnce(false);
+      expect(await run('ui_show_culling_plan', { plan_digest: 'd1', request: { group_by: 'burst', strictness: 40 } }))
+        .toMatchObject({ ok: false, error: 'navigation_refused' });
+      expect(plan.pin()).toBeNull();
+    });
+
+    it('ui_show_culling_group treats a false from /culling as a same-URL skip, not a refusal', async () => {
+      router.url = '/culling';
+      navigate.mockResolvedValue(false);
+      vi.useFakeTimers();
+      try {
+        const pending = run('ui_show_culling_group', { type: 'burst', group_id: 1 });
+        await vi.advanceTimersByTimeAsync(11_000);
+        expect(await pending).toMatchObject({ ok: false, error: 'no_active_view' });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('ui_show_culling_plan treats a false from /culling as a same-URL skip: no refusal, the pin survives', async () => {
+      const plan = TestBed.inject(AssistantCullPlanService);
+      router.url = '/culling';
+      navigate.mockResolvedValue(false);
+      const setPin = plan.setPin.bind(plan);
+      vi.spyOn(plan, 'setPin').mockImplementation(pin => {
+        setPin(pin);
+        plan.register([{ key: '5_burst', type: 'burst', group_id: 5, number: 1, paths: ['/a.jpg', '/b.jpg'], keep_paths: ['/a.jpg'] }], { total: 1, truncated: false });
+      });
+      const result = await run('ui_show_culling_plan', { plan_digest: 'd1', request: { group_by: 'burst', strictness: 40 } });
+      expect(result).toMatchObject({ ok: true });
+      expect(plan.pin()?.digest).toBe('d1');
     });
   });
 

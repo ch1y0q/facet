@@ -59,7 +59,7 @@ INSTRUCTIONS = (
     "whether to open or show results, report what you found. Use show=false only for intermediate "
     "probes or counts (and for any search that feeds a write tool's expected_count); the last shown "
     "search is what the user sees, and the result's shown_in_tab says whether it was applied and why "
-    "not. Showing replaces the tab's filters and leaves /culling and /photo; on /compare it is refused "
+    "not. Showing replaces the tab's filters and leaves /culling (only when the user has no unconfirmed decisions there; otherwise it is refused, shown_in_tab.reason=unsaved_decisions) and /photo; on /compare it is refused "
     "(shown_in_tab.reason=comparison_open) and nothing changes. auto_cull's dry run is shown the same way "
     "but opens its plan on the user's /culling page instead of the gallery (never ask whether to show it): "
     "the user confirms or flips groups there, and ui_get_context `culling` reports it; pass the groups it "

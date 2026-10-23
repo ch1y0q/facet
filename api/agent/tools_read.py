@@ -72,7 +72,8 @@ SHOW_RULE = ("The result is shown automatically in the user's open Facet tab (`s
              "never ask whether to open or show it, and report `shown_in_tab` (applied, or the reason "
              "it was not). The last shown search is what the user sees; use show=false only for "
              "intermediate probes, counts, or a search that feeds `expected_count` of a write tool. "
-             "Showing replaces the tab's filters, leaves /culling and /photo, and resets a view-scope "
+             "Showing replaces the tab's filters, leaves /culling only when the user has no unconfirmed "
+             "decisions there (otherwise it is refused: reason `unsaved_decisions`) and /photo, and resets a view-scope "
              "selection; on /compare it is refused (reason `comparison_open`). A page after the first and "
              "an empty result are not shown.")
 STATS_KINDS = ("overview", "score_distribution", "top_cameras", "categories", "gear", "timeline",

@@ -448,6 +448,7 @@
   "error_codes": [
     "forbidden_level",
     "invalid_input",
+    "navigation_refused",
     "no_active_view",
     "no_plan",
     "not_found",
@@ -465,7 +466,7 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Move the user's open Facet tab to another page (gallery, persons, albums, stats, ...).",
+      "description": "Move the user's open Facet tab to another page (gallery, persons, albums, stats, ...). Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -515,7 +516,7 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Change the gallery filters and sort in the user's open tab. `patch` merges into the current filters (null removes one); `replace: true` starts from none.",
+      "description": "Change the gallery filters and sort in the user's open tab. `patch` merges into the current filters (null removes one); `replace: true` starts from none. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1476,7 +1477,7 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Open one photo in the user's tab (the detail view).",
+      "description": "Open one photo in the user's tab (the detail view). Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1501,7 +1502,7 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Show exactly these photos, in this order, as the gallery's list (max 200). Photos the user cannot see are skipped and returned as `missing`. Any filter change by the user or the assistant replaces the list.",
+      "description": "Show exactly these photos, in this order, as the gallery's list (max 200). Photos the user cannot see are skipped and returned as `missing`. Any filter change by the user or the assistant replaces the list. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1635,7 +1636,7 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Open the darkroom (/culling) and focus one group, identified by (type, group_id). Edition accounts only.",
+      "description": "Open the darkroom (/culling) and focus one group, identified by (type, group_id). Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines. Edition accounts only.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1672,7 +1673,7 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Open the darkroom (/culling) on an `auto_cull` plan: the same groups, keep/reject borders, loupe and compare as manual culling, with the plan's keepers pre-selected for the user to flip and confirm. `auto_cull` calls this for you on a dry run; call it yourself only to re-show a plan. The same `plan_digest` as the plan already shown only moves the focus. A different one replaces the plan and is refused with `unsaved_decisions` while the user holds decisions they have not confirmed; `plan_changed` means the library moved since the preview (preview again); `plan_load_failed` means the tab could not load the plan for any other reason. Edition accounts only.",
+      "description": "Open the darkroom (/culling) on an `auto_cull` plan: the same groups, keep/reject borders, loupe and compare as manual culling, with the plan's keepers pre-selected for the user to flip and confirm. `auto_cull` calls this for you on a dry run; call it yourself only to re-show a plan. The same `plan_digest` as the plan already shown only moves the focus. A different one replaces the plan and is refused with `unsaved_decisions` while the user holds decisions they have not confirmed; `plan_changed` means the library moved since the preview (preview again); `plan_load_failed` means the tab could not load the plan for any other reason; `navigation_refused` means the tab declined to open /culling. Edition accounts only.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1846,7 +1847,7 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Open the /compare page in the user's tab, optionally on one category and strategy. It only opens the page: the user picks the winners, nothing is submitted for them.",
+      "description": "Open the /compare page in the user's tab, optionally on one category and strategy. It only opens the page: the user picks the winners, nothing is submitted for them. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1871,5 +1872,5 @@
       "name": "ui_show_comparison"
     }
   ],
-  "version": "190b306ca64a5da2"
+  "version": "2bb359a8fb144bc2"
 }

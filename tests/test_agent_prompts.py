@@ -167,6 +167,13 @@ def test_the_server_instructions_name_pinned_lists_images_selection_and_availabl
         assert needle in INSTRUCTIONS, needle
 
 
+def test_the_show_prose_says_a_show_leaves_culling_only_without_unconfirmed_decisions():
+    from api.agent.server import INSTRUCTIONS
+    from api.agent.tools_read import SHOW_RULE
+    for text in (INSTRUCTIONS, SHOW_RULE):
+        assert "unsaved_decisions" in text
+
+
 class TestSweep:
     """Step 12: the prompts follow the batch's new tools and degrade with the key."""
 

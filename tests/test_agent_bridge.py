@@ -722,7 +722,7 @@ class TestUiTools:
 
     def test_tab_plan_refusals_pass_through(self, agent_app, fake_tab):
         env = agent_app("open")
-        for code in ("unsaved_decisions", "plan_changed", "plan_load_failed"):
+        for code in ("unsaved_decisions", "plan_changed", "plan_load_failed", "navigation_refused"):
             fake_tab(env, None, tab_id=f"t-{code}", reply=lambda call, code=code: {
                 "ok": False, "error": code, "message": "no"})
             result = env.call(env.token(env.login()), "ui_show_culling_plan",

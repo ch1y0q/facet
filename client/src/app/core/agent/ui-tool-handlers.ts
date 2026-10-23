@@ -121,6 +121,8 @@ function isGalleryUrl(url: string): boolean {
   return path === '/' || path === '' || path.startsWith('/album/');
 }
 
+const UNSAVED_DECISIONS_MESSAGE = 'The user has decisions on the darkroom they have not confirmed; ask them to confirm or leave them first.';
+
 function toBoolean(key: string, value: unknown): boolean {
   if (typeof value === 'boolean') return value;
   if (value === 1 || value === '1' || value === 'true') return true;
@@ -184,6 +186,13 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
     }
   };
 
+  /** Refuse a navigation that would leave /culling (to `target`) while the user holds decisions not yet confirmed. */
+  const leaveCullingGuard = (target?: string): void => {
+    if (pathOf(router.url) === '/culling' && target !== '/culling' && plan.hasUnsavedDecisions()) {
+      throw new UiToolError('unsaved_decisions', UNSAVED_DECISIONS_MESSAGE);
+    }
+  };
+
   /**
    * Bring the tab to the gallery and wait until its first load has settled, so a
    * filter patch is not overwritten by the page's own init. The signal is the
@@ -191,9 +200,10 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
    */
   const ensureGalleryView = async (): Promise<void> => {
     if (!isGalleryUrl(router.url)) {
+      leaveCullingGuard();
       const mounts = gallery.galleryMounts();
       const ok = await router.navigate(['/']);
-      if (!ok) throw new UiToolError('forbidden_level', 'The tab could not open the gallery.');
+      if (!ok) throw new UiToolError('navigation_refused', 'The tab could not open the gallery.');
       if (!await waitFor(() => gallery.galleryMounts() > mounts)) {
         throw new UiToolError('upstream_error', 'The gallery did not open.');
       }
@@ -206,7 +216,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
   const leaveAlbum = async (): Promise<void> => {
     if (!pathOf(router.url).startsWith('/album/')) return;
     const mounts = gallery.galleryMounts();
-    if (!await router.navigate(['/'])) throw new UiToolError('forbidden_level', 'The tab could not leave the album.');
+    if (!await router.navigate(['/'])) throw new UiToolError('navigation_refused', 'The tab could not leave the album.');
     if (!await waitFor(() => gallery.galleryMounts() > mounts)) throw new UiToolError('upstream_error', 'The gallery did not open.');
   };
 
@@ -330,8 +340,9 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       }
       const query = (args['query'] ?? {}) as Record<string, string | number | boolean>;
       const queryParams = Object.fromEntries(Object.entries(query).map(([k, v]) => [k, String(v)]));
+      leaveCullingGuard(route);
       const ok = await router.navigate([route], { queryParams, onSameUrlNavigation: 'reload' });
-      if (!ok) throw new UiToolError('forbidden_level', `The tab refused to open ${route}.`);
+      if (!ok) throw new UiToolError('navigation_refused', `The tab refused to open ${route}.`);
       return { route: pathOf(router.url) || '/' };
     },
 
@@ -393,8 +404,9 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
 
     ui_open_photo: async args => {
       const path = args['path'] as string;
+      leaveCullingGuard();
       const ok = await router.navigate(['/photo'], { queryParams: { path }, onSameUrlNavigation: 'reload' });
-      if (!ok) throw new UiToolError('not_found', 'The tab could not open that photo.');
+      if (!ok) throw new UiToolError('navigation_refused', 'The tab could not open that photo.');
       return { route: '/photo', path };
     },
 
@@ -505,6 +517,8 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
      */
     ui_show_comparison: async args => {
       if (!auth.isEdition()) throw new UiToolError('forbidden_level', 'The comparison page needs an edition session.');
+      // Before any compareFilters write, so a refusal leaves no side effect.
+      leaveCullingGuard();
       const category = typeof args['category'] === 'string' ? args['category'] : '';
       const strategy = typeof args['strategy'] === 'string' ? args['strategy'] : '';
       if (category) compareFilters.selectedCategory.set(category);
@@ -513,7 +527,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       // Already there: navigating to the same URL resolves false, which is not a refusal.
       if (router.url.split(/[?#]/)[0] !== '/compare') {
         const ok = await router.navigate(['/compare']);
-        if (!ok) throw new UiToolError('forbidden_level', 'The tab refused to open the comparison page.');
+        if (!ok) throw new UiToolError('navigation_refused', 'The tab refused to open the comparison page.');
       }
       return {
         route: '/compare',
@@ -527,8 +541,10 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       if (!auth.isEdition()) throw new UiToolError('forbidden_level', 'The darkroom needs an edition session.');
       const name = 'ui_show_culling_group';
       if (!viewActions.get(name)) {
+        // Already on /culling: navigating to the same URL resolves false, which is not a refusal.
+        const onCulling = pathOf(router.url) === '/culling';
         const ok = await router.navigate(['/culling']);
-        if (!ok) throw new UiToolError('forbidden_level', 'The tab refused to open the darkroom.');
+        if (!ok && !onCulling) throw new UiToolError('navigation_refused', 'The tab refused to open the darkroom.');
         await waitFor(() => viewActions.get(name) !== undefined);
       }
       const action = viewActions.get(name);
@@ -551,7 +567,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
         if (focus !== undefined) plan.setFocus(focus);
       } else {
         if (plan.hasUnsavedDecisions()) {
-          throw new UiToolError('unsaved_decisions', 'The user has decisions on the darkroom they have not confirmed; ask them to confirm or leave them first.');
+          throw new UiToolError('unsaved_decisions', UNSAVED_DECISIONS_MESSAGE);
         }
         // A different plan is a different set of photos: the assistant's marks on the old one go with it.
         plan.clearSuggestions();
@@ -559,11 +575,14 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       }
       const name = 'ui_show_culling_group';
       if (pathOf(router.url) !== '/culling' || !viewActions.get(name)) {
-        if (!await router.navigate(['/culling'])) {
+        // Already on /culling: navigating to the same URL resolves false, which is not a refusal.
+        const onCulling = pathOf(router.url) === '/culling';
+        const ok = await router.navigate(['/culling']);
+        if (!ok && !onCulling) {
           plan.clear();
-          throw new UiToolError('forbidden_level', 'The tab refused to open the darkroom.');
+          throw new UiToolError('navigation_refused', 'The tab refused to open the darkroom.');
         }
-        await waitFor(() => viewActions.get(name) !== undefined);
+        if (ok) await waitFor(() => viewActions.get(name) !== undefined);
       }
       const loaded = (): boolean => plan.pin()?.digest !== digest || plan.snapshot()?.plan_digest === digest;
       if (!await waitFor(loaded)) throw new UiToolError('upstream_error', 'The plan did not load.');
