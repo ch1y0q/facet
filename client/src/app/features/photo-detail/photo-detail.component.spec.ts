@@ -680,6 +680,20 @@ describe('PhotoDetailComponent', () => {
       expect(stored(neighbour.path).caption).toBeUndefined();
     });
 
+    it('generateCaption refetches the config when generation fails', async () => {
+      mockApi.get.mockImplementation((url: string) => {
+        if (url === '/caption') return throwError(() => new Error('503'));
+        if (url === '/config') return of({ features: { show_captions: false } });
+        return of(samplePhoto);
+      });
+      createComponent();
+      TestBed.inject(GalleryStore).config.set({ features: { show_captions: true } } as never);
+
+      await component.generateCaption(edited.path);
+
+      expect(TestBed.inject(GalleryStore).config()?.features?.show_captions).toBe(false);
+    });
+
     it('the caption edit dialog result reaches the store', async () => {
       createComponent();
       seedGrid({ caption: 'stale' });
