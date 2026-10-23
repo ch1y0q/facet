@@ -3,10 +3,13 @@ import { TestBed } from '@angular/core/testing';
 import { Subject, of, throwError } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
-import { CullingStore, CullingNotice } from './culling.store';
+import {
+  CULL_DEFAULT_STRICTNESS, CULL_PROFILE_KEY, CULL_REPLAN_DEBOUNCE_MS, CULL_STRICTNESS_KEY,
+  CullingStore, CullingNotice, readStoredStrictness, type CullProfile,
+} from './culling.store';
 import type { CullingGroup } from './burst-culling.pipes';
 import { HttpErrorResponse } from '@angular/common/http';
-import { AssistantCullPlanService } from '../../core/agent/assistant-cull-plan.service';
+import { AssistantCullPlanService, type CullPlanPin } from '../../core/agent/assistant-cull-plan.service';
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 
 function makeGroup(id: number, type: string, paths: string[], best: string): CullingGroup {
@@ -660,6 +663,79 @@ describe('CullingStore', () => {
     });
   });
 
+  describe('stored strictness', () => {
+    it('reads a stored integer in 0..100', () => {
+      localStorage.setItem(CULL_STRICTNESS_KEY, '35');
+      expect(readStoredStrictness()).toBe(35);
+      localStorage.setItem(CULL_STRICTNESS_KEY, '0');
+      expect(readStoredStrictness()).toBe(0);
+    });
+
+    it.each(['abc', '-5', '150', '3.5', '', ' 40'])('falls back to the default for %j', raw => {
+      localStorage.setItem(CULL_STRICTNESS_KEY, raw);
+      expect(readStoredStrictness()).toBe(CULL_DEFAULT_STRICTNESS);
+    });
+
+    it('falls back to the default with nothing stored or a localStorage that throws', () => {
+      expect(readStoredStrictness()).toBe(100);
+      const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
+      try {
+        expect(readStoredStrictness()).toBe(100);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it('a fresh store restores the stored value', () => {
+      localStorage.setItem(CULL_STRICTNESS_KEY, '45');
+      const fresh = TestBed.runInInjectionContext(() => new CullingStore());
+      expect(fresh.strictness()).toBe(45);
+    });
+
+    it('a stored preset loaded in manual mode keeps the stored slider value over the preset\'s own', async () => {
+      localStorage.setItem(CULL_PROFILE_KEY, 'wedding');
+      localStorage.setItem(CULL_STRICTNESS_KEY, '60');
+      const wedding: CullProfile = {
+        id: 'wedding', label_key: 'x', strictness: 35, eyes_closed_max: null, poor_expression_min: null,
+        keep_min_per_group: 1, similarity_threshold: null,
+      };
+      api.get.mockImplementation((path: string) =>
+        of(path === '/culling/profiles' ? { profiles: [wedding], default: 'general' } : GROUPS_RESPONSE));
+      const fresh = TestBed.runInInjectionContext(() => new CullingStore());
+      await fresh.loadCullProfiles();
+      expect(fresh.strictness()).toBe(60);
+      expect(localStorage.getItem(CULL_STRICTNESS_KEY)).toBe('60');
+      expect(fresh.selectedProfile()).toBe('wedding');
+    });
+
+    it('a stored preset with no stored slider value loads the preset\'s own strictness', async () => {
+      localStorage.setItem(CULL_PROFILE_KEY, 'wedding');
+      const wedding: CullProfile = {
+        id: 'wedding', label_key: 'x', strictness: 35, eyes_closed_max: null, poor_expression_min: null,
+        keep_min_per_group: 1, similarity_threshold: null,
+      };
+      api.get.mockImplementation((path: string) =>
+        of(path === '/culling/profiles' ? { profiles: [wedding], default: 'general' } : GROUPS_RESPONSE));
+      const fresh = TestBed.runInInjectionContext(() => new CullingStore());
+      await fresh.loadCullProfiles();
+      expect(fresh.strictness()).toBe(35);
+    });
+
+    it('setStrictness sets the signal and stores the value', () => {
+      store.setStrictness(65);
+      expect(store.strictness()).toBe(65);
+      expect(localStorage.getItem(CULL_STRICTNESS_KEY)).toBe('65');
+    });
+
+    it('applying a preset stores its strictness', () => {
+      store.applyProfile({
+        id: 'sports', label_key: 'x', strictness: 70, eyes_closed_max: null, poor_expression_min: null,
+        keep_min_per_group: 1, similarity_threshold: null,
+      });
+      expect(localStorage.getItem(CULL_STRICTNESS_KEY)).toBe('70');
+    });
+  });
+
   describe('plan mode', () => {
     const planGroup = (id: number, type: string, paths: string[], keep: string[], number: number) => ({
       ...makeGroup(id, type, paths, paths[0]),
@@ -793,7 +869,7 @@ describe('CullingStore', () => {
 
     it('does not re-select from strictness', async () => {
       await store.enterPlan(pin);
-      store.strictness.set(0);
+      store.setStrictness(0);
       store.reselectFromStrictness();
       expect([...store.selectionsMap().get('5_burst') ?? []]).toEqual(['/b.jpg']);
     });
@@ -873,6 +949,450 @@ describe('CullingStore', () => {
       await store.applyExternalChanges(null);
       expect(store.planActive()).toBe(true);
       expect(store.pendingReload()).toBe(true);
+    });
+    describe('adopting the plan knobs', () => {
+      const profile = (id: string, strictness: number | null, threshold: number | null): CullProfile => ({
+        id, label_key: `culling.profiles.${id}`, strictness, eyes_closed_max: null, poor_expression_min: null,
+        keep_min_per_group: 1, similarity_threshold: threshold,
+      });
+      const PROFILES = [profile('wedding', 35, 90), profile('sports', 70, 80)];
+
+      it('an explicit strictness moves and stores the slider and clears the stored preset', async () => {
+        localStorage.setItem(CULL_PROFILE_KEY, 'sports');
+        store.selectedProfile.set('sports');
+        await store.enterPlan({ digest: 'dg', request: { group_by: 'all', strictness: 35 } });
+        expect(store.strictness()).toBe(35);
+        expect(localStorage.getItem(CULL_STRICTNESS_KEY)).toBe('35');
+        expect(store.selectedProfile()).toBe('');
+        expect(localStorage.getItem(CULL_PROFILE_KEY)).toBeNull();
+      });
+
+      it('a strictness beside a preset stores both: slider on the strictness, the preset kept for its other knobs', async () => {
+        await store.enterPlan({ digest: 'dg', request: { group_by: 'all', strictness: 60, profile: 'wedding' } });
+        expect(store.strictness()).toBe(60);
+        expect(localStorage.getItem(CULL_STRICTNESS_KEY)).toBe('60');
+        expect(store.selectedProfile()).toBe('wedding');
+        expect(localStorage.getItem(CULL_PROFILE_KEY)).toBe('wedding');
+      });
+
+      it('a preset list loading later does not move the slider off the strictness the plan carries', async () => {
+        api.get.mockImplementation((path: string) => of(path === '/culling/profiles' ? { profiles: PROFILES, default: 'general' } : GROUPS_RESPONSE));
+        const both: CullPlanPin = { digest: 'dg', request: { group_by: 'all', strictness: 60, profile: 'wedding' } };
+        plan.setPin(both);
+        await store.enterPlan(both);
+        await store.loadCullProfiles();
+        expect(store.strictness()).toBe(60);
+        expect(store.selectedProfile()).toBe('wedding');
+      });
+
+      it('a preset alone moves the slider to its strictness and becomes the stored preset', async () => {
+        store.cullProfiles.set(PROFILES);
+        await store.enterPlan({ digest: 'dg', request: { group_by: 'all', profile: 'sports' } });
+        expect(store.strictness()).toBe(70);
+        expect(localStorage.getItem(CULL_STRICTNESS_KEY)).toBe('70');
+        expect(store.selectedProfile()).toBe('sports');
+        expect(localStorage.getItem(CULL_PROFILE_KEY)).toBe('sports');
+        expect(store.profileChosen()).toBe(true);
+      });
+
+      it('a preset whose list loads after the plan moves the slider without reloading the feed', async () => {
+        api.get.mockImplementation((path: string) => of(path === '/culling/profiles' ? { profiles: PROFILES, default: 'general' } : GROUPS_RESPONSE));
+        await store.enterPlan({ digest: 'dg', request: { group_by: 'all', profile: 'wedding' } });
+        expect(store.strictness()).toBe(CULL_DEFAULT_STRICTNESS);
+        await store.loadCullProfiles();
+        expect(store.planActive()).toBe(true);
+        expect(api.get).not.toHaveBeenCalledWith('/culling-groups', expect.anything());
+        expect(store.similarityThreshold()).toBe(85);
+        expect(store.strictness()).toBe(35);
+        expect(store.selectedProfile()).toBe('wedding');
+      });
+
+      it('neither strictness nor preset leaves the slider alone', async () => {
+        store.setStrictness(45);
+        await store.enterPlan({ digest: 'dg', request: { group_by: 'all' } });
+        expect(store.strictness()).toBe(45);
+      });
+
+      it('re-entering a held plan adopts too', async () => {
+        await store.enterPlan({ digest: 'dg', request: { group_by: 'all', strictness: 35 } });
+        store.setStrictness(90);
+        api.post.mockClear();
+        expect(await store.enterPlan({ digest: 'dg', request: { group_by: 'all', strictness: 35 } })).toBe('landed');
+        expect(api.post).not.toHaveBeenCalled();
+        expect(store.strictness()).toBe(35);
+      });
+
+      it('leaving the plan keeps the stored value', async () => {
+        await store.enterPlan({ digest: 'dg', request: { group_by: 'all', strictness: 35 } });
+        store.resetForReload();
+        expect(store.planActive()).toBe(false);
+        expect(store.strictness()).toBe(35);
+        expect(localStorage.getItem(CULL_STRICTNESS_KEY)).toBe('35');
+      });
+    });
+
+    describe('re-planning from the slider', () => {
+      const NEW_PLAN = planResponse([
+        planGroup(7, 'burst', ['/a.jpg', '/b.jpg'], ['/a.jpg'], 1),
+        planGroup(3, 'similar', ['/c.jpg', '/d.jpg'], ['/c.jpg'], 2),
+      ], { plan_digest: 'dg2' });
+      const planCalls = () => api.post.mock.calls.filter(c => c[0] === '/culling/plan');
+      /** What the component's onStrictnessChange does in plan mode: the stored preset stays. */
+      const move = (value: number) => {
+        store.setStrictness(value);
+        store.scheduleReplan();
+      };
+      const settle = async () => {
+        for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(0);
+      };
+      const routePlan = (...answers: unknown[]) => {
+        const queue = [...answers];
+        api.post.mockImplementation((path: string) => {
+          if (path !== '/culling/plan') return of({});
+          const next = queue.shift();
+          return next instanceof Subject ? next : of(next);
+        });
+      };
+
+      beforeEach(async () => {
+        vi.useFakeTimers();
+        await store.enterPlan(pin);
+        api.post.mockClear();
+      });
+
+      it('debounces three moves into one POST at the final value, without digest, keeping the preset and the assistant overrides', async () => {
+        const overridden: CullPlanPin = { digest: 'dg', request: { group_by: 'all', strictness: 80, profile: 'wedding', keep_paths: ['/a.jpg'] } };
+        plan.setPin(overridden);
+        routePlan(NEW_PLAN);
+        move(50);
+        await vi.advanceTimersByTimeAsync(100);
+        move(55);
+        await vi.advanceTimersByTimeAsync(100);
+        move(60);
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS - 1);
+        expect(planCalls()).toHaveLength(0);
+        await vi.advanceTimersByTimeAsync(1);
+        await settle();
+        expect(planCalls()).toHaveLength(1);
+        const body = planCalls()[0][1] as Record<string, unknown>;
+        expect(body).toEqual({ group_by: 'all', strictness: 60, profile: 'wedding', keep_paths: ['/a.jpg'] });
+        expect(body).not.toHaveProperty('expected_digest');
+        // The preset still supplies its keeper floor server-side; the explicit strictness wins over its own.
+        expect(body).toHaveProperty('profile', 'wedding');
+        expect(store.planDigest()).toBe('dg2');
+        expect(plan.pin()).toEqual({ digest: 'dg2', request: body });
+        expect(store.loading()).toBe(false);
+      });
+
+      it('drops an answer whose re-plan a newer slider move superseded before it fired', async () => {
+        const slow = new Subject<unknown>();
+        routePlan(slow, { ...NEW_PLAN, plan_digest: 'dg3' });
+        move(50);
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS);
+        await settle();
+        move(60);
+        slow.next(NEW_PLAN);
+        slow.complete();
+        await settle();
+        expect(store.planDigest()).toBe('dg');
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS);
+        await settle();
+        expect(store.planDigest()).toBe('dg3');
+        expect((planCalls()[1][1] as { strictness: number }).strictness).toBe(60);
+      });
+
+      it('ignores a slow earlier answer that lands after a later one', async () => {
+        const slow = new Subject<unknown>();
+        routePlan(slow, { ...NEW_PLAN, plan_digest: 'dg3' });
+        move(50);
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS);
+        move(60);
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS);
+        await settle();
+        expect(store.planDigest()).toBe('dg3');
+        slow.next(NEW_PLAN);
+        slow.complete();
+        await settle();
+        expect(store.planDigest()).toBe('dg3');
+        expect(plan.pin()?.digest).toBe('dg3');
+      });
+
+      it('a late failure of a superseded re-plan does not restore the slider', async () => {
+        const slow = new Subject<unknown>();
+        routePlan(slow, { ...NEW_PLAN, plan_digest: 'dg3' });
+        move(50);
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS);
+        move(60);
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS);
+        await settle();
+        slow.error(new HttpErrorResponse({ status: 500 }));
+        await settle();
+        expect(store.strictness()).toBe(60);
+        expect(localStorage.getItem(CULL_STRICTNESS_KEY)).toBe('60');
+        expect(notices).toEqual([]);
+        expect(store.planDigest()).toBe('dg3');
+      });
+
+      it('carries an open flip over to the group with the same photos, against the new keepers', async () => {
+        store.toggleSelection('/a.jpg', store.groups()[0]);
+        routePlan(NEW_PLAN);
+        move(50);
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS);
+        await settle();
+        expect([...store.selectionsMap().get('7_burst') ?? []].sort()).toEqual(['/a.jpg', '/b.jpg']);
+        expect([...store.selectionsMap().get('3_similar') ?? []]).toEqual(['/c.jpg']);
+        expect(plan.snapshot()).toEqual(expect.objectContaining({
+          plan_digest: 'dg2',
+          pending: [1],
+          changed: [{ type: 'burst', group_id: 7, number: 1, keep_paths: ['/a.jpg', '/b.jpg'], reject_paths: [] }],
+        }));
+        expect(notices).toEqual([]);
+      });
+
+      it('drops a flip whose group is gone and says how many', async () => {
+        store.toggleSelection('/a.jpg', store.groups()[0]);
+        routePlan(planResponse([planGroup(3, 'similar', ['/c.jpg', '/d.jpg'], ['/c.jpg'], 1)], { plan_digest: 'dg2' }));
+        move(50);
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS);
+        await settle();
+        expect(plan.snapshot()?.changed).toEqual([]);
+        expect(notices).toEqual([{ key: 'culling.plan.replan_flips_dropped', params: { count: 1 }, duration: 4000 }]);
+      });
+
+      it('resets the page decision sets, so a new group reusing a confirmed key renders unconfirmed', async () => {
+        store.confirmGroup(store.groups()[0]);
+        await vi.advanceTimersByTimeAsync(7000);
+        expect(store.confirmedGroups().has('5_burst')).toBe(true);
+        expect(store.hiddenGroups().has('5_burst')).toBe(true);
+        // The server leaves the confirmed photos out; similar ids are positional, so 5_burst comes back for other photos.
+        routePlan(planResponse([planGroup(5, 'burst', ['/e.jpg', '/f.jpg'], ['/e.jpg'], 1)], { plan_digest: 'dg2' }));
+        move(50);
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS);
+        await settle();
+        expect(store.groups().flatMap(g => g.photos.map(p => p.path))).toEqual(['/e.jpg', '/f.jpg']);
+        expect(store.confirmedGroups().size).toBe(0);
+        expect(store.touchedGroups().size).toBe(0);
+        expect(store.hiddenGroups().size).toBe(0);
+        expect(plan.snapshot()?.confirmed).toEqual([]);
+      });
+
+      it.each([400, 500])('a %i keeps the old plan and puts the slider and the preset back', async status => {
+        store.cullProfiles.set([{
+          id: 'sports', label_key: 'x', strictness: 70, eyes_closed_max: null, poor_expression_min: null,
+          keep_min_per_group: 1, similarity_threshold: 80,
+        }]);
+        const sportsPin: CullPlanPin = { digest: 'dg', request: { group_by: 'all', profile: 'sports' } };
+        plan.setPin(sportsPin);
+        await store.enterPlan(sportsPin);
+        expect(store.strictness()).toBe(70);
+        const before = store.groups();
+        api.post.mockImplementation((path: string) => path === '/culling/plan'
+          ? throwError(() => new HttpErrorResponse({ status })) : of({}));
+        move(30);
+        expect(localStorage.getItem(CULL_PROFILE_KEY)).toBe('sports');
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS);
+        await settle();
+        expect(store.planActive()).toBe(true);
+        expect(store.planDigest()).toBe('dg');
+        expect(store.groups()).toBe(before);
+        expect(store.strictness()).toBe(70);
+        expect(localStorage.getItem(CULL_STRICTNESS_KEY)).toBe('70');
+        expect(store.selectedProfile()).toBe('sports');
+        expect(localStorage.getItem(CULL_PROFILE_KEY)).toBe('sports');
+        expect(notices).toEqual([{ key: 'culling.error_loading', duration: 2000 }]);
+        expect(plan.loadFailure('dg')).toBeNull();
+      });
+
+      it('commits a confirm still counting down before it asks for the new plan', async () => {
+        routePlan(NEW_PLAN);
+        store.confirmGroup(store.groups()[1]);
+        move(50);
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS);
+        await settle();
+        expect(api.post.mock.calls.map(c => c[0])).toEqual(['/culling-groups/confirm', '/culling/plan']);
+        expect(api.post.mock.calls[0][1]).toEqual(expect.objectContaining({ group_id: 5, type: 'similar' }));
+      });
+
+      it('waits for a confirm commit already in flight before it asks for the new plan', async () => {
+        const commit = new Subject<unknown>();
+        api.post.mockImplementation((path: string) => (path === '/culling-groups/confirm' ? commit : of(NEW_PLAN)));
+        store.confirmGroup(store.groups()[1]);
+        await vi.advanceTimersByTimeAsync(7000);
+        move(50);
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS);
+        await settle();
+        expect(planCalls()).toHaveLength(0);
+        commit.next({});
+        commit.complete();
+        await settle();
+        expect(api.post.mock.calls.map(c => c[0])).toEqual(['/culling-groups/confirm', '/culling/plan']);
+      });
+
+      it('leaving the plan inside the debounce window cancels the re-plan', async () => {
+        routePlan(NEW_PLAN);
+        move(50);
+        store.resetForReload();
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS * 2);
+        expect(planCalls()).toHaveLength(0);
+      });
+
+      it('a new assistant pin inside the debounce window cancels the re-plan', async () => {
+        routePlan(NEW_PLAN, { ...NEW_PLAN, plan_digest: 'dgX' });
+        move(50);
+        const next: CullPlanPin = { digest: 'dgX', request: { group_by: 'all', strictness: 20 } };
+        plan.setPin(next);
+        await store.enterPlan(next);
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS * 2);
+        expect(planCalls()).toHaveLength(1);
+        expect(planCalls()[0][1]).toEqual({ group_by: 'all', strictness: 20, expected_digest: 'dgX' });
+        expect(store.strictness()).toBe(20);
+      });
+
+      it('keeps the paged depth and never cuts the new plan', async () => {
+        const many = (prefix: string, n: number) =>
+          Array.from({ length: n }, (_, i) => planGroup(i + 1, 'burst', [`/${prefix}${i}a.jpg`, `/${prefix}${i}b.jpg`], [`/${prefix}${i}a.jpg`], i + 1));
+        api.post.mockImplementation(() => of(planResponse(many('p', 65))));
+        const deep: CullPlanPin = { digest: 'dgDeep', request: { group_by: 'all', strictness: 80 } };
+        plan.setPin(deep);
+        await store.enterPlan(deep);
+        await store.loadMore();
+        await store.loadMore();
+        expect(store.groups()).toHaveLength(60);
+        routePlan(planResponse(many('q', 65), { plan_digest: 'dg2' }));
+        move(50);
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS);
+        await settle();
+        expect(store.planDigest()).toBe('dg2');
+        expect(store.groups()).toHaveLength(60);
+        expect(store.currentPage()).toBe(3);
+        expect(store.groups()[0].photos[0].path).toBe('/q0a.jpg');
+        await store.loadMore();
+        expect(store.groups()).toHaveLength(65);
+        expect(store.totalGroups()).toBe(65);
+        expect(plan.snapshot()?.groups_total).toBe(65);
+      });
+
+      it('brings a confirmed scene group back confirmed and hidden with the user keepers when it returns smaller', async () => {
+        const scenePin: CullPlanPin = { digest: 'dgS', request: { group_by: 'scene', strictness: 80 } };
+        api.post.mockImplementation((path: string) => of(path === '/culling/plan' ? planResponse([
+          planGroup(3, 'scene', ['/a.jpg', '/b.jpg', '/c.jpg'], ['/a.jpg'], 1),
+          planGroup(4, 'scene', ['/x.jpg', '/y.jpg'], ['/x.jpg'], 2),
+        ], { plan_digest: 'dgS' }) : {}));
+        plan.setPin(scenePin);
+        await store.enterPlan(scenePin);
+        store.toggleSelection('/b.jpg', store.groups()[0]);
+        store.confirmGroup(store.groups()[0]);
+        await vi.advanceTimersByTimeAsync(7000);
+        expect(plan.snapshot()?.confirmed).toEqual([1]);
+        // Scene confirms are not marked reviewed: the group comes back, renumbered, without its rejected /c.jpg.
+        routePlan(planResponse([
+          planGroup(9, 'scene', ['/x.jpg', '/y.jpg'], ['/x.jpg'], 1),
+          planGroup(8, 'scene', ['/a.jpg', '/b.jpg'], ['/a.jpg'], 2),
+        ], { plan_digest: 'dgS2' }));
+        api.post.mockClear();
+        move(50);
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS);
+        await settle();
+        await vi.advanceTimersByTimeAsync(8000);
+        expect(store.planDigest()).toBe('dgS2');
+        expect(api.post.mock.calls.map(c => c[0])).toEqual(['/culling/plan']);
+        expect([...store.selectionsMap().get('8_scene') ?? []].sort()).toEqual(['/a.jpg', '/b.jpg']);
+        expect(store.confirmedGroups()).toEqual(new Set(['8_scene']));
+        expect(store.hiddenGroups()).toEqual(new Set(['8_scene']));
+        const snap = plan.snapshot();
+        expect(snap?.confirmed).toEqual([2]);
+        expect(snap?.pending).toEqual([]);
+        expect(snap?.changed).toEqual([{ type: 'scene', group_id: 8, number: 2, keep_paths: ['/a.jpg', '/b.jpg'], reject_paths: [] }]);
+        // Carried, not re-confirmed: nothing more is journalled.
+        expect(journalRecord.mock.calls.filter(c => c[0] === 'cull_confirm')).toHaveLength(1);
+      });
+
+      it('a group that only overlaps a confirmed one is not carried as confirmed', async () => {
+        store.confirmGroup(store.groups()[0]);
+        await vi.advanceTimersByTimeAsync(7000);
+        routePlan(planResponse([planGroup(2, 'similar', ['/a.jpg', '/e.jpg'], ['/a.jpg'], 1)], { plan_digest: 'dg2' }));
+        move(50);
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS);
+        await settle();
+        expect(store.confirmedGroups().size).toBe(0);
+        expect(plan.snapshot()?.confirmed).toEqual([]);
+      });
+
+      it('pauses confirm, skip and confirm-all from the flush until the answer lands', async () => {
+        const slow = new Subject<unknown>();
+        routePlan(slow);
+        move(50);
+        expect(store.replanning()).toBe(false);
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS);
+        await settle();
+        expect(store.replanning()).toBe(true);
+        const [first, second] = store.groups();
+        expect(store.confirmGroup(first)).toBe(false);
+        store.skipGroup(second);
+        await store.confirmAllRemaining(store.groups());
+        expect(store.passingGroups().size).toBe(0);
+        expect(store.confirmedGroups().size).toBe(0);
+        expect(store.touchedGroups().size).toBe(0);
+        await vi.advanceTimersByTimeAsync(8000);
+        expect(api.post.mock.calls.map(c => c[0])).toEqual(['/culling/plan']);
+        slow.next(NEW_PLAN);
+        slow.complete();
+        await settle();
+        expect(store.replanning()).toBe(false);
+        expect(store.planDigest()).toBe('dg2');
+        expect(store.confirmGroup(store.groups()[0])).toBe(true);
+      });
+
+      it('lifts the pause when the re-plan fails or is cancelled', async () => {
+        const slow = new Subject<unknown>();
+        routePlan(slow, slow);
+        move(50);
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS);
+        await settle();
+        expect(store.replanning()).toBe(true);
+        slow.error(new HttpErrorResponse({ status: 500 }));
+        await settle();
+        expect(store.replanning()).toBe(false);
+        const pending = new Subject<unknown>();
+        routePlan(pending);
+        move(60);
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS);
+        await settle();
+        expect(store.replanning()).toBe(true);
+        store.resetForReload();
+        expect(store.replanning()).toBe(false);
+      });
+
+      it('waits for a confirm-all still committing before it asks for the new plan', async () => {
+        const commit = new Subject<unknown>();
+        api.post.mockImplementation((path: string) => (path === '/culling-groups/confirm' ? commit : of(NEW_PLAN)));
+        const all = store.confirmAllRemaining(store.groups());
+        move(50);
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS);
+        await settle();
+        expect(planCalls()).toHaveLength(0);
+        commit.next({});
+        commit.complete();
+        await all;
+        await settle();
+        expect(api.post.mock.calls.map(c => c[0])).toEqual(['/culling-groups/confirm', '/culling-groups/confirm', '/culling/plan']);
+        expect(store.planDigest()).toBe('dg2');
+      });
+
+      it('drops the answer when the assistant pinned another plan while it was in flight', async () => {
+        const slow = new Subject<unknown>();
+        routePlan(slow);
+        move(50);
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS);
+        await settle();
+        plan.setPin({ digest: 'D2', request: { group_by: 'all' } });
+        slow.next(NEW_PLAN);
+        slow.complete();
+        await settle();
+        expect(plan.pin()?.digest).toBe('D2');
+        expect(store.planDigest()).toBe('dg');
+        expect(store.groups().map(g => store.groupKey(g))).toEqual(['5_burst', '5_similar']);
+      });
     });
   });
 });

@@ -2164,7 +2164,8 @@
       "suggestion": "Vorschlag: {keep} behalten / {reject} verwerfen",
       "differs": "Weicht vom Vorschlag des Assistenten ab",
       "oversize": "Ausgelassene Gruppen (zu groß, um hier bestätigt zu werden): {count}",
-      "out_of_date": "Der Plan des Assistenten ist veraltet - bitten Sie ihn, die Vorschau erneut zu erstellen"
+      "out_of_date": "Der Plan des Assistenten ist veraltet - bitten Sie ihn, die Vorschau erneut zu erstellen",
+      "replan_flips_dropped": "{count} Ihrer Änderungen passen zu keiner Gruppe mehr und wurden verworfen."
     }
   },
   "scenes": {

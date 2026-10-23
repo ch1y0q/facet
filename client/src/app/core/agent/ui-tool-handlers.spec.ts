@@ -13,7 +13,7 @@ import { GalleryStore, PhotosResponse, ViewerConfig } from '../../features/galle
 import { makePhoto } from '../../../testing/photo.fixture';
 import { contractHandlerMismatch, WebMcpToolRegistry } from './webmcp-registry.service';
 import { routes } from '../../app.routes';
-import { CULL_DEFAULT_STRICTNESS, CULL_PROFILE_KEY } from '../../features/gallery/culling.store';
+import { CULL_DEFAULT_STRICTNESS, CULL_PROFILE_KEY, CULL_STRICTNESS_KEY } from '../../features/gallery/culling.store';
 import { DEFAULT_FILTERS } from '../../features/gallery/gallery-filters.util';
 import { applicableActions, createUiToolHandlers } from './ui-tool-handlers';
 import { CompareFiltersService } from '../../features/comparison/compare-filters.service';
@@ -649,11 +649,35 @@ describe('UI tool registry and handlers', () => {
     describe('culling_defaults', () => {
       it('reports the stored profile and the page default strictness', async () => {
         localStorage.setItem(CULL_PROFILE_KEY, 'sports');
-        expect((await context())['culling_defaults']).toEqual({ profile: 'sports', strictness: CULL_DEFAULT_STRICTNESS });
+        localStorage.setItem(CULL_STRICTNESS_KEY, '35');
+        expect((await context())['culling_defaults']).toEqual({ profile: 'sports', strictness: 35 });
+      });
+
+      it('reports a null strictness for a stored profile with no stored slider value, so the preset applies', async () => {
+        localStorage.setItem(CULL_PROFILE_KEY, 'wedding');
+        expect((await context())['culling_defaults']).toEqual({ profile: 'wedding', strictness: null });
+      });
+
+      it('reports a null strictness for a stored profile whose stored slider value is invalid', async () => {
+        localStorage.setItem(CULL_PROFILE_KEY, 'wedding');
+        localStorage.setItem(CULL_STRICTNESS_KEY, '150');
+        expect((await context())['culling_defaults']).toEqual({ profile: 'wedding', strictness: null });
       });
 
       it('reports a null profile when none is stored', async () => {
         expect((await context())['culling_defaults']).toEqual({ profile: null, strictness: 100 });
+      });
+
+      it('reports the slider\'s stored strictness, read live on every call', async () => {
+        localStorage.setItem(CULL_STRICTNESS_KEY, '35');
+        expect((await context())['culling_defaults']).toEqual({ profile: null, strictness: 35 });
+        localStorage.setItem(CULL_STRICTNESS_KEY, '70');
+        expect((await context())['culling_defaults']).toEqual({ profile: null, strictness: 70 });
+      });
+
+      it('falls back to the default for a stored value that is not 0..100', async () => {
+        localStorage.setItem(CULL_STRICTNESS_KEY, '150');
+        expect((await context())['culling_defaults']).toEqual({ profile: null, strictness: CULL_DEFAULT_STRICTNESS });
       });
     });
 

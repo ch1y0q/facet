@@ -1437,8 +1437,8 @@ export interface paths {
          * @description The assistant's auto-cull plan as culling groups, for the /culling page to show and confirm.
          *
          *     Recomputes the plan exactly as ``POST /api/culling/auto`` (dry run) would and refuses with 412 when
-         *     its digest is not ``expected_digest``: the tab shows only the plan the assistant described. Writes
-         *     nothing. Plain ``def`` so the collect/split runs in a threadpool.
+         *     its digest is not ``expected_digest`` when one is given: the tab shows only the plan the assistant
+         *     described. Without a digest nothing is checked (the page re-planning at a new strictness). Writes nothing. Plain ``def`` so the collect/split runs in a threadpool.
          */
         post: operations["culling_plan_api_culling_plan_post"];
         delete?: never;
@@ -5522,7 +5522,7 @@ export interface components {
             /** Date To */
             date_to?: string | null;
             /** Expected Digest */
-            expected_digest: string;
+            expected_digest?: string | null;
             /**
              * Group By
              * @default all

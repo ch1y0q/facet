@@ -24,6 +24,16 @@ export interface CullPlanEntryInput {
   paths: string[];
   /** The plan's keepers. */
   keep_paths: string[];
+  /** The user's keepers carried over from the plan a re-plan replaced; absent means "the plan's keepers". */
+  current_paths?: string[];
+  /** A group the user confirmed on the plan a re-plan replaced: registered as confirmed, without a new journal entry. */
+  confirmed?: boolean;
+}
+
+/** A group's photos and the keepers the user chose: an open flip or a confirmed group a re-plan carries over. */
+export interface CullPlanFlip {
+  paths: string[];
+  current: string[];
 }
 
 export interface CullPlanChangedGroup {
@@ -145,10 +155,13 @@ export class AssistantCullPlanService {
   /** The plan loaded: replace the read model with its groups. `meta.total` counts the whole plan, not only `entries`. */
   register(entries: CullPlanEntryInput[], meta: Meta): void {
     // Compared over the group's own photos only: a keeper the group does not list can never be toggled.
-    this.entries = new Map(entries.map(e => {
+    this.entries = new Map(entries.map(({ current_paths, confirmed, ...e }) => {
       const own = new Set(e.paths);
       const keep = e.keep_paths.filter(path => own.has(path));
-      return [e.key, { ...e, keep_paths: keep, status: 'open' as const, current: [...keep] }];
+      const carried = current_paths ? new Set(current_paths) : null;
+      const current = carried ? e.paths.filter(path => carried.has(path)) : [...keep];
+      const status: EntryStatus = confirmed ? 'confirmed' : 'open';
+      return [e.key, { ...e, keep_paths: keep, status, current }];
     }));
     this.meta = meta;
   }
@@ -208,6 +221,20 @@ export class AssistantCullPlanService {
   /** True when an unconfirmed group's keepers differ from the plan: re-seeding would throw that away. */
   hasUnconfirmedFlips(): boolean {
     return [...this.entries.values()].some(e => e.status === 'open' && differs(e));
+  }
+
+  /** The unconfirmed, unskipped groups whose keepers differ from the plan: what a re-plan carries over. */
+  openFlips(): CullPlanFlip[] {
+    return [...this.entries.values()]
+      .filter(e => e.status === 'open' && differs(e))
+      .map(e => ({ paths: [...e.paths], current: [...e.current] }));
+  }
+
+  /** The groups the user confirmed, with the keepers they confirmed: what a re-plan carries over when a group comes back. */
+  confirmedEntries(): CullPlanFlip[] {
+    return [...this.entries.values()]
+      .filter(e => e.status === 'confirmed')
+      .map(e => ({ paths: [...e.paths], current: [...e.current] }));
   }
 
   /** Null in manual mode or before the plan loaded. */

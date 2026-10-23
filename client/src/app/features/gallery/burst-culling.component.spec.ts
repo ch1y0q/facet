@@ -2888,6 +2888,106 @@ describe('BurstCullingComponent', () => {
       expect(el(fixture, 'cull-plan-banner')).toBeNull();
     });
 
+    it('keeps the strictness button enabled in plan mode while the threshold stays frozen', async () => {
+      plan.setPin(pin);
+      const fixture = await mount();
+      const button = (label: string) => fixture.nativeElement.querySelector(`button[aria-label="${label}"]`) as HTMLButtonElement;
+      expect(fixture.debugElement.injector.get(CullingStore).planActive()).toBe(true);
+      expect(button('culling.strictness').disabled).toBe(false);
+      expect(button('culling.threshold').disabled).toBe(true);
+    });
+
+    it('a slider move in plan mode schedules a re-plan instead of re-deriving the keepers', async () => {
+      plan.setPin(pin);
+      const fixture = await mount();
+      const cull = fixture.debugElement.injector.get(CullingStore);
+      const schedule = vi.spyOn(cull, 'scheduleReplan');
+      const reselect = vi.spyOn(cull, 'reselectFromStrictness');
+      fixture.componentInstance['onStrictnessChange'](40);
+      expect(schedule).toHaveBeenCalledTimes(1);
+      expect(reselect).not.toHaveBeenCalled();
+      expect(cull.strictness()).toBe(40);
+      expect(localStorage.getItem('facet_culling_strictness')).toBe('40');
+    });
+
+    it('a slider move in manual mode re-derives the keepers, schedules nothing and drops the stored preset', async () => {
+      const fixture = await mount();
+      const cull = fixture.debugElement.injector.get(CullingStore);
+      cull.selectedProfile.set('wedding');
+      localStorage.setItem('facet_culling_profile', 'wedding');
+      const schedule = vi.spyOn(cull, 'scheduleReplan');
+      const reselect = vi.spyOn(cull, 'reselectFromStrictness');
+      fixture.componentInstance['onStrictnessChange'](40);
+      expect(reselect).toHaveBeenCalledTimes(1);
+      expect(schedule).not.toHaveBeenCalled();
+      expect(cull.selectedProfile()).toBe('');
+      expect(localStorage.getItem('facet_culling_profile')).toBeNull();
+    });
+
+    it('a slider move in plan mode keeps the stored preset the plan carries', async () => {
+      plan.setPin(pin);
+      const fixture = await mount();
+      const cull = fixture.debugElement.injector.get(CullingStore);
+      expect(cull.planActive()).toBe(true);
+      cull.selectedProfile.set('wedding');
+      localStorage.setItem('facet_culling_profile', 'wedding');
+      fixture.componentInstance['onStrictnessChange'](40);
+      expect(cull.selectedProfile()).toBe('wedding');
+      expect(localStorage.getItem('facet_culling_profile')).toBe('wedding');
+    });
+
+    it('disables confirm, skip and confirm-all while a re-plan is in flight', async () => {
+      plan.setPin(pin);
+      const fixture = await mount();
+      const cull = fixture.debugElement.injector.get(CullingStore);
+      const pending = new Subject<unknown>();
+      mockApi.post.mockImplementation((path: string) => (path === '/culling/plan' ? pending : of({})));
+      const buttons = () => {
+        const all = [...fixture.nativeElement.querySelectorAll('button')] as HTMLButtonElement[];
+        return {
+          confirm: all.filter(b => b.getAttribute('aria-label') === 'culling.confirm'),
+          skip: all.filter(b => b.getAttribute('aria-label') === 'culling.skip'),
+          confirmAll: all.filter(b => b.textContent?.includes('culling.confirm_all')),
+        };
+      };
+      const disabled = () => Object.values(buttons()).flat().map(b => b.disabled);
+      expect(buttons().confirm.length).toBeGreaterThan(0);
+      expect(buttons().skip.length).toBeGreaterThan(0);
+      expect(buttons().confirmAll.length).toBeGreaterThan(0);
+      expect(disabled().every(d => !d)).toBe(true);
+      void cull.replan();
+      await fixture.whenStable();
+      expect(cull.replanning()).toBe(true);
+      fixture.detectChanges();
+      expect(disabled().every(d => d)).toBe(true);
+      pending.next(planOf(response.groups, { plan_digest: 'dg2' }));
+      pending.complete();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(cull.replanning()).toBe(false);
+      expect(disabled().every(d => !d)).toBe(true);
+    });
+
+    it('the pin swap a re-plan makes does not re-enter the plan', async () => {
+      plan.setPin(pin);
+      const fixture = await mount();
+      const cull = fixture.debugElement.injector.get(CullingStore);
+      const enter = vi.spyOn(cull, 'enterPlan');
+      const planPosts = () => mockApi.post.mock.calls.filter(c => c[0] === '/culling/plan');
+      const before = planPosts().length;
+      response = planOf(response.groups, { plan_digest: 'dg2' });
+      cull.setStrictness(40);
+      await cull.replan();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      TestBed.tick();
+      expect(plan.pin()?.digest).toBe('dg2');
+      expect(cull.planDigest()).toBe('dg2');
+      expect(enter).not.toHaveBeenCalled();
+      expect(planPosts()).toHaveLength(before + 1);
+      expect(planPosts().at(-1)?.[1]).toEqual({ group_by: 'all', strictness: 40 });
+    });
+
     it('showGroupForAgent still pages plan groups in', async () => {
       response = planOf(Array.from({ length: 25 }, (_, i) => planGroup(i + 1, 'burst', [`/p${i}a.jpg`, `/p${i}b.jpg`], [`/p${i}a.jpg`], i + 1)));
       plan.setPin(pin);

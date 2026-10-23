@@ -2164,7 +2164,8 @@
       "suggestion": "建议：保留 {keep} / 剔除 {reject}",
       "differs": "与助手的建议不同",
       "oversize": "已略过的分组（过大，无法在此确认）：{count}",
-      "out_of_date": "助手的方案已过期 - 请让它重新预览"
+      "out_of_date": "助手的方案已过期 - 请让它重新预览",
+      "replan_flips_dropped": "你的 {count} 项更改已不再对应任何分组，已被舍弃。"
     }
   },
   "scenes": {

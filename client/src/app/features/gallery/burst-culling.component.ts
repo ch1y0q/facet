@@ -367,7 +367,7 @@ interface ShortcutRow {
                 }
               </mat-menu>
             }
-            <button mat-icon-button [matMenuTriggerFor]="strictnessMenu" [disabled]="cull.planActive()"
+            <button mat-icon-button [matMenuTriggerFor]="strictnessMenu"
                     [matTooltip]="(I18N.culling.strictness_tooltip | translate) + ' · ' + cull.strictness() + '%'"
                     [attr.aria-label]="I18N.culling.strictness | translate">
               <mat-icon>tune</mat-icon>
@@ -413,7 +413,7 @@ interface ShortcutRow {
             </button>
           }
           @if (unconfirmedCount() > 0) {
-            <button mat-flat-button (click)="confirmAllRemaining()" [disabled]="cull.confirming()" class="!hidden lg:!inline-flex !rounded-md shrink-0">
+            <button mat-flat-button (click)="confirmAllRemaining()" [disabled]="cull.confirming() || cull.replanning()" class="!hidden lg:!inline-flex !rounded-md shrink-0">
               <mat-icon>done_all</mat-icon>
               {{ I18N.culling.confirm_all | translate }} ({{ unconfirmedCount() }})
             </button>
@@ -764,12 +764,12 @@ interface ShortcutRow {
                             [attr.aria-label]="I18N.culling.darkroom | translate">
                       <mat-icon>fullscreen</mat-icon>
                     </button>
-                    <button mat-icon-button (click)="cull.skipGroup(group)"
+                    <button mat-icon-button (click)="cull.skipGroup(group)" [disabled]="cull.replanning()"
                             [matTooltip]="I18N.culling.skip_tooltip | translate"
                             [attr.aria-label]="I18N.culling.skip | translate">
                       <mat-icon>skip_next</mat-icon>
                     </button>
-                    <button mat-icon-button (click)="cull.confirmGroup(group)" [disabled]="cull.confirming()"
+                    <button mat-icon-button (click)="cull.confirmGroup(group)" [disabled]="cull.confirming() || cull.replanning()"
                             [matTooltip]="I18N.culling.confirm_tooltip | translate"
                             [attr.aria-label]="I18N.culling.confirm | translate">
                       <mat-icon>check_circle</mat-icon>
@@ -797,7 +797,7 @@ interface ShortcutRow {
            its height (max-lg:mb-16) to avoid stacking under the fixed icon bar. -->
       @if (unconfirmedCount() > 0) {
         <div class="lg:!hidden shrink-0 flex justify-center py-1.5 max-lg:mb-14 border-t border-[var(--mat-sys-outline-variant)] bg-[var(--mat-sys-surface)]">
-          <button mat-flat-button (click)="confirmAllRemaining()" [disabled]="cull.confirming()" class="!px-6 !rounded-md !h-9">
+          <button mat-flat-button (click)="confirmAllRemaining()" [disabled]="cull.confirming() || cull.replanning()" class="!px-6 !rounded-md !h-9">
             <mat-icon>done_all</mat-icon>
             {{ I18N.culling.confirm_all | translate }} ({{ unconfirmedCount() }})
           </button>
@@ -2265,11 +2265,17 @@ export class BurstCullingComponent implements OnDestroy {
     this.cull.resetForReload();
   }
 
+  /** Stores the value; in plan mode the plan is recomputed once the slider settles, else the preset label goes and the keepers are re-derived. */
   protected onStrictnessChange(value: number): void {
-    this.cull.strictness.set(value);
+    this.cull.setStrictness(value);
     this.cull.profileChosen.set(true);
-    this.cull.clearProfileSelection();
-    this.cull.reselectFromStrictness();
+    if (this.cull.planActive()) {
+      // The plan keeps its preset: the strictness overrides the preset's own, the preset's other knobs stay.
+      this.cull.scheduleReplan();
+    } else {
+      this.cull.clearProfileSelection();
+      this.cull.reselectFromStrictness();
+    }
   }
 
   // --- Genre culling profiles and auto-cull: the state and requests live in CullingStore ---

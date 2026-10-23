@@ -2164,7 +2164,8 @@
       "suggestion": "suggerito: tenere {keep} / scartare {reject}",
       "differs": "Diverso dal suggerimento dell'assistente",
       "oversize": "Gruppi esclusi (troppo grandi per essere confermati qui): {count}",
-      "out_of_date": "Il piano dell'assistente è obsoleto - chiedigli di generare di nuovo l'anteprima"
+      "out_of_date": "Il piano dell'assistente è obsoleto - chiedigli di generare di nuovo l'anteprima",
+      "replan_flips_dropped": "{count} delle tue modifiche non corrispondono più a nessun gruppo e sono state scartate."
     }
   },
   "scenes": {

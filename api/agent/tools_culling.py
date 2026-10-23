@@ -78,6 +78,8 @@ class _Preview:
     digest: str
     expires: float
     knobs: Optional[dict] = None
+    tab_pin: Optional[str] = None
+    tab_id: Optional[str] = None
 
 
 _previews: dict[tuple, _Preview] = {}
@@ -352,7 +354,7 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
             if dry_run and plan_digest:
                 page_call["expected_digest"] = plan_digest
             if memory is not None:
-                return await apply_preview(grant, memory, options, confirm, timeout)
+                return await apply_preview(grant, memory, options, confirm, timeout, resolved, settings, tab_id)
             preview = await client.call(grant, "culling.auto", json=page_call, timeout=timeout)
             if not preview["ok"] and PLAN_CHANGED in preview.get("message", ""):
                 return err("confirmation_required",
@@ -360,16 +362,21 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
                            "preview from cursor 0 (without plan_digest) and use its new `confirm`")
             if not preview["ok"] or dry_run:
                 result = _preview_result(grant, preview, settings, cursor)
-                if result["ok"]:
-                    digest = (result.get("data") or {}).get("plan_digest")
-                    if digest and result.get("confirm"):
-                        _remember((owner, result["confirm"]),
-                                  _Preview(digest, limits.now() + nonce.TTL_SECONDS, knobs))
                 if knobs and result["ok"]:
                     result["data"]["knobs_from_tab"] = knobs
                 if show and dry_run and result["ok"]:
                     result["shown_in_tab"] = await _show_plan(
                         result["data"], options, cursor, resolved, settings, tab_id, timeout)
+                if result["ok"]:
+                    digest = (result.get("data") or {}).get("plan_digest")
+                    if digest and result.get("confirm"):
+                        if (result.get("shown_in_tab") or {}).get("applied"):
+                            pin = digest
+                        else:
+                            pin = await _tab_plan_digest(resolved, settings, tab_id, timeout)
+                        shown_tab = (result.get("shown_in_tab") or {}).get("tab_id") or tab_id
+                        _remember((owner, result["confirm"]),
+                                  _Preview(digest, limits.now() + nonce.TTL_SECONDS, knobs, pin, shown_tab))
                 return result
             digest = (preview["data"] or {}).get("plan_digest")
             if not digest or not _left_to_reject(preview["data"] or {}) \
@@ -380,8 +387,20 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
             return await send_apply(grant, options, digest, timeout)
         return await run_tool(ctx, "auto_cull", handler, write=not dry_run)
 
+    async def _tab_plan_digest(resolved, settings, tab_id: Optional[str], timeout: float) -> Optional[str]:
+        """The digest of the plan the tab's /culling page has pinned now; None with no tab, no plan or a failed read."""
+        context = await relay.call_tab(registry, resolved, settings, "ui_get_context", {}, tab_id, timeout=timeout)
+        culling = (context.get("data") or {}).get("culling") if context.get("ok") else None
+        digest = culling.get("plan_digest") if isinstance(culling, dict) else None
+        return digest if isinstance(digest, str) and digest else None
+
     async def _tab_knobs(grant, resolved, settings, tab_id: Optional[str], timeout: float) -> Optional[dict]:
-        """The knobs the tab's /culling page would start at (its stored profile, else its default strictness).
+        """The knobs the tab's /culling page would start at: the slider's stored strictness and the stored profile.
+
+        Both when the tab reports both (the page keeps a profile while the slider moves in plan mode and
+        re-plans with both; the route lets the explicit strictness win and the profile supply its other
+        settings, such as ``keep_min_per_group``); otherwise whichever one is usable. The slider's value is
+        stored on every change and is the live one; showing a plan moves it to the plan's strictness.
 
         None on any failure or an unusable answer: the server default then applies.
         """
@@ -389,16 +408,17 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
         defaults = (context.get("data") or {}).get("culling_defaults") if context.get("ok") else None
         if not isinstance(defaults, dict):
             return None
+        knobs: dict = {}
         stored = defaults.get("profile")
         if isinstance(stored, str) and stored:
             known = await client.call(grant, "culling.profiles", timeout=timeout)
             ids = {row.get("id") for row in ((known.get("data") or {}).get("profiles") or [])} if known["ok"] else set()
             if stored in ids:
-                return {"profile": stored}
+                knobs["profile"] = stored
         strictness = defaults.get("strictness")
         if isinstance(strictness, int) and not isinstance(strictness, bool) and 0 <= strictness <= 100:
-            return {"strictness": strictness}
-        return None
+            knobs["strictness"] = strictness
+        return knobs or None
 
     async def send_apply(grant, options: dict, digest: str, timeout: float) -> dict:
         applied = await client.call(
@@ -411,12 +431,23 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
         body = applied["data"] or {}
         return ok({key: body.get(key) for key in APPLY_KEYS if key in body})
 
-    async def apply_preview(grant, memory: _Preview, options: dict, confirm: Optional[str], timeout: float) -> dict:
+    async def apply_preview(grant, memory: _Preview, options: dict, confirm: Optional[str], timeout: float,
+                            resolved, settings, tab_id: Optional[str]) -> dict:
         """Apply the plan the user was shown: the ORIGINAL preview's digest.
 
         No dry run is re-run (it would hand the route a new digest and, for a plan the user's own edit
         moved, a nonce that cannot match); the route compares the plan with its preview-time snapshot.
+        When the preview recorded the plan pinned on the user's /culling page, the tab the preview targeted
+        (else the apply's own ``tab_id``) is read once: a pin
+        that now differs means the page re-planned or replaced it, and the apply is refused. No tab or no
+        plan on screen is not checked.
         """
+        if memory.tab_pin:
+            now = await _tab_plan_digest(resolved, settings, memory.tab_id or tab_id, timeout)
+            if now and now != memory.tab_pin:
+                return err("confirmation_required",
+                           "the plan on the user's /culling page changed since your preview: it was re-planned "
+                           "or replaced. Read ui_get_context and preview again")
         if not nonce.check(grant.nonce_owner, "auto_cull", memory.digest, confirm):
             return err("confirmation_required",
                        "Preview with dry_run=true first and pass its `confirm` value, with the "
@@ -526,8 +557,11 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
         "keeper head is trained.")
     add(auto_cull, "auto_cull",
         "Auto-cull a scope under a keeper budget. With neither `strictness` nor `profile` and a Facet tab "
-        "open, the plan uses that tab's /culling defaults (its stored profile, else strictness 100), "
-        "reported as `knobs_from_tab`; with no tab the server default (50) applies. "
+        "open, the plan uses that tab's /culling defaults (the slider's stored strictness, 100 when never "
+        "moved, plus the stored profile when set, which supplies its other settings such as the minimum keepers per group), reported as `knobs_from_tab`; with no tab the server default (50) "
+        "applies. Showing a plan moves the slider to the plan's strictness. The apply reads the tab once: it is "
+        "refused (confirmation_required) when the plan pinned on the /culling page is no longer the one the "
+        "preview was shown as or against (the user re-planned with the slider), so preview again. "
         "dry_run=true (default) only previews the split "
         "and returns a `confirm` value; show the user the counts, then call again with "
         "dry_run=false and that `confirm` to reject the planned frames. The apply leaves out the photos "

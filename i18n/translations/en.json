@@ -2164,7 +2164,8 @@
       "suggestion": "suggested keep {keep} / reject {reject}",
       "differs": "Differs from the assistant's suggestion",
       "oversize": "Groups left out (too large to confirm here): {count}",
-      "out_of_date": "The assistant's plan is out of date - ask it to preview again"
+      "out_of_date": "The assistant's plan is out of date - ask it to preview again",
+      "replan_flips_dropped": "{count} of your changes no longer match a group and were dropped."
     }
   },
   "scenes": {

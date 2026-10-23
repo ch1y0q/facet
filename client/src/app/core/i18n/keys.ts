@@ -2179,6 +2179,7 @@ export const I18N = {
       differs: "culling.plan.differs",
       oversize: "culling.plan.oversize",
       out_of_date: "culling.plan.out_of_date",
+      replan_flips_dropped: "culling.plan.replan_flips_dropped",
     },
   },
   scenes: {

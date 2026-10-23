@@ -142,7 +142,7 @@ class AutoCullBody(CullPlanRequest):
 
 
 class CullingPlanBody(CullPlanRequest):
-    expected_digest: str
+    expected_digest: Optional[str] = None
 
 
 # --- Helpers ---
@@ -3030,8 +3030,8 @@ def culling_plan(
     """The assistant's auto-cull plan as culling groups, for the /culling page to show and confirm.
 
     Recomputes the plan exactly as ``POST /api/culling/auto`` (dry run) would and refuses with 412 when
-    its digest is not ``expected_digest``: the tab shows only the plan the assistant described. Writes
-    nothing. Plain ``def`` so the collect/split runs in a threadpool.
+    its digest is not ``expected_digest`` when one is given: the tab shows only the plan the assistant
+    described. Without a digest nothing is checked (the page re-planning at a new strictness). Writes nothing. Plain ``def`` so the collect/split runs in a threadpool.
     """
     strictness, min_keep = _resolve_auto_cull_knobs(body)
     date_from, date_to = window_or_400(body.date_from, body.date_to)

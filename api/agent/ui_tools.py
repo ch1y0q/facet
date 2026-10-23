@@ -284,8 +284,11 @@ UI_TOOLS: tuple[UiTool, ...] = (
            "(rating, reject, favorite, cull_confirm, cull_skip, tags, album, navigation; at most 50 items "
            "of 20 paths); "
            "pass the answer's `until` as the next `activity_since`. `culling_defaults` "
-           "({profile, strictness}) is what the /culling page starts at: the profile the user stored "
-           "(null if none) and the default strictness; `auto_cull` plans with it when given neither.",
+           "({profile, strictness}) is the /culling page's current setting: the profile the user stored "
+           "(null if none) and the slider's live, stored strictness; `auto_cull` plans with both (the strictness wins, the profile supplies its other "
+           "settings) when given neither knob. Showing a plan moves the slider to the plan's strictness; moving the slider while a plan "
+           "is shown re-plans it, so `culling.plan_digest` changes (read `ui_get_context` again before the "
+           "next dry run).",
            UiGetContext, True),
     UiTool("ui_next_page", "Load the next page of the gallery in the user's tab (infinite scroll).",
            UiNextPage, False),

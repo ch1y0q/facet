@@ -2164,7 +2164,8 @@
       "suggestion": "sugerido: conservar {keep} / descartar {reject}",
       "differs": "Difiere de la sugerencia del asistente",
       "oversize": "Grupos omitidos (demasiado grandes para confirmarlos aquí): {count}",
-      "out_of_date": "El plan del asistente está desactualizado - pídele que genere la vista previa de nuevo"
+      "out_of_date": "El plan del asistente está desactualizado - pídele que genere la vista previa de nuevo",
+      "replan_flips_dropped": "{count} de tus cambios ya no corresponden a ningún grupo y se han descartado."
     }
   },
   "scenes": {

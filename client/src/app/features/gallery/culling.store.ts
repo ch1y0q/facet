@@ -7,7 +7,9 @@ import { Album, AlbumService } from '../../core/services/album.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { I18N } from '../../core/i18n/keys';
 import { CULLING_GROUP_TYPES, cullingGroupKey, type CullingGroup } from './burst-culling.pipes';
-import { AssistantCullPlanService, type CullPlanPin } from '../../core/agent/assistant-cull-plan.service';
+import {
+  AssistantCullPlanService, type CullPlanFlip, type CullPlanPin, type CullPlanRequest,
+} from '../../core/agent/assistant-cull-plan.service';
 import type { components } from '../../core/api/schema';
 import type { Photo } from '../../shared/models/photo.model';
 
@@ -49,8 +51,12 @@ export const CULL_GROUP_BY_KEY = 'facet_culling_group_by';
 export const CULL_SORT_KEY = 'facet_culling_sort';
 export const CULL_SORT_DIR_KEY = 'facet_culling_sort_direction';
 export const CULL_PROFILE_KEY = 'facet_culling_profile';
-/** The auto-keep strictness the page starts at; the assistant's `auto_cull` plans with it when the user stored no profile. */
+/** The slider's strictness, stored on every change so a reload restores it and `ui_get_context` reports it live. */
+export const CULL_STRICTNESS_KEY = 'facet_culling_strictness';
+/** The auto-keep strictness the page starts at when none is stored; the assistant's `auto_cull` plans with the stored one when the user stored no profile. */
 export const CULL_DEFAULT_STRICTNESS = 100;
+/** How long the slider must settle in plan mode before the plan is recomputed: a drag fires `valueChange` per step. */
+export const CULL_REPLAN_DEBOUNCE_MS = 400;
 
 export const GROUP_BY_VALUES = ['all', ...CULLING_GROUP_TYPES] as const;
 export type GroupBy = typeof GROUP_BY_VALUES[number];
@@ -64,6 +70,24 @@ export function readStoredGroupBy(): GroupBy {
 export function readStoredSort(): string {
   const v = localStorage.getItem(CULL_SORT_KEY);
   return v && SORT_VALUES.includes(v) ? v : 'easiest';
+}
+
+/** The stored strictness when it is an integer in 0..100, else null; a blocked localStorage reads as nothing stored. */
+export function readStoredStrictnessOrNull(): number | null {
+  let raw: string | null;
+  try {
+    raw = localStorage.getItem(CULL_STRICTNESS_KEY);
+  } catch {
+    return null;
+  }
+  if (raw === null || !/^\d{1,3}$/.test(raw)) return null;
+  const value = Number(raw);
+  return value <= 100 ? value : null;
+}
+
+/** The stored strictness when it is an integer in 0..100, else the default. */
+export function readStoredStrictness(): number {
+  return readStoredStrictnessOrNull() ?? CULL_DEFAULT_STRICTNESS;
 }
 
 /** Stored sort direction. '' means "whatever the active mode naturally does". */
@@ -181,9 +205,11 @@ export class CullingStore {
   constructor() {
     // Lets `ui_show_culling_plan` refuse to replace what this visit's user has decided but not committed.
     // In plan mode the committed groups are the assistant's to re-plan, so only a commit in flight counts.
-    inject(DestroyRef).onDestroy(this.plan.registerDecisionsProbe(() => this.planActive()
+    const destroyRef = inject(DestroyRef);
+    destroyRef.onDestroy(this.plan.registerDecisionsProbe(() => this.planActive()
       ? this.passingGroups().size > 0 || this.confirming()
       : this.hasUserDecisions()));
+    destroyRef.onDestroy(() => this.cancelReplan());
   }
 
   /** True while the darkroom shows the assistant's plan instead of the feed. */
@@ -194,6 +220,20 @@ export class CullingStore {
   readonly planOversize = signal(0);
   /** The whole plan as loaded; `groups` shows a growing prefix of it. */
   private planAll: CullingGroup[] = [];
+  /** The pending slider re-plan (`scheduleReplan`), null when none is waiting. */
+  private replanTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Bumped by every re-plan, by a newer slider move and by leaving or replacing the plan: a re-plan whose ticket moved drops its answer. */
+  private replanSeq = 0;
+  /** The slider and preset the plan on screen was computed with: what a failed re-plan puts back. */
+  private previousPlanStrictness = CULL_DEFAULT_STRICTNESS;
+  private previousPlanProfile = '';
+  /** The shown plan was computed with an explicit strictness: a preset loading later must not move the slider off it. */
+  private planHasStrictness = false;
+  /** True from a re-plan's flush until its answer lands or fails: confirm, skip and "confirm all" are paused. */
+  private readonly replanningState = signal(false);
+  readonly replanning = this.replanningState.asReadonly();
+  /** Confirm commits (and "confirm all" runs) on their way to the server; a re-plan waits for them so the new plan already leaves those groups out. */
+  private readonly inFlightCommits = new Set<Promise<void>>();
 
   /**
    * An assistant write the loaded feed cannot absorb (a filter-scoped write, a cull move) landed while
@@ -233,8 +273,9 @@ export class CullingStore {
   readonly comparisonStats = signal<ComparisonStats | null>(null);
 
   readonly similarityThreshold = signal(85);
-  /** Auto-keep strictness (0-100): higher keeps fewer photos below the best. */
-  readonly strictness = signal(CULL_DEFAULT_STRICTNESS);
+  private readonly strictnessState = signal(readStoredStrictness());
+  /** Auto-keep strictness (0-100): higher keeps fewer photos below the best. Written only through `setStrictness`. */
+  readonly strictness = this.strictnessState.asReadonly();
   readonly excludeRejected = signal(true);
   /** Server-side ordering of culling groups. */
   readonly sortMode = signal(readStoredSort());
@@ -303,7 +344,7 @@ export class CullingStore {
     () => new Set([...this.pendingCorrectionKeys(), ...this.droppedApplied()]).size);
 
   /** Active timers for passing groups (for cleanup) */
-  private readonly passTimers = new Map<string, { timeoutId: ReturnType<typeof setTimeout>; intervalId: ReturnType<typeof setInterval>; onElapsed: () => void; commit: boolean }>();
+  private readonly passTimers = new Map<string, { timeoutId: ReturnType<typeof setTimeout>; intervalId: ReturnType<typeof setInterval>; onElapsed: () => Promise<void> | void; commit: boolean }>();
 
   /** Active preset id ('' = custom / none). Persisted; re-applied on open. */
   readonly selectedProfile = signal<string>(localStorage.getItem(CULL_PROFILE_KEY) ?? '');
@@ -480,6 +521,8 @@ export class CullingStore {
    * assistant previewed: the pin is dropped, the user is told, and the manual feed loads instead.
    */
   async enterPlan(pin: CullPlanPin): Promise<CullPlanLoadOutcome> {
+    // A new pin supersedes a re-plan the slider queued (or started) for the previous one.
+    this.cancelReplan();
     this.resetFeed();
     this.clearAllPassTimers();
     const gen = this.loadGenerationId;
@@ -493,6 +536,8 @@ export class CullingStore {
     this.scopeTo.set(to ?? null);
     this.scopeScene.set(null);
     this.groupBy.set(groupBy ?? 'all');
+    // Before the held-plan shortcut, so a re-mount puts the slider back on the plan's value too.
+    this.adoptPlanKnobs(pin.request);
     const held = this.plan.heldPlan<CullingPlanResponse>(pin.digest);
     if (held) {
       this.showPlan(held.data, held.state);
@@ -523,8 +568,42 @@ export class CullingStore {
    * Show a loaded plan as the feed. `state` is what the user left of an earlier visit (a re-mount): the
    * confirmed and skipped groups stay hidden, the confirmed ones count in the banner, and a flipped group
    * keeps its keepers. A fresh load passes null and registers the plan with the read model.
+   *
+   * `flips` are the user's open flips carried over from the plan a re-plan replaces. Group ids are not
+   * stable across plans, so a flip is matched to a group by its photo set; it seeds that group's
+   * selection and its read-model `current`. Returns how many flips matched no group (they are dropped).
+   *
+   * `confirmed` are the groups the user confirmed on that plan. A burst or similar group leaves the
+   * re-plan (the server marks it reviewed); a scene group can come back, smaller when its rejected frames
+   * drop out. A group whose photos all belong to one confirmed group is that group again: it comes back
+   * confirmed and hidden with the user's keepers, as a confirm would leave it, and is not re-posted.
    */
-  private showPlan(data: CullingPlanResponse, state: Map<string, { status: string; current: string[] }> | null): void {
+  private showPlan(
+    data: CullingPlanResponse,
+    state: Map<string, { status: string; current: string[] }> | null,
+    flips: CullPlanFlip[] = [],
+    confirmed: CullPlanFlip[] = [],
+  ): number {
+    const flipsByPaths = new Map(flips.map(flip => [pathSetKey(flip.paths), flip]));
+    const confirmedByPath = new Map(confirmed.flatMap(entry => entry.paths.map(path => [path, entry] as const)));
+    const carried = new Map<string, string[]>();
+    const carriedConfirmed = new Set<string>();
+    const matched = new Set<CullPlanFlip>();
+    for (const g of data.groups) {
+      const paths = g.photos.map(p => p.path);
+      const key = this.groupKey(g);
+      const owner = paths.length > 0 ? confirmedByPath.get(paths[0]) : undefined;
+      if (owner && paths.every(path => confirmedByPath.get(path) === owner)) {
+        const own = new Set(paths);
+        carried.set(key, owner.current.filter(path => own.has(path)));
+        carriedConfirmed.add(key);
+        continue;
+      }
+      const flip = flipsByPaths.get(pathSetKey(paths));
+      if (!flip) continue;
+      carried.set(key, flip.current);
+      matched.add(flip);
+    }
     this.planAll = data.groups;
     this.groups.set(data.groups.slice(0, CULL_PAGE_SIZE));
     this.totalGroups.set(data.total_groups);
@@ -533,7 +612,7 @@ export class CullingStore {
     this.planOversize.set(data.oversize_groups);
     this.selectionsMap.set(new Map(data.groups.map(g => {
       const key = this.groupKey(g);
-      const current = state?.get(key)?.current;
+      const current = state?.get(key)?.current ?? carried.get(key);
       return [key, new Set(current ?? g.plan?.keep_paths ?? [])];
     })));
     if (state) {
@@ -551,15 +630,144 @@ export class CullingStore {
           number: g.plan?.number ?? 0,
           paths: g.photos.map(p => p.path),
           keep_paths: g.plan?.keep_paths ?? [],
+          ...(carried.has(this.groupKey(g)) ? { current_paths: carried.get(this.groupKey(g)) } : {}),
+          ...(carriedConfirmed.has(this.groupKey(g)) ? { confirmed: true } : {}),
         })),
         { total: data.total_groups, truncated: data.truncated },
       );
+      if (carriedConfirmed.size > 0) {
+        this.confirmedGroups.update(s => new Set([...s, ...carriedConfirmed]));
+        this.hiddenGroups.update(s => new Set([...s, ...carriedConfirmed]));
+        this.touchedGroups.update(s => new Set([...s, ...carriedConfirmed]));
+      }
     }
     this.loading.set(false);
+    return flipsByPaths.size - matched.size;
+  }
+
+  /**
+   * Put the slider (and the stored preset) on the knobs a shown plan was computed with. Signals and
+   * localStorage only: going through `applyProfile` would reload the feed, ending the plan, whenever the
+   * preset's similarity threshold differs. Never re-plans.
+   */
+  private adoptPlanKnobs(request: CullPlanRequest): void {
+    // Both are stored when both were given: strictness beats the preset's own server-side, while the preset
+    // still supplies its other knobs (the keeper floor), and a later no-knob `auto_cull` uses the pair.
+    if (request.profile) {
+      this.selectedProfile.set(request.profile);
+      localStorage.setItem(CULL_PROFILE_KEY, request.profile);
+      this.profileChosen.set(true);
+    }
+    if (request.strictness != null) {
+      this.setStrictness(request.strictness);
+      this.profileChosen.set(true);
+      if (!request.profile) this.clearProfileSelection();
+    } else if (request.profile) {
+      // Presets not loaded yet: `loadCullProfiles` moves the slider once they are.
+      const profile = this.cullProfiles().find(p => p.id === request.profile);
+      if (profile?.strictness != null) this.setStrictness(profile.strictness);
+    }
+    this.planHasStrictness = request.strictness != null;
+    this.previousPlanStrictness = this.strictness();
+    this.previousPlanProfile = this.selectedProfile();
+  }
+
+  /** The slider moved while a plan is shown: recompute the plan once it settles. */
+  scheduleReplan(): void {
+    if (!this.planActive()) return;
+    if (this.replanTimer !== null) clearTimeout(this.replanTimer);
+    // A re-plan already in flight answers for a value the user has moved away from.
+    this.replanSeq++;
+    this.replanTimer = setTimeout(() => {
+      this.replanTimer = null;
+      void this.replan();
+    }, CULL_REPLAN_DEBOUNCE_MS);
+  }
+
+  /** Drop a queued re-plan and orphan one in flight. */
+  private cancelReplan(): void {
+    if (this.replanTimer !== null) clearTimeout(this.replanTimer);
+    this.replanTimer = null;
+    this.replanSeq++;
+    this.replanningState.set(false);
+  }
+
+  /**
+   * Recompute the shown plan at the slider's strictness: the pin's request with only the knobs changed,
+   * and no digest (there is none to verify for a plan nobody has seen yet). Pending confirms and skips are
+   * committed first, so the server already leaves the confirmed groups out. The old plan stays on screen
+   * until the new one lands; the user's open flips and confirmed groups are carried over by photo set.
+   * Confirm, skip and "confirm all" are paused (`replanning`) from the flush until the answer lands, so no
+   * decision is made against a plan about to be replaced. A failure keeps the old plan and puts the slider
+   * (and the preset) back.
+   */
+  async replan(): Promise<void> {
+    const seq = ++this.replanSeq;
+    const pin = this.plan.pin();
+    const startDigest = this.planDigest();
+    if (!this.planActive() || !pin || pin.digest !== startDigest) {
+      this.replanningState.set(false);
+      return;
+    }
+    this.replanningState.set(true);
+    try {
+      await this.runReplan(seq, pin, startDigest);
+    } finally {
+      // A newer re-plan owns the flag; a cancelled one already cleared it.
+      if (seq === this.replanSeq) this.replanningState.set(false);
+    }
+  }
+
+  private async runReplan(seq: number, pin: CullPlanPin, startDigest: string | null): Promise<void> {
+    const prev = { strictness: this.previousPlanStrictness, profile: this.previousPlanProfile };
+    await this.flushPassTimers();
+    if (seq !== this.replanSeq || !this.planActive()) return;
+    // The pin's preset stays: the explicit strictness wins over its own server-side, and it still supplies
+    // the preset's other knobs (a wedding preset's two keepers per group).
+    const request: CullPlanRequest = { ...pin.request, strictness: this.strictness() };
+    let data: CullingPlanResponse;
+    try {
+      data = await firstValueFrom(this.api.post<CullingPlanResponse>('/culling/plan', request));
+    } catch {
+      if (seq !== this.replanSeq) return;
+      this.setStrictness(prev.strictness);
+      this.selectedProfile.set(prev.profile);
+      if (prev.profile) localStorage.setItem(CULL_PROFILE_KEY, prev.profile);
+      else localStorage.removeItem(CULL_PROFILE_KEY);
+      this.notice$.next({ key: I18N.culling.error_loading, duration: 2000 });
+      return;
+    }
+    if (seq !== this.replanSeq || !this.planActive() || this.planDigest() !== startDigest
+      || this.plan.pin()?.digest !== startDigest) return;
+    // Read at landing, not before the request: a flip made while it was in flight counts too.
+    const flips = this.plan.openFlips();
+    const confirmed = this.plan.confirmedEntries();
+    const depth = this.groups().length;
+    // The digest first, so the page's pin follower sees the new pin as the plan it already holds.
+    this.planDigest.set(data.plan_digest);
+    this.plan.setPin({ digest: data.plan_digest, request });
+    this.plan.hold(data.plan_digest, data);
+    // The old plan's feed is gone. No cooldown or commit is left to land on it -- the flush committed
+    // them and `replanning` kept new ones from starting -- but a stale generation must still never hide or
+    // journal a group of the new plan that reuses its key (similar-group ids are positional).
+    this.loadGenerationId++;
+    this.confirmedGroups.set(new Set());
+    this.hiddenGroups.set(new Set());
+    this.touchedGroups.set(new Set());
+    const dropped = this.showPlan(data, null, flips, confirmed);
+    this.planHasStrictness = true;
+    // Keep the depth the user had paged to; never slice the plan itself.
+    while (this.groups().length < depth && this.hasMore()) await this.loadMore();
+    this.previousPlanStrictness = this.strictness();
+    this.previousPlanProfile = this.selectedProfile();
+    if (dropped > 0) {
+      this.notice$.next({ key: I18N.culling.plan.replan_flips_dropped, params: { count: dropped }, duration: 4000 });
+    }
   }
 
   /** Leave plan mode if in it: the plan, its pin and its read model go; the caller reloads the feed. */
   private dropPlan(): void {
+    this.cancelReplan();
     if (!this.planActive()) return;
     this.planActive.set(false);
     this.planDigest.set(null);
@@ -731,6 +939,8 @@ export class CullingStore {
    * false when the group has nothing kept (nothing to confirm).
    */
   confirmGroup(group: CullingGroup): boolean {
+    // Paused while a re-plan is in flight: the plan it would land on is about to be replaced.
+    if (this.replanning()) return false;
     const key = this.groupKey(group);
     const kept = this.selectionsMap().get(key);
     if (!kept || kept.size === 0) return false;
@@ -741,7 +951,7 @@ export class CullingStore {
     addToSetSignal(this.touchedGroups, key);
     addToSetSignal(this.confirmedGroups, key);
     this.startCountdown(key, () => {
-      void firstValueFrom(this.api.post('/culling-groups/confirm', this.confirmBody(group, keepPaths)))
+      const commit = firstValueFrom(this.api.post('/culling-groups/confirm', this.confirmBody(group, keepPaths)))
         .then(() => {
           if (gen !== this.loadGenerationId) return;
           if (this.planActive()) this.plan.recordConfirm(key, keepPaths);
@@ -753,6 +963,9 @@ export class CullingStore {
           this.unconfirmGroup(key);
           this.notice$.next({ key: I18N.culling.error_confirming, duration: 2000 });
         });
+      this.inFlightCommits.add(commit);
+      void commit.finally(() => this.inFlightCommits.delete(commit));
+      return commit;
     }, true);
     return true;
   }
@@ -767,6 +980,18 @@ export class CullingStore {
 
   /** Confirm every not-yet-confirmed group of `visible` that has a kept photo, five at a time. */
   async confirmAllRemaining(visible: CullingGroup[]): Promise<void> {
+    if (this.replanning()) return;
+    // Tracked like a single confirm's commit, so a re-plan started meanwhile waits for every batch.
+    const run = this.runConfirmAll(visible);
+    this.inFlightCommits.add(run);
+    try {
+      await run;
+    } finally {
+      this.inFlightCommits.delete(run);
+    }
+  }
+
+  private async runConfirmAll(visible: CullingGroup[]): Promise<void> {
     this.confirming.set(true);
     try {
       const confirmed = this.confirmedGroups();
@@ -809,6 +1034,7 @@ export class CullingStore {
   }
 
   skipGroup(group: CullingGroup): void {
+    if (this.replanning()) return;
     const key = this.groupKey(group);
     addToSetSignal(this.touchedGroups, key);
     const gen = this.loadGenerationId;
@@ -830,7 +1056,7 @@ export class CullingStore {
    * timer that runs onElapsed (hide for skip; commit + hide for confirm). Cancel
    * via cancelPass before it fires fully reverts the action.
    */
-  private startCountdown(key: string, onElapsed: () => void, commit = false): void {
+  private startCountdown(key: string, onElapsed: () => Promise<void> | void, commit = false): void {
     this.clearPassTimer(key);
     updateMapSignal(this.passingGroups, key, this.passCountdownSeconds);
     const intervalId = setInterval(() => {
@@ -844,7 +1070,7 @@ export class CullingStore {
     }, 1000);
     const timeoutId = setTimeout(() => {
       this.clearPassTimer(key);
-      onElapsed();
+      void onElapsed();
     }, this.passCountdownSeconds * 1000);
     this.passTimers.set(key, { timeoutId, intervalId, onElapsed, commit });
   }
@@ -865,7 +1091,7 @@ export class CullingStore {
     // user's keep/reject decision. So flush pending confirm commits here (skip
     // timers only hide a group, nothing to persist). Explicit cancelPass goes
     // through clearPassTimer and is unaffected — an abort still aborts.
-    const pendingCommits: (() => void)[] = [];
+    const pendingCommits: (() => Promise<void> | void)[] = [];
     for (const { timeoutId, intervalId, onElapsed, commit } of this.passTimers.values()) {
       clearTimeout(timeoutId);
       clearInterval(intervalId);
@@ -874,7 +1100,24 @@ export class CullingStore {
     this.passTimers.clear();
     this.passingGroups.set(new Map());
     this.hiddenGroups.set(new Set());
-    for (const commit of pendingCommits) commit();
+    for (const commit of pendingCommits) void commit();
+  }
+
+  /**
+   * Elapse every cooldown now -- confirms commit, skips hide -- and wait for every confirm commit,
+   * including ones already in flight. Unlike `clearAllPassTimers` the hidden groups stay hidden: the feed
+   * is not being reset, its decisions are being made final.
+   */
+  private async flushPassTimers(): Promise<void> {
+    const pending = [...this.passTimers.values()];
+    for (const { timeoutId, intervalId } of pending) {
+      clearTimeout(timeoutId);
+      clearInterval(intervalId);
+    }
+    this.passTimers.clear();
+    this.passingGroups.set(new Map());
+    for (const { onElapsed } of pending) void onElapsed();
+    await Promise.all([...this.inFlightCommits]);
   }
 
   /** Whether the user has decisions a reload would discard (or one still counting down / committing). */
@@ -996,6 +1239,16 @@ export class CullingStore {
     )));
   }
 
+  /** The one writer of the strictness: the slider, a preset and a shown plan all store what they set. */
+  setStrictness(value: number): void {
+    this.strictnessState.set(value);
+    try {
+      localStorage.setItem(CULL_STRICTNESS_KEY, String(value));
+    } catch {
+      // Storage full or blocked: the value still applies for this visit.
+    }
+  }
+
   /** Moving a knob by hand drops the preset label — the mix is now custom. */
   clearProfileSelection(): void {
     if (this.selectedProfile()) {
@@ -1017,7 +1270,22 @@ export class CullingStore {
         // A restored preset is a choice the user made, just in an earlier
         // session; a suggestion must not silently replace it.
         this.profileChosen.set(true);
-        this.applyProfile(stored, false);
+        if (this.planActive()) {
+          // The plan froze the grouping: applying the preset could reload the feed and end the plan.
+          // Only the slider follows the preset the plan was computed with, unless the plan carries its own.
+          if (stored.strictness != null && !this.planHasStrictness) {
+            this.setStrictness(stored.strictness);
+          }
+          this.previousPlanStrictness = this.strictness();
+        } else {
+          // `applyProfile` writes the preset's own strictness over the slider's stored value: read it first.
+          const storedStrictness = readStoredStrictnessOrNull();
+          this.applyProfile(stored, false);
+          if (storedStrictness != null && storedStrictness !== this.strictness()) {
+            this.setStrictness(storedStrictness);
+            this.reselectFromStrictness();
+          }
+        }
       } else {
         this.clearProfileSelection();
       }
@@ -1037,7 +1305,7 @@ export class CullingStore {
       localStorage.setItem(CULL_PROFILE_KEY, p.id);
       this.profileChosen.set(true);
     }
-    if (p.strictness != null) this.strictness.set(p.strictness);
+    if (p.strictness != null) this.setStrictness(p.strictness);
     if (p.similarity_threshold != null && p.similarity_threshold !== this.similarityThreshold()) {
       this.similarityThreshold.set(p.similarity_threshold);
       this.resetForReload();
@@ -1305,4 +1573,9 @@ export class CullingStore {
       this.autoCullLoading.set(false);
     }
   }
+}
+
+/** Order-free identity of a group's photo set, which survives a re-plan renumbering the groups. */
+function pathSetKey(paths: string[]): string {
+  return [...paths].sort().join('\n');
 }

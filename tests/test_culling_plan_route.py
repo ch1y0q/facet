@@ -127,8 +127,15 @@ class TestDigestGuard:
         assert resp.json()["detail"].startswith("The plan changed since it was previewed")
         assert _rejected_paths() == set()
 
-    def test_a_missing_digest_is_a_422(self, seeded, edition_client):
-        assert edition_client.post("/api/culling/plan", json=_auto_body()).status_code == 422
+    def test_a_missing_digest_skips_the_check_and_returns_the_digest(self, seeded, edition_client):
+        resp = edition_client.post("/api/culling/plan", json=_auto_body())
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["plan_digest"] == _digest(edition_client)["plan_digest"]
+
+    def test_two_strictness_values_give_two_digests(self, seeded, edition_client):
+        digests = {edition_client.post("/api/culling/plan", json=_auto_body(strictness=value)).json()["plan_digest"]
+                   for value in (0, 100)}
+        assert len(digests) == 2
 
     def test_a_bad_override_is_a_400(self, seeded, edition_client):
         both = {"keep_paths": [PREFIX + "a2.jpg"], "remove_paths": [PREFIX + "a2.jpg"]}

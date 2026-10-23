@@ -246,7 +246,7 @@ class TestAutoCull:
         result = env.call(token, "auto_cull", {"group_by": "burst", "strictness": 0, **SCOPE, "remove_paths": stale})
         assert result["ok"], result
         assert result["shown_in_tab"]["applied"] is False and result["shown_in_tab"]["reason"] == "too_large"
-        assert tab.calls == [] and result["confirm"]
+        assert [c["tool"] for c in tab.calls] == ["ui_get_context"] and result["confirm"]
 
     def test_auto_cull_show_false_skips(self, agent_app, photos, fake_tab):
         nonce.reset()
@@ -256,7 +256,7 @@ class TestAutoCull:
         assert result["ok"] and "ui_show_culling_plan" not in [c["tool"] for c in tab.calls]
         assert "shown_in_tab" not in result
 
-    def test_auto_cull_apply_never_shows_and_never_reads_the_tab(self, agent_app, photos, fake_tab):
+    def test_auto_cull_apply_never_shows_and_reads_the_tab_once_for_the_pin(self, agent_app, photos, fake_tab):
         nonce.reset()
         env = agent_app("legacy")
         tab, token = self._tab(env, fake_tab)
@@ -265,7 +265,8 @@ class TestAutoCull:
         result = env.call(token, "auto_cull", {"group_by": "burst", **SCOPE, "dry_run": False,
                                                "confirm": first["confirm"]})
         assert result["ok"], result
-        assert len(tab.calls) == shown == 2 and "shown_in_tab" not in result
+        assert shown == 2 and [c["tool"] for c in tab.calls[shown:]] == ["ui_get_context"]
+        assert "ui_show_culling_plan" not in [c["tool"] for c in tab.calls[shown:]] and "shown_in_tab" not in result
 
     def test_auto_cull_description_says_one_call(self, env_token):
         env, token = env_token
@@ -747,11 +748,18 @@ class TestAutoCullTabDefaults:
         return {"group_by": "burst", **SCOPE, **extra}
 
     def test_the_tabs_stored_profile_is_used(self, rig):
-        r = rig({"profile": "sports", "strictness": 100})
+        r = rig({"profile": "sports", "strictness": None})
         result = r.env.call(r.token, "auto_cull", self.args())
         assert result["ok"], result
         assert r.sent[0]["profile"] == "sports" and r.sent[0]["strictness"] is None
         assert result["data"]["knobs_from_tab"] == {"profile": "sports"}
+
+    def test_a_stored_profile_and_strictness_are_both_used(self, rig):
+        r = rig({"profile": "sports", "strictness": 40})
+        result = r.env.call(r.token, "auto_cull", self.args())
+        assert result["ok"], result
+        assert r.sent[0]["profile"] == "sports" and r.sent[0]["strictness"] == 40
+        assert result["data"]["knobs_from_tab"] == {"profile": "sports", "strictness": 40}
 
     def test_without_a_profile_the_page_default_strictness_is_used(self, rig):
         r = rig({"profile": None, "strictness": 100})
@@ -766,12 +774,12 @@ class TestAutoCullTabDefaults:
         assert result["data"]["knobs_from_tab"] == {"strictness": 100}
 
     @pytest.mark.parametrize("extra", [{"strictness": 30}, {"profile": "wedding"}])
-    def test_an_explicit_knob_never_consults_the_tab(self, rig, extra):
+    def test_an_explicit_knob_reads_the_tab_only_for_its_pin(self, rig, extra):
         r = rig({"profile": "sports", "strictness": 100})
         result = r.env.call(r.token, "auto_cull", self.args(show=False, **extra))
         assert result["ok"], result
-        assert [c["tool"] for c in r.tab.calls] == []
-        assert "knobs_from_tab" not in result["data"]
+        assert [c["tool"] for c in r.tab.calls] == ["ui_get_context"]
+        assert "knobs_from_tab" not in result["data"] and r.sent[0]["profile"] == extra.get("profile")
 
     def test_no_tab_keeps_the_server_default(self, agent_app, photos, monkeypatch):
         from tests.conftest import intercept_internal_call
@@ -794,7 +802,7 @@ class TestAutoCullTabDefaults:
         r.env.call(r.token, "auto_cull", self.args(dry_run=False, confirm=first["confirm"], show=False))
         assert r.sent[-1]["profile"] == "sports" and r.sent[-1]["dry_run"] is False
 
-    def test_an_apply_with_explicit_overrides_uses_the_previews_knobs_and_never_reads_the_tab(self, rig):
+    def test_an_apply_with_explicit_overrides_uses_the_previews_knobs_and_not_the_tabs_defaults(self, rig):
         r = rig({"profile": "sports", "strictness": 100})
         over = {"keep_paths": [BURST_PATHS[1]]}
         first = r.env.call(r.token, "auto_cull", self.args(**over))
@@ -804,7 +812,7 @@ class TestAutoCullTabDefaults:
         result = r.env.call(r.token, "auto_cull",
                             self.args(dry_run=False, confirm=first["confirm"], show=False, **over))
         assert result["ok"], result
-        assert [c["tool"] for c in r.tab.calls].count("ui_get_context") == before
+        assert [c["tool"] for c in r.tab.calls].count("ui_get_context") == before + 1
         assert r.sent[-1]["profile"] == "sports" and r.sent[-1]["dry_run"] is False
 
     def test_a_changed_tab_default_refuses_the_apply(self, rig):
@@ -820,6 +828,114 @@ class TestAutoCullTabDefaults:
         tools = env.rpc(token, "tools/list").json()["result"]["tools"]
         text = next(t for t in tools if t["name"] == "auto_cull")["description"]
         assert "/culling defaults" in text
+        assert "never reads the tab" not in text and "slider's stored" in text
+
+
+class TestApplyRefusedWhenThePageReplanned:
+    """The apply reads the tab's pinned plan digest: a re-plan on the page supersedes the previewed plan."""
+
+    @pytest.fixture()
+    def rig(self, agent_app, photos, fake_tab, monkeypatch):
+        from tests.conftest import intercept_internal_call
+        nonce.reset()
+        tools_culling.reset_preview_memory()
+        sent = []
+        intercept_internal_call(monkeypatch, lambda tool, kw: sent.append(kw["json"]) if tool == "culling.auto" else None)
+        env = agent_app("legacy")
+        headers = env.login(edition=True)
+        state = {"pin": None, "show": "ok"}
+
+        def reply(call):
+            if call["tool"] == "ui_get_context":
+                culling = {"plan_digest": state["pin"]} if state["pin"] else None
+                return {"ok": True, "data": {"route": "/culling", "culling": culling,
+                                             "culling_defaults": {"profile": None, "strictness": 100}}}
+            if state["show"] != "ok":
+                return {"ok": False, "error": state["show"], "message": "no"}
+            state["pin"] = call["args"]["plan_digest"]
+            return {"ok": True, "data": {"route": "/culling", "plan_digest": state["pin"], "groups_total": 1}}
+        tab = fake_tab(env, _jwt_of(headers), reply=reply)
+        return type("Rig", (), {"env": env, "token": env.token(headers, "edition"), "tab": tab,
+                                "sent": sent, "state": state, "jwt": _jwt_of(headers)})
+
+    @staticmethod
+    def args(**extra):
+        return {"group_by": "burst", "strictness": 0, **SCOPE, **extra}
+
+    @staticmethod
+    def applied(r):
+        return [c for c in r.sent if c.get("dry_run") is False]
+
+    def test_an_unchanged_pin_lets_the_apply_through(self, rig):
+        r = rig
+        first = r.env.call(r.token, "auto_cull", self.args())
+        assert first["shown_in_tab"]["applied"] is True
+        result = r.env.call(r.token, "auto_cull", self.args(dry_run=False, confirm=first["confirm"]))
+        assert result["ok"], result
+        assert len(self.applied(r)) == 1
+
+    def test_a_replanned_page_refuses_the_apply(self, rig):
+        r = rig
+        first = r.env.call(r.token, "auto_cull", self.args())
+        r.state["pin"] = "f" * 64
+        result = r.env.call(r.token, "auto_cull", self.args(dry_run=False, confirm=first["confirm"]))
+        assert not result["ok"] and result["error"] == "confirmation_required"
+        assert "re-planned" in result["message"]
+        assert self.applied(r) == []
+
+    def test_an_unreachable_tab_lets_the_apply_through(self, rig):
+        r = rig
+        first = r.env.call(r.token, "auto_cull", self.args())
+        r.tab.reply = lambda call: {"ok": False, "error": "tab_error", "message": "gone"}
+        result = r.env.call(r.token, "auto_cull", self.args(dry_run=False, confirm=first["confirm"]))
+        assert result["ok"], result
+        assert len(self.applied(r)) == 1
+
+    def test_an_apply_without_tab_id_reads_the_tab_the_preview_targeted(self, rig, fake_tab):
+        r = rig
+        first = r.env.call(r.token, "auto_cull", self.args(tab_id="tab-1"))
+        assert first["shown_in_tab"]["tab_id"] == "tab-1"
+        other = fake_tab(r.env, r.jwt, tab_id="tab-2", reply=lambda call: {
+            "ok": True, "data": {"route": "/culling", "culling": {"plan_digest": "e" * 64}}})
+        before = [c["tool"] for c in r.tab.calls].count("ui_get_context")
+        result = r.env.call(r.token, "auto_cull", self.args(dry_run=False, confirm=first["confirm"]))
+        assert result["ok"], result
+        assert [c["tool"] for c in r.tab.calls].count("ui_get_context") == before + 1
+        assert [c["tool"] for c in other.calls] == []
+        assert len(self.applied(r)) == 1
+
+    def test_an_apply_reads_the_tab_the_plan_was_shown_in_when_the_preview_named_none(self, rig, fake_tab):
+        r = rig
+        first = r.env.call(r.token, "auto_cull", self.args())
+        assert first["shown_in_tab"]["tab_id"] == "tab-1"
+        other = fake_tab(r.env, r.jwt, tab_id="tab-2", reply=lambda call: {
+            "ok": True, "data": {"route": "/culling", "culling": {"plan_digest": "e" * 64}}})
+        before = [c["tool"] for c in r.tab.calls].count("ui_get_context")
+        result = r.env.call(r.token, "auto_cull", self.args(dry_run=False, confirm=first["confirm"]))
+        assert result["ok"], result
+        assert [c["tool"] for c in r.tab.calls].count("ui_get_context") == before + 1
+        assert [c["tool"] for c in other.calls] == []
+        assert len(self.applied(r)) == 1
+
+    def test_an_unshown_preview_records_the_tabs_existing_pin(self, rig):
+        r = rig
+        r.state["pin"] = "a" * 64
+        r.state["show"] = "unsaved_decisions"
+        first = r.env.call(r.token, "auto_cull", self.args())
+        assert first["shown_in_tab"] == {"applied": False, "reason": "unsaved_decisions"}
+        result = r.env.call(r.token, "auto_cull", self.args(dry_run=False, confirm=first["confirm"]))
+        assert result["ok"], result
+        assert len(self.applied(r)) == 1
+
+    def test_an_unshown_preview_is_refused_once_the_pin_moved(self, rig):
+        r = rig
+        r.state["pin"] = "a" * 64
+        r.state["show"] = "unsaved_decisions"
+        first = r.env.call(r.token, "auto_cull", self.args())
+        r.state["pin"] = "b" * 64
+        result = r.env.call(r.token, "auto_cull", self.args(dry_run=False, confirm=first["confirm"]))
+        assert not result["ok"] and result["error"] == "confirmation_required"
+        assert self.applied(r) == []
 
 
 class TestAutoCullStateGuardThroughTheTool:
