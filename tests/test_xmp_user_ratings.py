@@ -110,7 +110,7 @@ class TestExportPerUser:
             (str(img), "", "", "", 0, 0, 0, 0, 0, None),  # global = unrated
         )
         conn.execute(
-            "INSERT INTO user_preferences VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO user_preferences(user_id,photo_path,star_rating,is_favorite,is_rejected) VALUES (?, ?, ?, ?, ?)",
             ("alice", str(img), 3, 1, 0),
         )
         captured = {}
