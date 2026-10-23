@@ -1,5 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import type { components } from '../api/schema';
+import { plainScopeDate } from '../../shared/utils/date-format';
 import { UserActivityJournal } from './user-activity-journal.service';
 
 /** The auto-cull request a plan was computed from: the body of `POST /culling/plan` minus the digest. */
@@ -82,6 +83,8 @@ export interface CullPlanChangedGroup {
 export interface CullPlanSnapshot {
   plan_digest: string;
   groups_total: number;
+  /** The window the plan was computed for: the pin's request, which a date re-plan from the toolbar moves. */
+  scope: { album_id: number | null; date_from: string | null; date_to: string | null };
   /** Groups whose confirm has landed. */
   confirmed: number[];
   /** Groups the user flipped away from the plan and has not confirmed or skipped yet. */
@@ -389,6 +392,11 @@ export class AssistantCullPlanService {
     return {
       plan_digest: pin.digest,
       groups_total: this.meta.total,
+      scope: {
+        album_id: pin.request.album_id ?? null,
+        date_from: plainScopeDate(pin.request.date_from, 'from'),
+        date_to: plainScopeDate(pin.request.date_to, 'to'),
+      },
       confirmed,
       pending,
       changed,

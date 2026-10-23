@@ -5,7 +5,8 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Subject, of, throwError } from 'rxjs';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { ActivatedRoute, provideRouter } from '@angular/router';
+import { provideNativeDateAdapter } from '@angular/material/core';
+import { ActivatedRoute, Router, provideRouter } from '@angular/router';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
@@ -81,6 +82,7 @@ describe('BurstCullingComponent', () => {
 
     TestBed.configureTestingModule({
       providers: [
+        provideNativeDateAdapter(),
         BurstCullingComponent,
         { provide: ApiService, useValue: mockApi },
         { provide: MatSnackBar, useValue: mockSnackBar },
@@ -495,6 +497,7 @@ describe('BurstCullingComponent', () => {
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({
         providers: [
+          provideNativeDateAdapter(),
           BurstCullingComponent,
           { provide: ApiService, useValue: mockApi },
           { provide: MatSnackBar, useValue: mockSnackBar },
@@ -532,6 +535,7 @@ describe('BurstCullingComponent', () => {
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({
         providers: [
+          provideNativeDateAdapter(),
           BurstCullingComponent,
           { provide: ApiService, useValue: mockApi },
           { provide: MatSnackBar, useValue: mockSnackBar },
@@ -1187,6 +1191,7 @@ describe('BurstCullingComponent', () => {
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({
         providers: [
+          provideNativeDateAdapter(),
           BurstCullingComponent,
           { provide: ApiService, useValue: mockApi },
           { provide: MatSnackBar, useValue: mockSnackBar },
@@ -1385,6 +1390,7 @@ describe('BurstCullingComponent', () => {
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({
         providers: [
+          provideNativeDateAdapter(),
           BurstCullingComponent,
           { provide: ApiService, useValue: mockApi },
           { provide: MatSnackBar, useValue: mockSnackBar },
@@ -1585,6 +1591,7 @@ describe('BurstCullingComponent', () => {
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({
         providers: [
+          provideNativeDateAdapter(),
           BurstCullingComponent,
           { provide: ApiService, useValue: mockApi },
           { provide: MatSnackBar, useValue: mockSnackBar },
@@ -3098,7 +3105,7 @@ describe('BurstCullingComponent', () => {
       expect(cull.planDigest()).toBe('dg2');
       expect(enter).not.toHaveBeenCalled();
       expect(planPosts()).toHaveLength(before + 1);
-      expect(planPosts().at(-1)?.[1]).toEqual({ group_by: 'all', strictness: 40 });
+      expect(planPosts().at(-1)?.[1]).toEqual({ group_by: 'all', strictness: 40, date_from: null, date_to: null });
     });
 
     it('showGroupForAgent still pages plan groups in', async () => {
@@ -3141,6 +3148,7 @@ describe('BurstCullingComponent modals (rendered)', () => {
     Element.prototype.scrollIntoView = vi.fn();
     TestBed.configureTestingModule({
       providers: [
+        provideNativeDateAdapter(),
         provideRouter([]),
         { provide: ApiService, useValue: {
           get: vi.fn(() => of(emptyFeed)),
@@ -3486,6 +3494,7 @@ describe('BurstCullingComponent swipe-to-decide (rendered, touch)', () => {
     };
     TestBed.configureTestingModule({
       providers: [
+        provideNativeDateAdapter(),
         provideRouter([]),
         { provide: ApiService, useValue: {
           get: vi.fn(() => of(emptyFeed)),
@@ -3691,6 +3700,7 @@ describe('BurstCullingComponent compare panes (rendered)', () => {
     localStorage.clear();
     TestBed.configureTestingModule({
       providers: [
+        provideNativeDateAdapter(),
         provideRouter([]),
         { provide: ApiService, useValue: {
           get: vi.fn(() => of(emptyFeed)),
@@ -3840,6 +3850,7 @@ describe('BurstCullingComponent progressive darkroom frames (rendered)', () => {
     localStorage.clear();
     TestBed.configureTestingModule({
       providers: [
+        provideNativeDateAdapter(),
         provideRouter([]),
         { provide: ApiService, useValue: {
           get: vi.fn(() => of(emptyFeed)), post: vi.fn(() => of({})),
@@ -4052,5 +4063,218 @@ describe('BurstCullingComponent progressive darkroom frames (rendered)', () => {
     fixture.detectChanges();
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(renderPeaking).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Rendered: the date-range button, its tooltip and the empty states are template properties, and the URL
+// mirror is an effect. Every other suite stubs ActivatedRoute with no `/culling` route, so navigation is
+// observed on a spy of `router.navigate`, not on the URL.
+describe('BurstCullingComponent date range', () => {
+  let fixture: ComponentFixture<BurstCullingComponent>;
+  let component: any;
+  let cull: CullingStore;
+  let router: Router;
+  let navigate: Mock;
+  let urlGetter: { mockReturnValue: (v: string) => void };
+  const scrollIntoView = Element.prototype.scrollIntoView;
+  const emptyFeed = { groups: [], total_groups: 0, page: 1, per_page: 20, total_pages: 1 };
+
+  const mount = (query: Record<string, string> = {}, url = '/culling'): void => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideNativeDateAdapter(),
+        provideRouter([]),
+        { provide: ApiService, useValue: { get: vi.fn(() => of(emptyFeed)), post: vi.fn(() => of({})), thumbnailUrl: vi.fn(() => '/thumb'), imageUrl: vi.fn(() => '/image') } },
+        { provide: MatSnackBar, useValue: { open: vi.fn(() => ({ onAction: () => new Subject<void>(), afterDismissed: () => new Subject<void>() })) } },
+        { provide: I18nService, useValue: { t: (key: string) => key, translations: () => ({}) } },
+        { provide: GalleryStore, useValue: { config: () => null } },
+        { provide: AuthService, useValue: { isEdition: () => true, identity: () => '0|' } },
+        { provide: AssistantChangesService, useValue: { batch$: new Subject<AssistantChangeBatch>().asObservable() } },
+        { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: { get: (k: string) => query[k] ?? null } } } },
+      ],
+    });
+    router = TestBed.inject(Router);
+    navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true) as unknown as Mock;
+    urlGetter = vi.spyOn(router, 'url', 'get') as unknown as { mockReturnValue: (v: string) => void };
+    urlGetter.mockReturnValue(url);
+    fixture = TestBed.createComponent(BurstCullingComponent);
+    component = fixture.componentInstance;
+    cull = component['cull'];
+    fixture.detectChanges();
+  };
+
+  const dateButton = (): HTMLButtonElement | null =>
+    fixture.nativeElement.querySelector('button[data-testid="cull-date-range"]');
+  const settle = async (): Promise<void> => {
+    fixture.detectChanges();
+    await fixture.whenStable();
+    TestBed.tick();
+    fixture.detectChanges();
+  };
+  const scopeCalls = () => navigate.mock.calls.filter(c => c[1]?.queryParamsHandling === 'merge' && 'from' in (c[1]?.queryParams ?? {}));
+
+  beforeEach(() => {
+    localStorage.clear();
+    Element.prototype.scrollIntoView = vi.fn();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    fixture.destroy();
+    Element.prototype.scrollIntoView = scrollIntoView;
+  });
+
+  it('shows the date button with no album at all', () => {
+    mount();
+    expect(cull.albums()).toEqual([]);
+    expect(dateButton()).not.toBeNull();
+    expect(dateButton()!.getAttribute('aria-label')).toBe('culling.date_range.label');
+    expect(dateButton()!.className).not.toContain('text-[var(--mat-sys-primary)]');
+  });
+
+  it('lights the button and names the window dd/MM/yyyy when the URL carries one', () => {
+    mount({ from: '2026-07-01', to: '2026-07-31' });
+    expect(dateButton()!.getAttribute('aria-label')).toBe('01/07/2026 - 31/07/2026');
+    expect(dateButton()!.className).toContain('text-[var(--mat-sys-primary)]');
+  });
+
+  it('reads the EXIF form of a plan\'s window too', () => {
+    mount({ from: '2026:07:01 00:00:00', to: '2026:07:31 23:59:59' });
+    expect(dateButton()!.getAttribute('aria-label')).toBe('01/07/2026 - 31/07/2026');
+  });
+
+  it('a preset reloads the feed over the window and mirrors the whole scope into the URL, keeping group_by', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 9, 23, 12) });
+    mount();
+    component['onDatePreset']('last_7_days');
+    await settle();
+    expect(cull.scopeFrom()).toBe('2026-10-17');
+    expect(cull.scopeTo()).toBe('2026-10-23');
+    expect(scopeCalls()).toHaveLength(1);
+    expect(scopeCalls()[0]).toEqual([[], {
+      queryParams: { album: null, from: '2026-10-17', to: '2026-10-23', scene: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    }]);
+  });
+
+  it('a window picked over a scene drops the scene param', async () => {
+    mount({ album: '9', from: '2026-07-01', to: '2026-07-01', scene: '01/07/2026 10:00' });
+    component['onDateRange']('2026-08-01', '2026-08-31');
+    await settle();
+    expect(scopeCalls().at(-1)![1].queryParams).toEqual({ album: '9', from: '2026-08-01', to: '2026-08-31', scene: null });
+  });
+
+  it('All dates nulls only the dates and leaves the album', async () => {
+    mount({ album: '9', from: '2026-07-01', to: '2026-07-31' });
+    component['onDateRange'](null, null);
+    await settle();
+    expect(scopeCalls().at(-1)![1].queryParams).toEqual({ album: '9', from: null, to: null, scene: null });
+    expect(cull.scopeAlbum()).toBe('9');
+  });
+
+  it('does not navigate when router.url already matches the scope', async () => {
+    mount({ album: '9', from: '2026-07-01', to: '2026-07-31' }, '/culling?album=9&from=2026-07-01&to=2026-07-31&group_by=burst');
+    await settle();
+    expect(scopeCalls()).toHaveLength(0);
+    cull.scopeTo.set('2026-08-31');
+    await settle();
+    expect(scopeCalls()).toHaveLength(1);
+  });
+
+  it('a window alone leaves the album button unlit and the empty state names the dates', async () => {
+    mount({ from: '2026-07-01', to: '2026-07-31' });
+    cull.albums.set([{ id: 9, name: 'Trip' } as never]);
+    await settle();
+    const albumButton = fixture.nativeElement.querySelector('button[aria-label="culling.scope_whole_library"]') as HTMLButtonElement;
+    expect(albumButton).not.toBeNull();
+    expect(albumButton.className).not.toContain('text-[var(--mat-sys-primary)]');
+    expect(fixture.nativeElement.textContent).toContain('culling.date_range.empty');
+    expect(fixture.nativeElement.textContent).not.toContain('culling.scene_complete');
+  });
+
+  it('keeps the scene wording for an empty scene scope and the plain one for no scope', async () => {
+    mount({ album: '9', from: '2026-07-01', to: '2026-07-01', scene: '01/07/2026 10:00' });
+    await settle();
+    expect(fixture.nativeElement.textContent).toContain('culling.scene_complete');
+    TestBed.resetTestingModule();
+    mount();
+    await settle();
+    expect(fixture.nativeElement.textContent).toContain('culling.no_bursts');
+  });
+
+  it('keeps the date range when Whole album is picked, in the store and in the URL, and keeps group_by', async () => {
+    mount();
+    component['onDateRange']('2026-07-01', '2026-07-31');
+    await settle();
+    navigate.mockClear();
+    component['expandedAlbumId'].set(9);
+    component['scopeAlbumWhole']();
+    await settle();
+    expect(cull.scopeAlbum()).toBe('9');
+    expect(cull.scopeFrom()).toBe('2026-07-01');
+    expect(cull.scopeTo()).toBe('2026-07-31');
+    const call = navigate.mock.calls.find(c => c[1]?.queryParams?.album === '9')!;
+    expect(call[1].queryParams).toEqual({ album: '9', from: '2026-07-01', to: '2026-07-31', scene: null });
+    expect(call[1].queryParamsHandling).toBe('merge');
+  });
+
+  it('keeps the date range when Whole library is picked and drops it for a scene\'s own window', async () => {
+    mount({ album: '9' });
+    component['onDateRange']('2026-07-01', '2026-07-31');
+    component['scopeWholeLibrary']();
+    await settle();
+    expect(cull.scopeAlbum()).toBeNull();
+    expect(cull.scopeFrom()).toBe('2026-07-01');
+    component['expandedAlbumId'].set(9);
+    component['scopeAlbumScene']({ start: '2026:08:01 10:00:00', end: '2026:08:01 10:30:00' } as never);
+    await settle();
+    expect(cull.scopeFrom()).toBe('2026:08:01 10:00:00');
+    component['scopeAlbumWhole']();
+    await settle();
+    expect(cull.scopeFrom()).toBeNull();
+    expect(cull.scopeAlbum()).toBe('9');
+  });
+
+  it('applies a custom range only when both ends are set, as plain local dates', async () => {
+    mount();
+    component['onCustomRangeEnd'](new Date(2026, 6, 1), null);
+    await settle();
+    expect(cull.dateRangeActive()).toBe(false);
+    component['onCustomRangeEnd'](null, new Date(2026, 6, 31));
+    expect(cull.dateRangeActive()).toBe(false);
+    component['onCustomRangeEnd'](new Date(2026, 6, 1, 23, 30), new Date(2026, 6, 31, 0, 15));
+    expect(cull.scopeFrom()).toBe('2026-07-01');
+    expect(cull.scopeTo()).toBe('2026-07-31');
+  });
+
+  it('keeps the done wording for a dated feed whose groups are all confirmed or hidden', async () => {
+    mount({ from: '2026-07-01', to: '2026-07-31' });
+    await settle();
+    const group = { group_id: 1, type: 'burst', reason: '', photos: [], best_path: '', count: 0 } as never;
+    cull.groups.set([group]);
+    cull.hiddenGroups.set(new Set(['1_burst']));
+    await settle();
+    expect(fixture.nativeElement.textContent).toContain('culling.scene_complete');
+    expect(fixture.nativeElement.textContent).not.toContain('culling.date_range.empty');
+  });
+
+  it('keeps the done wording for a dated plan whose groups were all confirmed', async () => {
+    mount({ from: '2026-07-01', to: '2026-07-31' });
+    await settle();
+    const group = { group_id: 1, type: 'burst', reason: '', photos: [], best_path: '', count: 0 } as never;
+    cull.planActive.set(true);
+    cull.groups.set([group]);
+    cull.hiddenGroups.set(new Set(['1_burst']));
+    await settle();
+    expect(fixture.nativeElement.textContent).toContain('culling.scene_complete');
+    expect(fixture.nativeElement.textContent).not.toContain('culling.date_range.plan_empty');
+  });
+
+  it('says the plan has no group in the window while staying in plan mode', async () => {
+    mount({ from: '2026-07-01', to: '2026-07-31' });
+    cull.planActive.set(true);
+    await settle();
+    expect(fixture.nativeElement.textContent).toContain('culling.date_range.plan_empty');
   });
 });

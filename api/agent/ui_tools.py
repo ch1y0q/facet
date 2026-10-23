@@ -323,9 +323,12 @@ UI_TOOLS: tuple[UiTool, ...] = (
            "pass the answer's `until` as the next `activity_since`. `culling_defaults` "
            "({profile, strictness}) is the /culling page's current setting: the profile the user stored "
            "(null if none) and the slider's live, stored strictness; `auto_cull` plans with both (the strictness wins, the profile supplies its other "
-           "settings) when given neither knob. Showing a plan moves the slider to the plan's strictness; moving the slider while a plan "
+           "settings) when given neither knob. Showing a plan moves the slider to the plan's strictness; moving the slider or the date range while a plan "
            "is shown re-plans it, so `culling.plan_digest` changes (read `ui_get_context` again before the "
-           "next dry run). `culling` also carries `suggestions_open` ([{path, action}]), "
+           "next dry run). `culling.scope` ({album_id, date_from, date_to}) is the window the plan was "
+           "computed for; the user can change it from the /culling toolbar, which re-plans (a new "
+           "`plan_digest`), so read `ui_get_context` again and pass `culling.scope`'s dates and "
+           "`culling.changed` on your next dry run. `culling` also carries `suggestions_open` ([{path, action}]), "
            "`suggestions_accepted` and `suggestions_total`: your `ui_suggest_culling` marks still waiting, "
            "the ones the user took, and the number held (photo suggestions only, not group notes).",
            UiGetContext, True),

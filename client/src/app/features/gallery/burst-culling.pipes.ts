@@ -3,6 +3,7 @@ import { I18nService } from '../../core/services/i18n.service';
 import { SEQUENCE_KIND_ICONS } from '../../shared/pipes/sequence-kind.pipe';
 import type { ComparisonStats } from '../../core/api/types';
 import type { CullSuggestion } from '../../core/agent/assistant-cull-plan.service';
+import { parseScopeDate } from './culling-date-range';
 
 /** Backend-supplied machine reason key + optional value for why a photo ranks lower. */
 export interface CullReason {
@@ -834,5 +835,31 @@ export class FrameViewBoxPipe implements PipeTransform {
 export class GridLinesPipe implements PipeTransform {
   transform(mode: GridMode): string[] {
     return GRID_LINES[mode] ?? [];
+  }
+}
+
+/** A scope date (`YYYY-MM-DD` or the EXIF colon form) as a Date, for the date-range picker's seed; null when unreadable. */
+@Pipe({ name: 'scopeDate' })
+export class ScopeDatePipe implements PipeTransform {
+  transform(value: string | null): Date | null {
+    return parseScopeDate(value);
+  }
+}
+
+/**
+ * `from | cullDateRange: to` as "dd/MM/yyyy - dd/MM/yyyy". Either side may be missing; an unreadable
+ * value is shown unchanged. Not `DatePipe`: scope dates also arrive in the EXIF colon form.
+ */
+@Pipe({ name: 'cullDateRange' })
+export class CullDateRangePipe implements PipeTransform {
+  transform(from: string | null, to: string | null): string {
+    if (!from && !to) return '';
+    const fmt = (v: string | null): string => {
+      const d = parseScopeDate(v);
+      if (!v) return '';
+      if (!d) return v;
+      return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    };
+    return `${fmt(from)} - ${fmt(to)}`.trim();
   }
 }

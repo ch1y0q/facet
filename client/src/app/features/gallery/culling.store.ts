@@ -6,7 +6,8 @@ import type { ComparisonStats } from '../../core/api/types';
 import { Album, AlbumService } from '../../core/services/album.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { I18N } from '../../core/i18n/keys';
-import { CULLING_GROUP_TYPES, cullingGroupKey, type CullingGroup } from './burst-culling.pipes';
+import { CULLING_GROUP_TYPES, CullDateRangePipe, cullingGroupKey, type CullingGroup } from './burst-culling.pipes';
+import { plainScopeDate } from '../../shared/utils/date-format';
 import {
   AssistantCullPlanService, type CullPlanFlip, type CullPlanPin, type CullPlanRequest, type CullSuggestionAction,
 } from '../../core/agent/assistant-cull-plan.service';
@@ -234,6 +235,10 @@ export class CullingStore {
   /** The slider and preset the plan on screen was computed with: what a failed re-plan puts back. */
   private previousPlanStrictness = CULL_DEFAULT_STRICTNESS;
   private previousPlanProfile = '';
+  /** The window and scene label the plan on screen was computed for: what a failed re-plan puts back. */
+  private previousPlanFrom: string | null = null;
+  private previousPlanTo: string | null = null;
+  private previousPlanScene: string | null = null;
   /** The shown plan was computed with an explicit strictness: a preset loading later must not move the slider off it. */
   private planHasStrictness = false;
   /** True from a re-plan's flush until its answer lands or fails: confirm, skip and "confirm all" are paused. */
@@ -260,16 +265,21 @@ export class CullingStore {
   readonly scopeFrom = signal<string | null>(null);
   readonly scopeTo = signal<string | null>(null);
   readonly scopeScene = signal<string | null>(null);
+  /** A capture-date window narrows the feed (alone or on top of an album). */
+  readonly dateRangeActive = computed(() => !!(this.scopeFrom() || this.scopeTo()));
   readonly albums = signal<Album[]>([]);
   readonly scopeAlbumName = computed(() =>
     AlbumService.nameById(this.albums(), this.scopeAlbum()));
   /** Human label for the scope button / banner (null = whole library). */
-  readonly scopeLabel = computed(() => {
+  readonly albumScopeLabel = computed(() => {
     const album = this.scopeAlbumName();
     const scene = this.scopeScene();
     if (album && scene) return `${album} · ${scene}`;
     return album ?? scene ?? null;
   });
+  /** The scope as a whole (album, scene, else the date range): names the highlights album. */
+  readonly scopeLabel = computed(() =>
+    this.albumScopeLabel() ?? (this.dateRangeActive() ? new CullDateRangePipe().transform(this.scopeFrom(), this.scopeTo()) : null));
 
   /** The darkroom lightbox's current photo, mirrored by the component for `ui_get_context`; null when no lightbox is open. */
 
@@ -543,8 +553,8 @@ export class CullingStore {
     this.planOversize.set(0);
     const { album_id: album, date_from: from, date_to: to, group_by: groupBy } = pin.request;
     this.scopeAlbum.set(album != null ? String(album) : null);
-    this.scopeFrom.set(from ?? null);
-    this.scopeTo.set(to ?? null);
+    this.scopeFrom.set(plainScopeDate(from, 'from'));
+    this.scopeTo.set(plainScopeDate(to, 'to'));
     this.scopeScene.set(null);
     this.groupBy.set(groupBy ?? 'all');
     // Before the held-plan shortcut, so a re-mount puts the slider back on the plan's value too.
@@ -681,6 +691,24 @@ export class CullingStore {
     this.planHasStrictness = request.strictness != null;
     this.previousPlanStrictness = this.strictness();
     this.previousPlanProfile = this.selectedProfile();
+    this.previousPlanFrom = this.scopeFrom();
+    this.previousPlanTo = this.scopeTo();
+    this.previousPlanScene = this.scopeScene();
+  }
+
+  /**
+   * Narrow the feed to a capture-date window (null/null = all dates), keeping the album. A plan is
+   * recomputed for the new window like a slider move; the manual feed reloads. The scene label goes:
+   * it names a window that no longer applies.
+   */
+  setDateRange(from: string | null, to: string | null): void {
+    if (from === this.scopeFrom() && to === this.scopeTo()) return;
+    this.resetProfileSuggestion();
+    this.scopeFrom.set(from);
+    this.scopeTo.set(to);
+    this.scopeScene.set(null);
+    if (this.planActive()) this.scheduleReplan();
+    else this.resetForReload();
   }
 
   /** The slider moved while a plan is shown: recompute the plan once it settles. */
@@ -730,18 +758,27 @@ export class CullingStore {
   }
 
   private async runReplan(seq: number, pin: CullPlanPin, startDigest: string | null): Promise<void> {
-    const prev = { strictness: this.previousPlanStrictness, profile: this.previousPlanProfile };
+    const prev = {
+      strictness: this.previousPlanStrictness, profile: this.previousPlanProfile,
+      from: this.previousPlanFrom, to: this.previousPlanTo, scene: this.previousPlanScene,
+    };
     await this.flushPassTimers();
     if (seq !== this.replanSeq || !this.planActive()) return;
     // The pin's preset stays: the explicit strictness wins over its own server-side, and it still supplies
     // the preset's other knobs (a wedding preset's two keepers per group).
-    const request: CullPlanRequest = { ...pin.request, strictness: this.strictness() };
+    // The dates are `null`, not omitted, so All dates clears a window the pin carried.
+    const request: CullPlanRequest = {
+      ...pin.request, date_from: this.scopeFrom(), date_to: this.scopeTo(), strictness: this.strictness(),
+    };
     let data: CullingPlanResponse;
     try {
       data = await firstValueFrom(this.api.post<CullingPlanResponse>('/culling/plan', request));
     } catch {
       if (seq !== this.replanSeq) return;
       this.setStrictness(prev.strictness);
+      this.scopeFrom.set(prev.from);
+      this.scopeTo.set(prev.to);
+      this.scopeScene.set(prev.scene);
       this.selectedProfile.set(prev.profile);
       if (prev.profile) localStorage.setItem(CULL_PROFILE_KEY, prev.profile);
       else localStorage.removeItem(CULL_PROFILE_KEY);
@@ -771,6 +808,9 @@ export class CullingStore {
     while (this.groups().length < depth && this.hasMore()) await this.loadMore();
     this.previousPlanStrictness = this.strictness();
     this.previousPlanProfile = this.selectedProfile();
+    this.previousPlanFrom = this.scopeFrom();
+    this.previousPlanTo = this.scopeTo();
+    this.previousPlanScene = this.scopeScene();
     if (dropped > 0) {
       this.notice$.next({ key: I18N.culling.plan.replan_flips_dropped, params: { count: dropped }, duration: 4000 });
     }

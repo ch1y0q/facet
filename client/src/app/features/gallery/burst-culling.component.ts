@@ -9,6 +9,7 @@ import { DecimalPipe, NgClass, NgTemplateOutlet, PercentPipe } from '@angular/co
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatMenuModule } from '@angular/material/menu';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
@@ -27,6 +28,8 @@ import { PageHelpService } from '../../core/services/page-help.service';
 import { HeaderSlotService } from '../../core/services/header-slot.service';
 import { InfiniteScrollDirective } from '../../shared/directives/infinite-scroll.directive';
 import { isTypingContext } from '../../shared/utils/keyboard';
+import { toIsoDateString } from '../../shared/utils/date-format';
+import { CULL_DATE_PRESETS, presetRange, type CullDatePresetId } from './culling-date-range';
 import { isBracketLadderRejection } from '../../shared/utils/sequence-ladder';
 import { createLoupeState } from '../../shared/utils/loupe-state';
 import { useCoarsePointerSignal } from '../../shared/utils/media-query';
@@ -48,7 +51,7 @@ import {
 import { I18N, i18nKeys } from '../../core/i18n/keys';
 import {
   CullGroupKeyPipe, CullPlanGroupReasonPipe, PlanDiffersPipe, PlanRejectCountPipe,
-  PlanSuggestionPipe, PlanAcceptedPipe, PlanGroupNotePipe,
+  PlanSuggestionPipe, PlanAcceptedPipe, PlanGroupNotePipe, CullDateRangePipe, ScopeDatePipe,
   IsKeptPipe, IsDecidedPipe, IsConfirmedPipe, IsPassingPipe, PassCountdownPipe,
   CullReasonPipe, FacesForPathPipe, FacePoorExpressionPipe, FaceRingClassPipe,
   FaceDimmedPipe, WeightRemainingPipe, CullGroupIconPipe, CullGroupLabelPipe,
@@ -138,6 +141,7 @@ interface ShortcutRow {
     MatIconModule,
     MatButtonModule,
     MatMenuModule,
+    MatDatepickerModule,
     MatTooltipModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
@@ -153,6 +157,8 @@ interface ShortcutRow {
     ImageUrlPipe,
     SyncedZoomComponent,
     CullGroupKeyPipe,
+    CullDateRangePipe,
+    ScopeDatePipe,
     CullPlanGroupReasonPipe,
     PlanDiffersPipe,
     PlanRejectCountPipe,
@@ -225,9 +231,9 @@ interface ShortcutRow {
                  thresholds. The actions live in the pinned cluster below. -->
             @if (cull.albums().length > 0) {
               <button mat-icon-button [matMenuTriggerFor]="scopeMenu"
-                      [class.!text-[var(--mat-sys-primary)]]="scoped()"
-                      [matTooltip]="cull.scopeLabel() ?? (I18N.culling.scope_whole_library | translate)"
-                      [attr.aria-label]="cull.scopeLabel() ?? (I18N.culling.scope_whole_library | translate)">
+                      [class.!text-[var(--mat-sys-primary)]]="albumScoped()"
+                      [matTooltip]="cull.albumScopeLabel() ?? (I18N.culling.scope_whole_library | translate)"
+                      [attr.aria-label]="cull.albumScopeLabel() ?? (I18N.culling.scope_whole_library | translate)">
                 <mat-icon>filter_alt</mat-icon>
               </button>
               <mat-menu #scopeMenu="matMenu">
@@ -259,6 +265,44 @@ interface ShortcutRow {
                 }
               </mat-menu>
             }
+            <!-- Not behind the albums check: a date window needs no album. The range input is an invisible
+                 anchor for the custom picker's popup; it never takes focus or pointer events. -->
+            <div class="relative inline-flex shrink-0">
+              <button mat-icon-button data-testid="cull-date-range" [matMenuTriggerFor]="dateRangeMenu"
+                      [class.!text-[var(--mat-sys-primary)]]="cull.dateRangeActive()"
+                      [matTooltip]="cull.dateRangeActive() ? (cull.scopeFrom() | cullDateRange: cull.scopeTo()) : (I18N.culling.date_range.label | translate)"
+                      [attr.aria-label]="cull.dateRangeActive() ? (cull.scopeFrom() | cullDateRange: cull.scopeTo()) : (I18N.culling.date_range.label | translate)">
+                <mat-icon>date_range</mat-icon>
+              </button>
+              <mat-date-range-input #rangeInput [rangePicker]="rangePicker" aria-hidden="true"
+                                    class="absolute inset-0 overflow-hidden opacity-0 pointer-events-none">
+                <input matStartDate tabindex="-1"
+                       [attr.aria-label]="I18N.culling.date_range.start | translate"
+                       [value]="cull.scopeFrom() | scopeDate" />
+                <input matEndDate tabindex="-1"
+                       [attr.aria-label]="I18N.culling.date_range.end | translate"
+                       [value]="cull.scopeTo() | scopeDate"
+                       (dateChange)="onCustomRangeEnd(rangeInput.value?.start ?? null, $event.value)" />
+              </mat-date-range-input>
+              <mat-date-range-picker #rangePicker />
+            </div>
+            <mat-menu #dateRangeMenu="matMenu">
+              @for (preset of datePresets; track preset.id) {
+                <button mat-menu-item (click)="onDatePreset(preset.id)">
+                  <mat-icon>{{ preset.icon }}</mat-icon>
+                  <span>{{ preset.labelKey | translate }}</span>
+                </button>
+              }
+              <button mat-menu-item (click)="rangePicker.open()">
+                <mat-icon>edit_calendar</mat-icon>
+                <span>{{ I18N.culling.date_range.custom | translate }}</span>
+              </button>
+              <div role="separator" class="my-1 border-t border-[var(--mat-sys-outline-variant)]"></div>
+              <button mat-menu-item [disabled]="!cull.dateRangeActive()" (click)="onDateRange(null, null)">
+                <mat-icon>all_inclusive</mat-icon>
+                <span>{{ I18N.culling.date_range.all_dates | translate }}</span>
+              </button>
+            </mat-menu>
             <button mat-icon-button [matMenuTriggerFor]="cullGroupByMenu"
                     [class.!text-[var(--mat-sys-primary)]]="cull.groupBy() !== 'all'"
                     [matTooltip]="I18N.culling.group_by.label | translate"
@@ -503,7 +547,7 @@ interface ShortcutRow {
           <mat-spinner diameter="40" [attr.aria-label]="I18N.ui.labels.loading | translate" />
         </div>
       } @else if (visibleGroups().length === 0) {
-        <p class="text-center py-20 opacity-60">{{ (scoped() ? I18N.culling.scene_complete : I18N.culling.no_bursts) | translate }}</p>
+        <p class="text-center py-20 opacity-60">{{ emptyKey() | translate }}</p>
       } @else {
         <div class="space-y-3 pb-4">
           @for (group of visibleGroups(); track group.group_id + '_' + group.type; let i = $index) {
@@ -1430,6 +1474,18 @@ export class BurstCullingComponent implements OnDestroy {
   protected readonly scoped = computed(
     () => !!(this.cull.scopeAlbum() || this.cull.scopeFrom() || this.cull.scopeTo()),
   );
+  /** An album or a scene narrows the feed (dates alone do not light the album button). */
+  protected readonly albumScoped = computed(() => !!(this.cull.scopeAlbum() || this.cull.scopeScene()));
+  protected readonly datePresets = CULL_DATE_PRESETS;
+  /** Why the feed is empty: the wording follows what narrowed it. */
+  protected readonly emptyKey = computed(() => {
+    const dated = this.cull.dateRangeActive();
+    // Only a feed or plan that loaded no group at all: one whose groups were all confirmed or hidden is "done".
+    const loadedNone = this.cull.groups().length === 0;
+    if (this.cull.planActive() && dated && loadedNone) return this.I18N.culling.date_range.plan_empty;
+    if (dated && loadedNone && !this.cull.scopeScene()) return this.I18N.culling.date_range.empty;
+    return this.scoped() ? this.I18N.culling.scene_complete : this.I18N.culling.no_bursts;
+  });
   protected readonly expandedAlbumId = signal<number | null>(null);
   protected readonly expandedScenes = signal<SceneSummary[]>([]);
   protected readonly loadingScenes = signal(false);
@@ -2010,6 +2066,15 @@ export class BurstCullingComponent implements OnDestroy {
     this.cull.scopeFrom.set(qp.get('from'));
     this.cull.scopeTo.set(qp.get('to'));
     this.cull.scopeScene.set(qp.get('scene'));
+    // The URL tells the truth about the scope: any change (a date range, a plan's own window, a failed
+    // re-plan restoring the previous one) is written back, the other params (group_by) kept.
+    effect(() => {
+      const album = this.cull.scopeAlbum();
+      const from = this.cull.scopeFrom();
+      const to = this.cull.scopeTo();
+      const scene = this.cull.scopeScene();
+      untracked(() => this.mirrorScopeToUrl(album, from, to, scene));
+    });
     const gb = qp.get('group_by');
     // Validated against the shared list, not a repeated literal union: the
     // hand-written one silently dropped every granularity added after it.
@@ -2265,19 +2330,53 @@ export class BurstCullingComponent implements OnDestroy {
     this.cull.scopeScene.set(scene);
     void this.router.navigate(['/culling'], {
       queryParams: { album: album ?? null, from: from ?? null, to: to ?? null, scene: scene ?? null },
+      queryParamsHandling: 'merge',
     });
     this.selectedGroupIndex.set(0);
     this.cull.resetForReload();
   }
 
+  /** Write the scope into the query string unless it already says so (applyScope's own navigation lands first). */
+  private mirrorScopeToUrl(album: string | null, from: string | null, to: string | null, scene: string | null): void {
+    const current = this.router.parseUrl(this.router.url).queryParams;
+    if ((current['album'] ?? null) === album && (current['from'] ?? null) === from
+      && (current['to'] ?? null) === to && (current['scene'] ?? null) === scene) return;
+    void this.router.navigate([], {
+      queryParams: { album, from, to, scene },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
+  }
+
+  protected onDatePreset(id: CullDatePresetId): void {
+    const { from, to } = presetRange(id, new Date());
+    this.onDateRange(from, to);
+  }
+
+  /** The picker fires with the start alone while the user is mid-selection: apply only a complete range. */
+  protected onCustomRangeEnd(start: Date | null, end: Date | null): void {
+    if (start && end) this.onDateRange(toIsoDateString(start), toIsoDateString(end));
+  }
+
+  /** In plan mode the old plan stays on screen until the re-plan lands, so the selection must not jump early. */
+  protected onDateRange(from: string | null, to: string | null): void {
+    this.cull.setDateRange(from, to);
+    if (!this.cull.planActive()) this.selectedGroupIndex.set(0);
+  }
+
+  /** A window picked on the date button survives an album pick; only a scene's own window (or All dates) drops it. */
+  private currentWindow(): [string | null, string | null] {
+    return this.cull.scopeScene() ? [null, null] : [this.cull.scopeFrom(), this.cull.scopeTo()];
+  }
+
   protected scopeWholeLibrary(): void {
-    this.applyScope(null, null, null, null);
+    this.applyScope(null, ...this.currentWindow(), null);
   }
 
   protected scopeAlbumWhole(): void {
     const id = this.expandedAlbumId();
     if (id === null) return;
-    this.applyScope(id.toString(), null, null, null);
+    this.applyScope(id.toString(), ...this.currentWindow(), null);
   }
 
   protected scopeAlbumScene(scene: SceneSummary): void {

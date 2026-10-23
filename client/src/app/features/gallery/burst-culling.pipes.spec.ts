@@ -9,7 +9,7 @@ import {
   loadFrameImage, computePeakingOverlay, computePooledPeakingOverlays,
   peakingCanvasSize, PEAKING_FIT_EDGE, KEY_SUBJECT_COORDINATE_SPACE,
   CullGroupKeyPipe, CullPlanGroupReasonPipe, PlanDiffersPipe, PlanRejectCountPipe,
-  PlanSuggestionPipe, PlanAcceptedPipe, PlanGroupNotePipe,
+  PlanSuggestionPipe, PlanAcceptedPipe, PlanGroupNotePipe, CullDateRangePipe, ScopeDatePipe,
   CullingGroup, CullingFace, CullingSubject, FaceThresholds, FrameSize, KeySubject,
 } from './burst-culling.pipes';
 
@@ -958,5 +958,41 @@ describe('PlanGroupNotePipe', () => {
   it('is null without a note', () => {
     expect(pipe.transform(group({ photos }), new Map([['/z.jpg', 'x']]))).toBeNull();
     expect(pipe.transform(group({ photos }), new Map())).toBeNull();
+  });
+});
+
+describe('CullDateRangePipe', () => {
+  const pipe = new CullDateRangePipe();
+
+  it('formats ISO dates day-month-year', () => {
+    expect(pipe.transform('2026-07-01', '2026-07-31')).toBe('01/07/2026 - 31/07/2026');
+  });
+
+  it('reads the EXIF form with a time', () => {
+    expect(pipe.transform('2026:07:01 00:00:00', '2026:07:31 23:59:59')).toBe('01/07/2026 - 31/07/2026');
+  });
+
+  it('keeps the dash when one side is missing', () => {
+    expect(pipe.transform('2026-07-01', null)).toBe('01/07/2026 -');
+    expect(pipe.transform(null, '2026-07-31')).toBe('- 31/07/2026');
+  });
+
+  it('is empty when both sides are missing', () => {
+    expect(pipe.transform(null, null)).toBe('');
+  });
+
+  it('returns an unreadable value unchanged', () => {
+    expect(pipe.transform('soon', '2026-07-31')).toBe('soon - 31/07/2026');
+  });
+});
+
+describe('ScopeDatePipe', () => {
+  const pipe = new ScopeDatePipe();
+
+  it('reads both forms and null', () => {
+    expect(pipe.transform('2026-07-01')).toEqual(new Date(2026, 6, 1));
+    expect(pipe.transform('2026:07:31 23:59:59')).toEqual(new Date(2026, 6, 31));
+    expect(pipe.transform(null)).toBeNull();
+    expect(pipe.transform('soon')).toBeNull();
   });
 });

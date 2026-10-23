@@ -142,6 +142,41 @@ class TestDigestGuard:
         assert _plan(edition_client, "x", **both).status_code == 400
 
 
+class TestDateWindowForms:
+    EXIF = {"date_from": f"{DAY} 00:00:00", "date_to": f"{DAY} 23:59:59"}
+
+    def test_iso_dates_and_the_exif_window_give_one_digest_shared_with_the_dry_run(self, seeded, edition_client):
+        iso = edition_client.post("/api/culling/plan", json=_auto_body()).json()["plan_digest"]
+        exif = edition_client.post("/api/culling/plan", json=_auto_body(**self.EXIF)).json()["plan_digest"]
+        assert iso == exif == _digest(edition_client)["plan_digest"]
+        assert _digest(edition_client, **self.EXIF)["plan_digest"] == iso
+
+    def test_a_window_that_excludes_the_photos_gives_a_different_plan(self, seeded, edition_client):
+        other = {"date_from": "1996-03-04", "date_to": "1996-03-04"}
+        body = edition_client.post("/api/culling/plan", json=_auto_body(**other)).json()
+        assert _ours(body["groups"]) == []
+        assert body["plan_digest"] != _digest(edition_client)["plan_digest"]
+
+    def test_different_ranges_give_different_digests_and_the_same_range_one(self, seeded, edition_client):
+        def digest(**window):
+            return edition_client.post("/api/culling/plan", json=_auto_body(**window)).json()["plan_digest"]
+        narrow = digest(date_from="1996-03-03", date_to="1996-03-03")
+        elsewhere = digest(date_from="1996-04-01", date_to="1996-04-30")
+        assert narrow != elsewhere
+        assert digest(date_from=f"{DAY} 00:00:00", date_to=f"{DAY} 23:59:59") == narrow
+
+    def test_null_dates_plan_the_whole_library(self, seeded, edition_client):
+        resp = edition_client.post("/api/culling/plan", json={**_auto_body(), "date_from": None, "date_to": None})
+        assert resp.status_code == 200, resp.text
+        assert {g["group_id"] for g in _ours(resp.json()["groups"])} >= {BURST_A, BURST_B}
+
+    def test_an_override_outside_the_window_is_ignored_not_an_error(self, seeded, edition_client):
+        outside = {"date_from": "1996-03-04", "date_to": "1996-03-04", "keep_paths": [PREFIX + "a2.jpg"]}
+        resp = edition_client.post("/api/culling/plan", json=_auto_body(**outside))
+        assert resp.status_code == 200, resp.text
+        assert PREFIX + "a2.jpg" in _digest(edition_client, **outside)["ignored_overrides"]
+
+
 class TestAuth:
     def test_a_regular_user_is_refused(self, regular_client):
         assert regular_client.post("/api/culling/plan", json={"expected_digest": "x"}).status_code == 403

@@ -177,6 +177,52 @@ describe('CullingStore', () => {
     });
   });
 
+  describe('date range in the manual feed', () => {
+    const feedCalls = () => api.get.mock.calls.filter(c => c[0] === '/culling-groups');
+
+    it('reloads the feed with the dates and keeps the album', () => {
+      store.scopeAlbum.set('9');
+      api.get.mockClear();
+      store.setDateRange('2026-07-01', '2026-07-31');
+      expect(feedCalls()).toHaveLength(1);
+      expect(feedCalls()[0][1]).toEqual(expect.objectContaining({ album_id: '9', date_from: '2026-07-01', date_to: '2026-07-31' }));
+    });
+
+    it('All dates drops only the dates', () => {
+      store.scopeAlbum.set('9');
+      store.setDateRange('2026-07-01', '2026-07-31');
+      api.get.mockClear();
+      store.setDateRange(null, null);
+      const params = feedCalls()[0][1] as Record<string, unknown>;
+      expect(params).toEqual(expect.objectContaining({ album_id: '9' }));
+      expect(params).not.toHaveProperty('date_from');
+      expect(params).not.toHaveProperty('date_to');
+    });
+
+    it('does nothing for the range already shown', () => {
+      store.setDateRange('2026-07-01', '2026-07-31');
+      api.get.mockClear();
+      store.setDateRange('2026-07-01', '2026-07-31');
+      expect(feedCalls()).toHaveLength(0);
+    });
+
+    it('clears the scene label, whose window no longer applies, and keeps the album', () => {
+      store.scopeAlbum.set('9');
+      store.scopeScene.set('01/07/2026 10:00');
+      store.setDateRange('2026-07-01', '2026-07-31');
+      expect(store.scopeScene()).toBeNull();
+      expect(store.scopeAlbum()).toBe('9');
+    });
+
+    it('reports whether a window is set', () => {
+      expect(store.dateRangeActive()).toBe(false);
+      store.setDateRange('2026-07-01', null);
+      expect(store.dateRangeActive()).toBe(true);
+      store.setDateRange(null, null);
+      expect(store.dateRangeActive()).toBe(false);
+    });
+  });
+
   describe('confirming groups', () => {
     beforeEach(async () => {
       await store.loadGroups();
@@ -1118,6 +1164,160 @@ describe('CullingStore', () => {
       });
     });
 
+    describe('re-planning from the date range', () => {
+      const DATED_PLAN = planResponse([
+        planGroup(5, 'burst', ['/a.jpg', '/b.jpg'], ['/a.jpg'], 1),
+      ], { plan_digest: 'dg2' });
+      const planCalls = () => api.post.mock.calls.filter(c => c[0] === '/culling/plan');
+      const settle = async () => {
+        for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(0);
+      };
+      const routePlan = (...answers: unknown[]) => {
+        const queue = [...answers];
+        api.post.mockImplementation((path: string) => {
+          if (path !== '/culling/plan') return of({});
+          const next = queue.shift();
+          return next instanceof Subject ? next : of(next);
+        });
+      };
+      const flushReplan = async () => {
+        await vi.advanceTimersByTimeAsync(CULL_REPLAN_DEBOUNCE_MS);
+        await settle();
+      };
+
+      beforeEach(async () => {
+        vi.useFakeTimers();
+        await store.enterPlan(pin);
+        api.post.mockClear();
+        api.get.mockClear();
+      });
+
+      it('posts the pin request with the new dates and no digest, and stays in plan mode', async () => {
+        routePlan(DATED_PLAN);
+        store.setDateRange('2026-07-01', '2026-07-31');
+        expect(planCalls()).toHaveLength(0);
+        expect(store.groups()).toHaveLength(2);
+        await flushReplan();
+        expect(planCalls()).toHaveLength(1);
+        const body = planCalls()[0][1] as Record<string, unknown>;
+        expect(body).toEqual({ group_by: 'all', strictness: 80, date_from: '2026-07-01', date_to: '2026-07-31' });
+        expect(body).not.toHaveProperty('expected_digest');
+        expect(store.planActive()).toBe(true);
+        expect(store.planDigest()).toBe('dg2');
+        expect(plan.pin()?.request.date_from).toBe('2026-07-01');
+        expect(api.get).not.toHaveBeenCalledWith('/culling-groups', expect.anything());
+      });
+
+      it('All dates posts explicit nulls so the pin\'s window is cleared', async () => {
+        plan.setPin({ digest: 'dg', request: { ...pin.request, date_from: '2026-07-01', date_to: '2026-07-31' } });
+        await store.enterPlan({ digest: 'dg', request: { ...pin.request, date_from: '2026-07-01', date_to: '2026-07-31' } });
+        api.post.mockClear();
+        routePlan(DATED_PLAN);
+        store.setDateRange(null, null);
+        await flushReplan();
+        const body = planCalls()[0][1] as Record<string, unknown>;
+        expect(body).toHaveProperty('date_from', null);
+        expect(body).toHaveProperty('date_to', null);
+        expect(plan.pin()?.request.date_from).toBeNull();
+      });
+
+      it('carries a flip inside the range and reports one outside it', async () => {
+        store.toggleSelection('/a.jpg', store.groups()[0]);
+        store.toggleSelection('/c.jpg', store.groups()[1]);
+        routePlan(DATED_PLAN);
+        store.setDateRange('2026-07-01', '2026-07-31');
+        await flushReplan();
+        expect([...store.selectionsMap().get('5_burst') ?? []].sort()).toEqual(['/a.jpg', '/b.jpg']);
+        expect(notices).toEqual([{ key: 'culling.plan.replan_flips_dropped', params: { count: 1 }, duration: 4000 }]);
+      });
+
+      it('re-forms a confirmed group that is still inside the range', async () => {
+        store.confirmGroup(store.groups()[0]);
+        await vi.advanceTimersByTimeAsync(7000);
+        routePlan(DATED_PLAN);
+        store.setDateRange('2026-07-01', '2026-07-31');
+        await flushReplan();
+        expect(store.confirmedGroups().has('5_burst')).toBe(true);
+      });
+
+      it('a failed re-plan restores the range and the old plan', async () => {
+        store.scopeAlbum.set('9');
+        const before = store.groups();
+        api.post.mockImplementation((path: string) => path === '/culling/plan'
+          ? throwError(() => new HttpErrorResponse({ status: 400 })) : of({}));
+        store.setDateRange('2026-07-01', '2026-07-31');
+        expect(store.scopeFrom()).toBe('2026-07-01');
+        await flushReplan();
+        expect(store.scopeFrom()).toBeNull();
+        expect(store.scopeTo()).toBeNull();
+        expect(store.scopeScene()).toBeNull();
+        expect(store.planActive()).toBe(true);
+        expect(store.planDigest()).toBe('dg');
+        expect(store.groups()).toBe(before);
+        expect(notices).toEqual([{ key: 'culling.error_loading', duration: 2000 }]);
+      });
+
+      it('a range change then a strictness move inside the debounce window is one POST carrying both', async () => {
+        routePlan(DATED_PLAN);
+        store.setDateRange('2026-07-01', '2026-07-31');
+        await vi.advanceTimersByTimeAsync(100);
+        store.setStrictness(40);
+        store.scheduleReplan();
+        await flushReplan();
+        expect(planCalls()).toHaveLength(1);
+        expect(planCalls()[0][1]).toEqual(expect.objectContaining({ strictness: 40, date_from: '2026-07-01', date_to: '2026-07-31' }));
+      });
+
+      it('keeps plan mode when the re-plan lands no group', async () => {
+        routePlan(planResponse([], { plan_digest: 'dg2' }));
+        store.setDateRange('2026-07-01', '2026-07-31');
+        await flushReplan();
+        expect(store.planActive()).toBe(true);
+        expect(store.groups()).toEqual([]);
+      });
+
+      it('enterPlan reads a whole-day EXIF window from the pin as plain dates and a re-plan sends equivalent ones', async () => {
+        const exif: CullPlanPin = { digest: 'dg', request: { group_by: 'all', date_from: '2026:07:01 00:00:00', date_to: '2026:07:31 23:59:59' } };
+        plan.setPin(exif);
+        await store.enterPlan(exif);
+        expect(store.scopeFrom()).toBe('2026-07-01');
+        expect(store.scopeTo()).toBe('2026-07-31');
+        api.post.mockClear();
+        routePlan(DATED_PLAN);
+        store.setStrictness(40);
+        store.scheduleReplan();
+        await flushReplan();
+        expect(planCalls()[0][1]).toEqual(expect.objectContaining({ date_from: '2026-07-01', date_to: '2026-07-31' }));
+      });
+
+      it('enterPlan keeps a window with real times, which a plain date would widen', async () => {
+        await store.enterPlan({ digest: 'dg', request: { group_by: 'all', date_from: '2026:07:01 10:00:00', date_to: '2026:07:01 10:30:00' } });
+        expect(store.scopeFrom()).toBe('2026:07:01 10:00:00');
+        expect(store.scopeTo()).toBe('2026:07:01 10:30:00');
+      });
+
+      it('a failure after a landed re-plan restores the landed range, not the pin\'s', async () => {
+        routePlan(DATED_PLAN);
+        store.setDateRange('2026-07-01', '2026-07-31');
+        await flushReplan();
+        expect(store.planDigest()).toBe('dg2');
+        api.post.mockImplementation((path: string) => path === '/culling/plan'
+          ? throwError(() => new HttpErrorResponse({ status: 400 })) : of({}));
+        store.setDateRange('2026-08-01', '2026-08-31');
+        await flushReplan();
+        expect(store.scopeFrom()).toBe('2026-07-01');
+        expect(store.scopeTo()).toBe('2026-07-31');
+      });
+
+      it('labels a date-only scope with the range, for the highlights album', () => {
+        expect(store.scopeLabel()).toBeNull();
+        store.scopeFrom.set('2026-07-01');
+        store.scopeTo.set('2026-07-31');
+        expect(store.scopeLabel()).toBe('01/07/2026 - 31/07/2026');
+        expect(store.albumScopeLabel()).toBeNull();
+      });
+    });
+
     describe('re-planning from the slider', () => {
       const NEW_PLAN = planResponse([
         planGroup(7, 'burst', ['/a.jpg', '/b.jpg'], ['/a.jpg'], 1),
@@ -1162,7 +1362,7 @@ describe('CullingStore', () => {
         await settle();
         expect(planCalls()).toHaveLength(1);
         const body = planCalls()[0][1] as Record<string, unknown>;
-        expect(body).toEqual({ group_by: 'all', strictness: 60, profile: 'wedding', keep_paths: ['/a.jpg'] });
+        expect(body).toEqual({ group_by: 'all', strictness: 60, profile: 'wedding', keep_paths: ['/a.jpg'], date_from: null, date_to: null });
         expect(body).not.toHaveProperty('expected_digest');
         // The preset still supplies its keeper floor server-side; the explicit strictness wins over its own.
         expect(body).toHaveProperty('profile', 'wedding');

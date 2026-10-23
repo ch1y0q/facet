@@ -36,6 +36,7 @@ describe('AssistantCullPlanService', () => {
     service.recordConfirm('7_burst', ['/g']);
     expect(service.snapshot()).toEqual({
       plan_digest: 'd', groups_total: 10, plan_truncated: true,
+      scope: { album_id: null, date_from: null, date_to: null },
       confirmed: [3, 4], pending: [2], untouched: 7,
       suggestions_total: 0, suggestions_accepted: 0, suggestions_open: [],
       changed: [
@@ -44,6 +45,24 @@ describe('AssistantCullPlanService', () => {
       ],
     });
     expect(record).toHaveBeenCalledWith('cull_confirm', ['/f'], { type: 'burst', group_id: 6, number: 3, keep: 1, reject: 1 });
+  });
+
+  it('reports the scope the pin was computed for and follows a new pin', () => {
+    service.setPin({ digest: 'd', request: { group_by: 'all', album_id: 9, date_from: '2026-07-01', date_to: '2026:07:31 23:59:59' } });
+    service.register([entry(1, 'burst', 1, ['/a', '/b'], ['/a'])], { total: 1, truncated: false });
+    expect(service.snapshot()?.scope).toEqual({ album_id: 9, date_from: '2026-07-01', date_to: '2026-07-31' });
+    service.setPin({ digest: 'd2', request: { group_by: 'all', album_id: 9, date_from: null, date_to: null } });
+    service.register([entry(1, 'burst', 1, ['/a', '/b'], ['/a'])], { total: 1, truncated: false });
+    expect(service.snapshot()?.scope).toEqual({ album_id: 9, date_from: null, date_to: null });
+  });
+
+  it('reports a whole-day EXIF window as plain dates', () => {
+    service.setPin({ digest: 'd', request: { group_by: 'all', date_from: '2025:04:14 00:00:00', date_to: '2025:04:15 23:59:59' } });
+    service.register([entry(1, 'burst', 1, ['/a', '/b'], ['/a'])], { total: 1, truncated: false });
+    expect(service.snapshot()?.scope).toEqual({ album_id: null, date_from: '2025-04-14', date_to: '2025-04-15' });
+    service.setPin({ digest: 'd2', request: { group_by: 'all', date_from: '2025:04:14 10:00:00', date_to: '2025:04:14 10:30:00' } });
+    service.register([entry(1, 'burst', 1, ['/a', '/b'], ['/a'])], { total: 1, truncated: false });
+    expect(service.snapshot()?.scope).toEqual({ album_id: null, date_from: '2025:04:14 10:00:00', date_to: '2025:04:14 10:30:00' });
   });
 
   it('compares keepers over the group\'s own photos: an unchanged confirm is not changed, a flip back is not pending', () => {

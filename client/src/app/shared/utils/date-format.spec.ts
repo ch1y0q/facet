@@ -1,4 +1,4 @@
-import { toIsoDateString } from './date-format';
+import { toIsoDateString, plainScopeDate } from './date-format';
 
 describe('toIsoDateString', () => {
   it('returns an empty string for null', () => {
@@ -30,5 +30,20 @@ describe('toIsoDateString', () => {
   it('does not pad four-digit years', () => {
     const d = new Date(2026, 9, 9); // October 9
     expect(toIsoDateString(d)).toBe('2026-10-09');
+  });
+});
+
+describe('plainScopeDate', () => {
+  it('turns a whole-day EXIF edge into a plain date', () => {
+    expect(plainScopeDate('2025:04:14 00:00:00', 'from')).toBe('2025-04-14');
+    expect(plainScopeDate('2025:04:15 23:59:59', 'to')).toBe('2025-04-15');
+  });
+
+  it('keeps an edge that is not the day\'s own start or end, and anything else', () => {
+    expect(plainScopeDate('2025:04:14 10:00:00', 'from')).toBe('2025:04:14 10:00:00');
+    expect(plainScopeDate('2025:04:15 00:00:00', 'to')).toBe('2025:04:15 00:00:00');
+    expect(plainScopeDate('2025-04-14', 'from')).toBe('2025-04-14');
+    expect(plainScopeDate(null, 'to')).toBeNull();
+    expect(plainScopeDate(undefined, 'to')).toBeNull();
   });
 });

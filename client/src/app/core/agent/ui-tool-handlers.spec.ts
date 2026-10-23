@@ -1046,6 +1046,16 @@ describe('UI tool registry and handlers', () => {
       expect((culling['changed'] as unknown[]).length).toBeLessThan(5);
       expect(culling['groups_total']).toBe(5);
       expect(culling['plan_truncated']).toBe(false);
+      expect(culling['scope']).toEqual({ album_id: null, date_from: null, date_to: null });
+    });
+
+    it('reports the plan\'s dates in ui_get_context after a date re-plan moved the pin', async () => {
+      plan.setPin({ digest: 'd1', request: REQUEST });
+      plan.register([entry(1, 5, ['/a.jpg', '/b.jpg'], ['/a.jpg'])], { total: 1, truncated: false });
+      plan.setPin({ digest: 'd2', request: { ...REQUEST, date_from: '2026-07-01', date_to: '2026-07-31' } });
+      plan.register([entry(1, 5, ['/a.jpg', '/b.jpg'], ['/a.jpg'])], { total: 1, truncated: false });
+      const culling = ((await run('ui_get_context')) as { data: Record<string, unknown> }).data['culling'] as Record<string, unknown>;
+      expect(culling['scope']).toEqual({ album_id: null, date_from: '2026-07-01', date_to: '2026-07-31' });
     });
 
     it('leaves a small culling block untouched: no counts, no truncated', async () => {
@@ -1077,6 +1087,7 @@ describe('UI tool registry and handlers', () => {
       expect(data).not.toHaveProperty('review');
       expect(data['culling']).toEqual({
         plan_digest: 'd1', groups_total: 1, confirmed: [], pending: [1], untouched: 0, plan_truncated: false,
+        scope: { album_id: null, date_from: null, date_to: null },
         suggestions_total: 0, suggestions_accepted: 0, suggestions_open: [],
         changed: [{ type: 'burst', group_id: 5, number: 1, keep_paths: ['/b.jpg'], reject_paths: ['/a.jpg'] }],
       });
@@ -1217,6 +1228,7 @@ describe('UI tool registry and handlers', () => {
       const open = Array.from({ length: 2000 }, (_, i) => ({ path: `/photos/${'a'.repeat(80)}/${i}.jpg`, action: 'reject' as const }));
       const snap = {
         plan_digest: 'd', groups_total: 3, confirmed: [], pending: [], changed: [], untouched: 3, plan_truncated: false,
+        scope: { album_id: null, date_from: null, date_to: null },
         suggestions_total: 2000, suggestions_accepted: 1, suggestions_open: open,
       };
       const out = capCullingSnapshot(snap, 20 * 1024)!;
@@ -1224,6 +1236,7 @@ describe('UI tool registry and handlers', () => {
       expect(out['suggestions_open_count']).toBe(2000);
       expect((out['suggestions_open'] as unknown[]).length).toBeLessThan(2000);
       expect(out['suggestions_total']).toBe(2000);
+      expect(out['scope']).toEqual({ album_id: null, date_from: null, date_to: null });
     });
   });
 });
