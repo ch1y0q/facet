@@ -834,7 +834,7 @@ Alle Statistiken sind im Mehrbenutzermodus benutzerbewusst — jeder Benutzer si
 | `Shift+F10` / `Menu` | Kontextmenü der fokussierten Fotokarte öffnen (der Rechtsklick tut dasselbe) |
 | `?` | Die Tastenkürzel-Referenz anzeigen (funktioniert auf jeder Seite) |
 
-Das aktuelle Foto — das, auf das die Tastenkürzel für Sternebewertung, Favorit und Ablehnen wirken — ist mit einer 4px breiten Umrandung um seine Karte markiert; alle anderen Karten werden auf 50 % Deckkraft abgedunkelt. Markiert wird erst, wenn der Cursor sich tatsächlich auf ein Foto in den Ergebnissen bewegt hat, sodass eine noch nicht durchgeblätterte Galerie in voller Stärke bleibt. Ein Klick auf ein Foto verschiebt die Markierung darauf, sodass ein direkt nach einem Klick getipptes Tastenkürzel das angeklickte Foto trifft und nicht das, wo die Pfeiltasten zuletzt standen. Die Rückkehr von einem Foto (Zurück oder Esc) lässt die Markierung auf dem geöffneten Foto, sodass die Tastenkürzel von dort aus weiterarbeiten.
+Das aktuelle Foto — das, auf das die Tastenkürzel für Sternebewertung, Favorit und Ablehnen wirken — ist mit einer 4px breiten Umrandung um seine Karte markiert; alle anderen Karten werden auf 50 % Deckkraft abgedunkelt. Markiert wird erst, wenn der Cursor sich tatsächlich auf ein Foto in den Ergebnissen bewegt hat, sodass eine noch nicht durchgeblätterte Galerie in voller Stärke bleibt. Ein Klick auf ein Foto verschiebt die Markierung darauf, sodass ein direkt nach einem Klick getipptes Tastenkürzel das angeklickte Foto trifft und nicht das, wo die Pfeiltasten zuletzt standen. Die Rückkehr von einem Foto (Zurück oder Esc) lässt die Markierung auf dem zuletzt angesehenen Foto, sodass die Tastenkürzel von dort aus weiterarbeiten.
 
 ## Rückgängig
 
@@ -1445,6 +1445,8 @@ Der Endpunkt `/api/download/options` erkennt begleitende RAW-Dateien automatisch
 | `GET /api/filter_options/location_name?lat=&lng=` | Koordinaten per umgekehrter Geocodierung in einen Ortsnamen umwandeln |
 
 ## Fehlerbehebung
+
+Meldet die semantische Suche, dass die Apple-Silicon-Beschleunigung belegt ist, versuche es nach Abschluss der laufenden Modellaufgabe erneut. Gleichzeitige Suchanfragen teilen sich ein Wartebudget von 15 Sekunden für das Laden des Encoders und den Beschleunigerzugriff.
 
 | Problem | Lösung |
 |-------|----------|

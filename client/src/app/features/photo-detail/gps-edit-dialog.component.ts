@@ -8,6 +8,7 @@ import { firstValueFrom } from 'rxjs';
 import * as L from 'leaflet';
 import { createLeafletMap } from '../../shared/leaflet';
 import { ApiService } from '../../core/services/api.service';
+import { GalleryStore } from '../gallery/gallery.store';
 import { I18nService } from '../../core/services/i18n.service';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { FixedPipe } from '../../shared/pipes/fixed.pipe';
@@ -47,7 +48,7 @@ export interface GpsEditDialogData {
       @if (selectedLat() !== null) {
         <button mat-button (click)="clearLocation()" class="!mr-auto">{{ I18N.photo_detail.gps_clear | translate }}</button>
       }
-      <button mat-button mat-dialog-close>{{ I18N.ui.buttons.cancel | translate }}</button>
+      <button mat-button [mat-dialog-close]="undefined">{{ I18N.ui.buttons.cancel | translate }}</button>
       <button mat-flat-button (click)="save()" [disabled]="saving()">{{ I18N.ui.buttons.save | translate }}</button>
     </mat-dialog-actions>
   `,
@@ -55,6 +56,7 @@ export interface GpsEditDialogData {
 export class GpsEditDialogComponent {
   protected readonly I18N = i18nKeys();
   private readonly api = inject(ApiService);
+  private readonly store = inject(GalleryStore);
   private readonly dialogRef = inject(MatDialogRef<GpsEditDialogComponent>);
   private readonly destroyRef = inject(DestroyRef);
   private readonly snackBar = inject(MatSnackBar);
@@ -115,17 +117,17 @@ export class GpsEditDialogComponent {
   }
 
   async save(): Promise<void> {
+    if (this.saving()) return;
+    const saved = { gps_latitude: this.selectedLat(), gps_longitude: this.selectedLng() };
     this.saving.set(true);
     try {
       await firstValueFrom(this.api.put('/photo/gps', {
         path: this.data.path,
-        gps_latitude: this.selectedLat(),
-        gps_longitude: this.selectedLng(),
+        ...saved,
       }));
-      this.dialogRef.close({
-        gps_latitude: this.selectedLat(),
-        gps_longitude: this.selectedLng(),
-      });
+      // Back closes this dialog before the save lands, so the caller would never hear of it.
+      this.store.patchPhoto(this.data.path, saved);
+      if (!this.destroyRef.destroyed) this.dialogRef.close(saved);
     } catch {
       this.snackBar.open(this.i18n.t(I18N.notifications.connection_error), '', { duration: 3000 });
     } finally {

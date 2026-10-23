@@ -1,9 +1,10 @@
 import type { Mock } from 'vitest';
 import { TestBed } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
+import { of, throwError, Subject } from 'rxjs';
 import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { ApiService } from '../../core/services/api.service';
+import { GalleryStore } from '../gallery/gallery.store';
 import { I18nService } from '../../core/services/i18n.service';
 import type { GpsEditDialogComponent, GpsEditDialogData } from './gps-edit-dialog.component';
 
@@ -18,6 +19,7 @@ describe('GpsEditDialogComponent', () => {
   let GpsEditDialogComponentClass: typeof GpsEditDialogComponent;
   let component: GpsEditDialogComponent;
   let mockDialogRef: { close: Mock };
+  let mockStore: { patchPhoto: Mock };
   let mockApi: { put: Mock };
   let mockSnackBar: { open: Mock };
 
@@ -28,6 +30,7 @@ describe('GpsEditDialogComponent', () => {
   function createComponent(data: GpsEditDialogData) {
     TestBed.resetTestingModule();
     mockDialogRef = { close: vi.fn() };
+    mockStore = { patchPhoto: vi.fn() };
     mockApi = { put: vi.fn(() => of({})) };
     mockSnackBar = { open: vi.fn() };
 
@@ -37,8 +40,9 @@ describe('GpsEditDialogComponent', () => {
         { provide: MatDialogRef, useValue: mockDialogRef },
         { provide: MAT_DIALOG_DATA, useValue: data },
         { provide: ApiService, useValue: mockApi },
+        { provide: GalleryStore, useValue: mockStore },
         { provide: MatSnackBar, useValue: mockSnackBar },
-        { provide: I18nService, useValue: { t: (k: string) => k } },
+        { provide: I18nService, useValue: { t: (k: string) => k, translations: () => ({}) } },
       ],
     });
     component = TestBed.inject(GpsEditDialogComponentClass);
@@ -57,6 +61,16 @@ describe('GpsEditDialogComponent', () => {
 
     expect(component.selectedLat()).toBeNull();
     expect(component.selectedLng()).toBeNull();
+  });
+
+  it('Cancel closes without a result, so the caller keeps the location', () => {
+    createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: null, lng: null });
+    const fixture = TestBed.createComponent(GpsEditDialogComponentClass);
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('mat-dialog-actions button') as HTMLButtonElement).click();
+
+    expect(mockDialogRef.close).toHaveBeenCalledWith(undefined);
   });
 
   describe('clearLocation', () => {
@@ -85,6 +99,13 @@ describe('GpsEditDialogComponent', () => {
         gps_latitude: 48.8566,
         gps_longitude: 2.3522,
       });
+    });
+
+    it('writes the location to the gallery copy even if Back already closed the dialog', async () => {
+      createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 48.8566, lng: 2.3522 });
+      await component.save();
+
+      expect(mockStore.patchPhoto).toHaveBeenCalledWith('/photo.jpg', { gps_latitude: 48.8566, gps_longitude: 2.3522 });
     });
 
     it('should send null coordinates when cleared', async () => {
@@ -125,4 +146,21 @@ describe('GpsEditDialogComponent', () => {
       expect(component.saving()).toBe(false);
     });
   });
+  it.each([false, true])('keeps submitted coordinates while inputs change (destroyed: %s)', async destroyed => {
+    createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 1, lng: 2 });
+    const pending = new Subject<unknown>();
+    mockApi.put.mockReturnValue(pending);
+    const saving = component.save();
+    component.selectedLat.set(30);
+    component.selectedLng.set(40);
+    const duplicate = component.save();
+    if (destroyed) TestBed.resetTestingModule();
+    pending.next({});
+    await Promise.all([saving, duplicate]);
+    expect(mockStore.patchPhoto).toHaveBeenCalledWith('/photo.jpg', { gps_latitude: 1, gps_longitude: 2 });
+    expect(mockApi.put).toHaveBeenCalledExactlyOnceWith('/photo/gps', { path: '/photo.jpg', gps_latitude: 1, gps_longitude: 2 });
+    if (destroyed) expect(mockDialogRef.close).not.toHaveBeenCalled();
+    else expect(mockDialogRef.close).toHaveBeenCalledWith({ gps_latitude: 1, gps_longitude: 2 });
+  });
+
 });
