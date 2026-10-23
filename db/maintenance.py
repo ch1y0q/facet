@@ -607,6 +607,11 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
         logger.info("  Output exists — running incremental update...")
         logger.info("  Source: %.1f MB", source_size / 1024 / 1024)
 
+    # Upgrade the viewer database before SQL relies on newly introduced manual
+    # provenance. Reuse the canonical migration, without building photo indexes.
+    from db.schema import init_database
+    init_database(output_path, build_photo_indexes=False)
+
     src_escaped = source_db.replace("'", "''")
     dest_conn = sqlite3.connect(output_path)
     dest_conn.execute("PRAGMA foreign_keys = ON")
@@ -656,6 +661,9 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
         cleared to 0 on the viewer is indistinguishable from unrated and cannot
         be preserved against a non-zero source."""
         src_val = f"(SELECT {col} FROM src.photos WHERE src.photos.path = main.photos.path)"
+        if col in ('gps_latitude', 'gps_longitude', 'gps_manually_set'):
+            return (f"{col} = CASE WHEN main.photos.gps_manually_set = 1 "
+                    f"THEN main.photos.{col} ELSE {src_val} END")
         if col in _CACHE_COLS:
             return f"{col} = COALESCE({src_val}, {col})"
         if col in _RATING_COLS:

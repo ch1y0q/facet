@@ -142,8 +142,8 @@ Esses comandos atualizam métricas específicas, derivam novos dados (legendas p
 | `python facet.py --sweep-dedup-thresholds [labels.json]` | Avalia limiares de cosseno para quase-duplicatas (tabela de precisão/revocação com rótulos; caso contrário, distribuição de cosseno dos candidatos) |
 | `python facet.py --generate-captions` | `[GPU]` `[16gb/24gb]` Gera legendas por IA para as fotos usando VLM. Quando `narrative_moments.caption_min_confidence > 0`, ignora fotos sem rótulo / `other` / abaixo do limiar (o mesmo portão se aplica ao endpoint de legenda sob demanda) |
 | `python facet.py --translate-captions` | Traduz as legendas em inglês para o idioma de destino configurado (CPU, MarianMT) |
-| `python facet.py --extract-gps` | Extrai coordenadas GPS dos dados EXIF para colunas do banco de dados |
-| `python facet.py --rescan-gps` | Re-extrai as coordenadas GPS do EXIF para todas as fotos (sobrescreve as existentes) |
+| `python facet.py --extract-gps` | Extrai coordenadas GPS dos dados EXIF para colunas do banco de dados. As fotos cuja localização foi definida no visualizador são ignoradas. |
+| `python facet.py --rescan-gps` | Re-extrai as coordenadas GPS do EXIF para todas as fotos (sobrescreve as existentes). As fotos cuja localização foi definida no visualizador são ignoradas. |
 | `python facet.py --recompute-embeddings` | Recalcula os embeddings CLIP/SigLIP para todas as fotos (necessário após troca de modelo) |
 | `python facet.py --score-topiq` | Recalcula `topiq_score` com o TOPIQ para cada foto que tenha uma miniatura armazenada (requer GPU). Não há filtro de NULL, então os valores existentes são sobrescritos; uma foto que o TOPIQ não consegue pontuar mantém o valor armazenado |
 | `python facet.py --backfill-focal-35mm` | Preenche retroativamente a distância focal equivalente a 35mm a partir do EXIF para fotos que não a têm |

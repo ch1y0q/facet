@@ -144,8 +144,8 @@ These commands update specific metrics, derive new data (AI captions, GPS, embed
 | `python facet.py --sweep-dedup-thresholds [labels.json]` | Evaluate near-dup cosine thresholds (precision/recall table with labels, else candidate-cosine distribution) |
 | `python facet.py --generate-captions` | `[GPU]` `[16gb/24gb]` Generate AI captions for photos using VLM. When `narrative_moments.caption_min_confidence > 0`, skips unlabelled / `other` / below-threshold photos (the same gate applies to the on-demand caption endpoint) |
 | `python facet.py --translate-captions` | Translate English captions to configured target language (CPU, MarianMT) |
-| `python facet.py --extract-gps` | Extract GPS coordinates from EXIF data into database columns |
-| `python facet.py --rescan-gps` | Re-extract GPS coordinates from EXIF for all photos (overwrites existing) |
+| `python facet.py --extract-gps` | Extract GPS coordinates from EXIF data into database columns. Photos whose location was set in the viewer are skipped. |
+| `python facet.py --rescan-gps` | Re-extract GPS coordinates from EXIF for all photos (overwrites existing). Photos whose location was set in the viewer are skipped. |
 | `python facet.py --recompute-embeddings` | Recompute CLIP/SigLIP embeddings for all photos (required after model switch) |
 | `python facet.py --score-topiq` | Re-score `topiq_score` with TOPIQ for every photo that has a stored thumbnail (GPU required). There is no NULL filter, so existing values are overwritten; a photo TOPIQ cannot score keeps its stored value |
 | `python facet.py --backfill-focal-35mm` | Backfill 35mm-equivalent focal length from EXIF for photos missing it |

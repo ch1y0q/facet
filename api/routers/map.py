@@ -9,12 +9,16 @@ import sqlite3
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError, model_validator
 
 from api.auth import CurrentUser, get_optional_user, require_edition
 from api.database import get_async_db, get_db
 from api.db_helpers import get_existing_columns, get_visibility_clause, to_exif_date
 from api.models.discovery import PhotoMapCountResponse, PhotoMapResponse
+from api.path_validation import resolve_photo_disk_path
+from api.routers.places import Latitude, Longitude, place_owner
+from db import places
+from exiftool.exiftool_batch import get_exif_batch
 
 _DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 
@@ -202,11 +206,23 @@ async def api_photos_map_count(
 
 class GpsUpdateRequest(BaseModel):
     path: str
-    gps_latitude: Optional[float] = None
-    gps_longitude: Optional[float] = None
+    gps_latitude: Latitude | None = None
+    gps_longitude: Longitude | None = None
+    saved_place_id: int | None = None
+
+    @model_validator(mode='after')
+    def paired_coordinates(self):
+        if (self.gps_latitude is None) != (self.gps_longitude is None):
+            raise ValueError('Both coordinates must be set or both null')
+        return self
 
 
-@router.put("/api/photo/gps")
+class GpsUpdateResponse(BaseModel):
+    gps_latitude: float | None
+    gps_longitude: float | None
+
+
+@router.put("/api/photo/gps", response_model=GpsUpdateResponse)
 def api_update_gps(
     body: GpsUpdateRequest,
     user: CurrentUser = Depends(require_edition),
@@ -216,11 +232,11 @@ def api_update_gps(
     if 'gps_latitude' not in existing_cols or 'gps_longitude' not in existing_cols:
         raise HTTPException(status_code=400, detail="GPS columns not available")
 
-    if (body.gps_latitude is None) != (body.gps_longitude is None):
-        raise HTTPException(status_code=400, detail="Both latitude and longitude must be set or both must be null")
+    owner = place_owner(user)
 
     with get_db() as conn:
         try:
+            conn.execute("BEGIN IMMEDIATE")
             user_id = user.user_id if user else None
             vis_sql, vis_params = get_visibility_clause(user_id)
 
@@ -231,13 +247,81 @@ def api_update_gps(
             if not row:
                 raise HTTPException(status_code=404, detail="Photo not found")
 
+            if body.saved_place_id is not None:
+                saved = places.get_place(conn, owner, body.saved_place_id)
+                if (saved['latitude'], saved['longitude']) != (body.gps_latitude, body.gps_longitude):
+                    raise places.PlaceError(409, 'Saved place coordinates changed')
             conn.execute(
-                f"UPDATE photos SET gps_latitude = ?, gps_longitude = ? WHERE path = ? AND {vis_sql}",
+                f"UPDATE photos SET gps_latitude = ?, gps_longitude = ?, gps_manually_set = 1 WHERE path = ? AND {vis_sql}",
                 [body.gps_latitude, body.gps_longitude, body.path] + vis_params,
             )
+            places.record_assignment(conn, owner, body.gps_latitude, body.gps_longitude, body.saved_place_id)
+            result = dict(conn.execute(
+                'SELECT gps_latitude, gps_longitude FROM photos WHERE path=?', (body.path,)
+            ).fetchone())
             conn.commit()
-            return {'gps_latitude': body.gps_latitude, 'gps_longitude': body.gps_longitude}
+            return result
+        except places.PlaceError as exc:
+            conn.rollback()
+            raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
         except sqlite3.Error:
             logger.exception("Database error updating GPS for photo %s", body.path)
             conn.rollback()
             raise HTTPException(status_code=500, detail='Internal server error')
+
+
+@router.delete("/api/photo/gps", response_model=GpsUpdateResponse)
+def api_reset_gps(
+    path: str = Query(...),
+    user: CurrentUser = Depends(require_edition),
+):
+    """Drop a photo's hand-set location and re-read the file's own GPS (edition mode required)."""
+    existing_cols = get_existing_columns()
+    if 'gps_latitude' not in existing_cols or 'gps_longitude' not in existing_cols or 'gps_manually_set' not in existing_cols:
+        raise HTTPException(status_code=400, detail="GPS columns not available")
+    user_id = user.user_id if user else None
+    vis_sql, vis_params = get_visibility_clause(user_id)
+    with get_db() as conn:
+        row = conn.execute(
+            f"SELECT path FROM photos WHERE path = ? AND {vis_sql}",
+            [path] + vis_params,
+        ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    # Read the file outside the write transaction: exiftool can take seconds.
+    exif_by_path = get_exif_batch([resolve_photo_disk_path(path)])
+    if not exif_by_path:
+        raise HTTPException(status_code=404, detail="File not readable")
+    exif = next(iter(exif_by_path.values()))
+    lat, lng = exif.get('gps_latitude'), exif.get('gps_longitude')
+    if lat is None or lng is None:
+        lat = lng = None
+    try:
+        restored = GpsUpdateRequest(path=path, gps_latitude=lat, gps_longitude=lng)
+    except ValidationError as exc:
+        raise HTTPException(status_code=409, detail="File GPS is invalid; the manual location was kept") from exc
+    lat, lng = restored.gps_latitude, restored.gps_longitude
+    with get_db() as conn, conn:
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            # ExifTool runs outside the lock. Access or the photo itself may
+            # have disappeared since the initial read; never reuse that scope.
+            vis_sql, vis_params = get_visibility_clause(user_id)
+            row = conn.execute(
+                f"SELECT 1 FROM photos WHERE path = ? AND {vis_sql}",
+                [path] + vis_params,
+            ).fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Photo not found")
+            cursor = conn.execute(
+                f"UPDATE photos SET gps_latitude = ?, gps_longitude = ?, gps_manually_set = 0 WHERE path = ? AND {vis_sql}",
+                [lat, lng, path] + vis_params,
+            )
+            if cursor.rowcount != 1:
+                raise HTTPException(status_code=404, detail="Photo not found")
+            conn.commit()
+        except sqlite3.Error:
+            logger.exception("Database error resetting GPS for photo %s", path)
+            conn.rollback()
+            raise HTTPException(status_code=500, detail='Internal server error')
+    return {'gps_latitude': lat, 'gps_longitude': lng}
