@@ -822,6 +822,48 @@ USER_PREFERENCES_INDEXES = [
     ('idx_user_prefs_rating', 'user_preferences', 'user_id, star_rating'),
 ]
 
+# Agent (MCP) bearer tokens. A side table, never a column on `photos`. Only the
+# SHA-256 of the token is stored (plus a display prefix); `user_gen` and
+# `edition_gen` snapshot the owner's credentials at mint (the password hash /
+# the viewer and edition password generations) so a rotated password or a
+# deleted user kills the token on its next call. The ROLE is not in the
+# snapshot: it is read live, so a demotion lowers the token's effective level
+# and a promotion never raises it past the level it was minted at.
+MCP_TOKENS_COLUMNS = [
+    ('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+    ('user_id', 'TEXT NOT NULL'),
+    ('name', 'TEXT NOT NULL'),
+    ('token_prefix', 'TEXT NOT NULL'),
+    ('token_hash', 'TEXT NOT NULL UNIQUE'),
+    ('level', "TEXT NOT NULL CHECK(level IN ('readonly','user','edition'))"),
+    ('user_gen', 'TEXT NOT NULL'),
+    ('edition_gen', "TEXT NOT NULL DEFAULT ''"),
+    ('created_at', 'TEXT NOT NULL'),
+    ('last_used_at', 'TEXT'),
+    ('revoked', 'INTEGER NOT NULL DEFAULT 0'),
+    ('revoked_at', 'TEXT'),
+    # Level of the session that minted the token; NULL (pre-column rows) counts as readonly.
+    ('minted_level', 'TEXT'),
+]
+
+MCP_TOKENS_INDEXES = [
+    ('idx_mcp_tokens_user', 'mcp_tokens', 'user_id'),
+]
+
+# Which rating labels an assistant left behind, so the rating-derived comparisons
+# (`optimization/label_pairs.py`) never treat them as the user's taste. A side table, not a column on
+# `photos`, written by the rating routes themselves when the request is an agent's (an internal `mcp` JWT).
+# The row stores the (star_rating, is_favorite, is_rejected) tuple the assistant left; a label that no
+# longer equals it was changed by someone else since and counts again. `user_id` is '' in single-user mode.
+# The viewer database export drops this table.
+RATING_PROVENANCE_COLUMNS = [
+    ('user_id', "TEXT NOT NULL DEFAULT ''"),
+    ('photo_path', 'TEXT NOT NULL'),
+    ('star_rating', 'INTEGER NOT NULL DEFAULT 0'),
+    ('is_favorite', 'INTEGER NOT NULL DEFAULT 0'),
+    ('is_rejected', 'INTEGER NOT NULL DEFAULT 0'),
+]
+
 # Authoritative registry of every CREATE INDEX group. init_database creates all
 # of these and db.info.get_schema_info counts them, so the two can never
 # disagree on how many indexes the schema declares (they did before: info
@@ -840,6 +882,7 @@ ALL_INDEX_GROUPS = [
     RECOMMENDATION_HISTORY_INDEXES,
     ALBUM_INDEXES,
     USER_PREFERENCES_INDEXES,
+    MCP_TOKENS_INDEXES,
 ]
 
 # Sticky per-photo scoring context / category override — a side table, not
@@ -1020,6 +1063,8 @@ _MIGRATED_TABLES = [
     ('persons', PERSONS_COLUMNS),
     ('photo_tags', PHOTO_TAGS_COLUMNS),
     ('photo_manual_tags', PHOTO_MANUAL_TAGS_COLUMNS),
+    ('mcp_tokens', MCP_TOKENS_COLUMNS),
+    ('rating_provenance', RATING_PROVENANCE_COLUMNS),
     ('comparisons', COMPARISONS_COLUMNS),
     ('learned_scores', LEARNED_SCORES_COLUMNS),
     ('rejected_merge_suggestions', REJECTED_MERGE_SUGGESTIONS_COLUMNS),
@@ -1212,6 +1257,13 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
             PHOTO_MANUAL_TAGS_COLUMNS,
             constraints=['PRIMARY KEY (photo_path, tag)']
         ))
+
+        # Create mcp_tokens (agent bearer tokens, hash only; side table)
+        conn.execute(_build_create_table_sql('mcp_tokens', MCP_TOKENS_COLUMNS))
+
+        # Create rating_provenance (which rating labels an assistant left; side table)
+        conn.execute(_build_create_table_sql(
+            'rating_provenance', RATING_PROVENANCE_COLUMNS, constraints=['PRIMARY KEY (user_id, photo_path)']))
 
         # Create comparisons table for pairwise comparison feedback. The UNIQUE
         # is user-scoped so one user's vote never clobbers another's; existing

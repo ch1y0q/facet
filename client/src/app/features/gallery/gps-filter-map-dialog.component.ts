@@ -1,4 +1,4 @@
-import { Component, inject, signal, viewChild, ElementRef, OnInit, DestroyRef } from '@angular/core';
+import { Component, inject, signal, viewChild, ElementRef, OnInit, DestroyRef, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
@@ -22,6 +22,7 @@ export interface GpsFilterData {
   styles: [`
     :host ::ng-deep .leaflet-container { height: 100%; width: 100%; }
   `],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title>{{ I18N.gallery.select_on_map | translate }}</h2>
     <mat-dialog-content class="!p-0">

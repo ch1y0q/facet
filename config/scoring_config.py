@@ -129,6 +129,31 @@ def merge_hdr_pq_tonemap_settings(block):
     return merged
 
 
+def normalise_percent_weights(weights):
+    """A category's raw ``*_percent`` weights as the decimals the scorer multiplies by.
+
+    ``face_quality_percent: 30`` becomes ``face_quality: 0.30``; a key without the suffix is kept as is.
+    The percent-keyed weights are divided by their sum when it is not 1.0 within 0.001, so a block that
+    does not add up to 100 still scores on a 0-10 scale. ``ScoringConfig.get_weights`` is this plus the
+    category's modifiers; the assistant's weight preview calls it directly so it cannot drift from it.
+    """
+    converted = {}
+    weight_keys = []  # Track which keys are weights (for normalization)
+    for key, value in weights.items():
+        if key.endswith('_percent'):
+            base_key = key[:-8]  # Remove '_percent'
+            converted[base_key] = value / 100
+            weight_keys.append(base_key)
+        else:
+            converted[key] = value
+    if weight_keys:
+        total = sum(converted[k] for k in weight_keys)
+        if total > 0 and abs(total - 1.0) > 0.001:
+            for k in weight_keys:
+                converted[k] = converted[k] / total
+    return converted
+
+
 def _calc_stats(values):
     """Calculate statistical summary for a list of values.
 
@@ -614,25 +639,7 @@ class ScoringConfig:
         # Find the category in the categories array
         for cat in self.config.get('categories', []):
             if cat.get('name') == category:
-                converted = {}
-                weight_keys = []  # Track which keys are weights (for normalization)
-
-                # Convert weights
-                for key, value in cat.get('weights', {}).items():
-                    if key.endswith('_percent'):
-                        # Convert percentage to decimal, strip '_percent' suffix
-                        base_key = key[:-8]  # Remove '_percent'
-                        converted[base_key] = value / 100
-                        weight_keys.append(base_key)
-                    else:
-                        converted[key] = value
-
-                # Normalize weights to sum to 1.0
-                if weight_keys:
-                    total = sum(converted[k] for k in weight_keys)
-                    if total > 0 and abs(total - 1.0) > 0.001:
-                        for k in weight_keys:
-                            converted[k] = converted[k] / total
+                converted = normalise_percent_weights(cat.get('weights', {}))
 
                 # Merge modifiers (like 'bonus', 'noise_tolerance_multiplier')
                 converted.update(cat.get('modifiers', {}))

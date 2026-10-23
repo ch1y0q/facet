@@ -1,0 +1,2052 @@
+{
+  "actions": [
+    {
+      "id": "check_access",
+      "summary": "See who you act as, what the token may do and what the open tab shows",
+      "tools": [
+        {
+          "name": "status",
+          "required_level": "readonly"
+        },
+        {
+          "name": "available_actions",
+          "required_level": "readonly"
+        },
+        {
+          "name": "ui_get_context",
+          "required_level": "readonly"
+        }
+      ],
+      "when": [
+        "any"
+      ]
+    },
+    {
+      "id": "search_library",
+      "summary": "Find photos by filters, by meaning or by look-alike",
+      "tools": [
+        {
+          "name": "search_photos",
+          "required_level": "readonly"
+        },
+        {
+          "name": "semantic_search",
+          "required_level": "readonly"
+        },
+        {
+          "name": "similar_photos",
+          "required_level": "readonly"
+        },
+        {
+          "name": "filter_options",
+          "required_level": "readonly"
+        }
+      ],
+      "when": [
+        "any"
+      ]
+    },
+    {
+      "id": "browse_library",
+      "summary": "Read one photo, the people, the albums and the library statistics (the lists open their page with show=true)",
+      "tools": [
+        {
+          "name": "get_photo",
+          "required_level": "readonly"
+        },
+        {
+          "name": "list_persons",
+          "required_level": "readonly"
+        },
+        {
+          "name": "list_albums",
+          "required_level": "readonly"
+        },
+        {
+          "name": "library_stats",
+          "required_level": "readonly"
+        }
+      ],
+      "when": [
+        "any"
+      ]
+    },
+    {
+      "id": "look_at_photos",
+      "summary": "See a photo or a numbered contact sheet of up to 16 photos, or the ones the user selected",
+      "tools": [
+        {
+          "name": "get_thumbnail",
+          "required_level": "readonly"
+        },
+        {
+          "name": "contact_sheet",
+          "required_level": "readonly"
+        }
+      ],
+      "when": [
+        "detail",
+        "gallery"
+      ]
+    },
+    {
+      "id": "match_faces",
+      "summary": "Find faces that look like a recognised person",
+      "tools": [
+        {
+          "name": "possible_faces",
+          "required_level": "readonly"
+        },
+        {
+          "name": "assign_faces",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "persons"
+      ]
+    },
+    {
+      "id": "drive_tab",
+      "summary": "Move the user's tab to another page, an album or a timeline month, or open a photo",
+      "tools": [
+        {
+          "name": "ui_navigate",
+          "required_level": "readonly"
+        },
+        {
+          "name": "ui_open_photo",
+          "required_level": "readonly"
+        },
+        {
+          "name": "ui_open_album",
+          "required_level": "readonly"
+        }
+      ],
+      "when": [
+        "any"
+      ]
+    },
+    {
+      "id": "steer_gallery",
+      "summary": "Change what the gallery shows and read it back",
+      "tools": [
+        {
+          "name": "ui_set_gallery_filters",
+          "required_level": "readonly"
+        },
+        {
+          "name": "ui_show_photos",
+          "required_level": "readonly"
+        },
+        {
+          "name": "ui_get_gallery_view",
+          "required_level": "readonly"
+        },
+        {
+          "name": "ui_next_page",
+          "required_level": "readonly"
+        }
+      ],
+      "when": [
+        "gallery"
+      ]
+    },
+    {
+      "id": "select_photos",
+      "summary": "Select photos in the tab and read the selection back",
+      "tools": [
+        {
+          "name": "ui_select_photos",
+          "required_level": "readonly"
+        },
+        {
+          "name": "ui_get_selection",
+          "required_level": "readonly"
+        },
+        {
+          "name": "ui_clear_selection",
+          "required_level": "readonly"
+        }
+      ],
+      "when": [
+        "gallery"
+      ]
+    },
+    {
+      "id": "rate_photos",
+      "summary": "Rate, favourite or reject a few photos",
+      "tools": [
+        {
+          "name": "set_rating",
+          "required_level": "user"
+        },
+        {
+          "name": "set_favorite",
+          "required_level": "user"
+        },
+        {
+          "name": "set_rejected",
+          "required_level": "user"
+        }
+      ],
+      "when": [
+        "detail",
+        "gallery"
+      ]
+    },
+    {
+      "id": "edit_many",
+      "summary": "Rate, flag or tag many photos at once",
+      "tools": [
+        {
+          "name": "batch_set_rating",
+          "required_level": "edition"
+        },
+        {
+          "name": "batch_set_favorite",
+          "required_level": "edition"
+        },
+        {
+          "name": "batch_set_rejected",
+          "required_level": "edition"
+        },
+        {
+          "name": "add_tags",
+          "required_level": "edition"
+        },
+        {
+          "name": "remove_tags",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "gallery",
+        "selection"
+      ]
+    },
+    {
+      "id": "manage_albums",
+      "summary": "Create an album and add photos to it or remove them",
+      "tools": [
+        {
+          "name": "create_album",
+          "required_level": "edition"
+        },
+        {
+          "name": "album_add_photos",
+          "required_level": "edition"
+        },
+        {
+          "name": "album_remove_photos",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "albums",
+        "detail",
+        "gallery",
+        "selection"
+      ]
+    },
+    {
+      "id": "write_metadata",
+      "summary": "Set a photo's caption or write XMP sidecars next to the files",
+      "tools": [
+        {
+          "name": "set_caption",
+          "required_level": "edition"
+        },
+        {
+          "name": "export_metadata",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "detail",
+        "gallery",
+        "selection"
+      ]
+    },
+    {
+      "id": "junk_sweep",
+      "summary": "Review junk-sweep candidates (shown on the junk page with show=true) and reject or keep them",
+      "tools": [
+        {
+          "name": "junk_list",
+          "required_level": "readonly"
+        },
+        {
+          "name": "junk_reject",
+          "required_level": "edition"
+        },
+        {
+          "name": "junk_clear",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "any"
+      ]
+    },
+    {
+      "id": "teach_preferences",
+      "summary": "Open the comparison page so the user can teach Facet their taste",
+      "tools": [
+        {
+          "name": "ui_show_comparison",
+          "required_level": "readonly"
+        },
+        {
+          "name": "comparison_status",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "any"
+      ]
+    },
+    {
+      "id": "fix_sequence_set",
+      "summary": "Tell Facet what a set of frames really is (panorama, bracket, not a set)",
+      "tools": [
+        {
+          "name": "override_sequence",
+          "required_level": "edition"
+        },
+        {
+          "name": "clear_sequence_override",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "culling",
+        "selection"
+      ]
+    },
+    {
+      "id": "recategorize",
+      "summary": "Pin or release one photo's category",
+      "tools": [
+        {
+          "name": "override_category",
+          "required_level": "edition"
+        },
+        {
+          "name": "clear_category_override",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "detail",
+        "selection"
+      ]
+    },
+    {
+      "id": "explain_scores",
+      "summary": "Read why a photo scored what it did, metric by metric",
+      "tools": [
+        {
+          "name": "explain_score",
+          "required_level": "readonly"
+        }
+      ],
+      "when": [
+        "detail",
+        "gallery",
+        "selection"
+      ]
+    },
+    {
+      "id": "tune_weights",
+      "summary": "Read a category's scoring weights, preview a change, apply it once the user agrees and undo it",
+      "tools": [
+        {
+          "name": "category_weights",
+          "required_level": "edition"
+        },
+        {
+          "name": "preview_weights",
+          "required_level": "edition"
+        },
+        {
+          "name": "learned_weights",
+          "required_level": "edition"
+        },
+        {
+          "name": "apply_weights",
+          "required_level": "edition"
+        },
+        {
+          "name": "list_weight_snapshots",
+          "required_level": "edition"
+        },
+        {
+          "name": "restore_weight_snapshot",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "any"
+      ]
+    },
+    {
+      "id": "recompute_scores",
+      "summary": "Re-score the library (or one category) with the current weights and follow the job",
+      "tools": [
+        {
+          "name": "recompute_scores",
+          "required_level": "edition"
+        },
+        {
+          "name": "recompute_status",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "any"
+      ]
+    },
+    {
+      "id": "fix_categories",
+      "summary": "Find photos filed in the wrong category and pin several to the right one",
+      "tools": [
+        {
+          "name": "misassigned_categories",
+          "required_level": "edition"
+        },
+        {
+          "name": "override_categories",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "any"
+      ]
+    },
+    {
+      "id": "compare_in_group",
+      "summary": "Compare the faces or the subject sharpness of a group's frames",
+      "tools": [
+        {
+          "name": "group_compare",
+          "required_level": "readonly"
+        }
+      ],
+      "when": [
+        "culling"
+      ]
+    },
+    {
+      "id": "cull_summary",
+      "summary": "Summarise a scope before culling it",
+      "tools": [
+        {
+          "name": "cull_report",
+          "required_level": "readonly"
+        }
+      ],
+      "when": [
+        "any"
+      ]
+    },
+    {
+      "id": "start_scan",
+      "summary": "Start a scan of a configured directory and follow it",
+      "tools": [
+        {
+          "name": "start_scan",
+          "required_level": "edition"
+        },
+        {
+          "name": "scan_status",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "any"
+      ]
+    },
+    {
+      "id": "cull_or_delete",
+      "summary": "Copy the keepers, move or trash the rejects, or delete photos",
+      "tools": [
+        {
+          "name": "cull_apply",
+          "required_level": "edition"
+        },
+        {
+          "name": "delete_photos",
+          "required_level": "edition"
+        }
+      ],
+      "when": [
+        "gallery",
+        "selection"
+      ]
+    },
+    {
+      "id": "work_darkroom",
+      "summary": "Work through culling groups and confirm what to keep",
+      "tools": [
+        {
+          "name": "list_culling_groups",
+          "required_level": "edition"
+        },
+        {
+          "name": "culling_profiles",
+          "required_level": "edition"
+        },
+        {
+          "name": "suggest_culling_profile",
+          "required_level": "edition"
+        },
+        {
+          "name": "keeper_hints",
+          "required_level": "edition"
+        },
+        {
+          "name": "auto_cull",
+          "required_level": "edition"
+        },
+        {
+          "name": "confirm_culling_groups",
+          "required_level": "edition"
+        },
+        {
+          "name": "ui_show_culling_group",
+          "required_level": "readonly"
+        },
+        {
+          "name": "ui_show_culling_plan",
+          "required_level": "readonly"
+        },
+        {
+          "name": "ui_suggest_culling",
+          "required_level": "readonly"
+        }
+      ],
+      "when": [
+        "culling"
+      ]
+    }
+  ],
+  "error_codes": [
+    "forbidden_level",
+    "invalid_input",
+    "modal_open",
+    "navigation_refused",
+    "no_active_view",
+    "no_plan",
+    "not_found",
+    "plan_changed",
+    "plan_load_failed",
+    "too_large",
+    "unsaved_decisions",
+    "upstream_error"
+  ],
+  "filter_key_map": {
+    "category": "type",
+    "person": "person_id",
+    "semantic_query": "semanticQuery",
+    "semantic_threshold": "search_threshold"
+  },
+  "smart_album_exclude_keys": [
+    "album_id",
+    "burst_group_id",
+    "duplicate_group_id",
+    "gps_lat",
+    "gps_lng",
+    "gps_radius_km",
+    "hide_blinks",
+    "hide_brackets",
+    "hide_bursts",
+    "hide_details",
+    "hide_duplicates",
+    "hide_panoramas",
+    "hide_rejected",
+    "min_similarity",
+    "page",
+    "panel_activation",
+    "per_page",
+    "search_threshold",
+    "semanticQuery",
+    "sequence_group_id",
+    "sequence_kind",
+    "similar_to",
+    "similarity_mode",
+    "tooltip_mode"
+  ],
+  "tools": [
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "readOnlyHint": false,
+        "untrustedContentHint": true
+      },
+      "description": "Move the user's open Facet tab to another page (gallery, persons, albums, stats, ...). `/timeline` also takes `year` (and `month` 1-12 with it) to open that year or month. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "month": {
+            "description": "Only with route /timeline and `year`: open that month (1-12).",
+            "maximum": 12,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "query": {
+            "additionalProperties": {
+              "type": [
+                "string",
+                "integer",
+                "number",
+                "boolean"
+              ]
+            },
+            "description": "Query-string parameters for the route.",
+            "type": "object"
+          },
+          "route": {
+            "description": "Where to go. Edition-only pages (/culling, /junk, /compare, /merge-suggestions) are refused by the tab for other users.",
+            "enum": [
+              "/",
+              "/persons",
+              "/merge-suggestions",
+              "/compare",
+              "/culling",
+              "/scenes",
+              "/junk",
+              "/stats",
+              "/albums",
+              "/capsules",
+              "/folders",
+              "/timeline",
+              "/map"
+            ],
+            "type": "string"
+          },
+          "year": {
+            "description": "Only with route /timeline: open that year's months.",
+            "maximum": 2100,
+            "minimum": 1900,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "route"
+        ],
+        "type": "object"
+      },
+      "name": "ui_navigate"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "readOnlyHint": false,
+        "untrustedContentHint": true
+      },
+      "description": "Change the gallery filters and sort in the user's open tab. `patch` merges into the current filters (null removes one); `replace: true` starts from none. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "patch": {
+            "additionalProperties": false,
+            "properties": {
+              "album_id": {
+                "description": "Gallery filter `album_id`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "camera": {
+                "description": "Gallery filter `camera`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "category": {
+                "description": "Gallery filter `category`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "color_temp": {
+                "description": "Gallery filter `color_temp`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "composition_pattern": {
+                "description": "Gallery filter `composition_pattern`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "date_from": {
+                "description": "Gallery filter `date_from`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "date_to": {
+                "description": "Gallery filter `date_to`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "favorites_only": {
+                "description": "Gallery filter `favorites_only`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "gps_lat": {
+                "description": "Gallery filter `gps_lat`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "gps_lng": {
+                "description": "Gallery filter `gps_lng`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "gps_radius_km": {
+                "description": "Gallery filter `gps_radius_km`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "hide_blinks": {
+                "description": "Gallery filter `hide_blinks`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "hide_brackets": {
+                "description": "Gallery filter `hide_brackets`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "hide_bursts": {
+                "description": "Gallery filter `hide_bursts`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "hide_duplicates": {
+                "description": "Gallery filter `hide_duplicates`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "hide_panoramas": {
+                "description": "Gallery filter `hide_panoramas`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "hide_rejected": {
+                "description": "Gallery filter `hide_rejected`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "is_monochrome": {
+                "description": "Gallery filter `is_monochrome`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "lens": {
+                "description": "Gallery filter `lens`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_aesthetic": {
+                "description": "Gallery filter `max_aesthetic`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_aesthetic_iaa": {
+                "description": "Gallery filter `max_aesthetic_iaa`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_aperture": {
+                "description": "Gallery filter `max_aperture`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_bg_separation": {
+                "description": "Gallery filter `max_bg_separation`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_color": {
+                "description": "Gallery filter `max_color`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_composition": {
+                "description": "Gallery filter `max_composition`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_contrast": {
+                "description": "Gallery filter `max_contrast`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_dynamic_range": {
+                "description": "Gallery filter `max_dynamic_range`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_exposure": {
+                "description": "Gallery filter `max_exposure`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_eye_sharpness": {
+                "description": "Gallery filter `max_eye_sharpness`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_face_confidence": {
+                "description": "Gallery filter `max_face_confidence`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_face_count": {
+                "description": "Gallery filter `max_face_count`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_face_quality": {
+                "description": "Gallery filter `max_face_quality`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_face_quality_iqa": {
+                "description": "Gallery filter `max_face_quality_iqa`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_face_ratio": {
+                "description": "Gallery filter `max_face_ratio`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_face_sharpness": {
+                "description": "Gallery filter `max_face_sharpness`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_focal_length": {
+                "description": "Gallery filter `max_focal_length`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_iso": {
+                "description": "Gallery filter `max_iso`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_isolation": {
+                "description": "Gallery filter `max_isolation`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_liqe": {
+                "description": "Gallery filter `max_liqe`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_luminance": {
+                "description": "Gallery filter `max_luminance`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_noise": {
+                "description": "Gallery filter `max_noise`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_saturation": {
+                "description": "Gallery filter `max_saturation`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_score": {
+                "description": "Gallery filter `max_score`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_sharpness": {
+                "description": "Gallery filter `max_sharpness`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_star_rating": {
+                "description": "Gallery filter `max_star_rating`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_subject_prominence": {
+                "description": "Gallery filter `max_subject_prominence`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_subject_sharpness": {
+                "description": "Gallery filter `max_subject_sharpness`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "max_topiq": {
+                "description": "Gallery filter `max_topiq`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_aesthetic": {
+                "description": "Gallery filter `min_aesthetic`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_aesthetic_iaa": {
+                "description": "Gallery filter `min_aesthetic_iaa`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_aperture": {
+                "description": "Gallery filter `min_aperture`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_bg_separation": {
+                "description": "Gallery filter `min_bg_separation`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_color": {
+                "description": "Gallery filter `min_color`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_composition": {
+                "description": "Gallery filter `min_composition`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_contrast": {
+                "description": "Gallery filter `min_contrast`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_dynamic_range": {
+                "description": "Gallery filter `min_dynamic_range`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_exposure": {
+                "description": "Gallery filter `min_exposure`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_eye_sharpness": {
+                "description": "Gallery filter `min_eye_sharpness`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_face_confidence": {
+                "description": "Gallery filter `min_face_confidence`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_face_count": {
+                "description": "Gallery filter `min_face_count`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_face_quality": {
+                "description": "Gallery filter `min_face_quality`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_face_quality_iqa": {
+                "description": "Gallery filter `min_face_quality_iqa`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_face_ratio": {
+                "description": "Gallery filter `min_face_ratio`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_face_sharpness": {
+                "description": "Gallery filter `min_face_sharpness`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_focal_length": {
+                "description": "Gallery filter `min_focal_length`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_iso": {
+                "description": "Gallery filter `min_iso`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_isolation": {
+                "description": "Gallery filter `min_isolation`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_liqe": {
+                "description": "Gallery filter `min_liqe`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_luminance": {
+                "description": "Gallery filter `min_luminance`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_noise": {
+                "description": "Gallery filter `min_noise`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_saturation": {
+                "description": "Gallery filter `min_saturation`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_score": {
+                "description": "Gallery filter `min_score`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_sharpness": {
+                "description": "Gallery filter `min_sharpness`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_similarity": {
+                "description": "Minimum similarity for `similar_to`, 0 to 1 (null: the tab default).",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "min_star_rating": {
+                "description": "Gallery filter `min_star_rating`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_subject_prominence": {
+                "description": "Gallery filter `min_subject_prominence`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_subject_sharpness": {
+                "description": "Gallery filter `min_subject_sharpness`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "min_topiq": {
+                "description": "Gallery filter `min_topiq`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "no_gps": {
+                "description": "Gallery filter `no_gps`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "path_prefix": {
+                "description": "Gallery filter `path_prefix`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "person": {
+                "description": "Gallery filter `person`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "quality_tier": {
+                "description": "Gallery filter `quality_tier`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "search": {
+                "description": "Gallery filter `search`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "semantic_query": {
+                "description": "Show the gallery as a semantic (text-to-image) search for this text.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "semantic_threshold": {
+                "description": "Semantic match threshold, 0 to 0.5 (null: the server default).",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "similar_to": {
+                "description": "Show the photos similar to the photo at this path. Cannot be combined with `semantic_query`.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "similarity_mode": {
+                "description": "How `similar_to` compares photos.",
+                "enum": [
+                  "visual",
+                  "color",
+                  "person",
+                  null
+                ],
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sort": {
+                "description": "Sort column.",
+                "enum": [
+                  "aggregate",
+                  "aesthetic",
+                  "date_taken",
+                  "comp_score",
+                  "face_quality",
+                  "tech_sharpness",
+                  "exposure_score",
+                  "color_score",
+                  "contrast_score",
+                  "topiq_score",
+                  "quality_score",
+                  "top_picks_score",
+                  "learned_score",
+                  "star_rating",
+                  "filename",
+                  null
+                ],
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sort_direction": {
+                "description": "Sort direction.",
+                "enum": [
+                  "asc",
+                  "desc",
+                  null
+                ],
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tag": {
+                "description": "Gallery filter `tag`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "type": {
+                "description": "Gallery filter `type`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "replace": {
+            "default": false,
+            "description": "true: reset every other filter first.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "patch"
+        ],
+        "type": "object"
+      },
+      "name": "ui_set_gallery_filters"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "readOnlyHint": true,
+        "untrustedContentHint": true
+      },
+      "description": "What the user's tab shows now: route, active filters, total matches, the first visible photo paths and the selection count. Also `album_filter_json` (the filters as a smart album would store them) and `filters_scopable` (whether they describe the whole view).",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "default": 50,
+            "description": "Most visible photo paths to return.",
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "name": "ui_get_gallery_view"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "readOnlyHint": false,
+        "untrustedContentHint": true
+      },
+      "description": "Open one photo in the user's tab (the detail view). Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "description": "Path of the photo to open.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "name": "ui_open_photo"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "readOnlyHint": false,
+        "untrustedContentHint": true
+      },
+      "description": "Open one album (fixed or smart) in the user's tab, by `album_id` (from `list_albums` or `create_album`). An unknown or inaccessible album answers `not_found` and nothing navigates. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "album_id": {
+            "description": "Id of the album to open, fixed or smart: the `album_id` from `list_albums` or `create_album`.",
+            "maximum": 2147483647,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "album_id"
+        ],
+        "type": "object"
+      },
+      "name": "ui_open_album"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "readOnlyHint": false,
+        "untrustedContentHint": true
+      },
+      "description": "Show exactly these photos, in this order, as the gallery's list (max 200). Photos the user cannot see are skipped and returned as `missing`. Any filter change by the user or the assistant replaces the list. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "paths": {
+            "description": "Photo paths to show, in this order, as the gallery's own list. The user's filters and sort are left untouched; any filter change replaces the list.",
+            "items": {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "paths"
+        ],
+        "type": "object"
+      },
+      "name": "ui_show_photos"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "readOnlyHint": false,
+        "untrustedContentHint": true
+      },
+      "description": "Change the selection in the user's tab: explicit `paths`, or the whole filtered view (`select_view`). Selecting does not modify any photo. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "default": "replace",
+            "enum": [
+              "replace",
+              "add",
+              "remove"
+            ],
+            "type": "string"
+          },
+          "paths": {
+            "description": "Photo paths to select. Exactly one of `paths` and `select_view`.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "type": "array"
+          },
+          "select_view": {
+            "default": false,
+            "description": "true: select the WHOLE filtered view (not just the loaded rows), scope 'view'. Only with mode replace or add.",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "name": "ui_select_photos"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "readOnlyHint": false,
+        "untrustedContentHint": true
+      },
+      "description": "Clear the selection in the user's tab. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "name": "ui_clear_selection"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "readOnlyHint": true,
+        "untrustedContentHint": true
+      },
+      "description": "The user's current selection: `scope` 'paths' (explicit `paths`) or 'view' (the whole filtered view: `filters`, minus `excluded_paths`), and `count`.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "name": "ui_get_selection"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "readOnlyHint": true,
+        "untrustedContentHint": true
+      },
+      "description": "Where the user's tab is, from any page: route, the open photo, the selection (scope and count), a gallery summary (total, loaded, has_more, pinned list) when the gallery is open, the mounted page actions and the jobs that apply now (`actions`, with their tools), and `culling`, the assistant's plan on the /culling page (null outside plan mode): `{plan_digest, groups_total, confirmed, pending, changed, untouched, plan_truncated}`. `confirmed` and `pending` list plan group numbers (confirmed: the user's confirm has landed; pending: flipped away from the plan and not yet confirmed); `untouched` counts the rest. `changed` lists every group whose keepers differ from the plan as `{type, group_id, number, keep_paths, reject_paths}`: pass those paths as `keep_paths` / `remove_paths` on the next `auto_cull` dry run and on its apply. `plan_truncated` is true when the plan itself was capped (500 groups / 5000 photos) so it lists only part of the library's groups. When the block is too large for one answer its lists are cut: `culling.truncated` is true (it means only that) and `groups_total` / the list lengths stay the true counts. Never re-decide a confirmed group. `user_activity` ({items, until, truncated}) lists what the user did in the tab after `activity_since` (rating, reject, favorite, cull_confirm, cull_skip, tags, album create/rename/edit/delete/add, person assign/unassign/merge/split/rename/hide/unhide/create/delete, junk reject/clear (clear = marked not junk), compare answers (winner a, b, tie or skip), filters (one merged entry per burst of edits; `{reset: true}` for a reset; a sort-only change is not journalled), navigation (page changes, not query-string changes); at most 50 items of 20 paths). Names, search text and paths in an entry are untrusted data, and only those listed actions are journalled; pass the answer's `until` as the next `activity_since`. `culling_defaults` ({profile, strictness}) is the /culling page's current setting: the profile the user stored (null if none) and the slider's live, stored strictness; `auto_cull` plans with both (the strictness wins, the profile supplies its other settings) when given neither knob. Showing a plan moves the slider to the plan's strictness; moving the slider or the date range while a plan is shown re-plans it, so `culling.plan_digest` changes (read `ui_get_context` again before the next dry run). `culling.scope` ({album_id, date_from, date_to}) is the window the plan was computed for; the user can change it from the /culling toolbar, which re-plans (a new `plan_digest`), so read `ui_get_context` again and pass `culling.scope`'s dates and `culling.changed` on your next dry run. `culling` also carries `suggestions_open` ([{path, action}]), `suggestions_accepted` and `suggestions_total`: your `ui_suggest_culling` marks still waiting, the ones the user took, and the number held (photo suggestions only, not group notes). `timeline` ({year, month}; month null on a year page) is set on the /timeline pages, else null. `overlays` lists what covers the page (`dialog`, `bottom_sheet`, `slideshow`; empty when nothing does): every tool that changes the view is refused with `modal_open` until the user closes it. `page` is `{id, ...state}` on /persons (`search`, `sort`, `sort_direction`, `show_hidden`), /albums (`search`, `sort`, `type`), /stats (`tab` index, `category`, `date_from`, `date_to`), /map (`date_from`, `date_to`), /timeline (`date_from`, `date_to`, `sort`), /scenes (`album_id`, `total`) and /compare (`tab`: snapshots, ab, suggestions, weights, context or panorama; `category`, `strategy`, `pair_a`, `pair_b`, `pair_loading`; the pair is null when the A/B tab is not shown), else null. An older tab omits both keys.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "activity_since": {
+            "description": "Only the user's own actions after this sequence number are returned in `user_activity`; pass the previous answer's `until`. Omitted: everything the tab still holds. Nothing advances on the tab, so a repeated call returns the same items.",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "name": "ui_get_context"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "readOnlyHint": false,
+        "untrustedContentHint": true
+      },
+      "description": "Load the next page of the gallery in the user's tab (infinite scroll). Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "name": "ui_next_page"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "readOnlyHint": false,
+        "untrustedContentHint": true
+      },
+      "description": "Open the darkroom (/culling) and focus one group, identified by (type, group_id). Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines. Edition accounts only. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "group_id": {
+            "description": "The `group_id` from list_culling_groups.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": {
+            "description": "Group kind; a group's identity is (type, group_id).",
+            "enum": [
+              "burst",
+              "similar",
+              "scene",
+              "bracket",
+              "panorama",
+              "hdr_panorama"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "group_id"
+        ],
+        "type": "object"
+      },
+      "name": "ui_show_culling_group"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "readOnlyHint": false,
+        "untrustedContentHint": true
+      },
+      "description": "Open the darkroom (/culling) on an `auto_cull` plan: the same groups, keep/reject borders, loupe and compare as manual culling, with the plan's keepers pre-selected for the user to flip and confirm. `auto_cull` calls this for you on a dry run; call it yourself only to re-show a plan. The same `plan_digest` as the plan already shown only moves the focus. A different one replaces the plan and is refused with `unsaved_decisions` while the user holds decisions they have not confirmed; `plan_changed` means the library moved since the preview (preview again); `plan_load_failed` means the tab could not load the plan for any other reason; `navigation_refused` means the tab declined to open /culling. Edition accounts only. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "focus": {
+            "description": "1-based plan group number to land on (default: leave the focus).",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "plan_digest": {
+            "description": "The `plan_digest` of the `auto_cull` dry run being shown; the tab verifies it.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "request": {
+            "description": "The inputs of one auto-cull plan, shared by every surface that reproduces it.\n\n``POST /api/culling/auto`` (as the base of its body), ``POST /api/culling/plan`` and the assistant's\n``auto_cull`` tool build the same plan from these fields, so the digest one of them reports is the digest\nthe others recompute. ``highlights_album`` only feeds the digest; a plan confirmed in the tab never adds\nhighlights.",
+            "properties": {
+              "album_id": {
+                "type": "integer"
+              },
+              "date_from": {
+                "type": "string"
+              },
+              "date_to": {
+                "type": "string"
+              },
+              "group_by": {
+                "default": "all",
+                "enum": [
+                  "all",
+                  "burst",
+                  "similar",
+                  "scene"
+                ],
+                "type": "string"
+              },
+              "highlights_album": {
+                "default": "",
+                "type": "string"
+              },
+              "keep_paths": {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 1000,
+                "type": "array"
+              },
+              "min_keep_per_group": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "profile": {
+                "type": "string"
+              },
+              "remove_paths": {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 1000,
+                "type": "array"
+              },
+              "strictness": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "trim_brackets": {
+                "default": false,
+                "type": "boolean"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "plan_digest",
+          "request"
+        ],
+        "type": "object"
+      },
+      "name": "ui_show_culling_plan"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "readOnlyHint": false,
+        "untrustedContentHint": true
+      },
+      "description": "While the assistant's plan is shown on /culling, mark photos you would keep or reject (`photos`: path, action, reason) and groups you want to comment (`groups`: the path of any photo of the group, note). The user sees a badge per photo and a chip per group and accepts a badge with one click; nothing changes unless they do. It never changes the plan, its digest or any selection. Calls merge by path; `replace: true` drops every earlier suggestion first, and with empty `photos` and `groups` it clears them. They survive the user moving the strictness slider and a re-show of the same plan; a different plan shown or leaving plan mode clears them, so send them again after a new `auto_cull` dry run. A suggestion is stored only for a photo in the plan, in a group the user has not confirmed or skipped, and differing from the plan's own choice. Answer: `{plan_digest, applied, redundant, closed, missing, groups_applied, groups_missing, groups_closed, suggestions_total, notes_total}`; `redundant` (already the plan's own choice, even if the user has flipped it: see `culling.changed`), `closed` (a group the user confirmed, skipped or is confirming), `groups_closed` (the same, for notes) and `missing` (not in the plan) list paths and store nothing. `suggestions_total` counts the photo suggestions held, as in `ui_get_context.culling`; `notes_total` counts the group notes. Refusals: `no_plan` (the tab holds no plan), `too_large` (the tab holds at most 300 suggestions and 100 notes: use `replace`), `forbidden_level`. With several tabs pass the `tab_id` from `shown_in_tab` or `status`. Edition accounts only. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "groups": {
+            "description": "Per-group notes.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "note": {
+                  "description": "Short note on the group (shown as text).",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "path": {
+                  "description": "Path of any photo of the group to annotate.",
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "note"
+              ],
+              "type": "object"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "photos": {
+            "description": "Per-photo keep/reject suggestions.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "description": "What you suggest for this photo.",
+                  "enum": [
+                    "keep",
+                    "reject"
+                  ],
+                  "type": "string"
+                },
+                "path": {
+                  "description": "Path of a photo in the shown plan.",
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "reason": {
+                  "description": "Why, in a few words (shown as text).",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "action",
+                "reason"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "replace": {
+            "default": false,
+            "description": "true: drop every existing suggestion and note first. With empty `photos` and `groups` it clears them all.",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "name": "ui_suggest_culling"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "readOnlyHint": false,
+        "untrustedContentHint": true
+      },
+      "description": "Open the /compare page in the user's tab, optionally on one category, strategy and `tab` (the weights or snapshots tab shows a change you made). It only opens the page: the user picks the winners, nothing is submitted for them. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "description": "Category to compare within (a name from `facet://categories`).",
+            "type": "string"
+          },
+          "strategy": {
+            "description": "Pair-selection strategy. Default: the tab's current one.",
+            "enum": [
+              "learning",
+              "uncertainty",
+              "boundary",
+              "active",
+              "random"
+            ],
+            "type": "string"
+          },
+          "tab": {
+            "description": "Page tab to open: `ab` (default), `snapshots`, `suggestions` or `weights`. `suggestions` stays locked until enough comparisons exist.",
+            "enum": [
+              "ab",
+              "snapshots",
+              "suggestions",
+              "weights"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "ui_show_comparison"
+    }
+  ],
+  "version": "dc969f0f704340d1"
+}

@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -6,6 +6,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { firstValueFrom } from 'rxjs';
+import { UserActivityJournal, activityName } from '../../core/agent/user-activity-journal.service';
 import { AlbumService } from '../../core/services/album.service';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { i18nKeys } from '../../core/i18n/keys';
@@ -17,6 +18,7 @@ import { i18nKeys } from '../../core/i18n/keys';
     FormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatButtonModule, MatTooltipModule, TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title class="truncate" [matTooltip]="I18N.albums.save_smart | translate">{{ I18N.albums.save_smart | translate }}</h2>
     <mat-dialog-content>
@@ -36,6 +38,7 @@ import { i18nKeys } from '../../core/i18n/keys';
 export class SaveSmartAlbumDialogComponent {
   protected readonly I18N = i18nKeys();
   private albumService = inject(AlbumService);
+  private journal = inject(UserActivityJournal);
   private dialogRef = inject(MatDialogRef<SaveSmartAlbumDialogComponent>);
   private data = inject<{ filterJson: string }>(MAT_DIALOG_DATA);
 
@@ -46,9 +49,10 @@ export class SaveSmartAlbumDialogComponent {
     if (!this.name.trim() || this.saving()) return;
     this.saving.set(true);
     try {
-      await firstValueFrom(
+      const album = await firstValueFrom(
         this.albumService.create(this.name.trim(), '', true, this.data.filterJson),
       );
+      this.journal.record('album', [], { album_id: album.id, action: 'create', name: activityName(album.name), is_smart: true });
       this.dialogRef.close(true);
     } catch {
       this.saving.set(false);

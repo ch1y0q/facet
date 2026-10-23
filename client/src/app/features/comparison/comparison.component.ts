@@ -1,4 +1,4 @@
-import { Component, computed, DestroyRef, effect, inject, signal, viewChild, TemplateRef } from '@angular/core';
+import { Component, computed, DestroyRef, effect, inject, signal, viewChild, TemplateRef, ChangeDetectionStrategy } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -14,7 +14,8 @@ import { PageHelpService } from '../../core/services/page-help.service';
 import { GalleryStore } from '../gallery/gallery.store';
 import { HeaderSlotService } from '../../core/services/header-slot.service';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
-import { CompareFiltersService } from './compare-filters.service';
+import { COMPARE_TAB_INDEX, CompareFiltersService, DEFAULT_COMPARE_STRATEGY } from './compare-filters.service';
+import { registerPageContext } from '../../core/agent/page-context.service';
 import { ComparisonWeightsTabComponent } from './comparison-weights-tab.component';
 import { ComparisonSnapshotsTabComponent } from './comparison-snapshots-tab.component';
 import { ComparisonAbTabComponent } from './comparison-ab-tab.component';
@@ -24,6 +25,9 @@ import { PanoramaSettingsTabComponent } from './panorama-settings-tab.component'
 import { I18N, i18nKeys } from '../../core/i18n/keys';
 
 Chart.register(...registerables);
+
+/** The page's mat-tabs in template order: the four `COMPARE_TAB_INDEX` tabs, then the scoring-context and panorama tabs. */
+const COMPARE_TAB_NAMES: string[] = [...Object.keys(COMPARE_TAB_INDEX), 'context', 'panorama'];
 
 @Component({
   selector: 'app-comparison',
@@ -42,6 +46,7 @@ Chart.register(...registerables);
     ComparisonPriorityTabComponent,
     PanoramaSettingsTabComponent,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <div class="p-4 md:p-6 max-w-screen-2xl mx-auto">
       <!-- Tab-contextual actions projected into the global header on lg (HeaderSlotService);
@@ -120,7 +125,7 @@ Chart.register(...registerables);
       }
 
       @if (compareFilters.selectedCategory()) {
-        <mat-tab-group class="mb-6" [selectedIndex]="0" (selectedIndexChange)="onTabChange($event)">
+        <mat-tab-group class="mb-6" [selectedIndex]="compareFilters.activeTab()" (selectedIndexChange)="onTabChange($event)">
           <!-- Snapshots tab -->
           <mat-tab>
             <ng-template mat-tab-label>
@@ -200,7 +205,7 @@ export class ComparisonComponent {
   protected readonly compareToolbar = viewChild<TemplateRef<unknown>>('compareToolbar');
 
   /** Active tab (0 Snapshots, 1 Compare, 2 Suggestions, 3 Weights, 4 Scoring context) — drives the contextual top bar. */
-  protected readonly selectedTabIndex = signal(0);
+  protected readonly selectedTabIndex = signal(this.compareFilters.activeTab());
 
   /** Total comparisons (all sources) + threshold, to gate the Weight Suggestions tab. */
   private readonly comparisonStats = signal<{ total_comparisons: number; min_comparisons_for_optimization?: number } | null>(null);
@@ -216,9 +221,28 @@ export class ComparisonComponent {
   });
 
   constructor() {
+    registerPageContext('compare', () => {
+      const category = this.compareFilters.selectedCategory();
+      const activeTab = this.compareFilters.activeTab();
+      // The A/B tab is projected eagerly, so it exists (and loads pairs) while another tab is shown.
+      const abTab = activeTab === COMPARE_TAB_INDEX.ab ? this.abTab() : undefined;
+      let tab: string | null = null;
+      if (category) tab = COMPARE_TAB_NAMES[activeTab] ?? null;
+      return {
+        tab,
+        category,
+        strategy: this.compareFilters.strategy(),
+        pair_a: abTab?.pairA() ?? null,
+        pair_b: abTab?.pairB() ?? null,
+        pair_loading: abTab?.pairLoading() ?? false,
+      };
+    });
     this.pageHelp.setDescription(I18N.compare.help);
     inject(DestroyRef).onDestroy(() => {
+      // The service outlives the page. Reset on leaving, never on entering, so what ui_show_comparison set for this visit survives the navigation it triggers.
+      this.compareFilters.strategy.set(DEFAULT_COMPARE_STRATEGY);
       this.pageHelp.setDescription(null);
+      this.compareFilters.activeTab.set(0);
       const tpl = this.compareToolbar();
       if (tpl) this.headerSlot.clear(tpl);
     });
@@ -258,6 +282,7 @@ export class ComparisonComponent {
 
   protected onTabChange(index: number): void {
     this.selectedTabIndex.set(index);
+    this.compareFilters.activeTab.set(index);
     if (index === 1 && !this.abTab()?.pairA() && !this.abTab()?.pairLoading()) {
       void this.abTab()?.loadNextPair();
     }

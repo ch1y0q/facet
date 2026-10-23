@@ -1,5 +1,6 @@
 import {
   Component, OnInit, OnDestroy, inject, signal, effect, viewChild, ElementRef, TemplateRef,
+  ChangeDetectionStrategy
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
@@ -10,6 +11,7 @@ import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { PageHelpService } from '../../core/services/page-help.service';
 import { MapFiltersService } from './map-filters.service';
+import { registerPageContext } from '../../core/agent/page-context.service';
 import { HeaderSlotService } from '../../core/services/header-slot.service';
 import { DateRangeFilterComponent } from '../../shared/components/date-range-filter/date-range-filter.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
@@ -95,6 +97,7 @@ interface MapResponse {
       font-size: 0.75rem;
     }
   `],
+  changeDetection: ChangeDetectionStrategy.Eager,
   host: { class: 'block h-full' },
 })
 export class MapComponent implements OnInit, OnDestroy {
@@ -109,6 +112,7 @@ export class MapComponent implements OnInit, OnDestroy {
   private readonly mapToolbar = viewChild<TemplateRef<unknown>>('mapToolbar');
 
   constructor() {
+    registerPageContext('map', () => ({ date_from: this.mapFilters.dateFrom(), date_to: this.mapFilters.dateTo() }));
     effect(() => {
       const t = this.mapToolbar();
       if (t) this.headerSlot.set(t);

@@ -82,7 +82,6 @@ describe('ClientPicksDialogComponent', () => {
 
     expect(writeText).toHaveBeenCalledWith('IMG_1.jpg\nIMG_3.jpg');
 
-    await Promise.resolve();
-    expect(mockSnackBar.open).toHaveBeenCalled();
+    await vi.waitFor(() => expect(mockSnackBar.open).toHaveBeenCalled());
   });
 });

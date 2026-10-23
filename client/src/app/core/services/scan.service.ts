@@ -1,4 +1,5 @@
-import { Injectable, inject, signal, OnDestroy } from '@angular/core';
+import { Injectable, inject, signal, computed, OnDestroy } from '@angular/core';
+import { MatDialog } from '@angular/material/dialog';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from './api.service';
 import { AuthService } from './auth.service';
@@ -29,6 +30,7 @@ export interface ScanDirectory {
 export class ScanService implements OnDestroy {
   private readonly api = inject(ApiService);
   private readonly auth = inject(AuthService);
+  private readonly dialog = inject(MatDialog);
 
   private eventSource: EventSource | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -42,6 +44,22 @@ export class ScanService implements OnDestroy {
     exit_code: null,
   });
   readonly connected = signal(false);
+
+  readonly canLaunch = computed(() => {
+    const flagged = this.auth.hasFeature('show_scan_button') && (this.auth.isMultiUser()
+      ? this.auth.isSuperadmin()
+      : this.auth.editionPasswordRequired() && this.auth.isEdition());
+    // On an open install the server reports edition only for a trusted-local session.
+    return flagged || (!this.auth.isMultiUser() && !this.auth.editionPasswordRequired()
+      && !this.auth.loginPasswordRequired() && this.auth.isEdition());
+  });
+
+  /** Opens the scan launcher dialog; resolves true when it closed after a scan completed. */
+  async openLauncher(): Promise<boolean> {
+    const { ScanLauncherComponent } = await import('../../features/scan/scan-launcher.component');
+    const ref = this.dialog.open(ScanLauncherComponent, { width: '36rem' });
+    return !!(await firstValueFrom(ref.afterClosed()));
+  }
 
   async startScan(directories: string[]): Promise<void> {
     await firstValueFrom(

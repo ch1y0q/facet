@@ -349,6 +349,7 @@ def _write_sidecars_for_paths(conn, paths, user_id, overwrite):
     written = 0
     skipped = 0
     errors = 0
+    first_error = None
     sidecars: list[str] = []
     for path in paths:
         row = rating_rows.get(path)
@@ -366,15 +367,18 @@ def _write_sidecars_for_paths(conn, paths, user_id, overwrite):
                                     overwrite=overwrite, embed_original=False)
             written += 1
             sidecars.append(result["sidecar"])
-        except (OSError, RuntimeError):
+        except (OSError, RuntimeError) as ex:
             logger.exception("Failed to write metadata for %s", path)
             errors += 1
+            if first_error is None:
+                first_error = str(ex)[:300]
     return {
         "ok": True,
         "written": written,
         "skipped": skipped,
         "errors": errors,
         "sidecars": sidecars,
+        **({"first_error": first_error} if first_error else {}),
     }
 
 

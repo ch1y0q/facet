@@ -18,7 +18,7 @@ Facet ha due carichi di lavoro:
 
 Solo il viewer deve essere eseguito sul server. Esegui lo scoring su una workstation, poi sincronizza il database.
 
-> **Attenzione:** finché `viewer.password` è vuoto (valore predefinito), chiunque raggiunga la porta del viewer può sfogliare l'intera libreria e scaricare le foto originali, in qualunque modo lo avvii qui sotto. Imposta `viewer.password` prima di aprire la porta oltre la macchina; vedi la nota in [Modalità utente singolo](VIEWER.md#modalità-utente-singolo-predefinita).
+> **Attenzione:** finché `viewer.password` è vuoto (valore predefinito), chiunque raggiunga la porta del viewer può sfogliare l'intera libreria e scaricare le foto originali, in qualunque modo lo avvii qui sotto. Imposta `viewer.password` prima di aprire la porta oltre la macchina; vedi la nota in [Modalità utente singolo](VIEWER.md#modalità-utente-singolo-predefinita). In un'installazione aperta anche i token dell'assistente (**Collega un assistente**) si creano, si elencano e si revocano solo dal computer su cui gira Facet: un deployment Docker (il browser raggiunge il container tramite il gateway bridge) o un reverse proxy non può gestirli, quindi imposta lì `viewer.password` oppure esegui la richiesta sull'host (`docker compose exec facet python -c "import urllib.request ..."`). Un reverse proxy deve inviare `X-Forwarded-For` o `Forwarded`, altrimenti viene trattato come la macchina locale.
 
 ## Mappatura dei percorsi
 
@@ -267,6 +267,8 @@ DSM > Pannello di controllo > Portale di accesso > Avanzate > Reverse Proxy:
 
 Abbinalo a un certificato Let's Encrypt da DSM > Pannello di controllo > Sicurezza > Certificato.
 
+Se usi il ponte della scheda per gli agenti (vedi [Agenti IA](AGENTS.md)), apri anche la scheda **Intestazione personalizzata** della regola e scegli **Crea > WebSocket**: aggiunge le intestazioni `Upgrade` e `Connection` di cui `/api/mcp/bridge` ha bisogno. Se la regola riscrive l'intestazione `Host`, indica anche la tua origine pubblica in `viewer.mcp.allowed_origins`.
+
 ## NAS Synology (serie Plus / x86)
 
 I NAS della serie Plus supportano Docker (Container Manager).
@@ -300,7 +302,7 @@ Per un NAS solo viewer in cui l'immagine deve restare piccola (senza CUDA), comp
 ```dockerfile
 FROM python:3.11-slim
 WORKDIR /app
-RUN pip install fastapi uvicorn pyjwt pillow aiosqlite
+RUN pip install fastapi uvicorn pyjwt pillow aiosqlite 'mcp>=2.3,<3' 'httpx>=0.28,<1' 'websockets>=13.0'
 COPY viewer.py config_resolve.py database.py tagger.py ./
 COPY api/ api/
 COPY config/ config/
@@ -310,6 +312,8 @@ COPY i18n/ i18n/
 EXPOSE 5000
 CMD ["uvicorn", "api:create_app", "--factory", "--host", "0.0.0.0", "--port", "5000", "--workers", "4"]
 ```
+
+Più worker non funzionano con il ponte della scheda per gli agenti: il suo registro delle schede è per processo, quindi con più di un worker una chiamata `ui_*` può raggiungere un processo che non conosce la tua scheda e rispondere `no_tab`. Usa `--workers 1` se usi gli [Agenti IA](AGENTS.md).
 
 ```yaml
 services:
@@ -488,7 +492,7 @@ cui misurarlo.
 ### Uvicorn
 
 ```bash
-pip install fastapi uvicorn pyjwt pillow aiosqlite
+pip install fastapi uvicorn pyjwt pillow aiosqlite 'mcp>=2.3,<3' 'httpx>=0.28,<1' 'websockets>=13.0'
 uvicorn api:create_app --factory --host 0.0.0.0 --port 5000 --workers 4
 ```
 
@@ -497,6 +501,8 @@ Oppure usa il wrapper (predefinito 1 worker; passa `--workers N` per averne di p
 ```bash
 python viewer.py --production --workers 4
 ```
+
+Più worker non funzionano con il ponte della scheda per gli agenti: il suo registro delle schede è per processo, quindi con più di un worker una chiamata `ui_*` può raggiungere un processo che non conosce la tua scheda e rispondere `no_tab`. Usa `--workers 1` se usi gli [Agenti IA](AGENTS.md).
 
 ### Uvicorn + Nginx
 
@@ -512,8 +518,19 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         client_max_body_size 50M;
     }
+
+    location /api/mcp/bridge {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $http_host;
+        proxy_read_timeout 3600s;
+    }
 }
 ```
+
+Il ponte della scheda per gli agenti (`/api/mcp/bridge`, vedi [Agenti IA](AGENTS.md)) è un WebSocket e richiede le intestazioni `Upgrade` e `Connection` del secondo blocco `location`; senza di esse l'handshake fallisce e gli strumenti `ui_*` rispondono `no_tab`. Richiede anche un solo worker (`--workers 1`, il valore predefinito).
 
 Aggiungi HTTPS:
 ```bash
@@ -538,6 +555,8 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 ```
+
+Più worker non funzionano con il ponte della scheda per gli agenti: il suo registro delle schede è per processo, quindi con più di un worker una chiamata `ui_*` può raggiungere un processo che non conosce la tua scheda e rispondere `no_tab`. Usa `--workers 1` se usi gli [Agenti IA](AGENTS.md).
 
 ```bash
 sudo systemctl enable --now facet

@@ -1,4 +1,4 @@
-import { Component, DestroyRef, Pipe, PipeTransform, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
+import { Component, DestroyRef, Pipe, PipeTransform, computed, effect, inject, input, output, signal, untracked, viewChild, ElementRef, ChangeDetectionStrategy } from '@angular/core';
 import { TitleCasePipe } from '@angular/common';
 import { Router } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
@@ -49,20 +49,23 @@ export class CategoryLabelPipe implements PipeTransform {
     CategoryLabelPipe, IsLensNamePipe, PhotoSetKindIconPipe, PhotoSetKindLabelPipe, EvOffsetPipe,
     MomentLabelPipe, HistogramComponent,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     @if (photo(); as p) {
       <!-- The class list stays a literal string: Tailwind only generates a
            utility it can see in the source, and an arbitrary value written as an
            escaped class binding is invisible to it (z-[1000] silently vanished
            that way). Docking overrides it through style bindings instead. -->
-      <div
+      <div #root
         class="fixed z-[1000] pointer-events-none flex flex-col backdrop-blur-sm p-2.5 rounded-xl shadow-2xl"
         style="background: var(--facet-tooltip-bg); border: 1px solid var(--facet-tooltip-border)"
+        [class.max-h-[calc(100vh-2rem)]]="!docked()"
+        [class.overflow-y-auto]="!docked()"
         [style.position]="docked() ? 'static' : null"
         [style.pointer-events]="showInteractiveControls() ? 'auto' : null"
         [style.width]="docked() ? '100%' : null"
-        [style.left.px]="docked() ? null : x()"
-        [style.top.px]="docked() ? null : y()"
+        [style.left.px]="docked() ? null : left()"
+        [style.top.px]="docked() ? null : top()"
       >
         <!-- Zone A: Image + Scoring sections. The floating tooltip puts a
              portrait photo beside its numbers to stay within the viewport; the
@@ -396,7 +399,7 @@ export class CategoryLabelPipe implements PipeTransform {
         @if (p.persons.length) {
           <div class="flex items-center gap-1.5 flex-wrap mt-2 pt-1.5 border-t border-[var(--facet-tooltip-divider)]">
             @for (person of p.persons; track person.id) {
-              @if (showInteractiveControls()) {
+              @if (personLinks() && showInteractiveControls()) {
                 <button type="button"
                         class="rounded-full ring-1 ring-[var(--facet-tooltip-divider)] cursor-pointer hover:opacity-80 transition-opacity overflow-hidden"
                         [class.w-11]="docked()" [class.h-11]="docked()"
@@ -447,6 +450,8 @@ export class PhotoTooltipComponent {
    * before a click could ever land.
    */
   readonly pinned = input(false);
+  /** False renders person avatars as plain images instead of filter buttons. */
+  readonly personLinks = input(true);
   /** House default for the tooltip's OWN histogram channel mode, from
    *  `viewer.clipping.tooltip_histogram_mode` -- independent of the detail
    *  panel's default and of the user's per-surface persisted choice. */
@@ -504,8 +509,47 @@ export class PhotoTooltipComponent {
    *  resolves, or when the photo belongs to no set at all. */
   protected readonly photoSet = signal<PhotoSet | null>(null);
 
+  private readonly rootEl = viewChild<ElementRef<HTMLElement>>('root');
+  /** Measured size of the floating box; 0 until first measured. Content that
+   *  arrives after the parent positioned the tooltip (image, set, faces,
+   *  histogram) grows it, so the clamp must follow the real size. */
+  private readonly measured = signal({ width: 0, height: 0 });
+  private readonly viewport = signal({ width: window.innerWidth, height: window.innerHeight });
+
+  /** Top edge kept inside the viewport (16px margin) once the height is known. */
+  protected readonly top = computed(() => {
+    const y = this.y();
+    const h = this.measured().height;
+    if (!h) return y;
+    return Math.max(16, Math.min(y, this.viewport().height - h - 16));
+  });
+
+  /** Left edge kept inside the viewport (16px margin) once the width is known. */
+  protected readonly left = computed(() => {
+    const x = this.x();
+    const w = this.measured().width;
+    if (!w) return x;
+    return Math.max(16, Math.min(x, this.viewport().width - w - 16));
+  });
+
   constructor() {
     this.destroyRef.onDestroy(() => { this.destroyed = true; });
+    const onResize = () => this.viewport.set({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener('resize', onResize);
+    this.destroyRef.onDestroy(() => window.removeEventListener('resize', onResize));
+    effect(onCleanup => {
+      const el = this.rootEl()?.nativeElement;
+      if (!el || this.docked() || typeof ResizeObserver === 'undefined') return;
+      const measure = () => {
+        const r = el.getBoundingClientRect();
+        this.measured.set({ width: r.width, height: r.height });
+        this.viewport.set({ width: window.innerWidth, height: window.innerHeight });
+      };
+      measure();
+      const observer = new ResizeObserver(measure);
+      observer.observe(el);
+      onCleanup(() => observer.disconnect());
+    });
     effect(onCleanup => {
       const p = this.photo();
       const token = ++this.setGeneration;

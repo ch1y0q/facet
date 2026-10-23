@@ -1,4 +1,4 @@
-import { Component, effect, inject, input, signal } from '@angular/core';
+import { Component, effect, inject, input, signal, ChangeDetectionStrategy } from '@angular/core';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -49,6 +49,7 @@ interface SuggestFiltersResponse {
   selector: 'app-category-explainer',
   standalone: true,
   imports: [MatCardModule, MatButtonModule, MatIconModule, MatProgressSpinnerModule, TranslatePipe],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <mat-card>
       <mat-card-header>

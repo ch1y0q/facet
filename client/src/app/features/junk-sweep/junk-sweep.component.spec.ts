@@ -2,9 +2,11 @@ import type { Mock } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatDialog } from '@angular/material/dialog';
-import { of } from 'rxjs';
+import { type Observable, from, of, throwError } from 'rxjs';
+import { Router, provideRouter } from '@angular/router';
 import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { JunkSweepComponent } from './junk-sweep.component';
 
 describe('JunkSweepComponent', () => {
@@ -15,6 +17,7 @@ describe('JunkSweepComponent', () => {
   let mockSnackBar: { open: Mock };
   let mockDialog: { open: Mock };
   let photosCall: number;
+  let journal: { record: Mock };
 
   const initialPhotos = [
     { path: '/p/meme.jpg', filename: 'meme.jpg', junk_kind: 'meme', aggregate: 2.1 },
@@ -25,12 +28,14 @@ describe('JunkSweepComponent', () => {
 
   const defaultFirstPage = { photos: initialPhotos, total: 4, total_pages: 1, page: 1, has_more: false };
 
-  function createComponent(firstPage: Record<string, unknown> = defaultFirstPage) {
+  const kindsList = { junk_kinds: [['meme', 1], ['screenshot', 3]] };
+
+  function createComponent(firstPage: Record<string, unknown> = defaultFirstPage, kindsReply: Observable<unknown> = of(kindsList)) {
     photosCall = 0;
     mockApi = {
       get: vi.fn((url: string) => {
         if (url.includes('junk_kinds')) {
-          return of({ junk_kinds: [['meme', 1], ['screenshot', 3]] });
+          return kindsReply;
         }
         photosCall += 1;
         if (photosCall === 1) {
@@ -43,19 +48,85 @@ describe('JunkSweepComponent', () => {
     mockI18n = { t: vi.fn((k: string) => k) };
     mockSnackBar = { open: vi.fn() };
     mockDialog = { open: vi.fn(() => ({ afterClosed: () => of(true) })) };
+    journal = { record: vi.fn() };
 
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       providers: [
         JunkSweepComponent,
+        provideRouter([{ path: 'junk', children: [] }]),
         { provide: ApiService, useValue: mockApi },
         { provide: I18nService, useValue: mockI18n },
         { provide: MatSnackBar, useValue: mockSnackBar },
         { provide: MatDialog, useValue: mockDialog },
+        { provide: UserActivityJournal, useValue: journal },
       ],
     });
     component = TestBed.inject(JunkSweepComponent);
   }
+
+  describe('a navigation made by the assistant', () => {
+    const go = (url: string) => TestBed.inject(Router).navigateByUrl(url);
+    const gate = () => {
+      let release!: (value: unknown) => void;
+      const promise = new Promise<unknown>(resolve => { release = resolve; });
+      return { reply: from(promise), release };
+    };
+
+    it('applies the kind only after the kind list has loaded, through selectKind, once', async () => {
+      const kinds = gate();
+      createComponent(defaultFirstPage, kinds.reply);
+      const selectKind = vi.spyOn(component, 'selectKind');
+      void component.ngOnInit();
+      await go('/junk?kind=screenshot');
+      expect(selectKind).not.toHaveBeenCalled();
+      expect(component.activeKind()).toBe('any');
+      kinds.release(kindsList);
+      await vi.waitFor(() => expect(component.activeKind()).toBe('screenshot'));
+      expect(selectKind).toHaveBeenCalledTimes(1);
+      expect(selectKind).toHaveBeenCalledWith('screenshot');
+    });
+
+    it('keeps the requested kind when the kind list answers after the URL cleanup navigation', async () => {
+      const kinds = gate();
+      createComponent(defaultFirstPage, kinds.reply);
+      void component.ngOnInit();
+      await go('/junk?kind=screenshot');
+      await vi.waitFor(() => expect(TestBed.inject(Router).url).toBe('/junk'));
+      await new Promise(resolve => setTimeout(resolve, 20));
+      expect(component.activeKind()).toBe('any');
+      kinds.release(kindsList);
+      await vi.waitFor(() => expect(component.activeKind()).toBe('screenshot'));
+    });
+
+    it('ignores a kind the list does not hold, and "any" goes back to every kind', async () => {
+      createComponent();
+      await component.ngOnInit();
+      await go('/junk?kind=zzz');
+      expect(component.activeKind()).toBe('any');
+      await go('/junk?kind=meme');
+      await vi.waitFor(() => expect(component.activeKind()).toBe('meme'));
+      await go('/junk?kind=any');
+      await vi.waitFor(() => expect(component.activeKind()).toBe('any'));
+    });
+
+    it('removes the kind from the URL once applied', async () => {
+      createComponent();
+      await component.ngOnInit();
+      const router = TestBed.inject(Router);
+      await go('/junk?kind=meme');
+      await vi.waitFor(() => expect(router.url).toBe('/junk'));
+    });
+
+    it('keeps the kind when the navigation names none', async () => {
+      createComponent();
+      await component.ngOnInit();
+      await go('/junk?kind=meme');
+      await vi.waitFor(() => expect(component.activeKind()).toBe('meme'));
+      await go('/junk');
+      expect(component.activeKind()).toBe('meme');
+    });
+  });
 
   it('reads the total candidate count from the API `total` field, not `total_count`', async () => {
     createComponent();
@@ -107,6 +178,44 @@ describe('JunkSweepComponent', () => {
       .map(c => (c[1] as { photo_paths: string[] }).photo_paths);
     expect(chunks.map(c => c.length)).toEqual([1000, 500]);
     expect(chunks.flat()).toEqual(many.map(p => p.path));
+  });
+
+  it('journals a single reject and a clear, and nothing when either fails', async () => {
+    createComponent();
+    await component.ngOnInit();
+
+    await component.reject(initialPhotos[0]);
+    await component.keep(initialPhotos[1]);
+    expect(journal.record).toHaveBeenNthCalledWith(1, 'junk', ['/p/meme.jpg'], { action: 'reject', count: 1 });
+    expect(journal.record).toHaveBeenNthCalledWith(2, 'junk', ['/p/s1.jpg'], { action: 'clear', count: 1 });
+
+    journal.record.mockClear();
+    mockApi.post.mockReturnValue(throwError(() => new Error('boom')));
+    await component.reject(initialPhotos[2]);
+    await component.keep(initialPhotos[3]);
+    expect(journal.record).not.toHaveBeenCalled();
+  });
+
+  it('journals one entry for a reject-all, and only the chunks that landed when a later one fails', async () => {
+    const many = Array.from({ length: 1500 }, (_, i) => ({
+      path: `/p/j${i}.jpg`, filename: `j${i}.jpg`, junk_kind: 'meme', aggregate: 1.0,
+    }));
+    createComponent({ photos: many, total: 1500, total_pages: 32, page: 1, has_more: true });
+    await component.ngOnInit();
+    await component.rejectAllShown();
+    expect(journal.record).toHaveBeenCalledTimes(1);
+    const [kind, paths, value] = journal.record.mock.calls[0];
+    expect([kind, paths.length, value]).toEqual(['junk', 1500, { action: 'reject', count: 1500 }]);
+
+    journal.record.mockClear();
+    createComponent({ photos: many, total: 1500, total_pages: 32, page: 1, has_more: true });
+    await component.ngOnInit();
+    mockApi.post.mockReturnValueOnce(of({})).mockReturnValueOnce(throwError(() => new Error('boom')));
+    await component.rejectAllShown();
+    expect(journal.record).toHaveBeenCalledTimes(1);
+    const [, partialPaths, partialValue] = journal.record.mock.calls[0];
+    expect(partialPaths).toEqual(many.slice(0, 1000).map(p => p.path));
+    expect(partialValue).toEqual({ action: 'reject', count: 1000, partial: true });
   });
 
   it('feeds the count of *shown* candidates (not the API total) into the reject-all tooltip', async () => {

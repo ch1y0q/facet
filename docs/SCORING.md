@@ -297,6 +297,8 @@ Run `--compute-recommendations` after switching profiles to analyze score distri
 
 The viewer runs `--recompute-category` under the hood, updating only photos in that category.
 
+An MCP assistant can read these weights and dry-run a change without touching anything: `explain_score` (why a photo scored what it did), `category_weights` and `preview_weights` (an approximate preview with rank changes). See [Scoring and weights](AGENTS.md#scoring-and-weights).
+
 ### Option B: Via CLI
 
 #### 1. Analyze Current Scores

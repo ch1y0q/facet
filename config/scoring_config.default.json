@@ -3730,6 +3730,21 @@
     "cull": {
       "allow_trash": false
     },
+    "mcp": {
+      "enabled": true,
+      "bridge": true,
+      "max_rows": 100,
+      "max_bytes": 60000,
+      "max_image_bytes": 262144,
+      "call_timeout_s": 30,
+      "semantic_timeout_s": 120,
+      "rate_per_min": 120,
+      "write_rate_per_min": 30,
+      "tool_profile": "full",
+      "allow_destructive": false,
+      "inpage_tools": true,
+      "allowed_origins": []
+    },
     "raw_processor": {
       "backend": "rawpy",
       "darktable": {

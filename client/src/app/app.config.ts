@@ -7,7 +7,7 @@ import {
 } from '@angular/core';
 import { provideServiceWorker } from '@angular/service-worker';
 import { provideRouter, RouteReuseStrategy, withComponentInputBinding, withInMemoryScrolling } from '@angular/router';
-import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { provideHttpClient, withInterceptors, withXhr } from '@angular/common/http';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { MAT_DATE_LOCALE, provideNativeDateAdapter } from '@angular/material/core';
 
@@ -16,6 +16,7 @@ import { GalleryReuseStrategy } from './core/gallery-reuse.strategy';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
 import { errorInterceptor } from './core/interceptors/error.interceptor';
 import { retryInterceptor } from './core/interceptors/retry.interceptor';
+import { provideAgentTools } from './core/agent/agent-tools.bootstrap';
 import { GlobalErrorHandler } from './core/services/global-error-handler.service';
 
 export const appConfig: ApplicationConfig = {
@@ -24,11 +25,12 @@ export const appConfig: ApplicationConfig = {
     provideZonelessChangeDetection(),
     provideRouter(routes, withComponentInputBinding(), withInMemoryScrolling({ scrollPositionRestoration: 'top' })),
     { provide: RouteReuseStrategy, useClass: GalleryReuseStrategy },
-    provideHttpClient(withInterceptors([authInterceptor, errorInterceptor, retryInterceptor])),
+    provideHttpClient(withXhr(), withInterceptors([authInterceptor, errorInterceptor, retryInterceptor])),
     provideAnimations(),
     { provide: MAT_DATE_LOCALE, useValue: 'en-GB' },
     provideNativeDateAdapter(),
     { provide: ErrorHandler, useClass: GlobalErrorHandler },
+    provideAgentTools(),
     provideServiceWorker('ngsw-worker.js', {
       enabled: !isDevMode(),
       registrationStrategy: 'registerWhenStable:30000',

@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, effect, OnInit, HostListener, DestroyRef, ElementRef, viewChild } from '@angular/core';
+import { Component, inject, signal, computed, effect, OnInit, HostListener, DestroyRef, ElementRef, viewChild, ChangeDetectionStrategy } from '@angular/core';
 import { Location } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
@@ -10,8 +10,10 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { firstValueFrom, skip } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { firstValueFrom, skip } from 'rxjs';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
+import { AssistantChangeBatch, AssistantChangesService } from '../../core/agent/assistant-changes.service';
 import { ExtendedQualityComponent } from '../../shared/components/extended-quality/extended-quality.component';
 import { Photo, KeeperHint, PhotoSet, normalisePhotoFlags } from '../../shared/models/photo.model';
 import { AuthService } from '../../core/services/auth.service';
@@ -621,6 +623,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
       </div>
     }
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   host: { class: 'block h-full overflow-y-auto lg:overflow-y-hidden' },
 })
 export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
@@ -633,7 +636,9 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly assistantChanges = inject(AssistantChangesService);
   private readonly photoActions = inject(PhotoActionsService);
+  private readonly journal = inject(UserActivityJournal);
 
   readonly photo = signal<Photo | null>(null);
   protected readonly photoMissing = signal(false);
@@ -811,6 +816,23 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
       if (this.locationMapTimeout !== null) clearTimeout(this.locationMapTimeout);
       if (this.locationMap) { this.locationMap.remove(); this.locationMap = null; }
     });
+    this.assistantChanges.batch$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(batch => void this.refreshAfterAssistant(batch));
+  }
+
+  /** An assistant write touched this page's photo (or an unenumerable scope): refetch the full detail row. */
+  private async refreshAfterAssistant(batch: AssistantChangeBatch): Promise<void> {
+    const path = this.photo()?.path;
+    if (!path || (batch.paths !== null && !batch.paths.includes(path))) return;
+    try {
+      const fresh = await this.fetchPhoto(path);
+      // The user moved to another photo (ArrowRight) while this was in flight.
+      if (this.photo()?.path === path) this.photo.set(fresh);
+    } catch (err) {
+      if (this.photo()?.path !== path) return;
+      // Only a missing photo has no page left; any other failure keeps the page the user is on.
+      if ((err as { status?: number }).status === 404) this.goBack();
+      else this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
+    }
   }
 
   async ngOnInit(): Promise<void> {
@@ -1018,6 +1040,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     try {
       await firstValueFrom(this.api.post('/photo/set_rating', { photo_path: path, rating: newRating }));
       this.applyConfirmed(p, { star_rating: newRating });
+      this.journal.record('rating', [path], newRating);
     } catch {
       this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
     }
@@ -1034,6 +1057,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
       // store's, which may be the fresher of the two.
       if (res.is_rejected !== null) confirmed.is_rejected = res.is_rejected;
       this.applyConfirmed(p, confirmed);
+      this.journal.record('favorite', [path], res.is_favorite);
     } catch {
       this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
     }
@@ -1048,6 +1072,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
       if (res.is_favorite !== null) confirmed.is_favorite = res.is_favorite;
       if (res.star_rating !== null) confirmed.star_rating = res.star_rating;
       this.applyConfirmed(p, confirmed);
+      this.journal.record('reject', [path], res.is_rejected);
     } catch {
       this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
     }
@@ -1101,6 +1126,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
         return;
       }
       this.updateManualTags(p, tags => (tags.includes(res.tag) ? tags : [...tags, res.tag].sort()));
+      this.journal.record('tags', [p.path], { action: 'add', tag: res.tag });
     } catch {
       this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
     }
@@ -1110,6 +1136,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     try {
       await firstValueFrom(this.api.delete('/photo/manual_tags', { path: p.path, tag }));
       this.updateManualTags(p, tags => tags.filter(t => t !== tag));
+      this.journal.record('tags', [p.path], { action: 'remove', tag });
     } catch {
       this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
     }

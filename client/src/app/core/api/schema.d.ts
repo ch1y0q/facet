@@ -117,6 +117,10 @@ export interface paths {
         /**
          * Add Photos To Album
          * @description Add photos to an album (batch).
+         *
+         *     Only paths that exist in the library are added: ``album_photos`` has no foreign key to ``photos`` and the
+         *     insert is ``OR IGNORE``, so an unknown path used to be stored and counted as added. The rest come back as
+         *     ``skipped`` (capped at ``BY_PATHS_MISSING_CAP``, ``skipped_count`` is the full number).
          */
         post: operations["add_photos_to_album_api_albums__album_id__photos_post"];
         /**
@@ -1423,6 +1427,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/culling/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Culling Plan
+         * @description The assistant's auto-cull plan as culling groups, for the /culling page to show and confirm.
+         *
+         *     Recomputes the plan exactly as ``POST /api/culling/auto`` (dry run) would and refuses with 412 when
+         *     its digest is not ``expected_digest`` when one is given: the tab shows only the plan the assistant
+         *     described. Without a digest nothing is checked (the page re-planning at a new strictness). Writes nothing. Plain ``def`` so the collect/split runs in a threadpool.
+         */
+        post: operations["culling_plan_api_culling_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/culling/profiles": {
         parameters: {
             query?: never;
@@ -1467,10 +1495,10 @@ export interface paths {
          *     orders scopes the way a photographer would — a whole wedding outranks a
          *     wedding inside a year of holidays.
          *
-         *     ``date_from``/``date_to`` must be raw EXIF timestamps
-         *     (``YYYY:MM:DD HH:MM:SS``) — the shape the scenes feed emits and the only one
-         *     that sorts against ``date_taken``; anything else is a 422 rather than a
-         *     silently empty window that would still be cached.
+         *     ``date_from``/``date_to`` take ISO dates or datetimes as well as raw EXIF
+         *     timestamps; they are normalised to ``YYYY:MM:DD HH:MM:SS`` (the only shape that
+         *     sorts against ``date_taken``) before use, and anything unparseable is a 400
+         *     rather than a silently empty window that would still be cached.
          *
          *     ``profile`` is null when the scope is empty, when no genre reaches
          *     ``_SUGGEST_MIN_SHARE``, or when the matching preset is not configured (a
@@ -2073,6 +2101,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/mcp/call": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Call Tool
+         * @description Run one tool as this session. A tool failure is a 200 envelope (`ok: false`), like on `/mcp`.
+         */
+        post: operations["call_tool_api_mcp_call_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/inpage_tools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inpage Tools
+         * @description The server tools this session may call from the page, live, with the schemas the registry holds.
+         */
+        get: operations["inpage_tools_api_mcp_inpage_tools_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tokens
+         * @description The caller's own tokens, newest first. Never the secret or its hash.
+         */
+        get: operations["list_tokens_api_mcp_tokens_get"];
+        put?: never;
+        /**
+         * Create Token
+         * @description Mint a token. The plaintext is in this response and nowhere else, ever.
+         */
+        post: operations["create_token_api_mcp_tokens_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp/tokens/{token_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Token
+         * @description Revoke one of the caller's tokens (any token, for a superadmin).
+         */
+        delete: operations["revoke_token_api_mcp_tokens__token_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/memories": {
         parameters: {
             query?: never;
@@ -2174,6 +2286,26 @@ export interface paths {
          * @description Get all faces belonging to a person.
          */
         get: operations["api_person_faces_api_person__person_id__faces_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/person/{person_id}/possible_faces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Api Person Possible Faces
+         * @description Faces most like ``person_id``'s centroid, best first (same embedding model only).
+         */
+        get: operations["api_person_possible_faces_api_person__person_id__possible_faces_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3084,6 +3216,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/photos/by_paths": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Api Photos By Paths
+         * @description The named photos, in the requested order, through the gallery's visibility and filters.
+         *
+         *     The explicit-list counterpart of ``/api/photos``: no paging and no sort, because the
+         *     caller chose the rows. Filter keys are the gallery's own (``gallery_filter_keys``);
+         *     paging and ordering keys are dropped and anything else is a 422. The viewer's default
+         *     ``type`` and the hide toggles are NOT applied -- a list the caller named is shown whole
+         *     unless it asks otherwise -- so ``type`` is set to ``''`` only when the caller gave none.
+         */
+        post: operations["api_photos_by_paths_api_photos_by_paths_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/photos/count": {
         parameters: {
             query?: never;
@@ -3477,7 +3635,12 @@ export interface paths {
         put?: never;
         /**
          * Start Recompute
-         * @description Spawn a full-library aggregate recompute as a background subprocess.
+         * @description Spawn an aggregate recompute (the whole library, or one ``category``) as a background subprocess.
+         *
+         *     ``category`` runs ``--recompute-category``: only that category's scores are rewritten, and burst and
+         *     sequence detection are skipped (the whole-library run does them). Either way the run persists the
+         *     library's percentile snapshot, which every category's next normalisation reads. An unknown category is
+         *     a 400 before anything is spawned.
          *
          *     Reuses the scan job machinery (``_scan_lock``, ``_scan_state``,
          *     ``_read_scan_output``) so a scan and a recompute stay mutually exclusive
@@ -4563,6 +4726,16 @@ export interface components {
         AssignFacesRequest: {
             /** Face Ids */
             face_ids: number[];
+            /**
+             * Only Unassigned
+             * @default false
+             */
+            only_unassigned?: boolean;
+            /**
+             * Tolerant
+             * @default false
+             */
+            tolerant?: boolean;
         };
         /** AuthStatusResponse */
         AuthStatusResponse: {
@@ -4607,6 +4780,11 @@ export interface components {
         AutoCullBody: {
             /** Album Id */
             album_id?: number | null;
+            /**
+             * Cursor
+             * @default 0
+             */
+            cursor?: number;
             /** Date From */
             date_from?: string | null;
             /** Date To */
@@ -4616,6 +4794,8 @@ export interface components {
              * @default true
              */
             dry_run?: boolean;
+            /** Expected Digest */
+            expected_digest?: string | null;
             /**
              * Group By
              * @default all
@@ -4627,10 +4807,14 @@ export interface components {
              * @default
              */
             highlights_album?: string;
+            /** Keep Paths */
+            keep_paths?: string[];
             /** Min Keep Per Group */
             min_keep_per_group?: number | null;
             /** Profile */
             profile?: string | null;
+            /** Remove Paths */
+            remove_paths?: string[];
             /** Strictness */
             strictness?: number | null;
             /**
@@ -4639,14 +4823,58 @@ export interface components {
              */
             trim_brackets?: boolean;
         };
+        /**
+         * AutoCullCullReason
+         * @description Why a rejected photo ranks below its group's best (the ``culling.reason.*`` key).
+         */
+        AutoCullCullReason: {
+            /** Key */
+            key: string;
+            /** Value */
+            value?: number | null;
+        };
+        /** AutoCullEffectiveOverrides */
+        AutoCullEffectiveOverrides: {
+            /** Keep */
+            keep: number;
+            /** Remove */
+            remove: number;
+        };
+        /**
+         * AutoCullGroupReason
+         * @description A group's reason as a translatable key plus its params.
+         */
+        AutoCullGroupReason: {
+            /** Key */
+            key: string;
+            /**
+             * Params
+             * @default {}
+             */
+            params?: {
+                [key: string]: string | number;
+            };
+        };
         /** AutoCullPreviewItem */
         AutoCullPreviewItem: {
             /** Best Path */
             best_path: string;
             /** Group Id */
             group_id: number;
+            group_reason?: components["schemas"]["AutoCullGroupReason"] | null;
             /** Keep Paths */
             keep_paths: string[];
+            /** Kind */
+            kind?: string | null;
+            /** Number */
+            number: number;
+            /**
+             * Reasons
+             * @default {}
+             */
+            reasons?: {
+                [key: string]: components["schemas"]["AutoCullCullReason"];
+            };
             /** Reject Paths */
             reject_paths: string[];
             /** Type */
@@ -4659,18 +4887,54 @@ export interface components {
         AutoCullResponse: {
             /** Dry Run */
             dry_run: boolean;
+            /** @description Present when keep/remove overrides were sent: how many marks moved a photo away from its planned side (a mark restating the plan is not counted). */
+            effective_overrides?: components["schemas"]["AutoCullEffectiveOverrides"] | null;
             /** Groups Processed */
             groups_processed: number;
             /** Highlights Added */
             highlights_added: number;
+            /**
+             * Ignored Overrides
+             * @default []
+             */
+            ignored_overrides?: string[];
             /** Kept */
             kept: number;
+            /** Next Cursor */
+            next_cursor?: number | null;
+            /** Plan Digest */
+            plan_digest: string;
             /** Preview */
             preview: components["schemas"]["AutoCullPreviewItem"][];
-            /** Preview Truncated */
-            preview_truncated: boolean;
             /** Rejected */
             rejected: number;
+            /**
+             * Rejected Paths
+             * @description Present on an apply only: the photos it rejected; absent (not null) above 200 photos, empty when it rejected none. Feeds "Show photos".
+             */
+            rejected_paths?: string[] | null;
+            /**
+             * Scope Dependent Kinds
+             * @default []
+             */
+            scope_dependent_kinds?: string[];
+            /**
+             * Skipped User Changed
+             * @default []
+             */
+            skipped_user_changed?: string[];
+            /**
+             * Skipped User Changed Count
+             * @default 0
+             */
+            skipped_user_changed_count?: number;
+            /**
+             * Skipped User Changed Groups
+             * @default 0
+             */
+            skipped_user_changed_groups?: number;
+            /** State Guard */
+            state_guard?: "unavailable" | null;
         };
         /** AvatarRequest */
         AvatarRequest: {
@@ -4826,6 +5090,8 @@ export interface components {
             burst_id: number;
             /** Keep Paths */
             keep_paths: string[];
+            /** Paths */
+            paths?: string[] | null;
             /**
              * Seed
              * @default 0
@@ -5041,6 +5307,8 @@ export interface components {
             category_breakdown?: components["schemas"]["ComparisonCategoryCount"][];
             /** Min Comparisons For Optimization */
             min_comparisons_for_optimization?: number | null;
+            /** Pair Selection Strategy */
+            pair_selection_strategy?: string | null;
             /**
              * Recent Optimization Runs
              * @default []
@@ -5275,6 +5543,10 @@ export interface components {
          *     was not built from, or duplicate every fetcher's dict-building logic here
          *     just to keep it in sync -- exactly the "tidy the handler to fit the model"
          *     the phase rules out. The outer pagination envelope is still fully typed.
+         *
+         *     Every photo in a page also carries the caller's ``is_rejected`` and ``is_favorite`` (0/1 ints, SQLite
+         *     has no boolean) and ``star_rating`` (0-5), from ``user_preferences`` in multi-user mode and the
+         *     ``photos`` columns otherwise (``attach_user_marks``); ``tests/test_burst_culling.py`` pins the wire types.
          */
         CullingGroupsResponse: {
             /** Groups */
@@ -5289,6 +5561,66 @@ export interface components {
             total_groups: number;
             /** Total Pages */
             total_pages: number;
+        };
+        /** CullingPlanBody */
+        CullingPlanBody: {
+            /** Album Id */
+            album_id?: number | null;
+            /** Date From */
+            date_from?: string | null;
+            /** Date To */
+            date_to?: string | null;
+            /** Expected Digest */
+            expected_digest?: string | null;
+            /**
+             * Group By
+             * @default all
+             * @enum {string}
+             */
+            group_by?: "all" | "burst" | "similar" | "scene";
+            /**
+             * Highlights Album
+             * @default
+             */
+            highlights_album?: string;
+            /** Keep Paths */
+            keep_paths?: string[];
+            /** Min Keep Per Group */
+            min_keep_per_group?: number | null;
+            /** Profile */
+            profile?: string | null;
+            /** Remove Paths */
+            remove_paths?: string[];
+            /** Strictness */
+            strictness?: number | null;
+            /**
+             * Trim Brackets
+             * @default false
+             */
+            trim_brackets?: boolean;
+        };
+        /**
+         * CullingPlanResponse
+         * @description ``POST /api/culling/plan``: the plan as culling groups.
+         *
+         *     ``groups`` stays loosely typed like ``CullingGroupsResponse`` (the rows are the feed's group dicts); each
+         *     one adds ``plan: {number, keep_paths, group_reason}`` and its photos are listed keepers first, then rejects.
+         *     ``total_groups`` counts the whole plan; ``truncated`` says ``groups`` stopped at the group or photo cap, and
+         *     ``oversize_groups`` counts groups left out for exceeding the confirm route's per-group photo cap.
+         */
+        CullingPlanResponse: {
+            /** Groups */
+            groups: {
+                [key: string]: unknown;
+            }[];
+            /** Oversize Groups */
+            oversize_groups: number;
+            /** Plan Digest */
+            plan_digest: string;
+            /** Total Groups */
+            total_groups: number;
+            /** Truncated */
+            truncated: boolean;
         };
         /** CullingSubjectsBody */
         CullingSubjectsBody: {
@@ -5560,6 +5892,10 @@ export interface components {
             message: string;
             /** Pid */
             pid: number;
+            /** Scope */
+            scope?: string | null;
+            /** Started At */
+            started_at?: number | null;
             /** Success */
             success: boolean;
         };
@@ -5697,6 +6033,180 @@ export interface components {
             lng: number;
             /** Path */
             path: string;
+        };
+        /** McpCallRequest */
+        McpCallRequest: {
+            /** Arguments */
+            arguments?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Selection Snapshot
+             * @description The calling tab's `ui_get_selection` data, read by `target: "selection"`; for `create_album` `target: "view"` its `ui_get_gallery_view` data.
+             */
+            selection_snapshot?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Tab Id
+             * @description The calling tab's bridge id. A write's `changed` frame goes to the user's OTHER tabs, never to this one, which applies `changed_paths` from the response.
+             */
+            tab_id?: string | null;
+            /** Tool */
+            tool: string;
+        };
+        /**
+         * McpCallResponse
+         * @description A tool's result envelope; failures are `ok: false` with an `error` code, never an HTTP error.
+         */
+        McpCallResponse: {
+            /**
+             * Changed
+             * @description Photos a write changed (0 for a dry run).
+             */
+            changed?: number | null;
+            /**
+             * Changed Paths
+             * @description Present ONLY when the call ran a photo-changing write (even one whose outcome is unknown): the paths it named, or null when it did not name them (a filter-scoped write, more than 200 paths). An absent key means nothing was written.
+             */
+            changed_paths?: string[] | null;
+            /** Data */
+            data?: unknown | null;
+            /** Error */
+            error?: string | null;
+            /** Message */
+            message?: string | null;
+            /** Ok */
+            ok: boolean;
+            /**
+             * Show Paths
+             * @description Present ONLY when the call ran an auto-cull apply: the photos it rejected, for the tab's "Show photos", or null above 200 (or when unknown). `changed_paths` stays null for it.
+             */
+            show_paths?: string[] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** McpInpageAnnotations */
+        McpInpageAnnotations: {
+            /** Consequentialhint */
+            consequentialHint: boolean;
+            /** Readonlyhint */
+            readOnlyHint: boolean;
+            /** Untrustedcontenthint */
+            untrustedContentHint: boolean;
+        };
+        /** McpInpageTool */
+        McpInpageTool: {
+            annotations: components["schemas"]["McpInpageAnnotations"];
+            /** Description */
+            description: string;
+            /**
+             * Inputschema
+             * @description JSON Schema of the arguments; `show` and `tab_id` are stripped.
+             */
+            inputSchema: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            /**
+             * Required Level
+             * @description The level the session needs to call the tool (single-password installs have no `user` rung).
+             * @enum {string}
+             */
+            required_level: "readonly" | "user" | "edition";
+        };
+        /** McpInpageTools */
+        McpInpageTools: {
+            /**
+             * Level
+             * @description The session's level right now.
+             * @enum {string}
+             */
+            level: "readonly" | "user" | "edition";
+            /** Tools */
+            tools: components["schemas"]["McpInpageTool"][];
+        };
+        /** McpTokenCreate */
+        McpTokenCreate: {
+            /**
+             * Level
+             * @default readonly
+             * @enum {string}
+             */
+            level?: "readonly" | "user" | "edition";
+            /** Name */
+            name: string;
+        };
+        /**
+         * McpTokenCreated
+         * @description The one response that carries the plaintext token.
+         */
+        McpTokenCreated: {
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Last Used At */
+            last_used_at?: string | null;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "readonly" | "user" | "edition";
+            /** Name */
+            name: string;
+            /** Revoked */
+            revoked: number;
+            /** Revoked At */
+            revoked_at?: string | null;
+            /** Token */
+            token: string;
+            /** Token Prefix */
+            token_prefix: string;
+            /** User Id */
+            user_id: string;
+        };
+        /**
+         * McpTokenItem
+         * @description Token metadata. Never carries the secret or its hash.
+         *
+         *     ``revoked`` is int-typed because SQLite has no boolean: the wire carries 0/1.
+         */
+        McpTokenItem: {
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Last Used At */
+            last_used_at?: string | null;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "readonly" | "user" | "edition";
+            /** Name */
+            name: string;
+            /** Revoked */
+            revoked: number;
+            /** Revoked At */
+            revoked_at?: string | null;
+            /** Token Prefix */
+            token_prefix: string;
+            /** User Id */
+            user_id: string;
+        };
+        /** McpTokenList */
+        McpTokenList: {
+            /** Tokens */
+            tokens: components["schemas"]["McpTokenItem"][];
+        };
+        /** McpTokenRevoked */
+        McpTokenRevoked: {
+            /** Id */
+            id: number;
+            /** Ok */
+            ok: boolean;
         };
         /** MediaCaptionResponse */
         MediaCaptionResponse: {
@@ -6224,6 +6734,8 @@ export interface components {
             caption_translated?: string | null;
             /** Category */
             category?: string | null;
+            /** Category Override */
+            category_override?: string | null;
             /** Channel Clip Highlight Pct */
             channel_clip_highlight_pct?: number | null;
             /** Channel Clip Shadow Pct */
@@ -6636,6 +7148,34 @@ export interface components {
             types?: components["schemas"]["PhotoTypeCount"][];
         };
         /**
+         * PhotosByPathsRequest
+         * @description Photos named by path, optionally narrowed by the gallery's filters.
+         */
+        PhotosByPathsRequest: {
+            /**
+             * Filters
+             * @default {}
+             */
+            filters?: {
+                [key: string]: string | number | boolean;
+            };
+            /** Paths */
+            paths: string[];
+        };
+        /**
+         * PhotosByPathsResponse
+         * @description Rows in the REQUESTED order; ``missing`` lists (up to 200) requested paths that are
+         *     invisible, unknown or filtered out.
+         */
+        PhotosByPathsResponse: {
+            /** Missing */
+            missing: string[];
+            /** Photos */
+            photos: components["schemas"]["Photo"][];
+            /** Total */
+            total: number;
+        };
+        /**
          * PhotosResponse
          * @description The gallery listing.
          *
@@ -6701,6 +7241,39 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /**
+         * PossibleFace
+         * @description One face that looks like the person, with its current owner (if any).
+         */
+        PossibleFace: {
+            /** Distance */
+            distance: number;
+            /** Face Id */
+            face_id: number;
+            /** Person Id */
+            person_id?: number | null;
+            /** Person Name */
+            person_name?: string | null;
+            /** Photo Path */
+            photo_path: string;
+            /** Similarity */
+            similarity: number;
+        };
+        /** PossibleFacesResponse */
+        PossibleFacesResponse: {
+            /**
+             * Candidates
+             * @description Index count of faces in scope that the caller can see, before the embedding-dimension check.
+             */
+            candidates: number;
+            /** Faces */
+            faces: components["schemas"]["PossibleFace"][];
+            /**
+             * Faces Scanned
+             * @description Rows actually scored against the centroid (after the embedding-dimension check).
+             */
+            faces_scanned: number;
+        };
         /** PreviewScoreBody */
         PreviewScoreBody: {
             /** Path */
@@ -6757,6 +7330,18 @@ export interface components {
             confirm: boolean;
         };
         /**
+         * RecomputeScoresRequest
+         * @description Body of ``POST /recompute``: ``category`` narrows the run to one category.
+         *
+         *     A model of its own so ``/detect_panoramas``, which shares ``RecomputeRequest``, cannot be handed a category.
+         */
+        RecomputeScoresRequest: {
+            /** Category */
+            category?: string | null;
+            /** Confirm */
+            confirm: boolean;
+        };
+        /**
          * RecomputeStatusResponse
          * @description ``GET /api/scan/recompute_status`` -- see ``ScanStatusResponse`` for why
          *     ``progress`` stays an untyped passthrough.
@@ -6772,6 +7357,10 @@ export interface components {
             } | null;
             /** Running */
             running: boolean;
+            /** Scope */
+            scope?: string | null;
+            /** Started At */
+            started_at?: number | null;
         };
         /** RejectMergeRequest */
         RejectMergeRequest: {
@@ -7748,6 +8337,8 @@ export interface components {
             accuracy_before?: number | null;
             /** Category */
             category?: string | null;
+            /** Category Bonus */
+            category_bonus?: number | null;
             /** Comparisons Used */
             comparisons_used?: number | null;
             /** Created By */
@@ -9897,6 +10488,39 @@ export interface operations {
             };
         };
     };
+    culling_plan_api_culling_plan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CullingPlanBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CullingPlanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_cull_profiles_api_culling_profiles_get: {
         parameters: {
             query?: never;
@@ -10663,6 +11287,276 @@ export interface operations {
             };
         };
     };
+    call_tool_api_mcp_call_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Facet-Agent-Session"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["McpCallRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpCallResponse"];
+                };
+            };
+            /** @description Missing or malformed X-Facet-Agent-Session header. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An agent credential or a foreign origin was used. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description In-page tools are disabled (viewer.mcp.enabled / viewer.mcp.inpage_tools). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inpage_tools_api_mcp_inpage_tools_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpInpageTools"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An agent credential or a foreign origin was used. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description In-page tools are disabled (viewer.mcp.enabled / viewer.mcp.inpage_tools). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_tokens_api_mcp_tokens_get: {
+        parameters: {
+            query?: {
+                /** @description 1 lists every owner's tokens (superadmin only) */
+                all?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpTokenList"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Superadmin access required, an agent credential was used, or the install is open and the request is not local. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The agent endpoint is disabled (viewer.mcp.enabled). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_token_api_mcp_tokens_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["McpTokenCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpTokenCreated"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The session may not hold the requested level, an agent credential was used, or the install is open and the request is not local. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The agent endpoint is disabled (viewer.mcp.enabled). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The owner already has the maximum number of live tokens. */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_token_api_mcp_tokens__token_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpTokenRevoked"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An agent credential was used, the token's level is above the session's, or the install is open and the request is not local. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such live token, or the endpoint is disabled. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_memories_api_memories_get: {
         parameters: {
             query?: {
@@ -10810,6 +11704,58 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PersonFacesResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    api_person_possible_faces_api_person__person_id__possible_faces_get: {
+        parameters: {
+            query?: {
+                scope?: "unassigned" | "other_persons" | "all";
+                min_similarity?: number;
+                limit?: number;
+                path_prefix?: string | null;
+                date_from?: string | null;
+                date_to?: string | null;
+            };
+            header?: never;
+            path: {
+                person_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PossibleFacesResponse"];
+                };
+            };
+            /** @description Person not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No usable centroid, or the scan is over MAX_FACE_SCAN faces */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -12147,6 +13093,39 @@ export interface operations {
             };
         };
     };
+    api_photos_by_paths_api_photos_by_paths_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotosByPathsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhotosByPathsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     api_photos_count_api_photos_count_get: {
         parameters: {
             query?: never;
@@ -12649,7 +13628,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RecomputeRequest"];
+                "application/json": components["schemas"]["RecomputeScoresRequest"];
             };
         };
         responses: {

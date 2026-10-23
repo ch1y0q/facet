@@ -18,7 +18,7 @@ Facet tiene dos cargas de trabajo:
 
 Solo la galería web necesita ejecutarse en el servidor. Puntúa en una estación de trabajo y luego sincroniza la base de datos.
 
-> **Advertencia:** mientras `viewer.password` esté vacío (el valor por defecto), cualquiera que pueda llegar al puerto de la galería web puede explorar toda la biblioteca y descargar las fotos originales, sea cual sea la forma de lanzarla más abajo. Define `viewer.password` antes de exponer el puerto más allá de la máquina; consulta la nota de [Modo de un solo usuario](VIEWER.md#modo-de-un-solo-usuario-predeterminado).
+> **Advertencia:** mientras `viewer.password` esté vacío (el valor por defecto), cualquiera que pueda llegar al puerto de la galería web puede explorar toda la biblioteca y descargar las fotos originales, sea cual sea la forma de lanzarla más abajo. Define `viewer.password` antes de exponer el puerto más allá de la máquina; consulta la nota de [Modo de un solo usuario](VIEWER.md#modo-de-un-solo-usuario-predeterminado). En una instalación abierta, los tokens del asistente (**Conectar un asistente**) también solo se crean, se listan y se revocan desde el ordenador donde se ejecuta Facet: un despliegue de Docker (el navegador alcanza el contenedor por la puerta de enlace del puente) o un proxy inverso no puede gestionarlos, así que define allí `viewer.password` o ejecuta la petición en el host (`docker compose exec facet python -c "import urllib.request ..."`). Un proxy inverso debe enviar `X-Forwarded-For` o `Forwarded`; de lo contrario se trata como la máquina local.
 
 ## Mapeo de rutas
 
@@ -267,6 +267,8 @@ DSM > Panel de control > Portal de inicio de sesión > Avanzado > Proxy inverso:
 
 Combínalo con un certificado de Let's Encrypt desde DSM > Panel de control > Seguridad > Certificado.
 
+Si usas el puente de pestaña para agentes (consulta [Agentes de IA](AGENTS.md)), abre también la pestaña **Encabezado personalizado** de la regla y elige **Crear > WebSocket**: añade las cabeceras `Upgrade` y `Connection` que necesita `/api/mcp/bridge`. Si la regla reescribe la cabecera `Host`, indica también tu origen público en `viewer.mcp.allowed_origins`.
+
 ## NAS Synology (serie Plus / x86)
 
 Los NAS de la serie Plus admiten Docker (Container Manager).
@@ -310,7 +312,7 @@ Para un NAS de solo galería web donde la imagen debe permanecer pequeña (sin C
 ```dockerfile
 FROM python:3.11-slim
 WORKDIR /app
-RUN pip install fastapi uvicorn pyjwt pillow aiosqlite
+RUN pip install fastapi uvicorn pyjwt pillow aiosqlite 'mcp>=2.3,<3' 'httpx>=0.28,<1' 'websockets>=13.0'
 COPY viewer.py config_resolve.py database.py tagger.py ./
 COPY api/ api/
 COPY config/ config/
@@ -320,6 +322,8 @@ COPY i18n/ i18n/
 EXPOSE 5000
 CMD ["uvicorn", "api:create_app", "--factory", "--host", "0.0.0.0", "--port", "5000", "--workers", "4"]
 ```
+
+Varios workers no funcionan con el puente de pestaña para agentes: su registro de pestañas es por proceso, así que con más de un worker una llamada `ui_*` puede llegar a un proceso que no conoce tu pestaña y responder `no_tab`. Usa `--workers 1` si usas los [Agentes de IA](AGENTS.md).
 
 ```yaml
 services:
@@ -500,7 +504,7 @@ medirla.
 ### Uvicorn
 
 ```bash
-pip install fastapi uvicorn pyjwt pillow aiosqlite
+pip install fastapi uvicorn pyjwt pillow aiosqlite 'mcp>=2.3,<3' 'httpx>=0.28,<1' 'websockets>=13.0'
 uvicorn api:create_app --factory --host 0.0.0.0 --port 5000 --workers 4
 ```
 
@@ -509,6 +513,8 @@ O usa el wrapper (predeterminado a 1 worker; pasa `--workers N` para más):
 ```bash
 python viewer.py --production --workers 4
 ```
+
+Varios workers no funcionan con el puente de pestaña para agentes: su registro de pestañas es por proceso, así que con más de un worker una llamada `ui_*` puede llegar a un proceso que no conoce tu pestaña y responder `no_tab`. Usa `--workers 1` si usas los [Agentes de IA](AGENTS.md).
 
 ### Uvicorn + Nginx
 
@@ -524,8 +530,19 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         client_max_body_size 50M;
     }
+
+    location /api/mcp/bridge {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $http_host;
+        proxy_read_timeout 3600s;
+    }
 }
 ```
+
+El puente de pestaña para agentes (`/api/mcp/bridge`, consulta [Agentes de IA](AGENTS.md)) es un WebSocket, así que necesita las cabeceras `Upgrade` y `Connection` del segundo bloque `location`; sin ellas el handshake falla y las herramientas `ui_*` responden `no_tab`. También necesita un único worker (`--workers 1`, el valor por defecto).
 
 Añade HTTPS:
 ```bash
@@ -550,6 +567,8 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 ```
+
+Varios workers no funcionan con el puente de pestaña para agentes: su registro de pestañas es por proceso, así que con más de un worker una llamada `ui_*` puede llegar a un proceso que no conoce tu pestaña y responder `no_tab`. Usa `--workers 1` si usas los [Agentes de IA](AGENTS.md).
 
 ```bash
 sudo systemctl enable --now facet

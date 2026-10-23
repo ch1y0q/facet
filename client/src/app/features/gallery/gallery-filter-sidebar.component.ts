@@ -1,4 +1,4 @@
-import { Component, computed, DestroyRef, effect, ElementRef, inject, signal, viewChild, viewChildren } from '@angular/core';
+import { Component, computed, DestroyRef, effect, ElementRef, inject, signal, viewChild, viewChildren, ChangeDetectionStrategy } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatSelectModule } from '@angular/material/select';
@@ -15,7 +15,7 @@ import { toIsoDateString } from '../../shared/utils/date-format';
 import { MatAutocompleteModule, MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { firstValueFrom } from 'rxjs';
-import { GalleryStore, SMART_ALBUM_EXCLUDE_KEYS } from './gallery.store';
+import { GalleryStore } from './gallery.store';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { FilterDisplayPipe } from '../../shared/pipes/filter-display.pipe';
 import { PersonThumbnailUrlPipe } from '../../shared/pipes/thumbnail-url.pipe';
@@ -23,7 +23,7 @@ import { AdditionalFilterDef } from '../../shared/models/filter-def.model';
 import { computeRangeFilterUpdate } from '../../shared/utils/range-filter';
 import { useCoarsePointerSignal } from '../../shared/utils/media-query';
 import { MOBILE_MIN_CARD_WIDTH_PX } from './gallery-rows.util';
-import { SEARCH_THRESHOLD_MAX, seededSearchThreshold } from './gallery-filters.util';
+import { SEARCH_THRESHOLD_MAX, seededSearchThreshold, smartAlbumFilterJson } from './gallery-filters.util';
 import { AlbumService, Album } from '../../core/services/album.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
@@ -168,6 +168,7 @@ function saveSectionStates(states: Record<string, boolean>): void {
     FilterDisplayPipe,
     PersonThumbnailUrlPipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
 <div data-scroll class="flex-1 min-h-0 overflow-y-auto px-2 pb-4">
 
@@ -613,7 +614,7 @@ function saveSectionStates(states: Record<string, boolean>): void {
             [checked]="store.virtualScroll()"
             (change)="store.setVirtualScroll($event.checked)"
           >{{ I18N.gallery.sidebar.virtual_scroll | translate }}</mat-checkbox>
-          <div class="hidden md:flex items-center gap-2 mt-2">
+          <div class="flex items-center gap-2 mt-2">
             <span class="text-sm opacity-70 shrink-0">{{ I18N.gallery.layout_mode | translate }}</span>
             <div class="flex gap-1 ml-auto">
               <button mat-icon-button class="!w-8 !h-8 !p-0 inline-flex items-center justify-center"
@@ -1201,16 +1202,9 @@ export class GalleryFilterSidebarComponent {
   }
 
   saveAsSmartAlbum(): void {
-    const f = this.store.filters();
-    const filterJson: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(f)) {
-      if (v && v !== '' && !SMART_ALBUM_EXCLUDE_KEYS.has(k)) {
-        filterJson[k] = v;
-      }
-    }
     const ref = this.dialog.open(SaveSmartAlbumDialogComponent, {
       width: '400px',
-      data: { filterJson: JSON.stringify(filterJson) },
+      data: { filterJson: smartAlbumFilterJson(this.store.filters()) },
     });
     ref.afterClosed().subscribe(result => {
       if (result) {

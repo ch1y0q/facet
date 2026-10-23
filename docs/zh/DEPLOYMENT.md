@@ -18,7 +18,7 @@ Facet 有两类工作负载：
 
 只有查看器需要跑在服务器上。在工作站上完成评分，然后把数据库同步过去。
 
-> **警告：** 当 `viewer.password` 为空（出厂默认）时，无论采用下文哪种方式启动，任何能够访问查看器端口的人都可以浏览整个照片库并下载原始照片。在将端口暴露到本机之外之前，请先设置 `viewer.password`；参见[单用户模式](VIEWER.md#单用户模式默认)中的说明。
+> **警告：** 当 `viewer.password` 为空（出厂默认）时，无论采用下文哪种方式启动，任何能够访问查看器端口的人都可以浏览整个照片库并下载原始照片。在将端口暴露到本机之外之前，请先设置 `viewer.password`；参见[单用户模式](VIEWER.md#单用户模式默认)中的说明。在开放安装上，助手令牌（**连接助手**）同样只能在运行 Facet 的电脑上创建、列出和吊销：Docker 部署（浏览器经由桥接网关访问容器）或反向代理无法管理它们，因此请在那里设置 `viewer.password`，或在主机上运行请求（`docker compose exec facet python -c "import urllib.request ..."`）。反向代理必须发送 `X-Forwarded-For` 或 `Forwarded`，否则会被当作本机。
 
 ## 路径映射
 
@@ -263,6 +263,8 @@ DSM > 控制面板 > 登录门户 > 高级 > 反向代理：
 
 再配合 DSM > 控制面板 > 安全性 > 证书 中申请的 Let's Encrypt 证书。
 
+如果使用智能体标签页桥接（参见 [AI 智能体](AGENTS.md)），还需打开该规则的**自定义标头**选项卡并选择**创建 > WebSocket**：这会添加 `/api/mcp/bridge` 所需的 `Upgrade` 和 `Connection` 头。如果该规则改写了 `Host` 头，还需把你的公开来源写入 `viewer.mcp.allowed_origins`。
+
 ## Synology NAS（Plus / x86 系列）
 
 Plus 系列 NAS 支持 Docker（Container Manager）。
@@ -284,7 +286,7 @@ Plus 系列 NAS 支持 Docker（Container Manager）。
 ```dockerfile
 FROM python:3.11-slim
 WORKDIR /app
-RUN pip install fastapi uvicorn pyjwt pillow aiosqlite
+RUN pip install fastapi uvicorn pyjwt pillow aiosqlite 'mcp>=2.3,<3' 'httpx>=0.28,<1' 'websockets>=13.0'
 COPY viewer.py config_resolve.py database.py tagger.py ./
 COPY api/ api/
 COPY config/ config/
@@ -294,6 +296,8 @@ COPY i18n/ i18n/
 EXPOSE 5000
 CMD ["uvicorn", "api:create_app", "--factory", "--host", "0.0.0.0", "--port", "5000", "--workers", "4"]
 ```
+
+多个 worker 无法配合智能体标签页桥接：其标签页注册表按进程保存，worker 多于一个时 `ui_*` 调用可能落到不认识你标签页的进程并返回 `no_tab`。如果使用 [AI 智能体](AGENTS.md)，请使用 `--workers 1`。
 
 ```yaml
 services:
@@ -549,7 +553,7 @@ curl -s localhost:5000/health          # -> ok
 ### Uvicorn
 
 ```bash
-pip install fastapi uvicorn pyjwt pillow aiosqlite
+pip install fastapi uvicorn pyjwt pillow aiosqlite 'mcp>=2.3,<3' 'httpx>=0.28,<1' 'websockets>=13.0'
 uvicorn api:create_app --factory --host 0.0.0.0 --port 5000 --workers 4
 ```
 
@@ -558,6 +562,8 @@ uvicorn api:create_app --factory --host 0.0.0.0 --port 5000 --workers 4
 ```bash
 python viewer.py --production --workers 4
 ```
+
+多个 worker 无法配合智能体标签页桥接：其标签页注册表按进程保存，worker 多于一个时 `ui_*` 调用可能落到不认识你标签页的进程并返回 `no_tab`。如果使用 [AI 智能体](AGENTS.md)，请使用 `--workers 1`。
 
 ### Uvicorn + Nginx
 
@@ -573,8 +579,19 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         client_max_body_size 50M;
     }
+
+    location /api/mcp/bridge {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $http_host;
+        proxy_read_timeout 3600s;
+    }
 }
 ```
+
+智能体标签页桥接（`/api/mcp/bridge`，参见 [AI 智能体](AGENTS.md)）是 WebSocket，因此需要第二个 `location` 块中的 `Upgrade` 和 `Connection` 头；缺少它们时握手会失败，`ui_*` 工具会返回 `no_tab`。它还要求单个 worker（`--workers 1`，默认值）。
 
 启用 HTTPS：
 ```bash
@@ -599,6 +616,8 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 ```
+
+多个 worker 无法配合智能体标签页桥接：其标签页注册表按进程保存，worker 多于一个时 `ui_*` 调用可能落到不认识你标签页的进程并返回 `no_tab`。如果使用 [AI 智能体](AGENTS.md)，请使用 `--workers 1`。
 
 ```bash
 sudo systemctl enable --now facet

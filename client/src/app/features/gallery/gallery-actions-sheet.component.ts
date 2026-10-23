@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { MAT_BOTTOM_SHEET_DATA, MatBottomSheetRef } from '@angular/material/bottom-sheet';
+import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { SequenceKindIconPipe } from '../../shared/pipes/sequence-kind.pipe';
@@ -40,11 +41,14 @@ export interface GalleryActionsSheetData {
 @Component({
   selector: 'app-gallery-actions-sheet',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatIconModule, TranslatePipe, SequenceKindIconPipe],
+  imports: [MatButtonModule, MatIconModule, TranslatePipe, SequenceKindIconPipe],
   template: `
     <div class="flex flex-col pb-2">
-      <div class="px-4 py-3 text-sm font-medium border-b border-[var(--mat-sys-outline-variant)]">
+      <div class="flex items-center justify-between gap-2 pl-4 pr-1 py-1 text-sm font-medium border-b border-[var(--mat-sys-outline-variant)]">
         {{ I18N.gallery.selection.count | translate:{ count: data.count } }}
+        <button mat-icon-button data-sheet-close (click)="close()" [attr.aria-label]="I18N.dialog.close | translate">
+          <mat-icon aria-hidden="true">close</mat-icon>
+        </button>
       </div>
 
       @if (data.isEdition) {
@@ -156,5 +160,9 @@ export class GalleryActionsSheetComponent {
 
   protected pick(action: SheetAction): void {
     this.sheetRef.dismiss(action);
+  }
+
+  protected close(): void {
+    this.sheetRef.dismiss();
   }
 }

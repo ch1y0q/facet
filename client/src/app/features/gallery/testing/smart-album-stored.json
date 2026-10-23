@@ -1,0 +1,28 @@
+{
+  "contract_filters": {
+    "person": 9001,
+    "category": "portrait",
+    "favorites_only": true,
+    "is_monochrome": true,
+    "min_score": 6,
+    "max_score": 9.5,
+    "min_star_rating": 3,
+    "date_from": "2026-03-01",
+    "date_to": "2026-03-31",
+    "path_prefix": "/photos/2026/",
+    "camera": "Canon EOS R5"
+  },
+  "stored": {
+    "camera": "Canon EOS R5",
+    "date_from": "2026-03-01",
+    "date_to": "2026-03-31",
+    "favorites_only": true,
+    "is_monochrome": true,
+    "max_score": "9.5",
+    "min_score": "6",
+    "min_star_rating": "3",
+    "path_prefix": "/photos/2026/",
+    "person_id": "9001",
+    "type": "portrait"
+  }
+}

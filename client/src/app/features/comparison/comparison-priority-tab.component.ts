@@ -1,4 +1,4 @@
-import { Component, DestroyRef, Pipe, PipeTransform, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, Pipe, PipeTransform, computed, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { DragDropModule, CdkDragDrop, moveItemInArray } from '@angular/cdk/drag-drop';
 import { MatCardModule } from '@angular/material/card';
@@ -139,6 +139,7 @@ export class CategoryFilterSummaryPipe implements PipeTransform {
     CategoryFilterSummaryPipe,
     EtaDurationPipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <div class="grid grid-cols-1 gap-6 mt-4 pb-20 lg:pb-0">
       <!-- Context picker -->

@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, ChangeDetectionStrategy } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { SwipeDecisionDirective, SWIPE_SETTLE_MS } from './swipe-decision.directive';
 
@@ -13,6 +13,7 @@ import { SwipeDecisionDirective, SWIPE_SETTLE_MS } from './swipe-decision.direct
 @Component({
   selector: 'app-swipe-host',
   imports: [SwipeDecisionDirective],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <div [appSwipeDecision]="enabled()"
          (swipeKeep)="decisions.push('keep')"

@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialogModule, MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
@@ -24,6 +24,7 @@ import { i18nKeys } from '../../core/i18n/keys';
     PersonThumbnailUrlPipe,
     TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title class="truncate" [matTooltip]="I18N.manage_persons.assign_face | translate">{{ I18N.manage_persons.assign_face | translate }}</h2>
     <mat-dialog-content class="!flex !flex-col gap-3 min-w-[320px]">

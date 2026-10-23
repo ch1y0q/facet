@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, viewChild, ElementRef, effect, DestroyRef, untracked, TemplateRef } from '@angular/core';
+import { Component, inject, signal, computed, viewChild, ElementRef, effect, DestroyRef, untracked, TemplateRef, ChangeDetectionStrategy } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -21,6 +21,7 @@ import { HeaderSlotService } from '../../core/services/header-slot.service';
 import { DateRangeFilterComponent } from '../../shared/components/date-range-filter/date-range-filter.component';
 import { GalleryStore } from '../gallery/gallery.store';
 import { StatsFiltersService, StatsOverviewData } from './stats-filters.service';
+import { registerPageContext } from '../../core/agent/page-context.service';
 import { GearChartCardComponent, GearItem } from './gear-chart-card.component';
 import { ChartHeightPipe } from './chart-height.pipe';
 import { StatsTimelineTabComponent } from './stats-timeline-tab.component';
@@ -96,6 +97,7 @@ const COLORS = ['#22c55e', '#3b82f6', '#a855f7', '#f59e0b', '#ef4444', '#06b6d4'
     StatsCorrelationsTabComponent,
   ],
   host: { class: 'block p-4 md:p-6' },
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <ng-template #statsToolbar>
       <mat-form-field class="!hidden lg:!inline-flex w-52 ml-2" subscriptSizing="dynamic">
@@ -338,6 +340,12 @@ export class StatsComponent {
   protected readonly topCameras = signal<TopCamera[]>([]);
 
   constructor() {
+    registerPageContext('stats', () => ({
+      tab: this.selectedTab(),
+      category: this.statsFilters.filterCategory(),
+      date_from: this.statsFilters.dateFrom(),
+      date_to: this.statsFilters.dateTo(),
+    }));
     this.pageHelp.setDescription(I18N.stats.help);
 
     // Register the large-screen header toolbar into the shared header slot

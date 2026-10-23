@@ -1,4 +1,4 @@
-import { Component, inject, signal, effect, OnInit, HostListener } from '@angular/core';
+import { Component, inject, signal, effect, OnInit, HostListener, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -28,6 +28,7 @@ import { i18nKeys } from '../../../core/i18n/keys';
     CategoryLabelPipe, IsLensNamePipe, DownloadIconPipe,
   ],
   host: { class: 'block h-full overflow-y-auto lg:overflow-y-hidden' },
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     @if (photo(); as p) {
       <!-- Header bar -->

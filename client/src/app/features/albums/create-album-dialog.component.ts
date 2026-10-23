@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -6,6 +6,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { firstValueFrom } from 'rxjs';
+import { UserActivityJournal, activityName } from '../../core/agent/user-activity-journal.service';
 import { AlbumService } from '../../core/services/album.service';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { i18nKeys } from '../../core/i18n/keys';
@@ -17,6 +18,7 @@ import { i18nKeys } from '../../core/i18n/keys';
     FormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatButtonModule, MatTooltipModule, TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title class="truncate" [matTooltip]="I18N.albums.create | translate">{{ I18N.albums.create | translate }}</h2>
     <mat-dialog-content>
@@ -40,6 +42,7 @@ import { i18nKeys } from '../../core/i18n/keys';
 export class CreateAlbumDialogComponent {
   protected readonly I18N = i18nKeys();
   private albumService = inject(AlbumService);
+  private journal = inject(UserActivityJournal);
   private dialogRef = inject(MatDialogRef<CreateAlbumDialogComponent>);
 
   name = '';
@@ -51,6 +54,7 @@ export class CreateAlbumDialogComponent {
     this.saving.set(true);
     try {
       const album = await firstValueFrom(this.albumService.create(this.name.trim(), this.description.trim()));
+      this.journal.record('album', [], { album_id: album.id, action: 'create', name: activityName(album.name) });
       this.dialogRef.close(album);
     } catch {
       this.saving.set(false);

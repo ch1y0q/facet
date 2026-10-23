@@ -205,7 +205,8 @@ def test_the_list_response_still_validates_with_the_column_present(env, edition_
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert len(body['snapshots']) == 1
-    assert 'category_bonus' not in body['snapshots'][0]
+    # The list serves the stored bonus, so a restore can show and verify it.
+    assert body['snapshots'][0]['category_bonus'] == pytest.approx(0.5)
 
 
 def test_an_existing_database_gets_the_column(tmp_path):

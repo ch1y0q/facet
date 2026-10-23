@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, output } from '@angular/core';
+import { Component, inject, signal, computed, output, ChangeDetectionStrategy } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -16,6 +16,7 @@ import { I18nService } from '../../core/services/i18n.service';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { FixedPipe } from '../../shared/pipes/fixed.pipe';
 import { ThumbnailUrlPipe } from '../../shared/pipes/thumbnail-url.pipe';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { CompareFiltersService } from './compare-filters.service';
 import { WeightLabelKeyPipe } from './comparison.pipes';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
@@ -60,13 +61,14 @@ interface LearnedWeightsResponse {
     WeightLabelKeyPipe,
   ],
   host: { '(window:keydown)': 'onKeydown($event)' },
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <div class="mt-4">
       <!-- Strategy selector + keyboard hints -->
       <div class="flex flex-wrap items-center gap-3 mb-4">
         <mat-form-field class="w-56" subscriptSizing="dynamic">
           <mat-label>{{ I18N.compare.strategy | translate }}</mat-label>
-          <mat-select [value]="strategy()" (selectionChange)="onStrategyChange($event.value)">
+          <mat-select [value]="shownStrategy()" (selectionChange)="onStrategyChange($event.value)">
             @for (s of strategies; track s) {
               <mat-option [value]="s">{{ ('compare.strategies.' + s) | translate }}</mat-option>
             }
@@ -260,6 +262,7 @@ interface LearnedWeightsResponse {
 export class ComparisonAbTabComponent {
   protected readonly I18N = i18nKeys();
   private readonly api = inject(ApiService);
+  private readonly journal = inject(UserActivityJournal);
   private readonly i18n = inject(I18nService);
   private readonly snackBar = inject(MatSnackBar);
   protected readonly auth = inject(AuthService);
@@ -268,7 +271,7 @@ export class ComparisonAbTabComponent {
   /** Emitted when user applies learned weight suggestions — parent updates the weights tab */
   readonly weightsApplied = output<Record<string, number>>();
 
-  protected readonly strategies = ['uncertainty', 'boundary', 'active', 'random'] as const;
+  protected readonly strategies = ['learning', 'uncertainty', 'boundary', 'active', 'random'] as const;
 
   constructor() {
     toObservable(this.compareFilters.selectedCategory).pipe(
@@ -287,14 +290,16 @@ export class ComparisonAbTabComponent {
 
   readonly pairA = signal<string | null>(null);
   readonly pairLoading = signal(false);
-  protected readonly pairB = signal<string | null>(null);
+  readonly pairB = signal<string | null>(null);
   protected readonly pairScoreA = signal(0);
   protected readonly pairScoreB = signal(0);
   protected readonly pairSubmitting = signal(false);
   protected readonly pairError = signal<string | null>(null);
   protected readonly comparisonCount = signal(0);
-  protected readonly strategy = signal<string>('uncertainty');
+  protected readonly strategy = this.compareFilters.strategy;
   protected readonly comparisonStats = signal<ComparisonStats | null>(null);
+  /** The strategy in effect: the user's pick, else the one the server is configured with. */
+  protected readonly shownStrategy = computed(() => this.strategy() || this.comparisonStats()?.pair_selection_strategy || '');
   protected readonly learnedWeights = signal<LearnedWeightsResponse | null>(null);
   protected readonly learnedWeightsLoading = signal(false);
   protected readonly showStrategyHelp = signal(false);
@@ -370,6 +375,7 @@ export class ComparisonAbTabComponent {
       await firstValueFrom(
         this.api.post('/comparison/submit', { photo_a: a, photo_b: b, winner, category: cat }),
       );
+      this.journal.record('compare', [a, b], { category: cat, winner });
       this.comparisonCount.update(c => c + 1);
       void this.loadComparisonStats();
       await this.loadNextPair();
@@ -391,6 +397,7 @@ export class ComparisonAbTabComponent {
       await firstValueFrom(
         this.api.post('/comparison/submit', { photo_a: a, photo_b: b, winner: 'skip', category: cat }),
       );
+      this.journal.record('compare', [a, b], { category: cat, winner: 'skip' });
       void this.loadComparisonStats();
       await this.loadNextPair();
     } catch {

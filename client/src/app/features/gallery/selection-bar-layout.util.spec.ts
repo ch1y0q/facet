@@ -1,0 +1,29 @@
+import { noticeLiftPx } from './selection-bar-layout.util';
+
+describe('noticeLiftPx', () => {
+  const base = { hostBottom: 800, barTop: 740, barLeft: 16 };
+
+  it('does not lift when a narrow card sits clear of the notices', () => {
+    expect(noticeLiftPx({ ...base, barRight: 300, noticeLeft: 768, noticeRight: 1184 })).toBe(0);
+  });
+
+  it('lifts by host bottom minus card top when a wide card reaches the notices', () => {
+    expect(noticeLiftPx({ ...base, barRight: 1000, noticeLeft: 768, noticeRight: 1184 })).toBe(60);
+  });
+
+  it('treats touching edges as no overlap', () => {
+    expect(noticeLiftPx({ ...base, barRight: 768, noticeLeft: 768, noticeRight: 1184 })).toBe(0);
+  });
+
+  it('lifts on a full-width mobile card', () => {
+    expect(noticeLiftPx({ hostBottom: 700, barTop: 640, barLeft: 8, barRight: 392, noticeLeft: 8, noticeRight: 392 })).toBe(60);
+  });
+
+  it('never returns a negative lift', () => {
+    expect(noticeLiftPx({ ...base, barTop: 900, barRight: 1000, noticeLeft: 768, noticeRight: 1184 })).toBe(0);
+  });
+
+  it('is zero when the notice stack is absent', () => {
+    expect(noticeLiftPx({ ...base, barRight: 1000, noticeLeft: null, noticeRight: null })).toBe(0);
+  });
+});

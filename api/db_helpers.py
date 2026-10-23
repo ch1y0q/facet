@@ -11,14 +11,17 @@ import math
 import ntpath
 import os
 import random
+import re
 import sqlite3
 import sys
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Query, Request
+from fastapi import HTTPException, Query
+from fastapi.requests import HTTPConnection
 
 from api.config import (
     _existing_columns_cache, _existing_columns_lock,
@@ -204,7 +207,7 @@ def _warm_schema_caches() -> None:
     db_change_token(DEFAULT_DB_PATH)
 
 
-async def warm_schema_caches(request: Request) -> None:
+async def warm_schema_caches(request: HTTPConnection) -> None:
     """App-wide dependency: fill the cached schema probes on a worker thread.
 
     The column list, the photo_tags and photo_manual_tags probes and the
@@ -259,7 +262,7 @@ def trigger_auto_retrain(db_path, user_id, added=1, conn=None):
 
 
 def record_culling_decision(conn, keep_paths, reject_paths, sequence_members,
-                            user_id=None, group_type='burst', commit=True):
+                            user_id=None, group_type='burst', commit=True, record=True):
     """Turn a culling confirm into ranker training pairs, commit, nudge retrain.
 
     ``sequence_members`` are the paths belonging to a keep-whole sequence set
@@ -284,8 +287,16 @@ def record_culling_decision(conn, keep_paths, reject_paths, sequence_members,
     left True the commit is part of the contract -- ``trigger_auto_retrain``
     must only ever see a decision that is already durable.
 
+    ``record=False`` is for a decision an assistant made through the agent layer
+    (``CurrentUser.is_agent_request``): nothing is paired, so it never trains the
+    ranker or arms the auto-retrain counter. The commit stays part of the contract.
+
     Returns the number of comparison rows inserted.
     """
+    if not record:
+        if commit:
+            conn.commit()
+        return 0
     pairable_keep = [p for p in keep_paths if p not in sequence_members]
     pairable_reject = [p for p in reject_paths if p not in sequence_members]
     added = record_culling_pairs(
@@ -307,6 +318,60 @@ def to_exif_date(iso_date: str) -> str:
 def to_iso_date(exif_date: str) -> str:
     """Convert EXIF date prefix (2024:03:11...) to ISO (2024-03-11)."""
     return exif_date[:10].replace(':', '-')
+
+
+_TIMESTAMP_FORMS = "'YYYY-MM-DD', 'YYYY-MM-DD HH:MM[:SS]', 'YYYY-MM-DDTHH:MM[:SS]', 'YYYY:MM:DD' or 'YYYY:MM:DD HH:MM:SS'"
+_TIMESTAMP_RE = re.compile(
+    r"^(\d{4})([-:])(\d{2})\2(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?$")
+
+
+def parse_timestamp(value: str) -> tuple[datetime, bool]:
+    """Parse a date or datetime in ISO or EXIF notation; returns ``(moment, has_time)``.
+
+    Accepts ``YYYY-MM-DD``, ``YYYY-MM-DD[T ]HH:MM[:SS]``, ``YYYY:MM:DD`` and
+    ``YYYY:MM:DD HH:MM:SS``. Raises ``ValueError`` naming the accepted forms.
+    """
+    match = _TIMESTAMP_RE.match(value.strip()) if isinstance(value, str) else None
+    if not match:
+        raise ValueError(f"{value!r} is not a date; use {_TIMESTAMP_FORMS}")
+    year, _, month, day, hour, minute, second = match.groups()
+    try:
+        moment = datetime(int(year), int(month), int(day), int(hour or 0), int(minute or 0),
+                          int(second or 0))
+    except ValueError:
+        raise ValueError(f"{value!r} is not a real date; use {_TIMESTAMP_FORMS}") from None
+    return moment, hour is not None
+
+
+def to_second_granularity(value: str, end_of_day: bool = False) -> str:
+    """Normalise to ``YYYY:MM:DD HH:MM:SS``; a date-only value gets 00:00:00 (23:59:59 if ``end_of_day``)."""
+    moment, has_time = parse_timestamp(value)
+    if end_of_day and not has_time:
+        moment = moment.replace(hour=23, minute=59, second=59)
+    return f"{moment.year:04d}" + moment.strftime(":%m:%d %H:%M:%S")
+
+
+def window_or_400(date_from: Optional[str], date_to: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """The culling routes' capture-time window in the stored ``YYYY:MM:DD HH:MM:SS`` form.
+
+    ``date_taken`` is EXIF text compared lexicographically, so an ISO bound would match
+    nothing. A date-only ``date_to`` covers the whole day. Idempotent on EXIF input; an
+    unparseable bound is a 400 naming the accepted forms.
+    """
+    try:
+        return (to_second_granularity(date_from) if date_from else None,
+                to_second_granularity(date_to, end_of_day=True) if date_to else None)
+    except ValueError as ex:
+        raise HTTPException(status_code=400, detail=f"date_from/date_to: {ex}") from None
+
+
+def to_day_granularity(value: str) -> str:
+    """Normalise to ``YYYY-MM-DD``; refuses a time component (the route compares whole days)."""
+    moment, has_time = parse_timestamp(value)
+    if has_time:
+        raise ValueError(f"{value!r} has a time of day, but this filter works on whole days; "
+                         "use 'YYYY-MM-DD'")
+    return f"{moment.year:04d}" + moment.strftime("-%m-%d")
 
 
 def format_date(date_str):
@@ -1576,14 +1641,106 @@ def get_preference_columns(user_id=None):
     }
 
 
-def set_photos_rejected(conn, paths, user_id):
+_LABEL_CHUNK = 500
+
+
+def _read_label_tuples(conn, scope, chunk):
+    """``{path: (star_rating, is_favorite, is_rejected)}`` for ``chunk``; a path with no row reads as unrated."""
+    marks = ','.join('?' * len(chunk))
+    if scope:
+        rows = conn.execute(
+            "SELECT photo_path, star_rating, is_favorite, is_rejected FROM user_preferences "
+            f"WHERE user_id = ? AND photo_path IN ({marks})", [scope, *chunk]).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT path, star_rating, is_favorite, is_rejected FROM photos "
+            f"WHERE path IN ({marks})", chunk).fetchall()
+    found = {r[0]: (r[1] or 0, r[2] or 0, r[3] or 0) for r in rows}
+    return {p: found.get(p, (0, 0, 0)) for p in chunk}
+
+
+def _label_scope(user_id):
+    return user_id if (user_id and is_multi_user_enabled()) else ''
+
+
+def read_labels(conn, user_id, paths):
+    """``{path: (star_rating, is_favorite, is_rejected)}`` from the per-user source (``user_preferences`` in
+    multi-user mode, the ``photos`` columns otherwise), read in chunks."""
+    paths = list(paths)
+    scope = _label_scope(user_id)
+    labels = {}
+    for start in range(0, len(paths), _LABEL_CHUNK):
+        labels.update(_read_label_tuples(conn, scope, paths[start:start + _LABEL_CHUNK]))
+    return labels
+
+
+def snapshot_labels(conn, agent, user_id, paths):
+    """The label tuples of ``paths`` BEFORE a write, for :func:`record_label_origin`'s ``before``.
+
+    Only an assistant's write needs it (a person's write just deletes marks), so a human call reads
+    nothing and returns ``{}``.
+    """
+    paths = list(paths)
+    if not agent or not paths:
+        return {}
+    return read_labels(conn, user_id, paths)
+
+
+def record_label_origin(conn, agent, user_id, paths, before=None):
+    """Keep ``rating_provenance`` true to who wrote the labels of ``paths``, in the writer's transaction.
+
+    An agent's write (the internal ``mcp`` JWT, ``user.is_agent_request``) records the tuple it left, so
+    the taste model skips it (``optimization.label_pairs``); a person's own write deletes the mark, the
+    label being theirs again. Only a path whose tuple the write CHANGED is marked (``before`` is the
+    :func:`snapshot_labels` taken ahead of the write): a label the person had already set and the
+    assistant merely re-asserted stays theirs and keeps training. A path already marked stays marked,
+    with its tuple refreshed. ``before=None`` treats every path as changed.
+    """
+    paths = list(paths)
+    if not paths:
+        return
+    scope = _label_scope(user_id)
+    for start in range(0, len(paths), _LABEL_CHUNK):
+        chunk = paths[start:start + _LABEL_CHUNK]
+        marks = ','.join('?' * len(chunk))
+        if not agent:
+            conn.execute(f"DELETE FROM rating_provenance WHERE user_id = ? AND photo_path IN ({marks})",
+                         [scope, *chunk])
+            continue
+        after = _read_label_tuples(conn, scope, chunk)
+        marked = {r[0] for r in conn.execute(
+            f"SELECT photo_path FROM rating_provenance WHERE user_id = ? AND photo_path IN ({marks})",
+            [scope, *chunk])}
+        conn.executemany(
+            "INSERT INTO rating_provenance (user_id, photo_path, star_rating, is_favorite, is_rejected) "
+            "VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id, photo_path) DO UPDATE SET "
+            "star_rating = excluded.star_rating, is_favorite = excluded.is_favorite, "
+            "is_rejected = excluded.is_rejected",
+            [(scope, p, *t) for p, t in after.items()
+             if p in marked or before is None or before.get(p) != t])
+
+
+def clear_label_origin_for_scope(conn, user_id, from_clause, where_str, scope_params):
+    """Delete the provenance marks of every photo a filter scope matches, in one set-based statement.
+
+    A person's filter-scoped write only needs to remove marks, so the scope is never read into Python.
+    Run it BEFORE the write, while the scope still matches the same rows.
+    """
+    conn.execute(
+        "DELETE FROM rating_provenance WHERE user_id = ? AND photo_path IN "
+        f"(SELECT photos.path FROM {from_clause}{where_str})",
+        [_label_scope(user_id), *scope_params])
+
+
+def set_photos_rejected(conn, paths, user_id, agent=False):
     """Mark photos as rejected, honoring multi-user per-user preferences and visibility.
 
     Resolves the caller's visible subset of ``paths`` first, then records the
     rejection per-user in ``user_preferences`` (multi-user mode) or in the global
     ``photos`` table (single-user). This keeps bulk culling/scene rejects consistent
     with the per-user read path (``get_preference_columns``) and the single-photo
-    toggle in ``api/routers/faces.py``. Returns the number of photos affected.
+    toggle in ``api/routers/faces.py``. Returns the number of photos affected. ``agent`` says an
+    assistant made the call, which :func:`record_label_origin` records for the taste model.
     """
     if not paths:
         return 0
@@ -1595,6 +1752,7 @@ def set_photos_rejected(conn, paths, user_id):
     ).fetchall()]
     if not visible:
         return 0
+    before = snapshot_labels(conn, agent, user_id, visible)
     if user_id and is_multi_user_enabled():
         conn.executemany(
             "INSERT INTO user_preferences (user_id, photo_path, is_rejected) "
@@ -1605,6 +1763,7 @@ def set_photos_rejected(conn, paths, user_id):
     else:
         ph = ','.join('?' * len(visible))
         conn.execute(f"UPDATE photos SET is_rejected = 1 WHERE path IN ({ph})", visible)
+    record_label_origin(conn, agent, user_id, visible, before)
     return len(visible)
 
 

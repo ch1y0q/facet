@@ -1,4 +1,4 @@
-import { Component, inject, computed, signal, effect, untracked, OnInit } from '@angular/core';
+import { Component, inject, computed, signal, effect, untracked, OnInit, ChangeDetectionStrategy } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterOutlet, RouterLink, RouterLinkActive, NavigationEnd } from '@angular/router';
@@ -22,6 +22,7 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { ApiService } from './core/services/api.service';
 import { AuthService } from './core/services/auth.service';
+import { ScanService } from './core/services/scan.service';
 import { I18nService } from './core/services/i18n.service';
 import { ThemeService } from './core/services/theme.service';
 import { PageHelpService } from './core/services/page-help.service';
@@ -35,6 +36,8 @@ import { CompareFiltersService } from './features/comparison/compare-filters.ser
 import { MapFiltersService } from './features/map/map-filters.service';
 import { CapsuleFiltersService } from './features/capsules/capsule-filters.service';
 import { TranslatePipe } from './shared/pipes/translate.pipe';
+import { AssistantActivityChipComponent } from './features/agent/assistant-activity-chip.component';
+import { CONNECT_ASSISTANT_DIALOG_ID } from './core/agent/page-context.service';
 import { SortGroupKeyPipe } from './shared/pipes/sort-group-key.pipe';
 import { PersonThumbnailUrlPipe, ThumbnailUrlPipe } from './shared/pipes/thumbnail-url.pipe';
 import { SlideshowComponent } from './features/gallery/slideshow.component';
@@ -62,6 +65,7 @@ interface ReleaseCheck {
 @Component({
   selector: 'app-edition-dialog',
   imports: [FormsModule, MatFormFieldModule, MatInputModule, MatButtonModule, MatIconModule, MatDialogModule, TranslatePipe],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title class="flex items-center gap-2 truncate">
       <mat-icon>lock_open</mat-icon>
@@ -114,6 +118,7 @@ export class EditionDialogComponent {
   selector: 'app-root',
   imports: [
     DecimalPipe,
+    AssistantActivityChipComponent,
     RouterOutlet,
     RouterLink,
     RouterLinkActive,
@@ -139,6 +144,7 @@ export class EditionDialogComponent {
     SlideshowComponent,
   ],
   templateUrl: './app.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   host: {
     class: 'block h-full',
     '(document:keydown)': 'onGlobalKeydown($event)',
@@ -148,6 +154,7 @@ export class App implements OnInit {
   protected readonly I18N = i18nKeys();
   private readonly router = inject(Router);
   private readonly dialog = inject(MatDialog);
+  protected readonly scan = inject(ScanService);
   private readonly api = inject(ApiService);
   protected readonly auth = inject(AuthService);
   protected readonly i18n = inject(I18nService);
@@ -221,6 +228,9 @@ export class App implements OnInit {
   protected readonly anyTimelinePhotosHiddenByFilters = computed(
     () => anyHideToggleActive(this.store.viewFilterParams()),
   );
+
+  /** An assistant-pinned list is on screen: the filter bar is hidden so no filter edit can drop it. */
+  protected readonly pinned = computed(() => this.store.pinnedPaths() !== null);
 
   /** On mobile the selection action bar replaces the route's bottom bar rather than
    *  stacking on top of it, so the two can never overlap (issue #73). */
@@ -570,6 +580,18 @@ export class App implements OnInit {
 
   protected logout(): void {
     this.auth.logout();
+  }
+
+  protected async openScanLauncher(): Promise<void> {
+    if (await this.scan.openLauncher()) {
+      await this.store.loadTypeCounts();
+      await this.store.reloadPhotos();
+    }
+  }
+
+  protected async showConnectAssistantDialog(): Promise<void> {
+    const { ConnectAssistantDialogComponent } = await import('./features/agent/connect-assistant-dialog.component');
+    this.dialog.open(ConnectAssistantDialogComponent, { id: CONNECT_ASSISTANT_DIALOG_ID, width: '95vw', maxWidth: '640px' });
   }
 
   protected showEditionDialog(): void {

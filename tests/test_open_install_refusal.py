@@ -125,6 +125,7 @@ EXPECTED_EDITION_ROUTES = frozenset({
     ('POST', '/api/culling-groups/confirm'),
     ('POST', '/api/culling-groups/override_sequence'),
     ('POST', '/api/culling/auto'),
+    ('POST', '/api/culling/plan'),
     ('POST', '/api/export/sidecars'),
     ('POST', '/api/face/{face_id}/assign'),
     ('POST', '/api/lightroom/import'),

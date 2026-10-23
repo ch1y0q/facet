@@ -1,6 +1,6 @@
 import type { Mock } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { of, throwError, Subject } from 'rxjs';
+import { NEVER, of, throwError, Subject } from 'rxjs';
 import { GalleryStore } from '../gallery/gallery.store';
 import { Router, ActivatedRoute } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
@@ -358,7 +358,7 @@ describe('GpsEditDialogComponent', () => {
           { provide: MAT_DIALOG_DATA, useValue: { path: '/photo.jpg', filename: 'photo.jpg', lat: null, lng: null, manuallySet: true } },
           { provide: MatDialogRef, useValue: mockDialogRef },
           { provide: ApiService, useValue: mockApi },
-          { provide: Router, useValue: { navigate: vi.fn() } },
+          { provide: Router, useValue: { navigate: vi.fn(), events: NEVER } },
           { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
           { provide: AuthService, useValue: { isEdition: () => true } },
           { provide: AlbumService, useValue: { list: () => of({ albums: [] }), update: () => of({}) } },

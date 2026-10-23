@@ -1,4 +1,4 @@
-import { Component, inject, signal, effect, untracked, OnDestroy, afterNextRender, viewChild, TemplateRef } from '@angular/core';
+import { Component, inject, signal, effect, untracked, OnDestroy, afterNextRender, viewChild, TemplateRef, ChangeDetectionStrategy } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -55,6 +55,7 @@ interface CapsulesResponse {
     SlideshowComponent,
     DateRangeFilterComponent,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <ng-template #capsulesToolbar>
       <app-date-range-filter

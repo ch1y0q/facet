@@ -7,7 +7,8 @@ import {
   Router,
 } from '@angular/router';
 
-export const GALLERY_PATHS = ['', 'album/:albumId'];
+const ALBUM_PATH = 'album/:albumId';
+export const GALLERY_PATHS = ['', ALBUM_PATH];
 export const PHOTO_PATH = 'photo';
 
 const isGallery = (route: ActivatedRouteSnapshot) => GALLERY_PATHS.includes(route.routeConfig?.path ?? '-');
@@ -21,6 +22,13 @@ export class GalleryReuseStrategy extends BaseRouteReuseStrategy implements OnDe
 
   private get router(): Router {
     return this.injector.get(Router);
+  }
+
+  // The gallery reads its album id once on init, so another album needs a fresh instance.
+  override shouldReuseRoute(future: ActivatedRouteSnapshot, curr: ActivatedRouteSnapshot): boolean {
+    if (future.routeConfig === curr.routeConfig && future.routeConfig?.path === ALBUM_PATH
+      && future.paramMap.get('albumId') !== curr.paramMap.get('albumId')) return false;
+    return super.shouldReuseRoute(future, curr);
   }
 
   override shouldDetach(route: ActivatedRouteSnapshot): boolean {

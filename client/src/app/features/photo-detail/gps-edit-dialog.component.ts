@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, viewChild, ElementRef, DestroyRef, afterNextRender } from '@angular/core';
+import { Component, inject, signal, computed, viewChild, ElementRef, DestroyRef, afterNextRender, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
@@ -32,6 +32,7 @@ type GpsResult = components['schemas']['GpsUpdateResponse'];
   selector: 'app-gps-edit-dialog',
   standalone: true,
   imports: [FormsModule, MatDialogModule, MatButtonModule, MatIconModule, MatSnackBarModule, TranslatePipe, FixedPipe],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title class="!flex items-center gap-2">
       <mat-icon>location_on</mat-icon><span class="truncate">{{ data.filename }}</span>

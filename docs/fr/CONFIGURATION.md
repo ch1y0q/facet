@@ -1715,8 +1715,8 @@ Affichage et comportement de la galerie web.
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
 | `default_category` | `""` | Filtre de catégorie par défaut |
-| `edition_password` | `""` | Mot de passe pour déverrouiller le mode édition (vide = toute modification est refusée ; l'installation est en lecture seule, sauf pour un navigateur local direct avec `trusted_local_editing`) |
-| `trusted_local_editing` | `false` | Accorde les droits d'édition, sans mot de passe d'édition, à un navigateur de la même machine qui joint la visionneuse directement en loopback. Ne s'applique que si `password` ET `edition_password` sont vides sur une installation mono-utilisateur ; couvre toutes les routes soumises à l'édition sauf le déclenchement du scan. **Ne jamais l'activer derrière un proxy inverse sur la même machine.** Voir [Édition locale de confiance](#édition-locale-de-confiance) |
+| `edition_password` | `""` | Mot de passe pour déverrouiller le mode édition (vide = toute modification est refusée ; l'installation est en lecture seule, sauf pour un navigateur local direct ou un assistant local en édition complète sous `trusted_local_editing`) |
+| `trusted_local_editing` | `false` | Accorde les droits d'édition, sans mot de passe d'édition, à un navigateur de la même machine qui joint la visionneuse directement en loopback. Ne s'applique que si `password` ET `edition_password` sont vides sur une installation mono-utilisateur ; couvre toutes les routes soumises à l'édition, déclenchement du scan compris, et permet à la boîte « Connecter un assistant » de créer un jeton d'assistant en édition complète pour les requêtes `/mcp` de la même machine. **Ne jamais l'activer derrière un proxy inverse sur la même machine.** Voir [Édition locale de confiance](#édition-locale-de-confiance) |
 | **comparison_mode** | | |
 | `min_comparisons_for_optimization` | `50` | Nombre minimal de comparaisons décisives (une photo l'a emporté ; les égalités ne comptent pas) de la catégorie avant de suggérer des poids |
 | `pair_selection_strategy` | `"learning"` | Stratégie de paires : `learning` (démarrage à froid par diversité d'embeddings + désaccord de rang une fois entraîné), `uncertainty`, `boundary`, `active`, `random` |
@@ -1887,7 +1887,7 @@ Activez ou désactivez des fonctionnalités optionnelles pour réduire l'utilisa
 | `show_similar_button` | `true` | Afficher le bouton « Trouver des similaires » sur les cartes photo (utilise numpy pour la similarité CLIP) |
 | `show_merge_suggestions` | `true` | Activer la fonctionnalité de suggestions de fusion sur la page de gestion des personnes |
 | `show_rating_controls` | `true` | Afficher les commandes de notation par étoiles et de favori |
-| `show_scan_button` | `false` | Afficher le bouton de déclenchement d'analyse (superadmin en mode multi-utilisateurs ; session édition verrouillée en mode mono-utilisateur) — aucun GPU requis : l'analyse s'exécute sur CPU seul avec le profil `legacy` |
+| `show_scan_button` | `false` | Afficher le bouton de déclenchement d'analyse (superadmin en mode multi-utilisateurs ; session édition verrouillée en mode mono-utilisateur) — aucun GPU requis : l'analyse s'exécute sur CPU seul avec le profil `legacy` ; non requis pour une session locale de confiance sous `trusted_local_editing` |
 | `metrics_enabled` | `false` | Activer le point d'accès public Prometheus `GET /metrics`. Désactivé par défaut — il expose les nombres de photos/personnes/visages, la taille de la base et la mémoire du processus ; à n'activer que lorsque le point d'accès est joignable depuis le réseau du collecteur, et non depuis Internet public. |
 | `show_semantic_search` | `true` | Afficher la barre de recherche sémantique (recherche texte-vers-image via les embeddings CLIP/SigLIP) |
 | `show_albums` | `true` | Afficher la fonctionnalité d'albums (créer, gérer et parcourir des albums photo) |
@@ -1996,7 +1996,9 @@ L'accès est décidé à chaque requête, jamais à partir d'une revendication d
 - la requête ne porte aucun en-tête `Forwarded`, `Via`, `X-Real-IP`, `X-Client-IP`, `True-Client-IP`, `CF-Connecting-IP`, `X-Original-Forwarded-For` ni `X-Forwarded-*` ;
 - un `Origin` ou un `Referer`, s'il est présent, désigne exactement le schéma, l'hôte et le port de la requête, sans identifiants (un `Origin` avec chemin, requête ou fragment est refusé), et un `Sec-Fetch-Site`, s'il est présent, vaut `same-origin` ou `none`.
 
-Une requête de confiance détient tous les droits d'édition : chaque route qui exige sinon une session d'édition, pas seulement les notes. Cela couvre les notes, favoris et rejets, le mode de comparaison, le tri (y compris **Trier vers un dossier**, qui déplace ou met à la corbeille des fichiers, et la suppression d'une photo), les albums, la gestion des personnes et des visages, les changements de poids, de priorités et de contextes de notation, l'intégration de métadonnées et les exports, les tâches à arguments fixes de recalcul et de détection de panoramas, et la génération à la demande de légendes et de critiques. Le déclenchement du scan est la seule exception : il exige toujours `viewer.edition_password`, qui ne peut jamais être défini quand cette option s'applique, il reste donc refusé.
+Une requête de confiance détient tous les droits d'édition : chaque route qui exige sinon une session d'édition, pas seulement les notes. Cela couvre les notes, favoris et rejets, le mode de comparaison, le tri (y compris **Trier vers un dossier**, qui déplace ou met à la corbeille des fichiers, et la suppression d'une photo), les albums, la gestion des personnes et des visages, les changements de poids, de priorités et de contextes de notation, l'intégration de métadonnées et les exports, les tâches à arguments fixes de recalcul et de détection de panoramas, et la génération à la demande de légendes et de critiques. Le déclenchement du scan est inclus : une session de navigateur locale de confiance, et un assistant local détenant un jeton d'édition complète, peuvent scanner sans `viewer.features.show_scan_button`. Le flux de progression du scan n'accepte un jeton de flux local de confiance que depuis la même machine locale.
+
+**Assistants.** La même option permet à la boîte « Connecter un assistant » de créer un jeton **Édition complète** sur une installation ouverte (`viewer.mcp.enabled` et un jeton restent exigés). Le jeton n'est `edition` que pour les requêtes `/mcp` qui franchissent la frontière ci-dessus : il fonctionne donc depuis `http://localhost:<port>` ou `127.0.0.1` sur `:5000` et via le proxy de développement `ng serve` `:4200`, et passe en `readonly` depuis un client du réseau local, une URL à nom d'hôte ou `0.0.0.0`, ou un déploiement Docker. Tout mot de passe l'abaisse à `readonly` ; retirer le mot de passe le ravive. Les outils de suppression exigent toujours `viewer.mcp.allow_destructive`. `ng serve --host 0.0.0.0` ou tout proxy non signalé sur la même machine laisse un client du réseau local envoyant `Host: localhost` passer : seul le jeton protège alors `/mcp`. Voir [Agents IA (MCP)](AGENTS.md). La même frontière, quelle que soit la valeur de `trusted_local_editing`, régit la gestion des jetons d'assistant sur une installation ouverte : créer, lister et révoquer des jetons ne fonctionne que pour une requête qui la franchit (ou dans une session d'édition quand `viewer.edition_password` est défini). Un proxy inverse doit envoyer `X-Forwarded-For` ou `Forwarded`, sinon il est traité comme la machine locale.
 
 > **Avertissement :** le pair loopback est la seule vraie frontière. `Host`, `Origin`, `Referer` et `Sec-Fetch-Site` sont fixés par le client et ne peuvent que refuser une requête, et un proxy inverse, un tunnel ou une redirection de port sur la même machine qui n'ajoute aucun des en-têtes ci-dessus est indiscernable de votre navigateur. N'activez jamais cette option derrière un proxy inverse sur la même machine. Tant qu'elle est active, tout processus local et tout compte de la machine peut modifier.
 
@@ -2619,6 +2621,50 @@ Exportez un album sous forme de galerie HTML statique autonome qu'un photographe
 
 Le `target_dir` passe par la même liste d'autorisation que les endpoints d'export copie/déplacement (`viewer.export.allowed_target_dirs` plus les répertoires de scan — voir [Destinations d'export et de tri](#destinations-dexport-et-de-tri)). Contrôlé par `viewer.features.show_portfolio_export` (par défaut `true`).
 
+## Point d'accès agent (MCP)
+
+Expose les outils décrits dans [Agents IA (MCP)](AGENTS.md) via `POST /mcp` : lecture, pilotage de l'onglet ouvert et, selon le niveau du jeton, modification des notes, étiquettes et albums, tri et suppression. Il est activé par défaut ; mettez `enabled` à `false` pour le désactiver (toutes les routes répondent alors 404). Sur une installation ouverte (sans `viewer.password`), `/mcp` ne sert qu'une clé anonyme en lecture seule, qui n'accorde rien que l'`/api` ouverte n'accorde déjà. Un jeton créé sur une installation ouverte est `readonly`, sauf si `viewer.trusted_local_editing` est actif, ce qui autorise un jeton d'édition complète pour les requêtes de la même machine. Sur une installation ouverte, les jetons ne se créent, ne se listent et ne se révoquent que depuis l'ordinateur qui exécute Facet (ou dans une session d'édition quand `viewer.edition_password` est défini).
+
+```json
+{
+  "viewer": {
+    "mcp": {
+      "enabled": true,
+      "bridge": true,
+      "max_rows": 100,
+      "max_bytes": 60000,
+      "max_image_bytes": 262144,
+      "call_timeout_s": 30,
+      "semantic_timeout_s": 120,
+      "rate_per_min": 120,
+      "write_rate_per_min": 30,
+      "tool_profile": "full",
+      "allow_destructive": false,
+      "inpage_tools": true,
+      "allowed_origins": []
+    }
+  }
+}
+```
+
+| Clé | Défaut | Description |
+|-----|---------|-------------|
+| `enabled` | `true` | Interrupteur général de `/mcp` et `/api/mcp/*`. Désactivé, ils répondent 404 (le pont se ferme avec le code 4404). Sur une installation ouverte (sans `viewer.password`), le point d'accès ne sert qu'une clé anonyme en lecture seule : aucune autorité nouvelle, puisque l'`/api` ouverte expose déjà les mêmes données. Un jeton créé sur une installation ouverte est `readonly`, sauf si `viewer.trusted_local_editing` est actif, ce qui autorise un jeton d'édition complète pour les requêtes de la même machine. Sur une installation ouverte, les jetons ne se créent, ne se listent et ne se révoquent que depuis l'ordinateur qui exécute Facet (ou dans une session d'édition quand `viewer.edition_password` est défini). |
+| `bridge` | `true` | Indique si le pont vers l'onglet du navigateur (`/api/mcp/bridge`) accepte les WebSockets et si les outils `ui_*` peuvent atteindre un onglet. À `false`, le pont refuse la connexion (code de fermeture 4404) et les outils `ui_*` renvoient une erreur explicite. Exige un seul worker. |
+| `max_rows` | `100` | Nombre maximal de lignes dans un résultat d'outil (1 à 500). Les lignes en trop sont retirées et `truncated: true` est ajouté. |
+| `max_bytes` | `60000` | Taille sérialisée maximale d'un résultat d'outil en octets (4000 à 500000). |
+| `max_image_bytes` | `262144` | Taille maximale en octets de l'image renvoyée par un outil, `get_thumbnail` ou `contact_sheet` (32768 à 2097152) ; non comptée dans `max_bytes`. |
+| `call_timeout_s` | `30` | Délai d'un appel d'outil en secondes (1 à 300). Borne aussi l'attente d'un appel `ui_*` vers l'onglet du navigateur (`tab_timeout`). |
+| `semantic_timeout_s` | `120` | Délai de `semantic_search` en secondes (1 à 300) ; l'outil charge le modèle d'embeddings et demande donc plus de temps. |
+| `rate_per_min` | `120` | Appels d'outils par minute et par jeton (minimum 1). |
+| `write_rate_per_min` | `30` | Appels d'écriture par minute et par jeton (minimum 1). Budget séparé pour que les lectures n'affament pas les écritures. S'applique aux outils d'écriture (y compris la simulation de `cull_apply` et `delete_photos`) ; voir [Agents IA](AGENTS.md#modifier-la-bibliothèque). |
+| `tool_profile` | `"full"` | `"full"` liste tous les outils que la clé peut appeler. `"core"` ne liste qu'un ensemble de 11 outils pour les petits modèles (`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`). Seule la liste change : un outil absent peut toujours être appelé si le niveau de la clé le permet. Toute autre valeur revient à `"full"`. Voir [Agents IA](AGENTS.md#niveaux-dautorisation). |
+| `allow_destructive` | `false` | Autorise les assistants à lancer `delete_photos`, les actions `move_rejects` et `trash_rejects` de `cull_apply`, et `assign_faces` avec `allow_reassign`. Désactivé, `delete_photos` n'est pas listé et les deux autres répondent `feature_disabled` en nommant cette clé. Voir [Agents IA](AGENTS.md#actions-destructives--aperçu-puis-confirmation). |
+| `inpage_tools` | `true` | Indique si un onglet connecté peut appeler les outils du serveur depuis la page : `GET /api/mcp/inpage_tools` les liste et `POST /api/mcp/call` en exécute un avec la session, à son niveau actuel, par le même enveloppeur que `/mcp`. Désactivé, les deux routes répondent 404 et `features.mcp_inpage` est faux dans `/api/auth/status`. Voir [Agents IA](AGENTS.md#webmcp-dans-la-page-agents-du-navigateur). |
+| `allowed_origins` | `[]` | Origines de navigateur supplémentaires (par exemple `["https://photos.example.com"]`) autorisées à ouvrir le pont d'onglet lorsqu'un proxy inverse réécrit `Host`. Distinct de la clé CORS `viewer.allowed_origins`. |
+
+Les nombres hors plage sont ramenés dans la plage, et une valeur d'un mauvais type revient à la valeur par défaut. Le bloc est lu à chaque requête : un rechargement de la configuration active ou désactive la fonction sans redémarrage.
+
 ## Cadre photo / Kiosque
 
 Diffuse les « meilleures photos » vers des appareils kiosque sans authentification — cadres photo connectés, tableaux de bord Home Assistant, affichages de type ImmichFrame / Immich-Kiosk — via trois endpoints anonymes à jeton statique (`GET /api/frame/photos`, `GET /api/frame/image/{id}`, `GET /api/frame/next`). L'accès repose sur un **jeton de cadre** opaque à longue durée de vie ; une liste `tokens` vide désactive toute la fonctionnalité (chaque endpoint renvoie 404). Les réponses ne contiennent jamais de chemins de fichiers — chaque photo est identifiée par un identifiant signé opaque dérivé du `rowid` de la ligne.
@@ -2811,7 +2857,7 @@ Naturel du teint des portraits (indicatif uniquement). `--recompute-skin-tone` �
 
 ## Synchronisation Immich
 
-Synchronisation à sens unique des notes en étoiles et favoris Facet vers un serveur [Immich](https://immich.app/) via son API REST. Les ressources sont résolues par `originalPath` grâce aux correspondances de préfixes de chemin configurées, en une seule passe de recherche groupée. Lancez-la avec `--immich-sync` (vérifiez d'abord avec `--immich-test`) ; voir [Commandes — Synchronisation Immich](COMMANDS.md#immich-sync).
+Synchronisation à sens unique des notes en étoiles et favoris Facet vers un serveur [Immich](https://immich.app/) via son API REST. Les ressources sont résolues par `originalPath` grâce aux correspondances de préfixes de chemin configurées, en une seule passe de recherche groupée. Lancez-la avec `--immich-sync` (vérifiez d'abord avec `--immich-test`) ; voir [Commandes — Synchronisation Immich](COMMANDS.md#synchronisation-immich).
 
 ```json
 {

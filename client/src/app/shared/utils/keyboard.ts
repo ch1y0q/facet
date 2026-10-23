@@ -9,3 +9,12 @@ export function isTypingContext(event: Event): boolean {
   if (!target) return false;
   return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable;
 }
+
+/**
+ * True when Enter or Space would activate the focused control (a button, link or menu item):
+ * a page-level shortcut on those keys must leave it to the control.
+ */
+export function isControlActivation(event: Event): boolean {
+  const target = event.target as HTMLElement | null;
+  return !!target?.closest?.('button, a[href], [role="menuitem"], [role="option"]');
+}
