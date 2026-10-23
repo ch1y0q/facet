@@ -27,6 +27,7 @@ import { PersonCardComponent, Person } from '../../shared/components/person-card
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { InfiniteScrollDirective } from '../../shared/directives/infinite-scroll.directive';
 import { PersonsFiltersService } from './persons-filters.service';
+import { onPageQuery } from '../../shared/utils/page-query';
 import { registerPageContext } from '../../core/agent/page-context.service';
 import { UserActivityJournal, activityName } from '../../core/agent/user-activity-journal.service';
 import { GalleryStore } from '../gallery/gallery.store';
@@ -436,6 +437,15 @@ export class ManagePersonsComponent implements OnInit {
       sort_direction: this.personsFilters.sortDirection(),
       show_hidden: this.personsFilters.showHidden(),
     }));
+    // The assistant's `list_persons show=true` sends the search every time: the page takes exactly that query.
+    onPageQuery('/persons', ['search'], query => {
+      const search = query.get('search');
+      if (search === null) return;
+      this.personsFilters.search.set(search);
+      this.personsFilters.showHidden.set(false);
+      this.personsFilters.sort.set('count');
+      this.personsFilters.sortDirection.set('desc');
+    });
     inject(DestroyRef).onDestroy(() => {
       this.pageHelp.setDescription(null);
       this.clearSelection();

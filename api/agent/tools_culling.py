@@ -546,7 +546,7 @@ def register_culling_tools(server: MCPServer, app: Any, registry: TabRegistry,
         "List the darkroom's culling groups (burst, similar, scene, bracket, panorama, "
         "hdr_panorama), each with its photos and scores. A group is identified by the PAIR "
         "(type, group_id); bracket/panorama/hdr_panorama sets are kept whole by design, never "
-        "culled frame by frame." + SEE_GROUP)
+        "culled frame by frame. The list takes no `show`: the /culling page cannot apply this query." + SEE_GROUP)
     add(culling_profiles, "culling_profiles", "The genre-aware culling presets and the default one.")
     add(suggest_culling_profile, "suggest_culling_profile",
         "Name the preset that fits an album or capture-time window. date_from/date_to accept "

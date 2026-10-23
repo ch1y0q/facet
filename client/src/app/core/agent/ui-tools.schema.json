@@ -48,7 +48,7 @@
     },
     {
       "id": "browse_library",
-      "summary": "Read one photo, the people, the albums and the library statistics",
+      "summary": "Read one photo, the people, the albums and the library statistics (the lists open their page with show=true)",
       "tools": [
         {
           "name": "get_photo",
@@ -73,7 +73,7 @@
     },
     {
       "id": "look_at_photos",
-      "summary": "See a photo or a numbered contact sheet of up to 16 photos",
+      "summary": "See a photo or a numbered contact sheet of up to 16 photos, or the ones the user selected",
       "tools": [
         {
           "name": "get_thumbnail",
@@ -270,7 +270,7 @@
     },
     {
       "id": "junk_sweep",
-      "summary": "Review junk-sweep candidates and reject or keep them",
+      "summary": "Review junk-sweep candidates (shown on the junk page with show=true) and reject or keep them",
       "tools": [
         {
           "name": "junk_list",

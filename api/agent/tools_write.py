@@ -30,8 +30,8 @@ from api.agent.requirements import destructive_allowed, scan_available
 from api.agent.tools_common import (
     ARG_REQUIRES, DESTRUCTIVE_ANNOTATIONS, READ_ANNOTATIONS, WRITE_ANNOTATIONS, Requirement, register_tool,
 )
-from api.agent.target import SELECTION_RULE, VIEW, resolve_selection, resolve_view
-from api.agent.tools_read import SearchFilters, _hide_defaults, _list_result
+from api.agent.target import SELECTION_RULE, VIEW, VIEW_ROUTE, resolve_selection, resolve_view, with_target
+from api.agent.tools_read import SHOW_LIST_DESCRIPTION, SearchFilters, _hide_defaults, _list_result, show_list
 from api.agent.ui_tools import TAB_ID_PATTERN
 from api.models.gallery import query_value
 
@@ -132,7 +132,7 @@ async def resolve_target(
     client: InternalClient, registry: TabRegistry, grant: Any, resolved: Any, settings: dict, *,
     paths: Optional[list[str]], filters: Any, target: Target, tab_id: Optional[str],
     exclude: Optional[list[str]] = None, expected_count: Optional[int] = None, path_cap: int,
-    paths_key: str = "photo_paths", need_paths: bool = False,
+    paths_key: str = "photo_paths", need_paths: bool = False, require_route: Optional[str] = None,
 ) -> tuple[Optional[dict], dict, Optional[dict]]:
     """``(error, body, target_meta)``: ``resolve_scope`` extended with the tab's selection.
 
@@ -153,13 +153,8 @@ async def resolve_target(
         return err("invalid_input", "`exclude` and `expected_count` do not apply to `target`: the tab's "
                    "selection already carries its own exclusions and count"), {}, None
     return await resolve_selection(client, grant, registry, resolved, settings, tab_id=tab_id,
-                                   path_cap=path_cap, paths_key=paths_key, need_paths=need_paths)
-
-
-def _with_target(result: dict, meta: Optional[dict]) -> dict:
-    if meta is not None and result.get("ok") and isinstance(result.get("data"), dict):
-        result["data"]["target"] = meta
-    return result
+                                   path_cap=path_cap, paths_key=paths_key, need_paths=need_paths,
+                                   require_route=require_route)
 
 
 def _stopped(failure: dict, changed: int, results: list, remaining: int, in_doubt: Optional[str]) -> dict:
@@ -311,7 +306,7 @@ def register_write_tools(server: MCPServer, client: InternalClient, registry: Ta
             listed = body.get("photo_paths")
             requested = len(listed) if listed is not None else (meta["count"] if meta else expected_count)
             excluded = len(set(exclude or ()) & set(listed or ()))
-            return _with_target(ok({"affected": count, "requested": requested,
+            return with_target(ok({"affected": count, "requested": requested,
                                     "skipped_count": max(0, (requested or 0) - count - excluded)
                                     if listed is not None else 0}), meta)
         return await run_tool(ctx, name, handler, write=True)
@@ -368,7 +363,7 @@ def register_write_tools(server: MCPServer, client: InternalClient, registry: Ta
         data["photo_count"] = total
         if total == 0:
             data["warning"] = "The filters match no photo right now; the smart album is empty until some do."
-        return _with_target(ok(data), meta)
+        return with_target(ok(data), meta)
 
     async def create_filled_album(grant, base: dict, body: dict, meta: Optional[dict], timeout: float) -> dict:
         """Create a fixed album and add ``body``'s paths. A failed add leaves the (empty) album: never ``ok``."""
@@ -392,7 +387,7 @@ def register_write_tools(server: MCPServer, client: InternalClient, registry: Ta
         if album["added"] == 0:
             album["warning"] = ("None of the given paths is in the library, so nothing was added; "
                                 "the album exists and is empty.")
-        return _with_target(ok(album), meta)
+        return with_target(ok(album), meta)
 
     async def create_album(
         ctx: Context, name: Annotated[str, Field(min_length=1, max_length=200)],
@@ -438,7 +433,7 @@ def register_write_tools(server: MCPServer, client: InternalClient, registry: Ta
                 tab_id=tab_id, path_cap=BATCH_CAP, need_paths=True)
             if refusal is not None:
                 return refusal
-            return _with_target(await client.call(grant, route, path_args={"album_id": album_id}, json=body,
+            return with_target(await client.call(grant, route, path_args={"album_id": album_id}, json=body,
                                                   timeout=settings["call_timeout_s"]), meta)
         return await run_tool(ctx, name, handler, write=True)
 
@@ -551,7 +546,7 @@ def register_write_tools(server: MCPServer, client: InternalClient, registry: Ta
                 shaped["first_error"] = data["first_error"]
             if shaped["skipped"]:
                 shaped["skipped_reason"] = SKIPPED_REASON
-            return _with_target(ok(shaped), meta)
+            return with_target(ok(shaped), meta)
         return await run_tool(ctx, "export_metadata", handler, write=True)
 
     add(export_metadata, "export_metadata",
@@ -582,7 +577,7 @@ def register_write_tools(server: MCPServer, client: InternalClient, registry: Ta
                 if not upstream["ok"]:
                     return err(upstream["error"], upstream["message"], affected=affected)
                 affected += (upstream["data"] or {}).get("count", 0)
-            return _with_target(ok({"affected": affected}), meta)
+            return with_target(ok({"affected": affected}), meta)
         return await run_tool(ctx, name, handler, write=True)
 
     async def add_tags(
@@ -610,26 +605,35 @@ def register_write_tools(server: MCPServer, client: InternalClient, registry: Ta
     async def junk_list(
         ctx: Context, kind: Optional[str] = None, page: Annotated[int, Field(ge=1)] = 1,
         per_page: Annotated[int, Field(ge=1, le=100)] = 50,
+        show: Annotated[bool, Field(description=SHOW_LIST_DESCRIPTION)] = False,
+        tab_id: TabId = None,
     ) -> CallToolResult:
         async def handler(grant, resolved, settings):
             upstream = await client.call(grant, "search_photos", query={
                 "junk_kind": kind or "any", "page": page, "per_page": per_page, "hide_rejected": 1,
                 "hide_blinks": 0, "hide_bursts": 0, "hide_duplicates": 0},
                 timeout=settings["call_timeout_s"])
-            return _list_result(upstream, ("junk_kind",))
+            result = _list_result(upstream, ("junk_kind",))
+            if show:
+                await show_list(registry, result, resolved, settings, tab_id, "/junk", {"kind": kind or "any"},
+                                first_page=page == 1)
+            return result
         return await run_tool(ctx, "junk_list", handler)
 
-    async def junk_reject(ctx: Context, paths: Paths) -> CallToolResult:
+    async def junk_reject(
+        ctx: Context, paths: Optional[list[str]] = None, target: Target = None, tab_id: Optional[str] = None,
+    ) -> CallToolResult:
         async def handler(grant, resolved, settings):
-            refusal, body = await resolve_scope(
-                client, grant, settings, paths=paths, filters=None, exclude=None,
-                expected_count=None, path_cap=BATCH_CAP)
+            refusal, body, meta = await resolve_target(
+                client, registry, grant, resolved, settings, paths=paths, filters=None, target=target,
+                tab_id=tab_id, path_cap=BATCH_CAP, need_paths=True, require_route=VIEW_ROUTE)
             if refusal is not None:
                 return refusal
             upstream = await client.call(grant, "batch_reject", json=body, timeout=settings["call_timeout_s"])
             if not upstream["ok"]:
                 return upstream
-            return ok({"affected": (upstream["data"] or {}).get("count", 0), "requested": len(paths)})
+            return with_target(ok({"affected": (upstream["data"] or {}).get("count", 0),
+                                    "requested": len(body["photo_paths"])}), meta)
         return await run_tool(ctx, "junk_reject", handler, write=True)
 
     async def junk_clear(ctx: Context, paths: Paths) -> CallToolResult:
@@ -648,8 +652,14 @@ def register_write_tools(server: MCPServer, client: InternalClient, registry: Ta
         return await run_tool(ctx, "junk_clear", handler, write=True)
 
     add(junk_list, "junk_list", "List junk-sweep candidates (blurry, accidental ... frames). `kind` from "
-        "filter_options(kind='junk_kinds'); omit for all kinds. Review them before junk_reject.", read_only=True)
-    add(junk_reject, "junk_reject", f"Reject junk-sweep candidates (<={BATCH_CAP} paths); same as batch_set_rejected.")
+        "filter_options(kind='junk_kinds'); omit for all kinds. Review them before junk_reject. With show=true "
+        "(default false) the /junk page opens in the user's tab on that kind; only the first page is shown "
+        "(`shown_in_tab.reason` page_not_first otherwise), and `shown_in_tab` reports the outcome.", read_only=True)
+    add(junk_reject, "junk_reject",
+        f"Reject junk-sweep candidates (<={BATCH_CAP} paths); same as batch_set_rejected. "
+        + ' Or pass `target: "selection"` (and optionally `tab_id`) instead of `paths` to reject exactly what the user '
+        "has selected in their open Facet tab; exactly one of the two. It refuses (invalid_input) unless the tab is "
+        "on the gallery page, and a whole-view selection is re-counted on the server and refused if the view changed.")
     add(junk_clear, "junk_clear",
         f"Keep junk-sweep candidates: mark them evaluated-clean so they leave the queue (<={PER_PHOTO_CAP} paths).")
 
@@ -753,14 +763,14 @@ def register_write_tools(server: MCPServer, client: InternalClient, registry: Ta
                 files = next((data[key] for key in LIST_KEYS if isinstance(data.get(key), list)), [])
             if dry_run:
                 shaped = _cap_lists(data, limit)
-                return _with_target(ok(_with_confirm(shaped, grant, "cull_apply", files, options)
+                return with_target(ok(_with_confirm(shaped, grant, "cull_apply", files, options)
                                        if guarded and files else shaped), meta)
             if guarded and not _confirmed(grant, "cull_apply", confirm, files, options):
                 return _confirmation_required(
                     "This destructive run needs the `confirm` value from a dry run of the SAME request "
                     "whose file list has not changed since. Dry-run again, show the user the result, and retry.")
             finished = await _finish(client, grant, "cull_apply", {**body, "dry_run": False}, timeout, limit)
-            return _with_target(finished, meta)
+            return with_target(finished, meta)
         return await run_tool(ctx, "cull_apply", handler, write=True, args={"action": action})
 
     async def delete_photos(
@@ -787,7 +797,7 @@ def register_write_tools(server: MCPServer, client: InternalClient, registry: Ta
             files = list(data.get("would_trash") or []) + ["seq:" + p for p in data.get("sequence_siblings") or []]
             if dry_run:
                 shaped = _cap_lists(data, settings["max_rows"])
-                return _with_target(ok(_with_confirm(shaped, grant, "delete_photos", files, options)
+                return with_target(ok(_with_confirm(shaped, grant, "delete_photos", files, options)
                                        if files else shaped), meta)
             if not _confirmed(grant, "delete_photos", confirm, files, options):
                 return _confirmation_required(
@@ -795,7 +805,7 @@ def register_write_tools(server: MCPServer, client: InternalClient, registry: Ta
                     "list has not changed since. Dry-run again, show the user the result, and retry.")
             finished = await _finish(client, grant, "delete_photos", {**body, "dry_run": False},
                                      timeout, settings["max_rows"])
-            return _with_target(finished, meta)
+            return with_target(finished, meta)
         return await run_tool(ctx, "delete_photos", handler, write=True)
 
     destructive_note = (" ALWAYS call with dry_run=true first (the default) and show the user the counts and "

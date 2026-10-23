@@ -44,6 +44,7 @@ class TabSelection:
     filters: Optional[dict[str, str]] = None
     excluded: tuple[str, ...] = ()
     excluded_count: int = 0
+    route: Optional[str] = None
 
     def describe(self) -> dict:
         return {"source": "tab_selection", "tab_id": self.tab_id, "scope": self.scope, "count": self.count}
@@ -91,6 +92,9 @@ async def read_selection(registry: TabRegistry, resolved: ResolvedGrant, setting
                    "cannot be read in full; select fewer photos or use `filters`"), None
     tab = envelope.get("tab")
     seen_tab = tab.get("tab_id") if isinstance(tab, dict) else None
+    reported = data.get("route") if isinstance(data.get("route"), str) else (
+        tab.get("route") if isinstance(tab, dict) and isinstance(tab.get("route"), str) else None)
+    route = None if reported is None else (reported.split("?")[0].split("#")[0].rstrip("/") or "/")
     count = data.get("count")
     if not isinstance(count, int) or isinstance(count, bool) or count < 0:
         return err("upstream_error", "The tab reported an unusable selection count"), None
@@ -101,7 +105,7 @@ async def read_selection(registry: TabRegistry, resolved: ResolvedGrant, setting
                        "photos or use `filters`"), None
         if not isinstance(paths, list) or not all(isinstance(p, str) and p for p in paths) or len(paths) != count:
             return err("invalid_input", "The tab's selection changed while it was read; nothing was done"), None
-        return None, TabSelection("paths", count, seen_tab, paths=tuple(paths))
+        return None, TabSelection("paths", count, seen_tab, paths=tuple(paths), route=route)
     if data.get("scope") != "view":
         return err("upstream_error", "The tab reported an unknown selection scope"), None
     refusal, filters = view_filters(data.get("filters"))
@@ -114,7 +118,7 @@ async def read_selection(registry: TabRegistry, resolved: ResolvedGrant, setting
         return err("too_large", "The tab excludes too many photos from its whole-view selection to read "
                    "them all; narrow the view or select by path"), None
     return None, TabSelection("view", count, seen_tab, filters=filters, excluded=tuple(excluded),
-                              excluded_count=excluded_count)
+                              excluded_count=excluded_count, route=route)
 
 
 def _changed() -> dict:
@@ -124,17 +128,26 @@ def _changed() -> dict:
 
 async def resolve_selection(
     client: InternalClient, grant: Any, registry: TabRegistry, resolved: ResolvedGrant, settings: dict, *,
-    tab_id: Optional[str], path_cap: int, paths_key: str, need_paths: bool,
+    tab_id: Optional[str], path_cap: int, paths_key: str, need_paths: bool, exact_one: bool = False,
+    require_route: Optional[str] = None,
 ) -> tuple[Optional[dict], dict, Optional[dict]]:
     """``(error, route_body, target_meta)`` for the tab's selection.
 
     A route that takes a filter set (``need_paths`` false) gets the whole view as
     ``filters`` + ``exclude``; one that only takes a path list gets the view expanded
-    through ``/api/photos/paths`` minus the exclusions, under ``path_cap``.
+    through ``/api/photos/paths`` minus the exclusions, under ``path_cap``. ``exact_one`` refuses
+    any selection that does not hold exactly one photo, before a view is expanded. ``require_route`` refuses a
+    selection the SAME tab answer did not report from that page (the gallery selection outlives leaving the page).
     """
     refusal, selection = await read_selection(registry, resolved, settings, tab_id)
     if refusal is not None or selection is None:
         return refusal, {}, None
+    if require_route is not None and selection.route != require_route:
+        return err("invalid_input", f"This tool reads the selection on the page {require_route}, but the tab is "
+                   f"on {selection.route or 'an unknown page'}. Open {require_route} and select there, "
+                   "or pass `paths`"), {}, None
+    if exact_one and selection.count != 1:
+        return err("invalid_input", "Select exactly one photo in the tab"), {}, None
     timeout = settings["call_timeout_s"]
     meta = selection.describe()
     if selection.scope == "paths":
@@ -148,6 +161,9 @@ async def resolve_selection(
         return err("invalid_input", "Nothing is selected in the tab"), {}, None
     scope = selection.filters or {}
     if need_paths:
+        if selection.count > path_cap:
+            return err("too_large", f"{selection.count} selected photos exceeds the cap of {path_cap} for this "
+                       "tool; narrow the selection"), {}, None
         listed = await client.call(grant, "photos_paths", query=scope, timeout=timeout)
         if not listed["ok"]:
             return listed, {}, None
@@ -172,6 +188,28 @@ async def resolve_selection(
     if selection.excluded:
         body["exclude"] = list(selection.excluded)
     return None, body, meta
+
+
+def with_target(result: dict, meta: Optional[dict]) -> dict:
+    """Attach the selection's ``target`` meta to a successful dict result."""
+    if meta is not None and result.get("ok") and isinstance(result.get("data"), dict):
+        result["data"]["target"] = meta
+    return result
+
+
+async def resolve_selected_paths(
+    client: InternalClient, grant: Any, registry: TabRegistry, resolved: ResolvedGrant, settings: dict, *,
+    tab_id: Optional[str], cap: int, exact_one: bool = False,
+) -> tuple[Optional[dict], list[str], Optional[dict]]:
+    """``(error, paths, target_meta)`` for a read tool: the tab's selection as a path list under ``cap``.
+
+    The same trust checks as a write (:func:`read_selection`), and a whole-view selection is
+    expanded through ``/api/photos/paths``; it is never silently truncated.
+    """
+    refusal, body, meta = await resolve_selection(
+        client, grant, registry, resolved, settings, tab_id=tab_id, path_cap=cap, paths_key="paths",
+        need_paths=True, exact_one=exact_one)
+    return refusal, list(body.get("paths", ())), meta
 
 
 VIEW = "view"

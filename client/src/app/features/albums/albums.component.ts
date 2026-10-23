@@ -27,6 +27,7 @@ import { ShareDialogComponent, ShareDialogData } from '../../shared/components/s
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { PageHelpService } from '../../core/services/page-help.service';
 import { HeaderSlotService } from '../../core/services/header-slot.service';
+import { onPageQuery } from '../../shared/utils/page-query';
 
 @Component({
   selector: 'app-albums',
@@ -218,6 +219,14 @@ export class AlbumsComponent {
       sort: this.albumsFilters.sort(),
       type: this.albumsFilters.typeFilter(),
     }));
+    // The assistant's `list_albums show=true` sends the search every time: the page takes exactly that query.
+    onPageQuery('/albums', ['search'], query => {
+      const search = query.get('search');
+      if (search === null) return;
+      this.albumsFilters.search.set(search);
+      this.albumsFilters.typeFilter.set('');
+      this.albumsFilters.sort.set('updated_at');
+    });
     this.pageHelp.setDescription('albums.help');
     effect(() => {
       const t = this.albumsToolbar();

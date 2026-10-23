@@ -1,7 +1,7 @@
 import type { Mock } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { MatDialog } from '@angular/material/dialog';
 import { AlbumService } from '../../core/services/album.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -40,7 +40,7 @@ describe('AlbumsComponent', () => {
     TestBed.configureTestingModule({
       providers: [
         AlbumsComponent,
-        provideRouter([]),
+        provideRouter([{ path: 'albums', children: [] }, { path: 'persons', children: [] }]),
         { provide: AlbumService, useValue: mockAlbumService },
         { provide: AuthService, useValue: mockAuth },
         { provide: I18nService, useValue: mockI18n },
@@ -62,6 +62,51 @@ describe('AlbumsComponent', () => {
 
   it('creates', () => {
     expect(component).toBeTruthy();
+  });
+
+  describe('a navigation made by the assistant', () => {
+    const filters = () => TestBed.inject(AlbumsFiltersService);
+    const go = (url: string) => TestBed.inject(Router).navigateByUrl(url);
+
+    it('sets the search to the query and resets the other filters', async () => {
+      filters().typeFilter.set('smart');
+      filters().sort.set('name');
+      await go('/albums?search=trip');
+      expect(filters().search()).toBe('trip');
+      expect(filters().typeFilter()).toBe('');
+      expect(filters().sort()).toBe('updated_at');
+    });
+
+    it('clears a previous search when the query is empty', async () => {
+      filters().search.set('old');
+      await go('/albums?search=');
+      expect(filters().search()).toBe('');
+    });
+
+    it('applies the same query again over the user\'s own edit (a same-URL reload)', async () => {
+      await go('/albums?search=trip');
+      filters().search.set('typed by the user');
+      await TestBed.inject(Router).navigate(['/albums'], { queryParams: { search: 'trip' }, onSameUrlNavigation: 'reload' });
+      expect(filters().search()).toBe('trip');
+    });
+
+    it('removes the query from the URL once applied, so Back or a reload cannot re-apply it over the user\'s edits', async () => {
+      const router = TestBed.inject(Router);
+      await go('/albums?search=trip');
+      await vi.waitFor(() => expect(router.url).toBe('/albums'));
+      filters().search.set('beach');
+      filters().sort.set('name');
+      await go('/albums');
+      expect(filters().search()).toBe('beach');
+      expect(filters().sort()).toBe('name');
+    });
+
+    it('leaves the filters alone when the navigation names no search or goes to another page', async () => {
+      filters().search.set('kept');
+      await go('/albums');
+      await go('/persons?search=x');
+      expect(filters().search()).toBe('kept');
+    });
   });
 
   it('loads albums from the service and reports hasMore when more remain', async () => {

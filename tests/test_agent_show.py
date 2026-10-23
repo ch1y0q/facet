@@ -412,3 +412,101 @@ class TestUserActivityInTheContext:
         env.call(token, "ui_get_context")
         env.call(token, "ui_get_context", {"activity_since": 12})
         assert [c["args"] for c in tab.calls] == [{}, {"activity_since": 12}]
+
+
+def stub_lists(monkeypatch, persons=1, albums=1, junk=1):
+    """Answer the three list routes with that many rows; every other call goes through."""
+    bodies = {
+        "list_persons": {"persons": [{"id": i + 1, "name": f"P{i}", "face_count": 3} for i in range(persons)],
+                         "total": persons},
+        "list_albums": {"albums": [{"id": i + 1, "name": f"A{i}", "description": None, "is_smart": 0,
+                                    "photo_count": 2} for i in range(albums)], "total": albums},
+        "search_photos": {"photos": [{"path": ROWS[i]["path"], "filename": f"{i}.jpg"} for i in range(junk)],
+                          "total": junk, "page": 1, "per_page": 50},
+    }
+    intercept_internal_call(monkeypatch, lambda tool, kwargs: ok(bodies[tool]) if tool in bodies else None)
+
+
+def navigate_reply(call):
+    return {"ok": True, "data": {"route": call["args"]["route"]}}
+
+
+class TestListShow:
+    @pytest.mark.parametrize("tool, args, route, query", [
+        ("list_persons", {"query": "anna"}, "/persons", {"search": "anna"}),
+        ("list_albums", {"query": "trip"}, "/albums", {"search": "trip"}),
+        ("junk_list", {"kind": "blurry"}, "/junk", {"kind": "blurry"}),
+    ])
+    def test_show_true_sends_exactly_one_navigate_frame(self, agent_app, fake_tab, monkeypatch, tool, args, route, query):
+        stub_lists(monkeypatch)
+        env = agent_app("open")
+        tab = fake_tab(env, None, reply=navigate_reply)
+        result = env.call(env.token(env.login()), tool, {**args, "show": True})
+        assert result["ok"] is True and len(result["data"]["rows"]) == 1
+        assert [c["tool"] for c in tab.calls] == ["ui_navigate"]
+        assert tab.calls[0]["args"] == {"route": route, "query": query}
+        shown = result["shown_in_tab"]
+        assert shown["applied"] is True and shown["tab_id"] == "tab-1" and shown["route"] == route
+        assert shown["mode"] == "route"
+
+    @pytest.mark.parametrize("tool, route, query", [
+        ("list_persons", "/persons", {"search": ""}), ("list_albums", "/albums", {"search": ""}),
+        ("junk_list", "/junk", {"kind": "any"})])
+    def test_an_empty_query_is_sent_so_the_page_clears(self, agent_app, fake_tab, monkeypatch, tool, route, query):
+        stub_lists(monkeypatch)
+        env = agent_app("open")
+        tab = fake_tab(env, None, reply=navigate_reply)
+        env.call(env.token(env.login()), tool, {"show": True})
+        assert tab.calls[0]["args"] == {"route": route, "query": query}
+
+    @pytest.mark.parametrize("tool", ["list_persons", "list_albums", "junk_list"])
+    def test_the_default_sends_nothing(self, agent_app, fake_tab, monkeypatch, tool):
+        stub_lists(monkeypatch)
+        env = agent_app("open")
+        tab = fake_tab(env, None, reply=navigate_reply)
+        result = env.call(env.token(env.login()), tool, {})
+        assert result["ok"] is True and "shown_in_tab" not in result and tab.calls == []
+
+    @pytest.mark.parametrize("tool", ["list_persons", "list_albums", "junk_list"])
+    def test_an_empty_list_is_not_shown(self, agent_app, fake_tab, monkeypatch, tool):
+        stub_lists(monkeypatch, persons=0, albums=0, junk=0)
+        env = agent_app("open")
+        tab = fake_tab(env, None, reply=navigate_reply)
+        result = env.call(env.token(env.login()), tool, {"show": True})
+        assert result["shown_in_tab"] == {"applied": False, "reason": "empty_result"} and tab.calls == []
+
+    def test_a_later_junk_page_is_not_shown(self, agent_app, fake_tab, monkeypatch):
+        stub_lists(monkeypatch)
+        env = agent_app("open")
+        tab = fake_tab(env, None, reply=navigate_reply)
+        result = env.call(env.token(env.login()), "junk_list", {"show": True, "page": 2})
+        assert result["ok"] is True
+        assert result["shown_in_tab"] == {"applied": False, "reason": "page_not_first"} and tab.calls == []
+
+    def test_a_tab_on_the_comparison_page_is_left_alone(self, agent_app, fake_tab, monkeypatch):
+        stub_lists(monkeypatch)
+        env = agent_app("open")
+        tab = fake_tab(env, None, reply=navigate_reply, route="/compare")
+        result = env.call(env.token(env.login()), "list_persons", {"show": True})
+        assert result["shown_in_tab"]["reason"] == "comparison_open" and tab.calls == []
+
+    @pytest.mark.parametrize("code", ["modal_open", "unsaved_decisions", "navigation_refused"])
+    def test_a_navigation_refusal_keeps_its_own_reason(self, agent_app, fake_tab, monkeypatch, code):
+        stub_lists(monkeypatch)
+        env = agent_app("open")
+        fake_tab(env, None, reply=lambda call: {"ok": False, "error": code, "message": "no"})
+        result = env.call(env.token(env.login()), "list_albums", {"show": True})
+        assert result["ok"] is True and result["shown_in_tab"] == {"applied": False, "reason": code}
+
+    def test_a_forbidden_tab_is_reported_as_forbidden(self, agent_app, fake_tab, monkeypatch):
+        stub_lists(monkeypatch)
+        env = agent_app("open")
+        fake_tab(env, None, reply=lambda call: {"ok": False, "error": "forbidden_level", "message": "no"})
+        result = env.call(env.token(env.login()), "junk_list", {"show": True})
+        assert result["shown_in_tab"] == {"applied": False, "reason": "forbidden"}
+
+    def test_no_tab_never_fails_the_list(self, agent_app, monkeypatch):
+        stub_lists(monkeypatch)
+        env = agent_app("open")
+        result = env.call(env.token(env.login()), "list_persons", {"show": True})
+        assert result["ok"] is True and result["shown_in_tab"]["reason"] == "no_tab"

@@ -23,6 +23,7 @@ import { I18N, i18nKeys } from '../../core/i18n/keys';
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { chunkPhotoPaths, type PhotosResponse } from '../gallery/gallery.store';
 import { normalisePhotoFlagsAll, type Photo } from '../../shared/models/photo.model';
+import { onPageQuery } from '../../shared/utils/page-query';
 
 const ANY_KIND = 'any';
 
@@ -166,6 +167,11 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
       const tpl = this.junkToolbar();
       if (tpl) this.headerSlot.set(tpl);
     });
+    // The assistant's `junk_list show=true` sends the kind every time; it is applied once the kind list is known.
+    onPageQuery('/junk', ['kind'], query => {
+      this.requestedKind = query.get('kind');
+      this.applyRequestedKind();
+    });
   }
 
   protected readonly photos = signal<Photo[]>([]);
@@ -182,6 +188,8 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
   private page = 1;
   private readonly perPage = 48;
   private loadGeneration = 0;
+  private requestedKind: string | null = null;
+  private kindsLoaded = false;
 
   async ngOnInit(): Promise<void> {
     this.pageHelp.setDescription(I18N.junk.help);
@@ -203,7 +211,18 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
       this.kinds.set(data.junk_kinds ?? []);
     } catch {
       // The kind filter menu stays empty; the "All kinds" view still works.
+    } finally {
+      this.kindsLoaded = true;
+      this.applyRequestedKind();
     }
+  }
+
+  /** Select the kind a navigation asked for, once the kind list can say whether it exists. */
+  private applyRequestedKind(): void {
+    const kind = this.requestedKind;
+    if (kind === null || !this.kindsLoaded) return;
+    this.requestedKind = null;
+    if (kind === ANY_KIND || this.kinds().some(entry => entry[0] === kind)) void this.selectKind(kind);
   }
 
   @HostListener('document:keydown.z', ['$event'])

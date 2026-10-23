@@ -51,14 +51,14 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 |------|--------------|
 | `search_photos` | 像图库一样筛选和排序照片库，除非筛选条件另行设置，否则应用查看器的默认隐藏开关（闭眼、连拍、重复、包围曝光、全景、已拒绝）（会报告 `hidden_summary`）。默认显示在你打开的标签页中（见下文）；`fields` 可添加任意照片列 |
 | `semantic_search` | 按含义查找照片，或用 `scope: "text"` 按说明文字中的词查找。它返回的行会固定在标签页中。 `filters` 像图库的筛选一样缩小搜索范围,每一行都带有其 `similarity`。 |
-| `get_photo` | 按路径获取单张照片的完整详情（不含直方图） |
-| `get_thumbnail` | 查看一张照片:其缩略图作为图像部分(`size` 160 至 640,默认 512)。若 JPEG 会超过 `viewer.mcp.max_image_bytes`,则使用更小的尺寸;都放不下则返回 `too_large` |
-| `contact_sheet` | 将 1 至 16 张照片作为一张带编号的网格图查看(`columns` 2 至 4,最长边 1024)。文本部分列出 `legend`(格子编号对应路径,按请求顺序)和 `unavailable`(因照片缺失或不可见而留空的格子) |
+| `get_photo` | 按路径获取单张照片的完整详情（不含直方图）;或用 `target: "selection"`(配合 `tab_id`)指定用户选中的那一张照片 |
+| `get_thumbnail` | 查看一张照片:其缩略图作为图像部分(`size` 160 至 640,默认 512)。若 JPEG 会超过 `viewer.mcp.max_image_bytes`,则使用更小的尺寸;都放不下则返回 `too_large`;或用 `target: "selection"`(配合 `tab_id`)指定用户选中的那一张照片 |
+| `contact_sheet` | 将 1 至 16 张照片作为一张带编号的网格图查看(`columns` 2 至 4,最长边 1024)。文本部分列出 `legend`(格子编号对应路径,按请求顺序)和 `unavailable`(因照片缺失或不可见而留空的格子);或用 `target: "selection"` 指定选中的照片(最多 16 张) |
 | `possible_faces` | 与某个已识别人物相似的人脸:与该人物质心的余弦相似度,最佳在前,仅限同一嵌入模型。`scope` 为 `unassigned`(默认)、`other_persons` 或 `all`;`min_similarity` 默认 0.30;`limit` 最多 100。超过 192000 张人脸的扫描会被拒绝(`too_large`):用 `scope`、`path_prefix`、`date_from` 或 `date_to` 缩小范围。照片会显示在你的标签页中。`candidates` 是范围内您可见的人脸数量（在嵌入维度检查之前）；`faces_scanned` 是实际评分的行数。 |
 | `similar_photos` | 按视觉嵌入或颜色查找与某张照片相似的照片；`min_similarity`（0 到 1）设定下限 |
 | `filter_options` | 筛选条件接受的词汇：相机、镜头、标签、人物、构图模式、类别、叙事瞬间、垃圾类型、指标范围 |
-| `list_persons` | 已识别的人物，可按姓名过滤 |
-| `list_albums` | 令牌所有者能看到的相册 |
+| `list_persons` | 已识别的人物，可按姓名过滤;`show: true` 会以该搜索打开 `/persons` |
+| `list_albums` | 令牌所有者能看到的相册;`show: true` 会以该搜索打开 `/albums` |
 | `library_stats` | 照片库统计：`kind` 选择规模与评分概览（默认）或统计页面的任意数据（见下文） |
 | `status` | 令牌是谁、它的有效级别、服务器标志以及它能控制的已打开标签页 |
 | `available_actions` | 此刻适用于你已打开的标签页和该令牌的任务,每项附带其工具;超出令牌级别的工具不会列出 |
@@ -71,6 +71,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 - 结果带有 `shown_in_tab`：`{"applied": true, "tab_id", "keys", "total"}`，或 `{"applied": false, "reason"}`，原因为 `no_tab`、`bridge_disabled`、`tab_outdated`、`tab_timeout`（标签页仍可能应用它）、`forbidden`、`page_not_first`、`empty_result`、`unsupported_filters`（附带 `keys`）、`invalid_combination`、`unsaved_decisions`、`modal_open`、`navigation_refused`（标签页拒绝了导航）或 `comparison_open`（用户在 `/compare` 上）。显示失败绝不会使搜索失败。传入 `tab_id` 可选择标签页。全部原因：`error`（显示本身失败）、`bridge_disabled`、`page_not_first`、`empty_result`、`invalid_combination`、`unsupported_filters`（附带 `keys`），以及标签页桥返回的代码（`no_tab`、`tab_outdated`、`tab_timeout`、`forbidden`、`invalid_input`、`upstream_error`、`unsaved_decisions`、`navigation_refused`）、`comparison_open` 以及 `modal_open`（标签页中打开了对话框、底部面板或幻灯片）。行被截短时，`next_page`（连同 `suggested_per_page`）给出恰好接在最后一行之后的页码；若页码无法表达该位置，则由 `next_offset` 以行偏移给出。
 - 只显示第一页（标签页在你滚动时自行分页），空结果不会显示，因此你保留之前的视图。使用图库侧栏没有对应控件的筛选（`exclude_tags`、`require_tags`、`is_silhouette`、`junk_kind`、`narrative_moment`、`min_rating`、`min_aggregate`、`show_rejected: true`）的搜索不会被部分应用。
 - 显示会离开 `/photo` 并回到图库；仅当用户在 `/culling` 上没有未确认的决定时才会离开它（否则以 `unsaved_decisions` 拒绝）；在 `/compare` 上会以 `comparison_open` 拒绝且不做任何更改，并清除整个视图的选择；在相册页面上会先回到图库，因此相册已保存的筛选绝不会被覆盖。其数量要用作写入工具 `expected_count` 的搜索应使用 `show: false`。
+- `list_albums`、`list_persons` 和 `junk_list` 接受 `show`(默认 `false`:它们多半只是按名称查找)。使用 `show: true` 时,它们会在标签页中以确切的查询打开 `/albums`、`/persons` 或 `/junk`:空查询会清除页面的搜索,页面的其他过滤器也会重置。`junk_list` 只显示第一页(否则为 `page_not_first`),空列表不会显示(`empty_result`)。`shown_in_tab` 带有与搜索相同的原因,其 `mode` 为 `route`。`list_culling_groups` 没有 `show`:请使用 `ui_show_culling_group`。
 - `ui_show_photos` 固定一份精确的照片列表:图库按你的顺序显示这些照片,直到筛选条件的更改替换该列表。`ui_get_context` 会报告当前是否显示了固定列表。该列表很朴素:不带分组、标记或标签。要复核选片方案,助手使用 `auto_cull`,它会改为在[暗房](#暗房选片分组)(`/culling`)中打开方案。
 - **`/culling` 上的方案模式。** `ui_show_culling_plan`(由 `auto_cull` 在试运行时调用)把 `auto_cull` 方案载入暗房:分组、保留/剔除边框、放大镜和对比与手动选片相同,方案的保留照片已预先选中。横幅显示“助手方案 · 已确认 x/y · 退出”,每个分组带有一枚标签“#n · 理由 · 建议:保留 N / 剔除 M”,与方案不同的帧上会出现一个圆点。你按暗房的常规方式逐组确认:同样的空格键、倒计时和撤销;方案显示期间,排序和阈值被禁用,但严格程度滑块仍可使用:拖动它或更改工具栏上的日期范围会重新规划(得到新的 `plan_digest`),你已更改的分组保留你的选择,一个分组落入你已确认的分组之内时,会重新形成为已确认状态,场景分组也不例外(使用 `group_by=all` 时,已确认的 burst 若其保留的照片重新出现在更大的 similar 分组中,会再次被提出;你的剔除仍然有效);已跳过的分组在重新规划后会回来,拖动滑块时仍在倒计时的确认会立即提交;拖动滑块或更改日期范围后方案重新计算期间,确认、跳过和“全部确认”会暂停,直到新方案到达。更改日期范围(范围变窄)会像滑块一样在新窗口上重新规划:翻转和已确认的分组按照片集合延续,窗口之外的分组被丢弃(丢失的翻转会在通知中说明),**所有日期**会对整个图库重新规划,可能触及方案上限(`plan_truncated`)。点击**退出**,或更改分组、相册/场景范围或排序,即退出方案模式。离开 `/culling`(例如去打开一张照片)再返回,会根据标签页中已加载的方案恢复方案模式,并保留你已确认的 x/y;完整重新加载页面会丢弃方案,但会在 URL(`?from=`、`?to=`)中保留它的相册和日期,并落到基于它们的手动列表上。照片库已超前于方案时,会显示过期提示。方案模式中的确认从不添加精选。**建议徽标。** 助手可以用简短理由(`ui_suggest_culling`)标记它会保留或剔除的照片,显示为帧上的虚线徽标,并为分组添加简短备注,显示为分组标题中的标签;点击徽标会像你自己切换一样翻转该照片(分组仍由你确认),不点击则不会有任何改变。这些标记在拖动严格程度滑块或更改日期范围以及再次显示同一方案后依然保留;显示另一个方案、**退出**或离开方案模式会清除它们。徽标出现在分组的缩略图上,不会出现在全屏视图中,也不会出现在已确认或已跳过的分组中。助手的返回结果会列出它未保存的路径:`redundant`(已是方案的选择)、`closed`(已确认或已跳过的分组)和 `missing`(不在方案中)。 你已确认、已跳过或正在确认的分组的备注不会被保存,而是列在 `groups_closed` 中;`suggestions_total` 和 `notes_total` 给出标签页当前保留的数量(最多 300 条建议和 100 条备注)。 参见[助手方案模式](VIEWER.md#助手方案模式)。
 - **读取你的进度。** 方案模式之外,`ui_get_context.culling` 为 `null`。在方案模式中它返回 `{plan_digest, groups_total, confirmed, pending, changed, untouched, plan_truncated}`:`confirmed` 列出确认已生效的方案分组编号,`pending` 列出你已与方案不同但尚未确认的分组,`untouched` 统计其余分组,`changed` 以 `{type, group_id, number, keep_paths, reject_paths}` 列出每个保留照片与方案不同的分组(当方案本身被限制在分组或照片数量上限、因此只列出部分分组时,`plan_truncated` 为 `true`;过大而无法一次返回的块,无论是被标签页 100 KiB 的上限还是被服务器截断,其列表都会缩短并将 `truncated` 置为 `true`,真实数量保留在 `groups_total`、`confirmed_count`、`pending_count` 和 `changed_count` 中)。切勿重新决定已确认的分组。已确认的 burst 或 similar 分组会离开下一次预览;已确认的 scene 分组不会被记录在任何地方,可能再次被提出,因此请在下一次试运行及其应用中把 `changed` 作为 `keep_paths` / `remove_paths` 传入。`ui_get_context` 还会返回 `culling_defaults`,即 `{profile, strictness}`:`strictness` 在滑块有已保存值时为该值,仅保存了配置时为 `null`(此时采用配置自身的严格程度),两者都未保存时为 100;`auto_cull` 在未给出任何参数时使用已保存的配置和/或严格程度(严格程度优先;配置提供其其他设置,例如每组最少保留数)。`culling_defaults.strictness` 是滑块当前保存的实时值,按浏览器保存(两个标签页共用);显示方案会把滑块移到方案的严格程度,同时给出配置和 `strictness` 的方案会把两者都保存;在方案模式之外拖动滑块会清除已保存的配置(自定义组合),而在方案模式中则保留它。由于在方案显示期间拖动滑块或更改日期范围会重新规划,请在下一次试运行之前重新读取 `ui_get_context`。`culling.scope`(`{album_id, date_from, date_to}`)是方案所对应的时间窗口;`auto_cull` 只从自己的参数读取日期,因此下一次试运行时请把 `culling.scope` 的日期与 `culling.changed` 一起传入(新方案会替换当前显示的方案)。 `culling` 还包含 `suggestions_open`(`[{path, action}]`:仍在等待你点击的标记)、`suggestions_accepted`(你已将其照片置于建议状态的标记)和 `suggestions_total`(标签页中保留的标记);该列表被截断时,`suggestions_open_count` 给出其真实长度。 `suggestions_total` 只统计照片建议,不含分组备注。
@@ -183,8 +184,8 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 | `assign_faces` | `edition` | 将人脸移到某个人物;属于其他人物的人脸保持不变,除非设置 `allow_reassign`,结果会列出被跳过的内容 | 50 个人脸 id |
 | `set_caption` | `edition` | 设置照片的说明文字(集合语义;未变化的说明文字返回 `already`) | 1 张照片,2000 个字符 |
 | `export_metadata` | `edition` | 在文件旁写入 XMP 附属文件 | 100 个路径,或 `filters`,或 `target` |
-| `junk_list` | `readonly` | 列出废片清理的候选，可只列某一种 `kind` | 每页 100 条 |
-| `junk_reject` | `edition` | 淘汰废片清理的候选（与 `batch_set_rejected` 相同） | 1000 个路径 |
+| `junk_list` | `readonly` | 列出废片清理的候选，可只列某一种 `kind`;`show: true` 会在 `/junk` 上打开该 `kind` | 每页 100 条 |
+| `junk_reject` | `edition` | 淘汰废片清理的候选（与 `batch_set_rejected` 相同） | 1000 个路径,或 `target: "selection"`(仅限图库页面) |
 | `junk_clear` | `edition` | 保留候选：把它们标为已评估且无问题，使其离开队列 | 50 个路径 |
 | `cull_apply` | `edition` | 复制保留的照片，或移动、移入回收站被淘汰的照片（[先预览再确认](#破坏性操作先预览再确认)） | 10000 个路径，或 `filters` |
 | `delete_photos` | `edition` | 把文件移入回收站并删除其照片库记录（[先预览再确认](#破坏性操作先预览再确认)） | 1000 个路径 |
@@ -194,7 +195,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 - **选择照片。** 批量、标签和 `cull_apply` 工具接受 `paths` 或 `filters`（`search_photos` 的筛选对象）二者之一，外加可选的 `exclude` 列表。`filters` 目标必须带有 `expected_count`，即应用 `exclude` 之前筛选条件的匹配数（`search_photos` 的 `total`）。Facet 会先重新统计，数字不一致时不写入任何内容（`invalid_input`，附带 `actual_count`）。 查看器的默认隐藏开关(包括已拒绝的照片)对 `filters` 的应用方式与 `search_photos` 完全相同,因此其 `total` 就是 `expected_count`。所以已拒绝的照片会从 `filters` 目标中隐藏:对于 `move_rejects` 和 `trash_rejects`,请把 `show_rejected`(或 `hide_rejected: false`)同时传给 `search_photos` 和 `cull_apply`;`copy_keeps` 无需额外设置。
 - **状态归谁。** 评分、收藏和淘汰都属于令牌所有者本人。
 - **被跳过的文件。** 当 `cull_apply` 或 `delete_photos` 返回非空的 `skipped` 列表时，结果还会带有 `skipped_reason`：这些库路径在磁盘上没有可读文件（缺失、已移动或不在扫描目录内），对它们未执行任何操作。
-- **用户所选的照片。** 在工具接受 `paths` 的地方,`target: "selection"` 改用已打开标签页的选择(`tab_id` 选择标签页)。预览与确认之间选择发生变化时返回 `invalid_input` 并带 `selection_changed`,选择过大而无法放入标签页回复时返回 `too_large`,`delete_photos` 在确认时会重新读取选择。
+- **用户所选的照片。** 在工具接受 `paths` 的地方,`target: "selection"` 改用已打开标签页的选择(`tab_id` 选择标签页)。预览与确认之间选择发生变化时返回 `invalid_input` 并带 `selection_changed`,选择过大而无法放入标签页回复时返回 `too_large`,`delete_photos` 在确认时会重新读取选择。 `get_photo`、`get_thumbnail`(恰好一张选中的照片)和 `contact_sheet`(最多 16 张)也接受 `target: "selection"`,可在任意页面使用。`junk_reject` 仅在标签页位于图库页面时接受它(否则返回 `invalid_input`)。
 - **说明文字与导出。** `set_caption` 只保存文本。说明文字不会重新嵌入,因此语义说明搜索在重新嵌入之前仍会匹配旧文本;增量导出到查看器数据库时,若来源的说明为空则保留已有说明,所以已清除的说明可能随之后的导出或扫描重新出现。`export_metadata` 最多等待 180 秒,报告 `written`、`skipped` 和 `errors`,第一条错误文本在 `first_error` 中,并且在 exiftool 为 13.23 至 13.27 时拒绝写入。
 - **人脸。** `assign_faces` 会跳过并列出:不存在的、已在该人物下的、属于其他人物的(除非 `allow_reassign`)、使用其他嵌入模型的或属于已隐藏人物的人脸;`assigned_count` 是实际移动的数量。
 

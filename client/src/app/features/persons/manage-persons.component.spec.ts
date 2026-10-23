@@ -1,7 +1,7 @@
 import type { Mock } from 'vitest';
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRoute, Router } from '@angular/router';
-import { NEVER, of, throwError } from 'rxjs';
+import { ActivatedRoute, DefaultUrlSerializer, NavigationEnd, Router } from '@angular/router';
+import { Subject, of, throwError } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { ApiService } from '../../core/services/api.service';
@@ -20,6 +20,7 @@ describe('ManagePersonsComponent', () => {
   let mockDialog: { open: Mock };
   let mockSnackBar: { open: Mock };
   let journal: { record: Mock };
+  let routerEvents: Subject<unknown>;
 
   const mockPersonsResponse = {
     persons: [
@@ -42,6 +43,7 @@ describe('ManagePersonsComponent', () => {
     };
     mockSnackBar = { open: vi.fn() };
     journal = { record: vi.fn() };
+    routerEvents = new Subject<unknown>();
 
     TestBed.configureTestingModule({
       providers: [
@@ -52,11 +54,53 @@ describe('ManagePersonsComponent', () => {
         { provide: MatDialog, useValue: mockDialog },
         { provide: MatSnackBar, useValue: mockSnackBar },
         { provide: UserActivityJournal, useValue: journal },
-        { provide: Router, useValue: { navigate: vi.fn(), events: NEVER } },
+        { provide: Router, useValue: { navigate: vi.fn(), events: routerEvents, parseUrl: (url: string) => new DefaultUrlSerializer().parse(url) } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: { get: () => null } } } },
       ],
     });
     component = TestBed.inject(ManagePersonsComponent);
+  });
+
+  describe('a navigation made by the assistant', () => {
+    const filters = () => TestBed.inject(PersonsFiltersService);
+    const navigated = (url: string) => routerEvents.next(new NavigationEnd(1, url, url));
+
+    it('sets the search to the query and resets the other filters', () => {
+      filters().showHidden.set(true);
+      filters().sort.set('name');
+      filters().sortDirection.set('asc');
+      navigated('/persons?search=anna');
+      expect(filters().search()).toBe('anna');
+      expect(filters().showHidden()).toBe(false);
+      expect(filters().sort()).toBe('count');
+      expect(filters().sortDirection()).toBe('desc');
+    });
+
+    it('removes the search from the URL once applied, replacing the history entry', () => {
+      const router = TestBed.inject(Router) as unknown as { navigate: Mock };
+      navigated('/persons?search=anna');
+      expect(router.navigate).toHaveBeenCalledWith(['/persons'], {
+        queryParams: { search: null }, queryParamsHandling: 'merge', replaceUrl: true,
+      });
+      router.navigate.mockClear();
+      filters().search.set('typed by the user');
+      navigated('/persons');
+      expect(filters().search()).toBe('typed by the user');
+      expect(router.navigate).not.toHaveBeenCalled();
+    });
+
+    it('clears a previous search when the query is empty', () => {
+      filters().search.set('old');
+      navigated('/persons?search=');
+      expect(filters().search()).toBe('');
+    });
+
+    it('leaves the filters alone without a search or on another page', () => {
+      filters().search.set('kept');
+      navigated('/persons');
+      navigated('/albums?search=x');
+      expect(filters().search()).toBe('kept');
+    });
   });
 
   describe('page context', () => {

@@ -912,6 +912,14 @@ describe('UI tool registry and handlers', () => {
       await store.loadPhotos();
     });
 
+    it('reports the page the selection is read from, for both scopes', async () => {
+      const paths = ((await run('ui_get_selection')) as { data: Record<string, unknown> }).data;
+      expect(typeof paths['route']).toBe('string');
+      await run('ui_select_photos', { select_view: true });
+      const view = ((await run('ui_get_selection')) as { data: Record<string, unknown> }).data;
+      expect(view['route']).toBe(paths['route']);
+    });
+
     it('flags 1001 exclusions and reports the real count', async () => {
       await run('ui_select_photos', { select_view: true });
       store.excludedPaths.set(new Set(Array.from({ length: 1001 }, (_, i) => `/x${i}.jpg`)));

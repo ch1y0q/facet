@@ -122,6 +122,8 @@ function percentToFraction(percent: string): number {
 const SELECTION_PATH_LIMIT = 1000;
 /** A selection frame must stay under the bridge's 256 KB limit, so its path lists share this budget. */
 const SELECTION_BYTE_BUDGET = 200 * 1024;
+/** Room for the snapshot keys around the lists (route, scope, count, truncation flags). */
+const SNAPSHOT_ENVELOPE_BYTES = 1024;
 const TEXT_ENCODER = new TextEncoder();
 const WAIT_STEP_MS = 25;
 const WAIT_TIMEOUT_MS = 10_000;
@@ -336,11 +338,16 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
   };
 
   const selectionSnapshot = (): Record<string, unknown> => {
+    // The page rides with the selection: the gallery selection outlives leaving the gallery, and a server tool
+    // that must act on the gallery's own selection reads the page from the same answer.
+    const route = pathOf(router.url) || '/';
+    const budget = SELECTION_BYTE_BUDGET - SNAPSHOT_ENVELOPE_BYTES - TEXT_ENCODER.encode(JSON.stringify({ route })).length;
     if (gallery.viewScopeSelected()) {
       const filters = gallery.filterPayload();
       const excluded = [...gallery.excludedPaths()];
-      const kept = fitPaths(excluded, SELECTION_BYTE_BUDGET - TEXT_ENCODER.encode(JSON.stringify(filters)).length);
+      const kept = fitPaths(excluded, budget - TEXT_ENCODER.encode(JSON.stringify(filters)).length);
       return {
+        route,
         scope: 'view',
         count: gallery.selectionCount(),
         filters,
@@ -350,8 +357,9 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       };
     }
     const paths = [...gallery.selectedPaths()];
-    const kept = fitPaths(paths, SELECTION_BYTE_BUDGET);
+    const kept = fitPaths(paths, budget);
     return {
+      route,
       scope: 'paths',
       count: paths.length,
       paths: kept,

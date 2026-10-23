@@ -18,6 +18,7 @@ from api.agent.images import MAX_SHEET_PATHS, contact_sheet_result, thumbnail_re
 from api.agent.bridge import TabRegistry
 from api.agent.internal_client import InternalClient, err, ok
 from api.agent.runtime import run_tool
+from api.agent.target import SELECTION, resolve_selected_paths, with_target
 from api.agent.tools_common import (
     MCP_FILTER_KEYS, READ_ANNOTATIONS, TOOL_LEVELS, FilterValue, SortColumn, hidden_tools, register_tool,
     unavailable_tools,
@@ -61,6 +62,11 @@ ACCEPTED_FIELDS = (*PHOTO_FIELDS, *COMPACT_KEYS, *TRIMMED_KEYS)
 MetricField: Any = operator.getitem(Literal, ACCEPTED_FIELDS)
 SHOW_DESCRIPTION = ("true (default): after a successful first-page search, the same query is applied to "
                     "the user's open Facet tab. false only for intermediate probes and counts.")
+SHOW_LIST_DESCRIPTION = ("false (default): true opens the page in the user's open Facet tab with exactly this "
+                         "query (an empty query clears the page's search). Pass true when the user asks to see the list.")
+READ_SELECTION_RULE = ('Or pass `target: "selection"` (and optionally `tab_id`) instead of {what}, to use exactly what '
+                       "the user has selected in their open Facet tab ({how}). It reads the gallery selection from any page.")
+SelectionTarget = Optional[Literal["selection"]]
 FIELDS_DESCRIPTION = ("Extra photo columns to add to every row (any photo column except the image data). "
                       "Rows already carry camera, lens, aperture, shutter, ISO, focal length and "
                       "is_monochrome, so ask only for what is missing.")
@@ -151,6 +157,22 @@ def _tag_mode(result: dict, mode: str) -> None:
     shown = result.get("shown_in_tab")
     if isinstance(shown, dict) and shown.get("applied"):
         shown["mode"] = mode
+
+
+async def show_list(registry: TabRegistry, result: dict, resolved, settings, tab_id: Optional[str], route: str,
+                    query: dict, *, first_page: bool = True) -> None:
+    """Attach ``shown_in_tab`` to a successful list: open ``route`` with exactly ``query``; never fails the list."""
+    if not result["ok"]:
+        return
+    if not first_page:
+        shown = relay.not_shown("page_not_first")
+    elif not (result["data"] or {}).get("rows"):
+        shown = relay.not_shown("empty_result")
+    else:
+        shown = await relay.show_route_in_tab(registry, resolved, settings, tab_id, route, query,
+                                              timeout=settings["call_timeout_s"])
+    result["shown_in_tab"] = shown
+    _tag_mode(result, "route")
 
 
 def _hide_defaults(filters: dict) -> dict:
@@ -297,14 +319,35 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
     semantic_search.__annotations__["fields"] = FIELDS_ANNOTATION
     semantic_search.__annotations__["tab_id"] = Annotated[Optional[str], Field(pattern=TAB_ID_PATTERN)]
 
-    async def get_photo(ctx: Context, path: Annotated[str, Field(min_length=1)]) -> CallToolResult:
+    async def selected_or_given(grant, resolved, settings, given: Optional[list[str]], target: SelectionTarget,
+                                tab_id: Optional[str], *, cap: int, exact_one: bool,
+                                ) -> tuple[Optional[dict], list[str], Optional[dict]]:
+        """``(error, paths, target_meta)``: exactly one of the given paths or the tab's selection."""
+        if (given is None) == (target is None):
+            return err("invalid_input", f"Give exactly one of the path(s) or `target: \"{SELECTION}\"`"), [], None
+        if target is None:
+            return None, list(given or ()), None
+        return await resolve_selected_paths(client, grant, registry, resolved, settings, tab_id=tab_id,
+                                            cap=cap, exact_one=exact_one)
+
+    async def get_photo(
+        ctx: Context, path: Annotated[Optional[str], Field(min_length=1)] = None,
+        target: SelectionTarget = None, tab_id: Optional[str] = None,
+    ) -> CallToolResult:
         async def handler(grant, resolved, settings):
-            upstream = await client.call(grant, "get_photo", query={"path": path},
+            refusal, chosen, meta = await selected_or_given(
+                grant, resolved, settings, None if path is None else [path], target, tab_id,
+                cap=1, exact_one=True)
+            if refusal is not None:
+                return refusal
+            upstream = await client.call(grant, "get_photo", query={"path": chosen[0]},
                                          timeout=settings["call_timeout_s"])
             if upstream["ok"] and isinstance(upstream["data"], dict):
                 upstream["data"].pop("histogram_data", None)
-            return upstream
+            return with_target(upstream, meta)
         return await run_tool(ctx, "get_photo", handler)
+
+    get_photo.__annotations__["tab_id"] = Annotated[Optional[str], Field(pattern=TAB_ID_PATTERN)]
 
     async def possible_faces(
         ctx: Context,
@@ -398,6 +441,8 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
         ctx: Context,
         query: Annotated[Optional[str], Field(max_length=100)] = None,
         limit: Annotated[int, Field(ge=1, le=100)] = 48,
+        show: Annotated[bool, Field(description=SHOW_LIST_DESCRIPTION)] = False,
+        tab_id: Optional[str] = None,
     ) -> CallToolResult:
         async def handler(grant, resolved, settings):
             upstream = await client.call(grant, "list_persons", query={
@@ -407,11 +452,18 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
             body = upstream["data"] or {}
             rows = [{k: p.get(k) for k in ("id", "name", "face_count")}
                     for p in body.get("persons", [])]
-            return ok({"rows": rows, "total": body.get("total", len(rows))})
+            result = ok({"rows": rows, "total": body.get("total", len(rows))})
+            if show:
+                await show_list(registry, result, resolved, settings, tab_id, "/persons", {"search": query or ""})
+            return result
         return await run_tool(ctx, "list_persons", handler)
+
+    list_persons.__annotations__["tab_id"] = Annotated[Optional[str], Field(pattern=TAB_ID_PATTERN)]
 
     async def list_albums(
         ctx: Context, query: Annotated[Optional[str], Field(max_length=100)] = None,
+        show: Annotated[bool, Field(description=SHOW_LIST_DESCRIPTION)] = False,
+        tab_id: Optional[str] = None,
     ) -> CallToolResult:
         async def handler(grant, resolved, settings):
             upstream = await client.call(grant, "list_albums", query={
@@ -421,8 +473,13 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
             body = upstream["data"] or {}
             rows = [{k: a.get(k) for k in ("id", "name", "description", "is_smart", "photo_count")}
                     for a in body.get("albums", [])]
-            return ok({"rows": rows, "total": body.get("total", len(rows))})
+            result = ok({"rows": rows, "total": body.get("total", len(rows))})
+            if show:
+                await show_list(registry, result, resolved, settings, tab_id, "/albums", {"search": query or ""})
+            return result
         return await run_tool(ctx, "list_albums", handler)
+
+    list_albums.__annotations__["tab_id"] = Annotated[Optional[str], Field(pattern=TAB_ID_PATTERN)]
 
     async def library_stats(
         ctx: Context,
@@ -507,22 +564,39 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
 
     async def get_thumbnail(
         ctx: Context,
-        path: Annotated[str, Field(min_length=1, max_length=4096)],
+        path: Annotated[Optional[str], Field(min_length=1, max_length=4096)] = None,
         size: Literal[160, 256, 384, 512, 640] = 512,
+        target: SelectionTarget = None,
+        tab_id: Optional[str] = None,
     ) -> CallToolResult:
         async def handler(grant, resolved, settings):
-            return await thumbnail_result(client, grant, path, size, settings)
+            refusal, chosen, meta = await selected_or_given(
+                grant, resolved, settings, None if path is None else [path], target, tab_id,
+                cap=1, exact_one=True)
+            if refusal is not None:
+                return refusal
+            return with_target(await thumbnail_result(client, grant, chosen[0], size, settings), meta)
         return await run_tool(ctx, "get_thumbnail", handler)
+
+    get_thumbnail.__annotations__["tab_id"] = Annotated[Optional[str], Field(pattern=TAB_ID_PATTERN)]
 
     async def contact_sheet(
         ctx: Context,
-        paths: Annotated[list[Annotated[str, Field(min_length=1, max_length=4096)]],
-                         Field(min_length=1, max_length=MAX_SHEET_PATHS)],
+        paths: Annotated[Optional[list[Annotated[str, Field(min_length=1, max_length=4096)]]],
+                         Field(min_length=1, max_length=MAX_SHEET_PATHS)] = None,
         columns: Annotated[int, Field(ge=2, le=4)] = 4,
+        target: SelectionTarget = None,
+        tab_id: Optional[str] = None,
     ) -> CallToolResult:
         async def handler(grant, resolved, settings):
-            return await contact_sheet_result(client, grant, paths, columns, settings)
+            refusal, chosen, meta = await selected_or_given(
+                grant, resolved, settings, paths, target, tab_id, cap=MAX_SHEET_PATHS, exact_one=False)
+            if refusal is not None:
+                return refusal
+            return with_target(await contact_sheet_result(client, grant, chosen, columns, settings), meta)
         return await run_tool(ctx, "contact_sheet", handler)
+
+    contact_sheet.__annotations__["tab_id"] = Annotated[Optional[str], Field(pattern=TAB_ID_PATTERN)]
 
     add(search_photos, "search_photos",
         "Search and filter the photo library like the viewer gallery. Applies the viewer's "
@@ -539,14 +613,18 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
         "`filtered_out`, and a `note` when the 200 limit may have hidden more. "
         + SHOW_RULE + " The exact rows returned (similarity order, at most `limit`) are shown as an "
         "assistant-chosen list (`shown_in_tab.mode` 'paths'), with or without `filters`.")
-    add(get_photo, "get_photo", "Full detail of one photo by its path.")
+    add(get_photo, "get_photo",
+        "Full detail of one photo by its path. " + READ_SELECTION_RULE.format(
+            what="`path`", how="exactly one photo must be selected"))
     add(get_thumbnail, "get_thumbnail",
         "Look at one photo: its thumbnail as an image (size 160 to 640, default 512; a smaller size is "
-        "used when the JPEG would exceed the byte cap). A photo the token cannot see answers not_found.")
+        "used when the JPEG would exceed the byte cap). A photo the token cannot see answers not_found. "
+        + READ_SELECTION_RULE.format(what="`path`", how="exactly one photo must be selected"))
     add(contact_sheet, "contact_sheet",
         "Look at up to 16 photos at once as one numbered grid image (columns 2 to 4, longest edge 1024). "
         "The text part's `legend` maps each tile number to its path, in request order; `unavailable` "
-        "lists tiles left blank because the photo is missing or not visible.")
+        "lists tiles left blank because the photo is missing or not visible. "
+        + READ_SELECTION_RULE.format(what="`paths`", how=f"at most {MAX_SHEET_PATHS} photos"))
     add(possible_faces, "possible_faces",
         "Faces that look like one recognised person (cosine similarity to the person's centroid, best "
         "first; same embedding model only). `scope` is unassigned (default), other_persons or all; "
@@ -563,8 +641,13 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
     add(filter_options, "filter_options",
         "List the vocabulary a filter accepts (cameras, lenses, tags, persons, patterns, "
         "categories, narrative_moments, junk_kinds, metric_ranges).")
-    add(list_persons, "list_persons", "Recognised people, optionally filtered by name.")
-    add(list_albums, "list_albums", "Albums the token's owner can see.")
+    add(list_persons, "list_persons",
+        "Recognised people, optionally filtered by name. With show=true (default false) the /persons page opens "
+        "in the user's tab with exactly this name search (empty clears it); `shown_in_tab` reports the outcome.")
+    add(list_albums, "list_albums",
+        "Albums the token's owner can see. With show=true (default false) the /albums page opens in the user's "
+        "tab with exactly this name search (empty clears it); `shown_in_tab` reports the outcome. To open one "
+        "album, use ui_open_album.")
     add(library_stats, "library_stats",
         "Library statistics, read-only. kind='overview' (default) is the size, type counts and score "
         "overview; the other kinds are the Stats page's data: " + ", ".join(STATS_KINDS[1:]) + ". "

@@ -19,7 +19,7 @@ from api.agent.tokens import ResolvedGrant
 from api.agent.tools_common import SortColumn
 from api.agent.tools_ui import BRIDGE_DISABLED
 from api.agent.ui_tools import (
-    TAB_UNSUPPORTED_FILTER_KEYS, UiSetGalleryFilters, UiShowPhotos,
+    TAB_UNSUPPORTED_FILTER_KEYS, UiNavigate, UiSetGalleryFilters, UiShowPhotos,
 )
 from api.config import VIEWER_CONFIG
 
@@ -95,15 +95,22 @@ async def call_tab(registry: TabRegistry, resolved: ResolvedGrant, settings: dic
         return err("upstream_error", "The tab call failed unexpectedly", crashed=True)
 
 
-def comparison_open(registry: TabRegistry, resolved: ResolvedGrant, tab_id: Optional[str]) -> bool:
-    """Whether the tab a show would drive is on /compare (the registry tracks each tab's route).
+def tab_route(registry: TabRegistry, resolved: ResolvedGrant, tab_id: Optional[str]) -> Optional[str]:
+    """The path the picked tab last reported (the registry tracks each tab's route), else None without a tab.
 
-    A show there would navigate away from a pair the user is judging, so it is skipped. No extra
-    frame is sent: the route is the one the tab last reported.
+    No frame is sent: the route is the one the tab reported at its last event.
     """
     tabs = registry.tabs_for(resolved.principal, resolved.level, resolved.minted_level)
     conn, _ = registry.pick(tabs, tab_id)
-    return conn is not None and conn.route.split("?")[0].split("#")[0].rstrip("/") == "/compare"
+    return None if conn is None else (conn.route.split("?")[0].split("#")[0].rstrip("/") or "/")
+
+
+def comparison_open(registry: TabRegistry, resolved: ResolvedGrant, tab_id: Optional[str]) -> bool:
+    """Whether the tab a show would drive is on /compare.
+
+    A show there would navigate away from a pair the user is judging, so it is skipped.
+    """
+    return tab_route(registry, resolved, tab_id) == "/compare"
 
 
 async def _show(registry: TabRegistry, resolved: ResolvedGrant, settings: dict, tab_id: Optional[str],
@@ -149,4 +156,18 @@ async def show_paths_in_tab(registry: TabRegistry, resolved: ResolvedGrant, sett
         lambda: UiShowPhotos.model_validate({"paths": paths}).forward(),
         lambda data, tab: {"applied": True, "tab_id": tab.get("tab_id"), "keys": None,
                            "total": data.get("total"), "missing": data.get("missing") or []},
+        timeout=timeout)
+
+
+async def show_route_in_tab(registry: TabRegistry, resolved: ResolvedGrant, settings: dict,
+                            tab_id: Optional[str], route: str, query: dict, *, timeout: float) -> dict:
+    """Open ``route`` with exactly ``query`` in the user's tab; describe the outcome, never raise.
+
+    The page treats every query key as authoritative, so a key sent empty clears that page filter.
+    """
+    return await _show(
+        registry, resolved, settings, tab_id, "ui_navigate", "Show route",
+        lambda: UiNavigate.model_validate({"route": route, "query": query}).forward(),
+        lambda data, tab: {"applied": True, "tab_id": tab.get("tab_id"), "route": route,
+                           "keys": sorted(query)},
         timeout=timeout)

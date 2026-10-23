@@ -7,8 +7,10 @@ the tab's ``ui_get_selection`` reply is scripted per test.
 import json
 import os
 import sqlite3
+from io import BytesIO
 
 import pytest
+from PIL import Image
 
 from api import config as api_config
 from api.agent.target import view_filters
@@ -37,10 +39,10 @@ def rows(seed_photos_prefix):
 @pytest.fixture()
 def setup(agent_app, fake_tab, rows):
     """``make(selection)`` -> ``(env, edition token, tab)`` with a tab answering ui_get_selection."""
-    def make(selection, mode="legacy", level="edition"):
+    def make(selection, mode="legacy", level="edition", route="/"):
         env = agent_app(mode)
         headers = env.login(edition=True)
-        tab = fake_tab(env, jwt_of(headers), reply=lambda call: (
+        tab = fake_tab(env, jwt_of(headers), route=route, reply=lambda call: (
             selection(call) if callable(selection) else {"ok": True, "data": selection}))
         return env, env.token(headers, level), tab
     return make
@@ -397,3 +399,164 @@ class TestCreateAlbumFromTheSelection:
         env, token, _ = setup(paths_selection([]))
         result = env.call(token, "create_album", {"name": ALBUM_PREFIX + "nothing", "target": "selection"})
         assert result["error"] == "invalid_input" and albums_named(ALBUM_PREFIX + "nothing") == []
+
+
+def rejected_paths():
+    conn = sqlite3.connect(_TEST_DB_FILE.name)
+    try:
+        return {r[0] for r in conn.execute(
+            "SELECT path FROM photos WHERE path LIKE ? AND is_rejected = 1", (PFX + "%",))}
+    finally:
+        conn.close()
+
+
+def envelope_of(env, token, tool, arguments):
+    """The JSON envelope of a tool whose result may also carry image parts (it is always the last block)."""
+    resp = env.rpc(token, "tools/call", {"name": tool, "arguments": arguments})
+    assert resp.status_code == 200, resp.text
+    return json.loads(resp.json()["result"]["content"][-1]["text"])
+
+
+class TestReadToolsTakeTheSelection:
+    def test_get_photo_reads_the_one_selected_photo(self, setup):
+        env, token, tab = setup(paths_selection(PATHS[2:3]))
+        result = env.call(token, "get_photo", {"target": "selection"})
+        assert result["ok"], result
+        assert result["data"]["path"] == PATHS[2]
+        assert result["data"]["target"] == {"source": "tab_selection", "tab_id": "tab-1", "scope": "paths", "count": 1}
+        assert [c["tool"] for c in tab.calls] == ["ui_get_selection"]
+
+    def test_get_photo_refuses_zero_or_several_selected_photos(self, setup):
+        env, token, _ = setup(paths_selection(PATHS[:2]))
+        several = env.call(token, "get_photo", {"target": "selection"})
+        assert several["error"] == "invalid_input" and "exactly one" in several["message"]
+        env, token, _ = setup(paths_selection([]))
+        assert env.call(token, "get_photo", {"target": "selection"})["error"] == "invalid_input"
+
+    def test_a_whole_view_of_one_photo_is_expanded(self, setup):
+        env, token, _ = setup(view_selection(1, excluded=PATHS[:4] + PATHS[5:]))
+        result = env.call(token, "get_photo", {"target": "selection"})
+        assert result["ok"], result
+        assert result["data"]["path"] == PATHS[4] and result["data"]["target"]["scope"] == "view"
+
+    def test_a_whole_view_of_many_is_refused_not_cut_to_the_first(self, setup):
+        env, token, _ = setup(view_selection(11))
+        result = env.call(token, "get_photo", {"target": "selection"})
+        assert result["error"] == "invalid_input" and "exactly one" in result["message"]
+
+    def test_both_path_and_target_or_neither_is_invalid_input(self, setup):
+        env, token, tab = setup(paths_selection(PATHS[:1]))
+        assert env.call(token, "get_photo", {"path": PATHS[0], "target": "selection"})["error"] == "invalid_input"
+        assert env.call(token, "get_photo", {})["error"] == "invalid_input"
+        assert envelope_of(env, token, "get_thumbnail", {"path": PATHS[0], "target": "selection"})["error"] == "invalid_input"
+        assert envelope_of(env, token, "contact_sheet", {"paths": PATHS[:1], "target": "selection"})["error"] == "invalid_input"
+        assert envelope_of(env, token, "contact_sheet", {})["error"] == "invalid_input"
+        assert tab.calls == []
+
+    def test_get_thumbnail_takes_the_selected_photo(self, setup):
+        shot = BytesIO()
+        Image.new("RGB", (32, 24), (200, 30, 30)).save(shot, format="JPEG")
+        conn = sqlite3.connect(_TEST_DB_FILE.name)
+        conn.execute("UPDATE photos SET thumbnail = ? WHERE path = ?", (shot.getvalue(), PATHS[5]))
+        conn.commit()
+        conn.close()
+        env, token, _ = setup(paths_selection(PATHS[5:6]))
+        result = envelope_of(env, token, "get_thumbnail", {"target": "selection"})
+        assert result["ok"], result
+        assert result["data"]["target"]["count"] == 1 and result["data"]["path"] == PATHS[5]
+
+    def test_contact_sheet_lays_out_the_selected_photos_in_order(self, setup):
+        env, token, _ = setup(paths_selection(PATHS[:3]))
+        result = envelope_of(env, token, "contact_sheet", {"target": "selection"})
+        assert result["ok"], result
+        assert [row["path"] for row in result["data"]["legend"]] == PATHS[:3]
+        assert result["data"]["target"]["scope"] == "paths"
+
+    def test_contact_sheet_refuses_a_selection_over_its_cap(self, setup):
+        env, token, _ = setup(paths_selection(PATHS[:11] * 2))
+        result = envelope_of(env, token, "contact_sheet", {"target": "selection"})
+        assert result["error"] == "too_large" and "16" in result["message"]
+
+    def test_a_view_selection_over_the_cap_is_refused_before_it_is_expanded(self, setup, monkeypatch):
+        listed = []
+        intercept_internal_call(monkeypatch, lambda tool, kw: listed.append(tool) if tool == "photos_paths" else None)
+        env, token, _ = setup(view_selection(20))
+        result = envelope_of(env, token, "contact_sheet", {"target": "selection"})
+        assert result["error"] == "too_large" and "cap of 16" in result["message"] and listed == []
+
+    def test_a_truncated_selection_is_refused(self, setup):
+        env, token, _ = setup({"scope": "paths", "count": 500, "paths": PATHS[:3], "truncated": True})
+        assert envelope_of(env, token, "contact_sheet", {"target": "selection"})["error"] == "too_large"
+
+    def test_the_selection_is_read_from_any_route(self, setup):
+        env, token, _ = setup(paths_selection(PATHS[:2]), route="/albums")
+        result = envelope_of(env, token, "contact_sheet", {"target": "selection"})
+        assert result["ok"], result
+
+    def test_in_page_the_calls_own_snapshot_is_the_selection(self, agent_app, rows):
+        env = agent_app("legacy")
+        headers = env.login(edition=True)
+        sent = env.client.post(
+            "/api/mcp/call", headers={**headers, "X-Facet-Agent-Session": "tab-a"},
+            json={"tool": "get_photo", "arguments": {"target": "selection"},
+                  "selection_snapshot": paths_selection(PATHS[3:4])})
+        assert sent.status_code == 200, sent.text
+        assert sent.json()["ok"] and sent.json()["data"]["path"] == PATHS[3]
+        bare = env.client.post(
+            "/api/mcp/call", headers={**headers, "X-Facet-Agent-Session": "tab-a"},
+            json={"tool": "get_photo", "arguments": {"target": "selection"}})
+        assert bare.json()["error"] == "invalid_input"
+
+
+class TestJunkRejectTakesTheSelection:
+    def test_the_selected_photos_are_rejected_on_the_gallery_route(self, setup):
+        env, token, _ = setup(paths_selection(PATHS[:2]))
+        result = env.call(token, "junk_reject", {"target": "selection"})
+        assert result["ok"], result
+        assert result["data"]["affected"] == 2 and result["data"]["requested"] == 2
+        assert result["data"]["target"]["scope"] == "paths"
+        assert rejected_paths() == set(PATHS[:2])
+
+    def post_in_page(self, env, headers, snapshot):
+        return env.client.post(
+            "/api/mcp/call", headers={**headers, "X-Facet-Agent-Session": "tab-a"},
+            json={"tool": "junk_reject", "arguments": {"target": "selection"}, "selection_snapshot": snapshot}).json()
+
+    @pytest.mark.parametrize("route", ["/junk", "/albums", None])
+    def test_in_page_a_snapshot_from_another_page_is_refused(self, agent_app, rows, route):
+        env = agent_app("legacy")
+        headers = env.login(edition=True)
+        snapshot = {**paths_selection(PATHS[:2]), **({} if route is None else {"route": route})}
+        result = self.post_in_page(env, headers, snapshot)
+        assert result["error"] == "invalid_input" and "reads the selection on the page /," in result["message"]
+        assert rejected_paths() == set()
+
+    def test_in_page_a_snapshot_from_the_gallery_proceeds(self, agent_app, rows):
+        env = agent_app("legacy")
+        result = self.post_in_page(env, env.login(edition=True), {**paths_selection(PATHS[:2]), "route": "/"})
+        assert result["ok"], result
+        assert rejected_paths() == set(PATHS[:2])
+
+    @pytest.mark.parametrize("route", ["/junk", "/albums", "/persons"])
+    def test_another_route_is_refused_and_nothing_is_written(self, setup, route):
+        env, token, tab = setup(paths_selection(PATHS[:2]), route=route)
+        result = env.call(token, "junk_reject", {"target": "selection"})
+        assert result["error"] == "invalid_input" and "reads the selection on the page /," in result["message"]
+        assert [c["tool"] for c in tab.calls] == ["ui_get_selection"] and rejected_paths() == set()
+
+    def test_paths_and_target_together_are_refused(self, setup):
+        env, token, _ = setup(paths_selection(PATHS[:2]))
+        assert env.call(token, "junk_reject", {"target": "selection", "paths": PATHS[:1]})["error"] == "invalid_input"
+        assert rejected_paths() == set()
+
+    def test_paths_still_work_from_any_route(self, setup):
+        env, token, _ = setup(paths_selection(PATHS[:2]), route="/junk")
+        result = env.call(token, "junk_reject", {"paths": PATHS[:1]})
+        assert result["ok"] and result["data"]["affected"] == 1 and "target" not in result["data"]
+        assert rejected_paths() == set(PATHS[:1])
+
+    def test_a_whole_view_selection_is_expanded_minus_its_exclusions(self, setup):
+        env, token, _ = setup(view_selection(9, excluded=PATHS[:2]))
+        result = env.call(token, "junk_reject", {"target": "selection"})
+        assert result["ok"] and result["data"]["affected"] == 9
+        assert rejected_paths() == set(PATHS[2:])
