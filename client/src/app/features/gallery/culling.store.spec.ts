@@ -607,6 +607,15 @@ describe('CullingStore', () => {
       expect(store.hasUserDecisions()).toBe(true);
     });
 
+    it('a landed confirm is not an uncommitted decision; a touched, unconfirmed group is', () => {
+      const key = store.groupKey(store.groups()[0]);
+      store.selectExclusive('/a.jpg', store.groups()[0]);
+      expect(store.hasUncommittedDecisions()).toBe(true);
+      store.confirmedGroups.set(new Set([key]));
+      expect(store.hasUncommittedDecisions()).toBe(false);
+      expect(store.hasUserDecisions()).toBe(true);
+    });
+
     it('replaces the selections map instead of mutating it when a selected photo goes missing', async () => {
       const before = store.selectionsMap();
       expect(before.get('1_burst')?.has('/a.jpg')).toBe(true);

@@ -208,7 +208,7 @@ export class CullingStore {
     const destroyRef = inject(DestroyRef);
     destroyRef.onDestroy(this.plan.registerDecisionsProbe(() => this.planActive()
       ? this.passingGroups().size > 0 || this.confirming()
-      : this.hasUserDecisions()));
+      : this.hasUncommittedDecisions()));
     destroyRef.onDestroy(() => this.cancelReplan());
   }
 
@@ -1123,6 +1123,17 @@ export class CullingStore {
   /** Whether the user has decisions a reload would discard (or one still counting down / committing). */
   hasUserDecisions(): boolean {
     return this.touchedGroups().size > 0 || this.confirmedGroups().size > 0
+      || this.passingGroups().size > 0 || this.confirming();
+  }
+
+  /**
+   * Whether replacing the feed would lose something: a group touched but neither confirmed nor skipped, or a
+   * confirm or skip still counting down or committing. A landed confirm is on the server already.
+   */
+  hasUncommittedDecisions(): boolean {
+    const confirmed = this.confirmedGroups();
+    const hidden = this.hiddenGroups();
+    return [...this.touchedGroups()].some(key => !confirmed.has(key) && !hidden.has(key))
       || this.passingGroups().size > 0 || this.confirming();
   }
 
