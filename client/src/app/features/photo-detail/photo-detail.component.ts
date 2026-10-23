@@ -842,7 +842,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     if (this.photo()?.path === path) return;
     try {
       const photo = await this.fetchPhoto(path);
-      this.router.navigate(['/photo'], { queryParams: { path }, state: { photo } });
+      this.router.navigate(['/photo'], { queryParams: { path }, state: { photo }, replaceUrl: true });
       this.photo.set(photo);
       this.fullImageLoaded.set(false);
     } catch {
@@ -916,9 +916,11 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     }
     const next = this.store.photos()[idx + delta];
     if (!next) return;
+    // Replace, so Escape (history back) leaves the photo page instead of stepping back through every photo.
     this.router.navigate(['/photo'], {
       queryParams: { path: next.path },
       state: { photo: next },
+      replaceUrl: true,
     });
     this.photo.set(next);
     this.fullImageLoaded.set(false);

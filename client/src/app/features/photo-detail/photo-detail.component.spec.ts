@@ -547,6 +547,7 @@ describe('PhotoDetailComponent', () => {
       await component.navigateAdjacentPhoto(1);
 
       expect(component.photo().path).toBe(onNextPage.path);
+      expect(mockRouter.navigate).toHaveBeenCalledWith(['/photo'], expect.objectContaining({ replaceUrl: true }));
     });
 
     it('does not navigate if the page closed while the next page loaded', async () => {
@@ -1089,6 +1090,7 @@ describe('PhotoDetailComponent', () => {
       expect(mockRouter.navigate).toHaveBeenCalledWith(['/photo'], {
         queryParams: { path: '/photos/sibling.jpg' },
         state: { photo: expect.objectContaining({ path: '/photos/sibling.jpg' }) },
+        replaceUrl: true,
       });
       expect(component.photo()?.path).toBe('/photos/sibling.jpg');
     });
