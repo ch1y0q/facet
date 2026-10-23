@@ -360,13 +360,17 @@ Accessible via le bouton d'en-tête ou `/persons` :
 
 ### Marquer un visage non détecté
 
-Les marques manuelles supprimées ne réapparaissent pas lors d’une synchronisation, même si une ancienne copie les contient encore. Si d’anciennes bibliothèques ont des identités de personnes contradictoires, la synchronisation s’arrête en conservant les marques pour vérification.
-
-Les miniatures des visages et personnes vérifient les droits d’accès actuels avant réutilisation. Les avatars montrent une apparition visible et les recadrages manuels modifiés ne réutilisent pas d’anciennes images des caches publics.
-
 En mode édition, ouvre une photo et choisis **Marquer un visage manquant**, même si aucun visage n’a été détecté. Trace un rectangle ou ajuste ses coordonnées dans les champs étiquetés. Choisis une personne existante ou saisis un nouveau nom, puis **Enregistrer**. Le tracé et le nom restent une prévisualisation ; Annuler n’enregistre rien.
 
-Le même éditeur permet de modifier, réattribuer ou supprimer les marques manuelles. Elles restent liées à la personne après une nouvelle analyse ou une synchronisation du visualiseur ; elles ne servent pas à entraîner la reconnaissance et ne modifient pas les scores de qualité faciale. L’aperçu orienté vient de l’original pour respecter les coordonnées des RAW et des photos pivotées. Sans original, les marques existantes restent consultables et supprimables, mais le dessin est indisponible. Un fichier modifié entraîne une demande de vérification de la marque.
+Les marques manuelles supprimées ne réapparaissent pas lors d’une synchronisation, même si une ancienne copie les contient encore. Les changements de nom et de visibilité effectués côté scanner sont repris dans le visualiseur grâce à l’identité stable de la personne, tout en conservant les liens des visages manuels.
+
+Les miniatures des visages et personnes vérifient les droits d’accès actuels avant réutilisation. Les avatars montrent une apparition visible et les recadrages manuels modifiés ne réutilisent pas d’anciennes images des caches publics. L’ancien réglage `viewer.performance.face_cache_size` est ignoré et peut être retiré de la configuration personnalisée.
+
+Le même éditeur permet de modifier, réattribuer ou supprimer les marques manuelles. Elles restent liées à la personne après une nouvelle analyse ou une synchronisation du visualiseur ; elles ne servent pas à entraîner la reconnaissance et ne modifient pas les scores de qualité faciale. L’aperçu orienté vient de l’original pour respecter les coordonnées des RAW et des photos pivotées. Sans original, les marques existantes restent consultables et supprimables, mais le dessin est indisponible. Une marque qui ne peut pas être vérifiée porte la mention **À vérifier**.
+
+Les nouvelles marques utilisent une empreinte des pixels décodés dans le bon sens et des dimensions de l’image. L’intégration des métadonnées Facet, le remontage d’un volume ou le changement de machine les préserve si ces pixels restent identiques. L’éditeur réutilise une image décodée de 128 MiB au maximum et de petits enregistrements d’empreintes ; les images plus grandes peuvent nécessiter un nouveau décodage. Cette limite est fixe.
+
+Les marques des anciennes versions de prévisualisation restent enregistrées et nécessitent une vérification unique. Ouvrez l’original et modifiez/enregistrez volontairement la marque à partir d’un nouvel aperçu de l’éditeur pour enregistrer la nouvelle identité. Les anciennes marques gardent leur identité précédente jusqu’à cet enregistrement.
 
 Les changements sont stockés dans la base de la bibliothèque sans modifier les originaux ni les fichiers annexes. L’image reste ajustée dans l’éditeur pendant le tracé.
 

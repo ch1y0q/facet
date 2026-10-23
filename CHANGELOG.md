@@ -8,14 +8,21 @@ All notable changes to Facet are documented in this file.
 
 - **Mark a face the detector missed.** Draw a face rectangle, choose a person and save it from photo detail. Manual marks can be edited or removed, and survive rescans and viewer synchronization.
 
+### Changed
+
+- **The legacy `viewer.performance.face_cache_size` setting is ignored.** Face and person crops now revalidate current photo access and crop contents on each request; remove this setting from custom configurations.
+
 ### Fixed
 
+- **Scanner-side person changes preserve manual face links.** Names and visibility now sync through stable person identities, including people with viewer-created marks.
+- **Manual face marks survive metadata-only embeds and host changes.** New marks identify canonical pixels and frame dimensions. Marks from earlier preview builds remain saved for a one-time review and explicit edit/save with a fresh editor frame.
 - **Going back from a photo to the gallery is near instant.** Opening a photo destroyed the gallery, so Back or Escape rebuilt all of it, closed filter sidebar included. The gallery now stays alive behind the photo and comes back where you left it, with the photo you opened focused so the arrow keys carry on from there. The filter sidebar is also built only once the browser is idle or the drawer opens.
 - **The culling darkroom and Compare show sharp frames before you zoom in** (PR #230). Both ask `/thumbnail` for 1920 px, but the endpoint only returned the stored 640 px thumbnail, which the browser stretched across the pane. A `size` above 640 now gets a render of the original at up to 1920 px (never upscaled) through the same decode `/image` uses, cached by modification time. If the original is offline, won't decode, or decodes to a frame with no signal (a truncated RW2 comes out all black), the stored thumbnail is served with a 60-second `max-age`, and `/image?fallback=thumbnail` now does the same. The panes show the stored thumbnail first and swap to the sharp render once it has loaded, never another frame's pixels, and the next and previous frames are fetched ahead in single view (not with the browser's Data Saver on).
 - **The photo page no longer offers a caption it cannot generate.** On a profile without a VLM (legacy or 8gb) and no remote `vlm_backend`, the Generate caption button showed anyway and every press failed with "No cached caption and VLM is unavailable". `/api/config` now turns `show_captions` and `show_vlm_critique` off in that case. It decides without probing the GPU, so on an unresolved `auto` profile the first failed press resolves it and the page then hides the button.
 
 ### Security
 
+- **Purpose-bound tokens no longer authenticate general viewer routes.** Scan-progress stream tokens and manual-face frame tokens are accepted only by the endpoints that explicitly validate their purpose, keeping them separate from ordinary sign-in sessions.
 - **A sign-in made while the install was open no longer works once the configuration cannot be read.** When the configuration file stopped parsing, or a named configuration path was missing, the server correctly refused requests without a session, but a session started earlier on an install with no viewer password was still accepted for up to 48 hours and could read the library. Every session is now refused until the configuration can be read again, and sessions work again as soon as it can.
 
 ## [1.22.1] "Hypo" — 2026-10-21

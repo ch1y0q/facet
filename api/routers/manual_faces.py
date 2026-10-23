@@ -17,7 +17,7 @@ from api.models.manual_faces import (ManualFaceCreate, ManualFaceDelete, ManualF
 from api.path_validation import resolve_photo_disk_path
 from db import manual_faces
 from db.person_carry_over import refresh_person_counts
-from utils.image_loading import load_image_for_face_crop
+from utils.manual_face_frame import file_stamp, read_frame
 
 router = APIRouter(tags=['manual faces'])
 _PURPOSE = 'manual_face_frame'
@@ -47,28 +47,27 @@ def _decode(path):
     # follows the same mapping and containment contract as /image.
     disk_path = resolve_photo_disk_path(path)
     try:
-        before = manual_faces.source_identity(disk_path)
+        frame = read_frame(disk_path)
     except OSError as exc:
         raise HTTPException(409, 'Original image unavailable or changed') from exc
-    pixels = load_image_for_face_crop(disk_path)
-    if pixels is None:
-        raise HTTPException(409, 'Original image could not be decoded')
-    if before != _identity(path):
-        raise HTTPException(409, 'Image changed; reload the editor')
     # Canonical loader returns BGR; browser JPEG and crops must be RGB.
-    return Image.fromarray(pixels[:, :, ::-1]), before
+    return Image.fromarray(frame.pixels[:, :, ::-1]), frame.identity, frame.stamp
 
 
-def _response(row):
+def _check_stamp(path, stamp):
     try:
-        current_source = _identity(row['photo_path'])
-    except HTTPException:
-        current_source = None
-    return manual_faces.region_response(row, current_source)
+        # Re-resolve mapping and containment too, rather than merely statting
+        # the original target after its logical path has been repointed.
+        current = file_stamp(resolve_photo_disk_path(path))
+    except OSError as exc:
+        raise HTTPException(409, 'Original image unavailable or changed') from exc
+    if current != stamp:
+        raise HTTPException(409, 'Image changed; reload the editor')
 
 
 def _jpeg(image, edge):
-    image = image.copy()
+    # Both callers give us an owned preview/crop, never the cached BGR array.
+    # Resize that image directly instead of copying another full RAW frame.
     image.thumbnail((edge, edge), Image.Resampling.LANCZOS)
     output = BytesIO()
     image.save(output, format='JPEG', quality=90)
@@ -83,7 +82,13 @@ def list_manual_faces(path: str, response: Response, user: CurrentUser = Depends
         rows = conn.execute(
             'SELECT f.*,p.name AS person_name FROM faces f LEFT JOIN persons p ON p.id=f.person_id '
             'WHERE f.photo_path=? AND f.is_manual=1 ORDER BY f.id', (path,)).fetchall()
-        return {'regions': [_response(r) for r in rows]}
+    try:
+        identity = _identity(path) if rows else None
+    except HTTPException:
+        identity = None
+    with get_db() as conn:
+        _visible(conn, user, path)
+    return {'regions': [manual_faces.region_response(row, identity) for row in rows]}
 
 
 @router.get('/api/photo/manual-face-frame', response_model=ManualFaceFrame)
@@ -91,9 +96,10 @@ def manual_face_frame(path: str, response: Response, user: CurrentUser = Depends
     response.headers['Cache-Control'] = 'no-store'
     with get_db() as conn:
         _visible(conn, user, path)
-    image, identity = _decode(path)
+    image, identity, stamp = _decode(path)
     with get_db() as conn:
         _visible(conn, user, path)
+    _check_stamp(path, stamp)
     w, h = image.size
     token = create_access_token({'sub': user.user_id or '_legacy', 'purpose': _PURPOSE,
                                  'path': path, 'width': w, 'height': h, 'source': identity,
@@ -123,20 +129,31 @@ def _person(conn, user, body, current_person=None):
 
 def _write(body, user, face_id=None):
     key = str(body.client_id) if isinstance(body, ManualFaceCreate) else None
+    previous = None
     with get_db() as conn:
         _visible(conn, user, body.path)
         if key:
             old = manual_faces.get_region(conn, body.path, manual_key=key)
-            if old:
-                return _response(old)
+            previous = old
         if face_id is not None and manual_faces.get_region(conn, body.path, face_id=face_id) is None:
             raise HTTPException(404, 'Manual face not found')
+    if previous is not None:
+        try:
+            identity = _identity(body.path)
+        except HTTPException:
+            identity = None
+        with get_db() as conn:
+            _visible(conn, user, body.path)
+            current = manual_faces.get_region(conn, body.path, manual_key=key)
+            if current is None:
+                raise HTTPException(409, 'Manual face changed while retrying')
+        return manual_faces.region_response(current, identity)
     claims = decode_access_token(body.frame_token)
     if not claims or claims.get('purpose') != _PURPOSE or claims.get('decoder') != _DECODER:
         raise HTTPException(409, 'Invalid or expired editor frame; reload the editor')
     if claims.get('sub') != (user.user_id or '_legacy') or claims.get('path') != body.path:
         raise HTTPException(409, 'Editor frame belongs to another photo or user')
-    image, identity = _decode(body.path)
+    image, identity, stamp = _decode(body.path)
     w, h = image.size
     if (claims.get('source'), claims.get('width'), claims.get('height')) != (identity, w, h):
         raise HTTPException(409, 'Image changed; reload the editor')
@@ -148,15 +165,14 @@ def _write(body, user, face_id=None):
     with get_db() as conn, conn:
         conn.execute('BEGIN IMMEDIATE')
         _visible(conn, user, body.path)
-        if identity != _identity(body.path):
-            raise HTTPException(409, 'Image changed; reload the editor')
+        _check_stamp(body.path, stamp)
         old = manual_faces.get_region(conn, body.path, face_id=face_id) if face_id is not None else None
         if face_id is not None and old is None:
             raise HTTPException(404, 'Manual face not found')
         if key:
             retry = manual_faces.get_region(conn, body.path, manual_key=key)
             if retry:
-                return _response(retry)
+                return manual_faces.region_response(retry, identity)
             if conn.execute('SELECT 1 FROM faces WHERE manual_key=?', (key,)).fetchone():
                 raise HTTPException(409, 'Request identifier already used')
             if conn.execute('SELECT 1 FROM manual_face_deletions WHERE manual_key=?', (key,)).fetchone():
@@ -185,9 +201,9 @@ def _write(body, user, face_id=None):
         refresh_person_counts(conn, affected)
         # A still-valid representative ID does not make its old crop current.
         conn.execute('UPDATE persons SET face_thumbnail=? WHERE representative_face_id=?', (crop, face_id))
-        result = _response(manual_faces.get_region(conn, body.path, face_id=face_id))
-        if identity != _identity(body.path):
-            raise HTTPException(409, 'Image changed; reload the editor')
+        result = manual_faces.region_response(
+            manual_faces.get_region(conn, body.path, face_id=face_id), identity)
+        _check_stamp(body.path, stamp)
     invalidate_stats_cache()
     return result
 

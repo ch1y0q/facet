@@ -1,13 +1,10 @@
 """Manual rows are durable annotations, never recognition training examples."""
-import json
-import os
-
 from db.person_carry_over import box_iou
 
 
 def source_identity(path):
-    stat = os.stat(path)
-    return json.dumps([stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns], separators=(',', ':'))
+    from utils.manual_face_frame import source_identity as frame_identity
+    return frame_identity(path)
 
 
 def region_response(row, current_source):
@@ -60,11 +57,14 @@ def without_manual_overlaps(conn, path, records):
     A stale manual frame is retained for review but cannot suppress detections
     in the replacement image's unrelated coordinate space.
     """
+    manual = conn.execute(
+        'SELECT bbox_x1,bbox_y1,bbox_x2,bbox_y2,manual_source FROM faces '
+        'WHERE photo_path=? AND is_manual=1', (path,)).fetchall()
+    if not manual:
+        return list(records)
     try:
         identity = source_identity(path)
     except OSError:
         return list(records)
-    boxes = [tuple(r) for r in conn.execute(
-        'SELECT bbox_x1,bbox_y1,bbox_x2,bbox_y2 FROM faces '
-        'WHERE photo_path=? AND is_manual=1 AND manual_source=?', (path, identity))]
+    boxes = [tuple(row)[:4] for row in manual if row[4] == identity]
     return [r for r in records if not any(box_iou(r[3:7], box) >= 0.5 for box in boxes)]

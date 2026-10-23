@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from io import BytesIO
 
 import pytest
+import numpy as np
 from PIL import Image
 
 from db.maintenance import export_viewer_db
@@ -123,22 +124,36 @@ def test_manual_api_deletion_wins_over_stale_exports_in_both_directions(tmp_path
             assert conn.execute("SELECT manual_key FROM manual_face_deletions").fetchall() == [('deleted-source-mark',)]
 
 
-def test_ambiguous_legacy_manual_person_export_fails_before_changes(tmp_path):
+@pytest.mark.parametrize('legacy', [False, True])
+def test_source_person_metadata_follows_stable_key_without_replacing_manual_links(tmp_path, legacy):
     src, out = str(tmp_path / 'source.db'), str(tmp_path / 'viewer.db')
     _make_source_db(src)
     with sqlite3.connect(src) as conn:
-        conn.execute("INSERT INTO persons(id,name,person_key) VALUES (1,'Original','legacy:1')")
+        pid = conn.execute("INSERT INTO persons(name) VALUES ('Original')").lastrowid
+        if legacy:
+            conn.execute('UPDATE persons SET person_key=? WHERE id=?', (f'legacy:{pid}', pid))
+        person_key = conn.execute('SELECT person_key FROM persons WHERE id=?', (pid,)).fetchone()[0]
+        conn.execute('INSERT INTO faces(photo_path,face_index,embedding,person_id,face_thumbnail,embedding_model) '
+                     "VALUES (?,0,?,?,?,'sface')", (_B, np.ones(128, dtype=np.float32).tobytes(), pid, _thumb_bytes('red')))
     export_viewer_db(src, out, verbose=False)
     with sqlite3.connect(out) as conn:
-        conn.execute("UPDATE persons SET name='Different' WHERE id=1")
-        _manual_face(conn, _A, 1, 'legacy-manual')
-        conn.execute("UPDATE photos SET caption='viewer state' WHERE path=?", (_A,))
-    with sqlite3.connect(src) as conn:
-        conn.execute("UPDATE photos SET caption='source state'")
-    with pytest.raises(ValueError, match='legacy.*identity'):
+        target = conn.execute('SELECT id FROM persons WHERE person_key=?', (person_key,)).fetchone()[0]
+        manual_id = _manual_face(conn, _A, target, 'stable-person-manual')
+        conn.execute('UPDATE persons SET representative_face_id=?,face_thumbnail=?,face_count=99 WHERE id=?',
+                     (manual_id, _thumb_bytes('blue'), target))
+    centroid = np.linspace(0, 1, 128, dtype=np.float32).tobytes()
+    for iteration in range(2):
+        name = f'Renamed {iteration}'
+        with sqlite3.connect(src) as conn:
+            conn.execute('UPDATE persons SET name=?,is_hidden=?,auto_clustered=0,centroid=?,centroid_model=? WHERE id=?',
+                         (name, 1, centroid, 'sface', pid))
         export_viewer_db(src, out, verbose=False)
-    with sqlite3.connect(out) as conn:
-        assert conn.execute('SELECT caption FROM photos WHERE path=?', (_A,)).fetchone() == ('viewer state',)
+        with sqlite3.connect(out) as conn:
+            row = conn.execute('SELECT id,name,is_hidden,auto_clustered,centroid,centroid_model,face_count,representative_face_id,face_thumbnail '
+                               'FROM persons WHERE person_key=?', (person_key,)).fetchone()
+            assert row[:6] == (target, name, 1, 0, centroid, 'sface')
+            assert row[6:] == (2, manual_id, _thumb_bytes('blue'))
+            assert conn.execute('SELECT id,person_id FROM faces WHERE manual_key=?', ('stable-person-manual',)).fetchone() == (manual_id, target)
 
 
 def test_source_detection_overlapping_viewer_manual_is_not_duplicated(tmp_path):

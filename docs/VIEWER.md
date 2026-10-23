@@ -428,13 +428,17 @@ Access via header button or `/persons`:
 
 ### Mark a missed face
 
-Deleted manual marks stay removed during later synchronization, even when an older copy still contains them. If older library copies have conflicting person identities, synchronization stops with the manual marks intact so the affected people can be reviewed.
-
-Face and person thumbnails are checked against your current photo access before reuse. Person avatars use a visible appearance, and edited manual crops refresh without reusing old public image caches.
-
 In edition mode, open a photo and choose **Mark a missing face** even when no faces were detected. Draw a rectangle around the face, or adjust its coordinates with the labeled fields. Choose an existing person or enter a new name, then **Save**. Drawing and choosing a name only preview the change; Cancel saves nothing.
 
-Use the same editor to adjust, reassign or remove a manually marked face. Manual marks remain linked to their person through rescans and viewer synchronization; they do not create recognition training data or change face-quality scores. The editor loads an upright preview from the original image so RAW and rotated-photo coordinates match the saved crop. Without the original, existing manual marks can still be listed and removed, but drawing is unavailable. If the underlying image changes, the saved mark is flagged for review rather than moved silently.
+Deleted manual marks stay removed during later synchronization, even when an older copy still contains them. Scanner-side person renames and visibility changes follow the stable person identity into the viewer while manual-face links stay intact.
+
+Face and person thumbnails are checked against your current photo access before reuse. Person avatars use a visible appearance, and edited manual crops refresh without reusing old public image caches. The legacy `viewer.performance.face_cache_size` setting is ignored and can be removed from custom configuration.
+
+Use the same editor to adjust, reassign or remove a manually marked face. Manual marks remain linked to their person through rescans and viewer synchronization; they do not create recognition training data or change face-quality scores. The editor loads an upright preview from the original image so RAW and rotated-photo coordinates match the saved crop. Without the original, existing manual marks can still be listed and removed, but drawing is unavailable. A mark that cannot be verified is shown as **Needs review**.
+
+New marks use a hash of the upright decoded pixels and frame dimensions. Facet metadata embeds, remounts and changes of host preserve them when those pixels stay unchanged. The editor reuses one decoded frame of up to 128 MiB and small fingerprint records; larger frames may need another decode. The limit is fixed.
+
+Marks from earlier preview builds remain saved and need a one-time review. Open the original and deliberately edit/save the mark using a fresh editor frame to record the new identity. Old marks keep their previous identity until that save.
 
 Normal incremental viewer synchronization preserves manual marks and removal decisions. An explicit forced viewer database rebuild replaces viewer-only edits with the source database; export or back up those edits before rebuilding.
 

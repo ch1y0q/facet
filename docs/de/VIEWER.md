@@ -360,13 +360,17 @@ Zugriff über die Header-Schaltfläche oder `/persons`:
 
 ### Ein übersehenes Gesicht markieren
 
-Gelöschte manuelle Markierungen bleiben bei späterer Synchronisierung gelöscht, auch wenn eine ältere Kopie sie noch enthält. Bei widersprüchlichen Personenidentitäten in älteren Bibliothekskopien stoppt die Synchronisierung und lässt die Markierungen zur Prüfung erhalten.
-
-Gesichts- und Personen-Vorschaubilder werden vor der Wiederverwendung anhand deines aktuellen Fotozugriffs geprüft. Personenbilder zeigen nur sichtbare Aufnahmen; bearbeitete manuelle Zuschnitte verwenden keine alten öffentlichen Bild-Caches.
-
 Öffne im Bearbeitungsmodus ein Foto und wähle **Fehlendes Gesicht markieren**, auch wenn keine Gesichter erkannt wurden. Ziehe ein Rechteck um das Gesicht oder passe seine Koordinaten in den beschrifteten Feldern an. Wähle eine vorhandene Person oder gib einen neuen Namen ein und klicke auf **Speichern**. Zeichnung und Namenswahl sind zunächst eine Vorschau; Abbrechen speichert nichts.
 
-Im selben Editor kannst du manuelle Markierungen ändern, neu zuweisen oder entfernen. Sie bleiben bei erneuter Erkennung und Viewer-Synchronisierung der Person zugeordnet, liefern aber keine Erkennungs-Trainingsdaten und ändern keine Qualitätswerte. Die aufrechte Vorschau wird aus dem Original erstellt, damit RAW- und gedrehte Fotos korrekt zugeschnitten werden. Ohne Original kannst du vorhandene Markierungen anzeigen und entfernen, aber keine neuen zeichnen. Bei einer geänderten Bilddatei wird die Markierung zur Prüfung gekennzeichnet.
+Gelöschte manuelle Markierungen bleiben bei späterer Synchronisierung gelöscht, auch wenn eine ältere Kopie sie noch enthält. Änderungen an Namen und Sichtbarkeit auf dem Scanner werden anhand der stabilen Personenidentität im Viewer übernommen; manuelle Gesichtszuordnungen bleiben erhalten.
+
+Gesichts- und Personen-Vorschaubilder werden vor der Wiederverwendung anhand deines aktuellen Fotozugriffs geprüft. Personenbilder zeigen nur sichtbare Aufnahmen; bearbeitete manuelle Zuschnitte verwenden keine alten öffentlichen Bild-Caches. Die frühere Einstellung `viewer.performance.face_cache_size` wird ignoriert und kann aus eigenen Konfigurationen entfernt werden.
+
+Im selben Editor kannst du manuelle Markierungen ändern, neu zuweisen oder entfernen. Sie bleiben bei erneuter Erkennung und Viewer-Synchronisierung der Person zugeordnet, liefern aber keine Erkennungs-Trainingsdaten und ändern keine Qualitätswerte. Die aufrechte Vorschau wird aus dem Original erstellt, damit RAW- und gedrehte Fotos korrekt zugeschnitten werden. Ohne Original kannst du vorhandene Markierungen anzeigen und entfernen, aber keine neuen zeichnen. Eine nicht überprüfbare Markierung wird mit **Prüfung erforderlich** gekennzeichnet.
+
+Neue Markierungen verwenden einen Hash der aufrecht dekodierten Bildpixel und der Bildabmessungen. Das Einbetten von Facet-Metadaten, erneutes Einbinden eines Laufwerks oder ein Hostwechsel erhält sie, solange diese Pixel unverändert bleiben. Der Editor verwendet ein dekodiertes Bild bis 128 MiB und kleine Fingerabdruck-Einträge wieder; größere Bilder müssen möglicherweise erneut dekodiert werden. Diese Grenze ist fest.
+
+Markierungen aus früheren Vorschauversionen bleiben gespeichert und benötigen eine einmalige Prüfung. Öffne das Original und bearbeite/speichere die Markierung bewusst anhand einer neu geladenen Editor-Vorschau, um die neue Identität zu erfassen. Bis zu diesem Speichern behalten alte Markierungen ihre bisherige Identität.
 
 Die Änderungen werden nur in der Bibliotheksdatenbank gespeichert. Originaldateien und Sidecars bleiben unverändert. Die Vorschau bleibt beim Zeichnen eingepasst.
 

@@ -95,3 +95,120 @@ def test_manual_put_refreshes_warmed_face_and_person_endpoints(crops):
         image = Image.open(BytesIO(current.content))
         red, _, blue = image.getpixel((image.width // 2, image.height // 2))
         assert red > blue + 100
+
+
+@pytest.fixture
+def legacy_crops(crops, monkeypatch):
+    client, path, pid, fid, _ = crops
+    source = jpeg('red') + uuid4().bytes
+    with database.get_db() as conn, conn:
+        conn.execute('UPDATE photos SET thumbnail=? WHERE path=?', (source, path))
+        conn.execute('UPDATE faces SET face_thumbnail=NULL,bbox_x1=5,bbox_y1=5,bbox_x2=50,bbox_y2=60 WHERE id=?', (fid,))
+        conn.execute('UPDATE persons SET representative_face_id=? WHERE id=?', (fid, pid))
+    opened = []
+    original_open = Image.open
+
+    def count_open(*args, **kwargs):
+        opened.append(1)
+        return original_open(*args, **kwargs)
+
+    monkeypatch.setattr(Image, 'open', count_open)
+    return client, path, pid, fid, opened, source
+
+
+def test_legacy_crop_revalidation_reuses_render_but_rechecks_access(legacy_crops, monkeypatch):
+    client, _, _, fid, opened, _ = legacy_crops
+    first = client.get(f'/face_thumbnail/{fid}')
+    assert first.status_code == 200
+    assert client.get(f'/face_thumbnail/{fid}', headers={'If-None-Match': first.headers['etag']}).status_code == 304
+    assert len(opened) == 1
+    monkeypatch.setattr(config, '_FULL_CONFIG', {'users': {'test': {'directories': []}}})
+    assert client.get(f'/face_thumbnail/{fid}', headers={'If-None-Match': first.headers['etag']}).status_code == 404
+    assert len(opened) == 1
+
+
+@pytest.mark.parametrize('change', ['source', 'bbox', 'crop_padding_ratio', 'min_crop_size_px', 'output_size_px', 'jpeg_quality'])
+def test_legacy_crop_cache_tracks_current_inputs(legacy_crops, monkeypatch, change):
+    from api.routers import thumbnails
+    client, path, _, fid, opened, _ = legacy_crops
+    first = client.get(f'/face_thumbnail/{fid}')
+    assert first.status_code == 200
+    if change == 'source':
+        with database.get_db() as conn, conn:
+            conn.execute('UPDATE photos SET thumbnail=? WHERE path=?', (jpeg('blue') + uuid4().bytes, path))
+    elif change == 'bbox':
+        with database.get_db() as conn, conn:
+            conn.execute('UPDATE faces SET bbox_x1=10 WHERE id=?', (fid,))
+    else:
+        settings = dict(thumbnails.VIEWER_CONFIG['face_thumbnails'])
+        settings[change] += 1
+        monkeypatch.setitem(thumbnails.VIEWER_CONFIG, 'face_thumbnails', settings)
+    current = client.get(f'/face_thumbnail/{fid}')
+    assert current.status_code == 200
+    if change == 'source':
+        assert current.content != first.content
+        assert current.headers['etag'] != first.headers['etag']
+    assert len(opened) == 2
+    assert client.get(f'/face_thumbnail/{fid}', headers={'If-None-Match': current.headers['etag']}).status_code == 304
+    assert len(opened) == 2
+
+
+@pytest.mark.parametrize('oversized', ['source', 'output'])
+def test_large_crop_inputs_are_not_retained(legacy_crops, monkeypatch, oversized):
+    from api.routers import thumbnails
+    client, path, _, fid, opened, source = legacy_crops
+    if oversized == 'source':
+        with database.get_db() as conn, conn:
+            conn.execute('UPDATE photos SET thumbnail=? WHERE path=?', (source + b'x' * (128 * 1024), path))
+    else:
+        monkeypatch.setitem(thumbnails.VIEWER_CONFIG, 'face_thumbnails', {
+            **thumbnails.VIEWER_CONFIG['face_thumbnails'], 'output_size_px': 512,
+        })
+    assert client.get(f'/face_thumbnail/{fid}').status_code == 200
+    assert client.get(f'/face_thumbnail/{fid}').status_code == 200
+    assert len(opened) == 2
+
+
+def test_legacy_crop_cache_evicts_after_64_distinct_renders(legacy_crops):
+    client, path, _, fid, opened, source = legacy_crops
+    for index in range(65):
+        with database.get_db() as conn, conn:
+            conn.execute('UPDATE photos SET thumbnail=? WHERE path=?', (source + index.to_bytes(2, 'big'), path))
+        assert client.get(f'/face_thumbnail/{fid}').status_code == 200
+    with database.get_db() as conn, conn:
+        conn.execute('UPDATE photos SET thumbnail=? WHERE path=?', (source + (0).to_bytes(2, 'big'), path))
+    assert client.get(f'/face_thumbnail/{fid}').status_code == 200
+    assert len(opened) == 66
+
+
+@pytest.mark.parametrize('representative_visible', [True, False])
+def test_person_only_sorts_when_representative_is_unavailable(crops, monkeypatch, representative_visible):
+    client, _, pid, fid, _ = crops
+    if representative_visible:
+        with database.get_db() as conn, conn:
+            conn.execute('UPDATE persons SET representative_face_id=? WHERE id=?', (fid, pid))
+    statements = []
+    original_connection = database.get_db_connection
+
+    def traced_connection():
+        conn = original_connection()
+        conn.set_trace_callback(statements.append)
+        return conn
+
+    monkeypatch.setattr(database, 'get_db_connection', traced_connection)
+    response = client.get(f'/person_thumbnail/{pid}')
+    assert response.status_code == 200
+    assert response.content == jpeg('red')  # The stored global avatar is the hidden green crop.
+    sorted_faces = [query for query in statements if 'ORDER BY' in query.upper() and 'faces' in query.lower()]
+    assert bool(sorted_faces) is not representative_visible
+
+
+def test_reassigned_representative_is_not_used_for_the_old_person(crops):
+    client, path, pid, fid, _ = crops
+    with database.get_db() as conn, conn:
+        other = conn.execute("INSERT INTO persons(name) VALUES ('Other')").lastrowid
+        conn.execute('UPDATE persons SET representative_face_id=? WHERE id=?', (fid, pid))
+        conn.execute('UPDATE faces SET person_id=? WHERE id=?', (other, fid))
+        conn.execute("INSERT INTO faces(photo_path,face_index,embedding,person_id,face_thumbnail,confidence) VALUES (?,1,X'',?,?,0.5)",
+                     (path, pid, jpeg('blue')))
+    assert client.get(f'/person_thumbnail/{pid}').content == jpeg('blue')

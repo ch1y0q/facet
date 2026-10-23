@@ -12,9 +12,8 @@ def _rows(conn, sql):
 def prepare_person_sync(conn):
     """Preflight before destructive sync; then establish a source/local person map.
 
-    Old shared copies used numeric IDs. A divergent legacy name on a manual
-    target is ambiguous and deliberately stops the export, without deleting
-    annotations or guessing identity from a name.
+    Stable keys identify a person across copies. Source metadata follows that
+    identity; viewer manual links keep their local numeric person/face IDs.
     """
     source = _rows(conn, 'SELECT * FROM src.persons')
     local = _rows(conn, 'SELECT DISTINCT p.* FROM main.persons p JOIN main.faces f '
@@ -23,9 +22,6 @@ def prepare_person_sync(conn):
     for person in source:
         key = person.get('person_key') or f"legacy:{person['id']}"
         person['person_key'] = key
-        old = by_key.get(key)
-        if old and key.startswith('legacy:') and old['name'] != person['name']:
-            raise ValueError('Ambiguous legacy person identity on a manual face; reconcile the person before export')
     source_face_columns = {r[1] for r in conn.execute('PRAGMA src.table_info(faces)')}
     if 'manual_key' in source_face_columns:
         if conn.execute('SELECT 1 FROM src.faces s JOIN main.faces d ON s.manual_key=d.manual_key '
@@ -47,6 +43,14 @@ def prepare_person_sync(conn):
         old = by_key.get(person['person_key'])
         if old:
             target = old['id']
+            # These are source-owned fields even when a viewer annotation
+            # keeps this row alive. Names are metadata, never identity.
+            # Counts and avatars are derived from the destination's faces.
+            metadata = {k: v for k, v in person.items() if k in dest_columns and k not in
+                        ('id', 'person_key', 'face_count', 'representative_face_id', 'face_thumbnail')}
+            if metadata:
+                conn.execute(f'UPDATE main.persons SET {",".join(f"{k}=?" for k in metadata)} WHERE id=?',
+                             [*metadata.values(), target])
         else:
             values = {k: v for k, v in person.items() if k in dest_columns and k != 'id'}
             # A representative source ID refers to a different database's faces.

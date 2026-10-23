@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import numpy as np
 import pytest
+from PIL import Image
 
 from db.schema import FACES_UPSERT_SQL, face_upsert_row, init_database
 from db.person_carry_over import replace_photo_faces
@@ -17,7 +18,7 @@ from db.manual_faces import source_identity
 @pytest.fixture
 def manual_db(tmp_path):
     path = str(tmp_path / 'photo.jpg')
-    (tmp_path / 'photo.jpg').write_bytes(b'image fixture identity')
+    Image.new('RGB', (100, 100), 'red').save(path)
     db = str(tmp_path / 'faces.db')
     init_database(db)
     with sqlite3.connect(db) as conn:

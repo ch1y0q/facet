@@ -101,7 +101,7 @@ def test_person_identity_keys_new_people_independent(edition_client, manual_phot
 
 
 def test_frame_never_reads_an_unregistered_local_file(edition_client, tmp_path, monkeypatch):
-    from api.routers import manual_faces as module
+    from utils import manual_face_frame as module
     file = tmp_path / 'private.jpg'
     Image.new('RGB', (20, 20)).save(file)
     def forbidden_decode(*args):
@@ -112,7 +112,8 @@ def test_frame_never_reads_an_unregistered_local_file(edition_client, tmp_path, 
 
 def test_frame_rechecks_access_after_slow_decode(edition_client, manual_photo, monkeypatch):
     from api.routers import manual_faces as module
-    original = module.load_image_for_face_crop
+    from utils import manual_face_frame as frames
+    original = frames.load_image_for_face_crop
     revoked = False
     def visibility(*args):
         if revoked:
@@ -123,7 +124,7 @@ def test_frame_rechecks_access_after_slow_decode(edition_client, manual_photo, m
         revoked = True
         return pixels
     monkeypatch.setattr(module, 'assert_photo_visible', visibility)
-    monkeypatch.setattr(module, 'load_image_for_face_crop', decode)
+    monkeypatch.setattr(frames, 'load_image_for_face_crop', decode)
     assert edition_client.get('/api/photo/manual-face-frame', params={'path': manual_photo}).status_code == 404
 
 

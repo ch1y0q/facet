@@ -360,13 +360,17 @@ Accessibile tramite il pulsante nell'intestazione o `/persons`:
 
 ### Segnare un volto non rilevato
 
-I segni manuali rimossi non ricompaiono durante le sincronizzazioni successive, anche se sono ancora presenti in una vecchia copia. Se le copie precedenti contengono identità di persone in conflitto, la sincronizzazione si interrompe conservando i segni per la verifica.
-
-Le miniature di volti e persone verificano l’accesso attuale alle foto prima del riutilizzo. Gli avatar mostrano una presenza visibile e i ritagli manuali modificati non riutilizzano vecchie immagini da cache pubbliche.
-
 In modalità modifica, apri una foto e scegli **Segna un volto mancante**, anche se non sono stati rilevati volti. Disegna un rettangolo o modifica le coordinate nei campi etichettati. Scegli una persona esistente o inserisci un nuovo nome, poi **Salva**. Disegno e nome sono solo un’anteprima finché non salvi; Annulla non cambia nulla.
 
-Nello stesso editor puoi modificare, riassegnare o rimuovere i segni manuali. Restano associati alla persona durante nuove scansioni e sincronizzazioni del visualizzatore; non addestrano il riconoscimento e non cambiano i punteggi di qualità del volto. L’anteprima orientata proviene dall’originale, così RAW e foto ruotate mantengono coordinate corrette. Senza originale puoi elencare e rimuovere i segni esistenti, ma non disegnarne altri. Se il file cambia, il segno viene indicato come da verificare.
+I segni manuali rimossi non ricompaiono durante le sincronizzazioni successive, anche se sono ancora presenti in una vecchia copia. Le modifiche di nome e visibilità effettuate sullo scanner vengono trasferite al visualizzatore tramite l’identità stabile della persona, mantenendo i collegamenti dei volti manuali.
+
+Le miniature di volti e persone verificano l’accesso attuale alle foto prima del riutilizzo. Gli avatar mostrano una presenza visibile e i ritagli manuali modificati non riutilizzano vecchie immagini da cache pubbliche. La vecchia impostazione `viewer.performance.face_cache_size` viene ignorata e può essere rimossa dalla configurazione personalizzata.
+
+Nello stesso editor puoi modificare, riassegnare o rimuovere i segni manuali. Restano associati alla persona durante nuove scansioni e sincronizzazioni del visualizzatore; non addestrano il riconoscimento e non cambiano i punteggi di qualità del volto. L’anteprima orientata proviene dall’originale, così RAW e foto ruotate mantengono coordinate corrette. Senza originale puoi elencare e rimuovere i segni esistenti, ma non disegnarne altri. Un segno che non può essere verificato mostra **Da verificare**.
+
+I nuovi segni usano un hash dei pixel decodificati con l’orientamento corretto e delle dimensioni del fotogramma. L’incorporamento dei metadati Facet, un nuovo montaggio del volume o il cambio di computer li preserva se i pixel restano identici. L’editor riutilizza un fotogramma decodificato fino a 128 MiB e piccoli record delle impronte; i fotogrammi più grandi possono richiedere un’altra decodifica. Il limite è fisso.
+
+I segni delle precedenti versioni di anteprima restano salvati e richiedono una verifica una tantum. Apri l’originale e modifica/salva intenzionalmente il segno con una nuova anteprima dell’editor per registrare la nuova identità. I vecchi segni conservano l’identità precedente fino a quel salvataggio.
 
 Le modifiche sono salvate nel database della libreria senza cambiare originali o file sidecar. L’immagine resta adattata all’editor durante il disegno.
 

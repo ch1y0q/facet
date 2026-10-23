@@ -359,13 +359,17 @@ Accede mediante el botón de la cabecera o `/persons`:
 
 ### Marcar una cara no detectada
 
-Las marcas manuales eliminadas no reaparecen al sincronizar, aunque una copia antigua aún las contenga. Si las copias antiguas tienen identidades de personas en conflicto, la sincronización se detiene y conserva las marcas para su revisión.
-
-Las miniaturas de caras y personas verifican tu acceso actual a las fotos antes de reutilizarse. Los avatares muestran una aparición visible y los recortes manuales editados no reutilizan imágenes antiguas de cachés públicas.
-
 En modo edición, abre una foto y elige **Marcar una cara no detectada**, aunque no se haya detectado ninguna. Dibuja un rectángulo o ajusta sus coordenadas en los campos etiquetados. Elige una persona existente o escribe un nombre nuevo y pulsa **Guardar**. Dibujar y elegir el nombre solo muestran una vista previa; Cancelar no guarda nada.
 
-El mismo editor permite ajustar, reasignar o eliminar marcas manuales. Se conservan junto a su persona durante nuevos análisis y sincronizaciones del visor; no aportan datos de entrenamiento ni cambian las puntuaciones de calidad facial. La vista previa orientada se obtiene del original para que las coordenadas coincidan en RAW y fotos giradas. Sin el original se pueden listar y eliminar las marcas existentes, pero no dibujar. Si cambia el archivo, la marca queda pendiente de revisión.
+Las marcas manuales eliminadas no reaparecen al sincronizar, aunque una copia antigua aún las contenga. Los cambios de nombre y visibilidad realizados en el escáner se transfieren al visor mediante la identidad estable de la persona, conservando los vínculos con las caras manuales.
+
+Las miniaturas de caras y personas verifican tu acceso actual a las fotos antes de reutilizarse. Los avatares muestran una aparición visible y los recortes manuales editados no reutilizan imágenes antiguas de cachés públicas. El ajuste antiguo `viewer.performance.face_cache_size` se ignora y puede eliminarse de la configuración personalizada.
+
+El mismo editor permite ajustar, reasignar o eliminar marcas manuales. Se conservan junto a su persona durante nuevos análisis y sincronizaciones del visor; no aportan datos de entrenamiento ni cambian las puntuaciones de calidad facial. La vista previa orientada se obtiene del original para que las coordenadas coincidan en RAW y fotos giradas. Sin el original se pueden listar y eliminar las marcas existentes, pero no dibujar. Una marca que no puede verificarse muestra **Requiere revisión**.
+
+Las marcas nuevas usan un hash de los píxeles decodificados con orientación correcta y de las dimensiones del fotograma. Incrustar metadatos de Facet, volver a montar una unidad o cambiar de equipo las conserva si los píxeles siguen iguales. El editor reutiliza un fotograma decodificado de hasta 128 MiB y pequeños registros de huellas; los fotogramas mayores pueden necesitar otra decodificación. El límite es fijo.
+
+Las marcas de versiones preliminares anteriores siguen guardadas y necesitan una revisión única. Abre el original y edita/guarda expresamente la marca con una vista previa recién cargada para registrar la nueva identidad. Las marcas antiguas conservan su identidad anterior hasta ese guardado.
 
 Los cambios se guardan en la base de datos de la biblioteca, sin modificar originales ni archivos auxiliares. La imagen permanece ajustada al editor mientras dibujas.
 

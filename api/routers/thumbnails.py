@@ -231,10 +231,61 @@ def get_thumbnail(
     return _cached_image_response(row['thumbnail'], request)
 
 
-def _get_face_thumbnail_data(face_id: int, user: Optional[CurrentUser]):
-    """Read the current crop only from a photo visible to this caller."""
+def _render_face_crop(thumbnail, bbox, padding_ratio, min_size, output_size, jpeg_quality):
+    """Render legacy rows missing a stored face crop from their current inputs."""
     from PIL import Image
 
+    try:
+        bbox_x1, bbox_y1, bbox_x2, bbox_y2 = bbox
+        if bbox_x1 is None or bbox_x2 is None:
+            return None
+
+        thumb_img = Image.open(BytesIO(thumbnail))
+        thumb_w, thumb_h = thumb_img.size
+
+        if thumb_w >= thumb_h:
+            estimated_orig_longest = max(bbox_x2, bbox_y2 * thumb_w / thumb_h)
+        else:
+            estimated_orig_longest = max(bbox_y2, bbox_x2 * thumb_h / thumb_w)
+
+        estimated_orig_longest = max(estimated_orig_longest * 1.05, 100)
+        scale = max(thumb_w, thumb_h) / estimated_orig_longest
+
+        x1 = max(0, int(bbox_x1 * scale))
+        y1 = max(0, int(bbox_y1 * scale))
+        x2 = min(thumb_w, int(bbox_x2 * scale))
+        y2 = min(thumb_h, int(bbox_y2 * scale))
+
+        pad_x = int((x2 - x1) * padding_ratio)
+        pad_y = int((y2 - y1) * padding_ratio)
+        x1 = max(0, x1 - pad_x)
+        y1 = max(0, y1 - pad_y)
+        x2 = min(thumb_w, x2 + pad_x)
+        y2 = min(thumb_h, y2 + pad_y)
+
+        if x2 - x1 < min_size or y2 - y1 < min_size:
+            cx, cy = thumb_w // 2, thumb_h // 2
+            s = min(thumb_w, thumb_h) // 2
+            x1, y1 = cx - s, cy - s
+            x2, y2 = cx + s, cy + s
+
+        face_crop = thumb_img.crop((x1, y1, x2, y2))
+        face_crop.thumbnail((output_size, output_size), Image.Resampling.LANCZOS)
+
+        buf = BytesIO()
+        face_crop.save(buf, format="JPEG", quality=jpeg_quality)
+        return buf.getvalue()
+    except (OSError, ValueError, TypeError):
+        logger.debug("Failed to generate face thumbnail on-the-fly", exc_info=True)
+        return None
+
+
+# At most 8 MiB of source JPEGs plus 64 crops no larger than 256 px per edge.
+_cached_face_crop = lru_cache(maxsize=64)(_render_face_crop)
+
+
+def _get_face_thumbnail_data(face_id: int, user: Optional[CurrentUser]):
+    """Read the current crop only from a photo visible to this caller."""
     vis_sql, vis_params = get_visibility_clause(user.user_id if user else None, table_alias='p')
     conn = get_db_connection()
     try:
@@ -257,49 +308,15 @@ def _get_face_thumbnail_data(face_id: int, user: Optional[CurrentUser]):
     if not face['thumbnail']:
         return None
 
+    settings = VIEWER_CONFIG['face_thumbnails']
+    # Visibility and current DB crop inputs are read above, even on a cache hit.
+    # Oversized inputs render normally without retaining them in the cache.
     try:
-        bbox_x1, bbox_y1, bbox_x2, bbox_y2 = face['bbox_x1'], face['bbox_y1'], face['bbox_x2'], face['bbox_y2']
-        if bbox_x1 is None or bbox_x2 is None:
-            return None
-
-        thumb_img = Image.open(BytesIO(face['thumbnail']))
-        thumb_w, thumb_h = thumb_img.size
-
-        if thumb_w >= thumb_h:
-            estimated_orig_longest = max(bbox_x2, bbox_y2 * thumb_w / thumb_h)
-        else:
-            estimated_orig_longest = max(bbox_y2, bbox_x2 * thumb_h / thumb_w)
-
-        estimated_orig_longest = max(estimated_orig_longest * 1.05, 100)
-        scale = max(thumb_w, thumb_h) / estimated_orig_longest
-
-        x1 = max(0, int(bbox_x1 * scale))
-        y1 = max(0, int(bbox_y1 * scale))
-        x2 = min(thumb_w, int(bbox_x2 * scale))
-        y2 = min(thumb_h, int(bbox_y2 * scale))
-
-        padding_ratio = VIEWER_CONFIG['face_thumbnails']['crop_padding_ratio']
-        pad_x = int((x2 - x1) * padding_ratio)
-        pad_y = int((y2 - y1) * padding_ratio)
-        x1 = max(0, x1 - pad_x)
-        y1 = max(0, y1 - pad_y)
-        x2 = min(thumb_w, x2 + pad_x)
-        y2 = min(thumb_h, y2 + pad_y)
-
-        min_size = VIEWER_CONFIG['face_thumbnails']['min_crop_size_px']
-        if x2 - x1 < min_size or y2 - y1 < min_size:
-            cx, cy = thumb_w // 2, thumb_h // 2
-            s = min(thumb_w, thumb_h) // 2
-            x1, y1 = cx - s, cy - s
-            x2, y2 = cx + s, cy + s
-
-        face_crop = thumb_img.crop((x1, y1, x2, y2))
-        output_size = VIEWER_CONFIG['face_thumbnails']['output_size_px']
-        face_crop.thumbnail((output_size, output_size), Image.Resampling.LANCZOS)
-
-        buf = BytesIO()
-        face_crop.save(buf, format="JPEG", quality=VIEWER_CONFIG['face_thumbnails']['jpeg_quality'])
-        return buf.getvalue()
+        cacheable = len(face['thumbnail']) <= 128 * 1024 and 0 < settings['output_size_px'] <= 256
+        render = _cached_face_crop if cacheable else _render_face_crop
+        return render(face['thumbnail'], (face['bbox_x1'], face['bbox_y1'], face['bbox_x2'], face['bbox_y2']),
+                      settings['crop_padding_ratio'], settings['min_crop_size_px'],
+                      settings['output_size_px'], settings['jpeg_quality'])
     except (OSError, ValueError, TypeError):
         logger.debug("Failed to generate face thumbnail on-the-fly", exc_info=True)
         return None
@@ -328,13 +345,20 @@ def person_thumbnail(
     vis_sql, vis_params = get_visibility_clause(user.user_id if user else None, table_alias='p')
     with get_db() as conn:
         face = conn.execute(f"""
-            SELECT f.id FROM faces f
+            SELECT f.id FROM persons pe
+            JOIN faces f ON f.id=pe.representative_face_id AND f.person_id=pe.id
             JOIN photos p ON p.path=f.photo_path
-            JOIN persons pe ON pe.id=f.person_id
             WHERE pe.id=? AND {vis_sql}
-            ORDER BY (f.id=pe.representative_face_id) DESC, f.confidence DESC, f.id
-            LIMIT 1
         """, [person_id, *vis_params]).fetchone()
+        if face is None:
+            face = conn.execute(f"""
+                SELECT f.id FROM faces f
+                JOIN photos p ON p.path=f.photo_path
+                JOIN persons pe ON pe.id=f.person_id
+                WHERE pe.id=? AND {vis_sql}
+                ORDER BY (f.id=pe.representative_face_id) DESC, f.confidence DESC, f.id
+                LIMIT 1
+            """, [person_id, *vis_params]).fetchone()
     if face:
         face_bytes = _get_face_thumbnail_data(face['id'], user)
         if face_bytes:

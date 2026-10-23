@@ -359,13 +359,17 @@ Acesse pelo botão no cabeçalho ou por `/persons`:
 
 ### Marcar um rosto não detectado
 
-As marcações manuais excluídas não reaparecem nas sincronizações seguintes, mesmo que uma cópia antiga ainda as contenha. Se cópias antigas tiverem identidades de pessoas conflitantes, a sincronização para e mantém as marcações para revisão.
-
-As miniaturas de rostos e pessoas verificam o acesso atual às fotos antes de serem reutilizadas. Os avatares mostram uma aparição visível e os recortes manuais editados não reutilizam imagens antigas de caches públicos.
-
 No modo de edição, abra uma foto e escolha **Marcar um rosto ausente**, mesmo que nenhum rosto tenha sido detectado. Desenhe um retângulo ou ajuste as coordenadas nos campos identificados. Escolha uma pessoa existente ou digite um novo nome e clique em **Salvar**. O desenho e o nome são apenas uma prévia; Cancelar não salva nada.
 
-No mesmo editor você pode ajustar, reatribuir ou remover marcações manuais. Elas continuam ligadas à pessoa após novas varreduras e sincronizações do visualizador; não treinam o reconhecimento nem alteram as notas de qualidade facial. A prévia orientada vem do original para manter as coordenadas corretas em RAW e fotos giradas. Sem o original, é possível listar e remover marcas existentes, mas não desenhar. Se o arquivo mudar, a marca fica indicada para revisão.
+As marcações manuais excluídas não reaparecem nas sincronizações seguintes, mesmo que uma cópia antiga ainda as contenha. Mudanças de nome e visibilidade feitas no scanner são transferidas para o visualizador pela identidade estável da pessoa, mantendo os vínculos dos rostos manuais.
+
+As miniaturas de rostos e pessoas verificam o acesso atual às fotos antes de serem reutilizadas. Os avatares mostram uma aparição visível e os recortes manuais editados não reutilizam imagens antigas de caches públicos. A configuração antiga `viewer.performance.face_cache_size` é ignorada e pode ser removida das configurações personalizadas.
+
+No mesmo editor você pode ajustar, reatribuir ou remover marcações manuais. Elas continuam ligadas à pessoa após novas varreduras e sincronizações do visualizador; não treinam o reconhecimento nem alteram as notas de qualidade facial. A prévia orientada vem do original para manter as coordenadas corretas em RAW e fotos giradas. Sem o original, é possível listar e remover marcas existentes, mas não desenhar. Uma marcação que não pode ser verificada mostra **Precisa de revisão**.
+
+As novas marcações usam um hash dos pixels decodificados na orientação correta e das dimensões do quadro. Incorporar metadados do Facet, remontar um volume ou mudar de computador preserva as marcações se os pixels permanecerem iguais. O editor reutiliza um quadro decodificado de até 128 MiB e pequenos registros de impressões digitais; quadros maiores podem precisar de outra decodificação. O limite é fixo.
+
+As marcações de versões prévias anteriores continuam salvas e precisam de uma revisão única. Abra o original e edite/salve deliberadamente a marcação com uma nova prévia do editor para registrar a nova identidade. As marcações antigas mantêm a identidade anterior até esse salvamento.
 
 As alterações ficam no banco de dados da biblioteca, sem modificar os originais ou arquivos auxiliares. A imagem permanece ajustada ao editor durante o desenho.
 

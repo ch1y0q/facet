@@ -2576,7 +2576,7 @@
     "add": "Nouvelle marque",
     "saved": "Visages manuels enregistrés",
     "unnamed": "Personne sans nom",
-    "needs_review": "À vérifier : source modifiée",
+    "needs_review": "À vérifier",
     "edit": "Modifier / réattribuer",
     "remove": "Supprimer la marque",
     "empty": "Aucun visage manuel enregistré.",
