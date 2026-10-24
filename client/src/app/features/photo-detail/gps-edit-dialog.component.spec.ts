@@ -24,7 +24,7 @@ describe('GpsEditDialogComponent', () => {
   let component: GpsEditDialogComponent;
   let mockDialogRef: { close: Mock };
   let mockApi: { put: Mock; get: Mock; post: Mock; delete: Mock };
-  let mockStore: { patchPhoto: Mock; filters: Mock; loadPhotos: Mock };
+  let mockStore: { patchPhoto: Mock; filters: Mock; loadPhotos: Mock; refreshPaths: Mock };
   let mockSnackBar: { open: Mock };
   let fixture: ComponentFixture<GpsEditDialogComponent>;
 
@@ -36,7 +36,7 @@ describe('GpsEditDialogComponent', () => {
     TestBed.resetTestingModule();
     mockDialogRef = { close: vi.fn() };
     mockApi = { put: vi.fn(() => of({ gps_latitude: data.lat, gps_longitude: data.lng })), get: vi.fn(() => of({ places, recent: [] })), post: vi.fn(), delete: vi.fn() };
-    mockStore = { patchPhoto: vi.fn(), filters: vi.fn(() => ({ no_gps: '' })), loadPhotos: vi.fn() };
+    mockStore = { patchPhoto: vi.fn(), filters: vi.fn(() => ({ no_gps: '' })), loadPhotos: vi.fn(), refreshPaths: vi.fn() };
     mockSnackBar = { open: vi.fn() };
 
     TestBed.configureTestingModule({
@@ -58,6 +58,61 @@ describe('GpsEditDialogComponent', () => {
       fixture.detectChanges();
     } else component = TestBed.inject(GpsEditDialogComponentClass);
   }
+
+  it('keeps a blank or partial batch draft from previewing or clearing photos', async () => {
+    createComponent({ path: '', filename: 'selection', lat: null, lng: null, batch: { photo_paths: ['/partial.jpg'] } });
+    expect(component.batchCoordinatesValid()).toBe(false);
+    await component.previewBatch();
+    await component.save();
+    component.setLatitude(1);
+    expect(component.batchCoordinatesValid()).toBe(false);
+    await component.previewBatch();
+    expect(mockApi.post).not.toHaveBeenCalled();
+    expect(mockApi.put).not.toHaveBeenCalled();
+  });
+
+  it('requires a fresh batch preview, captures its target and refreshes after late completion', async () => {
+    const target = { photo_paths: ['/one.jpg', '/two.jpg'] };
+    const onBatchApplied = vi.fn();
+    createComponent({ path: '', filename: 'selection', lat: null, lng: null, batch: target, onBatchApplied });
+    component.selectRecent({ latitude: 1, longitude: 2 });
+    await component.save();
+    expect(mockApi.post).not.toHaveBeenCalled();
+    mockApi.post.mockReturnValue(of({ changed: 1, skipped: 1, preview_token: 'token' }));
+    await component.previewBatch();
+    expect(component.canApplyBatch()).toBe(true);
+    component.setLatitude(3);
+    expect(component.canApplyBatch()).toBe(false);
+    component.setLatitude(1);
+    const pending = new Subject<{ changed: number; skipped: number; preview_token: string }>();
+    mockApi.post.mockReturnValue(pending);
+    const saving = component.save();
+    target.photo_paths.push('/later.jpg');
+    component.cancel();
+    TestBed.resetTestingModule();
+    pending.next({ changed: 1, skipped: 1, preview_token: 'token' });
+    pending.complete();
+    await saving;
+    expect(mockApi.post).toHaveBeenLastCalledWith('/photos/batch_gps', expect.objectContaining({
+      photo_paths: ['/one.jpg', '/two.jpg'], preview: false, preview_token: 'token', only_missing: true,
+    }));
+    expect(mockStore.refreshPaths).toHaveBeenCalledWith(null);
+    expect(mockStore.loadPhotos).not.toHaveBeenCalled();
+    expect(onBatchApplied).toHaveBeenCalledTimes(1);
+    expect(mockDialogRef.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('invalidates a batch preview after apply fails and keeps the draft', async () => {
+    createComponent({ path: '', filename: 'selection', lat: null, lng: null, batch: { filters: { no_gps: '1' } } });
+    component.selectRecent({ latitude: 1, longitude: 2 });
+    mockApi.post.mockReturnValue(of({ changed: 2, skipped: 0, preview_token: 'token' }));
+    await component.previewBatch();
+    mockApi.post.mockReturnValue(throwError(() => ({ status: 409 })));
+    await component.save();
+    expect(component.canApplyBatch()).toBe(false);
+    expect(component.selectedLat()).toBe(1);
+    expect(mockDialogRef.close).not.toHaveBeenCalled();
+  });
 
   it('should initialize with provided coordinates', () => {
     createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 48.8566, lng: 2.3522 });
@@ -360,6 +415,91 @@ describe('GpsEditDialogComponent', () => {
       expect(component.saveError()).toBe('photo_detail.gps.save_error');
     });
   });
+  describe('batch completion with the real gallery store', () => {
+    let store: GalleryStore;
+    let serverPhotos = [makePhoto({ path: '/old.jpg' })];
+    let pending: Subject<{ changed: number; skipped: number; preview_token: string }>;
+
+    beforeEach(async () => {
+      TestBed.resetTestingModule();
+      serverPhotos = [makePhoto({ path: '/old.jpg' })];
+      pending = new Subject();
+      mockApi = {
+        get: vi.fn((url: string) => of(url === '/places' ? { places: [], recent: [] } : {
+          photos: serverPhotos, total: serverPhotos.length, page: 1, per_page: 64, total_pages: 1, has_more: false,
+        })),
+        put: vi.fn(), delete: vi.fn(),
+        post: vi.fn((url: string, body: { preview?: boolean }) => url === '/photos/batch_gps'
+          ? body.preview ? of({ changed: 1, skipped: 0, preview_token: 'token' }) : pending
+          : of({ photos: serverPhotos, total: serverPhotos.length, missing: [] })),
+      };
+      TestBed.configureTestingModule({ providers: [
+        GpsEditDialogComponentClass, GalleryStore,
+        { provide: MAT_DIALOG_DATA, useValue: { path: '', filename: 'selection', lat: null, lng: null, batch: { photo_paths: ['/old.jpg'] } } },
+        { provide: MatDialogRef, useValue: { close: vi.fn() } },
+        { provide: ApiService, useValue: mockApi },
+        { provide: Router, useValue: { navigate: vi.fn(), events: NEVER } },
+        { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
+        { provide: AuthService, useValue: { isEdition: () => true } },
+        { provide: AlbumService, useValue: { list: () => of({ albums: [] }), update: () => of({}) } },
+        { provide: I18nService, useValue: { t: (key: string) => key } },
+        { provide: MatSnackBar, useValue: { open: vi.fn() } },
+      ] });
+      component = TestBed.inject(GpsEditDialogComponentClass);
+      store = TestBed.inject(GalleryStore);
+      store.filters.update(f => ({ ...f, no_gps: '1', camera: 'Canon' }));
+      await store.loadPhotos();
+      component.selectRecent({ latitude: 1, longitude: 2 });
+      await component.previewBatch();
+    });
+
+    async function finish(saving: Promise<void>) {
+      pending.next({ changed: 1, skipped: 0, preview_token: 'token' });
+      pending.complete();
+      await saving;
+      // Drain the store's serialized refresh queue to inspect the settled view.
+      await store.refreshPaths([]);
+    }
+
+    it('preserves a newer whole-view selection and exclusions after dismissed save completes', async () => {
+      const saving = component.save();
+      component.cancel();
+      serverPhotos = [makePhoto({ path: '/new.jpg' }), makePhoto({ path: '/excluded.jpg' })];
+      store.filters.update(f => ({ ...f, no_gps: '', camera: 'Nikon' }));
+      await store.loadPhotos();
+      store.selectWholeView();
+      store.excludedPaths.set(new Set(['/excluded.jpg']));
+      await finish(saving);
+      expect(store.viewScopeSelected()).toBe(true);
+      expect([...store.excludedPaths()]).toEqual(['/excluded.jpg']);
+      expect(store.filters().camera).toBe('Nikon');
+      expect(store.photos().map(p => p.path)).toEqual(['/new.jpg', '/excluded.jpg']);
+    });
+
+    it('preserves the newer pinned list and updates its rows after late completion', async () => {
+      const saving = component.save();
+      component.cancel();
+      serverPhotos = [makePhoto({ path: '/pin.jpg', gps_latitude: 0, gps_longitude: 0 })];
+      await store.showPaths(['/pin.jpg']);
+      serverPhotos = [makePhoto({ path: '/pin.jpg', gps_latitude: 5, gps_longitude: 6 })];
+      await finish(saving);
+      expect(store.pinnedPaths()).toEqual(['/pin.jpg']);
+      expect(store.photos().map(p => p.path)).toEqual(['/pin.jpg']);
+      expect(store.photos()[0].gps_latitude).toBe(5);
+      expect(mockApi.post).toHaveBeenLastCalledWith('/photos/by_paths', { paths: ['/pin.jpg'] });
+    });
+
+    it('recomputes the current missing-GPS membership and count after apply', async () => {
+      const saving = component.save();
+      serverPhotos = [];
+      await finish(saving);
+      expect(store.photos()).toEqual([]);
+      expect(store.total()).toBe(0);
+      expect(store.filters()).toMatchObject({ no_gps: '1', camera: 'Canon' });
+      expect(mockApi.get).toHaveBeenLastCalledWith('/photos', expect.objectContaining({ no_gps: '1', camera: 'Canon' }));
+    });
+  });
+
   describe('missing-location membership with the real gallery store', () => {
     let store: GalleryStore;
     const photo = makePhoto({ path: '/photo.jpg', gps_latitude: null, gps_longitude: null, gps_manually_set: 1 });

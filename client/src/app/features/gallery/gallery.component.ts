@@ -659,6 +659,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
             <button mat-icon-button disabledInteractive (click)="copyPaths()" [matTooltip]="I18N.gallery.selection.copy_filenames | translate" [attr.aria-label]="I18N.gallery.selection.copy_filenames | translate"><mat-icon>content_copy</mat-icon></button>
             @if (auth.isEdition()) {
               <button mat-icon-button (click)="openCaptureDateDialog()" [matTooltip]="I18N.capture_date.title | translate" [attr.aria-label]="I18N.capture_date.title | translate"><mat-icon>edit_calendar</mat-icon></button>
+              <button mat-icon-button disabledInteractive (click)="openBatchGpsDialog()" [matTooltip]="I18N.photo_detail.gps.batch_title | translate" [attr.aria-label]="I18N.photo_detail.gps.batch_title | translate"><mat-icon>location_on</mat-icon></button>
               <button mat-icon-button disabledInteractive (click)="openManualTagsDialog()" [matTooltip]="I18N.gallery.selection.edit_tags | translate" [attr.aria-label]="I18N.gallery.selection.edit_tags | translate"><mat-icon>sell</mat-icon></button>
               <button mat-icon-button disabledInteractive (click)="openExportDialog()" [matTooltip]="I18N.export.action | translate" [attr.aria-label]="I18N.export.action | translate"><mat-icon>drive_file_move</mat-icon></button>
               <button mat-icon-button disabledInteractive (click)="openCullDialog()" [matTooltip]="I18N.cull.action | translate" [attr.aria-label]="I18N.cull.action | translate"><mat-icon>folder_move</mat-icon></button>
@@ -1203,7 +1204,10 @@ export class GalleryComponent implements OnInit, OnDestroy {
     return buildMosaicRows(photos, width, this.store.cardWidth() || 168, GalleryComponent.ROW_GAP);
   });
 
+  private gpsDialogOwnerDestroyed = false;
+
   constructor() {
+    this.destroyRef.onDestroy(() => { this.gpsDialogOwnerDestroyed = true; });
     afterNextRender(() => {
       this.isTouchDevice.set(window.matchMedia('(hover: none)').matches);
       this.touchOnly.set(window.matchMedia('(hover: none) and (pointer: coarse)').matches);
@@ -1870,6 +1874,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
       case 'mark-panorama':
       case 'capture-date':
       case 'tags':
+      case 'gps':
         break;
       default: return assertNever(action);
     }
@@ -1917,6 +1922,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
       case 'cull': await this.openCullDialog(); break;
       case 'capture-date': await this.openCaptureDateDialog(); break;
       case 'tags': await this.openManualTagsDialog(); break;
+      case 'gps': await this.openBatchGpsDialog(); break;
       case 'delete': await this.deleteSelected(); break;
       case 'copy': await this.copyPaths(); break;
       case 'mark-panorama': await this.markAsPanorama(action.sequenceKind); break;
@@ -2026,6 +2032,27 @@ export class GalleryComponent implements OnInit, OnDestroy {
     const { CaptureDateDialogComponent } = await import('../photo-detail/capture-date-dialog.component');
     if (this.destroyRef.destroyed) return;
     this.dialog.open(CaptureDateDialogComponent, { width: '95vw', maxWidth: '760px', data });
+  }
+
+  async openBatchGpsDialog(): Promise<void> {
+    if (!this.auth.isEdition() || !this.selectionCount()) return;
+    const selectionIdentity = () => JSON.stringify({
+      view: this.viewScoped(), paths: [...this.selectedPaths()].sort(),
+      exclude: [...this.excludedPaths()].sort(), filters: this.store.filterPayload(),
+    });
+    const originalSelection = selectionIdentity();
+    const onBatchApplied = () => {
+      if (!this.gpsDialogOwnerDestroyed && selectionIdentity() === originalSelection) this.store.clearSelection();
+    };
+    const batch = this.viewScoped()
+      ? { filters: structuredClone(this.store.filterPayload()), exclude: [...this.excludedPaths()] }
+      : { photo_paths: [...this.selectedPaths()] };
+    const { GpsEditDialogComponent } = await import('../photo-detail/gps-edit-dialog.component');
+    if (this.gpsDialogOwnerDestroyed || !this.auth.isEdition()) return;
+    this.dialog.open(GpsEditDialogComponent, {
+      width: '95vw', maxWidth: '640px',
+      data: { path: '', filename: this.i18n.t(I18N.photo_detail.gps.batch_title), lat: null, lng: null, batch, onBatchApplied },
+    });
   }
 
   /** Bulk add/remove of one manual tag. The dialog owns the request; the list is
