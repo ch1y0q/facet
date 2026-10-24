@@ -264,3 +264,34 @@ def test_conflicting_standard_review_still_respects_legacy_timestamp_gate(tmp_pa
                  (str(image), '2020-01-01T00:00:00Z'))
     import_sidecars(conn)
     assert tuple(conn.execute('SELECT star_rating,is_favorite,is_rejected,is_kept FROM photos').fetchone()) == (5,1,0,1)
+
+
+@pytest.mark.parametrize('latitude,longitude,expected', [
+    ('48,51N', '2,21E', (48.85, 2.35)),
+    ('48,51N', None, None), (None, '2,21E', None),
+    ('invalid', '2,21E', None), ('91N', '2E', None),
+    ('48N', '', None), (None, None, (None, None)),
+    ('', '  ', (None, None)),
+])
+@pytest.mark.parametrize('manual,overwrite', [(False, False), (True, False), (True, True)])
+def test_exported_clear_external_coordinates_import(tmp_path, monkeypatch, latitude, longitude, expected, manual, overwrite):
+    from xml.etree import ElementTree as ET
+    from processing.xmp_export import NS_EXIF, NS_RDF
+    monkeypatch.setattr('processing.xmp_export.exiftool_available', lambda: False)
+    image = tmp_path / 'external-gps.jpg'
+    image.write_bytes(b'original')
+    write_metadata(str(image), XmpRating.from_row({'gps_manually_set': 1}))
+    sidecar = Path(str(image) + '.xmp')
+    packet = ET.fromstring(sidecar.read_bytes())
+    desc = packet.find(f'.//{{{NS_RDF}}}Description')
+    for name, value in [('GPSLatitude', latitude), ('GPSLongitude', longitude)]:
+        if value is not None:
+            desc.set(f'{{{NS_EXIF}}}{name}', value)
+    sidecar.write_bytes(ET.tostring(packet))
+    assert parse_sidecar(str(sidecar))['gps'] == expected
+    conn = database(tmp_path)
+    conn.execute('INSERT INTO photos(path,gps_latitude,gps_longitude,gps_manually_set) VALUES (?,10,20,?)', (str(image), int(manual)))
+    import_sidecars(conn, overwrite_manual_gps=overwrite)
+    actual = tuple(conn.execute('SELECT gps_latitude,gps_longitude,gps_manually_set FROM photos').fetchone())
+    assert actual == ((*expected, 1) if expected is not None and (not manual or overwrite) else (10, 20, int(manual)))
+    assert image.read_bytes() == b'original'

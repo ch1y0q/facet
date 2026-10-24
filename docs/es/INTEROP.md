@@ -172,3 +172,5 @@ Facet guarda los tags que escribes tú mismo (ver [Galería web — Tags manuale
 | Zonas de rostro con nombre | `mwg-rs:RegionList` MWG (centrada-normalizada, `Type=Face`) | No se reimporta | Solo exportación; leída de forma nativa por digiKam, **no** leída por Lightroom (una limitación conocida de Adobe — Lightroom solo consume las zonas MWG que él mismo escribió) |
 
 Consulta [Comandos — Vista previa y exportación](COMMANDS.md#vista-previa-y-exportación) para la referencia completa de la CLI (`--export-sidecars`, `--import-sidecars`, `--embed-originals`, `--score-to-stars`, `--user`).
+
+Si un marcador obsoleto `facet:GPSState=cleared` acompaña a campos GPS estándar, prevalece el par completo y válido de latitud/longitud. Un par parcial o no válido con contenido es ambiguo y se ignora; nunca borra la ubicación. Solo un par ausente o vacío con el marcador explícito borra el GPS. El GPS manual sigue protegido salvo que se solicite sobrescribirlo expresamente.

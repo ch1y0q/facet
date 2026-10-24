@@ -5,6 +5,7 @@ All notable changes to Facet are documented in this file.
 ## [Unreleased]
 
 ### Added
+- Explicit XMP export/import carries Keep decisions and manual GPS, with protection against overwriting existing manual locations.
 
 - **Correct capture dates** from photo details or gallery selections: preview a bounded walltime shift before applying it atomically, preserve manual dates across rescans/viewer exports, restore the file date, and export manual dates through the existing explicit XMP/embed actions.
 
