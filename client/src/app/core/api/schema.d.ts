@@ -3220,6 +3220,8 @@ export interface paths {
          *     The preview snapshot, visibility, missing coordinates and saved-place
          *     ownership are checked again under the apply transaction's write lock.
          *     Equal coordinates are skipped rather than pinning an unchanged file location.
+         *     The deterministic token guards against stale inputs; it is not authorization
+         *     or proof that a preview was requested. Edition access remains required.
          */
         post: operations["api_batch_gps_api_photos_batch_gps_post"];
         delete?: never;
@@ -5035,7 +5037,7 @@ export interface components {
             gps_longitude: number;
             /**
              * Only Missing
-             * @default false
+             * @default true
              */
             only_missing?: boolean;
             /** Photo Paths */

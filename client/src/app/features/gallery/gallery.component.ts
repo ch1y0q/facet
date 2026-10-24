@@ -1994,9 +1994,6 @@ export class GalleryComponent implements OnInit, OnDestroy {
     });
   }
 
-  /** Bulk add/remove of one manual tag. The dialog owns the request; the list is
-   *  refetched afterwards because a photo opened in the detail view carries the
-   *  grid row's `manual_tags`, which a bulk write has just made stale. */
   async openBatchGpsDialog(): Promise<void> {
     if (!this.auth.isEdition() || !this.selectionCount()) return;
     const selectionIdentity = () => JSON.stringify({
@@ -2018,6 +2015,9 @@ export class GalleryComponent implements OnInit, OnDestroy {
     });
   }
 
+  /** Bulk add/remove of one manual tag. The dialog owns the request; the list is
+   *  refetched afterwards because a photo opened in the detail view carries the
+   *  grid row's `manual_tags`, which a bulk write has just made stale. */
   async openManualTagsDialog(): Promise<void> {
     const viewScoped = this.viewScoped();
     const paths = [...this.selectedPaths()];

@@ -229,7 +229,7 @@ class BatchGpsRequest(BatchPhotoRequest):
     gps_latitude: Latitude
     gps_longitude: Longitude
     saved_place_id: int | None = None
-    only_missing: bool = False
+    only_missing: bool = True
     preview: bool = False
     preview_token: str | None = Field(default=None, max_length=64)
 
@@ -262,13 +262,15 @@ def api_batch_gps(body: BatchGpsRequest, user: CurrentUser = Depends(require_edi
     The preview snapshot, visibility, missing coordinates and saved-place
     ownership are checked again under the apply transaction's write lock.
     Equal coordinates are skipped rather than pinning an unchanged file location.
+    The deterministic token guards against stale inputs; it is not authorization
+    or proof that a preview was requested. Edition access remains required.
     """
     if not {'gps_latitude', 'gps_longitude', 'gps_manually_set'} <= get_existing_columns():
         raise HTTPException(status_code=400, detail="GPS columns not available")
     owner = place_owner(user)
     with get_db() as conn, conn:
         try:
-            conn.execute("BEGIN IMMEDIATE")
+            conn.execute("BEGIN" if body.preview else "BEGIN IMMEDIATE")
             if body.saved_place_id is not None:
                 saved = places.get_place(conn, owner, body.saved_place_id)
                 if (saved['latitude'], saved['longitude']) != (body.gps_latitude, body.gps_longitude):

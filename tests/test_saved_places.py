@@ -295,7 +295,7 @@ def test_batch_gps_bounded_scope_and_chunked_apply(edition_client, seed_photos_p
 def test_batch_gps_failure_rolls_back_and_unchanged_coordinates_are_skipped(edition_client, seed_photos_prefix):
     path = '/batchgpsrollback/a.jpg'
     seed_photos_prefix('/batchgpsrollback/', [{'path': path, 'filename': path, 'gps_latitude': 1, 'gps_longitude': 2}])
-    body = {'photo_paths': [path], 'gps_latitude': 1, 'gps_longitude': 2, 'preview': True}
+    body = {'photo_paths': [path], 'gps_latitude': 1, 'gps_longitude': 2, 'preview': True, 'only_missing': False}
     assert edition_client.post('/api/photos/batch_gps', json=body).json()['skipped'] == 1
     body['gps_latitude'] = 3
     preview = edition_client.post('/api/photos/batch_gps', json=body).json()
@@ -320,3 +320,56 @@ def test_batch_gps_revalidates_place_owner_and_records_one_assignment(edition_cl
     listing = edition_client.get('/api/places').json()
     assert listing['places'][0]['use_count'] == 1
     assert len(listing['recent']) == 1
+
+
+@pytest.mark.parametrize('preview', [True, False], ids=['preview-read-lock', 'apply-write-lock'])
+def test_batch_gps_preview_does_not_reserve_writer_lock(edition_client, seed_photos_prefix, preview):
+    path = '/batchgpslocking/a.jpg'
+    seed_photos_prefix('/batchgpslocking/', [{'path': path, 'filename': path}])
+    body = {'photo_paths': [path], 'gps_latitude': 1, 'gps_longitude': 2, 'preview': True}
+    snapshot = edition_client.post('/api/photos/batch_gps', json=body).json()
+    body.update(preview=preview, preview_token=snapshot['preview_token'])
+    from api.routers.map import _gps_batch_scopes
+
+    def check_scanner_lock(conn, *args):
+        # A separate scanner connection can reserve the writer slot during a
+        # read preview, while an apply must already own that slot.
+        db_path = conn.execute('PRAGMA database_list').fetchone()[2]
+        with sqlite3.connect(db_path, timeout=0) as scanner:
+            if preview:
+                scanner.execute('BEGIN IMMEDIATE')
+                scanner.rollback()
+            else:
+                with pytest.raises(sqlite3.OperationalError, match='locked'):
+                    scanner.execute('BEGIN IMMEDIATE')
+        yield from _gps_batch_scopes(conn, *args)
+
+    with patch('api.routers.map._gps_batch_scopes', side_effect=check_scanner_lock):
+        response = edition_client.post('/api/photos/batch_gps', json=body)
+    assert response.status_code == 200, response.text
+    assert response.json()['changed'] == 1
+    with get_db() as conn:
+        assert conn.execute('SELECT gps_manually_set FROM photos WHERE path=?', (path,)).fetchone()[0] == (0 if preview else 1)
+
+
+def test_batch_gps_api_protects_existing_locations_by_default(edition_client, seed_photos_prefix):
+    prefix = '/batchgpsdefault/'
+    missing, existing = prefix + 'missing.jpg', prefix + 'existing.jpg'
+    seed_photos_prefix(prefix, [
+        {'path': missing, 'filename': missing},
+        {'path': existing, 'filename': existing, 'gps_latitude': 8, 'gps_longitude': 9},
+    ])
+    body = {'photo_paths': [missing, existing], 'gps_latitude': 1, 'gps_longitude': 2, 'preview': True}
+    preview = edition_client.post('/api/photos/batch_gps', json=body).json()
+    assert (preview['changed'], preview['skipped']) == (1, 1)
+    body.update(preview=False, preview_token=preview['preview_token'])
+    assert edition_client.post('/api/photos/batch_gps', json=body).json()['changed'] == 1
+    with get_db() as conn:
+        assert tuple(conn.execute('SELECT gps_latitude,gps_longitude,gps_manually_set FROM photos WHERE path=?', (existing,)).fetchone()) == (8, 9, 0)
+    body.update(preview=True, only_missing=False)
+    preview = edition_client.post('/api/photos/batch_gps', json=body).json()
+    assert (preview['changed'], preview['skipped']) == (1, 1)
+    body.update(preview=False, preview_token=preview['preview_token'])
+    assert edition_client.post('/api/photos/batch_gps', json=body).json()['changed'] == 1
+    with get_db() as conn:
+        assert tuple(conn.execute('SELECT gps_latitude,gps_longitude,gps_manually_set FROM photos WHERE path=?', (existing,)).fetchone()) == (1, 2, 1)
