@@ -10,6 +10,10 @@ All notable changes to Facet are documented in this file.
 
 - **Keep photos and resume from the ones you have not reviewed.** The gallery has Keep and Reset decision actions, a `K` shortcut, Undo, and Needs review / Kept / Rejected filters. Keep is separate from stars and favorites, survives rescans, and is also saved when you confirm a culling group. `--auto-cull --cull-min-score` never rejects a kept photo on its score, as it already spared favourites and starred photos.
 
+### Fixed
+
+- **The CUDA Docker image builds again.** 1.23.0 pinned setuptools 84.1.0 in `requirements.restricted.lock.txt`, but the image's base torch 2.11.0 requires `setuptools<82`, so pip replaced it with a CUDA 13 torch build and the image's torch check stopped the build: 1.23.0 published only the `cpu` and `cuda-legacy` images. The restricted lock is back on setuptools 81.0.0, the version the CUDA base image ships. That leaves the low-severity, Windows-only GHSA-xmj3-9gf7-h52w (a path escape during legacy wheel installs) unfixed in that lock until the base image moves to a torch without the cap; `requirements.legacy.restricted.lock.txt` keeps 84.1.0.
+
 ## [1.23.0] "Clap" — 2026-10-24
 
 ### Added
@@ -53,6 +57,7 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- **`--upgrade-db` no longer re-measures every no-subject photo on each run** (PR #257, thanks @ch1y0q). `--recompute-saliency` selected photos by `subject_bbox IS NULL`, but a photo BiRefNet has already scored as having no subject legitimately stores prominence 0.0 with no box, so every upgrade re-ran it for the identical result (1,899 of 13,720 photos on one library, every time). A photo is now selected when its `subject_prominence` was never stored — never scored, or a failed run whose columns were left NULL to retry — and one scored before the `subject_bbox` column existed still gets its backfill run, as does a no-subject photo still carrying the neutral 5.0 of a version before 1.21.0, which one run rewrites to NULL; `--force` is unchanged.
 - **Scanner-side person changes preserve manual face links.** Names and visibility now sync through stable person identities, including people with viewer-created marks. A person from an older database is matched by name, so a reused numeric id never renames one person to another.
 - **Manual face marks survive metadata-only embeds and host changes.** New marks identify the picture by its upright frame size and an 8x8 grayscale signature matched within a small tolerance, so metadata writes, remounts and other hosts keep a mark current and a replaced picture flags it; a subtle retouch or a small re-crop or straighten that keeps the frame size may go undetected. Marks from earlier preview builds remain saved for a one-time review and explicit edit/save with a fresh editor frame.
 - **Cold searches stop waiting when Apple Silicon is busy** (PR #246, thanks @veyxov). Concurrent requests share the existing 15-second wait budget instead of waiting through another timeout for every queued search.
