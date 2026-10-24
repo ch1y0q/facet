@@ -109,6 +109,20 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m pip install --quiet --upgrade pip
       - run: python -m pip install --dry-run --ignore-installed --quiet -r "${{ matrix.lock }}"
+      - name: Resolves with the restricted lock on the CUDA image's base torch
+        # A CUDA image keeps its base image's torch and then installs this lock
+        # and its restricted twin on top. A pin the base torch excludes makes pip
+        # swap torch for another build, which the Dockerfile's torch guard
+        # refuses: setuptools 84.1.0 against torch 2.11.0's `setuptools<82`
+        # broke the v1.23.0 cuda image after every CI gate had passed. The torch
+        # version is read from docker-publish.yml, so the two cannot drift.
+        env:
+          LOCK: ${{ matrix.lock }}
+        run: |
+          python -m pip install --quiet pyyaml
+          torch=$(python -c 'import os, yaml; entries = yaml.safe_load(open(".github/workflows/docker-publish.yml"))["jobs"]["build-and-push"]["strategy"]["matrix"]["include"]; found = [e["expect_torch"].split("+")[0] for e in entries if e["requirements_lock"] == os.environ["LOCK"] and e["expect_torch"]]; assert len(found) == 1, found; print(found[0])')
+          echo "Resolving $LOCK and ${LOCK%.lock.txt}.restricted.lock.txt on torch==$torch"
+          python -m pip install --dry-run --ignore-installed --quiet -r "$LOCK" -r "${LOCK%.lock.txt}.restricted.lock.txt" "torch==$torch"
 
   angular-tests:
     name: Angular Tests
