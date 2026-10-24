@@ -363,3 +363,30 @@ def test_identity_failure_never_aborts_a_scan_batch_or_export(identity_photo, mo
     row = {'is_manual': 1, 'photo_path': identity_photo, 'manual_source': identity,
            'manual_width': 100, 'manual_height': 80}
     assert export_dimensions(row, 100, 80) is None
+
+
+def test_mark_drawn_after_the_scan_snapshot_still_suppresses_detection(edition_client, identity_photo):
+    from db.manual_faces import without_manual_overlaps
+    _mark(edition_client, identity_photo)
+    record = (identity_photo, 0, b'', 10, 8, 50, 64)
+    with get_db() as conn:
+        # An empty snapshot: the mark did not exist when the scan validated paths.
+        assert without_manual_overlaps(conn, identity_photo, [record], review_states={}) == []
+
+
+def test_scan_heals_the_stored_stat_after_a_metadata_only_rewrite(edition_client, identity_photo, monkeypatch):
+    from db.manual_faces import validate_review_paths, without_manual_overlaps
+    from db import DEFAULT_DB_PATH
+    from utils import manual_face_frame as frames
+    _mark(edition_client, identity_photo)
+    _replace_metadata(identity_photo)
+    states = validate_review_paths(DEFAULT_DB_PATH, [identity_photo])
+    assert list(states.values()) == [True]
+    with get_db() as conn:
+        without_manual_overlaps(conn, identity_photo, [], review_states=states)
+        conn.commit()
+    frames.clear_cache()
+    def forbidden(path):
+        pytest.fail('A healed mark was decoded again on the next scan')
+    monkeypatch.setattr(frames, 'load_image_for_face_crop', forbidden)
+    assert list(validate_review_paths(DEFAULT_DB_PATH, [identity_photo]).values()) == [True]

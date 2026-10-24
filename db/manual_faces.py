@@ -78,7 +78,11 @@ def without_manual_overlaps(conn, path, records, review_states=None):
     boxes = []
     for row in manual:
         try:
-            current = (review_states.get((row[5], row[4]), False) if review_states is not None
+            # Only a snapshot "stale" verdict is trusted as is. A mark drawn or
+            # edited since the snapshot is checked here, and a current one is
+            # re-checked with ``conn`` so a metadata-only rewrite heals its stored
+            # stat; the decode is served by the identity cache the snapshot filled.
+            current = (False if review_states is not None and review_states.get((row[5], row[4])) is False
                        else is_current(path, row[4], conn, row[5]))
         except Exception:
             current = False
