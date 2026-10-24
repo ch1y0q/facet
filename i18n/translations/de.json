@@ -2567,7 +2567,8 @@
     "delete_confirm_body": "{count} Fotos werden in den Papierkorb des Betriebssystems verschoben. Sie bleiben wiederherstellbar, bis Sie ihn leeren.",
     "delete_partial_result": "{deleted} gelöscht, {failed} fehlgeschlagen",
     "delete_failed": "Löschen fehlgeschlagen — nichts wurde in den Papierkorb verschoben",
-    "delete_disabled_view_scope_tooltip": "Wählen Sie Fotos explizit aus, um sie zu löschen — eine Auswahl der gesamten Ansicht kann hier nicht verwendet werden"
+    "delete_disabled_view_scope_tooltip": "Wählen Sie Fotos explizit aus, um sie zu löschen — eine Auswahl der gesamten Ansicht kann hier nicht verwendet werden",
+    "remove_missing_rows": "Bibliothekseinträge ebenfalls entfernen, deren Datei auf der Platte bereits fehlt"
   },
   "shortcuts": {
     "title": "Tastenkürzel",

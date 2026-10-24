@@ -181,6 +181,13 @@ class PhotoDeleteRequest(BaseModel):
     # It is also what unblocks a refused bracket-lead delete (decision 7),
     # since that refusal now simply falls out of the general widening.
     include_sequence_siblings: bool = False
+    # Off by default: a file that no longer resolves on disk keeps its row,
+    # because "every file missing" is exactly what a disconnected library
+    # volume looks like and sweeping those rows away would delete the whole
+    # library's index over a dropped mount. Opt in to reconcile such rows
+    # in the same call -- reported in the response's `removed_missing`,
+    # never folded into `deleted` (no file was trashed).
+    remove_missing: bool = False
     dry_run: bool = True
 
 
@@ -1184,7 +1191,15 @@ def api_photo_delete(
     not resolve on disk (already missing) -- neither trashed nor
     row-deleted, so it is reported rather than silently dropped from every
     bucket. Reconciling it is ``--cleanup-missing-photos``'s job, same as any
-    other missing-on-disk row.
+    other missing-on-disk row -- or, with ``remove_missing``, THIS call's:
+    the flag moves such paths out of ``skipped`` into ``removed_missing``
+    (never ``deleted``, which keeps meaning "row gone via a successful
+    trash") and deletes their rows in the same transaction as the trashed
+    paths', lead re-pick included. It stays an opt-in because a request
+    where EVERY file reads as missing is exactly what a disconnected
+    library volume looks like; the viewer's own delete dialog opts in, the
+    preview names the missing rows, and the flag-less default still
+    reports them as ``skipped``.
     """
     send2trash = _require_trash_available()
 
@@ -1222,11 +1237,21 @@ def api_photo_delete(
         items, skipped = _resolve_cull_files(action_paths, body.include_companions)
         files = [f for _, fs in items for f in fs]
 
+        # With `remove_missing`, a skipped path (visible, in `photos`, file
+        # already gone from disk) has its row removed in the same transaction
+        # as the trashed paths' rows, and is reported in `removed_missing`
+        # rather than `skipped`. Off by default -- see PhotoDeleteRequest.
+        removed_missing: list[str] = []
+        if body.remove_missing and skipped:
+            removed_missing = skipped
+            skipped = []
+
         if body.dry_run:
             return PhotoDeleteResponse(
                 dry_run=True, would_trash=files, deleted=[], not_found=not_found,
                 not_visible=not_visible, refused_bracket_lead=refused_bracket_lead,
-                sequence_siblings=sequence_siblings, skipped=skipped, trashed=0, errors={},
+                sequence_siblings=sequence_siblings, skipped=skipped,
+                removed_missing=removed_missing, trashed=0, errors={},
             )
 
         errors: dict[str, str] = {}
@@ -1259,6 +1284,10 @@ def api_photo_delete(
         if companion_files_trashed:
             removed_db_paths |= _photo_membership(conn, list(companion_files_trashed))
 
+        # The reconciled missing rows join the same restricted delete as the
+        # trashed paths: one lead re-pick pass, one `delete_photo_rows`, one
+        # commit -- a missing row and a trashed row are equally gone.
+        removed_db_paths |= set(removed_missing)
         _reassign_dead_leads(conn, removed_db_paths, user_id, commit=False)
         delete_photo_rows(conn, list(removed_db_paths), preserve_auto_retrain_counters=True)
         conn.commit()
@@ -1292,9 +1321,10 @@ def api_photo_delete(
             )
 
     return PhotoDeleteResponse(
-        dry_run=False, deleted=sorted(removed_db_paths), not_found=not_found,
-        not_visible=not_visible, refused_bracket_lead=refused_bracket_lead,
-        sequence_siblings=sequence_siblings, skipped=skipped, trashed=len(succeeded), errors=errors,
+        dry_run=False, deleted=sorted(removed_db_paths - set(removed_missing)),
+        not_found=not_found, not_visible=not_visible, refused_bracket_lead=refused_bracket_lead,
+        sequence_siblings=sequence_siblings, skipped=skipped,
+        removed_missing=removed_missing, trashed=len(succeeded), errors=errors,
     )
 
 

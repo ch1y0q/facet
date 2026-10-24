@@ -2567,7 +2567,8 @@
     "delete_confirm_body": "{count} fotos serão enviadas para a lixeira do sistema operacional. Permanecem recuperáveis até que você a esvazie.",
     "delete_partial_result": "{deleted} excluída(s), {failed} com falha",
     "delete_failed": "Falha ao excluir — nada foi enviado para a lixeira",
-    "delete_disabled_view_scope_tooltip": "Selecione as fotos explicitamente para excluí-las — uma seleção de toda a visualização não pode ser usada aqui"
+    "delete_disabled_view_scope_tooltip": "Selecione as fotos explicitamente para excluí-las — uma seleção de toda a visualização não pode ser usada aqui",
+    "remove_missing_rows": "Remover também as entradas da biblioteca cujo arquivo já falta no disco"
   },
   "shortcuts": {
     "title": "Atalhos de teclado",

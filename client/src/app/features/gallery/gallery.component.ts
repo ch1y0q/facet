@@ -2134,7 +2134,9 @@ export class GalleryComponent implements OnInit, OnDestroy {
     if (!result) return;
     const res = await this.photoActions.deletePhotos(paths, result);
     if (!res) return;
-    this.store.removePhotos(res.deleted);
+    // `removed_missing` rows are as gone as trashed ones -- the grid must not
+    // keep a tile for a row the server just reconciled away.
+    this.store.removePhotos([...res.deleted, ...(res.removed_missing ?? [])]);
     // `removePhotos` already prunes the deleted paths out of the selection.
     if (!explicit) this.clearSelection();
     // Every failure bucket counts as "failed" here, not just

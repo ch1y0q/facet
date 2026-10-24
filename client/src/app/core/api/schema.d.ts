@@ -2750,7 +2750,15 @@ export interface paths {
          *     not resolve on disk (already missing) -- neither trashed nor
          *     row-deleted, so it is reported rather than silently dropped from every
          *     bucket. Reconciling it is ``--cleanup-missing-photos``'s job, same as any
-         *     other missing-on-disk row.
+         *     other missing-on-disk row -- or, with ``remove_missing``, THIS call's:
+         *     the flag moves such paths out of ``skipped`` into ``removed_missing``
+         *     (never ``deleted``, which keeps meaning "row gone via a successful
+         *     trash") and deletes their rows in the same transaction as the trashed
+         *     paths', lead re-pick included. It stays an opt-in because a request
+         *     where EVERY file reads as missing is exactly what a disconnected
+         *     library volume looks like; the viewer's own delete dialog opts in, the
+         *     preview names the missing rows, and the flag-less default still
+         *     reports them as ``skipped``.
          */
         post: operations["api_photo_delete_api_photo_delete_post"];
         delete?: never;
@@ -7079,6 +7087,11 @@ export interface components {
             include_sequence_siblings?: boolean;
             /** Paths */
             paths: string[];
+            /**
+             * Remove Missing
+             * @default false
+             */
+            remove_missing?: boolean;
         };
         /**
          * PhotoDeleteResponse
@@ -7104,6 +7117,8 @@ export interface components {
          *     ``CullApplyResponse``'s field of the same name: a path that was visible,
          *     in ``photos``, and not a refused bracket lead, but whose file could not
          *     be resolved on disk (already missing) -- landing in no other bucket.
+         *     With ``remove_missing`` those same paths have their rows removed instead,
+         *     and are reported in ``removed_missing`` rather than ``skipped``.
          */
         PhotoDeleteResponse: {
             /** Deleted */
@@ -7120,6 +7135,8 @@ export interface components {
             not_visible: string[];
             /** Refused Bracket Lead */
             refused_bracket_lead: string[];
+            /** Removed Missing */
+            removed_missing?: string[] | null;
             /** Sequence Siblings */
             sequence_siblings: string[];
             /** Skipped */

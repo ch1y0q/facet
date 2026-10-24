@@ -2582,6 +2582,7 @@ export const I18N = {
     delete_partial_result: "cull.delete_partial_result",
     delete_failed: "cull.delete_failed",
     delete_disabled_view_scope_tooltip: "cull.delete_disabled_view_scope_tooltip",
+    remove_missing_rows: "cull.remove_missing_rows",
   },
   shortcuts: {
     title: "shortcuts.title",

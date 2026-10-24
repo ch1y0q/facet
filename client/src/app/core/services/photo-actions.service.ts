@@ -19,6 +19,9 @@ export interface PhotoDeleteResponse {
   refused_bracket_lead: string[];
   sequence_siblings: string[];
   skipped: string[];
+  /** Rows removed because their file was already gone (`remove_missing`).
+   *  Never folded into `deleted`: no file was trashed for these. */
+  removed_missing?: string[] | null;
   trashed: number;
   errors: Record<string, string>;
 }
@@ -46,13 +49,14 @@ export class PhotoActionsService {
    */
   async deletePhotos(
     paths: string[],
-    opts: { includeCompanions: boolean; includeSequenceSiblings: boolean },
+    opts: { includeCompanions: boolean; includeSequenceSiblings: boolean; removeMissing?: boolean },
   ): Promise<PhotoDeleteResponse | null> {
     try {
       return await firstValueFrom(this.api.post<PhotoDeleteResponse>('/photo/delete', {
         paths,
         include_companions: opts.includeCompanions,
         include_sequence_siblings: opts.includeSequenceSiblings,
+        remove_missing: opts.removeMissing ?? false,
         dry_run: false,
       }));
     } catch {

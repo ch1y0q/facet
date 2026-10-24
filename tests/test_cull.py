@@ -1219,6 +1219,64 @@ class TestPhotoDelete:
         assert os.path.isfile(path)
         assert path in _remaining_paths(db)
 
+    def test_missing_file_is_skipped_and_row_kept_by_default(self, client, tmp_path):
+        """The conservative default: a row whose file is already gone keeps its
+        row and lands in `skipped` -- reconciling it is an explicit opt-in."""
+        path = str(tmp_path / "gone.jpg")  # never created
+        db = _db(tmp_path, [(path, 0)])
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+        ):
+            resp = client.post("/api/photo/delete", json={"paths": [path], "dry_run": False})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["skipped"] == [path]
+        assert body["removed_missing"] == []
+        assert body["deleted"] == []
+        assert path in _remaining_paths(db)
+
+    def test_remove_missing_deletes_the_row_of_a_gone_file(self, client, tmp_path):
+        path = str(tmp_path / "gone.jpg")  # never created
+        live = _make_file(tmp_path, "live.jpg")
+        db = _db(tmp_path, [(path, 0), (live, 0)])
+        fake_send2trash = mock.MagicMock()
+        fake_module = mock.Mock(send2trash=fake_send2trash)
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+            mock.patch.dict("sys.modules", {"send2trash": fake_module}),
+        ):
+            resp = client.post("/api/photo/delete", json={
+                "paths": [path, live], "remove_missing": True, "dry_run": False,
+            })
+        assert resp.status_code == 200
+        body = resp.json()
+        # The missing row is reconciled, the live one trashed -- and the two
+        # buckets never mix: nothing was trashed for the missing path.
+        assert body["removed_missing"] == [path]
+        assert body["skipped"] == []
+        assert body["deleted"] == [live]
+        assert body["trashed"] == 1
+        assert fake_send2trash.call_args_list == [mock.call(live)]
+        assert path not in _remaining_paths(db)
+        assert live not in _remaining_paths(db)
+
+    def test_remove_missing_dry_run_previews_the_rows_without_deleting(self, client, tmp_path):
+        path = str(tmp_path / "gone.jpg")
+        db = _db(tmp_path, [(path, 0)])
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+        ):
+            resp = client.post("/api/photo/delete", json={"paths": [path], "remove_missing": True})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["dry_run"] is True
+        assert body["removed_missing"] == [path]
+        assert body["skipped"] == []
+        assert path in _remaining_paths(db)
+
     def test_not_found_path_never_reaches_disk_resolution(self, client, tmp_path):
         """B3: a path that exists on disk but was never scanned into the DB
         must come back as not_found and never be resolved/trashed."""

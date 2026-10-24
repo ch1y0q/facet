@@ -14,6 +14,8 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- **Deleting a photo whose file is already gone now clears its row too.** A path whose file had already left the disk used to come back from every delete as `skipped`, its row kept for `--cleanup-missing-photos` to sweep — so photos deleted outside Facet lingered in the grid forever until a manual CLI pass. The delete dialog gains an **Also remove library entries whose file is already missing from disk** checkbox, on by default: such rows are removed in the same transaction as the trashed ones (panorama-lead re-pick and side-table cleanup included) and reported in the response's new `removed_missing` field, which the preview names before you confirm and which is never folded into `deleted`, since no file was trashed for them. The API flag (`remove_missing`) defaults to off, so a request where every file reads as missing — the signature of a disconnected library volume — still changes nothing unless the caller opted in; the MCP `delete_photos` tool keeps the conservative default.
+
 - **Cmd+A selects all in the gallery on macOS.** The shortcut was bound to Ctrl+A only, so the Mac's own select-all chord did nothing and Ctrl+A — which macOS users never press — was the only way. Both now work; focus guards (inputs, open dialogs) are unchanged.
 - **The gear usage timeline's tooltip reads as a month, not a moment.** The chart's x axis is month-granular, but hovering a point titled it with the bucket's first instant ("Mar 1, 2026, 12:00:00 a.m.") — a moment that was never measured. The tooltip now says "Mar 2026", matching the axis ticks.
 

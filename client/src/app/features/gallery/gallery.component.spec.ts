@@ -2189,6 +2189,7 @@ describe('GalleryComponent', () => {
         paths: ['/a.jpg', '/b.jpg'],
         include_companions: false,
         include_sequence_siblings: false,
+        remove_missing: false,
         dry_run: false,
       });
       // Restricted to what the response actually reports deleted -- a refused

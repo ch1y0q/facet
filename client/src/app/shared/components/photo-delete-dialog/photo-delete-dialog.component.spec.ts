@@ -35,25 +35,27 @@ describe('PhotoDeleteDialogComponent', () => {
   };
 
   it('renders the companion checkbox only when data.hasCompanion is true', () => {
+    // One checkbox is unconditional now (remove missing rows); the companion
+    // one joins it only when data.hasCompanion is true.
     const withoutCompanion = buildRendered({ ...baseData, hasCompanion: false });
-    expect(withoutCompanion.nativeElement.querySelector('mat-checkbox')).toBeNull();
+    expect(withoutCompanion.nativeElement.querySelectorAll('mat-checkbox').length).toBe(1);
 
     const withCompanion = buildRendered({ ...baseData, hasCompanion: true });
     const checkboxes = withCompanion.nativeElement.querySelectorAll('mat-checkbox');
-    expect(checkboxes.length).toBe(1);
+    expect(checkboxes.length).toBe(2);
   });
 
   it('renders the sequence-sibling checkbox only when data.hasSiblings is true', () => {
     const withoutSiblings = buildRendered({ ...baseData, hasSiblings: false });
-    expect(withoutSiblings.nativeElement.querySelector('mat-checkbox')).toBeNull();
+    expect(withoutSiblings.nativeElement.querySelectorAll('mat-checkbox').length).toBe(1);
 
     const withSiblings = buildRendered({ ...baseData, hasSiblings: true });
-    expect(withSiblings.nativeElement.querySelectorAll('mat-checkbox').length).toBe(1);
+    expect(withSiblings.nativeElement.querySelectorAll('mat-checkbox').length).toBe(2);
   });
 
   it('renders both checkboxes when both data.hasCompanion and data.hasSiblings are true', () => {
     const fixture = buildRendered({ ...baseData, hasCompanion: true, hasSiblings: true });
-    expect(fixture.nativeElement.querySelectorAll('mat-checkbox').length).toBe(2);
+    expect(fixture.nativeElement.querySelectorAll('mat-checkbox').length).toBe(3);
   });
 
   it('confirming with the companion checkbox OFF closes the dialog with includeCompanions: false', () => {
@@ -62,7 +64,7 @@ describe('PhotoDeleteDialogComponent', () => {
       .find((b) => (b as HTMLElement).textContent?.includes('photo_detail.delete.button_label')) as HTMLElement;
     confirmButton.click();
 
-    expect(dialogClose).toHaveBeenCalledWith({ includeCompanions: false, includeSequenceSiblings: false });
+    expect(dialogClose).toHaveBeenCalledWith({ includeCompanions: false, includeSequenceSiblings: false, removeMissing: true });
   });
 
   it('confirming with the companion checkbox ON closes the dialog with includeCompanions: true', () => {
@@ -74,7 +76,7 @@ describe('PhotoDeleteDialogComponent', () => {
       .find((b) => (b as HTMLElement).textContent?.includes('photo_detail.delete.button_label')) as HTMLElement;
     confirmButton.click();
 
-    expect(dialogClose).toHaveBeenCalledWith({ includeCompanions: true, includeSequenceSiblings: false });
+    expect(dialogClose).toHaveBeenCalledWith({ includeCompanions: true, includeSequenceSiblings: false, removeMissing: true });
   });
 
   it('uses the bulk (cull.delete_*) copy and reuses cull checkbox labels on the bulk surface', () => {
@@ -107,7 +109,7 @@ describe('PhotoDeleteDialogComponent', () => {
     const fixture = buildRendered({ ...baseData, hasCompanion: true, hasSiblings: true });
 
     const checkboxes = fixture.nativeElement.querySelectorAll('input[type="checkbox"]') as NodeListOf<HTMLInputElement>;
-    expect(checkboxes.length).toBe(2);
+    expect(checkboxes.length).toBe(3);
     checkboxes[0].click(); // companion (rendered first)
     checkboxes[1].click(); // sequence siblings (rendered second)
     fixture.detectChanges();
@@ -119,6 +121,6 @@ describe('PhotoDeleteDialogComponent', () => {
       .find((b) => (b as HTMLElement).textContent?.includes('photo_detail.delete.button_label')) as HTMLElement;
     confirmButton.click();
 
-    expect(dialogClose).toHaveBeenCalledWith({ includeCompanions: true, includeSequenceSiblings: true });
+    expect(dialogClose).toHaveBeenCalledWith({ includeCompanions: true, includeSequenceSiblings: true, removeMissing: true });
   });
 });
