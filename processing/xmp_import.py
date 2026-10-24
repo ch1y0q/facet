@@ -140,12 +140,17 @@ def _coordinate(raw: str | None, limit: int) -> float | None:
 
 def _gps_override(root):
     state = _find_scalar(root, f"{{{NS_FACET}}}GPSState")
-    if state == "cleared":
-        return (None, None)
-    if state != "set":
+    if state not in {"set", "cleared"}:
         return None
-    lat = _coordinate(_find_scalar(root, f"{{{NS_EXIF}}}GPSLatitude"), 90)
-    lon = _coordinate(_find_scalar(root, f"{{{NS_EXIF}}}GPSLongitude"), 180)
+    latitude = _find_scalar(root, f"{{{NS_EXIF}}}GPSLatitude")
+    longitude = _find_scalar(root, f"{{{NS_EXIF}}}GPSLongitude")
+    # Editors may retain the private clear marker when adding standard GPS.
+    # Only an absent/blank pair is an unambiguous clear; partial/invalid
+    # coordinates must never delete the destination location.
+    if state == "cleared" and not (latitude or "").strip() and not (longitude or "").strip():
+        return (None, None)
+    lat = _coordinate(latitude, 90)
+    lon = _coordinate(longitude, 180)
     return (lat, lon) if lat is not None and lon is not None else None
 
 
