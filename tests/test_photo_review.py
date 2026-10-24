@@ -78,7 +78,13 @@ def test_schema_upgrade_and_preference_migration(tmp_path):
     init_database(path)
     with sqlite3.connect(path) as conn:
         # Reproduce a real pre-feature database using the production schema.
+        # Simulate a pre-history schema: its columns had no revision triggers.
+        for (trigger,) in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'organization_%'").fetchall():
+            conn.execute(f'DROP TRIGGER "{trigger}"')
         conn.execute("ALTER TABLE photos DROP COLUMN is_kept")
+        # Simulate a pre-history schema: its columns had no revision triggers.
+        for (trigger,) in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'organization_%'").fetchall():
+            conn.execute(f'DROP TRIGGER "{trigger}"')
         conn.execute("ALTER TABLE user_preferences DROP COLUMN is_kept")
         conn.execute("INSERT INTO photos(path, filename, star_rating, is_favorite) VALUES('/legacy.jpg', 'legacy.jpg', 5, 1)")
     init_database(path)

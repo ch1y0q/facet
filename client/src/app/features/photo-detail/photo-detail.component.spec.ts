@@ -33,7 +33,7 @@ describe('PhotoDetailComponent', () => {
   let mockRouter: { navigate: Mock; events: Observable<unknown> };
   let mockLocation: { back: Mock };
   let mockRoute: { snapshot: { queryParamMap: { get: Mock } }; queryParamMap: BehaviorSubject<ParamMap> };
-  let mockAuth: { identity: () => string; isEdition: ReturnType<typeof signal>; downloadProfiles: ReturnType<typeof signal> };
+  let mockAuth: { status: ReturnType<typeof signal>; identity: () => string; isEdition: ReturnType<typeof signal>; downloadProfiles: ReturnType<typeof signal> };
   let mockDialog: { open: Mock; openDialogs: unknown[] };
 
   const samplePhoto = {
@@ -112,7 +112,7 @@ describe('PhotoDetailComponent', () => {
       },
       queryParamMap: new BehaviorSubject(convertToParamMap({ path: '/photos/test.jpg' })),
     };
-    mockAuth = { identity: () => '0|', isEdition: signal(true), downloadProfiles: signal([]) };
+    mockAuth = { status: signal({ user_id: 'test' }), identity: () => '0|', isEdition: signal(true), downloadProfiles: signal([]) };
     mockDialog = { open: vi.fn(() => ({ afterClosed: () => of(undefined) })), openDialogs: [] };
   });
 
@@ -1116,6 +1116,25 @@ describe('PhotoDetailComponent', () => {
 
       expect(stored().is_rejected).toBe(false);
       expect(stored().star_rating).toBe(4);
+    });
+
+    it('history refreshes the current detail and discards a reply after a newer edit', async () => {
+      createComponent();
+      seedGrid();
+      const closed = new Subject<void>();
+      mockDialog.open.mockReturnValue({ componentInstance: { wasRestored: () => true }, afterClosed: () => closed });
+      await component.openOrganizationHistory();
+      mockApi.get.mockReturnValue(of({ ...edited, gps_latitude: 12 }));
+      closed.next();
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+      expect(component.photo().gps_latitude).toBe(12);
+      const delayed = new Subject();
+      mockApi.get.mockReturnValue(delayed);
+      closed.next();
+      component.photo.update((photo: typeof edited) => ({ ...photo, star_rating: 5 }));
+      delayed.next({ ...edited, star_rating: 1 });
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+      expect(component.photo().star_rating).toBe(5);
     });
 
     it('capture date commits are available on immediate reopen and do not replace a newer photo', async () => {

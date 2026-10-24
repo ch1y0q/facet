@@ -2801,5 +2801,32 @@
     "preview": "Anteprima",
     "apply": "Applica correzione",
     "hint": "Sposta l’ora locale della fotocamera senza dedurre fuso orario o ora legale. Gli originali cambiano solo con l’esportazione esplicita dei metadati."
+  },
+  "organization_history": {
+    "title": "Cronologia delle modifiche",
+    "hint": "Le ultime 50 voci in questo database del visualizzatore. Luoghi e date valgono per tutti; decisioni, stelle e preferiti appartengono al tuo account. I file originali non cambiano.",
+    "gps": "Luogo",
+    "date": "Data di scatto",
+    "review": "Revisione",
+    "revert": "Ripristina questa voce",
+    "reverted": "Già ripristinata",
+    "empty": "Nessuna voce disponibile.",
+    "part": "Parte {part} di {parts}: questa voce ripristina solo le sue {count} foto. Le parti precedenti potrebbero essere scadute.",
+    "success": "{count} foto ripristinate.",
+    "conflict": "Alcune foto sono cambiate dopo questa azione. Nulla è stato ripristinato.",
+    "unavailable": "Questa voce non è più disponibile. Nulla è stato ripristinato.",
+    "error": "Impossibile caricare o ripristinare la cronologia.",
+    "latitude": "Latitudine",
+    "longitude": "Longitudine",
+    "manual_gps": "Posizione manuale",
+    "capture_date": "Data di scatto",
+    "manual_date": "Data manuale",
+    "stars": "Stelle",
+    "favorite": "Preferita",
+    "rejected": "Scartata",
+    "kept": "Conservata",
+    "yes": "Sì",
+    "no": "No",
+    "unknown": "Sconosciuto"
   }
 }

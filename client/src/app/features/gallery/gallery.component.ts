@@ -152,6 +152,10 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
         </mat-form-field>
       }
 
+      @if (auth.isEdition()) {
+        <button mat-icon-button (click)="openOrganizationHistory()" [matTooltip]="I18N.organization_history.title | translate" [attr.aria-label]="I18N.organization_history.title | translate"><mat-icon>history</mat-icon></button>
+      }
+
       <!-- Keep top N%: server-rank the current view by the current sort and
            select the bottom (100-N)% for review/rejection via the selection bar. -->
       @if (auth.isEdition() && store.total() > 0 && store.canScopeSelectionToView()) {
@@ -2018,6 +2022,13 @@ export class GalleryComponent implements OnInit, OnDestroy {
         ? { filters: this.store.filterPayload(), exclude: [...this.excludedPaths()], count: this.selectionCount() }
         : { paths: [...this.selectedPaths()] },
     });
+  }
+
+  async openOrganizationHistory(): Promise<void> {
+    const owner = this.auth.status();
+    const { OrganizationHistoryDialogComponent } = await import('../photo-detail/organization-history-dialog.component');
+    if (this.destroyRef.destroyed || this.auth.status() !== owner || !this.auth.isEdition()) return;
+    this.dialog.open(OrganizationHistoryDialogComponent, { width: '95vw', maxWidth: '820px' });
   }
 
   async openCaptureDateDialog(): Promise<void> {

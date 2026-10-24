@@ -484,6 +484,9 @@ def test_incremental_export_upgrades_destination_gps_schema(tmp_path):
     _make_source_db(src)
     export_viewer_db(src, out, thumbnail_size=320, verbose=False)
     with sqlite3.connect(out) as conn:
+        # Simulate a pre-history schema: its columns had no revision triggers.
+        for (trigger,) in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'organization_%'").fetchall():
+            conn.execute(f'DROP TRIGGER "{trigger}"')
         conn.execute('ALTER TABLE photos DROP COLUMN gps_manually_set')
         conn.execute('DROP TABLE saved_places')
         conn.execute('DROP TABLE recent_places')
@@ -555,6 +558,9 @@ def test_incremental_old_source_rejection_does_not_override_viewer_keep(tmp_path
     export_viewer_db(src, out, verbose=False)
     key = 'path' if table == 'photos' else 'photo_path'
     with sqlite3.connect(src) as conn:
+        # Simulate a pre-history schema: its columns had no revision triggers.
+        for (trigger,) in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'organization_%'").fetchall():
+            conn.execute(f'DROP TRIGGER "{trigger}"')
         conn.execute(f"ALTER TABLE {table} DROP COLUMN is_kept")
         conn.execute(f"UPDATE {table} SET is_rejected=1 WHERE {key}=?", (_A,))
     with sqlite3.connect(out) as conn:
@@ -574,6 +580,9 @@ def test_incremental_preserves_capture_date_pair(tmp_path, old_source):
     with sqlite3.connect(src) as conn:
         conn.execute("UPDATE photos SET date_taken='2000:01:01 00:00:00'")
         if old_source:
+            # Simulate a pre-history schema: its columns had no revision triggers.
+            for (trigger,) in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'organization_%'").fetchall():
+                conn.execute(f'DROP TRIGGER "{trigger}"')
             conn.execute('ALTER TABLE photos DROP COLUMN date_manually_set')
     export_viewer_db(src, out, thumbnail_size=320, verbose=False)
     with sqlite3.connect(out) as conn:
@@ -589,6 +598,9 @@ def test_export_upgrades_date_schema(tmp_path):
     export_viewer_db(src, out, thumbnail_size=320, verbose=False)
     with sqlite3.connect(out) as conn:
         assert conn.execute('SELECT date_manually_set FROM photos LIMIT 1').fetchone() == (1,)
+        # Simulate a pre-history schema: its columns had no revision triggers.
+        for (trigger,) in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'organization_%'").fetchall():
+            conn.execute(f'DROP TRIGGER "{trigger}"')
         conn.execute('ALTER TABLE photos DROP COLUMN date_manually_set')
     export_viewer_db(src, out, thumbnail_size=320, verbose=False)
     with sqlite3.connect(out) as conn:

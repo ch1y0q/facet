@@ -224,6 +224,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
           <div>
             <div class="font-semibold text-lg">{{ p.filename }}</div>
             @if (auth.isEdition()) {
+              <button mat-button (click)="openOrganizationHistory()">{{ I18N.organization_history.title | translate }}</button>
               <button mat-button (click)="editCaptureDate(p)">{{ I18N.capture_date.title | translate }}</button>
             }
             @if (p.date_taken) {
@@ -1347,6 +1348,21 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   protected openAddPerson(photo: Photo): void {
     this.photoActions.openAddPerson(photo, () => {
       this.photo.update(p => p?.path === photo.path ? { ...p, unassigned_faces: Math.max(0, p.unassigned_faces - 1) } : p);
+    });
+  }
+
+  protected async openOrganizationHistory(): Promise<void> {
+    const owner = this.auth.status();
+    const path = this.photo()?.path;
+    const { OrganizationHistoryDialogComponent } = await import('./organization-history-dialog.component');
+    if (this.destroyRef.destroyed || this.auth.status() !== owner || !this.auth.isEdition() || this.photo()?.path !== path) return;
+    const ref = this.dialog.open(OrganizationHistoryDialogComponent, { width: '95vw', maxWidth: '820px' });
+    const history = ref.componentInstance;
+    ref.afterClosed().subscribe(async () => {
+      if (!history.wasRestored() || !path || this.destroyRef.destroyed || this.auth.status() !== owner || this.photo()?.path !== path) return;
+      const current = this.photo();
+      const fresh = await this.fetchPhoto(path).catch(() => undefined);
+      if (fresh && !this.destroyRef.destroyed && this.auth.status() === owner && this.photo() === current) this.photo.set(fresh);
     });
   }
 

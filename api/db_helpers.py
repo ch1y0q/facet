@@ -1761,6 +1761,8 @@ def set_photos_rejected(conn, paths, user_id, agent=False):
     ).fetchall()]
     if not visible:
         return 0
+    from api import organization_history
+    history_before = organization_history.begin(conn, user_id, 'review', visible)
     before = snapshot_labels(conn, agent, user_id, visible)
     if user_id and is_multi_user_enabled():
         conn.executemany(
@@ -1773,6 +1775,7 @@ def set_photos_rejected(conn, paths, user_id, agent=False):
         ph = ','.join('?' * len(visible))
         conn.execute(f"UPDATE photos SET is_rejected = 1, is_kept = 0 WHERE path IN ({ph})", visible)
     record_label_origin(conn, agent, user_id, visible, before)
+    organization_history.finish(conn, user_id, 'review', history_before)
     return len(visible)
 
 
@@ -1785,6 +1788,8 @@ def set_photos_kept(conn, paths, user_id, agent=False):
         conn, f"SELECT path FROM photos WHERE path IN ({{placeholders}}) AND {vis_sql}",
         list(paths), after=vis_params,
     )]
+    from api import organization_history
+    history_before = organization_history.begin(conn, user_id, 'review', visible)
     before = read_labels(conn, user_id, visible)
     if user_id and is_multi_user_enabled():
         conn.executemany(
@@ -1798,6 +1803,7 @@ def set_photos_kept(conn, paths, user_id, agent=False):
                          [(path,) for path in visible])
     origin_paths = visible if agent else [path for path in visible if before[path][2]]
     record_label_origin(conn, agent, user_id, origin_paths, before)
+    organization_history.finish(conn, user_id, 'review', history_before)
     return len(visible)
 
 
