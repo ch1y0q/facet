@@ -21,6 +21,9 @@ All notable changes to Facet are documented in this file.
 ### Fixed
 
 - **Caption export preserves other XMP languages.** Writing a Facet caption now updates only the default-language description in sidecars and embedded metadata, retaining existing translations. An empty Facet caption still preserves the existing caption.
+- **The gallery remembers how you sorted, and answers to more keys.** A sort you pick (not the viewer default) survives visits; a reset returns to defaults and a URL's own sort always wins. `/` focuses the toolbar search, `B` toggles the filter sidebar, `V` swaps grid and mosaic, and the photo page answers `1`–`5`, `F` and `X` for the open photo — all documented in the ? reference now, which had never listed the rating keys that already existed.
+- **A calmer, more legible toolbar.** The header search is visible from `lg` up instead of `2xl` and filters as you type (400 ms debounce); "Keep top N%" reads as a labelled button on wide screens instead of an unexplained scissors; the culling toolbar's date-range, grouping and sort controls show their live state as text on wide screens; the culling first load shows skeleton groups instead of a bare spinner; an unlocked edit session draws an amber underline on the header; and the user menu gains the card-button customiser and the page-help toggle.
+
 
 - **Returning to the gallery from another page keeps your filters.** The nav icon's "photos" link used to land on a pristine default view, so the filters set before opening a photo — or any other page — were silently gone. The gallery's last synced query now travels in sessionStorage: landing on a parameterless `/` re-enters with it (page number included), while a reset — double-click the nav icon or the reset button — clears it, and a URL that already carries its own params is never overridden.
 
