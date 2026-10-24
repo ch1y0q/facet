@@ -1064,6 +1064,15 @@ describe('GalleryComponent', () => {
       expect(component.canRestoreHidden()).toBe(true);
     });
 
+    it.each(['blinks_only', 'duplicates_only', 'show_rejected'] as const)
+      ('withdraws the restore while %s is up: that view is not "showing all photos"', key => {
+        mockStore.hiddenFiltersStash.set({
+          hide_blinks: true, hide_bursts: true, hide_duplicates: true, hide_brackets: true, hide_panoramas: true,
+        });
+        mockStore.filters.set({ ...DEFAULT_FILTERS, [key]: true });
+        expect(component.canRestoreHidden()).toBe(false);
+      });
+
     it('offers no restore before Show all has been used', () => {
       expect(component.canRestoreHidden()).toBe(false);
     });

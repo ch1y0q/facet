@@ -1048,13 +1048,17 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   /** Offer the restore only while all five are still off, so it never fights a manual change.
    *  The stash itself (and showAllHidden()/restoreHidden()) lives on GalleryStore — the
-   *  timeline's reachability banner offers the same affordance and needs the same state. */
+   *  timeline's reachability banner offers the same affordance and needs the same state.
+   *  Suppressed under an "only X" filter too: that view shows a subset by design, so the
+   *  banner's "showing all photos" sentence would be false while one is up. The stash
+   *  survives, so turning the only-filter off brings the offer back. */
   readonly canRestoreHidden = computed(() => {
     const stash = this.store.hiddenFiltersStash();
     if (!stash) return false;
     const f = this.store.filters();
     return !f.hide_blinks && !f.hide_bursts && !f.hide_duplicates && !f.hide_brackets
-      && !f.hide_panoramas;
+      && !f.hide_panoramas
+      && !f.blinks_only && !f.duplicates_only && !f.show_rejected;
   });
 
   /** The active set-scope kind (from photo-detail's "open this set"), or null. */
