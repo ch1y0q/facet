@@ -179,6 +179,23 @@ class TestComparisonStats:
         assert data["total_comparisons"] == 42
         assert data["min_comparisons_for_optimization"] == 30
 
+    def test_stats_returns_configured_pair_selection_strategy(self):
+        mock_manager = mock.MagicMock()
+        mock_manager.get_statistics.return_value = {"total_comparisons": 1}
+        settings = {**_COMPARISON_SETTINGS, "pair_selection_strategy": "boundary"}
+
+        app, client = _make_app_and_client()
+        _override_auth(app, _edition_user())
+
+        with (
+            mock.patch.dict("sys.modules", {"comparison": _make_comparison_module(mock_manager)}),
+            mock.patch(f"{_ROUTER_MODULE}.get_comparison_mode_settings", return_value=settings),
+        ):
+            resp = client.get(self.ENDPOINT)
+
+        assert resp.status_code == 200
+        assert resp.json()["pair_selection_strategy"] == "boundary"
+
     def test_stats_empty_db(self):
         mock_manager = mock.MagicMock()
         mock_manager.get_statistics.return_value = {

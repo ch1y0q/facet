@@ -737,6 +737,86 @@ class TestRecompute:
         assert "--config" in cmd
 
         assert scan_router._scan_state["kind"] == scan_router.JOB_KIND_RECOMPUTE
+        assert "--recompute-category" not in cmd
+
+    def _spawn(self, edition_client, body):
+        from api.routers import scan as scan_router
+
+        mock_proc = mock.MagicMock()
+        mock_proc.pid = 4243
+        mock_proc.stdout = iter([])
+        mock_proc.wait.return_value = 0
+        with mock.patch.object(scan_router.subprocess, "Popen", return_value=mock_proc) as mock_popen:
+            resp = edition_client.post(self.ENDPOINT, json=body)
+        return resp, mock_popen
+
+    def test_a_category_spawns_the_per_category_recompute_and_names_the_job(self, edition_client):
+        from api.routers import scan as scan_router
+
+        resp, mock_popen = self._spawn(edition_client, {"confirm": True, "category": "portrait"})
+
+        assert resp.status_code == 200, resp.text
+        cmd = mock_popen.call_args[0][0]
+        assert cmd[cmd.index("--recompute-category") + 1] == "portrait"
+        assert "--recompute-average" not in cmd
+        data = resp.json()
+        assert data["scope"] == "category:portrait" and isinstance(data["started_at"], float)
+        assert scan_router._scan_state["scope"] == "category:portrait"
+        assert scan_router._scan_state["started_at"] == data["started_at"]
+
+    def test_the_whole_library_job_reports_scope_all(self, edition_client):
+        resp, _ = self._spawn(edition_client, {"confirm": True})
+
+        assert resp.json()["scope"] == "all"
+
+    def test_an_unknown_category_is_a_400_and_nothing_spawns(self, edition_client):
+        from api.routers import scan as scan_router
+
+        resp, mock_popen = self._spawn(edition_client, {"confirm": True, "category": "zzz-nope"})
+
+        assert resp.status_code == 400
+        mock_popen.assert_not_called()
+        assert not scan_router._scan_lock.locked()
+
+    def test_a_category_without_confirm_is_still_a_400(self, edition_client):
+        resp, mock_popen = self._spawn(edition_client, {"confirm": False, "category": "portrait"})
+
+        assert resp.status_code == 400
+        mock_popen.assert_not_called()
+
+    def test_a_second_category_job_while_one_runs_is_a_409(self, edition_client):
+        from api.routers.scan import _scan_state
+        _scan_state['running'] = True
+
+        resp, mock_popen = self._spawn(edition_client, {"confirm": True, "category": "portrait"})
+
+        assert resp.status_code == 409
+        mock_popen.assert_not_called()
+
+    def test_detect_panoramas_does_not_take_a_category(self, edition_client):
+        from api.routers import scan as scan_router
+
+        mock_proc = mock.MagicMock()
+        mock_proc.pid = 1
+        mock_proc.stdout = iter([])
+        mock_proc.wait.return_value = 0
+        with mock.patch.object(scan_router.subprocess, "Popen", return_value=mock_proc) as mock_popen:
+            resp = edition_client.post("/api/scan/detect_panoramas", json={"confirm": True, "category": "portrait"})
+
+        assert resp.status_code == 200
+        assert "--recompute-category" not in mock_popen.call_args[0][0]
+
+    def test_a_finished_recompute_invalidates_the_stats_cache(self):
+        from api import config as api_config
+        from api.routers import scan as scan_router
+
+        proc = mock.MagicMock()
+        proc.stdout = iter([])
+        proc.returncode = 0
+        scan_router._scan_state.update({"kind": scan_router.JOB_KIND_RECOMPUTE})
+        generation = api_config._stats_cache_generation
+        scan_router._read_scan_output(proc)
+        assert api_config._stats_cache_generation == generation + 1
 
 
 class TestRecomputeStatus:
@@ -760,6 +840,15 @@ class TestRecomputeStatus:
         resp = anonymous_client.get(self.ENDPOINT)
         assert resp.status_code == 401
 
+    def test_names_the_job_it_reports(self, edition_client):
+        from api.routers.scan import _scan_state
+        _scan_state.update({'running': False, 'kind': 'recompute', 'exit_code': 0, 'progress': None,
+                            'started_at': 1700000000.5, 'scope': 'category:portrait'})
+
+        data = edition_client.get(self.ENDPOINT).json()
+
+        assert data["started_at"] == 1700000000.5 and data["scope"] == "category:portrait"
+
     def test_returns_only_the_minimal_fields(self, edition_client):
         from api.routers.scan import _scan_state
         _scan_state.update({
@@ -774,7 +863,7 @@ class TestRecomputeStatus:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert set(data.keys()) == {"running", "kind", "progress", "exit_code"}
+        assert set(data.keys()) == {"running", "kind", "progress", "exit_code", "started_at", "scope"}
         assert data["running"] is True
         assert data["kind"] == "recompute"
         assert data["progress"]["current"] == 10

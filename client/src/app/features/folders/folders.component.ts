@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, effect, OnInit, DestroyRef } from '@angular/core';
+import { Component, inject, signal, computed, effect, OnInit, DestroyRef, ChangeDetectionStrategy } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, ActivatedRoute } from '@angular/router';
 import { DecimalPipe } from '@angular/common';
@@ -28,6 +28,7 @@ import { GalleryStore } from '../gallery/gallery.store';
     ThumbnailUrlPipe,
   ],
   host: { class: 'block px-4 pt-4 pb-4' },
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     @if (loading() && folders().length === 0) {
       <div class="flex justify-center py-16">

@@ -1,6 +1,6 @@
 import type { Mock } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { of, throwError, Subject } from 'rxjs';
+import { NEVER, of, throwError, Subject } from 'rxjs';
 import { GalleryStore } from '../gallery/gallery.store';
 import { Router, ActivatedRoute } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
@@ -206,6 +206,29 @@ describe('GpsEditDialogComponent', () => {
     expect(mockSnackBar.open).toHaveBeenCalled();
   });
 
+  it('a map click places the point without re-centring or re-zooming the map', async () => {
+    createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 1, lng: 2 }, true);
+    await fixture.whenStable();
+    const click = leafletMockMap.on.mock.calls.filter(call => call[0] === 'click').at(-1)![1];
+    leafletMockMap.setView.mockClear();
+    click({ latlng: { wrap: () => ({ lat: 5, lng: 6 }) } });
+    expect(component.selectedLat()).toBe(5);
+    expect(component.selectedLng()).toBe(6);
+    expect(leafletMockMap.setView).not.toHaveBeenCalled();
+    component.selectRecent({ latitude: 7, longitude: 8 });
+    expect(leafletMockMap.setView).toHaveBeenCalledWith([7, 8], 13);
+  });
+
+  it('disables Save while the coordinates equal the initial ones, so a GPS-less photo is not pinned', () => {
+    createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: null, lng: null }, true);
+    const saveButton = () => Array.from(fixture.nativeElement.querySelectorAll('mat-dialog-actions button') as NodeListOf<HTMLButtonElement>).at(-1)!;
+    expect(saveButton().disabled).toBe(true);
+    component.setLatitude(3);
+    component.setLongitude(4);
+    fixture.detectChanges();
+    expect(saveButton().disabled).toBe(false);
+  });
+
   it('Cancel closes without a result, so the caller keeps the location', () => {
     createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: null, lng: null }, true);
     const buttons = Array.from(fixture.nativeElement.querySelectorAll('mat-dialog-actions button')) as HTMLButtonElement[];
@@ -358,7 +381,7 @@ describe('GpsEditDialogComponent', () => {
           { provide: MAT_DIALOG_DATA, useValue: { path: '/photo.jpg', filename: 'photo.jpg', lat: null, lng: null, manuallySet: true } },
           { provide: MatDialogRef, useValue: mockDialogRef },
           { provide: ApiService, useValue: mockApi },
-          { provide: Router, useValue: { navigate: vi.fn() } },
+          { provide: Router, useValue: { navigate: vi.fn(), events: NEVER } },
           { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
           { provide: AuthService, useValue: { isEdition: () => true } },
           { provide: AlbumService, useValue: { list: () => of({ albums: [] }), update: () => of({}) } },

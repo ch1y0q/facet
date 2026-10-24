@@ -2,6 +2,7 @@ import type { Mock } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { SlideshowComponent } from './slideshow.component';
+import { PageContextService } from '../../core/agent/page-context.service';
 import { GalleryStore } from './gallery.store';
 import { I18nService } from '../../core/services/i18n.service';
 import type { Photo } from '../../shared/models/photo.model';
@@ -99,6 +100,15 @@ describe('SlideshowComponent', () => {
     fixture.detectChanges();
     TestBed.tick();
   }
+
+  describe('page context', () => {
+    it('registers itself as an overlay while mounted, wherever it is used', () => {
+      const context = TestBed.inject(PageContextService);
+      expect(context.overlays()).toEqual(['slideshow']);
+      fixture.destroy();
+      expect(context.overlays()).toEqual([]);
+    });
+  });
 
   describe('initial state', () => {
     it('starts at slide index 0', () => {

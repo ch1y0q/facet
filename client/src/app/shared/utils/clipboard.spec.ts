@@ -43,10 +43,28 @@ describe('copyLines', () => {
     await expect(copyLines(['a.jpg'])).resolves.toBeUndefined();
   });
 
-  it('propagates the rejection when the clipboard write fails (no internal fallback)', async () => {
+  it('rejects when the clipboard write fails and the execCommand fallback fails too', async () => {
     const writeText = vi.fn().mockRejectedValue(new Error('denied'));
     Object.assign(navigator, { clipboard: { writeText } });
+    (document as unknown as Record<string, unknown>)['execCommand'] = vi.fn(() => false);
+    try {
+      await expect(copyLines(['a.jpg'])).rejects.toThrow('The clipboard is not available');
+    } finally {
+      delete (document as unknown as Record<string, unknown>)['execCommand'];
+    }
+  });
 
-    await expect(copyLines(['a.jpg'])).rejects.toThrow('denied');
+  it('falls back to execCommand when navigator.clipboard does not exist (plain http)', async () => {
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+    const execCommand = vi.fn(() => true);
+    (document as unknown as Record<string, unknown>)['execCommand'] = execCommand;
+    try {
+      await expect(copyLines(['a.jpg', 'b.jpg'])).resolves.toBeUndefined();
+      expect(execCommand).toHaveBeenCalledWith('copy');
+      expect(document.querySelector('textarea')).toBeNull();
+    } finally {
+      delete (document as unknown as Record<string, unknown>)['execCommand'];
+      Reflect.deleteProperty(navigator, 'clipboard');
+    }
   });
 });

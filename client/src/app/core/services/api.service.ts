@@ -1,7 +1,8 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { thumbnailUrl } from '../../shared/pipes/thumbnail-url.pipe';
+import type { McpTokenCreate, McpTokenCreated, McpTokenList, McpTokenRevoked } from '../api/types';
+import { thumbnailUrl, faceThumbnailUrl, personThumbnailUrl } from '../../shared/pipes/thumbnail-url.pipe';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -34,6 +35,20 @@ export class ApiService {
       : this.http.delete<T>(`${this.baseUrl}${path}`);
   }
 
+  /** The caller's agent access tokens (metadata only, never the secret). */
+  listMcpTokens(): Observable<McpTokenList> {
+    return this.get<McpTokenList>('/mcp/tokens');
+  }
+
+  /** Mint an agent access token; the response carries the plaintext exactly once. */
+  createMcpToken(body: McpTokenCreate): Observable<McpTokenCreated> {
+    return this.post<McpTokenCreated>('/mcp/tokens', body);
+  }
+
+  revokeMcpToken(id: number): Observable<McpTokenRevoked> {
+    return this.delete<McpTokenRevoked>(`/mcp/tokens/${id}`);
+  }
+
   /** Get raw response (e.g., for binary thumbnails) */
   getRaw(url: string): Observable<Blob> {
     return this.http.get(url, { responseType: 'blob' });
@@ -46,12 +61,12 @@ export class ApiService {
 
   /** Build face thumbnail URL */
   faceThumbnailUrl(faceId: number): string {
-    return `/face_thumbnail/${faceId}`;
+    return faceThumbnailUrl(faceId);
   }
 
   /** Build person thumbnail URL */
   personThumbnailUrl(personId: number): string {
-    return `/person_thumbnail/${personId}`;
+    return personThumbnailUrl(personId);
   }
 
   /** Build full image URL */

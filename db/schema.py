@@ -243,7 +243,16 @@ FACES_COLUMNS = [
     # silently mix spaces. The constant default backfills existing rows (all
     # ArcFace/buffalo_l) on migration and tags new inserts with no code change.
     ('embedding_model', f"TEXT DEFAULT '{ARCFACE_MODEL}'"),
+    ('is_manual', 'INTEGER NOT NULL DEFAULT 0'),
+    ('manual_key', 'TEXT'),
+    ('manual_source', 'TEXT'),
+    ('manual_width', 'INTEGER'),
+    ('manual_height', 'INTEGER'),
 ]
+
+# UUIDs are never reused. Explicit deletion survives synchronization with an
+# older active copy, and must outlive deletion of the original photo itself.
+MANUAL_FACE_DELETIONS_COLUMNS = [('manual_key', 'TEXT PRIMARY KEY NOT NULL')]
 
 # Single shared faces upsert used by every scan-time writer (processing/scorer.py
 # single + batch, faces/processor.py). INSERT OR REPLACE regenerates the whole
@@ -312,6 +321,7 @@ PERSONS_COLUMNS = [
     # else gives a fresh DB and an upgraded one different column orders, and the
     # positional INSERT ... SELECT * between them would shift every value.
     ('centroid_model', 'TEXT'),
+    ('person_key', 'TEXT'),
 ]
 
 
@@ -824,6 +834,55 @@ USER_PREFERENCES_INDEXES = [
     ('idx_user_prefs_rating', 'user_preferences', 'user_id, star_rating'),
 ]
 
+# Identity constraints share the registry used by schema diagnostics. Manual
+# UUIDs identify annotations only; automatic rows do not own this namespace.
+IDENTITY_INDEXES = [
+    ('idx_person_key', 'persons', 'person_key'),
+    ('idx_manual_face_key', 'faces', 'manual_key'),
+]
+
+# Agent (MCP) bearer tokens. A side table, never a column on `photos`. Only the
+# SHA-256 of the token is stored (plus a display prefix); `user_gen` and
+# `edition_gen` snapshot the owner's credentials at mint (the password hash /
+# the viewer and edition password generations) so a rotated password or a
+# deleted user kills the token on its next call. The ROLE is not in the
+# snapshot: it is read live, so a demotion lowers the token's effective level
+# and a promotion never raises it past the level it was minted at.
+MCP_TOKENS_COLUMNS = [
+    ('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+    ('user_id', 'TEXT NOT NULL'),
+    ('name', 'TEXT NOT NULL'),
+    ('token_prefix', 'TEXT NOT NULL'),
+    ('token_hash', 'TEXT NOT NULL UNIQUE'),
+    ('level', "TEXT NOT NULL CHECK(level IN ('readonly','user','edition'))"),
+    ('user_gen', 'TEXT NOT NULL'),
+    ('edition_gen', "TEXT NOT NULL DEFAULT ''"),
+    ('created_at', 'TEXT NOT NULL'),
+    ('last_used_at', 'TEXT'),
+    ('revoked', 'INTEGER NOT NULL DEFAULT 0'),
+    ('revoked_at', 'TEXT'),
+    # Level of the session that minted the token; NULL (pre-column rows) counts as readonly.
+    ('minted_level', 'TEXT'),
+]
+
+MCP_TOKENS_INDEXES = [
+    ('idx_mcp_tokens_user', 'mcp_tokens', 'user_id'),
+]
+
+# Which rating labels an assistant left behind, so the rating-derived comparisons
+# (`optimization/label_pairs.py`) never treat them as the user's taste. A side table, not a column on
+# `photos`, written by the rating routes themselves when the request is an agent's (an internal `mcp` JWT).
+# The row stores the (star_rating, is_favorite, is_rejected) tuple the assistant left; a label that no
+# longer equals it was changed by someone else since and counts again. `user_id` is '' in single-user mode.
+# The viewer database export drops this table.
+RATING_PROVENANCE_COLUMNS = [
+    ('user_id', "TEXT NOT NULL DEFAULT ''"),
+    ('photo_path', 'TEXT NOT NULL'),
+    ('star_rating', 'INTEGER NOT NULL DEFAULT 0'),
+    ('is_favorite', 'INTEGER NOT NULL DEFAULT 0'),
+    ('is_rejected', 'INTEGER NOT NULL DEFAULT 0'),
+]
+
 # Authoritative registry of every CREATE INDEX group. init_database creates all
 # of these and db.info.get_schema_info counts them, so the two can never
 # disagree on how many indexes the schema declares (they did before: info
@@ -842,6 +901,8 @@ ALL_INDEX_GROUPS = [
     RECOMMENDATION_HISTORY_INDEXES,
     ALBUM_INDEXES,
     USER_PREFERENCES_INDEXES,
+    IDENTITY_INDEXES,
+    MCP_TOKENS_INDEXES,
 ]
 
 # Sticky per-photo scoring context / category override — a side table, not
@@ -1019,9 +1080,12 @@ def _migrate_add_missing_columns(conn, table_name, columns):
 _MIGRATED_TABLES = [
     ('photos', PHOTOS_COLUMNS),
     ('faces', FACES_COLUMNS),
+    ('manual_face_deletions', MANUAL_FACE_DELETIONS_COLUMNS),
     ('persons', PERSONS_COLUMNS),
     ('photo_tags', PHOTO_TAGS_COLUMNS),
     ('photo_manual_tags', PHOTO_MANUAL_TAGS_COLUMNS),
+    ('mcp_tokens', MCP_TOKENS_COLUMNS),
+    ('rating_provenance', RATING_PROVENANCE_COLUMNS),
     ('comparisons', COMPARISONS_COLUMNS),
     ('learned_scores', LEARNED_SCORES_COLUMNS),
     ('rejected_merge_suggestions', REJECTED_MERGE_SUGGESTIONS_COLUMNS),
@@ -1197,6 +1261,7 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
             FACES_COLUMNS,
             constraints=['UNIQUE(photo_path, face_index)']
         ))
+        conn.execute(_build_create_table_sql('manual_face_deletions', MANUAL_FACE_DELETIONS_COLUMNS))
 
         # Create persons table
         conn.execute(_build_create_table_sql('persons', PERSONS_COLUMNS))
@@ -1214,6 +1279,13 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
             PHOTO_MANUAL_TAGS_COLUMNS,
             constraints=['PRIMARY KEY (photo_path, tag)']
         ))
+
+        # Create mcp_tokens (agent bearer tokens, hash only; side table)
+        conn.execute(_build_create_table_sql('mcp_tokens', MCP_TOKENS_COLUMNS))
+
+        # Create rating_provenance (which rating labels an assistant left; side table)
+        conn.execute(_build_create_table_sql(
+            'rating_provenance', RATING_PROVENANCE_COLUMNS, constraints=['PRIMARY KEY (user_id, photo_path)']))
 
         # Create comparisons table for pairwise comparison feedback. The UNIQUE
         # is user-scoped so one user's vote never clobbers another's; existing
@@ -1336,6 +1408,19 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
         for table_name, columns in _MIGRATED_TABLES:
             _migrate_add_missing_columns(conn, table_name, columns)
 
+        # Shared pre-upgrade copies share numeric identities. Every NEW person
+        # gets a random key, including inserts by scanners and older callers.
+        if conn.execute('SELECT 1 FROM persons WHERE person_key IS NULL LIMIT 1').fetchone():
+            conn.execute("UPDATE persons SET person_key='legacy:' || id WHERE person_key IS NULL")
+        old_manual_index = next((r for r in conn.execute('PRAGMA index_list(faces)')
+                                 if r[1] == 'idx_manual_face_key'), None)
+        if old_manual_index is not None and not old_manual_index[4]:
+            conn.execute('DROP INDEX idx_manual_face_key')
+        conn.execute("""CREATE TRIGGER IF NOT EXISTS persons_assign_key AFTER INSERT ON persons
+            WHEN NEW.person_key IS NULL BEGIN
+              UPDATE persons SET person_key=lower(hex(randomblob(16))) WHERE id=NEW.id;
+            END""")
+
         # A centroid that predates persons.centroid_model was averaged from ArcFace
         # embeddings (the only space that existed), so tag it. After this a NULL
         # centroid_model means only "no centroid yet".
@@ -1388,8 +1473,10 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
         # the registry and is built after the migration commits (create_photo_indexes).
         for group in ALL_INDEX_GROUPS[1:]:
             for idx_name, table, column_expr in group:
+                unique = 'UNIQUE ' if group is IDENTITY_INDEXES else ''
+                predicate = ' WHERE is_manual=1' if idx_name == 'idx_manual_face_key' else ''
                 conn.execute(
-                    f'CREATE INDEX IF NOT EXISTS {idx_name} ON {table}({column_expr})'
+                    f'CREATE {unique}INDEX IF NOT EXISTS {idx_name} ON {table}({column_expr}){predicate}'
                 )
 
         # Create FTS5 full-text search table and sync triggers. If a previous

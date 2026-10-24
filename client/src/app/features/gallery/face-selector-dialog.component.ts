@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, OnInit, ChangeDetectionStrategy } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialogModule, MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
@@ -28,6 +28,7 @@ interface PhotoFace {
     FaceThumbnailUrlPipe,
     TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title class="truncate" [matTooltip]="I18N.manage_persons.select_face | translate">{{ I18N.manage_persons.select_face | translate }}</h2>
     <mat-dialog-content class="!flex !flex-col gap-3 min-w-[320px] min-h-[120px]">

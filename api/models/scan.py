@@ -54,6 +54,8 @@ class LibraryJobStartResponse(BaseModel):
     success: bool
     message: str
     pid: int
+    started_at: Optional[float] = None
+    scope: Optional[str] = None
 
 
 class RecomputeStatusResponse(BaseModel):
@@ -64,6 +66,8 @@ class RecomputeStatusResponse(BaseModel):
     kind: Optional[str] = None
     progress: Optional[dict] = None
     exit_code: Optional[int] = None
+    started_at: Optional[float] = None
+    scope: Optional[str] = None
 
 
 class CullApplyResponse(BaseModel):

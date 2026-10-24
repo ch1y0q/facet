@@ -16,6 +16,8 @@ FastAPI + Angular single-page application for browsing, filtering, and managing 
 
 > **Feature requirements** are tagged inline: `[GPU]` · `[16gb/24gb]` (VRAM profile) · `[Edition]` (edition password) · `[Superadmin]`. See the [feature matrix](INSTALLATION.md#feature-requirements).
 
+> **AI assistants**: Facet can serve its tools to MCP-capable assistants, which can search the library and, with the right token level, change and cull it; see [AI Agents (MCP)](AGENTS.md).
+
 ## Starting the Viewer
 
 ### Production
@@ -234,7 +236,7 @@ Review status applies to the regular gallery; choosing a status exits semantic a
 ### Multi-Select & Bulk Actions
 
 - Click photos to select, Shift+Click for range selection
-- Action bar appears with selection count and available actions
+- Action bar appears with selection count and available actions: a floating card at the bottom-left of the gallery with icon-only buttons (hover or focus a button for its label)
 - **Favorite** — Mark all selected as favorite (clears rejected)
 - **Reject** — Mark all selected as rejected (clears favorite and rating)
 - **Rate** — Set star rating (1–5) for all selected, or clear rating
@@ -257,6 +259,14 @@ Bulk actions require edition mode. Double-click any photo to open it.
 ### Keep Top N%
 
 A **Keep top %** control in the gallery toolbar (edition mode) turns the whole filtered view into a one-step cull. Set a percentage; the server ranks the current view by the **current sort** (aggregate, My Taste, Top Picks, sharpness, …), keeps that top share, and **selects the rest** — the lowest-ranked photos — so you can reject them from the selection action bar (or deselect any you want to spare first). Nothing is moved or deleted: it only populates the selection (and every reject still trains "My Taste"). The selection is capped at 5000 photos; on a very large view the control says so — narrow the filter (album, date, person…) to act on the remainder. The ranking runs over the same hidden-filtered view as the gallery grid, so under the default `hide_brackets` / `hide_panoramas` a bracket or panorama set counts as **one** photo toward the percentage, not one per frame.
+
+### Assistant-pinned list
+
+When an assistant connected through [AI Agents (MCP)](AGENTS.md) shows you an exact list of photos, the gallery displays that list in the assistant's order and a status line above it says how many photos were chosen. **Show the usual view** on that line brings back the filter bar and returns to your filters exactly as they were. While the list is shown, the filter bar (the type, search and sort controls and the filters panel) is hidden so that a stray click cannot drop it; the tag chips on a photo, the person avatars in its details and **Find Similar** are not offered either, for the same reason, and changing the album still replaces the list. Showing a list also clears your selection and the side panel's photo, so nothing from the previous view carries over. While a list is shown, the filter-scoped actions (such as **Keep top N%**) are unavailable, because the list is not the filtered view.
+
+While the list is shown, the assistant's own writes show up without a reload: changed cards refresh in place, the pin is kept, a photo removed from the library leaves the list (one that `cull_apply` moved or trashed keeps its library row and stays in the pin), and a write that cannot name its photos reloads the view without blanking the grid or dropping your selection. One "Assistant changed N photos" notice appears per burst. Semantic-search and similar-photo views refresh the photos already shown and never remove one, including for a write that cannot name its photos. See [Live updates](AGENTS.md#live-updates).
+
+While an assistant is working in your tab, an **Assistant active** chip appears in the header for a few seconds after each write or tab command. Click it to open **Assistant activity**, the last 50 actions of this session (not saved, lost on reload) with the tool, the number of photos and the time; an action that named photos has a **Show photos** button, and read-only commands light the chip without being listed. On request the tab also tells the assistant which photo your cursor is on (`focused`) and what you did since its last look (`user_activity`). Nothing is sent to the assistant on its own. See [Control your open tab](AGENTS.md#control-your-open-tab). Each entry is one assistant call, labelled with the tool's name in your language, and its photos are those of the whole call.
 
 ### Cull to folder
 
@@ -284,10 +294,10 @@ Unlike Cull to folder, which leaves the database row alone until a rescan, Delet
 
 ### Display Options
 
-- **Layout Mode** - Switch between **Grid** (uniform cards) and **Mosaic** (justified rows preserving aspect ratios). Mosaic is desktop-only; mobile always uses grid.
+- **Layout Mode** - Switch between **Grid** (uniform cards) and **Mosaic** (justified rows preserving aspect ratios). Both are available at every screen width, mobile included.
 - **Thumbnail Size** - Slider to adjust card/row height (120–400px, persisted in localStorage)
 - **Hide Details** - Hide photo metadata on cards (grid mode only)
-- **Tooltip** - How photo details are shown: **Hover** (default), **Click**, **Off**, or **Side panel**. The side panel docks the same details in the right-hand drawer instead of following the cursor, so a given field is always in the same place from one photo to the next. It follows **both** hover and click, so it is usable on a touch screen where hover never fires; it keeps the last photo you hovered rather than blanking when the cursor leaves the grid. Clicking a photo holds the panel on it — hovering other photos no longer switches it — until you press **Deselect** at the top of the panel, which also removes that photo from the selection. It shares that drawer with the filter sidebar — opening the filters hides it until you close them again, and the grid keeps exactly the width it has with the filters open. Needs a viewport of at least 1280px.
+- **Tooltip** - How photo details are shown: **Hover** (default), **Click**, **Off**, or **Side panel**. The side panel docks the same details in the right-hand drawer instead of following the cursor, so a given field is always in the same place from one photo to the next. It follows **both** hover and click, so it is usable on a touch screen where hover never fires; it keeps the last photo you hovered rather than blanking when the cursor leaves the grid. Clicking a photo holds the panel on it — hovering other photos no longer switches it — until you press **Deselect** at the top of the panel, which also removes that photo from the selection. **Escape** does the same and also clears the rest of the selection; it never closes the panel. It shares that drawer with the filter sidebar — opening the filters hides it until you close them again, and the grid keeps exactly the width it has with the filters open. Needs a viewport of at least 1280px.
 - **Hide Blinks** - Filter out photos with detected blinks
 - **Best of Burst** - Show only top-scored photo from each burst
 - **Best of bracket** - Show only the base exposure of each detected bracket set, hiding the flanking frames. **On by default.** Independent of Best of Burst: a quarter of bracket sets share a burst group with unrelated frames, where the burst lead is not the base exposure, so burst-hiding alone leaves the extra exposures on show.
@@ -439,9 +449,27 @@ Access via header button or `/persons`:
 | **Split** | Open a person's faces, select a subset, split them into a new person |
 | **Hide** | Hide a cluster from the persons list, filters, and merge suggestions (reversible) |
 
+### Mark a missed face
+
+In edition mode, open a photo and choose **Mark a missing face** even when no faces were detected. Draw a rectangle around the face, or adjust its coordinates with the labeled fields. Choose an existing person or enter a new name, then **Save**. Drawing and choosing a name only preview the change; Cancel saves nothing.
+
+Deleted manual marks stay removed during later synchronization, even when an older copy still contains them. Scanner-side person renames and visibility changes follow the stable person identity into the viewer while manual-face links stay intact.
+
+Face and person thumbnails are checked against your current photo access before reuse. Person avatars use a visible appearance, and edited manual crops refresh without reusing old public image caches. The legacy `viewer.performance.face_cache_size` setting is ignored and can be removed from custom configuration.
+
+Use the same editor to adjust, reassign or remove a manually marked face. Manual marks remain linked to their person through rescans and viewer synchronization; they do not create recognition training data or change face-quality scores. The editor loads an upright preview from the original image so RAW and rotated-photo coordinates match the saved crop. Without the original, existing manual marks can still be listed and removed, but drawing is unavailable. A mark that cannot be verified is shown as **Needs review**.
+
+New marks identify the picture by its upright decoded frame size and an 8x8 grayscale signature of its pixels, matched within a small tolerance. Metadata writes (including Facet embeds), remounts and other hosts keep a mark current; a replaced picture flags it, but a subtle retouch or a small re-crop or straighten that keeps the frame size may go undetected. The editor reuses one decoded frame of up to 128 MiB and small fingerprint records; larger frames may need another decode. The limit is fixed.
+
+Marks from earlier preview builds remain saved and need a one-time review. Open the original and deliberately edit/save the mark using a fresh editor frame to record the new identity. Old marks keep their previous identity until that save.
+
+Normal incremental viewer synchronization preserves manual marks and removal decisions. An explicit forced viewer database rebuild replaces viewer-only edits with the source database; export or back up those edits before rebuilding.
+
+The operation stores changes in the library database and leaves original files and sidecars unchanged. The editor keeps the image fitted while you draw.
+
 ## Scan Trigger
 
-Scan is offered when **both** of these hold: `viewer.features.show_scan_button` is `true` (it ships **`false`** in `scoring_config.json`, opt-in) **and** the caller has scan access — the `superadmin` role in multi-user mode, or an edition-authenticated session on a locked single-user install (a non-empty `viewer.edition_password`) in single-user mode. The gallery then offers it from two places, and both open the scan launcher dialog (`ScanLauncherComponent`): a **Scan photos to get started** button on the empty-gallery state, and — while the gallery has photos to show — a **Scan for new photos** icon button at the top right of the photo grid, at every screen width. On an open single-user install (`viewer.edition_password` empty, the shipped default) all four scan routes 403 for every caller, including one holding a valid edition-generation JWT, and neither entry point is ever rendered — spawning a scan subprocess must not be reachable anonymously.
+Scan is offered when **both** of these hold: `viewer.features.show_scan_button` is `true` (it ships **`false`** in `scoring_config.json`, opt-in) **and** the caller has scan access — the `superadmin` role in multi-user mode, or an edition-authenticated session on a locked single-user install (a non-empty `viewer.edition_password`) in single-user mode. The gallery then offers it from two places, and both open the scan launcher dialog (`ScanLauncherComponent`): a **Scan photos to get started** button on the empty-gallery state, and a **Scan for new photos** icon button in the header, right after the **Sort** selector and highlighted with a coloured background (in the bottom bar after its Sort selector on small screens). On an open single-user install (`viewer.edition_password` empty, the shipped default) all four scan routes 403 for every caller, including one holding a valid edition-generation JWT, and neither entry point is ever rendered — spawning a scan subprocess must not be reachable anonymously. The exception is `viewer.trusted_local_editing`: a trusted-local browser session, and a local assistant holding a Full-editing token, may scan without `show_scan_button` and without an edition password.
 
 - Pick a directory from the launcher's list and start the scan in-app
 - The launcher streams live progress (SSE with automatic polling fallback) into a `mat-progress-bar` driven by the structured `progress` field, plus a tail of output lines, and refreshes the gallery when the scan finishes
@@ -457,13 +485,18 @@ A related but separate trigger, `POST /api/scan/recompute`, reuses the same job 
 Hybrid search combining CLIP/SigLIP embedding similarity (70%) with FTS5 BM25 text matching on captions and tags (30%). Type a query like "sunset over mountains" or "child playing in snow" and the viewer returns matching photos ranked by combined score.
 
 - Requires stored `clip_embedding` data (computed during scoring)
-- Uses sqlite-vec for KNN vector search when installed and this Python's SQLite can load extensions, falls back to in-memory NumPy
+- Uses sqlite-vec when installed and this Python's SQLite can load extensions, otherwise the in-memory NumPy matrix. It is no longer a capped KNN top-k for the gallery: the gallery resolves the whole set of photos above the match-sensitivity threshold (a KNN query first, a full scan when more than 4096 photos match, or the NumPy matrix without sqlite-vec). `GET /api/search` stays the ranked, capped endpoint
 - FTS5 text search on AI captions/tags provides additional keyword matching (run `database.py --rebuild-fts` to enable)
 - Uses the same embedding model as the active VRAM profile (SigLIP 2 for 16gb/24gb, CLIP ViT-L-14 for legacy/8gb), or whichever of `models.clip`/`clip_legacy` actually matches the stored embedding dimension if the two disagree (see [docs/CONFIGURATION.md](CONFIGURATION.md))
 - `scope=text` restricts the query to literal FTS5 matches in OCR/caption text and skips the embedding search
 - Controlled by `viewer.features.show_semantic_search` (default: `true`)
 - The cosine gate defaults to `models.clip.search_threshold_percent` (5%) / `models.clip_legacy.search_threshold_percent` (15%) — calibrated per-backend values, distinct from the tag-match `tag_threshold_percent`. `/api/config`'s `search_threshold_default` seeds the gallery's 0-50% threshold slider, which spans the whole range: a query can be tightened above the default or loosened back down toward `0%` per search; a threshold of exactly `0%` still rejects a negative cosine, it is not "no filter". The `5%` SigLIP default itself deliberately favours recall over precision — see `clip.search_threshold_percent` in [docs/CONFIGURATION.md](CONFIGURATION.md) for the calibration tradeoff
 - Each result reports two similarity fields: `similarity` is the blended embedding (70%) + FTS (30%) score used for ranking; `embedding_similarity` is the raw cosine that was actually gated against the threshold above, present only when an embedding score was computed for that photo (absent — never `null` — on an FTS-only or `scope=text` hit)
+- **Combines with every gallery filter.** In the gallery, a semantic query narrows the same result as every other filter, including the hide toggles: with the defaults, a query excludes hidden burst, duplicate, bracket and panorama members, blinks and rejected photos, exactly like the ungrouped gallery
+- **Paged, with a real total, no result cap.** The gallery pages a semantic view like any other ("load more" works) and shows the true total: every photo above the match-sensitivity threshold is a result. The first query on a large library can take several seconds (query encoding plus one similarity pass); later pages are served from a short-lived cache
+- **Relevance sort.** While a query is active the sort defaults to the new **Relevance** option (best match first; ascending shows the long tail). A broad query can match most of a library, so the other sorts stay available but then list that long tail. Clearing the query restores the default sort, and a shared link carrying a query and no sort opens on Relevance
+- **API.** `GET /api/photos` accepts `semantic_q`, `semantic_threshold` (0 to 1) and `sort=relevance` (only together with `semantic_q`; `400` otherwise); it answers `503` when the embedding model is busy or fails to load
+- **Selection.** Select all does not cover a semantic view as a whole: it selects the loaded photos only, and the "whole view" scope is refused
 
 ## Albums
 
@@ -564,7 +597,7 @@ Controlled by `viewer.features.show_memories` (default: `true`).
 
 - **Cull a vacation** — open Capsules → look for the auto-generated `journey` capsule for the trip dates. Each capsule offers a Save-as-Album action.
 - **Browse a day-by-day review** — open Timeline and drill down years → months → a calendar of days; click a day to open the gallery filtered to that date. There's no sort control in Timeline itself, but the day/month/year counts and hero thumbnails now honor the same `hide_bursts` / `hide_duplicates` toggles as the gallery (defaults: on), so a tile's count matches what clicking it opens.
-- **Show what's hidden** — the gallery hides blinks / non-lead bursts / non-lead duplicates by default. When at least one of those filters is on and would exclude rows, a "N photos hidden by current filters · Show all" banner appears above the grid.
+- **Show what's hidden** — the gallery hides blinks / non-lead bursts / non-lead duplicates by default. When at least one of those filters is on and would exclude rows, a "N photos hidden by current filters · Show all" notice floats at the bottom-right of the grid (and above the floating selection card only when the two would overlap).
 
 ## Timeline View
 
@@ -718,13 +751,15 @@ These three granularities (**Exposure brackets**, **Panoramas**, **HDR panoramas
 
 Two sort controls sit beside the granularity: the **sort mode** (easiest first, most redundant, best, most recent, needs comparisons, or **oldest first**) and an **arrow button that reverses whichever mode is active**. Oldest-first is the one mode that also puts the photos *inside* each group in capture order, which is the only order a bracket or a panned sequence reads correctly in.
 
-For each group, pick the keeper(s); confirming rejects the rest. Confirms are deferred and can be undone (see [Undo](#undo)). The granularity, sort, and category choices persist in `localStorage`. Controls that don't apply to the current granularity are hidden — the sort dropdown and similarity-threshold slider disappear in scene mode, and the scope button is hidden when you have no manual albums. Every toolbar and group-action button carries a tooltip, and on small screens the toolbar detaches into a scrollable bottom bar.
+For each group, pick the keeper(s); confirming rejects the rest. Confirms are deferred and can be undone (see [Undo](#undo)). The granularity, sort, and category choices persist in `localStorage`. Controls that don't apply to the current granularity are hidden — the sort dropdown and similarity-threshold slider disappear in scene mode, and the scope button is hidden when you have no manual albums. The **date range** button (icon `date_range`) is always present, even with no manual albums. Every toolbar and group-action button carries a tooltip, and on small screens the toolbar detaches into a scrollable bottom bar.
 
-**Scoped culling.** The darkroom can be narrowed to a subset via query params: `?group_by=scene` switches to scene granularity, `?album=<id>` restricts it to an album, and `?from=&to=` (EXIF capture-time window, the basis of **Cull this scene**) restricts it to one scene. A banner shows the active scope with an **Exit scene** control; the burst member fetch stays album-scoped but ignores the window, so a burst straddling the scene boundary still shows all its frames.
+**Scoped culling.** The darkroom can be narrowed to a subset via query params: `?group_by=scene` switches to scene granularity, `?album=<id>` restricts it to an album, and `?from=&to=` (capture-time window, the basis of **Cull this scene**; EXIF text or ISO dates such as `2026-06-01`) restricts it to one scene. A banner shows the active scope with an **Exit scene** control; the burst member fetch stays album-scoped but ignores the window, so a burst straddling the scene boundary still shows all its frames.
+
+**Date range.** The **date range** toolbar button (icon `date_range`) opens a menu of presets (**Last 7 days**, **Last 30 days**, **This year**, **Last year**), **Custom range...** (a date-range picker) and **All dates**; dates are shown as dd/MM/yyyy. The range stacks with the album scope and narrows the feed to photos taken in that window (photos without a capture date drop out of a dated scope); picking an album scene from the scope menu sets its own dates and replaces the range. Presets are resolved when you pick them, so a bookmarked "Last 7 days" is a fixed window. The range lives in the URL only (`?from=2026-07-01&to=2026-07-31`, next to `album` and `scene`), not in `localStorage`: a fresh visit starts on all dates and reloading restores it. Changing the range in the manual feed reloads it: a confirm still counting down is committed at once, while skips and unconfirmed selections are dropped.
 
 **My Taste chip.** Every confirm records `source='culling'` comparison rows that train the personal ranker, so the header shows a small "My Taste · N comparisons" chip that updates after each decision — the AI learns your eye as you cull (`GET /api/ranker/status`).
 
-**Genre profiles.** A **Profile** selector in the toolbar applies a genre preset that bundles every culling knob at once — strictness, keeper budget, similarity threshold and the darkroom's eyes-closed / poor-expression face cutoffs — so sports keeps only the sharpest of a burst, weddings keep more eyes-open variants, concerts and wildlife relax the face gates. The choice persists in `localStorage`; nudging any knob by hand reverts the label to "Custom". Presets live in the [`cull_profiles`](CONFIGURATION.md#genre-aware-culling-profiles) block (`GET /api/culling/profiles`).
+**Genre profiles.** A **Profile** selector in the toolbar applies a genre preset that bundles every culling knob at once — strictness, keeper budget, similarity threshold and the darkroom's eyes-closed / poor-expression face cutoffs — so sports keeps only the sharpest of a burst, weddings keep more eyes-open variants, concerts and wildlife relax the face gates. The choice persists in `localStorage`, and so does the strictness slider (it survives reloads; usable in plan mode, where it re-plans); nudging any knob by hand reverts the label to "Custom". Presets live in the [`cull_profiles`](CONFIGURATION.md#genre-aware-culling-profiles) block (`GET /api/culling/profiles`).
 
 ### Auto-cull
 
@@ -735,6 +770,22 @@ The preview is a **dry run** (nothing is written): it shows the per-group keep/r
 When a keeper-ranking head is trained, `POST /api/culling/auto` picks each group's keeper by `keeper_prob` once it clears its accuracy gate — otherwise the output is byte-identical to the heuristic pick.
 
 **Trimming redundant brackets** is opt-in (`trim_brackets`, off by default), and it is the only auto-cull path that ever reduces a sequence set — everywhere else, a bracket, panorama, or HDR panorama that a mixed scope happens to touch stays kept whole, untouched by strictness. A bracket earns its extra frames by covering range the base exposure clips away; when that base clips neither shadows nor highlights there was nothing to recover, so the flanking exposures are storage rather than latitude — the "I leave bracketing on all the time" case. Only the base frame is kept, decided by which frame is the base exposure, never by score or strictness, and sets whose base has never been measured are left alone: unmeasured is not the same as unclipped.
+
+### Assistant plan mode
+
+When an assistant connected through [AI Agents (MCP)](AGENTS.md) previews an auto-cull (`auto_cull`, or `ui_show_culling_plan` directly), your open tab loads that plan on `/culling` instead of the gallery. It is the same darkroom: the groups, keep/reject borders, loupe (`Z`), compare 2-up / 4-up and peaking work as in manual culling, and the plan's keepers start selected.
+
+- A banner reads **Assistant plan · x/y confirmed · Exit**, counting the plan's groups you have confirmed.
+- Each group carries a chip such as **#3 · reason · suggested keep 2 / reject 1**: the group's number in the plan, why the assistant grouped it, and its suggested split.
+- A dot on a frame means you flipped it away from the assistant's plan; its tooltip says so, or says you took the assistant's suggestion.
+- A dashed **Assistant: keep** or **Assistant: reject** badge on a frame is the assistant's suggestion for it, with its reason in the tooltip. One click (or Enter or Space on the focused badge) flips that frame exactly like toggling it yourself, and you still confirm the group; nothing changes until you click. The badge goes away once the frame is in the suggested state and comes back if you flip it again. There are no badges in a group you confirmed or skipped, nor in the full-screen view.
+- A blue chip in a group's header is the assistant's short note on that group.
+- You confirm group by group exactly as in manual culling: the same confirm key, the same countdown and **Undo**. Confirms in plan mode never add photos to a highlights album. A confirmed burst or similar group drops out of the plan (it is marked reviewed), so the assistant's next preview no longer contains it. A confirmed scene group is not recorded anywhere, so the next preview may propose it again; only the `keep_paths` the assistant passes from `culling.changed` protect your keepers. Confirming a burst rejects only the members shown in that confirm (its `paths`); members of the burst outside the shown scope, such as outside an album or date window, are left untouched.
+- Sort and threshold are disabled while the plan is shown, because the assistant fixed them. The strictness slider stays usable: moving it re-plans (a new plan digest), groups you flipped keep your choice and a group re-forms as confirmed when it falls inside a group you confirmed, scene groups included. With `group_by=all`, a confirmed burst whose keepers reappear inside a larger similar group is offered again (your rejections stay applied). Skipped groups come back after a re-plan, and a confirm still counting down when you move the slider is committed at once. While the plan is recomputed after a slider move, confirm, skip and "confirm all" are paused until the new plan arrives. Changing the **date range** re-plans the same way: flips and confirmed groups carry over by photo set, groups outside the window drop out (the flips lost are reported in a notice), and confirm, skip and "confirm all" are paused during the recompute; **All dates** re-plans the whole library, which may hit the plan cap (`plan_truncated`). **Exit**, or changing the grouping, the album/scene scope or the sort, leaves plan mode. Leaving `/culling` (opening a photo, say) and coming back restores plan mode from the plan already loaded in the tab, without loading it again and with your confirmed x/y kept; reloading the page drops the plan but keeps its album and dates in the URL, landing on a manual feed over them.
+- If the library changed since the preview, a notice says the plan is out of date. The assistant must preview again; it cannot replace a plan while you hold decisions you have not confirmed. A plan that fails to load for another reason shows a loading error instead of that notice.
+- Groups too large to confirm there are left out of the plan and counted in a notice.
+
+The assistant reads your progress with `ui_get_context` (`culling`: confirmed, pending and changed groups) and applies nothing from the tab itself. See [Plan mode on `/culling`](AGENTS.md#results-are-shown-in-your-tab).
 
 ### Fullscreen
 
@@ -818,6 +869,7 @@ Side-by-side photo pairs. Pick a winner, mark a tie, or skip. A progress bar tra
 
 | Strategy | Description |
 |----------|-------------|
+| `learning` | Default. Embedding-diversity cold start, then the pairs the personal ranker disagrees on most (most informative) |
 | `uncertainty` | Photos with similar scores (most informative) |
 | `boundary` | 6–8 score range (ambiguous zone) |
 | `active` | Photos with the fewest comparisons (ensures coverage) |
@@ -911,7 +963,7 @@ All stats are user-aware in multi-user mode — each user sees analytics for the
 | `Enter` | Open the focused photo |
 | `Space` | Select / deselect the focused photo |
 | `Ctrl+A` | Select all — the whole filtered view from an empty selection (no request), otherwise the loaded photos |
-| `Escape` | Clear selection / close filter drawer |
+| `Escape` | Clear selection (in side-panel mode, also releases the held photo) / close filter drawer |
 | `Shift+Click` | Range-select photos between last selected and clicked |
 | `Double-click` | Open photo |
 | `Shift+F10` / `Menu` | Open the context menu of the focused photo card (right-click does the same) |
@@ -942,10 +994,11 @@ been deployed.
 
 ## Mobile
 
-On small screens the bulk-selection bar collapses to the selection count,
-clear, select-all and a single **Actions** button that opens a touch-friendly
-bottom sheet with all bulk operations (favorite, reject, rate, albums, copy,
-download).
+On small screens the floating selection card keeps the selection count and the
+clear, select-all and invert icon buttons, plus a single **Actions** icon button that opens a
+touch-friendly bottom sheet with all bulk operations (favorite, reject, rate, albums, copy,
+download). A compare icon button also appears when the selection fits the compare view, and the sheet's
+close button dismisses it without running an action.
 
 ## Photo Frame / Kiosk Endpoint
 
@@ -1222,9 +1275,10 @@ The client's TypeScript types are generated from that schema into `client/src/ap
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/photos` | Paginated photo list with filters |
+| `GET /api/photos` | Paginated photo list with filters. `semantic_q`, `semantic_threshold` (0 to 1) and `sort=relevance` combine a [semantic query](#semantic-search) with every other filter (`sort=relevance` needs `semantic_q`, else `400`; `503` when the model is busy or fails to load) |
 | `GET /api/photos/count` | `{ total }` — how many photos match the current gallery filters |
 | `GET /api/photos/paths` | `{ total, paths }` — every matching path, unordered; used on demand by actions that need filenames (download, copy), never by select-all. Capped at 10000: a view holding more is refused with a `412` naming the count and the cap rather than truncated — a partial path list would be a selection the user believes is whole — and there is no fallback: the action is abandoned with a "too many photos" message so the user can narrow the filters and retry. Only the actions that need a literal path list go through here; the whole-view selection itself is count-only (`GET /api/photos/count`) and never needed one, so the filter-scoped actions built on it (batch rating/reject writes, cull, sidecar export) are unaffected by this cap and carry their own |
+| `POST /api/photos/by_paths` | Body: `{paths (1–500), filters}`. The named photos in the requested order, through the gallery's visibility and filters (`filters` takes the gallery's own keys; paging and sort keys are dropped, anything else is `422`). The viewer's default type and hide toggles are NOT applied, so a list the caller named is shown whole. Response `{photos, total, missing}`; `missing` lists (up to 200) paths that are unknown, invisible or filtered out |
 | `GET /api/photo` | Single photo details |
 | `PUT /api/photo/manual_tags` | Add a [manual tag](#manual-tags) to one photo (edition-gated). Body: `{path, tag}`. `404` for an unknown or invisible path, `422` for an invalid tag or a photo already at 50 tags; a tag that equals one of the photo's AI tags is a no-op answered `200` with `skipped_existing: true` |
 | `DELETE /api/photo/manual_tags` | Remove a manual tag from one photo (edition-gated). Body: `{path, tag}` |
@@ -1288,7 +1342,7 @@ The client's TypeScript types are generated from that schema into `client/src/ap
 | `POST /api/persons` | Create a new person, optionally attaching faces (edition-gated). Body: `{name, face_ids}` |
 | `GET /api/persons/needs_naming?min_faces=N` | List unnamed auto-clustered persons with `face_count >= N` (default from `viewer.persons.needs_naming_min_faces`) |
 | `POST /api/persons/{id}/rename` | Rename a person |
-| `POST /api/persons/{id}/assign_faces` | Bulk-attach faces to a person; empty old-persons are auto-deleted (edition-gated). Body: `{face_ids}` |
+| `POST /api/persons/{id}/assign_faces` | Bulk-attach faces to a person; empty old-persons are auto-deleted (edition-gated). Body: `{face_ids, tolerant?, only_unassigned?}`. With `tolerant: true` the call assigns what it may and reports the rest instead of failing: `missing`, `already`, `skipped_model`, `skipped_hidden`, `skipped_assigned` (plus `assigned_count`); `only_unassigned: true` leaves faces another person owns alone and requires `tolerant: true` (`422` otherwise) |
 | `POST /api/persons/{id}/split` | Split a subset of a person's faces into a new person (edition-gated). Body: `{face_ids, name}` |
 | `POST /api/persons/{id}/hide` | Hide a person from the list, filters, and merge suggestions |
 | `POST /api/persons/{id}/unhide` | Unhide a previously hidden person |
@@ -1400,10 +1454,11 @@ The client's TypeScript types are generated from that schema into `client/src/ap
 | `POST /api/burst-groups/select` | Select keepers from a burst group |
 | `GET /api/similar-groups?threshold=&page=&per_page=` | Groups of visually similar photos |
 | `POST /api/similar-groups/select` | Select keepers from a similar group |
-| `GET /api/culling-groups?group_by=all\|burst\|similar\|scene\|bracket\|panorama\|hdr_panorama&exclude_rejected=true&similarity_threshold=&page=&per_page=` | Burst/similar/scene/sequence groups for culling. `group_by` (default `all`) selects merged burst+similar, burst-only, similar-only, chronological scene groups (scene groups add `type`/`start`/`end`/`moment`/`moment_confidence`; the `sort` param is ignored in scene mode), or one of the keep-whole sequence kinds (`bracket`, `panorama`, `hdr_panorama` — each its own granularity, never merged into `all`). `exclude_rejected` (default `true`) hides photos with `is_rejected=1`; groups with fewer than 2 remaining photos are dropped. When a keeper-ranking head is trained, each photo also carries `keeper_prob` and each group carries `keeper_best_path` |
-| `POST /api/culling-groups/confirm` | Confirm culling selections. Body `{group_id, type, paths, keep_paths}`; `type` is `burst \| similar \| scene \| bracket \| panorama \| hdr_panorama`. `type:'scene'` records the scene-cull comparison rows; the three sequence kinds reject like the others but record no comparison pairs, since preferring one rung of a ladder or one frame of a pan says nothing about taste |
-| `POST /api/culling/auto` | `[Edition]` One-button auto-cull for a whole scope. Body `{group_by, album_id?, date_from?, date_to?, strictness?, min_keep_per_group, highlights_album, dry_run, profile?, trim_brackets}`; `group_by` is `all \| burst \| similar \| scene` (sequence kinds are not a valid scope here — see `trim_brackets`). `profile` names a `cull_profiles` preset to source `strictness`/`min_keep_per_group` from when they are omitted. `dry_run` (default `true`) returns the per-group keep/reject preview, an apply rejects the rest and records culling pairs. `trim_brackets` (default `false`) additionally trims brackets whose base exposure clips neither shadows nor highlights down to that base frame — the only auto-cull path that ever reduces a sequence set |
-| `GET /api/culling/suggest_profile?album_id=&date_from=&date_to=` | Infer the scope's dominant shoot type from its stored categories, narrative moments, face counts and capture hours, and name the `cull_profiles` preset that fits it, with a confidence and the evidence counts it was based on; cached per scope. `profile` is `null` below the dominance floor or when the matching preset isn't configured |
+| `GET /api/culling-groups?group_by=all\|burst\|similar\|scene\|bracket\|panorama\|hdr_panorama&exclude_rejected=true&similarity_threshold=&page=&per_page=&date_from=&date_to=` | Burst/similar/scene/sequence groups for culling. `group_by` (default `all`) selects merged burst+similar, burst-only, similar-only, chronological scene groups (scene groups add `type`/`start`/`end`/`moment`/`moment_confidence`; the `sort` param is ignored in scene mode), or one of the keep-whole sequence kinds (`bracket`, `panorama`, `hdr_panorama` — each its own granularity, never merged into `all`). `exclude_rejected` (default `true`) hides photos with `is_rejected=1`; groups with fewer than 2 remaining photos are dropped. When a keeper-ranking head is trained, each photo also carries `keeper_prob` and each group carries `keeper_best_path`. `date_from` / `date_to` take an ISO date (`2026-06-01`), an ISO datetime or the EXIF form (a date-only `date_to` covers the whole day); an unparseable value answers 400 |
+| `POST /api/culling-groups/confirm` | Confirm culling selections. Body `{group_id, type, paths, keep_paths}`; `type` is `burst \| similar \| scene \| bracket \| panorama \| hdr_panorama`. `type:'scene'` records the scene-cull comparison rows; the three sequence kinds reject like the others but record no comparison pairs, since preferring one rung of a ladder or one frame of a pan says nothing about taste Confirming a `burst` rejects only the members named in `paths`: a member of the burst the caller did not list is neither rejected nor marked reviewed |
+| `POST /api/culling/auto` | `[Edition]` One-button auto-cull for a whole scope. Body `{group_by, album_id?, date_from?, date_to?, strictness?, min_keep_per_group, highlights_album, dry_run, profile?, trim_brackets, cursor?, keep_paths?, remove_paths?, expected_digest?}`; `group_by` is `all \| burst \| similar \| scene` (sequence kinds are not a valid scope here — see `trim_brackets`). `profile` names a `cull_profiles` preset to source `strictness`/`min_keep_per_group` from when they are omitted. `dry_run` (default `true`) returns the per-group keep/reject preview, an apply rejects the rest and records culling pairs. `trim_brackets` (default `false`) additionally trims brackets whose base exposure clips neither shadows nor highlights down to that base frame — the only auto-cull path that ever reduces a sequence set. The route plans the whole scope on every call and returns it in pages of whole groups (`cursor` in, `next_cursor` out, `null` when complete; the route pages at 200 photos, but a single larger group gets its own page) with totals and a `plan_digest`. `keep_paths` / `remove_paths` (up to 1000 each) override single frames; stale paths come back as `ignored_overrides`. Removing a frame the plan keeps in a bracket, panorama or HDR panorama set is refused with 400; restating a removal the plan already makes is a no-op. An apply may carry `expected_digest` and is refused with 412 before any write when the plan changed. `date_from` / `date_to` accept ISO dates or datetimes as well as the EXIF form and answer 400 when unparseable. |
+| `POST /api/culling/plan` | `[Edition]` The assistant's auto-cull plan as culling groups, for `/culling` plan mode. Body is the `POST /api/culling/auto` plan inputs (`group_by, album_id?, date_from?, date_to?, strictness?, min_keep_per_group, highlights_album, profile?, trim_brackets, keep_paths?, remove_paths?`) plus an optional `expected_digest`. Recomputes the plan as a dry run and, when `expected_digest` is given, answers 412 when the digest differs from it (the tab shows only the plan the assistant described). Writes nothing. Returns `{groups, total_groups, plan_digest, truncated, oversize_groups}`: each group is a culling group that adds `plan: {number, keep_paths, group_reason}` with its photos listed keepers first; `truncated` says the list stopped at the group or photo cap and `oversize_groups` counts groups left out for exceeding the confirm route's per-group photo cap |
+| `GET /api/culling/suggest_profile?album_id=&date_from=&date_to=` | Infer the scope's dominant shoot type from its stored categories, narrative moments, face counts and capture hours, and name the `cull_profiles` preset that fits it, with a confidence and the evidence counts it was based on; cached per scope. `profile` is `null` below the dominance floor or when the matching preset isn't configured. `date_from` / `date_to` take ISO dates or EXIF text; unparseable answers 400 |
 | `POST /api/culling-groups/override_sequence` | `[Edition]` Record a sticky correction to what a set of frames is. Body `{paths, kind?}`; `kind` is `panorama \| hdr_panorama \| bracket` or omitted to mark the frames as not one of these. A `bracket` mark is gated on the exposure-ladder rule (≥2 frames, every one with usable exposure metadata, no two at the same exposure value) and 400s with a specific message when the frames don't qualify. Lands in `photo_sequence_overrides` (survives the detector clearing and rewriting `photos.sequence_*` on every run); takes effect on the next `POST /api/scan/detect_panoramas` |
 | `POST /api/culling-groups/clear_sequence_override` | `[Edition]` Drop a manual sequence correction for the named frames, handing them back to the detector. Body `{paths}` |
 | `POST /api/culling-group/faces` | Per-face badges (eyes open/closed, expression, confidence) for a group, in one batch |
@@ -1424,14 +1479,15 @@ The client's TypeScript types are generated from that schema into `client/src/ap
 | `GET /api/scan/status` | Check scan progress (structured `progress`: `{phase, current, total, eta_seconds}`); same access rule as `/start` |
 | `GET /api/scan/stream?token=<jwt>` | Real-time progress via Server-Sent Events; the token is minted by `GET /api/scan/stream_token` (same access rule as `/start`) and passed as a query param (the `EventSource` API can't set headers), with automatic fallback to polling `/status` |
 | `GET /api/scan/directories` | List configured scan directories; same access rule as `/start` |
-| `POST /api/scan/recompute` | `[Edition]` Trigger a full-library aggregate recompute (`--recompute-average`) as a background job; guarded cross-process by `facet.LibraryLock`, so it also refuses (409, naming the holder) when a scan or recompute is already running from a terminal, not just from another viewer tab. Unlike `/start`, its argv is fixed server-side and takes no request input, so it isn't gated by the mode-dependent access rule above |
-| `GET /api/scan/recompute_status` | `[Edition]` Poll recompute progress: `{running, kind, progress, exit_code}` — omits the `output_lines` log stream that `/status` returns, which is gated the same way as `/start` |
+| `POST /api/scan/recompute` | `[Edition]` Trigger a full-library aggregate recompute (`--recompute-average`) as a background job; guarded cross-process by `facet.LibraryLock`, so it also refuses (409, naming the holder) when a scan or recompute is already running from a terminal, not just from another viewer tab. Unlike `/start`, its argv is fixed server-side and takes only `confirm` and an optional `category` (it runs `--recompute-category`: only that category's scores are rewritten and burst and sequence detection are skipped; an unknown name is a 400), so it isn't gated by the mode-dependent access rule above |
+| `GET /api/scan/recompute_status` | `[Edition]` Poll recompute progress: `{running, kind, scope, started_at, progress, exit_code}` (`scope` is `all` or `category:<name>`; `started_at` lets a poller tell its own job from another) — omits the `output_lines` log stream that `/status` returns, which is gated the same way as `/start` |
 
 ### Face Management
 
 | Endpoint | Description |
 |----------|-------------|
 | `GET /api/person/{id}/faces` | List faces for a person |
+| `GET /api/person/{id}/possible_faces` | Faces most like the person's centroid, best first (same embedding model only). Query: `scope` (`unassigned`, `other_persons`, `all`), `min_similarity`, `limit` (≤ 100), `path_prefix`, `date_from`, `date_to`. `404` for an unknown or invisible person, `412` when the person has no usable centroid or the scan would exceed the server's face ceiling (narrow it with `scope`, `path_prefix` or the dates). Response `{faces, faces_scanned, candidates}` |
 | `POST /api/person/{id}/avatar` | Set person avatar face |
 | `GET /api/photo/faces` | List faces detected in a photo |
 | `POST /api/face/{id}/assign` | Assign a face to a person |
@@ -1551,7 +1607,7 @@ If semantic search reports that Apple Silicon acceleration is busy, retry after 
 | Compare button missing | Set a non-empty `edition_password` (single-user) or use `admin`/`superadmin` role (multi-user) |
 | Password not working | Check `viewer.password` (single-user) or verify password hash (multi-user) |
 | User can't see photos | Check `directories` in their user config and `shared_directories` |
-| Scan button missing | Requires `viewer.features.show_scan_button: true` plus scan access: `superadmin` role (multi-user), or an edition-authenticated session on a locked single-user install (`viewer.edition_password` set) — an open single-user install never shows it |
+| Scan button missing | Requires `viewer.features.show_scan_button: true` plus scan access: `superadmin` role (multi-user), or an edition-authenticated session on a locked single-user install (`viewer.edition_password` set) — an open single-user install never shows it, except to a trusted-local browser under `viewer.trusted_local_editing`, which shows it without the flag |
 | Search returns no results | Ensure photos have `clip_embedding` data (run scoring first) |
 | VLM critique unavailable | Requires 16gb/24gb VRAM profile and `viewer.features.show_vlm_critique: true`, plus an edition session to generate one (without it only a cached critique is served) |
 | Map shows no photos | Run `--extract-gps` to populate GPS columns, ensure photos have EXIF GPS data |

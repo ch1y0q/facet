@@ -92,6 +92,15 @@ describe('GalleryReuseStrategy', () => {
     expect(harness.routeDebugElement?.componentInstance).toBe(album);
   });
 
+  it('builds a fresh gallery when the album id changes, and reuses it when only the query does', async () => {
+    const three = await harness.navigateByUrl('/album/3', GalleryStub);
+    const count = destroyed;
+    const five = await harness.navigateByUrl('/album/5', GalleryStub);
+    expect(five).not.toBe(three);
+    expect(destroyed).toBe(count + 1);
+    expect(await harness.navigateByUrl('/album/5?sort=date', GalleryStub)).toBe(five);
+  });
+
   it('does not reattach a gallery with different query parameters', async () => {
     await harness.navigateByUrl('/?sort=date', GalleryStub);
     await harness.navigateByUrl('/photo?path=b.jpg');

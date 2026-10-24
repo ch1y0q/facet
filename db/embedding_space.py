@@ -68,7 +68,7 @@ def mismatched_face_models(conn, active_model):
     sql, params = model_mismatch_sql(active_model)
     return conn.execute(
         "SELECT COALESCE(embedding_model, ?), COUNT(*) FROM faces "
-        f"WHERE embedding IS NOT NULL AND {sql} GROUP BY 1",
+        f"WHERE is_manual=0 AND length(embedding)>0 AND {sql} GROUP BY 1",
         [ARCFACE_MODEL] + params).fetchall()
 
 

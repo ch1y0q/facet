@@ -1721,8 +1721,8 @@ Visualización y comportamiento de la galería web.
 | Ajuste | Por defecto | Descripción |
 |---------|---------|-------------|
 | `default_category` | `""` | Filtro de categoría por defecto |
-| `edition_password` | `""` | Contraseña para desbloquear el modo edición (vacío = toda edición se rechaza; la instalación es de solo lectura, salvo para un navegador local directo con `trusted_local_editing`) |
-| `trusted_local_editing` | `false` | Concede derechos de edición, sin contraseña de edición, a un navegador del mismo equipo que llega al visor directamente por loopback. Solo se aplica mientras `password` Y `edition_password` estén vacías en una instalación de un solo usuario; cubre todas las rutas sujetas a edición salvo el inicio del escaneo. **Nunca la actives detrás de un proxy inverso en el mismo equipo.** Consulta [Edición local de confianza](#edición-local-de-confianza) |
+| `edition_password` | `""` | Contraseña para desbloquear el modo edición (vacío = toda edición se rechaza; la instalación es de solo lectura, salvo para un navegador local directo o un asistente local con edición completa bajo `trusted_local_editing`) |
+| `trusted_local_editing` | `false` | Concede derechos de edición, sin contraseña de edición, a un navegador del mismo equipo que llega al visor directamente por loopback. Solo se aplica mientras `password` Y `edition_password` estén vacías en una instalación de un solo usuario; cubre todas las rutas sujetas a edición, incluido el inicio del escaneo, y permite que el cuadro «Conectar un asistente» cree un token de asistente de edición completa para las peticiones `/mcp` del mismo equipo. **Nunca la actives detrás de un proxy inverso en el mismo equipo.** Consulta [Edición local de confianza](#edición-local-de-confianza) |
 | **comparison_mode** | | |
 | `min_comparisons_for_optimization` | `50` | Número mínimo de comparaciones decisivas (ganó una foto; los empates no cuentan) de la categoría antes de sugerir pesos |
 | `pair_selection_strategy` | `"learning"` | Estrategia de pares: `learning` (arranque en frío por diversidad de embeddings + desacuerdo de rango una vez entrenado), `uncertainty`, `boundary`, `active`, `random` |
@@ -1893,7 +1893,7 @@ Activa o desactiva funciones opcionales para reducir el uso de memoria o simplif
 | `show_similar_button` | `true` | Mostrar el botón "Buscar similares" en las tarjetas de foto (usa numpy para la similitud CLIP) |
 | `show_merge_suggestions` | `true` | Activar la función de sugerencias de fusión en la página de gestión de personas |
 | `show_rating_controls` | `true` | Mostrar los controles de valoración por estrellas y favoritos |
-| `show_scan_button` | `false` | Mostrar el botón de iniciar escaneo (superadmin en modo multiusuario; sesión de edición bloqueada en modo de un solo usuario) — no requiere GPU: el escaneo se ejecuta solo en CPU con el perfil `legacy` |
+| `show_scan_button` | `false` | Mostrar el botón de iniciar escaneo (superadmin en modo multiusuario; sesión de edición bloqueada en modo de un solo usuario) — no requiere GPU: el escaneo se ejecuta solo en CPU con el perfil `legacy`; no se exige a una sesión local de confianza bajo `trusted_local_editing` |
 | `metrics_enabled` | `false` | Activar el endpoint público de Prometheus `GET /metrics`. Desactivado por defecto: expone recuentos de fotos/personas/rostros, tamaño de la BD y memoria del proceso; actívalo solo cuando el endpoint sea accesible desde la red del scraper, no desde internet público. |
 | `show_semantic_search` | `true` | Mostrar la barra de búsqueda semántica (búsqueda de texto a imagen usando embeddings CLIP/SigLIP) |
 | `show_albums` | `true` | Mostrar la función de álbumes (crear, gestionar y explorar álbumes de fotos) |
@@ -2002,7 +2002,9 @@ El acceso se decide en cada petición, nunca a partir de un claim del token. Una
 - la petición no lleva ninguna cabecera `Forwarded`, `Via`, `X-Real-IP`, `X-Client-IP`, `True-Client-IP`, `CF-Connecting-IP`, `X-Original-Forwarded-For` ni `X-Forwarded-*`;
 - un `Origin` o un `Referer`, si está presente, indica exactamente el esquema, el host y el puerto de la petición, sin credenciales (un `Origin` con ruta, consulta o fragmento se rechaza), y un `Sec-Fetch-Site`, si está presente, es `same-origin` o `none`.
 
-Una petición de confianza tiene todos los derechos de edición: cada ruta que, si no, exige una sesión de edición, no solo las valoraciones. Eso abarca valoraciones, favoritos y rechazos, el modo de comparación, la selección (incluido **Descartar a carpeta**, que mueve o envía archivos a la papelera, y el borrado de una foto), los álbumes, la gestión de personas y rostros, los cambios de pesos, prioridades y contextos de puntuación, la incrustación de metadatos y las exportaciones, los trabajos de argumentos fijos de recálculo y de detección de panorámicas, y la generación bajo demanda de subtítulos y críticas. El inicio del escaneo es la única excepción: sigue exigiendo `viewer.edition_password`, que nunca puede estar definida mientras se aplica esta opción, así que sigue rechazado.
+Una petición de confianza tiene todos los derechos de edición: cada ruta que, si no, exige una sesión de edición, no solo las valoraciones. Eso abarca valoraciones, favoritos y rechazos, el modo de comparación, la selección (incluido **Descartar a carpeta**, que mueve o envía archivos a la papelera, y el borrado de una foto), los álbumes, la gestión de personas y rostros, los cambios de pesos, prioridades y contextos de puntuación, la incrustación de metadatos y las exportaciones, los trabajos de argumentos fijos de recálculo y de detección de panorámicas, y la generación bajo demanda de subtítulos y críticas. El inicio del escaneo está incluido: una sesión de navegador local de confianza, y un asistente local con un token de edición completa, pueden escanear sin `viewer.features.show_scan_button`. El flujo de progreso del escaneo solo acepta un token de flujo local de confianza desde la misma máquina local.
+
+**Asistentes.** La misma opción permite que el cuadro «Conectar un asistente» cree un token de **Edición completa** en una instalación abierta (siguen siendo necesarios `viewer.mcp.enabled` y un token). El token es `edition` solo para las peticiones `/mcp` que superan la frontera anterior, así que funciona desde `http://localhost:<port>` o `127.0.0.1` en `:5000` y por el proxy de desarrollo de `ng serve` `:4200`, y pasa a `readonly` desde un cliente de la red local, una URL con nombre de host o `0.0.0.0`, o un despliegue en Docker. Cualquier contraseña lo baja a `readonly`; quitar la contraseña lo reactiva. Las herramientas de borrado siguen necesitando `viewer.mcp.allow_destructive`. `ng serve --host 0.0.0.0` o cualquier proxy sin marcar en el mismo equipo deja pasar a un cliente de la red local que envíe `Host: localhost`; entonces solo el token protege `/mcp`. Consulta [Agentes de IA (MCP)](AGENTS.md). El mismo límite, sea cual sea el valor de `trusted_local_editing`, rige la gestión de tokens del asistente en una instalación abierta: crear, listar y revocar tokens solo funciona con una petición que lo supere (o en una sesión de edición cuando `viewer.edition_password` está definido). Un proxy inverso debe enviar `X-Forwarded-For` o `Forwarded`; de lo contrario se trata como la máquina local.
 
 > **Advertencia:** el par de loopback es la única frontera real. `Host`, `Origin`, `Referer` y `Sec-Fetch-Site` los fija el cliente y solo pueden rechazar una petición, y un proxy inverso, un túnel o una redirección de puertos en el mismo equipo que no añada ninguna de las cabeceras anteriores es indistinguible de tu navegador. Nunca actives esta opción detrás de un proxy inverso en el mismo equipo. Mientras esté activa, cualquier proceso local y cualquier cuenta del equipo puede editar.
 
@@ -2017,8 +2019,7 @@ Anula los ajustes globales de `performance` al ejecutar el visor. Útil para des
       "mmap_size_mb": 0,
       "cache_size_mb": 4,
       "pool_size": 2,
-      "thumbnail_cache_size": 200,
-      "face_cache_size": 50
+      "thumbnail_cache_size": 200
     }
   }
 }
@@ -2030,7 +2031,6 @@ Anula los ajustes globales de `performance` al ejecutar el visor. Útil para des
 | `cache_size_mb` | *(global)* | Anulación del tamaño de caché de SQLite para las conexiones del visor |
 | `pool_size` | `5` | Tamaño del pool de conexiones (reduce para sistemas de poca memoria) |
 | `thumbnail_cache_size` | `2000` | Máximo de entradas en la caché en memoria de redimensionado de miniaturas |
-| `face_cache_size` | `500` | Máximo de entradas en la caché en memoria de miniaturas de rostro |
 
 Cuando no se establecen, el visor usa los valores globales de `performance`. Consulta [Despliegue](DEPLOYMENT.md) para los ajustes recomendados de NAS.
 
@@ -2625,6 +2625,50 @@ Exporta un álbum como una galería HTML estática y autónoma que un fotógrafo
 
 El `target_dir` pasa por la misma lista de permitidos que los endpoints de exportación copiar/mover (`viewer.export.allowed_target_dirs` más los directorios de escaneo — consulta [Destinos de exportación y descarte](#destinos-de-exportación-y-descarte)). Controlado por `viewer.features.show_portfolio_export` (predeterminado `true`).
 
+## Endpoint de agentes (MCP)
+
+Expone las herramientas descritas en [Agentes de IA (MCP)](AGENTS.md) en `POST /mcp`: lectura, control de la pestaña abierta y, según el nivel del token, modificación de valoraciones, etiquetas y álbumes, selección y eliminación. Está activado por defecto; pon `enabled` en `false` para apagarlo (todas las rutas responden entonces 404). En una instalación abierta (sin `viewer.password`) `/mcp` solo sirve una clave anónima de solo lectura, que no concede nada que la `/api` abierta no conceda ya. Un token creado en una instalación abierta es `readonly`, salvo que `viewer.trusted_local_editing` esté activo, lo que permite un token de edición completa para las peticiones del mismo equipo. En una instalación abierta, los tokens solo se crean, se listan y se revocan desde el ordenador donde se ejecuta Facet (o en una sesión de edición cuando `viewer.edition_password` está definido).
+
+```json
+{
+  "viewer": {
+    "mcp": {
+      "enabled": true,
+      "bridge": true,
+      "max_rows": 100,
+      "max_bytes": 60000,
+      "max_image_bytes": 262144,
+      "call_timeout_s": 30,
+      "semantic_timeout_s": 120,
+      "rate_per_min": 120,
+      "write_rate_per_min": 30,
+      "tool_profile": "full",
+      "allow_destructive": false,
+      "inpage_tools": true,
+      "allowed_origins": []
+    }
+  }
+}
+```
+
+| Clave | Predeterminado | Descripción |
+|-----|---------|-------------|
+| `enabled` | `true` | Interruptor general de `/mcp` y `/api/mcp/*`. Desactivado, responden 404 (el puente se cierra con el código 4404). En una instalación abierta (sin `viewer.password`) el endpoint solo sirve una clave anónima de solo lectura: ninguna autoridad nueva, porque la `/api` abierta ya expone los mismos datos. Un token creado en una instalación abierta es `readonly`, salvo que `viewer.trusted_local_editing` esté activo, lo que permite un token de edición completa para las peticiones del mismo equipo. En una instalación abierta, los tokens solo se crean, se listan y se revocan desde el ordenador donde se ejecuta Facet (o en una sesión de edición cuando `viewer.edition_password` está definido). |
+| `bridge` | `true` | Si el puente con la pestaña del navegador (`/api/mcp/bridge`) acepta WebSockets y las herramientas `ui_*` pueden llegar a una pestaña. Con `false`, el puente rechaza la conexión (código de cierre 4404) y las herramientas `ui_*` devuelven un error claro. Requiere un único worker. |
+| `max_rows` | `100` | Máximo de filas en un resultado de herramienta (1 a 500). Las filas sobrantes se descartan y se marca `truncated: true`. |
+| `max_bytes` | `60000` | Tamaño serializado máximo de un resultado de herramienta en bytes (4000 a 500000). |
+| `max_image_bytes` | `262144` | Tamaño máximo en bytes de la imagen que devuelve una herramienta, `get_thumbnail` o `contact_sheet` (de 32768 a 2097152); no se cuenta en `max_bytes`. |
+| `call_timeout_s` | `30` | Tiempo límite de una llamada a herramienta en segundos (1 a 300). También acota cuánto espera una llamada `ui_*` a la pestaña del navegador (`tab_timeout`). |
+| `semantic_timeout_s` | `120` | Tiempo límite de `semantic_search` en segundos (1 a 300); carga el modelo de embeddings y necesita más. |
+| `rate_per_min` | `120` | Llamadas a herramientas por minuto y token (mínimo 1). |
+| `write_rate_per_min` | `30` | Llamadas de escritura por minuto y token (mínimo 1). Se mantiene aparte para que las lecturas no dejen sin cupo a las escrituras. Se aplica a las herramientas de escritura (incluida la simulación de `cull_apply` y `delete_photos`); consulta [Agentes de IA](AGENTS.md#modificar-la-biblioteca). |
+| `tool_profile` | `"full"` | `"full"` lista cada herramienta que la clave puede llamar. `"core"` lista solo un conjunto de 11 herramientas para modelos pequeños (`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`). Solo cambia la lista: una herramienta fuera de ella aún puede llamarse si el nivel de la clave lo permite. Cualquier otro valor vuelve a `"full"`. Ver [Agentes de IA](AGENTS.md#niveles-de-permiso). |
+| `allow_destructive` | `false` | Permite a los asistentes ejecutar `delete_photos`, las acciones `move_rejects` y `trash_rejects` de `cull_apply` y `assign_faces` con `allow_reassign`. Desactivado, `delete_photos` no se lista y las otras dos responden `feature_disabled` nombrando esta clave. Ver [Agentes de IA](AGENTS.md#acciones-destructivas-vista-previa-y-confirmación). |
+| `inpage_tools` | `true` | Si una pestaña con sesión iniciada puede llamar a las herramientas del servidor desde la página: `GET /api/mcp/inpage_tools` las lista y `POST /api/mcp/call` ejecuta una como la sesión, a su nivel actual, por el mismo envoltorio que `/mcp`. Desactivado, ambas rutas responden 404 y `features.mcp_inpage` es falso en `/api/auth/status`. Consulta [Agentes de IA](AGENTS.md#webmcp-en-la-página-agentes-del-navegador). |
+| `allowed_origins` | `[]` | Orígenes de navegador adicionales (por ejemplo `["https://photos.example.com"]`) autorizados a abrir el puente de pestaña cuando un proxy inverso reescribe `Host`. Distinta de la clave CORS `viewer.allowed_origins`. |
+
+Los números fuera de rango se ajustan al límite, y un valor de tipo incorrecto vuelve al predeterminado. El bloque se lee en cada petición, así que recargar la configuración activa o desactiva la función sin reiniciar.
+
 ## Marco de fotos / Quiosco
 
 Sirve las «mejores tomas» curadas a dispositivos de tipo quiosco sin inicio de sesión — marcos de fotos inteligentes, paneles de Home Assistant, pantallas al estilo ImmichFrame / Immich-Kiosk — a través de tres endpoints anónimos con token estático (`GET /api/frame/photos`, `GET /api/frame/image/{id}`, `GET /api/frame/next`). El acceso es un **token de marco** opaco y de larga duración; una lista `tokens` vacía deshabilita toda la función (cada endpoint devuelve 404). Las respuestas nunca contienen rutas de archivos — cada foto se identifica mediante un id firmado opaco derivado del `rowid` de la fila.
@@ -2817,7 +2861,7 @@ Naturalidad del tono de piel en retratos (solo informativo). `--recompute-skin-t
 
 ## Sincronización con Immich
 
-Sincronización unidireccional de las valoraciones por estrellas y los favoritos de Facet a un servidor [Immich](https://immich.app/) mediante su API REST. Los recursos se resuelven por `originalPath` a través de las asignaciones de prefijo de ruta configuradas, en una única pasada de búsqueda masiva. Ejecútala con `--immich-sync` (comprueba primero con `--immich-test`); consulta [Comandos — Sincronización con Immich](COMMANDS.md#immich-sync).
+Sincronización unidireccional de las valoraciones por estrellas y los favoritos de Facet a un servidor [Immich](https://immich.app/) mediante su API REST. Los recursos se resuelven por `originalPath` a través de las asignaciones de prefijo de ruta configuradas, en una única pasada de búsqueda masiva. Ejecútala con `--immich-sync` (comprueba primero con `--immich-test`); consulta [Comandos — Sincronización con Immich](COMMANDS.md#sincronización-con-immich).
 
 ```json
 {

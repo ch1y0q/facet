@@ -35,4 +35,9 @@ describe('CompareFiltersService', () => {
     service.selectedCategory.set('');
     expect(service.selectedCategory()).toBe('');
   });
+
+  it('defaults the strategy to the server-configured one (empty) and the tab to the first one', () => {
+    expect(service.strategy()).toBe('');
+    expect(service.activeTab()).toBe(0);
+  });
 });

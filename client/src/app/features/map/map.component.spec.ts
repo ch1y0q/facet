@@ -3,6 +3,7 @@ import type { Mock } from 'vitest';
 import { of, throwError } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
+import { PageContextService } from '../../core/agent/page-context.service';
 
 // Mock Leaflet before importing the component. vi.doMock + dynamic import is
 // used instead of vi.mock because the unit-test builder wraps spec modules,
@@ -59,6 +60,15 @@ describe('MapComponent', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  describe('page context', () => {
+    it('registers the map page and reads its date range live', () => {
+      const context = TestBed.inject(PageContextService);
+      expect(context.snapshot()).toEqual({ id: 'map', date_from: '', date_to: '' });
+      component.mapFilters.dateTo.set('2026-02-01');
+      expect(context.snapshot()).toMatchObject({ date_to: '2026-02-01' });
+    });
   });
 
   describe('escapeHtml', () => {

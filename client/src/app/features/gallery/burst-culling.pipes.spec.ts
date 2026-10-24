@@ -8,6 +8,8 @@ import {
   peakingGradientField, peakingThreshold, paintPeakingField,
   loadFrameImage, computePeakingOverlay, computePooledPeakingOverlays,
   peakingCanvasSize, PEAKING_FIT_EDGE, KEY_SUBJECT_COORDINATE_SPACE,
+  CullGroupKeyPipe, CullPlanGroupReasonPipe, PlanDiffersPipe, PlanRejectCountPipe,
+  PlanSuggestionPipe, PlanAcceptedPipe, PlanGroupNotePipe, CullDateRangePipe, ScopeDatePipe,
   CullingGroup, CullingFace, CullingSubject, FaceThresholds, FrameSize, KeySubject,
 } from './burst-culling.pipes';
 
@@ -30,21 +32,40 @@ const group = (overrides: Partial<CullingGroup> = {}): CullingGroup => ({
   group_id: 1, type: 'burst', reason: '', photos: [], best_path: '', count: 0, ...overrides,
 });
 
+describe('PlanRejectCountPipe', () => {
+  const pipe = new PlanRejectCountPipe();
+  const photos = (...paths: string[]) => paths.map(path => ({ path })) as CullingGroup['photos'];
+
+  it('counts the group\'s photos the plan does not keep', () => {
+    const g = group({ photos: photos('/a', '/b', '/c'), plan: { number: 1, keep_paths: ['/a', '/x'], group_reason: { key: 'burst', params: {} } } });
+    expect(pipe.transform(g)).toBe(2);
+  });
+
+  it('is never negative when keep_paths outnumbers the photos', () => {
+    const g = group({ photos: photos('/a', '/b'), plan: { number: 1, keep_paths: ['/a', '/b', '/x', '/y', '/z'], group_reason: { key: 'burst', params: {} } } });
+    expect(pipe.transform(g)).toBe(0);
+  });
+
+  it('counts every photo as a reject for a group without a plan block', () => {
+    expect(pipe.transform(group({ photos: photos('/a') }))).toBe(1);
+  });
+});
+
 describe('IsKeptPipe', () => {
   const pipe = new IsKeptPipe();
 
   it('returns true when path is in the kept set for the burst', () => {
-    const map = new Map<number, Set<string>>([[1, new Set(['/photo1.jpg'])]]);
-    expect(pipe.transform('/photo1.jpg', map, 1)).toBe(true);
+    const map = new Map<string, Set<string>>([['1_burst', new Set(['/photo1.jpg'])]]);
+    expect(pipe.transform('/photo1.jpg', map, '1_burst')).toBe(true);
   });
 
   it('returns false when path is not in the kept set', () => {
-    const map = new Map<number, Set<string>>([[1, new Set(['/photo1.jpg'])]]);
-    expect(pipe.transform('/photo2.jpg', map, 1)).toBe(false);
+    const map = new Map<string, Set<string>>([['1_burst', new Set(['/photo1.jpg'])]]);
+    expect(pipe.transform('/photo2.jpg', map, '1_burst')).toBe(false);
   });
 
   it('returns false when burst_id has no entry', () => {
-    expect(pipe.transform('/photo1.jpg', new Map(), 99)).toBe(false);
+    expect(pipe.transform('/photo1.jpg', new Map(), '99_burst')).toBe(false);
   });
 });
 
@@ -52,22 +73,22 @@ describe('IsDecidedPipe', () => {
   const pipe = new IsDecidedPipe();
 
   it('returns true when burst has selections and path is not kept', () => {
-    const map = new Map<number, Set<string>>([[1, new Set(['/photo1.jpg'])]]);
-    expect(pipe.transform('/photo2.jpg', map, 1)).toBe(true);
+    const map = new Map<string, Set<string>>([['1_burst', new Set(['/photo1.jpg'])]]);
+    expect(pipe.transform('/photo2.jpg', map, '1_burst')).toBe(true);
   });
 
   it('returns false when path is kept', () => {
-    const map = new Map<number, Set<string>>([[1, new Set(['/photo1.jpg'])]]);
-    expect(pipe.transform('/photo1.jpg', map, 1)).toBe(false);
+    const map = new Map<string, Set<string>>([['1_burst', new Set(['/photo1.jpg'])]]);
+    expect(pipe.transform('/photo1.jpg', map, '1_burst')).toBe(false);
   });
 
   it('returns false when burst has no entry', () => {
-    expect(pipe.transform('/photo1.jpg', new Map(), 1)).toBe(false);
+    expect(pipe.transform('/photo1.jpg', new Map(), '1_burst')).toBe(false);
   });
 
   it('returns false when kept set is empty', () => {
-    const map = new Map<number, Set<string>>([[1, new Set<string>()]]);
-    expect(pipe.transform('/photo1.jpg', map, 1)).toBe(false);
+    const map = new Map<string, Set<string>>([['1_burst', new Set<string>()]]);
+    expect(pipe.transform('/photo1.jpg', map, '1_burst')).toBe(false);
   });
 });
 
@@ -837,5 +858,141 @@ describe('peakingCanvasSize', () => {
 
   it('bounds a full-resolution frame by the pixel budget alone', () => {
     expect(peakingCanvasSize(6000, 4000)).toEqual({ w: 1732, h: 1155 });
+  });
+});
+
+describe('CullGroupKeyPipe', () => {
+  it('keys a group by id and type so burst 5 and similar 5 differ', () => {
+    const pipe = new CullGroupKeyPipe();
+    expect(pipe.transform(group({ group_id: 5, type: 'burst' }))).toBe('5_burst');
+    expect(pipe.transform(group({ group_id: 5, type: 'similar' }))).toBe('5_similar');
+  });
+});
+
+describe('CullPlanGroupReasonPipe', () => {
+  const pipe = new CullPlanGroupReasonPipe();
+
+  it('maps the plan reason to a culling.group_reason key plus params', () => {
+    const g = group({ plan: { number: 1, keep_paths: [], group_reason: { key: 'similar_percent', params: { percent: 91 } } } });
+    expect(pipe.transform(g)).toEqual({ key: 'culling.group_reason.similar_percent', params: { percent: 91 } });
+  });
+
+  it('is null without a plan or without a reason', () => {
+    expect(pipe.transform(group())).toBeNull();
+    expect(pipe.transform(group({ plan: { number: 1, keep_paths: [], group_reason: null } }))).toBeNull();
+  });
+});
+
+describe('PlanDiffersPipe', () => {
+  const pipe = new PlanDiffersPipe();
+  const planned = group({ plan: { number: 1, keep_paths: ['/a.jpg'], group_reason: null } });
+
+  it('is false while the keep state matches the plan', () => {
+    const map = new Map([['1_burst', new Set(['/a.jpg'])]]);
+    expect(pipe.transform('/a.jpg', planned, map)).toBe(false);
+    expect(pipe.transform('/b.jpg', planned, map)).toBe(false);
+  });
+
+  it('is true only on the flipped photos', () => {
+    const map = new Map([['1_burst', new Set(['/b.jpg'])]]);
+    expect(pipe.transform('/a.jpg', planned, map)).toBe(true);
+    expect(pipe.transform('/b.jpg', planned, map)).toBe(true);
+    expect(pipe.transform('/c.jpg', planned, map)).toBe(false);
+  });
+
+  it('is false for a group without a plan', () => {
+    expect(pipe.transform('/a.jpg', group(), new Map([['1_burst', new Set(['/a.jpg'])]]))).toBe(false);
+  });
+});
+
+describe('PlanSuggestionPipe', () => {
+  const pipe = new PlanSuggestionPipe();
+  const planned = group({ plan: { number: 1, keep_paths: ['/a.jpg'], group_reason: null } });
+  const suggestions = new Map([
+    ['/a.jpg', { action: 'reject' as const, reason: 'soft' }],
+    ['/b.jpg', { action: 'keep' as const, reason: 'sharp' }],
+  ]);
+  const none = new Set<string>();
+  const kept = (...paths: string[]) => new Map([['1_burst', new Set(paths)]]);
+
+  it('offers the suggestion while the photo is not yet in the suggested state', () => {
+    expect(pipe.transform('/a.jpg', planned, kept('/a.jpg'), suggestions, none)).toEqual({ action: 'reject', reason: 'soft' });
+    expect(pipe.transform('/b.jpg', planned, kept('/a.jpg'), suggestions, none)).toEqual({ action: 'keep', reason: 'sharp' });
+  });
+
+  it('is null once the current state equals the action, and comes back when the user flips away again', () => {
+    expect(pipe.transform('/a.jpg', planned, kept(), suggestions, none)).toBeNull();
+    expect(pipe.transform('/b.jpg', planned, kept('/a.jpg', '/b.jpg'), suggestions, none)).toBeNull();
+    expect(pipe.transform('/a.jpg', planned, kept('/a.jpg'), suggestions, none)).not.toBeNull();
+  });
+
+  it('is null without a suggestion, without a plan, or in a closed group', () => {
+    expect(pipe.transform('/c.jpg', planned, kept('/a.jpg'), suggestions, none)).toBeNull();
+    expect(pipe.transform('/a.jpg', group(), kept('/a.jpg'), suggestions, none)).toBeNull();
+    expect(pipe.transform('/a.jpg', planned, kept('/a.jpg'), suggestions, new Set(['1_burst']))).toBeNull();
+  });
+});
+
+describe('PlanAcceptedPipe', () => {
+  const pipe = new PlanAcceptedPipe();
+  const planned = group({ plan: { number: 1, keep_paths: ['/a.jpg'], group_reason: null } });
+  const suggestions = new Map([['/a.jpg', { action: 'reject' as const, reason: 'soft' }]]);
+
+  it('is true only when the photo sits in the suggested state and the plan chose otherwise', () => {
+    expect(pipe.transform('/a.jpg', planned, new Map([['1_burst', new Set<string>()]]), suggestions)).toBe(true);
+    expect(pipe.transform('/a.jpg', planned, new Map([['1_burst', new Set(['/a.jpg'])]]), suggestions)).toBe(false);
+    expect(pipe.transform('/b.jpg', planned, new Map([['1_burst', new Set<string>()]]), suggestions)).toBe(false);
+    expect(pipe.transform('/a.jpg', group(), new Map(), suggestions)).toBe(false);
+  });
+});
+
+describe('PlanGroupNotePipe', () => {
+  const pipe = new PlanGroupNotePipe();
+  const photos = ['/a.jpg', '/b.jpg', '/c.jpg'].map(path => ({ path })) as CullingGroup['photos'];
+
+  it('returns the note of the first photo of the group that has one', () => {
+    const notes = new Map([['/c.jpg', 'late'], ['/b.jpg', 'tight call']]);
+    expect(pipe.transform(group({ photos }), notes)).toBe('tight call');
+  });
+
+  it('is null without a note', () => {
+    expect(pipe.transform(group({ photos }), new Map([['/z.jpg', 'x']]))).toBeNull();
+    expect(pipe.transform(group({ photos }), new Map())).toBeNull();
+  });
+});
+
+describe('CullDateRangePipe', () => {
+  const pipe = new CullDateRangePipe();
+
+  it('formats ISO dates day-month-year', () => {
+    expect(pipe.transform('2026-07-01', '2026-07-31')).toBe('01/07/2026 - 31/07/2026');
+  });
+
+  it('reads the EXIF form with a time', () => {
+    expect(pipe.transform('2026:07:01 00:00:00', '2026:07:31 23:59:59')).toBe('01/07/2026 - 31/07/2026');
+  });
+
+  it('keeps the dash when one side is missing', () => {
+    expect(pipe.transform('2026-07-01', null)).toBe('01/07/2026 -');
+    expect(pipe.transform(null, '2026-07-31')).toBe('- 31/07/2026');
+  });
+
+  it('is empty when both sides are missing', () => {
+    expect(pipe.transform(null, null)).toBe('');
+  });
+
+  it('returns an unreadable value unchanged', () => {
+    expect(pipe.transform('soon', '2026-07-31')).toBe('soon - 31/07/2026');
+  });
+});
+
+describe('ScopeDatePipe', () => {
+  const pipe = new ScopeDatePipe();
+
+  it('reads both forms and null', () => {
+    expect(pipe.transform('2026-07-01')).toEqual(new Date(2026, 6, 1));
+    expect(pipe.transform('2026:07:31 23:59:59')).toEqual(new Date(2026, 6, 31));
+    expect(pipe.transform(null)).toBeNull();
+    expect(pipe.transform('soon')).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, viewChild, ElementRef, DestroyRef, afterNextRender } from '@angular/core';
+import { Component, inject, signal, computed, viewChild, ElementRef, DestroyRef, afterNextRender, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
@@ -32,6 +32,7 @@ type GpsResult = components['schemas']['GpsUpdateResponse'];
   selector: 'app-gps-edit-dialog',
   standalone: true,
   imports: [FormsModule, MatDialogModule, MatButtonModule, MatIconModule, MatSnackBarModule, TranslatePipe, FixedPipe],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title class="!flex items-center gap-2">
       <mat-icon>location_on</mat-icon><span class="truncate">{{ data.filename }}</span>
@@ -101,7 +102,7 @@ type GpsResult = components['schemas']['GpsUpdateResponse'];
         <button mat-button (click)="useFileLocation()" [disabled]="saving() || placeBusy()">{{ I18N.photo_detail.gps.use_file_location | translate }}</button>
       }
       <button mat-button (click)="cancel()">{{ I18N.ui.buttons.cancel | translate }}</button>
-      <button mat-flat-button (click)="save()" [disabled]="saving() || placeBusy() || !coordinatesValid()">{{ I18N.ui.buttons.save | translate }}</button>
+      <button mat-flat-button (click)="save()" [disabled]="saving() || placeBusy() || !coordinatesValid() || unchanged()">{{ I18N.ui.buttons.save | translate }}</button>
     </mat-dialog-actions>
   `,
 })
@@ -143,6 +144,8 @@ export class GpsEditDialogComponent {
     return (lat === null && lng === null) ||
       (lat !== null && lng !== null && Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180);
   });
+  /** Still the coordinates the dialog opened with: saving would only pin them (gps_manually_set) without a change. */
+  readonly unchanged = computed(() => this.selectedLat() === this.data.lat && this.selectedLng() === this.data.lng);
   readonly editNameValid = computed(() => this.editName().trim().length > 0 && Array.from(this.editName().trim()).length <= 120);
   readonly canCreatePlace = computed(() => !this.placeBusy() && !this.loadingPlaces() && this.coordinatesValid() && this.selectedLat() !== null && this.placeName().trim().length > 0 && Array.from(this.placeName().trim()).length <= 120 && this.places().length < 100);
   private destroyed = false;
@@ -181,7 +184,11 @@ export class GpsEditDialogComponent {
 
     this.map.on('click', (e: L.LeafletMouseEvent) => {
       const wrapped = e.latlng.wrap();
-      if (!this.destroyed) this.selectRecent({ latitude: wrapped.lat, longitude: wrapped.lng });
+      if (this.destroyed) return;
+      this.selectedPlaceId.set(null);
+      this.selectedLat.set(wrapped.lat);
+      this.selectedLng.set(wrapped.lng);
+      this.syncMarker();
     });
   }
 

@@ -1719,8 +1719,8 @@ Visualizzazione e comportamento della galleria web.
 | Impostazione | Predefinito | Descrizione |
 |---------|---------|-------------|
 | `default_category` | `""` | Filtro categoria predefinito |
-| `edition_password` | `""` | Password per sbloccare la modalità di modifica (vuoto = ogni modifica è rifiutata; l'installazione è in sola lettura, tranne per un browser locale diretto con `trusted_local_editing`) |
-| `trusted_local_editing` | `false` | Concede i diritti di modifica, senza password di modifica, a un browser sullo stesso computer che raggiunge il viewer direttamente in loopback. Si applica solo quando `password` E `edition_password` sono entrambe vuote su un'installazione a utente singolo; copre ogni route soggetta a modifica tranne l'avvio della scansione. **Non abilitarla mai dietro un reverse proxy sullo stesso host.** Vedi [Modifica locale attendibile](#modifica-locale-attendibile) |
+| `edition_password` | `""` | Password per sbloccare la modalità di modifica (vuoto = ogni modifica è rifiutata; l'installazione è in sola lettura, tranne per un browser locale diretto o un assistente locale con modifica completa sotto `trusted_local_editing`) |
+| `trusted_local_editing` | `false` | Concede i diritti di modifica, senza password di modifica, a un browser sullo stesso computer che raggiunge il viewer direttamente in loopback. Si applica solo quando `password` E `edition_password` sono entrambe vuote su un'installazione a utente singolo; copre ogni route soggetta a modifica, avvio della scansione compreso, e permette alla finestra «Collega un assistente» di creare un token di assistente con modifica completa per le richieste `/mcp` dello stesso computer. **Non abilitarla mai dietro un reverse proxy sullo stesso host.** Vedi [Modifica locale attendibile](#modifica-locale-attendibile) |
 | **comparison_mode** | | |
 | `min_comparisons_for_optimization` | `50` | Numero minimo di confronti decisivi (una foto ha vinto; i pareggi non contano) della categoria prima di suggerire dei pesi |
 | `pair_selection_strategy` | `"learning"` | Strategia di coppia: `learning` (avvio a freddo per diversità di embedding + disaccordo di rango una volta addestrato), `uncertainty`, `boundary`, `active`, `random` |
@@ -1891,7 +1891,7 @@ Attiva o disattiva le funzionalità opzionali per ridurre l'uso della memoria o 
 | `show_similar_button` | `true` | Mostra il pulsante "Trova simili" sulle schede delle foto (usa numpy per la similarità CLIP) |
 | `show_merge_suggestions` | `true` | Abilita la funzionalità di suggerimenti di unione nella pagina di gestione delle persone |
 | `show_rating_controls` | `true` | Mostra i controlli di valutazione a stelle e preferiti |
-| `show_scan_button` | `false` | Mostra il pulsante di avvio scansione (superadmin in modalità multiutente; sessione di modifica bloccata in modalità utente singolo) — nessuna GPU richiesta: la scansione gira solo su CPU con il profilo `legacy` |
+| `show_scan_button` | `false` | Mostra il pulsante di avvio scansione (superadmin in modalità multiutente; sessione di modifica bloccata in modalità utente singolo) — nessuna GPU richiesta: la scansione gira solo su CPU con il profilo `legacy`; non richiesto a una sessione locale attendibile sotto `trusted_local_editing` |
 | `metrics_enabled` | `false` | Abilita l'endpoint Prometheus pubblico `GET /metrics`. Disattivato per impostazione predefinita — espone conteggi di foto/persone/volti, dimensione del DB e memoria del processo; abilitalo solo quando l'endpoint è raggiungibile dalla rete dello scraper, non da Internet pubblico. |
 | `show_semantic_search` | `true` | Mostra la barra di ricerca semantica (ricerca testo-immagine usando gli embedding CLIP/SigLIP) |
 | `show_albums` | `true` | Mostra la funzionalità album (crea, gestisci e sfoglia album di foto) |
@@ -2000,7 +2000,9 @@ L'accesso viene deciso a ogni richiesta, mai in base a un claim del token. Una r
 - la richiesta non porta alcun header `Forwarded`, `Via`, `X-Real-IP`, `X-Client-IP`, `True-Client-IP`, `CF-Connecting-IP`, `X-Original-Forwarded-For` o `X-Forwarded-*`;
 - un `Origin` o un `Referer`, se presente, indica esattamente schema, host e porta della richiesta, senza credenziali (un `Origin` con percorso, query o frammento è rifiutato), e un `Sec-Fetch-Site`, se presente, vale `same-origin` o `none`.
 
-Una richiesta attendibile ha pieni diritti di modifica: ogni route che altrimenti richiede una sessione di modifica, non solo le valutazioni. Ciò comprende valutazioni, preferiti e scarti, la modalità di confronto, la selezione (incluso **Scarta in cartella**, che sposta o cestina file, e l'eliminazione di una foto), gli album, la gestione di persone e volti, le modifiche a pesi, priorità e contesti di valutazione, l'incorporamento dei metadati e le esportazioni, i job a argomenti fissi di ricalcolo e di rilevamento panorami, e la generazione su richiesta di didascalie e critiche. L'avvio della scansione è l'unica eccezione: richiede sempre `viewer.edition_password`, che non può mai essere impostata mentre questa opzione si applica, quindi resta rifiutato.
+Una richiesta attendibile ha pieni diritti di modifica: ogni route che altrimenti richiede una sessione di modifica, non solo le valutazioni. Ciò comprende valutazioni, preferiti e scarti, la modalità di confronto, la selezione (incluso **Scarta in cartella**, che sposta o cestina file, e l'eliminazione di una foto), gli album, la gestione di persone e volti, le modifiche a pesi, priorità e contesti di valutazione, l'incorporamento dei metadati e le esportazioni, i job a argomenti fissi di ricalcolo e di rilevamento panorami, e la generazione su richiesta di didascalie e critiche. L'avvio della scansione è incluso: una sessione browser locale attendibile, e un assistente locale con un token di modifica completa, possono avviare la scansione senza `viewer.features.show_scan_button`. Il flusso di avanzamento della scansione accetta un token di flusso locale attendibile solo dalla stessa macchina locale.
+
+**Assistenti.** La stessa opzione permette alla finestra «Collega un assistente» di creare un token **Modifica completa** su un'installazione aperta (servono ancora `viewer.mcp.enabled` e un token). Il token è `edition` solo per le richieste `/mcp` che superano il confine qui sopra, quindi funziona da `http://localhost:<port>` o `127.0.0.1` su `:5000` e tramite il proxy di sviluppo di `ng serve` `:4200`, e diventa `readonly` da un client della rete locale, da un URL con nome host o `0.0.0.0`, o in una distribuzione Docker. Qualsiasi password lo abbassa a `readonly`; rimuovere la password lo riattiva. Gli strumenti di eliminazione richiedono ancora `viewer.mcp.allow_destructive`. `ng serve --host 0.0.0.0` o qualsiasi proxy non contrassegnato sullo stesso host lascia passare un client della rete locale che invii `Host: localhost`; resta solo il token a proteggere `/mcp`. Vedi [Agenti IA (MCP)](AGENTS.md). Lo stesso confine, qualunque sia il valore di `trusted_local_editing`, regola la gestione dei token dell'assistente in un'installazione aperta: creare, elencare e revocare token funziona solo con una richiesta che lo supera (o in una sessione di modifica quando `viewer.edition_password` è impostato). Un reverse proxy deve inviare `X-Forwarded-For` o `Forwarded`, altrimenti viene trattato come la macchina locale.
 
 > **Attenzione:** il peer di loopback è l'unico vero confine. `Host`, `Origin`, `Referer` e `Sec-Fetch-Site` sono impostati dal client e possono solo rifiutare una richiesta, e un reverse proxy, un tunnel o un port forward sullo stesso host che non aggiunge nessuno degli header sopra è indistinguibile dal tuo browser. Non abilitare mai questa opzione dietro un reverse proxy sullo stesso host. Finché è attiva, qualsiasi processo locale e qualsiasi account del computer può modificare.
 
@@ -2015,8 +2017,7 @@ Sovrascrive le impostazioni globali di `performance` quando si esegue il viewer.
       "mmap_size_mb": 0,
       "cache_size_mb": 4,
       "pool_size": 2,
-      "thumbnail_cache_size": 200,
-      "face_cache_size": 50
+      "thumbnail_cache_size": 200
     }
   }
 }
@@ -2028,7 +2029,6 @@ Sovrascrive le impostazioni globali di `performance` quando si esegue il viewer.
 | `cache_size_mb` | *(globale)* | Override della dimensione della cache di SQLite per le connessioni del viewer |
 | `pool_size` | `5` | Dimensione del pool di connessioni (riduci per sistemi con poca memoria) |
 | `thumbnail_cache_size` | `2000` | Numero massimo di voci nella cache in memoria del ridimensionamento delle miniature |
-| `face_cache_size` | `500` | Numero massimo di voci nella cache in memoria delle miniature dei volti |
 
 Quando non impostate, il viewer usa i valori globali di `performance`. Vedi [Deployment](DEPLOYMENT.md) per le impostazioni NAS consigliate.
 
@@ -2622,6 +2622,50 @@ Esporta un album come galleria HTML statica e autonoma che un fotografo può car
 | `jpeg_quality` | `88` | Qualità JPEG delle immagini esportate |
 
 Il `target_dir` passa attraverso la stessa allow-list degli endpoint di esportazione copia/spostamento (`viewer.export.allowed_target_dirs` più le directory di scansione — vedi [Destinazioni di esportazione e scarto](#destinazioni-di-esportazione-e-scarto)). Controllato da `viewer.features.show_portfolio_export` (predefinito `true`).
+
+## Endpoint agente (MCP)
+
+Espone gli strumenti descritti in [Agenti IA (MCP)](AGENTS.md) su `POST /mcp`: lettura, controllo della scheda aperta e, a seconda del livello del token, modifica di valutazioni, tag e album, selezione ed eliminazione. È attivo per impostazione predefinita; imposta `enabled` su `false` per spegnerlo (ogni route risponde allora 404). Su un'installazione aperta (senza `viewer.password`) `/mcp` serve solo una chiave anonima in sola lettura, che non concede nulla che l'`/api` aperta non conceda già. Un token creato su un'installazione aperta è `readonly`, a meno che `viewer.trusted_local_editing` sia attivo, il che consente un token di modifica completa per le richieste dello stesso computer. In un'installazione aperta i token si creano, si elencano e si revocano solo dal computer su cui gira Facet (o in una sessione di modifica quando `viewer.edition_password` è impostato).
+
+```json
+{
+  "viewer": {
+    "mcp": {
+      "enabled": true,
+      "bridge": true,
+      "max_rows": 100,
+      "max_bytes": 60000,
+      "max_image_bytes": 262144,
+      "call_timeout_s": 30,
+      "semantic_timeout_s": 120,
+      "rate_per_min": 120,
+      "write_rate_per_min": 30,
+      "tool_profile": "full",
+      "allow_destructive": false,
+      "inpage_tools": true,
+      "allowed_origins": []
+    }
+  }
+}
+```
+
+| Chiave | Predefinito | Descrizione |
+|-----|---------|-------------|
+| `enabled` | `true` | Interruttore generale di `/mcp` e `/api/mcp/*`. Disattivato, rispondono 404 (il ponte si chiude con il codice 4404). Su un'installazione aperta (senza `viewer.password`) l'endpoint serve solo una chiave anonima in sola lettura: nessuna nuova autorità, perché l'`/api` aperta espone già gli stessi dati. Un token creato su un'installazione aperta è `readonly`, a meno che `viewer.trusted_local_editing` sia attivo, il che consente un token di modifica completa per le richieste dello stesso computer. In un'installazione aperta i token si creano, si elencano e si revocano solo dal computer su cui gira Facet (o in una sessione di modifica quando `viewer.edition_password` è impostato). |
+| `bridge` | `true` | Se il ponte verso la scheda del browser (`/api/mcp/bridge`) accetta WebSocket e gli strumenti `ui_*` possono raggiungere una scheda. Con `false`, il ponte rifiuta la connessione (codice di chiusura 4404) e gli strumenti `ui_*` restituiscono un errore esplicito. Richiede un solo worker. |
+| `max_rows` | `100` | Numero massimo di righe in un risultato di strumento (da 1 a 500). Le righe in eccesso vengono scartate e si imposta `truncated: true`. |
+| `max_bytes` | `60000` | Dimensione serializzata massima di un risultato di strumento in byte (da 4000 a 500000). |
+| `max_image_bytes` | `262144` | Dimensione massima in byte dell'immagine restituita da uno strumento, `get_thumbnail` o `contact_sheet` (da 32768 a 2097152); non conteggiata in `max_bytes`. |
+| `call_timeout_s` | `30` | Timeout di una chiamata di strumento in secondi (da 1 a 300). Limita anche l'attesa di una chiamata `ui_*` verso la scheda del browser (`tab_timeout`). |
+| `semantic_timeout_s` | `120` | Timeout di `semantic_search` in secondi (da 1 a 300); carica il modello di embedding e richiede più tempo. |
+| `rate_per_min` | `120` | Chiamate di strumento al minuto per token (minimo 1). |
+| `write_rate_per_min` | `30` | Chiamate di scrittura al minuto per token (minimo 1). Tenuto separato perché le letture non affamino le scritture. Vale per gli strumenti di scrittura (inclusa la simulazione di `cull_apply` e `delete_photos`); vedi [Agenti IA](AGENTS.md#modificare-la-libreria). |
+| `tool_profile` | `"full"` | `"full"` elenca ogni strumento che la chiave può chiamare. `"core"` elenca solo un insieme di 11 strumenti per i modelli piccoli (`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`). Cambia solo l'elenco: uno strumento escluso può comunque essere chiamato se il livello della chiave lo consente. Qualsiasi altro valore torna a `"full"`. Vedi [Agenti IA](AGENTS.md#livelli-di-autorizzazione). |
+| `allow_destructive` | `false` | Consente agli assistenti di eseguire `delete_photos`, le azioni `move_rejects` e `trash_rejects` di `cull_apply` e `assign_faces` con `allow_reassign`. Disattivato, `delete_photos` non è elencato e gli altri due rispondono `feature_disabled` indicando questa chiave. Vedi [Agenti IA](AGENTS.md#azioni-distruttive-anteprima-poi-conferma). |
+| `inpage_tools` | `true` | Se una scheda autenticata può chiamare gli strumenti del server dalla pagina: `GET /api/mcp/inpage_tools` li elenca e `POST /api/mcp/call` ne esegue uno come la sessione, al suo livello attuale, attraverso lo stesso wrapper di `/mcp`. Disattivato, entrambe le route rispondono 404 e `features.mcp_inpage` è falso in `/api/auth/status`. Vedi [Agenti IA](AGENTS.md#webmcp-nella-pagina-agenti-del-browser). |
+| `allowed_origins` | `[]` | Origini del browser aggiuntive (per esempio `["https://photos.example.com"]`) autorizzate ad aprire il ponte della scheda quando un reverse proxy riscrive `Host`. Distinta dalla chiave CORS `viewer.allowed_origins`. |
+
+I numeri fuori intervallo vengono riportati nei limiti e un valore di tipo errato torna al predefinito. Il blocco è letto a ogni richiesta, quindi un ricaricamento della configurazione attiva o disattiva la funzione senza riavvio.
 
 ## Cornice digitale / Chiosco
 

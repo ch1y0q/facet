@@ -17,9 +17,11 @@ from api import database as _database
 from api.change_token import db_change_token
 from api.config import VIEWER_CONFIG, _FULL_CONFIG, cull_allow_trash
 from api.database import get_async_db, get_db
+from api.model_cache import AcceleratorBusy
 from api.models.gallery import (
-    GalleryParams, Photo, PhotoCountResponse, PhotoPathsResponse, PhotosResponse,
-    SimilarPhotosResponse,
+    BY_PATHS_MISSING_CAP, GALLERY_PAGING_KEYS, GalleryParams, Photo, PhotoCountResponse,
+    PhotoPathsResponse, PhotosByPathsRequest, PhotosByPathsResponse, PhotosResponse,
+    SimilarPhotosResponse, gallery_filter_keys, query_value,
 )
 from api.models.discovery import PhotoSetResponse, PhotoTypeCountsResponse, ViewerConfigResponse
 from api.db_helpers import (
@@ -32,6 +34,7 @@ from api.db_helpers import (
     build_photo_select_columns, album_filter_clause,
     format_date, to_exif_date, paginate,
 )
+from api.routers.search import semantic_candidates
 from api.top_picks import get_top_picks_score_sql, get_top_picks_threshold, with_top_picks_alias
 from api.types import (
     VALID_SORT_COLS, TYPE_FILTERS, normalize_params, get_photo_types, order_by_clause,
@@ -688,6 +691,14 @@ async def api_photo(
             photo = photos[0]
             photo['date_formatted'] = format_date(photo.get('date_taken'))
             await attach_person_data_async([photo], conn)
+            # The manual category correction, read only on this one-photo route: the listing
+            # feeds carry no such column (the correction lives in a side table), and an agent
+            # undoing its own override has to compare against the stored value, not photos.category.
+            cur = await conn.execute(
+                "SELECT category_override FROM photo_scoring_overrides WHERE photo_path = ?", [path])
+            override = await cur.fetchone()
+            await cur.close()
+            photo['category_override'] = override['category_override'] if override else None
 
             sanitize_float_values([photo])
 
@@ -1064,6 +1075,60 @@ async def api_photos_paths(
     return {"total": len(paths), "paths": paths}
 
 
+SEMANTIC_QUERY_MAX = 500
+_SEMANTIC_CLAUSE = " photos.path IN (SELECT value FROM json_each(?))"
+
+
+def _semantic_params(qp: dict) -> tuple[Optional[str], Optional[float]]:
+    """``(semantic_q, semantic_threshold)`` from the query string, validated; ``(None, None)`` when absent.
+
+    Read raw rather than through ``GalleryParams`` on purpose: the model also defines
+    ``by_paths`` / ``gallery_filter_keys``, and a semantic gate is not a filter either may carry.
+    """
+    raw = qp.get('semantic_q')
+    if raw is None:
+        if qp.get('semantic_threshold') is not None:
+            raise HTTPException(status_code=400, detail="semantic_threshold needs semantic_q")
+        return None, None
+    query = raw.strip()
+    if not 1 <= len(query) <= SEMANTIC_QUERY_MAX:
+        raise HTTPException(status_code=400, detail=f"semantic_q must be 1 to {SEMANTIC_QUERY_MAX} characters")
+    threshold = None
+    if qp.get('semantic_threshold') not in (None, ''):
+        try:
+            threshold = float(qp['semantic_threshold'])
+        except ValueError:
+            threshold = math.nan
+        if not 0.0 <= threshold <= 1.0:
+            raise HTTPException(status_code=400, detail="semantic_threshold must be a number between 0 and 1")
+    return query, threshold
+
+
+RELEVANCE_SORT = 'relevance'
+# Candidates in similarity order, probed by primary key: the outer loop is the ordered array,
+# so ``ORDER BY sem.pos`` needs no sort and each row costs one photos PK lookup.
+# json_each exposes a ``path`` column that would make the gallery's bare ``path`` ambiguous,
+# hence the renaming subquery; ordering by its rowid (array position) is what avoids a temp B-tree.
+_RELEVANCE_FROM = "(SELECT rowid AS pos, value AS sem_path FROM json_each(?)) AS sem CROSS JOIN "
+_RELEVANCE_CLAUSE = "photos.path = sem.sem_path"
+
+
+def _with_semantic_clause(where_str: str) -> str:
+    return f"{where_str} AND{_SEMANTIC_CLAUSE}" if where_str else f" WHERE{_SEMANTIC_CLAUSE}"
+
+
+async def _assemble_gallery_rows(rows, conn) -> list[dict]:
+    """Gallery rows as the wire carries them: tags split, date formatted, persons attached.
+
+    Shared by the listing and ``/api/photos/by_paths`` so the two cannot drift.
+    """
+    photos = split_photo_tags(rows, VIEWER_CONFIG['display']['tags_per_photo'])
+    for photo in photos:
+        photo['date_formatted'] = format_date(photo.get('date_taken'))
+    await attach_person_data_async(photos, conn)
+    return photos
+
+
 @router.get("/api/photos", response_model=PhotosResponse,
             response_model_exclude_unset=True)
 async def api_photos(
@@ -1089,8 +1154,14 @@ async def api_photos(
     page = max(1, gallery_params.page)
     per_page = gallery_params.per_page
 
-    sort_col = params['sort'] if params['sort'] in VALID_SORT_COLS else 'aggregate'
-    order_by_clause = _resolve_order_by(params)
+    relevance = params['sort'] == RELEVANCE_SORT
+    sort_col = RELEVANCE_SORT if relevance else (params['sort'] if params['sort'] in VALID_SORT_COLS else 'aggregate')
+    order_by_clause = 'sem.pos ASC' if relevance else _resolve_order_by(params)
+    semantic_q, semantic_threshold = _semantic_params(qp)
+    if relevance and semantic_q is None:
+        raise HTTPException(status_code=400, detail="sort=relevance needs semantic_q")
+    if semantic_q is not None and not VIEWER_CONFIG.get('features', {}).get('show_semantic_search', True):
+        raise HTTPException(status_code=400, detail="Semantic search is disabled")
 
     try:
         async with get_async_db() as conn:
@@ -1102,6 +1173,21 @@ async def api_photos(
             from_clause, where_str, all_params = await gallery_scope_sql_async(
                 conn, qp, user_id, prepared=params
             )
+            candidates = None
+            if semantic_q is not None:
+                # Never degrade to the whole library: a gate that cannot be resolved is a 503.
+                try:
+                    candidates = await semantic_candidates(conn, semantic_q, semantic_threshold, user_id)
+                except AcceleratorBusy:
+                    logger.warning("Semantic gallery search gave up waiting for the MPS lock: %s", semantic_q)
+                    raise HTTPException(status_code=503, detail="Search model is busy with another task, try again in a moment")
+                except sqlite3.Error:
+                    raise
+                except Exception:
+                    logger.exception("Semantic gallery search failed for query: %s", semantic_q)
+                    raise HTTPException(status_code=503, detail="Semantic search failed")
+                where_str = _with_semantic_clause(where_str)
+                all_params = all_params + [candidates.paths_json]
 
             total_count = await get_cached_count_async(conn, where_str, all_params, from_clause=from_clause)
             total_pages, offset = paginate(total_count, page, per_page)
@@ -1124,6 +1210,9 @@ async def api_photos(
                 where_str_no_hide = (
                     f" WHERE {' AND '.join(where_no_hide)}" if where_no_hide else ""
                 )
+                if candidates is not None:
+                    where_str_no_hide = _with_semantic_clause(where_str_no_hide)
+                    all_params_no_hide = all_params_no_hide + [candidates.paths_json]
                 agg = await get_cached_hidden_aggregates_async(
                     conn, where_str_no_hide, all_params_no_hide, from_clause=from_clause
                 )
@@ -1156,20 +1245,27 @@ async def api_photos(
                 select_cols.append('learned_score')
 
             if total_count:
-                query = f"SELECT {', '.join(select_cols)} FROM {from_clause}{where_str} ORDER BY {order_by_clause} LIMIT ? OFFSET ?"
-                cur = await conn.execute(query, all_params + [per_page, offset])
+                page_from, page_where, page_params = from_clause, where_str, all_params
+                if relevance and candidates is not None:
+                    # The ordered array replaces the IN gate (same set), so the join is the only probe.
+                    page_from = _RELEVANCE_FROM + from_clause
+                    base_where = where_str[:-len(_SEMANTIC_CLAUSE) - 4] if where_str.endswith(f" AND{_SEMANTIC_CLAUSE}") else ""
+                    page_where = f"{base_where} AND {_RELEVANCE_CLAUSE}" if base_where else f" WHERE {_RELEVANCE_CLAUSE}"
+                    descending = params['dir'] != 'ASC'
+                    page_params = [candidates.ordered_json(descending)] + all_params[:-1]
+                query = f"SELECT {', '.join(select_cols)} FROM {page_from}{page_where} ORDER BY {order_by_clause} LIMIT ? OFFSET ?"
+                cur = await conn.execute(query, page_params + [per_page, offset])
                 rows = await cur.fetchall()
                 await cur.close()
             else:
                 rows = []
 
-            tags_limit = VIEWER_CONFIG['display']['tags_per_photo']
-            photos = split_photo_tags(rows, tags_limit)
-
-            for photo in photos:
-                photo['date_formatted'] = format_date(photo.get('date_taken'))
-
-            await attach_person_data_async(photos, conn)
+            photos = await _assemble_gallery_rows(rows, conn)
+            if candidates is not None:
+                for photo in photos:
+                    photo['similarity'] = round(candidates.blended.get(photo['path'], 0.0), 4)
+                    if photo['path'] in candidates.embedding:
+                        photo['embedding_similarity'] = round(candidates.embedding[photo['path']], 4)
 
     except sqlite3.Error:
         logger.exception("Failed to fetch gallery photos")
@@ -1187,6 +1283,57 @@ async def api_photos(
         'sort_col': sort_col,
         'hidden_summary': hidden_summary,
     }
+
+
+@router.post("/api/photos/by_paths", response_model=PhotosByPathsResponse,
+             response_model_exclude_unset=True)
+async def api_photos_by_paths(
+    body: PhotosByPathsRequest,
+    user: Optional[CurrentUser] = Depends(get_optional_user),
+):
+    """The named photos, in the requested order, through the gallery's visibility and filters.
+
+    The explicit-list counterpart of ``/api/photos``: no paging and no sort, because the
+    caller chose the rows. Filter keys are the gallery's own (``gallery_filter_keys``);
+    paging and ordering keys are dropped and anything else is a 422. The viewer's default
+    ``type`` and the hide toggles are NOT applied -- a list the caller named is shown whole
+    unless it asks otherwise -- so ``type`` is set to ``''`` only when the caller gave none.
+    """
+    unknown = sorted(set(body.filters) - gallery_filter_keys())
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"Unknown filter key(s): {', '.join(unknown)}")
+    qp = {key: query_value(value)
+          for key, value in body.filters.items() if key not in GALLERY_PAGING_KEYS}
+    qp.setdefault('type', '')
+    try:
+        _, params = _prepare_gallery_params(qp)
+    except ValidationError as e:
+        _raise_422_for_invalid_gallery_params(e, logger, "By-paths parameter validation failed: %s")
+    wanted = list(dict.fromkeys(body.paths))
+    try:
+        async with get_async_db() as conn:
+            user_id = user.user_id if user else None
+            from_clause, where_str, all_params = await gallery_scope_sql_async(
+                conn, qp, user_id, prepared=params)
+            select_cols = build_photo_select_columns(conn=None, user_id=user_id)
+            select_cols = with_top_picks_alias(select_cols, params.get('top_picks_filter') == '1')
+            marks = ','.join('?' * len(wanted))
+            cur = await conn.execute(
+                f"SELECT {', '.join(select_cols)} FROM {from_clause}{where_str} "
+                f"AND photos.path IN ({marks})",
+                all_params + wanted,
+            )
+            rows = await cur.fetchall()
+            await cur.close()
+            photos = await _assemble_gallery_rows(rows, conn)
+    except sqlite3.Error:
+        logger.exception("Failed to fetch photos by path")
+        raise HTTPException(status_code=500, detail='Internal server error')
+    sanitize_float_values(photos)
+    by_path = {photo['path']: photo for photo in photos}
+    ordered = [by_path[path] for path in wanted if path in by_path]
+    missing = [path for path in wanted if path not in by_path]
+    return {'photos': ordered, 'total': len(ordered), 'missing': missing[:BY_PATHS_MISSING_CAP]}
 
 
 async def _enrich_similar_with_full_rows_async(page_results, conn, user_id):

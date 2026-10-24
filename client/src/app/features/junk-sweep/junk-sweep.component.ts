@@ -1,4 +1,4 @@
-import { Component, inject, signal, effect, viewChild, TemplateRef, OnInit, OnDestroy, HostListener } from '@angular/core';
+import { Component, inject, signal, effect, viewChild, TemplateRef, OnInit, OnDestroy, HostListener, ChangeDetectionStrategy } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -20,8 +20,10 @@ import { createLoupeState } from '../../shared/utils/loupe-state';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { JunkKindLabelPipe, JunkKindIconPipe } from './junk-sweep.pipes';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { chunkPhotoPaths, type PhotosResponse } from '../gallery/gallery.store';
 import { normalisePhotoFlagsAll, type Photo } from '../../shared/models/photo.model';
+import { onPageQuery } from '../../shared/utils/page-query';
 
 const ANY_KIND = 'any';
 
@@ -43,6 +45,7 @@ const ANY_KIND = 'any';
     JunkKindLabelPipe,
     JunkKindIconPipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <!-- The toolbar projects into the global header on lg+ (HeaderSlotService) and
          renders as a fixed bottom bar on small screens (same #junkToolbar template):
@@ -150,6 +153,7 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
   protected readonly I18N = i18nKeys();
   protected readonly ANY_KIND = ANY_KIND;
   private readonly api = inject(ApiService);
+  private readonly journal = inject(UserActivityJournal);
   private readonly snack = inject(MatSnackBar);
   private readonly i18n = inject(I18nService);
   private readonly dialog = inject(MatDialog);
@@ -162,6 +166,11 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
     effect(() => {
       const tpl = this.junkToolbar();
       if (tpl) this.headerSlot.set(tpl);
+    });
+    // The assistant's `junk_list show=true` sends the kind every time; it is applied once the kind list is known.
+    onPageQuery('/junk', ['kind'], query => {
+      this.requestedKind = query.get('kind');
+      this.applyRequestedKind();
     });
   }
 
@@ -179,6 +188,8 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
   private page = 1;
   private readonly perPage = 48;
   private loadGeneration = 0;
+  private requestedKind: string | null = null;
+  private kindsLoaded = false;
 
   async ngOnInit(): Promise<void> {
     this.pageHelp.setDescription(I18N.junk.help);
@@ -200,7 +211,18 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
       this.kinds.set(data.junk_kinds ?? []);
     } catch {
       // The kind filter menu stays empty; the "All kinds" view still works.
+    } finally {
+      this.kindsLoaded = true;
+      this.applyRequestedKind();
     }
+  }
+
+  /** Select the kind a navigation asked for, once the kind list can say whether it exists. */
+  private applyRequestedKind(): void {
+    const kind = this.requestedKind;
+    if (kind === null || !this.kindsLoaded) return;
+    this.requestedKind = null;
+    if (kind === ANY_KIND || this.kinds().some(entry => entry[0] === kind)) void this.selectKind(kind);
   }
 
   @HostListener('document:keydown.z', ['$event'])
@@ -254,6 +276,7 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
     this.removeLocal(photo);
     try {
       await firstValueFrom(this.api.post('/photo/clear_junk', { photo_path: photo.path }));
+      this.journal.record('junk', [photo.path], { action: 'clear', count: 1 });
       this.notify(I18N.junk.kept, 1500);
     } catch {
       this.restoreLocal(photo);
@@ -266,6 +289,7 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
     this.removeLocal(photo);
     try {
       await firstValueFrom(this.api.post('/photos/batch_reject', { photo_paths: [photo.path] }));
+      this.journal.record('junk', [photo.path], { action: 'reject', count: 1 });
       this.notify(I18N.junk.rejected, 1500);
     } catch {
       this.restoreLocal(photo);
@@ -289,12 +313,13 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
     // the server's photo_paths cap one POST of the lot is a 422, so it goes out
     // in request-sized chunks like every other batch write.
     const paths = shown.map(p => p.path);
-    let sent = 0;
+    const rejected: string[] = [];
     try {
       for (const chunk of chunkPhotoPaths(paths)) {
         await firstValueFrom(this.api.post('/photos/batch_reject', { photo_paths: chunk }));
-        sent += chunk.length;
+        rejected.push(...chunk);
       }
+      this.journal.record('junk', rejected, { action: 'reject', count: rejected.length });
       this.notify(I18N.junk.rejected_bulk, 2000, { count: paths.length });
       const removedByKind = new Map<string, number>();
       for (const p of shown) {
@@ -309,7 +334,8 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
       this.notifyError();
       // Earlier chunks already landed server-side, so the list on screen no
       // longer matches it — re-read rather than leave rejected rows shown.
-      if (sent > 0) {
+      if (rejected.length > 0) {
+        this.journal.record('junk', rejected, { action: 'reject', count: rejected.length, partial: true });
         this.page = 1;
         this.photos.set([]);
         await this.load();

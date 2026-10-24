@@ -73,11 +73,11 @@ fazer isso pelo terminal ([Scanning](COMMANDS.md#scanning)) ou pelo navegador:
   Multiusuário: você precisa do papel de superadmin.
 - Adicione a pasta a `viewer.scan_directories` para que o lançador tenha algo a oferecer.
 
-Um botão **Escanear novas fotos** fica então acima da grade da galeria em qualquer largura
-de tela, e não apenas na galeria vazia. Regras completas: [Disparo de Varredura](VIEWER.md#disparo-de-varredura). A primeira
+Um botão **Escanear novas fotos** fica então no cabeçalho, logo após o seletor
+**Ordenar** (na barra inferior em telas pequenas), e não apenas na galeria vazia. Regras completas: [Disparo de Varredura](VIEWER.md#disparo-de-varredura). A primeira
 varredura baixa os modelos de IA uma única vez ([Primeira execução](INSTALLATION.md#primeira-execução-o-que-esperar)).
 
-![Botão Escanear acima da galeria](../screenshots/getting-started-scan-button.jpg)
+![Botão Escanear no cabeçalho, após o seletor Ordenar](../screenshots/getting-started-scan-button.jpg)
 
 ### Etapa 2: Encontrar duplicatas, sequências e fotos parecidas
 

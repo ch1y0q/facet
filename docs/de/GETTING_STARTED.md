@@ -73,11 +73,11 @@ und scannen Sie ihn. Das geht im Terminal ([Scannen](COMMANDS.md#scannen)) oder 
   sein. Mehrbenutzer: Sie benötigen die Rolle Superadmin.
 - Fügen Sie den Ordner zu `viewer.scan_directories` hinzu, damit der Starter etwas zur Auswahl hat.
 
-Eine Schaltfläche **Neue Fotos scannen** erscheint dann bei jeder Bildschirmbreite über dem
-Galerieraster, nicht nur in der leeren Galerie. Vollständige Regeln: [Scan auslösen](VIEWER.md#scan-auslösen). Der erste
+Eine Schaltfläche **Neue Fotos scannen** erscheint dann in der Kopfzeile direkt nach der
+**Sortierung**-Auswahl (auf kleinen Bildschirmen in der unteren Leiste), nicht nur in der leeren Galerie. Vollständige Regeln: [Scan auslösen](VIEWER.md#scan-auslösen). Der erste
 Scan lädt die KI-Modelle einmalig herunter ([Erster Start](INSTALLATION.md#erster-start-was-sie-erwartet)).
 
-![Scan-Schaltfläche über der Galerie](../screenshots/getting-started-scan-button.jpg)
+![Scan-Schaltfläche in der Kopfleiste nach der Sortierung-Auswahl](../screenshots/getting-started-scan-button.jpg)
 
 ### Schritt 2: Duplikate, Serienbilder und Ähnliches finden
 

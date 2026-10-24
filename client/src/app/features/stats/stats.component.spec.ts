@@ -1,10 +1,11 @@
 import type { Mock } from 'vitest';
 import { TestBed } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
+import { NEVER, of, throwError } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { ChartHeightPipe } from './chart-height.pipe';
 import { StatsComponent } from './stats.component';
+import { PageContextService } from '../../core/agent/page-context.service';
 import { Router, ActivatedRoute } from '@angular/router';
 
 describe('StatsComponent', () => {
@@ -118,7 +119,7 @@ describe('StatsComponent', () => {
       providers: [
         { provide: ApiService, useValue: mockApi },
         { provide: I18nService, useValue: { t: (key: string) => key } },
-        { provide: Router, useValue: { navigate: vi.fn() } },
+        { provide: Router, useValue: { navigate: vi.fn(), events: NEVER } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
       ],
     });
@@ -127,6 +128,17 @@ describe('StatsComponent', () => {
 
   afterEach(() => {
     TestBed.resetTestingModule();
+  });
+
+  describe('page context', () => {
+    it('registers the stats page and reads its filters live', () => {
+      const component = createComponent();
+      const context = TestBed.inject(PageContextService);
+      expect(context.snapshot()).toEqual({ id: 'stats', tab: 0, category: '', date_from: '', date_to: '' });
+      component.statsFilters.filterCategory.set('portrait');
+      component.statsFilters.dateFrom.set('2026-01-01');
+      expect(context.snapshot()).toMatchObject({ category: 'portrait', date_from: '2026-01-01' });
+    });
   });
 
   describe('loadAll()', () => {

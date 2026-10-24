@@ -6,9 +6,11 @@ reach already-exported photos).
 """
 
 import sqlite3
+from contextlib import contextmanager
 from io import BytesIO
 
 import pytest
+import numpy as np
 from PIL import Image
 
 from db.maintenance import export_viewer_db
@@ -45,6 +47,196 @@ def _spike_histogram(index):
     counts = [0.0] * 256
     counts[index] = 1000.0
     return pack_histogram(counts, counts, counts, counts)
+
+
+def _manual_face(conn, path, person_id, key):
+    return conn.execute(
+        "INSERT INTO faces(photo_path,face_index,embedding,person_id,is_manual,manual_key,"
+        "bbox_x1,bbox_y1,bbox_x2,bbox_y2,manual_width,manual_height,manual_source,face_thumbnail) "
+        "VALUES (?,-1,X'',?,1,?,10,10,30,30,100,100,'source',?)",
+        (path, person_id, key, _thumb_bytes('blue'))).lastrowid
+
+
+def test_incremental_manual_faces_preserve_independent_colliding_people(tmp_path):
+    src, out = str(tmp_path / 'source.db'), str(tmp_path / 'viewer.db')
+    _make_source_db(src)
+    export_viewer_db(src, out, verbose=False)
+    with sqlite3.connect(out) as conn:
+        viewer_pid = conn.execute("INSERT INTO persons(name) VALUES ('Viewer Alice')").lastrowid
+        viewer_key = conn.execute('SELECT person_key FROM persons WHERE id=?', (viewer_pid,)).fetchone()[0]
+        viewer_fid = _manual_face(conn, _A, viewer_pid, 'viewer-manual')
+    with sqlite3.connect(src) as conn:
+        source_pid = conn.execute("INSERT INTO persons(name) VALUES ('Scanner Bob')").lastrowid
+        assert source_pid == viewer_pid
+        source_key = conn.execute('SELECT person_key FROM persons WHERE id=?', (source_pid,)).fetchone()[0]
+        assert source_key != viewer_key
+        _manual_face(conn, _B, source_pid, 'source-manual')
+        conn.execute("INSERT INTO faces(photo_path,face_index,embedding,person_id) VALUES (?,0,X'01',?)", (_A, source_pid))
+    for _ in range(2):
+        export_viewer_db(src, out, verbose=False)
+        with sqlite3.connect(out) as conn:
+            rows = conn.execute('SELECT f.manual_key,p.name,p.person_key FROM faces f JOIN persons p ON f.person_id=p.id WHERE f.is_manual=1 ORDER BY f.manual_key').fetchall()
+            assert rows == [('source-manual', 'Scanner Bob', source_key), ('viewer-manual', 'Viewer Alice', viewer_key)]
+            assert conn.execute('SELECT id FROM faces WHERE manual_key=?', ('viewer-manual',)).fetchone() == (viewer_fid,)
+            assert conn.execute('SELECT p.name FROM faces f JOIN persons p ON f.person_id=p.id WHERE f.photo_path=? AND f.is_manual=0', (_A,)).fetchone() == ('Scanner Bob',)
+            assert conn.execute('SELECT COUNT(*) FROM faces WHERE is_manual=1').fetchone() == (2,)
+    with sqlite3.connect(src) as conn:
+        conn.execute('DELETE FROM photos WHERE path=?', (_A,))
+    export_viewer_db(src, out, verbose=False)
+    with sqlite3.connect(out) as conn:
+        assert conn.execute('SELECT 1 FROM faces WHERE manual_key=?', ('viewer-manual',)).fetchone() is None
+        assert conn.execute('SELECT face_count,face_thumbnail,representative_face_id FROM persons WHERE person_key=?',
+                            (viewer_key,)).fetchone() == (0, None, None)
+
+
+def test_manual_api_deletion_wins_over_stale_exports_in_both_directions(tmp_path, edition_client, monkeypatch):
+    from api.routers import manual_faces as router
+    src, out = str(tmp_path / 'source.db'), str(tmp_path / 'viewer.db')
+    _make_source_db(src)
+    with sqlite3.connect(src) as conn:
+        pid = conn.execute("INSERT INTO persons(name,face_count) VALUES ('Deleted Person',1)").lastrowid
+        _manual_face(conn, _A, pid, 'deleted-source-mark')
+    export_viewer_db(src, out, verbose=False)
+    @contextmanager
+    def viewer_db():
+        conn = sqlite3.connect(out)
+        conn.row_factory = sqlite3.Row
+        conn.execute('PRAGMA foreign_keys=ON')
+        try:
+            yield conn
+        finally:
+            conn.close()
+    monkeypatch.setattr(router, 'get_db', viewer_db)
+    region = edition_client.get('/api/photo/manual-faces', params={'path': _A}).json()['regions'][0]
+    assert edition_client.delete(f"/api/photo/manual-faces/{region['id']}", params={'path': _A}).status_code == 200
+    # Scanner still contains the source-origin mark. Re-export must not revive it.
+    for _ in range(2):
+        export_viewer_db(src, out, verbose=False)
+        with sqlite3.connect(out) as conn:
+            assert conn.execute("SELECT 1 FROM faces WHERE manual_key='deleted-source-mark'").fetchone() is None
+            assert conn.execute("SELECT face_count,face_thumbnail FROM persons WHERE name='Deleted Person'").fetchone() == (0, None)
+    # The deletion is now the source of a reverse sync into an older active copy.
+    export_viewer_db(out, src, verbose=False)
+    for source, destination in ((src, out), (out, src)):
+        export_viewer_db(source, destination, verbose=False)
+        with sqlite3.connect(destination) as conn:
+            assert conn.execute("SELECT 1 FROM faces WHERE manual_key='deleted-source-mark'").fetchone() is None
+            assert conn.execute("SELECT manual_key FROM manual_face_deletions").fetchall() == [('deleted-source-mark',)]
+
+
+def test_source_person_metadata_follows_stable_key_without_replacing_manual_links(tmp_path):
+    src, out = str(tmp_path / 'source.db'), str(tmp_path / 'viewer.db')
+    _make_source_db(src)
+    with sqlite3.connect(src) as conn:
+        pid = conn.execute("INSERT INTO persons(name) VALUES ('Original')").lastrowid
+        person_key = conn.execute('SELECT person_key FROM persons WHERE id=?', (pid,)).fetchone()[0]
+        conn.execute('INSERT INTO faces(photo_path,face_index,embedding,person_id,face_thumbnail,embedding_model) '
+                     "VALUES (?,0,?,?,?,'sface')", (_B, np.ones(128, dtype=np.float32).tobytes(), pid, _thumb_bytes('red')))
+    export_viewer_db(src, out, verbose=False)
+    with sqlite3.connect(out) as conn:
+        target = conn.execute('SELECT id FROM persons WHERE person_key=?', (person_key,)).fetchone()[0]
+        manual_id = _manual_face(conn, _A, target, 'stable-person-manual')
+        conn.execute('UPDATE persons SET representative_face_id=?,face_thumbnail=?,face_count=99 WHERE id=?',
+                     (manual_id, _thumb_bytes('blue'), target))
+    centroid = np.linspace(0, 1, 128, dtype=np.float32).tobytes()
+    for iteration in range(2):
+        name = f'Renamed {iteration}'
+        with sqlite3.connect(src) as conn:
+            conn.execute('UPDATE persons SET name=?,is_hidden=?,auto_clustered=0,centroid=?,centroid_model=? WHERE id=?',
+                         (name, 1, centroid, 'sface', pid))
+        export_viewer_db(src, out, verbose=False)
+        with sqlite3.connect(out) as conn:
+            row = conn.execute('SELECT id,name,is_hidden,auto_clustered,centroid,centroid_model,face_count,representative_face_id,face_thumbnail '
+                               'FROM persons WHERE person_key=?', (person_key,)).fetchone()
+            assert row[:6] == (target, name, 1, 0, centroid, 'sface')
+            assert row[6:] == (2, manual_id, _thumb_bytes('blue'))
+            assert conn.execute('SELECT id,person_id FROM faces WHERE manual_key=?', ('stable-person-manual',)).fetchone() == (manual_id, target)
+
+
+def _legacy_pair(tmp_path, source_name, viewer_name):
+    """Source and viewer both hold person id 1 under a legacy key, with different (or equal) names."""
+    src, out = str(tmp_path / 'source.db'), str(tmp_path / 'viewer.db')
+    _make_source_db(src)
+    with sqlite3.connect(src) as conn:
+        pid = conn.execute('INSERT INTO persons(name) VALUES (?)', (viewer_name,)).lastrowid
+        conn.execute('UPDATE persons SET person_key=? WHERE id=?', (f'legacy:{pid}', pid))
+    export_viewer_db(src, out, verbose=False)
+    with sqlite3.connect(out) as conn:
+        assert conn.execute('SELECT id,name FROM persons').fetchall() == [(pid, viewer_name)]
+        _manual_face(conn, _A, pid, 'legacy-manual')
+    with sqlite3.connect(src) as conn:
+        conn.execute('UPDATE persons SET name=? WHERE id=?', (source_name, pid))
+    export_viewer_db(src, out, verbose=False)
+    return out, pid
+
+
+@pytest.mark.parametrize('source_name,viewer_name', [('Bob', 'Alice'), (None, 'Alice'), ('Bob', None)])
+def test_legacy_key_with_a_different_name_is_not_adopted(tmp_path, source_name, viewer_name):
+    out, pid = _legacy_pair(tmp_path, source_name, viewer_name)
+    with sqlite3.connect(out) as conn:
+        assert conn.execute('SELECT name FROM persons WHERE id=?', (pid,)).fetchone() == (viewer_name,)
+        assert conn.execute("SELECT person_id FROM faces WHERE manual_key='legacy-manual'").fetchone() == (pid,)
+        assert conn.execute('SELECT COUNT(*) FROM persons').fetchone() == (2,)
+        assert conn.execute('SELECT person_key FROM persons WHERE id=?', (pid,)).fetchone()[0] != f'legacy:{pid}'
+        assert conn.execute('SELECT name FROM persons WHERE id<>?', (pid,)).fetchone() == (source_name,)
+
+
+@pytest.mark.parametrize('source_name,viewer_name', [('', None), (None, ''), ('Alice', 'Alice')])
+def test_legacy_key_with_an_equal_name_is_adopted(tmp_path, source_name, viewer_name):
+    out, pid = _legacy_pair(tmp_path, source_name, viewer_name)
+    with sqlite3.connect(out) as conn:
+        assert conn.execute('SELECT COUNT(*) FROM persons').fetchone() == (1,)
+        assert conn.execute("SELECT person_id FROM faces WHERE manual_key='legacy-manual'").fetchone() == (pid,)
+
+
+def test_source_detection_overlapping_viewer_manual_is_not_duplicated(tmp_path):
+    from db.manual_faces import source_identity
+    src, out = str(tmp_path / 'source.db'), str(tmp_path / 'viewer.db')
+    image = str(tmp_path / 'photo.jpg')
+    Image.new('RGB', (100, 100), 'red').save(image)
+    init_database(src)
+    with sqlite3.connect(src) as conn:
+        conn.execute('INSERT INTO photos(path,filename,image_width,image_height) VALUES (?,?,100,100)', (image, 'photo.jpg'))
+    export_viewer_db(src, out, verbose=False)
+    with sqlite3.connect(out) as conn:
+        pid = conn.execute("INSERT INTO persons(name) VALUES ('Manual person')").lastrowid
+        _manual_face(conn, image, pid, 'manual-overlap')
+        conn.execute('UPDATE faces SET manual_source=? WHERE manual_key=?', (source_identity(image), 'manual-overlap'))
+    with sqlite3.connect(src) as conn:
+        pid = conn.execute("INSERT INTO persons(name) VALUES ('Detector person')").lastrowid
+        conn.execute("INSERT INTO faces(photo_path,face_index,embedding,person_id,bbox_x1,bbox_y1,bbox_x2,bbox_y2) "
+                     "VALUES (?,0,X'01',?,10,10,30,30)", (image, pid))
+    for _ in range(2):
+        export_viewer_db(src, out, verbose=False)
+        with sqlite3.connect(out) as conn:
+            assert conn.execute('SELECT COUNT(*) FROM faces WHERE photo_path=?', (image,)).fetchone() == (1,)
+            assert conn.execute('SELECT p.name FROM faces f JOIN persons p ON f.person_id=p.id WHERE f.photo_path=?', (image,)).fetchone() == ('Manual person',)
+
+
+def test_full_export_carries_manual_provenance_and_person_identity(tmp_path):
+    src, out = str(tmp_path / 'source.db'), str(tmp_path / 'viewer.db')
+    _make_source_db(src)
+    with sqlite3.connect(src) as conn:
+        pid = conn.execute("INSERT INTO persons(name) VALUES ('Source Manual')").lastrowid
+        key = conn.execute('SELECT person_key FROM persons WHERE id=?', (pid,)).fetchone()[0]
+        _manual_face(conn, _A, pid, 'full-manual')
+    export_viewer_db(src, out, force=True, verbose=False)
+    with sqlite3.connect(out) as conn:
+        assert conn.execute('SELECT f.manual_key,f.is_manual,length(f.embedding),p.person_key FROM faces f '
+                            'JOIN persons p ON f.person_id=p.id').fetchone() == ('full-manual', 1, 0, key)
+
+
+def test_full_export_deletion_record_overrules_stale_active_row(tmp_path):
+    src, out = str(tmp_path / 'source.db'), str(tmp_path / 'viewer.db')
+    _make_source_db(src)
+    with sqlite3.connect(src) as conn:
+        pid = conn.execute("INSERT INTO persons(name,face_count,face_thumbnail) VALUES ('Deleted',1,?)", (_thumb_bytes('blue'),)).lastrowid
+        _manual_face(conn, _A, pid, 'stale-active')
+        conn.execute("INSERT INTO manual_face_deletions VALUES ('stale-active')")
+    export_viewer_db(src, out, force=True, verbose=False)
+    with sqlite3.connect(out) as conn:
+        assert conn.execute("SELECT 1 FROM faces WHERE manual_key='stale-active'").fetchone() is None
+        assert conn.execute("SELECT face_count,face_thumbnail FROM persons WHERE name='Deleted'").fetchone() == (0, None)
 
 
 def test_full_export_keeps_the_histogram_the_viewer_draws(tmp_path):

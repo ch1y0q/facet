@@ -181,6 +181,29 @@ export interface GalleryFilters {
   quality_tier: string; // excellent | good | fair | poor
 }
 
+/** Sort that ranks a semantic query's matches by similarity; meaningful only while a query is set. */
+export const RELEVANCE_SORT = 'relevance';
+
+/**
+ * The sort change a filter patch implies for the semantic query: setting a query from empty selects
+ * Relevance (best first); clearing it while Relevance is active restores the viewer default sort.
+ * A patch that names a sort itself is never overridden.
+ */
+export function semanticSortPatch(
+  current: GalleryFilters,
+  updates: Partial<GalleryFilters>,
+  defaults: Pick<FilterDefaults, 'sort' | 'sort_direction'> | undefined,
+): Partial<GalleryFilters> {
+  if (!('semanticQuery' in updates) || 'sort' in updates) return {};
+  if (updates.semanticQuery && !current.semanticQuery) {
+    return { sort: RELEVANCE_SORT, sort_direction: updates.sort_direction ?? 'DESC' };
+  }
+  if (!updates.semanticQuery && current.sort === RELEVANCE_SORT) {
+    return { sort: defaults?.sort ?? 'aggregate', sort_direction: defaults?.sort_direction ?? 'DESC' };
+  }
+  return {};
+}
+
 /** Subset of viewer config defaults the URL/sync codec compares against. */
 export interface FilterDefaults {
   sort?: string;
@@ -206,8 +229,8 @@ export const SEARCH_THRESHOLD_MAX = 50;
  *
  *  Returns `''` when the server did not answer with a usable number -- an
  *  older backend, or a field that arrived missing. `''` is the meaningful
- *  value, not a fallback percent: it is what makes `/api/search` omit
- *  `threshold` entirely and resolve its own per-model default. Guessing a
+ *  value, not a fallback percent: it is what makes `/api/photos` omit
+ *  `semantic_threshold` entirely and resolve its own per-model default. Guessing a
  *  number here instead would silently diverge from the server's calibration,
  *  and `String(Math.round(undefined * 100))` produced the string `'NaN'`,
  *  which is truthy and reached the API as `threshold=NaN` -> 422.
@@ -230,6 +253,39 @@ export const SMART_ALBUM_EXCLUDE_KEYS = new Set([
   'gps_lat', 'gps_lng', 'gps_radius_km',
   'sequence_group_id', 'sequence_kind', 'burst_group_id', 'duplicate_group_id',
 ]);
+
+/** The smart-album JSON for a filter state. Relevance is dropped with the semantic query it ranks,
+ *  so a reopened album never asks `/api/photos` for `sort=relevance` without `semantic_q` (a 400). */
+export function smartAlbumFilterJson(filters: GalleryFilters): string {
+  const dropSort = filters.sort === RELEVANCE_SORT;
+  const filterJson: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(filters)) {
+    if (v && v !== '' && !SMART_ALBUM_EXCLUDE_KEYS.has(k) && !(dropSort && (k === 'sort' || k === 'sort_direction'))) {
+      filterJson[k] = v;
+    }
+  }
+  return JSON.stringify(filterJson);
+}
+
+/** The store's filters once an album opens: the saved smart-album JSON laid over `current`, scoped to `albumId`.
+ *  The inverse of `smartAlbumFilterJson`; a golden fixture shared with the server's agent tool
+ *  (`testing/smart-album-stored.json`) pins that what an agent stores round-trips through both. */
+export function applySavedAlbumFilters(current: GalleryFilters, savedJson: string, albumId: string): GalleryFilters {
+  const saved = JSON.parse(savedJson) as Partial<GalleryFilters>;
+  return { ...current, ...saved, ...exclusiveHidePatch(saved), album_id: albumId };
+}
+
+/** The store's mutual-exclusion rule: "hide rejected" and "favourites only" cannot both hold, so
+ *  turning one on turns the other off. Returns only the companion keys to override. Shared by the
+ *  store's updates and by `applySavedAlbumFilters`, which spreads a saved album over the viewer's
+ *  defaults without going through the store (a favourites-only album would otherwise inherit
+ *  `hide_rejected` and list fewer photos than it holds). */
+export function exclusiveHidePatch(updates: Partial<GalleryFilters>): Partial<GalleryFilters> {
+  const patch: Partial<GalleryFilters> = {};
+  if (updates.hide_rejected) patch.favorites_only = false;
+  if (updates.favorites_only) patch.hide_rejected = false;
+  return patch;
+}
 
 /** Common string-typed filter keys shared across URL sync, API params, and filter counting. */
 export const RANGE_AND_SELECT_KEYS: (keyof GalleryFilters)[] = [
@@ -444,6 +500,21 @@ export function applyQueryParams(
     if (params[key]) (result as Record<string, unknown>)[key] = params[key];
   }
   if (!['', 'undecided', 'kept', 'rejected'].includes(result.review_status)) result.review_status = '';
+  if (result.review_status) { result.similar_to = ''; result.semanticQuery = ''; }
+  result.no_gps = ['1', 'true'].includes(result.no_gps) ? '1' : '';
+  if (result.no_gps) {
+    result.gps_lat = ''; result.gps_lng = ''; result.gps_radius_km = '';
+    result.similar_to = ''; result.semanticQuery = '';
+  }
+  // no_gps cleared the query above, so the sort below is judged on the surviving one.
+  // Relevance is the implied sort of a semantic query, and meaningless without one.
+  if (result.semanticQuery && !params['sort']) {
+    result.sort = RELEVANCE_SORT;
+    if (!params['sort_direction']) result.sort_direction = 'DESC';
+  } else if (!result.semanticQuery && result.sort === RELEVANCE_SORT) {
+    result.sort = base.sort === RELEVANCE_SORT ? 'aggregate' : base.sort;
+    result.sort_direction = base.sort === RELEVANCE_SORT ? 'DESC' : base.sort_direction;
+  }
   // Parsed rather than copied: this one is sent to the API as a NUMBER
   // (`+value / 100`), so a mangled shared link carrying `search_threshold=abc`
   // became `threshold=NaN`, which the server rejects with a 422 the gallery
@@ -478,16 +549,6 @@ export function applyQueryParams(
     result.panel_activation = params['panel_activation'] as PanelActivation;
   }
   if (params['page']) result.page = parseInt(params['page'], 10) || 1;
-
-  if (result.review_status) {
-    result.similar_to = '';
-    result.semanticQuery = '';
-  }
-  result.no_gps = ['1', 'true'].includes(result.no_gps) ? '1' : '';
-  if (result.no_gps) {
-    result.gps_lat = ''; result.gps_lng = ''; result.gps_radius_km = '';
-    result.similar_to = ''; result.semanticQuery = '';
-  }
   return result;
 }
 
@@ -498,8 +559,12 @@ export function buildSyncParams(
   searchThresholdDefault?: number | null,
 ): Record<string, string> {
   const params: Record<string, string> = {};
-  if (f.sort !== (defaults?.sort ?? 'aggregate')) params['sort'] = f.sort;
-  if (f.sort_direction !== (defaults?.sort_direction ?? 'DESC'))
+  // A semantic query implies Relevance (DESC), so that is the sort left unwritten while one is set;
+  // any other sort is written even when it equals the viewer default, or the link would reload as Relevance.
+  const impliedSort = f.semanticQuery ? RELEVANCE_SORT : (defaults?.sort ?? 'aggregate');
+  const impliedDirection = f.semanticQuery ? 'DESC' : (defaults?.sort_direction ?? 'DESC');
+  if (f.sort !== impliedSort) params['sort'] = f.sort;
+  if (f.sort_direction !== impliedDirection)
     params['sort_direction'] = f.sort_direction;
 
   const stringKeys: (keyof GalleryFilters)[] = [...RANGE_AND_SELECT_KEYS, 'similar_to', 'album_id', 'semanticQuery'];
@@ -544,6 +609,7 @@ export function buildSyncParams(
 export function buildApiParams(
   f: GalleryFilters,
   isSmartAlbum: boolean,
+  searchThresholdDefault: number | null | undefined,
 ): Record<string, string | number | boolean> {
   const params: Record<string, string | number | boolean> = {
     page: f.page,
@@ -569,6 +635,15 @@ export function buildApiParams(
   if (f.favorites_only) params['favorites_only'] = '1';
   if (f.is_monochrome) params['is_monochrome'] = '1';
 
+  // Semantic search is a filter of `GET /photos`. The threshold travels only when
+  // the slider left the server's seed, so the server resolves its own calibrated
+  // default; the seed is a required argument so `filterKey` sees a slider-only move.
+  if (f.semanticQuery) {
+    params['semantic_q'] = f.semanticQuery;
+    if (f.search_threshold && f.search_threshold !== seededSearchThreshold(searchThresholdDefault))
+      params['semantic_threshold'] = +f.search_threshold / 100;
+  }
+
   // Smart albums apply their filters directly — don't send album_id
   // (server would do an empty album_photos JOIN otherwise).
   if (isSmartAlbum) {
@@ -576,6 +651,35 @@ export function buildApiParams(
   }
 
   return params;
+}
+
+/** Largest `paths` list `POST /photos/by_paths` accepts (server `BY_PATHS_MAX`). */
+export const BY_PATHS_MAX = 500;
+
+/** Paging, ordering and semantic-search keys of `buildApiParams`: meaningless (and a 422 on `by_paths`) when the caller names the rows itself. */
+export const BY_PATHS_PAGING_KEYS: ReadonlySet<string> = new Set([
+  'page', 'per_page', 'sort', 'sort_direction', 'semantic_q', 'semantic_threshold',
+]);
+
+/**
+ * The `filters` member of a `POST /photos/by_paths` body for the gallery view: everything
+ * `buildApiParams` sends except paging and sort, so a photo that no longer matches (rejected under
+ * `hide_rejected`, out of the album or score range) comes back missing exactly as a reload would
+ * drop it. `type` is sent explicitly because the endpoint defaults it to '' while `GET /photos`
+ * resolves the viewer's default (and '' for a person view).
+ */
+export function buildByPathsFilters(
+  f: GalleryFilters,
+  isSmartAlbum: boolean,
+  defaultType: string,
+  searchThresholdDefault: number | null | undefined,
+): Record<string, string | number | boolean> {
+  const filters: Record<string, string | number | boolean> = {};
+  for (const [key, value] of Object.entries(buildApiParams(f, isSmartAlbum, searchThresholdDefault))) {
+    if (!BY_PATHS_PAGING_KEYS.has(key)) filters[key] = value;
+  }
+  filters['type'] = f.type || (f.person_id ? '' : defaultType);
+  return filters;
 }
 
 /** Wire projection of the five hide toggles as explicit '1'/'0' strings.

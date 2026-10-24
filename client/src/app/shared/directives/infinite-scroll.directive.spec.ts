@@ -1,5 +1,5 @@
 import type { Mock } from 'vitest';
-import { Component, viewChild } from '@angular/core';
+import { Component, viewChild, ChangeDetectionStrategy } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { InfiniteScrollDirective } from './infinite-scroll.directive';
 
@@ -34,6 +34,7 @@ beforeEach(() => {
   selector: 'app-test-host',
   standalone: true,
   imports: [InfiniteScrollDirective],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <main>
       <div appInfiniteScroll (scrollReached)="reached = true"></div>
@@ -49,6 +50,7 @@ class TestHostComponent {
   selector: 'app-test-custom-root',
   standalone: true,
   imports: [InfiniteScrollDirective],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <section class="scroll-area">
       <div appInfiniteScroll scrollRoot=".scroll-area" (scrollReached)="reached = true"></div>

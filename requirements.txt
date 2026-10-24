@@ -54,6 +54,11 @@ hdbscan>=0.8.40  # Face clustering (standalone library, sklearn's HDBSCAN has ep
 fastapi>=0.100.0
 uvicorn>=0.23.0
 pyjwt>=2.8.0
+# Agent (MCP) endpoint: api/agent. httpx drives the in-process ASGI calls; websockets
+# is what uvicorn needs to serve any WebSocket route (without it the handshake 404s).
+mcp>=2.3,<3
+httpx>=0.28,<1
+websockets>=13.0
 
 # Utilities
 tqdm>=4.65.0

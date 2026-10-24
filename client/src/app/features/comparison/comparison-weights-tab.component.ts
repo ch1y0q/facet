@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, viewChild, ElementRef, effect, DestroyRef, TemplateRef } from '@angular/core';
+import { Component, inject, signal, computed, viewChild, ElementRef, effect, DestroyRef, TemplateRef, ChangeDetectionStrategy } from '@angular/core';
 import { toObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -109,6 +109,7 @@ class SignalErrorMatcher {
     FilterTagsPipe,
     FilterBoolValuePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <ng-template #weightsActions>
       <button mat-icon-button

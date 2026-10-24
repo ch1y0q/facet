@@ -1,7 +1,8 @@
 """Pydantic models for gallery endpoints."""
 
-from pydantic import BaseModel, Field
-from typing import Any, Literal, Optional
+from pydantic import BaseModel, Field, StringConstraints
+from typing import Annotated
+from typing import Any, Literal, Optional, Union
 
 from api.models.common import CoercedInt, PaginationEnvelope
 
@@ -128,6 +129,8 @@ class Photo(BaseModel):
     image_aspect: Optional[float] = None
     sequence_override: Optional[str] = None
     sequence_override_pending: CoercedInt = None
+    # Only `GET /api/photo` fills it: the manual category correction (photo_scoring_overrides).
+    category_override: Optional[str] = None
     date_formatted: Optional[str] = None
     tags_list: list[str] = []
     manual_tags: list[str] = []
@@ -373,3 +376,39 @@ class GalleryParams(BaseModel):
     duplicate_group_id: str = ''
 
     model_config = {'extra': 'ignore'}
+
+
+# Gallery filter keys a body may carry in place of a query string: every GalleryParams
+# field plus the two aliases the client sends (``person_id`` for ``person``,
+# ``sort_direction`` for ``dir``). One definition for by_paths and the selection target.
+GALLERY_FILTER_ALIASES = frozenset({'person_id', 'sort_direction'})
+# The paging and ordering keys: meaningless when the caller names the rows itself.
+GALLERY_PAGING_KEYS = frozenset({'page', 'per_page', 'sort', 'sort_direction', 'dir'})
+BY_PATHS_MAX = 500
+BY_PATHS_MISSING_CAP = 200
+
+
+def gallery_filter_keys() -> frozenset[str]:
+    return frozenset(GalleryParams.model_fields) | GALLERY_FILTER_ALIASES
+
+
+def query_value(value: Any) -> str:
+    """A filter value as the gallery's query string carries it: booleans as '1'/'0', the rest str()."""
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    return str(value)
+
+
+class PhotosByPathsRequest(BaseModel):
+    """Photos named by path, optionally narrowed by the gallery's filters."""
+    paths: list[Annotated[str, StringConstraints(min_length=1, max_length=4096)]] = Field(
+        min_length=1, max_length=BY_PATHS_MAX)
+    filters: dict[str, Union[str, int, float, bool]] = {}
+
+
+class PhotosByPathsResponse(BaseModel):
+    """Rows in the REQUESTED order; ``missing`` lists (up to 200) requested paths that are
+    invisible, unknown or filtered out."""
+    photos: list[Photo]
+    total: int
+    missing: list[str]

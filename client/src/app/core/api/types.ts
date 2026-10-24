@@ -29,3 +29,24 @@ export type LightroomManifest = components['schemas']['LightroomManifest'];
 export type MediaCritiqueResponse = components['schemas']['MediaCritiqueResponse'];
 
 export type MergeSuggestionsResponse = components['schemas']['MergeSuggestionsResponse'];
+
+export type McpTokenItem = components['schemas']['McpTokenItem'];
+
+export type McpTokenCreate = components['schemas']['McpTokenCreate'];
+
+export type McpTokenCreated = components['schemas']['McpTokenCreated'];
+
+export type McpTokenList = components['schemas']['McpTokenList'];
+
+export type McpTokenRevoked = components['schemas']['McpTokenRevoked'];
+
+export type McpInpageTool = components['schemas']['McpInpageTool'];
+
+export type McpInpageTools = components['schemas']['McpInpageTools'];
+
+export type McpCallRequest = components['schemas']['McpCallRequest'];
+
+export type McpCallResponse = components['schemas']['McpCallResponse'];
+
+/** Level tiers of the in-page server tools; a tool needs at least its `required_level`. */
+export type McpInpageLevel = McpInpageTools['level'];

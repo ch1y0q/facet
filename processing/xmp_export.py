@@ -710,19 +710,16 @@ def rating_columns(user_id: str | None) -> RatingColumns:
 
 def _cli_face_regions(conn, path: str, width, height) -> list[FaceRegion]:
     """Named face regions for one photo (CLI export; single-user, no visibility)."""
-    if not width or not height or int(width) <= 0 or int(height) <= 0:
-        return []
     rows = conn.execute(
-        "SELECT pe.name AS name, f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2 "
+        "SELECT pe.name AS name, f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2, "
+        "f.photo_path,f.is_manual,f.manual_source,f.manual_width,f.manual_height "
         "FROM faces f JOIN persons pe ON f.person_id = pe.id "
         "WHERE f.photo_path = ? AND pe.name IS NOT NULL AND f.bbox_x1 IS NOT NULL",
         (path,),
     ).fetchall()
-    return [
-        FaceRegion.from_bbox(r["name"], r["bbox_x1"], r["bbox_y1"],
-                             r["bbox_x2"], r["bbox_y2"], width, height)
-        for r in rows
-    ]
+    from db.manual_faces import export_dimensions
+    return [FaceRegion.from_bbox(r['name'], r['bbox_x1'], r['bbox_y1'], r['bbox_x2'], r['bbox_y2'], *dimensions)
+            for r in rows if (dimensions := export_dimensions(r, width, height))]
 
 
 def export_sidecars(conn, root: str | None = None, *, embed_original: bool = False,

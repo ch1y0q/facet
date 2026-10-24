@@ -207,6 +207,23 @@ def test_manual_tags_table_is_registered_everywhere(tmp_path):
     )
 
 
+@pytest.mark.parametrize('restricted', [False, True])
+def test_real_save_keeps_manual_faces(scored_db, restricted):
+    db, facet = scored_db
+    with get_connection(db, row_factory=False) as conn:
+        pid = conn.execute("INSERT INTO persons(name) VALUES ('Manual')").lastrowid
+        fid = conn.execute("INSERT INTO faces(photo_path,face_index,embedding,person_id,is_manual,manual_key) "
+                           "VALUES ('/p/a.jpg',-1,X'',?,1,'rescan-test')", (pid,)).lastrowid
+        conn.commit()
+    result = _base_result('/p/a.jpg', 9.1)
+    if restricted:
+        facet.save_photos_partial([(result, _IMG, ('aggregate',))], refresh_faces=True)
+    else:
+        facet.save_photos_batch([(result, _IMG)])
+    with get_connection(db, row_factory=False) as conn:
+        assert conn.execute('SELECT person_id FROM faces WHERE id=?', (fid,)).fetchone() == (pid,)
+
+
 @pytest.mark.parametrize('coordinates', [(12.5, -44.5), (None, None)])
 @pytest.mark.parametrize('restricted', [False, True])
 def test_real_save_preserves_manual_gps(scored_db, coordinates, restricted):

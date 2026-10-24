@@ -21,6 +21,7 @@ import contextlib
 import hashlib
 import json
 import logging
+import re
 import sqlite3
 from pathlib import Path
 from unittest import mock
@@ -427,7 +428,10 @@ def test_load_embeddings_plan_has_no_temp_btree(tmp_path, monkeypatch):
 
     monkeypatch.setattr(clusterer_module, "get_connection", tracing)
     make_clusterer(db).load_embeddings()
-    load_sql = [s for s in seen if "FROM faces" in s and "embedding IS NOT NULL" in s][0]
+    loads = [s for s in seen if re.search(r'\bSELECT\s+id\s*,\s*embedding\s+FROM\s+faces\b', s, re.IGNORECASE)]
+    assert len(loads) == 1, seen
+    load_sql = loads[0]
+    assert 'is_manual=0' in load_sql and 'length(embedding)>0' in load_sql
     assert "ORDER BY id" in load_sql
 
     def details(sql):

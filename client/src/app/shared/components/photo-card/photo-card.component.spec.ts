@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, ChangeDetectionStrategy } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { OverlayContainer } from '@angular/cdk/overlay';
@@ -14,10 +14,13 @@ import { makePhoto } from '../../../../testing/photo.fixture';
   selector: 'test-host',
   standalone: true,
   imports: [PhotoCardComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `<app-photo-card [photo]="photo()" [config]="config()"
                              [burstFramesVisible]="burstFramesVisible()"
                              [collapsedSetKinds]="collapsedSetKinds()"
-                             [isEditionMode]="isEditionMode()" />`,
+                             [isEditionMode]="isEditionMode()"
+                             (selectionChange)="selected.push($event.photo.path)"
+                             (doubleClicked)="opened.push($event.path)" />`,
 })
 class TestHostComponent {
   photo = signal<Photo>(makePhoto());
@@ -25,6 +28,8 @@ class TestHostComponent {
   burstFramesVisible = signal(false);
   collapsedSetKinds = signal<readonly string[]>([]);
   isEditionMode = signal(false);
+  selected: string[] = [];
+  opened: string[] = [];
 }
 
 describe('PhotoCardComponent', () => {
@@ -59,6 +64,29 @@ describe('PhotoCardComponent', () => {
     expect(card.isEditionMode()).toBe(false);
     expect(card.personFilterId()).toBe('');
     expect(card.config()).toBeNull();
+  });
+
+  it('fills a mosaic tile at every width, without relying on the md: variants', () => {
+    const cardFixture = TestBed.createComponent(PhotoCardComponent);
+    cardFixture.componentRef.setInput('photo', makePhoto());
+    cardFixture.componentRef.setInput('hideDetails', true);
+    cardFixture.componentRef.setInput('mosaicMode', true);
+    cardFixture.detectChanges();
+    const el = cardFixture.nativeElement as HTMLElement;
+    const img = el.querySelector('img')!;
+    expect(img.classList.contains('h-full')).toBe(true);
+    expect(img.classList.contains('object-cover')).toBe(true);
+    expect(img.parentElement!.classList.contains('h-full')).toBe(true);
+  });
+
+  it('leaves the image at its natural height below md outside mosaic', () => {
+    const cardFixture = TestBed.createComponent(PhotoCardComponent);
+    cardFixture.componentRef.setInput('photo', makePhoto());
+    cardFixture.componentRef.setInput('hideDetails', true);
+    cardFixture.detectChanges();
+    const img = (cardFixture.nativeElement as HTMLElement).querySelector('img')!;
+    expect(img.classList.contains('h-full')).toBe(false);
+    expect(img.classList.contains('object-cover')).toBe(false);
   });
 
   it('never asks for a thumbnail above the stored 640 px', () => {
@@ -529,6 +557,21 @@ describe('PhotoCardComponent', () => {
       expect(badgeElement().className).not.toContain('md:group-hover/img:right-[4.125rem]');
     });
   });
+  describe('persistent badges and hover bar', () => {
+    it('keeps the badges at bottom-1 and the hover bar flush with the bottom edge, with no strip', () => {
+      fixture.componentInstance.isEditionMode.set(true);
+      fixture.componentInstance.config.set({ features: { show_rating_controls: true } });
+      fixture.componentInstance.photo.set(makePhoto({ star_rating: 3, is_favorite: true, is_rejected: true }));
+      fixture.detectChanges();
+      const badges = [...fixture.nativeElement.querySelectorAll('div.absolute.w-7.h-7')] as HTMLElement[];
+      expect(badges.length).toBeGreaterThanOrEqual(3);
+      for (const b of badges) expect(b.className).toMatch(/(^| )bottom-1( |$)/);
+      const overlay = fixture.nativeElement.querySelector('div.z-10.inset-x-0') as HTMLElement;
+      expect(overlay.className).toContain('bottom-0');
+      expect(fixture.nativeElement.querySelector('button.inset-x-0.bottom-0')).toBeNull();
+      expect(fixture.nativeElement.querySelector('img').className).not.toContain('brightness-50');
+    });
+  });
 });
 
 describe('PhotoCardComponent unassigned faces action', () => {
@@ -827,7 +870,7 @@ describe('PhotoCardComponent current-photo marker', () => {
     // which stops at the scrollport's edge and knows nothing of the action bar
     // fixed across the bottom of it.
     const classes = host(createCard()).classList;
-    expect(classes.contains('scroll-mb-28')).toBe(true);
+    expect(classes.contains('scroll-mb-48')).toBe(true);
     expect(classes.contains('scroll-mt-2')).toBe(true);
   });
 
@@ -837,7 +880,7 @@ describe('PhotoCardComponent current-photo marker', () => {
     // keydown handler, ahead of the change detection a conditional class would
     // be waiting on.
     const classes = host(createCard({ isActive: true, gridHasActiveCard: true })).classList;
-    expect(classes.contains('scroll-mb-28')).toBe(true);
+    expect(classes.contains('scroll-mb-48')).toBe(true);
     expect(classes.contains('scroll-mt-2')).toBe(true);
   });
 
@@ -851,6 +894,62 @@ describe('PhotoCardComponent current-photo marker', () => {
     // selectors and source order, not specificity, decides which wins.
     const classes = host(createCard({ isActive: false, gridHasActiveCard: true })).classList;
     expect(classes.contains('reduce-transparency:opacity-100')).toBe(true);
+  });
+
+});
+
+describe('PhotoCardComponent filter links', () => {
+  const mockI18n = { t: vi.fn((key: string) => key), currentLang: vi.fn(() => 'en'), locale: vi.fn(() => 'en'), translations: vi.fn(() => ({})) };
+  function create(inputs: Record<string, unknown>): HTMLElement {
+    TestBed.configureTestingModule({
+      imports: [PhotoCardComponent],
+      providers: [{ provide: I18nService, useValue: mockI18n }],
+    });
+    const fixture = TestBed.createComponent(PhotoCardComponent);
+    fixture.componentRef.setInput('photo', makePhoto({ tags_list: ['sunset'] }));
+    fixture.componentRef.setInput('config', { features: { show_similar_button: true } });
+    for (const [name, value] of Object.entries(inputs)) fixture.componentRef.setInput(name, value);
+    fixture.detectChanges();
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  const chip = (el: HTMLElement) =>
+    Array.from(el.querySelectorAll('span')).find(s => s.textContent?.trim() === 'sunset') as HTMLElement;
+  const similar = (el: HTMLElement) => el.querySelector('button[aria-label="similar.find_similar"]');
+
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('keeps tag chips clickable and Find similar available by default', () => {
+    const el = create({});
+    expect(chip(el).getAttribute('role')).toBe('button');
+    expect(chip(el).getAttribute('tabindex')).toBe('0');
+    expect(similar(el)).not.toBeNull();
+  });
+
+  it('renders tag chips as plain text and drops Find similar when filterLinks is false', () => {
+    const el = create({ filterLinks: false });
+    const c = chip(el);
+    expect(c).toBeTruthy();
+    expect(c.hasAttribute('role')).toBe(false);
+    expect(c.hasAttribute('tabindex')).toBe(false);
+    expect(c.className).not.toContain('cursor-pointer');
+    expect(c.className).not.toContain('hover:');
+    expect(similar(el)).toBeNull();
+  });
+
+  it('does not emit tagClicked from a plain chip', () => {
+    TestBed.configureTestingModule({
+      imports: [PhotoCardComponent],
+      providers: [{ provide: I18nService, useValue: mockI18n }],
+    });
+    const fixture = TestBed.createComponent(PhotoCardComponent);
+    fixture.componentRef.setInput('photo', makePhoto({ tags_list: ['sunset'] }));
+    fixture.componentRef.setInput('filterLinks', false);
+    const emitted: string[] = [];
+    fixture.componentInstance.tagClicked.subscribe(t => emitted.push(t));
+    fixture.detectChanges();
+    chip(fixture.nativeElement as HTMLElement).click();
+    expect(emitted).toEqual([]);
   });
 });
 

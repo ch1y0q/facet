@@ -1,6 +1,6 @@
 # Facet Client
 
-Angular 21 single-page app for the Facet viewer. It is served by the FastAPI
+Angular 22 single-page app for the Facet viewer. It is served by the FastAPI
 backend (`python viewer.py`, port 5000) from `client/dist/` after a build.
 
 ## Commands

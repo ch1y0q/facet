@@ -1,4 +1,4 @@
-import { Component, viewChild } from '@angular/core';
+import { Component, viewChild, ChangeDetectionStrategy } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { LoupeDirective, LoupeFit } from './loupe.directive';
 
@@ -6,6 +6,7 @@ import { LoupeDirective, LoupeFit } from './loupe.directive';
   selector: 'app-test-host',
   standalone: true,
   imports: [LoupeDirective],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <img #img alt="" [appLoupe]="src" [loupeActive]="active" [loupeZoom]="zoom" [loupeFit]="fit" />
   `,

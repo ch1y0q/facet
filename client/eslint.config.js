@@ -37,6 +37,10 @@ module.exports = defineConfig([
           style: "kebab-case",
         },
       ],
+      // Angular 22 flips the default to OnPush; the framework migration stamps
+      // `ChangeDetectionStrategy.Eager` on every component that had no explicit
+      // strategy, to keep behaviour identical. The rule would reject all of them.
+      "@angular-eslint/prefer-on-push-component-change-detection": "off",
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-empty-function": "off",
       "@typescript-eslint/no-inferrable-types": "off",

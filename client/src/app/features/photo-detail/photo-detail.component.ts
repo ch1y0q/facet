@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, effect, OnInit, HostListener, DestroyRef, ElementRef, viewChild } from '@angular/core';
+import { Component, inject, signal, computed, effect, OnInit, HostListener, DestroyRef, ElementRef, viewChild, ChangeDetectionStrategy } from '@angular/core';
 import { Location } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
@@ -10,8 +10,10 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { firstValueFrom, skip } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { firstValueFrom, skip } from 'rxjs';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
+import { AssistantChangeBatch, AssistantChangesService } from '../../core/agent/assistant-changes.service';
 import { ExtendedQualityComponent } from '../../shared/components/extended-quality/extended-quality.component';
 import { Photo, KeeperHint, PhotoSet, normalisePhotoFlags } from '../../shared/models/photo.model';
 import { AuthService } from '../../core/services/auth.service';
@@ -130,6 +132,13 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
               <mat-icon>restart_alt</mat-icon> {{ I18N.photo.category_override.clear_action | translate }}
             </button>
           </mat-menu>
+        }
+
+        @if (auth.isEdition()) {
+          <button mat-icon-button (click)="openManualFaces(p)"
+            [matTooltip]="I18N.manual_faces.title | translate" [attr.aria-label]="I18N.manual_faces.title | translate">
+            <mat-icon>crop_free</mat-icon>
+          </button>
         }
 
         @if (auth.isEdition() && p.unassigned_faces > 0) {
@@ -632,6 +641,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
       </div>
     }
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   host: { class: 'block h-full overflow-y-auto lg:overflow-y-hidden' },
 })
 export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
@@ -644,7 +654,9 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly assistantChanges = inject(AssistantChangesService);
   private readonly photoActions = inject(PhotoActionsService);
+  private readonly journal = inject(UserActivityJournal);
 
   readonly photo = signal<Photo | null>(null);
   protected readonly photoMissing = signal(false);
@@ -822,6 +834,23 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
       if (this.locationMapTimeout !== null) clearTimeout(this.locationMapTimeout);
       if (this.locationMap) { this.locationMap.remove(); this.locationMap = null; }
     });
+    this.assistantChanges.batch$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(batch => void this.refreshAfterAssistant(batch));
+  }
+
+  /** An assistant write touched this page's photo (or an unenumerable scope): refetch the full detail row. */
+  private async refreshAfterAssistant(batch: AssistantChangeBatch): Promise<void> {
+    const path = this.photo()?.path;
+    if (!path || (batch.paths !== null && !batch.paths.includes(path))) return;
+    try {
+      const fresh = await this.fetchPhoto(path);
+      // The user moved to another photo (ArrowRight) while this was in flight.
+      if (this.photo()?.path === path) this.photo.set(fresh);
+    } catch (err) {
+      if (this.photo()?.path !== path) return;
+      // Only a missing photo has no page left; any other failure keeps the page the user is on.
+      if ((err as { status?: number }).status === 404) this.goBack();
+      else this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
+    }
   }
 
   async ngOnInit(): Promise<void> {
@@ -1015,6 +1044,25 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
    * pessimistic shape every handler here already had, and one that needs no
    * revert path.
    */
+  protected async openManualFaces(p: Photo): Promise<void> {
+    const path = p.path;
+    const { ManualFaceDialogComponent } = await import('./manual-face-dialog.component');
+    if (this.destroyRef.destroyed || this.photo()?.path !== path) return;
+    this.dialog.open(ManualFaceDialogComponent, {
+      width: '800px', maxWidth: '96vw',
+      data: { path, filename: p.filename, onCommitted: async () => {
+        const actual = await firstValueFrom(this.api.get<Photo>('/photo', { path }));
+        const patch = { persons: actual.persons, unassigned_faces: actual.unassigned_faces };
+        this.store.patchPhoto(path, patch);
+        if (!this.destroyRef.destroyed && this.photo()?.path === path) {
+          this.photo.update(current => current ? { ...current, ...patch } : current);
+        }
+        await this.store.reloadPersonOptions();
+        if (this.store.filters().person_id) await this.store.loadPhotos();
+      } },
+    });
+  }
+
   private applyConfirmed(p: Photo, confirmed: Partial<Photo>): void {
     this.store.patchPhoto(p.path, confirmed);
     // The page may have moved on, or taken another edit, since p was read.
@@ -1031,6 +1079,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     try {
       await firstValueFrom(this.api.post('/photo/set_rating', { photo_path: path, rating: newRating }));
       this.applyConfirmed(p, { star_rating: newRating });
+      this.journal.record('rating', [path], newRating);
     } catch {
       this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
     }
@@ -1038,7 +1087,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
 
   @HostListener('document:keydown', ['$event'])
   protected onReviewKey(event: KeyboardEvent): void {
-    if (isTypingContext(event) || event.ctrlKey || event.metaKey || event.altKey || event.key.toLowerCase() !== 'k' || !this.auth.isEdition()) return;
+    if (this.dialog.openDialogs.length || isTypingContext(event) || event.ctrlKey || event.metaKey || event.altKey || event.key.toLowerCase() !== 'k' || !this.auth.isEdition()) return;
     event.preventDefault();
     void this.reviewPhoto('kept');
   }
@@ -1083,6 +1132,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
       // store's, which may be the fresher of the two.
       if (res.is_rejected !== null) confirmed.is_rejected = res.is_rejected;
       this.applyConfirmed(p, confirmed);
+      this.journal.record('favorite', [path], res.is_favorite);
     } catch {
       this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
     }
@@ -1100,6 +1150,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
       if (res.is_favorite !== null) confirmed.is_favorite = res.is_favorite;
       if (res.star_rating !== null) confirmed.star_rating = res.star_rating;
       this.applyConfirmed(p, confirmed);
+      this.journal.record('reject', [path], res.is_rejected);
       await this.advanceAfterReview(p, index, next);
     } catch {
       this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
@@ -1154,6 +1205,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
         return;
       }
       this.updateManualTags(p, tags => (tags.includes(res.tag) ? tags : [...tags, res.tag].sort()));
+      this.journal.record('tags', [p.path], { action: 'add', tag: res.tag });
     } catch {
       this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
     }
@@ -1163,6 +1215,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     try {
       await firstValueFrom(this.api.delete('/photo/manual_tags', { path: p.path, tag }));
       this.updateManualTags(p, tags => tags.filter(t => t !== tag));
+      this.journal.record('tags', [p.path], { action: 'remove', tag });
     } catch {
       this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
     }

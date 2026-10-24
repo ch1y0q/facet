@@ -1111,3 +1111,29 @@ class TestManualTagsOnEveryPhotoPayload:
             self._assert_list(photos[0])
         finally:
             edition_client.delete(f'/api/albums/{album_id}')
+
+
+class TestMcpTokenWireTypes:
+    """The token routes' wire types, as SQLite emits them (the generated client types are guarded by the gen:api gate)."""
+
+    def test_create_and_list_wire_types(self, agent_app):
+        env = agent_app("multi")
+        headers = env.login("alice")
+        created = env.mint(headers, "user", "laptop").json()
+        listed = env.client.get("/api/mcp/tokens", headers=headers).json()["tokens"][0]
+        for body in (created, listed):
+            assert isinstance(body["id"], int)
+            assert isinstance(body["created_at"], str)
+            assert body["level"] in ("readonly", "user", "edition")
+            assert type(body["revoked"]) is int and body["revoked"] in (0, 1)
+            assert body["last_used_at"] is None and body["revoked_at"] is None
+        assert isinstance(created["token"], str) and "token" not in listed
+
+    def test_revoked_flag_stays_an_int_on_the_wire(self, agent_app):
+        env = agent_app("multi")
+        headers = env.login("alice")
+        token_id = env.mint(headers, "user").json()["id"]
+        env.client.delete(f"/api/mcp/tokens/{token_id}", headers=headers)
+        listed = env.client.get("/api/mcp/tokens", headers=headers).json()["tokens"][0]
+        assert type(listed["revoked"]) is int and listed["revoked"] == 1
+        assert isinstance(listed["revoked_at"], str)

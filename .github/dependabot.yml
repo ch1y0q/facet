@@ -61,11 +61,15 @@ updates:
           - "patch"
     ignore:
       # Majors are a deliberate, verified upgrade — never auto-propose them. Covers
-      # the Angular 21->22 framework migration (a lone @angular/* major breaks
-      # lockstep peer resolution) and typescript (pinned <6.0 by Angular's peers).
+      # lockstep peer resolution on an Angular major (a lone @angular/* major breaks it).
       - dependency-name: "*"
         update-types:
           - "version-update:semver-major"
+      # Angular 22 peers typescript ">=6.0 <6.1": a 6.1+ minor would break the npm
+      # minor group, so hold typescript at 6.0.x until Angular widens its range.
+      - dependency-name: "typescript"
+        versions:
+          - ">=6.1"
 
   # ---- GitHub Actions workflows ----
   - package-ecosystem: "github-actions"

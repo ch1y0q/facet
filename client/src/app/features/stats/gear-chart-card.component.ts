@@ -1,4 +1,4 @@
-import { Component, input, signal, computed, viewChild, ElementRef, effect, DestroyRef, inject } from '@angular/core';
+import { Component, input, signal, computed, viewChild, ElementRef, effect, DestroyRef, inject, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -59,6 +59,7 @@ const GEAR_METRIC_OPTIONS = [
     TranslatePipe,
     ChartHeightPipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <mat-card>
       <mat-card-header class="!flex !items-center !justify-between !gap-4">

@@ -13,6 +13,7 @@ pass-by-accident. ``app.dependency_overrides`` is the documented FastAPI
 mechanism that actually bypasses the captured reference.
 """
 
+import contextlib
 import json
 import os
 import sqlite3
@@ -466,3 +467,300 @@ def initialize_photo_database(conn):
         init_database(db_path)
         with sqlite3.connect(db_path) as source:
             source.backup(conn)
+# ---------------------------------------------------------------------------
+# Agent (MCP) app: REAL auth, REAL lifespan
+# ---------------------------------------------------------------------------
+
+AGENT_PROTOCOL = "2025-11-25"
+AGENT_MCP_HEADERS = {
+    "Accept": "application/json, text/event-stream",
+    "Content-Type": "application/json",
+    "MCP-Protocol-Version": AGENT_PROTOCOL,
+}
+AGENT_USER_PASSWORDS = {"alice": "alice-pw", "bob": "bob-pw", "root": "root-pw"}
+AGENT_VIEW_PASSWORD = "view-pw"
+AGENT_EDITION_PASSWORD = "edition-pw"
+AGENT_DIR = "/agent-seeded/"
+
+
+def agent_db(sql, *args):
+    """Run one statement against the shared session database and return its rows."""
+    with sqlite3.connect(_TEST_DB_FILE.name) as conn:
+        return conn.execute(sql, args).fetchall()
+
+
+def visual_ranking(hits):
+    """A ``_find_similar_visual`` stand-in serving ``hits`` as its full ranking, one page at a time."""
+    def find(conn, source, photo_path, min_similarity, vis_sql, vis_params, offset, limit, change_token):
+        return hits[offset:offset + limit], len(hits), None
+    return find
+
+
+def intercept_internal_call(monkeypatch, handler):
+    """Wrap ``InternalClient.call``: ``handler(tool, kwargs)`` returns a replacement result, or None to fall through."""
+    from api.agent.internal_client import InternalClient
+    original = InternalClient.call
+
+    async def call(self, grant, tool, **kwargs):
+        replaced = handler(tool, kwargs)
+        return replaced if replaced is not None else await original(self, grant, tool, **kwargs)
+
+    monkeypatch.setattr(InternalClient, "call", call)
+
+
+@contextlib.contextmanager
+def serve_app(app, **config):
+    """Run ``app`` under a live uvicorn on a free local port; yield the port, stop the server on exit."""
+    import threading
+    import time
+    import uvicorn
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, lifespan="off", **config))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    try:
+        deadline = time.monotonic() + 10
+        while not server.started and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert server.started
+        yield server.servers[0].sockets[0].getsockname()[1]
+    finally:
+        server.should_exit = True
+        thread.join(timeout=10)
+
+
+class AgentEnv:
+    """A plain ``create_app()`` whose auth and lifespan are the production ones.
+
+    Unlike ``edition_client`` / ``regular_client`` this carries NO
+    ``dependency_overrides``: the internal JWT, the grant level and the token
+    generations are only meaningful when the real ``Depends()`` chain runs.
+    """
+
+    def __init__(self, client, mode, mint_client=None):
+        self.client = client
+        self.app = client.app
+        self.mode = mode
+        # The client that calls the token routes. ``agent_app.build`` hands an open install a
+        # loopback browser here (those routes are local-only there); every other env mints
+        # through its own peer.
+        self.mint_client = mint_client or client
+
+    def login(self, user=None, edition=False):
+        """Bearer headers for a real session, obtained through the real login routes."""
+        if self.mode == "multi":
+            resp = self.client.post(
+                "/api/auth/login", json={"username": user, "password": AGENT_USER_PASSWORDS[user]})
+        elif self.mode == "legacy":
+            resp = self.client.post("/api/auth/login", json={"password": AGENT_VIEW_PASSWORD})
+            if edition:
+                resp = self.client.post(
+                    "/api/auth/edition/login", json={"password": AGENT_EDITION_PASSWORD})
+        else:
+            resp = self.client.post("/api/auth/login", json={"password": ""})
+        assert resp.status_code == 200, resp.text
+        self.client.cookies.clear()
+        return {"Authorization": "Bearer " + resp.json()["access_token"]}
+
+    def mint(self, headers, level="readonly", name="test"):
+        return self.mint_client.post("/api/mcp/tokens", json={"name": name, "level": level}, headers=headers)
+
+    def token(self, headers, level="readonly", name="test"):
+        resp = self.mint(headers, level, name)
+        assert resp.status_code == 200, resp.text
+        return resp.json()["token"]
+
+    def rpc(self, token, method, params=None, rpc_id=1, headers=None):
+        hdrs = dict(AGENT_MCP_HEADERS)
+        if token is not None:
+            hdrs["Authorization"] = "Bearer " + token
+        hdrs.update(headers or {})
+        body = {"jsonrpc": "2.0", "id": rpc_id, "method": method}
+        if params is not None:
+            body["params"] = params
+        return self.client.post("/mcp", json=body, headers=hdrs, follow_redirects=False)
+
+    def call(self, token, tool, arguments=None):
+        """Call a tool; return its decoded result envelope (``{ok: ..}``)."""
+        resp = self.rpc(token, "tools/call", {"name": tool, "arguments": arguments or {}})
+        assert resp.status_code == 200, resp.text
+        result = resp.json()["result"]
+        return json.loads(result["content"][0]["text"])
+
+    def tool_names(self, token):
+        resp = self.rpc(token, "tools/list")
+        assert resp.status_code == 200, resp.text
+        return {t["name"] for t in resp.json()["result"]["tools"]}
+
+
+@pytest.fixture()
+def agent_app():
+    """Factory: ``agent_app(mode, mcp_enabled=True, **mcp)`` -> :class:`AgentEnv`.
+
+    ``mode`` is ``"legacy"`` (viewer + edition passwords), ``"multi"`` (users
+    alice/bob = role user, root = admin, each with the :data:`AGENT_DIR` library)
+    or ``"open"`` (no passwords). Config is mutated IN PLACE on ``VIEWER_CONFIG``
+    / ``_FULL_CONFIG`` (the dicts every module holds) and restored on teardown.
+    The lifespan runs (``with TestClient(app)``), and the fixture refuses to
+    build an app carrying ``dependency_overrides``.
+    """
+    import copy
+    from api import auth as api_auth
+    from api import config as api_config
+    from api.auth import hash_password
+    from api.agent import limits as agent_limits
+
+    saved_viewer = copy.deepcopy(api_config.VIEWER_CONFIG)
+    saved_full_users = copy.deepcopy(api_config._FULL_CONFIG.get("users", None))
+    had_users = "users" in api_config._FULL_CONFIG
+    entered = []
+
+    def build(mode, mcp_enabled=True, **mcp):
+        viewer = api_config.VIEWER_CONFIG
+        viewer["password"] = AGENT_VIEW_PASSWORD if mode == "legacy" else ""
+        viewer["edition_password"] = AGENT_EDITION_PASSWORD if mode == "legacy" else ""
+        viewer["mcp"] = {**api_config.MCP_SETTINGS_DEFAULTS, "enabled": mcp_enabled, **mcp}
+        if mode == "multi":
+            api_config._FULL_CONFIG["users"] = {
+                "alice": {"password_hash": hash_password("alice-pw"), "role": "user",
+                          "directories": [AGENT_DIR]},
+                "bob": {"password_hash": hash_password("bob-pw"), "role": "user",
+                        "directories": ["/agent-bob-only/"]},
+                "root": {"password_hash": hash_password("root-pw"), "role": "admin",
+                         "directories": [AGENT_DIR]},
+            }
+        else:
+            api_config._FULL_CONFIG.pop("users", None)
+        api_auth._login_limiter._attempts.clear()
+        agent_limits.reset_limits()
+        app = create_app()
+        assert not app.dependency_overrides, "agent_app must run the real auth chain"
+        client = TestClient(app)
+        client.__enter__()
+        entered.append(client)
+        local = TestClient(app, base_url="http://localhost", client=("127.0.0.1", 12345)) if mode == "open" else None
+        return AgentEnv(client, mode, mint_client=local)
+
+    yield build
+    for client in reversed(entered):
+        client.__exit__(None, None, None)
+    api_config.VIEWER_CONFIG.clear()
+    api_config.VIEWER_CONFIG.update(saved_viewer)
+    if had_users:
+        api_config._FULL_CONFIG["users"] = saved_full_users
+    else:
+        api_config._FULL_CONFIG.pop("users", None)
+    with sqlite3.connect(_TEST_DB_FILE.name) as conn:
+        conn.execute("DELETE FROM mcp_tokens")
+
+
+class FakeTab:
+    """A scripted browser tab on ``/api/mcp/bridge`` (runs on its own thread).
+
+    ``reply(call_frame)`` returns the ``result`` frame body to send back, or ``None``
+    to stay silent, or ``"close"`` to hang up. Every frame the server sent is kept in ``inbox``. The server's
+    pings (patched fast by the ``fake_tab`` fixture) are what wake the receive loop so
+    :meth:`stop` can end the thread.
+    """
+
+    def __init__(self, env, jwt, tab_id="tab-1", *, tools=None, version="__current__", route="/",
+                 focused=True, origin="http://testserver", reply=None, answer_pings=True):
+        import threading
+        from api.agent.ui_tools import UI_TOOLS, tools_version
+        self.env = env
+        self.inbox = []
+        self.ready = None
+        self.close_code = None
+        self.reply = reply or (lambda call: {"ok": True, "data": {"echo": call["tool"]}})
+        self.answer_pings = answer_pings
+        self._stop = threading.Event()
+        self._ready = threading.Event()
+        self._frames = []
+        self.auth = {
+            "type": "auth", "token": jwt, "tab_id": tab_id, "route": route, "focused": focused,
+            "tools": [t.name for t in UI_TOOLS] if tools is None else tools,
+            "tools_version": tools_version() if version == "__current__" else version,
+        }
+        self._origin = origin
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def _run(self):
+        from starlette.websockets import WebSocketDisconnect
+        try:
+            with self.env.client.websocket_connect(
+                    "/api/mcp/bridge", headers={"origin": self._origin}) as ws:
+                self._ws = ws
+                ws.send_json(self.auth)
+                self.ready = ws.receive_json()
+                self._ready.set()
+                while not self._stop.is_set():
+                    for frame in self._outgoing():
+                        if isinstance(frame, tuple):
+                            ws.send_text(frame[1])
+                        else:
+                            ws.send_json(frame)
+                    msg = ws.receive_json()
+                    self.inbox.append(msg)
+                    if msg.get("type") == "ping" and self.answer_pings:
+                        ws.send_json({"type": "pong"})
+                    elif msg.get("type") == "call":
+                        body = self.reply(msg)
+                        if body == "close":
+                            break
+                        if body is not None:
+                            ws.send_json({"type": "result", "id": msg["id"], **body})
+        except WebSocketDisconnect as ex:
+            self.close_code = ex.code
+        finally:
+            self._ready.set()
+
+    def _outgoing(self):
+        frames, self._frames = self._frames, []
+        return frames
+
+    def send_raw(self, text):
+        """Queue a raw text frame (not JSON-encoded); sent on the next server ping."""
+        self._frames.append(("raw", text))
+
+    def send_later(self, frame):
+        """Queue a frame; it goes out the next time the server wakes the thread (a ping)."""
+        self._frames.append(frame)
+
+    @property
+    def calls(self):
+        return [m for m in self.inbox if m.get("type") == "call"]
+
+    def start(self, wait=True):
+        self._thread.start()
+        if wait:
+            assert self._ready.wait(60), "fake tab never became ready"
+        return self
+
+    def wait_closed(self, timeout=10):
+        self._thread.join(timeout)
+        assert not self._thread.is_alive(), "tab socket stayed open"
+        return self.close_code
+
+    def stop(self):
+        self._stop.set()
+        self._thread.join(10)
+
+
+@pytest.fixture()
+def fake_tab(monkeypatch):
+    """Factory ``fake_tab(env, jwt, tab_id=..., **FakeTab kwargs)`` -> a STARTED tab.
+
+    Server pings are patched to 0.1 s so tab threads stay responsive and expiry /
+    silence handling is observable without long sleeps.
+    """
+    from api.agent import bridge
+    monkeypatch.setattr(bridge, "PING_INTERVAL_S", 0.1)
+    tabs = []
+
+    def make(env, jwt, tab_id="tab-1", wait=True, **kwargs):
+        tab = FakeTab(env, jwt, tab_id, **kwargs)
+        tabs.append(tab)
+        return tab.start(wait)
+
+    yield make
+    for tab in tabs:
+        tab.stop()

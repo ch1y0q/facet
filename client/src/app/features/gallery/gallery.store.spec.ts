@@ -4,10 +4,13 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Router, ActivatedRoute } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { NEVER, Subject, of, throwError } from 'rxjs';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
+import { take } from 'rxjs/operators';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { Album, AlbumService } from '../../core/services/album.service';
 import { I18nService } from '../../core/services/i18n.service';
+import { AssistantChangesService, AssistantChangeBatch } from '../../core/agent/assistant-changes.service';
 import { I18N } from '../../core/i18n/keys';
 import {
   GalleryStore,
@@ -81,6 +84,7 @@ describe('GalleryStore', () => {
   let snackOpen: Mock;
   let routerNavigate: Mock;
   let queryParams: Record<string, string>;
+  let assistantBatches: Subject<AssistantChangeBatch>;
 
   beforeEach(() => {
     apiGet = vi.fn();
@@ -88,20 +92,22 @@ describe('GalleryStore', () => {
     snackOpen = vi.fn();
     routerNavigate = vi.fn();
     queryParams = {};
+    assistantBatches = new Subject<AssistantChangeBatch>();
 
     TestBed.configureTestingModule({
       providers: [
         GalleryStore,
         { provide: ApiService, useValue: { get: apiGet, post: apiPost } },
-        { provide: Router, useValue: { navigate: routerNavigate } },
+        { provide: Router, useValue: { navigate: routerNavigate, events: NEVER } },
         {
           provide: ActivatedRoute,
           useValue: { snapshot: { queryParams } },
         },
-        { provide: AuthService, useValue: { isEdition: vi.fn(() => false) } },
+        { provide: AuthService, useValue: { identity: () => '0|', isEdition: vi.fn(() => false) } },
         { provide: AlbumService, useValue: { list: vi.fn(() => of({ albums: [] })), update: vi.fn(() => of({})) } },
         { provide: MatSnackBar, useValue: { open: snackOpen } },
         { provide: I18nService, useValue: { t: (k: string) => k } },
+        { provide: AssistantChangesService, useValue: { batch$: assistantBatches.asObservable() } },
       ],
     });
 
@@ -274,7 +280,7 @@ describe('GalleryStore', () => {
       expect(store.filters().search_threshold).toBe('');
     });
 
-    it('leaves search_threshold empty on config load failure, so /search omits threshold', async () => {
+    it('leaves search_threshold empty on config load failure, so /photos omits semantic_threshold', async () => {
       apiGet.mockReturnValue(throwError(() => new Error('Network error')));
 
       await store.loadConfig();
@@ -285,8 +291,9 @@ describe('GalleryStore', () => {
       apiGet.mockReturnValue(of(makePhotosResponse()));
       await store.loadPhotos();
 
-      const searchCall = apiGet.mock.calls.find(([path]) => path === '/search');
-      expect(searchCall?.[1]).not.toHaveProperty('threshold');
+      const call = apiGet.mock.calls.find(([path]) => path === '/photos');
+      expect(call?.[1]).toMatchObject({ semantic_q: 'sunset' });
+      expect(call?.[1]).not.toHaveProperty('semantic_threshold');
     });
 
     it('should apply URL query params even on config error', async () => {
@@ -413,61 +420,118 @@ describe('GalleryStore', () => {
       });
     }
 
-    it('should surface the error when the semantic-search branch fails', async () => {
+    it('should surface the error when a semantic /photos load fails (400 or 503)', async () => {
       store.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'sunset' });
-      apiGet.mockReturnValue(throwError(() => new Error('Network error')));
+      apiGet.mockReturnValue(throwError(() => new Error('503')));
 
       await store.loadPhotos();
 
-      expect(apiGet).toHaveBeenCalledWith('/search', expect.objectContaining({ q: 'sunset' }));
+      expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({ semantic_q: 'sunset' }));
       expect(store.photos()).toEqual([]);
       expect(store.loadError()).toBe(true);
       expect(store.loading()).toBe(false);
     });
 
-    it('forwards search_threshold as a fraction of the percent string', async () => {
-      store.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'sunset', search_threshold: '5' });
-      apiGet.mockReturnValue(of({ photos: [], total: 0, query: 'sunset' }));
+    it('sends semantic_q with the other gallery filters to /photos and never calls /search', async () => {
+      store.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'sunset', camera: 'Canon', hide_rejected: true });
+      apiGet.mockReturnValue(of(makePhotosResponse({ total: 130, has_more: true })));
 
       await store.loadPhotos();
 
-      expect(apiGet).toHaveBeenCalledWith('/search', expect.objectContaining({ threshold: 0.05 }));
+      expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({
+        semantic_q: 'sunset', camera: 'Canon', hide_rejected: true, page: 1,
+      }));
+      expect(apiGet.mock.calls.some(([path]) => path === '/search')).toBe(false);
+      expect(store.total()).toBe(130);
+      expect(store.hasMore()).toBe(true);
     });
 
-    it('omits threshold from /search while the slider still sits on the server seed', async () => {
+    it('pages a semantic view through /photos with the same semantic_q', async () => {
+      store.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'sunset' });
+      apiGet.mockReturnValue(of(makePhotosResponse({ photos: [makePhoto({ path: '/a.jpg' })], total: 2, has_more: true })));
+      await store.loadPhotos();
+      apiGet.mockClear();
+      apiGet.mockReturnValue(of(makePhotosResponse({ photos: [makePhoto({ path: '/b.jpg' })], total: 2, has_more: false })));
+
+      await store.nextPage();
+
+      expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({ semantic_q: 'sunset', page: 2 }));
+      expect(store.photos().map(p => p.path)).toEqual(['/a.jpg', '/b.jpg']);
+      expect(store.hasMore()).toBe(false);
+    });
+
+    it('reloads a semantic view when a hide toggle changes', async () => {
+      store.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'sunset', hide_bursts: true });
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+
+      await store.updateFilter('hide_bursts', false);
+
+      const call = apiGet.mock.calls.find(([path]) => path === '/photos');
+      expect(call?.[1]).toMatchObject({ semantic_q: 'sunset' });
+      expect(call?.[1]).not.toHaveProperty('hide_bursts');
+    });
+
+    it('switches to relevance when a query is set and restores the default sort when it is cleared', async () => {
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+      await store.updateFilter('sort', 'date_taken');
+      await store.updateFilter('semanticQuery', 'sunset');
+      expect(store.filters()).toMatchObject({ sort: 'relevance', sort_direction: 'DESC' });
+      expect(apiGet).toHaveBeenLastCalledWith('/photos', expect.objectContaining({ semantic_q: 'sunset', sort: 'relevance' }));
+      await store.updateFilter('semanticQuery', '');
+      expect(store.filters().sort).toBe(DEFAULT_FILTERS.sort);
+      expect(apiGet).toHaveBeenLastCalledWith('/photos', expect.objectContaining({ sort: DEFAULT_FILTERS.sort }));
+    });
+
+    it('keeps a sort the user picked while a query stays set and on a later clear', async () => {
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+      await store.updateFilter('semanticQuery', 'sunset');
+      await store.updateFilter('sort', 'date_taken');
+      await store.updateFilter('semanticQuery', 'dog');
+      expect(store.filters().sort).toBe('date_taken');
+      await store.updateFilter('semanticQuery', '');
+      expect(store.filters().sort).toBe('date_taken');
+    });
+
+    it('updateFilters applies the same relevance switch', async () => {
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+      await store.updateFilters({ semanticQuery: 'sunset' });
+      expect(store.filters().sort).toBe('relevance');
+      await store.updateFilters({ semanticQuery: '' });
+      expect(store.filters().sort).not.toBe('relevance');
+    });
+
+    it('omits semantic_threshold while the slider still sits on the server seed', async () => {
       // The seed is a rounded percent of the server's own fraction, so sending it
       // back would both freeze a later recalibration out and re-gate 0.075 at 0.08.
       apiGet.mockReturnValue(of(makeConfig({ search_threshold_default: 0.05 })));
       await store.loadConfig();
       store.filters.update(f => ({ ...f, semanticQuery: 'sunset' }));
       expect(store.filters().search_threshold).toBe('5');
-      apiGet.mockReturnValue(of({ photos: [], total: 0, query: 'sunset' }));
+      apiGet.mockReturnValue(of(makePhotosResponse()));
 
       await store.loadPhotos();
 
-      const searchCall = apiGet.mock.calls.find(([path]) => path === '/search');
-      expect(searchCall?.[1]).not.toHaveProperty('threshold');
+      const call = apiGet.mock.calls.find(([path]) => path === '/photos');
+      expect(call?.[1]).not.toHaveProperty('semantic_threshold');
     });
 
-    it('sends threshold once the user moves the slider off the seed', async () => {
+    it('sends semantic_threshold once the user moves the slider off the seed', async () => {
       apiGet.mockReturnValue(of(makeConfig({ search_threshold_default: 0.05 })));
       await store.loadConfig();
       store.filters.update(f => ({ ...f, semanticQuery: 'sunset', search_threshold: '12' }));
-      apiGet.mockReturnValue(of({ photos: [], total: 0, query: 'sunset' }));
+      apiGet.mockReturnValue(of(makePhotosResponse()));
 
       await store.loadPhotos();
 
-      expect(apiGet).toHaveBeenCalledWith('/search', expect.objectContaining({ threshold: 0.12 }));
+      expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({ semantic_threshold: 0.12 }));
     });
 
-    it('omits threshold from /search when search_threshold is unseeded', async () => {
-      store.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'sunset', search_threshold: '' });
-      apiGet.mockReturnValue(of({ photos: [], total: 0, query: 'sunset' }));
+    it('filterKey changes on a slider-only move', async () => {
+      apiGet.mockReturnValue(of(makeConfig({ search_threshold_default: 0.05 })));
+      await store.loadConfig();
+      const base = { ...store.filters(), semanticQuery: 'sunset' };
 
-      await store.loadPhotos();
-
-      const searchCall = apiGet.mock.calls.find(([path]) => path === '/search');
-      expect(searchCall?.[1]).not.toHaveProperty('threshold');
+      expect(store.filterKey({ ...base, search_threshold: '12' })).not.toBe(store.filterKey(base));
     });
 
     it('should clear the error when a retried load succeeds', async () => {
@@ -733,8 +797,8 @@ describe('GalleryStore', () => {
       await store.updateFilter('search_threshold', '20');
 
       expect(store.filters().search_threshold).toBe('20');
-      // Unchanged: nothing to reload for -- the value only feeds the /search
-      // branch of loadPhotos(), which never runs without a query.
+      // Unchanged: nothing to reload for -- the value only feeds
+      // semantic_threshold, which is not sent without a query.
       expect(store.filters().page).toBe(3);
       expect(apiGet).not.toHaveBeenCalled();
     });
@@ -746,7 +810,7 @@ describe('GalleryStore', () => {
 
       expect(store.filters().search_threshold).toBe('20');
       expect(store.filters().page).toBe(1);
-      expect(apiGet).toHaveBeenCalledWith('/search', expect.objectContaining({ threshold: 0.2 }));
+      expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({ semantic_q: 'sunset', semantic_threshold: 0.2 }));
     });
   });
 
@@ -902,6 +966,85 @@ describe('GalleryStore', () => {
 
       expect(routerNavigate).toHaveBeenCalled();
       expect(apiGet).toHaveBeenCalledWith('/photos', expect.any(Object));
+    });
+  });
+
+  describe('filter journal', () => {
+    const journal = () => TestBed.inject(UserActivityJournal);
+    const filterEntries = () => journal().since().items.filter(i => i.kind === 'filters');
+
+    beforeEach(() => {
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+    });
+
+    it('records typing a search through updateFilter', async () => {
+      await store.updateFilter('search', 'sunset');
+      expect(filterEntries().map(i => i.value)).toEqual([{ changed: { search: 'sunset' } }]);
+    });
+
+    it('records a slider drag as one merged entry', () => {
+      vi.useFakeTimers();
+      try {
+        for (const v of ['4', '5', '6', '7']) store.updateFilterDebounced('min_score', v);
+      } finally {
+        vi.useRealTimers();
+      }
+      expect(filterEntries().map(i => i.value)).toEqual([{ changed: { min_score: '7' } }]);
+    });
+
+    it('records updateFilters and a reset as {reset: true}', async () => {
+      await store.updateFilters({ camera: 'Canon', lens: '50mm' });
+      expect(filterEntries().map(i => i.value)).toEqual([{ changed: { camera: 'Canon', lens: '50mm' } }]);
+      await store.resetFilters();
+      expect(filterEntries().map(i => i.value)).toEqual([{ changed: { camera: 'Canon', lens: '50mm' } }, { reset: true }]);
+    });
+
+    it('includes the sort side-change of a semantic query, but not a sort-only change', async () => {
+      await store.updateFilter('sort', 'date_taken');
+      expect(filterEntries()).toEqual([]);
+      await store.updateFilter('semanticQuery', 'dog');
+      expect(filterEntries().map(i => i.value)).toEqual([
+        { changed: { semanticQuery: 'dog', sort: 'relevance' } },
+      ]);
+    });
+
+    it('records the hide toggles, favorites_only and showAllHidden, which are real query filters', async () => {
+      await store.updateFilter('hide_rejected', false);
+      await store.updateFilter('favorites_only', true);
+      expect(filterEntries().map(i => i.value)).toEqual([
+        { changed: { hide_rejected: false, favorites_only: true } },
+      ]);
+      store.showAllHidden();
+      await Promise.resolve();
+      const last = filterEntries().at(-1)!.value as { changed: Record<string, boolean> };
+      expect(last.changed['hide_bursts']).toBe(false);
+    });
+
+    it('records nothing for page, layout or an unchanged value', async () => {
+      await store.updateFilter('hide_details', false);
+      await store.updateFilter('camera', '');
+      expect(filterEntries()).toEqual([]);
+    });
+
+    it('records nothing for an edit made inside a UI tool scope', async () => {
+      await journal().suppress(async () => {
+        await store.updateFilter('search', 'agent');
+        await store.updateFilters({ camera: 'Sony' });
+        await store.resetFilters();
+      });
+      expect(filterEntries()).toEqual([]);
+    });
+
+    it('does not touch the journal when the config and the URL are restored, and does on a user edit', async () => {
+      const spy = vi.spyOn(store as unknown as { journalFilters: () => void }, 'journalFilters');
+      Object.assign(queryParams, { camera: 'Sony A7' });
+      apiGet.mockReturnValue(of(makeConfig()));
+      await store.loadConfig();
+      expect(store.filters().camera).toBe('Sony A7');
+      expect(spy).not.toHaveBeenCalled();
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+      await store.updateFilter('tag', 'x');
+      expect(spy).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -1119,6 +1262,120 @@ describe('GalleryStore', () => {
     });
   });
 
+  describe('pinned list (showPaths)', () => {
+    const paths = ['/b.jpg', '/a.jpg'];
+    const byPaths = () => of({ photos: [makePhoto({ path: '/b.jpg' }), makePhoto({ path: '/a.jpg' })], total: 2, missing: ['/gone.jpg'] });
+
+    beforeEach(async () => {
+      apiGet.mockImplementation((path: string) => of(path === '/config' ? makeConfig() : makePhotosResponse()));
+      apiPost.mockImplementation((path: string) => path === '/photos/by_paths' ? byPaths() : of({}));
+      await store.showPaths(paths);
+      apiGet.mockClear();
+    });
+
+    it('clears a path selection so the previous view does not carry over', async () => {
+      store.selectedPaths.set(new Set(['/old.jpg']));
+      await store.showPaths(paths);
+      expect(store.selectedPaths().size).toBe(0);
+    });
+
+    it('clears a view-scoped selection too', async () => {
+      store.selectionScope.set('view');
+      store.excludedPaths.set(new Set(['/x.jpg']));
+      await store.showPaths(paths);
+      expect(store.viewScopeSelected()).toBe(false);
+      expect(store.selectionScope()).toBe('paths');
+      expect(store.excludedPaths().size).toBe(0);
+    });
+
+    const expectFilteredReload = () => {
+      expect(store.pinnedPaths()).toBeNull();
+      expect(apiGet.mock.calls.some(c => c[0] === '/photos')).toBe(true);
+    };
+
+    it('posts the paths to /photos/by_paths, never GET /photos, and keeps the requested order', () => {
+      expect(apiPost).toHaveBeenCalledWith('/photos/by_paths', { paths });
+      expect(apiGet).not.toHaveBeenCalled();
+      expect(store.photos().map(p => p.path)).toEqual(paths);
+      expect(store.total()).toBe(2);
+      expect(store.hasMore()).toBe(false);
+      expect(store.pinnedMissing()).toEqual(['/gone.jpg']);
+      expect(store.canScopeSelectionToView()).toBe(false);
+      expect(store.filterPayload()).toBeNull();
+    });
+
+    it('updateFilter drops the pin and loads the filtered view', async () => {
+      await store.updateFilter('camera', 'X100');
+      expectFilteredReload();
+    });
+
+    it('updateFilterDebounced drops the pin once its reload fires', async () => {
+      vi.useFakeTimers();
+      try {
+        store.updateFilterDebounced('min_score', '7');
+        await vi.advanceTimersByTimeAsync(400);
+      } finally {
+        vi.useRealTimers();
+      }
+      expectFilteredReload();
+    });
+
+    it('loadConfig drops the pin (it replaces the filters wholesale)', async () => {
+      await store.loadConfig();
+      expect(store.pinnedPaths()).toBeNull();
+    });
+
+    it('showAllHidden drops the pin and loads the filtered view', async () => {
+      store.showAllHidden();
+      await vi.waitFor(() => expect(apiGet.mock.calls.some(c => c[0] === '/photos')).toBe(true));
+      expect(store.pinnedPaths()).toBeNull();
+    });
+
+    it('restoreHidden drops the pin and loads the filtered view', async () => {
+      store.hiddenFiltersStash.set({
+        hide_blinks: true, hide_bursts: true, hide_duplicates: true, hide_brackets: true, hide_panoramas: true,
+      });
+      store.restoreHidden();
+      await vi.waitFor(() => expect(apiGet.mock.calls.some(c => c[0] === '/photos')).toBe(true));
+      expect(store.pinnedPaths()).toBeNull();
+    });
+
+    it('nextPage keeps the pin and fetches nothing', async () => {
+      store.hasMore.set(true);
+      await store.nextPage();
+      expect(store.pinnedPaths()).toEqual(paths);
+      expect(apiGet).not.toHaveBeenCalled();
+    });
+
+    it('reloadPhotos keeps the pin and re-posts the paths', async () => {
+      apiPost.mockClear();
+      await store.reloadPhotos();
+      expect(store.pinnedPaths()).toEqual(paths);
+      expect(apiPost).toHaveBeenCalledWith('/photos/by_paths', { paths });
+      expect(apiGet.mock.calls.some(c => c[0] === '/photos')).toBe(false);
+    });
+
+    it('updateFilters drops the pin and loads the filtered view', async () => {
+      await store.updateFilters({ camera: 'X100' });
+      expectFilteredReload();
+    });
+
+    it('resetFilters drops the pin and loads the filtered view', async () => {
+      await store.resetFilters();
+      expectFilteredReload();
+    });
+
+    it('Keep top N% refuses while a list is pinned, calling nothing', async () => {
+      expect(await store.selectBottomPercent(50)).toBeNull();
+      expect(apiGet.mock.calls.some(c => String(c[0]).includes('select_bottom_percent'))).toBe(false);
+    });
+
+    it('clearPinned reloads the filtered view', async () => {
+      await store.clearPinned();
+      expectFilteredReload();
+    });
+  });
+
   describe('syncUrl (via updateFilter)', () => {
     beforeEach(() => {
       apiGet.mockReturnValue(of(makePhotosResponse()));
@@ -1167,6 +1424,313 @@ describe('GalleryStore', () => {
       expect(params).not.toHaveProperty('hide_blinks');
     });
   });
+  describe('refreshPaths (assistant writes, in place)', () => {
+    const paths = ['/b.jpg', '/a.jpg', '/c.jpg'];
+    const byPathsBodies = () => apiPost.mock.calls
+      .filter(c => c[0] === '/photos/by_paths')
+      .map(c => c[1] as { paths: string[]; filters?: Record<string, unknown> });
+    const echoByPaths = (override: (p: string) => Partial<Photo> = () => ({}), missing: string[] = []) =>
+      apiPost.mockImplementation((path: string, body?: { paths?: string[] }) => path === '/photos/by_paths'
+        ? of({
+          photos: (body?.paths ?? []).filter(p => !missing.includes(p)).map(p => makePhoto({ path: p, ...override(p) })),
+          total: 0,
+          missing: missing.filter(p => (body?.paths ?? []).includes(p)),
+        })
+        : of({}));
+
+    describe('pinned view', () => {
+      beforeEach(async () => {
+        apiGet.mockImplementation((path: string) => of(path === '/config' ? makeConfig() : makePhotosResponse()));
+        echoByPaths();
+        await store.showPaths(paths);
+        apiPost.mockClear();
+      });
+
+      it('changes only the named photo and leaves the pin intact', async () => {
+        const order = store.pinnedPaths();
+        const before = store.photos();
+        echoByPaths(() => ({ is_rejected: true }));
+        await store.refreshPaths(['/a.jpg']);
+        const after = store.photos();
+        expect(after.find(p => p.path === '/a.jpg')?.is_rejected).toBeTruthy();
+        expect(after.filter(p => p.path !== '/a.jpg')).toEqual(before.filter(p => p.path !== '/a.jpg'));
+        expect(after.map(p => p.path)).toEqual(before.map(p => p.path));
+        expect(store.pinnedPaths()).toEqual(order);
+        expect(byPathsBodies()).toEqual([{ paths: ['/a.jpg'] }]);
+      });
+
+      it('removes a photo the server reports missing from the grid, the pin and the selection', async () => {
+        store.selectedPaths.set(new Set(['/a.jpg', '/b.jpg']));
+        echoByPaths(() => ({}), ['/a.jpg']);
+        await store.refreshPaths(['/a.jpg']);
+        expect(store.photos().map(p => p.path)).not.toContain('/a.jpg');
+        expect(store.pinnedPaths()).not.toContain('/a.jpg');
+        expect(store.selectedPaths().has('/a.jpg')).toBe(false);
+        expect(store.selectedPaths().has('/b.jpg')).toBe(true);
+      });
+
+      it('on a null batch posts the full pinned list once and keeps the pin', async () => {
+        const order = store.pinnedPaths();
+        const seen: number[] = [];
+        const stop = setInterval(() => seen.push(store.photos().length), 0);
+        echoByPaths(() => ({ is_rejected: true }));
+        await store.refreshPaths(null);
+        clearInterval(stop);
+        expect(byPathsBodies()).toEqual([{ paths }]);
+        expect(store.pinnedPaths()).toEqual(order);
+        expect(store.photos().map(p => p.path)).toEqual(paths);
+        expect(store.photos().every(p => p.is_rejected)).toBe(true);
+        expect(seen.every(n => n === 3)).toBe(true);
+      });
+
+      it('a null reload keeps the pin order and fields the refetch did not return (C17)', async () => {
+        store.photos.update(rows => rows.map(p => ({ ...p, caption: `old-${p.path}` })));
+        echoByPaths();
+        apiPost.mockImplementation((path: string, body?: { paths?: string[] }) => of({
+          photos: [...(body?.paths ?? [])].reverse().map(p => ({ path: p, star_rating: 2 })),
+          total: 0,
+          missing: [],
+        }));
+        await store.refreshPaths(null);
+        expect(store.photos().map(p => p.path)).toEqual(paths);
+        expect(store.photos().every(p => p.caption === `old-${p.path}` && p.star_rating === 2)).toBe(true);
+      });
+
+      it('sends nothing for a path that is not loaded', async () => {
+        await store.refreshPaths(['/elsewhere.jpg']);
+        expect(apiPost).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('filter view', () => {
+      const many = Array.from({ length: 600 }, (_, n) => `/p${n}.jpg`);
+      beforeEach(async () => {
+        apiGet.mockImplementation((path: string) => of(path === '/config'
+          ? makeConfig()
+          : makePhotosResponse({ photos: many.map(p => makePhoto({ path: p })), total: 600 })));
+        store.filters.set({ ...DEFAULT_FILTERS, hide_rejected: true, camera: 'Canon', album_id: '4', type: '' });
+        await store.loadConfig();
+        store.filters.update(f => ({ ...f, hide_rejected: true, camera: 'Canon', album_id: '4', type: 'portrait' }));
+        await store.loadPhotos();
+        apiGet.mockClear();
+        apiPost.mockClear();
+        echoByPaths();
+      });
+
+      it('sends the view filters (hide_rejected, camera, album, type) and no paging or sort', async () => {
+        await store.refreshPaths(['/p1.jpg']);
+        const [body] = byPathsBodies();
+        expect(body.paths).toEqual(['/p1.jpg']);
+        expect(body.filters).toMatchObject({ hide_rejected: true, camera: 'Canon', album_id: '4', type: 'portrait' });
+        for (const key of ['page', 'per_page', 'sort', 'sort_direction']) expect(body.filters).not.toHaveProperty(key);
+      });
+
+      it('sends the viewer default type explicitly when the filter has none', async () => {
+        store.config.set(makeConfig({ defaults: { ...makeConfig().defaults, type: 'top_picks' } }));
+        store.filters.update(f => ({ ...f, type: '' }));
+        await store.refreshPaths(['/p1.jpg']);
+        expect(byPathsBodies()[0].filters).toMatchObject({ type: 'top_picks' });
+      });
+
+      it('chunks 600 loaded paths into two requests of at most 500', async () => {
+        await store.refreshPaths(many);
+        const bodies = byPathsBodies();
+        expect(bodies.map(b => b.paths.length)).toEqual([500, 100]);
+      });
+
+      it('removes a photo that no longer matches the filters', async () => {
+        echoByPaths(() => ({}), ['/p2.jpg']);
+        store.selectedPaths.set(new Set(['/p2.jpg']));
+        await store.refreshPaths(['/p2.jpg', '/p3.jpg']);
+        expect(store.photos().some(p => p.path === '/p2.jpg')).toBe(false);
+        expect(store.photos().some(p => p.path === '/p3.jpg')).toBe(true);
+        expect(store.total()).toBe(599);
+        expect(store.selectedPaths().size).toBe(0);
+      });
+
+      it('applies two overlapping refreshes for different paths in arrival order (S1)', async () => {
+        const slow = new Subject<unknown>();
+        apiPost.mockReturnValueOnce(slow);
+        const first = store.refreshPaths(['/p1.jpg']);
+        echoByPaths(() => ({ star_rating: 5 }));
+        const second = store.refreshPaths(['/p2.jpg']);
+        await Promise.resolve();
+        slow.next({ photos: [makePhoto({ path: '/p1.jpg', star_rating: 3 })], total: 1, missing: [] });
+        slow.complete();
+        await Promise.all([first, second]);
+        expect(store.photos().find(p => p.path === '/p1.jpg')?.star_rating).toBe(3);
+        expect(store.photos().find(p => p.path === '/p2.jpg')?.star_rating).toBe(5);
+      });
+
+      it('lets a later batch win for the same path because refreshes run in order', async () => {
+        const slow = new Subject<unknown>();
+        apiPost.mockReturnValueOnce(slow);
+        const first = store.refreshPaths(['/p1.jpg']);
+        echoByPaths(() => ({ star_rating: 5 }));
+        const second = store.refreshPaths(['/p1.jpg']);
+        slow.next({ photos: [makePhoto({ path: '/p1.jpg', star_rating: 1 })], total: 1, missing: [] });
+        slow.complete();
+        await Promise.all([first, second]);
+        expect(store.photos().find(p => p.path === '/p1.jpg')?.star_rating).toBe(5);
+      });
+
+      it('applies a slow null batch even when a fast path batch follows it (S2)', async () => {
+        const reply = new Subject<PhotosResponse>();
+        apiGet.mockImplementation((path: string) => path === '/photos' ? reply : of({}));
+        const first = store.refreshPaths(null);
+        echoByPaths(() => ({ star_rating: 4 }));
+        const second = store.refreshPaths(['/p9.jpg']);
+        await Promise.resolve();
+        reply.next(makePhotosResponse({ photos: [makePhoto({ path: '/p9.jpg' })], total: 1, has_more: false }));
+        reply.complete();
+        await Promise.all([first, second]);
+        expect(store.photos().map(p => p.path)).toEqual(['/p9.jpg']);
+        expect(store.photos()[0].star_rating).toBe(4);
+      });
+
+      it('a failed refresh does not block the next one', async () => {
+        apiPost.mockReturnValueOnce(throwError(() => new Error('boom')));
+        const first = store.refreshPaths(['/p1.jpg']);
+        echoByPaths(() => ({ star_rating: 2 }));
+        const second = store.refreshPaths(['/p2.jpg']);
+        await Promise.all([first, second]);
+        expect(store.photos().find(p => p.path === '/p2.jpg')?.star_rating).toBe(2);
+      });
+
+      it('keeps the appended page when the user pages during the view refetch (S3)', async () => {
+        const page1 = Array.from({ length: 2 }, (_, n) => makePhoto({ path: `/q${n}.jpg` }));
+        const page2 = Array.from({ length: 2 }, (_, n) => makePhoto({ path: `/q${n + 2}.jpg` }));
+        apiGet.mockImplementation((path: string) => of(path === '/photos'
+          ? makePhotosResponse({ photos: page1, total: 4, has_more: true })
+          : {}));
+        await store.loadPhotos();
+        const slow = new Subject<PhotosResponse>();
+        let slowUsed = 0;
+        apiGet.mockImplementation((path: string, params?: { page?: number }) => {
+          if (path !== '/photos') return of({});
+          if (params?.page === 2) return of(makePhotosResponse({ photos: page2, total: 4, has_more: false }));
+          return slowUsed++ === 0 ? slow.pipe(take(1)) : of(makePhotosResponse({ photos: page1, total: 4, has_more: true }));
+        });
+        const run = store.refreshPaths(null);
+        await Promise.resolve();
+        await store.nextPage();
+        expect(store.photos().length).toBe(4);
+        slow.next(makePhotosResponse({ photos: page1, total: 4, has_more: true }));
+        await run;
+        expect(store.photos().map(p => p.path)).toEqual(['/q0.jpg', '/q1.jpg', '/q2.jpg', '/q3.jpg']);
+      });
+
+      it('never duplicates rows when a null batch arrives during an in-flight nextPage (S4)', async () => {
+        const page1 = Array.from({ length: 2 }, (_, n) => makePhoto({ path: `/q${n}.jpg` }));
+        const page2 = Array.from({ length: 2 }, (_, n) => makePhoto({ path: `/q${n + 2}.jpg` }));
+        apiGet.mockImplementation((path: string) => of(path === '/photos'
+          ? makePhotosResponse({ photos: page1, total: 4, has_more: true })
+          : {}));
+        await store.loadPhotos();
+        const pageTwo = new Subject<PhotosResponse>();
+        apiGet.mockImplementation((path: string, params?: { page?: number }) => {
+          if (path !== '/photos') return of({});
+          return params?.page === 2 ? pageTwo.pipe(take(1)) : of(makePhotosResponse({ photos: page1, total: 4, has_more: true }));
+        });
+        const paging = store.nextPage();
+        const refresh = store.refreshPaths(null);
+        await refresh;
+        apiGet.mockImplementation((path: string, params?: { page?: number }) => path === '/photos'
+          ? of(params?.page === 2
+            ? makePhotosResponse({ photos: page2, total: 4, has_more: false })
+            : makePhotosResponse({ photos: page1, total: 4, has_more: true }))
+          : of({}));
+        pageTwo.next(makePhotosResponse({ photos: page2, total: 4, has_more: false }));
+        await paging;
+        await vi.waitFor(() => expect(store.photos().length).toBe(4));
+        const seen = store.photos().map(p => p.path);
+        expect(new Set(seen).size).toBe(seen.length);
+        expect(seen).toEqual(['/q0.jpg', '/q1.jpg', '/q2.jpg', '/q3.jpg']);
+      });
+
+      it('discards a refresh when the view was reloaded meanwhile', async () => {
+        const pending = new Subject<unknown>();
+        apiPost.mockReturnValueOnce(pending);
+        const run = store.refreshPaths(['/p1.jpg']);
+        await store.loadPhotos();
+        pending.next({ photos: [makePhoto({ path: '/p1.jpg', star_rating: 5 })], total: 1, missing: [] });
+        pending.complete();
+        await run;
+        expect(store.photos().find(p => p.path === '/p1.jpg')?.star_rating).not.toBe(5);
+      });
+
+      it('on a null batch reloads in place: view scope, exclusions and rows survive, no by_paths', async () => {
+        store.selectWholeView();
+        store.excludedPaths.set(new Set(['/p5.jpg']));
+        const lengths: number[] = [];
+        const reply = new Subject<PhotosResponse>();
+        apiGet.mockImplementation((path: string) => {
+          lengths.push(store.photos().length);
+          return path === '/photos' ? reply : of({});
+        });
+        const run = store.refreshPaths(null);
+        expect(store.photos().length).toBe(600);
+        await Promise.resolve();
+        reply.next(makePhotosResponse({ photos: [makePhoto({ path: '/p9.jpg' })], total: 1, has_more: false }));
+        reply.complete();
+        await run;
+        expect(store.viewScopeSelected()).toBe(true);
+        expect(store.excludedPaths().has('/p5.jpg')).toBe(true);
+        expect(store.photos().map(p => p.path)).toEqual(['/p9.jpg']);
+        expect(lengths.every(n => n === 600)).toBe(true);
+        expect(apiPost.mock.calls.some(c => c[0] === '/photos/by_paths')).toBe(false);
+      });
+    });
+
+    describe('semantic views', () => {
+      const semanticReply = () => makePhotosResponse({
+        photos: [makePhoto({ path: '/s1.jpg' }), makePhoto({ path: '/s2.jpg' })], total: 2,
+      });
+
+      it('refreshes a rating via by_paths without semantic keys and drops a row the filters no longer match', async () => {
+        apiGet.mockImplementation((path: string) => of(path === '/photos' ? semanticReply() : makeConfig()));
+        store.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'dog', search_threshold: '12' });
+        await store.loadPhotos();
+        echoByPaths(() => ({ star_rating: 4 }), ['/s2.jpg']);
+        await store.refreshPaths(['/s1.jpg', '/s2.jpg']);
+        const filters = byPathsBodies()[0].filters ?? {};
+        expect(filters).not.toHaveProperty('semantic_q');
+        expect(filters).not.toHaveProperty('semantic_threshold');
+        expect(store.photos().map(p => p.path)).toEqual(['/s1.jpg']);
+        expect(store.photos()[0].star_rating).toBe(4);
+      });
+
+      it('refetches the loaded pages through /photos on a null batch', async () => {
+        apiGet.mockImplementation((path: string) => of(path === '/photos' ? semanticReply() : makeConfig()));
+        store.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'dog' });
+        await store.loadPhotos();
+        apiPost.mockClear();
+        apiGet.mockClear();
+        await store.refreshPaths(null);
+        expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({ semantic_q: 'dog', page: 1 }));
+        expect(apiGet.mock.calls.some(([path]) => path === '/search')).toBe(false);
+        expect(byPathsBodies()).toEqual([]);
+      });
+    });
+
+    describe('batch$ subscription', () => {
+      it('does not load the gallery for a null batch before its first load', async () => {
+        assistantBatches.next({ paths: null });
+        await Promise.resolve();
+        expect(apiGet).not.toHaveBeenCalled();
+        expect(apiPost).not.toHaveBeenCalled();
+      });
+
+      it('refreshes in place when a batch arrives after the first load', async () => {
+        apiGet.mockImplementation((path: string) => of(path === '/config' ? makeConfig() : makePhotosResponse()));
+        await store.loadPhotos();
+        apiPost.mockClear();
+        echoByPaths(() => ({ star_rating: 2 }));
+        assistantBatches.next({ paths: ['/test.jpg'] });
+        await vi.waitFor(() => expect(store.photos()[0].star_rating).toBe(2));
+      });
+    });
+  });
 });
 
 describe('GalleryStore selection', () => {
@@ -1181,9 +1745,9 @@ describe('GalleryStore selection', () => {
       providers: [
         GalleryStore,
         { provide: ApiService, useValue: { get: apiGet, post: apiPost } },
-        { provide: Router, useValue: { navigate: vi.fn() } },
+        { provide: Router, useValue: { navigate: vi.fn(), events: NEVER } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
-        { provide: AuthService, useValue: { isEdition: vi.fn(() => false) } },
+        { provide: AuthService, useValue: { identity: () => '0|', isEdition: vi.fn(() => false) } },
         { provide: AlbumService, useValue: { list: vi.fn(() => of({ albums: [] })), update: vi.fn(() => of({})) } },
         { provide: MatSnackBar, useValue: { open: vi.fn() } },
         { provide: I18nService, useValue: { t: (k: string) => k } },
@@ -1388,6 +1952,16 @@ describe('GalleryStore selection', () => {
       expect(apiGet).not.toHaveBeenCalled();
     });
 
+    it('select-all still refuses the view scope under a semantic search', () => {
+      store.filters.update(f => ({ ...f, semanticQuery: 'sunset' }));
+
+      store.selectAll();
+
+      expect(store.canScopeSelectionToView()).toBe(false);
+      expect(store.selectionScope()).toBe('paths');
+      expect(apiGet).not.toHaveBeenCalled();
+    });
+
     it('falls back to the loaded photos under a semantic search', () => {
       store.filters.update(f => ({ ...f, semanticQuery: 'sunset' }));
 
@@ -1471,9 +2045,9 @@ describe('GalleryStore batch mutations by selection scope', () => {
       providers: [
         GalleryStore,
         { provide: ApiService, useValue: { get: vi.fn(() => of(makePhotosResponse())), post: apiPost } },
-        { provide: Router, useValue: { navigate: vi.fn() } },
+        { provide: Router, useValue: { navigate: vi.fn(), events: NEVER } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
-        { provide: AuthService, useValue: { isEdition: vi.fn(() => false) } },
+        { provide: AuthService, useValue: { identity: () => '0|', isEdition: vi.fn(() => false) } },
         { provide: AlbumService, useValue: { list: vi.fn(() => of({ albums: [] })), update: vi.fn(() => of({})) } },
         { provide: MatSnackBar, useValue: { open: vi.fn() } },
         { provide: I18nService, useValue: { t: (k: string) => k } },
@@ -1651,9 +2225,9 @@ describe('GalleryStore optimistic mutations', () => {
       providers: [
         GalleryStore,
         { provide: ApiService, useValue: { get: vi.fn(), post: apiPost } },
-        { provide: Router, useValue: { navigate: vi.fn() } },
+        { provide: Router, useValue: { navigate: vi.fn(), events: NEVER } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
-        { provide: AuthService, useValue: { isEdition: vi.fn(() => false) } },
+        { provide: AuthService, useValue: { identity: () => '0|', isEdition: vi.fn(() => false) } },
         { provide: AlbumService, useValue: { list: vi.fn(() => of({ albums: [] })), update: vi.fn(() => of({})) } },
         { provide: MatSnackBar, useValue: { open: snackOpen } },
         { provide: I18nService, useValue: { t: (k: string) => k } },
@@ -1664,6 +2238,34 @@ describe('GalleryStore optimistic mutations', () => {
       makePhoto({ path: '/a.jpg', is_favorite: false, is_rejected: false, star_rating: 3 }),
       makePhoto({ path: '/b.jpg', is_favorite: true, is_rejected: false, star_rating: null }),
     ]);
+  });
+
+  it('rebuilds a review queue when a single rating changes its sort order', async () => {
+    const all = Array.from({ length: 4 }, (_, i) => makePhoto({ path: `/p${i}.jpg`, star_rating: i + 1 }));
+    store.photos.set(all);
+    store.filters.set({ ...DEFAULT_FILTERS, review_status: 'undecided', sort: 'star_rating', sort_direction: 'ASC', per_page: 2, page: 2 });
+    const reordered = [...all.slice(1), { ...all[0], star_rating: 5 }];
+    const get = TestBed.inject(ApiService).get as Mock;
+    get.mockImplementation((_url: string, params: { page: number }) => of(makePhotosResponse({
+      photos: reordered.slice((params.page - 1) * 2, params.page * 2), total: 4, has_more: params.page === 1,
+    })));
+    await store.setRating('/p0.jpg', 5);
+    expect(store.photos().map(p => p.path)).toEqual(['/p1.jpg', '/p2.jpg', '/p3.jpg', '/p0.jpg']);
+  });
+
+  it('rebuilds favorites-only rejected pages when a single rejection clears a favorite', async () => {
+    const all = Array.from({ length: 4 }, (_, i) => makePhoto({ path: `/p${i}.jpg`, is_rejected: true, is_favorite: true, star_rating: 4 }));
+    store.photos.set(all);
+    store.filters.set({ ...DEFAULT_FILTERS, review_status: 'rejected', favorites_only: true, per_page: 2, page: 2 });
+    const remaining = all.slice(1);
+    apiPost.mockReturnValue(of({ is_rejected: true, star_rating: 0 }));
+    const get = TestBed.inject(ApiService).get as Mock;
+    get.mockImplementation((_url: string, params: { page: number }) => of(makePhotosResponse({
+      photos: remaining.slice((params.page - 1) * 2, params.page * 2), total: 3, has_more: params.page === 1,
+    })));
+    await store.toggleRejected('/p0.jpg');
+    expect(store.photos().map(p => p.path)).toEqual(['/p1.jpg', '/p2.jpg', '/p3.jpg']);
+    expect(store.total()).toBe(3);
   });
 
   it('keeps a photo without changing stars or favorite and snapshots its decision', async () => {
@@ -1826,6 +2428,51 @@ describe('GalleryStore optimistic mutations', () => {
     expect(store.photos()[0].is_kept).toBeFalsy();
   });
 
+  describe('user activity journal', () => {
+    const kinds = (): string[] => TestBed.inject(UserActivityJournal).since().items.map(i => i.kind);
+
+    it('records a rating, a favorite toggle, and a reject toggle', async () => {
+      apiPost.mockReturnValue(of({ is_favorite: true, is_rejected: true, star_rating: null }));
+      await store.setRating('/a.jpg', 3);
+      await store.toggleFavorite('/a.jpg');
+      await store.toggleRejected('/b.jpg');
+      expect(kinds()).toEqual(['rating', 'favorite', 'reject']);
+    });
+
+    it('records a batch action but not a failed one', async () => {
+      apiPost.mockReturnValue(of({ count: 2 }));
+      await store.batchFavorite(['/a.jpg', '/b.jpg']);
+      apiPost.mockReturnValue(throwError(() => new Error('boom')));
+      await store.batchReject(['/a.jpg']);
+      const items = TestBed.inject(UserActivityJournal).since().items;
+      expect(items.map(i => i.kind)).toEqual(['favorite']);
+      expect(items[0].paths).toEqual(['/a.jpg', '/b.jpg']);
+    });
+
+    it('records the person actions with ids, and nothing for a failed one', async () => {
+      apiPost.mockReturnValue(of({ id: 9, name: 'Anna', face_count: 2 }));
+      expect(await store.createPerson(' Anna ', [1, 2], '/a.jpg')).not.toBeNull();
+      await store.assignFace(5, 9, '/a.jpg', 'Anna');
+      await store.unassignPerson('/a.jpg', 9);
+      apiPost.mockReturnValue(throwError(() => new Error('boom')));
+      await store.assignFace(6, 9, '/a.jpg', 'Anna');
+      await store.unassignPerson('/a.jpg', 9);
+      await store.createPerson('Bob');
+      const items = TestBed.inject(UserActivityJournal).since().items;
+      expect(items.map(i => [i.kind, i.paths, i.value])).toEqual([
+        ['person', ['/a.jpg'], { action: 'create', person_id: 9, name: 'Anna', count: 2 }],
+        ['person', ['/a.jpg'], { action: 'assign', person_id: 9 }],
+        ['person', ['/a.jpg'], { action: 'unassign', person_id: 9 }],
+      ]);
+    });
+
+    it('records nothing for a failed rating', async () => {
+      apiPost.mockReturnValue(throwError(() => new Error('boom')));
+      await store.setRating('/a.jpg', 3);
+      expect(kinds()).toEqual([]);
+    });
+  });
+
   it('toggleFavorite applies the flag synchronously before the API resolves', () => {
     apiPost.mockReturnValue(of({ is_favorite: true }));
     void store.toggleFavorite('/a.jpg');
@@ -1967,9 +2614,9 @@ describe('GalleryStore restoreSnapshot', () => {
       providers: [
         GalleryStore,
         { provide: ApiService, useValue: { get: vi.fn(), post: apiPost } },
-        { provide: Router, useValue: { navigate: vi.fn() } },
+        { provide: Router, useValue: { navigate: vi.fn(), events: NEVER } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
-        { provide: AuthService, useValue: { isEdition: vi.fn(() => false) } },
+        { provide: AuthService, useValue: { identity: () => '0|', isEdition: vi.fn(() => false) } },
         { provide: AlbumService, useValue: { list: vi.fn(() => of({ albums: [] })), update: vi.fn(() => of({})) } },
         { provide: MatSnackBar, useValue: { open: snackOpen } },
         { provide: I18nService, useValue: { t: (k: string) => k } },
@@ -2143,12 +2790,13 @@ describe('GalleryStore smart-album auto-save', () => {
       providers: [
         GalleryStore,
         { provide: ApiService, useValue: { get: vi.fn(() => of({})), post: vi.fn(() => of({})) } },
-        { provide: Router, useValue: { navigate: vi.fn() } },
+        { provide: Router, useValue: { navigate: vi.fn(), events: NEVER } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
-        { provide: AuthService, useValue: { isEdition: vi.fn(() => true) } },
+        { provide: AuthService, useValue: { identity: () => '0|', isEdition: vi.fn(() => true) } },
         { provide: AlbumService, useValue: { list: vi.fn(() => of({ albums: [] })), update: albumUpdate } },
         { provide: MatSnackBar, useValue: { open: snackOpen } },
         { provide: I18nService, useValue: { t: (k: string) => k } },
+        { provide: AssistantChangesService, useValue: { batch$: NEVER } },
       ],
     });
     store = TestBed.inject(GalleryStore);

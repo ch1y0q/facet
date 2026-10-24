@@ -16,7 +16,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api import auth, db_helpers
+from api import auth, config as api_config, db_helpers
 from api.routers import auth as auth_routes, comparison, faces, scan
 from db import DEFAULT_DB_PATH
 
@@ -101,6 +101,15 @@ def test_trusted_local_request_with_a_user_token_on_an_open_install_is_granted(l
     assert _stored() == (4, 0)
 
 
+def test_an_agent_request_is_never_trusted_for_local_editing(local):
+    cfg, app, manager = local
+    headers = {"Authorization": _user_token(mcp=True)}
+    c = _client(app)
+    assert not c.get("/api/auth/status", headers=headers).json()["edition_authenticated"]
+    assert c.post(RATE[0], json=RATE[1], headers=headers).status_code == 403
+    assert _stored() == (0, 0)
+
+
 def test_configured_edition_password_is_still_required(local):
     """An operator who set an edition password expects it to be asked for."""
     cfg, app, manager = local
@@ -117,19 +126,108 @@ def test_configured_edition_password_is_still_required(local):
     manager.submit_comparison.assert_not_called()
 
 
+def _idle_scan_snapshot(monkeypatch):
+    # Other suites leave non-serialisable values in the module-level scan state; the stream only needs one idle event.
+    from collections import deque
+    for key, value in (("running", False), ("directories", []), ("exit_code", None), ("progress", None),
+                       ("started_at", None), ("output_lines", deque(maxlen=500))):
+        monkeypatch.setitem(scan._scan_state, key, value)
+
+
+def test_trusted_local_human_can_trigger_a_scan_without_flag(local, monkeypatch):
+    cfg, app, manager = local
+    _idle_scan_snapshot(monkeypatch)
+    c = _client(app)
+    # scan.py reads api.config.VIEWER_CONFIG, not the dict the fixture patches into auth.
+    monkeypatch.delitem(api_config.VIEWER_CONFIG.setdefault("features", {}), "show_scan_button", raising=False)
+    assert "show_scan_button" not in scan.VIEWER_CONFIG["features"]
+    assert c.get("/api/scan/status").status_code == 200
+    assert c.get("/api/scan/directories").status_code == 200
+    token = c.get("/api/scan/stream_token")
+    assert token.status_code == 200
+    stream = c.get("/api/scan/stream", params={"token": token.json()["token"], "lines": 1})
+    assert stream.status_code == 200
+
+
+def test_a_stream_token_minted_for_the_flag_less_human_is_worthless_once_the_opt_in_is_off(local, monkeypatch):
+    cfg, app, manager = local
+    _idle_scan_snapshot(monkeypatch)
+    token = _client(app).get("/api/scan/stream_token").json()["token"]
+    assert _client(app).get("/api/scan/stream", params={"token": token}).status_code == 200
+    cfg["trusted_local_editing"] = False
+    assert _client(app).get("/api/scan/stream", params={"token": token}).status_code == 403
+
+
+@pytest.mark.parametrize("host,peer,headers", [
+    pytest.param("http://localhost", "192.0.2.1", {}, id="non-loopback-peer"),
+    pytest.param("http://localhost", "127.0.0.1", {"X-Forwarded-For": "203.0.113.9"}, id="forwarded"),
+    pytest.param("http://localhost", "127.0.0.1", {"Origin": "https://evil.example"}, id="cross-origin"),
+    pytest.param("http://evil.example", "127.0.0.1", {}, id="foreign-host"),
+])
+def test_an_untrusted_human_request_still_cannot_trigger_a_scan(local, host, peer, headers):
+    # REGRESSION GUARD: passes before and after.
+    cfg, app, manager = local
+    response = _client(app, host, peer).get("/api/scan/status", headers=headers)
+    assert response.status_code == 403
+
+
 @pytest.mark.parametrize(
     "edition_password,detail",
     [
-        pytest.param("", "Set viewer.edition_password to enable the scan trigger", id="open-install"),
         pytest.param("existing", "Edition access required", id="edition-password-set"),
     ],
 )
-def test_trusted_local_request_cannot_trigger_a_scan(local, edition_password, detail):
+def test_trusted_local_request_cannot_trigger_a_scan_when_a_password_is_set(local, edition_password, detail):
+    # REGRESSION GUARD: the open-install case of the old test inverted (see
+    # test_trusted_local_human_can_trigger_a_scan_without_flag); a password still refuses.
     cfg, app, manager = local
     cfg["edition_password"] = edition_password
     response = _client(app).get("/api/scan/status")
     assert response.status_code == 403
     assert response.json()["detail"] == detail
+
+
+def test_the_opt_in_off_still_refuses_the_scan_trigger_on_an_open_install(local):
+    # REGRESSION GUARD: the original open-install refusal, kept for the opt-in-off case.
+    cfg, app, manager = local
+    cfg["trusted_local_editing"] = False
+    response = _client(app).get("/api/scan/status")
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Set viewer.edition_password to enable the scan trigger"
+
+
+def _agent_headers(**claims):
+    return {"Authorization": "Bearer " + auth.create_access_token(
+        {"role": "user", "edition": True, "mcp": True, **claims})}
+
+
+def test_an_mcp_jwt_without_mcp_local_is_still_refused_the_scan(local):
+    # REGRESSION GUARD: the invariant that a request-derived trust never applies to an agent.
+    cfg, app, manager = local
+    response = _client(app).get("/api/scan/status", headers=_agent_headers())
+    assert response.status_code == 403
+
+
+def test_an_mcp_local_jwt_is_a_trusted_local_agent_only_while_the_opt_in_is_on(local):
+    cfg, app, manager = local
+    c = _client(app, "http://facet.internal")
+    headers = _agent_headers(mcp_local=True)
+    assert c.get("/api/scan/status", headers=headers).status_code == 200
+    assert c.post(RATE[0], json=RATE[1], headers=headers).status_code == 200
+    cfg["trusted_local_editing"] = False
+    assert c.get("/api/scan/status", headers=headers).status_code == 403
+    assert c.post(RATE[0], json=RATE[1], headers=headers).status_code == 403
+    cfg["trusted_local_editing"] = True
+    cfg["edition_password"] = "existing"
+    assert c.get("/api/scan/status", headers=headers).status_code == 403
+
+
+def test_mcp_local_is_ignored_on_a_non_agent_token(local):
+    # REGRESSION GUARD: a browser JWT cannot grant itself the claim.
+    cfg, app, manager = local
+    headers = {"Authorization": _user_token(mcp_local=True)}
+    c = _client(app, "http://localhost", "192.0.2.1")
+    assert c.get("/api/scan/status", headers=headers).status_code == 403
 
 
 def _refused(app, host, peer, headers):

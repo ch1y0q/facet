@@ -309,20 +309,31 @@ def _fetch_regions_map(conn, paths):
     rows = conn.execute(
         "SELECT f.photo_path AS path, pe.name AS name, "
         "f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2, "
+        "f.photo_path,f.is_manual,f.manual_source,f.manual_width,f.manual_height, "
         "ph.image_width AS w, ph.image_height AS h "
         "FROM faces f "
         "JOIN persons pe ON f.person_id = pe.id "
         "JOIN photos ph ON ph.path = f.photo_path "
         f"WHERE f.photo_path IN ({placeholders}) AND pe.name IS NOT NULL "
-        "AND f.bbox_x1 IS NOT NULL AND ph.image_width > 0 AND ph.image_height > 0",
+        "AND f.bbox_x1 IS NOT NULL",
         list(paths),
     ).fetchall()
     regions: dict[str, list[FaceRegion]] = {}
+    from db.manual_faces import export_dimensions
     for row in rows:
+        disk_path = None
+        if row['is_manual']:
+            try:
+                disk_path = resolve_photo_disk_path(row['photo_path'])
+            except HTTPException:
+                continue
+        dimensions = export_dimensions(row, row['w'], row['h'], disk_path=disk_path)
+        if dimensions is None:
+            continue
         regions.setdefault(row["path"], []).append(
             FaceRegion.from_bbox(
                 row["name"], row["bbox_x1"], row["bbox_y1"],
-                row["bbox_x2"], row["bbox_y2"], row["w"], row["h"],
+                row["bbox_x2"], row["bbox_y2"], *dimensions,
             )
         )
     return regions
@@ -349,6 +360,7 @@ def _write_sidecars_for_paths(conn, paths, user_id, overwrite):
     written = 0
     skipped = 0
     errors = 0
+    first_error = None
     sidecars: list[str] = []
     for path in paths:
         row = rating_rows.get(path)
@@ -366,15 +378,18 @@ def _write_sidecars_for_paths(conn, paths, user_id, overwrite):
                                     overwrite=overwrite, embed_original=False)
             written += 1
             sidecars.append(result["sidecar"])
-        except (OSError, RuntimeError):
+        except (OSError, RuntimeError) as ex:
             logger.exception("Failed to write metadata for %s", path)
             errors += 1
+            if first_error is None:
+                first_error = str(ex)[:300]
     return {
         "ok": True,
         "written": written,
         "skipped": skipped,
         "errors": errors,
         "sidecars": sidecars,
+        **({"first_error": first_error} if first_error else {}),
     }
 
 

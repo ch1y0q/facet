@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -6,6 +6,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { firstValueFrom } from 'rxjs';
+import { UserActivityJournal, activityName } from '../../core/agent/user-activity-journal.service';
 import { AlbumService, Album } from '../../core/services/album.service';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { i18nKeys } from '../../core/i18n/keys';
@@ -21,6 +22,7 @@ export interface EditAlbumDialogData {
     FormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatButtonModule, MatTooltipModule, TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title class="truncate" [matTooltip]="I18N.albums.edit | translate">{{ I18N.albums.edit | translate }}</h2>
     <mat-dialog-content>
@@ -42,6 +44,7 @@ export interface EditAlbumDialogData {
 export class EditAlbumDialogComponent {
   protected readonly I18N = i18nKeys();
   private readonly albumService = inject(AlbumService);
+  private readonly journal = inject(UserActivityJournal);
   private readonly dialogRef = inject(MatDialogRef<EditAlbumDialogComponent>);
   private readonly data = inject<EditAlbumDialogData>(MAT_DIALOG_DATA);
 
@@ -59,6 +62,11 @@ export class EditAlbumDialogComponent {
           description: this.description.trim(),
         }),
       );
+      if (album.name !== this.data.album.name) {
+        this.journal.record('album', [], { album_id: album.id, action: 'rename', name: activityName(album.name) });
+      } else if ((album.description || '') !== (this.data.album.description || '')) {
+        this.journal.record('album', [], { album_id: album.id, action: 'edit' });
+      }
       this.dialogRef.close(album);
     } catch {
       this.saving.set(false);

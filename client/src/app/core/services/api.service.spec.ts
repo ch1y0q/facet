@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClient, withXhr } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ApiService } from './api.service';
 
@@ -9,7 +9,7 @@ describe('ApiService', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [ApiService, provideHttpClient(), provideHttpClientTesting()],
+      providers: [ApiService, provideHttpClient(withXhr()), provideHttpClientTesting()],
     });
     service = TestBed.inject(ApiService);
     httpTesting = TestBed.inject(HttpTestingController);
@@ -140,13 +140,13 @@ describe('ApiService', () => {
 
   describe('faceThumbnailUrl()', () => {
     it('should return the correct face thumbnail URL', () => {
-      expect(service.faceThumbnailUrl(42)).toBe('/face_thumbnail/42');
+      expect(service.faceThumbnailUrl(42)).toBe('/face_thumbnail/42?v=2&ngsw-bypass=1');
     });
   });
 
   describe('personThumbnailUrl()', () => {
     it('should return the correct person thumbnail URL', () => {
-      expect(service.personThumbnailUrl(7)).toBe('/person_thumbnail/7');
+      expect(service.personThumbnailUrl(7)).toBe('/person_thumbnail/7?v=2&ngsw-bypass=1');
     });
   });
 

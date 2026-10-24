@@ -21,7 +21,7 @@
   "dataGroups": [
     {
       "name": "thumbnails",
-      "urls": ["/thumbnail**", "/person_thumbnail/**", "/face_thumbnail/**"],
+      "urls": ["/thumbnail**"],
       "cacheConfig": {
         "strategy": "performance",
         "maxSize": 1000,

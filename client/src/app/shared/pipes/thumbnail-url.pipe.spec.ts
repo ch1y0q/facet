@@ -67,11 +67,11 @@ describe('FaceThumbnailUrlPipe', () => {
   });
 
   it('returns face thumbnail URL with face id', () => {
-    expect(pipe.transform(42)).toBe('/face_thumbnail/42');
+    expect(pipe.transform(42)).toBe('/face_thumbnail/42?v=2&ngsw-bypass=1');
   });
 
   it('handles id 0', () => {
-    expect(pipe.transform(0)).toBe('/face_thumbnail/0');
+    expect(pipe.transform(0)).toBe('/face_thumbnail/0?v=2&ngsw-bypass=1');
   });
 });
 
@@ -83,10 +83,10 @@ describe('PersonThumbnailUrlPipe', () => {
   });
 
   it('returns person thumbnail URL with person id', () => {
-    expect(pipe.transform(7)).toBe('/person_thumbnail/7');
+    expect(pipe.transform(7)).toBe('/person_thumbnail/7?v=2&ngsw-bypass=1');
   });
 
   it('handles large ids', () => {
-    expect(pipe.transform(9999)).toBe('/person_thumbnail/9999');
+    expect(pipe.transform(9999)).toBe('/person_thumbnail/9999?v=2&ngsw-bypass=1');
   });
 });

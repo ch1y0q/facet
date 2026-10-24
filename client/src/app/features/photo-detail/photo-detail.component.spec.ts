@@ -5,11 +5,13 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, ParamMap, Router, convertToParamMap } from '@angular/router';
 import { Location } from '@angular/common';
 import { MatDialog } from '@angular/material/dialog';
-import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
+import { BehaviorSubject, NEVER, Observable, of, Subject, throwError } from 'rxjs';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { signal } from '@angular/core';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
+import { AssistantChangesService, AssistantChangeBatch } from '../../core/agent/assistant-changes.service';
 
 // Mock Leaflet via vi.doMock + dynamic import: the component pulls in shared/leaflet
 // (which runs L.Icon.Default.mergeOptions at module load). Without this mock, importing
@@ -26,12 +28,13 @@ let PhotoDetailComponent: typeof import('./photo-detail.component').PhotoDetailC
 describe('PhotoDetailComponent', () => {
    
   let component: any;
+  let changes$: Subject<AssistantChangeBatch>;
   let mockApi: { get: Mock; post: Mock; put: Mock; delete: Mock; imageUrl: Mock; downloadUrl: Mock; getRaw: Mock };
-  let mockRouter: { navigate: Mock };
+  let mockRouter: { navigate: Mock; events: Observable<unknown> };
   let mockLocation: { back: Mock };
   let mockRoute: { snapshot: { queryParamMap: { get: Mock } }; queryParamMap: BehaviorSubject<ParamMap> };
-  let mockAuth: { isEdition: ReturnType<typeof signal>; downloadProfiles: ReturnType<typeof signal> };
-  let mockDialog: { open: Mock };
+  let mockAuth: { identity: () => string; isEdition: ReturnType<typeof signal>; downloadProfiles: ReturnType<typeof signal> };
+  let mockDialog: { open: Mock; openDialogs: unknown[] };
 
   const samplePhoto = {
     path: '/photos/test.jpg',
@@ -69,6 +72,7 @@ describe('PhotoDetailComponent', () => {
     TestBed.configureTestingModule({
       providers: [
         PhotoDetailComponent,
+        { provide: AssistantChangesService, useValue: { batch$: changes$.asObservable() } },
         { provide: ApiService, useValue: mockApi },
         { provide: Router, useValue: mockRouter },
         { provide: Location, useValue: mockLocation },
@@ -90,6 +94,7 @@ describe('PhotoDetailComponent', () => {
   }, 20000);
 
   beforeEach(() => {
+    changes$ = new Subject<AssistantChangeBatch>();
     mockApi = {
       get: vi.fn(() => of(samplePhoto)),
       post: vi.fn(() => of({})),
@@ -99,7 +104,7 @@ describe('PhotoDetailComponent', () => {
       downloadUrl: vi.fn((path: string, type = 'original', profile?: string) => `/api/download?path=${encodeURIComponent(path)}&type=${type}${profile ? '&profile=' + profile : ''}`),
       getRaw: vi.fn(() => of(new Blob(['test'], { type: 'image/jpeg' }))),
     };
-    mockRouter = { navigate: vi.fn() };
+    mockRouter = { navigate: vi.fn(), events: NEVER };
     mockLocation = { back: vi.fn() };
     mockRoute = {
       snapshot: {
@@ -107,14 +112,79 @@ describe('PhotoDetailComponent', () => {
       },
       queryParamMap: new BehaviorSubject(convertToParamMap({ path: '/photos/test.jpg' })),
     };
-    mockAuth = { isEdition: signal(true), downloadProfiles: signal([]) };
-    mockDialog = { open: vi.fn(() => ({ afterClosed: () => of(undefined) })) };
+    mockAuth = { identity: () => '0|', isEdition: signal(true), downloadProfiles: signal([]) };
+    mockDialog = { open: vi.fn(() => ({ afterClosed: () => of(undefined) })), openDialogs: [] };
+  });
+
+  it('opens the manual editor with no detections and patches confirmed membership after navigation', async () => {
+    createComponent();
+    const original = makePhoto({ path: '/zero.jpg', face_count: 0, unassigned_faces: 0, persons: [] });
+    const next = makePhoto({ path: '/next.jpg', persons: [{ id: 8, name: 'Next' }] });
+    const store = TestBed.inject(GalleryStore);
+    store.photos.set([original, next]);
+    vi.spyOn(store, 'reloadPersonOptions').mockResolvedValue();
+    component.photo.set(original);
+    await component.openManualFaces(original);
+    const options = mockDialog.open.mock.calls[0][1];
+    expect(options.data.path).toBe('/zero.jpg');
+    component.photo.set(next);
+    mockApi.get.mockReturnValue(of({ ...original, persons: [{ id: 5, name: 'Ada' }], unassigned_faces: 0 }));
+    await options.data.onCommitted();
+    expect(store.photos()[0].persons).toEqual([{ id: 5, name: 'Ada' }]);
+    expect(component.photo().path).toBe('/next.jpg');
+    expect(component.photo().persons).toEqual(next.persons);
+  });
+
+  it.each([{ persons: [] }, { persons: [{ id: 8, name: 'Grace' }] }])('refreshes a person-filtered gallery after a manual mark is removed or reassigned: %j', async ({ persons }) => {
+    createComponent();
+    const original = makePhoto({ path: '/manual.jpg', persons: [{ id: 5, name: 'Ada' }] });
+    const remaining = makePhoto({ path: '/remaining.jpg', persons: [{ id: 5, name: 'Ada' }] });
+    const other = makePhoto({ path: '/other.jpg', persons: [{ id: 9, name: 'Other' }] });
+    const store = TestBed.inject(GalleryStore);
+    store.filters.update(f => ({ ...f, person_id: '5', camera: 'Canon' }));
+    store.photos.set([original, remaining]);
+    store.total.set(2);
+    vi.spyOn(store, 'reloadPersonOptions').mockResolvedValue();
+    component.photo.set(original);
+    await component.openManualFaces(original);
+    const committed = mockDialog.open.mock.calls[0][1].data.onCommitted;
+    component.photo.set(other);
+    mockApi.get.mockImplementation((url: string) => {
+      if (url === '/photo') return of({ ...original, persons });
+      if (url === '/photos') return of({ photos: [remaining], total: 1, has_more: false });
+      return of({});
+    });
+
+    await committed();
+
+    expect(store.photos().map(p => p.path)).toEqual(['/remaining.jpg']);
+    expect(store.total()).toBe(1);
+    expect(store.filters()).toMatchObject({ person_id: '5', camera: 'Canon' });
+    expect(mockApi.get).toHaveBeenCalledWith('/photos', expect.objectContaining({ person_id: '5', camera: 'Canon' }));
+    expect(component.photo()).toEqual(other);
+    expect(mockRouter.navigate).not.toHaveBeenCalled();
+  });
+
+  it('refreshes persisted person membership after the detail component is destroyed', async () => {
+    createComponent();
+    const original = makePhoto({ path: '/zero.jpg', persons: [] });
+    const store = TestBed.inject(GalleryStore);
+    store.photos.set([original]);
+    vi.spyOn(store, 'reloadPersonOptions').mockResolvedValue();
+    component.photo.set(original);
+    await component.openManualFaces(original);
+    const committed = mockDialog.open.mock.calls[0][1].data.onCommitted;
+    mockApi.get.mockReturnValue(of({ ...original, persons: [{ id: 5, name: 'Ada' }] }));
+    TestBed.resetTestingModule();
+    await committed();
+    expect(store.photos()[0].persons).toEqual([{ id: 5, name: 'Ada' }]);
   });
 
   it('renders NULL and zero extended metrics in the actual detail template', () => {
     TestBed.configureTestingModule({
       imports: [PhotoDetailComponent],
       providers: [
+        { provide: AssistantChangesService, useValue: { batch$: changes$.asObservable() } },
         { provide: ApiService, useValue: mockApi },
         { provide: Router, useValue: mockRouter },
         { provide: Location, useValue: mockLocation },
@@ -130,6 +200,7 @@ describe('PhotoDetailComponent', () => {
     view.componentInstance.photo.set(makePhoto({ aesthetic_v25: null, qrealign_score: 0, deqa_score: null }));
     view.detectChanges();
     expect(view.nativeElement.querySelector('[data-testid="qrealign_score-score"]').textContent.trim()).toBe('0.0');
+    expect(view.nativeElement.querySelector('[aria-label="manual_faces.title"]')).not.toBeNull();
     for (const key of ['aesthetic_v25', 'deqa_score']) {
       expect(view.nativeElement.querySelector(`[data-testid="${key}-score"]`).textContent).toContain('tooltip.not_computed');
     }
@@ -145,6 +216,19 @@ describe('PhotoDetailComponent', () => {
   it('should create', () => {
     createComponent();
     expect(component).toBeTruthy();
+  });
+
+  it.each(['k', 'K'])('ignores %s from a dialog button without saving or advancing', key => {
+    createComponent();
+    component.photo.set(makePhoto());
+    mockDialog.openDialogs.push({});
+    const event = new KeyboardEvent('keydown', { key, cancelable: true });
+    const button = document.createElement('button');
+    Object.defineProperty(event, 'target', { value: button });
+    component.onReviewKey(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(mockApi.post).not.toHaveBeenCalled();
+    expect(mockRouter.navigate).not.toHaveBeenCalled();
   });
 
   describe('delayed review responses', () => {
@@ -522,6 +606,76 @@ describe('PhotoDetailComponent', () => {
     });
   });
 
+  describe('assistant change refresh', () => {
+    const flushAsync = async (): Promise<void> => { await new Promise(resolve => setTimeout(resolve, 0)); };
+    const fresh = { ...samplePhoto, star_rating: 5 };
+    const photoGets = (): unknown[][] => mockApi.get.mock.calls.filter(c => c[0] === '/photo');
+
+    beforeEach(() => {
+      createComponent();
+      component.photo.set(samplePhoto);
+      mockApi.get.mockClear();
+      mockApi.get.mockImplementation(() => of(fresh));
+    });
+
+    it('refetches /photo once when the batch contains the path and updates the rating', async () => {
+      changes$.next({ paths: [samplePhoto.path, '/other.jpg'] });
+      await flushAsync();
+      expect(photoGets()).toEqual([['/photo', { path: samplePhoto.path }]]);
+      expect(component.photo().star_rating).toBe(5);
+    });
+
+    it('ignores a batch of other paths', async () => {
+      changes$.next({ paths: ['/other.jpg'] });
+      await flushAsync();
+      expect(photoGets()).toHaveLength(0);
+    });
+
+    it('refetches once on a null batch', async () => {
+      changes$.next({ paths: null });
+      await flushAsync();
+      expect(photoGets()).toHaveLength(1);
+    });
+
+    it('goes back on a 404', async () => {
+      mockApi.get.mockImplementation(() => throwError(() => ({ status: 404 })));
+      changes$.next({ paths: [samplePhoto.path] });
+      await flushAsync();
+      expect(mockLocation.back).toHaveBeenCalled();
+    });
+
+    it('stays on the page on a 500', async () => {
+      mockApi.get.mockImplementation(() => throwError(() => ({ status: 500 })));
+      changes$.next({ paths: [samplePhoto.path] });
+      await flushAsync();
+      expect(mockLocation.back).not.toHaveBeenCalled();
+      expect(component.photo().path).toBe(samplePhoto.path);
+    });
+
+    it('discards a result when the photo changed during flight', async () => {
+      const inflight = new Subject<unknown>();
+      mockApi.get.mockImplementation(() => inflight);
+      changes$.next({ paths: [samplePhoto.path] });
+      const next = { ...samplePhoto, path: '/photos/next.jpg' };
+      component.photo.set(next);
+      inflight.next(fresh);
+      inflight.complete();
+      await flushAsync();
+      expect(component.photo().path).toBe('/photos/next.jpg');
+      expect(component.photo().star_rating).toBe(samplePhoto.star_rating);
+    });
+
+    it('does not go back on a 404 that lands after the photo changed', async () => {
+      const inflight = new Subject<unknown>();
+      mockApi.get.mockImplementation(() => inflight);
+      changes$.next({ paths: [samplePhoto.path] });
+      component.photo.set({ ...samplePhoto, path: '/photos/next.jpg' });
+      inflight.error({ status: 404 });
+      await flushAsync();
+      expect(mockLocation.back).not.toHaveBeenCalled();
+    });
+  });
+
   describe('goBack', () => {
     it('should call location.back()', () => {
       createComponent();
@@ -581,6 +735,34 @@ describe('PhotoDetailComponent', () => {
       appendSpy.mockRestore();
       removeSpy.mockRestore();
       clickSpy.mockRestore();
+    });
+  });
+
+  describe('user activity journal', () => {
+    const kinds = (): string[] => TestBed.inject(UserActivityJournal).since().items.map(i => i.kind);
+
+    it('records rating, favorite, reject and manual-tag edits', async () => {
+      createComponent();
+      component.photo.set({ ...samplePhoto, star_rating: 0, manual_tags: [] });
+      mockApi.post.mockReturnValue(of({}));
+      await component.setRating('/photos/test.jpg', 4);
+      mockApi.post.mockReturnValue(of({ is_favorite: true, is_rejected: null }));
+      await component.toggleFavorite('/photos/test.jpg');
+      mockApi.post.mockReturnValue(of({ is_rejected: true, is_favorite: null, star_rating: null }));
+      await component.toggleRejected('/photos/test.jpg');
+      mockApi.put.mockReturnValue(of({ tag: 'x', skipped_existing: false }));
+      await component['addManualTag'](component.photo()!, 'x');
+      mockApi.delete.mockReturnValue(of({}));
+      await component['removeManualTag'](component.photo()!, 'x');
+      expect(kinds()).toEqual(['rating', 'favorite', 'reject', 'tags', 'tags']);
+    });
+
+    it('records nothing when the call fails', async () => {
+      createComponent();
+      component.photo.set({ ...samplePhoto });
+      mockApi.post.mockReturnValue(throwError(() => new Error('boom')));
+      await component.setRating('/photos/test.jpg', 4);
+      expect(kinds()).toEqual([]);
     });
   });
 
@@ -1244,7 +1426,8 @@ describe('PhotoDetailComponent', () => {
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({
         providers: [
-          { provide: ApiService, useValue: mockApi },
+          { provide: AssistantChangesService, useValue: { batch$: changes$.asObservable() } },
+        { provide: ApiService, useValue: mockApi },
           { provide: Router, useValue: mockRouter },
           { provide: Location, useValue: mockLocation },
           { provide: ActivatedRoute, useValue: mockRoute },

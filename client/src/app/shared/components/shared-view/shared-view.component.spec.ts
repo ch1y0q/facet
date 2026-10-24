@@ -1,7 +1,7 @@
 import type { Mock } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute } from '@angular/router';
-import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
+import { HttpErrorResponse, provideHttpClient, withXhr } from '@angular/common/http';
 import { of, throwError } from 'rxjs';
 import { signal } from '@angular/core';
 import { ApiService } from '../../../core/services/api.service';
@@ -49,7 +49,7 @@ describe('SharedViewComponent', () => {
     TestBed.configureTestingModule({
       providers: [
         SharedViewComponent,
-        provideHttpClient(),
+        provideHttpClient(withXhr()),
         { provide: ApiService, useValue: mockApi },
         { provide: AuthService, useValue: { downloadProfiles: signal([]) } },
         { provide: I18nService, useValue: mockI18n },

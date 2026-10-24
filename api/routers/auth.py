@@ -16,7 +16,7 @@ from api.auth import (
     set_auth_cookie, clear_auth_cookie,
 )
 from api.config import (
-    VIEWER_CONFIG, is_multi_user_enabled, get_user_config
+    VIEWER_CONFIG, is_multi_user_enabled, get_user_config, mcp_settings
 )
 from api.models.auth import (
     LoginRequest, LoginResponse, EditionLoginRequest, AuthStatusResponse
@@ -217,7 +217,13 @@ def auth_status(user: Optional[CurrentUser] = Depends(get_optional_user)):
         user_id=user.user_id if user else None,
         user_role=user.role if user else None,
         display_name=user.display_name if user else None,
-        features=VIEWER_CONFIG.get('features', {}),
+        # features.mcp is derived, not stored: the master switch lives in viewer.mcp.enabled.
+        features={
+            **VIEWER_CONFIG.get('features', {}),
+            'mcp': mcp_settings()['enabled'],
+            'mcp_bridge': mcp_settings()['enabled'] and mcp_settings()['bridge'],
+            'mcp_inpage': mcp_settings()['enabled'] and mcp_settings()['inpage_tools'],
+        },
         download_profiles=profile_names,
     )
 

@@ -19,7 +19,7 @@ Facet hat zwei Arbeitslasten:
 
 Nur der Viewer muss auf dem Server laufen. Bewerten Sie auf einer Workstation und synchronisieren Sie dann die Datenbank.
 
-> **Warnung:** Solange `viewer.password` leer ist (Standardwert), kann jeder, der den Port des Viewers erreicht, die gesamte Bibliothek durchsuchen und die Originalfotos herunterladen, egal wie Sie ihn unten starten. Setzen Sie `viewer.password`, bevor Sie den Port über den Rechner hinaus öffnen; siehe den Hinweis im [Einzelbenutzermodus](VIEWER.md#einzelbenutzermodus-standard).
+> **Warnung:** Solange `viewer.password` leer ist (Standardwert), kann jeder, der den Port des Viewers erreicht, die gesamte Bibliothek durchsuchen und die Originalfotos herunterladen, egal wie Sie ihn unten starten. Setzen Sie `viewer.password`, bevor Sie den Port über den Rechner hinaus öffnen; siehe den Hinweis im [Einzelbenutzermodus](VIEWER.md#einzelbenutzermodus-standard). Auf einer offenen Installation lassen sich auch die Assistenten-Tokens (**Assistent verbinden**) nur auf dem Rechner erstellen, auflisten und widerrufen, auf dem Facet läuft: Eine Docker-Bereitstellung (der Browser erreicht den Container über das Bridge-Gateway) oder ein Reverse-Proxy kann sie nicht verwalten. Setzen Sie dort `viewer.password` oder führen Sie die Anfrage auf dem Host aus (`docker compose exec facet python -c "import urllib.request ..."`). Ein Reverse-Proxy muss `X-Forwarded-For` oder `Forwarded` senden, sonst wird er wie der lokale Rechner behandelt.
 
 ## Pfadzuordnung
 
@@ -222,8 +222,7 @@ Fügen Sie `viewer.performance` zu `scoring_config.json` auf dem NAS hinzu, um d
       "mmap_size_mb": 0,
       "cache_size_mb": 4,
       "pool_size": 2,
-      "thumbnail_cache_size": 200,
-      "face_cache_size": 50
+      "thumbnail_cache_size": 200
     }
   }
 }
@@ -269,6 +268,8 @@ DSM > Systemsteuerung > Anmeldeportal > Erweitert > Reverse-Proxy:
 
 Kombinieren Sie dies mit einem Let's-Encrypt-Zertifikat aus DSM > Systemsteuerung > Sicherheit > Zertifikat.
 
+Wenn Sie die Tab-Brücke für Agenten nutzen (siehe [KI-Agenten](AGENTS.md)), öffnen Sie zusätzlich den Reiter **Benutzerdefinierter Header** der Regel und wählen Sie **Erstellen > WebSocket**: Das fügt die Header `Upgrade` und `Connection` hinzu, die `/api/mcp/bridge` braucht. Schreibt die Regel den `Host`-Header um, tragen Sie Ihren öffentlichen Ursprung zusätzlich in `viewer.mcp.allowed_origins` ein.
+
 ## Synology NAS (Plus / x86-Serie)
 
 NAS der Plus-Serie unterstützen Docker (Container Manager).
@@ -305,7 +306,7 @@ Für ein reines Viewer-NAS, bei dem das Image klein bleiben muss (kein CUDA), er
 ```dockerfile
 FROM python:3.11-slim
 WORKDIR /app
-RUN pip install fastapi uvicorn pyjwt pillow aiosqlite
+RUN pip install fastapi uvicorn pyjwt pillow aiosqlite 'mcp>=2.3,<3' 'httpx>=0.28,<1' 'websockets>=13.0'
 COPY viewer.py config_resolve.py database.py tagger.py ./
 COPY api/ api/
 COPY config/ config/
@@ -315,6 +316,8 @@ COPY i18n/ i18n/
 EXPOSE 5000
 CMD ["uvicorn", "api:create_app", "--factory", "--host", "0.0.0.0", "--port", "5000", "--workers", "4"]
 ```
+
+Mehrere Worker vertragen sich nicht mit der Tab-Brücke für Agenten: Ihr Tab-Register gilt pro Prozess, daher kann ein `ui_*`-Aufruf bei mehr als einem Worker einen Prozess erreichen, der Ihren Tab nicht kennt, und `no_tab` melden. Verwenden Sie `--workers 1`, wenn Sie [KI-Agenten](AGENTS.md) nutzen.
 
 ```yaml
 services:
@@ -494,7 +497,7 @@ sind und ein echtes Registry-Manifest zum Messen vorliegt.
 ### Uvicorn
 
 ```bash
-pip install fastapi uvicorn pyjwt pillow aiosqlite
+pip install fastapi uvicorn pyjwt pillow aiosqlite 'mcp>=2.3,<3' 'httpx>=0.28,<1' 'websockets>=13.0'
 uvicorn api:create_app --factory --host 0.0.0.0 --port 5000 --workers 4
 ```
 
@@ -503,6 +506,8 @@ Oder verwenden Sie den Wrapper (Standard ist 1 Worker; übergeben Sie `--workers
 ```bash
 python viewer.py --production --workers 4
 ```
+
+Mehrere Worker vertragen sich nicht mit der Tab-Brücke für Agenten: Ihr Tab-Register gilt pro Prozess, daher kann ein `ui_*`-Aufruf bei mehr als einem Worker einen Prozess erreichen, der Ihren Tab nicht kennt, und `no_tab` melden. Verwenden Sie `--workers 1`, wenn Sie [KI-Agenten](AGENTS.md) nutzen.
 
 ### Uvicorn + Nginx
 
@@ -518,8 +523,19 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         client_max_body_size 50M;
     }
+
+    location /api/mcp/bridge {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $http_host;
+        proxy_read_timeout 3600s;
+    }
 }
 ```
+
+Die Tab-Brücke für Agenten (`/api/mcp/bridge`, siehe [KI-Agenten](AGENTS.md)) ist ein WebSocket und braucht die Header `Upgrade` und `Connection` des zweiten `location`-Blocks; ohne sie schlägt der Handshake fehl und die `ui_*`-Werkzeuge antworten `no_tab`. Außerdem braucht sie einen einzigen Worker (`--workers 1`, der Standard).
 
 HTTPS hinzufügen:
 ```bash
@@ -544,6 +560,8 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 ```
+
+Mehrere Worker vertragen sich nicht mit der Tab-Brücke für Agenten: Ihr Tab-Register gilt pro Prozess, daher kann ein `ui_*`-Aufruf bei mehr als einem Worker einen Prozess erreichen, der Ihren Tab nicht kennt, und `no_tab` melden. Verwenden Sie `--workers 1`, wenn Sie [KI-Agenten](AGENTS.md) nutzen.
 
 ```bash
 sudo systemctl enable --now facet
