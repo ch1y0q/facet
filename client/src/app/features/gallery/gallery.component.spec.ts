@@ -124,6 +124,8 @@ describe('GalleryComponent', () => {
       showAllHidden: vi.fn(),
       restoreHidden: vi.fn(),
       readGallerySessionQuery: vi.fn(() => null),
+      applySessionQuery: vi.fn(),
+      saveSessionQuery: vi.fn(),
       updateFilters: vi.fn(() => Promise.resolve()),
       setRating: vi.fn(),
       batchFavorite: vi.fn(() => Promise.resolve({ snapshot: new Map(), targeted: 0, count: 0 })),
@@ -914,42 +916,36 @@ describe('GalleryComponent', () => {
       expect(mockStore.loadTypeCounts).toHaveBeenCalled();
     });
 
-    it('re-enters a parameterless `/` with the session query, so the nav-icon return keeps filters', async () => {
+    it('applies the session query on a parameterless `/`, so the nav-icon return keeps filters', async () => {
       routeMock.snapshot.queryParams = {};
       mockStore.readGallerySessionQuery.mockReturnValue({ blinks_only: 'true' });
-      const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
 
       await component.ngOnInit();
 
-      expect(navigate).toHaveBeenCalledWith(
-        [],
-        expect.objectContaining({
-          queryParams: { blinks_only: 'true' },
-          replaceUrl: true,
-          relativeTo: expect.anything(),
-        }),
-      );
+      // Applied AFTER loadConfig's wholesale filter rebuild -- a navigate-based
+      // restore could not work: the ActivatedRoute snapshot never refreshes for
+      // same-component param-only navigations.
+      expect(mockStore.applySessionQuery).toHaveBeenCalledWith({ blinks_only: 'true' });
+      expect(mockStore.loadPhotos).toHaveBeenCalled();
     });
 
     it('does not consult the session query when the URL carries its own params', async () => {
       routeMock.snapshot.queryParams = { sort: 'date_taken' };
-      const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
 
       await component.ngOnInit();
 
       expect(mockStore.readGallerySessionQuery).not.toHaveBeenCalled();
-      expect(navigate).not.toHaveBeenCalled();
+      expect(mockStore.applySessionQuery).not.toHaveBeenCalled();
     });
 
     it('does not consult the session query on an album route', async () => {
       routeMock.snapshot.paramMap.get = vi.fn((k: string) => (k === 'albumId' ? '7' : null));
       routeMock.snapshot.queryParams = {};
-      const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
 
       await component.ngOnInit();
 
       expect(mockStore.readGallerySessionQuery).not.toHaveBeenCalled();
-      expect(navigate).not.toHaveBeenCalled();
+      expect(mockStore.applySessionQuery).not.toHaveBeenCalled();
     });
 
     it('should show photos and stop initializing when a filter-option request never resolves', async () => {

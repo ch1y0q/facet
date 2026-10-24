@@ -1798,10 +1798,6 @@ export class GalleryStore {
     const queryParams = buildSyncParams(
       this.filters(), this.config()?.defaults, this.config()?.search_threshold_default,
     );
-    // Same snapshot into sessionStorage: the nav icon's return from another
-    // page lands on parameterless `/`, and that is where the last query is
-    // restored from. A reset overwrites this with the near-empty set, so
-    // "reset then leave then return" correctly comes back to defaults.
     try {
       sessionStorage.setItem(GALLERY_SESSION_QUERY_KEY, JSON.stringify(queryParams));
     } catch { /* storage unavailable: the nav return just falls back to defaults */ }
@@ -1809,6 +1805,32 @@ export class GalleryStore {
       queryParams,
       replaceUrl: true,
     });
+  }
+
+  /**
+   * Snapshot the current filters' query form into sessionStorage for the
+   * nav-icon return. Called from syncUrl (every user-driven filter change)
+   * AND from loadConfig — an entry via a bookmarked or typed URL never runs
+   * syncUrl, and without this hook its filters would never reach the session
+   * memory: /?blinks_only=true → albums → nav return silently came back
+   * to the full library. A reset overwrites the stored set with the
+   * near-empty default diff, so "reset then leave then return" correctly
+   * comes back to defaults.
+   */
+  /**
+   * Snapshot the CURRENT filters' query form into sessionStorage for the
+   * nav-icon return. Only the gallery itself calls this — its init (a URL
+   * entry must record its own filters, syncUrl never runs for one) and
+   * syncUrl (every user-driven change). Other pages share loadConfig but
+   * must never touch this memory: the albums page used to overwrite it with
+   * that page's default query on every visit.
+   */
+  saveSessionQuery(): void {
+    try {
+      sessionStorage.setItem(GALLERY_SESSION_QUERY_KEY, JSON.stringify(buildSyncParams(
+        this.filters(), this.config()?.defaults, this.config()?.search_threshold_default,
+      )));
+    } catch { /* storage unavailable: the nav return just falls back to defaults */ }
   }
 
   /**
@@ -1827,6 +1849,21 @@ export class GalleryStore {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Merge the session's last gallery query into the current filters and
+   * reflect it in the URL. Used on a parameterless `/` landing — the nav
+   * icon's return from another page. This writes the filters DIRECTLY rather
+   * than navigating to the saved query first: the ActivatedRoute snapshot
+   * does not refresh for same-component param-only navigations, so a
+   * navigate-then-read would hand the re-initialisation an empty param set
+   * and the restored filters would never come back (the album-route return
+   * was losing them exactly this way).
+   */
+  applySessionQuery(saved: Record<string, string>): void {
+    this.filters.update(current => applyQueryParams(current, saved));
+    this.syncUrl();
   }
 
   /** Fetch a page of similar photos from the API */

@@ -1344,24 +1344,32 @@ export class GalleryComponent implements OnInit, OnDestroy {
     // means the user wants that new scoped view, never a resumed previous one.
     const setScope = this.consumeSetScopeState();
     // A parameterless landing on `/` is the nav icon's return from another
-    // page (a reload carries its own query params, and an album route its
-    // albumId). Re-enter with the session's last gallery query instead of a
-    // pristine view -- replaceUrl, so Back never lands on a bare entry -- and
-    // let tryRestoreView below also match the scroll position it saved.
-    if (!setScope && !this.route.snapshot.paramMap.get('albumId')
-        && !Object.keys(this.route.snapshot.queryParams).length) {
-      const savedQuery = this.store.readGallerySessionQuery();
-      if (savedQuery) {
-        await this.router.navigate([], {
-          relativeTo: this.route, queryParams: savedQuery, replaceUrl: true,
-        });
-      }
-    }
+    // page (a reload carries its own query params, an album route its
+    // albumId). The session's last gallery query is merged into the filters
+    // AFTER loadConfig rebuilds them -- directly, not through a navigation:
+    // the ActivatedRoute snapshot does not refresh for same-component
+    // param-only navigations, so a navigate-then-read silently lost the
+    // restored filters (the album-route return hit exactly that).
+    const savedQuery = (!setScope && !this.route.snapshot.paramMap.get('albumId')
+      && !Object.keys(this.route.snapshot.queryParams).length)
+      ? this.store.readGallerySessionQuery()
+      : null;
+    const albumId = this.route.snapshot.paramMap.get('albumId');
     if (!setScope && this.tryRestoreView()) return;
     // Reset album state to avoid stale singleton data; loadConfig() resets filters from scratch
     this.store.currentAlbum.set(null);
     this.store.initializing.set(true);
     await this.store.loadConfig();
+    // Record what THIS init resolved to: a plain URL entry must write its own
+    // filters (syncUrl never runs for one), and the albums page shares
+    // loadConfig but must never touch this memory. An album route skips the
+    // write -- its filters belong to the album view, not the plain gallery.
+    if (!albumId) {
+      this.store.saveSessionQuery();
+    }
+    if (savedQuery) {
+      this.store.applySessionQuery(savedQuery);
+    }
     // Apply the ephemeral set scope AFTER loadConfig, which replaces `filters`
     // wholesale -- applying it before would just be discarded. Never in the
     // URL: sequence_group_id is renumbered on every detection pass, so a
@@ -1370,7 +1378,6 @@ export class GalleryComponent implements OnInit, OnDestroy {
       this.store.filters.update(current => ({ ...current, ...setScope }));
     }
     // Set album_id from route path param (for /album/:albumId route)
-    const albumId = this.route.snapshot.paramMap.get('albumId');
     if (albumId) {
       try {
         const album = await firstValueFrom(this.albumService.get(+albumId));

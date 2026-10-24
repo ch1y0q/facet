@@ -949,6 +949,40 @@ describe('GalleryStore', () => {
     });
   });
 
+describe('gallery session query (nav-icon return)', () => {
+  beforeEach(() => {
+    sessionStorage.removeItem('facet_gallery_session_query');
+  });
+
+  it('syncUrl stores the built query in sessionStorage for the nav return', async () => {
+    apiGet.mockReturnValue(of(makePhotosResponse()));
+    await store.updateFilters({ sort: 'date_taken', blinks_only: 'true' } as never);
+
+    const stored = JSON.parse(sessionStorage.getItem('facet_gallery_session_query')!);
+    expect(stored).toMatchObject({ sort: 'date_taken', blinks_only: 'true' });
+  });
+
+  it('applySessionQuery merges the saved query into filters and syncs the URL', async () => {
+    apiGet.mockReturnValue(of(makePhotosResponse()));
+    sessionStorage.setItem('facet_gallery_session_query',
+      JSON.stringify({ blinks_only: 'true', album_id: '7' }));
+
+    const saved = store.readGallerySessionQuery();
+    expect(saved).toEqual({ blinks_only: 'true' }); // album scope stripped
+
+    store.applySessionQuery(saved!);
+
+    expect(store.filters().blinks_only).toBe(true);
+    expect(routerNavigate).toHaveBeenCalled();
+  });
+
+  it('readGallerySessionQuery is null with nothing stored and tolerates garbage', () => {
+    expect(store.readGallerySessionQuery()).toBeNull();
+    sessionStorage.setItem('facet_gallery_session_query', '{broken');
+    expect(store.readGallerySessionQuery()).toBeNull();
+  });
+});
+
   describe('resetFilters()', () => {
     beforeEach(() => {
       apiGet.mockReturnValue(of(makePhotosResponse()));

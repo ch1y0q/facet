@@ -279,8 +279,8 @@ function saveSectionStates(states: Record<string, boolean>): void {
           <input matInput
             [placeholder]="I18N.gallery.search_placeholder | translate"
             [value]="store.filters().search"
-            (keyup.enter)="onSidebarSearchChange($event)"
-            (blur)="onSidebarSearchChange($event)" />
+            (input)="onSidebarSearchChange($event)"
+            (keyup.enter)="onSidebarSearchCommit($event)" />
           @if (store.filters().search) {
             <button matSuffix mat-icon-button class="!w-6 !h-6 !p-0" (click)="store.updateFilter('search', '')" [attr.aria-label]="I18N.gallery.clear_search | translate">
               <mat-icon class="!text-sm !w-4 !h-4">close</mat-icon>
@@ -1160,7 +1160,23 @@ export class GalleryFilterSidebarComponent {
 
   onSidebarSearchChange(event: Event): void {
     const value = (event.target as HTMLInputElement).value;
-    this.store.updateFilter('search', value);
+    // Debounced live filtering on every keystroke (shared timer with the
+    // semantic box -- one debounce per field): waiting for Enter/blur made
+    // typing feel dead, with the grid frozen and no hint that a commit was
+    // pending. Enter still commits immediately through the same path.
+    if (this.searchTimeout) clearTimeout(this.searchTimeout);
+    this.searchTimeout = setTimeout(() => {
+      this.searchTimeout = null;
+      this.store.updateFilter('search', value);
+    }, 400);
+  }
+
+  onSidebarSearchCommit(event: Event): void {
+    if (this.searchTimeout) {
+      clearTimeout(this.searchTimeout);
+      this.searchTimeout = null;
+    }
+    this.store.updateFilter('search', (event.target as HTMLInputElement).value);
   }
 
   onSemanticSearch(event: Event): void {
