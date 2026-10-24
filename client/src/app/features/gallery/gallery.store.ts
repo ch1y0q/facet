@@ -1707,7 +1707,11 @@ export class GalleryStore {
    * user is notified rather than left with a UI that silently disagrees with
    * the server.
    */
-  async restoreSnapshot(snap: Map<string, PhotoFlagSnapshot>): Promise<void> {
+  async restoreSnapshot(snapshot: Map<string, PhotoFlagSnapshot>): Promise<void> {
+    // Reject has one meaning across every public write, including Undo.
+    const snap = new Map([...snapshot].map(([path, flags]) => [path, flags.is_rejected
+      ? { ...flags, is_kept: false, is_favorite: false, star_rating: null }
+      : flags]));
     const current = new Map([...this.reviewedPhotos, ...this.photos().map(p => [p.path, p] as const)]);
     const toKeep: string[] = [];
     const toReset: string[] = [];
@@ -1725,9 +1729,7 @@ export class GalleryStore {
         (want.is_kept ? toKeep : toReset).push(path);
       }
       if (!want.is_rejected && now.is_rejected) toUnreject.push(path);
-      // Culling may reject while preserving metadata. Restore metadata first,
-      // then write rejection last because favoriting can clear it.
-      if (want.is_rejected) toReject.push(path);
+      if (want.is_rejected) { toReject.push(path); continue; }
       if (want.is_favorite && !now.is_favorite) toFavorite.push(path);
       if (!want.is_favorite && now.is_favorite) toUnfavorite.push(path);
       const wantRating = want.star_rating ?? 0;

@@ -563,13 +563,13 @@ function saveSectionStates(states: Record<string, boolean>): void {
             (change)="store.updateFilter('hide_panoramas', $event.checked)"
           >{{ I18N.gallery.hide_panoramas | translate }}</mat-checkbox>
           <mat-form-field class="w-full">
-            <mat-label>{{ 'review.status' | translate }}</mat-label>
+            <mat-label>{{ I18N.review.status | translate }}</mat-label>
             <mat-select [value]="store.filters().review_status"
                         (selectionChange)="store.updateFilter('review_status', $event.value)">
-              <mat-option value="">{{ 'review.all' | translate }}</mat-option>
-              <mat-option value="undecided">{{ 'review.needs_review' | translate }}</mat-option>
-              <mat-option value="kept">{{ 'review.kept' | translate }}</mat-option>
-              <mat-option value="rejected">{{ 'review.rejected' | translate }}</mat-option>
+              <mat-option value="">{{ I18N.review.all | translate }}</mat-option>
+              <mat-option value="undecided">{{ I18N.review.needs_review | translate }}</mat-option>
+              <mat-option value="kept">{{ I18N.review.kept | translate }}</mat-option>
+              <mat-option value="rejected">{{ I18N.review.rejected | translate }}</mat-option>
             </mat-select>
           </mat-form-field>
           <mat-checkbox

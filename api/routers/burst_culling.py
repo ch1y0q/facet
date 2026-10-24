@@ -298,7 +298,7 @@ def attach_keeper_probs(conn, groups, user_id):
 
 
 def attach_user_marks(conn, groups, user_id):
-    """Stamp each photo of ``groups`` with the caller's ``is_rejected`` / ``is_favorite`` / ``star_rating``.
+    """Stamp each photo of ``groups`` with the caller's ``is_rejected`` / ``is_favorite`` / ``star_rating`` / ``is_kept``.
 
     Read per request from the gallery's own per-user source (``user_preferences`` in multi-user mode, the
     ``photos`` columns otherwise), never taken from the memoised enrichment: a mark the user or an assistant
@@ -310,19 +310,20 @@ def attach_user_marks(conn, groups, user_id):
     from_clause, from_params = get_photos_from_clause(user_id)
     cols = get_preference_columns(user_id)
     marks = {
-        row[0]: (row[1] or 0, row[2] or 0, row[3] or 0)
+        row[0]: (row[1] or 0, row[2] or 0, row[3] or 0, row[4] or 0)
         for row in select_in_chunks(
             conn,
-            f"SELECT photos.path, {cols['is_rejected']}, {cols['is_favorite']}, {cols['star_rating']} "
+            f"SELECT photos.path, {cols['is_rejected']}, {cols['is_favorite']}, {cols['star_rating']}, {cols['is_kept']} "
             f"FROM {from_clause} WHERE photos.path IN ({{placeholders}})",
             set(paths), before=from_params)
     }
     for group in groups:
         for photo in group.get('photos') or []:
-            rejected, favorite, rating = marks.get(photo.get('path'), (0, 0, 0))
+            rejected, favorite, rating, kept = marks.get(photo.get('path'), (0, 0, 0, 0))
             photo['is_rejected'] = int(rejected)
             photo['is_favorite'] = int(favorite)
             photo['star_rating'] = int(rating)
+            photo['is_kept'] = int(kept)
 
 
 def _get_face_thresholds(profile=None):
@@ -3081,7 +3082,7 @@ def reject_standalone_below(conn, user_id, scope, min_score, exclude_paths, dry_
     mode, anyone's on a single-user install, where the viewer stores them under
     NULL / ``_anonymous`` / ``_legacy`` and the CLI under its own sentinel), which
     is what keeps a scene keeper from being score-rejected on the next run,
-    not favourited or star-rated, and not a member of any group this run
+    not explicitly kept, favourited or star-rated, and not a member of any group this run
     collected (``exclude_paths``). An unknown ``aggregate`` is never a reason to
     reject. Every preference column is ``COALESCE``d because on a single-user
     install they are the bare ``photos`` columns, NULL on almost every row.
@@ -3100,6 +3101,7 @@ def reject_standalone_below(conn, user_id, scope, min_score, exclude_paths, dry_
             FROM {from_clause}
             WHERE {vis_sql}
               AND COALESCE({is_rejected_col}, 0) = 0
+              AND COALESCE({prefs['is_kept']}, 0) = 0
               AND photos.sequence_kind IS NULL
               AND photos.aggregate IS NOT NULL AND photos.aggregate < ?
               AND COALESCE(photos.similarity_reviewed, 0) = 0

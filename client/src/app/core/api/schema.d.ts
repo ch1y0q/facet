@@ -3280,7 +3280,7 @@ export interface paths {
         put?: never;
         /**
          * Api Batch Review
-         * @description Set review decisions while preserving ratings and favorites.
+         * @description Keep/reset preserves ratings and favorites; rejection clears them.
          */
         post: operations["api_batch_review_api_photos_batch_review_post"];
         delete?: never;

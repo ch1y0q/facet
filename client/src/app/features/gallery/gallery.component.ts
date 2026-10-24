@@ -608,8 +608,8 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
             @if (auth.isEdition()) {
               <span aria-hidden="true" class="w-px h-6 mx-1 bg-[var(--mat-sys-outline-variant)]"></span>
               <button mat-icon-button disabledInteractive (click)="batchFavorite()" [matTooltip]="I18N.gallery.selection.favorite | translate" [attr.aria-label]="I18N.gallery.selection.favorite | translate"><mat-icon>favorite</mat-icon></button>
-              <button mat-icon-button disabledInteractive (click)="batchReview('kept')" [matTooltip]="'review.keep' | translate" [attr.aria-label]="'review.keep' | translate"><mat-icon>check_circle</mat-icon></button>
-              <button mat-icon-button disabledInteractive (click)="batchReview('undecided')" [matTooltip]="'review.reset' | translate" [attr.aria-label]="'review.reset' | translate"><mat-icon>restart_alt</mat-icon></button>
+              <button mat-icon-button disabledInteractive (click)="batchReview('kept')" [matTooltip]="I18N.review.keep | translate" [attr.aria-label]="I18N.review.keep | translate"><mat-icon>check_circle</mat-icon></button>
+              <button mat-icon-button disabledInteractive (click)="batchReview('undecided')" [matTooltip]="I18N.review.reset | translate" [attr.aria-label]="I18N.review.reset | translate"><mat-icon>restart_alt</mat-icon></button>
               <button mat-icon-button disabledInteractive (click)="batchReject()" [matTooltip]="I18N.gallery.selection.reject | translate" [attr.aria-label]="I18N.gallery.selection.reject | translate"><mat-icon>thumb_down</mat-icon></button>
               <button mat-icon-button disabledInteractive [matMenuTriggerFor]="rateMenu" [matTooltip]="I18N.gallery.selection.rate | translate" [attr.aria-label]="I18N.gallery.selection.rate | translate"><mat-icon>star</mat-icon></button>
               <mat-menu #rateMenu="matMenu">
@@ -1725,12 +1725,12 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   private async reviewSingle(path: string, decision: 'kept' | 'undecided'): Promise<BatchResult | null> {
     const result = await this.store.batchReview([path], decision, false);
-    if (result) this.offerMutationUndo(result, 'review.updated', { count: result.count }, false);
+    if (result) this.offerMutationUndo(result, this.I18N.review.updated, { count: result.count }, false);
     return result;
   }
 
   protected async batchReview(decision: 'kept' | 'undecided'): Promise<void> {
-    await this.executeBatchAction(p => this.store.batchReview(p, decision), 'review.updated');
+    await this.executeBatchAction(p => this.store.batchReview(p, decision), this.I18N.review.updated);
   }
 
   protected async batchFavorite(): Promise<void> {

@@ -833,7 +833,9 @@ def api_batch_review(
     body: BatchReviewRequest,
     user: CurrentUser = Depends(require_edition),
 ):
-    """Set review decisions while preserving ratings and favorites."""
+    """Keep/reset preserves ratings and favorites; rejection clears them."""
+    if body.decision == 'rejected':
+        return api_batch_reject(body, user)
     kept = int(body.decision == 'kept')
     rejected = int(body.decision == 'rejected')
     return _batch_update(body, user, BatchWriteSql(

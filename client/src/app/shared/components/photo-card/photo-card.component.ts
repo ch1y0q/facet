@@ -1,3 +1,4 @@
+import { i18nKeys } from '../../../core/i18n/keys';
 import { Component, computed, effect, input, output, signal, untracked, viewChildren, ChangeDetectionStrategy } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -231,7 +232,7 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
              nothing at all on an already-monochrome photo. -->
         @if (isEditionMode() && photo().is_kept && !photo().is_rejected) {
           <span class="absolute top-2 left-2 flex items-center justify-center rounded-full bg-green-700 text-white w-6 h-6 z-10"
-                [attr.aria-label]="'review.kept' | translate" [matTooltip]="'review.kept' | translate">
+                [attr.aria-label]="I18N.review.kept | translate" [matTooltip]="I18N.review.kept | translate">
             <mat-icon class="!text-base !w-4 !h-4 !leading-4">check</mat-icon>
           </span>
         }
@@ -457,6 +458,7 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
   `,
 })
 export class PhotoCardComponent {
+  protected readonly I18N = i18nKeys();
   // Data
   readonly photo = input.required<Photo>();
   readonly config = input<AppConfig | null>(null);

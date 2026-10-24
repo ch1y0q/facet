@@ -283,14 +283,14 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
               </button>
               <!-- Review decisions -->
               <button mat-icon-button (click)="reviewPhoto('kept')" [class.text-green-400]="p.is_kept"
-                [matTooltip]="'review.keep' | translate"
-                [attr.aria-label]="'review.keep' | translate"
+                [matTooltip]="I18N.review.keep | translate"
+                [attr.aria-label]="I18N.review.keep | translate"
                 [attr.aria-pressed]="!!p.is_kept">
                 <mat-icon>check_circle</mat-icon>
               </button>
               <button mat-icon-button (click)="reviewPhoto('undecided')"
-                [matTooltip]="'review.reset' | translate"
-                [attr.aria-label]="'review.reset' | translate">
+                [matTooltip]="I18N.review.reset | translate"
+                [attr.aria-label]="I18N.review.reset | translate">
                 <mat-icon>restart_alt</mat-icon>
               </button>
               <button mat-icon-button (click)="toggleRejected(p.path)" [class.text-orange-400]="p.is_rejected"

@@ -2312,12 +2312,12 @@ describe('GalleryStore optimistic mutations', () => {
     expect(refresh).toHaveBeenCalledOnce();
   });
 
-  it('Undo restores a culling rejection while preserving its favorite and stars', async () => {
+  it('Undo restores rejection with the same cleared metadata as other reject actions', async () => {
     store.photos.set([makePhoto({ path: '/a.jpg', is_kept: false, is_rejected: true, is_favorite: true, star_rating: 4 })]);
     const result = await store.batchReview(['/a.jpg'], 'kept');
     await store.restoreSnapshot(result!.snapshot);
     expect(apiPost).toHaveBeenLastCalledWith('/photos/batch_review', { photo_paths: ['/a.jpg'], decision: 'rejected' });
-    expect(store.photos()[0]).toMatchObject({ is_kept: false, is_rejected: true, is_favorite: true, star_rating: 4 });
+    expect(store.photos()[0]).toMatchObject({ is_kept: false, is_rejected: true, is_favorite: false, star_rating: null });
   });
 
   it('refills only the tail of 1100 loaded rows and keeps nextPage contiguous', async () => {

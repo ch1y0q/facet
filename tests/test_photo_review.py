@@ -125,7 +125,7 @@ def test_review_is_per_user(edition_client, seed_photos_prefix, monkeypatch, dec
         response = edition_client.post("/api/photos/batch_review", json={**scope, "decision": decision})
         assert response.json() == {"success": True, "count": 1}
         with sqlite3.connect(DEFAULT_DB_PATH) as conn:
-            assert conn.execute("SELECT is_kept, is_rejected, star_rating, is_favorite FROM user_preferences WHERE user_id='test' AND photo_path=?", [visible]).fetchone() == (int(decision == "kept"), int(decision == "rejected"), 5, 1)
+            assert conn.execute("SELECT is_kept, is_rejected, star_rating, is_favorite FROM user_preferences WHERE user_id='test' AND photo_path=?", [visible]).fetchone() == (int(decision == "kept"), int(decision == "rejected"), 0 if decision == "rejected" else 5, 0 if decision == "rejected" else 1)
             assert conn.execute("SELECT is_kept FROM user_preferences WHERE user_id='bob' AND photo_path=?", [visible]).fetchone() == (1,)
             assert conn.execute("SELECT COUNT(*) FROM user_preferences WHERE photo_path=?", [hidden]).fetchone() == (0,)
             assert conn.execute("SELECT is_kept FROM photos WHERE path=?", [visible]).fetchone() == (1,)
@@ -167,7 +167,7 @@ def test_auto_cull_persists_keepers(tmp_path, monkeypatch, per_user, kind):
 
 
 @pytest.mark.parametrize("target", ["paths", "filters"])
-def test_restore_rejected_decision_preserves_metadata(edition_client, seed_photos_prefix, target):
+def test_review_rejection_clears_rating_and_favorite(edition_client, seed_photos_prefix, target):
     prefix = "/review-restore-rejected/"
     path = prefix + "a.jpg"
     seed_photos_prefix(prefix, [{"path": path, "filename": "a.jpg", "camera_model": "ReviewRestoreCam",
@@ -176,7 +176,7 @@ def test_restore_rejected_decision_preserves_metadata(edition_client, seed_photo
     response = edition_client.post("/api/photos/batch_review", json={**scope, "decision": "rejected"})
     assert response.json() == {"success": True, "count": 1}
     with sqlite3.connect(DEFAULT_DB_PATH) as conn:
-        assert conn.execute("SELECT is_kept, is_rejected, is_favorite, star_rating FROM photos WHERE path=?", [path]).fetchone() == (0, 1, 1, 4)
+        assert conn.execute("SELECT is_kept, is_rejected, is_favorite, star_rating FROM photos WHERE path=?", [path]).fetchone() == (0, 1, 0, 0)
 
 
 def test_single_reject_clears_keep(edition_session_client, seed_photos_prefix, monkeypatch):

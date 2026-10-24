@@ -1491,7 +1491,7 @@ class TestCullingGroupsUserMarks:
 
     PREFIX = "/cgmarks-b4/"
     GID = 61616
-    MARK_KEYS = ("is_rejected", "is_favorite", "star_rating")
+    MARK_KEYS = ("is_rejected", "is_favorite", "star_rating", "is_kept")
 
     @classmethod
     def _rows(cls):
@@ -1500,7 +1500,7 @@ class TestCullingGroupsUserMarks:
                     "aggregate": 6.0 + second, "aesthetic": 6.0, "tech_sharpness": 6.0,
                     "burst_group_id": cls.GID, "is_burst_lead": int(second == 1), **extra}
         return [row("a.jpg", 1, is_rejected=1, is_favorite=0, star_rating=0),
-                row("b.jpg", 2, is_rejected=0, is_favorite=1, star_rating=4),
+                row("b.jpg", 2, is_rejected=0, is_favorite=1, star_rating=4, is_kept=1),
                 row("c.jpg", 3, is_rejected=0, is_favorite=0, star_rating=0)]
 
     @pytest.fixture()
@@ -1533,6 +1533,7 @@ class TestCullingGroupsUserMarks:
         assert (a["is_rejected"], a["is_favorite"], a["star_rating"]) == (1, 0, 0)
         assert (b["is_rejected"], b["is_favorite"], b["star_rating"]) == (0, 1, 4)
         assert (c["is_rejected"], c["is_favorite"], c["star_rating"]) == (0, 0, 0)
+        assert (a["is_kept"], b["is_kept"], c["is_kept"]) == (0, 1, 0)
         for photo in photos.values():
             for key in self.MARK_KEYS:
                 assert type(photo[key]) is int, (key, photo[key])
@@ -1562,6 +1563,33 @@ class TestCullingGroupsUserMarks:
         assert (c["is_rejected"], c["is_favorite"], c["star_rating"]) == (1, 1, 5)
         # The photos-table values (a rejected, b favourite) belong to nobody in multi-user mode.
         assert (photos[self.PREFIX + "a.jpg"]["is_rejected"], photos[self.PREFIX + "b.jpg"]["star_rating"]) == (0, 0)
+
+    def test_keep_marks_are_per_user_and_refreshed_after_a_cached_fetch(self, client):
+        from tests.conftest import _TEST_DB_FILE
+        path = self.PREFIX + "c.jpg"
+        conn = sqlite3.connect(_TEST_DB_FILE.name)
+        try:
+            with (
+                mock.patch("api.db_helpers.is_multi_user_enabled", return_value=True),
+                mock.patch("api.routers.burst_culling.is_multi_user_enabled", return_value=True),
+                mock.patch("api.routers.burst_culling.get_visibility_clause", return_value=("1=1", [])),
+                mock.patch("api.db_helpers.get_visibility_clause", return_value=("1=1", [])),
+            ):
+                conn.execute("INSERT INTO user_preferences (user_id, photo_path, is_kept) VALUES ('other-user', ?, 1)", (path,))
+                conn.commit()
+                before = self._photos(client)
+                assert before[path]["is_kept"] == 0
+                assert before[self.PREFIX + "b.jpg"]["is_kept"] == 0
+                conn.execute("INSERT INTO user_preferences (user_id, photo_path, is_kept) VALUES ('cgmarks-user', ?, 1)", (path,))
+                conn.commit()
+                assert self._photos(client)[path]["is_kept"] == 1
+                conn.execute("UPDATE user_preferences SET is_kept = 0 WHERE user_id = 'cgmarks-user' AND photo_path = ?", (path,))
+                conn.commit()
+                assert self._photos(client)[path]["is_kept"] == 0
+        finally:
+            conn.execute("DELETE FROM user_preferences WHERE photo_path LIKE ?", (self.PREFIX + "%",))
+            conn.commit()
+            conn.close()
 
     def test_a_group_with_no_photos_is_untouched(self):
         from api.routers.burst_culling import attach_user_marks
