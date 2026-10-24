@@ -881,7 +881,7 @@ Todas as estatísticas são sensíveis ao usuário no modo multiusuário — cad
 | `←` `→` `↑` `↓` | Move o marcador da foto atual entre os cartões de foto (colunas da grade e linhas do mosaico) |
 | `Enter` | Abre a foto em foco |
 | `Space` | Seleciona / desseleciona a foto em foco |
-| `Ctrl+A` | Selecionar tudo — toda a visualização filtrada a partir de uma seleção vazia (sem requisição), senão as fotos carregadas |
+| `Ctrl+A` / `Cmd+A` | Selecionar tudo — toda a visualização filtrada a partir de uma seleção vazia (sem requisição), senão as fotos carregadas |
 | `Escape` | Limpa a seleção (no modo painel lateral, liberta também a foto fixada) / fecha a gaveta de filtros |
 | `Shift+Click` | Seleciona em intervalo as fotos entre a última selecionada e a clicada |
 | `Double-click` | Abre a foto |

@@ -1086,6 +1086,49 @@ describe('GalleryComponent', () => {
     });
   });
 
+  describe('select-all keyboard shortcut', () => {
+    // Document-level host bindings register only when the view renders, so
+    // each case makes its own fixture and dispatches straight at document.
+    let fixture: ComponentFixture<GalleryComponent> | null = null;
+
+    afterEach(() => {
+      fixture?.destroy();
+      fixture = null;
+    });
+
+    function renderWithPhotos(): void {
+      mockStore.photos.set([{ path: '/a.jpg' }, { path: '/b.jpg' }]);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+    }
+
+    it.each([
+      ['control', false], ['meta', true],
+    ])('selects all loaded photos on %s+A', (_label, metaKey) => {
+      renderWithPhotos();
+      const event = new KeyboardEvent('keydown', { key: 'a', metaKey, ctrlKey: !metaKey, cancelable: true });
+      const prevented = !document.dispatchEvent(event);
+      expect(prevented).toBe(true);
+      expect(mockStore.selectAll).toHaveBeenCalled();
+    });
+
+    it('leaves the browser default alone while focus is in an input', () => {
+      renderWithPhotos();
+      const input = document.createElement('input');
+      document.body.appendChild(input);
+      input.focus();
+      try {
+        // Bubbling from the input, as a real keypress would: the guard reads
+        // the event's target, so the event must originate there.
+        const event = new KeyboardEvent('keydown', { key: 'a', metaKey: true, bubbles: true, cancelable: true });
+        expect(input.dispatchEvent(event)).toBe(true);
+        expect(mockStore.selectAll).not.toHaveBeenCalled();
+      } finally {
+        input.remove();
+      }
+    });
+  });
+
   describe('assistant-pinned list', () => {
     let fixture: ComponentFixture<GalleryComponent> | null = null;
 

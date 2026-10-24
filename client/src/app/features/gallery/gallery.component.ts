@@ -743,7 +743,10 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
   changeDetection: ChangeDetectionStrategy.Eager,
   host: {
     class: 'block h-full',
+    // meta.a is Cmd+A: macOS's select-all, the key a Mac user actually presses.
+    // control.a keeps working on Windows/Linux (and on macOS for Ctrl+A).
     '(document:keydown.control.a)': 'onSelectAllShortcut($event)',
+    '(document:keydown.meta.a)': 'onSelectAllShortcut($event)',
   },
 })
 export class GalleryComponent implements OnInit, OnDestroy {

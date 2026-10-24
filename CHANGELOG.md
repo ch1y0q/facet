@@ -10,6 +10,7 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- **Cmd+A selects all in the gallery on macOS.** The shortcut was bound to Ctrl+A only, so the Mac's own select-all chord did nothing and Ctrl+A — which macOS users never press — was the only way. Both now work; focus guards (inputs, open dialogs) are unchanged.
 - **The gear usage timeline's tooltip reads as a month, not a moment.** The chart's x axis is month-granular, but hovering a point titled it with the bucket's first instant ("Mar 1, 2026, 12:00:00 a.m.") — a moment that was never measured. The tooltip now says "Mar 2026", matching the axis ticks.
 
 ## [1.23.0] "Clap" — 2026-10-24

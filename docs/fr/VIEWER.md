@@ -883,7 +883,7 @@ Toutes les statistiques tiennent compte de l'utilisateur en mode multi-utilisate
 | `←` `→` `↑` `↓` | Déplacer le marqueur de la photo courante entre les cartes de photo (colonnes de grille et lignes de mosaïque) |
 | `Enter` | Ouvrir la photo focalisée |
 | `Space` | Sélectionner / désélectionner la photo focalisée |
-| `Ctrl+A` | Tout sélectionner — toute la vue filtrée depuis une sélection vide (sans requête), sinon les photos chargées |
+| `Ctrl+A` / `Cmd+A` | Tout sélectionner — toute la vue filtrée depuis une sélection vide (sans requête), sinon les photos chargées |
 | `Escape` | Effacer la sélection (en mode panneau latéral, libère aussi la photo figée) / fermer le tiroir de filtres |
 | `Shift+Click` | Sélection par plage des photos entre la dernière sélectionnée et celle cliquée |
 | `Double-click` | Ouvrir la photo |

@@ -882,7 +882,7 @@ Alle Statistiken sind im Mehrbenutzermodus benutzerbewusst — jeder Benutzer si
 | `←` `→` `↑` `↓` | Tastaturfokus zwischen Fotokarten bewegen (Rasterspalten und Mosaikzeilen) |
 | `Enter` | Das fokussierte Foto öffnen |
 | `Space` | Das fokussierte Foto auswählen / abwählen |
-| `Ctrl+A` | Alle auswählen — bei leerer Auswahl die gesamte gefilterte Ansicht (keine Anfrage), sonst die geladenen Fotos |
+| `Ctrl+A` / `Cmd+A` | Alle auswählen — bei leerer Auswahl die gesamte gefilterte Ansicht (keine Anfrage), sonst die geladenen Fotos |
 | `Escape` | Auswahl aufheben (im Seitenleisten-Modus wird auch das festgehaltene Foto gelöst) / Filter-Schublade schließen |
 | `Shift+Click` | Bereichsauswahl von Fotos zwischen zuletzt ausgewähltem und angeklicktem |
 | `Double-click` | Foto öffnen |

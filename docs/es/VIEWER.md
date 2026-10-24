@@ -881,7 +881,7 @@ Todas las estadísticas tienen conciencia de usuario en modo multiusuario: cada 
 | `←` `→` `↑` `↓` | Mover el marcador de la foto actual entre las tarjetas de foto (columnas de cuadrícula y filas de mosaico) |
 | `Enter` | Abrir la foto enfocada |
 | `Space` | Seleccionar / deseleccionar la foto enfocada |
-| `Ctrl+A` | Seleccionar todo — toda la vista filtrada desde una selección vacía (sin petición), si no, las fotos cargadas |
+| `Ctrl+A` / `Cmd+A` | Seleccionar todo — toda la vista filtrada desde una selección vacía (sin petición), si no, las fotos cargadas |
 | `Escape` | Borrar la selección (en modo panel lateral, también libera la foto fijada) / cerrar el cajón de filtros |
 | `Shift+Click` | Seleccionar el rango de fotos entre la última seleccionada y la pulsada |
 | `Double-click` | Abrir la foto |

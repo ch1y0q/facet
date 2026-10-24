@@ -882,7 +882,7 @@ Tutte le statistiche sono consapevoli dell'utente in modalità multiutente — o
 | `←` `→` `↑` `↓` | Sposta il marcatore della foto corrente tra le schede foto (colonne della griglia e righe del mosaico) |
 | `Enter` | Apri la foto a fuoco |
 | `Space` | Seleziona / deseleziona la foto a fuoco |
-| `Ctrl+A` | Seleziona tutto — l'intera vista filtrata da una selezione vuota (nessuna richiesta), altrimenti le foto caricate |
+| `Ctrl+A` / `Cmd+A` | Seleziona tutto — l'intera vista filtrata da una selezione vuota (nessuna richiesta), altrimenti le foto caricate |
 | `Escape` | Cancella la selezione (in modalità pannello laterale sblocca anche la foto bloccata) / chiudi il pannello dei filtri |
 | `Shift+Click` | Selezione di un intervallo di foto tra l'ultima selezionata e quella cliccata |
 | `Double-click` | Apri la foto |

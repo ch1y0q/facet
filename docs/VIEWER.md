@@ -951,7 +951,7 @@ All stats are user-aware in multi-user mode — each user sees analytics for the
 | `←` `→` `↑` `↓` | Move the current-photo marker between photo cards (grid columns and mosaic rows) |
 | `Enter` | Open the focused photo |
 | `Space` | Select / deselect the focused photo |
-| `Ctrl+A` | Select all — the whole filtered view from an empty selection (no request), otherwise the loaded photos |
+| `Ctrl+A` / `Cmd+A` | Select all — the whole filtered view from an empty selection (no request), otherwise the loaded photos |
 | `Escape` | Clear selection (in side-panel mode, also releases the held photo) / close filter drawer |
 | `Shift+Click` | Range-select photos between last selected and clicked |
 | `Double-click` | Open photo |
