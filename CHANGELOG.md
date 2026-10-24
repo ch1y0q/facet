@@ -4,6 +4,10 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The CUDA Docker image builds again.** 1.23.0 pinned setuptools 84.1.0 in `requirements.restricted.lock.txt`, but the image's base torch 2.11.0 requires `setuptools<82`, so pip replaced it with a CUDA 13 torch build and the image's torch check stopped the build: 1.23.0 published only the `cpu` and `cuda-legacy` images. The restricted lock is back on setuptools 81.0.0, the version the CUDA base image ships. That leaves the low-severity, Windows-only GHSA-xmj3-9gf7-h52w (a path escape during legacy wheel installs) unfixed in that lock until the base image moves to a torch without the cap; `requirements.legacy.restricted.lock.txt` keeps 84.1.0.
+
 ## [1.23.0] "Clap" — 2026-10-24
 
 ### Added

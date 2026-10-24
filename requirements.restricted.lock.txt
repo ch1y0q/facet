@@ -9,5 +9,8 @@ onnx==1.22.0
 onnxruntime==1.27.0
 openai-clip==1.0.1
 pyiqa==0.1.16
-setuptools==84.1.0
+# Held below 82: the CUDA image's base torch 2.11.0 requires setuptools<82, and a newer
+# pin makes pip replace that torch with a cu130 build the image's torch guard refuses.
+# Move it together with BASE_IMAGE in .github/workflows/docker-publish.yml.
+setuptools==81.0.0
 yapf==0.43.0
