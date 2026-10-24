@@ -218,6 +218,24 @@ def test_recompute_selection_keeps_never_scored_and_pre_bbox_rows(recompute_db):
     assert path not in selected                # fully scored: nothing to do
 
 
+def test_recompute_selection_rewrites_a_pre_184_neutral_no_subject_row_once(recompute_db):
+    """Versions before #184 stored 5.0 beside prominence 0.0; one run rewrites it, then it is final."""
+    import facet as facet_cli
+    _, db = recompute_db
+    with get_connection(db, row_factory=False) as conn:
+        conn.execute("INSERT INTO photos (path, filename, thumbnail, subject_sharpness, "
+                     "subject_prominence, subject_placement, bg_separation) VALUES "
+                     "('/x/legacy.jpg', 'legacy.jpg', x'00', 5.0, 0.0, 5.0, 5.0)")
+        conn.commit()
+    assert '/x/legacy.jpg' in _selected_paths(db)
+    with get_connection(db, row_factory=False) as conn:
+        facet_cli._flush_saliency_batch(
+            conn, _Scorer([dict(_NO_SUBJECT)]), ['/x/legacy.jpg'], [object()], [object()])
+        conn.commit()
+    assert _saliency_row(db, '/x/legacy.jpg') == _NO_SUBJECT
+    assert '/x/legacy.jpg' not in _selected_paths(db)
+
+
 def test_recompute_selection_force_takes_every_thumbnail(recompute_db):
     import facet as facet_cli
     path, db = recompute_db

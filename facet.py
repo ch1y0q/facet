@@ -316,12 +316,15 @@ def _saliency_recompute_where(force: bool) -> str:
     final result, not missing data; selecting on ``subject_bbox IS NULL`` alone
     would re-run BiRefNet on every such photo on every upgrade for the same
     outcome. A positive prominence beside a NULL bbox marks a row scored before
-    the bbox column existed, which one more run backfills.
+    the bbox column existed, which one more run backfills. A 0.0 prominence
+    beside a non-NULL ``subject_sharpness`` is the neutral 5.0 versions before
+    #184 stored for a no-subject photo, which one more run rewrites to NULL.
     """
     where = "thumbnail IS NOT NULL"
     if not force:
         where += (" AND subject_bbox IS NULL"
-                  " AND (subject_prominence IS NULL OR subject_prominence > 0)")
+                  " AND (subject_prominence IS NULL OR subject_prominence > 0"
+                  " OR subject_sharpness IS NOT NULL)")
     return where
 
 

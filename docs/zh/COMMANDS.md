@@ -183,7 +183,7 @@ API 会将其呈现在 `/api/scan/status` 的 `progress` 字段以及 SSE 数据
 
 需要 `transformers`（约 3 GB VRAM）。在 CUDA 上，批大小由空闲显存推算（1024 px 下每张图片约 2.4 GiB，范围 1 至 8 张），遇到显存不足错误时减半，直至一张图片。如果某张照片的显著性仍然失败，则记录一条 ERROR 且不存入任何值：从未评分的照片保持 NULL（并在综合评分中按中性计算，与显著性功能出现之前扫描的照片一样），使用 `--recompute-saliency` 与 `--pass saliency` 时，已有显著性的照片保留其已存储的值（对该照片进行完整重新扫描，例如 `--force`，则会为其存入 NULL，与从未评分的照片相同），`--recompute-saliency` 会再次选中它。见[主体显著性维度](SCORING.md#主体显著性维度)。
 
-检测不到主体的照片，其主体清晰度、主体位置和背景分离度存为 NULL（自构图遍起，没有主体框时 `power_point_score` 也是如此），主体突出程度为 0.0，`subject_bbox` 为 NULL；旧版本存的是中性的 5.0。已有的行保留该 5.0，直到 `--recompute-saliency` 和 `--recompute-composition-cpu` 将其重写。`--recompute-saliency` 会选取 `subject_prominence` 从未存储过的照片——从未评分，或某次运行失败——以及 `subject_bbox` 列存在之前已评分的照片（突出程度为正但还没有主体框）；无主体的照片是最终结果，后续运行不会再次测量。NULL 指标在综合评分中仍按中性计分；参见 [SCORING.md](SCORING.md)。
+检测不到主体的照片，其主体清晰度、主体位置和背景分离度存为 NULL（自构图遍起，没有主体框时 `power_point_score` 也是如此），主体突出程度为 0.0，`subject_bbox` 为 NULL；旧版本存的是中性的 5.0。已有的行保留该 5.0，直到 `--recompute-saliency` 和 `--recompute-composition-cpu` 将其重写。`--recompute-saliency` 会选取 `subject_prominence` 从未存储过的照片——从未评分，或某次运行失败——以及 `subject_bbox` 列存在之前已评分的照片（突出程度为正但还没有主体框），以及仍带有旧版本中性 5.0 的无主体照片（运行一次即重写）；无主体的照片是最终结果，后续运行不会再次测量。NULL 指标在综合评分中仍按中性计分；参见 [SCORING.md](SCORING.md)。
 
 ### 标签模型
 
