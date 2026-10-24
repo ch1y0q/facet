@@ -2420,7 +2420,9 @@
     "cluster_photos": "{count} 张照片",
     "score": "评分：{score}",
     "date_from": "从",
-    "date_to": "至"
+    "date_to": "至",
+    "no_gps_title": "没有带位置的照片",
+    "no_gps_hint": "当前范围内的照片都没有 GPS 坐标。打开一张照片，用其位置面板标注地点——标注后会显示在这里。"
   },
   "photo_detail": {
     "back": "返回",

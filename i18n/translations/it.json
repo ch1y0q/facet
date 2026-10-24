@@ -2420,7 +2420,9 @@
     "cluster_photos": "{count} foto",
     "score": "Punteggio: {score}",
     "date_from": "Da",
-    "date_to": "A"
+    "date_to": "A",
+    "no_gps_title": "Nessuna foto con posizione",
+    "no_gps_hint": "Nulla nell'ambito porta coordinate GPS. Apri una foto e usa il suo pannello Posizione per posizionarla — le foto posizionate appaiono qui."
   },
   "photo_detail": {
     "back": "Indietro",

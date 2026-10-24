@@ -2420,7 +2420,9 @@
     "cluster_photos": "{count} photos",
     "score": "Score : {score}",
     "date_from": "Du",
-    "date_to": "Au"
+    "date_to": "Au",
+    "no_gps_title": "Aucune photo avec un lieu",
+    "no_gps_hint": "Rien dans le périmètre ne porte de coordonnées GPS. Ouvrez une photo et utilisez son panneau Lieu pour la placer — les photos placées apparaissent ici."
   },
   "photo_detail": {
     "back": "Retour",

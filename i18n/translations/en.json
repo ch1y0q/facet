@@ -2420,7 +2420,9 @@
     "cluster_photos": "{count} photos",
     "score": "Score: {score}",
     "date_from": "From",
-    "date_to": "To"
+    "date_to": "To",
+    "no_gps_title": "No photos with a location",
+    "no_gps_hint": "Nothing in scope carries GPS coordinates. Open a photo and use its Location panel to place it — placed photos appear here."
   },
   "photo_detail": {
     "back": "Back",

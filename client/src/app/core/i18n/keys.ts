@@ -2435,6 +2435,8 @@ export const I18N = {
     score: "map.score",
     date_from: "map.date_from",
     date_to: "map.date_to",
+    no_gps_title: "map.no_gps_title",
+    no_gps_hint: "map.no_gps_hint",
   },
   photo_detail: {
     back: "photo_detail.back",
