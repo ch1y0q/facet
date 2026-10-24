@@ -25,6 +25,10 @@ export const CARD_WIDTH_KEY = 'facet_card_width';
 /** The gallery's last synced query, for the nav-icon return from another page:
  *  sessionStorage, so it survives tab-wide navigation but not a new session. */
 export const GALLERY_SESSION_QUERY_KEY = 'facet_gallery_session_query';
+/** The last sort the user picked, remembered across visits (localStorage):
+ *  a fresh landing sorts by what you used last, not the viewer default. The
+ *  URL always wins — a shared or bookmarked link means what it says. */
+export const LAST_SORT_KEY = 'facet_last_sort';
 
 export interface GalleryFilters {
   page: number;

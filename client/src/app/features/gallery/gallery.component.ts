@@ -134,14 +134,16 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
           </mat-select>
         </mat-form-field>
 
-        <!-- Search -->
-        <mat-form-field class="!hidden 2xl:!inline-flex w-64 min-w-0 shrink" subscriptSizing="dynamic">
+        <!-- Search. Visible from lg up, beside the type dropdown it pairs with.
+             Filters as you type (400 ms debounce); Enter commits immediately. -->
+        <mat-form-field class="!hidden lg:!inline-flex w-52 min-w-0 shrink" subscriptSizing="dynamic">
           <input
+            #toolbarSearch
             matInput
             [placeholder]="I18N.gallery.search_placeholder | translate"
             [value]="store.filters().search"
+            (input)="onSearchInput($event)"
             (keyup.enter)="onSearchChange($event)"
-            (blur)="onSearchChange($event)"
           />
           @if (store.filters().search) {
             <button matSuffix mat-icon-button (click)="clearSearch()" [attr.aria-label]="I18N.gallery.clear_search | translate">
@@ -156,10 +158,11 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
       <!-- Keep top N%: server-rank the current view by the current sort and
            select the bottom (100-N)% for review/rejection via the selection bar. -->
       @if (auth.isEdition() && store.total() > 0 && store.canScopeSelectionToView()) {
-        <button mat-icon-button class="!hidden lg:!inline-flex" [matMenuTriggerFor]="keepTopMenu"
+        <button mat-stroked-button class="!hidden lg:!inline-flex !min-w-0 !px-3" [matMenuTriggerFor]="keepTopMenu"
                 [matTooltip]="I18N.gallery.keep_top.label | translate"
                 [attr.aria-label]="I18N.gallery.keep_top.label | translate">
-          <mat-icon>content_cut</mat-icon>
+          <mat-icon class="!text-base !w-4 !h-4 !leading-4 mr-1">content_cut</mat-icon>
+          <span class="hidden xl:inline text-sm">{{ I18N.gallery.keep_top.label | translate }}</span>
         </button>
         <mat-menu #keepTopMenu="matMenu" class="!max-w-none">
           <div class="p-4 w-80" tabindex="-1" (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation()">
@@ -780,6 +783,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
     // control.a keeps working on Windows/Linux (and on macOS for Ctrl+A).
     '(document:keydown.control.a)': 'onSelectAllShortcut($event)',
     '(document:keydown.meta.a)': 'onSelectAllShortcut($event)',
+    '(document:keydown)': 'onGalleryShortcut($event)',
   },
 })
 export class GalleryComponent implements OnInit, OnDestroy {
@@ -812,6 +816,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly headerSlot = inject(HeaderSlotService);
   private readonly liveAnnouncer = inject(LiveAnnouncer);
   private readonly galleryToolbar = viewChild<TemplateRef<unknown>>('galleryToolbar');
+  private readonly toolbarSearch = viewChild<ElementRef<HTMLInputElement>>('toolbarSearch');
 
   // Album options for "Add to album" menu
   protected readonly albumOptions = signal<Album[]>([]);
@@ -2423,9 +2428,60 @@ export class GalleryComponent implements OnInit, OnDestroy {
     this.store.updateFilter('type', type);
   }
 
+  private searchTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  /** Debounced live filtering for the toolbar search box: waiting for
+   *  Enter/blur made typing feel dead (the grid froze with no hint that a
+   *  commit was pending). Enter still commits immediately via the same
+   *  updateFilter path. */
+  protected onSearchInput(event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    if (this.searchTimeout) clearTimeout(this.searchTimeout);
+    this.searchTimeout = setTimeout(() => {
+      this.searchTimeout = null;
+      if (value !== this.store.filters().search) this.store.updateFilter('search', value);
+    }, 400);
+  }
+
   protected onSearchChange(event: Event): void {
+    if (this.searchTimeout) clearTimeout(this.searchTimeout);
+    this.searchTimeout = null;
     const value = (event.target as HTMLInputElement).value;
     if (value !== this.store.filters().search) this.store.updateFilter('search', value);
+  }
+
+  /** `/` focuses the toolbar search, `B` toggles the filter sidebar, `V`
+   *  switches grid/mosaic — the three view-level toggles that had no
+   *  keyboard path. Typing contexts and open dialogs bow out, matching the
+   *  select-all shortcut's guards. */
+  protected onGalleryShortcut(event: KeyboardEvent): void {
+    if (this.parked) return;
+    const target = event.target as HTMLElement | null;
+    if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+    if (target?.isContentEditable) return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (document.querySelector('mat-dialog-container, mat-bottom-sheet-container')) return;
+
+    switch (event.key) {
+      case '/': {
+        const search = this.toolbarSearch();
+        if (!search) return;
+        event.preventDefault();
+        search.nativeElement.focus();
+        search.nativeElement.select();
+        break;
+      }
+      case 'b': case 'B':
+        event.preventDefault();
+        this.store.setFilterDrawerOpen(!this.store.filterDrawerOpen());
+        break;
+      case 'v': case 'V':
+        event.preventDefault();
+        this.store.setGalleryMode(this.effectiveGalleryMode() === 'grid' ? 'mosaic' : 'grid');
+        break;
+      default:
+        return;
+    }
   }
 
   protected clearSearch(): void {

@@ -19,7 +19,7 @@ import {
   type GalleryFilters, type GalleryMode, type TooltipMode, type PanelActivation, type DisplayOptions,
   type ViewFilterParams,
   DEFAULT_FILTERS, DISPLAY_OPTION_KEYS,
-  GALLERY_MODE_KEY, DRAWER_STATE_KEY, CARD_WIDTH_KEY, GALLERY_SESSION_QUERY_KEY,
+  GALLERY_MODE_KEY, DRAWER_STATE_KEY, CARD_WIDTH_KEY, GALLERY_SESSION_QUERY_KEY, LAST_SORT_KEY,
   loadDisplayOptionsFromStorage, saveDisplayOptionsToStorage,
   countActiveFilters, applyQueryParams, applySavedAlbumFilters, buildSyncParams, buildApiParams,
   buildViewFilterParams, viewFilterParamsEqual, anyHideToggleActive,
@@ -832,6 +832,12 @@ export class GalleryStore {
       // Apply config defaults to filters, then overlay localStorage display options, then URL params
       const defaults = cfg.defaults;
       const storedDisplay = loadDisplayOptionsFromStorage();
+      // The sort the user last picked (localStorage) seeds the base, under the
+      // URL: "sort how I used to" beats "sort how the config says", and a
+      // shared link's own sort beats both.
+      let lastSort = '';
+      try { lastSort = localStorage.getItem(LAST_SORT_KEY) ?? ''; } catch { /* ignore */ }
+      const rememberedSort = defaults?.sort && lastSort && lastSort !== defaults.sort ? lastSort : '';
       const base: GalleryFilters = {
         ...DEFAULT_FILTERS,
         per_page: cfg.pagination?.default_per_page ?? 64,
@@ -840,7 +846,7 @@ export class GalleryStore {
         // disagreed. A MISSING field resolves to '' rather than a guess, which
         // is what makes /search omit `threshold` and resolve its own.
         search_threshold: seededSearchThreshold(cfg.search_threshold_default),
-        sort: defaults?.sort ?? 'aggregate',
+        sort: rememberedSort || defaults?.sort || 'aggregate',
         sort_direction: defaults?.sort_direction ?? 'DESC',
         type: defaults?.type ?? '',
         hide_details: storedDisplay.hide_details ?? (defaults?.hide_details ?? true),
@@ -860,6 +866,12 @@ export class GalleryStore {
       const params = this.route.snapshot.queryParams;
       const merged = applyQueryParams(base, params);
       this.filters.set(merged);
+      // A URL-carried sort is what the user (or a shared link) chose —
+      // remember it as the new last-used sort. The default sort arriving via
+      // URL records nothing: a default is not a choice.
+      if (merged.sort && merged.sort !== (cfg.defaults?.sort ?? 'aggregate')) {
+        try { localStorage.setItem(LAST_SORT_KEY, merged.sort); } catch { /* ignore */ }
+      }
     } catch {
       // Use defaults if config fails
       const params = this.route.snapshot.queryParams;
@@ -1321,6 +1333,14 @@ export class GalleryStore {
     const before = this.filters();
     this.filters.update(current => ({ ...current, ...updates, ...extra, ...(isDisplayOnly ? {} : { page: 1 }) }));
     this.journalFilters(before, this.filters());
+    // A user-picked sort (not the config default — anything else is a choice)
+    // becomes the remembered last-used sort. updateFilters only runs for
+    // direct interactions, so a sort arriving through a shared URL never
+    // passes here and never overwrites the memory.
+    if (updates.sort && this.filters().sort === updates.sort
+        && updates.sort !== (this.config()?.defaults?.sort ?? 'aggregate')) {
+      try { localStorage.setItem(LAST_SORT_KEY, updates.sort); } catch { /* ignore */ }
+    }
     if (Object.keys(updates).some(k => (DISPLAY_OPTION_KEYS as string[]).includes(k))) {
       saveDisplayOptionsToStorage(this.filters());
     }
@@ -1361,6 +1381,7 @@ export class GalleryStore {
 
   /** Reset all filters to config defaults */
   async resetFilters(): Promise<void> {
+    try { localStorage.removeItem(LAST_SORT_KEY); } catch { /* ignore */ }
     this.currentAlbum.set(null);
     this.journal.recordFilters({ reset: true });
     const cfg = this.config();
