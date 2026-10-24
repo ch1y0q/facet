@@ -307,12 +307,33 @@ def _commit_in_chunks(conn, sql, rows, size=RECOMPUTE_COMMIT_BATCH):
         conn.commit()
 
 
+def _saliency_recompute_where(force: bool) -> str:
+    """WHERE clause selecting the photos ``--recompute-saliency`` runs on.
+
+    Without ``force``, a row needs a run when its saliency was never stored or
+    failed (all five columns NULL, so ``subject_prominence`` is NULL). A stored
+    0.0 prominence is the measured "no subject" answer and its NULL bbox is the
+    final result, not missing data; selecting on ``subject_bbox IS NULL`` alone
+    would re-run BiRefNet on every such photo on every upgrade for the same
+    outcome. A positive prominence beside a NULL bbox marks a row scored before
+    the bbox column existed, which one more run backfills. A 0.0 prominence
+    beside a non-NULL ``subject_sharpness`` is the neutral 5.0 versions before
+    #184 stored for a no-subject photo, which one more run rewrites to NULL.
+    """
+    where = "thumbnail IS NOT NULL"
+    if not force:
+        where += (" AND subject_bbox IS NULL"
+                  " AND (subject_prominence IS NULL OR subject_prominence > 0"
+                  " OR subject_sharpness IS NOT NULL)")
+    return where
+
+
 def _flush_saliency_batch(conn, scorer_model, batch_paths, batch_pil, batch_cv):
     """Score one batch and UPDATE its photos; returns how many rows were written.
 
     A photo whose saliency failed (all-None result) is not written and not counted:
-    an existing value survives ``--force``, and a photo that never had saliency keeps
-    ``subject_bbox IS NULL`` so the next run selects it again.
+    an existing value survives ``--force``, and a photo that never had saliency
+    keeps ``subject_prominence IS NULL`` so the next run selects it again.
     """
     scores = scorer_model.score_batch(batch_pil, batch_cv)
     written = 0
@@ -2967,9 +2988,7 @@ def main():
         # Source stored thumbnails, not originals: the recompute must work with
         # the library volume offline, and the API saliency overlay already
         # derives its mask from the same 640px thumbnail.
-        where = "thumbnail IS NOT NULL"
-        if not args.force:
-            where += " AND subject_bbox IS NULL"
+        where = _saliency_recompute_where(args.force)
         with get_connection(args.db) as conn:
             paths = [row['path'] for row in conn.execute(
                 f"SELECT path FROM photos WHERE {where}"
