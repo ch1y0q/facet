@@ -176,8 +176,56 @@ def test_recompute_flush_leaves_a_never_scored_row_null_and_reselectable(recompu
     assert _saliency_row(db, '/x/never.jpg') == _FAILED
     with get_connection(db, row_factory=False) as conn:
         selected = [r[0] for r in conn.execute(
-            "SELECT path FROM photos WHERE thumbnail IS NOT NULL AND subject_bbox IS NULL")]
+            f"SELECT path FROM photos WHERE {facet_cli._saliency_recompute_where(False)}")]
     assert '/x/never.jpg' in selected
+
+
+# --- the upgrade selection must not loop over a terminal no-subject result ----------------
+
+def _selected_paths(db):
+    import facet as facet_cli
+    with get_connection(db, row_factory=False) as conn:
+        return {r[0] for r in conn.execute(
+            f"SELECT path FROM photos WHERE {facet_cli._saliency_recompute_where(False)}")}
+
+
+def test_recompute_selection_skips_a_no_subject_photo(recompute_db):
+    """prominence 0.0 with no bbox is the answer, not missing data (the 1899-photo loop)."""
+    import facet as facet_cli
+    _, db = recompute_db
+    with get_connection(db, row_factory=False) as conn:
+        conn.execute("INSERT INTO photos (path, filename, thumbnail) VALUES "
+                     "('/x/nosubject.jpg', 'nosubject.jpg', x'00')")
+        facet_cli._flush_saliency_batch(
+            conn, _Scorer([dict(_NO_SUBJECT)]), ['/x/nosubject.jpg'], [object()], [object()])
+        conn.commit()
+    assert _saliency_row(db, '/x/nosubject.jpg') == _NO_SUBJECT
+    assert '/x/nosubject.jpg' not in _selected_paths(db)
+
+
+def test_recompute_selection_keeps_never_scored_and_pre_bbox_rows(recompute_db):
+    path, db = recompute_db
+    with get_connection(db, row_factory=False) as conn:
+        conn.execute("INSERT INTO photos (path, filename, thumbnail) VALUES "
+                     "('/x/prebbox.jpg', 'prebbox.jpg', x'00')")
+        conn.execute("UPDATE photos SET subject_sharpness=6.0, subject_prominence=4.0, "
+                     "subject_placement=5.0, bg_separation=3.0, subject_bbox=NULL "
+                     "WHERE path='/x/prebbox.jpg'")
+        conn.commit()
+    selected = _selected_paths(db)
+    assert '/x/never.jpg' in selected          # never scored: retries
+    assert '/x/prebbox.jpg' in selected        # scored before the bbox column: backfills
+    assert path not in selected                # fully scored: nothing to do
+
+
+def test_recompute_selection_force_takes_every_thumbnail(recompute_db):
+    import facet as facet_cli
+    path, db = recompute_db
+    assert facet_cli._saliency_recompute_where(True) == "thumbnail IS NOT NULL"
+    with get_connection(db, row_factory=False) as conn:
+        all_paths = {r[0] for r in conn.execute(
+            f"SELECT path FROM photos WHERE {facet_cli._saliency_recompute_where(True)}")}
+    assert path in all_paths and '/x/never.jpg' in all_paths
 
 
 def test_restricted_save_skips_saliency_columns_of_a_flagged_photo_even_if_present(seeded):

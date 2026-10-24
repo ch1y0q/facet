@@ -120,7 +120,7 @@ API 会将其呈现在 `/api/scan/status` 的 `progress` 字段以及 SSE 数据
 | `python facet.py --discover-moments` | 通过对已存储的照片描述向量做聚类（HDBSCAN），并依据各簇的描述为其命名，提出一份贴合本照片库的时刻词表。结果写入 `scoring_config.discovered.json` 供你审阅——绝不会改写正在使用的配置。请先运行 `--detect-moments` 以填充 `caption_embedding`；用 `--discover-min-cluster-size N` 调整粒度 |
 | `python facet.py --detect-junk` | 在新增／尚未评估的照片中，通过对已存储特征向量做零样本 CLIP 判别，标出非摄影类杂图（截屏、文档、票据、表情包、幻灯片）；每次扫描结束时自动运行。判定干净的照片会被标记为 `not_junk`，因此重新运行时不会再次扫描它们；加上 `--dry-run --verbose` 可预览逐张照片的分数而不写入 |
 | `python facet.py --recompute-junk` | 为整个照片库重新评估 `junk_kind`（所有已存储特征向量的照片） |
-| `python facet.py --recompute-saliency` | `[GPU]` 从已存储的缩略图重新计算主体显著性指标（BiRefNet_dynamic）——照片库所在卷离线时也能运行。会跳过已有 `subject_bbox` 的照片（可续跑）；`--force` 则全部重做。所有档位都启用了显著性（legacy 档位在 CPU 上运行，较慢）；强烈建议使用 GPU。某张照片的显著性失败（例如显存不足）时，会记录一条 ERROR 且不写入：从未评分的行保持 NULL，并会在下次运行时再次被选中；使用 `--force` 时，已有显著性的行会保留其已存储的值。在 CUDA 上，批大小由空闲显存推算。 |
+| `python facet.py --recompute-saliency` | `[GPU]` 从已存储的缩略图重新计算主体显著性指标（BiRefNet_dynamic）——照片库所在卷离线时也能运行。会跳过显著性已评分的照片——无论有没有主体框（可续跑）；`--force` 则全部重做。所有档位都启用了显著性（legacy 档位在 CPU 上运行，较慢）；强烈建议使用 GPU。某张照片的显著性失败（例如显存不足）时，会记录一条 ERROR 且不写入：从未评分的行保持 NULL，并会在下次运行时再次被选中；使用 `--force` 时，已有显著性的行会保留其已存储的值。在 CUDA 上，批大小由空闲显存推算。 |
 | `python facet.py --recompute-composition-cpu` | 用基于规则的方法重新计算构图（CPU，任意档位）。缩略图没有主体框的照片，其 `power_point_score` 为 NULL（遗留的中性 5.0 会被改写为 NULL；无法解码的缩略图保留其原值） |
 | `python facet.py --recompute-composition-gpu` | `[GPU]` 用 SAMP-Net 重新计算构图 |
 | `python facet.py --recompute-iqa` | `[GPU]` 从已存储的缩略图重新计算补充 IQA 指标（TOPIQ IAA、NR-Face、LIQE）。所有档位都已启用（legacy 档位在 CPU 上运行，较慢）；强烈建议使用 GPU。仅填充为 NULL 的列。NR-Face 会跳过未检测到人脸的照片；LIQE 会跳过已存储缩略图短边小于 224 px 的照片（在汇总中计数，不存储任何内容）；NR-Face 拒绝评分的照片（在缩略图中找不到人脸）会记入 `iqa_declined` 表，在该照片被重新扫描之前不再重试（升级 pyiqa 或 NR-Face 权重不会清除这些记录：请用 `--force` 重新扫描，或运行 `--refresh-thumbnails`）；其他任何失败（显存不足、意外错误）保持 NULL，并会被下次运行再次选中。已存储的值（包括旧版本写入的中性 5.0）绝不会被替换：请先用 `--repair-neutral-iqa` 清除。见[补充画质模型](#补充画质模型) |
@@ -183,7 +183,7 @@ API 会将其呈现在 `/api/scan/status` 的 `progress` 字段以及 SSE 数据
 
 需要 `transformers`（约 3 GB VRAM）。在 CUDA 上，批大小由空闲显存推算（1024 px 下每张图片约 2.4 GiB，范围 1 至 8 张），遇到显存不足错误时减半，直至一张图片。如果某张照片的显著性仍然失败，则记录一条 ERROR 且不存入任何值：从未评分的照片保持 NULL（并在综合评分中按中性计算，与显著性功能出现之前扫描的照片一样），使用 `--recompute-saliency` 与 `--pass saliency` 时，已有显著性的照片保留其已存储的值（对该照片进行完整重新扫描，例如 `--force`，则会为其存入 NULL，与从未评分的照片相同），`--recompute-saliency` 会再次选中它。见[主体显著性维度](SCORING.md#主体显著性维度)。
 
-检测不到主体的照片，其主体清晰度、主体位置和背景分离度存为 NULL（自构图遍起，没有主体框时 `power_point_score` 也是如此），主体突出程度为 0.0，`subject_bbox` 为 NULL；旧版本存的是中性的 5.0。已有的行保留该 5.0，直到 `--recompute-saliency` 和 `--recompute-composition-cpu` 将其重写。`--recompute-saliency` 会选取每一张没有 `subject_bbox` 的照片，所以没有主体的照片每次运行都会被再次测量。NULL 指标在综合评分中仍按中性计分；参见 [SCORING.md](SCORING.md)。
+检测不到主体的照片，其主体清晰度、主体位置和背景分离度存为 NULL（自构图遍起，没有主体框时 `power_point_score` 也是如此），主体突出程度为 0.0，`subject_bbox` 为 NULL；旧版本存的是中性的 5.0。已有的行保留该 5.0，直到 `--recompute-saliency` 和 `--recompute-composition-cpu` 将其重写。`--recompute-saliency` 会选取 `subject_prominence` 从未存储过的照片——从未评分，或某次运行失败——以及 `subject_bbox` 列存在之前已评分的照片（突出程度为正但还没有主体框）；无主体的照片是最终结果，后续运行不会再次测量。NULL 指标在综合评分中仍按中性计分；参见 [SCORING.md](SCORING.md)。
 
 ### 标签模型
 
