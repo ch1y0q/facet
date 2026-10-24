@@ -119,6 +119,49 @@ describe('GalleryStore', () => {
     store = TestBed.inject(GalleryStore);
   });
 
+  describe('review refresh ownership', () => {
+    it('does not use another principal removed-photo cache for Undo', async () => {
+      store.filters.update(f => ({ ...f, review_status: 'undecided' }));
+      store.photos.set([makePhoto({ path: '/alice', is_kept: true })]);
+      apiGet.mockReturnValue(of(makePhotosResponse({ photos: [] })));
+      await store.refreshReviewResults();
+      authIdentity.set('bob');
+      apiPost.mockClear();
+      await store.restoreSnapshot(new Map([['/alice', { is_kept: false, is_rejected: false, is_favorite: false, star_rating: null }]]));
+      expect(apiPost.mock.calls.some(([url]) => url === '/photos/batch_review')).toBe(false);
+      expect(store.photos()).toEqual([]);
+    });
+    it.each([false, true])('discards old-principal refill/rebuild responses (rebuild=%s)', async rebuild => {
+      const pending = new Subject<PhotosResponse>();
+      apiGet.mockImplementation((url: string) => url === '/photos' ? pending : of({}));
+      store.filters.update(f => ({ ...f, review_status: 'undecided' }));
+      store.photos.set([makePhoto({ path: '/alice', is_kept: true })]);
+      const task = store.refreshReviewResults(rebuild);
+      authIdentity.set('bob'); // No load or sequence change.
+      store.photos.set([makePhoto({ path: '/bob' })]);
+      pending.next(makePhotosResponse({ photos: [makePhoto({ path: '/alice-private' })] }));
+      await task;
+      expect(store.photos().map(p => p.path)).toEqual(['/bob']);
+      expect(routerNavigate).not.toHaveBeenCalled();
+    });
+    it.each(['identity', 'scope'])('discards a rebuilt tail when %s changes without a new load', async change => {
+      const pending = new Subject<PhotosResponse>();
+      apiGet.mockImplementation((url: string, params: { page: number }) => url !== '/photos' ? of({}) : params.page === 1
+        ? of(makePhotosResponse({ photos: [makePhoto({ path: '/first' })], has_more: true })) : pending);
+      store.filters.update(f => ({ ...f, review_status: 'undecided', per_page: 1 }));
+      store.photos.set([makePhoto({ path: '/first' }), makePhoto({ path: '/second' })]);
+      const task = store.refreshReviewResults(true);
+      await vi.waitFor(() => expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({ page: 2 })));
+      if (change === 'identity') authIdentity.set('bob');
+      else store.filters.update(f => ({ ...f, path_prefix: '/new' }));
+      store.photos.set([makePhoto({ path: '/current' })]);
+      pending.next(makePhotosResponse({ photos: [makePhoto({ path: '/stale-tail' })] }));
+      await task;
+      expect(store.photos().map(p => p.path)).toEqual(['/current']);
+      expect(routerNavigate).not.toHaveBeenCalled();
+    });
+  });
+
   describe('review progress and browser resume', () => {
     beforeEach(() => localStorage.removeItem('facet_review_queues_v1'));
 
