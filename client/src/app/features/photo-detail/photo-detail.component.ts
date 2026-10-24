@@ -1366,15 +1366,31 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     });
   }
 
-  protected editCaptureDate(p: Photo): void {
-    const data = { paths: [p.path], count: 1, manuallySet: p.date_manually_set === 1 };
-    import('./capture-date-dialog.component').then(m => {
-      if (this.destroyRef.destroyed || this.photo()?.path !== p.path) return;
-      const ref = this.dialog.open(m.CaptureDateDialogComponent, { width: '95vw', maxWidth: '760px', data });
-      ref.afterClosed().subscribe((result: import('./capture-date-dialog.component').CaptureDateResult | undefined) => {
-        if (result !== undefined) this.applyConfirmed(p, result);
-      });
+  protected loadCaptureDateDialog() { return import('./capture-date-dialog.component'); }
+
+  protected async editCaptureDate(p: Photo): Promise<void> {
+    const owner = this.auth.status();
+    const identity = this.auth.identity();
+    const url = this.router.url;
+    let navigated = false;
+    let opened = false;
+    const navigation = this.router.events.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(event => {
+      if (event instanceof NavigationStart) navigated = true;
     });
+    const current = () => !navigated && !this.destroyRef.destroyed && this.auth.status() === owner
+      && this.auth.identity() === identity && this.auth.isEdition() && this.router.url === url && this.photo()?.path === p.path;
+    try {
+      const m = await this.loadCaptureDateDialog();
+      if (!current()) return;
+      const data = { paths: [p.path], count: 1, manuallySet: p.date_manually_set === 1 };
+      const ref = this.dialog.open(m.CaptureDateDialogComponent, { width: '95vw', maxWidth: '760px', data });
+      opened = true;
+      ref.afterClosed().pipe(takeUntilDestroyed(this.destroyRef), finalize(() => navigation.unsubscribe())).subscribe((result: import('./capture-date-dialog.component').CaptureDateResult | undefined) => {
+        if (current() && result !== undefined) this.applyConfirmed(p, result);
+      });
+    } finally {
+      if (!opened) navigation.unsubscribe();
+    }
   }
 
   protected loadGpsDialog() { return import('./gps-edit-dialog.component'); }
