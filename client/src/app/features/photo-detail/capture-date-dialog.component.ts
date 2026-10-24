@@ -1,4 +1,7 @@
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { NavigationStart, Router } from '@angular/router';
+import { AuthService } from '../../core/services/auth.service';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
@@ -62,6 +65,12 @@ export class CaptureDateDialogComponent {
   private readonly store = inject(GalleryStore);
   private readonly dialog = inject(MatDialogRef<CaptureDateDialogComponent>);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly auth = inject(AuthService);
+  private readonly router = inject(Router);
+  private readonly owner = this.auth.status();
+  private readonly url = this.router.url;
+  private closing = false;
+  private navigated = false;
   private readonly target = this.data.filters
     ? { filters: structuredClone(this.data.filters), exclude: [...(this.data.exclude ?? [])] }
     : { photo_paths: [...this.data.paths], exclude: [...(this.data.exclude ?? [])] };
@@ -71,46 +80,68 @@ export class CaptureDateDialogComponent {
   readonly result = signal<Preview | null>(null);
   readonly valid = computed(() => this.data.count <= 1000 && this.offset() !== null && Number.isInteger(this.offset()) && this.offset() !== 0 && Math.abs(this.offset()!) <= 31622400);
 
+  constructor() {
+    this.dialog.beforeClosed().pipe(takeUntilDestroyed()).subscribe(() => { this.closing = true; this.result.set(null); });
+    this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
+      if (event instanceof NavigationStart) { this.navigated = true; this.invalidate(); }
+    });
+    effect(() => {
+      if (this.auth.status() !== this.owner || !this.auth.isEdition()) this.invalidate();
+    });
+  }
+
+  private invalidate(): void {
+    this.closing = true;
+    this.result.set(null);
+    this.dialog.close();
+  }
+
+  private current(): boolean {
+    return !this.closing && !this.navigated && !this.destroyRef.destroyed && this.auth.status() === this.owner && this.auth.isEdition() && this.router.url === this.url;
+  }
+
   setOffset(value: number | null): void { this.offset.set(value); this.result.set(null); }
 
   async preview(): Promise<void> {
-    if (this.busy() || !this.valid()) return;
+    if (!this.current() || this.busy() || !this.valid()) return;
     const offset = this.offset();
     this.busy.set(true); this.failed.set(false); this.result.set(null);
     try {
       const result = await firstValueFrom(this.api.post<Preview>('/photos/capture_date/preview', { ...this.target, offset_seconds: offset }));
-      if (!this.destroyRef.destroyed && this.offset() === offset) this.result.set(result);
-    } catch { this.failed.set(true); }
-    finally { this.busy.set(false); }
+      if (this.current() && this.offset() === offset) this.result.set(result);
+    } catch { if (this.current()) this.failed.set(true); }
+    finally { if (this.current()) this.busy.set(false); }
   }
 
   async apply(): Promise<void> {
     const preview = this.result();
-    if (this.busy() || !preview?.changed || !this.valid()) return;
+    if (!this.current() || this.busy() || !preview?.changed || !this.valid()) return;
     this.busy.set(true); this.failed.set(false); this.dialog.disableClose = true;
     try {
       await firstValueFrom(this.api.post<Preview>('/photos/capture_date/apply', { ...this.target, offset_seconds: this.offset(), preview_token: preview.preview_token }));
+      if (!this.current()) return;
       const sample = this.data.paths.length === 1 && !this.data.filters ? preview.samples.find(p => p.path === this.data.paths[0]) : undefined;
       const result = sample ? { date_taken: sample.new_date, date_manually_set: 1 } : undefined;
       if (sample && result) {
         this.store.patchPhoto(sample.path, result);
       }
       void this.store.refreshPaths(null);
-      if (!this.destroyRef.destroyed) this.dialog.close(result);
-    } catch { this.failed.set(true); this.result.set(null); }
-    finally { this.busy.set(false); this.dialog.disableClose = false; }
+      if (this.current()) this.dialog.close(result);
+    } catch { if (this.current()) { this.failed.set(true); this.result.set(null); } }
+    finally { if (this.current()) { this.busy.set(false); this.dialog.disableClose = false; } }
   }
 
   async useFileDate(): Promise<void> {
-    if (this.busy() || !this.data.manuallySet || this.data.paths.length !== 1 || this.data.filters) return;
+    if (!this.current() || this.busy() || !this.data.manuallySet || this.data.paths.length !== 1 || this.data.filters) return;
     const path = this.data.paths[0];
     this.busy.set(true); this.failed.set(false); this.dialog.disableClose = true;
     try {
       const result = await firstValueFrom(this.api.delete<CaptureDateResult>(`/photo/capture_date?path=${encodeURIComponent(path)}`));
+      if (!this.current()) return;
       this.store.patchPhoto(path, result);
       void this.store.refreshPaths(null);
-      if (!this.destroyRef.destroyed) this.dialog.close(result);
-    } catch { this.failed.set(true); }
-    finally { this.busy.set(false); this.dialog.disableClose = false; }
+      if (this.current()) this.dialog.close(result);
+    } catch { if (this.current()) this.failed.set(true); }
+    finally { if (this.current()) { this.busy.set(false); this.dialog.disableClose = false; } }
   }
 }

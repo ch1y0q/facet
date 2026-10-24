@@ -2015,6 +2015,9 @@ export class GalleryComponent implements OnInit, OnDestroy {
   }
 
   async openCaptureDateDialog(): Promise<void> {
+    if (!this.auth.isEdition()) return;
+    const owner = this.auth.status();
+    const url = this.router.url;
     const viewScoped = this.viewScoped();
     const data = {
       paths: [...this.selectedPaths()],
@@ -2023,9 +2026,13 @@ export class GalleryComponent implements OnInit, OnDestroy {
       count: this.selectionCount(),
     };
     if (!viewScoped && !data.paths.length) return;
-    const { CaptureDateDialogComponent } = await import('../photo-detail/capture-date-dialog.component');
-    if (this.destroyRef.destroyed) return;
-    this.dialog.open(CaptureDateDialogComponent, { width: '95vw', maxWidth: '760px', data });
+    let navigated = false;
+    const navigation = this.router.events.subscribe(event => { if (event instanceof NavigationStart) navigated = true; });
+    try {
+      const { CaptureDateDialogComponent } = await import('../photo-detail/capture-date-dialog.component');
+      if (this.destroyRef.destroyed || navigated || this.router.url !== url || this.auth.status() !== owner || !this.auth.isEdition()) return;
+      this.dialog.open(CaptureDateDialogComponent, { width: '95vw', maxWidth: '760px', data });
+    } finally { navigation.unsubscribe(); }
   }
 
   /** Bulk add/remove of one manual tag. The dialog owns the request; the list is
