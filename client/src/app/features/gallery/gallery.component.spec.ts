@@ -150,6 +150,7 @@ describe('GalleryComponent', () => {
 
     mockAuth = {
       identity: vi.fn(() => '0|'),
+      status: signal({ user_id: 'alice', edition_authenticated: true }),
       isEdition: vi.fn(() => false),
       downloadProfiles: vi.fn(() => []),
       hasFeature: vi.fn(() => false),
@@ -1908,6 +1909,21 @@ describe('GalleryComponent', () => {
   });
 
   describe('capture-date targets', () => {
+    beforeEach(() => { mockAuth['isEdition'] = vi.fn(() => true); });
+    it.each(['identity', 'edition', 'navigation', 'destroy'])('does not open after lazy date launch loses %s', async loss => {
+      mockStore.selectedPaths.set(new Set(['/a'])); mockStore.selectionCount.set(1);
+      const dialog = TestBed.inject(MatDialog);
+      const task = component.openCaptureDateDialog();
+      if (loss === 'identity') (mockAuth['status'] as ReturnType<typeof signal>).set({ user_id: 'bob' });
+      if (loss === 'edition') mockAuth['isEdition'] = vi.fn(() => false);
+      if (loss === 'navigation') {
+        (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(1, '/other'));
+        (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(2, '/'));
+      }
+      if (loss === 'destroy') TestBed.resetTestingModule();
+      await task;
+      expect(dialog.open).not.toHaveBeenCalled();
+    });
     it('captures scope and exclusions before lazy loading the dialog', async () => {
       mockStore.viewScopeSelected.set(true);
       mockStore.excludedPaths.set(new Set(['/skip.jpg']));
