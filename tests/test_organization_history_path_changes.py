@@ -78,6 +78,8 @@ def _legacy_revisions(filename):
 def test_upgrade_preserves_revisions_history_and_is_idempotent(tmp_path):
     filename = str(tmp_path / 'legacy.db')
     revisions, entries = _legacy_revisions(filename)
+    with sqlite3.connect(filename) as conn:
+        clock = conn.execute('SELECT revision FROM organization_clock').fetchone()
     init_database(filename)
     init_database(filename)
     with sqlite3.connect(filename) as conn:
@@ -85,7 +87,9 @@ def test_upgrade_preserves_revisions_history_and_is_idempotent(tmp_path):
         assert conn.execute('PRAGMA foreign_key_list(organization_revisions)').fetchone()[5] == 'CASCADE'
         assert conn.execute('SELECT * FROM organization_revisions').fetchall() == revisions
         assert conn.execute('SELECT * FROM organization_history').fetchall() == entries
+        assert conn.execute('SELECT revision FROM organization_clock').fetchone() == clock
         conn.execute("UPDATE photos SET path='b' WHERE path='a'")
+        assert conn.execute("SELECT min(revision) FROM organization_revisions WHERE path='b'").fetchone()[0] > clock[0]
         assert not conn.execute('PRAGMA foreign_key_check').fetchall()
 
 
@@ -113,3 +117,11 @@ def test_upgrade_discards_only_orphaned_revision_cache(tmp_path):
     with sqlite3.connect(filename) as conn:
         assert conn.execute('SELECT * FROM organization_revisions').fetchall() == revisions
         assert conn.execute('SELECT * FROM organization_history').fetchall() == entries
+
+
+def test_current_schema_startup_does_not_need_writer_lock(tmp_path):
+    filename = str(tmp_path / 'history.db')
+    init_database(filename)
+    with sqlite3.connect(filename) as writer, sqlite3.connect(filename, timeout=0.01) as reader:
+        writer.execute('BEGIN IMMEDIATE')
+        init_schema(reader)
