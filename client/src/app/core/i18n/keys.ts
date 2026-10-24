@@ -1723,6 +1723,7 @@ export const I18N = {
     no_faces: "persons.no_faces",
     split_done: "persons.split_done",
     split_error: "persons.split_error",
+    empty_hint: "persons.empty_hint",
   },
   person_selector: {
     create_new: "person_selector.create_new",

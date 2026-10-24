@@ -1708,7 +1708,8 @@
     "split_select_face": "Select face {index}",
     "no_faces": "No faces found for this person",
     "split_done": "Person split",
-    "split_error": "Failed to split person"
+    "split_error": "Failed to split person",
+    "empty_hint": "People come from faces you assign on a photo page (edition mode). Open any photo with faces and pick Assign person to create the first one."
   },
   "person_selector": {
     "create_new": "Create new person"

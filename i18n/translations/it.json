@@ -1708,7 +1708,8 @@
     "split_select_face": "Seleziona volto {index}",
     "no_faces": "Nessun volto trovato per questa persona",
     "split_done": "Persona divisa",
-    "split_error": "Impossibile dividere la persona"
+    "split_error": "Impossibile dividere la persona",
+    "empty_hint": "Le persone provengono dai volti che assegni nella pagina della foto (modalità modifica). Apri una foto con volti e scegli Assegna a una persona per creare la prima."
   },
   "person_selector": {
     "create_new": "Crea nuova persona"

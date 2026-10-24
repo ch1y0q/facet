@@ -1708,7 +1708,8 @@
     "split_select_face": "Sélectionner le visage {index}",
     "no_faces": "Aucun visage trouvé pour cette personne",
     "split_done": "Personne séparée",
-    "split_error": "Échec de la séparation de la personne"
+    "split_error": "Échec de la séparation de la personne",
+    "empty_hint": "Les personnes viennent des visages que vous attribuez sur la page d'une photo (mode édition). Ouvrez une photo avec des visages et choisissez Attribuer à une personne pour créer la première."
   },
   "person_selector": {
     "create_new": "Créer une nouvelle personne"

@@ -1708,7 +1708,8 @@
     "split_select_face": "选择第 {index} 张人脸",
     "no_faces": "未找到此人物的人脸",
     "split_done": "人物已拆分",
-    "split_error": "拆分人物失败"
+    "split_error": "拆分人物失败",
+    "empty_hint": "人物来自照片详情页分配的人脸（编辑模式）。打开任何带人脸的照片，点「将人脸分配给人物」即可创建第一个人物。"
   },
   "person_selector": {
     "create_new": "创建新人物"

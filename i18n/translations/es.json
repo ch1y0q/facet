@@ -1708,7 +1708,8 @@
     "split_select_face": "Seleccionar rostro {index}",
     "no_faces": "No se encontraron caras para esta persona",
     "split_done": "Persona separada",
-    "split_error": "No se pudo separar la persona"
+    "split_error": "No se pudo separar la persona",
+    "empty_hint": "Las personas provienen de caras que asignas en la página de la foto (modo edición). Abre cualquier foto con caras y elige Asignar persona para crear la primera."
   },
   "person_selector": {
     "create_new": "Crear nueva persona"

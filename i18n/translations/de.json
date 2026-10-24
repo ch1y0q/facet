@@ -1708,7 +1708,8 @@
     "split_select_face": "Gesicht {index} auswählen",
     "no_faces": "Keine Gesichter für diese Person gefunden",
     "split_done": "Person aufgeteilt",
-    "split_error": "Person konnte nicht aufgeteilt werden"
+    "split_error": "Person konnte nicht aufgeteilt werden",
+    "empty_hint": "Personen entstehen aus Gesichtern, die du auf einer Fotoseite zuweist (Bearbeitungsmodus). Öffne ein Foto mit Gesichtern und wähle „Person zuweisen“, um die erste anzulegen."
   },
   "person_selector": {
     "create_new": "Neue Person erstellen"
