@@ -1980,8 +1980,7 @@ python facet.py --recompute-tags-vlm   # 用 VLM 标签模型重新打标签
       "mmap_size_mb": 0,
       "cache_size_mb": 4,
       "pool_size": 2,
-      "thumbnail_cache_size": 200,
-      "face_cache_size": 50
+      "thumbnail_cache_size": 200
     }
   }
 }
@@ -1993,7 +1992,6 @@ python facet.py --recompute-tags-vlm   # 用 VLM 标签模型重新打标签
 | `cache_size_mb` | *（取全局值）* | 查看器连接的 SQLite 缓存大小覆盖值 |
 | `pool_size` | `5` | 连接池大小（内存较小的系统请调低） |
 | `thumbnail_cache_size` | `2000` | 内存中缩略图缩放缓存的最大条目数 |
-| `face_cache_size` | `500` | 内存中人脸缩略图缓存的最大条目数 |
 
 未设置时，查看器使用全局的 `performance` 取值。推荐的 NAS 设置见[部署](DEPLOYMENT.md)。
 

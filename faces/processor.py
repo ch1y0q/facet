@@ -237,10 +237,11 @@ class FaceProcessor:
         with get_connection(self.db_path, row_factory=False) as conn:
             for result in results:
                 if result['type'] == 'extract':
-                    for face in result['face_details']:
-                        if face.get('embedding'):
-                            conn.execute(FACES_UPSERT_SQL,
-                                         face_upsert_row(result['photo_path'], face, embedding_model))
+                    from db.manual_faces import without_manual_overlaps
+                    records = [face_upsert_row(result['photo_path'], face, embedding_model)
+                               for face in result['face_details'] if face.get('embedding')]
+                    records = without_manual_overlaps(conn, result['photo_path'], records)
+                    conn.executemany(FACES_UPSERT_SQL, records)
                 elif result['type'] == 'refill':
                     conn.execute("""
                         UPDATE faces SET face_thumbnail = ? WHERE id = ?

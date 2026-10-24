@@ -2933,6 +2933,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/photo/manual-face-frame": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Manual Face Frame */
+        get: operations["manual_face_frame_api_photo_manual_face_frame_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/photo/manual-faces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Manual Faces */
+        get: operations["list_manual_faces_api_photo_manual_faces_get"];
+        put?: never;
+        /** Create Manual Face */
+        post: operations["create_manual_face_api_photo_manual_faces_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/photo/manual-faces/{face_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Manual Face */
+        put: operations["update_manual_face_api_photo_manual_faces__face_id__put"];
+        post?: never;
+        /** Delete Manual Face */
+        delete: operations["delete_manual_face_api_photo_manual_faces__face_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/photo/manual_tags": {
         parameters: {
             query?: never;
@@ -4511,7 +4564,7 @@ export interface paths {
         };
         /**
          * Person Thumbnail
-         * @description Return stored face thumbnail for a person.
+         * @description Return a current visible face, preferring the person's chosen representative.
          */
         get: operations["person_thumbnail_person_thumbnail__person_id__get"];
         put?: never;
@@ -5974,6 +6027,88 @@ export interface components {
             user?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** ManualFaceCreate */
+        ManualFaceCreate: {
+            /** Bbox */
+            bbox: [
+                number,
+                number,
+                number,
+                number
+            ];
+            /**
+             * Client Id
+             * Format: uuid
+             */
+            client_id: string;
+            /** Frame Token */
+            frame_token: string;
+            /** New Person Name */
+            new_person_name?: string | null;
+            /** Path */
+            path: string;
+            /** Person Id */
+            person_id?: number | null;
+        };
+        /** ManualFaceDelete */
+        ManualFaceDelete: {
+            /** Success */
+            success: boolean;
+        };
+        /** ManualFaceFrame */
+        ManualFaceFrame: {
+            /** Frame Token */
+            frame_token: string;
+            /** Height */
+            height: number;
+            /** Image Base64 */
+            image_base64: string;
+            /** Width */
+            width: number;
+        };
+        /** ManualFaceRegion */
+        ManualFaceRegion: {
+            /** Bbox */
+            bbox: [
+                number,
+                number,
+                number,
+                number
+            ];
+            /** Id */
+            id: number;
+            /** Manual Key */
+            manual_key: string;
+            /** Person Id */
+            person_id: number | null;
+            /** Person Name */
+            person_name: string | null;
+            /** Source Changed */
+            source_changed: boolean;
+        };
+        /** ManualFaceWrite */
+        ManualFaceWrite: {
+            /** Bbox */
+            bbox: [
+                number,
+                number,
+                number,
+                number
+            ];
+            /** Frame Token */
+            frame_token: string;
+            /** New Person Name */
+            new_person_name?: string | null;
+            /** Path */
+            path: string;
+            /** Person Id */
+            person_id?: number | null;
+        };
+        /** ManualFacesResponse */
+        ManualFacesResponse: {
+            /** Regions */
+            regions: components["schemas"]["ManualFaceRegion"][];
         };
         /** ManualTagDeleteResponse */
         ManualTagDeleteResponse: {
@@ -12635,6 +12770,169 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    manual_face_frame_api_photo_manual_face_frame_get: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualFaceFrame"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_manual_faces_api_photo_manual_faces_get: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualFacesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_manual_face_api_photo_manual_faces_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualFaceCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualFaceRegion"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_manual_face_api_photo_manual_faces__face_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                face_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualFaceWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualFaceRegion"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_manual_face_api_photo_manual_faces__face_id__delete: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path: {
+                face_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualFaceDelete"];
                 };
             };
             /** @description Validation Error */

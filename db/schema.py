@@ -242,7 +242,16 @@ FACES_COLUMNS = [
     # silently mix spaces. The constant default backfills existing rows (all
     # ArcFace/buffalo_l) on migration and tags new inserts with no code change.
     ('embedding_model', f"TEXT DEFAULT '{ARCFACE_MODEL}'"),
+    ('is_manual', 'INTEGER NOT NULL DEFAULT 0'),
+    ('manual_key', 'TEXT'),
+    ('manual_source', 'TEXT'),
+    ('manual_width', 'INTEGER'),
+    ('manual_height', 'INTEGER'),
 ]
+
+# UUIDs are never reused. Explicit deletion survives synchronization with an
+# older active copy, and must outlive deletion of the original photo itself.
+MANUAL_FACE_DELETIONS_COLUMNS = [('manual_key', 'TEXT PRIMARY KEY NOT NULL')]
 
 # Single shared faces upsert used by every scan-time writer (processing/scorer.py
 # single + batch, faces/processor.py). INSERT OR REPLACE regenerates the whole
@@ -311,6 +320,7 @@ PERSONS_COLUMNS = [
     # else gives a fresh DB and an upgraded one different column orders, and the
     # positional INSERT ... SELECT * between them would shift every value.
     ('centroid_model', 'TEXT'),
+    ('person_key', 'TEXT'),
 ]
 
 
@@ -822,6 +832,13 @@ USER_PREFERENCES_INDEXES = [
     ('idx_user_prefs_rating', 'user_preferences', 'user_id, star_rating'),
 ]
 
+# Identity constraints share the registry used by schema diagnostics. Manual
+# UUIDs identify annotations only; automatic rows do not own this namespace.
+IDENTITY_INDEXES = [
+    ('idx_person_key', 'persons', 'person_key'),
+    ('idx_manual_face_key', 'faces', 'manual_key'),
+]
+
 # Agent (MCP) bearer tokens. A side table, never a column on `photos`. Only the
 # SHA-256 of the token is stored (plus a display prefix); `user_gen` and
 # `edition_gen` snapshot the owner's credentials at mint (the password hash /
@@ -882,6 +899,7 @@ ALL_INDEX_GROUPS = [
     RECOMMENDATION_HISTORY_INDEXES,
     ALBUM_INDEXES,
     USER_PREFERENCES_INDEXES,
+    IDENTITY_INDEXES,
     MCP_TOKENS_INDEXES,
 ]
 
@@ -1060,6 +1078,7 @@ def _migrate_add_missing_columns(conn, table_name, columns):
 _MIGRATED_TABLES = [
     ('photos', PHOTOS_COLUMNS),
     ('faces', FACES_COLUMNS),
+    ('manual_face_deletions', MANUAL_FACE_DELETIONS_COLUMNS),
     ('persons', PERSONS_COLUMNS),
     ('photo_tags', PHOTO_TAGS_COLUMNS),
     ('photo_manual_tags', PHOTO_MANUAL_TAGS_COLUMNS),
@@ -1240,6 +1259,7 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
             FACES_COLUMNS,
             constraints=['UNIQUE(photo_path, face_index)']
         ))
+        conn.execute(_build_create_table_sql('manual_face_deletions', MANUAL_FACE_DELETIONS_COLUMNS))
 
         # Create persons table
         conn.execute(_build_create_table_sql('persons', PERSONS_COLUMNS))
@@ -1386,6 +1406,19 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
         for table_name, columns in _MIGRATED_TABLES:
             _migrate_add_missing_columns(conn, table_name, columns)
 
+        # Shared pre-upgrade copies share numeric identities. Every NEW person
+        # gets a random key, including inserts by scanners and older callers.
+        if conn.execute('SELECT 1 FROM persons WHERE person_key IS NULL LIMIT 1').fetchone():
+            conn.execute("UPDATE persons SET person_key='legacy:' || id WHERE person_key IS NULL")
+        old_manual_index = next((r for r in conn.execute('PRAGMA index_list(faces)')
+                                 if r[1] == 'idx_manual_face_key'), None)
+        if old_manual_index is not None and not old_manual_index[4]:
+            conn.execute('DROP INDEX idx_manual_face_key')
+        conn.execute("""CREATE TRIGGER IF NOT EXISTS persons_assign_key AFTER INSERT ON persons
+            WHEN NEW.person_key IS NULL BEGIN
+              UPDATE persons SET person_key=lower(hex(randomblob(16))) WHERE id=NEW.id;
+            END""")
+
         # A centroid that predates persons.centroid_model was averaged from ArcFace
         # embeddings (the only space that existed), so tag it. After this a NULL
         # centroid_model means only "no centroid yet".
@@ -1438,8 +1471,10 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
         # the registry and is built after the migration commits (create_photo_indexes).
         for group in ALL_INDEX_GROUPS[1:]:
             for idx_name, table, column_expr in group:
+                unique = 'UNIQUE ' if group is IDENTITY_INDEXES else ''
+                predicate = ' WHERE is_manual=1' if idx_name == 'idx_manual_face_key' else ''
                 conn.execute(
-                    f'CREATE INDEX IF NOT EXISTS {idx_name} ON {table}({column_expr})'
+                    f'CREATE {unique}INDEX IF NOT EXISTS {idx_name} ON {table}({column_expr}){predicate}'
                 )
 
         # Create FTS5 full-text search table and sync triggers. If a previous

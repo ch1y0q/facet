@@ -436,6 +436,24 @@ Access via header button or `/persons`:
 | **Split** | Open a person's faces, select a subset, split them into a new person |
 | **Hide** | Hide a cluster from the persons list, filters, and merge suggestions (reversible) |
 
+### Mark a missed face
+
+In edition mode, open a photo and choose **Mark a missing face** even when no faces were detected. Draw a rectangle around the face, or adjust its coordinates with the labeled fields. Choose an existing person or enter a new name, then **Save**. Drawing and choosing a name only preview the change; Cancel saves nothing.
+
+Deleted manual marks stay removed during later synchronization, even when an older copy still contains them. Scanner-side person renames and visibility changes follow the stable person identity into the viewer while manual-face links stay intact.
+
+Face and person thumbnails are checked against your current photo access before reuse. Person avatars use a visible appearance, and edited manual crops refresh without reusing old public image caches. The legacy `viewer.performance.face_cache_size` setting is ignored and can be removed from custom configuration.
+
+Use the same editor to adjust, reassign or remove a manually marked face. Manual marks remain linked to their person through rescans and viewer synchronization; they do not create recognition training data or change face-quality scores. The editor loads an upright preview from the original image so RAW and rotated-photo coordinates match the saved crop. Without the original, existing manual marks can still be listed and removed, but drawing is unavailable. A mark that cannot be verified is shown as **Needs review**.
+
+New marks identify the picture by its upright decoded frame size and an 8x8 grayscale signature of its pixels, matched within a small tolerance. Metadata writes (including Facet embeds), remounts and other hosts keep a mark current; a replaced picture flags it, but a subtle retouch or a small re-crop or straighten that keeps the frame size may go undetected. The editor reuses one decoded frame of up to 128 MiB and small fingerprint records; larger frames may need another decode. The limit is fixed.
+
+Marks from earlier preview builds remain saved and need a one-time review. Open the original and deliberately edit/save the mark using a fresh editor frame to record the new identity. Old marks keep their previous identity until that save.
+
+Normal incremental viewer synchronization preserves manual marks and removal decisions. An explicit forced viewer database rebuild replaces viewer-only edits with the source database; export or back up those edits before rebuilding.
+
+The operation stores changes in the library database and leaves original files and sidecars unchanged. The editor keeps the image fitted while you draw.
+
 ## Scan Trigger
 
 Scan is offered when **both** of these hold: `viewer.features.show_scan_button` is `true` (it ships **`false`** in `scoring_config.json`, opt-in) **and** the caller has scan access — the `superadmin` role in multi-user mode, or an edition-authenticated session on a locked single-user install (a non-empty `viewer.edition_password`) in single-user mode. The gallery then offers it from two places, and both open the scan launcher dialog (`ScanLauncherComponent`): a **Scan photos to get started** button on the empty-gallery state, and a **Scan for new photos** icon button in the header, right after the **Sort** selector and highlighted with a coloured background (in the bottom bar after its Sort selector on small screens). On an open single-user install (`viewer.edition_password` empty, the shipped default) all four scan routes 403 for every caller, including one holding a valid edition-generation JWT, and neither entry point is ever rendered — spawning a scan subprocess must not be reachable anonymously. The exception is `viewer.trusted_local_editing`: a trusted-local browser session, and a local assistant holding a Full-editing token, may scan without `show_scan_button` and without an edition password.

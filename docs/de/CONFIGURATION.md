@@ -2022,8 +2022,7 @@ Eine vertrauenswürdige Anfrage hat volle Editionsrechte: jede Route, die sonst 
       "mmap_size_mb": 0,
       "cache_size_mb": 4,
       "pool_size": 2,
-      "thumbnail_cache_size": 200,
-      "face_cache_size": 50
+      "thumbnail_cache_size": 200
     }
   }
 }
@@ -2035,7 +2034,6 @@ Eine vertrauenswürdige Anfrage hat volle Editionsrechte: jede Route, die sonst 
 | `cache_size_mb` | *(global)* | Überschreibung der SQLite-Cache-Größe für Viewer-Verbindungen |
 | `pool_size` | `5` | Größe des Verbindungspools (für speicherarme Systeme reduzieren) |
 | `thumbnail_cache_size` | `2000` | Maximale Einträge im In-Memory-Cache für die Thumbnail-Skalierung |
-| `face_cache_size` | `500` | Maximale Einträge im In-Memory-Cache für Gesichts-Thumbnails |
 
 Wenn nicht gesetzt, verwendet der Viewer die globalen `performance`-Werte. Siehe [Deployment](DEPLOYMENT.md) für empfohlene NAS-Einstellungen.
 

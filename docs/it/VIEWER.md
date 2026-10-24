@@ -368,6 +368,24 @@ Accessibile tramite il pulsante nell'intestazione o `/persons`:
 | **Dividi** | Apri i volti di una persona, seleziona un sottoinsieme, dividili in una nuova persona |
 | **Nascondi** | Nascondi un cluster dall'elenco delle persone, dai filtri e dai suggerimenti di unione (reversibile) |
 
+### Segnare un volto non rilevato
+
+In modalità modifica, apri una foto e scegli **Segna un volto mancante**, anche se non sono stati rilevati volti. Disegna un rettangolo o modifica le coordinate nei campi etichettati. Scegli una persona esistente o inserisci un nuovo nome, poi **Salva**. Disegno e nome sono solo un’anteprima finché non salvi; Annulla non cambia nulla.
+
+I segni manuali rimossi non ricompaiono durante le sincronizzazioni successive, anche se sono ancora presenti in una vecchia copia. Le modifiche di nome e visibilità effettuate sullo scanner vengono trasferite al visualizzatore tramite l’identità stabile della persona, mantenendo i collegamenti dei volti manuali.
+
+Le miniature di volti e persone verificano l’accesso attuale alle foto prima del riutilizzo. Gli avatar mostrano una presenza visibile e i ritagli manuali modificati non riutilizzano vecchie immagini da cache pubbliche. La vecchia impostazione `viewer.performance.face_cache_size` viene ignorata e può essere rimossa dalla configurazione personalizzata.
+
+Nello stesso editor puoi modificare, riassegnare o rimuovere i segni manuali. Restano associati alla persona durante nuove scansioni e sincronizzazioni del visualizzatore; non addestrano il riconoscimento e non cambiano i punteggi di qualità del volto. L’anteprima orientata proviene dall’originale, così RAW e foto ruotate mantengono coordinate corrette. Senza originale puoi elencare e rimuovere i segni esistenti, ma non disegnarne altri. Un segno che non può essere verificato mostra **Da verificare**.
+
+I nuovi segni identificano l’immagine tramite la dimensione del fotogramma decodificato con l’orientamento corretto e una firma in scala di grigi 8x8 dei suoi pixel, confrontata con una piccola tolleranza. Le scritture dei metadati (comprese le incorporazioni di Facet), un nuovo montaggio del volume e altri computer mantengono valido un segno; un’immagine sostituita lo segnala, ma un ritocco sottile o un piccolo ritaglio o raddrizzamento che conserva la dimensione del fotogramma può passare inosservato. L’editor riutilizza un fotogramma decodificato fino a 128 MiB e piccoli record delle impronte; i fotogrammi più grandi possono richiedere un’altra decodifica. Il limite è fisso.
+
+I segni delle precedenti versioni di anteprima restano salvati e richiedono una verifica una tantum. Apri l’originale e modifica/salva intenzionalmente il segno con una nuova anteprima dell’editor per registrare la nuova identità. I vecchi segni conservano l’identità precedente fino a quel salvataggio.
+
+Le modifiche sono salvate nel database della libreria senza cambiare originali o file sidecar. L’immagine resta adattata all’editor durante il disegno.
+
+La normale sincronizzazione incrementale conserva i segni manuali e le eliminazioni. Una ricostruzione forzata del database del visualizzatore sostituisce le modifiche presenti solo nel visualizzatore con il database sorgente; esporta o salva tali modifiche prima di ricostruirlo.
+
 ## Avvio scansione
 
 La scansione viene proposta quando valgono **entrambe** queste condizioni: `viewer.features.show_scan_button` è `true` (viene fornito su **`false`** in `scoring_config.json`, opt-in) **e** chi chiama ha l'accesso alla scansione — ruolo `superadmin` in modalità multiutente, oppure una sessione autenticata in modalità di modifica su un'installazione a utente singolo bloccata (un `viewer.edition_password` non vuoto) in modalità utente singolo. La galleria la offre allora in due punti, che aprono entrambi la finestra di avvio della scansione (`ScanLauncherComponent`): un pulsante **Scansiona le foto per iniziare** nello stato di galleria vuota e un pulsante a icona **Scansiona nuove foto** nell'intestazione, subito dopo il selettore **Ordina** ed evidenziato con uno sfondo colorato (nella barra inferiore, dopo il suo selettore di ordinamento, sugli schermi piccoli). Su un'installazione a utente singolo aperta (`viewer.edition_password` vuota, il valore predefinito di fabbrica) tutte e quattro le rotte di scansione restituiscono 403 per qualsiasi chiamante, incluso chi possiede un JWT di generazione della modifica valido, e nessuno dei due punti di accesso viene mai mostrato — l'avvio di un sottoprocesso di scansione non deve essere raggiungibile in modo anonimo. L'eccezione è `viewer.trusted_local_editing`: una sessione browser locale attendibile, e un assistente locale con un token di modifica completa, possono avviare la scansione senza `show_scan_button` e senza password di modifica.

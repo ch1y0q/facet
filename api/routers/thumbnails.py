@@ -40,33 +40,6 @@ _RENDER_WAIT_SECONDS = 5
 _FALLBACK_MAX_AGE = 60
 
 
-def _face_join_visible(column: str, value: int, user: Optional[CurrentUser]) -> bool:
-    """True when a ``faces`` row matching ``{column} = value`` belongs to a photo the caller may see.
-
-    ``column`` is a caller-supplied column reference (e.g. ``'f.id'``), never user input.
-    """
-    vis_sql, vis_params = get_visibility_clause(
-        user.user_id if user else None, table_alias='p'
-    )
-    with get_db() as conn:
-        row = conn.execute(
-            f"SELECT 1 FROM faces f JOIN photos p ON p.path = f.photo_path "
-            f"WHERE {column} = ? AND {vis_sql} LIMIT 1",
-            [value, *vis_params],
-        ).fetchone()
-    return row is not None
-
-
-def _face_visible(face_id: int, user: Optional[CurrentUser]) -> bool:
-    """True when ``face_id`` belongs to a photo the caller may see."""
-    return _face_join_visible('f.id', face_id, user)
-
-
-def _person_visible(person_id: int, user: Optional[CurrentUser]) -> bool:
-    """True when ``person_id`` has at least one face in a photo the caller may see."""
-    return _face_join_visible('f.person_id', person_id, user)
-
-
 def _cached_image_response(image_bytes: bytes, request: Request,
                            max_age: int = 31536000) -> Response:
     """Build a cached JPEG response with ETag and conditional 304."""
@@ -81,6 +54,16 @@ def _cached_image_response(image_bytes: bytes, request: Request,
             'ETag': etag,
         }
     )
+
+
+def _private_crop_response(image_bytes: bytes, request: Request) -> Response:
+    """Revalidate mutable private crops only after the caller's visibility check."""
+    etag = hashlib.md5(image_bytes).hexdigest()
+    headers = {'Cache-Control': 'private, no-cache, must-revalidate',
+               'Vary': 'Authorization, Cookie', 'ETag': etag}
+    if request.headers.get('if-none-match') == etag:
+        return Response(status_code=304, headers=headers)
+    return Response(content=image_bytes, media_type='image/jpeg', headers=headers)
 
 
 def _get_image_jpeg_quality() -> int:
@@ -248,44 +231,16 @@ def get_thumbnail(
     return _cached_image_response(row['thumbnail'], request)
 
 
-_face_cache_size = VIEWER_CONFIG.get('performance', {}).get('face_cache_size', 500)
-
-
-@lru_cache(maxsize=_face_cache_size)
-def _get_face_thumbnail_data(face_id: int):
-    """Get face thumbnail bytes with LRU caching."""
+def _render_face_crop(thumbnail, bbox, padding_ratio, min_size, output_size, jpeg_quality):
+    """Render legacy rows missing a stored face crop from their current inputs."""
     from PIL import Image
 
-    conn = get_db_connection()
     try:
-        face = conn.execute("""
-            SELECT f.photo_path, f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2,
-                   f.face_thumbnail, p.thumbnail
-            FROM faces f
-            JOIN photos p ON p.path = f.photo_path
-            WHERE f.id = ?
-        """, (face_id,)).fetchone()
-    finally:
-        conn.close()
-
-    if not face:
-        return None, None
-
-    if face['face_thumbnail']:
-        etag = hashlib.md5(face['face_thumbnail']).hexdigest()
-        return face['face_thumbnail'], etag
-
-    if not face['thumbnail']:
-        return None, None
-
-    try:
-        bbox_x1, bbox_y1, bbox_x2, bbox_y2 = face['bbox_x1'], face['bbox_y1'], face['bbox_x2'], face['bbox_y2']
+        bbox_x1, bbox_y1, bbox_x2, bbox_y2 = bbox
         if bbox_x1 is None or bbox_x2 is None:
-            return None, None
+            return None
 
-        etag = hashlib.md5(f"{face_id}:{bbox_x1}:{bbox_y1}:{bbox_x2}:{bbox_y2}".encode()).hexdigest()
-
-        thumb_img = Image.open(BytesIO(face['thumbnail']))
+        thumb_img = Image.open(BytesIO(thumbnail))
         thumb_w, thumb_h = thumb_img.size
 
         if thumb_w >= thumb_h:
@@ -301,7 +256,6 @@ def _get_face_thumbnail_data(face_id: int):
         x2 = min(thumb_w, int(bbox_x2 * scale))
         y2 = min(thumb_h, int(bbox_y2 * scale))
 
-        padding_ratio = VIEWER_CONFIG['face_thumbnails']['crop_padding_ratio']
         pad_x = int((x2 - x1) * padding_ratio)
         pad_y = int((y2 - y1) * padding_ratio)
         x1 = max(0, x1 - pad_x)
@@ -309,7 +263,6 @@ def _get_face_thumbnail_data(face_id: int):
         x2 = min(thumb_w, x2 + pad_x)
         y2 = min(thumb_h, y2 + pad_y)
 
-        min_size = VIEWER_CONFIG['face_thumbnails']['min_crop_size_px']
         if x2 - x1 < min_size or y2 - y1 < min_size:
             cx, cy = thumb_w // 2, thumb_h // 2
             s = min(thumb_w, thumb_h) // 2
@@ -317,15 +270,56 @@ def _get_face_thumbnail_data(face_id: int):
             x2, y2 = cx + s, cy + s
 
         face_crop = thumb_img.crop((x1, y1, x2, y2))
-        output_size = VIEWER_CONFIG['face_thumbnails']['output_size_px']
         face_crop.thumbnail((output_size, output_size), Image.Resampling.LANCZOS)
 
         buf = BytesIO()
-        face_crop.save(buf, format="JPEG", quality=VIEWER_CONFIG['face_thumbnails']['jpeg_quality'])
-        return buf.getvalue(), etag
+        face_crop.save(buf, format="JPEG", quality=jpeg_quality)
+        return buf.getvalue()
     except (OSError, ValueError, TypeError):
         logger.debug("Failed to generate face thumbnail on-the-fly", exc_info=True)
-        return None, None
+        return None
+
+
+# At most 8 MiB of source JPEGs plus 64 crops no larger than 256 px per edge.
+_cached_face_crop = lru_cache(maxsize=64)(_render_face_crop)
+
+
+def _get_face_thumbnail_data(face_id: int, user: Optional[CurrentUser]):
+    """Read the current crop only from a photo visible to this caller."""
+    vis_sql, vis_params = get_visibility_clause(user.user_id if user else None, table_alias='p')
+    conn = get_db_connection()
+    try:
+        face = conn.execute(f"""
+            SELECT f.photo_path, f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2,
+                   f.face_thumbnail, p.thumbnail
+            FROM faces f
+            JOIN photos p ON p.path = f.photo_path
+            WHERE f.id = ? AND {vis_sql}
+        """, [face_id, *vis_params]).fetchone()
+    finally:
+        conn.close()
+
+    if not face:
+        return None
+
+    if face['face_thumbnail']:
+        return face['face_thumbnail']
+
+    if not face['thumbnail']:
+        return None
+
+    settings = VIEWER_CONFIG['face_thumbnails']
+    # Visibility and current DB crop inputs are read above, even on a cache hit.
+    # Oversized inputs render normally without retaining them in the cache.
+    try:
+        cacheable = len(face['thumbnail']) <= 128 * 1024 and 0 < settings['output_size_px'] <= 256
+        render = _cached_face_crop if cacheable else _render_face_crop
+        return render(face['thumbnail'], (face['bbox_x1'], face['bbox_y1'], face['bbox_x2'], face['bbox_y2']),
+                      settings['crop_padding_ratio'], settings['min_crop_size_px'],
+                      settings['output_size_px'], settings['jpeg_quality'])
+    except (OSError, ValueError, TypeError):
+        logger.debug("Failed to generate face thumbnail on-the-fly", exc_info=True)
+        return None
 
 
 @router.get("/face_thumbnail/{face_id}")
@@ -335,12 +329,10 @@ def face_thumbnail(
     user: Optional[CurrentUser] = Depends(get_optional_user),
 ):
     """Return cropped face thumbnail."""
-    if not _face_visible(face_id, user):
-        return Response(content="Not found", status_code=404)
-    face_bytes, etag = _get_face_thumbnail_data(face_id)
+    face_bytes = _get_face_thumbnail_data(face_id, user)
     if face_bytes is None:
         return Response(content="Face not found", status_code=404)
-    return _cached_image_response(face_bytes, request)
+    return _private_crop_response(face_bytes, request)
 
 
 @router.get("/person_thumbnail/{person_id}")
@@ -349,22 +341,28 @@ def person_thumbnail(
     request: Request,
     user: Optional[CurrentUser] = Depends(get_optional_user),
 ):
-    """Return stored face thumbnail for a person."""
-    if not _person_visible(person_id, user):
-        return Response(content="Not found", status_code=404)
+    """Return a current visible face, preferring the person's chosen representative."""
+    vis_sql, vis_params = get_visibility_clause(user.user_id if user else None, table_alias='p')
     with get_db() as conn:
-        person = conn.execute("""
-            SELECT face_thumbnail, representative_face_id FROM persons WHERE id = ?
-        """, (person_id,)).fetchone()
-
-    if person and person['face_thumbnail']:
-        return _cached_image_response(person['face_thumbnail'], request)
-
-    if person and person['representative_face_id']:
-        face_bytes, etag = _get_face_thumbnail_data(person['representative_face_id'])
+        face = conn.execute(f"""
+            SELECT f.id FROM persons pe
+            JOIN faces f ON f.id=pe.representative_face_id AND f.person_id=pe.id
+            JOIN photos p ON p.path=f.photo_path
+            WHERE pe.id=? AND {vis_sql}
+        """, [person_id, *vis_params]).fetchone()
+        if face is None:
+            face = conn.execute(f"""
+                SELECT f.id FROM faces f
+                JOIN photos p ON p.path=f.photo_path
+                JOIN persons pe ON pe.id=f.person_id
+                WHERE pe.id=? AND {vis_sql}
+                ORDER BY (f.id=pe.representative_face_id) DESC, f.confidence DESC, f.id
+                LIMIT 1
+            """, [person_id, *vis_params]).fetchone()
+    if face:
+        face_bytes = _get_face_thumbnail_data(face['id'], user)
         if face_bytes:
-            return _cached_image_response(face_bytes, request)
-
+            return _private_crop_response(face_bytes, request)
     return Response(content="Person thumbnail not found", status_code=404)
 
 

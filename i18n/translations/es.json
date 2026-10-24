@@ -2688,6 +2688,31 @@
       "highlight": "Altas luces recortadas: {channels}"
     }
   },
+  "manual_faces": {
+    "title": "Marcar una cara ausente / Gestionar caras manuales",
+    "instructions": "Dibuje un rectángulo o introduzca sus bordes en porcentajes. Elija una persona y guarde.",
+    "unavailable": "Original no disponible. Puede eliminar las marcas guardadas.",
+    "preview": "Foto orientada para marcar caras",
+    "coordinates": "Bordes del rectángulo (%)",
+    "choose_person": "Elegir o crear una persona",
+    "remark": "Revise la imagen actual. Dibuje de nuevo o ajuste las coordenadas antes de guardar.",
+    "add": "Nueva marca",
+    "saved": "Caras manuales guardadas",
+    "unnamed": "Persona sin nombre",
+    "needs_review": "Requiere revisión",
+    "edit": "Editar / reasignar",
+    "remove": "Eliminar marca",
+    "empty": "No hay caras manuales guardadas.",
+    "close": "Cerrar",
+    "left": "Izquierda",
+    "top": "Arriba",
+    "right": "Derecha",
+    "bottom": "Abajo",
+    "save_failed": "Error al guardar. Borrador conservado. Si cambió la imagen o caducó la sesión, recargue la vista previa.",
+    "reload": "Recargar editor",
+    "refresh_failed": "El cambio se guardó, pero no se pudo actualizar la información de las personas. Recargue la foto.",
+    "detected_overlap": "Ya se ha detectado una cara aquí. Cierre este editor y use la acción de asignación de caras detectadas. Se conserva el borrador."
+  },
   "assistant_activity": {
     "chip": "Asistente activo",
     "title": "Actividad del asistente",

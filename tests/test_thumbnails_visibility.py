@@ -22,7 +22,6 @@ from fastapi.testclient import TestClient
 
 from api import create_app
 from api.auth import CurrentUser, get_optional_user
-from api.routers.thumbnails import _get_face_thumbnail_data
 
 _HELPERS = "api.db_helpers"
 _ROUTER = "api.routers.thumbnails"
@@ -64,7 +63,7 @@ _SCHEMA = """
                           representative_face_id INTEGER);
     CREATE TABLE faces (id INTEGER PRIMARY KEY, photo_path TEXT, person_id INTEGER,
                         face_thumbnail BLOB, bbox_x1 REAL, bbox_y1 REAL,
-                        bbox_x2 REAL, bbox_y2 REAL);
+                        bbox_x2 REAL, bbox_y2 REAL, confidence REAL);
 """
 
 
@@ -76,7 +75,7 @@ def db_path(tmp_path):
     conn.executemany("INSERT INTO photos (path, thumbnail) VALUES (?, ?)",
                      [(ALICE_PHOTO, ALICE_THUMB), (BOB_PHOTO, BOB_THUMB)])
     conn.executemany(
-        "INSERT INTO faces VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO faces (id,photo_path,person_id,face_thumbnail,bbox_x1,bbox_y1,bbox_x2,bbox_y2) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         [(1, ALICE_PHOTO, 1, ALICE_FACE, 0, 0, 10, 10),
          (2, BOB_PHOTO, 2, BOB_FACE, 0, 0, 10, 10)],
     )
@@ -84,7 +83,6 @@ def db_path(tmp_path):
                      [(1, ALICE_PERSON, 1), (2, BOB_PERSON, 2)])
     conn.commit()
     conn.close()
-    _get_face_thumbnail_data.cache_clear()
     return path
 
 
@@ -128,7 +126,6 @@ def _env(db_path, user, *, multi_user, password="", dirs_map=None):
         for p in patches:
             p.stop()
         app.dependency_overrides.clear()
-        _get_face_thumbnail_data.cache_clear()
 
 
 # --- F3': single-user viewer-password lock ---------------------------------
@@ -154,7 +151,7 @@ class TestPasswordLock:
                 client.get("/image", params={"path": ALICE_PHOTO, "fallback": "thumbnail"}),
                 ALICE_THUMB, "/image alice fallback")
             _expect_image(client.get("/face_thumbnail/1"), ALICE_FACE, "/face_thumbnail/1")
-            _expect_image(client.get("/person_thumbnail/1"), ALICE_PERSON, "/person_thumbnail/1")
+            _expect_image(client.get("/person_thumbnail/1"), ALICE_FACE, "/person_thumbnail/1")
 
 
 # --- default open single-user deployment (no password, no multi-user) ------
@@ -174,7 +171,7 @@ class TestOpenSingleUserMode:
                 client.get("/image", params={"path": ALICE_PHOTO, "fallback": "thumbnail"}),
                 ALICE_THUMB, "/image alice fallback")
             _expect_image(client.get("/face_thumbnail/1"), ALICE_FACE, "/face_thumbnail/1")
-            _expect_image(client.get("/person_thumbnail/1"), ALICE_PERSON, "/person_thumbnail/1")
+            _expect_image(client.get("/person_thumbnail/1"), ALICE_FACE, "/person_thumbnail/1")
 
 
 # --- F4': multi-user per-directory isolation --------------------------------
@@ -190,7 +187,7 @@ class TestMultiUserIsolation:
             _expect_image(client.get("/thumbnail", params={"path": ALICE_PHOTO}),
                           ALICE_THUMB, "/thumbnail alice")
             _expect_image(client.get("/face_thumbnail/1"), ALICE_FACE, "/face_thumbnail/1")
-            _expect_image(client.get("/person_thumbnail/1"), ALICE_PERSON, "/person_thumbnail/1")
+            _expect_image(client.get("/person_thumbnail/1"), ALICE_FACE, "/person_thumbnail/1")
             # Foreign directory: denied.
             assert client.get("/thumbnail", params={"path": BOB_PHOTO}).status_code == 404
             assert client.get(

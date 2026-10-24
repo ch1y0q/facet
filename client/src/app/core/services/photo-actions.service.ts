@@ -89,9 +89,7 @@ export class PhotoActionsService {
       faceRef.afterClosed().subscribe(face => {
         if (!face) return;
         import('../../features/gallery/person-selector-dialog.component').then(m2 => {
-          const persons = this.store.persons().filter(p => p.name);
           const personRef = this.dialog.open(m2.PersonSelectorDialogComponent, {
-            data: persons,
             width: '95vw',
             maxWidth: '400px',
           });

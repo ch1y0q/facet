@@ -1,78 +1,129 @@
 import { TestBed } from '@angular/core/testing';
-import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
+import { MatDialogRef } from '@angular/material/dialog';
+import { of, Subject, throwError } from 'rxjs';
 import { PersonSelectorDialogComponent } from './person-selector-dialog.component';
-import { I18nService } from '../../core/services/i18n.service';
+import { ApiService } from '../../core/services/api.service';
 import type { PersonOption } from './gallery.store';
 
-const makePersons = (): PersonOption[] => [
-  { id: 1, name: 'Alice', face_count: 10 },
-  { id: 2, name: 'Bob', face_count: 5 },
-  { id: 3, name: 'Charlie', face_count: 3 },
-];
-
-describe('PersonSelectorDialogComponent', () => {
+const alice: PersonOption = { id: 1, name: 'Alice', face_count: 1 };
+const bob: PersonOption = { id: 2, name: 'Bob', face_count: 3 };
+describe('PersonSelectorDialogComponent server search', () => {
   let component: PersonSelectorDialogComponent;
-  const mockDialogRef = { close: vi.fn() };
-  const mockI18n = { t: (key: string) => key };
-
-  const createComponent = (persons: PersonOption[] = makePersons()) => {
+  let get: ReturnType<typeof vi.fn>;
+  let close: ReturnType<typeof vi.fn>;
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    get = vi.fn(() => of({ persons: [alice], total: 1 }));
+    close = vi.fn();
     TestBed.configureTestingModule({
       providers: [
-        { provide: MAT_DIALOG_DATA, useValue: persons },
-        { provide: MatDialogRef, useValue: mockDialogRef },
-        { provide: I18nService, useValue: mockI18n },
+        PersonSelectorDialogComponent,
+        { provide: ApiService, useValue: { get } },
+        { provide: MatDialogRef, useValue: { close } },
       ],
     });
-    return TestBed.runInInjectionContext(() => new PersonSelectorDialogComponent());
-  };
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    component = createComponent();
+    component = TestBed.inject(PersonSelectorDialogComponent);
+    await Promise.resolve();
   });
-
-  it('initializes filtered list with all persons', () => {
-    expect(component.filtered()).toHaveLength(3);
-    expect(component.filtered()[0].name).toBe('Alice');
+  afterEach(() => vi.useRealTimers());
+  it('includes visible people with only one appearance via bounded server pagination', () => {
+    expect(get).toHaveBeenCalledWith('/persons', {
+      page: 1,
+      per_page: 48,
+      search: '',
+      sort: 'name_asc',
+    });
+    expect(component.filtered()).toEqual([alice]);
   });
-
-  it('filter() narrows list by name (case-insensitive)', () => {
-    component.searchQuery = 'ali';
+  it('debounces server search instead of filtering a gallery dropdown', async () => {
+    get.mockReturnValue(of({ persons: [bob], total: 1 }));
+    component.searchQuery = 'Bo';
     component.filter();
-    expect(component.filtered()).toHaveLength(1);
-    expect(component.filtered()[0].name).toBe('Alice');
-  });
-
-  it('filter() returns all persons when query is empty', () => {
-    component.searchQuery = 'ali';
+    component.searchQuery = 'Bob';
     component.filter();
+    await vi.advanceTimersByTimeAsync(249);
+    expect(get).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(get).toHaveBeenLastCalledWith('/persons', {
+      page: 1,
+      per_page: 48,
+      search: 'Bob',
+      sort: 'name_asc',
+    });
+    expect(component.filtered()).toEqual([bob]);
+  });
+  it('discards late responses for a superseded search', async () => {
+    const old = new Subject<{ persons: PersonOption[]; total: number }>();
+    get.mockReturnValueOnce(old).mockReturnValueOnce(of({ persons: [bob], total: 1 }));
+    component.searchQuery = 'Alice';
+    component.filter();
+    await vi.advanceTimersByTimeAsync(250);
+    component.searchQuery = 'Bob';
+    component.filter();
+    await vi.advanceTimersByTimeAsync(250);
+    old.next({ persons: [alice], total: 1 });
+    old.complete();
+    await Promise.resolve();
+    expect(component.filtered()).toEqual([bob]);
+  });
+  it('loads additional pages without a minimum appearance cutoff', async () => {
+    get.mockReturnValueOnce(
+      of({ persons: [alice, { id: 9, name: null, face_count: 8 }], total: 49 }),
+    );
     component.searchQuery = '';
     component.filter();
-    expect(component.filtered()).toHaveLength(3);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(component.hasMore()).toBe(true);
+    expect(component.filtered()).toEqual([alice]);
+    get.mockReturnValueOnce(of({ persons: [bob], total: 49 }));
+    await component.loadMore();
+    expect(get).toHaveBeenLastCalledWith('/persons', {
+      page: 2,
+      per_page: 48,
+      search: '',
+      sort: 'name_asc',
+    });
+    expect(component.filtered()).toEqual([alice, bob]);
+    expect(component.hasMore()).toBe(false);
   });
-
-  it('filter() returns empty list when no match', () => {
-    component.searchQuery = 'xyz';
+  it('shows failure and retries the failed page without discarding previous results', async () => {
+    get.mockReturnValueOnce(of({ persons: [alice], total: 49 }));
     component.filter();
-    expect(component.filtered()).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(250);
+    get.mockReturnValueOnce(throwError(() => new Error('offline')));
+    await component.loadMore();
+    expect(component.failed()).toBe(true);
+    expect(component.filtered()).toEqual([alice]);
+    get.mockReturnValueOnce(of({ persons: [bob], total: 49 }));
+    await component.retry();
+    expect(component.filtered()).toEqual([alice, bob]);
+    expect(component.failed()).toBe(false);
   });
-
-  it('filter() matches partial lowercase names', () => {
-    component.searchQuery = 'ob';
+  it('cancels pending debounce and ignores responses after destruction', async () => {
+    const pending = new Subject<{ persons: PersonOption[]; total: number }>();
+    get.mockReturnValueOnce(pending);
+    component.searchQuery = 'late';
     component.filter();
-    expect(component.filtered()).toHaveLength(1);
-    expect(component.filtered()[0].name).toBe('Bob');
-  });
-
-  it('filter() ignores persons with null name when searching', () => {
-    const persons: PersonOption[] = [
-      { id: 1, name: null, face_count: 5 },
-      { id: 2, name: 'Alice', face_count: 3 },
-    ];
+    await vi.advanceTimersByTimeAsync(250);
+    component.searchQuery = 'never';
+    component.filter();
+    const count = get.mock.calls.length;
     TestBed.resetTestingModule();
-    const c = createComponent(persons);
-    c.searchQuery = 'ali';
-    c.filter();
-    expect(c.filtered()).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(250);
+    pending.next({ persons: [bob], total: 1 });
+    pending.complete();
+    await Promise.resolve();
+    expect(get).toHaveBeenCalledTimes(count);
+    expect(component.filtered()).toEqual([]);
+  });
+  it('keeps creation a proposal and cancellation makes no write', () => {
+    component.searchQuery = ' Grace ';
+    component.startCreate();
+    component.confirmCreate();
+    expect(close).toHaveBeenCalledWith({ kind: 'create', name: 'Grace' });
+    component.startCreate();
+    component.cancelCreate();
+    expect(component.newName).toBe('');
+    expect(get).toHaveBeenCalledTimes(1);
   });
 });

@@ -42,7 +42,7 @@ def person_centroid_model(conn, person_id, active=None):
     active = active or active_embedding_model()
     rows = conn.execute(
         "SELECT embedding_model, COUNT(*) FROM faces "
-        "WHERE person_id = ? AND embedding IS NOT NULL GROUP BY embedding_model",
+        "WHERE person_id = ? AND is_manual=0 AND length(embedding)>0 GROUP BY embedding_model",
         (person_id,),
     ).fetchall()
     counts = {}
@@ -79,7 +79,7 @@ def recompute_person_centroid(conn, person_id, active=None):
         # which index happens to serve this read.
         rows = conn.execute(
             "SELECT embedding, embedding_model FROM faces "
-            "WHERE person_id = ? AND embedding IS NOT NULL ORDER BY id",
+            "WHERE person_id = ? AND is_manual=0 AND length(embedding)>0 ORDER BY id",
             (person_id,),
         ).fetchall()
         for row in rows:

@@ -40,16 +40,25 @@ export class ImageUrlPipe implements PipeTransform {
   }
 }
 
+/** Bypass old public browser/SW entries; these crops require an auth check on every reuse. */
+export function faceThumbnailUrl(faceId: number): string {
+  return `/face_thumbnail/${faceId}?v=2&ngsw-bypass=1`;
+}
+
+export function personThumbnailUrl(personId: number): string {
+  return `/person_thumbnail/${personId}?v=2&ngsw-bypass=1`;
+}
+
 @Pipe({ name: 'faceThumbnailUrl', standalone: true, pure: true })
 export class FaceThumbnailUrlPipe implements PipeTransform {
   transform(faceId: number): string {
-    return `/face_thumbnail/${faceId}`;
+    return faceThumbnailUrl(faceId);
   }
 }
 
 @Pipe({ name: 'personThumbnailUrl', standalone: true, pure: true })
 export class PersonThumbnailUrlPipe implements PipeTransform {
   transform(personId: number): string {
-    return `/person_thumbnail/${personId}`;
+    return personThumbnailUrl(personId);
   }
 }

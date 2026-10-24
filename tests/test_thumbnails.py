@@ -395,10 +395,6 @@ class TestFaceThumbnail:
         mock_conn.execute.return_value.fetchone.return_value = None
 
         with mock.patch("api.routers.thumbnails.get_db_connection", return_value=mock_conn):
-            # Clear the LRU cache to avoid stale results
-            from api.routers.thumbnails import _get_face_thumbnail_data
-            _get_face_thumbnail_data.cache_clear()
-
             resp = client.get("/face_thumbnail/99999")
 
         assert resp.status_code == 404
