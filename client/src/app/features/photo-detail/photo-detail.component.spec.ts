@@ -231,6 +231,19 @@ describe('PhotoDetailComponent', () => {
     expect(mockRouter.navigate).not.toHaveBeenCalled();
   });
 
+  it.each(['kept', 'undecided', 'rejected'])('refreshes progress after %s outside a review-status queue', async decision => {
+    createComponent();
+    const store = TestBed.inject(GalleryStore);
+    const photo = makePhoto();
+    component.photo.set(photo);
+    store.photos.set([photo]);
+    const count = vi.spyOn(store, 'loadReviewProgress').mockResolvedValue();
+    mockApi.post.mockReturnValue(of({ is_rejected: true, is_favorite: null, star_rating: null }));
+    if (decision === 'rejected') await component.toggleRejected(photo.path);
+    else await component.reviewPhoto(decision);
+    expect(count).toHaveBeenCalled();
+  });
+
   describe('delayed review responses', () => {
     it.each(['kept', 'undecided', 'rejected'])('preserves navigation after %s', async decision => {
       createComponent();

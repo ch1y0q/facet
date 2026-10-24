@@ -227,6 +227,25 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
       <!-- Main content. The drawer reserves its own strip, so the grid gets
            exactly the width it has whenever the filters are open. -->
       <mat-sidenav-content>
+        @if (store.reviewProgress(); as progress) {
+          <section class="mx-2 md:mx-4 mt-2 px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] text-sm" [attr.aria-label]="I18N.gallery.review_progress.title | translate">
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <span>{{ I18N.gallery.review_progress.counts | translate:{ undecided: progress.undecided, kept: progress.kept, rejected: progress.rejected } }}</span>
+              <span>{{ I18N.gallery.review_progress.complete | translate:{ percent: store.reviewPercent(), total: progress.total } }}</span>
+              @if (progress.undecided > 0 && store.filters().review_status !== 'undecided') {
+                <button mat-button (click)="store.startReviewQueue()">{{ I18N.gallery.review_progress.start | translate }}</button>
+              }
+            </div>
+            <progress class="w-full h-1" max="100" [value]="store.reviewPercent()" [attr.aria-label]="I18N.gallery.review_progress.title | translate"></progress>
+          </section>
+        }
+        @if (store.reviewBookmark()) {
+          <div class="mx-2 md:mx-4 mt-2 flex flex-wrap items-center gap-x-3 text-sm">
+            <button mat-button [disabled]="store.loading()" (click)="continueReview()">{{ I18N.gallery.review_progress.resume | translate }}</button>
+            <span class="opacity-70">{{ I18N.gallery.review_progress.browser | translate }}</span>
+          </div>
+        }
+
         <!-- Set-scope chip: the photo-detail "open this set in the gallery" action.
              Never reflected in the URL (sequence_group_id is renumbered on every
              detection pass), so this is the only affordance out of it. -->
@@ -1338,14 +1357,15 @@ export class GalleryComponent implements OnInit, OnDestroy {
       this.store.filters.update(current => ({ ...current, ...setScope }));
     }
     // Set album_id from route path param (for /album/:albumId route)
-    const albumId = this.route.snapshot.paramMap.get('albumId');
+    const albumId = this.store.filters().album_id === '0' ? null
+      : this.store.filters().album_id || this.route.snapshot.paramMap.get('albumId');
     if (albumId) {
       try {
         const album = await firstValueFrom(this.albumService.get(+albumId));
         if (album.smart_filter_json) {
           // Apply saved filters BEFORE setting currentAlbum (avoids effect saving defaults)
           const savedJson = album.smart_filter_json;
-          this.store.filters.update(current => applySavedAlbumFilters(current, savedJson, albumId));
+          this.store.filters.update(current => applyQueryParams(applySavedAlbumFilters(current, savedJson, albumId), this.route.snapshot.queryParams));
         } else {
           this.store.filters.update(current => ({ ...current, album_id: albumId }));
         }
@@ -1871,6 +1891,12 @@ export class GalleryComponent implements OnInit, OnDestroy {
         break;
       default: return assertNever(action);
     }
+  }
+
+  protected async continueReview(): Promise<void> {
+    const path = await this.store.continueReview();
+    const photo = path ? this.store.photos().find(p => p.path === path) : null;
+    if (photo) this.downloadPhoto(photo);
   }
 
   protected downloadPhoto(photo: Photo): void {

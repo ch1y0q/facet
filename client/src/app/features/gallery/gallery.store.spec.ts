@@ -1,4 +1,5 @@
 import type { Mock } from 'vitest';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Router, ActivatedRoute } from '@angular/router';
@@ -85,8 +86,10 @@ describe('GalleryStore', () => {
   let routerNavigate: Mock;
   let queryParams: Record<string, string>;
   let assistantBatches: Subject<AssistantChangeBatch>;
+  const authIdentity = signal('0|');
 
   beforeEach(() => {
+    authIdentity.set('0|');
     apiGet = vi.fn();
     apiPost = vi.fn(() => of({}));
     snackOpen = vi.fn();
@@ -103,7 +106,7 @@ describe('GalleryStore', () => {
           provide: ActivatedRoute,
           useValue: { snapshot: { queryParams } },
         },
-        { provide: AuthService, useValue: { identity: () => '0|', isEdition: vi.fn(() => false) } },
+        { provide: AuthService, useValue: { identity: authIdentity, isEdition: vi.fn(() => false) } },
         { provide: AlbumService, useValue: { list: vi.fn(() => of({ albums: [] })), update: vi.fn(() => of({})) } },
         { provide: MatSnackBar, useValue: { open: snackOpen } },
         { provide: I18nService, useValue: { t: (k: string) => k } },
@@ -112,6 +115,146 @@ describe('GalleryStore', () => {
     });
 
     store = TestBed.inject(GalleryStore);
+  });
+
+  describe('review progress and browser resume', () => {
+    beforeEach(() => localStorage.removeItem('facet_review_queues_v1'));
+
+    it('uses complete scoped counts and refreshes them after decisions outside a review tab', async () => {
+      apiGet.mockImplementation((url: string) => of(url === '/photos/review_progress'
+        ? { total: 120, undecided: 90, kept: 20, rejected: 10 } : makePhotosResponse()));
+      await store.loadPhotos();
+      await store.loadReviewProgress();
+      expect(store.reviewProgress()).toEqual({ total: 120, undecided: 90, kept: 20, rejected: 10 });
+      expect(store.reviewPercent()).toBe(25);
+      await store.refreshReviewResults();
+      expect(apiGet.mock.calls.filter(([url]) => url === '/photos/review_progress').length).toBeGreaterThan(1);
+    });
+
+    it('restores the remembered folder filters and first remaining undecided after changing filters', async () => {
+      apiGet.mockImplementation((url: string) => of(url === '/photos/review_progress'
+        ? { total: 3, undecided: 1, kept: 1, rejected: 1 } : makePhotosResponse({ photos: [makePhoto({ path: '/trip/remaining.jpg' })] })));
+      await store.updateFilters({ path_prefix: '/trip/', camera: 'TripCam', review_status: 'undecided' });
+      await store.updateFilters({ path_prefix: '/other/', camera: '', review_status: '' });
+      expect(await store.continueReview()).toBe('/trip/remaining.jpg');
+      expect(store.filters()).toMatchObject({ path_prefix: '/trip/', camera: 'TripCam', review_status: 'undecided', page: 1 });
+    });
+
+    it('ignores a late progress response after the scope changes', async () => {
+      const old = new Subject<unknown>();
+      apiGet.mockImplementation((url: string) => url === '/photos/review_progress' ? old : of(makePhotosResponse()));
+      const first = store.loadReviewProgress();
+      store.filters.update(f => ({ ...f, path_prefix: '/new/' }));
+      apiGet.mockImplementation(() => of({ total: 0, undecided: 0, kept: 0, rejected: 0 }));
+      await store.loadReviewProgress();
+      old.next({ total: 10, undecided: 1, kept: 9, rejected: 0 });
+      old.complete();
+      await first;
+      expect(store.reviewProgress()?.total).toBe(0);
+      expect(store.reviewPercent()).toBe(0);
+    });
+
+    it('does not clear a new whole-view selection when an old review write finishes', async () => {
+      const pending = new Subject<{ count: number }>();
+      apiPost.mockReturnValue(pending);
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+      store.filters.update(f => ({ ...f, review_status: 'undecided' }));
+      store.photos.set([makePhoto({ path: '/old.jpg' })]);
+      const writing = store.batchReview(['/old.jpg'], 'kept');
+      await store.updateFilters({ path_prefix: '/new/' });
+      store.selectWholeView();
+      pending.next({ count: 1 });
+      pending.complete();
+      await writing;
+      expect(store.viewScopeSelected()).toBe(true);
+    });
+
+    it('shows 100% only when no undecided photos remain', () => {
+      store.reviewProgress.set({ total: 1000, undecided: 1, kept: 999, rejected: 0 });
+      expect(store.reviewPercent()).toBe(99);
+      store.reviewProgress.set({ total: 1000, undecided: 0, kept: 999, rejected: 1 });
+      expect(store.reviewPercent()).toBe(100);
+    });
+
+    it('retains aggregate results when only pagination advances', async () => {
+      const pending = new Subject<{ total: number; undecided: number; kept: number; rejected: number }>();
+      apiGet.mockReturnValue(pending);
+      const counting = store.loadReviewProgress();
+      store.filters.update(f => ({ ...f, page: 2 }));
+      pending.next({ total: 200, undecided: 100, kept: 50, rejected: 50 });
+      pending.complete();
+      await counting;
+      expect(store.reviewProgress()?.total).toBe(200);
+    });
+
+    it('does not clear a new whole-view selection when an old single reject finishes', async () => {
+      const pending = new Subject<{ is_rejected: boolean; star_rating: number | null }>();
+      apiPost.mockReturnValue(pending);
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+      store.filters.update(f => ({ ...f, review_status: 'undecided' }));
+      store.photos.set([makePhoto({ path: '/old.jpg' })]);
+      const writing = store.toggleRejected('/old.jpg');
+      await store.updateFilters({ path_prefix: '/newer/' });
+      store.selectWholeView();
+      pending.next({ is_rejected: true, star_rating: null });
+      pending.complete();
+      await writing;
+      expect(store.viewScopeSelected()).toBe(true);
+    });
+
+    it('hides the previous identity bookmark immediately on account changes', async () => {
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+      authIdentity.set('1|alice');
+      await store.updateFilters({ path_prefix: '/alice/', review_status: 'undecided' });
+      expect(store.reviewBookmark()?.filters.path_prefix).toBe('/alice/');
+      authIdentity.set('1|bob');
+      expect(store.reviewBookmark()).toBeNull();
+      authIdentity.set('1|alice');
+      expect(store.reviewBookmark()?.filters.path_prefix).toBe('/alice/');
+    });
+
+    it('does not apply a photo response or bookmark from a previous identity', async () => {
+      const pending = new Subject<PhotosResponse>();
+      authIdentity.set('1|alice');
+      store.filters.update(f => ({ ...f, review_status: 'undecided', path_prefix: '/alice/' }));
+      apiGet.mockImplementation((url: string) => url === '/photos' ? pending : of({ total: 0, undecided: 0, kept: 0, rejected: 0 }));
+      const loading = store.loadPhotos();
+      authIdentity.set('1|bob');
+      pending.next(makePhotosResponse({ photos: [makePhoto({ path: '/alice/private.jpg' })] }));
+      pending.complete();
+      await loading;
+      expect(store.photos()).toEqual([]);
+      expect(store.reviewBookmark()).toBeNull();
+    });
+
+    it('keeps the current view when a remembered album was deleted', async () => {
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+      await store.updateFilters({ album_id: '123', review_status: 'undecided' });
+      await store.updateFilters({ album_id: '', review_status: '', path_prefix: '/current/' });
+      const albums = TestBed.inject(AlbumService);
+      albums.get = vi.fn(() => throwError(() => new HttpErrorResponse({ status: 404 })));
+      expect(await store.continueReview()).toBeNull();
+      expect(store.filters().path_prefix).toBe('/current/');
+      expect(snackOpen).toHaveBeenCalled();
+    });
+
+    it('ignores a resume album lookup if the user navigates while it is pending', async () => {
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+      await store.updateFilters({ album_id: '123', review_status: 'undecided' });
+      const albumResult = new Subject<Album>();
+      TestBed.inject(AlbumService).get = vi.fn(() => albumResult);
+      const resuming = store.continueReview();
+      await store.updateFilters({ album_id: '', review_status: '', path_prefix: '/newer/' });
+      albumResult.next({ id: 123 } as Album);
+      albumResult.complete();
+      expect(await resuming).toBeNull();
+      expect(store.filters().path_prefix).toBe('/newer/');
+    });
+
+    it('tolerates malformed browser storage', () => {
+      localStorage.setItem('facet_review_queues_v1', '{broken');
+      expect(store.reviewBookmark()).toBeNull();
+    });
   });
 
   describe('initial state', () => {
@@ -544,7 +687,7 @@ describe('GalleryStore', () => {
 
       await store.loadPhotos();
 
-      expect(apiGet).toHaveBeenCalledTimes(2);
+      expect(apiGet.mock.calls.filter(([url]) => url === '/photos')).toHaveLength(2);
       expect(store.loadError()).toBe(false);
       expect(store.photos()).toEqual(response.photos);
       expect(store.total()).toBe(1);
@@ -840,7 +983,7 @@ describe('GalleryStore', () => {
         vi.useRealTimers();
       }
 
-      expect(apiGet).toHaveBeenCalledTimes(1);
+      expect(apiGet.mock.calls.filter(([url]) => url === '/photos')).toHaveLength(1);
       expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({ min_score: '7' }));
     });
 
@@ -854,7 +997,7 @@ describe('GalleryStore', () => {
         vi.useRealTimers();
       }
 
-      expect(apiGet).toHaveBeenCalledTimes(1);
+      expect(apiGet.mock.calls.filter(([url]) => url === '/photos')).toHaveLength(1);
     });
   });
 
@@ -2332,7 +2475,7 @@ describe('GalleryStore optimistic mutations', () => {
     const get = TestBed.inject(ApiService).get as Mock;
     get.mockImplementation((_url: string, params: { page: number; per_page: number }) => of(makePhotosResponse({ photos: remaining.slice((params.page - 1) * params.per_page, params.page * params.per_page), total: remaining.length, has_more: params.page * params.per_page < remaining.length })));
     const result = await store.batchReview(all.slice(0, 3).map(p => p.path), 'kept');
-    expect(get).toHaveBeenCalledTimes(1);
+    expect(get.mock.calls.filter(([url]) => url === '/photos')).toHaveLength(1);
     expect(get).toHaveBeenLastCalledWith('/photos', expect.objectContaining({ page: 18, per_page: 64 }));
     expect(store.photos().map(p => p.path)).toEqual(remaining.slice(0, 1152).map(p => p.path));
     expect(apiPost).toHaveBeenCalledWith('/photos/keeper_hints', { paths: remaining.slice(1088, 1152).map(p => p.path) });
@@ -2822,6 +2965,48 @@ describe('GalleryStore smart-album auto-save', () => {
     expect(albumId).toBe(7);
     expect(JSON.parse(body.smart_filter_json)).toMatchObject({ camera: 'Canon' });
     expect(snackOpen).not.toHaveBeenCalled();
+  });
+
+  it('keeps the saved smart-album decision criterion during a temporary review queue', async () => {
+    const get = TestBed.inject(ApiService).get as Mock;
+    get.mockReturnValue(of(makePhotosResponse()));
+    store.currentAlbum.set({ ...smartAlbum, smart_filter_json: JSON.stringify({ camera: 'Canon' }) });
+    store.filters.set({ ...DEFAULT_FILTERS, camera: 'Canon' });
+    vi.useFakeTimers();
+    try {
+      await store.startReviewQueue();
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(500);
+    } finally { vi.useRealTimers(); }
+    expect(JSON.parse(albumUpdate.mock.calls.at(-1)![1].smart_filter_json).review_status).toBeUndefined();
+    expect(get).toHaveBeenCalledWith('/photos/review_progress', expect.not.objectContaining({ scope_review_status: 'undecided' }));
+  });
+
+  it('preserves temporary queue mode across reload without changing the saved smart criterion', async () => {
+    const get = TestBed.inject(ApiService).get as Mock;
+    get.mockImplementation((url: string) => of(url === '/config' ? makeConfig() : makePhotosResponse()));
+    TestBed.inject(ActivatedRoute).snapshot.queryParams = { review_queue: '1', review_status: 'undecided' };
+    store.currentAlbum.set({ ...smartAlbum, smart_filter_json: JSON.stringify({ camera: 'Canon' }) });
+    vi.useFakeTimers();
+    try {
+      await store.loadConfig();
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(500);
+    } finally { vi.useRealTimers(); }
+    expect(store.filters().review_status).toBe('undecided');
+    expect(JSON.parse(albumUpdate.mock.calls.at(-1)![1].smart_filter_json).review_status).toBeUndefined();
+  });
+
+  it('still saves an intentional review-status edit from the existing filter control', async () => {
+    const get = TestBed.inject(ApiService).get as Mock;
+    get.mockReturnValue(of(makePhotosResponse()));
+    vi.useFakeTimers();
+    try {
+      await store.updateFilter('review_status', 'kept');
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(500);
+    } finally { vi.useRealTimers(); }
+    expect(JSON.parse(albumUpdate.mock.calls.at(-1)![1].smart_filter_json).review_status).toBe('kept');
   });
 
   it('reports a rejected write instead of letting it pass for a save', async () => {

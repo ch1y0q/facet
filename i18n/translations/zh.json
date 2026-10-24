@@ -1296,7 +1296,15 @@
       "badge_shadow": "阴影溢出：{percent}% 的像素"
     },
     "channel_clip_highlight_range": "高光溢出比例 %",
-    "channel_clip_shadow_range": "阴影溢出比例 %"
+    "channel_clip_shadow_range": "阴影溢出比例 %",
+    "review_progress": {
+      "title": "审阅进度",
+      "counts": "{undecided} 张未决定 · {kept} 张保留 · {rejected} 张拒绝",
+      "complete": "已审阅 {total} 张中的 {percent}%",
+      "start": "审阅未决定照片",
+      "resume": "继续审阅",
+      "browser": "在此浏览器中恢复记住的队列。"
+    }
   },
   "composition_patterns": {
     "none": "无",
