@@ -7,8 +7,18 @@ def source_identity(path):
     return frame_identity(path)
 
 
-def region_response(row, current_source):
-    changed = current_source is None or current_source != row['manual_source']
+def same_image(first, second):
+    from utils.manual_face_frame import same_image as frame_same_image
+    return frame_same_image(first, second)
+
+
+def is_current(path, stored, conn=None, face_id=None):
+    from utils.manual_face_frame import is_current as frame_is_current
+    return frame_is_current(path, stored, conn, face_id)
+
+
+def region_response(row, current):
+    changed = not current
     w, h = row['manual_width'], row['manual_height']
     return {'id': row['id'], 'manual_key': row['manual_key'],
             'bbox': [row['bbox_x1'] / w, row['bbox_y1'] / h, row['bbox_x2'] / w, row['bbox_y2'] / h],
@@ -26,9 +36,9 @@ def export_dimensions(row, width, height, disk_path=None):
     """Manual geometry keeps its own frame; stale marks need review, not export."""
     if row['is_manual']:
         try:
-            if source_identity(disk_path or row['photo_path']) != row['manual_source']:
+            if not is_current(disk_path or row['photo_path'], row['manual_source']):
                 return None
-        except OSError:
+        except Exception:
             return None
         width, height = row['manual_width'], row['manual_height']
     return (width, height) if width and height and width > 0 and height > 0 else None
@@ -58,13 +68,16 @@ def without_manual_overlaps(conn, path, records):
     in the replacement image's unrelated coordinate space.
     """
     manual = conn.execute(
-        'SELECT bbox_x1,bbox_y1,bbox_x2,bbox_y2,manual_source FROM faces '
+        'SELECT bbox_x1,bbox_y1,bbox_x2,bbox_y2,manual_source,id FROM faces '
         'WHERE photo_path=? AND is_manual=1', (path,)).fetchall()
     if not manual:
         return list(records)
-    try:
-        identity = source_identity(path)
-    except OSError:
-        return list(records)
-    boxes = [tuple(row)[:4] for row in manual if row[4] == identity]
+    boxes = []
+    for row in manual:
+        try:
+            current = is_current(path, row[4], conn, row[5])
+        except Exception:
+            current = False
+        if current:
+            boxes.append(tuple(row)[:4])
     return [r for r in records if not any(box_iou(r[3:7], box) >= 0.5 for box in boxes)]

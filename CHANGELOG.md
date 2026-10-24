@@ -30,7 +30,7 @@ All notable changes to Facet are documented in this file.
 - **The gallery's selection actions are a floating card, and the grid / mosaic toggle shows on small screens.** The selection bar is now an icon card floating at the bottom-left of the gallery (below `md` it keeps the count, clear, select-all, invert and compare, and moves the rest into the Actions sheet, which gains a close button), instead of a full-width strip covering the last row. The grid / mosaic toggle is available at every width and the chosen layout applies on phones too
 - **Find photos without GPS.** The Location filters now include “No geolocation”; assigning a location removes the photo from those results.
 - **Reuse saved places when adding GPS.** Save a named pin once, search for it in another photo’s location dialog, or reuse a recent point. Saved lists are private to each editor, and manual GPS edits and clears survive rescans, and **Use the file’s location** in the dialog undoes a manual location by re-reading the GPS from the image file.
-- **Mark a face the detector missed.** Draw a face rectangle, choose a person and save it from photo detail. Manual marks can be edited or removed, and survive rescans and viewer synchronization.
+- **Mark a face the detector missed.** Draw a face rectangle, choose a person and save it from photo detail. Manual marks can be edited or removed, and survive rescans and viewer synchronization. A mark follows the picture by size and a coarse grayscale signature, so a subtle retouch or a small re-crop or straighten that keeps the frame size may go undetected.
 
 ### Changed
 
@@ -43,8 +43,8 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
-- **Scanner-side person changes preserve manual face links.** Names and visibility now sync through stable person identities, including people with viewer-created marks.
-- **Manual face marks survive metadata-only embeds and host changes.** New marks identify canonical pixels and frame dimensions. Marks from earlier preview builds remain saved for a one-time review and explicit edit/save with a fresh editor frame.
+- **Scanner-side person changes preserve manual face links.** Names and visibility now sync through stable person identities, including people with viewer-created marks. A person from an older database is matched by name, so a reused numeric id never renames one person to another.
+- **Manual face marks survive metadata-only embeds and host changes.** New marks identify the picture by its upright frame size and an 8x8 grayscale signature matched within a small tolerance, so metadata writes, remounts and other hosts keep a mark current and a replaced picture flags it; a subtle retouch or a small re-crop or straighten that keeps the frame size may go undetected. Marks from earlier preview builds remain saved for a one-time review and explicit edit/save with a fresh editor frame.
 - **Cold searches stop waiting when Apple Silicon is busy.** Concurrent requests share the existing 15-second wait budget instead of waiting through another timeout for every queued search.
 - **Map backgrounds load correctly in the installed app.** Map tiles now load directly from OpenStreetMap, avoiding the app’s offline-cache requests that could leave the map blank.
 - **Going back from a photo to the gallery is near instant.** Opening a photo destroyed the gallery, so Back or Escape rebuilt all of it, closed filter sidebar included. The gallery now stays alive behind the photo and comes back where you left it, with the photo you opened focused so the arrow keys carry on from there. The filter sidebar is also built only once the browser is idle or the drawer opens.

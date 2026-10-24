@@ -124,14 +124,11 @@ def test_manual_api_deletion_wins_over_stale_exports_in_both_directions(tmp_path
             assert conn.execute("SELECT manual_key FROM manual_face_deletions").fetchall() == [('deleted-source-mark',)]
 
 
-@pytest.mark.parametrize('legacy', [False, True])
-def test_source_person_metadata_follows_stable_key_without_replacing_manual_links(tmp_path, legacy):
+def test_source_person_metadata_follows_stable_key_without_replacing_manual_links(tmp_path):
     src, out = str(tmp_path / 'source.db'), str(tmp_path / 'viewer.db')
     _make_source_db(src)
     with sqlite3.connect(src) as conn:
         pid = conn.execute("INSERT INTO persons(name) VALUES ('Original')").lastrowid
-        if legacy:
-            conn.execute('UPDATE persons SET person_key=? WHERE id=?', (f'legacy:{pid}', pid))
         person_key = conn.execute('SELECT person_key FROM persons WHERE id=?', (pid,)).fetchone()[0]
         conn.execute('INSERT INTO faces(photo_path,face_index,embedding,person_id,face_thumbnail,embedding_model) '
                      "VALUES (?,0,?,?,?,'sface')", (_B, np.ones(128, dtype=np.float32).tobytes(), pid, _thumb_bytes('red')))
@@ -154,6 +151,42 @@ def test_source_person_metadata_follows_stable_key_without_replacing_manual_link
             assert row[:6] == (target, name, 1, 0, centroid, 'sface')
             assert row[6:] == (2, manual_id, _thumb_bytes('blue'))
             assert conn.execute('SELECT id,person_id FROM faces WHERE manual_key=?', ('stable-person-manual',)).fetchone() == (manual_id, target)
+
+
+def _legacy_pair(tmp_path, source_name, viewer_name):
+    """Source and viewer both hold person id 1 under a legacy key, with different (or equal) names."""
+    src, out = str(tmp_path / 'source.db'), str(tmp_path / 'viewer.db')
+    _make_source_db(src)
+    with sqlite3.connect(src) as conn:
+        pid = conn.execute('INSERT INTO persons(name) VALUES (?)', (viewer_name,)).lastrowid
+        conn.execute('UPDATE persons SET person_key=? WHERE id=?', (f'legacy:{pid}', pid))
+    export_viewer_db(src, out, verbose=False)
+    with sqlite3.connect(out) as conn:
+        assert conn.execute('SELECT id,name FROM persons').fetchall() == [(pid, viewer_name)]
+        _manual_face(conn, _A, pid, 'legacy-manual')
+    with sqlite3.connect(src) as conn:
+        conn.execute('UPDATE persons SET name=? WHERE id=?', (source_name, pid))
+    export_viewer_db(src, out, verbose=False)
+    return out, pid
+
+
+@pytest.mark.parametrize('source_name,viewer_name', [('Bob', 'Alice'), (None, 'Alice'), ('Bob', None)])
+def test_legacy_key_with_a_different_name_is_not_adopted(tmp_path, source_name, viewer_name):
+    out, pid = _legacy_pair(tmp_path, source_name, viewer_name)
+    with sqlite3.connect(out) as conn:
+        assert conn.execute('SELECT name FROM persons WHERE id=?', (pid,)).fetchone() == (viewer_name,)
+        assert conn.execute("SELECT person_id FROM faces WHERE manual_key='legacy-manual'").fetchone() == (pid,)
+        assert conn.execute('SELECT COUNT(*) FROM persons').fetchone() == (2,)
+        assert conn.execute('SELECT person_key FROM persons WHERE id=?', (pid,)).fetchone()[0] != f'legacy:{pid}'
+        assert conn.execute('SELECT name FROM persons WHERE id<>?', (pid,)).fetchone() == (source_name,)
+
+
+@pytest.mark.parametrize('source_name,viewer_name', [('', None), (None, ''), ('Alice', 'Alice')])
+def test_legacy_key_with_an_equal_name_is_adopted(tmp_path, source_name, viewer_name):
+    out, pid = _legacy_pair(tmp_path, source_name, viewer_name)
+    with sqlite3.connect(out) as conn:
+        assert conn.execute('SELECT COUNT(*) FROM persons').fetchone() == (1,)
+        assert conn.execute("SELECT person_id FROM faces WHERE manual_key='legacy-manual'").fetchone() == (pid,)
 
 
 def test_source_detection_overlapping_viewer_manual_is_not_duplicated(tmp_path):

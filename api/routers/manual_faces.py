@@ -35,11 +35,11 @@ def _visible(conn, user, path):
         raise HTTPException(404, 'Photo not found')
 
 
-def _identity(path):
+def _current(path, stored):
     try:
-        return manual_faces.source_identity(resolve_photo_disk_path(path))
-    except OSError as exc:
-        raise HTTPException(409, 'Original image unavailable or changed') from exc
+        return manual_faces.is_current(resolve_photo_disk_path(path), stored)
+    except Exception:
+        return False
 
 
 def _decode(path):
@@ -82,13 +82,10 @@ def list_manual_faces(path: str, response: Response, user: CurrentUser = Depends
         rows = conn.execute(
             'SELECT f.*,p.name AS person_name FROM faces f LEFT JOIN persons p ON p.id=f.person_id '
             'WHERE f.photo_path=? AND f.is_manual=1 ORDER BY f.id', (path,)).fetchall()
-    try:
-        identity = _identity(path) if rows else None
-    except HTTPException:
-        identity = None
+    states = [_current(path, row['manual_source']) for row in rows]
     with get_db() as conn:
         _visible(conn, user, path)
-    return {'regions': [manual_faces.region_response(row, identity) for row in rows]}
+    return {'regions': [manual_faces.region_response(row, state) for row, state in zip(rows, states)]}
 
 
 @router.get('/api/photo/manual-face-frame', response_model=ManualFaceFrame)
@@ -138,16 +135,13 @@ def _write(body, user, face_id=None):
         if face_id is not None and manual_faces.get_region(conn, body.path, face_id=face_id) is None:
             raise HTTPException(404, 'Manual face not found')
     if previous is not None:
-        try:
-            identity = _identity(body.path)
-        except HTTPException:
-            identity = None
+        state = _current(body.path, previous['manual_source'])
         with get_db() as conn:
             _visible(conn, user, body.path)
             current = manual_faces.get_region(conn, body.path, manual_key=key)
             if current is None:
                 raise HTTPException(409, 'Manual face changed while retrying')
-        return manual_faces.region_response(current, identity)
+        return manual_faces.region_response(current, state)
     claims = decode_access_token(body.frame_token)
     if not claims or claims.get('purpose') != _PURPOSE or claims.get('decoder') != _DECODER:
         raise HTTPException(409, 'Invalid or expired editor frame; reload the editor')
@@ -155,7 +149,8 @@ def _write(body, user, face_id=None):
         raise HTTPException(409, 'Editor frame belongs to another photo or user')
     image, identity, stamp = _decode(body.path)
     w, h = image.size
-    if (claims.get('source'), claims.get('width'), claims.get('height')) != (identity, w, h):
+    if (not manual_faces.same_image(claims.get('source'), identity) or
+            (claims.get('width'), claims.get('height')) != (w, h)):
         raise HTTPException(409, 'Image changed; reload the editor')
     x1, y1, x2, y2 = body.bbox
     if (x2 - x1) * w < 4 - 1e-9 or (y2 - y1) * h < 4 - 1e-9:
@@ -172,7 +167,7 @@ def _write(body, user, face_id=None):
         if key:
             retry = manual_faces.get_region(conn, body.path, manual_key=key)
             if retry:
-                return manual_faces.region_response(retry, identity)
+                return manual_faces.region_response(retry, True)
             if conn.execute('SELECT 1 FROM faces WHERE manual_key=?', (key,)).fetchone():
                 raise HTTPException(409, 'Request identifier already used')
             if conn.execute('SELECT 1 FROM manual_face_deletions WHERE manual_key=?', (key,)).fetchone():
@@ -202,7 +197,7 @@ def _write(body, user, face_id=None):
         # A still-valid representative ID does not make its old crop current.
         conn.execute('UPDATE persons SET face_thumbnail=? WHERE representative_face_id=?', (crop, face_id))
         result = manual_faces.region_response(
-            manual_faces.get_region(conn, body.path, face_id=face_id), identity)
+            manual_faces.get_region(conn, body.path, face_id=face_id), True)
         _check_stamp(body.path, stamp)
     invalidate_stats_cache()
     return result

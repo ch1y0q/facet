@@ -446,7 +446,7 @@ Face and person thumbnails are checked against your current photo access before 
 
 Use the same editor to adjust, reassign or remove a manually marked face. Manual marks remain linked to their person through rescans and viewer synchronization; they do not create recognition training data or change face-quality scores. The editor loads an upright preview from the original image so RAW and rotated-photo coordinates match the saved crop. Without the original, existing manual marks can still be listed and removed, but drawing is unavailable. A mark that cannot be verified is shown as **Needs review**.
 
-New marks use a hash of the upright decoded pixels and frame dimensions. Facet metadata embeds, remounts and changes of host preserve them when those pixels stay unchanged. The editor reuses one decoded frame of up to 128 MiB and small fingerprint records; larger frames may need another decode. The limit is fixed.
+New marks identify the picture by its upright decoded frame size and an 8x8 grayscale signature of its pixels, matched within a small tolerance. Metadata writes (including Facet embeds), remounts and other hosts keep a mark current; a replaced picture flags it, but a subtle retouch or a small re-crop or straighten that keeps the frame size may go undetected. The editor reuses one decoded frame of up to 128 MiB and small fingerprint records; larger frames may need another decode. The limit is fixed.
 
 Marks from earlier preview builds remain saved and need a one-time review. Open the original and deliberately edit/save the mark using a fresh editor frame to record the new identity. Old marks keep their previous identity until that save.
 

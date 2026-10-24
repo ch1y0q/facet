@@ -19,15 +19,24 @@ def prepare_person_sync(conn):
     local = _rows(conn, 'SELECT DISTINCT p.* FROM main.persons p JOIN main.faces f '
                   'ON f.person_id=p.id WHERE f.is_manual=1')
     by_key = {p['person_key']: p for p in local}
+    detached = []
     for person in source:
         key = person.get('person_key') or f"legacy:{person['id']}"
         person['person_key'] = key
+        old = by_key.get(key)
+        # A legacy key is only a reused numeric id: trust it on an equal name
+        # (NULL and '' alike), otherwise keep both people apart.
+        if old and key.startswith('legacy:') and (old['name'] or None) != (person['name'] or None):
+            detached.append(old['id'])
+            del by_key[key]
     source_face_columns = {r[1] for r in conn.execute('PRAGMA src.table_info(faces)')}
     if 'manual_key' in source_face_columns:
         if conn.execute('SELECT 1 FROM src.faces s JOIN main.faces d ON s.manual_key=d.manual_key '
                         'WHERE s.manual_key IS NOT NULL AND s.photo_path<>d.photo_path LIMIT 1').fetchone():
             raise ValueError('Manual face key belongs to different photos')
 
+    for person_id in detached:
+        conn.execute('UPDATE main.persons SET person_key=lower(hex(randomblob(16))) WHERE id=?', (person_id,))
     conn.execute('CREATE TEMP TABLE source_person_map(source_id INTEGER PRIMARY KEY,dest_id INTEGER NOT NULL)')
     # Capture before photo cascades and tombstone pruning remove the last face.
     conn.execute('CREATE TEMP TABLE manual_person_refresh(person_id INTEGER PRIMARY KEY)')

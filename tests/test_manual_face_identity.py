@@ -12,7 +12,7 @@ import pytest
 
 from api import config
 from api.database import get_db
-from db.manual_faces import source_identity
+from db.manual_faces import same_image, source_identity
 
 
 @pytest.fixture
@@ -75,7 +75,7 @@ def test_metadata_replacement_keeps_manual_export_and_overlap(edition_client, id
     _, saved = _mark(edition_client, path)
     original = source_identity(path)
     _replace_metadata(path)
-    assert source_identity(path) == original
+    assert same_image(source_identity(path), original)
     assert _regions(edition_client, path)[0]['source_changed'] is False
     with get_db() as conn, conn:
         assert len(_fetch_regions_map(conn, [path])[path]) == 1
@@ -90,7 +90,7 @@ def test_metadata_replacement_keeps_manual_export_and_overlap(edition_client, id
 def test_identity_survives_a_copy_to_another_host_path(identity_photo, tmp_path):
     copied = tmp_path / 'other-host.jpg'
     shutil.copy2(identity_photo, copied)
-    assert source_identity(identity_photo) == source_identity(copied)
+    assert same_image(source_identity(identity_photo), source_identity(copied))
 
 
 @pytest.mark.skipif(not shutil.which('exiftool'), reason='real ExifTool is optional')
@@ -109,13 +109,15 @@ def test_two_real_embed_exports_keep_the_manual_region(edition_client, identity_
         assert names == ['Pixel person']
 
 
-def test_old_stat_mark_is_retained_until_a_deliberate_fresh_edit(edition_client, identity_photo):
+@pytest.mark.parametrize('form', ['stat-only', 'pixels-v1'])
+def test_old_identity_mark_is_retained_until_a_deliberate_fresh_edit(edition_client, identity_photo, form):
     from api.routers.export import _fetch_regions_map
     path = identity_photo
     body, saved = _mark(edition_client, path)
     stat = os.stat(path)
-    legacy = json.dumps([stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns],
-                        separators=(',', ':'))
+    legacy = (json.dumps([stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns], separators=(',', ':'))
+              if form == 'stat-only' else
+              json.dumps(['upright-pixels-v1', 100, 80, 'a' * 64], separators=(',', ':')))
     with get_db() as conn, conn:
         conn.execute('UPDATE faces SET manual_source=? WHERE id=?', (legacy, saved['id']))
     assert _regions(edition_client, path)[0]['source_changed'] is True
@@ -176,7 +178,7 @@ def test_device_and_inode_are_only_cache_invalidators(identity_photo, monkeypatc
         stamp = original(path)
         return (stamp[0], stamp[1] + 100, stamp[2] + 100, *stamp[3:])
     monkeypatch.setattr(frames, 'file_stamp', remounted)
-    assert frames.source_identity(identity_photo) == expected
+    assert same_image(frames.source_identity(identity_photo), expected)
 
 
 def test_changed_pixels_in_same_dimensions_still_require_review(edition_client, identity_photo):
@@ -206,6 +208,8 @@ def test_listing_rechecks_access_after_a_cold_content_hash(edition_client, ident
     from api.routers import manual_faces as router
     from utils import manual_face_frame as frames
     _mark(edition_client, identity_photo)
+    # An unchanged stat is current without a decode; a rewrite forces one.
+    _replace_metadata(identity_photo)
     frames.clear_cache()
     original = frames.load_image_for_face_crop
     state = SimpleNamespace(revoked=False)
@@ -280,3 +284,82 @@ def test_concurrent_frame_and_identity_requests_share_decode(identity_photo, mon
             release.set()
         assert first.result().identity == other.result()
     assert len(calls) == 1
+
+
+def _pixels(offset=0):
+    import numpy as np
+    base = np.zeros((80, 100, 3), dtype=np.uint8)
+    base[:, 50:] = 200
+    return np.clip(base.astype(int) + offset, 0, 255).astype(np.uint8)
+
+
+def test_decode_differing_by_one_per_pixel_still_reads_current(identity_photo, monkeypatch):
+    """Another host's LibRaw/libheif build rounds differently; the mark must survive it."""
+    from utils import manual_face_frame as frames
+    monkeypatch.setattr(frames, 'load_image_for_face_crop', lambda path: _pixels(0))
+    stored = frames.source_identity(identity_photo)
+    frames.clear_cache()
+    monkeypatch.setattr(frames, 'load_image_for_face_crop', lambda path: _pixels(1))
+    stat = os.stat(identity_photo)
+    os.utime(identity_photo, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10_000_000_000))
+    assert frames.is_current(identity_photo, stored) is True
+    frames.clear_cache()
+    monkeypatch.setattr(frames, 'load_image_for_face_crop', lambda path: _pixels(40))
+    assert frames.is_current(identity_photo, stored) is False
+
+
+def test_a_resized_copy_of_the_same_picture_still_requires_review(edition_client, identity_photo):
+    """The 8x8 signature survives a resize; the frame size must not."""
+    _mark(edition_client, identity_photo)
+    Image.open(identity_photo).resize((200, 160)).save(identity_photo)
+    assert _regions(edition_client, identity_photo)[0]['source_changed'] is True
+
+
+def test_unchanged_stat_is_current_without_decoding(identity_photo, monkeypatch):
+    from utils import manual_face_frame as frames
+    stored = frames.source_identity(identity_photo)
+    frames.clear_cache()
+    def forbidden(path):
+        raise AssertionError('decoded an unchanged file')
+    monkeypatch.setattr(frames, 'load_image_for_face_crop', forbidden)
+    assert frames.is_current(identity_photo, stored) is True
+
+
+def test_stat_refresh_is_best_effort_and_keeps_the_original_signature(identity_photo):
+    from utils import manual_face_frame as frames
+    stored = frames.source_identity(identity_photo)
+    _replace_metadata(identity_photo)
+    class Broken:
+        def execute(self, *args):
+            raise RuntimeError('database is locked')
+    assert frames.is_current(identity_photo, stored, Broken(), 1) is True
+    class Recording:
+        def execute(self, sql, params):
+            self.params = params
+    recording = Recording()
+    assert frames.is_current(identity_photo, stored, recording, 1) is True
+    refreshed = json.loads(recording.params[0])
+    assert refreshed['sig'] == json.loads(stored)['sig']
+    assert refreshed['stat'] != json.loads(stored)['stat']
+
+
+def test_identity_failure_never_aborts_a_scan_batch_or_export(identity_photo, monkeypatch):
+    from db import manual_faces
+    from db.manual_faces import export_dimensions, without_manual_overlaps
+    from utils import manual_face_frame as frames
+    identity = frames.source_identity(identity_photo)
+    def broken(path, *args):
+        raise ValueError('identity exploded')
+    monkeypatch.setattr(manual_faces, 'is_current', broken)
+    record = (identity_photo, 0, b'', 10, 10, 20, 20)
+    with get_db() as conn:
+        conn.execute("INSERT INTO faces(photo_path,face_index,embedding,is_manual,manual_key,bbox_x1,bbox_y1,"
+                     "bbox_x2,bbox_y2,manual_source,manual_width,manual_height) "
+                     "VALUES (?,-1,X'',1,'boom',10,10,20,20,?,100,80)", (identity_photo, identity))
+        try:
+            assert without_manual_overlaps(conn, identity_photo, [record]) == [record]
+        finally:
+            conn.rollback()
+    row = {'is_manual': 1, 'photo_path': identity_photo, 'manual_source': identity,
+           'manual_width': 100, 'manual_height': 80}
+    assert export_dimensions(row, 100, 80) is None

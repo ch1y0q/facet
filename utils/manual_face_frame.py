@@ -1,17 +1,26 @@
 """Portable canonical-pixel identity, with bounded process-local decode reuse."""
 from collections import OrderedDict
 from dataclasses import dataclass
-import hashlib
 import json
+import logging
 import os
 import threading
 
+import cv2
 import numpy as np
 
 from utils.image_loading import (
     get_hdr_pq_tonemap_settings, get_raw_decode_settings, load_image_for_face_crop,
 )
 
+logger = logging.getLogger(__name__)
+IDENTITY_VERSION = 2
+IDENTITY_GRID = 8
+# Mean absolute difference of the 8x8 grayscale signatures (0-255 scale) up to
+# which two decodes count as the same picture: absorbs decoder-build noise
+# (libjpeg IDCT, LibRaw demosaic, libheif tone-map) without absorbing a
+# different image.
+SIGNATURE_TOLERANCE = 3
 _MAX_IDENTITIES = 128
 _MAX_FRAME_BYTES = 128 * 1024 * 1024
 _lock = threading.Lock()
@@ -31,13 +40,79 @@ _last_frame: FaceFrame | None = None
 
 
 def file_stamp(path):
-    """Local cache/race key only; filesystem identity is never persisted."""
+    """Local cache/race key; its dev/ino/size/mtime are persisted only as a fast path, never as the proof."""
     path = os.path.abspath(os.fspath(path))
     stat = os.stat(path)
     profile = json.dumps([get_raw_decode_settings(), get_hdr_pq_tonemap_settings()],
                          sort_keys=True, separators=(',', ':'))
     return (path, stat.st_dev, stat.st_ino, stat.st_size,
             stat.st_mtime_ns, stat.st_ctime_ns, profile)
+
+
+def pixel_identity(pixels, stat):
+    """Portable identity: frame size and an 8x8 grayscale signature of the
+    decoded frame, plus the file's stat (a fast path, never the proof)."""
+    height, width = pixels.shape[:2]
+    gray = cv2.cvtColor(pixels, cv2.COLOR_BGR2GRAY)
+    sig = cv2.resize(gray, (IDENTITY_GRID, IDENTITY_GRID), interpolation=cv2.INTER_AREA)
+    return json.dumps({'v': IDENTITY_VERSION, 'w': width, 'h': height,
+                       'sig': [int(x) for x in sig.flatten()], 'stat': stat},
+                      separators=(',', ':'))
+
+
+def _parse(identity):
+    """Current-format identity as a dict; any other stored form is None.
+
+    The earlier list forms (stat-only, SHA-256 of the pixels) are deliberately
+    not understood: such a mark reads as needing review.
+    """
+    try:
+        data = json.loads(identity) if identity else None
+    except (TypeError, ValueError):
+        return None
+    return data if isinstance(data, dict) and data.get('v') == IDENTITY_VERSION else None
+
+
+def same_image(first, second):
+    """Same frame size and signatures within SIGNATURE_TOLERANCE."""
+    a, b = _parse(first), _parse(second)
+    if a is None or b is None:
+        return False
+    if (a['w'], a['h']) != (b['w'], b['h']) or len(a['sig']) != len(b['sig']):
+        return False
+    return sum(abs(x - y) for x, y in zip(a['sig'], b['sig'])) / len(a['sig']) <= SIGNATURE_TOLERANCE
+
+
+def is_current(path, stored, conn=None, face_id=None):
+    """Is ``stored`` still the picture at ``path``? Never raises.
+
+    An unchanged stat is current without decoding. Otherwise the file is
+    decoded and compared by size and signature, so a metadata-only rewrite, a
+    remount or another host's decoder does not stale the mark; where ``conn``
+    is given the stored stat is then refreshed, best effort.
+    """
+    try:
+        data = _parse(stored)
+        if data is None:
+            return False
+        stat = os.stat(path)
+        if data['stat'] == [stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns]:
+            return True
+        fresh = source_identity(path)
+        if not same_image(stored, fresh):
+            return False
+        if conn is not None and face_id is not None:
+            try:
+                # Keep the original signature: refreshing it too would let
+                # successive small drifts walk away from the drawn picture.
+                conn.execute('UPDATE faces SET manual_source=? WHERE id=?',
+                             (json.dumps({**data, 'stat': json.loads(fresh)['stat']},
+                                         separators=(',', ':')), face_id))
+            except Exception:
+                logger.debug('could not refresh the stored identity of face %s', face_id, exc_info=True)
+        return True
+    except Exception:
+        return False
 
 
 def _load(stamp):
@@ -50,10 +125,7 @@ def _load(stamp):
             pixels.dtype != np.uint8 or not pixels.shape[0] or not pixels.shape[1]):
         raise OSError('Original image could not be decoded')
     pixels = np.ascontiguousarray(pixels)
-    height, width = pixels.shape[:2]
-    digest = hashlib.sha256(memoryview(pixels).cast('B')).hexdigest()
-    identity = json.dumps(['upright-pixels-v1', width, height, digest],
-                          separators=(',', ':'))
+    identity = pixel_identity(pixels, list(stamp[1:5]))
     pixels.setflags(write=False)
     frame = FaceFrame(stamp, identity, pixels)
     # Decode/hash without the lock. A late decode cannot publish an old file
