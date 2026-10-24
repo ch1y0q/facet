@@ -141,8 +141,9 @@ export interface Photo {
   caption_translated?: string | null;
   gps_latitude?: number | null;
   gps_longitude?: number | null;
-  /** 1 when the location was set in the viewer; rescans then keep it. */
+  /** 1 when the capture date was corrected in the viewer; rescans then keep it. */
   date_manually_set?: number | null;
+  /** 1 when the location was set in the viewer; rescans then keep it. */
   gps_manually_set?: number | null;
 }
 

@@ -215,8 +215,9 @@ PHOTOS_COLUMNS = [
     # the row's sequence_kind, never on its own. NULL = written before the stamp
     # existed, i.e. before the RAW exposure fix. See db/render_version.py.
     ('render_version', 'INTEGER'),
-    # Manual GPS (including intentional clears) survives EXIF rescans.
+    # Manual capture dates survive EXIF rescans.
     ('date_manually_set', 'INTEGER NOT NULL DEFAULT 0'),
+    # Manual GPS (including intentional clears) survives EXIF rescans.
     ('gps_manually_set', 'INTEGER NOT NULL DEFAULT 0'),
 ]
 

@@ -2014,9 +2014,6 @@ export class GalleryComponent implements OnInit, OnDestroy {
     });
   }
 
-  /** Bulk add/remove of one manual tag. The dialog owns the request; the list is
-   *  refetched afterwards because a photo opened in the detail view carries the
-   *  grid row's `manual_tags`, which a bulk write has just made stale. */
   async openCaptureDateDialog(): Promise<void> {
     const viewScoped = this.viewScoped();
     const data = {
@@ -2031,6 +2028,9 @@ export class GalleryComponent implements OnInit, OnDestroy {
     this.dialog.open(CaptureDateDialogComponent, { width: '95vw', maxWidth: '760px', data });
   }
 
+  /** Bulk add/remove of one manual tag. The dialog owns the request; the list is
+   *  refetched afterwards because a photo opened in the detail view carries the
+   *  grid row's `manual_tags`, which a bulk write has just made stale. */
   async openManualTagsDialog(): Promise<void> {
     const viewScoped = this.viewScoped();
     const paths = [...this.selectedPaths()];
