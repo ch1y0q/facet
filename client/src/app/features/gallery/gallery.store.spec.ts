@@ -298,6 +298,19 @@ describe('GalleryStore', () => {
       expect(await store.continueReview()).toBe('/test.jpg');
     });
 
+    it.each(['kept', 'rejected'])('declines an album queue whose current saved criterion changed to %s', async status => {
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+      await store.updateFilters({ album_id: '123', camera: 'Camera A', review_status: 'undecided' });
+      await store.updateFilters({ album_id: '', camera: 'Current', review_status: '' });
+      const before = store.filters();
+      TestBed.inject(AlbumService).get = vi.fn(() => of({ id: 123, is_smart: true, smart_filter_json: JSON.stringify({ camera: 'Camera B', review_status: status }) } as Album));
+      apiGet.mockClear();
+      expect(await store.continueReview()).toBeNull();
+      expect(store.filters()).toBe(before);
+      expect(apiGet.mock.calls.filter(([url]) => url === '/photos')).toHaveLength(0);
+      expect(snackOpen).toHaveBeenCalled();
+    });
+
     it('tolerates malformed browser storage', () => {
       localStorage.setItem('facet_review_queues_v1', '{broken');
       expect(store.reviewBookmark()).toBeNull();
@@ -3087,6 +3100,57 @@ describe('GalleryStore smart-album auto-save', () => {
       const saved = JSON.parse(albumUpdate.mock.calls.at(-1)![1].smart_filter_json);
       expect(saved).toMatchObject({ camera: 'Camera C', sort: 'filename', sort_direction: 'DESC' });
       expect(saved.review_status).toBeUndefined();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it.each(['single', 'grouped'])('keeps display-only %s edits in the same temporary album query and selection', async mode => {
+    const get = TestBed.inject(ApiService).get as Mock;
+    get.mockReturnValue(of(makePhotosResponse({ has_more: true })));
+    store.currentAlbum.set({ ...smartAlbum, smart_filter_json: JSON.stringify({ camera: 'Camera B', sort: 'filename', sort_direction: 'DESC' }) });
+    store.filters.set({ ...DEFAULT_FILTERS, camera: 'Camera B', sort: 'filename', sort_direction: 'DESC' });
+    vi.useFakeTimers();
+    try {
+      await store.startReviewQueue();
+      store.filters.update(f => ({ ...f, page: 2 }));
+      store.selectWholeView();
+      const query = store.filterKey();
+      const rows = store.photos();
+      get.mockClear();
+      if (mode === 'grouped') await store.updateFilters({ hide_details: false, tooltip_mode: 'off', panel_activation: 'click' });
+      else {
+        await store.updateFilter('hide_details', false);
+        await store.updateFilter('tooltip_mode', 'off');
+        await store.updateFilter('panel_activation', 'click');
+      }
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(500);
+      expect(store.filters()).toMatchObject({ page: 2, review_status: 'undecided', sort: 'date_taken', sort_direction: 'ASC', hide_details: false, tooltip_mode: 'off', panel_activation: 'click' });
+      expect(store.filterKey()).toBe(query);
+      expect(store.photos()).toBe(rows);
+      expect(store.viewScopeSelected()).toBe(true);
+      expect(get.mock.calls.filter(([url]) => url === '/photos')).toHaveLength(0);
+      expect(albumUpdate).not.toHaveBeenCalled();
+      expect(TestBed.inject(Router).navigate).toHaveBeenLastCalledWith([], expect.objectContaining({ queryParams: expect.objectContaining({ review_status: 'undecided', sort: 'date_taken', sort_direction: 'ASC', review_queue: '1' }) }));
+      await store.nextPage();
+      expect(get).toHaveBeenLastCalledWith('/photos', expect.objectContaining({ page: 3, review_status: 'undecided', sort: 'date_taken', sort_direction: 'ASC' }));
+    } finally { vi.useRealTimers(); }
+  });
+
+  it.each(['single', 'grouped'])('reverses queue order through a %s sort edit without leaving Needs review', async mode => {
+    const get = TestBed.inject(ApiService).get as Mock;
+    get.mockReturnValue(of(makePhotosResponse()));
+    store.currentAlbum.set({ ...smartAlbum, smart_filter_json: JSON.stringify({ camera: 'Camera B', sort: 'filename', sort_direction: 'DESC' }) });
+    store.filters.set({ ...DEFAULT_FILTERS, camera: 'Camera B', sort: 'filename', sort_direction: 'DESC' });
+    vi.useFakeTimers();
+    try {
+      await store.startReviewQueue();
+      if (mode === 'grouped') await store.updateFilters({ sort_direction: 'DESC' });
+      else await store.updateFilter('sort_direction', 'DESC');
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(500);
+      expect(store.filters()).toMatchObject({ review_status: 'undecided', sort: 'date_taken', sort_direction: 'DESC' });
+      expect(get).toHaveBeenCalledWith('/photos', expect.objectContaining({ review_status: 'undecided', sort: 'date_taken', sort_direction: 'DESC' }));
+      expect(albumUpdate).not.toHaveBeenCalled();
     } finally { vi.useRealTimers(); }
   });
 

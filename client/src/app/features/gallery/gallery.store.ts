@@ -1150,6 +1150,12 @@ export class GalleryStore {
 
   private static readonly SORT_KEYS: ReadonlySet<string> = new Set(['sort', 'sort_direction']);
 
+  // A threshold edit has no query to reload until semantic search is active.
+  private isDisplayOnlyFilter(key: keyof GalleryFilters): boolean {
+    return GalleryStore.DISPLAY_ONLY_KEYS.has(key)
+      || (key === 'search_threshold' && !this.filters().semanticQuery);
+  }
+
   /** An explicit sidebar edit leaves temporary album review mode before saving. */
   private leaveTemporaryReview(): void {
     if (!this.transientReviewStatus()) return;
@@ -1165,14 +1171,15 @@ export class GalleryStore {
     this.transientReviewStatus.set(false);
   }
 
-  /** Update a single filter and reload photos from page 1 */
+  /** Update a single filter; reload from page 1 only when the query changes. */
   async updateFilter<K extends keyof GalleryFilters>(
     key: K,
     value: GalleryFilters[K],
     transientReview = false,
   ): Promise<void> {
+    const isDisplayOnly = this.isDisplayOnlyFilter(key);
     if (transientReview) this.transientReviewStatus.set(true);
-    else this.leaveTemporaryReview();
+    else if (!isDisplayOnly && !GalleryStore.SORT_KEYS.has(key)) this.leaveTemporaryReview();
     const update = { [key]: value } as Partial<GalleryFilters>;
     const gpsPatch: Partial<GalleryFilters> = {};
     const reviewPatch: Partial<GalleryFilters> = {};
@@ -1193,11 +1200,6 @@ export class GalleryStore {
     };
     // Reload person dropdown when person filter is cleared (was seeded with filtered subset)
     const wasPersonFiltered = !!this.filters().person_id;
-    // search_threshold only feeds the /search branch of loadPhotos(), so
-    // dragging the slider before a semantic query exists has nothing to
-    // reload -- treat it as display-only until a query is actually set.
-    const isDisplayOnly = GalleryStore.DISPLAY_ONLY_KEYS.has(key)
-      || (key === 'search_threshold' && !this.filters().semanticQuery);
     const before = this.filters();
     this.filters.update(current => ({
       ...current, [key]: value, ...extra, ...(isDisplayOnly ? {} : { page: 1 }),
@@ -1252,9 +1254,11 @@ export class GalleryStore {
     }
   }
 
-  /** Update multiple filters at once and reload */
+  /** Update multiple filters; reload only when the query changes. */
   async updateFilters(updates: Partial<GalleryFilters>): Promise<void> {
-    this.leaveTemporaryReview();
+    const keys = Object.keys(updates) as (keyof GalleryFilters)[];
+    const isDisplayOnly = keys.length > 0 && keys.every(key => this.isDisplayOnlyFilter(key));
+    if (keys.some(key => !this.isDisplayOnlyFilter(key) && !GalleryStore.SORT_KEYS.has(key))) this.leaveTemporaryReview();
     const gpsPatch: Partial<GalleryFilters> = {};
     const reviewPatch: Partial<GalleryFilters> = {};
     if (updates.review_status) { reviewPatch.similar_to = ''; reviewPatch.semanticQuery = ''; }
@@ -1273,14 +1277,16 @@ export class GalleryStore {
       ...exclusiveHidePatch(updates),
     };
     const before = this.filters();
-    this.filters.update(current => ({ ...current, ...updates, ...extra, page: 1 }));
+    this.filters.update(current => ({ ...current, ...updates, ...extra, ...(isDisplayOnly ? {} : { page: 1 }) }));
     this.journalFilters(before, this.filters());
     if (Object.keys(updates).some(k => (DISPLAY_OPTION_KEYS as string[]).includes(k))) {
       saveDisplayOptionsToStorage(this.filters());
     }
-    this.cancelRangeLoad();
     this.syncUrl();
-    await this.loadPhotos();
+    if (!isDisplayOnly) {
+      this.cancelRangeLoad();
+      await this.loadPhotos();
+    }
   }
 
   /** Clear all five hide toggles, stashing their prior state so restoreHidden()
