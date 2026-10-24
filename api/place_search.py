@@ -5,6 +5,8 @@ Photon instance when sharing an installation across multiple workers.
 """
 import http.client
 import json
+import socket
+import ssl
 import threading
 import time
 import zlib
@@ -17,6 +19,7 @@ from fastapi import HTTPException
 from api.config import VIEWER_CONFIG
 
 _MAX_BYTES = 65536
+_TIMEOUT_SECONDS = 5.0
 _cache: OrderedDict[tuple[str, str], tuple[float, list[dict[str, Any]]]] = OrderedDict()
 _lock = threading.Lock()
 _next_request = 0.0
@@ -38,14 +41,99 @@ def endpoint() -> str:
     return value
 
 
+class _DeadlineConnection(http.client.HTTPConnection):
+    """Keep the active socket reachable while HTTP parsing owns a file wrapper.
+
+    A watchdog shuts it down at the total deadline, interrupting blocking
+    headers/chunk framing as well as reads. Native DNS resolution is synchronous
+    and cannot be interrupted; after it returns, expiry forbids opening a socket.
+    """
+
+    def __init__(self, endpoint_url: str, deadline: float):
+        url = urlsplit(endpoint_url)
+        if not url.hostname:
+            raise ValueError('Invalid endpoint')
+        self._secure = url.scheme == 'https'
+        self._deadline = deadline
+        self._socket_lock = threading.Lock()
+        self._active_socket: socket.socket | None = None
+        self.expired = False
+        super().__init__(url.hostname, url.port or (443 if self._secure else 80), timeout=_TIMEOUT_SECONDS)
+
+    def remaining(self) -> float:
+        remaining = self._deadline - time.monotonic()
+        if self.expired or remaining <= 0:
+            raise TimeoutError
+        return remaining
+
+    def expire(self) -> None:
+        with self._socket_lock:
+            self.expired = True
+            active = self._active_socket
+        if active is not None:
+            # close() alone need not wake a thread blocked in recv on a socket
+            # file object. shutdown() interrupts the underlying operation first.
+            try:
+                active.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            active.close()
+
+    def connect(self) -> None:
+        addresses = socket.getaddrinfo(self.host, self.port, type=socket.SOCK_STREAM)
+        self.remaining()
+        last_error: OSError | None = None
+        for family, kind, protocol, _, address in addresses:
+            active = socket.socket(family, kind, protocol)
+            try:
+                with self._socket_lock:
+                    active.settimeout(self.remaining())
+                    self._active_socket = active
+                    self.sock = active
+                active.connect(address)
+                if self._secure:
+                    context = ssl.create_default_context()
+                    with self._socket_lock:
+                        self.remaining()
+                        secure = context.wrap_socket(active, server_hostname=self.host, do_handshake_on_connect=False)
+                        self._active_socket = secure
+                        self.sock = secure
+                    secure.settimeout(self.remaining())
+                    secure.do_handshake()
+                self.remaining()
+                return
+            except OSError as exc:
+                if self.sock is not None:
+                    self.sock.close()
+                active.close()
+                self.sock = None
+                last_error = exc
+                self.remaining()
+        if last_error is not None:
+            raise last_error
+        raise OSError('No provider address')
+
+    def finish(self) -> None:
+        # HTTPConnection.close() can run as soon as Connection: close headers
+        # arrive, while its response still owns the readable socket file. Keep
+        # our reference until the fetch finishes so the watchdog can wake it.
+        super().close()
+        with self._socket_lock:
+            active = self._active_socket
+            self._active_socket = None
+        if active is not None:
+            active.close()
+
+
 def _fetch(endpoint_url: str, query: str) -> Any:
     """No redirects or retries; cap both wire and decoded bytes, including gzip."""
     url = urlsplit(endpoint_url)
-    if not url.hostname:
-        raise ValueError('Invalid endpoint')
-    cls = http.client.HTTPSConnection if url.scheme == 'https' else http.client.HTTPConnection
-    conn = cls(url.hostname, url.port, timeout=5)
-    deadline = time.monotonic() + 5
+    deadline = time.monotonic() + _TIMEOUT_SECONDS
+    conn = _DeadlineConnection(endpoint_url, deadline)
+    watchdog = threading.Timer(_TIMEOUT_SECONDS, conn.expire)
+    watchdog.name = 'facet-place-search-deadline'
+    watchdog.start()
+    response: http.client.HTTPResponse | None = None
     try:
         path = (url.path or '/') + '?' + urlencode({'q': query, 'limit': 5})
         conn.request('GET', path, headers={'User-Agent': 'Facet-place-search/1.0 (https://github.com/ncoevoet/facet)', 'Accept': 'application/json', 'Accept-Encoding': 'gzip'})
@@ -82,8 +170,16 @@ def _fetch(endpoint_url: str, query: str) -> Any:
         if decoder and (not decoder.eof or decoder.unused_data):
             raise ValueError('Invalid compressed response')
         return json.loads(data)
+    except (OSError, http.client.HTTPException, ValueError):
+        if conn.expired:
+            raise TimeoutError from None
+        raise
     finally:
-        conn.close()
+        watchdog.cancel()
+        if response is not None:
+            response.close()
+        conn.finish()
+        watchdog.join()
 
 
 def _results(data: Any) -> list[dict[str, Any]]:

@@ -99,21 +99,24 @@ class Response(io.BytesIO):
 def test_size_bound_after_decompression(compressed):
     payload = b' ' * 65537
     response = Response(gzip.compress(payload) if compressed else payload, 'gzip' if compressed else 'identity')
-    with patch('api.place_search.http.client.HTTPSConnection') as connection:
+    with patch('api.place_search._DeadlineConnection') as connection:
+        connection.return_value.expired = False
         connection.return_value.getresponse.return_value = response
         with pytest.raises(ValueError):
             place_search._fetch('https://example.org/api', 'Berlin')
-        assert connection.call_args.kwargs['timeout'] == 5
+        assert place_search._TIMEOUT_SECONDS == 5
         assert connection.return_value.request.call_count == 1
 
 
 def test_no_redirect_or_retry_valid_transport():
-    with patch('api.place_search.http.client.HTTPSConnection') as connection:
+    with patch('api.place_search._DeadlineConnection') as connection:
+        connection.return_value.expired = False
         connection.return_value.getresponse.return_value = Response(json.dumps({'type': 'FeatureCollection', 'features': []}).encode())
         assert place_search._fetch('https://example.org/api', 'Berlin')['features'] == []
         assert connection.return_value.request.call_args.args[1] == '/api?q=Berlin&limit=5'
         response = Response(b'')
         response.status = 302
+        connection.return_value.expired = False
         connection.return_value.getresponse.return_value = response
         with pytest.raises(ValueError):
             place_search._fetch('https://example.org/api', 'Berlin')
@@ -151,3 +154,46 @@ def test_concurrent_miss_refused_but_cached_hit_available():
         finally:
             finish.set()
         assert future.result() == []
+
+
+@pytest.mark.parametrize('prefix', [
+    b'HTTP/1.1 200 OK\r\nX-Slow: ',
+    b'HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n1;slow=',
+    b'HTTP/1.1 200 OK\r\nConnection: close\r\nTransfer-Encoding: chunked\r\n\r\n1;slow=',
+])
+def test_total_deadline_interrupts_trickled_headers_and_chunk_framing(prefix):
+    import socket
+    import threading
+    import time
+
+    stop = threading.Event()
+    accepted = threading.Event()
+    with socket.socket() as listener:
+        listener.bind(('127.0.0.1', 0))
+        listener.listen(1)
+        listener.settimeout(1)
+        def serve():
+            with listener.accept()[0] as peer:
+                accepted.set()
+                try:
+                    peer.sendall(prefix)
+                    for _ in range(24):
+                        if stop.wait(0.05):
+                            break
+                        peer.sendall(b'x')
+                except OSError:
+                    pass
+        server = threading.Thread(target=serve)
+        server.start()
+        started = time.monotonic()
+        try:
+            with patch('api.place_search._TIMEOUT_SECONDS', 0.3):
+                with pytest.raises(TimeoutError):
+                    place_search._fetch(f'http://127.0.0.1:{listener.getsockname()[1]}/api', 'Berlin')
+            assert accepted.is_set()
+            assert time.monotonic() - started < 0.9
+        finally:
+            stop.set()
+            server.join(1)
+        assert not server.is_alive()
+        assert not any(thread.name == 'facet-place-search-deadline' for thread in threading.enumerate())
