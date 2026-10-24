@@ -52,7 +52,7 @@ def _override_auth_user(app, user):
 
 _FACES_SCHEMA = """
     CREATE TABLE photos (
-        path TEXT PRIMARY KEY, aggregate REAL
+        path TEXT PRIMARY KEY, aggregate REAL, image_width INTEGER, image_height INTEGER
     );
     CREATE TABLE persons (
         id INTEGER PRIMARY KEY, name TEXT
@@ -69,7 +69,10 @@ def _make_faces_db(path, photos=(), persons=(), faces=()):
     conn = sqlite3.connect(path)
     conn.executescript(_FACES_SCHEMA)
     for p in photos:
-        conn.execute("INSERT INTO photos (path, aggregate) VALUES (?, ?)", p)
+        # (path, aggregate) or (path, aggregate, image_width, image_height)
+        p = tuple(p) + (None,) * (4 - len(p))
+        conn.execute(
+            "INSERT INTO photos (path, aggregate, image_width, image_height) VALUES (?, ?, ?, ?)", p)
     for pe in persons:
         conn.execute("INSERT INTO persons (id, name) VALUES (?, ?)", pe)
     for f in faces:
@@ -190,6 +193,31 @@ class TestPhotoFaces:
         assert faces[0]["person_name"] is None
         assert faces[1]["person_id"] == 5
         assert faces[1]["person_name"] == "Alice"
+
+    def test_box_is_normalised_to_the_frame_or_null(self, auth_client, tmp_path):
+        """``box`` is the face in 0..1 frame units; null without trusted dimensions."""
+        app, client = auth_client
+        db = str(tmp_path / "photo_face_boxes.db")
+        _make_faces_db(
+            db,
+            photos=[("/sized.jpg", 5.0, 1000, 500), ("/unsized.jpg", 5.0)],
+            faces=[
+                {"id": 20, "photo_path": "/sized.jpg", "face_index": 0, "person_id": None,
+                 "bbox_x1": 100, "bbox_y1": 50, "bbox_x2": 300, "bbox_y2": 250},
+                # Far outside a 1000x500 frame: a coordinate-space mismatch, not drawn.
+                {"id": 21, "photo_path": "/sized.jpg", "face_index": 1, "person_id": None,
+                 "bbox_x1": 2000, "bbox_y1": 50, "bbox_x2": 2400, "bbox_y2": 250},
+                {"id": 22, "photo_path": "/unsized.jpg", "face_index": 0, "person_id": None,
+                 "bbox_x1": 1, "bbox_y1": 1, "bbox_x2": 6, "bbox_y2": 6},
+            ],
+        )
+        with mock.patch("api.routers.faces.get_async_db", _async_conn_factory(db)):
+            sized = client.get("/api/photo/faces", params={"path": "/sized.jpg"}).json()["faces"]
+            unsized = client.get("/api/photo/faces", params={"path": "/unsized.jpg"}).json()["faces"]
+
+        assert sized[0]["box"] == [0.1, 0.1, 0.3, 0.5]
+        assert sized[1]["box"] is None
+        assert unsized[0]["box"] is None
 
     def test_returns_empty_for_photo_without_faces(self, auth_client, tmp_path):
         app, client = auth_client

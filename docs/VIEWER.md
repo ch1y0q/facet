@@ -475,6 +475,10 @@ Open it from the header button or `/persons`:
 | **Find more faces** | The person-search button on a person card lists faces that look like that person, best match first (scored against the person's centroid by `GET /api/person/{id}/possible_faces`). Tick the right ones and add them. Adding recomputes the centroid, so the next round is ranked against what you just confirmed; faces you leave unticked are not offered again while the dialog is open. **All faces** also searches other clusters, **Unassigned only** just the unclustered faces. A face owned by a differently named person shows that name and is never pre-ticked; one owned by a person of the same name, a split-off cluster, is pre-ticked like an unassigned face |
 | **Hide** | Hide a cluster from the persons list, filters, and merge suggestions (reversible) |
 
+### Faces on the photo
+
+In the photo view, a box shows around each detected face while the pointer is over the photo, and hovering a face shows its name (amber box: not named yet). Boxes follow zoom and pan. In edition mode, clicking a face opens a menu: **Change person…** (or **Name this face…**) to pick an existing person or type a new name, **Find more faces of …** for that person (see Find more faces above), and **Not …** to take that person off the photo. Faces whose stored dimensions cannot be trusted are not drawn. The boxes come from `GET /api/photo/faces`, which returns each face's `box` normalised to the frame.
+
 ### Mark a missed face
 
 In edition mode, open a photo and choose **Mark a missing face**, even when no faces were detected. Draw a rectangle (or type its coordinates), pick an existing person or enter a new name, then **Save**. Cancel saves nothing.

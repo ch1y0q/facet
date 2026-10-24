@@ -475,6 +475,10 @@ Aprila dal pulsante nell'intestazione o da `/persons`:
 | **Trova altri volti** | Il pulsante di ricerca sulla scheda di una persona elenca i volti che le somigliano, i più simili per primi (confrontati con il centroide della persona tramite `GET /api/person/{id}/possible_faces`). Seleziona quelli giusti e aggiungili. L'aggiunta ricalcola il centroide, quindi il giro successivo è ordinato in base a ciò che hai appena confermato; i volti lasciati deselezionati non vengono più proposti finché la finestra resta aperta. **Tutti i volti** cerca anche negli altri cluster, **Solo non assegnati** solo tra i volti non raggruppati. Un volto che appartiene a una persona con un altro nome mostra quel nome e non è mai preselezionato; uno che appartiene a una persona con lo stesso nome, un cluster separato, è preselezionato come un volto non assegnato |
 | **Nascondi** | Nasconde un gruppo dall'elenco delle persone, dai filtri e dai suggerimenti di unione (reversibile) |
 
+### Volti sulla foto
+
+Nella vista foto compare un riquadro attorno a ogni volto rilevato mentre il puntatore è sulla foto, e passando su un volto se ne vede il nome (riquadro ambra: non ancora nominato). I riquadri seguono zoom e spostamento. In modalità modifica, un clic su un volto apre un menu: **Cambia persona…** (o **Dai un nome a questo volto…**) per scegliere una persona esistente o scrivere un nuovo nome, **Trova altri volti di …** per quella persona e **Non è …** per togliere quella persona dalla foto. I volti le cui dimensioni salvate non sono affidabili non vengono disegnati. I riquadri vengono da `GET /api/photo/faces`, che restituisce il `box` di ogni volto normalizzato all'inquadratura.
+
 ### Segnare un volto non rilevato
 
 In modalità di modifica, apri una foto e scegli **Segna un volto mancante**, anche se non sono stati rilevati volti. Disegna un rettangolo (o digita le coordinate), scegli una persona esistente o inserisci un nuovo nome, poi **Salva**. Annulla non salva nulla.

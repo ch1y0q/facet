@@ -477,6 +477,10 @@ Haz clic en el nombre de una persona para ver todas sus fotos en `/person/<id>`.
 | Acción | Cómo hacerlo |
 |--------|--------|
 
+### Caras en la foto
+
+En la vista de foto aparece un recuadro alrededor de cada cara detectada mientras el puntero está sobre la foto, y al pasar por una cara se muestra su nombre (recuadro ámbar: aún sin nombre). Los recuadros siguen el zoom y el desplazamiento. En modo edición, hacer clic en una cara abre un menú: **Cambiar de persona…** (o **Nombrar esta cara…**) para elegir una persona existente o escribir un nombre nuevo, **Buscar más caras de …** para esa persona y **No es …** para quitar a esa persona de la foto. No se dibujan las caras cuyas dimensiones guardadas no son fiables. Los recuadros vienen de `GET /api/photo/faces`, que devuelve el `box` de cada cara normalizado al encuadre.
+
 ### Marcar una cara no detectada
 
 En modo de edición, abre una foto y elige **Marcar un rostro ausente**, incluso cuando no se detectó ningún rostro. Dibuja un rectángulo (o escribe sus coordenadas), elige una persona existente o escribe un nombre nuevo, y pulsa **Guardar**. Cancelar no guarda nada.

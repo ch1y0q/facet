@@ -475,6 +475,10 @@ Ouvrez-la depuis le bouton de l'en-tête ou `/persons` :
 | **Trouver d'autres visages** | Le bouton de recherche de la carte d'une personne liste les visages qui lui ressemblent, les plus proches en premier (comparés au centroïde de la personne par `GET /api/person/{id}/possible_faces`). Cochez les bons et ajoutez-les. L'ajout recalcule le centroïde, donc le tour suivant est classé selon ce que vous venez de confirmer ; les visages laissés décochés ne sont plus proposés tant que la boîte de dialogue reste ouverte. **Tous les visages** cherche aussi dans les autres clusters, **Non attribués uniquement** seulement parmi les visages non regroupés. Un visage appartenant à une personne d'un autre nom affiche ce nom et n'est jamais précoché ; un visage appartenant à une personne du même nom, un cluster séparé, est précoché comme un visage non attribué |
 | **Masquer** | Masque un groupe de la liste des personnes, des filtres et des suggestions de fusion (réversible) |
 
+### Visages sur la photo
+
+Dans la vue photo, un cadre apparaît autour de chaque visage détecté quand le pointeur survole la photo, et survoler un visage affiche son nom (cadre ambre : pas encore nommé). Les cadres suivent le zoom et le déplacement. En mode édition, cliquer sur un visage ouvre un menu : **Changer de personne…** (ou **Nommer ce visage…**) pour choisir une personne existante ou saisir un nouveau nom, **Trouver d'autres visages de …** pour cette personne, et **Pas …** pour retirer cette personne de la photo. Les visages dont les dimensions enregistrées ne sont pas fiables ne sont pas dessinés. Les cadres viennent de `GET /api/photo/faces`, qui renvoie le `box` de chaque visage normalisé au cadre.
+
 ### Marquer un visage non détecté
 
 En mode édition, ouvrez une photo et choisissez **Marquer un visage manquant**, même si aucun visage n'a été détecté. Tracez un rectangle (ou saisissez ses coordonnées), choisissez une personne existante ou saisissez un nouveau nom, puis **Enregistrer**. Annuler n'enregistre rien.

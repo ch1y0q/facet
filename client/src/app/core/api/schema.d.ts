@@ -7795,6 +7795,11 @@ export interface components {
             bbox_y1?: number | null;
             /** Bbox Y2 */
             bbox_y2?: number | null;
+            /**
+             * Box
+             * @description [x1, y1, x2, y2] normalised to the frame (0..1); null when the stored dimensions cannot be trusted for this face.
+             */
+            box?: number[] | null;
             /** Face Index */
             face_index: number;
             /** Id */

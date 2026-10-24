@@ -1782,6 +1782,13 @@ export const I18N = {
     find_more_no_centroid: "persons.find_more_no_centroid",
     empty_hint: "persons.empty_hint",
   },
+  photo_faces: {
+    unknown: "photo_faces.unknown",
+    change_person: "photo_faces.change_person",
+    name_face: "photo_faces.name_face",
+    find_more: "photo_faces.find_more",
+    not_person: "photo_faces.not_person",
+  },
   person_selector: {
     create_new: "person_selector.create_new",
     ordering_hint: "person_selector.ordering_hint",

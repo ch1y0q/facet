@@ -24,7 +24,8 @@ ALICE_PHOTO = "/photos/alice/a.jpg"
 BOB_PHOTO = "/photos/bob/b.jpg"
 
 _SCHEMA = """
-    CREATE TABLE photos (path TEXT PRIMARY KEY, aggregate REAL, junk_kind TEXT);
+    CREATE TABLE photos (path TEXT PRIMARY KEY, aggregate REAL, junk_kind TEXT,
+                         image_width INTEGER, image_height INTEGER);
     CREATE TABLE persons (id INTEGER PRIMARY KEY, name TEXT);
     CREATE TABLE faces (id INTEGER PRIMARY KEY, photo_path TEXT, face_index INTEGER,
                         person_id INTEGER, bbox_x1 REAL, bbox_y1 REAL,
@@ -37,7 +38,7 @@ def db_path(tmp_path):
     path = str(tmp_path / "faces_vis.db")
     conn = sqlite3.connect(path)
     conn.executescript(_SCHEMA)
-    conn.executemany("INSERT INTO photos VALUES (?, ?, ?)",
+    conn.executemany("INSERT INTO photos (path, aggregate, junk_kind) VALUES (?, ?, ?)",
                      [(ALICE_PHOTO, 9.0, "screenshot"), (BOB_PHOTO, 3.0, "screenshot")])
     conn.executemany("INSERT INTO persons VALUES (?, ?)", [(1, "Alice"), (2, "Bob")])
     conn.executemany(

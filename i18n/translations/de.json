@@ -1768,6 +1768,13 @@
     "find_more_no_centroid": "Diese Person hat noch kein Referenzgesicht: Weisen Sie zuerst einige Gesichter zu oder führen Sie sie zusammen, und versuchen Sie es dann erneut",
     "empty_hint": "Personen entstehen aus Gesichtern, die du auf einer Fotoseite zuweist (Bearbeitungsmodus). Öffne ein Foto mit Gesichtern und wähle „Gesicht einer Person zuweisen“, um die erste anzulegen."
   },
+  "photo_faces": {
+    "unknown": "Unbekannt",
+    "change_person": "Person ändern…",
+    "name_face": "Dieses Gesicht benennen…",
+    "find_more": "Weitere Gesichter von {name} finden",
+    "not_person": "Nicht {name}"
+  },
   "person_selector": {
     "create_new": "Neue Person erstellen",
     "ordering_hint": "Zuerst kürzlich in diesem Browser zugewiesene Personen, dann Personen mit den meisten Gesichtern in sichtbaren Fotos.",

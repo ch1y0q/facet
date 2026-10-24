@@ -475,6 +475,10 @@ Klicken Sie auf den Namen einer Person, um alle ihre Fotos unter `/person/<id>` 
 | **Weitere Gesichter finden** | Die Suchschaltfläche auf einer Personenkarte listet Gesichter, die dieser Person ähneln, beste Treffer zuerst (verglichen mit dem Zentroid der Person über `GET /api/person/{id}/possible_faces`). Die richtigen anhaken und hinzufügen. Das Hinzufügen berechnet den Zentroid neu, sodass die nächste Runde nach dem gerade Bestätigten sortiert wird; nicht angehakte Gesichter werden nicht erneut angeboten, solange der Dialog offen ist. **Alle Gesichter** sucht auch in anderen Clustern, **Nur nicht zugewiesene** nur unter den nicht gruppierten Gesichtern. Ein Gesicht, das einer anders benannten Person gehört, zeigt deren Namen und ist nie vorab angehakt; eines, das einer gleichnamigen Person gehört, also einem abgespaltenen Cluster, ist wie ein nicht zugewiesenes Gesicht vorab angehakt |
 | **Ausblenden** | Ein Cluster aus der Personenliste, den Filtern und den Zusammenführungsvorschlägen ausblenden (umkehrbar) |
 
+### Gesichter auf dem Foto
+
+In der Fotoansicht erscheint ein Rahmen um jedes erkannte Gesicht, solange der Zeiger über dem Foto ist; beim Überfahren eines Gesichts erscheint dessen Name (gelber Rahmen: noch unbenannt). Die Rahmen folgen Zoom und Verschieben. Im Bearbeitungsmodus öffnet ein Klick auf ein Gesicht ein Menü: **Person ändern…** (oder **Dieses Gesicht benennen…**), um eine vorhandene Person zu wählen oder einen neuen Namen einzugeben, **Weitere Gesichter von … finden** für diese Person und **Nicht …**, um diese Person vom Foto zu entfernen. Gesichter, deren gespeicherte Abmessungen nicht vertrauenswürdig sind, werden nicht gezeichnet. Die Rahmen stammen aus `GET /api/photo/faces`, das für jedes Gesicht ein auf das Bild normiertes `box` liefert.
+
 ### Ein übersehenes Gesicht markieren
 
 Öffnen Sie im Bearbeitungsmodus ein Foto und wählen Sie **Fehlendes Gesicht markieren**, auch wenn keine Gesichter erkannt wurden. Zeichnen Sie ein Rechteck (oder geben Sie die Koordinaten ein), wählen Sie eine bestehende Person oder geben Sie einen neuen Namen ein und wählen Sie dann **Speichern**. Abbrechen speichert nichts.

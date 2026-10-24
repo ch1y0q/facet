@@ -276,6 +276,10 @@ class PhotoFace(BaseModel):
     bbox_y2: Optional[int] = None
     person_id: Optional[int] = None
     person_name: Optional[str] = None
+    box: Optional[list[float]] = Field(
+        default=None,
+        description="[x1, y1, x2, y2] normalised to the frame (0..1); null when the stored "
+                    "dimensions cannot be trusted for this face.")
 
 
 class PhotoFacesResponse(BaseModel):

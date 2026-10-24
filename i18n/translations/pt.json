@@ -1768,6 +1768,13 @@
     "find_more_no_centroid": "Esta pessoa ainda não tem um rosto de referência: atribua ou mescle alguns rostos primeiro e tente novamente",
     "empty_hint": "As pessoas vêm dos rostos que você atribui na página da foto (modo edição). Abra qualquer foto com rostos e escolha Atribuir rosto à pessoa para criar a primeira."
   },
+  "photo_faces": {
+    "unknown": "Desconhecido",
+    "change_person": "Trocar pessoa…",
+    "name_face": "Nomear este rosto…",
+    "find_more": "Encontrar mais rostos de {name}",
+    "not_person": "Não é {name}"
+  },
   "person_selector": {
     "create_new": "Criar nova pessoa",
     "ordering_hint": "Primeiro as pessoas atribuídas recentemente neste navegador, depois as que têm mais rostos nas fotos que você pode ver.",

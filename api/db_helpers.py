@@ -1857,9 +1857,41 @@ def set_photos_kept(conn, paths, user_id, agent=False):
 # not clip its boxes, so a face at the edge overhangs a little; a box beyond this
 # is not an overhang but a coordinate-space mismatch — the stored dimensions are
 # not the frame the detector saw. Shared by the repair below (which reads it as
-# proof) and by the face consumers in api/routers/saliency.py (which read it as
-# grounds to distrust a box), so the two can never drift apart.
+# proof) and by normalized_face_box below (which reads it as grounds to distrust
+# a box), so the two can never drift apart.
 FACE_FRAME_TOLERANCE = 1.25
+
+
+def normalized_face_box(x1, y1, x2, y2, width, height):
+    """Normalise a pixel face box to the frame, or None when it can't be trusted.
+
+    Returns None for a missing/degenerate box, for a photo with no stored
+    dimensions, and for a box that overshoots the frame past
+    ``FACE_FRAME_TOLERANCE``. InsightFace does not clip its boxes, so a face at
+    the edge overhangs a little and a legitimate overhang is clamped to the
+    frame; past that bound it is not an overhang but a coordinate-space mismatch
+    — the stored dimensions are not the frame the detector saw (see
+    ``repair_thumbnail_dimensions`` in api.db_helpers, which clears the ones a
+    former startup hook filled from the 640px thumbnail). Such a face is dropped
+    rather than clamped: clamping would pin the "key subject" to a frame edge
+    and point the zoom at nothing.
+    """
+    if None in (x1, y1, x2, y2) or not width or not height:
+        return None
+    if width <= 0 or height <= 0 or x2 <= x1 or y2 <= y1:
+        return None
+    overhang = FACE_FRAME_TOLERANCE - 1.0
+    if (x2 > width * FACE_FRAME_TOLERANCE or y2 > height * FACE_FRAME_TOLERANCE
+            or x1 < -width * overhang or y1 < -height * overhang):
+        return None
+    box = [
+        max(0.0, min(1.0, x1 / width)), max(0.0, min(1.0, y1 / height)),
+        max(0.0, min(1.0, x2 / width)), max(0.0, min(1.0, y2 / height)),
+    ]
+    if box[2] <= box[0] or box[3] <= box[1]:
+        return None
+    return box
+
 
 # Clearing two integers still rewrites the whole photo record, thumbnail BLOB
 # and embeddings included, so the repair commits in batches. A library where

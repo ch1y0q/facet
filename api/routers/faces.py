@@ -23,7 +23,7 @@ from api.db_helpers import (
     update_person_face_count, record_label_origin, snapshot_labels, clear_label_origin_for_scope, trigger_auto_retrain, get_visibility_clause,
     get_preference_columns, read_labels, REJECT_SET,
     assert_faces_visible, assert_photo_visible, repair_stale_representative,
-    is_locked_error, retry_on_locked, select_in_chunks,
+    is_locked_error, normalized_face_box, retry_on_locked, select_in_chunks,
 )
 from api.types import JUNK_NOT_JUNK
 from api.models.culling import (
@@ -225,12 +225,14 @@ async def api_photo_faces(
     vis_sql, vis_params = get_visibility_clause(user.user_id if user else None)
     async with get_async_db() as conn:
         cur = await conn.execute(
-            f"SELECT 1 FROM photos WHERE path = ? AND {vis_sql}", [path, *vis_params]
+            f"SELECT image_width, image_height FROM photos WHERE path = ? AND {vis_sql}",
+            [path, *vis_params],
         )
         visible = await cur.fetchone()
         await cur.close()
         if not visible:
             return {'faces': []}
+        width, height = visible[0], visible[1]
 
         cur = await conn.execute("""
             SELECT f.id, f.face_index, f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2,
@@ -242,7 +244,13 @@ async def api_photo_faces(
         """, (path,))
         faces = await cur.fetchall()
         await cur.close()
-        return {'faces': [dict(f) for f in faces]}
+        # ``box`` is the face normalised to the frame (0..1), or None when the stored
+        # dimensions cannot be trusted for it, so a viewer can draw it at any size.
+        return {'faces': [
+            {**dict(f), 'box': normalized_face_box(
+                f['bbox_x1'], f['bbox_y1'], f['bbox_x2'], f['bbox_y2'], width, height)}
+            for f in faces
+        ]}
 
 
 @router.post("/api/face/{face_id}/assign")

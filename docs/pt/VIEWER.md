@@ -476,6 +476,8 @@ Abra-a pelo botão no cabeçalho ou por `/persons`:
 | **Ocultar** | Oculte um grupo da lista de pessoas, dos filtros e das sugestões de mesclagem (reversível) |
 
 ### Marcar um rosto esquecido
+### Rostos na foto
+Na visualização da foto, aparece um quadro em volta de cada rosto detectado enquanto o ponteiro está sobre a foto, e passar sobre um rosto mostra o nome (quadro âmbar: ainda sem nome). Os quadros acompanham o zoom e o deslocamento. No modo de edição, clicar em um rosto abre um menu: **Trocar pessoa…** (ou **Nomear este rosto…**) para escolher uma pessoa existente ou digitar um novo nome, **Encontrar mais rostos de …** para essa pessoa e **Não é …** para tirar essa pessoa da foto. Rostos cujas dimensões salvas não são confiáveis não são desenhados. Os quadros vêm de `GET /api/photo/faces`, que retorna o `box` de cada rosto normalizado ao enquadramento.
 
 No modo de edição, abra uma foto e escolha **Marcar um rosto ausente**, mesmo quando nenhum rosto foi detectado. Desenhe um retângulo (ou digite as coordenadas), escolha uma pessoa existente ou digite um novo nome, e então **Salvar**. Cancelar não salva nada.
 
