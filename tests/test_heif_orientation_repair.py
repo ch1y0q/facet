@@ -1,0 +1,144 @@
+"""The pillow-heif 1.6 double-transpose repair (fix_double_transposed_heif_thumbnails).
+
+A sideways stored HEIF row must come back upright from the stored thumbnail
+alone -- no original re-decode -- with its dimensions swapped back and its
+subject columns cleared for --recompute-saliency, and a second run must find
+nothing through the watermark.
+"""
+
+import io
+import sqlite3
+
+import pytest
+from PIL import Image
+
+pytest.importorskip("pillow_heif")
+
+from db import init_database  # noqa: E402
+from processing.scorer import fix_double_transposed_heif_thumbnails  # noqa: E402
+
+ROTATED_HIF = str(__import__('pathlib').Path(__file__).parent / 'fixtures' / 'canon_eos_r8_hdr_pq_rotated.hif')
+UPRIGHT_HIF = str(__import__('pathlib').Path(__file__).parent / 'fixtures' / 'canon_eos_r8_hdr_pq.hif')
+
+
+def _sideways_blob():
+    """What the broken decode stored: an upright portrait turned by the extra
+    ROTATE_90 (counterclockwise), i.e. lying on its side. White on top, black
+    below -- after the repair, top must be white again."""
+    upright = Image.new('RGB', (60, 80))
+    for y in range(80):
+        for x in range(60):
+            upright.putpixel((x, y), (255, 255, 255) if y < 40 else (0, 0, 0))
+    sideways = upright.transpose(Image.Transpose.ROTATE_90)
+    buf = io.BytesIO()
+    sideways.save(buf, format='JPEG', quality=80)
+    return buf.getvalue()
+
+
+def _seed(db_path):
+    init_database(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO photos (path, filename, scanned_at, thumbnail, image_width, image_height, "
+        "subject_sharpness, subject_prominence, subject_placement, bg_separation, subject_bbox) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (ROTATED_HIF, 'rotated.hif', '2026-01-01 10:00:00', _sideways_blob(), 800, 600,
+         5.0, 5.0, 5.0, 5.0, '[0.1, 0.1, 0.9, 0.9]'))
+    # An upright-in-file landscape frame: sideways in the size predicate but
+    # nothing wrong with it -- it must be examined and left untouched.
+    conn.execute(
+        "INSERT INTO photos (path, filename, scanned_at, thumbnail, image_width, image_height, "
+        "subject_prominence) VALUES (?, ?, ?, ?, ?, ?, 4.0)",
+        (UPRIGHT_HIF, 'upright.hif', '2026-02-01 10:00:00', _sideways_blob(), 600, 400))
+    # Already upright in the DB (repaired, or scanned correctly): excluded.
+    conn.execute(
+        "INSERT INTO photos (path, filename, scanned_at, thumbnail, image_width, image_height) "
+        "VALUES ('/x/portrait.hif', 'portrait.hif', '2026-03-01 10:00:00', "
+        "x'00', 600, 800)")
+    conn.commit()
+    conn.close()
+
+
+def _row(db_path, path):
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute(
+            "SELECT thumbnail, image_width, image_height, subject_sharpness, subject_prominence, "
+            "subject_placement, bg_separation, subject_bbox FROM photos WHERE path = ?",
+            (path,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def test_repairs_the_sideways_row_from_its_thumbnail_alone(tmp_path):
+    db = str(tmp_path / 't.db')
+    _seed(db)
+    before = _row(db, ROTATED_HIF)
+    assert before['image_width'] == 800 and before['image_height'] == 600
+
+    assert fix_double_transposed_heif_thumbnails(db) == 1
+
+    after = _row(db, ROTATED_HIF)
+    img = Image.open(io.BytesIO(after['thumbnail']))
+    assert img.size == (60, 80)  # portrait again, at the synthetic thumbnail's scale
+    # The white half is on TOP once more: the repair is the exact inverse turn,
+    # not just any quarter rotation.
+    rgb = img.convert('RGB')
+    top = rgb.getpixel((30, 10))
+    bottom = rgb.getpixel((30, 70))
+    assert top[0] > 200 and bottom[0] < 50
+    assert (after['image_width'], after['image_height']) == (600, 800)
+    # Subject metrics scored from the sideways frame are handed to --recompute-saliency.
+    assert [after[k] for k in ('subject_sharpness', 'subject_prominence', 'subject_placement',
+                               'bg_separation', 'subject_bbox')] == [None] * 5
+
+
+def test_leaves_an_upright_in_file_landscape_untouched(tmp_path):
+    db = str(tmp_path / 't.db')
+    _seed(db)
+    before = _row(db, UPRIGHT_HIF)
+    fix_double_transposed_heif_thumbnails(db)
+    after = _row(db, UPRIGHT_HIF)
+    assert after['thumbnail'] == before['thumbnail']
+    assert (after['image_width'], after['image_height']) == (600, 400)
+    assert after['subject_prominence'] is not None  # untouched row keeps its scores
+
+
+def test_watermark_makes_the_second_run_a_noop(tmp_path):
+    db = str(tmp_path / 't.db')
+    _seed(db)
+    assert fix_double_transposed_heif_thumbnails(db) == 1
+
+    conn = sqlite3.connect(db)
+    watermark = conn.execute(
+        "SELECT value FROM stats_cache WHERE key = 'heif_double_transpose_watermark'"
+    ).fetchone()[0]
+    conn.close()
+    assert watermark == '2026-02-01 10:00:00'  # the newest examined row, repaired or not
+
+    # A second run re-examines nothing already passed and finds nothing new.
+    assert fix_double_transposed_heif_thumbnails(db) == 0
+
+
+def test_rows_scanned_after_the_watermark_are_still_examined(tmp_path):
+    db = str(tmp_path / 't.db')
+    _seed(db)
+    assert fix_double_transposed_heif_thumbnails(db) == 1
+
+    # A NEW sideways row, scanned after the watermark: a copy of the rotated
+    # fixture under its own path.
+    later = tmp_path / 'rotated2.hif'
+    later.write_bytes(__import__('pathlib').Path(ROTATED_HIF).read_bytes())
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO photos (path, filename, scanned_at, thumbnail, image_width, image_height) "
+        "VALUES (?, ?, '2026-04-01 10:00:00', ?, 800, 600)",
+        (str(later), 'rotated2.hif', _sideways_blob()))
+    conn.commit()
+    conn.close()
+
+    assert fix_double_transposed_heif_thumbnails(db) == 1
+    after = _row(db, str(later))
+    assert (after['image_width'], after['image_height']) == (600, 800)
