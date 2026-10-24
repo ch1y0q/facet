@@ -978,6 +978,12 @@ All stats are user-aware in multi-user mode — each user sees analytics for the
 | `Shift+Click` | Range-select photos between last selected and clicked |
 | `Double-click` | Open photo |
 | `Shift+F10` / `Menu` | Open the context menu of the focused photo card (right-click does the same) |
+| `1`–`5` | Rate the focused photo 1–5 stars (edition mode; auto-advances to the next photo) |
+| `F` | Favourite / unfavourite the focused photo (edition mode) |
+| `X` or `0` | Reject / un-reject the focused photo (edition mode; auto-advances) |
+| `/` | Focus the search box |
+| `B` | Show / hide the filter sidebar |
+| `V` | Switch between grid and mosaic layout |
 | `?` | Show the keyboard shortcuts reference (works on every page) |
 
 The current photo — the one star-rating, favorite and reject shortcuts act on — is marked with a 4px outline around its card; every other card dims to 50% opacity. Nothing is marked until the cursor has actually moved onto a photo in the results, so a gallery you have not navigated yet stays at full strength. Clicking a photo moves the marker onto it, so a shortcut typed right after a click lands on the photo you clicked, not on wherever the arrow keys last left it. Coming back from a photo (Back or Escape) leaves the marker on the last photo you viewed there, so the shortcuts carry on from there.

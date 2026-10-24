@@ -1034,7 +1034,7 @@
     "user_menu": "Menú de usuario"
   },
   "gallery": {
-    "help": "Explora y filtra tu biblioteca. Ordena por puntuación, fecha o tu gusto personal; usa los filtros de la barra lateral (personas, etiquetas, cámara, categoría, rango de puntuación, momentos) y la búsqueda para encontrar fotos.",
+    "help": "Explora y filtra tu biblioteca. Ordena por puntuación, fecha o tu gusto personal; usa los filtros de la barra lateral (personas, etiquetas, cámara, categoría, rango de puntuación, momentos) y la búsqueda para encontrar fotos. Teclas sobre la tarjeta enfocada: 1–5 puntúa, F marca como favorita, X rechaza (modo edición); / enfoca la búsqueda, B muestra u oculta la barra lateral de filtros, V alterna cuadrícula y mosaico.",
     "hidden_banner": {
       "message": "{n} fotos ocultas por los filtros actuales",
       "some_hidden": "Algunas fotos están ocultas por tus filtros",

@@ -1034,7 +1034,7 @@
     "user_menu": "Benutzermenü"
   },
   "gallery": {
-    "help": "Durchsuchen und filtern Sie Ihre Bibliothek. Sortieren Sie nach Bewertung, Datum oder Ihrem persönlichen Geschmack; nutzen Sie die Filter in der Seitenleiste (Personen, Schlagwörter, Kamera, Kategorie, Wertungsbereich, Momente) und die Suche, um Fotos zu finden.",
+    "help": "Durchsuchen und filtern Sie Ihre Bibliothek. Sortieren Sie nach Bewertung, Datum oder Ihrem persönlichen Geschmack; nutzen Sie die Filter in der Seitenleiste (Personen, Schlagwörter, Kamera, Kategorie, Wertungsbereich, Momente) und die Suche, um Fotos zu finden. Tasten auf der fokussierten Karte: 1–5 bewerten, F favorisieren, X verwirft (Bearbeitungsmodus); / fokussiert die Suche, B blendet die Filterseitenleiste ein/aus, V wechselt Raster und Mosaik.",
     "hidden_banner": {
       "message": "{n} Fotos durch aktuelle Filter ausgeblendet",
       "some_hidden": "Einige Fotos werden durch Ihre Filter ausgeblendet",

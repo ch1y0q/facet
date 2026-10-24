@@ -162,7 +162,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                 [matTooltip]="I18N.gallery.keep_top.label | translate"
                 [attr.aria-label]="I18N.gallery.keep_top.label | translate">
           <mat-icon class="!text-base !w-4 !h-4 !leading-4 mr-1">content_cut</mat-icon>
-          <span class="hidden xl:inline text-sm">{{ I18N.gallery.keep_top.label | translate }}</span>
+          <span class="hidden 2xl:inline text-sm">{{ I18N.gallery.keep_top.label | translate }}</span>
         </button>
         <mat-menu #keepTopMenu="matMenu" class="!max-w-none">
           <div class="p-4 w-80" tabindex="-1" (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation()">

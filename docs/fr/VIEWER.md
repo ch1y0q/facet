@@ -910,6 +910,12 @@ Toutes les statistiques tiennent compte de l'utilisateur en mode multi-utilisate
 | `Shift+Click` | Sélection par plage des photos entre la dernière sélectionnée et celle cliquée |
 | `Double-click` | Ouvrir la photo |
 | `Shift+F10` / `Menu` | Ouvrir le menu contextuel de la carte de photo ayant le focus (le clic droit fait de même) |
+| `1`–`5` | Noter la photo ciblée de 1 à 5 étoiles (mode édition ; passe à la suivante) |
+| `F` | Mettre en favori / retirer des favoris la photo ciblée (mode édition) |
+| `X` ou `0` | Rejeter / annuler le rejet de la photo ciblée (mode édition ; passe à la suivante) |
+| `/` | Cibler le champ de recherche |
+| `B` | Afficher / masquer la barre latérale de filtres |
+| `V` | Basculer entre les dispositions grille et mosaïque |
 | `?` | Afficher la référence des raccourcis clavier (fonctionne sur chaque page) |
 
 La photo courante — celle sur laquelle agissent les raccourcis de note, de favori et de rejet — est marquée par un contour de 4px autour de sa carte ; toutes les autres cartes passent à 50% d'opacité. Rien n'est marqué tant que le curseur ne s'est pas réellement déplacé sur une photo des résultats, si bien qu'une galerie que vous n'avez pas encore parcourue reste à pleine intensité. Cliquer sur une photo y déplace le marqueur, si bien qu'un raccourci tapé juste après un clic s'applique à la photo cliquée, et non à celle où les flèches l'avaient laissé. Revenir d'une photo (Retour ou Échap) laisse le marqueur sur la dernière photo que vous y avez vue, si bien que les raccourcis reprennent à partir de là.

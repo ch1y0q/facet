@@ -909,6 +909,12 @@ Alle Statistiken sind im Mehrbenutzermodus benutzerbewusst — jeder Benutzer si
 | `Shift+Click` | Bereichsauswahl von Fotos zwischen zuletzt ausgewähltem und angeklicktem |
 | `Double-click` | Foto öffnen |
 | `Shift+F10` / `Menu` | Kontextmenü der fokussierten Fotokarte öffnen (der Rechtsklick tut dasselbe) |
+| `1`–`5` | Sterne 1–5 für das Fokusfoto vergeben (Bearbeitungsmodus; springt zum nächsten Foto) |
+| `F` | Fokusfoto favorisieren / Favorit entfernen (Bearbeitungsmodus) |
+| `X` oder `0` | Fokusfoto verwerfen / Verwerfung aufheben (Bearbeitungsmodus; springt weiter) |
+| `/` | Suchfeld fokussieren |
+| `B` | Filterseitenleiste ein-/ausblenden |
+| `V` | Zwischen Raster- und Mosaiklayout wechseln |
 | `?` | Die Tastenkürzel-Referenz anzeigen (funktioniert auf jeder Seite) |
 
 Das aktuelle Foto — das, auf das die Tastenkürzel für Sternebewertung, Favorit und Ablehnen wirken — ist mit einer 4px breiten Umrandung um seine Karte markiert; alle anderen Karten werden auf 50 % Deckkraft abgedunkelt. Markiert wird erst, wenn der Cursor sich tatsächlich auf ein Foto in den Ergebnissen bewegt hat, sodass eine noch nicht durchgeblätterte Galerie in voller Stärke bleibt. Ein Klick auf ein Foto verschiebt die Markierung darauf, sodass ein direkt nach einem Klick getipptes Tastenkürzel das angeklickte Foto trifft und nicht das, wo die Pfeiltasten zuletzt standen. Die Rückkehr von einem Foto (Zurück oder Esc) lässt die Markierung auf dem zuletzt angesehenen Foto, sodass die Tastenkürzel von dort aus weiterarbeiten.

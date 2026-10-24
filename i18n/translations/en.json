@@ -1034,7 +1034,7 @@
     "user_menu": "User menu"
   },
   "gallery": {
-    "help": "Browse and filter your library. Sort by score, date or your personal taste; use the sidebar filters (people, tags, camera, category, score range, moments) and the search to find photos.",
+    "help": "Browse and filter your library. Sort by score, date or your personal taste; use the sidebar filters (people, tags, camera, category, score range, moments) and the search to find photos. Keys on a focused card: 1–5 rate, F favourite, X rejects (edition mode); / focuses the search, B toggles the filter sidebar, V swaps grid and mosaic.",
     "hidden_banner": {
       "message": "{n} photos hidden by current filters",
       "some_hidden": "Some photos are hidden by your filters",
