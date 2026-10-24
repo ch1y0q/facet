@@ -70,6 +70,16 @@ export interface Person {
               [attr.aria-label]="'persons.face_count' | translate:{ count: person().face_count }">
           {{ person().face_count }}
         </span>
+        <!-- While the name line is open the action row is not shown, so "find more" sits on the avatar. -->
+        @if (canEdit() && isEditing()) {
+          <button
+            class="absolute bottom-1.5 right-1.5 z-10 w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 transition-colors text-white inline-flex items-center justify-center cursor-pointer"
+            [matTooltip]="'persons.find_more' | translate"
+            [attr.aria-label]="'persons.find_more' | translate"
+            (click)="findMore.emit(person().id); $event.stopPropagation()">
+            <mat-icon class="!text-lg !w-5 !h-5 !leading-5">person_search</mat-icon>
+          </button>
+        }
       </div>
 
       <mat-card-content class="!px-3 !pt-2 !pb-2">

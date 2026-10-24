@@ -295,6 +295,39 @@ describe('ManagePersonsComponent', () => {
     });
   });
 
+  describe('find more faces', () => {
+    it('opens for a person that is only in the needs-naming section', async () => {
+      component.persons.set([]);
+      component.needsNaming.set([{ id: 9, name: null, face_count: 40, face_thumbnail: true }]);
+      mockDialog.open.mockReturnValue({ afterClosed: () => of({ added: 0 }) });
+
+      component.onFindMore(9);
+      await vi.waitFor(() => expect(mockDialog.open).toHaveBeenCalled());
+
+      expect(mockDialog.open.mock.calls[0][1].data).toEqual({ personId: 9, personName: null });
+    });
+
+    it('reloads both lists after faces were added', async () => {
+      component.persons.set([{ id: 1, name: 'Alice', face_count: 10, face_thumbnail: true }]);
+      mockDialog.open.mockReturnValue({ afterClosed: () => of({ added: 3 }) });
+      mockApi.get.mockClear();
+
+      await component.findMoreFaces(component.persons()[0]);
+
+      const urls = mockApi.get.mock.calls.map((c: unknown[]) => c[0]);
+      expect(urls).toContain('/persons');
+      expect(urls).toContain('/persons/needs_naming');
+      expect(mockSnackBar.open).toHaveBeenCalled();
+    });
+
+    it('does nothing for an unknown id', () => {
+      component.persons.set([]);
+      component.needsNaming.set([]);
+      component.onFindMore(404);
+      expect(mockDialog.open).not.toHaveBeenCalled();
+    });
+  });
+
   describe('saveName', () => {
     it('should skip save if name is empty after trimming', async () => {
       const person = { id: 1, name: 'Alice', face_count: 10, face_thumbnail: true };

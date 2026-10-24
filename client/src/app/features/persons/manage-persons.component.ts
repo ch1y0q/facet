@@ -351,6 +351,7 @@ export class PersonFacesDialogComponent implements OnInit {
                   [isEditing]="true"
                   [canEdit]="true"
                   (editSave)="onNeedsNamingSave($event)"
+                  (findMore)="onFindMore($event)"
                   (editCancel)="onNeedsNamingCancel()"
                   (viewPhotos)="onViewPhotos($event)"
                 />
@@ -754,7 +755,8 @@ export class ManagePersonsComponent implements OnInit {
   }
 
   onFindMore(id: number): void {
-    const person = this.persons().find((p) => p.id === id);
+    // Needs-naming cards are not necessarily on the loaded page of the main grid.
+    const person = this.persons().find((p) => p.id === id) ?? this.needsNaming().find((p) => p.id === id);
     if (person) void this.findMoreFaces(person);
   }
 
@@ -773,7 +775,7 @@ export class ManagePersonsComponent implements OnInit {
     this.journal.record('person', [], { action: 'find_more', person_id: person.id, count: result.added });
     this.snackBar.open(this.i18n.t(I18N.persons.find_more_added, { count: result.added }), '', { duration: 2000 });
     // Faces may have come from other persons, emptying (and deleting) them: reload rather than patch.
-    await this.loadPersons(true);
+    await Promise.all([this.loadPersons(true), this.loadNeedsNaming()]);
   }
 
   // --- Hide / Unhide ---
