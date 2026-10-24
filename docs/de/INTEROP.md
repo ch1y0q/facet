@@ -172,3 +172,5 @@ Facet hält die Tags, die Sie selbst eingeben (siehe [Web-Galerie — Manuelle T
 | Benannte Gesichtsbereiche | MWG `mwg-rs:RegionList` (zentriert-normalisiert, `Type=Face`) | Nicht zurückimportiert | Nur Export; nativ von digiKam gelesen, **nicht** von Lightroom (eine bekannte Adobe-Einschränkung — Lightroom liest nur MWG-Bereiche, die es selbst geschrieben hat) |
 
 Siehe [Befehle — Vorschau & Export](COMMANDS.md#preview--export) für die vollständige CLI-Referenz (`--export-sidecars`, `--import-sidecars`, `--embed-originals`, `--score-to-stars`, `--user`).
+
+Steht ein veraltetes `facet:GPSState=cleared` neben Standard-GPS-Feldern, hat ein vollständiges gültiges Koordinatenpaar Vorrang. Ein unvollständiges oder ungültiges, nicht leeres Paar ist mehrdeutig und wird ignoriert; es löscht keinen Standort. Nur fehlende oder leere Koordinaten mit der expliziten Löschmarkierung löschen GPS. Manuelle GPS-Werte bleiben geschützt, sofern Überschreiben nicht ausdrücklich angefordert wird.

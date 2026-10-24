@@ -172,3 +172,5 @@ Facet keeps the tags you type yourself (see [Viewer — Manual Tags](VIEWER.md#m
 | Named face regions | MWG `mwg-rs:RegionList` (center-normalized, `Type=Face`) | Not re-imported | Export-only; read natively by digiKam, **not** read by Lightroom (a known Adobe limitation — Lightroom only consumes MWG regions it wrote itself) |
 
 See [Commands — Preview & Export](COMMANDS.md#preview--export) for the full CLI reference (`--export-sidecars`, `--import-sidecars`, `--embed-originals`, `--score-to-stars`, `--user`).
+
+When a stale `facet:GPSState=cleared` accompanies standard GPS fields, a complete valid latitude/longitude pair wins. A partial or invalid nonblank pair is ambiguous and ignored; it never clears a location. Only an absent or blank pair with the explicit clear marker clears GPS. Existing manual GPS remains protected unless overwrite is explicitly requested.

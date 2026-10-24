@@ -5,6 +5,7 @@ All notable changes to Facet are documented in this file.
 ## [Unreleased]
 
 ### Added
+- Explicit XMP export/import carries Keep decisions and manual GPS, with protection against overwriting existing manual locations.
 
 - **Revisit organization edits** from a private, durable history: compare GPS, capture-date and review values, then explicitly revert a whole entry with protection against newer edits. Keeps 50 bounded entries per account; originals stay unchanged.
 
