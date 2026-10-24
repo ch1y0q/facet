@@ -204,7 +204,11 @@
     "histogram": "Istogramma"
   },
   "photoCard": {
-    "embed_to_file": "Scrivi i metadati nel file"
+    "embed_to_file": "Scrivi i metadati nel file",
+    "duplicate_set": "Apri gruppo di duplicati",
+    "burst_set": "Apri gruppo di raffica",
+    "sequence_set": "Apri bracket/panorama",
+    "open_detail": "Apri pagina foto"
   },
   "notifications": {
     "copied": "Copiato!",
@@ -1298,7 +1302,14 @@
     "channel_clip_highlight_range": "% alte luci tagliate",
     "channel_clip_shadow_range": "% ombre tagliate",
     "blinks_only": "Solo occhi chiusi",
-    "duplicates_only": "Solo duplicati"
+    "duplicates_only": "Solo duplicati",
+    "card_actions": {
+      "title": "Personalizza i pulsanti della scheda",
+      "hint": "Scegli quali pulsanti mostra una foto al passaggio del mouse e in quale ordine. I pulsanti di gruppo compaiono solo sulle foto che appartengono a un gruppo.",
+      "move_up": "Sposta su",
+      "move_down": "Sposta giù",
+      "reset": "Ripristina predefiniti"
+    }
   },
   "composition_patterns": {
     "none": "Nessuno",

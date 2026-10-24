@@ -28,6 +28,7 @@ import { AlbumService, Album } from '../../core/services/album.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { SaveSmartAlbumDialogComponent } from '../albums/save-smart-album-dialog.component';
+import { CardActionsDialogComponent } from './card-actions-dialog.component';
 import { folderDisplayName } from '../folders/folders.util';
 import { i18nKeys } from '../../core/i18n/keys';
 import { isUnavailableKey, unavailableSet } from '../../shared/utils/unavailable-metrics';
@@ -629,6 +630,10 @@ function saveSectionStates(states: Record<string, boolean>): void {
             [checked]="store.virtualScroll()"
             (change)="store.setVirtualScroll($event.checked)"
           >{{ I18N.gallery.sidebar.virtual_scroll | translate }}</mat-checkbox>
+          <button mat-stroked-button class="!justify-start" (click)="openCardActionsDialog()">
+            <mat-icon class="!text-base !w-4 !h-4 !leading-4 mr-1">tune</mat-icon>
+            {{ I18N.gallery.card_actions.title | translate }}
+          </button>
           <div class="flex items-center gap-2 mt-2">
             <span class="text-sm opacity-70 shrink-0">{{ I18N.gallery.layout_mode | translate }}</span>
             <div class="flex gap-1 ml-auto">
@@ -879,6 +884,12 @@ export class GalleryFilterSidebarComponent {
    *  the thumb, so the unit has to come through `displayWith` -- a bare "5" is
    *  what a screen reader announced otherwise. */
   protected readonly formatThresholdPercent = (value: number): string => `${value}%`;
+
+  /** Open the hover-button customiser: reorder and show/hide what the photo
+   *  cards' top row offers. Writes go through CardActionsService on save. */
+  protected openCardActionsDialog(): void {
+    this.dialog.open(CardActionsDialogComponent, { width: '26rem', autoFocus: false });
+  }
 
   /** The value being dragged right now, before the 400ms debounce commits it.
    *

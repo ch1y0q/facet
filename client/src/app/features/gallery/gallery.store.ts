@@ -11,6 +11,7 @@ import { I18nService } from '../../core/services/i18n.service';
 import { AssistantChangesService } from '../../core/agent/assistant-changes.service';
 import { UserActivityJournal, UserActivityKind, activityName } from '../../core/agent/user-activity-journal.service';
 import { Photo, KeeperHint, normalisePhotoFlagsAll } from '../../shared/models/photo.model';
+import type { CardSetKind } from '../../shared/components/photo-card/card-actions';
 import { I18N } from '../../core/i18n/keys';
 import type { components } from '../../core/api/schema';
 import {
@@ -1106,9 +1107,41 @@ export class GalleryStore {
     }
   }
 
+  /**
+   * Scope the gallery to the set a photo belongs to — the card button's twin of
+   * the photo page's "open this set in the gallery".
+   *
+   * Same precedence and the same hide-toggle release the photo page applies:
+   * any prior set scope is cleared first (a photo can belong to a burst AND a
+   * duplicate group at once, and only one scope can be active), and the toggle
+   * that would collapse this set's members is turned off so the whole set is
+   * actually listed. `kind: 'sequence'` covers bracket, panorama and
+   * hdr_panorama alike — they all share the `(sequence_kind, sequence_group_id)`
+   * pair and the `hide_panoramas` toggle.
+   */
+  async scopeToSet(photo: Photo, kind: CardSetKind): Promise<void> {
+    const updates: Partial<GalleryFilters> = {
+      sequence_group_id: '', sequence_kind: '', burst_group_id: '', duplicate_group_id: '',
+    };
+    if (kind === 'burst' && photo.burst_group_id != null) {
+      updates.burst_group_id = String(photo.burst_group_id);
+      updates.hide_bursts = false;
+    } else if (kind === 'duplicate' && photo.duplicate_group_id != null) {
+      updates.duplicate_group_id = String(photo.duplicate_group_id);
+      updates.hide_duplicates = false;
+    } else if (kind === 'sequence' && photo.sequence_kind && photo.sequence_group_id != null) {
+      updates.sequence_kind = photo.sequence_kind;
+      updates.sequence_group_id = String(photo.sequence_group_id);
+      if (photo.sequence_kind === 'bracket') updates.hide_brackets = false;
+      else updates.hide_panoramas = false;
+    } else {
+      return;
+    }
+    await this.updateFilters(updates);
+  }
+
   /** Update multiple filters at once and reload */
-  async updateFilters(updates: Partial<GalleryFilters>): Promise<void> {
-    const gpsPatch: Partial<GalleryFilters> = {};
+  async updateFilters(updates: Partial<GalleryFilters>): Promise<void> {    const gpsPatch: Partial<GalleryFilters> = {};
     if (updates.no_gps) {
       gpsPatch.gps_lat = ''; gpsPatch.gps_lng = ''; gpsPatch.gps_radius_km = '';
       gpsPatch.similar_to = ''; gpsPatch.semanticQuery = '';

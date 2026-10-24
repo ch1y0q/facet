@@ -219,6 +219,10 @@ export const I18N = {
   },
   photoCard: {
     embed_to_file: "photoCard.embed_to_file",
+    duplicate_set: "photoCard.duplicate_set",
+    burst_set: "photoCard.burst_set",
+    sequence_set: "photoCard.sequence_set",
+    open_detail: "photoCard.open_detail",
   },
   notifications: {
     copied: "notifications.copied",
@@ -1313,6 +1317,13 @@ export const I18N = {
     channel_clip_shadow_range: "gallery.channel_clip_shadow_range",
     blinks_only: "gallery.blinks_only",
     duplicates_only: "gallery.duplicates_only",
+    card_actions: {
+      title: "gallery.card_actions.title",
+      hint: "gallery.card_actions.hint",
+      move_up: "gallery.card_actions.move_up",
+      move_down: "gallery.card_actions.move_down",
+      reset: "gallery.card_actions.reset",
+    },
   },
   composition_patterns: {
     none: "composition_patterns.none",

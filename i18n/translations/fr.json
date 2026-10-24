@@ -204,7 +204,11 @@
     "histogram": "Histogramme"
   },
   "photoCard": {
-    "embed_to_file": "Écrire les métadonnées dans le fichier"
+    "embed_to_file": "Écrire les métadonnées dans le fichier",
+    "duplicate_set": "Ouvrir le groupe de doublons",
+    "burst_set": "Ouvrir le groupe de rafale",
+    "sequence_set": "Ouvrir bracket/panorama",
+    "open_detail": "Ouvrir la page photo"
   },
   "notifications": {
     "copied": "Copie !",
@@ -1298,7 +1302,14 @@
     "channel_clip_highlight_range": "Hautes lumières écrêtées %",
     "channel_clip_shadow_range": "Ombres écrêtées %",
     "blinks_only": "Clignements uniquement",
-    "duplicates_only": "Doublons uniquement"
+    "duplicates_only": "Doublons uniquement",
+    "card_actions": {
+      "title": "Personnaliser les boutons de la vignette",
+      "hint": "Choisissez quels boutons une photo affiche au survol, et dans quel ordre. Les boutons de groupe n'apparaissent que sur les photos qui appartiennent à un groupe.",
+      "move_up": "Monter",
+      "move_down": "Descendre",
+      "reset": "Rétablir les valeurs"
+    }
   },
   "composition_patterns": {
     "none": "Aucun",

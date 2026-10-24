@@ -59,6 +59,7 @@ import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { PhotoTooltipComponent } from './photo-tooltip.component';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { PhotoActionsService } from '../../core/services/photo-actions.service';
+import { CardActionsService } from './card-actions.service';
 import { SlideshowComponent } from './slideshow.component';
 import { GalleryFilterSidebarComponent } from './gallery-filter-sidebar.component';
 import { GalleryPhotoMenuComponent, PhotoMenuAction, PhotoMenuActionEvent, isSheetAction } from './gallery-photo-menu.component';
@@ -327,6 +328,9 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                     (openCritiqueClicked)="openCritique($event)"
                     (embedMetadataClicked)="embedMetadata($event)"
                     (openAddPersonClicked)="openAddPerson($event)"
+                    [cardActions]="cardActions()"
+                    (openSetClicked)="store.scopeToSet($event.photo, $event.kind)"
+                    (openDetailClicked)="downloadPhoto($event)"
                     (favoriteToggled)="store.toggleFavorite($event)"
                     (rejectedToggled)="store.toggleRejected($event)"
                     (starClicked)="store.setRating($event.photo.path, $event.star)"
@@ -382,6 +386,9 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                   (openCritiqueClicked)="openCritique($event)"
                   (embedMetadataClicked)="embedMetadata($event)"
                   (openAddPersonClicked)="openAddPerson($event)"
+                  [cardActions]="cardActions()"
+                  (openSetClicked)="store.scopeToSet($event.photo, $event.kind)"
+                  (openDetailClicked)="downloadPhoto($event)"
                   (favoriteToggled)="store.toggleFavorite($event)"
                   (rejectedToggled)="store.toggleRejected($event)"
                   (starClicked)="store.setRating($event.photo.path, $event.star)"
@@ -442,6 +449,9 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                       (openCritiqueClicked)="openCritique($event)"
                       (embedMetadataClicked)="embedMetadata($event)"
                       (openAddPersonClicked)="openAddPerson($event)"
+                      [cardActions]="cardActions()"
+                      (openSetClicked)="store.scopeToSet($event.photo, $event.kind)"
+                      (openDetailClicked)="downloadPhoto($event)"
                       (favoriteToggled)="store.toggleFavorite($event)"
                       (rejectedToggled)="store.toggleRejected($event)"
                       (starClicked)="store.setRating($event.photo.path, $event.star)"
@@ -753,6 +763,9 @@ export class GalleryComponent implements OnInit, OnDestroy {
   protected readonly I18N = i18nKeys();
   protected readonly store = inject(GalleryStore);
   protected readonly auth = inject(AuthService);
+  private readonly cardActionsService = inject(CardActionsService);
+  /** The user's hover-button layout for every card, from localStorage. */
+  protected readonly cardActions = this.cardActionsService.config;
   protected readonly scan = inject(ScanService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly bottomSheet = inject(MatBottomSheet);

@@ -204,7 +204,11 @@
     "histogram": "Histograma"
   },
   "photoCard": {
-    "embed_to_file": "Escribir metadatos en el archivo"
+    "embed_to_file": "Escribir metadatos en el archivo",
+    "duplicate_set": "Abrir grupo de duplicadas",
+    "burst_set": "Abrir grupo de ráfaga",
+    "sequence_set": "Abrir bracket/panorama",
+    "open_detail": "Abrir página de foto"
   },
   "notifications": {
     "copied": "Copiado!",
@@ -1298,7 +1302,14 @@
     "channel_clip_highlight_range": "% de altas luces recortadas",
     "channel_clip_shadow_range": "% de sombras recortadas",
     "blinks_only": "Solo parpadeos",
-    "duplicates_only": "Solo duplicadas"
+    "duplicates_only": "Solo duplicadas",
+    "card_actions": {
+      "title": "Personalizar botones de la tarjeta",
+      "hint": "Elige qué botones muestra una foto al pasar el cursor y en qué orden. Los botones de grupo solo aparecen en fotos que pertenecen a un grupo.",
+      "move_up": "Subir",
+      "move_down": "Bajar",
+      "reset": "Restaurar valores"
+    }
   },
   "composition_patterns": {
     "none": "Ninguno",

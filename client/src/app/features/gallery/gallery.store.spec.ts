@@ -900,6 +900,55 @@ describe('GalleryStore', () => {
     });
   });
 
+  describe('scopeToSet()', () => {
+    beforeEach(() => {
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+    });
+
+    it('scopes to the duplicate group and releases hide_duplicates, clearing other scopes', async () => {
+      store.filters.set({ ...DEFAULT_FILTERS, hide_duplicates: true, burst_group_id: '9' });
+
+      await store.scopeToSet({ path: '/a.jpg', duplicate_group_id: 7 } as never, 'duplicate');
+
+      const f = store.filters();
+      expect(f.duplicate_group_id).toBe('7');
+      expect(f.hide_duplicates).toBe(false);
+      expect(f.burst_group_id).toBe('');
+      expect(f.sequence_group_id).toBe('');
+      expect(f.page).toBe(1);
+    });
+
+    it('scopes to a burst and releases hide_bursts', async () => {
+      store.filters.set({ ...DEFAULT_FILTERS, hide_bursts: true });
+
+      await store.scopeToSet({ path: '/a.jpg', burst_group_id: 0 } as never, 'burst');
+
+      expect(store.filters().burst_group_id).toBe('0');
+      expect(store.filters().hide_bursts).toBe(false);
+    });
+
+    it('scopes a bracket via the sequence pair and releases hide_brackets', async () => {
+      store.filters.set({ ...DEFAULT_FILTERS, hide_brackets: true, hide_panoramas: true });
+
+      await store.scopeToSet({ path: '/a.jpg', sequence_kind: 'bracket', sequence_group_id: 4 } as never, 'sequence');
+
+      const f = store.filters();
+      expect(f.sequence_kind).toBe('bracket');
+      expect(f.sequence_group_id).toBe('4');
+      expect(f.hide_brackets).toBe(false);
+      expect(f.hide_panoramas).toBe(true);
+    });
+
+    it('does nothing for a photo with no such group', async () => {
+      const before = store.filters();
+
+      await store.scopeToSet({ path: '/a.jpg' } as never, 'duplicate');
+
+      expect(store.filters()).toEqual(before);
+      expect(apiGet).not.toHaveBeenCalled();
+    });
+  });
+
   describe('resetFilters()', () => {
     beforeEach(() => {
       apiGet.mockReturnValue(of(makePhotosResponse()));
