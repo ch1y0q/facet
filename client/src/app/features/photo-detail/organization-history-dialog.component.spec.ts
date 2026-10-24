@@ -12,7 +12,8 @@ const entry = { id: 1, kind: 'gps' as const, created_at: '2026-10-24', part: 1, 
 describe('Organization history', () => {
   const api = { get: vi.fn(), post: vi.fn() };
   const store = { refreshPaths: vi.fn() };
-  const dialog = { close: vi.fn() };
+  const closing = new Subject<void>();
+  const dialog = { close: vi.fn(), beforeClosed: () => closing };
   const auth = { status: signal({ user_id: 'alice' }), isEdition: signal(true) };
   const router = { url: '/gallery', events: new Subject<NavigationStart>() };
   function create() {
@@ -58,6 +59,31 @@ describe('Organization history', () => {
     api.post.mockReturnValue(response); const pending = c.revert(entry);
     auth.status.set({ user_id: 'bob' }); response.next({ changed: 1 }); await pending;
     expect(store.refreshPaths).not.toHaveBeenCalled(); expect(c.changed()).toBeNull();
+  });
+  it('discards a restore completing after dismissal starts while still alive', async () => {
+    const c = create(); const response = new Subject<{ changed: number }>();
+    api.post.mockReturnValue(response); const pending = c.revert(entry);
+    closing.next();
+    response.next({ changed: 1 }); await pending;
+    expect(store.refreshPaths).not.toHaveBeenCalled();
+    expect(c.wasRestored()).toBe(false);
+    expect(c.changed()).toBeNull();
+    expect(api.get).not.toHaveBeenCalled();
+  });
+  it('discards a list completing after dismissal starts while still alive', async () => {
+    const c = create(); const response = new Subject<{ entries: typeof entry[] }>();
+    api.get.mockReturnValue(response); const pending = c.load();
+    closing.next();
+    response.next({ entries: [entry] }); await pending;
+    expect(c.entries()).toEqual([]);
+  });
+  it('discards an error arriving after dismissal starts while still alive', async () => {
+    const c = create(); const response = new Subject<{ changed: number }>();
+    api.post.mockReturnValue(response); const pending = c.revert(entry);
+    closing.next();
+    response.error({ status: 409 }); await pending;
+    expect(c.error()).toBeNull();
+    expect(c.wasRestored()).toBe(false);
   });
   it('reports a conflict without pretending any photos were restored', async () => {
     const c = create(); api.post.mockReturnValue(throwError(() => ({ status: 409 })));

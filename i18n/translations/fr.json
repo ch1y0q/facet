@@ -2812,7 +2812,7 @@
     "reverted": "Déjà rétablie",
     "empty": "Aucune entrée disponible.",
     "part": "Partie {part} sur {parts} : cette entrée ne rétablit que ses {count} photos. Les parties anciennes peuvent avoir expiré.",
-    "success": "{count} photos rétablies.",
+    "success": "Photos rétablies : {count}",
     "conflict": "Des photos ont changé depuis cette action. Rien n’a été rétabli.",
     "unavailable": "Cette entrée n’est plus disponible. Rien n’a été rétabli.",
     "error": "Impossible de charger ou rétablir l’historique.",
@@ -2827,6 +2827,7 @@
     "kept": "Conservée",
     "yes": "Oui",
     "no": "Non",
-    "unknown": "Inconnu"
+    "unknown": "Inconnu",
+    "photo_count": "Photos : {count}"
   }
 }

@@ -2842,6 +2842,7 @@ export const I18N = {
     yes: "organization_history.yes",
     no: "organization_history.no",
     unknown: "organization_history.unknown",
+    photo_count: "organization_history.photo_count",
   },
 } as const;
 

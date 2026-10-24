@@ -2812,7 +2812,7 @@
     "reverted": "已还原",
     "empty": "没有可用的历史记录。",
     "part": "第 {part} 部分，共 {parts} 部分：此记录仅还原其中的 {count} 张照片。较早的部分可能已过期。",
-    "success": "已还原 {count} 张照片。",
+    "success": "已还原照片数量：{count}",
     "conflict": "此操作后照片已被修改。未还原任何照片。",
     "unavailable": "此记录已不可用。未还原任何照片。",
     "error": "无法加载或还原历史记录。",
@@ -2827,6 +2827,7 @@
     "kept": "已保留",
     "yes": "是",
     "no": "否",
-    "unknown": "未知"
+    "unknown": "未知",
+    "photo_count": "照片数量：{count}"
   }
 }

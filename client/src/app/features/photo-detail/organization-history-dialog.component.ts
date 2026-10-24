@@ -31,7 +31,10 @@ type Revert = components['schemas']['OrganizationRevert'];
       @for (entry of entries(); track entry.id) {
         <section class="border border-current/20 rounded-lg p-3 mb-3">
           <h3 class="font-medium">{{ I18N.organization_history[entry.kind] | translate }} · {{ entry.created_at | date:'medium' }}</h3>
-          <p class="text-sm my-2">{{ I18N.organization_history.part | translate:{ part: entry.part, parts: entry.parts, count: entry.changes.length } }}</p>
+          <p class="text-sm my-2">
+            @if (entry.parts > 1) { {{ I18N.organization_history.part | translate:{ part: entry.part, parts: entry.parts, count: entry.changes.length } }} }
+            @else { {{ I18N.organization_history.photo_count | translate:{ count: entry.changes.length } }} }
+          </p>
           <details class="mb-2" (toggle)="toggleEntry(entry.id, $event)">
             <summary class="cursor-pointer">{{ I18N.capture_date.before | translate }} → {{ I18N.capture_date.after | translate }}</summary>
             @if (expanded().has(entry.id)) {
@@ -72,6 +75,7 @@ export class OrganizationHistoryDialogComponent implements OnInit {
   private readonly owner = this.auth.status();
   private readonly url = this.router.url;
   private navigated = false;
+  private closing = false;
   readonly wasRestored = signal(false);
   readonly expanded = signal(new Set<number>());
   readonly entries = signal<Entry[]>([]);
@@ -85,6 +89,7 @@ export class OrganizationHistoryDialogComponent implements OnInit {
   };
 
   constructor() {
+    this.dialog.beforeClosed().pipe(takeUntilDestroyed()).subscribe(() => { this.closing = true; });
     this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
       if (event instanceof NavigationStart) {
         this.navigated = true;
@@ -112,7 +117,7 @@ export class OrganizationHistoryDialogComponent implements OnInit {
   ngOnInit(): void { void this.load(); }
 
   private current(): boolean {
-    return !this.navigated && !this.destroyRef.destroyed && this.auth.status() === this.owner && this.auth.isEdition() && this.router.url === this.url;
+    return !this.closing && !this.navigated && !this.destroyRef.destroyed && this.auth.status() === this.owner && this.auth.isEdition() && this.router.url === this.url;
   }
 
   async load(): Promise<void> {

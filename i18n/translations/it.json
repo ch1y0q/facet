@@ -2812,7 +2812,7 @@
     "reverted": "Già ripristinata",
     "empty": "Nessuna voce disponibile.",
     "part": "Parte {part} di {parts}: questa voce ripristina solo le sue {count} foto. Le parti precedenti potrebbero essere scadute.",
-    "success": "{count} foto ripristinate.",
+    "success": "Foto ripristinate: {count}",
     "conflict": "Alcune foto sono cambiate dopo questa azione. Nulla è stato ripristinato.",
     "unavailable": "Questa voce non è più disponibile. Nulla è stato ripristinato.",
     "error": "Impossibile caricare o ripristinare la cronologia.",
@@ -2827,6 +2827,7 @@
     "kept": "Conservata",
     "yes": "Sì",
     "no": "No",
-    "unknown": "Sconosciuto"
+    "unknown": "Sconosciuto",
+    "photo_count": "Foto: {count}"
   }
 }

@@ -2812,7 +2812,7 @@
     "reverted": "Already reverted",
     "empty": "No available history entries.",
     "part": "Part {part} of {parts}: this entry restores only its {count} photos. Older parts may have expired.",
-    "success": "Restored {count} photos.",
+    "success": "Photos restored: {count}",
     "conflict": "Photos changed since this action. Nothing was restored.",
     "unavailable": "This entry is no longer available. Nothing was restored.",
     "error": "Could not load or restore history.",
@@ -2827,6 +2827,7 @@
     "kept": "Kept",
     "yes": "Yes",
     "no": "No",
-    "unknown": "Unknown"
+    "unknown": "Unknown",
+    "photo_count": "Photos: {count}"
   }
 }

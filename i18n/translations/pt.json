@@ -2812,7 +2812,7 @@
     "reverted": "Já revertida",
     "empty": "Nenhuma entrada disponível.",
     "part": "Parte {part} de {parts}: esta entrada restaura apenas as suas {count} fotos. As partes antigas podem ter expirado.",
-    "success": "{count} fotos restauradas.",
+    "success": "Fotos restauradas: {count}",
     "conflict": "As fotos mudaram desde esta ação. Nada foi restaurado.",
     "unavailable": "Esta entrada já não está disponível. Nada foi restaurado.",
     "error": "Não foi possível carregar ou restaurar o histórico.",
@@ -2827,6 +2827,7 @@
     "kept": "Mantida",
     "yes": "Sim",
     "no": "Não",
-    "unknown": "Desconhecido"
+    "unknown": "Desconhecido",
+    "photo_count": "Fotos: {count}"
   }
 }

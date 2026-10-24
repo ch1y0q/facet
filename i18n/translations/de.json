@@ -2812,7 +2812,7 @@
     "reverted": "Bereits zurückgesetzt",
     "empty": "Keine verfügbaren Einträge.",
     "part": "Teil {part} von {parts}: Dieser Eintrag stellt nur seine {count} Fotos wieder her. Ältere Teile können abgelaufen sein.",
-    "success": "{count} Fotos wiederhergestellt.",
+    "success": "Wiederhergestellte Fotos: {count}",
     "conflict": "Fotos wurden seit dieser Aktion geändert. Nichts wurde wiederhergestellt.",
     "unavailable": "Dieser Eintrag ist nicht mehr verfügbar. Nichts wurde wiederhergestellt.",
     "error": "Verlauf konnte nicht geladen oder wiederhergestellt werden.",
@@ -2827,6 +2827,7 @@
     "kept": "Behalten",
     "yes": "Ja",
     "no": "Nein",
-    "unknown": "Unbekannt"
+    "unknown": "Unbekannt",
+    "photo_count": "Fotos: {count}"
   }
 }
