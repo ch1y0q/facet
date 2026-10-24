@@ -473,9 +473,14 @@ def _apply_preference_filters(where_clauses, sql_params, params, user_id):
                 sql_params.append(min_rating)
         except ValueError:
             pass
-    if params.get('favorites_only') == '1':
+    # 'true' alongside '1': the hide family accepts both spellings (the client
+    # URL carries booleans as true/false), and an agent passing a JSON boolean
+    # arrives lowercased the same way -- favourites-only and rejected-only used
+    # to silently accept '1' alone, so a `show_rejected=true` query showed the
+    # whole library as if the filter were absent.
+    if params.get('favorites_only') in ('1', 'true'):
         where_clauses.append(f"{pref_cols['is_favorite']} = 1")
-    if params.get('show_rejected') == '1':
+    if params.get('show_rejected') in ('1', 'true'):
         where_clauses.append(f"{pref_cols['is_rejected']} = 1")
     elif params.get('hide_rejected') in ('1', 'true'):
         where_clauses.append(f"({pref_cols['is_rejected']} = 0 OR {pref_cols['is_rejected']} IS NULL)")

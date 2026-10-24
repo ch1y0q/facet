@@ -1550,6 +1550,15 @@ class TestOnlyFilters:
         self._seed(db_path)
         assert self._get(db_path, "show_rejected=1&hide_rejected=1") == ["/rejected.jpg"]
 
+    def test_boolean_spelling_true_is_accepted_for_preference_filters(self, tmp_path):
+        """show_rejected/favorites_only ride the hide family's ('1','true') table:
+        an agent or curl sending the JSON boolean spelling used to be silently
+        ignored and listed the whole library."""
+        db_path = str(tmp_path / "t.db")
+        self._seed(db_path)
+        assert self._get(db_path, "show_rejected=true") == ["/rejected.jpg"]
+        assert self._get(db_path, "favorites_only=true&hide_rejected=1") == []
+
     def test_mcp_filter_allowlist_carries_the_new_keys(self):
         from api.agent.tools_common import MCP_FILTER_KEYS
         assert "blinks_only" in MCP_FILTER_KEYS
