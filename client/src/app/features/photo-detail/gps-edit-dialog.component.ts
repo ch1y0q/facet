@@ -126,7 +126,7 @@ export class GpsEditDialogComponent {
   protected readonly I18N = i18nKeys();
   readonly auth = inject(AuthService);
   private readonly router = inject(Router);
-  private readonly owner = this.auth.status();
+  private readonly owner = this.auth.identity();
   private readonly url = this.router.url;
   private navigated = false;
   private readonly api = inject(ApiService);
@@ -186,7 +186,13 @@ export class GpsEditDialogComponent {
   private marker: L.Marker | null = null;
 
   private current(): boolean {
-    return !this.dismissed && !this.navigated && !this.destroyed && !this.destroyRef.destroyed && this.auth.status() === this.owner && this.auth.isEdition() && this.router.url === this.url;
+    return !this.dismissed && !this.destroyed && !this.destroyRef.destroyed && this.sessionCurrent();
+  }
+
+  /** Same session and page as at opening. A committed write is still published
+   *  after a plain Cancel/Escape; only a later session or navigation drops it. */
+  private sessionCurrent(): boolean {
+    return !this.navigated && this.auth.identity() === this.owner && this.auth.isEdition() && this.router.url === this.url;
   }
 
   private invalidateOwner(): void {
@@ -199,7 +205,7 @@ export class GpsEditDialogComponent {
 
   constructor() {
     effect(() => {
-      if (this.auth.status() !== this.owner || !this.auth.isEdition()) this.invalidateOwner();
+      if (this.auth.identity() !== this.owner || !this.auth.isEdition()) this.invalidateOwner();
     });
     this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
       if (event instanceof NavigationStart) { this.navigated = true; this.invalidateOwner(); }
@@ -356,7 +362,7 @@ export class GpsEditDialogComponent {
     this.saveError.set('');
     try {
       const result = await firstValueFrom(this.api.delete<GpsResult>(`/photo/gps?path=${encodeURIComponent(this.data.path)}`));
-      if (!this.current()) return;
+      if (!this.sessionCurrent()) return;
       this.store.patchPhoto(this.data.path, { gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude, gps_manually_set: 0 });
       if (this.store.filters().no_gps) void this.store.loadPhotos();
       if (this.current()) this.dialogRef.close({ ...result, gps_manually_set: 0 });
@@ -391,7 +397,7 @@ export class GpsEditDialogComponent {
       }));
       // A committed write remains server truth, but an expired dialog cannot
       // publish into a later session or navigation.
-      if (!this.current()) return;
+      if (!this.sessionCurrent()) return;
       this.data.onBatchApplied?.();
       void this.store.refreshPaths(null);
       this.snackBar.open(this.i18n.t(I18N.photo_detail.gps.batch_applied, { changed: result.changed, skipped: result.skipped }), '', { duration: 4000 });
@@ -414,7 +420,7 @@ export class GpsEditDialogComponent {
     this.saveError.set('');
     try {
       const result = await firstValueFrom(this.api.put<GpsResult>('/photo/gps', body));
-      if (!this.current()) return;
+      if (!this.sessionCurrent()) return;
       this.store.patchPhoto(body.path, { gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude, gps_manually_set: 1 });
       if (this.store.filters().no_gps) void this.store.loadPhotos();
       if (this.current()) this.dialogRef.close(result);

@@ -148,9 +148,10 @@ describe('GalleryComponent', () => {
       getRaw: vi.fn(() => of(new Blob(['x']))),
     };
 
+    const authStatus = signal<{ user_id: string }>({ user_id: "editor" });
     mockAuth = {
-      status: signal({ user_id: "editor" }),
-      identity: vi.fn(() => '0|'),
+      status: authStatus,
+      identity: vi.fn(() => authStatus().user_id),
       isEdition: vi.fn(() => false),
       downloadProfiles: vi.fn(() => []),
       hasFeature: vi.fn(() => false),

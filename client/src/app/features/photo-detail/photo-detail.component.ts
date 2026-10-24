@@ -1297,7 +1297,6 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   protected loadGpsDialog() { return import('./gps-edit-dialog.component'); }
 
   protected async editGps(p: Photo): Promise<void> {
-    const owner = this.auth.status();
     const identity = this.auth.identity();
     const url = this.router.url;
     let navigated = false;
@@ -1305,7 +1304,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     const navigation = this.router.events.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(event => {
       if (event instanceof NavigationStart) navigated = true;
     });
-    const current = () => !navigated && !this.destroyRef.destroyed && this.auth.status() === owner
+    const current = () => !navigated && !this.destroyRef.destroyed
       && this.auth.identity() === identity && this.auth.isEdition() && this.router.url === url && this.photo()?.path === p.path;
     try {
       const m = await this.loadGpsDialog();

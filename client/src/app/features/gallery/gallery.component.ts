@@ -1996,10 +1996,10 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   async openBatchGpsDialog(): Promise<void> {
     if (!this.auth.isEdition() || !this.selectionCount()) return;
-    const owner = this.auth.status();
+    const owner = this.auth.identity();
     const url = this.router.url;
     let navigated = false;
-    const current = () => !this.gpsDialogOwnerDestroyed && !navigated && this.router.url === url && this.auth.status() === owner && this.auth.isEdition();
+    const current = () => !this.gpsDialogOwnerDestroyed && !navigated && this.router.url === url && this.auth.identity() === owner && this.auth.isEdition();
     const selectionIdentity = () => JSON.stringify({
       view: this.viewScoped(), paths: [...this.selectedPaths()].sort(),
       exclude: [...this.excludedPaths()].sort(), filters: this.store.filterPayload(),
