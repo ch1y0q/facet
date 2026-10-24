@@ -2313,7 +2313,7 @@ export class BurstCullingComponent implements OnDestroy {
     this.cull.scopeTo.set(null);
     this.cull.scopeScene.set(null);
     void this.router.navigate(['/culling']);
-    void this.cull.loadGroups();
+    this.cull.resetForReload();
   }
 
   /** Non-smart albums for the scope cascade's first level (best-effort). */

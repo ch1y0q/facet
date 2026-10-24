@@ -144,11 +144,12 @@ describe('AssistantCullPlanService', () => {
     expect(service.snapshot()).toBeNull();
   });
 
-  it('counts unsaved decisions only while a darkroom is mounted', () => {
+  it('counts a held unconfirmed flip as unsaved even with no darkroom mounted (it is restored on re-mount)', () => {
     service.setPin({ digest: 'd', request: { group_by: 'all' } });
     service.register([entry(1, 'burst', 5, ['/a', '/b'], ['/a'])], { total: 1, truncated: false });
-    service.recordSelection('5_burst', ['/b']);
     expect(service.hasUnsavedDecisions()).toBe(false);
+    service.recordSelection('5_burst', ['/b']);
+    expect(service.hasUnsavedDecisions()).toBe(true);
     let manual = false;
     const unregister = service.registerDecisionsProbe(() => manual);
     expect(service.hasUnsavedDecisions()).toBe(true);

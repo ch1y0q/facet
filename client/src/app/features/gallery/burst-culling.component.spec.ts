@@ -4288,6 +4288,16 @@ describe('BurstCullingComponent date range', () => {
     expect(scopeCalls().at(-1)![1].queryParams).toEqual({ album: '9', from: '2026-08-01', to: '2026-08-31', scene: null });
   });
 
+  it('exitScope resets the feed (plan keys, timers) instead of only reloading groups', () => {
+    mount({ album: '9' });
+    const reset = vi.spyOn(cull, 'resetForReload').mockImplementation(() => undefined);
+    const load = vi.spyOn(cull, 'loadGroups').mockResolvedValue(undefined);
+    component['exitScope']();
+    expect(reset).toHaveBeenCalledTimes(1);
+    expect(load).not.toHaveBeenCalled();
+    expect(cull.scopeAlbum()).toBeNull();
+  });
+
   it('All dates nulls only the dates and leaves the album', async () => {
     mount({ album: '9', from: '2026-07-01', to: '2026-07-31' });
     component['onDateRange'](null, null);
