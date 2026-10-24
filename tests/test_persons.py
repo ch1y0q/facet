@@ -221,10 +221,13 @@ class TestRenamePerson:
         body = resp.json()
         assert body["success"] is True
         assert body["name"] == "Alice"
+        assert body["same_name_persons"] == []
 
-        mock_conn.execute.assert_called_once_with(
+        # The UPDATE, then the read-only same-name lookup.
+        assert mock_conn.execute.call_args_list[0] == mock.call(
             "UPDATE persons SET name = ? WHERE id = ?", ("Alice", 1)
         )
+        assert mock_conn.execute.call_count == 2
         mock_conn.commit.assert_called_once()
 
 

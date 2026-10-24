@@ -237,6 +237,64 @@ describe('ManagePersonsComponent', () => {
     });
   });
 
+  describe('renaming to a name another person already has', () => {
+    const peter = { id: 1, name: null, face_count: 10, face_thumbnail: true };
+    const sameName = [
+      { id: 5, name: 'Peter Salem', face_count: 77 },
+      { id: 6, name: 'PETER SALEM', face_count: 4 },
+    ];
+
+    beforeEach(() => {
+      component.persons.set([peter]);
+      mockApi.post.mockImplementation((url: string) =>
+        of(url.endsWith('/rename') ? { success: true, name: 'peter salem', same_name_persons: sameName } : {}),
+      );
+    });
+
+    it('offers a merge and folds every same-named cluster into the largest', async () => {
+      await component.saveName(peter, 'peter salem');
+
+      expect(mockDialog.open).toHaveBeenCalled();
+      expect(mockApi.post).toHaveBeenCalledWith('/persons/merge_batch', {
+        merges: [
+          { source_id: 1, target_id: 5 },
+          { source_id: 6, target_id: 5 },
+        ],
+      });
+      expect(mockApi.get).toHaveBeenCalled();
+    });
+
+    it('keeps the clusters apart when the merge is declined', async () => {
+      mockDialog.open.mockReturnValue({ afterClosed: () => of(false) });
+
+      await component.saveName(peter, 'peter salem');
+
+      expect(mockApi.post).not.toHaveBeenCalledWith('/persons/merge_batch', expect.anything());
+    });
+
+    it('offers the same merge when naming from the needs-naming section', async () => {
+      component.needsNaming.set([{ id: 1, name: null, face_count: 100, face_thumbnail: true }]);
+
+      await component.onNeedsNamingSave({ id: 1, name: 'peter salem' });
+
+      // The renamed cluster is now the largest, so it keeps the others.
+      expect(mockApi.post).toHaveBeenCalledWith('/persons/merge_batch', {
+        merges: [
+          { source_id: 5, target_id: 1 },
+          { source_id: 6, target_id: 1 },
+        ],
+      });
+    });
+
+    it('asks nothing when no other person has the name', async () => {
+      mockApi.post.mockReturnValue(of({ success: true, name: 'Zed', same_name_persons: [] }));
+
+      await component.saveName(peter, 'Zed');
+
+      expect(mockDialog.open).not.toHaveBeenCalled();
+    });
+  });
+
   describe('saveName', () => {
     it('should skip save if name is empty after trimming', async () => {
       const person = { id: 1, name: 'Alice', face_count: 10, face_thumbnail: true };

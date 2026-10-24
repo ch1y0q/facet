@@ -43,6 +43,19 @@ interface PersonsResponse {
   total: number;
 }
 
+/** Another person whose name matches a rename, ignoring case (``POST /api/persons/{id}/rename``). */
+interface SameNamePerson {
+  id: number;
+  name: string;
+  face_count: number;
+}
+
+interface RenameResponse {
+  success: boolean;
+  name: string;
+  same_name_persons?: SameNamePerson[];
+}
+
 interface PersonFace {
   id: number;
   photo_path: string;
@@ -510,8 +523,10 @@ export class ManagePersonsComponent implements OnInit {
   async onNeedsNamingSave({ id, name }: { id: number; name: string }): Promise<void> {
     const trimmed = name.trim();
     if (!trimmed) return;
+    const faceCount = this.needsNaming().find(p => p.id === id)?.face_count ?? 0;
+    let res: RenameResponse;
     try {
-      await firstValueFrom(this.api.post(`/persons/${id}/rename`, { name: trimmed }));
+      res = await firstValueFrom(this.api.post<RenameResponse>(`/persons/${id}/rename`, { name: trimmed }));
       this.journal.record('person', [], { action: 'rename', person_id: id, name: activityName(trimmed) });
       // Drop the now-named person from the needs-naming section.
       this.needsNaming.update(list => list.filter(p => p.id !== id));
@@ -520,7 +535,45 @@ export class ManagePersonsComponent implements OnInit {
       this.snackBar.open(this.i18n.t(I18N.persons.renamed), '', { duration: 2000 });
     } catch {
       this.snackBar.open(this.i18n.t(I18N.persons.rename_error), '', { duration: 3000 });
+      return;
     }
+    await this.offerSameNameMerge(id, faceCount, trimmed, res.same_name_persons ?? []);
+  }
+
+  /**
+   * Naming a cluster after a person who already has one (ignoring case) usually means
+   * clustering split that person: offer to fold every same-named cluster into the
+   * largest, which keeps its own spelling of the name. Declining keeps them apart,
+   * since two people may share a name.
+   */
+  async offerSameNameMerge(
+    personId: number,
+    faceCount: number,
+    name: string,
+    sameName: SameNamePerson[],
+  ): Promise<void> {
+    if (sameName.length === 0) return;
+    const ref = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: this.i18n.t(I18N.persons.same_name_title),
+        message: this.i18n.t(I18N.persons.same_name_message, { count: sameName.length, name }),
+        confirmLabel: this.i18n.t(I18N.persons.same_name_merge),
+      },
+    });
+    const confirmed = await firstValueFrom(ref.afterClosed());
+    if (!confirmed) return;
+
+    const all = [{ id: personId, face_count: faceCount }, ...sameName];
+    const target = all.reduce((best, p) => (p.face_count > best.face_count ? p : best));
+    const merges = all.filter(p => p.id !== target.id).map(p => ({ source_id: p.id, target_id: target.id }));
+    try {
+      await firstValueFrom(this.api.post('/persons/merge_batch', { merges }));
+      this.journal.record('person', [], mergeActivity(merges.length, merges.map(m => [m.source_id, m.target_id]), false));
+      this.snackBar.open(this.i18n.t(I18N.persons.merged), '', { duration: 2000 });
+    } catch {
+      this.snackBar.open(this.i18n.t(I18N.persons.merge_error), '', { duration: 3000 });
+    }
+    await Promise.all([this.loadPersons(true), this.loadNeedsNaming()]);
   }
 
   onNeedsNamingCancel(): void {
@@ -615,8 +668,9 @@ export class ManagePersonsComponent implements OnInit {
       return;
     }
 
+    let res: RenameResponse;
     try {
-      await firstValueFrom(this.api.post(`/persons/${person.id}/rename`, { name: trimmed }));
+      res = await firstValueFrom(this.api.post<RenameResponse>(`/persons/${person.id}/rename`, { name: trimmed }));
       this.journal.record('person', [], { action: 'rename', person_id: person.id, name: activityName(trimmed) });
       this.persons.update((list) =>
         list.map((p) => (p.id === person.id ? { ...p, name: trimmed } : p)),
@@ -624,9 +678,11 @@ export class ManagePersonsComponent implements OnInit {
       this.snackBar.open(this.i18n.t(I18N.persons.renamed), '', { duration: 2000 });
     } catch {
       this.snackBar.open(this.i18n.t(I18N.persons.rename_error), '', { duration: 3000 });
+      return;
     } finally {
       this.editingId.set(null);
     }
+    await this.offerSameNameMerge(person.id, person.face_count, trimmed, res.same_name_persons ?? []);
   }
 
   // --- Delete ---

@@ -241,14 +241,44 @@ def rename_person(
     body: RenamePersonRequest,
     user: CurrentUser = Depends(require_edition),
 ):
-    """Rename a person (set or update their name)."""
+    """Rename a person (set or update their name).
+
+    ``same_name_persons`` lists the other visible, non-hidden persons whose name is
+    the same ignoring case and surrounding spaces, largest first, so the viewer can
+    offer to merge clusters of one person that clustering split apart. Nothing is
+    merged here: two different people may share a name.
+    """
+    user_id = user.user_id if user else None
     name = body.name.strip()
     with get_db() as conn:
-        _assert_person_visible(conn, user.user_id if user else None, person_id)
+        _assert_person_visible(conn, user_id, person_id)
         conn.execute("UPDATE persons SET name = ? WHERE id = ?", (name or None, person_id))
         conn.commit()
+        same_name = _same_name_persons(conn, user_id, person_id, name) if name else []
     invalidate_stats_cache()
-    return {"success": True, "name": name or f"Person {person_id}"}
+    return {"success": True, "name": name or f"Person {person_id}", "same_name_persons": same_name}
+
+
+def _same_name_persons(conn, user_id, person_id, name):
+    """Other visible, non-hidden persons named ``name`` ignoring case, largest first.
+
+    Compared with ``str.casefold`` in Python rather than SQLite's ``LOWER``, which
+    folds ASCII only and would miss "ÉLODIE" against "élodie".
+    """
+    fragment, params = person_visibility_exists(user_id, 'p.id')
+    rows = conn.execute(
+        "SELECT p.id, p.name, p.face_count FROM persons p "
+        f"WHERE p.id != ? AND p.name IS NOT NULL AND {person_not_hidden_clause('p')}"
+        + (f" AND {fragment}" if fragment else ""),
+        [person_id, *params],
+    ).fetchall()
+    key = name.casefold()
+    matches = [
+        {"id": r[0], "name": r[1], "face_count": r[2] or 0}
+        for r in rows if r[1].strip().casefold() == key
+    ]
+    matches.sort(key=lambda m: (-m["face_count"], m["id"]))
+    return matches
 
 
 @router.post("/api/persons/merge")
