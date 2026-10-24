@@ -2,7 +2,7 @@ import { GalleryStore } from '../gallery/gallery.store';
 import { makePhoto } from '../../../testing/photo.fixture';
 import type { Mock } from 'vitest';
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRoute, ParamMap, Router, convertToParamMap } from '@angular/router';
+import { ActivatedRoute, ParamMap, Router, NavigationStart, convertToParamMap } from '@angular/router';
 import { Location } from '@angular/common';
 import { MatDialog } from '@angular/material/dialog';
 import { BehaviorSubject, NEVER, Observable, of, Subject, throwError } from 'rxjs';
@@ -1053,6 +1053,44 @@ describe('PhotoDetailComponent', () => {
       closed.next({ gps_latitude: 3, gps_longitude: 4 });
       expect(component.photo().path).toBe(neighbour.path);
       expect(component.photo().gps_latitude).toBeUndefined();
+    });
+
+    describe('gps detail launcher ownership', () => {
+      for (const loss of ['identity', 'edition', 'navigation']) {
+        function lose(events: Subject<NavigationStart>) {
+          if (loss === 'identity') mockAuth.status.set({ user_id: 'bob' });
+          if (loss === 'edition') mockAuth.isEdition.set(false);
+          if (loss === 'navigation') { events.next(new NavigationStart(1, '/other')); events.next(new NavigationStart(2, '/')); }
+        }
+        it(`discards deferred gps import after ${loss} and releases its listener`, async () => {
+          const events = new Subject<NavigationStart>(); mockRouter.events = events;
+          createComponent(); seedGrid();
+          const listeners = events.observers.length;
+          const module = await import('./gps-edit-dialog.component');
+          let finish!: (value: typeof module) => void;
+          vi.spyOn(component, 'loadGpsDialog').mockReturnValue(new Promise(resolve => { finish = resolve; }));
+          component.editGps(component.photo());
+          lose(events); finish(module);
+          await new Promise<void>(resolve => setTimeout(resolve, 0));
+          expect(mockDialog.open).not.toHaveBeenCalled();
+          expect(events.observers).toHaveLength(listeners);
+        });
+        it(`ignores closed gps results after ${loss}`, async () => {
+          const events = new Subject<NavigationStart>(); mockRouter.events = events;
+          createComponent(); seedGrid();
+          const listeners = events.observers.length;
+          const closed = new Subject();
+          mockDialog.open.mockReturnValue({ afterClosed: () => closed });
+          await import('./gps-edit-dialog.component');
+          component.editGps(component.photo());
+          await new Promise<void>(resolve => setTimeout(resolve, 0));
+          expect(mockDialog.open).toHaveBeenCalledOnce();
+          const before = component.photo(); const row = stored();
+          lose(events); closed.next({ gps_latitude: 7, gps_longitude: 8 }); closed.complete();
+          expect(component.photo()).toBe(before); expect(stored()).toBe(row);
+          expect(events.observers).toHaveLength(listeners);
+        });
+      }
     });
 
     it('the category override dialog result reaches the store', async () => {
