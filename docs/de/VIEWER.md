@@ -368,6 +368,24 @@ Zugriff über die Header-Schaltfläche oder `/persons`:
 | **Aufteilen** | Die Gesichter einer Person öffnen, eine Teilmenge auswählen und in eine neue Person aufteilen |
 | **Ausblenden** | Ein Cluster aus der Personenliste, den Filtern und den Zusammenführungsvorschlägen ausblenden (umkehrbar) |
 
+### Ein übersehenes Gesicht markieren
+
+Öffne im Bearbeitungsmodus ein Foto und wähle **Fehlendes Gesicht markieren**, auch wenn keine Gesichter erkannt wurden. Ziehe ein Rechteck um das Gesicht oder passe seine Koordinaten in den beschrifteten Feldern an. Wähle eine vorhandene Person oder gib einen neuen Namen ein und klicke auf **Speichern**. Zeichnung und Namenswahl sind zunächst eine Vorschau; Abbrechen speichert nichts.
+
+Gelöschte manuelle Markierungen bleiben bei späterer Synchronisierung gelöscht, auch wenn eine ältere Kopie sie noch enthält. Änderungen an Namen und Sichtbarkeit auf dem Scanner werden anhand der stabilen Personenidentität im Viewer übernommen; manuelle Gesichtszuordnungen bleiben erhalten.
+
+Gesichts- und Personen-Vorschaubilder werden vor der Wiederverwendung anhand deines aktuellen Fotozugriffs geprüft. Personenbilder zeigen nur sichtbare Aufnahmen; bearbeitete manuelle Zuschnitte verwenden keine alten öffentlichen Bild-Caches. Die frühere Einstellung `viewer.performance.face_cache_size` wird ignoriert und kann aus eigenen Konfigurationen entfernt werden.
+
+Im selben Editor kannst du manuelle Markierungen ändern, neu zuweisen oder entfernen. Sie bleiben bei erneuter Erkennung und Viewer-Synchronisierung der Person zugeordnet, liefern aber keine Erkennungs-Trainingsdaten und ändern keine Qualitätswerte. Die aufrechte Vorschau wird aus dem Original erstellt, damit RAW- und gedrehte Fotos korrekt zugeschnitten werden. Ohne Original kannst du vorhandene Markierungen anzeigen und entfernen, aber keine neuen zeichnen. Eine nicht überprüfbare Markierung wird mit **Prüfung erforderlich** gekennzeichnet.
+
+Neue Markierungen erkennen das Bild an der Größe des aufrecht dekodierten Bildes und einer 8x8-Graustufen-Signatur seiner Pixel, verglichen mit einer kleinen Toleranz. Schreibvorgänge für Metadaten (auch Facet-Einbettungen), erneutes Einbinden eines Laufwerks und andere Hosts erhalten eine Markierung; ein ersetztes Bild kennzeichnet sie, eine feine Retusche oder ein kleiner Neuzuschnitt bzw. eine kleine Begradigung bei gleicher Bildgröße kann jedoch unbemerkt bleiben. Der Editor verwendet ein dekodiertes Bild bis 128 MiB und kleine Fingerabdruck-Einträge wieder; größere Bilder müssen möglicherweise erneut dekodiert werden. Diese Grenze ist fest.
+
+Markierungen aus früheren Vorschauversionen bleiben gespeichert und benötigen eine einmalige Prüfung. Öffne das Original und bearbeite/speichere die Markierung bewusst anhand einer neu geladenen Editor-Vorschau, um die neue Identität zu erfassen. Bis zu diesem Speichern behalten alte Markierungen ihre bisherige Identität.
+
+Die Änderungen werden nur in der Bibliotheksdatenbank gespeichert. Originaldateien und Sidecars bleiben unverändert. Die Vorschau bleibt beim Zeichnen eingepasst.
+
+Die normale inkrementelle Viewer-Synchronisierung erhält manuelle Markierungen und Löschentscheidungen. Ein ausdrücklich erzwungener Neuaufbau der Viewer-Datenbank ersetzt reine Viewer-Änderungen durch die Quelldatenbank; exportiere oder sichere diese Änderungen vorher.
+
 ## Scan auslösen
 
 Der Scan wird angeboten, wenn **beide** Bedingungen erfüllt sind: `viewer.features.show_scan_button` steht auf `true` (in `scoring_config.json` wird er auf **`false`** ausgeliefert, Opt-in) **und** der Aufrufer hat Scan-Zugriff — Rolle `superadmin` im Mehrbenutzermodus, oder eine edition-authentifizierte Sitzung auf einer gesperrten Einzelbenutzer-Installation (ein nicht leeres `viewer.edition_password`) im Einzelbenutzermodus. Die Galerie bietet ihn dann an zwei Stellen an, die beide den Scan-Starter-Dialog (`ScanLauncherComponent`) öffnen: eine Schaltfläche **Fotos scannen, um loszulegen** im leeren Galerie-Zustand und eine Symbolschaltfläche **Neue Fotos scannen** in der Kopfzeile, direkt nach der **Sortierung**-Auswahl und mit farbigem Hintergrund hervorgehoben (auf kleinen Bildschirmen in der unteren Leiste nach deren Sortierauswahl). Bei einer offenen Einzelbenutzer-Installation (`viewer.edition_password` leer, der ausgelieferte Standardwert) liefern alle vier Scan-Routen für jeden Aufrufer 403, auch für einen mit gültigem edition-generiertem JWT, und keiner der beiden Einstiegspunkte wird je gerendert — das Starten eines Scan-Unterprozesses darf nicht anonym erreichbar sein. Ausnahme ist `viewer.trusted_local_editing`: Eine vertrauenswürdige lokale Browser-Sitzung und ein lokaler Assistent mit einem Token für volle Bearbeitung dürfen ohne `show_scan_button` und ohne Editionspasswort scannen.

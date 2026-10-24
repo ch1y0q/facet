@@ -220,8 +220,7 @@ Aggiungi `viewer.performance` a `scoring_config.json` sul NAS per ridurre l'uso 
       "mmap_size_mb": 0,
       "cache_size_mb": 4,
       "pool_size": 2,
-      "thumbnail_cache_size": 200,
-      "face_cache_size": 50
+      "thumbnail_cache_size": 200
     }
   }
 }

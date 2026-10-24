@@ -1994,8 +1994,7 @@ Override global `performance` settings when running the viewer. Useful for low-m
       "mmap_size_mb": 0,
       "cache_size_mb": 4,
       "pool_size": 2,
-      "thumbnail_cache_size": 200,
-      "face_cache_size": 50
+      "thumbnail_cache_size": 200
     }
   }
 }
@@ -2007,7 +2006,6 @@ Override global `performance` settings when running the viewer. Useful for low-m
 | `cache_size_mb` | *(global)* | SQLite cache size override for viewer connections |
 | `pool_size` | `5` | Connection pool size (reduce for low-memory systems) |
 | `thumbnail_cache_size` | `2000` | Max entries in the in-memory thumbnail resize cache |
-| `face_cache_size` | `500` | Max entries in the in-memory face thumbnail cache |
 
 When not set, the viewer uses the global `performance` values. See [Deployment](DEPLOYMENT.md) for recommended NAS settings.
 

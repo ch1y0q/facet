@@ -140,13 +140,13 @@ describe('ApiService', () => {
 
   describe('faceThumbnailUrl()', () => {
     it('should return the correct face thumbnail URL', () => {
-      expect(service.faceThumbnailUrl(42)).toBe('/face_thumbnail/42');
+      expect(service.faceThumbnailUrl(42)).toBe('/face_thumbnail/42?v=2&ngsw-bypass=1');
     });
   });
 
   describe('personThumbnailUrl()', () => {
     it('should return the correct person thumbnail URL', () => {
-      expect(service.personThumbnailUrl(7)).toBe('/person_thumbnail/7');
+      expect(service.personThumbnailUrl(7)).toBe('/person_thumbnail/7?v=2&ngsw-bypass=1');
     });
   });
 

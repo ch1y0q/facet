@@ -157,7 +157,7 @@ describe('PhotoActionsService', () => {
       expect(mockStore.assignFace).not.toHaveBeenCalled();
     });
 
-    it('should filter out unnamed persons for the selector', async () => {
+    it('opens the shared server-backed selector without a gallery dropdown snapshot', async () => {
       const selectedFace = { id: 10 };
       mockDialog.open
         .mockReturnValueOnce({ afterClosed: () => of(selectedFace) })
@@ -166,11 +166,7 @@ describe('PhotoActionsService', () => {
       service.openAddPerson(mockPhoto);
       await vi.waitFor(() => expect(mockDialog.open).toHaveBeenCalledTimes(2), { timeout: 5000 });
 
-      // PersonSelector receives only named persons
-      const personSelectorCall = mockDialog.open.mock.calls[1];
-      const personsData = personSelectorCall[1].data;
-      expect(personsData.every((p: any) => p.name !== null)).toBe(true);
-      expect(personsData).toHaveLength(1); // only Alice (name: 'Alice'), not the unnamed one
+      expect(mockDialog.open.mock.calls[1][1]).not.toHaveProperty('data');
     });
   });
 });

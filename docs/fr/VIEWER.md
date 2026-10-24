@@ -368,6 +368,24 @@ Accessible via le bouton d'en-tête ou `/persons` :
 | **Scinder** | Ouvrez les visages d'une personne, sélectionnez un sous-ensemble, scindez-les en une nouvelle personne |
 | **Masquer** | Masquez un cluster de la liste des personnes, des filtres et des suggestions de fusion (réversible) |
 
+### Marquer un visage non détecté
+
+En mode édition, ouvre une photo et choisis **Marquer un visage manquant**, même si aucun visage n’a été détecté. Trace un rectangle ou ajuste ses coordonnées dans les champs étiquetés. Choisis une personne existante ou saisis un nouveau nom, puis **Enregistrer**. Le tracé et le nom restent une prévisualisation ; Annuler n’enregistre rien.
+
+Les marques manuelles supprimées ne réapparaissent pas lors d’une synchronisation, même si une ancienne copie les contient encore. Les changements de nom et de visibilité effectués côté scanner sont repris dans le visualiseur grâce à l’identité stable de la personne, tout en conservant les liens des visages manuels.
+
+Les miniatures des visages et personnes vérifient les droits d’accès actuels avant réutilisation. Les avatars montrent une apparition visible et les recadrages manuels modifiés ne réutilisent pas d’anciennes images des caches publics. L’ancien réglage `viewer.performance.face_cache_size` est ignoré et peut être retiré de la configuration personnalisée.
+
+Le même éditeur permet de modifier, réattribuer ou supprimer les marques manuelles. Elles restent liées à la personne après une nouvelle analyse ou une synchronisation du visualiseur ; elles ne servent pas à entraîner la reconnaissance et ne modifient pas les scores de qualité faciale. L’aperçu orienté vient de l’original pour respecter les coordonnées des RAW et des photos pivotées. Sans original, les marques existantes restent consultables et supprimables, mais le dessin est indisponible. Une marque qui ne peut pas être vérifiée porte la mention **À vérifier**.
+
+Les nouvelles marques identifient l’image par la taille de l’image décodée dans le bon sens et une signature en niveaux de gris 8x8 de ses pixels, comparée avec une faible tolérance. Les écritures de métadonnées (dont les intégrations Facet), le remontage d’un volume et les autres machines gardent une marque valide ; une image remplacée la signale, mais une retouche subtile ou un léger recadrage ou redressement qui conserve la taille de l’image peut passer inaperçu. L’éditeur réutilise une image décodée de 128 MiB au maximum et de petits enregistrements d’empreintes ; les images plus grandes peuvent nécessiter un nouveau décodage. Cette limite est fixe.
+
+Les marques des anciennes versions de prévisualisation restent enregistrées et nécessitent une vérification unique. Ouvrez l’original et modifiez/enregistrez volontairement la marque à partir d’un nouvel aperçu de l’éditeur pour enregistrer la nouvelle identité. Les anciennes marques gardent leur identité précédente jusqu’à cet enregistrement.
+
+Les changements sont stockés dans la base de la bibliothèque sans modifier les originaux ni les fichiers annexes. L’image reste ajustée dans l’éditeur pendant le tracé.
+
+La synchronisation incrémentale normale conserve les marques manuelles et les suppressions. Une reconstruction forcée de la base du visualiseur remplace les modifications propres au visualiseur par la base source ; exportez ou sauvegardez ces modifications avant la reconstruction.
+
 ## Déclenchement d'un scan
 
 Le scan est proposé lorsque **les deux** conditions suivantes sont réunies : `viewer.features.show_scan_button` vaut `true` (livré à **`false`** dans `scoring_config.json`, activation explicite) **et** l'appelant dispose de l'accès au scan — rôle `superadmin` en mode multi-utilisateurs, ou session authentifiée en édition sur une installation mono-utilisateur verrouillée (un `viewer.edition_password` non vide) en mode mono-utilisateur. La galerie le propose alors à deux endroits, qui ouvrent tous deux la boîte de dialogue de lancement de scan (`ScanLauncherComponent`) : un bouton **Scanner des photos pour commencer** dans l'état de galerie vide et un bouton-icône **Scanner de nouvelles photos** dans l'en-tête, juste après le sélecteur **Tri** et mis en évidence sur un fond coloré (dans la barre du bas, après son sélecteur de tri, sur petit écran). Sur une installation mono-utilisateur ouverte (`viewer.edition_password` vide, la valeur livrée par défaut), les quatre routes de scan renvoient 403 pour tout appelant, y compris celui détenant un JWT de génération d'édition valide, et aucun des deux points d'entrée ne s'affiche jamais — déclencher un sous-processus de scan ne doit pas être accessible anonymement. L'exception est `viewer.trusted_local_editing` : une session de navigateur locale de confiance, et un assistant local détenant un jeton d'édition complète, peuvent scanner sans `show_scan_button` ni mot de passe d'édition.

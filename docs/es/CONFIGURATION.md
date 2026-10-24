@@ -2019,8 +2019,7 @@ Anula los ajustes globales de `performance` al ejecutar el visor. Útil para des
       "mmap_size_mb": 0,
       "cache_size_mb": 4,
       "pool_size": 2,
-      "thumbnail_cache_size": 200,
-      "face_cache_size": 50
+      "thumbnail_cache_size": 200
     }
   }
 }
@@ -2032,7 +2031,6 @@ Anula los ajustes globales de `performance` al ejecutar el visor. Útil para des
 | `cache_size_mb` | *(global)* | Anulación del tamaño de caché de SQLite para las conexiones del visor |
 | `pool_size` | `5` | Tamaño del pool de conexiones (reduce para sistemas de poca memoria) |
 | `thumbnail_cache_size` | `2000` | Máximo de entradas en la caché en memoria de redimensionado de miniaturas |
-| `face_cache_size` | `500` | Máximo de entradas en la caché en memoria de miniaturas de rostro |
 
 Cuando no se establecen, el visor usa los valores globales de `performance`. Consulta [Despliegue](DEPLOYMENT.md) para los ajustes recomendados de NAS.
 

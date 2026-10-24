@@ -119,7 +119,7 @@ def snapshot_named_person_faces(conn, photo_paths=None):
     base = (
         "SELECT f.photo_path, f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2, f.person_id "
         "FROM faces f JOIN persons p ON p.id = f.person_id "
-        "WHERE p.name IS NOT NULL AND f.bbox_x1 IS NOT NULL"
+        "WHERE p.name IS NOT NULL AND f.bbox_x1 IS NOT NULL AND f.is_manual=0"
     )
     if photo_paths is None:
         rows = conn.execute(base).fetchall()
@@ -168,7 +168,7 @@ def reattach_named_persons(conn, snapshot, min_iou=CARRY_OVER_MIN_IOU, extra_per
     reattached = 0
     for photo_path, olds in old_by_photo.items():
         news = [r for r in conn.execute(
-            "SELECT id, bbox_x1, bbox_y1, bbox_x2, bbox_y2 FROM faces WHERE photo_path = ?",
+            "SELECT id, bbox_x1, bbox_y1, bbox_x2, bbox_y2 FROM faces WHERE photo_path = ? AND is_manual=0",
             (photo_path,)).fetchall() if None not in tuple(r)[1:]]
         pairs = match_boxes([box for box, _ in olds], [tuple(r)[1:5] for r in news], min_iou)
         for oi, ni, _ in pairs:
@@ -207,7 +207,15 @@ def replace_photo_faces(conn, photo_paths, face_records, insert_sql, defer_centr
         affected.update(r[0] for r in conn.execute(
             "SELECT DISTINCT person_id FROM faces WHERE person_id IS NOT NULL "
             f"AND photo_path IN ({','.join('?' * len(chunk))})", chunk).fetchall())
-    conn.executemany("DELETE FROM faces WHERE photo_path = ?", [(p,) for p in photo_paths])
+    from db.manual_faces import without_manual_overlaps
+    filtered = []
+    by_path = {}
+    for record in face_records:
+        by_path.setdefault(record[0], []).append(record)
+    for path, records in by_path.items():
+        filtered.extend(without_manual_overlaps(conn, path, records))
+    face_records = filtered
+    conn.executemany("DELETE FROM faces WHERE photo_path = ? AND is_manual=0", [(p,) for p in photo_paths])
     if face_records:
         conn.executemany(insert_sql, face_records)
     if not affected:
@@ -228,7 +236,7 @@ def persist_named_snapshot(conn):
         "(photo_path, bbox_x1, bbox_y1, bbox_x2, bbox_y2, person_id) "
         "SELECT f.photo_path, f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2, f.person_id "
         "FROM faces f JOIN persons p ON p.id = f.person_id "
-        "WHERE p.name IS NOT NULL AND f.bbox_x1 IS NOT NULL"
+        "WHERE p.name IS NOT NULL AND f.bbox_x1 IS NOT NULL AND f.is_manual=0"
     )
     return cur.rowcount
 

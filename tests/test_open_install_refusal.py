@@ -83,6 +83,7 @@ EXPECTED_EDITION_ROUTES = frozenset({
     ('DELETE', '/api/config/weight_snapshots/{snapshot_id}'),
     ('DELETE', '/api/photo/gps'),
     ('DELETE', '/api/photo/manual_tags'),
+    ('DELETE', '/api/photo/manual-faces/{face_id}'),
     ('DELETE', '/api/places/{place_id}'),
     ('GET', '/api/places'),
     ('POST', '/api/places'),
@@ -98,6 +99,8 @@ EXPECTED_EDITION_ROUTES = frozenset({
     ('GET', '/api/config/category_priorities'),
     ('GET', '/api/config/weight_snapshots'),
     ('GET', '/api/photo/cull_preview'),
+    ('GET', '/api/photo/manual-face-frame'),
+    ('GET', '/api/photo/manual-faces'),
     ('GET', '/api/photo/social_crop'),
     ('GET', '/api/photo/social_crop/preview'),
     ('GET', '/api/plugins'),
@@ -132,6 +135,7 @@ EXPECTED_EDITION_ROUTES = frozenset({
     ('POST', '/api/lightroom/manifest'),
     ('POST', '/api/person/{person_id}/avatar'),
     ('POST', '/api/persons'),
+    ('POST', '/api/photo/manual-faces'),
     ('POST', '/api/persons/delete_batch'),
     ('POST', '/api/persons/merge'),
     ('POST', '/api/persons/merge/{source_id}/{target_id}'),
@@ -166,6 +170,7 @@ EXPECTED_EDITION_ROUTES = frozenset({
     ('PUT', '/api/config/panorama_detection'),
     ('PUT', '/api/config/scoring_contexts/{name}'),
     ('PUT', '/api/photo/gps'),
+    ('PUT', '/api/photo/manual-faces/{face_id}'),
     ('PUT', '/api/photo/manual_tags'),
 })
 

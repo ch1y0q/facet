@@ -367,6 +367,24 @@ Accede mediante el botón de la cabecera o `/persons`:
 | **Dividir** | Abre las caras de una persona, selecciona un subconjunto y divídelas en una persona nueva |
 | **Ocultar** | Oculta un grupo de la lista de personas, los filtros y las sugerencias de fusión (reversible) |
 
+### Marcar una cara no detectada
+
+En modo edición, abre una foto y elige **Marcar una cara no detectada**, aunque no se haya detectado ninguna. Dibuja un rectángulo o ajusta sus coordenadas en los campos etiquetados. Elige una persona existente o escribe un nombre nuevo y pulsa **Guardar**. Dibujar y elegir el nombre solo muestran una vista previa; Cancelar no guarda nada.
+
+Las marcas manuales eliminadas no reaparecen al sincronizar, aunque una copia antigua aún las contenga. Los cambios de nombre y visibilidad realizados en el escáner se transfieren al visor mediante la identidad estable de la persona, conservando los vínculos con las caras manuales.
+
+Las miniaturas de caras y personas verifican tu acceso actual a las fotos antes de reutilizarse. Los avatares muestran una aparición visible y los recortes manuales editados no reutilizan imágenes antiguas de cachés públicas. El ajuste antiguo `viewer.performance.face_cache_size` se ignora y puede eliminarse de la configuración personalizada.
+
+El mismo editor permite ajustar, reasignar o eliminar marcas manuales. Se conservan junto a su persona durante nuevos análisis y sincronizaciones del visor; no aportan datos de entrenamiento ni cambian las puntuaciones de calidad facial. La vista previa orientada se obtiene del original para que las coordenadas coincidan en RAW y fotos giradas. Sin el original se pueden listar y eliminar las marcas existentes, pero no dibujar. Una marca que no puede verificarse muestra **Requiere revisión**.
+
+Las marcas nuevas identifican la imagen por el tamaño del fotograma decodificado con orientación correcta y una firma en escala de grises de 8x8 de sus píxeles, comparada con una tolerancia pequeña. Las escrituras de metadatos (incluidas las incrustaciones de Facet), volver a montar una unidad y otros equipos mantienen vigente una marca; una imagen sustituida la señala, pero un retoque sutil o un pequeño reencuadre o enderezado que conserve el tamaño del fotograma puede pasar inadvertido. El editor reutiliza un fotograma decodificado de hasta 128 MiB y pequeños registros de huellas; los fotogramas mayores pueden necesitar otra decodificación. El límite es fijo.
+
+Las marcas de versiones preliminares anteriores siguen guardadas y necesitan una revisión única. Abre el original y edita/guarda expresamente la marca con una vista previa recién cargada para registrar la nueva identidad. Las marcas antiguas conservan su identidad anterior hasta ese guardado.
+
+Los cambios se guardan en la base de datos de la biblioteca, sin modificar originales ni archivos auxiliares. La imagen permanece ajustada al editor mientras dibujas.
+
+La sincronización incremental normal conserva las marcas manuales y sus eliminaciones. Una reconstrucción forzada de la base de datos del visor sustituye los cambios exclusivos del visor por la base de origen; exporta o guarda esos cambios antes de reconstruirla.
+
 ## Activador de escaneo
 
 El escaneo se ofrece cuando se cumplen **ambas** condiciones: `viewer.features.show_scan_button` está en `true` (se entrega en **`false`** en `scoring_config.json`, activación opcional) **y** quien llama tiene acceso al escaneo — rol `superadmin` en modo multiusuario, o una sesión autenticada en modo de edición sobre una instalación de un solo usuario bloqueada (un `viewer.edition_password` no vacío) en modo de un solo usuario. La galería lo ofrece entonces en dos sitios, y ambos abren el diálogo de lanzamiento de escaneo (`ScanLauncherComponent`): un botón **Escanear fotos para empezar** en el estado de galería vacía y un botón de icono **Escanear fotos nuevas** en la cabecera, justo después del selector **Ordenar** y resaltado con un fondo de color (en la barra inferior, tras su selector de orden, en pantallas pequeñas). En una instalación de un solo usuario abierta (`viewer.edition_password` vacía, el valor predeterminado de fábrica), las cuatro rutas de escaneo devuelven 403 para cualquier llamador, incluido uno con un JWT de generación de edición válido, y ninguno de los dos puntos de entrada se muestra nunca — lanzar un subproceso de escaneo no debe ser alcanzable de forma anónima. La excepción es `viewer.trusted_local_editing`: una sesión de navegador local de confianza, y un asistente local con un token de edición completa, pueden escanear sin `show_scan_button` ni contraseña de edición.

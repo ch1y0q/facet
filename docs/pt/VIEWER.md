@@ -367,6 +367,24 @@ Acesse pelo botão no cabeçalho ou por `/persons`:
 | **Dividir** | Abra os rostos de uma pessoa, selecione um subconjunto, divida-os em uma nova pessoa |
 | **Ocultar** | Oculta um cluster da lista de pessoas, filtros e sugestões de mesclagem (reversível) |
 
+### Marcar um rosto não detectado
+
+No modo de edição, abra uma foto e escolha **Marcar um rosto ausente**, mesmo que nenhum rosto tenha sido detectado. Desenhe um retângulo ou ajuste as coordenadas nos campos identificados. Escolha uma pessoa existente ou digite um novo nome e clique em **Salvar**. O desenho e o nome são apenas uma prévia; Cancelar não salva nada.
+
+As marcações manuais excluídas não reaparecem nas sincronizações seguintes, mesmo que uma cópia antiga ainda as contenha. Mudanças de nome e visibilidade feitas no scanner são transferidas para o visualizador pela identidade estável da pessoa, mantendo os vínculos dos rostos manuais.
+
+As miniaturas de rostos e pessoas verificam o acesso atual às fotos antes de serem reutilizadas. Os avatares mostram uma aparição visível e os recortes manuais editados não reutilizam imagens antigas de caches públicos. A configuração antiga `viewer.performance.face_cache_size` é ignorada e pode ser removida das configurações personalizadas.
+
+No mesmo editor você pode ajustar, reatribuir ou remover marcações manuais. Elas continuam ligadas à pessoa após novas varreduras e sincronizações do visualizador; não treinam o reconhecimento nem alteram as notas de qualidade facial. A prévia orientada vem do original para manter as coordenadas corretas em RAW e fotos giradas. Sem o original, é possível listar e remover marcas existentes, mas não desenhar. Uma marcação que não pode ser verificada mostra **Precisa de revisão**.
+
+As novas marcações identificam a imagem pelo tamanho do quadro decodificado na orientação correta e por uma assinatura em escala de cinza 8x8 dos seus pixels, comparada com uma pequena tolerância. Gravações de metadados (incluindo as incorporações do Facet), remontar um volume e outros computadores mantêm uma marcação válida; uma imagem substituída a sinaliza, mas um retoque sutil ou um pequeno reenquadramento ou endireitamento que preserve o tamanho do quadro pode passar despercebido. O editor reutiliza um quadro decodificado de até 128 MiB e pequenos registros de impressões digitais; quadros maiores podem precisar de outra decodificação. O limite é fixo.
+
+As marcações de versões prévias anteriores continuam salvas e precisam de uma revisão única. Abra o original e edite/salve deliberadamente a marcação com uma nova prévia do editor para registrar a nova identidade. As marcações antigas mantêm a identidade anterior até esse salvamento.
+
+As alterações ficam no banco de dados da biblioteca, sem modificar os originais ou arquivos auxiliares. A imagem permanece ajustada ao editor durante o desenho.
+
+A sincronização incremental normal preserva as marcações manuais e as decisões de remoção. Uma reconstrução forçada do banco do visualizador substitui as alterações exclusivas do visualizador pelo banco de origem; exporte ou faça uma cópia dessas alterações antes de reconstruir.
+
 ## Disparo de Varredura
 
 A varredura é oferecida quando **ambas** as condições são atendidas: `viewer.features.show_scan_button` é `true` (vem como **`false`** no `scoring_config.json`, adesão explícita) **e** quem chama tem acesso à varredura — papel `superadmin` em modo multiusuário, ou uma sessão autenticada em modo de edição sobre uma instalação de usuário único bloqueada (um `viewer.edition_password` não vazio) em modo de usuário único. A galeria a oferece então em dois lugares, e ambos abrem o diálogo do lançador de varredura (`ScanLauncherComponent`): um botão **Varrer fotos para começar** no estado de galeria vazia e um botão de ícone **Varrer novas fotos** no cabeçalho, logo após o seletor **Ordenar** e destacado com um fundo colorido (na barra inferior, após o seu seletor de ordenação, em telas pequenas). Em uma instalação de usuário único aberta (`viewer.edition_password` vazia, o valor padrão de fábrica), as quatro rotas de varredura retornam 403 para qualquer chamador, incluindo um com um JWT de geração de edição válido, e nenhum dos dois pontos de entrada é exibido — disparar um subprocesso de varredura não pode ser acessível anonimamente. A exceção é `viewer.trusted_local_editing`: uma sessão de navegador local confiável, e um assistente local com um token de edição completa, podem varrer sem `show_scan_button` nem senha de edição.

@@ -116,6 +116,70 @@ describe('PhotoDetailComponent', () => {
     mockDialog = { open: vi.fn(() => ({ afterClosed: () => of(undefined) })) };
   });
 
+  it('opens the manual editor with no detections and patches confirmed membership after navigation', async () => {
+    createComponent();
+    const original = makePhoto({ path: '/zero.jpg', face_count: 0, unassigned_faces: 0, persons: [] });
+    const next = makePhoto({ path: '/next.jpg', persons: [{ id: 8, name: 'Next' }] });
+    const store = TestBed.inject(GalleryStore);
+    store.photos.set([original, next]);
+    vi.spyOn(store, 'reloadPersonOptions').mockResolvedValue();
+    component.photo.set(original);
+    await component.openManualFaces(original);
+    const options = mockDialog.open.mock.calls[0][1];
+    expect(options.data.path).toBe('/zero.jpg');
+    component.photo.set(next);
+    mockApi.get.mockReturnValue(of({ ...original, persons: [{ id: 5, name: 'Ada' }], unassigned_faces: 0 }));
+    await options.data.onCommitted();
+    expect(store.photos()[0].persons).toEqual([{ id: 5, name: 'Ada' }]);
+    expect(component.photo().path).toBe('/next.jpg');
+    expect(component.photo().persons).toEqual(next.persons);
+  });
+
+  it.each([{ persons: [] }, { persons: [{ id: 8, name: 'Grace' }] }])('refreshes a person-filtered gallery after a manual mark is removed or reassigned: %j', async ({ persons }) => {
+    createComponent();
+    const original = makePhoto({ path: '/manual.jpg', persons: [{ id: 5, name: 'Ada' }] });
+    const remaining = makePhoto({ path: '/remaining.jpg', persons: [{ id: 5, name: 'Ada' }] });
+    const other = makePhoto({ path: '/other.jpg', persons: [{ id: 9, name: 'Other' }] });
+    const store = TestBed.inject(GalleryStore);
+    store.filters.update(f => ({ ...f, person_id: '5', camera: 'Canon' }));
+    store.photos.set([original, remaining]);
+    store.total.set(2);
+    vi.spyOn(store, 'reloadPersonOptions').mockResolvedValue();
+    component.photo.set(original);
+    await component.openManualFaces(original);
+    const committed = mockDialog.open.mock.calls[0][1].data.onCommitted;
+    component.photo.set(other);
+    mockApi.get.mockImplementation((url: string) => {
+      if (url === '/photo') return of({ ...original, persons });
+      if (url === '/photos') return of({ photos: [remaining], total: 1, has_more: false });
+      return of({});
+    });
+
+    await committed();
+
+    expect(store.photos().map(p => p.path)).toEqual(['/remaining.jpg']);
+    expect(store.total()).toBe(1);
+    expect(store.filters()).toMatchObject({ person_id: '5', camera: 'Canon' });
+    expect(mockApi.get).toHaveBeenCalledWith('/photos', expect.objectContaining({ person_id: '5', camera: 'Canon' }));
+    expect(component.photo()).toEqual(other);
+    expect(mockRouter.navigate).not.toHaveBeenCalled();
+  });
+
+  it('refreshes persisted person membership after the detail component is destroyed', async () => {
+    createComponent();
+    const original = makePhoto({ path: '/zero.jpg', persons: [] });
+    const store = TestBed.inject(GalleryStore);
+    store.photos.set([original]);
+    vi.spyOn(store, 'reloadPersonOptions').mockResolvedValue();
+    component.photo.set(original);
+    await component.openManualFaces(original);
+    const committed = mockDialog.open.mock.calls[0][1].data.onCommitted;
+    mockApi.get.mockReturnValue(of({ ...original, persons: [{ id: 5, name: 'Ada' }] }));
+    TestBed.resetTestingModule();
+    await committed();
+    expect(store.photos()[0].persons).toEqual([{ id: 5, name: 'Ada' }]);
+  });
+
   it('renders NULL and zero extended metrics in the actual detail template', () => {
     TestBed.configureTestingModule({
       imports: [PhotoDetailComponent],
@@ -136,6 +200,7 @@ describe('PhotoDetailComponent', () => {
     view.componentInstance.photo.set(makePhoto({ aesthetic_v25: null, qrealign_score: 0, deqa_score: null }));
     view.detectChanges();
     expect(view.nativeElement.querySelector('[data-testid="qrealign_score-score"]').textContent.trim()).toBe('0.0');
+    expect(view.nativeElement.querySelector('[aria-label="manual_faces.title"]')).not.toBeNull();
     for (const key of ['aesthetic_v25', 'deqa_score']) {
       expect(view.nativeElement.querySelector(`[data-testid="${key}-score"]`).textContent).toContain('tooltip.not_computed');
     }

@@ -29,7 +29,7 @@ def test_upgraded_persons_column_order_equals_fresh(tmp_path):
     conn = sqlite3.connect(old)
     conn.execute("DROP TABLE persons")
     conn.execute(_build_create_table_sql(
-        'persons', [c for c in PERSONS_COLUMNS if c[0] != 'centroid_model']))
+        'persons', [c for c in PERSONS_COLUMNS if c[0] not in ('centroid_model', 'person_key')]))
     conn.commit()
     conn.close()
     assert 'centroid_model' not in _columns(old, 'persons')

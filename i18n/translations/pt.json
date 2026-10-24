@@ -2688,6 +2688,31 @@
       "highlight": "Altas luzes cortadas: {channels}"
     }
   },
+  "manual_faces": {
+    "title": "Marcar um rosto ausente / Gerir rostos manuais",
+    "instructions": "Desenhe um retângulo ou introduza as margens em percentagens. Escolha uma pessoa e guarde.",
+    "unavailable": "Original indisponível. Pode remover as marcas guardadas.",
+    "preview": "Fotografia orientada para marcar rostos",
+    "coordinates": "Margens do retângulo (%)",
+    "choose_person": "Escolher ou criar uma pessoa",
+    "remark": "Verifique a imagem atual. Desenhe novamente ou ajuste as coordenadas antes de guardar.",
+    "add": "Nova marca",
+    "saved": "Rostos manuais guardados",
+    "unnamed": "Pessoa sem nome",
+    "needs_review": "Precisa de revisão",
+    "edit": "Editar / reatribuir",
+    "remove": "Remover marca",
+    "empty": "Nenhum rosto manual guardado.",
+    "close": "Fechar",
+    "left": "Esquerda",
+    "top": "Topo",
+    "right": "Direita",
+    "bottom": "Base",
+    "save_failed": "Falha ao guardar. Rascunho mantido. Se a origem mudou ou a sessão expirou, recarregue a pré-visualização.",
+    "reload": "Recarregar editor",
+    "refresh_failed": "A alteração foi guardada, mas não foi possível atualizar as informações das pessoas. Recarregue a fotografia.",
+    "detected_overlap": "Já foi detetado um rosto aqui. Feche este editor e use a ação de atribuição de rostos detetados. O rascunho foi mantido."
+  },
   "assistant_activity": {
     "chip": "Assistente ativo",
     "title": "Atividade do assistente",

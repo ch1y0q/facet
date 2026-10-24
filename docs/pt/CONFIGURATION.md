@@ -2014,8 +2014,7 @@ Sobrescreve as configurações globais de `performance` ao executar o visualizad
       "mmap_size_mb": 0,
       "cache_size_mb": 4,
       "pool_size": 2,
-      "thumbnail_cache_size": 200,
-      "face_cache_size": 50
+      "thumbnail_cache_size": 200
     }
   }
 }
@@ -2027,7 +2026,6 @@ Sobrescreve as configurações globais de `performance` ao executar o visualizad
 | `cache_size_mb` | *(global)* | Override do tamanho de cache do SQLite para conexões do visualizador |
 | `pool_size` | `5` | Tamanho do pool de conexões (reduza para sistemas com pouca memória) |
 | `thumbnail_cache_size` | `2000` | Máximo de entradas no cache em memória de redimensionamento de miniaturas |
-| `face_cache_size` | `500` | Máximo de entradas no cache em memória de miniaturas de faces |
 
 Quando não definido, o visualizador usa os valores globais de `performance`. Veja [Implantação](DEPLOYMENT.md) para as configurações de NAS recomendadas.
 
