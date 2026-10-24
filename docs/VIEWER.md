@@ -1614,3 +1614,13 @@ If semantic search reports that Apple Silicon acceleration is busy, retry after 
 | Captions not generating | Requires 16gb/24gb VRAM profile for VLM captioning |
 | Timeline empty | Ensure photos have `date_taken` values |
 | Port 5000 in use | Run `python viewer.py --port 5001` (or set `PORT=5001`). On macOS, ControlCenter's AirPlay Receiver binds 5000 by default — either pick another port or disable AirPlay Receiver in System Settings → General → AirDrop & Handoff. |
+
+## Capture-date correction
+
+In edition mode, choose **Correct capture date** in photo details or the gallery selection bar. Selected photos and “Select all in view” (with exclusions) use the same workflow, limited to 1000 visible photos. Enter a nonzero integer offset in seconds, from −31622400 to +31622400 (±366 days); positive shifts later, negative earlier. **Preview** shows changed/skipped counts and the first 20 original/new timestamps; **Apply correction** rechecks the live scope and values atomically. If anything changed, preview again.
+
+This shifts camera walltime without inferring timezones or daylight saving. Only complete `YYYY:MM:DD HH:MM:SS` or `YYYY-MM-DD[T or space]HH:MM:SS` values are supported. Unknown dates, date-only values, timezone/subsecond suffixes, invalid calendar dates and overflows are skipped, preserving seconds. Manual dates survive full/partial rescans and incremental viewer database exports. **Use file date** on a manually corrected photo rereads the original and removes the override; no file date means an unknown capture date. Unreadable files or unsupported file dates keep the override.
+
+Corrections do not write originals or change file modification times. Existing explicit XMP export writes standard `exif:DateTimeOriginal` for manual dates; **Write metadata to file** additionally updates EXIF `DateTimeOriginal` for supported formats, leaving other EXIF date fields alone. Existing burst/sequence assignments are retained; run the existing scan/group detection workflow explicitly when regrouping is needed.
+
+Edition API: `POST /api/photos/capture_date/preview` accepts `photo_paths` or `filters`, optional `exclude`, and `offset_seconds`; `POST /api/photos/capture_date/apply` also requires the returned `preview_token`. `DELETE /api/photo/capture_date?path=` restores the file date.

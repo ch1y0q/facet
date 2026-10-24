@@ -223,6 +223,9 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
           <!-- Filename + Date + Category + Aggregate -->
           <div>
             <div class="font-semibold text-lg">{{ p.filename }}</div>
+            @if (auth.isEdition()) {
+              <button mat-button (click)="editCaptureDate(p)">{{ I18N.capture_date.title | translate }}</button>
+            }
             @if (p.date_taken) {
               <div class="text-[var(--mat-sys-on-surface-variant)] text-xs">{{ p.date_taken }}</div>
             }
@@ -1344,6 +1347,17 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   protected openAddPerson(photo: Photo): void {
     this.photoActions.openAddPerson(photo, () => {
       this.photo.update(p => p?.path === photo.path ? { ...p, unassigned_faces: Math.max(0, p.unassigned_faces - 1) } : p);
+    });
+  }
+
+  protected editCaptureDate(p: Photo): void {
+    const data = { paths: [p.path], count: 1, manuallySet: p.date_manually_set === 1 };
+    import('./capture-date-dialog.component').then(m => {
+      if (this.destroyRef.destroyed || this.photo()?.path !== p.path) return;
+      const ref = this.dialog.open(m.CaptureDateDialogComponent, { width: '95vw', maxWidth: '760px', data });
+      ref.afterClosed().subscribe((result: import('./capture-date-dialog.component').CaptureDateResult | undefined) => {
+        if (result !== undefined) this.applyConfirmed(p, result);
+      });
     });
   }
 

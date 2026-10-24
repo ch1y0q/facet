@@ -696,6 +696,9 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
         cleared to 0 on the viewer is indistinguishable from unrated and cannot
         be preserved against a non-zero source."""
         src_val = f"(SELECT {col} FROM src.photos WHERE src.photos.path = main.photos.path)"
+        if col in ('date_taken', 'date_manually_set'):
+            return (f"{col} = CASE WHEN main.photos.date_manually_set = 1 "
+                    f"THEN main.photos.{col} ELSE {src_val} END")
         if col in ('gps_latitude', 'gps_longitude', 'gps_manually_set'):
             return (f"{col} = CASE WHEN main.photos.gps_manually_set = 1 "
                     f"THEN main.photos.{col} ELSE {src_val} END")

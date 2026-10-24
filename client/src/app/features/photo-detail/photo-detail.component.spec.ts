@@ -1118,6 +1118,24 @@ describe('PhotoDetailComponent', () => {
       expect(stored().star_rating).toBe(4);
     });
 
+    it('capture date commits are available on immediate reopen and do not replace a newer photo', async () => {
+      createComponent();
+      seedGrid();
+      const closed = new Subject();
+      mockDialog.open.mockReturnValue({ afterClosed: () => closed });
+      await import('./capture-date-dialog.component');
+      component.editCaptureDate(component.photo());
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+      closed.next({ date_taken: '2024:01:01 01:00:00', date_manually_set: 1 });
+      component.editCaptureDate(component.photo());
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+      expect(mockDialog.open.mock.calls.at(-1)![1].data.manuallySet).toBe(true);
+      expect(stored().date_manually_set).toBe(1);
+      component.photo.set(neighbour);
+      closed.next({ date_taken: null, date_manually_set: 0 });
+      expect(component.photo().path).toBe(neighbour.path);
+    });
+
     it('GPS results preserve concurrent metadata and do not resurrect a navigated photo', async () => {
       createComponent();
       seedGrid();

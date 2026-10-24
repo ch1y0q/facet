@@ -56,6 +56,7 @@ from typing import NamedTuple
 from xml.etree import ElementTree as ET
 
 from db.manual_tags import load_manual_tags_map, merge_effective_tags
+from utils.capture_dates import parse_capture_date
 from utils.image_loading import JPEG_EXTENSIONS, KNOWN_HEIF_EXTENSIONS
 
 logger = logging.getLogger(__name__)
@@ -177,6 +178,8 @@ class XmpRating:
     is_favorite: bool = False
     is_rejected: bool = False
     is_kept: bool = False
+    date_taken: str | None = None
+    date_manually_set: bool = False
     gps_manually_set: bool = False
     gps_latitude: float | None = None
     gps_longitude: float | None = None
@@ -204,6 +207,8 @@ class XmpRating:
             is_favorite=bool(data.get("is_favorite") or 0),
             is_rejected=bool(data.get("is_rejected") or 0),
             is_kept=bool(data.get("is_kept") or 0),
+            date_taken=data.get("date_taken"),
+            date_manually_set=bool(data.get("date_manually_set") or 0),
             gps_manually_set=bool(data.get("gps_manually_set") or 0),
             gps_latitude=data.get("gps_latitude"),
             gps_longitude=data.get("gps_longitude"),
@@ -216,6 +221,14 @@ class XmpRating:
 
     def review_decision(self) -> str:
         return "rejected" if self.is_rejected else "kept" if self.is_kept else "undecided"
+
+    def manual_date(self) -> str | None:
+        if not self.date_manually_set:
+            return None
+        date = parse_capture_date(self.date_taken)
+        if date is None:
+            raise ValueError("Manual capture date must be a full walltime")
+        return date.isoformat(timespec='seconds')
 
     def gps_state(self) -> str | None:
         if not self.gps_manually_set:
@@ -340,6 +353,8 @@ def _apply_facet_nodes(desc, rating: XmpRating) -> None:
         desc.set(f"{{{NS_XMP}}}Label", label)
     desc.set(f"{{{NS_XMP}}}MetadataDate", now)
     desc.set(f"{{{NS_FACET}}}ReviewDecision", rating.review_decision())
+    if rating.manual_date() is not None:
+        desc.set(f"{{{NS_EXIF}}}DateTimeOriginal", rating.manual_date())
     state = rating.gps_state()
     if state:
         desc.set(f"{{{NS_FACET}}}GPSState", state)
@@ -553,6 +568,8 @@ def _exiftool_tag_args(rating: XmpRating, existing_flat: list[str],
     xmp_rating, label = rating.xmp_values()
     args = [f"-XMP:Rating={xmp_rating}", f"-XMP:Label={label}",
             f"-XMP-facet:ReviewDecision={rating.review_decision()}"]
+    if rating.manual_date() is not None:
+        args.append(f"-XMP-exif:DateTimeOriginal={rating.manual_date()}")
     state = rating.gps_state()
     if state:
         args.append(f"-XMP-facet:GPSState={state}")
@@ -634,6 +651,8 @@ def _run_exiftool(target: str, rating: XmpRating, *, timeout: int) -> None:
             snapshot = handle.read()
     existing_flat, existing_hier = _read_existing_keywords(target, exe, timeout=timeout)
     tag_args = _exiftool_tag_args(rating, existing_flat, existing_hier)
+    if not target.lower().endswith(".xmp") and rating.manual_date() is not None:
+        tag_args.append(f"-EXIF:DateTimeOriginal={rating.manual_date()}")
     config = os.path.join(os.path.dirname(__file__), "facet_exiftool.config")
     if not target.lower().endswith(".xmp") and rating.gps_state():
         state = rating.gps_state()
@@ -805,7 +824,7 @@ def export_sidecars(conn, root: str | None = None, *, embed_original: bool = Fal
     where, params = sidecar_scope(root, user_id)
     rows = conn.execute(
         f"SELECT photos.path AS path, tags, caption, category, {ratings.columns}, "
-        f"aggregate, image_width, image_height, gps_latitude, gps_longitude, gps_manually_set FROM photos {ratings.join} {where}",
+        f"aggregate, image_width, image_height, gps_latitude, gps_longitude, gps_manually_set, date_taken, date_manually_set FROM photos {ratings.join} {where}",
         ratings.params + params,
     ).fetchall()
     cfg = dict(xmp_export_cfg or {})

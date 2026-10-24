@@ -112,6 +112,7 @@ class Photo(BaseModel):
     caption_translated: Optional[str] = None
     gps_latitude: Optional[float] = None
     gps_longitude: Optional[float] = None
+    date_manually_set: CoercedInt = None
     gps_manually_set: CoercedInt = None
     dominant_hue: Optional[float] = None
     color_temp: Optional[str] = None

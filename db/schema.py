@@ -216,6 +216,7 @@ PHOTOS_COLUMNS = [
     # existed, i.e. before the RAW exposure fix. See db/render_version.py.
     ('render_version', 'INTEGER'),
     # Manual GPS (including intentional clears) survives EXIF rescans.
+    ('date_manually_set', 'INTEGER NOT NULL DEFAULT 0'),
     ('gps_manually_set', 'INTEGER NOT NULL DEFAULT 0'),
 ]
 

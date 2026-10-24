@@ -1907,6 +1907,21 @@ describe('GalleryComponent', () => {
     });
   });
 
+  describe('capture-date targets', () => {
+    it('captures scope and exclusions before lazy loading the dialog', async () => {
+      mockStore.viewScopeSelected.set(true);
+      mockStore.excludedPaths.set(new Set(['/skip.jpg']));
+      mockStore.selectionCount.set(12);
+      mockStore.filterPayload.mockReturnValue({ camera: 'Canon' });
+      const dialog = TestBed.inject(MatDialog);
+      const pending = component.openCaptureDateDialog();
+      mockStore.filterPayload.mockReturnValue({ camera: 'Nikon' });
+      mockStore.excludedPaths.set(new Set(['/new.jpg']));
+      await pending;
+      expect((dialog.open as Mock).mock.calls[0][1].data).toEqual({ paths: [], filters: { camera: 'Canon' }, exclude: ['/skip.jpg'], count: 12 });
+    });
+  });
+
   describe('openManualTagsDialog', () => {
     const open = () => (component as unknown as { openManualTagsDialog(): Promise<void> }).openManualTagsDialog();
     function select(paths: string[]) {
@@ -3551,6 +3566,7 @@ describe('GalleryComponent', () => {
         ['mark-panorama', { kind: 'mark-panorama', sequenceKind: 'bracket' }, 'markAsPanorama', ['bracket']],
         ['download', { kind: 'download', type: 'darktable', profile: 'P' }, 'downloadSelected', ['darktable', 'P']],
         ['tags', { kind: 'tags' }, 'openManualTagsDialog', []],
+        ['capture-date', { kind: 'capture-date' }, 'openCaptureDateDialog', []],
       ];
       for (const [name, action, method, args] of cases) {
         it(`${name} -> ${method}`, async () => {

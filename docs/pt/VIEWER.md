@@ -1538,3 +1538,11 @@ Se a busca semântica informar que a aceleração Apple Silicon está ocupada, t
 | Legendas não são geradas | Requer o perfil de VRAM 16gb/24gb para legendagem por VLM |
 | Linha do tempo vazia | Garanta que as fotos tenham valores em `date_taken` |
 | Porta 5000 em uso | Execute `python viewer.py --port 5001` (ou defina `PORT=5001`). No macOS, o AirPlay Receiver do ControlCenter vincula a 5000 por padrão — escolha outra porta ou desative o AirPlay Receiver em Ajustes do Sistema → Geral → AirDrop e Handoff. |
+
+## Correção da data de captura
+
+No modo de edição, **Corrigir data de captura** está disponível nos detalhes e na barra de seleção. A seleção ou «Selecionar tudo na vista», com exclusões, aceita até 1000 fotos visíveis. Introduza segundos inteiros diferentes de zero entre −31622400 e +31622400 (±366 dias): positivo move para depois, negativo para antes. **Pré-visualizar** mostra contagens de alteradas/ignoradas e as primeiras 20 datas antes/depois. **Aplicar correção** verifica novamente o âmbito e os valores e aplica tudo atomicamente; se mudarem, repita a pré-visualização.
+
+Desloca-se a hora local da câmara sem deduzir fuso horário ou horário de verão. São aceites valores completos `YYYY:MM:DD HH:MM:SS` ou `YYYY-MM-DD[T ou espaço]HH:MM:SS`. Datas desconhecidas, incompletas, inválidas, fora dos limites ou com fuso/frações de segundo são ignoradas. As correções sobrevivem a análises completas/parciais e exportações incrementais da base do visualizador. **Usar data do ficheiro** remove a correção; sem data no ficheiro, a data fica desconhecida. Ficheiros ilegíveis ou datas incompatíveis mantêm a correção.
+
+Originais e datas de modificação dos ficheiros ficam inalterados. A exportação XMP explícita escreve `exif:DateTimeOriginal` para datas manuais; a escrita explícita no ficheiro adiciona EXIF `DateTimeOriginal` nos formatos suportados sem alterar outras datas EXIF. Os grupos de rajadas/sequências são preservados; execute explicitamente a análise ou deteção de grupos para reagrupar.

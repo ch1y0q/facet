@@ -142,6 +142,7 @@ export interface Photo {
   gps_latitude?: number | null;
   gps_longitude?: number | null;
   /** 1 when the location was set in the viewer; rescans then keep it. */
+  date_manually_set?: number | null;
   gps_manually_set?: number | null;
 }
 
