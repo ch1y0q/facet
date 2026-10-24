@@ -497,6 +497,12 @@ export function applyQueryParams(
   for (const key of stringKeys) {
     if (params[key]) (result as Record<string, unknown>)[key] = params[key];
   }
+  result.no_gps = ['1', 'true'].includes(result.no_gps) ? '1' : '';
+  if (result.no_gps) {
+    result.gps_lat = ''; result.gps_lng = ''; result.gps_radius_km = '';
+    result.similar_to = ''; result.semanticQuery = '';
+  }
+  // no_gps cleared the query above, so the sort below is judged on the surviving one.
   // Relevance is the implied sort of a semantic query, and meaningless without one.
   if (result.semanticQuery && !params['sort']) {
     result.sort = RELEVANCE_SORT;
@@ -539,12 +545,6 @@ export function applyQueryParams(
     result.panel_activation = params['panel_activation'] as PanelActivation;
   }
   if (params['page']) result.page = parseInt(params['page'], 10) || 1;
-
-  result.no_gps = ['1', 'true'].includes(result.no_gps) ? '1' : '';
-  if (result.no_gps) {
-    result.gps_lat = ''; result.gps_lng = ''; result.gps_radius_km = '';
-    result.similar_to = ''; result.semanticQuery = '';
-  }
   return result;
 }
 

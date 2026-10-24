@@ -333,12 +333,12 @@ export class AssistantCullPlanService {
 
   /**
    * True when swapping the plan would discard something the user did on the darkroom now on screen: its
-   * own probe says so, or an unconfirmed plan group sits flipped. With no darkroom mounted those decisions
-   * went with it, so nothing is at stake.
+   * own probe says so, or an unconfirmed plan group sits flipped. A flip is held in the plan and restored
+   * when the darkroom re-mounts, so it counts even while none is mounted; only the manual probe goes with it.
    */
   hasUnsavedDecisions(): boolean {
     const probe = this.decisionsProbe;
-    return probe !== null && (probe() || this.hasUnconfirmedFlips());
+    return (probe !== null && probe()) || this.hasUnconfirmedFlips();
   }
 
   /** True when an unconfirmed group's keepers differ from the plan: re-seeding would throw that away. */

@@ -63,7 +63,7 @@
   },
   "overrides": {
     "ws": "8.20.1",
-    "undici": "7.29.1",
+    "undici": "7.30.1",
     "piscina": "5.3.2",
     "vite": "8.3.5",
     "openapi-typescript": {

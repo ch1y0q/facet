@@ -34,7 +34,7 @@ def _clamp_edge(data: bytes, limit: int) -> tuple[bytes, int, int]:
     if max(width, height) <= limit:
         return data, width, height
     image = image.convert("RGB")
-    image.thumbnail((limit, limit), Image.LANCZOS)
+    image.thumbnail((limit, limit), Image.Resampling.LANCZOS)
     buf = BytesIO()
     image.save(buf, format="JPEG", quality=THUMBNAIL_QUALITY)
     return buf.getvalue(), image.size[0], image.size[1]
@@ -68,7 +68,7 @@ def _tile(data: bytes, tile: int, index: int) -> Image.Image:
     draw = ImageDraw.Draw(canvas)
     if data:
         photo = Image.open(BytesIO(data)).convert("RGB")
-        photo.thumbnail((tile, tile), Image.LANCZOS)
+        photo.thumbnail((tile, tile), Image.Resampling.LANCZOS)
         canvas.paste(photo, ((tile - photo.size[0]) // 2, (tile - photo.size[1]) // 2))
     else:
         draw.text((6, tile // 2 - 5), "unavailable", fill=CHIP_TEXT)
