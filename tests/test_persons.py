@@ -404,11 +404,31 @@ class TestListPersons:
         assert returned_ids == {42, 7}
 
 
+class TestListPersonsNamedOnly:
+    """GET /api/persons?named_only=true leaves out persons still waiting for a name."""
+
+    def test_named_only(self, client, tmp_path):
+        db = str(tmp_path / "persons_named.db")
+        _make_persons_db(db, persons=[
+            {"id": 1, "name": "Alice", "face_count": 25},
+            {"id": 2, "name": None, "face_count": 30},
+            {"id": 3, "name": "  ", "face_count": 9},
+            {"id": 4, "name": "Bob", "face_count": 3},
+        ])
+        with mock.patch("api.routers.persons.get_async_db", _async_conn_factory(db)):
+            named = client.get("/api/persons", params={"named_only": True}).json()
+            everyone = client.get("/api/persons").json()
+
+        assert [p["id"] for p in named["persons"]] == [1, 4]
+        assert named["total"] == 2
+        assert everyone["total"] == 4
+
+
 class TestNeedsNaming:
     """Tests for GET /api/persons/needs_naming (async, real temp DB)."""
 
     def test_needs_naming_filters(self, client, tmp_path):
-        """Returns only unnamed auto-clustered persons over the min_faces threshold."""
+        """Every unnamed, visible person over the min_faces threshold, largest first."""
         db = str(tmp_path / "persons.db")
         _make_persons_db(
             db,
@@ -418,10 +438,14 @@ class TestNeedsNaming:
                 {"id": 2, "name": None, "face_count": 6, "auto_clustered": 1},
                 # Named → excluded
                 {"id": 3, "name": "Alice", "face_count": 20, "auto_clustered": 1},
-                # Not auto-clustered → excluded
+                # Unnamed from a split (not auto-clustered) → still waiting for a name
                 {"id": 4, "name": None, "face_count": 8, "auto_clustered": 0},
                 # Below threshold → excluded
                 {"id": 5, "name": None, "face_count": 2, "auto_clustered": 1},
+                # Blank name counts as unnamed
+                {"id": 6, "name": "  ", "face_count": 7, "auto_clustered": 1},
+                # Hidden → excluded
+                {"id": 7, "name": None, "face_count": 30, "auto_clustered": 1, "is_hidden": 1},
             ],
         )
         with mock.patch(
@@ -432,6 +456,15 @@ class TestNeedsNaming:
         assert resp.status_code == 200
         body = resp.json()
         assert body["min_faces"] == 5
-        assert body["total"] == 2
-        # Ordered by face_count DESC → id 1 (10 faces) before id 2 (6 faces)
-        assert [p["id"] for p in body["persons"]] == [1, 2]
+        assert body["total"] == 4
+        assert [p["id"] for p in body["persons"]] == [1, 4, 6, 2]
+
+    def test_min_faces_one_lists_every_unnamed_person(self, client, tmp_path):
+        db = str(tmp_path / "persons_all.db")
+        _make_persons_db(db, persons=[
+            {"id": 1, "name": None, "face_count": 1, "auto_clustered": 1},
+            {"id": 2, "name": "Bob", "face_count": 1, "auto_clustered": 1},
+        ])
+        with mock.patch("api.routers.persons.get_async_db", _async_conn_factory(db)):
+            body = client.get("/api/persons/needs_naming", params={"min_faces": 1}).json()
+        assert [p["id"] for p in body["persons"]] == [1]

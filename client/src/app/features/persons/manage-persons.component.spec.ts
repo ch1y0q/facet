@@ -170,6 +170,7 @@ describe('ManagePersonsComponent', () => {
         per_page: 48,
         sort: 'count_desc',
         include_hidden: false,
+        named_only: true,
       });
       expect(component.persons()).toEqual(mockPersonsResponse.persons);
       expect(component.total()).toBe(3);
@@ -200,6 +201,7 @@ describe('ManagePersonsComponent', () => {
         per_page: 48,
         sort: 'count_desc',
         include_hidden: false,
+        named_only: true,
       });
     });
 
@@ -215,6 +217,7 @@ describe('ManagePersonsComponent', () => {
         per_page: 48,
         sort: 'count_desc',
         include_hidden: true,
+        named_only: false,
       });
     });
   });
@@ -234,6 +237,38 @@ describe('ManagePersonsComponent', () => {
 
     it('should return false when both are 0', () => {
       expect(component.hasMore()).toBe(false);
+    });
+  });
+
+  describe('which persons the grid lists', () => {
+    const gridParams = () =>
+      mockApi.get.mock.calls.filter((c: unknown[]) => c[0] === '/persons').at(-1)?.[1] as Record<string, unknown>;
+
+    it('lists named persons only while Needs naming is shown (edition)', async () => {
+      await component.loadPersons(true);
+      expect(gridParams()['named_only']).toBe(true);
+    });
+
+    it('lists everyone when read-only, since Needs naming is not shown', async () => {
+      mockAuth.isEdition.mockReturnValue(false);
+      await component.loadPersons(true);
+      expect(gridParams()['named_only']).toBe(false);
+    });
+
+    it('lists everyone when showing hidden persons, so hidden unnamed ones can be unhidden', async () => {
+      TestBed.inject(PersonsFiltersService).showHidden.set(true);
+      await component.loadPersons(true);
+      expect(gridParams()['named_only']).toBe(false);
+    });
+
+    it('reloads the grid after naming a person with no namesake', async () => {
+      mockApi.post.mockReturnValue(of({ success: true, name: 'Zed', same_name_persons: [] }));
+      component.needsNaming.set([{ id: 3, name: null, face_count: 5, face_thumbnail: true }]);
+      const spy = vi.spyOn(component, 'loadPersons').mockResolvedValue();
+
+      await component.onNeedsNamingSave({ id: 3, name: 'Zed' });
+
+      expect(spy).toHaveBeenCalledWith(true);
     });
   });
 

@@ -494,6 +494,9 @@ export class ManagePersonsComponent implements OnInit {
       this.personsFilters.sortDirection();
       this.personsFilters.search();
       this.personsFilters.showHidden();
+      // Locking or unlocking edition shows or hides Needs naming, which decides
+      // whether the grid lists unnamed persons too.
+      this.auth.isEdition();
       if (this.initialized) {
         untracked(() => this.loadPersons(true));
       }
@@ -550,7 +553,11 @@ export class ManagePersonsComponent implements OnInit {
       this.snackBar.open(this.i18n.t(I18N.persons.rename_error), '', { duration: 3000 });
       return;
     }
-    await this.offerSameNameMerge(id, faceCount, trimmed, res.same_name_persons ?? []);
+    const sameName = res.same_name_persons ?? [];
+    await this.offerSameNameMerge(id, faceCount, trimmed, sameName);
+    // The newly named person moves from Needs naming into the named-only grid
+    // (a merge reloads the grid itself).
+    if (sameName.length === 0) await this.loadPersons(true);
   }
 
   /**
@@ -647,6 +654,15 @@ export class ManagePersonsComponent implements OnInit {
     }
   }
 
+  /**
+   * While Needs naming is on screen (edition mode) it lists every unnamed person,
+   * so the grid shows named persons only. Showing hidden persons lists everyone,
+   * so a hidden unnamed cluster can still be found and unhidden.
+   */
+  namedOnly(): boolean {
+    return this.auth.isEdition() && !this.personsFilters.showHidden();
+  }
+
   async loadPersons(reset: boolean): Promise<void> {
     if (reset) {
       this.page = 1;
@@ -665,6 +681,7 @@ export class ManagePersonsComponent implements OnInit {
           per_page: this.perPage,
           sort: sortParam,
           include_hidden: this.personsFilters.showHidden(),
+          named_only: this.namedOnly(),
         }),
       );
 

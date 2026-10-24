@@ -39,6 +39,11 @@ _SORT_CLAUSES = {
 }
 
 
+# A person still waiting for a name: none, or only spaces. Shared by the
+# needs-naming list and the persons list's ``named_only`` filter so the two
+# partition the persons exactly.
+_UNNAMED_SQL = "(p.name IS NULL OR TRIM(p.name) = '')"
+
 # --- Pydantic request bodies ---
 
 class RenamePersonRequest(BaseModel):
@@ -143,6 +148,7 @@ async def list_persons(
     sort: str = Query("count_desc", pattern="^(count_asc|count_desc|quality_asc|quality_desc|name_asc|name_desc|assignment)$"),
     include_hidden: bool = Query(False),
     recent_ids: str = Query("", max_length=MAX_RECENT_IDS * 16 + MAX_RECENT_IDS - 1),
+    named_only: bool = Query(False),
     user: CurrentUser = Depends(require_authenticated),
 ):
     """List all persons with pagination and search.
@@ -155,6 +161,8 @@ async def list_persons(
     confer no visibility: hidden (even with include_hidden), deleted and
     inaccessible candidates stay out. In assignment order, ``face_count`` is
     computed from visible photos; other orders return the stored library count.
+    ``named_only=true`` leaves out persons without a name, which the needs-naming
+    list already shows.
     """
     recent = []
     if recent_ids:
@@ -191,6 +199,8 @@ async def list_persons(
         order_clause = f"ORDER BY {recent_order}COALESCE(visible_counts.face_count, 0) DESC, p.name COLLATE NOCASE ASC, p.name ASC, p.id ASC"
     if not include_hidden or sort == 'assignment':
         where_parts.append(person_not_hidden_clause('p'))
+    if named_only:
+        where_parts.append(f"NOT {_UNNAMED_SQL}")
     if search.strip():
         term = search.strip()
         numeric_id = int(term) if term.isascii() and term.isdecimal() and len(term) <= 19 else None
@@ -536,7 +546,11 @@ async def api_persons_needs_naming(
     min_faces: Optional[int] = Query(None, ge=0),
     user: CurrentUser = Depends(require_authenticated),
 ):
-    """List unnamed auto-clustered persons with face_count >= min_faces (default from config)."""
+    """List unnamed, non-hidden persons with face_count >= min_faces (default from config).
+
+    Unnamed means no name or a blank one, whether the person came from clustering or
+    from a split, so every person still waiting for a name is listed here once.
+    """
     if min_faces is None:
         try:
             min_faces = int(VIEWER_CONFIG.get('persons', {}).get('needs_naming_min_faces', 5))
@@ -550,7 +564,7 @@ async def api_persons_needs_naming(
             SELECT p.id, p.name, p.representative_face_id, p.face_count,
                    CASE WHEN p.face_thumbnail IS NOT NULL THEN 1 ELSE 0 END as face_thumbnail
             FROM persons p
-            WHERE p.name IS NULL AND p.auto_clustered = 1 AND p.face_count >= ?{extra}
+            WHERE {_UNNAMED_SQL} AND {person_not_hidden_clause('p')} AND p.face_count >= ?{extra}
             ORDER BY p.face_count DESC, p.id
         """, [min_faces, *vis_params])
         rows = await cur.fetchall()
