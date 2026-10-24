@@ -2054,23 +2054,30 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   async openBatchGpsDialog(): Promise<void> {
     if (!this.auth.isEdition() || !this.selectionCount()) return;
+    const owner = this.auth.status();
+    const url = this.router.url;
+    let navigated = false;
+    const current = () => !this.gpsDialogOwnerDestroyed && !navigated && this.router.url === url && this.auth.status() === owner && this.auth.isEdition();
     const selectionIdentity = () => JSON.stringify({
       view: this.viewScoped(), paths: [...this.selectedPaths()].sort(),
       exclude: [...this.excludedPaths()].sort(), filters: this.store.filterPayload(),
     });
     const originalSelection = selectionIdentity();
     const onBatchApplied = () => {
-      if (!this.gpsDialogOwnerDestroyed && selectionIdentity() === originalSelection) this.store.clearSelection();
+      if (current() && selectionIdentity() === originalSelection) this.store.clearSelection();
     };
     const batch = this.viewScoped()
       ? { filters: structuredClone(this.store.filterPayload()), exclude: [...this.excludedPaths()] }
       : { photo_paths: [...this.selectedPaths()] };
-    const { GpsEditDialogComponent } = await import('../photo-detail/gps-edit-dialog.component');
-    if (this.gpsDialogOwnerDestroyed || !this.auth.isEdition()) return;
-    this.dialog.open(GpsEditDialogComponent, {
-      width: '95vw', maxWidth: '640px',
-      data: { path: '', filename: this.i18n.t(I18N.photo_detail.gps.batch_title), lat: null, lng: null, batch, onBatchApplied },
-    });
+    const navigation = this.router.events.subscribe(event => { if (event instanceof NavigationStart) navigated = true; });
+    try {
+      const { GpsEditDialogComponent } = await import('../photo-detail/gps-edit-dialog.component');
+      if (!current()) return;
+      this.dialog.open(GpsEditDialogComponent, {
+        width: '95vw', maxWidth: '640px',
+        data: { path: '', filename: this.i18n.t(I18N.photo_detail.gps.batch_title), lat: null, lng: null, batch, onBatchApplied },
+      });
+    } finally { navigation.unsubscribe(); }
   }
 
   /** Bulk add/remove of one manual tag. The dialog owns the request; the list is
