@@ -654,6 +654,7 @@ export class GalleryStore {
   readonly activeFilterCount = computed(() => countActiveFilters(this.filters()));
 
   constructor() {
+    effect(() => { this.auth.identity(); untracked(() => this.clearForeignReviewedPhotos()); });
     this.assistantChanges.batch$.pipe(takeUntilDestroyed()).subscribe(batch => void this.refreshPaths(batch.paths));
     // Auto-save album filters on change (debounced) — persists filter state for all albums
     effect(() => {
@@ -749,7 +750,7 @@ export class GalleryStore {
   }
 
   /** Load photos based on current filters (replaces list) */
-  async loadPhotos(): Promise<void> {
+  async loadPhotos(acceptResult: () => boolean = () => true): Promise<void> {
     // Always load from page 1 — only nextPage() uses page > 1
     const pinned = this.pinnedLoad ? this.pinnedPaths() : null;
     this.pinnedLoad = false;
@@ -759,6 +760,7 @@ export class GalleryStore {
     this.resetViewScope();
     this.filters.update(current => ({ ...current, page: 1 }));
     const seq = ++this._loadSeq;
+    const identity = this.auth.identity();
     this.loadedOnce = true;
     this.photos.set([]);
     this.loadError.set(false);
@@ -771,7 +773,7 @@ export class GalleryStore {
         const res = await firstValueFrom(
           this.api.post<{ photos: Photo[]; total: number; missing: string[] }>('/photos/by_paths', { paths: pinned }),
         );
-        if (seq !== this._loadSeq) return;
+        if (seq !== this._loadSeq || identity !== this.auth.identity() || !acceptResult()) return;
         this.photos.set(normalisePhotoFlagsAll(res.photos));
         this.total.set(res.photos.length);
         this.hasMore.set(false);
@@ -782,7 +784,7 @@ export class GalleryStore {
 
       if (f.similar_to) {
         const res = await this.fetchSimilarPage(f, (f.page - 1) * f.per_page);
-        if (seq !== this._loadSeq) return;
+        if (seq !== this._loadSeq || identity !== this.auth.identity() || !acceptResult()) return;
         this.photos.set(normalisePhotoFlagsAll(res.similar ?? []));
         this.total.set(res.total);
         this.hasMore.set(res.has_more);
@@ -796,7 +798,7 @@ export class GalleryStore {
 
       const params = buildApiParams(f, this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
       const res = await firstValueFrom(this.api.get<PhotosResponse>('/photos', params));
-      if (seq !== this._loadSeq) return;
+      if (seq !== this._loadSeq || identity !== this.auth.identity() || !acceptResult()) return;
       this.photos.set(normalisePhotoFlagsAll(res.photos));
       this.total.set(res.total);
       this.hasMore.set(res.has_more);
@@ -805,12 +807,12 @@ export class GalleryStore {
       );
       void this.fetchKeeperHints(res.photos.map(p => p.path));
     } catch {
-      if (seq !== this._loadSeq) return;
+      if (seq !== this._loadSeq || identity !== this.auth.identity() || !acceptResult()) return;
       this.total.set(0);
       this.hasMore.set(false);
       this.loadError.set(true);
     } finally {
-      if (seq === this._loadSeq) {
+      if (seq === this._loadSeq && identity === this.auth.identity() && acceptResult()) {
         this.loading.set(false);
       }
     }
@@ -974,26 +976,29 @@ export class GalleryStore {
   }
 
   /** Load next page and append to existing photos */
-  async nextPage(): Promise<void> {
+  async nextPage(acceptResult: () => boolean = () => true): Promise<void> {
     if (this.pinnedPaths() !== null) return;
     if (!this.hasMore() || this.loading()) return;
 
     const seq = this._loadSeq;
+    const identity = this.auth.identity();
     this.loading.set(true);
     const f = this.filters();
     const nextPage = f.page + 1;
     this.filters.update(current => ({ ...current, page: nextPage }));
+    let key = this.filterKey();
+    const current = () => seq === this._loadSeq && identity === this.auth.identity() && key === this.filterKey() && acceptResult();
     try {
       if (f.similar_to) {
         const res = await this.fetchSimilarPage(f, (nextPage - 1) * f.per_page);
-        if (seq !== this._loadSeq) return;
+        if (!current()) return;
         this.photos.update(current => [...current, ...normalisePhotoFlagsAll(res.similar ?? [])]);
         this.total.set(res.total);
         this.hasMore.set(res.has_more);
       } else {
         const params = buildApiParams(this.filters(), this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
         const res = await firstValueFrom(this.api.get<PhotosResponse>('/photos', params));
-        if (seq !== this._loadSeq) return;
+        if (!current()) return;
         this.photos.update(current => [...current, ...normalisePhotoFlagsAll(res.photos)]);
         this.total.set(res.total);
         this.hasMore.set(res.has_more);
@@ -1003,17 +1008,18 @@ export class GalleryStore {
         void this.fetchKeeperHints(res.photos.map(p => p.path));
       }
     } catch {
-      if (seq !== this._loadSeq) return;
+      if (!current()) return;
       // Revert page increment on error
       this.filters.update(current => ({ ...current, page: f.page }));
+      key = this.filterKey();
       this.snackBar.open(this.i18n.t(I18N.gallery.load_error.page_failed), '', { duration: 3000 });
     } finally {
-      if (seq === this._loadSeq) {
+      if (current()) {
         this.loading.set(false);
       }
-      if (this.viewRefreshOwed) {
+      if (this.viewRefreshOwed && current()) {
         this.viewRefreshOwed = false;
-        if (seq === this._loadSeq) void this.refreshPaths(null);
+        void this.refreshPaths(null);
       }
     }
   }
@@ -1332,12 +1338,15 @@ export class GalleryStore {
    *  trained, so the default gallery pays nothing. Best-effort, fire-and-forget. */
   private async fetchKeeperHints(paths: string[]): Promise<void> {
     if (!paths.length) return;
+    const identity = this.auth.identity();
     const seq = this._loadSeq;
+    const key = this.filterKey();
+    const current = () => identity === this.auth.identity() && seq === this._loadSeq && key === this.filterKey();
     try {
       const hints = await firstValueFrom(
         this.api.post<Record<string, KeeperHint>>('/photos/keeper_hints', { paths }),
       );
-      if (seq !== this._loadSeq) return;
+      if (!current()) return;
       for (const [path, hint] of Object.entries(hints)) {
         this.patchPhoto(path, { keeper_hint: hint });
       }
@@ -1572,34 +1581,50 @@ export class GalleryStore {
   }
 
   private readonly reviewedPhotos = new Map<string, Photo>();
+  private reviewedPhotosIdentity: string | undefined;
+
+  private clearForeignReviewedPhotos(): void {
+    const identity = this.auth.identity();
+    if (identity !== this.reviewedPhotosIdentity) {
+      this.reviewedPhotos.clear();
+      this.reviewedPhotosIdentity = identity;
+    }
+  }
 
   /** Repair shifted offsets with one tail-page request; Undo can restore earlier rows. */
   async refreshReviewResults(rebuild = false): Promise<void> {
+    this.clearForeignReviewedPhotos();
     const f = this.filters();
-    if (!f.review_status) return;
+    const identity = this.auth.identity();
+    // Pagination changes during a rebuild, but the query and principal must not.
+    const scope = () => this.filterKey({ ...this.filters(), page: 1 });
+    const key = scope();
+    let seq = this._loadSeq;
+    const current = () => seq === this._loadSeq && identity === this.auth.identity() && key === scope() && this.pinnedPaths() === null;
+    if (!f.review_status || this.pinnedPaths() !== null) return;
     const previous = this.photos();
     if (rebuild) {
       const pages = Math.max(1, Math.ceil(previous.length / f.per_page));
-      const loading = this.loadPhotos();
-      const seq = this._loadSeq;
+      const loading = this.loadPhotos(current);
+      seq = this._loadSeq;
       await loading;
-      if (seq !== this._loadSeq) return;
-      for (let page = 1; page < pages && this.hasMore() && seq === this._loadSeq; page++) await this.nextPage();
-      if (seq !== this._loadSeq) return;
+      if (!current()) return;
+      for (let page = 1; page < pages && this.hasMore() && current(); page++) await this.nextPage(current);
+      if (!current()) return;
     } else {
       const retained = previous.filter(photo => f.review_status === 'kept' ? !!photo.is_kept
         : f.review_status === 'rejected' ? !!photo.is_rejected : !photo.is_kept && !photo.is_rejected);
       const page = Math.max(1, Math.ceil(retained.length / f.per_page));
       const offset = (page - 1) * f.per_page;
       this.resetViewScope();
-      const seq = ++this._loadSeq;
+      seq = ++this._loadSeq;
       this.loadError.set(false);
       this.loadErrorKey.set(undefined);
       this.loading.set(true);
       try {
         const params = buildApiParams({ ...f, page }, this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
         const res = await firstValueFrom(this.api.get<PhotosResponse>('/photos', params));
-        if (seq !== this._loadSeq) return;
+        if (!current()) return;
         this.photos.set([...retained.slice(0, offset), ...normalisePhotoFlagsAll(res.photos)]);
         this.filters.update(current => ({ ...current, page }));
         this.total.set(res.total);
@@ -1607,13 +1632,14 @@ export class GalleryStore {
         this.hiddenSummary.set(res.hidden_summary ?? { total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 });
         void this.fetchKeeperHints(res.photos.map(photo => photo.path));
       } catch {
-        if (seq !== this._loadSeq) return;
+        if (!current()) return;
         this.loadError.set(true);
         return;
       } finally {
-        if (seq === this._loadSeq) this.loading.set(false);
+        if (current()) this.loading.set(false);
       }
     }
+    if (!current()) return;
     const currentPaths = new Set(this.photos().map(photo => photo.path));
     for (const photo of previous) {
       if (currentPaths.has(photo.path)) continue;
@@ -1712,6 +1738,7 @@ export class GalleryStore {
     const snap = new Map([...snapshot].map(([path, flags]) => [path, flags.is_rejected
       ? { ...flags, is_kept: false, is_favorite: false, star_rating: null }
       : flags]));
+    this.clearForeignReviewedPhotos();
     const current = new Map([...this.reviewedPhotos, ...this.photos().map(p => [p.path, p] as const)]);
     const toKeep: string[] = [];
     const toReset: string[] = [];
