@@ -149,6 +149,7 @@ describe('GalleryComponent', () => {
     };
 
     mockAuth = {
+      status: signal({ user_id: "editor" }),
       identity: vi.fn(() => '0|'),
       isEdition: vi.fn(() => false),
       downloadProfiles: vi.fn(() => []),

@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import type { Mock } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NEVER, of, throwError, Subject } from 'rxjs';

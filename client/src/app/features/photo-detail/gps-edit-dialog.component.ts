@@ -358,7 +358,7 @@ export class GpsEditDialogComponent {
       const result = await firstValueFrom(this.api.delete<GpsResult>(`/photo/gps?path=${encodeURIComponent(this.data.path)}`));
       if (!this.current()) return;
       this.store.patchPhoto(this.data.path, { gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude, gps_manually_set: 0 });
-      void this.store.refreshPaths(null);
+      if (this.store.filters().no_gps) void this.store.loadPhotos();
       if (this.current()) this.dialogRef.close({ ...result, gps_manually_set: 0 });
     } catch {
       if (!this.current()) return;
@@ -416,7 +416,7 @@ export class GpsEditDialogComponent {
       const result = await firstValueFrom(this.api.put<GpsResult>('/photo/gps', body));
       if (!this.current()) return;
       this.store.patchPhoto(body.path, { gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude, gps_manually_set: 1 });
-      void this.store.refreshPaths(null);
+      if (this.store.filters().no_gps) void this.store.loadPhotos();
       if (this.current()) this.dialogRef.close(result);
     } catch {
       if (!this.current()) return;
