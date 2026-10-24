@@ -1908,6 +1908,22 @@ describe('GalleryComponent', () => {
   });
 
   describe('openBatchGpsDialog', () => {
+    it.each(['identity', 'edition', 'navigation', 'destroy'])('does not open after lazy GPS launch loses %s', async loss => {
+      mockAuth['isEdition'] = vi.fn(() => true);
+      mockStore.selectedPaths.set(new Set(['/a'])); mockStore.selectionCount.set(1);
+      const dialog = TestBed.inject(MatDialog);
+      const task = component.openBatchGpsDialog();
+      if (loss === 'identity') (mockAuth['status'] as ReturnType<typeof signal>).set({ user_id: 'bob' });
+      if (loss === 'edition') mockAuth['isEdition'] = vi.fn(() => false);
+      if (loss === 'navigation') {
+        (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(1, '/other'));
+        (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(2, '/'));
+      }
+      if (loss === 'destroy') TestBed.resetTestingModule();
+      await task;
+      expect(dialog.open).not.toHaveBeenCalled();
+    });
+
     it('captures the complete filter and exclusions before lazy loading the dialog', async () => {
       mockAuth['isEdition'] = vi.fn(() => true);
       mockStore.viewScopeSelected.set(true);
