@@ -360,9 +360,9 @@ export class GpsEditDialogComponent {
         ...preview.body, preview: false, preview_token: preview.result.preview_token,
       }));
       // The write can finish after dismissal or navigation: refresh the current
-      // query, without clearing a newer selection or closing another dialog.
+      // view in place, preserving its pin/selection and avoiding a later dialog.
       this.data.onBatchApplied?.();
-      void this.store.loadPhotos();
+      void this.store.refreshPaths(null);
       this.snackBar.open(this.i18n.t(I18N.photo_detail.gps.batch_applied, { changed: result.changed, skipped: result.skipped }), '', { duration: 4000 });
       if (!this.destroyed && !this.dismissed) this.dialogRef.close(result);
     } catch {
