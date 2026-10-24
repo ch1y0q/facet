@@ -10,7 +10,11 @@
              overflow-x-auto parent counts that overhang as scrollable content.
              Without the padding the bar showed a scrollbar even when every icon
              fitted exactly. The padding gives the overhang somewhere to land. -->
-        <nav class="flex items-center gap-0 lg:gap-1 max-lg:min-w-0 max-lg:overflow-x-auto max-lg:px-1.5">
+             <!-- overflow-y-hidden: the 40px Material buttons sit in a 36px bar, and an
+             unstyled overflow-y would grow a stray vertical scrollbar next to the icons
+             (auto comes from the overflow-x side of the pair); the 2px crop per edge is
+             inside the button's own padding, never through the glyph. -->
+        <nav class="flex items-center gap-0 lg:gap-1 max-lg:min-w-0 max-lg:overflow-x-auto max-lg:overflow-y-hidden max-lg:px-1.5">
           <a mat-icon-button class="lg:!hidden" routerLink="/" routerLinkActive #rlGalleryM="routerLinkActive" [routerLinkActiveOptions]="{exact:true}" [style.color]="rlGalleryM.isActive ? 'var(--mat-sys-primary)' : ''" [matTooltip]="I18N.nav.gallery_tooltip | translate" [attr.aria-label]="I18N.nav.gallery_tooltip | translate" (dblclick)="resetAllFilters()">
             <mat-icon>diamond</mat-icon>
           </a>
