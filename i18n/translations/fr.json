@@ -1296,7 +1296,9 @@
       "badge_shadow": "Ombres écrêtées : {percent} % des pixels"
     },
     "channel_clip_highlight_range": "Hautes lumières écrêtées %",
-    "channel_clip_shadow_range": "Ombres écrêtées %"
+    "channel_clip_shadow_range": "Ombres écrêtées %",
+    "blinks_only": "Clignements uniquement",
+    "duplicates_only": "Doublons uniquement"
   },
   "composition_patterns": {
     "none": "Aucun",

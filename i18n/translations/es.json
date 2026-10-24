@@ -1296,7 +1296,9 @@
       "badge_shadow": "Sombras recortadas: {percent}% de los píxeles"
     },
     "channel_clip_highlight_range": "% de altas luces recortadas",
-    "channel_clip_shadow_range": "% de sombras recortadas"
+    "channel_clip_shadow_range": "% de sombras recortadas",
+    "blinks_only": "Solo parpadeos",
+    "duplicates_only": "Solo duplicadas"
   },
   "composition_patterns": {
     "none": "Ninguno",

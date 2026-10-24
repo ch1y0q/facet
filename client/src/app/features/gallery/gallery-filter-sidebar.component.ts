@@ -562,10 +562,25 @@ function saveSectionStates(states: Record<string, boolean>): void {
             [checked]="store.filters().hide_panoramas"
             (change)="store.updateFilter('hide_panoramas', $event.checked)"
           >{{ I18N.gallery.hide_panoramas | translate }}</mat-checkbox>
+          <!-- The positive counterpart of the toggles above: "only X" views.
+               The server suppresses the hide toggles while either is set, so
+               every member of what they name is listed. -->
+          <mat-checkbox
+            [checked]="store.filters().blinks_only"
+            (change)="store.updateFilter('blinks_only', $event.checked)"
+          >{{ I18N.gallery.blinks_only | translate }}</mat-checkbox>
+          <mat-checkbox
+            [checked]="store.filters().duplicates_only"
+            (change)="store.updateFilter('duplicates_only', $event.checked)"
+          >{{ I18N.gallery.duplicates_only | translate }}</mat-checkbox>
           <mat-checkbox
             [checked]="store.filters().hide_rejected"
             (change)="store.updateFilter('hide_rejected', $event.checked)"
           >{{ I18N.gallery.hide_rejected | translate }}</mat-checkbox>
+          <mat-checkbox
+            [checked]="store.filters().show_rejected"
+            (change)="store.updateFilter('show_rejected', $event.checked)"
+          >{{ I18N.rating.show_rejected | translate }}</mat-checkbox>
           <!-- A correction is invisible in the labels until the detector runs
                again, so without this the only record of one still pending is
                the user's memory. Edition-only: nobody else can make one. -->
@@ -1055,6 +1070,7 @@ export class GalleryFilterSidebarComponent {
       equipment: (f.camera ? 1 : 0) + (f.lens ? 1 : 0),
       persons: f.person_id ? f.person_id.split(',').length : 0,
       refine: (f.favorites_only ? 1 : 0) + (f.is_monochrome ? 1 : 0) + (f.hide_rejected ? 1 : 0)
+        + (f.show_rejected ? 1 : 0) + (f.blinks_only ? 1 : 0) + (f.duplicates_only ? 1 : 0)
         + (f.sequence_override ? 1 : 0),
       folder: f.path_prefix ? 1 : 0,
     };

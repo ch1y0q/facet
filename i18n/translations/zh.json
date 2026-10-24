@@ -1296,7 +1296,9 @@
       "badge_shadow": "阴影溢出：{percent}% 的像素"
     },
     "channel_clip_highlight_range": "高光溢出比例 %",
-    "channel_clip_shadow_range": "阴影溢出比例 %"
+    "channel_clip_shadow_range": "阴影溢出比例 %",
+    "blinks_only": "仅看眨眼",
+    "duplicates_only": "仅看重复"
   },
   "composition_patterns": {
     "none": "无",

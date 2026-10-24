@@ -4,6 +4,11 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **"Only blinks", "only duplicates" and "rejected only" gallery filters.** The sidebar's hide toggles could hide blinks, duplicate members and rejects but had no way to see just those, so trashing every reject meant selecting the whole library — refused past the cull cap — and duplicates were only reachable one set at a time. Three checkboxes in the filter sidebar's Refine section now list only the photos with a detected blink, every member of a duplicate group (leads included), or every photo you have rejected. While an "only blinks" or "only duplicates" view is up, the gallery suppresses the hide toggles for it, so a blink inside a burst or a duplicate that is also a blink is not filtered away again by the defaults. The filters are URL-addressable, save into smart albums, and are available to assistants through `search_photos` (`blinks_only`, `duplicates_only`, `show_rejected`). A view of only the rejects plus select-all and **Cull to folder** is now the one-view path to trashing every reject, far below the 10 000-photo cull cap.
+
+
 ## [1.23.0] "Clap" — 2026-10-24
 
 ### Added

@@ -1296,7 +1296,9 @@
       "badge_shadow": "Beschnittene Schatten: {percent}% der Pixel"
     },
     "channel_clip_highlight_range": "Beschnittene Lichter %",
-    "channel_clip_shadow_range": "Beschnittene Schatten %"
+    "channel_clip_shadow_range": "Beschnittene Schatten %",
+    "blinks_only": "Nur Blinker",
+    "duplicates_only": "Nur Duplikate"
   },
   "composition_patterns": {
     "none": "Keines",

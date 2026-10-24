@@ -1474,3 +1474,83 @@ class TestGalleryParamsArePreparedOnce:
         assert self._count_preparations(
             db_path, "/api/photos/select_bottom_percent?keep_percent=50"
         ) == 1
+
+
+# ---------------------------------------------------------------------------
+# Positive "only X" filters (blinks_only / duplicates_only / show_rejected)
+# ---------------------------------------------------------------------------
+
+class TestOnlyFilters:
+    """The positive counterpart of the hide toggles.
+
+    ``blinks_only`` and ``duplicates_only`` are new; ``show_rejected`` existed
+    but had no client surface. All three must survive the shared scope builder
+    so a whole-view cull resolves exactly the rows the gallery shows.
+    """
+
+    def _seed(self, db_path):
+        _make_db(db_path, [
+            _photo("/plain.jpg", "2024:01:01 10:00:00"),
+            _photo("/blink.jpg", "2024:01:01 10:00:01", is_blink=1),
+            _photo("/dup_lead.jpg", "2024:01:01 10:00:02",
+                   duplicate_group_id=7, is_duplicate_lead=1),
+            _photo("/dup_copy.jpg", "2024:01:01 10:00:03",
+                   duplicate_group_id=7, is_duplicate_lead=0),
+            # a duplicate that is also a non-lead burst member: the default-on
+            # hide toggles would each try to hide it for a different reason
+            _photo("/dup_burst.jpg", "2024:01:01 10:00:04",
+                   duplicate_group_id=7, is_duplicate_lead=0,
+                   burst_group_id=3, is_burst_lead=0),
+            _photo("/rejected.jpg", "2024:01:01 10:00:05", is_rejected=1),
+        ])
+
+    def _get(self, db_path, query):
+        app = _create_app_no_auth()
+        with (
+            mock.patch("api.routers.gallery.get_db", _conn_factory(db_path)),
+            mock.patch("api.routers.gallery.get_async_db", _async_conn_factory(db_path)),
+            mock.patch("api.routers.gallery.VIEWER_CONFIG", _VIEWER_CONFIG),
+            mock.patch("api.db_helpers._existing_columns_cache", _existing_columns(db_path)),
+            mock.patch.dict("api.config._count_cache", {}, clear=True),
+        ):
+            resp = TestClient(app).get(f"/api/photos?{query}")
+        assert resp.status_code == 200, resp.text
+        return [p["path"] for p in resp.json()["photos"]]
+
+    def test_blinks_only_returns_blink_photos(self, tmp_path):
+        db_path = str(tmp_path / "t.db")
+        self._seed(db_path)
+        assert self._get(db_path, "blinks_only=1") == ["/blink.jpg"]
+
+    def test_blinks_only_accepts_the_client_boolean(self, tmp_path):
+        db_path = str(tmp_path / "t.db")
+        self._seed(db_path)
+        assert self._get(db_path, "blinks_only=true") == ["/blink.jpg"]
+
+    def test_duplicates_only_returns_every_group_member(self, tmp_path):
+        db_path = str(tmp_path / "t.db")
+        self._seed(db_path)
+        assert self._get(db_path, "duplicates_only=1") == [
+            "/dup_burst.jpg", "/dup_copy.jpg", "/dup_lead.jpg"]
+
+    def test_duplicates_only_overrides_the_hide_toggles(self, tmp_path):
+        """hide_bursts/hide_duplicates on would otherwise hide 2 of the 3 members."""
+        db_path = str(tmp_path / "t.db")
+        self._seed(db_path)
+        assert self._get(db_path, "duplicates_only=1&hide_bursts=1&hide_duplicates=1") == [
+            "/dup_burst.jpg", "/dup_copy.jpg", "/dup_lead.jpg"]
+
+    def test_blinks_only_overrides_hide_blinks(self, tmp_path):
+        db_path = str(tmp_path / "t.db")
+        self._seed(db_path)
+        assert self._get(db_path, "blinks_only=1&hide_blinks=1") == ["/blink.jpg"]
+
+    def test_show_rejected_returns_rejected_photos(self, tmp_path):
+        db_path = str(tmp_path / "t.db")
+        self._seed(db_path)
+        assert self._get(db_path, "show_rejected=1&hide_rejected=1") == ["/rejected.jpg"]
+
+    def test_mcp_filter_allowlist_carries_the_new_keys(self):
+        from api.agent.tools_common import MCP_FILTER_KEYS
+        assert "blinks_only" in MCP_FILTER_KEYS
+        assert "duplicates_only" in MCP_FILTER_KEYS

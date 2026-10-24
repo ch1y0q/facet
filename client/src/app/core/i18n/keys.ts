@@ -1311,6 +1311,8 @@ export const I18N = {
     },
     channel_clip_highlight_range: "gallery.channel_clip_highlight_range",
     channel_clip_shadow_range: "gallery.channel_clip_shadow_range",
+    blinks_only: "gallery.blinks_only",
+    duplicates_only: "gallery.duplicates_only",
   },
   composition_patterns: {
     none: "composition_patterns.none",

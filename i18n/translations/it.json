@@ -1296,7 +1296,9 @@
       "badge_shadow": "Ombre tagliate: {percent}% dei pixel"
     },
     "channel_clip_highlight_range": "% alte luci tagliate",
-    "channel_clip_shadow_range": "% ombre tagliate"
+    "channel_clip_shadow_range": "% ombre tagliate",
+    "blinks_only": "Solo occhi chiusi",
+    "duplicates_only": "Solo duplicati"
   },
   "composition_patterns": {
     "none": "Nessuno",

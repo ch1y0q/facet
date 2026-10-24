@@ -274,9 +274,14 @@ describe('applySavedAlbumFilters and the hide_rejected / favorites_only exclusio
 
 describe('exclusiveHidePatch', () => {
   it('clears the companion of whichever is turned on, and nothing when both are off', () => {
-    expect(exclusiveHidePatch({ hide_rejected: true })).toEqual({ favorites_only: false });
-    expect(exclusiveHidePatch({ favorites_only: true })).toEqual({ hide_rejected: false });
+    expect(exclusiveHidePatch({ hide_rejected: true })).toEqual({ favorites_only: false, show_rejected: false });
+    expect(exclusiveHidePatch({ favorites_only: true })).toEqual({ hide_rejected: false, show_rejected: false });
     expect(exclusiveHidePatch({ hide_rejected: false, favorites_only: false })).toEqual({});
+  });
+  it('show_rejected clears both companions and nothing else', () => {
+    expect(exclusiveHidePatch({ show_rejected: true })).toEqual({ hide_rejected: false, favorites_only: false });
+    expect(exclusiveHidePatch({ show_rejected: false })).toEqual({});
+    expect(exclusiveHidePatch({ blinks_only: true })).toEqual({});
   });
 });
 

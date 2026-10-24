@@ -171,6 +171,12 @@ export interface GalleryFilters {
   hide_panoramas: boolean;
   hide_rejected: boolean;
   favorites_only: boolean;
+  // Positive "only X" filters, the counterpart of the hide toggles above.
+  // duplicates_only keeps every member of a duplicate group, leads included;
+  // the server suppresses the hide toggles while either of the two is set.
+  show_rejected: boolean;
+  blinks_only: boolean;
+  duplicates_only: boolean;
   is_monochrome: boolean;
   search: string;
   // Color facet (opt-in extraction; always-on filter)
@@ -283,6 +289,12 @@ export function exclusiveHidePatch(updates: Partial<GalleryFilters>): Partial<Ga
   const patch: Partial<GalleryFilters> = {};
   if (updates.hide_rejected) patch.favorites_only = false;
   if (updates.favorites_only) patch.hide_rejected = false;
+  // "Only rejected" is the inverse reading of "hide rejected": the two never
+  // hold together, and neither does a favourites-only view of rejects.
+  if (updates.show_rejected) patch.hide_rejected = false;
+  if (updates.show_rejected) patch.favorites_only = false;
+  if (updates.hide_rejected) patch.show_rejected = false;
+  if (updates.favorites_only) patch.show_rejected = false;
   return patch;
 }
 
@@ -437,6 +449,9 @@ export const DEFAULT_FILTERS: GalleryFilters = {
   hide_panoramas: true,
   hide_rejected: true,
   favorites_only: false,
+  show_rejected: false,
+  blinks_only: false,
+  duplicates_only: false,
   is_monochrome: false,
   search: '',
   color_temp: '',
@@ -479,6 +494,9 @@ export function countActiveFilters(f: GalleryFilters): number {
     if (f[key]) count++;
   }
   if (f.favorites_only) count++;
+  if (f.show_rejected) count++;
+  if (f.blinks_only) count++;
+  if (f.duplicates_only) count++;
   if (f.is_monochrome) count++;
   return count;
 }
@@ -537,6 +555,9 @@ export function applyQueryParams(
     result.hide_panoramas = params['hide_panoramas'] !== 'false';
   if (params['hide_rejected'] !== undefined) result.hide_rejected = params['hide_rejected'] !== 'false';
   if (params['favorites_only'] !== undefined) result.favorites_only = params['favorites_only'] === 'true';
+  if (params['show_rejected'] !== undefined) result.show_rejected = params['show_rejected'] === 'true';
+  if (params['blinks_only'] !== undefined) result.blinks_only = params['blinks_only'] === 'true';
+  if (params['duplicates_only'] !== undefined) result.duplicates_only = params['duplicates_only'] === 'true';
   if (params['is_monochrome'] !== undefined) result.is_monochrome = params['is_monochrome'] === 'true';
   if (params['tooltip_mode'] && TOOLTIP_MODES.includes(params['tooltip_mode'] as TooltipMode)) {
     result.tooltip_mode = params['tooltip_mode'] as TooltipMode;
@@ -596,6 +617,9 @@ export function buildSyncParams(
   if (f.panel_activation !== (defaults?.panel_activation ?? 'both'))
     params['panel_activation'] = f.panel_activation;
   if (f.favorites_only) params['favorites_only'] = 'true';
+  if (f.show_rejected) params['show_rejected'] = 'true';
+  if (f.blinks_only) params['blinks_only'] = 'true';
+  if (f.duplicates_only) params['duplicates_only'] = 'true';
   if (f.is_monochrome) params['is_monochrome'] = 'true';
 
   return params;
@@ -629,6 +653,9 @@ export function buildApiParams(
   if (f.hide_panoramas) params['hide_panoramas'] = true;
   if (f.hide_rejected) params['hide_rejected'] = true;
   if (f.favorites_only) params['favorites_only'] = '1';
+  if (f.show_rejected) params['show_rejected'] = '1';
+  if (f.blinks_only) params['blinks_only'] = '1';
+  if (f.duplicates_only) params['duplicates_only'] = '1';
   if (f.is_monochrome) params['is_monochrome'] = '1';
 
   // Semantic search is a filter of `GET /photos`. The threshold travels only when
