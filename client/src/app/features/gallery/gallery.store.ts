@@ -1,7 +1,7 @@
 import { Injectable, inject, signal, computed, effect, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Router, ActivatedRoute } from '@angular/router';
+import { Router, ActivatedRoute, NavigationStart } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom, timeout } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
@@ -20,7 +20,7 @@ import {
   DEFAULT_FILTERS, DISPLAY_OPTION_KEYS,
   GALLERY_MODE_KEY, DRAWER_STATE_KEY, CARD_WIDTH_KEY,
   loadDisplayOptionsFromStorage, saveDisplayOptionsToStorage,
-  countActiveFilters, applyQueryParams, buildSyncParams, buildApiParams,
+  countActiveFilters, applyQueryParams, applySavedAlbumFilters, buildSyncParams, buildApiParams,
   buildViewFilterParams, viewFilterParamsEqual, anyHideToggleActive,
   seededSearchThreshold, buildByPathsFilters, BY_PATHS_MAX, semanticSortPatch, smartAlbumFilterJson, exclusiveHidePatch,
 } from './gallery-filters.util';
@@ -34,6 +34,7 @@ export type HiddenFilterFlags = Pick<GalleryFilters,
   'hide_blinks' | 'hide_bursts' | 'hide_duplicates' | 'hide_brackets' | 'hide_panoramas'>;
 
 export const FILTER_OPTIONS_TIMEOUT_MS = 20000;
+export const REVIEW_RESUME_NAVIGATION = 'facetReviewResume';
 
 /**
  * How many photo paths one batch-mutation request may name.
@@ -330,9 +331,9 @@ export class GalleryStore {
   }
 
   /** Restore this browser's queue and return its first remaining photo, skipping deleted/decided rows. */
-  async continueReview(): Promise<string | null> {
+  async continueReview(ownsView: () => boolean = () => true): Promise<string | null> {
     const queue = this.reviewBookmark();
-    if (!queue) return null;
+    if (!queue || !ownsView()) return null;
     const seq = ++this.resumeSeq;
     const identity = this.auth.identity();
     const loadSeq = this._loadSeq;
@@ -341,25 +342,43 @@ export class GalleryStore {
     if (queue.filters.album_id) {
       try { album = await firstValueFrom(this.albumService.get(+queue.filters.album_id)); }
       catch {
-        if (seq === this.resumeSeq && identity === this.auth.identity() && loadSeq === this._loadSeq) this.notifyActionFailed();
+        if (seq === this.resumeSeq && ownsView() && identity === this.auth.identity() && loadSeq === this._loadSeq) this.notifyActionFailed();
         return null;
       }
     }
-    if (seq !== this.resumeSeq || identity !== this.auth.identity() || loadSeq !== this._loadSeq || originKey !== this.filterKey()) return null;
+    if (seq !== this.resumeSeq || !ownsView() || identity !== this.auth.identity() || loadSeq !== this._loadSeq || originKey !== this.filterKey()) return null;
+    let restored = queue.filters;
+    if (album) {
+      // Album criteria can change after bookmarking: the current saved scope wins.
+      const base = { ...DEFAULT_FILTERS, per_page: restored.per_page, sort: restored.sort, sort_direction: restored.sort_direction,
+        hide_blinks: restored.hide_blinks, hide_bursts: restored.hide_bursts, hide_duplicates: restored.hide_duplicates,
+        hide_brackets: restored.hide_brackets, hide_panoramas: restored.hide_panoramas, hide_rejected: restored.hide_rejected };
+      try {
+        restored = applySavedAlbumFilters(base, album.smart_filter_json ?? '{}', String(album.id));
+      } catch { this.notifyActionFailed(); return null; }
+      if (restored.review_status && restored.review_status !== 'undecided') {
+        this.notifyActionFailed();
+        return null;
+      }
+    }
     this.cancelRangeLoad();
     this.clearSelection();
     this.transientReviewStatus.set(true);
     this.currentAlbum.set(album);
-    this.filters.set({ ...queue.filters, album_id: queue.filters.album_id || '0', page: 1 });
+    this.filters.set({ ...restored, review_status: 'undecided', album_id: queue.filters.album_id || '0', page: 1 });
     // Keep the current component mounted; album_id in the URL also supports reload.
-    void this.router.navigate([], {
+    await this.router.navigate([], {
       queryParams: { ...this.galleryQueryParams(), album_id: this.filters().album_id || '0' },
       replaceUrl: true,
+      state: { [REVIEW_RESUME_NAVIGATION]: seq },
     });
-    const loading = this.loadPhotos();
+    if (seq !== this.resumeSeq || !ownsView() || identity !== this.auth.identity()) return null;
+    const scopeKey = this.filterKey();
+    const acceptsResume = () => seq === this.resumeSeq && ownsView() && scopeKey === this.filterKey();
+    const loading = this.loadPhotos(acceptsResume);
     const expected = this._loadSeq;
     await loading;
-    if (expected !== this._loadSeq || identity !== this.auth.identity()) return null;
+    if (expected !== this._loadSeq || !acceptsResume() || identity !== this.auth.identity()) return null;
     const first = this.photos()[0]?.path ?? null;
     this.focusedPath.set(first);
     return first;
@@ -738,6 +757,10 @@ export class GalleryStore {
   readonly activeFilterCount = computed(() => countActiveFilters(this.filters()));
 
   constructor() {
+    this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
+      if (event instanceof NavigationStart
+        && this.router.currentNavigation?.()?.extras?.state?.[REVIEW_RESUME_NAVIGATION] !== this.resumeSeq) this.resumeSeq++;
+    });
     effect(() => {
       this.auth.identity();
       untracked(() => { this.reviewProgressSeq++; this.resumeSeq++; this.reviewProgress.set(null); });
@@ -747,19 +770,14 @@ export class GalleryStore {
     effect(() => {
       const f = this.filters();
       const album = this.currentAlbum();
-      if (!album) return;
+      const temporaryQueue = this.transientReviewStatus();
+      if (this.smartSaveTimer) { clearTimeout(this.smartSaveTimer); this.smartSaveTimer = null; }
+      if (!album || temporaryQueue) return;
       if (untracked(() => this.initializing())) return;
       const isEdition = untracked(() => this.auth.isEdition());
       if (!isEdition) return;
 
-      let saveFilters = f;
-      if (this.transientReviewStatus() && album.is_smart && album.smart_filter_json) {
-        try {
-          const saved = JSON.parse(album.smart_filter_json) as Partial<GalleryFilters>;
-          saveFilters = { ...f, review_status: saved.review_status ?? '' };
-        } catch { return; }
-      }
-      const json = smartAlbumFilterJson(saveFilters);
+      const json = smartAlbumFilterJson(f);
 
       untracked(() => {
         if (this.smartSaveTimer) clearTimeout(this.smartSaveTimer);
@@ -845,7 +863,7 @@ export class GalleryStore {
   }
 
   /** Load photos based on current filters (replaces list) */
-  async loadPhotos(): Promise<void> {
+  async loadPhotos(acceptResult: () => boolean = () => true): Promise<void> {
     // Always load from page 1 — only nextPage() uses page > 1
     const pinned = this.pinnedLoad ? this.pinnedPaths() : null;
     this.pinnedLoad = false;
@@ -869,7 +887,7 @@ export class GalleryStore {
         const res = await firstValueFrom(
           this.api.post<{ photos: Photo[]; total: number; missing: string[] }>('/photos/by_paths', { paths: pinned }),
         );
-        if (seq !== this._loadSeq || identity !== this.auth.identity()) return;
+        if (seq !== this._loadSeq || identity !== this.auth.identity() || !acceptResult()) return;
         this.photos.set(normalisePhotoFlagsAll(res.photos));
         this.total.set(res.photos.length);
         this.hasMore.set(false);
@@ -880,7 +898,7 @@ export class GalleryStore {
 
       if (f.similar_to) {
         const res = await this.fetchSimilarPage(f, (f.page - 1) * f.per_page);
-        if (seq !== this._loadSeq || identity !== this.auth.identity()) return;
+        if (seq !== this._loadSeq || identity !== this.auth.identity() || !acceptResult()) return;
         this.photos.set(normalisePhotoFlagsAll(res.similar ?? []));
         this.total.set(res.total);
         this.hasMore.set(res.has_more);
@@ -894,7 +912,7 @@ export class GalleryStore {
 
       const params = buildApiParams(f, this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
       const res = await firstValueFrom(this.api.get<PhotosResponse>('/photos', params));
-      if (seq !== this._loadSeq || identity !== this.auth.identity()) return;
+      if (seq !== this._loadSeq || identity !== this.auth.identity() || !acceptResult()) return;
       this.photos.set(normalisePhotoFlagsAll(res.photos));
       if (f.review_status === 'undecided') {
         saveReviewQueue(this.auth.identity(), f);
@@ -907,7 +925,7 @@ export class GalleryStore {
       );
       void this.fetchKeeperHints(res.photos.map(p => p.path));
     } catch {
-      if (seq !== this._loadSeq || identity !== this.auth.identity()) return;
+      if (seq !== this._loadSeq || identity !== this.auth.identity() || !acceptResult()) return;
       this.total.set(0);
       this.hasMore.set(false);
       this.loadError.set(true);
@@ -1132,13 +1150,29 @@ export class GalleryStore {
 
   private static readonly SORT_KEYS: ReadonlySet<string> = new Set(['sort', 'sort_direction']);
 
+  /** An explicit sidebar edit leaves temporary album review mode before saving. */
+  private leaveTemporaryReview(): void {
+    if (!this.transientReviewStatus()) return;
+    const album = this.currentAlbum();
+    if (album) {
+      try {
+        const saved = JSON.parse(album.smart_filter_json ?? '{}') as Partial<GalleryFilters>;
+        this.filters.update(current => ({ ...current, review_status: saved.review_status ?? '',
+          sort: saved.sort ?? this.config()?.defaults.sort ?? DEFAULT_FILTERS.sort,
+          sort_direction: saved.sort_direction ?? this.config()?.defaults.sort_direction ?? DEFAULT_FILTERS.sort_direction }));
+      } catch { /* Existing malformed album handling remains responsible for reporting it. */ }
+    }
+    this.transientReviewStatus.set(false);
+  }
+
   /** Update a single filter and reload photos from page 1 */
   async updateFilter<K extends keyof GalleryFilters>(
     key: K,
     value: GalleryFilters[K],
     transientReview = false,
   ): Promise<void> {
-    if (key === 'review_status') this.transientReviewStatus.set(transientReview);
+    if (transientReview) this.transientReviewStatus.set(true);
+    else this.leaveTemporaryReview();
     const update = { [key]: value } as Partial<GalleryFilters>;
     const gpsPatch: Partial<GalleryFilters> = {};
     const reviewPatch: Partial<GalleryFilters> = {};
@@ -1184,6 +1218,7 @@ export class GalleryStore {
 
   /** Update a range filter; reload is debounced so a slider drag fires one request. */
   updateFilterDebounced<K extends keyof GalleryFilters>(key: K, value: GalleryFilters[K]): void {
+    this.leaveTemporaryReview();
     const before = this.filters();
     this.filters.update(current => ({ ...current, [key]: value, page: 1 }));
     this.journalFilters(before, this.filters());
@@ -1219,6 +1254,7 @@ export class GalleryStore {
 
   /** Update multiple filters at once and reload */
   async updateFilters(updates: Partial<GalleryFilters>): Promise<void> {
+    this.leaveTemporaryReview();
     const gpsPatch: Partial<GalleryFilters> = {};
     const reviewPatch: Partial<GalleryFilters> = {};
     if (updates.review_status) { reviewPatch.similar_to = ''; reviewPatch.semanticQuery = ''; }

@@ -35,7 +35,7 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, NavigationStart, Router, RouterOutlet } from '@angular/router';
 import { filter, firstValueFrom } from 'rxjs';
-import { GalleryStore, BatchResult } from './gallery.store';
+import { GalleryStore, BatchResult, REVIEW_RESUME_NAVIGATION } from './gallery.store';
 import { Photo } from '../../shared/models/photo.model';
 import { isTypingContext } from '../../shared/utils/keyboard';
 import { PHOTO_PATH } from '../../core/gallery-reuse.strategy';
@@ -787,6 +787,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly changeDetector = inject(ChangeDetectorRef);
   private parked = false;
   // Detaching loses the DOM scroll position and focus.
+  private resumeNavigation = 0;
   private returnTo: { scroll: number; focus: Element | null; path: string | null } | null = null;
   private readonly api = inject(ApiService);
   private readonly pageHelp = inject(PageHelpService);
@@ -1239,6 +1240,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
     // Capture before the outlet detaches the DOM and loses scroll and focus.
     this.router.events.pipe(filter(e => e instanceof NavigationStart), takeUntilDestroyed()).subscribe(() => {
+      if (!this.router.currentNavigation?.()?.extras?.state?.[REVIEW_RESUME_NAVIGATION]) this.resumeNavigation++;
       if (this.parked) return;
       const focus = document.activeElement;
       const index = Number((focus?.closest('[data-pidx]') as HTMLElement | null)?.dataset['pidx']);
@@ -1894,7 +1896,10 @@ export class GalleryComponent implements OnInit, OnDestroy {
   }
 
   protected async continueReview(): Promise<void> {
-    const path = await this.store.continueReview();
+    const navigation = this.resumeNavigation;
+    const ownsView = () => !this.destroyRef.destroyed && !this.parked && navigation === this.resumeNavigation;
+    const path = await this.store.continueReview(ownsView);
+    if (!ownsView()) return;
     const photo = path ? this.store.photos().find(p => p.path === path) : null;
     if (photo) this.downloadPhoto(photo);
   }
