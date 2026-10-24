@@ -222,6 +222,8 @@ def migrate_user_preferences(username, db_path=DEFAULT_DB_PATH):
     """Copy non-zero ratings from photos table to user_preferences for a user."""
     import sqlite3
 
+    # The copy reads is_kept, which an older library gains only on schema upgrade.
+    init_database(db_path, build_photo_indexes=False)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
 

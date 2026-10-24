@@ -2775,7 +2775,7 @@
     "rejected": "Rejected",
     "keep": "Keep",
     "reset": "Reset decision",
-    "updated": "Updated {{count}} photo decisions",
+    "updated": "Updated {count} photo decisions",
     "shortcut": "Keep photo"
   }
 }

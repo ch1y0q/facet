@@ -2775,7 +2775,7 @@
     "rejected": "Rejeitadas",
     "keep": "Manter",
     "reset": "Repor decisão",
-    "updated": "Decisões atualizadas para {{count}} fotos",
+    "updated": "Decisões atualizadas para {count} fotos",
     "shortcut": "Manter fotografia"
   }
 }

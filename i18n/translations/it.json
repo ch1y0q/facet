@@ -2775,7 +2775,7 @@
     "rejected": "Scartate",
     "keep": "Conserva",
     "reset": "Reimposta decisione",
-    "updated": "Decisioni aggiornate per {{count}} foto",
+    "updated": "Decisioni aggiornate per {count} foto",
     "shortcut": "Conserva foto"
   }
 }
