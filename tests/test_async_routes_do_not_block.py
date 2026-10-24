@@ -251,7 +251,20 @@ def seeded_album(seeded_photos):
         conn.close()
 
 
-def _bind(requests, photo_path, album_id):
+@pytest.fixture()
+def seeded_history(seeded_photos):
+    """A real, current entry owned by the request's principal, ready to revert."""
+    client = TestClient(_user_app(EDITION))
+    result = client.put('/api/photo/gps', json={
+        'path': seeded_photos[0]['path'], 'gps_latitude': 77, 'gps_longitude': 88,
+    })
+    assert result.status_code == 200, result.text
+    history = client.get('/api/organization_history')
+    assert history.status_code == 200, history.text
+    return history.json()['entries'][0]['id']
+
+
+def _bind(requests, photo_path, album_id, history_id):
     """``requests`` with the photo and album placeholders replaced by real rows."""
     def value(v):
         if v == _PLACEHOLDER_PHOTO:
@@ -262,6 +275,8 @@ def _bind(requests, photo_path, album_id):
 
     album_segment = f"/{_PLACEHOLDER_ALBUM_ID}/"
     for method, path, params, body, user in requests:
+        if path == '/api/organization_history/1/revert':
+            path = f'/api/organization_history/{history_id}/revert'
         if path.startswith('/api/'):
             path = path.replace(_PLACEHOLDER_PHOTO, photo_path)
             if path.startswith(('/api/albums/', '/api/shared/album/')):
@@ -282,12 +297,12 @@ def _answered_as_expected(method, path, status):
 
 
 def test_no_route_runs_a_blocking_opener_on_the_event_loop(seeded_photos, seeded_album,
-                                                           monkeypatch):
+                                                           seeded_history, monkeypatch):
     from api.routers import scan
     monkeypatch.setitem(scan.VIEWER_CONFIG, 'features',
                         {**scan.VIEWER_CONFIG.get('features', {}), 'show_scan_button': True})
     statuses = []
-    assert _drive(list(_bind(REQUESTS, seeded_photos[0]["path"], seeded_album)), statuses) == []
+    assert _drive(list(_bind(REQUESTS, seeded_photos[0]["path"], seeded_album, seeded_history)), statuses) == []
     assert [st for st in statuses if not _answered_as_expected(*st)] == []
     assert len(statuses) == len(REQUESTS)
 
