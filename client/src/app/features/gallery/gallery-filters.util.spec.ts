@@ -408,6 +408,15 @@ describe('buildByPathsFilters', () => {
 });
 
 describe('relevance sort', () => {
+  it('never leaves sort=relevance when no_gps clears the semantic query', () => {
+    const f = applyQueryParams(DEFAULT_FILTERS, { no_gps: '1', semanticQuery: 'sunset' });
+    expect(f.semanticQuery).toBe('');
+    expect(f.sort).not.toBe(RELEVANCE_SORT);
+    const g = applyQueryParams(DEFAULT_FILTERS, { no_gps: '1', semanticQuery: 'sunset', sort: RELEVANCE_SORT });
+    expect(g.semanticQuery).toBe('');
+    expect(g.sort).not.toBe(RELEVANCE_SORT);
+  });
+
   const defaults = { sort: 'aggregate', sort_direction: 'DESC' };
   it('is implied by a semantic query, so a link carrying only the query loads as relevance', () => {
     const restored = applyQueryParams(DEFAULT_FILTERS, { semanticQuery: 'dog' });
