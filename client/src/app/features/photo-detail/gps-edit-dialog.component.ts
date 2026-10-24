@@ -351,7 +351,7 @@ export class GpsEditDialogComponent {
 
   async useFileLocation(): Promise<void> {
     if (!this.current() || this.saving() || this.placeBusy()) return;
-   
+
     this.saving.set(true);
     this.saveError.set('');
     try {
