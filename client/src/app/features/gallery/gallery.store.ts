@@ -18,7 +18,7 @@ import {
   type GalleryFilters, type GalleryMode, type TooltipMode, type PanelActivation, type DisplayOptions,
   type ViewFilterParams,
   DEFAULT_FILTERS, DISPLAY_OPTION_KEYS,
-  GALLERY_MODE_KEY, DRAWER_STATE_KEY, CARD_WIDTH_KEY,
+  GALLERY_MODE_KEY, DRAWER_STATE_KEY, CARD_WIDTH_KEY, GALLERY_SESSION_QUERY_KEY,
   loadDisplayOptionsFromStorage, saveDisplayOptionsToStorage,
   countActiveFilters, applyQueryParams, buildSyncParams, buildApiParams,
   buildViewFilterParams, viewFilterParamsEqual, anyHideToggleActive,
@@ -1795,12 +1795,38 @@ export class GalleryStore {
 
   /** Sync current filters to URL query params */
   private syncUrl(): void {
+    const queryParams = buildSyncParams(
+      this.filters(), this.config()?.defaults, this.config()?.search_threshold_default,
+    );
+    // Same snapshot into sessionStorage: the nav icon's return from another
+    // page lands on parameterless `/`, and that is where the last query is
+    // restored from. A reset overwrites this with the near-empty set, so
+    // "reset then leave then return" correctly comes back to defaults.
+    try {
+      sessionStorage.setItem(GALLERY_SESSION_QUERY_KEY, JSON.stringify(queryParams));
+    } catch { /* storage unavailable: the nav return just falls back to defaults */ }
     this.router.navigate([], {
-      queryParams: buildSyncParams(
-        this.filters(), this.config()?.defaults, this.config()?.search_threshold_default,
-      ),
+      queryParams,
       replaceUrl: true,
     });
+  }
+
+  /**
+   * The last gallery query the session synced, minus `album_id` — an album
+   * scope travels the route param, and re-applying a stale one over a fresh
+   * nav visit would resurrect an album the user navigated away from. Null
+   * when the session has none (first visit, or a reset was the last action).
+   */
+  readGallerySessionQuery(): Record<string, string> | null {
+    try {
+      const raw = sessionStorage.getItem(GALLERY_SESSION_QUERY_KEY);
+      if (!raw) return null;
+      const saved = JSON.parse(raw) as Record<string, string>;
+      delete saved['album_id'];
+      return Object.keys(saved).length ? saved : null;
+    } catch {
+      return null;
+    }
   }
 
   /** Fetch a page of similar photos from the API */

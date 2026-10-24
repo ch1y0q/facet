@@ -1343,6 +1343,20 @@ export class GalleryComponent implements OnInit, OnDestroy {
     // Read (and clear) BEFORE tryRestoreView: a scoped "open this set" request
     // means the user wants that new scoped view, never a resumed previous one.
     const setScope = this.consumeSetScopeState();
+    // A parameterless landing on `/` is the nav icon's return from another
+    // page (a reload carries its own query params, and an album route its
+    // albumId). Re-enter with the session's last gallery query instead of a
+    // pristine view -- replaceUrl, so Back never lands on a bare entry -- and
+    // let tryRestoreView below also match the scroll position it saved.
+    if (!setScope && !this.route.snapshot.paramMap.get('albumId')
+        && !Object.keys(this.route.snapshot.queryParams).length) {
+      const savedQuery = this.store.readGallerySessionQuery();
+      if (savedQuery) {
+        await this.router.navigate([], {
+          relativeTo: this.route, queryParams: savedQuery, replaceUrl: true,
+        });
+      }
+    }
     if (!setScope && this.tryRestoreView()) return;
     // Reset album state to avoid stale singleton data; loadConfig() resets filters from scratch
     this.store.currentAlbum.set(null);

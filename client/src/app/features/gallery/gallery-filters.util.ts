@@ -22,6 +22,9 @@ export const GALLERY_MODE_KEY = 'facet_gallery_mode';
 export const DRAWER_STATE_KEY = 'facet_filter_drawer_open';
 export const DISPLAY_OPTIONS_KEY = 'facet_display_options';
 export const CARD_WIDTH_KEY = 'facet_card_width';
+/** The gallery's last synced query, for the nav-icon return from another page:
+ *  sessionStorage, so it survives tab-wide navigation but not a new session. */
+export const GALLERY_SESSION_QUERY_KEY = 'facet_gallery_session_query';
 
 export interface GalleryFilters {
   page: number;

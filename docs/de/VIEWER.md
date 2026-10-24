@@ -527,6 +527,7 @@ Gesteuert über `viewer.features.show_memories` (Standard: `true`).
 Chronologischer Foto-Browser: Ein Raster aus Jahren führt zu einem Raster aus Monaten und dann zu einem Tageskalender, wobei jede Kachel eine Fotoanzahl und ein Vorschaubild zeigt. Klicken Sie auf einen Tag, um die Galerie gefiltert auf dieses Datum zu öffnen. Die Zeitleiste selbst hat keine Sortierung — sortiert wird in der Galerie, in der Sie landen.
 
 Die fünf Ausblenden-Umschalter der Galerie (`hide_blinks`, `hide_bursts`, `hide_duplicates`, `hide_brackets`, `hide_panoramas`) gelten auf jeder Ebene und fallen auf `viewer.defaults` zurück, wenn eine Anfrage keinen davon sendet — eine Jahres-/Monats-/Tageskachel zählt und wählt ihr Vorschaubild also nur aus Fotos, die die Galerie tatsächlich anzeigen würde. Wenn mindestens ein Umschalter etwas ausblendet, erscheint in der Werkzeugleiste (und der mobilen unteren Leiste) eine Schaltfläche `visibility_off` mit dem Tooltip „Einige Fotos werden durch Ihre Filter ausgeblendet"; ein Klick darauf löscht alle fünf, genau wie das eigene Banner für ausgeblendete Fotos der Galerie.
+- **Die Navigation zurück behält deine Filter.** Wer über eine andere Seite hinweg auf das Fotos-Symbol in der Kopfzeile tippt, kehrt mit den Filtern, der Sortierung und der Seite zurück, auf der er war — die letzte Abfrage reist in dieser Browser-Sitzung. Ein Zurücksetzen (Doppeltipp auf das Fotos-Symbol oder der Reset in der Seitenleiste) startet die nächste Rückkehr von den Standardwerten.
 
 API: siehe den Abschnitt [API-Endpunkte](#api-endpunkte) weiter unten.
 
