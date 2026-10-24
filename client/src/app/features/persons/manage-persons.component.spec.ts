@@ -237,6 +237,37 @@ describe('ManagePersonsComponent', () => {
     });
   });
 
+  describe('name suggestions', () => {
+    it('offers every distinct name once, ignoring case and spaces, sorted', async () => {
+      mockApi.get.mockReturnValue(of({
+        persons: [[1, 'Peter Salem', 100], [2, ' peter salem ', 4], [3, null, 9], [4, 'Anna', 3], [5, '  ', 1]],
+      }));
+
+      await component.loadNameOptions();
+
+      expect(mockApi.get).toHaveBeenCalledWith('/filter_options/persons');
+      expect(component.nameOptions()).toEqual(['Anna', 'Peter Salem']);
+    });
+
+    it('keeps the previous suggestions when the request fails', async () => {
+      component.nameOptions.set(['Anna']);
+      mockApi.get.mockReturnValue(throwError(() => new Error('down')));
+
+      await component.loadNameOptions();
+
+      expect(component.nameOptions()).toEqual(['Anna']);
+    });
+
+    it('refreshes the suggestions after a rename with no namesake', async () => {
+      mockApi.post.mockReturnValue(of({ success: true, name: 'Zed', same_name_persons: [] }));
+      const spy = vi.spyOn(component, 'loadNameOptions').mockResolvedValue();
+
+      await component.saveName({ id: 1, name: null, face_count: 3, face_thumbnail: true }, 'Zed');
+
+      expect(spy).toHaveBeenCalled();
+    });
+  });
+
   describe('renaming to a name another person already has', () => {
     const peter = { id: 1, name: null, face_count: 10, face_thumbnail: true };
     const sameName = [

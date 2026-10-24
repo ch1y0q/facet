@@ -105,6 +105,8 @@ export interface Person {
                   #nameInput
                   class="min-w-24 flex-1 bg-transparent border-b border-current outline-none text-sm py-0.5"
                   [value]="person().name ?? ''"
+                  [attr.list]="nameListId()"
+                  autocomplete="off"
                   (keyup.enter)="onSave()"
                   (keyup.escape)="editCancel.emit()"
                   [attr.aria-label]="'persons.rename' | translate"
@@ -162,6 +164,8 @@ export class PersonCardComponent {
   readonly isSelected = input(false);
   readonly isEditing = input(false);
   readonly canEdit = input(false);
+  /** Id of a page-level <datalist> of existing names, offered while typing a name. */
+  readonly nameListId = input<string | null>(null);
 
   readonly nameInput = viewChild<ElementRef<HTMLInputElement>>('nameInput');
 

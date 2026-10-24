@@ -333,6 +333,13 @@ export class PersonFacesDialogComponent implements OnInit {
         </div>
       }
 
+      <!-- Existing names, suggested by every card's name line -->
+      <datalist [id]="nameListId">
+        @for (n of nameOptions(); track n) {
+          <option [value]="n"></option>
+        }
+      </datalist>
+
       <!-- Needs naming section -->
       @if (auth.isEdition() && needsNaming().length > 0) {
         <div class="mb-6 rounded-xl border border-[var(--mat-sys-outline-variant)] bg-[var(--mat-sys-surface-container)] overflow-hidden">
@@ -350,6 +357,7 @@ export class PersonFacesDialogComponent implements OnInit {
                   [person]="p"
                   [isEditing]="true"
                   [canEdit]="true"
+                  [nameListId]="nameListId"
                   (editSave)="onNeedsNamingSave($event)"
                   (findMore)="onFindMore($event)"
                   (editCancel)="onNeedsNamingCancel()"
@@ -366,6 +374,7 @@ export class PersonFacesDialogComponent implements OnInit {
         @for (person of persons(); track person.id) {
           <app-person-card
             [person]="person"
+            [nameListId]="nameListId"
             [isSelected]="selectedIds().has(person.id)"
             [isEditing]="editingId() === person.id"
             [canEdit]="auth.isEdition()"
@@ -443,6 +452,9 @@ export class ManagePersonsComponent implements OnInit {
   readonly editingId = signal<number | null>(null);
   readonly selectedIds = this.personsFilters.selectedIds;
   readonly needsNaming = signal<Person[]>([]);
+  /** Existing names offered while typing a name (see loadNameOptions). */
+  readonly nameOptions = signal<string[]>([]);
+  protected readonly nameListId = 'person-name-options';
   readonly needsNamingExpanded = signal(true);
 
   private page = 1;
@@ -498,7 +510,7 @@ export class ManagePersonsComponent implements OnInit {
   async ngOnInit(): Promise<void> {
     this.pageHelp.setDescription(I18N.persons.help);
     this.initialized = true;
-    await Promise.all([this.loadPersons(true), this.loadNeedsNaming()]);
+    await Promise.all([this.loadPersons(true), this.loadNeedsNaming(), this.loadNameOptions()]);
   }
 
   onPersonsSortChange(sort: string): void {
@@ -542,6 +554,27 @@ export class ManagePersonsComponent implements OnInit {
   }
 
   /**
+   * Every distinct person name, for the name line's suggestions. Read from the
+   * filter options (all persons, not just the loaded page); names that differ
+   * only in case or spacing are offered once.
+   */
+  async loadNameOptions(): Promise<void> {
+    try {
+      const res = await firstValueFrom(
+        this.api.get<{ persons: [number, string | null, number][] }>('/filter_options/persons'),
+      );
+      const seen = new Map<string, string>();
+      for (const [, name] of res.persons ?? []) {
+        const trimmed = name?.trim();
+        if (trimmed && !seen.has(trimmed.toLowerCase())) seen.set(trimmed.toLowerCase(), trimmed);
+      }
+      this.nameOptions.set([...seen.values()].sort((a, b) => a.localeCompare(b)));
+    } catch {
+      // keep the previous suggestions
+    }
+  }
+
+  /**
    * Naming a cluster after a person who already has one (ignoring case) usually means
    * clustering split that person: offer to fold every same-named cluster into the
    * largest, which keeps its own spelling of the name. Declining keeps them apart,
@@ -553,7 +586,10 @@ export class ManagePersonsComponent implements OnInit {
     name: string,
     sameName: SameNamePerson[],
   ): Promise<void> {
-    if (sameName.length === 0) return;
+    if (sameName.length === 0) {
+      await this.loadNameOptions();
+      return;
+    }
     const ref = this.dialog.open(ConfirmDialogComponent, {
       data: {
         title: this.i18n.t(I18N.persons.same_name_title),
@@ -574,7 +610,7 @@ export class ManagePersonsComponent implements OnInit {
     } catch {
       this.snackBar.open(this.i18n.t(I18N.persons.merge_error), '', { duration: 3000 });
     }
-    await Promise.all([this.loadPersons(true), this.loadNeedsNaming()]);
+    await Promise.all([this.loadPersons(true), this.loadNeedsNaming(), this.loadNameOptions()]);
   }
 
   onNeedsNamingCancel(): void {
