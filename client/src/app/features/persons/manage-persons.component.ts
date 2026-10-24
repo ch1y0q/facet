@@ -27,6 +27,11 @@ import { PersonCardComponent, Person } from '../../shared/components/person-card
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { InfiniteScrollDirective } from '../../shared/directives/infinite-scroll.directive';
 import { PersonsFiltersService } from './persons-filters.service';
+import {
+  FindMoreFacesDialogComponent,
+  FindMoreFacesDialogData,
+  FindMoreFacesResult,
+} from './find-more-faces-dialog.component';
 import { onPageQuery } from '../../shared/utils/page-query';
 import { registerPageContext } from '../../core/agent/page-context.service';
 import { UserActivityJournal, activityName } from '../../core/agent/user-activity-journal.service';
@@ -359,6 +364,7 @@ export class PersonFacesDialogComponent implements OnInit {
             (hidden)="onHide($event)"
             (unhidden)="onUnhide($event)"
             (split)="onSplit($event)"
+            (findMore)="onFindMore($event)"
           />
         }
       </div>
@@ -689,6 +695,29 @@ export class ManagePersonsComponent implements OnInit {
   onSplit(id: number): void {
     const person = this.persons().find((p) => p.id === id);
     if (person) void this.splitPerson(person);
+  }
+
+  onFindMore(id: number): void {
+    const person = this.persons().find((p) => p.id === id);
+    if (person) void this.findMoreFaces(person);
+  }
+
+  // --- Find more faces ---
+
+  async findMoreFaces(person: Person): Promise<void> {
+    const ref = this.dialog.open(FindMoreFacesDialogComponent, {
+      data: { personId: person.id, personName: person.name } as FindMoreFacesDialogData,
+      width: '95vw',
+      maxWidth: '720px',
+    });
+
+    const result: FindMoreFacesResult | undefined = await firstValueFrom(ref.afterClosed());
+    if (!result || result.added <= 0) return;
+
+    this.journal.record('person', [], { action: 'find_more', person_id: person.id, count: result.added });
+    this.snackBar.open(this.i18n.t(I18N.persons.find_more_added, { count: result.added }), '', { duration: 2000 });
+    // Faces may have come from other persons, emptying (and deleting) them: reload rather than patch.
+    await this.loadPersons(true);
   }
 
   // --- Hide / Unhide ---

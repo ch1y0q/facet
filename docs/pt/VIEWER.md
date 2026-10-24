@@ -472,6 +472,7 @@ Abra-a pelo botão no cabeçalho ou por `/persons`:
 | **Excluir** | Clique no botão excluir no cartão da pessoa |
 | **Renomear** | Clique no nome da pessoa para editar na própria linha |
 | **Dividir** | Abra os rostos de uma pessoa, selecione um subconjunto e divida-o em uma nova pessoa |
+| **Encontrar mais rostos** | O botão de busca no cartão de uma pessoa lista os rostos parecidos com ela, os mais parecidos primeiro (comparados ao centroide da pessoa por `GET /api/person/{id}/possible_faces`). Marque os corretos e adicione-os. Adicionar recalcula o centroide, então a próxima rodada é ordenada pelo que você acabou de confirmar; os rostos deixados desmarcados não são oferecidos de novo enquanto a caixa de diálogo estiver aberta. **Todos os rostos** busca também em outros clusters, **Somente não atribuídos** apenas entre os rostos não agrupados. Um rosto que pertence a uma pessoa de outro nome mostra esse nome e nunca vem pré-marcado; um que pertence a uma pessoa de mesmo nome, um cluster separado, vem pré-marcado como um rosto não atribuído |
 | **Ocultar** | Oculte um grupo da lista de pessoas, dos filtros e das sugestões de mesclagem (reversível) |
 
 ### Marcar um rosto esquecido

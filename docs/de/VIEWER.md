@@ -472,6 +472,7 @@ Klicken Sie auf den Namen einer Person, um alle ihre Fotos unter `/person/<id>` 
 | **Löschen** | Auf die Löschen-Schaltfläche der Personenkarte klicken |
 | **Umbenennen** | Auf den Namen der Person klicken, um ihn direkt zu bearbeiten |
 | **Aufteilen** | Die Gesichter einer Person öffnen, eine Teilmenge wählen und als neue Person abspalten |
+| **Weitere Gesichter finden** | Die Suchschaltfläche auf einer Personenkarte listet Gesichter, die dieser Person ähneln, beste Treffer zuerst (verglichen mit dem Zentroid der Person über `GET /api/person/{id}/possible_faces`). Die richtigen anhaken und hinzufügen. Das Hinzufügen berechnet den Zentroid neu, sodass die nächste Runde nach dem gerade Bestätigten sortiert wird; nicht angehakte Gesichter werden nicht erneut angeboten, solange der Dialog offen ist. **Alle Gesichter** sucht auch in anderen Clustern, **Nur nicht zugewiesene** nur unter den nicht gruppierten Gesichtern. Ein Gesicht, das einer anders benannten Person gehört, zeigt deren Namen und ist nie vorab angehakt; eines, das einer gleichnamigen Person gehört, also einem abgespaltenen Cluster, ist wie ein nicht zugewiesenes Gesicht vorab angehakt |
 | **Ausblenden** | Ein Cluster aus der Personenliste, den Filtern und den Zusammenführungsvorschlägen ausblenden (umkehrbar) |
 
 ### Ein übersehenes Gesicht markieren

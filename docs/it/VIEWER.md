@@ -472,6 +472,7 @@ Aprila dal pulsante nell'intestazione o da `/persons`:
 | **Elimina** | Clicca il pulsante elimina sulla scheda della persona |
 | **Rinomina** | Clicca il nome della persona per modificarlo in linea |
 | **Dividi** | Apri i volti di una persona, seleziona un sottoinsieme, dividilo in una nuova persona |
+| **Trova altri volti** | Il pulsante di ricerca sulla scheda di una persona elenca i volti che le somigliano, i più simili per primi (confrontati con il centroide della persona tramite `GET /api/person/{id}/possible_faces`). Seleziona quelli giusti e aggiungili. L'aggiunta ricalcola il centroide, quindi il giro successivo è ordinato in base a ciò che hai appena confermato; i volti lasciati deselezionati non vengono più proposti finché la finestra resta aperta. **Tutti i volti** cerca anche negli altri cluster, **Solo non assegnati** solo tra i volti non raggruppati. Un volto che appartiene a una persona con un altro nome mostra quel nome e non è mai preselezionato; uno che appartiene a una persona con lo stesso nome, un cluster separato, è preselezionato come un volto non assegnato |
 | **Nascondi** | Nasconde un gruppo dall'elenco delle persone, dai filtri e dai suggerimenti di unione (reversibile) |
 
 ### Segnare un volto non rilevato

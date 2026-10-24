@@ -472,6 +472,7 @@ Ouvrez-la depuis le bouton de l'en-tête ou `/persons` :
 | **Supprimer** | Cliquez sur le bouton de suppression de la carte de la personne |
 | **Renommer** | Cliquez sur le nom de la personne pour le modifier sur place |
 | **Scinder** | Ouvrez les visages d'une personne, sélectionnez-en un sous-ensemble, scindez-le en une nouvelle personne |
+| **Trouver d'autres visages** | Le bouton de recherche de la carte d'une personne liste les visages qui lui ressemblent, les plus proches en premier (comparés au centroïde de la personne par `GET /api/person/{id}/possible_faces`). Cochez les bons et ajoutez-les. L'ajout recalcule le centroïde, donc le tour suivant est classé selon ce que vous venez de confirmer ; les visages laissés décochés ne sont plus proposés tant que la boîte de dialogue reste ouverte. **Tous les visages** cherche aussi dans les autres clusters, **Non attribués uniquement** seulement parmi les visages non regroupés. Un visage appartenant à une personne d'un autre nom affiche ce nom et n'est jamais précoché ; un visage appartenant à une personne du même nom, un cluster séparé, est précoché comme un visage non attribué |
 | **Masquer** | Masque un groupe de la liste des personnes, des filtres et des suggestions de fusion (réversible) |
 
 ### Marquer un visage non détecté

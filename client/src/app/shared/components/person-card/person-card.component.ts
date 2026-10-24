@@ -125,6 +125,9 @@ export interface Person {
               <button mat-icon-button [matTooltip]="'persons.split' | translate" [attr.aria-label]="'persons.split' | translate" (click)="split.emit(person().id)">
                 <mat-icon class="opacity-60">call_split</mat-icon>
               </button>
+              <button mat-icon-button [matTooltip]="'persons.find_more' | translate" [attr.aria-label]="'persons.find_more' | translate" (click)="findMore.emit(person().id)">
+                <mat-icon class="opacity-60">person_search</mat-icon>
+              </button>
               @if (person().is_hidden) {
                 <button mat-icon-button [matTooltip]="'persons.unhide' | translate" [attr.aria-label]="'persons.unhide' | translate" (click)="unhidden.emit(person().id)">
                   <mat-icon class="opacity-60">visibility</mat-icon>
@@ -161,6 +164,7 @@ export class PersonCardComponent {
   readonly hidden = output<number>();
   readonly unhidden = output<number>();
   readonly split = output<number>();
+  readonly findMore = output<number>();
 
   onSave(): void {
     const value = this.nameInput()?.nativeElement.value ?? '';

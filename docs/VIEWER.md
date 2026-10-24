@@ -472,6 +472,7 @@ Open it from the header button or `/persons`:
 | **Delete** | Click delete button on person card |
 | **Rename** | Click person name to edit inline |
 | **Split** | Open a person's faces, select a subset, split them into a new person |
+| **Find more faces** | The person-search button on a person card lists faces that look like that person, best match first (scored against the person's centroid by `GET /api/person/{id}/possible_faces`). Tick the right ones and add them. Adding recomputes the centroid, so the next round is ranked against what you just confirmed; faces you leave unticked are not offered again while the dialog is open. **All faces** also searches other clusters, **Unassigned only** just the unclustered faces. A face owned by a differently named person shows that name and is never pre-ticked; one owned by a person of the same name, a split-off cluster, is pre-ticked like an unassigned face |
 | **Hide** | Hide a cluster from the persons list, filters, and merge suggestions (reversible) |
 
 ### Mark a missed face
