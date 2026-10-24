@@ -202,6 +202,8 @@ def test_places_openapi_contract(edition_client):
 
 
 def test_batch_gps_preview_apply_and_only_missing(edition_client, seed_photos_prefix):
+    unrelated = '/batchgps-other/'
+    seed_photos_prefix(unrelated, [dict(path=unrelated + str(i), filename=str(i)) for i in range(3)])
     prefix = '/batchgps/'
     seed_photos_prefix(prefix, [
         {'path': prefix + 'missing.jpg', 'filename': 'missing.jpg'},
@@ -209,7 +211,7 @@ def test_batch_gps_preview_apply_and_only_missing(edition_client, seed_photos_pr
         {'path': prefix + 'existing.jpg', 'filename': 'existing.jpg', 'gps_latitude': 8, 'gps_longitude': 9},
         {'path': prefix + 'excluded.jpg', 'filename': 'excluded.jpg'},
     ])
-    body = {'filters': {'folder': prefix}, 'exclude': [prefix + 'excluded.jpg'],
+    body = {'filters': {'path_prefix': prefix}, 'exclude': [prefix + 'excluded.jpg'],
             'gps_latitude': 1, 'gps_longitude': 2, 'only_missing': True, 'preview': True}
     preview = edition_client.post('/api/photos/batch_gps', json=body)
     assert preview.status_code == 200
@@ -226,6 +228,7 @@ def test_batch_gps_preview_apply_and_only_missing(edition_client, seed_photos_pr
     with get_db() as conn:
         assert tuple(conn.execute('SELECT gps_latitude,gps_longitude,gps_manually_set FROM photos WHERE path=?', (prefix + 'partial.jpg',)).fetchone()) == (1, 2, 1)
         assert conn.execute('SELECT gps_latitude FROM photos WHERE path=?', (prefix + 'excluded.jpg',)).fetchone()[0] is None
+        assert conn.execute('SELECT COUNT(*) FROM photos WHERE path LIKE ? AND gps_manually_set=0 AND gps_latitude IS NULL', (unrelated + '%',)).fetchone()[0] == 3
 
 
 def test_batch_gps_explicit_visibility_exclusion_duplicates_and_place_recheck(edition_client, seed_photos_prefix):
@@ -281,10 +284,12 @@ def test_batch_gps_rejects_same_count_substitution_and_coordinate_changes(editio
 
 
 def test_batch_gps_bounded_scope_and_chunked_apply(edition_client, seed_photos_prefix):
+    unrelated = '/batchgpscap-other/'
+    seed_photos_prefix(unrelated, [dict(path=unrelated + str(i), filename=str(i)) for i in range(3)])
     prefix = '/batchgpscap/'
     paths = [prefix + str(i) + '.jpg' for i in range(1001)]
     seed_photos_prefix(prefix, [{'path': p, 'filename': p} for p in paths])
-    body = {'filters': {'folder': prefix}, 'gps_latitude': 1, 'gps_longitude': 2, 'preview': True}
+    body = {'filters': {'path_prefix': prefix}, 'gps_latitude': 1, 'gps_longitude': 2, 'preview': True}
     assert edition_client.post('/api/photos/batch_gps', json=body).status_code == 412
     body['exclude'] = [paths[-1]]
     preview = edition_client.post('/api/photos/batch_gps', json=body).json()
@@ -293,6 +298,7 @@ def test_batch_gps_bounded_scope_and_chunked_apply(edition_client, seed_photos_p
     assert edition_client.post('/api/photos/batch_gps', json=body).json()['changed'] == 1000
     with get_db() as conn:
         assert conn.execute('SELECT gps_latitude FROM photos WHERE path=?', (paths[-1],)).fetchone()[0] is None
+        assert conn.execute('SELECT COUNT(*) FROM photos WHERE path LIKE ? AND gps_manually_set=0 AND gps_latitude IS NULL', (unrelated + '%',)).fetchone()[0] == 3
 
 
 def test_batch_gps_failure_rolls_back_and_unchanged_coordinates_are_skipped(edition_client, seed_photos_prefix):
