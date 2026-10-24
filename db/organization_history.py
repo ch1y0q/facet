@@ -16,16 +16,38 @@ MAX_ENTRIES = 50
 MAX_PHOTOS = 1000
 MAX_BYTES = 1024 * 1024
 
+_REVISION_SCHEMA = """CREATE TABLE IF NOT EXISTS {table} (
+    path TEXT NOT NULL REFERENCES photos(path) ON UPDATE CASCADE ON DELETE CASCADE,
+    kind TEXT NOT NULL, scope TEXT NOT NULL, revision INTEGER NOT NULL,
+    PRIMARY KEY(path,kind,scope))"""
+
+
+def _init_revisions(conn: sqlite3.Connection) -> None:
+    conn.execute(_REVISION_SCHEMA.format(table='organization_revisions'))
+    foreign_keys = conn.execute('PRAGMA foreign_key_list(organization_revisions)').fetchall()
+    if any(row[2] == 'photos' and row[3] == 'path' and row[5] == 'CASCADE' for row in foreign_keys):
+        return
+    # The initial history schema blocked parent path updates. Rebuild only its
+    # revision cache, preserving history and the monotonic clock. Keep trigger
+    # replacement and the table copy in the caller's migration transaction.
+    if not conn.in_transaction:
+        conn.execute('BEGIN IMMEDIATE')
+    triggers = conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name GLOB 'organization_*'").fetchall()
+    for (name,) in triggers:
+        conn.execute('DROP TRIGGER "' + name.replace('"', '""') + '"')
+    conn.execute(_REVISION_SCHEMA.format(table='organization_revisions_new'))
+    conn.execute('''INSERT INTO organization_revisions_new
+        SELECT r.* FROM organization_revisions r JOIN photos p ON p.path=r.path''')
+    conn.execute('DROP TABLE organization_revisions')
+    conn.execute('ALTER TABLE organization_revisions_new RENAME TO organization_revisions')
+
 
 def init_schema(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE TABLE IF NOT EXISTS organization_clock (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL)")
     # The read guard avoids taking a write lock on every current-schema startup.
     if not conn.execute('SELECT 1 FROM organization_clock').fetchone():
         conn.execute('INSERT INTO organization_clock VALUES (1,0)')
-    conn.execute("""CREATE TABLE IF NOT EXISTS organization_revisions (
-        path TEXT NOT NULL REFERENCES photos(path) ON DELETE CASCADE,
-        kind TEXT NOT NULL, scope TEXT NOT NULL, revision INTEGER NOT NULL,
-        PRIMARY KEY(path,kind,scope))""")
+    _init_revisions(conn)
     conn.execute("""CREATE TABLE IF NOT EXISTS organization_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT, owner TEXT NOT NULL, kind TEXT NOT NULL,
         scope TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -44,6 +66,13 @@ def init_schema(conn: sqlite3.Connection) -> None:
         AFTER INSERT ON photos BEGIN
         DELETE FROM organization_revisions WHERE path=NEW.path AND scope!='';
         END""")
+    # An FK-off writer can leave the old key behind. Private scopes must also
+    # be invalidated when a path is moved away and later reused (rename ABA).
+    conn.execute("""CREATE TRIGGER IF NOT EXISTS organization_photos_path_changed
+        AFTER UPDATE OF path ON photos WHEN OLD.path IS NOT NEW.path BEGIN
+        DELETE FROM organization_revisions
+        WHERE path=OLD.path OR (path=NEW.path AND scope!='');
+        END""")
     for kind, fields in FIELDS.items():
         sources = [('photos', 'path', "''")]
         if kind == 'review':
@@ -59,7 +88,8 @@ def init_schema(conn: sqlite3.Connection) -> None:
                 actual_scope = scope.replace('NEW.', reference + '.')
                 condition = f'EXISTS(SELECT 1 FROM photos WHERE path={reference}.{path})'
                 if event == 'UPDATE':
-                    condition += f' AND ({update})'
+                    changed = f'OLD.path IS NOT NEW.path OR ({update})' if table == 'photos' else update
+                    condition += f' AND ({changed})'
                 conn.execute(f"""CREATE TRIGGER IF NOT EXISTS organization_{table}_{kind}_{event.lower()}
                     AFTER {event} ON {table} WHEN {condition} BEGIN
                     UPDATE organization_clock SET revision=revision+1 WHERE id=1;

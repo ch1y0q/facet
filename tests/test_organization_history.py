@@ -84,12 +84,17 @@ def test_payload_failure_rolls_back_edit_and_history(tmp_path, monkeypatch):
 
 
 def test_deleted_member_hides_whole_entry_and_recreation_cannot_revert(edition_client, seed_photos_prefix):
+    seed_photos_prefix('/history-other/', [dict(path='/history-other/a.jpg', filename='a.jpg')])
+    assert edition_client.put('/api/photo/gps', json=dict(path='/history-other/a.jpg', gps_latitude=1, gps_longitude=2)).status_code == 200
+    unrelated = edition_client.get('/api/organization_history').json()['entries'][0]
     seed_photos_prefix('/history/', [dict(path='/history/a.jpg', filename='a.jpg')])
     edition_client.post('/api/photos/batch_review', json=dict(photo_paths=['/history/a.jpg'], decision='kept'))
     entry = edition_client.get('/api/organization_history').json()['entries'][0]
     with get_db() as conn, conn:
         conn.execute("DELETE FROM photos WHERE path='/history/a.jpg'")
-    assert edition_client.get('/api/organization_history').json()['entries'] == []
+    visible = edition_client.get('/api/organization_history').json()['entries']
+    assert entry['id'] not in {item['id'] for item in visible}
+    assert unrelated['id'] in {item['id'] for item in visible}
     assert edition_client.post(f"/api/organization_history/{entry['id']}/revert").status_code == 404
     with get_db() as conn, conn:
         conn.execute("INSERT INTO photos(path,is_kept) VALUES ('/history/a.jpg',1)")
