@@ -321,10 +321,10 @@ class TestEvidenceCache:
 
 
 class TestDateWindowValidation:
-    """The window is a pair of raw EXIF timestamps, the only shape a scan writes
-    and the shape the scenes feed hands back. Anything else was accepted, matched
-    nothing, and was still cached under its own key — so the key set an anonymous
-    caller could write was whatever they cared to type."""
+    """The window is normalised to the raw EXIF timestamps a scan writes before it
+    is used or cached, so every accepted form shares one cache key. Anything that
+    does not parse used to be accepted, match nothing, and be cached under its own
+    key — so the key set an anonymous caller could write was whatever they typed."""
 
     def test_the_shape_the_scenes_feed_sends_is_accepted(self, edition_client):
         # Half the scope falls outside the window: accepting the shape is not
@@ -348,18 +348,31 @@ class TestDateWindowValidation:
         assert len(keys) == 2
 
     @pytest.mark.parametrize("value", [
-        "2024-06-01",                 # ISO date: the gallery's filter shape, not this one
-        "2024-06-01T00:00:00",        # ISO timestamp
-        "2024:06:01",                 # EXIF date without the time half
-        "2024:06:01 00:00:00 ",       # trailing space
         "junk",
         "' OR 1=1 --",
+        "2024-13-45",                 # right shape, not a date
         "x" * 4096,                   # the unbounded key this endpoint used to store
     ])
     def test_any_other_shape_is_rejected(self, edition_client, value):
         conn = _db(_wedding_photos(10))
-        assert _get(edition_client, conn, {'date_from': value}).status_code == 422
-        assert _get(edition_client, conn, {'date_to': value}).status_code == 422
+        assert _get(edition_client, conn, {'date_from': value}).status_code == 400
+        assert _get(edition_client, conn, {'date_to': value}).status_code == 400
+
+    @pytest.mark.parametrize("value", [
+        "2024-06-01",                 # ISO date, as /culling?from= sends it
+        "2024-06-01T00:00:00",        # ISO timestamp
+        "2024:06:01",                 # EXIF date without the time half
+    ])
+    def test_iso_and_date_only_forms_are_normalised_to_the_exif_window(self, edition_client, value):
+        conn = _db(_wedding_photos(10, date_taken=_NOON))
+        windowed = _get(edition_client, conn, {'date_from': value, 'date_to': "2024-06-30"})
+        assert windowed.status_code == 200
+        assert windowed.json()['evidence']['photos'] == 10
+        exif = _get(edition_client, conn, {'date_from': '2024:06:01 00:00:00', 'date_to': '2024:06:30 23:59:59'})
+        assert exif.json() == windowed.json()
+        keys = {r['key'] for r in conn.execute(
+            "SELECT key FROM stats_cache WHERE key LIKE ?", (f"{_EVIDENCE_PREFIX}%",)).fetchall()}
+        assert len(keys) == 1
 
     def test_a_rejected_window_writes_no_cache_row(self, edition_client):
         conn = _db(_wedding_photos(10))

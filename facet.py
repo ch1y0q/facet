@@ -2599,7 +2599,7 @@ def main():
             total = _count_unreviewed_burst_groups(conn, '1=1', [])
             unreviewed = conn.execute(
                 "SELECT COUNT(DISTINCT burst_group_id) FROM photos "
-                "WHERE burst_group_id IS NOT NULL AND burst_reviewed = 0"
+                "WHERE burst_group_id IS NOT NULL AND burst_reviewed IS NOT 1"
             ).fetchone()[0]
         logger.info("Unreviewed burst groups (>=2 photos): %d", total)
         logger.info("Distinct unreviewed burst_group_ids: %d", unreviewed)

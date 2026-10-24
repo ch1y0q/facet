@@ -45,4 +45,13 @@ describe('GalleryActionsSheetComponent', () => {
 
     expect(dismiss).toHaveBeenCalledWith({ kind: 'tags' });
   });
+
+  it('closes without an action from the header close button', () => {
+    const close = render().querySelector<HTMLButtonElement>('[data-sheet-close]');
+    expect(close?.getAttribute('aria-label')).toBe(I18N.dialog.close);
+
+    close!.click();
+
+    expect(dismiss).toHaveBeenCalledWith();
+  });
 });

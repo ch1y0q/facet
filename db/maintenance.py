@@ -288,7 +288,7 @@ def delete_photo_rows(conn, paths: list[str], *, preserve_auto_retrain_counters:
     Deletes each path from ``photos`` (the FK cascade cleans up faces, tags,
     comparisons, learned scores and per-user preferences), then cleans the
     stores that have no cascade of their own: ``album_photos`` membership,
-    ``album_client_picks``, and the ``albums.cover_photo_path``
+    ``album_client_picks``, ``rating_provenance``, and the ``albums.cover_photo_path``
     back-reference. Refreshes ``persons.face_count`` afterward so the viewer
     stays accurate, and invalidates ``stats_cache`` -- every row except the
     library state in ``DURABLE_STATS_CACHE_KEY_GLOBS`` (the percentile snapshot
@@ -335,6 +335,8 @@ def delete_photo_rows(conn, paths: list[str], *, preserve_auto_retrain_counters:
         cursor.executemany("DELETE FROM album_photos WHERE photo_path = ?", params)
         # album_client_picks cascades on album_id only, not photo_path — drop picks explicitly.
         cursor.executemany("DELETE FROM album_client_picks WHERE photo_path = ?", params)
+        # rating_provenance has no foreign key: a stale mark would hide a later re-import's label from the taste model.
+        cursor.executemany("DELETE FROM rating_provenance WHERE photo_path = ?", params)
         # An album cover may point at a now-deleted photo.
         cursor.executemany("UPDATE albums SET cover_photo_path = NULL WHERE cover_photo_path = ?", params)
 
@@ -926,6 +928,10 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
     return source_size, output_size
 
 
+# Tables a viewer database export must not carry (the DROP list of the full export).
+VIEWER_EXPORT_EXCLUDED_TABLES = ('mcp_tokens', 'rating_provenance')
+
+
 def export_viewer_db(source_db='photo_scores_pro.db', output_path=None, thumbnail_size=320, verbose=True, force=False):
     """Export a lightweight database for viewer-only deployment.
 
@@ -996,6 +1002,13 @@ def export_viewer_db(source_db='photo_scores_pro.db', output_path=None, thumbnai
     # thumbnail when it is absent. It costs ~2KB/photo.
     dst_conn.execute("UPDATE photos SET clip_embedding = NULL, "
                      "raw_sharpness_variance = NULL, caption_embedding = NULL")
+    dst_conn.commit()
+
+    # The agent side tables never ship in a viewer export: the provenance table holds user paths and
+    # paths, and the token table holds bearer-secret hashes. The viewer's own init_database
+    # re-creates both empty. (The incremental path copies neither.)
+    for table in VIEWER_EXPORT_EXCLUDED_TABLES:
+        dst_conn.execute(f"DROP TABLE IF EXISTS {table}")
     dst_conn.commit()
 
     # faces: embedding (NOT NULL constraint — use empty blob), landmark_2d_106

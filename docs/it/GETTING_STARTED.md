@@ -72,11 +72,11 @@ farlo dal terminale ([Scansione](COMMANDS.md#scansione)) o dal browser:
   Multiutente: serve il ruolo superadmin.
 - Aggiungi la cartella a `viewer.scan_directories` così l'avvio ha qualcosa da proporre.
 
-Un pulsante **Scansiona nuove foto** compare allora sopra la griglia della galleria a ogni
-larghezza dello schermo, non solo nella galleria vuota. Regole complete: [Avvio scansione](VIEWER.md#avvio-scansione). La prima
+Un pulsante **Scansiona nuove foto** compare allora nell'intestazione, subito dopo il selettore
+**Ordina** (nella barra inferiore sugli schermi piccoli), non solo nella galleria vuota. Regole complete: [Avvio scansione](VIEWER.md#avvio-scansione). La prima
 scansione scarica i modelli di IA una sola volta ([Primo avvio](INSTALLATION.md#primo-avvio-cosa-aspettarsi)).
 
-![Pulsante di scansione sopra la galleria](../screenshots/getting-started-scan-button.jpg)
+![Pulsante di scansione nell'intestazione, dopo il selettore Ordina](../screenshots/getting-started-scan-button.jpg)
 
 ### Passaggio 2: trovare duplicati, raffiche e foto simili
 

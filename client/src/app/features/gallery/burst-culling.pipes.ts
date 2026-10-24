@@ -2,6 +2,8 @@ import { Pipe, PipeTransform, inject } from '@angular/core';
 import { I18nService } from '../../core/services/i18n.service';
 import { SEQUENCE_KIND_ICONS } from '../../shared/pipes/sequence-kind.pipe';
 import type { ComparisonStats } from '../../core/api/types';
+import type { CullSuggestion } from '../../core/agent/assistant-cull-plan.service';
+import { parseScopeDate } from './culling-date-range';
 
 /** Backend-supplied machine reason key + optional value for why a photo ranks lower. */
 export interface CullReason {
@@ -23,6 +25,10 @@ export interface CullingPhoto {
   eyes_open_score?: number | null;
   expression_score?: number | null;
   cull_reason?: CullReason;
+  /** The viewing user's own state (per-user in multi-user mode), 0/1 straight from SQLite. */
+  is_rejected?: number | null;
+  is_favorite?: number | null;
+  star_rating?: number | null;
   /** Set when the frame belongs to a deliberate multi-frame sequence ('bracket'). */
   sequence_kind?: string | null;
   /** Stops away from that sequence's base exposure; 0 on the base frame itself. */
@@ -66,10 +72,23 @@ export interface CullingSubject {
   crop_sharpness_score: number | null;
 }
 
+/** The group types the culling feed serves; the one list the type, the toolbar's granularity values and their checks share. */
+export const CULLING_GROUP_TYPES = ['burst', 'similar', 'scene', 'bracket', 'panorama', 'hdr_panorama'] as const;
+export type CullingGroupType = typeof CULLING_GROUP_TYPES[number];
+
+/** What the assistant's plan says about one group (rows of `POST /culling/plan`). */
+export interface CullingGroupPlan {
+  /** 1-based position in the whole plan. */
+  number: number;
+  keep_paths: string[];
+  /** `{key, params}` of a `culling.group_reason.*` translation, or null. */
+  group_reason: { key: string; params: Record<string, string | number> } | null;
+}
+
 /** A burst, similar, scene, bracket or panorama group surfaced for culling. */
 export interface CullingGroup {
   group_id: number;
-  type: 'burst' | 'similar' | 'scene' | 'bracket' | 'panorama' | 'hdr_panorama';
+  type: CullingGroupType;
   reason: string;
   photos: CullingPhoto[];
   best_path: string;
@@ -83,6 +102,102 @@ export interface CullingGroup {
   end?: string | null;
   moment?: string | null;
   moment_confidence?: number | null;
+  /** Present only on the rows of the assistant's plan. */
+  plan?: CullingGroupPlan;
+}
+
+/** Identity of a group across the feed: ids collide between types (burst 5 and similar 5), so the pair is the key. */
+export function cullingGroupKey(group: Pick<CullingGroup, 'group_id' | 'type'>): string {
+  return `${group.group_id}_${group.type}`;
+}
+
+@Pipe({ name: 'cullGroupKey' })
+export class CullGroupKeyPipe implements PipeTransform {
+  transform(group: Pick<CullingGroup, 'group_id' | 'type'>): string {
+    return cullingGroupKey(group);
+  }
+}
+
+/** Translation key plus params of a plan group's reason chip, or null when the group has none. */
+@Pipe({ name: 'cullPlanGroupReason' })
+export class CullPlanGroupReasonPipe implements PipeTransform {
+  transform(group: CullingGroup): { key: string; params: Record<string, string | number> } | null {
+    const reason = group.plan?.group_reason;
+    return reason ? { key: `culling.group_reason.${reason.key}`, params: reason.params } : null;
+  }
+}
+
+/** How many of a plan group's photos the plan rejects: those not in `plan.keep_paths`, never negative. */
+@Pipe({ name: 'planRejectCount' })
+export class PlanRejectCountPipe implements PipeTransform {
+  transform(group: CullingGroup): number {
+    const keep = new Set(group.plan?.keep_paths ?? []);
+    return group.photos.filter(p => !keep.has(p.path)).length;
+  }
+}
+
+/** Whether a photo's current keep state differs from what the plan suggested. */
+@Pipe({ name: 'planDiffers' })
+export class PlanDiffersPipe implements PipeTransform {
+  transform(path: string, group: CullingGroup, selectionsMap: Map<string, Set<string>>): boolean {
+    const plan = group.plan;
+    const kept = selectionsMap.get(cullingGroupKey(group));
+    if (!plan || !kept) return false;
+    return kept.has(path) !== plan.keep_paths.includes(path);
+  }
+}
+
+/**
+ * The assistant's suggestion for a photo, while there is something to accept: null without a plan, without
+ * a suggestion, in a group no decision can change any more (`closedKeys`), or once the photo already sits
+ * in the suggested state. Derived on every read, so flipping the photo back brings the badge back.
+ */
+@Pipe({ name: 'planSuggestion' })
+export class PlanSuggestionPipe implements PipeTransform {
+  transform(
+    path: string,
+    group: CullingGroup,
+    selectionsMap: Map<string, Set<string>>,
+    suggestions: ReadonlyMap<string, CullSuggestion>,
+    closedKeys: ReadonlySet<string>,
+  ): CullSuggestion | null {
+    const suggestion = suggestions.get(path);
+    if (!suggestion || !group.plan) return null;
+    const key = cullingGroupKey(group);
+    if (closedKeys.has(key)) return null;
+    const kept = selectionsMap.get(key)?.has(path) ?? false;
+    return kept === (suggestion.action === 'keep') ? null : suggestion;
+  }
+}
+
+/** Whether the photo's current state is the assistant's suggestion and not what the plan chose: the user took it. */
+@Pipe({ name: 'planAccepted' })
+export class PlanAcceptedPipe implements PipeTransform {
+  transform(
+    path: string,
+    group: CullingGroup,
+    selectionsMap: Map<string, Set<string>>,
+    suggestions: ReadonlyMap<string, CullSuggestion>,
+  ): boolean {
+    const suggestion = suggestions.get(path);
+    const plan = group.plan;
+    const kept = selectionsMap.get(cullingGroupKey(group));
+    if (!suggestion || !plan || !kept) return false;
+    const wantsKept = suggestion.action === 'keep';
+    return kept.has(path) === wantsKept && plan.keep_paths.includes(path) !== wantsKept;
+  }
+}
+
+/** The assistant's note on a group: that of the first photo (display order) carrying one. */
+@Pipe({ name: 'planGroupNote' })
+export class PlanGroupNotePipe implements PipeTransform {
+  transform(group: CullingGroup, notes: ReadonlyMap<string, string>): string | null {
+    for (const photo of group.photos) {
+      const note = notes.get(photo.path);
+      if (note) return note;
+    }
+    return null;
+  }
 }
 
 /** Render a bracket frame's exposure offset as a signed badge ("+2 EV", "0 EV").
@@ -99,16 +214,16 @@ export class EvOffsetPipe implements PipeTransform {
 
 @Pipe({ name: 'isKept' })
 export class IsKeptPipe implements PipeTransform {
-  transform(path: string, selectionsMap: Map<number, Set<string>>, burstId: number): boolean {
-    const kept = selectionsMap.get(burstId);
+  transform(path: string, selectionsMap: Map<string, Set<string>>, groupKey: string): boolean {
+    const kept = selectionsMap.get(groupKey);
     return kept?.has(path) ?? false;
   }
 }
 
 @Pipe({ name: 'isDecided' })
 export class IsDecidedPipe implements PipeTransform {
-  transform(path: string, selectionsMap: Map<number, Set<string>>, burstId: number): boolean {
-    const kept = selectionsMap.get(burstId);
+  transform(path: string, selectionsMap: Map<string, Set<string>>, groupKey: string): boolean {
+    const kept = selectionsMap.get(groupKey);
     return kept !== undefined && kept.size > 0 && !kept.has(path);
   }
 }
@@ -116,21 +231,21 @@ export class IsDecidedPipe implements PipeTransform {
 @Pipe({ name: 'isConfirmed' })
 export class IsConfirmedPipe implements PipeTransform {
   transform(group: CullingGroup, confirmedGroups: Set<string>): boolean {
-    return confirmedGroups.has(`${group.group_id}_${group.type}`);
+    return confirmedGroups.has(cullingGroupKey(group));
   }
 }
 
 @Pipe({ name: 'isPassing' })
 export class IsPassingPipe implements PipeTransform {
   transform(group: CullingGroup, passingGroups: Map<string, number>): boolean {
-    return passingGroups.has(`${group.group_id}_${group.type}`);
+    return passingGroups.has(cullingGroupKey(group));
   }
 }
 
 @Pipe({ name: 'passCountdown' })
 export class PassCountdownPipe implements PipeTransform {
   transform(group: CullingGroup, passingGroups: Map<string, number>): number {
-    return passingGroups.get(`${group.group_id}_${group.type}`) ?? 0;
+    return passingGroups.get(cullingGroupKey(group)) ?? 0;
   }
 }
 
@@ -139,7 +254,7 @@ export class PassCountdownPipe implements PipeTransform {
 export class CullReasonPipe implements PipeTransform {
   private readonly i18n = inject(I18nService);
 
-  transform(reason: CullReason | undefined): string {
+  transform(reason: CullReason | null | undefined): string {
     if (!reason?.key) return '';
     const vars = reason.value != null ? { value: reason.value } : undefined;
     return this.i18n.t(`culling.reason.${reason.key}`, vars);
@@ -720,5 +835,31 @@ export class FrameViewBoxPipe implements PipeTransform {
 export class GridLinesPipe implements PipeTransform {
   transform(mode: GridMode): string[] {
     return GRID_LINES[mode] ?? [];
+  }
+}
+
+/** A scope date (`YYYY-MM-DD` or the EXIF colon form) as a Date, for the date-range picker's seed; null when unreadable. */
+@Pipe({ name: 'scopeDate' })
+export class ScopeDatePipe implements PipeTransform {
+  transform(value: string | null): Date | null {
+    return parseScopeDate(value);
+  }
+}
+
+/**
+ * `from | cullDateRange: to` as "dd/MM/yyyy - dd/MM/yyyy". Either side may be missing; an unreadable
+ * value is shown unchanged. Not `DatePipe`: scope dates also arrive in the EXIF colon form.
+ */
+@Pipe({ name: 'cullDateRange' })
+export class CullDateRangePipe implements PipeTransform {
+  transform(from: string | null, to: string | null): string {
+    if (!from && !to) return '';
+    const fmt = (v: string | null): string => {
+      const d = parseScopeDate(v);
+      if (!v) return '';
+      if (!d) return v;
+      return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    };
+    return `${fmt(from)} - ${fmt(to)}`.trim();
   }
 }

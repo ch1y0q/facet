@@ -1,4 +1,4 @@
-import { Component, inject, signal, input, effect, output } from '@angular/core';
+import { Component, inject, signal, input, effect, output, ChangeDetectionStrategy } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -21,6 +21,7 @@ interface MonthSummary {
   selector: 'app-timeline-months',
   standalone: true,
   imports: [DecimalPipe, MatIconModule, MatProgressSpinnerModule, TranslatePipe, ThumbnailUrlPipe, TimelineDatePipe],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     @if (loading() && months().length === 0) {
       <div class="flex justify-center py-16">

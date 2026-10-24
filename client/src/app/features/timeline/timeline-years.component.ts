@@ -1,4 +1,4 @@
-import { Component, inject, signal, effect, output } from '@angular/core';
+import { Component, inject, signal, effect, output, ChangeDetectionStrategy } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -20,6 +20,7 @@ interface YearSummary {
   selector: 'app-timeline-years',
   standalone: true,
   imports: [DecimalPipe, MatIconModule, MatProgressSpinnerModule, TranslatePipe, ThumbnailUrlPipe],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     @if (loading() && years().length === 0) {
       <div class="flex justify-center py-16">

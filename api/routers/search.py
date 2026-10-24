@@ -6,16 +6,22 @@ Fully migrated to aiosqlite per the R7 closure batch.
 """
 
 import asyncio
+import json
 import logging
+import re
 import sqlite3
 import threading
 import time
+from collections import OrderedDict
+from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
 from fastapi import APIRouter, Depends, Query, Request
 
+from api import database as _database
 from api.auth import CurrentUser, get_optional_user
+from api.change_token import db_change_token
 from api.config import VIEWER_CONFIG, server_scoring_config
 from api.database import get_async_db
 from api.db_helpers import (
@@ -189,16 +195,18 @@ def _reset_clip_config_cache():
 
 
 def _reset_text_encoder_cache():
-    """Clear the loaded text encoder and the resolved-config cache together.
+    """Clear the loaded text encoder, the resolved-config cache and the candidate cache together.
 
     Must be called wherever `_text_encoder` itself is reset, so a
-    `_resolve_clip_config()` answer never outlives the encoder it was
-    resolved for.
+    `_resolve_clip_config()` answer, or a candidate set ranked by the old
+    encoder, never outlives the encoder it was resolved for.
     """
     global _text_encoder
     with _text_encoder_lock:
         _text_encoder = None
     _reset_clip_config_cache()
+    with _candidates_lock:
+        _candidates_cache.clear()
 
 
 def _resolve_clip_config() -> dict:
@@ -515,7 +523,9 @@ async def _search_numpy(conn, text_emb, limit, threshold, vis_sql, vis_params, u
         if not mask.any():
             return {}
         indices = np.where(mask)[0]
-        top_indices = indices[np.argsort(-similarities[indices])[:limit]]
+        ranked = indices[np.argsort(-similarities[indices])]
+        # limit=None is the uncapped threshold-passing set (semantic_candidates).
+        top_indices = ranked if limit is None else ranked[:limit]
         return {paths[i]: float(similarities[i]) for i in top_indices}
 
     return await asyncio.to_thread(_compute)
@@ -642,6 +652,133 @@ async def _manual_tag_search(conn, query, limit, vis_sql, vis_params):
     rows = await cur.fetchall()
     await cur.close()
     return {row[0]: 1.0 for row in rows}
+
+
+# sqlite-vec's vec0 KNN refuses k above 4096.
+_VEC_KNN_MAX_K = 4096
+_CANDIDATES_CACHE_SIZE = 4
+_CANDIDATES_CACHE_TTL = 120.0
+_candidates_cache: "OrderedDict[tuple, tuple[float, Candidates]]" = OrderedDict()
+_candidates_lock = threading.Lock()
+
+
+@dataclass(frozen=True)
+class Candidates:
+    """The photos a semantic query passes: ``embedding`` and ``blended`` map path to similarity."""
+    embedding: dict
+    blended: dict
+    paths_json: str
+    _ordered_json: dict = field(default_factory=dict, compare=False, repr=False)
+
+    def ordered_json(self, descending: bool) -> str:
+        """JSON array of the candidate paths by blended similarity, ties broken by path ASC.
+
+        ``descending`` is best first; otherwise least relevant first. Built on first use per
+        direction and kept with the cached candidates, so later pages skip the sort.
+        """
+        cached = self._ordered_json.get(descending)
+        if cached is None:
+            sign = -1.0 if descending else 1.0
+            ranked = sorted(self.blended.items(), key=lambda item: (sign * item[1], item[0]))
+            cached = json.dumps([path for path, _ in ranked])
+            self._ordered_json[descending] = cached
+        return cached
+
+
+async def _vec_declared_dim_async(conn) -> Optional[int]:
+    """Dimension ``photos_vec`` was declared with (``embedding float[N]``), None if unreadable."""
+    cur = await conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='photos_vec'")
+    row = await cur.fetchone()
+    await cur.close()
+    match = re.search(r'float\s*\[\s*(\d+)\s*\]', row[0], re.IGNORECASE) if row and row[0] else None
+    return int(match.group(1)) if match else None
+
+
+async def _vec_threshold_set(conn, text_emb, threshold) -> dict:
+    """Every ``photos_vec`` row whose cosine similarity reaches ``threshold``, as {path: similarity}.
+
+    KNN first (k = vec0's 4096 ceiling): when the last hit no longer passes, the passing
+    set is complete. Only a saturated KNN pays the full scan, which computes the distance
+    once per row. A query whose dimension differs from the index's is an empty set (vec0
+    raises on it).
+    """
+    declared = await _vec_declared_dim_async(conn)
+    if declared is not None and declared != text_emb.shape[0]:
+        return {}
+    query_bytes = text_emb.tobytes()
+    cur = await conn.execute(
+        "SELECT path, distance FROM photos_vec WHERE embedding MATCH ? AND k = ?",
+        [query_bytes, _VEC_KNN_MAX_K])
+    rows = await cur.fetchall()
+    await cur.close()
+    max_distance = 1.0 - threshold
+    if len(rows) >= _VEC_KNN_MAX_K and rows[-1]['distance'] <= max_distance:
+        cur = await conn.execute(
+            "SELECT path, vec_distance_cosine(embedding, ?) AS distance FROM photos_vec", [query_bytes])
+        rows = await cur.fetchall()
+        await cur.close()
+    return {r['path']: 1.0 - r['distance'] for r in rows if r['distance'] <= max_distance}
+
+
+def _candidates_lookup(key) -> Optional[Candidates]:
+    with _candidates_lock:
+        hit = _candidates_cache.get(key)
+        if hit is None:
+            return None
+        if time.monotonic() - hit[0] > _CANDIDATES_CACHE_TTL:
+            del _candidates_cache[key]
+            return None
+        _candidates_cache.move_to_end(key)
+        return hit[1]
+
+
+def _candidates_store(key, candidates: Candidates) -> None:
+    with _candidates_lock:
+        _candidates_cache[key] = (time.monotonic(), candidates)
+        _candidates_cache.move_to_end(key)
+        while len(_candidates_cache) > _CANDIDATES_CACHE_SIZE:
+            _candidates_cache.popitem(last=False)
+
+
+def _candidate_model_key() -> tuple:
+    block = _resolve_clip_config()
+    return (block.get('model_name'), block.get('embedding_dim'))
+
+
+async def semantic_candidates(conn, q: str, threshold: Optional[float], user_id: Optional[str]) -> Candidates:
+    """The uncapped set of photos a semantic query passes, for the gallery to filter, sort and page.
+
+    Pure embedding gate plus every FTS5 / manual-tag hit (the union ``/api/search`` blends),
+    with no result cap. Visibility is NOT applied here -- the gallery's WHERE enforces it;
+    the cache is still per user because the NumPy matrix is. Cached 120 s under
+    ``(q, threshold, model, user_id, db_change_token)`` so later pages skip the encode and
+    the scan. Raises ``AcceleratorBusy`` / whatever the encoder raises; never returns a
+    partial set.
+    """
+    resolved = await asyncio.to_thread(search_threshold_default) if threshold is None else threshold
+    model_key = await asyncio.to_thread(_candidate_model_key)
+    key = (q, resolved, model_key, user_id, db_change_token(str(_database.DEFAULT_DB_PATH)))
+    cached = _candidates_lookup(key)
+    if cached is not None:
+        return cached
+    vis_sql, vis_params = get_visibility_clause(user_id)
+    text_emb = await asyncio.to_thread(_encode_text, q)
+    if await _check_vec_available(conn):
+        embedding = await _vec_threshold_set(conn, text_emb, resolved)
+    else:
+        global _search_vec_fallback_total
+        _search_vec_fallback_total += 1
+        embedding = await _search_numpy(conn, text_emb, None, resolved, vis_sql, vis_params, user_id)
+    fts: dict[str, float] = {}
+    if await _has_fts(conn):
+        fts = await _fts_search(conn, q, -1)
+    for path, score in (await _manual_tag_search(conn, q, -1, vis_sql, vis_params)).items():
+        fts[path] = max(fts.get(path, 0.0), score)
+    blended = {path: embedding.get(path, 0.0) * 0.7 + fts.get(path, 0.0) * 0.3
+               for path in embedding.keys() | fts.keys()}
+    candidates = Candidates(embedding, blended, json.dumps(list(blended)))
+    _candidates_store(key, candidates)
+    return candidates
 
 
 @router.get("/api/search", response_model=PhotoSearchResponse, response_model_exclude_unset=True)

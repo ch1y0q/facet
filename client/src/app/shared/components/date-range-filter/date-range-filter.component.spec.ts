@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, ChangeDetectionStrategy } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { I18nService } from '../../../core/services/i18n.service';
 import { DateRangeFilterComponent } from './date-range-filter.component';
@@ -6,6 +6,7 @@ import { DateRangeFilterComponent } from './date-range-filter.component';
 @Component({
   selector: 'app-drf-host',
   imports: [DateRangeFilterComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <app-date-range-filter
       [from]="from()" [to]="to()"

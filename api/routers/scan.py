@@ -14,12 +14,12 @@ from collections import deque
 from datetime import timedelta
 from typing import Optional, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from starlette.responses import StreamingResponse
 
-from api.auth import CurrentUser, create_access_token, decode_access_token, require_edition, require_scan_access
-from api.config import VIEWER_CONFIG, FACET_SCRIPT, _CONFIG_PATH, get_all_scan_directories, get_user_directories, _photo_types_cache, _stats_cache
+from api.auth import CurrentUser, _trusted_local_editing_enabled, create_access_token, decode_access_token, require_edition, require_scan_access, scan_feature_enabled, trusted_local_for
+from api.config import VIEWER_CONFIG, FACET_SCRIPT, _CONFIG_PATH, get_all_scan_directories, get_user_directories, invalidate_stats_cache, server_scoring_config, _photo_types_cache
 from api.models.scan import (
     LibraryJobStartResponse,
     RecomputeStatusResponse,
@@ -34,6 +34,8 @@ router = APIRouter(prefix="/api/scan", tags=["scan"])
 logger = logging.getLogger(__name__)
 
 SCAN_STREAM_PURPOSE = 'scan_stream'
+# Set on a stream token minted for a caller the trusted-local boundary waived the scan flag for.
+SCAN_STREAM_LOCAL_CLAIM = 'trusted_local'
 SCAN_STREAM_TOKEN_TTL_SECONDS = 60
 
 JOB_KIND_SCAN = 'scan'
@@ -51,6 +53,8 @@ _scan_state: dict[str, Any] = {
     'directories': [],
     'exit_code': None,
     'progress': None,
+    # What a recompute was asked for: 'all' or 'category:<name>' (None for any other job).
+    'scope': None,
 }
 
 
@@ -123,9 +127,10 @@ def _read_scan_output(proc):
     proc.wait()
     _scan_state['exit_code'] = proc.returncode
     _scan_state['running'] = False
-    # Invalidate caches after scan adds/updates photos
+    # Invalidate caches after scan adds/updates photos; a finished recompute changed every score it touched,
+    # so the category counts and score distributions must stop serving the old values.
     _photo_types_cache['expires'] = 0
-    _stats_cache.clear()
+    invalidate_stats_cache()
 
 
 class ScanStartRequest(BaseModel):
@@ -134,6 +139,28 @@ class ScanStartRequest(BaseModel):
 
 class RecomputeRequest(BaseModel):
     confirm: bool
+
+
+class RecomputeScoresRequest(BaseModel):
+    """Body of ``POST /recompute``: ``category`` narrows the run to one category.
+
+    A model of its own so ``/detect_panoramas``, which shares ``RecomputeRequest``, cannot be handed a category.
+    """
+
+    confirm: bool
+    category: Optional[str] = None
+
+
+def scan_feature_refusal(user) -> Optional[str]:
+    """The 403 detail when scanning is off for ``user``, else None.
+
+    ``features.show_scan_button`` is the operator's switch, waived only for a caller that passed the
+    ``viewer.trusted_local_editing`` boundary: the human browser request, or the agent carrying the
+    signed ``mcp_local`` claim. Both share one rule, ``user.trusted_local_editing``.
+    """
+    if scan_feature_enabled(user.trusted_local_editing, VIEWER_CONFIG):
+        return None
+    return "Scan feature not enabled"
 
 
 @router.post("/start", response_model=ScanStartResponse, response_model_exclude_unset=True)
@@ -150,8 +177,8 @@ def start_scan(
     this process can vouch for: the subprocess was spawned. Whether it went on
     to hold the lock and run is what ``GET /api/scan/status`` reports.
     """
-    if not VIEWER_CONFIG.get('features', {}).get('show_scan_button', False):
-        raise HTTPException(status_code=403, detail="Scan feature not enabled")
+    if (refusal := scan_feature_refusal(user)) is not None:
+        raise HTTPException(status_code=403, detail=refusal)
 
     if not _scan_lock.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="A scan is already running")
@@ -195,6 +222,7 @@ def start_scan(
         _scan_state['directories'] = directories
         _scan_state['exit_code'] = None
         _scan_state['progress'] = None
+        _scan_state['scope'] = None
 
         reader = threading.Thread(target=_read_scan_output, args=(proc,), daemon=True)
         reader.start()
@@ -222,8 +250,8 @@ def scan_status(
     user: CurrentUser = Depends(require_scan_access),
 ):
     """Poll scan progress. Returns last N lines of output."""
-    if not VIEWER_CONFIG.get('features', {}).get('show_scan_button', False):
-        raise HTTPException(status_code=403, detail="Scan feature not enabled")
+    if (refusal := scan_feature_refusal(user)) is not None:
+        raise HTTPException(status_code=403, detail=refusal)
 
     return _build_scan_snapshot(lines)
 
@@ -237,21 +265,23 @@ def scan_stream_token(
     Header-authenticated (require_scan_access), so the long-lived JWT never
     travels in a URL. The stream URL then carries only this 60-second token.
     """
-    if not VIEWER_CONFIG.get('features', {}).get('show_scan_button', False):
-        raise HTTPException(status_code=403, detail="Scan feature not enabled")
+    if (refusal := scan_feature_refusal(user)) is not None:
+        raise HTTPException(status_code=403, detail=refusal)
     token = create_access_token(
-        {'sub': user.user_id or '_legacy', 'purpose': SCAN_STREAM_PURPOSE},
+        {'sub': user.user_id or '_legacy', 'purpose': SCAN_STREAM_PURPOSE,
+         SCAN_STREAM_LOCAL_CLAIM: bool(user.trusted_local_editing)},
         expires_delta=timedelta(seconds=SCAN_STREAM_TOKEN_TTL_SECONDS),
     )
     return {'token': token}
 
 
-def _verify_scan_stream_token(token: Optional[str]) -> None:
+def _verify_scan_stream_token(token: Optional[str]) -> dict:
     if not token:
         raise HTTPException(status_code=401, detail="Authentication required")
     payload = decode_access_token(token)
     if not payload or payload.get('purpose') != SCAN_STREAM_PURPOSE:
         raise HTTPException(status_code=403, detail="Invalid or expired scan stream token")
+    return payload
 
 
 def _build_scan_snapshot(lines: int) -> dict:
@@ -271,14 +301,18 @@ def _build_scan_snapshot(lines: int) -> dict:
 
 @router.get("/stream")
 async def scan_stream(
+    request: Request,
     token: Optional[str] = Query(None),
     lines: int = Query(20),
 ):
     """SSE progress stream. Requires a short-lived scan_stream-purpose token
     minted by GET /stream_token; the long-lived session JWT is rejected."""
-    if not VIEWER_CONFIG.get('features', {}).get('show_scan_button', False):
+    payload = _verify_scan_stream_token(token)
+    # The claim only counts while THIS request also passes the boundary: a replayed token from elsewhere is not local.
+    local = payload.get(SCAN_STREAM_LOCAL_CLAIM) is True and _trusted_local_editing_enabled() \
+        and trusted_local_for(request)
+    if not scan_feature_enabled(local, VIEWER_CONFIG):
         raise HTTPException(status_code=403, detail="Scan feature not enabled")
-    _verify_scan_stream_token(token)
 
     async def event_generator():
         import time as _time
@@ -331,8 +365,8 @@ def scan_directories(
     user: CurrentUser = Depends(require_scan_access),
 ):
     """List all configured directories available for scanning."""
-    if not VIEWER_CONFIG.get('features', {}).get('show_scan_button', False):
-        raise HTTPException(status_code=403, detail="Scan feature not enabled")
+    if (refusal := scan_feature_refusal(user)) is not None:
+        raise HTTPException(status_code=403, detail=refusal)
 
     all_dirs = get_all_scan_directories()
     user_dirs = get_user_directories(user.user_id) if user.user_id else []
@@ -347,10 +381,15 @@ def scan_directories(
 
 @router.post("/recompute", response_model=LibraryJobStartResponse, response_model_exclude_unset=True)
 def start_recompute(
-    body: RecomputeRequest,
+    body: RecomputeScoresRequest,
     user: CurrentUser = Depends(require_edition),
 ):
-    """Spawn a full-library aggregate recompute as a background subprocess.
+    """Spawn an aggregate recompute (the whole library, or one ``category``) as a background subprocess.
+
+    ``category`` runs ``--recompute-category``: only that category's scores are rewritten, and burst and
+    sequence detection are skipped (the whole-library run does them). Either way the run persists the
+    library's percentile snapshot, which every category's next normalisation reads. An unknown category is
+    a 400 before anything is spawned.
 
     Reuses the scan job machinery (``_scan_lock``, ``_scan_state``,
     ``_read_scan_output``) so a scan and a recompute stay mutually exclusive
@@ -374,16 +413,27 @@ def start_recompute(
     password-less install. Requiring a JSON body forces the preflight that the
     other write endpoints get for free.
     """
+    if not body.confirm:
+        raise HTTPException(status_code=400, detail="This job must be explicitly confirmed")
+    if body.category is None:
+        return _spawn_fixed_library_job(
+            body, '--recompute-average', JOB_KIND_RECOMPUTE,
+            'Recompute spawned; poll /api/scan/recompute_status to see it run', scope='all')
+    if body.category not in {c.get('name') for c in server_scoring_config().get_categories()}:
+        raise HTTPException(status_code=400, detail=f"Unknown category: {body.category}")
     return _spawn_fixed_library_job(
-        body, '--recompute-average', JOB_KIND_RECOMPUTE,
-        'Recompute spawned; poll /api/scan/recompute_status to see it run')
+        body, '--recompute-category', JOB_KIND_RECOMPUTE,
+        'Recompute spawned; poll /api/scan/recompute_status to see it run',
+        flag_args=(body.category,), scope=f'category:{body.category}')
 
 
-def _spawn_fixed_library_job(body, flag, kind, message):
+def _spawn_fixed_library_job(body, flag, kind, message, flag_args=(), scope=None):
     """Spawn a library-rewriting facet.py job whose argv is fixed server-side.
 
     Shared by every endpoint of this shape so the locking, the cross-process
     conflict check and the state bookkeeping cannot drift apart between them.
+    ``flag_args`` follow the flag in the argv and are server-validated by the caller; ``scope`` names
+    what the job was asked for so a poller can tell its own job from another.
     """
     if not body.confirm:
         raise HTTPException(status_code=400, detail="This job must be explicitly confirmed")
@@ -399,7 +449,7 @@ def _spawn_fixed_library_job(body, flag, kind, message):
         if conflict:
             raise HTTPException(status_code=409, detail=conflict)
 
-        cmd = [sys.executable, FACET_SCRIPT, flag, '--config', str(_CONFIG_PATH)]
+        cmd = [sys.executable, FACET_SCRIPT, flag, *flag_args, '--config', str(_CONFIG_PATH)]
 
         proc = subprocess.Popen(
             cmd,
@@ -418,11 +468,13 @@ def _spawn_fixed_library_job(body, flag, kind, message):
         _scan_state['directories'] = []
         _scan_state['exit_code'] = None
         _scan_state['progress'] = None
+        _scan_state['scope'] = scope
 
         reader = threading.Thread(target=_read_scan_output, args=(proc,), daemon=True)
         reader.start()
 
-        return {'success': True, 'message': message, 'pid': proc.pid}
+        started = {'success': True, 'message': message, 'pid': proc.pid, 'started_at': _scan_state['started_at']}
+        return {**started, 'scope': scope} if scope else started
 
     except HTTPException:
         raise
@@ -500,6 +552,8 @@ def recompute_status(
             'kind': _scan_state.get('kind'),
             'progress': _scan_state.get('progress'),
             'exit_code': None,
+            'started_at': _scan_state.get('started_at'),
+            'scope': _scan_state.get('scope'),
         }
     if holder is not None:
         return {
@@ -517,4 +571,6 @@ def recompute_status(
         'kind': _scan_state.get('kind'),
         'progress': _scan_state.get('progress'),
         'exit_code': _scan_state.get('exit_code'),
+        'started_at': _scan_state.get('started_at'),
+        'scope': _scan_state.get('scope'),
     }

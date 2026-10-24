@@ -426,7 +426,8 @@ def update_category_weights(config_path, category, snapshot_tag, get_db, *,
                 target.setdefault('weights', {}).update(weights)
         if modifiers is not None:
             target['modifiers'] = modifiers
-        if bonus is not None:
+        # A recorded bonus of 0 over a category that has none is the same to the scorer: do not write it.
+        if bonus is not None and not (bonus == 0 and 'bonus' not in (target.get('modifiers') or {})):
             target.setdefault('modifiers', {})['bonus'] = bonus
         if filters is not None:
             target['filters'] = filters

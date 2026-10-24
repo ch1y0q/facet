@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, effect, untracked, viewChild, TemplateRef, DestroyRef } from '@angular/core';
+import { Component, inject, signal, computed, effect, untracked, viewChild, TemplateRef, DestroyRef, ChangeDetectionStrategy } from '@angular/core';
 import { RouterLink, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -21,10 +21,13 @@ import { ClientPicksDialogComponent, ClientPicksDialogData } from './client-pick
 import { PortfolioExportDialogComponent, PortfolioExportDialogData } from './portfolio-export-dialog.component';
 import { AlbumScoringContextDialogComponent, AlbumScoringContextDialogData } from './album-scoring-context-dialog.component';
 import { AlbumsFiltersService } from './albums-filters.service';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
+import { registerPageContext } from '../../core/agent/page-context.service';
 import { ShareDialogComponent, ShareDialogData } from '../../shared/components/share-dialog/share-dialog.component';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { PageHelpService } from '../../core/services/page-help.service';
 import { HeaderSlotService } from '../../core/services/header-slot.service';
+import { onPageQuery } from '../../shared/utils/page-query';
 
 @Component({
   selector: 'app-albums',
@@ -36,6 +39,7 @@ import { HeaderSlotService } from '../../core/services/header-slot.service';
     MatProgressSpinnerModule,
     TranslatePipe, ThumbnailUrlPipe, InfiniteScrollDirective,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <ng-template #albumsToolbar>
       <mat-form-field class="!hidden lg:!inline-flex w-52" subscriptSizing="dynamic">
@@ -189,6 +193,7 @@ import { HeaderSlotService } from '../../core/services/header-slot.service';
 })
 export class AlbumsComponent {
   private readonly albumService = inject(AlbumService);
+  private readonly journal = inject(UserActivityJournal);
   private readonly dialog = inject(MatDialog);
   private readonly i18n = inject(I18nService);
   protected readonly auth = inject(AuthService);
@@ -209,6 +214,19 @@ export class AlbumsComponent {
   protected readonly portfolioEnabled = computed(() => this.auth.hasFeature('show_portfolio_export'));
 
   constructor() {
+    registerPageContext('albums', () => ({
+      search: this.albumsFilters.search(),
+      sort: this.albumsFilters.sort(),
+      type: this.albumsFilters.typeFilter(),
+    }));
+    // The assistant's `list_albums show=true` sends the search every time: the page takes exactly that query.
+    onPageQuery('/albums', ['search'], query => {
+      const search = query.get('search');
+      if (search === null) return;
+      this.albumsFilters.search.set(search);
+      this.albumsFilters.typeFilter.set('');
+      this.albumsFilters.sort.set('updated_at');
+    });
     this.pageHelp.setDescription('albums.help');
     effect(() => {
       const t = this.albumsToolbar();
@@ -310,6 +328,7 @@ export class AlbumsComponent {
     const confirmed = await firstValueFrom(ref.afterClosed());
     if (!confirmed) return;
     await firstValueFrom(this.albumService.delete(album.id));
+    this.journal.record('album', [], { album_id: album.id, action: 'delete' });
     this.albums.update(list => list.filter(a => a.id !== album.id));
     this.total.update(t => t - 1);
   }

@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, ChangeDetectionStrategy } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { I18nService } from '../../../core/services/i18n.service';
 import { PersonCardComponent, Person } from './person-card.component';
@@ -8,6 +8,7 @@ import { PersonCardComponent, Person } from './person-card.component';
   selector: 'test-host',
   standalone: true,
   imports: [PersonCardComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `<app-person-card [person]="person()" [isEditing]="isEditing()" [canEdit]="canEdit()" />`,
 })
 class TestHostComponent {

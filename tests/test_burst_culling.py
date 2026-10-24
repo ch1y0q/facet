@@ -546,6 +546,7 @@ class TestConfirmBracketGroup:
     """
 
     _SCHEMA = """
+        CREATE TABLE rating_provenance (user_id TEXT NOT NULL DEFAULT '', photo_path TEXT NOT NULL, star_rating INTEGER NOT NULL DEFAULT 0, is_favorite INTEGER NOT NULL DEFAULT 0, is_rejected INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, photo_path));
         CREATE TABLE photos (
             path TEXT PRIMARY KEY, filename TEXT, sequence_group_id INTEGER,
             sequence_kind TEXT, sequence_ev_offset REAL, is_rejected INTEGER DEFAULT 0
@@ -1201,6 +1202,7 @@ class TestSelectSimilarInvalidatesCache:
 
 class TestQueryBurstGroupsScope:
     _SCHEMA = """
+        CREATE TABLE rating_provenance (user_id TEXT NOT NULL DEFAULT '', photo_path TEXT NOT NULL, star_rating INTEGER NOT NULL DEFAULT 0, is_favorite INTEGER NOT NULL DEFAULT 0, is_rejected INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, photo_path));
         CREATE TABLE photos (
             path TEXT PRIMARY KEY, filename TEXT, date_taken TEXT, aggregate REAL,
             aesthetic REAL, tech_sharpness REAL, is_blink INTEGER, is_burst_lead INTEGER, is_sequence_lead INTEGER DEFAULT 0,
@@ -1304,6 +1306,7 @@ class TestFetchBracketGroups:
     """
 
     _SCHEMA = """
+        CREATE TABLE rating_provenance (user_id TEXT NOT NULL DEFAULT '', photo_path TEXT NOT NULL, star_rating INTEGER NOT NULL DEFAULT 0, is_favorite INTEGER NOT NULL DEFAULT 0, is_rejected INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, photo_path));
         CREATE TABLE photos (
             path TEXT PRIMARY KEY, filename TEXT, date_taken TEXT, aggregate REAL,
             aesthetic REAL, tech_sharpness REAL, is_blink INTEGER DEFAULT 0,
@@ -1399,6 +1402,7 @@ class TestPanoramaGroupsCarryTheOverride:
     """
 
     _SCHEMA = """
+        CREATE TABLE rating_provenance (user_id TEXT NOT NULL DEFAULT '', photo_path TEXT NOT NULL, star_rating INTEGER NOT NULL DEFAULT 0, is_favorite INTEGER NOT NULL DEFAULT 0, is_rejected INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, photo_path));
         CREATE TABLE photos (
             path TEXT PRIMARY KEY, filename TEXT, date_taken TEXT, aggregate REAL,
             aesthetic REAL, tech_sharpness REAL, is_blink INTEGER DEFAULT 0,
@@ -1454,14 +1458,22 @@ class TestCullingGroupsMemoAcrossConfirm:
     confirm just changed: every later GET would be served it until the TTL ran out.
     """
 
-    def test_a_confirm_during_a_get_is_not_undone_by_the_memo(self):
+    def test_a_confirm_during_a_get_is_not_undone_by_the_memo(self, tmp_path):
         import threading
         from fastapi.testclient import TestClient
         from api import create_app
         from api.auth import CurrentUser, get_optional_user, require_edition
         from api.routers.burst_culling import _invalidate_culling_groups_cache
 
-        conn = TestConfirmBracketGroup._db()
+        conn = _real_schema_db(tmp_path)
+        for path, ev in (('/k0.jpg', -2.0), ('/k1.jpg', 0.0), ('/k2.jpg', 2.0)):
+            conn.execute(
+                "INSERT INTO photos (path, filename, sequence_group_id, sequence_kind, "
+                "sequence_ev_offset) VALUES (?, ?, 1, 'bracket', ?)",
+                (path, path.lstrip('/'), ev),
+            )
+        conn.execute("INSERT INTO photos (path, filename) VALUES ('/plain.jpg', 'plain.jpg')")
+        conn.commit()
         app = create_app()
         fake_user = CurrentUser(user_id="test", edition_authenticated=True)
         app.dependency_overrides[get_optional_user] = lambda: fake_user
@@ -1528,3 +1540,126 @@ class TestCullingGroupsMemoAcrossConfirm:
         # The next GET recomputes from the confirmed set instead of the memo.
         assert len(reads) == 2
         assert after.json()["total_groups"] == 0
+
+
+class TestCullingGroupsUserMarks:
+    """``GET /api/culling-groups`` photos carry the caller's reject / favourite / rating so the darkroom can show them."""
+
+    PREFIX = "/cgmarks-b4/"
+    GID = 61616
+    MARK_KEYS = ("is_rejected", "is_favorite", "star_rating")
+
+    @classmethod
+    def _rows(cls):
+        def row(name, second, **extra):
+            return {"path": cls.PREFIX + name, "filename": name, "date_taken": f"1998:03:03 10:00:{second:02d}",
+                    "aggregate": 6.0 + second, "aesthetic": 6.0, "tech_sharpness": 6.0,
+                    "burst_group_id": cls.GID, "is_burst_lead": int(second == 1), **extra}
+        return [row("a.jpg", 1, is_rejected=1, is_favorite=0, star_rating=0),
+                row("b.jpg", 2, is_rejected=0, is_favorite=1, star_rating=4),
+                row("c.jpg", 3, is_rejected=0, is_favorite=0, star_rating=0)]
+
+    @pytest.fixture()
+    def client(self, seed_photos_prefix):
+        from fastapi.testclient import TestClient
+        from api import create_app
+        from api.auth import get_optional_user, require_edition, CurrentUser
+        from api.routers.burst_culling import _invalidate_culling_groups_cache
+
+        seed_photos_prefix(self.PREFIX, self._rows())
+        app = create_app()
+        fake_user = CurrentUser(user_id="cgmarks-user", edition_authenticated=True)
+        app.dependency_overrides[get_optional_user] = lambda: fake_user
+        app.dependency_overrides[require_edition] = lambda: fake_user
+        _invalidate_culling_groups_cache()
+        yield TestClient(app)
+        _invalidate_culling_groups_cache()
+        app.dependency_overrides.clear()
+
+    def _photos(self, client):
+        resp = client.get("/api/culling-groups?group_by=burst&exclude_rejected=false"
+                          "&date_from=1998:03:03 00:00:00&date_to=1998:03:03 23:59:59")
+        assert resp.status_code == 200, resp.text
+        group = next(g for g in resp.json()["groups"] if any(p["path"].startswith(self.PREFIX) for p in g["photos"]))
+        return {p["path"]: p for p in group["photos"]}
+
+    def test_single_user_reads_the_photos_columns_as_zero_or_one_ints(self, client):
+        photos = self._photos(client)
+        a, b, c = (photos[self.PREFIX + n] for n in ("a.jpg", "b.jpg", "c.jpg"))
+        assert (a["is_rejected"], a["is_favorite"], a["star_rating"]) == (1, 0, 0)
+        assert (b["is_rejected"], b["is_favorite"], b["star_rating"]) == (0, 1, 4)
+        assert (c["is_rejected"], c["is_favorite"], c["star_rating"]) == (0, 0, 0)
+        for photo in photos.values():
+            for key in self.MARK_KEYS:
+                assert type(photo[key]) is int, (key, photo[key])
+
+    def test_multi_user_reads_user_preferences_not_the_photos_columns(self, client):
+        from tests.conftest import _TEST_DB_FILE
+        path = self.PREFIX + "c.jpg"
+        conn = sqlite3.connect(_TEST_DB_FILE.name)
+        conn.execute("INSERT OR REPLACE INTO user_preferences (user_id, photo_path, star_rating, is_favorite, "
+                     "is_rejected) VALUES ('cgmarks-user', ?, 5, 1, 1)", (path,))
+        conn.commit()
+        conn.close()
+        try:
+            with (
+                mock.patch("api.db_helpers.is_multi_user_enabled", return_value=True),
+                mock.patch("api.routers.burst_culling.is_multi_user_enabled", return_value=True),
+                mock.patch("api.routers.burst_culling.get_visibility_clause", return_value=("1=1", [])),
+                mock.patch("api.db_helpers.get_visibility_clause", return_value=("1=1", [])),
+            ):
+                photos = self._photos(client)
+        finally:
+            conn = sqlite3.connect(_TEST_DB_FILE.name)
+            conn.execute("DELETE FROM user_preferences WHERE photo_path LIKE ?", (self.PREFIX + "%",))
+            conn.commit()
+            conn.close()
+        c = photos[path]
+        assert (c["is_rejected"], c["is_favorite"], c["star_rating"]) == (1, 1, 5)
+        # The photos-table values (a rejected, b favourite) belong to nobody in multi-user mode.
+        assert (photos[self.PREFIX + "a.jpg"]["is_rejected"], photos[self.PREFIX + "b.jpg"]["star_rating"]) == (0, 0)
+
+    def test_a_group_with_no_photos_is_untouched(self):
+        from api.routers.burst_culling import attach_user_marks
+        groups = [{"group_id": 1, "photos": []}]
+        attach_user_marks(mock.MagicMock(), groups, None)
+        assert groups == [{"group_id": 1, "photos": []}]
+
+
+class TestLegacyNullBurstReviewed:
+    """A library upgraded before db894a6b carries ``burst_reviewed`` as a bare
+    ``INTEGER`` (the old column sweep kept only the base type), so every row is
+    NULL. NULL means *never reviewed*: the burst feed must still list the group."""
+
+    @staticmethod
+    def _legacy_db(tmp_path):
+        conn = _real_schema_db(tmp_path)
+        conn.execute("DROP INDEX IF EXISTS idx_burst_reviewed")
+        conn.execute("ALTER TABLE photos DROP COLUMN burst_reviewed")
+        conn.execute("ALTER TABLE photos ADD COLUMN burst_reviewed INTEGER")
+        conn.executemany(
+            "INSERT INTO photos (path, filename, date_taken, aggregate, burst_group_id) "
+            "VALUES (?, ?, ?, 7.0, 1)",
+            [("/b1.jpg", "b1.jpg", "2025:06:15 10:00:00"),
+             ("/b2.jpg", "b2.jpg", "2025:06:15 10:00:01")],
+        )
+        conn.commit()
+        assert conn.execute(
+            "SELECT COUNT(*) FROM photos WHERE burst_reviewed IS NULL").fetchone()[0] == 2
+        return conn
+
+    @pytest.mark.parametrize("exclude_rejected", [False, True])
+    def test_null_burst_reviewed_is_unreviewed(self, tmp_path, exclude_rejected):
+        from api.routers.burst_culling import _count_unreviewed_burst_groups, _query_burst_groups
+        conn = self._legacy_db(tmp_path)
+        groups, total, _ = _query_burst_groups(conn, "1=1", [], exclude_rejected=exclude_rejected)
+        assert total == 1
+        assert [g["burst_id"] for g in groups] == [1]
+        assert _count_unreviewed_burst_groups(conn, "1=1", [], exclude_rejected=exclude_rejected) == 1
+
+    def test_reviewed_group_stays_hidden(self, tmp_path):
+        from api.routers.burst_culling import _query_burst_groups
+        conn = self._legacy_db(tmp_path)
+        conn.execute("UPDATE photos SET burst_reviewed = 1")
+        conn.commit()
+        assert _query_burst_groups(conn, "1=1", [])[1] == 0

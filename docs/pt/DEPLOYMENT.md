@@ -18,7 +18,7 @@ O Facet tem duas cargas de trabalho:
 
 Apenas o visualizador precisa rodar no servidor. Pontue em uma estação de trabalho e, em seguida, sincronize o banco de dados.
 
-> **Aviso:** enquanto `viewer.password` estiver vazio (o padrão), qualquer pessoa que alcance a porta do visualizador pode navegar por toda a biblioteca e baixar as fotos originais, qualquer que seja a forma de iniciá-lo abaixo. Defina `viewer.password` antes de expor a porta além da máquina; veja a nota em [Modo de Usuário Único](VIEWER.md#modo-de-usuário-único-padrão).
+> **Aviso:** enquanto `viewer.password` estiver vazio (o padrão), qualquer pessoa que alcance a porta do visualizador pode navegar por toda a biblioteca e baixar as fotos originais, qualquer que seja a forma de iniciá-lo abaixo. Defina `viewer.password` antes de expor a porta além da máquina; veja a nota em [Modo de Usuário Único](VIEWER.md#modo-de-usuário-único-padrão). Numa instalação aberta, os tokens do assistente (**Ligar um assistente**) também só se criam, listam e revogam a partir do computador onde o Facet está a correr: uma implementação Docker (o navegador alcança o contentor pelo gateway da rede bridge) ou um proxy inverso não os consegue gerir, por isso defina aí `viewer.password` ou execute o pedido no anfitrião (`docker compose exec facet python -c "import urllib.request ..."`). Um proxy inverso tem de enviar `X-Forwarded-For` ou `Forwarded`; caso contrário é tratado como a máquina local.
 
 ## Mapeamento de caminhos
 
@@ -267,6 +267,8 @@ DSM > Painel de Controle > Portal de Login > Avançado > Proxy Reverso:
 
 Combine com um certificado Let's Encrypt em DSM > Painel de Controle > Segurança > Certificado.
 
+Se usar a ponte de separador para agentes (veja [Agentes de IA](AGENTS.md)), abra também o separador **Cabeçalho personalizado** da regra e escolha **Criar > WebSocket**: acrescenta os cabeçalhos `Upgrade` e `Connection` de que `/api/mcp/bridge` precisa. Se a regra reescrever o cabeçalho `Host`, indique também a sua origem pública em `viewer.mcp.allowed_origins`.
+
 ## Synology NAS (série Plus / x86)
 
 O NAS da série Plus suporta Docker (Container Manager).
@@ -304,7 +306,7 @@ Para um NAS apenas de visualização, no qual a imagem deve permanecer pequena (
 ```dockerfile
 FROM python:3.11-slim
 WORKDIR /app
-RUN pip install fastapi uvicorn pyjwt pillow aiosqlite
+RUN pip install fastapi uvicorn pyjwt pillow aiosqlite 'mcp>=2.3,<3' 'httpx>=0.28,<1' 'websockets>=13.0'
 COPY viewer.py config_resolve.py database.py tagger.py ./
 COPY api/ api/
 COPY config/ config/
@@ -314,6 +316,8 @@ COPY i18n/ i18n/
 EXPOSE 5000
 CMD ["uvicorn", "api:create_app", "--factory", "--host", "0.0.0.0", "--port", "5000", "--workers", "4"]
 ```
+
+Vários workers não funcionam com a ponte de separador para agentes: o seu registo de separadores é por processo, por isso com mais de um worker uma chamada `ui_*` pode chegar a um processo que não conhece o seu separador e responder `no_tab`. Use `--workers 1` se usar os [Agentes de IA](AGENTS.md).
 
 ```yaml
 services:
@@ -492,7 +496,7 @@ publicadas e houver um manifesto de registro real para medi-lo.
 ### Uvicorn
 
 ```bash
-pip install fastapi uvicorn pyjwt pillow aiosqlite
+pip install fastapi uvicorn pyjwt pillow aiosqlite 'mcp>=2.3,<3' 'httpx>=0.28,<1' 'websockets>=13.0'
 uvicorn api:create_app --factory --host 0.0.0.0 --port 5000 --workers 4
 ```
 
@@ -501,6 +505,8 @@ Ou use o wrapper (padrão de 1 worker; passe `--workers N` para mais):
 ```bash
 python viewer.py --production --workers 4
 ```
+
+Vários workers não funcionam com a ponte de separador para agentes: o seu registo de separadores é por processo, por isso com mais de um worker uma chamada `ui_*` pode chegar a um processo que não conhece o seu separador e responder `no_tab`. Use `--workers 1` se usar os [Agentes de IA](AGENTS.md).
 
 ### Uvicorn + Nginx
 
@@ -516,8 +522,19 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         client_max_body_size 50M;
     }
+
+    location /api/mcp/bridge {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $http_host;
+        proxy_read_timeout 3600s;
+    }
 }
 ```
+
+A ponte de separador para agentes (`/api/mcp/bridge`, veja [Agentes de IA](AGENTS.md)) é um WebSocket e precisa dos cabeçalhos `Upgrade` e `Connection` do segundo bloco `location`; sem eles o handshake falha e as ferramentas `ui_*` respondem `no_tab`. Precisa também de um único worker (`--workers 1`, o valor por omissão).
 
 Adicione HTTPS:
 ```bash
@@ -542,6 +559,8 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 ```
+
+Vários workers não funcionam com a ponte de separador para agentes: o seu registo de separadores é por processo, por isso com mais de um worker uma chamada `ui_*` pode chegar a um processo que não conhece o seu separador e responder `no_tab`. Use `--workers 1` se usar os [Agentes de IA](AGENTS.md).
 
 ```bash
 sudo systemctl enable --now facet

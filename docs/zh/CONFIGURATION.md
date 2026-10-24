@@ -1684,8 +1684,8 @@ python facet.py --recompute-tags-vlm   # 用 VLM 标签模型重新打标签
 | 设置 | 默认值 | 说明 |
 |---------|---------|-------------|
 | `default_category` | `""` | 默认的类别筛选 |
-| `edition_password` | `""` | 解锁编辑模式的密码（留空 = 所有编辑均被拒绝；安装为只读，启用 `trusted_local_editing` 时直接访问的本地浏览器除外） |
-| `trusted_local_editing` | `false` | 无需编辑密码，即授予同一台计算机上经 loopback 直接访问查看器的浏览器编辑权限。仅当单用户安装的 `password` 与 `edition_password` 均为空时生效；涵盖除扫描触发之外的所有需要编辑权限的路由。**切勿在同一主机的反向代理之后启用。** 参见[受信任的本地编辑](#受信任的本地编辑) |
+| `edition_password` | `""` | 解锁编辑模式的密码（留空 = 所有编辑均被拒绝；安装为只读，启用 `trusted_local_editing` 时直接访问的本地浏览器或本地完全编辑助手除外） |
+| `trusted_local_editing` | `false` | 无需编辑密码，即授予同一台计算机上经 loopback 直接访问查看器的浏览器编辑权限。仅当单用户安装的 `password` 与 `edition_password` 均为空时生效；涵盖所有需要编辑权限的路由（包括扫描触发），并允许“连接助手”对话框为来自同一台机器的 `/mcp` 请求创建完全编辑的助手令牌。**切勿在同一主机的反向代理之后启用。** 参见[受信任的本地编辑](#受信任的本地编辑) |
 | **comparison_mode** | | |
 | `min_comparisons_for_optimization` | `50` | 建议权重之前，该类别所需的最少决定性比较次数（一方获胜；平局不计） |
 | `pair_selection_strategy` | `"learning"` | 配对策略：`learning`（冷启动阶段按嵌入多样性，训练完成后按排序分歧）、`uncertainty`、`boundary`、`active`、`random` |
@@ -1854,7 +1854,7 @@ python facet.py --recompute-tags-vlm   # 用 VLM 标签模型重新打标签
 | `show_similar_button` | `true` | 在照片卡片上显示“查找相似照片”按钮（CLIP 相似度计算需要 numpy） |
 | `show_merge_suggestions` | `true` | 在管理人物页面启用合并建议功能 |
 | `show_rating_controls` | `true` | 显示星级与收藏控件 |
-| `show_scan_button` | `false` | 显示触发扫描的按钮（多用户模式下为超级管理员；单用户模式下为已锁定的编辑模式会话）——无需 GPU：在 `legacy` 配置档下扫描仅使用 CPU 运行 |
+| `show_scan_button` | `false` | 显示触发扫描的按钮（多用户模式下为超级管理员；单用户模式下为已锁定的编辑模式会话）——无需 GPU：在 `legacy` 配置档下扫描仅使用 CPU 运行；`trusted_local_editing` 下的受信任本地会话无需此项 |
 | `metrics_enabled` | `false` | 启用公开的 `GET /metrics` Prometheus 端点。默认关闭 — 它会暴露照片/人物/人脸数量、数据库大小和进程内存；仅当该端点只能从抓取端网络、而非公网访问时才启用。 |
 | `show_semantic_search` | `true` | 显示语义搜索栏（使用 CLIP/SigLIP 嵌入进行以文搜图） |
 | `show_albums` | `true` | 显示相册功能（创建、管理和浏览照片相册） |
@@ -1963,7 +1963,9 @@ python facet.py --recompute-tags-vlm   # 用 VLM 标签模型重新打标签
 - 请求不带任何 `Forwarded`、`Via`、`X-Real-IP`、`X-Client-IP`、`True-Client-IP`、`CF-Connecting-IP`、`X-Original-Forwarded-For` 或 `X-Forwarded-*` 头；
 - 若存在 `Origin` 或 `Referer`，必须与请求的协议、主机和端口完全一致且不含凭据（带路径、查询或片段的 `Origin` 会被拒绝）；若存在 `Sec-Fetch-Site`，其值必须为 `same-origin` 或 `none`。
 
-受信任的请求拥有完整的编辑权限：凡是原本需要编辑会话的路由都包括在内，而不只是评分。这涵盖评分、收藏与拒绝、比较模式、选片（包括会移动文件或将其移入回收站的**选片后导出／清理**，以及单张照片删除）、相册、人物与人脸管理、权重、优先级与评分情境的修改、元数据嵌入与导出、参数固定的重算与全景检测任务，以及按需生成描述与点评。扫描触发是唯一的例外：它仍然需要 `viewer.edition_password`，而该选项生效时编辑密码必然为空，因此扫描始终被拒绝。
+受信任的请求拥有完整的编辑权限：凡是原本需要编辑会话的路由都包括在内，而不只是评分。这涵盖评分、收藏与拒绝、比较模式、选片（包括会移动文件或将其移入回收站的**选片后导出／清理**，以及单张照片删除）、相册、人物与人脸管理、权重、优先级与评分情境的修改、元数据嵌入与导出、参数固定的重算与全景检测任务，以及按需生成描述与点评。扫描触发也包含在内：受信任的本地浏览器会话，以及持有完全编辑令牌的本地助手，无需 `viewer.features.show_scan_button` 即可扫描。扫描进度流只接受来自同一台本地机器的受信任本地流令牌。
+
+**助手。** 同一选项让“连接助手”对话框可在开放安装上创建**完全编辑**令牌（仍需 `viewer.mcp.enabled` 和令牌）。该令牌仅对通过上述边界的 `/mcp` 请求为 `edition`，因此可从 `:5000` 上的 `http://localhost:<port>` 或 `127.0.0.1` 以及 `ng serve` 开发代理 `:4200` 使用；来自局域网客户端、主机名或 `0.0.0.0` 的 URL 或 Docker 部署时则降为 `readonly`。任何密码都会把它降为 `readonly`，清除密码后恢复。删除类工具仍需要 `viewer.mcp.allow_destructive`。`ng serve --host 0.0.0.0` 或同一主机上任何未加标记的代理，会让发送 `Host: localhost` 的局域网客户端通过，此时只剩令牌保护 `/mcp`。参见 [AI 智能体（MCP）](AGENTS.md)。无论 `trusted_local_editing` 取何值，同一道边界都管控开放安装上的助手令牌管理：创建、列出和吊销令牌只对通过该边界的请求有效（设置了 `viewer.edition_password` 时，也可在编辑会话中进行）。反向代理必须发送 `X-Forwarded-For` 或 `Forwarded`，否则会被当作本机。
 
 > **警告：** loopback 对端是唯一真正的边界。`Host`、`Origin`、`Referer` 和 `Sec-Fetch-Site` 由客户端设置，只能用来拒绝请求；同一主机上不添加上述任何头的反向代理、隧道或端口转发与你的浏览器无法区分。切勿在同一主机的任何反向代理之后启用此选项。启用期间，本机的任何本地进程和任何账户都可以编辑。
 
@@ -2583,6 +2585,50 @@ python facet.py --recompute-text   # 重新读取整个图库
 | `jpeg_quality` | `88` | 导出图像的 JPEG 质量 |
 
 `target_dir` 会经过与复制/移动导出端点完全相同的白名单（`viewer.export.allowed_target_dirs` 加上扫描目录 — 见[导出与选片目标位置](#导出与选片目标位置)）。受 `viewer.features.show_portfolio_export`（默认 `true`）控制。见[网页查看器 — 作品集导出](VIEWER.md#作品集导出)。
+
+## 智能体端点（MCP）
+
+在 `POST /mcp` 上提供 [AI 智能体（MCP）](AGENTS.md) 中描述的工具：读取、控制已打开的标签页，并按令牌级别修改评分、标签和相册、筛选与删除。默认开启；将 `enabled` 设为 `false` 可关闭它（所有路由随即返回 404）。在开放安装（没有 `viewer.password`）上，`/mcp` 只提供一个只读匿名密钥，它不授予开放的 `/api` 本来没有授予的任何权限。在开放安装上创建的令牌为 `readonly`，除非启用了 `viewer.trusted_local_editing`，此时可为来自同一台机器的请求使用完全编辑令牌。在开放安装上，令牌只能在运行 Facet 的电脑上创建、列出和吊销（设置了 `viewer.edition_password` 时，也可在编辑会话中进行）。
+
+```json
+{
+  "viewer": {
+    "mcp": {
+      "enabled": true,
+      "bridge": true,
+      "max_rows": 100,
+      "max_bytes": 60000,
+      "max_image_bytes": 262144,
+      "call_timeout_s": 30,
+      "semantic_timeout_s": 120,
+      "rate_per_min": 120,
+      "write_rate_per_min": 30,
+      "tool_profile": "full",
+      "allow_destructive": false,
+      "inpage_tools": true,
+      "allowed_origins": []
+    }
+  }
+}
+```
+
+| 键 | 默认值 | 说明 |
+|-----|---------|-------------|
+| `enabled` | `true` | `/mcp` 与 `/api/mcp/*` 的总开关。关闭时它们返回 404（桥接以关闭码 4404 断开）。在开放安装（没有 `viewer.password`）上，该端点只提供一个只读匿名密钥：不增加任何新权限，因为开放的 `/api` 本就暴露相同的数据。在开放安装上创建的令牌为 `readonly`，除非启用了 `viewer.trusted_local_editing`，此时可为来自同一台机器的请求使用完全编辑令牌。 在开放安装上，令牌只能在运行 Facet 的电脑上创建、列出和吊销（设置了 `viewer.edition_password` 时，也可在编辑会话中进行）。 |
+| `bridge` | `true` | 浏览器标签页桥接（`/api/mcp/bridge`）是否接受 WebSocket、`ui_*` 工具能否到达标签页。为 `false` 时桥接拒绝连接（关闭码 4404），`ui_*` 工具会返回相应错误。需要单个 worker。 |
+| `max_rows` | `100` | 单次工具结果的最大行数（1 到 500）。多余的行被丢弃并设置 `truncated: true`。 |
+| `max_bytes` | `60000` | 单次工具结果序列化后的最大字节数（4000 到 500000）。 |
+| `max_image_bytes` | `262144` | 工具返回的图像(`get_thumbnail` 或 `contact_sheet`)的最大字节数(32768 至 2097152);不计入 `max_bytes`。 |
+| `call_timeout_s` | `30` | 单次工具调用的超时秒数（1 到 300）。同时限制 `ui_*` 调用等待浏览器标签页的时间（`tab_timeout`）。 |
+| `semantic_timeout_s` | `120` | `semantic_search` 的超时秒数（1 到 300）；它要加载嵌入模型，因此需要更久。 |
+| `rate_per_min` | `120` | 每个令牌每分钟的工具调用次数（最小 1）。 |
+| `write_rate_per_min` | `30` | 每个令牌每分钟的写入调用次数（最小 1）。单独计算，避免读取挤占写入。适用于写入工具（包括 `cull_apply` 和 `delete_photos` 的试运行）；参见 [AI 智能体](AGENTS.md#修改内容)。 |
+| `tool_profile` | `"full"` | `"full"` 列出密钥可调用的所有工具。`"core"` 只列出面向小模型的 11 个工具（`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`）。只有列表改变：列表之外的工具只要密钥的级别允许仍可调用。其他任何值都回退到 `"full"`。参见 [AI 智能体](AGENTS.md#权限级别)。 |
+| `allow_destructive` | `false` | 允许助手运行 `delete_photos`、`cull_apply` 的 `move_rejects` 与 `trash_rejects` 操作，以及带 `allow_reassign` 的 `assign_faces`。关闭时 `delete_photos` 不会被列出，另外两者返回 `feature_disabled` 并指明此键。参见 [AI 智能体](AGENTS.md#破坏性操作先预览再确认)。 |
+| `inpage_tools` | `true` | 已登录的标签页是否可以在页面内调用服务器的工具：`GET /api/mcp/inpage_tools` 列出它们，`POST /api/mcp/call` 以该会话的身份、按其当前级别、经与 `/mcp` 相同的封装层执行其中一个。关闭后，两个路由都返回 404，`/api/auth/status` 中的 `features.mcp_inpage` 为假。参见 [AI 智能体](AGENTS.md#页面内-webmcp浏览器智能体)。 |
+| `allowed_origins` | `[]` | 当反向代理改写 `Host` 时，额外允许打开标签页桥接的浏览器来源（例如 `["https://photos.example.com"]`）。与 CORS 键 `viewer.allowed_origins` 不同。 |
+
+超出范围的数字会被限制到边界，类型错误的值会回退到默认值。该配置块在每次请求时读取，因此重新加载配置即可切换该功能，无需重启。
 
 ## 照片相框／展示模式
 

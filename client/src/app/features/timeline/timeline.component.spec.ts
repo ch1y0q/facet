@@ -5,6 +5,7 @@ import { Router, ActivatedRoute } from '@angular/router';
 import { of } from 'rxjs';
 import { TimelineFiltersService } from './timeline-filters.service';
 import { TimelineComponent } from './timeline.component';
+import { PageContextService } from '../../core/agent/page-context.service';
 import { GalleryStore } from '../gallery/gallery.store';
 
 describe('TimelineComponent', () => {
@@ -42,6 +43,15 @@ describe('TimelineComponent', () => {
       ],
     });
     component = TestBed.runInInjectionContext(() => new TimelineComponent());
+  });
+
+  describe('page context', () => {
+    it('registers the timeline page and reads its filters live', () => {
+      const context = TestBed.inject(PageContextService);
+      expect(context.snapshot()).toEqual({ id: 'timeline', date_from: '', date_to: '', sort: 'older' });
+      mockFilters.sortDirection.set('newer');
+      expect(context.snapshot()).toMatchObject({ sort: 'newer' });
+    });
   });
 
   describe('initial state', () => {

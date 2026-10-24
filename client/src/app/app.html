@@ -150,6 +150,10 @@
 
       <div class="flex-1"></div>
 
+      @if (auth.isAuthenticated()) {
+        <app-assistant-activity-chip />
+      }
+
       <!-- Stats overview (right side, lg+ only) -->
       @if (auth.isAuthenticated() && isStatsRoute() && statsFilters.overview(); as ov) {
         <span class="!hidden lg:!inline-flex items-center gap-3 text-sm opacity-80">
@@ -174,29 +178,40 @@
 
       <!-- Gallery: photo count + active filters + filter toggle (right side, lg+ only) -->
       @if (auth.isAuthenticated() && isGalleryRoute()) {
-        <span class="!hidden lg:!inline text-sm opacity-70">{{ I18N.gallery.photo_count | translate:{ count: store.total() } }}</span>
+        <span class="!hidden min-[1360px]:!inline text-sm opacity-70">{{ I18N.gallery.photo_count | translate:{ count: store.total() } }}</span>
 
-        <mat-form-field class="!hidden lg:!inline-flex w-48" subscriptSizing="dynamic">
-          <mat-label>{{ I18N.gallery.sort | translate }}</mat-label>
-          <mat-select panelWidth="auto" panelClass="nowrap-panel" [value]="store.filters().sort" (selectionChange)="onSortChange($event.value)">
-            @if (store.config()?.features?.show_my_taste) {
-              <mat-option value="learned_score">{{ I18N.gallery.sort_my_taste | translate }}</mat-option>
-            }
-            @if (sortGroups(); as groups) {
-              @for (group of groups; track group[0]) {
-                <mat-optgroup [label]="('sort_groups.' + (group[0] | sortGroupKey)) | translate">
-                  @for (opt of group[1]; track opt.column) {
-                    <mat-option [value]="opt.column">{{ 'sort_options.' + opt.column | translate }}</mat-option>
-                  }
-                </mat-optgroup>
+        @if (!pinned()) {
+          <mat-form-field class="!hidden lg:!inline-flex w-48 shrink-0" subscriptSizing="dynamic">
+            <mat-label>{{ I18N.gallery.sort | translate }}</mat-label>
+            <mat-select panelWidth="auto" panelClass="nowrap-panel" [value]="store.filters().sort" (selectionChange)="onSortChange($event.value)">
+              @if (store.filters().semanticQuery) {
+                <mat-option value="relevance">{{ I18N.gallery.sort_relevance | translate }}</mat-option>
               }
-            } @else {
-              <mat-option value="aggregate">{{ I18N.gallery.sort_aggregate | translate }}</mat-option>
-              <mat-option value="aesthetic">{{ I18N.gallery.sort_aesthetic | translate }}</mat-option>
-              <mat-option value="date_taken">{{ I18N.gallery.sort_date | translate }}</mat-option>
-            }
-          </mat-select>
-        </mat-form-field>
+              @if (store.config()?.features?.show_my_taste) {
+                <mat-option value="learned_score">{{ I18N.gallery.sort_my_taste | translate }}</mat-option>
+              }
+              @if (sortGroups(); as groups) {
+                @for (group of groups; track group[0]) {
+                  <mat-optgroup [label]="('sort_groups.' + (group[0] | sortGroupKey)) | translate">
+                    @for (opt of group[1]; track opt.column) {
+                      <mat-option [value]="opt.column">{{ 'sort_options.' + opt.column | translate }}</mat-option>
+                    }
+                  </mat-optgroup>
+                }
+              } @else {
+                <mat-option value="aggregate">{{ I18N.gallery.sort_aggregate | translate }}</mat-option>
+                <mat-option value="aesthetic">{{ I18N.gallery.sort_aesthetic | translate }}</mat-option>
+                <mat-option value="date_taken">{{ I18N.gallery.sort_date | translate }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+        }
+
+        @if (scan.canLaunch()) {
+          <button mat-icon-button class="!hidden lg:!inline-flex !bg-[var(--mat-sys-primary-container)] !text-[var(--mat-sys-on-primary-container)]" (click)="openScanLauncher()" [matTooltip]="I18N.gallery.scan_action | translate" [attr.aria-label]="I18N.gallery.scan_action | translate">
+            <mat-icon>add_photo_alternate</mat-icon>
+          </button>
+        }
 
         <!-- "My Taste" confidence indicator — held-out accuracy of the personal ranker.
              A button, not a bare icon: the accuracy lives only in the tooltip, which a
@@ -226,17 +241,19 @@
           }}</mat-icon>
         </button>
 
-        <button
-          class="!hidden lg:!inline-flex"
-          mat-icon-button
-          (click)="toggleSortDirection()"
-          [matTooltip]="store.filters().sort_direction === 'DESC' ? (I18N.gallery.sort_desc | translate) : (I18N.gallery.sort_asc | translate)"
-          [attr.aria-label]="store.filters().sort_direction === 'DESC' ? (I18N.gallery.sort_desc | translate) : (I18N.gallery.sort_asc | translate)"
-        >
-          <mat-icon>{{
-            store.filters().sort_direction === 'DESC' ? 'arrow_downward' : 'arrow_upward'
-          }}</mat-icon>
-        </button>
+        @if (!pinned()) {
+          <button
+            class="!hidden lg:!inline-flex"
+            mat-icon-button
+            (click)="toggleSortDirection()"
+            [matTooltip]="store.filters().sort_direction === 'DESC' ? (I18N.gallery.sort_desc | translate) : (I18N.gallery.sort_asc | translate)"
+            [attr.aria-label]="store.filters().sort_direction === 'DESC' ? (I18N.gallery.sort_desc | translate) : (I18N.gallery.sort_asc | translate)"
+          >
+            <mat-icon>{{
+              store.filters().sort_direction === 'DESC' ? 'arrow_downward' : 'arrow_upward'
+            }}</mat-icon>
+          </button>
+        }
 
         <button
           class="!hidden lg:!inline-flex"
@@ -248,18 +265,20 @@
           <mat-icon [style.color]="store.slideshowActive() ? 'var(--mat-sys-primary)' : ''">slideshow</mat-icon>
         </button>
 
-        <button
-          class="!hidden lg:!inline-flex"
-          mat-icon-button
-          (click)="store.setFilterDrawerOpen(!store.filterDrawerOpen())"
-          [matBadge]="store.activeFilterCount() || null"
-          matBadgeColor="primary"
-          matBadgeSize="small"
-          [matTooltip]="I18N.gallery.filters | translate"
-          [attr.aria-label]="I18N.gallery.filters | translate"
-        >
-          <mat-icon [style.color]="store.filterDrawerOpen() ? 'var(--mat-sys-primary)' : ''">tune</mat-icon>
-        </button>
+        @if (!pinned()) {
+          <button
+            class="!hidden lg:!inline-flex"
+            mat-icon-button
+            (click)="store.setFilterDrawerOpen(!store.filterDrawerOpen())"
+            [matBadge]="store.activeFilterCount() || null"
+            matBadgeColor="primary"
+            matBadgeSize="small"
+            [matTooltip]="I18N.gallery.filters | translate"
+            [attr.aria-label]="I18N.gallery.filters | translate"
+          >
+            <mat-icon [style.color]="store.filterDrawerOpen() ? 'var(--mat-sys-primary)' : ''">tune</mat-icon>
+          </button>
+        }
 
         <mat-menu #tooltipModeMenu="matMenu">
           <button mat-menu-item (click)="store.updateFilter('tooltip_mode', 'hover')">
@@ -354,6 +373,12 @@
             <mat-icon>palette</mat-icon>
             {{ I18N.ui.theme | translate }}
           </button>
+          @if (auth.features()['mcp']) {
+            <button mat-menu-item (click)="showConnectAssistantDialog()">
+              <mat-icon>smart_toy</mat-icon>
+              {{ I18N.dialog.connect_assistant.menu | translate }}
+            </button>
+          }
           @if (auth.isMultiUser() || auth.loginPasswordRequired()) {
             <mat-divider />
             <button mat-menu-item (click)="logout()">
@@ -426,7 +451,7 @@
   <!-- Mobile search bar is rendered as the first row of the gallery bottom stack -->
 
   <!-- Active filter chips bar (gallery route only, when filters are active) -->
-  @if (auth.isAuthenticated() && isGalleryRoute() && (activeFilterChips().length || store.filters().similar_to)) {
+  @if (auth.isAuthenticated() && isGalleryRoute() && !pinned() && (activeFilterChips().length || store.filters().similar_to)) {
     <div class="flex items-center gap-2 flex-wrap px-2 lg:px-4 py-2 bg-[var(--mat-sys-surface-container)] border-b border-[var(--mat-sys-outline-variant)]">
       @if (store.filters().similar_to) {
         <div class="inline-flex items-center gap-1.5 pl-1 pr-1 py-0.5 rounded-full bg-[var(--mat-sys-secondary-container)] text-[var(--mat-sys-on-secondary-container)] text-xs font-medium">
@@ -501,14 +526,14 @@
   }
 
   <!-- Main content -->
-  <main class="flex-1 overflow-auto lg:pb-0" [class.pb-14]="isGalleryRoute() || isAlbumsRoute() || isPersonsRoute() || isMapRoute() || isCapsuleRoute() || isTimelineRoute()">
+  <main class="flex-1 overflow-auto lg:pb-0" [class.pb-14]="mobileGalleryBarVisible() || isAlbumsRoute() || isPersonsRoute() || isMapRoute() || isCapsuleRoute() || isTimelineRoute()">
     <router-outlet />
   </main>
 
   <!-- Mobile gallery bottom bars (search row stacks over the toolbar) -->
   @if (auth.isAuthenticated() && mobileGalleryBarVisible()) {
     <div class="lg:hidden fixed bottom-0 left-0 right-0 z-50 flex flex-col bg-[var(--mat-sys-surface-container)] safe-area-pb">
-      @if (mobileSearchOpen()) {
+      @if (mobileSearchOpen() && !pinned()) {
         <div class="px-4 py-1 border-t border-[var(--mat-sys-outline-variant)]">
           <mat-form-field class="w-full" subscriptSizing="dynamic" appearance="outline">
             <input matInput
@@ -524,37 +549,50 @@
           </mat-form-field>
         </div>
       }
-      <div class="flex items-center gap-1 px-2 py-1 border-t border-[var(--mat-sys-outline-variant)]">
-        <!-- Search toggle -->
-        <button mat-icon-button class="!w-10 !h-10 shrink-0" (click)="mobileSearchOpen.set(!mobileSearchOpen())" [matTooltip]="I18N.ui.filters.search | translate" [attr.aria-label]="I18N.ui.filters.search | translate">
-          <mat-icon>search</mat-icon>
-        </button>
+      <div class="flex items-center gap-0.5 px-2 py-1 border-t border-[var(--mat-sys-outline-variant)]">
+        @if (!pinned()) {
+          <!-- Search toggle -->
+          <button mat-icon-button class="!w-9 !h-9 shrink-0" (click)="mobileSearchOpen.set(!mobileSearchOpen())" [matTooltip]="I18N.ui.filters.search | translate" [attr.aria-label]="I18N.ui.filters.search | translate">
+            <mat-icon>search</mat-icon>
+          </button>
+        }
 
-        <!-- Sort selector with label -->
-        <mat-form-field class="flex-1 min-w-0" subscriptSizing="dynamic">
-          <mat-label>{{ I18N.gallery.sort | translate }}</mat-label>
-          <mat-select panelWidth="auto" panelClass="nowrap-panel" [value]="store.filters().sort" (selectionChange)="onSortChange($event.value)">
-            @if (store.config()?.features?.show_my_taste) {
-              <mat-option value="learned_score">{{ I18N.gallery.sort_my_taste | translate }}</mat-option>
-            }
-            @if (sortGroups(); as groups) {
-              @for (group of groups; track group[0]) {
-                <mat-optgroup [label]="('sort_groups.' + (group[0] | sortGroupKey)) | translate">
-                  @for (opt of group[1]; track opt.column) {
-                    <mat-option [value]="opt.column">{{ 'sort_options.' + opt.column | translate }}</mat-option>
-                  }
-                </mat-optgroup>
+        @if (!pinned()) {
+          <!-- Sort selector with label -->
+          <mat-form-field class="flex-1 min-w-0" subscriptSizing="dynamic">
+            <mat-label>{{ I18N.gallery.sort | translate }}</mat-label>
+            <mat-select panelWidth="auto" panelClass="nowrap-panel" [value]="store.filters().sort" (selectionChange)="onSortChange($event.value)">
+              @if (store.filters().semanticQuery) {
+                <mat-option value="relevance">{{ I18N.gallery.sort_relevance | translate }}</mat-option>
               }
-            } @else {
-              <mat-option value="aggregate">{{ I18N.gallery.sort_aggregate | translate }}</mat-option>
-              <mat-option value="aesthetic">{{ I18N.gallery.sort_aesthetic | translate }}</mat-option>
-              <mat-option value="date_taken">{{ I18N.gallery.sort_date | translate }}</mat-option>
-            }
-          </mat-select>
-        </mat-form-field>
+              @if (store.config()?.features?.show_my_taste) {
+                <mat-option value="learned_score">{{ I18N.gallery.sort_my_taste | translate }}</mat-option>
+              }
+              @if (sortGroups(); as groups) {
+                @for (group of groups; track group[0]) {
+                  <mat-optgroup [label]="('sort_groups.' + (group[0] | sortGroupKey)) | translate">
+                    @for (opt of group[1]; track opt.column) {
+                      <mat-option [value]="opt.column">{{ 'sort_options.' + opt.column | translate }}</mat-option>
+                    }
+                  </mat-optgroup>
+                }
+              } @else {
+                <mat-option value="aggregate">{{ I18N.gallery.sort_aggregate | translate }}</mat-option>
+                <mat-option value="aesthetic">{{ I18N.gallery.sort_aesthetic | translate }}</mat-option>
+                <mat-option value="date_taken">{{ I18N.gallery.sort_date | translate }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+        }
+
+        @if (scan.canLaunch()) {
+          <button mat-icon-button class="!w-9 !h-9 shrink-0 !bg-[var(--mat-sys-primary-container)] !text-[var(--mat-sys-on-primary-container)]" (click)="openScanLauncher()" [matTooltip]="I18N.gallery.scan_action | translate" [attr.aria-label]="I18N.gallery.scan_action | translate">
+            <mat-icon>add_photo_alternate</mat-icon>
+          </button>
+        }
 
         <!-- Tooltip-mode menu (mobile, first in icon cluster) -->
-        <button mat-icon-button class="!w-10 !h-10 shrink-0"
+        <button mat-icon-button class="!w-9 !h-9 shrink-0"
                 [matMenuTriggerFor]="tooltipModeMenuMobile"
                 [matTooltip]="I18N.gallery.tooltip_mode.label | translate"
                 [attr.aria-label]="I18N.gallery.tooltip_mode.label | translate">
@@ -610,30 +648,34 @@
           </button>
         </mat-menu>
 
-        <!-- Sort direction toggle -->
-        <button mat-icon-button class="!w-10 !h-10 shrink-0" (click)="toggleSortDirection()"
-          [matTooltip]="store.filters().sort_direction === 'DESC' ? (I18N.gallery.sort_desc | translate) : (I18N.gallery.sort_asc | translate)"
-          [attr.aria-label]="store.filters().sort_direction === 'DESC' ? (I18N.gallery.sort_desc | translate) : (I18N.gallery.sort_asc | translate)">
-          <mat-icon>{{ store.filters().sort_direction === 'DESC' ? 'arrow_downward' : 'arrow_upward' }}</mat-icon>
-        </button>
+        @if (!pinned()) {
+          <!-- Sort direction toggle -->
+          <button mat-icon-button class="!w-9 !h-9 shrink-0" (click)="toggleSortDirection()"
+            [matTooltip]="store.filters().sort_direction === 'DESC' ? (I18N.gallery.sort_desc | translate) : (I18N.gallery.sort_asc | translate)"
+            [attr.aria-label]="store.filters().sort_direction === 'DESC' ? (I18N.gallery.sort_desc | translate) : (I18N.gallery.sort_asc | translate)">
+            <mat-icon>{{ store.filters().sort_direction === 'DESC' ? 'arrow_downward' : 'arrow_upward' }}</mat-icon>
+          </button>
+        }
 
         <!-- Slideshow toggle -->
-        <button mat-icon-button class="!w-10 !h-10 shrink-0" (click)="store.slideshowActive.set(!store.slideshowActive())" [matTooltip]="I18N.slideshow.start | translate" [attr.aria-label]="I18N.slideshow.start | translate">
+        <button mat-icon-button class="!w-9 !h-9 shrink-0" (click)="store.slideshowActive.set(!store.slideshowActive())" [matTooltip]="I18N.slideshow.start | translate" [attr.aria-label]="I18N.slideshow.start | translate">
           <mat-icon [style.color]="store.slideshowActive() ? 'var(--mat-sys-primary)' : ''">slideshow</mat-icon>
         </button>
 
-        <!-- Filter drawer toggle -->
-        <button
-          mat-icon-button class="!w-10 !h-10 shrink-0"
-          (click)="store.setFilterDrawerOpen(!store.filterDrawerOpen())"
-          [matTooltip]="I18N.ui.buttons.filters | translate"
-          [attr.aria-label]="I18N.ui.buttons.filters | translate"
-          [matBadge]="store.activeFilterCount() || null"
-          matBadgeColor="primary"
-          matBadgeSize="small"
-        >
-          <mat-icon [style.color]="store.filterDrawerOpen() ? 'var(--mat-sys-primary)' : ''">tune</mat-icon>
-        </button>
+        @if (!pinned()) {
+          <!-- Filter drawer toggle -->
+          <button
+            mat-icon-button class="!w-9 !h-9 shrink-0"
+            (click)="store.setFilterDrawerOpen(!store.filterDrawerOpen())"
+            [matTooltip]="I18N.ui.buttons.filters | translate"
+            [attr.aria-label]="I18N.ui.buttons.filters | translate"
+            [matBadge]="store.activeFilterCount() || null"
+            matBadgeColor="primary"
+            matBadgeSize="small"
+          >
+            <mat-icon [style.color]="store.filterDrawerOpen() ? 'var(--mat-sys-primary)' : ''">tune</mat-icon>
+          </button>
+        }
       </div>
     </div>
   }

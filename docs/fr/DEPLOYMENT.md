@@ -18,7 +18,7 @@ Facet comporte deux charges de travail :
 
 Seule la galerie web doit tourner sur le serveur. Notez les photos sur un poste de travail, puis synchronisez la base de données.
 
-> **Avertissement :** tant que `viewer.password` est vide (valeur livrée par défaut), toute personne pouvant atteindre le port de la galerie web peut parcourir toute la bibliothèque et télécharger les photos originales, quelle que soit la façon de la lancer ci-dessous. Définissez `viewer.password` avant d'exposer le port au-delà de la machine ; voir la note du [mode mono-utilisateur](VIEWER.md#mode-mono-utilisateur-par-défaut).
+> **Avertissement :** tant que `viewer.password` est vide (valeur livrée par défaut), toute personne pouvant atteindre le port de la galerie web peut parcourir toute la bibliothèque et télécharger les photos originales, quelle que soit la façon de la lancer ci-dessous. Définissez `viewer.password` avant d'exposer le port au-delà de la machine ; voir la note du [mode mono-utilisateur](VIEWER.md#mode-mono-utilisateur-par-défaut). Sur une installation ouverte, les jetons d'assistant (**Connecter un assistant**) ne se créent, ne se listent et ne se révoquent eux aussi que depuis l'ordinateur qui exécute Facet : un déploiement Docker (le navigateur atteint le conteneur par la passerelle du réseau pont) ou un proxy inverse ne peut pas les gérer, donc définissez `viewer.password` ou exécutez la requête sur l'hôte (`docker compose exec facet python -c "import urllib.request ..."`). Un proxy inverse doit envoyer `X-Forwarded-For` ou `Forwarded`, sinon il est traité comme la machine locale.
 
 ## Mappage des chemins
 
@@ -262,6 +262,8 @@ DSM > Panneau de configuration > Portail de connexion > Avancé > Proxy inversé
 
 Associez-le à un certificat Let's Encrypt depuis DSM > Panneau de configuration > Sécurité > Certificat.
 
+Si vous utilisez le pont d'onglet des agents (voir [Agents IA](AGENTS.md)), ouvrez aussi l'onglet **En-tête personnalisé** de la règle et choisissez **Créer > WebSocket** : cela ajoute les en-têtes `Upgrade` et `Connection` dont `/api/mcp/bridge` a besoin. Si la règle réécrit l'en-tête `Host`, indiquez aussi votre origine publique dans `viewer.mcp.allowed_origins`.
+
 ## NAS Synology (Plus / série x86)
 
 Les NAS de la série Plus prennent en charge Docker (Container Manager).
@@ -297,7 +299,7 @@ Pour un NAS dédié à la galerie web où l'image doit rester légère (sans CUD
 ```dockerfile
 FROM python:3.11-slim
 WORKDIR /app
-RUN pip install fastapi uvicorn pyjwt pillow aiosqlite
+RUN pip install fastapi uvicorn pyjwt pillow aiosqlite 'mcp>=2.3,<3' 'httpx>=0.28,<1' 'websockets>=13.0'
 COPY viewer.py config_resolve.py database.py tagger.py ./
 COPY api/ api/
 COPY config/ config/
@@ -307,6 +309,8 @@ COPY i18n/ i18n/
 EXPOSE 5000
 CMD ["uvicorn", "api:create_app", "--factory", "--host", "0.0.0.0", "--port", "5000", "--workers", "4"]
 ```
+
+Plusieurs workers sont incompatibles avec le pont d'onglet des agents : son registre d'onglets est propre à chaque processus, donc avec plus d'un worker un appel `ui_*` peut atteindre un processus qui ignore votre onglet et répondre `no_tab`. Utilisez `--workers 1` si vous employez les [Agents IA](AGENTS.md).
 
 ```yaml
 services:
@@ -485,7 +489,7 @@ mesurer.
 ### Uvicorn
 
 ```bash
-pip install fastapi uvicorn pyjwt pillow aiosqlite
+pip install fastapi uvicorn pyjwt pillow aiosqlite 'mcp>=2.3,<3' 'httpx>=0.28,<1' 'websockets>=13.0'
 uvicorn api:create_app --factory --host 0.0.0.0 --port 5000 --workers 4
 ```
 
@@ -494,6 +498,8 @@ Ou utilisez le wrapper (par défaut 1 worker ; passez `--workers N` pour davant
 ```bash
 python viewer.py --production --workers 4
 ```
+
+Plusieurs workers sont incompatibles avec le pont d'onglet des agents : son registre d'onglets est propre à chaque processus, donc avec plus d'un worker un appel `ui_*` peut atteindre un processus qui ignore votre onglet et répondre `no_tab`. Utilisez `--workers 1` si vous employez les [Agents IA](AGENTS.md).
 
 ### Uvicorn + Nginx
 
@@ -509,8 +515,19 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         client_max_body_size 50M;
     }
+
+    location /api/mcp/bridge {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $http_host;
+        proxy_read_timeout 3600s;
+    }
 }
 ```
+
+Le pont d'onglet des agents (`/api/mcp/bridge`, voir [Agents IA](AGENTS.md)) est un WebSocket : il lui faut les en-têtes `Upgrade` et `Connection` du second bloc `location` ; sans eux, la poignée de main échoue et les outils `ui_*` répondent `no_tab`. Il exige aussi un seul worker (`--workers 1`, la valeur par défaut).
 
 Ajouter HTTPS :
 ```bash
@@ -535,6 +552,8 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 ```
+
+Plusieurs workers sont incompatibles avec le pont d'onglet des agents : son registre d'onglets est propre à chaque processus, donc avec plus d'un worker un appel `ui_*` peut atteindre un processus qui ignore votre onglet et répondre `no_tab`. Utilisez `--workers 1` si vous employez les [Agents IA](AGENTS.md).
 
 ```bash
 sudo systemctl enable --now facet

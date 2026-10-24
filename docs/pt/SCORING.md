@@ -297,6 +297,8 @@ Execute `--compute-recommendations` após trocar de perfil para analisar as dist
 
 O visualizador executa `--recompute-category` nos bastidores, atualizando apenas as fotos dessa categoria.
 
+Um assistente MCP pode ler estes pesos e simular uma alteração sem tocar em nada: `explain_score` (porque uma foto obteve a sua pontuação), `category_weights` e `preview_weights` (uma pré-visualização aproximada com as mudanças de posição). Ver [Pontuações e pesos](AGENTS.md#pontuações-e-pesos).
+
 ### Opção B: Pela CLI
 
 #### 1. Analisar as Pontuações Atuais

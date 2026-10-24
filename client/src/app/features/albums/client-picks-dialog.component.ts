@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit, ChangeDetectionStrategy } from '@angular/core';
 import { MAT_DIALOG_DATA, MatDialogModule } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -38,6 +38,7 @@ interface ClientPicksResponse {
     MatDialogModule, MatButtonModule, MatIconModule, MatProgressSpinnerModule,
     TranslatePipe, PluralKeyPipe, SceneDatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title class="truncate">{{ I18N.proofing.client_picks | translate }} — {{ data.albumName }}</h2>
     <mat-dialog-content>

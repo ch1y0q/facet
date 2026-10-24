@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClient, withXhr } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { I18nService } from './i18n.service';
 
@@ -25,7 +25,7 @@ describe('I18nService', () => {
     document.cookie = 'facet_lang=;max-age=0;path=/';
 
     TestBed.configureTestingModule({
-      providers: [I18nService, provideHttpClient(), provideHttpClientTesting()],
+      providers: [I18nService, provideHttpClient(withXhr()), provideHttpClientTesting()],
     });
     service = TestBed.inject(I18nService);
     httpTesting = TestBed.inject(HttpTestingController);
@@ -213,7 +213,7 @@ describe('I18nService', () => {
 
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({
-        providers: [I18nService, provideHttpClient(), provideHttpClientTesting()],
+        providers: [I18nService, provideHttpClient(withXhr()), provideHttpClientTesting()],
       });
       const newService = TestBed.inject(I18nService);
       const newHttp = TestBed.inject(HttpTestingController);
@@ -228,7 +228,7 @@ describe('I18nService', () => {
 
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({
-        providers: [I18nService, provideHttpClient(), provideHttpClientTesting()],
+        providers: [I18nService, provideHttpClient(withXhr()), provideHttpClientTesting()],
       });
       const newService = TestBed.inject(I18nService);
       const newHttp = TestBed.inject(HttpTestingController);

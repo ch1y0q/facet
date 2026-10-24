@@ -6,9 +6,11 @@ Uses precomputed burst_group_id from the database (populated by --recompute-burs
 Groups marked as burst_reviewed=1 are skipped so confirmed decisions persist.
 """
 
+import hashlib
 import json
 import logging
 import random
+import re
 import sqlite3
 import threading
 import time
@@ -20,14 +22,15 @@ from typing import Literal, Optional, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from api.agent import live_updates
 from api.auth import CurrentUser, get_optional_user, require_edition
 from api.database import get_db
 from api.subject_bbox import parse_subject_bbox
 from api.db_helpers import (
     get_visibility_clause, paginate, is_multi_user_enabled, get_photos_from_clause,
-    get_preference_columns,
+    get_preference_columns, read_labels,
     trigger_auto_retrain, record_culling_decision, set_photos_rejected,
-    album_filter_clause, time_window_clauses,
+    album_filter_clause, time_window_clauses, window_or_400,
     select_in_chunks, scope_cache_key, scope_sql as path_scope_sql, NO_VISIBILITY_SQL,
     SEQUENCE_OVERRIDE_SELECT, SEQUENCE_OVERRIDE_PENDING_SELECT,
 )
@@ -42,8 +45,8 @@ from db.sequence_overrides import (
 from utils.panorama import HDR_PANORAMA, PANORAMA
 from utils.sequence import BRACKET as BRACKET_KIND, exposure_value, ladder_gate_error
 from api.models.culling import (
-    AutoCullResponse, BurstGroupsResponse, CullingGroupsResponse,
-    CullProfilesResponse, KeeperHint, SuggestCullProfileResponse,
+    AutoCullResponse, BurstGroupsResponse, CullingGroupsResponse, CullingPlanResponse,
+    CullPlanRequest, CullProfilesResponse, KeeperHint, SuggestCullProfileResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -96,6 +99,9 @@ router = APIRouter(tags=["burst_culling"])
 class BurstSelectionBody(BaseModel):
     burst_id: int
     keep_paths: list[str]
+    # The members the caller showed. When given, only those are decided; a member of the group outside it
+    # is neither rejected nor marked reviewed.
+    paths: Optional[list[str]] = None
     seed: int = 0
 
 
@@ -129,17 +135,14 @@ class KeeperHintsBody(BaseModel):
     paths: list[str] = Field(max_length=1000)
 
 
-class AutoCullBody(BaseModel):
-    group_by: Literal['all', 'burst', 'similar', 'scene'] = 'all'
-    album_id: Optional[int] = None
-    date_from: Optional[str] = None
-    date_to: Optional[str] = None
-    strictness: Optional[int] = Field(None, ge=0, le=100)
-    min_keep_per_group: Optional[int] = Field(None, ge=1)
-    highlights_album: str = ''
+class AutoCullBody(CullPlanRequest):
     dry_run: bool = True
-    profile: Optional[str] = None
-    trim_brackets: bool = False
+    cursor: int = Field(0, ge=0)
+    expected_digest: Optional[str] = None
+
+
+class CullingPlanBody(CullPlanRequest):
+    expected_digest: Optional[str] = None
 
 
 # --- Helpers ---
@@ -292,6 +295,34 @@ def attach_keeper_probs(conn, groups, user_id):
         for p in photos:
             p['keeper_prob'] = probs.get(p['path'])
     _for_each_group_probs(conn, groups, user_id, apply)
+
+
+def attach_user_marks(conn, groups, user_id):
+    """Stamp each photo of ``groups`` with the caller's ``is_rejected`` / ``is_favorite`` / ``star_rating``.
+
+    Read per request from the gallery's own per-user source (``user_preferences`` in multi-user mode, the
+    ``photos`` columns otherwise), never taken from the memoised enrichment: a mark the user or an assistant
+    set a moment ago must show on the next page fetch. 0/1 ints and a 0-5 rating, like the gallery rows.
+    """
+    paths = [p['path'] for g in groups for p in g.get('photos') or [] if p.get('path')]
+    if not paths:
+        return
+    from_clause, from_params = get_photos_from_clause(user_id)
+    cols = get_preference_columns(user_id)
+    marks = {
+        row[0]: (row[1] or 0, row[2] or 0, row[3] or 0)
+        for row in select_in_chunks(
+            conn,
+            f"SELECT photos.path, {cols['is_rejected']}, {cols['is_favorite']}, {cols['star_rating']} "
+            f"FROM {from_clause} WHERE photos.path IN ({{placeholders}})",
+            set(paths), before=from_params)
+    }
+    for group in groups:
+        for photo in group.get('photos') or []:
+            rejected, favorite, rating = marks.get(photo.get('path'), (0, 0, 0))
+            photo['is_rejected'] = int(rejected)
+            photo['is_favorite'] = int(favorite)
+            photo['star_rating'] = int(rating)
 
 
 def _get_face_thresholds(profile=None):
@@ -496,7 +527,7 @@ def _query_burst_groups(conn, vis_sql, vis_params, page=None, per_page=None, exc
 
     if exclude_rejected:
         from_clause, from_params, is_rejected_col = _rejected_clause(user_id)
-        sel_where = (f"burst_group_id IS NOT NULL AND burst_reviewed = 0 "
+        sel_where = (f"burst_group_id IS NOT NULL AND burst_reviewed IS NOT 1 "
                      f"AND {vis_sql} AND {is_rejected_col} = 0{sel_sql}")
         sel_base_params = from_params + vis_params + sel_params
         count_row = conn.execute(
@@ -508,7 +539,7 @@ def _query_burst_groups(conn, vis_sql, vis_params, page=None, per_page=None, exc
         order_sql = (f"SELECT burst_group_id FROM {from_clause} WHERE {sel_where} "
                      f"GROUP BY burst_group_id HAVING COUNT(*) >= 2 ORDER BY burst_group_id")
     else:
-        sel_where = f"burst_group_id IS NOT NULL AND burst_reviewed = 0 AND {vis_sql}{sel_sql}"
+        sel_where = f"burst_group_id IS NOT NULL AND burst_reviewed IS NOT 1 AND {vis_sql}{sel_sql}"
         sel_base_params = vis_params + sel_params
         count_row = conn.execute(
             f"SELECT COUNT(DISTINCT burst_group_id) as cnt FROM photos WHERE {sel_where}",
@@ -693,18 +724,19 @@ def select_burst_photos(
                 )
 
             # Batch update burst lead status and mark as reviewed
+            decided = group_paths if body.paths is None else group_paths & set(body.paths)
             keep_paths = list(keep_set)
-            reject_paths = list(group_paths - keep_set)
+            reject_paths = list(decided - keep_set)
             _mark_burst_reviewed(conn, keep_paths, reject_paths)
             if reject_paths:
-                set_photos_rejected(conn, reject_paths, user_id)
+                set_photos_rejected(conn, reject_paths, user_id, agent=bool(user and user.is_agent_request))
 
             record_culling_decision(
                 conn, keep_paths, reject_paths, sequence_members,
-                user_id=user_id, group_type='burst',
+                user_id=user_id, group_type='burst', record=not user.is_agent_request,
             )
             _invalidate_culling_groups_cache()
-            return {'status': 'ok', 'kept': len(keep_set), 'rejected': len(group_paths - keep_set)}
+            return {'status': 'ok', 'kept': len(keep_set), 'rejected': len(reject_paths)}
 
         except HTTPException:
             raise
@@ -803,7 +835,7 @@ def select_similar_photos(
 
             # Mark non-kept photos as rejected (per-user in multi-user mode, visibility-checked)
             reject_paths = list(group_paths - keep_set)
-            set_photos_rejected(conn, reject_paths, user_id)
+            set_photos_rejected(conn, reject_paths, user_id, agent=bool(user and user.is_agent_request))
 
             # Mark ALL photos in the group as similarity_reviewed. The column
             # is guaranteed present by the lifespan-time init_database() migration
@@ -820,7 +852,7 @@ def select_similar_photos(
 
             record_culling_decision(
                 conn, keep_set, reject_paths, sequence_members,
-                user_id=user_id, group_type='similar',
+                user_id=user_id, group_type='similar', record=not user.is_agent_request,
             )
             _invalidate_culling_groups_cache()
             return {'status': 'ok', 'kept': len(keep_set), 'rejected': len(reject_paths)}
@@ -871,7 +903,7 @@ def _count_unreviewed_burst_groups(conn, vis_sql, vis_params, exclude_rejected=F
                     SELECT burst_group_id
                     FROM {from_clause}
                     WHERE burst_group_id IS NOT NULL
-                      AND burst_reviewed = 0
+                      AND burst_reviewed IS NOT 1
                       AND {vis_sql}
                       AND {is_rejected_col} = 0
                     GROUP BY burst_group_id
@@ -885,7 +917,7 @@ def _count_unreviewed_burst_groups(conn, vis_sql, vis_params, exclude_rejected=F
             f"""SELECT COUNT(DISTINCT burst_group_id) as cnt
                 FROM photos
                 WHERE burst_group_id IS NOT NULL
-                  AND burst_reviewed = 0
+                  AND burst_reviewed IS NOT 1
                   AND {vis_sql}""",
             vis_params,
         ).fetchone()
@@ -1161,8 +1193,11 @@ def _culling_sort_reverse(sort, direction):
 # Memo of the fully-enriched + globally-sorted culling groups, keyed by the
 # request params that determine the set. Pagination over the same set then
 # reuses one enrichment instead of re-materializing + re-scoring every group on
-# every page. Invalidated on any confirm (the unreviewed set shrinks); the short
-# TTL is a backstop for changes the invalidation can't see (a fresh scan).
+# every page. Invalidated on any confirm (the unreviewed set shrinks) and on every
+# reject / favorite write (`exclude_rejected` is part of the feed). The key also
+# carries `_library_change_token`, so photos landing from another process (a scan,
+# a burst pass) miss the memo at once; the short TTL is only the backstop for what
+# neither can see.
 _culling_groups_cache: dict = {}
 _CULLING_GROUPS_CACHE_TTL = 45.0
 _CULLING_GROUPS_CACHE_MAX = 16
@@ -1181,6 +1216,20 @@ def _invalidate_culling_groups_cache():
     with _culling_groups_lock:
         _culling_groups_generation += 1
         _culling_groups_cache.clear()
+
+
+def _library_change_token(conn):
+    """Cheap fingerprint of the library: the latest scan run plus the photo count.
+
+    A scan runs in another process and cannot call ``_invalidate_culling_groups_cache``;
+    new photos or a started or finished run move this token. Grouping passes run from
+    the CLI (burst, bracket, panorama) touch neither, so they show once the memo expires.
+    ``processed_files`` is left out: it is rewritten about once a second during a scan.
+    """
+    run = conn.execute(
+        "SELECT id, status, finished_at FROM scan_runs ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    return (tuple(run) if run else None, conn.execute("SELECT COUNT(*) FROM photos").fetchone()[0])
 
 
 def _cached_culling_groups(cache_key, now):
@@ -1501,6 +1550,7 @@ def api_culling_groups(
         direction = ''
     if group_by not in _CULLING_GROUP_BY:
         group_by = 'all'
+    date_from, date_to = window_or_400(date_from, date_to)
     with get_db() as conn:
         try:
             user_id = user.user_id if user else None
@@ -1522,7 +1572,8 @@ def api_culling_groups(
                 # across pages, so memo it and let pagination reuse one enrichment
                 # instead of re-materializing + re-scoring every group per page.
                 cache_key = (round(similarity_threshold, 3), seed, sort, direction, exclude_rejected,
-                             user_id, album_id, date_from, date_to, group_by)
+                             user_id, album_id, date_from, date_to, group_by,
+                             _library_change_token(conn))
                 now = time.time()
                 cached_groups, generation = _cached_culling_groups(cache_key, now)
                 if cached_groups is not None:
@@ -1600,6 +1651,7 @@ def api_culling_groups(
             total_pages, offset = paginate(total_groups, page, per_page)
             page_groups = all_groups[offset:offset + per_page]
             attach_keeper_probs(conn, page_groups, user_id)
+            attach_user_marks(conn, page_groups, user_id)
 
             return {
                 'groups': page_groups,
@@ -1756,7 +1808,7 @@ def _confirm_sequence_group(body, user, kind):
             _mark_burst_reviewed(conn, keep_paths, reject_paths)
         elif body.type == 'similar':
             _mark_similarity_reviewed(conn, keep_paths + reject_paths, vis_sql, vis_params)
-        set_photos_rejected(conn, reject_paths, user_id)
+        set_photos_rejected(conn, reject_paths, user_id, agent=bool(user and user.is_agent_request))
         conn.commit()
     _invalidate_culling_groups_cache()
     return {
@@ -1793,6 +1845,7 @@ def confirm_culling_group(
         burst_body = BurstSelectionBody(
             burst_id=body.group_id,
             keep_paths=body.keep_paths,
+            paths=body.paths,
         )
         return select_burst_photos(burst_body, user)
     elif body.type == 'similar':
@@ -1813,7 +1866,10 @@ def confirm_culling_group(
 
 # --- One-button auto-cull ---
 
-_AUTO_CULL_PREVIEW_CAP = 200
+# A preview page is whole groups until the next one would pass either bound; a single
+# group larger than the photo bound still gets a page of its own.
+_AUTO_CULL_PAGE_PHOTOS = 200
+_AUTO_CULL_PAGE_BYTES = 50_000
 
 # Decision order for overlapping photos: brackets first (their keep is a fact
 # about the exposure ladder, not a judgement), then burst leads, then similar,
@@ -2033,7 +2089,8 @@ def _collect_auto_cull_groups(conn, user_id, group_by, album_id, date_from, date
     return groups
 
 
-def _apply_auto_cull_group(conn, group, keep_paths, reject_paths, user_id, vis_sql, vis_params):
+def _apply_auto_cull_group(conn, group, keep_paths, reject_paths, user_id, vis_sql, vis_params,
+                           record=True):
     """Commit one auto-culled group with the existing manual-confirm semantics.
 
     Mirrors ``select_burst_photos`` / ``select_similar_photos`` /
@@ -2055,7 +2112,7 @@ def _apply_auto_cull_group(conn, group, keep_paths, reject_paths, user_id, vis_s
         _mark_burst_reviewed(conn, keep_paths, reject_paths)
     elif gtype == 'similar':
         _mark_similarity_reviewed(conn, keep_paths + reject_paths, vis_sql, vis_params)
-    set_photos_rejected(conn, reject_paths, user_id)
+    set_photos_rejected(conn, reject_paths, user_id, agent=not record)
     if keep_whole:
         # Deliberately no comparison pairs. Dropping the flanking exposures of a
         # bracket says nothing about taste -- feeding "base beat -2 EV" to the
@@ -2069,7 +2126,7 @@ def _apply_auto_cull_group(conn, group, keep_paths, reject_paths, user_id, vis_s
         return 0
     return record_culling_decision(
         conn, keep_paths, reject_paths, _sequence_members(group['photos']),
-        user_id=user_id, group_type=gtype, commit=False,
+        user_id=user_id, group_type=gtype, commit=False, record=record,
     )
 
 
@@ -2150,14 +2207,6 @@ _SUGGEST_NIGHT_TO_HOUR = 6
 # preselects whatever comes back, and a preset applied on weak evidence is
 # worse than the default the user already has.
 _SUGGEST_MIN_SHARE = 0.25
-
-# The capture-time window the darkroom scopes to is a pair of raw EXIF
-# timestamps: the scenes feed hands the client ``photos.date_taken`` verbatim
-# (``YYYY:MM:DD HH:MM:SS``, the only shape a scan writes) and the culling page
-# passes it straight back as ``from``/``to``. Pinning that shape is what keeps
-# the cached scope a bounded set of windows the library could actually contain,
-# rather than whatever string a caller cares to invent; a mismatch is a 422.
-_EXIF_TIMESTAMP_PATTERN = r"^\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}$"
 
 # Cache-only, like compute_scenes: the aggregate walks every visible photo, so
 # on a large library it is worth sparing repeat calls for the same scope. A
@@ -2285,8 +2334,8 @@ def _score_shoot_types(rows):
 @router.get("/api/culling/suggest_profile", response_model=SuggestCullProfileResponse, response_model_exclude_unset=True)
 def suggest_cull_profile(
     album_id: Optional[int] = Query(None),
-    date_from: Optional[str] = Query(None, pattern=_EXIF_TIMESTAMP_PATTERN),
-    date_to: Optional[str] = Query(None, pattern=_EXIF_TIMESTAMP_PATTERN),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
     user: Optional[CurrentUser] = Depends(get_optional_user),
 ):
     """Infer the dominant shoot type of a scope and name the preset that fits it.
@@ -2300,10 +2349,10 @@ def suggest_cull_profile(
     orders scopes the way a photographer would — a whole wedding outranks a
     wedding inside a year of holidays.
 
-    ``date_from``/``date_to`` must be raw EXIF timestamps
-    (``YYYY:MM:DD HH:MM:SS``) — the shape the scenes feed emits and the only one
-    that sorts against ``date_taken``; anything else is a 422 rather than a
-    silently empty window that would still be cached.
+    ``date_from``/``date_to`` take ISO dates or datetimes as well as raw EXIF
+    timestamps; they are normalised to ``YYYY:MM:DD HH:MM:SS`` (the only shape that
+    sorts against ``date_taken``) before use, and anything unparseable is a 400
+    rather than a silently empty window that would still be cached.
 
     ``profile`` is null when the scope is empty, when no genre reaches
     ``_SUGGEST_MIN_SHARE``, or when the matching preset is not configured (a
@@ -2312,6 +2361,7 @@ def suggest_cull_profile(
     tooltip shows, ``evidence`` the per-genre counts behind it, for a caller
     that wants to explain the answer rather than just consume ``profile``.
     """
+    date_from, date_to = window_or_400(date_from, date_to)
     user_id = user.user_id if user else None
     with get_db() as conn:
         if album_id is not None:
@@ -2336,11 +2386,319 @@ def suggest_cull_profile(
     }
 
 
+# --- State guard: what the user touched between an agent's preview and its apply ---
+
+GUARD_TTL_S = 15 * 60
+GUARD_MAX_PER_USER = 8
+# A snapshot holds one tag tuple and one label tuple per planned path. Measured with sys.getsizeof on
+# 1000/5000-path snapshots of ~60-character paths: ~314/~381 bytes per path (we budget 450). The cap
+# bounds the WHOLE multi-page plan, so the worst case per user is GUARD_MAX_PER_USER (8) x 12000 paths x
+# 450 bytes = ~43 MB, under the ~50 MB budget. Above it nothing is stored and the preview reports
+# ``state_guard: "unavailable"`` (the apply then falls back to the legacy all-or-nothing digest refusal).
+GUARD_MAX_PATHS = 12000
+SKIPPED_REPORT_CAP = 50
+GUARD_UNAVAILABLE = 'unavailable'
+_guard_clock = time.monotonic
+_guard_lock = threading.Lock()
+# user_id -> {plan_digest: _GuardSnapshot}, least recently used first.
+_guard_snapshots: dict = {}
+
+
+@dataclass(frozen=True)
+class _GuardSnapshot:
+    tags: frozenset
+    rest: str
+    labels: dict
+    stored_at: float
+
+
+def reset_state_guard():
+    with _guard_lock:
+        _guard_snapshots.clear()
+
+
+def _guard_live(entries):
+    """Drop expired snapshots from one user's ordered ``entries``."""
+    cutoff = _guard_clock() - GUARD_TTL_S
+    for digest in [d for d, snap in entries.items() if snap.stored_at <= cutoff]:
+        del entries[digest]
+
+
+def state_guard_size(user_id):
+    with _guard_lock:
+        entries = _guard_snapshots.get(user_id, {})
+        _guard_live(entries)
+        return len(entries)
+
+
+def state_guard_has(user_id, digest):
+    with _guard_lock:
+        entries = _guard_snapshots.get(user_id, {})
+        _guard_live(entries)
+        return digest in entries
+
+
+def _guard_store(user_id, digest, snapshot):
+    """Store ``snapshot`` under ``digest`` unless a live snapshot already holds it (first write wins)."""
+    with _guard_lock:
+        entries = _guard_snapshots.setdefault(user_id, {})
+        _guard_live(entries)
+        if digest in entries:
+            return
+        entries[digest] = snapshot
+        while len(entries) > GUARD_MAX_PER_USER:
+            del entries[next(iter(entries))]
+
+
+def _guard_load(user_id, digest):
+    with _guard_lock:
+        entries = _guard_snapshots.get(user_id, {})
+        _guard_live(entries)
+        snapshot = entries.pop(digest, None)
+        if snapshot is not None:
+            entries[digest] = snapshot
+        return snapshot
+
+
+def _plan_tags(plan):
+    return frozenset((e['group']['type'], e['group']['group_id'], side, path) for e in plan
+                     for side in ('keep', 'reject') for path in e[f'{side}_paths'])
+
+
+def _remember_plan(conn, user_id, digest, plan, rest, result):
+    """Snapshot the plan's tags and labels for the apply's guard, built outside ``_guard_lock``.
+
+    A live snapshot for ``digest`` is kept as is (every later page of a preview lands here again and must
+    not re-read labels); a plan above ``GUARD_MAX_PATHS`` stores nothing and flags ``result.state_guard``.
+    """
+    if state_guard_has(user_id, digest):
+        return
+    tags = _plan_tags(plan)
+    if len(tags) > GUARD_MAX_PATHS:
+        result.state_guard = GUARD_UNAVAILABLE
+        return
+    _guard_store(user_id, digest, _GuardSnapshot(
+        tags, rest, read_labels(conn, user_id, [t[3] for t in tags]), _guard_clock()))
+
+
+def _reconcile_plan(conn, user_id, plan, result, expected_digest, rest, state_guard):
+    """The paths to leave out of an apply, or ``AutoCullPlanChanged`` when the plan moved for another reason.
+
+    ``changed`` is every path whose rating / favourite / reject differs from the preview's snapshot. A different plan digest is tolerated only when the difference between the two
+    plans' tags names nothing but ``changed`` and the options / overrides part is identical; without a
+    snapshot (expired, another worker) it is the plain refusal.
+    """
+    snapshot = _guard_load(user_id, expected_digest) if state_guard and expected_digest is not None else None
+    if state_guard and expected_digest is not None and snapshot is None:
+        result.state_guard = GUARD_UNAVAILABLE
+    changed = set()
+    tags = _plan_tags(plan)
+    if snapshot is not None:
+        fresh = read_labels(conn, user_id, snapshot.labels)
+        changed |= {path for path, labels in snapshot.labels.items() if fresh[path] != labels}
+    if expected_digest is not None and expected_digest != result.plan_digest:
+        if snapshot is None or snapshot.rest != rest or \
+                any(tag[3] not in changed for tag in snapshot.tags ^ tags):
+            raise AutoCullPlanChanged(
+                'The plan changed since it was previewed; nothing was written. Preview it again.')
+    known = {t[3] for t in tags} | (set(snapshot.labels) if snapshot is not None else set())
+    return changed, changed & known
+
+
+def _drop_skipped(plan, skipped):
+    """``plan`` without ``skipped`` paths; a group left with no keeper is skipped whole. Returns the group count."""
+    emptied = 0
+    for entry in list(plan):
+        if not skipped & set(entry['keep_paths'] + entry['reject_paths']):
+            continue
+        entry['keep'] = [p for p in entry['keep'] if p['path'] not in skipped]
+        entry['reject'] = [p for p in entry['reject'] if p['path'] not in skipped]
+        if not entry['keep']:
+            plan.remove(entry)
+            emptied += 1
+            continue
+        entry['keep_paths'] = [p['path'] for p in entry['keep']]
+        entry['reject_paths'] = [p['path'] for p in entry['reject']]
+    return emptied
+
+
+class AutoCullPlanChanged(Exception):
+    """The plan no longer matches the digest the caller confirmed."""
+
+
+class AutoCullOverrideError(ValueError):
+    """An override the plan cannot honour; the message names the paths or groups."""
+
+
+def _plan_entry(group, keep, reject):
+    return {'group': group, 'keep': keep, 'reject': reject,
+            'keep_paths': [p['path'] for p in keep], 'reject_paths': [p['path'] for p in reject]}
+
+
+def _plan_group_name(entry):
+    return f"{entry['group']['type']} group {entry['group']['group_id']}"
+
+
+def _plan_keeps_whole(entry):
+    return entry['group'].get('sequence_kind') in _KEEP_WHOLE_KINDS
+
+
+def _plan_auto_cull_groups(groups, decided, strictness, min_keep):
+    """Split every undecided group; no writes. ``decided`` is not modified."""
+    seen = set(decided)
+    plan = []
+    for group in groups:
+        photos = [p for p in group['photos'] if p['path'] not in seen]
+        if len(photos) < 2:
+            continue
+        if group['type'] == 'bracket':
+            keep, reject = _bracket_keep_split(photos)
+        elif group.get('sequence_kind') in _KEEP_WHOLE_KINDS:
+            # Reached through the `all`/`burst` feed, where a sweep is
+            # still burst-grouped and arrives typed 'burst'. Judging it
+            # on `type` alone auto-rejected every frame but the
+            # top-scored one -- destroying the set this feature exists
+            # to protect, and from a granularity the user never chose.
+            keep, reject = photos, []
+        else:
+            keep, reject = _auto_keep_split(photos, strictness, min_keep)
+        seen.update(p['path'] for p in keep)
+        seen.update(p['path'] for p in reject)
+        plan.append(_plan_entry(group, keep, reject))
+    return plan
+
+
+def _apply_plan_overrides(plan, keep_override, remove_override):
+    """Move frames between the sides of ``plan`` in place.
+
+    Returns ``(effective, ignored)``: the overrides that changed the plan, and those naming a
+    path the plan does not contain. An override that restates the plan is neither. Refuses
+    (``AutoCullOverrideError``) a path in both lists, a removal inside a keep-whole set and a
+    group left without a keeper, naming each.
+    """
+    both = [p for p in keep_override if p in set(remove_override)]
+    if both:
+        raise AutoCullOverrideError(
+            f"Paths in both keep_paths and remove_paths: {', '.join(both)}")
+    owner = {}
+    for entry in plan:
+        for path in entry['keep_paths'] + entry['reject_paths']:
+            owner[path] = entry
+    ignored = [p for p in keep_override + remove_override if p not in owner]
+    whole = [p for p in remove_override
+             if p in owner and _plan_keeps_whole(owner[p]) and p in owner[p]['keep_paths']]
+    if whole:
+        raise AutoCullOverrideError(
+            'Frames of a bracket or panorama set are kept whole and cannot be removed: '
+            + ', '.join(whole))
+    effective = {'keep': [], 'remove': []}
+    touched = {}
+    for path in keep_override:
+        entry = owner.get(path)
+        if entry is not None and path in entry['reject_paths']:
+            photo = next(p for p in entry['reject'] if p['path'] == path)
+            entry['reject'].remove(photo)
+            entry['keep'].append(photo)
+            effective['keep'].append(path)
+            touched[id(entry)] = entry
+    for path in remove_override:
+        entry = owner.get(path)
+        if entry is not None and path in entry['keep_paths'] and path not in entry['reject_paths']:
+            photo = next(p for p in entry['keep'] if p['path'] == path)
+            entry['keep'].remove(photo)
+            entry['reject'].append(photo)
+            effective['remove'].append(path)
+            touched[id(entry)] = entry
+    empty = [_plan_group_name(e) for e in touched.values() if not e['keep']]
+    if empty:
+        raise AutoCullOverrideError(
+            'The overrides would leave no keeper in: ' + ', '.join(empty))
+    for entry in touched.values():
+        entry['keep_paths'] = [p['path'] for p in entry['keep']]
+        entry['reject_paths'] = [p['path'] for p in entry['reject']]
+    return effective, ignored
+
+
+def _auto_cull_plan_digest(plan, options, effective):
+    tagged = [f"{e['group']['type']}:{e['group']['group_id']}:{side}:{path}" for e in plan
+              for side in ('keep', 'reject') for path in e[f'{side}_paths']]
+    body = json.dumps({'plan': sorted(tagged), 'options': options,
+                       'overrides': {k: sorted(v) for k, v in effective.items()}},
+                      sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+    return hashlib.sha256(body.encode('utf-8')).hexdigest()
+
+
+def _auto_cull_rest_digest(options, effective):
+    """The part of the plan digest that is not the plan: its options and effective overrides."""
+    return _auto_cull_plan_digest([], options, effective)
+
+
+GROUP_REASON_TEXT_MAX = 80
+_REASON_PATTERNS = (
+    (re.compile(r'(\d+(?:\.\d+)?)s burst'), 'burst_seconds', (('seconds', float),)),
+    (re.compile(r'(\d+(?:\.\d+)?)m burst'), 'burst_minutes', (('minutes', float),)),
+    (re.compile(r'(\d+)% similar'), 'similar_percent', (('percent', int),)),
+    (re.compile(r'(\d+) photos'), 'photo_count', (('n', int),)),
+    (re.compile(r'(\d+) frames, (-?\d+(?:\.\d+)?) EV span'), 'bracket_span',
+     (('frames', int), ('ev_span', float))),
+    (re.compile(r'(\d+) frames'), 'frame_count', (('frames', int),)),
+)
+
+
+def _group_reason(group):
+    """The group's English ``reason`` as ``{'key', 'params'}`` for the client to translate, or None.
+
+    Keys: ``burst`` {}, ``burst_seconds`` {seconds}, ``burst_minutes`` {minutes}, ``similar_percent``
+    {percent}, ``photo_count`` {n}, ``bracket_span`` {frames, ev_span}, ``frame_count`` {frames}, and
+    ``moment`` {moment} for a scene's narrative-moment label (free text, capped, shown as data).
+    """
+    reason = group.get('reason')
+    if not reason:
+        return None
+    if reason == 'burst':
+        return {'key': 'burst', 'params': {}}
+    for pattern, key, params in _REASON_PATTERNS:
+        match = pattern.fullmatch(reason)
+        if match:
+            return {'key': key, 'params': {name: cast(value) for (name, cast), value in zip(params, match.groups())}}
+    return {'key': 'moment', 'params': {'moment': str(reason)[:GROUP_REASON_TEXT_MAX]}}
+
+
+def _auto_cull_page(plan, cursor):
+    """One page of preview rows from ``cursor`` and the next cursor (None at the end).
+
+    Whole groups only: stops before the group that would pass 200 photos or ~50 KB of
+    serialised rows; the first group of a page is always taken, so an oversized group
+    gets a page of its own.
+    """
+    rows, photos, size = [], 0, 0
+    index = cursor
+    while index < len(plan):
+        entry = plan[index]
+        row = {'number': entry['number'], 'group_id': entry['group']['group_id'],
+               'type': entry['group']['type'], 'keep_paths': entry['keep_paths'],
+               'reject_paths': entry['reject_paths'], 'best_path': entry['keep_paths'][0],
+               'kind': entry['group'].get('sequence_kind') or entry['group']['type'],
+               'reasons': {p['path']: _compute_cull_reason(p, entry['keep'][0]) for p in entry['reject']}}
+        group_reason = _group_reason(entry['group'])
+        if group_reason:
+            row['group_reason'] = group_reason
+        count = len(entry['keep_paths']) + len(entry['reject_paths'])
+        row_size = len(json.dumps(row))
+        if rows and (photos + count > _AUTO_CULL_PAGE_PHOTOS or size + row_size > _AUTO_CULL_PAGE_BYTES):
+            break
+        rows.append(row)
+        photos += count
+        size += row_size
+        index += 1
+    return rows, (index if index < len(plan) else None)
+
+
 @dataclass
 class AutoCullResult:
     """What one auto-cull sweep decided, with the full path lists.
 
-    The wire response caps ``preview`` at ``_AUTO_CULL_PREVIEW_CAP`` groups; a
+    The wire response carries one page of ``preview`` (``cursor`` / ``next_cursor``); a
     headless caller needs every path, so those lists live here instead of on the
     response model. ``collected`` is every path that appeared in any collected
     group (before groups were scoped or skipped), ``decided`` the keep and
@@ -2352,12 +2710,28 @@ class AutoCullResult:
     highlights_added: int = 0
     total_pairs: int = 0
     preview: list = field(default_factory=list)
-    preview_truncated: bool = False
+    next_cursor: Optional[int] = None
+    plan_digest: str = ''
+    ignored_overrides: list = field(default_factory=list)
+    skipped_user_changed: list = field(default_factory=list)
+    skipped_user_changed_count: int = 0
+    skipped_user_changed_groups: int = 0
+    state_guard: Optional[str] = None
+    effective_overrides: Optional[dict] = None
     keep_paths: list = field(default_factory=list)
     reject_paths: list = field(default_factory=list)
     decided: set = field(default_factory=set)
     collected: set = field(default_factory=set)
     spanning_skipped: int = 0
+    scope_dependent_kinds: list = field(default_factory=list)
+    # Every plan entry (the whole plan, not the page ``preview`` carries), numbered 1..n.
+    plan: list = field(default_factory=list)
+
+
+# Group kinds whose membership depends on the date window / candidate pool (similar and scene
+# groups are computed over the pool); burst and panorama members are fetched without it. Trimmed brackets (`trim_brackets`) are
+# windowed like the rest, so run_auto_cull appends 'bracket' when that option is on.
+_SCOPE_DEPENDENT_KINDS = {'all': ['similar'], 'similar': ['similar'], 'scene': ['scene'], 'burst': []}
 
 
 def _confine_groups_to_scope(groups, path_scope):
@@ -2389,7 +2763,9 @@ def _confine_groups_to_scope(groups, path_scope):
 def run_auto_cull(conn, db_path, user_id, *, group_by, strictness, min_keep,
                   trim_brackets=False, highlights_album='', dry_run=True,
                   album_id=None, date_from=None, date_to=None, path_scope=None,
-                  use_cache=True, membership_groups=False):
+                  use_cache=True, membership_groups=False, record=True, cursor=0,
+                  keep_override=None, remove_override=None, expected_digest=None,
+                  state_guard=False):
     """Collect, split and (unless ``dry_run``) apply one auto-cull sweep.
 
     Shared by ``POST /api/culling/auto`` and ``facet.py --auto-cull``. Raises
@@ -2422,6 +2798,9 @@ def run_auto_cull(conn, db_path, user_id, *, group_by, strictness, min_keep,
             redundant_only=True,
         )
     result = AutoCullResult()
+    result.scope_dependent_kinds = list(_SCOPE_DEPENDENT_KINDS.get(group_by, []))
+    if trim_brackets:
+        result.scope_dependent_kinds.append('bracket')
     result.collected = {p['path'] for g in groups for p in g['photos']}
     if membership_groups and group_by != 'all':
         # Burst and similar membership, whatever `group_by` was. Scene groups are
@@ -2441,50 +2820,55 @@ def run_auto_cull(conn, db_path, user_id, *, group_by, strictness, min_keep,
     # earlier group keeps/rejects is never re-decided by a later one.
     groups.sort(key=lambda g: _AUTO_CULL_TYPE_ORDER.get(g['type'], 99))
 
-    highlight_paths = []
-    for group in groups:
-        photos = [p for p in group['photos'] if p['path'] not in result.decided]
-        if len(photos) < 2:
-            continue
-        if group['type'] == 'bracket':
-            keep, reject = _bracket_keep_split(photos)
-        elif group.get('sequence_kind') in _KEEP_WHOLE_KINDS:
-            # Reached through the `all`/`burst` feed, where a sweep is
-            # still burst-grouped and arrives typed 'burst'. Judging it
-            # on `type` alone auto-rejected every frame but the
-            # top-scored one -- destroying the set this feature exists
-            # to protect, and from a granularity the user never chose.
-            keep, reject = photos, []
-        else:
-            keep, reject = _auto_keep_split(
-                photos, strictness, min_keep,
-            )
-        keep_paths = [p['path'] for p in keep]
-        reject_paths = [p['path'] for p in reject]
-        result.decided.update(keep_paths)
-        result.decided.update(reject_paths)
-        result.keep_paths += keep_paths
-        result.reject_paths += reject_paths
+    plan = _plan_auto_cull_groups(groups, result.decided, strictness, min_keep)
+    keep_override = list(dict.fromkeys(keep_override or []))
+    remove_override = list(dict.fromkeys(remove_override or []))
+    effective, result.ignored_overrides = _apply_plan_overrides(
+        plan, keep_override, remove_override)
+    if keep_override or remove_override:
+        result.effective_overrides = {side: len(paths) for side, paths in effective.items()}
+    digest_options = {
+        'group_by': group_by, 'album_id': album_id, 'date_from': date_from,
+        'date_to': date_to, 'strictness': strictness, 'min_keep': min_keep,
+        'trim_brackets': trim_brackets, 'highlights_album': highlights_album,
+    }
+    result.plan_digest = _auto_cull_plan_digest(plan, digest_options, effective)
+    rest = _auto_cull_rest_digest(digest_options, effective)
+    if dry_run:
+        if expected_digest is not None and expected_digest != result.plan_digest:
+            raise AutoCullPlanChanged(
+                'The plan changed since it was previewed; nothing was written. Preview it again.')
+        if state_guard:
+            _remember_plan(conn, user_id, result.plan_digest, plan, rest, result)
+    else:
+        changed, reported = _reconcile_plan(conn, user_id, plan, result, expected_digest, rest, state_guard)
+        if changed:
+            result.skipped_user_changed_groups = _drop_skipped(plan, changed)
+        result.skipped_user_changed_count = len(reported)
+        result.skipped_user_changed = sorted(reported)[:SKIPPED_REPORT_CAP]
+    for number, entry in enumerate(plan, start=1):
+        entry['number'] = number
+        result.decided.update(entry['keep_paths'])
+        result.decided.update(entry['reject_paths'])
+        result.keep_paths += entry['keep_paths']
+        result.reject_paths += entry['reject_paths']
         result.processed += 1
-        result.kept += len(keep_paths)
-        result.rejected += len(reject_paths)
-        if highlights_album and _highlight_quality(keep[0]) >= cfg['highlights_min']:
-            highlight_paths.append(keep_paths[0])
-        if len(result.preview) < _AUTO_CULL_PREVIEW_CAP:
-            result.preview.append({
-                'group_id': group['group_id'],
-                'type': group['type'],
-                'keep_paths': keep_paths,
-                'reject_paths': reject_paths,
-                'best_path': keep_paths[0],
-            })
-        if not dry_run:
+        result.kept += len(entry['keep_paths'])
+        result.rejected += len(entry['reject_paths'])
+    result.plan = plan
+    result.preview, result.next_cursor = _auto_cull_page(plan, cursor)
+    highlight_paths = [
+        entry['keep_paths'][0] for entry in plan
+        if highlights_album and _highlight_quality(entry['keep'][0]) >= cfg['highlights_min']
+    ]
+    if not dry_run:
+        for entry in plan:
             result.total_pairs += _apply_auto_cull_group(
-                conn, group, keep_paths, reject_paths, user_id, vis_sql, vis_params,
+                conn, entry['group'], entry['keep_paths'], entry['reject_paths'],
+                user_id, vis_sql, vis_params, record,
             )
 
     result.highlights_added = len(highlight_paths)
-    result.preview_truncated = result.processed > _AUTO_CULL_PREVIEW_CAP
     if not dry_run:
         if highlight_paths:
             result.highlights_added = _fill_highlights_album(
@@ -2496,6 +2880,40 @@ def run_auto_cull(conn, db_path, user_id, *, group_by, strictness, min_keep,
         _invalidate_culling_groups_cache()
         trigger_auto_retrain(db_path, user_id, result.total_pairs, conn=conn)
     return result
+
+
+def _guard_report(result):
+    """The response keys the state guard and lenient overrides add; absent when there is nothing to say."""
+    report = {}
+    if result.skipped_user_changed_count:
+        report['skipped_user_changed'] = result.skipped_user_changed
+        report['skipped_user_changed_count'] = result.skipped_user_changed_count
+    if result.skipped_user_changed_groups:
+        report['skipped_user_changed_groups'] = result.skipped_user_changed_groups
+    if result.state_guard:
+        report['state_guard'] = result.state_guard
+    if result.effective_overrides is not None:
+        report['effective_overrides'] = result.effective_overrides
+    return report
+
+
+def _resolve_auto_cull_knobs(body):
+    """``(strictness, min_keep)`` for an auto-cull body: explicit value, else the profile's, else the default."""
+    cfg = _get_auto_cull_config()
+    prof = _resolve_cull_profile(body.profile)
+    if body.strictness is not None:
+        strictness = body.strictness
+    elif prof and prof.get('strictness') is not None:
+        strictness = int(prof['strictness'])
+    else:
+        strictness = cfg['default_strictness']
+    if body.min_keep_per_group is not None:
+        min_keep = body.min_keep_per_group
+    elif prof and prof.get('keep_min_per_group') is not None:
+        min_keep = max(1, int(prof['keep_min_per_group']))
+    else:
+        min_keep = 1
+    return strictness, min_keep
 
 
 @router.post("/api/culling/auto", response_model=AutoCullResponse, response_model_exclude_unset=True)
@@ -2522,20 +2940,8 @@ def auto_cull(
     Plain ``def`` so FastAPI runs the CPU-heavy collect/split/apply in a
     threadpool instead of stalling the event loop (like GET /api/burst-groups).
     """
-    cfg = _get_auto_cull_config()
-    prof = _resolve_cull_profile(body.profile)
-    if body.strictness is not None:
-        strictness = body.strictness
-    elif prof and prof.get('strictness') is not None:
-        strictness = int(prof['strictness'])
-    else:
-        strictness = cfg['default_strictness']
-    if body.min_keep_per_group is not None:
-        min_keep = body.min_keep_per_group
-    elif prof and prof.get('keep_min_per_group') is not None:
-        min_keep = max(1, int(prof['keep_min_per_group']))
-    else:
-        min_keep = 1
+    strictness, min_keep = _resolve_auto_cull_knobs(body)
+    date_from, date_to = window_or_400(body.date_from, body.date_to)
     with get_db() as conn:
         try:
             from db import DEFAULT_DB_PATH
@@ -2544,8 +2950,15 @@ def auto_cull(
                 group_by=body.group_by, strictness=strictness, min_keep=min_keep,
                 trim_brackets=body.trim_brackets, highlights_album=body.highlights_album,
                 dry_run=body.dry_run, album_id=body.album_id,
-                date_from=body.date_from, date_to=body.date_to,
+                date_from=date_from, date_to=date_to,
+                record=not (user and user.is_agent_request),
+                cursor=body.cursor, keep_override=body.keep_paths,
+                remove_override=body.remove_paths, expected_digest=body.expected_digest,
+                state_guard=bool(user and user.is_agent_request),
             )
+            rejected_paths = ({'rejected_paths': result.reject_paths}
+                              if not body.dry_run and len(result.reject_paths) <= live_updates.MAX_LIVE_PATHS
+                              else {})
             return {
                 'groups_processed': result.processed,
                 'kept': result.kept,
@@ -2553,14 +2966,100 @@ def auto_cull(
                 'highlights_added': result.highlights_added,
                 'dry_run': body.dry_run,
                 'preview': result.preview,
-                'preview_truncated': result.preview_truncated,
+                'next_cursor': result.next_cursor,
+                'plan_digest': result.plan_digest,
+                'ignored_overrides': result.ignored_overrides,
+                'scope_dependent_kinds': result.scope_dependent_kinds,
+                **rejected_paths,
+                **_guard_report(result),
             }
 
         except HTTPException:
             raise
+        except AutoCullOverrideError as ex:
+            raise HTTPException(status_code=400, detail=str(ex))
+        except AutoCullPlanChanged as ex:
+            raise HTTPException(status_code=412, detail=str(ex))
         except sqlite3.Error:
             conn.rollback()
             logger.exception("Auto-cull failed")
+            raise HTTPException(status_code=500, detail='Internal server error')
+
+
+CULLING_PLAN_MAX_GROUPS = 500
+CULLING_PLAN_MAX_PHOTOS = 5000
+# The confirm route refuses more paths than this per group (``CullingConfirmBody.paths``).
+CULLING_PLAN_MAX_GROUP_PHOTOS = 1000
+
+
+def _plan_as_culling_groups(conn, user_id, plan):
+    """``(groups, truncated, oversize)``: the plan's entries shaped like ``GET /api/culling-groups`` rows.
+
+    Photos are listed keepers first, then rejects, each reject carrying the reason it ranks below the
+    group's best. Caps: ``CULLING_PLAN_MAX_GROUPS`` groups and ``CULLING_PLAN_MAX_PHOTOS`` photos
+    (``truncated``); a group over ``CULLING_PLAN_MAX_GROUP_PHOTOS`` is left out and counted in ``oversize``.
+    """
+    groups, photos_total, truncated, oversize = [], 0, False, 0
+    for entry in plan:
+        count = len(entry['keep']) + len(entry['reject'])
+        if count > CULLING_PLAN_MAX_GROUP_PHOTOS:
+            oversize += 1
+            continue
+        if len(groups) >= CULLING_PLAN_MAX_GROUPS or photos_total + count > CULLING_PLAN_MAX_PHOTOS:
+            truncated = True
+            break
+        best = entry['keep'][0]
+        photos = [{**p, 'cull_reason': _compute_cull_reason(p, best)} for p in entry['keep'] + entry['reject']]
+        keep_paths = list(entry['keep_paths'])
+        groups.append({
+            **entry['group'], 'photos': photos, 'count': len(photos), 'best_path': keep_paths[0],
+            'plan': {'number': entry['number'], 'keep_paths': keep_paths,
+                     'group_reason': _group_reason(entry['group'])},
+        })
+        photos_total += count
+    attach_keeper_probs(conn, groups, user_id)
+    attach_user_marks(conn, groups, user_id)
+    return groups, truncated, oversize
+
+
+@router.post("/api/culling/plan", response_model=CullingPlanResponse, response_model_exclude_unset=True)
+def culling_plan(
+    body: CullingPlanBody,
+    user: CurrentUser = Depends(require_edition),
+):
+    """The assistant's auto-cull plan as culling groups, for the /culling page to show and confirm.
+
+    Recomputes the plan exactly as ``POST /api/culling/auto`` (dry run) would and refuses with 412 when
+    its digest is not ``expected_digest`` when one is given: the tab shows only the plan the assistant
+    described. Without a digest nothing is checked (the page re-planning at a new strictness). Writes nothing. Plain ``def`` so the collect/split runs in a threadpool.
+    """
+    strictness, min_keep = _resolve_auto_cull_knobs(body)
+    date_from, date_to = window_or_400(body.date_from, body.date_to)
+    user_id = user.user_id if user else None
+    with get_db() as conn:
+        try:
+            from db import DEFAULT_DB_PATH
+            result = run_auto_cull(
+                conn, DEFAULT_DB_PATH, user_id,
+                group_by=body.group_by, strictness=strictness, min_keep=min_keep,
+                trim_brackets=body.trim_brackets, highlights_album=body.highlights_album,
+                dry_run=True, album_id=body.album_id, date_from=date_from, date_to=date_to,
+                keep_override=body.keep_paths, remove_override=body.remove_paths,
+                expected_digest=body.expected_digest,
+            )
+            groups, truncated, oversize = _plan_as_culling_groups(conn, user_id, result.plan)
+            return {
+                'groups': groups, 'total_groups': len(result.plan), 'plan_digest': result.plan_digest,
+                'truncated': truncated, 'oversize_groups': oversize,
+            }
+        except HTTPException:
+            raise
+        except AutoCullOverrideError as ex:
+            raise HTTPException(status_code=400, detail=str(ex))
+        except AutoCullPlanChanged as ex:
+            raise HTTPException(status_code=412, detail=str(ex))
+        except sqlite3.Error:
+            logger.exception("Culling plan failed")
             raise HTTPException(status_code=500, detail='Internal server error')
 
 

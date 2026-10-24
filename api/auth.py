@@ -15,7 +15,7 @@ import re
 import threading
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, cast
 from urllib.parse import urlsplit
 
 import jwt
@@ -285,19 +285,17 @@ def _same_origin_browser_metadata(request: Request, target_origin) -> bool:
     return True
 
 
-def _trusted_local_editing(request: Request) -> bool:
-    """Whether ``viewer.trusted_local_editing`` grants this request edition.
+def request_is_local(request: Request) -> bool:
+    """The request came from a browser or tool on the machine running Facet.
 
-    Derived from the request alone, never from a token claim. Every check
-    fails closed. The loopback peer is the real boundary: Host, Origin,
-    Referer and Sec-Fetch-Site are client-controlled and only refuse, and an
-    unmarked reverse proxy on the same host is indistinguishable from the
-    user's browser -- which is why the option must never run behind one.
+    The boundary only, independent of any opt-in: no proxy header, a loopback TCP peer,
+    a loopback ``Host`` over http(s), and same-origin browser metadata. Every check fails
+    closed. The loopback peer is the real boundary: Host, Origin, Referer and
+    Sec-Fetch-Site are client-controlled and only refuse, and an unmarked reverse proxy
+    on the same host is indistinguishable from the user's browser.
     """
-    if not _trusted_local_editing_enabled() or _is_proxied(request):
-        return False
     try:
-        if not _is_loopback_peer(request):
+        if _is_proxied(request) or not _is_loopback_peer(request):
             return False
         target_origin = _local_target_origin(request)
         return target_origin is not None and _same_origin_browser_metadata(request, target_origin)
@@ -305,17 +303,84 @@ def _trusted_local_editing(request: Request) -> bool:
         return False
 
 
+def _trusted_local_editing(request: Request) -> bool:
+    """Whether ``viewer.trusted_local_editing`` grants this request edition.
+
+    Derived from the request alone, never from a token claim: the opt-in is on, the
+    install has no passwords, and the request passes :func:`request_is_local`. That is
+    why the option must never run behind a reverse proxy.
+    """
+    return _trusted_local_editing_enabled() and request_is_local(request)
+
+
+class _HttpView:
+    """The three request attributes ``_trusted_local_editing`` reads, with a WebSocket's scheme mapped."""
+
+    __slots__ = ('headers', 'client', 'url')
+
+    def __init__(self, connection):
+        self.headers = connection.headers
+        self.client = connection.client
+        self.url = connection.url.replace(scheme={'ws': 'http', 'wss': 'https'}.get(connection.url.scheme, connection.url.scheme))
+
+
+def trusted_local_for(request) -> bool:
+    """``_trusted_local_editing`` for anything that carries the request's headers, peer and URL.
+
+    Accepts a ``Request``, a ``WebSocket`` or an ASGI scope's ``Request``. A WebSocket handshake
+    addresses ``ws://`` or ``wss://``, which ``_local_target_origin`` would refuse outright, so the
+    scheme is mapped to its HTTP twin first. Fails closed on anything it cannot read.
+    """
+    try:
+        return _trusted_local_editing(cast(Request, _HttpView(request)))
+    except (AttributeError, TypeError, ValueError):
+        return False
+
+
 class CurrentUser:
     """Represents the current authenticated user."""
-    __slots__ = ('user_id', 'role', 'display_name', 'edition_authenticated', 'trusted_local_editing')
+    __slots__ = ('user_id', 'role', 'display_name', 'edition_authenticated', 'agent',
+                 'trusted_local_editing')
 
     def __init__(self, user_id=None, role='user', display_name='',
-                 edition_authenticated=False, trusted_local_editing=False):
+                 edition_authenticated=False, agent=False, trusted_local_editing=False):
         self.user_id = user_id
         self.role = role
         self.display_name = display_name
         self.edition_authenticated = edition_authenticated
+        self.agent = agent
         self.trusted_local_editing = trusted_local_editing
+
+    @classmethod
+    def from_payload(cls, payload, trusted_local_editing=False):
+        """The user a decoded access-token payload describes.
+
+        A REQUEST-derived trust (``trusted_local_editing``) is never applied to an agent request (the
+        ``mcp`` claim): its level is its grant. The one local path for an agent is the server-signed
+        ``mcp_local`` claim, which ``ResolvedGrant.jwt_claims`` writes only for a grant whose real /mcp
+        request passed the boundary; it still needs the opt-in to be on and the install passwordless NOW.
+        """
+        agent = bool(payload.get('mcp'))
+        if agent:
+            trusted_local_editing = (payload.get('mcp_local') is True and payload.get('sub') is None
+                                     and payload.get('edition') is True and _trusted_local_editing_enabled())
+        return cls(
+            user_id=payload.get('sub'),
+            role=payload.get('role', 'user'),
+            display_name=payload.get('display_name', ''),
+            edition_authenticated=payload.get('edition', False),
+            agent=agent,
+            trusted_local_editing=trusted_local_editing,
+        )
+
+    @property
+    def is_agent_request(self):
+        """True when the request carries the agent layer's internal JWT (the ``mcp`` claim).
+
+        Routes that LEARN from a user's decisions (pairwise comparisons, the auto-retrain
+        counter) skip recording for such a request: an assistant's mass edit is not the user's taste.
+        """
+        return self.agent
 
     @property
     def is_authenticated(self):
@@ -323,9 +388,9 @@ class CurrentUser:
 
     @property
     def is_edition(self):
-        # viewer.trusted_local_editing: set per request by get_optional_user,
-        # and only ever true on a single-user install with no passwords at all
-        # (see _trusted_local_editing_enabled), so it overrides nothing below.
+        # viewer.trusted_local_editing: derived per request (get_optional_user, or the signed
+        # ``mcp_local`` claim for an agent), and only ever true on a single-user install with no
+        # passwords at all (see _trusted_local_editing_enabled), so it overrides nothing below.
         if self.trusted_local_editing:
             return True
         if is_multi_user_enabled():
@@ -375,13 +440,7 @@ async def get_optional_user(
     if payload.get('role') == SHARE_CLIENT_ROLE or payload.get('purpose'):
         return None
 
-    return CurrentUser(
-        user_id=payload.get('sub'),
-        role=payload.get('role', 'user'),
-        display_name=payload.get('display_name', ''),
-        edition_authenticated=payload.get('edition', False),
-        trusted_local_editing=_trusted_local_editing(request),
-    )
+    return CurrentUser.from_payload(payload, trusted_local_editing=_trusted_local_editing(request))
 
 
 async def require_authenticated(
@@ -393,6 +452,25 @@ async def require_authenticated(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required",
             headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
+
+
+async def require_human_session(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
+    user: CurrentUser = Depends(require_authenticated),
+) -> CurrentUser:
+    """``require_authenticated`` that refuses an agent's internal credential.
+
+    The 60-second JWTs the MCP layer mints for its own in-process calls carry an
+    ``mcp`` claim. The routes that mint, list and revoke agent tokens use this so an
+    agent can never create or widen a token of its own.
+    """
+    payload = decode_access_token(credentials.credentials) if credentials else None
+    if payload is not None and payload.get('mcp'):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Agent credentials cannot manage agent tokens",
         )
     return user
 
@@ -444,6 +522,34 @@ async def require_superadmin(
     return user
 
 
+def scan_feature_enabled(trusted_local, viewer_config):
+    """The one scan-feature rule: ``features.show_scan_button``, waived for a trusted-local caller.
+
+    ``trusted_local`` is the ``viewer.trusted_local_editing`` boundary (a human browser request, or an
+    agent whose /mcp request passed it). ``viewer_config`` is the caller's own viewer config dict.
+    """
+    return bool(trusted_local) or bool(viewer_config.get('features', {}).get('show_scan_button', False))
+
+
+def scan_access_refusal(multi_user, is_superadmin, is_edition, open_install, trusted_local=False):
+    """The ``(status, detail)`` that refuses a scan trigger, or None when it is allowed.
+
+    One pure rule shared by ``require_scan_access`` and the agent's ``start_scan`` /
+    ``scan_status`` tools, so the tool and the route cannot disagree. Multi-user mode:
+    superadmin only. Single-user mode: edition AND a locked install (an open install is refused
+    even for a caller presenting an edition claim, because the route starts an OS subprocess),
+    unless ``trusted_local`` -- the caller passed the ``viewer.trusted_local_editing`` boundary (a
+    human browser request, or an agent carrying the signed ``mcp_local`` claim).
+    """
+    if multi_user:
+        return None if is_superadmin else (status.HTTP_403_FORBIDDEN, "Superadmin access required")
+    if open_install and not trusted_local:
+        return status.HTTP_403_FORBIDDEN, "Set viewer.edition_password to enable the scan trigger"
+    if not is_edition:
+        return status.HTTP_403_FORBIDDEN, "Edition access required"
+    return None
+
+
 async def require_scan_access(
     user: CurrentUser = Depends(require_authenticated),
 ) -> CurrentUser:
@@ -453,20 +559,15 @@ async def require_scan_access(
     access AND a locked install — an open install (empty
     viewer.edition_password) is refused even for a caller presenting an
     edition claim, with the actionable detail below, because this route
-    starts an OS subprocess. Raises 403 in both refusal cases; never 401
+    starts an OS subprocess -- unless the caller passed the ``viewer.trusted_local_editing``
+    boundary (``user.trusted_local_editing``). Raises 403 in both refusal cases; never 401
     (require_authenticated already covers "no session").
     """
-    if is_multi_user_enabled():
-        if not user.is_superadmin:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superadmin access required")
-        return user
-    if _is_open_install(EDITION_PASSWORD_KEY):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Set viewer.edition_password to enable the scan trigger",
-        )
-    if not user.is_edition:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Edition access required")
+    refusal = scan_access_refusal(
+        is_multi_user_enabled(), user.is_superadmin, user.is_edition, _is_open_install(EDITION_PASSWORD_KEY),
+        user.trusted_local_editing)
+    if refusal is not None:
+        raise HTTPException(status_code=refusal[0], detail=refusal[1])
     return user
 
 

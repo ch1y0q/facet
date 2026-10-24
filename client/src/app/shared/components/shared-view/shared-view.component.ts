@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, OnInit, effect, viewChild, DestroyRef, ElementRef, afterNextRender } from '@angular/core';
+import { Component, inject, signal, computed, OnInit, effect, viewChild, DestroyRef, ElementRef, afterNextRender, ChangeDetectionStrategy } from '@angular/core';
 import { NgTemplateOutlet, NgClass } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
@@ -108,6 +108,7 @@ const HIDE_TOGGLE_KEYS = ['hide_blinks', 'hide_bursts', 'hide_duplicates'] as co
     TranslatePipe, FilterDisplayPipe, SortGroupKeyPipe, PluralKeyPipe,
     PhotoCardComponent, SlideshowComponent, InfiniteScrollDirective,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     @if (loading()) {
       <div class="flex items-center justify-center h-64">

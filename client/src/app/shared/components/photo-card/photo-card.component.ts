@@ -1,4 +1,4 @@
-import { Component, computed, effect, input, output, signal, untracked, viewChildren } from '@angular/core';
+import { Component, computed, effect, input, output, signal, untracked, viewChildren, ChangeDetectionStrategy } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
@@ -65,30 +65,21 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
     // card it lands on. That call asks for `block: 'nearest'`, which is the
     // least scrolling that brings an edge of the card to an edge of the
     // scrollport and which takes no account of anything drawn over it -- and
-    // the gallery fixes an action bar across the bottom of the viewport for as
-    // long as anything is selected, which is exactly when the arrow keys are in
-    // use. Arrowing downward therefore parked the current card underneath it,
-    // star-rating badge and all, that badge sitting in the bottom-left corner.
-    // The clearance is sized for the tallest case the bar actually reaches.
-    // From lg up the scrollport runs to the bottom of the viewport, so the bar
-    // is what the card has to clear, and its height is not one number: given
-    // enough width the controls sit on a single row of 61px -- 1px of border,
-    // 36px of button at this theme's -1 density, and 12px of py-3 above and
-    // below it -- but from lg to around 1300px they wrap to a second row and it
-    // measures 93px. Adding the 6px the marker's own outline occupies outside
-    // the card puts the requirement at 99px, which is why this is 7rem: 5rem
-    // left 19px of the outline under the bar at those widths, and 6rem still
-    // falls 3px short. Below lg the shell already holds the scrollport 56px
-    // clear of the viewport bottom for its own nav, so the same 7rem merely
-    // over-scrolls a little, which shows more of the next row and costs
-    // nothing. One value rather than a binding on
-    // whether the bar is up: scroll-margin is inert until something calls
-    // scrollIntoView, and the only caller runs synchronously inside the keydown
-    // handler, ahead of the change detection that would have to apply a
-    // conditional class. The top asks for nothing but that same outline kept
-    // off the scrollport's edge, since nothing in the shell is fixed or sticky
-    // above the grid.
-    class: 'scroll-mt-2 scroll-mb-28 reduce-transparency:opacity-100',
+    // the gallery floats a selection card over the bottom-left of the grid for
+    // as long as anything is selected, which is exactly when the arrow keys are
+    // in use. Arrowing downward therefore parked the current card underneath
+    // it, star-rating badge and all, that badge sitting in the bottom-left
+    // corner. The clearance is sized for the tallest case the card reaches:
+    // three wrapped rows of 36px icon buttons plus the view-scope offer row, its
+    // gaps, padding, border and 16px bottom margin (about 182px), plus the 6px
+    // the marker's own outline occupies outside the card. That is why this is
+    // 12rem (192px). One value rather than a binding on whether the card is up:
+    // scroll-margin is inert until something calls scrollIntoView, and the only
+    // caller runs synchronously inside the keydown handler, ahead of the change
+    // detection that would have to apply a conditional class. The top asks for
+    // nothing but that same outline kept off the scrollport's edge, since
+    // nothing in the shell is fixed or sticky above the grid.
+    class: 'scroll-mt-2 scroll-mb-48 reduce-transparency:opacity-100',
     // The current-photo marker, and the dimming of every card that is not it.
     // Both sit on the host rather than on the tile below, because the host's
     // own `content-visibility: auto` brings paint containment with it, and that
@@ -130,6 +121,7 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
     SortScorePipe,
     SortPersonsPipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <div
       role="button"
@@ -152,7 +144,8 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
     >
       <!-- Image wrapper with hover overlay scoped to image only -->
       <div class="group/img relative"
-           [class.md:h-full]="hideDetails()">
+           [class.md:h-full]="hideDetails()"
+           [class.h-full]="mosaicMode()">
         <img
           [src]="photo().path | thumbnailUrl:thumbSize()"
           [alt]="photo().caption || photo().filename"
@@ -161,6 +154,8 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
           class="w-full bg-[var(--mat-sys-surface-container)] transition-opacity duration-500"
           [class.md:h-full]="hideDetails()"
           [class.md:object-cover]="hideDetails()"
+          [class.h-full]="mosaicMode()"
+          [class.object-cover]="mosaicMode()"
           [class.grayscale]="isEditionMode() && photo().is_rejected"
           [class.opacity-60]="isEditionMode() && photo().is_rejected"
           [style.opacity]="imageLoaded() ? (isEditionMode() && photo().is_rejected ? '0.6' : '1') : '0'"
@@ -174,7 +169,7 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
              6px off before, which read as the icons jumping every time the
              pointer entered or left the tile. -->
         @if (showsFavoriteBadge()) {
-          <div class="absolute bottom-1 right-1.5 w-7 h-7 z-20 pointer-events-none inline-flex items-center justify-center transition-opacity md:group-hover/img:opacity-0">
+          <div class="absolute right-1.5 w-7 h-7 z-20 pointer-events-none inline-flex items-center justify-center transition-opacity md:group-hover/img:opacity-0 bottom-1">
             <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-red-400 drop-shadow-md">favorite</mat-icon>
           </div>
         }
@@ -183,7 +178,7 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
              should not take a hover to see it. Carries the same count bubble the
              control does. -->
         @if (badges().star_rating && isEditionMode() && photo().star_rating) {
-          <div class="absolute bottom-1 left-1.5 w-7 h-7 z-20 pointer-events-none inline-flex items-center justify-center transition-opacity md:group-hover/img:opacity-0"
+          <div class="absolute left-1.5 w-7 h-7 z-20 pointer-events-none inline-flex items-center justify-center transition-opacity md:group-hover/img:opacity-0 bottom-1"
                [attr.aria-label]="'rating.rating_badge' | translate:{ stars: photo().star_rating ?? 0 }">
             <mat-icon class="!text-lg !w-[18px] !h-[18px] !leading-[18px] !text-yellow-400 drop-shadow-md"
                       aria-hidden="true">star</mat-icon>
@@ -206,7 +201,7 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
              and in edition mode it also steps clear on hover, since that is
              when the bar's own heart/reject buttons occupy those slots. -->
         @if (badges().sequence_kind && collapsedSetKind(); as kind) {
-          <div [class]="'absolute bottom-1 w-7 h-7 z-30 inline-flex items-center justify-center ' + setKindBadgePosition()"
+          <div [class]="'absolute w-7 h-7 z-30 inline-flex items-center justify-center bottom-1 ' + setKindBadgePosition()"
                [matTooltip]="kind | photoSetKindBestLabel | translate"
                [attr.aria-label]="kind | photoSetKindBestLabel | translate">
             <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-white drop-shadow-md"
@@ -220,7 +215,7 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
              Unconditional, unlike the badge above -- a correction is not
              collapsed behind anything, so a hide toggle says nothing about it. -->
         @if (badges().sequence_override_pending && photo().sequence_override_pending && photo().sequence_override; as pending) {
-          <div class="absolute bottom-1 left-[4.5rem] w-7 h-7 z-30 inline-flex items-center justify-center"
+          <div class="absolute left-[4.5rem] w-7 h-7 z-30 inline-flex items-center justify-center bottom-1"
                [matTooltip]="(pending | sequenceOverrideBadgeKey) | translate"
                [attr.aria-label]="(pending | sequenceOverrideBadgeKey) | translate">
             <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-amber-300 drop-shadow-md"
@@ -235,7 +230,7 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
              the only signal -- which conveys nothing to a screen reader and
              nothing at all on an already-monochrome photo. -->
         @if (showsRejectedBadge()) {
-          <div class="absolute bottom-1 right-9 w-7 h-7 z-20 pointer-events-none inline-flex items-center justify-center transition-opacity md:group-hover/img:opacity-0"
+          <div class="absolute right-9 w-7 h-7 z-20 pointer-events-none inline-flex items-center justify-center transition-opacity md:group-hover/img:opacity-0 bottom-1"
                [attr.aria-label]="'rating.rejected_badge' | translate">
             <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-red-400 drop-shadow-md" aria-hidden="true">thumb_down</mat-icon>
           </div>
@@ -264,10 +259,10 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
         }
 
         <!-- Hover overlay (image area only, md+ only, disabled when tooltip hidden) -->
-        <div class="absolute inset-0 opacity-0 transition-opacity flex flex-col justify-between pointer-events-none z-10 md:group-hover/img:opacity-100 md:group-hover/img:pointer-events-auto">
+        <div class="absolute inset-x-0 top-0 bottom-0 opacity-0 transition-opacity flex flex-col justify-between pointer-events-none z-10 md:group-hover/img:opacity-100 md:group-hover/img:pointer-events-auto">
           <!-- Top row: similar + person_add -->
           <div class="flex justify-end items-center gap-1 p-1.5">
-            @if (config()?.features?.show_similar_button) {
+            @if (filterLinks() && config()?.features?.show_similar_button) {
               <button
                 class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
                 [matMenuTriggerFor]="similarMenu"
@@ -407,14 +402,20 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
           @if (photo().tags_list.length) {
             <div class="flex gap-0.5 flex-wrap mt-0.5">
               @for (tag of photo().tags_list; track tag) {
-                <span class="px-1.5 py-0.5 bg-[var(--facet-accent-badge)] text-[var(--facet-accent-text)] rounded text-[11px] cursor-pointer hover:bg-[var(--facet-accent-dim)] transition-colors"
-                      role="button"
-                      tabindex="0"
-                      (click)="tagClicked.emit(tag); $event.stopPropagation()"
-                      (keydown.enter)="tagClicked.emit(tag); $event.stopPropagation()"
-                      (keydown.space)="tagClicked.emit(tag); $event.preventDefault(); $event.stopPropagation()">
-                  {{ tag }}
-                </span>
+                @if (filterLinks()) {
+                  <span class="px-1.5 py-0.5 bg-[var(--facet-accent-badge)] text-[var(--facet-accent-text)] rounded text-[11px] cursor-pointer hover:bg-[var(--facet-accent-dim)] transition-colors"
+                        role="button"
+                        tabindex="0"
+                        (click)="tagClicked.emit(tag); $event.stopPropagation()"
+                        (keydown.enter)="tagClicked.emit(tag); $event.stopPropagation()"
+                        (keydown.space)="tagClicked.emit(tag); $event.preventDefault(); $event.stopPropagation()">
+                    {{ tag }}
+                  </span>
+                } @else {
+                  <span class="px-1.5 py-0.5 bg-[var(--facet-accent-badge)] text-[var(--facet-accent-text)] rounded text-[11px]">
+                    {{ tag }}
+                  </span>
+                }
               }
             </div>
           }
@@ -588,6 +589,8 @@ export class PhotoCardComponent {
    *  false until the grid's cursor first lands somewhere, which is what keeps
    *  a gallery nobody has navigated yet from rendering every tile faded. */
   readonly gridHasActiveCard = input(false);
+  /** False hides every control that replaces the list with a new filter: tag chips render as plain text and Find similar is not offered. */
+  readonly filterLinks = input(true);
   readonly hideDetails = input(false);
   readonly mosaicMode = input(false);
   readonly currentSort = input('aggregate');

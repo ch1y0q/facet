@@ -1,4 +1,4 @@
-import { Component, inject, signal, output } from '@angular/core';
+import { Component, inject, signal, output, ChangeDetectionStrategy } from '@angular/core';
 import { toObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter, firstValueFrom } from 'rxjs';
 import { FormsModule } from '@angular/forms';
@@ -36,6 +36,7 @@ interface Snapshot {
     MatInputModule,
     TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <p class="text-sm text-gray-400 mt-4 mb-4">{{ I18N.comparison.snapshots_description | translate }}</p>
 

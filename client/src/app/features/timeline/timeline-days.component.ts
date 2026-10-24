@@ -1,4 +1,4 @@
-import { Component, inject, signal, input, effect, output } from '@angular/core';
+import { Component, inject, signal, input, effect, output, ChangeDetectionStrategy } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { firstValueFrom } from 'rxjs';
@@ -25,6 +25,7 @@ interface CalendarCell {
   selector: 'app-timeline-days',
   standalone: true,
   imports: [MatIconModule, MatProgressSpinnerModule, ThumbnailUrlPipe, TranslatePipe],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     @if (loading()) {
       <div class="flex justify-center py-16">

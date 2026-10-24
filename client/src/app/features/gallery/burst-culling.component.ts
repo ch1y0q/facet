@@ -1,17 +1,20 @@
-import { Component, inject, signal, computed, effect, untracked, viewChild, ElementRef, OnDestroy, WritableSignal, HostListener, TemplateRef } from '@angular/core';
+import { SEQUENCE_KINDS_KEPT_WHOLE } from '../../shared/pipes/sequence-kind.pipe';
+import { Component, DestroyRef, inject, signal, linkedSignal, computed, effect, untracked, viewChild, ElementRef, OnDestroy, HostListener, TemplateRef, ChangeDetectionStrategy } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
+import { ViewActionRegistry } from '../../core/agent/view-action-registry.service';
+import { UiToolError } from '../../core/agent/ui-tool.types';
 import { HttpErrorResponse } from '@angular/common/http';
 import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { DecimalPipe, NgClass, NgTemplateOutlet, PercentPipe } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatMenuModule } from '@angular/material/menu';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatSliderModule } from '@angular/material/slider';
 import { ApiService } from '../../core/services/api.service';
-import type { ComparisonStats } from '../../core/api/types';
 import { AuthService } from '../../core/services/auth.service';
 import { AlbumService, Album } from '../../core/services/album.service';
 import { GalleryStore } from './gallery.store';
@@ -24,7 +27,9 @@ import { I18nService } from '../../core/services/i18n.service';
 import { PageHelpService } from '../../core/services/page-help.service';
 import { HeaderSlotService } from '../../core/services/header-slot.service';
 import { InfiniteScrollDirective } from '../../shared/directives/infinite-scroll.directive';
-import { isTypingContext } from '../../shared/utils/keyboard';
+import { isControlActivation, isTypingContext } from '../../shared/utils/keyboard';
+import { toIsoDateString } from '../../shared/utils/date-format';
+import { CULL_DATE_PRESETS, presetRange, type CullDatePresetId } from './culling-date-range';
 import { isBracketLadderRejection } from '../../shared/utils/sequence-ladder';
 import { createLoupeState } from '../../shared/utils/loupe-state';
 import { useCoarsePointerSignal } from '../../shared/utils/media-query';
@@ -34,9 +39,20 @@ import { PanoramaSettingsService } from '../comparison/panorama-settings.service
 import { SequenceOverrideService, SequenceKind } from '../../core/services/sequence-override.service';
 import { UndoService } from '../../core/services/undo.service';
 import { SequenceKindLabelPipe, SUPPRESSED_OVERRIDE } from '../../shared/pipes/sequence-kind.pipe';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { AssistantChangesService } from '../../core/agent/assistant-changes.service';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
+import { PageContextService } from '../../core/agent/page-context.service';
+import { AssistantCullPlanService, type CullPlanPin } from '../../core/agent/assistant-cull-plan.service';
 import { firstValueFrom } from 'rxjs';
+import {
+  CullingStore, RunGeneration, GroupBy, GROUP_BY_VALUES,
+  CULL_GROUP_BY_KEY, CULL_SORT_KEY, CULL_SORT_DIR_KEY, updateMapSignal,
+} from './culling.store';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
 import {
+  CullGroupKeyPipe, CullPlanGroupReasonPipe, PlanDiffersPipe, PlanRejectCountPipe,
+  PlanSuggestionPipe, PlanAcceptedPipe, PlanGroupNotePipe, CullDateRangePipe, ScopeDatePipe,
   IsKeptPipe, IsDecidedPipe, IsConfirmedPipe, IsPassingPipe, PassCountdownPipe,
   CullReasonPipe, FacesForPathPipe, FacePoorExpressionPipe, FaceRingClassPipe,
   FaceDimmedPipe, WeightRemainingPipe, CullGroupIconPipe, CullGroupLabelPipe,
@@ -51,79 +67,13 @@ import {
   FrameSize, GridMode, KeySubject,
 } from './burst-culling.pipes';
 
-interface CullingGroupsResponse {
-  groups: CullingGroup[];
-  total_groups: number;
-  page: number;
-  per_page: number;
-  total_pages: number;
-}
-
-/** Response of POST /api/culling/auto (dry-run preview and apply share the shape). */
-interface AutoCullResponse {
-  groups_processed: number;
-  kept: number;
-  rejected: number;
-  highlights_added: number;
-  dry_run: boolean;
-  preview: { group_id: number; type: string; keep_paths: string[]; reject_paths: string[]; best_path: string }[];
-  preview_truncated: boolean;
-}
-
-/** A genre culling preset (GET /api/culling/profiles) bundling the culling knobs. */
-interface CullProfile {
-  id: string;
-  label_key: string;
-  strictness: number | null;
-  eyes_closed_max: number | null;
-  poor_expression_min: number | null;
-  keep_min_per_group: number;
-  similarity_threshold: number | null;
-}
-interface CullProfilesResponse { profiles: CullProfile[]; default: string; }
-
-/** Request body of POST /culling/auto. The dry run's body is kept verbatim so
- *  the apply re-sends the very parameters the displayed counts came from. */
-interface AutoCullRequest {
-  group_by: GroupBy;
-  strictness: number;
-  dry_run: boolean;
-  highlights_album: string;
-  trim_brackets: boolean;
-  profile?: string;
-  album_id?: number;
-  date_from?: string;
-  date_to?: string;
-}
-
-/** How an auto-cull dry run ended, for the callers that reconcile their own
- *  state against the snapshot it publishes. `superseded` covers both a newer
- *  run and the destructive apply owning the dialog: in neither case is the
- *  outcome this caller's to act on, and reading it as its own failure reverts
- *  UI state to a snapshot that is no longer the one on screen. */
-type AutoCullRunOutcome = 'landed' | 'superseded' | 'failed';
-
-/** Response of GET /api/culling/suggest_profile: the preset the scope's own
- *  content argues for, and the confidence it named it with (surfaced in the
- *  Suggested badge's tooltip). The endpoint also returns `evidence` -- the
- *  per-genre counts `confidence` was computed from -- which nothing here
- *  reads, so it is left off this type rather than declared and ignored. */
-interface ProfileSuggestion {
-  profile: string | null;
-  confidence: number;
-}
-
 // Per-user culling toolbar preferences, persisted so the page reopens the way
 // the user left it. The URL query param (deep links / "Cull this scene") still
 // overrides the stored granularity.
-const CULL_GROUP_BY_KEY = 'facet_culling_group_by';
-const CULL_SORT_KEY = 'facet_culling_sort';
-const CULL_SORT_DIR_KEY = 'facet_culling_sort_direction';
 const CULL_CATEGORY_KEY = 'facet_culling_category';
 const CULL_FACE_EYES_KEY = 'facet_culling_face_eyes_min';
 const CULL_FACE_SMILE_KEY = 'facet_culling_face_smile_min';
 const CULL_FACE_SIZE_KEY = 'facet_culling_face_size';
-const CULL_PROFILE_KEY = 'facet_culling_profile';
 const CULL_LEGEND_KEY = 'facet_culling_legend';
 const CULL_DARKROOM_LOUPE_KEY = 'facet_culling_darkroom_loupe';
 const CULL_SWIPE_HINT_KEY = 'facet_culling_swipe_hint';
@@ -150,14 +100,6 @@ function readStoredFaceSize(): number {
     ? v
     : FACE_SIZE_DEFAULT_PX;
 }
-const GROUP_BY_VALUES = ['all', 'burst', 'similar', 'scene', 'bracket',
-                         'panorama', 'hdr_panorama'] as const;
-type GroupBy = typeof GROUP_BY_VALUES[number];
-// Sets whose frames were shot to be combined: kept whole by default, and
-// never a source of comparison pairs.
-const KEEP_WHOLE_KINDS: readonly string[] = ['bracket', 'panorama', 'hdr_panorama'];
-const SORT_VALUES = ['easiest', 'redundant', 'best', 'recent', 'needs_comparisons', 'chronological'];
-
 /** Edge of the render the darkroom's fit view asks `/thumbnail` for. The pane
  *  shows the stored 640 px thumbnail first and swaps to this once it has
  *  loaded; peaking measures a PEAKING_FIT_EDGE downscale of the same render. */
@@ -177,22 +119,6 @@ const NO_PEAKING_OVERLAYS = new Map<string, string>();
  *  a data URL per frame it ever showed. */
 const PEAKING_CACHE_MAX = 8;
 
-function readStoredGroupBy(): GroupBy {
-  const v = localStorage.getItem(CULL_GROUP_BY_KEY);
-  return (GROUP_BY_VALUES as readonly string[]).includes(v ?? '') ? v as GroupBy : 'all';
-}
-
-function readStoredSort(): string {
-  const v = localStorage.getItem(CULL_SORT_KEY);
-  return v && SORT_VALUES.includes(v) ? v : 'easiest';
-}
-
-/** Stored sort direction. '' means "whatever the active mode naturally does". */
-function readStoredSortDirection(): '' | 'asc' | 'desc' {
-  const v = localStorage.getItem(CULL_SORT_DIR_KEY);
-  return v === 'asc' || v === 'desc' ? v : '';
-}
-
 /** Lightweight scene shape for the album→scene scope cascade (GET /scenes?summary=true). */
 interface SceneSummary {
   scene_id: number;
@@ -207,26 +133,6 @@ interface ShortcutRow {
   labelKey: string;
 }
 
-/** Monotonic guard for the two passes here that can be superseded while they
- *  await — darkroom focus peaking and the auto-cull dry run. A pass takes a
- *  ticket with `next()` and drops its result unless `isCurrent(ticket)` still
- *  holds; `cancel()` invalidates whatever is in flight without starting one. */
-class RunGeneration {
-  private value = 0;
-
-  next(): number {
-    return ++this.value;
-  }
-
-  isCurrent(run: number): boolean {
-    return run === this.value;
-  }
-
-  cancel(): void {
-    this.value++;
-  }
-}
-
 @Component({
   selector: 'app-burst-culling',
   imports: [
@@ -236,6 +142,7 @@ class RunGeneration {
     MatIconModule,
     MatButtonModule,
     MatMenuModule,
+    MatDatepickerModule,
     MatTooltipModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
@@ -250,6 +157,15 @@ class RunGeneration {
     FaceThumbnailUrlPipe,
     ImageUrlPipe,
     SyncedZoomComponent,
+    CullGroupKeyPipe,
+    CullDateRangePipe,
+    ScopeDatePipe,
+    CullPlanGroupReasonPipe,
+    PlanDiffersPipe,
+    PlanRejectCountPipe,
+    PlanSuggestionPipe,
+    PlanAcceptedPipe,
+    PlanGroupNotePipe,
     IsKeptPipe,
     IsDecidedPipe,
     IsConfirmedPipe,
@@ -284,7 +200,7 @@ class RunGeneration {
     CdkTrapFocus,
   ],
   template: `
-    <div class="px-2 pt-2 md:px-8 md:pt-3 mx-auto w-full lg:max-w-[96%] h-full flex flex-col">
+    <div class="px-2 pt-2 md:px-3 md:pt-3 w-full h-full flex flex-col">
       <!-- Header (sticky: only the group list below scrolls) -->
       <!-- The toolbar projects into the global header on lg+ (HeaderSlotService) and
            renders as a fixed bottom bar on small screens (same #cullToolbar template).
@@ -301,14 +217,10 @@ class RunGeneration {
           <!-- Secondary controls scroll; the actions after this row stay pinned, so no
                viewport can push the primary action out of reach or paint it over the
                shell controls the toolbar is projected next to.
-               The fade is unconditional: this row overflows at desktop widths too
-               (a 1366px window clipped the last control with only a hairline native
-               scrollbar to say so), and whether it overflows right now is not
-               something CSS can ask -- the toolbar renders twice (inline and
-               projected into the shell header), so no single element measurement
-               would answer for both. -->
-          <div class="flex flex-nowrap items-center gap-3 md:gap-4 min-w-0 flex-1 overflow-x-auto
-                      [mask-image:linear-gradient(to_right,black_calc(100%_-_1.5rem),transparent)]">
+               py-1.5 / pr-1.5 leave room for the icon buttons' 48px touch targets: they
+               overhang the 36px buttons, and in a scrolling row that overhang alone
+               produced a scrollbar on a header with plenty of free width. -->
+          <div class="flex flex-nowrap items-center gap-3 md:gap-4 min-w-0 flex-1 overflow-x-auto py-1.5 pr-1.5">
             @if (scoped()) {
               <button mat-icon-button (click)="exitScope()"
                       [matTooltip]="I18N.culling.exit_scene | translate"
@@ -318,11 +230,11 @@ class RunGeneration {
             }
             <!-- Filters ordered by impact: scope → granularity → sort → category →
                  thresholds. The actions live in the pinned cluster below. -->
-            @if (albums().length > 0) {
+            @if (cull.albums().length > 0) {
               <button mat-icon-button [matMenuTriggerFor]="scopeMenu"
-                      [class.!text-[var(--mat-sys-primary)]]="scoped()"
-                      [matTooltip]="scopeLabel() ?? (I18N.culling.scope_whole_library | translate)"
-                      [attr.aria-label]="scopeLabel() ?? (I18N.culling.scope_whole_library | translate)">
+                      [class.!text-[var(--mat-sys-primary)]]="albumScoped()"
+                      [matTooltip]="cull.albumScopeLabel() ?? (I18N.culling.scope_whole_library | translate)"
+                      [attr.aria-label]="cull.albumScopeLabel() ?? (I18N.culling.scope_whole_library | translate)">
                 <mat-icon>filter_alt</mat-icon>
               </button>
               <mat-menu #scopeMenu="matMenu">
@@ -330,7 +242,7 @@ class RunGeneration {
                   <mat-icon>photo_library</mat-icon>
                   <span>{{ I18N.culling.scope_whole_library | translate }}</span>
                 </button>
-                @for (a of albums(); track a.id) {
+                @for (a of cull.albums(); track a.id) {
                   <button mat-menu-item [matMenuTriggerFor]="sceneMenu" (menuOpened)="loadAlbumScenes(a)">
                     <mat-icon>photo_album</mat-icon>
                     <span>{{ a.name }}</span>
@@ -354,61 +266,99 @@ class RunGeneration {
                 }
               </mat-menu>
             }
+            <!-- Not behind the albums check: a date window needs no album. The range input is an invisible
+                 anchor for the custom picker's popup; it never takes focus or pointer events. -->
+            <div class="relative inline-flex shrink-0">
+              <button mat-icon-button data-testid="cull-date-range" [matMenuTriggerFor]="dateRangeMenu"
+                      [class.!text-[var(--mat-sys-primary)]]="cull.dateRangeActive()"
+                      [matTooltip]="cull.dateRangeActive() ? (cull.scopeFrom() | cullDateRange: cull.scopeTo()) : (I18N.culling.date_range.label | translate)"
+                      [attr.aria-label]="cull.dateRangeActive() ? (cull.scopeFrom() | cullDateRange: cull.scopeTo()) : (I18N.culling.date_range.label | translate)">
+                <mat-icon>date_range</mat-icon>
+              </button>
+              <mat-date-range-input #rangeInput [rangePicker]="rangePicker" aria-hidden="true"
+                                    class="absolute inset-0 overflow-hidden opacity-0 pointer-events-none">
+                <input matStartDate tabindex="-1"
+                       [attr.aria-label]="I18N.culling.date_range.start | translate"
+                       [value]="cull.scopeFrom() | scopeDate" />
+                <input matEndDate tabindex="-1"
+                       [attr.aria-label]="I18N.culling.date_range.end | translate"
+                       [value]="cull.scopeTo() | scopeDate"
+                       (dateChange)="onCustomRangeEnd(rangeInput.value?.start ?? null, $event.value)" />
+              </mat-date-range-input>
+              <mat-date-range-picker #rangePicker />
+            </div>
+            <mat-menu #dateRangeMenu="matMenu">
+              @for (preset of datePresets; track preset.id) {
+                <button mat-menu-item (click)="onDatePreset(preset.id)">
+                  <mat-icon>{{ preset.icon }}</mat-icon>
+                  <span>{{ preset.labelKey | translate }}</span>
+                </button>
+              }
+              <button mat-menu-item (click)="rangePicker.open()">
+                <mat-icon>edit_calendar</mat-icon>
+                <span>{{ I18N.culling.date_range.custom | translate }}</span>
+              </button>
+              <div role="separator" class="my-1 border-t border-[var(--mat-sys-outline-variant)]"></div>
+              <button mat-menu-item [disabled]="!cull.dateRangeActive()" (click)="onDateRange(null, null)">
+                <mat-icon>all_inclusive</mat-icon>
+                <span>{{ I18N.culling.date_range.all_dates | translate }}</span>
+              </button>
+            </mat-menu>
             <button mat-icon-button [matMenuTriggerFor]="cullGroupByMenu"
-                    [class.!text-[var(--mat-sys-primary)]]="groupBy() !== 'all'"
+                    [class.!text-[var(--mat-sys-primary)]]="cull.groupBy() !== 'all'"
                     [matTooltip]="I18N.culling.group_by.label | translate"
                     [attr.aria-label]="I18N.culling.group_by.label | translate">
-              <mat-icon>{{ groupBy() | cullGroupIcon }}</mat-icon>
+              <mat-icon>{{ cull.groupBy() | cullGroupIcon }}</mat-icon>
             </button>
             <mat-menu #cullGroupByMenu="matMenu">
               <button mat-menu-item (click)="onGroupByChange('all')">
                 <mat-icon>{{ 'all' | cullGroupIcon }}</mat-icon>
-                <span [class.font-bold]="groupBy() === 'all'">{{ I18N.culling.group_by.all | translate }}</span>
+                <span [class.font-bold]="cull.groupBy() === 'all'">{{ I18N.culling.group_by.all | translate }}</span>
               </button>
               <button mat-menu-item (click)="onGroupByChange('burst')">
                 <mat-icon>{{ 'burst' | cullGroupIcon }}</mat-icon>
-                <span [class.font-bold]="groupBy() === 'burst'">{{ I18N.culling.group_by.bursts | translate }}</span>
+                <span [class.font-bold]="cull.groupBy() === 'burst'">{{ I18N.culling.group_by.bursts | translate }}</span>
               </button>
               <button mat-menu-item (click)="onGroupByChange('similar')">
                 <mat-icon>{{ 'similar' | cullGroupIcon }}</mat-icon>
-                <span [class.font-bold]="groupBy() === 'similar'">{{ I18N.culling.group_by.similar | translate }}</span>
+                <span [class.font-bold]="cull.groupBy() === 'similar'">{{ I18N.culling.group_by.similar | translate }}</span>
               </button>
-              @if (store.config()?.features?.show_scenes || groupBy() === 'scene') {
+              @if (store.config()?.features?.show_scenes || cull.groupBy() === 'scene') {
                 <button mat-menu-item (click)="onGroupByChange('scene')">
                   <mat-icon>{{ 'scene' | cullGroupIcon }}</mat-icon>
-                  <span [class.font-bold]="groupBy() === 'scene'">{{ I18N.culling.group_by.scenes | translate }}</span>
+                  <span [class.font-bold]="cull.groupBy() === 'scene'">{{ I18N.culling.group_by.scenes | translate }}</span>
                 </button>
               }
               <button mat-menu-item (click)="onGroupByChange('bracket')">
                 <mat-icon>{{ 'bracket' | cullGroupIcon }}</mat-icon>
-                <span [class.font-bold]="groupBy() === 'bracket'">{{ I18N.culling.group_by.brackets | translate }}</span>
+                <span [class.font-bold]="cull.groupBy() === 'bracket'">{{ I18N.culling.group_by.brackets | translate }}</span>
               </button>
               <button mat-menu-item (click)="onGroupByChange('panorama')">
                 <mat-icon>{{ 'panorama' | cullGroupIcon }}</mat-icon>
-                <span [class.font-bold]="groupBy() === 'panorama'">{{ I18N.culling.group_by.panoramas | translate }}</span>
+                <span [class.font-bold]="cull.groupBy() === 'panorama'">{{ I18N.culling.group_by.panoramas | translate }}</span>
               </button>
               <button mat-menu-item (click)="onGroupByChange('hdr_panorama')">
                 <mat-icon>{{ 'hdr_panorama' | cullGroupIcon }}</mat-icon>
-                <span [class.font-bold]="groupBy() === 'hdr_panorama'">{{ I18N.culling.group_by.hdr_panoramas | translate }}</span>
+                <span [class.font-bold]="cull.groupBy() === 'hdr_panorama'">{{ I18N.culling.group_by.hdr_panoramas | translate }}</span>
               </button>
             </mat-menu>
-            @if (groupBy() !== 'scene') {
-              <button mat-icon-button [matMenuTriggerFor]="cullSortMenu"
-                      [class.!text-[var(--mat-sys-primary)]]="sortMode() !== 'easiest'"
-                      [matTooltip]="'culling.sort.' + sortMode() | translate"
-                      [attr.aria-label]="'culling.sort.' + sortMode() | translate">
-                <mat-icon>{{ sortMode() | sortIcon }}</mat-icon>
+            @if (cull.groupBy() !== 'scene') {
+              <button mat-icon-button [matMenuTriggerFor]="cullSortMenu" [disabled]="cull.planActive()"
+                      [class.!text-[var(--mat-sys-primary)]]="cull.sortMode() !== 'easiest'"
+                      [matTooltip]="'culling.sort.' + cull.sortMode() | translate"
+                      [attr.aria-label]="'culling.sort.' + cull.sortMode() | translate">
+                <mat-icon>{{ cull.sortMode() | sortIcon }}</mat-icon>
               </button>
               <mat-menu #cullSortMenu="matMenu">
                 @for (m of sortModes; track m) {
                   <button mat-menu-item (click)="onSortChange(m)">
                     <mat-icon>{{ m | sortIcon }}</mat-icon>
-                    <span [class.font-bold]="sortMode() === m">{{ 'culling.sort.' + m | translate }}</span>
+                    <span [class.font-bold]="cull.sortMode() === m">{{ 'culling.sort.' + m | translate }}</span>
                   </button>
                 }
               </mat-menu>
-              <button mat-icon-button (click)="toggleSortDirection()"
-                      [class.!text-[var(--mat-sys-primary)]]="sortDirection() !== ''"
+              <button mat-icon-button (click)="toggleSortDirection()" [disabled]="cull.planActive()"
+                      [class.!text-[var(--mat-sys-primary)]]="cull.sortDirection() !== ''"
                       [matTooltip]="(sortAscending() ? I18N.culling.sort.ascending : I18N.culling.sort.descending) | translate"
                       [attr.aria-label]="(sortAscending() ? I18N.culling.sort.ascending : I18N.culling.sort.descending) | translate">
                 <mat-icon>{{ sortAscending() ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
@@ -434,9 +384,9 @@ class RunGeneration {
                 }
               </mat-menu>
             }
-            @if (groupBy() === 'similar' || groupBy() === 'all') {
-              <button mat-icon-button [matMenuTriggerFor]="thresholdMenu"
-                      [matTooltip]="(I18N.culling.threshold | translate) + ' · ' + similarityThreshold() + '%'"
+            @if (cull.groupBy() === 'similar' || cull.groupBy() === 'all') {
+              <button mat-icon-button [matMenuTriggerFor]="thresholdMenu" [disabled]="cull.planActive()"
+                      [matTooltip]="(I18N.culling.threshold | translate) + ' · ' + cull.similarityThreshold() + '%'"
                       [attr.aria-label]="I18N.culling.threshold | translate">
                 <mat-icon>compare</mat-icon>
               </button>
@@ -444,30 +394,30 @@ class RunGeneration {
                 <div class="flex items-center gap-2 px-4 py-3" tabindex="-1" (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation()">
                   <span class="text-xs opacity-60">{{ I18N.culling.threshold | translate }}</span>
                   <mat-slider class="!w-28 !min-w-0" [min]="70" [max]="95" [step]="5" [discrete]="true">
-                    <input matSliderThumb [value]="similarityThreshold()" (valueChange)="onThresholdChange($event)" [attr.aria-label]="I18N.culling.threshold | translate" />
+                    <input matSliderThumb [value]="cull.similarityThreshold()" (valueChange)="onThresholdChange($event)" [attr.aria-label]="I18N.culling.threshold | translate" />
                   </mat-slider>
-                  <span class="text-xs font-medium w-8">{{ similarityThreshold() }}%</span>
+                  <span class="text-xs font-medium w-8">{{ cull.similarityThreshold() }}%</span>
                 </div>
               </mat-menu>
             }
-            @if (cullProfiles().length > 0) {
-              <button mat-icon-button [matMenuTriggerFor]="profileMenu"
-                      [class.!text-[var(--mat-sys-primary)]]="selectedProfile() !== ''"
+            @if (cull.cullProfiles().length > 0) {
+              <button mat-icon-button [matMenuTriggerFor]="profileMenu" [disabled]="cull.planActive()"
+                      [class.!text-[var(--mat-sys-primary)]]="cull.selectedProfile() !== ''"
                       [matTooltip]="selectedProfileLabel() | translate"
                       [attr.aria-label]="selectedProfileLabel() | translate">
-                <mat-icon>{{ selectedProfile() | cullProfileIcon }}</mat-icon>
+                <mat-icon>{{ cull.selectedProfile() | cullProfileIcon }}</mat-icon>
               </button>
               <mat-menu #profileMenu="matMenu">
-                @for (p of cullProfiles(); track p.id) {
-                  <button mat-menu-item (click)="applyProfile(p)">
+                @for (p of cull.cullProfiles(); track p.id) {
+                  <button mat-menu-item (click)="cull.applyProfile(p)">
                     <mat-icon>{{ p.id | cullProfileIcon }}</mat-icon>
-                    <span [class.font-bold]="selectedProfile() === p.id">{{ p.label_key | translate }}</span>
+                    <span [class.font-bold]="cull.selectedProfile() === p.id">{{ p.label_key | translate }}</span>
                   </button>
                 }
               </mat-menu>
             }
             <button mat-icon-button [matMenuTriggerFor]="strictnessMenu"
-                    [matTooltip]="(I18N.culling.strictness_tooltip | translate) + ' · ' + strictness() + '%'"
+                    [matTooltip]="(I18N.culling.strictness_tooltip | translate) + ' · ' + cull.strictness() + '%'"
                     [attr.aria-label]="I18N.culling.strictness | translate">
               <mat-icon>tune</mat-icon>
             </button>
@@ -475,21 +425,21 @@ class RunGeneration {
               <div class="flex items-center gap-2 px-4 py-3" tabindex="-1" (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation()">
                 <span class="text-xs opacity-60">{{ I18N.culling.strictness | translate }}</span>
                 <mat-slider class="!w-28 !min-w-0" [min]="0" [max]="100" [step]="5" [discrete]="true">
-                  <input matSliderThumb [value]="strictness()" (valueChange)="onStrictnessChange($event)" [attr.aria-label]="I18N.culling.strictness | translate" />
+                  <input matSliderThumb [value]="cull.strictness()" (valueChange)="onStrictnessChange($event)" [attr.aria-label]="I18N.culling.strictness | translate" />
                 </mat-slider>
-                <span class="text-xs font-medium w-8">{{ strictness() }}%</span>
+                <span class="text-xs font-medium w-8">{{ cull.strictness() }}%</span>
               </div>
             </mat-menu>
           </div>
           <!-- Exclude-rejected and the loupe act on the photos rather than
                selecting which ones the feed serves, so they are pinned with the
                other actions instead of scrolling away with the filters. -->
-          <button mat-icon-button class="shrink-0" (click)="onExcludeRejectedChange(!excludeRejected())"
-                  [class.!text-[var(--mat-sys-primary)]]="excludeRejected()"
-                  [attr.aria-pressed]="excludeRejected()"
+          <button mat-icon-button class="shrink-0" (click)="onExcludeRejectedChange(!cull.excludeRejected())"
+                  [class.!text-[var(--mat-sys-primary)]]="cull.excludeRejected()"
+                  [attr.aria-pressed]="cull.excludeRejected()"
                   [matTooltip]="I18N.culling.exclude_rejected | translate"
                   [attr.aria-label]="I18N.culling.exclude_rejected | translate">
-            <mat-icon>{{ excludeRejected() ? 'visibility_off' : 'visibility' }}</mat-icon>
+            <mat-icon>{{ cull.excludeRejected() ? 'visibility_off' : 'visibility' }}</mat-icon>
           </button>
           <button mat-icon-button class="shrink-0" (click)="loupeActive.set(!loupeActive())"
                   [class.!text-[var(--mat-sys-primary)]]="loupeActive()"
@@ -505,14 +455,14 @@ class RunGeneration {
             </mat-slider>
           }
           @if (auth.isEdition() && !keepWholeGranularity()) {
-            <button mat-icon-button class="shrink-0" (click)="openAutoCull()" [disabled]="autoCullBusy()"
+            <button mat-icon-button class="shrink-0" (click)="cull.openAutoCull()" [disabled]="cull.autoCullBusy()"
                     [matTooltip]="I18N.culling.auto_cull.tooltip | translate"
                     [attr.aria-label]="I18N.culling.auto_cull.button | translate">
               <mat-icon>auto_fix_high</mat-icon>
             </button>
           }
           @if (unconfirmedCount() > 0) {
-            <button mat-flat-button (click)="confirmAllRemaining()" [disabled]="confirming()" class="!hidden lg:!inline-flex !rounded-md shrink-0">
+            <button mat-flat-button (click)="confirmAllRemaining()" [disabled]="cull.confirming() || cull.replanning()" class="!hidden lg:!inline-flex !rounded-md shrink-0">
               <mat-icon>done_all</mat-icon>
               {{ I18N.culling.confirm_all | translate }} ({{ unconfirmedCount() }})
             </button>
@@ -523,12 +473,12 @@ class RunGeneration {
       @if (pageHelp.open()) {
         <div class="shrink-0 p-3 mb-3 rounded-lg bg-[var(--mat-sys-surface-container)] space-y-3">
           <p class="text-sm opacity-80">{{ I18N.culling.help_text | translate }}</p>
-          @if (rankerComparisons() !== null) {
+          @if (cull.rankerComparisons() !== null) {
             <span class="text-xs opacity-70 flex items-center gap-1"
                   [matTooltip]="I18N.culling.my_taste_tooltip | translate">
               <mat-icon class="!text-sm !w-4 !h-4 !leading-4 text-[var(--mat-sys-primary)]">auto_awesome</mat-icon>
-              {{ (rankerTrained() ? I18N.culling.my_taste_trained : I18N.culling.my_taste_learning)
-                 | translate:{ count: (rankerComparisons() ?? 0) } }}
+              {{ (cull.rankerTrained() ? I18N.culling.my_taste_trained : I18N.culling.my_taste_learning)
+                 | translate:{ count: (cull.rankerComparisons() ?? 0) } }}
             </span>
           }
           <div class="flex flex-wrap gap-x-10 gap-y-3">
@@ -556,10 +506,10 @@ class RunGeneration {
       <!-- Corrections change nothing until the detector runs again, and that run
            is a whole-library batch pass -- far too expensive to fire once per
            click. So they accumulate and the run is offered here, once. -->
-      @if (rerunNeeded() > 0) {
+      @if (cull.rerunNeeded() > 0) {
         <div class="shrink-0 flex flex-wrap items-center gap-3 p-3 mb-3 rounded-lg bg-[var(--mat-sys-surface-container)]" role="status">
           <mat-icon class="!text-base !w-5 !h-5 !leading-5 text-amber-500" aria-hidden="true">schedule</mat-icon>
-          <span class="text-sm">{{ I18N.culling.panorama.rerun_banner | translate:{ count: rerunNeeded() } }}</span>
+          <span class="text-sm">{{ I18N.culling.panorama.rerun_banner | translate:{ count: cull.rerunNeeded() } }}</span>
           <button mat-stroked-button class="!h-8 !text-sm !rounded-md" [disabled]="detecting()"
                   (click)="rerunDetection()"
                   [matTooltip]="I18N.panorama.settings.redetect_tooltip | translate">
@@ -572,23 +522,56 @@ class RunGeneration {
         </div>
       }
 
+      @if (cull.pendingReload()) {
+        <div role="status" data-testid="assistant-reload-banner" class="flex items-center justify-between gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 mb-2 text-sm">
+          <span>{{ I18N.culling.assistant_changed | translate }}</span>
+          <button mat-stroked-button type="button" (click)="cull.resetForReload()">{{ I18N.pwa.reload | translate }}</button>
+        </div>
+      }
+
+      @if (cull.planActive()) {
+        <div role="status" data-testid="cull-plan-banner" class="shrink-0 flex flex-wrap items-center gap-3 rounded-lg border border-[var(--mat-sys-primary)]/40 bg-[var(--mat-sys-primary)]/10 px-4 py-2 mb-2 text-sm">
+          <mat-icon class="!text-base !w-5 !h-5 !leading-5 text-[var(--mat-sys-primary)]" aria-hidden="true">smart_toy</mat-icon>
+          <span class="font-medium">{{ I18N.culling.plan.banner | translate:{ confirmed: cull.confirmedGroups().size, total: cull.totalGroups() } }}</span>
+          @if (cull.planOversize() > 0) {
+            <span data-testid="cull-plan-oversize" class="opacity-80">{{ I18N.culling.plan.oversize | translate:{ count: cull.planOversize() } }}</span>
+          }
+          <button mat-stroked-button type="button" data-testid="cull-plan-exit" class="ml-auto" (click)="exitPlan()">{{ I18N.culling.plan.exit | translate }}</button>
+        </div>
+      }
+
       <!-- Scrollable group list; the header above stays fixed -->
-      <div class="flex-1 min-h-0 overflow-y-auto -mx-4 px-4 md:-mx-8 md:px-8 pb-4 max-lg:pb-24" data-culling-scroll>
+      <div class="flex-1 min-h-0 overflow-y-auto -mx-2 px-2 md:-mx-3 md:px-3 pb-4 max-lg:pb-24" data-culling-scroll>
       <!-- Content -->
-      @if (loading()) {
+      @if (cull.loading()) {
         <div class="flex justify-center items-center py-20">
           <mat-spinner diameter="40" [attr.aria-label]="I18N.ui.labels.loading | translate" />
         </div>
       } @else if (visibleGroups().length === 0) {
-        <p class="text-center py-20 opacity-60">{{ (scoped() ? I18N.culling.scene_complete : I18N.culling.no_bursts) | translate }}</p>
+        <p class="text-center py-20 opacity-60">{{ emptyKey() | translate }}</p>
       } @else {
         <div class="space-y-3 pb-4">
           @for (group of visibleGroups(); track group.group_id + '_' + group.type; let i = $index) {
+            @let groupKey = group | cullGroupKey;
             <div class="rounded-xl border-2 overflow-hidden transition-colors duration-300"
                  [attr.data-gidx]="i"
                  [ngClass]="i === selectedGroupIndex()
                    ? 'bg-[var(--mat-sys-surface-container-high)] border-[var(--mat-sys-surface-container-high)]'
                    : 'bg-[var(--mat-sys-surface-container)] border-[var(--mat-sys-surface-container)]'">
+              @if (group.plan; as plan) {
+                <div data-testid="cull-plan-chip" class="flex flex-wrap items-center gap-2 px-4 pt-2 text-xs">
+                  <span class="font-bold">#{{ plan.number }}</span>
+                  @if (group | cullPlanGroupReason; as reason) {
+                    <span class="opacity-80">{{ reason.key | translate:reason.params }}</span>
+                  }
+                  <span class="opacity-80">{{ I18N.culling.plan.suggestion | translate:{ keep: plan.keep_paths.length, reject: group | planRejectCount } }}</span>
+                  @if (group | planGroupNote:cull.suggestions().notes; as note) {
+                    <span data-testid="cull-plan-note"
+                          class="max-w-[40ch] truncate rounded-full bg-sky-500/20 px-2 py-0.5 text-sky-800 dark:text-sky-200"
+                          [matTooltip]="note">{{ note }}</span>
+                  }
+                </div>
+              }
               @if (group.start) {
                 <div class="flex items-center gap-2 px-4 pt-2 text-xs">
                   <mat-icon class="!text-base text-[var(--mat-sys-primary)]">schedule</mat-icon>
@@ -641,26 +624,30 @@ class RunGeneration {
               }
               <!-- Photos -->
               <div class="flex gap-2 md:gap-3 overflow-x-auto px-2 py-3 items-center transition-opacity duration-300 [&::-webkit-scrollbar]:h-2.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--mat-sys-outline-variant)] [&::-webkit-scrollbar-track]:bg-transparent"
-                   [class.pointer-events-none]="(group | isConfirmed:confirmedGroups())"
-                   [class.opacity-40]="(group | isConfirmed:confirmedGroups())">
+                   [class.pointer-events-none]="(group | isConfirmed:cull.confirmedGroups())"
+                   [class.opacity-40]="(group | isConfirmed:cull.confirmedGroups())">
                 @for (photo of group.photos; track photo.path; let pIdx = $index) {
-                  <div class="group/photo relative inline-block cursor-pointer rounded-lg overflow-hidden border-2 transition-colors flex-shrink-0"
-                       [class.border-green-500]="photo.path | isKept:selectionsMap():group.group_id"
-                       [class.border-red-500]="!(photo.path | isKept:selectionsMap():group.group_id) && (photo.path | isDecided:selectionsMap():group.group_id)"
-                       [class.border-transparent]="!(photo.path | isDecided:selectionsMap():group.group_id)"
+                  <div #tile class="group/photo relative inline-block cursor-pointer rounded-lg overflow-hidden border-2 transition-colors flex-shrink-0"
+                       [attr.data-pidx]="pIdx"
+                       [ngClass]="i === selectedGroupIndex() && pIdx === selectedPhotoIndex()
+                         ? 'ring-4 ring-[var(--mat-sys-primary)] ring-offset-2 ring-offset-[var(--mat-sys-surface-container-high)]'
+                         : ''"
+                       [class.border-green-500]="photo.path | isKept:cull.selectionsMap():groupKey"
+                       [class.border-red-500]="!(photo.path | isKept:cull.selectionsMap():groupKey) && (photo.path | isDecided:cull.selectionsMap():groupKey)"
+                       [class.border-transparent]="!(photo.path | isDecided:cull.selectionsMap():groupKey)"
                        role="button"
                        tabindex="0"
                        [attr.aria-label]="photo.filename + ', ' + (
-                         (photo.path | isKept:selectionsMap():group.group_id)
+                         (photo.path | isKept:cull.selectionsMap():groupKey)
                            ? (I18N.culling.lightbox.kept | translate)
-                           : (photo.path | isDecided:selectionsMap():group.group_id)
+                           : (photo.path | isDecided:cull.selectionsMap():groupKey)
                              ? (I18N.culling.lightbox.rejected | translate)
                              : (I18N.culling.lightbox.undecided | translate))"
-                       [attr.aria-pressed]="photo.path | isKept:selectionsMap():group.group_id"
-                       (click)="toggleSelection(photo.path, group)"
-                       (keydown.enter)="toggleSelection(photo.path, group); $event.stopPropagation()"
-                       (keydown.space)="toggleSelection(photo.path, group); $event.stopPropagation(); $event.preventDefault()"
-                       (dblclick)="selectExclusive(photo.path, group); $event.stopPropagation()">
+                       [attr.aria-pressed]="photo.path | isKept:cull.selectionsMap():groupKey"
+                       (click)="cull.tileClick(photo.path, group)"
+                       (keydown.enter)="cull.toggleSelection(photo.path, group); $event.stopPropagation()"
+                       (keydown.space)="cull.toggleSelection(photo.path, group); $event.stopPropagation(); $event.preventDefault()"
+                       (dblclick)="cull.tileDoubleClick(photo.path, group); $event.stopPropagation()">
                     <img [src]="photo.path | thumbnailUrl:storedEdge"
                          [appLoupe]="photo.path | imageUrl:true"
                          [loupeActive]="loupeActive()"
@@ -675,19 +662,49 @@ class RunGeneration {
                         {{ reason | cullReason }}
                       </div>
                     }
-                    @if (photo.path | isKept:selectionsMap():group.group_id) {
+                    @if (photo.path | isKept:cull.selectionsMap():groupKey) {
                       <div class="absolute top-2 right-2 w-7 h-7 rounded-full bg-green-600 inline-flex items-center justify-center">
                         <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-white">check</mat-icon>
                       </div>
-                    } @else if (photo.path | isDecided:selectionsMap():group.group_id) {
+                    } @else if (photo.path | isDecided:cull.selectionsMap():groupKey) {
                       <div class="absolute top-2 right-2 w-7 h-7 rounded-full bg-red-600 inline-flex items-center justify-center">
                         <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-white">close</mat-icon>
                       </div>
+                    }
+                    @if (photo.path | planDiffers:group:cull.selectionsMap()) {
+                      @let accepted = photo.path | planAccepted:group:cull.selectionsMap():cull.suggestions().photos;
+                      <span data-testid="plan-differs-dot"
+                            class="absolute top-2 right-11 w-3 h-3 rounded-full bg-amber-400 ring-2 ring-black/60"
+                            [matTooltip]="(accepted ? I18N.culling.plan.accepted : I18N.culling.plan.differs) | translate"
+                            [attr.aria-label]="(accepted ? I18N.culling.plan.accepted : I18N.culling.plan.differs) | translate"></span>
+                    }
+                    @if (photo.path | planSuggestion:group:cull.selectionsMap():cull.suggestions().photos:cull.closedGroupKeys(); as suggestion) {
+                      <!-- A native button: Enter and Space become a click that accepts. Every event the tile
+                           or the document also handles stops here, or accepting would toggle the tile too. -->
+                      <button type="button" data-testid="plan-suggestion-badge"
+                              class="absolute top-10 left-2 inline-flex items-center gap-1 rounded border border-dashed px-2 py-0.5 text-xs font-medium max-w-[160px]"
+                              [ngClass]="suggestion.action === 'keep'
+                                ? 'border-green-300 bg-green-900/80 text-green-100'
+                                : 'border-red-300 bg-red-900/80 text-red-100'"
+                              [matTooltip]="suggestion.reason"
+                              [attr.aria-label]="((suggestion.action === 'keep' ? I18N.culling.plan.suggest_keep : I18N.culling.plan.suggest_reject) | translate) + '. ' + ((suggestion.action === 'keep' ? I18N.culling.plan.accept_keep : I18N.culling.plan.accept_reject) | translate:{ reason: suggestion.reason })"
+                              (click)="cull.acceptSuggestion(group, photo.path, suggestion.action); tile.focus(); $event.stopPropagation()"
+                              (dblclick)="$event.stopPropagation()"
+                              (keydown.enter)="$event.stopPropagation()"
+                              (keydown.space)="$event.stopPropagation()">
+                        <mat-icon class="!text-sm !w-4 !h-4 !leading-4" aria-hidden="true">{{ suggestion.action === 'keep' ? 'check' : 'close' }}</mat-icon>
+                        <span class="truncate">{{ (suggestion.action === 'keep' ? I18N.culling.plan.suggest_keep : I18N.culling.plan.suggest_reject) | translate }}</span>
+                      </button>
                     }
                     <div class="absolute bottom-2 left-2 flex items-center gap-1">
                       <span class="px-2 py-0.5 rounded bg-black/60 text-white text-xs font-medium">
                         {{ photo.aggregate | number:'1.1-1' }}
                       </span>
+                      @if (photo.is_rejected) {
+                        <span data-testid="reject-marker" class="px-2 py-0.5 rounded bg-red-700 text-white text-xs font-bold">
+                          {{ I18N.rating.rejected_badge | translate }}
+                        </span>
+                      }
                       @if (photo.sequence_kind === 'bracket') {
                         <span class="px-2 py-0.5 rounded bg-amber-600 text-white text-xs font-bold">
                           {{ photo.sequence_ev_offset | evOffset }}
@@ -699,7 +716,7 @@ class RunGeneration {
                         {{ I18N.ui.badges.blink | translate }}
                       </div>
                     }
-                    @if (!(photo.path | isKept:selectionsMap():group.group_id)) {
+                    @if (!(photo.path | isKept:cull.selectionsMap():groupKey)) {
                       <button class="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 inline-flex items-center justify-center opacity-0 group-hover/photo:opacity-100 transition-opacity cursor-pointer"
                               [matTooltip]="I18N.culling.view_detail | translate"
                               [attr.aria-label]="I18N.culling.view_detail | translate"
@@ -718,7 +735,7 @@ class RunGeneration {
                           [attr.aria-label]="group.type | cullGroupLabel | translate">{{ group.type | cullGroupIcon }}</mat-icon>
                 <span class="text-xs opacity-50">{{ group.count }} {{ I18N.culling.photos | translate }}</span>
                 @if (group.category; as category) {
-                  @if (comparisonStats(); as stats) {
+                  @if (cull.comparisonStats(); as stats) {
                     @if ((category | weightRemaining:stats); as remaining) {
                       <button class="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-[var(--mat-sys-surface-container-high)] transition-colors cursor-pointer"
                               (click)="tuneCategory(category)"
@@ -737,21 +754,21 @@ class RunGeneration {
                   }
                   <span class="text-xs opacity-50">{{ 'category_names.' + category | translate }}</span>
                 }
-                @if ((group | isConfirmed:confirmedGroups())) {
+                @if ((group | isConfirmed:cull.confirmedGroups())) {
                   <span class="inline-flex items-center gap-1 text-xs text-green-500 font-medium">
                     <mat-icon class="inline-flex !text-sm !w-4 !h-4 !leading-4">check_circle</mat-icon>
                     {{ I18N.culling.confirmed_badge | translate }}
                   </span>
                 }
                 <div class="flex gap-2 ml-auto">
-                  @if (group | isPassing:passingGroups()) {
+                  @if (group | isPassing:cull.passingGroups()) {
                     <div class="relative overflow-hidden rounded-md">
-                      <button mat-stroked-button (click)="cancelPass(group)" class="!h-8 !text-sm !rounded-md relative z-10"
+                      <button mat-stroked-button (click)="cull.cancelPass(group)" class="!h-8 !text-sm !rounded-md relative z-10"
                               [matTooltip]="I18N.culling.cancel_restore | translate">
-                        {{ I18N.culling.cancel_pass | translate }} ({{ group | passCountdown:passingGroups() }}s)
+                        {{ I18N.culling.cancel_pass | translate }} ({{ group | passCountdown:cull.passingGroups() }}s)
                       </button>
                       <div class="absolute inset-0 bg-[var(--mat-sys-outline-variant)] opacity-30 origin-right transition-transform duration-1000 ease-linear"
-                           [style.transform]="'scaleX(' + ((group | passCountdown:passingGroups()) / passCountdownSeconds) + ')'"></div>
+                           [style.transform]="'scaleX(' + ((group | passCountdown:cull.passingGroups()) / cull.passCountdownSeconds) + ')'"></div>
                     </div>
                   } @else {
                     <!-- Geometry cannot recover intent, so a residual error rate
@@ -824,12 +841,12 @@ class RunGeneration {
                             [attr.aria-label]="I18N.culling.darkroom | translate">
                       <mat-icon>fullscreen</mat-icon>
                     </button>
-                    <button mat-icon-button (click)="skipGroup(group)"
+                    <button mat-icon-button (click)="cull.skipGroup(group)" [disabled]="cull.replanning()"
                             [matTooltip]="I18N.culling.skip_tooltip | translate"
                             [attr.aria-label]="I18N.culling.skip | translate">
                       <mat-icon>skip_next</mat-icon>
                     </button>
-                    <button mat-icon-button (click)="confirmGroup(group)" [disabled]="confirming()"
+                    <button mat-icon-button (click)="cull.confirmGroup(group)" [disabled]="cull.confirming() || cull.replanning()"
                             [matTooltip]="I18N.culling.confirm_tooltip | translate"
                             [attr.aria-label]="I18N.culling.confirm | translate">
                       <mat-icon>check_circle</mat-icon>
@@ -841,9 +858,9 @@ class RunGeneration {
           }
 
           <!-- Infinite scroll sentinel -->
-          @if (hasMore()) {
+          @if (cull.hasMore()) {
             <div appInfiniteScroll scrollRoot="[data-culling-scroll]" (scrollReached)="onScrollReached()" class="flex justify-center py-6">
-              @if (loadingMore()) {
+              @if (cull.loadingMore()) {
                 <mat-spinner diameter="32" [attr.aria-label]="I18N.ui.labels.loading | translate" />
               }
             </div>
@@ -857,7 +874,7 @@ class RunGeneration {
            its height (max-lg:mb-16) to avoid stacking under the fixed icon bar. -->
       @if (unconfirmedCount() > 0) {
         <div class="lg:!hidden shrink-0 flex justify-center py-1.5 max-lg:mb-14 border-t border-[var(--mat-sys-outline-variant)] bg-[var(--mat-sys-surface)]">
-          <button mat-flat-button (click)="confirmAllRemaining()" [disabled]="confirming()" class="!px-6 !rounded-md !h-9">
+          <button mat-flat-button (click)="confirmAllRemaining()" [disabled]="cull.confirming() || cull.replanning()" class="!px-6 !rounded-md !h-9">
             <mat-icon>done_all</mat-icon>
             {{ I18N.culling.confirm_all | translate }} ({{ unconfirmedCount() }})
           </button>
@@ -867,6 +884,7 @@ class RunGeneration {
 
     <!-- Lightbox overlay -->
     @if (lightboxGroup(); as lbGroup) {
+      @let lbKey = lbGroup | cullGroupKey;
       <!-- cdkTrapFocus without auto-capture: the effect below focuses the container
            itself, so Space/arrows reach the darkroom shortcuts instead of whichever
            toolbar button auto-capture would have landed on. -->
@@ -1052,8 +1070,8 @@ class RunGeneration {
                    [style.left.px]="singlePane.fitInsetX()" [style.right.px]="singlePane.fitInsetX()">
                 <ng-container [ngTemplateOutlet]="frameState"
                               [ngTemplateOutletContext]="{
-                                kept: (lbPhoto.path | isKept:selectionsMap():lbGroup.group_id),
-                                decided: (lbPhoto.path | isDecided:selectionsMap():lbGroup.group_id) }" />
+                                kept: (lbPhoto.path | isKept:cull.selectionsMap():lbKey),
+                                decided: (lbPhoto.path | isDecided:cull.selectionsMap():lbKey) }" />
               </div>
               @if (previewLoading()) {
                 <div class="absolute inset-0 flex items-center justify-center bg-black/40 pointer-events-none"
@@ -1121,28 +1139,28 @@ class RunGeneration {
                        [class.ring-amber-400]="photo.path === lbPhoto.path">
                     <ng-container [ngTemplateOutlet]="frameState"
                                   [ngTemplateOutletContext]="{
-                                    kept: (photo.path | isKept:selectionsMap():lbGroup.group_id),
-                                    decided: (photo.path | isDecided:selectionsMap():lbGroup.group_id) }" />
+                                    kept: (photo.path | isKept:cull.selectionsMap():lbKey),
+                                    decided: (photo.path | isDecided:cull.selectionsMap():lbKey) }" />
                     <!-- The ↑ / ↓ keys only ever reach the focused frame, so a
                          compare grid needs a way to decide the pane the user is
                          actually looking at. Same write as those keys. -->
                     <div class="absolute bottom-2 right-2 flex items-center gap-2 pointer-events-auto">
                       <button type="button"
                               class="w-7 h-7 rounded-full bg-green-600 inline-flex items-center justify-center shadow transition-opacity hover:opacity-100 cursor-pointer"
-                              [class.opacity-70]="!(photo.path | isKept:selectionsMap():lbGroup.group_id)"
-                              [attr.aria-pressed]="photo.path | isKept:selectionsMap():lbGroup.group_id"
+                              [class.opacity-70]="!(photo.path | isKept:cull.selectionsMap():lbKey)"
+                              [attr.aria-pressed]="photo.path | isKept:cull.selectionsMap():lbKey"
                               [matTooltip]="I18N.culling.lightbox.keep | translate"
                               [attr.aria-label]="photo.filename + ', ' + (I18N.culling.lightbox.keep | translate)"
-                              (click)="setPhotoKept(lbGroup, photo.path, true)">
+                              (click)="cull.setPhotoKept(lbGroup, photo.path, true)">
                         <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-white">check</mat-icon>
                       </button>
                       <button type="button"
                               class="w-7 h-7 rounded-full bg-red-600 inline-flex items-center justify-center shadow transition-opacity hover:opacity-100 cursor-pointer"
-                              [class.opacity-70]="!(photo.path | isDecided:selectionsMap():lbGroup.group_id)"
-                              [attr.aria-pressed]="photo.path | isDecided:selectionsMap():lbGroup.group_id"
+                              [class.opacity-70]="!(photo.path | isDecided:cull.selectionsMap():lbKey)"
+                              [attr.aria-pressed]="photo.path | isDecided:cull.selectionsMap():lbKey"
                               [matTooltip]="I18N.culling.lightbox.reject | translate"
                               [attr.aria-label]="photo.filename + ', ' + (I18N.culling.lightbox.reject | translate)"
-                              (click)="setPhotoKept(lbGroup, photo.path, false)">
+                              (click)="cull.setPhotoKept(lbGroup, photo.path, false)">
                         <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-white">close</mat-icon>
                       </button>
                     </div>
@@ -1162,12 +1180,12 @@ class RunGeneration {
                    verdict on all of them. -->
               <span class="text-white/60 text-sm mr-2">{{ lbPhoto.filename }}</span>
             }
-            @if (lbPhoto.path | isKept:selectionsMap():lbGroup.group_id) {
+            @if (lbPhoto.path | isKept:cull.selectionsMap():lbKey) {
               <span class="inline-flex items-center gap-1 text-green-400 text-sm">
                 <mat-icon class="!text-base !w-4 !h-4 !leading-4">check</mat-icon>
                 {{ I18N.culling.lightbox.kept | translate }}
               </span>
-            } @else if (lbPhoto.path | isDecided:selectionsMap():lbGroup.group_id) {
+            } @else if (lbPhoto.path | isDecided:cull.selectionsMap():lbKey) {
               <span class="inline-flex items-center gap-1 text-red-400 text-sm">
                 <mat-icon class="!text-base !w-4 !h-4 !leading-4">close</mat-icon>
                 {{ I18N.culling.lightbox.rejected | translate }}
@@ -1231,7 +1249,12 @@ class RunGeneration {
             <div class="flex gap-3 items-start">
               @for (photo of lbGroup.photos; track photo.path; let pIdx = $index) {
                 @if ((photo.path | facesForPath:faceMap()).length > 0) {
-                  <div class="flex flex-col items-center gap-1 flex-shrink-0">
+                  <!-- The face rings carry quality colours, so the current frame
+                       is outlined around its whole column instead. -->
+                  <div class="flex flex-col items-center gap-1 flex-shrink-0 rounded outline-offset-2"
+                       [attr.data-face-frame]="pIdx"
+                       [class.outline-2]="photo.path === lbGroup.photos[lightboxIndex()]?.path"
+                       [class.outline-amber-400]="photo.path === lbGroup.photos[lightboxIndex()]?.path">
                     <div class="flex gap-1">
                       @for (face of photo.path | facesForPath:faceMap(); track face.id) {
                         <div class="relative">
@@ -1337,11 +1360,11 @@ class RunGeneration {
     }
 
     <!-- Auto-cull preview / confirm dialog -->
-    @if (autoCullPreview(); as ac) {
+    @if (cull.autoCullPreview(); as ac) {
       <div class="fixed inset-0 z-[110] bg-black/50 flex items-center justify-center p-4"
            role="presentation"
-           (click)="cancelAutoCull()"
-           (keydown.escape)="cancelAutoCull()">
+           (click)="cull.cancelAutoCull()"
+           (keydown.escape)="cull.cancelAutoCull()">
         <!-- Escape is handled here, not only on the backdrop: the blanket keydown
              shield below (which keeps the page's cull shortcuts from firing behind
              the modal) stops the event before any ancestor or document handler. -->
@@ -1353,10 +1376,10 @@ class RunGeneration {
              cdkTrapFocus
              [cdkTrapFocusAutoCapture]="true"
              (click)="$event.stopPropagation()"
-             (keydown.escape)="cancelAutoCull()"
+             (keydown.escape)="cull.cancelAutoCull()"
              (keydown)="$event.stopPropagation()">
           <h2 id="autoCullTitle" class="text-lg font-semibold">{{ I18N.culling.auto_cull.title | translate }}</h2>
-          @if (selectedProfile(); as profile) {
+          @if (cull.selectedProfile(); as profile) {
             <p class="flex items-center gap-1.5 text-sm opacity-80">
               <mat-icon class="!text-base !w-4 !h-4 !leading-4">{{ profile | cullProfileIcon }}</mat-icon>
               {{ selectedProfileLabel() | translate }}
@@ -1368,7 +1391,7 @@ class RunGeneration {
                         class="px-2 py-0.5 rounded-full text-xs bg-[var(--mat-sys-primary)]/20 text-[var(--mat-sys-primary)]"
                         [matTooltip]="I18N.culling.auto_cull.suggested_tooltip | translate">
                   {{ I18N.culling.auto_cull.suggested | translate }}
-                  @if (profileSuggestion(); as suggestion) {
+                  @if (cull.profileSuggestion(); as suggestion) {
                     <span class="sr-only">: {{ suggestion.confidence | percent }}</span>
                   }
                 </button>
@@ -1378,24 +1401,24 @@ class RunGeneration {
           <label class="flex items-center gap-2 text-sm cursor-pointer"
                  [matTooltip]="I18N.culling.auto_cull.trim_brackets_hint | translate">
             <input type="checkbox" class="accent-[var(--mat-sys-primary)]"
-                   [checked]="trimBrackets()" [disabled]="autoCullBusy()"
-                   (change)="onTrimBracketsChange(!trimBrackets())" />
+                   [checked]="cull.trimBrackets()" [disabled]="cull.autoCullBusy()"
+                   (change)="cull.onTrimBracketsChange(!cull.trimBrackets())" />
             {{ I18N.culling.auto_cull.trim_brackets | translate }}
           </label>
           <!-- A cold suggest+preview takes seconds, during which the counts below are
                last run's. Say so rather than let them read as this run's answer. -->
-          @if (autoCullBusy()) {
+          @if (cull.autoCullBusy()) {
             <p class="flex items-center gap-2 text-sm opacity-80" role="status">
               <mat-spinner diameter="16" [attr.aria-label]="I18N.ui.labels.loading | translate" />
               {{ I18N.culling.auto_cull.updating | translate }}
             </p>
           }
-          @if (autoCullSuggestionNotice(); as suggested) {
+          @if (cull.autoCullSuggestionNotice(); as suggested) {
             <p class="text-xs text-[var(--mat-sys-primary)]" role="status">
               {{ I18N.culling.auto_cull.preview_updated | translate:{ profile: suggested } }}
             </p>
           }
-          @if (trimBracketsUnchanged()) {
+          @if (cull.trimBracketsUnchanged()) {
             <p class="text-xs opacity-70" role="status">{{ I18N.culling.auto_cull.trim_brackets_none | translate }}</p>
           }
           @if (ac.groups_processed === 0) {
@@ -1404,20 +1427,20 @@ class RunGeneration {
             <p class="text-sm opacity-80">
               {{ I18N.culling.auto_cull.summary | translate:{ groups: ac.groups_processed, kept: ac.kept, rejected: ac.rejected } }}
             </p>
-            <p class="text-xs opacity-60">{{ I18N.culling.strictness | translate }} · {{ strictness() }}%</p>
+            <p class="text-xs opacity-60">{{ I18N.culling.strictness | translate }} · {{ cull.strictness() }}%</p>
             @if (ac.highlights_added > 0) {
               <label class="flex items-center gap-2 text-sm cursor-pointer">
                 <input type="checkbox" class="accent-[var(--mat-sys-primary)]"
-                       [checked]="autoCullHighlights()"
-                       (change)="autoCullHighlights.set(!autoCullHighlights())" />
+                       [checked]="cull.autoCullHighlights()"
+                       (change)="cull.autoCullHighlights.set(!cull.autoCullHighlights())" />
                 {{ I18N.culling.auto_cull.highlights_label | translate:{ count: ac.highlights_added } }}
               </label>
             }
           }
           <div class="flex justify-end gap-2">
-            <button mat-stroked-button (click)="cancelAutoCull()" [disabled]="autoCullApplying()">{{ I18N.dialog.cancel | translate }}</button>
+            <button mat-stroked-button (click)="cull.cancelAutoCull()" [disabled]="cull.autoCullApplying()">{{ I18N.dialog.cancel | translate }}</button>
             @if (ac.groups_processed > 0) {
-              <button mat-flat-button (click)="confirmAutoCull()" [disabled]="autoCullBusy()">
+              <button mat-flat-button (click)="confirmAutoCull()" [disabled]="cull.autoCullBusy()">
                 {{ I18N.culling.auto_cull.apply | translate:{ rejected: ac.rejected } }}
               </button>
             }
@@ -1426,7 +1449,9 @@ class RunGeneration {
       </div>
     }
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   host: { class: 'block h-full' },
+  providers: [CullingStore],
 })
 export class BurstCullingComponent implements OnDestroy {
   protected readonly I18N = i18nKeys();
@@ -1445,133 +1470,53 @@ export class BurstCullingComponent implements OnDestroy {
   protected readonly auth = inject(AuthService);
   protected readonly store = inject(GalleryStore);
   private readonly sceneDate = new SceneDatePipe();
+  /** Data state + API calls; provided per component, so it lives one darkroom visit. */
+  protected readonly cull = inject(CullingStore);
+  private readonly journal = inject(UserActivityJournal);
+  private readonly assistantChanges = inject(AssistantChangesService);
+  private readonly planService = inject(AssistantCullPlanService);
 
-  /** Granularity served by the feed: all (merged burst+similar) | burst | similar | scene.
-   *  Restored from localStorage (default 'all'); a ?group_by= query param overrides it. */
-  protected readonly groupBy = signal<GroupBy>(readStoredGroupBy());
   /** Min posterior below which a moment label is shown dimmed + "(uncertain)". */
   protected readonly momentConfidenceMin = computed(
     () => this.store.config()?.moment_confidence_min ?? 0,
   );
 
-  // Optional scope from "Cull this scene" / album entry points (query params).
-  protected readonly scopeAlbum = signal<string | null>(null);
-  protected readonly scopeFrom = signal<string | null>(null);
-  protected readonly scopeTo = signal<string | null>(null);
-  protected readonly scopeScene = signal<string | null>(null);
   protected readonly scoped = computed(
-    () => !!(this.scopeAlbum() || this.scopeFrom() || this.scopeTo()),
+    () => !!(this.cull.scopeAlbum() || this.cull.scopeFrom() || this.cull.scopeTo()),
   );
-  // Non-smart albums + lazily-loaded scenes powering the scope cascade menu.
-  protected readonly albums = signal<Album[]>([]);
+  /** An album or a scene narrows the feed (dates alone do not light the album button). */
+  protected readonly albumScoped = computed(() => !!(this.cull.scopeAlbum() || this.cull.scopeScene()));
+  protected readonly datePresets = CULL_DATE_PRESETS;
+  /** Why the feed is empty: the wording follows what narrowed it. */
+  protected readonly emptyKey = computed(() => {
+    const dated = this.cull.dateRangeActive();
+    // Only a feed or plan that loaded no group at all: one whose groups were all confirmed or hidden is "done".
+    const loadedNone = this.cull.groups().length === 0;
+    if (this.cull.planActive() && dated && loadedNone) return this.I18N.culling.date_range.plan_empty;
+    if (dated && loadedNone && !this.cull.scopeScene()) return this.I18N.culling.date_range.empty;
+    return this.scoped() ? this.I18N.culling.scene_complete : this.I18N.culling.no_bursts;
+  });
   protected readonly expandedAlbumId = signal<number | null>(null);
   protected readonly expandedScenes = signal<SceneSummary[]>([]);
   protected readonly loadingScenes = signal(false);
-  // Album name for the current scope, resolved from the loaded album list
-  // (works for both menu selection and a deep-linked ?album=ID).
-  protected readonly scopeAlbumName = computed(() =>
-    AlbumService.nameById(this.albums(), this.scopeAlbum()));
-  // Human label for the scope button / banner (null = whole library).
-  protected readonly scopeLabel = computed(() => {
-    const album = this.scopeAlbumName();
-    const scene = this.scopeScene();
-    if (album && scene) return `${album} · ${scene}`;
-    return album ?? scene ?? null;
-  });
-  // Personal-ranker status, surfaced as the "this cull trains My Taste" chip.
-  protected readonly rankerComparisons = signal<number | null>(null);
-  protected readonly rankerTrained = signal(false);
 
   // Photo-Mechanic-style hover loupe over the group tiles (Z toggles; zoom slider).
   private readonly loupe = createLoupeState();
   protected readonly loupeActive = this.loupe.loupeActive;
   protected readonly loupeZoom = this.loupe.loupeZoom;
-  protected readonly similarityThreshold = signal(85);
-  /** Auto-keep strictness (0-100): higher keeps fewer photos below the best. */
-  protected readonly strictness = signal(100);
 
-  /** Genre culling presets (GET /api/culling/profiles). */
-  protected readonly cullProfiles = signal<CullProfile[]>([]);
-  /** Active preset id ('' = custom / none). Persisted; re-applied on open. */
-  protected readonly selectedProfile = signal<string>(localStorage.getItem(CULL_PROFILE_KEY) ?? '');
   /** Label of the active preset, or "Custom" when none matches the current knobs. */
   protected readonly selectedProfileLabel = computed(() => {
-    const p = this.cullProfiles().find(x => x.id === this.selectedProfile());
+    const p = this.cull.cullProfiles().find(x => x.id === this.cull.selectedProfile());
     return p ? p.label_key : I18N.culling.profiles.custom;
   });
-
-  /** The preset the current scope's own content argues for
-   *  (GET /culling/suggest_profile), or null while none was inferred. */
-  protected readonly profileSuggestion = signal<ProfileSuggestion | null>(null);
-  /** Set the moment the user picks a preset or moves a knob — including a
-   *  choice restored from a previous session. A manual choice is never
-   *  overwritten by a suggestion for the rest of the session. */
-  private readonly profileChosen = signal(false);
-  /** The scope the cached suggestion answers for; a scope change refetches. */
-  private suggestionScopeKey: string | null = null;
-  private suggestionApplied = false;
 
   /** True when the active preset is the suggested one and the user never chose
    *  it — the only case where the dialog claims a suggestion. */
   protected readonly suggestedProfileActive = computed(() => {
-    const suggested = this.profileSuggestion()?.profile;
-    return !!suggested && !this.profileChosen() && this.selectedProfile() === suggested;
+    const suggested = this.cull.profileSuggestion()?.profile;
+    return !!suggested && !this.cull.profileChosen() && this.cull.selectedProfile() === suggested;
   });
-  protected readonly excludeRejected = signal(true);
-  protected readonly groups = signal<CullingGroup[]>([]);
-  protected readonly totalGroups = signal(0);
-  protected readonly loading = signal(true);
-  protected readonly loadingMore = signal(false);
-  protected readonly confirming = signal(false);
-
-  /** Monotonic id bumped on every filter change; loadGroups/loadMore drop late responses whose generation no longer matches. */
-  private loadGenerationId = 0;
-
-  /** group_id -> set of kept paths */
-  protected readonly selectionsMap = signal<Map<number, Set<string>>>(new Map());
-
-  /** Set of confirmed group keys (group_id + '_' + type) */
-  protected readonly confirmedGroups = signal<Set<string>>(new Set());
-
-  /** Seconds a skipped group stays cancellable before it is hidden. */
-  protected readonly passCountdownSeconds = 7;
-
-  /** Map of group key -> remaining countdown seconds for groups being passed */
-  protected readonly passingGroups = signal<Map<string, number>>(new Map());
-
-  /** Set of group keys hidden after pass timeout */
-  private readonly hiddenGroups = signal<Set<string>>(new Set());
-
-  /** Group keys in the feed carrying a correction the detector has not applied yet. */
-  private readonly pendingCorrectionKeys = computed(
-    () => new Set(this.groups()
-      .filter(g => g.photos.some(p => p.sequence_override && p.sequence_override_pending))
-      .map(g => this.groupKey(g))),
-  );
-
-  /**
-   * Corrections dropped this session that the detector had already applied.
-   *
-   * Dropping a still-pending correction needs no re-run: the detector never
-   * touched `photos` for it. But dropping an APPLIED one (`sequence_override`
-   * set, not pending) leaves the forced set sitting in `photos` until the
-   * detector runs again -- and by then `pendingCorrectionKeys` sees nothing, so
-   * the re-run banner would never appear without this counter.
-   *
-   * A key is only ever removed here by a successful re-run (see
-   * `pollDetection`): the group may still be pending again in the meantime
-   * (re-marked) or no longer pending (undone), but in either case `photos`
-   * still holds the stale applied set until the detector runs, so the key
-   * must stay recorded regardless of what happens to the pending correction.
-   */
-  private readonly droppedApplied = signal<Set<string>>(new Set());
-
-  /** Groups needing a re-run: the union of still-pending corrections and applied
-   *  ones dropped this session. A group that is both pending and dropped counts
-   *  once, and keeps counting even after its pending correction is cleared or
-   *  re-marked away, because `droppedApplied` is never trimmed by that. */
-  protected readonly rerunNeeded = computed(
-    () => new Set([...this.pendingCorrectionKeys(), ...this.droppedApplied()]).size);
 
   /**
    * True in a granularity whose sets are kept whole.
@@ -1582,7 +1527,7 @@ export class BurstCullingComponent implements OnDestroy {
    * enabled produced a bare 422 behind a generic failure message.
    */
   protected readonly keepWholeGranularity = computed(
-    () => KEEP_WHOLE_KINDS.includes(this.groupBy()),
+    () => SEQUENCE_KINDS_KEPT_WHOLE.includes(this.cull.groupBy()),
   );
   /** True while a re-detection subprocess runs (spawned here or elsewhere). */
   protected readonly detecting = signal(false);
@@ -1590,22 +1535,13 @@ export class BurstCullingComponent implements OnDestroy {
   protected readonly detectFailed = signal(false);
   private detectPollTimer: ReturnType<typeof setInterval> | null = null;
 
-  /** Active timers for passing groups (for cleanup) */
-  private readonly passTimers = new Map<string, { timeoutId: ReturnType<typeof setTimeout>; intervalId: ReturnType<typeof setInterval>; onElapsed: () => void; commit: boolean }>();
-
-  protected readonly currentPage = signal(1);
-  protected readonly totalPages = signal(1);
-  private readonly similarSeed = Math.floor(Math.random() * 1_000_000);
-
-  protected readonly hasMore = computed(() => this.currentPage() < this.totalPages());
-
   /** Lightbox state — group being viewed, and current photo index inside it. */
   protected readonly lightboxGroupId = signal<string | null>(null);
   protected readonly lightboxIndex = signal(0);
   protected readonly lightboxGroup = computed<CullingGroup | null>(() => {
     const key = this.lightboxGroupId();
     if (!key) return null;
-    return this.groups().find(g => this.groupKey(g) === key) ?? null;
+    return this.cull.groups().find(g => this.cull.groupKey(g) === key) ?? null;
   });
 
   /** Compare mode for the darkroom: single view, or a synced 2-up / 4-up grid. */
@@ -1937,7 +1873,7 @@ export class BurstCullingComponent implements OnDestroy {
   private async ensureFrameSize(path: string): Promise<void> {
     if (this.frameSizes().has(path)) return;
     const size = await this.measureFrame(this.frameSource(path, false));
-    if (size) this.updateMapSignal(this.frameSizes, path, size);
+    if (size) updateMapSignal(this.frameSizes, path, size);
   }
 
   /** Seam over the image load, for the same reason as renderPeaking. */
@@ -2041,31 +1977,28 @@ export class BurstCullingComponent implements OnDestroy {
 
   /** Groups visible in the UI (excludes hidden groups + honors the category filter). */
   protected readonly visibleGroups = computed(() => {
-    const hidden = this.hiddenGroups();
+    const hidden = this.cull.hiddenGroups();
     const cat = this.categoryFilter();
-    return this.groups().filter(g => !hidden.has(this.groupKey(g)) && (!cat || g.category === cat));
+    return this.cull.groups().filter(g => !hidden.has(this.cull.groupKey(g)) && (!cat || g.category === cat));
   });
 
   protected readonly unconfirmedCount = computed(() => {
-    const confirmed = this.confirmedGroups();
-    return this.visibleGroups().filter(g => !confirmed.has(this.groupKey(g))).length;
+    const confirmed = this.cull.confirmedGroups();
+    return this.visibleGroups().filter(g => !confirmed.has(this.cull.groupKey(g))).length;
   });
 
   /** Index of the keyboard-selected group (page-level nav when the lightbox is closed). */
   protected readonly selectedGroupIndex = signal(0);
+  /** The list view's photo cursor inside the selected group: ← / → move it, Space toggles it. Back to the first photo whenever the group changes. */
+  protected readonly selectedPhotoIndex = linkedSignal({ source: this.selectedGroupIndex, computation: () => 0 });
 
-  /** Server-side ordering of culling groups; reloads from page 1 on change. Persisted. */
-  protected readonly sortMode = signal(readStoredSort());
   protected readonly sortModes = ['easiest', 'redundant', 'best', 'recent', 'needs_comparisons', 'chronological'] as const;
-
-  /** Explicit sort direction; '' leaves each mode its natural one. Persisted. */
-  protected readonly sortDirection = signal<'' | 'asc' | 'desc'>(readStoredSortDirection());
 
   /** Whether the active mode currently runs oldest/smallest-first. */
   protected readonly sortAscending = computed(() => {
-    const explicit = this.sortDirection();
+    const explicit = this.cull.sortDirection();
     if (explicit) return explicit === 'asc';
-    return this.sortMode() === 'chronological';
+    return this.cull.sortMode() === 'chronological';
   });
 
   /** Content-category to cull ('' = all). Filters the visible group list client-side. Persisted. */
@@ -2074,7 +2007,7 @@ export class BurstCullingComponent implements OnDestroy {
   /** Distinct categories among loaded groups, for the header filter select. */
   protected readonly availableCategories = computed<string[]>(() => {
     const set = new Set<string>();
-    for (const g of this.groups()) if (g.category) set.add(g.category);
+    for (const g of this.cull.groups()) if (g.category) set.add(g.category);
     return [...set].sort();
   });
 
@@ -2088,54 +2021,6 @@ export class BurstCullingComponent implements OnDestroy {
     if (active) set.add(active);
     return [...set].sort();
   });
-
-  /** Per-category comparison counts + threshold, for the weight-tuning chip. */
-  protected readonly comparisonStats = signal<ComparisonStats | null>(null);
-
-  /** Dry-run result of POST /culling/auto shown in the confirm dialog (null = closed). */
-  protected readonly autoCullPreview = signal<AutoCullResponse | null>(null);
-  /** The dry-run body the preview on screen was computed from, set with it and
-   *  never re-derived: Apply re-sends this verbatim (dry_run flipped) so the
-   *  counts the user agreed to and the knobs that run cannot diverge. A
-   *  suggestion applying a preset mid-flight used to move strictness and the
-   *  profile between the request and its answer, and the apply then read the
-   *  moved signals. */
-  private readonly autoCullRequest = signal<AutoCullRequest | null>(null);
-  /** Bumped per dry run, so a superseded one can never publish over a newer
-   *  preview — the pair above must always describe the same run. */
-  private readonly autoCullRun = new RunGeneration();
-  /** True between a dry run's request and its answer. A suggestion landing in
-   *  that window has to re-run too: the dialog is not open yet, so waiting on
-   *  `autoCullPreview` would have opened it on counts from the knobs the
-   *  suggestion just replaced. */
-  private dryRunInFlight = false;
-  /** True while any auto-cull request is in flight (dry run or apply): it drives
-   *  the dialog's spinner and disables the knobs that would re-run it. */
-  protected readonly autoCullLoading = signal(false);
-  /** True while the *destructive* apply is in flight — the one request that
-   *  cannot be abandoned. Every dismissal path (Cancel, backdrop, Escape) is
-   *  ignored for its duration and Apply refuses to fire twice, because
-   *  dismissing mid-flight re-armed Apply over a snapshot already being applied,
-   *  and the apply's own close then bumped the dry-run generation over the run
-   *  the reopened dialog was waiting on. */
-  protected readonly autoCullApplying = signal(false);
-  /** What the dialog actually renders busy. Not `autoCullLoading` alone: a dry
-   *  run that a profile suggestion started behind the apply clears that flag
-   *  when it lands, which would drop the spinner and re-arm the knobs while the
-   *  destructive request is still open. */
-  protected readonly autoCullBusy = computed(() => this.autoCullLoading() || this.autoCullApplying());
-  /** Whether the apply also fills the Highlights album (dialog checkbox, opt-in). */
-  protected readonly autoCullHighlights = signal(false);
-  /** Whether auto-cull also proposes trimming redundant, non-clipping bracket
-   *  exposures (dialog checkbox); toggling re-runs the dry run since it
-   *  changes the preview's group/keep/reject counts. */
-  protected readonly trimBrackets = signal(false);
-  /** Translated preset name whose suggestion re-ran an already-open dialog's
-   *  preview — the counts changed under the user, so the dialog says why. */
-  protected readonly autoCullSuggestionNotice = signal<string | null>(null);
-  /** True when trimming brackets returned the very same counts: without this the
-   *  toggle looks broken, since a re-run that changes nothing is silent. */
-  protected readonly trimBracketsUnchanged = signal(false);
 
   protected readonly darkroomShortcuts: ShortcutRow[] = [
     { keys: ['←', '→'], labelKey: 'culling.shortcuts.navigate' },
@@ -2154,8 +2039,10 @@ export class BurstCullingComponent implements OnDestroy {
       titleKey: 'culling.shortcuts.page_title',
       rows: [
         { keys: ['↑', '↓'], labelKey: 'culling.shortcuts.select' },
+        { keys: ['←', '→'], labelKey: 'culling.shortcuts.navigate' },
+        { keys: ['Space'], labelKey: 'culling.shortcuts.toggle' },
+        { keys: ['Shift+Space'], labelKey: 'culling.shortcuts.confirm_next' },
         { keys: ['Enter'], labelKey: 'culling.shortcuts.open' },
-        { keys: ['Space'], labelKey: 'culling.shortcuts.confirm_next' },
       ],
     },
     { titleKey: 'culling.shortcuts.darkroom_title', rows: this.darkroomShortcuts },
@@ -2163,21 +2050,64 @@ export class BurstCullingComponent implements OnDestroy {
 
   constructor() {
     this.pageHelp.setDescription(null);
+    this.cull.notice$.pipe(takeUntilDestroyed()).subscribe(notice => {
+      const text = notice.params ? this.i18n.t(notice.key, notice.params) : this.i18n.t(notice.key);
+      this.snackBar.open(text, '', { duration: notice.duration, horizontalPosition: 'right', verticalPosition: 'bottom' });
+    });
+    this.assistantChanges.batch$.pipe(takeUntilDestroyed()).subscribe(batch => {
+      void this.cull.applyExternalChanges(batch.paths, { lightboxOpen: this.lightboxGroupId() !== null, count: batch.count });
+    });
+    // Mirror the lightbox photo for `ui_get_context`; no lightbox, or leaving the page, means none.
+    effect(() => {
+      this.journal.darkroomFocus.set(this.lightboxGroup()?.photos[this.lightboxIndex()]?.path ?? null);
+    });
+    inject(DestroyRef).onDestroy(() => this.journal.darkroomFocus.set(null));
+    // The auto-cull confirm is a custom modal MatDialog cannot see; the lightbox is the page's working surface and is not one.
+    const pageContext = inject(PageContextService);
+    effect(onCleanup => {
+      if (this.cull.autoCullPreview()) onCleanup(pageContext.registerOverlay('dialog'));
+    });
+    // A photo an assistant moved or deleted can vanish from the group the darkroom is showing.
+    effect(() => {
+      const group = this.lightboxGroup();
+      if (group === null) return;
+      untracked(() => {
+        if (group.photos.length === 0) this.lightboxGroupId.set(null);
+        else if (this.lightboxIndex() >= group.photos.length) this.lightboxIndex.set(group.photos.length - 1);
+      });
+    });
     this.coarsePointer.setup();
+    inject(DestroyRef).onDestroy(
+      inject(ViewActionRegistry).register('ui_show_culling_group', args => this.showGroupForAgent(args)),
+    );
     const qp = this.route.snapshot.queryParamMap;
-    this.scopeAlbum.set(qp.get('album'));
-    this.scopeFrom.set(qp.get('from'));
-    this.scopeTo.set(qp.get('to'));
-    this.scopeScene.set(qp.get('scene'));
+    this.cull.scopeAlbum.set(qp.get('album'));
+    this.cull.scopeFrom.set(qp.get('from'));
+    this.cull.scopeTo.set(qp.get('to'));
+    this.cull.scopeScene.set(qp.get('scene'));
+    // The URL tells the truth about the scope: any change (a date range, a plan's own window, a failed
+    // re-plan restoring the previous one) is written back, the other params (group_by) kept.
+    effect(() => {
+      const album = this.cull.scopeAlbum();
+      const from = this.cull.scopeFrom();
+      const to = this.cull.scopeTo();
+      const scene = this.cull.scopeScene();
+      untracked(() => this.mirrorScopeToUrl(album, from, to, scene));
+    });
     const gb = qp.get('group_by');
     // Validated against the shared list, not a repeated literal union: the
     // hand-written one silently dropped every granularity added after it.
-    if (gb && (GROUP_BY_VALUES as readonly string[]).includes(gb)) this.groupBy.set(gb as GroupBy);
-    void this.loadGroups();
+    if (gb && (GROUP_BY_VALUES as readonly string[]).includes(gb)) this.cull.groupBy.set(gb as GroupBy);
+    // A held plan wins over the URL-driven feed: the effect below enters it with its own scope and granularity.
+    if (!this.planService.pin()) void this.cull.loadGroups();
+    effect(() => {
+      const pin = this.planService.pin();
+      if (pin) untracked(() => { void this.followPin(pin); });
+    });
     void this.loadAlbums();
-    void this.loadCullProfiles();
-    void this.refreshComparisonStats();
-    void this.refreshRankerStatus();
+    void this.cull.loadCullProfiles();
+    void this.cull.refreshComparisonStats();
+    void this.cull.refreshRankerStatus();
     // Keep the keyboard selection in bounds as groups load / get hidden, preserving
     // the identity of the highlighted group when an earlier one drops out of the list.
     let previousVisibleKeys: string[] = [];
@@ -2186,7 +2116,7 @@ export class BurstCullingComponent implements OnDestroy {
       const count = groups.length;
       if (count === 0) { previousVisibleKeys = []; return; }
       const idx = this.selectedGroupIndex();
-      const currentKeys = groups.map(g => this.groupKey(g));
+      const currentKeys = groups.map(g => this.cull.groupKey(g));
       const groupsChanged = currentKeys.length !== previousVisibleKeys.length
         || currentKeys.some((k, i) => k !== previousVisibleKeys[i]);
       if (groupsChanged && previousVisibleKeys[idx] !== undefined) {
@@ -2205,8 +2135,10 @@ export class BurstCullingComponent implements OnDestroy {
     effect(() => {
       if (this.lightboxGroup()) return;
       const idx = this.selectedGroupIndex();
+      const pIdx = this.selectedPhotoIndex();
       queueMicrotask(() => {
         document.querySelector(`[data-gidx="${idx}"]`)?.scrollIntoView({ block: 'nearest' });
+        document.querySelector(`[data-gidx="${idx}"] [data-pidx="${pIdx}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
       });
     });
     // Move focus onto the darkroom dialog when it opens so the photo tiles behind
@@ -2218,7 +2150,7 @@ export class BurstCullingComponent implements OnDestroy {
     // Focus the auto-cull confirm dialog on open so keyboard users land inside
     // the modal (not stranded on the tiles behind it) next to a destructive action.
     effect(() => {
-      if (this.autoCullPreview()) this.autoCullDialog()?.nativeElement.focus();
+      if (this.cull.autoCullPreview()) this.autoCullDialog()?.nativeElement.focus();
     });
     // Project the toolbar into the global header on lg+ (the page renders it in
     // its own bottom bar on small screens — see the #cullToolbar template).
@@ -2331,25 +2263,10 @@ export class BurstCullingComponent implements OnDestroy {
     this.activeStyle.set(style);
   }
 
-  /** Update a signal holding a Map by cloning and setting a key. */
-  private updateMapSignal<K, V>(sig: WritableSignal<Map<K, V>>, key: K, value: V): void {
-    sig.update(m => { const next = new Map(m); next.set(key, value); return next; });
-  }
-
-  /** Update a signal holding a Map by cloning and deleting a key. */
-  private deleteMapKey<K, V>(sig: WritableSignal<Map<K, V>>, key: K): void {
-    sig.update(m => { if (!m.has(key)) return m; const next = new Map(m); next.delete(key); return next; });
-  }
-
-  /** Update a signal holding a Set by cloning and adding a value. */
-  private addToSetSignal<V>(sig: WritableSignal<Set<V>>, value: V): void {
-    sig.update(s => { const next = new Set(s); next.add(value); return next; });
-  }
-
   ngOnDestroy(): void {
     this.pageHelp.setDescription(null);
     this.coarsePointer.cleanup();
-    this.clearAllPassTimers();
+    this.cull.clearAllPassTimers();
     this.stopDetectionPolling();
     this.abortPrefetch(this.neighbourThumbs);
     this.abortPrefetch(this.neighbourRenders);
@@ -2360,44 +2277,49 @@ export class BurstCullingComponent implements OnDestroy {
     if (tpl) this.headerSlot.clear(tpl);
   }
 
-  protected groupKey(group: CullingGroup): string {
-    return `${group.group_id}_${group.type}`;
+  /** Enter the assistant's plan when the pin is a new one, then land on the group it asked for. */
+  private async followPin(pin: CullPlanPin): Promise<void> {
+    if (this.cull.planDigest() !== pin.digest) {
+      this.selectedGroupIndex.set(0);
+      if (await this.cull.enterPlan(pin) !== 'landed') return;
+    }
+    if (pin.focusNumber !== undefined) await this.focusPlanGroup(pin.focusNumber);
   }
 
-  private buildParams(page: number): Record<string, string | number | boolean> {
-    const params: Record<string, string | number | boolean> = {
-      page,
-      per_page: 20,
-      similarity_threshold: (this.similarityThreshold() / 100).toString(),
-      seed: this.similarSeed,
-      exclude_rejected: this.excludeRejected(),
-      sort: this.sortMode(),
-      direction: this.sortDirection(),
-      group_by: this.groupBy(),
-    };
-    const album = this.scopeAlbum();
-    const from = this.scopeFrom();
-    const to = this.scopeTo();
-    if (album) params['album_id'] = album;
-    if (from) params['date_from'] = from;
-    if (to) params['date_to'] = to;
-    return params;
+  /** Move the keyboard selection onto plan group `number`, paging more groups in if it is not shown yet. */
+  private async focusPlanGroup(number: number): Promise<void> {
+    const find = () => this.cull.groups().find(g => g.plan?.number === number);
+    while (!find() && this.cull.hasMore()) {
+      const before = this.cull.currentPage();
+      await this.cull.loadMore();
+      if (this.cull.currentPage() === before) break;
+    }
+    const group = find();
+    if (!group) return;
+    const index = this.visibleGroups().findIndex(g => this.cull.groupKey(g) === this.cull.groupKey(group));
+    if (index >= 0) this.selectedGroupIndex.set(index);
+  }
+
+  /** Leave the assistant's plan for the manual feed. */
+  protected exitPlan(): void {
+    this.selectedGroupIndex.set(0);
+    this.cull.resetForReload();
   }
 
   /** Clear the scene/album scope and return to the full unreviewed feed. */
   protected exitScope(): void {
-    this.scopeAlbum.set(null);
-    this.scopeFrom.set(null);
-    this.scopeTo.set(null);
-    this.scopeScene.set(null);
+    this.cull.scopeAlbum.set(null);
+    this.cull.scopeFrom.set(null);
+    this.cull.scopeTo.set(null);
+    this.cull.scopeScene.set(null);
     void this.router.navigate(['/culling']);
-    void this.loadGroups();
+    void this.cull.loadGroups();
   }
 
   /** Non-smart albums for the scope cascade's first level (best-effort). */
   private async loadAlbums(): Promise<void> {
     try {
-      this.albums.set(await firstValueFrom(this.albumService.listNonSmart()));
+      this.cull.albums.set(await firstValueFrom(this.albumService.listNonSmart()));
     } catch {
       // Scope menu keeps the "Whole library" entry only.
     }
@@ -2422,26 +2344,60 @@ export class BurstCullingComponent implements OnDestroy {
   }
 
   private applyScope(album: string | null, from: string | null, to: string | null, scene: string | null): void {
-    this.resetProfileSuggestion();
-    this.scopeAlbum.set(album);
-    this.scopeFrom.set(from);
-    this.scopeTo.set(to);
-    this.scopeScene.set(scene);
+    this.cull.resetProfileSuggestion();
+    this.cull.scopeAlbum.set(album);
+    this.cull.scopeFrom.set(from);
+    this.cull.scopeTo.set(to);
+    this.cull.scopeScene.set(scene);
     void this.router.navigate(['/culling'], {
       queryParams: { album: album ?? null, from: from ?? null, to: to ?? null, scene: scene ?? null },
+      queryParamsHandling: 'merge',
     });
     this.selectedGroupIndex.set(0);
-    this.resetForReload();
+    this.cull.resetForReload();
+  }
+
+  /** Write the scope into the query string unless it already says so (applyScope's own navigation lands first). */
+  private mirrorScopeToUrl(album: string | null, from: string | null, to: string | null, scene: string | null): void {
+    const current = this.router.parseUrl(this.router.url).queryParams;
+    if ((current['album'] ?? null) === album && (current['from'] ?? null) === from
+      && (current['to'] ?? null) === to && (current['scene'] ?? null) === scene) return;
+    void this.router.navigate([], {
+      queryParams: { album, from, to, scene },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
+  }
+
+  protected onDatePreset(id: CullDatePresetId): void {
+    const { from, to } = presetRange(id, new Date());
+    this.onDateRange(from, to);
+  }
+
+  /** The picker fires with the start alone while the user is mid-selection: apply only a complete range. */
+  protected onCustomRangeEnd(start: Date | null, end: Date | null): void {
+    if (start && end) this.onDateRange(toIsoDateString(start), toIsoDateString(end));
+  }
+
+  /** In plan mode the old plan stays on screen until the re-plan lands, so the selection must not jump early. */
+  protected onDateRange(from: string | null, to: string | null): void {
+    this.cull.setDateRange(from, to);
+    if (!this.cull.planActive()) this.selectedGroupIndex.set(0);
+  }
+
+  /** A window picked on the date button survives an album pick; only a scene's own window (or All dates) drops it. */
+  private currentWindow(): [string | null, string | null] {
+    return this.cull.scopeScene() ? [null, null] : [this.cull.scopeFrom(), this.cull.scopeTo()];
   }
 
   protected scopeWholeLibrary(): void {
-    this.applyScope(null, null, null, null);
+    this.applyScope(null, ...this.currentWindow(), null);
   }
 
   protected scopeAlbumWhole(): void {
     const id = this.expandedAlbumId();
     if (id === null) return;
-    this.applyScope(id.toString(), null, null, null);
+    this.applyScope(id.toString(), ...this.currentWindow(), null);
   }
 
   protected scopeAlbumScene(scene: SceneSummary): void {
@@ -2450,227 +2406,39 @@ export class BurstCullingComponent implements OnDestroy {
     this.applyScope(id.toString(), scene.start, scene.end, this.sceneDate.transform(scene.start));
   }
 
-  /** Fetch personal-ranker status for the "trains My Taste" chip (best-effort). */
-  private async refreshRankerStatus(): Promise<void> {
-    try {
-      const s = await firstValueFrom(
-        this.api.get<{ trained: boolean; comparison_count: number }>('/ranker/status'),
-      );
-      this.rankerTrained.set(!!s.trained);
-      this.rankerComparisons.set(s.comparison_count ?? null);
-    } catch {
-      // The chip is a nice-to-have; ignore status failures.
-    }
-  }
-
-  private autoSelectBest(groups: CullingGroup[], base?: Map<number, Set<string>>): Map<number, Set<string>> {
-    const map = base ? new Map(base) : new Map<number, Set<string>>();
-    for (const group of groups) {
-      if (!map.has(group.group_id)) {
-        const kept = this.computeAutoKeep(group);
-        if (kept.size > 0) {
-          map.set(group.group_id, kept);
-        }
-      }
-    }
-    return map;
-  }
-
-  /**
-   * Derive the auto-keep set for a group from the current strictness (0-100).
-   * The best photo is always kept; additional photos whose burst_score falls
-   * within a strictness-derived margin of the best are also kept. At strictness
-   * 100 only the single best survives; at 0 everything within ~5 points stays.
-   *
-   * A bracket or a panorama is the exception and starts fully kept whatever the
-   * strictness: their frames were shot to be merged, not to compete, so
-   * proposing to drop the flanking exposures or half a sweep would be proposing
-   * to destroy the set. Trimming a bracket stays available deliberately,
-   * through auto-cull's `trim_brackets`, which first checks the base exposure
-   * clips nothing.
-   */
-  private computeAutoKeep(group: CullingGroup): Set<string> {
-    if (group.sequence_kind && KEEP_WHOLE_KINDS.includes(group.sequence_kind)) {
-      return new Set<string>(group.photos.map(p => p.path));
-    }
-    const best = group.best_path || group.photos[0]?.path;
-    if (!best) return new Set<string>();
-    const kept = new Set<string>([best]);
-
-    const bestScore = group.photos.find(p => p.path === best)?.burst_score
-      ?? Math.max(0, ...group.photos.map(p => p.burst_score));
-    // strictness 100 -> margin 0 (only the best); strictness 0 -> margin 5.
-    const margin = (100 - this.strictness()) / 100 * 5;
-    if (margin > 0) {
-      for (const photo of group.photos) {
-        if (bestScore - photo.burst_score <= margin) {
-          kept.add(photo.path);
-        }
-      }
-    }
-    return kept;
-  }
-
   protected onThresholdChange(value: number): void {
-    this.similarityThreshold.set(value);
-    this.profileChosen.set(true);
-    this.clearProfileSelection();
-    this.resetForReload();
+    this.cull.similarityThreshold.set(value);
+    this.cull.profileChosen.set(true);
+    this.cull.clearProfileSelection();
+    this.cull.resetForReload();
   }
 
-  /** Moving a knob by hand drops the preset label — the mix is now custom. */
-  private clearProfileSelection(): void {
-    if (this.selectedProfile()) {
-      this.selectedProfile.set('');
-      localStorage.removeItem(CULL_PROFILE_KEY);
-    }
-  }
-
+  /** Stores the value; in plan mode the plan is recomputed once the slider settles, else the preset label goes and the keepers are re-derived. */
   protected onStrictnessChange(value: number): void {
-    this.strictness.set(value);
-    this.profileChosen.set(true);
-    this.clearProfileSelection();
-    this.reselectFromStrictness();
-  }
-
-  /**
-   * Re-derive the auto-keep selection for every loaded group from the current
-   * strictness. Purely client-side over the burst_score values already
-   * returned — no backend round-trip. Confirmed groups are left untouched.
-   */
-  private reselectFromStrictness(): void {
-    const confirmed = this.confirmedGroups();
-    const map = new Map<number, Set<string>>();
-    for (const group of this.groups()) {
-      if (confirmed.has(this.groupKey(group))) {
-        const existing = this.selectionsMap().get(group.group_id);
-        if (existing) map.set(group.group_id, existing);
-        continue;
-      }
-      const kept = this.computeAutoKeep(group);
-      if (kept.size > 0) map.set(group.group_id, kept);
-    }
-    this.selectionsMap.set(map);
-  }
-
-  // --- Genre culling profiles (preset selector + moment auto-suggest) ---
-
-  /** Load the genre culling presets; re-apply the persisted one on open. */
-  private async loadCullProfiles(): Promise<void> {
-    try {
-      const data = await firstValueFrom(this.api.get<CullProfilesResponse>('/culling/profiles'));
-      this.cullProfiles.set(data.profiles ?? []);
-      const stored = this.cullProfiles().find(p => p.id === this.selectedProfile());
-      if (stored) {
-        // A restored preset is a choice the user made, just in an earlier
-        // session; a suggestion must not silently replace it.
-        this.profileChosen.set(true);
-        this.applyProfile(stored, false);
-      } else {
-        this.clearProfileSelection();
-      }
-    } catch {
-      // Preset selector stays hidden when the list can't load.
+    this.cull.setStrictness(value);
+    this.cull.profileChosen.set(true);
+    if (this.cull.planActive()) {
+      // The plan keeps its preset: the strictness overrides the preset's own, the preset's other knobs stay.
+      this.cull.scheduleReplan();
+    } else {
+      this.cull.clearProfileSelection();
+      this.cull.reselectFromStrictness();
     }
   }
 
-  /**
-   * Apply a preset: set strictness first (so a reload auto-selects with it) and
-   * the similarity threshold, remember the choice, then re-derive the auto-keep
-   * selection in place — or reload only when the threshold changed the grouping.
-   */
-  protected applyProfile(p: CullProfile, persist = true): void {
-    this.selectedProfile.set(p.id);
-    if (persist) {
-      localStorage.setItem(CULL_PROFILE_KEY, p.id);
-      this.profileChosen.set(true);
-    }
-    if (p.strictness != null) this.strictness.set(p.strictness);
-    if (p.similarity_threshold != null && p.similarity_threshold !== this.similarityThreshold()) {
-      this.similarityThreshold.set(p.similarity_threshold);
-      this.resetForReload();
-    } else if (p.strictness != null) {
-      this.reselectFromStrictness();
-    }
-  }
+  // --- Genre culling profiles and auto-cull: the state and requests live in CullingStore ---
 
-  /** Identity of the current scope, so a scope change refetches its suggestion. */
-  private scopeKey(): string {
-    return [this.scopeAlbum() ?? '', this.scopeFrom() ?? '', this.scopeTo() ?? ''].join('|');
-  }
-
-  /** Drop a suggestion that answered for another scope. */
-  private resetProfileSuggestion(): void {
-    this.suggestionScopeKey = null;
-    this.suggestionApplied = false;
-    this.profileSuggestion.set(null);
-  }
-
-  /**
-   * Preselect the preset the scope's content argues for, at most once per scope.
-   *
-   * Fetched alongside the dry run rather than before it, so the dialog opens at
-   * the same speed whether or not a suggestion arrives; one that lands while the
-   * dialog is open — or while its dry run is still in flight — re-runs the
-   * preview under the suggested knobs rather than leaving stale counts on
-   * screen. An explicit choice — a preset click, a knob move, or one restored
-   * from a previous session — is never overwritten.
-   *
-   * Refused outright once the destructive apply is in flight, and refused again
-   * after the fetch, since that is the whole window this can resolve in. The
-   * apply owns the knobs the same way it owns the snapshot: refusing only at the
-   * dry run's door came after applyProfile() had already moved strictness and lit
-   * the preset chip, so the user watched them jump under a request neither the
-   * counts on screen nor the apply itself were computed from. Nothing is queued
-   * for afterwards — the dialog a late suggestion would repaint is gone by then.
-   */
-  private async applySuggestedProfile(): Promise<void> {
-    if (this.profileChosen() || this.suggestionApplied || this.autoCullApplying()) return;
-    const key = this.scopeKey();
-    const suggestion = this.suggestionScopeKey === key
-      ? this.profileSuggestion()
-      : await this.fetchProfileSuggestion(key);
-    const suggested = suggestion?.profile;
-    if (!suggested || this.profileChosen() || this.autoCullApplying()) return;
-    const profile = this.cullProfiles().find(p => p.id === suggested);
-    if (!profile || profile.id === this.selectedProfile()) return;
-    this.suggestionApplied = true;
-    this.applyProfile(profile, false);
-    if (this.autoCullPreview() || this.dryRunInFlight) {
-      // Named only once the re-run published: a refused one (the apply owns the
-      // dialog) leaves the counts exactly as they were, and the notice claims
-      // they were recomputed under the preset it names.
-      if (await this.openAutoCull() === 'landed') {
-        this.autoCullSuggestionNotice.set(this.i18n.t(profile.label_key));
-      }
-    }
-  }
-
-  /** Ask the backend which preset this scope's stored content looks like. */
-  private async fetchProfileSuggestion(key: string): Promise<ProfileSuggestion | null> {
-    const params: Record<string, string | number> = {};
-    const album = this.scopeAlbum();
-    if (album) params['album_id'] = Number(album);
-    const from = this.scopeFrom();
-    if (from) params['date_from'] = from;
-    const to = this.scopeTo();
-    if (to) params['date_to'] = to;
-    try {
-      const data = await firstValueFrom(
-        this.api.get<ProfileSuggestion>('/culling/suggest_profile', params),
-      );
-      this.suggestionScopeKey = key;
-      this.profileSuggestion.set(data);
-      return data;
-    } catch {
-      // No suggestion: the dialog keeps whatever preset is already active.
-      return null;
-    }
+  /** Apply the previewed auto-cull, then reset the keyboard selection and reload the feed. */
+  protected confirmAutoCull(): Promise<void> {
+    return this.cull.confirmAutoCull(() => {
+      this.selectedGroupIndex.set(0);
+      this.cull.resetForReload();
+    });
   }
 
   protected onExcludeRejectedChange(value: boolean): void {
-    this.excludeRejected.set(value);
-    this.resetForReload();
+    this.cull.excludeRejected.set(value);
+    this.cull.resetForReload();
   }
 
   protected onCategoryFilterChange(value: string): void {
@@ -2680,88 +2448,35 @@ export class BurstCullingComponent implements OnDestroy {
   }
 
   protected onSortChange(value: string): void {
-    this.sortMode.set(value);
+    this.cull.sortMode.set(value);
     localStorage.setItem(CULL_SORT_KEY, value);
     this.selectedGroupIndex.set(0);
-    this.resetForReload();
+    this.cull.resetForReload();
   }
 
   /** Flip the active sort. Writes an explicit direction rather than a "reversed"
    *  flag, so switching mode afterwards keeps the direction the user asked for. */
   protected toggleSortDirection(): void {
     const next = this.sortAscending() ? 'desc' : 'asc';
-    this.sortDirection.set(next);
+    this.cull.sortDirection.set(next);
     localStorage.setItem(CULL_SORT_DIR_KEY, next);
     this.selectedGroupIndex.set(0);
-    this.resetForReload();
+    this.cull.resetForReload();
   }
 
   /** Switch the feed granularity (all | burst | similar | scene); reloads from page 1. */
   protected onGroupByChange(value: GroupBy): void {
-    if (value === this.groupBy()) return;
-    this.groupBy.set(value);
+    if (value === this.cull.groupBy()) return;
+    this.cull.groupBy.set(value);
     localStorage.setItem(CULL_GROUP_BY_KEY, value);
     this.selectedGroupIndex.set(0);
     void this.router.navigate([], { queryParams: { group_by: value }, queryParamsHandling: 'merge' });
-    this.resetForReload();
-  }
-
-  private resetForReload(): void {
-    this.loadGenerationId++;
-    this.currentPage.set(1);
-    this.groups.set([]);
-    this.confirmedGroups.set(new Set());
-    this.selectionsMap.set(new Map());
-    this.clearAllPassTimers();
-    void this.loadGroups();
-  }
-
-  protected async loadGroups(): Promise<void> {
-    const gen = this.loadGenerationId;
-    this.loading.set(true);
-    try {
-      const data = await firstValueFrom(
-        this.api.get<CullingGroupsResponse>('/culling-groups', this.buildParams(1)),
-      );
-      if (gen !== this.loadGenerationId) return;
-      this.groups.set(data.groups);
-      this.totalGroups.set(data.total_groups);
-      this.totalPages.set(data.total_pages);
-      this.currentPage.set(1);
-      this.selectionsMap.set(this.autoSelectBest(data.groups));
-    } catch {
-      if (gen !== this.loadGenerationId) return;
-      this.snackBar.open(this.i18n.t(I18N.culling.error_loading), '', { duration: 2000, horizontalPosition: 'right', verticalPosition: 'bottom' });
-    } finally {
-      if (gen === this.loadGenerationId) this.loading.set(false);
-    }
-  }
-
-  protected async loadMore(): Promise<void> {
-    if (!this.hasMore()) return;
-    const gen = this.loadGenerationId;
-    this.loadingMore.set(true);
-    try {
-      const nextPage = this.currentPage() + 1;
-      const data = await firstValueFrom(
-        this.api.get<CullingGroupsResponse>('/culling-groups', this.buildParams(nextPage)),
-      );
-      if (gen !== this.loadGenerationId) return;
-      this.groups.update(existing => [...existing, ...data.groups]);
-      this.totalPages.set(data.total_pages);
-      this.currentPage.set(nextPage);
-      this.selectionsMap.set(this.autoSelectBest(data.groups, this.selectionsMap()));
-    } catch {
-      if (gen !== this.loadGenerationId) return;
-      this.snackBar.open(this.i18n.t(I18N.culling.error_loading), '', { duration: 2000, horizontalPosition: 'right', verticalPosition: 'bottom' });
-    } finally {
-      if (gen === this.loadGenerationId) this.loadingMore.set(false);
-    }
+    this.cull.resetForReload();
   }
 
   protected onScrollReached(): void {
-    if (this.hasMore() && !this.loadingMore()) {
-      this.loadMore();
+    if (this.cull.hasMore() && !this.cull.loadingMore()) {
+      this.cull.loadMore();
     }
   }
 
@@ -2776,14 +2491,36 @@ export class BurstCullingComponent implements OnDestroy {
     void this.router.navigate(['/compare']);
   }
 
+  /** `ui_show_culling_group`: open the lightbox on the group identified by (type, group_id), paging in more groups if needed. */
+  private async showGroupForAgent(args: Record<string, unknown>): Promise<unknown> {
+    const type = args['type'];
+    const groupId = args['group_id'];
+    const find = () => this.cull.groups().find(g => g.type === type && g.group_id === groupId);
+    const deadline = Date.now() + 10_000;
+    // Wait out a feed or scroll load already in flight, then page in until found; a page that fails
+    // does not advance, so stop there rather than re-request it (each attempt raises a snackbar).
+    while ((this.cull.loading() || this.cull.loadingMore()) && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    while (!find() && this.cull.hasMore() && Date.now() < deadline) {
+      const before = this.cull.currentPage();
+      await this.cull.loadMore();
+      if (this.cull.currentPage() === before) break;
+    }
+    const group = find();
+    if (!group) throw new UiToolError('not_found', `No ${String(type)} group ${String(groupId)} in the darkroom's current scope.`);
+    this.openLightbox(group, 0);
+    return { type: group.type, group_id: group.group_id, photo_count: group.photos?.length ?? null };
+  }
+
   // --- Lightbox handlers ---
 
   protected openLightbox(group: CullingGroup, index: number): void {
     this.zoom.set(FIT_ZOOM);  // never inherit a prior session's zoom/pan
     this.activeStyle.set('');  // each darkroom session starts on the flat Original
-    this.lightboxGroupId.set(this.groupKey(group));
+    this.lightboxGroupId.set(this.cull.groupKey(group));
     this.lightboxIndex.set(index);
-    const gi = this.visibleGroups().findIndex(g => this.groupKey(g) === this.groupKey(group));
+    const gi = this.visibleGroups().findIndex(g => this.cull.groupKey(g) === this.cull.groupKey(group));
     if (gi >= 0) this.selectedGroupIndex.set(gi);
     void this.loadCloseupsForGroup(group);
   }
@@ -2819,7 +2556,7 @@ export class BurstCullingComponent implements OnDestroy {
     // ones highlighted and scrolled into view on exit.
     const group = this.lightboxGroup();
     if (group) {
-      const gi = this.visibleGroups().findIndex(g => this.groupKey(g) === this.groupKey(group));
+      const gi = this.visibleGroups().findIndex(g => this.cull.groupKey(g) === this.cull.groupKey(group));
       if (gi >= 0) this.selectedGroupIndex.set(gi);
     }
     this.lightboxGroupId.set(null);
@@ -2837,7 +2574,7 @@ export class BurstCullingComponent implements OnDestroy {
     try {
       const data = await firstValueFrom(
         this.api.post<{ faces_by_path: Record<string, CullingFace[]>; thresholds?: FaceThresholds }>(
-          '/culling-group/faces', { paths: missing.map(p => p.path), profile: this.selectedProfile() || undefined },
+          '/culling-group/faces', { paths: missing.map(p => p.path), profile: this.cull.selectedProfile() || undefined },
         ),
       );
       if (data.thresholds) this.faceThresholds.set(data.thresholds);
@@ -2975,17 +2712,32 @@ export class BurstCullingComponent implements OnDestroy {
   @HostListener('document:keydown.arrowleft', ['$event'])
   protected onArrowLeft(event: Event): void {
     const group = this.lightboxGroup();
-    if (!group) return;
-    event.preventDefault();
-    this.stepLightbox(group, -1);
+    if (group) {
+      event.preventDefault();
+      this.stepLightbox(group, -1);
+      return;
+    }
+    this.stepPhotoCursor(event, -1);
   }
 
   @HostListener('document:keydown.arrowright', ['$event'])
   protected onArrowRight(event: Event): void {
     const group = this.lightboxGroup();
+    if (group) {
+      event.preventDefault();
+      this.stepLightbox(group, 1);
+      return;
+    }
+    this.stepPhotoCursor(event, 1);
+  }
+
+  /** List view: move the photo cursor within the selected group, stopping at its edges. */
+  private stepPhotoCursor(event: Event, delta: number): void {
+    if (isTypingContext(event)) return;
+    const group = this.visibleGroups()[this.selectedGroupIndex()];
     if (!group) return;
     event.preventDefault();
-    this.stepLightbox(group, 1);
+    this.selectedPhotoIndex.update(i => this.clampIndex(i + delta, group.photos.length));
   }
 
   /** Z toggles the darkroom zoom (fit ↔ 2×) when open, else the grid hover loupe.
@@ -3041,21 +2793,10 @@ export class BurstCullingComponent implements OnDestroy {
     this.isFullscreen.set(!!document.fullscreenElement);
   }
 
-  /** The one write behind every darkroom decision: the ↑ / ↓ keys, a swipe, and
-   *  the per-pane buttons a compare grid needs (where "the current photo" is not
-   *  a question the keyboard can answer for the pane the user is looking at). */
-  protected setPhotoKept(group: CullingGroup, path: string, keep: boolean): void {
-    const map = new Map(this.selectionsMap());
-    const kept = new Set(map.get(group.group_id) ?? []);
-    if (keep) kept.add(path); else kept.delete(path);
-    map.set(group.group_id, kept);
-    this.selectionsMap.set(map);
-  }
-
   private setCurrentLightboxPhotoKept(group: CullingGroup, keep: boolean): void {
     const photo = group.photos[this.lightboxIndex()];
     if (!photo) return;
-    this.setPhotoKept(group, photo.path, keep);
+    this.cull.setPhotoKept(group, photo.path, keep);
   }
 
   /**
@@ -3070,7 +2811,7 @@ export class BurstCullingComponent implements OnDestroy {
   protected onSwipeDecision(group: CullingGroup, keep: boolean): void {
     const photo = group.photos[this.lightboxIndex()];
     if (!photo) return;
-    const previousKept = new Set(this.selectionsMap().get(group.group_id) ?? []);
+    const previousKept = new Set(this.cull.selectionsMap().get(this.cull.groupKey(group)) ?? []);
     const previousIndex = this.lightboxIndex();
     this.setCurrentLightboxPhotoKept(group, keep);
     this.stepLightbox(group, 1);
@@ -3078,7 +2819,7 @@ export class BurstCullingComponent implements OnDestroy {
       labelKey: keep ? I18N.culling.swipe.kept : I18N.culling.swipe.rejected,
       labelParams: { filename: photo.filename },
       undo: () => {
-        this.updateMapSignal(this.selectionsMap, group.group_id, previousKept);
+        this.cull.restoreSelection(group, previousKept);
         this.lightboxIndex.set(previousIndex);
         this.zoom.set(FIT_ZOOM);
         return Promise.resolve();
@@ -3116,7 +2857,7 @@ export class BurstCullingComponent implements OnDestroy {
   @HostListener('document:keydown.enter', ['$event'])
   protected onEnter(event: Event): void {
     if (this.lightboxGroup()) return;
-    if (isTypingContext(event)) return;
+    if (isTypingContext(event) || isControlActivation(event)) return;
     const group = this.visibleGroups()[this.selectedGroupIndex()];
     if (!group) return;
     event.preventDefault();
@@ -3126,10 +2867,10 @@ export class BurstCullingComponent implements OnDestroy {
   /** Next visible, not-yet-confirmed group after the given one (for darkroom auto-advance). */
   private nextUnconfirmedGroupAfter(group: CullingGroup): CullingGroup | null {
     const groups = this.visibleGroups();
-    const confirmed = this.confirmedGroups();
-    const startIdx = groups.findIndex(g => this.groupKey(g) === this.groupKey(group));
+    const confirmed = this.cull.confirmedGroups();
+    const startIdx = groups.findIndex(g => this.cull.groupKey(g) === this.cull.groupKey(group));
     for (let i = startIdx + 1; i < groups.length; i++) {
-      if (!confirmed.has(this.groupKey(groups[i]))) return groups[i];
+      if (!confirmed.has(this.cull.groupKey(groups[i]))) return groups[i];
     }
     return null;
   }
@@ -3140,7 +2881,7 @@ export class BurstCullingComponent implements OnDestroy {
     if (group) {
       // Darkroom: confirm the open group and jump into the next one.
       event.preventDefault();
-      if (!this.confirmGroup(group)) return;
+      if (!this.cull.confirmGroup(group)) return;
       const next = this.nextUnconfirmedGroupAfter(group);
       if (next) {
         this.openLightbox(next, 0);
@@ -3150,15 +2891,28 @@ export class BurstCullingComponent implements OnDestroy {
       }
       return;
     }
-    // List: confirm the selected group and move the selection to the next one.
-    if (isTypingContext(event)) return;
+    // List: toggle the photo under the cursor. A confirmed group is locked, as it is to the mouse.
+    if (isTypingContext(event) || isControlActivation(event)) return;
+    const selected = this.visibleGroups()[this.selectedGroupIndex()];
+    const photo = selected?.photos[this.selectedPhotoIndex()];
+    if (!selected || !photo) return;
+    event.preventDefault();
+    if (this.cull.confirmedGroups().has(this.cull.groupKey(selected))) return;
+    this.cull.toggleSelection(photo.path, selected);
+  }
+
+  /** List: confirm the selected group and move the selection to the next one. */
+  @HostListener('document:keydown.shift.space', ['$event'])
+  protected onShiftSpace(event: Event): void {
+    if (this.lightboxGroup()) return;
+    if (isTypingContext(event) || isControlActivation(event)) return;
     const selected = this.visibleGroups()[this.selectedGroupIndex()];
     if (!selected) return;
     event.preventDefault();
-    if (!this.confirmGroup(selected)) return;
+    if (!this.cull.confirmGroup(selected)) return;
     const next = this.nextUnconfirmedGroupAfter(selected);
     if (next) {
-      const gi = this.visibleGroups().findIndex(g => this.groupKey(g) === this.groupKey(next));
+      const gi = this.visibleGroups().findIndex(g => this.cull.groupKey(g) === this.cull.groupKey(next));
       if (gi >= 0) this.selectedGroupIndex.set(gi);
     } else {
       this.selectedGroupIndex.update(i => this.clampIndex(i + 1, this.visibleGroups().length));
@@ -3167,271 +2921,15 @@ export class BurstCullingComponent implements OnDestroy {
 
   @HostListener('document:keydown.escape', ['$event'])
   protected onEscape(event: Event): void {
-    if (this.autoCullPreview()) {
+    if (this.cull.autoCullPreview()) {
       event.preventDefault();
-      this.cancelAutoCull();
+      this.cull.cancelAutoCull();
       return;
     }
     if (this.lightboxGroup()) {
       event.preventDefault();
       this.closeLightbox();
     }
-  }
-
-  // --- Auto-cull (one-button cull under a keeper budget) ---
-
-  /** Request body for POST /culling/auto, reusing the page's scope + strictness. */
-  private autoCullBody(dryRun: boolean, highlightsAlbum: string): AutoCullRequest {
-    const body: AutoCullRequest = {
-      group_by: this.groupBy(),
-      strictness: this.strictness(),
-      dry_run: dryRun,
-      highlights_album: highlightsAlbum,
-      trim_brackets: this.trimBrackets(),
-    };
-    const profile = this.selectedProfile();
-    if (profile) body.profile = profile;
-    const album = this.scopeAlbum();
-    if (album) body.album_id = Number(album);
-    const from = this.scopeFrom();
-    if (from) body.date_from = from;
-    const to = this.scopeTo();
-    if (to) body.date_to = to;
-    return body;
-  }
-
-  /** Deterministic Highlights album name for the current scope and day. */
-  private highlightsAlbumName(): string {
-    const scope = this.scopeLabel() ?? this.i18n.t(I18N.culling.scope_whole_library);
-    const day = new Date().toISOString().slice(0, 10);
-    return `${this.i18n.t(I18N.culling.auto_cull.highlights_name)} — ${scope} ${day}`;
-  }
-
-  /** True while this dry run is still the one the dialog answers to: no newer
-   *  run took over, and the destructive apply does not own the snapshot. */
-  private ownsAutoCullDialog(run: number): boolean {
-    return this.autoCullRun.isCurrent(run) && !this.autoCullApplying();
-  }
-
-  /**
-   * Put the trim-brackets checkbox back to what the snapshot Apply sends carries.
-   *
-   * Called from the failure of whichever run owns the dialog, because that run is
-   * the one the box has to agree with — not necessarily the one the user clicked.
-   * A failed run never moved the snapshot, so a box left on the value that run
-   * asked for promises a trim the apply would not perform.
-   */
-  private reconcileTrimBrackets(): void {
-    const applied = this.autoCullRequest();
-    if (applied) this.trimBrackets.set(applied.trim_brackets);
-  }
-
-  /**
-   * Dry-run the auto-cull for the current scope and open the confirm dialog.
-   *
-   * Refused outright while the apply is in flight, and its answer dropped if an
-   * apply started under it: the apply sends the snapshot below verbatim, so a dry
-   * run repainting it mid-flight would leave the dialog describing a request the
-   * user never agreed to. The suggestion's re-run is fire-and-forget, so it can
-   * arrive at any point — including over the destructive request.
-   *
-   * The outcome is for the callers that mirror the snapshot in their own state:
-   * a bail-out is not this caller's run failing, and reconciling on it reverts to
-   * a snapshot the newer run is about to replace.
-   */
-  protected async openAutoCull(): Promise<AutoCullRunOutcome> {
-    if (this.autoCullApplying()) return 'superseded';
-    // Only a fresh open clears the notices: the re-runs that raise them come back
-    // through here, and clearing unconditionally would erase them on the way in —
-    // including the re-run of a dry run whose preview has not landed yet.
-    if (!this.autoCullPreview() && !this.dryRunInFlight) this.clearAutoCullNotices();
-    const run = this.autoCullRun.next();
-    this.dryRunInFlight = true;
-    void this.applySuggestedProfile();
-    const body = this.autoCullBody(true, this.highlightsAlbumName());
-    this.autoCullLoading.set(true);
-    try {
-      const preview = await firstValueFrom(this.api.post<AutoCullResponse>('/culling/auto', body));
-      if (!this.ownsAutoCullDialog(run)) return 'superseded';
-      this.autoCullPreview.set(preview);
-      this.autoCullRequest.set(body);
-      return 'landed';
-    } catch {
-      if (!this.ownsAutoCullDialog(run)) return 'superseded';
-      this.reconcileTrimBrackets();
-      this.snackBar.open(this.i18n.t(I18N.culling.auto_cull.error), '', { duration: 2000, horizontalPosition: 'right', verticalPosition: 'bottom' });
-      return 'failed';
-    } finally {
-      if (this.autoCullRun.isCurrent(run)) {
-        this.dryRunInFlight = false;
-        this.autoCullLoading.set(false);
-      }
-    }
-  }
-
-  /** Every dismissal lands here — the Cancel button, the backdrop and Escape.
-   *  It is a no-op while the apply is in flight: the destructive request cannot
-   *  be called off, so the dialog stays up with its spinner rather than pretend
-   *  it was. */
-  protected cancelAutoCull(): void {
-    if (this.autoCullApplying()) return;
-    this.closeAutoCull();
-    this.clearAutoCullNotices();
-  }
-
-  /** Drop the dialog and the run behind it, so a dry run still in flight cannot
-   *  reopen it with counts nobody asked for. Safe from the apply's own success
-   *  path for the same reason the guard above exists: no dismissal can have
-   *  reopened the dialog mid-apply, so the bump can only cancel a dry run whose
-   *  preview this apply just made obsolete. */
-  private closeAutoCull(): void {
-    this.autoCullRun.cancel();
-    this.dryRunInFlight = false;
-    this.autoCullPreview.set(null);
-    this.autoCullRequest.set(null);
-    this.autoCullLoading.set(false);
-  }
-
-  private clearAutoCullNotices(): void {
-    this.autoCullSuggestionNotice.set(null);
-    this.trimBracketsUnchanged.set(false);
-  }
-
-  /** Trim-brackets changes the group set the dry run splits, so the preview
-   *  counts must be re-fetched through the same path openAutoCull() uses.
-   *
-   *  A scope with no redundant exposures answers with the very same counts, which
-   *  is indistinguishable from a dead toggle — so that case is stated. The
-   *  identity check on the preview object keeps a failed re-run (which leaves the
-   *  old preview in place) from being read as "nothing to trim".
-   *
-   *  Reverting the checkbox over a failed re-run is not this handler's to do: the
-   *  run that fails is not always the one this call started. A superseded re-run
-   *  reads from here exactly like its own failure, and the snapshot it would be
-   *  reconciled against is the stale one the newer run has not replaced yet — so
-   *  the box would be reverted to a value that run is about to contradict, and
-   *  the newer run failing in turn would leave nobody to put it back. The run
-   *  that owns the dialog reconciles the box, in openAutoCull(); this handler
-   *  only reads the outcome. */
-  protected async onTrimBracketsChange(value: boolean): Promise<void> {
-    if (this.autoCullApplying()) return;
-    const before = this.autoCullPreview();
-    this.trimBrackets.set(value);
-    this.trimBracketsUnchanged.set(false);
-    if (await this.openAutoCull() !== 'landed') return;
-    const after = this.autoCullPreview();
-    this.trimBracketsUnchanged.set(
-      value && !!before && !!after && after !== before
-      && after.groups_processed === before.groups_processed
-      && after.kept === before.kept
-      && after.rejected === before.rejected,
-    );
-  }
-
-  /**
-   * Apply the previewed auto-cull (dry_run=false), then refresh the feed.
-   *
-   * The body is the dry run's own, not one rebuilt from the live signals: a
-   * profile suggestion can land between the preview request and its answer, and
-   * rebuilding here would then apply knobs the counts on screen never described.
-   * Only the Highlights album is the dialog's to decide, being a checkbox the
-   * user ticks after the preview.
-   *
-   * The `autoCullApplying` gate makes the click idempotent: a second one over
-   * the same snapshot is refused rather than sent, since the two applies would
-   * reject different sets — the first has already moved the state the second
-   * would be computed from.
-   */
-  protected async confirmAutoCull(): Promise<void> {
-    const previewed = this.autoCullRequest();
-    if (!previewed || this.autoCullApplying()) return;
-    this.autoCullApplying.set(true);
-    this.autoCullLoading.set(true);
-    try {
-      const body: AutoCullRequest = {
-        ...previewed,
-        dry_run: false,
-        highlights_album: this.autoCullHighlights() ? previewed.highlights_album : '',
-      };
-      const result = await firstValueFrom(this.api.post<AutoCullResponse>('/culling/auto', body));
-      this.closeAutoCull();
-      this.clearAutoCullNotices();
-      this.snackBar.open(
-        this.i18n.t(I18N.culling.auto_cull.applied, { kept: result.kept, rejected: result.rejected }),
-        '', { duration: 3000, horizontalPosition: 'right', verticalPosition: 'bottom' },
-      );
-      this.selectedGroupIndex.set(0);
-      this.resetForReload();
-      void this.refreshComparisonStats();
-      void this.refreshRankerStatus();
-    } catch {
-      this.snackBar.open(this.i18n.t(I18N.culling.auto_cull.error), '', { duration: 2000, horizontalPosition: 'right', verticalPosition: 'bottom' });
-    } finally {
-      this.autoCullApplying.set(false);
-      this.autoCullLoading.set(false);
-    }
-  }
-
-  protected toggleSelection(path: string, group: CullingGroup): void {
-    const map = new Map(this.selectionsMap());
-    const kept = new Set(map.get(group.group_id) ?? []);
-
-    if (kept.has(path)) {
-      kept.delete(path);
-    } else {
-      kept.add(path);
-    }
-    map.set(group.group_id, kept);
-    this.selectionsMap.set(map);
-  }
-
-  /**
-   * A bracket or a pan is a no-op here: its frames were shot to be merged, not
-   * to compete (see KEEP_WHOLE_KINDS), and every other surface -- computeAutoKeep,
-   * the hidden auto-cull button -- already protects that. The persistent hint
-   * badge on these groups already explains why, so this stays silent rather
-   * than adding a second, redundant message.
-   */
-  protected selectExclusive(path: string, group: CullingGroup): void {
-    if (group.sequence_kind && KEEP_WHOLE_KINDS.includes(group.sequence_kind)) return;
-    this.updateMapSignal(this.selectionsMap, group.group_id, new Set([path]));
-  }
-
-  protected confirmGroup(group: CullingGroup): boolean {
-    const kept = this.selectionsMap().get(group.group_id);
-    if (!kept || kept.size === 0) return false;
-
-    // Grey the group and start the cancellable cooldown; the commit + close only
-    // happen when it elapses, so Cancel within the window fully reverts it.
-    const key = this.groupKey(group);
-    const keepPaths = [...kept];
-    this.addToSetSignal(this.confirmedGroups, key);
-    this.startCountdown(key, () => {
-      void firstValueFrom(this.api.post('/culling-groups/confirm', {
-        group_id: group.group_id,
-        type: group.type,
-        paths: group.photos.map(p => p.path),
-        keep_paths: keepPaths,
-      }))
-        .then(() => {
-          this.addToSetSignal(this.hiddenGroups, key);
-          void this.refreshComparisonStats();
-          void this.refreshRankerStatus();
-        })
-        .catch(() => {
-          this.unconfirmGroup(key);
-          this.snackBar.open(this.i18n.t(I18N.culling.error_confirming), '', { duration: 2000, horizontalPosition: 'right', verticalPosition: 'bottom' });
-        });
-    }, true);
-    return true;
-  }
-
-  private unconfirmGroup(key: string): void {
-    this.confirmedGroups.update(s => {
-      const next = new Set(s);
-      next.delete(key);
-      return next;
-    });
   }
 
   /**
@@ -3456,12 +2954,12 @@ export class BurstCullingComponent implements OnDestroy {
       );
       return;
     }
-    this.patchOverrides(paths, kind ?? 'suppressed');
+    this.cull.patchOverrides(paths, kind ?? 'suppressed');
     this.undoService.register({
       labelKey: I18N.culling.panorama.corrected,
       undo: async () => {
         await this.restoreOverridesOnServer(previous);
-        this.restoreOverrides(previous);
+        this.cull.restoreOverrides(previous);
       },
     });
   }
@@ -3502,42 +3000,11 @@ export class BurstCullingComponent implements OnDestroy {
                          { duration: 3000, horizontalPosition: 'right', verticalPosition: 'bottom' });
       return;
     }
-    this.patchOverrides(paths, null);
+    this.cull.patchOverrides(paths, null);
     if (hadApplied) {
-      const key = this.groupKey(group);
-      this.droppedApplied.update(keys => new Set(keys).add(key));
+      const key = this.cull.groupKey(group);
+      this.cull.droppedApplied.update(keys => new Set(keys).add(key));
     }
-  }
-
-  /** Set one override value on the named frames, wherever they sit in the feed. */
-  private patchOverrides(paths: string[], value: string | null): void {
-    this.restoreOverrides(new Map(paths.map(path => [path, value])));
-  }
-
-  /** Write back per-path override values (the undo path restores the old ones). */
-  private restoreOverrides(values: Map<string, string | null>): void {
-    // `droppedApplied` is deliberately left untouched here: `rerunNeeded` unions it
-    // with the pending-correction keys, so re-marking (or undoing the re-mark) a
-    // group whose applied override was already dropped this session must not stop
-    // it counting -- `photos` still holds the stale applied set either way.
-    this.groups.update(groups => groups.map(group => (
-      group.photos.some(p => values.has(p.path))
-        ? {
-            ...group,
-            photos: group.photos.map(p => (
-              values.has(p.path)
-                ? {
-                    ...p,
-                    sequence_override: values.get(p.path) ?? null,
-                    // Anything just written here is by definition unapplied: the
-                    // detector is a batch pass, not a live query.
-                    sequence_override_pending: values.get(p.path) ? 1 : null,
-                  }
-                : p
-            )),
-          }
-        : group
-    )));
   }
 
   /**
@@ -3577,7 +3044,7 @@ export class BurstCullingComponent implements OnDestroy {
       this.detectMessage.set(failed ? I18N.culling.panorama.rerun_failed : I18N.culling.panorama.rerun_done);
       // A completed run has re-applied or dropped every correction the feed
       // held, so the applied-drops this session no longer need a re-run.
-      if (!failed) this.droppedApplied.set(new Set());
+      if (!failed) this.cull.droppedApplied.set(new Set());
     } catch {
       this.stopDetectionPolling();
       this.detectFailed.set(true);
@@ -3593,123 +3060,7 @@ export class BurstCullingComponent implements OnDestroy {
     }
   }
 
-  /** Fetch per-category comparison counts + threshold for the weight-tuning chip. */
-  private async refreshComparisonStats(): Promise<void> {
-    try {
-      const stats = await firstValueFrom(this.api.get<ComparisonStats>('/comparison/stats'));
-      this.comparisonStats.set(stats);
-    } catch {
-      // Best-effort: the chip simply stays hidden if stats are unavailable.
-    }
-  }
-
-  /**
-   * Shared 7s cooldown: a per-second countdown in passingGroups plus a one-shot
-   * timer that runs onElapsed (hide for skip; commit + hide for confirm). Cancel
-   * via cancelPass before it fires fully reverts the action.
-   */
-  private startCountdown(key: string, onElapsed: () => void, commit = false): void {
-    this.clearPassTimer(key);
-    this.updateMapSignal(this.passingGroups, key, this.passCountdownSeconds);
-
-    const intervalId = setInterval(() => {
-      this.passingGroups.update(m => {
-        const current = m.get(key);
-        if (current === undefined) return m;
-        const next = new Map(m);
-        next.set(key, current - 1);
-        return next;
-      });
-    }, 1000);
-
-    const timeoutId = setTimeout(() => {
-      this.clearPassTimer(key);
-      onElapsed();
-    }, this.passCountdownSeconds * 1000);
-
-    this.passTimers.set(key, { timeoutId, intervalId, onElapsed, commit });
-  }
-
-  protected skipGroup(group: CullingGroup): void {
-    const key = this.groupKey(group);
-    this.startCountdown(key, () => this.addToSetSignal(this.hiddenGroups, key));
-  }
-
-  protected cancelPass(group: CullingGroup): void {
-    const key = this.groupKey(group);
-    this.clearPassTimer(key);
-    this.unconfirmGroup(key);
-  }
-
-  private clearPassTimer(key: string): void {
-    const timers = this.passTimers.get(key);
-    if (timers) {
-      clearTimeout(timers.timeoutId);
-      clearInterval(timers.intervalId);
-      this.passTimers.delete(key);
-    }
-    this.deleteMapKey(this.passingGroups, key);
-  }
-
-  private clearAllPassTimers(): void {
-    // A confirm defers its server commit into the cooldown timer; cancelling
-    // that timer on teardown/reload without running it would silently drop the
-    // user's keep/reject decision. So flush pending confirm commits here (skip
-    // timers only hide a group, nothing to persist). Explicit cancelPass goes
-    // through clearPassTimer and is unaffected — an abort still aborts.
-    const pendingCommits: (() => void)[] = [];
-    for (const { timeoutId, intervalId, onElapsed, commit } of this.passTimers.values()) {
-      clearTimeout(timeoutId);
-      clearInterval(intervalId);
-      if (commit) pendingCommits.push(onElapsed);
-    }
-    this.passTimers.clear();
-    this.passingGroups.set(new Map());
-    this.hiddenGroups.set(new Set());
-    for (const commit of pendingCommits) commit();
-  }
-
-  protected async confirmAllRemaining(): Promise<void> {
-    this.confirming.set(true);
-    try {
-      const confirmed = this.confirmedGroups();
-      const remaining = this.visibleGroups().filter(g => !confirmed.has(this.groupKey(g)));
-      const toConfirm = remaining.filter(g => {
-        const kept = this.selectionsMap().get(g.group_id);
-        return kept && kept.size > 0;
-      });
-
-      // Process in batches of 5 to avoid overwhelming the server
-      const batchSize = 5;
-      for (let i = 0; i < toConfirm.length; i += batchSize) {
-        const batch = toConfirm.slice(i, i + batchSize);
-        await Promise.all(batch.map(g => {
-          const kept = this.selectionsMap().get(g.group_id)!;
-          return firstValueFrom(this.api.post('/culling-groups/confirm', {
-            group_id: g.group_id,
-            type: g.type,
-            paths: g.photos.map(p => p.path),
-            keep_paths: [...kept],
-          }));
-        }));
-        this.confirmedGroups.update(s => {
-          const next = new Set(s);
-          for (const g of batch) next.add(this.groupKey(g));
-          return next;
-        });
-      }
-
-      const skipped = remaining.filter(g => !toConfirm.includes(g));
-      this.confirmedGroups.update(s => {
-        const next = new Set(s);
-        for (const g of skipped) next.add(this.groupKey(g));
-        return next;
-      });
-      this.snackBar.open(this.i18n.t(I18N.culling.confirmed), '', { duration: 2000, horizontalPosition: 'right', verticalPosition: 'bottom' });
-    } catch {
-      this.snackBar.open(this.i18n.t(I18N.culling.error_auto_select), '', { duration: 2000, horizontalPosition: 'right', verticalPosition: 'bottom' });
-    } finally {
-      this.confirming.set(false);
-    }
+  protected confirmAllRemaining(): Promise<void> {
+    return this.cull.confirmAllRemaining(this.visibleGroups());
   }
 }

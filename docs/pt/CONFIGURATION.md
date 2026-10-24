@@ -1716,8 +1716,8 @@ Exibição e comportamento da galeria web.
 | Configuração | Padrão | Descrição |
 |--------------|--------|-----------|
 | `default_category` | `""` | Filtro de categoria padrão |
-| `edition_password` | `""` | Senha para desbloquear o modo de edição (vazio = toda edição é recusada; a instalação é somente leitura, exceto para um navegador local direto com `trusted_local_editing`) |
-| `trusted_local_editing` | `false` | Concede direitos de edição, sem senha de edição, a um navegador no mesmo computador que acessa o visualizador diretamente por loopback. Só se aplica enquanto `password` E `edition_password` estiverem vazias numa instalação de usuário único; cobre todas as rotas sujeitas a edição, exceto o disparo da varredura. **Nunca ative atrás de um proxy reverso no mesmo host.** Veja [Edição Local Confiável](#edição-local-confiável) |
+| `edition_password` | `""` | Senha para desbloquear o modo de edição (vazio = toda edição é recusada; a instalação é somente leitura, exceto para um navegador local direto ou um assistente local com edição completa sob `trusted_local_editing`) |
+| `trusted_local_editing` | `false` | Concede direitos de edição, sem senha de edição, a um navegador no mesmo computador que acessa o visualizador diretamente por loopback. Só se aplica enquanto `password` E `edition_password` estiverem vazias numa instalação de usuário único; cobre todas as rotas sujeitas a edição, incluindo o disparo da varredura, e permite que a caixa «Ligar um assistente» crie um token de assistente com edição completa para as requisições `/mcp` do mesmo computador. **Nunca ative atrás de um proxy reverso no mesmo host.** Veja [Edição Local Confiável](#edição-local-confiável) |
 | **comparison_mode** | | |
 | `min_comparisons_for_optimization` | `50` | Número mínimo de comparações decisivas (uma foto venceu; empates não contam) da categoria antes de sugerir pesos |
 | `pair_selection_strategy` | `"learning"` | Estratégia de pares: `learning` (partida a frio por diversidade de embeddings + discordância de classificação uma vez treinado), `uncertainty`, `boundary`, `active`, `random` |
@@ -1888,7 +1888,7 @@ Ative/desative recursos opcionais para reduzir o uso de memória ou simplificar 
 | `show_similar_button` | `true` | Mostra o botão "Encontrar Similares" nos cartões de foto (usa numpy para similaridade CLIP) |
 | `show_merge_suggestions` | `true` | Ativa o recurso de sugestões de mesclagem na página de gerenciamento de pessoas |
 | `show_rating_controls` | `true` | Mostra os controles de avaliação por estrelas e favoritos |
-| `show_scan_button` | `false` | Mostra o botão de disparo de escaneamento (superadmin em modo multiusuário; sessão de edição bloqueada em modo de usuário único) — não requer GPU: a varredura roda apenas na CPU com o perfil `legacy` |
+| `show_scan_button` | `false` | Mostra o botão de disparo de escaneamento (superadmin em modo multiusuário; sessão de edição bloqueada em modo de usuário único) — não requer GPU: a varredura roda apenas na CPU com o perfil `legacy`; dispensado a uma sessão local confiável sob `trusted_local_editing` |
 | `metrics_enabled` | `false` | Ativa o endpoint público Prometheus `GET /metrics`. Desligado por padrão — ele expõe contagens de fotos/pessoas/faces, tamanho do banco de dados e memória do processo; habilite apenas quando o endpoint for acessível pela rede do coletor, não pela internet pública. |
 | `show_semantic_search` | `true` | Mostra a barra de busca semântica (busca de texto para imagem usando embeddings CLIP/SigLIP) |
 | `show_albums` | `true` | Mostra o recurso de álbuns (criar, gerenciar e navegar por álbuns de fotos) |
@@ -1997,7 +1997,9 @@ O acesso é decidido a cada requisição, nunca a partir de um claim do token. U
 - a requisição não traz nenhum cabeçalho `Forwarded`, `Via`, `X-Real-IP`, `X-Client-IP`, `True-Client-IP`, `CF-Connecting-IP`, `X-Original-Forwarded-For` nem `X-Forwarded-*`;
 - um `Origin` ou `Referer`, quando presente, indica exatamente o esquema, o host e a porta da requisição, sem credenciais (um `Origin` com caminho, consulta ou fragmento é recusado), e um `Sec-Fetch-Site`, quando presente, é `same-origin` ou `none`.
 
-Uma requisição confiável tem todos os direitos de edição: toda rota que, de outra forma, exige uma sessão de edição, não apenas as avaliações. Isso abrange avaliações, favoritos e rejeições, o modo de comparação, a seleção (incluindo **Selecionar para pasta**, que move arquivos ou os envia para a lixeira, e a exclusão de uma foto), os álbuns, o gerenciamento de pessoas e rostos, as mudanças de pesos, prioridades e contextos de pontuação, a incorporação de metadados e as exportações, os jobs de argumentos fixos de recálculo e de detecção de panoramas, e a geração sob demanda de legendas e críticas. O disparo da varredura é a única exceção: continua exigindo `viewer.edition_password`, que nunca pode estar definida enquanto esta opção se aplica, então continua recusado.
+Uma requisição confiável tem todos os direitos de edição: toda rota que, de outra forma, exige uma sessão de edição, não apenas as avaliações. Isso abrange avaliações, favoritos e rejeições, o modo de comparação, a seleção (incluindo **Selecionar para pasta**, que move arquivos ou os envia para a lixeira, e a exclusão de uma foto), os álbuns, o gerenciamento de pessoas e rostos, as mudanças de pesos, prioridades e contextos de pontuação, a incorporação de metadados e as exportações, os jobs de argumentos fixos de recálculo e de detecção de panoramas, e a geração sob demanda de legendas e críticas. O disparo da varredura está incluído: uma sessão de navegador local confiável, e um assistente local com um token de edição completa, podem varrer sem `viewer.features.show_scan_button`. O fluxo de progresso da varredura só aceita um token de fluxo local confiável vindo da mesma máquina local.
+
+**Assistentes.** A mesma opção permite que a caixa «Ligar um assistente» crie um token de **Edição completa** numa instalação aberta (`viewer.mcp.enabled` e um token continuam necessários). O token é `edition` apenas para requisições `/mcp` que passam a fronteira acima, por isso funciona a partir de `http://localhost:<port>` ou `127.0.0.1` em `:5000` e pelo proxy de desenvolvimento do `ng serve` `:4200`, e passa a `readonly` a partir de um cliente da rede local, de um URL com nome de host ou `0.0.0.0`, ou numa implantação Docker. Qualquer senha baixa-o para `readonly`; remover a senha reativa-o. As ferramentas de eliminação continuam a precisar de `viewer.mcp.allow_destructive`. `ng serve --host 0.0.0.0` ou qualquer proxy não assinalado no mesmo computador deixa passar um cliente da rede local que envie `Host: localhost`; resta apenas o token a proteger `/mcp`. Veja [Agentes de IA (MCP)](AGENTS.md). A mesma fronteira, seja qual for o valor de `trusted_local_editing`, regula a gestão dos tokens do assistente numa instalação aberta: criar, listar e revogar tokens só funciona com um pedido que a passe (ou numa sessão de edição quando `viewer.edition_password` está definido). Um proxy inverso tem de enviar `X-Forwarded-For` ou `Forwarded`; caso contrário é tratado como a máquina local.
 
 > **Aviso:** o par de loopback é a única fronteira real. `Host`, `Origin`, `Referer` e `Sec-Fetch-Site` são definidos pelo cliente e só podem recusar uma requisição, e um proxy reverso, túnel ou redirecionamento de porta no mesmo host que não adicione nenhum dos cabeçalhos acima é indistinguível do seu navegador. Nunca ative esta opção atrás de qualquer proxy reverso no mesmo host. Enquanto estiver ativa, qualquer processo local e qualquer conta do computador pode editar.
 
@@ -2617,6 +2619,50 @@ Exporte um álbum como uma galeria HTML estática e autónoma que um fotógrafo 
 | `jpeg_quality` | `88` | Qualidade JPEG das imagens exportadas |
 
 O `target_dir` passa pela mesma lista de permissões que os endpoints de exportação copiar/mover (`viewer.export.allowed_target_dirs` mais os diretórios de varredura — veja [Destinos de exportação e seleção](#destinos-de-exportação-e-seleção)). Controlado por `viewer.features.show_portfolio_export` (padrão `true`).
+
+## Endpoint de agentes (MCP)
+
+Expõe as ferramentas descritas em [Agentes de IA (MCP)](AGENTS.md) em `POST /mcp`: leitura, controlo do separador aberto e, consoante o nível do token, alteração de classificações, etiquetas e álbuns, seleção e eliminação. Está ativado por predefinição; ponha `enabled` em `false` para o desligar (todas as rotas respondem então 404). Numa instalação aberta (sem `viewer.password`) o `/mcp` serve apenas uma chave anónima só de leitura, que não concede nada que a `/api` aberta não conceda já. Um token criado numa instalação aberta é `readonly`, a menos que `viewer.trusted_local_editing` esteja ativo, o que permite um token de edição completa para as requisições do mesmo computador. Numa instalação aberta, os tokens só se criam, listam e revogam a partir do computador onde o Facet está a correr (ou numa sessão de edição quando `viewer.edition_password` está definido).
+
+```json
+{
+  "viewer": {
+    "mcp": {
+      "enabled": true,
+      "bridge": true,
+      "max_rows": 100,
+      "max_bytes": 60000,
+      "max_image_bytes": 262144,
+      "call_timeout_s": 30,
+      "semantic_timeout_s": 120,
+      "rate_per_min": 120,
+      "write_rate_per_min": 30,
+      "tool_profile": "full",
+      "allow_destructive": false,
+      "inpage_tools": true,
+      "allowed_origins": []
+    }
+  }
+}
+```
+
+| Chave | Predefinição | Descrição |
+|-----|---------|-------------|
+| `enabled` | `true` | Interruptor geral de `/mcp` e `/api/mcp/*`. Desativado, respondem 404 (a ponte fecha com o código 4404). Numa instalação aberta (sem `viewer.password`) o endpoint serve apenas uma chave anónima só de leitura: nenhuma autoridade nova, porque a `/api` aberta já expõe os mesmos dados. Um token criado numa instalação aberta é `readonly`, a menos que `viewer.trusted_local_editing` esteja ativo, o que permite um token de edição completa para as requisições do mesmo computador. Numa instalação aberta, os tokens só se criam, listam e revogam a partir do computador onde o Facet está a correr (ou numa sessão de edição quando `viewer.edition_password` está definido). |
+| `bridge` | `true` | Se a ponte com o separador do navegador (`/api/mcp/bridge`) aceita WebSockets e as ferramentas `ui_*` podem chegar a um separador. Com `false`, a ponte recusa a ligação (código de fecho 4404) e as ferramentas `ui_*` devolvem um erro claro. Exige um único worker. |
+| `max_rows` | `100` | Máximo de linhas num resultado de ferramenta (1 a 500). As linhas a mais são descartadas e `truncated: true` é definido. |
+| `max_bytes` | `60000` | Tamanho serializado máximo de um resultado de ferramenta em bytes (4000 a 500000). |
+| `max_image_bytes` | `262144` | Tamanho máximo em bytes da imagem devolvida por uma ferramenta, `get_thumbnail` ou `contact_sheet` (de 32768 a 2097152); não contada em `max_bytes`. |
+| `call_timeout_s` | `30` | Tempo limite de uma chamada de ferramenta em segundos (1 a 300). Também limita a espera de uma chamada `ui_*` pelo separador do navegador (`tab_timeout`). |
+| `semantic_timeout_s` | `120` | Tempo limite de `semantic_search` em segundos (1 a 300); carrega o modelo de embeddings e precisa de mais. |
+| `rate_per_min` | `120` | Chamadas de ferramentas por minuto e por token (mínimo 1). |
+| `write_rate_per_min` | `30` | Chamadas de escrita por minuto e por token (mínimo 1). Mantido à parte para que as leituras não deixem as escritas sem quota. Aplica-se às ferramentas de escrita (incluindo a simulação de `cull_apply` e `delete_photos`); veja [Agentes de IA](AGENTS.md#alterar-a-biblioteca). |
+| `tool_profile` | `"full"` | `"full"` lista todas as ferramentas que a chave pode chamar. `"core"` lista apenas um conjunto de 11 ferramentas para modelos pequenos (`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`). Só a lista muda: uma ferramenta fora dela ainda pode ser chamada se o nível da chave o permitir. Qualquer outro valor volta a `"full"`. Ver [Agentes de IA](AGENTS.md#níveis-de-permissão). |
+| `allow_destructive` | `false` | Permite aos assistentes executar `delete_photos`, as ações `move_rejects` e `trash_rejects` de `cull_apply` e `assign_faces` com `allow_reassign`. Desativado, `delete_photos` não é listado e as outras duas respondem `feature_disabled` indicando esta chave. Ver [Agentes de IA](AGENTS.md#ações-destrutivas-pré-visualizar-e-confirmar). |
+| `inpage_tools` | `true` | Se um separador com sessão iniciada pode chamar as ferramentas do servidor a partir da página: `GET /api/mcp/inpage_tools` lista-as e `POST /api/mcp/call` executa uma como a sessão, ao seu nível atual, pelo mesmo invólucro que `/mcp`. Desativado, ambas as rotas respondem 404 e `features.mcp_inpage` é falso em `/api/auth/status`. Veja [Agentes de IA](AGENTS.md#webmcp-na-página-agentes-do-navegador). |
+| `allowed_origins` | `[]` | Origens de navegador adicionais (por exemplo `["https://photos.example.com"]`) autorizadas a abrir a ponte do separador quando um proxy reverso reescreve `Host`. Distinta da chave CORS `viewer.allowed_origins`. |
+
+Os números fora do intervalo são limitados, e um valor de tipo errado volta à predefinição. O bloco é lido em cada pedido, por isso recarregar a configuração ativa ou desativa a funcionalidade sem reiniciar.
 
 ## Moldura digital / Quiosque
 

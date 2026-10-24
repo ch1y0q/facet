@@ -1283,6 +1283,72 @@ def cull_allow_trash(viewer_config: dict) -> bool:
     return bool((viewer_config.get('cull', {}) or {}).get('allow_trash', False))
 
 
+_MCP_SCHEMA_PATH = os.path.join(os.path.dirname(defaults_path()), 'scoring_config.schema.json')
+
+
+def _load_mcp_settings_spec() -> tuple[dict, dict]:
+    """``(defaults, bounds)`` for ``viewer.mcp``, read from the two shipped files.
+
+    The defaults are the ones in ``scoring_config.default.json`` and the (low, high)
+    bounds come from ``scoring_config.schema.json`` (``None`` = unbounded on that
+    side), so the three places that used to restate them cannot drift apart.
+    """
+    defaults = {key: value for key, value in load_defaults()['viewer']['mcp'].items()
+                if key != 'allowed_origins'}
+    with open(_MCP_SCHEMA_PATH) as f:
+        props = json.load(f)['properties']['viewer']['properties']['mcp']['properties']
+    bounds = {key: (props[key].get('minimum'), props[key].get('maximum'))
+              for key, value in defaults.items() if not isinstance(value, (bool, str))}
+    choices = {key: tuple(props[key]['enum']) for key, value in defaults.items() if isinstance(value, str)}
+    return defaults, {**bounds, **choices}
+
+
+MCP_SETTINGS_DEFAULTS, _MCP_SETTINGS_BOUNDS = _load_mcp_settings_spec()
+
+
+_mcp_available = True
+
+
+def set_mcp_available(available: bool) -> None:
+    """Record whether the ``mcp`` package imported; ``create_app`` calls this on every build."""
+    global _mcp_available
+    _mcp_available = available
+
+
+def mcp_settings() -> dict:
+    """The ``viewer.mcp`` block with every value typed and clamped.
+
+    Read per call through ``VIEWER_CONFIG`` (which ``reload_config`` refills in
+    place), so an operator edit followed by a reload toggles the feature without
+    a restart. A missing block, or a value of the wrong type, falls back to the
+    shipped default: the feature is ON unless the operator wrote a real ``false``. Nothing here writes the override file. ``enabled`` is forced off when
+    the ``mcp`` package could not be imported (``set_mcp_available``).
+    """
+    block = VIEWER_CONFIG.get('mcp')
+    if not isinstance(block, dict):
+        block = {}
+    out: dict = {}
+    for key, default in MCP_SETTINGS_DEFAULTS.items():
+        value = block.get(key, default)
+        if isinstance(default, bool):
+            out[key] = value if isinstance(value, bool) else default
+            continue
+        if isinstance(default, str):
+            out[key] = value if value in _MCP_SETTINGS_BOUNDS[key] else default
+            continue
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            value = default
+        low, high = _MCP_SETTINGS_BOUNDS[key]
+        if low is not None:
+            value = max(low, value)
+        if high is not None:
+            value = min(high, value)
+        out[key] = value if key.endswith('_s') else int(value)
+    if not _mcp_available:
+        out['enabled'] = False
+    return out
+
+
 def get_xmp_export_config():
     """Return the ``xmp_export`` config block (score-to-stars mapping etc.)."""
     return _FULL_CONFIG.get('xmp_export', {})
@@ -1427,7 +1493,7 @@ def get_comparison_mode_settings():
     """Get comparison mode settings from config."""
     defaults = {
         'min_comparisons_for_optimization': 30,
-        'pair_selection_strategy': 'uncertainty',
+        'pair_selection_strategy': 'learning',
         'show_current_scores': False
     }
     settings = _FULL_CONFIG.get('viewer', {}).get('comparison_mode', {})

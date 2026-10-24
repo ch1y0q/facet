@@ -1,12 +1,15 @@
 import type { Mock } from 'vitest';
 import { TestBed } from '@angular/core/testing';
-import { of } from 'rxjs';
-import { provideRouter } from '@angular/router';
+import { of, throwError } from 'rxjs';
+import { Router, provideRouter } from '@angular/router';
 import { MatDialog } from '@angular/material/dialog';
 import { AlbumService } from '../../core/services/album.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { AlbumsComponent } from './albums.component';
+import { PageContextService } from '../../core/agent/page-context.service';
+import { AlbumsFiltersService } from './albums-filters.service';
 
 describe('AlbumsComponent', () => {
   let component: AlbumsComponent;
@@ -14,6 +17,7 @@ describe('AlbumsComponent', () => {
   let mockAuth: { isEdition: Mock; hasFeature: Mock };
   let mockI18n: { t: Mock; translations: Mock };
   let mockDialog: { open: Mock };
+  let journal: { record: Mock };
 
   const mockAlbumsResponse = {
     albums: [
@@ -31,15 +35,17 @@ describe('AlbumsComponent', () => {
     mockAuth = { isEdition: vi.fn(() => true), hasFeature: vi.fn(() => true) };
     mockI18n = { t: vi.fn((key: string) => key), translations: vi.fn(() => ({})) };
     mockDialog = { open: vi.fn(() => ({ afterClosed: () => of(true) })) };
+    journal = { record: vi.fn() };
 
     TestBed.configureTestingModule({
       providers: [
         AlbumsComponent,
-        provideRouter([]),
+        provideRouter([{ path: 'albums', children: [] }, { path: 'persons', children: [] }]),
         { provide: AlbumService, useValue: mockAlbumService },
         { provide: AuthService, useValue: mockAuth },
         { provide: I18nService, useValue: mockI18n },
         { provide: MatDialog, useValue: mockDialog },
+        { provide: UserActivityJournal, useValue: journal },
       ],
     });
     component = TestBed.inject(AlbumsComponent);
@@ -47,8 +53,60 @@ describe('AlbumsComponent', () => {
 
   const internals = () => component as any;
 
+  it('registers the albums page and reads its filters live', () => {
+    const context = TestBed.inject(PageContextService);
+    expect(context.snapshot()).toEqual({ id: 'albums', search: '', sort: 'updated_at', type: '' });
+    TestBed.inject(AlbumsFiltersService).typeFilter.set('smart');
+    expect(context.snapshot()).toMatchObject({ type: 'smart' });
+  });
+
   it('creates', () => {
     expect(component).toBeTruthy();
+  });
+
+  describe('a navigation made by the assistant', () => {
+    const filters = () => TestBed.inject(AlbumsFiltersService);
+    const go = (url: string) => TestBed.inject(Router).navigateByUrl(url);
+
+    it('sets the search to the query and resets the other filters', async () => {
+      filters().typeFilter.set('smart');
+      filters().sort.set('name');
+      await go('/albums?search=trip');
+      expect(filters().search()).toBe('trip');
+      expect(filters().typeFilter()).toBe('');
+      expect(filters().sort()).toBe('updated_at');
+    });
+
+    it('clears a previous search when the query is empty', async () => {
+      filters().search.set('old');
+      await go('/albums?search=');
+      expect(filters().search()).toBe('');
+    });
+
+    it('applies the same query again over the user\'s own edit (a same-URL reload)', async () => {
+      await go('/albums?search=trip');
+      filters().search.set('typed by the user');
+      await TestBed.inject(Router).navigate(['/albums'], { queryParams: { search: 'trip' }, onSameUrlNavigation: 'reload' });
+      expect(filters().search()).toBe('trip');
+    });
+
+    it('removes the query from the URL once applied, so Back or a reload cannot re-apply it over the user\'s edits', async () => {
+      const router = TestBed.inject(Router);
+      await go('/albums?search=trip');
+      await vi.waitFor(() => expect(router.url).toBe('/albums'));
+      filters().search.set('beach');
+      filters().sort.set('name');
+      await go('/albums');
+      expect(filters().search()).toBe('beach');
+      expect(filters().sort()).toBe('name');
+    });
+
+    it('leaves the filters alone when the navigation names no search or goes to another page', async () => {
+      filters().search.set('kept');
+      await go('/albums');
+      await go('/persons?search=x');
+      expect(filters().search()).toBe('kept');
+    });
   });
 
   it('loads albums from the service and reports hasMore when more remain', async () => {
@@ -70,6 +128,20 @@ describe('AlbumsComponent', () => {
     expect(mockAlbumService.delete).toHaveBeenCalledWith(1);
     expect(internals().albums().some((a: { id: number }) => a.id === 1)).toBe(false);
     expect(internals().total()).toBe(4);
+  });
+
+  it('deleteAlbum journals the deletion once, and nothing when cancelled or failed', async () => {
+    await internals().loadAlbums(true);
+    const album = internals().albums()[0];
+    const event = { preventDefault: vi.fn(), stopPropagation: vi.fn() } as unknown as Event;
+    mockDialog.open.mockReturnValueOnce({ afterClosed: () => of(false) });
+    await internals().deleteAlbum(event, album);
+    mockAlbumService.delete.mockReturnValueOnce(throwError(() => new Error('boom')));
+    await expect(internals().deleteAlbum(event, album)).rejects.toThrow('boom');
+    expect(journal.record).not.toHaveBeenCalled();
+    await internals().deleteAlbum(event, album);
+    expect(journal.record).toHaveBeenCalledTimes(1);
+    expect(journal.record).toHaveBeenCalledWith('album', [], { album_id: 1, action: 'delete' });
   });
 
   // Defect 4: the dialog must be opened with disableClose so ESC/backdrop dismissal

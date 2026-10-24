@@ -286,6 +286,8 @@ export class GalleryPhotoMenuComponent {
   readonly canCompare = input.required<boolean>();
   readonly viewScoped = input.required<boolean>();
   readonly downloading = input.required<boolean>();
+  /** False drops Find similar, which would replace the list the gallery is showing. */
+  readonly findSimilar = input(true);
 
   readonly action = output<PhotoMenuActionEvent>();
   /** Why the menu closed: `'click'` = an item was picked, `'keydown'` = Escape. */
@@ -293,7 +295,7 @@ export class GalleryPhotoMenuComponent {
 
   readonly menu = viewChild.required(MatMenu);
 
-  protected readonly showSimilar = computed(() => !!this.config()?.features?.show_similar_button);
+  protected readonly showSimilar = computed(() => this.findSimilar() && !!this.config()?.features?.show_similar_button);
   protected readonly showCritique = computed(() => !!this.config()?.features?.show_critique);
   protected readonly showEmbed = computed(() => !!this.config()?.features?.show_embed_metadata);
   protected readonly showAlbums = computed(() => !!this.config()?.features?.show_albums);

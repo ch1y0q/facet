@@ -1,4 +1,4 @@
-import { Component, input, output, viewChild, ElementRef } from '@angular/core';
+import { Component, input, output, viewChild, ElementRef, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
@@ -29,6 +29,7 @@ export interface Person {
     TranslatePipe,
     PersonThumbnailUrlPipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <mat-card
       class="group !overflow-hidden cursor-pointer transition-shadow hover:shadow-lg"

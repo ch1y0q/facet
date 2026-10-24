@@ -2,10 +2,13 @@ import type { Mock } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { of, throwError } from 'rxjs';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { AuthService } from '../../core/services/auth.service';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { CompareFiltersService } from './compare-filters.service';
 import { ComparisonAbTabComponent } from './comparison-ab-tab.component';
 
@@ -16,7 +19,8 @@ describe('ComparisonAbTabComponent', () => {
   let mockSnackBar: { open: Mock };
   let mockI18n: { t: Mock };
   let mockAuth: { isEdition: Mock };
-  let compareFilters: { selectedCategory: ReturnType<typeof signal<string>> };
+  let journal: { record: Mock };
+  let compareFilters: { selectedCategory: ReturnType<typeof signal<string>>; strategy: ReturnType<typeof signal<string>>; activeTab: ReturnType<typeof signal<number>> };
 
   beforeEach(() => {
     mockApi = {
@@ -26,7 +30,8 @@ describe('ComparisonAbTabComponent', () => {
     mockSnackBar = { open: vi.fn() };
     mockI18n = { t: vi.fn((key: string) => key) };
     mockAuth = { isEdition: vi.fn(() => true) };
-    compareFilters = { selectedCategory: signal('portrait') };
+    journal = { record: vi.fn() };
+    compareFilters = { selectedCategory: signal('portrait'), strategy: signal('uncertainty'), activeTab: signal(0) };
 
     TestBed.configureTestingModule({
       providers: [
@@ -35,6 +40,7 @@ describe('ComparisonAbTabComponent', () => {
         { provide: MatSnackBar, useValue: mockSnackBar },
         { provide: I18nService, useValue: mockI18n },
         { provide: AuthService, useValue: mockAuth },
+        { provide: UserActivityJournal, useValue: journal },
         { provide: CompareFiltersService, useValue: compareFilters },
       ],
     });
@@ -113,6 +119,21 @@ describe('ComparisonAbTabComponent', () => {
         winner: 'a',
         category: 'portrait',
       });
+    });
+
+    it.each(['a', 'b', 'tie'])('journals the %s answer with both paths and the category', async winner => {
+      await component.submitComparison(winner);
+
+      expect(journal.record).toHaveBeenCalledTimes(1);
+      expect(journal.record).toHaveBeenCalledWith('compare', ['/photo1.jpg', '/photo2.jpg'], { category: 'portrait', winner });
+    });
+
+    it('journals nothing when the submit fails', async () => {
+      mockApi.post.mockReturnValue(throwError(() => new Error('fail')));
+
+      await component.submitComparison('a');
+
+      expect(journal.record).not.toHaveBeenCalled();
     });
 
     it('should increment comparisonCount', async () => {
@@ -256,6 +277,12 @@ describe('ComparisonAbTabComponent', () => {
       expect(component.pairA()).toBe('/photo3.jpg');
     });
 
+    it('journals a skip, so unseen pairs cannot be inferred', async () => {
+      await component.skipPair();
+
+      expect(journal.record).toHaveBeenCalledWith('compare', ['/photo1.jpg', '/photo2.jpg'], { category: 'portrait', winner: 'skip' });
+    });
+
     it('should not increment comparisonCount', async () => {
       expect(component.comparisonCount()).toBe(0);
 
@@ -323,6 +350,12 @@ describe('ComparisonAbTabComponent', () => {
   });
 
   describe('onStrategyChange', () => {
+    it('should offer learning as a selectable strategy', () => {
+      expect((component as unknown as { strategies: readonly string[] }).strategies).toContain('learning');
+      component.onStrategyChange('learning');
+      expect(component.strategy()).toBe('learning');
+    });
+
     it('should update strategy signal', () => {
       component.onStrategyChange('random');
       expect(component.strategy()).toBe('random');
@@ -346,5 +379,54 @@ describe('ComparisonAbTabComponent', () => {
 
       expect(spy).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('ComparisonAbTabComponent pair-selection strategy on the wire', () => {
+  let http: HttpTestingController;
+  let component: any;
+  let filters: CompareFiltersService;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        ComparisonAbTabComponent,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: MatSnackBar, useValue: { open: vi.fn() } },
+        { provide: I18nService, useValue: { t: vi.fn((key: string) => key) } },
+        { provide: AuthService, useValue: { isEdition: vi.fn(() => true) } },
+      ],
+    });
+    http = TestBed.inject(HttpTestingController);
+    filters = TestBed.inject(CompareFiltersService);
+    filters.selectedCategory.set('portrait');
+    component = TestBed.inject(ComparisonAbTabComponent);
+  });
+
+  afterEach(() => {
+    http.match(() => true);
+  });
+
+  it('sends no strategy while it is unset, so the server uses its configured default', () => {
+    void component.loadNextPair();
+    const req = http.expectOne((r) => r.url === '/api/comparison/next_pair');
+    expect(req.request.params.keys()).not.toContain('strategy');
+    expect(req.request.params.get('category')).toBe('portrait');
+  });
+
+  it('sends the strategy the user picked', () => {
+    component.onStrategyChange('boundary');
+    void component.loadNextPair();
+    const req = http.expectOne((r) => r.url === '/api/comparison/next_pair');
+    expect(req.request.params.get('strategy')).toBe('boundary');
+  });
+
+  it('shows the server-configured strategy from the stats while none is picked', () => {
+    expect(component.shownStrategy()).toBe('');
+    component.comparisonStats.set({ pair_selection_strategy: 'learning' });
+    expect(component.shownStrategy()).toBe('learning');
+    component.onStrategyChange('boundary');
+    expect(component.shownStrategy()).toBe('boundary');
   });
 });

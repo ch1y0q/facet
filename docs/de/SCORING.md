@@ -297,6 +297,8 @@ Führen Sie `--compute-recommendations` nach dem Profilwechsel aus, um die Wertu
 
 Der Viewer führt im Hintergrund `--recompute-category` aus und aktualisiert nur Fotos in dieser Kategorie.
 
+Ein MCP-Assistent kann diese Gewichte lesen und eine Änderung probeweise durchrechnen, ohne etwas zu ändern: `explain_score` (warum ein Foto seinen Score erhielt), `category_weights` und `preview_weights` (eine Näherungsvorschau mit Rangänderungen). Siehe [Scores und Gewichte](AGENTS.md#scores-und-gewichte).
+
 ### Option B: Über die CLI
 
 #### 1. Aktuelle Wertungen analysieren

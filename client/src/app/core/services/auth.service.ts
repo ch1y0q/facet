@@ -74,6 +74,11 @@ export class AuthService {
 
   /** Reactive auth state */
   readonly status = signal<AuthStatus | null>(null);
+  /** Who is signed in, not the session's other status fields; changes exactly when the identity does. */
+  readonly identity = computed(() => {
+    const status = this.status();
+    return `${status?.authenticated ? 1 : 0}|${status?.user_id ?? ''}`;
+  });
   readonly isAuthenticated = computed(() => this.status()?.authenticated ?? false);
   readonly isEdition = computed(() => this.status()?.edition_authenticated ?? false);
   readonly editionPasswordRequired = computed(() => this.status()?.edition_password_required ?? false);

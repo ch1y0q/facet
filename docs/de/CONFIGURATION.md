@@ -1725,8 +1725,8 @@ Anzeige und Verhalten der Web-Galerie.
 | Einstellung | Standard | Beschreibung |
 |---------|---------|-------------|
 | `default_category` | `""` | Standard-Kategoriefilter |
-| `edition_password` | `""` | Passwort zum Freischalten des Editionsmodus (leer = jede Bearbeitung wird abgelehnt; die Installation ist schreibgeschützt, außer für einen direkten lokalen Browser mit `trusted_local_editing`) |
-| `trusted_local_editing` | `false` | Gewährt einem Browser auf demselben Rechner, der den Viewer direkt über Loopback erreicht, Editionsrechte ohne Editionspasswort. Gilt nur, solange `password` UND `edition_password` auf einer Einzelbenutzer-Installation leer sind; umfasst jede editionspflichtige Route außer dem Scan-Auslöser. **Niemals hinter einem Reverse-Proxy auf demselben Rechner aktivieren.** Siehe [Vertrauenswürdige lokale Bearbeitung](#vertrauenswürdige-lokale-bearbeitung) |
+| `edition_password` | `""` | Passwort zum Freischalten des Editionsmodus (leer = jede Bearbeitung wird abgelehnt; die Installation ist schreibgeschützt, außer für einen direkten lokalen Browser oder einen lokalen Assistenten mit voller Bearbeitung unter `trusted_local_editing`) |
+| `trusted_local_editing` | `false` | Gewährt einem Browser auf demselben Rechner, der den Viewer direkt über Loopback erreicht, Editionsrechte ohne Editionspasswort. Gilt nur, solange `password` UND `edition_password` auf einer Einzelbenutzer-Installation leer sind; umfasst jede editionspflichtige Route einschließlich des Scan-Auslösers und lässt den Dialog „Assistent verbinden“ ein Assistenten-Token mit voller Bearbeitung für `/mcp`-Anfragen vom selben Rechner erstellen. **Niemals hinter einem Reverse-Proxy auf demselben Rechner aktivieren.** Siehe [Vertrauenswürdige lokale Bearbeitung](#vertrauenswürdige-lokale-bearbeitung) |
 | **comparison_mode** | | |
 | `min_comparisons_for_optimization` | `50` | Mindestanzahl entscheidender Vergleiche (ein Foto hat gewonnen; Gleichstände zählen nicht) in der Kategorie, bevor Gewichte vorgeschlagen werden |
 | `pair_selection_strategy` | `"learning"` | Paarstrategie: `learning` (Embedding-Diversität für den Kaltstart + Rang-Uneinigkeit nach dem Training), `uncertainty`, `boundary`, `active`, `random` |
@@ -1896,7 +1896,7 @@ Schalten Sie optionale Features um, um den Speicherverbrauch zu senken oder die 
 | `show_similar_button` | `true` | Schaltfläche „Find Similar“ auf Fotokarten anzeigen (nutzt numpy für CLIP-Ähnlichkeit) |
 | `show_merge_suggestions` | `true` | Funktion für Zusammenführungsvorschläge auf der Personenverwaltungsseite aktivieren |
 | `show_rating_controls` | `true` | Steuerelemente für Sternebewertung und Favorit anzeigen |
-| `show_scan_button` | `false` | Scan-Auslöser-Schaltfläche anzeigen (Superadmin im Mehrbenutzermodus; gesperrte Edition-Sitzung im Einzelbenutzermodus) – keine GPU erforderlich: der Scan läuft mit dem Profil `legacy` nur auf der CPU |
+| `show_scan_button` | `false` | Scan-Auslöser-Schaltfläche anzeigen (Superadmin im Mehrbenutzermodus; gesperrte Edition-Sitzung im Einzelbenutzermodus) – keine GPU erforderlich: der Scan läuft mit dem Profil `legacy` nur auf der CPU; entfällt für eine vertrauenswürdige lokale Sitzung unter `trusted_local_editing` |
 | `metrics_enabled` | `false` | Den öffentlichen Prometheus-Endpunkt `GET /metrics` aktivieren. Standardmäßig aus — er legt Foto-/Personen-/Gesichtszählungen, DB-Größe und Prozessspeicher offen; nur aktivieren, wenn der Endpunkt aus dem Scraper-Netz erreichbar ist, nicht aus dem öffentlichen Internet. |
 | `show_semantic_search` | `true` | Semantische Suchleiste anzeigen (Text-zu-Bild-Suche mit CLIP/SigLIP-Embeddings) |
 | `show_albums` | `true` | Album-Funktion anzeigen (Fotoalben erstellen, verwalten und durchsuchen) |
@@ -2005,7 +2005,9 @@ Der Zugriff wird pro Anfrage entschieden, nie anhand eines Token-Claims. Eine An
 - die Anfrage trägt keinen `Forwarded`-, `Via`-, `X-Real-IP`-, `X-Client-IP`-, `True-Client-IP`-, `CF-Connecting-IP`-, `X-Original-Forwarded-For`- oder `X-Forwarded-*`-Header;
 - ein vorhandener `Origin` oder `Referer` nennt genau Schema, Host und Port der Anfrage, ohne Zugangsdaten (ein `Origin` mit Pfad, Query oder Fragment wird abgelehnt), und ein vorhandener `Sec-Fetch-Site` lautet `same-origin` oder `none`.
 
-Eine vertrauenswürdige Anfrage hat volle Editionsrechte: jede Route, die sonst eine Editionssitzung verlangt, nicht nur Bewertungen. Das umfasst Bewertungen, Favoriten und Ablehnungen, den Vergleichsmodus, das Aussortieren (einschließlich **In Ordner aussortieren**, das Dateien verschiebt oder in den Papierkorb legt, und das Löschen einzelner Fotos), Alben, Personen- und Gesichtsverwaltung, Änderungen an Gewichten, Prioritäten und Bewertungskontexten, das Einbetten von Metadaten und Exporte, die Neuberechnungs- und Panoramaerkennungs-Jobs mit festen Argumenten sowie die Erzeugung von Bildbeschreibungen und Kritiken auf Anfrage. Einzige Ausnahme ist der Scan-Auslöser: Er verlangt weiterhin `viewer.edition_password`, das nie gesetzt sein kann, während diese Option gilt, und bleibt daher abgelehnt.
+Eine vertrauenswürdige Anfrage hat volle Editionsrechte: jede Route, die sonst eine Editionssitzung verlangt, nicht nur Bewertungen. Das umfasst Bewertungen, Favoriten und Ablehnungen, den Vergleichsmodus, das Aussortieren (einschließlich **In Ordner aussortieren**, das Dateien verschiebt oder in den Papierkorb legt, und das Löschen einzelner Fotos), Alben, Personen- und Gesichtsverwaltung, Änderungen an Gewichten, Prioritäten und Bewertungskontexten, das Einbetten von Metadaten und Exporte, die Neuberechnungs- und Panoramaerkennungs-Jobs mit festen Argumenten sowie die Erzeugung von Bildbeschreibungen und Kritiken auf Anfrage. Der Scan-Auslöser ist eingeschlossen: Eine vertrauenswürdige lokale Browser-Sitzung und ein lokaler Assistent mit einem Token für volle Bearbeitung dürfen ohne `viewer.features.show_scan_button` scannen. Der Scan-Fortschrittsstrom akzeptiert ein vertrauenswürdiges lokales Stream-Token nur vom selben lokalen Rechner.
+
+**Assistenten.** Dieselbe Option lässt den Dialog „Assistent verbinden“ auf einer offenen Installation ein Token mit **Voller Bearbeitung** erstellen (`viewer.mcp.enabled` und ein Token sind weiterhin erforderlich). Das Token ist nur für `/mcp`-Anfragen `edition`, die die obige Grenze bestehen; es funktioniert also von `http://localhost:<port>` oder `127.0.0.1` auf `:5000` und über den `ng serve`-Dev-Proxy `:4200` und wird von einem LAN-Client, bei einer URL mit Hostnamen oder `0.0.0.0` oder in einem Docker-Deployment zu `readonly`. Jedes Passwort senkt es auf `readonly`; das Entfernen des Passworts belebt es wieder. Löschwerkzeuge benötigen weiterhin `viewer.mcp.allow_destructive`. `ng serve --host 0.0.0.0` oder jeder nicht gekennzeichnete Proxy auf demselben Rechner lässt einen LAN-Client mit `Host: localhost` passieren; dann schützt nur das Token `/mcp`. Siehe [KI-Agenten (MCP)](AGENTS.md). Dieselbe Grenze regelt, unabhängig vom Wert von `trusted_local_editing`, die Verwaltung der Assistenten-Tokens auf einer offenen Installation: Tokens erstellen, auflisten und widerrufen geht nur mit einer Anfrage, die sie passiert (oder in einer Bearbeitungssitzung, wenn `viewer.edition_password` gesetzt ist). Ein Reverse-Proxy muss `X-Forwarded-For` oder `Forwarded` senden, sonst wird er wie der lokale Rechner behandelt.
 
 > **Warnung:** Der Loopback-Peer ist die einzige echte Grenze. `Host`, `Origin`, `Referer` und `Sec-Fetch-Site` setzt der Client, sie können eine Anfrage nur ablehnen, und ein Reverse-Proxy, Tunnel oder Port-Forward auf demselben Rechner, der keinen der obigen Header hinzufügt, ist von Ihrem Browser nicht zu unterscheiden. Aktivieren Sie diese Option nie hinter einem Reverse-Proxy auf demselben Rechner. Solange sie aktiv ist, kann jeder lokale Prozess und jedes Konto auf dem Rechner bearbeiten.
 
@@ -2625,6 +2627,50 @@ Exportieren Sie ein Album als eigenständige statische HTML-Galerie, die eine Fo
 | `jpeg_quality` | `88` | JPEG-Qualität der exportierten Bilder |
 
 Das `target_dir` durchläuft dieselbe Allowlist wie die Kopier-/Verschiebe-Export-Endpunkte (`viewer.export.allowed_target_dirs` plus die Scan-Verzeichnisse — siehe [Ziele für Export und Aussortierung](#ziele-für-export-und-aussortierung)). Gesteuert durch `viewer.features.show_portfolio_export` (Standard `true`).
+
+## Agent-Endpunkt (MCP)
+
+Stellt die in [KI-Agenten (MCP)](AGENTS.md) beschriebenen Werkzeuge unter `POST /mcp` bereit: Lesen, Steuern des geöffneten Tabs und, je nach Token-Stufe, Ändern von Bewertungen, Tags und Alben sowie Aussortieren und Löschen. Er ist standardmäßig aktiv; setzen Sie `enabled` auf `false`, um ihn abzuschalten (alle Routen antworten dann 404). Bei einer offenen Installation (ohne `viewer.password`) liefert `/mcp` nur einen schreibgeschützten anonymen Schlüssel, der nichts gewährt, was die offene `/api` nicht ohnehin gewährt. Ein auf einer offenen Installation erstelltes Token ist `readonly`, außer `viewer.trusted_local_editing` ist aktiv; dann ist ein Token mit voller Bearbeitung für Anfragen vom selben Rechner möglich. Auf einer offenen Installation lassen sich Tokens nur auf dem Rechner erstellen, auflisten und widerrufen, auf dem Facet läuft (oder in einer Bearbeitungssitzung, wenn `viewer.edition_password` gesetzt ist).
+
+```json
+{
+  "viewer": {
+    "mcp": {
+      "enabled": true,
+      "bridge": true,
+      "max_rows": 100,
+      "max_bytes": 60000,
+      "max_image_bytes": 262144,
+      "call_timeout_s": 30,
+      "semantic_timeout_s": 120,
+      "rate_per_min": 120,
+      "write_rate_per_min": 30,
+      "tool_profile": "full",
+      "allow_destructive": false,
+      "inpage_tools": true,
+      "allowed_origins": []
+    }
+  }
+}
+```
+
+| Schlüssel | Standard | Beschreibung |
+|-----|---------|-------------|
+| `enabled` | `true` | Hauptschalter für `/mcp` und `/api/mcp/*`. Deaktiviert antworten sie mit 404 (die Brücke schließt mit Code 4404). Bei einer offenen Installation (ohne `viewer.password`) liefert der Endpunkt nur einen schreibgeschützten anonymen Schlüssel: keine neue Berechtigung, da die offene `/api` dieselben Daten ohnehin preisgibt. Ein auf einer offenen Installation erstelltes Token ist `readonly`, außer `viewer.trusted_local_editing` ist aktiv; dann ist ein Token mit voller Bearbeitung für Anfragen vom selben Rechner möglich. Auf einer offenen Installation lassen sich Tokens nur auf dem Rechner erstellen, auflisten und widerrufen, auf dem Facet läuft (oder in einer Bearbeitungssitzung, wenn `viewer.edition_password` gesetzt ist). |
+| `bridge` | `true` | Ob die Brücke zum Browser-Tab (`/api/mcp/bridge`) WebSockets annimmt und die `ui_*`-Werkzeuge einen Tab erreichen können. Bei `false` lehnt die Brücke die Verbindung ab (Close-Code 4404) und `ui_*`-Werkzeuge melden einen entsprechenden Fehler. Erfordert einen einzigen Worker. |
+| `max_rows` | `100` | Höchstzahl an Zeilen in einem Werkzeug-Ergebnis (1 bis 500). Überzählige Zeilen werden verworfen und `truncated: true` gesetzt. |
+| `max_bytes` | `60000` | Maximale serialisierte Größe eines Werkzeug-Ergebnisses in Bytes (4000 bis 500000). |
+| `max_image_bytes` | `262144` | Maximale Größe in Bytes des Bildes, das ein Werkzeug zurückgibt, `get_thumbnail` oder `contact_sheet` (32768 bis 2097152); nicht in `max_bytes` eingerechnet. |
+| `call_timeout_s` | `30` | Zeitlimit für einen Werkzeugaufruf in Sekunden (1 bis 300). Begrenzt auch, wie lange ein `ui_*`-Aufruf auf den Browser-Tab wartet (`tab_timeout`). |
+| `semantic_timeout_s` | `120` | Zeitlimit für `semantic_search` in Sekunden (1 bis 300); es lädt das Embedding-Modell und braucht daher mehr. |
+| `rate_per_min` | `120` | Werkzeugaufrufe pro Minute und Token (mindestens 1). |
+| `write_rate_per_min` | `30` | Schreibende Aufrufe pro Minute und Token (mindestens 1). Getrennt geführt, damit Lesezugriffe Schreibzugriffe nicht aushungern. Gilt für die Schreibwerkzeuge (einschließlich des Probelaufs von `cull_apply` und `delete_photos`); siehe [KI-Agenten](AGENTS.md#änderungen-vornehmen). |
+| `tool_profile` | `"full"` | `"full"` listet jedes Werkzeug, das der Schlüssel aufrufen darf. `"core"` listet nur einen Satz von 11 Werkzeugen für kleine Modelle (`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`). Nur die Liste ändert sich: ein Werkzeug außerhalb kann weiter aufgerufen werden, wenn die Stufe des Schlüssels es erlaubt. Jeder andere Wert fällt auf `"full"` zurück. Siehe [KI-Agenten](AGENTS.md#berechtigungsstufen). |
+| `allow_destructive` | `false` | Erlaubt Assistenten `delete_photos`, die Aktionen `move_rejects` und `trash_rejects` von `cull_apply` sowie `assign_faces` mit `allow_reassign`. Deaktiviert wird `delete_photos` nicht aufgelistet, und die beiden anderen antworten `feature_disabled` mit Nennung dieses Schlüssels. Siehe [KI-Agenten](AGENTS.md#destruktive-aktionen-vorschau-dann-bestätigung). |
+| `inpage_tools` | `true` | Ob ein angemeldeter Tab die Werkzeuge des Servers aus der Seite aufrufen darf: `GET /api/mcp/inpage_tools` listet sie und `POST /api/mcp/call` führt eines als die Sitzung aus, mit deren aktueller Stufe, durch denselben Wrapper wie `/mcp`. Aus, antworten beide Routen mit 404 und `features.mcp_inpage` ist in `/api/auth/status` falsch. Siehe [KI-Agenten](AGENTS.md#webmcp-im-tab-browser-agenten). |
+| `allowed_origins` | `[]` | Zusätzliche Browser-Ursprünge (zum Beispiel `["https://photos.example.com"]`), die die Tab-Brücke öffnen dürfen, wenn ein Reverse-Proxy `Host` umschreibt. Nicht zu verwechseln mit dem CORS-Schlüssel `viewer.allowed_origins`. |
+
+Zahlen außerhalb des Bereichs werden begrenzt, und ein Wert des falschen Typs fällt auf den Standard zurück. Der Block wird bei jeder Anfrage gelesen, ein Neuladen der Konfiguration schaltet die Funktion also ohne Neustart um.
 
 ## Bilderrahmen / Kiosk
 

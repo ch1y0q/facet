@@ -1,8 +1,11 @@
 import type { Mock } from 'vitest';
 import { ComponentFixture, DeferBlockState, TestBed } from '@angular/core/testing';
-import { ChangeDetectorRef, computed, DebugElement, DestroyRef, signal, WritableSignal } from '@angular/core';
+import { ChangeDetectorRef, computed, DebugElement, DestroyRef, signal, TemplateRef, WritableSignal } from '@angular/core';
 import { ActivatedRoute, Event as RouterEvent, NavigationStart, Router, RouterOutlet } from '@angular/router';
 import { By } from '@angular/platform-browser';
+import { PhotoCardComponent } from '../../shared/components/photo-card/photo-card.component';
+import { GalleryPhotoMenuComponent } from './gallery-photo-menu.component';
+import { PhotoTooltipComponent } from './photo-tooltip.component';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Subject, of, throwError } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
@@ -20,13 +23,13 @@ import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { AlbumService } from '../../core/services/album.service';
 import { GalleryComponent } from './gallery.component';
-import { PhotoCardComponent } from '../../shared/components/photo-card/photo-card.component';
 import { GalleryFilterSidebarComponent } from './gallery-filter-sidebar.component';
 import { SlideshowComponent } from './slideshow.component';
 import { I18N } from '../../core/i18n/keys';
 import { ScoreClassPipe } from '../../shared/pipes/score.pipes';
 import { MAX_COMPARE_PANES } from './synced-zoom.component';
 import { gridColumnCount } from './gallery-rows.util';
+import { ScanService } from '../../core/services/scan.service';
 import { UndoService } from '../../core/services/undo.service';
 import { SequenceKind } from '../../core/services/sequence-override.service';
 import { HeaderSlotService } from '../../core/services/header-slot.service';
@@ -58,6 +61,7 @@ describe('GalleryComponent', () => {
         { id: 'macro', label: 'Macro', count: 50 },
       ]),
       photos: signal([]),
+      focusedPath: signal<string | null>(null),
       total: signal(0),
       loading: signal(false),
       loadError: signal(false),
@@ -72,6 +76,7 @@ describe('GalleryComponent', () => {
       filterDrawerOpen: signal(false),
       currentAlbum: signal(null),
       initializing: signal(false),
+      galleryMounts: signal(0),
       galleryMode: signal('mosaic'),
       cardWidth: signal(300),
       virtualScroll: signal(false),
@@ -80,6 +85,7 @@ describe('GalleryComponent', () => {
       loadFilterOptions: vi.fn(() => Promise.resolve()),
       loadTypeCounts: vi.fn(() => Promise.resolve()),
       loadPhotos: vi.fn(() => Promise.resolve()),
+      reloadPhotos: vi.fn(() => Promise.resolve()),
       updateFilter: vi.fn(() => Promise.resolve()),
       resetFilters: vi.fn(() => Promise.resolve()),
       nextPage: vi.fn(() => Promise.resolve()),
@@ -110,7 +116,9 @@ describe('GalleryComponent', () => {
       pathsInView: vi.fn(() => Promise.resolve([] as string[])),
       filterPayload: vi.fn(() => ({ page: '1' })),
       viewSnapshot: signal(null),
-      filterKey: vi.fn((f?: GalleryFilters) => JSON.stringify(buildApiParams(f ?? mockStore.filters(), false))),
+      pinnedPaths: signal<string[] | null>(null),
+      clearPinned: vi.fn(() => Promise.resolve()),
+      filterKey: vi.fn((f?: GalleryFilters) => JSON.stringify(buildApiParams(f ?? mockStore.filters(), false, undefined))),
       hiddenSummary: signal({ total: 0, blinks: 0, bursts: 0, duplicates: 0 }),
       hiddenFiltersStash: signal(null),
       showAllHidden: vi.fn(),
@@ -140,7 +148,16 @@ describe('GalleryComponent', () => {
       getRaw: vi.fn(() => of(new Blob(['x']))),
     };
 
-    mockAuth = { isEdition: vi.fn(() => false), downloadProfiles: vi.fn(() => []) };
+    mockAuth = {
+      identity: vi.fn(() => '0|'),
+      isEdition: vi.fn(() => false),
+      downloadProfiles: vi.fn(() => []),
+      hasFeature: vi.fn(() => false),
+      isMultiUser: vi.fn(() => false),
+      isSuperadmin: vi.fn(() => false),
+      editionPasswordRequired: vi.fn(() => false),
+      loginPasswordRequired: vi.fn(() => false),
+    };
 
     mockI18n = {
       t: vi.fn((key: string) => key),
@@ -170,6 +187,7 @@ describe('GalleryComponent', () => {
           },
         },
         { provide: ActivatedRoute, useValue: routeMock },
+        { provide: ScanService, useValue: { canLaunch: signal(false), openLauncher: vi.fn(() => Promise.resolve(false)) } },
         { provide: RouterOutlet, useValue: outletMock },
         { provide: ChangeDetectorRef, useValue: { detectChanges: vi.fn() } },
         { provide: MatDialog, useValue: { open: vi.fn() } },
@@ -331,6 +349,59 @@ describe('GalleryComponent', () => {
       mockStore.photos.set([{ path: '/a.jpg' }, { path: '/b.jpg' }, { path: '/c.jpg' }]);
       mockStore.config.set({ features: { show_rating_controls: true } });
       (mockAuth as { isEdition: unknown }).isEdition = vi.fn(() => true);
+    });
+
+    describe('the focused-photo mirror read by ui_get_context', () => {
+      const setCursor = (index: number): void =>
+        (component as unknown as { setCursor(i: number): void }).setCursor(index);
+      let hasFocus: ReturnType<typeof vi.spyOn>;
+      beforeEach(() => {
+        hasFocus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      });
+      afterEach(() => hasFocus.mockRestore());
+
+      it('follows the keyboard cursor', () => {
+        click({ path: '/a.jpg' }, 0);
+        press('ArrowRight');
+        expect(mockStore.focusedPath()).toBe('/b.jpg');
+      });
+
+      it('clears on setCursor(-1) while the window has focus', () => {
+        click({ path: '/b.jpg' }, 1);
+        setCursor(-1);
+        expect(mockStore.focusedPath()).toBeNull();
+      });
+
+      it('clears when the panel is released', () => {
+        click({ path: '/b.jpg' }, 1);
+        (component as unknown as { releasePanel(): void }).releasePanel();
+        expect(mockStore.focusedPath()).toBeNull();
+      });
+
+      it('survives the window losing focus, although the cursor itself goes', () => {
+        click({ path: '/b.jpg' }, 1);
+        hasFocus.mockReturnValue(false);
+        (component as unknown as { onGridFocusOut(e: FocusEvent): void })
+          .onGridFocusOut({ relatedTarget: null } as unknown as FocusEvent);
+        expect(activeIndex()).toBe(-1);
+        expect(mockStore.focusedPath()).toBe('/b.jpg');
+      });
+
+      it('is not touched by hover', () => {
+        click({ path: '/b.jpg' }, 1);
+        (component as unknown as { tooltipPhoto: { set(p: unknown): void } }).tooltipPhoto.set({ path: '/c.jpg' });
+        expect(mockStore.focusedPath()).toBe('/b.jpg');
+      });
+
+      it('clears once its photo leaves the list, even with the cursor already dropped', () => {
+        click({ path: '/b.jpg' }, 1);
+        hasFocus.mockReturnValue(false);
+        (component as unknown as { onGridFocusOut(e: FocusEvent): void })
+          .onGridFocusOut({ relatedTarget: null } as unknown as FocusEvent);
+        mockStore.photos.set([{ path: '/a.jpg' }, { path: '/c.jpg' }]);
+        TestBed.tick();
+        expect(mockStore.focusedPath()).toBeNull();
+      });
     });
 
     it('marks nothing before the cursor has ever moved, so nothing is dimmed at rest', () => {
@@ -1006,6 +1077,164 @@ describe('GalleryComponent', () => {
     });
   });
 
+  describe('assistant-pinned list', () => {
+    let fixture: ComponentFixture<GalleryComponent> | null = null;
+
+    afterEach(() => {
+      fixture?.destroy();
+      fixture = null;
+    });
+
+    it('keeps the pin when the gallery is restored from a /photo round trip', async () => {
+      mockStore.pinnedPaths.set(['/a.jpg']);
+      mockStore.photos.set([{ path: '/a.jpg' }]);
+      mockStore.viewSnapshot.set({ scrollTop: 0, albumId: null, filterKey: mockStore.filterKey() });
+
+      await component.ngOnInit();
+
+      expect(mockStore.loadConfig).not.toHaveBeenCalled();
+      expect(mockStore.loadPhotos).not.toHaveBeenCalled();
+      expect(mockStore.pinnedPaths()).toEqual(['/a.jpg']);
+    });
+
+    it('reloads through loadConfig and loadPhotos (which drop the pin) when it cannot restore', async () => {
+      mockStore.pinnedPaths.set(['/a.jpg']);
+
+      await component.ngOnInit();
+
+      expect(mockStore.loadConfig).toHaveBeenCalled();
+      expect(mockStore.loadPhotos).toHaveBeenCalled();
+    });
+
+    it('renders the chip with the count and its button clears the pin', () => {
+      mockStore.pinnedPaths.set(['/a.jpg', '/b.jpg']);
+      mockStore.total.set(2);
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const html = fixture.nativeElement as HTMLElement;
+      expect(html.textContent).toContain(I18N.gallery.pinned.chip_plural);
+      expect(html.querySelector('[role="status"]')).toBeTruthy();
+      const clear = Array.from(html.querySelectorAll('button')).find(b => b.textContent?.includes(I18N.gallery.pinned.clear));
+      expect(clear).toBeTruthy();
+      clear?.click();
+      expect(mockStore.clearPinned).toHaveBeenCalled();
+    });
+
+    function toolbarView(): HTMLElement {
+      const tpl = (fixture!.componentInstance as unknown as { galleryToolbar(): TemplateRef<unknown> }).galleryToolbar();
+      const view = tpl.createEmbeddedView({});
+      view.detectChanges();
+      const host = document.createElement('div');
+      view.rootNodes.forEach((n: Node) => host.appendChild(n));
+      return host;
+    }
+    const hasTypeAndSearch = (host: HTMLElement) =>
+      host.textContent?.includes(I18N.ui.filters.type) === true
+      && !!host.querySelector(`input[placeholder="${I18N.gallery.search_placeholder}"]`);
+
+    it('offers no filter links while pinned (tag chips, person avatars, Find similar) and restores them after', () => {
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      mockStore.photos.set([{ path: '/a.jpg', filename: 'a.jpg', image_width: 4000, image_height: 3000 }]);
+      mockStore.pinnedPaths.set(['/a.jpg']);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const cards = () => fixture!.debugElement.queryAll(By.directive(PhotoCardComponent));
+      const menu = () => fixture!.debugElement.query(By.directive(GalleryPhotoMenuComponent)).componentInstance as GalleryPhotoMenuComponent;
+      const tooltips = () => fixture!.debugElement.queryAll(By.directive(PhotoTooltipComponent));
+      expect(cards().length).toBeGreaterThan(0);
+      expect(cards().every(c => (c.componentInstance as PhotoCardComponent).filterLinks() === false)).toBe(true);
+      expect(menu().findSimilar()).toBe(false);
+      expect(tooltips().every(t => (t.componentInstance as PhotoTooltipComponent).personLinks() === false)).toBe(true);
+      mockStore.pinnedPaths.set(null);
+      fixture.detectChanges();
+      expect(cards().every(c => (c.componentInstance as PhotoCardComponent).filterLinks() === true)).toBe(true);
+      expect(menu().findSimilar()).toBe(true);
+      expect(tooltips().every(t => (t.componentInstance as PhotoTooltipComponent).personLinks() === true)).toBe(true);
+    });
+
+    it('hides the header Type select and search field while pinned and restores them after', () => {
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      mockStore.pinnedPaths.set(['/a.jpg']);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      expect(hasTypeAndSearch(toolbarView())).toBe(false);
+      mockStore.pinnedPaths.set(null);
+      fixture.detectChanges();
+      expect(hasTypeAndSearch(toolbarView())).toBe(true);
+    });
+
+    it('keeps the filter drawer shut while pinned without touching the persisted flag, and reopens it after', () => {
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      mockStore.filterDrawerOpen.set(true);
+      mockStore.pinnedPaths.set(['/a.jpg']);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const drawer = fixture.debugElement.query(By.directive(MatSidenav)).componentInstance as MatSidenav;
+      expect(drawer.opened).toBe(false);
+      expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
+      expect(mockStore.filterDrawerOpen()).toBe(true);
+      mockStore.pinnedPaths.set(null);
+      fixture.detectChanges();
+      expect(drawer.opened).toBe(true);
+      mockStore.filterDrawerOpen.set(false);
+    });
+
+    it('the load-error Retry button reloads without dropping the pin', () => {
+      mockStore.pinnedPaths.set(['/a.jpg']);
+      mockStore.loadError.set(true);
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const retry = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button'))
+        .find(b => b.textContent?.includes(I18N.gallery.load_error.retry));
+      expect(retry).toBeTruthy();
+      retry?.click();
+      expect(mockStore.reloadPhotos).toHaveBeenCalled();
+      mockStore.loadError.set(false);
+    });
+
+    it('hides the Keep top N% button while a pinned list is shown', () => {
+      (mockAuth as { isEdition: unknown }).isEdition = vi.fn(() => true);
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      mockStore.total.set(2);
+      mockStore.canScopeSelectionToView.set(false);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      expect((fixture.nativeElement as HTMLElement).querySelector(`[aria-label="${I18N.gallery.keep_top.label}"]`)).toBeNull();
+      mockStore.canScopeSelectionToView.set(true);
+    });
+
+    it('renders the pinned chip with only a Clear button: no review legend, Copy, Apply or Applied menu', () => {
+      mockStore.pinnedPaths.set(['/a.jpg', '/b.jpg']);
+      mockStore.total.set(2);
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const chip = (fixture.nativeElement as HTMLElement).querySelector('[role="status"]')!;
+      expect(chip.querySelectorAll('button')).toHaveLength(1);
+      expect(chip.querySelector('[data-testid="pinned-review-legend"], [data-testid="copy-for-assistant"], [data-testid="apply-my-marks"], [data-testid="applied-menu"]')).toBeNull();
+    });
+
+    it('uses the singular chip text for one photo', () => {
+      mockStore.pinnedPaths.set(['/a.jpg']);
+      mockStore.total.set(1);
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(text).toContain(I18N.gallery.pinned.chip);
+      expect(text).not.toContain(I18N.gallery.pinned.chip_plural);
+    });
+
+    it('renders no chip without a pin', () => {
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      expect((fixture.nativeElement as HTMLElement).textContent).not.toContain(I18N.gallery.pinned.chip);
+    });
+  });
+
   describe('collapsedSetKinds', () => {
     it('lists nothing when every hide toggle is off', () => {
       mockStore.filters.set({
@@ -1063,6 +1292,86 @@ describe('GalleryComponent', () => {
       // A migration takes hours, so a reload must not raise the notice again.
       const reloaded = rebuild();
       expect(reloaded.showRenderMigrationBanner()).toBe(false);
+    });
+  });
+
+  describe('floating advisory notices', () => {
+    function render(): HTMLElement {
+      const fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      return fixture.nativeElement as HTMLElement;
+    }
+    const stack = (html: HTMLElement) => html.querySelector<HTMLElement>('[data-gallery-notices]');
+    const button = (html: HTMLElement, label: string) =>
+      Array.from(html.querySelectorAll('button')).find(b => b.textContent?.includes(label));
+
+    beforeEach(() => {
+      localStorage.removeItem('facet_render_migration_dismissed');
+      mockStore.hiddenSummary.set({ total: 6, blinks: 0, bursts: 4, duplicates: 0, brackets: 2, panoramas: 0 });
+      mockStore.filters.set({ ...DEFAULT_FILTERS, hide_bursts: true });
+    });
+
+    afterEach(() => localStorage.removeItem('facet_render_migration_dismissed'));
+
+    it('renders the hidden-photos notice in the stack, outside the scrolling content, and Show all acts', () => {
+      const html = render();
+      const notices = stack(html);
+      expect(notices).toBeTruthy();
+      expect(notices!.closest('mat-sidenav-content')).toBeNull();
+      expect(notices!.querySelector('[role="status"]')?.textContent).toContain(I18N.gallery.hidden_banner.message);
+      button(html, I18N.gallery.hidden_banner.show_all)?.click();
+      expect(mockStore.showAllHidden).toHaveBeenCalled();
+    });
+
+    it('renders the restore twin once Show all has been used', () => {
+      mockStore.hiddenSummary.set({ total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 });
+      mockStore.hiddenFiltersStash.set({
+        hide_blinks: true, hide_bursts: true, hide_duplicates: true, hide_brackets: true, hide_panoramas: true,
+      });
+      mockStore.filters.set({ ...DEFAULT_FILTERS, hide_blinks: false, hide_bursts: false, hide_duplicates: false, hide_brackets: false, hide_panoramas: false });
+      const html = render();
+      expect(stack(html)?.textContent).toContain(I18N.gallery.hidden_banner.showing_all);
+      button(html, I18N.gallery.hidden_banner.restore)?.click();
+      expect(mockStore.restoreHidden).toHaveBeenCalled();
+    });
+
+    it('stacks the migration notice below the hidden notice and Dismiss removes only it', () => {
+      mockStore.config.set({ render_migration: { pending: 12 } });
+      const html = render();
+      const cards = Array.from(stack(html)!.querySelectorAll('[role="status"]'));
+      expect(cards).toHaveLength(2);
+      expect(cards[0].textContent).toContain(I18N.gallery.hidden_banner.message);
+      expect(cards[1].textContent).toContain(I18N.gallery.render_migration.message);
+      button(html, I18N.ui.buttons.dismiss)?.click();
+      expect(localStorage.getItem('facet_render_migration_dismissed')).toBe('true');
+    });
+
+    it('anchors the stack bottom-right, clear of an open end drawer and the content scrollbar', () => {
+      vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+      const rect = (left: number, right: number) => ({ left, right, top: 0, bottom: 600, width: right - left, height: 600, x: left, y: 0, toJSON() { return {}; } });
+      const original = HTMLElement.prototype.getBoundingClientRect;
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+        if (this.classList.contains('relative') && this.classList.contains('h-full')) return rect(0, 1000) as DOMRect;
+        if (this.tagName === 'MAT-SIDENAV-CONTENT') return rect(0, 700) as DOMRect;
+        return original.call(this);
+      });
+      vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (this: HTMLElement) {
+        return this.tagName === 'MAT-SIDENAV-CONTENT' ? 683 : 0;
+      });
+      try {
+        const notices = stack(render())!;
+        expect(notices.classList.contains('left-2')).toBe(false);
+        // 1000 - (0 + 683) = 317 (drawer + scrollbar) plus the margin.
+        expect(parseFloat(notices.style.right)).toBeGreaterThanOrEqual(317 + 8);
+      } finally {
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it('renders no stack when nothing is advisory', () => {
+      mockStore.hiddenSummary.set({ total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 });
+      expect(stack(render())).toBeNull();
     });
   });
 
@@ -1138,10 +1447,61 @@ describe('GalleryComponent', () => {
           expect(panelPhoto()).toBe(b);
         });
 
+        it('a new pin empties the rail and drops the cursor, so nothing of the previous view carries over', () => {
+          TestBed.tick();
+          component.showTooltip(hoverEvent, a as never);
+          expect(panelPhoto()).toBe(a);
+          mockStore.pinnedPaths.set(['/a.jpg']);
+          TestBed.tick();
+          expect(panelPhoto()).toBeFalsy();
+          expect(hasActivePhoto()).toBe(false);
+          expect(component['tooltipPhoto']()).toBeNull();
+        });
+
+        it('a plain filter reload with no pin leaves the held photo alone', () => {
+          TestBed.tick();
+          component.showTooltip(hoverEvent, a as never);
+          mockStore.pinnedPaths.set(null);
+          TestBed.tick();
+          expect(component['tooltipPhoto']()).toBe(a);
+          expect(hasActivePhoto()).toBe(true);
+        });
+
         it('Deselect leaves an already-unselected photo unselected', () => {
           mockStore.toggleSelection.mockClear();
           release();
           expect(mockStore.toggleSelection).not.toHaveBeenCalled();
+        });
+
+        it('Escape in the grid releases the photo like Deselect, then clears the rest of the selection', () => {
+          mockStore.selectedPaths.set(new Set([a.path, b.path]));
+          mockStore.selectionCount.set(2);
+          component.showTooltip(hoverEvent, b as never);
+          press('Escape');
+          expect(hasActivePhoto()).toBe(false);
+          expect(mockStore.toggleSelection).toHaveBeenLastCalledWith(a);
+          expect(mockStore.clearSelection).toHaveBeenCalled();
+          expect(panelPhoto()).toBe(a);
+        });
+
+        it('Escape in the grid releases a photo the cursor holds without any selection', () => {
+          mockStore.toggleSelection.mockClear();
+          press('Escape');
+          expect(hasActivePhoto()).toBe(false);
+          expect(mockStore.toggleSelection).not.toHaveBeenCalled();
+          expect(mockStore.clearSelection).not.toHaveBeenCalled();
+        });
+
+        it('Escape with one photo in a view-scoped selection still clears the store selection', () => {
+          mockStore.photos.set([a]);
+          mockStore.viewScopeSelected.set(true);
+          // The store's count is "loaded photos minus exclusions"; the release excludes the only one.
+          mockStore.selectionCount.set(0);
+          mockStore.clearSelection.mockClear();
+          press('Escape');
+          expect(mockStore.clearSelection).toHaveBeenCalled();
+          mockStore.viewScopeSelected.set(false);
+          mockStore.selectionCount.set(0);
         });
 
         it('focus moving into the rail keeps the cursor', () => {
@@ -1154,6 +1514,137 @@ describe('GalleryComponent', () => {
             .onGridFocusOut({ relatedTarget: button } as unknown as FocusEvent);
           expect(activeIndex()).toBe(0);
           rail.remove();
+        });
+      });
+
+      describe('after Escape released a held card that still has focus', () => {
+        const four = [{ path: '/a.jpg' }, { path: '/b.jpg' }, { path: '/c.jpg' }, { path: '/d.jpg' }];
+        let card: HTMLElement;
+        let inner: HTMLElement;
+        const fire = (key: string, target: HTMLElement) => {
+          const ev = new KeyboardEvent('keydown', { key, cancelable: true });
+          Object.defineProperty(ev, 'target', { value: target, configurable: true });
+          (component as unknown as { onGridKeydown(e: KeyboardEvent): void }).onGridKeydown(ev);
+        };
+
+        beforeEach(() => {
+          mockStore.photos.set(four);
+          mockStore.config.set({ features: { show_rating_controls: true } });
+          (mockAuth as { isEdition: unknown }).isEdition = vi.fn(() => true);
+          card = document.createElement('div');
+          card.setAttribute('data-pidx', '2');
+          inner = document.createElement('span');
+          card.appendChild(inner);
+          click(four[2], 2);
+          fire('Escape', inner);
+          expect(activeIndex()).toBe(-1);
+        });
+
+        it('a rating key rates the card that has focus, not photo 0', () => {
+          fire('5', inner);
+          expect(mockStore.setRating).toHaveBeenCalledWith('/c.jpg', 5);
+          expect(mockStore.setRating).not.toHaveBeenCalledWith('/a.jpg', 5);
+        });
+
+        it('ArrowRight moves on from the card that has focus', () => {
+          fire('ArrowRight', inner);
+          expect(activeIndex()).toBe(3);
+        });
+      });
+
+      it('Escape in Hover mode never touches the panel hold: it only clears the selection', () => {
+        mockStore.filters.set({ ...DEFAULT_FILTERS, tooltip_mode: 'hover' });
+        mockStore.photos.set([{ path: '/a.jpg' }, { path: '/b.jpg' }]);
+        click({ path: '/b.jpg' }, 1);
+        mockStore.selectionCount.set(1);
+        mockStore.toggleSelection.mockClear();
+        mockStore.clearSelection.mockClear();
+        press('Escape');
+        expect(mockStore.clearSelection).toHaveBeenCalled();
+        expect(mockStore.toggleSelection).not.toHaveBeenCalled();
+        expect(activeIndex()).toBe(1);
+        mockStore.selectionCount.set(0);
+      });
+
+      it('disableClose follows the rail: false while the filters occupy the drawer', () => {
+        const fixture = TestBed.createComponent(GalleryComponent);
+        (fixture.componentInstance as unknown as { railWide: { setup(): void } }).railWide.setup();
+        fixture.detectChanges();
+        const drawer = fixture.debugElement.query(By.directive(MatSidenav)).componentInstance as MatSidenav;
+        expect(fixture.componentInstance.detailsRailVisible()).toBe(true);
+        expect(drawer.disableClose).toBe(true);
+        mockStore.filterDrawerOpen.set(true);
+        fixture.detectChanges();
+        expect(fixture.componentInstance.detailsRailVisible()).toBe(false);
+        expect(drawer.disableClose).toBe(false);
+        fixture.destroy();
+      });
+
+      describe('rail rendered with a held photo', () => {
+        interface RailInstance {
+          railWide: { setup(): void };
+          hasActivePhoto(): boolean;
+          setCursor(index: number): void;
+        }
+        let fixture: ComponentFixture<GalleryComponent>;
+        let instance: RailInstance;
+        let rail: HTMLElement;
+
+        beforeEach(() => {
+          const a = {
+            path: '/a.jpg', filename: 'a.jpg', image_width: 4000, image_height: 3000, tags_list: [], persons: [],
+          };
+          mockStore.photos.set([a]);
+          // The docked tooltip fetches its own extras (histogram, captions) once it renders.
+          Object.assign(mockApi, { get: vi.fn(() => of({})) });
+          fixture = TestBed.createComponent(GalleryComponent);
+          instance = fixture.componentInstance as unknown as RailInstance;
+          instance.railWide.setup();
+          fixture.detectChanges();
+          instance.setCursor(0);
+          fixture.detectChanges();
+          expect(instance.hasActivePhoto()).toBe(true);
+          rail = fixture.nativeElement.querySelector('[data-details-rail]') as HTMLElement;
+        });
+
+        afterEach(() => fixture.destroy());
+
+        const escape = (target: HTMLElement) => target.dispatchEvent(new KeyboardEvent('keydown', {
+          key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, cancelable: true,
+        }));
+
+        it('Escape releases the photo and the drawer is not closed (rendered)', () => {
+          // MatDrawer closes itself on an Escape from inside it unless disableClose is set;
+          // the open/close effect would then reopen it, so the rail would flicker.
+          const drawer = fixture.debugElement.query(By.directive(MatSidenav)).componentInstance as MatSidenav;
+          const close = vi.spyOn(drawer, 'close');
+          escape(rail);
+          fixture.detectChanges();
+          expect(instance.hasActivePhoto()).toBe(false);
+          expect(close).not.toHaveBeenCalled();
+        });
+
+        it('focus leaving the rail for the outside releases the hold', () => {
+          const outside = document.createElement('button');
+          document.body.appendChild(outside);
+          rail.dispatchEvent(new FocusEvent('focusout', { relatedTarget: outside, bubbles: true }));
+          expect(instance.hasActivePhoto()).toBe(false);
+          outside.remove();
+        });
+
+        it('focus moving within the rail keeps the hold', () => {
+          const inside = rail.querySelector('button') as HTMLElement;
+          rail.dispatchEvent(new FocusEvent('focusout', { relatedTarget: inside, bubbles: true }));
+          expect(instance.hasActivePhoto()).toBe(true);
+        });
+
+        it('Escape on the focused Deselect button leaves focus on the rail', () => {
+          document.body.appendChild(fixture.nativeElement);
+          const button = rail.querySelector('button') as HTMLElement;
+          button.focus();
+          escape(button);
+          fixture.detectChanges();
+          expect(document.activeElement).toBe(rail);
         });
       });
 
@@ -1383,7 +1874,7 @@ describe('GalleryComponent', () => {
       const dialog = TestBed.inject(MatDialog);
       (dialog.open as Mock).mockReturnValue({ afterClosed: () => of(true) });
       const order: string[] = [];
-      mockStore.loadPhotos.mockImplementation(() => {
+      mockStore.reloadPhotos.mockImplementation(() => {
         order.push('load');
         return Promise.resolve();
       });
@@ -1469,7 +1960,7 @@ describe('GalleryComponent', () => {
 
       await open();
 
-      expect(mockStore.loadPhotos).toHaveBeenCalledTimes(1);
+      expect(mockStore.reloadPhotos).toHaveBeenCalledTimes(1);
       expect(mockStore.restoreSelection).toHaveBeenCalledWith(['/a.jpg']);
     });
 
@@ -1507,16 +1998,14 @@ describe('GalleryComponent', () => {
     }
 
     function tagsButton(f: ComponentFixture<GalleryComponent>): HTMLButtonElement | null {
-      return (Array.from(f.nativeElement.querySelectorAll('button')) as HTMLButtonElement[])
-        .find(b => b.textContent?.includes(I18N.gallery.selection.edit_tags)) ?? null;
+      return f.nativeElement.querySelector(`[data-selection-bar] button[aria-label="${I18N.gallery.selection.edit_tags}"]`);
     }
 
     it('is a desktop-only button for an edition user', () => {
       const button = tagsButton(render(true));
 
       expect(button).not.toBeNull();
-      expect(button!.className).toContain('!hidden');
-      expect(button!.className).toContain('lg:!inline-flex');
+      expect(button!.closest('.max-md\\:hidden')).not.toBeNull();
     });
 
     it('is absent without edition', () => {
@@ -1751,7 +2240,7 @@ describe('GalleryComponent', () => {
     });
 
     function render(trashAvailable: boolean, viewScoped: boolean, allowTrash: boolean = trashAvailable): ComponentFixture<GalleryComponent> {
-      mockAuth['isEdition'] = vi.fn(() => true);
+      (mockAuth as { isEdition: unknown }).isEdition = vi.fn(() => true);
       mockAuth['hasFeature'] = vi.fn(() => false);
       mockAuth['isMultiUser'] = vi.fn(() => false);
       mockAuth['isSuperadmin'] = vi.fn(() => false);
@@ -1765,8 +2254,7 @@ describe('GalleryComponent', () => {
     }
 
     function deleteButton(f: ComponentFixture<GalleryComponent>): HTMLButtonElement | null {
-      return (Array.from(f.nativeElement.querySelectorAll('button')) as HTMLButtonElement[])
-        .find(b => b.textContent?.includes('cull.delete_action')) ?? null;
+      return f.nativeElement.querySelector('[data-selection-bar] button[aria-label="cull.delete_action"]');
     }
 
     it('is absent when trash_available is false, even with allow_trash true', () => {
@@ -1785,10 +2273,212 @@ describe('GalleryComponent', () => {
       const f = render(true, true);
       const button = deleteButton(f);
       expect(button).not.toBeNull();
-      expect(button!.disabled).toBe(true);
+      // disabledInteractive: aria-disabled instead of the native attribute, so the tooltip still shows.
+      expect(button!.getAttribute('aria-disabled')).toBe('true');
       const tooltipDebug = f.debugElement.queryAll(By.directive(MatTooltip))
         .find(de => de.nativeElement === button);
       expect(tooltipDebug?.injector.get(MatTooltip).message).toBe(I18N.cull.delete_disabled_view_scope_tooltip);
+    });
+  });
+
+  // The selection bar is a floating, icon-only card inside the gallery host (not a
+  // fixed full-width strip): placement, label reachability and the notice baseline.
+  describe('floating selection card (rendered)', () => {
+    let fixture: ComponentFixture<GalleryComponent> | null = null;
+
+    afterEach(() => {
+      fixture?.destroy();
+      fixture = null;
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    });
+
+    function render(opts: { edition?: boolean; desktop?: boolean; viewScoped?: boolean; profiles?: string[] } = {}): ComponentFixture<GalleryComponent> {
+      const { edition = true, desktop = true, viewScoped = false, profiles = [] } = opts;
+      vi.stubGlobal('matchMedia', (media: string) => ({
+        matches: desktop && media.includes('min-width: 768px'), media, addEventListener() {}, removeEventListener() {},
+      }));
+      (mockAuth as { isEdition: unknown }).isEdition = vi.fn(() => edition);
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      mockAuth['isMultiUser'] = vi.fn(() => false);
+      mockAuth['isSuperadmin'] = vi.fn(() => false);
+      mockAuth['downloadProfiles'] = vi.fn(() => profiles);
+      mockStore.config.set({ cull: { allow_trash: true, trash_available: true }, features: { show_albums: true } });
+      mockStore.selectionCount.set(2);
+      mockStore.viewScopeSelected.set(viewScoped);
+      fixture = TestBed.createComponent(GalleryComponent);
+      // The breakpoint signal is wired in afterNextRender; wire it by hand, as the rail specs do.
+      (fixture.componentInstance as unknown as { desktop: { setup(): void } }).desktop.setup();
+      fixture.detectChanges();
+      return fixture;
+    }
+
+    const bar = (f: ComponentFixture<GalleryComponent>) => f.nativeElement.querySelector('[data-selection-bar]') as HTMLElement | null;
+    const labelled = (f: ComponentFixture<GalleryComponent>, label: string) =>
+      bar(f)?.querySelector(`button[aria-label="${label}"]`) as HTMLButtonElement | null;
+
+    it('floats absolutely inside the notice host, rounded, never fixed', () => {
+      const f = render();
+      const el = bar(f)!;
+      expect(el.closest('.relative.h-full')).not.toBeNull();
+      expect(el.classList.contains('absolute')).toBe(true);
+      expect(el.classList.contains('rounded-2xl')).toBe(true);
+      expect(el.classList.contains('fixed')).toBe(false);
+      expect(el.classList.contains('left-2')).toBe(true);
+      expect(el.classList.contains('md:left-4')).toBe(true);
+      expect(el.classList.contains('md:bottom-4')).toBe(true);
+    });
+
+    it('gives every edition action an icon button with matching tooltip and aria-label', () => {
+      const f = render();
+      const keys = [
+        I18N.gallery.selection.clear, I18N.gallery.selection.select_all, I18N.gallery.selection.invert,
+        I18N.gallery.selection.favorite, I18N.gallery.selection.reject, I18N.gallery.selection.rate,
+        I18N.albums.add_photos, I18N.gallery.selection.mark_sequence, I18N.gallery.selection.copy_filenames,
+        I18N.gallery.selection.edit_tags, I18N.export.action, I18N.cull.action, I18N.cull.delete_action,
+        I18N.gallery.selection.download, I18N.gallery.selection.actions,
+      ];
+      for (const key of keys) {
+        const button = labelled(f, key);
+        expect(button, key).not.toBeNull();
+        expect(button!.classList.contains('mat-mdc-icon-button'), key).toBe(true);
+        const tooltip = f.debugElement.queryAll(By.directive(MatTooltip)).find(d => d.nativeElement === button);
+        expect(tooltip?.injector.get(MatTooltip).message, key).toBe(key);
+      }
+    });
+
+    it('shows no text in the buttons other than the icon ligature', () => {
+      const f = render();
+      for (const button of Array.from(bar(f)!.querySelectorAll('button'))) {
+        if (button.closest('.w-full')) continue;
+        expect(button.textContent!.trim()).toMatch(/^[a-z_]*$/);
+      }
+    });
+
+    it('keeps the tooltip on the disabled delete button (disabledInteractive)', () => {
+      const f = render({ viewScoped: true });
+      const del = labelled(f, I18N.cull.delete_action)!;
+      expect(del.getAttribute('aria-disabled')).toBe('true');
+      expect(del.disabled).toBe(false);
+    });
+
+    // disabledInteractive leaves a <button> clickable, so these must stay natively
+    // disabled or a click mid-download starts a second download.
+    it('natively disables every download entry point while a download runs', () => {
+      for (const profiles of [[], ['web']]) {
+        const f = render({ profiles });
+        (f.componentInstance as unknown as { downloading: { set(v: boolean): void } }).downloading.set(true);
+        f.detectChanges();
+        expect(labelled(f, I18N.photo_detail.downloading)!.disabled).toBe(true);
+        expect(labelled(f, I18N.gallery.selection.actions)!.disabled).toBe(true);
+      }
+    });
+
+    it('uses the view-scope text as the delete tooltip when the selection is the whole view', () => {
+      const f = render({ viewScoped: true });
+      const del = labelled(f, I18N.cull.delete_action)!;
+      const tooltip = f.debugElement.queryAll(By.directive(MatTooltip)).find(d => d.nativeElement === del);
+      expect(tooltip?.injector.get(MatTooltip).message).toBe(I18N.cull.delete_disabled_view_scope_tooltip);
+    });
+
+    it('omits the edit and file actions without edition', () => {
+      const f = render({ edition: false });
+      expect(labelled(f, I18N.gallery.selection.favorite)).toBeNull();
+      expect(labelled(f, I18N.gallery.selection.edit_tags)).toBeNull();
+      expect(labelled(f, I18N.cull.delete_action)).toBeNull();
+      expect(labelled(f, I18N.gallery.selection.copy_filenames)).not.toBeNull();
+    });
+
+    it('hides the desktop group below md and keeps one Actions button', () => {
+      const f = render();
+      const fav = labelled(f, I18N.gallery.selection.favorite)!;
+      expect(fav.closest('.max-md\\:hidden')).not.toBeNull();
+      expect(labelled(f, I18N.gallery.selection.actions)!.classList.contains('md:!hidden')).toBe(true);
+    });
+
+    it('opens the actions sheet from the Actions button', () => {
+      const f = render({ desktop: false });
+      const open = vi.spyOn(f.componentInstance as unknown as { openActionsSheet(): Promise<void> }, 'openActionsSheet').mockResolvedValue(undefined);
+      labelled(f, I18N.gallery.selection.actions)!.click();
+      expect(open).toHaveBeenCalledTimes(1);
+    });
+
+    it('calls the same handlers as before for favorite, reject and copy', () => {
+      const f = render();
+      const inst = f.componentInstance as unknown as { batchFavorite(): void; batchReject(): void; copyPaths(): void };
+      const fav = vi.spyOn(inst, 'batchFavorite').mockImplementation(() => undefined);
+      const rej = vi.spyOn(inst, 'batchReject').mockImplementation(() => undefined);
+      const copy = vi.spyOn(inst, 'copyPaths').mockImplementation(() => undefined);
+      labelled(f, I18N.gallery.selection.favorite)!.click();
+      labelled(f, I18N.gallery.selection.reject)!.click();
+      labelled(f, I18N.gallery.selection.copy_filenames)!.click();
+      expect(fav).toHaveBeenCalled();
+      expect(rej).toHaveBeenCalled();
+      expect(copy).toHaveBeenCalled();
+    });
+
+    it('hides while the mobile over drawer is open and returns when it closes, keeping the selection', () => {
+      const f = render({ desktop: false });
+      mockStore.filterDrawerOpen.set(true);
+      f.detectChanges();
+      expect(bar(f)).toBeNull();
+      expect(mockStore.selectionCount()).toBe(2);
+      mockStore.filterDrawerOpen.set(false);
+      f.detectChanges();
+      expect(bar(f)).not.toBeNull();
+    });
+
+    describe('notice baseline and end spacer', () => {
+      const rect = (left: number, right: number, top: number, bottom: number) =>
+        ({ left, right, top, bottom, width: right - left, height: bottom - top, x: left, y: top, toJSON() { return {}; } }) as DOMRect;
+
+      function mockLayout(barRight: number, barTop: number) {
+        vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+        const original = HTMLElement.prototype.getBoundingClientRect;
+        vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+          if (this.classList.contains('relative') && this.classList.contains('h-full')) return rect(0, 1200, 0, 800);
+          if (this.hasAttribute('data-selection-bar')) return rect(16, barRight, barTop, 784);
+          if (this.hasAttribute('data-gallery-notices')) return rect(768, 1184, 600, 700);
+          return original.call(this);
+        });
+        mockStore.hiddenSummary.set({ total: 6, blinks: 0, bursts: 4, duplicates: 0, brackets: 2, panoramas: 0 });
+        mockStore.filters.set({ ...DEFAULT_FILTERS, hide_bursts: true });
+      }
+
+      const noticeBottom = (f: ComponentFixture<GalleryComponent>) => (f.componentInstance as unknown as { noticeBottomPx(): number }).noticeBottomPx();
+
+      it('rests the notices on the 16px desktop margin when the card is narrow', () => {
+        mockLayout(300, 740);
+        const f = render();
+        f.detectChanges();
+        expect(noticeBottom(f)).toBe(16);
+      });
+
+      it('lifts the notices by the card reach when a wide card overlaps them', () => {
+        mockLayout(1000, 740);
+        const f = render();
+        f.detectChanges();
+        expect(noticeBottom(f)).toBe(16 + (800 - 740));
+      });
+
+      it('sizes the end spacer from the measured reach, never below 112px', () => {
+        mockLayout(1000, 640);
+        const f = render();
+        f.detectChanges();
+        const spacer = f.nativeElement.querySelector('mat-sidenav-content div[aria-hidden="true"][style*="height"]') as HTMLElement;
+        expect(spacer.style.height).toBe('160px');
+      });
+
+      it('uses the 8px margin on mobile and 16px on desktop with no selection', () => {
+        mockStore.selectionCount.set(0);
+        const desktop = render();
+        expect(noticeBottom(desktop)).toBe(16);
+        desktop.destroy();
+        const mobile = render({ desktop: false });
+        mockStore.selectionCount.set(0);
+        mobile.detectChanges();
+        expect(noticeBottom(mobile)).toBe(8);
+      });
     });
   });
 
@@ -1799,7 +2489,7 @@ describe('GalleryComponent', () => {
 
     it('passes trashAvailable through to the sheet data', async () => {
       mockStore.config.set({ cull: { allow_trash: true, trash_available: true } });
-      mockAuth['isEdition'] = vi.fn(() => true);
+      (mockAuth as { isEdition: unknown }).isEdition = vi.fn(() => true);
       const bottomSheet = TestBed.inject(MatBottomSheet);
       (bottomSheet.open as Mock).mockReturnValue({ afterDismissed: () => of(null) });
 
@@ -1811,7 +2501,7 @@ describe('GalleryComponent', () => {
 
     it('dispatches to deleteSelected() when the sheet resolves { kind: "delete" }', async () => {
       mockStore.config.set({ cull: { allow_trash: true, trash_available: true } });
-      mockAuth['isEdition'] = vi.fn(() => true);
+      (mockAuth as { isEdition: unknown }).isEdition = vi.fn(() => true);
       const bottomSheet = TestBed.inject(MatBottomSheet);
       (bottomSheet.open as Mock).mockReturnValue({ afterDismissed: () => of({ kind: 'delete' }) });
       const spy = vi.spyOn(component, 'deleteSelected').mockResolvedValue();
@@ -2445,78 +3135,9 @@ describe('GalleryComponent', () => {
     });
   });
 
-  describe('canShowScanButton', () => {
-    function setAuth(overrides: {
-      isMultiUser?: boolean;
-      isSuperadmin?: boolean;
-      editionPasswordRequired?: boolean;
-      isEdition?: boolean;
-      hasFeature?: boolean;
-    }): void {
-      mockAuth['isMultiUser'] = vi.fn(() => overrides.isMultiUser ?? false);
-      mockAuth['isSuperadmin'] = vi.fn(() => overrides.isSuperadmin ?? false);
-      mockAuth['editionPasswordRequired'] = vi.fn(() => overrides.editionPasswordRequired ?? false);
-      mockAuth['isEdition'] = vi.fn(() => overrides.isEdition ?? false);
-      mockAuth['hasFeature'] = vi.fn(() => overrides.hasFeature ?? true);
-    }
-
-    function canShowScanButton(): boolean {
-      return (component as unknown as { canShowScanButton(): boolean }).canShowScanButton();
-    }
-
-    it('shows the button for a multi-user superadmin with the flag on', () => {
-      setAuth({ isMultiUser: true, isSuperadmin: true, hasFeature: true });
-      expect(canShowScanButton()).toBe(true);
-    });
-
-    it('hides the button for a multi-user admin who is not superadmin', () => {
-      setAuth({ isMultiUser: true, isSuperadmin: false, hasFeature: true });
-      expect(canShowScanButton()).toBe(false);
-    });
-
-    it('shows the button for a single-user locked install with an edition session', () => {
-      setAuth({ isMultiUser: false, editionPasswordRequired: true, isEdition: true, hasFeature: true });
-      expect(canShowScanButton()).toBe(true);
-    });
-
-    // Defence in depth: the server no longer reports edition on an open install,
-    // but the scan gate must not depend on that — editionPasswordRequired is false
-    // there, so the button stays hidden even if isEdition() ever read true.
-    it('hides the button on an open single-user install even if the caller were to read as edition-authenticated', () => {
-      setAuth({ isMultiUser: false, editionPasswordRequired: false, isEdition: true, hasFeature: true });
-      expect(canShowScanButton()).toBe(false);
-    });
-
-    it('hides the button regardless of role when the feature flag is off', () => {
-      setAuth({ isMultiUser: true, isSuperadmin: true, hasFeature: false });
-      expect(canShowScanButton()).toBe(false);
-    });
-  });
-
-  // The permanent Scan entry. It belongs to the PAGE, not to the header-slot
-  // toolbar (`#galleryToolbar`): the shell projects that template on lg+ only
-  // (app.html wraps it in `!hidden lg:!flex`), so an icon placed there -- or
-  // given the Keep-top button's `!hidden lg:!inline-flex` -- is gone below lg,
-  // which is exactly where nothing else offers a scan. The fixture holds only
-  // the page's own DOM, never the projected header, so finding the entry in it
-  // is what proves it is not header-slot-only.
-  describe('scan entry above the grid (rendered)', () => {
-    interface ScanAccess {
-      hasFeature: boolean;
-      isMultiUser: boolean;
-      isSuperadmin: boolean;
-      editionPasswordRequired: boolean;
-      isEdition: boolean;
-    }
-    // A locked single-user install with an unlocked edition session.
-    const ALLOWED: ScanAccess = {
-      hasFeature: true, isMultiUser: false, isSuperadmin: false,
-      editionPasswordRequired: true, isEdition: true,
-    };
-    const SUPERADMIN: ScanAccess = {
-      hasFeature: true, isMultiUser: true, isSuperadmin: true,
-      editionPasswordRequired: false, isEdition: true,
-    };
+  // The scan entry lives in the shell header (app.html, covered by app.spec.ts); the
+  // gallery keeps only the empty-state call to action.
+  describe('scan entry (gallery page)', () => {
     const photos = Array.from({ length: 3 }, (_, n) => ({
       path: `/p${n}.jpg`, filename: `p${n}.jpg`, image_width: 4000, image_height: 3000,
       is_favorite: false, is_rejected: false, unassigned_faces: 0,
@@ -2528,84 +3149,63 @@ describe('GalleryComponent', () => {
       fixture = null;
     });
 
-    function render(access: ScanAccess, library: typeof photos): ComponentFixture<GalleryComponent> {
-      mockAuth['hasFeature'] = vi.fn(() => access.hasFeature);
-      mockAuth['isMultiUser'] = vi.fn(() => access.isMultiUser);
-      mockAuth['isSuperadmin'] = vi.fn(() => access.isSuperadmin);
-      mockAuth['editionPasswordRequired'] = vi.fn(() => access.editionPasswordRequired);
-      mockAuth['isEdition'] = vi.fn(() => access.isEdition);
+    function render(canLaunch: boolean, library: typeof photos, launched = true) {
       mockAuth['downloadProfiles'] = vi.fn(() => []);
       mockStore.photos.set(library);
       mockStore.total.set(library.length);
+      const scan = TestBed.inject(ScanService) as unknown as { canLaunch: WritableSignal<boolean>; openLauncher: Mock };
+      scan.canLaunch.set(canLaunch);
+      scan.openLauncher.mockResolvedValue(launched);
       fixture = TestBed.createComponent(GalleryComponent);
       fixture.detectChanges();
-      return fixture;
+      return { f: fixture, scan };
     }
 
     function allButtons(f: ComponentFixture<GalleryComponent>): HTMLButtonElement[] {
       return Array.from(f.nativeElement.querySelectorAll('button')) as HTMLButtonElement[];
     }
 
-    function scanEntries(f: ComponentFixture<GalleryComponent>): HTMLButtonElement[] {
-      return allButtons(f).filter(b => b.getAttribute('aria-label') === I18N.gallery.scan_action);
+    function getStarted(f: ComponentFixture<GalleryComponent>): HTMLButtonElement[] {
+      return allButtons(f).filter(b => b.textContent?.includes(I18N.scan.get_started));
     }
 
-    it('is offered above a library that already has photos', () => {
-      expect(scanEntries(render(ALLOWED, photos))).toHaveLength(1);
+    it('renders no scan button above a populated grid', () => {
+      // A locked single-user install with an unlocked edition session, which used to earn the button.
+      mockAuth['hasFeature'] = vi.fn(() => true);
+      mockAuth['isMultiUser'] = vi.fn(() => false);
+      mockAuth['editionPasswordRequired'] = vi.fn(() => true);
+      mockAuth['isEdition'] = vi.fn(() => true);
+      const { f } = render(true, photos);
+      expect(allButtons(f).filter(b => b.getAttribute('aria-label') === I18N.gallery.scan_action)).toHaveLength(0);
+      expect(getStarted(f)).toHaveLength(0);
     });
 
-    it('is offered to a multi-user superadmin too', () => {
-      expect(scanEntries(render(SUPERADMIN, photos))).toHaveLength(1);
+    it('offers the get-started button on an empty, unfiltered library when scanning is allowed', () => {
+      expect(getStarted(render(true, []).f)).toHaveLength(1);
     });
 
-    it('carries the tooltip as well as the accessible name', () => {
-      const f = render(ALLOWED, photos);
-      const [button] = scanEntries(f);
-      expect(button).toBeDefined();
-      const tooltip = f.debugElement.queryAll(By.directive(MatTooltip))
-        .find(de => de.nativeElement === button);
-      expect(tooltip?.injector.get(MatTooltip).message).toBe(I18N.gallery.scan_action);
+    it('withholds the get-started button when scanning is not allowed', () => {
+      expect(getStarted(render(false, []).f)).toHaveLength(0);
     });
 
-    it('opens the scan launcher when clicked', () => {
-      const f = render(ALLOWED, photos);
-      const open = vi.spyOn(f.componentInstance, 'openScanLauncher').mockResolvedValue(undefined);
-      const [button] = scanEntries(f);
-      expect(button).toBeDefined();
-      button.click();
-      expect(open).toHaveBeenCalledTimes(1);
+    it('reloads the counts and the photos when the launcher reports a completed scan', async () => {
+      const { f, scan } = render(true, []);
+      getStarted(f)[0].click();
+      await vi.waitFor(() => expect(mockStore.reloadPhotos).toHaveBeenCalledTimes(1));
+      expect(scan.openLauncher).toHaveBeenCalledTimes(1);
+      expect(mockStore.loadTypeCounts).toHaveBeenCalled();
     });
 
-    // jsdom lays nothing out, so "visible at every width" can only be asserted
-    // as the absence of a class that hides it at some width -- the one thing
-    // copying the Keep-top button's classes would have introduced.
-    it('is not hidden at any width: neither the button nor an ancestor carries a hidden class', () => {
-      const f = render(ALLOWED, photos);
-      const [button] = scanEntries(f);
-      expect(button).toBeDefined();
-      const hiders: string[] = [];
-      for (let el: Element | null = button; el; el = el === f.nativeElement ? null : el.parentElement) {
-        hiders.push(...Array.from(el.classList).filter(c => /(^|:)!?hidden$/.test(c)));
-      }
-      expect(hiders).toEqual([]);
-    });
-
-    for (const [name, access] of [
-      ['the feature flag is off', { ...ALLOWED, hasFeature: false }],
-      ['a multi-user admin is not a superadmin', { ...SUPERADMIN, isSuperadmin: false }],
-      ['a single-user install has no edition password, even if the caller read as edition',
-        { ...ALLOWED, editionPasswordRequired: false }],
-      ['a locked single-user install has no edition session', { ...ALLOWED, isEdition: false }],
-    ] as const) {
-      it(`is withheld when ${name}`, () => {
-        expect(scanEntries(render(access, photos))).toHaveLength(0);
-      });
-    }
-
-    it('leaves an empty library to the empty-state call to action, which already carries Scan', () => {
-      const f = render(ALLOWED, []);
-      expect(scanEntries(f)).toHaveLength(0);
-      expect(allButtons(f).filter(b => b.textContent?.includes(I18N.scan.get_started))).toHaveLength(1);
+    it('reloads nothing when the launcher is dismissed', async () => {
+      const { f, scan } = render(true, [], false);
+      await f.whenStable();
+      mockStore.loadTypeCounts.mockClear();
+      mockStore.reloadPhotos.mockClear();
+      getStarted(f)[0].click();
+      await vi.waitFor(() => expect(scan.openLauncher).toHaveBeenCalledTimes(1));
+      await f.whenStable();
+      expect(mockStore.loadTypeCounts).not.toHaveBeenCalled();
+      expect(mockStore.reloadPhotos).not.toHaveBeenCalled();
     });
   });
 
@@ -2781,7 +3381,7 @@ describe('GalleryComponent', () => {
         expect(data.filters).toBeNull();
         expect(data.exclude).toEqual([]);
         expect(data.count).toBe(1);
-        expect(mockStore.loadPhotos).toHaveBeenCalled();
+        expect(mockStore.reloadPhotos).toHaveBeenCalled();
         expect(mockStore.clearSelection).not.toHaveBeenCalled();
       });
 
@@ -3077,7 +3677,7 @@ describe('GalleryComponent', () => {
     });
 
     function render(mode: 'grid' | 'mosaic', virtual: boolean, touch = false): HTMLElement[] {
-      mockAuth['isEdition'] = vi.fn(() => true);
+      (mockAuth as { isEdition: unknown }).isEdition = vi.fn(() => true);
       mockAuth['hasFeature'] = vi.fn(() => false);
       mockAuth['isMultiUser'] = vi.fn(() => false);
       mockAuth['isSuperadmin'] = vi.fn(() => false);
@@ -3318,6 +3918,210 @@ describe('GalleryComponent', () => {
       fixture!.detectChanges();
 
       expect(cards[4].contains(document.activeElement)).toBe(false);
+    });
+  });
+
+  describe('pinned list layout', () => {
+    let fixture: ComponentFixture<GalleryComponent> | null = null;
+    const paths = ['/g0.jpg', '/g1.jpg', '/g2.jpg', '/g3.jpg', '/g4.jpg', '/g5.jpg', '/g6.jpg'];
+    const photos = paths.map(path => ({ path, filename: path, image_width: 4000, image_height: 3000, tags_list: [], persons: [] }));
+
+    afterEach(() => {
+      fixture?.destroy();
+      fixture = null;
+      vi.unstubAllGlobals();
+    });
+
+    function pin(): void {
+      mockStore.photos.set(photos);
+      mockStore.pinnedPaths.set(paths);
+    }
+
+    function render(mode: 'grid' | 'mosaic', virtual: boolean): HTMLElement {
+      mockStore.config.set({ features: { show_rating_controls: true } });
+      mockStore.galleryMode.set(mode);
+      mockStore.virtualScroll.set(virtual);
+      vi.stubGlobal('matchMedia', (media: string) => ({
+        matches: true, media, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {},
+      }));
+      fixture = TestBed.createComponent(GalleryComponent);
+      const instance = fixture.componentInstance as unknown as {
+        desktop: { setup(): void };
+        containerWidth: { set(v: number): void };
+      };
+      instance.desktop.setup();
+      instance.containerWidth.set(1200);
+      fixture.detectChanges();
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    for (const [name, mode, virtual] of [
+      ['virtual scroll off', 'grid', false],
+      ['virtual scroll on', 'grid', true],
+      ['mosaic', 'mosaic', false],
+    ] as const) {
+      it(`renders every card of the pinned list with no group heading (${name})`, () => {
+        pin();
+        const html = render(mode, virtual);
+        expect(html.querySelectorAll('[role="heading"][aria-level]')).toHaveLength(0);
+        expect(html.querySelectorAll('app-photo-card')).toHaveLength(7);
+      });
+    }
+
+    it('offers no filter links on any rendered card, tooltip or menu in a pinned list, and restores them after the pin ends', () => {
+      pin();
+      render('grid', false);
+      const f = fixture!;
+      const cards = () => f.debugElement.queryAll(By.directive(PhotoCardComponent)).map(c => c.componentInstance as PhotoCardComponent);
+      const tips = () => f.debugElement.queryAll(By.directive(PhotoTooltipComponent)).map(t => t.componentInstance as PhotoTooltipComponent);
+      const menu = () => f.debugElement.query(By.directive(GalleryPhotoMenuComponent)).componentInstance as GalleryPhotoMenuComponent;
+      expect(cards()).toHaveLength(7);
+      expect(cards().map(c => c.filterLinks())).toEqual(Array(7).fill(false));
+      expect(tips().map(t => t.personLinks()).every(v => v === false)).toBe(true);
+      expect(menu().findSimilar()).toBe(false);
+      mockStore.pinnedPaths.set(null);
+      f.detectChanges();
+      expect(cards().length).toBeGreaterThan(0);
+      expect(cards().map(c => c.filterLinks()).every(v => v === true)).toBe(true);
+      expect(tips().map(t => t.personLinks()).every(v => v === true)).toBe(true);
+      expect(menu().findSimilar()).toBe(true);
+    });
+
+    it('honours the mosaic mode below md once the container has a width', () => {
+      pin();
+      mockStore.galleryMode.set('mosaic');
+      mockStore.virtualScroll.set(false);
+      vi.stubGlobal('matchMedia', (media: string) => ({
+        matches: false, media, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {},
+      }));
+      fixture = TestBed.createComponent(GalleryComponent);
+      const instance = fixture.componentInstance as unknown as {
+        desktop: { setup(): void };
+        containerWidth: { set(v: number): void };
+      };
+      instance.desktop.setup();
+      expect(fixture.componentInstance.effectiveGalleryMode()).toBe('grid');
+      instance.containerWidth.set(375);
+      fixture.detectChanges();
+      expect(fixture.componentInstance.effectiveGalleryMode()).toBe('mosaic');
+      expect(fixture.componentInstance.rowsModel().length).toBeGreaterThan(1);
+    });
+
+    it('reports the row count in aria-rowcount on the windowed branch', () => {
+      pin();
+      const html = render('grid', true);
+      const rows = fixture!.componentInstance.rowsModel();
+      expect(rows.length).toBe(3);
+      expect(html.querySelector('#gallery-rows-host')?.getAttribute('aria-rowcount')).toBe('3');
+    });
+
+    describe('first frame width', () => {
+      function renderMeasured(width: number): ComponentFixture<GalleryComponent> {
+        const host = document.createElement('mat-sidenav-content');
+        // The box the ResizeObserver reports: the client width (no scrollbar) less the horizontal padding.
+        Object.defineProperty(host, 'clientWidth', { value: width + 32 });
+        host.style.paddingLeft = '16px';
+        host.style.paddingRight = '16px';
+        host.getBoundingClientRect = () => ({ width: width + 17, height: 600, top: 0, left: 0, right: width, bottom: 600, x: 0, y: 0, toJSON() { return {}; } });
+        document.body.appendChild(host);
+        vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+        vi.stubGlobal('matchMedia', (media: string) => ({
+          matches: true, media, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {},
+        }));
+        mockStore.config.set({ features: { show_rating_controls: true } });
+        mockStore.galleryMode.set('grid');
+        mockStore.virtualScroll.set(false);
+        fixture = TestBed.createComponent(GalleryComponent);
+        fixture.detectChanges();
+        TestBed.tick();
+        return fixture;
+      }
+
+      afterEach(() => document.querySelectorAll('mat-sidenav-content').forEach(el => el.remove()));
+
+      it('lays the first rowsModel out for the measured width, with no ResizeObserver tick', () => {
+        pin();
+        const f = renderMeasured(800);
+        const rows = f.componentInstance.rowsModel();
+        expect(rows.length).toBeGreaterThan(0);
+        for (const row of rows) {
+          expect(row.widths.reduce((x, y) => x + y, 0)).toBeLessThanOrEqual(768);
+        }
+        expect((f.componentInstance as unknown as { containerWidth: () => number }).containerWidth()).toBe(800);
+      });
+    });
+
+    it('builds rows with the real hide_details setting', () => {
+      pin();
+      mockStore.filters.set({ ...DEFAULT_FILTERS, hide_details: false });
+      render('grid', false);
+      const photoRow = fixture!.componentInstance.rowsModel()[0];
+      const cellW = photoRow.widths[0];
+      expect(photoRow.height).toBeGreaterThan(Math.round(cellW * 3 / 4));
+      mockStore.filters.set({ ...DEFAULT_FILTERS });
+    });
+
+    describe('keyboard', () => {
+      const inst = () => fixture!.componentInstance as unknown as {
+        activeIndex: { (): number; set(v: number): void };
+        onGridKeydown(e: KeyboardEvent): void;
+      };
+      const pressOn = (key: string) => {
+        const ev = new KeyboardEvent('keydown', { key });
+        Object.defineProperty(ev, 'target', { value: null, configurable: true });
+        inst().onGridKeydown(ev);
+      };
+      beforeEach(() => {
+        pin();
+        render('grid', true);
+        Element.prototype.scrollIntoView = vi.fn();
+      });
+
+      it('ArrowDown steps to the same column of the next row on the windowed branch', () => {
+        inst().activeIndex.set(1);
+        pressOn('ArrowDown');
+        expect(inst().activeIndex()).toBe(1 + fixture!.componentInstance.rowsModel()[0].photos.length);
+      });
+
+      it('ArrowDown on the last row stays put', () => {
+        inst().activeIndex.set(6);
+        pressOn('ArrowDown');
+        expect(inst().activeIndex()).toBe(6);
+      });
+    });
+  });
+
+  describe('K / R keys', () => {
+    function fire(key: string): KeyboardEvent {
+      const ev = new KeyboardEvent('keydown', { key, cancelable: true });
+      Object.defineProperty(ev, 'target', { value: null, configurable: true });
+      (component as unknown as { onGridKeydown(e: KeyboardEvent): void }).onGridKeydown(ev);
+      return ev;
+    }
+
+    beforeEach(() => {
+      mockStore.photos.set([{ path: '/a.jpg' }, { path: '/b.jpg' }, { path: '/c.jpg' }]);
+      mockStore.pinnedPaths.set(['/a.jpg', '/b.jpg', '/c.jpg']);
+      mockStore.config.set({ features: { show_rating_controls: true } });
+      (mockAuth as { isEdition: unknown }).isEdition = vi.fn(() => true);
+      mockStore.toggleRejected.mockClear();
+      mockStore.setRating.mockClear();
+      (component as unknown as { activeIndex: { set(v: number): void } }).activeIndex.set(0);
+    });
+
+    afterEach(() => mockStore.pinnedPaths.set(null));
+
+    it.each(['k', 'K', 'r', 'R'])('%s does nothing on a pinned list: no default prevented, no advance, no write', key => {
+      const ev = fire(key);
+      expect(ev.defaultPrevented).toBe(false);
+      expect(activeIndex()).toBe(0);
+      expect(mockStore.toggleRejected).not.toHaveBeenCalled();
+      expect(mockStore.setRating).not.toHaveBeenCalled();
+    });
+
+    it('X still rejects for real', () => {
+      fire('x');
+      expect(mockStore.toggleRejected).toHaveBeenCalledWith('/a.jpg');
     });
   });
 

@@ -1,14 +1,16 @@
 import type { Mock } from 'vitest';
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRoute, Router } from '@angular/router';
-import { of } from 'rxjs';
+import { ActivatedRoute, DefaultUrlSerializer, NavigationEnd, Router } from '@angular/router';
+import { Subject, of, throwError } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { PersonsFiltersService } from './persons-filters.service';
 import { ManagePersonsComponent } from './manage-persons.component';
+import { PageContextService } from '../../core/agent/page-context.service';
 
 describe('ManagePersonsComponent', () => {
   let component: ManagePersonsComponent;
@@ -17,6 +19,8 @@ describe('ManagePersonsComponent', () => {
   let mockI18n: { t: Mock };
   let mockDialog: { open: Mock };
   let mockSnackBar: { open: Mock };
+  let journal: { record: Mock };
+  let routerEvents: Subject<unknown>;
 
   const mockPersonsResponse = {
     persons: [
@@ -38,6 +42,8 @@ describe('ManagePersonsComponent', () => {
       open: vi.fn(() => ({ afterClosed: () => of(true) })),
     };
     mockSnackBar = { open: vi.fn() };
+    journal = { record: vi.fn() };
+    routerEvents = new Subject<unknown>();
 
     TestBed.configureTestingModule({
       providers: [
@@ -47,11 +53,64 @@ describe('ManagePersonsComponent', () => {
         { provide: I18nService, useValue: mockI18n },
         { provide: MatDialog, useValue: mockDialog },
         { provide: MatSnackBar, useValue: mockSnackBar },
-        { provide: Router, useValue: { navigate: vi.fn() } },
+        { provide: UserActivityJournal, useValue: journal },
+        { provide: Router, useValue: { navigate: vi.fn(), events: routerEvents, parseUrl: (url: string) => new DefaultUrlSerializer().parse(url) } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: { get: () => null } } } },
       ],
     });
     component = TestBed.inject(ManagePersonsComponent);
+  });
+
+  describe('a navigation made by the assistant', () => {
+    const filters = () => TestBed.inject(PersonsFiltersService);
+    const navigated = (url: string) => routerEvents.next(new NavigationEnd(1, url, url));
+
+    it('sets the search to the query and resets the other filters', () => {
+      filters().showHidden.set(true);
+      filters().sort.set('name');
+      filters().sortDirection.set('asc');
+      navigated('/persons?search=anna');
+      expect(filters().search()).toBe('anna');
+      expect(filters().showHidden()).toBe(false);
+      expect(filters().sort()).toBe('count');
+      expect(filters().sortDirection()).toBe('desc');
+    });
+
+    it('removes the search from the URL once applied, replacing the history entry', () => {
+      const router = TestBed.inject(Router) as unknown as { navigate: Mock };
+      navigated('/persons?search=anna');
+      expect(router.navigate).toHaveBeenCalledWith(['/persons'], {
+        queryParams: { search: null }, queryParamsHandling: 'merge', replaceUrl: true,
+      });
+      router.navigate.mockClear();
+      filters().search.set('typed by the user');
+      navigated('/persons');
+      expect(filters().search()).toBe('typed by the user');
+      expect(router.navigate).not.toHaveBeenCalled();
+    });
+
+    it('clears a previous search when the query is empty', () => {
+      filters().search.set('old');
+      navigated('/persons?search=');
+      expect(filters().search()).toBe('');
+    });
+
+    it('leaves the filters alone without a search or on another page', () => {
+      filters().search.set('kept');
+      navigated('/persons');
+      navigated('/albums?search=x');
+      expect(filters().search()).toBe('kept');
+    });
+  });
+
+  describe('page context', () => {
+    it('registers the persons page and reads its filters live, without the selection', () => {
+      const context = TestBed.inject(PageContextService);
+      expect(context.snapshot()).toEqual({ id: 'persons', search: '', sort: 'count', sort_direction: 'desc', show_hidden: false });
+      TestBed.inject(PersonsFiltersService).search.set('ann');
+      TestBed.inject(PersonsFiltersService).selectedIds.set(new Set([1]));
+      expect(context.snapshot()).toEqual({ id: 'persons', search: 'ann', sort: 'count', sort_direction: 'desc', show_hidden: false });
+    });
   });
 
   describe('toggleSelect', () => {
@@ -366,6 +425,100 @@ describe('ManagePersonsComponent', () => {
       expect(component.persons().some((p) => p.id === 1)).toBe(false);
       expect(component.persons()[0].id).toBe(99);
       expect(component.total()).toBe(1);
+    });
+  });
+
+  describe('user activity journal', () => {
+    const alice = { id: 1, name: 'Alice', face_count: 10, face_thumbnail: true };
+
+    beforeEach(() => {
+      component.persons.set(mockPersonsResponse.persons);
+    });
+
+    it('journals a needs-naming rename with the id and the trimmed name, and nothing on failure', async () => {
+      mockApi.post.mockReturnValueOnce(throwError(() => new Error('boom')));
+      await component.onNeedsNamingSave({ id: 3, name: 'Carol' });
+      expect(journal.record).not.toHaveBeenCalled();
+      await component.onNeedsNamingSave({ id: 3, name: ' Carol ' });
+      expect(journal.record).toHaveBeenCalledTimes(1);
+      expect(journal.record).toHaveBeenCalledWith('person', [], { action: 'rename', person_id: 3, name: 'Carol' });
+    });
+
+    it('journals a person created from the dialog, and nothing when cancelled or failed', async () => {
+      mockDialog.open.mockReturnValue({ afterClosed: () => of(null) });
+      await component.openNewPersonDialog();
+      mockDialog.open.mockReturnValue({ afterClosed: () => of('Zoe') });
+      mockApi.post.mockReturnValueOnce(throwError(() => new Error('boom')));
+      await component.openNewPersonDialog();
+      expect(journal.record).not.toHaveBeenCalled();
+      mockApi.post.mockReturnValueOnce(of({ id: 12, name: 'Zoe', face_count: 0 }));
+      await component.openNewPersonDialog();
+      expect(journal.record).toHaveBeenCalledTimes(1);
+      expect(journal.record).toHaveBeenCalledWith('person', [], { action: 'create', person_id: 12, name: 'Zoe' });
+    });
+
+    it('journals a rename with the id and the typed name, and nothing on failure', async () => {
+      mockApi.post.mockReturnValueOnce(throwError(() => new Error('boom')));
+      await component.saveName(alice, 'Alicia');
+      expect(journal.record).not.toHaveBeenCalled();
+      await component.saveName(alice, 'Alicia');
+      expect(journal.record).toHaveBeenCalledTimes(1);
+      expect(journal.record).toHaveBeenCalledWith('person', [], { action: 'rename', person_id: 1, name: 'Alicia' });
+    });
+
+    it('journals a delete, a hide and an unhide with the id', async () => {
+      await component.deletePerson(alice);
+      await component.setHidden(2, true);
+      await component.setHidden(2, false);
+      expect(journal.record.mock.calls.map(c => c[2])).toEqual([
+        { action: 'delete', person_id: 1 },
+        { action: 'hide', person_id: 2 },
+        { action: 'unhide', person_id: 2 },
+      ]);
+    });
+
+    it('journals a split with the number of faces moved', async () => {
+      mockDialog.open.mockReturnValue({ afterClosed: () => of({ faceIds: [11, 12], name: null }) });
+      mockApi.post.mockReturnValue(of({ success: true, new_person_id: 99, new_count: 2, source_count: 8 }));
+      await component.splitPerson(alice);
+      expect(journal.record).toHaveBeenCalledWith('person', [], { action: 'split', person_id: 1, count: 2 });
+    });
+
+    it('journals a batch delete as one entry with a count', async () => {
+      component.toggleSelect(1, true);
+      component.toggleSelect(2, true);
+      await component.batchDelete();
+      expect(journal.record).toHaveBeenCalledTimes(1);
+      expect(journal.record).toHaveBeenCalledWith('person', [], { action: 'delete', count: 2 });
+    });
+
+    it('journals a single merge with its pair and a multi merge with a count only', async () => {
+      component.toggleSelect(1, true);
+      component.toggleSelect(2, true);
+      await (component as any).mergeIntoTarget(1);
+      expect(journal.record).toHaveBeenLastCalledWith('person', [], { action: 'merge', count: 1, pairs: [[2, 1]] });
+      component.toggleSelect(2, true);
+      component.toggleSelect(3, true);
+      await (component as any).mergeIntoTarget(1);
+      expect(journal.record).toHaveBeenLastCalledWith('person', [], { action: 'merge', count: 2 });
+    });
+
+    it('journals only the merges that landed, flagged partial, when a later one fails', async () => {
+      component.toggleSelect(1, true);
+      component.toggleSelect(2, true);
+      component.toggleSelect(3, true);
+      mockApi.post.mockReturnValueOnce(of({})).mockReturnValueOnce(throwError(() => new Error('boom')));
+      await (component as any).mergeIntoTarget(1);
+      expect(journal.record).toHaveBeenCalledTimes(1);
+      expect(journal.record).toHaveBeenCalledWith('person', [], { action: 'merge', count: 1, partial: true });
+    });
+
+    it('journals nothing when the first merge fails', async () => {
+      component.toggleSelect(1, true);
+      component.toggleSelect(2, true);
+      mockApi.post.mockReturnValue(throwError(() => new Error('boom')));
+      await (component as any).mergeIntoTarget(1);
+      expect(journal.record).not.toHaveBeenCalled();
     });
   });
 });

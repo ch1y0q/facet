@@ -14,7 +14,10 @@ import {
   DestroyRef,
   Injector,
   TemplateRef,
+  ElementRef,
+  ChangeDetectionStrategy
 } from '@angular/core';
+import { DOCUMENT } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { MatSidenav, MatSidenavContainer, MatSidenavModule, MatSidenavContent } from '@angular/material/sidenav';
@@ -45,11 +48,13 @@ import { isBracketLadderRejection } from '../../shared/utils/sequence-ladder';
 import { IsSelectedPipe } from '../../shared/pipes/selection.pipe';
 import { PhotoSetKindIconPipe, PhotoSetKindLabelPipe } from '../../shared/pipes/photo-set-kind.pipe';
 import { AuthService } from '../../core/services/auth.service';
+import { ScanService } from '../../core/services/scan.service';
 import { useDesktopSignal, DETAILS_RAIL_MIN_WIDTH_PX } from '../../shared/utils/media-query';
 import { downloadAll } from '../../shared/utils/download';
 import { basename, copyLines } from '../../shared/utils/clipboard';
 import { I18nService } from '../../core/services/i18n.service';
 import { ApiService } from '../../core/services/api.service';
+import { PluralKeyPipe } from '../../shared/pipes/plural-key.pipe';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { PhotoTooltipComponent } from './photo-tooltip.component';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
@@ -61,10 +66,12 @@ import type { SheetAction } from './gallery-actions-sheet.component';
 import { PhotoCardComponent } from '../../shared/components/photo-card/photo-card.component';
 import { PhotoSkeletonComponent } from '../../shared/components/photo-skeleton/photo-skeleton.component';
 import {
-  GalleryRow, aspectOf, buildGridRows, buildMosaicRows, gridColumnCount, totalRowsHeight,
-  windowRange,
+  GalleryRow, aspectOf, buildGridRows, buildMosaicRows,
+  gridColumnCount, totalRowsHeight, windowRange,
 } from './gallery-rows.util';
-import { GalleryFilters, applyQueryParams, loadDisplayOptionsFromStorage } from './gallery-filters.util';
+import { noticeLiftPx } from './selection-bar-layout.util';
+import { GalleryFilters, applyQueryParams, applySavedAlbumFilters, loadDisplayOptionsFromStorage } from './gallery-filters.util';
+import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { AlbumService, Album } from '../../core/services/album.service';
 import { CreateAlbumDialogComponent } from '../albums/create-album-dialog.component';
 import { ExportEditorDialogComponent } from './export-editor-dialog.component';
@@ -81,7 +88,6 @@ function assertNever(action: never): never {
 
 const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
 
-
 @Component({
   selector: 'app-gallery',
   imports: [
@@ -97,6 +103,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
     MatMenuModule,
     MatTooltipModule,
     MatBottomSheetModule,
+    PluralKeyPipe,
     TranslatePipe,
     SequenceKindIconPipe,
     IsSelectedPipe,
@@ -115,37 +122,39 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
     <!-- Header-slot toolbar: the app shell renders this in the global header on lg+.
          Type filter + semantic search, rebound to the gallery store. -->
     <ng-template #galleryToolbar>
-      <mat-form-field class="!hidden lg:!inline-flex w-52 ml-2" subscriptSizing="dynamic">
-        <mat-label>{{ I18N.ui.filters.type | translate }}</mat-label>
-        <mat-select panelWidth="auto" panelClass="nowrap-panel !max-h-[70vh]" [value]="store.filters().type" (selectionChange)="onTypeChange($event.value)">
-          <mat-option value="">{{ I18N.gallery.all_photos | translate }}</mat-option>
-          @for (t of store.types(); track t.id) {
-            <mat-option [value]="t.id">{{ (t.id === 'top_picks' ? 'photo_types.top_picks' : 'category_names.' + t.id) | translate }} ({{ t.count }})</mat-option>
-          }
-        </mat-select>
-      </mat-form-field>
+      @if (!pinned()) {
+        <mat-form-field class="!hidden lg:!inline-flex w-52 ml-2 2xl:shrink-0" subscriptSizing="dynamic">
+          <mat-label>{{ I18N.ui.filters.type | translate }}</mat-label>
+          <mat-select panelWidth="auto" panelClass="nowrap-panel !max-h-[70vh]" [value]="store.filters().type" (selectionChange)="onTypeChange($event.value)">
+            <mat-option value="">{{ I18N.gallery.all_photos | translate }}</mat-option>
+            @for (t of store.types(); track t.id) {
+              <mat-option [value]="t.id">{{ (t.id === 'top_picks' ? 'photo_types.top_picks' : 'category_names.' + t.id) | translate }} ({{ t.count }})</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
 
-      <!-- Search -->
-      <mat-form-field class="!hidden 2xl:!inline-flex w-64" subscriptSizing="dynamic">
-        <input
-          matInput
-          [placeholder]="I18N.gallery.search_placeholder | translate"
-          [value]="store.filters().search"
-          (keyup.enter)="onSearchChange($event)"
-          (blur)="onSearchChange($event)"
-        />
-        @if (store.filters().search) {
-          <button matSuffix mat-icon-button (click)="clearSearch()" [attr.aria-label]="I18N.gallery.clear_search | translate">
-            <mat-icon>close</mat-icon>
-          </button>
-        } @else {
-          <mat-icon matSuffix>search</mat-icon>
-        }
-      </mat-form-field>
+        <!-- Search -->
+        <mat-form-field class="!hidden 2xl:!inline-flex w-64 min-w-0 shrink" subscriptSizing="dynamic">
+          <input
+            matInput
+            [placeholder]="I18N.gallery.search_placeholder | translate"
+            [value]="store.filters().search"
+            (keyup.enter)="onSearchChange($event)"
+            (blur)="onSearchChange($event)"
+          />
+          @if (store.filters().search) {
+            <button matSuffix mat-icon-button (click)="clearSearch()" [attr.aria-label]="I18N.gallery.clear_search | translate">
+              <mat-icon>close</mat-icon>
+            </button>
+          } @else {
+            <mat-icon matSuffix>search</mat-icon>
+          }
+        </mat-form-field>
+      }
 
       <!-- Keep top N%: server-rank the current view by the current sort and
            select the bottom (100-N)% for review/rejection via the selection bar. -->
-      @if (auth.isEdition() && store.total() > 0) {
+      @if (auth.isEdition() && store.total() > 0 && store.canScopeSelectionToView()) {
         <button mat-icon-button class="!hidden lg:!inline-flex" [matMenuTriggerFor]="keepTopMenu"
                 [matTooltip]="I18N.gallery.keep_top.label | translate"
                 [attr.aria-label]="I18N.gallery.keep_top.label | translate">
@@ -177,16 +186,18 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
       }
     </ng-template>
 
+    <div #noticeHost class="relative h-full">
     <mat-sidenav-container class="h-full">
       <!-- One end drawer, two occupants. Material allows a single drawer per
            side, which is also the behaviour we want: the details rail and the
            filters compete for the same strip, so opening the filters hides the
            rail and closing them brings it back, without either changing how much
            room the grid gets. -->
-      <mat-sidenav #filterDrawer disableClose="false" [mode]="isDesktop() ? 'side' : 'over'" position="end" class="w-[min(320px,100vw)] p-0"
+      <mat-sidenav #filterDrawer [disableClose]="detailsRailVisible()" [mode]="isDesktop() ? 'side' : 'over'" position="end" class="w-[min(320px,100vw)] p-0"
         (openedChange)="onFilterDrawerChange($event)">
         @if (detailsRailVisible()) {
-          <div class="p-2" data-details-rail>
+          <div class="p-2" data-details-rail tabindex="-1" (keydown.escape)="onRailEscape($event)"
+               (focusout)="onGridFocusOut($event)">
             @if (hasActivePhoto()) {
               <button mat-button class="!min-w-0 mb-2" (click)="releasePanel()">
                 <mat-icon>arrow_back</mat-icon> {{ I18N.gallery.tooltip_mode.panel_deselect | translate }}
@@ -196,7 +207,8 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
               <app-photo-tooltip [photo]="p" [docked]="true" [pinned]="true"
                                  [histogramDefaultMode]="tooltipHistogramDefaultMode()"
                                  [indicatorPercent]="clippingIndicatorPercent()"
-                                 (personSelected)="store.updateFilter('person_id', $event)" />
+                                 [personLinks]="!pinned()"
+        (personSelected)="store.updateFilter('person_id', $event)" />
             } @else {
               <div class="rounded-xl p-4 text-sm opacity-60 text-center"
                    style="background: var(--facet-tooltip-bg); border: 1px solid var(--facet-tooltip-border)">
@@ -215,44 +227,6 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
       <!-- Main content. The drawer reserves its own strip, so the grid gets
            exactly the width it has whenever the filters are open. -->
       <mat-sidenav-content>
-        <!-- Scan entry. Part of the page, not of #galleryToolbar: the shell projects
-             that template on lg+ only (and clips it when the header is full), and the
-             small-screen controls belong to the shell's bottom bar, so this is the one
-             spot that is there at every width. No breakpoint classes on purpose. An
-             empty library keeps the call to action in the empty state below. -->
-        @if (store.total() > 0 && canShowScanButton()) {
-          <div class="flex justify-end px-2 md:px-4 pt-2">
-            <button mat-icon-button (click)="openScanLauncher()"
-                    [matTooltip]="I18N.gallery.scan_action | translate"
-                    [attr.aria-label]="I18N.gallery.scan_action | translate">
-              <mat-icon>add_photo_alternate</mat-icon>
-            </button>
-          </div>
-        }
-
-        <!-- Hidden-photos banner -->
-        @if (showHiddenBanner()) {
-          <div class="mx-2 md:mx-4 mt-2 md:mt-4 px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] border border-[var(--mat-sys-outline-variant)] flex items-center gap-3 text-sm">
-            <mat-icon class="opacity-70 !text-base !w-5 !h-5">visibility_off</mat-icon>
-            <span class="flex-1">
-              {{ I18N.gallery.hidden_banner.message | translate:{ n: store.hiddenSummary().total } }}
-            </span>
-            <button mat-button class="!min-w-0" (click)="store.showAllHidden()">
-              {{ I18N.gallery.hidden_banner.show_all | translate }}
-            </button>
-          </div>
-        } @else if (canRestoreHidden()) {
-          <div class="mx-2 md:mx-4 mt-2 md:mt-4 px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] border border-[var(--mat-sys-outline-variant)] flex items-center gap-3 text-sm">
-            <mat-icon class="opacity-70 !text-base !w-5 !h-5">visibility</mat-icon>
-            <span class="flex-1">
-              {{ I18N.gallery.hidden_banner.showing_all | translate }}
-            </span>
-            <button mat-button class="!min-w-0" (click)="store.restoreHidden()">
-              {{ I18N.gallery.hidden_banner.restore | translate }}
-            </button>
-          </div>
-        }
-
         <!-- Set-scope chip: the photo-detail "open this set in the gallery" action.
              Never reflected in the URL (sequence_group_id is renumbered on every
              detection pass), so this is the only affordance out of it. -->
@@ -268,19 +242,16 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
           </div>
         }
 
-        <!-- Thumbnail-migration notice. The grid reads photos.thumbnail, so a RAW
-             scanned before the render fix keeps showing the old rendering until it
-             is regenerated, and browsing never regenerates it. This banner is the
-             only place the command that does is surfaced. -->
-        @if (showRenderMigrationBanner()) {
-          <div class="mx-2 md:mx-4 mt-2 md:mt-4 px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] border border-[var(--mat-sys-outline-variant)] flex items-center gap-3 text-sm">
-            <mat-icon class="opacity-70 !text-base !w-5 !h-5">auto_fix_high</mat-icon>
-            <span class="flex-1">
-              {{ I18N.gallery.render_migration.message | translate:{ n: renderMigrationPending() } }}
-              {{ I18N.gallery.render_migration.command_hint | translate:{ command: REFRESH_THUMBNAILS_COMMAND } }}
+        <!-- Pinned-list chip: the assistant's ui_show_photos list replaces the filtered
+             view; this is the way back to it (any filter change drops the list too). -->
+        @if (store.pinnedPaths() !== null) {
+          <div role="status" class="mx-2 md:mx-4 mt-2 md:mt-4 px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] border border-[var(--mat-sys-outline-variant)] flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+            <mat-icon class="opacity-70 !text-base !w-5 !h-5">auto_awesome</mat-icon>
+            <span class="min-w-[12rem] flex-1">
+              {{ store.total() | pluralKey:I18N.gallery.pinned.chip:I18N.gallery.pinned.chip_plural | translate:{ count: store.total() } }}
             </span>
-            <button mat-button class="!min-w-0" (click)="dismissRenderMigration()">
-              {{ I18N.ui.buttons.dismiss | translate }}
+            <button mat-button class="!min-w-0" (click)="store.clearPinned()">
+              {{ I18N.gallery.pinned.clear | translate }}
             </button>
           </div>
         }
@@ -323,50 +294,51 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
             >
               <div [style.height.px]="topSpacer()" aria-hidden="true"></div>
               @for (row of visibleRows(); track row.photos[0].path) {
-                <div class="flex gap-2 mb-2" [style.height.px]="row.height">
-                  @for (photo of row.photos; track photo.path; let i = $index) {
-                    <app-photo-card
-                  [collapsedSetKinds]="collapsedSetKinds()"
-                  [burstFramesVisible]="burstFramesVisible()"
-                      [photo]="photo"
-                      [attr.data-pidx]="row.startIndex + i"
-                      [style.width.px]="row.widths[i]"
-                      [style.height.px]="row.height"
-                      class="shrink-0"
-                      [hideDetails]="true"
-                      [mosaicMode]="effectiveGalleryMode() === 'mosaic'"
-                      [config]="store.config()"
-                      [isSelected]="photo.path | isSelected:viewScoped():selectedPaths():excludedPaths()"
-                      [isActive]="row.startIndex + i === activeIndex()"
-                      [gridHasActiveCard]="hasActivePhoto()"
-                      [currentSort]="store.filters().sort"
-                      [thumbSize]="thumbSize()"
-                      [isEditionMode]="auth.isEdition()"
-                      [personFilterId]="store.filters().person_id"
-                      [tooltipMode]="tooltipMode()"
-                      [panelActivation]="panelActivation()"
-                      (selectionChange)="toggleSelection($event.photo, $event.event, row.startIndex + i)"
-                      (tooltipShow)="showTooltip($event.event, $event.photo)"
-                      (tooltipHide)="hideTooltip()"
-                      (tagClicked)="store.updateFilter('tag', $event)"
-                      (personFilterClicked)="filterByPerson($event)"
-                      (personRemoveClicked)="removePerson($event.photo, $event.personId)"
-                      (openSimilarClicked)="openSimilar($event.photo, $event.mode)"
-                      (openCritiqueClicked)="openCritique($event)"
-                      (embedMetadataClicked)="embedMetadata($event)"
-                      (openAddPersonClicked)="openAddPerson($event)"
-                      (favoriteToggled)="store.toggleFavorite($event)"
-                      (rejectedToggled)="store.toggleRejected($event)"
-                      (starClicked)="store.setRating($event.photo.path, $event.star)"
-                      [matContextMenuTriggerFor]="photoMenu.menu()"
-                      [matContextMenuTriggerData]="{ photo: photo, index: row.startIndex + i, bulk: (photo.path | isSelected:viewScoped():selectedPaths():excludedPaths()) && selectionCount() > 1 }"
-                      [matContextMenuTriggerDisabled]="touchOnly()"
-                      [matContextMenuTriggerRestoreFocus]="false"
-                      (contextmenu)="onCardContextMenu(row.startIndex + i)"
-                      (doubleClicked)="downloadPhoto($event)"
-                    />
-                  }
-                </div>
+              <div class="flex gap-2 mb-2" [style.height.px]="row.height">
+                @for (photo of row.photos; track photo.path; let i = $index) {
+                  <app-photo-card
+                [collapsedSetKinds]="collapsedSetKinds()"
+                [burstFramesVisible]="burstFramesVisible()"
+                    [photo]="photo"
+                    [attr.data-pidx]="row.startIndex + i"
+                    [style.width.px]="row.widths[i]"
+                    [style.height.px]="row.height"
+                    class="shrink-0"
+                    [hideDetails]="rowCardHideDetails()"
+                    [mosaicMode]="effectiveGalleryMode() === 'mosaic'"
+                    [config]="store.config()"
+                    [isSelected]="photo.path | isSelected:viewScoped():selectedPaths():excludedPaths()"
+                    [isActive]="row.startIndex + i === activeIndex()"
+                    [gridHasActiveCard]="hasActivePhoto()"
+                    [currentSort]="store.filters().sort"
+                    [thumbSize]="thumbSize()"
+                    [isEditionMode]="auth.isEdition()"
+                    [personFilterId]="store.filters().person_id"
+                    [tooltipMode]="tooltipMode()"
+                    [panelActivation]="panelActivation()"
+                    (selectionChange)="toggleSelection($event.photo, $event.event, row.startIndex + i)"
+                    (tooltipShow)="showTooltip($event.event, $event.photo)"
+                    (tooltipHide)="hideTooltip()"
+                    [filterLinks]="!pinned()"
+                (tagClicked)="store.updateFilter('tag', $event)"
+                    (personFilterClicked)="filterByPerson($event)"
+                    (personRemoveClicked)="removePerson($event.photo, $event.personId)"
+                    (openSimilarClicked)="openSimilar($event.photo, $event.mode)"
+                    (openCritiqueClicked)="openCritique($event)"
+                    (embedMetadataClicked)="embedMetadata($event)"
+                    (openAddPersonClicked)="openAddPerson($event)"
+                    (favoriteToggled)="store.toggleFavorite($event)"
+                    (rejectedToggled)="store.toggleRejected($event)"
+                    (starClicked)="store.setRating($event.photo.path, $event.star)"
+                    [matContextMenuTriggerFor]="photoMenu.menu()"
+                    [matContextMenuTriggerData]="{ photo: photo, index: row.startIndex + i, bulk: (photo.path | isSelected:viewScoped():selectedPaths():excludedPaths()) && selectionCount() > 1 }"
+                    [matContextMenuTriggerDisabled]="touchOnly()"
+                    [matContextMenuTriggerRestoreFocus]="false"
+                    (contextmenu)="onCardContextMenu(row.startIndex + i)"
+                    (doubleClicked)="downloadPhoto($event)"
+                  />
+                }
+              </div>
               }
               <div [style.height.px]="bottomSpacer()" aria-hidden="true"></div>
             </div>
@@ -402,7 +374,8 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                   (selectionChange)="toggleSelection($event.photo, $event.event, i)"
                   (tooltipShow)="showTooltip($event.event, $event.photo)"
                   (tooltipHide)="hideTooltip()"
-                  (tagClicked)="store.updateFilter('tag', $event)"
+                  [filterLinks]="!pinned()"
+                      (tagClicked)="store.updateFilter('tag', $event)"
                   (personFilterClicked)="filterByPerson($event)"
                   (personRemoveClicked)="removePerson($event.photo, $event.personId)"
                   (openSimilarClicked)="openSimilar($event.photo, $event.mode)"
@@ -461,6 +434,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                       (selectionChange)="toggleSelection($event.photo, $event.event, row.startIndex + i)"
                       (tooltipShow)="showTooltip($event.event, $event.photo)"
                       (tooltipHide)="hideTooltip()"
+                      [filterLinks]="!pinned()"
                       (tagClicked)="store.updateFilter('tag', $event)"
                       (personFilterClicked)="filterByPerson($event)"
                       (personRemoveClicked)="removePerson($event.photo, $event.personId)"
@@ -516,7 +490,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
             } @else {
               <p class="text-lg text-center">{{ I18N.gallery.load_error.message | translate }}</p>
             }
-            <button mat-flat-button color="primary" (click)="store.loadPhotos()">
+            <button mat-flat-button color="primary" (click)="store.reloadPhotos()">
               <mat-icon>refresh</mat-icon>
               {{ I18N.gallery.load_error.retry | translate }}
             </button>
@@ -532,7 +506,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
               <button mat-stroked-button (click)="store.resetFilters()">
                 {{ I18N.gallery.reset_filters | translate }}
               </button>
-            } @else if (canShowScanButton()) {
+            } @else if (scan.canLaunch()) {
               <button mat-flat-button color="primary" (click)="openScanLauncher()">
                 <mat-icon>add_photo_alternate</mat-icon>
                 {{ I18N.scan.get_started | translate }}
@@ -541,14 +515,175 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
           </div>
         }
 
-        <!-- Room for the fixed selection bar (up to two wrapped rows) so the last row can scroll clear of it -->
+        <!-- Room for the floating selection card (its measured height plus margin) so the last row can scroll clear of it -->
         @if (selectionCount()) {
-          <div aria-hidden="true" class="h-40"></div>
+          <div aria-hidden="true" [style.height.px]="selectionBarReservePx()"></div>
         }
         <!-- Infinite scroll sentinel -->
         <div appInfiniteScroll (scrollReached)="onScrollReached()" class="h-1"></div>
       </mat-sidenav-content>
+
     </mat-sidenav-container>
+      <!-- Advisory notices: floating, bottom-right, out of the layout flow. Anchored to the
+           sidenav container (not the scrolling content) so they stay put with few photos,
+           and the right offset is measured so the column clears an open end drawer / details rail
+           and the content's own scrollbar.
+           The container is its own stacking context, so a notice outside it cannot sit under the
+           mobile 'over' drawer; it steps aside while that drawer is open instead.
+           Lifted above the floating selection card, only when the two overlap horizontally. Order: hidden-photos
+           notice first, thumbnail-migration notice below it. The migration notice is the
+           only place the command that regenerates RAW thumbnails is surfaced: the grid
+           reads photos.thumbnail, so browsing never regenerates it. -->
+      @if (!overDrawerOpen() && (showHiddenBanner() || canRestoreHidden() || showRenderMigrationBanner())) {
+        <div data-gallery-notices class="pointer-events-none absolute z-10 flex flex-col gap-2 w-[min(26rem,calc(100%-1rem))]"
+             [style.bottom.px]="noticeBottomPx()" [style.right.px]="noticeRightPx()" [style.maxWidth]="noticeMaxWidth()">
+          @if (showHiddenBanner()) {
+            <div role="status" [class]="NOTICE_CARD_CLASS">
+              <mat-icon class="opacity-70 !text-base !w-5 !h-5">visibility_off</mat-icon>
+              <span class="flex-1">
+                {{ I18N.gallery.hidden_banner.message | translate:{ n: store.hiddenSummary().total } }}
+              </span>
+              <button mat-button class="!min-w-0" (click)="store.showAllHidden()">
+                {{ I18N.gallery.hidden_banner.show_all | translate }}
+              </button>
+            </div>
+          } @else if (canRestoreHidden()) {
+            <div role="status" [class]="NOTICE_CARD_CLASS">
+              <mat-icon class="opacity-70 !text-base !w-5 !h-5">visibility</mat-icon>
+              <span class="flex-1">
+                {{ I18N.gallery.hidden_banner.showing_all | translate }}
+              </span>
+              <button mat-button class="!min-w-0" (click)="store.restoreHidden()">
+                {{ I18N.gallery.hidden_banner.restore | translate }}
+              </button>
+            </div>
+          }
+          @if (showRenderMigrationBanner()) {
+            <div role="status" [class]="NOTICE_CARD_CLASS">
+              <mat-icon class="opacity-70 !text-base !w-5 !h-5">auto_fix_high</mat-icon>
+              <span class="flex-1">
+                {{ I18N.gallery.render_migration.message | translate:{ n: renderMigrationPending() } }}
+                {{ I18N.gallery.render_migration.command_hint | translate:{ command: REFRESH_THUMBNAILS_COMMAND } }}
+              </span>
+              <button mat-button class="!min-w-0" (click)="dismissRenderMigration()">
+                {{ I18N.ui.buttons.dismiss | translate }}
+              </button>
+            </div>
+          }
+        </div>
+      }
+
+      <!-- Selection card: floats bottom-left inside the host (absolute, never over the end drawer).
+           Its right edge stops at the same measured inset the notices use, so it wraps instead of
+           running under an open drawer. Hidden while the mobile 'over' drawer is open: the drawer
+           container is its own stacking context and a z-20 card would paint over it. -->
+      @if (selectionCount() && !overDrawerOpen()) {
+        <div #selectionBar data-selection-bar
+             class="absolute bottom-2 md:bottom-4 left-2 md:left-4 z-20 w-fit flex flex-wrap items-center gap-1 px-2 py-1 rounded-2xl bg-[var(--mat-sys-surface-container)] border border-[var(--mat-sys-outline-variant)] shadow-lg max-md:mb-[env(safe-area-inset-bottom)]"
+             [style.right.px]="noticeRightPx()">
+          <!-- Every loaded photo is selected, but the view runs past the pages
+               fetched so far. Offer the rest explicitly on its own line (w-full
+               in a wrapping row) rather than silently widening what was asked. -->
+          @if (offerWholeView()) {
+            <div class="w-full flex flex-wrap items-center gap-2 text-xs opacity-80 px-1">
+              <span>{{ I18N.gallery.selection.view_scope_offer | translate:{ count: store.photos().length } }}</span>
+              <button mat-button class="!text-xs" (click)="selectWholeView()">{{ I18N.gallery.selection.view_scope_select_all | translate:{ total: store.total() } }}</button>
+            </div>
+          }
+          <span data-selection-status tabindex="-1" class="text-sm font-medium shrink-0 px-1">{{ (viewScoped() ? I18N.gallery.selection.view_scope_active : I18N.gallery.selection.count) | translate:{ count: selectionCount() } }}</span>
+          <button mat-icon-button disabledInteractive (click)="clearSelection()" [matTooltip]="I18N.gallery.selection.clear | translate" [attr.aria-label]="I18N.gallery.selection.clear | translate"><mat-icon>close</mat-icon></button>
+          @if (!allLoadedSelected()) {
+            <button mat-icon-button disabledInteractive (click)="selectAll()" [matTooltip]="I18N.gallery.selection.select_all | translate" [attr.aria-label]="I18N.gallery.selection.select_all | translate"><mat-icon>select_all</mat-icon></button>
+          }
+          <button mat-icon-button disabledInteractive (click)="invertSelection()" [matTooltip]="I18N.gallery.selection.invert | translate" [attr.aria-label]="I18N.gallery.selection.invert | translate"><mat-icon>flip</mat-icon></button>
+          @if (canCompareSelection()) {
+            <button mat-icon-button disabledInteractive (click)="compareSelection()" [matTooltip]="I18N.gallery.selection.compare | translate" [attr.aria-label]="I18N.gallery.selection.compare | translate"><mat-icon>compare</mat-icon></button>
+          }
+          <!-- Mobile: single Actions trigger opening a touch-friendly bottom sheet -->
+          <button mat-icon-button class="md:!hidden" (click)="openActionsSheet()" [disabled]="downloading()" [matTooltip]="I18N.gallery.selection.actions | translate" [attr.aria-label]="I18N.gallery.selection.actions | translate">
+            @if (downloading()) { <mat-spinner diameter="18" [attr.aria-label]="I18N.ui.labels.loading | translate"></mat-spinner> } @else { <mat-icon>more_horiz</mat-icon> }
+          </button>
+          <!-- Desktop actions (below md they live in the Actions sheet) -->
+          <div class="contents max-md:hidden">
+            @if (auth.isEdition()) {
+              <span aria-hidden="true" class="w-px h-6 mx-1 bg-[var(--mat-sys-outline-variant)]"></span>
+              <button mat-icon-button disabledInteractive (click)="batchFavorite()" [matTooltip]="I18N.gallery.selection.favorite | translate" [attr.aria-label]="I18N.gallery.selection.favorite | translate"><mat-icon>favorite</mat-icon></button>
+              <button mat-icon-button disabledInteractive (click)="batchReject()" [matTooltip]="I18N.gallery.selection.reject | translate" [attr.aria-label]="I18N.gallery.selection.reject | translate"><mat-icon>thumb_down</mat-icon></button>
+              <button mat-icon-button disabledInteractive [matMenuTriggerFor]="rateMenu" [matTooltip]="I18N.gallery.selection.rate | translate" [attr.aria-label]="I18N.gallery.selection.rate | translate"><mat-icon>star</mat-icon></button>
+              <mat-menu #rateMenu="matMenu">
+                @for (star of [1, 2, 3, 4, 5]; track star) {
+                  <button mat-menu-item (click)="batchRate(star)">
+                    {{ '★'.repeat(star) }}
+                  </button>
+                }
+                <button mat-menu-item (click)="batchRate(0)">
+                  {{ I18N.gallery.selection.clear | translate }}
+                </button>
+              </mat-menu>
+            }
+            @if (auth.isEdition() && store.config()?.features?.show_albums) {
+              <button mat-icon-button disabledInteractive [matMenuTriggerFor]="albumMenu" [matTooltip]="I18N.albums.add_photos | translate" [attr.aria-label]="I18N.albums.add_photos | translate"><mat-icon>photo_library</mat-icon></button>
+              <mat-menu #albumMenu="matMenu">
+                @for (album of albumOptions(); track album.id) {
+                  <button mat-menu-item (click)="addToAlbum(album.id)">{{ album.name }}</button>
+                }
+                <button mat-menu-item (click)="createAlbumAndAdd()">
+                  <mat-icon>add</mat-icon>
+                  {{ I18N.albums.create | translate }}
+                </button>
+              </mat-menu>
+            }
+            <!-- The other half of the panorama correction: culling can only fix a
+                 set the detector found, and an undetected sweep appears in no
+                 culling group at all. Here the frames are in front of the user. -->
+            @if (auth.isEdition()) {
+              <button mat-icon-button disabledInteractive [matMenuTriggerFor]="sequenceMenu" [matTooltip]="I18N.gallery.selection.mark_sequence | translate" [attr.aria-label]="I18N.gallery.selection.mark_sequence | translate"><mat-icon>panorama_photosphere</mat-icon></button>
+              <mat-menu #sequenceMenu="matMenu">
+                <button mat-menu-item (click)="markAsPanorama('panorama')">
+                  <mat-icon>{{ 'panorama' | sequenceKindIcon }}</mat-icon>
+                  {{ I18N.gallery.selection.mark_panorama | translate }}
+                </button>
+                <button mat-menu-item (click)="markAsPanorama('hdr_panorama')">
+                  <mat-icon>{{ 'hdr_panorama' | sequenceKindIcon }}</mat-icon>
+                  {{ I18N.gallery.selection.mark_hdr_panorama | translate }}
+                </button>
+                <button mat-menu-item (click)="markAsPanorama('bracket')">
+                  <mat-icon>{{ 'bracket' | sequenceKindIcon }}</mat-icon>
+                  {{ I18N.gallery.selection.mark_bracket | translate }}
+                </button>
+              </mat-menu>
+            }
+            <span aria-hidden="true" class="w-px h-6 mx-1 bg-[var(--mat-sys-outline-variant)]"></span>
+            <button mat-icon-button disabledInteractive (click)="copyPaths()" [matTooltip]="I18N.gallery.selection.copy_filenames | translate" [attr.aria-label]="I18N.gallery.selection.copy_filenames | translate"><mat-icon>content_copy</mat-icon></button>
+            @if (auth.isEdition()) {
+              <button mat-icon-button disabledInteractive (click)="openManualTagsDialog()" [matTooltip]="I18N.gallery.selection.edit_tags | translate" [attr.aria-label]="I18N.gallery.selection.edit_tags | translate"><mat-icon>sell</mat-icon></button>
+              <button mat-icon-button disabledInteractive (click)="openExportDialog()" [matTooltip]="I18N.export.action | translate" [attr.aria-label]="I18N.export.action | translate"><mat-icon>drive_file_move</mat-icon></button>
+              <button mat-icon-button disabledInteractive (click)="openCullDialog()" [matTooltip]="I18N.cull.action | translate" [attr.aria-label]="I18N.cull.action | translate"><mat-icon>folder_move</mat-icon></button>
+              @if (store.config()?.cull?.trash_available) {
+                <button mat-icon-button disabledInteractive (click)="deleteSelected()"
+                        [disabled]="viewScoped()"
+                        [matTooltip]="(viewScoped() ? I18N.cull.delete_disabled_view_scope_tooltip : I18N.cull.delete_action) | translate"
+                        [attr.aria-label]="I18N.cull.delete_action | translate">
+                  <mat-icon>delete</mat-icon>
+                </button>
+              }
+            }
+            @if (auth.downloadProfiles().length) {
+              <button mat-icon-button [matMenuTriggerFor]="dlMenu" [disabled]="downloading()" [matTooltip]="(downloading() ? I18N.photo_detail.downloading : I18N.gallery.selection.download) | translate" [attr.aria-label]="(downloading() ? I18N.photo_detail.downloading : I18N.gallery.selection.download) | translate">@if (downloading()) { <mat-spinner diameter="18" [attr.aria-label]="I18N.ui.labels.loading | translate"></mat-spinner> } @else { <mat-icon>download</mat-icon> }</button>
+              <mat-menu #dlMenu="matMenu">
+                <button mat-menu-item (click)="downloadSelected()"><mat-icon>image</mat-icon> {{ I18N.download.type_original | translate }}</button>
+                @for (profile of auth.downloadProfiles(); track profile) {
+                  <button mat-menu-item (click)="downloadSelected('darktable', profile)"><mat-icon>photo_filter</mat-icon> {{ profile }}</button>
+                }
+                <button mat-menu-item (click)="downloadSelected('raw')"><mat-icon>raw_on</mat-icon> {{ I18N.download.type_raw | translate }}</button>
+              </mat-menu>
+            } @else {
+              <button mat-icon-button (click)="downloadSelected()" [disabled]="downloading()" [matTooltip]="(downloading() ? I18N.photo_detail.downloading : I18N.gallery.selection.download) | translate" [attr.aria-label]="(downloading() ? I18N.photo_detail.downloading : I18N.gallery.selection.download) | translate">@if (downloading()) { <mat-spinner diameter="18" [attr.aria-label]="I18N.ui.labels.loading | translate"></mat-spinner> } @else { <mat-icon>download</mat-icon> }</button>
+            }
+          </div>
+        </div>
+      }
+    </div>
 
     <!-- Scroll-to-top button -->
     @if (showScrollTop() && !selectionCount()) {
@@ -582,6 +717,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
         [pinned]="tooltipMode() === 'click'"
         [histogramDefaultMode]="tooltipHistogramDefaultMode()"
         [indicatorPercent]="clippingIndicatorPercent()"
+        [personLinks]="!pinned()"
         (personSelected)="store.updateFilter('person_id', $event)"
       />
     }
@@ -592,6 +728,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
          in scope of all three grid branches. -->
     <app-gallery-photo-menu
       #photoMenu
+      [findSimilar]="!pinned()"
       [isEdition]="auth.isEdition()"
       [config]="store.config()"
       [albums]="albumOptions()"
@@ -602,114 +739,8 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
       (action)="onPhotoMenuAction($event)"
       (closed)="onPhotoMenuClosed($event)"
     />
-
-    <!-- Selection action bar -->
-    @if (selectionCount()) {
-      <div data-selection-bar class="fixed bottom-0 left-0 right-0 z-50 flex flex-wrap items-center justify-center gap-1 lg:gap-3 px-2 lg:px-6 py-1 lg:py-3 max-lg:pb-[max(0.25rem,env(safe-area-inset-bottom))] bg-[var(--mat-sys-surface-container)] border-t border-[var(--mat-sys-outline-variant)] shadow-lg">
-        <!-- Every loaded photo is selected, but the view runs past the pages
-             fetched so far. Offer the rest explicitly on its own line (w-full
-             in a wrapping row) rather than silently widening what was asked. -->
-        @if (offerWholeView()) {
-          <div class="w-full flex flex-wrap items-center justify-center gap-2 text-xs opacity-80">
-            <span>{{ I18N.gallery.selection.view_scope_offer | translate:{ count: store.photos().length } }}</span>
-            <button mat-button class="!text-xs" (click)="selectWholeView()">{{ I18N.gallery.selection.view_scope_select_all | translate:{ total: store.total() } }}</button>
-          </div>
-        }
-        <span data-selection-status tabindex="-1" class="text-sm font-medium shrink-0">{{ (viewScoped() ? I18N.gallery.selection.view_scope_active : I18N.gallery.selection.count) | translate:{ count: selectionCount() } }}</span>
-        <div class="flex flex-wrap items-center justify-center gap-0 lg:gap-2">
-          <button mat-icon-button class="lg:!hidden" (click)="clearSelection()" [matTooltip]="I18N.gallery.selection.clear | translate" [attr.aria-label]="I18N.gallery.selection.clear | translate"><mat-icon>close</mat-icon></button>
-          <button mat-button class="!hidden lg:!inline-flex" (click)="clearSelection()"><mat-icon>close</mat-icon> {{ I18N.gallery.selection.clear | translate }}</button>
-          @if (!allLoadedSelected()) {
-            <button mat-icon-button class="lg:!hidden" (click)="selectAll()" [matTooltip]="I18N.gallery.selection.select_all | translate" [attr.aria-label]="I18N.gallery.selection.select_all | translate"><mat-icon>select_all</mat-icon></button>
-            <button mat-button class="!hidden lg:!inline-flex" (click)="selectAll()"><mat-icon>select_all</mat-icon> {{ I18N.gallery.selection.select_all | translate }}</button>
-          }
-          <button mat-icon-button class="lg:!hidden" (click)="invertSelection()" [matTooltip]="I18N.gallery.selection.invert | translate" [attr.aria-label]="I18N.gallery.selection.invert | translate"><mat-icon>flip</mat-icon></button>
-          <button mat-button class="!hidden lg:!inline-flex" (click)="invertSelection()"><mat-icon>flip</mat-icon> {{ I18N.gallery.selection.invert | translate }}</button>
-          @if (canCompareSelection()) {
-            <button mat-icon-button class="lg:!hidden" (click)="compareSelection()" [matTooltip]="I18N.gallery.selection.compare | translate" [attr.aria-label]="I18N.gallery.selection.compare | translate"><mat-icon>compare</mat-icon></button>
-            <button mat-button class="!hidden lg:!inline-flex" (click)="compareSelection()"><mat-icon>compare</mat-icon> {{ I18N.gallery.selection.compare | translate }}</button>
-          }
-          <!-- Mobile: single Actions trigger opening a touch-friendly bottom sheet -->
-          <button mat-flat-button class="lg:!hidden" (click)="openActionsSheet()" [disabled]="downloading()">
-            @if (downloading()) { <mat-spinner diameter="18" class="!inline-block !align-baseline" [attr.aria-label]="I18N.ui.labels.loading | translate" ></mat-spinner> } @else { <mat-icon>more_horiz</mat-icon> }
-            {{ I18N.gallery.selection.actions | translate }}
-          </button>
-          @if (auth.isEdition()) {
-            <button mat-button class="!hidden lg:!inline-flex" (click)="batchFavorite()"><mat-icon>favorite</mat-icon> {{ I18N.gallery.selection.favorite | translate }}</button>
-            <button mat-button class="!hidden lg:!inline-flex" (click)="batchReject()"><mat-icon>thumb_down</mat-icon> {{ I18N.gallery.selection.reject | translate }}</button>
-            <button mat-button class="!hidden lg:!inline-flex" [matMenuTriggerFor]="rateMenu"><mat-icon>star</mat-icon> {{ I18N.gallery.selection.rate | translate }}</button>
-            <mat-menu #rateMenu="matMenu">
-              @for (star of [1, 2, 3, 4, 5]; track star) {
-                <button mat-menu-item (click)="batchRate(star)">
-                  {{ '★'.repeat(star) }}
-                </button>
-              }
-              <button mat-menu-item (click)="batchRate(0)">
-                {{ I18N.gallery.selection.clear | translate }}
-              </button>
-            </mat-menu>
-          }
-          @if (auth.isEdition() && store.config()?.features?.show_albums) {
-            <button mat-button class="!hidden lg:!inline-flex" [matMenuTriggerFor]="albumMenu"><mat-icon>photo_library</mat-icon> {{ I18N.albums.add_photos | translate }}</button>
-            <mat-menu #albumMenu="matMenu">
-              @for (album of albumOptions(); track album.id) {
-                <button mat-menu-item (click)="addToAlbum(album.id)">{{ album.name }}</button>
-              }
-              <button mat-menu-item (click)="createAlbumAndAdd()">
-                <mat-icon>add</mat-icon>
-                {{ I18N.albums.create | translate }}
-              </button>
-            </mat-menu>
-          }
-          <!-- The other half of the panorama correction: culling can only fix a
-               set the detector found, and an undetected sweep appears in no
-               culling group at all. Here the frames are in front of the user. -->
-          @if (auth.isEdition()) {
-            <button mat-button class="!hidden lg:!inline-flex" [matMenuTriggerFor]="sequenceMenu"><mat-icon>panorama_photosphere</mat-icon> {{ I18N.gallery.selection.mark_sequence | translate }}</button>
-            <mat-menu #sequenceMenu="matMenu">
-              <button mat-menu-item (click)="markAsPanorama('panorama')">
-                <mat-icon>{{ 'panorama' | sequenceKindIcon }}</mat-icon>
-                {{ I18N.gallery.selection.mark_panorama | translate }}
-              </button>
-              <button mat-menu-item (click)="markAsPanorama('hdr_panorama')">
-                <mat-icon>{{ 'hdr_panorama' | sequenceKindIcon }}</mat-icon>
-                {{ I18N.gallery.selection.mark_hdr_panorama | translate }}
-              </button>
-              <button mat-menu-item (click)="markAsPanorama('bracket')">
-                <mat-icon>{{ 'bracket' | sequenceKindIcon }}</mat-icon>
-                {{ I18N.gallery.selection.mark_bracket | translate }}
-              </button>
-            </mat-menu>
-          }
-          <button mat-button class="!hidden lg:!inline-flex" (click)="copyPaths()"><mat-icon>content_copy</mat-icon> {{ I18N.gallery.selection.copy_filenames | translate }}</button>
-          @if (auth.isEdition()) {
-            <button mat-button class="!hidden lg:!inline-flex" (click)="openManualTagsDialog()"><mat-icon>sell</mat-icon> {{ I18N.gallery.selection.edit_tags | translate }}</button>
-            <button mat-button class="!hidden lg:!inline-flex" (click)="openExportDialog()"><mat-icon>drive_file_move</mat-icon> {{ I18N.export.action | translate }}</button>
-            <button mat-button class="!hidden lg:!inline-flex" (click)="openCullDialog()"><mat-icon>folder_move</mat-icon> {{ I18N.cull.action | translate }}</button>
-            @if (store.config()?.cull?.trash_available) {
-              <button mat-button class="!hidden lg:!inline-flex" (click)="deleteSelected()"
-                      [disabled]="viewScoped()"
-                      [matTooltip]="viewScoped() ? (I18N.cull.delete_disabled_view_scope_tooltip | translate) : null">
-                <mat-icon>delete</mat-icon> {{ I18N.cull.delete_action | translate }}
-              </button>
-            }
-          }
-          @if (auth.downloadProfiles().length) {
-            <button mat-flat-button class="!hidden lg:!inline-flex" [matMenuTriggerFor]="dlMenu" [disabled]="downloading()">@if (downloading()) { <mat-spinner diameter="18" class="!inline-block !align-baseline" [attr.aria-label]="I18N.ui.labels.loading | translate" ></mat-spinner> } @else { <mat-icon>download</mat-icon> } {{ downloading() ? (I18N.photo_detail.downloading | translate) : (I18N.gallery.selection.download | translate) }}</button>
-            <mat-menu #dlMenu="matMenu">
-              <button mat-menu-item (click)="downloadSelected()"><mat-icon>image</mat-icon> {{ I18N.download.type_original | translate }}</button>
-              @for (profile of auth.downloadProfiles(); track profile) {
-                <button mat-menu-item (click)="downloadSelected('darktable', profile)"><mat-icon>photo_filter</mat-icon> {{ profile }}</button>
-              }
-              <button mat-menu-item (click)="downloadSelected('raw')"><mat-icon>raw_on</mat-icon> {{ I18N.download.type_raw | translate }}</button>
-            </mat-menu>
-          } @else {
-            <button mat-flat-button class="!hidden lg:!inline-flex" (click)="downloadSelected()" [disabled]="downloading()">@if (downloading()) { <mat-spinner diameter="18" class="!inline-block !align-baseline" [attr.aria-label]="I18N.ui.labels.loading | translate" ></mat-spinner> } @else { <mat-icon>download</mat-icon> } {{ downloading() ? (I18N.photo_detail.downloading | translate) : (I18N.gallery.selection.download | translate) }}</button>
-          }
-        </div>
-      </div>
-    }
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   host: {
     class: 'block h-full',
     '(document:keydown.control.a)': 'onSelectAllShortcut($event)',
@@ -719,17 +750,13 @@ export class GalleryComponent implements OnInit, OnDestroy {
   protected readonly I18N = i18nKeys();
   protected readonly store = inject(GalleryStore);
   protected readonly auth = inject(AuthService);
-  protected readonly canShowScanButton = computed(() => {
-    if (!this.auth.hasFeature('show_scan_button')) return false;
-    return this.auth.isMultiUser()
-      ? this.auth.isSuperadmin()
-      : this.auth.editionPasswordRequired() && this.auth.isEdition();
-  });
+  protected readonly scan = inject(ScanService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly bottomSheet = inject(MatBottomSheet);
   private readonly i18n = inject(I18nService);
   private readonly dialog = inject(MatDialog);
   private readonly albumService = inject(AlbumService);
+  private readonly journal = inject(UserActivityJournal);
   private readonly photoActions = inject(PhotoActionsService);
   private readonly undoService = inject(UndoService);
   private readonly sequenceOverrides = inject(SequenceOverrideService);
@@ -760,8 +787,11 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly scrollDirective = viewChild(InfiniteScrollDirective);
   private readonly filterSidebar = viewChild(GalleryFilterSidebarComponent);
   private readonly filterDrawer = viewChild<MatSidenav>('filterDrawer');
+  private readonly selectionBar = viewChild<ElementRef<HTMLElement>>('selectionBar');
+  private readonly noticeHost = viewChild<ElementRef<HTMLElement>>('noticeHost');
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
+  private readonly document = inject(DOCUMENT);
   private readonly scrollContent = viewChild(MatSidenavContent);
   private readonly sidenavContainer = viewChild(MatSidenavContainer);
   private readonly ownTooltips = viewChildren(MatTooltip);
@@ -843,7 +873,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     return Array.from({ length: cols }, (_, i) => i);
   });
 
-  /** Whether the viewport is md+ (768px) — mosaic is only available on desktop */
+  /** Whether the viewport is md+ (768px) — drives the side/over drawer, container padding and hover tooltips */
   private readonly desktop = useDesktopSignal({
     onChange: matches => { if (!matches) this.tooltipPhoto.set(null); },
   });
@@ -858,9 +888,9 @@ export class GalleryComponent implements OnInit, OnDestroy {
    */
   private readonly railWide = useDesktopSignal({ breakpointPx: DETAILS_RAIL_MIN_WIDTH_PX });
 
-  /** Effective gallery mode: force grid on small viewports */
+  /** Effective gallery mode: grid until the container has been measured, then the user's choice at every width */
   readonly effectiveGalleryMode = computed(() =>
-    (this.isDesktop() && this.containerWidth() > 0) ? this.store.galleryMode() : 'grid',
+    this.containerWidth() > 0 ? this.store.galleryMode() : 'grid',
   );
 
   /** Whether to hide photo details below the thumbnails */
@@ -876,6 +906,9 @@ export class GalleryComponent implements OnInit, OnDestroy {
   /** Docked rail needs real width, not merely "not a phone". */
   readonly panelMode = computed(() => this.tooltipMode() === 'panel' && this.railWide.isDesktop());
 
+  /** An assistant-pinned list is shown: the filter controls are hidden so no edit can drop it. */
+  protected readonly pinned = computed(() => this.store.pinnedPaths() !== null);
+
   /**
    * Whether the end drawer currently shows details rather than filters.
    *
@@ -883,7 +916,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
    * and the rail is a standing preference to come back to once they are closed.
    */
   readonly detailsRailVisible = computed(
-    () => this.panelMode() && !this.store.filterDrawerOpen(),
+    () => this.panelMode() && (!this.store.filterDrawerOpen() || this.pinned()),
   );
 
   /** Set kinds whose sets are currently collapsed behind one frame.
@@ -921,6 +954,91 @@ export class GalleryComponent implements OnInit, OnDestroy {
     return isHistogramMode(configured) ? configured : 'luma';
   });
 
+  /** The mobile filter drawer overlays the content (and anything outside the sidenav container). */
+  protected readonly overDrawerOpen = computed(() => !this.isDesktop() && this.store.filterDrawerOpen());
+
+  /** How far the notices must rise to clear the floating selection card: non-zero only while the
+   *  card exists AND overlaps the notice stack horizontally (see `noticeLiftPx`). */
+  private readonly selectionBarOverlap = signal(0);
+
+  /** Card height plus its bottom margin (distance from the host bottom to the card top); sizes the
+   *  grid's end spacer. Floored so a single-row card still leaves the last row clear. */
+  protected readonly selectionBarReservePx = signal(112);
+
+  /** Shared bottom margin of the card and the notices: 16px md+, 8px below. */
+  private readonly floatMarginPx = computed(() => this.isDesktop() ? 16 : 8);
+
+  /** Bottom offset of the floating notices: the shared margin, plus the card's reach when they overlap it. */
+  protected readonly noticeBottomPx = computed(() => this.floatMarginPx() + this.selectionBarOverlap());
+
+  /** Track the selection card's geometry for as long as the card exists. */
+  private readonly trackSelectionBar = effect(onCleanup => {
+    const bar = this.selectionBar()?.nativeElement;
+    const host = this.noticeHost()?.nativeElement;
+    const content = this.scrollContent()?.getElementRef().nativeElement;
+    // Re-measure when the drawer opens/closes (changes the card's right cap and wrap).
+    this.noticeRightPx();
+    // The notice stack renders after this effect runs; re-measure once it is in the DOM.
+    const noticesShown = this.showHiddenBanner() || this.canRestoreHidden() || this.showRenderMigrationBanner();
+    if (!bar || !host || typeof ResizeObserver === 'undefined') {
+      this.selectionBarOverlap.set(0);
+      return;
+    }
+    const measure = () => {
+      const hostRect = host.getBoundingClientRect();
+      const barRect = bar.getBoundingClientRect();
+      const notices = host.querySelector('[data-gallery-notices]')?.getBoundingClientRect() ?? null;
+      this.selectionBarReservePx.set(Math.max(112, Math.ceil(hostRect.bottom - barRect.top)));
+      this.selectionBarOverlap.set(noticeLiftPx({
+        hostBottom: hostRect.bottom,
+        barTop: barRect.top,
+        barLeft: barRect.left - hostRect.left,
+        barRight: barRect.right - hostRect.left,
+        noticeLeft: notices ? notices.left - hostRect.left : null,
+        noticeRight: notices ? notices.right - hostRect.left : null,
+      }));
+    };
+    measure();
+    if (noticesShown) afterNextRender(measure, { injector: this.injector });
+    const observer = new ResizeObserver(measure);
+    observer.observe(bar);
+    observer.observe(host);
+    if (content) observer.observe(content);
+    onCleanup(() => {
+      observer.disconnect();
+      this.selectionBarOverlap.set(0);
+    });
+  });
+
+  /** Keeps the stack's left edge at least one margin from the host's left edge when the right inset is large. */
+  protected readonly noticeMaxWidth = computed(() => `calc(100% - ${this.noticeRightPx() + this.floatMarginPx()}px)`);
+
+  /** Gap between the gallery content's right edge (end drawer and scrollbar excluded) and the host's. */
+  private readonly noticeInsetPx = signal(0);
+
+  /** Right offset of the floating notices: a margin (16px md+, 8px below) plus the drawer/scrollbar gap. */
+  protected readonly noticeRightPx = computed(() => this.noticeInsetPx() + this.floatMarginPx());
+
+  /** Re-measure the drawer/scrollbar gap whenever the host or the content box resizes. */
+  private readonly trackNoticeInset = effect(onCleanup => {
+    const host = this.noticeHost()?.nativeElement;
+    const content = this.scrollContent()?.getElementRef().nativeElement;
+    if (!host || !content || typeof ResizeObserver === 'undefined') {
+      this.noticeInsetPx.set(0);
+      return;
+    }
+    const measure = () => this.noticeInsetPx.set(Math.max(0, Math.ceil(
+      host.getBoundingClientRect().right - (content.getBoundingClientRect().left + content.clientWidth))));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(host);
+    observer.observe(content);
+    onCleanup(() => {
+      observer.disconnect();
+      this.noticeInsetPx.set(0);
+    });
+  });
+
   /** Show the hidden-photos banner when filters are hiding rows and at least one is on. */
   readonly showHiddenBanner = computed(() => {
     const f = this.store.filters();
@@ -950,6 +1068,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   /** The command that migrates the whole library in one go. */
   protected readonly REFRESH_THUMBNAILS_COMMAND = 'python facet.py --refresh-thumbnails';
+  /** Shell shared by the cards of the floating notice stack. */
+  protected readonly NOTICE_CARD_CLASS = 'pointer-events-auto px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] border border-[var(--mat-sys-outline-variant)] shadow-lg flex items-center gap-3 text-sm';
 
   /** RAW rows still on the pre-fix rendering, as of the last config load. */
   readonly renderMigrationPending = computed(
@@ -1014,26 +1134,31 @@ export class GalleryComponent implements OnInit, OnDestroy {
     && (this.effectiveGalleryMode() === 'mosaic' || this.effectiveHideDetails()),
   );
 
+  /** Cards in the row branch hide their details except in grid mode with details switched on. */
+  protected readonly rowCardHideDetails = computed(
+    () => this.effectiveGalleryMode() === 'mosaic' || this.effectiveHideDetails(),
+  );
+
   /** Unified row model for the active mode. */
   readonly rowsModel = computed<GalleryRow[]>(() => {
     const photos = this.store.photos();
     // Rows live inside the p-2 md:p-4 container - subtract its padding
     const width = this.containerWidth() - (this.isDesktop() ? 32 : 16);
     if (!photos.length || width <= 0) return [];
-    if (this.effectiveGalleryMode() === 'mosaic') {
-      return buildMosaicRows(photos, width, this.cardWidth(), GalleryComponent.ROW_GAP);
-    }
-    return buildGridRows(
-      photos, width, this.cardWidth(), GalleryComponent.ROW_GAP,
-      this.effectiveHideDetails(), this.isDesktop(),
-    );
+    const gap = GalleryComponent.ROW_GAP;
+    const build = this.effectiveGalleryMode() === 'mosaic'
+      ? (ps: Photo[]) => buildMosaicRows(ps, width, this.cardWidth(), gap)
+      : (ps: Photo[]) => buildGridRows(ps, width, this.cardWidth(), gap, this.effectiveHideDetails(), this.isDesktop());
+    return build(photos);
   });
 
   readonly totalRowsHeight = computed(() => totalRowsHeight(this.rowsModel()));
 
-  private readonly visibleRange = computed(() =>
-    windowRange(this.rowsModel(), this.relScrollTop(), this.viewportH() || 900, GalleryComponent.OVERSCAN),
-  );
+  private readonly visibleRange = computed(() => {
+    const rows = this.rowsModel();
+    if (!this.virtualOn()) return { first: 0, last: rows.length - 1 };
+    return windowRange(rows, this.relScrollTop(), this.viewportH() || 900, GalleryComponent.OVERSCAN);
+  });
 
   readonly visibleRows = computed(() => {
     const { first, last } = this.visibleRange();
@@ -1157,7 +1282,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
     // Sync store.filterDrawerOpen signal → mat-sidenav. The details rail shares
     // this drawer, so it keeps the strip open on its own once the filters close.
     effect(() => {
-      const open = this.store.filterDrawerOpen() || this.panelMode();
+      // The persisted flag is left alone while pinned: the drawer only stays shut.
+      const open = (this.store.filterDrawerOpen() && !this.pinned()) || this.panelMode();
       const drawer = this.filterDrawer();
       if (!drawer) return;
       if (open) drawer.open();
@@ -1192,6 +1318,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
   }
 
   async ngOnInit(): Promise<void> {
+    this.store.galleryMounts.update(n => n + 1);
     this.pageHelp.setDescription(I18N.gallery.help);
     // Read (and clear) BEFORE tryRestoreView: a scoped "open this set" request
     // means the user wants that new scoped view, never a resumed previous one.
@@ -1215,8 +1342,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
         const album = await firstValueFrom(this.albumService.get(+albumId));
         if (album.smart_filter_json) {
           // Apply saved filters BEFORE setting currentAlbum (avoids effect saving defaults)
-          const savedFilters = JSON.parse(album.smart_filter_json);
-          this.store.filters.update(current => ({ ...current, ...savedFilters, album_id: albumId }));
+          const savedJson = album.smart_filter_json;
+          this.store.filters.update(current => applySavedAlbumFilters(current, savedJson, albumId));
         } else {
           this.store.filters.update(current => ({ ...current, album_id: albumId }));
         }
@@ -1305,6 +1432,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
     // must not be recorded as "the user asked for filters" — otherwise closing
     // the filters would immediately re-open them and the toggle would be stuck.
     if (open && this.detailsRailVisible()) return;
+    // A close caused by the pin is not the user's choice; keep the persisted flag.
+    if (this.pinned()) return;
     this.store.setFilterDrawerOpen(open);
     const sidebarEl = document.querySelector('app-gallery-filter-sidebar div[data-scroll]') as HTMLElement | null;
     if (!sidebarEl) return;
@@ -1814,6 +1943,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
       ?? await this.resolveSelectionPaths(I18N.gallery.selection.view_scope_album_message);
     if (!paths?.length) return;
     await firstValueFrom(this.albumService.addPhotos(albumId, paths));
+    this.journal.record('album', paths, { album_id: albumId, action: 'add' });
     this.snackBar.open(this.i18n.t(I18N.albums.photos_added), '', { duration: 2000 });
     // Explicit paths come from the context menu on one photo: the user's
     // selection is theirs to keep.
@@ -1829,12 +1959,9 @@ export class GalleryComponent implements OnInit, OnDestroy {
   }
 
   async openScanLauncher(): Promise<void> {
-    const { ScanLauncherComponent } = await import('../scan/scan-launcher.component');
-    const ref = this.dialog.open(ScanLauncherComponent, { width: '36rem' });
-    const completed = await firstValueFrom(ref.afterClosed());
-    if (completed) {
+    if (await this.scan.openLauncher()) {
       await this.store.loadTypeCounts();
-      await this.store.loadPhotos();
+      await this.store.reloadPhotos();
     }
   }
 
@@ -1881,8 +2008,9 @@ export class GalleryComponent implements OnInit, OnDestroy {
     });
     const written = await firstValueFrom(ref.afterClosed());
     if (!written) return;
+    this.journal.record('tags', paths, { count: written });
     const kept = viewScoped ? new Set(this.excludedPaths()) : new Set(this.selectedPaths());
-    await this.store.loadPhotos();
+    await this.store.reloadPhotos();
     this.restoreSelectionWithout(viewScoped, kept, []);
   }
 
@@ -1913,7 +2041,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
       // card, and the rows the cull has just moved away are still standing in
       // the list until this returns.
       if (!explicit) {
-        await this.store.loadPhotos();
+        await this.store.reloadPhotos();
         this.clearSelection();
         return;
       }
@@ -1922,7 +2050,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
       // so what the user built is captured first and put back after it.
       const wasViewScoped = this.viewScoped();
       const kept = wasViewScoped ? new Set(this.excludedPaths()) : new Set(this.selectedPaths());
-      await this.store.loadPhotos();
+      await this.store.reloadPhotos();
       this.restoreSelectionWithout(wasViewScoped, kept, culled);
     }
   }
@@ -2160,6 +2288,10 @@ export class GalleryComponent implements OnInit, OnDestroy {
     // Observe the sidenav-content area for width changes
     const content = document.querySelector('mat-sidenav-content');
     if (content) {
+      // Measure now so the first frame is laid out for the real width, not after the observer's first tick.
+      const style = getComputedStyle(content);
+      const measured = Math.floor(content.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0));
+      if (measured > 0) this.containerWidth.set(measured);
       this.resizeObserver.observe(content);
     }
   }
@@ -2186,8 +2318,12 @@ export class GalleryComponent implements OnInit, OnDestroy {
   /** Move the cursor onto `index`, keeping the photo it means in step with it.
    *  -1 -- or any index past the end -- clears both. */
   private setCursor(index: number): void {
+    const path = this.store.photos()[index]?.path ?? null;
     this.activeIndex.set(index);
-    this.activePath.set(this.store.photos()[index]?.path ?? null);
+    this.activePath.set(path);
+    // The mirror outlives a blur: a drop with the window unfocused (the user went to the agent) keeps it.
+    if (path !== null) this.store.focusedPath.set(path);
+    else if (document.hasFocus()) this.store.focusedPath.set(null);
   }
 
   /** Re-find the marked photo whenever the result set changes, so the cursor
@@ -2200,6 +2336,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly cursorFollowsPhoto = effect(() => {
     const photos = this.store.photos();
     untracked(() => {
+      const focused = this.store.focusedPath();
+      if (focused !== null && !photos.some(p => p.path === focused)) this.store.focusedPath.set(null);
       const path = this.activePath();
       if (path === null) return;
       const at = photos.findIndex(p => p.path === path);
@@ -2208,6 +2346,25 @@ export class GalleryComponent implements OnInit, OnDestroy {
       if (at < 0) this.activePath.set(null);
     });
   });
+
+  /** A new pin (or the pin ending) is a different list: the photo the docked rail holds and the
+   *  keyboard cursor belong to the previous view, so both are dropped. The first run is skipped --
+   *  mounting over an existing pin has nothing to reset -- and a filter reload that leaves the
+   *  pin null does not notify. setCursor only writes signals; it never moves DOM focus. */
+  private readonly resetOnPinChange = (() => {
+    let previous: string[] | null | undefined;
+    return effect(() => {
+      const pin = this.store.pinnedPaths();
+      untracked(() => {
+        const first = previous === undefined;
+        const changed = pin !== previous;
+        previous = pin;
+        if (first || !changed) return;
+        this.tooltipPhoto.set(null);
+        this.setCursor(-1);
+      });
+    });
+  })();
 
   /** Drop the cursor when focus genuinely leaves a grid.
    *
@@ -2265,6 +2422,26 @@ export class GalleryComponent implements OnInit, OnDestroy {
     this.setCursor(-1);
   }
 
+  /** Escape: with the docked rail, first what Deselect does -- the held photo,
+   *  its frame and the dimming go -- then, as everywhere, the rest of the selection.
+   *  A view-scoped selection is cleared even when the release emptied it (one photo in
+   *  view), so the store does not keep a view scope with a leftover exclusion set. */
+  private escapeSelection(): void {
+    if (this.panelMode()) this.releasePanel();
+    if (this.selectionCount() || this.viewScoped()) this.clearSelection();
+  }
+
+  /** Escape from inside the rail. The drawer is kept open by `disableClose` while the
+   *  rail occupies it (it would otherwise close and be reopened by the open/close
+   *  effect, a flicker and a focus jump); propagation is left alone so an open
+   *  tooltip's overlay handler still closes. The Deselect button is removed by the
+   *  release, so focus is parked on the rail rather than dropping to the body. */
+  protected onRailEscape(event: Event): void {
+    event.preventDefault();
+    this.escapeSelection();
+    (event.currentTarget as HTMLElement | null)?.focus();
+  }
+
   /** Columns per row in grid mode (mirrors the CSS auto-fill column math). */
   private gridColumns(): number {
     const width = this.containerWidth() - (this.isDesktop() ? 32 : 16);
@@ -2280,17 +2457,25 @@ export class GalleryComponent implements OnInit, OnDestroy {
     }
     const rows = this.virtualOn() ? this.rowsModel() : this.mosaicRows();
     const rowIdx = rows.findIndex(r => index >= r.startIndex && index < r.startIndex + r.photos.length);
+    if (rowIdx < 0) return index;
     const targetRow = rows[rowIdx + dir];
-    if (rowIdx < 0 || !targetRow) return index;
+    if (!targetRow) return index;
     const offset = index - rows[rowIdx].startIndex;
     return targetRow.startIndex + Math.min(offset, targetRow.photos.length - 1);
+  }
+
+  /** The photo index of the card an event came from (`data-pidx`), 0 when it came from none. */
+  private indexOfCard(target: EventTarget | null): number {
+    const raw = (target as HTMLElement | null)?.closest?.('[data-pidx]')?.getAttribute('data-pidx');
+    const parsed = raw == null ? NaN : Number(raw);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : 0;
   }
 
   protected onGridKeydown(event: KeyboardEvent): void {
     if (isTypingContext(event)) return;
     const photos = this.store.photos();
     if (!photos.length) return;
-    const index = Math.max(0, this.activeIndex());
+    const index = this.activeIndex() >= 0 ? this.activeIndex() : this.indexOfCard(event.target);
     let next: number | null = null;
 
     switch (event.key) {
@@ -2301,9 +2486,9 @@ export class GalleryComponent implements OnInit, OnDestroy {
       case 'Home': next = 0; break;
       case 'End': next = photos.length - 1; break;
       case 'Escape':
-        if (this.selectionCount()) {
+        if (this.selectionCount() || (this.panelMode() && this.hasActivePhoto())) {
           event.preventDefault();
-          this.clearSelection();
+          this.escapeSelection();
         }
         return;
       default:

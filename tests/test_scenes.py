@@ -19,6 +19,7 @@ from api.routers.scenes import compute_scenes
 from db.schema import init_database
 
 _SCHEMA = """
+    CREATE TABLE rating_provenance (user_id TEXT NOT NULL DEFAULT '', photo_path TEXT NOT NULL, star_rating INTEGER NOT NULL DEFAULT 0, is_favorite INTEGER NOT NULL DEFAULT 0, is_rejected INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, photo_path));
     CREATE TABLE photos (
         path TEXT PRIMARY KEY, filename TEXT, aggregate REAL, date_taken TEXT,
         is_burst_lead INTEGER, is_sequence_lead INTEGER DEFAULT 0, burst_group_id INTEGER,

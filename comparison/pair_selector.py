@@ -95,6 +95,8 @@ class PairSelector:
                 "ORDER BY RANDOM() LIMIT ?",
                 params + [self.candidate_pool_size],
             ).fetchall()
+        # SQLite's RANDOM() is unseeded; a stable order lets random.seed() pin the sampling.
+        rows.sort(key=lambda r: r['path'])
 
         candidates = []
         for row in rows:

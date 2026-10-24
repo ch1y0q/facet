@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit, ChangeDetectionStrategy } from '@angular/core';
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -9,6 +9,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '../../../core/services/api.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { i18nKeys } from '../../../core/i18n/keys';
+import { copyText } from '../../utils/clipboard';
 
 export interface ShareDialogData {
   entityType: 'album' | 'person';
@@ -35,6 +36,7 @@ export interface ShareDialogData {
     MatDialogModule, MatButtonModule, MatIconModule,
     MatInputModule, MatFormFieldModule, MatTooltipModule, TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title class="truncate" [matTooltip]="titleKey | translate">{{ titleKey | translate }}</h2>
     <mat-dialog-content>
@@ -118,20 +120,9 @@ export class ShareDialogComponent implements OnInit {
   }
 
   protected async copyLink(): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(this.fullShareUrl());
-      this.copied.set(true);
-      setTimeout(() => this.copied.set(false), 2000);
-    } catch {
-      // Fallback: select and copy via execCommand for older browsers
-      const input = document.querySelector<HTMLInputElement>('mat-dialog-content input');
-      if (input) {
-        input.select();
-        document.execCommand('copy');
-        this.copied.set(true);
-        setTimeout(() => this.copied.set(false), 2000);
-      }
-    }
+    if (!await copyText(this.fullShareUrl())) return;
+    this.copied.set(true);
+    setTimeout(() => this.copied.set(false), 2000);
   }
 
   protected async revoke(): Promise<void> {
