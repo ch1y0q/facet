@@ -4,7 +4,9 @@
 
 Recettes pratiques, étape par étape, pour faire circuler dans les deux sens les notes, libellés et tags de Facet avec les éditeurs externes et les outils de gestion de photothèque que les photographes utilisent réellement. Cette page suppose que vous savez déjà *que* Facet écrit du XMP — voir [Commandes — Aperçu et export](COMMANDS.md#preview--export) pour la référence complète des options `--export-sidecars` / `--import-sidecars` et la correspondance des champs (`xmp:Rating`, `xmp:Label`, `dc:subject`).
 
-Une position définie dans la visionneuse reste dans la base de données de Facet : elle n’est écrite ni dans les fichiers annexes XMP ni dans les fichiers image.
+Les positions manuelles et les décisions sont transférées uniquement lors d’un export explicite des métadonnées dans le visualiseur ou avec `--export-sidecars`. Les coordonnées utilisent `exif:GPSLatitude` / `exif:GPSLongitude` ; les anciennes coordonnées issues du scan ne remplacent pas celles du fichier. `--embed-originals` écrit aussi le GPS EXIF dans les originaux compatibles.
+
+L’espace de noms `https://github.com/ncoevoet/facet/ns/1.0/` définit `facet:ReviewDecision` (`kept`, `rejected`, `undecided`) et `facet:GPSState` (`set`, `cleared`). Conserver reste indépendant des étoiles et favoris ; rejeter efface Conserver, étoiles et favori. `--import-sidecars` applique les décisions présentes sans utiliser la date du scan. Le GPS manuel existant est préservé sauf avec `--overwrite-manual-gps`. Un effacement explicite est importé, un champ absent ou des coordonnées invalides ne suppriment rien. `--user alice` respecte ses dossiers visibles et décisions privées ; le GPS est partagé. Sans utilisateur, le CLI utilise l’état global. Si `.xmp` et `.facet.xmp` existent, le plus récemment modifié est importé. ExifTool préserve les métadonnées étrangères ; sans lui, l’export conserve le sidecar existant et utilise `.facet.xmp`. Les originaux ne changent que sur demande explicite d’intégration.
 
 ## Le piège du nommage des sidecars RAW
 

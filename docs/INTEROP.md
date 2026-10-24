@@ -4,7 +4,9 @@
 
 Practical, step-by-step recipes for round-tripping Facet's ratings, labels, and tags with the external editors and DAM tools people actually use. This page assumes you already know *that* Facet writes XMP — see [Commands — Preview & Export](COMMANDS.md#preview--export) for the full `--export-sidecars` / `--import-sidecars` flag reference and the field mapping (`xmp:Rating`, `xmp:Label`, `dc:subject`).
 
-A location set in the viewer stays in Facet's database: it is not written to XMP sidecars or to the image files.
+Manual locations and review decisions travel only when you explicitly export metadata in the viewer or run `--export-sidecars`. GPS uses standard `exif:GPSLatitude` / `exif:GPSLongitude`; only manually set locations are exported, so stale scanned GPS cannot replace file GPS. `--embed-originals` also writes EXIF GPS in supported originals. Clearing a location exports an explicit clear; absent fields never clear a location on import.
+
+The Facet namespace `https://github.com/ncoevoet/facet/ns/1.0/` defines `facet:ReviewDecision` (`kept`, `rejected`, `undecided`) and `facet:GPSState` (`set`, `cleared`). Keep is independent of stars and favorites; rejection clears Keep, stars and favorite. `--import-sidecars` applies present Facet decisions deliberately, without comparing them to scan times. Manual GPS already in Facet is preserved unless you add `--overwrite-manual-gps`. Invalid or incomplete coordinates are ignored. Named-user imports/exports (`--user alice`) respect that user's visible folders and private decisions; GPS remains shared. With no user, the CLI operates on global state. If both `<image>.xmp` and the fallback `<image>.facet.xmp` exist, import reads the one modified most recently. ExifTool merges foreign metadata; without it, export leaves an existing editor sidecar intact and writes the fallback. Originals remain untouched unless you explicitly request embedding.
 
 ## The RAW sidecar naming gotcha
 

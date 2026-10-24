@@ -4,7 +4,9 @@
 
 实用的分步指南，帮助你在 Facet 与摄影师真正在用的外部后期软件和数字资产管理（DAM）工具之间双向流转 Facet 的星级、颜色标签和标签。本页假设你已经知道 Facet *确实* 会写出 XMP —— `--export-sidecars` / `--import-sidecars` 选项的完整说明和字段对应关系（`xmp:Rating`、`xmp:Label`、`dc:subject`）请见[命令 — 预览与导出](COMMANDS.md#预览与导出)。
 
-在查看器中设置的位置只保存在 Facet 的数据库中：不会写入 XMP 附属文件或图像文件。
+只有在查看器中明确导出元数据或运行 `--export-sidecars` 时，才会导出手动位置和审阅决定。GPS 使用标准 `exif:GPSLatitude` / `exif:GPSLongitude`；扫描得到的旧坐标不会覆盖文件中的 GPS。`--embed-originals` 还会将 EXIF GPS 写入支持的原始文件。
+
+命名空间 `https://github.com/ncoevoet/facet/ns/1.0/` 定义 `facet:ReviewDecision`（`kept`、`rejected`、`undecided`）和 `facet:GPSState`（`set`、`cleared`）。保留独立于星级和收藏；淘汰会清除保留、星级和收藏。`--import-sidecars` 明确应用存在的决定，不比较扫描时间。已有手动 GPS 默认保留；使用 `--overwrite-manual-gps` 才会覆盖。明确清除的位置可以导入；缺失字段或无效坐标不会清除位置。`--user alice` 遵守该用户的可见目录和私人决定；GPS 仍为共享数据。未指定用户时使用全局状态。如果 `.xmp` 和 `.facet.xmp` 同时存在，则导入修改时间较新的文件。ExifTool 保留其他软件的元数据；没有 ExifTool 时，保留原有附属文件并写入 `.facet.xmp`。只有明确请求嵌入时才修改原始文件。
 
 ## RAW 附属文件命名陷阱
 
