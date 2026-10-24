@@ -222,3 +222,45 @@ def test_cli_export_effective_decision(tmp_path, monkeypatch, user):
     conn.execute('INSERT INTO user_preferences(user_id,photo_path,is_kept) VALUES (?,?,1)', ('alice', str(image)))
     assert export_sidecars(conn, user_id=user)['written'] == 1
     assert parse_sidecar(str(image) + '.xmp')['review_decision'] == 'kept'
+
+
+@pytest.mark.parametrize('decision,external_rating,expected', [
+    ('undecided', -1, (0, 1, 0)),
+    ('kept', -1, (0, 1, 0)),
+    ('rejected', 4, (4, 0, 0)),
+])
+def test_external_editor_review_changes_override_preserved_private_decision(
+        tmp_path, decision, external_rating, expected):
+    from xml.etree import ElementTree as ET
+    from processing.xmp_export import NS_XMP, NS_RDF
+    image = tmp_path / 'external.jpg'
+    rating = XmpRating.from_row({'is_kept': decision == 'kept',
+                                'is_rejected': decision == 'rejected'})
+    packet = ET.fromstring(build_xmp(rating))
+    desc = packet.find(f'.//{{{NS_RDF}}}Description')
+    # Editors preserve unfamiliar namespace tags while changing standard fields.
+    desc.set(f'{{{NS_XMP}}}Rating', str(external_rating))
+    desc.attrib.pop(f'{{{NS_XMP}}}Label', None)
+    Path(str(image) + '.xmp').write_bytes(ET.tostring(packet))
+    conn = database(tmp_path)
+    conn.execute('INSERT INTO photos(path,is_kept,is_rejected) VALUES (?,?,?)',
+                 (str(image), rating.is_kept, rating.is_rejected))
+    import_sidecars(conn)
+    assert tuple(conn.execute('SELECT star_rating,is_rejected,is_kept FROM photos').fetchone()) == expected
+
+
+def test_conflicting_standard_review_still_respects_legacy_timestamp_gate(tmp_path):
+    from xml.etree import ElementTree as ET
+    from processing.xmp_export import NS_XMP, NS_RDF
+    image = tmp_path / 'older.jpg'
+    packet = ET.fromstring(build_xmp(XmpRating(is_rejected=True)))
+    desc = packet.find(f'.//{{{NS_RDF}}}Description')
+    desc.set(f'{{{NS_XMP}}}Rating', '4')
+    desc.set(f'{{{NS_XMP}}}MetadataDate', '2000-01-01T00:00:00Z')
+    desc.attrib.pop(f'{{{NS_XMP}}}Label', None)
+    Path(str(image) + '.xmp').write_bytes(ET.tostring(packet))
+    conn = database(tmp_path)
+    conn.execute('INSERT INTO photos(path,star_rating,is_favorite,is_kept,scanned_at) VALUES (?,5,1,1,?)',
+                 (str(image), '2020-01-01T00:00:00Z'))
+    import_sidecars(conn)
+    assert tuple(conn.execute('SELECT star_rating,is_favorite,is_rejected,is_kept FROM photos').fetchone()) == (5,1,0,1)

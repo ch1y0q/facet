@@ -6,7 +6,7 @@
 
 只有在查看器中明确导出元数据或运行 `--export-sidecars` 时，才会导出手动位置和审阅决定。GPS 使用标准 `exif:GPSLatitude` / `exif:GPSLongitude`；扫描得到的旧坐标不会覆盖文件中的 GPS。`--embed-originals` 还会将 EXIF GPS 写入支持的原始文件。
 
-命名空间 `https://github.com/ncoevoet/facet/ns/1.0/` 定义 `facet:ReviewDecision`（`kept`、`rejected`、`undecided`）和 `facet:GPSState`（`set`、`cleared`）。保留独立于星级和收藏；淘汰会清除保留、星级和收藏。`--import-sidecars` 明确应用存在的决定，不比较扫描时间。已有手动 GPS 默认保留；使用 `--overwrite-manual-gps` 才会覆盖。明确清除的位置可以导入；缺失字段或无效坐标不会清除位置。`--user alice` 遵守该用户的可见目录和私人决定；GPS 仍为共享数据。未指定用户时使用全局状态。如果 `.xmp` 和 `.facet.xmp` 同时存在，则导入修改时间较新的文件。ExifTool 保留其他软件的元数据；没有 ExifTool 时，保留原有附属文件并写入 `.facet.xmp`。只有明确请求嵌入时才修改原始文件。
+命名空间 `https://github.com/ncoevoet/facet/ns/1.0/` 定义 `facet:ReviewDecision`（`kept`、`rejected`、`undecided`）和 `facet:GPSState`（`set`、`cleared`）。保留独立于星级和收藏；淘汰会清除保留、星级和收藏。`--import-sidecars` 在标准审阅字段一致或缺失时应用私人决定。如果标准淘汰状态与私人字段不一致，说明外部编辑器更改了标准字段而保留了旧的私人标签：此时忽略私人决定，标准字段仍按现有的扫描时间规则判断是否导入。只包含决定的导入仍可明确应用，无需比较扫描时间。已有手动 GPS 默认保留；使用 `--overwrite-manual-gps` 才会覆盖。明确清除的位置可以导入；缺失字段或无效坐标不会清除位置。`--user alice` 遵守该用户的可见目录和私人决定；GPS 仍为共享数据。未指定用户时使用全局状态。如果 `.xmp` 和 `.facet.xmp` 同时存在，则导入修改时间较新的文件。ExifTool 保留其他软件的元数据；没有 ExifTool 时，保留原有附属文件并写入 `.facet.xmp`。只有明确请求嵌入时才修改原始文件。
 
 ## RAW 附属文件命名陷阱
 

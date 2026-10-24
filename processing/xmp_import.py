@@ -4,8 +4,10 @@ The reverse of :mod:`processing.xmp_export`: read ``<image>.xmp`` written by
 darktable / Lightroom / etc. and fold ratings, picks and keywords back into the
 ``photos`` table. Pure stdlib XML — no exiftool needed (sidecars are plain XMP).
 
-Facet decisions apply only on this explicit import and win over standard
-rating/label reject conventions when present. Manual GPS overrides (including
+Facet decisions apply on explicit import when standard review fields agree or
+are absent. A mismatch indicates an external editor changed standard fields
+while preserving Facet's private tag; those standard fields then follow the
+legacy timestamp gate and the stale private decision is ignored. Manual GPS overrides (including
 clears) import only where no manual override exists, unless the caller requests
 ``overwrite_manual_gps=True``. Missing/invalid new fields preserve state. These
 fields never use scanned_at as a proxy for the time of a manual edit. If both
@@ -305,15 +307,20 @@ def import_sidecars(conn, root: str | None = None, *, user_id: str | None = None
             favorite = parsed["is_favorite"]
             rejected = parsed["is_rejected"]
 
-        # This explicit import is authoritative for Facet decisions; scan times
-        # are not edit times. Missing private fields leave existing state alone.
-        if parsed["review_decision"] is not None:
-            kept = parsed["review_decision"] == "kept"
-            rejected = parsed["review_decision"] == "rejected"
+        # Facet exports consistent private/standard rejection state. Editors
+        # preserve unknown tags, so disagreement means the private decision is
+        # stale: leave the standard fields to the timestamp gate above. Missing
+        # standard fields still allow deliberate decision-only imports.
+        decision = parsed["review_decision"]
+        decision_conflicts = (parsed["has_rating"] and decision is not None
+                              and parsed["is_rejected"] != (decision == "rejected"))
+        if decision is not None and not decision_conflicts:
+            kept = decision == "kept"
+            rejected = decision == "rejected"
+            if rejected:
+                star, favorite = 0, False
         if rejected:
             kept = False
-            if parsed["review_decision"] == "rejected":
-                star, favorite = 0, False
         gps = parsed["gps"]
         gps_changed = (gps is not None and (not row["gps_manually_set"] or overwrite_manual_gps)
                        and (not row["gps_manually_set"]
