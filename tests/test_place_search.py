@@ -8,6 +8,7 @@ import pytest
 from fastapi import HTTPException
 
 from api import place_search
+from api.database import get_db
 
 
 def feature(coords=None, **props):
@@ -23,15 +24,26 @@ def reset_search():
         yield
 
 
-def test_explicit_contract_and_no_assignment(edition_client):
+def test_explicit_contract_and_no_assignment(edition_client, seeded_photos):
+    # A previous GPS edit may have populated recents before search is opened.
+    photo = seeded_photos[0]['path']
+    assert edition_client.put('/api/photo/gps', json={
+        'path': photo, 'gps_latitude': 1, 'gps_longitude': 2,
+    }).status_code == 200
     with patch('api.place_search._fetch', return_value={'type': 'FeatureCollection', 'features': [feature(city='Berlin', country='Germany')]}) as fetch:
-        assert edition_client.get('/api/places').status_code == 200
+        before = edition_client.get('/api/places')
+        assert before.status_code == 200
+        assert before.json()['recent']
+        with get_db() as conn:
+            gps_before = tuple(conn.execute('SELECT gps_latitude,gps_longitude,gps_manually_set FROM photos WHERE path=?', (photo,)).fetchone())
         fetch.assert_not_called()
         result = edition_client.get('/api/places/search', params={'q': ' Berlin '})
         assert result.status_code == 200
         assert result.json() == {'results': [{'label': 'Berlin, Germany', 'latitude': 52.5, 'longitude': 13.4}]}
         fetch.assert_called_once_with('https://example.org/api', 'Berlin')
-        assert edition_client.get('/api/places').json() == {'places': [], 'recent': []}
+        assert edition_client.get('/api/places').json() == before.json()
+        with get_db() as conn:
+            assert tuple(conn.execute('SELECT gps_latitude,gps_longitude,gps_manually_set FROM photos WHERE path=?', (photo,)).fetchone()) == gps_before
 
 
 @pytest.mark.parametrize('query', ['', 'ab', 'x' * 201, '   '])
