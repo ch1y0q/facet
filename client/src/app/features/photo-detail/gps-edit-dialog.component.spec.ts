@@ -59,6 +59,60 @@ describe('GpsEditDialogComponent', () => {
     } else component = TestBed.inject(GpsEditDialogComponentClass);
   }
 
+  it('keeps a blank or partial batch draft from previewing or clearing photos', async () => {
+    createComponent({ path: '', filename: 'selection', lat: null, lng: null, batch: { photo_paths: ['/partial.jpg'] } });
+    expect(component.batchCoordinatesValid()).toBe(false);
+    await component.previewBatch();
+    await component.save();
+    component.setLatitude(1);
+    expect(component.batchCoordinatesValid()).toBe(false);
+    await component.previewBatch();
+    expect(mockApi.post).not.toHaveBeenCalled();
+    expect(mockApi.put).not.toHaveBeenCalled();
+  });
+
+  it('requires a fresh batch preview, captures its target and refreshes after late completion', async () => {
+    const target = { photo_paths: ['/one.jpg', '/two.jpg'] };
+    const onBatchApplied = vi.fn();
+    createComponent({ path: '', filename: 'selection', lat: null, lng: null, batch: target, onBatchApplied });
+    component.selectRecent({ latitude: 1, longitude: 2 });
+    await component.save();
+    expect(mockApi.post).not.toHaveBeenCalled();
+    mockApi.post.mockReturnValue(of({ changed: 1, skipped: 1, preview_token: 'token' }));
+    await component.previewBatch();
+    expect(component.canApplyBatch()).toBe(true);
+    component.setLatitude(3);
+    expect(component.canApplyBatch()).toBe(false);
+    component.setLatitude(1);
+    const pending = new Subject<{ changed: number; skipped: number; preview_token: string }>();
+    mockApi.post.mockReturnValue(pending);
+    const saving = component.save();
+    target.photo_paths.push('/later.jpg');
+    component.cancel();
+    TestBed.resetTestingModule();
+    pending.next({ changed: 1, skipped: 1, preview_token: 'token' });
+    pending.complete();
+    await saving;
+    expect(mockApi.post).toHaveBeenLastCalledWith('/photos/batch_gps', expect.objectContaining({
+      photo_paths: ['/one.jpg', '/two.jpg'], preview: false, preview_token: 'token', only_missing: true,
+    }));
+    expect(mockStore.loadPhotos).toHaveBeenCalledTimes(1);
+    expect(onBatchApplied).toHaveBeenCalledTimes(1);
+    expect(mockDialogRef.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('invalidates a batch preview after apply fails and keeps the draft', async () => {
+    createComponent({ path: '', filename: 'selection', lat: null, lng: null, batch: { filters: { no_gps: '1' } } });
+    component.selectRecent({ latitude: 1, longitude: 2 });
+    mockApi.post.mockReturnValue(of({ changed: 2, skipped: 0, preview_token: 'token' }));
+    await component.previewBatch();
+    mockApi.post.mockReturnValue(throwError(() => ({ status: 409 })));
+    await component.save();
+    expect(component.canApplyBatch()).toBe(false);
+    expect(component.selectedLat()).toBe(1);
+    expect(mockDialogRef.close).not.toHaveBeenCalled();
+  });
+
   it('should initialize with provided coordinates', () => {
     createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 48.8566, lng: 2.3522 });
 
