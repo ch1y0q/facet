@@ -27,7 +27,7 @@ def run_exiftool_process(args, *, timeout):
                 assignment = re.fullmatch(r'(-[-:\w]+?#?)([-+<]?=)(.*)', argument, re.DOTALL)
                 if '\n' in argument or '\r' in argument:
                     if not assignment or assignment[2] == '<=':
-                        raise ValueError('ExifTool filename or option contains a newline')
+                        raise RuntimeError('ExifTool filename or option contains a newline')
                     filename = os.path.join(directory, str(index))
                     descriptor = os.open(filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
                     with os.fdopen(descriptor, 'wb') as stream:

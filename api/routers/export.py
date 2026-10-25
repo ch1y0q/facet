@@ -949,7 +949,7 @@ def api_export_xmp(
         result = write_metadata(real_disk, _rating_from(row, regions_map),
                                 overwrite=body.overwrite, embed_original=False)
     except MetadataPreconditionError as ex:
-        raise HTTPException(status_code=412, detail=str(ex)) from ex
+        raise HTTPException(status_code=412, detail="Existing metadata needs repair before exporting") from ex
     except (OSError, RuntimeError):
         logger.exception("Failed to write metadata for %s", body.path)
         raise HTTPException(status_code=500, detail="Failed to write metadata")
@@ -983,7 +983,7 @@ def api_embed_metadata(
     try:
         result = write_metadata(real_disk, _rating_from(row, regions_map), embed_original=True)
     except MetadataPreconditionError as ex:
-        raise HTTPException(status_code=412, detail=str(ex)) from ex
+        raise HTTPException(status_code=412, detail="Existing metadata needs repair before exporting") from ex
     except (OSError, RuntimeError):
         logger.exception("Failed to embed metadata for %s", body.path)
         raise HTTPException(status_code=500, detail="Failed to embed metadata")

@@ -343,7 +343,8 @@ class TestExiftoolArgs:
         import json
         reg = FaceRegion.from_bbox("Alice", 0, 0, 100, 100, 1000, 1000)
         args = xe._region_args([reg])
-        region = json.loads(args[-1].split("=", 1)[1])
+        addition = next(arg for arg in args if arg.startswith('-XMP-mwg-rs:RegionList+='))
+        region = json.loads(addition.split("=", 1)[1])
         assert "-XMP-mwg-rs:RegionAppliedToDimensionsW=1000" in args
         assert "-XMP-mwg-rs:RegionAppliedToDimensionsH=1000" in args
         assert region["Area"] == {
@@ -380,6 +381,8 @@ class TestWriteMetadata:
     def test_safe_format_embeds_when_opted_in(self, monkeypatch, tmp_path):
         calls = []
         monkeypatch.setattr(xe, "exiftool_available", lambda: True)
+        monkeypatch.setattr(xe, "_resolve_exiftool", lambda: 'mock-exiftool')
+        monkeypatch.setattr(xe, "_exiftool_write_args", lambda *args, **kwargs: [])
         monkeypatch.setattr(xe, "_run_exiftool",
                             lambda target, rating, *, timeout: calls.append(target))
         img = tmp_path / "p.jpg"

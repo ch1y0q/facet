@@ -48,6 +48,41 @@ def test_foreign_dimensions_are_not_silently_reinterpreted(caplog):
     assert "Skipping face regions" in caplog.text
 
 
+@pytest.mark.parametrize('version', [None, (12, 57), (12, 64), (12, 65)])
+@pytest.mark.parametrize('clear', [False, True])
+def test_json_region_writes_require_supported_version_but_ratings_still_export(tmp_path, monkeypatch, version, clear):
+    owned = dict(FOREIGN, Extensions={'XMP-facet:RegionOwner': 'Facet'})
+    monkeypatch.setattr(xe, '_read_existing_metadata', lambda *args, **kwargs: ([], [], False))
+    monkeypatch.setattr(xe, '_read_existing_regions', lambda *args, **kwargs: _info([owned]))
+    monkeypatch.setattr(xe, '_exiftool_version', lambda exe: version)
+    rating = xe.XmpRating(star_rating=4, regions=[] if clear else [_face()])
+    args = xe._exiftool_write_args(str(tmp_path / 'test.xmp'), rating, 'exiftool', timeout=1)
+    assert '-XMP:Rating=4' in args
+    assert any('RegionList' in arg for arg in args) == (version is not None and version >= (12, 65))
+
+
+@pytest.mark.skipif(not EXE, reason='requires ExifTool')
+def test_real_older_exiftool_skips_faces_and_preserves_other_metadata(tmp_path, caplog):
+    version = xe._exiftool_version(EXE)
+    if version is None or version >= (12, 65):
+        pytest.skip('requires actual ExifTool before 12.65')
+    image = tmp_path / 'old.jpg'
+    Image.new('RGB', (100, 80), 'blue').save(image)
+    sidecar = Path(str(image) + '.xmp')
+    sidecar.write_text(xe.build_xmp(xe.XmpRating()), encoding='utf-8')
+    subprocess.run([EXE, '-overwrite_original', '-XMP-mwg-rs:RegionName=Legacy',
+                    '-XMP-mwg-rs:RegionType=Face', str(sidecar)], check=True, capture_output=True)
+    before = xe._read_existing_regions(str(sidecar), EXE, timeout=30)
+    assert before['RegionList'][0]['Name'] == 'Legacy'
+    for regions in ([_face('New')], []):
+        xe.write_metadata(str(image), xe.XmpRating(star_rating=4, regions=regions))
+        assert xe._read_existing_regions(str(sidecar), EXE, timeout=30) == before
+        result = subprocess.run([EXE, '-json', '-XMP-xmp:Rating', str(sidecar)], capture_output=True,
+                                text=True, encoding='utf-8', check=True)
+        assert json.loads(result.stdout)[0]['Rating'] == 4
+    assert 'Skipping face regions' in caplog.text
+
+
 @pytest.mark.skipif(not EXE, reason="ExifTool not installed")
 @pytest.mark.parametrize("embedded", [False, True])
 def test_real_writer_preserves_foreign_regions_on_update_and_clear(tmp_path, embedded):
@@ -120,7 +155,7 @@ def test_unknown_foreign_extension_survives_owned_face_updates(tmp_path):
 
 
 @pytest.mark.skipif(not EXE, reason="ExifTool not installed")
-@pytest.mark.parametrize("name", ["1.50", "1e3", "true", "false", "null"])
+@pytest.mark.parametrize("name", ["1.50", "1e3", "true", "false", "True", "FALSE", "tRuE", "null", "0x10", "-0"])
 @pytest.mark.parametrize("embedded", [False, True])
 def test_numeric_names_and_formatted_areas_repeat_drift_and_clear(tmp_path, name, embedded):
     image = tmp_path / "numeric.jpg"
@@ -177,7 +212,7 @@ def test_dimension_conflicts_skip_faces_but_write_other_metadata(tmp_path, caplo
     assert "Skipping face regions" in caplog.text
 
 
-@pytest.mark.parametrize("response", [[], [None], [{"Error": "bad metadata"}], [{"RegionInfo": []}],
+@pytest.mark.parametrize("response", [[], [None], [{"Error": "bad metadata"}], [{"Error": None}], [{"RegionInfo": []}],
                                        [{"RegionInfo": {"RegionList": "invalid"}}],
                                        [{"RegionInfo": {"RegionList": [None]}}]])
 def test_invalid_region_read_fails_closed_without_writing(tmp_path, monkeypatch, response):
@@ -202,6 +237,44 @@ def test_region_reader_timeout_or_io_failure_is_a_precondition(tmp_path, monkeyp
     with pytest.raises(xe.MetadataPreconditionError):
         xe._read_existing_regions(str(target), "exiftool", timeout=1)
     assert target.read_bytes() == before
+
+
+@pytest.mark.parametrize('failure', ['malformed', 'missing', 'timeout', 'io'])
+def test_exact_region_read_failure_refuses_without_changing_packet(tmp_path, monkeypatch, failure):
+    target = tmp_path / 'boolean.xmp'
+    before = xe.build_xmp(xe.XmpRating()).encode('utf-8')
+    target.write_bytes(before)
+    def run(args, **kwargs):
+        assert '-overwrite_original' not in args
+        if '-X' in args:
+            if failure == 'timeout':
+                raise subprocess.TimeoutExpired(args, 1)
+            if failure == 'io':
+                raise OSError('read failed')
+            return SimpleNamespace(returncode=0, stdout='not XML' if failure == 'malformed' else '<empty/>')
+        return SimpleNamespace(returncode=0, stdout='[{"RegionInfo":{"RegionList":[{"Name":true}]}}]')
+    monkeypatch.setattr(xe.subprocess, 'run', run)
+    with pytest.raises(xe.MetadataPreconditionError):
+        xe._read_existing_regions(str(target), 'exiftool', timeout=1)
+    assert target.read_bytes() == before
+
+
+@pytest.mark.skipif(not EXE, reason='requires ExifTool')
+def test_boolean_extension_case_is_preserved_when_clearing_owned_region(tmp_path):
+    image = tmp_path / 'extension.jpg'
+    Image.new('RGB', (100, 80), 'blue').save(image)
+    xe.write_metadata(str(image), xe.XmpRating(regions=[_face()]))
+    sidecar = Path(str(image) + '.xmp')
+    tree = ET.parse(sidecar)
+    extensions = tree.find('.//{http://www.metadataworkinggroup.com/schemas/regions/}Extensions')
+    creator = ET.SubElement(extensions, f'{{{xe.NS_DC}}}creator')
+    sequence = ET.SubElement(creator, f'{{{xe.NS_RDF}}}Seq')
+    ET.SubElement(sequence, f'{{{xe.NS_RDF}}}li').text = 'tRuE'
+    tree.write(sidecar, encoding='utf-8')
+    region = xe._read_existing_regions(str(sidecar), EXE, timeout=30)['RegionList'][0]
+    assert region['Extensions']['XMP-dc:Creator'] == ['tRuE']
+    xe.write_metadata(str(image), xe.XmpRating())
+    assert not xe._read_existing_regions(str(sidecar), EXE, timeout=30).get('RegionList')
 
 
 @pytest.mark.skipif(not EXE, reason="ExifTool not installed")

@@ -490,6 +490,7 @@ def _resolve_exiftool():
 # darktable:multi_name="..."``) and emit malformed XML while exiting 0.
 _DEFECTIVE_EXIFTOOL_MIN = (13, 23)
 _DEFECTIVE_EXIFTOOL_FIXED = (13, 28)
+_JSON_REGION_MIN = (12, 65)
 
 
 @functools.lru_cache(maxsize=8)
@@ -549,6 +550,19 @@ def _pixel_dimensions(value) -> tuple[float, float] | None:
     return dimensions
 
 
+def _region_dimensions_allow_update(regions, info, foreign):
+    if not regions:
+        return True
+    dimensions = {"W": regions[0].image_width, "H": regions[0].image_height, "Unit": "pixel"}
+    mixed = any(r.image_width != dimensions["W"] or r.image_height != dimensions["H"] for r in regions)
+    incompatible = foreign and _pixel_dimensions(info.get("AppliedToDimensions")) != _pixel_dimensions(dimensions)
+    if mixed or _pixel_dimensions(dimensions) is None or incompatible:
+        logger.warning("Skipping face regions: current faces have different image dimensions or "
+                       "foreign regions use different or unknown dimensions; other metadata will be exported")
+        return False
+    return True
+
+
 def _region_args(regions: list[FaceRegion], existing: dict | None = None) -> list[str]:
     """Replace explicitly Facet-owned regions, preserving every unmarked region.
 
@@ -561,14 +575,8 @@ def _region_args(regions: list[FaceRegion], existing: dict | None = None) -> lis
     foreign = [region for region in old_regions if not _region_is_owned(region)]
     if not regions and len(foreign) == len(old_regions):
         return []
-    if regions:
-        dimensions = {"W": regions[0].image_width, "H": regions[0].image_height, "Unit": "pixel"}
-        mixed = any(r.image_width != dimensions["W"] or r.image_height != dimensions["H"] for r in regions)
-        incompatible = foreign and _pixel_dimensions(info.get("AppliedToDimensions")) != _pixel_dimensions(dimensions)
-        if mixed or _pixel_dimensions(dimensions) is None or incompatible:
-            logger.warning("Skipping face regions: current faces have different image dimensions or "
-                           "foreign regions use different or unknown dimensions; other metadata will be exported")
-            return []
+    if not _region_dimensions_allow_update(regions, info, foreign):
+        return []
     # Modify individual list entries rather than rewriting the foreign structs:
     # unknown extension namespaces must survive even if ExifTool cannot expose
     # or serialize their fields in JSON.
@@ -603,6 +611,39 @@ def _raw_json_literals(value):
     return "null" if value is None else value
 
 
+def _has_boolean(value):
+    if type(value) is bool:
+        return True
+    if isinstance(value, dict):
+        return any(_has_boolean(child) for child in value.values())
+    return isinstance(value, list) and any(_has_boolean(child) for child in value)
+
+
+def _restore_region_boolean_case(value, node):
+    """Restore only coerced leaves; all other JSON values keep their raw form."""
+    if not _has_boolean(value):
+        return value
+    if type(value) is bool:
+        if len(node) or node.text is None or node.text.casefold() != ('true' if value else 'false'):
+            raise ValueError('invalid literal region value')
+        return node.text
+    if isinstance(value, list):
+        members = node.findall(f'./{{{NS_RDF}}}Bag/{{{NS_RDF}}}li')
+        if len(members) != len(value):
+            raise ValueError('region list differs between reads')
+        return [_restore_region_boolean_case(child, member) for child, member in zip(value, members)]
+    restored = value.copy()
+    for key, child in value.items():
+        if _has_boolean(child):
+            prefix, _, local = key.rpartition(':')
+            matches = [member for member in node if member.tag.rsplit('}', 1)[-1] == (local or key)
+                       and (not prefix or '/' + prefix + '/' in member.tag)]
+            if len(matches) != 1:
+                raise ValueError('region field differs between reads')
+            restored[key] = _restore_region_boolean_case(child, matches[0])
+    return restored
+
+
 def _read_existing_regions(target: str, exe: str, *, timeout: int) -> dict:
     """Read structured MWG metadata before writing; fail closed on read errors."""
     if not os.path.exists(target):
@@ -617,16 +658,26 @@ def _read_existing_regions(target: str, exe: str, *, timeout: int) -> dict:
         )
         # ExifTool emits numeric-looking strings as unquoted JSON numbers.
         # Subtraction matches their lexical value, so 1.50 must not become 1.5.
-        records = (_raw_json_literals(json.loads(result.stdout, parse_int=str, parse_float=str))
+        records = (json.loads(result.stdout, parse_int=str, parse_float=str)
                    if result.returncode == 0 else None)
         if not isinstance(records, list) or len(records) != 1 or not isinstance(records[0], dict):
             raise ValueError("invalid metadata response")
-        if records[0].get("Error"):
+        if 'Error' in records[0]:
             raise ValueError("metadata read failed")
         info = records[0].get("RegionInfo", {})
         if not isinstance(info, dict):
             raise ValueError("invalid MWG structure")
-        return info
+        if _has_boolean(info):
+            exact = run_exiftool_process(
+                [exe, '-config', config, '-X', '-struct', '-XMP-mwg-rs:RegionInfo', target], timeout=timeout)
+            root = ET.fromstring(exact.stdout)
+            nodes = root.findall('.//{http://ns.exiftool.org/XMP/XMP-mwg-rs/1.0/}RegionInfo')
+            if (exact.returncode or root.tag != f'{{{NS_RDF}}}RDF'
+                    or len(root.findall(f'{{{NS_RDF}}}Description')) != 1 or len(nodes) != 1
+                    or any(node.tag.rsplit('}', 1)[-1] == 'Error' for node in root.iter())):
+                raise ValueError('cannot read exact region literals')
+            info = _restore_region_boolean_case(info, nodes[0])
+        return _raw_json_literals(info)
     except (OSError, subprocess.TimeoutExpired, ValueError, TypeError, AttributeError, ET.ParseError) as ex:
         raise MetadataPreconditionError(f"Cannot read face metadata for {target}; repair it before exporting") from ex
 
@@ -734,28 +785,17 @@ def _read_existing_metadata(target: str, exe: str, *,
     return flat, _listify(record.get("HierarchicalSubject")), record.get("DateState") == "set"
 
 
-def _run_exiftool(target: str, rating: XmpRating, *, timeout: int) -> None:
-    """Apply ``rating`` to ``target`` (an image file or a ``.xmp`` sidecar).
-
-    Creates the sidecar if it does not exist, merges into it if it does, and
-    preserves all foreign nodes — including external keywords, which are read
-    first and unioned with Facet's own. Raises ``RuntimeError`` on failure.
-    """
-    exe = _resolve_exiftool()
-    if not exe:
-        raise RuntimeError("exiftool binary not available")
-    # The snapshot/restore below touches the sidecar directly, so it works on
-    # the path re-confined to the image's directory, never the raw argument.
-    sidecar = (_contained_sidecar(target[:-4], target[-4:])
-               if target.lower().endswith(".xmp") else None)
-    snapshot = None
-    if sidecar and os.path.exists(sidecar):
-        with open(sidecar, "rb") as handle:
-            snapshot = handle.read()
+def _exiftool_write_args(target: str, rating: XmpRating, exe: str, *, timeout: int) -> list[str]:
+    """Inspect a target and build its write without changing either file."""
     existing_flat, existing_hier, facet_dated = _read_existing_metadata(target, exe, timeout=timeout)
     tag_args = _exiftool_tag_args(rating, existing_flat, existing_hier, facet_dated)
     existing_regions = _read_existing_regions(target, exe, timeout=timeout)
-    tag_args += _region_args(rating.regions, existing_regions)
+    version = _exiftool_version(exe)
+    if version is not None and version >= _JSON_REGION_MIN:
+        tag_args += _region_args(rating.regions, existing_regions)
+    elif rating.regions or existing_regions:
+        logger.warning("Skipping face regions: JSON region writes require ExifTool 12.65 or newer; "
+                       "other metadata will be exported")
     if not target.lower().endswith(".xmp") and rating.manual_date() is not None:
         tag_args.append(f"-EXIF:DateTimeOriginal={rating.manual_date()}")
     config = os.path.join(os.path.dirname(__file__), "facet_exiftool.config")
@@ -768,7 +808,21 @@ def _run_exiftool(target: str, rating: XmpRating, *, timeout: int) -> None:
                 assert value is not None
                 coordinate, reference = str(abs(value)), directions[value < 0]
             tag_args += [f"-EXIF:GPS{axis}={coordinate}", f"-EXIF:GPS{axis}Ref={reference}"]
-    args = [exe, "-config", config, "-q", "-m", "-overwrite_original", *tag_args, target]
+    return [exe, "-config", config, "-q", "-m", "-overwrite_original", *tag_args, target]
+
+
+def _run_exiftool(target: str, rating: XmpRating, *, timeout: int) -> None:
+    """Re-read a target immediately before its write, preserving foreign state."""
+    exe = _resolve_exiftool()
+    if not exe:
+        raise RuntimeError("exiftool binary not available")
+    sidecar = (_contained_sidecar(target[:-4], target[-4:])
+               if target.lower().endswith(".xmp") else None)
+    snapshot = None
+    if sidecar and os.path.exists(sidecar):
+        with open(sidecar, "rb") as handle:
+            snapshot = handle.read()
+    args = _exiftool_write_args(target, rating, exe, timeout=timeout)
     try:
         result = run_exiftool_process(args, timeout=timeout)
     except subprocess.TimeoutExpired as ex:
@@ -820,11 +874,17 @@ def write_metadata(image_path: str, rating: XmpRating, *, overwrite: bool = Fals
         )
 
     ext = os.path.splitext(image_path)[1].lower().lstrip(".")
+    sidecar = _contained_sidecar(image_path, ".xmp")
     embedded = None
     if embed_original and ext in SAFE_EMBED_EXTS:
+        # Validate the companion before the original's runner inspects and
+        # writes the original. The companion runner re-reads for late changes.
+        exe = _resolve_exiftool()
+        if not exe:
+            raise RuntimeError("exiftool binary not available")
+        _exiftool_write_args(sidecar, rating, exe, timeout=timeout)
         _run_exiftool(image_path, rating, timeout=timeout)
         embedded = image_path
-    sidecar = _contained_sidecar(image_path, ".xmp")
     _run_exiftool(sidecar, rating, timeout=timeout)
     return {"ok": True, "embedded": embedded, "sidecar": sidecar, "skipped": False}
 
