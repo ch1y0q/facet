@@ -1319,7 +1319,9 @@
       "browser": "Retomar a fila guardada neste navegador."
     },
     "manual_faces_need_review": "Rostos manuais a rever",
-    "manual_faces_review_hint": "Com base na última análise ou verificação no editor de rostos, sem monitorização contínua. Abra o editor de rostos de uma fotografia para rever as marcações guardadas."
+    "manual_faces_review_hint": "Com base na última análise ou verificação no editor de rostos, sem monitorização contínua. Abra o editor de rostos de uma fotografia para rever as marcações guardadas.",
+    "faces_need_names": "Rostos sem nome",
+    "faces_need_names_hint": "Inclui rostos não atribuídos e grupos de pessoas sem nome. Use + para atribuir um rosto ou dê um nome a um grupo em Pessoas. Fotos sem rostos detetados são excluídas."
   },
   "composition_patterns": {
     "none": "Nenhum",
@@ -1711,7 +1713,10 @@
     "split_error": "Falha ao dividir a pessoa"
   },
   "person_selector": {
-    "create_new": "Criar nova pessoa"
+    "create_new": "Criar nova pessoa",
+    "ordering_hint": "Primeiro as pessoas atribuídas recentemente neste navegador, depois as que têm mais rostos nas fotos que você pode ver.",
+    "face_count": "{count} rostos",
+    "face_count_one": "1 rosto"
   },
   "slideshow": {
     "start": "Apresentação de slides",

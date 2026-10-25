@@ -252,6 +252,13 @@ def _apply_text_filters(where_clauses, sql_params, params, conn, include_manual=
             except ValueError:
                 pass
 
+    if params.get('faces_need_names') in ('1', 'true'):
+        from db.schema import person_not_hidden_clause
+        where_clauses.append(
+            'EXISTS (SELECT 1 FROM faces f LEFT JOIN persons p ON p.id=f.person_id '
+            'WHERE f.photo_path=photos.path AND (f.person_id IS NULL OR '
+            f"(p.id IS NOT NULL AND {person_not_hidden_clause('p')} AND TRIM(COALESCE(p.name,''))='')))")
+
     if params.get('manual_faces_need_review') in ('1', 'true'):
         where_clauses.append(
             'EXISTS (SELECT 1 FROM faces WHERE photo_path=photos.path '
@@ -1668,7 +1675,7 @@ async def api_similar_photos(
 
     # Read before the source SELECT: a commit landing between the two then
     # invalidates the cached ranking instead of being hidden behind it.
-    change_token = db_change_token(str(_database.DEFAULT_DB_PATH))
+    change_token = await asyncio.to_thread(db_change_token, str(_database.DEFAULT_DB_PATH))
     try:
         async with get_async_db() as conn:
             cur = await conn.execute(f"""

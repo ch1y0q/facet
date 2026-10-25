@@ -1585,3 +1585,13 @@ Originale und Dateiänderungszeiten bleiben unberührt. Der ausdrückliche XMP-E
 Diese Datenbank speichert die neuesten **50 Einträge pro Konto**, jeweils mit höchstens **1000 Fotos und 1 MiB**. Große gefilterte Auswahlen werden in derselben Transaktion in beschriftete Teile aufgeteilt. Zurücksetzen betrifft nur den gewählten Teil; ältere Teile können abgelaufen sein. Unveränderte Werte erzeugen keinen Eintrag. Der Verlauf übersteht Neustarts und inkrementelle Aktualisierungen, wird aber nicht zwischen Datenbanken synchronisiert. Ein vollständiger Export beginnt mit leerem Verlauf.
 
 Ein Eintrag wird ganz ausgeblendet, wenn ein Foto gelöscht oder nicht mehr zugänglich ist. Zurücksetzen wird vollständig abgelehnt, wenn ein betroffener Wert inzwischen geändert wurde, auch wenn er wieder gleich ist. Orts-/Datumskonflikte gelten kontenübergreifend; private Auswahländerungen anderer Konten blockieren Ihre nicht. Zurücksetzen erzeugt einen eigenen Eintrag und markiert den ursprünglichen. Scans, Importe und kurzzeitiges Rückgängigmachen machen ältere kollidierende Einträge ebenfalls ungültig.
+
+### Gesichter ohne Namen
+
+Enthält nicht zugewiesene Gesichter und unbenannte Personengruppen. Mit + ein Gesicht zuweisen oder unter Personen eine Gruppe benennen. Fotos ohne erkannte Gesichter sind ausgeschlossen.
+
+`Filters → People → Gesichter ohne Namen` (`faces_need_names=true`).
+
+## Personen zuweisen
+
+Die Auswahl **Gesicht einer Person zuweisen** zeigt zuerst bis zu 12 in diesem Browser erfolgreich zugewiesene Personen, getrennt nach angemeldeter Identität. Weitere benannte Personen folgen nach der Anzahl ihrer Gesichter in sichtbaren Fotos, bei Gleichstand alphabetisch. Suche und Seitenwechsel erfassen alle verfügbaren Personen, auch mit nur einem Gesicht. Die angezeigte Reihenfolge bleibt bei geöffnetem Dialog stabil. Eine Auswahl oder ein neuer Namensvorschlag allein zählt nicht: Die Zuweisung oder das Speichern des manuellen Gesichts muss gelingen. Lokal werden nur Personen-IDs gespeichert; ohne Browserspeicher funktioniert die Zuweisung weiterhin ohne Verlauf. Beim Abmelden werden alle gespeicherten letzten Zuordnungen in diesem Browser gelöscht. In der Zuordnungsreihenfolge zählt die Auswahl Gesichter in sichtbaren Fotos; andere Personenreihenfolgen verwenden die gespeicherten Bibliothekszahlen.

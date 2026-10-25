@@ -189,14 +189,16 @@ async def test_empty_matrix_is_reused_until_embedding_appears(tmp_path, monkeypa
     try:
         await conn.execute('DELETE FROM photos')
         await conn.commit()
+        from utils import embedding
         calls = []
-        original = asyncio.to_thread
+        original = embedding.filter_uniform_embeddings
 
-        async def counted(*args, **kwargs):
+        def counted(*args, **kwargs):
             calls.append(1)
-            return await original(*args, **kwargs)
+            return original(*args, **kwargs)
 
-        monkeypatch.setattr(asyncio, 'to_thread', counted)
+        # Count actual matrix preparation, independently of token worker reads.
+        monkeypatch.setattr(embedding, 'filter_uniform_embeddings', counted)
         assert await load(conn) == (None, [])
         assert await load(conn) == (None, [])
         assert len(calls) == 1
@@ -283,4 +285,51 @@ async def test_cancelled_builder_drains_before_releasing_lock(tmp_path, monkeypa
     finally:
         release.set()
         await asyncio.gather(*(t for t in (first, second) if t is not None), return_exceptions=True)
+        await conn.close()
+
+
+@pytest.mark.asyncio
+async def test_matrix_and_candidate_tokens_never_run_on_the_event_loop(tmp_path, monkeypatch):
+    from collections import OrderedDict
+    from api import change_token
+    path = tmp_path / 'off-loop.db'
+    conn = await database(path)
+    real_token = change_token.db_change_token
+    calls = []
+
+    def guarded_token(db_path):
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            pass
+        else:
+            pytest.fail('database sentinel/token read ran on the event loop')
+        calls.append(threading.get_ident())
+        return real_token(db_path)
+
+    async def unavailable(*args):
+        return False
+
+    async def no_tags(*args):
+        return {}
+
+    monkeypatch.setattr(change_token, 'db_change_token', guarded_token)
+    monkeypatch.setattr(search, 'db_change_token', guarded_token)
+    monkeypatch.setattr(search._database, 'DEFAULT_DB_PATH', str(path))
+    monkeypatch.setattr(search, '_candidates_cache', OrderedDict())
+    monkeypatch.setattr(search, '_candidate_model_key', lambda: ('test', 4))
+    monkeypatch.setattr(search, '_encode_text', lambda _: np.frombuffer(vector(0), dtype=np.float32))
+    monkeypatch.setattr(search, 'get_visibility_clause', lambda _: ('1=1', []))
+    monkeypatch.setattr(search, '_check_vec_available', unavailable)
+    monkeypatch.setattr(search, '_has_fts', unavailable)
+    monkeypatch.setattr(search, '_manual_tag_search', no_tags)
+    try:
+        first, _ = await load(conn)
+        reused, _ = await load(conn)
+        assert reused is first
+        candidates = await search.semantic_candidates(conn, 'off-loop-token', .5, None)
+        assert await search.semantic_candidates(conn, 'off-loop-token', .5, None) is candidates
+        assert len(calls) >= 4  # Cold reads and both cache-hit token checks.
+        assert set(calls).isdisjoint({threading.get_ident()})
+    finally:
         await conn.close()

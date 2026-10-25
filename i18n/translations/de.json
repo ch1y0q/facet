@@ -1319,7 +1319,9 @@
       "browser": "Gespeicherte Warteschlange in diesem Browser fortsetzen."
     },
     "manual_faces_need_review": "Manuelle Gesichter prüfen",
-    "manual_faces_review_hint": "Stand des letzten Scans oder der letzten Prüfung im Gesichtseditor, keine laufende Überwachung. Öffnen Sie den Gesichtseditor eines Fotos, um gespeicherte Markierungen zu prüfen."
+    "manual_faces_review_hint": "Stand des letzten Scans oder der letzten Prüfung im Gesichtseditor, keine laufende Überwachung. Öffnen Sie den Gesichtseditor eines Fotos, um gespeicherte Markierungen zu prüfen.",
+    "faces_need_names": "Gesichter ohne Namen",
+    "faces_need_names_hint": "Enthält nicht zugewiesene Gesichter und unbenannte Personengruppen. Mit + ein Gesicht zuweisen oder unter Personen eine Gruppe benennen. Fotos ohne erkannte Gesichter sind ausgeschlossen."
   },
   "composition_patterns": {
     "none": "Keines",
@@ -1711,7 +1713,10 @@
     "split_error": "Person konnte nicht aufgeteilt werden"
   },
   "person_selector": {
-    "create_new": "Neue Person erstellen"
+    "create_new": "Neue Person erstellen",
+    "ordering_hint": "Zuerst kürzlich in diesem Browser zugewiesene Personen, dann Personen mit den meisten Gesichtern in sichtbaren Fotos.",
+    "face_count": "{count} Gesichter",
+    "face_count_one": "1 Gesicht"
   },
   "slideshow": {
     "start": "Diashow",

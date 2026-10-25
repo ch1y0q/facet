@@ -4,10 +4,15 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+- Filter photos with unassigned faces or unnamed people from the gallery People section.
+
 ### Changed
+- Read semantic-search, similar-photo and gallery count cache database change tokens in worker threads so both cold and warm token reads do not block other requests.
 - Resize manual-face previews and crop face pixels before converting to RGB, avoiding full-resolution copies on preview and save.
 
 ### Added
+
+- Assign people from a searchable picker ordered by recent successful assignments in this browser, then visible face counts. Signing out clears saved recents.
 
 - **Explicit XMP sidecar discovery.** `--import-sidecars --sidecar-naming full|basename|auto` can read stripped-extension sidecars, refuses shared RAW/JPEG basenames, and reports naming conflicts. Full-name discovery remains the default; exports keep their existing filenames.
 
@@ -26,6 +31,7 @@ All notable changes to Facet are documented in this file.
 ### Fixed
 
 - Cancel obsolete gallery page, similarity, pinned-list and review-progress reads when filters, identity or navigation change. Already submitted rating and review saves continue, and cancellation does not show a loading error. Photo-page arrows and Keep continue to load the queue while the grid is parked; unchanged returns avoid page and count reloads. Retry cancelled keeper hints, combine parked targeted updates into one row refresh, and retain unrelated pending edits when Keep repairs the queue.
+- Keep person-name searches working for numeric-looking and non-ASCII names without treating them as unsafe integer IDs. Assignment pagination counts people without repeating the face aggregate.
 
 - **Immich sync refuses ambiguous assets.** Duplicate remote paths and colliding Facet mappings are reported as identity conflicts. Fallback searches check every page and require an exact path; webhook IDs are verified before writes. Optional owner/library ID selectors restrict the configured server's responses. Literal first-prefix mapping behavior is unchanged.
 - Refuse basename XMP discovery when a double-extension derivative would read another image’s full-name or fallback sidecar. Report full-policy naming notices once per import while retaining complete mismatch counts.

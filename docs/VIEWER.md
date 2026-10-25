@@ -1664,3 +1664,13 @@ Open **Organization history** from the gallery history button or photo details i
 This viewer database keeps the latest **50 entries per account**, each with at most **1000 photos and 1 MiB** of recorded values. Larger filtered review actions are stored as labeled parts in the same transaction. Revert restores only the selected part; older parts may already have expired under the 50-entry limit. No-op edits add nothing. History survives restarts and incremental viewer database updates; it is not synchronized to another database. A fresh/full viewer export starts with empty history.
 
 An entry is hidden entirely when any photo is deleted or no longer visible to you. Revert checks every photo together and refuses the whole entry if any supported value was changed since the action, even if it was later changed back. GPS/date conflicts are shared across accounts; another account’s private review edit does not block yours. A successful revert records its own entry and marks the original as reverted. Rescans, imports and short Undo also invalidate older conflicting entries.
+
+### Faces without names
+
+Includes unassigned faces and unnamed person groups. Use + to assign a face, or name a group in People. Photos with no detected faces are excluded.
+
+`Filters → People → Faces without names` (`faces_need_names=true`).
+
+## Assigning people
+
+The **Assign face to person** picker shows up to 12 people successfully assigned in this browser first, separately for each signed-in identity. Other named people follow by their face count in photos you can see, with alphabetical ties. Search and pagination cover all eligible people, including those with one face. The order already displayed stays steady while the picker is open. Selecting or proposing a new person alone does not update recents: the assignment or manual-face save must succeed. Only person IDs are saved locally; unavailable browser storage disables recents without blocking assignment. Signing out clears all saved assignment recents in this browser. The picker’s assignment order returns face counts from photos you can see; other person-list orders return the stored library counts.

@@ -1334,6 +1334,8 @@ export const I18N = {
     },
     manual_faces_need_review: "gallery.manual_faces_need_review",
     manual_faces_review_hint: "gallery.manual_faces_review_hint",
+    faces_need_names: "gallery.faces_need_names",
+    faces_need_names_hint: "gallery.faces_need_names_hint",
   },
   composition_patterns: {
     none: "composition_patterns.none",
@@ -1726,6 +1728,9 @@ export const I18N = {
   },
   person_selector: {
     create_new: "person_selector.create_new",
+    ordering_hint: "person_selector.ordering_hint",
+    face_count: "person_selector.face_count",
+    face_count_one: "person_selector.face_count_one",
   },
   slideshow: {
     start: "slideshow.start",
