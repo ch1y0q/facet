@@ -12926,7 +12926,7 @@ export interface operations {
     api_person_possible_faces_api_person__person_id__possible_faces_get: {
         parameters: {
             query?: {
-                scope?: "unassigned" | "other_persons" | "all";
+                scope?: "unassigned" | "unnamed" | "other_persons" | "all";
                 min_similarity?: number;
                 limit?: number;
                 path_prefix?: string | null;

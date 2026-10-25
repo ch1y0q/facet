@@ -1753,7 +1753,7 @@
     "find_more_desc": "与 {name} 相似的面孔，最相似的排在前面。勾选正确的面孔并添加：每一轮都会从您添加的面孔中学习，未勾选的面孔不会再次显示。",
     "find_more_scope": "查找范围",
     "find_more_scope_all": "所有面孔",
-    "find_more_scope_unassigned": "仅未分配",
+    "find_more_scope_unnamed": "仅未命名",
     "find_more_select_all": "全选",
     "find_more_clear": "清除",
     "find_more_select_face": "选择面孔 {index}",

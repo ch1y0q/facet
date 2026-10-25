@@ -32,10 +32,13 @@ DEFAULT_MIN_SIMILARITY = 0.30
 DEFAULT_LIMIT = 30
 MAX_LIMIT = 100
 FLOAT_BYTES = 4
-SCOPES = ("unassigned", "other_persons", "all")
+SCOPES = ("unassigned", "unnamed", "other_persons", "all")
 
+# ``unnamed`` is every face without a name: in no cluster, or in a cluster nobody has named
+# yet. ``unassigned`` is the narrower "in no cluster at all".
 _SCOPE_SQL = {
     "unassigned": "f.person_id IS NULL",
+    "unnamed": "(f.person_id IS NULL OR (f.person_id != ? AND (pe.name IS NULL OR TRIM(pe.name) = '')))",
     "other_persons": "f.person_id IS NOT NULL AND f.person_id != ?",
     "all": "(f.person_id IS NULL OR f.person_id != ?)",
 }
@@ -106,7 +109,7 @@ def _scan(conn, from_sql: str, where_sql: str, params: list, centroid: np.ndarra
                        412: {"description": "No usable centroid, or the scan is over MAX_FACE_SCAN faces"}})
 def api_person_possible_faces(
     person_id: int,
-    scope: Literal["unassigned", "other_persons", "all"] = "unassigned",
+    scope: Literal["unassigned", "unnamed", "other_persons", "all"] = "unassigned",
     min_similarity: float = Query(DEFAULT_MIN_SIMILARITY, ge=0.0, le=1.0),
     limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     path_prefix: Optional[str] = Query(None, max_length=4096),

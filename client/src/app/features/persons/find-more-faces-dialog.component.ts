@@ -33,7 +33,8 @@ export interface FindMoreFacesResult {
   added: number;
 }
 
-export type FindMoreScope = 'all' | 'unassigned';
+/** ``unnamed``: every face without a name, in an unnamed cluster or in none. */
+export type FindMoreScope = 'all' | 'unnamed';
 
 /** Faces shown per round. */
 export const FIND_MORE_PAGE = 48;
@@ -80,7 +81,7 @@ export const FIND_MORE_PRESELECT = 0.5;
           (change)="setScope($event.value)"
           [attr.aria-label]="I18N.persons.find_more_scope | translate">
           <mat-button-toggle value="all">{{ I18N.persons.find_more_scope_all | translate }}</mat-button-toggle>
-          <mat-button-toggle value="unassigned">{{ I18N.persons.find_more_scope_unassigned | translate }}</mat-button-toggle>
+          <mat-button-toggle value="unnamed">{{ I18N.persons.find_more_scope_unnamed | translate }}</mat-button-toggle>
         </mat-button-toggle-group>
         <span class="flex-1"></span>
         @if (rows().length > 0) {

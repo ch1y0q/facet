@@ -1753,7 +1753,7 @@
     "find_more_desc": "Rostos parecidos com {name}, os mais parecidos primeiro. Marque os corretos e adicione-os: cada rodada aprende com o que você adicionou, e os rostos deixados desmarcados não são mostrados de novo.",
     "find_more_scope": "Onde procurar",
     "find_more_scope_all": "Todos os rostos",
-    "find_more_scope_unassigned": "Somente não atribuídos",
+    "find_more_scope_unnamed": "Somente sem nome",
     "find_more_select_all": "Selecionar tudo",
     "find_more_clear": "Limpar",
     "find_more_select_face": "Selecionar o rosto {index}",

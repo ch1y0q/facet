@@ -1753,7 +1753,7 @@
     "find_more_desc": "Caras que se parecen a {name}, las más parecidas primero. Marque las correctas y añádalas: cada ronda aprende de lo que añadió, y las caras que deja sin marcar no se vuelven a mostrar.",
     "find_more_scope": "Dónde buscar",
     "find_more_scope_all": "Todas las caras",
-    "find_more_scope_unassigned": "Solo sin asignar",
+    "find_more_scope_unnamed": "Solo sin nombre",
     "find_more_select_all": "Seleccionar todo",
     "find_more_clear": "Borrar",
     "find_more_select_face": "Seleccionar la cara {index}",

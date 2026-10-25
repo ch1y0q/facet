@@ -106,9 +106,9 @@ describe('FindMoreFacesDialogComponent', () => {
 
   it('switching the scope reloads with the new scope', async () => {
     await component.ngOnInit();
-    component.setScope('unassigned');
+    component.setScope('unnamed');
     await vi.waitFor(() => expect(mockApi.get).toHaveBeenCalledTimes(2));
-    expect(mockApi.get.mock.calls[1][1]).toMatchObject({ scope: 'unassigned' });
+    expect(mockApi.get.mock.calls[1][1]).toMatchObject({ scope: 'unnamed' });
   });
 
   it('select all and clear act on the faces shown', async () => {

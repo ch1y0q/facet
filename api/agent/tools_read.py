@@ -354,7 +354,7 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
     async def possible_faces(
         ctx: Context,
         person_id: Annotated[int, Field(ge=1)],
-        scope: Literal["unassigned", "other_persons", "all"] = "unassigned",
+        scope: Literal["unassigned", "unnamed", "other_persons", "all"] = "unassigned",
         min_similarity: Annotated[float, Field(ge=0.0, le=1.0)] = 0.30,
         limit: Annotated[int, Field(ge=1, le=100)] = 30,
         path_prefix: Annotated[Optional[str], Field(max_length=4096)] = None,

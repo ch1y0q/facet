@@ -1767,7 +1767,7 @@ export const I18N = {
     find_more_desc: "persons.find_more_desc",
     find_more_scope: "persons.find_more_scope",
     find_more_scope_all: "persons.find_more_scope_all",
-    find_more_scope_unassigned: "persons.find_more_scope_unassigned",
+    find_more_scope_unnamed: "persons.find_more_scope_unnamed",
     find_more_select_all: "persons.find_more_select_all",
     find_more_clear: "persons.find_more_clear",
     find_more_select_face: "persons.find_more_select_face",

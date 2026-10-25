@@ -1753,7 +1753,7 @@
     "find_more_desc": "Gesichter, die {name} ähneln, beste Treffer zuerst. Haken Sie die richtigen an und fügen Sie sie hinzu: Jede Runde lernt aus dem Hinzugefügten, und nicht angehakte Gesichter werden nicht erneut angezeigt.",
     "find_more_scope": "Wo suchen",
     "find_more_scope_all": "Alle Gesichter",
-    "find_more_scope_unassigned": "Nur nicht zugewiesene",
+    "find_more_scope_unnamed": "Nur unbenannte",
     "find_more_select_all": "Alle auswählen",
     "find_more_clear": "Leeren",
     "find_more_select_face": "Gesicht {index} auswählen",

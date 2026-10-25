@@ -1753,7 +1753,7 @@
     "find_more_desc": "Volti che somigliano a {name}, i più simili per primi. Seleziona quelli giusti e aggiungili: ogni giro impara da ciò che hai aggiunto, e i volti lasciati deselezionati non vengono più proposti.",
     "find_more_scope": "Dove cercare",
     "find_more_scope_all": "Tutti i volti",
-    "find_more_scope_unassigned": "Solo non assegnati",
+    "find_more_scope_unnamed": "Solo senza nome",
     "find_more_select_all": "Seleziona tutto",
     "find_more_clear": "Cancella",
     "find_more_select_face": "Seleziona il volto {index}",

@@ -1753,7 +1753,7 @@
     "find_more_desc": "Faces that look like {name}, best match first. Tick the right ones and add them: each round learns from what you added, and faces you leave unticked are not shown again.",
     "find_more_scope": "Where to look",
     "find_more_scope_all": "All faces",
-    "find_more_scope_unassigned": "Unassigned only",
+    "find_more_scope_unnamed": "Unnamed only",
     "find_more_select_all": "Select all",
     "find_more_clear": "Clear",
     "find_more_select_face": "Select face {index}",

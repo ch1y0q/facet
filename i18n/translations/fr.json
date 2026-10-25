@@ -1753,7 +1753,7 @@
     "find_more_desc": "Visages qui ressemblent à {name}, les plus proches en premier. Cochez les bons et ajoutez-les : chaque tour apprend de ce que vous avez ajouté, et les visages laissés décochés ne sont plus proposés.",
     "find_more_scope": "Où chercher",
     "find_more_scope_all": "Tous les visages",
-    "find_more_scope_unassigned": "Non attribués uniquement",
+    "find_more_scope_unnamed": "Sans nom uniquement",
     "find_more_select_all": "Tout sélectionner",
     "find_more_clear": "Effacer",
     "find_more_select_face": "Sélectionner le visage {index}",
