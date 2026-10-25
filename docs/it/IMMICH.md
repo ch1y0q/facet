@@ -94,7 +94,7 @@ La chiave viene inviata come intestazione `x-api-key` a ogni richiesta. Inserisc
 
 ## Passaggio 3 — mappa i percorsi
 
-Aggiungi una coppia per ogni radice che condividi. Vince la prima coppia il cui `facet_prefix` corrisponde a una foto:
+Aggiungi una coppia per ogni radice che condividi. Vince la prima corrispondenza letterale di prefisso di stringa; i confini delle directory non vengono dedotti. Termina i prefissi di directory con `/` e metti le mappature più specifiche prima di quelle più generiche:
 
 ```json
 "immich": {

@@ -94,7 +94,7 @@ A chave é enviada como um cabeçalho `x-api-key` em cada requisição. Coloque-
 
 ## Passo 3 — mapear os caminhos
 
-Adicione um par para cada raiz que você compartilha. O primeiro par cujo `facet_prefix` corresponder a uma foto vence:
+Adicione um par para cada raiz que você compartilha. Vence a primeira correspondência literal de prefixo de string; os limites de diretório não são inferidos. Termine os prefixos de diretório com `/` e coloque os mapeamentos mais específicos antes dos mais amplos:
 
 ```json
 "immich": {

@@ -94,7 +94,7 @@ La clave se envía como una cabecera `x-api-key` en cada solicitud. Ponla en `sc
 
 ## Paso 3 — asigna las rutas
 
-Añade un par por cada raíz que compartas. Gana el primer par cuyo `facet_prefix` coincida con una foto:
+Añade un par por cada raíz que compartas. Gana la primera coincidencia literal de prefijo de cadena; no se infieren los límites de directorio. Termina los prefijos de directorio con `/` y coloca las asignaciones más específicas antes que las más generales:
 
 ```json
 "immich": {

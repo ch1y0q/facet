@@ -94,7 +94,7 @@ La clé est envoyée en en-tête `x-api-key` à chaque requête. Placez-la dans 
 
 ## Étape 3 — mettre en correspondance les chemins
 
-Ajoutez une paire par racine que vous partagez. La première paire dont le `facet_prefix` correspond à une photo l'emporte :
+Ajoutez une paire par racine que vous partagez. La première correspondance littérale de préfixe de chaîne l'emporte ; les limites de répertoire ne sont pas déduites. Terminez les préfixes de répertoire par `/` et placez les correspondances étroites avant les correspondances larges :
 
 ```json
 "immich": {

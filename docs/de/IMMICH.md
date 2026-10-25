@@ -94,7 +94,7 @@ Der Schlüssel wird als `x-api-key`-Header bei jeder Anfrage gesendet. Tragen Si
 
 ## Schritt 3 — die Pfade zuordnen
 
-Fügen Sie ein Paar pro geteilter Wurzel hinzu. Das erste Paar, dessen `facet_prefix` auf ein Foto passt, gewinnt:
+Fügen Sie ein Paar pro geteilter Wurzel hinzu. Es gewinnt der erste wörtliche Zeichenketten-Präfix-Treffer; Verzeichnisgrenzen werden nicht abgeleitet. Beenden Sie Verzeichnis-Präfixe mit `/` und setzen Sie engere Zuordnungen vor breitere:
 
 ```json
 "immich": {
