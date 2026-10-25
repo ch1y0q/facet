@@ -229,7 +229,8 @@ describe('GalleryStore read cancellation with HttpClient', () => {
     expect(snack).not.toHaveBeenCalled();
   });
 
-  it.each(['cancel', 'error'] as const)('recovers a cancelled initial listing when navigation ends with %s', async ending => {
+  it.each([['/', 'cancel'], ['/', 'error'], ['/album/2', 'cancel'], ['/album/2', 'error']] as const)('recovers a cancelled initial listing from %s when navigation ends with %s', async (origin, ending) => {
+    (TestBed.inject(Router) as unknown as { url: string }).url = origin;
     const loading = store.loadPhotos();
     const oldPage = request('/photos');
     const oldProgress = request('/photos/review_progress');
@@ -314,6 +315,118 @@ describe('GalleryStore read cancellation with HttpClient', () => {
     await Promise.all([interrupted, resuming]);
     expect(store.photos().map(p => p.path)).toEqual(pagination ? ['/first.jpg', '/second.jpg'] : ['/first.jpg']);
     expect(store.selectedPaths()).toEqual(new Set(['/first.jpg']));
+    expect(store.loadError()).toBe(false);
+  });
+
+  it.each(['unchanged', 'hint-pending', 'rating'] as const)('does not refetch pages or counts on Back after %s', async reason => {
+    const initial = store.loadPhotos();
+    request('/photos').flush({ ...EMPTY_PAGE, total: 1, has_more: true, photos: [makePhoto({ path: '/a.jpg' })] });
+    request('/photos/review_progress').flush(COUNTS);
+    await initial;
+    const hints = request('/photos/keeper_hints');
+    if (reason !== 'hint-pending') hints.flush({});
+    const writing = reason === 'rating' ? store.setRating('/a.jpg', 4) : Promise.resolve();
+    const rating = reason === 'rating' ? request('/photo/set_rating') : null;
+    events.next(new NavigationStart(1, '/photo?path=/a.jpg'));
+    store.parkListingReads();
+    (TestBed.inject(Router) as unknown as { url: string }).url = '/photo?path=/a.jpg';
+    events.next(new NavigationEnd(1, '/photo?path=/a.jpg', '/photo?path=/a.jpg'));
+    if (rating) rating.flush({ success: true });
+    await writing;
+    if (reason === 'hint-pending') expect(hints.cancelled).toBe(true);
+    await store.resumeListingReads();
+    http.expectNone(r => r.url === '/api/photos' || r.url === '/api/photos/review_progress');
+    if (reason === 'rating') expect(store.photos()[0].star_rating).toBe(4);
+  });
+
+  it.each(['success', 'failure', 'navigation'] as const)('recovers an interrupted ordinary listing from a photo without overlapping requests (%s)', async outcome => {
+    const initial = store.loadPhotos();
+    const obsolete = request('/photos');
+    request('/photos/review_progress');
+    events.next(new NavigationStart(1, '/photo?path=/a.jpg'));
+    store.parkListingReads();
+    (TestBed.inject(Router) as unknown as { url: string }).url = '/photo?path=/a.jpg';
+    events.next(new NavigationEnd(1, '/photo?path=/a.jpg', '/photo?path=/a.jpg'));
+    expect(obsolete.cancelled).toBe(true);
+    const recovering = store.nextPage(undefined, { whileParked: true });
+    const page = request('/photos');
+    await store.nextPage(undefined, { whileParked: true });
+    http.expectNone(r => r.url === '/api/photos');
+    if (outcome === 'navigation') {
+      events.next(new NavigationStart(2, '/stats'));
+      expect(page.cancelled).toBe(true);
+    } else if (outcome === 'failure') page.flush({}, { status: 500, statusText: 'failed' });
+    else page.flush({ ...EMPTY_PAGE, photos: [makePhoto({ path: '/a.jpg' })] });
+    await Promise.all([initial, recovering]);
+    if (outcome === 'success') request('/photos/keeper_hints').flush({});
+    if (outcome === 'failure') {
+      const retry = store.nextPage(undefined, { whileParked: true });
+      request('/photos').flush(EMPTY_PAGE);
+      await retry;
+    }
+    expect(store.loading()).toBe(false);
+    expect(snack).not.toHaveBeenCalled();
+  });
+
+  it('allows an explicit photo page read while other parked refreshes remain deferred', async () => {
+    const initial = store.loadPhotos();
+    request('/photos').flush({ ...EMPTY_PAGE, total: 2, has_more: true, photos: [makePhoto({ path: '/a.jpg' })] });
+    request('/photos/review_progress').flush(COUNTS);
+    await initial;
+    request('/photos/keeper_hints').flush({});
+    events.next(new NavigationStart(1, '/photo?path=/a.jpg'));
+    store.parkListingReads();
+    (TestBed.inject(Router) as unknown as { url: string }).url = '/photo?path=/a.jpg';
+    events.next(new NavigationEnd(1, '/photo?path=/a.jpg', '/photo?path=/a.jpg'));
+    const paging = store.nextPage(undefined, { whileParked: true });
+    request('/photos').flush({ ...EMPTY_PAGE, total: 2, photos: [makePhoto({ path: '/b.jpg' })] });
+    await paging;
+    request('/photos/keeper_hints').flush({});
+    expect(store.photos().map(photo => photo.path)).toEqual(['/a.jpg', '/b.jpg']);
+    await store.refreshPaths(['/a.jpg']);
+    http.expectNone(r => r.url === '/api/photos' || r.url === '/api/photos/review_progress');
+  });
+
+  it('repairs confirmed Keep membership while parked without rewriting the photo URL', async () => {
+    store.filters.update(f => ({ ...f, review_status: 'undecided' }));
+    const initial = store.loadPhotos();
+    request('/photos').flush({ ...EMPTY_PAGE, total: 1, photos: [makePhoto({ path: '/a.jpg' })] });
+    request('/photos/review_progress').flush(COUNTS);
+    await initial;
+    request('/photos/keeper_hints').flush({});
+    events.next(new NavigationStart(1, '/photo?path=/a.jpg'));
+    store.parkListingReads();
+    const router = TestBed.inject(Router);
+    (router as unknown as { url: string }).url = '/photo?path=/a.jpg';
+    events.next(new NavigationEnd(1, '/photo?path=/a.jpg', '/photo?path=/a.jpg'));
+    const keeping = store.batchReview(['/a.jpg'], 'kept');
+    request('/photos/batch_review').flush({ count: 1 });
+    await keeping;
+    const repairing = store.refreshReviewResults(false, { whileParked: true });
+    request('/photos').flush(EMPTY_PAGE);
+    await repairing;
+    expect(store.photos()).toEqual([]);
+    expect(router.navigate).not.toHaveBeenCalled();
+    const returning = store.resumeListingReads();
+    request('/photos/review_progress').flush(COUNTS);
+    await returning;
+    http.expectNone('/api/photos');
+  });
+
+  it('recovers an attached gallery after an unknown route redirects back without outlet attach', async () => {
+    const initial = store.loadPhotos();
+    const oldPage = request('/photos');
+    const oldProgress = request('/photos/review_progress');
+    events.next(new NavigationStart(1, '/unknown-route'));
+    expect(oldPage.cancelled).toBe(true);
+    expect(oldProgress.cancelled).toBe(true);
+    events.next(new NavigationEnd(1, '/unknown-route', '/'));
+    request('/photos/review_progress').flush(COUNTS);
+    await Promise.resolve();
+    request('/photos').flush(EMPTY_PAGE);
+    await initial;
+    await Promise.resolve();
+    expect(store.loading()).toBe(false);
     expect(store.loadError()).toBe(false);
   });
 
@@ -492,7 +605,6 @@ describe('GalleryStore read cancellation with HttpClient', () => {
     // A write may finish, but a destroyed store must not start new reads.
     const followup = http.match(r => r.url === '/api/photos/review_progress');
     expect(followup).toHaveLength(0);
-    for (const read of followup) read.flush(COUNTS);
     expect(snack).not.toHaveBeenCalled();
   });
 });

@@ -982,7 +982,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     if (idx === -1) return;
     // The store only holds the pages the grid has scrolled through, so stepping past the last one fetches the next.
     if (idx + delta >= this.store.photos().length && this.store.hasMore()) {
-      await this.store.nextPage();
+      await this.store.nextPage(undefined, { whileParked: true });
       // Back between two photos reuses this component, so the URL is checked as well as destroyed.
       if (this.destroyRef.destroyed || this.photo()?.path !== current.path
         || this.route.snapshot.queryParamMap.get('path') !== current.path) return;
@@ -1121,13 +1121,19 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
 
   private async advanceAfterReview(previous: Photo, index: number, next?: Photo): Promise<void> {
     if (!this.store.filters().review_status) return;
-    await this.store.refreshReviewResults();
-    if (this.destroyRef.destroyed || this.photo()?.path !== previous.path) return;
-    const target = this.store.photos().find(photo => photo.path === next?.path) ?? this.store.photos()[index] ?? this.store.photos()[0];
-    if (!target) { this.router.navigate(['/']); return; }
-    this.router.navigate(['/photo'], { queryParams: { path: target.path }, state: { photo: target }, replaceUrl: true });
-    this.photo.set(target);
-    this.fullImageLoaded.set(false);
+    let navigated = false;
+    const navigation = this.router.events.subscribe(event => {
+      if (event instanceof NavigationStart) navigated = true;
+    });
+    try {
+      await this.store.refreshReviewResults(false, { whileParked: true });
+      if (navigated || this.destroyRef.destroyed || this.photo()?.path !== previous.path) return;
+      const target = this.store.photos().find(photo => photo.path === next?.path) ?? this.store.photos()[index] ?? this.store.photos()[0];
+      if (!target) { this.router.navigate(['/']); return; }
+      this.router.navigate(['/photo'], { queryParams: { path: target.path }, state: { photo: target }, replaceUrl: true });
+      this.photo.set(target);
+      this.fullImageLoaded.set(false);
+    } finally { navigation.unsubscribe(); }
   }
 
   protected async toggleFavorite(path: string): Promise<void> {

@@ -1,8 +1,9 @@
+import { finalize } from 'rxjs';
 import { GalleryStore } from '../gallery/gallery.store';
 import { makePhoto } from '../../../testing/photo.fixture';
 import type { Mock } from 'vitest';
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRoute, ParamMap, Router, NavigationStart, convertToParamMap } from '@angular/router';
+import { ActivatedRoute, ParamMap, Router, NavigationStart, NavigationEnd, convertToParamMap } from '@angular/router';
 import { Location } from '@angular/common';
 import { MatDialog } from '@angular/material/dialog';
 import { BehaviorSubject, NEVER, Observable, of, Subject, throwError } from 'rxjs';
@@ -104,7 +105,7 @@ describe('PhotoDetailComponent', () => {
       downloadUrl: vi.fn((path: string, type = 'original', profile?: string) => `/api/download?path=${encodeURIComponent(path)}&type=${type}${profile ? '&profile=' + profile : ''}`),
       getRaw: vi.fn(() => of(new Blob(['test'], { type: 'image/jpeg' }))),
     };
-    mockRouter = { url: '/photo', navigate: vi.fn(), events: NEVER };
+    mockRouter = { url: '/photo', navigate: vi.fn(), events: new Subject() };
     mockLocation = { back: vi.fn() };
     mockRoute = {
       snapshot: {
@@ -277,6 +278,14 @@ describe('PhotoDetailComponent', () => {
     expect(count).toHaveBeenCalled();
   });
 
+  function enterPhotoFromGallery(path: string): void {
+    mockRouter.url = '/';
+    (mockRouter.events as Subject<unknown>).next(new NavigationStart(1, '/photo?path=' + encodeURIComponent(path)));
+    component.store.parkListingReads();
+    mockRouter.url = '/photo?path=' + encodeURIComponent(path);
+    (mockRouter.events as Subject<unknown>).next(new NavigationEnd(1, mockRouter.url, mockRouter.url));
+  }
+
   describe('delayed review responses', () => {
     it.each(['kept', 'undecided', 'rejected'])('preserves navigation after %s', async decision => {
       createComponent();
@@ -348,6 +357,26 @@ describe('PhotoDetailComponent', () => {
       await pending;
       expect(component.photo()).toMatchObject({ is_kept: true, star_rating: 5, is_favorite: true });
     });
+    it('does not override Back started during a parked Keep refill', async () => {
+      createComponent();
+      const store = TestBed.inject(GalleryStore);
+      const current = makePhoto({ path: '/current.jpg' });
+      store.photos.set([current]);
+      store.hasMore.set(true);
+      store.filters.update(f => ({ ...f, review_status: 'undecided' }));
+      component.photo.set(current);
+      enterPhotoFromGallery(current.path);
+      const tail = new Subject<any>();
+      let cancelled = false;
+      mockApi.get.mockReturnValue(tail.pipe(finalize(() => { cancelled = true; })));
+      const keeping = component.reviewPhoto('kept');
+      await Promise.resolve();
+      expect(mockApi.get).toHaveBeenCalledWith('/photos', expect.anything());
+      (mockRouter.events as Subject<unknown>).next(new NavigationStart(2, '/'));
+      await keeping;
+      expect(cancelled).toBe(true);
+      expect(mockRouter.navigate).not.toHaveBeenCalled();
+    });
     it('advances last loaded row to refilled successor then supports Next', async () => {
       createComponent();
       const store = TestBed.inject(GalleryStore);
@@ -356,12 +385,13 @@ describe('PhotoDetailComponent', () => {
       store.hasMore.set(true);
       store.filters.update(f => ({ ...f, review_status: 'undecided' }));
       component.photo.set(all[63]);
+      enterPhotoFromGallery(all[63].path);
       const remaining = all.filter(p => p.path !== all[63].path);
       mockApi.get.mockImplementation((_url: string, params: { page: number }) => of({ photos: remaining.slice((params.page - 1) * 64, params.page * 64), total: 127, has_more: params.page === 1 }));
       await component.reviewPhoto('kept');
       expect(component.photo().path).toBe('/p65.jpg');
-      await store.nextPage();
-      component.nextPhoto(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+      mockRoute.snapshot.queryParamMap.get.mockReturnValue('/p65.jpg');
+      await component.navigateAdjacentPhoto(1);
       expect(component.photo().path).toBe('/p66.jpg');
     });
   });
@@ -1050,6 +1080,22 @@ describe('PhotoDetailComponent', () => {
         whileLoading();
       });
     }
+
+    it('fetches past the loaded page after real photo navigation parks the gallery', async () => {
+      createComponent();
+      component.store.photos.set([last]);
+      component.store.hasMore.set(true);
+      component.photo.set(last);
+      mockRoute.snapshot.queryParamMap.get.mockReturnValue(last.path);
+      enterPhotoFromGallery(last.path);
+      mockApi.get.mockImplementation((url: string) => of(url === '/photos'
+        ? { photos: [onNextPage], total: 2, has_more: false }
+        : {}));
+      await component.navigateAdjacentPhoto(1);
+      expect(mockApi.get).toHaveBeenCalledWith('/photos', expect.objectContaining({ page: 2 }));
+      expect(component.photo().path).toBe(onNextPage.path);
+      expect(mockRouter.navigate).toHaveBeenCalledWith(['/photo'], expect.objectContaining({ replaceUrl: true }));
+    });
 
     it('stepping past the last loaded photo loads the next page and moves onto it', async () => {
       atEndOfLoadedPage();

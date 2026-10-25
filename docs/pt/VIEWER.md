@@ -1142,6 +1142,8 @@ Defina `min_photos_for_person` mais alto para ocultar do menu suspenso de filtro
 
 Mudanças rápidas de filtro cancelam solicitações anteriores de páginas e progresso de revisão, incluindo vistas semelhantes e fixadas. Sair da galeria ou mudar a identidade cancela as leituras pendentes. Alterações de avaliação e revisão já enviadas não são canceladas.
 
+Abrir uma foto pausa as leituras de fundo da galeria; as setas podem carregar mais fotos e Manter atualiza a fila de revisão imediatamente. Ao voltar, apenas resultados interrompidos ou alterados e contagens necessárias são atualizados. Voltar sem mudanças, cancelar sugestões ou avaliar normalmente não recarrega páginas. Uma navegação cancelada ou redirecionada para a galeria ainda visível retoma suas leituras.
+
 ### Bancos de Dados Grandes (50k+ fotos)
 
 Execute estes comandos para melhor desempenho:

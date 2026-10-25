@@ -20,7 +20,7 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
-- Cancel obsolete gallery page, similarity, pinned-list and review-progress reads when filters, identity or navigation change. Already submitted rating and review saves continue, and cancellation does not show a loading error.
+- Cancel obsolete gallery page, similarity, pinned-list and review-progress reads when filters, identity or navigation change. Already submitted rating and review saves continue, and cancellation does not show a loading error. Photo-page arrows and Keep continue to load the queue while the grid is parked; unchanged returns avoid page and count reloads.
 
 - **Caption export preserves other XMP languages.** Writing a Facet caption now updates only the default-language description in sidecars and embedded metadata, retaining existing translations. An empty Facet caption still preserves the existing caption.
 

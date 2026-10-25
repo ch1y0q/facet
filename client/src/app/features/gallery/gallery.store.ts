@@ -2,7 +2,7 @@ import { Injectable, inject, signal, computed, effect, untracked, DestroyRef } f
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { pathOf } from '../../shared/utils/url-path';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Router, ActivatedRoute, NavigationStart, NavigationCancel, NavigationError } from '@angular/router';
+import { Router, ActivatedRoute, NavigationStart, NavigationCancel, NavigationError, NavigationEnd } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom, Observable, Subject, finalize, takeUntil, timeout } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
@@ -287,6 +287,9 @@ export class GalleryStore {
   private listingRefreshOwed = false;
   private listingPagesInterrupted = false;
   private pageReadsInFlight = 0;
+  private progressReadsInFlight = 0;
+  private progressRefreshOwed = false;
+  private suspendedFromPath: string | null = null;
   private suspendedNavigation: number | null = null;
   private albumService = inject(AlbumService);
   private router = inject(Router);
@@ -324,8 +327,9 @@ export class GalleryStore {
   /** The same full query as the grid; pagination never affects the aggregate. */
   async loadReviewProgress(): Promise<void> {
     if (this.destroyRef.destroyed) return;
-    if (!this.listingReadsActive) { this.listingRefreshOwed = true; return; }
+    if (!this.listingReadsActive) { this.progressRefreshOwed = true; return; }
     this.syncReadOwner();
+    this.progressRefreshOwed = false;
     const seq = ++this.reviewProgressSeq;
     this.progressReadCancelled.next();
     const identity = this.auth.identity();
@@ -341,8 +345,11 @@ export class GalleryStore {
         if (status) params['scope_review_status'] = status;
       } catch { return; }
     }
+    this.progressReadsInFlight++;
     try {
-      const progress = await firstValueFrom(this.api.get<components['schemas']['ReviewProgressResponse']>('/photos/review_progress', params).pipe(takeUntil(this.progressReadCancelled)));
+      const progress = await firstValueFrom(this.api.get<components['schemas']['ReviewProgressResponse']>('/photos/review_progress', params).pipe(
+        takeUntil(this.progressReadCancelled), finalize(() => this.progressReadsInFlight--),
+      ));
       if (seq === this.reviewProgressSeq && identity === this.auth.identity() && key === this.reviewProgressKey()) this.reviewProgress.set(progress);
     } catch { /* Counts unavailable: never show a guessed denominator. */ }
   }
@@ -782,12 +789,19 @@ export class GalleryStore {
     effect(() => { this.auth.identity(); untracked(() => this.clearForeignReviewedPhotos()); });
     this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
       if (event instanceof NavigationStart && pathOf(event.url) !== pathOf(this.router.url)) {
+        this.suspendedFromPath = pathOf(this.router.url);
+        this.suspendedNavigation = event.id;
         this.pauseListingReads();
-        if (!this.listingViewParked) this.suspendedNavigation = event.id;
       }
-      if ((event instanceof NavigationCancel || event instanceof NavigationError)
-        && event.id === this.suspendedNavigation && !this.listingViewParked) {
-        void this.resumeListingReads();
+      if ((event instanceof NavigationEnd || event instanceof NavigationCancel || event instanceof NavigationError)
+        && event.id === this.suspendedNavigation) {
+        // A wildcard redirect can retain the attached gallery without outlet attach.
+        const attachedGallery = !this.listingViewParked;
+        const returned = !(event instanceof NavigationEnd)
+          || (this.suspendedFromPath === '/' && pathOf(event.urlAfterRedirects) === '/');
+        this.suspendedNavigation = null;
+        this.suspendedFromPath = null;
+        if (attachedGallery && returned) void this.resumeListingReads();
       }
       if (event instanceof NavigationStart
         && this.router.currentNavigation?.()?.extras?.state?.[REVIEW_RESUME_NAVIGATION] !== this.resumeSeq) this.resumeSeq++;
@@ -908,6 +922,7 @@ export class GalleryStore {
   private pauseListingReads(): void {
     this.listingRefreshOwed ||= this.pageReadsInFlight > 0;
     this.listingPagesInterrupted ||= this.loading();
+    this.progressRefreshOwed ||= this.progressReadsInFlight > 0;
     this.listingReadsActive = false;
     this.cancelListingReads();
   }
@@ -922,6 +937,8 @@ export class GalleryStore {
     if (!this.loadedOnce) return;
     const refresh = this.listingRefreshOwed;
     const interrupted = this.listingPagesInterrupted;
+    const progress = this.progressRefreshOwed;
+    this.progressRefreshOwed = false;
     this.listingRefreshOwed = false;
     this.listingPagesInterrupted = false;
     if (refresh) {
@@ -934,14 +951,19 @@ export class GalleryStore {
       if (seq === this._loadSeq && identity === this.auth.identity() && this.filters().review_status) {
         this.rememberReviewedPhotos(previous);
       }
-    } else await this.loadReviewProgress();
+    } else if (progress) await this.loadReviewProgress();
   }
 
-  private async resumeSimilarPages(): Promise<void> {
+  private photoReadAllowed(): boolean {
+    return this.suspendedNavigation === null && pathOf(this.router.url) === '/photo';
+  }
+
+  private async resumeSimilarPages(whileParked = false): Promise<void> {
     const f = this.filters();
     const seq = this._loadSeq;
     const identity = this.auth.identity();
-    const current = () => this.listingReadsActive && seq === this._loadSeq && identity === this.auth.identity();
+    const current = () => (this.listingReadsActive || (whileParked && this.photoReadAllowed()))
+      && seq === this._loadSeq && identity === this.auth.identity();
     const pages: SimilarPage[] = [];
     this.loading.set(true);
     try {
@@ -1176,7 +1198,7 @@ export class GalleryStore {
    * this blanks nothing and leaves `selectedPaths`, `excludedPaths` and a view-scoped selection alone.
    * A similarity view keeps its rows: its membership is not a filter. A semantic search is a filter.
    */
-  private async refreshViewInPlace(loadSeq: number): Promise<void> {
+  private async refreshViewInPlace(loadSeq: number, recovering = false): Promise<void> {
     if (this.filters().similar_to) {
       // A similarity view keeps its membership: refresh the rows on screen without filters and never remove one.
       const { rows } = await this.fetchByPaths(this.photos().map(p => p.path));
@@ -1185,7 +1207,7 @@ export class GalleryStore {
     }
     // One re-run when the user paged mid-fetch; a page fetch in flight defers the refetch to `nextPage`.
     for (let attempt = 0; attempt < 2; attempt++) {
-      if (this.loading()) {
+      if (this.loading() && !recovering) {
         this.viewRefreshOwed = true;
         return;
       }
@@ -1224,9 +1246,30 @@ export class GalleryStore {
   }
 
   /** Load next page and append to existing photos */
-  async nextPage(acceptResult: () => boolean = () => true): Promise<void> {
-    if (this.destroyRef.destroyed || !this.listingReadsActive) return;
+  async nextPage(acceptResult: () => boolean = () => true, { whileParked = false }: { whileParked?: boolean } = {}): Promise<void> {
+    if (this.destroyRef.destroyed || (!this.listingReadsActive && !(whileParked && this.photoReadAllowed()))) return;
     this.syncReadOwner();
+    if (!this.listingReadsActive && this.listingPagesInterrupted) {
+      if (this.loading()) return;
+      const seq = this._loadSeq;
+      const identity = this.auth.identity();
+      this.listingPagesInterrupted = false;
+      this.listingRefreshOwed = false;
+      if (this.filters().similar_to) await this.resumeSimilarPages(true);
+      else {
+        this.loading.set(true);
+        try { await this.refreshViewInPlace(seq, true); }
+        catch {
+          if (seq === this._loadSeq && identity === this.auth.identity()) {
+            this.listingPagesInterrupted = true;
+            this.listingRefreshOwed = true;
+          }
+        } finally {
+          if (seq === this._loadSeq && identity === this.auth.identity()) this.loading.set(false);
+        }
+      }
+      return;
+    }
     if (this.pinnedPaths() !== null) return;
     if (!this.hasMore() || this.loading()) return;
 
@@ -1649,8 +1692,9 @@ export class GalleryStore {
     if (!paths.length) return;
     const current = this.captureReviewView();
     try {
-      const hints = await this.pageRead(
-        this.api.post<Record<string, KeeperHint>>('/photos/keeper_hints', { paths }),
+      // Hints are advisory: cancelling one must not force every page to reload on Back.
+      const hints = await firstValueFrom(
+        this.api.post<Record<string, KeeperHint>>('/photos/keeper_hints', { paths }).pipe(takeUntil(this.pageReadCancelled)),
       );
       if (!current()) return;
       for (const [path, hint] of Object.entries(hints)) {
@@ -1877,6 +1921,17 @@ export class GalleryStore {
     const originIdentity = this.auth.identity();
     const originKey = this.filterKey();
     const current = () => originSeq === this._loadSeq && originIdentity === this.auth.identity() && originKey === this.filterKey();
+    const refreshConfirmed = async () => {
+      const rebuild = (endpoint === '/photos/batch_rating' && this.ratingShapesView())
+        || (endpoint === '/photos/batch_reject' && this.filters().review_status === 'rejected');
+      if (current()) await this.refreshReviewResults(rebuild);
+      else {
+        if (!this.listingReadsActive && originIdentity === this.auth.identity() && originKey === this.filterKey()) {
+          this.listingRefreshOwed ||= rebuild || !!this.filters().review_status;
+        }
+        void this.loadReviewProgress();
+      }
+    };
     const viewScoped = useSelectionScope && this.viewScopeSelected();
     const targeted = viewScoped ? this.selectionCount() : paths.length;
     const loaded = viewScoped ? this.selectedLoadedPaths() : paths;
@@ -1901,16 +1956,13 @@ export class GalleryStore {
         } else {
           this.notifyActionFailed();
         }
-        if (count > 0 && current()) await this.refreshReviewResults((endpoint === '/photos/batch_rating' && this.ratingShapesView())
-          || (endpoint === '/photos/batch_reject' && this.filters().review_status === 'rejected'));
+        if (count > 0) await refreshConfirmed();
         return null;
       }
     }
     const kind = BATCH_ACTIVITY[endpoint];
     if (kind) this.journal.record(kind.kind, paths, kind.value(extraBody));
-    if (current()) await this.refreshReviewResults((endpoint === '/photos/batch_rating' && this.ratingShapesView())
-      || (endpoint === '/photos/batch_reject' && this.filters().review_status === 'rejected'));
-    else void this.loadReviewProgress();
+    await refreshConfirmed();
     return { snapshot, targeted, count };
   }
 
@@ -1934,9 +1986,13 @@ export class GalleryStore {
   }
 
   /** Repair shifted offsets with one tail-page request; Undo can restore earlier rows. */
-  async refreshReviewResults(rebuild = false): Promise<void> {
+  async refreshReviewResults(rebuild = false, { whileParked = false }: { whileParked?: boolean } = {}): Promise<void> {
     if (this.destroyRef.destroyed) return;
-    if (!this.listingReadsActive) { this.listingRefreshOwed = true; return; }
+    if (!this.listingReadsActive && !(whileParked && this.photoReadAllowed())) {
+      this.progressRefreshOwed = true;
+      this.listingRefreshOwed ||= rebuild || !!this.filters().review_status;
+      return;
+    }
     this.syncReadOwner();
     this.clearForeignReviewedPhotos();
     const f = this.filters();
@@ -1988,7 +2044,11 @@ export class GalleryStore {
     }
     if (!current()) return;
     this.rememberReviewedPhotos(previous);
-    this.syncUrl();
+    if (whileParked && !this.listingReadsActive) {
+      this.listingRefreshOwed = false;
+      this.listingPagesInterrupted = false;
+      this.saveSessionQuery();
+    } else this.syncUrl();
   }
 
   private rememberReviewedPhotos(previous: Photo[]): void {

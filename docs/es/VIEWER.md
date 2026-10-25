@@ -1141,6 +1141,8 @@ Aumenta `min_photos_for_person` para ocultar del desplegable de filtros las pers
 
 Los cambios rápidos de filtro cancelan las solicitudes anteriores de páginas y progreso de revisión, incluidas las vistas de similares y fijadas. Salir de la galería o cambiar de identidad cancela las lecturas pendientes. Los cambios de valoración y revisión ya enviados no se cancelan.
 
+Abrir una foto pausa las lecturas de fondo de la galería; las flechas pueden cargar más fotos y Conservar actualiza la cola de revisión inmediatamente. Al volver solo se recuperan resultados interrumpidos o cambiados y los recuentos necesarios. Volver sin cambios, cancelar sugerencias o una valoración normal no recarga páginas. Una navegación cancelada o redirigida a la galería aún visible reanuda sus lecturas.
+
 ### Bases de datos grandes (más de 50k fotos)
 
 Ejecuta lo siguiente para un mejor rendimiento:
