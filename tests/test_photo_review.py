@@ -91,6 +91,22 @@ def test_schema_upgrade_and_preference_migration(tmp_path):
         assert conn.execute("SELECT is_kept FROM user_preferences WHERE photo_path='/legacy.jpg'").fetchone() == (0,)
 
 
+def test_preference_migration_upgrades_a_pre_keep_database(tmp_path):
+    from db.schema import init_database
+    from database import migrate_user_preferences
+    path = str(tmp_path / "pre-keep.db")
+    init_database(path)
+    with sqlite3.connect(path) as conn:
+        conn.execute("ALTER TABLE photos DROP COLUMN is_kept")
+        conn.execute("ALTER TABLE user_preferences DROP COLUMN is_kept")
+        conn.execute("INSERT INTO photos(path, filename, star_rating) VALUES('/rated.jpg', 'rated.jpg', 3)")
+    migrate_user_preferences("alice", path)
+    with sqlite3.connect(path) as conn:
+        assert conn.execute(
+            "SELECT star_rating, is_kept FROM user_preferences WHERE user_id='alice' AND photo_path='/rated.jpg'"
+        ).fetchone() == (3, 0)
+
+
 @pytest.mark.parametrize("per_user", [False, True])
 def test_external_reject_clears_keep(tmp_path, per_user):
     from db.schema import init_database

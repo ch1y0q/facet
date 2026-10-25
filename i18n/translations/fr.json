@@ -2775,7 +2775,7 @@
     "rejected": "Rejetées",
     "keep": "Conserver",
     "reset": "Réinitialiser la décision",
-    "updated": "Décision mise à jour pour {{count}} photos",
+    "updated": "Décision mise à jour pour {count} photos",
     "shortcut": "Conserver la photo"
   }
 }

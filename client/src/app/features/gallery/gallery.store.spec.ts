@@ -2299,6 +2299,17 @@ describe('GalleryStore optimistic mutations', () => {
     expect(store.photos().map(p => p.path)).toEqual(['/p1.jpg', '/p2.jpg', '/p3.jpg', '/p0.jpg']);
   });
 
+  it('patches a date-sorted review queue in place when a rating cannot reorder it', async () => {
+    const all = Array.from({ length: 4 }, (_, i) => makePhoto({ path: `/p${i}.jpg` }));
+    store.photos.set(all);
+    store.filters.set({ ...DEFAULT_FILTERS, review_status: 'undecided', sort: 'date_taken', sort_direction: 'ASC', per_page: 2, page: 2 });
+    const get = TestBed.inject(ApiService).get as Mock;
+    get.mockClear();
+    await store.setRating('/p0.jpg', 5);
+    expect(get.mock.calls.some(([url]) => url === '/photos')).toBe(false);
+    expect(store.photos().map(p => [p.path, p.star_rating])).toEqual([['/p0.jpg', 5], ['/p1.jpg', all[1].star_rating], ['/p2.jpg', all[2].star_rating], ['/p3.jpg', all[3].star_rating]]);
+  });
+
   it('rebuilds favorites-only rejected pages when a single rejection clears a favorite', async () => {
     const all = Array.from({ length: 4 }, (_, i) => makePhoto({ path: `/p${i}.jpg`, is_rejected: true, is_favorite: true, star_rating: 4 }));
     store.photos.set(all);
