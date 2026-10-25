@@ -149,8 +149,13 @@ def test_vector_path_is_rewritten_without_losing_embedding(library):
         assert conn.execute('SELECT path,embedding FROM photos_vec').fetchall() == [(new, vector)]
 
 
-@pytest.mark.parametrize('change', ['target_bytes', 'original_reappears', 'source_rating', 'policy'])
-def test_stale_plan_refuses_without_database_writes(library, change):
+@pytest.mark.parametrize('change,reason', [
+    ('target_bytes', 'plan is stale'),
+    ('original_reappears', 'Original must be missing'),
+    ('source_rating', 'plan is stale'),
+    ('policy', 'plan is stale'),
+])
+def test_stale_plan_refuses_without_database_writes(library, change, reason):
     db, old, new, config = library
     plan = preview(library)
     if change == 'target_bytes':
@@ -162,7 +167,7 @@ def test_stale_plan_refuses_without_database_writes(library, change):
             conn.execute('UPDATE photos SET star_rating=2')
     else:
         config['viewer']['scan_directories'].append(str(Path(new).parent))
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=reason):
         apply(library, plan)
     with sqlite3.connect(db) as conn:
         assert conn.execute('SELECT path FROM photos').fetchone()[0] == old
@@ -181,8 +186,17 @@ def test_whole_batch_rolls_back_on_dependent_write_failure(library):
         assert conn.execute('SELECT photo_path FROM user_preferences').fetchone()[0] == old
 
 
-@pytest.mark.parametrize('bad', ['present_copy', 'duplicate_mapping', 'case_only', 'existing_photo', 'symlink', 'path_mapping', 'unknown_reference', 'wrong_shape'])
-def test_ambiguous_or_unconfined_mapping_is_refused(library, bad):
+@pytest.mark.parametrize('bad,reason', [
+    ('present_copy', 'Original must be missing'),
+    ('duplicate_mapping', 'Repeated source, existing destination'),
+    ('case_only', 'Repeated source, existing destination'),
+    ('existing_photo', 'Repeated source, existing destination'),
+    ('symlink', 'without symlinks or dot segments'),
+    ('path_mapping', 'does not support viewer.path_mapping'),
+    ('unknown_reference', 'Unregistered table unknown_annotation'),
+    ('wrong_shape', 'canonical dimensions differ'),
+])
+def test_ambiguous_or_unconfined_mapping_is_refused(library, bad, reason):
     db, old, new, config = library
     mapping = [{'old': old, 'new': new}]
     if bad == 'present_copy':
@@ -205,7 +219,7 @@ def test_ambiguous_or_unconfined_mapping_is_refused(library, bad):
             conn.execute('CREATE TABLE unknown_annotation(photo_path TEXT)')
     else:
         Image.new('RGB', (41, 30), 'blue').save(new)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=reason):
         preview(library, mapping)
 
 
@@ -292,8 +306,14 @@ def test_copied_or_hardlinked_destinations_are_refused(library):
         preview(library, mapping)
 
 
-@pytest.mark.parametrize('boundary', ['outside', 'empty_roots', 'blank_root', 'missing_parent', 'missing_root'])
-def test_missing_or_unconfined_roots_fail_closed(library, boundary):
+@pytest.mark.parametrize('boundary,reason', [
+    ('outside', 'inside configured roots'),
+    ('empty_roots', 'explicit nonblank configured directories'),
+    ('blank_root', 'explicit nonblank configured directories'),
+    ('missing_parent', 'Original must be missing with a readable'),
+    ('missing_root', 'configured root is missing or inaccessible'),
+])
+def test_missing_or_unconfined_roots_fail_closed(library, boundary, reason):
     _, old, new, config = library
     if boundary == 'outside':
         config['viewer']['scan_directories'] = [str(Path(old).parent)]
@@ -305,7 +325,7 @@ def test_missing_or_unconfined_roots_fail_closed(library, boundary):
         config['viewer']['scan_directories'] = [str(Path(old).parent / 'offline')]
     else:
         Path(old).parent.rmdir()
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=reason):
         preview(library)
     assert Path(new).is_file()
 
@@ -349,10 +369,16 @@ def test_cli_defaults_to_preview_and_applies_only_exact_saved_plan(library, tmp_
         assert conn.execute('SELECT path FROM photos').fetchone()[0] == new
 
 
-@pytest.mark.parametrize('limit', ['MAX_PHOTOS', 'MAX_FILES', 'MAX_FILE_BYTES', 'MAX_TOTAL_BYTES', 'MAX_PLAN_BYTES'])
-def test_work_limits_refuse_without_changing_database(library, monkeypatch, limit):
+@pytest.mark.parametrize('limit,reason', [
+    ('MAX_PHOTOS', 'Mapping must contain 1'),
+    ('MAX_FILES', 'Too many explicitly mapped files'),
+    ('MAX_FILE_BYTES', 'regular file within the file-size limit'),
+    ('MAX_TOTAL_BYTES', 'exceeds total file/byte limits'),
+    ('MAX_PLAN_BYTES', 'Generated plan exceeds the 2 MiB input limit'),
+])
+def test_work_limits_refuse_without_changing_database(library, monkeypatch, limit, reason):
     monkeypatch.setattr(relink, limit, 0)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=reason):
         preview(library)
     with sqlite3.connect(library[0]) as conn:
         assert conn.execute('SELECT path FROM photos').fetchone()[0] == library[1]
@@ -638,3 +664,160 @@ def test_database_cli_relink_entrypoint_previews_and_requires_normal_acknowledgm
     applied = subprocess.run([*base, '--apply-plan', str(plan_file), '--ack-plan', plan['plan_id'], '--acknowledge-unverified-identity'], cwd=root, capture_output=True, text=True, timeout=30)
     assert applied.returncode == 0, applied.stderr
     assert json.loads(applied.stdout)['relinked'] == 1
+
+
+def _photo_rows(db):
+    with sqlite3.connect(db) as conn:
+        return conn.execute('SELECT * FROM photos ORDER BY path').fetchall()
+
+
+@pytest.mark.parametrize('kind,suffix,reason', [
+    ('sidecar_full', '.other.xmp', 'sidecar mapping does not preserve its naming relationship'),
+    ('sidecar_basename', '.xmp.bak', 'sidecar mapping does not preserve its naming relationship'),
+    ('sidecar_facet', '.xmp', 'sidecar mapping does not preserve its naming relationship'),
+])
+def test_sidecar_mapping_must_keep_its_naming_relationship(library, kind, suffix, reason):
+    db, old, new, _ = library
+    entry = {'old': old, 'new': new, 'companions': [
+        {'old': old + '.xmp', 'new': new + suffix, 'kind': kind}]}
+    before = _photo_rows(db)
+    with pytest.raises(ValueError, match=reason):
+        preview(library, [entry])
+    assert _photo_rows(db) == before
+
+
+@pytest.mark.parametrize('case', ['not_raw_extension', 'extension_differs', 'old_stem_differs', 'new_stem_differs'])
+def test_raw_companion_mapping_must_keep_the_culling_relationship(library, case):
+    db, old, new, _ = library
+    raw_old, raw_new = str(Path(old).with_suffix('.cr2')), str(Path(new).with_suffix('.cr2'))
+    if case == 'not_raw_extension':
+        raw_old, raw_new = str(Path(old).with_suffix('.dat')), str(Path(new).with_suffix('.dat'))
+    elif case == 'extension_differs':
+        raw_new = str(Path(new).with_suffix('.nef'))
+    elif case == 'old_stem_differs':
+        raw_old = str(Path(old).with_name('elsewhere.cr2'))
+    else:
+        raw_new = str(Path(new).with_name('elsewhere.cr2'))
+    entry = {'old': old, 'new': new, 'companions': [{'old': raw_old, 'new': raw_new, 'kind': 'raw'}]}
+    before = _photo_rows(db)
+    with pytest.raises(ValueError, match='RAW mapping does not preserve the culling companion relationship'):
+        preview(library, [entry])
+    assert _photo_rows(db) == before
+
+
+def test_destination_raw_not_listed_as_companion_is_refused(library):
+    db, old, new, _ = library
+    raw_new = Path(new).with_suffix('.cr2')
+    raw_new.write_bytes(b'unlisted raw next to the destination')
+    before = _photo_rows(db)
+    with pytest.raises(ValueError, match='Destination RAW requires an explicit companion mapping or indexed RAW'):
+        preview(library)
+    assert raw_new.read_bytes() == b'unlisted raw next to the destination'
+    assert _photo_rows(db) == before
+
+
+def test_unregistered_source_path_is_refused(library):
+    db, old, new, _ = library
+    ghost = str(Path(old).with_name('ghost.jpg'))
+    before = _photo_rows(db)
+    with pytest.raises(ValueError, match='Source is not a registered photo'):
+        preview(library, [{'old': ghost, 'new': new}])
+    assert _photo_rows(db) == before
+
+
+@pytest.mark.parametrize('extension', ['.png', '.txt'])
+def test_extension_change_between_old_and_new_is_refused(library, extension):
+    db, old, new, _ = library
+    changed = str(Path(new).with_suffix(extension))
+    Path(new).rename(changed)
+    before = _photo_rows(db)
+    with pytest.raises(ValueError, match='cannot change the image format/extension'):
+        preview(library, [{'old': old, 'new': changed}])
+    assert _photo_rows(db) == before
+
+
+@pytest.mark.parametrize('foreign_key', [
+    'FOREIGN KEY(a,b) REFERENCES photos(path,filename)',
+    'FOREIGN KEY(a) REFERENCES photos(filename)',
+])
+def test_composite_or_non_path_photo_foreign_key_is_refused(library, foreign_key):
+    db, old, _, _ = library
+    with sqlite3.connect(db) as conn:
+        conn.execute('CREATE UNIQUE INDEX photos_path_filename ON photos(path,filename)')
+        conn.execute('CREATE UNIQUE INDEX photos_filename ON photos(filename)')
+        conn.execute(f'CREATE TABLE multi_ref(a TEXT, b TEXT, {foreign_key})')
+    before = _photo_rows(db)
+    with pytest.raises(ValueError, match='Unsupported composite photo foreign key'):
+        preview(library)
+    assert _photo_rows(db) == before
+
+
+def test_unregistered_path_column_referencing_photos_is_refused(library, monkeypatch):
+    db, _, _, _ = library
+    # scan_failures.path is a historical location, registered only by this set.
+    monkeypatch.setattr(relink, '_NON_ASSET_PATHS', {('photos', 'path'), ('photos_fts', 'path')})
+    before = _photo_rows(db)
+    with pytest.raises(ValueError, match=r'Unregistered path dependency: scan_failures\.path'):
+        preview(library)
+    assert _photo_rows(db) == before
+
+
+def test_database_with_broken_foreign_keys_is_refused(library):
+    db, old, new, _ = library
+    with sqlite3.connect(db) as conn:
+        conn.execute('PRAGMA foreign_keys=OFF')
+        conn.execute("INSERT INTO user_preferences(user_id,photo_path) VALUES ('alice','/nowhere.jpg')")
+    before = _photo_rows(db)
+    with pytest.raises(ValueError, match='broken foreign keys; repair before relinking'):
+        preview(library)
+    assert _photo_rows(db) == before
+    with sqlite3.connect(db) as conn:
+        assert conn.execute('SELECT photo_path FROM user_preferences').fetchall() == [('/nowhere.jpg',)]
+
+
+def test_oversized_generated_plan_is_refused_by_its_real_size(library, monkeypatch):
+    db, old, new, _ = library
+    size = len(json.dumps(preview(library), ensure_ascii=False, indent=2).encode())
+    monkeypatch.setattr(relink, 'MAX_PLAN_BYTES', size)
+    assert preview(library)['entries'][0]['new'] == new
+    monkeypatch.setattr(relink, 'MAX_PLAN_BYTES', size - 1)
+    before = _photo_rows(db)
+    with pytest.raises(ValueError, match='Generated plan exceeds the 2 MiB input limit'):
+        preview(library)
+    assert _photo_rows(db) == before
+
+
+def test_destination_changing_while_hashed_is_refused(library, monkeypatch):
+    import types
+    db, old, new, _ = library
+    real = relink.hashlib.sha256
+    def sha256(*args):
+        digest = real(*args)
+        class Touching:
+            def update(self, data):
+                digest.update(data)
+                stat = os.stat(new)
+                os.utime(new, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+            def hexdigest(self):
+                return digest.hexdigest()
+        return Touching() if not args else digest
+    monkeypatch.setattr(relink, 'hashlib', types.SimpleNamespace(sha256=sha256))
+    before = _photo_rows(db)
+    with pytest.raises(ValueError, match='Destination changed while hashing'):
+        preview(library)
+    assert _photo_rows(db) == before
+
+
+def test_destination_changing_while_decoded_is_refused(library, monkeypatch):
+    db, old, new, _ = library
+    real = manual_face_frame.source_identity
+    def decode_then_touch(path):
+        identity = real(path)
+        stat = os.stat(path)
+        os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+        return identity
+    monkeypatch.setattr(manual_face_frame, 'source_identity', decode_then_touch)
+    before = _photo_rows(db)
+    with pytest.raises(ValueError, match='Destination changed while decoding'):
+        preview(library)
+    assert _photo_rows(db) == before
