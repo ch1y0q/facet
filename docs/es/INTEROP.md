@@ -174,3 +174,5 @@ Facet guarda los tags que escribes tú mismo (ver [Galería web — Tags manuale
 Consulta [Comandos — Vista previa y exportación](COMMANDS.md#vista-previa-y-exportación) para la referencia completa de la CLI (`--export-sidecars`, `--import-sidecars`, `--embed-originals`, `--score-to-stars`, `--user`).
 
 Si un marcador obsoleto `facet:GPSState=cleared` acompaña a campos GPS estándar, prevalece el par completo y válido de latitud/longitud. Un par parcial o no válido con contenido es ambiguo y se ignora; nunca borra la ubicación. Solo un par ausente o vacío con el marcador explícito borra el GPS. El GPS manual sigue protegido salvo que se solicite sobrescribirlo expresamente.
+
+La exportación de leyendas con ExifTool modifica solo el idioma `x-default` de `dc:description` y conserva los demás idiomas en cada archivo auxiliar o imagen. Una leyenda vacía en Facet conserva las existentes. Sin ExifTool, el XML contiene el idioma predeterminado y normalmente usa `<image>.facet.xmp` si ya existe un archivo auxiliar; la sobrescritura explícita sigue reemplazando el paquete de destino.
