@@ -25,7 +25,7 @@ describe('GpsEditDialogComponent', () => {
   let component: GpsEditDialogComponent;
   let mockDialogRef: { close: Mock; beforeClosed: Mock };
   let mockApi: { put: Mock; get: Mock; post: Mock; delete: Mock };
-  let mockStore: { patchPhoto: Mock; filters: Mock; loadPhotos: Mock; refreshPaths: Mock };
+  let mockStore: { patchPhoto: Mock; filters: Mock; loadPhotos: Mock; refreshPaths: Mock; config: Mock };
   let mockSnackBar: { open: Mock };
   const navigation = new Subject<NavigationStart>();
   const closing = new Subject<void>();
@@ -42,7 +42,7 @@ describe('GpsEditDialogComponent', () => {
     authStatus.set({ authenticated: true, edition_authenticated: true, user_id: 'editor' });
     mockDialogRef = { close: vi.fn(), beforeClosed: vi.fn(() => closing) };
     mockApi = { put: vi.fn(() => of({ gps_latitude: data.lat, gps_longitude: data.lng })), get: vi.fn(() => of({ places, recent: [] })), post: vi.fn(), delete: vi.fn() };
-    mockStore = { patchPhoto: vi.fn(), filters: vi.fn(() => ({ no_gps: '' })), loadPhotos: vi.fn(), refreshPaths: vi.fn() };
+    mockStore = { patchPhoto: vi.fn(), filters: vi.fn(() => ({ no_gps: '' })), loadPhotos: vi.fn(), refreshPaths: vi.fn(), config: vi.fn(() => ({ place_search_enabled: true })) };
     mockSnackBar = { open: vi.fn() };
 
     TestBed.configureTestingModule({
@@ -120,7 +120,8 @@ describe('GpsEditDialogComponent', () => {
       pending.next({ changed: 1, gps_latitude: 1, gps_longitude: 2 }); await task;
       expect(mockDialogRef.close).not.toHaveBeenCalled();
       if (publishes) {
-        expect(mode === 'batch' ? mockStore.refreshPaths : mockStore.patchPhoto).toHaveBeenCalledTimes(1);
+        expect(mockStore.refreshPaths).toHaveBeenCalledExactlyOnceWith(null);
+        if (mode !== 'batch') expect(mockStore.patchPhoto).toHaveBeenCalledTimes(1);
         if (mode === 'batch') expect(applied).toHaveBeenCalledTimes(1);
         return;
       }
@@ -198,6 +199,84 @@ describe('GpsEditDialogComponent', () => {
     expect(mockDialogRef.close).not.toHaveBeenCalled();
   });
 
+  const place: SavedPlace = { id: 1, name: 'Home', latitude: 1, longitude: 2 } as SavedPlace;
+
+  it.each(['identity', 'edition', 'navigation'])('closes the dialog and clears the saved places after %s loss', loss => {
+    createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 1, lng: 2 }, false, [place]);
+    TestBed.tick();
+    mockDialogRef.close.mockClear();
+    if (loss === 'identity') authStatus.set({ authenticated: true, edition_authenticated: true, user_id: 'bob' });
+    if (loss === 'edition') authStatus.set({ authenticated: true, edition_authenticated: false, user_id: 'editor' });
+    if (loss === 'navigation') navigation.next(new NavigationStart(1, '/other'));
+    TestBed.tick();
+    expect(mockDialogRef.close).toHaveBeenCalled();
+    expect(component.places()).toEqual([]);
+    expect(component.recent()).toEqual([]);
+  });
+
+  it('keeps the dialog and an in-flight save when the status is revalidated for the same user', async () => {
+    createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 1, lng: 2 });
+    TestBed.tick();
+    const pending = new Subject<{ gps_latitude: number; gps_longitude: number }>();
+    mockApi.put.mockReturnValue(pending);
+    const saving = component.save();
+    authStatus.set({ authenticated: true, edition_authenticated: true, user_id: 'editor' });
+    TestBed.tick();
+    pending.next({ gps_latitude: 3, gps_longitude: 4 });
+    pending.complete();
+    await saving;
+    expect(mockDialogRef.close).toHaveBeenCalledExactlyOnceWith({ gps_latitude: 3, gps_longitude: 4 });
+  });
+
+  it('searches only explicitly, previews a result, then saves without the previous bookmark', async () => {
+    createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: null, lng: null });
+    component.setOnlineQuery('Berlin');
+    expect(mockApi.get).toHaveBeenCalledTimes(1);
+    const result = { label: 'Berlin', latitude: 52.5, longitude: 13.4 };
+    mockApi.get.mockReturnValue(of({ results: [result] }));
+    await component.searchOnline();
+    expect(mockApi.get).toHaveBeenLastCalledWith('/places/search', { q: 'Berlin' });
+    expect(component.selectedLat()).toBeNull();
+    component.selectedPlaceId.set(99);
+    component.selectOnlineResult(result);
+    expect(component.selectedPlaceId()).toBeNull();
+    expect(mockApi.put).not.toHaveBeenCalled();
+    await component.save();
+    expect(mockApi.put).toHaveBeenCalledWith('/photo/gps', { path: '/photo.jpg', gps_latitude: 52.5, gps_longitude: 13.4 });
+    expect(mockStore.refreshPaths).toHaveBeenCalledWith(null);
+  });
+
+  it('cancels and discards pending search on query edits, draft edits, dismissal and auth changes', async () => {
+    for (const invalidate of ['query', 'draft', 'dismiss', 'auth']) {
+      createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 1, lng: 2 });
+      const pending = new Subject<{ results: { label: string; latitude: number; longitude: number }[] }>();
+      mockApi.get.mockReturnValue(pending);
+      component.setOnlineQuery('Berlin');
+      const searching = component.searchOnline();
+      if (invalidate === 'query') component.setOnlineQuery('Paris');
+      if (invalidate === 'draft') component.setLatitude(7);
+      if (invalidate === 'dismiss') component.cancel();
+      if (invalidate === 'auth') { authStatus.set({ authenticated: true, edition_authenticated: false, user_id: 'editor' }); TestBed.tick(); }
+      expect(pending.observed).toBe(false);
+      pending.next({ results: [{ label: 'Old', latitude: 3, longitude: 4 }] });
+      await searching;
+      expect(component.onlineResults()).toEqual([]);
+      expect(mockApi.put).not.toHaveBeenCalled();
+    }
+  });
+
+  it('keeps offline coordinates and saved places usable after lookup failure and rejects invalid results', async () => {
+    createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 1, lng: 2 });
+    component.setOnlineQuery('Berlin');
+    mockApi.get.mockReturnValue(throwError(() => new Error('offline')));
+    await component.searchOnline();
+    expect(component.onlineError()).toBeTruthy();
+    component.selectOnlineResult({ label: 'bad', latitude: NaN, longitude: 2 });
+    expect(component.selectedLat()).toBe(1);
+    component.selectRecent({ latitude: 0, longitude: 0 });
+    expect(component.selectedLat()).toBe(0);
+  });
+
   it('should initialize with provided coordinates', () => {
     createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 48.8566, lng: 2.3522 });
 
@@ -227,7 +306,7 @@ describe('GpsEditDialogComponent', () => {
     expect(mockStore.patchPhoto).not.toHaveBeenCalled();
   });
 
-  it('captures inputs, prevents duplicate saves and still publishes after destruction', async () => {
+  it('captures inputs, prevents duplicate saves and still publishes the saved location after destruction', async () => {
     createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 1, lng: 2 });
     const pending = new Subject<{ gps_latitude: number; gps_longitude: number }>();
     mockApi.put.mockReturnValue(pending);
@@ -244,7 +323,7 @@ describe('GpsEditDialogComponent', () => {
     expect(mockDialogRef.close).not.toHaveBeenCalled();
   });
 
-  it('cancelling a pending save closes once and still applies confirmed GPS to the gallery', async () => {
+  it('cancelling a pending save closes once and still applies the saved location to the gallery', async () => {
     createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 1, lng: 2 });
     const pending = new Subject<{ gps_latitude: number; gps_longitude: number }>();
     mockApi.put.mockReturnValue(pending);
@@ -380,7 +459,8 @@ describe('GpsEditDialogComponent', () => {
     createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 0, lng: 0 });
     mockStore.filters.mockReturnValue({ no_gps: '1' });
     await component.save();
-    expect(mockStore.loadPhotos).toHaveBeenCalledOnce();
+    expect(mockStore.refreshPaths).toHaveBeenCalledWith(null);
+    expect(mockStore.loadPhotos).not.toHaveBeenCalled();
   });
 
   describe('clearLocation', () => {
@@ -591,7 +671,7 @@ describe('GpsEditDialogComponent', () => {
     const photo = makePhoto({ path: '/photo.jpg', gps_latitude: null, gps_longitude: null, gps_manually_set: 1 });
     let serverPhotos = [photo];
 
-    beforeEach(() => {
+    beforeEach(async () => {
       TestBed.resetTestingModule();
       serverPhotos = [photo];
       mockApi = {
@@ -608,9 +688,9 @@ describe('GpsEditDialogComponent', () => {
           { provide: MAT_DIALOG_DATA, useValue: { path: '/photo.jpg', filename: 'photo.jpg', lat: null, lng: null, manuallySet: true } },
           { provide: MatDialogRef, useValue: mockDialogRef },
           { provide: ApiService, useValue: mockApi },
+          { provide: AuthService, useValue: { identity, status: authStatus, isEdition: () => authStatus().edition_authenticated } },
           { provide: Router, useValue: { navigate: vi.fn(), events: NEVER } },
           { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
-          { provide: AuthService, useValue: { identity, status: authStatus, isEdition: () => true } },
           { provide: AlbumService, useValue: { list: () => of({ albums: [] }), update: () => of({}) } },
           { provide: I18nService, useValue: { t: (key: string) => key } },
         ],
@@ -620,6 +700,7 @@ describe('GpsEditDialogComponent', () => {
       store.filters.update(f => ({ ...f, no_gps: '1', camera: 'Canon' }));
       store.photos.set([photo]);
       store.total.set(1);
+      await store.loadPhotos();
     });
 
     it('returns a photo to missing-location results after saving coordinates and then clearing them', async () => {
@@ -628,6 +709,7 @@ describe('GpsEditDialogComponent', () => {
       mockApi.put.mockReturnValueOnce(of({ gps_latitude: 0, gps_longitude: 0 }));
       serverPhotos = [];
       await component.save();
+      await store.refreshPaths(null);
       expect(store.photos()).toEqual([]);
       expect(store.total()).toBe(0);
 
@@ -635,8 +717,31 @@ describe('GpsEditDialogComponent', () => {
       mockApi.put.mockReturnValueOnce(of({ gps_latitude: null, gps_longitude: null }));
       serverPhotos = [photo];
       await component.save();
+      await store.refreshPaths(null);
       expect(store.photos().map(p => p.path)).toEqual(['/photo.jpg']);
       expect(store.total()).toBe(1);
+      expect(store.filters()).toMatchObject({ no_gps: '1', camera: 'Canon' });
+    });
+
+    it('preserves a newly pinned selection when an online-place save finishes in a changed view', async () => {
+      store.config.set({ ...store.config()!, place_search_enabled: true });
+      const result = { label: 'Berlin', latitude: 52.5, longitude: 13.4 };
+      component.selectOnlineResult(result);
+      const pending = new Subject<{ gps_latitude: number; gps_longitude: number }>();
+      mockApi.put.mockReturnValue(pending);
+      const saving = component.save();
+      const other = makePhoto({ path: '/other.jpg', gps_latitude: 3, gps_longitude: 4 });
+      store.pinnedPaths.set(['/other.jpg']);
+      store.photos.set([other]);
+      store.selectedPaths.set(new Set(['/other.jpg']));
+      mockApi.post.mockReturnValue(of({ photos: [other] }));
+      pending.next({ gps_latitude: 52.5, gps_longitude: 13.4 });
+      pending.complete();
+      await saving;
+      await store.refreshPaths(null);
+      expect(store.pinnedPaths()).toEqual(['/other.jpg']);
+      expect(store.selectedPaths()).toEqual(new Set(['/other.jpg']));
+      expect(store.photos().map(p => p.path)).toEqual(['/other.jpg']);
       expect(store.filters()).toMatchObject({ no_gps: '1', camera: 'Canon' });
     });
 
@@ -648,6 +753,7 @@ describe('GpsEditDialogComponent', () => {
       serverPhotos = visible ? [{ ...photo, gps_manually_set: 0 }] : [];
       mockApi.delete.mockReturnValue(of(result));
       await component.useFileLocation();
+      await store.refreshPaths(null);
       expect(store.photos().map(p => p.path)).toEqual(visible ? ['/photo.jpg'] : []);
       expect(store.total()).toBe(visible ? 1 : 0);
       expect(mockApi.get).toHaveBeenCalledWith('/photos', expect.objectContaining({ no_gps: '1', camera: 'Canon' }));

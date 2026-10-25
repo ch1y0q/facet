@@ -1550,6 +1550,12 @@ Si la búsqueda semántica indica que la aceleración de Apple Silicon está ocu
 | El puerto 5000 está en uso | Ejecuta `python viewer.py --port 5001` (o define `PORT=5001`). En macOS, el Receptor de AirPlay del Centro de Control ocupa el 5000 por defecto: elige otro puerto o desactiva el Receptor de AirPlay en Ajustes del Sistema → General → AirDrop y Handoff. |
 
 
+### Photon
+
+Usa **Dirección o negocio → Buscar en línea** para consultar Photon explícitamente. La consulta se envía al proveedor configurado solo al pulsar; escribir no envía nada. Selecciona un resultado para previsualizar las coordenadas y pulsa **Guardar** para aplicarlas. El original no cambia. Photon usa datos de OpenStreetMap (© colaboradores de OpenStreetMap). Los lugares guardados y las coordenadas funcionan sin conexión. `viewer.place_search_url` tiene por defecto `https://photon.komoot.io/api`; permite un servidor Photon propio y `""` desactiva la búsqueda. El servidor público no garantiza disponibilidad. Límites: 3–200 caracteres, cinco resultados, cinco segundos y 64 KiB; caché de 128 búsquedas durante 15 minutos por proceso, sin llamadas simultáneas y con un segundo mínimo entre ellas. Usa un solo worker con el proveedor público. Facet no registra las consultas; excluye sus parámetros de los registros del proxy.
+
+El plazo de cinco segundos interrumpe los sockets activos, incluidos encabezados y bloques HTTP lentos. La resolución DNS nativa usa los tiempos del sistema y puede tardar más antes de crear un socket; una búsqueda vencida no abre una conexión después.
+
 ### Revisar las marcas manuales de rostros guardadas
 
 En los filtros de refinamiento de la galería, los editores pueden activar **Rostros manuales por revisar** para encontrar fotos con rectángulos de rostros obsoletos o guardados por versiones anteriores. Abra una foto y su editor de rostros habitual para ajustar y guardar un rectángulo tras comprobarlo de nuevo, o eliminarlo. Cuando se corrige o elimina la última marca pendiente, la foto sale de esta vista filtrada. El filtro también funciona en álbumes inteligentes guardados y al seleccionar todos los resultados.
