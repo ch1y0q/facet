@@ -1551,6 +1551,12 @@ Se la ricerca semantica segnala che l’accelerazione Apple Silicon è occupata,
 | Porta 5000 in uso | Esegui `python viewer.py --port 5001` (o imposta `PORT=5001`). Su macOS, il Ricevitore AirPlay di ControlCenter occupa la porta 5000 per impostazione predefinita — scegli un'altra porta oppure disabilita il Ricevitore AirPlay in Impostazioni di Sistema → Generali → AirDrop e Handoff. |
 
 
+### Photon
+
+Usa **Indirizzo o attività → Cerca online** per interrogare Photon esplicitamente. La richiesta viene inviata al fornitore configurato solo al clic; digitare non invia nulla. Seleziona un risultato per visualizzare le coordinate, poi **Salva** per applicarle. Il file originale non cambia. Photon usa dati OpenStreetMap (© collaboratori OpenStreetMap). Luoghi salvati e coordinate funzionano offline. `viewer.place_search_url` è predefinito a `https://photon.komoot.io/api`; puoi indicare un’istanza Photon privata o `""` per disattivare la ricerca. Il server pubblico non garantisce disponibilità. Limiti: 3–200 caratteri, cinque risultati, cinque secondi, 64 KiB; cache di 128 ricerche per 15 minuti per processo, nessuna chiamata simultanea e almeno un secondo tra le chiamate. Usa un solo worker con il fornitore pubblico. Facet non registra le query; escludi i parametri di ricerca dai log del proxy.
+
+Il limite di cinque secondi interrompe i socket attivi, anche con intestazioni o delimitazioni HTTP lente. La risoluzione DNS nativa segue i tempi del sistema e può richiedere più tempo prima della creazione del socket; una ricerca scaduta non apre poi alcuna connessione.
+
 ### Verificare i riquadri manuali dei volti salvati
 
 Nei filtri di affinamento della galleria, gli editor possono attivare **Volti manuali da verificare** per trovare foto con riquadri dei volti non più validi o salvati da versioni precedenti. Apri una foto e il consueto editor dei volti per modificare e salvare un riquadro dopo una nuova verifica, oppure eliminarlo. Quando l’ultimo riquadro da verificare viene corretto o rimosso, la foto esce dalla vista filtrata. Il filtro funziona anche negli album intelligenti salvati e nella selezione di tutti i risultati.
@@ -1558,3 +1564,11 @@ Nei filtri di affinamento della galleria, gli editor possono attivare **Volti ma
 L’elenco riflette l’ultima scansione o verifica esplicita nell’editor dei volti, senza monitorare continuamente il file system. Le scansioni complete e limitate verificano le foto con riquadri manuali anche quando il rilevamento dei volti è disattivato. Gli originali mancanti vengono segnalati quando si tenta di validarli. L’elenco legge soltanto i metadati indicizzati nel database e non decodifica gli originali. L’editor ricontrolla l’originale e il suo risultato è quello valido. Le modifiche ai soli metadati mantengono validi i riquadri se l’identità canonica dell’immagine corrisponde; la firma approssimativa può però non rilevare ritocchi lievi a dimensioni invariate. La verifica non modifica i file originali.
 
 L’esportazione di un nuovo database del visualizzatore e gli aggiornamenti incrementali conservano lo stato di verifica memorizzato; le correzioni effettuate nel visualizzatore non vengono sostituite da dati precedenti della sorgente.
+
+## Correzione della data di scatto
+
+In modalità modifica, **Correggi data di scatto** è disponibile nei dettagli e nella barra di selezione. La selezione o «Seleziona tutto nella vista», con esclusioni, accetta al massimo 1000 foto visibili. Inserisci secondi interi diversi da zero tra −31622400 e +31622400 (±366 giorni): positivo sposta dopo, negativo prima. **Anteprima** mostra il numero di foto modificate/ignorate e le prime 20 date prima/dopo. **Applica correzione** ricontrolla ambito e valori e applica tutto atomicamente; se cambiano, ripeti l’anteprima.
+
+Si sposta l’ora locale della fotocamera senza dedurre fuso orario o ora legale. Sono supportati valori completi `YYYY:MM:DD HH:MM:SS` o `YYYY-MM-DD[T o spazio]HH:MM:SS`. Date sconosciute, incomplete, non valide, fuori intervallo o con fuso/frazioni di secondo vengono ignorate. Le correzioni sopravvivono a scansioni complete/parziali ed esportazioni incrementali del database del visualizzatore. **Usa data del file** rimuove la correzione; senza data nel file, la data diventa sconosciuta. File illeggibili o date non supportate conservano la correzione.
+
+Originali e date di modifica dei file rimangono invariati. L’esportazione XMP esplicita scrive `exif:DateTimeOriginal` per date manuali; la scrittura esplicita nel file aggiunge EXIF `DateTimeOriginal` nei formati supportati senza modificare altre date EXIF. I gruppi di raffiche/sequenze restano invariati; avvia esplicitamente la scansione o il rilevamento dei gruppi per raggruppare nuovamente.
