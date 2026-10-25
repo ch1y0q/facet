@@ -18,6 +18,7 @@ photo library, then serves a gallery to browse it. Start with
 | [Interop](INTEROP.md) | Round-tripping ratings/tags with Lightroom, Capture One, digiKam, darktable |
 | [Immich](IMMICH.md) | Syncing ratings and favorites with Immich, plus the inbound webhook |
 | [Deployment](DEPLOYMENT.md) | NAS, remote servers, HTTPS, backups, multi-user |
+| [RELINK](RELINK.md) | Relink moved photos |
 
 ## Supported file types
 
