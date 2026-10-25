@@ -462,7 +462,7 @@ async def _search_vec(conn, text_emb, limit, threshold, vis_sql, vis_params):
 
 
 async def _embedding_matrix_key(conn, vis_sql, vis_params, user_id):
-    """Use the actual connection's database, including isolated in-memory DBs."""
+    """Identify the current database pathname, or an isolated in-memory DB."""
     from api.change_token import db_change_token
 
     async with conn.execute("PRAGMA database_list") as cur:
@@ -495,11 +495,26 @@ async def _load_embedding_matrix(conn, vis_sql, vis_params, user_id):
         if cacheable and _embedding_cache and _embedding_cache['key'] == key:
             return _embedding_cache['matrix'], _embedding_cache['paths']
 
-        async with conn.execute(
-            f"SELECT path, clip_embedding FROM photos WHERE clip_embedding IS NOT NULL AND {vis_sql}",
-            vis_params,
-        ) as cur:
-            rows = await cur.fetchall()
+        async def read_rows(reader):
+            async with reader.execute(
+                f"SELECT path, clip_embedding FROM photos WHERE clip_embedding IS NOT NULL AND {vis_sql}",
+                vis_params,
+            ) as cur:
+                return await cur.fetchall()
+
+        if cacheable and isinstance(key[0], str):
+            # database_list gives a pathname, NOT the inode held by conn. A
+            # request opened before an atomic replacement can still read the
+            # old file. Open a fresh reader AFTER taking the path token so old
+            # rows can never be published under the replacement file's key.
+            import aiosqlite
+            from pathlib import Path
+
+            async with aiosqlite.connect(Path(key[0]).as_uri() + '?mode=ro', uri=True) as reader:
+                reader.row_factory = aiosqlite.Row
+                rows = await read_rows(reader)
+        else:
+            rows = await read_rows(conn)
 
         # Numpy work below is CPU-bound — push it off the event loop. For 100k photos
         # this can be ~50ms which is meaningful at moderate concurrency.
@@ -516,12 +531,25 @@ async def _load_embedding_matrix(conn, vis_sql, vis_params, user_id):
                 return None, []
             return np.stack(embeddings_, axis=0), paths_
 
-
-        matrix, paths = await asyncio.to_thread(_build_matrix, rows)
+        # Cancelling to_thread's await cannot stop the worker. Keep the lock
+        # until it finishes, even if the request is cancelled repeatedly, so
+        # the next miss cannot overlap a still-allocating matrix build.
+        build = asyncio.create_task(asyncio.to_thread(_build_matrix, rows))
+        cancelled = False
+        while True:
+            try:
+                matrix, paths = await asyncio.shield(build)
+                break
+            except asyncio.CancelledError:
+                if build.cancelled():  # event-loop shutdown also cancels workers
+                    raise
+                cancelled = True
         if cacheable:
             # Key from BEFORE the SELECT: a concurrent commit can never stamp
             # an older matrix with the new generation.
             _embedding_cache = {'matrix': matrix, 'paths': paths, 'key': key}
+        if cancelled:
+            raise asyncio.CancelledError
         return matrix, paths
 
 

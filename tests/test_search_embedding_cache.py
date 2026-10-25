@@ -207,3 +207,80 @@ async def test_empty_matrix_is_reused_until_embedding_appears(tmp_path, monkeypa
         assert matrix is not None
     finally:
         await conn.close()
+
+
+@pytest.mark.asyncio
+async def test_atomic_replacement_old_reader_cannot_poison_new_file(tmp_path):
+    path = tmp_path / 'photos.db'
+    replacement_path = tmp_path / 'replacement.db'
+    old = await database(path)
+    replacement = await database(replacement_path)
+    fresh = None
+    try:
+        # Establish the old reader's open inode, and a cached old generation.
+        first, _ = await load(old)
+        await replacement.execute('DELETE FROM photos')
+        await replacement.execute('INSERT INTO photos VALUES (?, ?, ?)', ('new', vector(1), 1))
+        await replacement.commit()
+        await replacement.close()
+        replacement = None
+        replacement_path.replace(path)
+        # Prove this is a stale live SQLite handle, not a pathname-only mock.
+        async with old.execute('SELECT path FROM photos') as cur:
+            assert (await cur.fetchone())[0] == 'a'
+        through_old, paths = await load(old)
+        assert paths == ['new']
+        assert through_old is not first
+        fresh = await aiosqlite.connect(path)
+        fresh.row_factory = aiosqlite.Row
+        current, paths = await load(fresh)
+        assert paths == ['new']
+        assert current is through_old
+        np.testing.assert_array_equal(current, [np.frombuffer(vector(1), dtype=np.float32)])
+    finally:
+        await old.close()
+        if replacement is not None:
+            await replacement.close()
+        if fresh is not None:
+            await fresh.close()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_builder_drains_before_releasing_lock(tmp_path, monkeypatch):
+    conn = await database(tmp_path / 'photos.db')
+    started = threading.Event()
+    release = threading.Event()
+    original = np.stack
+    builds = []
+
+    def blocked_stack(*args, **kwargs):
+        builds.append(1)
+        started.set()
+        assert release.wait(5)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(np, 'stack', blocked_stack)
+    first = asyncio.create_task(load(conn))
+    second = None
+    try:
+        assert await asyncio.to_thread(started.wait, 5)
+        first.cancel()
+        second = asyncio.create_task(load(conn))
+        await asyncio.sleep(0.05)
+        first.cancel()  # repeated request cancellation cannot release the guard
+        await asyncio.sleep(0.05)
+        assert not first.done()
+        assert not second.done()
+        assert len(builds) == 1
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+        matrix, paths = await second
+        assert paths == ['a']
+        assert len(builds) == 1
+        assert (await load(conn))[0] is matrix
+        assert not search._embedding_cache_lock.locked()
+    finally:
+        release.set()
+        await asyncio.gather(*(t for t in (first, second) if t is not None), return_exceptions=True)
+        await conn.close()
