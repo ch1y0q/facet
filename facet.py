@@ -2910,6 +2910,18 @@ def main():
         if iqa_step is None:
             logger.info("--- IQA metrics: skipped (no IQA model is permitted under the active "
                         "licensing policy) ---")
+
+        # HEIF orientation repair, inline like the schema step rather than as a
+        # subprocess flag: no model and no GPU, and idempotent through a
+        # scanned_at watermark, so a run with nothing to repair costs one
+        # indexed query. Sideways rows leave with their subject columns NULLed,
+        # which is exactly what the --recompute-saliency step below selects on.
+        from processing.scorer import fix_double_transposed_heif_thumbnails
+        logger.info("--- HEIF orientation rebuild (thumbnails + dimensions) ---")
+        repaired = fix_double_transposed_heif_thumbnails(db_path)
+        if repaired:
+            logger.info("  %d sideways HEIF thumbnail(s) re-uprighted; "
+                        "--recompute-saliency will rescore them", repaired)
         steps = [step for step in (
             ("--extract-gps", "GPS coordinates from EXIF"),
             ("--detect-duplicates", "Duplicate detection (pHash)"),

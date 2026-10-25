@@ -204,7 +204,11 @@
     "histogram": "直方图"
   },
   "photoCard": {
-    "embed_to_file": "将元数据写入文件"
+    "embed_to_file": "将元数据写入文件",
+    "duplicate_set": "查看重复照片组",
+    "burst_set": "查看连拍组",
+    "sequence_set": "查看包围曝光/全景组",
+    "open_detail": "打开照片页"
   },
   "notifications": {
     "copied": "已复制！",
@@ -1297,6 +1301,23 @@
     },
     "channel_clip_highlight_range": "高光溢出比例 %",
     "channel_clip_shadow_range": "阴影溢出比例 %",
+    "blinks_only": "仅看眨眼",
+    "duplicates_only": "仅看重复",
+    "card_actions": {
+      "title": "自定义卡片按钮",
+      "hint": "选择照片卡片悬停时显示哪些按钮及其顺序。组按钮只在属于对应组的照片上出现。",
+      "move_up": "上移",
+      "move_down": "下移",
+      "reset": "恢复默认"
+    },
+    "review_progress": {
+      "title": "审阅进度",
+      "counts": "{undecided} 张未决定 · {kept} 张保留 · {rejected} 张拒绝",
+      "complete": "已审阅 {total} 张中的 {percent}%",
+      "start": "审阅未决定照片",
+      "resume": "继续审阅",
+      "browser": "在此浏览器中恢复记住的队列。"
+    },
     "manual_faces_need_review": "手动人脸需要检查",
     "manual_faces_review_hint": "基于最近一次扫描或人脸编辑器检查，并非持续监控。打开照片的人脸编辑器，检查已保存的标记。"
   },
@@ -2564,7 +2585,8 @@
     "delete_confirm_body": "{count} 张照片将被发送到操作系统的回收站，在清空之前仍可恢复。",
     "delete_partial_result": "已删除 {deleted} 张，失败 {failed} 张",
     "delete_failed": "删除失败 — 没有任何内容被发送到回收站",
-    "delete_disabled_view_scope_tooltip": "请明确选择照片以删除——此处不能使用整视图选择"
+    "delete_disabled_view_scope_tooltip": "请明确选择照片以删除——此处不能使用整视图选择",
+    "remove_missing_rows": "同时移除磁盘上已缺失文件的库记录"
   },
   "shortcuts": {
     "title": "键盘快捷键",

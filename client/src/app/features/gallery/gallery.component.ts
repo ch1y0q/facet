@@ -35,7 +35,7 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, NavigationStart, Router, RouterOutlet } from '@angular/router';
 import { filter, firstValueFrom } from 'rxjs';
-import { GalleryStore, BatchResult } from './gallery.store';
+import { GalleryStore, BatchResult, REVIEW_RESUME_NAVIGATION } from './gallery.store';
 import { Photo } from '../../shared/models/photo.model';
 import { isTypingContext } from '../../shared/utils/keyboard';
 import { PHOTO_PATH } from '../../core/gallery-reuse.strategy';
@@ -59,6 +59,7 @@ import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { PhotoTooltipComponent } from './photo-tooltip.component';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { PhotoActionsService } from '../../core/services/photo-actions.service';
+import { CardActionsService } from './card-actions.service';
 import { SlideshowComponent } from './slideshow.component';
 import { GalleryFilterSidebarComponent } from './gallery-filter-sidebar.component';
 import { GalleryPhotoMenuComponent, PhotoMenuAction, PhotoMenuActionEvent, isSheetAction } from './gallery-photo-menu.component';
@@ -231,6 +232,25 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
       <!-- Main content. The drawer reserves its own strip, so the grid gets
            exactly the width it has whenever the filters are open. -->
       <mat-sidenav-content>
+        @if (store.reviewProgress(); as progress) {
+          <section class="mx-2 md:mx-4 mt-2 px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] text-sm" [attr.aria-label]="I18N.gallery.review_progress.title | translate">
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <span>{{ I18N.gallery.review_progress.counts | translate:{ undecided: progress.undecided, kept: progress.kept, rejected: progress.rejected } }}</span>
+              <span>{{ I18N.gallery.review_progress.complete | translate:{ percent: store.reviewPercent(), total: progress.total } }}</span>
+              @if (progress.undecided > 0 && store.filters().review_status !== 'undecided') {
+                <button mat-button (click)="store.startReviewQueue()">{{ I18N.gallery.review_progress.start | translate }}</button>
+              }
+            </div>
+            <progress class="w-full h-1" max="100" [value]="store.reviewPercent()" [attr.aria-label]="I18N.gallery.review_progress.title | translate"></progress>
+          </section>
+        }
+        @if (store.reviewBookmark()) {
+          <div class="mx-2 md:mx-4 mt-2 flex flex-wrap items-center gap-x-3 text-sm">
+            <button mat-button [disabled]="store.loading()" (click)="continueReview()">{{ I18N.gallery.review_progress.resume | translate }}</button>
+            <span class="opacity-70">{{ I18N.gallery.review_progress.browser | translate }}</span>
+          </div>
+        }
+
         <!-- Set-scope chip: the photo-detail "open this set in the gallery" action.
              Never reflected in the URL (sequence_group_id is renumbered on every
              detection pass), so this is the only affordance out of it. -->
@@ -331,6 +351,9 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                     (openCritiqueClicked)="openCritique($event)"
                     (embedMetadataClicked)="embedMetadata($event)"
                     (openAddPersonClicked)="openAddPerson($event)"
+                    [cardActions]="cardActions()"
+                    (openSetClicked)="store.scopeToSet($event.photo, $event.kind)"
+                    (openDetailClicked)="downloadPhoto($event)"
                     (favoriteToggled)="store.toggleFavorite($event)"
                     (rejectedToggled)="store.toggleRejected($event)"
                     (starClicked)="store.setRating($event.photo.path, $event.star)"
@@ -386,6 +409,9 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                   (openCritiqueClicked)="openCritique($event)"
                   (embedMetadataClicked)="embedMetadata($event)"
                   (openAddPersonClicked)="openAddPerson($event)"
+                  [cardActions]="cardActions()"
+                  (openSetClicked)="store.scopeToSet($event.photo, $event.kind)"
+                  (openDetailClicked)="downloadPhoto($event)"
                   (favoriteToggled)="store.toggleFavorite($event)"
                   (rejectedToggled)="store.toggleRejected($event)"
                   (starClicked)="store.setRating($event.photo.path, $event.star)"
@@ -446,6 +472,9 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                       (openCritiqueClicked)="openCritique($event)"
                       (embedMetadataClicked)="embedMetadata($event)"
                       (openAddPersonClicked)="openAddPerson($event)"
+                      [cardActions]="cardActions()"
+                      (openSetClicked)="store.scopeToSet($event.photo, $event.kind)"
+                      (openDetailClicked)="downloadPhoto($event)"
                       (favoriteToggled)="store.toggleFavorite($event)"
                       (rejectedToggled)="store.toggleRejected($event)"
                       (starClicked)="store.setRating($event.photo.path, $event.star)"
@@ -751,13 +780,19 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
   changeDetection: ChangeDetectionStrategy.Eager,
   host: {
     class: 'block h-full',
+    // meta.a is Cmd+A: macOS's select-all, the key a Mac user actually presses.
+    // control.a keeps working on Windows/Linux (and on macOS for Ctrl+A).
     '(document:keydown.control.a)': 'onSelectAllShortcut($event)',
+    '(document:keydown.meta.a)': 'onSelectAllShortcut($event)',
   },
 })
 export class GalleryComponent implements OnInit, OnDestroy {
   protected readonly I18N = i18nKeys();
   protected readonly store = inject(GalleryStore);
   protected readonly auth = inject(AuthService);
+  private readonly cardActionsService = inject(CardActionsService);
+  /** The user's hover-button layout for every card, from localStorage. */
+  protected readonly cardActions = this.cardActionsService.config;
   protected readonly scan = inject(ScanService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly bottomSheet = inject(MatBottomSheet);
@@ -774,6 +809,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly changeDetector = inject(ChangeDetectorRef);
   private parked = false;
   // Detaching loses the DOM scroll position and focus.
+  private resumeNavigation = 0;
   private returnTo: { scroll: number; focus: Element | null; path: string | null } | null = null;
   private readonly api = inject(ApiService);
   private readonly pageHelp = inject(PageHelpService);
@@ -1056,13 +1092,17 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   /** Offer the restore only while all five are still off, so it never fights a manual change.
    *  The stash itself (and showAllHidden()/restoreHidden()) lives on GalleryStore — the
-   *  timeline's reachability banner offers the same affordance and needs the same state. */
+   *  timeline's reachability banner offers the same affordance and needs the same state.
+   *  Suppressed under an "only X" filter too: that view shows a subset by design, so the
+   *  banner's "showing all photos" sentence would be false while one is up. The stash
+   *  survives, so turning the only-filter off brings the offer back. */
   readonly canRestoreHidden = computed(() => {
     const stash = this.store.hiddenFiltersStash();
     if (!stash) return false;
     const f = this.store.filters();
     return !f.hide_blinks && !f.hide_bursts && !f.hide_duplicates && !f.hide_brackets
-      && !f.hide_panoramas;
+      && !f.hide_panoramas
+      && !f.blinks_only && !f.duplicates_only && !f.show_rejected;
   });
 
   /** The active set-scope kind (from photo-detail's "open this set"), or null. */
@@ -1229,6 +1269,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
     // Capture before the outlet detaches the DOM and loses scroll and focus.
     this.router.events.pipe(filter(e => e instanceof NavigationStart), takeUntilDestroyed()).subscribe(() => {
+      if (!this.router.currentNavigation?.()?.extras?.state?.[REVIEW_RESUME_NAVIGATION]) this.resumeNavigation++;
       if (this.parked) return;
       const focus = document.activeElement;
       const index = Number((focus?.closest('[data-pidx]') as HTMLElement | null)?.dataset['pidx']);
@@ -1334,11 +1375,33 @@ export class GalleryComponent implements OnInit, OnDestroy {
     // Read (and clear) BEFORE tryRestoreView: a scoped "open this set" request
     // means the user wants that new scoped view, never a resumed previous one.
     const setScope = this.consumeSetScopeState();
+    // A parameterless landing on `/` is the nav icon's return from another
+    // page (a reload carries its own query params, an album route its
+    // albumId). The session's last gallery query is merged into the filters
+    // AFTER loadConfig rebuilds them -- directly, not through a navigation:
+    // the ActivatedRoute snapshot does not refresh for same-component
+    // param-only navigations, so a navigate-then-read silently lost the
+    // restored filters (the album-route return hit exactly that).
+    const savedQuery = (!setScope && !this.route.snapshot.paramMap.get('albumId')
+      && !Object.keys(this.route.snapshot.queryParams).length)
+      ? this.store.readGallerySessionQuery()
+      : null;
+    const routeAlbumId = this.route.snapshot.paramMap.get('albumId');
     if (!setScope && this.tryRestoreView()) return;
     // Reset album state to avoid stale singleton data; loadConfig() resets filters from scratch
     this.store.currentAlbum.set(null);
     this.store.initializing.set(true);
     await this.store.loadConfig();
+    // Record what THIS init resolved to: a plain URL entry must write its own
+    // filters (syncUrl never runs for one), and the albums page shares
+    // loadConfig but must never touch this memory. An album route skips the
+    // write -- its filters belong to the album view, not the plain gallery.
+    if (!routeAlbumId) {
+      this.store.saveSessionQuery();
+    }
+    if (savedQuery) {
+      this.store.applySessionQuery(savedQuery);
+    }
     // Apply the ephemeral set scope AFTER loadConfig, which replaces `filters`
     // wholesale -- applying it before would just be discarded. Never in the
     // URL: sequence_group_id is renumbered on every detection pass, so a
@@ -1347,14 +1410,15 @@ export class GalleryComponent implements OnInit, OnDestroy {
       this.store.filters.update(current => ({ ...current, ...setScope }));
     }
     // Set album_id from route path param (for /album/:albumId route)
-    const albumId = this.route.snapshot.paramMap.get('albumId');
+    const albumId = this.store.filters().album_id === '0' ? null
+      : this.store.filters().album_id || this.route.snapshot.paramMap.get('albumId');
     if (albumId) {
       try {
         const album = await firstValueFrom(this.albumService.get(+albumId));
         if (album.smart_filter_json) {
           // Apply saved filters BEFORE setting currentAlbum (avoids effect saving defaults)
           const savedJson = album.smart_filter_json;
-          this.store.filters.update(current => applySavedAlbumFilters(current, savedJson, albumId));
+          this.store.filters.update(current => applyQueryParams(applySavedAlbumFilters(current, savedJson, albumId), this.route.snapshot.queryParams));
         } else {
           this.store.filters.update(current => ({ ...current, album_id: albumId }));
         }
@@ -1884,6 +1948,15 @@ export class GalleryComponent implements OnInit, OnDestroy {
     }
   }
 
+  protected async continueReview(): Promise<void> {
+    const navigation = this.resumeNavigation;
+    const ownsView = () => !this.destroyRef.destroyed && !this.parked && navigation === this.resumeNavigation;
+    const path = await this.store.continueReview(ownsView);
+    if (!ownsView()) return;
+    const photo = path ? this.store.photos().find(p => p.path === path) : null;
+    if (photo) this.downloadPhoto(photo);
+  }
+
   protected downloadPhoto(photo: Photo): void {
     this.router.navigate(['/photo'], {
       queryParams: { path: photo.path },
@@ -2054,10 +2127,10 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   async openBatchGpsDialog(): Promise<void> {
     if (!this.auth.isEdition() || !this.selectionCount()) return;
-    const owner = this.auth.status();
+    const owner = this.auth.identity();
     const url = this.router.url;
     let navigated = false;
-    const current = () => !this.gpsDialogOwnerDestroyed && !navigated && this.router.url === url && this.auth.status() === owner && this.auth.isEdition();
+    const current = () => !this.gpsDialogOwnerDestroyed && !navigated && this.router.url === url && this.auth.identity() === owner && this.auth.isEdition();
     const selectionIdentity = () => JSON.stringify({
       view: this.viewScoped(), paths: [...this.selectedPaths()].sort(),
       exclude: [...this.excludedPaths()].sort(), filters: this.store.filterPayload(),
@@ -2206,7 +2279,10 @@ export class GalleryComponent implements OnInit, OnDestroy {
     if (!result) return;
     const res = await this.photoActions.deletePhotos(paths, result);
     if (!res) return;
-    this.store.removePhotos(res.deleted);
+    // `removed_missing` rows are as gone as trashed ones -- the grid must not
+    // keep a tile for a row the server just reconciled away.
+    const removed = [...res.deleted, ...(res.removed_missing ?? [])];
+    this.store.removePhotos(removed);
     // `removePhotos` already prunes the deleted paths out of the selection.
     if (!explicit) this.clearSelection();
     // Every failure bucket counts as "failed" here, not just
@@ -2218,11 +2294,11 @@ export class GalleryComponent implements OnInit, OnDestroy {
     // the old two-field toast rendered.
     const failed = res.refused_bracket_lead.length + res.not_found.length + res.not_visible.length
       + res.skipped.length + Object.keys(res.errors).length;
-    if (res.deleted.length === 0 && failed > 0) {
+    if (removed.length === 0 && failed > 0) {
       this.snackBar.open(this.i18n.t(I18N.cull.delete_failed), '', { duration: 4000 });
     } else {
       this.snackBar.open(
-        this.i18n.t(I18N.cull.delete_partial_result, { deleted: res.deleted.length, failed }),
+        this.i18n.t(I18N.cull.delete_partial_result, { deleted: removed.length, failed }),
         '', { duration: 4000 },
       );
     }

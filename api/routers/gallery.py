@@ -20,7 +20,7 @@ from api.database import get_async_db, get_db
 from api.model_cache import AcceleratorBusy
 from api.models.gallery import (
     BY_PATHS_MISSING_CAP, GALLERY_PAGING_KEYS, GalleryParams, Photo, PhotoCountResponse,
-    PhotoPathsResponse, PhotosByPathsRequest, PhotosByPathsResponse, PhotosResponse,
+    ReviewProgressResponse, PhotoPathsResponse, PhotosByPathsRequest, PhotosByPathsResponse, PhotosResponse,
     SimilarPhotosResponse, gallery_filter_keys, query_value,
 )
 from api.models.discovery import PhotoSetResponse, PhotoTypeCountsResponse, ViewerConfigResponse
@@ -445,9 +445,27 @@ def _apply_visibility_and_hide_filters(where_clauses, sql_params, params, user_i
         hide_brackets_val = ''
         hide_panoramas_val = ''
 
+    # A positive only-blinks / only-duplicates / only-rejected filter must show
+    # every photo it names: the hide toggles default on and would silently drop
+    # members of what the filter promises (a blink that is a non-lead burst
+    # member, a duplicate that is also a detected blink, a rejected frame of a
+    # burst whose lead was kept), the same surprise the set-scope guard above
+    # suppresses the toggles for.
+    if any(params.get(key) in ('1', 'true') for key in ('blinks_only', 'duplicates_only', 'show_rejected')):
+        hide_blinks_val = ''
+        hide_bursts_val = ''
+        hide_duplicates_val = ''
+        hide_brackets_val = ''
+        hide_panoramas_val = ''
+
     where_clauses.extend(build_hide_clauses(
         hide_blinks_val, hide_bursts_val, hide_duplicates_val, hide_brackets_val,
         hide_panoramas_val))
+
+    if params.get('blinks_only') in ('1', 'true'):
+        where_clauses.append("is_blink = 1")
+    if params.get('duplicates_only') in ('1', 'true'):
+        where_clauses.append("duplicate_group_id IS NOT NULL")
 
 
 def _apply_preference_filters(where_clauses, sql_params, params, user_id):
@@ -461,7 +479,12 @@ def _apply_preference_filters(where_clauses, sql_params, params, user_id):
                 sql_params.append(min_rating)
         except ValueError:
             pass
-    if params.get('favorites_only') == '1':
+    # 'true' alongside '1': the hide family accepts both spellings (the client
+    # URL carries booleans as true/false), and an agent passing a JSON boolean
+    # arrives lowercased the same way -- favourites-only and rejected-only used
+    # to silently accept '1' alone, so a `show_rejected=true` query showed the
+    # whole library as if the filter were absent.
+    if params.get('favorites_only') in ('1', 'true'):
         where_clauses.append(f"{pref_cols['is_favorite']} = 1")
     review_status = params.get('review_status')
     if review_status in ('undecided', 'kept', 'rejected'):
@@ -473,7 +496,7 @@ def _apply_preference_filters(where_clauses, sql_params, params, user_id):
             where_clauses.append(f"{rejected} = 0")
             where_clauses.append(f"{kept} = {1 if review_status == 'kept' else 0}")
         return
-    if params.get('show_rejected') == '1':
+    if params.get('show_rejected') in ('1', 'true'):
         where_clauses.append(f"{pref_cols['is_rejected']} = 1")
     elif params.get('hide_rejected') in ('1', 'true'):
         where_clauses.append(f"({pref_cols['is_rejected']} = 0 OR {pref_cols['is_rejected']} IS NULL)")
@@ -971,6 +994,60 @@ async def api_select_bottom_percent(
         "truncated": cut > _SELECT_BOTTOM_MAX,
         "paths": paths,
     }
+
+
+@router.get("/api/photos/review_progress", response_model=ReviewProgressResponse)
+async def api_review_progress(
+    request: Request,
+    user: Optional[CurrentUser] = Depends(get_optional_user),
+):
+    """Decision counts for the whole content scope, ignoring its active decision tab.
+
+    ``scope_review_status`` retains a smart album's own decision criterion when
+    the gallery's temporary review-status filter is cleared for the denominator.
+    """
+    qp = dict(request.query_params)
+    qp['review_status'] = qp.pop('scope_review_status', '')
+    qp['hide_rejected'] = '0'
+    qp['show_rejected'] = '0'
+    try:
+        async with get_async_db() as conn:
+            user_id = user.user_id if user else None
+            from_clause, where_str, params = await gallery_scope_sql_async(conn, qp, user_id)
+            semantic_q, threshold = _semantic_params(qp)
+            if semantic_q is not None:
+                if not VIEWER_CONFIG.get('features', {}).get('show_semantic_search', True):
+                    raise HTTPException(status_code=400, detail="Semantic search is disabled")
+                try:
+                    candidates = await semantic_candidates(conn, semantic_q, threshold, user_id)
+                except AcceleratorBusy:
+                    logger.warning("Semantic review progress gave up waiting for the MPS lock: %s", semantic_q)
+                    raise HTTPException(status_code=503, detail="Search model is busy with another task, try again in a moment")
+                except sqlite3.Error:
+                    raise
+                except Exception:
+                    logger.exception("Semantic review progress failed")
+                    raise HTTPException(status_code=503, detail="Semantic search failed")
+                where_str = _with_semantic_clause(where_str)
+                params += [candidates.paths_json]
+            pref = get_preference_columns(user_id)
+            rejected = f"COALESCE({pref['is_rejected']}, 0)"
+            kept = f"COALESCE({pref['is_kept']}, 0)"
+            cur = await conn.execute(
+                f"SELECT COUNT(*) AS total, "
+                f"COALESCE(SUM(CASE WHEN {rejected}=0 AND {kept}=0 THEN 1 ELSE 0 END),0) AS undecided, "
+                f"COALESCE(SUM(CASE WHEN {rejected}=0 AND {kept}=1 THEN 1 ELSE 0 END),0) AS kept, "
+                f"COALESCE(SUM(CASE WHEN {rejected}=1 THEN 1 ELSE 0 END),0) AS rejected "
+                f"FROM {from_clause}{where_str}", params,
+            )
+            row = await cur.fetchone()
+            await cur.close()
+            return dict(row)
+    except ValidationError as e:
+        _raise_422_for_invalid_gallery_params(e, logger, "Review progress validation failed: %s")
+    except sqlite3.Error:
+        logger.exception("Failed to count review progress")
+        raise HTTPException(status_code=500, detail='Internal server error')
 
 
 @router.get("/api/photos/count", response_model=PhotoCountResponse,

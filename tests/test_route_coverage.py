@@ -49,6 +49,7 @@ PUBLIC_ROUTES = [
 AUTH_ROUTES = [
     '/api/organization_history',
     '/api/photos',
+    '/api/photos/review_progress',
     '/api/type_counts',
     '/api/folders',
     '/api/filter_options/cameras',

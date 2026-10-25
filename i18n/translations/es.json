@@ -204,7 +204,11 @@
     "histogram": "Histograma"
   },
   "photoCard": {
-    "embed_to_file": "Escribir metadatos en el archivo"
+    "embed_to_file": "Escribir metadatos en el archivo",
+    "duplicate_set": "Abrir grupo de duplicadas",
+    "burst_set": "Abrir grupo de ráfaga",
+    "sequence_set": "Abrir bracket/panorama",
+    "open_detail": "Abrir página de foto"
   },
   "notifications": {
     "copied": "Copiado!",
@@ -1297,6 +1301,23 @@
     },
     "channel_clip_highlight_range": "% de altas luces recortadas",
     "channel_clip_shadow_range": "% de sombras recortadas",
+    "blinks_only": "Solo parpadeos",
+    "duplicates_only": "Solo duplicadas",
+    "card_actions": {
+      "title": "Personalizar botones de la tarjeta",
+      "hint": "Elige qué botones muestra una foto al pasar el cursor y en qué orden. Los botones de grupo solo aparecen en fotos que pertenecen a un grupo.",
+      "move_up": "Subir",
+      "move_down": "Bajar",
+      "reset": "Restaurar valores"
+    },
+    "review_progress": {
+      "title": "Progreso de revisión",
+      "counts": "{undecided} sin decidir · {kept} conservadas · {rejected} rechazadas",
+      "complete": "{percent}% de {total} revisadas",
+      "start": "Revisar sin decidir",
+      "resume": "Continuar revisión",
+      "browser": "Reanudar la cola recordada en este navegador."
+    },
     "manual_faces_need_review": "Rostros manuales por revisar",
     "manual_faces_review_hint": "Según el último escaneo o revisión en el editor de rostros, sin supervisión continua. Abra el editor de rostros de una foto para revisar las marcas guardadas."
   },
@@ -2564,7 +2585,8 @@
     "delete_confirm_body": "{count} fotos se enviarán a la papelera del sistema operativo. Permanecen recuperables hasta que la vacíes.",
     "delete_partial_result": "{deleted} eliminadas, {failed} fallidas",
     "delete_failed": "Error al eliminar — no se envió nada a la papelera",
-    "delete_disabled_view_scope_tooltip": "Selecciona las fotos explícitamente para eliminarlas — aquí no se puede usar una selección de toda la vista"
+    "delete_disabled_view_scope_tooltip": "Selecciona las fotos explícitamente para eliminarlas — aquí no se puede usar una selección de toda la vista",
+    "remove_missing_rows": "Eliminar también las entradas de la biblioteca cuyo archivo ya falta en el disco"
   },
   "shortcuts": {
     "title": "Atajos de teclado",

@@ -9,6 +9,7 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
 import { ThumbnailUrlPipe, PersonThumbnailUrlPipe, STORED_THUMBNAIL_EDGE } from '../../pipes/thumbnail-url.pipe';
 import { SequenceOverrideBadgeKeyPipe } from '../../pipes/sequence-kind.pipe';
 import { PhotoSetKindIconPipe, PhotoSetKindBestLabelPipe } from '../../pipes/photo-set-kind.pipe';
+import { CardActionId, CardActionsConfig, CardSetKind, DEFAULT_CARD_ACTIONS } from './card-actions';
 import { FixedPipe } from '../../pipes/fixed.pipe';
 import { ShutterSpeedPipe } from '../../pipes/shutter-speed.pipe';
 import { ScoreClassPipe, SortScorePipe } from '../../pipes/score.pipes';
@@ -267,58 +268,106 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
 
         <!-- Hover overlay (image area only, md+ only, disabled when tooltip hidden) -->
         <div class="absolute inset-x-0 top-0 bottom-0 opacity-0 transition-opacity flex flex-col justify-between pointer-events-none z-10 md:group-hover/img:opacity-100 md:group-hover/img:pointer-events-auto">
-          <!-- Top row: similar + person_add -->
+          <!-- Top row: the configured hover actions, in the user's order -->
           <div class="flex justify-end items-center gap-1 p-1.5">
-            @if (filterLinks() && config()?.features?.show_similar_button) {
-              <button
-                class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
-                [matMenuTriggerFor]="similarMenu"
-                [matTooltip]="'similar.find_similar' | translate"
-                [attr.aria-label]="'similar.find_similar' | translate"
-                (click)="$event.stopPropagation()">
-                <mat-icon class="!text-base !w-4 !h-4 !leading-4">image_search</mat-icon>
-              </button>
-              <mat-menu #similarMenu="matMenu">
-                <button mat-menu-item (click)="openSimilarClicked.emit({photo: photo(), mode: 'visual'})">
-                  <mat-icon>image_search</mat-icon>
-                  {{ 'similar.mode_visual' | translate }}
-                </button>
-                <button mat-menu-item (click)="openSimilarClicked.emit({photo: photo(), mode: 'color'})">
-                  <mat-icon>palette</mat-icon>
-                  {{ 'similar.mode_color' | translate }}
-                </button>
-                <button mat-menu-item (click)="openSimilarClicked.emit({photo: photo(), mode: 'person'})">
-                  <mat-icon>person_search</mat-icon>
-                  {{ 'similar.mode_person' | translate }}
-                </button>
-              </mat-menu>
-            }
-            @if (config()?.features?.show_critique) {
-              <button
-                class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
-                [matTooltip]="'critique.title' | translate"
-                [attr.aria-label]="'critique.title' | translate"
-                (click)="openCritiqueClicked.emit(photo()); $event.stopPropagation()">
-                <mat-icon class="!text-base !w-4 !h-4 !leading-4">analytics</mat-icon>
-              </button>
-            }
-            @if (isEditionMode() && config()?.features?.show_embed_metadata) {
-              <button
-                class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
-                [matTooltip]="'photoCard.embed_to_file' | translate"
-                [attr.aria-label]="'photoCard.embed_to_file' | translate"
-                (click)="embedMetadataClicked.emit(photo()); $event.stopPropagation()">
-                <mat-icon class="!text-base !w-4 !h-4 !leading-4">save</mat-icon>
-              </button>
-            }
-            @if (isEditionMode() && photo().unassigned_faces > 0) {
-              <button
-                class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
-                [matTooltip]="'manage_persons.assign_face' | translate"
-                [attr.aria-label]="'manage_persons.assign_face' | translate"
-                (click)="openAddPersonClicked.emit(photo()); $event.stopPropagation()">
-                <mat-icon class="!text-base !w-4 !h-4 !leading-4">person_add</mat-icon>
-              </button>
+            @for (id of visibleActions(); track id) {
+              @switch (id) {
+                @case ('similar') {
+                  @if (filterLinks() && config()?.features?.show_similar_button) {
+                    <button
+                      class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
+                      [matMenuTriggerFor]="similarMenu"
+                      [matTooltip]="'similar.find_similar' | translate"
+                      [attr.aria-label]="'similar.find_similar' | translate"
+                      (click)="$event.stopPropagation()">
+                      <mat-icon class="!text-base !w-4 !h-4 !leading-4">image_search</mat-icon>
+                    </button>
+                    <mat-menu #similarMenu="matMenu">
+                      <button mat-menu-item (click)="openSimilarClicked.emit({photo: photo(), mode: 'visual'})">
+                        <mat-icon>image_search</mat-icon>
+                        {{ 'similar.mode_visual' | translate }}
+                      </button>
+                      <button mat-menu-item (click)="openSimilarClicked.emit({photo: photo(), mode: 'color'})">
+                        <mat-icon>palette</mat-icon>
+                        {{ 'similar.mode_color' | translate }}
+                      </button>
+                      <button mat-menu-item (click)="openSimilarClicked.emit({photo: photo(), mode: 'person'})">
+                        <mat-icon>person_search</mat-icon>
+                        {{ 'similar.mode_person' | translate }}
+                      </button>
+                    </mat-menu>
+                  }
+                }
+                @case ('critique') {
+                  @if (config()?.features?.show_critique) {
+                    <button
+                      class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
+                      [matTooltip]="'critique.title' | translate"
+                      [attr.aria-label]="'critique.title' | translate"
+                      (click)="openCritiqueClicked.emit(photo()); $event.stopPropagation()">
+                      <mat-icon class="!text-base !w-4 !h-4 !leading-4">analytics</mat-icon>
+                    </button>
+                  }
+                }
+                @case ('embed') {
+                  @if (isEditionMode() && config()?.features?.show_embed_metadata) {
+                    <button
+                      class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
+                      [matTooltip]="'photoCard.embed_to_file' | translate"
+                      [attr.aria-label]="'photoCard.embed_to_file' | translate"
+                      (click)="embedMetadataClicked.emit(photo()); $event.stopPropagation()">
+                      <mat-icon class="!text-base !w-4 !h-4 !leading-4">save</mat-icon>
+                    </button>
+                  }
+                }
+                @case ('assign_face') {
+                  @if (isEditionMode() && photo().unassigned_faces > 0) {
+                    <button
+                      class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
+                      [matTooltip]="'manage_persons.assign_face' | translate"
+                      [attr.aria-label]="'manage_persons.assign_face' | translate"
+                      (click)="openAddPersonClicked.emit(photo()); $event.stopPropagation()">
+                      <mat-icon class="!text-base !w-4 !h-4 !leading-4">person_add</mat-icon>
+                    </button>
+                  }
+                }
+                @case ('duplicate_set') {
+                  <button
+                    class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
+                    [matTooltip]="'photoCard.duplicate_set' | translate"
+                    [attr.aria-label]="'photoCard.duplicate_set' | translate"
+                    (click)="openSetClicked.emit({photo: photo(), kind: 'duplicate'}); $event.stopPropagation()">
+                    <mat-icon class="!text-base !w-4 !h-4 !leading-4">photo_library</mat-icon>
+                  </button>
+                }
+                @case ('burst_set') {
+                  <button
+                    class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
+                    [matTooltip]="'photoCard.burst_set' | translate"
+                    [attr.aria-label]="'photoCard.burst_set' | translate"
+                    (click)="openSetClicked.emit({photo: photo(), kind: 'burst'}); $event.stopPropagation()">
+                    <mat-icon class="!text-base !w-4 !h-4 !leading-4">burst_mode</mat-icon>
+                  </button>
+                }
+                @case ('sequence_set') {
+                  <button
+                    class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
+                    [matTooltip]="'photoCard.sequence_set' | translate"
+                    [attr.aria-label]="'photoCard.sequence_set' | translate"
+                    (click)="openSetClicked.emit({photo: photo(), kind: 'sequence'}); $event.stopPropagation()">
+                    <mat-icon class="!text-base !w-4 !h-4 !leading-4">auto_awesome_motion</mat-icon>
+                  </button>
+                }
+                @case ('open_detail') {
+                  <button
+                    class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
+                    [matTooltip]="'photoCard.open_detail' | translate"
+                    [attr.aria-label]="'photoCard.open_detail' | translate"
+                    (click)="openDetailClicked.emit(photo()); $event.stopPropagation()">
+                    <mat-icon class="!text-base !w-4 !h-4 !leading-4">open_in_full</mat-icon>
+                  </button>
+                }
+              }
             }
           </div>
 
@@ -714,10 +763,38 @@ export class PhotoCardComponent {
   readonly openCritiqueClicked = output<Photo>();
   readonly embedMetadataClicked = output<Photo>();
   readonly openAddPersonClicked = output<Photo>();
+  readonly openSetClicked = output<{ photo: Photo; kind: CardSetKind }>();
+  readonly openDetailClicked = output<Photo>();
   readonly favoriteToggled = output<string>();
   readonly rejectedToggled = output<string>();
   readonly starClicked = output<{ photo: Photo; star: number }>();
   readonly doubleClicked = output<Photo>();
+
+  /** The configured hover actions, laid over the per-photo/per-install gates.
+   *
+   *  The config decides membership and order; the gates decide availability —
+   *  it can surface an action the feature flags or this photo's own state
+   *  cannot back (a duplicate-set button on a photo with no duplicate group
+   *  renders as nothing). A `null` config, which older callers and tests pass,
+   *  means the historical default row. */
+  readonly cardActions = input<CardActionsConfig | null>(null);
+
+  protected readonly visibleActions = computed<CardActionId[]>(() => {
+    const cfg = this.cardActions() ?? DEFAULT_CARD_ACTIONS;
+    const photo = this.photo();
+    const config = this.config();
+    const available: Record<CardActionId, boolean> = {
+      similar: this.filterLinks() && !!config?.features?.show_similar_button,
+      critique: !!config?.features?.show_critique,
+      embed: this.isEditionMode() && !!config?.features?.show_embed_metadata,
+      assign_face: this.isEditionMode() && photo.unassigned_faces > 0,
+      duplicate_set: photo.duplicate_group_id != null,
+      burst_set: photo.burst_group_id != null,
+      sequence_set: !!photo.sequence_kind && photo.sequence_group_id != null,
+      open_detail: true,
+    };
+    return cfg.order.filter(id => !cfg.hidden.includes(id) && available[id]);
+  });
 
   private readonly tooltips = viewChildren(MatTooltip);
 

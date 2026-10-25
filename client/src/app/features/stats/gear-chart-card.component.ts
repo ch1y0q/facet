@@ -171,7 +171,23 @@ export class GearChartCardComponent {
             maintainAspectRatio: false,
             plugins: {
               legend: { display: true, position: 'bottom', labels: { color: '#d4d4d4', usePointStyle: true, boxWidth: 8 } },
-              tooltip: { mode: 'index', intersect: false },
+              tooltip: {
+                mode: 'index',
+                intersect: false,
+                callbacks: {
+                  // Each point is a whole month bucketed at the first of the
+                  // month, so Chart.js's default title ("Mar 1, 2026, 12:00:00
+                  // a.m.") reports a moment that was never measured. Same
+                  // month-year form the x ticks use; T00:00:00 keeps the
+                  // string parsed in the local zone, not UTC.
+                  title: (items) => {
+                    const x = (items[0]?.raw as { x?: string } | undefined)?.x ?? '';
+                    const d = new Date(x + 'T00:00:00');
+                    return Number.isNaN(d.getTime()) ? x
+                      : new Intl.DateTimeFormat(undefined, { month: 'short', year: 'numeric' }).format(d);
+                  },
+                },
+              },
             },
             scales: {
               x: { type: 'time', time: { unit: 'month' }, grid: { color: '#262626' }, ticks: { color: '#a3a3a3' } },

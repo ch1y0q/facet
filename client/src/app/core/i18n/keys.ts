@@ -219,6 +219,10 @@ export const I18N = {
   },
   photoCard: {
     embed_to_file: "photoCard.embed_to_file",
+    duplicate_set: "photoCard.duplicate_set",
+    burst_set: "photoCard.burst_set",
+    sequence_set: "photoCard.sequence_set",
+    open_detail: "photoCard.open_detail",
   },
   notifications: {
     copied: "notifications.copied",
@@ -1311,6 +1315,23 @@ export const I18N = {
     },
     channel_clip_highlight_range: "gallery.channel_clip_highlight_range",
     channel_clip_shadow_range: "gallery.channel_clip_shadow_range",
+    blinks_only: "gallery.blinks_only",
+    duplicates_only: "gallery.duplicates_only",
+    card_actions: {
+      title: "gallery.card_actions.title",
+      hint: "gallery.card_actions.hint",
+      move_up: "gallery.card_actions.move_up",
+      move_down: "gallery.card_actions.move_down",
+      reset: "gallery.card_actions.reset",
+    },
+    review_progress: {
+      title: "gallery.review_progress.title",
+      counts: "gallery.review_progress.counts",
+      complete: "gallery.review_progress.complete",
+      start: "gallery.review_progress.start",
+      resume: "gallery.review_progress.resume",
+      browser: "gallery.review_progress.browser",
+    },
     manual_faces_need_review: "gallery.manual_faces_need_review",
     manual_faces_review_hint: "gallery.manual_faces_review_hint",
   },
@@ -2579,6 +2600,7 @@ export const I18N = {
     delete_partial_result: "cull.delete_partial_result",
     delete_failed: "cull.delete_failed",
     delete_disabled_view_scope_tooltip: "cull.delete_disabled_view_scope_tooltip",
+    remove_missing_rows: "cull.remove_missing_rows",
   },
   shortcuts: {
     title: "shortcuts.title",

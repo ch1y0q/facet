@@ -204,7 +204,11 @@
     "histogram": "Histogramme"
   },
   "photoCard": {
-    "embed_to_file": "Écrire les métadonnées dans le fichier"
+    "embed_to_file": "Écrire les métadonnées dans le fichier",
+    "duplicate_set": "Ouvrir le groupe de doublons",
+    "burst_set": "Ouvrir le groupe de rafale",
+    "sequence_set": "Ouvrir bracket/panorama",
+    "open_detail": "Ouvrir la page photo"
   },
   "notifications": {
     "copied": "Copie !",
@@ -1297,6 +1301,23 @@
     },
     "channel_clip_highlight_range": "Hautes lumières écrêtées %",
     "channel_clip_shadow_range": "Ombres écrêtées %",
+    "blinks_only": "Clignements uniquement",
+    "duplicates_only": "Doublons uniquement",
+    "card_actions": {
+      "title": "Personnaliser les boutons de la vignette",
+      "hint": "Choisissez quels boutons une photo affiche au survol, et dans quel ordre. Les boutons de groupe n'apparaissent que sur les photos qui appartiennent à un groupe.",
+      "move_up": "Monter",
+      "move_down": "Descendre",
+      "reset": "Rétablir les valeurs"
+    },
+    "review_progress": {
+      "title": "Progression du tri",
+      "counts": "{undecided} à trier · {kept} conservées · {rejected} rejetées",
+      "complete": "{percent}% sur {total} triées",
+      "start": "Trier les indécises",
+      "resume": "Continuer le tri",
+      "browser": "Reprendre la file mémorisée dans ce navigateur."
+    },
     "manual_faces_need_review": "Visages manuels à vérifier",
     "manual_faces_review_hint": "Selon le dernier scan ou contrôle dans l’éditeur de visages, sans surveillance continue. Ouvrez l’éditeur de visages d’une photo pour vérifier les repères enregistrés."
   },
@@ -2564,7 +2585,8 @@
     "delete_confirm_body": "{count} photos seront envoyées dans la corbeille du système. Elles restent récupérables tant que vous ne la videz pas.",
     "delete_partial_result": "{deleted} supprimée(s), {failed} échouée(s)",
     "delete_failed": "Échec de la suppression — rien n’a été envoyé à la corbeille",
-    "delete_disabled_view_scope_tooltip": "Sélectionnez les photos explicitement pour les supprimer — une sélection de toute la vue ne peut pas être utilisée ici"
+    "delete_disabled_view_scope_tooltip": "Sélectionnez les photos explicitement pour les supprimer — une sélection de toute la vue ne peut pas être utilisée ici",
+    "remove_missing_rows": "Supprimer aussi les entrées de la bibliothèque dont le fichier manque déjà sur le disque"
   },
   "shortcuts": {
     "title": "Raccourcis clavier",

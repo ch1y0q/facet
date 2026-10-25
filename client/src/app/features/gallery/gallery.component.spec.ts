@@ -115,6 +115,10 @@ describe('GalleryComponent', () => {
       countInView: vi.fn(() => Promise.resolve(650)),
       pathsInView: vi.fn(() => Promise.resolve([] as string[])),
       filterPayload: vi.fn(() => ({ page: '1' })),
+      reviewProgress: signal(null),
+      reviewPercent: signal(0),
+      reviewBookmark: signal(null),
+      continueReview: vi.fn(() => Promise.resolve(null)),
       viewSnapshot: signal(null),
       pinnedPaths: signal<string[] | null>(null),
       clearPinned: vi.fn(() => Promise.resolve()),
@@ -123,6 +127,9 @@ describe('GalleryComponent', () => {
       hiddenFiltersStash: signal(null),
       showAllHidden: vi.fn(),
       restoreHidden: vi.fn(),
+      readGallerySessionQuery: vi.fn(() => null),
+      applySessionQuery: vi.fn(),
+      saveSessionQuery: vi.fn(),
       updateFilters: vi.fn(() => Promise.resolve()),
       setRating: vi.fn(),
       batchFavorite: vi.fn(() => Promise.resolve({ snapshot: new Map(), targeted: 0, count: 0 })),
@@ -148,9 +155,10 @@ describe('GalleryComponent', () => {
       getRaw: vi.fn(() => of(new Blob(['x']))),
     };
 
+    const authStatus = signal<{ user_id: string }>({ user_id: "editor" });
     mockAuth = {
-      identity: vi.fn(() => '0|'),
-      status: signal({ user_id: 'alice', edition_authenticated: true }),
+      status: authStatus,
+      identity: vi.fn(() => authStatus().user_id),
       isEdition: vi.fn(() => false),
       downloadProfiles: vi.fn(() => []),
       hasFeature: vi.fn(() => false),
@@ -914,6 +922,38 @@ describe('GalleryComponent', () => {
       expect(mockStore.loadTypeCounts).toHaveBeenCalled();
     });
 
+    it('applies the session query on a parameterless `/`, so the nav-icon return keeps filters', async () => {
+      routeMock.snapshot.queryParams = {};
+      mockStore.readGallerySessionQuery.mockReturnValue({ blinks_only: 'true' });
+
+      await component.ngOnInit();
+
+      // Applied AFTER loadConfig's wholesale filter rebuild -- a navigate-based
+      // restore could not work: the ActivatedRoute snapshot never refreshes for
+      // same-component param-only navigations.
+      expect(mockStore.applySessionQuery).toHaveBeenCalledWith({ blinks_only: 'true' });
+      expect(mockStore.loadPhotos).toHaveBeenCalled();
+    });
+
+    it('does not consult the session query when the URL carries its own params', async () => {
+      routeMock.snapshot.queryParams = { sort: 'date_taken' };
+
+      await component.ngOnInit();
+
+      expect(mockStore.readGallerySessionQuery).not.toHaveBeenCalled();
+      expect(mockStore.applySessionQuery).not.toHaveBeenCalled();
+    });
+
+    it('does not consult the session query on an album route', async () => {
+      routeMock.snapshot.paramMap.get = vi.fn((k: string) => (k === 'albumId' ? '7' : null));
+      routeMock.snapshot.queryParams = {};
+
+      await component.ngOnInit();
+
+      expect(mockStore.readGallerySessionQuery).not.toHaveBeenCalled();
+      expect(mockStore.applySessionQuery).not.toHaveBeenCalled();
+    });
+
     it('should show photos and stop initializing when a filter-option request never resolves', async () => {
       mockStore.loadFilterOptions.mockImplementation(() => new Promise<void>(() => {}));
       mockStore.loadPhotos.mockImplementation(() => {
@@ -1065,6 +1105,14 @@ describe('GalleryComponent', () => {
       expect(component.canRestoreHidden()).toBe(true);
     });
 
+    it.each(['blinks_only', 'duplicates_only', 'show_rejected'] as const)('withdraws the restore while %s is up: that view is not "showing all photos"', key => {
+        mockStore.hiddenFiltersStash.set({
+          hide_blinks: true, hide_bursts: true, hide_duplicates: true, hide_brackets: true, hide_panoramas: true,
+        });
+        mockStore.filters.set({ ...DEFAULT_FILTERS, [key]: true });
+        expect(component.canRestoreHidden()).toBe(false);
+      });
+
     it('offers no restore before Show all has been used', () => {
       expect(component.canRestoreHidden()).toBe(false);
     });
@@ -1075,6 +1123,49 @@ describe('GalleryComponent', () => {
       });
       mockStore.filters.set({ ...DEFAULT_FILTERS, hide_blinks: true, hide_bursts: false, hide_duplicates: false, hide_brackets: false, hide_panoramas: false });
       expect(component.canRestoreHidden()).toBe(false);
+    });
+  });
+
+  describe('select-all keyboard shortcut', () => {
+    // Document-level host bindings register only when the view renders, so
+    // each case makes its own fixture and dispatches straight at document.
+    let fixture: ComponentFixture<GalleryComponent> | null = null;
+
+    afterEach(() => {
+      fixture?.destroy();
+      fixture = null;
+    });
+
+    function renderWithPhotos(): void {
+      mockStore.photos.set([{ path: '/a.jpg' }, { path: '/b.jpg' }]);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+    }
+
+    it.each([
+      ['control', false], ['meta', true],
+    ])('selects all loaded photos on %s+A', (_label, metaKey) => {
+      renderWithPhotos();
+      const event = new KeyboardEvent('keydown', { key: 'a', metaKey, ctrlKey: !metaKey, cancelable: true });
+      const prevented = !document.dispatchEvent(event);
+      expect(prevented).toBe(true);
+      expect(mockStore.selectAll).toHaveBeenCalled();
+    });
+
+    it('leaves the browser default alone while focus is in an input', () => {
+      renderWithPhotos();
+      const input = document.createElement('input');
+      document.body.appendChild(input);
+      input.focus();
+      try {
+        // Bubbling from the input, as a real keypress would: the guard reads
+        // the event's target, so the event must originate there.
+        const event = new KeyboardEvent('keydown', { key: 'a', metaKey: true, bubbles: true, cancelable: true });
+        expect(input.dispatchEvent(event)).toBe(true);
+        expect(mockStore.selectAll).not.toHaveBeenCalled();
+      } finally {
+        input.remove();
+      }
     });
   });
 
@@ -2121,7 +2212,7 @@ describe('GalleryComponent', () => {
 
     function deleteResponse(overrides: Partial<{
       deleted: string[]; refused_bracket_lead: string[]; not_found: string[];
-      not_visible: string[]; sequence_siblings: string[]; skipped: string[];
+      not_visible: string[]; sequence_siblings: string[]; skipped: string[]; removed_missing: string[];
       errors: Record<string, string>; trashed: number;
     }> = {}) {
       return of({
@@ -2227,6 +2318,7 @@ describe('GalleryComponent', () => {
         paths: ['/a.jpg', '/b.jpg'],
         include_companions: false,
         include_sequence_siblings: false,
+        remove_missing: false,
         dry_run: false,
       });
       // Restricted to what the response actually reports deleted -- a refused
@@ -2300,6 +2392,21 @@ describe('GalleryComponent', () => {
       // four buckets or from `refused_bracket_lead` alone -- asserting on
       // that resolved string would pass under either implementation.
       expect(mockI18n.t).toHaveBeenCalledWith(I18N.cull.delete_partial_result, { deleted: 1, failed: 3 });
+    });
+
+    it('removes reconciled missing rows from the grid and counts them as deleted', async () => {
+      select(['/a.jpg', '/b.jpg']);
+      const dialog = TestBed.inject(MatDialog);
+      (dialog.open as Mock).mockReturnValue({
+        afterClosed: () => of({ includeCompanions: false, includeSequenceSiblings: false, removeMissing: true }),
+      });
+      mockApi.post.mockReturnValueOnce(deleteResponse({ removed_missing: ['/a.jpg', '/b.jpg'] }));
+
+      await component.deleteSelected();
+
+      expect(mockApi.post).toHaveBeenCalledWith('/photo/delete', expect.objectContaining({ remove_missing: true }));
+      expect(mockStore.removePhotos).toHaveBeenCalledWith(['/a.jpg', '/b.jpg']);
+      expect(mockI18n.t).toHaveBeenCalledWith(I18N.cull.delete_partial_result, { deleted: 2, failed: 0 });
     });
 
     it('a failed request does not touch the store', async () => {
@@ -4329,6 +4436,30 @@ describe('GalleryComponent', () => {
       tile.blur();
       return tile;
     }
+
+    it('does not open a resumed photo after the owning gallery is parked', async () => {
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+      let resolveResume!: (path: string) => void;
+      mockStore.continueReview.mockImplementation(() => new Promise<string>(resolve => { resolveResume = resolve; }));
+      const pending = (gallery as unknown as { continueReview(): Promise<void> }).continueReview();
+      openPhoto(0);
+      mockStore.photos.set([{ ...photos[1] }]);
+      navigate.mockClear();
+      resolveResume(photos[1].path);
+      await pending;
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('does not open a resumed photo after navigation away even before detach', async () => {
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+      let resolveResume!: (path: string) => void;
+      mockStore.continueReview.mockImplementation(() => new Promise<string>(resolve => { resolveResume = resolve; }));
+      const pending = (gallery as unknown as { continueReview(): Promise<void> }).continueReview();
+      (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(2, '/stats'));
+      resolveResume(photos[1].path);
+      await pending;
+      expect(navigate).not.toHaveBeenCalled();
+    });
 
     it('defers the filter sidebar until its block is rendered', async () => {
       expect(fixture.debugElement.query(By.directive(GalleryFilterSidebarComponent))).toBeNull();

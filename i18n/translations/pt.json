@@ -204,7 +204,11 @@
     "histogram": "Histograma"
   },
   "photoCard": {
-    "embed_to_file": "Gravar metadados no arquivo"
+    "embed_to_file": "Gravar metadados no arquivo",
+    "duplicate_set": "Abrir grupo de duplicatas",
+    "burst_set": "Abrir grupo de rajada",
+    "sequence_set": "Abrir bracket/panorama",
+    "open_detail": "Abrir página da foto"
   },
   "notifications": {
     "copied": "Copiado!",
@@ -1297,6 +1301,23 @@
     },
     "channel_clip_highlight_range": "% de altas luzes cortadas",
     "channel_clip_shadow_range": "% de sombras cortadas",
+    "blinks_only": "Somente piscadas",
+    "duplicates_only": "Somente duplicadas",
+    "card_actions": {
+      "title": "Personalizar botões do cartão",
+      "hint": "Escolha quais botões uma foto mostra ao passar o mouse e em qual ordem. Os botões de grupo só aparecem em fotos que pertencem a um grupo.",
+      "move_up": "Mover para cima",
+      "move_down": "Mover para baixo",
+      "reset": "Restaurar padrões"
+    },
+    "review_progress": {
+      "title": "Progresso da revisão",
+      "counts": "{undecided} por decidir · {kept} mantidas · {rejected} rejeitadas",
+      "complete": "{percent}% de {total} revistas",
+      "start": "Rever por decidir",
+      "resume": "Continuar revisão",
+      "browser": "Retomar a fila guardada neste navegador."
+    },
     "manual_faces_need_review": "Rostos manuais a rever",
     "manual_faces_review_hint": "Com base na última análise ou verificação no editor de rostos, sem monitorização contínua. Abra o editor de rostos de uma fotografia para rever as marcações guardadas."
   },
@@ -2564,7 +2585,8 @@
     "delete_confirm_body": "{count} fotos serão enviadas para a lixeira do sistema operacional. Permanecem recuperáveis até que você a esvazie.",
     "delete_partial_result": "{deleted} excluída(s), {failed} com falha",
     "delete_failed": "Falha ao excluir — nada foi enviado para a lixeira",
-    "delete_disabled_view_scope_tooltip": "Selecione as fotos explicitamente para excluí-las — uma seleção de toda a visualização não pode ser usada aqui"
+    "delete_disabled_view_scope_tooltip": "Selecione as fotos explicitamente para excluí-las — uma seleção de toda a visualização não pode ser usada aqui",
+    "remove_missing_rows": "Remover também as entradas da biblioteca cujo arquivo já falta no disco"
   },
   "shortcuts": {
     "title": "Atalhos de teclado",

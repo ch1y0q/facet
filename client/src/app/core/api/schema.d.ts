@@ -2801,7 +2801,15 @@ export interface paths {
          *     not resolve on disk (already missing) -- neither trashed nor
          *     row-deleted, so it is reported rather than silently dropped from every
          *     bucket. Reconciling it is ``--cleanup-missing-photos``'s job, same as any
-         *     other missing-on-disk row.
+         *     other missing-on-disk row -- or, with ``remove_missing``, THIS call's:
+         *     the flag moves such paths out of ``skipped`` into ``removed_missing``
+         *     (never ``deleted``, which keeps meaning "row gone via a successful
+         *     trash") and deletes their rows in the same transaction as the trashed
+         *     paths', lead re-pick included. It stays an opt-in because a request
+         *     where EVERY file reads as missing is exactly what a disconnected
+         *     library volume looks like, and even opted in, ``_reconcilable_missing``
+         *     keeps a path ``skipped`` when the allowlist refused it or the folder
+         *     that held it is gone or empty -- the shape of an offline volume.
          */
         post: operations["api_photo_delete_api_photo_delete_post"];
         delete?: never;
@@ -3573,6 +3581,29 @@ export interface paths {
          *     carry their own.
          */
         get: operations["api_photos_paths_api_photos_paths_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/photos/review_progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Api Review Progress
+         * @description Decision counts for the whole content scope, ignoring its active decision tab.
+         *
+         *     ``scope_review_status`` retains a smart album's own decision criterion when
+         *     the gallery's temporary review-status filter is cleared for the denominator.
+         */
+        get: operations["api_review_progress_api_photos_review_progress_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -7386,6 +7417,11 @@ export interface components {
             include_sequence_siblings?: boolean;
             /** Paths */
             paths: string[];
+            /**
+             * Remove Missing
+             * @default false
+             */
+            remove_missing?: boolean;
         };
         /**
          * PhotoDeleteResponse
@@ -7411,6 +7447,8 @@ export interface components {
          *     ``CullApplyResponse``'s field of the same name: a path that was visible,
          *     in ``photos``, and not a refused bracket lead, but whose file could not
          *     be resolved on disk (already missing) -- landing in no other bucket.
+         *     With ``remove_missing`` those same paths have their rows removed instead,
+         *     and are reported in ``removed_missing`` rather than ``skipped``.
          */
         PhotoDeleteResponse: {
             /** Deleted */
@@ -7427,6 +7465,8 @@ export interface components {
             not_visible: string[];
             /** Refused Bracket Lead */
             refused_bracket_lead: string[];
+            /** Removed Missing */
+            removed_missing?: string[] | null;
             /** Sequence Siblings */
             sequence_siblings: string[];
             /** Skipped */
@@ -7842,6 +7882,20 @@ export interface components {
             };
             /** Success */
             success: boolean;
+        };
+        /**
+         * ReviewProgressResponse
+         * @description Mutually exclusive decisions across the complete visible review scope.
+         */
+        ReviewProgressResponse: {
+            /** Kept */
+            kept: number;
+            /** Rejected */
+            rejected: number;
+            /** Total */
+            total: number;
+            /** Undecided */
+            undecided: number;
         };
         /** SaveSnapshotBody */
         SaveSnapshotBody: {
@@ -14109,6 +14163,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PhotoPathsResponse"];
+                };
+            };
+        };
+    };
+    api_review_progress_api_photos_review_progress_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewProgressResponse"];
                 };
             };
         };

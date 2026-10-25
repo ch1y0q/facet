@@ -81,6 +81,7 @@ def test_schema_upgrade_and_preference_migration(tmp_path):
         # Simulate a pre-history schema: its columns had no revision triggers.
         for (trigger,) in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'organization_%'").fetchall():
             conn.execute(f'DROP TRIGGER "{trigger}"')
+        conn.execute("DROP INDEX IF EXISTS idx_review_progress")
         conn.execute("ALTER TABLE photos DROP COLUMN is_kept")
         # Simulate a pre-history schema: its columns had no revision triggers.
         for (trigger,) in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'organization_%'").fetchall():
@@ -106,6 +107,7 @@ def test_preference_migration_upgrades_a_pre_keep_database(tmp_path):
         # A pre-Keep database also predates history's revision triggers.
         for (trigger,) in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name GLOB 'organization_*'").fetchall():
             conn.execute('DROP TRIGGER "' + trigger.replace('"', '""') + '"')
+        conn.execute("DROP INDEX IF EXISTS idx_review_progress")
         conn.execute("ALTER TABLE photos DROP COLUMN is_kept")
         conn.execute("ALTER TABLE user_preferences DROP COLUMN is_kept")
         conn.execute("INSERT INTO photos(path, filename, star_rating) VALUES('/rated.jpg', 'rated.jpg', 3)")
