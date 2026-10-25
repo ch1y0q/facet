@@ -43,6 +43,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import unicodedata
 import re
 from datetime import datetime, timezone
 from xml.etree import ElementTree as ET
@@ -244,8 +245,8 @@ def _foreign_keywords(conn, path: str, ai_tags, keywords: list[str]) -> list[str
 
 
 def _image_key(path: str) -> str:
-    """Conservatively treat case variants as the same filename on any filesystem."""
-    return os.path.normcase(os.path.abspath(path)).casefold()
+    """Treat case and Unicode normalization variants as one packet filename."""
+    return unicodedata.normalize("NFC", os.path.normcase(os.path.abspath(path)).casefold())
 
 
 def _sidecar_stems(path: str) -> tuple[str, str, str]:
@@ -262,6 +263,7 @@ def _shared_indexed_stems(conn) -> set[str]:
     first: dict[str, str] = {}
     shared: set[str] = set()
     for (path,) in conn.execute("SELECT path FROM photos"):
+        # Keep logical photo owners distinct even when their packet keys alias.
         normalized = os.path.normcase(os.path.abspath(path))
         for stem in _sidecar_stems(path):
             if stem in first and first[stem] != normalized:
@@ -326,10 +328,24 @@ def _discover_sidecar(image_path: str, naming: str, shared_stems: set[str],
             if directory not in directory_images:
                 directory_images[directory] = _directory_image_claims(directory)
             siblings = directory_images[directory].get(stem, set())
-            shared = bool(siblings - {os.path.normcase(os.path.abspath(image_path))})
+            for sibling in siblings - {os.path.normcase(os.path.abspath(image_path))}:
+                # APFS may return this image's own entry in a different Unicode
+                # spelling. Only that same canonical full name AND inode is self;
+                # another image name (even a hard link) still owns its packets.
+                if _image_key(sibling) == _image_key(image_path):
+                    try:
+                        if os.path.samefile(sibling, image_path):
+                            continue
+                    except FileNotFoundError:
+                        pass
+                shared = True
+                break
         if shared:
-            logger.warning("Skipping %s: shared basename or another image's full-name/fallback "
-                           "sidecar makes %s ambiguous; use per-image full-name sidecars", image_path, basename)
+            if "shared_basename" not in reported:
+                reported.add("shared_basename")
+                logger.warning("Skipping %s: shared basename or another image's full-name/fallback "
+                               "sidecar makes %s ambiguous; use per-image full-name sidecars. "
+                               "Further shared-packet notices are suppressed for this run.", image_path, basename)
             return None, "ambiguous"
         if full:
             logger.warning("Sidecar naming basename for %s: selecting %s; ignoring %s", image_path, basename, full)

@@ -419,6 +419,79 @@ class TestSidecarNaming:
         assert stats["updated"] == 0
         assert conn.execute("SELECT star_rating FROM photos WHERE path=?", (image,)).fetchone()[0] == 2
 
+    @pytest.mark.parametrize("indexed_owner", [False, True])
+    def test_unicode_equivalent_double_extension_owner_is_refused(self, tmp_path, indexed_owner):
+        conn = _make_db(tmp_path)
+        owner = str(tmp_path / "caf\u00e9.CR2")
+        image = str(tmp_path / "cafe\u0301.CR2.jpg")
+        _add(conn, image, star=2)
+        if indexed_owner:
+            _add(conn, owner, star=1)
+        else:
+            Path(owner).write_bytes(b"unindexed owner original")
+        packet = _write(tmp_path, "cafe\u0301.CR2.xmp", _attr_xmp(rating=5, subjects=["owners-tag"]))
+        before = Path(packet).read_bytes()
+        stats = import_sidecars(conn, root=image, sidecar_naming="auto")
+        assert stats["ambiguous"] == stats["skipped"] == 1
+        assert stats["updated"] == 0
+        assert conn.execute("SELECT star_rating FROM photos WHERE path=?", (image,)).fetchone()[0] == 2
+        assert conn.execute("SELECT COUNT(*) FROM photo_manual_tags WHERE photo_path=?", (image,)).fetchone()[0] == 0
+        assert Path(packet).read_bytes() == before
+
+    def test_unicode_aliases_remain_distinct_indexed_owners(self, tmp_path):
+        conn = _make_db(tmp_path)
+        owner = str(tmp_path / "caf\u00e9.CR2")
+        image = str(tmp_path / "cafe\u0301.CR2")
+        _add(conn, owner, star=1)
+        _add(conn, image, star=2)
+        _write(tmp_path, "cafe\u0301.xmp", _attr_xmp(rating=5))
+        stats = import_sidecars(conn, root=image, sidecar_naming="basename")
+        assert stats["ambiguous"] == 1
+        assert stats["updated"] == 0
+        assert [row[0] for row in conn.execute("SELECT star_rating FROM photos ORDER BY star_rating")] == [1, 2]
+
+    @pytest.mark.parametrize("name", ["caf\u00e9", "cafe\u0301"])
+    def test_single_unicode_image_is_not_its_own_disk_collision(self, tmp_path, name):
+        conn = _make_db(tmp_path)
+        image = str(tmp_path / (name + ".CR2"))
+        Path(image).write_bytes(b"selected image")
+        _add(conn, image, star=2)
+        _write(tmp_path, name + ".xmp", _attr_xmp(rating=5))
+        stats = import_sidecars(conn, root=image, sidecar_naming="basename")
+        assert stats["ambiguous"] == 0
+        assert stats["updated"] == 1
+        assert conn.execute("SELECT star_rating FROM photos").fetchone()[0] == 5
+
+    def test_unicode_different_image_name_still_collides_when_hardlinked(self, tmp_path):
+        conn = _make_db(tmp_path)
+        owner = tmp_path / "caf\u00e9.CR2"
+        image = tmp_path / "cafe\u0301.CR2.jpg"
+        owner.write_bytes(b"shared original pixels")
+        os.link(owner, image)
+        assert os.path.samefile(owner, image)
+        _add(conn, str(image), star=2)
+        _write(tmp_path, "cafe\u0301.CR2.xmp", _attr_xmp(rating=5))
+        stats = import_sidecars(conn, root=str(image), sidecar_naming="auto")
+        assert stats["ambiguous"] == 1
+        assert stats["updated"] == 0
+        assert conn.execute("SELECT star_rating FROM photos").fetchone()[0] == 2
+
+    def test_unicode_collision_notices_are_bounded_per_run(self, tmp_path, caplog):
+        conn = _make_db(tmp_path)
+        for index in range(3):
+            Path(tmp_path / f"caf\u00e9-{index}.CR2").write_bytes(b"unindexed owner")
+            _add(conn, str(tmp_path / f"cafe\u0301-{index}.CR2.jpg"), star=2)
+            _write(tmp_path, f"cafe\u0301-{index}.CR2.xmp", _attr_xmp(rating=5))
+        for _ in range(2):
+            caplog.clear()
+            stats = import_sidecars(conn, sidecar_naming="basename")
+            assert stats["ambiguous"] == 3
+            assert stats["updated"] == 0
+            notices = [record for record in caplog.records if record.name == "processing.xmp_import"]
+            assert len(notices) == 1
+            assert "Further shared-packet notices" in notices[0].message
+        assert {row[0] for row in conn.execute("SELECT star_rating FROM photos")} == {2}
+
     def test_casefolded_indexed_stem_collision_is_refused_without_disk_siblings(self, tmp_path):
         conn = _make_db(tmp_path)
         image = str(tmp_path / "same.CR3")
