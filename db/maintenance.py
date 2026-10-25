@@ -741,7 +741,7 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
         )
         col_list = ', '.join(common_photo_cols)
 
-        with viewer_review_sync(dest_conn, 'photos', new_photos=True):
+        with viewer_review_sync(dest_conn, 'photos'):
             for i in range(0, len(new_paths), batch_size):
                 batch = new_paths[i:i + batch_size]
                 placeholders = ','.join('?' * len(batch))
@@ -1069,6 +1069,12 @@ def export_viewer_db(source_db='photo_scores_pro.db', output_path=None, thumbnai
     for table in VIEWER_EXPORT_EXCLUDED_TABLES:
         dst_conn.execute(f"DROP TABLE IF EXISTS {table}")
     dst_conn.commit()
+
+    # Receipt authority and private source paths belong to this database only.
+    # Keep its schema/triggers usable, but start a fresh viewer with no records.
+    if dst_conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='photo_metadata_edits'").fetchone():
+        dst_conn.execute('DELETE FROM photo_metadata_edits')
+        dst_conn.commit()
 
     # faces: embedding (NOT NULL constraint — use empty blob), landmark_2d_106
     dst_conn.execute("UPDATE faces SET embedding = zeroblob(0), landmark_2d_106 = NULL")

@@ -401,7 +401,7 @@ def test_viewer_incremental_preserves_deleted_preference_reset(tmp_path):
 
 @pytest.mark.parametrize('per_user', [False, True])
 @pytest.mark.parametrize('new_photo', [False, True])
-def test_incremental_copies_source_receipts_with_selected_source_values(tmp_path, monkeypatch, per_user, new_photo):
+def test_incremental_does_not_copy_source_receipts_with_baseline_values(tmp_path, monkeypatch, per_user, new_photo):
     from db.maintenance import export_viewer_db
     from db.metadata_edits import record_sidecar_receipt
     conn, original, db = setup(tmp_path, rating=0)
@@ -425,17 +425,18 @@ def test_incremental_copies_source_receipts_with_selected_source_values(tmp_path
         monkeypatch.setattr('api.db_helpers.get_visibility_clause', lambda user: ('photos.path=?', [str(path)]))
         with sqlite3.connect(viewer) as output:
             output.row_factory = sqlite3.Row
-            assert review_edit_state(output, str(path), scope) == source_clock
+            assert source_clock
+            assert review_edit_state(output, str(path), scope) == {}
             result = import_sidecars(output, str(path), user_id='alice' if per_user else None)
-            assert result['conflicts'] == 1
+            assert result['conflicts'] == 0
             table = 'user_preferences' if per_user else 'photos'
             key = "photo_path=? AND user_id='alice'" if per_user else 'path=?'
-            assert output.execute(f'SELECT star_rating FROM {table} WHERE {key}', (str(path),)).fetchone()[0] == 3
+            assert output.execute(f'SELECT star_rating FROM {table} WHERE {key}', (str(path),)).fetchone()[0] == 5
     finally:
         conn.close()
 
 
-def test_incremental_copies_source_deleted_preference_clock(tmp_path, monkeypatch):
+def test_incremental_source_deleted_preference_is_baseline_not_viewer_authority(tmp_path, monkeypatch):
     from db.maintenance import export_viewer_db
     conn, path, db = setup(tmp_path, rating=0)
     viewer = tmp_path / 'viewer.db'
@@ -451,9 +452,10 @@ def test_incremental_copies_source_deleted_preference_clock(tmp_path, monkeypatc
         monkeypatch.setattr('api.db_helpers.get_visibility_clause', lambda user: ('photos.path=?', [str(path)]))
         with sqlite3.connect(viewer) as output:
             output.row_factory = sqlite3.Row
-            assert review_edit_state(output, str(path), 'alice') == clock
-            assert import_sidecars(output, str(path), user_id='alice')['conflicts'] == 1
-            assert output.execute("SELECT 1 FROM user_preferences WHERE user_id='alice'").fetchone() is None
+            assert clock
+            assert review_edit_state(output, str(path), 'alice') == {}
+            assert import_sidecars(output, str(path), user_id='alice')['conflicts'] == 0
+            assert output.execute("SELECT star_rating FROM user_preferences WHERE user_id='alice'").fetchone()[0] == 5
     finally:
         conn.close()
 
@@ -554,5 +556,242 @@ def test_ambiguous_naming_preview_reports_refusal_without_receipts(tmp_path):
         assert applied['updated'] == 0
         assert conn.execute('SELECT star_rating FROM photos').fetchone()[0] == 1
         assert not review_edit_state(conn, str(path), '')
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize('per_user', [False, True])
+@pytest.mark.parametrize('field', ['star_rating', 'is_favorite', 'is_rejected'])
+def test_exported_source_reset_does_not_claim_viewer_authority(tmp_path, per_user, field):
+    from db.maintenance import export_viewer_db
+    conn, path, db = setup(tmp_path, rating=0)
+    viewer = tmp_path / 'viewer.db'
+    table = 'user_preferences' if per_user else 'photos'
+    key = "photo_path=? AND user_id='alice'" if per_user else 'path=?'
+    try:
+        if per_user:
+            conn.execute('INSERT INTO user_preferences(user_id,photo_path) VALUES (?,?)', ('alice', str(path)))
+        conn.execute(f'UPDATE {table} SET {field}=? WHERE {key}', (3 if field == 'star_rating' else 1, str(path)))
+        conn.execute(f'UPDATE {table} SET {field}=0 WHERE {key}', (str(path),))
+        conn.commit()
+        export_viewer_db(str(db), str(viewer), verbose=False)
+        with sqlite3.connect(viewer) as output:
+            output.row_factory = sqlite3.Row
+            assert review_edit_state(output, str(path), 'alice' if per_user else '') == {}
+        conn.execute(f'UPDATE {table} SET {field}=? WHERE {key}', (4 if field == 'star_rating' else 1, str(path)))
+        conn.commit()
+        export_viewer_db(str(db), str(viewer), verbose=False)
+        with sqlite3.connect(viewer) as output:
+            assert output.execute(f'SELECT {field} FROM {table} WHERE {key}', (str(path),)).fetchone()[0] == (4 if field == 'star_rating' else 1)
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize('per_user', [False, True])
+def test_readonly_preview_of_release_schema_without_keep_columns(tmp_path, monkeypatch, per_user):
+    conn, path, db = setup(tmp_path, rating=0)
+    try:
+        sidecar(path)
+        if per_user:
+            conn.execute('INSERT INTO user_preferences(user_id,photo_path,star_rating) VALUES (?,?,0)', ('alice', str(path)))
+        for (trigger,) in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND (name GLOB 'metadata_review_*' OR name GLOB 'organization_*')").fetchall():
+            conn.execute('DROP TRIGGER "' + trigger.replace('"', '""') + '"')
+        conn.execute('DROP TABLE photo_metadata_edits')
+        for table in ('photos', 'user_preferences'):
+            columns = [row[1] for row in conn.execute(f'PRAGMA table_info({table})') if row[1] != 'is_kept']
+            projection = ','.join('"' + column + '"' for column in columns)
+            conn.execute(f'CREATE TABLE {table}_released AS SELECT {projection} FROM {table}')
+            conn.execute(f'DROP TABLE {table}')
+            conn.execute(f'ALTER TABLE {table}_released RENAME TO {table}')
+        conn.commit()
+        before = db.read_bytes()
+        monkeypatch.setattr('api.config.is_multi_user_enabled', lambda: per_user)
+        monkeypatch.setattr('api.db_helpers.get_visibility_clause', lambda _user: ('1=1', []))
+        with sqlite3.connect(db.resolve().as_uri() + '?mode=ro', uri=True) as reader:
+            reader.row_factory = sqlite3.Row
+            result = import_sidecars(reader, dry_run=True, user_id='alice' if per_user else None)
+            assert result['entries'][0]['changes']['star_rating']['after'] == 5
+            assert reader.total_changes == 0
+        assert db.read_bytes() == before
+        if not per_user:
+            import subprocess
+            import sys
+            result = subprocess.run([sys.executable, 'facet.py', '--db', str(db), '--import-sidecars', str(path), '--dry-run'],
+                                    cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, timeout=30)
+            assert result.returncode == 0, result.stderr
+            assert json.loads(result.stdout)['entries'][0]['changes']['star_rating']['after'] == 5
+            assert db.read_bytes() == before
+    finally:
+        conn.close()
+
+
+def test_preview_detail_and_diagnostic_limits_report_omissions(tmp_path):
+    conn, path, _ = setup(tmp_path, rating=0)
+    try:
+        conn.executemany('INSERT INTO photos(path,scanned_at) VALUES (?,?)',
+                         [(str(tmp_path / f'extra-{index}.jpg'), '2020-01-01') for index in range(1000)])
+        conn.commit()
+        sidecar(path, rating=0, tags=[f'group|keyword-{index}' for index in range(105)])
+        result = import_sidecars(conn, dry_run=True)
+        assert len(result['entries']) == 1000
+        assert result['details_truncated'] == 1
+        photo = next(entry for entry in result['entries'] if entry['path'] == str(path))
+        assert len(photo['diagnostics']) == 100
+        assert photo['diagnostics_omitted'] == 5
+        assert conn.execute('SELECT COUNT(*) FROM photo_manual_tags').fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+def test_preview_explains_scan_age_keyword_cap_people_and_ai_duplicates(tmp_path):
+    conn, path, _ = setup(tmp_path)
+    try:
+        conn.execute("UPDATE photos SET tags='generated',scanned_at='2099-01-01' WHERE path=?", (str(path),))
+        conn.execute("INSERT INTO persons(id,name) VALUES (1,'Alice')")
+        conn.execute("INSERT INTO faces(photo_path,face_index,embedding,person_id) VALUES (?,0,X'',1)", (str(path),))
+        conn.executemany("INSERT INTO photo_manual_tags(photo_path,tag,source) VALUES (?,?,'user')",
+                         [(str(path), f'present-{index}') for index in range(50)])
+        conn.commit()
+        sidecar(path, tags=['generated', 'Alice', 'foreign'])
+        entry = import_sidecars(conn, dry_run=True)['entries'][0]
+        assert {row['reason'] for row in entry['diagnostics']} >= {'older_than_scan', 'tag_cap', 'person_name', 'ai_or_duplicate'}
+        assert entry['changes'] == {}
+    finally:
+        conn.close()
+
+
+def test_preview_reports_sidecar_inspection_failure_without_writes(tmp_path, monkeypatch):
+    conn, _, _ = setup(tmp_path)
+    try:
+        def inaccessible(*_args):
+            raise PermissionError('denied')
+        monkeypatch.setattr('processing.xmp_import._discover_sidecar', inaccessible)
+        result = import_sidecars(conn, dry_run=True)
+        assert result['skipped'] == 1
+        assert result['entries'][0]['diagnostics'] == [{'reason': 'sidecar_inspection_failed'}]
+        assert conn.execute('SELECT COUNT(*) FROM photo_metadata_edits').fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize('arguments,reason', [
+    (['--sidecar-fields', 'review'], 'require --import-sidecars'),
+    (['--overwrite-sidecar-review'], 'require --import-sidecars'),
+    (['--import-sidecars', '--sidecar-fields', 'review,bogus'], 'must select review,gps,keywords'),
+])
+def test_cli_rejects_invalid_import_policy_before_opening_database(tmp_path, arguments, reason):
+    import subprocess
+    import sys
+    db = tmp_path / 'must-not-exist.db'
+    result = subprocess.run([sys.executable, 'facet.py', '--db', str(db), *arguments],
+                            cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, timeout=30)
+    assert result.returncode == 2
+    assert reason in result.stderr
+    assert not db.exists()
+
+
+def test_cli_explicit_review_override_previews_and_applies_newer_local_conflict(tmp_path):
+    import subprocess
+    import sys
+    conn, path, db = setup(tmp_path)
+    sidecar(path)
+    conn.execute('UPDATE photos SET star_rating=3 WHERE path=?', (str(path),))
+    conn.commit()
+    conn.close()
+    base = [sys.executable, 'facet.py', '--db', str(db), '--import-sidecars', str(path)]
+    kwargs = dict(cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, timeout=30)
+    protected = subprocess.run([*base, '--dry-run'], **kwargs)
+    assert protected.returncode == 0, protected.stderr
+    assert json.loads(protected.stdout)['conflicts'] == 1
+    override = subprocess.run([*base, '--dry-run', '--overwrite-sidecar-review'], **kwargs)
+    assert override.returncode == 0, override.stderr
+    assert json.loads(override.stdout)['updated'] == 1
+    applied = subprocess.run([*base, '--overwrite-sidecar-review'], **kwargs)
+    assert applied.returncode == 0, applied.stderr
+    with sqlite3.connect(db) as output:
+        assert output.execute('SELECT star_rating FROM photos').fetchone()[0] == 5
+
+
+@pytest.mark.parametrize('per_user', [False, True])
+def test_unknown_existing_viewer_receipt_origin_is_conservatively_preserved(tmp_path, per_user):
+    from db.maintenance import export_viewer_db
+    conn, path, db = setup(tmp_path, rating=0)
+    viewer = tmp_path / 'viewer.db'
+    table = 'user_preferences' if per_user else 'photos'
+    key = "photo_path=? AND user_id='alice'" if per_user else 'path=?'
+    try:
+        if per_user:
+            conn.execute('INSERT INTO user_preferences(user_id,photo_path) VALUES (?,?)', ('alice', str(path)))
+        conn.execute(f'UPDATE {table} SET star_rating=3 WHERE {key}', (str(path),))
+        conn.execute(f'UPDATE {table} SET star_rating=0 WHERE {key}', (str(path),))
+        conn.commit()
+        export_viewer_db(str(db), str(viewer), verbose=False)
+        # Model a previous preview build's copied receipts. Their format is
+        # identical to actual local edits; automatic origin guessing is unsafe.
+        rows = [tuple(row) for row in conn.execute('SELECT * FROM photo_metadata_edits')]
+        with sqlite3.connect(viewer) as output:
+            output.executemany('INSERT INTO photo_metadata_edits VALUES (?,?,?,?,?,?,?)', rows)
+        conn.execute(f'UPDATE {table} SET star_rating=4 WHERE {key}', (str(path),))
+        conn.commit()
+        export_viewer_db(str(db), str(viewer), verbose=False)
+        with sqlite3.connect(viewer) as output:
+            assert output.execute(f'SELECT star_rating FROM {table} WHERE {key}', (str(path),)).fetchone()[0] == 0
+            assert output.execute('SELECT * FROM photo_metadata_edits').fetchall() == rows
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize('per_user', [False, True])
+def test_fresh_viewer_has_no_private_source_receipt_path_in_rows_or_file_bytes(tmp_path, per_user):
+    from db.maintenance import export_viewer_db
+    from db.metadata_edits import record_sidecar_receipt
+    conn, path, db = setup(tmp_path, rating=0)
+    viewer = tmp_path / 'viewer.db'
+    marker = '/private/scanner/DO-NOT-EXPORT-receipt-location.xmp'
+    try:
+        if per_user:
+            conn.execute('INSERT INTO user_preferences(user_id,photo_path,star_rating) VALUES (?,?,3)', ('alice', str(path)))
+        else:
+            conn.execute('UPDATE photos SET star_rating=3 WHERE path=?', (str(path),))
+        record_sidecar_receipt(conn, str(path), 'alice' if per_user else '', ['star_rating'], marker, '2025-01-02T03:04:05+00:00')
+        conn.commit()
+        conn.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+        assert marker.encode() in db.read_bytes()
+        export_viewer_db(str(db), str(viewer), verbose=False)
+        with sqlite3.connect(viewer) as output:
+            assert output.execute('SELECT COUNT(*) FROM photo_metadata_edits').fetchone()[0] == 0
+        assert marker.encode() not in viewer.read_bytes()
+        assert marker.encode() in db.read_bytes()
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize('per_user', [False, True])
+def test_failed_viewer_sync_restores_existing_local_reset_and_receipt_snapshot(tmp_path, per_user):
+    from db.metadata_edits import viewer_review_sync
+    conn, path, _ = setup(tmp_path, rating=1)
+    source = tmp_path / 'source.db'
+    init_database(str(source))
+    table = 'user_preferences' if per_user else 'photos'
+    key = "photo_path=? AND user_id='alice'" if per_user else 'path=?'
+    try:
+        if per_user:
+            conn.execute('INSERT INTO user_preferences(user_id,photo_path,star_rating) VALUES (?,?,1)', ('alice', str(path)))
+        conn.execute(f'UPDATE {table} SET star_rating=0 WHERE {key}', (str(path),))
+        conn.commit()
+        clock = review_edit_state(conn, str(path), 'alice' if per_user else '')
+        assert clock
+        with sqlite3.connect(source) as origin:
+            origin.execute('INSERT INTO photos(path,star_rating) VALUES (?,3)', (str(path),))
+            if per_user:
+                origin.execute('INSERT INTO user_preferences(user_id,photo_path,star_rating) VALUES (?,?,3)', ('alice', str(path)))
+        conn.execute('ATTACH DATABASE ? AS src', (str(source),))
+        with pytest.raises(RuntimeError, match='replication failed'):
+            with viewer_review_sync(conn, table):
+                conn.execute(f'UPDATE {table} SET star_rating=2 WHERE {key}', (str(path),))
+                raise RuntimeError('replication failed')
+        assert conn.execute(f'SELECT star_rating FROM {table} WHERE {key}', (str(path),)).fetchone()[0] == 0
+        assert review_edit_state(conn, str(path), 'alice' if per_user else '') == clock
+        assert not conn.in_transaction
     finally:
         conn.close()

@@ -431,6 +431,13 @@ def _import_sidecars(conn, root, *, user_id, overwrite_manual_gps, dry_run, fiel
     from api.config import is_multi_user_enabled
     per_user = bool(user_id and is_multi_user_enabled())
 
+    # A read-only preview must inspect released schemas without migrating them.
+    # Keep did not exist there; an absent decision is explicitly undecided.
+    photo_columns = {row[1] for row in conn.execute('PRAGMA table_info(photos)')}
+    preference_columns = {row[1] for row in conn.execute('PRAGMA table_info(user_preferences)')} if per_user else set()
+    global_keep = 'is_kept' if 'is_kept' in photo_columns else '0 AS is_kept'
+    user_keep = 'COALESCE(up.is_kept, 0)' if 'is_kept' in preference_columns else '0'
+
     where, params = sidecar_scope(root, user_id)
 
     if per_user:
@@ -438,7 +445,7 @@ def _import_sidecars(conn, root, *, user_id, overwrite_manual_gps, dry_run, fiel
             f"SELECT photos.path AS path, photos.tags AS tags, photos.scanned_at AS scanned_at, "
             f"COALESCE(up.star_rating, 0) AS star_rating, "
             f"COALESCE(up.is_favorite, 0) AS is_favorite, "
-            f"COALESCE(up.is_rejected, 0) AS is_rejected, COALESCE(up.is_kept, 0) AS is_kept, "
+            f"COALESCE(up.is_rejected, 0) AS is_rejected, {user_keep} AS is_kept, "
             f"photos.gps_latitude, photos.gps_longitude, photos.gps_manually_set "
             f"FROM photos LEFT JOIN user_preferences up "
             f"ON up.photo_path = photos.path AND up.user_id = ? {where}",
@@ -446,7 +453,7 @@ def _import_sidecars(conn, root, *, user_id, overwrite_manual_gps, dry_run, fiel
         ).fetchall()
     else:
         rows = conn.execute(
-            f"SELECT path, tags, star_rating, is_favorite, is_rejected, is_kept, scanned_at, "
+            f"SELECT path, tags, star_rating, is_favorite, is_rejected, {global_keep}, scanned_at, "
             f"gps_latitude, gps_longitude, gps_manually_set "
             f"FROM photos {where}",
             params,

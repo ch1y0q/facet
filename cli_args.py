@@ -90,7 +90,7 @@ Configuration:
                         help='Run specific pass only: quality, tags, composition, faces, embeddings, '
                              'quality-iaa, quality-face, quality-liqe, saliency')
     scan_group.add_argument('--dry-run', action='store_true',
-                        help='Score sample photos without saving to database (preview mode). '
+                        help='Preview without database writes: score sample photos, or with --import-sidecars show the import plan. '
                              'Outside commercial mode, on 16gb/24gb the aesthetic column shows n/a '
                              '(TOPIQ runs only in a real scan; commercial mode shows the Q-ReAlign score)')
     scan_group.add_argument('--dry-run-count', type=int, default=DEFAULT_DRY_RUN_COUNT,
