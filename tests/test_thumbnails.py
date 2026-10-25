@@ -2,6 +2,7 @@
 
 import os
 import threading
+import time
 from contextlib import contextmanager
 from io import BytesIO
 from pathlib import Path
@@ -446,6 +447,89 @@ class TestThumbnailRenderedFromOriginal:
                 for thread in threads:
                     thread.join(4)
         assert not errors and all(not thread.is_alive() for thread in threads)
+        assert not thumbnails._render_inflight
+
+    def _get_in_thread(self, client, path):
+        """GET size=1920 in a thread, so a wait that never times out fails instead of hanging."""
+        result = {}
+        worker = threading.Thread(
+            target=lambda: result.update(resp=self._get(client, path, 1920)), daemon=True)
+        worker.start()
+        worker.join(3)
+        assert not worker.is_alive(), "the render waited past its budget instead of standing in"
+        return result["resp"]
+
+    def test_a_busy_non_jpeg_gate_serves_the_stand_in_and_keeps_its_permits(self, client, photo):
+        from api.routers import thumbnails
+        path = photo(name="photo.cr3", original=_make_jpeg_bytes((3000, 2000)))
+        gate = threading.BoundedSemaphore(1)
+        assert gate.acquire(timeout=0)
+        with mock.patch.object(thumbnails, "_RENDER_WAIT_SECONDS", 0.05), \
+                mock.patch.object(thumbnails, "_nonjpeg_render_slots", gate), \
+                mock.patch.object(thumbnails, "_render_slots", threading.BoundedSemaphore(4)) as slots, \
+                mock.patch("api.raw_processing.load_viewer_image") as load:
+            resp = self._get_in_thread(client, path)
+            assert slots._value == 4
+        load.assert_not_called()
+        self._assert_stand_in(resp)
+        gate.release()
+        assert gate._value == 1
+
+    def test_a_render_slot_timeout_shares_the_gate_deadline_and_releases_the_gate(self, client, photo):
+        from api.routers import thumbnails
+        path = photo(name="photo.png", original=_make_jpeg_bytes((3000, 2000)))
+        budget = 0.5
+        slot_timeouts = []
+        class SlowGate(threading.BoundedSemaphore):
+            def acquire(self, *args, **kwargs):
+                time.sleep(budget * 0.6)
+                return super().acquire(*args, **kwargs)
+        class ObservedSlots(threading.BoundedSemaphore):
+            def acquire(self, blocking=True, timeout=None):
+                slot_timeouts.append(timeout)
+                return super().acquire(blocking, timeout)
+        gate = SlowGate(3)
+        with mock.patch.object(thumbnails, "_RENDER_WAIT_SECONDS", budget), \
+                mock.patch.object(thumbnails, "_nonjpeg_render_slots", gate), \
+                mock.patch.object(thumbnails, "_render_slots", ObservedSlots(0)), \
+                mock.patch("api.raw_processing.load_viewer_image") as load:
+            resp = self._get_in_thread(client, path)
+        load.assert_not_called()
+        self._assert_stand_in(resp)
+        # The slot wait gets what the gate left of one budget, not a fresh one.
+        assert len(slot_timeouts) == 1 and slot_timeouts[0] <= budget * 0.5
+        assert gate._value == 3
+
+    def test_a_decode_error_releases_both_permits(self, client, photo):
+        from api.routers import thumbnails
+        path = photo(name="photo.png", original=_make_jpeg_bytes((3000, 2000)))
+        gate, slots = threading.BoundedSemaphore(3), threading.BoundedSemaphore(4)
+        with mock.patch.object(thumbnails, "_nonjpeg_render_slots", gate), \
+                mock.patch.object(thumbnails, "_render_slots", slots), \
+                mock.patch("api.raw_processing.load_viewer_image",
+                           side_effect=OSError("corrupt original")) as load:
+            resp = self._get_in_thread(client, path)
+        assert load.call_count == 1
+        self._assert_stand_in(resp)
+        assert gate._value == 3 and slots._value == 4
+        assert not thumbnails._render_inflight
+
+    def test_a_joined_render_timing_out_serves_the_stand_in(self, client, photo):
+        """On Python 3.10 a future's timeout is not an OSError; emulate that on 3.11+."""
+        from api.routers import thumbnails
+        path = photo(name="photo.png", original=_make_jpeg_bytes((3000, 2000)))
+        class Py310FuturesTimeout(Exception):
+            pass
+        class TimingOutFlight(Future):
+            def result(self, timeout=None):
+                raise Py310FuturesTimeout()
+        key = (thumbnails.resolve_photo_disk_path(str(path)), os.path.getmtime(path), None)
+        with mock.patch.object(thumbnails, "FuturesTimeoutError", Py310FuturesTimeout), \
+                mock.patch.dict(thumbnails._render_inflight, {key: TimingOutFlight()}), \
+                mock.patch("api.raw_processing.load_viewer_image") as load:
+            resp = self._get(client, path, 1920)
+        load.assert_not_called()
+        self._assert_stand_in(resp)
         assert not thumbnails._render_inflight
 
     @staticmethod

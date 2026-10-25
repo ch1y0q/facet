@@ -11,6 +11,7 @@ import time
 from io import BytesIO
 from functools import lru_cache
 from concurrent.futures import Future
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from pathlib import Path
 from typing import Optional
 
@@ -232,8 +233,9 @@ def _render_from_original(path: str, sequence_kind: Optional[str]) -> Optional[b
     except _NoSignalError as e:
         logger.warning("Could not render %s (%s), serving the stored thumbnail", disk, e)
         return None
-    except (OSError, ValueError, RuntimeError) as e:
-        # No traceback: this repeats on every revalidation.
+    except (OSError, ValueError, RuntimeError, FuturesTimeoutError) as e:
+        # No traceback: this repeats on every revalidation. A joined render's
+        # wait raises FuturesTimeoutError, which is not an OSError before 3.11.
         logger.warning("Could not render %s (%s), serving the stored thumbnail", disk, e)
         return None
 
