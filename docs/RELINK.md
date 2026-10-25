@@ -25,7 +25,7 @@ Create a JSON list with exact canonical absolute paths. A missing source must al
 ```
 
 ```sh
-# Read-only database preview; save a new review artifact without overwriting one.
+# Read-only database preview; create a private (0600), exclusive review artifact.
 python -m db.relink --db library.db --config scoring_config.json \
   --mapping moved.json --plan-out relink-plan.json
 
@@ -37,7 +37,7 @@ python -m db.relink --db library.db --config scoring_config.json \
   --acknowledge-unverified-identity
 ```
 
-Multi-user mode also requires `--user alice` in both commands. This is an operator scope selector, not a replacement for OS access control or an authenticated API. Both paths must be visible to that user, and the set of **all** users able to see the photo must remain identical. Private-to-shared or other cross-user moves are refused. Both paths must be inside explicit configured scan/user/shared directories. Empty roots, inaccessible roots and `viewer.path_mapping` are refused; this initial tool supports native canonical paths only.
+Multi-user mode also requires `--user alice` in both commands. This is an operator scope selector, not a replacement for OS access control or an authenticated API. Both paths must be visible to that user, and the set of **all** users able to see the photo must remain identical. Private-to-shared or other cross-user moves are refused. Both paths must be inside explicit configured scan/user/shared directories. Blank root configuration, inaccessible roots and `viewer.path_mapping` are refused; this initial tool supports native canonical paths only.
 
 Apply rechecks the entire reviewed plan inside one SQLite write transaction. Changed target files, photo rows, annotations, schema, database inode or visibility policy require a new preview. A failed batch rolls back all its database writes. A successful apply prints a receipt with the plan ID. It does not store a new logical asset ID or remote UUID mapping.
 
@@ -51,10 +51,12 @@ Immich push/pending state remains unchanged: a local filename assertion cannot v
 
 ## Explicit companions and refusals
 
-List companions explicitly; the tool cannot discover unindexed RAW/XMP files that have vanished from the old directory. `sidecar_full` means `photo.ext.xmp`, `sidecar_basename` means `photo.xmp`, and `raw` keeps an explicitly supplied same-directory/stem RAW pair compatible with current culling. These filename rules validate a declared relationship; they do not prove file identity. Indexed RAW photos need their own top-level relink entry so their annotations are preserved.
+List companions explicitly; the tool cannot discover unindexed RAW/XMP files that have vanished from the old directory. `sidecar_full` means `photo.ext.xmp`, `sidecar_basename` means `photo.xmp`, `sidecar_facet` means `photo.ext.facet.xmp`, and `raw` keeps an explicitly supplied same-directory/stem RAW pair compatible with current culling. These filename rules validate a declared relationship; they do not prove file identity. Indexed RAW photos need their own top-level relink entry so their annotations are preserved.
 
-Unlisted sidecars or RAW companions at the destination are refused. Multiple RAW candidates and ambiguous XMP ownership are refused, including `IMG.CR2` + `IMG.CR2.jpg` + `IMG.CR2.xmp`, basename and case/Unicode collisions. No companion is assigned by first match. Existing companion file bytes are hashed/rechecked and left untouched. Unlisted missing companions remain unknown; do not interpret an empty list as proof none existed.
+Unlisted sidecars or RAW companions at the destination are refused, including Facet fallback packets and case variants. Multiple RAW candidates and ambiguous XMP ownership are refused, including `IMG.CR2` + `IMG.CR2.jpg` + `IMG.CR2.xmp`, `IMG.CR2` + `IMG.CR2.facet.jpg` + `IMG.CR2.facet.xmp`, basename and case/Unicode collisions. No companion is assigned by first match. Existing companion file bytes are hashed/rechecked and left untouched. Unlisted missing companions remain unknown; do not interpret an empty list as proof none existed.
 
-Copies with a still-present old original, missing/unreadable old parents (possibly offline storage), existing destination photo/dependent rows, repeated mappings, duplicate photo content or target inodes, case-only/Unicode-only changes, symlinks and extension/format changes are refused. Stored canonical dimensions, when known, must match the decoded target. No similarity/filename search or automatic reconciliation runs.
+Copies with a still-present old original, missing/unreadable old parents, existing destination photo/dependent rows, repeated mappings, duplicate photo content or target inodes, case-only/Unicode-only changes, symlinks and extension/format changes are refused. Stored canonical dimensions, when known, must match the decoded target. No similarity/filename search or automatic reconciliation runs.
 
 Limits: 100 photos, 300 explicitly named files, 512 MiB per file, 2 GiB total file bytes and 2 MiB JSON input/review plan. Reduce a batch when a limit is reached. The database transaction is atomic; the filesystem is not locked against other applications, hence the offline requirement. No real external application or remote-server round trip is claimed by the fixture tests.
+
+Readable directories do **not** prove that storage is mounted. An unmounted volume may leave an empty readable mount point indistinguishable from a genuinely empty post-move directory. The plan explicitly reports `source_mount_status: not_verified`; confirm independently that each source was moved rather than merely unavailable before acknowledging identity. The command does not detect every offline-volume condition. Review artifacts contain private full paths and user-scope policy; `--plan-out` creates them exclusively with mode 0600 on POSIX.

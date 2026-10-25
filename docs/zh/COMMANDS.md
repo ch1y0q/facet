@@ -504,3 +504,5 @@ python facet.py --recompute-average        # 应用新权重
 ## 重新关联已移动的照片
 
 自行移动文件后，可运行 `python -m db.relink` 预览精确的新旧路径，并保留数据库关联。默认只预览；应用必须提供已保存计划的 ID 和 `--acknowledge-unverified-identity`，因为数据库没有缺失原文件的密码学证明。请先停止查看器、扫描器并审核计划。两条路径必须位于配置目录内，且所有用户的可见范围保持一致；副本、歧义名称、过期计划和路径映射都会被拒绝。伴随文件必须明确列出，手工人脸框需在编辑器中重新审核，Immich 状态保持不变。完整约定与示例：[Relink a missing photo](../RELINK.md)（英文）。
+
+`sidecar_facet` 明确表示 `photo.ext.facet.xmp`，未列出的回退包也会被拒绝。保存的审核计划为私有文件（POSIX 权限 0600）。目录可读不代表卷已挂载；`source_mount_status` 仍为 `not_verified`，操作员必须独立确认原文件确实已移动，而非仅处于离线状态。

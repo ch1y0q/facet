@@ -114,7 +114,7 @@ def _file_receipt(old, new, policy):
     _canonical(new)
     _authorize(old, new, policy)
     if _classify_missing_path(old) != _PATH_DELETED:
-        raise ValueError('Original must be missing with a readable, existing parent; copies/offline roots refused')
+        raise ValueError('Original must be missing with a readable, existing parent; present/inaccessible originals refused')
     flags = os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0)
     descriptor = os.open(new, flags)
     with os.fdopen(descriptor, 'rb') as handle:
@@ -183,10 +183,15 @@ def _reference_receipt(conn, refs, old, new):
     return receipt
 
 
+def _sidecar_paths(photo):
+    return {'sidecar_full': photo + '.xmp',
+            'sidecar_basename': os.path.splitext(photo)[0] + '.xmp',
+            'sidecar_facet': photo + '.facet.xmp'}
+
+
 def _sidecar_owners(candidate, photos):
     key = _name_key(candidate)
-    return {photo for photo in photos if key in {
-        _name_key(photo + '.xmp'), _name_key(os.path.splitext(photo)[0] + '.xmp')}}
+    return {photo for photo in photos if key in {_name_key(path) for path in _sidecar_paths(photo).values()}}
 
 
 def _companions(entry, photos):
@@ -195,9 +200,8 @@ def _companions(entry, photos):
     seen = set()
     for companion in entry.get('companions', []):
         old, new, kind = companion['old'], companion['new'], companion['kind']
-        if kind in ('sidecar_full', 'sidecar_basename'):
-            expected = (lambda p: p + '.xmp') if kind == 'sidecar_full' else (lambda p: os.path.splitext(p)[0] + '.xmp')
-            if old != expected(entry['old']) or new != expected(entry['new']):
+        if kind in _sidecar_paths(entry['old']):
+            if old != _sidecar_paths(entry['old'])[kind] or new != _sidecar_paths(entry['new'])[kind]:
                 raise ValueError('Explicit sidecar mapping does not preserve its naming relationship')
             if len(_sidecar_owners(old, photos)) > 1 or len(_sidecar_owners(new, photos)) > 1:
                 raise ValueError('Ambiguous sidecar ownership, including double-extension or case collisions')
@@ -212,11 +216,13 @@ def _companions(entry, photos):
             raise ValueError('A companion was supplied twice')
         seen.add(new)
     # Avoid adopting destination sidecars which were never in the reviewed map.
-    for candidate in (entry['new'] + '.xmp', os.path.splitext(entry['new'])[0] + '.xmp'):
-        if os.path.lexists(candidate) and candidate not in seen:
+    siblings = list(Path(entry['new']).parent.iterdir())
+    sidecar_keys = {_name_key(path) for path in _sidecar_paths(entry['new']).values()}
+    for candidate in siblings:
+        if _name_key(str(candidate)) in sidecar_keys and str(candidate) not in seen:
             raise ValueError('Destination sidecar requires an explicit companion mapping')
     if Path(entry['new']).suffix.lower() not in RAW_EXTENSIONS:
-        candidates = [str(path) for path in Path(entry['new']).parent.iterdir()
+        candidates = [str(path) for path in siblings
                       if path.suffix.lower() in RAW_EXTENSIONS
                       and _name_key(path.stem) == _name_key(Path(entry['new']).stem)]
         if len(candidates) > 1:
@@ -334,6 +340,7 @@ def _build_plan(conn, db_path, mapping, config, user):
     body = {'version': 1, 'database': str(Path(db_path).resolve()),
             'database_inode': [db_stat.st_dev, db_stat.st_ino], 'schema': _digest(schema),
             'policy': policy, 'mapping': mapping, 'entries': receipts,
+            'source_mount_status': 'not_verified; operator must confirm sources are moved, not offline',
             'remote_sync_state': 'unchanged; no verified remote identity binding',
             'companions': 'explicit mappings only; unknown missing companions cannot be discovered'}
     plan = {**body, 'plan_id': _digest(body)}
@@ -427,7 +434,8 @@ def main(argv=None):
                 raise ValueError('Apply acknowledgments are invalid in preview mode')
             result = preview_relinks(args.db, read_json(args.mapping), config, args.user)
             if args.plan_out:
-                with open(args.plan_out, 'x', encoding='utf-8') as handle:
+                descriptor = os.open(args.plan_out, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                with os.fdopen(descriptor, 'w', encoding='utf-8') as handle:
                     json.dump(result, handle, ensure_ascii=False, indent=2)
         else:
             if args.plan_out:

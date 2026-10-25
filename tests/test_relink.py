@@ -1,6 +1,8 @@
 """Relinking is a reviewed database rewrite, never a file move or identity guess."""
 import json
+import os
 import sqlite3
+import stat
 from pathlib import Path
 
 import pytest
@@ -323,6 +325,8 @@ def test_cli_defaults_to_preview_and_applies_only_exact_saved_plan(library, tmp_
     config_file.write_text(json.dumps(config))
     relink.main(['--db', db, '--config', str(config_file), '--mapping', str(mapping_file), '--plan-out', str(plan_file)])
     plan = json.loads(plan_file.read_text())
+    if os.name == 'posix':
+        assert stat.S_IMODE(plan_file.stat().st_mode) == 0o600
     assert json.loads(capsys.readouterr().out)['plan_id'] == plan['plan_id']
     with sqlite3.connect(db) as conn:
         assert conn.execute('SELECT path FROM photos').fetchone()[0] == old
@@ -391,3 +395,50 @@ def test_unicode_normalization_aliases_are_not_guessed(library):
         conn.executemany('INSERT INTO photos(path) VALUES (?)', [(first,), (second,)])
     with pytest.raises(ValueError, match='case/Unicode'):
         preview(library, [{'old': first, 'new': new}])
+
+
+@pytest.mark.parametrize('suffix', ['.facet.xmp', '.FACET.XMP'])
+def test_unlisted_destination_facet_sidecar_is_refused(library, suffix):
+    db, old, new, _ = library
+    packet = Path(new + suffix)
+    packet.write_text('<xmp>stale decisions for another photo</xmp>')
+    before = packet.read_bytes()
+    with pytest.raises(ValueError, match='explicit companion'):
+        preview(library)
+    assert packet.read_bytes() == before
+    with sqlite3.connect(db) as conn:
+        assert conn.execute('SELECT path FROM photos').fetchone()[0] == old
+
+
+def test_explicit_facet_sidecar_mapping_preserves_bytes(library):
+    _, old, new, _ = library
+    old_packet, new_packet = old + '.facet.xmp', new + '.facet.xmp'
+    Path(new_packet).write_text('<xmp>explicitly identified fallback</xmp>')
+    before = Path(new_packet).read_bytes()
+    plan = preview(library, [{'old': old, 'new': new, 'companions': [
+        {'old': old_packet, 'new': new_packet, 'kind': 'sidecar_facet'}]}])
+    assert apply(library, plan)['relinked'] == 1
+    assert Path(new_packet).read_bytes() == before
+
+
+@pytest.mark.parametrize('sibling_name', ['IMG.CR2.facet.jpg', 'IMG.CR2.FACET.JPG'])
+def test_facet_sidecar_claim_collides_with_double_extension_basename(library, sibling_name):
+    db, old, new, _ = library
+    photo = str(Path(old).with_name('IMG.CR2'))
+    sibling = str(Path(old).with_name(sibling_name))
+    with sqlite3.connect(db) as conn:
+        conn.executemany('INSERT INTO photos(path) VALUES (?)', [(photo,), (sibling,)])
+    entry = {'old': photo, 'new': str(Path(new).with_name('IMG.CR2')), 'companions': [
+        {'old': photo + '.facet.xmp', 'new': str(Path(new).with_name('IMG.CR2.facet.xmp')),
+         'kind': 'sidecar_facet'}]}
+    with pytest.raises(ValueError, match='Ambiguous sidecar'):
+        preview(library, [entry])
+
+
+def test_empty_readable_old_parent_does_not_claim_mount_verification(library):
+    # An empty readable directory can be a normal post-move directory OR an
+    # unmounted mount point. Filesystem existence cannot distinguish the two.
+    assert list(Path(library[1]).parent.iterdir()) == []
+    plan = preview(library)
+    assert plan['source_mount_status'].startswith('not_verified;')
+    assert plan['entries'][0]['identity'] == 'original_bytes_unknown'
