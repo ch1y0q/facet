@@ -1588,3 +1588,7 @@ Una voce viene nascosta interamente se una foto è eliminata o non più visibile
 Include volti non assegnati e gruppi di persone senza nome. Usa + per assegnare un volto o dai un nome a un gruppo in Persone. Le foto senza volti rilevati sono escluse.
 
 `Filters → People → Volti senza nome` (`faces_need_names=true`).
+
+## Assegnare persone
+
+Il selettore **Assegna volto a persona** mostra prima fino a 12 persone assegnate con successo in questo browser, separatamente per ogni identità connessa. Le altre persone con nome seguono per numero di volti nelle foto visibili, con parità in ordine alfabetico. Ricerca e paginazione includono tutte le persone disponibili, anche con un solo volto. L’ordine mostrato resta stabile mentre il selettore è aperto. La sola selezione o proposta di un nuovo nome non aggiorna i recenti: l’assegnazione o il salvataggio del volto manuale deve riuscire. Si salvano localmente solo gli ID; senza memoria del browser le assegnazioni funzionano senza recenti. La disconnessione cancella tutte le assegnazioni recenti salvate in questo browser. L’ordine di assegnazione conta i volti nelle foto visibili; gli altri ordinamenti restituiscono i conteggi salvati della libreria.

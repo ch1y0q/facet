@@ -1713,7 +1713,10 @@
     "split_error": "Falha ao dividir a pessoa"
   },
   "person_selector": {
-    "create_new": "Criar nova pessoa"
+    "create_new": "Criar nova pessoa",
+    "ordering_hint": "Primeiro as pessoas atribuídas recentemente neste navegador, depois as que têm mais rostos nas fotos que você pode ver.",
+    "face_count": "{count} rostos",
+    "face_count_one": "1 rosto"
   },
   "slideshow": {
     "start": "Apresentação de slides",
