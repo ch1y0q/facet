@@ -289,6 +289,8 @@ export class GalleryStore {
   private reviewRefreshOwed = false;
   /** Tail-only review repairs in flight: parking one leaves the loaded prefix's offsets stale. */
   private reviewRepairsInFlight = 0;
+  /** Whole-view or targeted repairs may overlap pagination, whose loading flag cannot identify them. */
+  private viewRepairsInFlight = 0;
   private readonly parkedRefreshPaths = new Set<string>();
   private readonly pendingKeeperHints = new Set<string>();
   private pageReadsInFlight = 0;
@@ -931,7 +933,7 @@ export class GalleryStore {
   }
 
   private pauseListingReads(): void {
-    this.listingRefreshOwed ||= this.pageReadsInFlight > 0 && !this.loading();
+    this.listingRefreshOwed ||= this.viewRepairsInFlight > 0 || (this.pageReadsInFlight > 0 && !this.loading());
     this.listingPagesInterrupted ||= this.loading();
     this.reviewRefreshOwed ||= this.reviewRepairsInFlight > 0;
     this.progressRefreshOwed ||= this.progressReadsInFlight > 0;
@@ -1155,6 +1157,7 @@ export class GalleryStore {
 
   private async runRefresh(paths: string[] | null, loadSeq: number): Promise<void> {
     if (!this.claimRefresh(loadSeq)) return;
+    this.viewRepairsInFlight++;
     try {
       if (paths === null) {
         if (this.pinnedPaths() !== null) await this.refreshPinnedList(loadSeq);
@@ -1177,6 +1180,8 @@ export class GalleryStore {
       if (pinned || membership) this.dropMissing(missing);
     } catch {
       // Best effort: the rows stay as they were.
+    } finally {
+      this.viewRepairsInFlight--;
     }
   }
 
@@ -1296,6 +1301,19 @@ export class GalleryStore {
       const preserveLoaded = !this.listingRefreshOwed && !this.reviewRefreshOwed && !this.viewRefreshOwed
         && !this.parkedRefreshPaths.size;
       const previous = this.photos();
+      // Claim only debt that predates this snapshot. Writes arriving during recovery
+      // must remain queued for Back instead of being erased by this request's success.
+      const owed = {
+        listing: this.listingRefreshOwed, review: this.reviewRefreshOwed,
+        view: this.viewRefreshOwed, paths: [...this.parkedRefreshPaths],
+      };
+      if (!preserveLoaded) {
+        this.listingRefreshOwed = false;
+        this.reviewRefreshOwed = false;
+        this.viewRefreshOwed = false;
+        this.parkedRefreshPaths.clear();
+      }
+      const query = this.filterKey();
       if (this.filters().similar_to) await this.resumeSimilarPages(true, preserveLoaded);
       else {
         this.loading.set(true);
@@ -1309,13 +1327,16 @@ export class GalleryStore {
           if (seq === this._loadSeq && identity === this.auth.identity()) this.loading.set(false);
         }
       }
-      // A full reload settles every owed refresh, so Back does not refetch the pages again.
-      if (!preserveLoaded && !this.listingPagesInterrupted && seq === this._loadSeq && identity === this.auth.identity()) {
-        this.listingRefreshOwed = false;
-        this.reviewRefreshOwed = false;
-        this.viewRefreshOwed = false;
-        this.parkedRefreshPaths.clear();
-        if (this.filters().review_status) this.rememberReviewedPhotos(previous);
+      if (!preserveLoaded && identity === this.auth.identity() && query === this.filterKey()) {
+        if (this.listingPagesInterrupted && (seq === this._loadSeq || !this.listingReadsActive)) {
+          // A failed or parked-again recovery did not settle its claimed debt.
+          this.listingRefreshOwed ||= owed.listing;
+          this.reviewRefreshOwed ||= owed.review;
+          this.viewRefreshOwed ||= owed.view;
+          for (const path of owed.paths) this.parkedRefreshPaths.add(path);
+        } else if (seq === this._loadSeq && this.filters().review_status) {
+          this.rememberReviewedPhotos(previous);
+        }
       }
       return;
     }

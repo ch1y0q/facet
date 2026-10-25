@@ -462,6 +462,99 @@ describe('GalleryStore read cancellation with HttpClient', () => {
     http.expectNone(r => r.url === '/api/photos');
   });
 
+  it.each(['full', 'targeted'] as const)('preserves a newer %s write during foreground full recovery', async kind => {
+    const initial = store.loadPhotos();
+    request('/photos').flush({ ...EMPTY_PAGE, photos: [makePhoto({ path: '/p0.jpg' })], total: 300, has_more: true });
+    request('/photos/review_progress').flush(COUNTS);
+    await initial;
+    request('/photos/keeper_hints').flush({});
+    store.photos.set(Array.from({ length: 128 }, (_, i) => makePhoto({ path: `/p${i}.jpg` })));
+    store.filters.update(f => ({ ...f, page: 2 }));
+    const paging = store.nextPage();
+    const obsolete = request('/photos');
+    const deferred = store.refreshPaths(null);
+    request('/photos/review_progress').flush(COUNTS);
+    await deferred;
+    events.next(new NavigationStart(1, '/photo?path=/p127.jpg'));
+    store.parkListingReads();
+    (TestBed.inject(Router) as unknown as { url: string }).url = '/photo?path=/p127.jpg';
+    events.next(new NavigationEnd(1, '/photo?path=/p127.jpg', '/photo?path=/p127.jpg'));
+    expect(obsolete.cancelled).toBe(true);
+    await paging;
+    const recovering = store.nextPage(undefined, { whileParked: true });
+    // The deferred full refresh must invalidate the prefix, even while pagination was loading.
+    const first = request('/photos');
+    expect(first.request.params.get('page')).toBe('1');
+    await store.refreshPaths(kind === 'full' ? null : ['/p0.jpg']);
+    first.flush({ ...EMPTY_PAGE, photos: Array.from({ length: 64 }, (_, i) => makePhoto({ path: `/p${i}.jpg` })), total: 300, has_more: true });
+    for (let page = 2; page <= 3; page++) {
+      let read!: TestRequest;
+      await vi.waitFor(() => { read = request('/photos'); });
+      expect(read.request.params.get('page')).toBe(String(page));
+      read.flush({ ...EMPTY_PAGE, photos: Array.from({ length: 64 }, (_, i) => makePhoto({ path: `/p${(page - 1) * 64 + i}.jpg` })), total: 300, has_more: true });
+    }
+    await recovering;
+    request('/photos/keeper_hints').flush({});
+    const returning = store.resumeListingReads();
+    request('/photos/review_progress').flush(COUNTS);
+    if (kind === 'targeted') {
+      let read!: TestRequest;
+      await vi.waitFor(() => { read = request('/photos/by_paths'); });
+      expect(read.request.body.paths).toEqual(['/p0.jpg']);
+      read.flush({ photos: [makePhoto({ path: '/p0.jpg', star_rating: 5 })] });
+    } else {
+      for (let page = 1; page <= 3; page++) {
+        let read!: TestRequest;
+        await vi.waitFor(() => { read = request('/photos'); });
+        expect(read.request.params.get('page')).toBe(String(page));
+        read.flush({ ...EMPTY_PAGE, photos: [makePhoto({ path: `/fresh${page}.jpg` })], total: 3 });
+      }
+    }
+    await returning;
+    if (kind === 'targeted') expect(store.photos()[0].star_rating).toBe(5);
+    else {
+      request('/photos/keeper_hints').flush({});
+      expect(store.photos().map(photo => photo.path)).toEqual(['/fresh1.jpg', '/fresh2.jpg', '/fresh3.jpg']);
+    }
+  });
+
+  it('invalidates the loaded prefix when a targeted repair is cancelled behind pagination', async () => {
+    const initial = store.loadPhotos();
+    request('/photos').flush({ ...EMPTY_PAGE, photos: [makePhoto({ path: '/p0.jpg' })], total: 300, has_more: true });
+    request('/photos/review_progress').flush(COUNTS);
+    await initial;
+    request('/photos/keeper_hints').flush({});
+    store.photos.set(Array.from({ length: 128 }, (_, i) => makePhoto({ path: `/p${i}.jpg` })));
+    store.filters.update(f => ({ ...f, page: 2 }));
+    const paging = store.nextPage();
+    const obsolete = request('/photos');
+    const repairing = store.refreshPaths(['/p0.jpg']);
+    request('/photos/review_progress').flush(COUNTS);
+    let targeted!: TestRequest;
+    await vi.waitFor(() => { targeted = request('/photos/by_paths'); });
+    events.next(new NavigationStart(1, '/photo?path=/p127.jpg'));
+    store.parkListingReads();
+    (TestBed.inject(Router) as unknown as { url: string }).url = '/photo?path=/p127.jpg';
+    events.next(new NavigationEnd(1, '/photo?path=/p127.jpg', '/photo?path=/p127.jpg'));
+    expect(obsolete.cancelled).toBe(true);
+    expect(targeted.cancelled).toBe(true);
+    await Promise.all([paging, repairing]);
+    const recovering = store.nextPage(undefined, { whileParked: true });
+    for (let page = 1; page <= 3; page++) {
+      let read!: TestRequest;
+      await vi.waitFor(() => { read = request('/photos'); });
+      expect(read.request.params.get('page')).toBe(String(page));
+      read.flush({ ...EMPTY_PAGE, photos: [makePhoto({ path: `/fresh${page}.jpg`, star_rating: 5 })], total: 3 });
+    }
+    await recovering;
+    request('/photos/keeper_hints').flush({});
+    expect(store.photos().map(photo => photo.path)).toEqual(['/fresh1.jpg', '/fresh2.jpg', '/fresh3.jpg']);
+    const returning = store.resumeListingReads();
+    await returning;
+    request('/photos/keeper_hints').flush({});
+    http.expectNone(r => r.url === '/api/photos' || r.url === '/api/photos/by_paths');
+  });
+
   async function loadAndParkThreePages(pendingHints = false): Promise<void> {
     const initial = store.loadPhotos();
     request('/photos').flush({ ...EMPTY_PAGE, photos: [makePhoto({ path: '/a.jpg' })], total: 300, has_more: true });
@@ -476,6 +569,46 @@ describe('GalleryStore read cancellation with HttpClient', () => {
     (TestBed.inject(Router) as unknown as { url: string }).url = '/photo?path=/p191.jpg';
     events.next(new NavigationEnd(1, '/photo?path=/p191.jpg', '/photo?path=/p191.jpg'));
   }
+
+  it.each(['failed', 'cancelled'] as const)('retains claimed full-refresh debt when foreground recovery is %s', async outcome => {
+    await loadAndParkThreePages();
+    await store.resumeListingReads();
+    const paging = store.nextPage();
+    const obsolete = request('/photos');
+    const deferred = store.refreshPaths(null);
+    request('/photos/review_progress').flush(COUNTS);
+    await deferred;
+    store.parkListingReads();
+    expect(obsolete.cancelled).toBe(true);
+    await paging;
+    await store.refreshPaths(['/p0.jpg']);
+    const recovering = store.nextPage(undefined, { whileParked: true });
+    const first = request('/photos');
+    expect(first.request.params.get('page')).toBe('1');
+    if (outcome === 'failed') first.flush({}, { status: 500, statusText: 'Failed' });
+    else {
+      events.next(new NavigationStart(2, '/photo?path=/p190.jpg'));
+      store.parkListingReads();
+      expect(first.cancelled).toBe(true);
+      (TestBed.inject(Router) as unknown as { url: string }).url = '/photo?path=/p190.jpg';
+      events.next(new NavigationEnd(2, '/photo?path=/p190.jpg', '/photo?path=/p190.jpg'));
+    }
+    await recovering;
+    const retrying = store.nextPage(undefined, { whileParked: true });
+    for (let page = 1; page <= 4; page++) {
+      let read!: TestRequest;
+      await vi.waitFor(() => { read = request('/photos'); });
+      expect(read.request.params.get('page')).toBe(String(page));
+      read.flush({ ...EMPTY_PAGE, photos: [makePhoto({ path: `/fresh${page}.jpg` })], total: 4 });
+    }
+    await retrying;
+    request('/photos/keeper_hints').flush({});
+    expect(store.photos().map(photo => photo.path)).toEqual(['/fresh1.jpg', '/fresh2.jpg', '/fresh3.jpg', '/fresh4.jpg']);
+    const returning = store.resumeListingReads();
+    request('/photos/review_progress').flush(COUNTS);
+    await returning;
+    http.expectNone(r => r.url === '/api/photos' || r.url === '/api/photos/by_paths');
+  });
 
   it('retries cancelled advisory hints on Back without a listing or count reload', async () => {
     await loadAndParkThreePages(true);
