@@ -687,6 +687,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
             <span aria-hidden="true" class="w-px h-6 mx-1 bg-[var(--mat-sys-outline-variant)]"></span>
             <button mat-icon-button disabledInteractive (click)="copyPaths()" [matTooltip]="I18N.gallery.selection.copy_filenames | translate" [attr.aria-label]="I18N.gallery.selection.copy_filenames | translate"><mat-icon>content_copy</mat-icon></button>
             @if (auth.isEdition()) {
+              <button mat-icon-button (click)="openCaptureDateDialog()" [matTooltip]="I18N.capture_date.title | translate" [attr.aria-label]="I18N.capture_date.title | translate"><mat-icon>edit_calendar</mat-icon></button>
               <button mat-icon-button disabledInteractive (click)="openBatchGpsDialog()" [matTooltip]="I18N.photo_detail.gps.batch_title | translate" [attr.aria-label]="I18N.photo_detail.gps.batch_title | translate"><mat-icon>location_on</mat-icon></button>
               <button mat-icon-button disabledInteractive (click)="openManualTagsDialog()" [matTooltip]="I18N.gallery.selection.edit_tags | translate" [attr.aria-label]="I18N.gallery.selection.edit_tags | translate"><mat-icon>sell</mat-icon></button>
               <button mat-icon-button disabledInteractive (click)="openExportDialog()" [matTooltip]="I18N.export.action | translate" [attr.aria-label]="I18N.export.action | translate"><mat-icon>drive_file_move</mat-icon></button>
@@ -1938,6 +1939,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
       case 'invert':
       case 'compare':
       case 'mark-panorama':
+      case 'capture-date':
       case 'tags':
       case 'gps':
         break;
@@ -1994,6 +1996,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
       case 'compare': await this.compareSelection(); break;
       case 'export': this.openExportDialog(); break;
       case 'cull': await this.openCullDialog(); break;
+      case 'capture-date': await this.openCaptureDateDialog(); break;
       case 'tags': await this.openManualTagsDialog(); break;
       case 'gps': await this.openBatchGpsDialog(); break;
       case 'delete': await this.deleteSelected(); break;
@@ -2091,6 +2094,27 @@ export class GalleryComponent implements OnInit, OnDestroy {
         ? { filters: this.store.filterPayload(), exclude: [...this.excludedPaths()], count: this.selectionCount() }
         : { paths: [...this.selectedPaths()] },
     });
+  }
+
+  async openCaptureDateDialog(): Promise<void> {
+    if (!this.auth.isEdition()) return;
+    const owner = this.auth.status();
+    const url = this.router.url;
+    const viewScoped = this.viewScoped();
+    const data = {
+      paths: [...this.selectedPaths()],
+      filters: viewScoped ? structuredClone(this.store.filterPayload()) : null,
+      exclude: viewScoped ? [...this.excludedPaths()] : [],
+      count: this.selectionCount(),
+    };
+    if (!viewScoped && !data.paths.length) return;
+    let navigated = false;
+    const navigation = this.router.events.subscribe(event => { if (event instanceof NavigationStart) navigated = true; });
+    try {
+      const { CaptureDateDialogComponent } = await import('../photo-detail/capture-date-dialog.component');
+      if (this.destroyRef.destroyed || navigated || this.router.url !== url || this.auth.status() !== owner || !this.auth.isEdition()) return;
+      this.dialog.open(CaptureDateDialogComponent, { width: '95vw', maxWidth: '760px', data });
+    } finally { navigation.unsubscribe(); }
   }
 
   async openBatchGpsDialog(): Promise<void> {

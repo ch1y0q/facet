@@ -2002,6 +2002,36 @@ describe('GalleryComponent', () => {
     });
   });
 
+  describe('capture-date targets', () => {
+    beforeEach(() => { mockAuth['isEdition'] = vi.fn(() => true); });
+    it.each(['identity', 'edition', 'navigation', 'destroy'])('does not open after lazy date launch loses %s', async loss => {
+      mockStore.selectedPaths.set(new Set(['/a'])); mockStore.selectionCount.set(1);
+      const dialog = TestBed.inject(MatDialog);
+      const task = component.openCaptureDateDialog();
+      if (loss === 'identity') (mockAuth['status'] as ReturnType<typeof signal>).set({ user_id: 'bob' });
+      if (loss === 'edition') mockAuth['isEdition'] = vi.fn(() => false);
+      if (loss === 'navigation') {
+        (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(1, '/other'));
+        (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(2, '/'));
+      }
+      if (loss === 'destroy') TestBed.resetTestingModule();
+      await task;
+      expect(dialog.open).not.toHaveBeenCalled();
+    });
+    it('captures scope and exclusions before lazy loading the dialog', async () => {
+      mockStore.viewScopeSelected.set(true);
+      mockStore.excludedPaths.set(new Set(['/skip.jpg']));
+      mockStore.selectionCount.set(12);
+      mockStore.filterPayload.mockReturnValue({ camera: 'Canon' });
+      const dialog = TestBed.inject(MatDialog);
+      const pending = component.openCaptureDateDialog();
+      mockStore.filterPayload.mockReturnValue({ camera: 'Nikon' });
+      mockStore.excludedPaths.set(new Set(['/new.jpg']));
+      await pending;
+      expect((dialog.open as Mock).mock.calls[0][1].data).toEqual({ paths: [], filters: { camera: 'Canon' }, exclude: ['/skip.jpg'], count: 12 });
+    });
+  });
+
   describe('openBatchGpsDialog', () => {
     it.each(['identity', 'edition', 'navigation', 'destroy'])('does not open after lazy GPS launch loses %s', async loss => {
       mockAuth['isEdition'] = vi.fn(() => true);
@@ -3721,6 +3751,7 @@ describe('GalleryComponent', () => {
         ['mark-panorama', { kind: 'mark-panorama', sequenceKind: 'bracket' }, 'markAsPanorama', ['bracket']],
         ['download', { kind: 'download', type: 'darktable', profile: 'P' }, 'downloadSelected', ['darktable', 'P']],
         ['tags', { kind: 'tags' }, 'openManualTagsDialog', []],
+        ['capture-date', { kind: 'capture-date' }, 'openCaptureDateDialog', []],
         ['gps', { kind: 'gps' }, 'openBatchGpsDialog', []],
       ];
       for (const [name, action, method, args] of cases) {
