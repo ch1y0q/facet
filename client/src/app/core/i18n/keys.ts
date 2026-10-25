@@ -1780,6 +1780,8 @@ export const I18N = {
     find_more_error: "persons.find_more_error",
     find_more_add_error: "persons.find_more_add_error",
     find_more_no_centroid: "persons.find_more_no_centroid",
+    ignored_section: "persons.ignored_section",
+    ignored_help: "persons.ignored_help",
     empty_hint: "persons.empty_hint",
   },
   photo_faces: {

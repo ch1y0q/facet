@@ -424,6 +424,26 @@ class TestListPersonsNamedOnly:
         assert everyone["total"] == 4
 
 
+class TestListPersonsHiddenOnly:
+    """GET /api/persons?hidden_only=true lists the hidden (ignored) persons alone."""
+
+    def test_hidden_only(self, client, tmp_path):
+        db = str(tmp_path / "persons_hidden.db")
+        _make_persons_db(db, persons=[
+            {"id": 1, "name": "Alice", "face_count": 25, "is_hidden": 0},
+            {"id": 2, "name": "Waiter", "face_count": 6, "is_hidden": 1},
+            {"id": 3, "name": None, "face_count": 3, "is_hidden": 1},
+            {"id": 4, "name": "Bob", "face_count": 3},
+        ])
+        with mock.patch("api.routers.persons.get_async_db", _async_conn_factory(db)):
+            hidden = client.get("/api/persons", params={"hidden_only": True}).json()
+            default = client.get("/api/persons").json()
+
+        assert [p["id"] for p in hidden["persons"]] == [2, 3]
+        assert hidden["total"] == 2
+        assert [p["id"] for p in default["persons"]] == [1, 4]
+
+
 class TestNeedsNaming:
     """Tests for GET /api/persons/needs_naming (async, real temp DB)."""
 

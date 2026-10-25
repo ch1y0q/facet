@@ -361,6 +361,51 @@ describe('ManagePersonsComponent', () => {
     });
   });
 
+  describe('ignoring people', () => {
+    const waiter = { id: 7, name: null, face_count: 6, face_thumbnail: true };
+
+    it('loads the Ignored section from the hidden persons', async () => {
+      mockApi.get.mockReturnValue(of({ persons: [{ ...waiter, is_hidden: true }], total: 1 }));
+
+      await component.loadIgnored();
+
+      expect(mockApi.get).toHaveBeenCalledWith('/persons', { hidden_only: true, per_page: 200, sort: 'count_desc' });
+      expect(component.ignored().map((p) => p.id)).toEqual([7]);
+    });
+
+    it('ignoring from Needs naming takes the group out of it', async () => {
+      component.needsNaming.set([waiter, { id: 8, name: null, face_count: 3, face_thumbnail: true }]);
+
+      await component.setHidden(7, true);
+
+      expect(mockApi.post).toHaveBeenCalledWith('/persons/7/hide');
+      expect(component.needsNaming().map((p) => p.id)).toEqual([8]);
+    });
+
+    it('restoring takes the person out of Ignored and reloads Needs naming', async () => {
+      component.ignored.set([{ ...waiter, is_hidden: true }]);
+      const spy = vi.spyOn(component, 'loadNeedsNaming').mockResolvedValue();
+      vi.spyOn(component, 'loadIgnored').mockResolvedValue();
+
+      await component.setHidden(7, false);
+
+      expect(mockApi.post).toHaveBeenCalledWith('/persons/7/unhide');
+      expect(component.ignored()).toEqual([]);
+      expect(spy).toHaveBeenCalled();
+    });
+
+    it('deleting an ignored person leaves the grid total alone', async () => {
+      component.ignored.set([{ ...waiter, is_hidden: true }]);
+      component.total.set(10);
+
+      component.onDelete(7);
+      await vi.waitFor(() => expect(mockApi.post).toHaveBeenCalledWith('/persons/7/delete'));
+
+      expect(component.ignored()).toEqual([]);
+      expect(component.total()).toBe(10);
+    });
+  });
+
   describe('find more faces', () => {
     it('opens for a person that is only in the needs-naming section', async () => {
       component.persons.set([]);

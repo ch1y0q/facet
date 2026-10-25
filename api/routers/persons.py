@@ -149,6 +149,7 @@ async def list_persons(
     include_hidden: bool = Query(False),
     recent_ids: str = Query("", max_length=MAX_RECENT_IDS * 16 + MAX_RECENT_IDS - 1),
     named_only: bool = Query(False),
+    hidden_only: bool = Query(False),
     user: CurrentUser = Depends(require_authenticated),
 ):
     """List all persons with pagination and search.
@@ -163,6 +164,8 @@ async def list_persons(
     computed from visible photos; other orders return the stored library count.
     ``named_only=true`` leaves out persons without a name, which the needs-naming
     list already shows.
+    ``hidden_only=true`` returns the hidden ones alone (the persons page's Ignored
+    section).
     """
     recent = []
     if recent_ids:
@@ -197,7 +200,9 @@ async def list_persons(
                         + f' ELSE {len(recent)} END, ') if recent else ''
         order_params = recent
         order_clause = f"ORDER BY {recent_order}COALESCE(visible_counts.face_count, 0) DESC, p.name COLLATE NOCASE ASC, p.name ASC, p.id ASC"
-    if not include_hidden or sort == 'assignment':
+    if hidden_only:
+        where_parts.append(f"NOT {person_not_hidden_clause('p')}")
+    elif not include_hidden or sort == 'assignment':
         where_parts.append(person_not_hidden_clause('p'))
     if named_only:
         where_parts.append(f"NOT {_UNNAMED_SQL}")

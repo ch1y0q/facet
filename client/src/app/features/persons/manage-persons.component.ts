@@ -362,6 +362,33 @@ export class PersonFacesDialogComponent implements OnInit {
                   (findMore)="onFindMore($event)"
                   (editCancel)="onNeedsNamingCancel()"
                   (viewPhotos)="onViewPhotos($event)"
+                  (hidden)="onHide($event)"
+                />
+              }
+            </div>
+          }
+        </div>
+      }
+
+      <!-- Ignored: hidden persons (staff, strangers), with Restore -->
+      @if (auth.isEdition() && ignored().length > 0) {
+        <div class="mb-6 rounded-xl border border-[var(--mat-sys-outline-variant)] bg-[var(--mat-sys-surface-container)] overflow-hidden">
+          <button
+            class="flex items-center w-full px-4 py-2 gap-2 text-left hover:bg-[var(--mat-sys-surface-container-high)] transition-colors cursor-pointer"
+            (click)="ignoredExpanded.set(!ignoredExpanded())"
+          >
+            <mat-icon class="opacity-60">{{ ignoredExpanded() ? 'expand_more' : 'chevron_right' }}</mat-icon>
+            <span class="font-medium flex-1" [matTooltip]="I18N.persons.ignored_help | translate">{{ I18N.persons.ignored_section | translate }} ({{ ignored().length }})</span>
+          </button>
+          @if (ignoredExpanded()) {
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 p-4">
+              @for (p of ignored(); track p.id) {
+                <app-person-card
+                  [person]="p"
+                  [canEdit]="true"
+                  (viewPhotos)="onViewPhotos($event)"
+                  (unhidden)="onUnhide($event)"
+                  (deleted)="onDelete($event)"
                 />
               }
             </div>
@@ -456,6 +483,9 @@ export class ManagePersonsComponent implements OnInit {
   readonly nameOptions = signal<string[]>([]);
   protected readonly nameListId = 'person-name-options';
   readonly needsNamingExpanded = signal(true);
+  /** Hidden persons, shown in the Ignored section (collapsed by default). */
+  readonly ignored = signal<Person[]>([]);
+  readonly ignoredExpanded = signal(false);
 
   private page = 1;
   private readonly perPage = 48;
@@ -513,7 +543,7 @@ export class ManagePersonsComponent implements OnInit {
   async ngOnInit(): Promise<void> {
     this.pageHelp.setDescription(I18N.persons.help);
     this.initialized = true;
-    await Promise.all([this.loadPersons(true), this.loadNeedsNaming(), this.loadNameOptions()]);
+    await Promise.all([this.loadPersons(true), this.loadNeedsNaming(), this.loadNameOptions(), this.loadIgnored()]);
   }
 
   onPersonsSortChange(sort: string): void {
@@ -522,6 +552,17 @@ export class ManagePersonsComponent implements OnInit {
 
   togglePersonsSortDirection(): void {
     this.personsFilters.sortDirection.update(d => d === 'desc' ? 'asc' : 'desc');
+  }
+
+  async loadIgnored(): Promise<void> {
+    try {
+      const res = await firstValueFrom(
+        this.api.get<PersonsResponse>('/persons', { hidden_only: true, per_page: 200, sort: 'count_desc' }),
+      );
+      this.ignored.set(res.persons ?? []);
+    } catch {
+      // silent: the section just won't render
+    }
   }
 
   async loadNeedsNaming(): Promise<void> {
@@ -757,8 +798,10 @@ export class ManagePersonsComponent implements OnInit {
     try {
       await firstValueFrom(this.api.post(`/persons/${person.id}/delete`));
       this.journal.record('person', [], { action: 'delete', person_id: person.id });
+      const inGrid = this.persons().some((p) => p.id === person.id);
       this.persons.update((list) => list.filter((p) => p.id !== person.id));
-      this.total.update((t) => t - 1);
+      this.ignored.update((list) => list.filter((p) => p.id !== person.id));
+      if (inGrid) this.total.update((t) => t - 1);
       this.selectedIds.update((s) => {
         const next = new Set(s);
         next.delete(person.id);
@@ -790,7 +833,7 @@ export class ManagePersonsComponent implements OnInit {
   }
 
   onDelete(id: number): void {
-    const person = this.persons().find((p) => p.id === id);
+    const person = this.persons().find((p) => p.id === id) ?? this.ignored().find((p) => p.id === id);
     if (person) void this.deletePerson(person);
   }
 
@@ -839,6 +882,15 @@ export class ManagePersonsComponent implements OnInit {
         this.api.post(`/persons/${personId}/${hidden ? 'hide' : 'unhide'}`),
       );
       this.journal.record('person', [], { action: hidden ? 'hide' : 'unhide', person_id: personId });
+      // Ignoring moves a person out of Needs naming and into Ignored; restoring
+      // moves it back, to whichever list its name decides.
+      if (hidden) {
+        this.needsNaming.update((list) => list.filter((p) => p.id !== personId));
+      } else {
+        this.ignored.update((list) => list.filter((p) => p.id !== personId));
+        void this.loadNeedsNaming();
+      }
+      void this.loadIgnored();
       if (hidden && !this.personsFilters.showHidden()) {
         // Drop the person from the list when hidden persons are not shown.
         this.persons.update((list) => list.filter((p) => p.id !== personId));
