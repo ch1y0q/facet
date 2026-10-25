@@ -95,6 +95,11 @@ def is_current(path, stored, conn=None, face_id=None):
         data = _parse(stored)
         if data is None:
             return False
+        # An offline relink cannot prove the missing original's pixels from a
+        # coarse signature. Preserve the annotation, but require an explicit
+        # editor save on the new path before it can export or hide detections.
+        if data.get('relink_unverified'):
+            return False
         stat = os.stat(path)
         if data['stat'] == [stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns]:
             return True

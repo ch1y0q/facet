@@ -146,7 +146,7 @@ cp "$INPUT" "$OUTPUT"
 
 darktable 在[配置 — 查看器](CONFIGURATION.md#查看器)（`viewer.raw_processor.darktable` 导出配置文件／样式）和[查看器 — 下载](VIEWER.md#api-端点)（`type=darktable` 转换）中已经享有一等公民的待遇。在 XMP 一侧：darktable 会自己写出 `<image><ext>.xmp` 来保存它的编辑历史，而 Facet 由 exiftool 驱动的附属文件写入器会就地合并进同一个文件 —— `darktable:history`／蒙版节点会被保留，绝不会被覆盖。这里不需要单独的操作指南：上文为 Lightroom 描述的双向附属文件行为（导出／导入、最新者胜、标签求并集）同样适用，而且没有 RAW 命名不一致的问题，因为 darktable 和 Facet 在 `<image><ext>.xmp` 上是一致的。
 
-**exiftool 版本。** 写入 sidecar 需要 exiftool **13.28 或更高版本**。13.23 至 13.27 版本会损坏带有 darktable 编辑历史的 XMP sidecar（以 `=` 结尾的属性值后紧跟另一个属性时会被错误解析，而 exiftool 仍返回退出码 0），因此 Facet 拒绝使用这些版本写入，并报告错误提示升级。Docker 镜像内置固定版本的 exiftool，不受影响；发行版软件包则可能受影响（Debian trixie 的 `libimage-exiftool-perl` 为 13.25）。
+**exiftool 版本。** 建议使用 ExifTool **13.28 或更高版本**。人脸变更需要 **12.65 或更高版本**；较旧或未知版本会警告并跳过人脸变更，仍导出其他元数据。13.23 至 13.27 版本会损坏带有 darktable 编辑历史的 XMP sidecar（以 `=` 结尾的属性值后紧跟另一个属性时会被错误解析，而 exiftool 仍返回退出码 0），因此 Facet 拒绝使用这些版本写入，并报告错误提示升级。Docker 镜像内置固定版本的 exiftool，不受影响；发行版软件包则可能受影响（Debian trixie 的 `libimage-exiftool-perl` 为 13.25）。
 
 **注意：darktable 自己的 XMP 重新加载并不可靠。** 与 Facet 的写入路径无关，重新导入一张 darktable 已经编辑过的图像，可能会让 darktable 用一份空白历史覆盖附属文件里的编辑历史，而不是把它加载回来 —— 这是一个仍未解决的上游 bug（[darktable#20537](https://github.com/darktable-org/darktable/issues/20537)，报告于 2026-03-15），“check for new/updated xmp files on start”这个首选项并不能防住它。Facet 不是原因（上文经由 exiftool 的合并已经保留了 `darktable:history`），但风险恰恰落在本页的往返流程所依赖的回读步骤上。实用的规避办法，遵循与上文 Capture One 指南相同的“一次性”纪律：执行 `--export-sidecars` 之后，不要对已经编辑过的文件夹做批量重新导入 —— 只为 Facet 刚刚触及的那些图像重新加载附属文件，确认编辑历史还在，再去信任这一批的其余部分。
 
@@ -172,10 +172,12 @@ Facet 把你自己输入的标签（参见[查看器——手动标签](VIEWER.m
 | 标签／关键字 | `dc:subject`（扁平，AI 标签 + 手动标签，包含已命名人脸的人物姓名） | `dc:subject`（存为手动标签） | 合并，绝不替换；在 Facet 中的移除不会回写到附属文件（参见[手动标签与 XMP 关键字](#手动标签与-xmp-关键字)） |
 | 层级标签 | `lr:hierarchicalSubject`（`Category\|<cat>`、`People\|<name>`） | 不再导入 | 仅导出 |
 | 照片描述 | `dc:description`（+ 经由 exiftool 的 `IPTC:Caption-Abstract`） | 不再导入 | 仅导出 |
-| 命名的人脸区域 | MWG `mwg-rs:RegionList`（中心归一化，`Type=Face`） | 不再导入 | 仅导出；由 digiKam 原生读取，Lightroom **不**读取（一个已知的 Adobe 限制 —— Lightroom 只消费它自己写出的 MWG 区域） |
+| 命名的人脸区域 | MWG `mwg-rs:RegionList` + `facet:RegionOwner=Facet`（中心归一化，`Type=Face`） | 不再导入 | 仅导出；由 digiKam 原生读取，Lightroom **不**读取（一个已知的 Adobe 限制 —— Lightroom 只消费它自己写出的 MWG 区域） |
 
 完整的 CLI 参考（`--export-sidecars`、`--import-sidecars`、`--embed-originals`、`--score-to-stars`、`--user`）请见[命令 — 预览与导出](COMMANDS.md#预览与导出)。
 
 当过时的 `facet:GPSState=cleared` 标记与标准 GPS 字段并存时，以完整且有效的经纬度为准。含有非空值但不完整或无效的坐标存在歧义，将被忽略，绝不会清除位置。仅当坐标均缺失或为空且存在明确的清除标记时才清除 GPS。已有手动 GPS 仍受保护，除非明确要求覆盖。
 
 使用 ExifTool 导出说明时，只更新 `dc:description` 的 `x-default` 语言，保留现有附属文件或图像中的其他语言。Facet 说明为空时，现有说明保持不变。没有 ExifTool 时，XML 包含默认语言；若已有附属文件，默认改写到 `<image>.facet.xmp`。显式覆盖仍会替换整个目标数据包。
+
+ExifTool 仅替换 Extensions 中带 `facet:RegionOwner=Facet` 标记的 MWG 矩形。未标记的区域（包括旧版 Facet 导出）会保留，因为名称和坐标不能证明归属。升级后，旧的未标记人脸可能与新的带标记副本同时出现；清除人脸仍会保留旧副本。重复导出只替换带标记副本，不会继续累积重复区域。外部区域及其未知扩展保持不变。当前人脸尺寸不一致，或外部区域的图像尺寸不同或未知时，会警告并跳过全部人脸变更，但仍导出评分、标签、关键词和 GPS。无法读取或无效的现有人脸元数据会在写入前拒绝单张导出或嵌入，并返回 HTTP 412。无 ExifTool 的 XML 后备方式不导出人脸矩形。带标记区域即使被外部编辑仍归 Facet 管理；如需作为独立标注，请先移除归属标记。 嵌入前会检查原图及附属文件的已知前提条件。分开写入多个文件并非原子操作；后续外部修改或 I/O 故障仍可能留下部分结果。
