@@ -19,6 +19,11 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
+      - name: Install ExifTool for real metadata round trips
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libimage-exiftool-perl
+          exiftool -ver
       - name: Install test dependencies
         # This line is the only dependency source for the job (it does not read
         # the lock files). jsonschema and pytest-timeout are the two exceptions
@@ -70,6 +75,10 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
+      - name: Install ExifTool for real metadata round trips
+        run: |
+          choco install exiftool --yes --no-progress
+          exiftool -ver
       - name: Install test dependencies
         # Same list as python-tests: the files below import tifffile, imagecodecs
         # and lupa, and jsonschema keeps tests/test_config_schema.py from skipping.
