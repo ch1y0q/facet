@@ -2540,7 +2540,7 @@
     "mode_copy": "Copiar la selección a una carpeta",
     "mode_symlink": "Enlazar (symlink) la selección a una carpeta",
     "overwrite": "Sobrescribir archivos .xmp existentes",
-    "overwrite_hint": "Desactivado por defecto: se conserva un .xmp creado por darktable y Facet escribe un .facet.xmp en su lugar.",
+    "overwrite_hint": "Con ExifTool se fusionan los sidecars existentes. Sin él, se conserva el .xmp y Facet escribe .facet.xmp salvo que se active la sobrescritura.",
     "target_dir": "Carpeta de destino",
     "run": "Exportar",
     "running": "Exportando…",
@@ -2558,6 +2558,26 @@
       "invalid_json": "Este archivo no es un JSON válido",
       "imported": "Estado de Lightroom importado: {matched} coincidencia(s), {unmatched} no encontrada(s), {changed} modificada(s)",
       "import_failed": "No se pudo importar el archivo de estado de Lightroom"
+    },
+    "jobs": {
+      "running": "Exportando sidecars",
+      "completed": "Exportación completada",
+      "cancelled": "Exportación cancelada",
+      "failed": "Exportación fallida",
+      "interrupted": "Exportación interrumpida",
+      "progress": "{processed} / {total} archivos procesados",
+      "counts": "{written} escritos · {skipped} omitidos · {errors} errores",
+      "close": "Cerrar",
+      "close_hint": "La exportación continúa al cerrar el diálogo. Ábrelo de nuevo para ver las exportaciones recientes.",
+      "cancel": "Detener tras el archivo actual",
+      "cancelling": "Deteniéndose tras el archivo actual…",
+      "cancel_hint": "Los sidecars escritos se conservan. El archivo actual puede terminar antes de detenerse.",
+      "retry": "Reintentar archivos pendientes",
+      "retry_hint": "Reintenta archivos fallidos, omitidos y pendientes con los metadatos actuales. Un archivo interrumpido puede volver a escribirse si no se guardó su progreso.",
+      "refresh": "Actualizar estado",
+      "recent": "Exportaciones recientes de sidecars",
+      "none": "No hay exportaciones recientes de sidecars.",
+      "read_failed": "No se pudo leer el progreso. Actualiza el estado para comprobarlo."
     }
   },
   "undo": {

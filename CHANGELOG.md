@@ -8,6 +8,8 @@ All notable changes to Facet are documented in this file.
 - Resize manual-face previews and crop face pixels before converting to RGB, avoiding full-resolution copies on preview and save.
 
 ### Added
+
+- **Background sidecar exports.** Export selected photos, filtered views and albums with progress, counts, explicit stop-between-files cancellation, and recent private receipts. Retry failed, skipped and unfinished files only when requested; closing the dialog leaves submitted work running.
 - Explicit XMP export/import carries Keep decisions and manual GPS, with protection against overwriting existing manual locations.
 
 - **Explicit address and business search in the GPS dialog.** Use **Search online** to send a query to the configured Photon provider, preview a result, then **Save** to apply its coordinates. Saved places and manual coordinates still work offline. `viewer.place_search_url` supports a private Photon endpoint or an empty string to disable lookup; searches are bounded, cached and edition-only. Original files remain unchanged.

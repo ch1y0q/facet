@@ -1,6 +1,8 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
+import { NEVER, of, Subject, throwError } from 'rxjs';
+import { Router } from '@angular/router';
+import { AuthService } from '../../core/services/auth.service';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { ApiService } from '../../core/services/api.service';
@@ -11,28 +13,28 @@ import { ExportEditorDialogComponent, ExportEditorDialogData } from './export-ed
 describe('ExportEditorDialogComponent', () => {
   let component: ExportEditorDialogComponent;
   let exportAlbum: ReturnType<typeof vi.fn>;
-  let exportSidecars: ReturnType<typeof vi.fn>;
-  let exportSidecarsForView: ReturnType<typeof vi.fn>;
+  let startSidecarJob: ReturnType<typeof vi.fn>;
   let dialogClose: ReturnType<typeof vi.fn>;
   let apiPost: ReturnType<typeof vi.fn>;
   let snackBarOpen: ReturnType<typeof vi.fn>;
 
   function build(data: ExportEditorDialogData = { albumId: 7 }) {
     exportAlbum = vi.fn(() => of({ ok: true, mode: 'copy', copied: 1, skipped: 0, errors: 0 }));
-    exportSidecars = vi.fn(() => of({ ok: true, written: 0, skipped: 0, errors: 0, sidecars: [] }));
-    exportSidecarsForView = vi.fn(() => of({ ok: true, written: 5, skipped: 0, errors: 0, sidecars: [] }));
+    startSidecarJob = vi.fn(() => of({ id: 'job', state: 'completed', started_at: 1, total: 5, processed: 5, written: 5, skipped: 0, errors: 0 }));
     dialogClose = vi.fn();
     apiPost = vi.fn(() => of({}));
     snackBarOpen = vi.fn();
     TestBed.configureTestingModule({
       providers: [
-        { provide: ExportService, useValue: { exportAlbum, exportSidecars, exportSidecarsForView } },
+        { provide: ExportService, useValue: { exportAlbum, startSidecarJob, recentSidecarJobs: () => of([]) } },
+        { provide: AuthService, useValue: { identity: () => 'alice', isEdition: () => true } },
+        { provide: Router, useValue: { url: '/', events: NEVER } },
         { provide: ApiService, useValue: { post: apiPost } },
         { provide: MatSnackBar, useValue: { open: snackBarOpen } },
         // `translations` is only read once the real template renders: the
         // translate pipe subscribes to the bundle even when `t` is stubbed.
         { provide: I18nService, useValue: { t: (k: string) => k, translations: signal({}) } },
-        { provide: MatDialogRef, useValue: { close: dialogClose } },
+        { provide: MatDialogRef, useValue: { close: dialogClose, beforeClosed: () => new Subject() } },
         { provide: MAT_DIALOG_DATA, useValue: data },
       ],
     });
@@ -75,8 +77,8 @@ describe('ExportEditorDialogComponent', () => {
     build({ filters: { type: 'aerial', hide_bursts: '1' }, exclude: ['a.jpg'], count: 129 });
     component.overwrite.set(true);
     await component.run();
-    expect(exportSidecarsForView).toHaveBeenCalledWith({ type: 'aerial', hide_bursts: '1' }, ['a.jpg'], true);
-    expect(exportSidecars).not.toHaveBeenCalled();
+    expect(startSidecarJob).toHaveBeenCalledWith({ filters: { type: 'aerial', hide_bursts: '1' }, exclude: ['a.jpg'] }, true);
+    expect(exportAlbum).not.toHaveBeenCalled();
     expect(dialogClose).toHaveBeenCalled();
   });
 
