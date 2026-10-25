@@ -4,6 +4,9 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Resize manual-face previews and crop face pixels before converting to RGB, avoiding full-resolution copies on preview and save.
+
 ### Added
 - Explicit XMP export/import carries Keep decisions and manual GPS, with protection against overwriting existing manual locations.
 
