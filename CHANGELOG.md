@@ -7,6 +7,7 @@ All notable changes to Facet are documented in this file.
 - Filter photos with unassigned faces or unnamed people from the gallery People section.
 
 ### Changed
+- Keep the stored thumbnail visible while a previously loaded render is fetched again, and allow focus peaking on that thumbnail when the render fails.
 - Read search cache database change tokens in a worker thread so cold searches do not block other requests.
 - Resize manual-face previews and crop face pixels before converting to RGB, avoiding full-resolution copies on preview and save.
 
