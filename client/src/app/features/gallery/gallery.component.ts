@@ -2457,9 +2457,10 @@ export class GalleryComponent implements OnInit, OnDestroy {
   /** `/` focuses the toolbar search, `B` toggles the filter sidebar, `V`
    *  switches grid/mosaic — the three view-level toggles that had no
    *  keyboard path. Typing contexts and open dialogs bow out, matching the
-   *  select-all shortcut's guards. */
+   *  select-all shortcut's guards, and so does the slideshow: it is an inline
+   *  overlay, not a MatDialog, so the dialog query below cannot see it. */
   protected onGalleryShortcut(event: KeyboardEvent): void {
-    if (this.parked) return;
+    if (this.parked || this.store.slideshowActive()) return;
     const target = event.target as HTMLElement | null;
     if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
     if (target?.isContentEditable) return;

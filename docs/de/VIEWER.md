@@ -921,6 +921,8 @@ Alle Statistiken sind im Mehrbenutzermodus benutzerbewusst — jeder Benutzer si
 
 Das aktuelle Foto — das, auf das die Tastenkürzel für Sternebewertung, Favorit und Ablehnen wirken — ist mit einer 4px breiten Umrandung um seine Karte markiert; alle anderen Karten werden auf 50 % Deckkraft abgedunkelt. Markiert wird erst, wenn der Cursor sich tatsächlich auf ein Foto in den Ergebnissen bewegt hat, sodass eine noch nicht durchgeblätterte Galerie in voller Stärke bleibt. Ein Klick auf ein Foto verschiebt die Markierung darauf, sodass ein direkt nach einem Klick getipptes Tastenkürzel das angeklickte Foto trifft und nicht das, wo die Pfeiltasten zuletzt standen. Die Rückkehr von einem Foto (Zurück oder Esc) lässt die Markierung auf dem zuletzt angesehenen Foto, sodass die Tastenkürzel von dort aus weiterarbeiten.
 
+**Auf der Fotoseite** bewerten, favorisieren und verwerfen `1`–`5`, `F` und `X` (oder `0`) das geöffnete Foto, unter denselben Bedingungen wie die Bewertungsschaltflächen: Bearbeitungsmodus, mit aktiviertem `viewer.features.show_rating_controls`. Anders als in der Galerie springen sie nie zu einem anderen Foto; dafür gibt es `←` `→`. Die `?`-Referenz führt sie unter *Fotoansicht* auf.
+
 ## Rückgängig
 
 Sammeloperationen für Favorit/Ablehnen/Bewertung und Auswahl-Bestätigungen zeigen

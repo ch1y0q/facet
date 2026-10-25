@@ -990,6 +990,8 @@ All stats are user-aware in multi-user mode — each user sees analytics for the
 
 The current photo — the one star-rating, favorite and reject shortcuts act on — is marked with a 4px outline around its card; every other card dims to 50% opacity. Nothing is marked until the cursor has actually moved onto a photo in the results, so a gallery you have not navigated yet stays at full strength. Clicking a photo moves the marker onto it, so a shortcut typed right after a click lands on the photo you clicked, not on wherever the arrow keys last left it. Coming back from a photo (Back or Escape) leaves the marker on the last photo you viewed there, so the shortcuts carry on from there.
 
+**On the photo page**, `1`–`5`, `F` and `X` (or `0`) rate, favourite and reject the open photo, under the same conditions as the rating buttons: edition mode, with `viewer.features.show_rating_controls` on. Unlike the gallery, they never advance to another photo; use `←` `→` for that. The `?` reference lists them under *Photo view*.
+
 ## Undo
 
 Batch favorite/reject/rating operations and culling confirms show a snackbar

@@ -2617,6 +2617,9 @@
     "rate": "评星（1–5 星）",
     "reject": "淘汰",
     "favorite": "切换收藏状态",
+    "focus_search": "聚焦搜索框",
+    "toggle_filters": "显示／隐藏筛选侧栏",
+    "toggle_layout": "切换网格／拼贴",
     "comp_left_wins": "左侧照片更好",
     "comp_right_wins": "右侧照片更好"
   },

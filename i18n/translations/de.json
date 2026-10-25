@@ -2617,6 +2617,9 @@
     "rate": "Bewerten (1–5 Sterne)",
     "reject": "Ablehnen",
     "favorite": "Favorit umschalten",
+    "focus_search": "Suchfeld fokussieren",
+    "toggle_filters": "Filterleiste ein- / ausblenden",
+    "toggle_layout": "Zwischen Raster und Mosaik wechseln",
     "comp_left_wins": "Linkes Foto gewinnt",
     "comp_right_wins": "Rechtes Foto gewinnt"
   },

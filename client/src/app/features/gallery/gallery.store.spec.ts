@@ -611,6 +611,18 @@ describe('GalleryStore', () => {
       expect(localStorage.getItem(KEY)).toBe('date_taken');
     });
 
+    it('writes a default sort into the URL, so the link reopens on it under a remembered sort', async () => {
+      await store.loadConfig();
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+      await store.updateFilters({ tag: 'landscape' });
+      const synced = routerNavigate.mock.calls.at(-1)?.[1]?.queryParams as Record<string, string>;
+      expect(synced['sort']).toBe('aggregate');
+      localStorage.setItem(KEY, 'date_taken');
+      Object.assign(queryParams, synced);
+      await store.loadConfig();
+      expect(store.filters().sort).toBe('aggregate');
+    });
+
     it('does not remember the sort of a URL when nothing was remembered before', async () => {
       Object.assign(queryParams, { sort: 'aesthetic' });
       await store.loadConfig();
@@ -1824,11 +1836,11 @@ describe('gallery session query (nav-icon return)', () => {
       apiGet.mockReturnValue(of(makePhotosResponse()));
     });
 
-    it('should only include non-default params in URL', async () => {
+    it('should only include non-default params in URL, plus the always-written sort', async () => {
       await store.updateFilter('camera', 'Canon');
 
       expect(routerNavigate).toHaveBeenCalledWith([], {
-        queryParams: { camera: 'Canon' },
+        queryParams: { sort: 'aggregate', camera: 'Canon' },
         replaceUrl: true,
       });
     });

@@ -2617,6 +2617,9 @@
     "rate": "Rate (1–5 stars)",
     "reject": "Reject",
     "favorite": "Toggle favorite",
+    "focus_search": "Focus the search box",
+    "toggle_filters": "Show / hide the filter sidebar",
+    "toggle_layout": "Switch grid / mosaic",
     "comp_left_wins": "Left photo wins",
     "comp_right_wins": "Right photo wins"
   },

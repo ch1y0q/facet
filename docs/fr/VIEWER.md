@@ -922,6 +922,8 @@ Toutes les statistiques tiennent compte de l'utilisateur en mode multi-utilisate
 
 La photo courante — celle sur laquelle agissent les raccourcis de note, de favori et de rejet — est marquée par un contour de 4px autour de sa carte ; toutes les autres cartes passent à 50% d'opacité. Rien n'est marqué tant que le curseur ne s'est pas réellement déplacé sur une photo des résultats, si bien qu'une galerie que vous n'avez pas encore parcourue reste à pleine intensité. Cliquer sur une photo y déplace le marqueur, si bien qu'un raccourci tapé juste après un clic s'applique à la photo cliquée, et non à celle où les flèches l'avaient laissé. Revenir d'une photo (Retour ou Échap) laisse le marqueur sur la dernière photo que vous y avez vue, si bien que les raccourcis reprennent à partir de là.
 
+**Sur la page photo**, `1`–`5`, `F` et `X` (ou `0`) notent, mettent en favori et rejettent la photo ouverte, aux mêmes conditions que les boutons de notation : mode édition, avec `viewer.features.show_rating_controls` activé. Contrairement à la galerie, ils ne passent jamais à une autre photo ; utilisez `←` `→` pour cela. La référence `?` les liste sous *Vue photo*.
+
 ## Annuler
 
 Les opérations groupées de favori/rejet/notation et les confirmations de tri sélectif affichent une infobulle (snackbar)

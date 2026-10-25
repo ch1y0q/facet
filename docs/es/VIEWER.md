@@ -920,6 +920,8 @@ Todas las estadísticas tienen conciencia de usuario en modo multiusuario: cada 
 
 La foto actual — aquella sobre la que actúan los atajos de valoración, favorito y descarte — está marcada con un contorno de 4px alrededor de su tarjeta; el resto de las tarjetas baja al 50% de opacidad. Nada queda marcado hasta que el cursor se ha movido realmente sobre una foto de los resultados, así que una galería que aún no has recorrido permanece a intensidad completa. Al hacer clic en una foto, el marcador se mueve a ella, de modo que un atajo pulsado justo después de un clic se aplica a la foto en la que hiciste clic, no a la que dejaron las flechas. Al volver de una foto (Atrás o Esc) el marcador se queda en la última foto que viste, de modo que los atajos continúan desde ahí.
 
+**En la página de la foto**, `1`–`5`, `F` y `X` (o `0`) puntúan, marcan como favorita y rechazan la foto abierta, en las mismas condiciones que los botones de puntuación: modo edición, con `viewer.features.show_rating_controls` activado. A diferencia de la galería, nunca avanzan a otra foto; para eso, usa `←` `→`. La referencia `?` los lista en *Vista de foto*.
+
 ## Deshacer
 
 Las operaciones masivas de favorito/descarte/valoración y las confirmaciones de descarte muestran una barra de notificación

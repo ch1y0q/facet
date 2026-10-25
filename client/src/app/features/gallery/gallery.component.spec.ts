@@ -4902,6 +4902,14 @@ describe('GalleryComponent', () => {
         expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
       });
 
+      it('does nothing while the slideshow is open', () => {
+        mockStore.slideshowActive.set(true);
+        for (const k of ['/', 'b', 'v']) expect(key({ key: k }).defaultPrevented).toBe(false);
+        expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
+        expect(mockStore.setGalleryMode).not.toHaveBeenCalled();
+        expect(document.activeElement).not.toBe(search);
+      });
+
       it('does nothing while a dialog is open', () => {
         const dialog = document.createElement('mat-dialog-container');
         document.body.appendChild(dialog);

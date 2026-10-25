@@ -920,6 +920,8 @@ Todas as estatísticas são sensíveis ao usuário no modo multiusuário — cad
 
 A foto atual — aquela sobre a qual agem os atalhos de avaliação, favorito e rejeição — é marcada com um contorno de 4px em volta do seu cartão; todos os outros cartões passam a 50% de opacidade. Nada fica marcado até o cursor se mover de fato para uma foto dos resultados, por isso uma galeria que você ainda não percorreu permanece em intensidade total. Clicar numa foto move o marcador para ela, de modo que um atalho digitado logo após um clique se aplica à foto clicada, não àquela onde as setas o tinham deixado. Ao voltar de uma foto (Voltar ou Esc) o marcador permanece na última foto que você viu, de modo que os atalhos continuam a partir dali.
 
+**Na página da foto**, `1`–`5`, `F` e `X` (ou `0`) avaliam, favoritam e rejeitam a foto aberta, nas mesmas condições dos botões de avaliação: modo edição, com `viewer.features.show_rating_controls` ativado. Ao contrário da galeria, nunca avançam para outra foto; para isso, use `←` `→`. A referência `?` lista-os em *Visualização da foto*.
+
 ## Desfazer
 
 Operações em lote de favoritar/rejeitar/avaliar e confirmações de triagem mostram uma snackbar

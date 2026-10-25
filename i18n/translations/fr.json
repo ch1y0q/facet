@@ -2617,6 +2617,9 @@
     "rate": "Noter (1–5 étoiles)",
     "reject": "Rejeter",
     "favorite": "Basculer le favori",
+    "focus_search": "Aller au champ de recherche",
+    "toggle_filters": "Afficher / masquer le panneau de filtres",
+    "toggle_layout": "Basculer grille / mosaïque",
     "comp_left_wins": "La photo de gauche gagne",
     "comp_right_wins": "La photo de droite gagne"
   },
