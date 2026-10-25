@@ -290,7 +290,6 @@ function saveSectionStates(states: Record<string, boolean>): void {
       </div>
 
       <!-- Persons -->
-      @if (store.persons().length) {
         <mat-expansion-panel class="!mb-1 mt-1" [expanded]="sectionStates()['persons'] !== false"
                              (opened)="onSectionToggle('persons', true)"
                              (closed)="onSectionToggle('persons', false)"
@@ -305,6 +304,13 @@ function saveSectionStates(states: Record<string, boolean>): void {
             </mat-panel-title>
           </mat-expansion-panel-header>
           <div class="flex flex-col gap-2 pb-2">
+            <mat-checkbox
+              [checked]="store.filters().faces_need_names"
+              (change)="store.updateFilter('faces_need_names', $event.checked)"
+            >{{ I18N.gallery.faces_need_names | translate }}</mat-checkbox>
+            @if (store.filters().faces_need_names) {
+              <p class="text-xs text-gray-500 dark:text-gray-400">{{ I18N.gallery.faces_need_names_hint | translate }}</p>
+            }
             <mat-form-field subscriptSizing="dynamic" class="w-full">
               @if (!selectedPersons().length) {
                 <mat-label>{{ I18N.gallery.person | translate }}</mat-label>
@@ -342,7 +348,6 @@ function saveSectionStates(states: Record<string, boolean>): void {
             }
           </div>
         </mat-expansion-panel>
-      }
 
       <!-- Date Range -->
       <mat-expansion-panel class="!mb-1 mt-4" [expanded]="sectionStates()['date'] !== false"
@@ -1097,7 +1102,7 @@ export class GalleryFilterSidebarComponent {
       date: (f.date_from ? 1 : 0) + (f.date_to ? 1 : 0),
       content: (f.type ? 1 : 0) + (f.tag ? 1 : 0) + (f.composition_pattern ? 1 : 0),
       equipment: (f.camera ? 1 : 0) + (f.lens ? 1 : 0),
-      persons: f.person_id ? f.person_id.split(',').length : 0,
+      persons: (f.person_id ? f.person_id.split(',').length : 0) + (f.faces_need_names ? 1 : 0),
       refine: (f.review_status ? 1 : 0) + (f.favorites_only ? 1 : 0) + (f.is_monochrome ? 1 : 0) + (f.hide_rejected ? 1 : 0)
         + (f.show_rejected ? 1 : 0) + (f.blinks_only ? 1 : 0) + (f.duplicates_only ? 1 : 0)
         + (f.sequence_override ? 1 : 0) + (f.manual_faces_need_review ? 1 : 0),

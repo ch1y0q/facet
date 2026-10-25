@@ -2889,6 +2889,8 @@ Sincronização unidirecional das avaliações por estrelas e favoritos do Facet
 |--------------|--------|-----------|
 | `url` | `""` | URL base do servidor Immich (ex.: `http://nas:2283`) |
 | `api_key` | `""` | Chave de API do Immich, enviada como o cabeçalho `x-api-key` |
+| `owner_id` | `""` | ID exato do proprietário Immich; vazio desativa o filtro. Um campo ausente não satisfaz uma seleção explícita. |
+| `library_id` | `""` | ID exato da biblioteca Immich; vazio desativa o filtro, sem selecionar uma biblioteca null. |
 | `path_map` | `[{facet_prefix, immich_prefix}]` | Reescritas de prefixo dos caminhos do Facet para os valores de `originalPath` do Immich; o primeiro `facet_prefix` correspondente é trocado pelo seu `immich_prefix` ao resolver um ativo |
 | `push.ratings` | `true` | Envia as avaliações por estrelas. A política segura de versão do Immich é respeitada — apenas 1–5 é gravado, nunca 0/−1 |
 | `push.favorites` | `true` | Envia a marcação de favorito |

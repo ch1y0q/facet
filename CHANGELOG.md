@@ -4,6 +4,8 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+- Filter photos with unassigned faces or unnamed people from the gallery People section.
+
 ### Changed
 - Preserve Unicode metadata on Windows with UTF-8 ExifTool argument transport and output decoding, including names, keywords and multiline captions.
 - Resize manual-face previews and crop face pixels before converting to RGB, avoiding full-resolution copies on preview and save.
@@ -27,6 +29,7 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- **Immich sync refuses ambiguous assets.** Duplicate remote paths and colliding Facet mappings are reported as identity conflicts. Fallback searches check every page and require an exact path; webhook IDs are verified before writes. Optional owner/library ID selectors restrict the configured server's responses. Literal first-prefix mapping behavior is unchanged.
 - Refuse basename XMP discovery when a double-extension derivative would read another image’s full-name or fallback sidecar. Report full-policy naming notices once per import while retaining complete mismatch counts.
 
 - **Semantic search refreshes its NumPy fallback after database changes.** Replaced embeddings and same-count photo replacements now update search results without restarting the viewer. Concurrent fallback requests share matrix construction, and cache entries include the database and visibility scope.
