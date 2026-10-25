@@ -78,12 +78,15 @@ Viewers im `progress`-Feld von `/api/scan/status` und im SSE-Stream bereitstellt
 | `python facet.py --export-manifest --user alice` | Mehrbenutzermodus: exportiert Alices `user_preferences`-Bewertungen in das Manifest statt der globalen Spalten (Tags und Scores bleiben global) |
 | `python facet.py --import-lightroom DATEI` | Importiert den vom Zusatzmodul exportierten Lightroom-Bewertungs-/Pick-/Ablehnungs-Status (`facet_lightroom_state.json`, siehe [Lightroom → Facet](INTEROP.md#lightroom--facet) in docs/INTEROP.md) — Lightroom gewinnt für jedes Feld, das die Datei enthält. Gibt `matched=… unmatched=… changed=…` aus |
 | `python facet.py --import-lightroom DATEI --user alice` | Mehrbenutzermodus: schreibt in Alices `user_preferences`-Zeile statt in die globalen Spalten; auf einer Mehrbenutzer-Installation **erforderlich** — sonst verweigert, damit ein Import nie stillschweigend im falschen Geltungsbereich landet |
-| `python facet.py --import-sidecars` | Bewertungen/Labels/Tags aus `<image>.xmp`-Sidecars zurück in die DB importieren (alle Fotos); Stichwörter, die Facet noch nicht kennt, werden zu [manuellen Tags](INTEROP.md#manuelle-tags-und-xmp-stichwörter) |
+| `python facet.py --import-sidecars` | Bewertungen/Labels/Tags aus `<image.ext>.xmp` / `<image.ext>.facet.xmp`-Sidecars zurück in die DB importieren (alle Fotos); Stichwörter, die Facet noch nicht kennt, werden zu [manuellen Tags](INTEROP.md#manuelle-tags-und-xmp-stichwörter) |
 | `python facet.py --import-sidecars /path` | Sidecars nur für Fotos unterhalb eines Pfad-Teilbaums importieren |
 | `python facet.py --import-sidecars /path --dry-run` | `--import-sidecars /pfad --dry-run` zeigt JSON mit gewählter Datei, Vorher/Nachher-Werten, Ergänzungen, Quelle und Ablehnungsgründen. |
 | `python facet.py --import-sidecars /path --sidecar-fields keywords,gps` | `--sidecar-fields review,gps,keywords` wählt Gruppen. |
 | `python facet.py --import-sidecars /path --overwrite-sidecar-review` | Bewertungs- und Scan-Zeitkonflikte nach Vorschau ausdrücklich überschreiben. |
 | `python facet.py --import-sidecars --user alice` | Mehrbenutzermodus: Bewertungen in Alices `user_preferences` importieren statt in die globalen Spalten (Schlüsselwörter bleiben global) |
+| `python facet.py --import-sidecars --sidecar-naming full` | Vollständige primäre/Fallback-Namen lesen (Standard); neuere Änderungszeit gewinnt, bei Gleichstand die primäre Datei |
+| `python facet.py --import-sidecars --sidecar-naming basename` | `<image>.xmp` ohne Bildendung lesen; geteilte Basisnamen ablehnen |
+| `python facet.py --import-sidecars --sidecar-naming auto` | Eine Namensfamilie akzeptieren; bei vollständigem Namen und Basisname überspringen und melden |
 | `python facet.py --import-sidecars --overwrite-manual-gps` | Bereits in Facet gesetztes manuelles GPS (auch einen gelöschten Ort) durch den manuellen Ort aus der Sidecar ersetzen; ohne die Option bleibt vorhandenes manuelles GPS erhalten |
 | `python facet.py --export-sidecars` | `<image>.xmp`-Sidecars aus der DB für alle Fotos schreiben/zusammenführen (nur Sidecar) |
 | `python facet.py --export-sidecars /path` | Sidecars nur für Fotos unterhalb eines Pfad-Teilbaums exportieren |

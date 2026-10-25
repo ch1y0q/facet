@@ -2414,6 +2414,8 @@ def main():
         parser.error("--sidecar-fields and --overwrite-sidecar-review require --import-sidecars")
     if args.sidecar_fields and (not set(args.sidecar_fields.split(',')) <= {'review', 'gps', 'keywords'}):
         parser.error("--sidecar-fields must select review,gps,keywords")
+    if args.sidecar_naming is not None and not args.import_sidecars:
+        parser.error("--sidecar-naming requires --import-sidecars")
     if args.overwrite_manual_gps and not args.import_sidecars:
         parser.error("--overwrite-manual-gps requires --import-sidecars")
 
@@ -3924,6 +3926,7 @@ def main():
     if args.import_sidecars:
         from processing.xmp_import import import_sidecars
         root = None if args.import_sidecars == 'all' else args.import_sidecars
+        sidecar_naming = args.sidecar_naming or "full"
         if args.dry_run:
             # A preview must not migrate the DB, stamp edit clocks, or commit the caller's writes.
             import sqlite3
@@ -3938,13 +3941,16 @@ def main():
                                     overwrite_manual_gps=args.overwrite_manual_gps,
                                     dry_run=args.dry_run,
                                     fields=args.sidecar_fields.split(',') if args.sidecar_fields else None,
-                                    overwrite_review=args.overwrite_sidecar_review)
+                                    overwrite_review=args.overwrite_sidecar_review,
+                                    sidecar_naming=sidecar_naming)
         if args.dry_run:
             print(json.dumps(stats, ensure_ascii=False, indent=2))
         logger.info(
-            "Sidecar import%s: %d updated, %d unchanged, %d without sidecar, %d skipped, %d review conflicts, %d untracked legacy review edits",
-            " preview" if args.dry_run else "", stats['updated'], stats['unchanged'],
-            stats['missing'], stats['skipped'], stats['conflicts'], stats['legacy_review_warnings'],
+            "Sidecar import%s (%s): %d updated, %d unchanged, %d without sidecar, %d skipped "
+            "(%d ambiguous, %d naming mismatches), %d review conflicts, %d untracked legacy review edits",
+            " preview" if args.dry_run else "", sidecar_naming, stats['updated'], stats['unchanged'],
+            stats['missing'], stats['skipped'], stats['ambiguous'], stats['naming_mismatch'],
+            stats['conflicts'], stats['legacy_review_warnings'],
         )
         exit()
 

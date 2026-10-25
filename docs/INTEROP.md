@@ -6,20 +6,23 @@ Practical, step-by-step recipes for round-tripping Facet's ratings, labels, and 
 
 Manual locations and review decisions travel only when you explicitly export metadata in the viewer or run `--export-sidecars`. GPS uses standard `exif:GPSLatitude` / `exif:GPSLongitude`; only manually set locations are exported, so stale scanned GPS cannot replace file GPS. `--embed-originals` also writes EXIF GPS in supported originals. A corrected capture date is exported as `exif:DateTimeOriginal` (and, with `--embed-originals`, as EXIF `DateTimeOriginal` in supported originals); after **Use file date**, the next export removes it from the sidecar without touching a date another editor wrote there. Clearing a location exports an explicit clear; absent fields never clear a location on import.
 
-The Facet namespace `https://github.com/ncoevoet/facet/ns/1.0/` defines `facet:ReviewDecision` (`kept`, `rejected`, `undecided`) and `facet:GPSState` (`set`, `cleared`), plus `facet:DateState` (`set`), which marks a sidecar capture date that Facet exported. Keep is independent of stars and favorites; rejection clears Keep, stars and favorite. `--import-sidecars` applies a present Facet decision when standard review fields agree or are absent. If standard rejection state disagrees, an external editor has changed the standard fields while preserving the private tag: the private decision is ignored and the standard fields use the existing newest-wins scan-time check. Decision-only imports remain explicit and do not use scan times. A decision exported alongside standard review fields uses the same newest-wins check, except for a photo with no review state yet (no stars, favorite, Keep or reject), so a rescanned library still restores its decisions while an older export cannot revert a decision made since. Manual GPS already in Facet is preserved unless you add `--overwrite-manual-gps`. Invalid or incomplete coordinates are ignored. Named-user imports/exports (`--user alice`) respect that user's visible folders and private decisions; GPS remains shared. With no user, the CLI operates on global state. If both `<image>.xmp` and the fallback `<image>.facet.xmp` exist, import reads the one modified most recently. ExifTool merges foreign metadata; without it, export leaves an existing editor sidecar intact and writes the fallback. Originals remain untouched unless you explicitly request embedding.
+The Facet namespace `https://github.com/ncoevoet/facet/ns/1.0/` defines `facet:ReviewDecision` (`kept`, `rejected`, `undecided`) and `facet:GPSState` (`set`, `cleared`), plus `facet:DateState` (`set`), which marks a sidecar capture date that Facet exported. Keep is independent of stars and favorites; rejection clears Keep, stars and favorite. `--import-sidecars` applies a present Facet decision when standard review fields agree or are absent. If standard rejection state disagrees, an external editor has changed the standard fields while preserving the private tag: the private decision is ignored and the standard fields use the existing newest-wins scan-time check. Decision-only imports remain explicit and do not use scan times. A decision exported alongside standard review fields uses the same newest-wins check, except for a photo with no review state yet (no stars, favorite, Keep or reject), so a rescanned library still restores its decisions while an older export cannot revert a decision made since. Manual GPS already in Facet is preserved unless you add `--overwrite-manual-gps`. Invalid or incomplete coordinates are ignored. Named-user imports/exports (`--user alice`) respect that user's visible folders and private decisions; GPS remains shared. With no user, the CLI operates on global state. ExifTool merges foreign metadata; without it, export leaves an existing editor sidecar intact and writes the fallback. Originals remain untouched unless you explicitly request embedding.
 
 ## The RAW sidecar naming gotcha
 
-Facet names a sidecar `<image><ext>.xmp` — e.g. `IMG_1234.CR2.xmp` next to `IMG_1234.CR2` — the same convention darktable and digiKam use. **Lightroom Classic and Capture One expect the opposite: `IMG_1234.xmp`, with the raw extension stripped.** Neither app will discover a Facet-written sidecar for a proprietary RAW file (CR2, CR3, NEF, ARW, RAF, RW2, ORF, SRW, PEF — everything except DNG), and Facet's own `--import-sidecars` won't find a sidecar an Adobe-ecosystem app wrote for the same RAW either. This is a naming mismatch between ecosystems, not a bug on either side.
+Facet exports `IMG_1234.CR2.xmp` beside `IMG_1234.CR2`, preserving darktable's full-filename convention. Lightroom Classic and Capture One generally use `IMG_1234.xmp` for proprietary RAW. Export filenames do not change with the import policy below. For JPEG/HEIC/TIFF/PNG/DNG, `--embed-originals` offers a separate in-file channel; GIF/WebP/BMP/AVIF and proprietary RAW still need a matching sidecar convention.
 
-It does **not** affect:
-- **JPEG, HEIC, TIFF, PNG, DNG** — pass `--embed-originals` and Facet writes the metadata *into the file itself* (via exiftool), so there is no sidecar name for Lightroom/Capture One to miss.
-- **digiKam** — checks both naming conventions and finds Facet's sidecar either way (see [digiKam](#digikam) below).
-- **darktable** — uses the same `<image><ext>.xmp` convention as Facet (see [darktable](#darktable) below).
+Choose discovery explicitly with `--import-sidecars --sidecar-naming full|basename|auto`:
 
-**GIF, WebP, BMP and AVIF are the exception — the mismatch hits them hardest.** They sit outside Facet's embeddable set, so `--embed-originals` does nothing for them and their only round-trip vehicle is an XMP sidecar carrying Facet's naming (`photo.webp.xmp`). The mismatch above therefore applies to these four exactly as it does to proprietary RAW: digiKam and darktable find the sidecar, Lightroom Classic and Capture One do not.
+- `full` (default): read `<image.ext>.xmp` or `<image.ext>.facet.xmp`, whichever has the newer filesystem modification time; the primary wins a tie.
+- `basename`: read `<image>.xmp`, stripping only the final image extension. Full-name sidecars and their fallback are ignored.
+- `auto`: accept either family when only one exists. If both full-name and basename sidecars exist, skip that photo and report ambiguity; modification times do not resolve this conflict. Select `full` or `basename` deliberately.
 
-So for a Lightroom or Capture One workflow: use `--embed-originals` for anything in the embeddable set (JPEG, HEIC, TIFF, PNG, DNG), and expect the sidecar round-trip to be silent (no error, just nothing read) for proprietary RAW files — and for GIF, WebP, BMP and AVIF. If you shoot RAW+JPEG, the JPEG companion is the practical interop vehicle — the RAW rides along on disk, untouched, while Facet's database keeps the authoritative rating.
+A basename shared by indexed photos or sibling image files, such as `same.CR3` and `same.jpg`, is refused under `basename` and `auto`, even if only one photo is in the selected folder/user scope. Use independent full-name sidecars for those files. Versions such as `same_v1.jpg` have a different basename. Naming mismatches, ambiguity and unreadable/invalid selected packets are reported; no other naming family is tried after a parse failure. The CLI summary counts ambiguity within skipped photos and naming mismatches within photos without a selected sidecar.
+
+Double-extension derivatives such as `IMG.CR2.jpg` must not read `IMG.CR2.xmp` owned by `IMG.CR2`; the same protection covers another image’s `.facet.xmp` fallback. Full-policy naming notices show one example per run; the summary still counts every mismatch.
+
+Import needs no ExifTool. Export merging, embedding and MWG face rectangles require ExifTool. Without it, an existing editor sidecar is left intact and the XML fallback writes `<image.ext>.facet.xmp` with no MWG rectangles. This fallback needs an intentional handoff to another editor; it is not a universally discovered filename. No files are renamed by these policies.
 
 ## Lightroom Classic
 
@@ -104,7 +107,7 @@ A record that omits `rating` or `pick` entirely leaves Facet's corresponding val
 **Ratings, labels and keywords via XMP.** Separately, and still one-way in this direction:
 
 1. In Lightroom, select the photos and choose **Metadata → Save Metadata to File(s)** (Ctrl/Cmd+S). This flushes the catalog's rating/label/keywords into the XMP sidecar (RAW) or embeds them in the file itself (DNG/JPEG/PSD/TIFF).
-2. `python facet.py --import-sidecars` (optionally scoped to a path) reads them back into Facet's database. Keywords the sidecar carries that Facet does not already have are stored as [manual tags](#manual-tags-and-xmp-keywords).
+2. `python facet.py --import-sidecars /path --sidecar-naming basename` reads saved RAW sidecars into Facet; shared RAW/JPEG basenames are refused. This command does not extract embedded metadata. Imported foreign keywords become manual tags.
 
 ### Conflict rules
 
@@ -121,19 +124,19 @@ Capture One never writes into the original file or into a continuously-synced XM
 2. In Capture One, leave **Preferences → General → Sync Metadata** at its default (not "Full Sync").
 3. Select the imported images, right-click, and choose **Load Metadata** to pull the rating/label/keywords from the sidecar (or embedded metadata) into Capture One's catalog fields once.
 
-Treat Facet as the upstream source of truth for AI-derived ratings and tags for that shoot: do the one-time `Load Metadata` pull, then make further picks inside Capture One without wiring its metadata sync back into Facet's sidecar. If you want Capture One's picks back in Facet, export them from Capture One to XMP explicitly and run `--import-sidecars` on that folder as a separate, deliberate step rather than an automatic sync — and remember the [RAW sidecar naming gotcha](#the-raw-sidecar-naming-gotcha) above: this only works for JPEG/HEIC/TIFF/PNG/DNG, since Capture One also names RAW sidecars `<image>.xmp` rather than Facet's `<image><ext>.xmp`.
+Treat Facet as the source of AI-derived ratings and tags for that shoot: perform the one-time `Load Metadata` pull, then continue in Capture One without automatic bidirectional synchronization. To import saved XMP deliberately, run `--import-sidecars /path/to/shoot --sidecar-naming basename` for stripped-extension RAW sidecars, or `full` for full filenames. Shared RAW/JPEG basenames are refused. This command reads sidecars, not embedded metadata.
 
 ## digiKam
 
-As of digiKam 9.1.0 (released 2026-06-07), digiKam reads XMP sidecars natively — no exiftool needed on digiKam's side — and it looks for both naming conventions (`<image><ext>.xmp` first, falling back to `<image>.xmp`), so it finds Facet's sidecars for RAW files without the gotcha above. After `python facet.py --export-sidecars`, open (or refresh) the folder in digiKam and it picks up the rating, color label, keywords, and named face regions automatically, as long as **Settings → Configure digiKam → Metadata → Read from sidecar files** is enabled (the default).
+digiKam's [sidecar settings](https://docs.digikam.org/en/setup_application/metadata_settings.html#sidecars-settings) select a naming convention: normally `filename.ext.xmp`, or `filename.xmp` with **Sidecar file names are compatible with commercial programs** enabled. Do not assume it tries both. For Facet's exports, use the full-name setting and enable **Read from sidecar files**; explicitly reread file metadata into the digiKam database and verify the selected fields. For digiKam → Facet, select `--sidecar-naming full` or `basename` to match the saved setting. Stars, color labels and pick flags have different semantics; filename agreement alone is not a verified application round trip.
 
 ### Batch Queue Manager hook
 
-You can fold a Facet re-import into a digiKam Batch Queue Manager (BQM) workflow with the **Custom Script** tool, so photos you rate or label in digiKam flow back into Facet's database without leaving digiKam. Enable **Settings → Configure digiKam → Metadata → Write to sidecar files** so digiKam persists your edits to `<image>.xmp` immediately, then add a queue whose only tool is Custom Script:
+You can run a Facet import from digiKam's Batch Queue Manager (BQM) **Custom Script** tool. Enable sidecar writing, save the naming setting, and apply pending metadata changes before importing (lazy synchronization may defer writes). The example below assumes full-name sidecars; replace `full` with `basename` only for an unambiguous commercial-naming collection:
 
 ```bash
 #!/bin/bash
-python /path/to/facet.py --import-sidecars "$(dirname "$INPUT")"
+python /path/to/facet.py --import-sidecars --sidecar-naming full "$(dirname "$INPUT")"
 cp "$INPUT" "$OUTPUT"
 ```
 

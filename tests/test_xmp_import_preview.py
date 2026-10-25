@@ -510,3 +510,49 @@ def test_viewer_review_sync_failure_rolls_back_values_and_clocks(tmp_path):
 def test_invalid_field_policy_is_rejected_before_database_access(dry_run, fields):
     with pytest.raises(ValueError, match='fields must select'):
         import_sidecars(None, fields=fields, dry_run=dry_run)
+
+
+@pytest.mark.parametrize('dry_run', [False, True])
+def test_invalid_naming_policy_is_rejected_before_database_access(dry_run):
+    with pytest.raises(ValueError, match='sidecar_naming'):
+        import_sidecars(None, sidecar_naming='unsupported', dry_run=dry_run)
+
+
+@pytest.mark.parametrize('naming', ['basename', 'auto'])
+def test_basename_preview_and_apply_share_source_and_review_receipt(tmp_path, naming):
+    conn, path, db = setup(tmp_path)
+    try:
+        packet = sidecar(path, tags=['external'])
+        basename = path.with_suffix('.xmp')
+        packet.rename(basename)
+        conn.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+        before = db.read_bytes()
+        preview = import_sidecars(conn, dry_run=True, sidecar_naming=naming)
+        assert preview['updated'] == 1
+        assert preview['entries'][0]['sidecar'] == str(basename)
+        assert preview['entries'][0]['changes']['star_rating']['after'] == 5
+        assert db.read_bytes() == before
+        applied = import_sidecars(conn, sidecar_naming=naming)
+        assert applied['updated'] == 1
+        assert applied['entries'] == preview['entries']
+        assert conn.execute('SELECT star_rating FROM photos').fetchone()[0] == 5
+        assert review_edit_state(conn, str(path), '')['star_rating']['source'] == 'xmp'
+    finally:
+        conn.close()
+
+
+def test_ambiguous_naming_preview_reports_refusal_without_receipts(tmp_path):
+    conn, path, _ = setup(tmp_path)
+    try:
+        sidecar(path)
+        path.with_suffix('.xmp').write_text(build_xmp(XmpRating(star_rating=2)), encoding='utf-8')
+        preview = import_sidecars(conn, dry_run=True, sidecar_naming='auto')
+        assert preview['ambiguous'] == preview['skipped'] == 1
+        assert preview['entries'][0]['diagnostics'] == [{'reason': 'ambiguous'}]
+        assert not preview['entries'][0]['changes']
+        applied = import_sidecars(conn, sidecar_naming='auto')
+        assert applied['updated'] == 0
+        assert conn.execute('SELECT star_rating FROM photos').fetchone()[0] == 1
+        assert not review_edit_state(conn, str(path), '')
+    finally:
+        conn.close()

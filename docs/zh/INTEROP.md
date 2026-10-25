@@ -6,20 +6,23 @@
 
 只有在查看器中明确导出元数据或运行 `--export-sidecars` 时，才会导出手动位置和审阅决定。GPS 使用标准 `exif:GPSLatitude` / `exif:GPSLongitude`；扫描得到的旧坐标不会覆盖文件中的 GPS。`--embed-originals` 还会将 EXIF GPS 写入支持的原始文件。更正后的拍摄日期会导出为 `exif:DateTimeOriginal`（使用 `--embed-originals` 时，还会作为 EXIF `DateTimeOriginal` 写入支持的原始文件）；点击**使用文件日期**后，下一次导出会将其从 sidecar 中移除，但不会触碰其他编辑器写入的日期。
 
-命名空间 `https://github.com/ncoevoet/facet/ns/1.0/` 定义 `facet:ReviewDecision`（`kept`、`rejected`、`undecided`）和 `facet:GPSState`（`set`、`cleared`），以及 `facet:DateState`（`set`），用于标记 Facet 导出到 sidecar 的拍摄日期。保留独立于星级和收藏；淘汰会清除保留、星级和收藏。`--import-sidecars` 在标准审阅字段一致或缺失时应用私人决定。如果标准淘汰状态与私人字段不一致，说明外部编辑器更改了标准字段而保留了旧的私人标签：此时忽略私人决定，标准字段仍按现有的扫描时间规则判断是否导入。只包含决定的导入仍可明确应用，无需比较扫描时间。与标准审阅字段一同导出的决定采用同样的“较新者优先”检查，但尚无审阅状态（无星级、收藏、保留或拒绝）的照片除外：这样重新扫描的照片库仍能恢复其决定，而较旧的导出无法撤销此后做出的决定。已有手动 GPS 默认保留；使用 `--overwrite-manual-gps` 才会覆盖。明确清除的位置可以导入；缺失字段或无效坐标不会清除位置。`--user alice` 遵守该用户的可见目录和私人决定；GPS 仍为共享数据。未指定用户时使用全局状态。如果 `.xmp` 和 `.facet.xmp` 同时存在，则导入修改时间较新的文件。ExifTool 保留其他软件的元数据；没有 ExifTool 时，保留原有附属文件并写入 `.facet.xmp`。只有明确请求嵌入时才修改原始文件。
+命名空间 `https://github.com/ncoevoet/facet/ns/1.0/` 定义 `facet:ReviewDecision`（`kept`、`rejected`、`undecided`）和 `facet:GPSState`（`set`、`cleared`），以及 `facet:DateState`（`set`），用于标记 Facet 导出到 sidecar 的拍摄日期。保留独立于星级和收藏；淘汰会清除保留、星级和收藏。`--import-sidecars` 在标准审阅字段一致或缺失时应用私人决定。如果标准淘汰状态与私人字段不一致，说明外部编辑器更改了标准字段而保留了旧的私人标签：此时忽略私人决定，标准字段仍按现有的扫描时间规则判断是否导入。只包含决定的导入仍可明确应用，无需比较扫描时间。与标准审阅字段一同导出的决定采用同样的“较新者优先”检查，但尚无审阅状态（无星级、收藏、保留或拒绝）的照片除外：这样重新扫描的照片库仍能恢复其决定，而较旧的导出无法撤销此后做出的决定。已有手动 GPS 默认保留；使用 `--overwrite-manual-gps` 才会覆盖。明确清除的位置可以导入；缺失字段或无效坐标不会清除位置。`--user alice` 遵守该用户的可见目录和私人决定；GPS 仍为共享数据。未指定用户时使用全局状态。ExifTool 保留其他软件的元数据；没有 ExifTool 时，保留原有附属文件并写入 `.facet.xmp`。只有明确请求嵌入时才修改原始文件。
 
 ## RAW 附属文件命名陷阱
 
-Facet 把附属文件命名为 `<image><ext>.xmp` —— 例如 `IMG_1234.CR2.xmp` 紧挨着 `IMG_1234.CR2` —— 与 darktable 和 digiKam 使用的约定相同。**Lightroom Classic 和 Capture One 的期望恰好相反：`IMG_1234.xmp`，去掉 RAW 扩展名。** 这两个软件都不会发现 Facet 为专有 RAW 文件（CR2、CR3、NEF、ARW、RAF、RW2、ORF、SRW、PEF —— 除 DNG 以外的全部格式）写出的附属文件，而 Facet 自己的 `--import-sidecars` 同样找不到 Adobe 生态的软件为同一个 RAW 文件写出的附属文件。这是两个生态之间的命名不一致，不是任何一方的 bug。
+Facet 在 `IMG_1234.CR2` 旁导出 `IMG_1234.CR2.xmp`，继续使用 darktable 的完整文件名约定。Lightroom Classic 和 Capture One 通常为专有 RAW 使用 `IMG_1234.xmp`。下面的导入策略不会改变导出文件名。JPEG/HEIC/TIFF/PNG/DNG 可通过 `--embed-originals` 使用文件内嵌通道；GIF/WebP/BMP/AVIF 和专有 RAW 仍需匹配的附属文件命名。
 
-它**不**影响：
-- **JPEG、HEIC、TIFF、PNG、DNG** —— 加上 `--embed-originals`，Facet 就会（通过 exiftool）把元数据*直接写入文件本身*，这样也就不存在 Lightroom／Capture One 会漏掉的附属文件名了。
-- **digiKam** —— 两种命名约定都会检查，无论哪一种都能找到 Facet 的附属文件（见下文 [digiKam](#digikam)）。
-- **darktable** —— 使用与 Facet 相同的 `<image><ext>.xmp` 约定（见下文 [darktable](#darktable)）。
+使用 `--import-sidecars --sidecar-naming full|basename|auto` 明确选择发现策略：
 
-**GIF、WebP、BMP 与 AVIF 是例外 —— 命名差异对它们的影响最大。** 它们不在 Facet 的可嵌入集合内，`--embed-originals` 对它们没有任何作用，唯一的往返载体就是按 Facet 命名方式生成的 XMP 附属文件（`photo.webp.xmp`）。因此上面这种命名差异对这四种格式的影响，与对专有 RAW 完全一样：digiKam 与 darktable 能找到附属文件，Lightroom Classic 与 Capture One 找不到。
+- `full`（默认）：读取 `<image.ext>.xmp` 或 `<image.ext>.facet.xmp` 中文件修改时间较新的一个；时间相同时优先使用前者。
+- `basename`：只去掉图像最后一个扩展名，读取 `<image>.xmp`。忽略完整名称及其回退文件。
+- `auto`：只存在一种命名系列时接受该系列。两种系列同时存在时跳过照片并报告歧义，不按修改时间解决冲突。请明确选择 `full` 或 `basename`。
 
-所以，对于 Lightroom 或 Capture One 的工作流：凡是属于可嵌入集合的文件（JPEG、HEIC、TIFF、PNG、DNG）都用 `--embed-originals`；而对于专有 RAW 文件，以及 GIF、WebP、BMP 与 AVIF，要预料到附属文件的往返是静默的（不报错，只是什么都没读到）。如果你拍摄 RAW+JPEG，配套的 JPEG 就是实际可用的互操作载体 —— RAW 原封不动地留在磁盘上，而 Facet 的数据库保留具有权威性的星级。
+若已索引照片或相邻图像文件共享基本名，例如 `same.CR3` 和 `same.jpg`，`basename` 与 `auto` 都会拒绝导入，即使所选目录或用户范围只包含其中一张。请为它们使用独立的完整名称附属文件。`same_v1.jpg` 的基本名不同。命名不匹配、歧义、不可读或无效的数据包都会报告；解析失败后不会尝试另一命名系列。CLI 汇总中的歧义计入跳过数量，命名不匹配计入没有所选附属文件的数量。
+
+双扩展名派生文件（如 `IMG.CR2.jpg`）不得读取属于 `IMG.CR2` 的 `IMG.CR2.xmp`；保护也适用于其他图像的 `.facet.xmp` 回退文件。`full` 策略每次运行只显示一条命名提示示例，但汇总仍计入所有命名不匹配。
+
+导入不需要 ExifTool；导出合并、嵌入和 MWG 人脸矩形需要 ExifTool。没有它时，保留已有编辑器附属文件，XML 回退写入 `<image.ext>.facet.xmp`，不含 MWG 矩形。此文件需要明确交接给其他编辑器，不是各软件普遍自动发现的文件名。这些策略不会重命名文件。
 
 ## Lightroom Classic
 
@@ -104,7 +107,7 @@ Facet 的星级为 0 表示“没有意见”（见 `xmp_export.score_to_rating`
 **星级、标签和关键字（通过 XMP）。** 另外，在这个方向上仍然是单向的：
 
 1. 在 Lightroom 中选中照片，选择**元数据 → 将元数据存储到文件**（Ctrl/Cmd+S）。这会把目录中的星级／颜色标签／关键字刷写进 XMP 附属文件（RAW），或直接嵌入文件本身（DNG/JPEG/PSD/TIFF）。
-2. `python facet.py --import-sidecars`（可选择限定到某个路径）把它们读回 Facet 的数据库。附属文件中 Facet 尚未拥有的关键字会被存为[手动标签](#手动标签与-xmp-关键字)。
+2. `python facet.py --import-sidecars /path --sidecar-naming basename` 读取已保存的 RAW 附属文件；共享基本名的 RAW/JPEG 会被拒绝。此命令不提取内嵌元数据。外部关键字会成为手动标签。
 
 ### 冲突规则
 
@@ -121,19 +124,19 @@ Capture One 从不像 Lightroom 的自动保存那样写入原始文件或写入
 2. 在 Capture One 中，把 **Preferences → General → Sync Metadata** 保持为默认值（不要选“Full Sync”）。
 3. 选中导入的图像，右键点击，选择 **Load Metadata**，把附属文件（或内嵌元数据）里的星级／颜色标签／关键字一次性拉进 Capture One 的目录字段。
 
-就那次拍摄而言，请把 Facet 当作 AI 生成的星级和标签的上游权威来源：做一次性的 `Load Metadata` 拉取，之后在 Capture One 内部继续选片，不要把它的元数据同步再接回 Facet 的附属文件。如果你想把 Capture One 的选片结果带回 Facet，请从 Capture One 显式导出为 XMP，再对那个文件夹运行 `--import-sidecars`，把它当成一个独立而有意为之的步骤，而不是自动同步 —— 并且别忘了上文的 [RAW 附属文件命名陷阱](#raw-附属文件命名陷阱)：这只对 JPEG/HEIC/TIFF/PNG/DNG 有效，因为 Capture One 同样把 RAW 附属文件命名为 `<image>.xmp`，而不是 Facet 的 `<image><ext>.xmp`。
+将 Facet 作为 AI 星级和标签来源：执行一次 `Load Metadata`，然后在 Capture One 中继续操作，不启用自动双向同步。要明确导入已保存的 XMP，对于去掉图像扩展名的 RAW 附属文件运行 `--import-sidecars /path/to/shoot --sidecar-naming basename`，完整名称则用 `full`。共享基本名的 RAW/JPEG 会被拒绝。此命令只读取附属文件，不读取内嵌元数据。
 
 ## digiKam
 
-从 digiKam 9.1.0（2026-06-07 发布）起，digiKam 原生读取 XMP 附属文件 —— digiKam 这一侧不需要 exiftool —— 而且它会查找两种命名约定（先找 `<image><ext>.xmp`，再回退到 `<image>.xmp`），因此它能找到 Facet 为 RAW 文件写出的附属文件，不受上文那个陷阱影响。运行 `python facet.py --export-sidecars` 之后，在 digiKam 中打开（或刷新）该文件夹，只要 **Settings → Configure digiKam → Metadata → Read from sidecar files** 处于启用状态（默认如此），它就会自动取到星级、颜色标签、关键字和命名的人脸区域。
+digiKam 的[附属文件设置](https://docs.digikam.org/en/setup_application/metadata_settings.html#sidecars-settings)选择一种命名约定：通常为 `filename.ext.xmp`；启用 **Sidecar file names are compatible with commercial programs** 后则为 `filename.xmp`。不要假定它会同时尝试两种名称。读取 Facet 导出时，请使用完整名称设置并启用 **Read from sidecar files**，再明确将文件元数据重新读入 digiKam 数据库并核对所选字段。从 digiKam 导入 Facet 时，按保存的设置选择 `--sidecar-naming full` 或 `basename`。星级、颜色标签和选片标记语义不同；文件名一致不等于已验证跨应用往返。
 
 ### Batch Queue Manager 挂钩
 
-你可以用 **Custom Script** 工具，把 Facet 的重新导入折进 digiKam 的批处理队列管理器（Batch Queue Manager，BQM）流程，这样你在 digiKam 中评星或打颜色标签的照片就能回流到 Facet 的数据库，全程不用离开 digiKam。请启用 **Settings → Configure digiKam → Metadata → Write to sidecar files**，让 digiKam 立刻把你的修改持久化到 `<image>.xmp`，然后新建一个队列，其中唯一的工具就是 Custom Script：
+可在 digiKam 批处理队列管理器（BQM）的 **Custom Script** 工具中运行 Facet 导入。先启用附属文件写入，保存命名设置，并在导入前应用待处理的元数据更改；延迟同步可能推迟写入。下面示例假设使用完整名称；只有商业命名的照片集合不存在基本名歧义时，才将 `full` 改为 `basename`：
 
 ```bash
 #!/bin/bash
-python /path/to/facet.py --import-sidecars "$(dirname "$INPUT")"
+python /path/to/facet.py --import-sidecars --sidecar-naming full "$(dirname "$INPUT")"
 cp "$INPUT" "$OUTPUT"
 ```
 

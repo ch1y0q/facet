@@ -369,6 +369,11 @@ Configuration:
     export_group.add_argument('--import-sidecars', type=str, nargs='?', const='all', metavar='PATH',
                         help='Import ratings/labels/tags, Facet decisions and manual GPS from XMP sidecars back into the DB '
                              '(optional: limit to a path subtree; default: all photos)')
+    export_group.add_argument('--sidecar-naming', choices=('full', 'basename', 'auto'), default=None,
+                        help='With --import-sidecars: full (default) reads <image.ext>.xmp or '
+                             '<image.ext>.facet.xmp; basename reads <image>.xmp; auto refuses '
+                             'both-present naming families. Shared or other-image sidecars are refused')
+
     export_group.add_argument('--sidecar-fields', type=str, metavar='FIELDS',
                         help='With --import-sidecars: comma-separated review,gps,keywords (default: all)')
     export_group.add_argument('--overwrite-sidecar-review', action='store_true',
