@@ -1,9 +1,12 @@
-import { createEnvironmentInjector, EnvironmentInjector, signal } from '@angular/core';
+import { createEnvironmentInjector, EnvironmentInjector, signal, ChangeDetectorRef, runInInjectionContext } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient, withXhr } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting, TestRequest } from '@angular/common/http/testing';
-import { ActivatedRoute, Event as RouterEvent, NavigationStart, Router } from '@angular/router';
+import { ActivatedRoute, Event as RouterEvent, NavigationStart, NavigationCancel, NavigationError, NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { MatDialog } from '@angular/material/dialog';
+import { MatBottomSheet } from '@angular/material/bottom-sheet';
+import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { of, Subject } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -13,6 +16,14 @@ import { UserActivityJournal } from '../../core/agent/user-activity-journal.serv
 import { AssistantChangesService } from '../../core/agent/assistant-changes.service';
 import { makePhoto } from '../../../testing/photo.fixture';
 import { GalleryStore, PhotosResponse } from './gallery.store';
+import { GalleryComponent } from './gallery.component';
+import { CardActionsService } from './card-actions.service';
+import { ScanService } from '../../core/services/scan.service';
+import { PhotoActionsService } from '../../core/services/photo-actions.service';
+import { UndoService } from '../../core/services/undo.service';
+import { SequenceOverrideService } from '../../core/services/sequence-override.service';
+import { HeaderSlotService } from '../../core/services/header-slot.service';
+import { PageHelpService } from '../../core/services/page-help.service';
 
 const EMPTY_PAGE: PhotosResponse = {
   photos: [], total: 0, page: 1, per_page: 64, total_pages: 1, has_more: false,
@@ -27,6 +38,7 @@ describe('GalleryStore read cancellation with HttpClient', () => {
   let identity: ReturnType<typeof signal<string>>;
   let events: Subject<RouterEvent>;
   let snack: ReturnType<typeof vi.fn>;
+  let outlet: { attachEvents: Subject<unknown>; detachEvents: Subject<unknown> };
 
   function destroyStore(): void {
     owner.destroy();
@@ -42,11 +54,22 @@ describe('GalleryStore read cancellation with HttpClient', () => {
     events = new Subject<RouterEvent>();
     snack = vi.fn();
     destroyed = false;
+    outlet = { attachEvents: new Subject(), detachEvents: new Subject() };
     TestBed.configureTestingModule({ providers: [
       ApiService, provideHttpClient(withXhr()), provideHttpClientTesting(),
       { provide: AuthService, useValue: { identity, isEdition: () => false } },
       { provide: Router, useValue: { url: '/', events, navigate: vi.fn(), currentNavigation: () => null } },
-      { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
+      { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {}, paramMap: { get: () => null } } } },
+      { provide: RouterOutlet, useValue: outlet },
+      { provide: ChangeDetectorRef, useValue: { detectChanges: vi.fn() } },
+      { provide: CardActionsService, useValue: { config: signal({}) } },
+      { provide: ScanService, useValue: { canLaunch: signal(false) } },
+      { provide: MatDialog, useValue: {} }, { provide: MatBottomSheet, useValue: {} },
+      { provide: LiveAnnouncer, useValue: { announce: vi.fn() } },
+      { provide: PhotoActionsService, useValue: {} }, { provide: UndoService, useValue: {} },
+      { provide: SequenceOverrideService, useValue: {} },
+      { provide: HeaderSlotService, useValue: { set: vi.fn(), clear: vi.fn() } },
+      { provide: PageHelpService, useValue: { setDescription: vi.fn() } },
       { provide: AlbumService, useValue: { update: vi.fn(() => of({})) } },
       { provide: I18nService, useValue: { t: (key: string) => key } },
       { provide: MatSnackBar, useValue: { open: snack } },
@@ -204,6 +227,165 @@ describe('GalleryStore read cancellation with HttpClient', () => {
     expect(store.photos()).toEqual([]);
     expect(store.loadError()).toBe(false);
     expect(snack).not.toHaveBeenCalled();
+  });
+
+  it.each(['cancel', 'error'] as const)('recovers a cancelled initial listing when navigation ends with %s', async ending => {
+    const loading = store.loadPhotos();
+    const oldPage = request('/photos');
+    const oldProgress = request('/photos/review_progress');
+    events.next(new NavigationStart(1, '/stats'));
+    events.next(ending === 'cancel' ? new NavigationCancel(1, '/stats', 'guard refused')
+      : new NavigationError(1, '/stats', new Error('route failed')));
+    const progress = request('/photos/review_progress');
+    await Promise.resolve();
+    const page = request('/photos');
+    expect(oldPage.cancelled).toBe(true);
+    expect(oldProgress.cancelled).toBe(true);
+    page.flush({ ...EMPTY_PAGE, total: 1, photos: [makePhoto({ path: '/restored.jpg' })] });
+    progress.flush(COUNTS);
+    await loading;
+    await Promise.resolve();
+    request('/photos/keeper_hints').flush({});
+    expect(store.photos().map(p => p.path)).toEqual(['/restored.jpg']);
+    expect(store.loadError()).toBe(false);
+    expect(snack).not.toHaveBeenCalled();
+  });
+
+  it('resumes the real store through its own gallery outlet attach after photo navigation and Back', async () => {
+    const gallery = runInInjectionContext(owner, () => new GalleryComponent());
+    vi.spyOn(store, 'loadTypeCounts').mockResolvedValue();
+    vi.spyOn(store, 'loadFilterOptions').mockResolvedValue();
+    const initial = store.loadPhotos();
+    request('/photos').flush({ ...EMPTY_PAGE, total: 1, has_more: true, photos: [makePhoto({ path: '/a.jpg' })] });
+    request('/photos/review_progress').flush(COUNTS);
+    await initial;
+    request('/photos/keeper_hints').flush({});
+    store.selectedPaths.set(new Set(['/a.jpg']));
+    events.next(new NavigationStart(1, '/photo?path=/a.jpg'));
+    outlet.detachEvents.next(gallery);
+    await store.refreshPaths(['/a.jpg']);
+    http.expectNone(r => r.url === '/api/photos');
+    outlet.attachEvents.next({});
+    http.expectNone(r => r.url === '/api/photos/review_progress');
+    outlet.attachEvents.next(gallery);
+    request('/photos/review_progress').flush(COUNTS);
+    await Promise.resolve();
+    request('/photos').flush({ ...EMPTY_PAGE, total: 1, has_more: true, photos: [makePhoto({ path: '/a.jpg', is_favorite: true })] });
+    await Promise.resolve();
+    await Promise.resolve();
+    request('/photos/keeper_hints').flush({});
+    expect(store.selectedPaths()).toEqual(new Set(['/a.jpg']));
+    expect(store.photos()[0].is_favorite).toBe(true);
+    const paging = store.nextPage();
+    request('/photos').flush({ ...EMPTY_PAGE, page: 2 });
+    await paging;
+    expect(store.filters().page).toBe(2);
+  });
+
+  it.each([false, true])('restores interrupted similarity pages on return (pagination=%s)', async pagination => {
+    const firstLoad = store.updateFilter('similar_to', '/seed.jpg');
+    const first = request(`/similar_photos/${encodeURIComponent('/seed.jpg')}`);
+    let interrupted: Promise<void> = firstLoad;
+    if (pagination) {
+      first.flush({ similar: [makePhoto({ path: '/first.jpg' })], total: 2, has_more: true });
+      await firstLoad;
+      interrupted = store.nextPage();
+      request(`/similar_photos/${encodeURIComponent('/seed.jpg')}`);
+    }
+    store.selectedPaths.set(new Set(['/first.jpg']));
+    events.next(new NavigationStart(1, '/photo?path=/first.jpg'));
+    store.parkListingReads();
+    const resuming = store.resumeListingReads();
+    const page = request(`/similar_photos/${encodeURIComponent('/seed.jpg')}`);
+    expect(page.request.params.get('offset')).toBe('0');
+    page.flush({ similar: [makePhoto({ path: '/first.jpg' })], total: 2, has_more: pagination });
+    if (pagination) {
+      await Promise.resolve();
+      const tail = request(`/similar_photos/${encodeURIComponent('/seed.jpg')}`);
+      expect(tail.request.params.get('offset')).toBe('64');
+      tail.flush({ similar: [makePhoto({ path: '/second.jpg' })], total: 2, has_more: false });
+    }
+    await Promise.all([interrupted, resuming]);
+    expect(store.photos().map(p => p.path)).toEqual(pagination ? ['/first.jpg', '/second.jpg'] : ['/first.jpg']);
+    expect(store.selectedPaths()).toEqual(new Set(['/first.jpg']));
+    expect(store.loadError()).toBe(false);
+  });
+
+  it('retains Undo for a confirmed Keep that removes a photo during the parked refresh', async () => {
+    store.filters.update(f => ({ ...f, review_status: 'undecided' }));
+    const initial = store.loadPhotos();
+    request('/photos').flush({ ...EMPTY_PAGE, total: 1, photos: [makePhoto({ path: '/a.jpg' })] });
+    request('/photos/review_progress').flush(COUNTS);
+    await initial;
+    request('/photos/keeper_hints').flush({});
+    const snapshot = new Map([['/a.jpg', { is_kept: false, is_rejected: false, is_favorite: false, star_rating: null }]]);
+    const keeping = store.batchReview(['/a.jpg'], 'kept');
+    const write = request('/photos/batch_review');
+    events.next(new NavigationStart(1, '/photo?path=/a.jpg'));
+    store.parkListingReads();
+    write.flush({ count: 1 });
+    await keeping;
+    const resuming = store.resumeListingReads();
+    request('/photos/review_progress').flush(COUNTS);
+    await Promise.resolve();
+    request('/photos').flush(EMPTY_PAGE);
+    await resuming;
+    expect(store.photos()).toEqual([]);
+    const undo = store.restoreSnapshot(snapshot);
+    let reset!: TestRequest;
+    await vi.waitFor(() => { reset = request('/photos/batch_review'); });
+    expect(reset.request.body).toEqual({ photo_paths: ['/a.jpg'], decision: 'undecided' });
+    reset.flush({ count: 1 });
+    let restored!: TestRequest;
+    await vi.waitFor(() => { restored = request('/photos'); });
+    for (const progress of http.match(r => r.url === '/api/photos/review_progress')) {
+      if (!progress.cancelled) progress.flush(COUNTS);
+    }
+    restored.flush({ ...EMPTY_PAGE, total: 1, photos: [makePhoto({ path: '/a.jpg', is_kept: false })] });
+    await undo;
+    request('/photos/keeper_hints').flush({});
+    expect(store.photos()[0].is_kept).toBe(false);
+    expect(snack).not.toHaveBeenCalled();
+  });
+
+  it('coalesces parked confirmed writes and assistant changes into one in-place refresh on return', async () => {
+    const initial = store.loadPhotos();
+    request('/photos').flush({ ...EMPTY_PAGE, total: 1, has_more: true, photos: [makePhoto({ path: '/a.jpg' })] });
+    request('/photos/review_progress').flush(COUNTS);
+    await initial;
+    request('/photos/keeper_hints').flush({});
+    store.selectedPaths.set(new Set(['/a.jpg']));
+    const selected = store.selectedPaths();
+    const writing = store.setRating('/a.jpg', 4);
+    const rating = request('/photo/set_rating');
+    events.next(new NavigationStart(1, '/photo?path=/a.jpg'));
+    store.parkListingReads();
+    events.next(new NavigationEnd(1, '/photo?path=/a.jpg', '/photo?path=/a.jpg'));
+    rating.flush({ success: true });
+    await writing;
+    await store.refreshPaths(['/a.jpg']);
+    await store.refreshPaths(null);
+    await store.refreshReviewResults();
+    http.expectNone(r => r.url === '/api/photos' || r.url === '/api/photos/review_progress');
+    // Back's NavigationEnd alone must not start work for another page.
+    events.next(new NavigationEnd(2, '/stats', '/stats'));
+    http.expectNone(r => r.url === '/api/photos');
+    const resumed = store.resumeListingReads();
+    const duplicateAttach = store.resumeListingReads();
+    request('/photos/review_progress').flush(COUNTS);
+    await Promise.resolve();
+    request('/photos').flush({ ...EMPTY_PAGE, total: 1, has_more: true, photos: [makePhoto({ path: '/a.jpg', star_rating: 4 })] });
+    await Promise.all([resumed, duplicateAttach]);
+    request('/photos/keeper_hints').flush({});
+    expect(store.selectedPaths()).toBe(selected);
+    expect(store.photos()[0].star_rating).toBe(4);
+    expect(store.loadError()).toBe(false);
+    http.expectNone(r => r.url === '/api/photos');
+    // Paging is live again without a filter change or a new gallery init.
+    const paging = store.nextPage();
+    request('/photos').flush({ ...EMPTY_PAGE, page: 2, total: 1 });
+    await paging;
+    expect(store.filters().page).toBe(2);
   });
 
   it('cancels a pending review tail refill before loading a new filter', async () => {
