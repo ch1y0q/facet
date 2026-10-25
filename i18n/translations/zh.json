@@ -204,7 +204,11 @@
     "histogram": "直方图"
   },
   "photoCard": {
-    "embed_to_file": "将元数据写入文件"
+    "embed_to_file": "将元数据写入文件",
+    "duplicate_set": "查看重复照片组",
+    "burst_set": "查看连拍组",
+    "sequence_set": "查看包围曝光/全景组",
+    "open_detail": "打开照片页"
   },
   "notifications": {
     "copied": "已复制！",
@@ -1297,6 +1301,15 @@
     },
     "channel_clip_highlight_range": "高光溢出比例 %",
     "channel_clip_shadow_range": "阴影溢出比例 %",
+    "blinks_only": "仅看眨眼",
+    "duplicates_only": "仅看重复",
+    "card_actions": {
+      "title": "自定义卡片按钮",
+      "hint": "选择照片卡片悬停时显示哪些按钮及其顺序。组按钮只在属于对应组的照片上出现。",
+      "move_up": "上移",
+      "move_down": "下移",
+      "reset": "恢复默认"
+    },
     "review_progress": {
       "title": "审阅进度",
       "counts": "{undecided} 张未决定 · {kept} 张保留 · {rejected} 张拒绝",
@@ -2479,7 +2492,15 @@
       "load_error": "无法加载地点。",
       "place_error": "无法更新地点。请检查名称、数量限制和网络连接。",
       "save_error": "无法保存照片位置。请重试。",
-      "use_file_location": "使用文件中的位置"
+      "use_file_location": "使用文件中的位置",
+      "batch_title": "设置位置",
+      "only_missing": "仅限缺少位置的照片",
+      "preview_batch": "预览位置更改",
+      "batch_preview": "将更改 {changed} 张照片；跳过 {skipped} 张。",
+      "batch_applied": "已更新 {changed} 张照片；跳过 {skipped} 张。",
+      "batch_error": "无法应用位置。请选择最多 1000 张照片并重新预览；所选照片或已保存地点可能已更改。",
+      "batch_limit": "请选择最多 1000 张照片。关闭保护后将替换现有位置。原始文件保持不变。",
+      "batch_hint": "选择一个位置，然后预览更改，再保存所选照片。"
     }
   },
   "manual_tags": {
@@ -2571,7 +2592,8 @@
     "delete_confirm_body": "{count} 张照片将被发送到操作系统的回收站，在清空之前仍可恢复。",
     "delete_partial_result": "已删除 {deleted} 张，失败 {failed} 张",
     "delete_failed": "删除失败 — 没有任何内容被发送到回收站",
-    "delete_disabled_view_scope_tooltip": "请明确选择照片以删除——此处不能使用整视图选择"
+    "delete_disabled_view_scope_tooltip": "请明确选择照片以删除——此处不能使用整视图选择",
+    "remove_missing_rows": "同时移除磁盘上已缺失文件的库记录"
   },
   "shortcuts": {
     "title": "键盘快捷键",

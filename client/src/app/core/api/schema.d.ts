@@ -2750,7 +2750,15 @@ export interface paths {
          *     not resolve on disk (already missing) -- neither trashed nor
          *     row-deleted, so it is reported rather than silently dropped from every
          *     bucket. Reconciling it is ``--cleanup-missing-photos``'s job, same as any
-         *     other missing-on-disk row.
+         *     other missing-on-disk row -- or, with ``remove_missing``, THIS call's:
+         *     the flag moves such paths out of ``skipped`` into ``removed_missing``
+         *     (never ``deleted``, which keeps meaning "row gone via a successful
+         *     trash") and deletes their rows in the same transaction as the trashed
+         *     paths', lead re-pick included. It stays an opt-in because a request
+         *     where EVERY file reads as missing is exactly what a disconnected
+         *     library volume looks like, and even opted in, ``_reconcilable_missing``
+         *     keeps a path ``skipped`` when the allowlist refused it or the folder
+         *     that held it is gone or empty -- the shape of an offline volume.
          */
         post: operations["api_photo_delete_api_photo_delete_post"];
         delete?: never;
@@ -3198,6 +3206,32 @@ export interface paths {
          * @description Mark multiple photos as favorite (clears rejected).
          */
         post: operations["api_batch_favorite_api_photos_batch_favorite_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/photos/batch_gps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Api Batch Gps
+         * @description Preview or assign one location to a visible selection, without file writes.
+         *
+         *     The preview snapshot, visibility, missing coordinates and saved-place
+         *     ownership are checked again under the apply transaction's write lock.
+         *     Equal coordinates are skipped rather than pinning an unchanged file location.
+         *     The deterministic token guards against stale inputs; it is not authorization
+         *     or proof that a preview was requested. Edition access remains required.
+         */
+        post: operations["api_batch_gps_api_photos_batch_gps_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5053,6 +5087,47 @@ export interface components {
         AvatarRequest: {
             /** Face Id */
             face_id: number;
+        };
+        /** BatchGpsRequest */
+        BatchGpsRequest: {
+            /**
+             * Exclude
+             * @description Paths to drop from whichever target is sent: subtracted from `photo_paths`, or bound out of the `filters` scope. Only ever narrows.
+             */
+            exclude?: string[] | null;
+            /** Filters */
+            filters?: {
+                [key: string]: unknown;
+            } | null;
+            /** Gps Latitude */
+            gps_latitude: number;
+            /** Gps Longitude */
+            gps_longitude: number;
+            /**
+             * Only Missing
+             * @default true
+             */
+            only_missing?: boolean;
+            /** Photo Paths */
+            photo_paths?: string[] | null;
+            /**
+             * Preview
+             * @default false
+             */
+            preview?: boolean;
+            /** Preview Token */
+            preview_token?: string | null;
+            /** Saved Place Id */
+            saved_place_id?: number | null;
+        };
+        /** BatchGpsResponse */
+        BatchGpsResponse: {
+            /** Changed */
+            changed: number;
+            /** Preview Token */
+            preview_token: string;
+            /** Skipped */
+            skipped: number;
         };
         /**
          * BatchManualTagRequest
@@ -7167,6 +7242,11 @@ export interface components {
             include_sequence_siblings?: boolean;
             /** Paths */
             paths: string[];
+            /**
+             * Remove Missing
+             * @default false
+             */
+            remove_missing?: boolean;
         };
         /**
          * PhotoDeleteResponse
@@ -7192,6 +7272,8 @@ export interface components {
          *     ``CullApplyResponse``'s field of the same name: a path that was visible,
          *     in ``photos``, and not a refused bracket lead, but whose file could not
          *     be resolved on disk (already missing) -- landing in no other bucket.
+         *     With ``remove_missing`` those same paths have their rows removed instead,
+         *     and are reported in ``removed_missing`` rather than ``skipped``.
          */
         PhotoDeleteResponse: {
             /** Deleted */
@@ -7208,6 +7290,8 @@ export interface components {
             not_visible: string[];
             /** Refused Bracket Lead */
             refused_bracket_lead: string[];
+            /** Removed Missing */
+            removed_missing?: string[] | null;
             /** Sequence Siblings */
             sequence_siblings: string[];
             /** Skipped */
@@ -13399,6 +13483,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    api_batch_gps_api_photos_batch_gps_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchGpsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchGpsResponse"];
                 };
             };
             /** @description Validation Error */

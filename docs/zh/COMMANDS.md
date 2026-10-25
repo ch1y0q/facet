@@ -131,7 +131,7 @@ API 会将其呈现在 `/api/scan/status` 的 `progress` 字段以及 SSE 数据
 | `python facet.py --recompute-form` | 从已存储的缩略图重新计算五项可解释的形式／色彩指标——左右对称性、视觉平衡、边缘方向熵、盒计数分形复杂度，以及 Matsuda 色相模板色彩和谐度（CPU，无需模型）。它们会出现在点评分析、改进建议和照片提示框中，也可作为类别权重使用（出厂值为 0） |
 | `python facet.py --recompute-skin-tone` | 从已存储的人脸缩略图和关键点重新计算人像肤色自然度（脸颊 CIELAB 色度与 CCT 肤色轨迹的 CIEDE2000 色差；CPU，无需模型）。仅供参考——只呈现为一条点评说明，不参与综合评分 |
 | `python facet.py --recompute-distortions` | 通过在已存储的 CLIP/SigLIP 特征向量上使用 ExIQA 风格的零样本对比式提示，为每张照片标注可能的失真属性（运动模糊、偏色、过度锐化等），随后打印与 `liqe_score` ／ `noise_sigma` 的 Spearman 相关性报告。仅供参考（点评中的警示标签），不参与综合评分 |
-| `python facet.py --upgrade-db` | 迁移表结构并运行完整的回填链：提取 GPS、检测重复、重算 IQA、显著性、CPU 构图、连拍、闭眼、眼睛与表情、人脸信号、平均分。幂等；会跳过生成照片描述之类的重负载步骤。 |
+| `python facet.py --upgrade-db` | 迁移 schema，修复因 pillow-heif 1.6 双重转置而横置的 HEIF 缩略图（原位转正、尺寸换回、已存人脸随之旋转、清空主体分数交给显著性步骤），并运行完整的回填链：extract-gps、detect-duplicates、recompute-iqa、saliency、composition-cpu、burst、blinks、eyes-expression、face-signals、average。幂等；跳过生成字幕等重步骤。|
 | `python facet.py --recompute-blinks` | 从已存储的关键点重新计算闭眼检测（CPU，快速） |
 | `python facet.py --recompute-eyes-expression` | 从已存储的关键点重新计算睁眼与表情评分（CPU，快速） |
 | `python facet.py --recompute-face-signals` | 从已存储的 106 点关键点回填每张人脸的睁眼与微笑评分（CPU，快速；无需模型）。也是 `--upgrade-db` 的一个步骤 |

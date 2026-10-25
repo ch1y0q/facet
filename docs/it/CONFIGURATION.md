@@ -1005,6 +1005,8 @@ lineare e codificata con l’OETF sRGB — la riduzione a 8 bit avviene solo in
 quest’ultimo passaggio. Questo blocco controlla tale mappatura. Si applica **solo** alle immagini il
 cui profilo colore NCLX dichiara il trasferimento PQ (caratteristica 16); HEIF
 SDR, HLG e JPEG passano invariati indipendentemente da `enabled`.
+I fotogrammi scritti ruotati dalla fotocamera (un'orientazione EXIF diversa da 1) escono dritti: il decodificatore applica l'orientazione da solo — anche sul percorso di profondità nativa, dove pillow-heif 1.6 e successive ruotano il piano prima della mappatura dei toni e il valore EXIF grezzo viene neutralizzato anziché riapplicato.
+
 
 ```json
 "hdr_pq_tonemap": {

@@ -219,6 +219,10 @@ export const I18N = {
   },
   photoCard: {
     embed_to_file: "photoCard.embed_to_file",
+    duplicate_set: "photoCard.duplicate_set",
+    burst_set: "photoCard.burst_set",
+    sequence_set: "photoCard.sequence_set",
+    open_detail: "photoCard.open_detail",
   },
   notifications: {
     copied: "notifications.copied",
@@ -1311,6 +1315,15 @@ export const I18N = {
     },
     channel_clip_highlight_range: "gallery.channel_clip_highlight_range",
     channel_clip_shadow_range: "gallery.channel_clip_shadow_range",
+    blinks_only: "gallery.blinks_only",
+    duplicates_only: "gallery.duplicates_only",
+    card_actions: {
+      title: "gallery.card_actions.title",
+      hint: "gallery.card_actions.hint",
+      move_up: "gallery.card_actions.move_up",
+      move_down: "gallery.card_actions.move_down",
+      reset: "gallery.card_actions.reset",
+    },
     review_progress: {
       title: "gallery.review_progress.title",
       counts: "gallery.review_progress.counts",
@@ -2494,6 +2507,14 @@ export const I18N = {
       place_error: "photo_detail.gps.place_error",
       save_error: "photo_detail.gps.save_error",
       use_file_location: "photo_detail.gps.use_file_location",
+      batch_title: "photo_detail.gps.batch_title",
+      only_missing: "photo_detail.gps.only_missing",
+      preview_batch: "photo_detail.gps.preview_batch",
+      batch_preview: "photo_detail.gps.batch_preview",
+      batch_applied: "photo_detail.gps.batch_applied",
+      batch_error: "photo_detail.gps.batch_error",
+      batch_limit: "photo_detail.gps.batch_limit",
+      batch_hint: "photo_detail.gps.batch_hint",
     },
   },
   manual_tags: {
@@ -2586,6 +2607,7 @@ export const I18N = {
     delete_partial_result: "cull.delete_partial_result",
     delete_failed: "cull.delete_failed",
     delete_disabled_view_scope_tooltip: "cull.delete_disabled_view_scope_tooltip",
+    remove_missing_rows: "cull.remove_missing_rows",
   },
   shortcuts: {
     title: "shortcuts.title",

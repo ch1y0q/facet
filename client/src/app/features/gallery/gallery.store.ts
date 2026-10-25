@@ -11,6 +11,7 @@ import { I18nService } from '../../core/services/i18n.service';
 import { AssistantChangesService } from '../../core/agent/assistant-changes.service';
 import { UserActivityJournal, UserActivityKind, activityName } from '../../core/agent/user-activity-journal.service';
 import { Photo, KeeperHint, normalisePhotoFlagsAll } from '../../shared/models/photo.model';
+import type { CardSetKind } from '../../shared/components/photo-card/card-actions';
 import { I18N } from '../../core/i18n/keys';
 import { readReviewQueue, saveReviewQueue } from './review-queue.util';
 import type { components } from '../../core/api/schema';
@@ -18,7 +19,7 @@ import {
   type GalleryFilters, type GalleryMode, type TooltipMode, type PanelActivation, type DisplayOptions,
   type ViewFilterParams,
   DEFAULT_FILTERS, DISPLAY_OPTION_KEYS,
-  GALLERY_MODE_KEY, DRAWER_STATE_KEY, CARD_WIDTH_KEY,
+  GALLERY_MODE_KEY, DRAWER_STATE_KEY, CARD_WIDTH_KEY, GALLERY_SESSION_QUERY_KEY,
   loadDisplayOptionsFromStorage, saveDisplayOptionsToStorage,
   countActiveFilters, applyQueryParams, applySavedAlbumFilters, buildSyncParams, buildApiParams,
   buildViewFilterParams, viewFilterParamsEqual, anyHideToggleActive,
@@ -1262,6 +1263,39 @@ export class GalleryStore {
     }
   }
 
+  /**
+   * Scope the gallery to the set a photo belongs to — the card button's twin of
+   * the photo page's "open this set in the gallery".
+   *
+   * Same precedence and the same hide-toggle release the photo page applies:
+   * any prior set scope is cleared first (a photo can belong to a burst AND a
+   * duplicate group at once, and only one scope can be active), and the toggle
+   * that would collapse this set's members is turned off so the whole set is
+   * actually listed. `kind: 'sequence'` covers bracket, panorama and
+   * hdr_panorama alike — they all share the `(sequence_kind, sequence_group_id)`
+   * pair and the `hide_panoramas` toggle.
+   */
+  async scopeToSet(photo: Photo, kind: CardSetKind): Promise<void> {
+    const updates: Partial<GalleryFilters> = {
+      sequence_group_id: '', sequence_kind: '', burst_group_id: '', duplicate_group_id: '',
+    };
+    if (kind === 'burst' && photo.burst_group_id != null) {
+      updates.burst_group_id = String(photo.burst_group_id);
+      updates.hide_bursts = false;
+    } else if (kind === 'duplicate' && photo.duplicate_group_id != null) {
+      updates.duplicate_group_id = String(photo.duplicate_group_id);
+      updates.hide_duplicates = false;
+    } else if (kind === 'sequence' && photo.sequence_kind && photo.sequence_group_id != null) {
+      updates.sequence_kind = photo.sequence_kind;
+      updates.sequence_group_id = String(photo.sequence_group_id);
+      if (photo.sequence_kind === 'bracket') updates.hide_brackets = false;
+      else updates.hide_panoramas = false;
+    } else {
+      return;
+    }
+    await this.updateFilters(updates);
+  }
+
   /** Update multiple filters; reload only when the query changes. */
   async updateFilters(updates: Partial<GalleryFilters>): Promise<void> {
     const keys = Object.keys(updates) as (keyof GalleryFilters)[];
@@ -2072,10 +2106,75 @@ export class GalleryStore {
 
   /** Sync current filters to URL query params */
   private syncUrl(): void {
+    const queryParams = buildSyncParams(
+      this.filters(), this.config()?.defaults, this.config()?.search_threshold_default,
+    );
+    try {
+      sessionStorage.setItem(GALLERY_SESSION_QUERY_KEY, JSON.stringify(queryParams));
+    } catch { /* storage unavailable: the nav return just falls back to defaults */ }
     this.router.navigate([], {
       queryParams: this.galleryQueryParams(),
       replaceUrl: true,
     });
+  }
+
+  /**
+   * Snapshot the current filters' query form into sessionStorage for the
+   * nav-icon return. Called from syncUrl (every user-driven filter change)
+   * AND from loadConfig — an entry via a bookmarked or typed URL never runs
+   * syncUrl, and without this hook its filters would never reach the session
+   * memory: /?blinks_only=true → albums → nav return silently came back
+   * to the full library. A reset overwrites the stored set with the
+   * near-empty default diff, so "reset then leave then return" correctly
+   * comes back to defaults.
+   */
+  /**
+   * Snapshot the CURRENT filters' query form into sessionStorage for the
+   * nav-icon return. Only the gallery itself calls this — its init (a URL
+   * entry must record its own filters, syncUrl never runs for one) and
+   * syncUrl (every user-driven change). Other pages share loadConfig but
+   * must never touch this memory: the albums page used to overwrite it with
+   * that page's default query on every visit.
+   */
+  saveSessionQuery(): void {
+    try {
+      sessionStorage.setItem(GALLERY_SESSION_QUERY_KEY, JSON.stringify(buildSyncParams(
+        this.filters(), this.config()?.defaults, this.config()?.search_threshold_default,
+      )));
+    } catch { /* storage unavailable: the nav return just falls back to defaults */ }
+  }
+
+  /**
+   * The last gallery query the session synced, minus `album_id` — an album
+   * scope travels the route param, and re-applying a stale one over a fresh
+   * nav visit would resurrect an album the user navigated away from. Null
+   * when the session has none (first visit, or a reset was the last action).
+   */
+  readGallerySessionQuery(): Record<string, string> | null {
+    try {
+      const raw = sessionStorage.getItem(GALLERY_SESSION_QUERY_KEY);
+      if (!raw) return null;
+      const saved = JSON.parse(raw) as Record<string, string>;
+      delete saved['album_id'];
+      return Object.keys(saved).length ? saved : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Merge the session's last gallery query into the current filters and
+   * reflect it in the URL. Used on a parameterless `/` landing — the nav
+   * icon's return from another page. This writes the filters DIRECTLY rather
+   * than navigating to the saved query first: the ActivatedRoute snapshot
+   * does not refresh for same-component param-only navigations, so a
+   * navigate-then-read would hand the re-initialisation an empty param set
+   * and the restored filters would never come back (the album-route return
+   * was losing them exactly this way).
+   */
+  applySessionQuery(saved: Record<string, string>): void {
+    this.filters.update(current => applyQueryParams(current, saved));
+    this.syncUrl();
   }
 
   /** Fetch a page of similar photos from the API */

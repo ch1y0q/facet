@@ -25,10 +25,13 @@ export interface GpsEditDialogData {
   lng: number | null;
   /** The photo's location was set in the viewer, so a rescan keeps it. */
   manuallySet?: boolean;
+  onBatchApplied?: () => void;
+  batch?: Pick<components['schemas']['BatchPhotoRequest'], 'photo_paths' | 'filters' | 'exclude'>;
 }
 
 export type SavedPlace = components['schemas']['SavedPlace'];
 export type RecentPlace = components['schemas']['RecentPlace'];
+type BatchGpsDraft = NonNullable<GpsEditDialogData['batch']> & { gps_latitude: number | null; gps_longitude: number | null; only_missing: boolean; saved_place_id?: number | null };
 type GpsResult = components['schemas']['GpsUpdateResponse'];
 
 @Component({
@@ -41,7 +44,7 @@ type GpsResult = components['schemas']['GpsUpdateResponse'];
       <mat-icon>location_on</mat-icon><span class="truncate">{{ data.filename }}</span>
     </h2>
     <mat-dialog-content class="!px-4 !pb-2">
-      <p class="text-sm mb-3">{{ I18N.photo_detail.gps.preview_hint | translate }}</p>
+      <p class="text-sm mb-3">{{ (data.batch ? I18N.photo_detail.gps.batch_hint : I18N.photo_detail.gps.preview_hint) | translate }}</p>
       <label class="block text-sm mb-3">
         {{ I18N.photo_detail.gps.search | translate }}
         <input class="block w-full border rounded p-2 bg-transparent" type="search" [ngModel]="search()" (ngModelChange)="search.set($event)">
@@ -113,15 +116,25 @@ type GpsResult = components['schemas']['GpsUpdateResponse'];
       </div>
       @if (placeBusy()) { <p role="status">{{ I18N.photo_detail.gps.updating | translate }}</p> }
       @if (placeError()) { <p role="alert">{{ placeError() | translate }}</p> }
+      @if (data.batch) {
+        <label class="flex items-center gap-2 mt-3"><input type="checkbox" [ngModel]="onlyMissing()" (ngModelChange)="onlyMissing.set($event)">{{ I18N.photo_detail.gps.only_missing | translate }}</label>
+        <p class="text-sm mt-2">{{ I18N.photo_detail.gps.batch_limit | translate }}</p>
+        @if (previewCurrent()) { @if (batchPreview(); as preview) {
+          <p role="status" class="mt-2">{{ I18N.photo_detail.gps.batch_preview | translate:{ changed: preview.result.changed, skipped: preview.result.skipped } }}</p>
+        } }
+      }
       @if (saveError()) { <p role="alert">{{ saveError() | translate }}</p> }
     </mat-dialog-content>
     <mat-dialog-actions align="end">
-      <button mat-button (click)="clearLocation()" class="!mr-auto">{{ I18N.photo_detail.gps_clear | translate }}</button>
+      @if (!data.batch) { <button mat-button (click)="clearLocation()" class="!mr-auto">{{ I18N.photo_detail.gps_clear | translate }}</button> }
       @if (data.manuallySet) {
         <button mat-button (click)="useFileLocation()" [disabled]="saving() || placeBusy()">{{ I18N.photo_detail.gps.use_file_location | translate }}</button>
       }
       <button mat-button (click)="cancel()">{{ I18N.ui.buttons.cancel | translate }}</button>
-      <button mat-flat-button (click)="save()" [disabled]="saving() || placeBusy() || !coordinatesValid() || unchanged()">{{ I18N.ui.buttons.save | translate }}</button>
+      @if (data.batch) {
+        <button mat-button (click)="previewBatch()" [disabled]="saving() || placeBusy() || !batchCoordinatesValid()">{{ I18N.photo_detail.gps.preview_batch | translate }}</button>
+      }
+      <button mat-flat-button (click)="save()" [disabled]="saving() || placeBusy() || (data.batch ? !canApplyBatch() : (!coordinatesValid() || unchanged()))">{{ I18N.ui.buttons.save | translate }}</button>
     </mat-dialog-actions>
   `,
 })
@@ -145,6 +158,17 @@ export class GpsEditDialogComponent {
   readonly selectedLat = signal<number | null>(this.data.lat);
   readonly selectedLng = signal<number | null>(this.data.lng);
   readonly saving = signal(false);
+  readonly onlyMissing = signal(true);
+  private readonly batchTarget = this.data.batch ? structuredClone(this.data.batch) : null;
+  readonly batchCoordinatesValid = computed(() => this.coordinatesValid() && this.selectedLat() !== null && this.selectedLng() !== null);
+  private readonly batchBody = computed(() => ({
+    ...this.batchTarget, gps_latitude: this.selectedLat(), gps_longitude: this.selectedLng(),
+    only_missing: this.onlyMissing(),
+    ...(this.selectedPlaceId() === null ? {} : { saved_place_id: this.selectedPlaceId() }),
+  }));
+  readonly batchPreview = signal<{ body: BatchGpsDraft; result: components['schemas']['BatchGpsResponse'] } | null>(null);
+  readonly previewCurrent = computed(() => !!this.batchPreview() && JSON.stringify(this.batchBody()) === JSON.stringify(this.batchPreview()!.body));
+  readonly canApplyBatch = computed(() => this.batchCoordinatesValid() && this.previewCurrent() && this.batchPreview()!.result.changed > 0);
 
   readonly places = signal<SavedPlace[]>([]);
   readonly recent = signal<RecentPlace[]>([]);
@@ -187,11 +211,19 @@ export class GpsEditDialogComponent {
   private marker: L.Marker | null = null;
 
   private current(): boolean {
-    return !this.dismissed && !this.navigated && !this.destroyed && !this.destroyRef.destroyed && this.auth.identity() === this.owner && this.auth.isEdition() && this.router.url === this.url;
+    return !this.dismissed && !this.destroyed && !this.destroyRef.destroyed && this.sessionCurrent();
+  }
+
+  /** Same session and page as at opening. A committed write is still published
+   *  after a plain Cancel/Escape; only a later session or navigation drops it. */
+  private sessionCurrent(): boolean {
+    return !this.navigated && this.auth.identity() === this.owner && this.auth.isEdition() && this.router.url === this.url;
   }
 
   private invalidateOwner(): void {
     this.dismissed = true;
+    this.batchPreview.set(null);
+    this.invalidateOnline();
     this.places.set([]);
     this.recent.set([]);
     this.dialogRef.close();
@@ -205,7 +237,7 @@ export class GpsEditDialogComponent {
       if (event instanceof NavigationStart) { this.navigated = true; this.invalidateOwner(); }
     });
     effect(() => { this.auth.status(); this.invalidateOnline(); });
-    this.dialogRef.beforeClosed().pipe(takeUntilDestroyed()).subscribe(() => { this.dismissed = true; this.invalidateOnline(); });
+    this.dialogRef.beforeClosed().pipe(takeUntilDestroyed()).subscribe(() => { this.dismissed = true; this.batchPreview.set(null); this.invalidateOnline(); });
     this.destroyRef.onDestroy(() => {
       this.destroyed = true;
       this.invalidateOnline();
@@ -397,7 +429,7 @@ export class GpsEditDialogComponent {
     finally { if (this.current()) this.placeBusy.set(false); }
   }
 
-  cancel(): void { this.dismissed = true; this.invalidateOnline(); this.dialogRef.close(undefined); }
+  cancel(): void { this.dismissed = true; this.batchPreview.set(null); this.invalidateOnline(); this.dialogRef.close(undefined); }
 
   async useFileLocation(): Promise<void> {
     if (!this.current() || this.saving() || this.placeBusy()) return;
@@ -406,11 +438,11 @@ export class GpsEditDialogComponent {
     this.saveError.set('');
     try {
       const result = await firstValueFrom(this.api.delete<GpsResult>(`/photo/gps?path=${encodeURIComponent(this.data.path)}`));
-      // The write is done on the server, so the store follows it even when the dialog was dismissed meanwhile.
-      if (this.auth.identity() === this.owner) {
-        this.store.patchPhoto(this.data.path, { gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude, gps_manually_set: 0 });
-        void this.store.refreshPaths(null);
-      }
+      // The write is done on the server, so the store follows it even after a plain dismissal,
+      // but never into a later session or page.
+      if (!this.sessionCurrent()) return;
+      this.store.patchPhoto(this.data.path, { gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude, gps_manually_set: 0 });
+      void this.store.refreshPaths(null);
       if (this.current()) this.dialogRef.close({ ...result, gps_manually_set: 0 });
     } catch {
       if (!this.current()) return;
@@ -419,7 +451,43 @@ export class GpsEditDialogComponent {
     } finally { if (this.current()) this.saving.set(false); }
   }
 
+  async previewBatch(): Promise<void> {
+    if (!this.current() || !this.batchTarget || this.saving() || this.placeBusy() || !this.batchCoordinatesValid()) return;
+    const body = structuredClone(this.batchBody());
+    this.saving.set(true);
+    this.batchPreview.set(null);
+    this.saveError.set('');
+    try {
+      const result = await firstValueFrom(this.api.post<components['schemas']['BatchGpsResponse']>('/photos/batch_gps', { ...body, preview: true }));
+      if (this.current()) this.batchPreview.set({ body, result });
+    } catch { if (this.current()) this.saveError.set(I18N.photo_detail.gps.batch_error); }
+    finally { if (this.current()) this.saving.set(false); }
+  }
+
+  private async saveBatch(): Promise<void> {
+    if (!this.current() || !this.canApplyBatch() || this.saving() || this.placeBusy()) return;
+    const preview = this.batchPreview()!;
+    this.invalidateOnline();
+    this.saving.set(true);
+    this.saveError.set('');
+    try {
+      const result = await firstValueFrom(this.api.post<components['schemas']['BatchGpsResponse']>('/photos/batch_gps', {
+        ...preview.body, preview: false, preview_token: preview.result.preview_token,
+      }));
+      // A committed write remains server truth, but an expired dialog cannot
+      // publish into a later session or navigation.
+      if (!this.sessionCurrent()) return;
+      this.data.onBatchApplied?.();
+      void this.store.refreshPaths(null);
+      this.snackBar.open(this.i18n.t(I18N.photo_detail.gps.batch_applied, { changed: result.changed, skipped: result.skipped }), '', { duration: 4000 });
+      if (this.current()) this.dialogRef.close(result);
+    } catch {
+      if (this.current()) { this.batchPreview.set(null); this.saveError.set(I18N.photo_detail.gps.batch_error); }
+    } finally { if (this.current()) this.saving.set(false); }
+  }
+
   async save(): Promise<void> {
+    if (this.batchTarget) { await this.saveBatch(); return; }
     if (!this.current() || this.saving() || this.placeBusy() || !this.coordinatesValid()) return;
     const body = {
       path: this.data.path,
@@ -432,10 +500,9 @@ export class GpsEditDialogComponent {
     this.saveError.set('');
     try {
       const result = await firstValueFrom(this.api.put<GpsResult>('/photo/gps', body));
-      if (this.auth.identity() === this.owner) {
-        this.store.patchPhoto(body.path, { gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude, gps_manually_set: 1 });
-        void this.store.refreshPaths(null);
-      }
+      if (!this.sessionCurrent()) return;
+      this.store.patchPhoto(body.path, { gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude, gps_manually_set: 1 });
+      void this.store.refreshPaths(null);
       if (this.current()) this.dialogRef.close(result);
     } catch {
       if (!this.current()) return;

@@ -204,7 +204,11 @@
     "histogram": "Histograma"
   },
   "photoCard": {
-    "embed_to_file": "Escribir metadatos en el archivo"
+    "embed_to_file": "Escribir metadatos en el archivo",
+    "duplicate_set": "Abrir grupo de duplicadas",
+    "burst_set": "Abrir grupo de ráfaga",
+    "sequence_set": "Abrir bracket/panorama",
+    "open_detail": "Abrir página de foto"
   },
   "notifications": {
     "copied": "Copiado!",
@@ -1297,6 +1301,15 @@
     },
     "channel_clip_highlight_range": "% de altas luces recortadas",
     "channel_clip_shadow_range": "% de sombras recortadas",
+    "blinks_only": "Solo parpadeos",
+    "duplicates_only": "Solo duplicadas",
+    "card_actions": {
+      "title": "Personalizar botones de la tarjeta",
+      "hint": "Elige qué botones muestra una foto al pasar el cursor y en qué orden. Los botones de grupo solo aparecen en fotos que pertenecen a un grupo.",
+      "move_up": "Subir",
+      "move_down": "Bajar",
+      "reset": "Restaurar valores"
+    },
     "review_progress": {
       "title": "Progreso de revisión",
       "counts": "{undecided} sin decidir · {kept} conservadas · {rejected} rechazadas",
@@ -2479,7 +2492,15 @@
       "load_error": "No se pudieron cargar los lugares.",
       "place_error": "No se pudo actualizar el lugar. Comprueba el nombre, el límite y la conexión.",
       "save_error": "No se pudo guardar la ubicación de la foto. Inténtalo de nuevo.",
-      "use_file_location": "Usar la ubicación del archivo"
+      "use_file_location": "Usar la ubicación del archivo",
+      "batch_title": "Asignar ubicación",
+      "only_missing": "Solo fotos sin ubicación",
+      "preview_batch": "Vista previa de los cambios",
+      "batch_preview": "Se cambiarán {changed} fotos; {skipped} omitidas.",
+      "batch_applied": "{changed} fotos actualizadas; {skipped} omitidas.",
+      "batch_error": "No se pudo aplicar la ubicación. Selecciona como máximo 1000 fotos y repite la vista previa; la selección o el lugar guardado puede haber cambiado.",
+      "batch_limit": "Selecciona como máximo 1000 fotos. Sin protección se reemplazan las ubicaciones existentes. Los archivos originales no cambian.",
+      "batch_hint": "Elige una ubicación y revisa los cambios antes de guardar la selección."
     }
   },
   "manual_tags": {
@@ -2571,7 +2592,8 @@
     "delete_confirm_body": "{count} fotos se enviarán a la papelera del sistema operativo. Permanecen recuperables hasta que la vacíes.",
     "delete_partial_result": "{deleted} eliminadas, {failed} fallidas",
     "delete_failed": "Error al eliminar — no se envió nada a la papelera",
-    "delete_disabled_view_scope_tooltip": "Selecciona las fotos explícitamente para eliminarlas — aquí no se puede usar una selección de toda la vista"
+    "delete_disabled_view_scope_tooltip": "Selecciona las fotos explícitamente para eliminarlas — aquí no se puede usar una selección de toda la vista",
+    "remove_missing_rows": "Eliminar también las entradas de la biblioteca cuyo archivo ya falta en el disco"
   },
   "shortcuts": {
     "title": "Atajos de teclado",

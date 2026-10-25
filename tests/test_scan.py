@@ -1623,6 +1623,8 @@ class TestUpgradeDbSchemaLock:
             return subprocess.CompletedProcess(cmd, 0)
 
         monkeypatch.setattr(facet, "init_database", recording_init_database)
+        # The in-process HEIF repair reads the schema the stubbed init_database never builds.
+        monkeypatch.setattr("processing.scorer.fix_double_transposed_heif_thumbnails", lambda path: 0)
         monkeypatch.setattr(subprocess, "run", recording_run)
         monkeypatch.setattr(sys, "argv", ["facet.py", "--upgrade-db", "--db", db_path])
 

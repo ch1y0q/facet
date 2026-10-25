@@ -59,6 +59,7 @@ import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { PhotoTooltipComponent } from './photo-tooltip.component';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { PhotoActionsService } from '../../core/services/photo-actions.service';
+import { CardActionsService } from './card-actions.service';
 import { SlideshowComponent } from './slideshow.component';
 import { GalleryFilterSidebarComponent } from './gallery-filter-sidebar.component';
 import { GalleryPhotoMenuComponent, PhotoMenuAction, PhotoMenuActionEvent, isSheetAction } from './gallery-photo-menu.component';
@@ -346,6 +347,9 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                     (openCritiqueClicked)="openCritique($event)"
                     (embedMetadataClicked)="embedMetadata($event)"
                     (openAddPersonClicked)="openAddPerson($event)"
+                    [cardActions]="cardActions()"
+                    (openSetClicked)="store.scopeToSet($event.photo, $event.kind)"
+                    (openDetailClicked)="downloadPhoto($event)"
                     (favoriteToggled)="store.toggleFavorite($event)"
                     (rejectedToggled)="store.toggleRejected($event)"
                     (starClicked)="store.setRating($event.photo.path, $event.star)"
@@ -401,6 +405,9 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                   (openCritiqueClicked)="openCritique($event)"
                   (embedMetadataClicked)="embedMetadata($event)"
                   (openAddPersonClicked)="openAddPerson($event)"
+                  [cardActions]="cardActions()"
+                  (openSetClicked)="store.scopeToSet($event.photo, $event.kind)"
+                  (openDetailClicked)="downloadPhoto($event)"
                   (favoriteToggled)="store.toggleFavorite($event)"
                   (rejectedToggled)="store.toggleRejected($event)"
                   (starClicked)="store.setRating($event.photo.path, $event.star)"
@@ -461,6 +468,9 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                       (openCritiqueClicked)="openCritique($event)"
                       (embedMetadataClicked)="embedMetadata($event)"
                       (openAddPersonClicked)="openAddPerson($event)"
+                      [cardActions]="cardActions()"
+                      (openSetClicked)="store.scopeToSet($event.photo, $event.kind)"
+                      (openDetailClicked)="downloadPhoto($event)"
                       (favoriteToggled)="store.toggleFavorite($event)"
                       (rejectedToggled)="store.toggleRejected($event)"
                       (starClicked)="store.setRating($event.photo.path, $event.star)"
@@ -677,6 +687,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
             <span aria-hidden="true" class="w-px h-6 mx-1 bg-[var(--mat-sys-outline-variant)]"></span>
             <button mat-icon-button disabledInteractive (click)="copyPaths()" [matTooltip]="I18N.gallery.selection.copy_filenames | translate" [attr.aria-label]="I18N.gallery.selection.copy_filenames | translate"><mat-icon>content_copy</mat-icon></button>
             @if (auth.isEdition()) {
+              <button mat-icon-button disabledInteractive (click)="openBatchGpsDialog()" [matTooltip]="I18N.photo_detail.gps.batch_title | translate" [attr.aria-label]="I18N.photo_detail.gps.batch_title | translate"><mat-icon>location_on</mat-icon></button>
               <button mat-icon-button disabledInteractive (click)="openManualTagsDialog()" [matTooltip]="I18N.gallery.selection.edit_tags | translate" [attr.aria-label]="I18N.gallery.selection.edit_tags | translate"><mat-icon>sell</mat-icon></button>
               <button mat-icon-button disabledInteractive (click)="openExportDialog()" [matTooltip]="I18N.export.action | translate" [attr.aria-label]="I18N.export.action | translate"><mat-icon>drive_file_move</mat-icon></button>
               <button mat-icon-button disabledInteractive (click)="openCullDialog()" [matTooltip]="I18N.cull.action | translate" [attr.aria-label]="I18N.cull.action | translate"><mat-icon>folder_move</mat-icon></button>
@@ -764,13 +775,19 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
   changeDetection: ChangeDetectionStrategy.Eager,
   host: {
     class: 'block h-full',
+    // meta.a is Cmd+A: macOS's select-all, the key a Mac user actually presses.
+    // control.a keeps working on Windows/Linux (and on macOS for Ctrl+A).
     '(document:keydown.control.a)': 'onSelectAllShortcut($event)',
+    '(document:keydown.meta.a)': 'onSelectAllShortcut($event)',
   },
 })
 export class GalleryComponent implements OnInit, OnDestroy {
   protected readonly I18N = i18nKeys();
   protected readonly store = inject(GalleryStore);
   protected readonly auth = inject(AuthService);
+  private readonly cardActionsService = inject(CardActionsService);
+  /** The user's hover-button layout for every card, from localStorage. */
+  protected readonly cardActions = this.cardActionsService.config;
   protected readonly scan = inject(ScanService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly bottomSheet = inject(MatBottomSheet);
@@ -1070,13 +1087,17 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   /** Offer the restore only while all five are still off, so it never fights a manual change.
    *  The stash itself (and showAllHidden()/restoreHidden()) lives on GalleryStore — the
-   *  timeline's reachability banner offers the same affordance and needs the same state. */
+   *  timeline's reachability banner offers the same affordance and needs the same state.
+   *  Suppressed under an "only X" filter too: that view shows a subset by design, so the
+   *  banner's "showing all photos" sentence would be false while one is up. The stash
+   *  survives, so turning the only-filter off brings the offer back. */
   readonly canRestoreHidden = computed(() => {
     const stash = this.store.hiddenFiltersStash();
     if (!stash) return false;
     const f = this.store.filters();
     return !f.hide_blinks && !f.hide_bursts && !f.hide_duplicates && !f.hide_brackets
-      && !f.hide_panoramas;
+      && !f.hide_panoramas
+      && !f.blinks_only && !f.duplicates_only && !f.show_rejected;
   });
 
   /** The active set-scope kind (from photo-detail's "open this set"), or null. */
@@ -1222,7 +1243,10 @@ export class GalleryComponent implements OnInit, OnDestroy {
     return buildMosaicRows(photos, width, this.store.cardWidth() || 168, GalleryComponent.ROW_GAP);
   });
 
+  private gpsDialogOwnerDestroyed = false;
+
   constructor() {
+    this.destroyRef.onDestroy(() => { this.gpsDialogOwnerDestroyed = true; });
     afterNextRender(() => {
       this.isTouchDevice.set(window.matchMedia('(hover: none)').matches);
       this.touchOnly.set(window.matchMedia('(hover: none) and (pointer: coarse)').matches);
@@ -1346,11 +1370,33 @@ export class GalleryComponent implements OnInit, OnDestroy {
     // Read (and clear) BEFORE tryRestoreView: a scoped "open this set" request
     // means the user wants that new scoped view, never a resumed previous one.
     const setScope = this.consumeSetScopeState();
+    // A parameterless landing on `/` is the nav icon's return from another
+    // page (a reload carries its own query params, an album route its
+    // albumId). The session's last gallery query is merged into the filters
+    // AFTER loadConfig rebuilds them -- directly, not through a navigation:
+    // the ActivatedRoute snapshot does not refresh for same-component
+    // param-only navigations, so a navigate-then-read silently lost the
+    // restored filters (the album-route return hit exactly that).
+    const savedQuery = (!setScope && !this.route.snapshot.paramMap.get('albumId')
+      && !Object.keys(this.route.snapshot.queryParams).length)
+      ? this.store.readGallerySessionQuery()
+      : null;
+    const routeAlbumId = this.route.snapshot.paramMap.get('albumId');
     if (!setScope && this.tryRestoreView()) return;
     // Reset album state to avoid stale singleton data; loadConfig() resets filters from scratch
     this.store.currentAlbum.set(null);
     this.store.initializing.set(true);
     await this.store.loadConfig();
+    // Record what THIS init resolved to: a plain URL entry must write its own
+    // filters (syncUrl never runs for one), and the albums page shares
+    // loadConfig but must never touch this memory. An album route skips the
+    // write -- its filters belong to the album view, not the plain gallery.
+    if (!routeAlbumId) {
+      this.store.saveSessionQuery();
+    }
+    if (savedQuery) {
+      this.store.applySessionQuery(savedQuery);
+    }
     // Apply the ephemeral set scope AFTER loadConfig, which replaces `filters`
     // wholesale -- applying it before would just be discarded. Never in the
     // URL: sequence_group_id is renumbered on every detection pass, so a
@@ -1890,6 +1936,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
       case 'compare':
       case 'mark-panorama':
       case 'tags':
+      case 'gps':
         break;
       default: return assertNever(action);
     }
@@ -1945,6 +1992,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
       case 'export': this.openExportDialog(); break;
       case 'cull': await this.openCullDialog(); break;
       case 'tags': await this.openManualTagsDialog(); break;
+      case 'gps': await this.openBatchGpsDialog(); break;
       case 'delete': await this.deleteSelected(); break;
       case 'copy': await this.copyPaths(); break;
       case 'mark-panorama': await this.markAsPanorama(action.sequenceKind); break;
@@ -2040,6 +2088,34 @@ export class GalleryComponent implements OnInit, OnDestroy {
         ? { filters: this.store.filterPayload(), exclude: [...this.excludedPaths()], count: this.selectionCount() }
         : { paths: [...this.selectedPaths()] },
     });
+  }
+
+  async openBatchGpsDialog(): Promise<void> {
+    if (!this.auth.isEdition() || !this.selectionCount()) return;
+    const owner = this.auth.identity();
+    const url = this.router.url;
+    let navigated = false;
+    const current = () => !this.gpsDialogOwnerDestroyed && !navigated && this.router.url === url && this.auth.identity() === owner && this.auth.isEdition();
+    const selectionIdentity = () => JSON.stringify({
+      view: this.viewScoped(), paths: [...this.selectedPaths()].sort(),
+      exclude: [...this.excludedPaths()].sort(), filters: this.store.filterPayload(),
+    });
+    const originalSelection = selectionIdentity();
+    const onBatchApplied = () => {
+      if (current() && selectionIdentity() === originalSelection) this.store.clearSelection();
+    };
+    const batch = this.viewScoped()
+      ? { filters: structuredClone(this.store.filterPayload()), exclude: [...this.excludedPaths()] }
+      : { photo_paths: [...this.selectedPaths()] };
+    const navigation = this.router.events.subscribe(event => { if (event instanceof NavigationStart) navigated = true; });
+    try {
+      const { GpsEditDialogComponent } = await import('../photo-detail/gps-edit-dialog.component');
+      if (!current()) return;
+      this.dialog.open(GpsEditDialogComponent, {
+        width: '95vw', maxWidth: '640px',
+        data: { path: '', filename: this.i18n.t(I18N.photo_detail.gps.batch_title), lat: null, lng: null, batch, onBatchApplied },
+      });
+    } finally { navigation.unsubscribe(); }
   }
 
   /** Bulk add/remove of one manual tag. The dialog owns the request; the list is
@@ -2168,7 +2244,10 @@ export class GalleryComponent implements OnInit, OnDestroy {
     if (!result) return;
     const res = await this.photoActions.deletePhotos(paths, result);
     if (!res) return;
-    this.store.removePhotos(res.deleted);
+    // `removed_missing` rows are as gone as trashed ones -- the grid must not
+    // keep a tile for a row the server just reconciled away.
+    const removed = [...res.deleted, ...(res.removed_missing ?? [])];
+    this.store.removePhotos(removed);
     // `removePhotos` already prunes the deleted paths out of the selection.
     if (!explicit) this.clearSelection();
     // Every failure bucket counts as "failed" here, not just
@@ -2180,11 +2259,11 @@ export class GalleryComponent implements OnInit, OnDestroy {
     // the old two-field toast rendered.
     const failed = res.refused_bracket_lead.length + res.not_found.length + res.not_visible.length
       + res.skipped.length + Object.keys(res.errors).length;
-    if (res.deleted.length === 0 && failed > 0) {
+    if (removed.length === 0 && failed > 0) {
       this.snackBar.open(this.i18n.t(I18N.cull.delete_failed), '', { duration: 4000 });
     } else {
       this.snackBar.open(
-        this.i18n.t(I18N.cull.delete_partial_result, { deleted: res.deleted.length, failed }),
+        this.i18n.t(I18N.cull.delete_partial_result, { deleted: removed.length, failed }),
         '', { duration: 4000 },
       );
     }

@@ -204,7 +204,11 @@
     "histogram": "Istogramma"
   },
   "photoCard": {
-    "embed_to_file": "Scrivi i metadati nel file"
+    "embed_to_file": "Scrivi i metadati nel file",
+    "duplicate_set": "Apri gruppo di duplicati",
+    "burst_set": "Apri gruppo di raffica",
+    "sequence_set": "Apri bracket/panorama",
+    "open_detail": "Apri pagina foto"
   },
   "notifications": {
     "copied": "Copiato!",
@@ -1297,6 +1301,15 @@
     },
     "channel_clip_highlight_range": "% alte luci tagliate",
     "channel_clip_shadow_range": "% ombre tagliate",
+    "blinks_only": "Solo occhi chiusi",
+    "duplicates_only": "Solo duplicati",
+    "card_actions": {
+      "title": "Personalizza i pulsanti della scheda",
+      "hint": "Scegli quali pulsanti mostra una foto al passaggio del mouse e in quale ordine. I pulsanti di gruppo compaiono solo sulle foto che appartengono a un gruppo.",
+      "move_up": "Sposta su",
+      "move_down": "Sposta giù",
+      "reset": "Ripristina predefiniti"
+    },
     "review_progress": {
       "title": "Avanzamento revisione",
       "counts": "{undecided} da decidere · {kept} conservate · {rejected} rifiutate",
@@ -2479,7 +2492,15 @@
       "load_error": "Impossibile caricare i luoghi.",
       "place_error": "Impossibile aggiornare il luogo. Controlla nome, limite e connessione.",
       "save_error": "Impossibile salvare il luogo della foto. Riprova.",
-      "use_file_location": "Usa la posizione del file"
+      "use_file_location": "Usa la posizione del file",
+      "batch_title": "Imposta posizione",
+      "only_missing": "Solo foto senza posizione",
+      "preview_batch": "Anteprima delle modifiche",
+      "batch_preview": "{changed} foto saranno modificate; {skipped} ignorate.",
+      "batch_applied": "{changed} foto aggiornate; {skipped} ignorate.",
+      "batch_error": "Impossibile applicare la posizione. Seleziona al massimo 1000 foto e ripeti l’anteprima; la selezione o il luogo salvato potrebbe essere cambiato.",
+      "batch_limit": "Seleziona al massimo 1000 foto. Senza protezione le posizioni esistenti vengono sostituite. I file originali restano invariati.",
+      "batch_hint": "Scegli una posizione e visualizza le modifiche prima di salvare la selezione."
     }
   },
   "manual_tags": {
@@ -2571,7 +2592,8 @@
     "delete_confirm_body": "{count} foto verranno inviate al cestino del sistema operativo. Restano recuperabili finché non lo svuoti.",
     "delete_partial_result": "{deleted} eliminate, {failed} fallite",
     "delete_failed": "Eliminazione non riuscita — nulla è stato inviato al cestino",
-    "delete_disabled_view_scope_tooltip": "Seleziona le foto esplicitamente per eliminarle — qui non è possibile usare una selezione dell'intera vista"
+    "delete_disabled_view_scope_tooltip": "Seleziona le foto esplicitamente per eliminarle — qui non è possibile usare una selezione dell'intera vista",
+    "remove_missing_rows": "Rimuovi anche le voci della libreria il cui file è già mancante dal disco"
   },
   "shortcuts": {
     "title": "Scorciatoie da tastiera",
