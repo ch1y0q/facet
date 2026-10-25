@@ -1141,6 +1141,8 @@ Imposta `min_photos_for_person` su un valore più alto per nascondere dal menu a
 
 ## Prestazioni
 
+I rapidi cambi di filtro annullano le richieste superate delle pagine e del progresso di revisione, incluse le viste simili e fissate. Uscire dalla galleria o cambiare identità annulla le letture in corso. Le modifiche a valutazioni e decisioni già inviate non vengono annullate.
+
 ### Database di grandi dimensioni (50k+ foto)
 
 Esegui questi comandi per prestazioni migliori:

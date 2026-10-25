@@ -1139,6 +1139,8 @@ Aumenta `min_photos_for_person` para ocultar del desplegable de filtros las pers
 
 ## Rendimiento
 
+Los cambios rápidos de filtro cancelan las solicitudes anteriores de páginas y progreso de revisión, incluidas las vistas de similares y fijadas. Salir de la galería o cambiar de identidad cancela las lecturas pendientes. Los cambios de valoración y revisión ya enviados no se cancelan.
+
 ### Bases de datos grandes (más de 50k fotos)
 
 Ejecuta lo siguiente para un mejor rendimiento:

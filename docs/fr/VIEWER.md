@@ -1142,6 +1142,8 @@ Augmentez `min_photos_for_person` pour masquer du menu déroulant de filtre les 
 
 ## Performances
 
+Les changements rapides de filtre annulent les anciennes requêtes de pages et de progression, y compris pour les vues similaires et épinglées. Quitter la galerie ou changer d’identité annule les lectures en cours. Les modifications de notes et de décisions déjà envoyées ne sont pas annulées.
+
 ### Grandes bases de données (50k+ photos)
 
 Lancez ces commandes pour de meilleures performances :

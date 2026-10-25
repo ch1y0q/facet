@@ -1211,6 +1211,8 @@ Set `min_photos_for_person` higher to hide persons with few photos from the filt
 
 ## Performance
 
+Rapid filter changes cancel superseded gallery page and review-progress requests, including reads for similar and pinned views. Leaving the gallery or changing the signed-in identity cancels outstanding gallery reads. Rating and review saves already submitted are not cancelled.
+
 ### Large Databases (50k+ photos)
 
 Run these for better performance:

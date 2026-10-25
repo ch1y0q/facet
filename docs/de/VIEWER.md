@@ -1141,6 +1141,8 @@ Setzen Sie `min_photos_for_person` höher, um Personen mit wenigen Fotos aus dem
 
 ## Performance
 
+Schnelle Filteränderungen brechen überholte Anfragen für Galerieseiten und Bewertungsfortschritt ab, auch bei ähnlichen und angehefteten Ansichten. Beim Verlassen der Galerie oder Wechsel der angemeldeten Identität werden ausstehende Galerie-Leseanfragen abgebrochen. Bereits abgeschickte Bewertungsänderungen werden nicht abgebrochen.
+
 ### Große Datenbanken (50k+ Fotos)
 
 Führen Sie diese für bessere Performance aus:

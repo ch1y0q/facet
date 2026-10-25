@@ -1,9 +1,10 @@
-import { Injectable, inject, signal, computed, effect, untracked } from '@angular/core';
+import { Injectable, inject, signal, computed, effect, untracked, DestroyRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { pathOf } from '../../shared/utils/url-path';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Router, ActivatedRoute, NavigationStart } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { firstValueFrom, timeout } from 'rxjs';
+import { firstValueFrom, Subject, takeUntil, timeout } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { AlbumService, Album } from '../../core/services/album.service';
@@ -277,6 +278,11 @@ const BATCH_ACTIVITY: Record<string, { kind: UserActivityKind; value: (extra: Re
 export class GalleryStore {
   private api = inject(ApiService);
   private auth = inject(AuthService);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly pageReadCancelled = new Subject<void>();
+  private readonly progressReadCancelled = new Subject<void>();
+  private readOwner = this.auth.identity();
+  private listingReadsActive = true;
   private albumService = inject(AlbumService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
@@ -312,7 +318,10 @@ export class GalleryStore {
 
   /** The same full query as the grid; pagination never affects the aggregate. */
   async loadReviewProgress(): Promise<void> {
+    if (this.destroyRef.destroyed || !this.listingReadsActive) return;
+    this.syncReadOwner();
     const seq = ++this.reviewProgressSeq;
+    this.progressReadCancelled.next();
     const identity = this.auth.identity();
     const key = this.reviewProgressKey();
     this.reviewProgress.set(null);
@@ -327,7 +336,7 @@ export class GalleryStore {
       } catch { return; }
     }
     try {
-      const progress = await firstValueFrom(this.api.get<components['schemas']['ReviewProgressResponse']>('/photos/review_progress', params));
+      const progress = await firstValueFrom(this.api.get<components['schemas']['ReviewProgressResponse']>('/photos/review_progress', params).pipe(takeUntil(this.progressReadCancelled)));
       if (seq === this.reviewProgressSeq && identity === this.auth.identity() && key === this.reviewProgressKey()) this.reviewProgress.set(progress);
     } catch { /* Counts unavailable: never show a guessed denominator. */ }
   }
@@ -759,14 +768,19 @@ export class GalleryStore {
   readonly activeFilterCount = computed(() => countActiveFilters(this.filters()));
 
   constructor() {
+    this.destroyRef.onDestroy(() => this.cancelListingReads());
+    effect(() => {
+      const owner = this.auth.identity();
+      untracked(() => this.syncReadOwner(owner));
+    });
     effect(() => { this.auth.identity(); untracked(() => this.clearForeignReviewedPhotos()); });
     this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
+      if (event instanceof NavigationStart && pathOf(event.url) !== pathOf(this.router.url)) {
+        this.listingReadsActive = false;
+        this.cancelListingReads();
+      }
       if (event instanceof NavigationStart
         && this.router.currentNavigation?.()?.extras?.state?.[REVIEW_RESUME_NAVIGATION] !== this.resumeSeq) this.resumeSeq++;
-    });
-    effect(() => {
-      this.auth.identity();
-      untracked(() => { this.reviewProgressSeq++; this.resumeSeq++; this.reviewProgress.set(null); });
     });
     this.assistantChanges.batch$.pipe(takeUntilDestroyed()).subscribe(batch => void this.refreshPaths(batch.paths));
     // Auto-save album filters on change (debounced) — persists filter state for all albums
@@ -867,8 +881,28 @@ export class GalleryStore {
     }
   }
 
+  private syncReadOwner(owner = this.auth.identity()): void {
+    if (owner === this.readOwner) return;
+    this.readOwner = owner;
+    this.cancelListingReads();
+    this.resumeSeq++;
+    this.reviewProgress.set(null);
+  }
+
+  private cancelListingReads(): void {
+    // Invalidate guards before unsubscribe completes firstValueFrom's promise.
+    this._loadSeq++;
+    this.reviewProgressSeq++;
+    this.pageReadCancelled.next();
+    this.progressReadCancelled.next();
+    this.loading.set(false);
+  }
+
   /** Load photos based on current filters (replaces list) */
   async loadPhotos(acceptResult: () => boolean = () => true): Promise<void> {
+    if (this.destroyRef.destroyed) return;
+    this.syncReadOwner();
+    this.listingReadsActive = true;
     // Always load from page 1 — only nextPage() uses page > 1
     const pinned = this.pinnedLoad ? this.pinnedPaths() : null;
     this.pinnedLoad = false;
@@ -878,6 +912,7 @@ export class GalleryStore {
     this.resetViewScope();
     this.filters.update(current => ({ ...current, page: 1 }));
     const seq = ++this._loadSeq;
+    this.pageReadCancelled.next();
     const identity = this.auth.identity();
     this.loadedOnce = true;
     void this.loadReviewProgress();
@@ -890,7 +925,7 @@ export class GalleryStore {
 
       if (pinned) {
         const res = await firstValueFrom(
-          this.api.post<{ photos: Photo[]; total: number; missing: string[] }>('/photos/by_paths', { paths: pinned }),
+          this.api.post<{ photos: Photo[]; total: number; missing: string[] }>('/photos/by_paths', { paths: pinned }).pipe(takeUntil(this.pageReadCancelled)),
         );
         if (seq !== this._loadSeq || identity !== this.auth.identity() || !acceptResult()) return;
         this.photos.set(normalisePhotoFlagsAll(res.photos));
@@ -916,7 +951,7 @@ export class GalleryStore {
       }
 
       const params = buildApiParams(f, this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
-      const res = await firstValueFrom(this.api.get<PhotosResponse>('/photos', params));
+      const res = await firstValueFrom(this.api.get<PhotosResponse>('/photos', params).pipe(takeUntil(this.pageReadCancelled)));
       if (seq !== this._loadSeq || identity !== this.auth.identity() || !acceptResult()) return;
       this.photos.set(normalisePhotoFlagsAll(res.photos));
       if (f.review_status === 'undecided') {
@@ -963,7 +998,8 @@ export class GalleryStore {
    * gallery has loaded once, so a write seen from /culling or /stats never loads it behind the user.
    */
   async refreshPaths(paths: string[] | null): Promise<void> {
-    if (!this.loadedOnce) return;
+    if (!this.loadedOnce || this.destroyRef.destroyed || !this.listingReadsActive) return;
+    this.syncReadOwner();
     void this.loadReviewProgress();
     const loadSeq = this._loadSeq;
     const run = this.refreshChain.then(() => this.runRefresh(paths, loadSeq));
@@ -972,6 +1008,7 @@ export class GalleryStore {
   }
 
   private async runRefresh(paths: string[] | null, loadSeq: number): Promise<void> {
+    if (!this.claimRefresh(loadSeq)) return;
     try {
       if (paths === null) {
         if (this.pinnedPaths() !== null) await this.refreshPinnedList(loadSeq);
@@ -1010,7 +1047,7 @@ export class GalleryStore {
     const chunks: string[][] = [];
     for (let i = 0; i < paths.length; i += BY_PATHS_MAX) chunks.push(paths.slice(i, i + BY_PATHS_MAX));
     const responses = await Promise.all(chunks.map(chunk => firstValueFrom(
-      this.api.post<{ photos: Photo[] }>('/photos/by_paths', filters ? { paths: chunk, filters } : { paths: chunk }),
+      this.api.post<{ photos: Photo[] }>('/photos/by_paths', filters ? { paths: chunk, filters } : { paths: chunk }).pipe(takeUntil(this.pageReadCancelled)),
     )));
     const rows = normalisePhotoFlagsAll(responses.flatMap(res => res.photos));
     const returned = new Set(rows.map(p => p.path));
@@ -1070,7 +1107,8 @@ export class GalleryStore {
       const base = buildApiParams(f, this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
       const pages: PhotosResponse[] = [];
       for (let page = 1; page <= f.page; page++) {
-        pages.push(await firstValueFrom(this.api.get<PhotosResponse>('/photos', { ...base, page })));
+        if (!this.claimRefresh(loadSeq)) return;
+        pages.push(await firstValueFrom(this.api.get<PhotosResponse>('/photos', { ...base, page }).pipe(takeUntil(this.pageReadCancelled))));
       }
       if (!this.claimRefresh(loadSeq)) return;
       if (this.filters().page !== f.page) continue;
@@ -1101,6 +1139,8 @@ export class GalleryStore {
 
   /** Load next page and append to existing photos */
   async nextPage(acceptResult: () => boolean = () => true): Promise<void> {
+    if (this.destroyRef.destroyed || !this.listingReadsActive) return;
+    this.syncReadOwner();
     if (this.pinnedPaths() !== null) return;
     if (!this.hasMore() || this.loading()) return;
 
@@ -1121,7 +1161,7 @@ export class GalleryStore {
         this.hasMore.set(res.has_more);
       } else {
         const params = buildApiParams(this.filters(), this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
-        const res = await firstValueFrom(this.api.get<PhotosResponse>('/photos', params));
+        const res = await firstValueFrom(this.api.get<PhotosResponse>('/photos', params).pipe(takeUntil(this.pageReadCancelled)));
         if (!current()) return;
         this.photos.update(current => [...current, ...normalisePhotoFlagsAll(res.photos)]);
         this.total.set(res.total);
@@ -1524,7 +1564,7 @@ export class GalleryStore {
     const current = this.captureReviewView();
     try {
       const hints = await firstValueFrom(
-        this.api.post<Record<string, KeeperHint>>('/photos/keeper_hints', { paths }),
+        this.api.post<Record<string, KeeperHint>>('/photos/keeper_hints', { paths }).pipe(takeUntil(this.pageReadCancelled)),
       );
       if (!current()) return;
       for (const [path, hint] of Object.entries(hints)) {
@@ -1809,6 +1849,8 @@ export class GalleryStore {
 
   /** Repair shifted offsets with one tail-page request; Undo can restore earlier rows. */
   async refreshReviewResults(rebuild = false): Promise<void> {
+    if (this.destroyRef.destroyed || !this.listingReadsActive) return;
+    this.syncReadOwner();
     this.clearForeignReviewedPhotos();
     const f = this.filters();
     const identity = this.auth.identity();
@@ -1835,12 +1877,13 @@ export class GalleryStore {
       const offset = (page - 1) * f.per_page;
       this.resetViewScope();
       seq = ++this._loadSeq;
+      this.pageReadCancelled.next();
       this.loadError.set(false);
       this.loadErrorKey.set(undefined);
       this.loading.set(true);
       try {
         const params = buildApiParams({ ...f, page }, this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
-        const res = await firstValueFrom(this.api.get<PhotosResponse>('/photos', params));
+        const res = await firstValueFrom(this.api.get<PhotosResponse>('/photos', params).pipe(takeUntil(this.pageReadCancelled)));
         if (!current()) return;
         this.photos.set([...retained.slice(0, offset), ...normalisePhotoFlagsAll(res.photos)]);
         this.filters.update(current => ({ ...current, page }));
@@ -2184,7 +2227,7 @@ export class GalleryStore {
       this.api.get<SimilarPage>(
         `/similar_photos/${encodeURIComponent(f.similar_to)}`,
         { limit: f.per_page, offset, min_similarity: minSim, mode: f.similarity_mode || 'visual', full: 1 },
-      ),
+      ).pipe(takeUntil(this.pageReadCancelled)),
     );
   }
 

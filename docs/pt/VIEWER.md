@@ -1140,6 +1140,8 @@ Defina `min_photos_for_person` mais alto para ocultar do menu suspenso de filtro
 
 ## Desempenho
 
+Mudanças rápidas de filtro cancelam solicitações anteriores de páginas e progresso de revisão, incluindo vistas semelhantes e fixadas. Sair da galeria ou mudar a identidade cancela as leituras pendentes. Alterações de avaliação e revisão já enviadas não são canceladas.
+
 ### Bancos de Dados Grandes (50k+ fotos)
 
 Execute estes comandos para melhor desempenho:
