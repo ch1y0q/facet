@@ -189,9 +189,10 @@ async def list_persons(
         where_parts.append(person_not_hidden_clause('p'))
     if search.strip():
         term = search.strip()
-        if term.isdigit():
+        numeric_id = int(term) if term.isdecimal() and len(term) <= 19 else None
+        if numeric_id is not None and numeric_id <= 9223372036854775807:
             where_parts.append("(p.id = ? OR p.name LIKE ?)")
-            params.extend([int(term), f"%{term}%"])
+            params.extend([numeric_id, f"%{term}%"])
         else:
             where_parts.append("p.name LIKE ?")
             params.append(f"%{term}%")

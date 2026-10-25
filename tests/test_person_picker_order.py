@@ -103,3 +103,13 @@ def test_unrestricted_named_empty_person_remains_assignable_and_searchable(editi
     response = edition_client.get('/api/persons', params={'sort': 'assignment', 'search': 'Person 55'})
     assert response.status_code == 200
     assert [(row['id'], row['face_count']) for row in response.json()['persons']] == [(55, 0)]
+
+
+@pytest.mark.parametrize('name', ['²', '9999999999999999999999999999999', '9223372036854775808'])
+@pytest.mark.parametrize('sort', ['assignment', 'name_asc'])
+def test_non_integer_and_oversized_numeric_names_remain_searchable(edition_client, picker_db, name, sort):
+    with sqlite3.connect(picker_db) as conn:
+        conn.execute('UPDATE persons SET name=? WHERE id=3', (name,))
+    response = edition_client.get('/api/persons', params={'sort': sort, 'search': name})
+    assert response.status_code == 200
+    assert [row['id'] for row in response.json()['persons']] == [3]
