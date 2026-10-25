@@ -977,8 +977,13 @@ export class GalleryStore {
       this.photos.set(normalisePhotoFlagsAll(pages.flatMap(page => page.similar ?? [])));
       this.total.set(last.total);
       this.hasMore.set(last.has_more);
+      this.loadError.set(false);
     } catch {
-      if (current()) this.loadError.set(true);
+      if (current()) {
+        this.loadError.set(true);
+        this.listingPagesInterrupted = true;
+        this.listingRefreshOwed = true;
+      }
     } finally {
       if (current()) this.loading.set(false);
     }

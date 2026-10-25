@@ -339,6 +339,34 @@ describe('GalleryStore read cancellation with HttpClient', () => {
     if (reason === 'rating') expect(store.photos()[0].star_rating).toBe(4);
   });
 
+  it('retries interrupted similarity pages after a failed foreground rebuild instead of skipping a page', async () => {
+    const url = `/similar_photos/${encodeURIComponent('/seed.jpg')}`;
+    const initial = store.updateFilter('similar_to', '/seed.jpg');
+    request(url).flush({ similar: [makePhoto({ path: '/first.jpg' })], total: 3, has_more: true });
+    await initial;
+    const interrupted = store.nextPage();
+    const oldTail = request(url);
+    events.next(new NavigationStart(1, '/photo?path=/first.jpg'));
+    store.parkListingReads();
+    (TestBed.inject(Router) as unknown as { url: string }).url = '/photo?path=/first.jpg';
+    events.next(new NavigationEnd(1, '/photo?path=/first.jpg', '/photo?path=/first.jpg'));
+    expect(oldTail.cancelled).toBe(true);
+    const failed = store.nextPage(undefined, { whileParked: true });
+    request(url).flush({}, { status: 500, statusText: 'failed' });
+    await Promise.all([interrupted, failed]);
+    const retry = store.nextPage(undefined, { whileParked: true });
+    const first = request(url);
+    expect(first.request.params.get('offset')).toBe('0');
+    first.flush({ similar: [makePhoto({ path: '/first.jpg' })], total: 3, has_more: true });
+    await Promise.resolve();
+    const tail = request(url);
+    expect(tail.request.params.get('offset')).toBe('64');
+    tail.flush({ similar: [makePhoto({ path: '/second.jpg' })], total: 3, has_more: true });
+    await retry;
+    expect(store.photos().map(photo => photo.path)).toEqual(['/first.jpg', '/second.jpg']);
+    expect(store.loadError()).toBe(false);
+  });
+
   it.each(['success', 'failure', 'navigation'] as const)('recovers an interrupted ordinary listing from a photo without overlapping requests (%s)', async outcome => {
     const initial = store.loadPhotos();
     const obsolete = request('/photos');

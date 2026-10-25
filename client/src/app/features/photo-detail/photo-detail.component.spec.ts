@@ -1,4 +1,3 @@
-import { finalize } from 'rxjs';
 import { GalleryStore } from '../gallery/gallery.store';
 import { makePhoto } from '../../../testing/photo.fixture';
 import type { Mock } from 'vitest';
@@ -6,7 +5,7 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, ParamMap, Router, NavigationStart, NavigationEnd, convertToParamMap } from '@angular/router';
 import { Location } from '@angular/common';
 import { MatDialog } from '@angular/material/dialog';
-import { BehaviorSubject, NEVER, Observable, of, Subject, throwError } from 'rxjs';
+import { BehaviorSubject, finalize, Observable, of, Subject, throwError } from 'rxjs';
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { signal } from '@angular/core';
 import { ApiService } from '../../core/services/api.service';
