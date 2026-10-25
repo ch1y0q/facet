@@ -1062,7 +1062,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
           this.photo.update(current => current ? { ...current, ...patch } : current);
         }
         await this.store.reloadPersonOptions();
-        if (this.store.filters().person_id || this.store.filters().manual_faces_need_review) {
+        if (this.store.filters().person_id || this.store.filters().manual_faces_need_review || this.store.filters().faces_need_names) {
           await this.store.refreshPaths([path]);
         }
       } },

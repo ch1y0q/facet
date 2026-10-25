@@ -1319,7 +1319,9 @@
       "browser": "Reanudar la cola recordada en este navegador."
     },
     "manual_faces_need_review": "Rostros manuales por revisar",
-    "manual_faces_review_hint": "Según el último escaneo o revisión en el editor de rostros, sin supervisión continua. Abra el editor de rostros de una foto para revisar las marcas guardadas."
+    "manual_faces_review_hint": "Según el último escaneo o revisión en el editor de rostros, sin supervisión continua. Abra el editor de rostros de una foto para revisar las marcas guardadas.",
+    "faces_need_names": "Caras sin nombre",
+    "faces_need_names_hint": "Incluye caras sin asignar y grupos de personas sin nombre. Usa + para asignar una cara o nombra un grupo en Personas. No incluye fotos sin caras detectadas."
   },
   "composition_patterns": {
     "none": "Ninguno",

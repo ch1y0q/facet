@@ -51,7 +51,8 @@ _clip_config_cache = None
 _clip_config_lock = threading.Lock()
 # Rows sampled to decide the stored embedding dimension; see _stored_embedding_dim.
 _EMBEDDING_DIM_SAMPLE = 1000
-_embedding_cache = None  # numpy fallback: {'matrix': np.array, 'paths': list, 'count': int}
+_embedding_cache = None  # One retained NumPy fallback matrix, keyed by DB and visibility.
+_embedding_cache_lock = asyncio.Lock()
 
 # Split-TTL availability tracking.
 #
@@ -460,51 +461,97 @@ async def _search_vec(conn, text_emb, limit, threshold, vis_sql, vis_params):
     return scores
 
 
+async def _embedding_matrix_key(conn, vis_sql, vis_params, user_id):
+    """Identify the current database pathname, or an isolated in-memory DB."""
+    from api.change_token import db_change_token
+
+    async with conn.execute("PRAGMA database_list") as cur:
+        databases = await cur.fetchall()
+    db_path = next(row[2] for row in databases if row[1] == 'main')
+    scope = (vis_sql, tuple(vis_params), user_id)
+    if not db_path:
+        async with conn.execute("PRAGMA data_version") as cur:
+            row = await cur.fetchone()
+        # data_version excludes this connection's writes; total_changes includes
+        # them. Retaining the connection also prevents object-ID reuse.
+        return (conn, row[0], conn.total_changes, scope)
+    # Existing cross-process sentinel handles WAL commits and file replacement.
+    # No embedding-only generation exists: unrelated commits also invalidate.
+    token = await asyncio.to_thread(db_change_token, db_path)
+    return (db_path, token, scope)
+
+
 async def _load_embedding_matrix(conn, vis_sql, vis_params, user_id):
-    """Fallback: load all photo embeddings into a numpy matrix (async)."""
+    """Fallback: reuse one matrix until its database or visibility changes."""
     global _embedding_cache
     from utils.embedding import bytes_to_normalized_embedding, filter_uniform_embeddings
 
-    cur = await conn.execute(
-        f"SELECT COUNT(*) FROM photos WHERE clip_embedding IS NOT NULL AND {vis_sql}",
-        vis_params
-    )
-    row = await cur.fetchone()
-    await cur.close()
-    count = row[0] if row else 0
+    # Serialize misses (including different scopes) so concurrent requests do
+    # not multiply the BLOB rows and matrix construction's peak memory.
+    async with _embedding_cache_lock:
+        key = await _embedding_matrix_key(conn, vis_sql, vis_params, user_id)
+        # An explicit transaction may be reading an older snapshot or its own
+        # uncommitted writes. Never share that result with other connections.
+        cacheable = not conn.in_transaction
+        if cacheable and _embedding_cache and _embedding_cache['key'] == key:
+            return _embedding_cache['matrix'], _embedding_cache['paths']
 
-    if _embedding_cache and _embedding_cache['count'] == count and _embedding_cache['user_id'] == user_id:
-        return _embedding_cache['matrix'], _embedding_cache['paths']
+        async def read_rows(reader):
+            async with reader.execute(
+                f"SELECT path, clip_embedding FROM photos WHERE clip_embedding IS NOT NULL AND {vis_sql}",
+                vis_params,
+            ) as cur:
+                return await cur.fetchall()
 
-    cur = await conn.execute(
-        f"SELECT path, clip_embedding FROM photos WHERE clip_embedding IS NOT NULL AND {vis_sql}",
-        vis_params
-    )
-    rows = await cur.fetchall()
-    await cur.close()
+        if cacheable and isinstance(key[0], str):
+            # database_list gives a pathname, NOT the inode held by conn. A
+            # request opened before an atomic replacement can still read the
+            # old file. Open a fresh reader AFTER taking the path token so old
+            # rows can never be published under the replacement file's key.
+            import aiosqlite
+            from pathlib import Path
 
-    # Numpy work below is CPU-bound — push it off the event loop. For 100k photos
-    # this can be ~50ms which is meaningful at moderate concurrency.
-    def _build_matrix(rows):
-        paths_ = []
-        embeddings_ = []
-        for r in rows:
-            emb = bytes_to_normalized_embedding(r['clip_embedding'])
-            if emb is not None:
-                paths_.append(r['path'])
-                embeddings_.append(emb)
-        embeddings_, paths_ = filter_uniform_embeddings(embeddings_, paths_)
-        if not embeddings_:
-            return None, []
-        return np.stack(embeddings_, axis=0), paths_
+            async with aiosqlite.connect(Path(key[0]).as_uri() + '?mode=ro', uri=True) as reader:
+                reader.row_factory = aiosqlite.Row
+                rows = await read_rows(reader)
+        else:
+            rows = await read_rows(conn)
 
-    matrix, paths = await asyncio.to_thread(_build_matrix, rows)
-    if matrix is None:
-        _embedding_cache = None
-        return None, []
+        # Numpy work below is CPU-bound — push it off the event loop. For 100k photos
+        # this can be ~50ms which is meaningful at moderate concurrency.
+        def _build_matrix(rows):
+            paths_ = []
+            embeddings_ = []
+            for r in rows:
+                emb = bytes_to_normalized_embedding(r['clip_embedding'])
+                if emb is not None:
+                    paths_.append(r['path'])
+                    embeddings_.append(emb)
+            embeddings_, paths_ = filter_uniform_embeddings(embeddings_, paths_)
+            if not embeddings_:
+                return None, []
+            return np.stack(embeddings_, axis=0), paths_
 
-    _embedding_cache = {'matrix': matrix, 'paths': paths, 'count': count, 'user_id': user_id}
-    return matrix, paths
+        # Cancelling to_thread's await cannot stop the worker. Keep the lock
+        # until it finishes, even if the request is cancelled repeatedly, so
+        # the next miss cannot overlap a still-allocating matrix build.
+        build = asyncio.create_task(asyncio.to_thread(_build_matrix, rows))
+        cancelled = False
+        while True:
+            try:
+                matrix, paths = await asyncio.shield(build)
+                break
+            except asyncio.CancelledError:
+                if build.cancelled():  # event-loop shutdown also cancels workers
+                    raise
+                cancelled = True
+        if cacheable:
+            # Key from BEFORE the SELECT: a concurrent commit can never stamp
+            # an older matrix with the new generation.
+            _embedding_cache = {'matrix': matrix, 'paths': paths, 'key': key}
+        if cancelled:
+            raise asyncio.CancelledError
+        return matrix, paths
 
 
 async def _search_numpy(conn, text_emb, limit, threshold, vis_sql, vis_params, user_id):
@@ -757,7 +804,8 @@ async def semantic_candidates(conn, q: str, threshold: Optional[float], user_id:
     """
     resolved = await asyncio.to_thread(search_threshold_default) if threshold is None else threshold
     model_key = await asyncio.to_thread(_candidate_model_key)
-    key = (q, resolved, model_key, user_id, db_change_token(str(_database.DEFAULT_DB_PATH)))
+    token = await asyncio.to_thread(db_change_token, str(_database.DEFAULT_DB_PATH))
+    key = (q, resolved, model_key, user_id, token)
     cached = _candidates_lookup(key)
     if cached is not None:
         return cached

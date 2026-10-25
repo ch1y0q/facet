@@ -2855,6 +2855,8 @@ python facet.py --recompute-text   # 重新读取整个图库
 |---------|---------|-------------|
 | `url` | `""` | Immich 服务器的基础 URL（例如 `http://nas:2283`） |
 | `api_key` | `""` | Immich API 密钥，以 `x-api-key` 头发送 |
+| `owner_id` | `""` | 精确的 Immich 所有者 ID；空字符串禁用筛选。响应缺少该字段时不能满足明确指定的范围。 |
+| `library_id` | `""` | 精确的 Immich 图库 ID；空字符串禁用筛选，不代表选择 null 图库。 |
 | `path_map` | `[{facet_prefix, immich_prefix}]` | 从 Facet 路径到 Immich `originalPath` 取值的前缀改写；解析资源时，第一个匹配的 `facet_prefix` 会被换成它对应的 `immich_prefix` |
 | `push.ratings` | `true` | 推送星级。会遵循 Immich 的版本安全策略 — 只写入 1–5，绝不写 0/−1 |
 | `push.favorites` | `true` | 推送收藏标记 |
