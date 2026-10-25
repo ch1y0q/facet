@@ -9,6 +9,7 @@ All notable changes to Facet are documented in this file.
 
 - **Explicit address and business search in the GPS dialog.** Use **Search online** to send a query to the configured Photon provider, preview a result, then **Save** to apply its coordinates. Saved places and manual coordinates still work offline. `viewer.place_search_url` supports a private Photon endpoint or an empty string to disable lookup; searches are bounded, cached and edition-only. Original files remain unchanged.
 
+- **Review progress and Continue reviewing.** See undecided, kept and rejected counts for the current folder or album, and resume the browser’s remembered queue at its first remaining undecided photo.
 - **Keep photos and resume from the ones you have not reviewed.** The gallery has Keep and Reset decision actions, a `K` shortcut, Undo, and Needs review / Kept / Rejected filters. Keep is separate from stars and favorites, survives rescans, and is also saved when you confirm a culling group or apply an auto-cull. `--auto-cull --cull-min-score` never rejects a kept photo on its score, as it already spared favourites and starred photos.
 
 ### Fixed
