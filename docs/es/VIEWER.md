@@ -1587,3 +1587,7 @@ Incluye caras sin asignar y grupos de personas sin nombre. Usa + para asignar un
 `Filtros → Personas → Caras sin nombre` (`faces_need_names=true`).
 
 El panel Personas sigue disponible sin personas con nombre para encontrar caras sin asignar; una biblioteca sin caras no devuelve resultados. El filtro se puede consultar en modo de solo lectura; asignar caras o nombrar grupos requiere acceso de edición.
+
+## Asignar personas
+
+El selector **Asignar rostro a persona** muestra primero hasta 12 personas asignadas correctamente en este navegador, por separado para cada identidad conectada. Las demás personas con nombre siguen por número de rostros en fotos visibles, con desempate alfabético. La búsqueda y la paginación incluyen a todas las personas elegibles, incluso con un solo rostro. El orden mostrado permanece estable mientras el selector está abierto. Seleccionar o proponer una persona nueva no actualiza los recientes: la asignación o el guardado del rostro manual debe completarse. Solo se guardan identificadores localmente; sin almacenamiento del navegador, las asignaciones siguen funcionando sin recientes. Al cerrar sesión se borran todas las asignaciones recientes guardadas en este navegador. El orden de asignación cuenta caras en fotos visibles; los demás órdenes de personas devuelven los recuentos guardados de la biblioteca.

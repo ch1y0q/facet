@@ -1714,7 +1714,10 @@
     "split_error": "No se pudo separar la persona"
   },
   "person_selector": {
-    "create_new": "Crear nueva persona"
+    "create_new": "Crear nueva persona",
+    "ordering_hint": "Primero las personas asignadas recientemente en este navegador, después las que tienen más rostros en las fotos que puedes ver.",
+    "face_count": "{count} rostros",
+    "face_count_one": "1 cara"
   },
   "slideshow": {
     "start": "Presentacion",

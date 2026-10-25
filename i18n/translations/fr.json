@@ -1714,7 +1714,10 @@
     "split_error": "Échec de la séparation de la personne"
   },
   "person_selector": {
-    "create_new": "Créer une nouvelle personne"
+    "create_new": "Créer une nouvelle personne",
+    "ordering_hint": "D’abord les personnes récemment assignées dans ce navigateur, puis celles ayant le plus de visages dans les photos visibles.",
+    "face_count": "{count} visages",
+    "face_count_one": "1 visage"
   },
   "slideshow": {
     "start": "Diaporama",

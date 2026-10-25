@@ -1729,6 +1729,9 @@ export const I18N = {
   },
   person_selector: {
     create_new: "person_selector.create_new",
+    ordering_hint: "person_selector.ordering_hint",
+    face_count: "person_selector.face_count",
+    face_count_one: "person_selector.face_count_one",
   },
   slideshow: {
     start: "slideshow.start",
