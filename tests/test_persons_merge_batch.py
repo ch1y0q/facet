@@ -21,6 +21,10 @@ def _db():
 def _seed_person(conn, pid, face_paths):
     """Insert a person with `len(face_paths)` faces (each on its own photo)."""
     conn.execute("DELETE FROM persons WHERE id = ?", (pid,))
+    # The suite shares one DB per worker and a deleted person leaves its faces
+    # behind, so an earlier test's rows can still point at this fixed id and
+    # inflate the merged face_count.
+    conn.execute("UPDATE faces SET person_id = NULL WHERE person_id = ?", (pid,))
     conn.execute(
         "INSERT INTO persons(id, name, face_count) VALUES (?, ?, ?)",
         (pid, f"P{pid}", len(face_paths)),
@@ -76,6 +80,32 @@ class TestResolveMergeChains:
 # --------------------------------------------------------------------------
 
 class TestMergeBatchEndpoint:
+    def test_stale_faces_on_a_recycled_person_id_are_not_merged(self, edition_client):
+        prefix = "mtest_stale/"
+        try:
+            conn = _db()
+            conn.execute("INSERT OR IGNORE INTO photos(path) VALUES (?)", ("mtest_other/x.jpg",))
+            conn.execute(
+                "INSERT INTO faces(photo_path, face_index, embedding, person_id) VALUES (?, 0, ?, 9021)",
+                ("mtest_other/x.jpg", sqlite3.Binary(b"\x00\x00\x00\x00")))
+            _seed_person(conn, 9021, [prefix + "a.jpg"])
+            _seed_person(conn, 9022, [prefix + "b.jpg"])
+            conn.commit()
+            conn.close()
+            resp = edition_client.post(
+                "/api/persons/merge_batch", json={"merges": [{"source_id": 9021, "target_id": 9022}]})
+            assert resp.status_code == 200, resp.text
+            conn = _db()
+            assert conn.execute("SELECT face_count FROM persons WHERE id = 9022").fetchone()[0] == 2
+            conn.close()
+        finally:
+            _cleanup([9021, 9022], prefix)
+            conn = _db()
+            conn.execute("DELETE FROM faces WHERE photo_path LIKE 'mtest_other/%'")
+            conn.execute("DELETE FROM photos WHERE path LIKE 'mtest_other/%'")
+            conn.commit()
+            conn.close()
+
     def test_transitive_chain_merges_into_final_target(self, edition_client):
         prefix = "mtest_chain/"
         try:

@@ -42,7 +42,7 @@ def resolve_per_user(user_id, per_user):
 
 
 def upsert_rating_state(conn, photo_path, user_id, *,
-                         star_rating=UNSET, is_favorite=UNSET, is_rejected=UNSET, per_user=None):
+                         star_rating=UNSET, is_favorite=UNSET, is_rejected=UNSET, is_kept=UNSET, per_user=None):
     """Write present fields to ``photos`` (global) or ``user_preferences`` (per-user).
 
     See :func:`resolve_per_user` for how ``per_user`` is resolved. When
@@ -52,6 +52,10 @@ def upsert_rating_state(conn, photo_path, user_id, *,
     unrated/unflagged photo (N9).
     """
     per_user = resolve_per_user(user_id, per_user)
+    if is_rejected is not UNSET and is_rejected:
+        is_kept = False
+    elif is_kept is not UNSET and is_kept:
+        is_rejected = False
 
     if per_user:
         row = conn.execute(
@@ -67,9 +71,9 @@ def upsert_rating_state(conn, photo_path, user_id, *,
         new_star = cur_star if star_rating is UNSET else int(star_rating)
         new_fav = cur_fav if is_favorite is UNSET else int(bool(is_favorite))
         new_rej = cur_rej if is_rejected is UNSET else int(bool(is_rejected))
-        new_kept = 0 if is_rejected is not UNSET and is_rejected else (row["is_kept"] if row else 0)
+        new_kept = (row["is_kept"] if row else 0) if is_kept is UNSET else int(bool(is_kept))
 
-        if not exists and new_star == 0 and not new_fav and not new_rej:
+        if not exists and new_star == 0 and not new_fav and not new_rej and not new_kept:
             return
 
         conn.execute(
@@ -94,8 +98,9 @@ def upsert_rating_state(conn, photo_path, user_id, *,
     if is_rejected is not UNSET:
         sets.append("is_rejected = ?")
         params.append(int(bool(is_rejected)))
-        if is_rejected:
-            sets.append("is_kept = 0")
+    if is_kept is not UNSET:
+        sets.append("is_kept = ?")
+        params.append(int(bool(is_kept)))
     if not sets:
         return
     params.append(photo_path)
