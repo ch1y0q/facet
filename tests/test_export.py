@@ -623,3 +623,20 @@ def test_export_carries_effective_keep_and_manual_gps(client, tmp_path):
     assert parsed['gps'] == (-33.25, 151.5)
     assert parsed['star_rating'] == 3
     assert parsed['is_favorite'] is True
+
+
+@pytest.mark.parametrize("endpoint", ["export_xmp", "embed_metadata"])
+@pytest.mark.parametrize("error_type,status", [("precondition", 412), ("operational", 500)])
+def test_metadata_preconditions_are_distinct_from_operational_failures(client, tmp_path, endpoint, error_type, status):
+    from processing.xmp_export import MetadataPreconditionError
+    path, row = _make_photo(tmp_path, "precondition.jpg")
+    db = str(tmp_path / "precondition.db")
+    _seed_db(db, [row])
+    failure = (MetadataPreconditionError("Repair existing face metadata before exporting")
+               if error_type == "precondition" else RuntimeError("ExifTool failed"))
+    with mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)), \
+            mock.patch(f"{_EXPORT_MODULE}.write_metadata", side_effect=failure):
+        response = client.post(f"/api/photo/{endpoint}", json={"path": path})
+    assert response.status_code == status
+    if status == 412:
+        assert "Repair existing face metadata" in response.json()["detail"]

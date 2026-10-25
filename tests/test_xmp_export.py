@@ -419,7 +419,7 @@ _GOOD_XMP = (
 
 
 def _fake_exiftool(tmp_path, version="13.55", payload="<broken attr=\"a=\" b"):
-    """Executable stand-in: answers -ver, returns [] for reads, corrupts on write."""
+    """Executable stand-in: answers -ver, returns one empty record for reads, corrupts on write."""
     body = tmp_path / "fake_exiftool.py"
     body.write_text(
         "import sys\n"
@@ -428,7 +428,7 @@ def _fake_exiftool(tmp_path, version="13.55", payload="<broken attr=\"a=\" b"):
         f"    print({version!r})\n"
         "    sys.exit(0)\n"
         "if '-json' in ' '.join(args):\n"
-        "    print('[]')\n"
+        "    print('[{}]')\n"
         "    sys.exit(0)\n"
         f"open(args[-1], 'wb').write({payload!r}.encode())\n"
     )

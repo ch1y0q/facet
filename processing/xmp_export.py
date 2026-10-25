@@ -520,6 +520,34 @@ def _assert_well_formed_xmp(path: str) -> None:
     ET.fromstring(data)
 
 
+class MetadataPreconditionError(RuntimeError):
+    """Existing metadata cannot safely be inspected or modified."""
+
+
+def _region_list(info: dict) -> list[dict]:
+    regions = info.get("RegionList", [])
+    if not isinstance(regions, list) or any(not isinstance(region, dict) for region in regions):
+        raise MetadataPreconditionError("Invalid MWG region list; repair existing face metadata before exporting")
+    return regions
+
+
+def _region_is_owned(region: dict) -> bool:
+    return (isinstance(region.get("Extensions"), dict)
+            and region["Extensions"].get("XMP-facet:RegionOwner") == "Facet")
+
+
+def _pixel_dimensions(value) -> tuple[float, float] | None:
+    if not isinstance(value, dict) or value.get("Unit") != "pixel":
+        return None
+    try:
+        dimensions = (float(value["W"]), float(value["H"]))
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return None
+    if any(not math.isfinite(size) or size <= 0 for size in dimensions):
+        return None
+    return dimensions
+
+
 def _region_args(regions: list[FaceRegion], existing: dict | None = None) -> list[str]:
     """Replace explicitly Facet-owned regions, preserving every unmarked region.
 
@@ -528,27 +556,24 @@ def _region_args(regions: list[FaceRegion], existing: dict | None = None) -> lis
     be distinguished safely from another editor's annotations.
     """
     info = dict(existing or {})
-    old_regions = info.get("RegionList", [])
-    if not isinstance(old_regions, list) or any(not isinstance(r, dict) for r in old_regions):
-        raise RuntimeError("invalid MWG region list; refusing to replace face metadata")
-    foreign = [r for r in old_regions
-               if not isinstance(r.get("Extensions"), dict)
-               or r["Extensions"].get("XMP-facet:RegionOwner") != "Facet"]
+    old_regions = _region_list(info)
+    foreign = [region for region in old_regions if not _region_is_owned(region)]
     if not regions and len(foreign) == len(old_regions):
         return []
     if regions:
         dimensions = {"W": regions[0].image_width, "H": regions[0].image_height, "Unit": "pixel"}
-        if any(r.image_width != dimensions["W"] or r.image_height != dimensions["H"] for r in regions):
-            raise RuntimeError("face regions use different image dimensions")
-        if foreign and info.get("AppliedToDimensions") != dimensions:
-            raise RuntimeError("foreign face regions use different or unknown image dimensions")
-        info["AppliedToDimensions"] = dimensions
+        mixed = any(r.image_width != dimensions["W"] or r.image_height != dimensions["H"] for r in regions)
+        incompatible = foreign and _pixel_dimensions(info.get("AppliedToDimensions")) != _pixel_dimensions(dimensions)
+        if mixed or _pixel_dimensions(dimensions) is None or incompatible:
+            logger.warning("Skipping face regions: current faces have different image dimensions or "
+                           "foreign regions use different or unknown dimensions; other metadata will be exported")
+            return []
     # Modify individual list entries rather than rewriting the foreign structs:
     # unknown extension namespaces must survive even if ExifTool cannot expose
     # or serialize their fields in JSON.
     args = ["-api", "StructFormat=JSON"]
     for region in old_regions:
-        if region not in foreign:
+        if _region_is_owned(region):
             args.append("-XMP-mwg-rs:RegionList-=" + json.dumps(region, ensure_ascii=False))
     if regions and not foreign:
         args.extend([f"-XMP-mwg-rs:RegionAppliedToDimensionsW={regions[0].image_width}",
@@ -564,6 +589,19 @@ def _region_args(regions: list[FaceRegion], existing: dict | None = None) -> lis
     return args
 
 
+def _raw_json_literals(value):
+    """ExifTool emits numeric/boolean-looking XMP strings as JSON literals."""
+    if isinstance(value, dict):
+        return {key: _raw_json_literals(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_raw_json_literals(item) for item in value]
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    return "null" if value is None else value
+
+
 def _read_existing_regions(target: str, exe: str, *, timeout: int) -> dict:
     """Read structured MWG metadata before writing; fail closed on read errors."""
     if not os.path.exists(target):
@@ -574,19 +612,22 @@ def _read_existing_regions(target: str, exe: str, *, timeout: int) -> dict:
             _assert_well_formed_xmp(target)
         result = subprocess.run(
             [exe, "-config", config, "-struct", "-json", "-XMP-mwg-rs:RegionInfo", target],
-            capture_output=True, text=True, timeout=timeout,
+            capture_output=True, text=True, encoding="utf-8", timeout=timeout,
         )
-        records = json.loads(result.stdout) if result.returncode == 0 else None
-        if not isinstance(records, list):
+        # ExifTool emits numeric-looking strings as unquoted JSON numbers.
+        # Subtraction matches their lexical value, so 1.50 must not become 1.5.
+        records = (_raw_json_literals(json.loads(result.stdout, parse_int=str, parse_float=str))
+                   if result.returncode == 0 else None)
+        if not isinstance(records, list) or len(records) != 1 or not isinstance(records[0], dict):
             raise ValueError("invalid metadata response")
-        if records and records[0].get("Error"):
+        if records[0].get("Error"):
             raise ValueError("metadata read failed")
-        info = records[0].get("RegionInfo", {}) if records else {}
+        info = records[0].get("RegionInfo", {})
         if not isinstance(info, dict):
             raise ValueError("invalid MWG structure")
         return info
     except (OSError, subprocess.TimeoutExpired, ValueError, TypeError, AttributeError, ET.ParseError) as ex:
-        raise RuntimeError(f"cannot read face metadata for {target}; refusing to overwrite it") from ex
+        raise MetadataPreconditionError(f"Cannot read face metadata for {target}; repair it before exporting") from ex
 
 
 def _union(*lists: list[str]) -> list[str]:

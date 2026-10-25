@@ -169,7 +169,7 @@ Facet 把你自己输入的标签（参见[查看器——手动标签](VIEWER.m
 | 标签／关键字 | `dc:subject`（扁平，AI 标签 + 手动标签，包含已命名人脸的人物姓名） | `dc:subject`（存为手动标签） | 合并，绝不替换；在 Facet 中的移除不会回写到附属文件（参见[手动标签与 XMP 关键字](#手动标签与-xmp-关键字)） |
 | 层级标签 | `lr:hierarchicalSubject`（`Category\|<cat>`、`People\|<name>`） | 不再导入 | 仅导出 |
 | 照片描述 | `dc:description`（+ 经由 exiftool 的 `IPTC:Caption-Abstract`） | 不再导入 | 仅导出 |
-| 命名的人脸区域 | MWG `mwg-rs:RegionList`（中心归一化，`Type=Face`） | 不再导入 | 仅导出；由 digiKam 原生读取，Lightroom **不**读取（一个已知的 Adobe 限制 —— Lightroom 只消费它自己写出的 MWG 区域） |
+| 命名的人脸区域 | MWG `mwg-rs:RegionList` + `facet:RegionOwner=Facet`（中心归一化，`Type=Face`） | 不再导入 | 仅导出；由 digiKam 原生读取，Lightroom **不**读取（一个已知的 Adobe 限制 —— Lightroom 只消费它自己写出的 MWG 区域） |
 
 完整的 CLI 参考（`--export-sidecars`、`--import-sidecars`、`--embed-originals`、`--score-to-stars`、`--user`）请见[命令 — 预览与导出](COMMANDS.md#预览与导出)。
 
@@ -177,4 +177,4 @@ Facet 把你自己输入的标签（参见[查看器——手动标签](VIEWER.m
 
 使用 ExifTool 导出说明时，只更新 `dc:description` 的 `x-default` 语言，保留现有附属文件或图像中的其他语言。Facet 说明为空时，现有说明保持不变。没有 ExifTool 时，XML 包含默认语言；若已有附属文件，默认改写到 `<image>.facet.xmp`。显式覆盖仍会替换整个目标数据包。
 
-使用 ExifTool 导出人脸时，只替换 Extensions 中带有 `facet:RegionOwner=Facet` 标记的 MWG 矩形。未标记的区域（包括旧版 Facet 导出的区域）保持不变。删除所有 Facet 人脸时，只清除带标记的区域。外部区域的图像尺寸不同或未知时，写入前会报错。没有 ExifTool 时，不导出人脸矩形。带标记的区域即使在其他软件中编辑，仍由 Facet 管理；如需作为独立标注保留，请先移除归属标记。
+ExifTool 仅替换 Extensions 中带 `facet:RegionOwner=Facet` 标记的 MWG 矩形。未标记的区域（包括旧版 Facet 导出）会保留，因为名称和坐标不能证明归属。升级后，旧的未标记人脸可能与新的带标记副本同时出现；清除人脸仍会保留旧副本。重复导出只替换带标记副本，不会继续累积重复区域。外部区域及其未知扩展保持不变。当前人脸尺寸不一致，或外部区域的图像尺寸不同或未知时，会警告并跳过全部人脸变更，但仍导出评分、标签、关键词和 GPS。无法读取或无效的现有人脸元数据会在写入前拒绝单张导出或嵌入，并返回 HTTP 412。无 ExifTool 的 XML 后备方式不导出人脸矩形。带标记区域即使被外部编辑仍归 Facet 管理；如需作为独立标注，请先移除归属标记。

@@ -20,7 +20,7 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
-- Preserve foreign face rectangles during metadata export and remove stale Facet-owned rectangles when faces are cleared.
+- Preserve foreign face rectangles during metadata export and remove stale Facet-owned rectangles when faces are cleared. **Existing unmarked Facet exports are preserved too:** the first new export can show an old unmarked face plus its new marked copy, and clearing Facet faces leaves the old copy. Facet does not guess ownership from names or coordinates. Incompatible face dimensions skip faces with a warning while other metadata is written; unreadable or invalid existing face metadata refuses single-photo export/embed with HTTP 412.
 
 - **Caption export preserves other XMP languages.** Writing a Facet caption now updates only the default-language description in sidecars and embedded metadata, retaining existing translations. An empty Facet caption still preserves the existing caption.
 

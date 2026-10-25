@@ -42,6 +42,7 @@ from processing.xmp_export import (
     XmpRating,
     person_names_from_regions,
     write_metadata,
+    MetadataPreconditionError,
 )
 from utils.sequence import BRACKET as BRACKET_KIND
 
@@ -947,6 +948,8 @@ def api_export_xmp(
     try:
         result = write_metadata(real_disk, _rating_from(row, regions_map),
                                 overwrite=body.overwrite, embed_original=False)
+    except MetadataPreconditionError as ex:
+        raise HTTPException(status_code=412, detail=str(ex)) from ex
     except (OSError, RuntimeError):
         logger.exception("Failed to write metadata for %s", body.path)
         raise HTTPException(status_code=500, detail="Failed to write metadata")
@@ -979,6 +982,8 @@ def api_embed_metadata(
     real_disk = resolve_photo_disk_path(body.path)
     try:
         result = write_metadata(real_disk, _rating_from(row, regions_map), embed_original=True)
+    except MetadataPreconditionError as ex:
+        raise HTTPException(status_code=412, detail=str(ex)) from ex
     except (OSError, RuntimeError):
         logger.exception("Failed to embed metadata for %s", body.path)
         raise HTTPException(status_code=500, detail="Failed to embed metadata")
