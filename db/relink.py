@@ -30,7 +30,11 @@ _PLAIN_REFS = {
     ('album_client_picks', 'photo_path'), ('rating_provenance', 'photo_path'),
     ('face_reextract_snapshot', 'photo_path'),
 }
-_NON_ASSET_PATHS = {('photos', 'path'), ('photos_fts', 'path'), ('scan_failures', 'path')}
+_NON_ASSET_PATHS = {
+    ('photos', 'path'), ('photos_fts', 'path'), ('scan_failures', 'path'),
+    # Historical packet location, not asset identity; only its photo_path FK moves.
+    ('photo_metadata_edits', 'source_path'),
+}
 
 
 def _json(value):
