@@ -4,6 +4,10 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Keep photos and resume from the ones you have not reviewed.** The gallery has Keep and Reset decision actions, a `K` shortcut, Undo, and Needs review / Kept / Rejected filters. Keep is separate from stars and favorites, survives rescans, and is also saved when you confirm a culling group or apply an auto-cull. `--auto-cull --cull-min-score` never rejects a kept photo on its score, as it already spared favourites and starred photos.
+
 ### Fixed
 
 - **Review saved manual faces from the gallery.** The new filter finds stale or legacy marks using the last scan or editor check. Correct or delete them in the existing face editor; resolved photos leave the filtered view. Queue listing does not decode originals.

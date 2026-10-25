@@ -209,6 +209,19 @@ Gesteuert über `viewer.features.show_my_taste` (Standard: `true`). Der Ranker-S
 
 Ist `licensing.mode` auf `commercial` gesetzt, blendet der Viewer die Metriken aus, deren Modelle nicht kommerziell genutzt werden dürfen: LIQE, Aesthetic IAA, Face Quality IQA (sofern OFIQ nicht installiert ist), DeQA (sofern `licensing.allow_unclear` nicht gesetzt ist) und Aesthetic V2.5: ihre Bereichsfilter, Filter-Chips und Sortieroptionen. `/api/config` listet sie in `unavailable_metrics`. In der Gewichtungsseite bleiben ihre Regler sichtbar, sind aber deaktiviert und mit einem Tooltip versehen; die Gewichte bleiben erhalten, da die Bewertung sie auslässt und neu normalisiert. Den Viewer nach einer Änderung des Lizenzmodus neu starten.
 
+## Sichtungsentscheidungen
+
+Wähle in der Galerie **Sichtungsstatus → Noch zu sichten**, um unentschiedene Fotos zu bearbeiten. Dabei wird nach **Aufnahmedatum, älteste zuerst** sortiert. Reihenfolge, Zeitraum, Ordner und Album lassen sich weiter anpassen.
+
+**Behalten** und **Ablehnen** entfernen ein Foto nach dem Speichern aus dieser Ansicht. Behaltene Fotos bleiben in der normalen Bibliothek und sind über **Behalten** auffindbar. Favoriten und Sterne bleiben unabhängig davon.
+
+Behalten und **Entscheidung zurücksetzen** stehen in der Detailansicht, im Kontextmenü und für die Mehrfachauswahl bereit. **K** behält das aktuelle Foto. Zurücksetzen löscht Behalten und Ablehnen, ohne Sterne oder Favoriten zu ändern. Galerieaktionen lassen sich rückgängig machen.
+
+Entscheidungen überstehen Neuladen, Neustarts und erneute Scans und gelten pro Benutzer. Bestätigte Auswahlgruppen markieren ihre ausgewählten Fotos ebenfalls als behalten. Bestehende Sterne, Favoriten und bereits gesichtete Gruppen werden nicht automatisch umgewandelt.
+
+Der Sichtungsstatus gilt für die normale Galerie; die Auswahl beendet eine semantische Suche oder die Suche nach ähnlichen Fotos.
+
+
 ## Galeriefunktionen
 
 ### Fotokarten
@@ -683,7 +696,7 @@ Wählen Sie für jede Gruppe die Behaltefoto(s); das Bestätigen lehnt den Rest 
 
 Eine **Auto-Cull**-Schaltfläche in der Symbolleiste sortiert einen ganzen Geltungsbereich in einem Durchgang aus, statt Gruppe für Gruppe. Wählen Sie den Geltungsbereich mit den Granularitäts-/Geltungsbereich-Steuerelementen (alle Gruppen oder nur Serienbilder / Ähnliche / Szenen, optional ein Album oder ein Datumsfenster), stellen Sie eine **Strenge** ein — das Behalte-Budget, wobei höher weniger pro Gruppe behält — und rufen Sie die Vorschau auf. Jede Gruppe behält ihr bestes Foto plus alles innerhalb der Strenge-Marge (begrenzt durch ein Minimum pro Gruppe) und lehnt den Rest ab. Die Schaltfläche ist in den drei vollständig erhaltenden Granularitäten (**Belichtungsreihen**, **Panoramen**, **HDR-Panoramen**) vollständig ausgeblendet — dort gibt es nichts zu entscheiden, da jede Aufnahme dieser Serien von vornherein behalten wird. In einem gemischten Geltungsbereich werden Belichtungsreihen zuerst entschieden, vor Serienbildern, Ähnlichkeiten und Szenen, sodass die Basisbelichtung einer Belichtungsreihe nie von einer später entschiedenen Gruppe neu entschieden wird, mit der sie sich zufällig überschneidet.
 
-Die Vorschau ist ein **Probelauf** (nichts wird geschrieben): Sie zeigt die Behalte-/Ablehnen-Aufteilung pro Gruppe. Bestätigen zum Anwenden — Ablehnungen werden erfasst und trainieren, wie jedes Aussortieren, „Mein Geschmack"; ein optionales **Highlights**-Album sammelt idempotent das beste Foto jeder Gruppe, das mindestens `auto_cull.highlights_min` erreicht. Ein Hinweis-Badge „besseres Foto in dieser Gruppe" markiert Gruppen, in denen Auto-Cull ein anderes Bild als das aktuelle Leitfoto behalten würde. `POST /api/culling/auto`; konfiguriert über den [`auto_cull`](CONFIGURATION.md#auto-cull)-Block. Dieselben Regeln laufen ohne Oberfläche im Terminal mit `python facet.py --auto-cull` — siehe [Auto-Cull im Terminal](COMMANDS.md#auto-cull-im-terminal).
+Die Vorschau ist ein **Probelauf** (nichts wird geschrieben): Sie zeigt die Behalte-/Ablehnen-Aufteilung pro Gruppe. Bestätigen zum Anwenden — Ablehnungen werden erfasst, jedes behaltene Foto wird als **Behalten** markiert, und Ablehnungen trainieren, wie jedes Aussortieren, „Mein Geschmack"; ein optionales **Highlights**-Album sammelt idempotent das beste Foto jeder Gruppe, das mindestens `auto_cull.highlights_min` erreicht. Ein Hinweis-Badge „besseres Foto in dieser Gruppe" markiert Gruppen, in denen Auto-Cull ein anderes Bild als das aktuelle Leitfoto behalten würde. `POST /api/culling/auto`; konfiguriert über den [`auto_cull`](CONFIGURATION.md#auto-cull)-Block. Dieselben Regeln laufen ohne Oberfläche im Terminal mit `python facet.py --auto-cull` — siehe [Auto-Cull im Terminal](COMMANDS.md#auto-cull-im-terminal).
 
 Wenn ein Keeper-Ranking-Head trainiert ist, wählt `POST /api/culling/auto` den Behalte-Kandidaten jeder Gruppe nach `keeper_prob`, sobald er seine Genauigkeitsschwelle erreicht — andernfalls ist die Ausgabe bit-identisch mit der Heuristik.
 
