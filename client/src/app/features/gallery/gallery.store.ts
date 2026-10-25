@@ -286,6 +286,9 @@ export class GalleryStore {
   private listingViewParked = false;
   private listingRefreshOwed = false;
   private listingPagesInterrupted = false;
+  private reviewRefreshOwed = false;
+  private readonly parkedRefreshPaths = new Set<string>();
+  private readonly pendingKeeperHints = new Set<string>();
   private pageReadsInFlight = 0;
   private progressReadsInFlight = 0;
   private progressRefreshOwed = false;
@@ -911,6 +914,12 @@ export class GalleryStore {
     this.cancelListingReads();
     this.resumeSeq++;
     this.reviewProgress.set(null);
+    this.parkedRefreshPaths.clear();
+    this.pendingKeeperHints.clear();
+    this.listingRefreshOwed = false;
+    this.reviewRefreshOwed = false;
+    this.listingPagesInterrupted = false;
+    this.progressRefreshOwed = false;
   }
 
   /** The outlet parked this view; cancel reads without losing its rows or selection. */
@@ -920,7 +929,7 @@ export class GalleryStore {
   }
 
   private pauseListingReads(): void {
-    this.listingRefreshOwed ||= this.pageReadsInFlight > 0;
+    this.listingRefreshOwed ||= this.pageReadsInFlight > 0 && !this.loading();
     this.listingPagesInterrupted ||= this.loading();
     this.progressRefreshOwed ||= this.progressReadsInFlight > 0;
     this.listingReadsActive = false;
@@ -935,13 +944,16 @@ export class GalleryStore {
     if (this.listingReadsActive) return;
     this.listingReadsActive = true;
     if (!this.loadedOnce) return;
-    const refresh = this.listingRefreshOwed;
+    const refresh = this.listingRefreshOwed || this.reviewRefreshOwed;
     const interrupted = this.listingPagesInterrupted;
     const progress = this.progressRefreshOwed;
+    const paths = [...this.parkedRefreshPaths];
+    this.parkedRefreshPaths.clear();
+    this.reviewRefreshOwed = false;
     this.progressRefreshOwed = false;
     this.listingRefreshOwed = false;
     this.listingPagesInterrupted = false;
-    if (refresh) {
+    if (refresh || interrupted) {
       this.viewRefreshOwed = false;
       const previous = this.photos();
       const seq = this._loadSeq;
@@ -951,30 +963,37 @@ export class GalleryStore {
       if (seq === this._loadSeq && identity === this.auth.identity() && this.filters().review_status) {
         this.rememberReviewedPhotos(previous);
       }
-    } else if (progress) await this.loadReviewProgress();
+    } else if (paths.length) await this.refreshPaths(paths);
+    else if (progress) await this.loadReviewProgress();
+    const loaded = new Set(this.photos().map(photo => photo.path));
+    for (const path of this.pendingKeeperHints) if (!loaded.has(path)) this.pendingKeeperHints.delete(path);
+    if (this.listingReadsActive && !refresh && !interrupted) {
+      void this.fetchKeeperHints([...this.pendingKeeperHints]);
+    }
   }
 
   private photoReadAllowed(): boolean {
     return this.suspendedNavigation === null && pathOf(this.router.url) === '/photo';
   }
 
-  private async resumeSimilarPages(whileParked = false): Promise<void> {
+  private async resumeSimilarPages(whileParked = false, preserveLoaded = false): Promise<void> {
     const f = this.filters();
     const seq = this._loadSeq;
     const identity = this.auth.identity();
     const current = () => (this.listingReadsActive || (whileParked && this.photoReadAllowed()))
       && seq === this._loadSeq && identity === this.auth.identity();
+    const prefix = preserveLoaded ? this.photos().slice(0, Math.min(Math.floor(this.photos().length / f.per_page), f.page - 1) * f.per_page) : [];
     const pages: SimilarPage[] = [];
     this.loading.set(true);
     try {
-      for (let page = 0; page < f.page; page++) {
+      for (let page = prefix.length / f.per_page; page < f.page; page++) {
         const result = await this.fetchSimilarPage(f, page * f.per_page);
         if (!current()) return;
         pages.push(result);
         if (!result.has_more) break;
       }
       const last = pages[pages.length - 1];
-      this.photos.set(normalisePhotoFlagsAll(pages.flatMap(page => page.similar ?? [])));
+      this.photos.set([...prefix, ...normalisePhotoFlagsAll(pages.flatMap(page => page.similar ?? []))]);
       this.total.set(last.total);
       this.hasMore.set(last.has_more);
       this.loadError.set(false);
@@ -1015,6 +1034,9 @@ export class GalleryStore {
     this.suspendedNavigation = null;
     this.listingRefreshOwed = false;
     this.listingPagesInterrupted = false;
+    this.reviewRefreshOwed = false;
+    this.parkedRefreshPaths.clear();
+    this.pendingKeeperHints.clear();
     // Always load from page 1 — only nextPage() uses page > 1
     const pinned = this.pinnedLoad ? this.pinnedPaths() : null;
     this.pinnedLoad = false;
@@ -1111,7 +1133,15 @@ export class GalleryStore {
    */
   async refreshPaths(paths: string[] | null): Promise<void> {
     if (!this.loadedOnce || this.destroyRef.destroyed) return;
-    if (!this.listingReadsActive) { this.listingRefreshOwed = true; return; }
+    if (!this.listingReadsActive) {
+      this.progressRefreshOwed = true;
+      if (paths === null) this.listingRefreshOwed = true;
+      else {
+        const loaded = new Set(this.photos().map(photo => photo.path));
+        for (const path of paths) if (loaded.has(path)) this.parkedRefreshPaths.add(path);
+      }
+      return;
+    }
     this.syncReadOwner();
     void this.loadReviewProgress();
     const loadSeq = this._loadSeq;
@@ -1203,7 +1233,7 @@ export class GalleryStore {
    * this blanks nothing and leaves `selectedPaths`, `excludedPaths` and a view-scoped selection alone.
    * A similarity view keeps its rows: its membership is not a filter. A semantic search is a filter.
    */
-  private async refreshViewInPlace(loadSeq: number, recovering = false): Promise<void> {
+  private async refreshViewInPlace(loadSeq: number, recovering = false, preserveLoaded = false): Promise<void> {
     if (this.filters().similar_to) {
       // A similarity view keeps its membership: refresh the rows on screen without filters and never remove one.
       const { rows } = await this.fetchByPaths(this.photos().map(p => p.path));
@@ -1218,15 +1248,16 @@ export class GalleryStore {
       }
       const f = this.filters();
       const base = buildApiParams(f, this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
+      const prefix = preserveLoaded ? this.photos().slice(0, Math.min(Math.floor(this.photos().length / f.per_page), f.page - 1) * f.per_page) : [];
       const pages: PhotosResponse[] = [];
-      for (let page = 1; page <= f.page; page++) {
+      for (let page = prefix.length / f.per_page + 1; page <= f.page; page++) {
         if (!this.claimRefresh(loadSeq)) return;
         pages.push(await this.pageRead(this.api.get<PhotosResponse>('/photos', { ...base, page })));
       }
       if (!this.claimRefresh(loadSeq)) return;
       if (this.filters().page !== f.page) continue;
       const last = pages[pages.length - 1];
-      const rows = normalisePhotoFlagsAll(pages.flatMap(res => res.photos));
+      const rows = [...prefix, ...normalisePhotoFlagsAll(pages.flatMap(res => res.photos))];
       this.photos.set(rows);
       this.total.set(last.total);
       this.hasMore.set(last.has_more);
@@ -1259,11 +1290,11 @@ export class GalleryStore {
       const seq = this._loadSeq;
       const identity = this.auth.identity();
       this.listingPagesInterrupted = false;
-      this.listingRefreshOwed = false;
-      if (this.filters().similar_to) await this.resumeSimilarPages(true);
+      const preserveLoaded = !this.listingRefreshOwed && !this.reviewRefreshOwed && !this.parkedRefreshPaths.size;
+      if (this.filters().similar_to) await this.resumeSimilarPages(true, preserveLoaded);
       else {
         this.loading.set(true);
-        try { await this.refreshViewInPlace(seq, true); }
+        try { await this.refreshViewInPlace(seq, true, preserveLoaded); }
         catch {
           if (seq === this._loadSeq && identity === this.auth.identity()) {
             this.listingPagesInterrupted = true;
@@ -1696,17 +1727,23 @@ export class GalleryStore {
   private async fetchKeeperHints(paths: string[]): Promise<void> {
     if (!paths.length) return;
     const current = this.captureReviewView();
+    const seq = this._loadSeq;
+    const loaded = new Set(this.photos().map(photo => photo.path));
+    for (const path of this.pendingKeeperHints) if (!loaded.has(path)) this.pendingKeeperHints.delete(path);
+    for (const path of paths) if (loaded.has(path)) this.pendingKeeperHints.add(path);
     try {
       // Hints are advisory: cancelling one must not force every page to reload on Back.
       const hints = await firstValueFrom(
         this.api.post<Record<string, KeeperHint>>('/photos/keeper_hints', { paths }).pipe(takeUntil(this.pageReadCancelled)),
       );
       if (!current()) return;
+      for (const path of paths) this.pendingKeeperHints.delete(path);
       for (const [path, hint] of Object.entries(hints)) {
         this.patchPhoto(path, { keeper_hint: hint });
       }
     } catch {
-      // Best-effort: leave photos without hints on failure.
+      // Cancellation retains bounded loaded-path debt for the next attach.
+      if (seq === this._loadSeq) for (const path of paths) this.pendingKeeperHints.delete(path);
     }
   }
 
@@ -1932,7 +1969,7 @@ export class GalleryStore {
       if (current()) await this.refreshReviewResults(rebuild);
       else {
         if (!this.listingReadsActive && originIdentity === this.auth.identity() && originKey === this.filterKey()) {
-          this.listingRefreshOwed ||= rebuild || !!this.filters().review_status;
+          this.reviewRefreshOwed ||= rebuild || !!this.filters().review_status;
         }
         void this.loadReviewProgress();
       }
@@ -1995,7 +2032,7 @@ export class GalleryStore {
     if (this.destroyRef.destroyed) return;
     if (!this.listingReadsActive && !(whileParked && this.photoReadAllowed())) {
       this.progressRefreshOwed = true;
-      this.listingRefreshOwed ||= rebuild || !!this.filters().review_status;
+      this.reviewRefreshOwed ||= rebuild || !!this.filters().review_status;
       return;
     }
     this.syncReadOwner();
@@ -2010,6 +2047,7 @@ export class GalleryStore {
     void this.loadReviewProgress();
     if (!f.review_status || this.pinnedPaths() !== null) return;
     const previous = this.photos();
+    this.reviewRefreshOwed = false;
     if (rebuild) {
       const pages = Math.max(1, Math.ceil(previous.length / f.per_page));
       const loading = this.loadPhotos(current);
@@ -2050,8 +2088,6 @@ export class GalleryStore {
     if (!current()) return;
     this.rememberReviewedPhotos(previous);
     if (whileParked && !this.listingReadsActive) {
-      this.listingRefreshOwed = false;
-      this.listingPagesInterrupted = false;
       this.saveSessionQuery();
     } else this.syncUrl();
   }

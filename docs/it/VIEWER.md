@@ -1143,7 +1143,7 @@ Imposta `min_photos_for_person` su un valore più alto per nascondere dal menu a
 
 I rapidi cambi di filtro annullano le richieste superate delle pagine e del progresso di revisione, incluse le viste simili e fissate. Uscire dalla galleria o cambiare identità annulla le letture in corso. Le modifiche a valutazioni e decisioni già inviate non vengono annullate.
 
-Aprire una foto sospende le letture in background della galleria; le frecce possono caricare altre foto e Conserva aggiorna subito la coda di revisione. Tornando si recuperano solo risultati interrotti o modificati e conteggi necessari. Tornare senza modifiche, annullare suggerimenti o assegnare una normale valutazione non ricarica le pagine. Una navigazione annullata o reindirizzata alla galleria ancora visibile ne riprende le letture.
+Aprire una foto sospende le letture in background della galleria; le frecce possono caricare altre foto e Conserva aggiorna subito la coda di revisione. Tornando si recuperano solo risultati interrotti o modificati e conteggi necessari. Tornare senza modifiche, annullare suggerimenti o assegnare una normale valutazione non ricarica le pagine. Una navigazione annullata o reindirizzata alla galleria ancora visibile ne riprende le letture. Le modifiche mirate durante la pausa della griglia vengono riunite in un aggiornamento delle righe al ritorno; i suggerimenti annullati vengono richiesti di nuovo senza ricaricare le pagine. Se è stata interrotta solo la paginazione, le frecce caricano soltanto la parte mancante.
 
 ### Database di grandi dimensioni (50k+ foto)
 

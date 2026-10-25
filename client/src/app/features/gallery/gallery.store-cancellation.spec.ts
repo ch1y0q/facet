@@ -271,12 +271,11 @@ describe('GalleryStore read cancellation with HttpClient', () => {
     outlet.attachEvents.next(gallery);
     request('/photos/review_progress').flush(COUNTS);
     await Promise.resolve();
-    request('/photos').flush({ ...EMPTY_PAGE, total: 1, has_more: true, photos: [makePhoto({ path: '/a.jpg', is_favorite: true })] });
+    request('/photos/by_paths').flush({ photos: [makePhoto({ path: '/a.jpg', is_favorite: true })] });
     await Promise.resolve();
     await Promise.resolve();
-    request('/photos/keeper_hints').flush({});
     expect(store.selectedPaths()).toEqual(new Set(['/a.jpg']));
-    expect(store.photos()[0].is_favorite).toBe(true);
+    await vi.waitFor(() => expect(store.photos()[0].is_favorite).toBe(true));
     const paging = store.nextPage();
     request('/photos').flush({ ...EMPTY_PAGE, page: 2 });
     await paging;
@@ -335,6 +334,7 @@ describe('GalleryStore read cancellation with HttpClient', () => {
     await writing;
     if (reason === 'hint-pending') expect(hints.cancelled).toBe(true);
     await store.resumeListingReads();
+    if (reason === 'hint-pending') request('/photos/keeper_hints').flush({});
     http.expectNone(r => r.url === '/api/photos' || r.url === '/api/photos/review_progress');
     if (reason === 'rating') expect(store.photos()[0].star_rating).toBe(4);
   });
@@ -394,6 +394,128 @@ describe('GalleryStore read cancellation with HttpClient', () => {
     }
     expect(store.loading()).toBe(false);
     expect(snack).not.toHaveBeenCalled();
+  });
+
+  it.each(['ordinary', 'similar'] as const)('recovers an interrupted %s review refill even when all current rows remain loaded', async mode => {
+    store.filters.update(f => ({ ...f, review_status: 'undecided', ...(mode === 'similar' ? { similar_to: '/seed.jpg' } : {}) }));
+    const loaded = Array.from({ length: 64 }, (_, i) => makePhoto({ path: `/p${i}.jpg` }));
+    store.photos.set(loaded);
+    store.hasMore.set(true);
+    const repairing = store.refreshReviewResults();
+    if (mode === 'ordinary') request('/photos/review_progress');
+    const obsolete = request('/photos');
+    events.next(new NavigationStart(1, '/photo?path=/p63.jpg'));
+    store.parkListingReads();
+    (TestBed.inject(Router) as unknown as { url: string }).url = '/photo?path=/p63.jpg';
+    events.next(new NavigationEnd(1, '/photo?path=/p63.jpg', '/photo?path=/p63.jpg'));
+    expect(obsolete.cancelled).toBe(true);
+    const recovering = store.nextPage(undefined, { whileParked: true });
+    const tail = request(mode === 'similar' ? `/similar_photos/${encodeURIComponent('/seed.jpg')}` : '/photos');
+    expect(tail.request.params.get(mode === 'similar' ? 'offset' : 'page')).toBe(mode === 'similar' ? '0' : '1');
+    tail.flush(mode === 'similar' ? { similar: loaded, total: 64, has_more: false } : { ...EMPTY_PAGE, photos: loaded, total: 64 });
+    await Promise.all([repairing, recovering]);
+    if (mode === 'ordinary') request('/photos/keeper_hints').flush({});
+    expect(store.photos()).toHaveLength(64);
+    expect(store.loading()).toBe(false);
+    expect(store.loadError()).toBe(false);
+  });
+
+  async function loadAndParkThreePages(pendingHints = false): Promise<void> {
+    const initial = store.loadPhotos();
+    request('/photos').flush({ ...EMPTY_PAGE, photos: [makePhoto({ path: '/a.jpg' })], total: 300, has_more: true });
+    request('/photos/review_progress').flush(COUNTS);
+    await initial;
+    const hints = request('/photos/keeper_hints');
+    if (!pendingHints) hints.flush({});
+    store.photos.set(Array.from({ length: 192 }, (_, i) => makePhoto({ path: `/p${i}.jpg` })));
+    store.filters.update(f => ({ ...f, page: 3 }));
+    events.next(new NavigationStart(1, '/photo?path=/p191.jpg'));
+    store.parkListingReads();
+    (TestBed.inject(Router) as unknown as { url: string }).url = '/photo?path=/p191.jpg';
+    events.next(new NavigationEnd(1, '/photo?path=/p191.jpg', '/photo?path=/p191.jpg'));
+  }
+
+  it('retries cancelled advisory hints on Back without a listing or count reload', async () => {
+    await loadAndParkThreePages(true);
+    // The cancelled request concerned /a.jpg, which is no longer loaded.
+    store.photos.set([makePhoto({ path: '/a.jpg' })]);
+    await store.resumeListingReads();
+    const hints = request('/photos/keeper_hints');
+    expect(hints.request.body.paths).toEqual(['/a.jpg']);
+    hints.flush({ '/a.jpg': { better_path: '/b.jpg' } });
+    await Promise.resolve();
+    expect(store.photos()[0].keeper_hint).toEqual({ better_path: '/b.jpg' });
+    http.expectNone(r => r.url === '/api/photos' || r.url === '/api/photos/review_progress');
+  });
+
+  it('drops cancelled hint debt for removed rows instead of retrying an old queue later', async () => {
+    await loadAndParkThreePages(true);
+    store.photos.set([makePhoto({ path: '/remaining.jpg' })]);
+    await store.resumeListingReads();
+    http.expectNone(r => r.url === '/api/photos/keeper_hints');
+    store.parkListingReads();
+    store.photos.set([makePhoto({ path: '/a.jpg' })]);
+    await store.resumeListingReads();
+    http.expectNone(r => r.url === '/api/photos/keeper_hints');
+  });
+
+  it('coalesces parked path refreshes into one by_paths read on Back', async () => {
+    await loadAndParkThreePages();
+    await store.refreshPaths(['/p0.jpg']);
+    await store.refreshPaths(['/p64.jpg', '/p0.jpg']);
+    const resuming = store.resumeListingReads();
+    request('/photos/review_progress').flush(COUNTS);
+    await Promise.resolve();
+    const rows = request('/photos/by_paths');
+    expect(rows.request.body.paths).toEqual(['/p0.jpg', '/p64.jpg']);
+    rows.flush({ photos: [makePhoto({ path: '/p0.jpg', star_rating: 5 }), makePhoto({ path: '/p64.jpg' })] });
+    await resuming;
+    http.expectNone(r => r.url === '/api/photos');
+    expect(store.photos()[0].star_rating).toBe(5);
+  });
+
+  it('does not discard another parked write when Keep repairs only the tail', async () => {
+    await loadAndParkThreePages();
+    store.filters.update(f => ({ ...f, review_status: 'undecided' }));
+    await store.refreshPaths(['/p0.jpg']);
+    store.patchPhoto('/p191.jpg', { is_kept: true });
+    const keeping = store.refreshReviewResults(false, { whileParked: true });
+    request('/photos').flush({ ...EMPTY_PAGE, photos: [makePhoto({ path: '/tail.jpg' })], total: 299, has_more: true });
+    await keeping;
+    request('/photos/keeper_hints').flush({});
+    const resuming = store.resumeListingReads();
+    request('/photos/review_progress').flush(COUNTS);
+    await Promise.resolve();
+    request('/photos/by_paths').flush({ photos: [makePhoto({ path: '/p0.jpg', star_rating: 5 })] });
+    await resuming;
+    expect(store.photos()[0].star_rating).toBe(5);
+  });
+
+  it.each(['ordinary', 'similar'] as const)('foreground interrupted %s pagination fetches only the missing tail', async mode => {
+    const url = mode === 'similar' ? `/similar_photos/${encodeURIComponent('/seed.jpg')}` : '/photos';
+    const initial = mode === 'similar' ? store.updateFilter('similar_to', '/seed.jpg') : store.loadPhotos();
+    request(url).flush(mode === 'similar'
+      ? { similar: Array.from({ length: 64 }, (_, i) => makePhoto({ path: `/p${i}.jpg` })), total: 200, has_more: true }
+      : { ...EMPTY_PAGE, photos: Array.from({ length: 64 }, (_, i) => makePhoto({ path: `/p${i}.jpg` })), total: 200, has_more: true });
+    if (mode === 'ordinary') request('/photos/review_progress').flush(COUNTS);
+    await initial;
+    if (mode === 'ordinary') request('/photos/keeper_hints').flush({});
+    const paging = store.nextPage();
+    const obsolete = request(url);
+    events.next(new NavigationStart(1, '/photo?path=/p63.jpg'));
+    store.parkListingReads();
+    (TestBed.inject(Router) as unknown as { url: string }).url = '/photo?path=/p63.jpg';
+    events.next(new NavigationEnd(1, '/photo?path=/p63.jpg', '/photo?path=/p63.jpg'));
+    expect(obsolete.cancelled).toBe(true);
+    const recovering = store.nextPage(undefined, { whileParked: true });
+    const tail = request(url);
+    expect(tail.request.params.get(mode === 'similar' ? 'offset' : 'page')).toBe(mode === 'similar' ? '64' : '2');
+    tail.flush(mode === 'similar' ? { similar: [makePhoto({ path: '/next.jpg' })], total: 65, has_more: false }
+      : { ...EMPTY_PAGE, photos: [makePhoto({ path: '/next.jpg' })], total: 65 });
+    await Promise.all([paging, recovering]);
+    if (mode === 'ordinary') request('/photos/keeper_hints').flush({});
+    expect(store.photos()).toHaveLength(65);
+    expect(store.photos()[64].path).toBe('/next.jpg');
   });
 
   it('allows an explicit photo page read while other parked refreshes remain deferred', async () => {

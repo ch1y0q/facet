@@ -1143,7 +1143,7 @@ Setzen Sie `min_photos_for_person` höher, um Personen mit wenigen Fotos aus dem
 
 Schnelle Filteränderungen brechen überholte Anfragen für Galerieseiten und Bewertungsfortschritt ab, auch bei ähnlichen und angehefteten Ansichten. Beim Verlassen der Galerie oder Wechsel der angemeldeten Identität werden ausstehende Galerie-Leseanfragen abgebrochen. Bereits abgeschickte Bewertungsänderungen werden nicht abgebrochen.
 
-Das Öffnen eines Fotos pausiert Hintergrundabfragen der Galerie; Pfeiltasten können weitere Fotos laden und Behalten aktualisiert die Prüfliste sofort. Beim Zurückkehren werden nur unterbrochene oder geänderte Ergebnisse und nötige Zähler aktualisiert. Unverändertes Zurück, abgebrochene Hinweisabfragen und normale Bewertungen laden die Seiten nicht erneut. Abgebrochene Navigation oder eine Weiterleitung zur noch angezeigten Galerie setzt deren Abfragen fort.
+Das Öffnen eines Fotos pausiert Hintergrundabfragen der Galerie; Pfeiltasten können weitere Fotos laden und Behalten aktualisiert die Prüfliste sofort. Beim Zurückkehren werden nur unterbrochene oder geänderte Ergebnisse und nötige Zähler aktualisiert. Unverändertes Zurück, abgebrochene Hinweisabfragen und normale Bewertungen laden die Seiten nicht erneut. Abgebrochene Navigation oder eine Weiterleitung zur noch angezeigten Galerie setzt deren Abfragen fort. Gezielte Änderungen bei pausiertem Raster werden bei der Rückkehr gemeinsam zeilenweise aktualisiert; abgebrochene Keeper-Hinweise werden ohne erneutes Laden der Fotoseiten wiederholt. Wurde nur das Blättern unterbrochen, laden die Fotopfeile nur den fehlenden Rest.
 
 ### Große Datenbanken (50k+ Fotos)
 
