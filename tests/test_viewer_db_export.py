@@ -566,6 +566,36 @@ def test_incremental_old_source_rejection_does_not_override_viewer_keep(tmp_path
         assert conn.execute(f"SELECT is_kept, is_rejected FROM {table} WHERE {key}=?", (_A,)).fetchone() == (1, 0)
 
 
+@pytest.mark.parametrize('old_source', [False, True])
+def test_incremental_preserves_capture_date_pair(tmp_path, old_source):
+    src, out = str(tmp_path / 'scan.db'), str(tmp_path / 'viewer.db')
+    _make_source_db(src)
+    export_viewer_db(src, out, thumbnail_size=320, verbose=False)
+    with sqlite3.connect(out) as conn:
+        conn.execute("UPDATE photos SET date_taken='2024:01:01 01:02:03',date_manually_set=1 WHERE path=?", (_A,))
+    with sqlite3.connect(src) as conn:
+        conn.execute("UPDATE photos SET date_taken='2000:01:01 00:00:00'")
+        if old_source:
+            conn.execute('ALTER TABLE photos DROP COLUMN date_manually_set')
+    export_viewer_db(src, out, thumbnail_size=320, verbose=False)
+    with sqlite3.connect(out) as conn:
+        assert conn.execute('SELECT date_taken,date_manually_set FROM photos WHERE path=?', (_A,)).fetchone() == ('2024:01:01 01:02:03', 1)
+        assert conn.execute('SELECT date_taken,date_manually_set FROM photos WHERE path=?', (_B,)).fetchone() == ('2000:01:01 00:00:00', 0)
+
+
+def test_export_upgrades_date_schema(tmp_path):
+    src, out = str(tmp_path / 'scan.db'), str(tmp_path / 'viewer.db')
+    _make_source_db(src)
+    with sqlite3.connect(src) as conn:
+        conn.execute("UPDATE photos SET date_taken='2024:01:01 01:02:03',date_manually_set=1")
+    export_viewer_db(src, out, thumbnail_size=320, verbose=False)
+    with sqlite3.connect(out) as conn:
+        assert conn.execute('SELECT date_manually_set FROM photos LIMIT 1').fetchone() == (1,)
+        conn.execute('ALTER TABLE photos DROP COLUMN date_manually_set')
+    export_viewer_db(src, out, thumbnail_size=320, verbose=False)
+    with sqlite3.connect(out) as conn:
+        assert conn.execute('SELECT date_taken,date_manually_set FROM photos WHERE path=?', (_A,)).fetchone() == ('2024:01:01 01:02:03', 1)
+
 @pytest.mark.parametrize('incremental', [False, True])
 def test_manual_review_cache_survives_viewer_copy_and_local_correction(tmp_path, incremental):
     src, out = str(tmp_path / 'source.db'), str(tmp_path / 'viewer.db')

@@ -544,7 +544,7 @@ class TestKeywordMergeIntegration:
             check=True,
         )
         write_metadata(str(img), XmpRating(star_rating=4, tags=["beach"]), embed_original=True)
-        flat, _ = xe._read_existing_keywords(str(img), _EXIFTOOL, timeout=30)
+        flat, _, _ = xe._read_existing_metadata(str(img), _EXIFTOOL, timeout=30)
         assert "Vacation" in flat  # foreign keyword preserved, not wiped
         assert "beach" in flat     # Facet keyword added
 
