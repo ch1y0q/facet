@@ -221,7 +221,7 @@ python facet.py --immich-sync
 | `403` | 令牌不正确。 |
 | `404` | 功能已禁用（未配置令牌）。 |
 
-Facet 从载荷中读取 `originalPath`，并且有意对它出现的位置保持宽容——一个裸的资产对象、`{"asset": {…}}`、一个列表，或者以上任意一种嵌套在 `data` / `items` / `assets` 之下，都能正常工作。如果载荷携带了资产 `id`，Facet 会使用它，省下一次查询往返。
+Facet 从对象、列表以及 `asset` / `data` / `items` / `assets` 包装中读取 `originalPath`。如果提供了 `id`，Facet 会从配置的服务器重新读取该资产，写入前核对精确路径及所选所有者/图库；不一致计为 `failed`。
 
 待处理的路径会由下一次同步报告：
 
@@ -246,6 +246,8 @@ WARNING  Immich webhook saw an asset Facet has not scored: /mnt/photos/2026/08/I
 "immich": {
   "url": "",
   "api_key": "",
+  "owner_id": "",
+  "library_id": "",
   "path_map": [
     { "facet_prefix": "", "immich_prefix": "" }
   ],
@@ -269,6 +271,8 @@ WARNING  Immich webhook saw an asset Facet has not scored: /mnt/photos/2026/08/I
 |-----|---------|---------|
 | `url` | `""` | Immich 的基础 URL，`http` 或 `https`。末尾的斜杠会被去掉。 |
 | `api_key` | `""` | API 密钥，以 `x-api-key` 发送。为空时任何同步都会带着明确的错误中止。 |
+| `owner_id` | `""` | 精确的 Immich 所有者 ID；空字符串禁用筛选。响应缺少该字段时不能满足明确指定的范围。 |
+| `library_id` | `""` | 精确的 Immich 图库 ID；空字符串禁用筛选，不代表选择 null 图库。 |
 | `path_map` | 一对空配置 | Facet 路径与 Immich `originalPath` 值之间的前缀改写。第一个匹配的胜出；双向都会用到。 |
 | `push.ratings` | `true` | 推送 1–5 星的星级（以及它们的清除）。 |
 | `push.favorites` | `true` | 推送 `isFavorite`（以及它的清除）。 |
@@ -331,7 +335,7 @@ Facet 只会为它确实推送过的照片发送清除；这份记忆保存在 F
 
 ### 星级出现在错误的照片上
 
-Immich 内部不可能出现两个 `originalPath` 相同的文件，但两个 *Facet* 根目录映射到同一个 Immich 前缀是可能冲突的。检查你的 `path_map` 各对配置没有重叠：第一个匹配的配对胜出，所以一个宽泛的配对排在一个狭窄的配对前面，就会把后者吞掉。
+同一路径对应多个远程资产 ID，或多个 Facet 路径映射到同一远程路径时，Facet 会拒绝写入并计入 `identity_conflicts`。这些路径不会更新评分、收藏、相册成员或已确认的同步状态；无歧义的照片仍可同步。请修正目录映射或明确设置 `owner_id` 和 `library_id` 后重试。
 
 ### `rating: 0 is not valid`
 
@@ -340,3 +344,7 @@ Immich 服务器版本低于 3.0。请升级——Facet 的清除语义需要 `n
 ---
 
 **参见：**[命令 —— Immich 同步](COMMANDS.md#immich-同步) · [配置](CONFIGURATION.md) · [编辑器互操作方案](INTEROP.md)，了解与 Lightroom、darktable 和 digiKam 的 XMP 往返。
+
+前缀仍按字面字符串匹配：第一个匹配项生效，不自动判断目录边界；目录前缀请以 `/` 结尾。试运行中 `updated` 表示计划更新数，不写入远程数据或本地同步状态。响应必须包含 `id` 和 `originalPath`。此契约仅通过已发布的 Immich v3.3.5 模式及隔离夹具验证，未连接真实服务器；HTTP 成功不代表元数据后台任务完成后仍然持久保存。
+
+Webhook 批次中，若不同 Facet 路径指向同一映射目标或远程 ID，相关条目都会被拒绝。所有身份均在首次写入前解析；矛盾的别名计为 `failed`，不更新已确认的推送状态。

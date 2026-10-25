@@ -171,12 +171,15 @@ describe('PhotoDetailComponent', () => {
     expect(mockRouter.navigate).not.toHaveBeenCalled();
   });
 
-  it.each([false, true])('refreshes the review queue without clearing newer selection or pins (pinned=%s)', async pinned => {
+  it.each([
+    ['manual_faces_need_review', false], ['manual_faces_need_review', true],
+    ['faces_need_names', false], ['faces_need_names', true],
+  ] as const)('refreshes the %s queue without clearing newer selection or pins (pinned=%s)', async (queue, pinned) => {
     createComponent();
     const original = makePhoto({ path: '/manual.jpg' });
     const other = makePhoto({ path: '/other.jpg' });
     const store = TestBed.inject(GalleryStore);
-    store.filters.update(f => ({ ...f, manual_faces_need_review: true }));
+    store.filters.update(f => ({ ...f, [queue]: true }));
     mockApi.get.mockReturnValue(of({ photos: [original, other], total: 2, has_more: false }));
     await store.loadPhotos();
     vi.spyOn(store, 'reloadPersonOptions').mockResolvedValue();
@@ -195,7 +198,7 @@ describe('PhotoDetailComponent', () => {
     expect(component.photo()).toEqual(other);
     expect(mockApi.post).toHaveBeenCalledWith('/photos/by_paths', pinned
       ? { paths: ['/manual.jpg'] }
-      : expect.objectContaining({ filters: expect.objectContaining({ manual_faces_need_review: '1' }) }));
+      : expect.objectContaining({ filters: expect.objectContaining({ [queue]: '1' }) }));
   });
 
   it('refreshes persisted person membership after the detail component is destroyed', async () => {
