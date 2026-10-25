@@ -14,6 +14,7 @@
   "duplicates_only",
   "exclude_art",
   "exclude_tags",
+  "faces_need_names",
   "favorites_only",
   "gps_lat",
   "gps_lng",

@@ -252,6 +252,13 @@ def _apply_text_filters(where_clauses, sql_params, params, conn, include_manual=
             except ValueError:
                 pass
 
+    if params.get('faces_need_names') in ('1', 'true'):
+        from db.schema import person_not_hidden_clause
+        where_clauses.append(
+            'EXISTS (SELECT 1 FROM faces f LEFT JOIN persons p ON p.id=f.person_id '
+            'WHERE f.photo_path=photos.path AND (f.person_id IS NULL OR '
+            f"(p.id IS NOT NULL AND {person_not_hidden_clause('p')} AND TRIM(COALESCE(p.name,''))='')))")
+
     if params.get('manual_faces_need_review') in ('1', 'true'):
         where_clauses.append(
             'EXISTS (SELECT 1 FROM faces WHERE photo_path=photos.path '

@@ -1590,3 +1590,9 @@ Originale und Dateiänderungszeiten bleiben unberührt. Der ausdrückliche XMP-E
 Diese Datenbank speichert die neuesten **50 Einträge pro Konto**, jeweils mit höchstens **1000 Fotos und 1 MiB**. Große gefilterte Auswahlen werden in derselben Transaktion in beschriftete Teile aufgeteilt. Zurücksetzen betrifft nur den gewählten Teil; ältere Teile können abgelaufen sein. Unveränderte Werte erzeugen keinen Eintrag. Der Verlauf übersteht Neustarts und inkrementelle Aktualisierungen, wird aber nicht zwischen Datenbanken synchronisiert. Ein vollständiger Export beginnt mit leerem Verlauf.
 
 Ein Eintrag wird ganz ausgeblendet, wenn ein Foto gelöscht oder nicht mehr zugänglich ist. Zurücksetzen wird vollständig abgelehnt, wenn ein betroffener Wert inzwischen geändert wurde, auch wenn er wieder gleich ist. Orts-/Datumskonflikte gelten kontenübergreifend; private Auswahländerungen anderer Konten blockieren Ihre nicht. Zurücksetzen erzeugt einen eigenen Eintrag und markiert den ursprünglichen. Scans, Importe und kurzzeitiges Rückgängigmachen machen ältere kollidierende Einträge ebenfalls ungültig.
+
+### Gesichter ohne Namen
+
+Enthält nicht zugewiesene Gesichter und unbenannte Personengruppen. Mit + ein Gesicht zuweisen oder unter Personen eine Gruppe benennen. Fotos ohne erkannte Gesichter sind ausgeschlossen.
+
+`Filters → People → Gesichter ohne Namen` (`faces_need_names=true`).
