@@ -29,9 +29,14 @@ import tempfile
 # Under pytest-xdist every worker is its own process and imports this module itself, so
 # each gets its own file; the worker id in the name only makes that visible (and a
 # leftover attributable). The controller process creates one it never uses.
+# LibraryLock and other caches live beside the database, so distinct filenames
+# in the shared system temp directory do not isolate xdist workers. Give each
+# session its own parent before any module captures DB_PATH.
+_TEST_DB_DIRECTORY = tempfile.mkdtemp(
+    prefix="intraswitch_facet_" + os.environ.get("PYTEST_XDIST_WORKER", "main") + "_")
 _TEST_DB_FILE = tempfile.NamedTemporaryFile(
     prefix="intraswitch_facet_" + os.environ.get("PYTEST_XDIST_WORKER", "main") + "_",
-    suffix=".db", delete=False)
+    suffix=".db", dir=_TEST_DB_DIRECTORY, delete=False)
 _TEST_DB_FILE.close()
 os.environ["DB_PATH"] = _TEST_DB_FILE.name
 

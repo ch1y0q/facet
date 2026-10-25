@@ -10,9 +10,12 @@ All notable changes to Facet are documented in this file.
 ### Added
 
 - **Explicit XMP sidecar discovery.** `--import-sidecars --sidecar-naming full|basename|auto` can read stripped-extension sidecars, refuses shared RAW/JPEG basenames, and reports naming conflicts. Full-name discovery remains the default; exports keep their existing filenames.
-- Explicit XMP export/import carries Keep decisions and manual GPS, with protection against overwriting existing manual locations.
+
+- **Revisit organization edits** from a private, durable history: compare GPS, capture-date and review values, then explicitly revert a whole entry with protection against newer edits. Keeps 50 bounded entries per account; originals stay unchanged.
 
 - **Correct capture dates** from photo details or gallery selections: preview a bounded walltime shift before applying it atomically, preserve manual dates across rescans/viewer exports, restore the file date, and export manual dates through the existing explicit XMP/embed actions.
+- Explicit XMP export/import carries Keep decisions and manual GPS, with protection against overwriting existing manual locations.
+
 - **Explicit address and business search in the GPS dialog.** Use **Search online** to send a query to the configured Photon provider, preview a result, then **Save** to apply its coordinates. Saved places and manual coordinates still work offline. `viewer.place_search_url` supports a private Photon endpoint or an empty string to disable lookup; searches are bounded, cached and edition-only. Original files remain unchanged.
 - **Set a location for selected photos.** Reuse saved/recent places, a map pin or coordinates for up to 1000 visible photos. Preview changed/skipped counts first, protect existing locations with the default only-missing option, and refresh the active gallery filters after applying. Manual coordinates survive rescans; original files are unchanged.
 - **Review progress and Continue reviewing.** See undecided, kept and rejected counts for the current folder or album, and resume the browser’s remembered queue at its first remaining undecided photo.
@@ -23,6 +26,7 @@ All notable changes to Facet are documented in this file.
 ### Fixed
 
 - Refuse basename XMP discovery when a double-extension derivative would read another image’s full-name or fallback sidecar. Report full-policy naming notices once per import while retaining complete mismatch counts.
+
 - **Caption export preserves other XMP languages.** Writing a Facet caption now updates only the default-language description in sidecars and embedded metadata, retaining existing translations. An empty Facet caption still preserves the existing caption.
 
 - **Returning to the gallery from another page keeps your filters.** The nav icon's "photos" link used to land on a pristine default view, so the filters set before opening a photo — or any other page — were silently gone. The gallery's last synced query now travels in sessionStorage: landing on a parameterless `/` re-enters with it (page number included), while a reset — double-click the nav icon or the reset button — clears it, and a URL that already carries its own params is never overridden.
