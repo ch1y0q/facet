@@ -76,6 +76,8 @@ EDITION_ROUTES = _routes_requiring(require_edition)
 # Pinned on purpose: dropping require_edition from a route (or adding a new
 # edition route) must fail here with a readable diff, not slip under a count.
 EXPECTED_EDITION_ROUTES = frozenset({
+    ('GET', '/api/organization_history'),
+    ('POST', '/api/organization_history/{entry_id}/revert'),
     ('DELETE', '/api/albums/{album_id}'),
     ('DELETE', '/api/albums/{album_id}/photos'),
     ('DELETE', '/api/albums/{album_id}/scoring_context'),
