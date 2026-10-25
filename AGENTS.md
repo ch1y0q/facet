@@ -48,4 +48,4 @@ Facet's maintainer uses [claude-review-all](https://github.com/ncoevoet/claude-r
 
 ## Context and handoff
 
-Keep changing PR status in a separate review ledger, not in this instruction file. Record exact heads, remaining questions, test commands/results, and local runtime source so the next session can resume without repeating old mistakes. Use the existing Graphify graph for orientation when available, then verify current source because the graph may be stale. Follow the user's Context7 requirements when consulting library or tool documentation.
+When `LOCAL_REVIEW_HANDOFF.md` is present, read it for the ongoing local task and report locations; it is a private, untracked handoff, not PR content. Keep changing PR status in a separate review ledger, not in this instruction file. Record exact heads, remaining questions, test commands/results, and local runtime source so the next session can resume without repeating old mistakes. Use the existing Graphify graph for orientation when available, then verify current source because the graph may be stale. Follow the user's Context7 requirements when consulting library or tool documentation.
