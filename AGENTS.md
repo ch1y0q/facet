@@ -4,6 +4,8 @@ Read `CLAUDE.md` and the relevant module documentation before changing code. The
 
 ## Reviews and parallel work
 
+Facet's maintainer uses [claude-review-all](https://github.com/ncoevoet/claude-review-all) for the review axes and severity tiers reflected in PR comments. In Claude Code with that plugin installed, use `/review-all:review-all` against the diff or PR before publishing; see its README for current setup and targets. It runs the repository gates and parallel reviews, then independently verifies findings. If the plugin is unavailable in the current environment, run the available gates and independent reviews explicitly and record that limitation; never claim the plugin ran. Treat CRITICAL/IMPORTANT as blocking defects, DEBT as maintenance work, SUGGESTED as a measured improvement, and QUESTION as an intent decision to resolve explicitly.
+
 - Fetch the current upstream master and the exact remote PR head before editing. The maintainer sometimes pushes fixes directly to our branches. Preserve those commits; never force-push.
 - Read issue comments, submitted reviews, and inline review comments. Track each concrete item by comment URL, current status, reproducer or source evidence, tests, and fixing commit. A merged PR or green CI does not prove every comment was addressed.
 - Assign one owner per branch/worktree. Keep independent PRs separate; review overlapping changes at their integration boundaries. Request a second review after fixes, including error, cancellation, and retry paths.
