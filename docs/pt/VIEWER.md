@@ -1587,3 +1587,7 @@ Uma entrada fica totalmente oculta se alguma foto for eliminada ou deixar de est
 Inclui rostos não atribuídos e grupos de pessoas sem nome. Use + para atribuir um rosto ou dê um nome a um grupo em Pessoas. Fotos sem rostos detetados são excluídas.
 
 `Filters → People → Rostos sem nome` (`faces_need_names=true`).
+
+## Atribuir pessoas
+
+O seletor **Atribuir rosto a pessoa** mostra primeiro até 12 pessoas atribuídas com sucesso neste navegador, separadamente por identidade conectada. As demais pessoas nomeadas seguem pela quantidade de rostos nas fotos visíveis, com desempate alfabético. A pesquisa e a paginação abrangem todas as pessoas elegíveis, mesmo com um único rosto. A ordem exibida permanece estável enquanto o seletor está aberto. Selecionar ou propor uma nova pessoa não atualiza os recentes: a atribuição ou o salvamento do rosto manual precisa concluir. Apenas IDs são salvos localmente; sem armazenamento do navegador, a atribuição continua funcionando sem recentes. Terminar a sessão apaga todas as atribuições recentes guardadas neste navegador. A ordem de atribuição conta rostos nas fotos visíveis; as outras ordenações devolvem os totais guardados da biblioteca.

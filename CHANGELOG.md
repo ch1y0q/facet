@@ -8,10 +8,12 @@ All notable changes to Facet are documented in this file.
 
 ### Changed
 - Reuse the NumPy search matrix across rating changes and accounts with the same visible photos, with embedding-specific invalidation and visibility checked in one read snapshot. Restricted searches load only permitted vectors; distinct scopes replace the single retained matrix.
-- Read search cache database change tokens in a worker thread so cold searches do not block other requests.
+- Read semantic-search, similar-photo and gallery count cache database change tokens in worker threads so both cold and warm token reads do not block other requests.
 - Resize manual-face previews and crop face pixels before converting to RGB, avoiding full-resolution copies on preview and save.
 
 ### Added
+
+- Assign people from a searchable picker ordered by recent successful assignments in this browser, then visible face counts. Signing out clears saved recents.
 
 - **Explicit XMP sidecar discovery.** `--import-sidecars --sidecar-naming full|basename|auto` can read stripped-extension sidecars, refuses shared RAW/JPEG basenames, and reports naming conflicts. Full-name discovery remains the default; exports keep their existing filenames.
 
@@ -28,6 +30,8 @@ All notable changes to Facet are documented in this file.
 - **The photo card's hover buttons are yours to arrange.** The four buttons that floated over every card on hover (find similar, why-this-score, write metadata, assign a face) are now a configurable row: a new dialog in the filter sidebar's View section reorders them and switches each on or off, per browser. Four actions join the pool — **open the photo's duplicate group** (on by default, and scoped to that group the same way the photo page's "open this set" lands), open its burst group, open its bracket/panorama set, and open the photo page. The group buttons appear only on photos that actually belong to such a group, so the row stays quiet on photos with nothing to offer. The layout persists in localStorage like the thumbnail size; smart albums, filters and the API are untouched.
 
 ### Fixed
+
+- Keep person-name searches working for numeric-looking and non-ASCII names without treating them as unsafe integer IDs. Assignment pagination counts people without repeating the face aggregate.
 
 - **Immich sync refuses ambiguous assets.** Duplicate remote paths and colliding Facet mappings are reported as identity conflicts. Fallback searches check every page and require an exact path; webhook IDs are verified before writes. Optional owner/library ID selectors restrict the configured server's responses. Literal first-prefix mapping behavior is unchanged.
 - Refuse basename XMP discovery when a double-extension derivative would read another image’s full-name or fallback sidecar. Report full-policy naming notices once per import while retaining complete mismatch counts.
