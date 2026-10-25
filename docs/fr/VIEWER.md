@@ -1553,6 +1553,12 @@ Si la recherche sémantique indique que l’accélération Apple Silicon est occ
 | Port 5000 occupé | Lancez `python viewer.py --port 5001` (ou définissez `PORT=5001`). Sur macOS, le récepteur AirPlay de ControlCenter occupe 5000 par défaut — choisissez un autre port ou désactivez le récepteur AirPlay dans Réglages Système → Général → AirDrop et Handoff. |
 
 
+### Photon
+
+Utilisez **Adresse ou établissement → Rechercher en ligne** pour interroger Photon explicitement. La requête n’est envoyée au fournisseur configuré qu’au clic, jamais pendant la saisie. Sélectionnez un résultat pour prévisualiser ses coordonnées, puis **Enregistrer** pour les appliquer. Le fichier original reste inchangé. Photon utilise les données OpenStreetMap (© contributeurs OpenStreetMap). Hors ligne, les lieux enregistrés et les coordonnées restent utilisables. `viewer.place_search_url` vaut par défaut `https://photon.komoot.io/api` ; indiquez une instance Photon privée ou `""` pour désactiver la recherche. Le serveur public n’offre aucune garantie de disponibilité. Limites : 3–200 caractères, cinq résultats, cinq secondes, 64 Kio ; cache de 128 recherches pendant 15 minutes, appels non simultanés espacés d’au moins une seconde par processus. Utilisez un seul worker avec le fournisseur public. Facet ne journalise pas les requêtes ; excluez les paramètres de recherche des journaux du proxy.
+
+Le délai de cinq secondes interrompt les sockets actifs, y compris les en-têtes et le cadrage HTTP lents. La résolution DNS native suit les délais du système et peut durer plus longtemps avant la création du socket ; une recherche expirée n’ouvre ensuite aucune connexion.
+
 ### Vérifier les repères manuels de visages enregistrés
 
 Dans les filtres d’affinage de la galerie, les éditeurs peuvent activer **Visages manuels à vérifier** pour retrouver les photos dont les rectangles de visages sont périmés ou proviennent d’une ancienne version. Ouvrez une photo et son éditeur de visages habituel pour ajuster puis enregistrer un rectangle après une nouvelle vérification, ou le supprimer. Une fois le dernier repère à vérifier corrigé ou supprimé, la photo quitte cette vue filtrée. Le filtre fonctionne aussi dans les albums intelligents enregistrés et lors de la sélection de tous les résultats.
