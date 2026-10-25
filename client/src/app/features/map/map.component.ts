@@ -80,7 +80,7 @@ interface MapResponse {
         <div class="absolute inset-0 flex items-center justify-center pointer-events-none"
              style="z-index: 1000">
           <div class="max-w-md mx-4 px-6 py-5 rounded-xl shadow-lg text-center
-                      bg-[var(--mat-sys-surface-container)] text-[var(--mat-sys-on-surface)] pointer-events-auto">
+                      bg-[var(--mat-sys-surface-container)] text-[var(--mat-sys-on-surface)]">
             <mat-icon class="!text-4xl !w-10 !h-10 opacity-50 mb-2">location_off</mat-icon>
             <p class="font-medium">{{ I18N.map.no_gps_title | translate }}</p>
             <p class="text-sm opacity-70 mt-2">{{ I18N.map.no_gps_hint | translate }}</p>
@@ -158,9 +158,11 @@ export class MapComponent implements OnInit, OnDestroy {
   /** Whether the tile server failed and the banner is showing. Dismissal sticks
    *  for the life of the view: every later pan would otherwise raise it again. */
   protected readonly tileError = signal(false);
-  /** True once a marker load came back with nothing at all — every photo in
-   *  scope is unplaced (or the window filtered them all out). The bare grey
-   *  plane behind an empty marker layer otherwise reads as a bug. */
+  /** True when the library has no geotagged photo at all, read once from the
+   *  library-wide count when the map opens. A viewport that merely holds no
+   *  marker (an ocean, a narrow date window) never raises it: panning there is
+   *  ordinary use. The card is pointer-transparent, so the map under it still
+   *  pans and zooms. A failed count leaves it hidden. */
   protected readonly noGpsResults = signal(false);
   private tileErrorDismissed = false;
 
@@ -235,6 +237,16 @@ export class MapComponent implements OnInit, OnDestroy {
 
     // Initial load
     this.loadMarkers();
+    this.checkForGeotaggedPhotos();
+  }
+
+  private async checkForGeotaggedPhotos(): Promise<void> {
+    try {
+      const data = await firstValueFrom(this.api.get<{ count: number }>('/photos/map/count'));
+      this.noGpsResults.set(data.count === 0);
+    } catch {
+      this.noGpsResults.set(false);
+    }
   }
 
   private async loadMarkers(): Promise<void> {
@@ -267,9 +279,6 @@ export class MapComponent implements OnInit, OnDestroy {
       if (requestId !== this.loadMarkersRequestId) return;
 
       this.markersLayer.clearLayers();
-
-      const markerCount = (data.clusters?.length ?? 0) + (data.photos?.length ?? 0);
-      this.noGpsResults.set(markerCount === 0);
 
       if (data.clusters) {
         for (const cluster of data.clusters) {

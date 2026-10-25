@@ -987,7 +987,8 @@
       "avg_monochrome": "Monochrome (%)",
       "avg_dynamic_range": "Plage dynamique moy.",
       "usage_timeline": "Chronologie d'utilisation"
-    }
+    },
+    "gear_metric_label": "Métrique du graphique"
   },
   "login": {
     "title": "Connexion",

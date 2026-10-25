@@ -987,7 +987,8 @@
       "avg_monochrome": "黑白照片占比（%）",
       "avg_dynamic_range": "平均动态范围",
       "usage_timeline": "使用时间线"
-    }
+    },
+    "gear_metric_label": "图表指标"
   },
   "login": {
     "title": "登录",

@@ -1002,6 +1002,7 @@ export const I18N = {
       avg_dynamic_range: "stats.gear_metrics.avg_dynamic_range",
       usage_timeline: "stats.gear_metrics.usage_timeline",
     },
+    gear_metric_label: "stats.gear_metric_label",
   },
   login: {
     title: "login.title",

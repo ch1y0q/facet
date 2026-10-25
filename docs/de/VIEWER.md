@@ -179,6 +179,8 @@ Nach von SAMP-Net erkannten Mustern filtern (das Modell liefert genau diese 8, a
 
 ## Sortierung
 
+**Gemerkte Sortierung.** Die Galerie öffnet mit der Sortierung, die Sie zuletzt im Sortierauswahlfeld gewählt haben, und diese Wahl hat Vorrang vor `viewer.defaults.sort`. Sie wird pro Browser im `localStorage` gespeichert, nicht pro Benutzerkonto. Nur eine Wahl im Sortierauswahlfeld wird gemerkt: Eine Sortierung, die über einen geteilten Link oder ein Lesezeichen ankommt oder die ein Assistent anwendet, ändert die Ansicht, ohne gemerkt zu werden, und das eigene `sort` eines Links hat weiterhin Vorrang vor der gemerkten. Wählen Sie erneut die konfigurierte Standardsortierung, wird die Wahl vergessen, ebenso beim Zurücksetzen der Filter. **Relevanz** wird nie gemerkt, da sie eine Suchanfrage voraussetzt.
+
 Verschlusszeiten werden nach Belichtungsdauer in Sekunden sortiert, einschließlich
 dezimaler und rationaler EXIF-Werte: `1/250` und `0.004` sind gleich. Fehlende,
 fehlerhafte, null, negative und nicht endliche Werte erscheinen in beiden

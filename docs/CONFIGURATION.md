@@ -1756,7 +1756,7 @@ Web gallery display and behavior.
 | `low_light_max_luminance` | `0.2` | Low light threshold |
 | **defaults** | | |
 | `type` | `""` | Default photo type filter (e.g., `"portraits"`, `"landscapes"`, or `""` for All) |
-| `sort` | `"aggregate"` | Default sort column |
+| `sort` | `"aggregate"` | Default sort column. The gallery opens on the sort last picked in the sort control instead, when this browser remembers one (see [Sorting](VIEWER.md#sorting)) |
 | `sort_direction` | `"DESC"` | Default sort direction (`"ASC"` or `"DESC"`) |
 | `hide_blinks` | `true` | Hide blink photos by default |
 | `hide_bursts` | `true` | Show only best of burst by default |

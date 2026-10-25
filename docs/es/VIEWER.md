@@ -179,6 +179,8 @@ Filtra por los patrones detectados por SAMP-Net (el modelo emite exactamente est
 
 ## Ordenación
 
+**Ordenación recordada.** La galería se abre con la última ordenación elegida en el selector de ordenación, y esa elección prevalece sobre `viewer.defaults.sort`. Se recuerda en `localStorage` por navegador, no por cuenta de usuario. Solo se recuerda una elección hecha en el selector de ordenación: una ordenación que llega en un enlace compartido o un marcador, o que aplica un asistente, cambia la vista sin recordarse, y el `sort` propio de un enlace sigue prevaleciendo sobre la recordada. Elegir de nuevo la ordenación predeterminada configurada olvida la elección, igual que restablecer los filtros. **Relevancia** nunca se recuerda, porque necesita una consulta de búsqueda.
+
 Las velocidades de obturación se ordenan por duración de la exposición en
 segundos, incluidos los valores EXIF decimales y racionales: `1/250` y `0.004` son
 iguales. Los valores ausentes, mal formados, cero, negativos y no finitos aparecen

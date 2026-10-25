@@ -557,7 +557,7 @@ export class App implements OnInit {
 
 
   protected onSortChange(sort: string): void {
-    this.store.updateFilter('sort', sort);
+    void this.store.setUserSort(sort);
   }
 
   protected toggleSortDirection(): void {

@@ -1778,7 +1778,7 @@ Visualizzazione e comportamento della galleria web.
 | `low_light_max_luminance` | `0.2` | Soglia di scarsa illuminazione |
 | **defaults** | | |
 | `type` | `""` | Filtro predefinito del tipo di foto (es. `"portraits"`, `"landscapes"`, o `""` per Tutte) |
-| `sort` | `"aggregate"` | Colonna di ordinamento predefinita |
+| `sort` | `"aggregate"` | Colonna di ordinamento predefinita. La galleria si apre invece sull'ultimo ordinamento scelto nel selettore di ordinamento, quando questo browser ne memorizza uno (vedi [Ordinamento](VIEWER.md#ordinamento)) |
 | `sort_direction` | `"DESC"` | Direzione di ordinamento predefinita (`"ASC"` o `"DESC"`) |
 | `hide_blinks` | `true` | Nasconde per impostazione predefinita le foto con battito di palpebre |
 | `hide_bursts` | `true` | Mostra per impostazione predefinita solo la migliore della raffica |

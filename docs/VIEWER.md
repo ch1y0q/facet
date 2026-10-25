@@ -181,6 +181,8 @@ Filter by SAMP-Net detected patterns (the model emits exactly these 8, from
 
 ## Sorting
 
+**Remembered sort.** The gallery opens on the sort you last picked in the sort control, and that choice overrides `viewer.defaults.sort`. It is remembered in `localStorage` per browser, not per user account. Only a pick in the sort control is remembered: a sort that arrives in a shared or bookmarked link, or one an assistant applies, changes the view without being remembered, and a link's own `sort` still wins over the remembered one. Picking the configured default again forgets the choice, and so does resetting the filters. **Relevance** is never remembered, because it needs a search query.
+
 Shutter speeds sort by exposure duration in seconds, including decimal and
 rational EXIF values: `1/250` and `0.004` are equal. Missing, malformed, zero,
 negative, and nonfinite values appear last in either direction. Equal values

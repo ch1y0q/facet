@@ -135,7 +135,8 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
         </mat-form-field>
 
         <!-- Search. Visible from lg up, beside the type dropdown it pairs with.
-             Filters as you type (400 ms debounce); Enter commits immediately. -->
+             Filters as you type (400 ms debounce); Enter and leaving the box
+             commit immediately, so clicking a photo never drops typed text. -->
         <mat-form-field class="!hidden lg:!inline-flex w-52 min-w-0 shrink" subscriptSizing="dynamic">
           <input
             #toolbarSearch
@@ -144,6 +145,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
             [value]="store.filters().search"
             (input)="onSearchInput($event)"
             (keyup.enter)="onSearchChange($event)"
+            (blur)="onSearchChange($event)"
           />
           @if (store.filters().search) {
             <button matSuffix mat-icon-button (click)="clearSearch()" [attr.aria-label]="I18N.gallery.clear_search | translate">
@@ -1283,6 +1285,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
       this.parked = true;
       // Pending filter edits would otherwise replace the photo URL.
       this.filterSidebar()?.cancelPendingSearch();
+      this.cancelToolbarSearch();
       if (this.store.slideshowActive()) {
         this.store.slideshowActive.set(false);
         // Detached views need an explicit render to release slideshow timers and listeners.
@@ -1442,6 +1445,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.cancelToolbarSearch();
     this.pageHelp.setDescription(null);
     const t = this.galleryToolbar();
     if (t) this.headerSlot.clear(t);
@@ -2432,8 +2436,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   /** Debounced live filtering for the toolbar search box: waiting for
    *  Enter/blur made typing feel dead (the grid froze with no hint that a
-   *  commit was pending). Enter still commits immediately via the same
-   *  updateFilter path. */
+   *  commit was pending). Enter and blur still commit immediately via the
+   *  same updateFilter path. */
   protected onSearchInput(event: Event): void {
     const value = (event.target as HTMLInputElement).value;
     if (this.searchTimeout) clearTimeout(this.searchTimeout);
@@ -2485,7 +2489,18 @@ export class GalleryComponent implements OnInit, OnDestroy {
   }
 
   protected clearSearch(): void {
+    this.cancelToolbarSearch();
     this.store.updateFilter('search', '');
+  }
+
+  /** Drop a pending toolbar search and show the committed one again. A timer
+   *  that fired on a parked or destroyed gallery would rewrite whatever URL is
+   *  showing by then (the photo page's) with gallery query params. */
+  private cancelToolbarSearch(): void {
+    if (this.searchTimeout) clearTimeout(this.searchTimeout);
+    this.searchTimeout = null;
+    const input = this.toolbarSearch()?.nativeElement;
+    if (input) input.value = this.store.filters().search;
   }
 
   private setupResizeObserver(): void {

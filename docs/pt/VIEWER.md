@@ -179,6 +179,8 @@ em `models/samp_net.py`):
 
 ## Ordenação
 
+**Ordenação lembrada.** A galeria abre na última ordenação escolhida no seletor de ordenação, e essa escolha prevalece sobre `viewer.defaults.sort`. Ela é guardada no `localStorage` por navegador, não por conta de usuário. Só uma escolha feita no seletor de ordenação é lembrada: uma ordenação que chega por um link compartilhado ou um favorito, ou que um assistente aplica, muda a visualização sem ser lembrada, e o `sort` próprio de um link continua prevalecendo sobre a lembrada. Escolher de novo a ordenação padrão configurada esquece a escolha, assim como redefinir os filtros. **Relevância** nunca é lembrada, pois exige uma consulta de busca.
+
 As velocidades do obturador são ordenadas pela duração da exposição em segundos,
 incluindo valores EXIF decimais e racionais: `1/250` e `0.004` são iguais. Valores
 ausentes, malformados, zero, negativos e não finitos aparecem por último em ambas

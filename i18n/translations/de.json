@@ -987,7 +987,8 @@
       "avg_monochrome": "Monochrom (%)",
       "avg_dynamic_range": "Durchschn. Dynamikumfang",
       "usage_timeline": "Nutzungszeitraum"
-    }
+    },
+    "gear_metric_label": "Diagrammmetrik"
   },
   "login": {
     "title": "Anmelden",

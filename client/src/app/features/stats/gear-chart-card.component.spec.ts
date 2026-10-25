@@ -114,4 +114,10 @@ describe('GearChartCardComponent', () => {
     expect(sorted[0].name).toBe('Lens B');
   });
 
+  it('names the metric select for assistive tech, since it carries no visible label', () => {
+    fixture.detectChanges();
+    const select = (fixture.nativeElement as HTMLElement).querySelector('mat-select') as HTMLElement;
+    expect(select.getAttribute('aria-label')).toBe('trans_stats.gear_metric_label');
+    expect((fixture.nativeElement as HTMLElement).querySelector('mat-label')).toBeNull();
+  });
 });
