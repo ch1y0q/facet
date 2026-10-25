@@ -7,11 +7,15 @@ darktable / Lightroom / etc. and fold ratings, picks and keywords back into the
 Facet decisions apply on explicit import when standard review fields agree or
 are absent. A mismatch indicates an external editor changed standard fields
 while preserving Facet's private tag; those standard fields then follow the
-legacy timestamp gate and the stale private decision is ignored. Manual GPS overrides (including
-clears) import only where no manual override exists, unless the caller requests
-``overwrite_manual_gps=True``. Missing/invalid new fields preserve state. These
-fields never use scanned_at as a proxy for the time of a manual edit. If both
-primary and fallback sidecars exist, read the most recently modified file.
+legacy timestamp gate and the stale private decision is ignored. A decision
+that rides with standard fields follows the same timestamp gate, unless the
+photo has no review state yet (no stars, favourite, Keep or reject), so a
+stale export cannot revert a decision made in Facet after a later scan.
+Manual GPS overrides (including clears) import only where no manual override
+exists, unless the caller requests ``overwrite_manual_gps=True``; they never use
+scanned_at as a proxy for the time of a manual edit. Missing/invalid new fields
+preserve state. If both primary and fallback sidecars exist, read the most
+recently modified file.
 
 Conflict policy for legacy fields: ratings / labels apply **newest-wins** by
 ``xmp:MetadataDate`` (falling back to the sidecar file mtime) versus the photo's
@@ -303,6 +307,7 @@ def import_sidecars(conn, root: str | None = None, *, user_id: str | None = None
         favorite = bool(row["is_favorite"])
         rejected = bool(row["is_rejected"])
         kept = bool(row["is_kept"])
+        untouched = not (star or favorite or rejected or kept)
 
         sidecar_epoch = _to_epoch(parsed["metadata_date"]) or os.path.getmtime(sidecar)
         photo_epoch = _to_epoch(_parse_date(row["scanned_at"]))
@@ -315,11 +320,15 @@ def import_sidecars(conn, root: str | None = None, *, user_id: str | None = None
         # Facet exports consistent private/standard rejection state. Editors
         # preserve unknown tags, so disagreement means the private decision is
         # stale: leave the standard fields to the timestamp gate above. Missing
-        # standard fields still allow deliberate decision-only imports.
+        # standard fields still allow deliberate decision-only imports. Every
+        # Facet export stamps a decision, so one riding with standard fields
+        # follows their timestamp gate too, except into a photo with no review
+        # state yet (a restore into a rescanned library).
         decision = parsed["review_decision"]
         decision_conflicts = (parsed["has_rating"] and decision is not None
                               and parsed["is_rejected"] != (decision == "rejected"))
-        if decision is not None and not decision_conflicts:
+        if (decision is not None and not decision_conflicts
+                and (not parsed["has_rating"] or sidecar_wins or untouched)):
             kept = decision == "kept"
             rejected = decision == "rejected"
             if rejected:

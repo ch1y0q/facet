@@ -295,3 +295,42 @@ def test_exported_clear_external_coordinates_import(tmp_path, monkeypatch, latit
     actual = tuple(conn.execute('SELECT gps_latitude,gps_longitude,gps_manually_set FROM photos').fetchone())
     assert actual == ((*expected, 1) if expected is not None and (not manual or overwrite) else (10, 20, int(manual)))
     assert image.read_bytes() == b'original'
+
+
+@pytest.mark.parametrize('exported', [
+    {'is_rejected': 1},
+    {'is_kept': 0},
+])
+def test_stale_export_does_not_revert_a_later_facet_decision(tmp_path, exported):
+    image = tmp_path / 'stale.jpg'
+    Path(str(image) + '.xmp').write_text(build_xmp(XmpRating.from_row(exported)))
+    conn = database(tmp_path)
+    # Un-rejected / kept and rated in Facet after a scan newer than the export.
+    conn.execute('INSERT INTO photos(path,star_rating,is_favorite,is_kept,scanned_at) VALUES (?,4,1,1,?)',
+                 (str(image), '2099-01-01T00:00:00Z'))
+    assert import_sidecars(conn)['unchanged'] == 1
+    assert tuple(conn.execute('SELECT star_rating,is_favorite,is_kept,is_rejected FROM photos').fetchone()) == (4, 1, 1, 0)
+
+
+def test_export_restores_decision_into_a_rescanned_library(tmp_path):
+    image = tmp_path / 'restore.jpg'
+    Path(str(image) + '.xmp').write_text(build_xmp(XmpRating.from_row({'is_kept': 1})))
+    conn = database(tmp_path)
+    conn.execute('INSERT INTO photos(path,scanned_at) VALUES (?,?)', (str(image), '2099-01-01T00:00:00Z'))
+    import_sidecars(conn)
+    assert conn.execute('SELECT is_kept FROM photos').fetchone()[0] == 1
+
+
+@pytest.mark.skipif(not exiftool_available(), reason='requires ExifTool')
+def test_reexport_after_gps_reset_drops_the_manual_marker(tmp_path):
+    from PIL import Image
+    image = tmp_path / 'reset.jpg'
+    Image.new('RGB', (20, 20), 'blue').save(image)
+    write_metadata(str(image), XmpRating.from_row(dict(gps_manually_set=1, gps_latitude=48.85, gps_longitude=2.35)))
+    assert parse_sidecar(str(image) + '.xmp')['gps'] == (48.85, 2.35)
+    write_metadata(str(image), XmpRating.from_row(dict(gps_latitude=10.0, gps_longitude=20.0)))
+    assert parse_sidecar(str(image) + '.xmp')['gps'] is None
+    conn = database(tmp_path)
+    conn.execute('INSERT INTO photos(path,gps_latitude,gps_longitude) VALUES (?,10,20)', (str(image),))
+    import_sidecars(conn)
+    assert tuple(conn.execute('SELECT gps_latitude,gps_longitude,gps_manually_set FROM photos').fetchone()) == (10, 20, 0)

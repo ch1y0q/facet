@@ -554,8 +554,10 @@ def _exiftool_tag_args(rating: XmpRating, existing_flat: list[str],
     args = [f"-XMP:Rating={xmp_rating}", f"-XMP:Label={label}",
             f"-XMP-facet:ReviewDecision={rating.review_decision()}"]
     state = rating.gps_state()
+    # A reset to file GPS must drop the marker an earlier export left in the
+    # sidecar, or the next import restores the reverted manual location.
+    args.append(f"-XMP-facet:GPSState={state or ''}")
     if state:
-        args.append(f"-XMP-facet:GPSState={state}")
         args.extend([f"-XMP-exif:GPSLatitude={rating.gps_latitude if state == 'set' else ''}",
                      f"-XMP-exif:GPSLongitude={rating.gps_longitude if state == 'set' else ''}"])
     if rating.caption:
