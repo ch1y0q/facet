@@ -381,3 +381,13 @@ def test_unknown_nonstandard_column_also_fails_closed(library):
         conn.execute('UPDATE photos SET archive_ref=?', (old,))
     with pytest.raises(ValueError, match='Unregistered schema column'):
         preview(library)
+
+
+def test_unicode_normalization_aliases_are_not_guessed(library):
+    db, old, new, _ = library
+    first = str(Path(old).with_name('caf\u00e9.jpg'))
+    second = str(Path(old).with_name('cafe\u0301.jpg'))
+    with sqlite3.connect(db) as conn:
+        conn.executemany('INSERT INTO photos(path) VALUES (?)', [(first,), (second,)])
+    with pytest.raises(ValueError, match='case/Unicode'):
+        preview(library, [{'old': first, 'new': new}])
