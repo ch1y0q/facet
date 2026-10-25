@@ -5,6 +5,7 @@ All notable changes to Facet are documented in this file.
 ## [Unreleased]
 
 ### Changed
+- Read search cache database change tokens in a worker thread so cold searches do not block other requests.
 - Resize manual-face previews and crop face pixels before converting to RGB, avoiding full-resolution copies on preview and save.
 
 ### Added

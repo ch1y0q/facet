@@ -477,7 +477,8 @@ async def _embedding_matrix_key(conn, vis_sql, vis_params, user_id):
         return (conn, row[0], conn.total_changes, scope)
     # Existing cross-process sentinel handles WAL commits and file replacement.
     # No embedding-only generation exists: unrelated commits also invalidate.
-    return (db_path, db_change_token(db_path), scope)
+    token = await asyncio.to_thread(db_change_token, db_path)
+    return (db_path, token, scope)
 
 
 async def _load_embedding_matrix(conn, vis_sql, vis_params, user_id):
@@ -803,7 +804,8 @@ async def semantic_candidates(conn, q: str, threshold: Optional[float], user_id:
     """
     resolved = await asyncio.to_thread(search_threshold_default) if threshold is None else threshold
     model_key = await asyncio.to_thread(_candidate_model_key)
-    key = (q, resolved, model_key, user_id, db_change_token(str(_database.DEFAULT_DB_PATH)))
+    token = await asyncio.to_thread(db_change_token, str(_database.DEFAULT_DB_PATH))
+    key = (q, resolved, model_key, user_id, token)
     cached = _candidates_lookup(key)
     if cached is not None:
         return cached
