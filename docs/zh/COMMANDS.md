@@ -83,11 +83,12 @@ API 会将其呈现在 `/api/scan/status` 的 `progress` 字段以及 SSE 数据
 | `python facet.py --import-sidecars --overwrite-manual-gps` | 用附属文件中的手动位置替换 Facet 中已设置的手动 GPS（包括已清除的位置）；不加此选项时保留已有的手动 GPS |
 | `python facet.py --export-sidecars` | 为全部照片从数据库写入／合并 `<image>.xmp` 附属文件（仅附属文件） |
 | `python facet.py --export-sidecars /path` | 仅导出某个路径子树下照片的附属文件 |
+| `python facet.py --export-sidecars /path --reconcile-keywords` | 仅协调 Facet 拥有的关键字，保留外部词；需要 ExifTool。 |
 | `python facet.py --export-sidecars --user alice` | 多用户模式：导出 Alice 的 `user_preferences` 评分，而不是全局列（关键词仍为全局） |
 | `python facet.py --export-sidecars --embed-originals` | 同时把元数据**写入文件本身**，适用于 JPEG/HEIC/TIFF/PNG/DNG（会重写原始文件） |
 | `python facet.py --export-sidecars --score-to-stars` | 对你没有手动评分过的照片，由综合评分推导出 `xmp:Rating`（手动评分／收藏／淘汰始终优先） |
 
-> **元数据双向同步。** Facet 会把评分、颜色标记、关键词、照片描述和已命名的人脸区域写入标准的 `<image>.xmp` 附属文件，整个生态都能读取（Lightroom、darktable、digiKam、immich 等）；除非你用 `--export-sidecars --embed-originals` 主动开启，否则原始图像永远不会被修改（仅限 JPEG/HEIC/TIFF/PNG/DNG——RAW 绝不会被改动）。写入文件本身以及安全的关键词并集合并需要 **exiftool**；没有它时，Facet 会退回到零依赖的纯 XML 附属文件。写出的关键字是 AI 标签加上你的[手动标签](VIEWER.md#手动标签)，并且一个关键字一旦写出，之后的导出不会再把它从附属文件中移除（参见[手动标签与 XMP 关键字](INTEROP.md#手动标签与-xmp-关键字)）。
+> **元数据双向同步。** Facet 会把评分、颜色标记、关键词、照片描述和已命名的人脸区域写入标准的 `<image>.xmp` 附属文件，整个生态都能读取（Lightroom、darktable、digiKam、immich 等）；除非你用 `--export-sidecars --embed-originals` 主动开启，否则原始图像永远不会被修改（仅限 JPEG/HEIC/TIFF/PNG/DNG——RAW 绝不会被改动）。写入文件本身以及安全的关键词并集合并需要 **exiftool**；没有它时，Facet 会退回到零依赖的纯 XML 附属文件。写出的关键字是 AI 标签加上你的[手动标签](VIEWER.md#手动标签)，未选择 `--reconcile-keywords` 时，之后的导出仍只添加关键字（参见[手动标签与 XMP 关键字](INTEROP.md#手动标签与-xmp-关键字)）。
 >
 > **注意事项。** `--import-sidecars` 依据照片的 `scanned_at`（最后一次扫描时间）以*较新者优先*的方式处理评分／标记，而不是依据每条评分的编辑时间——因此比最后一次扫描更新的附属文件，可能覆盖你在扫描之后于 Facet 中改过的评分。如果外部编辑器才是权威来源，请在重新评分之前运行 `--import-sidecars`。导入的关键字会进入手动标签表，标签筛选直接读取该表，因此之后不需要运行 `--migrate-tags`。
 >

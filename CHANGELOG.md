@@ -5,6 +5,8 @@ All notable changes to Facet are documented in this file.
 ## [Unreleased]
 
 ### Added
+
+- **Explicit keyword reconciliation.** `--export-sidecars --reconcile-keywords` removes only previously Facet-owned keywords, preserves foreign names, and carries deletion/AI provenance so removed tags and old AI labels do not return as manual tags. Additive exports remain the default; reconciliation requires ExifTool.
 - Explicit XMP export/import carries Keep decisions and manual GPS, with protection against overwriting existing manual locations.
 
 - **Set a location for selected photos.** Reuse saved/recent places, a map pin or coordinates for up to 1000 visible photos. Preview changed/skipped counts first, protect existing locations with the default only-missing option, and refresh the active gallery filters after applying. Manual coordinates survive rescans; original files are unchanged.

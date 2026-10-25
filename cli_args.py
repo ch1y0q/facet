@@ -379,6 +379,8 @@ Configuration:
                         help='Write/merge <image>.xmp sidecars from the DB ratings/labels/tags/caption '
                              '(optional: limit to a path subtree; default: all photos). Defaults to the '
                              'global rating columns; pass --user for per-user ratings in multi-user mode')
+    export_group.add_argument('--reconcile-keywords', action='store_true',
+                        help='With --export-sidecars: remove only previously Facet-owned keywords no longer present; requires ExifTool')
     export_group.add_argument('--embed-originals', action='store_true',
                         help='With --export-sidecars: also embed metadata into the original image files '
                              '(JPEG/HEIC/TIFF/PNG/DNG via exiftool); RAW originals are never modified')

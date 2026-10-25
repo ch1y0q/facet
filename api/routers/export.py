@@ -224,6 +224,8 @@ def _fetch_rating_rows(conn, paths, user_id):
     from db.manual_tags import load_manual_tags_map, merge_effective_tags
     manual = load_manual_tags_map(conn, list(result))
     for path, data in result.items():
+        data["manual_tags"] = manual.get(path, [])
+        data["ai_tags"] = data["tags"]
         data["tags"] = merge_effective_tags(data["tags"], manual.get(path, ()))
     return result
 

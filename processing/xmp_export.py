@@ -56,6 +56,7 @@ from typing import NamedTuple
 from xml.etree import ElementTree as ET
 
 from db.manual_tags import load_manual_tags_map, merge_effective_tags
+from processing.xmp_keywords import parse_keyword_state, reconcile_keywords, serialize_keyword_state
 from utils.image_loading import JPEG_EXTENSIONS, KNOWN_HEIF_EXTENSIONS
 
 logger = logging.getLogger(__name__)
@@ -181,6 +182,8 @@ class XmpRating:
     gps_latitude: float | None = None
     gps_longitude: float | None = None
     tags: list[str] = field(default_factory=list)
+    ai_tags: list[str] = field(default_factory=list)
+    manual_tags: list[str] = field(default_factory=list)
     caption: str = ""
     category: str = ""
     person_names: list[str] = field(default_factory=list)
@@ -208,6 +211,8 @@ class XmpRating:
             gps_latitude=data.get("gps_latitude"),
             gps_longitude=data.get("gps_longitude"),
             tags=_as_list(data.get("tags")),
+            ai_tags=_as_list(data.get("ai_tags", data.get("tags"))),
+            manual_tags=_as_list(data.get("manual_tags")),
             caption=(data.get("caption") or "").strip(),
             category=(data.get("category") or "").strip(),
             person_names=_as_list(data.get("person_names")),
@@ -334,6 +339,8 @@ def _apply_facet_nodes(desc, rating: XmpRating) -> None:
     has to merge with foreign nodes.
     """
     xmp_rating, label = rating.xmp_values()
+    _, keyword_state = reconcile_keywords([], rating.all_keywords(), ai=rating.ai_tags, manual=rating.manual_tags)
+    desc.set(f"{{{NS_FACET}}}KeywordState", serialize_keyword_state(keyword_state))
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     desc.set(f"{{{NS_XMP}}}Rating", str(xmp_rating))
     if label:
@@ -538,7 +545,7 @@ def _union(*lists: list[str]) -> list[str]:
 
 
 def _exiftool_tag_args(rating: XmpRating, existing_flat: list[str],
-                       existing_hier: list[str]) -> list[str]:
+                       existing_hier: list[str], *, keyword_state=None, reconcile=False) -> list[str]:
     """Build the exiftool ``-Tag=value`` args for ``rating`` (no exe, no target).
 
     Keyword and hierarchical LISTS are cleared then rewritten as the UNION of the
@@ -566,7 +573,10 @@ def _exiftool_tag_args(rating: XmpRating, existing_flat: list[str],
     # Flat keywords (mirrored to IPTC for legacy tools): clear then replace with
     # the union of existing and Facet's keywords.
     args += ["-XMP-dc:Subject=", "-IPTC:Keywords="]
-    for keyword in _union(existing_flat, rating.all_keywords()):
+    flat, marker = reconcile_keywords(existing_flat, rating.all_keywords(), keyword_state,
+                                      reconcile=reconcile, ai=rating.ai_tags, manual=rating.manual_tags)
+    args.append(f"-XMP-facet:KeywordState={serialize_keyword_state(marker)}")
+    for keyword in flat:
         args.append(f"-XMP-dc:Subject={keyword}")
         args.append(f"-IPTC:Keywords={keyword}")
     # Hierarchical keywords: clear then replace with the union.
@@ -586,7 +596,7 @@ def _listify(value) -> list[str]:
     return [str(value)] if str(value) else []
 
 
-def _read_existing_keywords(target: str, exe: str, *, timeout: int) -> tuple[list[str], list[str]]:
+def _read_existing_keywords(target: str, exe: str, *, timeout: int, strict=False) -> tuple[list[str], list[str]]:
     """Read ``target``'s existing keywords so a write can union rather than wipe.
 
     Returns ``(flat, hierarchical)`` where ``flat`` merges ``dc:Subject`` and
@@ -602,21 +612,53 @@ def _read_existing_keywords(target: str, exe: str, *, timeout: int) -> tuple[lis
             capture_output=True, text=True, timeout=timeout,
         )
     except (subprocess.TimeoutExpired, OSError):
+        if strict:
+            raise RuntimeError("Cannot read existing keywords; reconciliation refused")
         return [], []
     if result.returncode != 0 or not result.stdout.strip():
+        if strict:
+            raise RuntimeError("Cannot read existing keywords; reconciliation refused")
         return [], []
     try:
         records = json.loads(result.stdout)
     except json.JSONDecodeError:
+        if strict:
+            raise RuntimeError("Cannot read existing keywords; reconciliation refused")
         return [], []
     if not records:
+        if strict:
+            raise RuntimeError("Cannot read existing keywords; reconciliation refused")
         return [], []
     record = records[0]
     flat = _union(_listify(record.get("Subject")), _listify(record.get("Keywords")))
     return flat, _listify(record.get("HierarchicalSubject"))
 
 
-def _run_exiftool(target: str, rating: XmpRating, *, timeout: int) -> None:
+def _read_keyword_state(target, exe, *, timeout):
+    """Read private state separately; missing/foreign packets grant no ownership."""
+    if not os.path.exists(target):
+        return None
+    import json
+    config = os.path.join(os.path.dirname(__file__), 'facet_exiftool.config')
+    try:
+        result = subprocess.run([exe, '-config', config, '-json', '-XMP-facet:KeywordState', target],
+                                capture_output=True, text=True, timeout=timeout)
+    except (subprocess.TimeoutExpired, OSError) as ex:
+        raise RuntimeError('Cannot read keyword ownership before export') from ex
+    if result.returncode:
+        raise RuntimeError('Cannot read keyword ownership before export')
+    try:
+        records = json.loads(result.stdout)
+        raw = records[0].get('KeywordState') if records else None
+    except (ValueError, TypeError, KeyError, IndexError) as ex:
+        raise RuntimeError('Cannot read keyword ownership before export') from ex
+    state = parse_keyword_state(raw)
+    if raw is not None and state is None:
+        raise RuntimeError('Unsupported or invalid Facet keyword ownership; export refused')
+    return state
+
+
+def _run_exiftool(target: str, rating: XmpRating, *, timeout: int, reconcile=False) -> None:
     """Apply ``rating`` to ``target`` (an image file or a ``.xmp`` sidecar).
 
     Creates the sidecar if it does not exist, merges into it if it does, and
@@ -634,8 +676,11 @@ def _run_exiftool(target: str, rating: XmpRating, *, timeout: int) -> None:
     if sidecar and os.path.exists(sidecar):
         with open(sidecar, "rb") as handle:
             snapshot = handle.read()
-    existing_flat, existing_hier = _read_existing_keywords(target, exe, timeout=timeout)
-    tag_args = _exiftool_tag_args(rating, existing_flat, existing_hier)
+    kwargs = {"strict": True} if reconcile and os.path.exists(target) else {}
+    existing_flat, existing_hier = _read_existing_keywords(target, exe, timeout=timeout, **kwargs)
+    keyword_state = _read_keyword_state(target, exe, timeout=timeout)
+    tag_args = _exiftool_tag_args(rating, existing_flat, existing_hier,
+                                  keyword_state=keyword_state, reconcile=reconcile)
     config = os.path.join(os.path.dirname(__file__), "facet_exiftool.config")
     if not target.lower().endswith(".xmp") and rating.gps_state():
         state = rating.gps_state()
@@ -672,7 +717,8 @@ def _run_exiftool(target: str, rating: XmpRating, *, timeout: int) -> None:
 
 
 def write_metadata(image_path: str, rating: XmpRating, *, overwrite: bool = False,
-                   embed_original: bool = False, timeout: int = 60) -> dict:
+                   embed_original: bool = False, timeout: int = 60,
+                   reconcile_keywords: bool = False) -> dict:
     """Write Facet metadata for the whole photo ecosystem.
 
     With exiftool present: writes/merges the ``<img>.xmp`` sidecar — the only
@@ -686,6 +732,8 @@ def write_metadata(image_path: str, rating: XmpRating, *, overwrite: bool = Fals
     ``.facet.xmp`` no-clobber divert); the original is never touched.
     """
     if not exiftool_available():
+        if reconcile_keywords:
+            raise RuntimeError("Keyword reconciliation requires ExifTool; no sidecar was changed")
         result = write_sidecar(image_path, rating, overwrite=overwrite)
         result["embedded"] = None
         return result
@@ -700,10 +748,12 @@ def write_metadata(image_path: str, rating: XmpRating, *, overwrite: bool = Fals
     ext = os.path.splitext(image_path)[1].lower().lstrip(".")
     embedded = None
     if embed_original and ext in SAFE_EMBED_EXTS:
-        _run_exiftool(image_path, rating, timeout=timeout)
+        kwargs = {"reconcile": True} if reconcile_keywords else {}
+        _run_exiftool(image_path, rating, timeout=timeout, **kwargs)
         embedded = image_path
     sidecar = _contained_sidecar(image_path, ".xmp")
-    _run_exiftool(sidecar, rating, timeout=timeout)
+    kwargs = {"reconcile": True} if reconcile_keywords else {}
+    _run_exiftool(sidecar, rating, timeout=timeout, **kwargs)
     return {"ok": True, "embedded": embedded, "sidecar": sidecar, "skipped": False}
 
 
@@ -792,7 +842,8 @@ def _cli_face_regions(conn, path: str, width, height) -> list[FaceRegion]:
 
 def export_sidecars(conn, root: str | None = None, *, embed_original: bool = False,
                     timeout: int = 60, user_id: str | None = None,
-                    xmp_export_cfg: dict | None = None, derive_stars: bool = False) -> dict:
+                    xmp_export_cfg: dict | None = None, derive_stars: bool = False,
+                    reconcile_keywords: bool = False) -> dict:
     """Write/merge ``<image>.xmp`` sidecars from the DB for all photos (or a subtree).
 
     By default operates on the global rating columns (``photos.star_rating`` /
@@ -823,13 +874,16 @@ def export_sidecars(conn, root: str | None = None, *, embed_original: bool = Fal
             missing += 1
             continue
         data = dict(row)
+        data["manual_tags"] = manual_map.get(path, [])
+        data["ai_tags"] = data["tags"]
         data["tags"] = merge_effective_tags(data["tags"], manual_map.get(path, ()))
         rating = XmpRating.from_row(data)
         rating.apply_score_mapping(cfg)
         rating.regions = _cli_face_regions(conn, path, row["image_width"], row["image_height"])
         rating.person_names = person_names_from_regions(rating.regions)
         try:
-            result = write_metadata(path, rating, embed_original=embed_original, timeout=timeout)
+            kwargs = {"reconcile_keywords": True} if reconcile_keywords else {}
+            result = write_metadata(path, rating, embed_original=embed_original, timeout=timeout, **kwargs)
             written += 1
             if result.get("embedded"):
                 embedded += 1
