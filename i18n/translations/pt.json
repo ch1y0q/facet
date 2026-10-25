@@ -208,7 +208,8 @@
     "duplicate_set": "Abrir grupo de duplicatas",
     "burst_set": "Abrir grupo de rajada",
     "sequence_set": "Abrir bracket/panorama",
-    "open_detail": "Abrir página da foto"
+    "open_detail": "Abrir página da foto",
+    "key_hint": "1-5 avaliar · F favorita · X rejeitar · Space selecionar · Enter abrir"
   },
   "notifications": {
     "copied": "Copiado!",

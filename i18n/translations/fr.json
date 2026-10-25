@@ -208,7 +208,8 @@
     "duplicate_set": "Ouvrir le groupe de doublons",
     "burst_set": "Ouvrir le groupe de rafale",
     "sequence_set": "Ouvrir bracket/panorama",
-    "open_detail": "Ouvrir la page photo"
+    "open_detail": "Ouvrir la page photo",
+    "key_hint": "1-5 noter · F favori · X rejeter · Space sélectionner · Entrée ouvrir"
   },
   "notifications": {
     "copied": "Copie !",

@@ -223,6 +223,7 @@ export const I18N = {
     burst_set: "photoCard.burst_set",
     sequence_set: "photoCard.sequence_set",
     open_detail: "photoCard.open_detail",
+    key_hint: "photoCard.key_hint",
   },
   notifications: {
     copied: "notifications.copied",

@@ -208,7 +208,8 @@
     "duplicate_set": "Duplikatgruppe öffnen",
     "burst_set": "Seriengruppe öffnen",
     "sequence_set": "Belichtungsreihe/Panorama öffnen",
-    "open_detail": "Fotoseite öffnen"
+    "open_detail": "Fotoseite öffnen",
+    "key_hint": "1-5 bewerten · F fav · X verwerfen · Space auswählen · Enter öffnen"
   },
   "notifications": {
     "copied": "Kopiert!",
