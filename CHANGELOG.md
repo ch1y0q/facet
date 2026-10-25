@@ -7,8 +7,6 @@ All notable changes to Facet are documented in this file.
 ### Added
 - Explicit XMP export/import carries Keep decisions and manual GPS, with protection against overwriting existing manual locations.
 
-- Explicit XMP export/import carries Keep decisions and manual GPS, with protection against overwriting existing manual locations.
-
 - **Correct capture dates** from photo details or gallery selections: preview a bounded walltime shift before applying it atomically, preserve manual dates across rescans/viewer exports, restore the file date, and export manual dates through the existing explicit XMP/embed actions.
 
 - **Keep photos and resume from the ones you have not reviewed.** The gallery has Keep and Reset decision actions, a `K` shortcut, Undo, and Needs review / Kept / Rejected filters. Keep is separate from stars and favorites, survives rescans, and is also saved when you confirm a culling group or apply an auto-cull. `--auto-cull --cull-min-score` never rejects a kept photo on its score, as it already spared favourites and starred photos.

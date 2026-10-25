@@ -15,6 +15,7 @@ from api.db_helpers import retry_on_locked
 from api.models.capture_dates import CaptureDateApplyRequest, CaptureDatePreview, CaptureDateRequest, CaptureDateReset
 from api.routers.faces import _batch_scope_sql, _require_writable_photo, _writable_photo_paths
 from api.routers.map import resolve_photo_disk_path
+from db.maintenance import evict_derived_stats_cache
 from exiftool.exiftool_batch import get_exif_batch
 from utils.capture_dates import format_capture_date, parse_capture_date
 
@@ -46,7 +47,7 @@ def _preview(conn: sqlite3.Connection, body: CaptureDateRequest, user: CurrentUs
 
 
 def _invalidate(conn: sqlite3.Connection) -> None:
-    conn.execute('DELETE FROM stats_cache')
+    evict_derived_stats_cache(conn)
 
 
 def _after_commit() -> None:

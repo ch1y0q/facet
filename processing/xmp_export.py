@@ -354,6 +354,7 @@ def _apply_facet_nodes(desc, rating: XmpRating) -> None:
     desc.set(f"{{{NS_XMP}}}MetadataDate", now)
     desc.set(f"{{{NS_FACET}}}ReviewDecision", rating.review_decision())
     if rating.manual_date() is not None:
+        desc.set(f"{{{NS_FACET}}}DateState", "set")
         desc.set(f"{{{NS_EXIF}}}DateTimeOriginal", rating.manual_date())
     state = rating.gps_state()
     if state:
@@ -553,7 +554,7 @@ def _union(*lists: list[str]) -> list[str]:
 
 
 def _exiftool_tag_args(rating: XmpRating, existing_flat: list[str],
-                       existing_hier: list[str]) -> list[str]:
+                       existing_hier: list[str], facet_dated: bool = False) -> list[str]:
     """Build the exiftool ``-Tag=value`` args for ``rating`` (no exe, no target).
 
     Keyword and hierarchical LISTS are cleared then rewritten as the UNION of the
@@ -568,8 +569,14 @@ def _exiftool_tag_args(rating: XmpRating, existing_flat: list[str],
     xmp_rating, label = rating.xmp_values()
     args = [f"-XMP:Rating={xmp_rating}", f"-XMP:Label={label}",
             f"-XMP-facet:ReviewDecision={rating.review_decision()}"]
-    if rating.manual_date() is not None:
-        args.append(f"-XMP-exif:DateTimeOriginal={rating.manual_date()}")
+    date = rating.manual_date()
+    # The marker records that the sidecar's date is Facet's, so a reset to the
+    # file date clears it -- never a capture time another tool wrote.
+    args.append(f"-XMP-facet:DateState={'set' if date else ''}")
+    if date is not None:
+        args.append(f"-XMP-exif:DateTimeOriginal={date}")
+    elif facet_dated:
+        args.append("-XMP-exif:DateTimeOriginal=")
     state = rating.gps_state()
     # A reset to file GPS must drop the marker an earlier export left in the
     # sidecar, or the next import restores the reverted manual location.
@@ -603,34 +610,38 @@ def _listify(value) -> list[str]:
     return [str(value)] if str(value) else []
 
 
-def _read_existing_keywords(target: str, exe: str, *, timeout: int) -> tuple[list[str], list[str]]:
+def _read_existing_metadata(target: str, exe: str, *,
+                            timeout: int) -> tuple[list[str], list[str], bool]:
     """Read ``target``'s existing keywords so a write can union rather than wipe.
 
-    Returns ``(flat, hierarchical)`` where ``flat`` merges ``dc:Subject`` and
-    ``IPTC:Keywords``. Any failure (target not yet created, parse error, non-zero
-    exit) yields ``([], [])`` so the caller falls back to Facet's own keywords.
+    Returns ``(flat, hierarchical, facet_dated)`` where ``flat`` merges
+    ``dc:Subject`` and ``IPTC:Keywords`` and ``facet_dated`` says an earlier
+    export left Facet's ``DateState`` marker. Any failure (target not yet
+    created, parse error, non-zero exit) yields ``([], [], False)`` so the caller
+    falls back to Facet's own keywords.
     """
     import json
 
     try:
         result = subprocess.run(
-            [exe, "-q", "-m", "-json", "-XMP-dc:Subject", "-IPTC:Keywords",
-             "-XMP-lr:HierarchicalSubject", target],
+            [exe, "-config", os.path.join(os.path.dirname(__file__), "facet_exiftool.config"),
+             "-q", "-m", "-json", "-XMP-dc:Subject", "-IPTC:Keywords",
+             "-XMP-lr:HierarchicalSubject", "-XMP-facet:DateState", target],
             capture_output=True, text=True, timeout=timeout,
         )
     except (subprocess.TimeoutExpired, OSError):
-        return [], []
+        return [], [], False
     if result.returncode != 0 or not result.stdout.strip():
-        return [], []
+        return [], [], False
     try:
         records = json.loads(result.stdout)
     except json.JSONDecodeError:
-        return [], []
+        return [], [], False
     if not records:
-        return [], []
+        return [], [], False
     record = records[0]
     flat = _union(_listify(record.get("Subject")), _listify(record.get("Keywords")))
-    return flat, _listify(record.get("HierarchicalSubject"))
+    return flat, _listify(record.get("HierarchicalSubject")), record.get("DateState") == "set"
 
 
 def _run_exiftool(target: str, rating: XmpRating, *, timeout: int) -> None:
@@ -651,8 +662,8 @@ def _run_exiftool(target: str, rating: XmpRating, *, timeout: int) -> None:
     if sidecar and os.path.exists(sidecar):
         with open(sidecar, "rb") as handle:
             snapshot = handle.read()
-    existing_flat, existing_hier = _read_existing_keywords(target, exe, timeout=timeout)
-    tag_args = _exiftool_tag_args(rating, existing_flat, existing_hier)
+    existing_flat, existing_hier, facet_dated = _read_existing_metadata(target, exe, timeout=timeout)
+    tag_args = _exiftool_tag_args(rating, existing_flat, existing_hier, facet_dated)
     if not target.lower().endswith(".xmp") and rating.manual_date() is not None:
         tag_args.append(f"-EXIF:DateTimeOriginal={rating.manual_date()}")
     config = os.path.join(os.path.dirname(__file__), "facet_exiftool.config")

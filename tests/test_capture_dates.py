@@ -32,6 +32,22 @@ def test_preview_apply_and_replay(edition_client, seed_photos_prefix):
     assert edition_client.post('/api/photos/capture_date/apply', json={**body, 'preview_token': data['preview_token']}).status_code == 409
 
 
+
+def test_apply_keeps_durable_stats_cache_state(edition_client, seed_photos_prefix):
+    import time
+    paths = seed(seed_photos_prefix, ['2024:01:01 00:00:00'])
+    with get_db() as conn, conn:
+        conn.executemany('INSERT OR REPLACE INTO stats_cache (key, value, updated_at) VALUES (?, ?, ?)',
+                         [('keeper_head:test', 'weights', time.time()), ('scenes_test', 'derived', time.time())])
+    body = dict(photo_paths=paths, offset_seconds=60)
+    token = edition_client.post('/api/photos/capture_date/preview', json=body).json()['preview_token']
+    assert edition_client.post('/api/photos/capture_date/apply', json={**body, 'preview_token': token}).status_code == 200
+    with get_db() as conn:
+        kept = {row[0] for row in conn.execute("SELECT key FROM stats_cache WHERE key IN ('keeper_head:test', 'scenes_test')")}
+    with get_db() as conn, conn:
+        conn.execute("DELETE FROM stats_cache WHERE key = 'keeper_head:test'")
+    assert kept == {'keeper_head:test'}
+
 @pytest.mark.parametrize('offset', [0, True, 1.5, '1', 31622401, -31622401])
 def test_invalid_offset(edition_client, offset):
     assert edition_client.post('/api/photos/capture_date/preview', json=dict(photo_paths=[], offset_seconds=offset)).status_code == 422
@@ -91,6 +107,27 @@ def test_manual_date_export_only():
     scanned = XmpRating.from_row(dict(date_taken='2024:01:01 01:02:03'))
     assert 'DateTimeOriginal' not in build_xmp(scanned)
     assert not any('DateTimeOriginal' in arg for arg in _exiftool_tag_args(scanned, [], []))
+
+
+@pytest.mark.parametrize('date', ['2024:01:01', 'garbage', None])
+def test_manual_date_refuses_a_partial_walltime(date):
+    from processing.xmp_export import XmpRating
+    with pytest.raises(ValueError):
+        XmpRating.from_row(dict(date_taken=date, date_manually_set=1)).manual_date()
+
+
+@pytest.mark.parametrize('metadata,status', [({}, 404), ('2024:01:01', 409)])
+def test_reset_keeps_manual_date_when_file_date_unusable(edition_client, seed_photos_prefix, tmp_path, metadata, status):
+    paths = seed(seed_photos_prefix, ['2024:01:01 01:02:03'])
+    disk = tmp_path / 'a.jpg'
+    disk.write_bytes(b'original')
+    with get_db() as conn, conn:
+        conn.execute('UPDATE photos SET date_manually_set=1 WHERE path=?', (paths[0],))
+    exif = metadata if isinstance(metadata, dict) else {str(disk): {'date_taken': metadata}}
+    with patch('api.routers.capture_dates.resolve_photo_disk_path', return_value=str(disk)), patch('api.routers.capture_dates.get_exif_batch', return_value=exif):
+        result = edition_client.delete('/api/photo/capture_date', params={'path': paths[0]})
+    assert result.status_code == status
+    assert values(paths) == [('2024:01:01 01:02:03', 1)]
 
 
 @pytest.mark.parametrize('raw,expected', [('2020:02:29 12:34:56', '2020:02:29 12:34:56'), (None, None)])
@@ -208,6 +245,28 @@ def test_explicit_export_preserves_original_until_embed(tmp_path):
     assert result['ExifIFD:CreateDate'] == '2001:01:01 00:00:00'
     assert result['ExifIFD:OffsetTimeOriginal'] == '+02:00'
     assert str(result['ExifIFD:SubSecTimeOriginal']) == '123'
+
+
+@pytest.mark.parametrize('foreign', [False, True])
+def test_reset_export_clears_only_facets_sidecar_date(tmp_path, foreign):
+    import json
+    import shutil
+    import subprocess
+    from PIL import Image
+    from processing.xmp_export import XmpRating, write_metadata
+    exe = shutil.which('exiftool')
+    if not exe:
+        pytest.skip('ExifTool is unavailable')
+    image = tmp_path / 'date.jpg'
+    Image.new('RGB', (12, 12), 'blue').save(image)
+    if foreign:
+        sidecar = write_metadata(str(image), XmpRating())['sidecar']
+        subprocess.run([exe, '-overwrite_original', '-XMP-exif:DateTimeOriginal=2010:05:05 05:05:05', sidecar], check=True, capture_output=True)
+    else:
+        sidecar = write_metadata(str(image), XmpRating.from_row(dict(date_taken='2024:02:29 01:02:03', date_manually_set=1)))['sidecar']
+    write_metadata(str(image), XmpRating.from_row(dict(date_taken='2000:01:01 00:00:00')))
+    result = json.loads(subprocess.check_output([exe, '-json', '-XMP-exif:DateTimeOriginal', '-G1', sidecar]))[0]
+    assert result.get('XMP-exif:DateTimeOriginal') == ('2010:05:05 05:05:05' if foreign else None)
 
 
 def test_photo_contract_carries_manual_date(edition_client, seed_photos_prefix):
