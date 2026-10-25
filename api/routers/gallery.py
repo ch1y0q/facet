@@ -252,6 +252,11 @@ def _apply_text_filters(where_clauses, sql_params, params, conn, include_manual=
             except ValueError:
                 pass
 
+    if params.get('manual_faces_need_review') in ('1', 'true'):
+        where_clauses.append(
+            'EXISTS (SELECT 1 FROM faces WHERE photo_path=photos.path '
+            'AND is_manual=1 AND manual_review_required=1)')
+
     if params.get('is_monochrome') == '1':
         where_clauses.append("is_monochrome = 1")
 
@@ -458,6 +463,16 @@ def _apply_preference_filters(where_clauses, sql_params, params, user_id):
             pass
     if params.get('favorites_only') == '1':
         where_clauses.append(f"{pref_cols['is_favorite']} = 1")
+    review_status = params.get('review_status')
+    if review_status in ('undecided', 'kept', 'rejected'):
+        rejected = f"COALESCE({pref_cols['is_rejected']}, 0)"
+        kept = f"COALESCE({pref_cols['is_kept']}, 0)"
+        if review_status == 'rejected':
+            where_clauses.append(f"{rejected} = 1")
+        else:
+            where_clauses.append(f"{rejected} = 0")
+            where_clauses.append(f"{kept} = {1 if review_status == 'kept' else 0}")
+        return
     if params.get('show_rejected') == '1':
         where_clauses.append(f"{pref_cols['is_rejected']} = 1")
     elif params.get('hide_rejected') in ('1', 'true'):

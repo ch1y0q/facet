@@ -209,6 +209,19 @@ Contrôlé par `viewer.features.show_my_taste` (par défaut : `true`). L'état d
 
 Avec `licensing.mode` réglé sur `commercial`, la visionneuse masque les métriques dont les modèles ne sont pas utilisables commercialement : LIQE, Aesthetic IAA, Face Quality IQA (sauf si OFIQ est installé), DeQA (sauf si `licensing.allow_unclear` est défini) et Aesthetic V2.5 : leurs filtres de plage, puces de filtre et options de tri. `/api/config` les liste dans `unavailable_metrics`. Sur la page de réglage des poids, leurs curseurs restent visibles mais désactivés, avec une infobulle ; les poids sont conservés, car le calcul du score les écarte et renormalise. Redémarrez la visionneuse après avoir changé le mode de licence.
 
+## Décisions de tri
+
+Dans la galerie, choisissez **Statut de tri → À examiner** pour parcourir les photos sans décision. Ce choix active le tri par **date de prise de vue, des plus anciennes aux plus récentes** ; vous pouvez inverser l’ordre ou filtrer par date, dossier ou album.
+
+**Conserver** et **Rejeter** retirent la photo de cette file après enregistrement. Les photos conservées restent dans la bibliothèque et apparaissent avec le filtre **Conservées**. Cette décision est indépendante des favoris et des étoiles.
+
+Les actions Conserver et **Réinitialiser la décision** sont disponibles dans le détail, le menu contextuel et les actions groupées. **K** conserve la photo courante. Réinitialiser efface les décisions Conserver et Rejeter sans modifier les étoiles ni les favoris. Les actions de galerie disposent d’Annuler.
+
+Les décisions persistent après rechargement, redémarrage et nouvelle analyse, et sont propres à chaque utilisateur. Confirmer un groupe de tri marque ses photos choisies comme conservées. Les anciens favoris, notes et groupes examinés ne sont pas convertis automatiquement.
+
+Le statut de tri s’applique à la galerie normale ; choisir un statut quitte la recherche sémantique et la recherche de photos similaires.
+
+
 ## Fonctionnalités de la galerie
 
 ### Cartes de photo
@@ -684,7 +697,7 @@ Pour chaque groupe, choisissez la ou les photos à conserver ; la confirmation r
 
 Un bouton **Tri automatique** de la barre d'outils trie toute une portée en une seule passe au lieu de groupe par groupe. Choisissez la portée avec les commandes de granularité/portée (tous les groupes, ou seulement les rafales / similaires / scènes, éventuellement un album ou une fenêtre de dates), réglez une **rigueur** — le budget de conservation, où une valeur plus élevée conserve moins par groupe — et prévisualisez. Chaque groupe conserve sa meilleure photo plus tout ce qui se trouve dans la marge de rigueur (avec un plancher par groupe) et rejette le reste. Le bouton est entièrement masqué dans les trois granularités « conserver intact » (**Bracketings d'exposition**, **Panoramas**, **Panoramas HDR**) — il n'y a rien à y décider, puisque toutes les images de ces séries sont marquées gardées d'emblée. Dans une portée mixte, les bracketings sont décidés en premier, avant les rafales, les similaires et les scènes, si bien que l'exposition de référence d'un bracketing n'est jamais redécidée par un groupe ultérieur qu'elle chevauche aussi.
 
-L'aperçu est une **simulation** (rien n'est écrit) : il montre la répartition conservation/rejet par groupe. Confirmez pour appliquer — les rejets sont enregistrés et, comme tout tri, entraînent « My Taste » ; un album **Highlights** facultatif rassemble de manière idempotente la meilleure photo de chaque groupe notée au moins `auto_cull.highlights_min`. Un badge indicatif « meilleure photo dans ce groupe » signale les groupes où le tri automatique conserverait une image différente de la tête actuelle. `POST /api/culling/auto` ; configuré via le bloc [`auto_cull`](CONFIGURATION.md#auto-cull). Les mêmes règles s'exécutent sans interface depuis le terminal avec `python facet.py --auto-cull` — voir [Tri en ligne de commande](COMMANDS.md#tri-en-ligne-de-commande).
+L'aperçu est une **simulation** (rien n'est écrit) : il montre la répartition conservation/rejet par groupe. Confirmez pour appliquer — les rejets sont enregistrés, chaque photo conservée est marquée **Conserver** et, comme tout tri, entraînent « My Taste » ; un album **Highlights** facultatif rassemble de manière idempotente la meilleure photo de chaque groupe notée au moins `auto_cull.highlights_min`. Un badge indicatif « meilleure photo dans ce groupe » signale les groupes où le tri automatique conserverait une image différente de la tête actuelle. `POST /api/culling/auto` ; configuré via le bloc [`auto_cull`](CONFIGURATION.md#auto-cull). Les mêmes règles s'exécutent sans interface depuis le terminal avec `python facet.py --auto-cull` — voir [Tri en ligne de commande](COMMANDS.md#tri-en-ligne-de-commande).
 
 Lorsqu'une tête de classement des photos à conserver (keeper-ranking) est entraînée, `POST /api/culling/auto` choisit la photo à conserver de chaque groupe selon `keeper_prob` dès qu'elle franchit son seuil de précision — sinon, le résultat est identique au bit près à la sélection heuristique.
 
@@ -1534,3 +1547,11 @@ Si la recherche sémantique indique que l’accélération Apple Silicon est occ
 Utilisez **Adresse ou établissement → Rechercher en ligne** pour interroger Photon explicitement. La requête n’est envoyée au fournisseur configuré qu’au clic, jamais pendant la saisie. Sélectionnez un résultat pour prévisualiser ses coordonnées, puis **Enregistrer** pour les appliquer. Le fichier original reste inchangé. Photon utilise les données OpenStreetMap (© contributeurs OpenStreetMap). Hors ligne, les lieux enregistrés et les coordonnées restent utilisables. `viewer.place_search_url` vaut par défaut `https://photon.komoot.io/api` ; indiquez une instance Photon privée ou `""` pour désactiver la recherche. Le serveur public n’offre aucune garantie de disponibilité. Limites : 3–200 caractères, cinq résultats, cinq secondes, 64 Kio ; cache de 128 recherches pendant 15 minutes, appels non simultanés espacés d’au moins une seconde par processus. Utilisez un seul worker avec le fournisseur public. Facet ne journalise pas les requêtes ; excluez les paramètres de recherche des journaux du proxy.
 
 Le délai de cinq secondes interrompt les sockets actifs, y compris les en-têtes et le cadrage HTTP lents. La résolution DNS native suit les délais du système et peut durer plus longtemps avant la création du socket ; une recherche expirée n’ouvre ensuite aucune connexion.
+
+### Vérifier les repères manuels de visages enregistrés
+
+Dans les filtres d’affinage de la galerie, les éditeurs peuvent activer **Visages manuels à vérifier** pour retrouver les photos dont les rectangles de visages sont périmés ou proviennent d’une ancienne version. Ouvrez une photo et son éditeur de visages habituel pour ajuster puis enregistrer un rectangle après une nouvelle vérification, ou le supprimer. Une fois le dernier repère à vérifier corrigé ou supprimé, la photo quitte cette vue filtrée. Le filtre fonctionne aussi dans les albums intelligents enregistrés et lors de la sélection de tous les résultats.
+
+La liste reflète le dernier scan ou la dernière vérification explicite dans l’éditeur de visages, sans surveillance continue du système de fichiers. Les scans complets et restreints vérifient les photos comportant des repères manuels même si la détection des visages est désactivée. Les originaux manquants sont signalés lors d’une tentative de validation. L’affichage de la liste lit uniquement les métadonnées indexées en base et ne décode pas les originaux. L’éditeur revérifie l’original et son résultat fait foi. Les modifications portant uniquement sur les métadonnées conservent la validité des repères si l’identité canonique de l’image correspond ; sa signature approximative peut toutefois manquer des retouches subtiles à dimensions identiques. La vérification ne modifie aucun fichier original.
+
+L’export d’une nouvelle base du visualiseur et les mises à jour incrémentales conservent l’état de vérification mémorisé ; les corrections effectuées dans le visualiseur ne sont pas remplacées par d’anciennes données de la source.

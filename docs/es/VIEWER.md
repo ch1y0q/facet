@@ -209,6 +209,19 @@ Controlada por `viewer.features.show_my_taste` (predeterminado: `true`). El esta
 
 Con `licensing.mode` en `commercial`, el visor oculta las métricas cuyos modelos no pueden usarse comercialmente: LIQE, Aesthetic IAA, Face Quality IQA (salvo que OFIQ esté instalado), DeQA (salvo que se establezca `licensing.allow_unclear`) y Aesthetic V2.5: sus filtros de rango, chips de filtro y opciones de ordenación. `/api/config` las lista en `unavailable_metrics`. En la página de ajuste de pesos sus controles siguen visibles pero deshabilitados, con un tooltip; los pesos se conservan, porque la puntuación los descarta y renormaliza. Reinicie el visor tras cambiar el modo de licencia.
 
+## Decisiones de revisión
+
+En la galería, selecciona **Estado de revisión → Pendientes de revisión** para recorrer las fotos sin decisión. Se activa el orden por **fecha de captura, más antiguas primero**; puedes invertirlo o filtrar por fecha, carpeta o álbum.
+
+**Conservar** y **Rechazar** retiran la foto de esta vista después de guardar. Las fotos conservadas siguen en la biblioteca normal y aparecen con el filtro **Conservadas**. La decisión es independiente de favoritos y estrellas.
+
+Conservar y **Restablecer decisión** están disponibles en el detalle, el menú contextual y las acciones en lote. **K** conserva la foto actual. Restablecer borra Conservar y Rechazar sin cambiar estrellas ni favoritos. Las acciones de galería permiten Deshacer.
+
+Las decisiones sobreviven a recargas, reinicios y nuevos análisis, y son propias de cada usuario. Confirmar un grupo de selección también marca sus fotos elegidas como conservadas. Las valoraciones, favoritos y grupos revisados anteriores no se convierten automáticamente.
+
+El estado de revisión se aplica a la galería normal; elegir un estado cierra las búsquedas semánticas y de fotos similares.
+
+
 ## Funciones de la galería
 
 ### Tarjetas de foto
@@ -682,7 +695,7 @@ Para cada grupo, elige la foto o fotos a conservar; al confirmar se descartan el
 
 Un botón **Descarte automático** de la barra de herramientas descarta todo un ámbito en una sola pasada en lugar de grupo por grupo. Elige el ámbito con los controles de granularidad/ámbito (todos los grupos, o solo ráfagas / similares / escenas, opcionalmente un álbum o una ventana de fechas), fija un **rigor** —el presupuesto de fotos a conservar, donde más alto conserva menos por grupo— y previsualiza. Cada grupo conserva su mejor foto más todo lo que quede dentro del margen de rigor (con un mínimo por grupo como suelo) y descarta el resto. El botón se oculta por completo en las tres granularidades que se mantienen íntegras (**Horquillados de exposición**, **Panorámicas**, **Panorámicas HDR**) — ahí no hay nada que decidir, ya que todos los fotogramas de esas series empiezan conservados. En un ámbito mixto, los horquillados se deciden primero, antes que las ráfagas, los similares y las escenas, de modo que la exposición base de un horquillado nunca vuelve a decidirse por un grupo posterior con el que también resulta solaparse.
 
-La vista previa es una **simulación** (no se escribe nada): muestra el reparto de conservar/descartar por grupo. Confirma para aplicar — los descartes se registran y, como en todo descarte, entrenan a "My Taste"; un álbum opcional de **Destacados** recopila de forma idempotente la mejor foto de cada grupo que puntúe al menos `auto_cull.highlights_min`. Una insignia de aviso "mejor foto en este grupo" señala los grupos en los que el descarte automático conservaría un fotograma distinto del líder actual. `POST /api/culling/auto`; se configura mediante el bloque [`auto_cull`](CONFIGURATION.md#auto-cull). Las mismas reglas se ejecutan sin interfaz desde la terminal con `python facet.py --auto-cull` — consulta [Descarte desde la terminal](COMMANDS.md#descarte-desde-la-terminal).
+La vista previa es una **simulación** (no se escribe nada): muestra el reparto de conservar/descartar por grupo. Confirma para aplicar — los descartes se registran, cada foto conservada se marca como **Conservar** y, como en todo descarte, entrenan a "My Taste"; un álbum opcional de **Destacados** recopila de forma idempotente la mejor foto de cada grupo que puntúe al menos `auto_cull.highlights_min`. Una insignia de aviso "mejor foto en este grupo" señala los grupos en los que el descarte automático conservaría un fotograma distinto del líder actual. `POST /api/culling/auto`; se configura mediante el bloque [`auto_cull`](CONFIGURATION.md#auto-cull). Las mismas reglas se ejecutan sin interfaz desde la terminal con `python facet.py --auto-cull` — consulta [Descarte desde la terminal](COMMANDS.md#descarte-desde-la-terminal).
 
 Cuando hay una cabeza de clasificación de conservación entrenada, `POST /api/culling/auto` elige la foto a conservar de cada grupo según `keeper_prob` en cuanto supera su umbral de precisión — de lo contrario, el resultado es idéntico byte a byte al de la heurística.
 
@@ -1531,3 +1544,11 @@ Si la búsqueda semántica indica que la aceleración de Apple Silicon está ocu
 Usa **Dirección o negocio → Buscar en línea** para consultar Photon explícitamente. La consulta se envía al proveedor configurado solo al pulsar; escribir no envía nada. Selecciona un resultado para previsualizar las coordenadas y pulsa **Guardar** para aplicarlas. El original no cambia. Photon usa datos de OpenStreetMap (© colaboradores de OpenStreetMap). Los lugares guardados y las coordenadas funcionan sin conexión. `viewer.place_search_url` tiene por defecto `https://photon.komoot.io/api`; permite un servidor Photon propio y `""` desactiva la búsqueda. El servidor público no garantiza disponibilidad. Límites: 3–200 caracteres, cinco resultados, cinco segundos y 64 KiB; caché de 128 búsquedas durante 15 minutos por proceso, sin llamadas simultáneas y con un segundo mínimo entre ellas. Usa un solo worker con el proveedor público. Facet no registra las consultas; excluye sus parámetros de los registros del proxy.
 
 El plazo de cinco segundos interrumpe los sockets activos, incluidos encabezados y bloques HTTP lentos. La resolución DNS nativa usa los tiempos del sistema y puede tardar más antes de crear un socket; una búsqueda vencida no abre una conexión después.
+
+### Revisar las marcas manuales de rostros guardadas
+
+En los filtros de refinamiento de la galería, los editores pueden activar **Rostros manuales por revisar** para encontrar fotos con rectángulos de rostros obsoletos o guardados por versiones anteriores. Abra una foto y su editor de rostros habitual para ajustar y guardar un rectángulo tras comprobarlo de nuevo, o eliminarlo. Cuando se corrige o elimina la última marca pendiente, la foto sale de esta vista filtrada. El filtro también funciona en álbumes inteligentes guardados y al seleccionar todos los resultados.
+
+La cola refleja el último escaneo o la última comprobación explícita en el editor de rostros; no supervisa continuamente el sistema de archivos. Los escaneos completos y restringidos comprueban las fotos con marcas manuales aunque la detección de rostros esté desactivada. Los originales ausentes se señalan al intentar validarlos. La lista solo consulta metadatos indexados de la base de datos y no decodifica originales. El editor vuelve a comprobar el original y su resultado es el que prevalece. Los cambios exclusivos de metadatos mantienen las marcas vigentes si coincide la identidad canónica de la imagen; su firma aproximada puede pasar por alto retoques sutiles del mismo tamaño. Revisar las marcas no modifica los archivos originales.
+
+La exportación de una nueva base de datos del visor y sus actualizaciones incrementales conservan el estado de revisión almacenado; las correcciones realizadas en el visor no se sustituyen por datos antiguos del origen.

@@ -169,9 +169,11 @@ export interface GalleryFilters {
   hide_duplicates: boolean;
   hide_brackets: boolean;
   hide_panoramas: boolean;
+  review_status: '' | 'undecided' | 'kept' | 'rejected';
   hide_rejected: boolean;
   favorites_only: boolean;
   is_monochrome: boolean;
+  manual_faces_need_review: boolean;
   search: string;
   // Color facet (opt-in extraction; always-on filter)
   color_temp: string;   // warm | cool | neutral
@@ -289,7 +291,7 @@ export function exclusiveHidePatch(updates: Partial<GalleryFilters>): Partial<Ga
 /** Common string-typed filter keys shared across URL sync, API params, and filter counting. */
 export const RANGE_AND_SELECT_KEYS: (keyof GalleryFilters)[] = [
   'type', 'camera', 'lens', 'tag', 'person_id', 'composition_pattern', 'search',
-  'color_temp', 'hue_bucket', 'quality_tier', 'sequence_override',
+  'color_temp', 'hue_bucket', 'quality_tier', 'sequence_override', 'review_status',
   'min_score', 'max_score', 'min_aesthetic', 'max_aesthetic',
   'min_quality_score', 'max_quality_score', 'min_topiq', 'max_topiq',
   'min_face_quality', 'max_face_quality', 'min_composition', 'max_composition',
@@ -435,9 +437,11 @@ export const DEFAULT_FILTERS: GalleryFilters = {
   hide_duplicates: true,
   hide_brackets: true,
   hide_panoramas: true,
+  review_status: '',
   hide_rejected: true,
   favorites_only: false,
   is_monochrome: false,
+  manual_faces_need_review: false,
   search: '',
   color_temp: '',
   hue_bucket: '',
@@ -480,6 +484,7 @@ export function countActiveFilters(f: GalleryFilters): number {
   }
   if (f.favorites_only) count++;
   if (f.is_monochrome) count++;
+  if (f.manual_faces_need_review) count++;
   return count;
 }
 
@@ -497,6 +502,8 @@ export function applyQueryParams(
   for (const key of stringKeys) {
     if (params[key]) (result as Record<string, unknown>)[key] = params[key];
   }
+  if (!['', 'undecided', 'kept', 'rejected'].includes(result.review_status)) result.review_status = '';
+  if (result.review_status) { result.similar_to = ''; result.semanticQuery = ''; }
   result.no_gps = ['1', 'true'].includes(result.no_gps) ? '1' : '';
   if (result.no_gps) {
     result.gps_lat = ''; result.gps_lng = ''; result.gps_radius_km = '';
@@ -538,6 +545,7 @@ export function applyQueryParams(
   if (params['hide_rejected'] !== undefined) result.hide_rejected = params['hide_rejected'] !== 'false';
   if (params['favorites_only'] !== undefined) result.favorites_only = params['favorites_only'] === 'true';
   if (params['is_monochrome'] !== undefined) result.is_monochrome = params['is_monochrome'] === 'true';
+  if (params['manual_faces_need_review'] !== undefined) result.manual_faces_need_review = params['manual_faces_need_review'] === 'true';
   if (params['tooltip_mode'] && TOOLTIP_MODES.includes(params['tooltip_mode'] as TooltipMode)) {
     result.tooltip_mode = params['tooltip_mode'] as TooltipMode;
   }
@@ -597,6 +605,7 @@ export function buildSyncParams(
     params['panel_activation'] = f.panel_activation;
   if (f.favorites_only) params['favorites_only'] = 'true';
   if (f.is_monochrome) params['is_monochrome'] = 'true';
+  if (f.manual_faces_need_review) params['manual_faces_need_review'] = 'true';
 
   return params;
 }
@@ -627,9 +636,10 @@ export function buildApiParams(
   if (f.hide_duplicates) params['hide_duplicates'] = true;
   if (f.hide_brackets) params['hide_brackets'] = true;
   if (f.hide_panoramas) params['hide_panoramas'] = true;
-  if (f.hide_rejected) params['hide_rejected'] = true;
+  if (f.hide_rejected && !f.review_status) params['hide_rejected'] = true;
   if (f.favorites_only) params['favorites_only'] = '1';
   if (f.is_monochrome) params['is_monochrome'] = '1';
+  if (f.manual_faces_need_review) params['manual_faces_need_review'] = '1';
 
   // Semantic search is a filter of `GET /photos`. The threshold travels only when
   // the slider left the server's seed, so the server resolves its own calibrated

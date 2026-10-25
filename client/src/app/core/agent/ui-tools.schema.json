@@ -844,6 +844,16 @@
                   "null"
                 ]
               },
+              "manual_faces_need_review": {
+                "description": "Gallery filter `manual_faces_need_review`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
               "max_aesthetic": {
                 "description": "Gallery filter `max_aesthetic`.",
                 "type": [
@@ -1471,6 +1481,20 @@
                   "null"
                 ]
               },
+              "review_status": {
+                "description": "Review decision: undecided, kept, or rejected; null clears the filter.",
+                "enum": [
+                  "",
+                  "undecided",
+                  "kept",
+                  "rejected",
+                  null
+                ],
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "search": {
                 "description": "Gallery filter `search`.",
                 "type": [
@@ -2048,5 +2072,5 @@
       "name": "ui_show_comparison"
     }
   ],
-  "version": "dc969f0f704340d1"
+  "version": "459ee80fc4d4e6d6"
 }
