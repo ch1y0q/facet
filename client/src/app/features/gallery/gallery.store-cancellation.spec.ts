@@ -420,6 +420,48 @@ describe('GalleryStore read cancellation with HttpClient', () => {
     expect(store.loadError()).toBe(false);
   });
 
+  it('reloads every loaded page when a grid Keep repair is interrupted before ArrowRight pages past the end', async () => {
+    store.filters.update(f => ({ ...f, review_status: 'undecided' }));
+    const initial = store.loadPhotos();
+    request('/photos').flush({ ...EMPTY_PAGE, photos: [makePhoto({ path: '/a.jpg' })], total: 300, has_more: true });
+    request('/photos/review_progress').flush(COUNTS);
+    await initial;
+    request('/photos/keeper_hints').flush({});
+    const server = Array.from({ length: 300 }, (_, i) => makePhoto({ path: `/p${i}.jpg` }));
+    store.photos.set(server.slice(0, 128));
+    store.filters.update(f => ({ ...f, page: 2 }));
+    const keeping = store.batchReview(['/p10.jpg'], 'kept');
+    request('/photos/batch_review').flush({ count: 1 });
+    let repair!: TestRequest;
+    await vi.waitFor(() => { repair = request('/photos'); });
+    expect(repair.request.params.get('page')).toBe('2');
+    events.next(new NavigationStart(1, '/photo?path=/p127.jpg'));
+    store.parkListingReads();
+    (TestBed.inject(Router) as unknown as { url: string }).url = '/photo?path=/p127.jpg';
+    events.next(new NavigationEnd(1, '/photo?path=/p127.jpg', '/photo?path=/p127.jpg'));
+    expect(repair.cancelled).toBe(true);
+    expect(request('/photos/review_progress').cancelled).toBe(true);
+    await keeping;
+    const remaining = server.filter(photo => photo.path !== '/p10.jpg');
+    const recovering = store.nextPage(undefined, { whileParked: true });
+    for (let page = 1; page <= 2; page++) {
+      let read!: TestRequest;
+      await vi.waitFor(() => { read = request('/photos'); });
+      expect(read.request.params.get('page')).toBe(String(page));
+      read.flush({ ...EMPTY_PAGE, photos: remaining.slice((page - 1) * 64, page * 64), total: 299, has_more: true });
+    }
+    await recovering;
+    request('/photos/keeper_hints').flush({});
+    const paths = store.photos().map(photo => photo.path);
+    expect(paths).not.toContain('/p10.jpg');
+    expect(paths).toContain('/p64.jpg');
+    expect(paths.indexOf('/p128.jpg')).toBe(paths.indexOf('/p127.jpg') + 1);
+    const returning = store.resumeListingReads();
+    request('/photos/review_progress').flush(COUNTS);
+    await returning;
+    http.expectNone(r => r.url === '/api/photos');
+  });
+
   async function loadAndParkThreePages(pendingHints = false): Promise<void> {
     const initial = store.loadPhotos();
     request('/photos').flush({ ...EMPTY_PAGE, photos: [makePhoto({ path: '/a.jpg' })], total: 300, has_more: true });

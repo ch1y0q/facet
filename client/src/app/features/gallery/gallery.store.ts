@@ -287,6 +287,8 @@ export class GalleryStore {
   private listingRefreshOwed = false;
   private listingPagesInterrupted = false;
   private reviewRefreshOwed = false;
+  /** Tail-only review repairs in flight: parking one leaves the loaded prefix's offsets stale. */
+  private reviewRepairsInFlight = 0;
   private readonly parkedRefreshPaths = new Set<string>();
   private readonly pendingKeeperHints = new Set<string>();
   private pageReadsInFlight = 0;
@@ -931,6 +933,7 @@ export class GalleryStore {
   private pauseListingReads(): void {
     this.listingRefreshOwed ||= this.pageReadsInFlight > 0 && !this.loading();
     this.listingPagesInterrupted ||= this.loading();
+    this.reviewRefreshOwed ||= this.reviewRepairsInFlight > 0;
     this.progressRefreshOwed ||= this.progressReadsInFlight > 0;
     this.listingReadsActive = false;
     this.cancelListingReads();
@@ -1290,7 +1293,9 @@ export class GalleryStore {
       const seq = this._loadSeq;
       const identity = this.auth.identity();
       this.listingPagesInterrupted = false;
-      const preserveLoaded = !this.listingRefreshOwed && !this.reviewRefreshOwed && !this.parkedRefreshPaths.size;
+      const preserveLoaded = !this.listingRefreshOwed && !this.reviewRefreshOwed && !this.viewRefreshOwed
+        && !this.parkedRefreshPaths.size;
+      const previous = this.photos();
       if (this.filters().similar_to) await this.resumeSimilarPages(true, preserveLoaded);
       else {
         this.loading.set(true);
@@ -1303,6 +1308,14 @@ export class GalleryStore {
         } finally {
           if (seq === this._loadSeq && identity === this.auth.identity()) this.loading.set(false);
         }
+      }
+      // A full reload settles every owed refresh, so Back does not refetch the pages again.
+      if (!preserveLoaded && !this.listingPagesInterrupted && seq === this._loadSeq && identity === this.auth.identity()) {
+        this.listingRefreshOwed = false;
+        this.reviewRefreshOwed = false;
+        this.viewRefreshOwed = false;
+        this.parkedRefreshPaths.clear();
+        if (this.filters().review_status) this.rememberReviewedPhotos(previous);
       }
       return;
     }
@@ -2067,6 +2080,7 @@ export class GalleryStore {
       this.loadError.set(false);
       this.loadErrorKey.set(undefined);
       this.loading.set(true);
+      this.reviewRepairsInFlight++;
       try {
         const params = buildApiParams({ ...f, page }, this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
         const res = await this.pageRead(this.api.get<PhotosResponse>('/photos', params));
@@ -2082,6 +2096,7 @@ export class GalleryStore {
         this.loadError.set(true);
         return;
       } finally {
+        this.reviewRepairsInFlight--;
         if (current()) this.loading.set(false);
       }
     }
