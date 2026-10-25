@@ -7,10 +7,12 @@ All notable changes to Facet are documented in this file.
 - Filter photos with unassigned faces or unnamed people from the gallery People section.
 
 ### Changed
-- Read search cache database change tokens in a worker thread so cold searches do not block other requests.
+- Read semantic-search, similar-photo and gallery count cache database change tokens in worker threads so both cold and warm token reads do not block other requests.
 - Resize manual-face previews and crop face pixels before converting to RGB, avoiding full-resolution copies on preview and save.
 
 ### Added
+
+- Assign people from a searchable picker ordered by recent successful assignments in this browser, then visible face counts. Signing out clears saved recents.
 
 - **Explicit XMP sidecar discovery.** `--import-sidecars --sidecar-naming full|basename|auto` can read stripped-extension sidecars, refuses shared RAW/JPEG basenames, and reports naming conflicts. Full-name discovery remains the default; exports keep their existing filenames.
 
@@ -29,6 +31,8 @@ All notable changes to Facet are documented in this file.
 ### Fixed
 
 - Bound sidecar naming notices once per kind per import for full, basename and auto policies, while retaining complete ambiguity/mismatch and import counts.
+- Keep person-name searches working for numeric-looking and non-ASCII names without treating them as unsafe integer IDs. Assignment pagination counts people without repeating the face aggregate.
+
 - **Immich sync refuses ambiguous assets.** Duplicate remote paths and colliding Facet mappings are reported as identity conflicts. Fallback searches check every page and require an exact path; webhook IDs are verified before writes. Optional owner/library ID selectors restrict the configured server's responses. Literal first-prefix mapping behavior is unchanged.
 - Refuse basename XMP discovery when a double-extension derivative would read another image’s full-name or fallback sidecar. Report full-policy naming notices once per import while retaining complete mismatch counts.
 
