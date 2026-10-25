@@ -174,3 +174,5 @@ Facet hält die Tags, die Sie selbst eingeben (siehe [Web-Galerie — Manuelle T
 Siehe [Befehle — Vorschau & Export](COMMANDS.md#preview--export) für die vollständige CLI-Referenz (`--export-sidecars`, `--import-sidecars`, `--embed-originals`, `--score-to-stars`, `--user`).
 
 Steht ein veraltetes `facet:GPSState=cleared` neben Standard-GPS-Feldern, hat ein vollständiges gültiges Koordinatenpaar Vorrang. Ein unvollständiges oder ungültiges, nicht leeres Paar ist mehrdeutig und wird ignoriert; es löscht keinen Standort. Nur fehlende oder leere Koordinaten mit der expliziten Löschmarkierung löschen GPS. Manuelle GPS-Werte bleiben geschützt, sofern Überschreiben nicht ausdrücklich angefordert wird.
+
+Beim Beschriftungsexport mit ExifTool wird nur `x-default` in `dc:description` geändert; andere Sprachen bleiben in jeder bestehenden Sidecar-Datei oder Bilddatei erhalten. Eine leere Facet-Beschriftung lässt vorhandene Beschriftungen unverändert. Ohne ExifTool enthält das XML die Standardsprache und wird bei vorhandener Sidecar-Datei normalerweise nach `<image>.facet.xmp` umgeleitet; explizites Überschreiben ersetzt weiterhin das Zielpaket.
