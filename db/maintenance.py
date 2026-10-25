@@ -986,7 +986,7 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
 
 
 # Tables a viewer database export must not carry (the DROP list of the full export).
-VIEWER_EXPORT_EXCLUDED_TABLES = ('mcp_tokens', 'rating_provenance')
+VIEWER_EXPORT_EXCLUDED_TABLES = ('mcp_tokens', 'rating_provenance', 'organization_history')
 
 
 def export_viewer_db(source_db='photo_scores_pro.db', output_path=None, thumbnail_size=320, verbose=True, force=False):

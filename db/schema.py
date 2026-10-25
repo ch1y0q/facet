@@ -1488,6 +1488,9 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
                 "WHERE centroid IS NOT NULL AND centroid_model IS NULL",
                 (ARCFACE_MODEL,))
 
+        from db.organization_history import init_schema as init_organization_history
+        init_organization_history(conn)
+
         # Create photos_vec virtual table for vector search (requires sqlite-vec).
         # After the sweep so detect_embedding_dim can see clip_embedding.
         if HAS_SQLITE_VEC:

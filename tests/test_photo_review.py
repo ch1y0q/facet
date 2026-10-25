@@ -77,15 +77,12 @@ def test_schema_upgrade_and_preference_migration(tmp_path):
     path = str(tmp_path / "upgrade.db")
     init_database(path)
     with sqlite3.connect(path) as conn:
-        # Reproduce a real pre-feature database using the production schema.
+        # A pre-Keep schema predates both history revisions and review edit clocks.
+        for (trigger,) in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND "
+                                       "(name GLOB 'organization_*' OR name GLOB 'metadata_review_*')").fetchall():
+            conn.execute('DROP TRIGGER "' + trigger.replace('"', '""') + '"')
         conn.execute("DROP INDEX IF EXISTS idx_review_progress")
-        # Pre-feature schemas have no metadata edit-clock triggers.
-        for (trigger,) in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name GLOB 'metadata_review_*'").fetchall():
-            conn.execute('DROP TRIGGER "' + trigger.replace('"', '""') + '"')
         conn.execute("ALTER TABLE photos DROP COLUMN is_kept")
-        # Pre-feature schemas have no metadata edit-clock triggers.
-        for (trigger,) in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name GLOB 'metadata_review_*'").fetchall():
-            conn.execute('DROP TRIGGER "' + trigger.replace('"', '""') + '"')
         conn.execute("ALTER TABLE user_preferences DROP COLUMN is_kept")
         conn.execute("INSERT INTO photos(path, filename, star_rating, is_favorite) VALUES('/legacy.jpg', 'legacy.jpg', 5, 1)")
     init_database(path)
@@ -104,14 +101,12 @@ def test_preference_migration_upgrades_a_pre_keep_database(tmp_path):
     path = str(tmp_path / "pre-keep.db")
     init_database(path)
     with sqlite3.connect(path) as conn:
+        # A pre-Keep schema predates both history revisions and review edit clocks.
+        for (trigger,) in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND "
+                                       "(name GLOB 'organization_*' OR name GLOB 'metadata_review_*')").fetchall():
+            conn.execute('DROP TRIGGER "' + trigger.replace('"', '""') + '"')
         conn.execute("DROP INDEX IF EXISTS idx_review_progress")
-        # Pre-feature schemas have no metadata edit-clock triggers.
-        for (trigger,) in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name GLOB 'metadata_review_*'").fetchall():
-            conn.execute('DROP TRIGGER "' + trigger.replace('"', '""') + '"')
         conn.execute("ALTER TABLE photos DROP COLUMN is_kept")
-        # Pre-feature schemas have no metadata edit-clock triggers.
-        for (trigger,) in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name GLOB 'metadata_review_*'").fetchall():
-            conn.execute('DROP TRIGGER "' + trigger.replace('"', '""') + '"')
         conn.execute("ALTER TABLE user_preferences DROP COLUMN is_kept")
         conn.execute("INSERT INTO photos(path, filename, star_rating) VALUES('/rated.jpg', 'rated.jpg', 3)")
     migrate_user_preferences("alice", path)
