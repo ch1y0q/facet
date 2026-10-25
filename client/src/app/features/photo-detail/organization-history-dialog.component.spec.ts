@@ -14,7 +14,8 @@ describe('Organization history', () => {
   const store = { refreshPaths: vi.fn() };
   const closing = new Subject<void>();
   const dialog = { close: vi.fn(), beforeClosed: () => closing };
-  const auth = { status: signal({ user_id: 'alice' }), isEdition: signal(true) };
+  const status = signal({ user_id: 'alice' });
+  const auth = { status, identity: () => status().user_id, isEdition: signal(true) };
   const router = { url: '/gallery', events: new Subject<NavigationStart>() };
   function create() {
     vi.clearAllMocks(); auth.status.set({ user_id: 'alice' }); auth.isEdition.set(true); router.url = '/gallery';
@@ -60,13 +61,13 @@ describe('Organization history', () => {
     auth.status.set({ user_id: 'bob' }); response.next({ changed: 1 }); await pending;
     expect(store.refreshPaths).not.toHaveBeenCalled(); expect(c.changed()).toBeNull();
   });
-  it('discards a restore completing after dismissal starts while still alive', async () => {
+  it('publishes a confirmed restore after dismissal without loading private dialog state', async () => {
     const c = create(); const response = new Subject<{ changed: number }>();
     api.post.mockReturnValue(response); const pending = c.revert(entry);
     closing.next();
     response.next({ changed: 1 }); await pending;
-    expect(store.refreshPaths).not.toHaveBeenCalled();
-    expect(c.wasRestored()).toBe(false);
+    expect(store.refreshPaths).toHaveBeenCalledWith(null);
+    expect(c.wasRestored()).toBe(true);
     expect(c.changed()).toBeNull();
     expect(api.get).not.toHaveBeenCalled();
   });
@@ -85,6 +86,44 @@ describe('Organization history', () => {
     expect(c.error()).toBeNull();
     expect(c.wasRestored()).toBe(false);
   });
+  it('retains a pending restore and private entries after same-principal revalidation', async () => {
+    const c = create(); await c.load(); TestBed.tick();
+    const response = new Subject<{ changed: number }>();
+    api.post.mockReturnValue(response); const pending = c.revert(entry);
+    auth.status.set({ user_id: 'alice' }); TestBed.tick();
+    expect(dialog.close).not.toHaveBeenCalled(); expect(c.entries()).toEqual([entry]);
+    response.next({ changed: 1 }); await pending;
+    expect(store.refreshPaths).toHaveBeenCalledWith(null); expect(c.wasRestored()).toBe(true);
+  });
+  it('keeps an edition downgrade invalidated even if edition is granted again', async () => {
+    const c = create(); await c.load(); TestBed.tick();
+    const response = new Subject<{ changed: number }>();
+    api.post.mockReturnValue(response); const pending = c.revert(entry);
+    auth.isEdition.set(false); TestBed.tick();
+    expect(c.entries()).toEqual([]); expect(dialog.close).toHaveBeenCalled();
+    auth.isEdition.set(true); TestBed.tick();
+    response.next({ changed: 1 }); await pending;
+    expect(store.refreshPaths).not.toHaveBeenCalled(); expect(c.wasRestored()).toBe(false);
+  });
+  for (const loss of ['dismissal', 'destroy', 'edition', 'navigation-after-destroy']) {
+    it(`handles a confirmed restore after ${loss}`, async () => {
+      const c = create(); const response = new Subject<{ changed: number }>();
+      api.post.mockReturnValue(response); const pending = c.revert(entry);
+      const settled = c.whenSettled();
+      if (loss === 'dismissal') closing.next();
+      if (loss.includes('destroy')) TestBed.resetTestingModule();
+      if (loss === 'edition') auth.isEdition.set(false);
+      if (loss === 'navigation-after-destroy') {
+        router.events.next(new NavigationStart(1, '/other'));
+        router.events.next(new NavigationStart(2, '/gallery'));
+      }
+      response.next({ changed: 1 }); await pending; await settled;
+      const publish = loss === 'dismissal' || loss === 'destroy';
+      expect(c.wasRestored()).toBe(publish);
+      expect(store.refreshPaths).toHaveBeenCalledTimes(publish ? 1 : 0);
+      expect(api.get).not.toHaveBeenCalled();
+    });
+  }
   it('reports a conflict without pretending any photos were restored', async () => {
     const c = create(); api.post.mockReturnValue(throwError(() => ({ status: 409 })));
     await c.revert(entry); expect(c.error()).toBe('conflict');

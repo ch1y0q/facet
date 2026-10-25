@@ -2097,11 +2097,19 @@ export class GalleryComponent implements OnInit, OnDestroy {
     });
   }
 
+  protected loadOrganizationHistoryDialog() { return import('../photo-detail/organization-history-dialog.component'); }
+
   async openOrganizationHistory(): Promise<void> {
-    const owner = this.auth.status();
-    const { OrganizationHistoryDialogComponent } = await import('../photo-detail/organization-history-dialog.component');
-    if (this.destroyRef.destroyed || this.auth.status() !== owner || !this.auth.isEdition()) return;
-    this.dialog.open(OrganizationHistoryDialogComponent, { width: '95vw', maxWidth: '820px' });
+    if (!this.auth.isEdition()) return;
+    const owner = this.auth.identity();
+    const url = this.router.url;
+    let navigated = false;
+    const navigation = this.router.events.subscribe(event => { if (event instanceof NavigationStart) navigated = true; });
+    try {
+      const { OrganizationHistoryDialogComponent } = await this.loadOrganizationHistoryDialog();
+      if (this.destroyRef.destroyed || navigated || this.router.url !== url || this.auth.identity() !== owner || !this.auth.isEdition()) return;
+      this.dialog.open(OrganizationHistoryDialogComponent, { width: '95vw', maxWidth: '820px' });
+    } finally { navigation.unsubscribe(); }
   }
 
   async openCaptureDateDialog(): Promise<void> {

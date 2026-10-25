@@ -1188,7 +1188,7 @@ describe('PhotoDetailComponent', () => {
       createComponent();
       seedGrid();
       const closed = new Subject<void>();
-      mockDialog.open.mockReturnValue({ componentInstance: { wasRestored: () => true }, afterClosed: () => closed });
+      mockDialog.open.mockReturnValue({ componentInstance: { wasRestored: () => true, whenSettled: () => Promise.resolve() }, afterClosed: () => closed });
       await component.openOrganizationHistory();
       mockApi.get.mockReturnValue(of({ ...edited, gps_latitude: 12 }));
       closed.next();
@@ -1202,6 +1202,64 @@ describe('PhotoDetailComponent', () => {
       await new Promise<void>(resolve => setTimeout(resolve, 0));
       expect(component.photo().star_rating).toBe(5);
     });
+
+    for (const loss of ['revalidation', 'identity', 'edition', 'navigation']) {
+      it(`handles a dismissed pending history restore after ${loss}`, async () => {
+        const events = new Subject<NavigationStart>(); mockRouter.events = events;
+        createComponent(); seedGrid();
+        const listeners = events.observers.length;
+        const closed = new Subject<void>();
+        let finish!: () => void;
+        const settled = new Promise<void>(resolve => { finish = resolve; });
+        mockDialog.open.mockReturnValue({ componentInstance: { wasRestored: () => true, whenSettled: () => settled }, afterClosed: () => closed });
+        await component.openOrganizationHistory();
+        closed.next();
+        if (loss === 'revalidation') mockAuth.status.set({ user_id: 'test' });
+        if (loss === 'identity') mockAuth.status.set({ user_id: 'bob' });
+        if (loss === 'edition') mockAuth.isEdition.set(false);
+        if (loss === 'navigation') { events.next(new NavigationStart(1, '/other')); events.next(new NavigationStart(2, '/')); }
+        mockApi.get.mockClear(); mockApi.get.mockReturnValue(of({ ...edited, gps_latitude: 12 }));
+        finish(); await new Promise<void>(resolve => setTimeout(resolve, 0));
+        expect(component.photo().gps_latitude).toBe(loss === 'revalidation' ? 12 : undefined);
+        expect(events.observers).toHaveLength(listeners);
+      });
+      it(`guards lazy history detail launch after ${loss}`, async () => {
+        const events = new Subject<NavigationStart>(); mockRouter.events = events;
+        createComponent(); seedGrid();
+        const module = await import('./organization-history-dialog.component');
+        let finish!: (value: typeof module) => void;
+        vi.spyOn(component, 'loadOrganizationHistoryDialog').mockReturnValue(new Promise(resolve => { finish = resolve; }));
+        const opening = component.openOrganizationHistory();
+        if (loss === 'revalidation') mockAuth.status.set({ user_id: 'test' });
+        if (loss === 'identity') mockAuth.status.set({ user_id: 'bob' });
+        if (loss === 'edition') mockAuth.isEdition.set(false);
+        if (loss === 'navigation') { events.next(new NavigationStart(1, '/other')); events.next(new NavigationStart(2, '/')); }
+        mockDialog.open.mockReturnValue({ componentInstance: {}, afterClosed: () => new Subject() });
+        finish(module); await opening;
+        expect(mockDialog.open).toHaveBeenCalledTimes(loss === 'revalidation' ? 1 : 0);
+      });
+    }
+
+    for (const loss of ['identity', 'edition', 'navigation']) {
+      it(`discards a history detail refresh completing after ${loss}`, async () => {
+        const events = new Subject<NavigationStart>(); mockRouter.events = events;
+        createComponent(); seedGrid();
+        const listeners = events.observers.length;
+        const closed = new Subject<void>(); const response = new Subject();
+        mockDialog.open.mockReturnValue({ componentInstance: { wasRestored: () => true, whenSettled: () => Promise.resolve() }, afterClosed: () => closed });
+        await component.openOrganizationHistory();
+        mockApi.get.mockReturnValue(response); closed.next();
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+        const previous = component.photo();
+        if (loss === 'identity') mockAuth.status.set({ user_id: 'bob' });
+        if (loss === 'edition') mockAuth.isEdition.set(false);
+        if (loss === 'navigation') { events.next(new NavigationStart(1, '/other')); events.next(new NavigationStart(2, '/')); }
+        response.next({ ...edited, gps_latitude: 12 });
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+        expect(component.photo()).toBe(previous);
+        expect(events.observers).toHaveLength(listeners);
+      });
+    }
 
     it('capture date commits are available on immediate reopen and do not replace a newer photo', async () => {
       createComponent();

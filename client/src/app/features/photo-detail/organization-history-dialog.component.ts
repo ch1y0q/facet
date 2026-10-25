@@ -72,11 +72,15 @@ export class OrganizationHistoryDialogComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly dialog = inject(MatDialogRef<OrganizationHistoryDialogComponent>);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly owner = this.auth.status();
+  private readonly owner = this.auth.identity();
   private readonly url = this.router.url;
   private navigated = false;
   private closing = false;
+  private ownerInvalidated = false;
+  private pendingRestore: Promise<void> | null = null;
   readonly wasRestored = signal(false);
+
+  whenSettled(): Promise<void> { return this.pendingRestore ?? Promise.resolve(); }
   readonly expanded = signal(new Set<number>());
   readonly entries = signal<Entry[]>([]);
   readonly changed = signal<number | null>(null);
@@ -98,7 +102,8 @@ export class OrganizationHistoryDialogComponent implements OnInit {
       }
     });
     effect(() => {
-      if (this.auth.status() !== this.owner || !this.auth.isEdition()) {
+      if (this.auth.identity() !== this.owner || !this.auth.isEdition()) {
+        this.ownerInvalidated = true;
         this.entries.set([]);
         this.dialog.close();
       }
@@ -117,7 +122,11 @@ export class OrganizationHistoryDialogComponent implements OnInit {
   ngOnInit(): void { void this.load(); }
 
   private current(): boolean {
-    return !this.closing && !this.navigated && !this.destroyRef.destroyed && this.auth.status() === this.owner && this.auth.isEdition() && this.router.url === this.url;
+    return !this.closing && !this.destroyRef.destroyed && this.sessionCurrent();
+  }
+
+  private sessionCurrent(): boolean {
+    return !this.ownerInvalidated && !this.navigated && this.auth.identity() === this.owner && this.auth.isEdition() && this.router.url === this.url;
   }
 
   async load(): Promise<void> {
@@ -132,20 +141,34 @@ export class OrganizationHistoryDialogComponent implements OnInit {
 
   async revert(entry: Entry): Promise<void> {
     if (!this.current() || this.busy() || entry.reverted) return;
+    this.pendingRestore = this.performRevert(entry);
+    await this.pendingRestore;
+  }
+
+  private async performRevert(entry: Entry): Promise<void> {
+    // Keep watching navigation until the write settles, even if the dialog is destroyed.
+    const navigation = this.router.events.subscribe(event => {
+      if (event instanceof NavigationStart) this.navigated = true;
+    });
     const id = entry.id;
     this.busy.set(true); this.error.set(null); this.changed.set(null);
     try {
       const result = await firstValueFrom(this.api.post<Revert>(`/organization_history/${id}/revert`, {}));
-      if (!this.current()) return;
+      if (!this.sessionCurrent()) return;
       this.wasRestored.set(true);
-      this.changed.set(result.changed);
       void this.store.refreshPaths(null);
-      await this.load();
+      if (this.current()) {
+        this.changed.set(result.changed);
+        await this.load();
+      }
     } catch (failure) {
       if (this.current()) {
         const status = (failure as { status?: number }).status;
         this.error.set(status === 409 ? 'conflict' : status === 404 ? 'unavailable' : 'error');
       }
-    } finally { if (this.current()) this.busy.set(false); }
+    } finally {
+      navigation.unsubscribe();
+      if (this.current()) this.busy.set(false);
+    }
   }
 }
