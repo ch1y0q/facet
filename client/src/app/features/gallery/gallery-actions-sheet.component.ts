@@ -17,6 +17,7 @@ export type SheetAction =
   | { kind: 'cull' }
   | { kind: 'tags' }
   | { kind: 'capture-date' }
+  | { kind: 'gps' }
   | { kind: 'delete' }
   | { kind: 'rate'; rating: number }
   | { kind: 'mark-panorama'; sequenceKind: 'panorama' | 'hdr_panorama' | 'bracket' }
@@ -101,6 +102,10 @@ export interface GalleryActionsSheetData {
         <button class="flex items-center gap-3 w-full px-4 py-3 text-sm text-left hover:bg-white/10 cursor-pointer" (click)="pick({ kind: 'tags' })">
           <mat-icon aria-hidden="true">sell</mat-icon>
           {{ I18N.gallery.selection.edit_tags | translate }}
+        </button>
+        <button class="flex items-center gap-3 w-full px-4 py-3 text-sm text-left hover:bg-white/10 cursor-pointer" (click)="pick({ kind: 'gps' })">
+          <mat-icon aria-hidden="true">location_on</mat-icon>
+          {{ I18N.photo_detail.gps.batch_title | translate }}
         </button>
         <!-- Present on the desktop bar but previously unreachable on a phone,
              where this sheet is the only way to any bulk action. -->

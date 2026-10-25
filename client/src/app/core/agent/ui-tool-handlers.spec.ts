@@ -631,6 +631,12 @@ describe('UI tool registry and handlers', () => {
       expect(store.filters()).toMatchObject({ sequence_group_id: '', sequence_kind: '', burst_group_id: '', duplicate_group_id: '' });
     });
 
+    it('replace also lifts an only filter the user turned on', async () => {
+      await store.updateFilters({ show_rejected: true, blinks_only: true, duplicates_only: true });
+      await run('ui_set_gallery_filters', { patch: { lens: '50mm' }, replace: true });
+      expect(store.filters()).toMatchObject({ show_rejected: false, blinks_only: false, duplicates_only: false, lens: '50mm' });
+    });
+
     it('refuses a filter the tab cannot show, without applying the rest', async () => {
       const result = await run('ui_set_gallery_filters', { patch: { camera: 'Canon', junk_kind: 'blurry' } });
       expect(result).toMatchObject({ ok: false, error: 'invalid_input' });

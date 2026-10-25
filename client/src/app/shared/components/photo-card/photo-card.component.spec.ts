@@ -6,6 +6,7 @@ import { MATERIAL_ANIMATIONS } from '@angular/material/core';
 import { MatTooltip } from '@angular/material/tooltip';
 import { I18nService } from '../../../core/services/i18n.service';
 import { PhotoCardComponent } from './photo-card.component';
+import { CardActionsConfig } from './card-actions';
 import type { Photo } from '../../models/photo.model';
 import { makePhoto } from '../../../../testing/photo.fixture';
 
@@ -994,5 +995,71 @@ describe('PhotoCardComponent hideTooltips', () => {
       document.removeEventListener('keydown', seen);
     }
     expect(seen).toHaveBeenCalledOnce();
+  });
+});
+
+describe('PhotoCardComponent configured hover actions', () => {
+  const mockI18n = { t: vi.fn((key: string) => key), currentLang: vi.fn(() => 'en'), locale: vi.fn(() => 'en'), translations: vi.fn(() => ({})) };
+
+  function makeCard(photoOverrides: Partial<Photo> = {}, cardActions: CardActionsConfig | null = null) {
+    const f = TestBed.createComponent(PhotoCardComponent);
+    f.componentRef.setInput('photo', makePhoto(photoOverrides));
+    if (cardActions) f.componentRef.setInput('cardActions', cardActions);
+    f.detectChanges();
+    return f;
+  }
+
+  function topRowIcons(f: ComponentFixture<PhotoCardComponent>): string[] {
+    const row = f.nativeElement.querySelector('.absolute.inset-x-0.top-0 > div');
+    return [...row.querySelectorAll('button mat-icon')].map(i => i.textContent!.trim());
+  }
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [PhotoCardComponent],
+      providers: [{ provide: I18nService, useValue: mockI18n }],
+    }).compileComponents();
+  });
+
+  it('shows the duplicate-group button by default only on photos that belong to one', () => {
+    expect(topRowIcons(makeCard({ duplicate_group_id: 7 }))).toContain('photo_library');
+    expect(topRowIcons(makeCard({ duplicate_group_id: null }))).not.toContain('photo_library');
+  });
+
+  it('keeps a null config on the historical default row, gating untouched', () => {
+    // unassigned_faces>0 alone must not surface assign_face outside edition mode
+    const icons = topRowIcons(makeCard({ unassigned_faces: 2, duplicate_group_id: null }));
+    expect(icons).not.toContain('person_add');
+    expect(icons).not.toContain('photo_library');
+  });
+
+  it('honours hidden and order from the config', () => {
+    const cfg: CardActionsConfig = {
+      order: ['duplicate_set', 'critique'],
+      hidden: ['critique'],
+    };
+    const icons = topRowIcons(makeCard({ duplicate_group_id: 7 }, cfg));
+    expect(icons).toEqual(['photo_library']);
+  });
+
+  it('shows burst and sequence buttons only when the photo belongs to such a set', () => {
+    const cfg: CardActionsConfig = {
+      order: ['burst_set', 'sequence_set'],
+      hidden: [],
+    };
+    expect(topRowIcons(makeCard({ burst_group_id: 3 }, cfg))).toEqual(['burst_mode']);
+    expect(topRowIcons(makeCard({ sequence_kind: 'bracket', sequence_group_id: 5 }, cfg)))
+      .toEqual(['auto_awesome_motion']);
+    expect(topRowIcons(makeCard({ sequence_kind: 'bracket' }, cfg))).toEqual([]);
+  });
+
+  it('emits openSetClicked with the photo and kind', () => {
+    const cfg: CardActionsConfig = { order: ['duplicate_set'], hidden: [] };
+    const f = makeCard({ duplicate_group_id: 7 }, cfg);
+    const card = f.debugElement.children[0].componentInstance as PhotoCardComponent;
+    const emitted: { photo: Photo; kind: string }[] = [];
+    card.openSetClicked.subscribe(e => emitted.push(e));
+    (f.nativeElement.querySelector('button mat-icon')!.closest('button') as HTMLButtonElement).click();
+    expect(emitted).toEqual([{ photo: makePhoto({ duplicate_group_id: 7 }), kind: 'duplicate' }]);
   });
 });

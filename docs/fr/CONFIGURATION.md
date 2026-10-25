@@ -999,6 +999,8 @@ linéaire puis encodée avec l’OETF sRGB — la réduction à 8 bits n’inter
 qu’à cette dernière étape. Ce bloc contrôle ce mappage. Il ne s’applique qu’aux images dont le profil de
 couleur NCLX déclare le transfert PQ (caractéristique 16) ; les HEIF SDR, HLG
 et JPEG passent tels quels, quelle que soit la valeur de `enabled`.
+Les cadres que le boîtier a écrits tournés (une orientation EXIF autre que 1) ressortent droits : le décodeur applique lui-même l'orientation — y compris sur le chemin de profondeur native, où pillow-heif 1.6 et plus tournent le plan avant le mappage de tons et la valeur EXIF brute est neutralisée plutôt que réappliquée.
+
 
 ```json
 "hdr_pq_tonemap": {

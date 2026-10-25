@@ -8,6 +8,7 @@ import { i18nKeys } from '../../../core/i18n/keys';
 export interface PhotoDeleteDialogResult {
   includeCompanions: boolean;
   includeSequenceSiblings: boolean;
+  removeMissing: boolean;
 }
 
 export interface PhotoDeleteDialogData {
@@ -64,6 +65,9 @@ export interface PhotoDeleteDialogData {
           {{ (data.surface === 'photo_detail' ? I18N.photo_detail.delete.include_siblings : I18N.cull.include_sequence_siblings) | translate }}
         </mat-checkbox>
       }
+      <mat-checkbox [checked]="removeMissing()" (change)="removeMissing.set($event.checked)" class="text-sm block mt-1">
+        {{ I18N.cull.remove_missing_rows | translate }}
+      </mat-checkbox>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>{{ I18N.cull.cancel | translate }}</button>
@@ -80,6 +84,11 @@ export class PhotoDeleteDialogComponent {
 
   protected readonly includeCompanions = signal(false);
   protected readonly includeSequenceSiblings = signal(false);
+  /** On by default: a file that is already gone from disk has nothing to
+   *  trash, and the row it leaves behind is exactly what the user is asking
+   *  this dialog to remove. Turning it off keeps the conservative skipped
+   *  report for a disconnected-volume situation. */
+  protected readonly removeMissing = signal(true);
 
   /** photo-detail only: which body variant to show, layered by what is ticked
    *  (and, independent of the tick, whether this single target is itself a
@@ -98,6 +107,7 @@ export class PhotoDeleteDialogComponent {
     this.dialogRef.close({
       includeCompanions: this.includeCompanions(),
       includeSequenceSiblings: this.includeSequenceSiblings(),
+      removeMissing: this.removeMissing(),
     });
   }
 }

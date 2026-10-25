@@ -122,6 +122,7 @@ PARAMETERISED_ROUTES = [
 POST_ROUTES = [
     ('/api/photos/capture_date/preview', {'photo_paths': [], 'offset_seconds': 1}),
     ('/api/photos/capture_date/apply', {'photo_paths': [], 'offset_seconds': 1, 'preview_token': 'stale'}),
+    ('/api/photos/batch_gps', {'photo_paths': ['/nonexistent.jpg'], 'gps_latitude': 1, 'gps_longitude': 2, 'preview': True}),
     ('/api/photo/set_rating', {'photo_path': '/nonexistent.jpg', 'rating': 3}),
     ('/api/photo/toggle_favorite', {'photo_path': '/nonexistent.jpg'}),
     ('/api/photo/toggle_rejected', {'photo_path': '/nonexistent.jpg'}),

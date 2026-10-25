@@ -34,7 +34,7 @@ from api.db_helpers import (
     get_visibility_clause,
 )
 from api.models.scan import CullApplyResponse, PhotoDeleteResponse
-from api.path_validation import resolve_photo_disk_path
+from api.path_validation import PhotoFileMissing, resolve_photo_disk_path
 from api.raw_processing import find_companion_raw
 from db.maintenance import delete_photo_rows
 from processing.xmp_export import (
@@ -181,6 +181,13 @@ class PhotoDeleteRequest(BaseModel):
     # It is also what unblocks a refused bracket-lead delete (decision 7),
     # since that refusal now simply falls out of the general widening.
     include_sequence_siblings: bool = False
+    # Off by default: a file that no longer resolves on disk keeps its row,
+    # because "every file missing" is exactly what a disconnected library
+    # volume looks like and sweeping those rows away would delete the whole
+    # library's index over a dropped mount. Opt in to reconcile such rows
+    # in the same call -- reported in the response's `removed_missing`,
+    # never folded into `deleted` (no file was trashed).
+    remove_missing: bool = False
     dry_run: bool = True
 
 
@@ -594,6 +601,34 @@ def _resolve_cull_files(paths, include_companions):
             files.extend(_companion_files(real))
         items.append((path, files))
     return items, skipped
+
+
+def _reconcilable_missing(paths):
+    """The ``paths`` whose file is genuinely gone, safe for ``remove_missing``.
+
+    A path qualifies only when it passed the scan-directory containment check
+    and its file is absent (``PhotoFileMissing``) -- a containment refusal is
+    the same 404 to every other caller but its file may well be on disk -- and
+    when the folder that held it is still there with something in it. An
+    unmounted library volume reads as every file missing; its folders are gone
+    or its mount point is empty, so its rows stay ``skipped`` rather than lose
+    their ratings, faces and album membership to one delete click.
+    """
+    missing = []
+    for path in paths:
+        try:
+            resolve_photo_disk_path(path)
+        except PhotoFileMissing as ex:
+            parent = os.path.dirname(ex.real_path)
+            try:
+                with os.scandir(parent) as entries:
+                    if any(entries):
+                        missing.append(path)
+            except OSError:
+                continue
+        except HTTPException:
+            continue
+    return missing
 
 
 def _chunked_path_rows(conn, paths, sql_fn, params_fn):
@@ -1184,7 +1219,15 @@ def api_photo_delete(
     not resolve on disk (already missing) -- neither trashed nor
     row-deleted, so it is reported rather than silently dropped from every
     bucket. Reconciling it is ``--cleanup-missing-photos``'s job, same as any
-    other missing-on-disk row.
+    other missing-on-disk row -- or, with ``remove_missing``, THIS call's:
+    the flag moves such paths out of ``skipped`` into ``removed_missing``
+    (never ``deleted``, which keeps meaning "row gone via a successful
+    trash") and deletes their rows in the same transaction as the trashed
+    paths', lead re-pick included. It stays an opt-in because a request
+    where EVERY file reads as missing is exactly what a disconnected
+    library volume looks like, and even opted in, ``_reconcilable_missing``
+    keeps a path ``skipped`` when the allowlist refused it or the folder
+    that held it is gone or empty -- the shape of an offline volume.
     """
     send2trash = _require_trash_available()
 
@@ -1222,11 +1265,22 @@ def api_photo_delete(
         items, skipped = _resolve_cull_files(action_paths, body.include_companions)
         files = [f for _, fs in items for f in fs]
 
+        # With `remove_missing`, a skipped path (visible, in `photos`, file
+        # already gone from disk) has its row removed in the same transaction
+        # as the trashed paths' rows, and is reported in `removed_missing`
+        # rather than `skipped`. Off by default -- see PhotoDeleteRequest.
+        removed_missing: list[str] = []
+        if body.remove_missing and skipped:
+            removed_missing = _reconcilable_missing(skipped)
+            reconciled = set(removed_missing)
+            skipped = [p for p in skipped if p not in reconciled]
+
         if body.dry_run:
             return PhotoDeleteResponse(
                 dry_run=True, would_trash=files, deleted=[], not_found=not_found,
                 not_visible=not_visible, refused_bracket_lead=refused_bracket_lead,
-                sequence_siblings=sequence_siblings, skipped=skipped, trashed=0, errors={},
+                sequence_siblings=sequence_siblings, skipped=skipped,
+                removed_missing=removed_missing, trashed=0, errors={},
             )
 
         errors: dict[str, str] = {}
@@ -1259,6 +1313,10 @@ def api_photo_delete(
         if companion_files_trashed:
             removed_db_paths |= _photo_membership(conn, list(companion_files_trashed))
 
+        # The reconciled missing rows join the same restricted delete as the
+        # trashed paths: one lead re-pick pass, one `delete_photo_rows`, one
+        # commit -- a missing row and a trashed row are equally gone.
+        removed_db_paths |= set(removed_missing)
         _reassign_dead_leads(conn, removed_db_paths, user_id, commit=False)
         delete_photo_rows(conn, list(removed_db_paths), preserve_auto_retrain_counters=True)
         conn.commit()
@@ -1292,9 +1350,10 @@ def api_photo_delete(
             )
 
     return PhotoDeleteResponse(
-        dry_run=False, deleted=sorted(removed_db_paths), not_found=not_found,
-        not_visible=not_visible, refused_bracket_lead=refused_bracket_lead,
-        sequence_siblings=sequence_siblings, skipped=skipped, trashed=len(succeeded), errors=errors,
+        dry_run=False, deleted=sorted(removed_db_paths - set(removed_missing)),
+        not_found=not_found, not_visible=not_visible, refused_bracket_lead=refused_bracket_lead,
+        sequence_siblings=sequence_siblings, skipped=skipped,
+        removed_missing=removed_missing, trashed=len(succeeded), errors=errors,
     )
 
 

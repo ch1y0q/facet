@@ -1308,7 +1308,10 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
         if (!result) return;
         const res = await this.photoActions.deletePhotos([p.path], result);
         if (!res) return;
-        if (res.deleted.includes(p.path)) {
+        // `removed_missing` counts as deleted for this surface: the row is
+        // gone either way, which is all the photo page can observe.
+        const gone = res.deleted.includes(p.path) || (res.removed_missing ?? []).includes(p.path);
+        if (gone) {
           this.store.removePhotos([p.path]);
           this.snackBar.open(this.i18n.t(I18N.photo_detail.delete.success), '', { duration: 2000 });
           this.goBack();
@@ -1387,9 +1390,21 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     }
   }
 
-  protected editGps(p: Photo): void {
-    import('./gps-edit-dialog.component').then(m => {
-      if (this.destroyRef.destroyed || this.photo()?.path !== p.path) return;
+  protected loadGpsDialog() { return import('./gps-edit-dialog.component'); }
+
+  protected async editGps(p: Photo): Promise<void> {
+    const identity = this.auth.identity();
+    const url = this.router.url;
+    let navigated = false;
+    let opened = false;
+    const navigation = this.router.events.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(event => {
+      if (event instanceof NavigationStart) navigated = true;
+    });
+    const current = () => !navigated && !this.destroyRef.destroyed
+      && this.auth.identity() === identity && this.auth.isEdition() && this.router.url === url && this.photo()?.path === p.path;
+    try {
+      const m = await this.loadGpsDialog();
+      if (!current()) return;
       const ref = this.dialog.open(m.GpsEditDialogComponent, {
         width: '95vw',
         maxWidth: '640px',
@@ -1401,13 +1416,16 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
           manuallySet: p.gps_manually_set === 1,
         },
       });
-      ref.afterClosed().subscribe((result: { gps_latitude: number | null; gps_longitude: number | null; gps_manually_set?: number } | undefined) => {
-        if (result !== undefined) {
+      opened = true;
+      ref.afterClosed().pipe(takeUntilDestroyed(this.destroyRef), finalize(() => navigation.unsubscribe())).subscribe((result: { gps_latitude: number | null; gps_longitude: number | null; gps_manually_set?: number } | undefined) => {
+        if (current() && result !== undefined) {
           this.applyConfirmed(p, { gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude, gps_manually_set: result.gps_manually_set ?? 1 });
           if (this.photo()?.path === p.path) this.locationName.set('');
         }
       });
-    });
+    } finally {
+      if (!opened) navigation.unsubscribe();
+    }
   }
 
   // Zoom & pan

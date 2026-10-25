@@ -25,6 +25,19 @@ from api.config import (
 )
 
 
+class PhotoFileMissing(HTTPException):
+    """The 404 for a path that passed containment but has no file on disk.
+
+    A subclass, so every caller catching ``HTTPException`` is unaffected; the
+    one that must tell "gone" apart from "refused by the allowlist" catches
+    this first. ``real_path`` is the canonical path the file was expected at.
+    """
+
+    def __init__(self, real_path: str):
+        super().__init__(status_code=404, detail='File not found on disk')
+        self.real_path = real_path
+
+
 def resolve_photo_disk_path(db_path: str) -> str:
     """Resolve a DB-validated photo path to a real disk path within scan dirs.
 
@@ -50,5 +63,5 @@ def resolve_photo_disk_path(db_path: str) -> str:
         ):
             raise HTTPException(status_code=404, detail='File not found')
     if not os.path.isfile(real_disk):
-        raise HTTPException(status_code=404, detail='File not found on disk')
+        raise PhotoFileMissing(real_disk)
     return real_disk

@@ -980,6 +980,8 @@ sRGB, tone-mapped in linear light, and encoded with the sRGB OETF — narrowing
 to 8 bits only at that last step. This block controls that tone map. It applies
 **only** to images whose NCLX colour profile declares the PQ transfer
 (characteristic 16); SDR HEIF, HLG and JPEG pass through untouched regardless
+
+Frames the camera wrote rotated (an EXIF Orientation other than 1) come out upright: the decoder applies the orientation itself — including through the native-depth path, where pillow-heif 1.6 and newer turn the plane before the tone map and the raw EXIF value is neutralised rather than re-applied.
 of `enabled`.
 
 ```json

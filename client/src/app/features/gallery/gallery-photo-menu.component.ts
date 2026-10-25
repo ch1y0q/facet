@@ -225,7 +225,12 @@ const RATINGS = [1, 2, 3, 4, 5].map(value => ({ value, label: '★'.repeat(value
               <span>{{ I18N.gallery.selection.mark_sequence | translate }}</span>
             </button>
             <button mat-menu-item (click)="emit({ kind: 'capture-date' }, photo, bulk)">
-              <mat-icon>edit_calendar</mat-icon>{{ I18N.capture_date.title | translate }}
+              <mat-icon>edit_calendar</mat-icon>
+              <span>{{ I18N.capture_date.title | translate }}</span>
+            </button>
+            <button mat-menu-item (click)="emit({ kind: 'gps' }, photo, bulk)">
+              <mat-icon>location_on</mat-icon>
+              <span>{{ I18N.photo_detail.gps.batch_title | translate }}</span>
             </button>
             <button mat-menu-item (click)="emit({ kind: 'tags' }, photo, bulk)">
               <mat-icon>sell</mat-icon>
