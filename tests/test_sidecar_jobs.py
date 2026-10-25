@@ -84,7 +84,8 @@ def test_dead_receipt_is_interrupted_without_trusting_a_recycled_pid(library):
     job_id = str(uuid4())
     path = jobs._path(library, job_id)
     state = {'id': job_id, 'owner': 'alice', 'state': 'running', 'started_at': 0,
-             'total': 3, 'processed': 1, 'written': 1, 'skipped': 0, 'errors': 0, 'first_error': None}
+             'total': 3, 'processed': 1, 'written': 1, 'skipped': 0, 'errors': 0,
+             'first_error': None, 'retry': []}
     jobs._write(path, state)
     assert jobs.status(library, job_id, 'alice')['state'] == 'interrupted'
     assert jobs._read(path) == state  # poll cannot race-write over a terminal receipt
@@ -95,7 +96,9 @@ def test_prune_retains_twenty_receipts_and_other_principals(library):
     for owner in ('alice', 'bob'):
         for index in range(25):
             job_id = str(uuid4())
-            jobs._write(jobs._path(library, job_id), {'owner': owner, 'state': 'running', 'started_at': index})
+            jobs._write(jobs._path(library, job_id), {
+                'id': job_id, 'owner': owner, 'state': 'running', 'started_at': index,
+                'total': 0, 'processed': 0, 'written': 0, 'skipped': 0, 'errors': 0, 'retry': []})
     state = jobs.start(library, 'alice', [], lambda path: None)
     _done(library, state['id'])
     receipts = [jobs._read(p) for p in jobs._directory(library).glob('*.json')]
@@ -264,3 +267,87 @@ def test_malformed_timestamp_does_not_block_history_or_new_admission(library, ba
     another = jobs.start(library, 'alice', [], lambda path: None)
     assert _done(library, another['id'])['state'] == 'completed'
     assert len(jobs.recent(library, 'alice')) == 1
+
+
+def test_numeric_string_progress_is_not_used_for_retry_arithmetic(library):
+    state = jobs.start(library, 'alice', [], lambda path: None)
+    _done(library, state['id'])
+    path = jobs._path(library, state['id'])
+    malformed = jobs._read(path)
+    malformed['processed'] = '0'  # Public response coercion must not validate private arithmetic.
+    jobs._write(path, malformed)
+    with pytest.raises(LookupError):
+        jobs.remaining(library, state['id'], 'alice')
+    assert jobs.recent(library, 'alice') == []
+    another = jobs.start(library, 'alice', [], lambda path: None)
+    assert _done(library, another['id'])['state'] == 'completed'
+
+
+@pytest.mark.parametrize('bad_id', [{}, 'not-a-uuid', None])
+def test_invalid_receipt_id_is_skipped_before_history_tiebreak(library, bad_id):
+    from uuid import uuid4
+    healthy = jobs.start(library, 'alice', [], lambda path: None)
+    _done(library, healthy['id'])
+    valid = jobs._read(jobs._path(library, healthy['id']))
+    invalid_path = jobs._path(library, str(uuid4()))
+    jobs._write(invalid_path, {**valid, 'id': bad_id})  # Same timestamp exercises the sort tie.
+    assert [row['id'] for row in jobs.recent(library, 'alice')] == [healthy['id']]
+    with pytest.raises(LookupError):
+        jobs.status(library, invalid_path.stem, 'alice')
+
+
+def test_receipt_identity_must_match_the_requested_filename(library):
+    from uuid import uuid4
+    state = jobs.start(library, 'alice', [], lambda path: None)
+    _done(library, state['id'])
+    path = jobs._path(library, state['id'])
+    malformed = jobs._read(path)
+    malformed['id'] = str(uuid4())
+    jobs._write(path, malformed)
+    with pytest.raises(LookupError):
+        jobs.status(library, state['id'], 'alice')
+
+
+@pytest.mark.parametrize('bad_retry', [[2], [-1], ['0'], [True], [0, 0], []])
+def test_invalid_private_retry_indices_are_refused(library, bad_retry):
+    def failed(path):
+        return {'written': 0, 'skipped': 0, 'errors': 1}
+    state = jobs.start(library, 'alice', ['failed'], failed)
+    _done(library, state['id'])
+    assert jobs.remaining(library, state['id'], 'alice') == (['failed'], False)
+    path = jobs._path(library, state['id'])
+    malformed = jobs._read(path)
+    malformed['retry'] = bad_retry
+    jobs._write(path, malformed)
+    with pytest.raises(LookupError):
+        jobs.remaining(library, state['id'], 'alice')
+
+
+@pytest.mark.parametrize('change', [
+    {'paths': 'not-a-list'}, {'paths': [1]}, {'paths': []}, {'overwrite': 'false'}, {'owner': 'bob'},
+])
+def test_retry_validates_plan_shape_and_receipt_length(library, change):
+    def failed(path):
+        return {'written': 0, 'skipped': 0, 'errors': 1}
+    state = jobs.start(library, 'alice', ['failed'], failed, overwrite=True)
+    _done(library, state['id'])
+    plan_path = jobs._path(library, state['id']).with_suffix('.plan')
+    plan = jobs._read(plan_path)
+    jobs._write(plan_path, {**plan, **change})
+    with pytest.raises(LookupError):
+        jobs.remaining(library, state['id'], 'alice')
+
+
+def test_api_returns_not_found_for_invalid_private_retry_record(edition_client):
+    from api.database import DEFAULT_DB_PATH
+    response = edition_client.post('/api/export/sidecar_jobs', json={'paths': ['/unregistered-job-fixture.jpg']})
+    assert response.status_code == 202, response.text
+    job_id = response.json()['id']
+    path = jobs._path(DEFAULT_DB_PATH, job_id)
+    owner = jobs._read(path)['owner']
+    _done(DEFAULT_DB_PATH, job_id, owner)
+    state = jobs._read(path)
+    state.update(state='completed', total=1, processed=1, written=0, skipped=0, errors=1, retry=[2])
+    jobs._write(path, state)
+    response = edition_client.post(f'/api/export/sidecar_jobs/{job_id}/retry')
+    assert response.status_code == 404, response.text

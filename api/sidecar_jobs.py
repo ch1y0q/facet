@@ -6,13 +6,14 @@ are never persisted; cancellation stops between complete files.
 """
 import json
 import logging
-import math
 import os
 from pathlib import Path
 import tempfile
 import threading
 import time
 from uuid import UUID, uuid4
+
+from api.models.sidecar_jobs import SidecarJobPlan, SidecarJobRecord
 
 logger = logging.getLogger(__name__)
 _KIND = 'sidecar-export:'
@@ -59,28 +60,22 @@ def _read(path):
         raise LookupError('Export job not found') from ex
 
 
-def _timestamp(value):
-    if type(value) not in (int, float):
-        return None
+def _record(path):
+    """One strict receipt boundary for status, history, pruning and retries."""
     try:
-        result = float(value)
-    except OverflowError:
-        return None
-    return result if math.isfinite(result) else None
+        state = SidecarJobRecord.model_validate(_read(path)).model_dump()
+        if state['id'] != path.stem:
+            raise ValueError('Receipt ID does not match its filename')
+        return state
+    except ValueError as ex:
+        raise LookupError('Export job not found') from ex
 
 
 def _owned(db_path, job_id, owner):
     path = _path(db_path, job_id)
-    state = _read(path)
-    try:
-        from api.models.sidecar_jobs import SidecarJobStatus
-        SidecarJobStatus.model_validate(state)
-        if _timestamp(state.get('started_at')) is None:
-            raise ValueError('invalid timestamp')
-        if state['owner'] != owner:
-            raise LookupError('Export job not found')
-    except (ValueError, KeyError) as ex:
-        raise LookupError('Export job not found') from ex
+    state = _record(path)
+    if state['owner'] != owner:
+        raise LookupError('Export job not found')
     return path, state
 
 
@@ -92,7 +87,7 @@ def status(db_path, job_id, owner):
         if not holder or holder.get('kind') != _KIND + job_id:
             # Reread after probing: the worker may have just published its
             # terminal receipt and released the lock. Never overwrite it here.
-            state = _read(path)
+            _, state = _owned(db_path, job_id, owner)
             if state['state'] not in _TERMINAL:
                 state['state'] = 'interrupted'
     return {key: value for key, value in state.items() if key not in {'owner', 'retry'}} | {
@@ -113,12 +108,11 @@ def _prune(db_path, owner):
     receipts = []
     for path in _directory(db_path).glob('*.json'):
         try:
-            state = _read(path)
-            started = _timestamp(state.get('started_at'))
-            if state['owner'] == owner and started is not None:
+            state = _record(path)
+            if state['owner'] == owner:
                 # A newly admitted job holds the sole library lock, so older
                 # nonterminal receipts necessarily belong to interrupted jobs.
-                receipts.append((started, path))
+                receipts.append((state['started_at'], path))
         except (LookupError, KeyError, TypeError):
             continue
     for _, path in sorted(receipts, reverse=True)[19:]:
@@ -210,10 +204,9 @@ def recent(db_path, owner):
     rows = []
     for path in _directory(db_path).glob('*.json'):
         try:
-            state = _read(path)
-            started = _timestamp(state.get('started_at'))
-            if state['owner'] == owner and started is not None:
-                rows.append((started, state['id']))
+            state = _record(path)
+            if state['owner'] == owner:
+                rows.append((state['started_at'], state['id']))
         except (LookupError, KeyError, TypeError):
             continue
     result = []
@@ -237,9 +230,12 @@ def remaining(db_path, job_id, owner):
     # status may have observed completion after our first snapshot. Once it
     # is terminal/interrupted, reread the final confirmed progress for retry.
     path, state = _owned(db_path, job_id, owner)
-    plan = _read(path.with_suffix('.plan'))
-    if plan.get('owner') != owner:
+    try:
+        plan = SidecarJobPlan.model_validate(_read(path.with_suffix('.plan')))
+    except ValueError as ex:
+        raise LookupError('Export plan not found') from ex
+    if plan.owner != owner or len(plan.paths) != state['total']:
         raise LookupError('Export plan not found')
-    paths = plan['paths']
-    indices = sorted(set(state.get('retry', [])) | set(range(state['processed'], len(paths))))
-    return [paths[index] for index in indices], bool(plan['overwrite'])
+    paths = plan.paths
+    indices = sorted(set(state['retry']) | set(range(state['processed'], len(paths))))
+    return [paths[index] for index in indices], plan.overwrite
