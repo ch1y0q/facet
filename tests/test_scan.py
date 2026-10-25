@@ -1151,6 +1151,60 @@ class TestLibraryLock:
 
         assert [holder for holder in _peek_concurrently(db_path) if holder is not None] == []
 
+    def test_a_paused_peer_probe_never_manufactures_a_holder(self, tmp_path, monkeypatch):
+        """A probe remains harmless even when its thread is paused while holding it."""
+        import ctypes
+        import facet
+
+        backend = facet._WindowsLockBackend
+        if facet.fcntl is not None:
+            # Exercise Windows backend argument/ABI dispatch with real OS locks
+            # on POSIX too. The pre-fix CRT probe is deliberately exclusive.
+            def crt_lock(fd, mode, size):
+                flags = facet.fcntl.LOCK_UN if mode == 0 else facet.fcntl.LOCK_EX | facet.fcntl.LOCK_NB
+                facet.fcntl.flock(fd, flags)
+            def native_lock(handle, flags, reserved, low, high, overlapped):
+                flags = (facet.fcntl.LOCK_EX if flags & 2 else facet.fcntl.LOCK_SH) | facet.fcntl.LOCK_NB
+                facet.fcntl.flock(handle, flags)
+                return 1
+            def native_unlock(handle, reserved, low, high, overlapped):
+                facet.fcntl.flock(handle, facet.fcntl.LOCK_UN)
+                return 1
+            kernel = mock.Mock(LockFileEx=mock.Mock(side_effect=native_lock),
+                               UnlockFileEx=mock.Mock(side_effect=native_unlock))
+            monkeypatch.setattr(ctypes, 'WinDLL', mock.Mock(return_value=kernel), raising=False)
+            monkeypatch.setattr(facet, 'msvcrt', mock.Mock(LK_NBLCK=1, LK_UNLCK=0,
+                                                        locking=crt_lock, get_osfhandle=lambda fd: fd))
+        monkeypatch.setattr(facet, '_OS_LOCK', backend)
+        db_path = str(tmp_path / 'photos.db')
+        facet.LibraryLock(db_path, kind='finished').acquire().release()
+        acquired, release = threading.Event(), threading.Event()
+        errors = []
+        def peer():
+            fd = os.open(facet._library_lock_path(db_path), backend.peek_open_flags)
+            try:
+                backend.take_shared(fd)
+                acquired.set()
+                assert release.wait(5)
+                backend.unlock(fd)
+            except BaseException as error:
+                errors.append(error)
+            finally:
+                os.close(fd)
+        thread = threading.Thread(target=peer)
+        thread.start()
+        try:
+            assert acquired.wait(3)
+            assert facet.library_job_holder(db_path) is None
+        finally:
+            release.set()
+            thread.join(5)
+        assert not thread.is_alive()
+        assert errors == []
+        # A real exclusive job, including its nonempty identity, stays visible.
+        with facet.LibraryLock(db_path, kind='live'):
+            assert facet.library_job_holder(db_path)['kind'] == 'live'
+
     def test_concurrent_peeks_all_still_see_a_live_holder(self, tmp_path):
         """The counter-check: a probe that never reports anything would pass
         the test above and let two jobs rewrite the library at once."""
@@ -1215,32 +1269,67 @@ class TestLibraryLock:
         monkeypatch.setattr(facet, "fcntl", None)
         monkeypatch.setattr(facet, "msvcrt", mock.Mock(LK_NBLCK=1, LK_UNLCK=0))
 
-        assert facet._select_os_lock_backend() is facet._MsvcrtBackend
+        assert facet._select_os_lock_backend() is facet._WindowsLockBackend
 
     def test_the_windows_backend_locks_a_byte_past_the_payload(self, tmp_path, monkeypatch):
-        """A Windows range lock is mandatory, not advisory: locking byte 0
-        would make the holder's own JSON unreadable to the peek that has to
-        name it."""
+        """Native ABI uses the reserved byte and never moves the fd cursor."""
+        import ctypes
         import facet
 
-        locked = []
-        fake_msvcrt = mock.Mock(LK_NBLCK=1, LK_UNLCK=0)
-        fake_msvcrt.locking.side_effect = lambda fd, mode, nbytes: locked.append(
-            (os.lseek(fd, 0, os.SEEK_CUR), mode, nbytes))
-        monkeypatch.setattr(facet, "msvcrt", fake_msvcrt)
-        fd = os.open(str(tmp_path / "library.lock"), os.O_CREAT | os.O_RDWR, 0o644)
+        calls = []
+        def lock(handle, flags, reserved, low, high, overlap):
+            value = overlap._obj
+            calls.append(('lock', handle, flags, reserved, low, high, value.Offset, value.OffsetHigh, value.hEvent))
+            assert ctypes.sizeof(value) == (32 if ctypes.sizeof(ctypes.c_void_p) == 8 else 20)
+            return 1
+        def unlock(handle, reserved, low, high, overlap):
+            value = overlap._obj
+            calls.append(('unlock', handle, reserved, low, high, value.Offset, value.OffsetHigh, value.hEvent))
+            return 1
+        kernel = mock.Mock(LockFileEx=mock.Mock(side_effect=lock), UnlockFileEx=mock.Mock(side_effect=unlock))
+        monkeypatch.setattr(ctypes, 'WinDLL', mock.Mock(return_value=kernel), raising=False)
+        # Deliberately wider than DWORD: a truncated HANDLE would be an ABI bug.
+        handle = 0x123456789
+        monkeypatch.setattr(facet, 'msvcrt', mock.Mock(get_osfhandle=lambda fd: handle))
+        fd = os.open(str(tmp_path / 'library.lock'), os.O_CREAT | os.O_RDWR, 0o644)
         try:
-            facet._MsvcrtBackend.take_exclusive(fd)
-            facet._MsvcrtBackend.unlock(fd)
-            position_after = os.lseek(fd, 0, os.SEEK_CUR)
+            facet._WindowsLockBackend.take_exclusive(fd)
+            facet._WindowsLockBackend.unlock(fd)
+            facet._WindowsLockBackend.take_shared(fd)
+            facet._WindowsLockBackend.unlock(fd)
+            assert os.lseek(fd, 0, os.SEEK_CUR) == 0
+            os.write(fd, b'payload')  # The lock does not touch the descriptive bytes.
         finally:
             os.close(fd)
+        offset, size = facet.LIBRARY_LOCK_WINDOWS_OFFSET, facet.LIBRARY_LOCK_WINDOWS_BYTES
+        assert calls == [('lock', handle, 3, 0, size, 0, offset, 0, None),
+                         ('unlock', handle, 0, size, 0, offset, 0, None),
+                         ('lock', handle, 1, 0, size, 0, offset, 0, None),
+                         ('unlock', handle, 0, size, 0, offset, 0, None)]
+        assert kernel.LockFileEx.argtypes[0] is ctypes.c_void_p
+        assert kernel.UnlockFileEx.argtypes[0] is ctypes.c_void_p
+        assert (tmp_path / 'library.lock').read_bytes() == b'payload'
 
-        assert locked == [
-            (facet.LIBRARY_LOCK_WINDOWS_OFFSET, fake_msvcrt.LK_NBLCK, facet.LIBRARY_LOCK_WINDOWS_BYTES),
-            (facet.LIBRARY_LOCK_WINDOWS_OFFSET, fake_msvcrt.LK_UNLCK, facet.LIBRARY_LOCK_WINDOWS_BYTES),
-        ]
-        assert position_after == 0
+    @pytest.mark.parametrize('method', ['take_shared', 'take_exclusive', 'unlock'])
+    def test_windows_lock_errors_propagate_without_closing_the_callers_fd(self, tmp_path, monkeypatch, method):
+        import ctypes
+        import facet
+
+        kernel = mock.Mock(LockFileEx=mock.Mock(return_value=0), UnlockFileEx=mock.Mock(return_value=0))
+        monkeypatch.setattr(ctypes, 'WinDLL', mock.Mock(return_value=kernel), raising=False)
+        monkeypatch.setattr(ctypes, 'get_last_error', lambda: 33, raising=False)
+        error = OSError(13, 'native lock refused')
+        monkeypatch.setattr(ctypes, 'WinError', lambda code: error if code == 33 else None, raising=False)
+        monkeypatch.setattr(facet, 'msvcrt', mock.Mock(get_osfhandle=lambda fd: fd))
+        fd = os.open(str(tmp_path / 'library.lock'), os.O_CREAT | os.O_RDWR, 0o644)
+        try:
+            with pytest.raises(OSError, match='native lock refused') as caught:
+                getattr(facet._WindowsLockBackend, method)(fd)
+            assert caught.value is error
+            os.fstat(fd)  # The caller still owns the descriptor and its cleanup.
+            assert os.lseek(fd, 0, os.SEEK_CUR) == 0
+        finally:
+            os.close(fd)
 
     def test_a_platform_without_any_file_locking_runs_unguarded(self, tmp_path, monkeypatch, caplog):
         """The only remaining warn-and-continue case, and it must say so."""
