@@ -7,7 +7,7 @@ All notable changes to Facet are documented in this file.
 - Filter photos with unassigned faces or unnamed people from the gallery People section.
 
 ### Changed
-- Read search cache database change tokens in a worker thread so cold searches do not block other requests.
+- Read semantic-search, similar-photo and gallery count cache database change tokens in worker threads so both cold and warm token reads do not block other requests.
 - Resize manual-face previews and crop face pixels before converting to RGB, avoiding full-resolution copies on preview and save.
 
 ### Added
