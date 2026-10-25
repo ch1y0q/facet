@@ -580,7 +580,9 @@ describe('GpsEditDialogComponent', () => {
       expect(store.photos()).toEqual([]);
       expect(store.total()).toBe(0);
       expect(store.filters()).toMatchObject({ no_gps: '1', camera: 'Canon' });
-      expect(mockApi.get).toHaveBeenLastCalledWith('/photos', expect.objectContaining({ no_gps: '1', camera: 'Canon' }));
+      // Review progress is fetched after the page, so the page is the last /photos call, not the last call.
+      const pageCalls = mockApi.get.mock.calls.filter(call => call[0] === '/photos');
+      expect(pageCalls.at(-1)).toEqual(['/photos', expect.objectContaining({ no_gps: '1', camera: 'Canon' })]);
     });
   });
 
