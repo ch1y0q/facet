@@ -1,5 +1,3 @@
-import { AuthService } from './auth.service';
-import type { Mock } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { of, Subject } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
@@ -7,6 +5,8 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { I18nService } from './i18n.service';
 import { GalleryStore } from '../../features/gallery/gallery.store';
 import { PhotoActionsService } from './photo-actions.service';
+import { AuthService } from './auth.service';
+import type { Mock } from 'vitest';
 
 const mockPhoto: any = { path: '/photos/test.jpg' };
 

@@ -113,3 +113,24 @@ def test_non_integer_and_oversized_numeric_names_remain_searchable(edition_clien
     response = edition_client.get('/api/persons', params={'sort': sort, 'search': name})
     assert response.status_code == 200
     assert [row['id'] for row in response.json()['persons']] == [3]
+
+
+def test_count_does_not_aggregate_visible_faces(edition_client, picker_db, monkeypatch):
+    statements = []
+
+    @asynccontextmanager
+    async def traced_database():
+        async with aiosqlite.connect(picker_db) as db:
+            db.row_factory = aiosqlite.Row
+            await db.set_trace_callback(statements.append)
+            yield db
+
+    monkeypatch.setattr('api.routers.persons.get_async_db', traced_database)
+    response = edition_client.get('/api/persons', params={'sort': 'assignment', 'search': 'Person 02'})
+    assert response.status_code == 200
+    assert response.json()['total'] == 1
+    assert response.json()['persons'][0]['face_count'] == 4
+    counts = [sql for sql in statements if sql.startswith('SELECT COUNT(*) FROM persons')]
+    assert len(counts) == 1
+    assert 'visible_counts' not in counts[0]
+    assert 'GROUP BY' not in counts[0]

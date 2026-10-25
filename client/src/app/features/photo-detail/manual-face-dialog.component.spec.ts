@@ -1,11 +1,11 @@
-import { PersonAssignmentHistoryService } from '../../core/services/person-assignment-history.service';
-import { AuthService } from '../../core/services/auth.service';
 import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { MAT_DIALOG_DATA, MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { of, Subject, throwError } from 'rxjs';
 import { I18nService } from '../../core/services/i18n.service';
 import { ApiService } from '../../core/services/api.service';
+import { PersonAssignmentHistoryService } from '../../core/services/person-assignment-history.service';
+import { AuthService } from '../../core/services/auth.service';
 import {
   dragBox,
   ManualFaceDialogComponent,
@@ -38,7 +38,7 @@ describe('manual face editor', () => {
     committed = vi.fn(async () => {});
     TestBed.configureTestingModule({
       providers: [
-        { provide: AuthService, useValue: { identity: () => '1|test' } },
+        { provide: AuthService, useValue: { identity: () => '1|test', isEdition: () => true } },
         ManualFaceDialogComponent,
         {
           provide: MAT_DIALOG_DATA,

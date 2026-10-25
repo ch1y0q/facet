@@ -150,7 +150,8 @@ async def list_persons(
     ``sort=assignment`` orders named candidates by the supplied recent IDs (at
     most 12), then by face count in visible photos, then name and ID. Recent IDs
     confer no visibility: hidden (even with include_hidden), deleted and
-    inaccessible candidates stay out.
+    inaccessible candidates stay out. In assignment order, ``face_count`` is
+    computed from visible photos; other orders return the stored library count.
     """
     recent = []
     if recent_ids:
@@ -169,6 +170,7 @@ async def list_persons(
 
     where_parts: list = []
     params: list = []
+    visibility_params: list = []
     if sort == 'assignment':
         visibility, visibility_params = get_visibility_clause(user.user_id if user else None, 'visible_photos')
         prefix = f"""WITH visible_counts AS (
@@ -177,7 +179,6 @@ async def list_persons(
             WHERE visible_faces.person_id IS NOT NULL AND {visibility}
             GROUP BY visible_faces.person_id
         ) """
-        params.extend(visibility_params)
         from_clause += ' LEFT JOIN visible_counts ON visible_counts.person_id = p.id'
         count_column = 'COALESCE(visible_counts.face_count, 0)'
         where_parts.append("TRIM(COALESCE(p.name, '')) != ''")
@@ -204,7 +205,7 @@ async def list_persons(
 
     async with get_async_db() as conn:
         cur = await conn.execute(
-            f"{prefix}SELECT COUNT(*) {from_clause} {where_clause}", params
+            f"SELECT COUNT(*) FROM persons p {where_clause}", params
         )
         row = await cur.fetchone()
         await cur.close()
@@ -223,7 +224,7 @@ async def list_persons(
             {where_clause}
             {order_clause}
             LIMIT ? OFFSET ?
-        """, params + order_params + [per_page, offset])
+        """, visibility_params + params + order_params + [per_page, offset])
         rows = await cur.fetchall()
         await cur.close()
         persons = [dict(row) for row in rows]

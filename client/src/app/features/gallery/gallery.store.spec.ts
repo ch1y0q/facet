@@ -1,5 +1,3 @@
-import { PersonAssignmentHistoryService } from '../../core/services/person-assignment-history.service';
-import type { Mock } from 'vitest';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -25,6 +23,8 @@ import {
 import { Photo } from '../../shared/models/photo.model';
 import { makePhoto } from '../../../testing/photo.fixture';
 import { applyQueryParams, buildSyncParams } from './gallery-filters.util';
+import { PersonAssignmentHistoryService } from '../../core/services/person-assignment-history.service';
+import type { Mock } from 'vitest';
 
 function makePhotosResponse(overrides: Partial<PhotosResponse> = {}): PhotosResponse {
   return {
@@ -2583,6 +2583,16 @@ describe('GalleryStore optimistic mutations', () => {
       makePhoto({ path: '/a.jpg', is_favorite: false, is_rejected: false, star_rating: 3 }),
       makePhoto({ path: '/b.jpg', is_favorite: true, is_rejected: false, star_rating: null }),
     ]);
+  });
+
+  it('records a new person as recent only after creating it with assigned faces', async () => {
+    vi.spyOn(TestBed.inject(AuthService), 'isEdition').mockReturnValue(true);
+    const history = TestBed.inject(PersonAssignmentHistoryService);
+    const record = vi.spyOn(history, 'record');
+    apiPost.mockReturnValue(of({ id: 9001, name: 'New person', face_count: 2 }));
+    await store.createPerson('New person', [1, 2], '/a.jpg');
+    expect(record).toHaveBeenCalledWith(9001, '0|');
+    expect(history.recentIds()[0]).toBe(9001);
   });
 
   it('records only committed face assignments and ignores old-owner responses', async () => {

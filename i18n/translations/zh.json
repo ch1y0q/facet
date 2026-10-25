@@ -1715,7 +1715,8 @@
   "person_selector": {
     "create_new": "创建新人物",
     "ordering_hint": "先显示在此浏览器中最近分配的人物，再按可见照片中的人脸数量排序。",
-    "face_count": "{count} 张人脸"
+    "face_count": "{count} 张人脸",
+    "face_count_one": "1 张人脸"
   },
   "slideshow": {
     "start": "幻灯片播放",

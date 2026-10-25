@@ -1,6 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { AuthService } from './auth.service';
+import { clearPersonAssignmentHistory } from './person-assignment-history.storage';
 import { PersonAssignmentHistoryService } from './person-assignment-history.service';
 
 describe('successful person assignment history', () => {
@@ -10,7 +11,7 @@ describe('successful person assignment history', () => {
     localStorage.removeItem('facet_person_assignments_v1');
     identity.set('1|alice');
     TestBed.configureTestingModule({ providers: [
-      { provide: AuthService, useValue: { identity } },
+      { provide: AuthService, useValue: { identity, isEdition: () => true } },
     ] });
     history = TestBed.inject(PersonAssignmentHistoryService);
   });
@@ -38,6 +39,18 @@ describe('successful person assignment history', () => {
     expect(history.recentIds()).toEqual([3, 7]);
     localStorage.setItem('facet_person_assignments_v1', '{broken');
     expect(history.recentIds()).toEqual([]);
+  });
+  it('clears all identities on logout and tolerates disabled storage', () => {
+    history.record(8, identity());
+    identity.set('1|bob');
+    history.record(9, identity());
+    clearPersonAssignmentHistory();
+    expect(history.recentIds()).toEqual([]);
+    identity.set('1|alice');
+    expect(history.recentIds()).toEqual([]);
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new Error('blocked'); });
+    expect(() => clearPersonAssignmentHistory()).not.toThrow();
+    vi.restoreAllMocks();
   });
   it('does not fail assignments when browser storage is unavailable', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });

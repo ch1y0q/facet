@@ -1,4 +1,3 @@
-import { AuthService } from './auth.service';
 import { Injectable, inject } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
@@ -9,6 +8,7 @@ import { ExportService } from './export.service';
 import { I18nService } from './i18n.service';
 import { ApiService } from './api.service';
 import { I18N } from '../i18n/keys';
+import { AuthService } from './auth.service';
 
 /** `POST /api/photo/delete` response — per-path, see `api.routers.export.api_photo_delete`. */
 export interface PhotoDeleteResponse {

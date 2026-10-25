@@ -1,5 +1,3 @@
-import { AuthService } from '../../core/services/auth.service';
-import { PersonAssignmentHistoryService } from '../../core/services/person-assignment-history.service';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal, computed, DestroyRef, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -12,6 +10,8 @@ import { PersonSelectorDialogComponent } from '../gallery/person-selector-dialog
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import type { components } from '../../core/api/schema';
 import { i18nKeys } from '../../core/i18n/keys';
+import { AuthService } from '../../core/services/auth.service';
+import { PersonAssignmentHistoryService } from '../../core/services/person-assignment-history.service';
 
 export type FaceBox = [number, number, number, number];
 export type ManualFaceRegion = components['schemas']['ManualFaceRegion'];

@@ -59,12 +59,13 @@ import type { components } from '../../core/api/schema';
           <input
             matInput
             [placeholder]="I18N.manage_persons.search_persons | translate"
+            aria-describedby="person-assignment-ordering-hint"
             [(ngModel)]="searchQuery"
             (input)="filter()"
           />
         </mat-form-field>
 
-        <p class="text-xs text-neutral-500">{{ I18N.person_selector.ordering_hint | translate }}</p>
+        <p id="person-assignment-ordering-hint" class="text-xs text-neutral-500">{{ I18N.person_selector.ordering_hint | translate }}</p>
         <div class="flex flex-col gap-1 max-h-[360px] overflow-y-auto">
           <button
             class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--mat-sys-surface-container-high)] transition-colors text-left w-full border border-dashed border-neutral-600 cursor-pointer"
@@ -104,7 +105,7 @@ import type { components } from '../../core/api/schema';
               <div class="flex flex-col min-w-0">
                 <span class="text-base font-medium truncate">{{ person.name }}</span>
                 <span class="text-xs text-neutral-500">{{
-                  I18N.person_selector.face_count | translate: { count: person.face_count }
+                  (person.face_count === 1 ? I18N.person_selector.face_count_one : I18N.person_selector.face_count) | translate: { count: person.face_count }
                 }}</span>
               </div>
             </button>

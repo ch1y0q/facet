@@ -1715,7 +1715,8 @@
   "person_selector": {
     "create_new": "Crea nuova persona",
     "ordering_hint": "Prima le persone assegnate di recente in questo browser, poi quelle con più volti nelle foto che puoi vedere.",
-    "face_count": "{count} volti"
+    "face_count": "{count} volti",
+    "face_count_one": "1 volto"
   },
   "slideshow": {
     "start": "Presentazione",

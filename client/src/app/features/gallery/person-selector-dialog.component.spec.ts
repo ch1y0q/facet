@@ -5,6 +5,7 @@ import { TestBed } from '@angular/core/testing';
 import { MatDialogRef } from '@angular/material/dialog';
 import { of, Subject, throwError } from 'rxjs';
 import { PersonSelectorDialogComponent } from './person-selector-dialog.component';
+import { I18nService } from '../../core/services/i18n.service';
 import { ApiService } from '../../core/services/api.service';
 import type { PersonOption } from './gallery.store';
 
@@ -162,4 +163,27 @@ describe('PersonSelectorDialogComponent server search', () => {
     expect(component.filtered()).toEqual([]);
   });
 
+});
+
+
+describe('PersonSelectorDialogComponent rendered accessibility', () => {
+  it('associates the ordering hint with search and renders singular face text', async () => {
+    TestBed.configureTestingModule({ providers: [
+      { provide: AuthService, useValue: { identity: () => '1|test' } },
+      { provide: PersonAssignmentHistoryService, useValue: { recentIds: () => [] } },
+      { provide: ApiService, useValue: { get: () => of({ persons: [alice, bob], total: 2 }) } },
+      { provide: MatDialogRef, useValue: { close: vi.fn() } },
+      { provide: I18nService, useValue: { translations: signal({}), t: (key: string, params?: Record<string, unknown>) =>
+        key === 'person_selector.face_count_one' ? '1 face' : key === 'person_selector.face_count' ? `${params?.['count']} faces` : key } },
+    ] });
+    const fixture = TestBed.createComponent(PersonSelectorDialogComponent);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const input = fixture.nativeElement.querySelector('input');
+    const hint = fixture.nativeElement.querySelector('#person-assignment-ordering-hint');
+    expect(input.getAttribute('aria-describedby')?.split(' ')).toContain(hint.id);
+    expect(fixture.nativeElement.textContent).toContain('1 face');
+    expect(fixture.nativeElement.textContent).not.toContain('1 faces');
+    expect(fixture.nativeElement.textContent).toContain('3 faces');
+  });
 });
