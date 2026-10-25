@@ -503,3 +503,10 @@ def test_viewer_review_sync_failure_rolls_back_values_and_clocks(tmp_path):
             writer.rollback()
     finally:
         conn.close()
+
+
+@pytest.mark.parametrize('dry_run', [False, True])
+@pytest.mark.parametrize('fields', [[], ['unsupported']])
+def test_invalid_field_policy_is_rejected_before_database_access(dry_run, fields):
+    with pytest.raises(ValueError, match='fields must select'):
+        import_sidecars(None, fields=fields, dry_run=dry_run)
