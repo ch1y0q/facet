@@ -55,7 +55,7 @@ from contextlib import contextmanager
 from http import client as http_client
 from urllib import error as urllib_error
 from urllib import request as urllib_request
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from db import get_connection
 
@@ -94,13 +94,24 @@ PUSH_ERRORS = (ValueError, OSError, sqlite3.Error, http_client.HTTPException)
 _STATE_LOCK = threading.Lock()
 
 
+class AssetIdentityError(ValueError):
+    """Remote identity is ambiguous or inconsistent; no mutation is safe."""
+
+
 class ImmichClient:
     """Minimal REST client for the Immich API (``x-api-key`` auth)."""
 
-    def __init__(self, url: str, api_key: str, timeout: int = 30) -> None:
+    def __init__(self, url: str, api_key: str, timeout: int = 30, *,
+                 owner_id: str = "", library_id: str = "") -> None:
         self.base_url = self._validate_url(url)
         self.api_key = api_key
         self.timeout = timeout
+        self.owner_id = owner_id
+        self.library_id = library_id
+        # One registry spans bulk listings, fallback results and webhook GETs.
+        # Even an unselected/broad hit can disprove another candidate's identity.
+        self._ids_by_path: dict[str, set[str]] = {}
+        self._paths_by_id: dict[str, set[str]] = {}
 
     @staticmethod
     def _validate_url(url: str) -> str:
@@ -130,42 +141,81 @@ class ImmichClient:
         """GET /api/server/about — verifies both connectivity and the API key."""
         return self._request("GET", "/api/server/about") or {}
 
-    def search_asset_id(self, original_path: str) -> str | None:
-        """Resolve an Immich asset id by exact ``originalPath`` (paginated)."""
+    def _in_scope(self, item: dict) -> bool:
+        # Missing response fields cannot satisfy an explicitly selected scope.
+        return ((not self.owner_id or item.get("ownerId") == self.owner_id)
+                and (not self.library_id or item.get("libraryId") == self.library_id))
+
+    def _observe_asset(self, item: dict) -> None:
+        asset_id, path = item["id"], item["originalPath"]
+        self._ids_by_path.setdefault(path, set()).add(asset_id)
+        self._paths_by_id.setdefault(asset_id, set()).add(path)
+
+    def assert_asset_identity(self, asset_id: str, original_path: str) -> None:
+        """Validate an edge against ALL identities seen during this operation."""
+        if (self._ids_by_path.get(original_path) != {asset_id}
+                or self._paths_by_id.get(asset_id) != {original_path}):
+            raise AssetIdentityError("Immich path and asset id are not a unique consistent pair")
+
+    def _iter_assets(self, original_path: str | None = None):
+        """Read every legacy page, including stacked assets; fail on bad cursors."""
         page = 1
         while True:
-            data = self._request(
-                "POST", "/api/search/metadata",
-                {"originalPath": original_path, "page": page},
-            ) or {}
-            assets = data.get("assets", {})
-            items = assets.get("items", [])
-            if items:
-                return items[0]["id"]
+            payload: dict[str, int | bool | str] = {"page": page, "withStacked": True}
+            if original_path is not None:
+                payload["originalPath"] = original_path
+            data = self._request("POST", "/api/search/metadata", payload) or {}
+            if not isinstance(data, dict) or not isinstance(data.get("assets"), dict):
+                raise AssetIdentityError("Immich returned an invalid search response")
+            assets = data["assets"]
+            if not isinstance(assets.get("items"), list):
+                raise AssetIdentityError("Immich returned an invalid asset list")
+            for item in assets["items"]:
+                if not isinstance(item, dict) or not isinstance(item.get("id"), str) or not item["id"]:
+                    raise AssetIdentityError("Immich returned an asset without a valid id")
+                if not isinstance(item.get("originalPath"), str) or not item["originalPath"]:
+                    raise AssetIdentityError("Immich returned an asset without originalPath")
+                if self._in_scope(item):
+                    self._observe_asset(item)
+                    yield item
             next_page = assets.get("nextPage")
-            if not next_page:
-                return None
-            page = int(next_page)
+            if next_page is None:
+                return
+            try:
+                next_page = int(next_page)
+            except (TypeError, ValueError) as ex:
+                raise AssetIdentityError("Immich returned invalid pagination") from ex
+            if next_page <= page:
+                raise AssetIdentityError("Immich returned non-advancing pagination")
+            page = next_page
+
+    def search_asset_id(self, original_path: str) -> str | None:
+        """Resolve exactly one matching path across ALL pages, never the first hit."""
+        ids = {item["id"] for item in self._iter_assets(original_path)
+               if item["originalPath"] == original_path}
+        if len(ids) > 1:
+            raise AssetIdentityError(f"Multiple Immich assets have originalPath {original_path}")
+        asset_id = next(iter(ids), None)
+        if asset_id is not None:
+            self.assert_asset_identity(asset_id, original_path)
+        return asset_id
 
     def iter_asset_paths(self):
-        """Yield ``(originalPath, id)`` for every asset by paging the search endpoint.
+        """Yield scoped ``(originalPath, id)`` pairs without hiding duplicates."""
+        for item in self._iter_assets():
+            yield item["originalPath"], item["id"]
 
-        One bulk pass builds a local ``originalPath -> id`` index so the sync
-        resolves most assets without a per-photo round-trip; only misses fall
-        back to :meth:`search_asset_id`.
-        """
-        page = 1
-        while True:
-            data = self._request("POST", "/api/search/metadata", {"page": page}) or {}
-            assets = data.get("assets", {})
-            for item in assets.get("items", []):
-                original_path = item.get("originalPath")
-                if original_path:
-                    yield original_path, item["id"]
-            next_page = assets.get("nextPage")
-            if not next_page:
-                return
-            page = int(next_page)
+    def verify_asset_id(self, asset_id: str, original_path: str) -> str:
+        """Treat a webhook ID as a hint, verified on the configured server."""
+        if not isinstance(asset_id, str) or not asset_id:
+            raise AssetIdentityError("Immich webhook asset id must be a nonempty string")
+        item = self._request("GET", "/api/assets/" + quote(asset_id, safe="")) or {}
+        if (not isinstance(item, dict) or item.get("id") != asset_id or item.get("originalPath") != original_path
+                or not self._in_scope(item)):
+            raise AssetIdentityError("Immich webhook asset id does not match the mapped path or scope")
+        self._observe_asset(item)
+        self.assert_asset_identity(asset_id, original_path)
+        return asset_id
 
     def update_assets(self, ids: list[str], fields: dict) -> None:
         for start in range(0, len(ids), UPDATE_CHUNK):
@@ -195,7 +245,7 @@ def _effective_rating(star_rating) -> int | None:
 def map_facet_path(path: str, path_map: list[dict]) -> str | None:
     """Translate a Facet absolute path to Immich's ``originalPath``.
 
-    Uses the first ``path_map`` pair whose ``facet_prefix`` matches. With no
+    Uses the first literal prefix match (not a directory-boundary match). With no
     configured pairs (or only placeholder empty ones) the path is passed
     through unchanged. Returns *None* when pairs exist but none match.
     """
@@ -290,7 +340,9 @@ def _make_client(immich_cfg: dict) -> "ImmichClient":
     if not api_key:
         raise ValueError("immich.api_key is not configured")
     return ImmichClient(immich_cfg.get("url", ""), api_key,
-                        timeout=immich_cfg.get("timeout_seconds", 30))
+                        timeout=immich_cfg.get("timeout_seconds", 30),
+                        owner_id=immich_cfg.get("owner_id", ""),
+                        library_id=immich_cfg.get("library_id", ""))
 
 
 @contextmanager
@@ -517,7 +569,8 @@ def sync_to_immich(db_path, config: dict, user_id: str | None = None,
     """Push Facet ratings/favorites to the configured Immich server.
 
     Returns a summary dict: ``matched`` / ``unmatched`` / ``updated`` /
-    ``skipped_unrated`` / ``albums_created`` / ``webhook_pending``. With
+    ``skipped_unrated`` / ``identity_conflicts`` / ``albums_created`` /
+    ``webhook_pending``. Conflicts are refused, not counted as matched. With
     *dry_run* the assets are still resolved (read-only requests) but nothing
     is written.
     """
@@ -535,11 +588,13 @@ def sync_to_immich(db_path, config: dict, user_id: str | None = None,
         rows = _fetch_rating_rows(conn, scope, extra_paths=synced_state.keys(),
                                   push_rejected=push_rejected)
     summary = {"matched": 0, "unmatched": 0, "updated": 0,
-               "skipped_unrated": 0, "albums_created": 0, "webhook_pending": 0}
+               "skipped_unrated": 0, "albums_created": 0, "webhook_pending": 0,
+               "identity_conflicts": 0}
     groups: dict[tuple, list[str]] = {}
     album_asset_ids: list[str] = []
     unmatched_paths: list[str] = []
     matched_paths: set[str] = set()
+    conflict_messages: list[tuple[str, str]] = []
 
     # First pass (no network): compute each row's push payload and target path.
     # _push_fields owns the clear/rejection rules — one rejected batch aborts
@@ -558,14 +613,47 @@ def sync_to_immich(db_path, config: dict, user_id: str | None = None,
 
     try:
         # One bulk pass builds a local path index; misses fall back to per-path.
-        path_index = dict(client.iter_asset_paths()) if resolvable else {}
+        path_index = {}
+        ambiguous = set()
+        for path, asset_id in client.iter_asset_paths() if resolvable else ():
+            path_index[path] = asset_id
+        # The index is only a lookup shortcut. The client's complete observed
+        # registry, not this dictionary, decides whether an identity is unique.
+        # Two Facet roots mapping onto one remote path would otherwise push
+        # competing ratings into the same asset. Refuse both, even if identical.
+        mapped_paths = [entry[1] for entry in resolvable if entry[1]]
+        seen = set()
+        for path in mapped_paths:
+            if path in seen:
+                ambiguous.add(path)
+            seen.add(path)
+        resolved_candidates = []
         for facet_path, immich_path, fields, rating, favorite in resolvable:
             asset_id = None
-            if immich_path:
-                asset_id = path_index.get(immich_path) or client.search_asset_id(immich_path)
-            if asset_id is None:
+            try:
+                if immich_path in ambiguous:
+                    raise AssetIdentityError("Multiple assets or Facet paths map to the same Immich path")
+                if immich_path:
+                    asset_id = path_index.get(immich_path) or client.search_asset_id(immich_path)
+            except AssetIdentityError as ex:
+                summary["identity_conflicts"] += 1
+                if len(conflict_messages) < UNMATCHED_LOG_LIMIT:
+                    conflict_messages.append((facet_path, str(ex)))
+                continue
+            if asset_id is None or not immich_path:
                 summary["unmatched"] += 1
                 unmatched_paths.append(facet_path)
+                continue
+            resolved_candidates.append((facet_path, immich_path, asset_id, fields, rating))
+        # Separate exact-path fallbacks can each look unique while claiming
+        # the same UUID. Validate the complete plan before grouping any writes.
+        for facet_path, immich_path, asset_id, fields, rating in resolved_candidates:
+            try:
+                client.assert_asset_identity(asset_id, immich_path)
+            except AssetIdentityError as ex:
+                summary["identity_conflicts"] += 1
+                if len(conflict_messages) < UNMATCHED_LOG_LIMIT:
+                    conflict_messages.append((facet_path, str(ex)))
                 continue
             summary["matched"] += 1
             matched_paths.add(facet_path)
@@ -606,6 +694,11 @@ def sync_to_immich(db_path, config: dict, user_id: str | None = None,
     except (urllib_error.URLError, TimeoutError) as e:
         setattr(e, "partial_summary", dict(summary))
         raise
+    for path, reason in conflict_messages:
+        logger.warning("Immich identity conflict for %s: %s", path, reason)
+    if summary["identity_conflicts"] > len(conflict_messages):
+        logger.warning("... and %d more identity conflicts",
+                       summary["identity_conflicts"] - len(conflict_messages))
     for path in unmatched_paths[:UNMATCHED_LOG_LIMIT]:
         logger.warning("No Immich asset found for %s", path)
     if len(unmatched_paths) > UNMATCHED_LOG_LIMIT:
@@ -651,8 +744,8 @@ def push_photo_updates(db_path, config: dict, entries) -> list:
     :data:`RESULT_SKIPPED` (nothing to send), :data:`RESULT_UNMATCHED` (no
     Immich asset resolvable), :data:`RESULT_UNKNOWN` (path not in the library,
     or not scored yet), or :data:`RESULT_FAILED` carrying the exception that
-    isolated that one asset. An ``asset_id`` short-circuits path resolution —
-    a webhook payload carries it, so the common case costs one request.
+    isolated that one asset. A supplied ``asset_id`` is verified against the
+    mapped path and configured scope on the configured server before updating.
 
     This is :func:`sync_to_immich`'s own shape applied to the webhook: ONE
     connection reads every row and the synced-state blob once, the per-asset
@@ -685,8 +778,34 @@ def push_photo_updates(db_path, config: dict, entries) -> list:
                        len(entries), e, exc_info=True)
         return [(RESULT_FAILED, e)] * len(entries)
 
+    # Resolve local collisions BEFORE the first remote write. A payload may
+    # contain multiple different Facet paths that collapse through path_map,
+    # or claim the same remote ID for different photos. Refuse every eligible
+    # entry in those collisions, rather than letting delivery order pick a
+    # winning rating. Unknown/unrated entries still keep their usual result.
+    target_paths: dict[str, set[str]] = {}
+    hint_paths: dict[str, set[str]] = {}
+    for facet_path, asset_id in entries:
+        row = rows.get(facet_path)
+        if row is None:
+            continue
+        fields, _, _ = _push_fields(row, synced_state.get(facet_path, {}),
+                                    push_ratings, push_favorites, push_rejected)
+        if not fields:
+            continue
+        target = map_facet_path(facet_path, immich_cfg.get("path_map", []))
+        if target:
+            target_paths.setdefault(target, set()).add(facet_path)
+        if isinstance(asset_id, str) and asset_id:
+            hint_paths.setdefault(asset_id, set()).add(facet_path)
+    conflicting_paths = set()
+    for paths in (*target_paths.values(), *hint_paths.values()):
+        if len(paths) > 1:
+            conflicting_paths.update(paths)
+
     results: list[tuple[str, BaseException | None]] = []
     pushed: dict[str, dict] = {}
+    planned: list[tuple[int, str, str, str, dict]] = []
     for facet_path, asset_id in entries:
         row = rows.get(facet_path)
         if row is None:
@@ -698,19 +817,35 @@ def push_photo_updates(db_path, config: dict, entries) -> list:
             results.append((RESULT_SKIPPED, None))
             continue
         try:
-            resolved = asset_id
-            if not resolved:
-                immich_path = map_facet_path(facet_path, immich_cfg.get("path_map", []))
-                resolved = client.search_asset_id(immich_path) if immich_path else None
-            if not resolved:
+            if facet_path in conflicting_paths:
+                raise AssetIdentityError("Multiple Facet paths claim the same Immich path or asset id")
+            immich_path = map_facet_path(facet_path, immich_cfg.get("path_map", []))
+            resolved = None
+            if immich_path:
+                resolved = (client.verify_asset_id(asset_id, immich_path) if asset_id
+                            else client.search_asset_id(immich_path))
+            if not resolved or not immich_path:
                 results.append((RESULT_UNMATCHED, None))
                 continue
-            client.update_assets([resolved], fields)
         except PUSH_ERRORS as e:
             results.append((RESULT_FAILED, e))
             continue
+        planned.append((len(results), facet_path, immich_path, resolved, fields))
+        results.append((RESULT_SKIPPED, None))  # filled after every identity is resolved
+
+    # Recheck after EVERY lookup, including observations made by an unmatched
+    # or failed entry. They can disprove an earlier candidate's identity.
+    for index, facet_path, immich_path, resolved, fields in planned:
+        try:
+            if facet_path in conflicting_paths:
+                raise AssetIdentityError("Multiple Facet paths resolved to the same Immich asset id")
+            client.assert_asset_identity(resolved, immich_path)
+            client.update_assets([resolved], fields)
+        except PUSH_ERRORS as e:
+            results[index] = (RESULT_FAILED, e)
+            continue
         pushed[facet_path] = _active_state(fields)
-        results.append((RESULT_PUSHED, None))
+        results[index] = (RESULT_PUSHED, None)
 
     if pushed:
         _commit_pushed_state(db_path, pushed)

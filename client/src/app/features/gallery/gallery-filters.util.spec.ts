@@ -514,6 +514,21 @@ describe('manual face review filter', () => {
   });
 });
 
+describe('faces without names filter', () => {
+  it('round trips the URL and smart album, and scopes membership and all-filtered actions', () => {
+    const f = filters({ faces_need_names: true });
+    expect(countActiveFilters(f)).toBe(1);
+    expect(buildApiParams(f, false, undefined)['faces_need_names']).toBe('1');
+    expect(buildByPathsFilters(f, false, '', undefined)['faces_need_names']).toBe('1');
+    const url = buildSyncParams(f, undefined);
+    expect(url['faces_need_names']).toBe('true');
+    expect(applyQueryParams(filters(), url as Record<string, string>).faces_need_names).toBe(true);
+    const stored = smartAlbumFilterJson(f);
+    expect(JSON.parse(stored).faces_need_names).toBe(true);
+    expect(applySavedAlbumFilters(filters(), stored, '7').faces_need_names).toBe(true);
+  });
+});
+
 describe('review and location URL coexistence', () => {
   it('retains both ordinary filters while clearing incompatible ranked and radius modes', () => {
     const f = applyQueryParams(DEFAULT_FILTERS, { review_status: 'kept', no_gps: '1', semanticQuery: 'sunset', similar_to: '/a.jpg', gps_lat: '0', gps_lng: '0', gps_radius_km: '5' });

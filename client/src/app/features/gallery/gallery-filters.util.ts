@@ -183,6 +183,7 @@ export interface GalleryFilters {
   duplicates_only: boolean;
   is_monochrome: boolean;
   manual_faces_need_review: boolean;
+  faces_need_names: boolean;
   search: string;
   // Color facet (opt-in extraction; always-on filter)
   color_temp: string;   // warm | cool | neutral
@@ -460,6 +461,7 @@ export const DEFAULT_FILTERS: GalleryFilters = {
   duplicates_only: false,
   is_monochrome: false,
   manual_faces_need_review: false,
+  faces_need_names: false,
   search: '',
   color_temp: '',
   hue_bucket: '',
@@ -506,6 +508,7 @@ export function countActiveFilters(f: GalleryFilters): number {
   if (f.duplicates_only) count++;
   if (f.is_monochrome) count++;
   if (f.manual_faces_need_review) count++;
+  if (f.faces_need_names) count++;
   return count;
 }
 
@@ -570,6 +573,7 @@ export function applyQueryParams(
   if (params['duplicates_only'] !== undefined) result.duplicates_only = params['duplicates_only'] === 'true';
   if (params['is_monochrome'] !== undefined) result.is_monochrome = params['is_monochrome'] === 'true';
   if (params['manual_faces_need_review'] !== undefined) result.manual_faces_need_review = params['manual_faces_need_review'] === 'true';
+  if (params['faces_need_names'] !== undefined) result.faces_need_names = params['faces_need_names'] === 'true';
   if (params['tooltip_mode'] && TOOLTIP_MODES.includes(params['tooltip_mode'] as TooltipMode)) {
     result.tooltip_mode = params['tooltip_mode'] as TooltipMode;
   }
@@ -633,6 +637,7 @@ export function buildSyncParams(
   if (f.duplicates_only) params['duplicates_only'] = 'true';
   if (f.is_monochrome) params['is_monochrome'] = 'true';
   if (f.manual_faces_need_review) params['manual_faces_need_review'] = 'true';
+  if (f.faces_need_names) params['faces_need_names'] = 'true';
 
   return params;
 }
@@ -670,6 +675,7 @@ export function buildApiParams(
   if (f.duplicates_only) params['duplicates_only'] = '1';
   if (f.is_monochrome) params['is_monochrome'] = '1';
   if (f.manual_faces_need_review) params['manual_faces_need_review'] = '1';
+  if (f.faces_need_names) params['faces_need_names'] = '1';
 
   // Semantic search is a filter of `GET /photos`. The threshold travels only when
   // the slider left the server's seed, so the server resolves its own calibrated

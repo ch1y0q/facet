@@ -744,6 +744,16 @@
                   "null"
                 ]
               },
+              "faces_need_names": {
+                "description": "Gallery filter `faces_need_names`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
               "favorites_only": {
                 "description": "Gallery filter `favorites_only`.",
                 "type": [
@@ -2092,5 +2102,5 @@
       "name": "ui_show_comparison"
     }
   ],
-  "version": "7ffdd58b9fb71b91"
+  "version": "9133467bcc2c7d0e"
 }
