@@ -85,7 +85,7 @@ def test_deleted_manual_keyword_can_be_readded_externally_and_foreign_nodes_surv
     Image.new('RGB', (20, 20), 'blue').save(image)
     original = image.read_bytes()
     sidecar = Path(str(image) + '.xmp')
-    sidecar.write_text(build_xmp(XmpRating(tags=['foreign'])))
+    sidecar.write_text(build_xmp(XmpRating(tags=['foreign'])), encoding='utf-8')
     # Simulate an older external packet with no Facet ownership.
     packet = ET.parse(sidecar)
     for node in packet.iter():
@@ -308,18 +308,18 @@ def test_unrepresentable_new_keyword_state_never_creates_fallback_packet(tmp_pat
 
 @pytest.mark.skipif(not exiftool_available(), reason='requires ExifTool')
 def test_embedded_marker_and_unicode_case_normalization_preserve_foreign_collision(tmp_path):
-    import subprocess
     from PIL import Image
     from processing import xmp_export as xe
     image = tmp_path / 'photo.jpg'
     Image.new('RGB', (20, 20), 'blue').save(image)
-    subprocess.run(['exiftool', '-overwrite_original', '-XMP-dc:Subject=CAFÉ', str(image)],
-                   check=True, capture_output=True)
+    from utils.exiftool_process import run_exiftool_process
+    result = run_exiftool_process(['exiftool', '-overwrite_original', '-XMP-dc:Subject=CAFÉ', str(image)], timeout=30)
+    assert result.returncode == 0, result.stderr
     write_metadata(str(image), XmpRating(tags=['Cafe\u0301', 'Straße'], manual_tags=['Straße']), embed_original=True)
     state = xe._read_keyword_state(str(image), xe._resolve_exiftool(), timeout=30)
     assert state['owned'] == ['Straße']  # NFC/case-equal foreign CAFÉ is never claimed.
-    subprocess.run(['exiftool', '-overwrite_original', '-XMP-dc:Subject=CAFÉ', '-XMP-dc:Subject=STRASSE', str(image)],
-                   check=True, capture_output=True)
+    result = run_exiftool_process(['exiftool', '-overwrite_original', '-XMP-dc:Subject=CAFÉ', '-XMP-dc:Subject=STRASSE', str(image)], timeout=30)
+    assert result.returncode == 0, result.stderr
     write_metadata(str(image), XmpRating(), embed_original=True, reconcile_keywords=True)
     flat, _ = xe._read_existing_keywords(str(image), xe._resolve_exiftool(), timeout=30, strict=True)
     assert flat == ['CAFÉ']
@@ -388,7 +388,7 @@ def test_real_numeric_keywords_survive_cli_writer_paths(tmp_path, embed, reconci
     Image.new('RGB', (16, 16)).save(image)
     sidecar = Path(str(image) + '.xmp')
     if not embed:
-        sidecar.write_text(build_xmp(XmpRating()))
+        sidecar.write_text(build_xmp(XmpRating()), encoding='utf-8')
     target = image if embed else sidecar
     names = ['true', 'false', 'null', '1.50', '1e3', '2024']
     subprocess.run(['exiftool', '-overwrite_original', *[f'-XMP-dc:Subject={name}' for name in names],

@@ -664,7 +664,7 @@ def test_numeric_keyword_survives_real_exiftool_api_exports(client, tmp_path, mo
     path = str(tmp_path / 'numeric.jpg')
     Image.new('RGB', (16, 16)).save(path)
     sidecar = Path(path + '.xmp')
-    sidecar.write_text(xe.build_xmp(xe.XmpRating()))
+    sidecar.write_text(xe.build_xmp(xe.XmpRating()), encoding='utf-8')
     names = ['true', 'false', 'null', '1.50', '1e3', '2024']
     for target in (path, str(sidecar)):
         subprocess.run(['exiftool', '-overwrite_original', *[f'-XMP-dc:Subject={name}' for name in names],

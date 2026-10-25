@@ -111,7 +111,7 @@ def test_cli_export_preserves_numeric_keyword(tmp_path, embed):
     image = tmp_path / 'numeric.jpg'
     Image.new('RGB', (16, 16)).save(image)
     sidecar = Path(str(image) + '.xmp')
-    sidecar.write_text(build_xmp(XmpRating()))
+    sidecar.write_text(build_xmp(XmpRating()), encoding='utf-8')
     names = ['true', 'false', 'null', '1.50', '1e3', '2024']
     for target in (image, sidecar):
         subprocess.run(['exiftool', '-overwrite_original', *[f'-XMP-dc:Subject={name}' for name in names], str(target)],

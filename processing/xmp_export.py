@@ -59,6 +59,7 @@ from db.manual_tags import load_manual_tags_map, merge_effective_tags
 from processing.xmp_keywords import parse_keyword_state, reconcile_keywords as merge_keyword_state, serialize_keyword_state
 from utils.capture_dates import parse_capture_date
 from utils.image_loading import JPEG_EXTENSIONS, KNOWN_HEIF_EXTENSIONS
+from utils.exiftool_process import run_exiftool_process
 
 logger = logging.getLogger(__name__)
 
@@ -646,11 +647,11 @@ def _exiftool_record(raw):
 def _read_existing_metadata(target: str, exe: str, *, timeout: int, strict=False) -> tuple[list[str], list[str], bool]:
     """Read flat/hierarchical names; existing-file failures must not clear them."""
     try:
-        result = subprocess.run(
+        result = run_exiftool_process(
             [exe, "-config", os.path.join(os.path.dirname(__file__), "facet_exiftool.config"),
              "-q", "-m", "-json", "-XMP-dc:Subject", "-IPTC:Keywords",
              "-XMP-lr:HierarchicalSubject", "-XMP-facet:DateState", target],
-            capture_output=True, text=True, timeout=timeout,
+            timeout=timeout,
         )
         if result.returncode != 0:
             raise RuntimeError('Cannot read existing keywords; export refused')
@@ -682,8 +683,8 @@ def _read_keyword_state(target, exe, *, timeout):
         return None
     config = os.path.join(os.path.dirname(__file__), 'facet_exiftool.config')
     try:
-        result = subprocess.run([exe, '-config', config, '-json', '-XMP-facet:KeywordState', target],
-                                capture_output=True, text=True, timeout=timeout)
+        result = run_exiftool_process([exe, '-config', config, '-json', '-XMP-facet:KeywordState', target],
+                                     timeout=timeout)
     except (subprocess.TimeoutExpired, OSError) as ex:
         raise RuntimeError('Cannot read keyword ownership before export') from ex
     if result.returncode:
@@ -735,7 +736,7 @@ def _run_exiftool(target: str, rating: XmpRating, *, timeout: int, reconcile=Fal
             tag_args += [f"-EXIF:GPS{axis}={coordinate}", f"-EXIF:GPS{axis}Ref={reference}"]
     args = [exe, "-config", config, "-q", "-m", "-overwrite_original", *tag_args, target]
     try:
-        result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+        result = run_exiftool_process(args, timeout=timeout)
     except subprocess.TimeoutExpired as ex:
         raise RuntimeError(f"exiftool timed out after {timeout}s on {target}") from ex
     if result.returncode != 0:
