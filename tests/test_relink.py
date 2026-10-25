@@ -499,3 +499,127 @@ def test_unknown_organization_history_columns_still_require_review(library):
         conn.execute('ALTER TABLE organization_history ADD COLUMN future_field TEXT')
     with pytest.raises(ValueError, match='Unregistered schema column in organization_history'):
         preview(library)
+
+
+@pytest.mark.parametrize('variant', ['exact', 'case', 'unicode'])
+def test_indexed_raw_jpeg_pair_relinks_as_two_top_level_entries(library, monkeypatch, variant):
+    db, old, new, config = library
+    if variant == 'unicode':
+        destination = str(Path(new).with_name('réponse.jpg'))
+        Path(new).rename(destination)
+        new = destination
+        library = (db, old, new, config)
+    old_raw, new_raw = str(Path(old).with_suffix('.cr2')), str(Path(new).with_suffix('.cr2'))
+    if variant == 'case':
+        old_raw = str(Path(old_raw).with_name(Path(old_raw).name.upper()))
+        new_raw = str(Path(new_raw).with_name(Path(new_raw).name.upper()))
+    elif variant == 'unicode':
+        import unicodedata
+        new_raw = unicodedata.normalize('NFD', new_raw)
+    Path(new_raw).write_bytes(b'indexed-raw-target')
+    with sqlite3.connect(db) as conn:
+        conn.execute('INSERT INTO photos(path,filename,image_width,image_height,star_rating) VALUES (?,?,40,30,3)', (old_raw, Path(old_raw).name))
+    # Exercise real mapping/DB/file receipts without claiming a synthetic RAW decode.
+    real_identity = manual_face_frame.source_identity
+    monkeypatch.setattr(manual_face_frame, 'source_identity', lambda path: real_identity(new if path == new_raw else path))
+    mapping = [{'old': old, 'new': new}, {'old': old_raw, 'new': new_raw}]
+    plan = preview(library, mapping)
+    assert apply(library, plan)['relinked'] == 2
+    with sqlite3.connect(db) as conn:
+        assert conn.execute('SELECT path,star_rating FROM photos ORDER BY path').fetchall() == sorted([(new, 5), (new_raw, 3)])
+    assert Path(new_raw).read_bytes() == b'indexed-raw-target'
+
+
+def test_fts_shadow_inventory_does_not_need_sqlite_337_table_list(library):
+    db, _, _, _ = library
+    with sqlite3.connect(db) as conn:
+        class OlderSQLite:
+            def execute(self, sql, parameters=()):
+                if sql.lower().strip() == 'pragma table_list':
+                    return iter(())
+                return conn.execute(sql, parameters)
+        assert any(row[0] == 'photos_fts_data' for row in conn.execute("SELECT name FROM sqlite_master"))
+        refs = relink._references(OlderSQLite())
+        assert ('faces', 'photo_path') in refs
+
+
+def test_final_file_recheck_failure_rolls_back_all_relinked_rows(library, monkeypatch):
+    db, old, new, _ = library
+    with sqlite3.connect(db) as conn:
+        conn.execute("INSERT INTO user_preferences(user_id,photo_path,star_rating) VALUES ('alice',?,4)", (old,))
+    plan = preview(library)
+    real = relink._file_receipt
+    calls = []
+    def changed_after_rebuild(*args):
+        calls.append(1)
+        if len(calls) == 2:
+            Path(args[1]).write_bytes(b'changed immediately before final receipt')
+        return real(*args)
+    monkeypatch.setattr(relink, '_file_receipt', changed_after_rebuild)
+    with pytest.raises(ValueError, match='file changed before commit'):
+        apply(library, plan)
+    assert len(calls) == 2  # First in-transaction rebuild passed; final check refused.
+    with sqlite3.connect(db) as conn:
+        assert conn.execute('SELECT path FROM photos').fetchall() == [(old,)]
+        assert conn.execute('SELECT photo_path,star_rating FROM user_preferences').fetchall() == [(old, 4)]
+        assert conn.execute('PRAGMA foreign_key_check').fetchall() == []
+    assert Path(new).is_file()
+
+
+@pytest.mark.parametrize('case,reason', [
+    ('multiple_raw', 'Multiple possible RAW'),
+    ('indexed_raw', 'Indexed companions'),
+    ('registered_companion_destination', 'Companion destination'),
+    ('unknown_kind', 'Unknown explicit companion kind'),
+    ('duplicate_companion', 'companion was supplied twice'),
+    ('hardlinked_companion', 'Duplicate/copied destinations'),
+])
+def test_companion_refusals_are_explicit_and_leave_rows_unchanged(library, case, reason):
+    db, old, new, _ = library
+    old_raw, new_raw = str(Path(old).with_suffix('.cr2')), str(Path(new).with_suffix('.cr2'))
+    companion = {'old': old_raw, 'new': new_raw, 'kind': 'raw'}
+    entry = {'old': old, 'new': new, 'companions': [companion]}
+    if case == 'hardlinked_companion':
+        os.link(new, new_raw)
+    else:
+        Path(new_raw).write_bytes(b'raw-target')
+    if case == 'multiple_raw':
+        Path(new).with_suffix('.nef').write_bytes(b'second-raw')
+    elif case == 'indexed_raw':
+        with sqlite3.connect(db) as conn:
+            conn.execute('INSERT INTO photos(path) VALUES (?)', (old_raw,))
+    elif case == 'registered_companion_destination':
+        with sqlite3.connect(db) as conn:
+            conn.execute('INSERT INTO photos(path) VALUES (?)', (new_raw,))
+    elif case == 'unknown_kind':
+        companion['kind'] = 'guess'
+    elif case == 'duplicate_companion':
+        entry['companions'].append(dict(companion))
+    with sqlite3.connect(db) as conn:
+        before = conn.execute('SELECT * FROM photos ORDER BY path').fetchall()
+    with pytest.raises(ValueError, match=reason):
+        preview(library, [entry])
+    with sqlite3.connect(db) as conn:
+        assert conn.execute('SELECT * FROM photos ORDER BY path').fetchall() == before
+
+
+def test_database_cli_relink_entrypoint_previews_and_requires_normal_acknowledgment(library, tmp_path):
+    import subprocess
+    import sys
+    db, old, new, config = library
+    config_file = tmp_path / 'config.json'
+    mapping_file = tmp_path / 'mapping.json'
+    plan_file = tmp_path / 'plan.json'
+    config_file.write_text(json.dumps(config))
+    mapping_file.write_text(json.dumps([{'old': old, 'new': new}]))
+    base = [sys.executable, 'database.py', '--relink-photos', '--db', db, '--config', str(config_file)]
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run([*base, '--mapping', str(mapping_file), '--plan-out', str(plan_file)], cwd=root, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    plan = json.loads(result.stdout)
+    refused = subprocess.run([*base, '--apply-plan', str(plan_file)], cwd=root, capture_output=True, text=True, timeout=30)
+    assert refused.returncode == 1
+    assert 'acknowledgment' in refused.stderr
+    applied = subprocess.run([*base, '--apply-plan', str(plan_file), '--ack-plan', plan['plan_id'], '--acknowledge-unverified-identity'], cwd=root, capture_output=True, text=True, timeout=30)
+    assert applied.returncode == 0, applied.stderr
+    assert json.loads(applied.stdout)['relinked'] == 1

@@ -510,8 +510,28 @@ python facet.py --recompute-average        # Apply new weights
 ```
 
 > **`--import-lightroom` é o inverso de `--export-manifest`.** Ele lê a exportação própria do plug-in (`facet_lightroom_state.json`, um formato de arquivo *diferente* — `{"format":"facet-lightroom-state","version":1,"photos":[...]}` — validado e rejeitado antes de qualquer gravação no BD se não corresponder), nunca o manifesto em si, e aplica a avaliação/o pick do Lightroom como valor vencedor para cada campo que um registro carregue; um campo omitido deixa intacto o próprio valor do Facet. Uma mudança dispara a mesma reconstrução dos pares de treinamento derivados das avaliações e o mesmo impulso de retreinamento automático que qualquer outra gravação de avaliação.
+
 ## Religar fotos movidas
 
-Depois de mover os arquivos manualmente, `python -m db.relink` mostra uma prévia dos caminhos antigos/novos exatos e preserva suas associações no banco. A prévia é o padrão. Aplicar exige o ID do plano salvo e `--acknowledge-unverified-identity`: o banco não possui prova criptográfica do original ausente. Pare o viewer/as varreduras e revise o plano. Os dois caminhos devem permanecer em raízes configuradas com a mesma visibilidade de usuários; cópias, nomes ambíguos, planos obsoletos e mapeamentos de caminhos são recusados. Os companheiros devem ser explícitos; retângulos manuais exigem revisão no editor e o estado Immich fica inalterado. Contrato e exemplos: [Relink a missing photo](../RELINK.md) (inglês).
+Depois de mover os arquivos manualmente, `python database.py --relink-photos` mostra uma prévia dos caminhos antigos/novos exatos e preserva suas associações no banco. A prévia é o padrão. Aplicar exige o ID do plano salvo e `--acknowledge-unverified-identity`: o banco não possui prova criptográfica do original ausente. Pare o viewer/as varreduras e revise o plano. Os dois caminhos devem permanecer em raízes configuradas com a mesma visibilidade de usuários; cópias, nomes ambíguos, planos obsoletos e mapeamentos de caminhos são recusados. Os companheiros devem ser explícitos; retângulos manuais exigem revisão no editor e o estado Immich fica inalterado. Contrato e exemplos: [Religar fotos movidas](RELINK.md).
 
 `sidecar_facet` identifica explicitamente `photo.ext.facet.xmp`; pacotes alternativos não listados também são recusados. Os planos salvos são privados (0600 em POSIX). Um diretório legível não prova que o volume está montado: `source_mount_status` continua `not_verified`; o operador deve confirmar uma movimentação real em vez de armazenamento offline.
+
+```sh
+python database.py --relink-photos --db library.db --config scoring_config.json \
+  --mapping moved.json --plan-out relink-plan.json
+python database.py --relink-photos --db library.db --config scoring_config.json \
+  --apply-plan relink-plan.json --ack-plan REVIEWED_PLAN_ID \
+  --acknowledge-unverified-identity
+```
+
+| Opção | Função |
+|---|---|
+| `--db` | Banco de dados existente |
+| `--config` | Configuração resolvida |
+| `--user` | Usuário configurado obrigatório no modo multiusuário |
+| `--mapping` | Caminhos antigo/novo JSON; prévia |
+| `--plan-out` | Criar novo plano privado sem sobrescrever |
+| `--apply-plan` | Aplicar um plano revisado |
+| `--ack-plan` | Hash exato do plano revisado |
+| `--acknowledge-unverified-identity` | Confirmação explícita apesar dos bytes originais desconhecidos |

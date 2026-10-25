@@ -1,6 +1,6 @@
 """Offline, explicit path relinking. Preview first; never move or guess files.
 
-Run ``python -m db.relink --help``. This is an operator maintenance command,
+Run ``python database.py --relink-photos --help``. This is an operator maintenance command,
 not an authenticated API. Stop scanners/viewers and external file editors first.
 """
 import argparse
@@ -8,6 +8,7 @@ from contextlib import contextmanager
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import sqlite3
 import stat
@@ -15,7 +16,7 @@ import unicodedata
 
 from db.connection import load_sqlite_vec
 from db.maintenance import (
-    AUTO_RETRAIN_COUNTER_KEY_GLOB, DURABLE_STATS_CACHE_KEY_GLOBS,
+    evict_derived_stats_cache,
     _classify_missing_path, _PATH_DELETED,
 )
 from db.stats_cache import invalidate_metric_ranges
@@ -32,8 +33,6 @@ _PLAIN_REFS = {
 }
 _NON_ASSET_PATHS = {
     ('photos', 'path'), ('photos_fts', 'path'), ('scan_failures', 'path'),
-    # Historical packet location, not asset identity; only its photo_path FK moves.
-    ('photo_metadata_edits', 'source_path'),
 }
 
 # Organization history owns these tables outside db.schema's column catalog.
@@ -157,6 +156,18 @@ def _references(conn):
     tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")]
     internal = {row[1] for row in conn.execute('PRAGMA table_list') if row[0] == 'main' and row[2] == 'shadow'}
     internal.add('sqlite_sequence')
+    # FTS5's documented shadow names work on the project's SQLite 3.31 floor;
+    # PRAGMA table_list only appeared in 3.37. Never hide arbitrary suffix matches.
+    fts = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='photos_fts'").fetchone()
+    if fts and re.match(r'\s*CREATE\s+VIRTUAL\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?'
+                        r'(?:photos_fts|[\"`\[]photos_fts[\"`\]])\s+USING\s+fts5\s*\(',
+                        fts[0] or '', re.IGNORECASE):
+        internal.update('photos_fts_' + suffix for suffix in ('data', 'idx', 'content', 'docsize', 'config'))
+    historical_paths = set(_NON_ASSET_PATHS)
+    if 'photo_metadata_edits' in declared:
+        # This optional feature's actual schema must declare the table first.
+        # Its packet source is history; only the photo_path FK is an asset link.
+        historical_paths.add(('photo_metadata_edits', 'source_path'))
     if 'photos_vec' in tables:
         # sqlite-vec 0.1.x does not label its vector chunk table as a shadow.
         internal.add('photos_vec_vector_chunks00')
@@ -180,7 +191,7 @@ def _references(conn):
             pair = table, column[1]
             if pair in _PLAIN_REFS or pair == ('photos_vec', 'path'):
                 refs.add(pair)
-            elif (column[1] == 'path' or column[1].endswith('_path')) and pair not in refs | _NON_ASSET_PATHS:
+            elif (column[1] == 'path' or column[1].endswith('_path')) and pair not in refs | historical_paths:
                 raise ValueError(f'Unregistered path dependency: {table}.{column[1]}')
     return sorted(refs)
 
@@ -207,7 +218,7 @@ def _sidecar_owners(candidate, photos):
     return {photo for photo in photos if key in {_name_key(path) for path in _sidecar_paths(photo).values()}}
 
 
-def _companions(entry, photos):
+def _companions(entry, photos, mapping):
     """Validate explicit relationships; never infer ownership from filenames."""
     from utils.image_loading import RAW_EXTENSIONS
     seen = set()
@@ -240,8 +251,16 @@ def _companions(entry, photos):
                       and _name_key(path.stem) == _name_key(Path(entry['new']).stem)]
         if len(candidates) > 1:
             raise ValueError('Multiple possible RAW companions; relationship is ambiguous')
-        if any(path not in seen for path in candidates):
-            raise ValueError('Destination RAW requires an explicit companion mapping')
+        # Indexed RAWs are independently relinked photos, not duplicate file
+        # companions. An explicit top-level mapping must preserve both stems.
+        indexed_raws = {item['new'] for item in mapping if item['old'] in photos
+                        and Path(item['old']).suffix.lower() in RAW_EXTENSIONS
+                        and _name_key(str(Path(item['old']).with_suffix('')))
+                        == _name_key(str(Path(entry['old']).with_suffix('')))
+                        and _name_key(str(Path(item['new']).with_suffix('')))
+                        == _name_key(str(Path(entry['new']).with_suffix('')))}
+        if any(path not in seen | indexed_raws for path in candidates):
+            raise ValueError('Destination RAW requires an explicit companion mapping or indexed RAW relink entry')
 
 
 def _validate_mapping(mapping):
@@ -312,7 +331,7 @@ def _build_plan(conn, db_path, mapping, config, user):
         _canonical(old)
         _canonical(new)
         _authorize(old, new, policy)
-        _companions(entry, photo_names)
+        _companions(entry, photo_names, mapping)
         file_receipts = []
         for item in [entry, *entry.get('companions', [])]:
             if _name_key(item['old']) in file_sources or _name_key(item['new']) in file_targets:
@@ -404,8 +423,7 @@ def apply_relinks(db_path, plan, config, *, acknowledge_plan, acknowledge_unveri
                     except (ValueError, TypeError):
                         pass
                     conn.execute('UPDATE faces SET manual_source=?,manual_review_required=1 WHERE id=?', (source, face_id))
-            kept = DURABLE_STATS_CACHE_KEY_GLOBS + (AUTO_RETRAIN_COUNTER_KEY_GLOB,)
-            conn.execute('DELETE FROM stats_cache WHERE NOT (' + ' OR '.join('key GLOB ?' for _ in kept) + ')', kept)
+            evict_derived_stats_cache(conn)
             invalidate_metric_ranges(conn)
             if conn.execute('PRAGMA foreign_key_check').fetchone():
                 raise ValueError('Relink would break a foreign key')
@@ -421,8 +439,8 @@ def apply_relinks(db_path, plan, config, *, acknowledge_plan, acknowledge_unveri
             'identity': 'operator_asserted; original_bytes_unknown', 'remote_sync_state': 'unchanged'}
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
+def main(argv=None, *, prog=None):
+    parser = argparse.ArgumentParser(prog=prog, description=__doc__)
     parser.add_argument('--db', required=True)
     parser.add_argument('--config', required=True)
     parser.add_argument('--user')

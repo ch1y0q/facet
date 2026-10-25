@@ -1,8 +1,10 @@
 # Relink a missing photo after an explicit move
 
-`python -m db.relink` updates existing Facet database paths after you have moved files yourself. It never moves, copies, deletes, edits originals/sidecars, or contacts Immich. It is an offline maintenance command for the operator who has access to the database and configured folders. Stop the viewer, scanners and external file editors first; back up the database and review the plan before applying it.
+`python database.py --relink-photos` updates existing Facet database paths after you have moved files yourself. It never moves, copies, deletes, edits originals/sidecars, or contacts Immich. It is an offline maintenance command for the operator who has access to the database and configured folders. Stop the viewer, scanners and external file editors first; back up the database and review the plan before applying it.
 
 The existing database has no cryptographic hash of original file bytes. `phash` and manual-face grayscale signatures do not prove byte identity. Every plan therefore says `original_bytes_unknown`. The target SHA-256 only identifies the new file that was previewed. Applying explicitly asserts that you have independently identified the correct moved file; this is never an automatic verified match. A wrong assertion can attach existing annotations to the wrong image.
+
+Moving or renaming a whole directory is outside this bounded mode when the old parent no longer exists. Missing directories cannot distinguish an intentional move from offline storage. Do not recreate empty old parents to bypass this check.
 
 ## Preview, review, then apply
 
@@ -26,13 +28,13 @@ Create a JSON list with exact canonical absolute paths. A missing source must al
 
 ```sh
 # Read-only database preview; create a private (0600), exclusive review artifact.
-python -m db.relink --db library.db --config scoring_config.json \
+python database.py --relink-photos --db library.db --config scoring_config.json \
   --mapping moved.json --plan-out relink-plan.json
 
 # Inspect every old/new path, unknown-byte identity label, target hash and
 # dimensions, references, companions and visibility policy in relink-plan.json.
 # Replace REVIEWED_PLAN_ID with that artifact's exact plan_id after reviewing it.
-python -m db.relink --db library.db --config scoring_config.json \
+python database.py --relink-photos --db library.db --config scoring_config.json \
   --apply-plan relink-plan.json --ack-plan REVIEWED_PLAN_ID \
   --acknowledge-unverified-identity
 ```
@@ -62,3 +64,14 @@ Copies with a still-present old original, missing/unreadable old parents, existi
 Limits: 100 photos, 300 explicitly named files, 512 MiB per file, 2 GiB total file bytes and 2 MiB JSON input/review plan. Reduce a batch when a limit is reached. The database transaction is atomic; the filesystem is not locked against other applications, hence the offline requirement. No real external application or remote-server round trip is claimed by the fixture tests.
 
 Readable directories do **not** prove that storage is mounted. An unmounted volume may leave an empty readable mount point indistinguishable from a genuinely empty post-move directory. The plan explicitly reports `source_mount_status: not_verified`; confirm independently that each source was moved rather than merely unavailable before acknowledging identity. The command does not detect every offline-volume condition. Review artifacts contain private full paths and user-scope policy; `--plan-out` creates them exclusively with mode 0600 on POSIX.
+
+| Option | Purpose |
+|---|---|
+| `--db` | Existing database |
+| `--config` | Resolved configuration |
+| `--user` | Required configured user in multi-user mode |
+| `--mapping` | Explicit old/new JSON mappings; preview mode |
+| `--plan-out` | Create a new private plan file; never overwrite |
+| `--apply-plan` | Apply a previously reviewed plan |
+| `--ack-plan` | Exact reviewed plan digest |
+| `--acknowledge-unverified-identity` | Explicit assertion despite unknown original bytes |

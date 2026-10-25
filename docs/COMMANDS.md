@@ -508,6 +508,25 @@ python facet.py --recompute-average        # Apply new weights
 
 ## Relink moved photos
 
-After moving files yourself, use `python -m db.relink` to preview exact old/new mappings and preserve database associations. Preview is the default. Apply requires the saved plan ID and `--acknowledge-unverified-identity`: the database stores no cryptographic proof of the missing original. Stop viewers/scanners and review the plan first. Both paths must remain within configured roots and the same user visibility; copies, ambiguous names, stale plans and path mappings are refused. Companions must be explicit, manual rectangles require editor review, and Immich state is unchanged. See [Relink a missing photo](RELINK.md) for the full contract and examples.
+After moving files yourself, use `python database.py --relink-photos` to preview exact old/new mappings and preserve database associations. Preview is the default. Apply requires the saved plan ID and `--acknowledge-unverified-identity`: the database stores no cryptographic proof of the missing original. Stop viewers/scanners and review the plan first. Both paths must remain within configured roots and the same user visibility; copies, ambiguous names, stale plans and path mappings are refused. Companions must be explicit, manual rectangles require editor review, and Immich state is unchanged. See [Relink a missing photo](RELINK.md) for the full contract and examples.
 
 Explicit companion kinds include `sidecar_facet` for `photo.ext.facet.xmp`; unlisted fallback packets are refused too. Saved review plans are private (0600 on POSIX). Readable directories do not prove a volume is mounted: `source_mount_status` remains `not_verified`, and the operator must confirm the original was moved rather than offline.
+
+```sh
+python database.py --relink-photos --db library.db --config scoring_config.json \
+  --mapping moved.json --plan-out relink-plan.json
+python database.py --relink-photos --db library.db --config scoring_config.json \
+  --apply-plan relink-plan.json --ack-plan REVIEWED_PLAN_ID \
+  --acknowledge-unverified-identity
+```
+
+| Option | Purpose |
+|---|---|
+| `--db` | Existing database |
+| `--config` | Resolved configuration |
+| `--user` | Required configured user in multi-user mode |
+| `--mapping` | Explicit old/new JSON mappings; preview mode |
+| `--plan-out` | Create a new private plan file; never overwrite |
+| `--apply-plan` | Apply a previously reviewed plan |
+| `--ack-plan` | Exact reviewed plan digest |
+| `--acknowledge-unverified-identity` | Explicit assertion despite unknown original bytes |

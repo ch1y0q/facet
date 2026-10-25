@@ -512,6 +512,25 @@ python facet.py --recompute-average        # Neue Gewichtungen anwenden
 
 ## Verschobene Fotos neu verknüpfen
 
-Nach einem selbst ausgeführten Dateiumzug kann `python -m db.relink` exakte Alt-/Neupfade zunächst prüfen und Datenbankzuordnungen erhalten. Die Vorschau ist Standard. Anwenden erfordert die gespeicherte Plan-ID und `--acknowledge-unverified-identity`: Die Datenbank enthält keinen kryptografischen Beweis des fehlenden Originals. Viewer/Scanner stoppen und den Plan prüfen. Beide Pfade müssen in konfigurierten Wurzeln mit gleicher Benutzersichtbarkeit bleiben; Kopien, mehrdeutige Namen, veraltete Pläne und Pfadzuordnungen werden abgelehnt. Begleitdateien müssen ausdrücklich benannt werden; manuelle Rechtecke benötigen Prüfung im Editor, Immich-Zustand bleibt unverändert. Vertrag und Beispiele: [Relink a missing photo](../RELINK.md) (Englisch).
+Nach einem selbst ausgeführten Dateiumzug kann `python database.py --relink-photos` exakte Alt-/Neupfade zunächst prüfen und Datenbankzuordnungen erhalten. Die Vorschau ist Standard. Anwenden erfordert die gespeicherte Plan-ID und `--acknowledge-unverified-identity`: Die Datenbank enthält keinen kryptografischen Beweis des fehlenden Originals. Viewer/Scanner stoppen und den Plan prüfen. Beide Pfade müssen in konfigurierten Wurzeln mit gleicher Benutzersichtbarkeit bleiben; Kopien, mehrdeutige Namen, veraltete Pläne und Pfadzuordnungen werden abgelehnt. Begleitdateien müssen ausdrücklich benannt werden; manuelle Rechtecke benötigen Prüfung im Editor, Immich-Zustand bleibt unverändert. Vertrag und Beispiele: [Verschobene Fotos neu verknüpfen](RELINK.md).
 
 Der ausdrückliche Begleittyp `sidecar_facet` bezeichnet `photo.ext.facet.xmp`; nicht aufgeführte Fallback-Pakete werden ebenfalls abgelehnt. Gespeicherte Prüfpläne sind privat (0600 unter POSIX). Lesbare Verzeichnisse beweisen keinen eingehängten Datenträger: `source_mount_status` bleibt `not_verified`; der Betreiber muss einen echten Umzug statt Offline-Speicher bestätigen.
+
+```sh
+python database.py --relink-photos --db library.db --config scoring_config.json \
+  --mapping moved.json --plan-out relink-plan.json
+python database.py --relink-photos --db library.db --config scoring_config.json \
+  --apply-plan relink-plan.json --ack-plan REVIEWED_PLAN_ID \
+  --acknowledge-unverified-identity
+```
+
+| Option | Zweck |
+|---|---|
+| `--db` | Vorhandene Datenbank |
+| `--config` | Aufgelöste Konfiguration |
+| `--user` | Konfigurierter Benutzer im Mehrbenutzerbetrieb erforderlich |
+| `--mapping` | Explizite alte/neue JSON-Pfade; Vorschau |
+| `--plan-out` | Neue private Plandatei ohne Überschreiben |
+| `--apply-plan` | Geprüften Plan anwenden |
+| `--ack-plan` | Exakter Hash des geprüften Plans |
+| `--acknowledge-unverified-identity` | Explizite Bestätigung trotz unbekannter Originalbytes |
