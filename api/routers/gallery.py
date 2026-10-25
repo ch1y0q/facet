@@ -992,6 +992,9 @@ async def api_review_progress(
                     raise HTTPException(status_code=400, detail="Semantic search is disabled")
                 try:
                     candidates = await semantic_candidates(conn, semantic_q, threshold, user_id)
+                except AcceleratorBusy:
+                    logger.warning("Semantic review progress gave up waiting for the MPS lock: %s", semantic_q)
+                    raise HTTPException(status_code=503, detail="Search model is busy with another task, try again in a moment")
                 except sqlite3.Error:
                     raise
                 except Exception:

@@ -283,6 +283,26 @@ describe('PhotoDetailComponent', () => {
       expect(refresh).toHaveBeenCalledOnce();
       expect(mockRouter.navigate).not.toHaveBeenCalled();
     });
+    it.each(['kept', 'rejected'])('applies and journals %s that lands after the gallery view changed', async decision => {
+      createComponent();
+      const store = TestBed.inject(GalleryStore);
+      const a = makePhoto({ path: '/a.jpg' });
+      store.photos.set([a]);
+      store.filters.update(f => ({ ...f, review_status: 'undecided' }));
+      const refresh = vi.spyOn(store, 'refreshReviewResults').mockResolvedValue();
+      component.photo.set(a);
+      const response = new Subject<any>();
+      mockApi.post.mockReturnValue(response);
+      const pending = decision === 'rejected' ? component.toggleRejected(a.path) : component.reviewPhoto('kept');
+      store.filters.update(f => ({ ...f, path_prefix: '/elsewhere/' }));
+      response.next({ is_rejected: true, is_favorite: null, star_rating: null });
+      await pending;
+      expect(component.photo()).toMatchObject({ path: a.path, is_kept: decision === 'kept', is_rejected: decision === 'rejected' });
+      expect(refresh).not.toHaveBeenCalled();
+      expect(mockRouter.navigate).not.toHaveBeenCalled();
+      if (decision === 'rejected') expect(TestBed.inject(UserActivityJournal).since().items.map(i => i.kind)).toContain('reject');
+    });
+
     it('merges delayed Keep into current metadata', async () => {
       createComponent();
       const a = makePhoto({ star_rating: 1 });

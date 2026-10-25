@@ -1098,14 +1098,15 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     if (!p || this.reviewSaving) return;
     this.reviewSaving = true;
     const isOrigin = this.store.captureReviewView();
+    const identity = this.auth.identity();
     const photos = this.store.photos();
     const index = photos.findIndex(photo => photo.path === p.path);
     const next = photos[index + 1];
     try {
       await firstValueFrom(this.api.post('/photos/batch_review', { photo_paths: [p.path], decision }));
-      if (!isOrigin()) { void this.store.loadReviewProgress(); return; }
+      if (identity !== this.auth.identity()) return;
       this.applyConfirmed(p, { is_kept: decision === 'kept', is_rejected: false });
-      await this.advanceAfterReview(p, index, next);
+      if (isOrigin()) await this.advanceAfterReview(p, index, next);
     } catch {
       this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
     } finally { this.reviewSaving = false; }
@@ -1145,6 +1146,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     const p = this.photo();
     if (!p) return;
     const isOrigin = this.store.captureReviewView();
+    const identity = this.auth.identity();
     const photos = this.store.photos();
     const index = photos.findIndex(photo => photo.path === p.path);
     const next = photos[index + 1];
@@ -1153,10 +1155,11 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
       const confirmed: Partial<Photo> = { is_rejected: res.is_rejected, is_kept: false };
       if (res.is_favorite !== null) confirmed.is_favorite = res.is_favorite;
       if (res.star_rating !== null) confirmed.star_rating = res.star_rating;
-      if (!isOrigin()) { void this.store.loadReviewProgress(); return; }
+      // The write landed: only another principal's view must not see it.
+      if (identity !== this.auth.identity()) return;
       this.applyConfirmed(p, confirmed);
       this.journal.record('reject', [path], res.is_rejected);
-      await this.advanceAfterReview(p, index, next);
+      if (isOrigin()) await this.advanceAfterReview(p, index, next);
     } catch {
       this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
     }

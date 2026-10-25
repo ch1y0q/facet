@@ -232,6 +232,21 @@ describe('GalleryStore', () => {
       expect(store.reviewProgress()?.total).toBe(200);
     });
 
+    it('reconciles a reject that lands after the queue pages forward', async () => {
+      const pending = new Subject<{ is_rejected: boolean; star_rating: number | null }>();
+      apiPost.mockReturnValue(pending);
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+      store.filters.update(f => ({ ...f, review_status: 'rejected' }));
+      store.photos.set([makePhoto({ path: '/old.jpg' })]);
+      const refresh = vi.spyOn(store, 'refreshReviewResults').mockResolvedValue();
+      const writing = store.toggleRejected('/old.jpg');
+      store.filters.update(f => ({ ...f, page: 2 }));
+      pending.next({ is_rejected: true, star_rating: null });
+      pending.complete();
+      await writing;
+      expect(refresh).toHaveBeenCalledWith(true);
+    });
+
     it('does not clear a new whole-view selection when an old single reject finishes', async () => {
       const pending = new Subject<{ is_rejected: boolean; star_rating: number | null }>();
       apiPost.mockReturnValue(pending);
@@ -3094,6 +3109,23 @@ describe('GalleryStore smart-album auto-save', () => {
     } finally { vi.useRealTimers(); }
     expect(albumUpdate).not.toHaveBeenCalled();
     expect(get).toHaveBeenCalledWith('/photos/review_progress', expect.not.objectContaining({ scope_review_status: 'undecided' }));
+  });
+
+  it('still saves a sidebar edit made just before entering a temporary review queue', async () => {
+    const get = TestBed.inject(ApiService).get as Mock;
+    get.mockReturnValue(of(makePhotosResponse()));
+    vi.useFakeTimers();
+    try {
+      store.filters.set({ ...DEFAULT_FILTERS, camera: 'Nikon' });
+      TestBed.tick();
+      await store.startReviewQueue();
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(500);
+    } finally { vi.useRealTimers(); }
+    expect(albumUpdate).toHaveBeenCalledTimes(1);
+    const saved = JSON.parse(albumUpdate.mock.calls[0][1].smart_filter_json);
+    expect(saved).toMatchObject({ camera: 'Nikon' });
+    expect(saved.review_status).toBeFalsy();
   });
 
   it('preserves temporary queue mode across reload without changing the saved smart criterion', async () => {

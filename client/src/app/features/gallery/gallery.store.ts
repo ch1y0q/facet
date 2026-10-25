@@ -772,8 +772,10 @@ export class GalleryStore {
       const f = this.filters();
       const album = this.currentAlbum();
       const temporaryQueue = this.transientReviewStatus();
+      // A temporary queue saves nothing, but a sidebar edit still pending lands.
+      if (temporaryQueue) return;
       if (this.smartSaveTimer) { clearTimeout(this.smartSaveTimer); this.smartSaveTimer = null; }
-      if (!album || temporaryQueue) return;
+      if (!album) return;
       if (untracked(() => this.initializing())) return;
       const isEdition = untracked(() => this.auth.isEdition());
       if (!isEdition) return;
@@ -1549,12 +1551,16 @@ export class GalleryStore {
     this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
   }
 
-  /** Async decision completions may refresh only the view they started in. */
+  /** Async decision completions may refresh only the view they started in. Paging,
+   *  and the reloads a previous decision's own refresh runs, stay the same view. */
   captureReviewView(): () => boolean {
-    const seq = this._loadSeq;
     const identity = this.auth.identity();
-    const key = this.filterKey();
-    return () => seq === this._loadSeq && identity === this.auth.identity() && key === this.filterKey();
+    const key = this.reviewViewKey();
+    return () => identity === this.auth.identity() && key === this.reviewViewKey();
+  }
+
+  private reviewViewKey(): string {
+    return this.filterKey({ ...this.filters(), page: 1 });
   }
 
   /** Set star rating for a photo (0 = clear). Optimistic with revert on error. */
@@ -1587,6 +1593,7 @@ export class GalleryStore {
   /** Toggle favorite flag for a photo. Optimistic, reconciled with server truth. */
   async toggleFavorite(photoPath: string): Promise<void> {
     const isOrigin = this.captureReviewView();
+    const identity = this.auth.identity();
     if (this.toggleInFlight.has(photoPath)) return;
     this.toggleInFlight.add(photoPath);
     try {
@@ -1602,13 +1609,15 @@ export class GalleryStore {
         const res = await firstValueFrom(
           this.api.post<{ is_favorite: boolean }>('/photo/toggle_favorite', { photo_path: photoPath }),
         );
-        if (!isOrigin()) { void this.loadReviewProgress(); return; }
+        // The write landed: only another principal's view must not see it.
+        if (identity !== this.auth.identity()) return;
         this.patchPhoto(photoPath, {
           is_favorite: res.is_favorite,
           is_rejected: res.is_favorite ? false : prev.is_rejected,
         });
         this.journal.record('favorite', [photoPath], res.is_favorite);
         if (isOrigin()) await this.refreshReviewResults(this.filters().favorites_only);
+        else void this.loadReviewProgress();
       } catch {
         if (isOrigin()) this.revertSnapshot(snap);
         this.notifyActionFailed();
@@ -1621,6 +1630,7 @@ export class GalleryStore {
   /** Toggle rejected flag for a photo. Optimistic, reconciled with server truth. */
   async toggleRejected(photoPath: string): Promise<void> {
     const isOrigin = this.captureReviewView();
+    const identity = this.auth.identity();
     if (this.toggleInFlight.has(photoPath)) return;
     this.toggleInFlight.add(photoPath);
     try {
@@ -1638,7 +1648,8 @@ export class GalleryStore {
         const res = await firstValueFrom(
           this.api.post<{ is_rejected: boolean; star_rating: number | null }>('/photo/toggle_rejected', { photo_path: photoPath }),
         );
-        if (!isOrigin()) { void this.loadReviewProgress(); return; }
+        // The write landed: only another principal's view must not see it.
+        if (identity !== this.auth.identity()) return;
         this.patchPhoto(photoPath, {
           is_rejected: res.is_rejected,
           is_kept: res.is_rejected ? false : prev.is_kept,
@@ -1647,6 +1658,7 @@ export class GalleryStore {
         });
         this.journal.record('reject', [photoPath], res.is_rejected);
         if (isOrigin()) await this.refreshReviewResults(this.filters().review_status === 'rejected');
+        else void this.loadReviewProgress();
       } catch {
         if (isOrigin()) this.revertSnapshot(snap);
         this.notifyActionFailed();

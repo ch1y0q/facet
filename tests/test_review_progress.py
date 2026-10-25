@@ -66,3 +66,18 @@ def test_review_progress_retains_base_smart_review_criterion(edition_client, see
         "scope_review_status": "kept", "review_status": "undecided"})
     assert response.json() == {"total": 1, "undecided": 0, "kept": 1, "rejected": 0}
     assert edition_client.get("/api/photos/review_progress", params={"scope_review_status": "bogus"}).status_code == 422
+
+
+@pytest.mark.parametrize("error, status", [(None, 400), ("busy", 503), ("failure", 503)])
+def test_review_progress_semantic_gate_never_counts_the_whole_library(edition_client, error, status):
+    from unittest import mock
+    from api.model_cache import AcceleratorBusy
+    params = {"semantic_q": "sunset"}
+    if error is None:
+        with mock.patch.dict("api.routers.gallery.VIEWER_CONFIG", {"features": {"show_semantic_search": False}}):
+            response = edition_client.get("/api/photos/review_progress", params=params)
+    else:
+        side_effect = AcceleratorBusy("busy") if error == "busy" else RuntimeError("no model")
+        with mock.patch("api.routers.search._encode_text", side_effect=side_effect):
+            response = edition_client.get("/api/photos/review_progress", params=params)
+    assert response.status_code == status, response.text
