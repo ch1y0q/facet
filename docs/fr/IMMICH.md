@@ -221,7 +221,7 @@ Dans Immich ≥ 3.0 : **Administration → Workflows → Create Workflow**.
 | `403` | Mauvais jeton. |
 | `404` | La fonctionnalité est désactivée (aucun jeton configuré). |
 
-Facet lit `originalPath` dans le payload et se montre délibérément permissif sur son emplacement — un objet ressource nu, `{"asset": {…}}`, une liste, ou n'importe lequel de ces cas imbriqué sous `data` / `items` / `assets` fonctionnent tous. Si le payload porte l'`id` de la ressource, Facet l'utilise et s'épargne un aller-retour de résolution.
+Facet lit `originalPath` dans les objets, listes et enveloppes `asset` / `data` / `items` / `assets`. Un `id` fourni est relu sur le serveur configuré, puis comparé au chemin exact et au propriétaire/à la bibliothèque sélectionnés avant toute mise à jour. Une incohérence compte comme `failed`.
 
 Les chemins en attente sont rapportés par la synchronisation suivante :
 
@@ -246,6 +246,8 @@ Le bloc `immich` complet, avec les valeurs par défaut fournies :
 "immich": {
   "url": "",
   "api_key": "",
+  "owner_id": "",
+  "library_id": "",
   "path_map": [
     { "facet_prefix": "", "immich_prefix": "" }
   ],
@@ -269,6 +271,8 @@ Le bloc `immich` complet, avec les valeurs par défaut fournies :
 |-----|---------|---------|
 | `url` | `""` | URL de base d'Immich, `http` ou `https`. Une barre oblique finale est retirée. |
 | `api_key` | `""` | Clé API, envoyée comme `x-api-key`. Vide interrompt toute synchronisation avec une erreur explicite. |
+| `owner_id` | `""` | Identifiant exact du propriétaire Immich ; vide désactive ce filtre. Un champ absent ne satisfait pas une sélection explicite. |
+| `library_id` | `""` | Identifiant exact de la bibliothèque Immich ; vide désactive le filtre, sans sélectionner une bibliothèque null. |
 | `path_map` | une paire vide | Réécritures de préfixe entre les chemins Facet et les valeurs `originalPath` d'Immich. La première correspondance l'emporte ; utilisé dans les deux sens. |
 | `push.ratings` | `true` | Pousse les notes en étoiles 1–5 (et leurs effacements). |
 | `push.favorites` | `true` | Pousse `isFavorite` (et son effacement). |
@@ -331,7 +335,7 @@ Facet n'envoie un effacement que pour une photo qu'il a réellement poussée aup
 
 ### Les notes apparaissent sur les mauvaises photos
 
-Deux fichiers avec le même `originalPath` ne peuvent pas se produire à l'intérieur d'Immich, mais deux racines *Facet* correspondant à un même préfixe Immich peuvent entrer en collision. Vérifiez que vos paires `path_map` ne se chevauchent pas : la première paire correspondante l'emporte, donc une paire large listée avant une paire étroite l'engloutit.
+Les chemins correspondant à plusieurs identifiants distants, ou plusieurs chemins Facet ciblant le même chemin distant, sont refusés et comptés dans `identity_conflicts`. Aucun changement ni état de synchronisation confirmé pour ces chemins ; les photos sans ambiguïté peuvent continuer. Corrigez les racines ou sélectionnez `owner_id` et `library_id`, puis réessayez.
 
 ### `rating: 0 is not valid`
 
@@ -340,3 +344,5 @@ Le serveur Immich est antérieur à la version 3.0. Mettez-le à niveau — la s
 ---
 
 **Voir aussi :** [Commandes — Synchronisation Immich](COMMANDS.md#synchronisation-immich) · [Configuration](CONFIGURATION.md) · [Recettes d'interopérabilité avec les éditeurs](INTEROP.md) pour l'aller-retour XMP avec Lightroom, darktable et digiKam.
+
+Les préfixes restent des chaînes littérales : première correspondance gagnante, sans limite de répertoire implicite. Terminez les préfixes de répertoire par `/`. En simulation, `updated` compte les modifications prévues, sans écriture distante ni de suivi local. Les réponses doivent contenir `id` et `originalPath`. Contrat vérifié sur les schémas publiés Immich v3.3.5 et des fixtures isolées, sans serveur réel. Un succès HTTP ne prouve pas la durabilité après les tâches de métadonnées.

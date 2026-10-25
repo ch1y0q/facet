@@ -221,7 +221,7 @@ No Immich ≥ 3.0: **Administration → Workflows → Create Workflow**.
 | `403` | Token incorreto. |
 | `404` | O recurso está desativado (nenhum token configurado). |
 
-O Facet lê `originalPath` de dentro do payload e é deliberadamente flexível quanto a onde ele está — um objeto de ativo isolado, `{"asset": {…}}`, uma lista, ou qualquer um desses aninhado sob `data` / `items` / `assets` funciona. Se o payload trouxer o `id` do ativo, o Facet o utiliza e pula uma consulta extra de busca.
+O Facet lê `originalPath` de objetos, listas e contêineres `asset` / `data` / `items` / `assets`. Um `id` recebido é consultado novamente no servidor configurado e comparado com o caminho exato e o proprietário/a biblioteca selecionados antes da escrita. Divergências contam como `failed`.
 
 Os caminhos pendentes são informados pela próxima sincronização:
 
@@ -246,6 +246,8 @@ O bloco `immich` completo, com os padrões de fábrica:
 "immich": {
   "url": "",
   "api_key": "",
+  "owner_id": "",
+  "library_id": "",
   "path_map": [
     { "facet_prefix": "", "immich_prefix": "" }
   ],
@@ -269,6 +271,8 @@ O bloco `immich` completo, com os padrões de fábrica:
 |-----|---------|---------|
 | `url` | `""` | URL base do Immich, `http` ou `https`. Uma barra final é removida. |
 | `api_key` | `""` | Chave de API, enviada como `x-api-key`. Vazio interrompe qualquer sincronização com um erro claro. |
+| `owner_id` | `""` | ID exato do proprietário Immich; vazio desativa o filtro. Um campo ausente não satisfaz uma seleção explícita. |
+| `library_id` | `""` | ID exato da biblioteca Immich; vazio desativa o filtro, sem selecionar uma biblioteca null. |
 | `path_map` | um par vazio | Reescritas de prefixo entre os caminhos do Facet e os valores de `originalPath` do Immich. O primeiro que corresponder vence; usado nas duas direções. |
 | `push.ratings` | `true` | Envia as avaliações por estrelas de 1 a 5 (e suas limpezas). |
 | `push.favorites` | `true` | Envia `isFavorite` (e suas limpezas). |
@@ -331,7 +335,7 @@ O Facet só envia uma limpeza para uma foto que ele realmente enviou antes; essa
 
 ### As avaliações aparecem nas fotos erradas
 
-Dois arquivos com o mesmo `originalPath` não podem acontecer dentro do Immich, mas duas raízes *Facet* mapeando para o mesmo prefixo do Immich podem colidir. Verifique se os seus pares de `path_map` não se sobrepõem: o primeiro par que corresponder vence, então um par amplo listado antes de um mais específico o engole.
+Caminhos com vários IDs remotos e vários caminhos Facet apontando para o mesmo caminho remoto são recusados como `identity_conflicts`. Não há alterações nem confirmação do estado de sincronização para esses caminhos; fotos sem ambiguidade podem continuar. Corrija as raízes ou selecione `owner_id` e `library_id` e tente novamente.
 
 ### `rating: 0 is not valid`
 
@@ -340,3 +344,5 @@ O servidor Immich é mais antigo que 3.0. Atualize-o — a semântica de limpeza
 ---
 
 **Ver também:** [Comandos — Sincronização com o Immich](COMMANDS.md#sincronização-com-o-immich) · [Configuração](CONFIGURATION.md) · [Receitas de Interoperabilidade com Editores](INTEROP.md) para o round-trip de XMP com Lightroom, darktable e digiKam.
+
+Os prefixos continuam sendo strings literais: vence a primeira correspondência, sem limites de diretório implícitos. Termine prefixos de diretório com `/`. Na simulação, `updated` conta alterações previstas, sem escritas remotas ou do estado local. As respostas devem incluir `id` e `originalPath`. Contrato verificado com esquemas publicados Immich v3.3.5 e fixtures isoladas, sem servidor real. Sucesso HTTP não comprova durabilidade após tarefas de metadados.

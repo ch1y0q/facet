@@ -176,6 +176,8 @@
       "properties": {
         "url": { "type": "string" },
         "api_key": { "type": "string" },
+        "owner_id": { "type": "string" },
+        "library_id": { "type": "string" },
         "timeout_seconds": { "type": "number" },
         "path_map": {
           "type": "array",
