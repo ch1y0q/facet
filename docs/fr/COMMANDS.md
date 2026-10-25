@@ -501,3 +501,7 @@ python facet.py --recompute-tags     # Ré-étiquette avec le nouveau modèle
 python facet.py --compute-recommendations  # Vérifie les distributions
 python facet.py --recompute-average        # Applique les nouveaux poids
 ```
+
+## Relier des photos déplacées
+
+Après avoir déplacé vous-même les fichiers, `python -m db.relink` prévisualise les chemins anciens/nouveaux exacts et préserve leurs associations en base. La prévisualisation est le mode par défaut. Appliquer exige l’ID du plan enregistré et `--acknowledge-unverified-identity` : la base ne contient aucune preuve cryptographique de l’original disparu. Arrêtez le viewer/les analyses et vérifiez le plan. Les deux chemins doivent rester dans des racines configurées avec la même visibilité utilisateur ; copies, noms ambigus, plans périmés et correspondances de chemins sont refusés. Les compagnons doivent être explicites ; les rectangles manuels nécessitent une révision dans l’éditeur et l’état Immich reste inchangé. Contrat et exemples : [Relink a missing photo](../RELINK.md) (anglais).

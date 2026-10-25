@@ -8,6 +8,7 @@ All notable changes to Facet are documented in this file.
 - Resize manual-face previews and crop face pixels before converting to RGB, avoiding full-resolution copies on preview and save.
 
 ### Added
+- **Preview and relink explicitly moved photo paths offline.** `python -m db.relink` preserves database associations through a reviewed plan and explicit identity acknowledgment. It never moves files or guesses matches; ambiguous destinations and visibility changes are refused. Manual rectangles remain for review, and remote Immich state is unchanged. See [the contract](docs/RELINK.md).
 - Explicit XMP export/import carries Keep decisions and manual GPS, with protection against overwriting existing manual locations.
 
 - **Explicit address and business search in the GPS dialog.** Use **Search online** to send a query to the configured Photon provider, preview a result, then **Save** to apply its coordinates. Saved places and manual coordinates still work offline. `viewer.place_search_url` supports a private Photon endpoint or an empty string to disable lookup; searches are bounded, cached and edition-only. Original files remain unchanged.

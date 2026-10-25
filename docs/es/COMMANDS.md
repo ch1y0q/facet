@@ -507,3 +507,6 @@ python facet.py --recompute-tags     # Vuelve a etiquetar con el nuevo modelo
 python facet.py --compute-recommendations  # Comprueba las distribuciones
 python facet.py --recompute-average        # Aplica los nuevos pesos
 ```
+## Volver a vincular fotos movidas
+
+Tras mover los archivos manualmente, `python -m db.relink` permite previsualizar rutas antiguas/nuevas exactas y conservar sus asociaciones en la base. La vista previa es el modo predeterminado. Aplicar exige el ID del plan guardado y `--acknowledge-unverified-identity`: la base no contiene prueba criptográfica del original ausente. Detén visor/escáneres y revisa el plan. Ambas rutas deben permanecer en raíces configuradas con la misma visibilidad de usuarios; se rechazan copias, nombres ambiguos, planes obsoletos y asignaciones de rutas. Los acompañantes deben ser explícitos; los rectángulos manuales requieren revisión en el editor y el estado Immich no cambia. Contrato y ejemplos: [Relink a missing photo](../RELINK.md) (inglés).

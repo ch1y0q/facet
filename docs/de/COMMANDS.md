@@ -506,3 +506,7 @@ python facet.py --recompute-tags     # Mit neuem Modell neu verschlagworten
 python facet.py --compute-recommendations  # Verteilungen prüfen
 python facet.py --recompute-average        # Neue Gewichtungen anwenden
 ```
+
+## Verschobene Fotos neu verknüpfen
+
+Nach einem selbst ausgeführten Dateiumzug kann `python -m db.relink` exakte Alt-/Neupfade zunächst prüfen und Datenbankzuordnungen erhalten. Die Vorschau ist Standard. Anwenden erfordert die gespeicherte Plan-ID und `--acknowledge-unverified-identity`: Die Datenbank enthält keinen kryptografischen Beweis des fehlenden Originals. Viewer/Scanner stoppen und den Plan prüfen. Beide Pfade müssen in konfigurierten Wurzeln mit gleicher Benutzersichtbarkeit bleiben; Kopien, mehrdeutige Namen, veraltete Pläne und Pfadzuordnungen werden abgelehnt. Begleitdateien müssen ausdrücklich benannt werden; manuelle Rechtecke benötigen Prüfung im Editor, Immich-Zustand bleibt unverändert. Vertrag und Beispiele: [Relink a missing photo](../RELINK.md) (Englisch).
