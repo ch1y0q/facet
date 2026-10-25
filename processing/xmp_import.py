@@ -26,12 +26,16 @@ retag): the foreign ones are stored in ``photo_manual_tags`` with
 already is one of the photo's AI tags, a person name of the photo, or a
 hierarchical ``a|b`` path.
 
-Caveat: the photo-side timestamp is ``scanned_at`` (when Facet last scored the
-photo), not a rating-edit time — Facet has no per-rating ``updated_at`` column. A
-rating changed inside Facet *after* the last scan therefore carries no newer
-timestamp, so an external sidecar that is newer than the scan (but older than the
-in-app edit) will still win and overwrite it. Run an import before re-rating in
-Facet if the external editor is the source of truth. By default imports write
+Review edits after schema upgrade have per-field clocks in photo_metadata_edits,
+covering direct global/per-user SQL writes and explicit resets. An older packet
+cannot replace a changed review field unless overwrite_review=True; review
+changes are refused together to preserve Keep/reject invariants. XMP receipts
+record the changed fields and source packet, not a guessed human author. Old
+untracked rows retain the legacy scan-time policy with an explicit diagnostic;
+no pre-upgrade edit timestamps are invented. dry_run=True returns a read-only
+plan; apply always replans inside the writer transaction.
+
+By default imports write
 the global ``photos.*`` rating columns; pass ``user_id`` (CLI ``--user``) in
 multi-user mode to read and write that user's ``user_preferences`` ratings
 instead. Keywords always go to the global ``photo_manual_tags`` (tags are not
@@ -173,14 +177,16 @@ def parse_sidecar(path: str):
     label = _find_scalar(root, f"{{{NS_XMP}}}Label")
     metadata_date = _find_scalar(root, f"{{{NS_XMP}}}MetadataDate")
 
+    invalid_rating = False
     star_rating = 0
     is_rejected = False
     is_favorite = False
     if rating_raw is not None:
         try:
             value = int(float(rating_raw))
-        except ValueError:
+        except (ValueError, OverflowError):
             value = 0
+            invalid_rating = True
         if value < 0:
             is_rejected = True
         else:
@@ -202,6 +208,7 @@ def parse_sidecar(path: str):
         "tags": _find_subjects(root),
         "metadata_date": _parse_date(metadata_date),
         "has_rating": rating_raw is not None or label is not None,
+        "invalid_rating": invalid_rating,
     }
 
 
@@ -220,30 +227,69 @@ def _person_names(conn, path: str) -> set[str]:
     return names
 
 
-def _foreign_keywords(conn, path: str, ai_tags, keywords: list[str]) -> list[str]:
+def _foreign_keywords(conn, path: str, ai_tags, keywords: list[str], diagnostics=None) -> list[str]:
     """Normalized, de-duplicated keywords that are neither AI tags, person names
     nor hierarchical paths. Unstorable keywords are dropped with a warning."""
     people: set[str] | None = None
     foreign: list[str] = []
     for keyword in keywords:
         if "|" in keyword:
+            if diagnostics is not None:
+                diagnostics.append({"field": "keywords", "value": keyword, "reason": "hierarchy_unsupported"})
             continue
         try:
             tag = normalize_manual_tag(keyword)
         except ManualTagError as ex:
+            if diagnostics is not None:
+                diagnostics.append({"field": "keywords", "value": keyword, "reason": "invalid_keyword", "detail": str(ex)})
             logger.warning("Ignoring XMP keyword %r on %s: %s", keyword, path, ex)
             continue
         if is_ai_tag(ai_tags, tag) or tag in foreign:
+            if diagnostics is not None:
+                diagnostics.append({"field": "keywords", "value": keyword, "reason": "ai_or_duplicate"})
             continue
         if people is None:
             people = _person_names(conn, path)
         if tag not in people:
             foreign.append(tag)
+        elif diagnostics is not None:
+            diagnostics.append({"field": "keywords", "value": keyword, "reason": "person_name"})
     return foreign
 
 
 def import_sidecars(conn, root: str | None = None, *, user_id: str | None = None,
-                    overwrite_manual_gps: bool = False) -> dict:
+                    overwrite_manual_gps: bool = False, dry_run: bool = False,
+                    fields=None, overwrite_review: bool = False) -> dict:
+    """Preview or apply scoped sidecars; previews perform only SELECTs.
+
+    Fields are review (stars/favorite/reject/Keep together), gps, and keywords.
+    Apply replans under the writer transaction; a preview is not a write token.
+    """
+    selected = frozenset(('review', 'gps', 'keywords') if fields is None else fields)
+    if not selected or not selected <= {'review', 'gps', 'keywords'}:
+        raise ValueError('fields must select review, gps and/or keywords')
+    if dry_run:
+        return _import_sidecars(conn, root, user_id=user_id, overwrite_manual_gps=overwrite_manual_gps,
+                                dry_run=True, fields=selected, overwrite_review=overwrite_review)
+    owns_transaction = not conn.in_transaction
+    if owns_transaction:
+        conn.execute('BEGIN IMMEDIATE')
+    conn.execute('SAVEPOINT sidecar_import')
+    try:
+        result = _import_sidecars(conn, root, user_id=user_id, overwrite_manual_gps=overwrite_manual_gps,
+                                  dry_run=False, fields=selected, overwrite_review=overwrite_review)
+        conn.execute('RELEASE sidecar_import')
+        conn.commit()
+        return result
+    except BaseException:
+        conn.execute('ROLLBACK TO sidecar_import')
+        conn.execute('RELEASE sidecar_import')
+        if owns_transaction:
+            conn.rollback()
+        raise
+
+
+def _import_sidecars(conn, root, *, user_id, overwrite_manual_gps, dry_run, fields, overwrite_review):
     """Import ``<image>.xmp`` sidecars into the ``photos`` table.
 
     ``root`` limits the import to photos whose path is, or is under, that path.
@@ -278,7 +324,14 @@ def import_sidecars(conn, root: str | None = None, *, user_id: str | None = None
             params,
         ).fetchall()
 
-    updated = unchanged = missing = skipped = tags_added = 0
+    from db.metadata_edits import REVIEW_FIELDS, record_sidecar_receipt, review_edit_state
+
+    updated = unchanged = missing = skipped = tags_added = conflicts = legacy_review_warnings = 0
+    entries = []
+    detail_limit = 1000
+    def describe(entry):
+        if len(entries) < detail_limit:
+            entries.append(entry)
     created_by = user_id if per_user else None
     created_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     for row in rows:
@@ -286,32 +339,40 @@ def import_sidecars(conn, root: str | None = None, *, user_id: str | None = None
         candidates = [path for path in candidates if os.path.exists(path)]
         if not candidates:
             missing += 1
+            describe({"path": row["path"], "sidecar": None, "changes": {}, "diagnostics": [{"reason": "missing_sidecar"}]})
             continue
         sidecar = max(candidates, key=os.path.getmtime)
         parsed = parse_sidecar(sidecar)
         if parsed is None:
             skipped += 1
+            describe({"path": row["path"], "sidecar": sidecar, "changes": {}, "diagnostics": [{"reason": "unparseable_sidecar"}]})
             continue
+
+        diagnostics = []
 
         existing = set(load_manual_tags(conn, row["path"]))
         new_keywords = [
-            tag for tag in _foreign_keywords(conn, row["path"], row["tags"], parsed["tags"])
+            tag for tag in _foreign_keywords(conn, row["path"], row["tags"], parsed["tags"], diagnostics)
             if tag not in existing
         ]
         room = max(0, MAX_TAGS_PER_PHOTO - len(existing))
         if len(new_keywords) > room:
             logger.info("Skipping %d keyword(s) on %s: photo is at the %d-tag cap",
                         len(new_keywords) - room, row["path"], MAX_TAGS_PER_PHOTO)
+            diagnostics.extend({"field": "keywords", "value": tag, "reason": "tag_cap"} for tag in new_keywords[room:])
             new_keywords = new_keywords[:room]
+        if "keywords" not in fields:
+            new_keywords = []
         star = row["star_rating"] or 0
         favorite = bool(row["is_favorite"])
         rejected = bool(row["is_rejected"])
         kept = bool(row["is_kept"])
         untouched = not (star or favorite or rejected or kept)
 
-        sidecar_epoch = _to_epoch(parsed["metadata_date"]) or os.path.getmtime(sidecar)
+        metadata_epoch = _to_epoch(parsed["metadata_date"])
+        sidecar_epoch = os.path.getmtime(sidecar) if metadata_epoch is None else metadata_epoch
         photo_epoch = _to_epoch(_parse_date(row["scanned_at"]))
-        sidecar_wins = photo_epoch is None or sidecar_epoch >= photo_epoch
+        sidecar_wins = overwrite_review or photo_epoch is None or sidecar_epoch >= photo_epoch
         if parsed["has_rating"] and sidecar_wins:
             star = parsed["star_rating"]
             favorite = parsed["is_favorite"]
@@ -340,24 +401,67 @@ def import_sidecars(conn, root: str | None = None, *, user_id: str | None = None
                        and (not row["gps_manually_set"]
                             or gps != (row["gps_latitude"], row["gps_longitude"])))
 
-        if (not new_keywords and not gps_changed and kept == bool(row["is_kept"]) and star == (row["star_rating"] or 0)
-                and favorite == bool(row["is_favorite"])
-                and rejected == bool(row["is_rejected"])):
+        original_review = {field: row[field] or 0 for field in REVIEW_FIELDS}
+        proposed_review = dict(zip(REVIEW_FIELDS, (star, int(favorite), int(rejected), int(kept))))
+        review_changes = {field: {"before": original_review[field], "after": proposed_review[field]}
+                          for field in REVIEW_FIELDS if original_review[field] != proposed_review[field]}
+        clock_scope = user_id if per_user else ''
+        clocks = review_edit_state(conn, row['path'], clock_scope)
+        if "review" not in fields:
+            review_changes = {}
+        elif parsed.get("invalid_rating"):
+            diagnostics.append({"field": "review", "reason": "invalid_rating"})
+            review_changes = {}
+        elif review_changes:
+            stale = [field for field in review_changes if field in clocks
+                     and (_to_epoch(_parse_date(clocks[field]['changed_at'])) or 0) > sidecar_epoch]
+            if stale and not overwrite_review:
+                conflicts += 1
+                diagnostics.append({"field": "review", "reason": "newer_local_edit", "fields": stale,
+                                    "incoming": review_changes})
+                review_changes = {}
+            elif not clocks and any(original_review.values()):
+                legacy_review_warnings += 1
+                diagnostics.append({"field": "review", "reason": "untracked_legacy_edit"})
+                if not dry_run and legacy_review_warnings <= 20:
+                    logger.warning("Review edit time is unknown for %s; applying the legacy scan-time policy. Preview first with --dry-run.", row["path"])
+        if parsed['has_rating'] and not sidecar_wins and "review" in fields:
+            diagnostics.append({"field": "review", "reason": "older_than_scan"})
+        if "gps" not in fields:
+            gps_changed = False
+        elif gps is not None and row['gps_manually_set'] and not overwrite_manual_gps:
+            diagnostics.append({"field": "gps", "reason": "manual_gps_protected"})
+        changes = dict(review_changes)
+        if gps_changed:
+            changes['gps'] = {"before": [row['gps_latitude'], row['gps_longitude'], row['gps_manually_set']],
+                              "after": [*gps, 1]}
+        if new_keywords:
+            changes['keywords'] = {"added": new_keywords}
+        source_at = datetime.fromtimestamp(sidecar_epoch, timezone.utc).isoformat()
+        describe({"path": row['path'], "sidecar": sidecar, "changes": changes, "diagnostics": diagnostics[:100],
+                  "diagnostics_omitted": max(0, len(diagnostics) - 100),
+                  "source": {"metadata_date": parsed['metadata_date'].isoformat() if parsed['metadata_date'] else None,
+                             "effective_at": source_at,
+                             "clock": "metadata_date" if metadata_epoch is not None else "file_mtime"}, "review_provenance": clocks})
+        if not changes:
             unchanged += 1
             continue
-
-        for tag in new_keywords:
-            if insert_manual_tag(conn, row["path"], tag, SOURCE_XMP, created_by, created_at):
-                tags_added += 1
-        upsert_rating_state(
-            conn, row["path"], user_id,
-            star_rating=star, is_favorite=favorite, is_rejected=rejected, is_kept=kept,
-        )
-        if gps_changed:
-            conn.execute("UPDATE photos SET gps_latitude=?, gps_longitude=?, gps_manually_set=1 WHERE path=?",
-                         (*gps, row["path"]))
+        if dry_run:
+            tags_added += len(new_keywords)
+        else:
+            for tag in new_keywords:
+                if insert_manual_tag(conn, row['path'], tag, SOURCE_XMP, created_by, created_at):
+                    tags_added += 1
+            if review_changes:
+                upsert_rating_state(conn, row['path'], user_id, per_user=per_user,
+                                    **{field: values['after'] for field, values in review_changes.items()})
+                record_sidecar_receipt(conn, row['path'], clock_scope, review_changes, sidecar, source_at)
+            if gps_changed:
+                conn.execute("UPDATE photos SET gps_latitude=?, gps_longitude=?, gps_manually_set=1 WHERE path=?",
+                             (*gps, row['path']))
         updated += 1
 
-    conn.commit()
     return {"updated": updated, "unchanged": unchanged, "missing": missing, "skipped": skipped,
-            "tags_added": tags_added}
+            "tags_added": tags_added, "conflicts": conflicts, "legacy_review_warnings": legacy_review_warnings,
+            "dry_run": dry_run, "entries": entries,
+            "details_truncated": max(0, len(rows) - len(entries))}

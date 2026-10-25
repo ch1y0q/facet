@@ -108,7 +108,7 @@ Ein Datensatz, der `rating` oder `pick` ganz auslässt, lässt Facets entspreche
 
 ### Konfliktregeln
 
-- **Bewertungen und Labels folgen der Regel „neueste gewinnt"**, verglichen zwischen dem `xmp:MetadataDate` des Sidecars und dem `scanned_at` des Fotos (dem letzten Zeitpunkt, an dem Facet es bewertet hat) — nicht einem Zeitstempel pro Bewertung. Ein Sidecar, das neuer ist als der letzte Scan, kann eine Bewertung überschreiben, die Sie *nach* diesem Scan in Facet geändert haben. Halten Sie den Roundtrip einfach: Export → Lightroom liest → Bearbeitung in Lightroom → Lightroom speichert → Import, ohne zwischendurch in Facet neu zu bewerten.
+- Nach dem Upgrade speichern SQLite-Trigger je Foto/Konto/Bewertungsfeld einen Beleg, auch bei Zurücksetzen und Löschen einer Präferenzzeile. Ein älteres Paket erzeugt `newer_local_edit`; die ganze Bewertungsgruppe bleibt erhalten. `--overwrite-sidecar-review` erzwingt ausdrücklich den Ersatz. XMP-Belege nennen Datei/Zeit; `local` bedeutet unbekannter SQL-Schreiber, keinen bestätigten Menschen. Kein neuer Import für Beschriftungen, Gesichter, Hierarchien oder unmarkiertes externes GPS.
 - **Tags und Stichwörter werden zusammengeführt, nie ersetzt.** Beim Export schreibt Facet seine KI-Tags und seine manuellen Tags (dedupliziert) zu dem, was das Sidecar bereits enthält; beim Import wird ein Sidecar-Stichwort zu einem manuellen Tag und berührt die KI-Tags nie — Lightroom-Stichwörter löschen nie die Auto-Tags von Facet und umgekehrt. Was ein Entfernen bewirkt, steht unter [Manuelle Tags und XMP-Stichwörter](#manuelle-tags-und-xmp-stichwörter).
 - **Mehrbenutzerbetrieb** (`--export-sidecars --user alice` / `--import-sidecars --user alice`): Bewertungen werden in Alices `user_preferences`-Zeile statt in die globalen Spalten geleitet. Stichwörter bleiben unabhängig von `--user` global — manuelle Tags werden von allen Benutzern geteilt.
 - Importierte Stichwörter landen in der Tabelle `photo_manual_tags`, die die Tag-Filter direkt lesen; ein `python database.py --migrate-tags` ist nach `--import-sidecars` daher nicht mehr nötig.
@@ -164,8 +164,8 @@ Facet hält die Tags, die Sie selbst eingeben (siehe [Web-Galerie — Manuelle T
 
 | Feld | Facet schreibt | Facet liest zurück | Konfliktregel |
 |---|---|---|---|
-| Bewertung (Sterne/Ablehnung) | `xmp:Rating` (`-1` = abgelehnt) | `xmp:Rating` | Neueste gewinnt, vs. `scanned_at` |
-| Farblabel | `xmp:Label` (`Red` = abgelehnt, `Yellow` = Favorit) | `xmp:Label` | Neueste gewinnt, vs. `scanned_at` |
+| Bewertung (Sterne/Ablehnung) | `xmp:Rating` (`-1` = abgelehnt) | `xmp:Rating` | Bewertungszeitmarken; bisheriger Scan-Rückfall |
+| Farblabel | `xmp:Label` (`Red` = abgelehnt, `Yellow` = Favorit) | `xmp:Label` | Bewertungszeitmarken; bisheriger Scan-Rückfall |
 | Tags/Stichwörter | `dc:subject` (flach, KI-Tags + manuelle Tags, enthält Namen erkannter Personen) | `dc:subject` (als manuelle Tags gespeichert) | Zusammengeführt, nie ersetzt; ein Entfernen in Facet wird nicht in ein Sidecar zurückgeschrieben (siehe [Manuelle Tags und XMP-Stichwörter](#manuelle-tags-und-xmp-stichwörter)) |
 | Hierarchische Tags | `lr:hierarchicalSubject` (`Category\|<kat>`, `People\|<name>`) | Nicht zurückimportiert | Nur Export |
 | Bildunterschrift | `dc:description` (+ `IPTC:Caption-Abstract` über exiftool) | Nicht zurückimportiert | Nur Export |
@@ -174,3 +174,13 @@ Facet hält die Tags, die Sie selbst eingeben (siehe [Web-Galerie — Manuelle T
 Siehe [Befehle — Vorschau & Export](COMMANDS.md#preview--export) für die vollständige CLI-Referenz (`--export-sidecars`, `--import-sidecars`, `--embed-originals`, `--score-to-stars`, `--user`).
 
 Steht ein veraltetes `facet:GPSState=cleared` neben Standard-GPS-Feldern, hat ein vollständiges gültiges Koordinatenpaar Vorrang. Ein unvollständiges oder ungültiges, nicht leeres Paar ist mehrdeutig und wird ignoriert; es löscht keinen Standort. Nur fehlende oder leere Koordinaten mit der expliziten Löschmarkierung löschen GPS. Manuelle GPS-Werte bleiben geschützt, sofern Überschreiben nicht ausdrücklich angefordert wird.
+
+## Sidecar-Importvorschau und Konflikte
+
+`--import-sidecars /pfad --dry-run` zeigt JSON mit gewählter Datei, Vorher/Nachher-Werten, Ergänzungen, Quelle und Ablehnungsgründen. Die vorhandene Datenbank wird schreibgeschützt geöffnet, ohne Migration oder Commit. Anwenden liest Dateien und Datenbank in seiner Schreibtransaktion erneut; JSON ist kein Anwendungstoken.
+
+`--sidecar-fields review,gps,keywords` wählt Gruppen. `review` hält Sterne, Favorit, Ablehnung und Keep zusammen, damit keine halbe Entscheidung angewendet wird. Manuelles GPS bleibt ohne `--overwrite-manual-gps` geschützt. Stichwörter bleiben additiv und auch mit `--user` gemeinsam.
+
+Nach dem Upgrade speichern SQLite-Trigger je Foto/Konto/Bewertungsfeld einen Beleg, auch bei Zurücksetzen und Löschen einer Präferenzzeile. Ein älteres Paket erzeugt `newer_local_edit`; die ganze Bewertungsgruppe bleibt erhalten. `--overwrite-sidecar-review` erzwingt ausdrücklich den Ersatz. XMP-Belege nennen Datei/Zeit; `local` bedeutet unbekannter SQL-Schreiber, keinen bestätigten Menschen. Kein neuer Import für Beschriftungen, Gesichter, Hierarchien oder unmarkiertes externes GPS.
+
+Ältere Änderungen ohne verlässliche Zeit erzeugen `untracked_legacy_edit` und behalten die bisherige Scan-Regel. Zeiten werden nicht erfunden. Quelle ist `xmp:MetadataDate`, sonst Datei-mtime; das ist kein Nebenläufigkeitsprotokoll. Details sind auf 1000 Fotos und 100 Diagnosen je Foto begrenzt, mit Auslassungszähler. Umfang und Benutzersichtbarkeit gelten vor der Planung; vollständige Viewer-Exporte behalten Belege, inkrementelle Exporte die Viewer-Zeitmarken.

@@ -108,7 +108,7 @@ A record that omits `rating` or `pick` entirely leaves Facet's corresponding val
 
 ### Conflict rules
 
-- **Ratings and labels are newest-wins**, compared between the sidecar's `xmp:MetadataDate` and the photo's `scanned_at` (the last time Facet scored it) — not a per-rating edit timestamp. A sidecar newer than the last scan can override a rating you changed in Facet *after* that scan. Keep the round trip simple: export → Lightroom reads → edit in Lightroom → Lightroom saves → import, without re-rating inside Facet in between.
+- After this version initializes the database, SQLite triggers keep one edit receipt per photo/account/review field, including resets and preference-row deletion. A packet older than a changed field is a `newer_local_edit` conflict and that review group stays unchanged. `--overwrite-sidecar-review` explicitly overrides both edit clocks and the legacy scan gate. A source receipt identifies the XMP packet/time; `local` means an unknown SQL writer, not a verified human author. No caption, face, hierarchy or unmarked external GPS import is added.
 - **Tags and keywords are merged, never replaced.** On export Facet writes its AI tags and its manual tags (deduped) alongside whatever the sidecar already holds; on import a sidecar keyword becomes a manual tag and never touches the AI tags — Lightroom keywords never wipe Facet's auto-tags, and vice versa. See [Manual tags and XMP keywords](#manual-tags-and-xmp-keywords) for what a removal does.
 - **Multi-user** (`--export-sidecars --user alice` / `--import-sidecars --user alice`): ratings route to Alice's `user_preferences` row instead of the global columns. Keywords stay global regardless of `--user` — manual tags are shared across users.
 - Imported keywords go to the `photo_manual_tags` table, which the tag filters read directly, so no `python database.py --migrate-tags` is needed after `--import-sidecars`.
@@ -164,8 +164,8 @@ Facet keeps the tags you type yourself (see [Viewer — Manual Tags](VIEWER.md#m
 
 | Field | Facet writes | Facet reads back | Conflict rule |
 |---|---|---|---|
-| Star rating / reject | `xmp:Rating` (`-1` = rejected) | `xmp:Rating` | Newest-wins vs. `scanned_at` |
-| Color label | `xmp:Label` (`Red` = rejected, `Yellow` = favorite) | `xmp:Label` | Newest-wins vs. `scanned_at` |
+| Star rating / reject | `xmp:Rating` (`-1` = rejected) | `xmp:Rating` | Tracked review clocks; legacy scan fallback |
+| Color label | `xmp:Label` (`Red` = rejected, `Yellow` = favorite) | `xmp:Label` | Tracked review clocks; legacy scan fallback |
 | Tags / keywords | `dc:subject` (flat, AI tags + manual tags, includes named-face person names) | `dc:subject` (stored as manual tags) | Merged, never replaced; a removal in Facet is not written back to a sidecar (see [Manual tags and XMP keywords](#manual-tags-and-xmp-keywords)) |
 | Hierarchical tags | `lr:hierarchicalSubject` (`Category\|<cat>`, `People\|<name>`) | Not re-imported | Export-only |
 | Caption | `dc:description` (+ `IPTC:Caption-Abstract` via exiftool) | Not re-imported | Export-only |
@@ -174,3 +174,13 @@ Facet keeps the tags you type yourself (see [Viewer — Manual Tags](VIEWER.md#m
 See [Commands — Preview & Export](COMMANDS.md#preview--export) for the full CLI reference (`--export-sidecars`, `--import-sidecars`, `--embed-originals`, `--score-to-stars`, `--user`).
 
 When a stale `facet:GPSState=cleared` accompanies standard GPS fields, a complete valid latitude/longitude pair wins. A partial or invalid nonblank pair is ambiguous and ignored; it never clears a location. Only an absent or blank pair with the explicit clear marker clears GPS. Existing manual GPS remains protected unless overwrite is explicitly requested.
+
+## Sidecar import preview and review conflicts
+
+Use `--import-sidecars /path --dry-run` to inspect JSON before writing. It reports the chosen packet, intended before/after fields, keyword additions, source time and skip/conflict reasons. Preview opens the existing database read-only, performs no migration and never commits. Apply reads the current packets and database again under its write transaction; the preview JSON is not an apply token.
+
+`--sidecar-fields review,gps,keywords` selects field groups; omit groups to leave them alone. Review groups stars, favorite, rejection and Keep together so a conflict cannot apply half a decision. GPS keeps the existing manual-location protection unless `--overwrite-manual-gps` is given. Keywords remain additive and shared even with `--user`.
+
+After this version initializes the database, SQLite triggers keep one edit receipt per photo/account/review field, including resets and preference-row deletion. A packet older than a changed field is a `newer_local_edit` conflict and that review group stays unchanged. `--overwrite-sidecar-review` explicitly overrides both edit clocks and the legacy scan gate. A source receipt identifies the XMP packet/time; `local` means an unknown SQL writer, not a verified human author. No caption, face, hierarchy or unmarked external GPS import is added.
+
+Pre-upgrade review edits have no reliable timestamp: `untracked_legacy_edit` is reported and the existing scan-time policy remains. No timestamps are invented, so preview these legacy rows before choosing an authority. The source clock is `xmp:MetadataDate`, or file mtime when absent/invalid; neither is a remote revision or a concurrent-writer protocol. Details include the first 1,000 scoped photos and 100 diagnostics per photo, with explicit omitted counts. Photo scope and named-user visibility apply before planning; full viewer exports retain receipts and incremental exports preserve viewer-side clocks.

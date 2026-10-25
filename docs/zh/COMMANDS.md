@@ -79,6 +79,9 @@ API 会将其呈现在 `/api/scan/status` 的 `progress` 字段以及 SSE 数据
 | `python facet.py --import-lightroom 文件 --user alice` | 多用户模式：写入 Alice 的 `user_preferences` 行，而不是全局列；在多用户安装上**必须**指定 —— 否则会被拒绝，以免导入静默落到错误的范围 |
 | `python facet.py --import-sidecars` | 把 `<image>.xmp` 附属文件中的评分／标记／标签导回数据库（全部照片）；Facet 尚未拥有的关键字会成为[手动标签](INTEROP.md#手动标签与-xmp-关键字) |
 | `python facet.py --import-sidecars /path` | 仅导入某个路径子树下照片的附属文件 |
+| `python facet.py --import-sidecars /path --dry-run` | 只读预览所选文件、前后值、来源和跳过原因；不迁移数据库。 |
+| `python facet.py --import-sidecars /path --sidecar-fields keywords,gps` | 仅导入关键字与 GPS，保留审核状态；也可选择 `review` 组。 |
+| `python facet.py --import-sidecars /path --overwrite-sidecar-review` | 查看预览后，明确覆盖审核编辑时间冲突及扫描时间限制。 |
 | `python facet.py --import-sidecars --user alice` | 多用户模式：把评分导入 Alice 的 `user_preferences`，而不是全局列（关键词仍为全局） |
 | `python facet.py --import-sidecars --overwrite-manual-gps` | 用附属文件中的手动位置替换 Facet 中已设置的手动 GPS（包括已清除的位置）；不加此选项时保留已有的手动 GPS |
 | `python facet.py --export-sidecars` | 为全部照片从数据库写入／合并 `<image>.xmp` 附属文件（仅附属文件） |
@@ -89,7 +92,7 @@ API 会将其呈现在 `/api/scan/status` 的 `progress` 字段以及 SSE 数据
 
 > **元数据双向同步。** Facet 会把评分、颜色标记、关键词、照片描述和已命名的人脸区域写入标准的 `<image>.xmp` 附属文件，整个生态都能读取（Lightroom、darktable、digiKam、immich 等）；除非你用 `--export-sidecars --embed-originals` 主动开启，否则原始图像永远不会被修改（仅限 JPEG/HEIC/TIFF/PNG/DNG——RAW 绝不会被改动）。写入文件本身以及安全的关键词并集合并需要 **exiftool**；没有它时，Facet 会退回到零依赖的纯 XML 附属文件。写出的关键字是 AI 标签加上你的[手动标签](VIEWER.md#手动标签)，并且一个关键字一旦写出，之后的导出不会再把它从附属文件中移除（参见[手动标签与 XMP 关键字](INTEROP.md#手动标签与-xmp-关键字)）。
 >
-> **注意事项。** `--import-sidecars` 依据照片的 `scanned_at`（最后一次扫描时间）以*较新者优先*的方式处理评分／标记，而不是依据每条评分的编辑时间——因此比最后一次扫描更新的附属文件，可能覆盖你在扫描之后于 Facet 中改过的评分。如果外部编辑器才是权威来源，请在重新评分之前运行 `--import-sidecars`。导入的关键字会进入手动标签表，标签筛选直接读取该表，因此之后不需要运行 `--migrate-tags`。
+> 升级后，SQLite 触发器为每张照片、账户及审核字段保存一条最新凭据，包括重置和删除偏好行。较旧数据包产生 `newer_local_edit`，保留整个审核组；`--overwrite-sidecar-review` 可明确覆盖。XMP 凭据记录文件与时间；`local` 表示未知 SQL 写入者，并不表示已验证的人类作者。不增加描述、人脸、层级或无标记外部 GPS 导入。 升级前没有可靠时间的编辑会产生 `untracked_legacy_edit`，继续使用原有扫描时间规则，不编造历史时间。来源为 `xmp:MetadataDate`，缺失或无效时使用文件修改时间；这不是并发同步协议。详情最多包含1000张照片及每张100条诊断，并明确报告省略数量。范围和用户可见性先于规划应用；完整查看器导出保留凭据，增量导出保留查看器编辑时间。
 >
 > **`--export-manifest` 与 `--export-csv`／`--export-json` 的区别。** 清单的可选参数限定的是*导出哪些照片*（与 `--export-sidecars` 一样），而不是输出文件名——它始终在工作目录中（重新）写入 `facet_manifest.json`，因为它的用途就是就地重新生成，供反复读取固定路径的工具使用。它携带的 `star_rating`／`is_favorite`／`is_rejected` 值与 `--export-sidecars` 相同——默认取全局列，给出 `--user` 时则取指定用户的 `user_preferences` 行，于是多用户安装不会再导出一份全是零的清单——另外还有 `is_burst_lead`（始终为全局），一个顶层的 `pending_corrections` 计数（尚未被检测运行应用的曝光包围／全景手动修正数量——非零计数会在导出后打印一行提到 `--detect-panoramas` 的警告），并以紧凑（非美化缩进）的 JSON 写出：在约 10 万张照片的规模下，`--export-json` 的 `indent=2` 输出会达到几十兆字节，而机器读取方并不会从中获益。
 

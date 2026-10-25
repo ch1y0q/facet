@@ -108,7 +108,7 @@ Un enregistrement qui omet `rating` ou `pick` laisse intacte la valeur correspon
 
 ### Règles de conflit
 
-- **Les notes et libellés suivent la règle « le plus récent gagne »**, en comparant le `xmp:MetadataDate` du sidecar au `scanned_at` de la photo (la dernière fois que Facet l'a évaluée) — pas un horodatage par note. Un sidecar plus récent que le dernier scan peut écraser une note que vous avez modifiée dans Facet *après* ce scan. Gardez l'aller-retour simple : export → Lightroom lit → modification dans Lightroom → Lightroom enregistre → import, sans re-noter dans Facet entre les deux.
+- Après mise à niveau, des déclencheurs SQLite gardent une réception par photo/compte/champ de tri, y compris remises à zéro et suppression des préférences. Un paquet plus ancien produit `newer_local_edit` et laisse tout le groupe intact. `--overwrite-sidecar-review` force explicitement le remplacement. La réception XMP indique fichier/date ; `local` désigne un écrivain SQL inconnu, pas un auteur humain confirmé. Aucun import de légende, visage, hiérarchie ou GPS externe sans marqueur n’est ajouté.
 - **Les tags et mots-clés sont fusionnés, jamais remplacés.** À l'export, Facet écrit ses tags IA et ses tags manuels (dédoublonnés) à côté de ce que le sidecar contient déjà ; à l'import, un mot-clé de sidecar devient un tag manuel et ne touche jamais les tags IA — les mots-clés Lightroom n'effacent jamais les tags automatiques de Facet, et inversement. Voir [Tags manuels et mots-clés XMP](#tags-manuels-et-mots-clés-xmp) pour l'effet d'une suppression.
 - **Multi-utilisateurs** (`--export-sidecars --user alice` / `--import-sidecars --user alice`) : les notes sont dirigées vers la ligne `user_preferences` d'Alice au lieu des colonnes globales. Les mots-clés restent globaux quel que soit `--user` — les tags manuels sont partagés entre les utilisateurs.
 - Les mots-clés importés vont dans la table `photo_manual_tags`, que les filtres de tags lisent directement : `python database.py --migrate-tags` n'est donc plus nécessaire après `--import-sidecars`.
@@ -164,8 +164,8 @@ Facet conserve les tags que vous saisissez vous-même (voir [Visionneuse — Tag
 
 | Champ | Facet écrit | Facet relit | Règle de conflit |
 |---|---|---|---|
-| Note (étoiles / rejet) | `xmp:Rating` (`-1` = rejeté) | `xmp:Rating` | Le plus récent gagne, vs `scanned_at` |
-| Libellé de couleur | `xmp:Label` (`Red` = rejeté, `Yellow` = favori) | `xmp:Label` | Le plus récent gagne, vs `scanned_at` |
+| Note (étoiles / rejet) | `xmp:Rating` (`-1` = rejeté) | `xmp:Rating` | Horloges de tri ; repli historique du scan |
+| Libellé de couleur | `xmp:Label` (`Red` = rejeté, `Yellow` = favori) | `xmp:Label` | Horloges de tri ; repli historique du scan |
 | Tags / mots-clés | `dc:subject` (à plat, tags IA + tags manuels, inclut les noms des personnes identifiées) | `dc:subject` (stockés comme tags manuels) | Fusionnés, jamais remplacés ; une suppression dans Facet n'est pas répercutée dans un sidecar (voir [Tags manuels et mots-clés XMP](#tags-manuels-et-mots-clés-xmp)) |
 | Tags hiérarchiques | `lr:hierarchicalSubject` (`Category\|<cat>`, `People\|<nom>`) | Non réimporté | Export uniquement |
 | Légende | `dc:description` (+ `IPTC:Caption-Abstract` via exiftool) | Non réimporté | Export uniquement |
@@ -174,3 +174,13 @@ Facet conserve les tags que vous saisissez vous-même (voir [Visionneuse — Tag
 Voir [Commandes — Aperçu et export](COMMANDS.md#preview--export) pour la référence CLI complète (`--export-sidecars`, `--import-sidecars`, `--embed-originals`, `--score-to-stars`, `--user`).
 
 Si un ancien marqueur `facet:GPSState=cleared` accompagne les champs GPS standard, une paire latitude/longitude complète et valide prévaut. Une paire partielle ou invalide non vide est ambiguë et ignorée ; elle ne supprime jamais la position. Seule une paire absente ou vide avec le marqueur explicite efface le GPS. Le GPS manuel reste protégé sauf demande explicite de remplacement.
+
+## Prévisualiser les imports et les conflits
+
+`--import-sidecars /chemin --dry-run` affiche un plan JSON : fichier choisi, valeurs avant/après, ajouts, source et motifs de refus. La base existante est ouverte en lecture seule, sans migration ni validation de transaction. L’application relit les fichiers et la base dans sa transaction ; le JSON n’est pas un jeton d’application.
+
+`--sidecar-fields review,gps,keywords` sélectionne les groupes. `review` réunit étoiles, favori, rejet et Keep pour éviter une décision partielle. Le GPS manuel reste protégé sans `--overwrite-manual-gps`. Les mots-clés restent additifs et partagés avec `--user`.
+
+Après mise à niveau, des déclencheurs SQLite gardent une réception par photo/compte/champ de tri, y compris remises à zéro et suppression des préférences. Un paquet plus ancien produit `newer_local_edit` et laisse tout le groupe intact. `--overwrite-sidecar-review` force explicitement le remplacement. La réception XMP indique fichier/date ; `local` désigne un écrivain SQL inconnu, pas un auteur humain confirmé. Aucun import de légende, visage, hiérarchie ou GPS externe sans marqueur n’est ajouté.
+
+Les anciennes modifications sans horodatage fiable produisent `untracked_legacy_edit` et gardent la règle historique basée sur le scan. Aucun horodatage n’est inventé. La source est `xmp:MetadataDate`, sinon la date du fichier ; ce n’est pas un protocole de concurrence. Le détail est limité à 1 000 photos et 100 diagnostics par photo, avec compte des omissions. La portée et la visibilité utilisateur sont appliquées avant le plan ; les exports complets conservent les réceptions et les mises à jour incrémentales gardent les horloges de la visionneuse.

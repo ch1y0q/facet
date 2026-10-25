@@ -108,7 +108,7 @@ Facet 的星级为 0 表示“没有意见”（见 `xmp_export.score_to_rating`
 
 ### 冲突规则
 
-- **星级和颜色标签遵循“最新者胜”**，比较的是附属文件的 `xmp:MetadataDate` 与照片的 `scanned_at`（Facet 最后一次为它评分的时间）—— 而不是逐条评分的编辑时间戳。比上次扫描更新的附属文件，可能覆盖你在那次扫描*之后*在 Facet 里改过的星级。请让往返保持简单：导出 → Lightroom 读取 → 在 Lightroom 中编辑 → Lightroom 保存 → 导入，中间不要在 Facet 里重新评星。
+- 升级后，SQLite 触发器为每张照片、账户及审核字段保存一条最新凭据，包括重置和删除偏好行。较旧数据包产生 `newer_local_edit`，保留整个审核组；`--overwrite-sidecar-review` 可明确覆盖。XMP 凭据记录文件与时间；`local` 表示未知 SQL 写入者，并不表示已验证的人类作者。不增加描述、人脸、层级或无标记外部 GPS 导入。
 - **标签和关键字只会合并，绝不会被替换。** 导出时，Facet 会把它的 AI 标签和手动标签（去重后）写在附属文件已有内容旁边；导入时，附属文件中的关键字会成为手动标签，且从不触碰 AI 标签——Lightroom 的关键字永远不会清掉 Facet 的自动标签，反之亦然。移除操作会产生什么效果，参见[手动标签与 XMP 关键字](#手动标签与-xmp-关键字)。
 - **多用户**（`--export-sidecars --user alice` / `--import-sidecars --user alice`）：评分会写入 Alice 的 `user_preferences` 行，而不是全局列。无论 `--user` 如何，关键字都保持全局——手动标签由所有用户共享。
 - 导入的关键字会进入 `photo_manual_tags` 表，标签筛选直接读取该表，因此 `--import-sidecars` 之后不再需要运行 `python database.py --migrate-tags`。
@@ -164,8 +164,8 @@ Facet 把你自己输入的标签（参见[查看器——手动标签](VIEWER.m
 
 | 字段 | Facet 写入 | Facet 读回 | 冲突规则 |
 |---|---|---|---|
-| 星级／淘汰 | `xmp:Rating`（`-1` = 已淘汰） | `xmp:Rating` | 最新者胜，对比 `scanned_at` |
-| 颜色标签 | `xmp:Label`（`Red` = 已淘汰，`Yellow` = 收藏） | `xmp:Label` | 最新者胜，对比 `scanned_at` |
+| 星级／淘汰 | `xmp:Rating`（`-1` = 已淘汰） | `xmp:Rating` | 审核字段编辑时间；旧数据使用扫描时间 |
+| 颜色标签 | `xmp:Label`（`Red` = 已淘汰，`Yellow` = 收藏） | `xmp:Label` | 审核字段编辑时间；旧数据使用扫描时间 |
 | 标签／关键字 | `dc:subject`（扁平，AI 标签 + 手动标签，包含已命名人脸的人物姓名） | `dc:subject`（存为手动标签） | 合并，绝不替换；在 Facet 中的移除不会回写到附属文件（参见[手动标签与 XMP 关键字](#手动标签与-xmp-关键字)） |
 | 层级标签 | `lr:hierarchicalSubject`（`Category\|<cat>`、`People\|<name>`） | 不再导入 | 仅导出 |
 | 照片描述 | `dc:description`（+ 经由 exiftool 的 `IPTC:Caption-Abstract`） | 不再导入 | 仅导出 |
@@ -174,3 +174,13 @@ Facet 把你自己输入的标签（参见[查看器——手动标签](VIEWER.m
 完整的 CLI 参考（`--export-sidecars`、`--import-sidecars`、`--embed-originals`、`--score-to-stars`、`--user`）请见[命令 — 预览与导出](COMMANDS.md#预览与导出)。
 
 当过时的 `facet:GPSState=cleared` 标记与标准 GPS 字段并存时，以完整且有效的经纬度为准。含有非空值但不完整或无效的坐标存在歧义，将被忽略，绝不会清除位置。仅当坐标均缺失或为空且存在明确的清除标记时才清除 GPS。已有手动 GPS 仍受保护，除非明确要求覆盖。
+
+## 附属文件导入预览与冲突
+
+`--import-sidecars /路径 --dry-run` 输出 JSON，列出所选文件、前后值、标签增加、来源和跳过原因。现有数据库以只读方式打开，不迁移、不提交。正式应用会在写事务中重新读取文件和数据库；预览 JSON 不是应用令牌。
+
+`--sidecar-fields review,gps,keywords` 选择字段组。`review` 将星级、收藏、拒绝和 Keep 作为整体，避免半个决定生效。没有 `--overwrite-manual-gps` 时仍保护手动 GPS。关键字仍只添加，且使用 `--user` 时仍共享。
+
+升级后，SQLite 触发器为每张照片、账户及审核字段保存一条最新凭据，包括重置和删除偏好行。较旧数据包产生 `newer_local_edit`，保留整个审核组；`--overwrite-sidecar-review` 可明确覆盖。XMP 凭据记录文件与时间；`local` 表示未知 SQL 写入者，并不表示已验证的人类作者。不增加描述、人脸、层级或无标记外部 GPS 导入。
+
+升级前没有可靠时间的编辑会产生 `untracked_legacy_edit`，继续使用原有扫描时间规则，不编造历史时间。来源为 `xmp:MetadataDate`，缺失或无效时使用文件修改时间；这不是并发同步协议。详情最多包含1000张照片及每张100条诊断，并明确报告省略数量。范围和用户可见性先于规划应用；完整查看器导出保留凭据，增量导出保留查看器编辑时间。
