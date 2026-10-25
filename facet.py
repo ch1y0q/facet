@@ -7,6 +7,7 @@ CLI entry point. The scoring engine is in processing/scorer.py.
 from typing import Any
 import importlib
 import atexit
+import ctypes
 import fnmatch
 import math
 import os
@@ -1187,6 +1188,13 @@ class _FlockBackend:
         fcntl.flock(fd, fcntl.LOCK_UN)
 
 
+class _Overlapped(ctypes.Structure):
+    """Win32 OVERLAPPED, defined once: ctypes caches every POINTER() type forever."""
+    _fields_ = [('Internal', ctypes.c_size_t), ('InternalHigh', ctypes.c_size_t),
+                ('Offset', ctypes.c_uint32), ('OffsetHigh', ctypes.c_uint32),
+                ('hEvent', ctypes.c_void_p)]
+
+
 class _WindowsLockBackend:
     """Native shared/exclusive Windows locks on one byte past the JSON payload.
 
@@ -1199,25 +1207,18 @@ class _WindowsLockBackend:
 
     @staticmethod
     def _lock_reserved_byte(fd, exclusive=None):
-        import ctypes
-
-        class Overlapped(ctypes.Structure):
-            _fields_ = [('Internal', ctypes.c_size_t), ('InternalHigh', ctypes.c_size_t),
-                        ('Offset', ctypes.c_uint32), ('OffsetHigh', ctypes.c_uint32),
-                        ('hEvent', ctypes.c_void_p)]
-
         kernel = ctypes.WinDLL('kernel32', use_last_error=True)
         handle = msvcrt.get_osfhandle(fd)
-        overlap = Overlapped(Offset=LIBRARY_LOCK_WINDOWS_OFFSET)
+        overlap = _Overlapped(Offset=LIBRARY_LOCK_WINDOWS_OFFSET)
         if exclusive is None:
             operation = kernel.UnlockFileEx
             operation.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32,
-                                  ctypes.c_uint32, ctypes.POINTER(Overlapped)]
+                                  ctypes.c_uint32, ctypes.POINTER(_Overlapped)]
             args = (handle, 0, LIBRARY_LOCK_WINDOWS_BYTES, 0, ctypes.byref(overlap))
         else:
             operation = kernel.LockFileEx
             operation.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32,
-                                  ctypes.c_uint32, ctypes.c_uint32, ctypes.POINTER(Overlapped)]
+                                  ctypes.c_uint32, ctypes.c_uint32, ctypes.POINTER(_Overlapped)]
             # FAIL_IMMEDIATELY; EXCLUSIVE_LOCK is absent for a shared status probe.
             flags = 1 | (2 if exclusive else 0)
             args = (handle, flags, 0, LIBRARY_LOCK_WINDOWS_BYTES, 0, ctypes.byref(overlap))

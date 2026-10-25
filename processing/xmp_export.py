@@ -707,10 +707,10 @@ def _exiftool_tag_args(rating: XmpRating, existing_flat: list[str],
                        keyword_state=None, reconcile=False) -> list[str]:
     """Build the exiftool ``-Tag=value`` args for ``rating`` (no exe, no target).
 
-    Keyword and hierarchical LISTS are cleared then rewritten as the UNION of the
-    target's existing keywords and Facet's own — foreign keywords authored by
-    Lightroom / darktable / etc. are preserved, never wiped, and re-running never
-    accumulates duplicates. Face regions are merged separately using explicit
+    Keyword lists are cleared then rewritten additively by default. Explicit
+    reconciliation removes only stale Facet-owned flat keywords; foreign values
+    and existing hierarchy remain preserved, and repeated exports do not
+    accumulate duplicates. Face regions are merged separately using explicit
     per-region ownership. ``xmp:Label`` is fully Facet-owned (favourite/reject only), so it is
     always emitted like ``xmp:Rating`` -- an empty value clears the exiftool tag,
     which is what un-favouriting must do. Caption is set only when present, so an

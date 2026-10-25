@@ -1310,6 +1310,22 @@ class TestLibraryLock:
         assert kernel.UnlockFileEx.argtypes[0] is ctypes.c_void_p
         assert (tmp_path / 'library.lock').read_bytes() == b'payload'
 
+    def test_repeated_windows_probes_reuse_one_overlapped_type(self, tmp_path, monkeypatch):
+        """ctypes caches every POINTER() type forever; a per-call struct grew on each status poll."""
+        import ctypes
+        import facet
+
+        kernel = mock.Mock(LockFileEx=mock.Mock(return_value=1), UnlockFileEx=mock.Mock(return_value=1))
+        monkeypatch.setattr(ctypes, 'WinDLL', mock.Mock(return_value=kernel), raising=False)
+        monkeypatch.setattr(facet, 'msvcrt', mock.Mock(get_osfhandle=lambda fd: 1))
+        pointer_types = set()
+        for _ in range(3):
+            facet._WindowsLockBackend.take_shared(0)
+            pointer_types.add(kernel.LockFileEx.argtypes[-1])
+            facet._WindowsLockBackend.unlock(0)
+            pointer_types.add(kernel.UnlockFileEx.argtypes[-1])
+        assert len(pointer_types) == 1
+
     @pytest.mark.parametrize('method', ['take_shared', 'take_exclusive', 'unlock'])
     def test_windows_lock_errors_propagate_without_closing_the_callers_fd(self, tmp_path, monkeypatch, method):
         import ctypes
