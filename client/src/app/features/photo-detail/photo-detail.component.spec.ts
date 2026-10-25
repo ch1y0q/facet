@@ -1240,6 +1240,44 @@ describe('PhotoDetailComponent', () => {
       expect(component.photo().gps_latitude).toBeUndefined();
     });
 
+    describe('date detail launcher ownership', () => {
+      for (const loss of ['identity', 'edition', 'navigation']) {
+        function lose(events: Subject<NavigationStart>) {
+          if (loss === 'identity') mockAuth.status.set({ user_id: 'bob' });
+          if (loss === 'edition') mockAuth.isEdition.set(false);
+          if (loss === 'navigation') { events.next(new NavigationStart(1, '/other')); events.next(new NavigationStart(2, '/')); }
+        }
+        it(`discards deferred date import after ${loss} and releases its listener`, async () => {
+          const events = new Subject<NavigationStart>(); mockRouter.events = events;
+          createComponent(); seedGrid();
+          const listeners = events.observers.length;
+          const module = await import('./capture-date-dialog.component');
+          let finish!: (value: typeof module) => void;
+          vi.spyOn(component, 'loadCaptureDateDialog').mockReturnValue(new Promise(resolve => { finish = resolve; }));
+          component.editCaptureDate(component.photo());
+          lose(events); finish(module);
+          await new Promise<void>(resolve => setTimeout(resolve, 0));
+          expect(mockDialog.open).not.toHaveBeenCalled();
+          expect(events.observers).toHaveLength(listeners);
+        });
+        it(`ignores closed date results after ${loss}`, async () => {
+          const events = new Subject<NavigationStart>(); mockRouter.events = events;
+          createComponent(); seedGrid();
+          const listeners = events.observers.length;
+          const closed = new Subject();
+          mockDialog.open.mockReturnValue({ afterClosed: () => closed });
+          await import('./capture-date-dialog.component');
+          component.editCaptureDate(component.photo());
+          await new Promise<void>(resolve => setTimeout(resolve, 0));
+          expect(mockDialog.open).toHaveBeenCalledOnce();
+          const before = component.photo(); const row = stored();
+          lose(events); closed.next({ date_taken: '2024:01:02 12:00:00', date_manually_set: 1 }); closed.complete();
+          expect(component.photo()).toBe(before); expect(stored()).toBe(row);
+          expect(events.observers).toHaveLength(listeners);
+        });
+      }
+    });
+
     describe('gps detail launcher ownership', () => {
       for (const loss of ['identity', 'edition', 'navigation']) {
         function lose(events: Subject<NavigationStart>) {
