@@ -394,13 +394,24 @@ describe('ManagePersonsComponent', () => {
       expect(spy).toHaveBeenCalled();
     });
 
-    it('deleting an ignored person leaves the grid total alone', async () => {
+    it('Delete finds a person that is only in the Ignored section', () => {
+      component.persons.set([]);
       component.ignored.set([{ ...waiter, is_hidden: true }]);
-      component.total.set(10);
+      const spy = vi.spyOn(component, 'deletePerson').mockResolvedValue();
 
       component.onDelete(7);
-      await vi.waitFor(() => expect(mockApi.post).toHaveBeenCalledWith('/persons/7/delete'));
 
+      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }));
+    });
+
+    it('deleting an ignored person removes it and leaves the grid total alone', async () => {
+      const ignoredWaiter = { ...waiter, is_hidden: true };
+      component.ignored.set([ignoredWaiter]);
+      component.total.set(10);
+
+      await component.deletePerson(ignoredWaiter);
+
+      expect(mockApi.post).toHaveBeenCalledWith('/persons/7/delete');
       expect(component.ignored()).toEqual([]);
       expect(component.total()).toBe(10);
     });

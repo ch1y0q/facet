@@ -36,6 +36,35 @@ describe('PersonCardComponent', () => {
     return fixture.debugElement.children[0].componentInstance as PersonCardComponent;
   }
 
+  it('double-clicking the card opens the person photos', () => {
+    const emitted: number[] = [];
+    getCard().viewPhotos.subscribe((id) => emitted.push(id));
+    fixture.nativeElement.querySelector('mat-card').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect(emitted).toEqual([1]);
+  });
+
+  it('double-clicking inside the name line does not open the photos', () => {
+    host.isEditing.set(true);
+    host.canEdit.set(true);
+    fixture.detectChanges();
+    const emitted: number[] = [];
+    getCard().viewPhotos.subscribe((id) => emitted.push(id));
+    fixture.nativeElement.querySelector('input').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect(emitted).toEqual([]);
+  });
+
+  it('double-clicking an avatar button does not also open the photos', () => {
+    host.isEditing.set(true);
+    host.canEdit.set(true);
+    fixture.detectChanges();
+    const emitted: number[] = [];
+    getCard().viewPhotos.subscribe((id) => emitted.push(id));
+    const findMore = [...fixture.nativeElement.querySelectorAll('button')]
+      .find((b) => (b as HTMLElement).textContent?.includes('person_search')) as HTMLElement;
+    findMore.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect(emitted).toEqual([]);
+  });
+
   it('should create with required person input', () => {
     const card = getCard();
     expect(card).toBeTruthy();

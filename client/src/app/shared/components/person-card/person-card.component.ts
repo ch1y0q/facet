@@ -40,6 +40,7 @@ export interface Person {
       tabindex="0"
       [attr.aria-label]="person().name || ('persons.unnamed' | translate)"
       (click)="selected.emit(person().id)"
+      (dblclick)="viewPhotos.emit(person().id)"
       (keydown.enter)="selected.emit(person().id)"
       (keydown.space)="selected.emit(person().id); $event.preventDefault()"
     >
@@ -73,7 +74,7 @@ export interface Person {
         <!-- While the name line is open the action row is not shown, so the card's
              actions sit on the avatar: view photos, find more, ignore. -->
         @if (canEdit() && isEditing()) {
-          <div class="absolute bottom-1.5 right-1.5 z-10 flex gap-1">
+          <div class="absolute bottom-1.5 right-1.5 z-10 flex gap-1" role="presentation" (dblclick)="$event.stopPropagation()">
             <button
               class="w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 transition-colors text-white inline-flex items-center justify-center cursor-pointer"
               [matTooltip]="'persons.view_photos' | translate"
@@ -108,6 +109,7 @@ export interface Person {
               [checked]="isSelected()"
               (change)="selected.emit(person().id)"
               (click)="$event.stopPropagation()"
+              (dblclick)="$event.stopPropagation()"
             />
           }
           <!-- Name & count -->
@@ -117,7 +119,8 @@ export interface Person {
                    role="presentation"
                    tabindex="-1"
                    (click)="$event.stopPropagation()"
-                   (keydown)="$event.stopPropagation()">
+                   (keydown)="$event.stopPropagation()"
+                   (dblclick)="$event.stopPropagation()">
                 <input
                   #nameInput
                   class="min-w-24 flex-1 bg-transparent border-b border-current outline-none text-sm py-0.5"
@@ -144,7 +147,8 @@ export interface Person {
                  role="presentation"
                  tabindex="-1"
                  (click)="$event.stopPropagation()"
-                 (keydown)="$event.stopPropagation()">
+                 (keydown)="$event.stopPropagation()"
+                 (dblclick)="$event.stopPropagation()">
               <button mat-icon-button [matTooltip]="'persons.rename' | translate" [attr.aria-label]="'persons.rename' | translate" (click)="editStart.emit(person().id)">
                 <mat-icon class="opacity-60">edit</mat-icon>
               </button>

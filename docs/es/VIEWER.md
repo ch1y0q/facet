@@ -460,7 +460,7 @@ El desplegable lista las personas con miniaturas de rostro. Haz clic en una para
 
 ### Galería de persona
 
-Haz clic en el nombre de una persona para ver todas sus fotos en `/person/<id>`.
+Haz clic en el nombre de una persona para ver todas sus fotos en `/person/<id>`. En la página de gestión de personas, hacer doble clic en una tarjeta (con nombre, sin nombre en «Por nombrar» o ignorada) abre la galería con las fotos de esa persona; los dobles clics en el campo de nombre, la casilla y los botones quedan para ellos.
 
 ### Página Gestionar personas
 
