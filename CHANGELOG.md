@@ -13,6 +13,8 @@ All notable changes to Facet are documented in this file.
 
 ### Added
 
+- Assign people from a searchable picker ordered by recent successful assignments in this browser, then visible face counts. Signing out clears saved recents.
+
 - **Explicit XMP sidecar discovery.** `--import-sidecars --sidecar-naming full|basename|auto` can read stripped-extension sidecars, refuses shared RAW/JPEG basenames, and reports naming conflicts. Full-name discovery remains the default; exports keep their existing filenames.
 
 - **Revisit organization edits** from a private, durable history: compare GPS, capture-date and review values, then explicitly revert a whole entry with protection against newer edits. Keeps 50 bounded entries per account; originals stay unchanged.
@@ -31,6 +33,8 @@ All notable changes to Facet are documented in this file.
 
 - Skip unsupported JSON face updates on ExifTool before 12.65 while exporting other metadata, preflight companion sidecars before embedding, and keep metadata-precondition responses free of resolved server paths. Unicode newline-filename failures are isolated to the affected photo in batch exports.
 - Preserve foreign face rectangles during metadata export and remove stale Facet-owned rectangles when faces are cleared. **Existing unmarked Facet exports are preserved too:** the first new export can show an old unmarked face plus its new marked copy, and clearing Facet faces leaves the old copy. Facet does not guess ownership from names or coordinates. Incompatible face dimensions skip faces with a warning while other metadata is written; unreadable or invalid existing face metadata refuses single-photo export/embed with HTTP 412.
+- Keep person-name searches working for numeric-looking and non-ASCII names without treating them as unsafe integer IDs. Assignment pagination counts people without repeating the face aggregate.
+
 - **Immich sync refuses ambiguous assets.** Duplicate remote paths and colliding Facet mappings are reported as identity conflicts. Fallback searches check every page and require an exact path; webhook IDs are verified before writes. Optional owner/library ID selectors restrict the configured server's responses. Literal first-prefix mapping behavior is unchanged.
 - Refuse basename XMP discovery when a double-extension derivative would read another image’s full-name or fallback sidecar. Report full-policy naming notices once per import while retaining complete mismatch counts.
 

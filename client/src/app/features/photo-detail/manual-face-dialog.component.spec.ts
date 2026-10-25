@@ -4,6 +4,8 @@ import { MAT_DIALOG_DATA, MatDialog, MatDialogRef } from '@angular/material/dial
 import { of, Subject, throwError } from 'rxjs';
 import { I18nService } from '../../core/services/i18n.service';
 import { ApiService } from '../../core/services/api.service';
+import { PersonAssignmentHistoryService } from '../../core/services/person-assignment-history.service';
+import { AuthService } from '../../core/services/auth.service';
 import {
   dragBox,
   ManualFaceDialogComponent,
@@ -36,6 +38,7 @@ describe('manual face editor', () => {
     committed = vi.fn(async () => {});
     TestBed.configureTestingModule({
       providers: [
+        { provide: AuthService, useValue: { identity: () => '1|test', isEdition: () => true } },
         ManualFaceDialogComponent,
         {
           provide: MAT_DIALOG_DATA,
@@ -51,6 +54,28 @@ describe('manual face editor', () => {
     component.frame.set({ image_base64: 'jpeg', width: 100, height: 200, frame_token: 'token' });
     component.bbox.set([0.1, 0.2, 0.8, 0.9]);
     component.person.set({ person_id: 5 });
+  });
+  it('records the committed resolved person ID, including newly created people', async () => {
+    const record = vi.spyOn(TestBed.inject(PersonAssignmentHistoryService), 'record');
+    component.person.set({ new_person_name: 'Ada' });
+    await component.save();
+    expect(record).toHaveBeenCalledWith(5, '1|test');
+  });
+  it('does not promote a failed save or update a new owner from a late save', async () => {
+    const record = vi.spyOn(TestBed.inject(PersonAssignmentHistoryService), 'record');
+    api.post.mockReturnValueOnce(throwError(() => new Error('failed')));
+    await component.save();
+    expect(record).not.toHaveBeenCalled();
+    const response = new Subject<ManualFaceRegion>();
+    api.post.mockReturnValueOnce(response);
+    const saving = component.save();
+    vi.spyOn(TestBed.inject(AuthService), 'identity').mockReturnValue('1|other');
+    response.next(region);
+    response.complete();
+    await saving;
+    expect(component.regions()).toEqual([]);
+    expect(committed).not.toHaveBeenCalled();
+    expect(TestBed.inject(PersonAssignmentHistoryService).recentIds()).toEqual([]);
   });
   it('requires re-marking a cached region after preview reload', async () => {
     component.regions.set([region]);
