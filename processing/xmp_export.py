@@ -59,6 +59,7 @@ from xml.etree import ElementTree as ET
 from db.manual_tags import load_manual_tags_map, merge_effective_tags
 from utils.capture_dates import parse_capture_date
 from utils.image_loading import JPEG_EXTENSIONS, KNOWN_HEIF_EXTENSIONS
+from utils.exiftool_process import run_exiftool_process
 
 logger = logging.getLogger(__name__)
 
@@ -610,9 +611,9 @@ def _read_existing_regions(target: str, exe: str, *, timeout: int) -> dict:
     try:
         if target.lower().endswith(".xmp"):
             _assert_well_formed_xmp(target)
-        result = subprocess.run(
+        result = run_exiftool_process(
             [exe, "-config", config, "-struct", "-json", "-XMP-mwg-rs:RegionInfo", target],
-            capture_output=True, text=True, encoding="utf-8", timeout=timeout,
+            timeout=timeout,
         )
         # ExifTool emits numeric-looking strings as unquoted JSON numbers.
         # Subtraction matches their lexical value, so 1.50 must not become 1.5.
@@ -712,11 +713,11 @@ def _read_existing_metadata(target: str, exe: str, *,
     import json
 
     try:
-        result = subprocess.run(
+        result = run_exiftool_process(
             [exe, "-config", os.path.join(os.path.dirname(__file__), "facet_exiftool.config"),
              "-q", "-m", "-json", "-XMP-dc:Subject", "-IPTC:Keywords",
              "-XMP-lr:HierarchicalSubject", "-XMP-facet:DateState", target],
-            capture_output=True, text=True, timeout=timeout,
+            timeout=timeout,
         )
     except (subprocess.TimeoutExpired, OSError):
         return [], [], False
@@ -769,7 +770,7 @@ def _run_exiftool(target: str, rating: XmpRating, *, timeout: int) -> None:
             tag_args += [f"-EXIF:GPS{axis}={coordinate}", f"-EXIF:GPS{axis}Ref={reference}"]
     args = [exe, "-config", config, "-q", "-m", "-overwrite_original", *tag_args, target]
     try:
-        result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+        result = run_exiftool_process(args, timeout=timeout)
     except subprocess.TimeoutExpired as ex:
         raise RuntimeError(f"exiftool timed out after {timeout}s on {target}") from ex
     if result.returncode != 0:
