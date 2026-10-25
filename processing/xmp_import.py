@@ -296,6 +296,12 @@ def _warn_full_naming_once(reported: set[str], image_path: str, basename: str,
                    image_path, selected or "no full-name sidecar", basename)
 
 
+def _warn_discovery_once(reported, kind, message, *args):
+    if kind not in reported:
+        reported.add(kind)
+        logger.warning(message + '; further notices of this kind are suppressed for this run', *args)
+
+
 def _discover_sidecar(image_path: str, naming: str, shared_stems: set[str],
                       directory_images: dict[str, dict[str, set[str]]],
                       reported: set[str]) -> tuple[str | None, str | None]:
@@ -311,8 +317,9 @@ def _discover_sidecar(image_path: str, naming: str, shared_stems: set[str],
     basename = os.path.splitext(image_path)[0] + ".xmp"
     has_basename = basename != image_path + ".xmp" and os.path.exists(basename)
     if full and has_basename and naming == "auto":
-        logger.warning("Skipping %s: ambiguous sidecar naming (%s and %s); "
-                       "select --sidecar-naming full or basename", image_path, full, basename)
+        _warn_discovery_once(reported, 'ambiguous_families',
+                             "Skipping %s: ambiguous sidecar naming (%s and %s); "
+                             "select --sidecar-naming full or basename", image_path, full, basename)
         return None, "ambiguous"
     if naming != "basename" and full:
         # Preserve the existing primary/fallback rule; list order breaks ties.
@@ -348,14 +355,16 @@ def _discover_sidecar(image_path: str, naming: str, shared_stems: set[str],
                                "Further shared-packet notices are suppressed for this run.", image_path, basename)
             return None, "ambiguous"
         if full:
-            logger.warning("Sidecar naming basename for %s: selecting %s; ignoring %s", image_path, basename, full)
+            _warn_discovery_once(reported, 'basename_selected',
+                                 "Sidecar naming basename for %s: selecting %s; ignoring %s", image_path, basename, full)
         return basename, None
     if full or has_basename:
         if naming == "full":
             _warn_full_naming_once(reported, image_path, basename, None)
         else:
-            logger.warning("No basename sidecar for %s; found %s; use --sidecar-naming full to read it",
-                           image_path, full)
+            _warn_discovery_once(reported, 'missing_basename',
+                                 "No basename sidecar for %s; found %s; use --sidecar-naming full to read it",
+                                 image_path, full)
         return None, "naming_mismatch"
     return None, "missing"
 

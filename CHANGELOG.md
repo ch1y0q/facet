@@ -28,6 +28,7 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- Bound sidecar naming notices once per kind per import for full, basename and auto policies, while retaining complete ambiguity/mismatch and import counts.
 - **Immich sync refuses ambiguous assets.** Duplicate remote paths and colliding Facet mappings are reported as identity conflicts. Fallback searches check every page and require an exact path; webhook IDs are verified before writes. Optional owner/library ID selectors restrict the configured server's responses. Literal first-prefix mapping behavior is unchanged.
 - Refuse basename XMP discovery when a double-extension derivative would read another image’s full-name or fallback sidecar. Report full-policy naming notices once per import while retaining complete mismatch counts.
 

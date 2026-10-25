@@ -20,7 +20,7 @@ Choisissez la recherche avec `--import-sidecars --sidecar-naming full|basename|a
 
 Un nom de base partagé par des photos indexées ou des images voisines, comme `same.CR3` et `same.jpg`, est refusé avec `basename` et `auto`, même si une seule photo appartient à la portée dossier/utilisateur sélectionnée. Utilisez des sidecars indépendants aux noms complets. `same_v1.jpg` a un nom de base différent. Les noms incompatibles, ambiguïtés et paquets illisibles ou invalides sont signalés ; une erreur d’analyse ne déclenche pas l’essai de l’autre famille. Le bilan compte les ambiguïtés parmi les photos ignorées et les divergences de nom parmi les photos sans sidecar sélectionné.
 
-Une dérivée à double extension telle que `IMG.CR2.jpg` ne doit pas lire `IMG.CR2.xmp`, qui appartient à `IMG.CR2` ; cette protection couvre aussi le repli `.facet.xmp` d’une autre image. Les avis de nom avec `full` montrent un exemple par exécution ; le bilan compte chaque divergence.
+Une dérivée à double extension telle que `IMG.CR2.jpg` ne doit pas lire `IMG.CR2.xmp`, qui appartient à `IMG.CR2` ; cette protection couvre aussi le repli `.facet.xmp` d’une autre image. Dans chaque politique, les avis montrent un exemple de chaque type par import ; le bilan compte toujours chaque photo concernée.
 
 L’import ne nécessite pas ExifTool. La fusion à l’export, l’intégration et les rectangles de visages MWG nécessitent ExifTool. Sans lui, le sidecar de l’éditeur est conservé et le repli XML écrit `<image.ext>.facet.xmp` sans rectangles MWG. Ce repli demande un transfert volontaire vers l’autre éditeur : ce nom n’est pas universellement découvert. Ces politiques ne renomment aucun fichier.
 

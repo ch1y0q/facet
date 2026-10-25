@@ -519,3 +519,31 @@ class TestSidecarNaming:
         caplog.clear()
         import_sidecars(conn)
         assert len([record for record in caplog.records if record.name == "processing.xmp_import"]) == 1
+
+    @pytest.mark.parametrize('policy,family,message,counter', [
+        ('auto', 'both', 'ambiguous sidecar naming', 'ambiguous'),
+        ('basename', 'both', 'Sidecar naming basename', 'updated'),
+        ('basename', 'full', 'No basename sidecar', 'naming_mismatch'),
+    ])
+    def test_all_policy_notices_are_bounded_without_losing_counts(self, tmp_path, caplog, policy, family, message, counter):
+        conn = _make_db(tmp_path)
+        try:
+            for index in range(3):
+                _add(conn, str(tmp_path / f'photo-{index}.CR3'))
+                _write(tmp_path, f'photo-{index}.CR3.xmp', _attr_xmp(rating=4))
+                if family == 'both':
+                    _write(tmp_path, f'photo-{index}.xmp', _attr_xmp(rating=2))
+            for run in range(2):
+                caplog.clear()
+                stats = import_sidecars(conn, sidecar_naming=policy)
+                if counter != 'updated' or run == 0:
+                    assert stats[counter] == 3
+                else:
+                    assert stats['unchanged'] == 3
+                notices = [record for record in caplog.records
+                           if record.name == 'processing.xmp_import' and message in record.message]
+                assert len(notices) == 1
+            if policy == 'basename' and family == 'both':
+                assert {row[0] for row in conn.execute('SELECT star_rating FROM photos')} == {2}
+        finally:
+            conn.close()
