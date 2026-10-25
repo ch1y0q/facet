@@ -30,7 +30,7 @@ describe('PhotoDetailComponent', () => {
   let component: any;
   let changes$: Subject<AssistantChangeBatch>;
   let mockApi: { get: Mock; post: Mock; put: Mock; delete: Mock; imageUrl: Mock; downloadUrl: Mock; getRaw: Mock };
-  let mockRouter: { navigate: Mock; events: Observable<unknown> };
+  let mockRouter: { url: string; navigate: Mock; events: Observable<unknown> };
   let mockLocation: { back: Mock };
   let mockRoute: { snapshot: { queryParamMap: { get: Mock } }; queryParamMap: BehaviorSubject<ParamMap> };
   let mockAuth: { status: ReturnType<typeof signal>; identity: () => string; isEdition: ReturnType<typeof signal>; downloadProfiles: ReturnType<typeof signal> };
@@ -104,7 +104,7 @@ describe('PhotoDetailComponent', () => {
       downloadUrl: vi.fn((path: string, type = 'original', profile?: string) => `/api/download?path=${encodeURIComponent(path)}&type=${type}${profile ? '&profile=' + profile : ''}`),
       getRaw: vi.fn(() => of(new Blob(['test'], { type: 'image/jpeg' }))),
     };
-    mockRouter = { navigate: vi.fn(), events: NEVER };
+    mockRouter = { url: '/photo', navigate: vi.fn(), events: NEVER };
     mockLocation = { back: vi.fn() };
     mockRoute = {
       snapshot: {
