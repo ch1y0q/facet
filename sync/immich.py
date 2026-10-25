@@ -161,7 +161,7 @@ class ImmichClient:
         """Read every legacy page, including stacked assets; fail on bad cursors."""
         page = 1
         while True:
-            payload = {"page": page, "withStacked": True}
+            payload: dict[str, int | bool | str] = {"page": page, "withStacked": True}
             if original_path is not None:
                 payload["originalPath"] = original_path
             data = self._request("POST", "/api/search/metadata", payload) or {}
@@ -640,16 +640,16 @@ def sync_to_immich(db_path, config: dict, user_id: str | None = None,
                 if len(conflict_messages) < UNMATCHED_LOG_LIMIT:
                     conflict_messages.append((facet_path, str(ex)))
                 continue
-            if asset_id is None:
+            if asset_id is None or not immich_path:
                 summary["unmatched"] += 1
                 unmatched_paths.append(facet_path)
                 continue
-            resolved_candidates.append((facet_path, asset_id, fields, rating))
+            resolved_candidates.append((facet_path, immich_path, asset_id, fields, rating))
         # Separate exact-path fallbacks can each look unique while claiming
         # the same UUID. Validate the complete plan before grouping any writes.
-        for facet_path, asset_id, fields, rating in resolved_candidates:
+        for facet_path, immich_path, asset_id, fields, rating in resolved_candidates:
             try:
-                client.assert_asset_identity(asset_id, map_facet_path(facet_path, path_map))
+                client.assert_asset_identity(asset_id, immich_path)
             except AssetIdentityError as ex:
                 summary["identity_conflicts"] += 1
                 if len(conflict_messages) < UNMATCHED_LOG_LIMIT:
@@ -805,7 +805,7 @@ def push_photo_updates(db_path, config: dict, entries) -> list:
 
     results: list[tuple[str, BaseException | None]] = []
     pushed: dict[str, dict] = {}
-    planned: list[tuple[int, str, str, dict]] = []
+    planned: list[tuple[int, str, str, str, dict]] = []
     for facet_path, asset_id in entries:
         row = rows.get(facet_path)
         if row is None:
@@ -824,22 +824,22 @@ def push_photo_updates(db_path, config: dict, entries) -> list:
             if immich_path:
                 resolved = (client.verify_asset_id(asset_id, immich_path) if asset_id
                             else client.search_asset_id(immich_path))
-            if not resolved:
+            if not resolved or not immich_path:
                 results.append((RESULT_UNMATCHED, None))
                 continue
         except PUSH_ERRORS as e:
             results.append((RESULT_FAILED, e))
             continue
-        planned.append((len(results), facet_path, resolved, fields))
+        planned.append((len(results), facet_path, immich_path, resolved, fields))
         results.append((RESULT_SKIPPED, None))  # filled after every identity is resolved
 
     # Recheck after EVERY lookup, including observations made by an unmatched
     # or failed entry. They can disprove an earlier candidate's identity.
-    for index, facet_path, resolved, fields in planned:
+    for index, facet_path, immich_path, resolved, fields in planned:
         try:
             if facet_path in conflicting_paths:
                 raise AssetIdentityError("Multiple Facet paths resolved to the same Immich asset id")
-            client.assert_asset_identity(resolved, map_facet_path(facet_path, immich_cfg.get("path_map", [])))
+            client.assert_asset_identity(resolved, immich_path)
             client.update_assets([resolved], fields)
         except PUSH_ERRORS as e:
             results[index] = (RESULT_FAILED, e)
