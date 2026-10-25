@@ -278,6 +278,7 @@ def api_assign_face(
                 update_person_face_count(conn, old_person_id)
                 repair_stale_representative(conn, old_person_id)
             update_person_face_count(conn, body.person_id)
+            repair_stale_representative(conn, body.person_id)
 
             conn.commit()
             invalidate_stats_cache()

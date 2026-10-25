@@ -1121,12 +1121,13 @@ def update_person_face_count(conn, person_id):
 
 
 def repair_stale_representative(conn, person_id):
-    """Replace a person's representative face when it no longer belongs to them.
+    """Give a person a representative face when it has none or no longer owns it.
 
     Moving a face away from its person leaves that person's representative_face_id
-    and face_thumbnail pointing at a face now owned by someone else. Pick the
-    highest-confidence remaining face as the new representative, or clear both
-    columns when the person has no faces left.
+    and face_thumbnail pointing at a face now owned by someone else, and a person
+    created by a split or by name never had one. Pick the highest-confidence face
+    the person owns, or clear both columns when it has no faces left. A
+    representative the person still owns is kept.
     """
     person = conn.execute(
         "SELECT representative_face_id FROM persons WHERE id = ?", (person_id,)
@@ -1206,8 +1207,10 @@ def reassign_faces_to_person(conn, person_id, face_ids):
             recompute_person_centroid(conn, old_id)
 
     # Give the (possibly freshly-created) target a real centroid so incremental
-    # re-clustering preserves it instead of orphaning its faces.
+    # re-clustering preserves it instead of orphaning its faces, and a picture:
+    # a person created by a split or by name has none, and its card stays blank.
     recompute_person_centroid(conn, person_id)
+    repair_stale_representative(conn, person_id)
 
     row = conn.execute(
         "SELECT face_count FROM persons WHERE id = ?", (person_id,)
