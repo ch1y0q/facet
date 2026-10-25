@@ -209,3 +209,57 @@ def test_total_deadline_interrupts_trickled_headers_and_chunk_framing(prefix):
             server.join(1)
         assert not server.is_alive()
         assert not any(thread.name == 'facet-place-search-deadline' for thread in threading.enumerate())
+
+
+class _FakeSocket:
+    def __init__(self, fail_connect=False):
+        self.fail_connect = fail_connect
+        self.closed = False
+
+    def settimeout(self, _):
+        pass
+
+    def connect(self, _):
+        if self.fail_connect:
+            raise ConnectionRefusedError
+
+    def close(self):
+        self.closed = True
+
+
+def _connection(url='https://geo.example/search', ttl=30.0):
+    import time
+    return place_search._DeadlineConnection(url, time.monotonic() + ttl)
+
+
+def test_https_connect_verifies_the_hostname_and_handshakes():
+    secure = _FakeSocket()
+    secure.do_handshake = lambda: setattr(secure, 'handshaken', True)
+    context = type('Ctx', (), {'wrap_socket': lambda self, sock, **kwargs: (setattr(secure, 'kwargs', kwargs), secure)[1]})()
+    with patch('socket.getaddrinfo', return_value=[(2, 1, 6, '', ('203.0.113.1', 443))]), \
+            patch('socket.socket', return_value=_FakeSocket()), \
+            patch('ssl.create_default_context', return_value=context):
+        connection = _connection()
+        connection.connect()
+    assert secure.kwargs == {'server_hostname': 'geo.example', 'do_handshake_on_connect': False}
+    assert secure.handshaken is True
+    assert connection.sock is secure
+
+
+def test_connect_falls_through_to_the_next_address():
+    first, second = _FakeSocket(fail_connect=True), _FakeSocket()
+    with patch('socket.getaddrinfo', return_value=[(2, 1, 6, '', ('203.0.113.1', 80)), (2, 1, 6, '', ('203.0.113.2', 80))]), \
+            patch('socket.socket', side_effect=[first, second]):
+        connection = _connection('http://geo.example/search')
+        connection.connect()
+    assert first.closed is True
+    assert connection.sock is second
+
+
+def test_connect_stops_when_the_deadline_passes_during_dns():
+    with patch('socket.getaddrinfo', return_value=[(2, 1, 6, '', ('203.0.113.1', 80))]), \
+            patch('socket.socket') as opened:
+        connection = _connection('http://geo.example/search', ttl=-1.0)
+        with pytest.raises(TimeoutError):
+            connection.connect()
+    opened.assert_not_called()

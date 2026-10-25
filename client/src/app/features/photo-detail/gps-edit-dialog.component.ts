@@ -129,7 +129,7 @@ export class GpsEditDialogComponent {
   protected readonly I18N = i18nKeys();
   readonly auth = inject(AuthService);
   private readonly router = inject(Router);
-  private readonly owner = this.auth.status();
+  private readonly owner = this.auth.identity();
   private readonly url = this.router.url;
   private navigated = false;
   private readonly api = inject(ApiService);
@@ -187,7 +187,7 @@ export class GpsEditDialogComponent {
   private marker: L.Marker | null = null;
 
   private current(): boolean {
-    return !this.dismissed && !this.navigated && !this.destroyed && !this.destroyRef.destroyed && this.auth.status() === this.owner && this.auth.isEdition() && this.router.url === this.url;
+    return !this.dismissed && !this.navigated && !this.destroyed && !this.destroyRef.destroyed && this.auth.identity() === this.owner && this.auth.isEdition() && this.router.url === this.url;
   }
 
   private invalidateOwner(): void {
@@ -199,7 +199,7 @@ export class GpsEditDialogComponent {
 
   constructor() {
     effect(() => {
-      if (this.auth.status() !== this.owner || !this.auth.isEdition()) this.invalidateOwner();
+      if (this.auth.identity() !== this.owner || !this.auth.isEdition()) this.invalidateOwner();
     });
     this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
       if (event instanceof NavigationStart) { this.navigated = true; this.invalidateOwner(); }
@@ -406,9 +406,11 @@ export class GpsEditDialogComponent {
     this.saveError.set('');
     try {
       const result = await firstValueFrom(this.api.delete<GpsResult>(`/photo/gps?path=${encodeURIComponent(this.data.path)}`));
-      if (!this.current()) return;
-      this.store.patchPhoto(this.data.path, { gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude, gps_manually_set: 0 });
-      void this.store.refreshPaths(null);
+      // The write is done on the server, so the store follows it even when the dialog was dismissed meanwhile.
+      if (this.auth.identity() === this.owner) {
+        this.store.patchPhoto(this.data.path, { gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude, gps_manually_set: 0 });
+        void this.store.refreshPaths(null);
+      }
       if (this.current()) this.dialogRef.close({ ...result, gps_manually_set: 0 });
     } catch {
       if (!this.current()) return;
@@ -430,9 +432,10 @@ export class GpsEditDialogComponent {
     this.saveError.set('');
     try {
       const result = await firstValueFrom(this.api.put<GpsResult>('/photo/gps', body));
-      if (!this.current()) return;
-      this.store.patchPhoto(body.path, { gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude, gps_manually_set: 1 });
-      void this.store.refreshPaths(null);
+      if (this.auth.identity() === this.owner) {
+        this.store.patchPhoto(body.path, { gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude, gps_manually_set: 1 });
+        void this.store.refreshPaths(null);
+      }
       if (this.current()) this.dialogRef.close(result);
     } catch {
       if (!this.current()) return;

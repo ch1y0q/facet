@@ -84,11 +84,42 @@ describe('GpsEditDialogComponent', () => {
       const task = mode === 'reset' ? component.useFileLocation() : component.save();
       invalidate(); mockDialogRef.close.mockClear();
       pending.next({ changed: 1, gps_latitude: 1, gps_longitude: 2 }); await task;
-      expect(mockStore.patchPhoto).not.toHaveBeenCalled(); expect(mockStore.refreshPaths).not.toHaveBeenCalled();
+      // The server already took the write: the store follows it unless the signed-in user changed.
+      if (loss === 'identity') { expect(mockStore.patchPhoto).not.toHaveBeenCalled(); expect(mockStore.refreshPaths).not.toHaveBeenCalled(); }
+      else { expect(mockStore.patchPhoto).toHaveBeenCalledTimes(1); expect(mockStore.refreshPaths).toHaveBeenCalledTimes(1); }
       expect(applied).not.toHaveBeenCalled(); expect(mockDialogRef.close).not.toHaveBeenCalled();
       expect(mockSnackBar.open).not.toHaveBeenCalled();
     });
   }
+
+  const place: SavedPlace = { id: 1, name: 'Home', latitude: 1, longitude: 2 } as SavedPlace;
+
+  it.each(['identity', 'edition', 'navigation'])('closes the dialog and clears the saved places after %s loss', loss => {
+    createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 1, lng: 2 }, false, [place]);
+    TestBed.tick();
+    mockDialogRef.close.mockClear();
+    if (loss === 'identity') authStatus.set({ authenticated: true, edition_authenticated: true, user_id: 'bob' });
+    if (loss === 'edition') authStatus.set({ authenticated: true, edition_authenticated: false, user_id: 'editor' });
+    if (loss === 'navigation') navigation.next(new NavigationStart(1, '/other'));
+    TestBed.tick();
+    expect(mockDialogRef.close).toHaveBeenCalled();
+    expect(component.places()).toEqual([]);
+    expect(component.recent()).toEqual([]);
+  });
+
+  it('keeps the dialog and an in-flight save when the status is revalidated for the same user', async () => {
+    createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 1, lng: 2 });
+    TestBed.tick();
+    const pending = new Subject<{ gps_latitude: number; gps_longitude: number }>();
+    mockApi.put.mockReturnValue(pending);
+    const saving = component.save();
+    authStatus.set({ authenticated: true, edition_authenticated: true, user_id: 'editor' });
+    TestBed.tick();
+    pending.next({ gps_latitude: 3, gps_longitude: 4 });
+    pending.complete();
+    await saving;
+    expect(mockDialogRef.close).toHaveBeenCalledExactlyOnceWith({ gps_latitude: 3, gps_longitude: 4 });
+  });
 
   it('searches only explicitly, previews a result, then saves without the previous bookmark', async () => {
     createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: null, lng: null });
@@ -168,7 +199,7 @@ describe('GpsEditDialogComponent', () => {
     expect(mockStore.patchPhoto).not.toHaveBeenCalled();
   });
 
-  it('captures inputs, prevents duplicate saves and suppresses publication after destruction', async () => {
+  it('captures inputs, prevents duplicate saves and still publishes the saved location after destruction', async () => {
     createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 1, lng: 2 });
     const pending = new Subject<{ gps_latitude: number; gps_longitude: number }>();
     mockApi.put.mockReturnValue(pending);
@@ -181,11 +212,11 @@ describe('GpsEditDialogComponent', () => {
     await saving;
     expect(mockApi.put).toHaveBeenCalledTimes(1);
     expect(mockApi.put).toHaveBeenCalledWith('/photo/gps', { path: '/photo.jpg', gps_latitude: 1, gps_longitude: 2 });
-    expect(mockStore.patchPhoto).not.toHaveBeenCalled();
+    expect(mockStore.patchPhoto).toHaveBeenCalledTimes(1);
     expect(mockDialogRef.close).not.toHaveBeenCalled();
   });
 
-  it('cancelling a pending save closes once and suppresses gallery publication', async () => {
+  it('cancelling a pending save closes once and still applies the saved location to the gallery', async () => {
     createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 1, lng: 2 });
     const pending = new Subject<{ gps_latitude: number; gps_longitude: number }>();
     mockApi.put.mockReturnValue(pending);
@@ -195,7 +226,7 @@ describe('GpsEditDialogComponent', () => {
     pending.complete();
     await saving;
     expect(mockDialogRef.close).toHaveBeenCalledExactlyOnceWith(undefined);
-    expect(mockStore.patchPhoto).not.toHaveBeenCalled();
+    expect(mockStore.patchPhoto).toHaveBeenCalledWith('/photo.jpg', { gps_latitude: 3, gps_longitude: 4, gps_manually_set: 1 });
   });
 
   it('rejects incomplete, nonfinite and out of range points but accepts zero', () => {
