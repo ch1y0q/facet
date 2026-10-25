@@ -26,7 +26,12 @@ import tempfile
 # so a late ``monkeypatch`` would only patch the symbol in one module while
 # the rest keep their original captured copy. Setting the env up-front
 # routes every captured copy at the same fresh, schema-initialised DB.
-_TEST_DB_FILE = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+# Under pytest-xdist every worker is its own process and imports this module itself, so
+# each gets its own file; the worker id in the name only makes that visible (and a
+# leftover attributable). The controller process creates one it never uses.
+_TEST_DB_FILE = tempfile.NamedTemporaryFile(
+    prefix="intraswitch_facet_" + os.environ.get("PYTEST_XDIST_WORKER", "main") + "_",
+    suffix=".db", delete=False)
 _TEST_DB_FILE.close()
 os.environ["DB_PATH"] = _TEST_DB_FILE.name
 
@@ -460,6 +465,13 @@ def symlink_or_skip(link, target):
         pytest.skip(f"cannot create a symlink here: {ex}")
 
 
+def initialize_photo_database(conn):
+    """Populate an existing in-memory connection with the production schema."""
+    with tempfile.TemporaryDirectory() as directory:
+        db_path = os.path.join(directory, "schema.db")
+        init_database(db_path)
+        with sqlite3.connect(db_path) as source:
+            source.backup(conn)
 # ---------------------------------------------------------------------------
 # Agent (MCP) app: REAL auth, REAL lifespan
 # ---------------------------------------------------------------------------

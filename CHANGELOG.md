@@ -7,6 +7,7 @@ All notable changes to Facet are documented in this file.
 ### Added
 
 - **Set a location for selected photos.** Reuse saved/recent places, a map pin or coordinates for up to 1000 visible photos. Preview changed/skipped counts first, protect existing locations with the default only-missing option, and refresh the active gallery filters after applying. Manual coordinates survive rescans; original files are unchanged.
+- **Keep photos and resume from the ones you have not reviewed.** The gallery has Keep and Reset decision actions, a `K` shortcut, Undo, and Needs review / Kept / Rejected filters. Keep is separate from stars and favorites, survives rescans, and is also saved when you confirm a culling group or apply an auto-cull. `--auto-cull --cull-min-score` never rejects a kept photo on its score, as it already spared favourites and starred photos.
 
 ## [1.23.1] "Grip" — 2026-10-24
 

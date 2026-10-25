@@ -209,6 +209,19 @@ Controlado por `viewer.features.show_my_taste` (padrão: `true`). O status do ra
 
 Com `licensing.mode` definido como `commercial`, o visualizador oculta as métricas cujos modelos não podem ser usados comercialmente: LIQE, Aesthetic IAA, Face Quality IQA (a menos que o OFIQ esteja instalado), DeQA (a menos que `licensing.allow_unclear` esteja definido) e Aesthetic V2.5: os respetivos filtros de intervalo, chips de filtro e opções de ordenação. `/api/config` lista-as em `unavailable_metrics`. Na página de ajuste de pesos os controlos continuam visíveis mas desativados, com uma dica; os pesos são mantidos, porque a pontuação os descarta e renormaliza. Reinicie o visualizador depois de alterar o modo de licença.
 
+## Decisões de revisão
+
+Na galeria, escolha **Status de revisão → Precisa de revisão** para percorrer fotos sem decisão. A ordem muda para **data da captura, mais antigas primeiro**; você pode invertê-la ou filtrar por data, pasta ou álbum.
+
+**Manter** e **Rejeitar** retiram a foto dessa visualização após salvar. As fotos mantidas continuam na biblioteca normal e aparecem com o filtro **Mantidas**. Favoritos e estrelas permanecem independentes.
+
+Manter e **Redefinir decisão** estão disponíveis nos detalhes, no menu de contexto e nas ações em lote. **K** mantém a foto atual. Redefinir limpa Manter e Rejeitar sem alterar estrelas ou favoritos. As ações da galeria podem ser desfeitas.
+
+As decisões persistem após recarregar, reiniciar e analisar novamente, e são individuais por usuário. Confirmar um grupo de seleção também marca suas fotos escolhidas como mantidas. Avaliações, favoritos e grupos já revisados não são convertidos automaticamente.
+
+O status de revisão se aplica à galeria normal; escolher um status encerra as buscas semânticas e de fotos semelhantes.
+
+
 ## Recursos da Galeria
 
 ### Cartões de Foto
@@ -684,7 +697,7 @@ Para cada grupo, escolha a(s) foto(s) a manter; confirmar rejeita o resto. As co
 
 Um botão **Triagem automática** na barra de ferramentas tria um escopo inteiro em uma passagem, em vez de grupo por grupo. Escolha o escopo com os controles de granularidade/escopo (todos os grupos, ou apenas sequências / semelhantes / cenas, opcionalmente um álbum ou janela de datas), defina um **rigor** — o orçamento de fotos mantidas, onde maior mantém menos por grupo — e visualize a prévia. Cada grupo mantém sua melhor foto mais tudo dentro da margem de rigor (com um piso mínimo por grupo) e rejeita o resto. O botão fica totalmente oculto nas três granularidades que mantêm tudo inteiro (**Bracketings de exposição**, **Panorâmicas**, **Panorâmicas HDR**) — não há nada para ele decidir ali, já que todas as fotos desses conjuntos começam mantidas. Num escopo misto, os bracketings são decididos primeiro, antes das sequências, semelhantes e cenas, de modo que a exposição base de um bracketing nunca é redecidida por um grupo posterior com o qual também se sobreponha.
 
-A prévia é uma **simulação** (dry run — nada é gravado): ela mostra a divisão de manter/rejeitar por grupo. Confirme para aplicar — as rejeições são registradas e, como toda triagem, treinam o "Meu Gosto"; um álbum opcional **Highlights** reúne de forma idempotente a melhor foto de cada grupo com pontuação de pelo menos `auto_cull.highlights_min`. Um selo de dica "foto melhor neste grupo" sinaliza os grupos em que a triagem automática manteria um quadro diferente do líder atual. `POST /api/culling/auto`; configurado pelo bloco [`auto_cull`](CONFIGURATION.md#auto-cull). As mesmas regras rodam sem interface pelo terminal com `python facet.py --auto-cull` — veja [Triagem pelo terminal](COMMANDS.md#triagem-pelo-terminal).
+A prévia é uma **simulação** (dry run — nada é gravado): ela mostra a divisão de manter/rejeitar por grupo. Confirme para aplicar — as rejeições são registradas, cada foto mantida é marcada como **Manter** e, como toda triagem, treinam o "Meu Gosto"; um álbum opcional **Highlights** reúne de forma idempotente a melhor foto de cada grupo com pontuação de pelo menos `auto_cull.highlights_min`. Um selo de dica "foto melhor neste grupo" sinaliza os grupos em que a triagem automática manteria um quadro diferente do líder atual. `POST /api/culling/auto`; configurado pelo bloco [`auto_cull`](CONFIGURATION.md#auto-cull). As mesmas regras rodam sem interface pelo terminal com `python facet.py --auto-cull` — veja [Triagem pelo terminal](COMMANDS.md#triagem-pelo-terminal).
 
 Quando uma cabeça de ranqueamento de retenção está treinada, `POST /api/culling/auto` escolhe a foto a manter de cada grupo pelo `keeper_prob` assim que ela ultrapassa sua barreira de acurácia — caso contrário, a saída é idêntica byte a byte à da heurística.
 
