@@ -345,3 +345,161 @@ def test_invalid_review_value_is_reported_and_never_clears_existing_review(tmp_p
         assert conn.execute('SELECT star_rating FROM photos').fetchone()[0] == 1
     finally:
         conn.close()
+
+
+@pytest.mark.parametrize('per_user', [False, True])
+@pytest.mark.parametrize('field', ['star_rating', 'is_favorite', 'is_rejected', 'is_kept'])
+def test_viewer_incremental_preserves_explicit_zero_and_exact_clock(tmp_path, per_user, field):
+    from db.maintenance import export_viewer_db
+    conn, path, db = setup(tmp_path, rating=0)
+    viewer = tmp_path / 'viewer.db'
+    value = 3 if field == 'star_rating' else 1
+    try:
+        if per_user:
+            conn.execute(f'INSERT INTO user_preferences(user_id,photo_path,{field}) VALUES (?,?,?)', ('alice', str(path), value))
+        else:
+            conn.execute(f'UPDATE photos SET {field}=? WHERE path=?', (value, str(path)))
+        conn.commit()
+        export_viewer_db(str(db), str(viewer), verbose=False)
+        table = 'user_preferences' if per_user else 'photos'
+        key = "photo_path=? AND user_id='alice'" if per_user else 'path=?'
+        with sqlite3.connect(viewer) as output:
+            output.row_factory = sqlite3.Row
+            output.execute(f'UPDATE {table} SET {field}=0 WHERE {key}', (str(path),))
+            output.commit()
+            clock = review_edit_state(output, str(path), 'alice' if per_user else '')
+        export_viewer_db(str(db), str(viewer), verbose=False)
+        with sqlite3.connect(viewer) as output:
+            output.row_factory = sqlite3.Row
+            assert output.execute(f'SELECT {field} FROM {table} WHERE {key}', (str(path),)).fetchone()[0] == 0
+            assert review_edit_state(output, str(path), 'alice' if per_user else '') == clock
+    finally:
+        conn.close()
+
+
+def test_viewer_incremental_preserves_deleted_preference_reset(tmp_path):
+    from db.maintenance import export_viewer_db
+    conn, path, db = setup(tmp_path, rating=0)
+    viewer = tmp_path / 'viewer.db'
+    try:
+        conn.execute('INSERT INTO user_preferences(user_id,photo_path,star_rating) VALUES (?,?,3)', ('alice', str(path)))
+        conn.commit()
+        export_viewer_db(str(db), str(viewer), verbose=False)
+        with sqlite3.connect(viewer) as output:
+            output.row_factory = sqlite3.Row
+            output.execute("DELETE FROM user_preferences WHERE user_id='alice'")
+            output.commit()
+            clock = review_edit_state(output, str(path), 'alice')
+        export_viewer_db(str(db), str(viewer), verbose=False)
+        with sqlite3.connect(viewer) as output:
+            output.row_factory = sqlite3.Row
+            assert output.execute("SELECT star_rating FROM user_preferences WHERE user_id='alice'").fetchone()[0] == 0
+            assert review_edit_state(output, str(path), 'alice') == clock
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize('per_user', [False, True])
+@pytest.mark.parametrize('new_photo', [False, True])
+def test_incremental_copies_source_receipts_with_selected_source_values(tmp_path, monkeypatch, per_user, new_photo):
+    from db.maintenance import export_viewer_db
+    from db.metadata_edits import record_sidecar_receipt
+    conn, original, db = setup(tmp_path, rating=0)
+    viewer = tmp_path / 'viewer.db'
+    try:
+        export_viewer_db(str(db), str(viewer), verbose=False)
+        path = tmp_path / 'later.jpg' if new_photo else original
+        if new_photo:
+            conn.execute('INSERT INTO photos(path,scanned_at) VALUES (?,?)', (str(path), '2020-01-01'))
+        if per_user:
+            conn.execute('INSERT INTO user_preferences(user_id,photo_path,star_rating) VALUES (?,?,3)', ('alice', str(path)))
+        else:
+            conn.execute('UPDATE photos SET star_rating=3 WHERE path=?', (str(path),))
+        scope = 'alice' if per_user else ''
+        filename = sidecar(path)
+        record_sidecar_receipt(conn, str(path), scope, ['star_rating'], str(filename), '2021-01-01T00:00:00+00:00')
+        conn.commit()
+        source_clock = review_edit_state(conn, str(path), scope)
+        export_viewer_db(str(db), str(viewer), verbose=False)
+        monkeypatch.setattr('api.config.is_multi_user_enabled', lambda: per_user)
+        monkeypatch.setattr('api.db_helpers.get_visibility_clause', lambda user: ('photos.path=?', [str(path)]))
+        with sqlite3.connect(viewer) as output:
+            output.row_factory = sqlite3.Row
+            assert review_edit_state(output, str(path), scope) == source_clock
+            result = import_sidecars(output, str(path), user_id='alice' if per_user else None)
+            assert result['conflicts'] == 1
+            table = 'user_preferences' if per_user else 'photos'
+            key = "photo_path=? AND user_id='alice'" if per_user else 'path=?'
+            assert output.execute(f'SELECT star_rating FROM {table} WHERE {key}', (str(path),)).fetchone()[0] == 3
+    finally:
+        conn.close()
+
+
+def test_incremental_copies_source_deleted_preference_clock(tmp_path, monkeypatch):
+    from db.maintenance import export_viewer_db
+    conn, path, db = setup(tmp_path, rating=0)
+    viewer = tmp_path / 'viewer.db'
+    try:
+        export_viewer_db(str(db), str(viewer), verbose=False)
+        conn.execute('INSERT INTO user_preferences(user_id,photo_path,star_rating) VALUES (?,?,3)', ('alice', str(path)))
+        conn.execute("DELETE FROM user_preferences WHERE user_id='alice'")
+        conn.commit()
+        clock = review_edit_state(conn, str(path), 'alice')
+        sidecar(path)
+        export_viewer_db(str(db), str(viewer), verbose=False)
+        monkeypatch.setattr('api.config.is_multi_user_enabled', lambda: True)
+        monkeypatch.setattr('api.db_helpers.get_visibility_clause', lambda user: ('photos.path=?', [str(path)]))
+        with sqlite3.connect(viewer) as output:
+            output.row_factory = sqlite3.Row
+            assert review_edit_state(output, str(path), 'alice') == clock
+            assert import_sidecars(output, str(path), user_id='alice')['conflicts'] == 1
+            assert output.execute("SELECT 1 FROM user_preferences WHERE user_id='alice'").fetchone() is None
+    finally:
+        conn.close()
+
+
+def test_incremental_legacy_source_does_not_manufacture_clocks(tmp_path):
+    from db.maintenance import export_viewer_db
+    conn, _, db = setup(tmp_path, rating=0)
+    viewer = tmp_path / 'viewer.db'
+    path = str(tmp_path / 'legacy.jpg')
+    try:
+        export_viewer_db(str(db), str(viewer), verbose=False)
+        for (trigger,) in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name GLOB 'metadata_review_*'").fetchall():
+            conn.execute('DROP TRIGGER "' + trigger.replace('"', '""') + '"')
+        conn.execute('DROP TABLE photo_metadata_edits')
+        conn.execute('INSERT INTO photos(path,star_rating) VALUES (?,3)', (path,))
+        conn.execute('INSERT INTO user_preferences(user_id,photo_path,star_rating) VALUES (?,?,3)', ('alice', path))
+        conn.commit()
+        export_viewer_db(str(db), str(viewer), verbose=False)
+        with sqlite3.connect(viewer) as output:
+            output.row_factory = sqlite3.Row
+            assert output.execute('SELECT star_rating FROM photos WHERE path=?', (path,)).fetchone()[0] == 3
+            assert review_edit_state(output, path, '') == {}
+            assert review_edit_state(output, path, 'alice') == {}
+    finally:
+        conn.close()
+
+
+def test_viewer_review_sync_failure_rolls_back_values_and_clocks(tmp_path):
+    from db.metadata_edits import viewer_review_sync
+    conn, path, db = setup(tmp_path, rating=1)
+    source = tmp_path / 'source.db'
+    init_database(str(source))
+    try:
+        with sqlite3.connect(source) as origin:
+            origin.execute('INSERT INTO photos(path,star_rating) VALUES (?,3)', (str(path),))
+        conn.execute('ATTACH DATABASE ? AS src', (str(source),))
+        with pytest.raises(RuntimeError, match='late replication failure'):
+            with viewer_review_sync(conn, 'photos'):
+                conn.execute('UPDATE photos SET star_rating=2 WHERE path=?', (str(path),))
+                raise RuntimeError('late replication failure')
+        assert conn.execute('SELECT star_rating FROM photos WHERE path=?', (str(path),)).fetchone()[0] == 1
+        assert review_edit_state(conn, str(path), '') == {}
+        assert not conn.in_transaction
+        assert not conn.execute("SELECT 1 FROM sqlite_temp_master WHERE name LIKE 'viewer_%edits'").fetchone()
+        with sqlite3.connect(db, timeout=0.1) as writer:
+            writer.execute('BEGIN IMMEDIATE')
+            writer.rollback()
+    finally:
+        conn.close()

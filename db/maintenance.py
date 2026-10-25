@@ -602,9 +602,13 @@ def _downsize_face_thumbnails(dest_conn, face_resync_paths, thumbnail_size, batc
     return face_resized
 
 
-def _review_decision_assignments(table: str, source_kept: str, source_rejected: str) -> dict[str, str]:
+def _review_decision_assignments(table: str, source_kept: str, source_rejected: str,
+                                 *, preserve_edits=False) -> dict[str, str]:
     """Keep/reject is one decision: a decided viewer wins, otherwise use the source."""
     decided = f"(COALESCE({table}.is_kept, 0) != 0 OR COALESCE({table}.is_rejected, 0) != 0)"
+    if preserve_edits:
+        from db.metadata_edits import viewer_review_preserved
+        decided = viewer_review_preserved(table, 'is_kept', per_user=table.endswith('user_preferences'))
     kept = f"CASE WHEN {decided} THEN {table}.is_kept ELSE {source_kept} END"
     rejected = f"CASE WHEN {decided} THEN {table}.is_rejected ELSE {source_rejected} END"
     # Old preview builds could hold both flags. Rejection wins, like the gallery filter.
@@ -631,6 +635,7 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
         Tuple of (source_size, output_size) in bytes
     """
     from PIL import Image
+    from db.metadata_edits import viewer_review_preserved, viewer_review_sync
 
     source_size = os.path.getsize(source_db)
     if verbose:
@@ -688,6 +693,7 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
         'main.photos',
         "(SELECT is_kept FROM src.photos WHERE src.photos.path = main.photos.path)" if 'is_kept' in src_photo_cols else '0',
         "(SELECT is_rejected FROM src.photos WHERE src.photos.path = main.photos.path)",
+        preserve_edits=True,
     )
 
     def _photo_set_expr(col):
@@ -698,8 +704,8 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
         Keep/reject instead moves together as one decision: a decided viewer
         wins, otherwise the source decision is used. Thus later viewer edits survive
         a re-export, and scan ratings still reach a never-rated photo. A rating
-        cleared to 0 on the viewer is indistinguishable from unrated and cannot
-        be preserved against a non-zero source."""
+        cleared to 0 is preserved when a post-upgrade edit receipt exists;
+        untracked legacy zeros retain the earlier source-fallback policy."""
         src_val = f"(SELECT {col} FROM src.photos WHERE src.photos.path = main.photos.path)"
         if col in ('date_taken', 'date_manually_set'):
             return (f"{col} = CASE WHEN main.photos.date_manually_set = 1 "
@@ -712,13 +718,14 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
         if col in photo_decisions:
             return photo_decisions[col]
         if col in _RATING_COLS:
-            return (f"{col} = CASE WHEN main.photos.{col} IS NOT NULL AND main.photos.{col} != 0 "
+            return (f"{col} = CASE WHEN {viewer_review_preserved('main.photos', col)} "
                     f"THEN main.photos.{col} ELSE {src_val} END")
         return f"{col} = {src_val}"
 
     if update_cols:
         set_clause = ', '.join(_photo_set_expr(c) for c in update_cols)
-        dest_conn.execute(f"UPDATE main.photos SET {set_clause}")
+        with viewer_review_sync(dest_conn, 'photos'):
+            dest_conn.execute(f"UPDATE main.photos SET {set_clause}")
         dest_conn.commit()
         if verbose:
             logger.info("  Updated metadata for existing photos")
@@ -734,14 +741,15 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
         )
         col_list = ', '.join(common_photo_cols)
 
-        for i in range(0, len(new_paths), batch_size):
-            batch = new_paths[i:i + batch_size]
-            placeholders = ','.join('?' * len(batch))
-            dest_conn.execute(
-                f"INSERT OR IGNORE INTO main.photos ({col_list}) "
-                f"SELECT {select_exprs} FROM src.photos WHERE path IN ({placeholders})",
-                batch
-            )
+        with viewer_review_sync(dest_conn, 'photos', new_photos=True):
+            for i in range(0, len(new_paths), batch_size):
+                batch = new_paths[i:i + batch_size]
+                placeholders = ','.join('?' * len(batch))
+                dest_conn.execute(
+                    f"INSERT OR IGNORE INTO main.photos ({col_list}) "
+                    f"SELECT {select_exprs} FROM src.photos WHERE path IN ({placeholders})",
+                    batch
+                )
         dest_conn.commit()
         if verbose:
             logger.info("  Inserted %d new photos", len(new_paths))
@@ -861,25 +869,27 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
             'main.user_preferences',
             f"(SELECT sp.is_kept FROM src.user_preferences sp WHERE {pref_match})" if 'is_kept' in src_pref_cols else '0',
             f"(SELECT sp.is_rejected FROM src.user_preferences sp WHERE {pref_match})",
+            preserve_edits=True,
         )
-        if pref_rating_cols:
-            set_clause = ', '.join(
-                pref_decisions[c] if c in pref_decisions else
-                f"{c} = CASE WHEN main.user_preferences.{c} IS NOT NULL AND main.user_preferences.{c} != 0 "
-                f"THEN main.user_preferences.{c} "
-                f"ELSE (SELECT sp.{c} FROM src.user_preferences sp WHERE {pref_match}) END"
-                for c in pref_rating_cols
-            )
-            dest_conn.execute(
-                f"UPDATE main.user_preferences SET {set_clause} "
-                f"WHERE EXISTS (SELECT 1 FROM src.user_preferences sp WHERE {pref_match})"
-            )
-        if common_pref_cols:
-            col_list = ', '.join(common_pref_cols)
-            dest_conn.execute(
-                f"INSERT OR IGNORE INTO main.user_preferences ({col_list}) "
-                f"SELECT {col_list} FROM src.user_preferences"
-            )
+        with viewer_review_sync(dest_conn, 'user_preferences'):
+            if pref_rating_cols:
+                set_clause = ', '.join(
+                    pref_decisions[c] if c in pref_decisions else
+                    f"{c} = CASE WHEN {viewer_review_preserved('main.user_preferences', c, per_user=True)} "
+                    f"THEN main.user_preferences.{c} "
+                    f"ELSE (SELECT sp.{c} FROM src.user_preferences sp WHERE {pref_match}) END"
+                    for c in pref_rating_cols
+                )
+                dest_conn.execute(
+                    f"UPDATE main.user_preferences SET {set_clause} "
+                    f"WHERE EXISTS (SELECT 1 FROM src.user_preferences sp WHERE {pref_match})"
+                )
+            if common_pref_cols:
+                col_list = ', '.join(common_pref_cols)
+                dest_conn.execute(
+                    f"INSERT OR IGNORE INTO main.user_preferences ({col_list}) "
+                    f"SELECT {col_list} FROM src.user_preferences"
+                )
         dest_conn.commit()
         if verbose:
             count = dest_conn.execute("SELECT COUNT(*) FROM main.user_preferences").fetchone()[0]
