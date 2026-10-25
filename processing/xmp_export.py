@@ -548,7 +548,8 @@ def _exiftool_tag_args(rating: XmpRating, existing_flat: list[str],
     detection). ``xmp:Label`` is fully Facet-owned (favourite/reject only), so it is
     always emitted like ``xmp:Rating`` -- an empty value clears the exiftool tag,
     which is what un-favouriting must do. Caption is set only when present, so an
-    external value is not wiped when Facet has none.
+    external value is not wiped when Facet has none. Only the default caption
+    language is edited; all other language alternatives are preserved.
     """
     xmp_rating, label = rating.xmp_values()
     args = [f"-XMP:Rating={xmp_rating}", f"-XMP:Label={label}",
@@ -561,7 +562,8 @@ def _exiftool_tag_args(rating: XmpRating, existing_flat: list[str],
         args.extend([f"-XMP-exif:GPSLatitude={rating.gps_latitude if state == 'set' else ''}",
                      f"-XMP-exif:GPSLongitude={rating.gps_longitude if state == 'set' else ''}"])
     if rating.caption:
-        args.append(f"-XMP-dc:Description={rating.caption}")
+        # An unqualified lang-alt write deletes every other language.
+        args.append(f"-XMP-dc:Description-x-default={rating.caption}")
         args.append(f"-IPTC:Caption-Abstract={rating.caption}")
     # Flat keywords (mirrored to IPTC for legacy tools): clear then replace with
     # the union of existing and Facet's keywords.
