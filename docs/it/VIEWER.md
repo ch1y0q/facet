@@ -209,6 +209,19 @@ Controllato da `viewer.features.show_my_taste` (predefinito: `true`). Lo stato d
 
 Con `licensing.mode` impostato su `commercial`, il visualizzatore nasconde le metriche i cui modelli non sono utilizzabili commercialmente: LIQE, Aesthetic IAA, Face Quality IQA (salvo che OFIQ sia installato), DeQA (salvo che `licensing.allow_unclear` sia impostato) e Aesthetic V2.5: i relativi filtri di intervallo, chip di filtro e opzioni di ordinamento. `/api/config` le elenca in `unavailable_metrics`. Nella pagina di regolazione dei pesi i cursori restano visibili ma disattivati, con un tooltip; i pesi vengono conservati, perché il punteggio li scarta e rinormalizza. Riavviare il visualizzatore dopo aver cambiato la modalità di licenza.
 
+## Decisioni di revisione
+
+Nella galleria scegli **Stato revisione → Da rivedere** per scorrere le foto senza decisione. Viene impostato l’ordine per **data di scatto, dalle più vecchie**; puoi invertirlo o filtrare per data, cartella o album.
+
+**Conserva** e **Rifiuta** rimuovono la foto da questa vista dopo il salvataggio. Le foto conservate restano nella libreria normale e sono disponibili con il filtro **Conservate**. Preferiti e stelle rimangono indipendenti.
+
+Conserva e **Reimposta decisione** sono disponibili nel dettaglio, nel menu contestuale e nelle azioni multiple. **K** conserva la foto corrente. Reimpostare cancella Conserva e Rifiuta senza modificare stelle o preferiti. Le azioni della galleria possono essere annullate.
+
+Le decisioni sopravvivono a ricaricamenti, riavvii e nuove scansioni e sono personali per ogni utente. Confermare un gruppo di selezione contrassegna anche le foto scelte come conservate. Le vecchie valutazioni, i preferiti e i gruppi già esaminati non vengono convertiti automaticamente.
+
+Lo stato di revisione si applica alla galleria normale; scegliere uno stato chiude le ricerche semantiche e di foto simili.
+
+
 ## Funzionalità della galleria
 
 ### Schede foto
@@ -683,7 +696,7 @@ Per ogni gruppo, scegli quale/quali conservare; la conferma scarta il resto. Le 
 
 Un pulsante **Selezione automatica** nella barra degli strumenti seleziona un intero ambito in un solo passaggio, anziché gruppo per gruppo. Scegli l'ambito con i controlli di granularità/ambito (tutti i gruppi, oppure solo raffiche / foto simili / scene, eventualmente un album o una finestra temporale), imposta un **rigore** — il budget di conservazione, dove un valore più alto ne conserva meno per gruppo — e visualizza l'anteprima. Ogni gruppo conserva la sua foto migliore più tutto ciò che rientra nel margine di rigore (con un minimo per gruppo) e scarta il resto. Il pulsante è completamente nascosto nelle tre granularità da mantenere intere (**Bracketing di esposizione**, **Panorami**, **Panorami HDR**) — non c'è nulla da decidere lì, dato che ogni fotogramma di quelle serie parte già conservato. In un ambito misto, i bracketing vengono decisi per primi, prima di raffiche, simili e scene, così l'esposizione di base di un bracketing non viene mai ridecisa da un gruppo successivo con cui capita di sovrapporsi.
 
-L'anteprima è un'**esecuzione a vuoto** (dry run, non viene scritto nulla): mostra la suddivisione conservazione/scarto per gruppo. Conferma per applicare — gli scarti vengono registrati e, come ogni selezione, addestrano "I miei gusti"; un album facoltativo **Highlights** raccoglie in modo idempotente la foto migliore di ogni gruppo con punteggio almeno pari a `auto_cull.highlights_min`. Un badge indicatore "foto migliore in questo gruppo" segnala i gruppi in cui la selezione automatica conserverebbe un fotogramma diverso dall'attuale foto guida. `POST /api/culling/auto`; configurato tramite il blocco [`auto_cull`](CONFIGURATION.md#auto-cull). Le stesse regole girano senza interfaccia da terminale con `python facet.py --auto-cull` — vedi [Selezione da terminale](COMMANDS.md#selezione-da-terminale).
+L'anteprima è un'**esecuzione a vuoto** (dry run, non viene scritto nulla): mostra la suddivisione conservazione/scarto per gruppo. Conferma per applicare — gli scarti vengono registrati, ogni foto conservata viene segnata come **Conserva** e, come ogni selezione, addestrano "I miei gusti"; un album facoltativo **Highlights** raccoglie in modo idempotente la foto migliore di ogni gruppo con punteggio almeno pari a `auto_cull.highlights_min`. Un badge indicatore "foto migliore in questo gruppo" segnala i gruppi in cui la selezione automatica conserverebbe un fotogramma diverso dall'attuale foto guida. `POST /api/culling/auto`; configurato tramite il blocco [`auto_cull`](CONFIGURATION.md#auto-cull). Le stesse regole girano senza interfaccia da terminale con `python facet.py --auto-cull` — vedi [Selezione da terminale](COMMANDS.md#selezione-da-terminale).
 
 Quando è addestrato un keeper-ranking head, `POST /api/culling/auto` sceglie la foto da conservare di ogni gruppo in base a `keeper_prob` non appena supera il proprio vincolo di accuratezza — altrimenti l'output è identico byte per byte a quello euristico.
 
