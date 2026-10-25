@@ -174,3 +174,5 @@ O Facet guarda os tags que você digita por conta própria (veja [Visualizador �
 Veja [Comandos — Preview & Export](COMMANDS.md#preview--export) para a referência completa da CLI (`--export-sidecars`, `--import-sidecars`, `--embed-originals`, `--score-to-stars`, `--user`).
 
 Quando um marcador antigo `facet:GPSState=cleared` acompanha campos GPS padrão, prevalece um par completo e válido de latitude/longitude. Um par parcial ou inválido com conteúdo é ambíguo e ignorado; nunca apaga a localização. Apenas um par ausente ou vazio com o marcador explícito apaga o GPS. O GPS manual permanece protegido, salvo pedido explícito de sobrescrita.
+
+A exportação de legendas com ExifTool altera apenas o idioma `x-default` de `dc:description` e preserva os outros idiomas em cada arquivo auxiliar ou imagem. Uma legenda vazia no Facet preserva as existentes. Sem ExifTool, o XML contém o idioma padrão e normalmente usa `<image>.facet.xmp` se já houver um arquivo auxiliar; a substituição explícita continua substituindo o pacote de destino.

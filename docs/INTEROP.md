@@ -168,9 +168,11 @@ Facet keeps the tags you type yourself (see [Viewer — Manual Tags](VIEWER.md#m
 | Color label | `xmp:Label` (`Red` = rejected, `Yellow` = favorite) | `xmp:Label` | Newest-wins vs. `scanned_at` |
 | Tags / keywords | `dc:subject` (flat, AI tags + manual tags, includes named-face person names) | `dc:subject` (stored as manual tags) | Merged, never replaced; a removal in Facet is not written back to a sidecar (see [Manual tags and XMP keywords](#manual-tags-and-xmp-keywords)) |
 | Hierarchical tags | `lr:hierarchicalSubject` (`Category\|<cat>`, `People\|<name>`) | Not re-imported | Export-only |
-| Caption | `dc:description` (+ `IPTC:Caption-Abstract` via exiftool) | Not re-imported | Export-only |
+| Caption | `dc:description` default language (+ `IPTC:Caption-Abstract` via exiftool) | Not re-imported | Export-only |
 | Named face regions | MWG `mwg-rs:RegionList` (center-normalized, `Type=Face`) | Not re-imported | Export-only; read natively by digiKam, **not** read by Lightroom (a known Adobe limitation — Lightroom only consumes MWG regions it wrote itself) |
 
 See [Commands — Preview & Export](COMMANDS.md#preview--export) for the full CLI reference (`--export-sidecars`, `--import-sidecars`, `--embed-originals`, `--score-to-stars`, `--user`).
 
 When a stale `facet:GPSState=cleared` accompanies standard GPS fields, a complete valid latitude/longitude pair wins. A partial or invalid nonblank pair is ambiguous and ignored; it never clears a location. Only an absent or blank pair with the explicit clear marker clears GPS. Existing manual GPS remains protected unless overwrite is explicitly requested.
+
+Caption export with ExifTool updates only `dc:description`’s `x-default` language and preserves other language alternatives in each existing sidecar or embedded image. An empty Facet caption leaves existing captions unchanged; it does not request deletion. Without ExifTool, the XML writer creates a default-language caption in its output packet and, by default, diverts to `<image>.facet.xmp` when an editor sidecar exists. Explicit fallback `overwrite=True` still replaces the target packet.
