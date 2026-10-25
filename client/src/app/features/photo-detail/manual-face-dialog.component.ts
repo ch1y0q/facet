@@ -1,3 +1,5 @@
+import { AuthService } from '../../core/services/auth.service';
+import { PersonAssignmentHistoryService } from '../../core/services/person-assignment-history.service';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal, computed, DestroyRef, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -145,6 +147,9 @@ export class ManualFaceDialogComponent implements OnInit {
   readonly data: ManualFaceDialogData = inject(MAT_DIALOG_DATA);
   readonly I18N = i18nKeys();
   private readonly api = inject(ApiService);
+  private readonly auth = inject(AuthService);
+  private readonly owner = this.auth.identity();
+  private readonly assignmentHistory = inject(PersonAssignmentHistoryService);
   private readonly dialog = inject(MatDialog);
   private readonly destroyRef = inject(DestroyRef);
   readonly frame = signal<ManualFaceFrame | null>(null);
@@ -334,7 +339,7 @@ export class ManualFaceDialogComponent implements OnInit {
           name: string;
         }
       | null;
-    if (!result || this.destroyRef.destroyed) return;
+    if (!result || this.destroyRef.destroyed || this.auth.identity() !== this.owner) return;
     this.person.set(
       result.kind === 'select' ? { person_id: result.person.id } : { new_person_name: result.name },
     );
@@ -364,7 +369,8 @@ export class ManualFaceDialogComponent implements OnInit {
   }
 
   async save(): Promise<void> {
-    if (!this.valid() || this.saving()) return;
+    if (!this.valid() || this.saving() || this.auth.identity() !== this.owner) return;
+    const owner = this.auth.identity();
     const id = this.editingId();
     const body: components['schemas']['ManualFaceWrite'] = {
       path: this.data.path,
@@ -387,6 +393,8 @@ export class ManualFaceDialogComponent implements OnInit {
     this.error.set('');
     try {
       const actual = await firstValueFrom(request);
+      if (actual.person_id != null) this.assignmentHistory.record(actual.person_id, owner);
+      if (this.auth.identity() !== owner) return;
       if (!this.destroyRef.destroyed) {
         this.reviewRegionIds.delete(actual.id);
         this.regions.update((list) => [...list.filter((row) => row.id !== actual.id), actual]);

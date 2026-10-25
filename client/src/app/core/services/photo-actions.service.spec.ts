@@ -1,6 +1,7 @@
+import { AuthService } from './auth.service';
 import type { Mock } from 'vitest';
 import { TestBed } from '@angular/core/testing';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { I18nService } from './i18n.service';
@@ -46,6 +47,7 @@ describe('PhotoActionsService', () => {
 
     TestBed.configureTestingModule({
       providers: [
+        { provide: AuthService, useValue: { identity: () => '1|test' } },
         PhotoActionsService,
         { provide: MatDialog, useValue: mockDialog },
         { provide: MatSnackBar, useValue: mockSnackBar },
@@ -83,6 +85,20 @@ describe('PhotoActionsService', () => {
   });
 
   describe('openAddPerson', () => {
+    it('does not submit a selection captured before switching accounts', async () => {
+      const selected = new Subject<unknown>();
+      mockDialog.open
+        .mockReturnValueOnce({ afterClosed: () => of({ id: 10 }) })
+        .mockReturnValueOnce({ afterClosed: () => selected });
+      service.openAddPerson(mockPhoto);
+      await vi.waitFor(() => expect(mockDialog.open).toHaveBeenCalledTimes(2));
+      vi.spyOn(TestBed.inject(AuthService), 'identity').mockReturnValue('1|other');
+      selected.next({ kind: 'select', person: { id: 1, name: 'Alice' } });
+      selected.complete();
+      expect(mockStore.assignFace).not.toHaveBeenCalled();
+      expect(mockStore.createPerson).not.toHaveBeenCalled();
+    });
+
     it('should open FaceSelectorDialogComponent first', async () => {
       service.openAddPerson(mockPhoto);
       await vi.waitFor(() => expect(mockDialog.open).toHaveBeenCalled(), { timeout: 5000 });

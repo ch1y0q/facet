@@ -1,3 +1,4 @@
+import { PersonAssignmentHistoryService } from '../../core/services/person-assignment-history.service';
 import type { Mock } from 'vitest';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
@@ -2584,6 +2585,29 @@ describe('GalleryStore optimistic mutations', () => {
     ]);
   });
 
+  it('records only committed face assignments and ignores old-owner responses', async () => {
+    const record = vi.spyOn(TestBed.inject(PersonAssignmentHistoryService), 'record');
+    apiPost.mockReturnValue(of({ success: false }));
+    expect(await store.assignFace(1, 9, '/a.jpg', 'Ada')).toBe(false);
+    expect(record).not.toHaveBeenCalled();
+    apiPost.mockReturnValue(of({ id: 9, name: 'Ada', face_count: 0 }));
+    await store.createPerson('Ada');
+    await store.createPerson('Ada', [1]);
+    expect(record).not.toHaveBeenCalled();
+    apiPost.mockReturnValue(of({ success: true }));
+    expect(await store.assignFace(1, 9, '/a.jpg', 'Ada')).toBe(true);
+    expect(record).toHaveBeenCalledWith(9, '0|');
+    record.mockClear();
+    const pending = new Subject<{ success: boolean }>();
+    apiPost.mockReturnValue(pending);
+    const write = store.assignFace(2, 9, '/a.jpg', 'Ada');
+    vi.spyOn(TestBed.inject(AuthService), 'identity').mockReturnValue('1|other');
+    pending.next({ success: true });
+    pending.complete();
+    expect(await write).toBe(false);
+    expect(TestBed.inject(PersonAssignmentHistoryService).recentIds()).toEqual([]);
+  });
+
   it('rebuilds a review queue when a single rating changes its sort order', async () => {
     const all = Array.from({ length: 4 }, (_, i) => makePhoto({ path: `/p${i}.jpg`, star_rating: i + 1 }));
     store.photos.set(all);
@@ -2807,6 +2831,7 @@ describe('GalleryStore optimistic mutations', () => {
     it('records the person actions with ids, and nothing for a failed one', async () => {
       apiPost.mockReturnValue(of({ id: 9, name: 'Anna', face_count: 2 }));
       expect(await store.createPerson(' Anna ', [1, 2], '/a.jpg')).not.toBeNull();
+      apiPost.mockReturnValue(of({ success: true }));
       await store.assignFace(5, 9, '/a.jpg', 'Anna');
       await store.unassignPerson('/a.jpg', 9);
       apiPost.mockReturnValue(throwError(() => new Error('boom')));

@@ -1711,7 +1711,9 @@
     "split_error": "Person konnte nicht aufgeteilt werden"
   },
   "person_selector": {
-    "create_new": "Neue Person erstellen"
+    "create_new": "Neue Person erstellen",
+    "ordering_hint": "Zuerst kürzlich in diesem Browser zugewiesene Personen, dann Personen mit den meisten Gesichtern in sichtbaren Fotos.",
+    "face_count": "{count} Gesichter"
   },
   "slideshow": {
     "start": "Diashow",

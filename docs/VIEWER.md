@@ -1652,3 +1652,7 @@ This shifts camera walltime without inferring timezones or daylight saving. Only
 Corrections do not write originals or change file modification times. Existing explicit XMP export writes standard `exif:DateTimeOriginal` for manual dates; **Write metadata to file** additionally updates EXIF `DateTimeOriginal` for supported formats, leaving other EXIF date fields alone. Existing burst/sequence assignments are retained; run the existing scan/group detection workflow explicitly when regrouping is needed.
 
 Edition API: `POST /api/photos/capture_date/preview` accepts `photo_paths` or `filters`, optional `exclude`, and `offset_seconds`; `POST /api/photos/capture_date/apply` also requires the returned `preview_token`. `DELETE /api/photo/capture_date?path=` restores the file date.
+
+## Assigning people
+
+The **Assign face to person** picker shows up to 12 people successfully assigned in this browser first, separately for each signed-in identity. Other named people follow by their face count in photos you can see, with alphabetical ties. Search and pagination cover all eligible people, including those with one face. The order already displayed stays steady while the picker is open. Selecting or proposing a new person alone does not update recents: the assignment or manual-face save must succeed. Only person IDs are saved locally; unavailable browser storage disables recents without blocking assignment.

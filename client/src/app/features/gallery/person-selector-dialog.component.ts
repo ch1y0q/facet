@@ -1,4 +1,4 @@
-import { Component, DestroyRef, inject, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, DestroyRef, effect, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialogModule, MatDialogRef } from '@angular/material/dialog';
@@ -10,6 +10,8 @@ import { PersonThumbnailUrlPipe } from '../../shared/pipes/thumbnail-url.pipe';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { i18nKeys } from '../../core/i18n/keys';
+import { AuthService } from '../../core/services/auth.service';
+import { PersonAssignmentHistoryService } from '../../core/services/person-assignment-history.service';
 import { ApiService } from '../../core/services/api.service';
 import { firstValueFrom } from 'rxjs';
 import type { components } from '../../core/api/schema';
@@ -62,6 +64,7 @@ import type { components } from '../../core/api/schema';
           />
         </mat-form-field>
 
+        <p class="text-xs text-neutral-500">{{ I18N.person_selector.ordering_hint | translate }}</p>
         <div class="flex flex-col gap-1 max-h-[360px] overflow-y-auto">
           <button
             class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--mat-sys-surface-container-high)] transition-colors text-left w-full border border-dashed border-neutral-600 cursor-pointer"
@@ -101,7 +104,7 @@ import type { components } from '../../core/api/schema';
               <div class="flex flex-col min-w-0">
                 <span class="text-base font-medium truncate">{{ person.name }}</span>
                 <span class="text-xs text-neutral-500">{{
-                  I18N.gallery.photo_count | translate: { count: person.face_count }
+                  I18N.person_selector.face_count | translate: { count: person.face_count }
                 }}</span>
               </div>
             </button>
@@ -124,6 +127,9 @@ import type { components } from '../../core/api/schema';
 export class PersonSelectorDialogComponent {
   protected readonly I18N = i18nKeys();
   private readonly api = inject(ApiService);
+  private readonly auth = inject(AuthService);
+  private readonly owner = this.auth.identity();
+  private readonly recentIds = inject(PersonAssignmentHistoryService).recentIds().join(',');
   private readonly destroyRef = inject(DestroyRef);
   readonly dialogRef = inject(MatDialogRef<PersonSelectorDialogComponent>);
 
@@ -141,6 +147,14 @@ export class PersonSelectorDialogComponent {
   private searchTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor() {
+    effect(() => {
+      if (this.auth.identity() !== this.owner) {
+        this.requestId++;
+        clearTimeout(this.searchTimer);
+        this.filtered.set([]);
+        this.dialogRef.close(null);
+      }
+    });
     this.destroyRef.onDestroy(() => {
       clearTimeout(this.searchTimer);
       this.requestId++;
@@ -173,6 +187,7 @@ export class PersonSelectorDialogComponent {
   }
 
   private async loadPage(page: number, search: string, requestId: number): Promise<void> {
+    if (this.destroyRef.destroyed || this.auth.identity() !== this.owner) return;
     this.loading.set(true);
     this.failed.set(false);
     try {
@@ -181,10 +196,11 @@ export class PersonSelectorDialogComponent {
           page,
           per_page: 48,
           search,
-          sort: 'name_asc',
+          sort: 'assignment',
+          recent_ids: this.recentIds,
         }),
       );
-      if (this.destroyRef.destroyed || requestId !== this.requestId) return;
+      if (this.destroyRef.destroyed || this.auth.identity() !== this.owner || requestId !== this.requestId) return;
       const named = result.persons
         .filter((person) => person.name?.trim())
         .map((person) => ({
@@ -192,7 +208,9 @@ export class PersonSelectorDialogComponent {
           name: person.name!,
           face_count: person.face_count ?? 0,
         }));
-      this.filtered.update((current) => (page === 1 ? named : [...current, ...named]));
+      this.filtered.update((current) => page === 1 ? named : [...current, ...named.filter(
+        (person) => !current.some((row) => row.id === person.id),
+      )]);
       this.page = page;
       this.hasMore.set(page * 48 < result.total);
     } catch {

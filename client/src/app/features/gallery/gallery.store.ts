@@ -5,6 +5,7 @@ import { Router, ActivatedRoute, NavigationStart } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom, timeout } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
+import { PersonAssignmentHistoryService } from '../../core/services/person-assignment-history.service';
 import { AuthService } from '../../core/services/auth.service';
 import { AlbumService, Album } from '../../core/services/album.service';
 import { I18nService } from '../../core/services/i18n.service';
@@ -277,6 +278,7 @@ const BATCH_ACTIVITY: Record<string, { kind: UserActivityKind; value: (extra: Re
 export class GalleryStore {
   private api = inject(ApiService);
   private auth = inject(AuthService);
+  private readonly assignmentHistory = inject(PersonAssignmentHistoryService);
   private albumService = inject(AlbumService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
@@ -2045,6 +2047,7 @@ export class GalleryStore {
   async createPerson(name: string, faceIds: number[] = [], photoPath?: string): Promise<PersonOption | null> {
     const trimmed = name.trim();
     if (!trimmed) return null;
+    const owner = this.auth.identity();
     try {
       const res = await firstValueFrom(
         this.api.post<{ id: number; name: string; face_count: number }>(
@@ -2052,6 +2055,8 @@ export class GalleryStore {
           { name: trimmed, face_ids: faceIds },
         ),
       );
+      if (faceIds.length > 0 && res.face_count > 0) this.assignmentHistory.record(res.id, owner);
+      if (this.auth.identity() !== owner) return null;
       this.journal.record('person', photoPath ? [photoPath] : [], {
         action: 'create', person_id: res.id, name: activityName(trimmed), count: faceIds.length,
       });
@@ -2077,8 +2082,12 @@ export class GalleryStore {
 
   /** Assign a single face to a person. Returns true on success, false on failure. */
   async assignFace(faceId: number, personId: number, photoPath: string, personName: string): Promise<boolean> {
+    const owner = this.auth.identity();
     try {
-      await firstValueFrom(this.api.post(`/face/${faceId}/assign`, { person_id: personId }));
+      const result = await firstValueFrom(this.api.post<{ success: boolean }>(`/face/${faceId}/assign`, { person_id: personId }));
+      if (result.success !== true) return false;
+      this.assignmentHistory.record(personId, owner);
+      if (this.auth.identity() !== owner) return false;
       this.journal.record('person', [photoPath], { action: 'assign', person_id: personId });
       this.photos.update(photos =>
         photos.map(p => {

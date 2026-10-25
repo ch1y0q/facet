@@ -1711,7 +1711,9 @@
     "split_error": "Failed to split person"
   },
   "person_selector": {
-    "create_new": "Create new person"
+    "create_new": "Create new person",
+    "ordering_hint": "Recently assigned in this browser first, then people with the most faces in photos you can see.",
+    "face_count": "{count} faces"
   },
   "slideshow": {
     "start": "Slideshow",

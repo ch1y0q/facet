@@ -1,3 +1,4 @@
+import { AuthService } from './auth.service';
 import { Injectable, inject } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
@@ -34,6 +35,7 @@ export class PhotoActionsService {
   private readonly exportService = inject(ExportService);
   private readonly i18n = inject(I18nService);
   private readonly api = inject(ApiService);
+  private readonly auth = inject(AuthService);
 
   /**
    * Send photos to the OS trash via `POST /api/photo/delete`.
@@ -84,23 +86,27 @@ export class PhotoActionsService {
   }
 
   openAddPerson(photo: Photo, onAssigned?: () => void): void {
+    const owner = this.auth.identity();
     import('../../features/gallery/face-selector-dialog.component').then(m => {
+      if (this.auth.identity() !== owner) return;
       const faceRef = this.dialog.open(m.FaceSelectorDialogComponent, {
         data: { photoPath: photo.path },
         width: '95vw',
         maxWidth: '400px',
       });
       faceRef.afterClosed().subscribe(face => {
-        if (!face) return;
+        if (!face || this.auth.identity() !== owner) return;
         import('../../features/gallery/person-selector-dialog.component').then(m2 => {
+          if (this.auth.identity() !== owner) return;
           const personRef = this.dialog.open(m2.PersonSelectorDialogComponent, {
             width: '95vw',
             maxWidth: '400px',
           });
           personRef.afterClosed().subscribe(async result => {
-            if (!result) return;
+            if (!result || this.auth.identity() !== owner) return;
             if (result.kind === 'create') {
               const created = await this.store.createPerson(result.name, [face.id], photo.path);
+              if (this.auth.identity() !== owner) return;
               if (created) {
                 this.snackBar.open(this.i18n.t(I18N.notifications.faces_assigned), '', { duration: 2000 });
                 onAssigned?.();
@@ -109,6 +115,7 @@ export class PhotoActionsService {
               }
             } else if (result.kind === 'select') {
               const assigned = await this.store.assignFace(face.id, result.person.id, photo.path, result.person.name);
+              if (this.auth.identity() !== owner) return;
               if (assigned) {
                 this.snackBar.open(this.i18n.t(I18N.notifications.faces_assigned), '', { duration: 2000 });
                 onAssigned?.();
