@@ -7,8 +7,8 @@ Two writers, picked by ``write_metadata`` per host capability:
   proprietary RAW (whose originals are never modified). When the caller passes
   ``embed_original=True`` it ALSO embeds metadata *in-file* for safe formats
   (JPEG/HEIC/TIFF/PNG/DNG) so the whole ecosystem (Lightroom, digiKam, immich,
-  Apple / Synology / Google Photos) sees it. exiftool preserves every foreign
-  node (darktable's ``darktable:history`` and any external keywords, which are
+  Apple / Synology / Google Photos) sees it. exiftool preserves foreign
+  nodes outside Facet-owned fields (darktable's ``darktable:history`` and any external keywords, which are
   read and unioned with Facet's rather than wiped).
 * **pure-XML fallback (no exiftool).** ``build_xmp`` / ``write_sidecar`` generate
   a standard XMP packet as XML directly — **no dependency on the exiftool
@@ -45,6 +45,7 @@ is sidecar-only, and proprietary RAW is never touched regardless.
 from __future__ import annotations
 
 import functools
+import json
 import logging
 import math
 import os
@@ -503,27 +504,73 @@ def _assert_well_formed_xmp(path: str) -> None:
     ET.fromstring(data)
 
 
-def _region_args(regions: list[FaceRegion]) -> list[str]:
-    """exiftool args for MWG face regions. Clears the list first (idempotent)."""
-    if not regions:
+def _region_args(regions: list[FaceRegion], existing: dict | None = None) -> list[str]:
+    """Replace explicitly Facet-owned regions, preserving every unmarked region.
+
+    MWG Extensions carry ownership per rectangle: names and geometry are not
+    identity. Legacy unmarked Facet exports are preserved too, since they cannot
+    be distinguished safely from another editor's annotations.
+    """
+    info = dict(existing or {})
+    old_regions = info.get("RegionList", [])
+    if not isinstance(old_regions, list) or any(not isinstance(r, dict) for r in old_regions):
+        raise RuntimeError("invalid MWG region list; refusing to replace face metadata")
+    foreign = [r for r in old_regions
+               if not isinstance(r.get("Extensions"), dict)
+               or r["Extensions"].get("XMP-facet:RegionOwner") != "Facet"]
+    if not regions and len(foreign) == len(old_regions):
         return []
-    args = [
-        "-XMP-mwg-rs:RegionInfo=",
-        f"-XMP-mwg-rs:RegionAppliedToDimensionsW={regions[0].image_width}",
-        f"-XMP-mwg-rs:RegionAppliedToDimensionsH={regions[0].image_height}",
-        "-XMP-mwg-rs:RegionAppliedToDimensionsUnit=pixel",
-    ]
+    if regions:
+        dimensions = {"W": regions[0].image_width, "H": regions[0].image_height, "Unit": "pixel"}
+        if any(r.image_width != dimensions["W"] or r.image_height != dimensions["H"] for r in regions):
+            raise RuntimeError("face regions use different image dimensions")
+        if foreign and info.get("AppliedToDimensions") != dimensions:
+            raise RuntimeError("foreign face regions use different or unknown image dimensions")
+        info["AppliedToDimensions"] = dimensions
+    # Modify individual list entries rather than rewriting the foreign structs:
+    # unknown extension namespaces must survive even if ExifTool cannot expose
+    # or serialize their fields in JSON.
+    args = ["-api", "StructFormat=JSON"]
+    for region in old_regions:
+        if region not in foreign:
+            args.append("-XMP-mwg-rs:RegionList-=" + json.dumps(region, ensure_ascii=False))
+    if regions and not foreign:
+        args.extend([f"-XMP-mwg-rs:RegionAppliedToDimensionsW={regions[0].image_width}",
+                     f"-XMP-mwg-rs:RegionAppliedToDimensionsH={regions[0].image_height}",
+                     "-XMP-mwg-rs:RegionAppliedToDimensionsUnit=pixel"])
     for r in regions:
-        args += [
-            f"-XMP-mwg-rs:RegionName={r.name}",
-            "-XMP-mwg-rs:RegionType=Face",
-            f"-XMP-mwg-rs:RegionAreaX={r.x:.6f}",
-            f"-XMP-mwg-rs:RegionAreaY={r.y:.6f}",
-            f"-XMP-mwg-rs:RegionAreaW={r.w:.6f}",
-            f"-XMP-mwg-rs:RegionAreaH={r.h:.6f}",
-            "-XMP-mwg-rs:RegionAreaUnit=normalized",
-        ]
+        region = {"Name": r.name, "Type": "Face",
+                  "Area": {"X": round(r.x, 6), "Y": round(r.y, 6),
+                           "W": round(r.w, 6), "H": round(r.h, 6), "Unit": "normalized"},
+                  "Extensions": {"XMP-facet:RegionOwner": "Facet"}}
+        # Literal Unicode avoids ExifTool's handling of JSON unicode escapes.
+        args.append("-XMP-mwg-rs:RegionList+=" + json.dumps(region, ensure_ascii=False))
     return args
+
+
+def _read_existing_regions(target: str, exe: str, *, timeout: int) -> dict:
+    """Read structured MWG metadata before writing; fail closed on read errors."""
+    if not os.path.exists(target):
+        return {}
+    config = os.path.join(os.path.dirname(__file__), "facet_exiftool.config")
+    try:
+        if target.lower().endswith(".xmp"):
+            _assert_well_formed_xmp(target)
+        result = subprocess.run(
+            [exe, "-config", config, "-struct", "-json", "-XMP-mwg-rs:RegionInfo", target],
+            capture_output=True, text=True, timeout=timeout,
+        )
+        records = json.loads(result.stdout) if result.returncode == 0 else None
+        if not isinstance(records, list):
+            raise ValueError("invalid metadata response")
+        if records and records[0].get("Error"):
+            raise ValueError("metadata read failed")
+        info = records[0].get("RegionInfo", {}) if records else {}
+        if not isinstance(info, dict):
+            raise ValueError("invalid MWG structure")
+        return info
+    except (OSError, subprocess.TimeoutExpired, ValueError, TypeError, AttributeError, ET.ParseError) as ex:
+        raise RuntimeError(f"cannot read face metadata for {target}; refusing to overwrite it") from ex
 
 
 def _union(*lists: list[str]) -> list[str]:
@@ -544,8 +591,8 @@ def _exiftool_tag_args(rating: XmpRating, existing_flat: list[str],
     Keyword and hierarchical LISTS are cleared then rewritten as the UNION of the
     target's existing keywords and Facet's own — foreign keywords authored by
     Lightroom / darktable / etc. are preserved, never wiped, and re-running never
-    accumulates duplicates. Face regions stay clear-then-replace (Facet owns face
-    detection). ``xmp:Label`` is fully Facet-owned (favourite/reject only), so it is
+    accumulates duplicates. Face regions are merged separately using explicit
+    per-region ownership. ``xmp:Label`` is fully Facet-owned (favourite/reject only), so it is
     always emitted like ``xmp:Rating`` -- an empty value clears the exiftool tag,
     which is what un-favouriting must do. Caption is set only when present, so an
     external value is not wiped when Facet has none.
@@ -573,7 +620,6 @@ def _exiftool_tag_args(rating: XmpRating, existing_flat: list[str],
     args.append("-XMP-lr:HierarchicalSubject=")
     for path in _union(existing_hier, _hierarchical_paths(rating)):
         args.append(f"-XMP-lr:HierarchicalSubject={path}")
-    args += _region_args(rating.regions)
     return args
 
 
@@ -636,6 +682,8 @@ def _run_exiftool(target: str, rating: XmpRating, *, timeout: int) -> None:
             snapshot = handle.read()
     existing_flat, existing_hier = _read_existing_keywords(target, exe, timeout=timeout)
     tag_args = _exiftool_tag_args(rating, existing_flat, existing_hier)
+    existing_regions = _read_existing_regions(target, exe, timeout=timeout)
+    tag_args += _region_args(rating.regions, existing_regions)
     config = os.path.join(os.path.dirname(__file__), "facet_exiftool.config")
     if not target.lower().endswith(".xmp") and rating.gps_state():
         state = rating.gps_state()

@@ -174,3 +174,5 @@ O Facet guarda os tags que você digita por conta própria (veja [Visualizador �
 Veja [Comandos — Preview & Export](COMMANDS.md#preview--export) para a referência completa da CLI (`--export-sidecars`, `--import-sidecars`, `--embed-originals`, `--score-to-stars`, `--user`).
 
 Quando um marcador antigo `facet:GPSState=cleared` acompanha campos GPS padrão, prevalece um par completo e válido de latitude/longitude. Um par parcial ou inválido com conteúdo é ambíguo e ignorado; nunca apaga a localização. Apenas um par ausente ou vazio com o marcador explícito apaga o GPS. O GPS manual permanece protegido, salvo pedido explícito de sobrescrita.
+
+Com ExifTool, a exportação de rostos substitui apenas os retângulos MWG com `facet:RegionOwner=Facet` nas Extensions. Regiões sem marca, incluindo exportações antigas do Facet, são preservadas. Remover todos os rostos do Facet apaga apenas as regiões marcadas. Dimensões externas diferentes ou desconhecidas causam um erro antes da gravação. Sem ExifTool, os retângulos não são exportados. Uma região marcada editada externamente continua sob gestão do Facet; remova a marca para preservá-la como anotação independente.

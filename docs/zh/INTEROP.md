@@ -174,3 +174,5 @@ Facet 把你自己输入的标签（参见[查看器——手动标签](VIEWER.m
 完整的 CLI 参考（`--export-sidecars`、`--import-sidecars`、`--embed-originals`、`--score-to-stars`、`--user`）请见[命令 — 预览与导出](COMMANDS.md#预览与导出)。
 
 当过时的 `facet:GPSState=cleared` 标记与标准 GPS 字段并存时，以完整且有效的经纬度为准。含有非空值但不完整或无效的坐标存在歧义，将被忽略，绝不会清除位置。仅当坐标均缺失或为空且存在明确的清除标记时才清除 GPS。已有手动 GPS 仍受保护，除非明确要求覆盖。
+
+使用 ExifTool 导出人脸时，只替换 Extensions 中带有 `facet:RegionOwner=Facet` 标记的 MWG 矩形。未标记的区域（包括旧版 Facet 导出的区域）保持不变。删除所有 Facet 人脸时，只清除带标记的区域。外部区域的图像尺寸不同或未知时，写入前会报错。没有 ExifTool 时，不导出人脸矩形。带标记的区域即使在其他软件中编辑，仍由 Facet 管理；如需作为独立标注保留，请先移除归属标记。

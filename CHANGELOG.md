@@ -4,6 +4,9 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Preserve foreign face rectangles during metadata export and remove stale Facet-owned rectangles when faces are cleared.
+
 ### Added
 - Explicit XMP export/import carries Keep decisions and manual GPS, with protection against overwriting existing manual locations.
 
