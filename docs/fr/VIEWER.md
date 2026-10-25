@@ -1575,6 +1575,13 @@ Il s’agit de l’heure locale de l’appareil, sans déduction du fuseau ni de
 
 Aucun original ni horodatage de fichier n’est modifié. L’export XMP explicite écrit `exif:DateTimeOriginal` pour les dates manuelles ; l’écriture explicite dans le fichier ajoute EXIF `DateTimeOriginal` pour les formats compatibles sans modifier les autres dates EXIF. Les groupes de rafales/séquences restent en place ; relancez explicitement le scan ou la détection de groupes pour les recalculer.
 
+## Historique des modifications
+
+En mode édition, ouvrez **Historique des modifications** depuis le bouton de la galerie ou les détails. Dépliez une entrée pour comparer les valeurs avant/après, puis choisissez **Rétablir cette entrée**. Les lieux et dates sont partagés ; décisions, étoiles et favoris utilisent vos préférences de compte. Les fichiers et la reconnaissance faciale sont exclus. Les originaux restent inchangés. L’annulation temporaire et l’activité de l’assistant restent distinctes.
+
+Cette base conserve les **50 dernières entrées par compte**, avec au plus **1000 photos et 1 Mio** par entrée. Les grands tris filtrés sont enregistrés en parties dans la même transaction. Une restauration ne concerne que la partie choisie ; les anciennes parties peuvent avoir expiré. Les actions sans changement n’ajoutent rien. L’historique survit aux redémarrages et mises à jour incrémentales, sans synchronisation entre bases. Un export complet démarre avec un historique vide.
+
+Une entrée est entièrement masquée si une photo est supprimée ou inaccessible. La restauration refuse toute l’entrée si une valeur concernée a changé depuis, même si elle a retrouvé sa valeur précédente. Les conflits de lieu/date concernent tous les comptes ; un tri privé d’un autre compte ne bloque pas le vôtre. La restauration crée sa propre entrée et marque l’originale comme rétablie. Analyses, imports et annulations temporaires invalident aussi les anciennes entrées en conflit.
 ## Assigner des personnes
 
 Le sélecteur **Assigner un visage à une personne** présente d’abord jusqu’à 12 personnes assignées avec succès dans ce navigateur, séparément pour chaque identité connectée. Les autres personnes nommées suivent selon le nombre de visages dans les photos visibles, puis par ordre alphabétique. La recherche et la pagination couvrent toutes les personnes admissibles, même avec un seul visage. L’ordre affiché reste stable tant que le sélecteur est ouvert. Une simple sélection ou proposition de création ne modifie pas les récents : l’assignation ou l’enregistrement du visage manuel doit réussir. Seuls les identifiants sont conservés localement ; si le stockage est indisponible, l’assignation reste possible sans récents.
