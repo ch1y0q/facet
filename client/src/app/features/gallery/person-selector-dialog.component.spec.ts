@@ -1,23 +1,33 @@
+import { signal } from '@angular/core';
+import { PersonAssignmentHistoryService } from '../../core/services/person-assignment-history.service';
+import { AuthService } from '../../core/services/auth.service';
 import { TestBed } from '@angular/core/testing';
 import { MatDialogRef } from '@angular/material/dialog';
 import { of, Subject, throwError } from 'rxjs';
 import { PersonSelectorDialogComponent } from './person-selector-dialog.component';
+import { I18nService } from '../../core/services/i18n.service';
 import { ApiService } from '../../core/services/api.service';
 import type { PersonOption } from './gallery.store';
 
 const alice: PersonOption = { id: 1, name: 'Alice', face_count: 1 };
 const bob: PersonOption = { id: 2, name: 'Bob', face_count: 3 };
 describe('PersonSelectorDialogComponent server search', () => {
+  const identity = signal('1|test');
+  const recentIds = vi.fn(() => [] as number[]);
   let component: PersonSelectorDialogComponent;
   let get: ReturnType<typeof vi.fn>;
   let close: ReturnType<typeof vi.fn>;
   beforeEach(async () => {
     vi.useFakeTimers();
+    identity.set('1|test');
+    recentIds.mockReturnValue([]);
     get = vi.fn(() => of({ persons: [alice], total: 1 }));
     close = vi.fn();
     TestBed.configureTestingModule({
       providers: [
+        { provide: AuthService, useValue: { identity } },
         PersonSelectorDialogComponent,
+        { provide: PersonAssignmentHistoryService, useValue: { recentIds } },
         { provide: ApiService, useValue: { get } },
         { provide: MatDialogRef, useValue: { close } },
       ],
@@ -31,7 +41,8 @@ describe('PersonSelectorDialogComponent server search', () => {
       page: 1,
       per_page: 48,
       search: '',
-      sort: 'name_asc',
+      sort: 'assignment',
+      recent_ids: '',
     });
     expect(component.filtered()).toEqual([alice]);
   });
@@ -48,7 +59,8 @@ describe('PersonSelectorDialogComponent server search', () => {
       page: 1,
       per_page: 48,
       search: 'Bob',
-      sort: 'name_asc',
+      sort: 'assignment',
+      recent_ids: '',
     });
     expect(component.filtered()).toEqual([bob]);
   });
@@ -81,7 +93,8 @@ describe('PersonSelectorDialogComponent server search', () => {
       page: 2,
       per_page: 48,
       search: '',
-      sort: 'name_asc',
+      sort: 'assignment',
+      recent_ids: '',
     });
     expect(component.filtered()).toEqual([alice, bob]);
     expect(component.hasMore()).toBe(false);
@@ -125,5 +138,52 @@ describe('PersonSelectorDialogComponent server search', () => {
     component.cancelCreate();
     expect(component.newName).toBe('');
     expect(get).toHaveBeenCalledTimes(1);
+  });
+  it('holds the recent snapshot while searching and paging without reshuffling loaded rows', async () => {
+    recentIds.mockReturnValue([9]); // Another assignment after this dialog opened.
+    get.mockReturnValueOnce(of({ persons: [bob, alice], total: 49 }));
+    component.filter();
+    await vi.advanceTimersByTimeAsync(250);
+    get.mockReturnValueOnce(of({ persons: [bob, { id: 3, name: 'Cara', face_count: 1 }], total: 49 }));
+    await component.loadMore();
+    expect(get).toHaveBeenLastCalledWith('/persons', expect.objectContaining({ recent_ids: '' }));
+    expect(component.filtered().map((row) => row.id)).toEqual([2, 1, 3]);
+  });
+  it('closes on an identity change and ignores old candidate responses', async () => {
+    const response = new Subject<{ persons: PersonOption[]; total: number }>();
+    get.mockReturnValueOnce(response);
+    component.filter();
+    await vi.advanceTimersByTimeAsync(250);
+    identity.set('1|other');
+    TestBed.tick();
+    response.next({ persons: [bob], total: 1 });
+    response.complete();
+    await Promise.resolve();
+    expect(close).toHaveBeenCalledWith(null);
+    expect(component.filtered()).toEqual([]);
+  });
+
+});
+
+
+describe('PersonSelectorDialogComponent rendered accessibility', () => {
+  it('associates the ordering hint with search and renders singular face text', async () => {
+    TestBed.configureTestingModule({ providers: [
+      { provide: AuthService, useValue: { identity: () => '1|test' } },
+      { provide: PersonAssignmentHistoryService, useValue: { recentIds: () => [] } },
+      { provide: ApiService, useValue: { get: () => of({ persons: [alice, bob], total: 2 }) } },
+      { provide: MatDialogRef, useValue: { close: vi.fn() } },
+      { provide: I18nService, useValue: { translations: signal({}), t: (key: string, params?: Record<string, unknown>) =>
+        key === 'person_selector.face_count_one' ? '1 face' : key === 'person_selector.face_count' ? `${params?.['count']} faces` : key } },
+    ] });
+    const fixture = TestBed.createComponent(PersonSelectorDialogComponent);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const input = fixture.nativeElement.querySelector('input');
+    const hint = fixture.nativeElement.querySelector('#person-assignment-ordering-hint');
+    expect(input.getAttribute('aria-describedby')?.split(' ')).toContain(hint.id);
+    expect(fixture.nativeElement.textContent).toContain('1 face');
+    expect(fixture.nativeElement.textContent).not.toContain('1 faces');
+    expect(fixture.nativeElement.textContent).toContain('3 faces');
   });
 });

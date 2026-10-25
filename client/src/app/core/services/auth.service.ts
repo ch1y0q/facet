@@ -2,6 +2,7 @@ import { DestroyRef, Injectable, inject, signal, computed } from '@angular/core'
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
+import { clearPersonAssignmentHistory } from './person-assignment-history.storage';
 
 export interface AuthStatus {
   authenticated: boolean;
@@ -205,6 +206,7 @@ export class AuthService {
     // fire-and-forget — local state is dropped regardless.
     this.http.post('/api/auth/logout', {}).subscribe({ error: () => undefined });
     localStorage.removeItem(this.TOKEN_KEY);
+    clearPersonAssignmentHistory();
     this.status.set(null);
     this.clearThumbnailCaches();
     this.router.navigate(['/login']);
