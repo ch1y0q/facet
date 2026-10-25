@@ -507,3 +507,28 @@ python facet.py --recompute-tags     # Ré-étiquette avec le nouveau modèle
 python facet.py --compute-recommendations  # Vérifie les distributions
 python facet.py --recompute-average        # Applique les nouveaux poids
 ```
+
+## Relier des photos déplacées
+
+Après avoir déplacé vous-même les fichiers, `python database.py --relink-photos` prévisualise les chemins anciens/nouveaux exacts et préserve leurs associations en base. La prévisualisation est le mode par défaut. Appliquer exige l’ID du plan enregistré et `--acknowledge-unverified-identity` : la base ne contient aucune preuve cryptographique de l’original disparu. Arrêtez le viewer/les analyses et vérifiez le plan. Les deux chemins doivent rester dans des racines configurées avec la même visibilité utilisateur ; copies, noms ambigus, plans périmés et correspondances de chemins sont refusés. Les compagnons doivent être explicites ; les rectangles manuels nécessitent une révision dans l’éditeur et l’état Immich reste inchangé. Contrat et exemples : [Relier une photo déplacée](RELINK.md).
+
+`sidecar_facet` désigne explicitement `photo.ext.facet.xmp` ; les paquets de repli non listés sont aussi refusés. Les plans enregistrés sont privés (0600 sous POSIX). Un répertoire lisible ne prouve pas qu’un volume est monté : `source_mount_status` reste `not_verified` ; l’opérateur doit confirmer un déplacement réel plutôt qu’un stockage hors ligne.
+
+```sh
+python database.py --relink-photos --db library.db --config scoring_config.json \
+  --mapping moved.json --plan-out relink-plan.json
+python database.py --relink-photos --db library.db --config scoring_config.json \
+  --apply-plan relink-plan.json --ack-plan REVIEWED_PLAN_ID \
+  --acknowledge-unverified-identity
+```
+
+| Option | Rôle |
+|---|---|
+| `--db` | Base existante |
+| `--config` | Configuration résolue |
+| `--user` | Utilisateur configuré obligatoire en mode multi-utilisateur |
+| `--mapping` | JSON des anciens/nouveaux chemins ; prévisualisation |
+| `--plan-out` | Créer un plan privé sans écraser |
+| `--apply-plan` | Appliquer un plan examiné |
+| `--ack-plan` | Empreinte exacte du plan examiné |
+| `--acknowledge-unverified-identity` | Confirmation explicite malgré les octets d’origine inconnus |
