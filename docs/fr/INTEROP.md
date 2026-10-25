@@ -112,7 +112,7 @@ Un enregistrement qui omet `rating` ou `pick` laisse intacte la valeur correspon
 ### Règles de conflit
 
 - **Les notes et libellés suivent la règle « le plus récent gagne »**, en comparant le `xmp:MetadataDate` du sidecar au `scanned_at` de la photo (la dernière fois que Facet l'a évaluée) — pas un horodatage par note. Un sidecar plus récent que le dernier scan peut écraser une note que vous avez modifiée dans Facet *après* ce scan. Gardez l'aller-retour simple : export → Lightroom lit → modification dans Lightroom → Lightroom enregistre → import, sans re-noter dans Facet entre les deux.
-- **Les tags et mots-clés sont fusionnés, jamais remplacés.** À l'export, Facet écrit ses tags IA et ses tags manuels (dédoublonnés) à côté de ce que le sidecar contient déjà ; à l'import, un mot-clé de sidecar devient un tag manuel et ne touche jamais les tags IA — les mots-clés Lightroom n'effacent jamais les tags automatiques de Facet, et inversement. Voir [Tags manuels et mots-clés XMP](#tags-manuels-et-mots-clés-xmp) pour l'effet d'une suppression.
+- **Les tags et mots-clés fusionnent par défaut.** Les exports ajoutent les mots-clés Facet ; `--reconcile-keywords` retire aussi uniquement les noms obsolètes appartenant à Facet. Les imports ajoutent des tags manuels sans remplacer les tags IA. [Tags manuels et mots-clés XMP](#tags-manuels-et-mots-clés-xmp).
 - **Multi-utilisateurs** (`--export-sidecars --user alice` / `--import-sidecars --user alice`) : les notes sont dirigées vers la ligne `user_preferences` d'Alice au lieu des colonnes globales. Les mots-clés restent globaux quel que soit `--user` — les tags manuels sont partagés entre les utilisateurs.
 - Les mots-clés importés vont dans la table `photo_manual_tags`, que les filtres de tags lisent directement : `python database.py --migrate-tags` n'est donc plus nécessaire après `--import-sidecars`.
 
@@ -170,7 +170,7 @@ Facet conserve les tags que vous saisissez vous-même (voir [Visionneuse — Tag
 |---|---|---|---|
 | Note (étoiles / rejet) | `xmp:Rating` (`-1` = rejeté) | `xmp:Rating` | Le plus récent gagne, vs `scanned_at` |
 | Libellé de couleur | `xmp:Label` (`Red` = rejeté, `Yellow` = favori) | `xmp:Label` | Le plus récent gagne, vs `scanned_at` |
-| Tags / mots-clés | `dc:subject` (à plat, tags IA + tags manuels, inclut les noms des personnes identifiées) | `dc:subject` (stockés comme tags manuels) | Fusionnés, jamais remplacés ; une suppression dans Facet n'est pas répercutée dans un sidecar (voir [Tags manuels et mots-clés XMP](#tags-manuels-et-mots-clés-xmp)) |
+| Tags / mots-clés | `dc:subject` (à plat, tags IA + tags manuels, inclut les noms des personnes identifiées) | `dc:subject` (stockés comme tags manuels) | Additif par défaut ; `--reconcile-keywords` retire seulement les noms obsolètes de Facet ; les imports restent additifs ([Tags manuels et mots-clés XMP](#tags-manuels-et-mots-clés-xmp)) |
 | Tags hiérarchiques | `lr:hierarchicalSubject` (`Category\|<cat>`, `People\|<nom>`) | Non réimporté | Export uniquement |
 | Légende | `dc:description` (+ `IPTC:Caption-Abstract` via exiftool) | Non réimporté | Export uniquement |
 | Zones de visage nommées | `mwg-rs:RegionList` MWG (centrée-normalisée, `Type=Face`) | Non réimporté | Export uniquement ; lu nativement par digiKam, **pas** lu par Lightroom (une limitation Adobe connue — Lightroom ne consomme que les zones MWG qu'il a lui-même écrites) |

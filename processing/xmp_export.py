@@ -621,9 +621,9 @@ def _listify(value) -> list[str]:
         return []
     if isinstance(value, list):
         return [name for v in value for name in _listify(v)]
-    # ExifTool emits JSON booleans for literal keyword names true/false.
+    # The caller must recover literal spelling before normalizing names.
     if type(value) is bool:
-        return ['true' if value else 'false']
+        raise RuntimeError('Boolean keyword needs lossless readback before export')
     return [str(value)] if str(value) else []
 
 
@@ -644,6 +644,41 @@ def _exiftool_record(raw):
     return records[0]
 
 
+def _read_exact_boolean_names(target, exe, fields, *, timeout):
+    """JSON booleans erase original case; RDF/XML retains the literal names."""
+    result = run_exiftool_process(
+        [exe, '-q', '-m', '-X', '-XMP-dc:Subject', '-IPTC:Keywords',
+         '-XMP-lr:HierarchicalSubject', target], timeout=timeout)
+    if result.returncode:
+        raise RuntimeError('Cannot read exact keyword names; export refused')
+    try:
+        root = ET.fromstring(result.stdout)
+        if root.tag != f'{{{NS_RDF}}}RDF' or len(root.findall(f'{{{NS_RDF}}}Description')) != 1:
+            raise ValueError('invalid keyword RDF record')
+        if any(node.tag.rsplit('}', 1)[-1] == 'Error' for node in root.iter()):
+            raise ValueError('keyword metadata read failed')
+        exact = {}
+        namespaces = {'Subject': 'XMP/XMP-dc', 'Keywords': 'IPTC/IPTC',
+                      'HierarchicalSubject': 'XMP/XMP-lr'}
+        for key in fields:
+            qualified = f'{{http://ns.exiftool.org/{namespaces[key]}/1.0/}}{key}'
+            nodes = list(root.iter(qualified))
+            if len(nodes) != 1:
+                raise ValueError('missing or ambiguous keyword field')
+            members = nodes[0].findall(f'.//{{{NS_RDF}}}li')
+            if members:
+                if any(len(member) for member in members):
+                    raise ValueError('invalid keyword list')
+                exact[key] = [member.text or '' for member in members]
+            elif len(nodes[0]):
+                raise ValueError('invalid keyword scalar')
+            else:
+                exact[key] = [nodes[0].text or '']
+        return exact
+    except (ET.ParseError, ValueError) as ex:
+        raise RuntimeError('Cannot read exact keyword names; export refused') from ex
+
+
 def _read_existing_metadata(target: str, exe: str, *, timeout: int, strict=False) -> tuple[list[str], list[str], bool]:
     """Read flat/hierarchical names; existing-file failures must not clear them."""
     try:
@@ -660,10 +695,15 @@ def _read_existing_metadata(target: str, exe: str, *, timeout: int, strict=False
             value = record.get(key)
             # ExifTool emits numeric and true/false tokens for literal names.
             # Numbers retain lexical spelling in _exiftool_record; booleans
-            # are lowercased in _listify. Null/nested containers stay invalid.
+            # need lossless XML readback below. Null/nested containers stay invalid.
             if key in record and not (type(value) in (str, bool)
                     or isinstance(value, list) and all(type(item) in (str, bool) for item in value)):
                 raise RuntimeError('Cannot read existing keywords: malformed list; export refused')
+        boolean_fields = [key for key in ('Subject', 'Keywords', 'HierarchicalSubject')
+                          if type(record.get(key)) is bool or isinstance(record.get(key), list)
+                          and any(type(value) is bool for value in record[key])]
+        if boolean_fields:
+            record.update(_read_exact_boolean_names(target, exe, boolean_fields, timeout=timeout))
         flat = _union(_listify(record.get('Subject')), _listify(record.get('Keywords')))
         return flat, _listify(record.get('HierarchicalSubject')), record.get('DateState') == 'set'
     except (subprocess.TimeoutExpired, OSError, RuntimeError) as ex:

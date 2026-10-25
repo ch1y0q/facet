@@ -112,7 +112,7 @@ Facet 的星级为 0 表示“没有意见”（见 `xmp_export.score_to_rating`
 ### 冲突规则
 
 - **星级和颜色标签遵循“最新者胜”**，比较的是附属文件的 `xmp:MetadataDate` 与照片的 `scanned_at`（Facet 最后一次为它评分的时间）—— 而不是逐条评分的编辑时间戳。比上次扫描更新的附属文件，可能覆盖你在那次扫描*之后*在 Facet 里改过的星级。请让往返保持简单：导出 → Lightroom 读取 → 在 Lightroom 中编辑 → Lightroom 保存 → 导入，中间不要在 Facet 里重新评星。
-- **标签和关键字只会合并，绝不会被替换。** 导出时，Facet 会把它的 AI 标签和手动标签（去重后）写在附属文件已有内容旁边；导入时，附属文件中的关键字会成为手动标签，且从不触碰 AI 标签——Lightroom 的关键字永远不会清掉 Facet 的自动标签，反之亦然。移除操作会产生什么效果，参见[手动标签与 XMP 关键字](#手动标签与-xmp-关键字)。
+- **标签和关键字默认合并。** 导出会添加 Facet 关键字；`--reconcile-keywords` 还会移除仅属于 Facet 的过时名称。导入会添加手动标签，不会替换 AI 标签。 [手动标签与 XMP 关键字](#手动标签与-xmp-关键字).
 - **多用户**（`--export-sidecars --user alice` / `--import-sidecars --user alice`）：评分会写入 Alice 的 `user_preferences` 行，而不是全局列。无论 `--user` 如何，关键字都保持全局——手动标签由所有用户共享。
 - 导入的关键字会进入 `photo_manual_tags` 表，标签筛选直接读取该表，因此 `--import-sidecars` 之后不再需要运行 `python database.py --migrate-tags`。
 
@@ -170,7 +170,7 @@ Facet 把你自己输入的标签（参见[查看器——手动标签](VIEWER.m
 |---|---|---|---|
 | 星级／淘汰 | `xmp:Rating`（`-1` = 已淘汰） | `xmp:Rating` | 最新者胜，对比 `scanned_at` |
 | 颜色标签 | `xmp:Label`（`Red` = 已淘汰，`Yellow` = 收藏） | `xmp:Label` | 最新者胜，对比 `scanned_at` |
-| 标签／关键字 | `dc:subject`（扁平，AI 标签 + 手动标签，包含已命名人脸的人物姓名） | `dc:subject`（存为手动标签） | 合并，绝不替换；在 Facet 中的移除不会回写到附属文件（参见[手动标签与 XMP 关键字](#手动标签与-xmp-关键字)） |
+| 标签／关键字 | `dc:subject`（扁平，AI 标签 + 手动标签，包含已命名人脸的人物姓名） | `dc:subject`（存为手动标签） | 默认只添加；`--reconcile-keywords` 仅移除属于 Facet 的过时名称；导入仍只添加 ([手动标签与 XMP 关键字](#手动标签与-xmp-关键字)) |
 | 层级标签 | `lr:hierarchicalSubject`（`Category\|<cat>`、`People\|<name>`） | 不再导入 | 仅导出 |
 | 照片描述 | `dc:description`（+ 经由 exiftool 的 `IPTC:Caption-Abstract`） | 不再导入 | 仅导出 |
 | 命名的人脸区域 | MWG `mwg-rs:RegionList`（中心归一化，`Type=Face`） | 不再导入 | 仅导出；由 digiKam 原生读取，Lightroom **不**读取（一个已知的 Adobe 限制 —— Lightroom 只消费它自己写出的 MWG 区域） |

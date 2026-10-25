@@ -1,5 +1,6 @@
 """Real packet/DB coverage for explicit flat-keyword reconciliation."""
 import sqlite3
+import subprocess
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -22,6 +23,17 @@ def database(tmp_path):
 
 def packet_keywords(sidecar):
     return parse_sidecar(str(sidecar))['tags']
+
+
+def exact_keyword_xml(field, values):
+    groups = {'Subject': 'XMP/XMP-dc', 'Keywords': 'IPTC/IPTC', 'HierarchicalSubject': 'XMP/XMP-lr'}
+    root = ET.Element(f'{{{NS_RDF}}}RDF')
+    desc = ET.SubElement(root, f'{{{NS_RDF}}}Description')
+    node = ET.SubElement(desc, f'{{http://ns.exiftool.org/{groups[field]}/1.0/}}{field}')
+    bag = ET.SubElement(node, f'{{{NS_RDF}}}Bag')
+    for value in values:
+        ET.SubElement(bag, f'{{{NS_RDF}}}li').text = value
+    return ET.tostring(root, encoding='unicode')
 
 
 def add_external_keyword(sidecar, keyword):
@@ -383,7 +395,8 @@ def test_exiftool_numeric_keyword_json_is_stringified(monkeypatch, value, expect
     import subprocess
     from processing import xmp_export as xe
     monkeypatch.setattr(xe.subprocess, 'run', lambda args, **kwargs:
-                        subprocess.CompletedProcess(args, 0, stdout=json.dumps([{field: value}])))
+                        subprocess.CompletedProcess(args, 0, stdout=exact_keyword_xml(field, expected)
+                                                    if '-X' in args else json.dumps([{field: value}])))
     flat, hierarchical, _ = xe._read_existing_metadata('existing.xmp', 'exiftool', timeout=1, strict=True)
     assert (hierarchical if field == 'HierarchicalSubject' else flat) == expected
 
@@ -393,7 +406,8 @@ def test_raw_json_keyword_tokens_preserve_exact_lexical_names(monkeypatch):
     from processing import xmp_export as xe
     monkeypatch.setattr(xe.subprocess, 'run', lambda args, **kwargs:
                         subprocess.CompletedProcess(args, 0,
-                            stdout='[{"Subject":[true,false,"null",1.50,1e3,2024]}]'))
+                            stdout=exact_keyword_xml('Subject', ['true', 'false', 'null', '1.50', '1e3', '2024'])
+                            if '-X' in args else '[{"Subject":[true,false,"null",1.50,1e3,2024]}]'))
     flat, _, _ = xe._read_existing_metadata('existing.xmp', 'exiftool', timeout=1, strict=True)
     assert flat == ['true', 'false', 'null', '1.50', '1e3', '2024']
 
@@ -408,18 +422,66 @@ def test_real_numeric_keywords_survive_cli_writer_paths(tmp_path, embed, reconci
     image = tmp_path / 'year.jpg'
     Image.new('RGB', (16, 16)).save(image)
     sidecar = Path(str(image) + '.xmp')
-    if not embed:
-        sidecar.write_text(build_xmp(XmpRating()), encoding='utf-8')
+    packet = ET.fromstring(build_xmp(XmpRating()))
+    ET.SubElement(packet.find(f'.//{{{NS_RDF}}}Description'), '{urn:foreign:keep}Extension').text = 'untouched'
+    source = tmp_path / 'seed.xmp'
+    source.write_bytes(ET.tostring(packet))
+    if embed:
+        subprocess.run(['exiftool', '-overwrite_original', '-XMP<=' + str(source), str(image)],
+                       check=True, capture_output=True)
+    else:
+        sidecar.write_bytes(source.read_bytes())
     target = image if embed else sidecar
-    names = ['true', 'false', 'null', '1.50', '1e3', '2024']
+    names = ['True', 'FALSE', 'tRuE', 'true', 'false', 'null', '1.50', '1e3', '2024']
     subprocess.run(['exiftool', '-overwrite_original', *[f'-XMP-dc:Subject={name}' for name in names],
+                    '-IPTC:Keywords=FALSE', '-XMP-lr:HierarchicalSubject=tRuE',
                     str(target)], check=True, capture_output=True)
     conn = database(tmp_path)
     try:
         conn.execute('INSERT INTO photos(path,tags) VALUES (?,?)', (str(image), 'facet-tag'))
         conn.commit()
-        assert export_sidecars(conn, embed_original=embed, reconcile_keywords=reconcile)['written'] == 1
-        flat, _ = xe._read_existing_keywords(str(target), xe._resolve_exiftool(), timeout=30, strict=True)
-        assert set(flat) == {*names, 'facet-tag'}
+        for _ in range(2):
+            assert export_sidecars(conn, embed_original=embed, reconcile_keywords=reconcile)['written'] == 1
+            flat, hierarchy = xe._read_existing_keywords(str(target), xe._resolve_exiftool(), timeout=30, strict=True)
+            assert flat == [*names, 'facet-tag']
+            assert hierarchy == ['tRuE']
+            raw = subprocess.check_output(['exiftool', '-b', '-XMP', str(target)])
+            assert ET.fromstring(raw).find('.//{urn:foreign:keep}Extension').text == 'untouched'
     finally:
         conn.close()
+
+
+@pytest.mark.parametrize('xml', ['not xml', '<empty/>', exact_keyword_xml('Keywords', ['True'])])
+def test_failed_exact_boolean_read_refuses_before_writing(tmp_path, monkeypatch, xml):
+    import subprocess
+    from processing import xmp_export as xe
+    sidecar = tmp_path / 'photo.jpg.xmp'
+    before = build_xmp(XmpRating(tags=['True'])).encode('utf-8')
+    sidecar.write_bytes(before)
+    monkeypatch.setattr(xe, '_resolve_exiftool', lambda: 'mock-exiftool')
+    def run(args, **kwargs):
+        assert '-overwrite_original' not in args
+        return subprocess.CompletedProcess(args, 0, stdout=xml if '-X' in args else '[{"Subject":true}]')
+    monkeypatch.setattr(xe.subprocess, 'run', run)
+    with pytest.raises(RuntimeError, match='Cannot read existing keywords'):
+        xe._run_exiftool(str(sidecar), XmpRating(tags=['own']), timeout=1)
+    assert sidecar.read_bytes() == before
+
+
+@pytest.mark.parametrize('failure', [OSError('read failed'), subprocess.TimeoutExpired('exiftool', 1)])
+def test_exact_boolean_read_io_failure_refuses_before_writing(tmp_path, monkeypatch, failure):
+    import subprocess
+    from processing import xmp_export as xe
+    sidecar = tmp_path / 'photo.jpg.xmp'
+    before = build_xmp(XmpRating(tags=['True'])).encode('utf-8')
+    sidecar.write_bytes(before)
+    monkeypatch.setattr(xe, '_resolve_exiftool', lambda: 'mock-exiftool')
+    def run(args, **kwargs):
+        assert '-overwrite_original' not in args
+        if '-X' in args:
+            raise failure
+        return subprocess.CompletedProcess(args, 0, stdout='[{"Subject":true}]')
+    monkeypatch.setattr(xe.subprocess, 'run', run)
+    with pytest.raises(RuntimeError, match='Cannot read existing keywords'):
+        xe._run_exiftool(str(sidecar), XmpRating(tags=['own']), timeout=1)
+    assert sidecar.read_bytes() == before

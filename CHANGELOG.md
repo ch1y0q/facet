@@ -29,6 +29,7 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- Preserve the exact case of foreign boolean-looking keywords such as `True`, `FALSE` and `tRuE` with lossless readback when ExifTool JSON erases their spelling. Unicode newline-filename failures are isolated to the affected photo in batch exports.
 - **Immich sync refuses ambiguous assets.** Duplicate remote paths and colliding Facet mappings are reported as identity conflicts. Fallback searches check every page and require an exact path; webhook IDs are verified before writes. Optional owner/library ID selectors restrict the configured server's responses. Literal first-prefix mapping behavior is unchanged.
 - Refuse basename XMP discovery when a double-extension derivative would read another image’s full-name or fallback sidecar. Report full-policy naming notices once per import while retaining complete mismatch counts.
 

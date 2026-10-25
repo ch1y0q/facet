@@ -112,7 +112,7 @@ A record that omits `rating` or `pick` entirely leaves Facet's corresponding val
 ### Conflict rules
 
 - **Ratings and labels are newest-wins**, compared between the sidecar's `xmp:MetadataDate` and the photo's `scanned_at` (the last time Facet scored it) — not a per-rating edit timestamp. A sidecar newer than the last scan can override a rating you changed in Facet *after* that scan. Keep the round trip simple: export → Lightroom reads → edit in Lightroom → Lightroom saves → import, without re-rating inside Facet in between.
-- **Tags and keywords are merged, never replaced.** On export Facet writes its AI tags and its manual tags (deduped) alongside whatever the sidecar already holds; on import a sidecar keyword becomes a manual tag and never touches the AI tags — Lightroom keywords never wipe Facet's auto-tags, and vice versa. See [Manual tags and XMP keywords](#manual-tags-and-xmp-keywords) for what a removal does.
+- **Tags and keywords merge by default.** Exports add Facet keywords; `--reconcile-keywords` also removes only stale Facet-owned names. Imports add manual tags and never replace AI tags. [Manual tags and XMP keywords](#manual-tags-and-xmp-keywords).
 - **Multi-user** (`--export-sidecars --user alice` / `--import-sidecars --user alice`): ratings route to Alice's `user_preferences` row instead of the global columns. Keywords stay global regardless of `--user` — manual tags are shared across users.
 - Imported keywords go to the `photo_manual_tags` table, which the tag filters read directly, so no `python database.py --migrate-tags` is needed after `--import-sidecars`.
 
@@ -170,7 +170,7 @@ Facet keeps the tags you type yourself (see [Viewer — Manual Tags](VIEWER.md#m
 |---|---|---|---|
 | Star rating / reject | `xmp:Rating` (`-1` = rejected) | `xmp:Rating` | Newest-wins vs. `scanned_at` |
 | Color label | `xmp:Label` (`Red` = rejected, `Yellow` = favorite) | `xmp:Label` | Newest-wins vs. `scanned_at` |
-| Tags / keywords | `dc:subject` (flat, AI tags + manual tags, includes named-face person names) | `dc:subject` (stored as manual tags) | Merged, never replaced; a removal in Facet is not written back to a sidecar (see [Manual tags and XMP keywords](#manual-tags-and-xmp-keywords)) |
+| Tags / keywords | `dc:subject` (flat, AI tags + manual tags, includes named-face person names) | `dc:subject` (stored as manual tags) | Additive by default; `--reconcile-keywords` removes only stale Facet-owned names; imports stay additive ([Manual tags and XMP keywords](#manual-tags-and-xmp-keywords)) |
 | Hierarchical tags | `lr:hierarchicalSubject` (`Category\|<cat>`, `People\|<name>`) | Not re-imported | Export-only |
 | Caption | `dc:description` default language (+ `IPTC:Caption-Abstract` via exiftool) | Not re-imported | Export-only |
 | Named face regions | MWG `mwg-rs:RegionList` (center-normalized, `Type=Face`) | Not re-imported | Export-only; read natively by digiKam, **not** read by Lightroom (a known Adobe limitation — Lightroom only consumes MWG regions it wrote itself) |

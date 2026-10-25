@@ -54,6 +54,33 @@ def test_plain_unicode_values_preserve_leading_space_hash_and_backslashes(monkey
     assert seen == ['-XMP-dc:Description=  # 日本 \\n $ @  \n/tmp/# 日本.jpg\n']
 
 
+def test_newline_filename_is_a_catchable_runtime_failure_before_process_start(monkeypatch):
+    monkeypatch.setattr(subprocess, 'run', lambda *args, **kwargs: pytest.fail('must refuse before process start'))
+    with pytest.raises(RuntimeError, match='filename or option contains a newline'):
+        run_exiftool_process(['exiftool', '-XMP-dc:Subject=café', '/tmp/a\nb.jpg'], timeout=1)
+
+
+@pytest.mark.skipif(os.name == 'nt' or shutil.which('exiftool') is None,
+                    reason='requires ExifTool and a filesystem allowing newline filenames')
+def test_one_newline_filename_does_not_abort_other_photo_exports(tmp_path):
+    import sqlite3
+    from db.schema import init_database
+    from processing import xmp_export as xe
+    db = tmp_path / 'test.db'
+    init_database(str(db))
+    with sqlite3.connect(db) as conn:
+        conn.row_factory = sqlite3.Row
+        for name in ('safe.jpg', 'a\nb.jpg', 'also-safe.jpg'):
+            image = tmp_path / name
+            Image.new('RGB', (16, 16), 'blue').save(image)
+            conn.execute('INSERT INTO photos(path,tags) VALUES (?,?)', (str(image), 'café'))
+        conn.commit()
+        result = xe.export_sidecars(conn)
+    assert result['written'] == 2 and result['errors'] == 1
+    assert (tmp_path / 'safe.jpg.xmp').exists()
+    assert (tmp_path / 'also-safe.jpg.xmp').exists()
+
+
 @pytest.mark.skipif(shutil.which('exiftool') is None, reason='requires ExifTool')
 @pytest.mark.parametrize('embedded', [False, True])
 @pytest.mark.parametrize('caption', ['# Renée 日本\r\n-overwrite_original\nsecond line \\n literal \\path "quote" $ @  ',

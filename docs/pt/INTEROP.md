@@ -112,7 +112,7 @@ Um registro que omite `rating` ou `pick` deixa intacto o valor correspondente do
 ### Regras de conflito
 
 - **Classificações e rótulos seguem a regra "o mais recente vence"**, comparando o `xmp:MetadataDate` do sidecar com o `scanned_at` da foto (a última vez que o Facet a pontuou) — não um carimbo de tempo por classificação. Um sidecar mais recente que a última varredura pode sobrescrever uma classificação que você alterou no Facet *depois* daquela varredura. Mantenha a ida e volta simples: exportar → Lightroom lê → editar no Lightroom → Lightroom salva → importar, sem reclassificar no Facet no meio.
-- **Tags e palavras-chave são mescladas, nunca substituídas.** Na exportação, o Facet escreve seus tags de IA e seus tags manuais (sem duplicatas) junto ao que o sidecar já contém; na importação, uma palavra-chave do sidecar vira um tag manual e nunca toca nos tags de IA — as palavras-chave do Lightroom nunca apagam os tags automáticos do Facet, e vice-versa. Veja [Tags manuais e palavras-chave XMP](#tags-manuais-e-palavras-chave-xmp) para saber o que uma remoção faz.
+- **Tags e palavras-chave são mescladas por padrão.** Os exports adicionam palavras Facet; `--reconcile-keywords` remove também apenas nomes obsoletos pertencentes ao Facet. Os imports adicionam tags manuais sem substituir os de IA. [Tags manuais e palavras-chave XMP](#tags-manuais-e-palavras-chave-xmp).
 - **Multiusuário** (`--export-sidecars --user alice` / `--import-sidecars --user alice`): as avaliações vão para a linha `user_preferences` da Alice em vez das colunas globais. As palavras-chave continuam globais independentemente de `--user` — os tags manuais são compartilhados entre os usuários.
 - As palavras-chave importadas vão para a tabela `photo_manual_tags`, que os filtros de tags leem diretamente: depois de `--import-sidecars` não é mais preciso rodar `python database.py --migrate-tags`.
 
@@ -170,7 +170,7 @@ O Facet guarda os tags que você digita por conta própria (veja [Visualizador �
 |---|---|---|---|
 | Classificação (estrelas/rejeição) | `xmp:Rating` (`-1` = rejeitada) | `xmp:Rating` | O mais recente vence, vs. `scanned_at` |
 | Rótulo de cor | `xmp:Label` (`Red` = rejeitada, `Yellow` = favorita) | `xmp:Label` | O mais recente vence, vs. `scanned_at` |
-| Tags / palavras-chave | `dc:subject` (plano, tags de IA + tags manuais, inclui os nomes das pessoas reconhecidas) | `dc:subject` (armazenado como tags manuais) | Mesclado, nunca substituído; uma remoção no Facet não é reescrita em um sidecar (veja [Tags manuais e palavras-chave XMP](#tags-manuais-e-palavras-chave-xmp)) |
+| Tags / palavras-chave | `dc:subject` (plano, tags de IA + tags manuais, inclui os nomes das pessoas reconhecidas) | `dc:subject` (armazenado como tags manuais) | Aditivo por padrão; `--reconcile-keywords` remove apenas nomes obsoletos do Facet; os imports permanecem aditivos ([Tags manuais e palavras-chave XMP](#tags-manuais-e-palavras-chave-xmp)) |
 | Tags hierárquicas | `lr:hierarchicalSubject` (`Category\|<cat>`, `People\|<nome>`) | Não reimportado | Somente exportação |
 | Legenda | `dc:description` (+ `IPTC:Caption-Abstract` via exiftool) | Não reimportado | Somente exportação |
 | Regiões de rosto nomeadas | `mwg-rs:RegionList` MWG (centralizada-normalizada, `Type=Face`) | Não reimportado | Somente exportação; lida nativamente pelo digiKam, **não** lida pelo Lightroom (uma limitação conhecida da Adobe — o Lightroom só consome regiões MWG que ele mesmo gravou) |
