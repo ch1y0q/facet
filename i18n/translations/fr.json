@@ -1296,7 +1296,9 @@
       "badge_shadow": "Ombres écrêtées : {percent} % des pixels"
     },
     "channel_clip_highlight_range": "Hautes lumières écrêtées %",
-    "channel_clip_shadow_range": "Ombres écrêtées %"
+    "channel_clip_shadow_range": "Ombres écrêtées %",
+    "manual_faces_need_review": "Visages manuels à vérifier",
+    "manual_faces_review_hint": "Selon le dernier scan ou contrôle dans l’éditeur de visages, sans surveillance continue. Ouvrez l’éditeur de visages d’une photo pour vérifier les repères enregistrés."
   },
   "composition_patterns": {
     "none": "Aucun",
@@ -2775,7 +2777,7 @@
     "rejected": "Rejetées",
     "keep": "Conserver",
     "reset": "Réinitialiser la décision",
-    "updated": "Décision mise à jour pour {{count}} photos",
+    "updated": "Décision mise à jour pour {count} photos",
     "shortcut": "Conserver la photo"
   },
   "capture_date": {

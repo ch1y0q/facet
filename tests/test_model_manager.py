@@ -10,6 +10,7 @@ under ``tmp_path`` the same way ``tests/test_system_memory.py`` does.
 
 from __future__ import annotations
 
+import gc
 import types
 from unittest import mock
 
@@ -805,6 +806,10 @@ def _replay_cpu_plan(manager, monkeypatch, budget_gb, limit_bytes, bound=True):
 
     monkeypatch.setattr(system_memory, 'memory_limit_bytes', lambda: limit_bytes)
     monkeypatch.setattr(system_memory, 'effective_memory', reading)
+    # Every unload runs a full collection and a heap trim; with torch loaded that is
+    # ~50 ms apiece, ~25 times a replay, and the stub models hold no memory to reclaim.
+    monkeypatch.setattr(gc, 'collect', lambda *_a, **_k: 0)
+    monkeypatch.setattr(system_memory, 'release_freed_heap', lambda: False)
     monkeypatch.setattr(manager, 'detect_system_ram_gb', lambda: budget_gb)
 
     capacity = manager._cpu_pass_capacity_gb(limit_bytes)
