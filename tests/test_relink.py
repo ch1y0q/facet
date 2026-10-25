@@ -543,6 +543,21 @@ def test_fts_shadow_inventory_does_not_need_sqlite_337_table_list(library):
         assert ('faces', 'photo_path') in refs
 
 
+@pytest.mark.skipif(not HAS_SQLITE_VEC, reason='sqlite-vec unavailable')
+def test_vec_shadow_inventory_does_not_need_sqlite_337_table_list(library):
+    db, _, _, _ = library
+    with sqlite3.connect(db) as conn:
+        load_sqlite_vec(conn)
+        conn.execute('CREATE VIRTUAL TABLE photos_vec USING vec0(path TEXT PRIMARY KEY, embedding float[4])')
+        class OlderSQLite:
+            def execute(self, sql, parameters=()):
+                if sql.lower().strip() == 'pragma table_list':
+                    return iter(())
+                return conn.execute(sql, parameters)
+        refs = relink._references(OlderSQLite())
+        assert ('faces', 'photo_path') in refs
+
+
 def test_final_file_recheck_failure_rolls_back_all_relinked_rows(library, monkeypatch):
     db, old, new, _ = library
     with sqlite3.connect(db) as conn:

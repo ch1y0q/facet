@@ -169,8 +169,9 @@ def _references(conn):
         # Its packet source is history; only the photo_path FK is an asset link.
         historical_paths.add(('photo_metadata_edits', 'source_path'))
     if 'photos_vec' in tables:
-        # sqlite-vec 0.1.x does not label its vector chunk table as a shadow.
-        internal.add('photos_vec_vector_chunks00')
+        # sqlite-vec 0.1.x does not label its vector chunk table as a shadow, and
+        # its labelled shadows are invisible without PRAGMA table_list (< 3.37).
+        internal.update('photos_vec_' + suffix for suffix in ('info', 'chunks', 'rowids', 'vector_chunks00'))
     for table in tables:
         if table in internal:
             continue
