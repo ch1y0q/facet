@@ -28,6 +28,7 @@ import { AlbumService, Album } from '../../core/services/album.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { SaveSmartAlbumDialogComponent } from '../albums/save-smart-album-dialog.component';
+import { CardActionsDialogComponent } from './card-actions-dialog.component';
 import { folderDisplayName } from '../folders/folders.util';
 import { i18nKeys } from '../../core/i18n/keys';
 import { isUnavailableKey, unavailableSet } from '../../shared/utils/unavailable-metrics';
@@ -278,8 +279,8 @@ function saveSectionStates(states: Record<string, boolean>): void {
           <input matInput
             [placeholder]="I18N.gallery.search_placeholder | translate"
             [value]="store.filters().search"
-            (keyup.enter)="onSidebarSearchChange($event)"
-            (blur)="onSidebarSearchChange($event)" />
+            (input)="onSidebarSearchChange($event)"
+            (keyup.enter)="onSidebarSearchCommit($event)" />
           @if (store.filters().search) {
             <button matSuffix mat-icon-button class="!w-6 !h-6 !p-0" (click)="store.updateFilter('search', '')" [attr.aria-label]="I18N.gallery.clear_search | translate">
               <mat-icon class="!text-sm !w-4 !h-4">close</mat-icon>
@@ -572,11 +573,26 @@ function saveSectionStates(states: Record<string, boolean>): void {
               <mat-option value="rejected">{{ I18N.review.rejected | translate }}</mat-option>
             </mat-select>
           </mat-form-field>
+          <!-- The positive counterpart of the toggles above: "only X" views.
+               The server suppresses the hide toggles while either is set, so
+               every member of what they name is listed. -->
+          <mat-checkbox
+            [checked]="store.filters().blinks_only"
+            (change)="store.updateFilter('blinks_only', $event.checked)"
+          >{{ I18N.gallery.blinks_only | translate }}</mat-checkbox>
+          <mat-checkbox
+            [checked]="store.filters().duplicates_only"
+            (change)="store.updateFilter('duplicates_only', $event.checked)"
+          >{{ I18N.gallery.duplicates_only | translate }}</mat-checkbox>
           <mat-checkbox
             [disabled]="!!store.filters().review_status"
             [checked]="store.filters().hide_rejected"
             (change)="store.updateFilter('hide_rejected', $event.checked)"
           >{{ I18N.gallery.hide_rejected | translate }}</mat-checkbox>
+          <mat-checkbox
+            [checked]="store.filters().show_rejected"
+            (change)="store.updateFilter('show_rejected', $event.checked)"
+          >{{ I18N.rating.show_rejected | translate }}</mat-checkbox>
           <!-- A correction is invisible in the labels until the detector runs
                again, so without this the only record of one still pending is
                the user's memory. Edition-only: nobody else can make one. -->
@@ -632,6 +648,10 @@ function saveSectionStates(states: Record<string, boolean>): void {
             [checked]="store.virtualScroll()"
             (change)="store.setVirtualScroll($event.checked)"
           >{{ I18N.gallery.sidebar.virtual_scroll | translate }}</mat-checkbox>
+          <button mat-stroked-button class="!justify-start" (click)="openCardActionsDialog()">
+            <mat-icon class="!text-base !w-4 !h-4 !leading-4 mr-1">tune</mat-icon>
+            {{ I18N.gallery.card_actions.title | translate }}
+          </button>
           <div class="flex items-center gap-2 mt-2">
             <span class="text-sm opacity-70 shrink-0">{{ I18N.gallery.layout_mode | translate }}</span>
             <div class="flex gap-1 ml-auto">
@@ -883,6 +903,12 @@ export class GalleryFilterSidebarComponent {
    *  what a screen reader announced otherwise. */
   protected readonly formatThresholdPercent = (value: number): string => `${value}%`;
 
+  /** Open the hover-button customiser: reorder and show/hide what the photo
+   *  cards' top row offers. Writes go through CardActionsService on save. */
+  protected openCardActionsDialog(): void {
+    this.dialog.open(CardActionsDialogComponent, { width: '26rem', autoFocus: false });
+  }
+
   /** The value being dragged right now, before the 400ms debounce commits it.
    *
    *  Without it the percent readout reads the committed filter, so it stays
@@ -1073,6 +1099,7 @@ export class GalleryFilterSidebarComponent {
       equipment: (f.camera ? 1 : 0) + (f.lens ? 1 : 0),
       persons: f.person_id ? f.person_id.split(',').length : 0,
       refine: (f.review_status ? 1 : 0) + (f.favorites_only ? 1 : 0) + (f.is_monochrome ? 1 : 0) + (f.hide_rejected ? 1 : 0)
+        + (f.show_rejected ? 1 : 0) + (f.blinks_only ? 1 : 0) + (f.duplicates_only ? 1 : 0)
         + (f.sequence_override ? 1 : 0) + (f.manual_faces_need_review ? 1 : 0),
       folder: f.path_prefix ? 1 : 0,
     };
@@ -1110,6 +1137,9 @@ export class GalleryFilterSidebarComponent {
   // Kept separate from searchTimeout so a slider drag can't cancel a pending
   // text search (or vice versa) -- they debounce independent filter keys.
   private thresholdTimeout: ReturnType<typeof setTimeout> | null = null;
+  // The filename box's own debounce: sharing searchTimeout with the semantic
+  // box let a keystroke in one cancel the other's pending update.
+  private filenameTimeout: ReturnType<typeof setTimeout> | null = null;
   private albumsLoaded = false;
 
   constructor() {
@@ -1122,6 +1152,7 @@ export class GalleryFilterSidebarComponent {
     });
     inject(DestroyRef).onDestroy(() => {
       this.cancelPendingSearch();
+      if (this.filenameTimeout) clearTimeout(this.filenameTimeout);
       this.coarsePointer.cleanup();
     });
   }
@@ -1151,7 +1182,22 @@ export class GalleryFilterSidebarComponent {
 
   onSidebarSearchChange(event: Event): void {
     const value = (event.target as HTMLInputElement).value;
-    this.store.updateFilter('search', value);
+    // Debounced live filtering on every keystroke: waiting for Enter/blur
+    // made typing feel dead, with the grid frozen and no hint that a commit
+    // was pending. Enter still commits immediately through the same path.
+    if (this.filenameTimeout) clearTimeout(this.filenameTimeout);
+    this.filenameTimeout = setTimeout(() => {
+      this.filenameTimeout = null;
+      this.store.updateFilter('search', value);
+    }, 400);
+  }
+
+  onSidebarSearchCommit(event: Event): void {
+    if (this.filenameTimeout) {
+      clearTimeout(this.filenameTimeout);
+      this.filenameTimeout = null;
+    }
+    this.store.updateFilter('search', (event.target as HTMLInputElement).value);
   }
 
   onSemanticSearch(event: Event): void {

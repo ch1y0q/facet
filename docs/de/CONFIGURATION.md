@@ -1010,6 +1010,8 @@ Tone-Mapping. Er greift **nur**
 bei Bildern, deren NCLX-Farbprofil die PQ-Transferfunktion (Kennwert 16)
 deklariert; SDR-HEIF, HLG und JPEG werden unabhängig von `enabled` unverändert
 durchgereicht.
+Rahmen, die die Kamera gedreht geschrieben hat (eine EXIF-Orientierung anders als 1), kommen aufrecht heraus: der Dekoder wendet die Orientierung selbst an — auch auf dem Pfad nativer Bittiefe, auf dem pillow-heif 1.6 und neuer die Ebene vor der Tonwertkurve dreht und der rohe EXIF-Wert neutralisiert statt erneut angewendet wird.
+
 
 ```json
 "hdr_pq_tonemap": {

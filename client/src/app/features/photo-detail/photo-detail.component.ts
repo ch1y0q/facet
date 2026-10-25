@@ -1305,7 +1305,10 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
         if (!result) return;
         const res = await this.photoActions.deletePhotos([p.path], result);
         if (!res) return;
-        if (res.deleted.includes(p.path)) {
+        // `removed_missing` counts as deleted for this surface: the row is
+        // gone either way, which is all the photo page can observe.
+        const gone = res.deleted.includes(p.path) || (res.removed_missing ?? []).includes(p.path);
+        if (gone) {
           this.store.removePhotos([p.path]);
           this.snackBar.open(this.i18n.t(I18N.photo_detail.delete.success), '', { duration: 2000 });
           this.goBack();

@@ -204,7 +204,11 @@
     "histogram": "Histogram"
   },
   "photoCard": {
-    "embed_to_file": "Write metadata to file"
+    "embed_to_file": "Write metadata to file",
+    "duplicate_set": "Open duplicate group",
+    "burst_set": "Open burst group",
+    "sequence_set": "Open bracket/panorama set",
+    "open_detail": "Open photo page"
   },
   "notifications": {
     "copied": "Copied!",
@@ -1297,6 +1301,15 @@
     },
     "channel_clip_highlight_range": "Clipped Highlights %",
     "channel_clip_shadow_range": "Clipped Shadows %",
+    "blinks_only": "Blinks Only",
+    "duplicates_only": "Duplicates Only",
+    "card_actions": {
+      "title": "Customize card buttons",
+      "hint": "Choose which buttons a photo card shows on hover, and in what order. Set buttons only appear on photos that belong to such a group.",
+      "move_up": "Move up",
+      "move_down": "Move down",
+      "reset": "Reset to defaults"
+    },
     "review_progress": {
       "title": "Review progress",
       "counts": "{undecided} undecided · {kept} kept · {rejected} rejected",
@@ -2572,7 +2585,8 @@
     "delete_confirm_body": "{count} photos will be sent to your operating system's trash. They stay recoverable until you empty it.",
     "delete_partial_result": "{deleted} deleted, {failed} failed",
     "delete_failed": "Delete failed — nothing was sent to trash",
-    "delete_disabled_view_scope_tooltip": "Select photos explicitly to delete them — a whole-view selection can’t be used here"
+    "delete_disabled_view_scope_tooltip": "Select photos explicitly to delete them — a whole-view selection can’t be used here",
+    "remove_missing_rows": "Also remove library entries whose file is already missing from disk"
   },
   "shortcuts": {
     "title": "Keyboard shortcuts",

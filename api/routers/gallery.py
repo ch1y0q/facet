@@ -445,9 +445,27 @@ def _apply_visibility_and_hide_filters(where_clauses, sql_params, params, user_i
         hide_brackets_val = ''
         hide_panoramas_val = ''
 
+    # A positive only-blinks / only-duplicates / only-rejected filter must show
+    # every photo it names: the hide toggles default on and would silently drop
+    # members of what the filter promises (a blink that is a non-lead burst
+    # member, a duplicate that is also a detected blink, a rejected frame of a
+    # burst whose lead was kept), the same surprise the set-scope guard above
+    # suppresses the toggles for.
+    if any(params.get(key) in ('1', 'true') for key in ('blinks_only', 'duplicates_only', 'show_rejected')):
+        hide_blinks_val = ''
+        hide_bursts_val = ''
+        hide_duplicates_val = ''
+        hide_brackets_val = ''
+        hide_panoramas_val = ''
+
     where_clauses.extend(build_hide_clauses(
         hide_blinks_val, hide_bursts_val, hide_duplicates_val, hide_brackets_val,
         hide_panoramas_val))
+
+    if params.get('blinks_only') in ('1', 'true'):
+        where_clauses.append("is_blink = 1")
+    if params.get('duplicates_only') in ('1', 'true'):
+        where_clauses.append("duplicate_group_id IS NOT NULL")
 
 
 def _apply_preference_filters(where_clauses, sql_params, params, user_id):
@@ -461,7 +479,12 @@ def _apply_preference_filters(where_clauses, sql_params, params, user_id):
                 sql_params.append(min_rating)
         except ValueError:
             pass
-    if params.get('favorites_only') == '1':
+    # 'true' alongside '1': the hide family accepts both spellings (the client
+    # URL carries booleans as true/false), and an agent passing a JSON boolean
+    # arrives lowercased the same way -- favourites-only and rejected-only used
+    # to silently accept '1' alone, so a `show_rejected=true` query showed the
+    # whole library as if the filter were absent.
+    if params.get('favorites_only') in ('1', 'true'):
         where_clauses.append(f"{pref_cols['is_favorite']} = 1")
     review_status = params.get('review_status')
     if review_status in ('undecided', 'kept', 'rejected'):
@@ -473,7 +496,7 @@ def _apply_preference_filters(where_clauses, sql_params, params, user_id):
             where_clauses.append(f"{rejected} = 0")
             where_clauses.append(f"{kept} = {1 if review_status == 'kept' else 0}")
         return
-    if params.get('show_rejected') == '1':
+    if params.get('show_rejected') in ('1', 'true'):
         where_clauses.append(f"{pref_cols['is_rejected']} = 1")
     elif params.get('hide_rejected') in ('1', 'true'):
         where_clauses.append(f"({pref_cols['is_rejected']} = 0 OR {pref_cols['is_rejected']} IS NULL)")

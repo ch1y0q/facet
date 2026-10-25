@@ -204,7 +204,11 @@
     "histogram": "Istogramma"
   },
   "photoCard": {
-    "embed_to_file": "Scrivi i metadati nel file"
+    "embed_to_file": "Scrivi i metadati nel file",
+    "duplicate_set": "Apri gruppo di duplicati",
+    "burst_set": "Apri gruppo di raffica",
+    "sequence_set": "Apri bracket/panorama",
+    "open_detail": "Apri pagina foto"
   },
   "notifications": {
     "copied": "Copiato!",
@@ -1297,6 +1301,15 @@
     },
     "channel_clip_highlight_range": "% alte luci tagliate",
     "channel_clip_shadow_range": "% ombre tagliate",
+    "blinks_only": "Solo occhi chiusi",
+    "duplicates_only": "Solo duplicati",
+    "card_actions": {
+      "title": "Personalizza i pulsanti della scheda",
+      "hint": "Scegli quali pulsanti mostra una foto al passaggio del mouse e in quale ordine. I pulsanti di gruppo compaiono solo sulle foto che appartengono a un gruppo.",
+      "move_up": "Sposta su",
+      "move_down": "Sposta giù",
+      "reset": "Ripristina predefiniti"
+    },
     "review_progress": {
       "title": "Avanzamento revisione",
       "counts": "{undecided} da decidere · {kept} conservate · {rejected} rifiutate",
@@ -2572,7 +2585,8 @@
     "delete_confirm_body": "{count} foto verranno inviate al cestino del sistema operativo. Restano recuperabili finché non lo svuoti.",
     "delete_partial_result": "{deleted} eliminate, {failed} fallite",
     "delete_failed": "Eliminazione non riuscita — nulla è stato inviato al cestino",
-    "delete_disabled_view_scope_tooltip": "Seleziona le foto esplicitamente per eliminarle — qui non è possibile usare una selezione dell'intera vista"
+    "delete_disabled_view_scope_tooltip": "Seleziona le foto esplicitamente per eliminarle — qui non è possibile usare una selezione dell'intera vista",
+    "remove_missing_rows": "Rimuovi anche le voci della libreria il cui file è già mancante dal disco"
   },
   "shortcuts": {
     "title": "Scorciatoie da tastiera",

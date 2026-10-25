@@ -248,6 +248,10 @@ class GalleryParams(BaseModel):
     hide_panoramas: str = '0'
     burst_only: str = ''
     no_blink: str = ''
+    # Positive "only X" filters, the counterpart of the hide toggles above.
+    # duplicates_only keeps every member of a duplicate group, leads included.
+    blinks_only: str = ''
+    duplicates_only: str = ''
     search: str = ''
     tag: str = ''
     person: str = ''

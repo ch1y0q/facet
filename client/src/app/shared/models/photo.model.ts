@@ -124,6 +124,10 @@ export interface Photo {
    *  deliberate multi-frame set. With the matching hide toggle on, the tile
    *  showing it stands for the whole set. */
   sequence_kind?: string | null;
+  /** Which deliberate multi-frame set this frame belongs to. Ephemeral —
+   *  renumbered from 1 on every detection pass, so it is only good for
+   *  scoping the current view, never for a bookmark. */
+  sequence_group_id?: number | null;
   /** This frame's stops from the set's base exposure. Only a bracket has one
    *  — NULL for every other kind, which has no base frame to measure against. */
   sequence_ev_offset?: number | null;

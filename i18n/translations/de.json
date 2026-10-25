@@ -204,7 +204,11 @@
     "histogram": "Histogramm"
   },
   "photoCard": {
-    "embed_to_file": "Metadaten in Datei schreiben"
+    "embed_to_file": "Metadaten in Datei schreiben",
+    "duplicate_set": "Duplikatgruppe öffnen",
+    "burst_set": "Seriengruppe öffnen",
+    "sequence_set": "Belichtungsreihe/Panorama öffnen",
+    "open_detail": "Fotoseite öffnen"
   },
   "notifications": {
     "copied": "Kopiert!",
@@ -1297,6 +1301,15 @@
     },
     "channel_clip_highlight_range": "Beschnittene Lichter %",
     "channel_clip_shadow_range": "Beschnittene Schatten %",
+    "blinks_only": "Nur Blinker",
+    "duplicates_only": "Nur Duplikate",
+    "card_actions": {
+      "title": "Kartenknöpfe anpassen",
+      "hint": "Wähle, welche Knöpfe ein Foto beim Überfahren zeigt und in welcher Reihenfolge. Gruppen-Knöpfe erscheinen nur bei Fotos, die zu einer solchen Gruppe gehören.",
+      "move_up": "Nach oben",
+      "move_down": "Nach unten",
+      "reset": "Auf Standard zurücksetzen"
+    },
     "review_progress": {
       "title": "Sichtungsfortschritt",
       "counts": "{undecided} unentschieden · {kept} behalten · {rejected} abgelehnt",
@@ -2572,7 +2585,8 @@
     "delete_confirm_body": "{count} Fotos werden in den Papierkorb des Betriebssystems verschoben. Sie bleiben wiederherstellbar, bis Sie ihn leeren.",
     "delete_partial_result": "{deleted} gelöscht, {failed} fehlgeschlagen",
     "delete_failed": "Löschen fehlgeschlagen — nichts wurde in den Papierkorb verschoben",
-    "delete_disabled_view_scope_tooltip": "Wählen Sie Fotos explizit aus, um sie zu löschen — eine Auswahl der gesamten Ansicht kann hier nicht verwendet werden"
+    "delete_disabled_view_scope_tooltip": "Wählen Sie Fotos explizit aus, um sie zu löschen — eine Auswahl der gesamten Ansicht kann hier nicht verwendet werden",
+    "remove_missing_rows": "Bibliothekseinträge ebenfalls entfernen, deren Datei auf der Platte bereits fehlt"
   },
   "shortcuts": {
     "title": "Tastenkürzel",

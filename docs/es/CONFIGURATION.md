@@ -1009,6 +1009,8 @@ a 8 bits solo ocurre en ese último paso. Este bloque controla ese mapeo. Se apl
 **solo** a las imágenes cuyo perfil de color NCLX declara la transferencia PQ
 (característica 16); el HEIF SDR, HLG y JPEG pasan sin cambios independientemente
 de `enabled`.
+Los fotogramas que la cámara grabó girados (una orientación EXIF distinta de 1) salen derechos: el decodificador aplica la orientación por sí mismo — también por la ruta de profundidad nativa, donde pillow-heif 1.6 y posteriores giran el plano antes del mapeo de tono y el valor EXIF crudo se neutraliza en lugar de volver a aplicarse.
+
 
 ```json
 "hdr_pq_tonemap": {

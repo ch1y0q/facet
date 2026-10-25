@@ -16,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from io import BytesIO
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 from PIL import features as _pil_features
@@ -120,6 +121,66 @@ _LIBRAW_AUTO_BRIGHT_MAXIMUM_THR = 0.75
 DISPLAY_PREVIEW_MIN_LONG_EDGE = 640
 
 _EXIF_ORIENTATION_TAG = 274
+
+# Which way the installed pillow-heif's `open_heif` hands back the pixel plane:
+# upright already (it applied the EXIF orientation itself and left the raw
+# value only in the EXIF blob) or in the sensor's stored reading (the pre-1.6
+# behaviour, where applying the orientation was the caller's job). Detected
+# once per process on a tiny synthetic HEIF rather than parsed out of a
+# version number, so an install that pins 1.5.0 and an install that runs
+# 1.6.0 both behave correctly with the same code.
+_heif_transposes: Optional[bool] = None
+
+
+def _pillow_heif_transposes() -> bool:
+    """Whether ``open_heif`` has already applied the EXIF orientation.
+
+    Builds a 6x4 frame tagged with orientation 8 (viewing it upright needs a
+    90-degree turn, which swaps the sides), saves it to HEIF and reads it back
+    through ``open_heif``: a (4, 6) plane means the decoder transposed it; a
+    (6, 4) plane means it did not. Cached for the process.
+    """
+    global _heif_transposes
+    if _heif_transposes is None:
+        _heif_transposes = False
+        try:
+            import pillow_heif
+            Image, _ = _ensure_pil()
+            probe = Image.new('RGB', (6, 4), (128, 128, 128))
+            exif = Image.Exif()
+            exif[_EXIF_ORIENTATION_TAG] = 8
+            buf = BytesIO()
+            pillow_heif.from_pillow(probe).save(buf, format='HEIF', exif=exif.tobytes())
+            buf.seek(0)
+            _heif_transposes = pillow_heif.open_heif(buf).size == (4, 6)
+        except Exception as ex:  # pragma: no cover - decoder unusable anyway
+            logger.debug("Could not probe pillow-heif orientation behaviour: %s", ex)
+            _heif_transposes = False
+    return _heif_transposes
+
+
+def _exif_with_neutral_orientation(exif_blob: bytes) -> bytes:
+    """The EXIF ``exif_blob`` with its Orientation tag rewritten to 1.
+
+    For re-attaching the metadata a HEIF carried to a plane the decoder has
+    already turned upright: keeping the original orientation value there would
+    ask the caller's ``exif_transpose`` to turn the frame a second time. The
+    rest of the blob -- camera, lens, timestamps -- passes through untouched,
+    with whatever leading ``Exif\\0\\0`` marker the blob came with preserved.
+    """
+    Image, _ = _ensure_pil()
+    marker = b''
+    blob = exif_blob
+    if blob[:6] == b'Exif\x00\x00':
+        marker, blob = blob[:6], blob[6:]
+    try:
+        exif = Image.Exif()
+        exif.load(blob)
+        exif[_EXIF_ORIENTATION_TAG] = 1
+        return marker + exif.tobytes()
+    except Exception:
+        return exif_blob
+
 
 # LibRaw sizes.flip -> counter-clockwise degrees that make the frame upright.
 _LIBRAW_FLIP_ROTATIONS = {3: 180, 5: 90, 6: 270}
@@ -620,6 +681,14 @@ def _decode_pq_native(photo, settings):
     that view's buffer dies with it, and letting it be collected early
     produces silently garbled pixels rather than an error.
 
+    The raw EXIF blob is re-attached for the metadata it carries, but its
+    Orientation tag is neutralised to 1 when the decoder has already applied
+    it (pillow-heif 1.6+ turns the plane upright itself): the caller's
+    ``exif_transpose`` would otherwise read the original value and turn the
+    already-upright frame again -- a portrait shot on orientation 8 came back
+    lying on its side. On a decoder that leaves the plane alone (1.5.x) the
+    blob is kept verbatim, because there the transpose is still needed.
+
     Any failure -- pillow-heif missing or erroring, a corrupt file, an
     SDR-depth (<=8 bit) frame slipping through -- returns None so the caller
     falls back to today's 8-bit path; the exception is logged at debug rather
@@ -636,7 +705,8 @@ def _decode_pq_native(photo, settings):
         native_img = Image.fromarray(out, 'RGB')
         exif = img.info.get('exif')
         if exif:
-            native_img.info['exif'] = exif
+            native_img.info['exif'] = (
+                _exif_with_neutral_orientation(exif) if _pillow_heif_transposes() else exif)
         return native_img
     except Exception as ex:
         logger.debug("Native-depth PQ decode failed for %s, falling back to 8-bit: %s",
