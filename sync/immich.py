@@ -617,6 +617,7 @@ def sync_to_immich(db_path, config: dict, user_id: str | None = None,
             if path in seen:
                 ambiguous.add(path)
             seen.add(path)
+        resolved_candidates = []
         for facet_path, immich_path, fields, rating, favorite in resolvable:
             asset_id = None
             try:
@@ -632,6 +633,18 @@ def sync_to_immich(db_path, config: dict, user_id: str | None = None,
             if asset_id is None:
                 summary["unmatched"] += 1
                 unmatched_paths.append(facet_path)
+                continue
+            resolved_candidates.append((facet_path, asset_id, fields, rating))
+        # Separate exact-path fallbacks can each look unique while claiming
+        # the same UUID. Validate the complete plan before grouping any writes.
+        resolved_ids: dict[str, set[str]] = {}
+        for facet_path, asset_id, _, _ in resolved_candidates:
+            resolved_ids.setdefault(asset_id, set()).add(facet_path)
+        for facet_path, asset_id, fields, rating in resolved_candidates:
+            if len(resolved_ids[asset_id]) > 1:
+                summary["identity_conflicts"] += 1
+                if len(conflict_messages) < UNMATCHED_LOG_LIMIT:
+                    conflict_messages.append((facet_path, "Multiple Facet paths resolved to the same Immich asset id"))
                 continue
             summary["matched"] += 1
             matched_paths.add(facet_path)

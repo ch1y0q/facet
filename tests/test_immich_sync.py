@@ -987,3 +987,17 @@ class TestAssetIdentity:
         results = push_photo_updates(db_path, make_config(), [('/p/a.jpg', None), ('/p/b.jpg', None)])
         assert [result for result, _ in results] == [RESULT_FAILED, RESULT_FAILED]
         assert transport.asset_updates() == []
+
+
+    def test_full_sync_resolves_all_fallback_ids_before_grouping_aliases(self, tmp_path, transport):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0), ('/p/b.jpg', 4, 0, 0), ('/p/c.jpg', 3, 0, 0)])
+        transport.bulk_assets = {}
+        transport.assets_by_path = {'/p/a.jpg': 'same', '/p/b.jpg': 'same', '/p/c.jpg': 'safe'}
+        summary = sync_to_immich(db_path, make_config())
+        assert summary['identity_conflicts'] == 2
+        assert summary['matched'] == summary['updated'] == 1
+        assert transport.asset_updates() == [{'ids': ['safe'], 'rating': 3, 'isFavorite': False}]
+        with sqlite3.connect(db_path) as conn:
+            state = conn.execute("SELECT value FROM stats_cache WHERE key='immich_synced_paths:global'").fetchone()[0]
+        assert '/p/c.jpg' in state
+        assert '/p/a.jpg' not in state and '/p/b.jpg' not in state
