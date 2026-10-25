@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient, withXhr } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Router } from '@angular/router';
+import { PersonAssignmentHistoryService } from './person-assignment-history.service';
 import { AuthService, AuthStatus } from './auth.service';
 import { makeJwt } from '../../../testing/jwt';
 
@@ -442,6 +443,28 @@ describe('AuthService', () => {
       service.logout();
       flushLogout();
       expect(removeItemSpy).toHaveBeenCalledWith('facet_token');
+    });
+
+    it('clears private person assignment recents on shared-browser logout', () => {
+      service.logout();
+      flushLogout();
+      expect(removeItemSpy).toHaveBeenCalledWith('facet_person_assignments_v1');
+    });
+
+    it('refuses a late assignment receipt after logout with an unchanged single-user identity', () => {
+      const history = TestBed.inject(PersonAssignmentHistoryService);
+      service.status.set({ ...mockStatus, authenticated: false, multi_user: false,
+        user_id: null, edition_authenticated: true });
+      const owner = service.identity();
+      expect(owner).toBe('0|');
+      expect(service.isEdition()).toBe(true);
+      service.logout();
+      flushLogout();
+      expect(service.identity()).toBe(owner);
+      setItemSpy.mockClear();
+      // A successful assignment response may arrive after the submitted save survives logout.
+      history.record(42, owner);
+      expect(setItemSpy).not.toHaveBeenCalled();
     });
 
     it('should set status to null', () => {

@@ -1675,7 +1675,7 @@ async def api_similar_photos(
 
     # Read before the source SELECT: a commit landing between the two then
     # invalidates the cached ranking instead of being hidden behind it.
-    change_token = db_change_token(str(_database.DEFAULT_DB_PATH))
+    change_token = await asyncio.to_thread(db_change_token, str(_database.DEFAULT_DB_PATH))
     try:
         async with get_async_db() as conn:
             cur = await conn.execute(f"""

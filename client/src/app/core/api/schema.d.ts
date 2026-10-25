@@ -2361,6 +2361,12 @@ export interface paths {
          *
          *     Hidden persons (``is_hidden = 1``) are excluded by default; pass
          *     ``include_hidden=true`` to surface them.
+         *
+         *     ``sort=assignment`` orders named candidates by the supplied recent IDs (at
+         *     most 12), then by face count in visible photos, then name and ID. Recent IDs
+         *     confer no visibility: hidden (even with include_hidden), deleted and
+         *     inaccessible candidates stay out. In assignment order, ``face_count`` is
+         *     computed from visible photos; other orders return the stored library count.
          */
         get: operations["list_persons_api_persons_get"];
         put?: never;
@@ -12358,6 +12364,7 @@ export interface operations {
                 search?: string;
                 sort?: string;
                 include_hidden?: boolean;
+                recent_ids?: string;
             };
             header?: never;
             path?: never;
