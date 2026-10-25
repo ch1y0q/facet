@@ -380,7 +380,7 @@ class TestWholeViewSelectionContract:
 
 
 class TestSearchContract:
-    """GET /api/search — text scope only, so the check never needs a loaded CLIP/SigLIP model.
+    """GET /api/search contracts without loading a CLIP/SigLIP model.
 
     ``scope=text`` skips embedding search entirely (see ``api/routers/search.py``
     ``api_search``) and matches only via the FTS5 ``photos_fts`` table, which the
@@ -416,17 +416,15 @@ class TestSearchContract:
         prefix = "/apicontract-search-emb/"
         photo_a = prefix + "a.jpg"
         photo_b = prefix + "b.jpg"
+        text_emb = np.array([1.0, 0.0], dtype=np.float32)
         seed_photos_prefix(prefix, [
-            {"path": photo_a, "filename": "a.jpg", "aggregate": 6.0, **_MINIMAL_SCORED_FIELDS},
+            {"path": photo_a, "filename": "a.jpg", "aggregate": 6.0,
+             "clip_embedding": text_emb.tobytes(), **_MINIMAL_SCORED_FIELDS},
             {"path": photo_b, "filename": "b.jpg", "aggregate": 6.0, **_MINIMAL_SCORED_FIELDS},
         ])
 
-        matrix = np.array([[1.0, 0.0]], dtype=np.float32)
-        text_emb = np.array([1.0, 0.0], dtype=np.float32)
-
-        async def _matrix(*_a, **_k):
-            return matrix, [photo_a]
-
+        # Read real stored vectors through the production snapshot/cache path;
+        # only model encoding and the independent FTS scores are substituted.
         async def _fts(*_a, **_k):
             return {photo_b: 1.0}
 
@@ -437,7 +435,6 @@ class TestSearchContract:
             return True
 
         with (
-            mock.patch("api.routers.search._load_embedding_matrix", new=_matrix),
             mock.patch("api.routers.search._encode_text", return_value=text_emb),
             mock.patch("api.routers.search._has_fts", new=_true),
             mock.patch("api.routers.search._fts_search", new=_fts),
@@ -451,6 +448,7 @@ class TestSearchContract:
         assert_satisfies(photos_by_path[photo_b], 'Photo', 'GET /api/search')
 
         assert isinstance(photos_by_path[photo_a]['embedding_similarity'], float)
+        assert photos_by_path[photo_a]['embedding_similarity'] == pytest.approx(1.0)
         assert not isinstance(photos_by_path[photo_a]['embedding_similarity'], str)
         assert 'embedding_similarity' not in photos_by_path[photo_b]
 
