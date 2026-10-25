@@ -454,17 +454,33 @@ def test_real_numeric_keywords_survive_cli_writer_paths(tmp_path, embed, reconci
 
 
 @pytest.mark.skipif(not exiftool_available(), reason='requires ExifTool')
-def test_control_character_keyword_beside_a_boolean_survives_embedding(tmp_path):
+def test_control_character_keyword_beside_a_boolean_survives_embedding(tmp_path, monkeypatch):
     from PIL import Image
     from processing import xmp_export as xe
+    from utils.exiftool_process import run_exiftool_process
+    original_run = subprocess.run
+    def windows_narrow_argv(args, **kwargs):
+        # Windows ANSI argv bytes are not UTF-8; ExifTool can drop the accent
+        # before the production writer ever sees the seeded IPTC keyword.
+        args = [args[0], *[value.encode('cp1252', errors='replace').decode('utf-8', errors='ignore')
+                           for value in args[1:]]]
+        return original_run(args, **kwargs)
+    monkeypatch.setattr(subprocess, 'run', windows_narrow_argv)
     image = tmp_path / 'bell.jpg'
     Image.new('RGB', (16, 16)).save(image)
     names = ['True', 'bell\x07x', 'café']
-    subprocess.run(['exiftool', '-q', '-overwrite_original', *[f'-IPTC:Keywords={name}' for name in names],
-                    str(image)], check=True, capture_output=True)
+    seeded_write = run_exiftool_process(
+        ['exiftool', '-q', '-overwrite_original', *[f'-IPTC:Keywords={name}' for name in names], str(image)],
+        timeout=30)
+    assert seeded_write.returncode == 0, seeded_write.stderr
+    seeded = run_exiftool_process(['exiftool', '-j', '-IPTC:Keywords', str(image)], timeout=30)
+    assert seeded.returncode == 0, seeded.stderr
+    assert xe._exiftool_record(seeded.stdout)['Keywords'] == [True, *names[1:]]
     write_metadata(str(image), XmpRating.from_row({'path': str(image), 'tags': 'dog'}), embed_original=True)
     # XMP cannot hold U+0007 (ExifTool writes it as '.'); IPTC must keep it, never -X's base64 text.
-    keywords = xe._exiftool_record(subprocess.check_output(['exiftool', '-j', '-IPTC:Keywords', str(image)]))
+    readback = run_exiftool_process(['exiftool', '-j', '-IPTC:Keywords', str(image)], timeout=30)
+    assert readback.returncode == 0, readback.stderr
+    keywords = xe._exiftool_record(readback.stdout)
     assert keywords['Keywords'] == [True, *names[1:], 'dog']
 
 
