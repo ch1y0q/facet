@@ -1001,3 +1001,96 @@ class TestAssetIdentity:
             state = conn.execute("SELECT value FROM stats_cache WHERE key='immich_synced_paths:global'").fetchone()[0]
         assert '/p/c.jpg' in state
         assert '/p/a.jpg' not in state and '/p/b.jpg' not in state
+
+
+    def test_fallback_id_must_agree_with_unselected_bulk_identity(self, tmp_path, transport):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0), ('/p/safe.jpg', 3, 0, 0)])
+        transport.bulk_assets = {'/p/different.jpg': 'same', '/p/safe.jpg': 'safe'}
+        transport.assets_by_path = {'/p/a.jpg': 'same', '/p/safe.jpg': 'safe'}
+        summary = sync_to_immich(db_path, make_config())
+        assert summary['identity_conflicts'] == 1
+        assert summary['updated'] == 1
+        assert transport.asset_updates() == [{'ids': ['safe'], 'rating': 3, 'isFavorite': False}]
+        with sqlite3.connect(db_path) as conn:
+            state = conn.execute("SELECT value FROM stats_cache WHERE key='immich_synced_paths:global'").fetchone()[0]
+        assert '/p/a.jpg' not in state and '/p/safe.jpg' in state
+
+    def test_later_fallback_alias_also_refuses_earlier_bulk_candidate(self, tmp_path, transport):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0), ('/p/b.jpg', 4, 0, 0), ('/p/safe.jpg', 3, 0, 0)])
+        transport.bulk_assets = {'/p/a.jpg': 'same', '/p/safe.jpg': 'safe'}
+        transport.assets_by_path = {'/p/b.jpg': 'same', '/p/safe.jpg': 'safe'}
+        summary = sync_to_immich(db_path, make_config())
+        assert summary['identity_conflicts'] == 2
+        assert summary['updated'] == 1
+        assert transport.asset_updates() == [{'ids': ['safe'], 'rating': 3, 'isFavorite': False}]
+
+    def test_same_webhook_path_with_distinct_remote_ids_refuses_both(self, tmp_path, monkeypatch):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0), ('/p/safe.jpg', 3, 0, 0)])
+        with sqlite3.connect(db_path) as conn:
+            conn.execute('UPDATE photos SET aggregate=8')
+        writes = []
+
+        def request(_self, method, path, payload=None):
+            if method == 'GET':
+                asset_id = path.rsplit('/', 1)[-1]
+                return {'id': asset_id, 'originalPath': '/p/safe.jpg' if asset_id == 'safe' else '/p/a.jpg'}
+            writes.append((method, path, payload))
+
+        monkeypatch.setattr(ImmichClient, '_request', request)
+        results = push_photo_updates(db_path, make_config(), [
+            ('/p/a.jpg', 'one'), ('/p/a.jpg', 'two'), ('/p/safe.jpg', 'safe')])
+        assert [result for result, _ in results] == [RESULT_FAILED, RESULT_FAILED, RESULT_PUSHED]
+        assert writes == [('PUT', '/api/assets', {'ids': ['safe'], 'rating': 3, 'isFavorite': False})]
+        with sqlite3.connect(db_path) as conn:
+            state = conn.execute("SELECT value FROM stats_cache WHERE key='immich_synced_paths:global'").fetchone()[0]
+        assert '/p/a.jpg' not in state and '/p/safe.jpg' in state
+
+
+    def test_broad_fallback_repeating_valid_bulk_edge_is_harmless(self, tmp_path, monkeypatch):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0), ('/p/b.jpg', 4, 0, 0)])
+        fake = PagedIdentityTransport(bulk=[[_remote_asset('x', '/p/b.jpg')]],
+                                      fallback=[[_remote_asset('x', '/p/b.jpg'), _remote_asset('y')]])
+        monkeypatch.setattr(ImmichClient, '_request', fake)
+        summary = sync_to_immich(db_path, make_config())
+        assert summary['identity_conflicts'] == 0
+        assert summary['updated'] == 2
+        assert {asset for update in fake.asset_updates() for asset in update['ids']} == {'x', 'y'}
+
+    def test_unmatched_fallback_can_disprove_earlier_bulk_edge(self, tmp_path, monkeypatch):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0), ('/p/b.jpg', 4, 0, 0), ('/p/safe.jpg', 3, 0, 0)])
+        fake = PagedIdentityTransport(bulk=[[_remote_asset('x'), _remote_asset('safe', '/p/safe.jpg')]],
+                                      fallback=[[_remote_asset('y')]])  # no exact b match, but a now has two IDs
+        monkeypatch.setattr(ImmichClient, '_request', fake)
+        summary = sync_to_immich(db_path, make_config())
+        assert summary['identity_conflicts'] == 1
+        assert summary['unmatched'] == 1
+        assert summary['updated'] == 1
+        assert fake.asset_updates() == [{'ids': ['safe'], 'rating': 3, 'isFavorite': False}]
+
+    def test_webhook_hint_and_later_fallback_share_identity_registry(self, tmp_path, transport):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0), ('/p/b.jpg', 4, 0, 0)])
+        with sqlite3.connect(db_path) as conn:
+            conn.execute('UPDATE photos SET aggregate=8')
+        transport.assets_by_path = {'/p/a.jpg': 'x', '/p/b.jpg': 'x'}
+        results = push_photo_updates(db_path, make_config(), [('/p/a.jpg', 'x'), ('/p/b.jpg', None)])
+        assert [result for result, _ in results] == [RESULT_FAILED, RESULT_FAILED]
+        assert transport.asset_updates() == []
+
+    def test_repeated_identical_webhook_edge_remains_safe(self, tmp_path, transport):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0)])
+        with sqlite3.connect(db_path) as conn:
+            conn.execute('UPDATE photos SET aggregate=8')
+        transport.assets_by_path = {'/p/a.jpg': 'x'}
+        results = push_photo_updates(db_path, make_config(), [('/p/a.jpg', 'x'), ('/p/a.jpg', 'x')])
+        assert [result for result, _ in results] == [RESULT_PUSHED, RESULT_PUSHED]
+        assert all(update['ids'] == ['x'] for update in transport.asset_updates())
+
+    def test_out_of_scope_broad_hits_do_not_poison_bulk_identity(self, tmp_path, monkeypatch):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0), ('/p/b.jpg', 4, 0, 0)])
+        fake = PagedIdentityTransport(bulk=[[_remote_asset('x')]],
+                                      fallback=[[_remote_asset('x', '/different.jpg', owner='other')]])
+        monkeypatch.setattr(ImmichClient, '_request', fake)
+        summary = sync_to_immich(db_path, make_config(owner_id='owner-a'))
+        assert summary['identity_conflicts'] == 0
+        assert summary['unmatched'] == summary['updated'] == 1
+        assert fake.asset_updates() == [{'ids': ['x'], 'rating': 5, 'isFavorite': False}]
