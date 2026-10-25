@@ -510,3 +510,28 @@ python facet.py --recompute-tags     # Riassegna i tag con il nuovo modello
 python facet.py --compute-recommendations  # Controlla le distribuzioni
 python facet.py --recompute-average        # Applica i nuovi pesi
 ```
+
+## Ricollegare foto spostate
+
+Dopo aver spostato personalmente i file, `python database.py --relink-photos` mostra un’anteprima dei percorsi vecchi/nuovi esatti e conserva le associazioni nel database. L’anteprima è predefinita. Applicare richiede l’ID del piano salvato e `--acknowledge-unverified-identity`: il database non contiene prove crittografiche dell’originale mancante. Arrestare viewer/scansioni e rivedere il piano. Entrambi i percorsi devono restare nelle radici configurate con la stessa visibilità degli utenti; copie, nomi ambigui, piani obsoleti e mappature dei percorsi vengono rifiutati. I file compagni devono essere espliciti; i rettangoli manuali richiedono revisione nell’editor e lo stato Immich non cambia. Contratto ed esempi: [Ricollegare foto spostate](RELINK.md).
+
+`sidecar_facet` indica esplicitamente `photo.ext.facet.xmp`; anche i pacchetti alternativi non elencati vengono rifiutati. I piani salvati sono privati (0600 su POSIX). Una directory leggibile non prova che il volume sia montato: `source_mount_status` resta `not_verified`; l’operatore deve confermare uno spostamento reale anziché archiviazione offline.
+
+```sh
+python database.py --relink-photos --db library.db --config scoring_config.json \
+  --mapping moved.json --plan-out relink-plan.json
+python database.py --relink-photos --db library.db --config scoring_config.json \
+  --apply-plan relink-plan.json --ack-plan REVIEWED_PLAN_ID \
+  --acknowledge-unverified-identity
+```
+
+| Opzione | Scopo |
+|---|---|
+| `--db` | Base dati esistente |
+| `--config` | Configurazione risolta |
+| `--user` | Utente configurato obbligatorio in modalità multiutente |
+| `--mapping` | Percorsi vecchio/nuovo JSON; anteprima |
+| `--plan-out` | Creare un piano privato nuovo senza sovrascrivere |
+| `--apply-plan` | Applicare un piano esaminato |
+| `--ack-plan` | Hash esatto del piano esaminato |
+| `--acknowledge-unverified-identity` | Conferma esplicita nonostante i byte originali ignoti |

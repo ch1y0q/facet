@@ -314,6 +314,12 @@ def _hold_library_lock(args):
 def main():
     import argparse
 
+    if '--relink-photos' in sys.argv[1:]:
+        from db.relink import main as relink_photos
+        relink_photos([arg for arg in sys.argv[1:] if arg != '--relink-photos'],
+                      prog=os.path.basename(sys.argv[0]) + ' --relink-photos')
+        return
+
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     parser = argparse.ArgumentParser(
@@ -460,6 +466,9 @@ def main():
         metavar='N',
         help='Number of database backups to retain with --backup (default: 3)'
     )
+
+    parser.add_argument('--relink-photos', action='store_true',
+                        help='Preview/apply explicitly moved photo paths; use --relink-photos --help for the bounded workflow')
 
     args = parser.parse_args()
 
