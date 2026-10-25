@@ -1304,7 +1304,9 @@
       "start": "Revisar sin decidir",
       "resume": "Continuar revisión",
       "browser": "Reanudar la cola recordada en este navegador."
-    }
+    },
+    "manual_faces_need_review": "Rostros manuales por revisar",
+    "manual_faces_review_hint": "Según el último escaneo o revisión en el editor de rostros, sin supervisión continua. Abra el editor de rostros de una foto para revisar las marcas guardadas."
   },
   "composition_patterns": {
     "none": "Ninguno",

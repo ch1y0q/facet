@@ -1304,7 +1304,9 @@
       "start": "Review undecided",
       "resume": "Continue reviewing",
       "browser": "Resume the remembered queue on this browser."
-    }
+    },
+    "manual_faces_need_review": "Manual faces need review",
+    "manual_faces_review_hint": "Based on the last scan or face-editor check, not continuous monitoring. Open a photo’s face editor to review saved marks."
   },
   "composition_patterns": {
     "none": "None",

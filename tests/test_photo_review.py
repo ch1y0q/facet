@@ -78,6 +78,7 @@ def test_schema_upgrade_and_preference_migration(tmp_path):
     init_database(path)
     with sqlite3.connect(path) as conn:
         # Reproduce a real pre-feature database using the production schema.
+        conn.execute("DROP INDEX IF EXISTS idx_review_progress")
         conn.execute("ALTER TABLE photos DROP COLUMN is_kept")
         conn.execute("ALTER TABLE user_preferences DROP COLUMN is_kept")
         conn.execute("INSERT INTO photos(path, filename, star_rating, is_favorite) VALUES('/legacy.jpg', 'legacy.jpg', 5, 1)")
@@ -97,6 +98,7 @@ def test_preference_migration_upgrades_a_pre_keep_database(tmp_path):
     path = str(tmp_path / "pre-keep.db")
     init_database(path)
     with sqlite3.connect(path) as conn:
+        conn.execute("DROP INDEX IF EXISTS idx_review_progress")
         conn.execute("ALTER TABLE photos DROP COLUMN is_kept")
         conn.execute("ALTER TABLE user_preferences DROP COLUMN is_kept")
         conn.execute("INSERT INTO photos(path, filename, star_rating) VALUES('/rated.jpg', 'rated.jpg', 3)")

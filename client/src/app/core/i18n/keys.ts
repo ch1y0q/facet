@@ -1319,6 +1319,8 @@ export const I18N = {
       resume: "gallery.review_progress.resume",
       browser: "gallery.review_progress.browser",
     },
+    manual_faces_need_review: "gallery.manual_faces_need_review",
+    manual_faces_review_hint: "gallery.manual_faces_review_hint",
   },
   composition_patterns: {
     none: "composition_patterns.none",
