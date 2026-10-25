@@ -1912,8 +1912,8 @@ _JOB_MODIFIERS = frozenset({
     "discover_min_cluster_size", "dry_run", "eval_out",
     "dry_run_count", "embed_originals", "force", "force_library_lock", "force_low_space",
     "force_since", "limit", "merge_threshold", "optimize_category", "optimize_force",
-    "optimize_sources", "overwrite_manual_gps", "ranker_category", "refresh_thumbnails_workers", "resume",
-    "retry_failed", "score_to_stars",
+    "optimize_sources", "overwrite_manual_gps", "overwrite_sidecar_review", "ranker_category", "refresh_thumbnails_workers", "resume",
+    "retry_failed", "score_to_stars", "sidecar_fields",
     "simulate", "simulate_gpu", "simulate_vram", "single_pass", "single_pass_name",
     "train_keeper_force", "train_ranker_force", "user", "verbose", "watch_debounce",
 })
