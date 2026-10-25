@@ -47,6 +47,7 @@ PUBLIC_ROUTES = [
 # user; a few (e.g. /api/plugins, the comparison reads) are edition-only since an
 # install without viewer.edition_password became read-only.
 AUTH_ROUTES = [
+    '/api/organization_history',
     '/api/photos',
     '/api/photos/review_progress',
     '/api/type_counts',
@@ -121,6 +122,7 @@ PARAMETERISED_ROUTES = [
 # POST routes with a minimal valid-shaped body naming a photo that does not exist:
 # the handler runs (validation passes) and ends in a 4xx or an empty success.
 POST_ROUTES = [
+    ('/api/organization_history/1/revert', {}),
     ('/api/photos/capture_date/preview', {'photo_paths': [], 'offset_seconds': 1}),
     ('/api/photos/capture_date/apply', {'photo_paths': [], 'offset_seconds': 1, 'preview_token': 'stale'}),
     ('/api/photos/batch_gps', {'photo_paths': ['/nonexistent.jpg'], 'gps_latitude': 1, 'gps_longitude': 2, 'preview': True}),

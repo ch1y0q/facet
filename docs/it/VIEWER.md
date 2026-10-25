@@ -1573,6 +1573,14 @@ Si sposta l’ora locale della fotocamera senza dedurre fuso orario o ora legale
 
 Originali e date di modifica dei file rimangono invariati. L’esportazione XMP esplicita scrive `exif:DateTimeOriginal` per date manuali; la scrittura esplicita nel file aggiunge EXIF `DateTimeOriginal` nei formati supportati senza modificare altre date EXIF. I gruppi di raffiche/sequenze restano invariati; avvia esplicitamente la scansione o il rilevamento dei gruppi per raggruppare nuovamente.
 
+## Cronologia delle modifiche
+
+In modalità modifica, apri **Cronologia delle modifiche** dalla galleria o dai dettagli. Espandi una voce per confrontare prima e dopo, quindi scegli **Ripristina questa voce**. Luoghi e date sono condivisi; decisioni, stelle e preferiti usano le preferenze del tuo account. File e riconoscimento facciale sono esclusi. Gli originali non cambiano. Annullamento temporaneo e attività dell’assistente restano separati.
+
+Questo database conserva le ultime **50 voci per account**, ciascuna con al massimo **1000 foto e 1 MiB**. Le revisioni filtrate grandi sono divise in parti nella stessa transazione. Il ripristino riguarda solo la parte scelta; quelle più vecchie possono essere scadute. Le azioni senza cambiamenti non creano voci. La cronologia sopravvive a riavvii e aggiornamenti incrementali, senza sincronizzazione tra database. Un’esportazione completa parte con una cronologia vuota.
+
+Una voce viene nascosta interamente se una foto è eliminata o non più visibile. Il ripristino viene rifiutato per tutta la voce se un valore interessato è cambiato dopo, anche se è tornato uguale. I conflitti di luogo/data valgono per tutti gli account; le revisioni private altrui non bloccano le tue. Il ripristino crea una propria voce e contrassegna quella originale. Scansioni, importazioni e annullamenti temporanei invalidano anche le voci precedenti in conflitto.
+
 ### Volti senza nome
 
 Include volti non assegnati e gruppi di persone senza nome. Usa + per assegnare un volto o dai un nome a un gruppo in Persone. Le foto senza volti rilevati sono escluse.

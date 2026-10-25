@@ -1572,6 +1572,14 @@ Se desplaza la hora local de la cámara sin deducir zona horaria ni horario de v
 
 No se modifican originales ni fechas de modificación de archivos. La exportación XMP explícita escribe `exif:DateTimeOriginal` para fechas manuales; la escritura explícita en el archivo añade EXIF `DateTimeOriginal` en formatos compatibles sin modificar otras fechas EXIF. Se conservan grupos de ráfagas/secuencias; ejecuta explícitamente el escaneo o la detección de grupos para reagrupar.
 
+## Historial de organización
+
+En modo edición, abre **Historial de organización** desde la galería o los detalles. Expande una entrada para comparar los valores anteriores y posteriores y pulsa **Revertir esta entrada**. Los lugares y fechas son compartidos; decisiones, estrellas y favoritos usan tus preferencias de cuenta. Se excluyen archivos y reconocimiento facial. Los originales no cambian. Deshacer temporal y la actividad del asistente siguen separados.
+
+Esta base conserva las últimas **50 entradas por cuenta**, cada una con un máximo de **1000 fotos y 1 MiB**. Las revisiones filtradas grandes se guardan en partes dentro de la misma transacción. Revertir solo restaura la parte elegida; las antiguas pueden haber caducado. Las acciones sin cambios no añaden entradas. El historial sobrevive a reinicios y actualizaciones incrementales, sin sincronizarse entre bases. Una exportación completa empieza con el historial vacío.
+
+Una entrada se oculta por completo si alguna foto se elimina o deja de ser visible. Se rechaza toda la restauración si algún valor afectado cambió después, aunque vuelva a ser igual. Los conflictos de lugar/fecha afectan a todas las cuentas; las revisiones privadas de otra cuenta no bloquean las tuyas. Revertir crea su propia entrada y marca la original. Los escaneos, importaciones y Deshacer temporal también invalidan entradas anteriores en conflicto.
+
 ### Caras sin nombre
 
 Incluye caras sin asignar y grupos de personas sin nombre. Usa + para asignar una cara o nombra un grupo en Personas. No incluye fotos sin caras detectadas.

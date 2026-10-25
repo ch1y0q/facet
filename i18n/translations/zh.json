@@ -2834,5 +2834,33 @@
     "preview": "预览",
     "apply": "应用校正",
     "hint": "偏移相机记录的本地时间，不推断时区或夏令时。只有明确导出元数据时才会更改原始文件。"
+  },
+  "organization_history": {
+    "title": "整理历史",
+    "hint": "此查看器数据库中您最近的 50 条整理记录。位置和拍摄日期对所有人有效；筛选决定、星级和收藏属于您的账户。不会修改原始文件。",
+    "gps": "位置",
+    "date": "拍摄日期",
+    "review": "筛选",
+    "revert": "还原此条记录",
+    "reverted": "已还原",
+    "empty": "没有可用的历史记录。",
+    "part": "第 {part} 部分，共 {parts} 部分：此记录仅还原其中的 {count} 张照片。较早的部分可能已过期。",
+    "success": "已还原照片数量：{count}",
+    "conflict": "此操作后照片已被修改。未还原任何照片。",
+    "unavailable": "此记录已不可用。未还原任何照片。",
+    "error": "无法加载或还原历史记录。",
+    "latitude": "纬度",
+    "longitude": "经度",
+    "manual_gps": "手动位置",
+    "capture_date": "拍摄日期",
+    "manual_date": "手动日期",
+    "stars": "星级",
+    "favorite": "收藏",
+    "rejected": "已拒绝",
+    "kept": "已保留",
+    "yes": "是",
+    "no": "否",
+    "unknown": "未知",
+    "photo_count": "照片数量：{count}"
   }
 }

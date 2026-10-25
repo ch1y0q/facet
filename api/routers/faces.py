@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from api.auth import CurrentUser, require_edition, require_auth, require_authenticated
 from api.config import is_multi_user_enabled, _stats_cache, invalidate_stats_cache
+from api import organization_history
 from api.database import get_async_db, get_db
 from api.routers.burst_culling import _invalidate_culling_groups_cache
 from api.db_helpers import (
@@ -468,6 +469,7 @@ def api_set_rating(
     with get_db() as conn:
         try:
             _require_writable_photo(conn, user, body.photo_path)
+            history_before = organization_history.begin(conn, user.user_id, 'review', [body.photo_path])
             before = snapshot_labels(conn, user.is_agent_request, user.user_id, [body.photo_path])
             if user.user_id and is_multi_user_enabled():
                 conn.execute("""
@@ -478,6 +480,7 @@ def api_set_rating(
             else:
                 conn.execute("UPDATE photos SET star_rating = ? WHERE path = ?", (body.rating, body.photo_path))
             record_label_origin(conn, user.is_agent_request, user.user_id, [body.photo_path], before)
+            organization_history.finish(conn, user.user_id, 'review', history_before)
             conn.commit()
             _stats_cache.clear()
             if not user.is_agent_request:
@@ -501,6 +504,7 @@ def api_toggle_favorite(
     with get_db() as conn:
         try:
             _require_writable_photo(conn, user, body.photo_path)
+            history_before = organization_history.begin(conn, user.user_id, 'review', [body.photo_path])
             before = snapshot_labels(conn, user.is_agent_request, user.user_id, [body.photo_path])
             if user.user_id and is_multi_user_enabled():
                 row = conn.execute(
@@ -529,6 +533,7 @@ def api_toggle_favorite(
                 else:
                     conn.execute("UPDATE photos SET is_favorite = 0 WHERE path = ?", (body.photo_path,))
             record_label_origin(conn, user.is_agent_request, user.user_id, [body.photo_path], before)
+            organization_history.finish(conn, user.user_id, 'review', history_before)
             conn.commit()
             _stats_cache.clear()
             _invalidate_culling_groups_cache()
@@ -555,6 +560,7 @@ def api_toggle_rejected(
     with get_db() as conn:
         try:
             _require_writable_photo(conn, user, body.photo_path)
+            history_before = organization_history.begin(conn, user.user_id, 'review', [body.photo_path])
             before = snapshot_labels(conn, user.is_agent_request, user.user_id, [body.photo_path])
             if user.user_id and is_multi_user_enabled():
                 row = conn.execute(
@@ -583,6 +589,7 @@ def api_toggle_rejected(
                 else:
                     conn.execute("UPDATE photos SET is_rejected = 0 WHERE path = ?", (body.photo_path,))
             record_label_origin(conn, user.is_agent_request, user.user_id, [body.photo_path], before)
+            organization_history.finish(conn, user.user_id, 'review', history_before)
             conn.commit()
             _stats_cache.clear()
             _invalidate_culling_groups_cache()
@@ -755,6 +762,9 @@ def _batch_update(body: BatchPhotoRequest, user: CurrentUser, sql: BatchWriteSql
 
     with get_db() as conn:
         try:
+            conn.execute('BEGIN IMMEDIATE')
+            history_paths = _filter_scope_paths(conn, body, user) if body.filters is not None else _writable_photo_paths(conn, user, [p for p in body.photo_paths or () if p not in set(body.exclude or ())])
+            history_before = organization_history.begin(conn, user.user_id, 'review', history_paths)
             if body.filters is not None:
                 if user.is_agent_request:
                     touched = _filter_scope_paths(conn, body, user)
@@ -790,6 +800,7 @@ def _batch_update(body: BatchPhotoRequest, user: CurrentUser, sql: BatchWriteSql
                     origin_paths = [path for path in paths if labels[path][2] != review_rejected]
                 count = _write_paths(conn, paths, user, sql)
                 record_label_origin(conn, user.is_agent_request, user.user_id, origin_paths, before)
+            organization_history.finish(conn, user.user_id, 'review', history_before)
             conn.commit()
             _stats_cache.clear()
             _invalidate_culling_groups_cache()

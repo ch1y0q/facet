@@ -2834,5 +2834,33 @@
     "preview": "Vista previa",
     "apply": "Aplicar corrección",
     "hint": "Desplaza la hora local de la cámara sin deducir zona horaria ni horario de verano. Los originales solo cambian al exportar explícitamente los metadatos."
+  },
+  "organization_history": {
+    "title": "Historial de organización",
+    "hint": "Tus últimas 50 entradas en esta base del visor. Los lugares y fechas afectan a todos; las decisiones, estrellas y favoritos pertenecen a tu cuenta. Los archivos originales no cambian.",
+    "gps": "Lugar",
+    "date": "Fecha de captura",
+    "review": "Revisión",
+    "revert": "Revertir esta entrada",
+    "reverted": "Ya revertida",
+    "empty": "No hay entradas disponibles.",
+    "part": "Parte {part} de {parts}: esta entrada solo restaura sus {count} fotos. Las partes anteriores pueden haber caducado.",
+    "success": "Fotos restauradas: {count}",
+    "conflict": "Hay fotos modificadas desde esta acción. No se restauró nada.",
+    "unavailable": "Esta entrada ya no está disponible. No se restauró nada.",
+    "error": "No se pudo cargar o restaurar el historial.",
+    "latitude": "Latitud",
+    "longitude": "Longitud",
+    "manual_gps": "Ubicación manual",
+    "capture_date": "Fecha de captura",
+    "manual_date": "Fecha manual",
+    "stars": "Estrellas",
+    "favorite": "Favorita",
+    "rejected": "Rechazada",
+    "kept": "Conservada",
+    "yes": "Sí",
+    "no": "No",
+    "unknown": "Desconocido",
+    "photo_count": "Fotos: {count}"
   }
 }
