@@ -25,7 +25,7 @@ def packet_keywords(sidecar):
     return parse_sidecar(str(sidecar))['tags']
 
 
-def exact_keyword_xml(field, values):
+def exact_keyword_xml(field, values, *, error=False):
     groups = {'Subject': 'XMP/XMP-dc', 'Keywords': 'IPTC/IPTC', 'HierarchicalSubject': 'XMP/XMP-lr'}
     root = ET.Element(f'{{{NS_RDF}}}RDF')
     desc = ET.SubElement(root, f'{{{NS_RDF}}}Description')
@@ -33,6 +33,8 @@ def exact_keyword_xml(field, values):
     bag = ET.SubElement(node, f'{{{NS_RDF}}}Bag')
     for value in values:
         ET.SubElement(bag, f'{{{NS_RDF}}}li').text = value
+    if error:
+        ET.SubElement(desc, '{http://ns.exiftool.org/ExifTool/1.0/}Error').text = 'read failed'
     return ET.tostring(root, encoding='unicode')
 
 
@@ -451,7 +453,8 @@ def test_real_numeric_keywords_survive_cli_writer_paths(tmp_path, embed, reconci
         conn.close()
 
 
-@pytest.mark.parametrize('xml', ['not xml', '<empty/>', exact_keyword_xml('Keywords', ['True'])])
+@pytest.mark.parametrize('xml', ['not xml', '<empty/>', exact_keyword_xml('Keywords', ['True']),
+                                 exact_keyword_xml('Subject', ['True'], error=True)])
 def test_failed_exact_boolean_read_refuses_before_writing(tmp_path, monkeypatch, xml):
     import subprocess
     from processing import xmp_export as xe
