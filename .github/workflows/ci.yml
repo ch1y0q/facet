@@ -79,7 +79,7 @@ jobs:
         # ones kept green on Windows, and the rest of the suite is not run on
         # this platform. A file is added to this list in the PR that makes it
         # green there. tests/test_scan.py (the library lock picks a different
-        # backend here: msvcrt byte-range locks, which have no shared mode) and
+        # backend here: native LockFileEx shared/exclusive byte-range locks) and
         # tests/test_device.py (CUDA/MPS/CPU resolution) are the original
         # platform surface; the others cover path, permission, symlink and
         # subprocess handling that differs on Windows.
