@@ -1777,7 +1777,12 @@
     "find_more": "Trouver d'autres visages de {name}",
     "not_person": "Pas {name}",
     "view_photos": "Voir toutes les photos de {name}",
-    "view_group_photos": "Voir toutes les photos de ce groupe"
+    "view_group_photos": "Voir toutes les photos de ce groupe",
+    "use_picture": "Utiliser comme photo de {name}",
+    "use_group_picture": "Utiliser comme photo de ce groupe",
+    "picture_set": "Photo mise à jour",
+    "show_boxes": "Toujours afficher les cadres des visages",
+    "hide_boxes": "Afficher les cadres au survol seulement"
   },
   "person_selector": {
     "create_new": "Créer une nouvelle personne",

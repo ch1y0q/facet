@@ -1792,6 +1792,11 @@ export const I18N = {
     not_person: "photo_faces.not_person",
     view_photos: "photo_faces.view_photos",
     view_group_photos: "photo_faces.view_group_photos",
+    use_picture: "photo_faces.use_picture",
+    use_group_picture: "photo_faces.use_group_picture",
+    picture_set: "photo_faces.picture_set",
+    show_boxes: "photo_faces.show_boxes",
+    hide_boxes: "photo_faces.hide_boxes",
   },
   person_selector: {
     create_new: "person_selector.create_new",

@@ -1777,7 +1777,12 @@
     "find_more": "Find more faces of {name}",
     "not_person": "Not {name}",
     "view_photos": "See all photos of {name}",
-    "view_group_photos": "See all photos of this group"
+    "view_group_photos": "See all photos of this group",
+    "use_picture": "Use as {name}'s picture",
+    "use_group_picture": "Use as this group's picture",
+    "picture_set": "Picture updated",
+    "show_boxes": "Always show face boxes",
+    "hide_boxes": "Show face boxes on hover only"
   },
   "person_selector": {
     "create_new": "Create new person",

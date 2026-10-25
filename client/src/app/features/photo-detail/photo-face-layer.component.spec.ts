@@ -21,7 +21,7 @@ describe('PhotoFaceLayerComponent', () => {
   let component: PhotoFaceLayerComponent;
   let mockApi: { get: Mock; post: Mock };
   let mockDialog: { open: Mock };
-  let mockStore: { assignFace: Mock; createPerson: Mock; unassignPerson: Mock };
+  let mockStore: { assignFace: Mock; createPerson: Mock; unassignPerson: Mock; reloadPersonOptions: Mock };
   let mockSnackBar: { open: Mock };
   let mockRouter: { navigate: Mock };
 
@@ -45,6 +45,7 @@ describe('PhotoFaceLayerComponent', () => {
       assignFace: vi.fn(async () => true),
       createPerson: vi.fn(async () => ({ id: 9, name: 'New', face_count: 1 })),
       unassignPerson: vi.fn(async () => undefined),
+      reloadPersonOptions: vi.fn(async () => undefined),
     };
     mockSnackBar = { open: vi.fn() };
     mockRouter = { navigate: vi.fn(() => Promise.resolve(true)) };
@@ -87,6 +88,43 @@ describe('PhotoFaceLayerComponent', () => {
     const [named, top] = component.faces();
     expect(named.labelY).toBeLessThan(named.y);
     expect(top.labelY).toBeGreaterThan(top.y);
+  });
+
+  it('boxes named faces in white and unnamed faces in red', async () => {
+    await render();
+    const rects = [...fixture.nativeElement.querySelectorAll('rect')] as SVGRectElement[];
+    expect(rects[0].getAttribute('stroke')).toBe('white');
+    expect(rects[1].getAttribute('stroke')).toBe('#ef4444');
+  });
+
+  it('shows boxes only on hover by default, and always with showAll', async () => {
+    await render();
+    const rect = () => fixture.nativeElement.querySelector('rect') as SVGRectElement;
+    expect(rect().classList.contains('opacity-0')).toBe(true);
+
+    fixture.componentRef.setInput('showAll', true);
+    fixture.detectChanges();
+
+    expect(rect().classList.contains('opacity-0')).toBe(false);
+    expect(rect().classList.contains('opacity-100')).toBe(true);
+  });
+
+  it('keeps the focused person boxed, thicker, without showAll', async () => {
+    await render();
+    fixture.componentRef.setInput('focusPersonIds', [5]);
+    fixture.detectChanges();
+    const [focused, other] = [...fixture.nativeElement.querySelectorAll('rect')] as SVGRectElement[];
+    expect(focused.getAttribute('stroke-width')).toBe('4');
+    expect(focused.classList.contains('opacity-100')).toBe(true);
+    expect(other.getAttribute('stroke-width')).toBe('2');
+    expect(other.classList.contains('opacity-0')).toBe(true);
+  });
+
+  it('sets the face as its person picture', async () => {
+    await render();
+    await component.usePicture(component.faces()[0]);
+    expect(mockApi.post).toHaveBeenCalledWith('/person/5/avatar', { face_id: 1 });
+    expect(mockStore.reloadPersonOptions).toHaveBeenCalled();
   });
 
   it('draws nothing without the photo dimensions', async () => {

@@ -1777,7 +1777,12 @@
     "find_more": "Weitere Gesichter von {name} finden",
     "not_person": "Nicht {name}",
     "view_photos": "Alle Fotos von {name} ansehen",
-    "view_group_photos": "Alle Fotos dieser Gruppe ansehen"
+    "view_group_photos": "Alle Fotos dieser Gruppe ansehen",
+    "use_picture": "Als Bild von {name} verwenden",
+    "use_group_picture": "Als Bild dieser Gruppe verwenden",
+    "picture_set": "Bild aktualisiert",
+    "show_boxes": "Gesichtsrahmen immer anzeigen",
+    "hide_boxes": "Gesichtsrahmen nur beim Überfahren anzeigen"
   },
   "person_selector": {
     "create_new": "Neue Person erstellen",

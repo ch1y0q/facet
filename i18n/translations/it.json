@@ -1777,7 +1777,12 @@
     "find_more": "Trova altri volti di {name}",
     "not_person": "Non è {name}",
     "view_photos": "Vedi tutte le foto di {name}",
-    "view_group_photos": "Vedi tutte le foto di questo gruppo"
+    "view_group_photos": "Vedi tutte le foto di questo gruppo",
+    "use_picture": "Usa come foto di {name}",
+    "use_group_picture": "Usa come foto di questo gruppo",
+    "picture_set": "Foto aggiornata",
+    "show_boxes": "Mostra sempre i riquadri dei volti",
+    "hide_boxes": "Mostra i riquadri solo al passaggio"
   },
   "person_selector": {
     "create_new": "Crea nuova persona",

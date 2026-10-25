@@ -31,6 +31,8 @@ export interface DrawnFace {
   h: number;
   /** Label baseline, just above the box, or inside it when the box touches the top edge. */
   labelY: number;
+  /** The face of a person the page is focused on (the gallery's person filter). */
+  focus: boolean;
 }
 
 /** Label size as a fraction of the frame's longer edge, so it reads the same at any resolution. */
@@ -38,7 +40,7 @@ const LABEL_SCALE = 0.022;
 
 /**
  * Faces drawn over the photo-detail image: boxes appear while the pointer is over
- * the photo, a face's name on hovering that face, and clicking a face (edition
+ * the photo (or always, with ``showAll``; a focused person's always), red while unnamed, a face's name on hovering that face, and clicking a face (edition
  * mode) opens a menu to change its person, take it off its person, or find more
  * faces like that person. Any face in a cluster, named or not, also offers its
  * cluster's photos, in read-only mode too.
@@ -72,10 +74,13 @@ const LABEL_SCALE = 0.022;
             <rect
               [attr.x]="f.x" [attr.y]="f.y" [attr.width]="f.w" [attr.height]="f.h"
               fill="transparent"
-              [attr.stroke]="f.name ? 'white' : '#fbbf24'"
-              stroke-width="2"
+              [attr.stroke]="f.name ? 'white' : '#ef4444'"
+              [attr.stroke-width]="f.focus ? 4 : 2"
               vector-effect="non-scaling-stroke"
-              class="opacity-0 group-hover/photo:opacity-60 group-hover/face:opacity-100 transition-opacity" />
+              class="transition-opacity group-hover/face:opacity-100"
+              [class.opacity-0]="!showAll() && !f.focus"
+              [class.group-hover/photo:opacity-60]="!showAll() && !f.focus"
+              [class.opacity-100]="showAll() || f.focus" />
             <text
               [attr.x]="f.x"
               [attr.y]="f.labelY"
@@ -86,7 +91,9 @@ const LABEL_SCALE = 0.022;
               paint-order="stroke"
               font-family="sans-serif"
               font-weight="600"
-              class="opacity-0 group-hover/face:opacity-100 transition-opacity select-none">
+              class="transition-opacity select-none group-hover/face:opacity-100"
+              [class.opacity-0]="!showAll() && !f.focus"
+              [class.opacity-100]="showAll() || f.focus">
               {{ f.name || (I18N.photo_faces.unknown | translate) }}
             </text>
           </g>
@@ -111,6 +118,10 @@ const LABEL_SCALE = 0.022;
             {{ (f.personId ? I18N.photo_faces.change_person : I18N.photo_faces.name_face) | translate }}
           </button>
           @if (f.personId) {
+            <button mat-menu-item (click)="usePicture(f)">
+              <mat-icon>account_circle</mat-icon>
+              {{ (f.name ? I18N.photo_faces.use_picture : I18N.photo_faces.use_group_picture) | translate:{ name: f.name || '' } }}
+            </button>
             <button mat-menu-item (click)="findMore(f)">
               <mat-icon>person_search</mat-icon>
               {{ I18N.photo_faces.find_more | translate:{ name: f.name || '' } }}
@@ -140,6 +151,10 @@ export class PhotoFaceLayerComponent {
   /** The image's zoom/pan transform, so the boxes stay on the faces. */
   readonly transform = input('');
   readonly canEdit = input(false);
+  /** Show every box and name all the time, not only on hover. */
+  readonly showAll = input(false);
+  /** Persons whose faces stay boxed (thicker) and named, e.g. the gallery's person filter. */
+  readonly focusPersonIds = input<readonly number[]>([]);
   /** Emitted after a face changed person, so the page can refresh the photo's people. */
   readonly changed = output<void>();
 
@@ -164,6 +179,7 @@ export class PhotoFaceLayerComponent {
     const h = this.imageHeight();
     if (!w || !h) return [];
     const label = this.labelSize();
+    const focus = new Set(this.focusPersonIds());
     return this.rows()
       .filter((r): r is PhotoFaceRow & { box: number[] } => Array.isArray(r.box) && r.box.length === 4)
       .map((r) => {
@@ -178,6 +194,7 @@ export class PhotoFaceLayerComponent {
           w: (x2 - x1) * w,
           h: (y2 - y1) * h,
           labelY: y - label * 0.4 > label ? y - label * 0.4 : y + label * 1.1,
+          focus: r.person_id != null && focus.has(r.person_id),
         };
       });
   });
@@ -212,6 +229,18 @@ export class PhotoFaceLayerComponent {
   viewPhotos(face: DrawnFace): void {
     if (face.personId === null) return;
     void this.router.navigate(['/'], { queryParams: { person_id: String(face.personId) } });
+  }
+
+  /** Make this face the picture on its person's card. */
+  async usePicture(face: DrawnFace): Promise<void> {
+    if (face.personId === null) return;
+    try {
+      await firstValueFrom(this.api.post(`/person/${face.personId}/avatar`, { face_id: face.id }));
+      this.snackBar.open(this.i18n.t(I18N.photo_faces.picture_set), '', { duration: 2000 });
+      await this.store.reloadPersonOptions();
+    } catch {
+      this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
+    }
   }
 
   async changePerson(face: DrawnFace): Promise<void> {

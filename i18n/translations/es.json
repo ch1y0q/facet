@@ -1777,7 +1777,12 @@
     "find_more": "Buscar más caras de {name}",
     "not_person": "No es {name}",
     "view_photos": "Ver todas las fotos de {name}",
-    "view_group_photos": "Ver todas las fotos de este grupo"
+    "view_group_photos": "Ver todas las fotos de este grupo",
+    "use_picture": "Usar como foto de {name}",
+    "use_group_picture": "Usar como foto de este grupo",
+    "picture_set": "Foto actualizada",
+    "show_boxes": "Mostrar siempre los recuadros de caras",
+    "hide_boxes": "Mostrar los recuadros solo al pasar el puntero"
   },
   "person_selector": {
     "create_new": "Crear nueva persona",
