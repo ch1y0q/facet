@@ -6,6 +6,7 @@ are never persisted; cancellation stops between complete files.
 """
 import json
 import logging
+import math
 import os
 from pathlib import Path
 import tempfile
@@ -58,12 +59,24 @@ def _read(path):
         raise LookupError('Export job not found') from ex
 
 
+def _timestamp(value):
+    if type(value) not in (int, float):
+        return None
+    try:
+        result = float(value)
+    except OverflowError:
+        return None
+    return result if math.isfinite(result) else None
+
+
 def _owned(db_path, job_id, owner):
     path = _path(db_path, job_id)
     state = _read(path)
     try:
         from api.models.sidecar_jobs import SidecarJobStatus
         SidecarJobStatus.model_validate(state)
+        if _timestamp(state.get('started_at')) is None:
+            raise ValueError('invalid timestamp')
         if state['owner'] != owner:
             raise LookupError('Export job not found')
     except (ValueError, KeyError) as ex:
@@ -101,10 +114,11 @@ def _prune(db_path, owner):
     for path in _directory(db_path).glob('*.json'):
         try:
             state = _read(path)
-            if state['owner'] == owner:
+            started = _timestamp(state.get('started_at'))
+            if state['owner'] == owner and started is not None:
                 # A newly admitted job holds the sole library lock, so older
                 # nonterminal receipts necessarily belong to interrupted jobs.
-                receipts.append((state['started_at'], path))
+                receipts.append((started, path))
         except (LookupError, KeyError, TypeError):
             continue
     for _, path in sorted(receipts, reverse=True)[19:]:
@@ -136,15 +150,23 @@ def start(db_path, owner, paths, work, *, overwrite=False):
             _prune(db_path, owner)
             _write(path.with_suffix('.plan'), {'owner': owner, 'paths': list(paths), 'overwrite': overwrite})
             _write(path, state)
-        except Exception as ex:
-            lock.release()
+        except BaseException as ex:
+            failures.append(ex)  # Record the failure BEFORE fallible cleanup.
+            try:
+                lock.release()
+            except Exception:
+                logger.exception('Could not release failed export admission')
             if path is not None:
-                path.unlink(missing_ok=True)
-                path.with_suffix('.plan').unlink(missing_ok=True)
-            failures.append(ex)
+                for leftover in (path, path.with_suffix('.plan')):
+                    try:
+                        leftover.unlink(missing_ok=True)
+                    except OSError:
+                        logger.warning('Could not remove failed export receipt %s', leftover, exc_info=True)
+        finally:
+            # A cleanup failure must never strand the HTTP caller on wait().
             admitted.set()
+        if failures:
             return
-        admitted.set()
         _run(path, state, tuple(paths), work, lock)
 
     worker = threading.Thread(target=admit_and_run, name='facet-sidecar-export', daemon=True)
@@ -189,8 +211,9 @@ def recent(db_path, owner):
     for path in _directory(db_path).glob('*.json'):
         try:
             state = _read(path)
-            if state['owner'] == owner:
-                rows.append((state['started_at'], state['id']))
+            started = _timestamp(state.get('started_at'))
+            if state['owner'] == owner and started is not None:
+                rows.append((started, state['id']))
         except (LookupError, KeyError, TypeError):
             continue
     result = []
@@ -211,6 +234,9 @@ def remaining(db_path, job_id, owner):
     path, state = _owned(db_path, job_id, owner)
     if status(db_path, job_id, owner)['state'] == 'running':
         raise ValueError('Export is still running')
+    # status may have observed completion after our first snapshot. Once it
+    # is terminal/interrupted, reread the final confirmed progress for retry.
+    path, state = _owned(db_path, job_id, owner)
     plan = _read(path.with_suffix('.plan'))
     if plan.get('owner') != owner:
         raise LookupError('Export plan not found')

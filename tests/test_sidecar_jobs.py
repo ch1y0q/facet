@@ -193,3 +193,74 @@ def test_corrupt_receipt_does_not_break_recent_job_recovery(library):
     with pytest.raises(LookupError):
         jobs.status(library, state['id'], 'alice')
     assert jobs.recent(library, 'alice') == []
+
+
+@pytest.mark.parametrize('cleanup_failure', ['plan', 'lock'])
+def test_admission_cleanup_failure_cannot_hang_caller(library, monkeypatch, cleanup_failure):
+    import facet
+    original_write = jobs._write
+    def write(path, state):
+        if path.suffix == '.json':
+            raise OSError('receipt write failed')
+        return original_write(path, state)
+    monkeypatch.setattr(jobs, '_write', write)
+    if cleanup_failure == 'plan':
+        unlink = Path.unlink
+        def refuse_plan(path, *args, **kwargs):
+            if path.suffix == '.plan':
+                raise PermissionError('cleanup refused')
+            return unlink(path, *args, **kwargs)
+        monkeypatch.setattr(Path, 'unlink', refuse_plan)
+    else:
+        release = facet.LibraryLock.release
+        def fail_release(lock):
+            release(lock)
+            raise OSError('release cleanup failed')
+        monkeypatch.setattr(facet.LibraryLock, 'release', fail_release)
+    settled = threading.Event()
+    failures = []
+    def call():
+        try:
+            jobs.start(library, 'alice', [], lambda path: None)
+        except Exception as ex:
+            failures.append(ex)
+        finally:
+            settled.set()
+    caller = threading.Thread(target=call, daemon=True)
+    caller.start()
+    assert settled.wait(3), 'admission cleanup left the caller blocked'
+    caller.join(1)
+    assert len(failures) == 1 and 'receipt write failed' in str(failures[0])
+    assert library_job_holder(library) is None
+
+
+def test_retry_rereads_confirmed_progress_after_completion_race(library, monkeypatch):
+    state = jobs.start(library, 'alice', [], lambda path: None)
+    _done(library, state['id'])
+    path = jobs._path(library, state['id'])
+    old = jobs._read(path)
+    old.update(state='running', total=1)
+    jobs._write(path, old)
+    jobs._write(path.with_suffix('.plan'), {'owner': 'alice', 'paths': ['done'], 'overwrite': False})
+    status = jobs.status
+    def complete_then_status(*args):
+        current = jobs._read(path)
+        current.update(state='completed', processed=1, written=1)
+        jobs._write(path, current)
+        return status(*args)
+    monkeypatch.setattr(jobs, 'status', complete_then_status)
+    assert jobs.remaining(library, state['id'], 'alice') == ([], False)
+
+
+@pytest.mark.parametrize('bad_timestamp', ['not-a-time', None, float('nan')])
+def test_malformed_timestamp_does_not_block_history_or_new_admission(library, bad_timestamp):
+    state = jobs.start(library, 'alice', [], lambda path: None)
+    _done(library, state['id'])
+    path = jobs._path(library, state['id'])
+    corrupt = jobs._read(path)
+    corrupt['started_at'] = bad_timestamp
+    jobs._write(path, corrupt)
+    assert jobs.recent(library, 'alice') == []
+    another = jobs.start(library, 'alice', [], lambda path: None)
+    assert _done(library, another['id'])['state'] == 'completed'
+    assert len(jobs.recent(library, 'alice')) == 1
