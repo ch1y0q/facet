@@ -2783,7 +2783,7 @@
     "rejected": "Rechazadas",
     "keep": "Conservar",
     "reset": "Restablecer decisión",
-    "updated": "Decisiones actualizadas para {{count}} fotos",
+    "updated": "Decisiones actualizadas para {count} fotos",
     "shortcut": "Conservar foto"
   }
 }

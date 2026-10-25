@@ -2783,7 +2783,7 @@
     "rejected": "Abgelehnt",
     "keep": "Behalten",
     "reset": "Entscheidung zurücksetzen",
-    "updated": "Entscheidung für {{count}} Fotos aktualisiert",
+    "updated": "Entscheidung für {count} Fotos aktualisiert",
     "shortcut": "Foto behalten"
   }
 }

@@ -2783,7 +2783,7 @@
     "rejected": "已拒绝",
     "keep": "保留",
     "reset": "重置决定",
-    "updated": "已更新 {{count}} 张照片的决定",
+    "updated": "已更新 {count} 张照片的决定",
     "shortcut": "保留照片"
   }
 }

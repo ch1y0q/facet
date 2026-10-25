@@ -1565,7 +1565,7 @@ export class GalleryStore {
     try {
       await firstValueFrom(this.api.post('/photo/set_rating', { photo_path: photoPath, rating }));
       this.journal.record('rating', [photoPath], rating);
-      if (isOrigin()) await this.refreshReviewResults(true);
+      if (isOrigin() && this.ratingShapesView()) await this.refreshReviewResults(true);
     } catch {
       if (isOrigin()) this.revertSnapshot(snap);
       this.notifyActionFailed();
@@ -1728,14 +1728,14 @@ export class GalleryStore {
         } else {
           this.notifyActionFailed();
         }
-        if (count > 0 && current()) await this.refreshReviewResults(endpoint === '/photos/batch_rating'
+        if (count > 0 && current()) await this.refreshReviewResults((endpoint === '/photos/batch_rating' && this.ratingShapesView())
           || (endpoint === '/photos/batch_reject' && this.filters().review_status === 'rejected'));
         return null;
       }
     }
     const kind = BATCH_ACTIVITY[endpoint];
     if (kind) this.journal.record(kind.kind, paths, kind.value(extraBody));
-    if (current()) await this.refreshReviewResults(endpoint === '/photos/batch_rating'
+    if (current()) await this.refreshReviewResults((endpoint === '/photos/batch_rating' && this.ratingShapesView())
       || (endpoint === '/photos/batch_reject' && this.filters().review_status === 'rejected'));
     else void this.loadReviewProgress();
     return { snapshot, targeted, count };
@@ -1750,6 +1750,14 @@ export class GalleryStore {
       this.reviewedPhotos.clear();
       this.reviewedPhotosIdentity = identity;
     }
+  }
+
+  /** A rating never changes review membership, so the loaded review list is rebuilt
+   *  only when the rating orders or filters it; otherwise every 1-5 key press would
+   *  re-fetch each scrolled page. */
+  private ratingShapesView(): boolean {
+    const f = this.filters();
+    return f.sort === 'star_rating' || !!f.min_star_rating || !!f.max_star_rating;
   }
 
   /** Repair shifted offsets with one tail-page request; Undo can restore earlier rows. */
