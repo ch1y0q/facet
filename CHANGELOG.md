@@ -7,6 +7,7 @@ All notable changes to Facet are documented in this file.
 - Filter photos with unassigned faces or unnamed people from the gallery People section.
 
 ### Changed
+- Preserve Unicode metadata on Windows with UTF-8 ExifTool argument transport and output decoding, including names, keywords and multiline captions.
 - Read semantic-search, similar-photo and gallery count cache database change tokens in worker threads so both cold and warm token reads do not block other requests.
 - Resize manual-face previews and crop face pixels before converting to RGB, avoiding full-resolution copies on preview and save.
 
@@ -31,6 +32,8 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- Skip unsupported JSON face updates on ExifTool before 12.65 while exporting other metadata, preflight companion sidecars before embedding, and keep metadata-precondition responses free of resolved server paths. Unicode newline-filename failures are isolated to the affected photo in batch exports.
+- Preserve foreign face rectangles during metadata export and remove stale Facet-owned rectangles when faces are cleared. **Existing unmarked Facet exports are preserved too:** the first new export can show an old unmarked face plus its new marked copy, and clearing Facet faces leaves the old copy. Facet does not guess ownership from names or coordinates. Incompatible face dimensions skip faces with a warning while other metadata is written; unreadable or invalid existing face metadata refuses single-photo export/embed with HTTP 412.
 - Keep person-name searches working for numeric-looking and non-ASCII names without treating them as unsafe integer IDs. Assignment pagination counts people without repeating the face aggregate.
 
 - **Immich sync refuses ambiguous assets.** Duplicate remote paths and colliding Facet mappings are reported as identity conflicts. Fallback searches check every page and require an exact path; webhook IDs are verified before writes. Optional owner/library ID selectors restrict the configured server's responses. Literal first-prefix mapping behavior is unchanged.
