@@ -78,9 +78,12 @@ lines (phase, current/total, ETA) which the viewer's scan API surfaces in the
 | `python facet.py --export-manifest --user alice` | Multi-user mode: export Alice's `user_preferences` ratings into the manifest instead of the global columns (tags and scores stay global) |
 | `python facet.py --import-lightroom FILE` | Import the plug-in's exported Lightroom rating/pick/reject state (`facet_lightroom_state.json`, see [Lightroom → Facet](INTEROP.md#lightroom--facet) in docs/INTEROP.md) — Lightroom wins for every field the file carries. Prints `matched=… unmatched=… changed=…` |
 | `python facet.py --import-lightroom FILE --user alice` | Multi-user mode: write Alice's `user_preferences` row instead of the global columns; **required** on a multi-user install — refused otherwise so an import never silently lands in the wrong scope |
-| `python facet.py --import-sidecars` | Import ratings/labels/keywords from `<image>.xmp` sidecars back into the DB (all photos); keywords Facet does not already have become [manual tags](INTEROP.md#manual-tags-and-xmp-keywords) |
+| `python facet.py --import-sidecars` | Import ratings/labels/keywords from `<image.ext>.xmp` / `<image.ext>.facet.xmp` sidecars back into the DB (all photos); keywords Facet does not already have become [manual tags](INTEROP.md#manual-tags-and-xmp-keywords) |
 | `python facet.py --import-sidecars /path` | Import sidecars only for photos under a path subtree |
 | `python facet.py --import-sidecars --user alice` | Multi-user mode: import ratings into Alice's `user_preferences` instead of the global columns (keywords stay global) |
+| `python facet.py --import-sidecars --sidecar-naming full` | Read full-filename primary/fallback sidecars (default); newer mtime wins, primary wins ties |
+| `python facet.py --import-sidecars --sidecar-naming basename` | Read `<image>.xmp` with the image extension removed; refuse shared basenames |
+| `python facet.py --import-sidecars --sidecar-naming auto` | Accept one naming family; skip and diagnose when both full-name and basename candidates exist |
 | `python facet.py --import-sidecars --overwrite-manual-gps` | Replace manual GPS already set in Facet (including a cleared location) with the sidecar's manual location; without it, existing manual GPS is kept |
 | `python facet.py --export-sidecars` | Write/merge `<image>.xmp` sidecars from the DB for all photos (sidecar only) |
 | `python facet.py --export-sidecars /path` | Export sidecars only for photos under a path subtree |

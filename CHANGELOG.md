@@ -10,6 +10,8 @@ All notable changes to Facet are documented in this file.
 
 ### Added
 
+- **Explicit XMP sidecar discovery.** `--import-sidecars --sidecar-naming full|basename|auto` can read stripped-extension sidecars, refuses shared RAW/JPEG basenames, and reports naming conflicts. Full-name discovery remains the default; exports keep their existing filenames.
+
 - **Revisit organization edits** from a private, durable history: compare GPS, capture-date and review values, then explicitly revert a whole entry with protection against newer edits. Keeps 50 bounded entries per account; originals stay unchanged.
 
 - **Correct capture dates** from photo details or gallery selections: preview a bounded walltime shift before applying it atomically, preserve manual dates across rescans/viewer exports, restore the file date, and export manual dates through the existing explicit XMP/embed actions.
@@ -25,6 +27,7 @@ All notable changes to Facet are documented in this file.
 ### Fixed
 
 - Preserve foreign face rectangles during metadata export and remove stale Facet-owned rectangles when faces are cleared. **Existing unmarked Facet exports are preserved too:** the first new export can show an old unmarked face plus its new marked copy, and clearing Facet faces leaves the old copy. Facet does not guess ownership from names or coordinates. Incompatible face dimensions skip faces with a warning while other metadata is written; unreadable or invalid existing face metadata refuses single-photo export/embed with HTTP 412.
+- Refuse basename XMP discovery when a double-extension derivative would read another image’s full-name or fallback sidecar. Report full-policy naming notices once per import while retaining complete mismatch counts.
 
 - **Semantic search refreshes its NumPy fallback after database changes.** Replaced embeddings and same-count photo replacements now update search results without restarting the viewer. Concurrent fallback requests share matrix construction, and cache entries include the database and visibility scope.
 - **Caption export preserves other XMP languages.** Writing a Facet caption now updates only the default-language description in sidecars and embedded metadata, retaining existing translations. An empty Facet caption still preserves the existing caption.
