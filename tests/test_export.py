@@ -665,9 +665,10 @@ def test_numeric_keyword_survives_real_exiftool_api_exports(client, tmp_path, mo
     Image.new('RGB', (16, 16)).save(path)
     sidecar = Path(path + '.xmp')
     sidecar.write_text(xe.build_xmp(xe.XmpRating()))
+    names = ['true', 'false', 'null', '1.50', '1e3', '2024']
     for target in (path, str(sidecar)):
-        subprocess.run(['exiftool', '-overwrite_original', '-XMP-dc:Subject=2024',
-                        '-XMP-dc:Subject=holiday', target], check=True, capture_output=True)
+        subprocess.run(['exiftool', '-overwrite_original', *[f'-XMP-dc:Subject={name}' for name in names],
+                        target], check=True, capture_output=True)
     db = str(tmp_path / 'numeric.db')
     _seed_db(db, [{'path': path, 'filename': 'numeric.jpg', 'tags': 'facet-tag'}])
     if body == 'album':
@@ -684,4 +685,4 @@ def test_numeric_keyword_survives_real_exiftool_api_exports(client, tmp_path, mo
     targets = (path, str(sidecar)) if 'embed_metadata' in endpoint else (str(sidecar),)
     for target in targets:
         flat, _ = xe._read_existing_keywords(target, xe._resolve_exiftool(), timeout=30, strict=True)
-        assert set(flat) == {'2024', 'holiday', 'facet-tag'}
+        assert set(flat) == {*names, 'facet-tag'}

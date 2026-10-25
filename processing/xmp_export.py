@@ -619,7 +619,10 @@ def _listify(value) -> list[str]:
     if value is None:
         return []
     if isinstance(value, list):
-        return [str(v) for v in value if str(v)]
+        return [name for v in value for name in _listify(v)]
+    # ExifTool emits JSON booleans for literal keyword names true/false.
+    if type(value) is bool:
+        return ['true' if value else 'false']
     return [str(value)] if str(value) else []
 
 
@@ -628,7 +631,10 @@ def _exiftool_record(raw):
     """A successful process can still return an Error record or invalid shape."""
     import json
     try:
-        records = json.loads(raw)
+        # Numeric-looking keyword names must keep their exact spelling:
+        # 1.50 and 1e3 are names, not values to round/expand. This reader is
+        # shared by keywords and the separately JSON-encoded private marker.
+        records = json.loads(raw, parse_int=str, parse_float=str)
     except (ValueError, TypeError) as ex:
         raise RuntimeError('Cannot read existing metadata: invalid ExifTool JSON; export refused') from ex
     if (not isinstance(records, list) or len(records) != 1
@@ -651,11 +657,11 @@ def _read_existing_metadata(target: str, exe: str, *, timeout: int, strict=False
         record = _exiftool_record(result.stdout)
         for key in ('Subject', 'Keywords', 'HierarchicalSubject'):
             value = record.get(key)
-            # ExifTool JSON converts numeric-looking names (e.g. "2024")
-            # to numbers even without -n. Preserve the legacy stringification
-            # for scalar names, while refusing null/bool/nested containers.
-            if key in record and not (type(value) in (str, int, float)
-                    or isinstance(value, list) and all(type(item) in (str, int, float) for item in value)):
+            # ExifTool emits numeric and true/false tokens for literal names.
+            # Numbers retain lexical spelling in _exiftool_record; booleans
+            # are lowercased in _listify. Null/nested containers stay invalid.
+            if key in record and not (type(value) in (str, bool)
+                    or isinstance(value, list) and all(type(item) in (str, bool) for item in value)):
                 raise RuntimeError('Cannot read existing keywords: malformed list; export refused')
         flat = _union(_listify(record.get('Subject')), _listify(record.get('Keywords')))
         return flat, _listify(record.get('HierarchicalSubject')), record.get('DateState') == 'set'

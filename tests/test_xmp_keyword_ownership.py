@@ -233,7 +233,7 @@ def test_keyword_reconciliation_respects_user_visibility(tmp_path, monkeypatch):
     ('keywords', '[]'), ('keywords', '{}'), ('keywords', '[null]'),
     ('keywords', '[{"Error":"cannot read file"}]'),
     ('keywords', '[{"Subject":{"bad":"shape"}}]'),
-    ('keywords', '[{"Subject":[true]}]'), ('keywords', '[{"Subject":null}]'),
+    ('keywords', '[{"Subject":[["nested"]]}]'), ('keywords', '[{"Subject":null}]'),
     ('keywords', '[{"Error":null}]'), ('keywords', 'not json'),
     ('state', '[]'), ('state', '[null]'), ('state', '{"KeywordState":null}'),
     ('state', '[{"Error":"cannot read state"}]'),
@@ -354,7 +354,7 @@ def test_foreign_case_and_normalization_display_variants_are_not_collapsed():
     assert flat == foreign
 
 
-@pytest.mark.parametrize('value,expected', [(2024, ['2024']), (2.5, ['2.5']),
+@pytest.mark.parametrize('value,expected', [(2024, ['2024']), (2.5, ['2.5']), (True, ['true']), (False, ['false']),
                                            ([2024, 'holiday', 2.5], ['2024', 'holiday', '2.5'])])
 @pytest.mark.parametrize('field', ['Subject', 'Keywords', 'HierarchicalSubject'])
 def test_exiftool_numeric_keyword_json_is_stringified(monkeypatch, value, expected, field):
@@ -365,6 +365,16 @@ def test_exiftool_numeric_keyword_json_is_stringified(monkeypatch, value, expect
                         subprocess.CompletedProcess(args, 0, stdout=json.dumps([{field: value}])))
     flat, hierarchical, _ = xe._read_existing_metadata('existing.xmp', 'exiftool', timeout=1, strict=True)
     assert (hierarchical if field == 'HierarchicalSubject' else flat) == expected
+
+
+def test_raw_json_keyword_tokens_preserve_exact_lexical_names(monkeypatch):
+    import subprocess
+    from processing import xmp_export as xe
+    monkeypatch.setattr(xe.subprocess, 'run', lambda args, **kwargs:
+                        subprocess.CompletedProcess(args, 0,
+                            stdout='[{"Subject":[true,false,"null",1.50,1e3,2024]}]'))
+    flat, _, _ = xe._read_existing_metadata('existing.xmp', 'exiftool', timeout=1, strict=True)
+    assert flat == ['true', 'false', 'null', '1.50', '1e3', '2024']
 
 
 @pytest.mark.skipif(not exiftool_available(), reason='requires ExifTool')
@@ -380,14 +390,15 @@ def test_real_numeric_keywords_survive_cli_writer_paths(tmp_path, embed, reconci
     if not embed:
         sidecar.write_text(build_xmp(XmpRating()))
     target = image if embed else sidecar
-    subprocess.run(['exiftool', '-overwrite_original', '-XMP-dc:Subject=2024',
-                    '-XMP-dc:Subject=holiday', str(target)], check=True, capture_output=True)
+    names = ['true', 'false', 'null', '1.50', '1e3', '2024']
+    subprocess.run(['exiftool', '-overwrite_original', *[f'-XMP-dc:Subject={name}' for name in names],
+                    str(target)], check=True, capture_output=True)
     conn = database(tmp_path)
     try:
         conn.execute('INSERT INTO photos(path,tags) VALUES (?,?)', (str(image), 'facet-tag'))
         conn.commit()
         assert export_sidecars(conn, embed_original=embed, reconcile_keywords=reconcile)['written'] == 1
         flat, _ = xe._read_existing_keywords(str(target), xe._resolve_exiftool(), timeout=30, strict=True)
-        assert set(flat) == {'2024', 'holiday', 'facet-tag'}
+        assert set(flat) == {*names, 'facet-tag'}
     finally:
         conn.close()

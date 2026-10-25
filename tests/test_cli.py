@@ -112,8 +112,9 @@ def test_cli_export_preserves_numeric_keyword(tmp_path, embed):
     Image.new('RGB', (16, 16)).save(image)
     sidecar = Path(str(image) + '.xmp')
     sidecar.write_text(build_xmp(XmpRating()))
+    names = ['true', 'false', 'null', '1.50', '1e3', '2024']
     for target in (image, sidecar):
-        subprocess.run(['exiftool', '-overwrite_original', '-XMP-dc:Subject=2024', str(target)],
+        subprocess.run(['exiftool', '-overwrite_original', *[f'-XMP-dc:Subject={name}' for name in names], str(target)],
                        check=True, capture_output=True)
     db = tmp_path / 'numeric.db'
     init_database(str(db))
@@ -125,7 +126,7 @@ def test_cli_export_preserves_numeric_keyword(tmp_path, embed):
     assert '1 written' in result.stdout + result.stderr
     for target in (image, sidecar) if embed else (sidecar,):
         flat, _ = _read_existing_keywords(str(target), _resolve_exiftool(), timeout=30, strict=True)
-        assert set(flat) == {'2024', 'facet-tag'}
+        assert set(flat) == {*names, 'facet-tag'}
 
 
 class TestHelpSmoke:
