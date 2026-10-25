@@ -453,6 +453,21 @@ def test_real_numeric_keywords_survive_cli_writer_paths(tmp_path, embed, reconci
         conn.close()
 
 
+@pytest.mark.skipif(not exiftool_available(), reason='requires ExifTool')
+def test_control_character_keyword_beside_a_boolean_survives_embedding(tmp_path):
+    from PIL import Image
+    from processing import xmp_export as xe
+    image = tmp_path / 'bell.jpg'
+    Image.new('RGB', (16, 16)).save(image)
+    names = ['True', 'bell\x07x', 'café']
+    subprocess.run(['exiftool', '-q', '-overwrite_original', *[f'-IPTC:Keywords={name}' for name in names],
+                    str(image)], check=True, capture_output=True)
+    write_metadata(str(image), XmpRating.from_row({'path': str(image), 'tags': 'dog'}), embed_original=True)
+    # XMP cannot hold U+0007 (ExifTool writes it as '.'); IPTC must keep it, never -X's base64 text.
+    keywords = xe._exiftool_record(subprocess.check_output(['exiftool', '-j', '-IPTC:Keywords', str(image)]))
+    assert keywords['Keywords'] == [True, *names[1:], 'dog']
+
+
 @pytest.mark.parametrize('xml', ['not xml', '<empty/>', exact_keyword_xml('Keywords', ['True']),
                                  exact_keyword_xml('Subject', ['True'], error=True)])
 def test_failed_exact_boolean_read_refuses_before_writing(tmp_path, monkeypatch, xml):

@@ -44,6 +44,8 @@ is sidecar-only, and proprietary RAW is never touched regardless.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import functools
 import logging
 import math
@@ -658,6 +660,12 @@ def _read_exact_boolean_names(target, exe, fields, *, timeout):
         if any(node.tag.rsplit('}', 1)[-1] == 'Error' for node in root.iter()):
             raise ValueError('keyword metadata read failed')
         exact = {}
+
+        def literal(node):
+            # -X base64-encodes a value XML cannot carry (control characters).
+            if node.get(f'{{{NS_RDF}}}datatype', '').endswith('#base64Binary'):
+                return base64.b64decode(node.text or '', validate=False).decode('utf-8', 'surrogateescape')
+            return node.text or ''
         namespaces = {'Subject': 'XMP/XMP-dc', 'Keywords': 'IPTC/IPTC',
                       'HierarchicalSubject': 'XMP/XMP-lr'}
         for key in fields:
@@ -669,13 +677,13 @@ def _read_exact_boolean_names(target, exe, fields, *, timeout):
             if members:
                 if any(len(member) for member in members):
                     raise ValueError('invalid keyword list')
-                exact[key] = [member.text or '' for member in members]
+                exact[key] = [literal(member) for member in members]
             elif len(nodes[0]):
                 raise ValueError('invalid keyword scalar')
             else:
-                exact[key] = [nodes[0].text or '']
+                exact[key] = [literal(nodes[0])]
         return exact
-    except (ET.ParseError, ValueError) as ex:
+    except (ET.ParseError, ValueError, binascii.Error) as ex:
         raise RuntimeError('Cannot read exact keyword names; export refused') from ex
 
 
