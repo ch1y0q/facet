@@ -338,7 +338,7 @@ def test_the_guard_flags_a_blocking_opener_on_the_loop():
 
 
 @contextmanager
-def _slow_db(seconds):
+def _slow_db(seconds, entered=None):
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.executescript("""
@@ -347,11 +347,16 @@ def _slow_db(seconds):
             comparison_count INTEGER, category TEXT, updated_at TEXT, user_id TEXT);
         CREATE TABLE stats_cache (key TEXT PRIMARY KEY, value TEXT, updated_at REAL);
     """)
+    if entered is not None:
+        entered.set()
     time.sleep(seconds)  # a cold full-table COUNT(*) on a large library
     try:
         yield conn
     finally:
         conn.close()
+
+
+_RANKER_STALL_SECONDS = 4.0
 
 
 @pytest.mark.asyncio
@@ -361,19 +366,27 @@ async def test_a_slow_ranker_status_does_not_hold_other_requests():
         user_id="test", edition_authenticated=True)
     transport = httpx.ASGITransport(app=app)
     try:
-        with mock.patch("api.routers.ranker.get_db", lambda: _slow_db(1.5)):
+        entered = threading.Event()
+        with mock.patch("api.routers.ranker.get_db", lambda: _slow_db(_RANKER_STALL_SECONDS, entered)):
             async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
                 started = time.monotonic()
                 slow = asyncio.create_task(client.get("/api/ranker/status"))
-                await asyncio.sleep(0.05)
+                # /health must be sent while the handler is inside its stall, not
+                # before the handler has started (when it would pass trivially).
+                assert await asyncio.to_thread(entered.wait, 10)
                 health = await client.get("/health")
                 health_seconds = time.monotonic() - started
+                held_by_ranker = slow.done()
                 status = await slow
     finally:
         app.dependency_overrides.clear()
     assert health.status_code == 200
     assert status.status_code == 200, status.text
-    assert health_seconds < 0.75, f"/health waited {health_seconds:.2f}s behind the ranker"
+    # The ordering is the claim: /health answered while the ranker was still
+    # stalled. A wall-clock bound alone flaked on a loaded CI runner (1.00s
+    # against 0.75s), so the bound only has to sit well under the stall.
+    assert not held_by_ranker, "/health only answered after the ranker finished"
+    assert health_seconds < _RANKER_STALL_SECONDS * 0.75, f"/health waited {health_seconds:.2f}s behind the ranker"
 
 
 def test_the_guard_flags_place_provider_on_the_loop():
