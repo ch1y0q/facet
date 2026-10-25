@@ -767,7 +767,7 @@ For each group, pick the keeper(s); confirming rejects the rest. Confirms are de
 
 A toolbar **Auto-cull** button culls a whole scope in one pass instead of group-by-group. Pick the scope with the granularity/scope controls (all groups, or only bursts / similars / scenes, optionally an album or date window), set a **strictness** — the keeper budget, where higher keeps fewer per group — and preview. Each group keeps its best photo plus everything within the strictness margin (floored at a per-group minimum) and rejects the rest. The button is hidden entirely in the three keep-whole granularities (**Exposure brackets**, **Panoramas**, **HDR panoramas**) — there is nothing for it to decide there, since every frame of those sets starts kept. In a mixed scope, brackets are decided first, ahead of bursts, similars, and scenes, so a bracket's base exposure is never re-decided by a later group it also happens to overlap.
 
-The preview is a **dry run** (nothing is written): it shows the per-group keep/reject split. Confirm to apply — rejections are recorded and, like every cull, train "My Taste"; an optional **Highlights** album idempotently collects each group's best photo scoring at least `auto_cull.highlights_min`. A "better photo in this group" hint badge flags groups where auto-cull would keep a different frame than the current lead. `POST /api/culling/auto`; configured via the [`auto_cull`](CONFIGURATION.md#auto-cull) block. The same rules run headless from the terminal as `python facet.py --auto-cull` — see [Culling](COMMANDS.md#culling).
+The preview is a **dry run** (nothing is written): it shows the per-group keep/reject split. Confirm to apply — rejections are recorded, every kept photo is marked **Kept** and, like every cull, train "My Taste"; an optional **Highlights** album idempotently collects each group's best photo scoring at least `auto_cull.highlights_min`. A "better photo in this group" hint badge flags groups where auto-cull would keep a different frame than the current lead. `POST /api/culling/auto`; configured via the [`auto_cull`](CONFIGURATION.md#auto-cull) block. The same rules run headless from the terminal as `python facet.py --auto-cull` — see [Culling](COMMANDS.md#culling).
 
 When a keeper-ranking head is trained, `POST /api/culling/auto` picks each group's keeper by `keeper_prob` once it clears its accuracy gate — otherwise the output is byte-identical to the heuristic pick.
 
@@ -1617,6 +1617,15 @@ If semantic search reports that Apple Silicon acceleration is busy, retry after 
 | Captions not generating | Requires 16gb/24gb VRAM profile for VLM captioning |
 | Timeline empty | Ensure photos have `date_taken` values |
 | Port 5000 in use | Run `python viewer.py --port 5001` (or set `PORT=5001`). On macOS, ControlCenter's AirPlay Receiver binds 5000 by default — either pick another port or disable AirPlay Receiver in System Settings → General → AirDrop & Handoff. |
+
+
+### Review saved manual faces
+
+In the gallery’s Refine filters, editors can enable **Manual faces need review** to find photos with stale or legacy saved face rectangles. Open a photo and its existing face editor to adjust and save a rectangle, or delete it. After the last mark needing review is corrected or removed, the photo leaves this filtered gallery. The filter also works in saved smart albums and whole-view selections.
+
+The queue reflects the last scan or explicit face-editor check, not continuous filesystem monitoring. Full scans and restricted scans check photos with manual marks even when face detection is disabled. Missing originals are flagged when validation is attempted. Listing the queue reads indexed database metadata and does not decode originals. Opening the editor rechecks the original and is authoritative. Metadata-only rewrites remain current when the existing canonical image identity matches; its coarse signature may miss subtle same-size edits, as with ordinary manual-face validation. No original files are changed by reviewing marks.
+
+Fresh viewer-database exports and incremental updates preserve the cached review status; corrections already made in the viewer are not replaced by older source annotations.
 
 ## Capture-date correction
 
