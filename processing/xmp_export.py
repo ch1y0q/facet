@@ -7,8 +7,8 @@ Two writers, picked by ``write_metadata`` per host capability:
   proprietary RAW (whose originals are never modified). When the caller passes
   ``embed_original=True`` it ALSO embeds metadata *in-file* for safe formats
   (JPEG/HEIC/TIFF/PNG/DNG) so the whole ecosystem (Lightroom, digiKam, immich,
-  Apple / Synology / Google Photos) sees it. exiftool preserves every foreign
-  node (darktable's ``darktable:history`` and any external keywords, which are
+  Apple / Synology / Google Photos) sees it. exiftool preserves foreign
+  nodes outside Facet-owned fields (darktable's ``darktable:history`` and any external keywords, which are
   read and unioned with Facet's rather than wiped).
 * **pure-XML fallback (no exiftool).** ``build_xmp`` / ``write_sidecar`` generate
   a standard XMP packet as XML directly — **no dependency on the exiftool
@@ -47,6 +47,7 @@ from __future__ import annotations
 import base64
 import binascii
 import functools
+import json
 import logging
 import math
 import os
@@ -498,6 +499,7 @@ def _resolve_exiftool():
 # darktable:multi_name="..."``) and emit malformed XML while exiting 0.
 _DEFECTIVE_EXIFTOOL_MIN = (13, 23)
 _DEFECTIVE_EXIFTOOL_FIXED = (13, 28)
+_JSON_REGION_MIN = (12, 65)
 
 
 @functools.lru_cache(maxsize=8)
@@ -529,27 +531,164 @@ def _assert_well_formed_xmp(path: str) -> None:
     ET.fromstring(data)
 
 
-def _region_args(regions: list[FaceRegion]) -> list[str]:
-    """exiftool args for MWG face regions. Clears the list first (idempotent)."""
+class MetadataPreconditionError(RuntimeError):
+    """Existing metadata cannot safely be inspected or modified."""
+
+
+def _region_list(info: dict) -> list[dict]:
+    regions = info.get("RegionList", [])
+    if not isinstance(regions, list) or any(not isinstance(region, dict) for region in regions):
+        raise MetadataPreconditionError("Invalid MWG region list; repair existing face metadata before exporting")
+    return regions
+
+
+def _region_is_owned(region: dict) -> bool:
+    return (isinstance(region.get("Extensions"), dict)
+            and region["Extensions"].get("XMP-facet:RegionOwner") == "Facet")
+
+
+def _pixel_dimensions(value) -> tuple[float, float] | None:
+    if not isinstance(value, dict) or value.get("Unit") != "pixel":
+        return None
+    try:
+        dimensions = (float(value["W"]), float(value["H"]))
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return None
+    if any(not math.isfinite(size) or size <= 0 for size in dimensions):
+        return None
+    return dimensions
+
+
+def _region_dimensions_allow_update(regions, info, foreign):
     if not regions:
+        return True
+    dimensions = {"W": regions[0].image_width, "H": regions[0].image_height, "Unit": "pixel"}
+    mixed = any(r.image_width != dimensions["W"] or r.image_height != dimensions["H"] for r in regions)
+    incompatible = foreign and _pixel_dimensions(info.get("AppliedToDimensions")) != _pixel_dimensions(dimensions)
+    if mixed or _pixel_dimensions(dimensions) is None or incompatible:
+        logger.warning("Skipping face regions: current faces have different image dimensions or "
+                       "foreign regions use different or unknown dimensions; other metadata will be exported")
+        return False
+    return True
+
+
+def _region_args(regions: list[FaceRegion], existing: dict | None = None) -> list[str]:
+    """Replace explicitly Facet-owned regions, preserving every unmarked region.
+
+    MWG Extensions carry ownership per rectangle: names and geometry are not
+    identity. Legacy unmarked Facet exports are preserved too, since they cannot
+    be distinguished safely from another editor's annotations.
+    """
+    info = dict(existing or {})
+    old_regions = _region_list(info)
+    foreign = [region for region in old_regions if not _region_is_owned(region)]
+    if not regions and len(foreign) == len(old_regions):
         return []
-    args = [
-        "-XMP-mwg-rs:RegionInfo=",
-        f"-XMP-mwg-rs:RegionAppliedToDimensionsW={regions[0].image_width}",
-        f"-XMP-mwg-rs:RegionAppliedToDimensionsH={regions[0].image_height}",
-        "-XMP-mwg-rs:RegionAppliedToDimensionsUnit=pixel",
-    ]
+    if not _region_dimensions_allow_update(regions, info, foreign):
+        return []
+    # Modify individual list entries rather than rewriting the foreign structs:
+    # unknown extension namespaces must survive even if ExifTool cannot expose
+    # or serialize their fields in JSON.
+    args = ["-api", "StructFormat=JSON"]
+    for region in old_regions:
+        if _region_is_owned(region):
+            args.append("-XMP-mwg-rs:RegionList-=" + json.dumps(region, ensure_ascii=False))
+    if regions and not foreign:
+        args.extend([f"-XMP-mwg-rs:RegionAppliedToDimensionsW={regions[0].image_width}",
+                     f"-XMP-mwg-rs:RegionAppliedToDimensionsH={regions[0].image_height}",
+                     "-XMP-mwg-rs:RegionAppliedToDimensionsUnit=pixel"])
     for r in regions:
-        args += [
-            f"-XMP-mwg-rs:RegionName={r.name}",
-            "-XMP-mwg-rs:RegionType=Face",
-            f"-XMP-mwg-rs:RegionAreaX={r.x:.6f}",
-            f"-XMP-mwg-rs:RegionAreaY={r.y:.6f}",
-            f"-XMP-mwg-rs:RegionAreaW={r.w:.6f}",
-            f"-XMP-mwg-rs:RegionAreaH={r.h:.6f}",
-            "-XMP-mwg-rs:RegionAreaUnit=normalized",
-        ]
+        region = {"Name": r.name, "Type": "Face",
+                  "Area": {"X": round(r.x, 6), "Y": round(r.y, 6),
+                           "W": round(r.w, 6), "H": round(r.h, 6), "Unit": "normalized"},
+                  "Extensions": {"XMP-facet:RegionOwner": "Facet"}}
+        # Literal Unicode avoids ExifTool's handling of JSON unicode escapes.
+        args.append("-XMP-mwg-rs:RegionList+=" + json.dumps(region, ensure_ascii=False))
     return args
+
+
+def _raw_json_literals(value):
+    """ExifTool emits numeric/boolean-looking XMP strings as JSON literals."""
+    if isinstance(value, dict):
+        return {key: _raw_json_literals(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_raw_json_literals(item) for item in value]
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    return "null" if value is None else value
+
+
+def _has_boolean(value):
+    if type(value) is bool:
+        return True
+    if isinstance(value, dict):
+        return any(_has_boolean(child) for child in value.values())
+    return isinstance(value, list) and any(_has_boolean(child) for child in value)
+
+
+def _restore_region_boolean_case(value, node):
+    """Restore only coerced leaves; all other JSON values keep their raw form."""
+    if not _has_boolean(value):
+        return value
+    if type(value) is bool:
+        if len(node) or node.text is None or node.text.casefold() != ('true' if value else 'false'):
+            raise ValueError('invalid literal region value')
+        return node.text
+    if isinstance(value, list):
+        members = node.findall(f'./{{{NS_RDF}}}Bag/{{{NS_RDF}}}li')
+        if len(members) != len(value):
+            raise ValueError('region list differs between reads')
+        return [_restore_region_boolean_case(child, member) for child, member in zip(value, members)]
+    restored = value.copy()
+    for key, child in value.items():
+        if _has_boolean(child):
+            prefix, _, local = key.rpartition(':')
+            matches = [member for member in node if member.tag.rsplit('}', 1)[-1] == (local or key)
+                       and (not prefix or '/' + prefix + '/' in member.tag)]
+            if len(matches) != 1:
+                raise ValueError('region field differs between reads')
+            restored[key] = _restore_region_boolean_case(child, matches[0])
+    return restored
+
+
+def _read_existing_regions(target: str, exe: str, *, timeout: int) -> dict:
+    """Read structured MWG metadata before writing; fail closed on read errors."""
+    if not os.path.exists(target):
+        return {}
+    config = os.path.join(os.path.dirname(__file__), "facet_exiftool.config")
+    try:
+        if target.lower().endswith(".xmp"):
+            _assert_well_formed_xmp(target)
+        result = run_exiftool_process(
+            [exe, "-config", config, "-struct", "-json", "-XMP-mwg-rs:RegionInfo", target],
+            timeout=timeout,
+        )
+        # ExifTool emits numeric-looking strings as unquoted JSON numbers.
+        # Subtraction matches their lexical value, so 1.50 must not become 1.5.
+        records = (json.loads(result.stdout, parse_int=str, parse_float=str)
+                   if result.returncode == 0 else None)
+        if not isinstance(records, list) or len(records) != 1 or not isinstance(records[0], dict):
+            raise ValueError("invalid metadata response")
+        if 'Error' in records[0]:
+            raise ValueError("metadata read failed")
+        info = records[0].get("RegionInfo", {})
+        if not isinstance(info, dict):
+            raise ValueError("invalid MWG structure")
+        if _has_boolean(info):
+            exact = run_exiftool_process(
+                [exe, '-config', config, '-X', '-struct', '-XMP-mwg-rs:RegionInfo', target], timeout=timeout)
+            root = ET.fromstring(exact.stdout)
+            nodes = root.findall('.//{http://ns.exiftool.org/XMP/XMP-mwg-rs/1.0/}RegionInfo')
+            if (exact.returncode or root.tag != f'{{{NS_RDF}}}RDF'
+                    or len(root.findall(f'{{{NS_RDF}}}Description')) != 1 or len(nodes) != 1
+                    or any(node.tag.rsplit('}', 1)[-1] == 'Error' for node in root.iter())):
+                raise ValueError('cannot read exact region literals')
+            info = _restore_region_boolean_case(info, nodes[0])
+        return _raw_json_literals(info)
+    except (OSError, subprocess.TimeoutExpired, ValueError, TypeError, AttributeError, ET.ParseError) as ex:
+        raise MetadataPreconditionError(f"Cannot read face metadata for {target}; repair it before exporting") from ex
 
 
 def _union(*lists: list[str]) -> list[str]:
@@ -571,8 +710,8 @@ def _exiftool_tag_args(rating: XmpRating, existing_flat: list[str],
     Keyword and hierarchical LISTS are cleared then rewritten as the UNION of the
     target's existing keywords and Facet's own — foreign keywords authored by
     Lightroom / darktable / etc. are preserved, never wiped, and re-running never
-    accumulates duplicates. Face regions stay clear-then-replace (Facet owns face
-    detection). ``xmp:Label`` is fully Facet-owned (favourite/reject only), so it is
+    accumulates duplicates. Face regions are merged separately using explicit
+    per-region ownership. ``xmp:Label`` is fully Facet-owned (favourite/reject only), so it is
     always emitted like ``xmp:Rating`` -- an empty value clears the exiftool tag,
     which is what un-favouriting must do. Caption is set only when present, so an
     external value is not wiped when Facet has none. Only the default caption
@@ -613,7 +752,6 @@ def _exiftool_tag_args(rating: XmpRating, existing_flat: list[str],
     args.append("-XMP-lr:HierarchicalSubject=")
     for path in _union(existing_hier, _hierarchical_paths(rating)):
         args.append(f"-XMP-lr:HierarchicalSubject={path}")
-    args += _region_args(rating.regions)
     return args
 
 
@@ -747,29 +885,22 @@ def _read_keyword_state(target, exe, *, timeout):
     return state
 
 
-def _run_exiftool(target: str, rating: XmpRating, *, timeout: int, reconcile=False) -> None:
-    """Apply ``rating`` to ``target`` (an image file or a ``.xmp`` sidecar).
-
-    Creates the sidecar if it does not exist, merges into it if it does, and
-    preserves all foreign nodes — including external keywords, which are read
-    first and unioned with Facet's own. Raises ``RuntimeError`` on failure.
-    """
-    exe = _resolve_exiftool()
-    if not exe:
-        raise RuntimeError("exiftool binary not available")
-    # The snapshot/restore below touches the sidecar directly, so it works on
-    # the path re-confined to the image's directory, never the raw argument.
-    sidecar = (_contained_sidecar(target[:-4], target[-4:])
-               if target.lower().endswith(".xmp") else None)
-    snapshot = None
-    if sidecar and os.path.exists(sidecar):
-        with open(sidecar, "rb") as handle:
-            snapshot = handle.read()
+def _exiftool_write_args(target: str, rating: XmpRating, exe: str, *, timeout: int, reconcile=False) -> list[str]:
+    """Inspect a target and build its write without changing either file."""
+    # Validate structural metadata first so malformed existing packets retain
+    # the metadata-precondition contract before any original/companion write.
+    existing_regions = _read_existing_regions(target, exe, timeout=timeout)
     kwargs = {"strict": True} if os.path.exists(target) else {}
     existing_flat, existing_hier, facet_dated = _read_existing_metadata(target, exe, timeout=timeout, **kwargs)
     keyword_state = _read_keyword_state(target, exe, timeout=timeout)
     tag_args = _exiftool_tag_args(rating, existing_flat, existing_hier, facet_dated,
                                   keyword_state=keyword_state, reconcile=reconcile)
+    version = _exiftool_version(exe)
+    if version is not None and version >= _JSON_REGION_MIN:
+        tag_args += _region_args(rating.regions, existing_regions)
+    elif rating.regions or existing_regions:
+        logger.warning("Skipping face regions: JSON region writes require ExifTool 12.65 or newer; "
+                       "other metadata will be exported")
     if not target.lower().endswith(".xmp") and rating.manual_date() is not None:
         tag_args.append(f"-EXIF:DateTimeOriginal={rating.manual_date()}")
     config = os.path.join(os.path.dirname(__file__), "facet_exiftool.config")
@@ -782,7 +913,21 @@ def _run_exiftool(target: str, rating: XmpRating, *, timeout: int, reconcile=Fal
                 assert value is not None
                 coordinate, reference = str(abs(value)), directions[value < 0]
             tag_args += [f"-EXIF:GPS{axis}={coordinate}", f"-EXIF:GPS{axis}Ref={reference}"]
-    args = [exe, "-config", config, "-q", "-m", "-overwrite_original", *tag_args, target]
+    return [exe, "-config", config, "-q", "-m", "-overwrite_original", *tag_args, target]
+
+
+def _run_exiftool(target: str, rating: XmpRating, *, timeout: int, reconcile=False) -> None:
+    """Re-read a target immediately before its write, preserving foreign state."""
+    exe = _resolve_exiftool()
+    if not exe:
+        raise RuntimeError("exiftool binary not available")
+    sidecar = (_contained_sidecar(target[:-4], target[-4:])
+               if target.lower().endswith(".xmp") else None)
+    snapshot = None
+    if sidecar and os.path.exists(sidecar):
+        with open(sidecar, "rb") as handle:
+            snapshot = handle.read()
+    args = _exiftool_write_args(target, rating, exe, timeout=timeout, reconcile=reconcile)
     try:
         result = run_exiftool_process(args, timeout=timeout)
     except subprocess.TimeoutExpired as ex:
@@ -837,13 +982,18 @@ def write_metadata(image_path: str, rating: XmpRating, *, overwrite: bool = Fals
         )
 
     ext = os.path.splitext(image_path)[1].lower().lstrip(".")
+    sidecar = _contained_sidecar(image_path, ".xmp")
     embedded = None
+    kwargs = {"reconcile": True} if reconcile_keywords else {}
     if embed_original and ext in SAFE_EMBED_EXTS:
-        kwargs = {"reconcile": True} if reconcile_keywords else {}
+        # Validate all companion fields, including keyword ownership and face
+        # structures, before embedding into the original. Re-read before writes.
+        exe = _resolve_exiftool()
+        if not exe:
+            raise RuntimeError("exiftool binary not available")
+        _exiftool_write_args(sidecar, rating, exe, timeout=timeout, **kwargs)
         _run_exiftool(image_path, rating, timeout=timeout, **kwargs)
         embedded = image_path
-    sidecar = _contained_sidecar(image_path, ".xmp")
-    kwargs = {"reconcile": True} if reconcile_keywords else {}
     _run_exiftool(sidecar, rating, timeout=timeout, **kwargs)
     return {"ok": True, "embedded": embedded, "sidecar": sidecar, "skipped": False}
 

@@ -340,18 +340,19 @@ class TestExiftoolArgs:
         assert not any(a.startswith("-XMP-dc:Description") for a in args)
 
     def test_regions_args_and_math(self):
+        import json
         reg = FaceRegion.from_bbox("Alice", 0, 0, 100, 100, 1000, 1000)
-        args = xe._exiftool_tag_args(XmpRating(regions=[reg]), [], [])
-        assert "-XMP-mwg-rs:RegionInfo=" in args  # clear list first
-        assert "-XMP-mwg-rs:RegionName=Alice" in args
-        assert "-XMP-mwg-rs:RegionType=Face" in args
+        args = xe._region_args([reg])
+        addition = next(arg for arg in args if arg.startswith('-XMP-mwg-rs:RegionList+='))
+        region = json.loads(addition.split("=", 1)[1])
         assert "-XMP-mwg-rs:RegionAppliedToDimensionsW=1000" in args
-        assert "-XMP-mwg-rs:RegionAreaX=0.050000" in args  # center (0+100)/2/1000
-        assert "-XMP-mwg-rs:RegionAreaW=0.100000" in args
+        assert "-XMP-mwg-rs:RegionAppliedToDimensionsH=1000" in args
+        assert region["Area"] == {
+            "X": 0.05, "Y": 0.05, "W": 0.1, "H": 0.1, "Unit": "normalized"}
+        assert region["Extensions"] == {"XMP-facet:RegionOwner": "Facet"}
 
     def test_no_regions_no_region_args(self):
-        args = xe._exiftool_tag_args(XmpRating(star_rating=1), [], [])
-        assert not any("mwg-rs" in a for a in args)
+        assert xe._region_args([]) == []
 
     def test_existing_keywords_unioned_existing_first(self):
         args = xe._exiftool_tag_args(
@@ -380,6 +381,8 @@ class TestWriteMetadata:
     def test_safe_format_embeds_when_opted_in(self, monkeypatch, tmp_path):
         calls = []
         monkeypatch.setattr(xe, "exiftool_available", lambda: True)
+        monkeypatch.setattr(xe, "_resolve_exiftool", lambda: 'mock-exiftool')
+        monkeypatch.setattr(xe, "_exiftool_write_args", lambda *args, **kwargs: [])
         monkeypatch.setattr(xe, "_run_exiftool",
                             lambda target, rating, *, timeout: calls.append(target))
         img = tmp_path / "p.jpg"

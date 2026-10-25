@@ -686,3 +686,41 @@ def test_numeric_keyword_survives_real_exiftool_api_exports(client, tmp_path, mo
     for target in targets:
         flat, _ = xe._read_existing_keywords(target, xe._resolve_exiftool(), timeout=30, strict=True)
         assert set(flat) == {*names, 'facet-tag'}
+@pytest.mark.parametrize("endpoint", ["export_xmp", "embed_metadata"])
+@pytest.mark.parametrize("error_type,status", [("precondition", 412), ("operational", 500)])
+def test_metadata_preconditions_are_distinct_from_operational_failures(client, tmp_path, endpoint, error_type, status):
+    from processing.xmp_export import MetadataPreconditionError
+    path, row = _make_photo(tmp_path, "precondition.jpg")
+    db = str(tmp_path / "precondition.db")
+    _seed_db(db, [row])
+    failure = (MetadataPreconditionError("Repair existing face metadata at /private/server/original.jpg")
+               if error_type == "precondition" else RuntimeError("ExifTool failed"))
+    with mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)), \
+            mock.patch(f"{_EXPORT_MODULE}.write_metadata", side_effect=failure):
+        response = client.post(f"/api/photo/{endpoint}", json={"path": path})
+    assert response.status_code == status
+    if status == 412:
+        assert response.json()['detail'] == 'Existing metadata needs repair before exporting'
+        assert '/private/server/' not in response.text
+
+
+@pytest.mark.skipif(shutil.which('exiftool') is None, reason='requires ExifTool')
+@pytest.mark.parametrize('malformed', [b'not valid XMP', b'<x:xmpmeta xmlns:x="adobe:ns:meta/"><broken'])
+def test_embed_preflights_companion_before_changing_original(client, tmp_path, monkeypatch, malformed):
+    from pathlib import Path
+    from PIL import Image
+    from processing import xmp_export as xe
+    monkeypatch.setattr(xe, 'exiftool_available', lambda: True)
+    path = str(tmp_path / 'preflight.jpg')
+    Image.new('RGB', (16, 16), 'blue').save(path)
+    before = Path(path).read_bytes()
+    companion = Path(path + '.xmp')
+    companion.write_bytes(malformed)
+    db = str(tmp_path / 'preflight.db')
+    _seed_db(db, [{'path': path, 'filename': 'preflight.jpg', 'star_rating': 3}])
+    with mock.patch(f'{_EXPORT_MODULE}.get_db', _db_cm(db)):
+        response = client.post('/api/photo/embed_metadata', json={'path': path})
+    assert response.status_code == 412, response.text
+    assert str(tmp_path) not in response.text
+    assert Path(path).read_bytes() == before
+    assert companion.read_bytes() == malformed
