@@ -102,6 +102,7 @@ export interface PhotoPathsResponse {
 export interface PhotoFlagSnapshot {
   is_favorite: boolean;
   is_rejected: boolean;
+  is_kept?: boolean;
   star_rating: number | null;
 }
 
@@ -654,6 +655,7 @@ export class GalleryStore {
   readonly activeFilterCount = computed(() => countActiveFilters(this.filters()));
 
   constructor() {
+    effect(() => { this.auth.identity(); untracked(() => this.clearForeignReviewedPhotos()); });
     this.assistantChanges.batch$.pipe(takeUntilDestroyed()).subscribe(batch => void this.refreshPaths(batch.paths));
     // Auto-save album filters on change (debounced) — persists filter state for all albums
     effect(() => {
@@ -749,7 +751,7 @@ export class GalleryStore {
   }
 
   /** Load photos based on current filters (replaces list) */
-  async loadPhotos(): Promise<void> {
+  async loadPhotos(acceptResult: () => boolean = () => true): Promise<void> {
     // Always load from page 1 — only nextPage() uses page > 1
     const pinned = this.pinnedLoad ? this.pinnedPaths() : null;
     this.pinnedLoad = false;
@@ -759,6 +761,7 @@ export class GalleryStore {
     this.resetViewScope();
     this.filters.update(current => ({ ...current, page: 1 }));
     const seq = ++this._loadSeq;
+    const identity = this.auth.identity();
     this.loadedOnce = true;
     this.photos.set([]);
     this.loadError.set(false);
@@ -771,7 +774,7 @@ export class GalleryStore {
         const res = await firstValueFrom(
           this.api.post<{ photos: Photo[]; total: number; missing: string[] }>('/photos/by_paths', { paths: pinned }),
         );
-        if (seq !== this._loadSeq) return;
+        if (seq !== this._loadSeq || identity !== this.auth.identity() || !acceptResult()) return;
         this.photos.set(normalisePhotoFlagsAll(res.photos));
         this.total.set(res.photos.length);
         this.hasMore.set(false);
@@ -782,7 +785,7 @@ export class GalleryStore {
 
       if (f.similar_to) {
         const res = await this.fetchSimilarPage(f, (f.page - 1) * f.per_page);
-        if (seq !== this._loadSeq) return;
+        if (seq !== this._loadSeq || identity !== this.auth.identity() || !acceptResult()) return;
         this.photos.set(normalisePhotoFlagsAll(res.similar ?? []));
         this.total.set(res.total);
         this.hasMore.set(res.has_more);
@@ -796,7 +799,7 @@ export class GalleryStore {
 
       const params = buildApiParams(f, this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
       const res = await firstValueFrom(this.api.get<PhotosResponse>('/photos', params));
-      if (seq !== this._loadSeq) return;
+      if (seq !== this._loadSeq || identity !== this.auth.identity() || !acceptResult()) return;
       this.photos.set(normalisePhotoFlagsAll(res.photos));
       this.total.set(res.total);
       this.hasMore.set(res.has_more);
@@ -805,12 +808,12 @@ export class GalleryStore {
       );
       void this.fetchKeeperHints(res.photos.map(p => p.path));
     } catch {
-      if (seq !== this._loadSeq) return;
+      if (seq !== this._loadSeq || identity !== this.auth.identity() || !acceptResult()) return;
       this.total.set(0);
       this.hasMore.set(false);
       this.loadError.set(true);
     } finally {
-      if (seq === this._loadSeq) {
+      if (seq === this._loadSeq && identity === this.auth.identity() && acceptResult()) {
         this.loading.set(false);
       }
     }
@@ -974,26 +977,29 @@ export class GalleryStore {
   }
 
   /** Load next page and append to existing photos */
-  async nextPage(): Promise<void> {
+  async nextPage(acceptResult: () => boolean = () => true): Promise<void> {
     if (this.pinnedPaths() !== null) return;
     if (!this.hasMore() || this.loading()) return;
 
     const seq = this._loadSeq;
+    const identity = this.auth.identity();
     this.loading.set(true);
     const f = this.filters();
     const nextPage = f.page + 1;
     this.filters.update(current => ({ ...current, page: nextPage }));
+    let key = this.filterKey();
+    const current = () => seq === this._loadSeq && identity === this.auth.identity() && key === this.filterKey() && acceptResult();
     try {
       if (f.similar_to) {
         const res = await this.fetchSimilarPage(f, (nextPage - 1) * f.per_page);
-        if (seq !== this._loadSeq) return;
+        if (!current()) return;
         this.photos.update(current => [...current, ...normalisePhotoFlagsAll(res.similar ?? [])]);
         this.total.set(res.total);
         this.hasMore.set(res.has_more);
       } else {
         const params = buildApiParams(this.filters(), this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
         const res = await firstValueFrom(this.api.get<PhotosResponse>('/photos', params));
-        if (seq !== this._loadSeq) return;
+        if (!current()) return;
         this.photos.update(current => [...current, ...normalisePhotoFlagsAll(res.photos)]);
         this.total.set(res.total);
         this.hasMore.set(res.has_more);
@@ -1003,17 +1009,18 @@ export class GalleryStore {
         void this.fetchKeeperHints(res.photos.map(p => p.path));
       }
     } catch {
-      if (seq !== this._loadSeq) return;
+      if (!current()) return;
       // Revert page increment on error
       this.filters.update(current => ({ ...current, page: f.page }));
+      key = this.filterKey();
       this.snackBar.open(this.i18n.t(I18N.gallery.load_error.page_failed), '', { duration: 3000 });
     } finally {
-      if (seq === this._loadSeq) {
+      if (current()) {
         this.loading.set(false);
       }
-      if (this.viewRefreshOwed) {
+      if (this.viewRefreshOwed && current()) {
         this.viewRefreshOwed = false;
-        if (seq === this._loadSeq) void this.refreshPaths(null);
+        void this.refreshPaths(null);
       }
     }
   }
@@ -1036,6 +1043,10 @@ export class GalleryStore {
   ): Promise<void> {
     const update = { [key]: value } as Partial<GalleryFilters>;
     const gpsPatch: Partial<GalleryFilters> = {};
+    const reviewPatch: Partial<GalleryFilters> = {};
+    if (key === 'review_status' && value) { reviewPatch.similar_to = ''; reviewPatch.semanticQuery = ''; }
+    else if ((key === 'semanticQuery' || key === 'similar_to') && value) reviewPatch.review_status = '';
+    if (key === 'review_status' && value === 'undecided') { reviewPatch.sort = 'date_taken'; reviewPatch.sort_direction = 'ASC'; }
     if (key === 'no_gps' && value) {
       gpsPatch.gps_lat = ''; gpsPatch.gps_lng = ''; gpsPatch.gps_radius_km = '';
       gpsPatch.similar_to = ''; gpsPatch.semanticQuery = '';
@@ -1044,7 +1055,8 @@ export class GalleryStore {
     }
     const extra: Partial<GalleryFilters> = {
       ...gpsPatch,
-      ...semanticSortPatch(this.filters(), { ...update, ...gpsPatch }, this.config()?.defaults),
+      ...semanticSortPatch(this.filters(), { ...update, ...gpsPatch, ...reviewPatch }, this.config()?.defaults),
+      ...reviewPatch,
       ...exclusiveHidePatch(update),
     };
     // Reload person dropdown when person filter is cleared (was seeded with filtered subset)
@@ -1141,7 +1153,12 @@ export class GalleryStore {
   }
 
   /** Update multiple filters at once and reload */
-  async updateFilters(updates: Partial<GalleryFilters>): Promise<void> {    const gpsPatch: Partial<GalleryFilters> = {};
+  async updateFilters(updates: Partial<GalleryFilters>): Promise<void> {
+    const gpsPatch: Partial<GalleryFilters> = {};
+    const reviewPatch: Partial<GalleryFilters> = {};
+    if (updates.review_status) { reviewPatch.similar_to = ''; reviewPatch.semanticQuery = ''; }
+    else if (updates.semanticQuery || updates.similar_to) reviewPatch.review_status = '';
+    if (updates.review_status === 'undecided') { reviewPatch.sort = 'date_taken'; reviewPatch.sort_direction = 'ASC'; }
     if (updates.no_gps) {
       gpsPatch.gps_lat = ''; gpsPatch.gps_lng = ''; gpsPatch.gps_radius_km = '';
       gpsPatch.similar_to = ''; gpsPatch.semanticQuery = '';
@@ -1150,7 +1167,8 @@ export class GalleryStore {
     }
     const extra: Partial<GalleryFilters> = {
       ...gpsPatch,
-      ...semanticSortPatch(this.filters(), { ...updates, ...gpsPatch }, this.config()?.defaults),
+      ...semanticSortPatch(this.filters(), { ...updates, ...gpsPatch, ...reviewPatch }, this.config()?.defaults),
+      ...reviewPatch,
       ...exclusiveHidePatch(updates),
     };
     const before = this.filters();
@@ -1354,10 +1372,15 @@ export class GalleryStore {
    *  trained, so the default gallery pays nothing. Best-effort, fire-and-forget. */
   private async fetchKeeperHints(paths: string[]): Promise<void> {
     if (!paths.length) return;
+    const identity = this.auth.identity();
+    const seq = this._loadSeq;
+    const key = this.filterKey();
+    const current = () => identity === this.auth.identity() && seq === this._loadSeq && key === this.filterKey();
     try {
       const hints = await firstValueFrom(
         this.api.post<Record<string, KeeperHint>>('/photos/keeper_hints', { paths }),
       );
+      if (!current()) return;
       for (const [path, hint] of Object.entries(hints)) {
         this.patchPhoto(path, { keeper_hint: hint });
       }
@@ -1399,6 +1422,7 @@ export class GalleryStore {
         snap.set(p.path, {
           is_favorite: !!p.is_favorite,
           is_rejected: !!p.is_rejected,
+          is_kept: !!p.is_kept,
           star_rating: p.star_rating ?? null,
         });
       }
@@ -1423,6 +1447,7 @@ export class GalleryStore {
     try {
       await firstValueFrom(this.api.post('/photo/set_rating', { photo_path: photoPath, rating }));
       this.journal.record('rating', [photoPath], rating);
+      if (this.ratingShapesView()) await this.refreshReviewResults(true);
     } catch {
       this.revertSnapshot(snap);
       this.notifyActionFailed();
@@ -1463,6 +1488,7 @@ export class GalleryStore {
           is_rejected: res.is_favorite ? false : prev.is_rejected,
         });
         this.journal.record('favorite', [photoPath], res.is_favorite);
+        await this.refreshReviewResults(this.filters().favorites_only);
       } catch {
         this.revertSnapshot(snap);
         this.notifyActionFailed();
@@ -1483,6 +1509,7 @@ export class GalleryStore {
       const next = !prev.is_rejected;
       this.patchPhoto(photoPath, {
         is_rejected: next,
+        is_kept: next ? false : prev.is_kept,
         is_favorite: next ? false : prev.is_favorite,
         star_rating: next ? null : prev.star_rating,
       });
@@ -1492,10 +1519,12 @@ export class GalleryStore {
         );
         this.patchPhoto(photoPath, {
           is_rejected: res.is_rejected,
+          is_kept: res.is_rejected ? false : prev.is_kept,
           is_favorite: res.is_rejected ? false : prev.is_favorite,
           star_rating: res.star_rating === null ? prev.star_rating : res.star_rating,
         });
         this.journal.record('reject', [photoPath], res.is_rejected);
+        await this.refreshReviewResults(this.filters().review_status === 'rejected');
       } catch {
         this.revertSnapshot(snap);
         this.notifyActionFailed();
@@ -1520,8 +1549,8 @@ export class GalleryStore {
    * while "Keep top N%" hands the client up to `_SELECT_BOTTOM_MAX` = 5000 of
    * them to act on. One POST of the whole list simply 422s.
    */
-  private batchBodies(paths: string[]): Record<string, unknown>[] {
-    const filters = this.viewScopeSelected() ? this.filterPayload() : null;
+  private batchBodies(paths: string[], useSelectionScope = true): Record<string, unknown>[] {
+    const filters = useSelectionScope && this.viewScopeSelected() ? this.filterPayload() : null;
     if (filters) return [{ filters, exclude: [...this.excludedPaths()] }];
     return chunkPhotoPaths(paths).map(chunk => ({ photo_paths: chunk }));
   }
@@ -1547,14 +1576,16 @@ export class GalleryStore {
     endpoint: string,
     patch: Partial<Photo>,
     extraBody: Record<string, unknown> = {},
+    useSelectionScope = true,
   ): Promise<BatchResult | null> {
-    const targeted = this.viewScopeSelected() ? this.selectionCount() : paths.length;
-    const loaded = this.viewScopeSelected() ? this.selectedLoadedPaths() : paths;
+    const viewScoped = useSelectionScope && this.viewScopeSelected();
+    const targeted = viewScoped ? this.selectionCount() : paths.length;
+    const loaded = viewScoped ? this.selectedLoadedPaths() : paths;
     const snapshot = this.snapshotFlags(loaded);
     this.patchPhotos(new Set(loaded), patch);
     const persisted = new Set<string>();
     let count = 0;
-    for (const body of this.batchBodies(paths)) {
+    for (const body of this.batchBodies(paths, useSelectionScope)) {
       const chunk = body['photo_paths'] as string[] | undefined;
       try {
         const res = await firstValueFrom(
@@ -1571,12 +1602,99 @@ export class GalleryStore {
         } else {
           this.notifyActionFailed();
         }
+        if (count > 0) await this.refreshReviewResults((endpoint === '/photos/batch_rating' && this.ratingShapesView())
+          || (endpoint === '/photos/batch_reject' && this.filters().review_status === 'rejected'));
         return null;
       }
     }
     const kind = BATCH_ACTIVITY[endpoint];
     if (kind) this.journal.record(kind.kind, paths, kind.value(extraBody));
+    await this.refreshReviewResults((endpoint === '/photos/batch_rating' && this.ratingShapesView())
+      || (endpoint === '/photos/batch_reject' && this.filters().review_status === 'rejected'));
     return { snapshot, targeted, count };
+  }
+
+  private readonly reviewedPhotos = new Map<string, Photo>();
+  private reviewedPhotosIdentity: string | undefined;
+
+  private clearForeignReviewedPhotos(): void {
+    const identity = this.auth.identity();
+    if (identity !== this.reviewedPhotosIdentity) {
+      this.reviewedPhotos.clear();
+      this.reviewedPhotosIdentity = identity;
+    }
+  }
+
+  /** A rating never changes review membership, so the loaded review list is rebuilt
+   *  only when the rating orders or filters it; otherwise every 1-5 key press would
+   *  re-fetch each scrolled page. */
+  private ratingShapesView(): boolean {
+    const f = this.filters();
+    return f.sort === 'star_rating' || !!f.min_star_rating || !!f.max_star_rating;
+  }
+
+  /** Repair shifted offsets with one tail-page request; Undo can restore earlier rows. */
+  async refreshReviewResults(rebuild = false): Promise<void> {
+    this.clearForeignReviewedPhotos();
+    const f = this.filters();
+    const identity = this.auth.identity();
+    // Pagination changes during a rebuild, but the query and principal must not.
+    const scope = () => this.filterKey({ ...this.filters(), page: 1 });
+    const key = scope();
+    let seq = this._loadSeq;
+    const current = () => seq === this._loadSeq && identity === this.auth.identity() && key === scope() && this.pinnedPaths() === null;
+    if (!f.review_status || this.pinnedPaths() !== null) return;
+    const previous = this.photos();
+    if (rebuild) {
+      const pages = Math.max(1, Math.ceil(previous.length / f.per_page));
+      const loading = this.loadPhotos(current);
+      seq = this._loadSeq;
+      await loading;
+      if (!current()) return;
+      for (let page = 1; page < pages && this.hasMore() && current(); page++) await this.nextPage(current);
+      if (!current()) return;
+    } else {
+      const retained = previous.filter(photo => f.review_status === 'kept' ? !!photo.is_kept
+        : f.review_status === 'rejected' ? !!photo.is_rejected : !photo.is_kept && !photo.is_rejected);
+      const page = Math.max(1, Math.ceil(retained.length / f.per_page));
+      const offset = (page - 1) * f.per_page;
+      this.resetViewScope();
+      seq = ++this._loadSeq;
+      this.loadError.set(false);
+      this.loadErrorKey.set(undefined);
+      this.loading.set(true);
+      try {
+        const params = buildApiParams({ ...f, page }, this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
+        const res = await firstValueFrom(this.api.get<PhotosResponse>('/photos', params));
+        if (!current()) return;
+        this.photos.set([...retained.slice(0, offset), ...normalisePhotoFlagsAll(res.photos)]);
+        this.filters.update(current => ({ ...current, page }));
+        this.total.set(res.total);
+        this.hasMore.set(res.has_more);
+        this.hiddenSummary.set(res.hidden_summary ?? { total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 });
+        void this.fetchKeeperHints(res.photos.map(photo => photo.path));
+      } catch {
+        if (!current()) return;
+        this.loadError.set(true);
+        return;
+      } finally {
+        if (current()) this.loading.set(false);
+      }
+    }
+    if (!current()) return;
+    const currentPaths = new Set(this.photos().map(photo => photo.path));
+    for (const photo of previous) {
+      if (currentPaths.has(photo.path)) continue;
+      // Reinsert to retain the latest removed photos when the cache is capped.
+      this.reviewedPhotos.delete(photo.path);
+      this.reviewedPhotos.set(photo.path, photo);
+    }
+    while (this.reviewedPhotos.size > 1000) this.reviewedPhotos.delete(this.reviewedPhotos.keys().next().value!);
+    this.syncUrl();
+  }
+
+  async batchReview(paths: string[], decision: 'kept' | 'undecided', useSelectionScope = true): Promise<BatchResult | null> {
+    return this.runBatch(paths, '/photos/batch_review', { is_kept: decision === 'kept', is_rejected: false }, { decision }, useSelectionScope);
   }
 
   /**
@@ -1593,7 +1711,7 @@ export class GalleryStore {
    */
   async batchReject(paths: string[]): Promise<BatchResult | null> {
     return this.runBatch(
-      paths, '/photos/batch_reject', { is_rejected: true, is_favorite: false, star_rating: null },
+      paths, '/photos/batch_reject', { is_rejected: true, is_kept: false, is_favorite: false, star_rating: null },
     );
   }
 
@@ -1657,22 +1775,30 @@ export class GalleryStore {
    * user is notified rather than left with a UI that silently disagrees with
    * the server.
    */
-  async restoreSnapshot(snap: Map<string, PhotoFlagSnapshot>): Promise<void> {
-    const current = new Map(this.photos().map(p => [p.path, p]));
+  async restoreSnapshot(snapshot: Map<string, PhotoFlagSnapshot>): Promise<void> {
+    // Reject has one meaning across every public write, including Undo.
+    const snap = new Map([...snapshot].map(([path, flags]) => [path, flags.is_rejected
+      ? { ...flags, is_kept: false, is_favorite: false, star_rating: null }
+      : flags]));
+    this.clearForeignReviewedPhotos();
+    const current = new Map([...this.reviewedPhotos, ...this.photos().map(p => [p.path, p] as const)]);
+    const toKeep: string[] = [];
+    const toReset: string[] = [];
     const toUnreject: string[] = [];
     const toReject: string[] = [];
     const toFavorite: string[] = [];
     const toUnfavorite: string[] = [];
     const ratingGroups = new Map<number, string[]>();
+    const failed = new Set<string>();
 
     for (const [path, want] of snap) {
       const now = current.get(path);
-      if (!now) continue;
+      if (!now) { failed.add(path); continue; }
+      if (!want.is_rejected && !!want.is_kept !== !!now.is_kept) {
+        (want.is_kept ? toKeep : toReset).push(path);
+      }
       if (!want.is_rejected && now.is_rejected) toUnreject.push(path);
-      if (want.is_rejected && !now.is_rejected) toReject.push(path);
-      // A rejected photo holds no favorite/rating server-side, so re-rejecting
-      // (above) is the whole restore - skip favorite/rating replay for it.
-      if (want.is_rejected) continue;
+      if (want.is_rejected) { toReject.push(path); continue; }
       if (want.is_favorite && !now.is_favorite) toFavorite.push(path);
       if (!want.is_favorite && now.is_favorite) toUnfavorite.push(path);
       const wantRating = want.star_rating ?? 0;
@@ -1683,7 +1809,6 @@ export class GalleryStore {
       }
     }
 
-    const failed = new Set<string>();
     // Chunked to the server's `photo_paths` cap like every other batch write:
     // a chunk that fails marks only its own paths failed, so the rest of the
     // restore still lands and only what genuinely did not revert is reported.
@@ -1706,7 +1831,8 @@ export class GalleryStore {
       path,
       run: () => firstValueFrom(this.api.post('/photo/toggle_rejected', { photo_path: path })),
     })))).forEach(p => failed.add(p));
-    await runBatch('/photos/batch_reject', toReject);
+    await runBatch('/photos/batch_review', toKeep, { decision: 'kept' });
+    await runBatch('/photos/batch_review', toReset, { decision: 'undecided' });
     await runBatch('/photos/batch_favorite', toFavorite);
     (await this.runChunked(toUnfavorite.map(path => ({
       path,
@@ -1715,10 +1841,12 @@ export class GalleryStore {
     for (const [rating, paths] of ratingGroups) {
       await runBatch('/photos/batch_rating', paths, { rating });
     }
+    await runBatch('/photos/batch_review', toReject, { decision: 'rejected' });
 
     const succeeded = new Map([...snap].filter(([path]) => !failed.has(path)));
     if (succeeded.size > 0) this.revertSnapshot(succeeded);
     if (failed.size > 0) this.notifyActionFailed();
+    await this.refreshReviewResults(true);
   }
 
   /** Unassign a person from a photo */

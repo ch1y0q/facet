@@ -1,5 +1,5 @@
 import { Injectable, signal } from '@angular/core';
-import { CARD_ACTION_IDS, CardActionId, CardActionsConfig, DEFAULT_CARD_ACTIONS } from '../../shared/components/photo-card/card-actions';
+import { CARD_ACTION_IDS, CardActionsConfig, DEFAULT_CARD_ACTIONS } from '../../shared/components/photo-card/card-actions';
 
 const STORAGE_KEY = 'facet_card_actions';
 

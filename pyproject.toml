@@ -17,7 +17,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "facet-photo"
-version = "1.23.0"
+version = "1.23.1"
 description = "AI-powered photo analysis and gallery — score, cull, organise, and explore your photo library with computer vision and face recognition"
 readme = "README.md"
 license = "MIT"
@@ -140,6 +140,8 @@ dev = [
     "pytest-asyncio>=0.23.0",
     # tests/test_batch_processor_e2e.py uses @pytest.mark.timeout
     "pytest-timeout>=2.3.0",
+    # CI runs `pytest -n 4`; tests/conftest.py gives each worker its own DB
+    "pytest-xdist>=3.5.0",
     # tests/test_lrplugin_apply.py runs the Lightroom plug-in's Lua under a
     # real interpreter (bundles Lua 5.4; production Lightroom runs Lua 5.1).
     "lupa",

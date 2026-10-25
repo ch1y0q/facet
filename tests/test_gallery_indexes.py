@@ -151,8 +151,16 @@ def _build_library(path, junk: str):
             rows[k * 800 + 7][-1] = rng.choice(['document', 'screenshot', 'receipt'])
     marks = ", ".join("?" for _ in _PHOTO_COLS.split(","))
     with sqlite3.connect(path) as conn:
+        # The insert trigger costs more than the 86 indexes together; one rebuild after the
+        # bulk load leaves photos_fts identical, and init_database restores the trigger.
+        conn.execute("PRAGMA synchronous=OFF")
+        conn.execute("PRAGMA cache_size=-200000")
+        conn.execute("DROP TRIGGER photos_fts_ai")
         conn.executemany(
             f"INSERT INTO photos ({_PHOTO_COLS}) VALUES ({marks})", rows)
+        conn.execute("INSERT INTO photos_fts(photos_fts) VALUES ('rebuild')")
+        conn.commit()
+        init_database(str(path))
         conn.execute("ANALYZE photos")
         conn.commit()
         conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")

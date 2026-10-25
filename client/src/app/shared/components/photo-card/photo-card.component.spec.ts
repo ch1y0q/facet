@@ -1057,7 +1057,7 @@ describe('PhotoCardComponent configured hover actions', () => {
     const cfg: CardActionsConfig = { order: ['duplicate_set'], hidden: [] };
     const f = makeCard({ duplicate_group_id: 7 }, cfg);
     const card = f.debugElement.children[0].componentInstance as PhotoCardComponent;
-    const emitted: Array<{ photo: Photo; kind: string }> = [];
+    const emitted: { photo: Photo; kind: string }[] = [];
     card.openSetClicked.subscribe(e => emitted.push(e));
     (f.nativeElement.querySelector('button mat-icon')!.closest('button') as HTMLButtonElement).click();
     expect(emitted).toEqual([{ photo: makePhoto({ duplicate_group_id: 7 }), kind: 'duplicate' }]);

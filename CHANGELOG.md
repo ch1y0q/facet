@@ -6,10 +6,8 @@ All notable changes to Facet are documented in this file.
 
 ### Added
 
+- **Keep photos and resume from the ones you have not reviewed.** The gallery has Keep and Reset decision actions, a `K` shortcut, Undo, and Needs review / Kept / Rejected filters. Keep is separate from stars and favorites, survives rescans, and is also saved when you confirm a culling group or apply an auto-cull. `--auto-cull --cull-min-score` never rejects a kept photo on its score, as it already spared favourites and starred photos.
 - **"Only blinks", "only duplicates" and "rejected only" gallery filters.** The sidebar's hide toggles could hide blinks, duplicate members and rejects but had no way to see just those, so trashing every reject meant selecting the whole library — refused past the cull cap — and duplicates were only reachable one set at a time. Three checkboxes in the filter sidebar's Refine section now list only the photos with a detected blink, every member of a duplicate group (leads included), or every photo you have rejected. While an "only blinks" or "only duplicates" view is up, the gallery suppresses the hide toggles for it, so a blink inside a burst or a duplicate that is also a blink is not filtered away again by the defaults. The filters are URL-addressable, save into smart albums, and are available to assistants through `search_photos` (`blinks_only`, `duplicates_only`, `show_rejected`). A view of only the rejects plus select-all and **Cull to folder** is now the one-view path to trashing every reject, far below the 10 000-photo cull cap.
-
-### Added
-
 - **The photo card's hover buttons are yours to arrange.** The four buttons that floated over every card on hover (find similar, why-this-score, write metadata, assign a face) are now a configurable row: a new dialog in the filter sidebar's View section reorders them and switches each on or off, per browser. Four actions join the pool — **open the photo's duplicate group** (on by default, and scoped to that group the same way the photo page's "open this set" lands), open its burst group, open its bracket/panorama set, and open the photo page. The group buttons appear only on photos that actually belong to such a group, so the row stays quiet on photos with nothing to offer. The layout persists in localStorage like the thumbnail size; smart albums, filters and the API are untouched.
 
 ### Fixed
@@ -22,6 +20,17 @@ All notable changes to Facet are documented in this file.
 
 - **Cmd+A selects all in the gallery on macOS.** The shortcut was bound to Ctrl+A only, so the Mac's own select-all chord did nothing and Ctrl+A — which macOS users never press — was the only way. Both now work; focus guards (inputs, open dialogs) are unchanged.
 - **The gear usage timeline's tooltip reads as a month, not a moment.** The chart's x axis is month-granular, but hovering a point titled it with the bucket's first instant ("Mar 1, 2026, 12:00:00 a.m.") — a moment that was never measured. The tooltip now says "Mar 2026", matching the axis ticks.
+
+## [1.23.1] "Grip" — 2026-10-24
+
+### Fixed
+
+- **The CUDA Docker image builds again.** 1.23.0 pinned setuptools 84.1.0 in `requirements.restricted.lock.txt`, but the image's base torch 2.11.0 requires `setuptools<82`, so pip replaced it with a CUDA 13 torch build and the image's torch check stopped the build: 1.23.0 published only the `cpu` and `cuda-legacy` images. The restricted lock is back on setuptools 81.0.0, the version the CUDA base image ships. That leaves the low-severity, Windows-only GHSA-xmj3-9gf7-h52w (a path escape during legacy wheel installs) unfixed in that lock until the base image moves to a torch without the cap; `requirements.legacy.restricted.lock.txt` keeps 84.1.0.
+- **`--upgrade-db` no longer re-measures every no-subject photo on each run** (PR #257, thanks @ch1y0q). `--recompute-saliency` selected photos by `subject_bbox IS NULL`, but a photo BiRefNet has already scored as having no subject legitimately stores prominence 0.0 with no box, so every upgrade re-ran it for the identical result (1,899 of 13,720 photos on one library, every time). A photo is now selected when its `subject_prominence` was never stored — never scored, or a failed run whose columns were left NULL to retry — and one scored before the `subject_bbox` column existed still gets its backfill run, as does a no-subject photo still carrying the neutral 5.0 of a version before 1.21.0, which one run rewrites to NULL; `--force` is unchanged.
+
+### Security
+
+- **virtualenv 21.14.13** (GHSA-4f8h-vr72-p32c, GHSA-cx6f-vjhg-g3cc) in `requirements.lock.txt` and `requirements.legacy.lock.txt`. virtualenv is pulled in only by `pre-commit`; Facet's runtime never imports it.
 
 ## [1.23.0] "Clap" — 2026-10-24
 
@@ -66,7 +75,6 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
-- **`--upgrade-db` no longer re-measures every no-subject photo on each run** (PR #257, thanks @ch1y0q). `--recompute-saliency` selected photos by `subject_bbox IS NULL`, but a photo BiRefNet has already scored as having no subject legitimately stores prominence 0.0 with no box, so every upgrade re-ran it for the identical result (1,899 of 13,720 photos on one library, every time). A photo is now selected when its `subject_prominence` was never stored — never scored, or a failed run whose columns were left NULL to retry — and one scored before the `subject_bbox` column existed still gets its backfill run, as does a no-subject photo still carrying the neutral 5.0 of a version before 1.21.0, which one run rewrites to NULL; `--force` is unchanged.
 - **Scanner-side person changes preserve manual face links.** Names and visibility now sync through stable person identities, including people with viewer-created marks. A person from an older database is matched by name, so a reused numeric id never renames one person to another.
 - **Manual face marks survive metadata-only embeds and host changes.** New marks identify the picture by its upright frame size and an 8x8 grayscale signature matched within a small tolerance, so metadata writes, remounts and other hosts keep a mark current and a replaced picture flags it; a subtle retouch or a small re-crop or straighten that keeps the frame size may go undetected. Marks from earlier preview builds remain saved for a one-time review and explicit edit/save with a fresh editor frame.
 - **Cold searches stop waiting when Apple Silicon is busy** (PR #246, thanks @veyxov). Concurrent requests share the existing 15-second wait budget instead of waiting through another timeout for every queued search.

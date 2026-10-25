@@ -664,6 +664,16 @@
                   "null"
                 ]
               },
+              "blinks_only": {
+                "description": "Gallery filter `blinks_only`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
               "camera": {
                 "description": "Gallery filter `camera`.",
                 "type": [
@@ -716,6 +726,16 @@
               },
               "date_to": {
                 "description": "Gallery filter `date_to`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "duplicates_only": {
+                "description": "Gallery filter `duplicates_only`.",
                 "type": [
                   "string",
                   "integer",
@@ -1471,6 +1491,20 @@
                   "null"
                 ]
               },
+              "review_status": {
+                "description": "Review decision: undecided, kept, or rejected; null clears the filter.",
+                "enum": [
+                  "",
+                  "undecided",
+                  "kept",
+                  "rejected",
+                  null
+                ],
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "search": {
                 "description": "Gallery filter `search`.",
                 "type": [
@@ -2048,5 +2082,5 @@
       "name": "ui_show_comparison"
     }
   ],
-  "version": "dc969f0f704340d1"
+  "version": "51034c898206f3c3"
 }

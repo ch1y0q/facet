@@ -26,9 +26,9 @@ jobs:
         # schema tests in tests/test_config_schema.py skip silently, and without
         # pytest-timeout the `timeout` marker is an inert unknown mark. The
         # versions are the ones verified against the suite.
-        run: pip install pytest pytest-asyncio pytest-cov fastapi[standard] httpx pyjwt mcp==2.3.0 websockets pillow pillow-heif numpy scipy scikit-learn opencv-python-headless tqdm aiosqlite sqlite-vec imagehash psutil watchdog send2trash tifffile imagecodecs lupa jsonschema==4.26.0 pytest-timeout==2.4.0
+        run: pip install pytest pytest-asyncio pytest-cov fastapi[standard] httpx pyjwt mcp==2.3.0 websockets pillow pillow-heif numpy scipy scikit-learn opencv-python-headless tqdm aiosqlite sqlite-vec imagehash psutil watchdog send2trash tifffile imagecodecs lupa jsonschema==4.26.0 pytest-timeout==2.4.0 pytest-xdist==3.8.0
       - name: Run tests
-        run: python -m pytest --tb=short -q --cov=api --cov=processing --cov=analyzers --cov=config --cov=utils --cov-report=term-missing
+        run: python -m pytest -n 4 --durations=30 --tb=short -q --cov=api --cov=processing --cov=analyzers --cov=config --cov=utils --cov-report=term-missing
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
@@ -109,6 +109,20 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m pip install --quiet --upgrade pip
       - run: python -m pip install --dry-run --ignore-installed --quiet -r "${{ matrix.lock }}"
+      - name: Resolves with the restricted lock on the CUDA image's base torch
+        # A CUDA image keeps its base image's torch and then installs this lock
+        # and its restricted twin on top. A pin the base torch excludes makes pip
+        # swap torch for another build, which the Dockerfile's torch guard
+        # refuses: setuptools 84.1.0 against torch 2.11.0's `setuptools<82`
+        # broke the v1.23.0 cuda image after every CI gate had passed. The torch
+        # version is read from docker-publish.yml, so the two cannot drift.
+        env:
+          LOCK: ${{ matrix.lock }}
+        run: |
+          python -m pip install --quiet pyyaml
+          torch=$(python -c 'import os, yaml; entries = yaml.safe_load(open(".github/workflows/docker-publish.yml"))["jobs"]["build-and-push"]["strategy"]["matrix"]["include"]; found = [e["expect_torch"].split("+")[0] for e in entries if e["requirements_lock"] == os.environ["LOCK"] and e["expect_torch"]]; assert len(found) == 1, found; print(found[0])')
+          echo "Resolving $LOCK and ${LOCK%.lock.txt}.restricted.lock.txt on torch==$torch"
+          python -m pip install --dry-run --ignore-installed --quiet -r "$LOCK" -r "${LOCK%.lock.txt}.restricted.lock.txt" "torch==$torch"
 
   angular-tests:
     name: Angular Tests

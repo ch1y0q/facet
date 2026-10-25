@@ -563,6 +563,16 @@ function saveSectionStates(states: Record<string, boolean>): void {
             [checked]="store.filters().hide_panoramas"
             (change)="store.updateFilter('hide_panoramas', $event.checked)"
           >{{ I18N.gallery.hide_panoramas | translate }}</mat-checkbox>
+          <mat-form-field class="w-full">
+            <mat-label>{{ I18N.review.status | translate }}</mat-label>
+            <mat-select [value]="store.filters().review_status"
+                        (selectionChange)="store.updateFilter('review_status', $event.value)">
+              <mat-option value="">{{ I18N.review.all | translate }}</mat-option>
+              <mat-option value="undecided">{{ I18N.review.needs_review | translate }}</mat-option>
+              <mat-option value="kept">{{ I18N.review.kept | translate }}</mat-option>
+              <mat-option value="rejected">{{ I18N.review.rejected | translate }}</mat-option>
+            </mat-select>
+          </mat-form-field>
           <!-- The positive counterpart of the toggles above: "only X" views.
                The server suppresses the hide toggles while either is set, so
                every member of what they name is listed. -->
@@ -575,6 +585,7 @@ function saveSectionStates(states: Record<string, boolean>): void {
             (change)="store.updateFilter('duplicates_only', $event.checked)"
           >{{ I18N.gallery.duplicates_only | translate }}</mat-checkbox>
           <mat-checkbox
+            [disabled]="!!store.filters().review_status"
             [checked]="store.filters().hide_rejected"
             (change)="store.updateFilter('hide_rejected', $event.checked)"
           >{{ I18N.gallery.hide_rejected | translate }}</mat-checkbox>
@@ -1080,7 +1091,7 @@ export class GalleryFilterSidebarComponent {
       content: (f.type ? 1 : 0) + (f.tag ? 1 : 0) + (f.composition_pattern ? 1 : 0),
       equipment: (f.camera ? 1 : 0) + (f.lens ? 1 : 0),
       persons: f.person_id ? f.person_id.split(',').length : 0,
-      refine: (f.favorites_only ? 1 : 0) + (f.is_monochrome ? 1 : 0) + (f.hide_rejected ? 1 : 0)
+      refine: (f.review_status ? 1 : 0) + (f.favorites_only ? 1 : 0) + (f.is_monochrome ? 1 : 0) + (f.hide_rejected ? 1 : 0)
         + (f.show_rejected ? 1 : 0) + (f.blinks_only ? 1 : 0) + (f.duplicates_only ? 1 : 0)
         + (f.sequence_override ? 1 : 0),
       folder: f.path_prefix ? 1 : 0,
