@@ -351,3 +351,80 @@ def test_api_returns_not_found_for_invalid_private_retry_record(edition_client):
     jobs._write(path, state)
     response = edition_client.post(f'/api/export/sidecar_jobs/{job_id}/retry')
     assert response.status_code == 404, response.text
+
+
+@pytest.mark.parametrize('operation', ['start', 'retry'])
+@pytest.mark.parametrize('unusable', [False, True])
+def test_api_distinguishes_unusable_lock_from_busy(edition_client, monkeypatch, operation, unusable):
+    from facet import LibraryLockUnusableError
+    if operation == 'retry':
+        monkeypatch.setattr(jobs, 'remaining', lambda *args: (['/unregistered-job-fixture.jpg'], False))
+    def refuse(*args, **kwargs):
+        error = LibraryLockUnusableError if unusable else LibraryLockError
+        raise error('private-cache-path must not leak')
+    monkeypatch.setattr(jobs, 'start', refuse)
+    route = '/api/export/sidecar_jobs' + ('/job/retry' if operation == 'retry' else '')
+    response = edition_client.post(route, json={'paths': ['/unregistered-job-fixture.jpg']})
+    assert response.status_code == (503 if unusable else 409), response.text
+    assert ('lock is unavailable' if unusable else 'library job') in response.json()['detail'].lower()
+    assert 'private-cache-path' not in response.text
+
+
+def test_album_job_over_real_10000_cap_is_refused_before_admission(edition_client, seed_photos_prefix, monkeypatch):
+    from api.database import get_db
+    prefix = '/job-album-cap/'
+    rows = [{'path': f'{prefix}{index}.jpg', 'filename': f'{index}.jpg'} for index in range(10001)]
+    seed_photos_prefix(prefix, rows)
+    with get_db() as conn:
+        album_id = conn.execute("INSERT INTO albums (name) VALUES ('job cap fixture')").lastrowid
+        conn.executemany('INSERT INTO album_photos (album_id, photo_path) VALUES (?, ?)',
+                         [(album_id, row['path']) for row in rows])
+        conn.commit()
+    def unexpected_admission(*args, **kwargs):
+        pytest.fail('Oversized album must be refused before job admission')
+    monkeypatch.setattr(jobs, 'start', unexpected_admission)
+    try:
+        response = edition_client.post('/api/export/sidecar_jobs', json={'filters': {'album_id': str(album_id)}})
+        assert response.status_code == 412, response.text
+        assert '10001' in response.json()['detail'] and '10000' in response.json()['detail']
+    finally:
+        with get_db() as conn:
+            conn.execute('DELETE FROM albums WHERE id=?', (album_id,))
+            conn.commit()
+
+
+def test_smart_album_job_preserves_stored_membership_contract(edition_client, tmp_path, seed_photos_prefix, monkeypatch):
+    import json
+    from api import config
+    from api.database import DEFAULT_DB_PATH, get_db
+    from api.routers import export
+    monkeypatch.setitem(config.VIEWER_CONFIG, 'scan_directories', [str(tmp_path)])
+    paths = [str(tmp_path / name) for name in ('current.jpg', 'stale.jpg')]
+    for path in paths:
+        Path(path).write_bytes(b'test media')
+    seed_photos_prefix(str(tmp_path), [
+        {'path': paths[0], 'filename': 'current.jpg', 'category': 'job-live-filter'},
+        {'path': paths[1], 'filename': 'stale.jpg', 'category': 'other'},
+    ])
+    with get_db() as conn:
+        album_id = conn.execute('INSERT INTO albums (name, is_smart, smart_filter_json) VALUES (?, 1, ?)',
+                                ('job live fixture', json.dumps({'category': 'job-live-filter'}))).lastrowid
+        conn.execute('INSERT INTO album_photos (album_id, photo_path) VALUES (?, ?)', (album_id, paths[1]))
+        conn.commit()
+    calls = []
+    def write(path, *args, **kwargs):
+        calls.append(path)
+        return {'sidecar': path + '.xmp'}
+    monkeypatch.setattr(export, 'write_metadata', write)
+    try:
+        response = edition_client.post('/api/export/sidecar_jobs', json={'filters': {'album_id': str(album_id)}})
+        assert response.status_code == 202, response.text
+        job_id = response.json()['id']
+        owner = jobs._read(jobs._path(DEFAULT_DB_PATH, job_id))['owner']
+        result = _done(DEFAULT_DB_PATH, job_id, owner)
+        assert result['total'] == result['written'] == 1
+        assert calls == [paths[1]]
+    finally:
+        with get_db() as conn:
+            conn.execute('DELETE FROM albums WHERE id=?', (album_id,))
+            conn.commit()

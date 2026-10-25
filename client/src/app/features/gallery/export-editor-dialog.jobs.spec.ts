@@ -78,6 +78,54 @@ describe('Export editor background jobs with HttpClient', () => {
     expect(close).not.toHaveBeenCalled();
   });
 
+  it('recovers a transient failed poll with reads only and shows terminal progress', async () => {
+    vi.useFakeTimers(); build(); await start();
+    vi.advanceTimersByTime(1000);
+    http.expectOne('/api/export/sidecar_jobs/job').flush({}, { status: 503, statusText: 'Unavailable' });
+    await Promise.resolve(); await Promise.resolve();
+    expect(component.readError()).toBe(true);
+    vi.advanceTimersByTime(4999);
+    http.expectNone('/api/export/sidecar_jobs/job');
+    vi.advanceTimersByTime(1);
+    const retryRead = http.expectOne('/api/export/sidecar_jobs/job');
+    expect(retryRead.request.method).toBe('GET');
+    retryRead.flush(job({ state: 'completed', processed: 3, written: 2, skipped: 1 }));
+    await Promise.resolve(); await Promise.resolve();
+    expect(component.readError()).toBe(false);
+    expect(component.job()?.processed).toBe(3);
+    expect(component.job()?.skipped).toBe(1);
+    expect(close).not.toHaveBeenCalled();
+    http.expectNone(request => request.method === 'POST');
+  });
+
+  it.each([401, 403, 404])('does not retry an unavailable or unauthorized receipt (%s)', async status => {
+    vi.useFakeTimers(); build(); await start();
+    vi.advanceTimersByTime(1000);
+    http.expectOne('/api/export/sidecar_jobs/job').flush({}, { status, statusText: 'Unavailable' });
+    await Promise.resolve(); await Promise.resolve();
+    vi.advanceTimersByTime(60000);
+    http.expectNone('/api/export/sidecar_jobs/job');
+    expect(component.readError()).toBe(true);
+  });
+
+  it('cancels a scheduled status recovery on close without retrying the mutation', async () => {
+    vi.useFakeTimers(); build(); await start();
+    vi.advanceTimersByTime(1000);
+    http.expectOne('/api/export/sidecar_jobs/job').flush({}, { status: 503, statusText: 'Unavailable' });
+    await Promise.resolve(); await Promise.resolve();
+    component.close();
+    vi.advanceTimersByTime(60000);
+    http.expectNone('/api/export/sidecar_jobs/job');
+    http.expectNone(request => request.method === 'POST');
+  });
+
+  it('renders receipt dates in the project day/month/year and 24-hour format', async () => {
+    build({ paths: ['/a.jpg'] }, false);
+    http.expectOne('/api/export/sidecar_jobs').flush([job({ started_at: new Date(2026, 9, 25, 14, 7).getTime() / 1000 })]);
+    await Promise.resolve(); await Promise.resolve(); fixture!.detectChanges();
+    expect(fixture!.nativeElement.textContent).toContain('25/10/2026 14:07');
+  });
+
   it('polls progress, cancels the pending read before an explicit stop, and retains cancelled counts', async () => {
     vi.useFakeTimers(); build();
     await start();

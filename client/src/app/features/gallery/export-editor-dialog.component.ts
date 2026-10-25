@@ -1,4 +1,5 @@
 import { Component, ElementRef, computed, inject, signal, viewChild, ChangeDetectionStrategy, DestroyRef, effect, untracked } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { DatePipe } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, NavigationStart } from '@angular/router';
@@ -113,7 +114,7 @@ export interface ExportEditorDialogData {
         </div>
         @for (receipt of recentJobs(); track receipt.id) {
           <button mat-stroked-button class="!justify-start" [disabled]="submitting()" (click)="viewJob(receipt)">
-            {{ receipt.started_at * 1000 | date:'short' }} · {{ stateKeys[receipt.state] | translate }} · {{ receipt.processed }}/{{ receipt.total }}
+            {{ receipt.started_at * 1000 | date:'dd/MM/yyyy HH:mm' }} · {{ stateKeys[receipt.state] | translate }} · {{ receipt.processed }}/{{ receipt.total }}
           </button>
         }
         @if (!recentJobs().length && !recentLoading()) { <p class="text-xs opacity-70">{{ I18N.export.jobs.none | translate }}</p> }
@@ -285,22 +286,29 @@ export class ExportEditorDialogComponent {
     }
   }
 
-  private schedulePoll(id: string): void {
+  private schedulePoll(id: string, delay = 1000): void {
     if (this.pollTimer !== null) clearTimeout(this.pollTimer);
     const seq = this.watching;
     this.pollTimer = setTimeout(() => {
       this.pollTimer = null;
       void this.readJob(id, seq);
-    }, 1000);
+    }, delay);
   }
 
   private async readJob(id: string, seq: number): Promise<void> {
     if (!this.current(seq)) return;
     try {
       const job = await firstValueFrom(this.exportService.sidecarJob(id).pipe(takeUntil(this.readsStopped)));
-      if (this.current(seq)) { this.errorDetail.set(null); this.acceptJob(job); }
+      if (this.current(seq)) { this.readError.set(false); this.errorDetail.set(null); this.acceptJob(job); }
     } catch (error) {
-      if (this.current(seq)) { this.readError.set(true); this.errorDetail.set(extractErrorDetail(error) ?? this.i18n.t(I18N.export.jobs.read_failed)); }
+      if (this.current(seq)) {
+        this.readError.set(true);
+        this.errorDetail.set(extractErrorDetail(error) ?? this.i18n.t(I18N.export.jobs.read_failed));
+        // Retry only this read after a quiet interval. Mutation retries remain explicit.
+        if (error instanceof HttpErrorResponse && (error.status === 0 || error.status === 429 || error.status >= 500)) {
+          this.schedulePoll(id, 5000);
+        }
+      }
     }
   }
 

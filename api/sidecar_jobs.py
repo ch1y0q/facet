@@ -49,9 +49,49 @@ def _write(path, state):
             os.unlink(temporary)
 
 
+def _open_receipt(path):
+    """Read an immutable receipt snapshot without blocking atomic replacement."""
+    if os.name != 'nt':
+        return path.open(encoding='utf-8')
+    import ctypes
+    from ctypes import wintypes
+    import msvcrt
+
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    create = kernel.CreateFileW
+    create.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                       wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    create.restype = wintypes.HANDLE
+    close = kernel.CloseHandle
+    close.argtypes = [wintypes.HANDLE]
+    close.restype = wintypes.BOOL
+    # GENERIC_READ; SHARE_READ | SHARE_WRITE | SHARE_DELETE; OPEN_EXISTING.
+    # Python's ordinary Windows open omits SHARE_DELETE, so a concurrent poll
+    # can otherwise prevent the worker's os.replace from publishing progress.
+    handle = create(str(path), 0x80000000, 0x7, None, 3, 0x80, None)
+    if handle == wintypes.HANDLE(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        fd = msvcrt.open_osfhandle(handle, os.O_RDONLY)
+    except BaseException:
+        close(handle)
+        raise
+    # open_osfhandle transfers ownership; the stream now closes the OS handle.
+    try:
+        return os.fdopen(fd, encoding='utf-8')
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def _public(state, *, cancel_requested):
+    return {key: value for key, value in state.items() if key not in {'owner', 'retry'}} | {
+        'cancel_requested': cancel_requested}
+
+
 def _read(path):
     try:
-        with path.open(encoding='utf-8') as handle:
+        with _open_receipt(path) as handle:
             state = json.load(handle)
         if not isinstance(state, dict):
             raise ValueError('invalid job record')
@@ -90,8 +130,7 @@ def status(db_path, job_id, owner):
             _, state = _owned(db_path, job_id, owner)
             if state['state'] not in _TERMINAL:
                 state['state'] = 'interrupted'
-    return {key: value for key, value in state.items() if key not in {'owner', 'retry'}} | {
-        'cancel_requested': path.with_suffix('.cancel').exists()}
+    return _public(state, cancel_requested=path.with_suffix('.cancel').exists())
 
 
 def cancel(db_path, job_id, owner):
@@ -128,7 +167,7 @@ def start(db_path, owner, paths, work, *, overwrite=False):
     state = {'id': job_id, 'owner': owner, 'state': 'running',
              'started_at': time.time(), 'total': len(paths), 'processed': 0,
              'written': 0, 'skipped': 0, 'errors': 0, 'first_error': None, 'retry': []}
-    initial = {key: value for key, value in state.items() if key not in {'owner', 'retry'}} | {'cancel_requested': False}
+    initial = _public(state, cancel_requested=False)
     admitted = threading.Event()
     failures = []
 

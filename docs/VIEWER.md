@@ -737,11 +737,13 @@ Find person clusters that may be the same individual. Access via `/merge-suggest
 
 ## Editor Export
 
+Write your ratings, favorites, and rejections to disk as XMP sidecars, so external editors (darktable, Lightroom) pick them up. Requires edition mode.
+
 Sidecar batches run in the background, with progress and written/skipped/error counts in the dialog. Both explicit selections and filtered views are limited to 10,000 photos; album sidecars use the same bounded job. Only one library job can run at a time. **Stop after current file** requests cancellation between files: the current file may finish, and completed sidecars remain. Closing or navigating away stops polling, without cancelling the submitted export.
 
 Reopen Export to editor to see up to 20 recent exports for the current signed-in identity. Select a receipt to refresh its status. Errors, skips, cancelled and interrupted work remain visible; **Retry unfinished files** explicitly starts a new job for failed, skipped and unprocessed files using current metadata and visibility. It never automatically restarts an export. A file interrupted before its progress was saved may already have been written and can be written again. Album copy/symlink exports keep their existing behavior.
 
-Write your ratings, favorites, and rejections to disk as XMP sidecars, so external editors (darktable, Lightroom) pick them up. Requires edition mode.
+Album sidecar jobs resolve membership when submitted. Album sidecar exports use stored membership, including smart albums; they do not reevaluate a smart album’s live filter. This matches the existing album export endpoint. The 10,000-photo limit also applies to albums: larger albums are refused before any file is written. The export holds the shared library lock until completion or cancellation, so scans, recomputes, automatic retraining and startup library maintenance must wait or refuse admission; export also refuses while one of those jobs owns the lock. This coordination protects the paths and metadata being exported. A temporary status-read failure is retried after five seconds while the dialog remains open; it never resubmits an export.
 
 - **From the gallery** — select photos, then **Actions → Export** writes a sidecar next to each file. Exporting a whole filtered view rather than a hand-picked set is capped at 10 000 photos: a larger view is refused outright, with the message naming its photo count and the cap, and nothing is written. It is never truncated — half-exporting a selection you believed was whole is worse than a clear refusal — so narrow the filters and export again.
 - **From an album** ("basket") — export the whole album as sidecars, or copy/symlink the files to a target directory (same destination allow-list as [Cull to folder](#cull-to-folder)).

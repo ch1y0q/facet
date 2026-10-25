@@ -8,14 +8,6 @@ export type SidecarJobScope =
   | { paths: string[]; filters?: never; exclude?: string[] }
   | { filters: Record<string, string>; paths?: never; exclude?: string[] };
 
-export interface SidecarExportResult {
-  ok: boolean;
-  written: number;
-  skipped: number;
-  errors: number;
-  sidecars: string[];
-}
-
 export interface AlbumExportResult {
   ok: boolean;
   mode: 'sidecars' | 'copy' | 'symlink';
@@ -40,27 +32,6 @@ export class ExportService {
   /** Embed metadata into the original photo file (and write the sidecar). */
   embedMetadata(path: string): Observable<{ ok: boolean; embedded: string | null; sidecar: string }> {
     return this.api.post('/photo/embed_metadata', { path });
-  }
-
-  /** Write XMP sidecars for many photos by explicit paths. */
-  exportSidecars(paths: string[], overwrite = false): Observable<SidecarExportResult> {
-    return this.api.post('/export/sidecars', { paths, overwrite });
-  }
-
-  /**
-   * Write XMP sidecars for a whole gallery view, resolved server-side.
-   *
-   * The counterpart to `exportSidecars` for a view-scoped selection: the server
-   * derives the rows from the filter set, so no path list crosses the wire and
-   * both path and filter scopes are capped at 10,000 photos. `exclude` carries the photos
-   * the user unticked out of that view.
-   */
-  exportSidecarsForView(
-    filters: Record<string, string>,
-    exclude: string[] = [],
-    overwrite = false,
-  ): Observable<SidecarExportResult> {
-    return this.api.post('/export/sidecars', { filters, exclude, overwrite });
   }
 
   /** Start a bounded background export; the receipt never includes photo paths. */

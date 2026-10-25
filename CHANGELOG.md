@@ -7,6 +7,7 @@ All notable changes to Facet are documented in this file.
 - Filter photos with unassigned faces or unnamed people from the gallery People section.
 
 ### Changed
+- Album sidecar exports use bounded background jobs (at most 10,000 photos) and share the library job lock with scans and recomputes. Larger albums are refused before writes; album copy/symlink exports retain their existing behavior.
 - Read search cache database change tokens in a worker thread so cold searches do not block other requests.
 - Resize manual-face previews and crop face pixels before converting to RGB, avoiding full-resolution copies on preview and save.
 
