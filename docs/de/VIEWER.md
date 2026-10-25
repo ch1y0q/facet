@@ -1552,6 +1552,12 @@ Meldet die semantische Suche, dass die Apple-Silicon-Beschleunigung belegt ist, 
 | Port 5000 belegt | `python viewer.py --port 5001` ausführen (oder `PORT=5001` setzen). Unter macOS belegt der AirPlay-Empfänger des ControlCenter standardmäßig Port 5000 — entweder einen anderen Port wählen oder den AirPlay-Empfänger unter Systemeinstellungen → Allgemein → AirDrop & Handoff deaktivieren. |
 
 
+### Photon
+
+Mit **Adresse oder Geschäft → Online suchen** fragen Sie Photon ausdrücklich ab. Erst der Klick sendet die Anfrage an den konfigurierten Anbieter; die Eingabe allein sendet nichts. Ein Ergebnis zeigt Koordinaten als Vorschau; **Speichern** übernimmt sie. Die Originaldatei bleibt unverändert. Photon nutzt OpenStreetMap-Daten (© OpenStreetMap-Mitwirkende). Gespeicherte Orte und Koordinateneingabe funktionieren offline. `viewer.place_search_url` ist standardmäßig `https://photon.komoot.io/api`; eine eigene Photon-Instanz ist möglich, `""` deaktiviert die Suche. Der öffentliche Server garantiert keine Verfügbarkeit. Grenzen: 3–200 Zeichen, fünf Ergebnisse, fünf Sekunden, 64 KiB; pro Prozess 128 Suchanfragen für 15 Minuten im Cache, keine gleichzeitigen Aufrufe und mindestens eine Sekunde Abstand. Beim öffentlichen Anbieter nur einen Worker verwenden. Facet protokolliert keine Suchanfragen; Query-Strings auch aus Proxy-Protokollen ausschließen.
+
+Die Frist von fünf Sekunden unterbricht aktive Sockets, auch bei langsamen HTTP-Headern oder Chunk-Rahmen. Die native DNS-Auflösung folgt den Systemfristen und kann vor dem Öffnen eines Sockets länger dauern; eine abgelaufene Suche öffnet danach keine Verbindung.
+
 ### Gespeicherte manuelle Gesichtsmarkierungen prüfen
 
 Mit dem Filter **Manuelle Gesichter prüfen** in den Verfeinerungsfiltern der Galerie finden Bearbeiter Fotos mit veralteten oder aus älteren Versionen übernommenen Gesichtsrahmen. Öffnen Sie ein Foto und den vorhandenen Gesichtseditor, um einen Rahmen anzupassen und nach erneuter Prüfung zu speichern oder zu löschen. Sobald die letzte prüfbedürftige Markierung korrigiert oder entfernt ist, verschwindet das Foto aus dieser gefilterten Ansicht. Der Filter funktioniert auch in gespeicherten intelligenten Alben und bei der Auswahl aller Treffer.
@@ -1559,3 +1565,11 @@ Mit dem Filter **Manuelle Gesichter prüfen** in den Verfeinerungsfiltern der Ga
 Die Liste zeigt den Stand des letzten Scans oder der letzten ausdrücklichen Prüfung im Gesichtseditor; sie überwacht das Dateisystem nicht fortlaufend. Vollständige und eingeschränkte Scans prüfen Fotos mit manuellen Markierungen auch bei deaktivierter Gesichtserkennung. Fehlende Originale werden beim Prüfversuch markiert. Die Auflistung liest nur indizierte Datenbankmetadaten und dekodiert keine Originale. Der Editor prüft das Original erneut; dieses Ergebnis ist maßgeblich. Änderungen ausschließlich an Metadaten machen Markierungen nicht ungültig, solange die kanonische Bildidentität übereinstimmt. Die grobe Signatur kann jedoch subtile Änderungen bei unveränderter Bildgröße übersehen. Die Prüfung verändert keine Originaldateien.
 
 Beim Export einer neuen Betrachterdatenbank und bei inkrementellen Aktualisierungen bleibt der gespeicherte Prüfstatus erhalten; bereits im Betrachter korrigierte Markierungen werden nicht durch ältere Quelldaten zurückgesetzt.
+
+## Aufnahmedatum korrigieren
+
+Im Bearbeitungsmodus steht **Aufnahmedatum korrigieren** in den Fotodetails und der Auswahlleiste bereit. Eine Auswahl oder „Alle in der Ansicht auswählen“ samt Ausschlüssen ist auf 1000 sichtbare Fotos begrenzt. Der Versatz ist eine ganze Sekundenzahl ungleich null zwischen −31622400 und +31622400 (±366 Tage): positiv bedeutet später, negativ früher. **Vorschau** zeigt die Anzahl geänderter/übersprungener Fotos und die ersten 20 Vorher/Nachher-Werte. **Korrektur anwenden** prüft Umfang und Werte erneut und schreibt alles atomar; bei Änderungen ist eine neue Vorschau nötig.
+
+Die Kamera-Uhrzeit wird ohne Ableitung von Zeitzone oder Sommerzeit verschoben. Unterstützt werden vollständige Werte in `YYYY:MM:DD HH:MM:SS` oder `YYYY-MM-DD[T oder Leerzeichen]HH:MM:SS`. Unbekannte, unvollständige, ungültige oder überlaufende Werte sowie Zeitzonen und Sekundenbruchteile werden übersprungen. Manuelle Daten bleiben bei vollständigen/teilweisen Scans und inkrementellen Viewer-Datenbankexporten erhalten. **Dateidatum verwenden** entfernt die Korrektur; fehlt das Dateidatum, wird das Aufnahmedatum unbekannt. Unlesbare Dateien oder nicht unterstützte Daten behalten die Korrektur.
+
+Originale und Dateiänderungszeiten bleiben unberührt. Der ausdrückliche XMP-Export schreibt `exif:DateTimeOriginal` für manuelle Daten; das ausdrückliche Einbetten schreibt zusätzlich EXIF `DateTimeOriginal` bei unterstützten Formaten, ohne andere EXIF-Datumsfelder zu ändern. Serien- und Sequenzgruppen bleiben erhalten; für neue Gruppen den vorhandenen Scan bzw. die Gruppenerkennung ausdrücklich starten.

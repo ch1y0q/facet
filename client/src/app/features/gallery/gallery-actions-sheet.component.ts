@@ -16,6 +16,7 @@ export type SheetAction =
   | { kind: 'export' }
   | { kind: 'cull' }
   | { kind: 'tags' }
+  | { kind: 'capture-date' }
   | { kind: 'gps' }
   | { kind: 'delete' }
   | { kind: 'rate'; rating: number }
@@ -95,6 +96,9 @@ export interface GalleryActionsSheetData {
             {{ I18N.albums.create | translate }}
           </button>
         }
+        <button class="flex items-center gap-3 w-full px-4 py-3 text-sm text-left hover:bg-white/10 cursor-pointer" (click)="pick({ kind: 'capture-date' })">
+          <mat-icon>edit_calendar</mat-icon>{{ I18N.capture_date.title | translate }}
+        </button>
         <button class="flex items-center gap-3 w-full px-4 py-3 text-sm text-left hover:bg-white/10 cursor-pointer" (click)="pick({ kind: 'tags' })">
           <mat-icon aria-hidden="true">sell</mat-icon>
           {{ I18N.gallery.selection.edit_tags | translate }}

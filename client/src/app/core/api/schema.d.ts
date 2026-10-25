@@ -2634,6 +2634,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/photo/capture_date": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Reset Date */
+        delete: operations["reset_date_api_photo_capture_date_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/photo/clear_junk": {
         parameters: {
             query?: never;
@@ -3349,6 +3366,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/photos/capture_date/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Dates */
+        post: operations["apply_dates_api_photos_capture_date_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/photos/capture_date/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Dates */
+        post: operations["preview_dates_api_photos_capture_date_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/photos/count": {
         parameters: {
             query?: never;
@@ -3565,6 +3616,23 @@ export interface paths {
         put?: never;
         /** Api Create Place */
         post: operations["api_create_place_api_places_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/places/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Api Search Places */
+        get: operations["api_search_places_api_places_search_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5357,6 +5425,70 @@ export interface components {
             /** Path */
             path: string;
         };
+        /** CaptureDateApplyRequest */
+        CaptureDateApplyRequest: {
+            /**
+             * Exclude
+             * @description Paths to drop from whichever target is sent: subtracted from `photo_paths`, or bound out of the `filters` scope. Only ever narrows.
+             */
+            exclude?: string[] | null;
+            /** Filters */
+            filters?: {
+                [key: string]: unknown;
+            } | null;
+            /** Offset Seconds */
+            offset_seconds: number;
+            /** Photo Paths */
+            photo_paths?: string[] | null;
+            /** Preview Token */
+            preview_token: string;
+        };
+        /** CaptureDatePreview */
+        CaptureDatePreview: {
+            /** Changed */
+            changed: number;
+            /** Preview Token */
+            preview_token: string;
+            /** Samples */
+            samples: components["schemas"]["CaptureDateSample"][];
+            /** Skipped */
+            skipped: number;
+        };
+        /** CaptureDateRequest */
+        CaptureDateRequest: {
+            /**
+             * Exclude
+             * @description Paths to drop from whichever target is sent: subtracted from `photo_paths`, or bound out of the `filters` scope. Only ever narrows.
+             */
+            exclude?: string[] | null;
+            /** Filters */
+            filters?: {
+                [key: string]: unknown;
+            } | null;
+            /** Offset Seconds */
+            offset_seconds: number;
+            /** Photo Paths */
+            photo_paths?: string[] | null;
+        };
+        /** CaptureDateReset */
+        CaptureDateReset: {
+            /**
+             * Date Manually Set
+             * @default 0
+             */
+            date_manually_set?: number;
+            /** Date Taken */
+            date_taken: string | null;
+        };
+        /** CaptureDateSample */
+        CaptureDateSample: {
+            /** New Date */
+            new_date: string;
+            /** Old Date */
+            old_date: string;
+            /** Path */
+            path: string;
+        };
         /**
          * CategoryOverrideResponse
          * @description Shared shape of ``override_category`` and ``clear_category_override``.
@@ -7033,6 +7165,8 @@ export interface components {
             contrast_score?: number | null;
             /** Date Formatted */
             date_formatted?: string | null;
+            /** Date Manually Set */
+            date_manually_set?: number | null;
             /** Date Taken */
             date_taken?: string | null;
             /** Deqa Score */
@@ -7509,6 +7643,20 @@ export interface components {
             longitude: number;
             /** Name */
             name: string;
+        };
+        /** PlaceSearchResponse */
+        PlaceSearchResponse: {
+            /** Results */
+            results: components["schemas"]["PlaceSearchResult"][];
+        };
+        /** PlaceSearchResult */
+        PlaceSearchResult: {
+            /** Label */
+            label: string;
+            /** Latitude */
+            latitude: number;
+            /** Longitude */
+            longitude: number;
         };
         /** PlacesResponse */
         PlacesResponse: {
@@ -8596,6 +8744,8 @@ export interface components {
             pagination: {
                 [key: string]: unknown;
             };
+            /** Place Search Enabled */
+            place_search_enabled: boolean;
             /**
              * Populated Scores
              * @default []
@@ -12601,6 +12751,37 @@ export interface operations {
             };
         };
     };
+    reset_date_api_photo_capture_date_delete: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureDateReset"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     api_clear_junk_api_photo_clear_junk_post: {
         parameters: {
             query?: never;
@@ -13661,6 +13842,72 @@ export interface operations {
             };
         };
     };
+    apply_dates_api_photos_capture_date_apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaptureDateApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureDatePreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_dates_api_photos_capture_date_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaptureDateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureDatePreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     api_photos_count_api_photos_count_get: {
         parameters: {
             query?: never;
@@ -13907,6 +14154,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SavedPlace"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    api_search_places_api_places_search_get: {
+        parameters: {
+            query: {
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceSearchResponse"];
                 };
             };
             /** @description Validation Error */
