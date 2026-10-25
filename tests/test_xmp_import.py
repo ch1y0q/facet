@@ -5,7 +5,10 @@ packets, the rating/label mapping, keyword routing to photo_manual_tags, and the
 policy. Pure stdlib XML — no exiftool needed.
 """
 
+import os
 import sqlite3
+
+import pytest
 
 from db.schema import init_database
 from processing.xmp_import import import_sidecars, parse_sidecar
@@ -186,3 +189,197 @@ class TestImportSidecars:
         import_sidecars(conn, root=str(target))
         assert conn.execute("SELECT star_rating FROM photos WHERE path = ?", (wanted,)).fetchone()[0] == 4
         assert conn.execute("SELECT star_rating FROM photos WHERE path = ?", (leak,)).fetchone()[0] == 0
+
+
+class TestSidecarNaming:
+    @pytest.mark.parametrize("policy,filename", [
+        ("full", "p.CR3.xmp"), ("basename", "p.xmp"),
+        ("auto", "p.CR3.xmp"), ("auto", "p.xmp"),
+    ])
+    def test_imports_selected_naming_with_real_parser(self, tmp_path, policy, filename):
+        conn = _make_db(tmp_path)
+        image = str(tmp_path / "p.CR3")
+        _add(conn, image)
+        _write(tmp_path, filename, _attr_xmp(rating=4, subjects=["external"]))
+        stats = import_sidecars(conn, sidecar_naming=policy)
+        assert stats["updated"] == 1
+        assert conn.execute("SELECT star_rating FROM photos").fetchone()[0] == 4
+        assert conn.execute("SELECT tag FROM photo_manual_tags").fetchone()[0] == "external"
+
+    def test_default_reports_unsupported_basename(self, tmp_path, caplog):
+        conn = _make_db(tmp_path)
+        _add(conn, str(tmp_path / "p.CR3"), star=2)
+        sidecar = _write(tmp_path, "p.xmp", _attr_xmp(rating=5))
+        stats = import_sidecars(conn)
+        assert stats["missing"] == stats["naming_mismatch"] == 1
+        assert stats["updated"] == 0
+        assert conn.execute("SELECT star_rating FROM photos").fetchone()[0] == 2
+        assert sidecar in caplog.text
+        assert "--sidecar-naming basename" in caplog.text
+
+    @pytest.mark.parametrize("policy,expected", [("full", 2), ("basename", 5), ("auto", 1)])
+    @pytest.mark.parametrize("newer", ["p.CR3.xmp", "p.xmp"])
+    def test_both_families_have_explicit_authority(self, tmp_path, caplog, policy, expected, newer):
+        conn = _make_db(tmp_path)
+        _add(conn, str(tmp_path / "p.CR3"), star=1)
+        for filename, rating in [("p.CR3.xmp", 2), ("p.xmp", 5)]:
+            _write(tmp_path, filename, _attr_xmp(rating=rating, subjects=[f"tag{rating}"]))
+            stamp = 200 if filename == newer else 100
+            os.utime(tmp_path / filename, (stamp, stamp))
+        stats = import_sidecars(conn, sidecar_naming=policy)
+        assert conn.execute("SELECT star_rating FROM photos").fetchone()[0] == expected
+        assert "p.CR3.xmp" in caplog.text and "p.xmp" in caplog.text
+        if policy == "auto":
+            assert stats["ambiguous"] == stats["skipped"] == 1
+            assert conn.execute("SELECT COUNT(*) FROM photo_manual_tags").fetchone()[0] == 0
+        else:
+            assert stats["updated"] == 1
+            assert conn.execute("SELECT tag FROM photo_manual_tags").fetchone()[0] == f"tag{expected}"
+
+    @pytest.mark.parametrize("policy", ["basename", "auto"])
+    def test_shared_basename_refused_even_when_other_photo_outside_scope(self, tmp_path, caplog, policy):
+        conn = _make_db(tmp_path)
+        raw, jpeg = (str(tmp_path / name) for name in ("same.CR3", "same.jpg"))
+        _add(conn, raw, star=1)
+        _add(conn, jpeg, star=2)
+        _write(tmp_path, "same.xmp", _attr_xmp(rating=5, subjects=["wrong-file"]))
+        stats = import_sidecars(conn, root=raw, sidecar_naming=policy)
+        assert stats["ambiguous"] == stats["skipped"] == 1
+        assert stats["updated"] == 0
+        assert [row[0] for row in conn.execute("SELECT star_rating FROM photos ORDER BY path")] == [1, 2]
+        assert conn.execute("SELECT COUNT(*) FROM photo_manual_tags").fetchone()[0] == 0
+        assert "shared basename" in caplog.text
+
+    @pytest.mark.parametrize("companion", ["same.JPG", "SAME.jpg", "same.HIF"])
+    def test_unindexed_disk_sibling_also_makes_basename_ambiguous(self, tmp_path, caplog, companion):
+        conn = _make_db(tmp_path)
+        raw = str(tmp_path / "same.CR3")
+        _add(conn, raw, star=2)
+        (tmp_path / companion).write_bytes(b"disposable companion")
+        _write(tmp_path, "same.xmp", _attr_xmp(rating=5))
+        stats = import_sidecars(conn, sidecar_naming="basename")
+        assert stats["ambiguous"] == 1
+        assert conn.execute("SELECT star_rating FROM photos").fetchone()[0] == 2
+        assert "shared basename" in caplog.text
+
+    def test_full_names_keep_raw_jpeg_and_derivative_independent(self, tmp_path):
+        conn = _make_db(tmp_path)
+        for name, rating in [("same.CR3", 1), ("same.jpg", 2), ("same_v1.jpg", 3)]:
+            _add(conn, str(tmp_path / name))
+            _write(tmp_path, name + ".xmp", _attr_xmp(rating=rating))
+        stats = import_sidecars(conn)
+        assert stats["updated"] == 3
+        assert [row[0] for row in conn.execute("SELECT star_rating FROM photos ORDER BY path")] == [1, 2, 3]
+
+    @pytest.mark.parametrize("policy", ["full", "auto"])
+    @pytest.mark.parametrize("newer", ["p.CR3.xmp", "p.CR3.facet.xmp"])
+    def test_full_family_retains_newest_fallback_rule(self, tmp_path, policy, newer):
+        conn = _make_db(tmp_path)
+        _add(conn, str(tmp_path / "p.CR3"))
+        for filename, rating in [("p.CR3.xmp", 1), ("p.CR3.facet.xmp", 4)]:
+            _write(tmp_path, filename, _attr_xmp(rating=rating))
+            stamp = 200 if filename == newer else 100
+            os.utime(tmp_path / filename, (stamp, stamp))
+        stats = import_sidecars(conn, sidecar_naming=policy)
+        assert stats["updated"] == 1
+        expected = 1 if newer == "p.CR3.xmp" else 4
+        assert conn.execute("SELECT star_rating FROM photos").fetchone()[0] == expected
+
+    def test_basename_policy_does_not_take_full_fallback(self, tmp_path, caplog):
+        conn = _make_db(tmp_path)
+        _add(conn, str(tmp_path / "p.CR3"), star=2)
+        _write(tmp_path, "p.CR3.facet.xmp", _attr_xmp(rating=5))
+        stats = import_sidecars(conn, sidecar_naming="basename")
+        assert stats["missing"] == stats["naming_mismatch"] == 1
+        assert conn.execute("SELECT star_rating FROM photos").fetchone()[0] == 2
+        assert "--sidecar-naming full" in caplog.text
+
+    def test_malformed_selected_sidecar_is_skipped_without_trying_other_family(self, tmp_path):
+        conn = _make_db(tmp_path)
+        _add(conn, str(tmp_path / "p.CR3"), star=2)
+        _write(tmp_path, "p.xmp", "<broken")
+        _write(tmp_path, "p.CR3.xmp", _attr_xmp(rating=5))
+        stats = import_sidecars(conn, sidecar_naming="basename")
+        assert stats["skipped"] == 1
+        assert conn.execute("SELECT star_rating FROM photos").fetchone()[0] == 2
+
+    def test_invalid_policy_rejected_before_database_access(self):
+        with pytest.raises(ValueError, match="sidecar_naming"):
+            import_sidecars(None, sidecar_naming="newest")
+
+
+    def test_basename_uses_final_extension_and_separate_directory(self, tmp_path):
+        conn = _make_db(tmp_path)
+        other = tmp_path / "other"
+        other.mkdir()
+        for directory, name, rating in [(tmp_path, "shoot.v1.CR3", 4), (other, "shoot.v1.jpg", 2)]:
+            _add(conn, str(directory / name))
+            _write(directory, "shoot.v1.xmp", _attr_xmp(rating=rating))
+        stats = import_sidecars(conn, sidecar_naming="basename")
+        assert stats["updated"] == 2
+        assert sorted(row[0] for row in conn.execute("SELECT star_rating FROM photos")) == [2, 4]
+
+    def test_auto_refuses_basename_and_full_fallback(self, tmp_path):
+        conn = _make_db(tmp_path)
+        _add(conn, str(tmp_path / "p.CR3"), star=2)
+        _write(tmp_path, "p.CR3.facet.xmp", _attr_xmp(rating=5))
+        _write(tmp_path, "p.xmp", _attr_xmp(rating=1))
+        stats = import_sidecars(conn, sidecar_naming="auto")
+        assert stats["ambiguous"] == stats["skipped"] == 1
+        assert conn.execute("SELECT star_rating FROM photos").fetchone()[0] == 2
+
+    def test_primary_wins_fallback_tie(self, tmp_path):
+        conn = _make_db(tmp_path)
+        _add(conn, str(tmp_path / "p.CR3"))
+        for filename, rating in [("p.CR3.xmp", 2), ("p.CR3.facet.xmp", 5)]:
+            _write(tmp_path, filename, _attr_xmp(rating=rating))
+            os.utime(tmp_path / filename, (100, 100))
+        import_sidecars(conn)
+        assert conn.execute("SELECT star_rating FROM photos").fetchone()[0] == 2
+
+    def test_no_exiftool_export_fallback_remains_importable(self, tmp_path, monkeypatch):
+        from processing import xmp_export as xe
+
+        conn = _make_db(tmp_path)
+        image = tmp_path / "p.CR3"
+        image.write_bytes(b"disposable original")
+        _add(conn, str(image))
+        primary = tmp_path / "p.CR3.xmp"
+        primary.write_text(_attr_xmp(rating=2), encoding="utf-8")
+        primary_bytes, image_bytes = primary.read_bytes(), image.read_bytes()
+        monkeypatch.setattr(xe, "exiftool_available", lambda: False)
+        result = xe.write_metadata(str(image), xe.XmpRating(star_rating=4), embed_original=True)
+        assert result["sidecar"] == str(tmp_path / "p.CR3.facet.xmp")
+        os.utime(primary, (100, 100))
+        stats = import_sidecars(conn, sidecar_naming="auto")
+        assert stats["updated"] == 1
+        assert conn.execute("SELECT star_rating FROM photos").fetchone()[0] == 4
+        assert primary.read_bytes() == primary_bytes
+        assert image.read_bytes() == image_bytes
+
+    def test_basename_keeps_named_user_routing(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("api.config.is_multi_user_enabled", lambda: True)
+        conn = _make_db(tmp_path)
+        image = str(tmp_path / "p.CR3")
+        _add(conn, image, star=2)
+        _write(tmp_path, "p.xmp", _attr_xmp(rating=5, subjects=["external"]))
+        stats = import_sidecars(conn, user_id="alice", sidecar_naming="basename")
+        assert stats["updated"] == 1
+        assert conn.execute("SELECT star_rating FROM photos").fetchone()[0] == 2
+        assert tuple(conn.execute("SELECT user_id,star_rating FROM user_preferences").fetchone()) == ("alice", 5)
+        assert tuple(conn.execute("SELECT tag,created_by FROM photo_manual_tags").fetchone()) == ("external", "alice")
+
+    def test_uninspectable_siblings_refuse_basename(self, tmp_path, monkeypatch, caplog):
+        conn = _make_db(tmp_path)
+        _add(conn, str(tmp_path / "p.CR3"), star=2)
+        _write(tmp_path, "p.xmp", _attr_xmp(rating=5))
+
+        def inaccessible(_directory):
+            raise PermissionError("unreadable image directory")
+
+        monkeypatch.setattr("processing.xmp_import.os.scandir", inaccessible)
+        stats = import_sidecars(conn, sidecar_naming="basename")
+        assert stats["skipped"] == 1
+        assert stats["updated"] == 0
+        assert conn.execute("SELECT star_rating FROM photos").fetchone()[0] == 2
+        assert "unreadable image directory" in caplog.text

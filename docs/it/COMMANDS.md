@@ -81,6 +81,9 @@ campo `progress` di `/api/scan/status` e nel flusso SSE.
 | `python facet.py --import-sidecars` | Importa valutazioni/etichette/tag dai sidecar `<image>.xmp` nel DB (tutte le foto); le parole chiave che Facet non possiede ancora diventano [tag manuali](INTEROP.md#tag-manuali-e-parole-chiave-xmp) |
 | `python facet.py --import-sidecars /path` | Importa i sidecar solo per le foto sotto un sottoalbero di percorso |
 | `python facet.py --import-sidecars --user alice` | Modalità multiutente: importa le valutazioni in `user_preferences` di Alice anziché nelle colonne globali (le parole chiave restano globali) |
+| `python facet.py --import-sidecars --sidecar-naming full` | Leggere nomi completi principali/di ripiego (predefinito); vince la modifica più recente, il principale a parità |
+| `python facet.py --import-sidecars --sidecar-naming basename` | Leggere `<image>.xmp` senza estensione dell’immagine; rifiutare nomi base condivisi |
+| `python facet.py --import-sidecars --sidecar-naming auto` | Accettare una famiglia; saltare e segnalare la presenza di entrambe le convenzioni |
 | `python facet.py --import-sidecars --overwrite-manual-gps` | Sostituisce il GPS manuale già impostato in Facet (anche un luogo cancellato) con il luogo manuale del sidecar; senza l'opzione il GPS manuale esistente viene conservato |
 | `python facet.py --export-sidecars` | Scrive/unisce i sidecar `<image>.xmp` dal DB per tutte le foto (solo sidecar) |
 | `python facet.py --export-sidecars /path` | Esporta i sidecar solo per le foto sotto un sottoalbero di percorso |

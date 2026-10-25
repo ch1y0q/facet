@@ -5,6 +5,8 @@ All notable changes to Facet are documented in this file.
 ## [Unreleased]
 
 ### Added
+
+- **Explicit XMP sidecar discovery.** `--import-sidecars --sidecar-naming full|basename|auto` can read stripped-extension sidecars, refuses shared RAW/JPEG basenames, and reports naming conflicts. Full-name discovery remains the default; exports keep their existing filenames.
 - Explicit XMP export/import carries Keep decisions and manual GPS, with protection against overwriting existing manual locations.
 
 - **Set a location for selected photos.** Reuse saved/recent places, a map pin or coordinates for up to 1000 visible photos. Preview changed/skipped counts first, protect existing locations with the default only-missing option, and refresh the active gallery filters after applying. Manual coordinates survive rescans; original files are unchanged.

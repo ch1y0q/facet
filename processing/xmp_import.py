@@ -57,6 +57,7 @@ from db.manual_tags import (
     normalize_manual_tag,
 )
 from processing.rating_writer import upsert_rating_state
+from utils.image_loading import WATCHABLE_IMAGE_EXTENSIONS
 from processing.xmp_export import (
     LABEL_FAVORITE,
     LABEL_REJECTED,
@@ -242,8 +243,79 @@ def _foreign_keywords(conn, path: str, ai_tags, keywords: list[str]) -> list[str
     return foreign
 
 
+def _image_stem(path: str) -> str:
+    """Comparable stem; conservatively refuse case variants on any filesystem."""
+    return os.path.normcase(os.path.abspath(os.path.splitext(path)[0])).casefold()
+
+
+def _shared_indexed_stems(conn) -> set[str]:
+    """Check all indexed photos, including those outside the import/user scope."""
+    first: dict[str, str] = {}
+    shared: set[str] = set()
+    for (path,) in conn.execute("SELECT path FROM photos"):
+        stem = _image_stem(path)
+        normalized = os.path.normcase(os.path.abspath(path))
+        if stem in first and first[stem] != normalized:
+            shared.add(stem)
+        first[stem] = normalized
+    return shared
+
+
+def _discover_sidecar(image_path: str, naming: str, shared_stems: set[str],
+                      directory_images: dict[str, dict[str, set[str]]]) -> tuple[str | None, str | None]:
+    """Choose a naming family before parsing; never use mtime across families.
+
+    Return ``(path, None)`` or ``(None, reason)``. Basename discovery refuses a
+    stem shared by indexed photos or image files on disk. Directory scans are
+    cached for this import only, and failures propagate for the caller to report.
+    """
+    full = [image_path + suffix for suffix in (".xmp", ".facet.xmp")]
+    full = [path for path in full if os.path.exists(path)]
+    basename = os.path.splitext(image_path)[0] + ".xmp"
+    has_basename = basename != image_path + ".xmp" and os.path.exists(basename)
+    if full and has_basename:
+        if naming == "auto":
+            logger.warning("Skipping %s: ambiguous sidecar naming (%s and %s); "
+                           "select --sidecar-naming full or basename", image_path, full, basename)
+            return None, "ambiguous"
+        selected = full if naming == "full" else [basename]
+        ignored = [basename] if naming == "full" else full
+        logger.warning("Sidecar naming %s for %s: selecting %s; ignoring %s",
+                       naming, image_path, selected, ignored)
+    if naming != "basename" and full:
+        # Preserve the existing primary/fallback rule; list order breaks ties.
+        return max(full, key=os.path.getmtime), None
+    if naming != "full" and has_basename:
+        stem = _image_stem(image_path)
+        directory = os.path.dirname(os.path.abspath(image_path))
+        shared = stem in shared_stems
+        if not shared:
+            if directory not in directory_images:
+                images: dict[str, set[str]] = {}
+                with os.scandir(directory) as entries:
+                    for entry in entries:
+                        if (os.path.splitext(entry.name)[1].lower() in WATCHABLE_IMAGE_EXTENSIONS
+                                and entry.is_file()):
+                            images.setdefault(_image_stem(entry.path), set()).add(
+                                os.path.normcase(os.path.abspath(entry.path)))
+                directory_images[directory] = images
+            siblings = directory_images[directory].get(stem, set())
+            shared = bool(siblings - {os.path.normcase(os.path.abspath(image_path))})
+        if shared:
+            logger.warning("Skipping %s: shared basename makes %s ambiguous; "
+                           "use per-image full-name sidecars", image_path, basename)
+            return None, "ambiguous"
+        return basename, None
+    if full or has_basename:
+        alternative = "basename" if naming == "full" else "full"
+        logger.warning("No %s sidecar for %s; found %s; use --sidecar-naming %s to read it",
+                       naming, image_path, [basename] if has_basename else full, alternative)
+        return None, "naming_mismatch"
+    return None, "missing"
+
+
 def import_sidecars(conn, root: str | None = None, *, user_id: str | None = None,
-                    overwrite_manual_gps: bool = False) -> dict:
+                    overwrite_manual_gps: bool = False, sidecar_naming: str = "full") -> dict:
     """Import ``<image>.xmp`` sidecars into the ``photos`` table.
 
     ``root`` limits the import to photos whose path is, or is under, that path.
@@ -252,8 +324,15 @@ def import_sidecars(conn, root: str | None = None, *, user_id: str | None = None
     written to that user's ``user_preferences`` row instead. Foreign keywords are
     written to the global ``photo_manual_tags`` (``source='xmp'``), never to
     ``photos.tags``. Returns counts: ``updated`` / ``unchanged`` / ``missing`` (no
-    sidecar) / ``skipped`` (unparseable sidecar) / ``tags_added`` (new manual-tag rows).
+    sidecar) / ``skipped`` (unparseable, unreadable or ambiguous) / ``tags_added``.
+    ``ambiguous`` is a subset of skipped; ``naming_mismatch`` is a subset of missing.
+    ``sidecar_naming`` selects ``full`` (default: newest of ``<image>.xmp`` and
+    ``<image>.facet.xmp``), ``basename`` (strip image extension), or ``auto``
+    (accept one family only). Basename sidecars shared by multiple images are
+    refused even when only one photo is in scope. No sidecars are rewritten.
     """
+    if sidecar_naming not in {"full", "basename", "auto"}:
+        raise ValueError("sidecar_naming must be full, basename or auto")
     from api.config import is_multi_user_enabled
     per_user = bool(user_id and is_multi_user_enabled())
 
@@ -278,18 +357,29 @@ def import_sidecars(conn, root: str | None = None, *, user_id: str | None = None
             params,
         ).fetchall()
 
-    updated = unchanged = missing = skipped = tags_added = 0
+    updated = unchanged = missing = skipped = tags_added = ambiguous = naming_mismatch = 0
+    shared_stems = _shared_indexed_stems(conn) if sidecar_naming != "full" else set()
+    directory_images: dict[str, dict[str, set[str]]] = {}
     created_by = user_id if per_user else None
     created_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     for row in rows:
-        candidates = [row["path"] + suffix for suffix in (".xmp", ".facet.xmp")]
-        candidates = [path for path in candidates if os.path.exists(path)]
-        if not candidates:
-            missing += 1
+        try:
+            sidecar, reason = _discover_sidecar(row["path"], sidecar_naming, shared_stems, directory_images)
+        except OSError as ex:
+            logger.warning("Skipping %s: cannot inspect sidecars or image siblings: %s", row["path"], ex)
+            skipped += 1
             continue
-        sidecar = max(candidates, key=os.path.getmtime)
+        if sidecar is None:
+            if reason == "ambiguous":
+                ambiguous += 1
+                skipped += 1
+            else:
+                missing += 1
+                naming_mismatch += reason == "naming_mismatch"
+            continue
         parsed = parse_sidecar(sidecar)
         if parsed is None:
+            logger.warning("Skipping %s: cannot parse sidecar %s", row["path"], sidecar)
             skipped += 1
             continue
 
@@ -360,4 +450,4 @@ def import_sidecars(conn, root: str | None = None, *, user_id: str | None = None
 
     conn.commit()
     return {"updated": updated, "unchanged": unchanged, "missing": missing, "skipped": skipped,
-            "tags_added": tags_added}
+            "tags_added": tags_added, "ambiguous": ambiguous, "naming_mismatch": naming_mismatch}
