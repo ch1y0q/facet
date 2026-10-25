@@ -77,7 +77,7 @@ API 会将其呈现在 `/api/scan/status` 的 `progress` 字段以及 SSE 数据
 | `python facet.py --export-manifest --user alice` | 多用户模式：把 Alice 的 `user_preferences` 评分导出到清单，而不是全局列（标签和评分仍为全局） |
 | `python facet.py --import-lightroom 文件` | 导入增效工具导出的 Lightroom 星级／留用／淘汰状态（`facet_lightroom_state.json`，见 docs/INTEROP.md 中的 [Lightroom → Facet](INTEROP.md#lightroom--facet)）—— 文件携带的每个字段都由 Lightroom 说了算。打印 `matched=… unmatched=… changed=…` |
 | `python facet.py --import-lightroom 文件 --user alice` | 多用户模式：写入 Alice 的 `user_preferences` 行，而不是全局列；在多用户安装上**必须**指定 —— 否则会被拒绝，以免导入静默落到错误的范围 |
-| `python facet.py --import-sidecars` | 把 `<image>.xmp` 附属文件中的评分／标记／标签导回数据库（全部照片）；Facet 尚未拥有的关键字会成为[手动标签](INTEROP.md#手动标签与-xmp-关键字) |
+| `python facet.py --import-sidecars` | 把 `<image.ext>.xmp` / `<image.ext>.facet.xmp` 附属文件中的评分／标记／标签导回数据库（全部照片）；Facet 尚未拥有的关键字会成为[手动标签](INTEROP.md#手动标签与-xmp-关键字) |
 | `python facet.py --import-sidecars /path` | 仅导入某个路径子树下照片的附属文件 |
 | `python facet.py --import-sidecars --user alice` | 多用户模式：把评分导入 Alice 的 `user_preferences`，而不是全局列（关键词仍为全局） |
 | `python facet.py --import-sidecars --sidecar-naming full` | 读取完整名称的主文件或回退文件（默认）；优先较新修改时间，相同时优先主文件 |

@@ -20,6 +20,8 @@ Die Suche wählen Sie mit `--import-sidecars --sidecar-naming full|basename|auto
 
 Ein von indexierten Fotos oder benachbarten Bilddateien geteilter Basisname, etwa `same.CR3` und `same.jpg`, wird bei `basename` und `auto` abgelehnt, auch wenn nur ein Foto im gewählten Ordner-/Benutzerbereich liegt. Verwenden Sie unabhängige vollständige Sidecar-Namen. `same_v1.jpg` hat einen anderen Basisnamen. Namensabweichungen sowie mehrdeutige, unlesbare oder ungültige Pakete werden gemeldet. Ein Parsefehler führt nicht zum Versuch der anderen Namensfamilie. Die CLI zählt Mehrdeutigkeiten unter übersprungenen Fotos und Namensabweichungen unter Fotos ohne ausgewähltes Sidecar.
 
+Ableitungen mit doppelter Endung wie `IMG.CR2.jpg` dürfen das zu `IMG.CR2` gehörende `IMG.CR2.xmp` nicht lesen; der Schutz gilt auch für den `.facet.xmp`-Fallback eines anderen Bildes. Namenshinweise bei `full` zeigen nur ein Beispiel pro Lauf; die Zusammenfassung zählt weiterhin jede Abweichung.
+
 Der Import benötigt kein ExifTool. Exportzusammenführung, Einbettung und MWG-Gesichtsrechtecke benötigen ExifTool. Ohne ExifTool bleibt ein vorhandenes Editor-Sidecar erhalten; der XML-Fallback schreibt `<image.ext>.facet.xmp` ohne MWG-Rechtecke. Dieser Fallback benötigt eine bewusste Übergabe an andere Editoren und wird nicht universell gefunden. Die Regeln benennen keine Dateien um.
 
 ## Lightroom Classic

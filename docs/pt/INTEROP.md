@@ -20,6 +20,8 @@ Escolha a descoberta com `--import-sidecars --sidecar-naming full|basename|auto`
 
 Um nome base compartilhado por fotos indexadas ou imagens vizinhas, como `same.CR3` e `same.jpg`, é recusado em `basename` e `auto`, mesmo quando só uma foto está no escopo selecionado de pasta/usuário. Use sidecars independentes com nome completo. `same_v1.jpg` tem outro nome base. Nomes incompatíveis, ambiguidades e pacotes ilegíveis ou inválidos são informados; falha de análise não tenta a outra família. O resumo conta ambiguidades entre as fotos ignoradas e divergências de nome entre as fotos sem sidecar selecionado.
 
+Derivadas com extensão dupla, como `IMG.CR2.jpg`, não podem ler `IMG.CR2.xmp`, que pertence a `IMG.CR2`; a proteção também cobre o arquivo alternativo `.facet.xmp` de outra imagem. Os avisos de nome com `full` mostram um exemplo por execução; o resumo conta todas as divergências.
+
 Importar não exige ExifTool. Mesclagem na exportação, incorporação e retângulos faciais MWG exigem ExifTool. Sem ele, o sidecar do editor fica intacto e o XML alternativo grava `<image.ext>.facet.xmp` sem retângulos MWG. Esse arquivo exige uma entrega deliberada a outro editor: seu nome não é detectado universalmente. As políticas não renomeiam arquivos.
 
 ## Lightroom Classic

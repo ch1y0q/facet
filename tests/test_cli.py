@@ -894,3 +894,24 @@ def test_sidecar_naming_cli_imports_or_reports_conflict(tmp_path, policy, expect
     with sqlite3.connect(db) as conn:
         assert conn.execute('SELECT star_rating FROM photos').fetchone()[0] == expected
     assert [p.read_bytes() for p in (image, primary, basename)] == before
+
+
+
+def test_sidecar_naming_cli_reports_mismatch_count_without_unsafe_advice(tmp_path):
+    from db.schema import init_database
+    from processing.xmp_export import XmpRating, build_xmp
+
+    db = tmp_path / 'sidecars.db'
+    init_database(str(db))
+    with sqlite3.connect(db) as conn:
+        for name in ('same.CR3', 'same.jpg'):
+            conn.execute('INSERT INTO photos(path,filename,star_rating) VALUES (?,?,2)',
+                         (str(tmp_path / name), name))
+    (tmp_path / 'same.xmp').write_text(build_xmp(XmpRating(star_rating=5)), encoding='utf-8')
+    result = _run(FACET, '--import-sidecars', '--db', str(db), cwd=str(tmp_path))
+    assert result.returncode == 0, result.stderr
+    assert '2 naming mismatches' in result.stderr
+    assert result.stderr.count('Full-name sidecar policy') == 1
+    assert '--sidecar-naming basename' not in result.stderr
+    with sqlite3.connect(db) as conn:
+        assert conn.execute('SELECT star_rating FROM photos ORDER BY path').fetchall() == [(2,), (2,)]

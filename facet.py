@@ -3922,15 +3922,16 @@ def main():
     if args.import_sidecars:
         from processing.xmp_import import import_sidecars
         root = None if args.import_sidecars == 'all' else args.import_sidecars
+        sidecar_naming = args.sidecar_naming or "full"
         init_database(args.db)  # photo_manual_tags may not exist yet; lock is held
         with get_connection(args.db) as conn:
             stats = import_sidecars(conn, root, user_id=args.user,
                                     overwrite_manual_gps=args.overwrite_manual_gps,
-                                    sidecar_naming=args.sidecar_naming or "full")
+                                    sidecar_naming=sidecar_naming)
         logger.info(
             "Sidecar import (%s): %d updated, %d unchanged, %d without sidecar, %d skipped "
             "(%d ambiguous, %d naming mismatches)",
-            args.sidecar_naming or "full", stats['updated'], stats['unchanged'], stats['missing'], stats['skipped'],
+            sidecar_naming, stats['updated'], stats['unchanged'], stats['missing'], stats['skipped'],
             stats['ambiguous'], stats['naming_mismatch'],
         )
         exit()

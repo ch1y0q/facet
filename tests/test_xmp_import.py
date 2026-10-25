@@ -7,6 +7,7 @@ policy. Pure stdlib XML — no exiftool needed.
 
 import os
 import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -215,7 +216,7 @@ class TestSidecarNaming:
         assert stats["updated"] == 0
         assert conn.execute("SELECT star_rating FROM photos").fetchone()[0] == 2
         assert sidecar in caplog.text
-        assert "--sidecar-naming basename" in caplog.text
+        assert "Check --sidecar-naming and image ownership" in caplog.text
 
     @pytest.mark.parametrize("policy,expected", [("full", 2), ("basename", 5), ("auto", 1)])
     @pytest.mark.parametrize("newer", ["p.CR3.xmp", "p.xmp"])
@@ -377,9 +378,71 @@ class TestSidecarNaming:
         def inaccessible(_directory):
             raise PermissionError("unreadable image directory")
 
-        monkeypatch.setattr("processing.xmp_import.os.scandir", inaccessible)
+        monkeypatch.setattr("processing.xmp_import._directory_image_claims", inaccessible)
         stats = import_sidecars(conn, sidecar_naming="basename")
         assert stats["skipped"] == 1
         assert stats["updated"] == 0
         assert conn.execute("SELECT star_rating FROM photos").fetchone()[0] == 2
         assert "unreadable image directory" in caplog.text
+
+
+    @pytest.mark.parametrize("owner,derived", [("IMG.CR2", "IMG.CR2.jpg"), ("a.jpg", "a.jpg.png"),
+                                               ("IMG.CR2", "IMG.CR2.facet.jpg")])
+    @pytest.mark.parametrize("policy", ["basename", "auto"])
+    def test_double_extension_never_imports_another_images_full_sidecar(self, tmp_path, owner, derived, policy):
+        conn = _make_db(tmp_path)
+        _add(conn, str(tmp_path / owner), star=1)
+        _add(conn, str(tmp_path / derived), star=2)
+        packet = _write(tmp_path, os.path.splitext(derived)[0] + ".xmp", _attr_xmp(rating=5, subjects=["owners-tag"]))
+        before = Path(packet).read_bytes()
+        stats = import_sidecars(conn, sidecar_naming=policy)
+        assert stats["ambiguous"] == stats["skipped"] == 1
+        rows = {row["path"]: row["star_rating"] for row in conn.execute("SELECT path,star_rating FROM photos")}
+        assert rows[str(tmp_path / derived)] == 2
+        assert rows[str(tmp_path / owner)] == (5 if policy == "auto" else 1)
+        assert conn.execute("SELECT COUNT(*) FROM photo_manual_tags WHERE photo_path=?", (str(tmp_path / derived),)).fetchone()[0] == 0
+        assert Path(packet).read_bytes() == before
+
+    @pytest.mark.parametrize("owner,derived", [("IMG.CR2", "IMG.CR2.jpg"), ("a.jpg", "a.jpg.png")])
+    @pytest.mark.parametrize("indexed_owner", [False, True])
+    def test_double_extension_owner_outside_import_scope_or_unindexed_on_disk(self, tmp_path, owner, derived, indexed_owner):
+        conn = _make_db(tmp_path)
+        image = str(tmp_path / derived)
+        _add(conn, image, star=2)
+        if indexed_owner:
+            _add(conn, str(tmp_path / owner), star=1)
+        else:
+            (tmp_path / owner).write_bytes(b"unindexed owner original")
+        _write(tmp_path, owner + ".xmp", _attr_xmp(rating=5))
+        stats = import_sidecars(conn, root=image, sidecar_naming="auto")
+        assert stats["ambiguous"] == 1
+        assert stats["updated"] == 0
+        assert conn.execute("SELECT star_rating FROM photos WHERE path=?", (image,)).fetchone()[0] == 2
+
+    def test_casefolded_indexed_stem_collision_is_refused_without_disk_siblings(self, tmp_path):
+        conn = _make_db(tmp_path)
+        image = str(tmp_path / "same.CR3")
+        _add(conn, image, star=1)
+        _add(conn, str(tmp_path / "SAME.jpg"), star=2)
+        _write(tmp_path, "same.xmp", _attr_xmp(rating=5))
+        stats = import_sidecars(conn, root=image, sidecar_naming="basename")
+        assert stats["ambiguous"] == 1
+        assert stats["updated"] == 0
+        assert conn.execute("SELECT star_rating FROM photos WHERE path=?", (image,)).fetchone()[0] == 1
+
+    def test_full_policy_reports_naming_notices_only_once_per_run(self, tmp_path, caplog):
+        conn = _make_db(tmp_path)
+        for name in ("one", "two", "three"):
+            _add(conn, str(tmp_path / (name + ".CR3")))
+            _write(tmp_path, name + ".xmp", _attr_xmp(rating=5))
+        _write(tmp_path, "two.CR3.xmp", _attr_xmp(rating=2))
+        stats = import_sidecars(conn)
+        assert stats["naming_mismatch"] == 2
+        assert stats["updated"] == 1
+        notices = [record for record in caplog.records if record.name == "processing.xmp_import"]
+        assert len(notices) == 1
+        assert "--sidecar-naming basename" not in notices[0].message
+        # Suppression is local to each run, not a permanent process-wide switch.
+        caplog.clear()
+        import_sidecars(conn)
+        assert len([record for record in caplog.records if record.name == "processing.xmp_import"]) == 1
