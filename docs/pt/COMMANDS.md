@@ -81,6 +81,7 @@ campo `progress` de `/api/scan/status` e no fluxo SSE.
 | `python facet.py --import-sidecars` | Importa avaliações/rótulos/tags dos sidecars `<image>.xmp` de volta para o banco de dados (todas as fotos); as palavras-chave que o Facet ainda não tem viram [tags manuais](INTEROP.md#tags-manuais-e-palavras-chave-xmp) |
 | `python facet.py --import-sidecars /path` | Importa sidecars apenas para fotos sob uma subárvore de caminho |
 | `python facet.py --import-sidecars --user alice` | Modo multiusuário: importa avaliações para o `user_preferences` da Alice em vez das colunas globais (palavras-chave permanecem globais) |
+| `python facet.py --import-sidecars --overwrite-manual-gps` | Substitui o GPS manual já definido no Facet (incluindo um local apagado) pelo local manual do sidecar; sem a opção, o GPS manual existente é mantido |
 | `python facet.py --export-sidecars` | Grava/mescla sidecars `<image>.xmp` a partir do banco de dados para todas as fotos (somente sidecar) |
 | `python facet.py --export-sidecars /path` | Exporta sidecars apenas para fotos sob uma subárvore de caminho |
 | `python facet.py --export-sidecars --user alice` | Modo multiusuário: exporta as avaliações do `user_preferences` da Alice em vez das colunas globais (palavras-chave permanecem globais) |
