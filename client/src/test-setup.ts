@@ -1,5 +1,10 @@
 import { afterEach, vi } from 'vitest';
 import { I18N } from './app/core/i18n/keys';
+import { leafletMock } from './testing/leaflet-mock';
+
+// Register before ANY component imports shared/leaflet, including indirect
+// imports from specs which do not explicitly exercise a map.
+vi.doMock('leaflet', () => leafletMock);
 
 // Sanity check that the i18n keys source module loads. This setup file is not
 // part of the builder's spec bundle, so it cannot initialize the bundled copy of
