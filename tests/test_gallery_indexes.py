@@ -367,6 +367,23 @@ def test_default_gallery_statements_use_the_covering_indexes(gallery, traced, sp
     assert not _uses(control["page"], "idx_gallery_aggregate")
 
 
+@pytest.mark.parametrize("scope", ["", "&path_prefix=/photos/"])
+def test_review_progress_count_is_a_covering_read(gallery, traced, sparse_db, scope):
+    client = gallery(sparse_db)
+    traced.clear()
+    resp = client.get(f"/api/photos/review_progress?{HIDES}{scope}")
+    assert resp.status_code == 200, resp.text
+    [sql] = [s for s in traced if "AS undecided" in s]
+    plan = _plan(sparse_db, sql)
+    assert _uses(plan, "idx_review_progress") and any("COVERING INDEX" in line for line in plan), plan
+    assert not _bare_scan(plan), plan
+
+    # Control: without it the count reads table rows (is_kept is in no gallery index).
+    _drop_registry(sparse_db, ["idx_review_progress"])
+    control = _plan(sparse_db, sql)
+    assert not any("COVERING INDEX" in line for line in control), control
+
+
 @pytest.mark.parametrize("sort, direction, index", [
     ("date_taken", "DESC", "idx_gallery_date_desc"),
     ("date_taken", "ASC", "idx_date_asc_cover"),
