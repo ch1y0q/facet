@@ -2410,9 +2410,9 @@ def main():
 
     parser = cli_args.build_parser()
     args = parser.parse_args()
-    if (args.sidecar_fields or args.overwrite_sidecar_review) and not args.import_sidecars:
+    if (args.sidecar_fields is not None or args.overwrite_sidecar_review) and not args.import_sidecars:
         parser.error("--sidecar-fields and --overwrite-sidecar-review require --import-sidecars")
-    if args.sidecar_fields and (not set(args.sidecar_fields.split(',')) <= {'review', 'gps', 'keywords'}):
+    if args.sidecar_fields is not None and (not set(args.sidecar_fields.split(',')) <= {'review', 'gps', 'keywords'}):
         parser.error("--sidecar-fields must select review,gps,keywords")
     if args.sidecar_naming is not None and not args.import_sidecars:
         parser.error("--sidecar-naming requires --import-sidecars")

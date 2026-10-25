@@ -232,6 +232,57 @@ def test_cli_preview_opens_existing_database_readonly_without_schema_migration(t
 
 
 
+def _tracked(conn, path, changed_at, scanned_at):
+    conn.execute('UPDATE photos SET star_rating=3 WHERE path=?', (str(path),))
+    conn.execute('UPDATE photo_metadata_edits SET changed_at=? WHERE photo_path=?', (changed_at, str(path)))
+    conn.execute('UPDATE photos SET scanned_at=? WHERE path=?', (scanned_at, str(path)))
+    conn.commit()
+
+
+def test_tracked_receipt_older_than_sidecar_applies_despite_a_later_rescan(tmp_path):
+    # Receipt 2020-06, sidecar 2021-01, rescan 2022-01: the receipt clock, not the scan, decides.
+    conn, path, _ = setup(tmp_path)
+    try:
+        sidecar(path, rating=5)
+        _tracked(conn, path, '2020-06-01T00:00:00.000Z', '2022-01-01 00:00:00')
+        preview = import_sidecars(conn, dry_run=True)
+        assert preview['updated'] == 1
+        assert preview['entries'][0]['changes']['star_rating'] == {'before': 3, 'after': 5}
+        assert not {d['reason'] for d in preview['entries'][0]['diagnostics']} & {'older_than_scan', 'newer_local_edit'}
+        assert import_sidecars(conn)['updated'] == 1
+        assert conn.execute('SELECT star_rating FROM photos').fetchone()[0] == 5
+    finally:
+        conn.close()
+
+
+def test_tracked_receipt_newer_than_sidecar_is_refused_even_before_the_scan(tmp_path):
+    conn, path, _ = setup(tmp_path)
+    try:
+        sidecar(path, rating=5)
+        _tracked(conn, path, '2021-06-01T00:00:00.000Z', '2020-01-01 00:00:00')
+        result = import_sidecars(conn)
+        assert result['conflicts'] == 1
+        assert conn.execute('SELECT star_rating FROM photos').fetchone()[0] == 3
+    finally:
+        conn.close()
+
+
+def test_untracked_row_keeps_the_legacy_scan_gate(tmp_path):
+    conn, path, _ = setup(tmp_path)
+    try:
+        sidecar(path, rating=5)
+        conn.execute('UPDATE photos SET scanned_at=? WHERE path=?', ('2022-01-01 00:00:00', str(path)))
+        conn.commit()
+        assert review_edit_state(conn, str(path), '') == {}
+        result = import_sidecars(conn)
+        assert result['updated'] == 0
+        reasons = {d['reason'] for d in result['entries'][0]['diagnostics']}
+        assert 'older_than_scan' in reasons
+        assert conn.execute('SELECT star_rating FROM photos').fetchone()[0] == 1
+    finally:
+        conn.close()
+
+
 def test_explicit_override_also_bypasses_scan_gate_and_review_group_stays_atomic(tmp_path):
     conn, path, _ = setup(tmp_path)
     try:
@@ -678,6 +729,7 @@ def test_preview_reports_sidecar_inspection_failure_without_writes(tmp_path, mon
     (['--sidecar-fields', 'review'], 'require --import-sidecars'),
     (['--overwrite-sidecar-review'], 'require --import-sidecars'),
     (['--import-sidecars', '--sidecar-fields', 'review,bogus'], 'must select review,gps,keywords'),
+    (['--import-sidecars', '--sidecar-fields', ''], 'must select review,gps,keywords'),
 ])
 def test_cli_rejects_invalid_import_policy_before_opening_database(tmp_path, arguments, reason):
     import subprocess

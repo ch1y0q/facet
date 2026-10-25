@@ -17,9 +17,11 @@ scanned_at as a proxy for the time of a manual edit. Missing/invalid new fields
 preserve state. If both primary and fallback sidecars exist, read the most
 recently modified file.
 
-Conflict policy for legacy fields: ratings / labels apply **newest-wins** by
-``xmp:MetadataDate`` (falling back to the sidecar file mtime) versus the photo's
-``scanned_at``; when the photo has no ``scanned_at``, the sidecar wins. Keywords
+Conflict policy for untracked rows (no review edit receipt): ratings / labels
+apply **newest-wins** by ``xmp:MetadataDate`` (falling back to the sidecar file
+mtime) versus the photo's ``scanned_at``; when the photo has no ``scanned_at``,
+the sidecar wins. A row with receipts is judged by its receipt clocks instead,
+so a rescan never hides a sidecar edited after the last Facet review edit. Keywords
 never touch ``photos.tags`` (the tagger owns that column and rewrites it on every
 retag): the foreign ones are stored in ``photo_manual_tags`` with
 ``source='xmp'`` and are never lost to a retag. A keyword is foreign unless it
@@ -521,7 +523,11 @@ def _import_sidecars(conn, root, *, user_id, overwrite_manual_gps, dry_run, fiel
         metadata_epoch = _to_epoch(parsed["metadata_date"])
         sidecar_epoch = os.path.getmtime(sidecar) if metadata_epoch is None else metadata_epoch
         photo_epoch = _to_epoch(_parse_date(row["scanned_at"]))
-        sidecar_wins = overwrite_review or photo_epoch is None or sidecar_epoch >= photo_epoch
+        clock_scope = user_id if per_user else ''
+        clocks = review_edit_state(conn, row['path'], clock_scope)
+        # A row with edit receipts is judged by them (the stale check below);
+        # only an untracked row falls back to the legacy scan-time gate.
+        sidecar_wins = overwrite_review or bool(clocks) or photo_epoch is None or sidecar_epoch >= photo_epoch
         if parsed["has_rating"] and sidecar_wins:
             star = parsed["star_rating"]
             favorite = parsed["is_favorite"]
@@ -554,8 +560,6 @@ def _import_sidecars(conn, root, *, user_id, overwrite_manual_gps, dry_run, fiel
         proposed_review = dict(zip(REVIEW_FIELDS, (star, int(favorite), int(rejected), int(kept))))
         review_changes = {field: {"before": original_review[field], "after": proposed_review[field]}
                           for field in REVIEW_FIELDS if original_review[field] != proposed_review[field]}
-        clock_scope = user_id if per_user else ''
-        clocks = review_edit_state(conn, row['path'], clock_scope)
         if "review" not in fields:
             review_changes = {}
         elif parsed.get("invalid_rating"):
