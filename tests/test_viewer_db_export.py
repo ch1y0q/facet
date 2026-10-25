@@ -562,3 +562,22 @@ def test_incremental_old_source_rejection_does_not_override_viewer_keep(tmp_path
     export_viewer_db(src, out, verbose=False)
     with sqlite3.connect(out) as conn:
         assert conn.execute(f"SELECT is_kept, is_rejected FROM {table} WHERE {key}=?", (_A,)).fetchone() == (1, 0)
+
+
+@pytest.mark.parametrize('incremental', [False, True])
+def test_manual_review_cache_survives_viewer_copy_and_local_correction(tmp_path, incremental):
+    src, out = str(tmp_path / 'source.db'), str(tmp_path / 'viewer.db')
+    _make_source_db(src)
+    if incremental:
+        export_viewer_db(src, out, verbose=False)
+    with sqlite3.connect(src) as conn:
+        pid = conn.execute("INSERT INTO persons(name) VALUES ('Manual')").lastrowid
+        fid = _manual_face(conn, _A, pid, 'review-cache')
+        conn.execute('UPDATE faces SET manual_review_required=1 WHERE id=?', (fid,))
+    export_viewer_db(src, out, verbose=False)
+    with sqlite3.connect(out) as conn:
+        assert conn.execute("SELECT manual_review_required FROM faces WHERE manual_key='review-cache'").fetchone() == (1,)
+        conn.execute("UPDATE faces SET manual_review_required=0,manual_source='viewer-corrected' WHERE manual_key='review-cache'")
+    export_viewer_db(src, out, verbose=False)
+    with sqlite3.connect(out) as conn:
+        assert conn.execute("SELECT manual_review_required,manual_source FROM faces WHERE manual_key='review-cache'").fetchone() == (0, 'viewer-corrected')
