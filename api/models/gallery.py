@@ -168,6 +168,15 @@ class PhotosResponse(PaginationEnvelope):
     hidden_summary: Optional[HiddenSummary] = None
 
 
+class ReviewProgressResponse(BaseModel):
+    """Mutually exclusive decisions across the complete visible review scope."""
+
+    total: int
+    undecided: int
+    kept: int
+    rejected: int
+
+
 class PhotoCountResponse(BaseModel):
     """How many rows the current gallery view holds, ignoring pagination.
 

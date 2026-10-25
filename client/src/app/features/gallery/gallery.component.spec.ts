@@ -115,6 +115,10 @@ describe('GalleryComponent', () => {
       countInView: vi.fn(() => Promise.resolve(650)),
       pathsInView: vi.fn(() => Promise.resolve([] as string[])),
       filterPayload: vi.fn(() => ({ page: '1' })),
+      reviewProgress: signal(null),
+      reviewPercent: signal(0),
+      reviewBookmark: signal(null),
+      continueReview: vi.fn(() => Promise.resolve(null)),
       viewSnapshot: signal(null),
       pinnedPaths: signal<string[] | null>(null),
       clearPinned: vi.fn(() => Promise.resolve()),
@@ -4269,6 +4273,30 @@ describe('GalleryComponent', () => {
       tile.blur();
       return tile;
     }
+
+    it('does not open a resumed photo after the owning gallery is parked', async () => {
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+      let resolveResume!: (path: string) => void;
+      mockStore.continueReview.mockImplementation(() => new Promise<string>(resolve => { resolveResume = resolve; }));
+      const pending = (gallery as unknown as { continueReview(): Promise<void> }).continueReview();
+      openPhoto(0);
+      mockStore.photos.set([{ ...photos[1] }]);
+      navigate.mockClear();
+      resolveResume(photos[1].path);
+      await pending;
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('does not open a resumed photo after navigation away even before detach', async () => {
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+      let resolveResume!: (path: string) => void;
+      mockStore.continueReview.mockImplementation(() => new Promise<string>(resolve => { resolveResume = resolve; }));
+      const pending = (gallery as unknown as { continueReview(): Promise<void> }).continueReview();
+      (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(2, '/stats'));
+      resolveResume(photos[1].path);
+      await pending;
+      expect(navigate).not.toHaveBeenCalled();
+    });
 
     it('defers the filter sidebar until its block is rendered', async () => {
       expect(fixture.debugElement.query(By.directive(GalleryFilterSidebarComponent))).toBeNull();

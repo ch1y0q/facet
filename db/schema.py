@@ -527,6 +527,12 @@ INDEXES = [
      'phash, date_taken, aggregate, face_count, eyes_open_score, expression_score, '
      'tech_sharpness, is_burst_lead, burst_group_id, duplicate_group_id, '
      'is_duplicate_lead, path'),
+    # Review progress (/api/photos/review_progress) counts the whole visible scope
+    # by decision, so it reads the cover tuple plus is_kept on every gallery load.
+    # No gallery index carries is_kept, and without this one the count walked the
+    # whole table (12.2s cold on a 126k-photo library). `path` leads so a folder
+    # scope seeks instead of scanning.
+    ('idx_review_progress', 'photos', f'path, {_GALLERY_COVER_SQL}, is_kept'),
     # Category / type dropdown (the most common filter).
     ('idx_gallery_category', 'photos', f'category, aggregate DESC, path, {_GALLERY_COVER_SQL}'),
     # Camera filter (and the camera+lens pair). `camera_model = ?` is the only

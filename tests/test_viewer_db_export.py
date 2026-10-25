@@ -555,6 +555,8 @@ def test_incremental_old_source_rejection_does_not_override_viewer_keep(tmp_path
     export_viewer_db(src, out, verbose=False)
     key = 'path' if table == 'photos' else 'photo_path'
     with sqlite3.connect(src) as conn:
+        if table == 'photos':
+            conn.execute('DROP INDEX IF EXISTS idx_review_progress')
         conn.execute(f"ALTER TABLE {table} DROP COLUMN is_kept")
         conn.execute(f"UPDATE {table} SET is_rejected=1 WHERE {key}=?", (_A,))
     with sqlite3.connect(out) as conn:

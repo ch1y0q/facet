@@ -1297,6 +1297,14 @@
     },
     "channel_clip_highlight_range": "Beschnittene Lichter %",
     "channel_clip_shadow_range": "Beschnittene Schatten %",
+    "review_progress": {
+      "title": "Sichtungsfortschritt",
+      "counts": "{undecided} unentschieden · {kept} behalten · {rejected} abgelehnt",
+      "complete": "{percent}% von {total} gesichtet",
+      "start": "Unentschiedene sichten",
+      "resume": "Sichtung fortsetzen",
+      "browser": "Gespeicherte Warteschlange in diesem Browser fortsetzen."
+    },
     "manual_faces_need_review": "Manuelle Gesichter prüfen",
     "manual_faces_review_hint": "Stand des letzten Scans oder der letzten Prüfung im Gesichtseditor, keine laufende Überwachung. Öffnen Sie den Gesichtseditor eines Fotos, um gespeicherte Markierungen zu prüfen."
   },
