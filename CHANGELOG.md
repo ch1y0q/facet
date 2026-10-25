@@ -9,7 +9,7 @@ All notable changes to Facet are documented in this file.
 
 ### Added
 
-- **Explicit keyword reconciliation.** `--export-sidecars --reconcile-keywords` removes only previously Facet-owned keywords, preserves foreign names, and carries deletion/AI provenance so removed tags and old AI labels do not return as manual tags. Additive exports remain the default; reconciliation requires ExifTool.
+- **Explicit keyword reconciliation.** `--export-sidecars --reconcile-keywords` removes only previously Facet-owned keywords and preserves foreign names and AI provenance. Deletion markers expire when a name reappears in the file or Facet writes it again, allowing externally re-added manual keywords to be imported. Both export modes still write current Facet keywords back after external removal; no implicit database deletion or bidirectional sync is added. Additive exports remain the default; reconciliation requires ExifTool. Existing files whose metadata cannot be read reliably now refuse export before any metadata-clearing write, including ordinary CLI and viewer exports and embedding. Numeric-looking keywords such as `2024` remain supported when ExifTool returns JSON numbers.
 - Explicit XMP export/import carries Keep decisions and manual GPS, with protection against overwriting existing manual locations.
 
 - **Correct capture dates** from photo details or gallery selections: preview a bounded walltime shift before applying it atomically, preserve manual dates across rescans/viewer exports, restore the file date, and export manual dates through the existing explicit XMP/embed actions.

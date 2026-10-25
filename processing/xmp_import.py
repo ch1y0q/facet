@@ -298,8 +298,10 @@ def import_sidecars(conn, root: str | None = None, *, user_id: str | None = None
         existing = set(load_manual_tags(conn, row["path"]))
         marker = parsed.get("keyword_state") or {}
         manual = {keyword_key(tag) for tag in marker.get("manual", [])}
-        excluded = ({keyword_key(tag) for tag in marker.get("deleted", [])}
-                    | {keyword_key(tag) for tag in marker.get("ai", []) if keyword_key(tag) not in manual})
+        # Present subjects supersede stale deletion markers: another editor
+        # may have re-added them without updating our private packet state.
+        # AI provenance remains independent of deletion/re-addition.
+        excluded = {keyword_key(tag) for tag in marker.get("ai", []) if keyword_key(tag) not in manual}
         keywords = [tag for tag in parsed["tags"] if keyword_key(tag) not in excluded]
         new_keywords = [
             tag for tag in _foreign_keywords(conn, row["path"], row["tags"], keywords)

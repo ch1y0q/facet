@@ -53,7 +53,9 @@ def reconcile_keywords(existing, current, previous=None, *, reconcile=False, ai=
     existing = list(dict.fromkeys(existing))
     present = unique(existing)
     wanted = unique(current)
-    deleted = unique(previous['deleted'])
+    # A name present after our deletion is an external re-add. The old marker
+    # no longer grants deletion authority over that new occurrence.
+    deleted = {key: value for key, value in unique(previous['deleted']).items() if key not in present}
     if reconcile:
         deleted.update({key: value for key, value in old.items() if key not in wanted})
         present = {key: value for key, value in present.items() if key not in deleted or key in wanted}

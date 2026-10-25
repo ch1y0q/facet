@@ -56,7 +56,7 @@ from typing import NamedTuple
 from xml.etree import ElementTree as ET
 
 from db.manual_tags import load_manual_tags_map, merge_effective_tags
-from processing.xmp_keywords import parse_keyword_state, reconcile_keywords, serialize_keyword_state
+from processing.xmp_keywords import parse_keyword_state, reconcile_keywords as merge_keyword_state, serialize_keyword_state
 from utils.capture_dates import parse_capture_date
 from utils.image_loading import JPEG_EXTENSIONS, KNOWN_HEIF_EXTENSIONS
 
@@ -352,7 +352,7 @@ def _apply_facet_nodes(desc, rating: XmpRating) -> None:
     has to merge with foreign nodes.
     """
     xmp_rating, label = rating.xmp_values()
-    _, keyword_state = reconcile_keywords([], rating.all_keywords(), ai=rating.ai_tags, manual=rating.manual_tags)
+    _, keyword_state = merge_keyword_state([], rating.all_keywords(), ai=rating.ai_tags, manual=rating.manual_tags)
     desc.set(f"{{{NS_FACET}}}KeywordState", serialize_keyword_state(keyword_state))
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     desc.set(f"{{{NS_XMP}}}Rating", str(xmp_rating))
@@ -600,7 +600,7 @@ def _exiftool_tag_args(rating: XmpRating, existing_flat: list[str],
     # Flat keywords (mirrored to IPTC for legacy tools): clear then replace with
     # the union of existing and Facet's keywords.
     args += ["-XMP-dc:Subject=", "-IPTC:Keywords="]
-    flat, marker = reconcile_keywords(existing_flat, rating.all_keywords(), keyword_state,
+    flat, marker = merge_keyword_state(existing_flat, rating.all_keywords(), keyword_state,
                                       reconcile=reconcile, ai=rating.ai_tags, manual=rating.manual_tags)
     args.append(f"-XMP-facet:KeywordState={serialize_keyword_state(marker)}")
     for keyword in flat:
@@ -615,7 +615,7 @@ def _exiftool_tag_args(rating: XmpRating, existing_flat: list[str],
 
 
 def _listify(value) -> list[str]:
-    """Normalise an exiftool JSON field (str / list / None) into a list of str."""
+    """Stringify scalar names (including ExifTool JSON numbers) into a list."""
     if value is None:
         return []
     if isinstance(value, list):
@@ -651,8 +651,11 @@ def _read_existing_metadata(target: str, exe: str, *, timeout: int, strict=False
         record = _exiftool_record(result.stdout)
         for key in ('Subject', 'Keywords', 'HierarchicalSubject'):
             value = record.get(key)
-            if key in record and not (isinstance(value, str)
-                    or isinstance(value, list) and all(isinstance(item, str) for item in value)):
+            # ExifTool JSON converts numeric-looking names (e.g. "2024")
+            # to numbers even without -n. Preserve the legacy stringification
+            # for scalar names, while refusing null/bool/nested containers.
+            if key in record and not (type(value) in (str, int, float)
+                    or isinstance(value, list) and all(type(item) in (str, int, float) for item in value)):
                 raise RuntimeError('Cannot read existing keywords: malformed list; export refused')
         flat = _union(_listify(record.get('Subject')), _listify(record.get('Keywords')))
         return flat, _listify(record.get('HierarchicalSubject')), record.get('DateState') == 'set'

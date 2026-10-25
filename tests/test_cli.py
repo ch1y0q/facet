@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sqlite3
 import stat
 import subprocess
@@ -92,6 +93,40 @@ def seeded_db(tmp_path):
 # ---------------------------------------------------------------------------
 # --help smoke for every CLI flag
 # ---------------------------------------------------------------------------
+
+def test_reconcile_keywords_requires_export_sidecars_before_database_creation(tmp_path):
+    db = tmp_path / 'must-not-exist.db'
+    result = _run(FACET, '--db', str(db), '--reconcile-keywords')
+    assert result.returncode == 2
+    assert '--reconcile-keywords requires --export-sidecars' in result.stderr
+    assert not db.exists()
+
+
+@pytest.mark.skipif(shutil.which('exiftool') is None, reason='requires ExifTool')
+@pytest.mark.parametrize('embed', [False, True])
+def test_cli_export_preserves_numeric_keyword(tmp_path, embed):
+    from PIL import Image
+    from db.schema import init_database
+    from processing.xmp_export import XmpRating, build_xmp, _read_existing_keywords, _resolve_exiftool
+    image = tmp_path / 'numeric.jpg'
+    Image.new('RGB', (16, 16)).save(image)
+    sidecar = Path(str(image) + '.xmp')
+    sidecar.write_text(build_xmp(XmpRating()))
+    for target in (image, sidecar):
+        subprocess.run(['exiftool', '-overwrite_original', '-XMP-dc:Subject=2024', str(target)],
+                       check=True, capture_output=True)
+    db = tmp_path / 'numeric.db'
+    init_database(str(db))
+    with sqlite3.connect(db) as conn:
+        conn.execute('INSERT INTO photos(path,tags) VALUES (?,?)', (str(image), 'facet-tag'))
+    flags = ['--embed-originals'] if embed else []
+    result = _run(FACET, '--db', str(db), '--export-sidecars', 'all', *flags)
+    assert result.returncode == 0, result.stderr
+    assert '1 written' in result.stdout + result.stderr
+    for target in (image, sidecar) if embed else (sidecar,):
+        flat, _ = _read_existing_keywords(str(target), _resolve_exiftool(), timeout=30, strict=True)
+        assert set(flat) == {'2024', 'facet-tag'}
+
 
 class TestHelpSmoke:
     def test_facet_help(self):

@@ -27,11 +27,14 @@ def packet_keywords(sidecar):
 def add_external_keyword(sidecar, keyword):
     packet = ET.parse(sidecar)
     bag = packet.find(f'.//{{{NS_DC}}}subject/{{{NS_RDF}}}Bag')
+    if bag is None:
+        desc = packet.find(f'.//{{{NS_RDF}}}Description')
+        bag = ET.SubElement(ET.SubElement(desc, f'{{{NS_DC}}}subject'), f'{{{NS_RDF}}}Bag')
     ET.SubElement(bag, f'{{{NS_RDF}}}li').text = keyword
     packet.write(sidecar, encoding='utf-8', xml_declaration=True)
 
 
-def test_foreign_name_collision_is_never_claimed_and_readd_remains_owned():
+def test_foreign_name_collision_and_external_readd_are_never_claimed():
     flat, state = reconcile_keywords(['Foreign', 'same'], ['same', 'owned'], ai=['owned'])
     assert state['owned'] == ['owned']
     assert state['ai'] == ['owned']
@@ -39,14 +42,44 @@ def test_foreign_name_collision_is_never_claimed_and_readd_remains_owned():
     assert flat == ['Foreign', 'same']
     assert state['deleted'] == ['owned']
     flat, state = reconcile_keywords([*flat, 'owned'], ['owned'], state, reconcile=True)
-    assert state['owned'] == ['owned']
+    assert state['owned'] == []
     assert state['deleted'] == []
     flat, state = reconcile_keywords(flat, [], state, reconcile=True)
-    assert flat == ['Foreign', 'same']
+    assert flat == ['Foreign', 'same', 'owned']
+
+
+@pytest.mark.parametrize('reconcile', [False, True])
+def test_external_readd_expires_tombstone_without_local_readdition(reconcile):
+    flat, state = reconcile_keywords([], ['beach'])
+    flat, state = reconcile_keywords(flat, [], state, reconcile=True)
+    assert state['deleted'] == ['beach']
+    flat, state = reconcile_keywords(['BEACH'], [], state, reconcile=reconcile)
+    assert flat == ['BEACH']
+    assert state['deleted'] == []
+    assert state['owned'] == []
+    flat, state = reconcile_keywords(flat, [], state, reconcile=True)
+    assert flat == ['BEACH']
+
+
+def test_facet_writing_absent_deleted_name_clears_tombstone_and_reclaims_it():
+    flat, state = reconcile_keywords([], ['beach'])
+    flat, state = reconcile_keywords(flat, [], state, reconcile=True)
+    flat, state = reconcile_keywords(flat, ['beach'], state, reconcile=True)
+    assert flat == ['beach']
+    assert state['owned'] == ['beach']
+    assert state['deleted'] == []
+
+
+@pytest.mark.parametrize('reconcile', [False, True])
+def test_external_removal_does_not_silently_delete_current_facet_keywords(reconcile):
+    _, state = reconcile_keywords([], ['beach'])
+    flat, state = reconcile_keywords([], ['beach'], state, reconcile=reconcile)
+    assert flat == ['beach']
+    assert state['owned'] == ['beach']
 
 
 @pytest.mark.skipif(not exiftool_available(), reason='requires ExifTool')
-def test_deleted_manual_keyword_cannot_return_and_foreign_nodes_survive(tmp_path):
+def test_deleted_manual_keyword_can_be_readded_externally_and_foreign_nodes_survive(tmp_path):
     from PIL import Image
     image = tmp_path / 'photo.jpg'
     Image.new('RGB', (20, 20), 'blue').save(image)
@@ -78,10 +111,43 @@ def test_deleted_manual_keyword_cannot_return_and_foreign_nodes_survive(tmp_path
         # External editors often preserve private markers while copying subjects.
         add_external_keyword(sidecar, 'DELETE-ME')
         import_sidecars(conn)
-        assert load_manual_tags(conn, str(image)) == ['foreign']
+        assert load_manual_tags(conn, str(image)) == ['delete-me', 'foreign']
         export_sidecars(conn, reconcile_keywords=True)
-        assert set(packet_keywords(sidecar)) == {'foreign', 'machine'}
+        assert set(packet_keywords(sidecar)) == {'foreign', 'machine', 'DELETE-ME'}
+        assert parse_sidecar(str(sidecar))['keyword_state']['deleted'] == []
+        # Subsequent reconciles cannot delete this now-foreign occurrence.
+        delete_manual_tag(conn, str(image), 'delete-me')
+        conn.commit()
+        export_sidecars(conn, reconcile_keywords=True)
+        assert 'DELETE-ME' in packet_keywords(sidecar)
         assert image.read_bytes() == original
+    finally:
+        conn.close()
+
+
+@pytest.mark.skipif(not exiftool_available(), reason='requires ExifTool')
+@pytest.mark.parametrize('reconcile', [False, True])
+def test_real_external_readd_survives_export_before_import(tmp_path, reconcile):
+    from PIL import Image
+    image = tmp_path / 'readd.jpg'
+    Image.new('RGB', (16, 16)).save(image)
+    conn = database(tmp_path)
+    try:
+        conn.execute('INSERT INTO photos(path) VALUES (?)', (str(image),))
+        insert_manual_tag(conn, str(image), 'beach')
+        conn.commit()
+        export_sidecars(conn)
+        delete_manual_tag(conn, str(image), 'beach')
+        conn.commit()
+        export_sidecars(conn, reconcile_keywords=True)
+        sidecar = Path(str(image) + '.xmp')
+        assert parse_sidecar(str(sidecar))['keyword_state']['deleted'] == ['beach']
+        add_external_keyword(sidecar, 'BEACH')
+        export_sidecars(conn, reconcile_keywords=reconcile)
+        assert packet_keywords(sidecar) == ['BEACH']
+        assert parse_sidecar(str(sidecar))['keyword_state']['deleted'] == []
+        import_sidecars(conn)
+        assert load_manual_tags(conn, str(image)) == ['beach']
     finally:
         conn.close()
 
@@ -106,6 +172,9 @@ def test_retag_does_not_turn_previous_ai_into_manual_and_manual_duplicate_restor
         assert load_manual_tags(conn, str(image)) == ['manual', 'shared']
         export_sidecars(conn, reconcile_keywords=True)
         assert set(packet_keywords(sidecar)) == {'new-ai', 'manual', 'shared'}
+        # Re-addition expires deletion authority, not the AI provenance that
+        # prevents an old machine label becoming a permanent manual tag.
+        add_external_keyword(sidecar, 'old-ai')
         conn.execute('DELETE FROM photo_manual_tags')
         conn.commit()
         import_sidecars(conn)
@@ -164,7 +233,7 @@ def test_keyword_reconciliation_respects_user_visibility(tmp_path, monkeypatch):
     ('keywords', '[]'), ('keywords', '{}'), ('keywords', '[null]'),
     ('keywords', '[{"Error":"cannot read file"}]'),
     ('keywords', '[{"Subject":{"bad":"shape"}}]'),
-    ('keywords', '[{"Subject":[1]}]'), ('keywords', '[{"Subject":null}]'),
+    ('keywords', '[{"Subject":[true]}]'), ('keywords', '[{"Subject":null}]'),
     ('keywords', '[{"Error":null}]'), ('keywords', 'not json'),
     ('state', '[]'), ('state', '[null]'), ('state', '{"KeywordState":null}'),
     ('state', '[{"Error":"cannot read state"}]'),
@@ -283,3 +352,42 @@ def test_foreign_case_and_normalization_display_variants_are_not_collapsed():
     assert state['owned'] == []
     flat, state = reconcile_keywords(flat, [], state, reconcile=True)
     assert flat == foreign
+
+
+@pytest.mark.parametrize('value,expected', [(2024, ['2024']), (2.5, ['2.5']),
+                                           ([2024, 'holiday', 2.5], ['2024', 'holiday', '2.5'])])
+@pytest.mark.parametrize('field', ['Subject', 'Keywords', 'HierarchicalSubject'])
+def test_exiftool_numeric_keyword_json_is_stringified(monkeypatch, value, expected, field):
+    import json
+    import subprocess
+    from processing import xmp_export as xe
+    monkeypatch.setattr(xe.subprocess, 'run', lambda args, **kwargs:
+                        subprocess.CompletedProcess(args, 0, stdout=json.dumps([{field: value}])))
+    flat, hierarchical, _ = xe._read_existing_metadata('existing.xmp', 'exiftool', timeout=1, strict=True)
+    assert (hierarchical if field == 'HierarchicalSubject' else flat) == expected
+
+
+@pytest.mark.skipif(not exiftool_available(), reason='requires ExifTool')
+@pytest.mark.parametrize('reconcile', [False, True])
+@pytest.mark.parametrize('embed', [False, True])
+def test_real_numeric_keywords_survive_cli_writer_paths(tmp_path, embed, reconcile):
+    import subprocess
+    from PIL import Image
+    from processing import xmp_export as xe
+    image = tmp_path / 'year.jpg'
+    Image.new('RGB', (16, 16)).save(image)
+    sidecar = Path(str(image) + '.xmp')
+    if not embed:
+        sidecar.write_text(build_xmp(XmpRating()))
+    target = image if embed else sidecar
+    subprocess.run(['exiftool', '-overwrite_original', '-XMP-dc:Subject=2024',
+                    '-XMP-dc:Subject=holiday', str(target)], check=True, capture_output=True)
+    conn = database(tmp_path)
+    try:
+        conn.execute('INSERT INTO photos(path,tags) VALUES (?,?)', (str(image), 'facet-tag'))
+        conn.commit()
+        assert export_sidecars(conn, embed_original=embed, reconcile_keywords=reconcile)['written'] == 1
+        flat, _ = xe._read_existing_keywords(str(target), xe._resolve_exiftool(), timeout=30, strict=True)
+        assert set(flat) == {'2024', 'holiday', 'facet-tag'}
+    finally:
+        conn.close()
