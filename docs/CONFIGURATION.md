@@ -2869,6 +2869,8 @@ One-way sync of Facet star ratings and favorites to an [Immich](https://immich.a
 |---------|---------|-------------|
 | `url` | `""` | Base URL of the Immich server (e.g. `http://nas:2283`) |
 | `api_key` | `""` | Immich API key, sent as the `x-api-key` header |
+| `owner_id` | `""` | Optional exact remote owner ID; returned assets missing this field or belonging to another owner are excluded |
+| `library_id` | `""` | Optional exact remote library ID; empty means no library filter, not a null library |
 | `path_map` | `[{facet_prefix, immich_prefix}]` | Prefix rewrites from Facet paths to Immich `originalPath` values; the first matching `facet_prefix` is swapped for its `immich_prefix` when resolving an asset |
 | `push.ratings` | `true` | Push star ratings. Immich's version-safe policy is honored — only 1–5 is written, never 0/−1 |
 | `push.favorites` | `true` | Push the favorite flag |
