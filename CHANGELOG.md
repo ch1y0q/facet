@@ -4,13 +4,14 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
-- Filter photos with unassigned faces or unnamed people from the gallery People section.
 
 ### Changed
 - Read search cache database change tokens in a worker thread so cold searches do not block other requests.
 - Resize manual-face previews and crop face pixels before converting to RGB, avoiding full-resolution copies on preview and save.
 
 ### Added
+
+- Filter photos with unassigned faces or unnamed people from the gallery Persons section.
 
 - **Explicit XMP sidecar discovery.** `--import-sidecars --sidecar-naming full|basename|auto` can read stripped-extension sidecars, refuses shared RAW/JPEG basenames, and reports naming conflicts. Full-name discovery remains the default; exports keep their existing filenames.
 
@@ -27,6 +28,8 @@ All notable changes to Facet are documented in this file.
 - **The photo card's hover buttons are yours to arrange.** The four buttons that floated over every card on hover (find similar, why-this-score, write metadata, assign a face) are now a configurable row: a new dialog in the filter sidebar's View section reorders them and switches each on or off, per browser. Four actions join the pool — **open the photo's duplicate group** (on by default, and scoped to that group the same way the photo page's "open this set" lands), open its burst group, open its bracket/panorama set, and open the photo page. The group buttons appear only on photos that actually belong to such a group, so the row stays quiet on photos with nothing to offer. The layout persists in localStorage like the thumbnail size; smart albums, filters and the API are untouched.
 
 ### Fixed
+
+- Restore the opened gallery card after parked layout changes and close menus and selects when opening a photo. Use a covering face index for the naming queue without retaining its redundant predecessor.
 
 - **Immich sync refuses ambiguous assets.** Duplicate remote paths and colliding Facet mappings are reported as identity conflicts. Fallback searches check every page and require an exact path; webhook IDs are verified before writes. Optional owner/library ID selectors restrict the configured server's responses. Literal first-prefix mapping behavior is unchanged.
 - Refuse basename XMP discovery when a double-extension derivative would read another image’s full-name or fallback sidecar. Report full-policy naming notices once per import while retaining complete mismatch counts.

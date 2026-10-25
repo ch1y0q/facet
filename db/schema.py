@@ -365,13 +365,14 @@ INDEXES = [
     ('idx_is_burst_lead', 'photos', 'is_burst_lead'),
     ('idx_is_sequence_lead', 'photos', 'is_sequence_lead'),
     ('idx_tags', 'photos', 'tags'),
-    ('idx_faces_photo', 'faces', 'photo_path'),
     ('idx_faces_person', 'faces', 'person_id'),
     # Composite indexes for common query patterns
     ('idx_aggregate_date', 'photos', 'aggregate DESC, date_taken DESC'),
     ('idx_burst_aggregate', 'photos', 'is_burst_lead, aggregate DESC'),
     ('idx_face_detection', 'photos', 'face_count, face_ratio'),
     ('idx_faces_person_photo', 'faces', 'person_id, photo_path'),
+    # Keep naming-queue EXISTS probes out of the face table's wide embedding rows.
+    ('idx_faces_photo_person', 'faces', 'photo_path, person_id'),
     ('idx_filename', 'photos', 'filename'),
     ('idx_category', 'photos', 'category'),
     ('idx_category_aggregate', 'photos', 'category, aggregate DESC'),
@@ -1501,9 +1502,10 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
         # narrow copy instead of maintaining two near-identical B-trees.
         # idx_qrealign_score, idx_deqa_score and idx_aesthetic_v25 are superseded by
         # idx_qrealign_sort, idx_deqa_sort and idx_aesthetic_v25_sort (X DESC, path).
+        # idx_faces_photo is covered by idx_faces_photo_person, including photo-only probes.
         for stale_idx in ('idx_burst_moment', 'idx_burst_learned', 'idx_qalign_score',
                           'idx_render_version', 'idx_gallery_date_asc', 'idx_qrealign_score',
-                          'idx_deqa_score', 'idx_aesthetic_v25'):
+                          'idx_deqa_score', 'idx_aesthetic_v25', 'idx_faces_photo'):
             conn.execute(f'DROP INDEX IF EXISTS {stale_idx}')
 
         # Create every remaining index group (photo_tags, comparisons,

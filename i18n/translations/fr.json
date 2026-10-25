@@ -1321,7 +1321,8 @@
     "manual_faces_need_review": "Visages manuels à vérifier",
     "manual_faces_review_hint": "Selon le dernier scan ou contrôle dans l’éditeur de visages, sans surveillance continue. Ouvrez l’éditeur de visages d’une photo pour vérifier les repères enregistrés.",
     "faces_need_names": "Visages sans nom",
-    "faces_need_names_hint": "Inclut les visages non attribués et les groupes sans nom. Utilisez + pour attribuer un visage ou nommez un groupe dans Personnes. Les photos sans visage détecté sont exclues."
+    "faces_need_names_hint": "Inclut les visages non attribués et les groupes sans nom. Utilisez + pour attribuer un visage ou nommez un groupe dans Personnes. Les photos sans visage détecté sont exclues.",
+    "faces_need_names_readonly_hint": "Inclut les visages non attribués et les groupes sans nom. Une personne ayant accès à la modification peut attribuer les visages ou nommer les groupes. Les photos sans visage détecté sont exclues."
   },
   "composition_patterns": {
     "none": "Aucun",
