@@ -128,3 +128,22 @@ def test_face_covering_index_replaces_legacy_index_on_upgrade(tmp_path):
         assert 'idx_faces_photo_person' in indexes
         assert 'idx_faces_photo' not in indexes
         assert conn.execute("SELECT id,person_id FROM faces WHERE photo_path='/a.jpg'").fetchall() == before
+
+
+def test_face_covering_index_is_planned_on_an_already_analyzed_library(tmp_path):
+    import sqlite3
+    from db.schema import init_database
+
+    path = str(tmp_path / 'analyzed.db')
+    init_database(path)
+    with sqlite3.connect(path) as conn:
+        conn.execute('DROP INDEX idx_faces_photo_person')
+        conn.executemany('INSERT INTO photos(path) VALUES (?)', [(f'/p{i}.jpg',) for i in range(50)])
+        conn.executemany('INSERT INTO faces(photo_path, face_index, embedding) VALUES (?,?,?)',
+                         [(f'/p{i}.jpg', j, b'\x00') for i in range(50) for j in range(3)])
+        conn.execute('ANALYZE faces')
+    init_database(path)
+    with sqlite3.connect(path) as conn:
+        plan = conn.execute('EXPLAIN QUERY PLAN SELECT 1 FROM faces WHERE photo_path = ? AND person_id IS NULL',
+                            ('/p1.jpg',)).fetchall()
+    assert any('COVERING INDEX idx_faces_photo_person' in row[3] for row in plan), plan

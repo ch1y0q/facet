@@ -1582,7 +1582,7 @@ ANALYZE_KEY_INDEXES = ('idx_moment_confidence', 'idx_gallery_aggregate')
 # stale partial stats. A one-index ANALYZE scans the small covering index, not the
 # 16 GB table, so it costs seconds where ``ANALYZE photos`` costs the whole file.
 ANALYZE_ON_BUILD_INDEXES = ('idx_post_scan', 'idx_date_asc_cover', 'idx_qrealign_sort',
-                            'idx_deqa_sort', 'idx_aesthetic_v25_sort')
+                            'idx_deqa_sort', 'idx_aesthetic_v25_sort', 'idx_faces_photo_person')
 
 
 def missing_photo_indexes(conn):
