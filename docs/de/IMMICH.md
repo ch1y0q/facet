@@ -130,7 +130,7 @@ python facet.py --immich-sync --dry-run
 python facet.py --immich-sync
 ```
 
-Die Synchronisierung meldet `matched` / `unmatched` / `updated` / `skipped (unrated)` / erstellte Alben. Ein erster Lauf mit einer hohen `unmatched`-Zahl bedeutet fast immer, dass die Pfadzuordnung falsch ist — siehe [Fehlerbehebung](#fehlerbehebung).
+Die Synchronisierung meldet `matched` / `unmatched` / `updated` / `skipped (unrated)` / `identity_conflicts` / erstellte Alben. Ein erster Lauf mit einer hohen `unmatched`-Zahl bedeutet fast immer, dass die Pfadzuordnung falsch ist — siehe [Fehlerbehebung](#fehlerbehebung). Im Probelauf zählt `updated` die geplanten geprüften Änderungen; entfernte Daten und lokaler Synchronisierungszustand werden nicht geschrieben.
 
 Was übertragen wird:
 
@@ -337,6 +337,10 @@ Facet sendet eine Löschung nur für ein Foto, das es tatsächlich zuvor übertr
 
 Pfade mit mehreren entfernten Asset-IDs und mehrere Facet-Pfade mit demselben entfernten Ziel werden als `identity_conflicts` abgelehnt. Für diese Pfade erfolgen weder Änderungen noch bestätigte Synchronisierungszustände; eindeutige Fotos können weiter synchronisieren. Wurzeln korrigieren oder `owner_id` und `library_id` wählen und erneut versuchen.
 
+Identitätsprüfungen verwenden die konfigurierte Server-URL und den API-Schlüssel. Antworten müssen `id` und `originalPath` enthalten; gewählte Eigentümer- und Bibliotheksbereiche müssen den Antwortfeldern entsprechen. Eine Webhook-ID wird durch Abruf des Assets und Suche aller Seiten nach dem exakten Pfad geprüft: Doppelte Pfade, abweichende IDs oder ungültige Seitennummern verhindern die Änderung. Eine erfolgreiche Antwort bestätigt die HTTP-Annahme; Metadatenaufträge können noch ausstehen.
+
+Webhook-Stapel lehnen alle betroffenen Einträge ab, wenn verschiedene Facet-Pfade dasselbe Ziel oder dieselbe entfernte ID beanspruchen. Vor dem ersten Schreiben werden alle Identitäten geprüft; widersprüchliche Aliase zählen als `failed` und bestätigen keinen Synchronisierungszustand.
+
 ### `rating: 0 is not valid`
 
 Der Immich-Server ist älter als 3.0. Führen Sie ein Upgrade durch — Facets Löschsemantik benötigt `null`, und `push.rejected` benötigt `-1`; es gibt keinen Fallback, der auf 2.x funktioniert.
@@ -344,7 +348,3 @@ Der Immich-Server ist älter als 3.0. Führen Sie ein Upgrade durch — Facets L
 ---
 
 **Siehe auch:** [Befehle — Immich-Synchronisierung](COMMANDS.md#immich-synchronisierung) · [Konfiguration](CONFIGURATION.md) · [Editor-Interop-Rezepte](INTEROP.md) für XMP-Roundtripping mit Lightroom, darktable und digiKam.
-
-Präfixe bleiben wörtliche Zeichenfolgen: Der erste Treffer gewinnt, ohne automatische Verzeichnisgrenze. Verzeichnispräfixe mit `/` abschließen. Im Probelauf zählt `updated` geplante Änderungen; entfernte Daten und lokaler Synchronisierungszustand bleiben unverändert. Antworten benötigen `id` und `originalPath`. Der Vertrag wurde mit veröffentlichten Immich-v3.3.5-Schemata und isolierten Fixtures geprüft, ohne echten Server. HTTP-Erfolg bestätigt keine Dauerhaftigkeit nach Metadatenaufträgen.
-
-Webhook-Stapel lehnen alle betroffenen Einträge ab, wenn verschiedene Facet-Pfade dasselbe Ziel oder dieselbe entfernte ID beanspruchen. Vor dem ersten Schreiben werden alle Identitäten geprüft; widersprüchliche Aliase zählen als `failed` und bestätigen keinen Synchronisierungszustand.
