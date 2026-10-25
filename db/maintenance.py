@@ -45,6 +45,16 @@ DURABLE_STATS_CACHE_KEY_GLOBS: tuple[str, ...] = (
 AUTO_RETRAIN_COUNTER_KEY_GLOB = 'auto_retrain_pending:*'
 
 
+def evict_derived_stats_cache(cursor, preserve_auto_retrain_counters=True):
+    """Drop every stats_cache row derived from the photo rows, keeping library state."""
+    kept = DURABLE_STATS_CACHE_KEY_GLOBS
+    if preserve_auto_retrain_counters:
+        kept += (AUTO_RETRAIN_COUNTER_KEY_GLOB,)
+    cursor.execute(
+        "DELETE FROM stats_cache WHERE NOT (" + " OR ".join(["key GLOB ?"] * len(kept)) + ")",
+        kept)
+
+
 def _classify_missing_path(path):
     """Classify a stored photo path as present, genuinely deleted, or merely
     inaccessible (permission denied or an unmounted/absent parent).
@@ -353,12 +363,7 @@ def delete_photo_rows(conn, paths: list[str], *, preserve_auto_retrain_counters:
 
     # Invalidate stats cache since photo counts and details have changed.
     try:
-        kept = DURABLE_STATS_CACHE_KEY_GLOBS
-        if preserve_auto_retrain_counters:
-            kept += (AUTO_RETRAIN_COUNTER_KEY_GLOB,)
-        cursor.execute(
-            "DELETE FROM stats_cache WHERE NOT (" + " OR ".join(["key GLOB ?"] * len(kept)) + ")",
-            kept)
+        evict_derived_stats_cache(cursor, preserve_auto_retrain_counters)
         # Tombstone rather than absence, so a viewer computing the ranges right
         # now cannot write its pre-deletion result back (invalidate_metric_ranges).
         invalidate_metric_ranges(cursor)
@@ -696,6 +701,9 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
         cleared to 0 on the viewer is indistinguishable from unrated and cannot
         be preserved against a non-zero source."""
         src_val = f"(SELECT {col} FROM src.photos WHERE src.photos.path = main.photos.path)"
+        if col in ('date_taken', 'date_manually_set'):
+            return (f"{col} = CASE WHEN main.photos.date_manually_set = 1 "
+                    f"THEN main.photos.{col} ELSE {src_val} END")
         if col in ('gps_latitude', 'gps_longitude', 'gps_manually_set'):
             return (f"{col} = CASE WHEN main.photos.gps_manually_set = 1 "
                     f"THEN main.photos.{col} ELSE {src_val} END")
