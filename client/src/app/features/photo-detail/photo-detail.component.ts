@@ -224,6 +224,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
           <div>
             <div class="font-semibold text-lg">{{ p.filename }}</div>
             @if (auth.isEdition()) {
+              <button mat-button (click)="openOrganizationHistory()">{{ I18N.organization_history.title | translate }}</button>
               <button mat-button (click)="editCaptureDate(p)">{{ I18N.capture_date.title | translate }}</button>
             }
             @if (p.date_taken) {
@@ -1369,10 +1370,41 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     });
   }
 
+  protected loadOrganizationHistoryDialog() { return import('./organization-history-dialog.component'); }
+
+  protected async openOrganizationHistory(): Promise<void> {
+    if (!this.auth.isEdition()) return;
+    const owner = this.auth.identity();
+    const path = this.photo()?.path;
+    const url = this.router.url;
+    let navigated = false;
+    let opened = false;
+    const navigation = this.router.events.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(event => {
+      if (event instanceof NavigationStart) navigated = true;
+    });
+    const current = () => !navigated && !this.destroyRef.destroyed && this.auth.identity() === owner
+      && this.auth.isEdition() && this.router.url === url && this.photo()?.path === path;
+    try {
+      const { OrganizationHistoryDialogComponent } = await this.loadOrganizationHistoryDialog();
+      if (!current()) return;
+      const ref = this.dialog.open(OrganizationHistoryDialogComponent, { width: '95vw', maxWidth: '820px' });
+      const history = ref.componentInstance;
+      opened = true;
+      ref.afterClosed().pipe(takeUntilDestroyed(this.destroyRef)).subscribe(async () => {
+        try {
+          await history.whenSettled();
+          if (!history.wasRestored() || !path || !current()) return;
+          const previous = this.photo();
+          const fresh = await this.fetchPhoto(path).catch(() => undefined);
+          if (fresh && current() && this.photo() === previous) this.photo.set(fresh);
+        } finally { navigation.unsubscribe(); }
+      });
+    } finally { if (!opened) navigation.unsubscribe(); }
+  }
+
   protected loadCaptureDateDialog() { return import('./capture-date-dialog.component'); }
 
   protected async editCaptureDate(p: Photo): Promise<void> {
-    const owner = this.auth.status();
     const identity = this.auth.identity();
     const url = this.router.url;
     let navigated = false;
@@ -1380,7 +1412,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     const navigation = this.router.events.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(event => {
       if (event instanceof NavigationStart) navigated = true;
     });
-    const current = () => !navigated && !this.destroyRef.destroyed && this.auth.status() === owner
+    const current = () => !navigated && !this.destroyRef.destroyed
       && this.auth.identity() === identity && this.auth.isEdition() && this.router.url === url && this.photo()?.path === p.path;
     try {
       const m = await this.loadCaptureDateDialog();
