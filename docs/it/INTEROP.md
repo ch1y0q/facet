@@ -174,3 +174,5 @@ Facet conserva i tag che digiti tu stesso (vedi [Galleria web — Tag manuali](V
 Vedi [Comandi — Anteprima ed esportazione](COMMANDS.md#anteprima-ed-esportazione) per il riferimento CLI completo (`--export-sidecars`, `--import-sidecars`, `--embed-originals`, `--score-to-stars`, `--user`).
 
 Se un vecchio marcatore `facet:GPSState=cleared` accompagna i campi GPS standard, prevale una coppia completa e valida di latitudine/longitudine. Una coppia parziale o non valida con contenuto è ambigua e viene ignorata; non cancella mai la posizione. Solo una coppia assente o vuota con il marcatore esplicito cancella il GPS. Il GPS manuale resta protetto salvo richiesta esplicita di sovrascrittura.
+
+L’esportazione delle didascalie con ExifTool modifica solo la lingua `x-default` di `dc:description` e conserva le altre lingue in ogni file sidecar o immagine. Una didascalia vuota in Facet conserva quelle esistenti. Senza ExifTool, l’XML contiene la lingua predefinita e normalmente usa `<image>.facet.xmp` se esiste già un sidecar; la sovrascrittura esplicita continua a sostituire il pacchetto di destinazione.
