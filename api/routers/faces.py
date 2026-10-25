@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from api.auth import CurrentUser, require_edition, require_auth, require_authenticated
-from api.config import is_multi_user_enabled, _stats_cache
+from api.config import is_multi_user_enabled, _stats_cache, invalidate_stats_cache
 from api import organization_history
 from api.database import get_async_db, get_db
 from api.routers.burst_culling import _invalidate_culling_groups_cache
@@ -272,6 +272,7 @@ def api_assign_face(
             update_person_face_count(conn, body.person_id)
 
             conn.commit()
+            invalidate_stats_cache()
 
             return {'success': True}
         except LookupError:
@@ -318,6 +319,7 @@ def api_assign_all_faces(
             update_person_face_count(conn, body.person_id)
 
             conn.commit()
+            invalidate_stats_cache()
 
             return {'success': True, 'assigned_count': len(face_ids)}
         except LookupError:
@@ -374,6 +376,7 @@ def api_unassign_person(
                 repair_stale_representative(conn, body.person_id)
 
             conn.commit()
+            invalidate_stats_cache()
 
             return {
                 'success': True,

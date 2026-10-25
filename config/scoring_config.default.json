@@ -3780,6 +3780,8 @@
   "immich": {
     "url": "",
     "api_key": "",
+    "owner_id": "",
+    "library_id": "",
     "path_map": [
       {
         "facet_prefix": "",

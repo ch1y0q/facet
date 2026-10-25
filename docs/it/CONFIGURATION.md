@@ -2892,6 +2892,8 @@ Sincronizzazione unidirezionale delle valutazioni a stelle e dei preferiti di Fa
 |---------|---------|-------------|
 | `url` | `""` | URL di base del server Immich (es. `http://nas:2283`) |
 | `api_key` | `""` | Chiave API di Immich, inviata come intestazione `x-api-key` |
+| `owner_id` | `""` | ID esatto del proprietario Immich; vuoto disattiva il filtro. Un campo assente non soddisfa una selezione esplicita. |
+| `library_id` | `""` | ID esatto della libreria Immich; vuoto disattiva il filtro, senza selezionare una libreria null. |
 | `path_map` | `[{facet_prefix, immich_prefix}]` | Riscritture di prefisso dai percorsi di Facet ai valori `originalPath` di Immich; il primo `facet_prefix` corrispondente viene sostituito con il suo `immich_prefix` quando si risolve un asset |
 | `push.ratings` | `true` | Invia le valutazioni a stelle. La politica di Immich sicura per le versioni viene rispettata — viene scritto solo 1–5, mai 0/−1 |
 | `push.favorites` | `true` | Invia il contrassegno di preferito |

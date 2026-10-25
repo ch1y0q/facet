@@ -290,6 +290,7 @@ class GalleryParams(BaseModel):
     # Content flags
     is_monochrome: str = ''
     manual_faces_need_review: str = ''
+    faces_need_names: str = ''
     category: str = ''
     narrative_moment: str = ''
     junk_kind: str = ''         # exact kind, or 'any' for any junk
