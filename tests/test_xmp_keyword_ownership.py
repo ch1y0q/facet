@@ -203,6 +203,27 @@ def test_fallback_tracks_ai_and_manual_provenance_without_exiftool(tmp_path, mon
         conn.close()
 
 
+@pytest.mark.parametrize('naming', ['full', 'basename', 'auto'])
+def test_provenance_and_external_readds_follow_selected_naming_policy(tmp_path, naming):
+    import json
+    from processing.xmp_export import NS_FACET
+    image = tmp_path / 'photo.CR2'
+    image.write_bytes(b'generated placeholder')
+    sidecar = Path(str(image) + '.xmp') if naming == 'full' else tmp_path / 'photo.xmp'
+    packet = ET.fromstring(build_xmp(XmpRating(tags=['old-ai', 'restored'])))
+    packet.find(f'.//{{{NS_RDF}}}Description').set(f'{{{NS_FACET}}}KeywordState', json.dumps({
+        'version': 1, 'owned': [], 'deleted': ['restored'], 'ai': ['old-ai'], 'manual': []}))
+    sidecar.write_bytes(ET.tostring(packet))
+    conn = database(tmp_path)
+    try:
+        conn.execute('INSERT INTO photos(path,tags) VALUES (?,?)', (str(image), 'new-ai'))
+        conn.commit()
+        assert import_sidecars(conn, sidecar_naming=naming)['tags_added'] == 1
+        assert load_manual_tags(conn, str(image)) == ['restored']
+    finally:
+        conn.close()
+
+
 @pytest.mark.skipif(not exiftool_available(), reason='requires ExifTool')
 def test_keyword_reconciliation_respects_user_visibility(tmp_path, monkeypatch):
     from PIL import Image

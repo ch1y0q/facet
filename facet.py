@@ -2410,6 +2410,8 @@ def main():
 
     parser = cli_args.build_parser()
     args = parser.parse_args()
+    if args.sidecar_naming is not None and not args.import_sidecars:
+        parser.error("--sidecar-naming requires --import-sidecars")
     if args.reconcile_keywords and not args.export_sidecars:
         parser.error("--reconcile-keywords requires --export-sidecars")
     if args.overwrite_manual_gps and not args.import_sidecars:
@@ -3922,13 +3924,17 @@ def main():
     if args.import_sidecars:
         from processing.xmp_import import import_sidecars
         root = None if args.import_sidecars == 'all' else args.import_sidecars
+        sidecar_naming = args.sidecar_naming or "full"
         init_database(args.db)  # photo_manual_tags may not exist yet; lock is held
         with get_connection(args.db) as conn:
             stats = import_sidecars(conn, root, user_id=args.user,
-                                    overwrite_manual_gps=args.overwrite_manual_gps)
+                                    overwrite_manual_gps=args.overwrite_manual_gps,
+                                    sidecar_naming=sidecar_naming)
         logger.info(
-            "Sidecar import: %d updated, %d unchanged, %d without sidecar, %d skipped",
-            stats['updated'], stats['unchanged'], stats['missing'], stats['skipped'],
+            "Sidecar import (%s): %d updated, %d unchanged, %d without sidecar, %d skipped "
+            "(%d ambiguous, %d naming mismatches)",
+            sidecar_naming, stats['updated'], stats['unchanged'], stats['missing'], stats['skipped'],
+            stats['ambiguous'], stats['naming_mismatch'],
         )
         exit()
 

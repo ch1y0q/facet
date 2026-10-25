@@ -141,7 +141,7 @@ class TestHelpSmoke:
             '--extract-faces-gpu-incremental', '--cluster-faces-force',
             '--export-csv', '--export-json', '--list-models',
             '--doctor', '--optimize-weights', '--comparison-stats',
-            '--validate-categories',
+            '--validate-categories', '--sidecar-naming',
         ):
             assert flag in result.stdout, f"flag missing from facet.py --help: {flag}"
 
@@ -885,3 +885,69 @@ def test_overwrite_manual_gps_requires_explicit_import(tmp_path):
     assert result.returncode == 2
     assert '--overwrite-manual-gps requires --import-sidecars' in result.stderr
     assert not (tmp_path / 'unused.db').exists()
+
+
+@pytest.mark.parametrize('policy', ['full', 'basename', 'auto'])
+def test_sidecar_naming_requires_explicit_import(tmp_path, policy):
+    result = _run(FACET, '--sidecar-naming', policy, '--db', str(tmp_path / 'unused.db'))
+    assert result.returncode == 2
+    assert '--sidecar-naming requires --import-sidecars' in result.stderr
+    assert not (tmp_path / 'unused.db').exists()
+
+
+def test_sidecar_naming_rejects_unknown_policy(tmp_path):
+    result = _run(FACET, '--import-sidecars', '--sidecar-naming', 'newest',
+                  '--db', str(tmp_path / 'unused.db'))
+    assert result.returncode == 2
+    assert 'invalid choice' in result.stderr
+    assert not (tmp_path / 'unused.db').exists()
+
+
+@pytest.mark.parametrize('policy,expected,ambiguous', [
+    ('full', 2, 0), ('basename', 5, 0), ('auto', 1, 1),
+])
+def test_sidecar_naming_cli_imports_or_reports_conflict(tmp_path, policy, expected, ambiguous):
+    from db.schema import init_database
+    from processing.xmp_export import XmpRating, build_xmp
+
+    db = tmp_path / 'sidecars.db'
+    init_database(str(db))
+    image = tmp_path / 'p.CR3'
+    image.write_bytes(b'disposable original')
+    primary = tmp_path / 'p.CR3.xmp'
+    basename = tmp_path / 'p.xmp'
+    primary.write_text(build_xmp(XmpRating(star_rating=2)), encoding='utf-8')
+    basename.write_text(build_xmp(XmpRating(star_rating=5)), encoding='utf-8')
+    with sqlite3.connect(db) as conn:
+        conn.execute('INSERT INTO photos(path,filename,star_rating) VALUES (?,?,1)', (str(image), image.name))
+    before = [p.read_bytes() for p in (image, primary, basename)]
+    result = _run(FACET, '--import-sidecars', str(image), '--sidecar-naming', policy,
+                  '--db', str(db), cwd=str(tmp_path))
+    assert result.returncode == 0, result.stderr
+    assert f'Sidecar import ({policy})' in result.stderr
+    assert f'{ambiguous} ambiguous' in result.stderr
+    assert primary.name in result.stderr and basename.name in result.stderr
+    with sqlite3.connect(db) as conn:
+        assert conn.execute('SELECT star_rating FROM photos').fetchone()[0] == expected
+    assert [p.read_bytes() for p in (image, primary, basename)] == before
+
+
+
+def test_sidecar_naming_cli_reports_mismatch_count_without_unsafe_advice(tmp_path):
+    from db.schema import init_database
+    from processing.xmp_export import XmpRating, build_xmp
+
+    db = tmp_path / 'sidecars.db'
+    init_database(str(db))
+    with sqlite3.connect(db) as conn:
+        for name in ('same.CR3', 'same.jpg'):
+            conn.execute('INSERT INTO photos(path,filename,star_rating) VALUES (?,?,2)',
+                         (str(tmp_path / name), name))
+    (tmp_path / 'same.xmp').write_text(build_xmp(XmpRating(star_rating=5)), encoding='utf-8')
+    result = _run(FACET, '--import-sidecars', '--db', str(db), cwd=str(tmp_path))
+    assert result.returncode == 0, result.stderr
+    assert '2 naming mismatches' in result.stderr
+    assert result.stderr.count('Full-name sidecar policy') == 1
+    assert '--sidecar-naming basename' not in result.stderr
+    with sqlite3.connect(db) as conn:
+        assert conn.execute('SELECT star_rating FROM photos ORDER BY path').fetchall() == [(2,), (2,)]

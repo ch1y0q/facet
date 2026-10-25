@@ -43,6 +43,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import unicodedata
 import re
 from datetime import datetime, timezone
 from xml.etree import ElementTree as ET
@@ -57,6 +58,7 @@ from db.manual_tags import (
     normalize_manual_tag,
 )
 from processing.rating_writer import upsert_rating_state
+from utils.image_loading import WATCHABLE_IMAGE_EXTENSIONS
 from processing.xmp_keywords import keyword_key, parse_keyword_state
 from processing.xmp_export import (
     LABEL_FAVORITE,
@@ -244,8 +246,124 @@ def _foreign_keywords(conn, path: str, ai_tags, keywords: list[str]) -> list[str
     return foreign
 
 
+def _image_key(path: str) -> str:
+    """Treat case and Unicode normalization variants as one packet filename."""
+    return unicodedata.normalize("NFC", os.path.normcase(os.path.abspath(path)).casefold())
+
+
+def _sidecar_stems(path: str) -> tuple[str, str, str]:
+    """Names before .xmp for this image's basename, full and fallback packets.
+
+    IMG.CR2.xmp belongs to IMG.CR2 by full name, so IMG.CR2.jpg must not also
+    claim it by basename. The same collision can involve .facet.xmp fallbacks.
+    """
+    return _image_key(os.path.splitext(path)[0]), _image_key(path), _image_key(path + ".facet")
+
+
+def _shared_indexed_stems(conn) -> set[str]:
+    """Find packet names claimed by multiple photos, including outside scope."""
+    first: dict[str, str] = {}
+    shared: set[str] = set()
+    for (path,) in conn.execute("SELECT path FROM photos"):
+        # Keep logical photo owners distinct even when their packet keys alias.
+        normalized = os.path.normcase(os.path.abspath(path))
+        for stem in _sidecar_stems(path):
+            if stem in first and first[stem] != normalized:
+                shared.add(stem)
+            first[stem] = normalized
+    return shared
+
+
+def _directory_image_claims(directory: str) -> dict[str, set[str]]:
+    """Index all sibling image packet names; decoding availability is irrelevant."""
+    images: dict[str, set[str]] = {}
+    with os.scandir(directory) as entries:
+        for entry in entries:
+            if (os.path.splitext(entry.name)[1].lower() in WATCHABLE_IMAGE_EXTENSIONS
+                    and entry.is_file()):
+                normalized = os.path.normcase(os.path.abspath(entry.path))
+                for stem in _sidecar_stems(entry.path):
+                    images.setdefault(stem, set()).add(normalized)
+    return images
+
+
+def _warn_full_naming_once(reported: set[str], image_path: str, basename: str,
+                           selected: str | None) -> None:
+    if "full_naming" in reported:
+        return
+    reported.add("full_naming")
+    logger.warning("Full-name sidecar policy for %s: selected %s; ignoring basename packet %s. "
+                   "Check --sidecar-naming and image ownership before changing policy; "
+                   "shared or other-image packets are refused. Further naming notices are suppressed for this run.",
+                   image_path, selected or "no full-name sidecar", basename)
+
+
+def _discover_sidecar(image_path: str, naming: str, shared_stems: set[str],
+                      directory_images: dict[str, dict[str, set[str]]],
+                      reported: set[str]) -> tuple[str | None, str | None]:
+    """Choose a naming family before parsing; never use mtime across families.
+
+    Return ``(path, None)`` or ``(None, reason)``. Basename discovery refuses any
+    packet also claimed by another indexed or on-disk image, by basename, full
+    name or fallback. Directory scans and full-policy notices are cached only
+    for this import; inspection failures propagate for the caller to report.
+    """
+    full = [image_path + suffix for suffix in (".xmp", ".facet.xmp")]
+    full = [path for path in full if os.path.exists(path)]
+    basename = os.path.splitext(image_path)[0] + ".xmp"
+    has_basename = basename != image_path + ".xmp" and os.path.exists(basename)
+    if full and has_basename and naming == "auto":
+        logger.warning("Skipping %s: ambiguous sidecar naming (%s and %s); "
+                       "select --sidecar-naming full or basename", image_path, full, basename)
+        return None, "ambiguous"
+    if naming != "basename" and full:
+        # Preserve the existing primary/fallback rule; list order breaks ties.
+        selected = max(full, key=os.path.getmtime)
+        if has_basename:
+            _warn_full_naming_once(reported, image_path, basename, selected)
+        return selected, None
+    if naming != "full" and has_basename:
+        stem = _sidecar_stems(image_path)[0]
+        directory = os.path.dirname(os.path.abspath(image_path))
+        shared = stem in shared_stems
+        if not shared:
+            if directory not in directory_images:
+                directory_images[directory] = _directory_image_claims(directory)
+            siblings = directory_images[directory].get(stem, set())
+            for sibling in siblings - {os.path.normcase(os.path.abspath(image_path))}:
+                # APFS may return this image's own entry in a different Unicode
+                # spelling. Only that same canonical full name AND inode is self;
+                # another image name (even a hard link) still owns its packets.
+                if _image_key(sibling) == _image_key(image_path):
+                    try:
+                        if os.path.samefile(sibling, image_path):
+                            continue
+                    except FileNotFoundError:
+                        pass
+                shared = True
+                break
+        if shared:
+            if "shared_basename" not in reported:
+                reported.add("shared_basename")
+                logger.warning("Skipping %s: shared basename or another image's full-name/fallback "
+                               "sidecar makes %s ambiguous; use per-image full-name sidecars. "
+                               "Further shared-packet notices are suppressed for this run.", image_path, basename)
+            return None, "ambiguous"
+        if full:
+            logger.warning("Sidecar naming basename for %s: selecting %s; ignoring %s", image_path, basename, full)
+        return basename, None
+    if full or has_basename:
+        if naming == "full":
+            _warn_full_naming_once(reported, image_path, basename, None)
+        else:
+            logger.warning("No basename sidecar for %s; found %s; use --sidecar-naming full to read it",
+                           image_path, full)
+        return None, "naming_mismatch"
+    return None, "missing"
+
+
 def import_sidecars(conn, root: str | None = None, *, user_id: str | None = None,
-                    overwrite_manual_gps: bool = False) -> dict:
+                    overwrite_manual_gps: bool = False, sidecar_naming: str = "full") -> dict:
     """Import ``<image>.xmp`` sidecars into the ``photos`` table.
 
     ``root`` limits the import to photos whose path is, or is under, that path.
@@ -254,8 +372,16 @@ def import_sidecars(conn, root: str | None = None, *, user_id: str | None = None
     written to that user's ``user_preferences`` row instead. Foreign keywords are
     written to the global ``photo_manual_tags`` (``source='xmp'``), never to
     ``photos.tags``. Returns counts: ``updated`` / ``unchanged`` / ``missing`` (no
-    sidecar) / ``skipped`` (unparseable sidecar) / ``tags_added`` (new manual-tag rows).
+    sidecar) / ``skipped`` (unparseable, unreadable or ambiguous) / ``tags_added``.
+    ``ambiguous`` is a subset of skipped; ``naming_mismatch`` is a subset of missing.
+    ``sidecar_naming`` selects ``full`` (default: newest of ``<image>.xmp`` and
+    ``<image>.facet.xmp``), ``basename`` (strip image extension), or ``auto``
+    (accept one family only). Basename packets also claimed by another image's
+    basename, full name or fallback are refused even when only one photo is in
+    scope. No sidecars are rewritten.
     """
+    if sidecar_naming not in {"full", "basename", "auto"}:
+        raise ValueError("sidecar_naming must be full, basename or auto")
     from api.config import is_multi_user_enabled
     per_user = bool(user_id and is_multi_user_enabled())
 
@@ -280,18 +406,31 @@ def import_sidecars(conn, root: str | None = None, *, user_id: str | None = None
             params,
         ).fetchall()
 
-    updated = unchanged = missing = skipped = tags_added = 0
+    updated = unchanged = missing = skipped = tags_added = ambiguous = naming_mismatch = 0
+    shared_stems = _shared_indexed_stems(conn) if sidecar_naming != "full" else set()
+    directory_images: dict[str, dict[str, set[str]]] = {}
+    reported: set[str] = set()
     created_by = user_id if per_user else None
     created_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     for row in rows:
-        candidates = [row["path"] + suffix for suffix in (".xmp", ".facet.xmp")]
-        candidates = [path for path in candidates if os.path.exists(path)]
-        if not candidates:
-            missing += 1
+        try:
+            sidecar, reason = _discover_sidecar(row["path"], sidecar_naming, shared_stems, directory_images, reported)
+        except OSError as ex:
+            logger.warning("Skipping %s: cannot inspect sidecars or image siblings: %s", row["path"], ex)
+            skipped += 1
             continue
-        sidecar = max(candidates, key=os.path.getmtime)
+        if sidecar is None:
+            if reason == "ambiguous":
+                ambiguous += 1
+                skipped += 1
+            else:
+                missing += 1
+                if reason == "naming_mismatch":
+                    naming_mismatch += 1
+            continue
         parsed = parse_sidecar(sidecar)
         if parsed is None:
+            logger.warning("Skipping %s: cannot parse sidecar %s", row["path"], sidecar)
             skipped += 1
             continue
 
@@ -369,4 +508,4 @@ def import_sidecars(conn, root: str | None = None, *, user_id: str | None = None
 
     conn.commit()
     return {"updated": updated, "unchanged": unchanged, "missing": missing, "skipped": skipped,
-            "tags_added": tags_added}
+            "tags_added": tags_added, "ambiguous": ambiguous, "naming_mismatch": naming_mismatch}
