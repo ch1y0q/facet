@@ -67,7 +67,10 @@ def _replace_receipt(temporary, path):
     if replace(str(path), str(temporary), None, 0, None, None):
         return
     error = ctypes.get_last_error()
-    if error == 2:  # ERROR_FILE_NOT_FOUND: initial publication has no destination.
+    # ERROR_FILE_NOT_FOUND: initial publication has no destination.
+    # ERROR_UNABLE_TO_MOVE_REPLACEMENT(_2): without a backup name the old
+    # receipt has already left its name, so only the temporary holds the data.
+    if error in (2, 1176, 1177):
         os.replace(temporary, path)
         return
     raise ctypes.WinError(error)

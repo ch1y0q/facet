@@ -83,3 +83,25 @@ def test_repeated_publication_keeps_each_open_reader_on_its_snapshot(tmp_path):
             assert jobs.json.load(second) == {'version': 2}
             assert jobs._read(path) == {'version': 3}
     path.unlink()
+
+
+@pytest.mark.parametrize('error', [1176, 1177])
+def test_replace_file_that_removed_the_old_receipt_still_publishes(tmp_path, monkeypatch, error):
+    """ReplaceFile can fail after moving the old receipt away; the new one must not be lost."""
+    import ctypes
+    path = tmp_path / 'receipt.json'
+    path.write_text('{"version": 1}', encoding='utf-8')
+    def replace_file(replaced, replacement, backup, flags, exclude, reserved):
+        # Documented 1176/1177 state: the replaced file is gone from its name,
+        # the replacement still sits under its temporary name.
+        path.rename(tmp_path / 'moved-aside.json')
+        return 0
+    kernel = type('Kernel', (), {'ReplaceFileW': staticmethod(replace_file)})()
+    monkeypatch.setattr(ctypes, 'WinDLL', lambda *args, **kwargs: kernel, raising=False)
+    monkeypatch.setattr(ctypes, 'get_last_error', lambda: error, raising=False)
+    monkeypatch.setattr(ctypes, 'WinError', lambda code: OSError(code, 'ReplaceFile'), raising=False)
+    monkeypatch.setattr(jobs.os, 'name', 'nt')
+    jobs._write(path, {'version': 2})
+    monkeypatch.undo()
+    assert jobs._read(path) == {'version': 2}
+    assert not list(tmp_path.glob('*.tmp'))
