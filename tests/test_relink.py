@@ -112,6 +112,13 @@ def test_all_current_associations_survive_and_manual_marks_require_review(librar
         assert conn.execute('PRAGMA foreign_key_check').fetchall() == []
         assert conn.execute('SELECT rowid,filename,star_rating,is_kept,thumbnail FROM photos WHERE path=?', (new,)).fetchone() == (rowid, 'renamed.jpg', 5, 1, b'thumbnail')
         for (table, col), count in expected.items():
+            if table == 'organization_revisions':
+                # Existing path-change triggers invalidate private revision caches,
+                # retaining fresh global revisions rather than rebinding old history.
+                assert conn.execute('SELECT COUNT(*) FROM organization_revisions WHERE path=? AND scope=?', (new, 'alice')).fetchone()[0] == 0
+                assert conn.execute('SELECT COUNT(*) FROM organization_revisions WHERE path=? AND scope=?', (new, '')).fetchone()[0] == 3
+                assert conn.execute('SELECT COUNT(*) FROM organization_revisions WHERE path=?', (old,)).fetchone()[0] == 0
+                continue
             assert conn.execute(f'SELECT COUNT(*) FROM "{table}" WHERE "{col}"=?', (new,)).fetchone()[0] == count
             assert conn.execute(f'SELECT COUNT(*) FROM "{table}" WHERE "{col}"=?', (old,)).fetchone()[0] == 0
         face = conn.execute('SELECT id,manual_key,manual_review_required,manual_source FROM faces').fetchone()
@@ -442,3 +449,53 @@ def test_empty_readable_old_parent_does_not_claim_mount_verification(library):
     plan = preview(library)
     assert plan['source_mount_status'].startswith('not_verified;')
     assert plan['entries'][0]['identity'] == 'original_bytes_unknown'
+
+
+def test_organization_history_keeps_historical_paths_and_invalidates_revisions(library, monkeypatch):
+    from contextlib import contextmanager
+    from fastapi import HTTPException, Response
+    from api.auth import CurrentUser
+    from api.routers import organization_history as history_api
+    from db.organization_history import record, snapshot
+
+    db, old, new, _ = library
+    with sqlite3.connect(db) as conn:
+        conn.execute('PRAGMA foreign_keys=ON')
+        before = snapshot(conn, 'review', '', [old])
+        conn.execute('UPDATE photos SET star_rating=4 WHERE path=?', (old,))
+        record(conn, 'alice', 'review', '', before)
+        history = conn.execute('SELECT * FROM organization_history').fetchall()
+        clock = conn.execute('SELECT revision FROM organization_clock').fetchone()[0]
+        refs = relink._references(conn)
+        assert ('organization_revisions', 'path') in refs
+        assert all(table not in {'organization_clock', 'organization_history'} for table, _column in refs)
+
+    @contextmanager
+    def database():
+        with sqlite3.connect(db) as conn:
+            conn.row_factory = sqlite3.Row
+            yield conn
+
+    monkeypatch.setattr(history_api, 'get_db', database)
+    user = CurrentUser(user_id='alice', edition_authenticated=True)
+    entry_id = history[0][0]
+    assert [entry['id'] for entry in history_api.list_history(Response(), user)['entries']] == [entry_id]
+    apply(library, preview(library))
+    assert history_api.list_history(Response(), user)['entries'] == []
+    with pytest.raises(HTTPException) as refused:
+        history_api.revert_history(entry_id, Response(), user)
+    assert refused.value.status_code == 404
+    with sqlite3.connect(db) as conn:
+        assert conn.execute('SELECT * FROM organization_history').fetchall() == history
+        assert json.loads(history[0][5])[0]['path'] == old
+        assert conn.execute('SELECT revision FROM organization_clock').fetchone()[0] > clock
+        assert conn.execute('SELECT 1 FROM organization_revisions WHERE path=?', (old,)).fetchone() is None
+        assert conn.execute('SELECT 1 FROM organization_revisions WHERE path=?', (new,)).fetchone() is not None
+        assert conn.execute('PRAGMA foreign_key_check').fetchall() == []
+
+
+def test_unknown_organization_history_columns_still_require_review(library):
+    with sqlite3.connect(library[0]) as conn:
+        conn.execute('ALTER TABLE organization_history ADD COLUMN future_field TEXT')
+    with pytest.raises(ValueError, match='Unregistered schema column in organization_history'):
+        preview(library)

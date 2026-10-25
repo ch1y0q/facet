@@ -36,6 +36,14 @@ _NON_ASSET_PATHS = {
     ('photo_metadata_edits', 'source_path'),
 }
 
+# Organization history owns these tables outside db.schema's column catalog.
+# Historical payload JSON and the global revision clock are not asset links.
+# Keep the exact column inventory so future additions still require review.
+_AUXILIARY_COLUMNS = {
+    'organization_clock': {'id', 'revision'},
+    'organization_history': {'id', 'owner', 'kind', 'scope', 'created_at', 'payload', 'part', 'parts', 'reverted'},
+}
+
 
 def _json(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
@@ -144,6 +152,7 @@ def _references(conn):
                 for name, value in vars(schema).items()
                 if name.endswith('_COLUMNS') and isinstance(value, list) and value
                 and isinstance(value[0], tuple)}
+    declared.update(_AUXILIARY_COLUMNS)
     refs = set()
     tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")]
     internal = {row[1] for row in conn.execute('PRAGMA table_list') if row[0] == 'main' and row[2] == 'shadow'}
