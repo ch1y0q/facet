@@ -23,6 +23,7 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- **Semantic search refreshes its NumPy fallback after database changes.** Replaced embeddings and same-count photo replacements now update search results without restarting the viewer. Concurrent fallback requests share matrix construction, and cache entries include the database and visibility scope.
 - **Caption export preserves other XMP languages.** Writing a Facet caption now updates only the default-language description in sidecars and embedded metadata, retaining existing translations. An empty Facet caption still preserves the existing caption.
 
 - **Returning to the gallery from another page keeps your filters.** The nav icon's "photos" link used to land on a pristine default view, so the filters set before opening a photo — or any other page — were silently gone. The gallery's last synced query now travels in sessionStorage: landing on a parameterless `/` re-enters with it (page number included), while a reset — double-click the nav icon or the reset button — clears it, and a URL that already carries its own params is never overridden.
