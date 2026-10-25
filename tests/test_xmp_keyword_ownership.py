@@ -158,3 +158,128 @@ def test_keyword_reconciliation_respects_user_visibility(tmp_path, monkeypatch):
         assert load_manual_tags(conn, str(hidden)) == []
     finally:
         conn.close()
+
+
+@pytest.mark.parametrize('which,payload', [
+    ('keywords', '[]'), ('keywords', '{}'), ('keywords', '[null]'),
+    ('keywords', '[{"Error":"cannot read file"}]'),
+    ('keywords', '[{"Subject":{"bad":"shape"}}]'),
+    ('keywords', '[{"Subject":[1]}]'), ('keywords', '[{"Subject":null}]'),
+    ('keywords', '[{"Error":null}]'), ('keywords', 'not json'),
+    ('state', '[]'), ('state', '[null]'), ('state', '{"KeywordState":null}'),
+    ('state', '[{"Error":"cannot read state"}]'),
+])
+def test_failed_structured_reads_preserve_existing_packet_bytes(tmp_path, monkeypatch, which, payload):
+    import subprocess
+    from processing import xmp_export as xe
+    image = tmp_path / 'photo.jpg'
+    sidecar = Path(str(image) + '.xmp')
+    before = build_xmp(XmpRating(tags=['foreign'])).encode()
+    sidecar.write_bytes(before)
+    monkeypatch.setattr(xe, '_resolve_exiftool', lambda: 'fake-exiftool')
+    def run(args, **kwargs):
+        assert '-overwrite_original' not in args, 'metadata write must never start after failed read'
+        state = '-XMP-facet:KeywordState' in args
+        raw = payload if (which == 'state') == state else '[{}]'
+        return subprocess.CompletedProcess(args, 0, stdout=raw, stderr='')
+    monkeypatch.setattr(xe.subprocess, 'run', run)
+    with pytest.raises(RuntimeError, match='Cannot read'):
+        xe._run_exiftool(str(sidecar), XmpRating(tags=['own']), timeout=1, reconcile=True)
+    assert sidecar.read_bytes() == before
+
+
+@pytest.mark.skipif(not exiftool_available(), reason='requires ExifTool')
+@pytest.mark.parametrize('marker', ['not json', '{"version":2}', '{"version":1,"owned":"wrong"}'])
+def test_invalid_marker_is_refused_without_modifying_valid_xml(tmp_path, marker):
+    from processing.xmp_export import NS_FACET
+    image = tmp_path / 'photo.jpg'
+    sidecar = Path(str(image) + '.xmp')
+    packet = ET.fromstring(build_xmp(XmpRating(tags=['foreign'])))
+    packet.find(f'.//{{{NS_RDF}}}Description').set(f'{{{NS_FACET}}}KeywordState', marker)
+    before = ET.tostring(packet)
+    sidecar.write_bytes(before)
+    with pytest.raises(RuntimeError, match='Unsupported or invalid'):
+        write_metadata(str(image), XmpRating(tags=['own']), reconcile_keywords=True)
+    assert sidecar.read_bytes() == before
+
+
+def test_outbound_provenance_growth_refuses_before_writing_and_keeps_tombstones(tmp_path, monkeypatch):
+    import json
+    from processing import xmp_export as xe
+    from processing.xmp_export import NS_FACET
+    from processing.xmp_keywords import MAX_STATE_NAMES, serialize_keyword_state
+    image = tmp_path / 'photo.jpg'
+    sidecar = Path(str(image) + '.xmp')
+    names = [f'old-{i}' for i in range(MAX_STATE_NAMES)]
+    previous = {'version': 1, 'owned': names, 'deleted': [], 'ai': names, 'manual': []}
+    packet = ET.fromstring(build_xmp(XmpRating()))
+    packet.find(f'.//{{{NS_RDF}}}Description').set(f'{{{NS_FACET}}}KeywordState', serialize_keyword_state(previous))
+    before = ET.tostring(packet)
+    sidecar.write_bytes(before)
+    monkeypatch.setattr(xe, '_resolve_exiftool', lambda: 'fake-exiftool')
+    def run(args, **kwargs):
+        import subprocess
+        assert '-overwrite_original' not in args
+        record = {'KeywordState': json.dumps(previous)} if '-XMP-facet:KeywordState' in args else {'Subject': names}
+        return subprocess.CompletedProcess(args, 0, stdout=json.dumps([record]), stderr='')
+    monkeypatch.setattr(xe.subprocess, 'run', run)
+    with pytest.raises(RuntimeError, match='safe packet bounds.*Deletion markers were not discarded'):
+        xe._run_exiftool(str(sidecar), XmpRating(tags=['new-ai'], ai_tags=['new-ai']), timeout=1, reconcile=True)
+    assert sidecar.read_bytes() == before
+
+
+@pytest.mark.parametrize('tags', [['x' * 1025], [f'tag{i}' for i in range(10001)]])
+def test_unrepresentable_new_keyword_state_never_creates_fallback_packet(tmp_path, monkeypatch, tags):
+    monkeypatch.setattr('processing.xmp_export.exiftool_available', lambda: False)
+    image = tmp_path / 'photo.jpg'
+    with pytest.raises(RuntimeError, match='safe packet bounds'):
+        write_metadata(str(image), XmpRating(tags=tags))
+    assert not Path(str(image) + '.xmp').exists()
+
+
+@pytest.mark.skipif(not exiftool_available(), reason='requires ExifTool')
+def test_embedded_marker_and_unicode_case_normalization_preserve_foreign_collision(tmp_path):
+    import subprocess
+    from PIL import Image
+    from processing import xmp_export as xe
+    image = tmp_path / 'photo.jpg'
+    Image.new('RGB', (20, 20), 'blue').save(image)
+    subprocess.run(['exiftool', '-overwrite_original', '-XMP-dc:Subject=CAFÉ', str(image)],
+                   check=True, capture_output=True)
+    write_metadata(str(image), XmpRating(tags=['Cafe\u0301', 'Straße'], manual_tags=['Straße']), embed_original=True)
+    state = xe._read_keyword_state(str(image), xe._resolve_exiftool(), timeout=30)
+    assert state['owned'] == ['Straße']  # NFC/case-equal foreign CAFÉ is never claimed.
+    subprocess.run(['exiftool', '-overwrite_original', '-XMP-dc:Subject=CAFÉ', '-XMP-dc:Subject=STRASSE', str(image)],
+                   check=True, capture_output=True)
+    write_metadata(str(image), XmpRating(), embed_original=True, reconcile_keywords=True)
+    flat, _ = xe._read_existing_keywords(str(image), xe._resolve_exiftool(), timeout=30, strict=True)
+    assert flat == ['CAFÉ']
+    state = xe._read_keyword_state(str(image), xe._resolve_exiftool(), timeout=30)
+    assert state['deleted'] == ['Straße']
+
+
+def test_explicit_null_marker_is_invalid_before_any_write(tmp_path, monkeypatch):
+    import subprocess
+    from processing import xmp_export as xe
+    image = tmp_path / 'photo.jpg'
+    sidecar = Path(str(image) + '.xmp')
+    before = build_xmp(XmpRating(tags=['foreign'])).encode()
+    sidecar.write_bytes(before)
+    monkeypatch.setattr(xe, '_resolve_exiftool', lambda: 'fake-exiftool')
+    def run(args, **kwargs):
+        assert '-overwrite_original' not in args
+        payload = '[{"KeywordState":null}]' if '-XMP-facet:KeywordState' in args else '[{}]'
+        return subprocess.CompletedProcess(args, 0, stdout=payload, stderr='')
+    monkeypatch.setattr(xe.subprocess, 'run', run)
+    with pytest.raises(RuntimeError, match='Unsupported or invalid'):
+        xe._run_exiftool(str(sidecar), XmpRating(), timeout=1, reconcile=True)
+    assert sidecar.read_bytes() == before
+
+
+def test_foreign_case_and_normalization_display_variants_are_not_collapsed():
+    foreign = ['CAFÉ', 'Cafe\u0301', 'café']
+    flat, state = reconcile_keywords(foreign, ['café'])
+    assert flat == foreign
+    assert state['owned'] == []
+    flat, state = reconcile_keywords(flat, [], state, reconcile=True)
+    assert flat == foreign

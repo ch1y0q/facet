@@ -596,49 +596,47 @@ def _listify(value) -> list[str]:
     return [str(value)] if str(value) else []
 
 
-def _read_existing_keywords(target: str, exe: str, *, timeout: int, strict=False) -> tuple[list[str], list[str]]:
-    """Read ``target``'s existing keywords so a write can union rather than wipe.
-
-    Returns ``(flat, hierarchical)`` where ``flat`` merges ``dc:Subject`` and
-    ``IPTC:Keywords``. Any failure (target not yet created, parse error, non-zero
-    exit) yields ``([], [])`` so the caller falls back to Facet's own keywords.
-    """
+def _exiftool_record(raw):
+    """A successful process can still return an Error record or invalid shape."""
     import json
+    try:
+        records = json.loads(raw)
+    except (ValueError, TypeError) as ex:
+        raise RuntimeError('Cannot read existing metadata: invalid ExifTool JSON; export refused') from ex
+    if (not isinstance(records, list) or len(records) != 1
+            or not isinstance(records[0], dict) or 'Error' in records[0]):
+        raise RuntimeError('Cannot read existing metadata: invalid/Error ExifTool record; export refused')
+    return records[0]
 
+
+def _read_existing_keywords(target: str, exe: str, *, timeout: int, strict=False) -> tuple[list[str], list[str]]:
+    """Read flat/hierarchical names; existing-file failures must not clear them."""
     try:
         result = subprocess.run(
             [exe, "-q", "-m", "-json", "-XMP-dc:Subject", "-IPTC:Keywords",
              "-XMP-lr:HierarchicalSubject", target],
             capture_output=True, text=True, timeout=timeout,
         )
-    except (subprocess.TimeoutExpired, OSError):
+        if result.returncode != 0:
+            raise RuntimeError('Cannot read existing keywords; export refused')
+        record = _exiftool_record(result.stdout)
+        for key in ('Subject', 'Keywords', 'HierarchicalSubject'):
+            value = record.get(key)
+            if key in record and not (isinstance(value, str)
+                    or isinstance(value, list) and all(isinstance(item, str) for item in value)):
+                raise RuntimeError('Cannot read existing keywords: malformed list; export refused')
+        flat = _union(_listify(record.get('Subject')), _listify(record.get('Keywords')))
+        return flat, _listify(record.get('HierarchicalSubject'))
+    except (subprocess.TimeoutExpired, OSError, RuntimeError) as ex:
         if strict:
-            raise RuntimeError("Cannot read existing keywords; reconciliation refused")
+            raise RuntimeError('Cannot read existing keywords; export refused before clearing metadata') from ex
         return [], []
-    if result.returncode != 0 or not result.stdout.strip():
-        if strict:
-            raise RuntimeError("Cannot read existing keywords; reconciliation refused")
-        return [], []
-    try:
-        records = json.loads(result.stdout)
-    except json.JSONDecodeError:
-        if strict:
-            raise RuntimeError("Cannot read existing keywords; reconciliation refused")
-        return [], []
-    if not records:
-        if strict:
-            raise RuntimeError("Cannot read existing keywords; reconciliation refused")
-        return [], []
-    record = records[0]
-    flat = _union(_listify(record.get("Subject")), _listify(record.get("Keywords")))
-    return flat, _listify(record.get("HierarchicalSubject"))
 
 
 def _read_keyword_state(target, exe, *, timeout):
     """Read private state separately; missing/foreign packets grant no ownership."""
     if not os.path.exists(target):
         return None
-    import json
     config = os.path.join(os.path.dirname(__file__), 'facet_exiftool.config')
     try:
         result = subprocess.run([exe, '-config', config, '-json', '-XMP-facet:KeywordState', target],
@@ -647,11 +645,10 @@ def _read_keyword_state(target, exe, *, timeout):
         raise RuntimeError('Cannot read keyword ownership before export') from ex
     if result.returncode:
         raise RuntimeError('Cannot read keyword ownership before export')
-    try:
-        records = json.loads(result.stdout)
-        raw = records[0].get('KeywordState') if records else None
-    except (ValueError, TypeError, KeyError, IndexError) as ex:
-        raise RuntimeError('Cannot read keyword ownership before export') from ex
+    record = _exiftool_record(result.stdout)
+    raw = record.get('KeywordState')
+    if 'KeywordState' in record and not isinstance(raw, str):
+        raise RuntimeError('Unsupported or invalid Facet keyword ownership; export refused')
     state = parse_keyword_state(raw)
     if raw is not None and state is None:
         raise RuntimeError('Unsupported or invalid Facet keyword ownership; export refused')
@@ -676,7 +673,7 @@ def _run_exiftool(target: str, rating: XmpRating, *, timeout: int, reconcile=Fal
     if sidecar and os.path.exists(sidecar):
         with open(sidecar, "rb") as handle:
             snapshot = handle.read()
-    kwargs = {"strict": True} if reconcile and os.path.exists(target) else {}
+    kwargs = {"strict": True} if os.path.exists(target) else {}
     existing_flat, existing_hier = _read_existing_keywords(target, exe, timeout=timeout, **kwargs)
     keyword_state = _read_keyword_state(target, exe, timeout=timeout)
     tag_args = _exiftool_tag_args(rating, existing_flat, existing_hier,

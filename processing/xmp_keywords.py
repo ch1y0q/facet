@@ -12,21 +12,27 @@ def keyword_key(value):
     return unicodedata.normalize('NFC', value).casefold()
 
 
+MAX_STATE_NAMES = 10000
+MAX_STATE_NAME_LENGTH = 1024
+
+
+def _valid_keyword_state(state):
+    if not isinstance(state, dict) or type(state.get('version')) is not int or state['version'] != 1:
+        return False
+    for key in ('owned', 'deleted', 'ai', 'manual'):
+        values = state.get(key)
+        if not isinstance(values, list) or len(values) > MAX_STATE_NAMES:
+            return False
+        if any(not isinstance(value, str) or not value or len(value) > MAX_STATE_NAME_LENGTH for value in values):
+            return False
+    return True
+
+
 def parse_keyword_state(raw):
-    if raw is None:
-        return None
     try:
         state = json.loads(raw)
-        if state.get('version') != 1:
-            return None
-        for key in ('owned', 'deleted', 'ai', 'manual'):
-            values = state[key]
-            if not isinstance(values, list) or len(values) > 10000:
-                return None
-            if any(not isinstance(value, str) or not value or len(value) > 1024 for value in values):
-                return None
-        return state
-    except (ValueError, TypeError, KeyError, AttributeError):
+        return state if _valid_keyword_state(state) else None
+    except (ValueError, TypeError):
         return None
 
 
@@ -44,6 +50,7 @@ def reconcile_keywords(existing, current, previous=None, *, reconcile=False, ai=
             result.setdefault(keyword_key(value), value)
         return result
     old = unique(previous['owned'])
+    existing = list(dict.fromkeys(existing))
     present = unique(existing)
     wanted = unique(current)
     deleted = unique(previous['deleted'])
@@ -57,14 +64,25 @@ def reconcile_keywords(existing, current, previous=None, *, reconcile=False, ai=
     owned.update({key: value for key, value in wanted.items() if key not in present or key in deleted})
     for key in wanted:
         deleted.pop(key, None)
-    merged = {**present}
+    # Preserve foreign display variants even when they normalize to one key.
+    merged = [value for value in existing if keyword_key(value) in present]
+    seen = {keyword_key(value) for value in merged}
     for key, value in wanted.items():
-        merged.setdefault(key, value)
+        if key not in seen:
+            merged.append(value)
+            seen.add(key)
     machines = unique([*previous['ai'], *[value for value in ai if keyword_key(value) in owned]])
-    return list(merged.values()), {'version': 1, 'owned': list(owned.values()),
+    return merged, {'version': 1, 'owned': list(owned.values()),
                                   'deleted': list(deleted.values()), 'ai': list(machines.values()),
                                   'manual': list(unique(manual).values())}
 
 
 def serialize_keyword_state(state):
+    if not _valid_keyword_state(state):
+        raise RuntimeError(
+            'Facet keyword ownership exceeds its safe packet bounds '
+            f'({MAX_STATE_NAMES} names per list, {MAX_STATE_NAME_LENGTH} characters per name); '
+            'export refused before writing. Reduce the exported name set, or manually '
+            'reconcile/archive the existing packet before establishing new ownership. '
+            'Deletion markers were not discarded.')
     return json.dumps(state, ensure_ascii=False, separators=(',', ':'))
