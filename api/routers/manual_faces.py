@@ -5,6 +5,8 @@ from io import BytesIO
 import math
 import sqlite3
 
+import cv2
+
 from fastapi import APIRouter, Depends, HTTPException, Response
 from PIL import Image
 
@@ -50,8 +52,21 @@ def _decode(path):
         frame = read_frame(disk_path)
     except OSError as exc:
         raise HTTPException(409, 'Original image unavailable or changed') from exc
-    # Canonical loader returns BGR; browser JPEG and crops must be RGB.
-    return Image.fromarray(frame.pixels[:, :, ::-1]), frame.identity, frame.stamp
+    return frame
+
+
+def _rgb(pixels):
+    """Convert only an owned crop/preview, never the full cached source frame."""
+    return Image.fromarray(cv2.cvtColor(pixels, cv2.COLOR_BGR2RGB))
+
+
+def _preview(pixels, edge=1600):
+    height, width = pixels.shape[:2]
+    if max(width, height) > edge:
+        scale = edge / max(width, height)
+        pixels = cv2.resize(pixels, (max(1, round(width * scale)), max(1, round(height * scale))),
+                            interpolation=cv2.INTER_AREA)
+    return _rgb(pixels)
 
 
 def _check_stamp(path, stamp):
@@ -95,15 +110,15 @@ def manual_face_frame(path: str, response: Response, user: CurrentUser = Depends
     response.headers['Cache-Control'] = 'no-store'
     with get_db() as conn:
         _visible(conn, user, path)
-    image, identity, stamp = _decode(path)
+    frame = _decode(path)
     with get_db() as conn:
         _visible(conn, user, path)
-    _check_stamp(path, stamp)
-    w, h = image.size
+    _check_stamp(path, frame.stamp)
+    h, w = frame.pixels.shape[:2]
     token = create_access_token({'sub': user.user_id or '_legacy', 'purpose': _PURPOSE,
-                                 'path': path, 'width': w, 'height': h, 'source': identity,
+                                 'path': path, 'width': w, 'height': h, 'source': frame.identity,
                                  'decoder': _DECODER}, expires_delta=timedelta(minutes=15))
-    return {'image_base64': base64.b64encode(_jpeg(image, 1600)).decode('ascii'),
+    return {'image_base64': base64.b64encode(_jpeg(_preview(frame.pixels), 1600)).decode('ascii'),
             'width': w, 'height': h, 'frame_token': token}
 
 
@@ -149,8 +164,10 @@ def _write(body, user, face_id=None):
         raise HTTPException(409, 'Invalid or expired editor frame; reload the editor')
     if claims.get('sub') != (user.user_id or '_legacy') or claims.get('path') != body.path:
         raise HTTPException(409, 'Editor frame belongs to another photo or user')
-    image, identity, stamp = _decode(body.path)
-    w, h = image.size
+    frame = _decode(body.path)
+    stamp = frame.stamp
+    identity = frame.identity
+    h, w = frame.pixels.shape[:2]
     if (not manual_faces.same_image(claims.get('source'), identity) or
             (claims.get('width'), claims.get('height')) != (w, h)):
         raise HTTPException(409, 'Image changed; reload the editor')
@@ -158,7 +175,8 @@ def _write(body, user, face_id=None):
     if (x2 - x1) * w < 4 - 1e-9 or (y2 - y1) * h < 4 - 1e-9:
         raise HTTPException(422, 'Rectangle must cover at least 4 by 4 source pixels')
     box = (math.floor(x1 * w), math.floor(y1 * h), math.ceil(x2 * w), math.ceil(y2 * h))
-    crop = _jpeg(image.crop(box), 160)
+    left, top, right, bottom = box
+    crop = _jpeg(_rgb(frame.pixels[top:bottom, left:right]), 160)
     with get_db() as conn, conn:
         conn.execute('BEGIN IMMEDIATE')
         _visible(conn, user, body.path)
