@@ -298,6 +298,12 @@ describe('GalleryStore read cancellation with HttpClient', () => {
     const resuming = store.resumeListingReads();
     const page = request(`/similar_photos/${encodeURIComponent('/seed.jpg')}`);
     expect(page.request.params.get('offset')).toBe('0');
+    if (pagination) {
+      // The returning viewport can ask for another page before recovery finishes.
+      void store.nextPage();
+      expect(store.filters().page).toBe(2);
+      http.expectNone(r => r.url.includes('/similar_photos/') && r.params.get('offset') === '128');
+    }
     page.flush({ similar: [makePhoto({ path: '/first.jpg' })], total: 2, has_more: pagination });
     if (pagination) {
       await Promise.resolve();

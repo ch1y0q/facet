@@ -943,6 +943,7 @@ export class GalleryStore {
     const identity = this.auth.identity();
     const current = () => this.listingReadsActive && seq === this._loadSeq && identity === this.auth.identity();
     const pages: SimilarPage[] = [];
+    this.loading.set(true);
     try {
       for (let page = 0; page < f.page; page++) {
         const result = await this.fetchSimilarPage(f, page * f.per_page);
@@ -956,6 +957,8 @@ export class GalleryStore {
       this.hasMore.set(last.has_more);
     } catch {
       if (current()) this.loadError.set(true);
+    } finally {
+      if (current()) this.loading.set(false);
     }
   }
 
