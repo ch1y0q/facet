@@ -477,7 +477,7 @@ Open it from the header button or `/persons`:
 
 ### Faces on the photo
 
-In the photo view, a box shows around each detected face while the pointer is over the photo, and hovering a face shows its name (amber box: not named yet). Boxes follow zoom and pan. In edition mode, clicking a face opens a menu: **Change person…** (or **Name this face…**) to pick an existing person or type a new name, **Find more faces of …** for that person (see Find more faces above), and **Not …** to take that person off the photo. Faces whose stored dimensions cannot be trusted are not drawn. The boxes come from `GET /api/photo/faces`, which returns each face's `box` normalised to the frame.
+In the photo view, a box shows around each detected face while the pointer is over the photo, and hovering a face shows its name (amber box: not named yet). Boxes follow zoom and pan. In edition mode, clicking a face opens a menu: **Change person…** (or **Name this face…**) to pick an existing person or type a new name, **Find more faces of …** for that person (see Find more faces above), and **Not …** to take that person off the photo. Faces whose stored dimensions cannot be trusted are not drawn. The boxes come from `GET /api/photo/faces`, which returns each face's `box` normalised to the frame. Any face that belongs to a person, named or not, also offers **See all photos of …** (or **See all photos of this group**), which opens the gallery filtered to that person; this one works in read-only mode too.
 
 ### Mark a missed face
 

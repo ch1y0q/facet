@@ -479,7 +479,7 @@ Haz clic en el nombre de una persona para ver todas sus fotos en `/person/<id>`.
 
 ### Caras en la foto
 
-En la vista de foto aparece un recuadro alrededor de cada cara detectada mientras el puntero está sobre la foto, y al pasar por una cara se muestra su nombre (recuadro ámbar: aún sin nombre). Los recuadros siguen el zoom y el desplazamiento. En modo edición, hacer clic en una cara abre un menú: **Cambiar de persona…** (o **Nombrar esta cara…**) para elegir una persona existente o escribir un nombre nuevo, **Buscar más caras de …** para esa persona y **No es …** para quitar a esa persona de la foto. No se dibujan las caras cuyas dimensiones guardadas no son fiables. Los recuadros vienen de `GET /api/photo/faces`, que devuelve el `box` de cada cara normalizado al encuadre.
+En la vista de foto aparece un recuadro alrededor de cada cara detectada mientras el puntero está sobre la foto, y al pasar por una cara se muestra su nombre (recuadro ámbar: aún sin nombre). Los recuadros siguen el zoom y el desplazamiento. En modo edición, hacer clic en una cara abre un menú: **Cambiar de persona…** (o **Nombrar esta cara…**) para elegir una persona existente o escribir un nombre nuevo, **Buscar más caras de …** para esa persona y **No es …** para quitar a esa persona de la foto. No se dibujan las caras cuyas dimensiones guardadas no son fiables. Los recuadros vienen de `GET /api/photo/faces`, que devuelve el `box` de cada cara normalizado al encuadre. Toda cara que pertenece a una persona, con o sin nombre, ofrece también **Ver todas las fotos de …** (o **Ver todas las fotos de este grupo**), que abre la galería filtrada por esa persona; esto funciona también en modo de solo lectura.
 
 ### Marcar una cara no detectada
 

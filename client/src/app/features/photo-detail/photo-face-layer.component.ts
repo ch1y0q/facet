@@ -3,6 +3,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
@@ -39,7 +40,8 @@ const LABEL_SCALE = 0.022;
  * Faces drawn over the photo-detail image: boxes appear while the pointer is over
  * the photo, a face's name on hovering that face, and clicking a face (edition
  * mode) opens a menu to change its person, take it off its person, or find more
- * faces like that person.
+ * faces like that person. Any face in a cluster, named or not, also offers its
+ * cluster's photos, in read-only mode too.
  *
  * The SVG's viewBox is the photo's own pixel frame, so it letterboxes exactly
  * like the ``object-contain`` image beneath it and shares its zoom transform:
@@ -62,7 +64,7 @@ const LABEL_SCALE = 0.022;
         @for (f of faces(); track f.id) {
           <g
             class="group/face pointer-events-auto"
-            [class.cursor-pointer]="canEdit()"
+            [class.cursor-pointer]="canEdit() || f.personId !== null"
             (pointerdown)="$event.stopPropagation()"
             (dblclick)="$event.stopPropagation()"
             (click)="onFaceClick(f, $event)">
@@ -97,19 +99,27 @@ const LABEL_SCALE = 0.022;
         <div class="px-4 py-2 text-xs opacity-70 truncate max-w-[16rem]">
           {{ f.name || (I18N.photo_faces.unknown | translate) }}
         </div>
-        <button mat-menu-item (click)="changePerson(f)">
-          <mat-icon>manage_accounts</mat-icon>
-          {{ (f.personId ? I18N.photo_faces.change_person : I18N.photo_faces.name_face) | translate }}
-        </button>
         @if (f.personId) {
-          <button mat-menu-item (click)="findMore(f)">
-            <mat-icon>person_search</mat-icon>
-            {{ I18N.photo_faces.find_more | translate:{ name: f.name || '' } }}
+          <button mat-menu-item (click)="viewPhotos(f)">
+            <mat-icon>photo_library</mat-icon>
+            {{ (f.name ? I18N.photo_faces.view_photos : I18N.photo_faces.view_group_photos) | translate:{ name: f.name || '' } }}
           </button>
-          <button mat-menu-item (click)="notThisPerson(f)">
-            <mat-icon>person_remove</mat-icon>
-            {{ I18N.photo_faces.not_person | translate:{ name: f.name || '' } }}
+        }
+        @if (canEdit()) {
+          <button mat-menu-item (click)="changePerson(f)">
+            <mat-icon>manage_accounts</mat-icon>
+            {{ (f.personId ? I18N.photo_faces.change_person : I18N.photo_faces.name_face) | translate }}
           </button>
+          @if (f.personId) {
+            <button mat-menu-item (click)="findMore(f)">
+              <mat-icon>person_search</mat-icon>
+              {{ I18N.photo_faces.find_more | translate:{ name: f.name || '' } }}
+            </button>
+            <button mat-menu-item (click)="notThisPerson(f)">
+              <mat-icon>person_remove</mat-icon>
+              {{ I18N.photo_faces.not_person | translate:{ name: f.name || '' } }}
+            </button>
+          }
         }
       }
     </mat-menu>
@@ -122,6 +132,7 @@ export class PhotoFaceLayerComponent {
   private readonly snackBar = inject(MatSnackBar);
   private readonly i18n = inject(I18nService);
   private readonly store = inject(GalleryStore);
+  private readonly router = inject(Router);
 
   readonly path = input.required<string>();
   readonly imageWidth = input<number | null>(null);
@@ -189,11 +200,18 @@ export class PhotoFaceLayerComponent {
 
   onFaceClick(face: DrawnFace, event: MouseEvent): void {
     event.stopPropagation();
-    if (!this.canEdit()) return;
+    // Read-only viewers can still jump to a person's photos; nothing else applies.
+    if (!this.canEdit() && face.personId === null) return;
     this.menuFace.set(face);
     this.menuX.set(event.clientX);
     this.menuY.set(event.clientY);
     this.menuTrigger().openMenu();
+  }
+
+  /** Open the gallery on every photo of this face's person, named or not. */
+  viewPhotos(face: DrawnFace): void {
+    if (face.personId === null) return;
+    void this.router.navigate(['/'], { queryParams: { person_id: String(face.personId) } });
   }
 
   async changePerson(face: DrawnFace): Promise<void> {

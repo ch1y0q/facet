@@ -1775,7 +1775,9 @@
     "change_person": "更换人物…",
     "name_face": "为此面孔命名…",
     "find_more": "查找 {name} 的更多面孔",
-    "not_person": "不是 {name}"
+    "not_person": "不是 {name}",
+    "view_photos": "查看 {name} 的所有照片",
+    "view_group_photos": "查看此分组的所有照片"
   },
   "person_selector": {
     "create_new": "创建新人物",

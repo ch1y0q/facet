@@ -1790,6 +1790,8 @@ export const I18N = {
     name_face: "photo_faces.name_face",
     find_more: "photo_faces.find_more",
     not_person: "photo_faces.not_person",
+    view_photos: "photo_faces.view_photos",
+    view_group_photos: "photo_faces.view_group_photos",
   },
   person_selector: {
     create_new: "person_selector.create_new",

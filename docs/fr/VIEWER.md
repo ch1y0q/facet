@@ -477,7 +477,7 @@ Ouvrez-la depuis le bouton de l'en-tête ou `/persons` :
 
 ### Visages sur la photo
 
-Dans la vue photo, un cadre apparaît autour de chaque visage détecté quand le pointeur survole la photo, et survoler un visage affiche son nom (cadre ambre : pas encore nommé). Les cadres suivent le zoom et le déplacement. En mode édition, cliquer sur un visage ouvre un menu : **Changer de personne…** (ou **Nommer ce visage…**) pour choisir une personne existante ou saisir un nouveau nom, **Trouver d'autres visages de …** pour cette personne, et **Pas …** pour retirer cette personne de la photo. Les visages dont les dimensions enregistrées ne sont pas fiables ne sont pas dessinés. Les cadres viennent de `GET /api/photo/faces`, qui renvoie le `box` de chaque visage normalisé au cadre.
+Dans la vue photo, un cadre apparaît autour de chaque visage détecté quand le pointeur survole la photo, et survoler un visage affiche son nom (cadre ambre : pas encore nommé). Les cadres suivent le zoom et le déplacement. En mode édition, cliquer sur un visage ouvre un menu : **Changer de personne…** (ou **Nommer ce visage…**) pour choisir une personne existante ou saisir un nouveau nom, **Trouver d'autres visages de …** pour cette personne, et **Pas …** pour retirer cette personne de la photo. Les visages dont les dimensions enregistrées ne sont pas fiables ne sont pas dessinés. Les cadres viennent de `GET /api/photo/faces`, qui renvoie le `box` de chaque visage normalisé au cadre. Tout visage rattaché à une personne, nommée ou non, propose aussi **Voir toutes les photos de …** (ou **Voir toutes les photos de ce groupe**), qui ouvre la galerie filtrée sur cette personne ; cette action fonctionne aussi en lecture seule.
 
 ### Marquer un visage non détecté
 

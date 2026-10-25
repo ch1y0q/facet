@@ -2,6 +2,7 @@ import type { Mock } from 'vitest';
 import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { Router } from '@angular/router';
 import { of } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
@@ -22,6 +23,7 @@ describe('PhotoFaceLayerComponent', () => {
   let mockDialog: { open: Mock };
   let mockStore: { assignFace: Mock; createPerson: Mock; unassignPerson: Mock };
   let mockSnackBar: { open: Mock };
+  let mockRouter: { navigate: Mock };
 
   async function render(rows: PhotoFaceRow[] = ROWS, width: number | null = 1000, height: number | null = 500) {
     mockApi.get.mockReturnValue(of({ faces: rows }));
@@ -45,6 +47,7 @@ describe('PhotoFaceLayerComponent', () => {
       unassignPerson: vi.fn(async () => undefined),
     };
     mockSnackBar = { open: vi.fn() };
+    mockRouter = { navigate: vi.fn(() => Promise.resolve(true)) };
     TestBed.configureTestingModule({
       imports: [PhotoFaceLayerComponent],
       providers: [
@@ -52,6 +55,7 @@ describe('PhotoFaceLayerComponent', () => {
         { provide: MatDialog, useValue: mockDialog },
         { provide: GalleryStore, useValue: mockStore },
         { provide: MatSnackBar, useValue: mockSnackBar },
+        { provide: Router, useValue: mockRouter },
         { provide: I18nService, useValue: { t: (k: string) => k, translations: () => ({}) } },
       ],
     });
@@ -90,12 +94,23 @@ describe('PhotoFaceLayerComponent', () => {
     expect(fixture.nativeElement.querySelector('svg')).toBeNull();
   });
 
-  it('does not open the menu in read-only mode', async () => {
+  it('read-only: a face with a person opens the menu, a face without one does not', async () => {
     await render();
     fixture.componentRef.setInput('canEdit', false);
-    const face = component.faces()[0];
-    component.onFaceClick(face, new MouseEvent('click', { clientX: 5, clientY: 6 }));
-    expect((component as unknown as { menuFace: () => DrawnFace | null }).menuFace()).toBeNull();
+    const menuFace = () => (component as unknown as { menuFace: () => DrawnFace | null }).menuFace();
+    const loose: DrawnFace = { ...component.faces()[1], personId: null };
+
+    component.onFaceClick(loose, new MouseEvent('click', { clientX: 5, clientY: 6 }));
+    expect(menuFace()).toBeNull();
+
+    component.onFaceClick(component.faces()[0], new MouseEvent('click', { clientX: 5, clientY: 6 }));
+    expect(menuFace()?.id).toBe(1);
+  });
+
+  it('opens the gallery on all photos of the face person, named or not', async () => {
+    await render();
+    component.viewPhotos(component.faces()[0]);
+    expect(mockRouter.navigate).toHaveBeenCalledWith(['/'], { queryParams: { person_id: '5' } });
   });
 
   it('moves a face to the chosen person, then reloads and tells the page', async () => {

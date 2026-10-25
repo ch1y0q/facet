@@ -1775,7 +1775,9 @@
     "change_person": "Trocar pessoa…",
     "name_face": "Nomear este rosto…",
     "find_more": "Encontrar mais rostos de {name}",
-    "not_person": "Não é {name}"
+    "not_person": "Não é {name}",
+    "view_photos": "Ver todas as fotos de {name}",
+    "view_group_photos": "Ver todas as fotos deste grupo"
   },
   "person_selector": {
     "create_new": "Criar nova pessoa",

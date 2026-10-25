@@ -477,7 +477,7 @@ Aprila dal pulsante nell'intestazione o da `/persons`:
 
 ### Volti sulla foto
 
-Nella vista foto compare un riquadro attorno a ogni volto rilevato mentre il puntatore è sulla foto, e passando su un volto se ne vede il nome (riquadro ambra: non ancora nominato). I riquadri seguono zoom e spostamento. In modalità modifica, un clic su un volto apre un menu: **Cambia persona…** (o **Dai un nome a questo volto…**) per scegliere una persona esistente o scrivere un nuovo nome, **Trova altri volti di …** per quella persona e **Non è …** per togliere quella persona dalla foto. I volti le cui dimensioni salvate non sono affidabili non vengono disegnati. I riquadri vengono da `GET /api/photo/faces`, che restituisce il `box` di ogni volto normalizzato all'inquadratura.
+Nella vista foto compare un riquadro attorno a ogni volto rilevato mentre il puntatore è sulla foto, e passando su un volto se ne vede il nome (riquadro ambra: non ancora nominato). I riquadri seguono zoom e spostamento. In modalità modifica, un clic su un volto apre un menu: **Cambia persona…** (o **Dai un nome a questo volto…**) per scegliere una persona esistente o scrivere un nuovo nome, **Trova altri volti di …** per quella persona e **Non è …** per togliere quella persona dalla foto. I volti le cui dimensioni salvate non sono affidabili non vengono disegnati. I riquadri vengono da `GET /api/photo/faces`, che restituisce il `box` di ogni volto normalizzato all'inquadratura. Ogni volto che appartiene a una persona, con o senza nome, offre anche **Vedi tutte le foto di …** (o **Vedi tutte le foto di questo gruppo**), che apre la galleria filtrata su quella persona; funziona anche in sola lettura.
 
 ### Segnare un volto non rilevato
 
