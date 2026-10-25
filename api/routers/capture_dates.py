@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.auth import CurrentUser, require_edition
 from api.config import invalidate_stats_cache
+from api import organization_history
 from api.database import get_db
 from api.db_helpers import retry_on_locked
 from api.models.capture_dates import CaptureDateApplyRequest, CaptureDatePreview, CaptureDateRequest, CaptureDateReset
@@ -72,7 +73,9 @@ def apply_dates(body: CaptureDateApplyRequest, user: CurrentUser = Depends(requi
         result, changes = _preview(conn, body, user)
         if result['preview_token'] != body.preview_token:
             raise HTTPException(409, 'Photos changed; preview again')
+        history_before = organization_history.begin(conn, user.user_id, 'date', [change['path'] for change in changes])
         conn.executemany('UPDATE photos SET date_taken=?, date_manually_set=1 WHERE path=?', [(change['new_date'], change['path']) for change in changes])
+        organization_history.finish(conn, user.user_id, 'date', history_before)
         _invalidate(conn)
     _after_commit()
     return result
@@ -107,7 +110,9 @@ def reset_date(path: str = Query(...), user: CurrentUser = Depends(require_editi
         current = tuple(conn.execute('SELECT date_taken, date_manually_set FROM photos WHERE path=?', (path,)).fetchone())
         if current != before or resolve_photo_disk_path(path) != disk_path or _identity(disk_path) != identity:
             raise HTTPException(409, 'Photo changed; try again')
+        history_before = organization_history.begin(conn, user.user_id, 'date', [path])
         conn.execute('UPDATE photos SET date_taken=?, date_manually_set=0 WHERE path=?', (restored, path))
+        organization_history.finish(conn, user.user_id, 'date', history_before)
         _invalidate(conn)
     _after_commit()
     return dict(date_taken=restored, date_manually_set=0)
