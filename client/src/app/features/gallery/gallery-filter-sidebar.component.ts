@@ -1130,6 +1130,9 @@ export class GalleryFilterSidebarComponent {
   // Kept separate from searchTimeout so a slider drag can't cancel a pending
   // text search (or vice versa) -- they debounce independent filter keys.
   private thresholdTimeout: ReturnType<typeof setTimeout> | null = null;
+  // The filename box's own debounce: sharing searchTimeout with the semantic
+  // box let a keystroke in one cancel the other's pending update.
+  private filenameTimeout: ReturnType<typeof setTimeout> | null = null;
   private albumsLoaded = false;
 
   constructor() {
@@ -1142,6 +1145,7 @@ export class GalleryFilterSidebarComponent {
     });
     inject(DestroyRef).onDestroy(() => {
       this.cancelPendingSearch();
+      if (this.filenameTimeout) clearTimeout(this.filenameTimeout);
       this.coarsePointer.cleanup();
     });
   }
@@ -1171,21 +1175,20 @@ export class GalleryFilterSidebarComponent {
 
   onSidebarSearchChange(event: Event): void {
     const value = (event.target as HTMLInputElement).value;
-    // Debounced live filtering on every keystroke (shared timer with the
-    // semantic box -- one debounce per field): waiting for Enter/blur made
-    // typing feel dead, with the grid frozen and no hint that a commit was
-    // pending. Enter still commits immediately through the same path.
-    if (this.searchTimeout) clearTimeout(this.searchTimeout);
-    this.searchTimeout = setTimeout(() => {
-      this.searchTimeout = null;
+    // Debounced live filtering on every keystroke: waiting for Enter/blur
+    // made typing feel dead, with the grid frozen and no hint that a commit
+    // was pending. Enter still commits immediately through the same path.
+    if (this.filenameTimeout) clearTimeout(this.filenameTimeout);
+    this.filenameTimeout = setTimeout(() => {
+      this.filenameTimeout = null;
       this.store.updateFilter('search', value);
     }, 400);
   }
 
   onSidebarSearchCommit(event: Event): void {
-    if (this.searchTimeout) {
-      clearTimeout(this.searchTimeout);
-      this.searchTimeout = null;
+    if (this.filenameTimeout) {
+      clearTimeout(this.filenameTimeout);
+      this.filenameTimeout = null;
     }
     this.store.updateFilter('search', (event.target as HTMLInputElement).value);
   }

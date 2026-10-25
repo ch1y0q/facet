@@ -1540,6 +1540,16 @@ class TestOnlyFilters:
         assert self._get(db_path, "duplicates_only=1&hide_bursts=1&hide_duplicates=1") == [
             "/dup_burst.jpg", "/dup_copy.jpg", "/dup_lead.jpg"]
 
+    def test_show_rejected_overrides_the_hide_toggles(self, tmp_path):
+        """A rejected non-lead burst member is what a cull rejects most; hide_bursts must not drop it."""
+        db_path = str(tmp_path / "t.db")
+        _make_db(db_path, [
+            _photo("/burst_lead.jpg", "2024:01:01 10:00:00", burst_group_id=4, is_burst_lead=1),
+            _photo("/burst_reject.jpg", "2024:01:01 10:00:01",
+                   burst_group_id=4, is_burst_lead=0, is_rejected=1),
+        ])
+        assert self._get(db_path, "show_rejected=true&hide_bursts=1") == ["/burst_reject.jpg"]
+
     def test_blinks_only_overrides_hide_blinks(self, tmp_path):
         db_path = str(tmp_path / "t.db")
         self._seed(db_path)

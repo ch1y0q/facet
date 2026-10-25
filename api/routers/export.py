@@ -34,7 +34,7 @@ from api.db_helpers import (
     get_visibility_clause,
 )
 from api.models.scan import CullApplyResponse, PhotoDeleteResponse
-from api.path_validation import resolve_photo_disk_path
+from api.path_validation import PhotoFileMissing, resolve_photo_disk_path
 from api.raw_processing import find_companion_raw
 from db.maintenance import delete_photo_rows
 from processing.xmp_export import (
@@ -601,6 +601,34 @@ def _resolve_cull_files(paths, include_companions):
             files.extend(_companion_files(real))
         items.append((path, files))
     return items, skipped
+
+
+def _reconcilable_missing(paths):
+    """The ``paths`` whose file is genuinely gone, safe for ``remove_missing``.
+
+    A path qualifies only when it passed the scan-directory containment check
+    and its file is absent (``PhotoFileMissing``) -- a containment refusal is
+    the same 404 to every other caller but its file may well be on disk -- and
+    when the folder that held it is still there with something in it. An
+    unmounted library volume reads as every file missing; its folders are gone
+    or its mount point is empty, so its rows stay ``skipped`` rather than lose
+    their ratings, faces and album membership to one delete click.
+    """
+    missing = []
+    for path in paths:
+        try:
+            resolve_photo_disk_path(path)
+        except PhotoFileMissing as ex:
+            parent = os.path.dirname(ex.real_path)
+            try:
+                with os.scandir(parent) as entries:
+                    if any(entries):
+                        missing.append(path)
+            except OSError:
+                continue
+        except HTTPException:
+            continue
+    return missing
 
 
 def _chunked_path_rows(conn, paths, sql_fn, params_fn):
@@ -1197,9 +1225,9 @@ def api_photo_delete(
     trash") and deletes their rows in the same transaction as the trashed
     paths', lead re-pick included. It stays an opt-in because a request
     where EVERY file reads as missing is exactly what a disconnected
-    library volume looks like; the viewer's own delete dialog opts in, the
-    preview names the missing rows, and the flag-less default still
-    reports them as ``skipped``.
+    library volume looks like, and even opted in, ``_reconcilable_missing``
+    keeps a path ``skipped`` when the allowlist refused it or the folder
+    that held it is gone or empty -- the shape of an offline volume.
     """
     send2trash = _require_trash_available()
 
@@ -1243,8 +1271,9 @@ def api_photo_delete(
         # rather than `skipped`. Off by default -- see PhotoDeleteRequest.
         removed_missing: list[str] = []
         if body.remove_missing and skipped:
-            removed_missing = skipped
-            skipped = []
+            removed_missing = _reconcilable_missing(skipped)
+            reconciled = set(removed_missing)
+            skipped = [p for p in skipped if p not in reconciled]
 
         if body.dry_run:
             return PhotoDeleteResponse(

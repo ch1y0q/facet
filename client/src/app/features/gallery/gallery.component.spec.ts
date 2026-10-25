@@ -2117,7 +2117,7 @@ describe('GalleryComponent', () => {
 
     function deleteResponse(overrides: Partial<{
       deleted: string[]; refused_bracket_lead: string[]; not_found: string[];
-      not_visible: string[]; sequence_siblings: string[]; skipped: string[];
+      not_visible: string[]; sequence_siblings: string[]; skipped: string[]; removed_missing: string[];
       errors: Record<string, string>; trashed: number;
     }> = {}) {
       return of({
@@ -2297,6 +2297,21 @@ describe('GalleryComponent', () => {
       // four buckets or from `refused_bracket_lead` alone -- asserting on
       // that resolved string would pass under either implementation.
       expect(mockI18n.t).toHaveBeenCalledWith(I18N.cull.delete_partial_result, { deleted: 1, failed: 3 });
+    });
+
+    it('removes reconciled missing rows from the grid and counts them as deleted', async () => {
+      select(['/a.jpg', '/b.jpg']);
+      const dialog = TestBed.inject(MatDialog);
+      (dialog.open as Mock).mockReturnValue({
+        afterClosed: () => of({ includeCompanions: false, includeSequenceSiblings: false, removeMissing: true }),
+      });
+      mockApi.post.mockReturnValueOnce(deleteResponse({ removed_missing: ['/a.jpg', '/b.jpg'] }));
+
+      await component.deleteSelected();
+
+      expect(mockApi.post).toHaveBeenCalledWith('/photo/delete', expect.objectContaining({ remove_missing: true }));
+      expect(mockStore.removePhotos).toHaveBeenCalledWith(['/a.jpg', '/b.jpg']);
+      expect(mockI18n.t).toHaveBeenCalledWith(I18N.cull.delete_partial_result, { deleted: 2, failed: 0 });
     });
 
     it('a failed request does not touch the store', async () => {

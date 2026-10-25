@@ -67,6 +67,17 @@ describe('PhotoDeleteDialogComponent', () => {
     expect(dialogClose).toHaveBeenCalledWith({ includeCompanions: false, includeSequenceSiblings: false, removeMissing: true });
   });
 
+  it('unticking the missing-rows checkbox closes the dialog with removeMissing: false', () => {
+    const fixture = buildRendered(baseData);
+    (fixture.nativeElement.querySelector('mat-checkbox input') as HTMLInputElement).click();
+    fixture.detectChanges();
+    const confirmButton = Array.from(fixture.nativeElement.querySelectorAll('button'))
+      .find((b) => (b as HTMLElement).textContent?.includes('photo_detail.delete.button_label')) as HTMLElement;
+    confirmButton.click();
+
+    expect(dialogClose).toHaveBeenCalledWith({ includeCompanions: false, includeSequenceSiblings: false, removeMissing: false });
+  });
+
   it('confirming with the companion checkbox ON closes the dialog with includeCompanions: true', () => {
     const fixture = buildRendered({ ...baseData, hasCompanion: true });
     const checkbox = fixture.nativeElement.querySelector('input[type="checkbox"]') as HTMLInputElement;

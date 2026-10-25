@@ -142,3 +142,58 @@ def test_rows_scanned_after_the_watermark_are_still_examined(tmp_path):
     assert fix_double_transposed_heif_thumbnails(db) == 1
     after = _row(db, str(later))
     assert (after['image_width'], after['image_height']) == (600, 800)
+
+
+def test_faces_turn_with_the_thumbnail_and_stale_declines_go(tmp_path):
+    """An upright face box (100, 200)-(200, 300) in the 600x800 frame was stored
+    at (200, 400)-(300, 500) in the 800x600 sideways one; the repair must hand
+    it back in upright coordinates, with its landmarks, and drop iqa_declined."""
+    import numpy as np
+
+    db = str(tmp_path / 't.db')
+    _seed(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO faces (photo_path, face_index, embedding, bbox_x1, bbox_y1, bbox_x2, bbox_y2, "
+        "landmark_2d_106) VALUES (?, 0, x'00', 200, 400, 300, 500, ?)",
+        (ROTATED_HIF, np.array([[250.0, 450.0]] * 106, dtype=np.float32).tobytes()))
+    conn.execute("INSERT INTO iqa_declined (photo_path, model, scan_fingerprint) VALUES (?, 'topiq_nr_face', 'x')",
+                 (ROTATED_HIF,))
+    conn.commit()
+    conn.close()
+
+    assert fix_double_transposed_heif_thumbnails(db) == 1
+
+    conn = sqlite3.connect(db)
+    box = conn.execute("SELECT bbox_x1, bbox_y1, bbox_x2, bbox_y2 FROM faces WHERE photo_path = ?",
+                       (ROTATED_HIF,)).fetchone()
+    landmarks = conn.execute("SELECT landmark_2d_106 FROM faces WHERE photo_path = ?",
+                             (ROTATED_HIF,)).fetchone()[0]
+    declined = conn.execute("SELECT COUNT(*) FROM iqa_declined WHERE photo_path = ?",
+                            (ROTATED_HIF,)).fetchone()[0]
+    conn.close()
+    assert box == (100, 200, 200, 300)
+    assert np.frombuffer(landmarks, dtype=np.float32).reshape(-1, 2)[0].tolist() == [150.0, 250.0]
+    assert declined == 0
+
+
+def test_an_unreadable_file_holds_the_watermark_for_the_next_run(tmp_path):
+    """A row whose file cannot be read (an offline volume) must be examined
+    again later, not passed by the watermark for good."""
+    db = str(tmp_path / 't.db')
+    _seed(db)
+    offline = tmp_path / 'offline.hif'
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO photos (path, filename, scanned_at, thumbnail, image_width, image_height) "
+        "VALUES (?, 'offline.hif', '2026-01-15 10:00:00', ?, 800, 600)",
+        (str(offline), _sideways_blob()))
+    conn.commit()
+    conn.close()
+
+    assert fix_double_transposed_heif_thumbnails(db) == 1  # the readable rotated row only
+
+    offline.write_bytes(__import__('pathlib').Path(ROTATED_HIF).read_bytes())
+    assert fix_double_transposed_heif_thumbnails(db) == 1
+    after = _row(db, str(offline))
+    assert (after['image_width'], after['image_height']) == (600, 800)

@@ -2180,7 +2180,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
     if (!res) return;
     // `removed_missing` rows are as gone as trashed ones -- the grid must not
     // keep a tile for a row the server just reconciled away.
-    this.store.removePhotos([...res.deleted, ...(res.removed_missing ?? [])]);
+    const removed = [...res.deleted, ...(res.removed_missing ?? [])];
+    this.store.removePhotos(removed);
     // `removePhotos` already prunes the deleted paths out of the selection.
     if (!explicit) this.clearSelection();
     // Every failure bucket counts as "failed" here, not just
@@ -2192,11 +2193,11 @@ export class GalleryComponent implements OnInit, OnDestroy {
     // the old two-field toast rendered.
     const failed = res.refused_bracket_lead.length + res.not_found.length + res.not_visible.length
       + res.skipped.length + Object.keys(res.errors).length;
-    if (res.deleted.length === 0 && failed > 0) {
+    if (removed.length === 0 && failed > 0) {
       this.snackBar.open(this.i18n.t(I18N.cull.delete_failed), '', { duration: 4000 });
     } else {
       this.snackBar.open(
-        this.i18n.t(I18N.cull.delete_partial_result, { deleted: res.deleted.length, failed }),
+        this.i18n.t(I18N.cull.delete_partial_result, { deleted: removed.length, failed }),
         '', { duration: 4000 },
       );
     }

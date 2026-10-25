@@ -137,6 +137,42 @@ describe('GalleryFilterSidebarComponent', () => {
     });
   });
 
+  describe('filename search', () => {
+    const input = (value: string) => ({ target: { value } }) as unknown as Event;
+
+    afterEach(() => vi.useRealTimers());
+
+    it('filters 400 ms after the last keystroke, once', () => {
+      vi.useFakeTimers();
+      const store = (component as any).store;
+      component.onSidebarSearchChange(input('IMG'));
+      component.onSidebarSearchChange(input('IMG_1'));
+      vi.advanceTimersByTime(399);
+      expect(store.updateFilter).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(store.updateFilter).toHaveBeenCalledTimes(1);
+      expect(store.updateFilter).toHaveBeenCalledWith('search', 'IMG_1');
+    });
+
+    it('Enter commits at once and drops the pending debounce', () => {
+      vi.useFakeTimers();
+      const store = (component as any).store;
+      component.onSidebarSearchChange(input('IMG'));
+      component.onSidebarSearchCommit(input('IMG_2'));
+      vi.advanceTimersByTime(1000);
+      expect(store.updateFilter.mock.calls).toEqual([['search', 'IMG_2']]);
+    });
+
+    it('a semantic keystroke does not cancel a pending filename update', () => {
+      vi.useFakeTimers();
+      const store = (component as any).store;
+      component.onSidebarSearchChange(input('IMG'));
+      component.onSemanticSearch(input('sunset'));
+      vi.advanceTimersByTime(1000);
+      expect(store.updateFilter).toHaveBeenCalledWith('search', 'IMG');
+    });
+  });
+
   describe('sectionActiveCounts', () => {
     it('returns 0 for all sections when no filters are active', () => {
       const mockStore = (component as any).store;

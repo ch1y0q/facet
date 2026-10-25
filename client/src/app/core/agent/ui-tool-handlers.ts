@@ -282,6 +282,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
     const keys: (keyof GalleryFilters)[] = [
       ...RANGE_AND_SELECT_KEYS, 'album_id', 'favorites_only', 'is_monochrome', 'similar_to', 'semanticQuery',
       'hide_blinks', 'hide_bursts', 'hide_duplicates', 'hide_brackets', 'hide_panoramas', 'hide_rejected',
+      'show_rejected', 'blinks_only', 'duplicates_only',
       'sequence_group_id', 'sequence_kind', 'burst_group_id', 'duplicate_group_id',
     ];
     const cleared: Record<string, unknown> = {};

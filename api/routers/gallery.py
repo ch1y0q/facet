@@ -440,12 +440,13 @@ def _apply_visibility_and_hide_filters(where_clauses, sql_params, params, user_i
         hide_brackets_val = ''
         hide_panoramas_val = ''
 
-    # A positive only-blinks / only-duplicates filter must show every photo it
-    # names: the hide toggles default on and would silently drop members of
-    # what the filter promises (a blink that is a non-lead burst member, a
-    # duplicate that is also a detected blink), the same surprise the
-    # set-scope guard above suppresses the toggles for.
-    if params.get('blinks_only') in ('1', 'true') or params.get('duplicates_only') in ('1', 'true'):
+    # A positive only-blinks / only-duplicates / only-rejected filter must show
+    # every photo it names: the hide toggles default on and would silently drop
+    # members of what the filter promises (a blink that is a non-lead burst
+    # member, a duplicate that is also a detected blink, a rejected frame of a
+    # burst whose lead was kept), the same surprise the set-scope guard above
+    # suppresses the toggles for.
+    if any(params.get(key) in ('1', 'true') for key in ('blinks_only', 'duplicates_only', 'show_rejected')):
         hide_blinks_val = ''
         hide_bursts_val = ''
         hide_duplicates_val = ''

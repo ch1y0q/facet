@@ -461,23 +461,90 @@ def _stored_heif_orientation(path):
         return None
 
 
+def _rotate_point(x, y, width, height, transpose):
+    """Where ``(x, y)`` of a ``width`` x ``height`` frame lands after ``transpose``.
+
+    ``ROTATE_90`` is PIL's counterclockwise quarter-turn, ``ROTATE_270`` the
+    clockwise one; either way the result lives in a ``height`` x ``width`` frame.
+    """
+    if transpose == 'ROTATE_90':
+        return y, width - x
+    return height - y, x
+
+
+def _rotate_box(box, width, height, transpose):
+    """``(x1, y1, x2, y2)`` after ``transpose``, re-ordered so x1 <= x2, y1 <= y2."""
+    ax, ay = _rotate_point(box[0], box[1], width, height, transpose)
+    bx, by = _rotate_point(box[2], box[3], width, height, transpose)
+    return min(ax, bx), min(ay, by), max(ax, bx), max(ay, by)
+
+
+def _upright_faces(conn, path, width, height, transpose):
+    """Turn a repaired photo's stored faces with its thumbnail.
+
+    The faces were detected on the sideways frame, so their boxes, landmarks
+    and crops are in its coordinates; left alone they would no longer line up
+    with the swapped dimensions (the social crop divides the boxes by them).
+    A manual face is turned within the frame size it was drawn against.
+    """
+    from io import BytesIO
+
+    import numpy as np
+    from PIL import Image as PILImage
+
+    faces = conn.execute(
+        "SELECT id, bbox_x1, bbox_y1, bbox_x2, bbox_y2, landmark_2d_106, face_thumbnail, "
+        "manual_width, manual_height FROM faces WHERE photo_path = ?", (path,)).fetchall()
+    for face in faces:
+        w = face['manual_width'] or width
+        h = face['manual_height'] or height
+        box = (face['bbox_x1'], face['bbox_y1'], face['bbox_x2'], face['bbox_y2'])
+        if None not in box:
+            box = tuple(int(round(v)) for v in _rotate_box(box, w, h, transpose))
+        landmarks = face['landmark_2d_106']
+        if landmarks:
+            points = np.frombuffer(landmarks, dtype=np.float32).reshape(-1, 2)
+            landmarks = np.array([_rotate_point(px, py, w, h, transpose) for px, py in points],
+                                 dtype=np.float32).tobytes()
+        crop = face['face_thumbnail']
+        if crop:
+            try:
+                buf = BytesIO()
+                PILImage.open(BytesIO(crop)).transpose(
+                    getattr(PILImage.Transpose, transpose)).save(buf, format='JPEG', quality=95)
+                crop = buf.getvalue()
+            except Exception as e:
+                logger.warning("Could not re-upright face crop %s of %s: %s", face['id'], path, e)
+        conn.execute(
+            "UPDATE faces SET bbox_x1 = ?, bbox_y1 = ?, bbox_x2 = ?, bbox_y2 = ?, "
+            "landmark_2d_106 = ?, face_thumbnail = ?, manual_width = ?, manual_height = ? "
+            "WHERE id = ?",
+            (*box, landmarks, crop, face['manual_height'], face['manual_width'], face['id']))
+
+
 def fix_double_transposed_heif_thumbnails(db_path, batch_size=500):
     """Re-upright the HEIF thumbnails a pillow-heif 1.6 double transpose turned sideways.
 
     Candidate rows come from the DATABASE -- HEIF paths still lying on their
     side (``image_width > image_height``) past a ``scanned_at`` watermark in
     ``stats_cache`` -- so later runs only look at rows scanned since the last
-    one and cost one indexed query when there are none. Each candidate's file
-    is header-read once for its stored orientation; a quarter-turn family
-    (6 or 8) with the sideways stored size is repaired by rotating the stored
-    thumbnail back (JPEG generation 2 at quality 95, visually indistinguishable
-    at thumbnail scale), swapping the stored dimensions back, and NULLing the
-    five subject columns so the next ``--recompute-saliency`` rescores the
-    upright frame. ``--recompute-composition-cpu`` rescoring is whole-library
-    by design and needs nothing here.
+    one and cost one indexed query when there are none. The candidate read
+    leaves the thumbnail BLOB behind (most candidates are ordinary landscape
+    frames); only a row that needs the repair has its thumbnail fetched. Each
+    candidate's file is header-read once for its stored orientation; a
+    quarter-turn family (6 or 8) with the sideways stored size is repaired by
+    rotating the stored thumbnail back (JPEG generation 2 at quality 95,
+    visually indistinguishable at thumbnail scale), swapping the stored
+    dimensions back, turning its stored faces with it, dropping its
+    ``iqa_declined`` rows (they were declined against the old thumbnail) and
+    NULLing the five subject columns so the next ``--recompute-saliency``
+    rescores the upright frame. ``--recompute-composition-cpu`` rescoring is
+    whole-library by design and needs nothing here.
 
     Idempotent twice over: repaired rows drop out of the size predicate, and
-    the watermark advances past every examined row whether repaired or not.
+    the watermark advances past every examined row whose file could be read.
+    It stops short of the first unreadable one (an offline volume, a file
+    still being copied) so a later run examines that row again.
 
     Returns the number of thumbnails re-uprighted.
     """
@@ -501,50 +568,46 @@ def fix_double_transposed_heif_thumbnails(db_path, batch_size=500):
             params.append(watermark)
             logger.info("Resuming HEIF orientation repair after %s", watermark)
         rows = conn.execute(
-            f"SELECT path, thumbnail, image_width, image_height, scanned_at "
-            f"FROM photos WHERE {where}", params).fetchall()
+            f"SELECT path, image_width, image_height, scanned_at "
+            f"FROM photos WHERE {where} ORDER BY scanned_at", params).fetchall()
         if not rows:
             logger.info("No sideways HEIF rows to repair.")
             return 0
 
         new_watermark = watermark
-        pending = []
+        blocked = False
         for entry in rows:
             examined += 1
             scanned_at = entry['scanned_at']
-            if scanned_at and (new_watermark is None or scanned_at > new_watermark):
-                new_watermark = scanned_at
             orientation = _stored_heif_orientation(entry['path'])
+            if orientation is None:
+                blocked = True  # unreadable now: keep the watermark below it
+            elif not blocked and scanned_at and (new_watermark is None or scanned_at > new_watermark):
+                new_watermark = scanned_at
             transpose = _HEIF_DOUBLE_TRANSPOSE_FIXES.get(orientation)
             if transpose is None:
                 continue  # upright in file terms, or unreadable: leave it alone
             try:
-                thumb = PILImage.open(BytesIO(entry['thumbnail']))
+                blob = conn.execute("SELECT thumbnail FROM photos WHERE path = ?",
+                                    (entry['path'],)).fetchone()[0]
                 buf = BytesIO()
-                thumb.transpose(getattr(PILImage.Transpose, transpose)).save(
-                    buf, format='JPEG', quality=95)
-                pending.append((
-                    buf.getvalue(), entry['image_height'], entry['image_width'],
-                    entry['path']))
+                PILImage.open(BytesIO(blob)).transpose(
+                    getattr(PILImage.Transpose, transpose)).save(buf, format='JPEG', quality=95)
             except Exception as e:
                 logger.error("Could not re-upright %s: %s", entry['path'], e)
-            if len(pending) >= batch_size:
-                conn.executemany(
-                    "UPDATE photos SET thumbnail = ?, image_width = ?, image_height = ?, "
-                    "subject_sharpness = NULL, subject_prominence = NULL, "
-                    "subject_placement = NULL, bg_separation = NULL, subject_bbox = NULL "
-                    "WHERE path = ?", pending)
-                fixed += len(pending)
-                pending = []
-                conn.commit()
-        if pending:
-            conn.executemany(
+                continue
+            conn.execute(
                 "UPDATE photos SET thumbnail = ?, image_width = ?, image_height = ?, "
                 "subject_sharpness = NULL, subject_prominence = NULL, "
                 "subject_placement = NULL, bg_separation = NULL, subject_bbox = NULL "
-                "WHERE path = ?", pending)
-            fixed += len(pending)
-            conn.commit()
+                "WHERE path = ?",
+                (buf.getvalue(), entry['image_height'], entry['image_width'], entry['path']))
+            _upright_faces(conn, entry['path'], entry['image_width'], entry['image_height'], transpose)
+            conn.execute("DELETE FROM iqa_declined WHERE photo_path = ?", (entry['path'],))
+            fixed += 1
+            if fixed % batch_size == 0:
+                conn.commit()
+        conn.commit()
         if new_watermark and new_watermark != watermark:
             conn.execute(
                 "INSERT OR REPLACE INTO stats_cache (key, value, updated_at) VALUES (?, ?, ?)",
