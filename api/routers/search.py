@@ -51,7 +51,8 @@ _clip_config_cache = None
 _clip_config_lock = threading.Lock()
 # Rows sampled to decide the stored embedding dimension; see _stored_embedding_dim.
 _EMBEDDING_DIM_SAMPLE = 1000
-_embedding_cache = None  # numpy fallback: {'matrix': np.array, 'paths': list, 'count': int}
+_embedding_cache = None  # One retained NumPy fallback matrix, keyed by DB and visibility.
+_embedding_cache_lock = asyncio.Lock()
 
 # Split-TTL availability tracking.
 #
@@ -460,51 +461,68 @@ async def _search_vec(conn, text_emb, limit, threshold, vis_sql, vis_params):
     return scores
 
 
+async def _embedding_matrix_key(conn, vis_sql, vis_params, user_id):
+    """Use the actual connection's database, including isolated in-memory DBs."""
+    from api.change_token import db_change_token
+
+    async with conn.execute("PRAGMA database_list") as cur:
+        databases = await cur.fetchall()
+    db_path = next(row[2] for row in databases if row[1] == 'main')
+    scope = (vis_sql, tuple(vis_params), user_id)
+    if not db_path:
+        async with conn.execute("PRAGMA data_version") as cur:
+            row = await cur.fetchone()
+        # data_version excludes this connection's writes; total_changes includes
+        # them. Retaining the connection also prevents object-ID reuse.
+        return (conn, row[0], conn.total_changes, scope)
+    # Existing cross-process sentinel handles WAL commits and file replacement.
+    # No embedding-only generation exists: unrelated commits also invalidate.
+    return (db_path, db_change_token(db_path), scope)
+
+
 async def _load_embedding_matrix(conn, vis_sql, vis_params, user_id):
-    """Fallback: load all photo embeddings into a numpy matrix (async)."""
+    """Fallback: reuse one matrix until its database or visibility changes."""
     global _embedding_cache
     from utils.embedding import bytes_to_normalized_embedding, filter_uniform_embeddings
 
-    cur = await conn.execute(
-        f"SELECT COUNT(*) FROM photos WHERE clip_embedding IS NOT NULL AND {vis_sql}",
-        vis_params
-    )
-    row = await cur.fetchone()
-    await cur.close()
-    count = row[0] if row else 0
+    # Serialize misses (including different scopes) so concurrent requests do
+    # not multiply the BLOB rows and matrix construction's peak memory.
+    async with _embedding_cache_lock:
+        key = await _embedding_matrix_key(conn, vis_sql, vis_params, user_id)
+        # An explicit transaction may be reading an older snapshot or its own
+        # uncommitted writes. Never share that result with other connections.
+        cacheable = not conn.in_transaction
+        if cacheable and _embedding_cache and _embedding_cache['key'] == key:
+            return _embedding_cache['matrix'], _embedding_cache['paths']
 
-    if _embedding_cache and _embedding_cache['count'] == count and _embedding_cache['user_id'] == user_id:
-        return _embedding_cache['matrix'], _embedding_cache['paths']
+        async with conn.execute(
+            f"SELECT path, clip_embedding FROM photos WHERE clip_embedding IS NOT NULL AND {vis_sql}",
+            vis_params,
+        ) as cur:
+            rows = await cur.fetchall()
 
-    cur = await conn.execute(
-        f"SELECT path, clip_embedding FROM photos WHERE clip_embedding IS NOT NULL AND {vis_sql}",
-        vis_params
-    )
-    rows = await cur.fetchall()
-    await cur.close()
+        # Numpy work below is CPU-bound — push it off the event loop. For 100k photos
+        # this can be ~50ms which is meaningful at moderate concurrency.
+        def _build_matrix(rows):
+            paths_ = []
+            embeddings_ = []
+            for r in rows:
+                emb = bytes_to_normalized_embedding(r['clip_embedding'])
+                if emb is not None:
+                    paths_.append(r['path'])
+                    embeddings_.append(emb)
+            embeddings_, paths_ = filter_uniform_embeddings(embeddings_, paths_)
+            if not embeddings_:
+                return None, []
+            return np.stack(embeddings_, axis=0), paths_
 
-    # Numpy work below is CPU-bound — push it off the event loop. For 100k photos
-    # this can be ~50ms which is meaningful at moderate concurrency.
-    def _build_matrix(rows):
-        paths_ = []
-        embeddings_ = []
-        for r in rows:
-            emb = bytes_to_normalized_embedding(r['clip_embedding'])
-            if emb is not None:
-                paths_.append(r['path'])
-                embeddings_.append(emb)
-        embeddings_, paths_ = filter_uniform_embeddings(embeddings_, paths_)
-        if not embeddings_:
-            return None, []
-        return np.stack(embeddings_, axis=0), paths_
 
-    matrix, paths = await asyncio.to_thread(_build_matrix, rows)
-    if matrix is None:
-        _embedding_cache = None
-        return None, []
-
-    _embedding_cache = {'matrix': matrix, 'paths': paths, 'count': count, 'user_id': user_id}
-    return matrix, paths
+        matrix, paths = await asyncio.to_thread(_build_matrix, rows)
+        if cacheable:
+            # Key from BEFORE the SELECT: a concurrent commit can never stamp
+            # an older matrix with the new generation.
+            _embedding_cache = {'matrix': matrix, 'paths': paths, 'key': key}
+        return matrix, paths
 
 
 async def _search_numpy(conn, text_emb, limit, threshold, vis_sql, vis_params, user_id):
