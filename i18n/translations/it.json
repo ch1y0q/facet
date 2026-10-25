@@ -1309,7 +1309,9 @@
       "move_up": "Sposta su",
       "move_down": "Sposta giù",
       "reset": "Ripristina predefiniti"
-    }
+    },
+    "manual_faces_need_review": "Volti manuali da verificare",
+    "manual_faces_review_hint": "In base all’ultima scansione o verifica nell’editor dei volti, senza monitoraggio continuo. Apri l’editor dei volti di una foto per verificare i riquadri salvati."
   },
   "composition_patterns": {
     "none": "Nessuno",

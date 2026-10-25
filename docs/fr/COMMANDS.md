@@ -81,6 +81,7 @@ visionneuse expose dans le champ `progress` de `/api/scan/status` et du flux SSE
 | `python facet.py --import-sidecars` | Importe les notes/libellés/étiquettes depuis les sidecars `<image>.xmp` vers la base de données (toutes les photos) ; les mots-clés que Facet ne possède pas encore deviennent des [tags manuels](INTEROP.md#tags-manuels-et-mots-clés-xmp) |
 | `python facet.py --import-sidecars /path` | Importe les sidecars uniquement pour les photos sous un sous-arbre de chemin |
 | `python facet.py --import-sidecars --user alice` | Mode multi-utilisateurs : importe les notes dans le `user_preferences` d'Alice au lieu des colonnes globales (les mots-clés restent globaux) |
+| `python facet.py --import-sidecars --overwrite-manual-gps` | Remplace le GPS manuel déjà défini dans Facet (y compris un lieu effacé) par le lieu manuel du sidecar ; sans cette option, le GPS manuel existant est conservé |
 | `python facet.py --export-sidecars` | Écrit/fusionne les sidecars `<image>.xmp` depuis la base de données pour toutes les photos (sidecar uniquement) |
 | `python facet.py --export-sidecars /path` | Exporte les sidecars uniquement pour les photos sous un sous-arbre de chemin |
 | `python facet.py --export-sidecars --user alice` | Mode multi-utilisateurs : exporte les notes `user_preferences` d'Alice au lieu des colonnes globales (les mots-clés restent globaux) |

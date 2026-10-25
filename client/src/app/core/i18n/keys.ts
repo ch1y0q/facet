@@ -1324,6 +1324,8 @@ export const I18N = {
       move_down: "gallery.card_actions.move_down",
       reset: "gallery.card_actions.reset",
     },
+    manual_faces_need_review: "gallery.manual_faces_need_review",
+    manual_faces_review_hint: "gallery.manual_faces_review_hint",
   },
   composition_patterns: {
     none: "composition_patterns.none",

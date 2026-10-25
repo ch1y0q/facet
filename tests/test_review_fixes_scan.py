@@ -302,6 +302,8 @@ def _upgrade_flags(tmp_path, monkeypatch, config=None):
         return subprocess.CompletedProcess(cmd, 0)
 
     monkeypatch.setattr(facet, "init_database", lambda path: None)
+    # The in-process HEIF repair reads the schema init_database would have built.
+    monkeypatch.setattr("processing.scorer.fix_double_transposed_heif_thumbnails", lambda path: 0)
     monkeypatch.setattr(subprocess, "run", _run)
     argv = ["facet.py", "--upgrade-db", "--db", db_path]
     if config:

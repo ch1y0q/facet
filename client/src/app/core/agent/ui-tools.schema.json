@@ -864,6 +864,16 @@
                   "null"
                 ]
               },
+              "manual_faces_need_review": {
+                "description": "Gallery filter `manual_faces_need_review`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
               "max_aesthetic": {
                 "description": "Gallery filter `max_aesthetic`.",
                 "type": [
@@ -2082,5 +2092,5 @@
       "name": "ui_show_comparison"
     }
   ],
-  "version": "51034c898206f3c3"
+  "version": "7ffdd58b9fb71b91"
 }

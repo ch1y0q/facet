@@ -5,6 +5,7 @@ All notable changes to Facet are documented in this file.
 ## [Unreleased]
 
 ### Added
+- Explicit XMP export/import carries Keep decisions and manual GPS, with protection against overwriting existing manual locations.
 
 - **Keep photos and resume from the ones you have not reviewed.** The gallery has Keep and Reset decision actions, a `K` shortcut, Undo, and Needs review / Kept / Rejected filters. Keep is separate from stars and favorites, survives rescans, and is also saved when you confirm a culling group or apply an auto-cull. `--auto-cull --cull-min-score` never rejects a kept photo on its score, as it already spared favourites and starred photos.
 - **"Only blinks", "only duplicates" and "rejected only" gallery filters.** The sidebar's hide toggles could hide blinks, duplicate members and rejects but had no way to see just those, so trashing every reject meant selecting the whole library — refused past the cull cap — and duplicates were only reachable one set at a time. Three checkboxes in the filter sidebar's Refine section now list only the photos with a detected blink, every member of a duplicate group (leads included), or every photo you have rejected. While an "only blinks" or "only duplicates" view is up, the gallery suppresses the hide toggles for it, so a blink inside a burst or a duplicate that is also a blink is not filtered away again by the defaults. The filters are URL-addressable, save into smart albums, and are available to assistants through `search_photos` (`blinks_only`, `duplicates_only`, `show_rejected`). A view of only the rejects plus select-all and **Cull to folder** is now the one-view path to trashing every reject, far below the 10 000-photo cull cap.
@@ -20,6 +21,10 @@ All notable changes to Facet are documented in this file.
 
 - **Cmd+A selects all in the gallery on macOS.** The shortcut was bound to Ctrl+A only, so the Mac's own select-all chord did nothing and Ctrl+A — which macOS users never press — was the only way. Both now work; focus guards (inputs, open dialogs) are unchanged.
 - **The gear usage timeline's tooltip reads as a month, not a moment.** The chart's x axis is month-granular, but hovering a point titled it with the bucket's first instant ("Mar 1, 2026, 12:00:00 a.m.") — a moment that was never measured. The tooltip now says "Mar 2026", matching the axis ticks.
+
+### Fixed
+
+- **Review saved manual faces from the gallery.** The new filter finds stale or legacy marks using the last scan or editor check. Correct or delete them in the existing face editor; resolved photos leave the filtered view. Queue listing does not decode originals.
 
 ## [1.23.1] "Grip" — 2026-10-24
 

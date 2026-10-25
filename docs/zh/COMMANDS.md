@@ -80,6 +80,7 @@ API 会将其呈现在 `/api/scan/status` 的 `progress` 字段以及 SSE 数据
 | `python facet.py --import-sidecars` | 把 `<image>.xmp` 附属文件中的评分／标记／标签导回数据库（全部照片）；Facet 尚未拥有的关键字会成为[手动标签](INTEROP.md#手动标签与-xmp-关键字) |
 | `python facet.py --import-sidecars /path` | 仅导入某个路径子树下照片的附属文件 |
 | `python facet.py --import-sidecars --user alice` | 多用户模式：把评分导入 Alice 的 `user_preferences`，而不是全局列（关键词仍为全局） |
+| `python facet.py --import-sidecars --overwrite-manual-gps` | 用附属文件中的手动位置替换 Facet 中已设置的手动 GPS（包括已清除的位置）；不加此选项时保留已有的手动 GPS |
 | `python facet.py --export-sidecars` | 为全部照片从数据库写入／合并 `<image>.xmp` 附属文件（仅附属文件） |
 | `python facet.py --export-sidecars /path` | 仅导出某个路径子树下照片的附属文件 |
 | `python facet.py --export-sidecars --user alice` | 多用户模式：导出 Alice 的 `user_preferences` 评分，而不是全局列（关键词仍为全局） |

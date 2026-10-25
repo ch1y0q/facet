@@ -81,6 +81,7 @@ Viewers im `progress`-Feld von `/api/scan/status` und im SSE-Stream bereitstellt
 | `python facet.py --import-sidecars` | Bewertungen/Labels/Tags aus `<image>.xmp`-Sidecars zurück in die DB importieren (alle Fotos); Stichwörter, die Facet noch nicht kennt, werden zu [manuellen Tags](INTEROP.md#manuelle-tags-und-xmp-stichwörter) |
 | `python facet.py --import-sidecars /path` | Sidecars nur für Fotos unterhalb eines Pfad-Teilbaums importieren |
 | `python facet.py --import-sidecars --user alice` | Mehrbenutzermodus: Bewertungen in Alices `user_preferences` importieren statt in die globalen Spalten (Schlüsselwörter bleiben global) |
+| `python facet.py --import-sidecars --overwrite-manual-gps` | Bereits in Facet gesetztes manuelles GPS (auch einen gelöschten Ort) durch den manuellen Ort aus der Sidecar ersetzen; ohne die Option bleibt vorhandenes manuelles GPS erhalten |
 | `python facet.py --export-sidecars` | `<image>.xmp`-Sidecars aus der DB für alle Fotos schreiben/zusammenführen (nur Sidecar) |
 | `python facet.py --export-sidecars /path` | Sidecars nur für Fotos unterhalb eines Pfad-Teilbaums exportieren |
 | `python facet.py --export-sidecars --user alice` | Mehrbenutzermodus: Alices `user_preferences`-Bewertungen exportieren statt der globalen Spalten (Schlüsselwörter bleiben global) |

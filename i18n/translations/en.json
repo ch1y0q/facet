@@ -1309,7 +1309,9 @@
       "move_up": "Move up",
       "move_down": "Move down",
       "reset": "Reset to defaults"
-    }
+    },
+    "manual_faces_need_review": "Manual faces need review",
+    "manual_faces_review_hint": "Based on the last scan or face-editor check, not continuous monitoring. Open a photo’s face editor to review saved marks."
   },
   "composition_patterns": {
     "none": "None",

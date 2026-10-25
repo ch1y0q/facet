@@ -81,6 +81,7 @@ visor expone en el campo `progress` de `/api/scan/status` y del flujo SSE.
 | `python facet.py --import-sidecars` | Importa valoraciones/etiquetas de color/etiquetas desde los sidecars `<image>.xmp` de vuelta a la BD (todas las fotos); las palabras clave que Facet aún no tiene pasan a ser [tags manuales](INTEROP.md#tags-manuales-y-palabras-clave-xmp) |
 | `python facet.py --import-sidecars /path` | Importa los sidecars solo para las fotos bajo un subárbol de ruta |
 | `python facet.py --import-sidecars --user alice` | Modo multiusuario: importa las valoraciones a la tabla `user_preferences` de Alice en lugar de a las columnas globales (las palabras clave siguen siendo globales) |
+| `python facet.py --import-sidecars --overwrite-manual-gps` | Sustituye el GPS manual ya definido en Facet (incluida una ubicación borrada) por la ubicación manual del sidecar; sin esta opción se conserva el GPS manual existente |
 | `python facet.py --export-sidecars` | Escribe/fusiona los sidecars `<image>.xmp` desde la BD para todas las fotos (solo sidecar) |
 | `python facet.py --export-sidecars /path` | Exporta los sidecars solo para las fotos bajo un subárbol de ruta |
 | `python facet.py --export-sidecars --user alice` | Modo multiusuario: exporta las valoraciones de `user_preferences` de Alice en lugar de las columnas globales (las palabras clave siguen siendo globales) |

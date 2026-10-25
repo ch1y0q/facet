@@ -2756,9 +2756,9 @@ export interface paths {
          *     trash") and deletes their rows in the same transaction as the trashed
          *     paths', lead re-pick included. It stays an opt-in because a request
          *     where EVERY file reads as missing is exactly what a disconnected
-         *     library volume looks like; the viewer's own delete dialog opts in, the
-         *     preview names the missing rows, and the flag-less default still
-         *     reports them as ``skipped``.
+         *     library volume looks like, and even opted in, ``_reconcilable_missing``
+         *     keeps a path ``skipped`` when the allowlist refused it or the folder
+         *     that held it is gone or empty -- the shape of an offline volume.
          */
         post: operations["api_photo_delete_api_photo_delete_post"];
         delete?: never;

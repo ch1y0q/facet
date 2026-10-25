@@ -81,6 +81,7 @@ lines (phase, current/total, ETA) which the viewer's scan API surfaces in the
 | `python facet.py --import-sidecars` | Import ratings/labels/keywords from `<image>.xmp` sidecars back into the DB (all photos); keywords Facet does not already have become [manual tags](INTEROP.md#manual-tags-and-xmp-keywords) |
 | `python facet.py --import-sidecars /path` | Import sidecars only for photos under a path subtree |
 | `python facet.py --import-sidecars --user alice` | Multi-user mode: import ratings into Alice's `user_preferences` instead of the global columns (keywords stay global) |
+| `python facet.py --import-sidecars --overwrite-manual-gps` | Replace manual GPS already set in Facet (including a cleared location) with the sidecar's manual location; without it, existing manual GPS is kept |
 | `python facet.py --export-sidecars` | Write/merge `<image>.xmp` sidecars from the DB for all photos (sidecar only) |
 | `python facet.py --export-sidecars /path` | Export sidecars only for photos under a path subtree |
 | `python facet.py --export-sidecars --user alice` | Multi-user mode: export Alice's `user_preferences` ratings instead of the global columns (keywords stay global) |
