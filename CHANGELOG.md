@@ -7,6 +7,7 @@ All notable changes to Facet are documented in this file.
 - Filter photos with unassigned faces or unnamed people from the gallery People section.
 
 ### Changed
+- Reuse the NumPy search matrix across rating changes and accounts with the same visible photos, with embedding-specific invalidation and visibility checked in one read snapshot. Restricted searches load only permitted vectors; distinct scopes replace the single retained matrix.
 - Read search cache database change tokens in a worker thread so cold searches do not block other requests.
 - Resize manual-face previews and crop face pixels before converting to RGB, avoiding full-resolution copies on preview and save.
 

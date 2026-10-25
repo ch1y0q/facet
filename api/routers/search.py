@@ -6,6 +6,10 @@ Fully migrated to aiosqlite per the R7 closure batch.
 """
 
 import asyncio
+import hashlib
+from pathlib import Path
+
+import aiosqlite
 import json
 import logging
 import re
@@ -13,6 +17,7 @@ import sqlite3
 import threading
 import time
 from collections import OrderedDict
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -51,7 +56,7 @@ _clip_config_cache = None
 _clip_config_lock = threading.Lock()
 # Rows sampled to decide the stored embedding dimension; see _stored_embedding_dim.
 _EMBEDDING_DIM_SAMPLE = 1000
-_embedding_cache = None  # One retained NumPy fallback matrix, keyed by DB and visibility.
+_embedding_cache = None  # One retained matrix for the current database, encoder and visible cohort.
 _embedding_cache_lock = asyncio.Lock()
 
 # Split-TTL availability tracking.
@@ -461,61 +466,82 @@ async def _search_vec(conn, text_emb, limit, threshold, vis_sql, vis_params):
     return scores
 
 
-async def _embedding_matrix_key(conn, vis_sql, vis_params, user_id):
-    """Identify the current database pathname, or an isolated in-memory DB."""
-    from api.change_token import db_change_token
+@asynccontextmanager
+async def _embedding_snapshot(conn):
+    """Use one current file and read transaction for vectors, revision and visibility."""
+    async with conn.execute("PRAGMA database_list") as cursor:
+        databases = await cursor.fetchall()
+    path = next(row[2] for row in databases if row[1] == 'main')
+    if conn.in_transaction:
+        # The caller owns this transaction, including its uncommitted edits.
+        yield conn, None, False
+        return
+    if not path:
+        # Memory databases have no durable revision. The caller must own this
+        # connection while searching; keep its reads coherent without caching.
+        await conn.execute('BEGIN')
+        try:
+            yield conn, None, False
+        finally:
+            await conn.rollback()
+        return
+    # database_list names the current pathname, not necessarily the file held by
+    # an older request connection. BEGIN keeps both subsequent reads on this inode.
+    async with aiosqlite.connect(Path(path).as_uri() + '?mode=ro', uri=True) as reader:
+        reader.row_factory = aiosqlite.Row
+        await reader.execute('BEGIN')
+        try:
+            revision = None
+            try:
+                async with reader.execute('SELECT revision FROM embedding_cache_revision WHERE id=1') as cursor:
+                    rows = await cursor.fetchall()
+                if len(rows) == 1:
+                    value = rows[0][0]
+                    if isinstance(value, str) and len(value) == 32 and all(char in '0123456789abcdef' for char in value):
+                        revision = value
+            except sqlite3.OperationalError as error:
+                # Older read-only databases have no revision schema. Read them
+                # uncached; never migrate or seed state while serving a search.
+                if 'no such table' not in str(error).lower() and 'no such column' not in str(error).lower():
+                    raise
+            async with reader.execute('PRAGMA schema_version') as cursor:
+                schema_version = (await cursor.fetchone())[0]
+            # A legacy/rebuilt photos table may have lost one tracking trigger.
+            # Without the complete tracking set, later writes cannot invalidate.
+            async with reader.execute(
+                "SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='photos' "
+                "AND name IN ('embedding_cache_photos_insert','embedding_cache_photos_delete','embedding_cache_photos_update')"
+            ) as cursor:
+                tracked = len(await cursor.fetchall()) == 3
+            cacheable = revision is not None and tracked
+            key = (path, revision, schema_version) if cacheable else None
+            yield reader, key, cacheable
+        finally:
+            await reader.rollback()
 
-    async with conn.execute("PRAGMA database_list") as cur:
-        databases = await cur.fetchall()
-    db_path = next(row[2] for row in databases if row[1] == 'main')
-    scope = (vis_sql, tuple(vis_params), user_id)
-    if not db_path:
-        async with conn.execute("PRAGMA data_version") as cur:
-            row = await cur.fetchone()
-        # data_version excludes this connection's writes; total_changes includes
-        # them. Retaining the connection also prevents object-ID reuse.
-        return (conn, row[0], conn.total_changes, scope)
-    # Existing cross-process sentinel handles WAL commits and file replacement.
-    # No embedding-only generation exists: unrelated commits also invalidate.
-    token = await asyncio.to_thread(db_change_token, db_path)
-    return (db_path, token, scope)
 
-
-async def _load_embedding_matrix(conn, vis_sql, vis_params, user_id):
-    """Fallback: reuse one matrix until its database or visibility changes."""
+async def _load_snapshot_embedding_matrix(reader, key, dimension, *, cacheable, vis_sql, vis_params, cohort_key):
+    """Share a matrix only under a key read inside the trusted read snapshot."""
     global _embedding_cache
-    from utils.embedding import bytes_to_normalized_embedding, filter_uniform_embeddings
+    from utils.embedding import bytes_to_normalized_embedding
 
-    # Serialize misses (including different scopes) so concurrent requests do
+    if dimension <= 0:
+        raise ValueError('embedding dimension must be positive')
+    key = (key, dimension, cohort_key)
+    # Serialize misses across databases so concurrent requests do
     # not multiply the BLOB rows and matrix construction's peak memory.
     async with _embedding_cache_lock:
-        key = await _embedding_matrix_key(conn, vis_sql, vis_params, user_id)
-        # An explicit transaction may be reading an older snapshot or its own
-        # uncommitted writes. Never share that result with other connections.
-        cacheable = not conn.in_transaction
         if cacheable and _embedding_cache and _embedding_cache['key'] == key:
             return _embedding_cache['matrix'], _embedding_cache['paths']
 
         async def read_rows(reader):
             async with reader.execute(
-                f"SELECT path, clip_embedding FROM photos WHERE clip_embedding IS NOT NULL AND {vis_sql}",
+                f"SELECT path, clip_embedding FROM photos WHERE clip_embedding IS NOT NULL AND ({vis_sql})",
                 vis_params,
             ) as cur:
                 return await cur.fetchall()
 
-        if cacheable and isinstance(key[0], str):
-            # database_list gives a pathname, NOT the inode held by conn. A
-            # request opened before an atomic replacement can still read the
-            # old file. Open a fresh reader AFTER taking the path token so old
-            # rows can never be published under the replacement file's key.
-            import aiosqlite
-            from pathlib import Path
-
-            async with aiosqlite.connect(Path(key[0]).as_uri() + '?mode=ro', uri=True) as reader:
-                reader.row_factory = aiosqlite.Row
-                rows = await read_rows(reader)
-        else:
-            rows = await read_rows(conn)
+        rows = await read_rows(reader)
 
         # Numpy work below is CPU-bound — push it off the event loop. For 100k photos
         # this can be ~50ms which is meaningful at moderate concurrency.
@@ -523,11 +549,15 @@ async def _load_embedding_matrix(conn, vis_sql, vis_params, user_id):
             paths_ = []
             embeddings_ = []
             for r in rows:
-                emb = bytes_to_normalized_embedding(r['clip_embedding'])
-                if emb is not None:
+                try:
+                    emb = bytes_to_normalized_embedding(r['clip_embedding'], dim=dimension)
+                except (TypeError, ValueError):
+                    # One malformed vector must not make the permitted cohort
+                    # unavailable to otherwise valid searches.
+                    continue
+                if emb is not None and np.isfinite(emb).all():
                     paths_.append(r['path'])
                     embeddings_.append(emb)
-            embeddings_, paths_ = filter_uniform_embeddings(embeddings_, paths_)
             if not embeddings_:
                 return None, []
             return np.stack(embeddings_, axis=0), paths_
@@ -554,14 +584,40 @@ async def _load_embedding_matrix(conn, vis_sql, vis_params, user_id):
         return matrix, paths
 
 
-async def _search_numpy(conn, text_emb, limit, threshold, vis_sql, vis_params, user_id):
-    """Fallback: brute-force cosine similarity search via NumPy (async)."""
-    matrix, paths = await _load_embedding_matrix(conn, vis_sql, vis_params, user_id)
-    if matrix is None or len(paths) == 0:
-        return {}
+def _visible_path_fingerprint(paths):
+    """Identify an effective cohort without retaining a second set of its paths."""
+    digest = hashlib.sha256()
+    for path in sorted(paths):
+        encoded = path.encode('utf-8')
+        digest.update(len(encoded).to_bytes(8, 'big'))
+        digest.update(encoded)
+    return digest.hexdigest()
 
-    if text_emb.shape[0] != matrix.shape[1]:
-        return {}
+
+async def _visible_embedding_paths(reader, vis_sql, vis_params):
+    async with reader.execute(f"SELECT path FROM photos WHERE {vis_sql}", vis_params) as cursor:
+        return {row[0] for row in await cursor.fetchall()}
+
+
+async def _search_numpy(conn, text_emb, limit, threshold, vis_sql, vis_params):
+    """Fallback: brute-force cosine similarity search via NumPy (async)."""
+    async with _embedding_snapshot(conn) as (reader, key, cacheable):
+        # Authorization precedes vector reads and allocation. A restricted
+        # account must not build private vectors, even on its first cold search.
+        visible = None
+        cohort_key = None
+        if vis_sql != '1=1':
+            visible = await _visible_embedding_paths(reader, vis_sql, vis_params)
+            if not visible:
+                return {}
+            cohort_key = await asyncio.to_thread(_visible_path_fingerprint, visible)
+        matrix, paths = await _load_snapshot_embedding_matrix(
+            reader, key, text_emb.shape[0], cacheable=cacheable,
+            vis_sql=vis_sql, vis_params=vis_params, cohort_key=cohort_key)
+        if matrix is None or len(paths) == 0:
+            return {}
+        if text_emb.shape[0] != matrix.shape[1]:
+            return {}
 
     # Matmul is CPU-bound; offload from event loop.
     def _compute():
@@ -570,6 +626,8 @@ async def _search_numpy(conn, text_emb, limit, threshold, vis_sql, vis_params, u
         if not mask.any():
             return {}
         indices = np.where(mask)[0]
+        if visible is not None:
+            indices = np.array([index for index in indices if paths[index] in visible], dtype=np.intp)
         ranked = indices[np.argsort(-similarities[indices])]
         # limit=None is the uncapped threshold-passing set (semantic_candidates).
         top_indices = ranked if limit is None else ranked[:limit]
@@ -796,8 +854,9 @@ async def semantic_candidates(conn, q: str, threshold: Optional[float], user_id:
     """The uncapped set of photos a semantic query passes, for the gallery to filter, sort and page.
 
     Pure embedding gate plus every FTS5 / manual-tag hit (the union ``/api/search`` blends),
-    with no result cap. Visibility is NOT applied here -- the gallery's WHERE enforces it;
-    the cache is still per user because the NumPy matrix is. Cached 120 s under
+    with no result cap. NumPy/manual-tag hits apply visibility here; the gallery's
+    WHERE enforces it for the combined vector/FTS union. The candidate cache stays per
+    user while equal visible NumPy cohorts can share a matrix. Cached 120 s under
     ``(q, threshold, model, user_id, db_change_token)`` so later pages skip the encode and
     the scan. Raises ``AcceleratorBusy`` / whatever the encoder raises; never returns a
     partial set.
@@ -816,7 +875,7 @@ async def semantic_candidates(conn, q: str, threshold: Optional[float], user_id:
     else:
         global _search_vec_fallback_total
         _search_vec_fallback_total += 1
-        embedding = await _search_numpy(conn, text_emb, None, resolved, vis_sql, vis_params, user_id)
+        embedding = await _search_numpy(conn, text_emb, None, resolved, vis_sql, vis_params)
     fts: dict[str, float] = {}
     if await _has_fts(conn):
         fts = await _fts_search(conn, q, -1)
@@ -904,7 +963,7 @@ async def api_search(
                 else:
                     global _search_vec_fallback_total
                     _search_vec_fallback_total += 1
-                    embedding_scores = await _search_numpy(conn, text_emb, limit, resolved_threshold, vis_sql, vis_params, user_id)
+                    embedding_scores = await _search_numpy(conn, text_emb, limit, resolved_threshold, vis_sql, vis_params)
 
             # --- Merge results ---
             # Embedding weight 0.7, FTS weight 0.3 (text-only scope: FTS at full weight)

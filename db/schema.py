@@ -638,6 +638,12 @@ REJECTED_MERGE_SUGGESTIONS_COLUMNS = [
     ('rejected_at', "TEXT DEFAULT (datetime('now'))"),
 ]
 
+# Derived cache state, not user edits; a fresh DB identity prevents cross-file reuse.
+EMBEDDING_CACHE_REVISION_COLUMNS = [
+    ('id', 'INTEGER PRIMARY KEY CHECK(id=1)'),
+    ('revision', "TEXT NOT NULL CHECK(length(revision)=32 AND revision NOT GLOB '*[^0-9a-f]*')"),
+]
+
 # Weight optimization history
 WEIGHT_OPTIMIZATION_RUNS_COLUMNS = [
     ('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
@@ -1471,6 +1477,9 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
                 "UPDATE persons SET centroid_model = ? "
                 "WHERE centroid IS NOT NULL AND centroid_model IS NULL",
                 (ARCFACE_MODEL,))
+
+        from db.embedding_revision import init_schema as init_embedding_revision
+        init_embedding_revision(conn)
 
         from db.organization_history import init_schema as init_organization_history
         init_organization_history(conn)

@@ -50,6 +50,15 @@ def _async_cm(conn):
     return _ctx
 
 
+def _embedding_snapshot_cm(conn):
+    """Route-unit seam: scoring receives this already established snapshot."""
+    @asynccontextmanager
+    async def snapshot(actual):
+        assert actual is conn
+        yield conn, None, False
+    return snapshot
+
+
 def _async_return(value):
     """Wrap a value in a coroutine for return-value mocking of async helpers."""
     async def _f(*args, **kwargs):
@@ -559,11 +568,12 @@ class TestOptionalThresholdEndToEnd:
                     "display": {"tags_per_photo": 3},
                 }),
                 mock.patch("api.routers.search.get_async_db", _async_cm(async_conn)),
+                mock.patch("api.routers.search._embedding_snapshot", _embedding_snapshot_cm(async_conn)),
                 mock.patch("api.routers.search.get_visibility_clause", return_value=("1=1", [])),
                 mock.patch("api.db_helpers.get_existing_columns", return_value={"path", "aggregate"}),
                 mock.patch("api.routers.search.get_photos_from_clause", return_value=("photos", [])),
                 mock.patch("api.db_helpers.get_preference_columns", return_value={}),
-                mock.patch("api.routers.search._load_embedding_matrix", _async_return((matrix, matrix_paths))),
+                mock.patch("api.routers.search._load_snapshot_embedding_matrix", _async_return((matrix, matrix_paths))),
                 mock.patch("api.routers.search._encode_text", return_value=text_emb),
                 mock.patch("api.routers.search._has_fts", _async_return(False)),
                 mock.patch("api.routers.search._manual_tag_search", _async_return({})),
@@ -613,7 +623,7 @@ class TestOptionalThresholdEndToEnd:
             mock.patch("api.routers.search._has_fts", _async_return(False)),
             mock.patch("api.routers.search._manual_tag_search", _async_return({})),
             mock.patch("api.routers.search._check_vec_available", _async_return(False)),
-            mock.patch("api.routers.search._load_embedding_matrix",
+            mock.patch("api.routers.search._load_snapshot_embedding_matrix",
                        _async_return((np.zeros((0, 4), dtype=np.float32), []))),
         ):
             assert client.get("/api/search", params={"q": "x"}).status_code == 200
