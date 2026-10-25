@@ -9,6 +9,8 @@ All notable changes to Facet are documented in this file.
 
 ### Added
 
+- **Explicit XMP sidecar discovery.** `--import-sidecars --sidecar-naming full|basename|auto` can read stripped-extension sidecars, refuses shared RAW/JPEG basenames, and reports naming conflicts. Full-name discovery remains the default; exports keep their existing filenames.
+
 - **Revisit organization edits** from a private, durable history: compare GPS, capture-date and review values, then explicitly revert a whole entry with protection against newer edits. Keeps 50 bounded entries per account; originals stay unchanged.
 
 - **Correct capture dates** from photo details or gallery selections: preview a bounded walltime shift before applying it atomically, preserve manual dates across rescans/viewer exports, restore the file date, and export manual dates through the existing explicit XMP/embed actions.
@@ -22,6 +24,8 @@ All notable changes to Facet are documented in this file.
 - **The photo card's hover buttons are yours to arrange.** The four buttons that floated over every card on hover (find similar, why-this-score, write metadata, assign a face) are now a configurable row: a new dialog in the filter sidebar's View section reorders them and switches each on or off, per browser. Four actions join the pool — **open the photo's duplicate group** (on by default, and scoped to that group the same way the photo page's "open this set" lands), open its burst group, open its bracket/panorama set, and open the photo page. The group buttons appear only on photos that actually belong to such a group, so the row stays quiet on photos with nothing to offer. The layout persists in localStorage like the thumbnail size; smart albums, filters and the API are untouched.
 
 ### Fixed
+
+- Refuse basename XMP discovery when a double-extension derivative would read another image’s full-name or fallback sidecar. Report full-policy naming notices once per import while retaining complete mismatch counts.
 
 - **Semantic search refreshes its NumPy fallback after database changes.** Replaced embeddings and same-count photo replacements now update search results without restarting the viewer. Concurrent fallback requests share matrix construction, and cache entries include the database and visibility scope.
 - **Caption export preserves other XMP languages.** Writing a Facet caption now updates only the default-language description in sidecars and embedded metadata, retaining existing translations. An empty Facet caption still preserves the existing caption.
