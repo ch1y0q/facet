@@ -2466,6 +2466,13 @@
       "error": "Löschen fehlgeschlagen"
     },
     "gps": {
+      "online_query": "Adresse oder Geschäft",
+      "online_notice": "Die Onlinesuche sendet diese Anfrage an den konfigurierten Photon-Anbieter. Gespeicherte Orte und Koordinaten funktionieren offline. Die Auswahl zeigt eine Vorschau; Speichern übernimmt sie.",
+      "online_search": "Online suchen",
+      "online_disabled": "Die Onlinesuche ist deaktiviert.",
+      "online_loading": "Onlinesuche läuft…",
+      "online_empty": "Keine Orte gefunden. Andere Suchanfrage versuchen oder Koordinaten eingeben.",
+      "online_error": "Onlinesuche fehlgeschlagen oder ausgelastet. Kurz warten und erneut versuchen oder Koordinaten eingeben.",
       "preview_hint": "Wählen Sie einen Ort und dann Speichern, um ihn diesem Foto zuzuweisen.",
       "search": "Gespeicherte Orte suchen",
       "loading": "Orte werden geladen…",
@@ -2809,5 +2816,21 @@
     "reset": "Entscheidung zurücksetzen",
     "updated": "Entscheidung für {count} Fotos aktualisiert",
     "shortcut": "Foto behalten"
+  },
+  "capture_date": {
+    "title": "Aufnahmedatum korrigieren",
+    "offset": "Versatz in Sekunden (+ später, − früher)",
+    "invalid": "Eine ganze Zahl ungleich null innerhalb von ±366 Tagen; höchstens 1000 Fotos auswählen.",
+    "counts": "{changed} geändert · {skipped} übersprungen",
+    "samples": "Die ersten 20 Änderungen. Unbekannte, unvollständige, nicht unterstützte oder überlaufende Datumswerte werden übersprungen.",
+    "photo": "Foto",
+    "before": "Vorher",
+    "after": "Nachher",
+    "error": "Aktion fehlgeschlagen. Zugriff und Dateien prüfen und die Vorschau erneut laden.",
+    "reset_hint": "Das Dateidatum entfernt die manuelle Korrektur. Ohne Datum in der Datei wird das Aufnahmedatum unbekannt.",
+    "use_file": "Dateidatum verwenden",
+    "preview": "Vorschau",
+    "apply": "Korrektur anwenden",
+    "hint": "Verschiebt die gespeicherte Kamera-Uhrzeit ohne Ableitung von Zeitzone oder Sommerzeit. Originale ändern sich erst beim ausdrücklichen Metadatenexport."
   }
 }

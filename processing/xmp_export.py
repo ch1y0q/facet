@@ -57,6 +57,7 @@ from typing import NamedTuple
 from xml.etree import ElementTree as ET
 
 from db.manual_tags import load_manual_tags_map, merge_effective_tags
+from utils.capture_dates import parse_capture_date
 from utils.image_loading import JPEG_EXTENSIONS, KNOWN_HEIF_EXTENSIONS
 
 logger = logging.getLogger(__name__)
@@ -178,6 +179,8 @@ class XmpRating:
     is_favorite: bool = False
     is_rejected: bool = False
     is_kept: bool = False
+    date_taken: str | None = None
+    date_manually_set: bool = False
     gps_manually_set: bool = False
     gps_latitude: float | None = None
     gps_longitude: float | None = None
@@ -205,6 +208,8 @@ class XmpRating:
             is_favorite=bool(data.get("is_favorite") or 0),
             is_rejected=bool(data.get("is_rejected") or 0),
             is_kept=bool(data.get("is_kept") or 0),
+            date_taken=data.get("date_taken"),
+            date_manually_set=bool(data.get("date_manually_set") or 0),
             gps_manually_set=bool(data.get("gps_manually_set") or 0),
             gps_latitude=data.get("gps_latitude"),
             gps_longitude=data.get("gps_longitude"),
@@ -217,6 +222,14 @@ class XmpRating:
 
     def review_decision(self) -> str:
         return "rejected" if self.is_rejected else "kept" if self.is_kept else "undecided"
+
+    def manual_date(self) -> str | None:
+        if not self.date_manually_set:
+            return None
+        date = parse_capture_date(self.date_taken)
+        if date is None:
+            raise ValueError("Manual capture date must be a full walltime")
+        return date.isoformat(timespec='seconds')
 
     def gps_state(self) -> str | None:
         if not self.gps_manually_set:
@@ -341,6 +354,9 @@ def _apply_facet_nodes(desc, rating: XmpRating) -> None:
         desc.set(f"{{{NS_XMP}}}Label", label)
     desc.set(f"{{{NS_XMP}}}MetadataDate", now)
     desc.set(f"{{{NS_FACET}}}ReviewDecision", rating.review_decision())
+    if rating.manual_date() is not None:
+        desc.set(f"{{{NS_FACET}}}DateState", "set")
+        desc.set(f"{{{NS_EXIF}}}DateTimeOriginal", rating.manual_date())
     state = rating.gps_state()
     if state:
         desc.set(f"{{{NS_FACET}}}GPSState", state)
@@ -585,7 +601,7 @@ def _union(*lists: list[str]) -> list[str]:
 
 
 def _exiftool_tag_args(rating: XmpRating, existing_flat: list[str],
-                       existing_hier: list[str]) -> list[str]:
+                       existing_hier: list[str], facet_dated: bool = False) -> list[str]:
     """Build the exiftool ``-Tag=value`` args for ``rating`` (no exe, no target).
 
     Keyword and hierarchical LISTS are cleared then rewritten as the UNION of the
@@ -595,11 +611,20 @@ def _exiftool_tag_args(rating: XmpRating, existing_flat: list[str],
     per-region ownership. ``xmp:Label`` is fully Facet-owned (favourite/reject only), so it is
     always emitted like ``xmp:Rating`` -- an empty value clears the exiftool tag,
     which is what un-favouriting must do. Caption is set only when present, so an
-    external value is not wiped when Facet has none.
+    external value is not wiped when Facet has none. Only the default caption
+    language is edited; all other language alternatives are preserved.
     """
     xmp_rating, label = rating.xmp_values()
     args = [f"-XMP:Rating={xmp_rating}", f"-XMP:Label={label}",
             f"-XMP-facet:ReviewDecision={rating.review_decision()}"]
+    date = rating.manual_date()
+    # The marker records that the sidecar's date is Facet's, so a reset to the
+    # file date clears it -- never a capture time another tool wrote.
+    args.append(f"-XMP-facet:DateState={'set' if date else ''}")
+    if date is not None:
+        args.append(f"-XMP-exif:DateTimeOriginal={date}")
+    elif facet_dated:
+        args.append("-XMP-exif:DateTimeOriginal=")
     state = rating.gps_state()
     # A reset to file GPS must drop the marker an earlier export left in the
     # sidecar, or the next import restores the reverted manual location.
@@ -608,7 +633,8 @@ def _exiftool_tag_args(rating: XmpRating, existing_flat: list[str],
         args.extend([f"-XMP-exif:GPSLatitude={rating.gps_latitude if state == 'set' else ''}",
                      f"-XMP-exif:GPSLongitude={rating.gps_longitude if state == 'set' else ''}"])
     if rating.caption:
-        args.append(f"-XMP-dc:Description={rating.caption}")
+        # An unqualified lang-alt write deletes every other language.
+        args.append(f"-XMP-dc:Description-x-default={rating.caption}")
         args.append(f"-IPTC:Caption-Abstract={rating.caption}")
     # Flat keywords (mirrored to IPTC for legacy tools): clear then replace with
     # the union of existing and Facet's keywords.
@@ -632,34 +658,38 @@ def _listify(value) -> list[str]:
     return [str(value)] if str(value) else []
 
 
-def _read_existing_keywords(target: str, exe: str, *, timeout: int) -> tuple[list[str], list[str]]:
+def _read_existing_metadata(target: str, exe: str, *,
+                            timeout: int) -> tuple[list[str], list[str], bool]:
     """Read ``target``'s existing keywords so a write can union rather than wipe.
 
-    Returns ``(flat, hierarchical)`` where ``flat`` merges ``dc:Subject`` and
-    ``IPTC:Keywords``. Any failure (target not yet created, parse error, non-zero
-    exit) yields ``([], [])`` so the caller falls back to Facet's own keywords.
+    Returns ``(flat, hierarchical, facet_dated)`` where ``flat`` merges
+    ``dc:Subject`` and ``IPTC:Keywords`` and ``facet_dated`` says an earlier
+    export left Facet's ``DateState`` marker. Any failure (target not yet
+    created, parse error, non-zero exit) yields ``([], [], False)`` so the caller
+    falls back to Facet's own keywords.
     """
     import json
 
     try:
         result = subprocess.run(
-            [exe, "-q", "-m", "-json", "-XMP-dc:Subject", "-IPTC:Keywords",
-             "-XMP-lr:HierarchicalSubject", target],
+            [exe, "-config", os.path.join(os.path.dirname(__file__), "facet_exiftool.config"),
+             "-q", "-m", "-json", "-XMP-dc:Subject", "-IPTC:Keywords",
+             "-XMP-lr:HierarchicalSubject", "-XMP-facet:DateState", target],
             capture_output=True, text=True, timeout=timeout,
         )
     except (subprocess.TimeoutExpired, OSError):
-        return [], []
+        return [], [], False
     if result.returncode != 0 or not result.stdout.strip():
-        return [], []
+        return [], [], False
     try:
         records = json.loads(result.stdout)
     except json.JSONDecodeError:
-        return [], []
+        return [], [], False
     if not records:
-        return [], []
+        return [], [], False
     record = records[0]
     flat = _union(_listify(record.get("Subject")), _listify(record.get("Keywords")))
-    return flat, _listify(record.get("HierarchicalSubject"))
+    return flat, _listify(record.get("HierarchicalSubject")), record.get("DateState") == "set"
 
 
 def _run_exiftool(target: str, rating: XmpRating, *, timeout: int) -> None:
@@ -680,10 +710,12 @@ def _run_exiftool(target: str, rating: XmpRating, *, timeout: int) -> None:
     if sidecar and os.path.exists(sidecar):
         with open(sidecar, "rb") as handle:
             snapshot = handle.read()
-    existing_flat, existing_hier = _read_existing_keywords(target, exe, timeout=timeout)
-    tag_args = _exiftool_tag_args(rating, existing_flat, existing_hier)
+    existing_flat, existing_hier, facet_dated = _read_existing_metadata(target, exe, timeout=timeout)
+    tag_args = _exiftool_tag_args(rating, existing_flat, existing_hier, facet_dated)
     existing_regions = _read_existing_regions(target, exe, timeout=timeout)
     tag_args += _region_args(rating.regions, existing_regions)
+    if not target.lower().endswith(".xmp") and rating.manual_date() is not None:
+        tag_args.append(f"-EXIF:DateTimeOriginal={rating.manual_date()}")
     config = os.path.join(os.path.dirname(__file__), "facet_exiftool.config")
     if not target.lower().endswith(".xmp") and rating.gps_state():
         state = rating.gps_state()
@@ -855,7 +887,7 @@ def export_sidecars(conn, root: str | None = None, *, embed_original: bool = Fal
     where, params = sidecar_scope(root, user_id)
     rows = conn.execute(
         f"SELECT photos.path AS path, tags, caption, category, {ratings.columns}, "
-        f"aggregate, image_width, image_height, gps_latitude, gps_longitude, gps_manually_set FROM photos {ratings.join} {where}",
+        f"aggregate, image_width, image_height, gps_latitude, gps_longitude, gps_manually_set, date_taken, date_manually_set FROM photos {ratings.join} {where}",
         ratings.params + params,
     ).fetchall()
     cfg = dict(xmp_export_cfg or {})

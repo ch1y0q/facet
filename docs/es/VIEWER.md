@@ -1550,6 +1550,12 @@ Si la búsqueda semántica indica que la aceleración de Apple Silicon está ocu
 | El puerto 5000 está en uso | Ejecuta `python viewer.py --port 5001` (o define `PORT=5001`). En macOS, el Receptor de AirPlay del Centro de Control ocupa el 5000 por defecto: elige otro puerto o desactiva el Receptor de AirPlay en Ajustes del Sistema → General → AirDrop y Handoff. |
 
 
+### Photon
+
+Usa **Dirección o negocio → Buscar en línea** para consultar Photon explícitamente. La consulta se envía al proveedor configurado solo al pulsar; escribir no envía nada. Selecciona un resultado para previsualizar las coordenadas y pulsa **Guardar** para aplicarlas. El original no cambia. Photon usa datos de OpenStreetMap (© colaboradores de OpenStreetMap). Los lugares guardados y las coordenadas funcionan sin conexión. `viewer.place_search_url` tiene por defecto `https://photon.komoot.io/api`; permite un servidor Photon propio y `""` desactiva la búsqueda. El servidor público no garantiza disponibilidad. Límites: 3–200 caracteres, cinco resultados, cinco segundos y 64 KiB; caché de 128 búsquedas durante 15 minutos por proceso, sin llamadas simultáneas y con un segundo mínimo entre ellas. Usa un solo worker con el proveedor público. Facet no registra las consultas; excluye sus parámetros de los registros del proxy.
+
+El plazo de cinco segundos interrumpe los sockets activos, incluidos encabezados y bloques HTTP lentos. La resolución DNS nativa usa los tiempos del sistema y puede tardar más antes de crear un socket; una búsqueda vencida no abre una conexión después.
+
 ### Revisar las marcas manuales de rostros guardadas
 
 En los filtros de refinamiento de la galería, los editores pueden activar **Rostros manuales por revisar** para encontrar fotos con rectángulos de rostros obsoletos o guardados por versiones anteriores. Abra una foto y su editor de rostros habitual para ajustar y guardar un rectángulo tras comprobarlo de nuevo, o eliminarlo. Cuando se corrige o elimina la última marca pendiente, la foto sale de esta vista filtrada. El filtro también funciona en álbumes inteligentes guardados y al seleccionar todos los resultados.
@@ -1557,3 +1563,11 @@ En los filtros de refinamiento de la galería, los editores pueden activar **Ros
 La cola refleja el último escaneo o la última comprobación explícita en el editor de rostros; no supervisa continuamente el sistema de archivos. Los escaneos completos y restringidos comprueban las fotos con marcas manuales aunque la detección de rostros esté desactivada. Los originales ausentes se señalan al intentar validarlos. La lista solo consulta metadatos indexados de la base de datos y no decodifica originales. El editor vuelve a comprobar el original y su resultado es el que prevalece. Los cambios exclusivos de metadatos mantienen las marcas vigentes si coincide la identidad canónica de la imagen; su firma aproximada puede pasar por alto retoques sutiles del mismo tamaño. Revisar las marcas no modifica los archivos originales.
 
 La exportación de una nueva base de datos del visor y sus actualizaciones incrementales conservan el estado de revisión almacenado; las correcciones realizadas en el visor no se sustituyen por datos antiguos del origen.
+
+## Corregir la fecha de captura
+
+En modo edición, **Corregir fecha de captura** aparece en los detalles y la barra de selección. La selección o «Seleccionar todo en la vista», con exclusiones, admite hasta 1000 fotos visibles. Introduce segundos enteros distintos de cero entre −31622400 y +31622400 (±366 días): positivo retrasa, negativo adelanta. **Vista previa** muestra cantidades modificadas/omitidas y las primeras 20 fechas originales/nuevas. **Aplicar corrección** vuelve a comprobar el alcance y los valores, y aplica todo atómicamente; si cambiaron, repite la vista previa.
+
+Se desplaza la hora local de la cámara sin deducir zona horaria ni horario de verano. Se admiten valores completos `YYYY:MM:DD HH:MM:SS` o `YYYY-MM-DD[T o espacio]HH:MM:SS`. Se omiten fechas desconocidas, incompletas, inválidas, fuera de rango o con zona horaria/fracciones de segundo. Las correcciones sobreviven a escaneos completos/parciales y exportaciones incrementales de la base del visor. **Usar fecha del archivo** elimina la corrección; sin fecha en el archivo, queda desconocida. Los archivos ilegibles o las fechas incompatibles mantienen la corrección.
+
+No se modifican originales ni fechas de modificación de archivos. La exportación XMP explícita escribe `exif:DateTimeOriginal` para fechas manuales; la escritura explícita en el archivo añade EXIF `DateTimeOriginal` en formatos compatibles sin modificar otras fechas EXIF. Se conservan grupos de ráfagas/secuencias; ejecuta explícitamente el escaneo o la detección de grupos para reagrupar.
