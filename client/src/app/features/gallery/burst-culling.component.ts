@@ -640,8 +640,12 @@ interface ShortcutRow {
                   </span>
                 </div>
               }
-              <!-- Photos -->
-              <div class="flex gap-2 md:gap-3 overflow-x-auto px-2 py-3 items-center transition-opacity duration-300 [&::-webkit-scrollbar]:h-2.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--mat-sys-outline-variant)] [&::-webkit-scrollbar-track]:bg-transparent"
+              <!-- Photos. w-fit + max-w-full + mx-auto: a two-photo group
+                   centres instead of squatting in the left quarter, while a
+                   wide group still caps at the row and scrolls — auto margins
+                   never clip the leading tile the way justify-center does
+                   with overflow. -->
+              <div class="flex gap-2 md:gap-3 overflow-x-auto px-2 py-3 items-center mx-auto w-fit max-w-full transition-opacity duration-300 [&::-webkit-scrollbar]:h-2.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--mat-sys-outline-variant)] [&::-webkit-scrollbar-track]:bg-transparent"
                    [class.pointer-events-none]="(group | isConfirmed:cull.confirmedGroups())"
                    [class.opacity-40]="(group | isConfirmed:cull.confirmedGroups())">
                 @for (photo of group.photos; track photo.path; let pIdx = $index) {
