@@ -19,6 +19,7 @@ Copy-and-paste-Blöcken ab.
 | [Interop](INTEROP.md) | Bewertungen/Tags mit Lightroom, Capture One, digiKam, darktable austauschen |
 | [Immich](IMMICH.md) | Bewertungen und Favoriten mit Immich synchronisieren, plus der eingehende Webhook |
 | [Bereitstellung](DEPLOYMENT.md) | NAS, entfernte Server, HTTPS, Backups, Mehrbenutzerbetrieb |
+| [RELINK](RELINK.md) | Verschobene Fotos neu verknüpfen |
 
 ## Unterstützte Dateitypen
 
