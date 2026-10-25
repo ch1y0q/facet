@@ -1580,6 +1580,13 @@ No modo de edição, abra **Histórico de organização** na galeria ou nos deta
 Esta base guarda as últimas **50 entradas por conta**, cada uma com até **1000 fotos e 1 MiB**. Revisões filtradas grandes são divididas em partes na mesma transação. Reverter restaura apenas a parte escolhida; as antigas podem ter expirado. Ações sem alterações não criam entradas. O histórico sobrevive a reinícios e atualizações incrementais, sem sincronização entre bases. Uma exportação completa começa com o histórico vazio.
 
 Uma entrada fica totalmente oculta se alguma foto for eliminada ou deixar de estar visível. A restauração é recusada por inteiro se algum valor afetado mudou depois, mesmo que tenha voltado ao anterior. Conflitos de local/data abrangem todas as contas; revisões privadas de outras contas não bloqueiam as suas. Reverter cria uma nova entrada e marca a original. Análises, importações e anulações temporárias também invalidam entradas anteriores em conflito.
+
+### Rostos sem nome
+
+Inclui rostos não atribuídos e grupos de pessoas sem nome. Use + para atribuir um rosto ou dê um nome a um grupo em Pessoas. Fotos sem rostos detetados são excluídas.
+
+`Filters → People → Rostos sem nome` (`faces_need_names=true`).
+
 ## Atribuir pessoas
 
 O seletor **Atribuir rosto a pessoa** mostra primeiro até 12 pessoas atribuídas com sucesso neste navegador, separadamente por identidade conectada. As demais pessoas nomeadas seguem pela quantidade de rostos nas fotos visíveis, com desempate alfabético. A pesquisa e a paginação abrangem todas as pessoas elegíveis, mesmo com um único rosto. A ordem exibida permanece estável enquanto o seletor está aberto. Selecionar ou propor uma nova pessoa não atualiza os recentes: a atribuição ou o salvamento do rosto manual precisa concluir. Apenas IDs são salvos localmente; sem armazenamento do navegador, a atribuição continua funcionando sem recentes.

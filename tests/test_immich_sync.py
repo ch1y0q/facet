@@ -28,11 +28,15 @@ class FakeTransport:
         if method == "POST" and path == "/api/search/metadata":
             if "originalPath" in payload:
                 asset_id = self.assets_by_path.get(payload["originalPath"])
-                items = [{"id": asset_id}] if asset_id else []
+                items = [{"id": asset_id, "originalPath": payload["originalPath"]}] if asset_id else []
                 return {"assets": {"items": items, "nextPage": None}}
             source = self.bulk_assets if self.bulk_assets is not None else self.assets_by_path
             items = [{"id": aid, "originalPath": p} for p, aid in source.items()]
             return {"assets": {"items": items, "nextPage": None}}
+        if method == "GET" and path.startswith("/api/assets/"):
+            asset_id = path.rsplit("/", 1)[-1]
+            return next(({"id": aid, "originalPath": p}
+                         for p, aid in self.assets_by_path.items() if aid == asset_id), {})
         if method == "PUT" and path == "/api/assets":
             return None
         if method == "GET" and path == "/api/albums":
@@ -130,7 +134,7 @@ class TestPathMapping:
         summary = sync_to_immich(db_path, make_config())
         assert summary == {"matched": 0, "unmatched": 1, "updated": 0,
                            "skipped_unrated": 0, "albums_created": 0,
-                           "webhook_pending": 0}
+                           "webhook_pending": 0, "identity_conflicts": 0}
 
 
 class TestPayloadGrouping:
@@ -583,6 +587,9 @@ class TestBatchedPush:
         conn.close()
 
         def flaky(_self, method, path, payload=None):
+            if method == "GET":
+                asset_id = path.rsplit("/", 1)[-1]
+                return {"id": asset_id, "originalPath": "/p/" + asset_id[3:] + ".jpg"}
             if method == "PUT" and payload["ids"] == ['id-boom']:
                 raise urllib.error.URLError("connection refused")
             return None
@@ -727,3 +734,363 @@ class TestReversePathMapping:
         # ⇒ identity" rule — it is None that means "pairs exist, none matched".
         pairs = [{"facet_prefix": "/nas/", "immich_prefix": ""}]
         assert map_immich_path('/usr/src/app/upload/a.jpg', pairs) == '/usr/src/app/upload/a.jpg'
+
+
+class PagedIdentityTransport(FakeTransport):
+    """Official search response fields, isolated from HTTP/server state."""
+    def __init__(self, bulk=(), fallback=()):
+        super().__init__()
+        self.bulk_pages = list(bulk) or [[]]
+        self.fallback_pages = list(fallback) or [[]]
+
+    def __call__(self, method, path, payload=None):
+        if method == "POST" and path == "/api/search/metadata":
+            self.requests.append((method, path, payload))
+            pages = self.fallback_pages if "originalPath" in payload else self.bulk_pages
+            page = payload["page"]
+            return {"assets": {"items": pages[page - 1],
+                               "nextPage": str(page + 1) if page < len(pages) else None}}
+        return super().__call__(method, path, payload)
+
+
+def _remote_asset(asset_id, path='/p/a.jpg', owner='owner-a', library='library-a'):
+    return {"id": asset_id, "originalPath": path, "ownerId": owner, "libraryId": library}
+
+
+class TestAssetIdentity:
+    @pytest.mark.parametrize("dry_run", [False, True])
+    def test_duplicate_bulk_path_is_refused_across_pages(self, tmp_path, monkeypatch, dry_run):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0)])
+        fake = PagedIdentityTransport(bulk=[[_remote_asset('one')], [_remote_asset('two', owner='owner-b')]])
+        monkeypatch.setattr(ImmichClient, '_request', fake)
+        summary = sync_to_immich(db_path, make_config(), dry_run=dry_run)
+        assert summary['identity_conflicts'] == 1
+        assert summary['matched'] == summary['updated'] == summary['unmatched'] == 0
+        assert fake.writes() == []
+        assert fake.searched_paths() == []  # fallback must not hide known ambiguity
+        with sqlite3.connect(db_path) as conn:
+            assert conn.execute("SELECT value FROM stats_cache WHERE key LIKE 'immich_synced_paths:%'").fetchone() is None
+
+    def test_duplicate_remote_path_does_not_block_unique_photo(self, tmp_path, monkeypatch):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0), ('/p/b.jpg', 4, 0, 0)])
+        fake = PagedIdentityTransport(bulk=[[_remote_asset('one'), _remote_asset('two'),
+                                                  _remote_asset('safe', '/p/b.jpg')]])
+        monkeypatch.setattr(ImmichClient, '_request', fake)
+        summary = sync_to_immich(db_path, make_config())
+        assert summary['identity_conflicts'] == 1
+        assert summary['updated'] == 1
+        assert fake.asset_updates()[0]['ids'] == ['safe']
+
+    def test_fallback_checks_all_pages_before_writing(self, tmp_path, monkeypatch):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0)])
+        fake = PagedIdentityTransport(fallback=[[_remote_asset('one')], [_remote_asset('two')]])
+        monkeypatch.setattr(ImmichClient, '_request', fake)
+        summary = sync_to_immich(db_path, make_config())
+        assert summary['identity_conflicts'] == 1
+        assert fake.writes() == []
+        assert fake.searched_paths() == ['/p/a.jpg', '/p/a.jpg']
+
+    def test_fallback_requires_exact_original_path(self, tmp_path, monkeypatch):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0)])
+        fake = PagedIdentityTransport(fallback=[[_remote_asset('wrong', '/p/a.jpg.backup')], [_remote_asset('exact')]])
+        monkeypatch.setattr(ImmichClient, '_request', fake)
+        summary = sync_to_immich(db_path, make_config())
+        assert summary['updated'] == 1
+        assert fake.asset_updates()[0]['ids'] == ['exact']
+
+    def test_repeat_same_identity_is_not_ambiguous(self, tmp_path, monkeypatch):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0)])
+        fake = PagedIdentityTransport(bulk=[[_remote_asset('one')], [_remote_asset('one')]])
+        monkeypatch.setattr(ImmichClient, '_request', fake)
+        assert sync_to_immich(db_path, make_config())['updated'] == 1
+
+    def test_owner_and_library_scope_disambiguate(self, tmp_path, monkeypatch):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0)])
+        fake = PagedIdentityTransport(bulk=[[_remote_asset('wrong-owner', owner='owner-b'),
+                                          _remote_asset('wrong-library', library='library-b'),
+                                          _remote_asset('selected')]])
+        monkeypatch.setattr(ImmichClient, '_request', fake)
+        config = make_config(owner_id='owner-a', library_id='library-a')
+        assert sync_to_immich(db_path, config)['updated'] == 1
+        assert fake.asset_updates()[0]['ids'] == ['selected']
+
+    def test_missing_scope_fields_cannot_satisfy_selection(self, tmp_path, monkeypatch):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0)])
+        incomplete = {"id": "one", "originalPath": "/p/a.jpg"}
+        fake = PagedIdentityTransport(bulk=[[incomplete]], fallback=[[incomplete]])
+        monkeypatch.setattr(ImmichClient, '_request', fake)
+        summary = sync_to_immich(db_path, make_config(owner_id='owner-a'))
+        assert summary['unmatched'] == 1
+        assert fake.writes() == []
+
+    def test_two_facet_roots_mapping_onto_one_path_are_refused(self, tmp_path, transport):
+        db_path = make_db(tmp_path, [('/one/a.jpg', 5, 0, 0), ('/two/a.jpg', 4, 0, 0)])
+        transport.assets_by_path = {'/remote/a.jpg': 'one'}
+        config = make_config(path_map=[
+            {'facet_prefix': '/one/', 'immich_prefix': '/remote/'},
+            {'facet_prefix': '/two/', 'immich_prefix': '/remote/'},
+        ])
+        summary = sync_to_immich(db_path, config)
+        assert summary['identity_conflicts'] == 2
+        assert transport.writes() == []
+
+    def test_legacy_prefix_mapping_remains_literal_and_first_match(self):
+        pairs = [{'facet_prefix': '/photos/a', 'immich_prefix': '/remote/a'},
+                 {'facet_prefix': '/photos/ab/', 'immich_prefix': '/narrow/'}]
+        assert map_facet_path('/photos/ab/p.jpg', pairs) == '/remote/ab/p.jpg'
+        assert map_immich_path('/remote/ab/p.jpg', pairs) == '/photos/ab/p.jpg'
+
+    @pytest.mark.parametrize('response', [
+        {'id': 'wrong', 'originalPath': '/p/a.jpg'},
+        {'id': 'one', 'originalPath': '/p/other.jpg'},
+        {'id': 'one', 'originalPath': '/p/a.jpg', 'ownerId': 'other'},
+    ])
+    def test_webhook_id_is_verified_on_configured_server(self, tmp_path, monkeypatch, response):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0)])
+        with sqlite3.connect(db_path) as conn:
+            conn.execute('UPDATE photos SET aggregate=8')
+        writes = []
+
+        def request(_self, method, path, payload=None):
+            if method == 'GET':
+                assert path == '/api/assets/one'
+                assert _self.base_url == 'http://immich.local:2283'
+                return response
+            writes.append((method, path, payload))
+
+        monkeypatch.setattr(ImmichClient, '_request', request)
+        results = push_photo_updates(db_path, make_config(owner_id='owner-a'), [('/p/a.jpg', 'one')])
+        assert results[0][0] == RESULT_FAILED
+        assert isinstance(results[0][1], sync_immich.AssetIdentityError)
+        assert writes == []
+
+    def test_ambiguous_clear_preserves_state_for_later_retry(self, tmp_path, monkeypatch, transport):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0)])
+        transport.assets_by_path = {'/p/a.jpg': 'one'}
+        sync_to_immich(db_path, make_config())
+        with sqlite3.connect(db_path) as conn:
+            conn.execute('UPDATE photos SET star_rating=0')
+        fake = PagedIdentityTransport(bulk=[[_remote_asset('one'), _remote_asset('two')]])
+        monkeypatch.setattr(ImmichClient, '_request', fake)
+        assert sync_to_immich(db_path, make_config())['identity_conflicts'] == 1
+        assert fake.writes() == []
+        monkeypatch.setattr(ImmichClient, '_request', transport)
+        assert sync_to_immich(db_path, make_config())['updated'] == 1
+        assert transport.asset_updates()[-1]['rating'] is None
+
+    def test_non_advancing_page_refuses_any_write(self, tmp_path, monkeypatch):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0)])
+        writes = []
+
+        def request(_self, method, path, payload=None):
+            if method == 'POST':
+                return {'assets': {'items': [_remote_asset('one')], 'nextPage': '1'}}
+            writes.append((method, path, payload))
+
+        monkeypatch.setattr(ImmichClient, '_request', request)
+        with pytest.raises(sync_immich.AssetIdentityError, match='non-advancing'):
+            sync_to_immich(db_path, make_config())
+        assert writes == []
+
+
+    def test_same_id_with_inconsistent_paths_refuses_both(self, tmp_path, monkeypatch):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0), ('/p/b.jpg', 4, 0, 0)])
+        fake = PagedIdentityTransport(bulk=[[_remote_asset('same'), _remote_asset('same', '/p/b.jpg')]])
+        monkeypatch.setattr(ImmichClient, '_request', fake)
+        summary = sync_to_immich(db_path, make_config())
+        assert summary['identity_conflicts'] == 2
+        assert fake.writes() == []
+
+    @pytest.mark.parametrize('response', [
+        {'assets': {'items': [{'id': 'one'}], 'nextPage': None}},
+        {'assets': {'items': {'id': 'one'}, 'nextPage': None}},
+        {'assets': 'unexpected'},
+        ['unexpected'],
+    ])
+    def test_malformed_search_identity_fails_closed(self, tmp_path, monkeypatch, response):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0)])
+        writes = []
+
+        def request(_self, method, path, payload=None):
+            if method == 'POST':
+                return response
+            writes.append((method, path, payload))
+
+        monkeypatch.setattr(ImmichClient, '_request', request)
+        with pytest.raises(sync_immich.AssetIdentityError):
+            sync_to_immich(db_path, make_config())
+        assert writes == []
+
+
+    @pytest.mark.parametrize('asset_id', [None, 123, {'id': 'one'}])
+    def test_invalid_webhook_id_is_an_isolated_identity_error(self, asset_id):
+        client = ImmichClient('http://immich.test', 'key')
+        with pytest.raises(sync_immich.AssetIdentityError, match='nonempty string'):
+            client.verify_asset_id(asset_id, '/p/a.jpg')
+
+
+    def test_fallback_refuses_id_aliased_to_broad_search_hit(self, tmp_path, monkeypatch):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0)])
+        fake = PagedIdentityTransport(fallback=[[_remote_asset('same')],
+                                                [_remote_asset('same', '/p/a.jpg.backup')]])
+        monkeypatch.setattr(ImmichClient, '_request', fake)
+        summary = sync_to_immich(db_path, make_config())
+        assert summary['identity_conflicts'] == 1
+        assert summary['updated'] == 0
+        assert fake.writes() == []
+
+    @pytest.mark.parametrize('with_hints', [False, True])
+    def test_webhook_batch_refuses_all_mapping_collisions_before_writes(
+            self, tmp_path, transport, with_hints):
+        db_path = make_db(tmp_path, [('/one/a.jpg', 5, 0, 0),
+                                     ('/two/a.jpg', 4, 0, 0),
+                                     ('/safe/b.jpg', 3, 0, 0)])
+        with sqlite3.connect(db_path) as conn:
+            conn.execute('UPDATE photos SET aggregate=8')
+        transport.assets_by_path = {'/remote/a.jpg': 'conflict', '/safe/b.jpg': 'safe'}
+        config = make_config(path_map=[
+            {'facet_prefix': '/one/', 'immich_prefix': '/remote/'},
+            {'facet_prefix': '/two/', 'immich_prefix': '/remote/'},
+            {'facet_prefix': '/safe/', 'immich_prefix': '/safe/'},
+        ])
+        results = push_photo_updates(db_path, config, [
+            ('/one/a.jpg', 'conflict' if with_hints else None),
+            ('/two/a.jpg', 'conflict' if with_hints else None),
+            ('/safe/b.jpg', 'safe' if with_hints else None),
+        ])
+        assert [r for r, _ in results] == [RESULT_FAILED, RESULT_FAILED, RESULT_PUSHED]
+        assert all(isinstance(error, sync_immich.AssetIdentityError) for _, error in results[:2])
+        assert transport.asset_updates() == [{'ids': ['safe'], 'rating': 3, 'isFavorite': False}]
+        assert '/remote/a.jpg' not in transport.searched_paths()
+        with sqlite3.connect(db_path) as conn:
+            state = conn.execute("SELECT value FROM stats_cache WHERE key='immich_synced_paths:global'").fetchone()[0]
+        assert '/safe/b.jpg' in state
+        assert '/one/a.jpg' not in state
+        assert '/two/a.jpg' not in state
+
+    def test_webhook_batch_refuses_same_hint_for_distinct_paths(self, tmp_path, transport):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0), ('/p/b.jpg', 4, 0, 0)])
+        with sqlite3.connect(db_path) as conn:
+            conn.execute('UPDATE photos SET aggregate=8')
+        results = push_photo_updates(db_path, make_config(), [('/p/a.jpg', 'same'), ('/p/b.jpg', 'same')])
+        assert [result for result, _ in results] == [RESULT_FAILED, RESULT_FAILED]
+        assert transport.requests == []
+
+
+    def test_webhook_resolves_all_ids_before_updating_any_alias(self, tmp_path, transport):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0), ('/p/b.jpg', 4, 0, 0)])
+        with sqlite3.connect(db_path) as conn:
+            conn.execute('UPDATE photos SET aggregate=8')
+        # Each exact search appears unique, but the complete delivery proves
+        # the same UUID has contradictory paths. Neither may be written first.
+        transport.assets_by_path = {'/p/a.jpg': 'same', '/p/b.jpg': 'same'}
+        results = push_photo_updates(db_path, make_config(), [('/p/a.jpg', None), ('/p/b.jpg', None)])
+        assert [result for result, _ in results] == [RESULT_FAILED, RESULT_FAILED]
+        assert transport.asset_updates() == []
+
+
+    def test_full_sync_resolves_all_fallback_ids_before_grouping_aliases(self, tmp_path, transport):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0), ('/p/b.jpg', 4, 0, 0), ('/p/c.jpg', 3, 0, 0)])
+        transport.bulk_assets = {}
+        transport.assets_by_path = {'/p/a.jpg': 'same', '/p/b.jpg': 'same', '/p/c.jpg': 'safe'}
+        summary = sync_to_immich(db_path, make_config())
+        assert summary['identity_conflicts'] == 2
+        assert summary['matched'] == summary['updated'] == 1
+        assert transport.asset_updates() == [{'ids': ['safe'], 'rating': 3, 'isFavorite': False}]
+        with sqlite3.connect(db_path) as conn:
+            state = conn.execute("SELECT value FROM stats_cache WHERE key='immich_synced_paths:global'").fetchone()[0]
+        assert '/p/c.jpg' in state
+        assert '/p/a.jpg' not in state and '/p/b.jpg' not in state
+
+
+    def test_fallback_id_must_agree_with_unselected_bulk_identity(self, tmp_path, transport):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0), ('/p/safe.jpg', 3, 0, 0)])
+        transport.bulk_assets = {'/p/different.jpg': 'same', '/p/safe.jpg': 'safe'}
+        transport.assets_by_path = {'/p/a.jpg': 'same', '/p/safe.jpg': 'safe'}
+        summary = sync_to_immich(db_path, make_config())
+        assert summary['identity_conflicts'] == 1
+        assert summary['updated'] == 1
+        assert transport.asset_updates() == [{'ids': ['safe'], 'rating': 3, 'isFavorite': False}]
+        with sqlite3.connect(db_path) as conn:
+            state = conn.execute("SELECT value FROM stats_cache WHERE key='immich_synced_paths:global'").fetchone()[0]
+        assert '/p/a.jpg' not in state and '/p/safe.jpg' in state
+
+    def test_later_fallback_alias_also_refuses_earlier_bulk_candidate(self, tmp_path, transport):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0), ('/p/b.jpg', 4, 0, 0), ('/p/safe.jpg', 3, 0, 0)])
+        transport.bulk_assets = {'/p/a.jpg': 'same', '/p/safe.jpg': 'safe'}
+        transport.assets_by_path = {'/p/b.jpg': 'same', '/p/safe.jpg': 'safe'}
+        summary = sync_to_immich(db_path, make_config())
+        assert summary['identity_conflicts'] == 2
+        assert summary['updated'] == 1
+        assert transport.asset_updates() == [{'ids': ['safe'], 'rating': 3, 'isFavorite': False}]
+
+    def test_same_webhook_path_with_distinct_remote_ids_refuses_both(self, tmp_path, monkeypatch):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0), ('/p/safe.jpg', 3, 0, 0)])
+        with sqlite3.connect(db_path) as conn:
+            conn.execute('UPDATE photos SET aggregate=8')
+        writes = []
+
+        def request(_self, method, path, payload=None):
+            if method == 'GET':
+                asset_id = path.rsplit('/', 1)[-1]
+                return {'id': asset_id, 'originalPath': '/p/safe.jpg' if asset_id == 'safe' else '/p/a.jpg'}
+            writes.append((method, path, payload))
+
+        monkeypatch.setattr(ImmichClient, '_request', request)
+        results = push_photo_updates(db_path, make_config(), [
+            ('/p/a.jpg', 'one'), ('/p/a.jpg', 'two'), ('/p/safe.jpg', 'safe')])
+        assert [result for result, _ in results] == [RESULT_FAILED, RESULT_FAILED, RESULT_PUSHED]
+        assert writes == [('PUT', '/api/assets', {'ids': ['safe'], 'rating': 3, 'isFavorite': False})]
+        with sqlite3.connect(db_path) as conn:
+            state = conn.execute("SELECT value FROM stats_cache WHERE key='immich_synced_paths:global'").fetchone()[0]
+        assert '/p/a.jpg' not in state and '/p/safe.jpg' in state
+
+
+    def test_broad_fallback_repeating_valid_bulk_edge_is_harmless(self, tmp_path, monkeypatch):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0), ('/p/b.jpg', 4, 0, 0)])
+        fake = PagedIdentityTransport(bulk=[[_remote_asset('x', '/p/b.jpg')]],
+                                      fallback=[[_remote_asset('x', '/p/b.jpg'), _remote_asset('y')]])
+        monkeypatch.setattr(ImmichClient, '_request', fake)
+        summary = sync_to_immich(db_path, make_config())
+        assert summary['identity_conflicts'] == 0
+        assert summary['updated'] == 2
+        assert {asset for update in fake.asset_updates() for asset in update['ids']} == {'x', 'y'}
+
+    def test_unmatched_fallback_can_disprove_earlier_bulk_edge(self, tmp_path, monkeypatch):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0), ('/p/b.jpg', 4, 0, 0), ('/p/safe.jpg', 3, 0, 0)])
+        fake = PagedIdentityTransport(bulk=[[_remote_asset('x'), _remote_asset('safe', '/p/safe.jpg')]],
+                                      fallback=[[_remote_asset('y')]])  # no exact b match, but a now has two IDs
+        monkeypatch.setattr(ImmichClient, '_request', fake)
+        summary = sync_to_immich(db_path, make_config())
+        assert summary['identity_conflicts'] == 1
+        assert summary['unmatched'] == 1
+        assert summary['updated'] == 1
+        assert fake.asset_updates() == [{'ids': ['safe'], 'rating': 3, 'isFavorite': False}]
+
+    def test_webhook_hint_and_later_fallback_share_identity_registry(self, tmp_path, transport):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0), ('/p/b.jpg', 4, 0, 0)])
+        with sqlite3.connect(db_path) as conn:
+            conn.execute('UPDATE photos SET aggregate=8')
+        transport.assets_by_path = {'/p/a.jpg': 'x', '/p/b.jpg': 'x'}
+        results = push_photo_updates(db_path, make_config(), [('/p/a.jpg', 'x'), ('/p/b.jpg', None)])
+        assert [result for result, _ in results] == [RESULT_FAILED, RESULT_FAILED]
+        assert transport.asset_updates() == []
+
+    def test_repeated_identical_webhook_edge_remains_safe(self, tmp_path, transport):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0)])
+        with sqlite3.connect(db_path) as conn:
+            conn.execute('UPDATE photos SET aggregate=8')
+        transport.assets_by_path = {'/p/a.jpg': 'x'}
+        results = push_photo_updates(db_path, make_config(), [('/p/a.jpg', 'x'), ('/p/a.jpg', 'x')])
+        assert [result for result, _ in results] == [RESULT_PUSHED, RESULT_PUSHED]
+        assert all(update['ids'] == ['x'] for update in transport.asset_updates())
+
+    def test_out_of_scope_broad_hits_do_not_poison_bulk_identity(self, tmp_path, monkeypatch):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0), ('/p/b.jpg', 4, 0, 0)])
+        fake = PagedIdentityTransport(bulk=[[_remote_asset('x')]],
+                                      fallback=[[_remote_asset('x', '/different.jpg', owner='other')]])
+        monkeypatch.setattr(ImmichClient, '_request', fake)
+        summary = sync_to_immich(db_path, make_config(owner_id='owner-a'))
+        assert summary['identity_conflicts'] == 0
+        assert summary['unmatched'] == summary['updated'] == 1
+        assert fake.asset_updates() == [{'ids': ['x'], 'rating': 5, 'isFavorite': False}]

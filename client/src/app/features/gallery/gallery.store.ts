@@ -2037,6 +2037,7 @@ export class GalleryStore {
           ? { ...p, persons: p.persons.filter(pr => pr.id !== personId) }
           : p),
       );
+      if (this.filters().faces_need_names) await this.refreshPaths([photoPath]);
     } catch { /* ignore */ }
   }
 
@@ -2074,6 +2075,7 @@ export class GalleryStore {
           }),
         );
       }
+      if (photoPath && faceIds.length && this.filters().faces_need_names) await this.refreshPaths([photoPath]);
       return newPerson;
     } catch {
       return null;
@@ -2100,6 +2102,7 @@ export class GalleryStore {
           };
         }),
       );
+      if (this.filters().faces_need_names) await this.refreshPaths([photoPath]);
       return true;
     } catch {
       return false;

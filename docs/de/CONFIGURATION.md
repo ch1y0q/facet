@@ -2897,6 +2897,8 @@ Einweg-Synchronisierung von Facet-Sternebewertungen und -Favoriten zu einem [Imm
 |---------|---------|-------------|
 | `url` | `""` | Basis-URL des Immich-Servers (z. B. `http://nas:2283`) |
 | `api_key` | `""` | Immich-API-Schlüssel, gesendet als `x-api-key`-Header |
+| `owner_id` | `""` | Exakte Immich-Eigentümer-ID; leer deaktiviert den Filter. Fehlende Felder erfüllen keine ausdrückliche Auswahl. |
+| `library_id` | `""` | Exakte Immich-Bibliotheks-ID; leer deaktiviert den Filter und wählt keine null-Bibliothek. |
 | `path_map` | `[{facet_prefix, immich_prefix}]` | Präfix-Umschreibungen von Facet-Pfaden zu Immich-`originalPath`-Werten; das erste passende `facet_prefix` wird beim Auflösen eines Assets durch sein `immich_prefix` ersetzt |
 | `push.ratings` | `true` | Sternebewertungen übertragen. Immichs versionssichere Richtlinie wird berücksichtigt — nur 1–5 wird geschrieben, nie 0/−1 |
 | `push.favorites` | `true` | Das Favoriten-Flag übertragen |

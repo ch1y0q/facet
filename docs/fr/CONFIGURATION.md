@@ -2888,6 +2888,8 @@ Synchronisation à sens unique des notes en étoiles et favoris Facet vers un se
 |---------|--------|-------------|
 | `url` | `""` | URL de base du serveur Immich (par ex. `http://nas:2283`) |
 | `api_key` | `""` | Clé API Immich, envoyée comme en-tête `x-api-key` |
+| `owner_id` | `""` | Identifiant exact du propriétaire Immich ; vide désactive ce filtre. Un champ absent ne satisfait pas une sélection explicite. |
+| `library_id` | `""` | Identifiant exact de la bibliothèque Immich ; vide désactive le filtre, sans sélectionner une bibliothèque null. |
 | `path_map` | `[{facet_prefix, immich_prefix}]` | Réécritures de préfixe des chemins Facet vers les valeurs `originalPath` d'Immich ; le premier `facet_prefix` correspondant est remplacé par son `immich_prefix` lors de la résolution d'une ressource |
 | `push.ratings` | `true` | Pousse les notes en étoiles. La politique de compatibilité de version d'Immich est respectée — seul 1–5 est écrit, jamais 0/−1 |
 | `push.favorites` | `true` | Pousse l'indicateur de favori |

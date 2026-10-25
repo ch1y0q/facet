@@ -89,6 +89,17 @@ def init_schema_at_startup(db):
     return PhotoIndexBuild(db).run()
 
 
+def _ready_change_token(db_path, seconds=5.0):
+    """A busy first read has not attached the sentinel to the WAL yet."""
+    deadline = time.monotonic() + seconds
+    while True:
+        token = db_change_token(db_path)
+        if not token.startswith("x"):
+            return token
+        assert time.monotonic() < deadline, "change-token sentinel stayed busy"
+        time.sleep(0.01)
+
+
 def _wait_for_wal_gone(db_path, seconds=5.0):
     wal = db_path + "-wal"
     deadline = time.monotonic() + seconds
@@ -517,13 +528,11 @@ def test_shutdown_checkpoint_leaves_db_file_complete(tmp_path, wal_minutes):
     marker = "/life.db/committed-while-running.jpg"
     with _patched_server(db, wal_minutes):
         with TestClient(create_app()):
-            # ``init_database`` leaves its ``with sqlite3.connect(...)`` connection
-            # unclosed (a ``with`` commits, it does not close), so it lingers until
-            # the cyclic collector runs and, as the last read-write closer, would
-            # delete the -wal itself and hide a missing shutdown checkpoint. Free it
-            # now. The sentinel is held by the registry, so collection cannot free it.
+            # Collect unrelated connection cycles before establishing the sentinel.
+            # Startup writers may briefly make its first read busy: a miss token
+            # does not mean the read-only connection has joined the WAL yet.
             gc.collect()
-            db_change_token(db)  # opens the sentinel on the tmp DB
+            _ready_change_token(db)
             other = sqlite3.connect(db)
             other.execute("INSERT INTO photos (path, filename) VALUES (?, ?)",
                           (marker, "committed-while-running.jpg"))
@@ -533,6 +542,41 @@ def test_shutdown_checkpoint_leaves_db_file_complete(tmp_path, wal_minutes):
             assert os.path.exists(db + "-wal")
     assert _wait_for_wal_gone(db), "the -wal outlived shutdown"
     assert _row_count_in_db_file_alone(db, marker) == 1
+
+
+def test_wal_setup_retries_a_real_busy_first_sentinel_read(tmp_path):
+    db = _make_db(tmp_path)
+    blocker = sqlite3.connect(db)
+    blocker.execute("PRAGMA locking_mode=EXCLUSIVE")
+    blocker.execute("BEGIN EXCLUSIVE")
+    blocker.execute("INSERT INTO photos (path, filename) VALUES (?, ?)",
+                    ("/busy.jpg", "busy.jpg"))
+    real_token = db_change_token
+    observed = []
+
+    def release_after_busy_read(path):
+        token = real_token(path)
+        observed.append(token)
+        if token.startswith("x"):
+            blocker.commit()
+            blocker.close()
+        return token
+
+    try:
+        with mock.patch(__name__ + ".db_change_token", side_effect=release_after_busy_read):
+            token = _ready_change_token(db)
+        assert observed[0].startswith("x")
+        assert not token.startswith("x")
+        other = sqlite3.connect(db)
+        try:
+            other.execute("INSERT INTO photos (path, filename) VALUES (?, ?)",
+                          ("/after-busy.jpg", "after-busy.jpg"))
+            other.commit()
+        finally:
+            other.close()
+        assert os.path.exists(db + "-wal")
+    finally:
+        blocker.close()
 
 
 def test_shutdown_closes_sentinels_before_the_final_checkpoint(tmp_path):

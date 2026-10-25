@@ -53,8 +53,12 @@ class FakeTransport:
         self.requests.append((method, path, payload))
         if method == "POST" and path == "/api/search/metadata":
             asset_id = self.assets_by_path.get(payload.get("originalPath"))
-            items = [{"id": asset_id}] if asset_id else []
+            items = [{"id": asset_id, "originalPath": payload["originalPath"]}] if asset_id else []
             return {"assets": {"items": items, "nextPage": None}}
+        if method == "GET" and path.startswith("/api/assets/"):
+            asset_id = path.rsplit("/", 1)[-1]
+            return next(({"id": aid, "originalPath": p}
+                         for p, aid in self.assets_by_path.items() if aid == asset_id), {})
         if method == "PUT" and path == "/api/assets":
             return None
         raise AssertionError(f"Unexpected request: {method} {path}")
@@ -242,13 +246,13 @@ class TestKnownScoredAsset:
             {"ids": ["asset-scored"], "rating": 4, "isFavorite": True}
         ]
 
-    def test_payload_asset_id_skips_the_search_round_trip(self, client, immich_cfg, transport):
+    def test_payload_asset_id_is_verified_without_a_search(self, client, immich_cfg, transport):
         _post(client, _asset(SCORED, asset_id="asset-scored"))
         assert transport.searches() == []
 
     def test_missing_asset_id_falls_back_to_a_path_search(self, client, immich_cfg, transport):
         _post(client, _asset(SCORED))
-        assert transport.searches() == [{"originalPath": _immich_path(SCORED), "page": 1}]
+        assert transport.searches() == [{"originalPath": _immich_path(SCORED), "page": 1, "withStacked": True}]
         assert transport.asset_updates()[0]["ids"] == ["asset-scored"]
 
     def test_push_records_synced_state_so_a_later_clear_is_detected(self, client, immich_cfg, transport):

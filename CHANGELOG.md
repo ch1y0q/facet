@@ -4,10 +4,15 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+- Filter photos with unassigned faces or unnamed people from the gallery People section.
+
 ### Changed
+- Read search cache database change tokens in a worker thread so cold searches do not block other requests.
 - Resize manual-face previews and crop face pixels before converting to RGB, avoiding full-resolution copies on preview and save.
 
 ### Added
+
+- **Explicit XMP sidecar discovery.** `--import-sidecars --sidecar-naming full|basename|auto` can read stripped-extension sidecars, refuses shared RAW/JPEG basenames, and reports naming conflicts. Full-name discovery remains the default; exports keep their existing filenames.
 
 - **Revisit organization edits** from a private, durable history: compare GPS, capture-date and review values, then explicitly revert a whole entry with protection against newer edits. Keeps 50 bounded entries per account; originals stay unchanged.
 
@@ -23,6 +28,10 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- **Immich sync refuses ambiguous assets.** Duplicate remote paths and colliding Facet mappings are reported as identity conflicts. Fallback searches check every page and require an exact path; webhook IDs are verified before writes. Optional owner/library ID selectors restrict the configured server's responses. Literal first-prefix mapping behavior is unchanged.
+- Refuse basename XMP discovery when a double-extension derivative would read another image’s full-name or fallback sidecar. Report full-policy naming notices once per import while retaining complete mismatch counts.
+
+- **Semantic search refreshes its NumPy fallback after database changes.** Replaced embeddings and same-count photo replacements now update search results without restarting the viewer. Concurrent fallback requests share matrix construction, and cache entries include the database and visibility scope.
 - **Caption export preserves other XMP languages.** Writing a Facet caption now updates only the default-language description in sidecars and embedded metadata, retaining existing translations. An empty Facet caption still preserves the existing caption.
 
 - **Returning to the gallery from another page keeps your filters.** The nav icon's "photos" link used to land on a pristine default view, so the filters set before opening a photo — or any other page — were silently gone. The gallery's last synced query now travels in sessionStorage: landing on a parameterless `/` re-enters with it (page number included), while a reset — double-click the nav icon or the reset button — clears it, and a URL that already carries its own params is never overridden.
