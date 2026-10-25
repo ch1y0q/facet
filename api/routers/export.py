@@ -21,7 +21,7 @@ import os
 import shutil
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from api.auth import CurrentUser, require_edition
@@ -34,6 +34,7 @@ from api.db_helpers import (
     get_visibility_clause,
 )
 from api.models.scan import CullApplyResponse, PhotoDeleteResponse
+from api.models.sidecar_jobs import SidecarJobStatus
 from api.path_validation import PhotoFileMissing, resolve_photo_disk_path
 from api.raw_processing import find_companion_raw
 from db.maintenance import delete_photo_rows
@@ -1004,6 +1005,79 @@ def api_export_sidecars(
         paths = _selected_paths(conn, body, user_id, max_filter_paths=_SIDECAR_FILTER_MAX,
                                  filter_label="sidecar export")
         return _write_sidecars_for_paths(conn, paths, user_id, body.overwrite)
+
+
+@router.post("/api/export/sidecar_jobs", status_code=202, response_model=SidecarJobStatus)
+def api_start_sidecar_job(body: ExportSidecarsRequest, response: Response, user: CurrentUser = Depends(require_edition)):
+    """Start a bounded sidecar export; poll its private receipt for progress."""
+    from api import sidecar_jobs
+    from api.database import DEFAULT_DB_PATH
+    from facet import LibraryLockError
+    response.headers["Cache-Control"] = "no-store"
+    if not body.paths and body.filters is None:
+        raise HTTPException(400, "Either paths or filters is required")
+    with get_db() as conn:
+        paths = _selected_paths(conn, body, user.user_id, max_filter_paths=_SIDECAR_FILTER_MAX,
+                                filter_label="sidecar export")
+    def work(path):
+        with get_db() as conn:
+            return _write_sidecars_for_paths(conn, [path], user.user_id, body.overwrite)
+    try:
+        return sidecar_jobs.start(DEFAULT_DB_PATH, user.user_id, paths, work, overwrite=body.overwrite)
+    except LibraryLockError as ex:
+        raise HTTPException(409, "Another library job is running") from ex
+
+
+@router.get("/api/export/sidecar_jobs", response_model=list[SidecarJobStatus])
+def api_recent_sidecar_jobs(response: Response, user: CurrentUser = Depends(require_edition)):
+    """List this principal's recent export receipts, including interrupted jobs."""
+    from api import sidecar_jobs
+    from api.database import DEFAULT_DB_PATH
+    response.headers["Cache-Control"] = "no-store"
+    return sidecar_jobs.recent(DEFAULT_DB_PATH, user.user_id)
+
+
+@router.post("/api/export/sidecar_jobs/{job_id}/retry", status_code=202, response_model=SidecarJobStatus)
+def api_retry_sidecar_job(job_id: str, response: Response, user: CurrentUser = Depends(require_edition)):
+    """Explicitly retry unfinished export files using current visibility and metadata."""
+    from api import sidecar_jobs
+    from api.database import DEFAULT_DB_PATH
+    from facet import LibraryLockError
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        paths, overwrite = sidecar_jobs.remaining(DEFAULT_DB_PATH, job_id, user.user_id)
+        def work(path):
+            with get_db() as conn:
+                return _write_sidecars_for_paths(conn, [path], user.user_id, overwrite)
+        return sidecar_jobs.start(DEFAULT_DB_PATH, user.user_id, paths, work, overwrite=overwrite)
+    except LookupError as ex:
+        raise HTTPException(404, "Export job not found") from ex
+    except (LibraryLockError, ValueError) as ex:
+        raise HTTPException(409, "Export is still running or another library job is active") from ex
+
+
+@router.get("/api/export/sidecar_jobs/{job_id}", response_model=SidecarJobStatus)
+def api_sidecar_job_status(job_id: str, response: Response, user: CurrentUser = Depends(require_edition)):
+    """Read progress for one of this principal's sidecar exports."""
+    from api import sidecar_jobs
+    from api.database import DEFAULT_DB_PATH
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return sidecar_jobs.status(DEFAULT_DB_PATH, job_id, user.user_id)
+    except LookupError as ex:
+        raise HTTPException(404, "Export job not found") from ex
+
+
+@router.post("/api/export/sidecar_jobs/{job_id}/cancel", response_model=SidecarJobStatus)
+def api_cancel_sidecar_job(job_id: str, response: Response, user: CurrentUser = Depends(require_edition)):
+    """Stop an export between complete files; completed writes are retained."""
+    from api import sidecar_jobs
+    from api.database import DEFAULT_DB_PATH
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return sidecar_jobs.cancel(DEFAULT_DB_PATH, job_id, user.user_id)
+    except LookupError as ex:
+        raise HTTPException(404, "Export job not found") from ex
 
 
 def _require_trash_available():
