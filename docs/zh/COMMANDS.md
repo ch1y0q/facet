@@ -505,3 +505,28 @@ python facet.py --recompute-average        # 应用新权重
 ```
 
 > **`--import-lightroom` 是 `--export-manifest` 的反方向。** 它读取增效工具自己的导出文件（`facet_lightroom_state.json`，一种*不同*的文件格式——`{"format":"facet-lightroom-state","version":1,"photos":[...]}`——在任何数据库写入之前进行验证，若不匹配则拒绝），而绝不是清单本身，并把 Lightroom 的星级／留用值作为记录携带的每个字段的胜出值应用；省略的字段会保持 Facet 自身的值不变。一次改变了内容的操作，也会触发与其他任何评分写入一样的评分推导训练对重建和自动再训练触发。
+
+## 重新关联已移动的照片
+
+自行移动文件后，可运行 `python database.py --relink-photos` 预览精确的新旧路径，并保留数据库关联。默认只预览；应用必须提供已保存计划的 ID 和 `--acknowledge-unverified-identity`，因为数据库没有缺失原文件的密码学证明。请先停止查看器、扫描器并审核计划。两条路径必须位于配置目录内，且所有用户的可见范围保持一致；副本、歧义名称、过期计划和路径映射都会被拒绝。伴随文件必须明确列出，手工人脸框需在编辑器中重新审核，Immich 状态保持不变。完整约定与示例：[重新关联已移动照片](RELINK.md)。
+
+`sidecar_facet` 明确表示 `photo.ext.facet.xmp`，未列出的回退包也会被拒绝。保存的审核计划为私有文件（POSIX 权限 0600）。目录可读不代表卷已挂载；`source_mount_status` 仍为 `not_verified`，操作员必须独立确认原文件确实已移动，而非仅处于离线状态。
+
+```sh
+python database.py --relink-photos --db library.db --config scoring_config.json \
+  --mapping moved.json --plan-out relink-plan.json
+python database.py --relink-photos --db library.db --config scoring_config.json \
+  --apply-plan relink-plan.json --ack-plan REVIEWED_PLAN_ID \
+  --acknowledge-unverified-identity
+```
+
+| 选项 | 用途 |
+|---|---|
+| `--db` | 现有数据库 |
+| `--config` | 解析后的配置 |
+| `--user` | 多用户模式下必须指定已配置用户 |
+| `--mapping` | 显式旧/新路径 JSON；预览模式 |
+| `--plan-out` | 创建新的私密计划文件，不覆盖已有文件 |
+| `--apply-plan` | 应用已审核的计划 |
+| `--ack-plan` | 已审核计划的准确摘要 |
+| `--acknowledge-unverified-identity` | 明确确认原图字节身份未知的操作 |

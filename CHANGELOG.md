@@ -19,6 +19,7 @@ All notable changes to Facet are documented in this file.
 - **Explicit XMP sidecar discovery.** `--import-sidecars --sidecar-naming full|basename|auto` can read stripped-extension sidecars, refuses shared RAW/JPEG basenames, and reports naming conflicts. Full-name discovery remains the default; exports keep their existing filenames.
 
 - **Revisit organization edits** from a private, durable history: compare GPS, capture-date and review values, then explicitly revert a whole entry with protection against newer edits. Keeps 50 bounded entries per account; originals stay unchanged.
+- **Preview and relink explicitly moved photo paths offline.** `python -m db.relink` preserves database associations through a reviewed plan and explicit identity acknowledgment. It never moves files or guesses matches; ambiguous destinations and visibility changes are refused. Manual rectangles remain for review, and remote Immich state is unchanged. See [the contract](docs/RELINK.md).
 
 - **Correct capture dates** from photo details or gallery selections: preview a bounded walltime shift before applying it atomically, preserve manual dates across rescans/viewer exports, restore the file date, and export manual dates through the existing explicit XMP/embed actions.
 - Explicit XMP export/import carries Keep decisions and manual GPS, with protection against overwriting existing manual locations.
