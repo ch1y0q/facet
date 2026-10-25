@@ -1310,6 +1310,14 @@
       "move_down": "Mover para baixo",
       "reset": "Restaurar padrões"
     },
+    "review_progress": {
+      "title": "Progresso da revisão",
+      "counts": "{undecided} por decidir · {kept} mantidas · {rejected} rejeitadas",
+      "complete": "{percent}% de {total} revistas",
+      "start": "Rever por decidir",
+      "resume": "Continuar revisão",
+      "browser": "Retomar a fila guardada neste navegador."
+    },
     "manual_faces_need_review": "Rostos manuais a rever",
     "manual_faces_review_hint": "Com base na última análise ou verificação no editor de rostos, sem monitorização contínua. Abra o editor de rostos de uma fotografia para rever as marcações guardadas."
   },

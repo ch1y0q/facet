@@ -218,6 +218,10 @@ python database.py --migrate-user-preferences --user alice
 
 刷新、重启和重新扫描后，决定仍会保留；多用户模式下，每位用户的决定相互独立。确认筛选组时，选中的照片也会标记为保留。已有的评分、收藏和以前审阅过的组不会自动转换为保留决定。
 
+照片库会显示整个可见文件夹、相册或筛选范围内**未决定**、**已保留**和**已拒绝**照片的数量，包括尚未加载的页面。百分比为 `(已保留 + 已拒绝) / 总数`；空范围显示 0%。当前的审阅状态和"隐藏已拒绝"开关不会缩小这个分母。其他内容和可见性筛选仍然生效，包括智能相册自身的审阅条件。
+
+选择**审阅未决定照片**开始一个队列。**继续审阅**会在此浏览器中恢复你最近打开的待审阅队列，并打开其中第一张仍未决定的照片。更改照片库筛选不会替换这个书签，除非你打开另一个待审阅队列。已保留、已拒绝和已删除的照片会依据当前数据库状态跳过；恢复的是队列，而不是精确的照片位置。书签在重新加载后仍然保留，按登录身份隔离，每个浏览器最多保存 20 个身份。它不会在设备之间同步。相册队列使用相册当前保存的条件，临时审阅不会更改这些条件。之后在侧边栏中的编辑会回到正常的相册筛选编辑。离开页面会取消正在进行的继续操作。临时的连拍和序列分组不会被记入书签，因为重新扫描可能会重新分配它们的 ID。如果浏览器存储被禁用或已满，审阅仍可进行，但书签可能无法保存。不可用的相册会保持当前视图不变。
+
 审阅状态适用于普通照片库；选择状态会退出语义搜索和相似照片搜索。
 
 
@@ -1207,7 +1211,7 @@ python database.py --optimize        # 整理数据库碎片
 
 ### 图库索引与计数缓存
 
-图库的计数、被隐藏照片的汇总以及每一页，都会在各自的隐藏子句中读取同一组可见性列（眨眼、连拍、重复、包围曝光、全景、被拒绝、垃圾）。Facet 为图库及其统计添加了八个索引：`idx_gallery_aggregate`、`idx_gallery_date_desc`、`idx_date_asc_cover`、`idx_gallery_category`、`idx_gallery_camera`、`idx_star_rating_path`、`idx_gallery_iaa_asc` 和 `idx_stats_categories`（定义在 `db/schema.py` 中）。除 `idx_star_rating_path` 和 `idx_stats_categories` 外，其余都把这些可见性列与排序列放在一起（覆盖索引：查询只靠索引就能回答），因此这些查询不再遍历整张 `photos` 表。在一个 13 万张照片的图库上，默认图库页面因此从约 1.2 秒降到：计数已缓存时 26 至 38 毫秒，数据库发生更改之后约 104 毫秒（在其他进程使机器保持繁忙的情况下，6 次热运行的中位数）。
+图库的计数、被隐藏照片的汇总以及每一页，都会在各自的隐藏子句中读取同一组可见性列（眨眼、连拍、重复、包围曝光、全景、被拒绝、垃圾）。Facet 为图库及其统计添加了八个索引：`idx_gallery_aggregate`、`idx_gallery_date_desc`、`idx_date_asc_cover`、`idx_gallery_category`、`idx_gallery_camera`、`idx_star_rating_path`、`idx_gallery_iaa_asc` 和 `idx_stats_categories`（定义在 `db/schema.py` 中）。除 `idx_star_rating_path` 和 `idx_stats_categories` 外，其余都把这些可见性列与排序列放在一起（覆盖索引：查询只靠索引就能回答），因此这些查询不再遍历整张 `photos` 表。在一个 13 万张照片的图库上，默认图库页面因此从约 1.2 秒降到：计数已缓存时 26 至 38 毫秒，数据库发生更改之后约 104 毫秒（在其他进程使机器保持繁忙的情况下，6 次热运行的中位数）。审阅进度的计数读取 `idx_review_progress`（`path`、同一组可见性列以及 `is_kept`），因此同样只靠索引就能回答。
 
 - **在查看器启动时于后台构建一次。** 升级后的第一次启动会在后台线程中构建所有缺失的索引，同时查看器已经在提供服务：在一个 13 万张照片的图库上，仅 `idx_gallery_aggregate` 一个索引在两次实测中分别耗时 45.6 秒和 54.1 秒，这些索引使数据库增大约 106 至 111 MB（实测）。某个索引正在写入时，保存会以 503 `library_busy` 被拒绝，并提示稍后重试。如果先运行的是扫描（`python facet.py`）或 `python database.py`，则由它构建这些索引。关于构建期间的写入、关闭、图库锁、`--workers N` 和 Docker，参见 [DEPLOYMENT.md](DEPLOYMENT.md#查看器启动与图库索引)。
 - **两个索引服务于扫描之后的各遍次。** `idx_date_asc_cover` 比其他图库索引更宽：它额外包含包围曝光与全景检测所读取的列（`camera_model`, `focal_length`, `f_stop`, `shutter_speed`, `iso`, `phash`, `shadow_clipped`, `highlight_clipped`, `scanned_at`, `render_version`, `length(thumbnail)`），并取代只有 1.20.0 之后的开发版本才创建的较窄的 `idx_gallery_date_asc`（升级时将其删除）。`idx_post_scan` 是同一次后台构建中的第九个索引；它不是图库索引，包含连拍与重复检测所读取的列。上文的 106 至 111 MB 是在日期索引仍较窄时测得的。在一份含 129,737 张照片的图库副本上分别测量，`idx_date_asc_cover` 占 21.0 MB，`idx_post_scan` 占 15.8 MB；用这两个索引取代较窄的索引，使数据库又增大了 24.0 MB。

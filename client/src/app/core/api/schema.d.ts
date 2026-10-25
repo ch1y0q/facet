@@ -3478,6 +3478,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/photos/review_progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Api Review Progress
+         * @description Decision counts for the whole content scope, ignoring its active decision tab.
+         *
+         *     ``scope_review_status`` retains a smart album's own decision criterion when
+         *     the gallery's temporary review-status filter is cleared for the denominator.
+         */
+        get: operations["api_review_progress_api_photos_review_progress_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/photos/select_bottom_percent": {
         parameters: {
             query?: never;
@@ -7600,6 +7623,20 @@ export interface components {
             };
             /** Success */
             success: boolean;
+        };
+        /**
+         * ReviewProgressResponse
+         * @description Mutually exclusive decisions across the complete visible review scope.
+         */
+        ReviewProgressResponse: {
+            /** Kept */
+            kept: number;
+            /** Rejected */
+            rejected: number;
+            /** Total */
+            total: number;
+            /** Undecided */
+            undecided: number;
         };
         /** SaveSnapshotBody */
         SaveSnapshotBody: {
@@ -13686,6 +13723,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PhotoPathsResponse"];
+                };
+            };
+        };
+    };
+    api_review_progress_api_photos_review_progress_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewProgressResponse"];
                 };
             };
         };
