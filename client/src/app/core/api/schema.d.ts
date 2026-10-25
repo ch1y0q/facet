@@ -2338,6 +2338,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organization_history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List History */
+        get: operations["list_history_api_organization_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organization_history/{entry_id}/revert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revert History */
+        post: operations["revert_history_api_organization_history__entry_id__revert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/person/{person_id}/avatar": {
         parameters: {
             query?: never;
@@ -7022,6 +7056,47 @@ export interface components {
             score_a?: number | null;
             /** Score B */
             score_b?: number | null;
+        };
+        /** OrganizationChange */
+        OrganizationChange: {
+            /** After */
+            after: (string | number | null)[];
+            /** Before */
+            before: (string | number | null)[];
+            /** Path */
+            path: string;
+            /** Revision */
+            revision: number;
+        };
+        /** OrganizationEntry */
+        OrganizationEntry: {
+            /** Changes */
+            changes: components["schemas"]["OrganizationChange"][];
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "gps" | "date" | "review";
+            /** Part */
+            part: number;
+            /** Parts */
+            parts: number;
+            /** Reverted */
+            reverted: boolean;
+        };
+        /** OrganizationHistory */
+        OrganizationHistory: {
+            /** Entries */
+            entries: components["schemas"]["OrganizationEntry"][];
+        };
+        /** OrganizationRevert */
+        OrganizationRevert: {
+            /** Changed */
+            changed: number;
         };
         /** OverrideCategoryBody */
         OverrideCategoryBody: {
@@ -12352,6 +12427,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MergeSuggestionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_history_api_organization_history_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationHistory"];
+                };
+            };
+        };
+    };
+    revert_history_api_organization_history__entry_id__revert_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationRevert"];
                 };
             };
             /** @description Validation Error */

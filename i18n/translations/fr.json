@@ -2852,5 +2852,33 @@
     "preview": "Aperçu",
     "apply": "Appliquer la correction",
     "hint": "Décale l’heure locale de l’appareil, sans déduire le fuseau ni l’heure d’été. Les originaux ne changent que lors d’un export explicite des métadonnées."
+  },
+  "organization_history": {
+    "title": "Historique des modifications",
+    "hint": "Vos 50 dernières entrées dans cette base du visualiseur. Les lieux et dates affectent tout le monde ; les décisions, étoiles et favoris appartiennent à votre compte. Les fichiers originaux restent inchangés.",
+    "gps": "Lieu",
+    "date": "Date de prise de vue",
+    "review": "Tri",
+    "revert": "Rétablir cette entrée",
+    "reverted": "Déjà rétablie",
+    "empty": "Aucune entrée disponible.",
+    "part": "Partie {part} sur {parts} : cette entrée ne rétablit que ses {count} photos. Les parties anciennes peuvent avoir expiré.",
+    "success": "Photos rétablies : {count}",
+    "conflict": "Des photos ont changé depuis cette action. Rien n’a été rétabli.",
+    "unavailable": "Cette entrée n’est plus disponible. Rien n’a été rétabli.",
+    "error": "Impossible de charger ou rétablir l’historique.",
+    "latitude": "Latitude",
+    "longitude": "Longitude",
+    "manual_gps": "Lieu manuel",
+    "capture_date": "Date de prise de vue",
+    "manual_date": "Date manuelle",
+    "stars": "Étoiles",
+    "favorite": "Favori",
+    "rejected": "Rejetée",
+    "kept": "Conservée",
+    "yes": "Oui",
+    "no": "Non",
+    "unknown": "Inconnu",
+    "photo_count": "Photos : {count}"
   }
 }

@@ -2852,5 +2852,33 @@
     "preview": "Preview",
     "apply": "Apply correction",
     "hint": "Shift stored camera walltime; no timezone or daylight-saving inference. Originals stay unchanged until explicit metadata export."
+  },
+  "organization_history": {
+    "title": "Organization history",
+    "hint": "Your last 50 organization entries in this viewer database. GPS and capture dates affect everyone; review decisions, stars and favorites belong to your account. Original files are never changed.",
+    "gps": "Location",
+    "date": "Capture date",
+    "review": "Review",
+    "revert": "Revert this entry",
+    "reverted": "Already reverted",
+    "empty": "No available history entries.",
+    "part": "Part {part} of {parts}: this entry restores only its {count} photos. Older parts may have expired.",
+    "success": "Photos restored: {count}",
+    "conflict": "Photos changed since this action. Nothing was restored.",
+    "unavailable": "This entry is no longer available. Nothing was restored.",
+    "error": "Could not load or restore history.",
+    "latitude": "Latitude",
+    "longitude": "Longitude",
+    "manual_gps": "Manual location",
+    "capture_date": "Capture date",
+    "manual_date": "Manual date",
+    "stars": "Stars",
+    "favorite": "Favorite",
+    "rejected": "Rejected",
+    "kept": "Kept",
+    "yes": "Yes",
+    "no": "No",
+    "unknown": "Unknown",
+    "photo_count": "Photos: {count}"
   }
 }

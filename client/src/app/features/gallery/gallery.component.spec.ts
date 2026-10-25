@@ -2029,6 +2029,24 @@ describe('GalleryComponent', () => {
     });
   });
 
+  describe('openOrganizationHistory', () => {
+    it.each(['revalidation', 'identity', 'edition', 'navigation', 'destroy'])('guards lazy history launch after %s', async loss => {
+      mockAuth['isEdition'] = vi.fn(() => true);
+      const dialog = TestBed.inject(MatDialog);
+      const opening = component.openOrganizationHistory();
+      if (loss === 'revalidation') (mockAuth['status'] as ReturnType<typeof signal>).set({ user_id: 'editor' });
+      if (loss === 'identity') (mockAuth['status'] as ReturnType<typeof signal>).set({ user_id: 'bob' });
+      if (loss === 'edition') mockAuth['isEdition'] = vi.fn(() => false);
+      if (loss === 'navigation') {
+        (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(1, '/other'));
+        (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(2, '/'));
+      }
+      if (loss === 'destroy') TestBed.resetTestingModule();
+      await opening;
+      expect(dialog.open).toHaveBeenCalledTimes(loss === 'revalidation' ? 1 : 0);
+    });
+  });
+
   describe('openBatchGpsDialog', () => {
     it.each(['identity', 'edition', 'navigation', 'destroy'])('does not open after lazy GPS launch loses %s', async loss => {
       mockAuth['isEdition'] = vi.fn(() => true);

@@ -48,6 +48,7 @@ PUBLIC_ROUTES = [
 # install without viewer.edition_password became read-only.
 AUTH_ROUTES = [
     '/api/export/sidecar_jobs',
+    '/api/organization_history',
     '/api/photos',
     '/api/photos/review_progress',
     '/api/type_counts',
@@ -126,6 +127,7 @@ POST_ROUTES = [
     ('/api/export/sidecar_jobs', {}),
     ('/api/export/sidecar_jobs/not-a-job/cancel', {}),
     ('/api/export/sidecar_jobs/not-a-job/retry', {}),
+    ('/api/organization_history/1/revert', {}),
     ('/api/photos/capture_date/preview', {'photo_paths': [], 'offset_seconds': 1}),
     ('/api/photos/capture_date/apply', {'photo_paths': [], 'offset_seconds': 1, 'preview_token': 'stale'}),
     ('/api/photos/batch_gps', {'photo_paths': ['/nonexistent.jpg'], 'gps_latitude': 1, 'gps_longitude': 2, 'preview': True}),

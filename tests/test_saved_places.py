@@ -158,6 +158,9 @@ def test_schema_upgrade_keeps_photos_and_adds_places(tmp_path):
     init_database(str(db))
     with sqlite3.connect(db) as conn:
         conn.execute("INSERT INTO photos(path,filename,gps_latitude,gps_longitude) VALUES ('p','p',1,2)")
+        # Reconstruct the pre-GPS schema, which also predates history triggers.
+        for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'organization_%'").fetchall():
+            conn.execute(f'DROP TRIGGER "{name}"')
         conn.execute('ALTER TABLE photos DROP COLUMN gps_manually_set')
         conn.execute('DROP TABLE saved_places')
         conn.execute('DROP TABLE recent_places')

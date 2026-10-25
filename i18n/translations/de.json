@@ -2852,5 +2852,33 @@
     "preview": "Vorschau",
     "apply": "Korrektur anwenden",
     "hint": "Verschiebt die gespeicherte Kamera-Uhrzeit ohne Ableitung von Zeitzone oder Sommerzeit. Originale ändern sich erst beim ausdrücklichen Metadatenexport."
+  },
+  "organization_history": {
+    "title": "Änderungsverlauf",
+    "hint": "Ihre letzten 50 Einträge in dieser Viewer-Datenbank. Orte und Aufnahmedaten gelten für alle; Entscheidungen, Sterne und Favoriten gehören zu Ihrem Konto. Originaldateien bleiben unverändert.",
+    "gps": "Ort",
+    "date": "Aufnahmedatum",
+    "review": "Auswahl",
+    "revert": "Diesen Eintrag zurücksetzen",
+    "reverted": "Bereits zurückgesetzt",
+    "empty": "Keine verfügbaren Einträge.",
+    "part": "Teil {part} von {parts}: Dieser Eintrag stellt nur seine {count} Fotos wieder her. Ältere Teile können abgelaufen sein.",
+    "success": "Wiederhergestellte Fotos: {count}",
+    "conflict": "Fotos wurden seit dieser Aktion geändert. Nichts wurde wiederhergestellt.",
+    "unavailable": "Dieser Eintrag ist nicht mehr verfügbar. Nichts wurde wiederhergestellt.",
+    "error": "Verlauf konnte nicht geladen oder wiederhergestellt werden.",
+    "latitude": "Breitengrad",
+    "longitude": "Längengrad",
+    "manual_gps": "Manueller Ort",
+    "capture_date": "Aufnahmedatum",
+    "manual_date": "Manuelles Datum",
+    "stars": "Sterne",
+    "favorite": "Favorit",
+    "rejected": "Abgelehnt",
+    "kept": "Behalten",
+    "yes": "Ja",
+    "no": "Nein",
+    "unknown": "Unbekannt",
+    "photo_count": "Fotos: {count}"
   }
 }
