@@ -55,3 +55,31 @@ def test_missing_receipt_open_failure_allows_later_publication(tmp_path):
     jobs._write(path, {'published': True})
     assert jobs._read(path) == {'published': True}
     path.unlink()
+
+
+def test_prepublication_refusal_preserves_previous_receipt_and_cleans_temporary(tmp_path, monkeypatch):
+    path = tmp_path / 'receipt.json'
+    jobs._write(path, {'version': 1})
+    previous = path.read_bytes()
+    def refuse(temporary, destination):
+        assert destination == path
+        assert temporary != str(path)
+        raise PermissionError('publication refused')
+    monkeypatch.setattr(jobs, '_replace_receipt', refuse)
+    with pytest.raises(PermissionError, match='publication refused'):
+        jobs._write(path, {'version': 2})
+    assert path.read_bytes() == previous
+    assert list(tmp_path.iterdir()) == [path]
+
+
+def test_repeated_publication_keeps_each_open_reader_on_its_snapshot(tmp_path):
+    path = tmp_path / 'receipt.json'
+    jobs._write(path, {'version': 1})
+    with jobs._open_receipt(path) as first:
+        jobs._write(path, {'version': 2})
+        with jobs._open_receipt(path) as second:
+            jobs._write(path, {'version': 3})
+            assert jobs.json.load(first) == {'version': 1}
+            assert jobs.json.load(second) == {'version': 2}
+            assert jobs._read(path) == {'version': 3}
+    path.unlink()

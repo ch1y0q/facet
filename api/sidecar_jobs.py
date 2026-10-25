@@ -43,10 +43,34 @@ def _write(path, state):
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as handle:
             json.dump(state, handle, ensure_ascii=False)
-        os.replace(temporary, path)
+        _replace_receipt(temporary, path)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
+
+
+def _replace_receipt(temporary, path):
+    if os.name != 'nt':
+        os.replace(temporary, path)
+        return
+    import ctypes
+    from ctypes import wintypes
+
+    # MoveFileEx (os.replace) can refuse an existing destination held open by
+    # a status reader. ReplaceFile opens that destination with delete sharing
+    # and preserves its private ACL while publishing the replacement snapshot.
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    replace = kernel.ReplaceFileW
+    replace.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.LPCWSTR,
+                        wintypes.DWORD, wintypes.LPVOID, wintypes.LPVOID]
+    replace.restype = wintypes.BOOL
+    if replace(str(path), str(temporary), None, 0, None, None):
+        return
+    error = ctypes.get_last_error()
+    if error == 2:  # ERROR_FILE_NOT_FOUND: initial publication has no destination.
+        os.replace(temporary, path)
+        return
+    raise ctypes.WinError(error)
 
 
 def _open_receipt(path):
