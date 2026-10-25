@@ -8,12 +8,14 @@ All notable changes to Facet are documented in this file.
 
 ### Changed
 - Preserve Unicode metadata on Windows with UTF-8 ExifTool argument transport and output decoding, including names, keywords and multiline captions.
-- Read search cache database change tokens in a worker thread so cold searches do not block other requests.
+- Read semantic-search, similar-photo and gallery count cache database change tokens in worker threads so both cold and warm token reads do not block other requests.
 - Resize manual-face previews and crop face pixels before converting to RGB, avoiding full-resolution copies on preview and save.
 
 ### Added
 
 - **Explicit keyword reconciliation.** `--export-sidecars --reconcile-keywords` removes only previously Facet-owned keywords and preserves foreign names and AI provenance. Deletion markers expire when a name reappears in the file or Facet writes it again, allowing externally re-added manual keywords to be imported. Both export modes still write current Facet keywords back after external removal; no implicit database deletion or bidirectional sync is added. Additive exports remain the default; reconciliation requires ExifTool. Existing files whose metadata cannot be read reliably now refuse export before any metadata-clearing write, including ordinary CLI and viewer exports and embedding. Keyword names such as `2024`, `1.50`, `1e3`, `true`, `false` and `null` retain their exact spelling when ExifTool returns numeric or boolean JSON tokens.
+- Assign people from a searchable picker ordered by recent successful assignments in this browser, then visible face counts. Signing out clears saved recents.
+
 - **Explicit XMP sidecar discovery.** `--import-sidecars --sidecar-naming full|basename|auto` can read stripped-extension sidecars, refuses shared RAW/JPEG basenames, and reports naming conflicts. Full-name discovery remains the default; exports keep their existing filenames.
 
 - **Revisit organization edits** from a private, durable history: compare GPS, capture-date and review values, then explicitly revert a whole entry with protection against newer edits. Keeps 50 bounded entries per account; originals stay unchanged.
@@ -31,6 +33,8 @@ All notable changes to Facet are documented in this file.
 ### Fixed
 
 - Preserve the exact case of foreign boolean-looking keywords such as `True`, `FALSE` and `tRuE` with lossless readback when ExifTool JSON erases their spelling. Unicode newline-filename failures are isolated to the affected photo in batch exports.
+- Keep person-name searches working for numeric-looking and non-ASCII names without treating them as unsafe integer IDs. Assignment pagination counts people without repeating the face aggregate.
+
 - **Immich sync refuses ambiguous assets.** Duplicate remote paths and colliding Facet mappings are reported as identity conflicts. Fallback searches check every page and require an exact path; webhook IDs are verified before writes. Optional owner/library ID selectors restrict the configured server's responses. Literal first-prefix mapping behavior is unchanged.
 - Refuse basename XMP discovery when a double-extension derivative would read another image’s full-name or fallback sidecar. Report full-policy naming notices once per import while retaining complete mismatch counts.
 
