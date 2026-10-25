@@ -221,7 +221,7 @@ In Immich ≥ 3.0: **Administration → Workflows → Create Workflow**.
 | `403` | Falsches Token. |
 | `404` | Das Feature ist deaktiviert (kein Token konfiguriert). |
 
-Facet liest `originalPath` aus der Payload heraus und ist bewusst großzügig darin, wo es sitzt — ein blankes Asset-Objekt, `{"asset": {…}}`, eine Liste, oder jedes davon verschachtelt unter `data` / `items` / `assets` funktioniert. Wenn die Payload die Asset-`id` trägt, verwendet Facet sie und überspringt einen Nachschlage-Umweg.
+Facet liest `originalPath` aus Objekten, Listen und den Hüllen `asset` / `data` / `items` / `assets`. Eine übergebene `id` wird auf dem konfigurierten Server erneut gelesen und vor dem Schreiben mit dem exakten Pfad sowie dem gewählten Eigentümer und der Bibliothek verglichen. Abweichungen zählen als `failed`.
 
 Ausstehende Pfade werden von der nächsten Synchronisierung gemeldet:
 
@@ -246,6 +246,8 @@ Der vollständige `immich`-Block, mit den mitgelieferten Standardwerten:
 "immich": {
   "url": "",
   "api_key": "",
+  "owner_id": "",
+  "library_id": "",
   "path_map": [
     { "facet_prefix": "", "immich_prefix": "" }
   ],
@@ -269,6 +271,8 @@ Der vollständige `immich`-Block, mit den mitgelieferten Standardwerten:
 |-----|---------|---------|
 | `url` | `""` | Immich-Basis-URL, `http` oder `https`. Ein abschließender Schrägstrich wird entfernt. |
 | `api_key` | `""` | API-Schlüssel, gesendet als `x-api-key`. Leer bricht jede Synchronisierung mit einer klaren Fehlermeldung ab. |
+| `owner_id` | `""` | Exakte Immich-Eigentümer-ID; leer deaktiviert den Filter. Fehlende Felder erfüllen keine ausdrückliche Auswahl. |
+| `library_id` | `""` | Exakte Immich-Bibliotheks-ID; leer deaktiviert den Filter und wählt keine null-Bibliothek. |
 | `path_map` | ein leeres Paar | Präfix-Umschreibungen zwischen Facet-Pfaden und Immich-`originalPath`-Werten. Der erste Treffer gewinnt; verwendet in beide Richtungen. |
 | `push.ratings` | `true` | Sternebewertungen 1–5 übertragen (und ihre Löschungen). |
 | `push.favorites` | `true` | `isFavorite` übertragen (und dessen Löschungen). |
@@ -331,7 +335,7 @@ Facet sendet eine Löschung nur für ein Foto, das es tatsächlich zuvor übertr
 
 ### Bewertungen erscheinen bei den falschen Fotos
 
-Zwei Dateien mit demselben `originalPath` können innerhalb von Immich nicht vorkommen, aber zwei *Facet*-Wurzeln, die auf ein Immich-Präfix abgebildet werden, können kollidieren. Prüfen Sie, dass sich Ihre `path_map`-Paare nicht überlappen: Das erste passende Paar gewinnt, sodass ein breites Paar, das vor einem engeren aufgeführt ist, dieses verschluckt.
+Pfade mit mehreren entfernten Asset-IDs und mehrere Facet-Pfade mit demselben entfernten Ziel werden als `identity_conflicts` abgelehnt. Für diese Pfade erfolgen weder Änderungen noch bestätigte Synchronisierungszustände; eindeutige Fotos können weiter synchronisieren. Wurzeln korrigieren oder `owner_id` und `library_id` wählen und erneut versuchen.
 
 ### `rating: 0 is not valid`
 
@@ -340,3 +344,7 @@ Der Immich-Server ist älter als 3.0. Führen Sie ein Upgrade durch — Facets L
 ---
 
 **Siehe auch:** [Befehle — Immich-Synchronisierung](COMMANDS.md#immich-synchronisierung) · [Konfiguration](CONFIGURATION.md) · [Editor-Interop-Rezepte](INTEROP.md) für XMP-Roundtripping mit Lightroom, darktable und digiKam.
+
+Präfixe bleiben wörtliche Zeichenfolgen: Der erste Treffer gewinnt, ohne automatische Verzeichnisgrenze. Verzeichnispräfixe mit `/` abschließen. Im Probelauf zählt `updated` geplante Änderungen; entfernte Daten und lokaler Synchronisierungszustand bleiben unverändert. Antworten benötigen `id` und `originalPath`. Der Vertrag wurde mit veröffentlichten Immich-v3.3.5-Schemata und isolierten Fixtures geprüft, ohne echten Server. HTTP-Erfolg bestätigt keine Dauerhaftigkeit nach Metadatenaufträgen.
+
+Webhook-Stapel lehnen alle betroffenen Einträge ab, wenn verschiedene Facet-Pfade dasselbe Ziel oder dieselbe entfernte ID beanspruchen. Vor dem ersten Schreiben werden alle Identitäten geprüft; widersprüchliche Aliase zählen als `failed` und bestätigen keinen Synchronisierungszustand.
