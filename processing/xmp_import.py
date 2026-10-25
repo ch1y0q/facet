@@ -357,6 +357,7 @@ def _discover_sidecar(image_path: str, naming: str, shared_stems: set[str],
         if full:
             _warn_discovery_once(reported, 'basename_selected',
                                  "Sidecar naming basename for %s: selecting %s; ignoring %s", image_path, basename, full)
+            return basename, "full_ignored"
         return basename, None
     if full or has_basename:
         if naming == "full":
@@ -380,7 +381,8 @@ def import_sidecars(conn, root: str | None = None, *, user_id: str | None = None
     written to the global ``photo_manual_tags`` (``source='xmp'``), never to
     ``photos.tags``. Returns counts: ``updated`` / ``unchanged`` / ``missing`` (no
     sidecar) / ``skipped`` (unparseable, unreadable or ambiguous) / ``tags_added``.
-    ``ambiguous`` is a subset of skipped; ``naming_mismatch`` is a subset of missing.
+    ``ambiguous`` is a subset of skipped; ``naming_mismatch`` is a subset of missing;
+    ``full_ignored`` counts photos whose full-name sidecar was ignored under ``basename``.
     ``sidecar_naming`` selects ``full`` (default: newest of ``<image>.xmp`` and
     ``<image>.facet.xmp``), ``basename`` (strip image extension), or ``auto``
     (accept one family only). Basename packets also claimed by another image's
@@ -413,7 +415,7 @@ def import_sidecars(conn, root: str | None = None, *, user_id: str | None = None
             params,
         ).fetchall()
 
-    updated = unchanged = missing = skipped = tags_added = ambiguous = naming_mismatch = 0
+    updated = unchanged = missing = skipped = tags_added = ambiguous = naming_mismatch = full_ignored = 0
     shared_stems = _shared_indexed_stems(conn) if sidecar_naming != "full" else set()
     directory_images: dict[str, dict[str, set[str]]] = {}
     reported: set[str] = set()
@@ -435,6 +437,8 @@ def import_sidecars(conn, root: str | None = None, *, user_id: str | None = None
                 if reason == "naming_mismatch":
                     naming_mismatch += 1
             continue
+        if reason == "full_ignored":
+            full_ignored += 1
         parsed = parse_sidecar(sidecar)
         if parsed is None:
             logger.warning("Skipping %s: cannot parse sidecar %s", row["path"], sidecar)
@@ -508,4 +512,5 @@ def import_sidecars(conn, root: str | None = None, *, user_id: str | None = None
 
     conn.commit()
     return {"updated": updated, "unchanged": unchanged, "missing": missing, "skipped": skipped,
-            "tags_added": tags_added, "ambiguous": ambiguous, "naming_mismatch": naming_mismatch}
+            "tags_added": tags_added, "ambiguous": ambiguous, "naming_mismatch": naming_mismatch,
+            "full_ignored": full_ignored}

@@ -3930,9 +3930,9 @@ def main():
                                     sidecar_naming=sidecar_naming)
         logger.info(
             "Sidecar import (%s): %d updated, %d unchanged, %d without sidecar, %d skipped "
-            "(%d ambiguous, %d naming mismatches)",
+            "(%d ambiguous, %d naming mismatches, %d full-name sidecars ignored)",
             sidecar_naming, stats['updated'], stats['unchanged'], stats['missing'], stats['skipped'],
-            stats['ambiguous'], stats['naming_mismatch'],
+            stats['ambiguous'], stats['naming_mismatch'], stats['full_ignored'],
         )
         exit()
 

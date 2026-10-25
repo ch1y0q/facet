@@ -540,6 +540,7 @@ class TestSidecarNaming:
                     assert stats[counter] == 3
                 else:
                     assert stats['unchanged'] == 3
+                assert stats['full_ignored'] == (3 if counter == 'updated' else 0)
                 notices = [record for record in caplog.records
                            if record.name == 'processing.xmp_import' and message in record.message]
                 assert len(notices) == 1
