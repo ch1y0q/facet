@@ -1571,3 +1571,9 @@ En modo edición, **Corregir fecha de captura** aparece en los detalles y la bar
 Se desplaza la hora local de la cámara sin deducir zona horaria ni horario de verano. Se admiten valores completos `YYYY:MM:DD HH:MM:SS` o `YYYY-MM-DD[T o espacio]HH:MM:SS`. Se omiten fechas desconocidas, incompletas, inválidas, fuera de rango o con zona horaria/fracciones de segundo. Las correcciones sobreviven a escaneos completos/parciales y exportaciones incrementales de la base del visor. **Usar fecha del archivo** elimina la corrección; sin fecha en el archivo, queda desconocida. Los archivos ilegibles o las fechas incompatibles mantienen la corrección.
 
 No se modifican originales ni fechas de modificación de archivos. La exportación XMP explícita escribe `exif:DateTimeOriginal` para fechas manuales; la escritura explícita en el archivo añade EXIF `DateTimeOriginal` en formatos compatibles sin modificar otras fechas EXIF. Se conservan grupos de ráfagas/secuencias; ejecuta explícitamente el escaneo o la detección de grupos para reagrupar.
+
+### Caras sin nombre
+
+Incluye caras sin asignar y grupos de personas sin nombre. Usa + para asignar una cara o nombra un grupo en Personas. No incluye fotos sin caras detectadas.
+
+`Filters → People → Caras sin nombre` (`faces_need_names=true`).

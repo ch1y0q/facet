@@ -1572,3 +1572,9 @@ In modalità modifica, **Correggi data di scatto** è disponibile nei dettagli e
 Si sposta l’ora locale della fotocamera senza dedurre fuso orario o ora legale. Sono supportati valori completi `YYYY:MM:DD HH:MM:SS` o `YYYY-MM-DD[T o spazio]HH:MM:SS`. Date sconosciute, incomplete, non valide, fuori intervallo o con fuso/frazioni di secondo vengono ignorate. Le correzioni sopravvivono a scansioni complete/parziali ed esportazioni incrementali del database del visualizzatore. **Usa data del file** rimuove la correzione; senza data nel file, la data diventa sconosciuta. File illeggibili o date non supportate conservano la correzione.
 
 Originali e date di modifica dei file rimangono invariati. L’esportazione XMP esplicita scrive `exif:DateTimeOriginal` per date manuali; la scrittura esplicita nel file aggiunge EXIF `DateTimeOriginal` nei formati supportati senza modificare altre date EXIF. I gruppi di raffiche/sequenze restano invariati; avvia esplicitamente la scansione o il rilevamento dei gruppi per raggruppare nuovamente.
+
+### Volti senza nome
+
+Include volti non assegnati e gruppi di persone senza nome. Usa + per assegnare un volto o dai un nome a un gruppo in Persone. Le foto senza volti rilevati sono escluse.
+
+`Filters → People → Volti senza nome` (`faces_need_names=true`).

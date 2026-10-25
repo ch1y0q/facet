@@ -1572,3 +1572,9 @@ No modo de edição, **Corrigir data de captura** está disponível nos detalhes
 Desloca-se a hora local da câmara sem deduzir fuso horário ou horário de verão. São aceites valores completos `YYYY:MM:DD HH:MM:SS` ou `YYYY-MM-DD[T ou espaço]HH:MM:SS`. Datas desconhecidas, incompletas, inválidas, fora dos limites ou com fuso/frações de segundo são ignoradas. As correções sobrevivem a análises completas/parciais e exportações incrementais da base do visualizador. **Usar data do ficheiro** remove a correção; sem data no ficheiro, a data fica desconhecida. Ficheiros ilegíveis ou datas incompatíveis mantêm a correção.
 
 Originais e datas de modificação dos ficheiros ficam inalterados. A exportação XMP explícita escreve `exif:DateTimeOriginal` para datas manuais; a escrita explícita no ficheiro adiciona EXIF `DateTimeOriginal` nos formatos suportados sem alterar outras datas EXIF. Os grupos de rajadas/sequências são preservados; execute explicitamente a análise ou deteção de grupos para reagrupar.
+
+### Rostos sem nome
+
+Inclui rostos não atribuídos e grupos de pessoas sem nome. Use + para atribuir um rosto ou dê um nome a um grupo em Pessoas. Fotos sem rostos detetados são excluídas.
+
+`Filters → People → Rostos sem nome` (`faces_need_names=true`).

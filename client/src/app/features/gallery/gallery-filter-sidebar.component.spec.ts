@@ -445,6 +445,19 @@ describe('GalleryFilterSidebarComponent', () => {
       thumb = fixture.nativeElement.querySelector('mat-slider input');
     });
 
+    it('offers face naming in People with no people and semantic search disabled', () => {
+      TestBed.inject(GalleryStore).config.update(config => config ? {
+        ...config, features: { ...config.features, show_semantic_search: false },
+      } : config);
+      fixture.detectChanges();
+      const controls = Array.from(fixture.nativeElement.querySelectorAll('mat-checkbox')) as HTMLElement[];
+      const control = controls.find(el => el.textContent?.includes('gallery.faces_need_names'))!;
+      expect(control).toBeTruthy();
+      expect(control.closest('mat-expansion-panel')?.textContent).toContain('gallery.sidebar.persons');
+      (control.querySelector('input') as HTMLInputElement).click();
+      expect(mockStore['updateFilter']).toHaveBeenCalledWith('faces_need_names', true);
+    });
+
     it('offers no geolocation without the map feature and forwards the checkbox', () => {
       const labels = Array.from(fixture.nativeElement.querySelectorAll('mat-checkbox')) as HTMLElement[];
       const control = labels.find(el => el.textContent?.includes('gallery.no_geolocation'))!;

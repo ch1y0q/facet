@@ -1573,3 +1573,9 @@ Im Bearbeitungsmodus steht **Aufnahmedatum korrigieren** in den Fotodetails und 
 Die Kamera-Uhrzeit wird ohne Ableitung von Zeitzone oder Sommerzeit verschoben. Unterstützt werden vollständige Werte in `YYYY:MM:DD HH:MM:SS` oder `YYYY-MM-DD[T oder Leerzeichen]HH:MM:SS`. Unbekannte, unvollständige, ungültige oder überlaufende Werte sowie Zeitzonen und Sekundenbruchteile werden übersprungen. Manuelle Daten bleiben bei vollständigen/teilweisen Scans und inkrementellen Viewer-Datenbankexporten erhalten. **Dateidatum verwenden** entfernt die Korrektur; fehlt das Dateidatum, wird das Aufnahmedatum unbekannt. Unlesbare Dateien oder nicht unterstützte Daten behalten die Korrektur.
 
 Originale und Dateiänderungszeiten bleiben unberührt. Der ausdrückliche XMP-Export schreibt `exif:DateTimeOriginal` für manuelle Daten; das ausdrückliche Einbetten schreibt zusätzlich EXIF `DateTimeOriginal` bei unterstützten Formaten, ohne andere EXIF-Datumsfelder zu ändern. Serien- und Sequenzgruppen bleiben erhalten; für neue Gruppen den vorhandenen Scan bzw. die Gruppenerkennung ausdrücklich starten.
+
+### Gesichter ohne Namen
+
+Enthält nicht zugewiesene Gesichter und unbenannte Personengruppen. Mit + ein Gesicht zuweisen oder unter Personen eine Gruppe benennen. Fotos ohne erkannte Gesichter sind ausgeschlossen.
+
+`Filters → People → Gesichter ohne Namen` (`faces_need_names=true`).

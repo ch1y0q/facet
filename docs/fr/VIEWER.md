@@ -1574,3 +1574,9 @@ En mode édition, **Corriger la date de prise de vue** est disponible dans les d
 Il s’agit de l’heure locale de l’appareil, sans déduction du fuseau ni de l’heure d’été. Seuls les formats complets `YYYY:MM:DD HH:MM:SS` et `YYYY-MM-DD[T ou espace]HH:MM:SS` sont acceptés. Dates inconnues, incomplètes, avec fuseau ou fractions de seconde, invalides ou hors limites sont ignorées. Les corrections survivent aux rescans complets/partiels et aux exports incrémentaux de la base du visualiseur. **Utiliser la date du fichier** supprime la correction ; sans date dans le fichier, elle devient inconnue. Un fichier illisible ou une date non prise en charge conserve la correction.
 
 Aucun original ni horodatage de fichier n’est modifié. L’export XMP explicite écrit `exif:DateTimeOriginal` pour les dates manuelles ; l’écriture explicite dans le fichier ajoute EXIF `DateTimeOriginal` pour les formats compatibles sans modifier les autres dates EXIF. Les groupes de rafales/séquences restent en place ; relancez explicitement le scan ou la détection de groupes pour les recalculer.
+
+### Visages sans nom
+
+Inclut les visages non attribués et les groupes sans nom. Utilisez + pour attribuer un visage ou nommez un groupe dans Personnes. Les photos sans visage détecté sont exclues.
+
+`Filters → People → Visages sans nom` (`faces_need_names=true`).

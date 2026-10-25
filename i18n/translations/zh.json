@@ -1319,7 +1319,9 @@
       "browser": "在此浏览器中恢复记住的队列。"
     },
     "manual_faces_need_review": "手动人脸需要检查",
-    "manual_faces_review_hint": "基于最近一次扫描或人脸编辑器检查，并非持续监控。打开照片的人脸编辑器，检查已保存的标记。"
+    "manual_faces_review_hint": "基于最近一次扫描或人脸编辑器检查，并非持续监控。打开照片的人脸编辑器，检查已保存的标记。",
+    "faces_need_names": "未命名的人脸",
+    "faces_need_names_hint": "包括未分配的人脸和未命名的人物组。点击 + 分配人脸，或在“人物”中为分组命名。不包括未检测到人脸的照片。"
   },
   "composition_patterns": {
     "none": "无",
