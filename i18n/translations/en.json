@@ -2466,6 +2466,13 @@
       "error": "Delete failed"
     },
     "gps": {
+      "online_query": "Address or business",
+      "online_notice": "Search online sends this query to the configured Photon provider. Saved places and coordinates work offline. Selecting a result previews it; Save applies it.",
+      "online_search": "Search online",
+      "online_disabled": "Online search is disabled.",
+      "online_loading": "Searching online…",
+      "online_empty": "No places found. Try another query or enter coordinates.",
+      "online_error": "Online search failed or is busy. Wait a moment and try again, or enter coordinates.",
       "preview_hint": "Choose a location, then Save to apply it to this photo.",
       "search": "Search saved places",
       "loading": "Loading places…",
@@ -2809,5 +2816,21 @@
     "reset": "Reset decision",
     "updated": "Updated {count} photo decisions",
     "shortcut": "Keep photo"
+  },
+  "capture_date": {
+    "title": "Correct capture date",
+    "offset": "Offset in seconds (+ later, − earlier)",
+    "invalid": "Use a nonzero whole number of seconds within ±366 days; select at most 1000 photos.",
+    "counts": "{changed} changed · {skipped} skipped",
+    "samples": "First 20 changes. Unknown, incomplete, unsupported or overflowing dates are skipped.",
+    "photo": "Photo",
+    "before": "Before",
+    "after": "After",
+    "error": "Could not complete the action. Check access and files, then preview again.",
+    "reset_hint": "Use file date removes the manual override. If the file has no date, the capture date becomes unknown.",
+    "use_file": "Use file date",
+    "preview": "Preview",
+    "apply": "Apply correction",
+    "hint": "Shift stored camera walltime; no timezone or daylight-saving inference. Originals stay unchanged until explicit metadata export."
   }
 }

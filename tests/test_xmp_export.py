@@ -332,7 +332,7 @@ class TestExiftoolArgs:
 
     def test_caption_present(self):
         args = xe._exiftool_tag_args(XmpRating(caption="a quiet bay"), [], [])
-        assert "-XMP-dc:Description=a quiet bay" in args
+        assert "-XMP-dc:Description-x-default=a quiet bay" in args
         assert "-IPTC:Caption-Abstract=a quiet bay" in args
 
     def test_no_caption_no_description_arg(self):
@@ -544,7 +544,7 @@ class TestKeywordMergeIntegration:
             check=True,
         )
         write_metadata(str(img), XmpRating(star_rating=4, tags=["beach"]), embed_original=True)
-        flat, _ = xe._read_existing_keywords(str(img), _EXIFTOOL, timeout=30)
+        flat, _, _ = xe._read_existing_metadata(str(img), _EXIFTOOL, timeout=30)
         assert "Vacation" in flat  # foreign keyword preserved, not wiped
         assert "beach" in flat     # Facet keyword added
 
@@ -585,6 +585,85 @@ class TestKeywordMergeIntegration:
 
         assert field("params") == "abc="
         assert field("multi_name") == "y"
+
+
+@pytest.mark.skipif(not _EXIFTOOL, reason="exiftool not installed")
+class TestCaptionLanguagesIntegration:
+    """Exercise actual language alternatives, not just the generated arguments."""
+
+    @staticmethod
+    def _captions(path):
+        root = ET.fromstring(path.read_bytes())
+        return {
+            li.get(f"{{{xe.NS_XML}}}lang"): li.text
+            for li in root.findall(".//dc:description/rdf:Alt/rdf:li", _NS)
+        }
+
+    @staticmethod
+    def _seed(tmp_path):
+        from PIL import Image
+
+        img = tmp_path / "p.jpg"
+        Image.new("RGB", (8, 8), "blue").save(img, "JPEG")
+        sidecar = tmp_path / "p.jpg.xmp"
+        seed_args = [
+            "-XMP-dc:Description-x-default=Original caption",
+            "-XMP-dc:Description-fr=Légende française",
+            "-XMP-dc:Description-ja=日本語の説明",
+            "-XMP-dc:Title-x-default=External title",
+            "-XMP-dc:Creator=External author",
+        ]
+        for target in (img, sidecar):
+            subprocess.run(
+                [_EXIFTOOL, "-q", "-overwrite_original", *seed_args, str(target)],
+                check=True,
+            )
+        return img, sidecar
+
+    @pytest.mark.parametrize("embed_original", [False, True])
+    @pytest.mark.parametrize("caption", ["Facet caption & <sunset>", ""])
+    def test_updates_only_default_caption(self, tmp_path, embed_original, caption):
+        img, sidecar = self._seed(tmp_path)
+        original_bytes = img.read_bytes()
+        expected = self._captions(sidecar)
+        if caption:
+            expected["x-default"] = caption
+
+        # A second write must neither drop languages nor duplicate alternatives.
+        for _ in range(2):
+            result = write_metadata(
+                str(img), XmpRating(caption=caption, star_rating=4),
+                embed_original=embed_original,
+            )
+            assert result["ok"]
+            targets = [sidecar]
+            if embed_original:
+                extracted = tmp_path / "embedded.xmp"
+                extracted.write_bytes(subprocess.run(
+                    [_EXIFTOOL, "-b", "-XMP", str(img)],
+                    capture_output=True, check=True,
+                ).stdout)
+                targets.append(extracted)
+            else:
+                assert img.read_bytes() == original_bytes
+            for target in targets:
+                assert self._captions(target) == expected
+                root = ET.fromstring(target.read_bytes())
+                assert len(root.findall(".//dc:description/rdf:Alt/rdf:li", _NS)) == 3
+                assert root.find(".//dc:title/rdf:Alt/rdf:li", _NS).text == "External title"
+                assert root.find(".//dc:creator/rdf:Seq/rdf:li", _NS).text == "External author"
+
+    def test_fallback_diverts_without_changing_existing_languages(self, monkeypatch, tmp_path):
+        img, sidecar = self._seed(tmp_path)
+        original_bytes, sidecar_bytes = img.read_bytes(), sidecar.read_bytes()
+        monkeypatch.setattr(xe, "exiftool_available", lambda: False)
+        result = write_metadata(str(img), XmpRating(caption="Facet caption"), embed_original=True)
+        assert result["embedded"] is None
+        fallback = tmp_path / "p.jpg.facet.xmp"
+        assert result["sidecar"] == str(fallback)
+        assert self._captions(fallback) == {"x-default": "Facet caption"}
+        assert img.read_bytes() == original_bytes
+        assert sidecar.read_bytes() == sidecar_bytes
 
 
 class TestExportSidecarsCli:
