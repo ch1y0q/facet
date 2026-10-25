@@ -927,3 +927,63 @@ class TestAssetIdentity:
         client = ImmichClient('http://immich.test', 'key')
         with pytest.raises(sync_immich.AssetIdentityError, match='nonempty string'):
             client.verify_asset_id(asset_id, '/p/a.jpg')
+
+
+    def test_fallback_refuses_id_aliased_to_broad_search_hit(self, tmp_path, monkeypatch):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0)])
+        fake = PagedIdentityTransport(fallback=[[_remote_asset('same')],
+                                                [_remote_asset('same', '/p/a.jpg.backup')]])
+        monkeypatch.setattr(ImmichClient, '_request', fake)
+        summary = sync_to_immich(db_path, make_config())
+        assert summary['identity_conflicts'] == 1
+        assert summary['updated'] == 0
+        assert fake.writes() == []
+
+    @pytest.mark.parametrize('with_hints', [False, True])
+    def test_webhook_batch_refuses_all_mapping_collisions_before_writes(
+            self, tmp_path, transport, with_hints):
+        db_path = make_db(tmp_path, [('/one/a.jpg', 5, 0, 0),
+                                     ('/two/a.jpg', 4, 0, 0),
+                                     ('/safe/b.jpg', 3, 0, 0)])
+        with sqlite3.connect(db_path) as conn:
+            conn.execute('UPDATE photos SET aggregate=8')
+        transport.assets_by_path = {'/remote/a.jpg': 'conflict', '/safe/b.jpg': 'safe'}
+        config = make_config(path_map=[
+            {'facet_prefix': '/one/', 'immich_prefix': '/remote/'},
+            {'facet_prefix': '/two/', 'immich_prefix': '/remote/'},
+            {'facet_prefix': '/safe/', 'immich_prefix': '/safe/'},
+        ])
+        results = push_photo_updates(db_path, config, [
+            ('/one/a.jpg', 'conflict' if with_hints else None),
+            ('/two/a.jpg', 'conflict' if with_hints else None),
+            ('/safe/b.jpg', 'safe' if with_hints else None),
+        ])
+        assert [r for r, _ in results] == [RESULT_FAILED, RESULT_FAILED, RESULT_PUSHED]
+        assert all(isinstance(error, sync_immich.AssetIdentityError) for _, error in results[:2])
+        assert transport.asset_updates() == [{'ids': ['safe'], 'rating': 3, 'isFavorite': False}]
+        assert '/remote/a.jpg' not in transport.searched_paths()
+        with sqlite3.connect(db_path) as conn:
+            state = conn.execute("SELECT value FROM stats_cache WHERE key='immich_synced_paths:global'").fetchone()[0]
+        assert '/safe/b.jpg' in state
+        assert '/one/a.jpg' not in state
+        assert '/two/a.jpg' not in state
+
+    def test_webhook_batch_refuses_same_hint_for_distinct_paths(self, tmp_path, transport):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0), ('/p/b.jpg', 4, 0, 0)])
+        with sqlite3.connect(db_path) as conn:
+            conn.execute('UPDATE photos SET aggregate=8')
+        results = push_photo_updates(db_path, make_config(), [('/p/a.jpg', 'same'), ('/p/b.jpg', 'same')])
+        assert [result for result, _ in results] == [RESULT_FAILED, RESULT_FAILED]
+        assert transport.requests == []
+
+
+    def test_webhook_resolves_all_ids_before_updating_any_alias(self, tmp_path, transport):
+        db_path = make_db(tmp_path, [('/p/a.jpg', 5, 0, 0), ('/p/b.jpg', 4, 0, 0)])
+        with sqlite3.connect(db_path) as conn:
+            conn.execute('UPDATE photos SET aggregate=8')
+        # Each exact search appears unique, but the complete delivery proves
+        # the same UUID has contradictory paths. Neither may be written first.
+        transport.assets_by_path = {'/p/a.jpg': 'same', '/p/b.jpg': 'same'}
+        results = push_photo_updates(db_path, make_config(), [('/p/a.jpg', None), ('/p/b.jpg', None)])
+        assert [result for result, _ in results] == [RESULT_FAILED, RESULT_FAILED]
+        assert transport.asset_updates() == []

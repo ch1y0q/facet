@@ -346,3 +346,5 @@ O servidor Immich é mais antigo que 3.0. Atualize-o — a semântica de limpeza
 **Ver também:** [Comandos — Sincronização com o Immich](COMMANDS.md#sincronização-com-o-immich) · [Configuração](CONFIGURATION.md) · [Receitas de Interoperabilidade com Editores](INTEROP.md) para o round-trip de XMP com Lightroom, darktable e digiKam.
 
 Os prefixos continuam sendo strings literais: vence a primeira correspondência, sem limites de diretório implícitos. Termine prefixos de diretório com `/`. Na simulação, `updated` conta alterações previstas, sem escritas remotas ou do estado local. As respostas devem incluir `id` e `originalPath`. Contrato verificado com esquemas publicados Immich v3.3.5 e fixtures isoladas, sem servidor real. Sucesso HTTP não comprova durabilidade após tarefas de metadados.
+
+Os lotes webhook recusam as entradas afetadas quando caminhos Facet diferentes indicam o mesmo destino ou ID remoto. Todas as identidades são resolvidas antes de escrever; aliases inconsistentes contam como `failed` e não confirmam o estado de envio.

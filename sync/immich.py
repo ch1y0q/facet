@@ -175,8 +175,15 @@ class ImmichClient:
 
     def search_asset_id(self, original_path: str) -> str | None:
         """Resolve exactly one matching path across ALL pages, never the first hit."""
-        ids = {item["id"] for item in self._iter_assets(original_path)
-               if item["originalPath"] == original_path}
+        ids = set()
+        id_paths = {}
+        for item in self._iter_assets(original_path):
+            asset_id, path = item["id"], item["originalPath"]
+            if asset_id in id_paths and id_paths[asset_id] != path:
+                raise AssetIdentityError("Immich returned inconsistent paths for one asset id")
+            id_paths[asset_id] = path
+            if path == original_path:
+                ids.add(asset_id)
         if len(ids) > 1:
             raise AssetIdentityError(f"Multiple Immich assets have originalPath {original_path}")
         return next(iter(ids), None)
@@ -749,8 +756,35 @@ def push_photo_updates(db_path, config: dict, entries) -> list:
                        len(entries), e, exc_info=True)
         return [(RESULT_FAILED, e)] * len(entries)
 
+    # Resolve local collisions BEFORE the first remote write. A payload may
+    # contain multiple different Facet paths that collapse through path_map,
+    # or claim the same remote ID for different photos. Refuse every eligible
+    # entry in those collisions, rather than letting delivery order pick a
+    # winning rating. Unknown/unrated entries still keep their usual result.
+    target_paths: dict[str, set[str]] = {}
+    hint_paths: dict[str, set[str]] = {}
+    for facet_path, asset_id in entries:
+        row = rows.get(facet_path)
+        if row is None:
+            continue
+        fields, _, _ = _push_fields(row, synced_state.get(facet_path, {}),
+                                    push_ratings, push_favorites, push_rejected)
+        if not fields:
+            continue
+        target = map_facet_path(facet_path, immich_cfg.get("path_map", []))
+        if target:
+            target_paths.setdefault(target, set()).add(facet_path)
+        if isinstance(asset_id, str) and asset_id:
+            hint_paths.setdefault(asset_id, set()).add(facet_path)
+    conflicting_paths = set()
+    for paths in (*target_paths.values(), *hint_paths.values()):
+        if len(paths) > 1:
+            conflicting_paths.update(paths)
+
     results: list[tuple[str, BaseException | None]] = []
     pushed: dict[str, dict] = {}
+    planned: list[tuple[int, str, str, dict]] = []
+    resolved_paths: dict[str, set[str]] = {}
     for facet_path, asset_id in entries:
         row = rows.get(facet_path)
         if row is None:
@@ -762,6 +796,8 @@ def push_photo_updates(db_path, config: dict, entries) -> list:
             results.append((RESULT_SKIPPED, None))
             continue
         try:
+            if facet_path in conflicting_paths:
+                raise AssetIdentityError("Multiple Facet paths claim the same Immich path or asset id")
             immich_path = map_facet_path(facet_path, immich_cfg.get("path_map", []))
             resolved = None
             if immich_path:
@@ -770,12 +806,28 @@ def push_photo_updates(db_path, config: dict, entries) -> list:
             if not resolved:
                 results.append((RESULT_UNMATCHED, None))
                 continue
-            client.update_assets([resolved], fields)
         except PUSH_ERRORS as e:
             results.append((RESULT_FAILED, e))
             continue
+        planned.append((len(results), facet_path, resolved, fields))
+        results.append((RESULT_SKIPPED, None))  # filled after every identity is resolved
+        resolved_paths.setdefault(resolved, set()).add(facet_path)
+
+    # A server returning the same UUID for two distinct exact-path searches
+    # is inconsistent even if each individual response looked unambiguous.
+    for paths in resolved_paths.values():
+        if len(paths) > 1:
+            conflicting_paths.update(paths)
+    for index, facet_path, resolved, fields in planned:
+        try:
+            if facet_path in conflicting_paths:
+                raise AssetIdentityError("Multiple Facet paths resolved to the same Immich asset id")
+            client.update_assets([resolved], fields)
+        except PUSH_ERRORS as e:
+            results[index] = (RESULT_FAILED, e)
+            continue
         pushed[facet_path] = _active_state(fields)
-        results.append((RESULT_PUSHED, None))
+        results[index] = (RESULT_PUSHED, None)
 
     if pushed:
         _commit_pushed_state(db_path, pushed)

@@ -346,3 +346,5 @@ Il server Immich è più vecchio della 3.0. Aggiornalo — la semantica di azzer
 **Vedi anche:** [Comandi — Immich Sync](COMMANDS.md#immich-sync) · [Configurazione](CONFIGURATION.md) · [Ricette di interoperabilità con gli editor](INTEROP.md) per il roundtrip XMP con Lightroom, darktable e digiKam.
 
 I prefissi restano stringhe letterali: vince la prima corrispondenza, senza confini di directory impliciti. Terminare i prefissi di directory con `/`. In simulazione `updated` conta le modifiche previste, senza scritture remote o dello stato locale. Le risposte devono includere `id` e `originalPath`. Contratto verificato con gli schemi pubblicati Immich v3.3.5 e fixture isolate, senza un server reale. Il successo HTTP non dimostra la persistenza dopo i processi di metadati.
+
+I lotti webhook rifiutano le voci coinvolte quando percorsi Facet diversi indicano la stessa destinazione o lo stesso ID remoto. Tutte le identità sono risolte prima di scrivere; gli alias incoerenti contano come `failed` e non confermano lo stato di invio.

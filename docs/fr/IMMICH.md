@@ -346,3 +346,5 @@ Le serveur Immich est antérieur à la version 3.0. Mettez-le à niveau — la s
 **Voir aussi :** [Commandes — Synchronisation Immich](COMMANDS.md#synchronisation-immich) · [Configuration](CONFIGURATION.md) · [Recettes d'interopérabilité avec les éditeurs](INTEROP.md) pour l'aller-retour XMP avec Lightroom, darktable et digiKam.
 
 Les préfixes restent des chaînes littérales : première correspondance gagnante, sans limite de répertoire implicite. Terminez les préfixes de répertoire par `/`. En simulation, `updated` compte les modifications prévues, sans écriture distante ni de suivi local. Les réponses doivent contenir `id` et `originalPath`. Contrat vérifié sur les schémas publiés Immich v3.3.5 et des fixtures isolées, sans serveur réel. Un succès HTTP ne prouve pas la durabilité après les tâches de métadonnées.
+
+Les lots webhook refusent les entrées concernées si plusieurs chemins Facet revendiquent la même cible ou le même ID distant. Toutes les identités sont résolues avant toute écriture ; les alias incohérents comptent comme `failed` et ne confirment aucun état d’envoi.

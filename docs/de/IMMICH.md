@@ -346,3 +346,5 @@ Der Immich-Server ist älter als 3.0. Führen Sie ein Upgrade durch — Facets L
 **Siehe auch:** [Befehle — Immich-Synchronisierung](COMMANDS.md#immich-synchronisierung) · [Konfiguration](CONFIGURATION.md) · [Editor-Interop-Rezepte](INTEROP.md) für XMP-Roundtripping mit Lightroom, darktable und digiKam.
 
 Präfixe bleiben wörtliche Zeichenfolgen: Der erste Treffer gewinnt, ohne automatische Verzeichnisgrenze. Verzeichnispräfixe mit `/` abschließen. Im Probelauf zählt `updated` geplante Änderungen; entfernte Daten und lokaler Synchronisierungszustand bleiben unverändert. Antworten benötigen `id` und `originalPath`. Der Vertrag wurde mit veröffentlichten Immich-v3.3.5-Schemata und isolierten Fixtures geprüft, ohne echten Server. HTTP-Erfolg bestätigt keine Dauerhaftigkeit nach Metadatenaufträgen.
+
+Webhook-Stapel lehnen alle betroffenen Einträge ab, wenn verschiedene Facet-Pfade dasselbe Ziel oder dieselbe entfernte ID beanspruchen. Vor dem ersten Schreiben werden alle Identitäten geprüft; widersprüchliche Aliase zählen als `failed` und bestätigen keinen Synchronisierungszustand.

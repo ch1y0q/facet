@@ -346,3 +346,5 @@ Immich 服务器版本低于 3.0。请升级——Facet 的清除语义需要 `n
 **参见：**[命令 —— Immich 同步](COMMANDS.md#immich-同步) · [配置](CONFIGURATION.md) · [编辑器互操作方案](INTEROP.md)，了解与 Lightroom、darktable 和 digiKam 的 XMP 往返。
 
 前缀仍按字面字符串匹配：第一个匹配项生效，不自动判断目录边界；目录前缀请以 `/` 结尾。试运行中 `updated` 表示计划更新数，不写入远程数据或本地同步状态。响应必须包含 `id` 和 `originalPath`。此契约仅通过已发布的 Immich v3.3.5 模式及隔离夹具验证，未连接真实服务器；HTTP 成功不代表元数据后台任务完成后仍然持久保存。
+
+Webhook 批次中，若不同 Facet 路径指向同一映射目标或远程 ID，相关条目都会被拒绝。所有身份均在首次写入前解析；矛盾的别名计为 `failed`，不更新已确认的推送状态。
