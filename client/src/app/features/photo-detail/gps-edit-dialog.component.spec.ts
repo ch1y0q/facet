@@ -182,7 +182,7 @@ describe('GpsEditDialogComponent', () => {
     }));
     expect(mockStore.refreshPaths).toHaveBeenCalledExactlyOnceWith(null);
     expect(mockStore.loadPhotos).not.toHaveBeenCalled();
-    expect(onBatchApplied).not.toHaveBeenCalled();
+    expect(onBatchApplied).toHaveBeenCalledTimes(1);
     expect(mockDialogRef.close).toHaveBeenCalledTimes(1);
   });
 
@@ -244,7 +244,7 @@ describe('GpsEditDialogComponent', () => {
     expect(mockDialogRef.close).not.toHaveBeenCalled();
   });
 
-  it('cancelling a pending save closes once and suppresses gallery publication', async () => {
+  it('cancelling a pending save closes once and still applies confirmed GPS to the gallery', async () => {
     createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 1, lng: 2 });
     const pending = new Subject<{ gps_latitude: number; gps_longitude: number }>();
     mockApi.put.mockReturnValue(pending);
@@ -569,7 +569,7 @@ describe('GpsEditDialogComponent', () => {
       await finish(saving);
       expect(store.pinnedPaths()).toEqual(['/pin.jpg']);
       expect(store.photos().map(p => p.path)).toEqual(['/pin.jpg']);
-      expect(store.photos()[0].gps_latitude).toBe(0);
+      expect(store.photos()[0].gps_latitude).toBe(5);
       expect(mockApi.post).toHaveBeenLastCalledWith('/photos/by_paths', { paths: ['/pin.jpg'] });
     });
 
