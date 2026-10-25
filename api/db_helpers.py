@@ -31,6 +31,7 @@ from api.config import (
     config_load_failed, server_scoring_config,
 )
 from api import database as _database
+from api import organization_history
 from api.change_token import db_change_token
 from api.database import get_db_connection
 from comparison.comparison_manager import record_culling_pairs
@@ -261,6 +262,7 @@ def trigger_auto_retrain(db_path, user_id, added=1, conn=None):
         logger.debug("Auto-retrain trigger skipped", exc_info=True)
 
 
+@organization_history.grouped
 def record_culling_decision(conn, keep_paths, reject_paths, sequence_members,
                             user_id=None, group_type='burst', commit=True, record=True):
     """Persist keepers, record ranker training pairs, commit, nudge retrain.
@@ -1761,7 +1763,6 @@ def set_photos_rejected(conn, paths, user_id, agent=False):
     ).fetchall()]
     if not visible:
         return 0
-    from api import organization_history
     history_before = organization_history.begin(conn, user_id, 'review', visible)
     before = snapshot_labels(conn, agent, user_id, visible)
     if user_id and is_multi_user_enabled():
@@ -1788,7 +1789,6 @@ def set_photos_kept(conn, paths, user_id, agent=False):
         conn, f"SELECT path FROM photos WHERE path IN ({{placeholders}}) AND {vis_sql}",
         list(paths), after=vis_params,
     )]
-    from api import organization_history
     history_before = organization_history.begin(conn, user_id, 'review', visible)
     before = read_labels(conn, user_id, visible)
     if user_id and is_multi_user_enabled():

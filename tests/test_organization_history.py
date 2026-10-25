@@ -295,3 +295,53 @@ def test_serialized_byte_bound_splits_below_photo_cap(tmp_path):
         assert len(rows) == 2
         assert all(len(row[0].encode()) <= 1048576 and row[2] == 2 for row in rows)
         assert sum(len(json.loads(row[0])) for row in rows) == 6
+
+
+def test_reject_history_restores_kept_and_rejected_pair(edition_client, seed_photos_prefix):
+    seed_photos_prefix('/history-reject/', [dict(path='/history-reject/a.jpg', filename='a.jpg', star_rating=3, is_favorite=1, is_rejected=0, is_kept=1)])
+    assert edition_client.post('/api/photos/batch_review', json=dict(photo_paths=['/history-reject/a.jpg'], decision='rejected')).status_code == 200
+    entry = edition_client.get('/api/organization_history').json()['entries'][0]
+    assert entry['kind'] == 'review'
+    assert entry['changes'][0]['before'] == [3, 1, 0, 1]
+    assert entry['changes'][0]['after'] == [0, 0, 1, 0]
+    assert edition_client.post(f"/api/organization_history/{entry['id']}/revert").status_code == 200
+    with get_db() as conn:
+        assert tuple(conn.execute("SELECT star_rating,is_favorite,is_rejected,is_kept FROM photos WHERE path='/history-reject/a.jpg'").fetchone()) == (3, 1, 0, 1)
+
+
+def test_grouped_action_is_one_entry_and_keeps_earlier_history(tmp_path):
+    import sqlite3
+    from api import organization_history as history
+    from api.db_helpers import set_photos_kept, set_photos_rejected
+    from db.schema import init_database
+    filename = str(tmp_path / 'grouped.db')
+    init_database(filename)
+    conn = sqlite3.connect(filename)
+    conn.row_factory = sqlite3.Row
+    paths = [f'/g/{i}.jpg' for i in range(120)]
+    conn.executemany('INSERT INTO photos(path) VALUES (?)', [(p,) for p in paths])
+    conn.commit()
+    set_photos_kept(conn, ['/g/0.jpg'], 'alice')
+    conn.commit()
+    with history.action(conn, 'alice'):
+        for index in range(0, 120, 2):
+            set_photos_rejected(conn, paths[index:index + 2], 'alice')
+        set_photos_kept(conn, ['/g/0.jpg'], 'alice')
+    rows = conn.execute('SELECT id,payload FROM organization_history ORDER BY id').fetchall()
+    assert len(rows) == 2
+    assert conn.execute('SELECT count(*) FROM photos WHERE is_rejected=1').fetchone()[0] == 119
+    conn.commit()
+    conn.close()
+
+
+def test_failed_finish_maps_to_422_and_rolls_back(edition_client, seed_photos_prefix, monkeypatch):
+    from api import organization_history as history
+    seed_photos_prefix('/history-finish/', [dict(path='/history-finish/a.jpg', filename='a.jpg')])
+
+    def refuse(*args, **kwargs):
+        raise ValueError('too large')
+    monkeypatch.setattr(history, 'record', refuse)
+    response = edition_client.post('/api/photos/batch_review', json=dict(photo_paths=['/history-finish/a.jpg'], decision='kept'))
+    assert response.status_code == 422
+    with get_db() as conn:
+        assert conn.execute("SELECT is_kept FROM photos WHERE path='/history-finish/a.jpg'").fetchone()[0] in (None, 0)

@@ -30,7 +30,7 @@ type Revert = components['schemas']['OrganizationRevert'];
       @if (changed() !== null) { <p role="status" class="my-3">{{ I18N.organization_history.success | translate:{ count: changed() ?? 0 } }}</p> }
       @for (entry of entries(); track entry.id) {
         <section class="border border-current/20 rounded-lg p-3 mb-3">
-          <h3 class="font-medium">{{ I18N.organization_history[entry.kind] | translate }} · {{ entry.created_at | date:'medium' }}</h3>
+          <h3 class="font-medium">{{ I18N.organization_history[entry.kind] | translate }} · {{ entry.created_at | date:'dd/MM/yyyy HH:mm' }}</h3>
           <p class="text-sm my-2">
             @if (entry.parts > 1) { {{ I18N.organization_history.part | translate:{ part: entry.part, parts: entry.parts, count: entry.changes.length } }} }
             @else { {{ I18N.organization_history.photo_count | translate:{ count: entry.changes.length } }} }
