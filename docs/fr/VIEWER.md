@@ -1599,3 +1599,7 @@ Une entrée est entièrement masquée si une photo est supprimée ou inaccessibl
 Inclut les visages non attribués et les groupes sans nom. Utilisez + pour attribuer un visage ou nommez un groupe dans Personnes. Les photos sans visage détecté sont exclues.
 
 `Filters → People → Visages sans nom` (`faces_need_names=true`).
+
+## Assigner des personnes
+
+Le sélecteur **Assigner un visage à une personne** présente d’abord jusqu’à 12 personnes assignées avec succès dans ce navigateur, séparément pour chaque identité connectée. Les autres personnes nommées suivent selon le nombre de visages dans les photos visibles, puis par ordre alphabétique. La recherche et la pagination couvrent toutes les personnes admissibles, même avec un seul visage. L’ordre affiché reste stable tant que le sélecteur est ouvert. Une simple sélection ou proposition de création ne modifie pas les récents : l’assignation ou l’enregistrement du visage manuel doit réussir. Seuls les identifiants sont conservés localement ; si le stockage est indisponible, l’assignation reste possible sans récents. La déconnexion efface toutes les affectations récentes enregistrées dans ce navigateur. L’ordre d’affectation compte les visages des photos visibles ; les autres tris renvoient les totaux enregistrés de la photothèque.

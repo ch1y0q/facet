@@ -8,12 +8,14 @@ All notable changes to Facet are documented in this file.
 
 ### Changed
 - Album sidecar exports use bounded background jobs (at most 10,000 photos) and share the library job lock with scans and recomputes. Larger albums are refused before writes; album copy/symlink exports retain their existing behavior.
-- Read search cache database change tokens in a worker thread so cold searches do not block other requests.
+- Read semantic-search, similar-photo and gallery count cache database change tokens in worker threads so both cold and warm token reads do not block other requests.
 - Resize manual-face previews and crop face pixels before converting to RGB, avoiding full-resolution copies on preview and save.
 
 ### Added
 
 - **Background sidecar exports.** Export selected photos, filtered views and albums with progress, counts, explicit stop-between-files cancellation, and recent private receipts. Retry failed, skipped and unfinished files only when requested; closing the dialog leaves submitted work running.
+- Assign people from a searchable picker ordered by recent successful assignments in this browser, then visible face counts. Signing out clears saved recents.
+
 - **Explicit XMP sidecar discovery.** `--import-sidecars --sidecar-naming full|basename|auto` can read stripped-extension sidecars, refuses shared RAW/JPEG basenames, and reports naming conflicts. Full-name discovery remains the default; exports keep their existing filenames.
 
 - **Revisit organization edits** from a private, durable history: compare GPS, capture-date and review values, then explicitly revert a whole entry with protection against newer edits. Keeps 50 bounded entries per account; originals stay unchanged.
@@ -29,6 +31,8 @@ All notable changes to Facet are documented in this file.
 - **The photo card's hover buttons are yours to arrange.** The four buttons that floated over every card on hover (find similar, why-this-score, write metadata, assign a face) are now a configurable row: a new dialog in the filter sidebar's View section reorders them and switches each on or off, per browser. Four actions join the pool — **open the photo's duplicate group** (on by default, and scoped to that group the same way the photo page's "open this set" lands), open its burst group, open its bracket/panorama set, and open the photo page. The group buttons appear only on photos that actually belong to such a group, so the row stays quiet on photos with nothing to offer. The layout persists in localStorage like the thumbnail size; smart albums, filters and the API are untouched.
 
 ### Fixed
+
+- Keep person-name searches working for numeric-looking and non-ASCII names without treating them as unsafe integer IDs. Assignment pagination counts people without repeating the face aggregate.
 
 - **Immich sync refuses ambiguous assets.** Duplicate remote paths and colliding Facet mappings are reported as identity conflicts. Fallback searches check every page and require an exact path; webhook IDs are verified before writes. Optional owner/library ID selectors restrict the configured server's responses. Literal first-prefix mapping behavior is unchanged.
 - Refuse basename XMP discovery when a double-extension derivative would read another image’s full-name or fallback sidecar. Report full-policy naming notices once per import while retaining complete mismatch counts.

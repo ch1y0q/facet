@@ -1598,3 +1598,7 @@ Ein Eintrag wird ganz ausgeblendet, wenn ein Foto gelöscht oder nicht mehr zug�
 Enthält nicht zugewiesene Gesichter und unbenannte Personengruppen. Mit + ein Gesicht zuweisen oder unter Personen eine Gruppe benennen. Fotos ohne erkannte Gesichter sind ausgeschlossen.
 
 `Filters → People → Gesichter ohne Namen` (`faces_need_names=true`).
+
+## Personen zuweisen
+
+Die Auswahl **Gesicht einer Person zuweisen** zeigt zuerst bis zu 12 in diesem Browser erfolgreich zugewiesene Personen, getrennt nach angemeldeter Identität. Weitere benannte Personen folgen nach der Anzahl ihrer Gesichter in sichtbaren Fotos, bei Gleichstand alphabetisch. Suche und Seitenwechsel erfassen alle verfügbaren Personen, auch mit nur einem Gesicht. Die angezeigte Reihenfolge bleibt bei geöffnetem Dialog stabil. Eine Auswahl oder ein neuer Namensvorschlag allein zählt nicht: Die Zuweisung oder das Speichern des manuellen Gesichts muss gelingen. Lokal werden nur Personen-IDs gespeichert; ohne Browserspeicher funktioniert die Zuweisung weiterhin ohne Verlauf. Beim Abmelden werden alle gespeicherten letzten Zuordnungen in diesem Browser gelöscht. In der Zuordnungsreihenfolge zählt die Auswahl Gesichter in sichtbaren Fotos; andere Personenreihenfolgen verwenden die gespeicherten Bibliothekszahlen.
