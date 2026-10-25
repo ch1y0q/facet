@@ -958,7 +958,7 @@ def get_cached_count(conn, where_str, sql_params, from_clause="photos"):
 
 async def get_cached_count_async(conn, where_str, sql_params, from_clause="photos"):
     """Async variant of get_cached_count for aiosqlite paths."""
-    cache_key = _count_cache_key("", from_clause, where_str, sql_params)
+    cache_key = await asyncio.to_thread(_count_cache_key, "", from_clause, where_str, sql_params)
     cached = _count_cache_lookup(cache_key)
     if cached is not None:
         return cached
@@ -979,7 +979,7 @@ async def get_cached_hidden_aggregates_async(conn, where_str, sql_params, from_c
     with the same TTL/keying as the count cache instead of re-running it on every
     infinite-scroll fetch.
     """
-    cache_key = _count_cache_key("hs:", from_clause, where_str, sql_params)
+    cache_key = await asyncio.to_thread(_count_cache_key, "hs:", from_clause, where_str, sql_params)
     cached = _count_cache_lookup(cache_key)
     if cached is not None:
         return cached
