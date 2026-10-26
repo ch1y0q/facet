@@ -37,6 +37,7 @@ import { MapFiltersService } from './features/map/map-filters.service';
 import { CapsuleFiltersService } from './features/capsules/capsule-filters.service';
 import { TranslatePipe } from './shared/pipes/translate.pipe';
 import { CardActionsDialogComponent } from './features/gallery/card-actions-dialog.component';
+import { HelpDialogComponent } from './shared/components/help-dialog/help-dialog.component';
 import { AssistantActivityChipComponent } from './features/agent/assistant-activity-chip.component';
 import { CONNECT_ASSISTANT_DIALOG_ID } from './core/agent/page-context.service';
 import { SortGroupKeyPipe } from './shared/pipes/sort-group-key.pipe';
@@ -166,6 +167,17 @@ export class App implements OnInit {
    *  same dialog the filter sidebar offers, reachable from every route. */
   protected openCardActionsDialog(): void {
     this.dialog.open(CardActionsDialogComponent, { width: '26rem', autoFocus: false });
+  }
+
+  /** The menu's Help entry opens a modal with the current page's help text —
+   *  toggling the in-page banner from a menu item read as a misfire. The
+   *  banner itself stays for the header ? button, which sits beside the
+   *  content it explains. */
+  protected openHelpDialog(): void {
+    this.dialog.open(HelpDialogComponent, {
+      width: '30rem', autoFocus: false,
+      data: { key: this.pageHelp.descriptionKey() },
+    });
   }
   protected readonly headerSlot = inject(HeaderSlotService);
   protected readonly store = inject(GalleryStore);

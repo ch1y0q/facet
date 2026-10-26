@@ -129,7 +129,8 @@
       "inpage_hint": "When on, an assistant running in this browser can search and, if your session allows it, change your library through the page. Off by default; it only applies to this browser.",
       "inpage_changed": "Assistant changed {count} photo",
       "inpage_changed_plural": "Assistant changed {count} photos"
-    }
+    },
+    "ok": "OK"
   },
   "pagination": {
     "scroll_for_more": "Scroll for more",
@@ -1326,7 +1327,8 @@
     "manual_faces_review_hint": "Based on the last scan or face-editor check, not continuous monitoring. Open a photo’s face editor to review saved marks.",
     "faces_need_names": "Faces without names",
     "faces_need_names_hint": "Includes unassigned faces and unnamed person groups. Use + to assign a face, or name a group in People. Photos with no detected faces are excluded.",
-    "faces_need_names_readonly_hint": "Includes unassigned faces and unnamed person groups. Someone with edition access can assign faces or name groups. Photos with no detected faces are excluded."
+    "faces_need_names_readonly_hint": "Includes unassigned faces and unnamed person groups. Someone with edition access can assign faces or name groups. Photos with no detected faces are excluded.",
+    "help_none": "This page has no help text yet. The ? button in the header shows the same content as this dialog, per page."
   },
   "composition_patterns": {
     "none": "None",

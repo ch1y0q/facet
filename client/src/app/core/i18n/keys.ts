@@ -144,6 +144,7 @@ export const I18N = {
       inpage_changed: "dialog.connect_assistant.inpage_changed",
       inpage_changed_plural: "dialog.connect_assistant.inpage_changed_plural",
     },
+    ok: "dialog.ok",
   },
   pagination: {
     scroll_for_more: "pagination.scroll_for_more",
@@ -1341,6 +1342,7 @@ export const I18N = {
     faces_need_names: "gallery.faces_need_names",
     faces_need_names_hint: "gallery.faces_need_names_hint",
     faces_need_names_readonly_hint: "gallery.faces_need_names_readonly_hint",
+    help_none: "gallery.help_none",
   },
   composition_patterns: {
     none: "composition_patterns.none",
