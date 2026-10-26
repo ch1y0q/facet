@@ -7,6 +7,7 @@ All notable changes to Facet are documented in this file.
 - Filter photos with unassigned faces or unnamed people from the gallery People section.
 
 ### Changed
+- Concurrent thumbnail render requests share one decode; JPEG renders retain capacity while slower formats are busy, within the existing four-render limit.
 - Reuse the NumPy search matrix across rating changes and accounts with the same visible photos, with embedding-specific invalidation and visibility checked in one read snapshot. Restricted searches load only permitted vectors; distinct scopes replace the single retained matrix.
 - Album sidecar exports use bounded background jobs (at most 10,000 photos) and share the library job lock with scans and recomputes. Larger albums are refused before writes; album copy/symlink exports retain their existing behavior.
 - Verify webhook-supplied Immich asset IDs against all exact-path search pages before pushing metadata, matching CLI ambiguity refusal.

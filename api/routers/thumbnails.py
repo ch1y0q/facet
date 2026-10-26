@@ -7,8 +7,11 @@ import hashlib
 import logging
 import os
 import threading
+import time
 from io import BytesIO
 from functools import lru_cache
+from concurrent.futures import Future
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from pathlib import Path
 from typing import Optional
 
@@ -20,7 +23,7 @@ from api.config import VIEWER_CONFIG
 from api.database import get_db, get_db_connection
 from api.db_helpers import get_visibility_clause
 from api.path_validation import resolve_photo_disk_path
-from utils.image_loading import RAW_EXTENSIONS, HEIF_EXTENSIONS, TIFF_EXTENSIONS
+from utils.image_loading import RAW_EXTENSIONS, HEIF_EXTENSIONS, TIFF_EXTENSIONS, JPEG_EXTENSIONS
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +38,8 @@ _RENDERED_SIZE = 1920
 _RENDERED_JPEG_QUALITY = 85
 # Renders decode originals on the shared threadpool, so cap them.
 _render_slots = threading.BoundedSemaphore(4)
+# Keep one of the four slots available to JPEGs while slower formats decode.
+_nonjpeg_render_slots = threading.BoundedSemaphore(3)
 _RENDER_WAIT_SECONDS = 5
 # Short, so the sharp render shows up once the original is back.
 _FALLBACK_MAX_AGE = 60
@@ -142,17 +147,25 @@ def _render_from_original_cached(file_path: str, mtime: float,
     from api.raw_processing import load_viewer_image
     from utils import image_transforms
 
-    if not _render_slots.acquire(timeout=_RENDER_WAIT_SECONDS):
-        raise RuntimeError("every render slot is busy")
+    nonjpeg = Path(file_path).suffix.lower() not in JPEG_EXTENSIONS
+    deadline = time.monotonic() + _RENDER_WAIT_SECONDS
+    if nonjpeg and not _nonjpeg_render_slots.acquire(timeout=_RENDER_WAIT_SECONDS):
+        raise RuntimeError("every non-JPEG render slot is busy")
     try:
-        img = load_viewer_image(file_path, sequence_kind, max_edge=_RENDERED_SIZE)
-        # The slot covers the resize and encode too: the decoded frame is the
-        # large allocation the cap exists to bound.
-        blob = image_transforms.generate_photo_thumbnail(
-            img, _RENDERED_SIZE, _RENDERED_JPEG_QUALITY)
-        del img
+        if not _render_slots.acquire(timeout=max(0, deadline - time.monotonic())):
+            raise RuntimeError("every render slot is busy")
+        try:
+            img = load_viewer_image(file_path, sequence_kind, max_edge=_RENDERED_SIZE)
+            # The slot covers the resize and encode too: the decoded frame is
+            # the large allocation the cap exists to bound.
+            blob = image_transforms.generate_photo_thumbnail(
+                img, _RENDERED_SIZE, _RENDERED_JPEG_QUALITY)
+            del img
+        finally:
+            _render_slots.release()
     finally:
-        _render_slots.release()
+        if nonjpeg:
+            _nonjpeg_render_slots.release()
     if not image_transforms.thumbnail_has_signal(blob):
         # A truncated RW2 decodes to an all-zero frame without raising.
         raise _NoSignalError("render carries no signal")
@@ -161,6 +174,41 @@ def _render_from_original_cached(file_path: str, mtime: float,
 
 class _NoSignalError(RuntimeError):
     """The original decoded, but to a frame with no image signal."""
+
+
+_render_inflight: dict[tuple, Future[Optional[bytes]]] = {}
+_render_inflight_lock = threading.Lock()
+
+
+def _coalesced_render(key):
+    """Share one cache miss; complete the LRU call before dropping its flight."""
+    with _render_inflight_lock:
+        future = _render_inflight.get(key)
+        leader = future is None
+        if leader:
+            future = Future()
+            _render_inflight[key] = future
+    assert future is not None
+    if not leader:
+        return future.result(timeout=_RENDER_WAIT_SECONDS)
+    try:
+        # Recheck after joining the flight: another completed render may have
+        # published a negative result since the caller's earlier lookup.
+        result = None if key in _no_signal_renders else _render_from_original_cached(*key)
+        future.set_result(result)
+        return result
+    except BaseException as ex:
+        if isinstance(ex, _NoSignalError):
+            # Publish the negative cache before dropping the flight too.
+            with _no_signal_lock:
+                if len(_no_signal_renders) >= _NO_SIGNAL_CACHE_SIZE:
+                    _no_signal_renders.pop(next(iter(_no_signal_renders)), None)
+                _no_signal_renders[key] = True
+        future.set_exception(ex)
+        raise
+    finally:
+        with _render_inflight_lock:
+            del _render_inflight[key]
 
 
 # Renders that came out with no signal, keyed like the render cache. An
@@ -181,16 +229,13 @@ def _render_from_original(path: str, sequence_kind: Optional[str]) -> Optional[b
         key = (disk, os.path.getmtime(disk), sequence_kind)
         if key in _no_signal_renders:
             return None
-        return _render_from_original_cached(*key)
+        return _coalesced_render(key)
     except _NoSignalError as e:
-        with _no_signal_lock:
-            if len(_no_signal_renders) >= _NO_SIGNAL_CACHE_SIZE:
-                _no_signal_renders.pop(next(iter(_no_signal_renders)), None)
-            _no_signal_renders[key] = True
         logger.warning("Could not render %s (%s), serving the stored thumbnail", disk, e)
         return None
-    except (OSError, ValueError, RuntimeError) as e:
-        # No traceback: this repeats on every revalidation.
+    except (OSError, ValueError, RuntimeError, FuturesTimeoutError) as e:
+        # No traceback: this repeats on every revalidation. A joined render's
+        # wait raises FuturesTimeoutError, which is not an OSError before 3.11.
         logger.warning("Could not render %s (%s), serving the stored thumbnail", disk, e)
         return None
 
