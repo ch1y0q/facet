@@ -166,6 +166,8 @@ Diese Befehle aktualisieren bestimmte Metriken, leiten neue Daten ab (KI-Bildunt
 | `python facet.py --compute-recommendations --apply-recommendations` | Bewertungskorrekturen automatisch anwenden |
 | `python facet.py --compute-recommendations --simulate` | Voraussichtliche Änderungen vorab anzeigen |
 
+`--upgrade-db` versucht HEIF-Dateien erneut, deren Header oder Fotominiaturansichten nicht gelesen oder repariert werden konnten. Solange ein Kandidat fehlschlägt, bleibt der letzte vollständig abgeschlossene Fortschrittsstand erhalten; lesbare Querformatdateien können daher erneut geprüft werden. Erfolgreich reparierte Hochformatbilder werden nicht ein zweites Mal gedreht. Nach dem Upgrade von älteren Reparaturversionen werden verbleibende Kandidaten erneut geprüft; auch das Leeren des Statistik-Caches startet diese Prüfung neu. Die Originalbilddateien werden nie beschrieben.
+
 ### Ergänzende Qualitätsmodelle
 
 Drei zusätzliche PyIQA-Modelle bewerten über den primären TOPIQ-Ästhetik-Score hinaus. Sie teilen sich den VRAM mit TOPIQ und laufen als Teil der standardmäßigen Multi-Pass-Pipeline.
