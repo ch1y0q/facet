@@ -90,7 +90,7 @@ Configuration:
                         help='Run specific pass only: quality, tags, composition, faces, embeddings, '
                              'quality-iaa, quality-face, quality-liqe, saliency')
     scan_group.add_argument('--dry-run', action='store_true',
-                        help='Score sample photos without saving to database (preview mode). '
+                        help='Preview without database writes: score sample photos, or with --import-sidecars show the import plan. '
                              'Outside commercial mode, on 16gb/24gb the aesthetic column shows n/a '
                              '(TOPIQ runs only in a real scan; commercial mode shows the Q-ReAlign score)')
     scan_group.add_argument('--dry-run-count', type=int, default=DEFAULT_DRY_RUN_COUNT,
@@ -373,6 +373,11 @@ Configuration:
                         help='With --import-sidecars: full (default) reads <image.ext>.xmp or '
                              '<image.ext>.facet.xmp; basename reads <image>.xmp; auto refuses '
                              'both-present naming families. Shared or other-image sidecars are refused')
+
+    export_group.add_argument('--sidecar-fields', type=str, metavar='FIELDS',
+                        help='With --import-sidecars: comma-separated review,gps,keywords (default: all)')
+    export_group.add_argument('--overwrite-sidecar-review', action='store_true',
+                        help='With --import-sidecars: explicitly allow an older packet to replace newer review edits')
     export_group.add_argument('--overwrite-manual-gps', action='store_true',
                         help='With --import-sidecars: replace existing manual GPS, including cleared locations')
     export_group.add_argument('--import-lightroom', type=str, default=None, metavar='FILE',

@@ -563,6 +563,9 @@ def test_incremental_old_source_rejection_does_not_override_viewer_keep(tmp_path
             conn.execute(f'DROP TRIGGER "{trigger}"')
         if table == 'photos':
             conn.execute('DROP INDEX IF EXISTS idx_review_progress')
+        # Pre-feature schemas have no metadata edit-clock triggers.
+        for (trigger,) in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name GLOB 'metadata_review_*'").fetchall():
+            conn.execute('DROP TRIGGER "' + trigger.replace('"', '""') + '"')
         conn.execute(f"ALTER TABLE {table} DROP COLUMN is_kept")
         conn.execute(f"UPDATE {table} SET is_rejected=1 WHERE {key}=?", (_A,))
     with sqlite3.connect(out) as conn:

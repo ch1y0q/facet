@@ -111,7 +111,6 @@ A record that omits `rating` or `pick` entirely leaves Facet's corresponding val
 
 ### Conflict rules
 
-- **Ratings and labels are newest-wins**, compared between the sidecar's `xmp:MetadataDate` and the photo's `scanned_at` (the last time Facet scored it) — not a per-rating edit timestamp. A sidecar newer than the last scan can override a rating you changed in Facet *after* that scan. Keep the round trip simple: export → Lightroom reads → edit in Lightroom → Lightroom saves → import, without re-rating inside Facet in between.
 - **Tags and keywords merge by default.** Exports add Facet keywords; `--reconcile-keywords` also removes only stale Facet-owned names. Imports add manual tags and never replace AI tags. [Manual tags and XMP keywords](#manual-tags-and-xmp-keywords).
 - **Multi-user** (`--export-sidecars --user alice` / `--import-sidecars --user alice`): ratings route to Alice's `user_preferences` row instead of the global columns. Keywords stay global regardless of `--user` — manual tags are shared across users.
 - Imported keywords go to the `photo_manual_tags` table, which the tag filters read directly, so no `python database.py --migrate-tags` is needed after `--import-sidecars`.
@@ -168,8 +167,8 @@ Facet keeps the tags you type yourself (see [Viewer — Manual Tags](VIEWER.md#m
 
 | Field | Facet writes | Facet reads back | Conflict rule |
 |---|---|---|---|
-| Star rating / reject | `xmp:Rating` (`-1` = rejected) | `xmp:Rating` | Newest-wins vs. `scanned_at` |
-| Color label | `xmp:Label` (`Red` = rejected, `Yellow` = favorite) | `xmp:Label` | Newest-wins vs. `scanned_at` |
+| Star rating / reject | `xmp:Rating` (`-1` = rejected) | `xmp:Rating` | Tracked review clocks; legacy scan fallback |
+| Color label | `xmp:Label` (`Red` = rejected, `Yellow` = favorite) | `xmp:Label` | Tracked review clocks; legacy scan fallback |
 | Tags / keywords | `dc:subject` (flat, AI tags + manual tags, includes named-face person names) | `dc:subject` (stored as manual tags) | Additive by default; `--reconcile-keywords` removes only stale Facet-owned names; imports stay additive ([Manual tags and XMP keywords](#manual-tags-and-xmp-keywords)) |
 | Hierarchical tags | `lr:hierarchicalSubject` (`Category\|<cat>`, `People\|<name>`) | Not re-imported | Export-only |
 | Caption | `dc:description` default language (+ `IPTC:Caption-Abstract` via exiftool) | Not re-imported | Export-only |
@@ -182,3 +181,15 @@ When a stale `facet:GPSState=cleared` accompanies standard GPS fields, a complet
 Caption export with ExifTool updates only `dc:description`’s `x-default` language and preserves other language alternatives in each existing sidecar or embedded image. An empty Facet caption leaves existing captions unchanged; it does not request deletion. Without ExifTool, the XML writer creates a default-language caption in its output packet and, by default, diverts to `<image>.facet.xmp` when an editor sidecar exists. Explicit fallback `overwrite=True` still replaces the target packet.
 
 Face export with ExifTool replaces only MWG rectangles explicitly marked `facet:RegionOwner=Facet` in each region’s Extensions. Unmarked regions, including older Facet exports, are preserved because names and coordinates do not prove ownership: after upgrading, an old unmarked face and its new marked copy can appear together, and clearing faces leaves the old copy. Repeated exports replace the marked copies without accumulating more. Foreign regions and unknown extensions remain untouched. Different current face dimensions, or different/unknown foreign applied image dimensions, skip all face changes with a warning while rating, label, keywords and GPS still export. Unreadable or invalid existing face metadata refuses single-photo export/embed with HTTP 412 before writing. The XML fallback does not export face rectangles. External edits to a marked region remain Facet-owned; remove its ownership marker before treating it as an independent annotation. Known original/companion preconditions are checked before embedding. Separate file writes are not atomic: later external changes or I/O failures can still leave partial results.
+
+## Sidecar import preview and review conflicts
+
+Use `--import-sidecars /path --dry-run` to inspect JSON before writing. It reports the chosen packet, intended before/after fields, keyword additions, source time and skip/conflict reasons. Preview opens the existing database read-only, performs no migration and never commits. Apply reads the current packets and database again under its write transaction; the preview JSON is not an apply token.
+
+`--sidecar-fields review,gps,keywords` selects field groups; omit groups to leave them alone. Review groups stars, favorite, rejection and Keep together so a conflict cannot apply half a decision. GPS keeps the existing manual-location protection unless `--overwrite-manual-gps` is given. Keywords remain additive and shared even with `--user`.
+
+After this version initializes the database, SQLite triggers keep one edit receipt per photo/account/review field, including resets and preference-row deletion. A packet older than a changed field is a `newer_local_edit` conflict and that review group stays unchanged. `--overwrite-sidecar-review` explicitly overrides both edit clocks and the legacy scan gate. A source receipt identifies the XMP packet/time; `local` means an unknown SQL writer, not a verified human author. No caption, face, hierarchy or unmarked external GPS import is added.
+
+Rows without receipts have unknown edit time, rather than an obsolete schema alias. The explicit data-state rule reports `untracked_legacy_edit` and uses scan time; no human edit time is guessed. Preview opens released schemas without migration, treating an absent Keep field as undecided. The source clock is `xmp:MetadataDate`, or file mtime when absent/invalid. Details include the first 1,000 scoped photos and 100 diagnostics per photo, with omitted counts; scope and named-user visibility apply before planning.
+
+Edit receipts are private to their database. Fresh viewer exports contain no scanner receipts or sidecar paths; incremental exports preserve only receipts already held by the viewer and never copy scanner receipt authority. Explicit viewer resets, including deleted per-user preferences, survive later exports. Scanner values without viewer edits continue to update normally. Existing preview-build databases may already contain copied receipts whose origin cannot be inferred: these are conservatively preserved, without inventing timestamps or silently discarding actual viewer edits. Back up and review that database before explicitly rebuilding it. A fresh/full rebuild does not preserve viewer-local changes.

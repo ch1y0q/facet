@@ -111,7 +111,6 @@ Un enregistrement qui omet `rating` ou `pick` laisse intacte la valeur correspon
 
 ### Règles de conflit
 
-- **Les notes et libellés suivent la règle « le plus récent gagne »**, en comparant le `xmp:MetadataDate` du sidecar au `scanned_at` de la photo (la dernière fois que Facet l'a évaluée) — pas un horodatage par note. Un sidecar plus récent que le dernier scan peut écraser une note que vous avez modifiée dans Facet *après* ce scan. Gardez l'aller-retour simple : export → Lightroom lit → modification dans Lightroom → Lightroom enregistre → import, sans re-noter dans Facet entre les deux.
 - **Les tags et mots-clés fusionnent par défaut.** Les exports ajoutent les mots-clés Facet ; `--reconcile-keywords` retire aussi uniquement les noms obsolètes appartenant à Facet. Les imports ajoutent des tags manuels sans remplacer les tags IA. [Tags manuels et mots-clés XMP](#tags-manuels-et-mots-clés-xmp).
 - **Multi-utilisateurs** (`--export-sidecars --user alice` / `--import-sidecars --user alice`) : les notes sont dirigées vers la ligne `user_preferences` d'Alice au lieu des colonnes globales. Les mots-clés restent globaux quel que soit `--user` — les tags manuels sont partagés entre les utilisateurs.
 - Les mots-clés importés vont dans la table `photo_manual_tags`, que les filtres de tags lisent directement : `python database.py --migrate-tags` n'est donc plus nécessaire après `--import-sidecars`.
@@ -168,8 +167,8 @@ Facet conserve les tags que vous saisissez vous-même (voir [Visionneuse — Tag
 
 | Champ | Facet écrit | Facet relit | Règle de conflit |
 |---|---|---|---|
-| Note (étoiles / rejet) | `xmp:Rating` (`-1` = rejeté) | `xmp:Rating` | Le plus récent gagne, vs `scanned_at` |
-| Libellé de couleur | `xmp:Label` (`Red` = rejeté, `Yellow` = favori) | `xmp:Label` | Le plus récent gagne, vs `scanned_at` |
+| Note (étoiles / rejet) | `xmp:Rating` (`-1` = rejeté) | `xmp:Rating` | Horloges de tri ; repli historique du scan |
+| Libellé de couleur | `xmp:Label` (`Red` = rejeté, `Yellow` = favori) | `xmp:Label` | Horloges de tri ; repli historique du scan |
 | Tags / mots-clés | `dc:subject` (à plat, tags IA + tags manuels, inclut les noms des personnes identifiées) | `dc:subject` (stockés comme tags manuels) | Additif par défaut ; `--reconcile-keywords` retire seulement les noms obsolètes de Facet ; les imports restent additifs ([Tags manuels et mots-clés XMP](#tags-manuels-et-mots-clés-xmp)) |
 | Tags hiérarchiques | `lr:hierarchicalSubject` (`Category\|<cat>`, `People\|<nom>`) | Non réimporté | Export uniquement |
 | Légende | `dc:description` (+ `IPTC:Caption-Abstract` via exiftool) | Non réimporté | Export uniquement |
@@ -182,3 +181,15 @@ Si un ancien marqueur `facet:GPSState=cleared` accompagne les champs GPS standar
 L’export des légendes avec ExifTool modifie uniquement la langue `x-default` de `dc:description` et conserve les autres langues dans chaque fichier annexe ou image intégrée. Une légende Facet vide conserve les légendes existantes. Sans ExifTool, le fichier XML contient la langue par défaut et utilise normalement `<image>.facet.xmp` si un fichier annexe existe ; un écrasement explicite remplace toujours le paquet cible.
 
 ExifTool remplace uniquement les rectangles MWG marqués `facet:RegionOwner=Facet` dans Extensions. Les régions non marquées, y compris les anciens exports Facet, sont conservées : noms et coordonnées ne prouvent pas leur origine. Après mise à jour, un ancien visage non marqué peut apparaître avec sa nouvelle copie marquée ; effacer les visages laisse l’ancienne copie. Les exports répétés remplacent les copies marquées sans accumuler de doublons. Les régions externes et leurs extensions inconnues restent intactes. Des dimensions différentes entre visages actuels ou des dimensions externes différentes/inconnues ignorent tous les changements de visages avec un avertissement ; notes, libellés, mots-clés et GPS sont néanmoins exportés. Des métadonnées de visages illisibles ou invalides refusent l’export ou l’intégration d’une photo avec HTTP 412 avant toute écriture. Sans ExifTool, aucun rectangle n’est exporté. Une région marquée modifiée ailleurs reste gérée par Facet ; retirez le marqueur pour une annotation indépendante. Les préconditions connues de l’original et du sidecar sont vérifiées avant l’intégration. Les écritures séparées ne sont pas atomiques ; des changements externes ou erreurs d’E/S ultérieurs peuvent laisser des résultats partiels.
+
+## Prévisualiser les imports et les conflits
+
+`--import-sidecars /chemin --dry-run` affiche un plan JSON : fichier choisi, valeurs avant/après, ajouts, source et motifs de refus. La base existante est ouverte en lecture seule, sans migration ni validation de transaction. L’application relit les fichiers et la base dans sa transaction ; le JSON n’est pas un jeton d’application.
+
+`--sidecar-fields review,gps,keywords` sélectionne les groupes. `review` réunit étoiles, favori, rejet et Keep pour éviter une décision partielle. Le GPS manuel reste protégé sans `--overwrite-manual-gps`. Les mots-clés restent additifs et partagés avec `--user`.
+
+Après mise à niveau, des déclencheurs SQLite gardent une réception par photo/compte/champ de tri, y compris remises à zéro et suppression des préférences. Un paquet plus ancien produit `newer_local_edit` et laisse tout le groupe intact. `--overwrite-sidecar-review` force explicitement le remplacement. La réception XMP indique fichier/date ; `local` désigne un écrivain SQL inconnu, pas un auteur humain confirmé. Aucun import de légende, visage, hiérarchie ou GPS externe sans marqueur n’est ajouté.
+
+Sans réception, la date de modification est inconnue : c’est un état des données, pas un alias de schéma. `untracked_legacy_edit` indique l’usage de la date du scan, sans inventer de date humaine. La prévisualisation lit les schémas publiés sans migration ; Keep absent signifie indécis. La source est `xmp:MetadataDate`, sinon la date du fichier. Le détail contient 1 000 photos et 100 diagnostics par photo, avec comptes des omissions ; portée et visibilité sont appliquées avant le plan.
+
+Les réceptions de modification restent privées à chaque base. Un nouvel export viewer ne contient ni réceptions ni chemins XMP du scanner ; les mises à jour conservent uniquement les réceptions déjà présentes dans le viewer. Les remises à zéro explicites, y compris les préférences utilisateur supprimées, survivent aux exports suivants. Les valeurs du scanner sans modification viewer continuent de se mettre à jour. Les anciennes versions de prévisualisation peuvent contenir des réceptions copiées dont l’origine est inconnue : elles sont conservées par prudence, sans inventer de dates ni supprimer de vraies modifications. Sauvegardez et examinez la base avant une reconstruction explicite ; une reconstruction complète ne conserve pas les modifications locales du viewer.
