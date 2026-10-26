@@ -2861,7 +2861,7 @@
     "before": "Antes",
     "after": "Después",
     "error": "No se pudo completar la acción. Comprueba el acceso y los archivos, y vuelve a generar la vista previa.",
-    "reset_hint": "Usar la fecha del archivo elimina la corrección manual. Si el archivo no tiene fecha, la fecha de captura pasa a ser desconocida.",
+    "reset_hint": "El botón «Usar fecha del archivo» elimina la corrección manual. Si el archivo no tiene fecha, la fecha de captura pasa a ser desconocida.",
     "use_file": "Usar fecha del archivo",
     "preview": "Vista previa",
     "apply": "Aplicar corrección",
