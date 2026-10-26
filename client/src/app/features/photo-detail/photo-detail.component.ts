@@ -1139,6 +1139,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
       await firstValueFrom(this.api.post('/photos/batch_review', { photo_paths: [p.path], decision }));
       if (identity !== this.auth.identity()) return;
       this.applyConfirmed(p, { is_kept: decision === 'kept', is_rejected: false });
+      this.journal.record('review', [p.path], decision);
       if (isOrigin()) await this.advanceAfterReview(p, index, next);
     } catch {
       this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });

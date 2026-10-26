@@ -305,6 +305,10 @@ describe('PhotoDetailComponent', () => {
       response.next({ is_rejected: true, is_favorite: null, star_rating: null });
       await pending;
       expect(component.photo()).toBe(b);
+      expect(TestBed.inject(UserActivityJournal).since().items).toEqual([expect.objectContaining({
+        kind: decision === 'rejected' ? 'reject' : 'review', paths: [a.path],
+        value: decision === 'rejected' ? true : decision,
+      })]);
       expect(mockRouter.navigate).not.toHaveBeenCalled();
       expect(refresh).toHaveBeenCalledOnce();
       expect(store.photos()[0]).toMatchObject({ path: a.path, is_kept: decision === 'kept', is_rejected: decision === 'rejected' });
@@ -327,7 +331,7 @@ describe('PhotoDetailComponent', () => {
       expect(refresh).toHaveBeenCalledOnce();
       expect(mockRouter.navigate).not.toHaveBeenCalled();
     });
-    it.each(['kept', 'rejected'])('applies and journals %s that lands after the gallery view changed', async decision => {
+    it.each(['kept', 'undecided', 'rejected'])('applies and journals %s that lands after the gallery view changed', async decision => {
       createComponent();
       const store = TestBed.inject(GalleryStore);
       const a = makePhoto({ path: '/a.jpg' });
@@ -337,14 +341,17 @@ describe('PhotoDetailComponent', () => {
       component.photo.set(a);
       const response = new Subject<any>();
       mockApi.post.mockReturnValue(response);
-      const pending = decision === 'rejected' ? component.toggleRejected(a.path) : component.reviewPhoto('kept');
+      const pending = decision === 'rejected' ? component.toggleRejected(a.path) : component.reviewPhoto(decision);
       store.filters.update(f => ({ ...f, path_prefix: '/elsewhere/' }));
       response.next({ is_rejected: true, is_favorite: null, star_rating: null });
       await pending;
       expect(component.photo()).toMatchObject({ path: a.path, is_kept: decision === 'kept', is_rejected: decision === 'rejected' });
       expect(refresh).not.toHaveBeenCalled();
       expect(mockRouter.navigate).not.toHaveBeenCalled();
-      if (decision === 'rejected') expect(TestBed.inject(UserActivityJournal).since().items.map(i => i.kind)).toContain('reject');
+      expect(TestBed.inject(UserActivityJournal).since().items).toEqual([expect.objectContaining({
+        kind: decision === 'rejected' ? 'reject' : 'review', paths: [a.path],
+        value: decision === 'rejected' ? true : decision,
+      })]);
     });
 
     it('merges delayed Keep into current metadata', async () => {
@@ -837,6 +844,34 @@ describe('PhotoDetailComponent', () => {
   });
 
   describe('user activity journal', () => {
+    it.each(['kept', 'undecided'] as const)('reports %s only after success and respects assistant suppression', async decision => {
+      createComponent();
+      component.photo.set({ ...samplePhoto });
+      const journal = TestBed.inject(UserActivityJournal);
+      mockApi.post.mockReturnValue(throwError(() => new Error('offline')));
+      await component.reviewPhoto(decision);
+      expect(journal.since().items).toEqual([]);
+      mockApi.post.mockReturnValue(of({ count: 1 }));
+      await journal.suppress(() => component.reviewPhoto(decision));
+      expect(journal.since().items).toEqual([]);
+      await component.reviewPhoto(decision);
+      expect(journal.since().items).toEqual([expect.objectContaining({ kind: 'review', paths: [samplePhoto.path], value: decision })]);
+    });
+
+    it.each(['kept', 'undecided'] as const)('discards queued %s journal confirmation after a direct account switch', async decision => {
+      createComponent();
+      component.photo.set({ ...samplePhoto });
+      const journal = TestBed.inject(UserActivityJournal);
+      TestBed.tick();
+      const response = new Subject<{ count: number }>();
+      mockApi.post.mockReturnValue(response);
+      const pending = component.reviewPhoto(decision);
+      response.next({ count: 1 });
+      mockAuth.status.set({ user_id: 'bob' });
+      await pending;
+      expect(journal.since().items).toEqual([]);
+    });
+
     const kinds = (): string[] => TestBed.inject(UserActivityJournal).since().items.map(i => i.kind);
 
     it('records rating, favorite, reject and manual-tag edits', async () => {

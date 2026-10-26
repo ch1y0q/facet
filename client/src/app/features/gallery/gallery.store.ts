@@ -272,6 +272,7 @@ const SIMILAR_REASON_KEYS = {
 const BATCH_ACTIVITY: Record<string, { kind: UserActivityKind; value: (extra: Record<string, unknown>) => unknown }> = {
   '/photos/batch_favorite': { kind: 'favorite', value: () => true },
   '/photos/batch_reject': { kind: 'reject', value: () => true },
+  '/photos/batch_review': { kind: 'review', value: extra => extra['decision'] },
   '/photos/batch_rating': { kind: 'rating', value: extra => extra['rating'] ?? null },
 };
 
@@ -2064,7 +2065,7 @@ export class GalleryStore {
       }
     }
     const kind = BATCH_ACTIVITY[endpoint];
-    if (kind) this.journal.record(kind.kind, paths, kind.value(extraBody));
+    if (kind && originIdentity === this.auth.identity()) this.journal.record(kind.kind, paths, kind.value(extraBody));
     await refreshConfirmed();
     return { snapshot, targeted, count };
   }

@@ -6,6 +6,7 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- **Include manual Keep and Reset in assistant activity context.** Successful gallery and photo-detail decisions now report `review` entries with `kept` or `undecided`; a late batch confirmation from another account cannot enter the current activity journal.
 - **Match focus peaking to each compare pane.** Track render failures and retries per pane so a previous single-view fallback does not select the wrong image source in compare mode.
 - **Readable sidecar import preview errors.** Missing, unreadable or invalid databases now produce a clear refusal instead of a SQLite traceback, without creating or upgrading the database.
 

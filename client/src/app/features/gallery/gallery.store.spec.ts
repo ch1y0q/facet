@@ -2929,6 +2929,58 @@ describe('GalleryStore optimistic mutations', () => {
   });
 
   describe('user activity journal', () => {
+    it.each(['kept', 'undecided'] as const)('reports confirmed single and batch %s decisions only', async decision => {
+      const journal = TestBed.inject(UserActivityJournal);
+      apiPost.mockReturnValue(of({ count: 1 }));
+      await store.batchReview(['/a.jpg'], decision, false);
+      apiPost.mockReturnValue(of({ count: 2 }));
+      await store.batchReview(['/a.jpg', '/b.jpg'], decision);
+      apiPost.mockReturnValue(throwError(() => new Error('offline')));
+      await store.batchReview(['/a.jpg'], decision);
+      expect(journal.since().items.map(i => [i.kind, i.paths, i.value])).toEqual([
+        ['review', ['/a.jpg'], decision], ['review', ['/a.jpg', '/b.jpg'], decision],
+      ]);
+    });
+
+    it.each(['kept', 'undecided', 'favorite', 'reject', 'rating'] as const)('does not journal another account queued %s confirmation before auth effects run', async action => {
+      const journal = TestBed.inject(UserActivityJournal);
+      const auth = TestBed.inject(AuthService);
+      const identity = signal(auth.identity());
+      vi.spyOn(auth, 'identity').mockImplementation(identity);
+      TestBed.tick();
+      const response = new Subject<{ count: number }>();
+      apiPost.mockReturnValue(response);
+      const pending = action === 'favorite' ? store.batchFavorite(['/a.jpg'])
+        : action === 'reject' ? store.batchReject(['/a.jpg'])
+        : action === 'rating' ? store.batchRating(['/a.jpg'], 4)
+        : store.batchReview(['/a.jpg'], action);
+      response.next({ count: 1 });
+      identity.set('bob'); // Before Angular's auth effect.
+      await pending;
+      expect(journal.since().items).toEqual([]);
+    });
+
+    it('does not report a partially failed multi-request review batch as complete', async () => {
+      apiPost.mockReturnValueOnce(of({ count: 1000 }))
+        .mockReturnValueOnce(throwError(() => new Error('offline')));
+      const result = await store.batchReview(Array.from({ length: 1001 }, (_, i) => `/p${i}.jpg`), 'kept');
+      expect(result).toBeNull();
+      expect(apiPost).toHaveBeenCalledTimes(2);
+      expect(TestBed.inject(UserActivityJournal).since().items).toEqual([]);
+    });
+
+    it('does not echo assistant-suppressed review decisions in the real report', async () => {
+      const journal = TestBed.inject(UserActivityJournal);
+      apiPost.mockReturnValue(of({ count: 1 }));
+      await journal.suppress(async () => {
+        await store.batchReview(['/a.jpg'], 'kept');
+        await store.batchReview(['/b.jpg'], 'undecided');
+      });
+      expect(journal.since().items).toEqual([]);
+      await store.batchReview(['/a.jpg'], 'kept');
+      expect(journal.since().items).toEqual([expect.objectContaining({ kind: 'review', paths: ['/a.jpg'], value: 'kept' })]);
+    });
+
     const kinds = (): string[] => TestBed.inject(UserActivityJournal).since().items.map(i => i.kind);
 
     it('records a rating, a favorite toggle, and a reject toggle', async () => {
