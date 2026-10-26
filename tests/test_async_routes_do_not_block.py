@@ -188,6 +188,29 @@ def _requests():
 REQUESTS = list(_requests())
 
 
+def _settle_sidecar_job(job_id, owner):
+    from api import sidecar_jobs
+    from api.database import DEFAULT_DB_PATH
+    from facet import library_job_holder
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        status = sidecar_jobs.status(DEFAULT_DB_PATH, job_id, owner)
+        if status['state'] != 'running' and library_job_holder(DEFAULT_DB_PATH) is None:
+            return status
+        threading.Event().wait(.005)
+    pytest.fail('sidecar worker did not finish and release its library lock')
+
+
+@pytest.fixture()
+def seeded_sidecar_job():
+    """A real caller-owned receipt so status/cancel/retry reach their handlers."""
+    from api import sidecar_jobs
+    from api.database import DEFAULT_DB_PATH
+    status = sidecar_jobs.start(DEFAULT_DB_PATH, EDITION.user_id, [], lambda path: None)
+    _settle_sidecar_job(status['id'], EDITION.user_id)
+    return status['id']
+
+
 def _drive(requests, statuses=None):
     """Run ``requests`` with cold caches under the guard; return the hits per request.
 
@@ -210,6 +233,10 @@ def _drive(requests, statuses=None):
         _cold_caches()
         with loop_guard() as hits:
             resp = client.request(method, path, params=params, json=body)
+        # Successful admission returns before media work. Settle that real worker
+        # before the next mutation, rather than testing an accidental lock refusal.
+        if method == 'POST' and path.startswith('/api/export/sidecar_jobs') and resp.status_code == 202:
+            _settle_sidecar_job(resp.json()['id'], user.user_id)
         if statuses is not None:
             statuses.append((method, path, resp.status_code))
         found.extend(f"{method} {path}: {hit}" for hit in hits)
@@ -280,7 +307,7 @@ def seeded_history(seeded_photos):
     return history.json()['entries'][0]['id']
 
 
-def _bind(requests, photo_path, album_id, history_id):
+def _bind(requests, photo_path, album_id, history_id, job_id):
     """``requests`` with the photo and album placeholders replaced by real rows."""
     def value(v):
         if v == _PLACEHOLDER_PHOTO:
@@ -291,6 +318,10 @@ def _bind(requests, photo_path, album_id, history_id):
 
     album_segment = f"/{_PLACEHOLDER_ALBUM_ID}/"
     for method, path, params, body, user in requests:
+        if path.startswith('/api/export/sidecar_jobs/not-a-job'):
+            path = path.replace('/not-a-job', '/' + job_id, 1)
+        if method == 'POST' and path == '/api/export/sidecar_jobs':
+            body = {'paths': [photo_path]}
         if path == '/api/organization_history/1/revert':
             path = f'/api/organization_history/{history_id}/revert'
         if path.startswith('/api/'):
@@ -313,12 +344,12 @@ def _answered_as_expected(method, path, status):
 
 
 def test_no_route_runs_a_blocking_opener_on_the_event_loop(seeded_photos, seeded_album,
-                                                           seeded_history, monkeypatch):
+                                                           seeded_history, seeded_sidecar_job, monkeypatch):
     from api.routers import scan
     monkeypatch.setitem(scan.VIEWER_CONFIG, 'features',
                         {**scan.VIEWER_CONFIG.get('features', {}), 'show_scan_button': True})
     statuses = []
-    assert _drive(list(_bind(REQUESTS, seeded_photos[0]["path"], seeded_album, seeded_history)), statuses) == []
+    assert _drive(list(_bind(REQUESTS, seeded_photos[0]["path"], seeded_album, seeded_history, seeded_sidecar_job)), statuses) == []
     assert [st for st in statuses if not _answered_as_expected(*st)] == []
     assert len(statuses) == len(REQUESTS)
 
@@ -435,3 +466,25 @@ def test_the_guard_flags_place_provider_on_the_loop():
     with loop_guard() as hits:
         assert client.get('/search-on-loop').status_code == 500
     assert len(hits) == 1 and hits[0].startswith('api.place_search._fetch')
+
+
+def test_background_sidecar_file_work_does_not_run_on_the_event_loop(tmp_path, seed_photos_prefix, monkeypatch):
+    from PIL import Image
+    from api.routers import export
+    image = tmp_path / 'loop-safe-export.jpg'
+    Image.new('RGB', (10, 10)).save(image)
+    seed_photos_prefix(str(tmp_path), [{'path': str(image), 'filename': image.name, 'star_rating': 4}])
+    calls = []
+    real_write = export._write_sidecars_for_paths
+    def record_write(*args, **kwargs):
+        calls.append((threading.current_thread().name, _on_event_loop()))
+        return real_write(*args, **kwargs)
+    monkeypatch.setattr(export, '_write_sidecars_for_paths', record_write)
+    with loop_guard() as hits:
+        response = TestClient(_user_app(EDITION)).post('/api/export/sidecar_jobs', json={'paths': [str(image)]})
+        assert response.status_code == 202, response.text
+        status = _settle_sidecar_job(response.json()['id'], EDITION.user_id)
+    assert hits == []
+    assert calls == [('facet-sidecar-export', False)]
+    assert status['written'] == 1 and status['errors'] == 0
+    assert os.path.isfile(str(image) + '.xmp')

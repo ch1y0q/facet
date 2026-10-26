@@ -20,7 +20,7 @@ Choose discovery explicitly with `--import-sidecars --sidecar-naming full|basena
 
 A basename shared by indexed photos or sibling image files, such as `same.CR3` and `same.jpg`, is refused under `basename` and `auto`, even if only one photo is in the selected folder/user scope. Use independent full-name sidecars for those files. Versions such as `same_v1.jpg` have a different basename. Naming mismatches, ambiguity and unreadable/invalid selected packets are reported; no other naming family is tried after a parse failure. The CLI summary counts ambiguity within skipped photos and naming mismatches within photos without a selected sidecar.
 
-Double-extension derivatives such as `IMG.CR2.jpg` must not read `IMG.CR2.xmp` owned by `IMG.CR2`; the same protection covers another image’s `.facet.xmp` fallback. Full-policy naming notices show one example per run; the summary still counts every mismatch.
+Double-extension derivatives such as `IMG.CR2.jpg` must not read `IMG.CR2.xmp` owned by `IMG.CR2`; the same protection covers another image’s `.facet.xmp` fallback. Naming notices in every policy show one example of each kind per import; summary counts still include every affected photo.
 
 Import needs no ExifTool. Export merging, embedding and MWG face rectangles require ExifTool. Without it, an existing editor sidecar is left intact and the XML fallback writes `<image.ext>.facet.xmp` with no MWG rectangles. This fallback needs an intentional handoff to another editor; it is not a universally discovered filename. No files are renamed by these policies.
 
