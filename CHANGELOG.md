@@ -4,6 +4,10 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Make export job controls clearer for assistive technology.** Refresh controls have distinct names, the viewed receipt is identified, and live announcements cover status changes rather than the entire progress panel.
+
 ## [1.24.0] "Diaphragme" — 2026-10-26
 
 
