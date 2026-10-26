@@ -26,6 +26,7 @@ All notable changes to Facet are documented in this file.
 - **Preview global sidecar imports from read-only installs.** Imports without `--user` no longer initialize the viewer’s login secret, so database refusals are reported without authentication-bootstrap tracebacks.
 - **Serve native images with consistent media types.** Full-resolution JPEG, PNG, GIF, WebP, BMP and AVIF previews use explicit image types even when the system MIME registry is missing or customized.
 - **Explain sidecar job refusals.** Starting or retrying an export uses `503 library_busy` while another library job holds the lock, with a retry delay. Unusable locks and receipt storage return distinct safe errors so operators can fix the cache instead of waiting.
+- **Keep valid Unicode place results.** Online GPS search accepts result labels up to the server’s 600-character limit, including characters outside the basic multilingual plane.
 - **Ship the ExifTool tag definitions.** Installed distributions include Facet’s metadata configuration. ExifTool exports refuse missing definitions before changing photos or sidecars instead of silently omitting private metadata.
 - **Match focus peaking to each compare pane.** Track render failures and retries per pane so a previous single-view fallback does not select the wrong image source in compare mode.
 - **Readable sidecar import preview errors.** Missing, unreadable or invalid databases now produce a clear refusal instead of a SQLite traceback, without creating or upgrading the database.
