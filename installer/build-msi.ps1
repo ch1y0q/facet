@@ -7,8 +7,11 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo  = Split-Path $PSScriptRoot -Parent
 $out   = Join-Path $PSScriptRoot 'out'
-$stage = Join-Path $out 'stage'
-$obj   = Join-Path $out 'obj'
+# Stage outside the repo: a dev viewer (`python viewer.py`, auto-reload) watches the repo
+# for .py changes and dies when a staged copy appears and is deleted under it.
+$work  = Join-Path $env:TEMP 'facet-msi-build'
+$stage = Join-Path $work 'stage'
+$obj   = Join-Path $work 'obj'
 $dist  = Join-Path $repo 'client\dist\client\browser'
 
 if (-not (Test-Path (Join-Path $dist 'index.html'))) { throw "Build the client first (cd client; npm run build): $dist" }
@@ -19,11 +22,11 @@ if ($dirty) { Write-Warning "Uncommitted changes are NOT in the MSI (it packages
 $version = (Select-String -Path (Join-Path $repo 'pyproject.toml') -Pattern '^version = "([^"]+)"').Matches[0].Groups[1].Value
 $commit  = git -C $repo rev-parse --short HEAD
 
-if (Test-Path $out) { Remove-Item -Recurse -Force $out }
-New-Item -ItemType Directory -Force $stage, $obj | Out-Null
+foreach ($d in $out, $work) { if (Test-Path $d) { Remove-Item -Recurse -Force $d } }
+New-Item -ItemType Directory -Force $out, $stage, $obj | Out-Null
 
 # App files: the committed tree, minus what a running install never reads.
-$tar = Join-Path $out 'src.tar'
+$tar = Join-Path $work 'src.tar'
 git -C $repo archive --format=tar -o $tar HEAD
 tar -xf $tar -C $stage
 Remove-Item $tar
@@ -48,5 +51,5 @@ if ($LASTEXITCODE) { throw 'candle failed' }
 $msi = Join-Path $out "Facet-$version-$commit.msi"
 & "$WixDir\light.exe" -nologo -sval -out $msi (Join-Path $obj 'Facet.wixobj') (Join-Path $obj 'AppFiles.wixobj')
 if ($LASTEXITCODE) { throw 'light failed' }
-Remove-Item -Recurse -Force $stage, $obj
+Remove-Item -Recurse -Force $work
 Get-Item $msi | Select-Object Name, @{n = 'MB'; e = { [math]::Round($_.Length / 1MB, 1) } }
