@@ -1037,7 +1037,7 @@
     "user_menu": "Benutzermenü"
   },
   "gallery": {
-    "help": "Nach Bewertung, Datum oder deinem Geschmack sortieren; mit der Seitenleiste filtern (Personen, Tags, Kamera, Kategorie, Bewertungsbereich, Momente) und das Suchfeld.\nAuf der fokussierten Karte: 1–5 bewerten, F favorisieren, X oder 0 verwerfen (Bearbeitungsmodus) — die Tasten stehen auf der Karte selbst.\n/ fokussiert die Suche, B blendet die Filterseitenleiste ein/aus, V wechselt Raster und Mosaik, ? zeigt diese Referenz.",
+    "help": "Nach Bewertung, Datum oder deinem Geschmack sortieren\nSeitenleistenfilter: Personen, Tags, Kamera, Kategorien\nSuche nach Dateiname oder Beschreibung\nAuf der fokussierten Karte 1–5 bewerten, F favorisieren, X verwerfen (Bearbeitungsmodus)\n/ fokussiert die Suche, B blendet die Seitenleiste ein/aus, V wechselt das Layout\n? zeigt diese Referenz",
     "hidden_banner": {
       "message": "{n} Fotos durch aktuelle Filter ausgeblendet",
       "some_hidden": "Einige Fotos werden durch Ihre Filter ausgeblendet",

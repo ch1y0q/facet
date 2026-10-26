@@ -1037,7 +1037,7 @@
     "user_menu": "Menu utilisateur"
   },
   "gallery": {
-    "help": "Triez par score, date ou votre goût personnel ; filtrez avec la barre latérale (personnes, tags, appareil, catégorie, plage de scores, moments) et la recherche.\nSur la carte ciblée : 1–5 note, F favori, X ou 0 rejette (mode édition) — les touches sont nommées sur la carte elle-même.\n/ cible la recherche, B affiche ou masque la barre latérale des filtres, V bascule grille et mosaïque, ? affiche cette référence.",
+    "help": "Triez par score, date ou votre goût personnel\nFiltrez avec la barre latérale : personnes, tags, appareil, catégories\nRecherchez par nom de fichier ou description\nSur la carte ciblée : 1–5 note, F favori, X rejette (mode édition)\n/ cible la recherche, B affiche la barre latérale, V change la disposition\n? affiche cette référence",
     "hidden_banner": {
       "message": "{n} photos masquées par les filtres actuels",
       "some_hidden": "Certaines photos sont masquées par vos filtres",

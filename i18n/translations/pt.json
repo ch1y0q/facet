@@ -1037,7 +1037,7 @@
     "user_menu": "Menu do usuário"
   },
   "gallery": {
-    "help": "Ordene por pontuação, data ou seu gosto pessoal; filtre com a barra lateral (pessoas, tags, câmera, categoria, faixa de pontuação, momentos) e a caixa de busca.\nNo cartão em foco: 1–5 avalia, F favorita, X ou 0 rejeita (modo edição) — as teclas estão nomeadas no próprio cartão.\n/ foca a busca, B mostra/oculta a barra lateral de filtros, V alterna grade e mosaico, ? mostra esta referência.",
+    "help": "Ordene por pontuação, data ou seu gosto pessoal\nFiltre com a barra lateral: pessoas, tags, câmera, categorias\nBusque por nome de arquivo ou descrição\nNo cartão em foco: 1–5 avalia, F favorita, X rejeita (modo edição)\n/ foca a busca, B alterna a barra lateral, V muda o layout\n? mostra esta referência",
     "hidden_banner": {
       "message": "{n} fotos ocultadas pelos filtros atuais",
       "some_hidden": "Algumas fotos estão ocultadas pelos seus filtros",

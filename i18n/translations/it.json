@@ -1037,7 +1037,7 @@
     "user_menu": "Menu utente"
   },
   "gallery": {
-    "help": "Ordina per punteggio, data o il tuo gusto personale; filtra con la barra laterale (persone, tag, fotocamera, categoria, intervallo di punteggi, momenti) e la ricerca.\nSulla scheda a fuoco: 1–5 valuta, F preferiti, X o 0 scarta (modalità modifica) — i tasti sono indicati sulla scheda stessa.\n/ attiva la ricerca, B mostra/nasconde la barra dei filtri, V alterna griglia e mosaico, ? mostra questo riferimento.",
+    "help": "Ordina per punteggio, data o il tuo gusto personale\nFiltra con la barra laterale: persone, tag, fotocamera, categorie\nCerca per nome file o descrizione\nSulla scheda a fuoco: 1–5 valuta, F preferiti, X scarta (modalità modifica)\n/ attiva la ricerca, B mostra/nasconde la barra laterale, V cambia il layout\n? mostra questo riferimento",
     "hidden_banner": {
       "message": "{n} foto nascoste dai filtri attivi",
       "some_hidden": "Alcune foto sono nascoste dai tuoi filtri",
