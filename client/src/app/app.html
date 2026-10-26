@@ -468,7 +468,7 @@
 
   <!-- Global per-page help panel (shows the current page's description) -->
   @if (pageHelp.open() && pageHelp.descriptionKey(); as key) {
-    <div class="mx-4 mt-3 p-3 rounded-lg bg-[var(--mat-sys-surface-container)] text-sm opacity-80">{{ key | translate }}</div>
+    <div class="mx-4 mt-3 p-3 rounded-lg bg-[var(--mat-sys-surface-container)] text-sm opacity-80 whitespace-pre-line">{{ key | translate }}</div>
   }
 
   <!-- Mobile search bar is rendered as the first row of the gallery bottom stack -->

@@ -17,14 +17,21 @@ import { i18nKeys } from '../../../core/i18n/keys';
     <div class="px-6 pt-5">
       <div class="flex items-center gap-3 mb-3">
         <div class="w-9 h-9 rounded-lg bg-[var(--mat-sys-primary-container)] flex items-center justify-center shrink-0">
-          <mat-icon class="!text-xl !w-5 !h-5 text-[var(--mat-sys-on-primary-container)]">help_outline</mat-icon>
+          <mat-icon class="!text-base !w-5 !h-5 !leading-5 text-[var(--mat-sys-on-primary-container)]">help_outline</mat-icon>
         </div>
         <h2 class="text-base font-semibold m-0">{{ I18N.culling.help | translate }}</h2>
       </div>
     </div>
     <mat-dialog-content class="!px-6">
       @if (descriptionKey; as key) {
-        <p class="text-sm leading-relaxed m-0">{{ key | translate }}</p>
+        <ul class="m-0 pl-0 list-none flex flex-col gap-2.5">
+          @for (line of (key | translate).split('\n'); track $index) {
+            <li class="flex items-start gap-2.5 text-sm leading-relaxed">
+              <span class="mt-[7px] w-1.5 h-1.5 rounded-full bg-[var(--mat-sys-primary)] shrink-0" aria-hidden="true"></span>
+              <span>{{ line }}</span>
+            </li>
+          }
+        </ul>
       } @else {
         <p class="text-sm leading-relaxed m-0 opacity-70">{{ I18N.gallery.help_none | translate }}</p>
       }
