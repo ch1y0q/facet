@@ -7,6 +7,7 @@ All notable changes to Facet are documented in this file.
 ### Fixed
 
 - **Private online place-search caches.** Multi-user address searches reuse only the current account’s results while preserving the shared provider rate limit. Excessively nested provider JSON returns the normal unavailable response instead of an internal server error.
+- **Match focus peaking to each compare pane.** Track render failures and retries per pane so a previous single-view fallback does not select the wrong image source in compare mode.
 - **Readable sidecar import preview errors.** Missing, unreadable or invalid databases now produce a clear refusal instead of a SQLite traceback, without creating or upgrading the database.
 
 ## [1.24.0] "Diaphragme" — 2026-10-26
