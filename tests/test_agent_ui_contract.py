@@ -272,3 +272,35 @@ def test_every_agents_doc_lists_the_same_error_codes_and_modal_open(lang):
     assert codes(DOCS / lang / "AGENTS.md") == english
     reasons = next(row for row in (DOCS / lang / "AGENTS.md").read_text().splitlines() if '{"applied": false, "reason"}' in row)
     assert "modal_open" in reasons
+
+
+def test_rejected_only_patch_preserves_explicit_review_status():
+    from api.agent.ui_tools import UiSetGalleryFilters
+    assert UiSetGalleryFilters.model_validate({"patch": {
+        "show_rejected": True, "review_status": "kept"}}).forward() == {
+            "patch": {"show_rejected": True, "review_status": "kept"}, "replace": False}
+
+
+def test_registered_search_guidance_supports_rejected_only_tab_filters():
+    from api.agent.tools_read import register_read_tools
+    from api.agent.ui_tools import TAB_UNSUPPORTED_FILTER_KEYS
+
+    class Recorder:
+        def __init__(self):
+            self.descriptions = {}
+
+        def add_tool(self, fn, *, name, description, **kwargs):
+            self.descriptions[name] = description
+
+    recorder = Recorder()
+    register_read_tools(recorder, None, None, None)
+    description = recorder.descriptions["search_photos"]
+    unsupported = description.split("Filters the gallery sidebar has no field for (", 1)[1].split(")", 1)[0]
+    assert set(unsupported.split(", ")) == TAB_UNSUPPORTED_FILTER_KEYS
+    assert "`show_rejected` can be shown in the tab" in description
+
+
+def test_rejected_only_and_favorites_patch_is_refused_atomically():
+    from api.agent.ui_tools import UiSetGalleryFilters
+    with pytest.raises(ValueError, match="cannot be combined"):
+        UiSetGalleryFilters.model_validate({"patch": {"show_rejected": True, "favorites_only": True}})

@@ -232,6 +232,17 @@ describe('smartAlbumFilterJson', () => {
     expect(saved).toEqual({ camera: 'X100V' });
   });
 
+  it.each([true, false])('saves and reopens rejected-only=%s as a boolean without broadening the view', showRejected => {
+    const stored = smartAlbumFilterJson(filters({ show_rejected: showRejected, review_status: 'kept', camera: 'Canon' }));
+    const saved = JSON.parse(stored);
+    expect(saved.show_rejected).toBe(showRejected ? true : undefined);
+    const reopened = applySavedAlbumFilters(filters(), stored, '42');
+    expect(reopened).toMatchObject({ show_rejected: showRejected, review_status: 'kept', camera: 'Canon', album_id: '42' });
+    expect(buildApiParams(reopened, true, 0.15)).toMatchObject({ review_status: 'kept', camera: 'Canon' });
+    expect(buildApiParams(reopened, true, 0.15)['show_rejected']).toBe(showRejected ? '1' : undefined);
+    expect(JSON.parse(smartAlbumFilterJson(reopened))).toEqual(saved);
+  });
+
   it('keeps an ordinary sort', () => {
     const saved = JSON.parse(smartAlbumFilterJson(filters({ sort: 'date_taken', sort_direction: 'ASC' })));
     expect(saved.sort).toBe('date_taken');

@@ -479,6 +479,23 @@ describe('GalleryFilterSidebarComponent', () => {
       expect(select.panelOpen).toBe(false);
     });
 
+    it.each(['kept', 'undecided', 'rejected'] as const)('disables rejected-only while review status is %s and restores it after clearing', status => {
+      const filters = TestBed.inject(GalleryStore).filters;
+      filters.update(current => ({ ...current, review_status: status, show_rejected: false }));
+      fixture.detectChanges();
+      const control = (Array.from(fixture.nativeElement.querySelectorAll('mat-checkbox')) as HTMLElement[])
+        .find(element => element.textContent?.includes('rating.show_rejected'))!;
+      const input = control.querySelector('input') as HTMLInputElement;
+      expect(input.disabled).toBe(true);
+      input.click();
+      expect(mockStore['updateFilter']).not.toHaveBeenCalled();
+      filters.update(current => ({ ...current, review_status: '' }));
+      fixture.detectChanges();
+      expect(input.disabled).toBe(false);
+      input.click();
+      expect(mockStore['updateFilter']).toHaveBeenCalledExactlyOnceWith('show_rejected', true);
+    });
+
     it('offers no geolocation without the map feature and forwards the checkbox', () => {
       const labels = Array.from(fixture.nativeElement.querySelectorAll('mat-checkbox')) as HTMLElement[];
       const control = labels.find(el => el.textContent?.includes('gallery.no_geolocation'))!;

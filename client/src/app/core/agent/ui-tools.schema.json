@@ -647,7 +647,7 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Change the gallery filters and sort in the user's open tab. `patch` merges into the current filters (null removes one); `replace: true` starts from none. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
+      "description": "Change the gallery filters and sort in the user's open tab. `patch` merges into the current filters (null removes one); `replace: true` starts from none. Refused with `invalid_input` when `show_rejected` and `favorites_only` are both true; the tab cannot represent that intersection. Explicit `review_status` takes precedence over `show_rejected` and `hide_rejected`. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1549,6 +1549,16 @@
                   "null"
                 ]
               },
+              "show_rejected": {
+                "description": "Gallery filter `show_rejected`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
               "similar_to": {
                 "description": "Show the photos similar to the photo at this path. Cannot be combined with `semantic_query`.",
                 "type": [
@@ -2102,5 +2112,5 @@
       "name": "ui_show_comparison"
     }
   ],
-  "version": "97c746752552f8ef"
+  "version": "997a39e7c58d153f"
 }
