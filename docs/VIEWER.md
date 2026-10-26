@@ -823,7 +823,7 @@ A previously loaded URL only skips the preload delay: the thumbnail stays visibl
 
 In the burst/similar culling lightbox, each detected face carries its own badges — eyes open/closed, poor expression, and detection confidence — instead of a single photo-level blink flag. This makes group shots easier to cull: you can see at a glance which face has closed eyes or a weak expression. The badges are fetched for a whole group in one batch call (`POST /api/culling-group/faces`).
 
-The darkroom's **face panel** colour-codes each face crop green / orange / red from its continuous eyes-open and smile scores, and adds live **eyes** and **smile** threshold sliders so you can tune what counts as a blink or a weak expression on the fly. The cut-offs are the config keys `face_detection.eyes_closed_max` and `face_detection.poor_expression_min` (both default `4.0`); the sliders start there. A third **Size** slider (64–256 px, steps of 16, default `112px`) resizes the face crops themselves — up from the previous fixed 64px — and, like the eyes/smile thresholds, its value is remembered in `localStorage` per browser, not per user account. After a mouse drag or click on any of the three sliders, keyboard focus returns to the darkroom so `←`/`→` (previous/next frame) and `↑`/`↓` (keep/reject) keep working right away instead of nudging the slider; tabbing onto a slider still hands the arrow keys to it, so keyboard-only adjustment still works.
+The darkroom's **face panel** colour-codes each face crop green / orange / red from its continuous eyes-open and smile scores, and adds live **eyes** and **smile** threshold sliders so you can tune what counts as a blink or a weak expression on the fly. The cut-offs are the config keys `face_detection.eyes_closed_max` and `face_detection.poor_expression_min` (both default `4.0`); the sliders start there. A third **Size** slider (64–256 px, steps of 16, default `112px`) resizes the face crops themselves — up from the previous fixed 64px — and, like the eyes/smile thresholds, its value is remembered in `localStorage` per browser, not per user account. After a mouse drag or click on any of the three sliders, keyboard focus returns to the darkroom so `←`/`→` (previous/next frame) and `↑`/`↓` (keep/reject) keep working right away instead of nudging the slider; tabbing onto a slider still hands the arrow keys to it, so keyboard-only adjustment still works. Returning restores the opened card’s position after layout settles and keeps it visible after a resize while the photo was open. Gallery menus and select lists close when a photo opens.
 
 **Subject close-up strip (non-face groups).** For bursts / similar groups whose photos have no significant faces — wildlife, macro, products, birds — the darkroom shows a **subject** strip instead: the key subject of every frame, cropped from the persisted BiRefNet subject box and lined up side by side so you can compare the actual subject at close-up (the Zoner "AI Close-Up" idea, native). Each crop carries a group-normalized sharpness badge (10 = the sharpest subject in the group) and a coloured ring (green / amber / red) so the tack-sharp frame stands out; clicking a crop jumps the main view to that photo. The crops are cut from the stored thumbnail with no model run (`POST /api/culling-group/subjects`) and appear only when a group has subjects but no faces. This lights up only once photos carry a subject box: run `python facet.py --recompute-saliency` (GPU) to backfill an existing library — until then the strip simply doesn't appear.
 
@@ -1689,11 +1689,13 @@ This viewer database keeps the latest **50 entries per account**, each with at m
 
 An entry is hidden entirely when any photo is deleted or no longer visible to you. Revert checks every photo together and refuses the whole entry if any supported value was changed since the action, even if it was later changed back. GPS/date conflicts are shared across accounts; another account’s private review edit does not block yours. A successful revert records its own entry and marks the original as reverted. Rescans, imports and short Undo also invalidate older conflicting entries.
 
-### Faces without names
+## Faces without names
 
 Includes unassigned faces and unnamed person groups. Use + to assign a face, or name a group in People. Photos with no detected faces are excluded.
 
-`Filters → People → Faces without names` (`faces_need_names=true`).
+`Filters → Persons → Faces without names` (`faces_need_names=true`).
+
+The Persons panel remains available even without named people so unassigned faces can be found; a library without faces returns no matches. Browsing this filter is available to read-only users; assigning faces or naming groups requires edition access.
 
 ## Assigning people
 

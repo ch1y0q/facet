@@ -3,7 +3,7 @@ import { Component, computed, effect, input, output, signal, untracked, viewChil
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
-import { MatMenuModule } from '@angular/material/menu';
+import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
 import { Photo } from '../../models/photo.model';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { ThumbnailUrlPipe, PersonThumbnailUrlPipe, STORED_THUMBNAIL_EDGE } from '../../pipes/thumbnail-url.pipe';
@@ -809,10 +809,17 @@ export class PhotoCardComponent {
   });
 
   private readonly tooltips = viewChildren(MatTooltip);
+  private readonly menus = viewChildren(MatMenuTrigger);
 
   /** Hide every tooltip this card owns, for a gallery parking behind a photo page. */
   hideTooltips(): void {
     for (const tooltip of this.tooltips()) tooltip.hide(0);
+  }
+
+  /** Close overlays before the gallery parks behind a photo. */
+  closeOverlays(): void {
+    this.hideTooltips();
+    for (const menu of this.menus()) menu.closeMenu();
   }
 
   cycleStarRating(): void {

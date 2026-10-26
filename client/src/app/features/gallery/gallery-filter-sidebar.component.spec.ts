@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { of } from 'rxjs';
+import { MatSelect } from '@angular/material/select';
 import { MatDialog } from '@angular/material/dialog';
 import { MATERIAL_ANIMATIONS, provideNativeDateAdapter } from '@angular/material/core';
 import { MatTooltip } from '@angular/material/tooltip';
@@ -456,6 +457,26 @@ describe('GalleryFilterSidebarComponent', () => {
       expect(control.closest('mat-expansion-panel')?.textContent).toContain('gallery.sidebar.persons');
       (control.querySelector('input') as HTMLInputElement).click();
       expect(mockStore['updateFilter']).toHaveBeenCalledWith('faces_need_names', true);
+    });
+
+    it.each([false, true])('describes face naming using actions available in edition=%s', edition => {
+      const auth = TestBed.inject(AuthService);
+      vi.mocked(auth.isEdition).mockReturnValue(edition);
+      TestBed.inject(GalleryStore).filters.update(filters => ({ ...filters, faces_need_names: true }));
+      fixture.detectChanges();
+      const hint = fixture.nativeElement.querySelector('#face-naming-hint');
+      expect(hint.textContent).toContain(edition ? 'gallery.faces_need_names_hint' : 'gallery.faces_need_names_readonly_hint');
+      const input = fixture.nativeElement.querySelector('input[aria-describedby="face-naming-hint"]');
+      expect(input).toBeTruthy();
+    });
+
+    it('closes its select overlay when the gallery parks', () => {
+      const select = fixture.debugElement.query(By.directive(MatSelect)).injector.get(MatSelect);
+      select.open();
+      fixture.detectChanges();
+      expect(select.panelOpen).toBe(true);
+      fixture.componentInstance.closeOverlays();
+      expect(select.panelOpen).toBe(false);
     });
 
     it('offers no geolocation without the map feature and forwards the checkbox', () => {

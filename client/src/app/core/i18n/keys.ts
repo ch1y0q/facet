@@ -1338,6 +1338,7 @@ export const I18N = {
     manual_faces_review_hint: "gallery.manual_faces_review_hint",
     faces_need_names: "gallery.faces_need_names",
     faces_need_names_hint: "gallery.faces_need_names_hint",
+    faces_need_names_readonly_hint: "gallery.faces_need_names_readonly_hint",
   },
   composition_patterns: {
     none: "composition_patterns.none",

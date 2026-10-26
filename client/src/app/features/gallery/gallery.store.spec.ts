@@ -2967,6 +2967,31 @@ describe('GalleryStore optimistic mutations', () => {
       expect(refresh).not.toHaveBeenCalled();
     });
 
+    it('applies the real naming refresh while preserving selection on an unrelated row', async () => {
+      const get = TestBed.inject(ApiService).get as Mock;
+      apiPost.mockReturnValue(of({}));
+      get.mockReturnValue(of(makePhotosResponse({ photos: store.photos(), total: 2 })));
+      store.filters.update(filters => ({ ...filters, faces_need_names: true }));
+      await store.loadPhotos();
+      store.selectedPaths.set(new Set(['/b.jpg']));
+      apiPost.mockImplementation((url: string) => url === '/photos/by_paths'
+        ? of({ photos: [] }) : of({ success: true }));
+      expect(await store.assignFace(5, 9, '/a.jpg', 'Anna')).toBe(true);
+      expect(apiPost).toHaveBeenCalledWith('/photos/by_paths', expect.objectContaining({ paths: ['/a.jpg'] }));
+      expect(store.photos().map(photo => photo.path)).toEqual(['/b.jpg']);
+      expect(store.selectedPaths()).toEqual(new Set(['/b.jpg']));
+    });
+
+    it('does not refresh naming membership when its filter is off', async () => {
+      store.filters.update(filters => ({ ...filters, faces_need_names: false }));
+      const refresh = vi.spyOn(store, 'refreshPaths');
+      apiPost.mockReturnValue(of({ success: true, id: 9, name: 'Anna', face_count: 1 }));
+      await store.assignFace(5, 9, '/a.jpg', 'Anna');
+      await store.createPerson('Anna', [6], '/a.jpg');
+      await store.unassignPerson('/a.jpg', 9);
+      expect(refresh).not.toHaveBeenCalled();
+    });
+
     it('records the person actions with ids, and nothing for a failed one', async () => {
       apiPost.mockReturnValue(of({ id: 9, name: 'Anna', face_count: 2 }));
       expect(await store.createPerson(' Anna ', [1, 2], '/a.jpg')).not.toBeNull();

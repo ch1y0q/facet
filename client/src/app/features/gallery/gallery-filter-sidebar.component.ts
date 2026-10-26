@@ -1,7 +1,8 @@
 import { Component, computed, DestroyRef, effect, ElementRef, inject, signal, viewChild, viewChildren, ChangeDetectionStrategy } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { MatSelectModule } from '@angular/material/select';
+import { MatMenuTrigger } from '@angular/material/menu';
+import { MatSelectModule, MatSelect } from '@angular/material/select';
 import { MatSliderModule } from '@angular/material/slider';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -305,11 +306,12 @@ function saveSectionStates(states: Record<string, boolean>): void {
           </mat-expansion-panel-header>
           <div class="flex flex-col gap-2 pb-2">
             <mat-checkbox
+              [aria-describedby]="store.filters().faces_need_names ? 'face-naming-hint' : ''"
               [checked]="store.filters().faces_need_names"
               (change)="store.updateFilter('faces_need_names', $event.checked)"
             >{{ I18N.gallery.faces_need_names | translate }}</mat-checkbox>
             @if (store.filters().faces_need_names) {
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ I18N.gallery.faces_need_names_hint | translate }}</p>
+              <p id="face-naming-hint" class="text-xs text-gray-500 dark:text-gray-400">{{ (auth.isEdition() ? I18N.gallery.faces_need_names_hint : I18N.gallery.faces_need_names_readonly_hint) | translate }}</p>
             }
             <mat-form-field subscriptSizing="dynamic" class="w-full">
               @if (!selectedPersons().length) {
@@ -1163,10 +1165,19 @@ export class GalleryFilterSidebarComponent {
   }
 
   private readonly tooltips = viewChildren(MatTooltip);
+  private readonly selects = viewChildren(MatSelect);
+  private readonly menus = viewChildren(MatMenuTrigger);
 
   /** Hide every tooltip the sidebar owns, for a gallery parking behind a photo page. */
   hideTooltips(): void {
     for (const tooltip of this.tooltips()) tooltip.hide(0);
+  }
+
+  /** Close overlays before the gallery parks behind a photo. */
+  closeOverlays(): void {
+    this.hideTooltips();
+    for (const menu of this.menus()) menu.closeMenu();
+    for (const select of this.selects()) select.close();
   }
 
   cancelPendingSearch(): void {

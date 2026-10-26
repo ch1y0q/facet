@@ -9,6 +9,7 @@ import { GalleryPhotoMenuComponent } from './gallery-photo-menu.component';
 import { PhotoTooltipComponent } from './photo-tooltip.component';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Subject, of, throwError } from 'rxjs';
+import { MatMenuTrigger } from '@angular/material/menu';
 import { MatDialog } from '@angular/material/dialog';
 import { MatBottomSheet } from '@angular/material/bottom-sheet';
 import { MatTooltip } from '@angular/material/tooltip';
@@ -4580,6 +4581,102 @@ describe('GalleryComponent', () => {
       expect(scrollTo).toHaveBeenCalledWith({ top: 640 });
       expect(document.activeElement).toBe(tile);
       expect((gallery as unknown as { activeIndex(): number }).activeIndex()).toBe(1);
+    });
+
+    it.each([false, true])('reanchors the opened card after layout drift or a parked resize (resize=%s)', resized => {
+      const frames: FrameRequestCallback[] = [];
+      vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+      const host = fixture.nativeElement.querySelector('[data-pidx="1"]') as HTMLElement;
+      const viewport = (content as any).getElementRef().nativeElement as HTMLElement;
+      let width = 1000;
+      let height = 800;
+      let scroll = 640;
+      let absoluteTop = 740;
+      vi.spyOn(viewport, 'getBoundingClientRect').mockImplementation(() => ({ top: 0, width, height } as DOMRect));
+      vi.spyOn(host, 'getBoundingClientRect').mockImplementation(() => ({ top: absoluteTop - scroll, height: 200 } as DOMRect));
+      vi.spyOn(content, 'measureScrollOffset').mockImplementation(() => scroll);
+      scrollTo.mockImplementation(({ top }: ScrollToOptions) => { scroll = top!; });
+      for (let cycle = 0; cycle < 2; cycle++) {
+        openPhoto(1);
+        if (resized) { width = 600; height = 400; }
+        absoluteTop += 80;
+        outletMock.attachEvents.next(gallery);
+        for (let frame = 0; frame < 3; frame++) for (const callback of frames.splice(0)) callback(0);
+        expect(host.getBoundingClientRect().top).toBe(100);
+        expect(document.activeElement?.closest('[data-pidx]')).toBe(host);
+      }
+    });
+
+    it('focuses the replacement card after the responsive grid recreates its DOM', () => {
+      const frames: FrameRequestCallback[] = [];
+      vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+      const host = fixture.nativeElement.querySelector('[data-pidx="1"]') as HTMLElement;
+      const viewport = (content as any).getElementRef().nativeElement as HTMLElement;
+      vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue({ top: 0, width: 1000, height: 800 } as DOMRect);
+      vi.spyOn(host, 'getBoundingClientRect').mockReturnValue({ top: 100, height: 200 } as DOMRect);
+      openPhoto(1);
+      outletMock.attachEvents.next(gallery);
+      const replacement = host.cloneNode(true) as HTMLElement;
+      host.replaceWith(replacement);
+      (gallery as any).setCursor(-1);
+      vi.spyOn(replacement, 'getBoundingClientRect').mockReturnValue({ top: 100, height: 200 } as DOMRect);
+      for (let frame = 0; frame < 3; frame++) for (const callback of frames.splice(0)) callback(0);
+      expect(document.activeElement?.closest('[data-pidx]')).toBe(replacement);
+    });
+
+    it.each(['cursor', 'input', 'escape'] as const)('does not override newer same-gallery %s interaction before the anchor frame', interaction => {
+      const frames: FrameRequestCallback[] = [];
+      vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+      const host = fixture.nativeElement.querySelector('[data-pidx="1"]') as HTMLElement;
+      const viewport = (content as any).getElementRef().nativeElement as HTMLElement;
+      vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue({ top: 0, width: 1000, height: 800 } as DOMRect);
+      vi.spyOn(host, 'getBoundingClientRect').mockReturnValue({ top: 100, height: 200 } as DOMRect);
+      openPhoto(1);
+      outletMock.attachEvents.next(gallery);
+      let focused: HTMLElement;
+      if (interaction === 'cursor') {
+        (gallery as any).setCursor(2);
+        focused = fixture.nativeElement.querySelector('[data-pidx="2"] [tabindex]');
+      } else if (interaction === 'escape') {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        (gallery as any).setCursor(-1);
+        focused = document.body;
+      } else {
+        focused = document.createElement('input');
+        fixture.nativeElement.append(focused);
+      }
+      if (interaction === 'escape') (document.activeElement as HTMLElement)?.blur();
+      else focused.focus({ preventScroll: true });
+      scrollTo.mockClear();
+      for (let frame = 0; frame < 3; frame++) for (const callback of frames.splice(0)) callback(0);
+      expect(document.activeElement).toBe(focused);
+      expect(scrollTo).not.toHaveBeenCalled();
+    });
+
+    it('does not apply a deferred anchor after another navigation starts', () => {
+      const frames: FrameRequestCallback[] = [];
+      vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+      const host = fixture.nativeElement.querySelector('[data-pidx="1"]') as HTMLElement;
+      const viewport = (content as any).getElementRef().nativeElement as HTMLElement;
+      vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue({ top: 0, width: 1000, height: 800 } as DOMRect);
+      vi.spyOn(host, 'getBoundingClientRect').mockReturnValue({ top: 100, height: 200 } as DOMRect);
+      openPhoto(1);
+      outletMock.attachEvents.next(gallery);
+      scrollTo.mockClear();
+      (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(3, '/stats'));
+      for (let frame = 0; frame < 3; frame++) for (const callback of frames.splice(0)) callback(0);
+      expect(scrollTo).not.toHaveBeenCalled();
+    });
+
+    it('closes a gallery menu when the gallery parks', () => {
+      mockStore.selectionCount.set(1);
+      fixture.detectChanges();
+      const trigger = fixture.debugElement.query(By.directive(MatMenuTrigger)).injector.get(MatMenuTrigger);
+      trigger.openMenu();
+      fixture.detectChanges();
+      expect(trigger.menuOpen).toBe(true);
+      openPhoto(1);
+      expect(trigger.menuOpen).toBe(false);
     });
 
     it('returns to the photo last viewed when the arrows moved off the one opened', () => {

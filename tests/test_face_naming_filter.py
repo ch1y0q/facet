@@ -49,6 +49,9 @@ def test_naming_filter_membership_pagination_and_false(edition_client, naming_ph
     assert all(page['total'] == 4 for page in pages)
     inactive = _queue(edition_client, prefix, faces_need_names='0')
     assert inactive['total'] == len(paths)
+    assert {photo['path'] for photo in inactive['photos']} == set(paths.values())
+    default = edition_client.get('/api/photos', params={'path_prefix': prefix}).json()
+    assert {photo['path'] for photo in default['photos']} == set(paths.values())
 
 
 def test_naming_filter_assignment_and_unassignment_invalidate_warm_counts(edition_client, naming_photos):
@@ -94,3 +97,53 @@ def test_naming_filter_agent_album_round_trip():
     refusal, stored = album_filters.to_stored({'faces_need_names': '1'})
     assert refusal is None and stored == {'faces_need_names': True}
     assert album_filters.query_form(stored) == {'faces_need_names': '1'}
+
+
+def test_naming_probe_uses_covering_face_index(naming_photos):
+    from api.routers.gallery import _build_gallery_where
+
+    with get_db() as conn:
+        clauses, params = _build_gallery_where({'faces_need_names': '1'}, conn)
+        plan = conn.execute(
+            'EXPLAIN QUERY PLAN SELECT COUNT(*) FROM photos WHERE ' + ' AND '.join(clauses), params,
+        ).fetchall()
+    assert any('COVERING INDEX idx_faces_photo_person' in row[3] for row in plan)
+
+
+def test_face_covering_index_replaces_legacy_index_on_upgrade(tmp_path):
+    import sqlite3
+    from db.schema import init_database
+
+    path = str(tmp_path / 'old-index.db')
+    init_database(path)
+    with sqlite3.connect(path) as conn:
+        conn.execute('DROP INDEX idx_faces_photo_person')
+        conn.execute('CREATE INDEX idx_faces_photo ON faces(photo_path)')
+        conn.execute("INSERT INTO photos(path) VALUES ('/a.jpg')")
+        conn.execute("INSERT INTO faces(photo_path, face_index, embedding) VALUES ('/a.jpg',0,X'00')")
+        before = conn.execute("SELECT id,person_id FROM faces WHERE photo_path='/a.jpg'").fetchall()
+    init_database(path)
+    with sqlite3.connect(path) as conn:
+        indexes = {row[1] for row in conn.execute('PRAGMA index_list(faces)')}
+        assert 'idx_faces_photo_person' in indexes
+        assert 'idx_faces_photo' not in indexes
+        assert conn.execute("SELECT id,person_id FROM faces WHERE photo_path='/a.jpg'").fetchall() == before
+
+
+def test_face_covering_index_is_planned_on_an_already_analyzed_library(tmp_path):
+    import sqlite3
+    from db.schema import init_database
+
+    path = str(tmp_path / 'analyzed.db')
+    init_database(path)
+    with sqlite3.connect(path) as conn:
+        conn.execute('DROP INDEX idx_faces_photo_person')
+        conn.executemany('INSERT INTO photos(path) VALUES (?)', [(f'/p{i}.jpg',) for i in range(50)])
+        conn.executemany('INSERT INTO faces(photo_path, face_index, embedding) VALUES (?,?,?)',
+                         [(f'/p{i}.jpg', j, b'\x00') for i in range(50) for j in range(3)])
+        conn.execute('ANALYZE faces')
+    init_database(path)
+    with sqlite3.connect(path) as conn:
+        plan = conn.execute('EXPLAIN QUERY PLAN SELECT 1 FROM faces WHERE photo_path = ? AND person_id IS NULL',
+                            ('/p1.jpg',)).fetchall()
+    assert any('COVERING INDEX idx_faces_photo_person' in row[3] for row in plan), plan

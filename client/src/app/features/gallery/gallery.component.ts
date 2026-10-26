@@ -25,13 +25,13 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatSelectModule } from '@angular/material/select';
+import { MatSelectModule, MatSelect } from '@angular/material/select';
 import { MatInputModule } from '@angular/material/input';
 import { MatSliderModule } from '@angular/material/slider';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatBottomSheet, MatBottomSheetModule } from '@angular/material/bottom-sheet';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
-import { MatMenuModule } from '@angular/material/menu';
+import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
 import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, NavigationStart, Router, RouterOutlet } from '@angular/router';
 import { filter, firstValueFrom } from 'rxjs';
@@ -816,7 +816,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private parked = false;
   // Detaching loses the DOM scroll position and focus.
   private resumeNavigation = 0;
-  private returnTo: { scroll: number; focus: Element | null; path: string | null } | null = null;
+  private returnTo: { scroll: number; focus: Element | null; path: string | null;
+    anchor: { offset: number; width: number; height: number } | null } | null = null;
   private readonly api = inject(ApiService);
   private readonly pageHelp = inject(PageHelpService);
   private readonly headerSlot = inject(HeaderSlotService);
@@ -846,6 +847,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly scrollContent = viewChild(MatSidenavContent);
   private readonly sidenavContainer = viewChild(MatSidenavContainer);
   private readonly ownTooltips = viewChildren(MatTooltip);
+  private readonly menus = viewChildren(MatMenuTrigger);
+  private readonly selects = viewChildren(MatSelect);
   private readonly cards = viewChildren(PhotoCardComponent);
 
   /** True once the gallery content is scrolled far enough to show the scroll-to-top button. */
@@ -1282,7 +1285,12 @@ export class GalleryComponent implements OnInit, OnDestroy {
       const index = Number((focus?.closest('[data-pidx]') as HTMLElement | null)?.dataset['pidx']);
       // The photo the focused card belongs to, or the cursor's when focus is elsewhere.
       const path = Number.isInteger(index) ? this.store.photos()[index]?.path ?? null : this.activePath();
-      this.returnTo = { scroll: this.scrollContent()?.measureScrollOffset('top') ?? 0, focus, path };
+      const viewport = this.scrollContent()?.getElementRef().nativeElement.getBoundingClientRect();
+      const anchorIndex = path === null ? -1 : this.store.photos().findIndex(photo => photo.path === path);
+      const card = anchorIndex >= 0 ? document.querySelector(`[data-pidx="${anchorIndex}"]`)?.getBoundingClientRect() : null;
+      const anchor = viewport && card && viewport.width > 0 && viewport.height > 0
+        ? { offset: card.top - viewport.top, width: viewport.width, height: viewport.height } : null;
+      this.returnTo = { scroll: this.scrollContent()?.measureScrollOffset('top') ?? 0, focus, path, anchor };
     });
     this.outlet?.detachEvents.pipe(takeUntilDestroyed()).subscribe(component => {
       if (component !== this) return;
@@ -1298,19 +1306,17 @@ export class GalleryComponent implements OnInit, OnDestroy {
       }
       // A tooltip left showing would sit over the photo page and swallow its first Escape.
       for (const tooltip of this.ownTooltips()) tooltip.hide(0);
-      for (const card of this.cards()) card.hideTooltips();
-      this.filterSidebar()?.hideTooltips();
-      this.pageHelp.setDescription(null);
-      const t = this.galleryToolbar();
-      if (t) this.headerSlot.clear(t);
+      for (const menu of this.menus()) menu.closeMenu();
+      for (const select of this.selects()) select.close();
+      for (const card of this.cards()) card.closeOverlays();
+      this.filterSidebar()?.closeOverlays();
+      this.setGalleryChrome(false);
     });
     this.outlet?.attachEvents.pipe(takeUntilDestroyed()).subscribe(component => {
       if (component !== this) return;
       this.parked = false;
       void this.store.resumeListingReads();
-      this.pageHelp.setDescription(I18N.gallery.help);
-      const t = this.galleryToolbar();
-      if (t) this.headerSlot.set(t);
+      this.setGalleryChrome(true);
       this.tooltipPhoto.set(null);
       // A resize while parked measured the detached drawer as 0 and zeroed the content margin.
       this.sidenavContainer()?.updateContentMargins();
@@ -1335,10 +1341,10 @@ export class GalleryComponent implements OnInit, OnDestroy {
             back.focus.focus({ preventScroll: true });
           }
           if (at >= 0 && !onCard) this.restoreCursorFocus();
+          if (at >= 0 && back.anchor) this.restoreReturnAnchor(back.path!, back.anchor);
         }
       }
-      void this.store.loadTypeCounts();
-      void this.store.loadFilterOptions();
+      this.refreshSideData();
     });
 
     // Sync store.filterDrawerOpen signal → mat-sidenav. The details rail shares
@@ -1381,7 +1387,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   async ngOnInit(): Promise<void> {
     this.store.galleryMounts.update(n => n + 1);
-    this.pageHelp.setDescription(I18N.gallery.help);
+    this.setGalleryChrome(true);
     // Read (and clear) BEFORE tryRestoreView: a scoped "open this set" request
     // means the user wants that new scoped view, never a resumed previous one.
     const setScope = this.consumeSetScopeState();
@@ -1440,7 +1446,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     // Photos first — a slow filter-option endpoint must never hold back the grid
     await this.store.loadPhotos();
     this.store.initializing.set(false);
-    void Promise.all([this.store.loadFilterOptions(), this.store.loadTypeCounts()]);
+    this.refreshSideData();
     // IntersectionObserver fires too early before DOM paint — defer recheck
     requestAnimationFrame(() => setTimeout(() => this.scrollDirective()?.recheck()));
     if (this.store.config()?.features?.show_albums) {
@@ -1450,11 +1456,59 @@ export class GalleryComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** Re-anchor after drawer margins and card heights settle, including parked resizes. */
+  private restoreReturnAnchor(path: string, anchor: { offset: number; width: number; height: number }): void {
+    const navigation = this.resumeNavigation;
+    let interacted = false;
+    const veto = () => { interacted = true; };
+    const cleanup = () => {
+      document.removeEventListener('pointerdown', veto, true);
+      document.removeEventListener('keydown', veto, true);
+    };
+    document.addEventListener('pointerdown', veto, true);
+    document.addEventListener('keydown', veto, true);
+    const unregister = this.destroyRef.onDestroy(cleanup);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      try {
+        if (interacted || this.parked || this.destroyRef.destroyed || navigation !== this.resumeNavigation) return;
+        // Responsive DOM removal can passively clear the cursor; explicit new input vetoes restoration.
+        if (this.activePath() !== null && this.activePath() !== path) return;
+        const index = this.store.photos().findIndex(photo => photo.path === path);
+        if (index < 0) return;
+        const focus = document.activeElement;
+        if (focus && focus !== document.body && focus !== document.documentElement
+          && !focus.closest(`[data-pidx="${index}"]`)) return;
+        const content = this.scrollContent();
+        const viewport = content?.getElementRef().nativeElement.getBoundingClientRect();
+        const card = document.querySelector(`[data-pidx="${index}"]`)?.getBoundingClientRect();
+        if (!content || !viewport || !card || viewport.height <= 0) return;
+        const resized = viewport.width !== anchor.width || viewport.height !== anchor.height;
+        const offset = resized ? Math.max(0, Math.min(anchor.offset, viewport.height - card.height)) : anchor.offset;
+        const delta = card.top - viewport.top - offset;
+        if (Math.abs(delta) >= 1) content.scrollTo({ top: Math.max(0, content.measureScrollOffset('top') + delta) });
+        this.setCursor(index);
+        this.focusCard(index, false, false);
+      } finally { cleanup(); unregister(); }
+    }));
+  }
+
+  private setGalleryChrome(active: boolean): void {
+    this.pageHelp.setDescription(active ? I18N.gallery.help : null);
+    const toolbar = this.galleryToolbar();
+    if (toolbar) {
+      if (active) this.headerSlot.set(toolbar);
+      else this.headerSlot.clear(toolbar);
+    }
+  }
+
+  private refreshSideData(): void {
+    void this.store.loadTypeCounts();
+    void this.store.loadFilterOptions();
+  }
+
   ngOnDestroy(): void {
     this.cancelToolbarSearch();
-    this.pageHelp.setDescription(null);
-    const t = this.galleryToolbar();
-    if (t) this.headerSlot.clear(t);
+    this.setGalleryChrome(false);
     this.saveViewSnapshot();
     this.resizeObserver?.disconnect();
     this.desktop.cleanup();
@@ -1508,8 +1562,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
       requestAnimationFrame(() => setTimeout(() => this.scrollDirective()?.recheck()));
     }, { injector: this.injector });
     void this.store.resumeListingReads();
-    void this.store.loadTypeCounts();
-    void this.store.loadFilterOptions();
+    this.refreshSideData();
     return true;
   }
 
