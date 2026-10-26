@@ -18,7 +18,7 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import NamedTuple, Optional
 
 from fastapi import HTTPException, Query
 from fastapi.requests import HTTPConnection
@@ -1648,9 +1648,23 @@ def get_preference_columns(user_id=None):
 
 _LABEL_CHUNK = 500
 
+# What a review reject (faces.py, single and batch) writes, shared by the ``user_preferences`` upsert and the
+# ``photos`` UPDATE (both tables name these columns alike): it clears the rating, favourite and keep so a
+# rejected frame carries none. A culling reject (set_photos_rejected) deliberately keeps rating and favourite.
+REJECT_SET = "is_rejected = 1, star_rating = 0, is_favorite = 0, is_kept = 0"
+
+
+class Labels(NamedTuple):
+    """One photo's review labels; ``kept`` stays 0 unless the read asked for ``include_kept``."""
+
+    star: int
+    favorite: int
+    rejected: int
+    kept: int = 0
+
 
 def _read_label_tuples(conn, scope, chunk, include_kept=False):
-    """``{path: (star_rating, is_favorite, is_rejected)}`` for ``chunk``; a path with no row reads as unrated."""
+    """``{path: Labels}`` for ``chunk``; a path with no row reads as unrated."""
     marks = ','.join('?' * len(chunk))
     kept = ', is_kept' if include_kept else ''
     if scope:
@@ -1661,9 +1675,8 @@ def _read_label_tuples(conn, scope, chunk, include_kept=False):
         rows = conn.execute(
             f"SELECT path, star_rating, is_favorite, is_rejected{kept} FROM photos "
             f"WHERE path IN ({marks})", chunk).fetchall()
-    found = {r[0]: tuple(value or 0 for value in r[1:]) for r in rows}
-    empty = (0, 0, 0, 0) if include_kept else (0, 0, 0)
-    return {p: found.get(p, empty) for p in chunk}
+    found = {r[0]: Labels(*(value or 0 for value in r[1:])) for r in rows}
+    return {p: found.get(p, Labels(0, 0, 0)) for p in chunk}
 
 
 def _label_scope(user_id):
@@ -1671,11 +1684,11 @@ def _label_scope(user_id):
 
 
 def read_labels(conn, user_id, paths, *, include_kept=False):
-    """``{path: (star_rating, is_favorite, is_rejected)}`` from the per-user source (``user_preferences`` in
+    """``{path: Labels}`` from the per-user source (``user_preferences`` in
     multi-user mode, the ``photos`` columns otherwise), read in chunks.
 
     ``include_kept`` appends the review decision for culling preview guards; taste
-    provenance keeps its original three-label tuple.
+    provenance leaves ``Labels.kept`` at 0.
     """
     paths = list(paths)
     scope = _label_scope(user_id)
@@ -1727,7 +1740,7 @@ def record_label_origin(conn, agent, user_id, paths, before=None):
             "VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id, photo_path) DO UPDATE SET "
             "star_rating = excluded.star_rating, is_favorite = excluded.is_favorite, "
             "is_rejected = excluded.is_rejected",
-            [(scope, p, *t) for p, t in after.items()
+            [(scope, p, t.star, t.favorite, t.rejected) for p, t in after.items()
              if p in marked or before is None or before.get(p) != t])
 
 
@@ -1781,7 +1794,11 @@ def set_photos_rejected(conn, paths, user_id, agent=False):
 
 
 def set_photos_kept(conn, paths, user_id, agent=False):
-    """Persist visible culling keepers without changing favorites or ratings."""
+    """Persist visible culling keepers: sets ``is_kept``, clears ``is_rejected``, leaves favorites and ratings.
+
+    Records the label origin for an assistant's call, or for a person's only on a photo that was
+    rejected (the write changes its labels); other human keeps just stay theirs.
+    """
     if not paths:
         return 0
     vis_sql, vis_params = get_visibility_clause(user_id)
@@ -1801,7 +1818,7 @@ def set_photos_kept(conn, paths, user_id, agent=False):
     else:
         conn.executemany("UPDATE photos SET is_kept = 1, is_rejected = 0 WHERE path = ?",
                          [(path,) for path in visible])
-    origin_paths = visible if agent else [path for path in visible if before[path][2]]
+    origin_paths = visible if agent else [path for path in visible if before[path].rejected]
     record_label_origin(conn, agent, user_id, origin_paths, before)
     organization_history.finish(conn, user_id, 'review', history_before)
     return len(visible)

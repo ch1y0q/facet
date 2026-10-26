@@ -5997,8 +5997,8 @@ export interface components {
          *     just to keep it in sync -- exactly the "tidy the handler to fit the model"
          *     the phase rules out. The outer pagination envelope is still fully typed.
          *
-         *     Every photo in a page also carries the caller's ``is_rejected`` and ``is_favorite`` (0/1 ints, SQLite
-         *     has no boolean) and ``star_rating`` (0-5), from ``user_preferences`` in multi-user mode and the
+         *     Every photo in a page also carries the caller's ``is_rejected``, ``is_favorite`` and ``is_kept`` (0/1
+         *     ints, SQLite has no boolean) and ``star_rating`` (0-5), from ``user_preferences`` in multi-user mode and the
          *     ``photos`` columns otherwise (``attach_user_marks``); ``tests/test_burst_culling.py`` pins the wire types.
          */
         CullingGroupsResponse: {

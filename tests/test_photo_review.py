@@ -68,8 +68,6 @@ def test_culling_confirm_persists_keeps(edition_client, seed_photos_prefix, monk
         table, key = ("user_preferences", "photo_path") if per_user else ("photos", "path")
         assert conn.execute(f"SELECT is_kept, is_rejected, star_rating, is_favorite FROM {table} WHERE {key}=?", paths[:1]).fetchone() == (1, 0, 4, 1)
         assert conn.execute(f"SELECT is_kept, is_rejected FROM {table} WHERE {key}=?", paths[1:]).fetchone() == (0, 1)
-        conn.execute("DELETE FROM user_preferences WHERE photo_path LIKE ?", [prefix + "%"])
-        conn.execute("DELETE FROM comparisons WHERE photo_a_path LIKE ? OR photo_b_path LIKE ?", [prefix + "%"] * 2)
 
 
 def test_schema_upgrade_and_preference_migration(tmp_path):
@@ -146,21 +144,17 @@ def test_review_is_per_user(edition_client, seed_photos_prefix, monkeypatch, dec
     with sqlite3.connect(DEFAULT_DB_PATH) as conn:
         conn.execute("INSERT INTO user_preferences(user_id, photo_path, star_rating, is_favorite, is_rejected) VALUES('test', ?, 5, 1, 1)", [visible])
         conn.execute("INSERT INTO user_preferences(user_id, photo_path, is_kept) VALUES('bob', ?, 1)", [visible])
-    try:
-        scope = {"photo_paths": [visible, hidden, prefix + "missing.jpg"]} if target == "paths" else {"filters": {"camera": "ReviewUserCam"}}
-        response = edition_client.post("/api/photos/batch_review", json={**scope, "decision": decision})
-        assert response.json() == {"success": True, "count": 1}
-        with sqlite3.connect(DEFAULT_DB_PATH) as conn:
-            assert conn.execute("SELECT is_kept, is_rejected, star_rating, is_favorite FROM user_preferences WHERE user_id='test' AND photo_path=?", [visible]).fetchone() == (int(decision == "kept"), int(decision == "rejected"), 0 if decision == "rejected" else 5, 0 if decision == "rejected" else 1)
-            assert conn.execute("SELECT is_kept FROM user_preferences WHERE user_id='bob' AND photo_path=?", [visible]).fetchone() == (1,)
-            assert conn.execute("SELECT COUNT(*) FROM user_preferences WHERE photo_path=?", [hidden]).fetchone() == (0,)
-            assert conn.execute("SELECT is_kept FROM photos WHERE path=?", [visible]).fetchone() == (1,)
-        response = edition_client.get("/api/photos", params={"path_prefix": prefix, "review_status": decision})
-        assert [p["path"] for p in response.json()["photos"]] == [visible]
-        assert response.json()["photos"][0]["is_kept"] == int(decision == "kept")
-    finally:
-        with sqlite3.connect(DEFAULT_DB_PATH) as conn:
-            conn.execute("DELETE FROM user_preferences WHERE photo_path LIKE ?", [prefix + "%"])
+    scope = {"photo_paths": [visible, hidden, prefix + "missing.jpg"]} if target == "paths" else {"filters": {"camera": "ReviewUserCam"}}
+    response = edition_client.post("/api/photos/batch_review", json={**scope, "decision": decision})
+    assert response.json() == {"success": True, "count": 1}
+    with sqlite3.connect(DEFAULT_DB_PATH) as conn:
+        assert conn.execute("SELECT is_kept, is_rejected, star_rating, is_favorite FROM user_preferences WHERE user_id='test' AND photo_path=?", [visible]).fetchone() == (int(decision == "kept"), int(decision == "rejected"), 0 if decision == "rejected" else 5, 0 if decision == "rejected" else 1)
+        assert conn.execute("SELECT is_kept FROM user_preferences WHERE user_id='bob' AND photo_path=?", [visible]).fetchone() == (1,)
+        assert conn.execute("SELECT COUNT(*) FROM user_preferences WHERE photo_path=?", [hidden]).fetchone() == (0,)
+        assert conn.execute("SELECT is_kept FROM photos WHERE path=?", [visible]).fetchone() == (1,)
+    response = edition_client.get("/api/photos", params={"path_prefix": prefix, "review_status": decision})
+    assert [p["path"] for p in response.json()["photos"]] == [visible]
+    assert response.json()["photos"][0]["is_kept"] == int(decision == "kept")
 
 
 @pytest.mark.parametrize("per_user", [False, True])

@@ -52,10 +52,6 @@ def _real_schema_db(tmp_path, var_limit=None):
     return conn
 
 
-# Every culling feed reports each frame's pending panorama correction, so this
-# side table is part of the schema they query even when no correction exists.
-
-
 # ---------------------------------------------------------------------------
 # Unit tests for helper functions
 # ---------------------------------------------------------------------------
