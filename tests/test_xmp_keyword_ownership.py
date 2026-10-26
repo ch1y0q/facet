@@ -25,6 +25,16 @@ def packet_keywords(sidecar):
     return parse_sidecar(str(sidecar))['tags']
 
 
+_KEYWORD_TAGS = {'Subject': 'XMP-dc:Subject', 'Keywords': 'IPTC:Keywords',
+                 'HierarchicalSubject': 'XMP-lr:HierarchicalSubject'}
+
+
+def _reads_keywords(args, field):
+    """``'xml'`` only for the exact-name XML read of ``field``; every other read gets the JSON answer."""
+    requested = {arg.lstrip('-') for arg in args if arg.startswith('-') and ':' in arg}
+    return 'xml' if '-X' in args and _KEYWORD_TAGS[field] in requested else 'json'
+
+
 def exact_keyword_xml(field, values, *, error=False):
     groups = {'Subject': 'XMP/XMP-dc', 'Keywords': 'IPTC/IPTC', 'HierarchicalSubject': 'XMP/XMP-lr'}
     root = ET.Element(f'{{{NS_RDF}}}RDF')
@@ -398,7 +408,8 @@ def test_exiftool_numeric_keyword_json_is_stringified(monkeypatch, value, expect
     from processing import xmp_export as xe
     monkeypatch.setattr(xe.subprocess, 'run', lambda args, **kwargs:
                         subprocess.CompletedProcess(args, 0, stdout=exact_keyword_xml(field, expected)
-                                                    if '-X' in args else json.dumps([{field: value}])))
+                                                    if _reads_keywords(args, field) == 'xml'
+                                                    else json.dumps([{field: value}])))
     flat, hierarchical, _ = xe._read_existing_metadata('existing.xmp', 'exiftool', timeout=1, strict=True)
     assert (hierarchical if field == 'HierarchicalSubject' else flat) == expected
 
@@ -409,7 +420,8 @@ def test_raw_json_keyword_tokens_preserve_exact_lexical_names(monkeypatch):
     monkeypatch.setattr(xe.subprocess, 'run', lambda args, **kwargs:
                         subprocess.CompletedProcess(args, 0,
                             stdout=exact_keyword_xml('Subject', ['true', 'false', 'null', '1.50', '1e3', '2024'])
-                            if '-X' in args else '[{"Subject":[true,false,"null",1.50,1e3,2024]}]'))
+                            if _reads_keywords(args, 'Subject') == 'xml'
+                            else '[{"Subject":[true,false,"null",1.50,1e3,2024]}]'))
     flat, _, _ = xe._read_existing_metadata('existing.xmp', 'exiftool', timeout=1, strict=True)
     assert flat == ['true', 'false', 'null', '1.50', '1e3', '2024']
 
@@ -491,12 +503,17 @@ def test_failed_exact_boolean_read_refuses_before_writing(tmp_path, monkeypatch,
     before = build_xmp(XmpRating(tags=['True'])).encode('utf-8')
     sidecar.write_bytes(before)
     monkeypatch.setattr(xe, '_resolve_exiftool', lambda: 'mock-exiftool')
+    subject_reads = []
     def run(args, **kwargs):
         assert '-overwrite_original' not in args
-        return subprocess.CompletedProcess(args, 0, stdout=xml if '-X' in args else '[{"Subject":true}]')
+        if _reads_keywords(args, 'Subject') == 'xml':
+            subject_reads.append(args)
+            return subprocess.CompletedProcess(args, 0, stdout=xml)
+        return subprocess.CompletedProcess(args, 0, stdout='[{"Subject":true}]')
     monkeypatch.setattr(xe.subprocess, 'run', run)
     with pytest.raises(RuntimeError, match='Cannot read existing keywords'):
         xe._run_exiftool(str(sidecar), XmpRating(tags=['own']), timeout=1)
+    assert subject_reads
     assert sidecar.read_bytes() == before
 
 
@@ -508,12 +525,15 @@ def test_exact_boolean_read_io_failure_refuses_before_writing(tmp_path, monkeypa
     before = build_xmp(XmpRating(tags=['True'])).encode('utf-8')
     sidecar.write_bytes(before)
     monkeypatch.setattr(xe, '_resolve_exiftool', lambda: 'mock-exiftool')
+    subject_reads = []
     def run(args, **kwargs):
         assert '-overwrite_original' not in args
-        if '-X' in args:
+        if _reads_keywords(args, 'Subject') == 'xml':
+            subject_reads.append(args)
             raise failure
         return subprocess.CompletedProcess(args, 0, stdout='[{"Subject":true}]')
     monkeypatch.setattr(xe.subprocess, 'run', run)
     with pytest.raises(RuntimeError, match='Cannot read existing keywords'):
         xe._run_exiftool(str(sidecar), XmpRating(tags=['own']), timeout=1)
+    assert subject_reads
     assert sidecar.read_bytes() == before
