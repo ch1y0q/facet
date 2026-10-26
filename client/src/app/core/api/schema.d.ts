@@ -7573,7 +7573,7 @@ export interface components {
             /** Refused Bracket Lead */
             refused_bracket_lead: string[];
             /** Removed Missing */
-            removed_missing?: string[] | null;
+            removed_missing: string[];
             /** Sequence Siblings */
             sequence_siblings: string[];
             /** Skipped */

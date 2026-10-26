@@ -458,7 +458,9 @@ def _apply_visibility_and_hide_filters(where_clauses, sql_params, params, user_i
     # member, a duplicate that is also a detected blink, a rejected frame of a
     # burst whose lead was kept), the same surprise the set-scope guard above
     # suppresses the toggles for.
-    if any(params.get(key) in ('1', 'true') for key in ('blinks_only', 'duplicates_only', 'show_rejected')):
+    blinks_only = params.get('blinks_only') in ('1', 'true')
+    duplicates_only = params.get('duplicates_only') in ('1', 'true')
+    if blinks_only or duplicates_only or params.get('show_rejected') in ('1', 'true'):
         hide_blinks_val = ''
         hide_bursts_val = ''
         hide_duplicates_val = ''
@@ -469,9 +471,9 @@ def _apply_visibility_and_hide_filters(where_clauses, sql_params, params, user_i
         hide_blinks_val, hide_bursts_val, hide_duplicates_val, hide_brackets_val,
         hide_panoramas_val))
 
-    if params.get('blinks_only') in ('1', 'true'):
+    if blinks_only:
         where_clauses.append("is_blink = 1")
-    if params.get('duplicates_only') in ('1', 'true'):
+    if duplicates_only:
         where_clauses.append("duplicate_group_id IS NOT NULL")
 
 

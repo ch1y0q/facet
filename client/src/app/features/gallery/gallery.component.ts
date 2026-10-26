@@ -2359,7 +2359,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     if (!res) return;
     // `removed_missing` rows are as gone as trashed ones -- the grid must not
     // keep a tile for a row the server just reconciled away.
-    const removed = [...res.deleted, ...(res.removed_missing ?? [])];
+    const removed = [...res.deleted, ...res.removed_missing];
     this.store.removePhotos(removed);
     // `removePhotos` already prunes the deleted paths out of the selection.
     if (!explicit) this.clearSelection();

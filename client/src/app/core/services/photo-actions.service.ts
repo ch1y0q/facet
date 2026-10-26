@@ -22,7 +22,7 @@ export interface PhotoDeleteResponse {
   skipped: string[];
   /** Rows removed because their file was already gone (`remove_missing`).
    *  Never folded into `deleted`: no file was trashed for these. */
-  removed_missing?: string[] | null;
+  removed_missing: string[];
   trashed: number;
   errors: Record<string, string>;
 }

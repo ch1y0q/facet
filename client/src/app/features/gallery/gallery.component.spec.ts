@@ -2254,6 +2254,7 @@ describe('GalleryComponent', () => {
         refused_bracket_lead: [],
         sequence_siblings: [],
         skipped: [],
+        removed_missing: [],
         trashed: 0,
         errors: {},
         ...overrides,
@@ -3673,7 +3674,7 @@ describe('GalleryComponent', () => {
       const confirmed = { includeCompanions: false, includeSequenceSiblings: false };
       const deleted = (paths: string[]) => of({
         dry_run: false, deleted: paths, not_found: [], not_visible: [], refused_bracket_lead: [],
-        sequence_siblings: [], skipped: [], trashed: paths.length, errors: {},
+        sequence_siblings: [], skipped: [], removed_missing: [], trashed: paths.length, errors: {},
       });
 
       it('opens the single-photo dialog under view scope, where the no-arg form refuses', async () => {
