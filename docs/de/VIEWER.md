@@ -587,7 +587,7 @@ Ein im Viewer gesetzter Standort wird markiert, und der Dialog bietet dann **Sta
 
 Die installierte App lädt Kartenhintergründe direkt von OpenStreetMap, außerhalb ihres Offline-Caches. Für neue Kartenausschnitte ist eine Internetverbindung nötig.
 
-Liste und Koordinateneingabe funktionieren auch bei nicht verfügbarer Karte. Die Filterung gespeicherter Orte nutzt Namen lokal; die Online-Suche nach Adressen oder Geschäften erfordert eine eigene ausdrückliche Suche. Manuelle Änderungen einschließlich des Löschens von GPS bleiben bei erneuten Scans und EXIF-Extraktion erhalten. Die Originaldateien werden nicht verändert.
+Liste und Koordinateneingabe funktionieren auch bei nicht verfügbarer Karte. Die Filterung gespeicherter Orte nutzt Namen lokal; die Online-Suche nach Adressen oder Geschäften erfordert eine eigene ausdrückliche Suche. Manuelle Änderungen einschließlich des Löschens von GPS bleiben bei erneuten Scans und EXIF-Extraktion erhalten. Das Bearbeiten eines Orts verändert die Originaldateien nicht; nur ein ausdrücklicher Sidecar-Export oder das oben beschriebene Einbetten schreibt ihn hinein.
 
 ### Online-Ortssuche
 

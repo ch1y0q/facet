@@ -586,7 +586,7 @@ Una ubicación establecida en el visor queda marcada, y el diálogo ofrece enton
 
 La aplicación instalada carga los fondos del mapa directamente desde OpenStreetMap, fuera de su caché sin conexión. Las nuevas zonas del mapa necesitan conexión a internet.
 
-La lista y la entrada de coordenadas siguen disponibles si falla el mapa. El filtrado de lugares guardados usa los nombres en local; la búsqueda en línea de direcciones o negocios requiere una búsqueda explícita aparte. Las correcciones manuales, incluido borrar el GPS, sobreviven a nuevos análisis y a la extracción EXIF. Los archivos originales no se modifican.
+La lista y la entrada de coordenadas siguen disponibles si falla el mapa. El filtrado de lugares guardados usa los nombres en local; la búsqueda en línea de direcciones o negocios requiere una búsqueda explícita aparte. Las correcciones manuales, incluido borrar el GPS, sobreviven a nuevos análisis y a la extracción EXIF. Editar una ubicación no modifica los archivos originales; solo una exportación de sidecar o una incrustación explícita, descritas arriba, la escriben.
 
 ### Búsqueda de lugares en línea
 

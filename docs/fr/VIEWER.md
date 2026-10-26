@@ -587,7 +587,7 @@ Une position définie dans la visionneuse est marquée comme telle, et la boîte
 
 L’application installée charge les fonds de carte directement depuis OpenStreetMap, en dehors de son cache hors connexion. Une connexion Internet est nécessaire pour charger de nouvelles zones.
 
-La liste et la saisie de coordonnées restent utilisables si la carte est indisponible. Le filtrage des lieux enregistrés utilise les noms en local ; la recherche en ligne d’adresses ou d’établissements demande une recherche explicite distincte. Les corrections manuelles, y compris l’effacement du GPS, survivent aux nouvelles analyses et à l’extraction EXIF. Les fichiers images d’origine ne sont pas modifiés.
+La liste et la saisie de coordonnées restent utilisables si la carte est indisponible. Le filtrage des lieux enregistrés utilise les noms en local ; la recherche en ligne d’adresses ou d’établissements demande une recherche explicite distincte. Les corrections manuelles, y compris l’effacement du GPS, survivent aux nouvelles analyses et à l’extraction EXIF. Modifier un lieu ne touche pas aux fichiers images d’origine ; seuls un export de sidecar ou une écriture explicite, décrits plus haut, l’y inscrivent.
 
 ### Recherche en ligne de lieux
 

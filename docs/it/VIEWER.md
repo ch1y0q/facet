@@ -587,7 +587,7 @@ Una posizione impostata nel visualizzatore viene contrassegnata, e la finestra o
 
 L’app installata carica gli sfondi della mappa direttamente da OpenStreetMap, al di fuori della cache offline. Per caricare nuove aree serve una connessione a Internet.
 
-La lista e l’inserimento delle coordinate restano utilizzabili se la mappa non è disponibile. Il filtraggio dei luoghi salvati usa i nomi in locale; la ricerca online di indirizzi o attività richiede una ricerca esplicita separata. Le modifiche manuali, compresa la rimozione del GPS, sopravvivono a nuove scansioni e all’estrazione EXIF. I file originali non vengono modificati.
+La lista e l’inserimento delle coordinate restano utilizzabili se la mappa non è disponibile. Il filtraggio dei luoghi salvati usa i nomi in locale; la ricerca online di indirizzi o attività richiede una ricerca esplicita separata. Le modifiche manuali, compresa la rimozione del GPS, sopravvivono a nuove scansioni e all’estrazione EXIF. Modificare una posizione non altera i file originali; solo un’esportazione sidecar o un’incorporazione esplicita, descritte sopra, la scrivono.
 
 ### Ricerca online di luoghi
 

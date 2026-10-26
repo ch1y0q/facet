@@ -655,7 +655,7 @@ A location set in the viewer is flagged, and the dialog then offers **Use the fi
 
 The installed app loads map backgrounds directly from OpenStreetMap, outside its offline cache. New map areas need an internet connection.
 
-Saved places and coordinate entry remain usable when the map is unavailable. Saved-place filtering uses names locally; online address/business lookup requires a separate explicit search. Coordinates are stored in Facet’s database, and manual edits—including clearing GPS—survive rescans and EXIF re-extraction. The original image files are unchanged.
+Saved places and coordinate entry remain usable when the map is unavailable. Saved-place filtering uses names locally; online address/business lookup requires a separate explicit search. Coordinates are stored in Facet’s database, and manual edits—including clearing GPS—survive rescans and EXIF re-extraction. Editing a location does not modify the original image files; only an explicit sidecar export or embed, described above, writes it out.
 
 ### Online place search
 

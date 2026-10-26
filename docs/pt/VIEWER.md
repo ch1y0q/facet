@@ -586,7 +586,7 @@ Uma localização definida no visualizador fica marcada, e a caixa de diálogo o
 
 O aplicativo instalado carrega os fundos do mapa diretamente do OpenStreetMap, fora do cache offline. Novas áreas do mapa precisam de conexão com a internet.
 
-A lista e a entrada de coordenadas continuam funcionando se o mapa estiver indisponível. A filtragem de locais salvos usa os nomes localmente; a pesquisa online de endereços ou estabelecimentos exige uma pesquisa explícita separada. Edições manuais, inclusive limpar o GPS, permanecem após novas análises e extração EXIF. Os arquivos originais não são alterados.
+A lista e a entrada de coordenadas continuam funcionando se o mapa estiver indisponível. A filtragem de locais salvos usa os nomes localmente; a pesquisa online de endereços ou estabelecimentos exige uma pesquisa explícita separada. Edições manuais, inclusive limpar o GPS, permanecem após novas análises e extração EXIF. Editar uma localização não altera os arquivos originais; só uma exportação de sidecar ou uma incorporação explícita, descritas acima, a gravam.
 
 ### Pesquisa online de lugares
 
