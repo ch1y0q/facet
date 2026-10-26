@@ -47,6 +47,7 @@ PUBLIC_ROUTES = [
 # user; a few (e.g. /api/plugins, the comparison reads) are edition-only since an
 # install without viewer.edition_password became read-only.
 AUTH_ROUTES = [
+    '/api/export/sidecar_jobs',
     '/api/organization_history',
     '/api/photos',
     '/api/photos/review_progress',
@@ -95,6 +96,7 @@ AUTH_ROUTES = [
 # Routes that require auth AND take a query/path parameter. We pass a known
 # value or a deliberately bogus one — the assertion is just "no 5xx".
 PARAMETERISED_ROUTES = [
+    ('/api/export/sidecar_jobs/not-a-job', {}),
     ('/api/search', {'q': 'test', 'limit': 10}),
     ('/api/photo', {'path': '/nonexistent.jpg'}),
     ('/api/critique', {'path': '/nonexistent.jpg'}),
@@ -122,6 +124,9 @@ PARAMETERISED_ROUTES = [
 # POST routes with a minimal valid-shaped body naming a photo that does not exist:
 # the handler runs (validation passes) and ends in a 4xx or an empty success.
 POST_ROUTES = [
+    ('/api/export/sidecar_jobs', {}),
+    ('/api/export/sidecar_jobs/not-a-job/cancel', {}),
+    ('/api/export/sidecar_jobs/not-a-job/retry', {}),
     ('/api/organization_history/1/revert', {}),
     ('/api/photos/capture_date/preview', {'photo_paths': [], 'offset_seconds': 1}),
     ('/api/photos/capture_date/apply', {'photo_paths': [], 'offset_seconds': 1, 'preview_token': 'stale'}),

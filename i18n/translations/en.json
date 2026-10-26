@@ -2550,7 +2550,7 @@
     "mode_copy": "Copy selects to a folder",
     "mode_symlink": "Symlink selects to a folder",
     "overwrite": "Overwrite existing .xmp sidecars",
-    "overwrite_hint": "Off by default: a darktable-authored .xmp is preserved and Facet writes a .facet.xmp instead.",
+    "overwrite_hint": "With ExifTool, existing sidecars are merged. Without it, an existing .xmp is preserved and Facet writes .facet.xmp unless overwrite is enabled.",
     "target_dir": "Target folder",
     "run": "Export",
     "running": "Exporting…",
@@ -2568,6 +2568,26 @@
       "invalid_json": "This file is not valid JSON",
       "imported": "Lightroom state imported: {matched} matched, {unmatched} not found, {changed} changed",
       "import_failed": "Could not import the Lightroom state file"
+    },
+    "jobs": {
+      "running": "Exporting sidecars",
+      "completed": "Export completed",
+      "cancelled": "Export cancelled",
+      "failed": "Export failed",
+      "interrupted": "Export interrupted",
+      "progress": "{processed} / {total} files processed",
+      "counts": "{written} written · {skipped} skipped · {errors} errors",
+      "close": "Close",
+      "close_hint": "The export continues if you close this dialog. Reopen it to find recent exports.",
+      "cancel": "Stop after current file",
+      "cancelling": "Stopping after current file…",
+      "cancel_hint": "Completed sidecars remain. The current file may finish before the export stops.",
+      "retry": "Retry unfinished files",
+      "retry_hint": "Retries failed, skipped and unfinished files using current metadata. An interrupted file may be written again if its progress was not saved.",
+      "refresh": "Refresh status",
+      "recent": "Recent sidecar exports",
+      "none": "No recent sidecar exports.",
+      "read_failed": "Could not read export progress. Refresh to check again."
     }
   },
   "undo": {

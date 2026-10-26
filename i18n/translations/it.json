@@ -2550,7 +2550,7 @@
     "mode_copy": "Copia la selezione in una cartella",
     "mode_symlink": "Collega (symlink) la selezione in una cartella",
     "overwrite": "Sovrascrivi i file .xmp esistenti",
-    "overwrite_hint": "Disattivato per impostazione predefinita: un .xmp creato da darktable viene conservato e Facet scrive invece un .facet.xmp.",
+    "overwrite_hint": "Con ExifTool i sidecar esistenti vengono uniti. Senza, il .xmp viene conservato e Facet scrive .facet.xmp se la sovrascrittura non è abilitata.",
     "target_dir": "Cartella di destinazione",
     "run": "Esporta",
     "running": "Esportazione…",
@@ -2568,6 +2568,26 @@
       "invalid_json": "Questo file non è un JSON valido",
       "imported": "Stato Lightroom importato: {matched} corrispondenza/e, {unmatched} non trovata/e, {changed} modificata/e",
       "import_failed": "Impossibile importare il file di stato Lightroom"
+    },
+    "jobs": {
+      "running": "Esportazione sidecar",
+      "completed": "Esportazione completata",
+      "cancelled": "Esportazione annullata",
+      "failed": "Esportazione non riuscita",
+      "interrupted": "Esportazione interrotta",
+      "progress": "{processed} / {total} file elaborati",
+      "counts": "{written} scritti · {skipped} saltati · {errors} errori",
+      "close": "Chiudi",
+      "close_hint": "L’esportazione continua dopo la chiusura. Riapri la finestra per vedere le esportazioni recenti.",
+      "cancel": "Ferma dopo il file corrente",
+      "cancelling": "Arresto dopo il file corrente…",
+      "cancel_hint": "I sidecar scritti restano. Il file corrente può terminare prima dell’arresto.",
+      "retry": "Riprova i file incompleti",
+      "retry_hint": "Riprova i file non riusciti, saltati e incompleti con i metadati attuali. Un file interrotto può essere riscritto se il progresso non era stato salvato.",
+      "refresh": "Aggiorna stato",
+      "recent": "Esportazioni sidecar recenti",
+      "none": "Nessuna esportazione sidecar recente.",
+      "read_failed": "Impossibile leggere il progresso. Aggiorna lo stato per riprovare."
     }
   },
   "undo": {
