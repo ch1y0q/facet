@@ -123,4 +123,5 @@ def _validate_search_query(value: str) -> str:
     503: {'model': PlaceSearchErrorResponse, 'description': 'Online place search disabled.'},
 })
 def api_search_places(q: Annotated[str, Query(min_length=3, max_length=200), AfterValidator(_validate_search_query)], user: CurrentUser = Depends(require_edition)):
-    return {'results': place_search.search(q)}
+    owner = ('user', place_owner(user)) if is_multi_user_enabled() else ('installation', '')
+    return {'results': place_search.search(q, owner)}
