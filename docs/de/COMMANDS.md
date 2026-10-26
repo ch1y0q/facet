@@ -413,6 +413,7 @@ Prüft: Score-Bereiche, Gesichtsmetriken, BLOB-Beschädigung, Embedding-Größen
 | `python database.py --cleanup-missing-photos` | Fotos, die nicht mehr auf der Festplatte sind, aus der Datenbank entfernen (kaskadierende Löschungen bereinigen Tags, erkannte Gesichter usw.; löscht außerdem Album-Mitgliedschaften und den Vektorindex und macht den Statistik-Cache ungültig, außer dem darin gespeicherten Bibliothekszustand — Perzentil-Snapshot, Immich-Synchronisationsstand, trainierte Keeper-Heads und Ranker-Metriken sowie die Marker für Thumbnail-Aktualisierung und Reparatur; die Vergleichszähler des automatischen Neutrainings werden zurückgesetzt) |
 | `python database.py --cleanup-missing-photos --dry-run` | Fehlende Dateien vorab anzeigen, ohne zu löschen |
 | `python database.py --cleanup-missing-photos --force` | Auch fortfahren, wenn jedes Foto fehlend erscheint (Schutz vor dem Löschen von allem, wenn ein Volume nicht eingehängt ist) |
+| `python database.py --relink-photos` | Aktualisiert die Datenbankpfade selbst verschobener Fotos (standardmäßig Vorschau; Anwenden erfordert einen geprüften Plan). Siehe [Verschobene Fotos neu verknüpfen](#verschobene-fotos-neu-verknüpfen) |
 | `python database.py --migrate-storage-fs` | Thumbnails und Embeddings aus Datenbank-BLOBs in das Dateisystem migrieren |
 | `python database.py --migrate-storage-db` | Thumbnails und Embeddings aus dem Dateisystem zurück in die Datenbank migrieren |
 | `python database.py --add-user alice --role admin` | Einen Benutzer hinzufügen (fragt nach Passwort) |
@@ -521,22 +522,3 @@ Nach einem selbst ausgeführten Dateiumzug kann `python database.py --relink-pho
 Anwenden nutzt die Bibliothekssperre: Exitcode 75 bedeutet, dass ein anderer Auftrag läuft, und 1, dass die Sperre unbenutzbar ist. Die Vorschau nimmt keine Bibliothekssperre.
 
 Der ausdrückliche Begleittyp `sidecar_facet` bezeichnet `photo.ext.facet.xmp`; nicht aufgeführte Fallback-Pakete werden ebenfalls abgelehnt. Gespeicherte Prüfpläne sind privat (0600 unter POSIX). Lesbare Verzeichnisse beweisen keinen eingehängten Datenträger: `source_mount_status` bleibt `not_verified`; der Betreiber muss einen echten Umzug statt Offline-Speicher bestätigen.
-
-```sh
-python database.py --relink-photos --db library.db --config scoring_config.json \
-  --mapping moved.json --plan-out relink-plan.json
-python database.py --relink-photos --db library.db --config scoring_config.json \
-  --apply-plan relink-plan.json --ack-plan REVIEWED_PLAN_ID \
-  --acknowledge-unverified-identity
-```
-
-| Option | Zweck |
-|---|---|
-| `--db` | Vorhandene Datenbank |
-| `--config` | Aufgelöste Konfiguration |
-| `--user` | Konfigurierter Benutzer im Mehrbenutzerbetrieb erforderlich |
-| `--mapping` | Explizite alte/neue JSON-Pfade; Vorschau |
-| `--plan-out` | Neue private Plandatei ohne Überschreiben |
-| `--apply-plan` | Geprüften Plan anwenden |
-| `--ack-plan` | Exakter Hash des geprüften Plans |
-| `--acknowledge-unverified-identity` | Explizite Bestätigung trotz unbekannter Originalbytes |

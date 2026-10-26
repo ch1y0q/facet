@@ -412,6 +412,7 @@ Verifica: faixas de pontuação, métricas faciais, corrupção de BLOB, tamanho
 | `python database.py --cleanup-missing-photos` | Remove do banco de dados as fotos que não estão mais no disco (as exclusões em cascata limpam tags, rostos detectados etc.; também limpa associações de álbuns e o índice vetorial, e invalida o cache de estatísticas exceto o estado da biblioteca que ele guarda — o snapshot de percentis, o estado de sincronização com o Immich, as heads keeper treinadas e as métricas do ranker, e os marcadores de atualização de miniaturas e de reparo; os contadores de comparações do retreinamento automático são zerados) |
 | `python database.py --cleanup-missing-photos --dry-run` | Pré-visualiza os arquivos ausentes sem excluir |
 | `python database.py --cleanup-missing-photos --force` | Prossegue mesmo quando todas as fotos parecem ausentes (proteção contra apagar tudo quando um volume está desmontado) |
+| `python database.py --relink-photos` | Atualiza os caminhos no banco das fotos que você mesmo moveu (prévia por padrão; aplicar exige um plano revisado). Veja [Religar fotos movidas](#religar-fotos-movidas) |
 | `python database.py --migrate-storage-fs` | Migra miniaturas e embeddings dos BLOBs do banco de dados para o sistema de arquivos |
 | `python database.py --migrate-storage-db` | Migra miniaturas e embeddings do sistema de arquivos de volta para o banco de dados |
 | `python database.py --add-user alice --role admin` | Adiciona um usuário (solicita a senha) |
@@ -522,22 +523,3 @@ Depois de mover os arquivos manualmente, `python database.py --relink-photos` mo
 A aplicação usa o bloqueio da biblioteca: o código 75 indica outro trabalho em curso e o código 1 um bloqueio inutilizável. A prévia não adquire o bloqueio.
 
 `sidecar_facet` identifica explicitamente `photo.ext.facet.xmp`; pacotes alternativos não listados também são recusados. Os planos salvos são privados (0600 em POSIX). Um diretório legível não prova que o volume está montado: `source_mount_status` continua `not_verified`; o operador deve confirmar uma movimentação real em vez de armazenamento offline.
-
-```sh
-python database.py --relink-photos --db library.db --config scoring_config.json \
-  --mapping moved.json --plan-out relink-plan.json
-python database.py --relink-photos --db library.db --config scoring_config.json \
-  --apply-plan relink-plan.json --ack-plan REVIEWED_PLAN_ID \
-  --acknowledge-unverified-identity
-```
-
-| Opção | Função |
-|---|---|
-| `--db` | Banco de dados existente |
-| `--config` | Configuração resolvida |
-| `--user` | Usuário configurado obrigatório no modo multiusuário |
-| `--mapping` | Caminhos antigo/novo JSON; prévia |
-| `--plan-out` | Criar novo plano privado sem sobrescrever |
-| `--apply-plan` | Aplicar um plano revisado |
-| `--ack-plan` | Hash exato do plano revisado |
-| `--acknowledge-unverified-identity` | Confirmação explícita apesar dos bytes originais desconhecidos |

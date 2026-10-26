@@ -369,6 +369,14 @@ def test_cli_defaults_to_preview_and_applies_only_exact_saved_plan(library, tmp_
         assert conn.execute('SELECT path FROM photos').fetchone()[0] == new
 
 
+def _plan_limit_values(library):
+    """What the single-entry fixture plan actually uses of each work limit."""
+    size = Path(library[2]).stat().st_size
+    plan_bytes = len(json.dumps(preview(library), ensure_ascii=False, indent=2).encode())
+    return {'MAX_PHOTOS': 1, 'MAX_FILES': 1, 'MAX_FILE_BYTES': size, 'MAX_TOTAL_BYTES': size,
+            'MAX_PLAN_BYTES': plan_bytes}
+
+
 @pytest.mark.parametrize('limit,reason', [
     ('MAX_PHOTOS', 'Mapping must contain 1'),
     ('MAX_FILES', 'Too many explicitly mapped files'),
@@ -376,8 +384,11 @@ def test_cli_defaults_to_preview_and_applies_only_exact_saved_plan(library, tmp_
     ('MAX_TOTAL_BYTES', 'exceeds total file/byte limits'),
     ('MAX_PLAN_BYTES', 'Generated plan exceeds the 2 MiB input limit'),
 ])
-def test_work_limits_refuse_without_changing_database(library, monkeypatch, limit, reason):
-    monkeypatch.setattr(relink, limit, 0)
+def test_work_limits_admit_exactly_the_limit_and_refuse_one_over(library, monkeypatch, limit, reason):
+    used = _plan_limit_values(library)[limit]
+    monkeypatch.setattr(relink, limit, used)
+    assert preview(library)['entries']
+    monkeypatch.setattr(relink, limit, used - 1)
     with pytest.raises(ValueError, match=reason):
         preview(library)
     with sqlite3.connect(library[0]) as conn:
@@ -943,3 +954,40 @@ def test_in_process_cli_holds_maintenance_lock_through_apply_and_releases_it(lib
     assert library_job_holder(db) is None
     with sqlite3.connect(db) as conn:
         assert conn.execute('SELECT path FROM photos').fetchone()[0] == (old if stale else new)
+
+
+@pytest.mark.parametrize('source', [
+    'not json at all',
+    '[1, 2, 3]',
+    json.dumps({'v': 1, 'w': 40, 'h': 30}),
+])
+def test_unparseable_or_non_v2_manual_source_is_kept_verbatim_and_needs_review(library, source):
+    db, old, _, _ = library
+    with sqlite3.connect(db) as conn:
+        conn.execute("INSERT INTO faces(id,photo_path,face_index,embedding,is_manual,manual_key,manual_source,"
+                     "manual_width,manual_height,bbox_x1,bbox_y1,bbox_x2,bbox_y2) "
+                     "VALUES (7,?,-1,X'',1,'stable-uuid',?,40,30,1,2,9,10)", (old, source))
+    assert apply(library, preview(library))['relinked'] == 1
+    with sqlite3.connect(db) as conn:
+        assert conn.execute('SELECT manual_source,manual_review_required FROM faces WHERE id=7').fetchone() == (source, 1)
+
+
+@pytest.mark.parametrize('flag,mode,message', [
+    (['--ack-plan', 'abc'], 'preview', 'Apply acknowledgments are invalid in preview mode'),
+    (['--acknowledge-unverified-identity'], 'preview', 'Apply acknowledgments are invalid in preview mode'),
+    (['--plan-out', 'unused-plan.json'], 'apply', '--plan-out is only valid for preview'),
+])
+def test_cli_refuses_arguments_that_belong_to_the_other_mode(library, tmp_path, capsys, flag, mode, message):
+    db, old, new, config = library
+    config_file = tmp_path / 'config.json'
+    config_file.write_text(json.dumps(config))
+    mapping_file = tmp_path / 'mapping.json'
+    mapping_file.write_text(json.dumps([{'old': old, 'new': new}]))
+    before = _photo_rows(db)
+    base = ['--db', db, '--config', str(config_file)]
+    arguments = base + (['--mapping', str(mapping_file)] if mode == 'preview' else ['--apply-plan', str(mapping_file)])
+    with pytest.raises(SystemExit) as refusal:
+        relink.main(arguments + flag)
+    assert refusal.value.code == 1
+    assert f'Relink refused: {message}' in capsys.readouterr().err
+    assert _photo_rows(db) == before
