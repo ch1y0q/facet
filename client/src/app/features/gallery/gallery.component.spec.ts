@@ -1,20 +1,24 @@
 import type { Mock } from 'vitest';
 import { ComponentFixture, DeferBlockState, TestBed } from '@angular/core/testing';
 import { ChangeDetectorRef, Component, computed, DebugElement, DestroyRef, inject, signal, TemplateRef, WritableSignal } from '@angular/core';
-import { NgTemplateOutlet } from '@angular/common';
-import { ActivatedRoute, Event as RouterEvent, NavigationStart, Router, RouterOutlet } from '@angular/router';
+import { Location, NgTemplateOutlet } from '@angular/common';
+import { provideLocationMocks } from '@angular/common/testing';
+import { RouterTestingHarness } from '@angular/router/testing';
+import { GalleryReuseStrategy } from '../../core/gallery-reuse.strategy';
+import { ActivatedRoute, Event as RouterEvent, NavigationEnd, NavigationStart, provideRouter, RouteReuseStrategy, Router, RouterOutlet } from '@angular/router';
 import { By } from '@angular/platform-browser';
 import { PhotoCardComponent } from '../../shared/components/photo-card/photo-card.component';
 import { GalleryPhotoMenuComponent } from './gallery-photo-menu.component';
 import { PhotoTooltipComponent } from './photo-tooltip.component';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Subject, of, throwError } from 'rxjs';
-import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
+import { defer, filter, finalize, firstValueFrom, Subject, of, throwError } from 'rxjs';
+import { MatContextMenuTrigger, MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
 import { MatSelect, MatSelectModule } from '@angular/material/select';
 import { MatDialog } from '@angular/material/dialog';
 import { MatBottomSheet } from '@angular/material/bottom-sheet';
 import { MatTooltip } from '@angular/material/tooltip';
 import { MATERIAL_ANIMATIONS, provideNativeDateAdapter } from '@angular/material/core';
+import { ScrollDispatcher } from '@angular/cdk/scrolling';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatSidenav, MatSidenavContainer, MatSidenavContent } from '@angular/material/sidenav';
@@ -37,6 +41,9 @@ import { UndoService } from '../../core/services/undo.service';
 import { SequenceKind } from '../../core/services/sequence-override.service';
 import { HeaderSlotService } from '../../core/services/header-slot.service';
 import { PageHelpService } from '../../core/services/page-help.service';
+
+@Component({ template: 'Photo route' })
+class MenuPhotoRoute {}
 
 describe('GalleryComponent', () => {
   let component: GalleryComponent;
@@ -4365,6 +4372,159 @@ describe('GalleryComponent', () => {
     it('X still rejects for real', () => {
       fire('x');
       expect(mockStore.toggleRejected).toHaveBeenCalledWith('/a.jpg');
+    });
+  });
+
+  describe('card menus across real router parking', () => {
+    let harness: RouterTestingHarness;
+    let gallery: GalleryComponent;
+    let allowPhoto: boolean;
+    const photos = Array.from({ length: 3 }, (_, i) => ({
+      path: `/p${i}.jpg`, filename: `p${i}.jpg`, image_width: 4000, image_height: 3000,
+    }));
+
+    beforeEach(async () => {
+      // Keep the rendered gallery and Material directives; replace only the
+      // ordinary unit suite's route/outlet stubs with the real router boundary.
+      TestBed.resetTestingModule();
+      allowPhoto = true;
+      mockAuth['isEdition'] = vi.fn(() => true);
+      mockStore.photos.set(photos);
+      mockStore.total.set(photos.length);
+      mockStore.config.set({ features: { show_rating_controls: true } });
+      TestBed.configureTestingModule({
+        imports: [GalleryComponent, MenuPhotoRoute],
+        providers: [
+          provideRouter([
+            { path: '', component: GalleryComponent },
+            { path: 'photo', component: MenuPhotoRoute, canActivate: [() => allowPhoto] },
+          ]),
+          provideLocationMocks(),
+          provideNativeDateAdapter(),
+          { provide: RouteReuseStrategy, useClass: GalleryReuseStrategy },
+          { provide: MATERIAL_ANIMATIONS, useValue: { animationsDisabled: true } },
+          { provide: GalleryStore, useValue: mockStore },
+          { provide: ApiService, useValue: mockApi },
+          { provide: AuthService, useValue: mockAuth },
+          { provide: I18nService, useValue: mockI18n },
+          { provide: AlbumService, useValue: { list: () => of({ albums: [] }) } },
+          { provide: ScanService, useValue: { canLaunch: signal(false) } },
+          { provide: LiveAnnouncer, useValue: { announce: () => Promise.resolve() } },
+        ],
+      });
+      harness = await RouterTestingHarness.create();
+      TestBed.inject(Router).initialNavigation();
+      gallery = await harness.navigateByUrl('/', GalleryComponent);
+      const content = harness.routeDebugElement!.query(By.directive(MatSidenavContent)).componentInstance as MatSidenavContent;
+      vi.spyOn(content, 'scrollTo').mockImplementation(() => {});
+      for (const host of harness.routeNativeElement!.querySelectorAll<HTMLElement>('[data-pidx]')) {
+        host.scrollIntoView = () => {};
+      }
+    });
+
+    const overlay = () => TestBed.inject(OverlayContainer).getContainerElement();
+    async function expectMenuRemoved(): Promise<void> {
+      const container = overlay();
+      if (container.querySelector('[role="menu"]')) {
+        // Material completes overlay teardown asynchronously even with
+        // animations disabled. Observe the real effect instead of sleeping.
+        await new Promise<void>(resolve => {
+          const observer = new MutationObserver(() => {
+            if (!container.querySelector('[role="menu"]')) {
+              observer.disconnect();
+              resolve();
+            }
+          });
+          observer.observe(container, { childList: true, subtree: true });
+        });
+      }
+      expect(container.querySelector('[role="menu"]')).toBeNull();
+    }
+    const contextTrigger = (index: number) => harness.routeDebugElement!
+      .queryAll(By.directive(MatContextMenuTrigger))[index].injector.get(MatContextMenuTrigger);
+    async function rightClick(index: number): Promise<MatContextMenuTrigger> {
+      const card = harness.routeNativeElement!.querySelector(`app-photo-card[data-pidx="${index}"]`)!;
+      card.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: 40, clientY: 50 }));
+      harness.detectChanges();
+      await harness.fixture.whenStable();
+      const trigger = contextTrigger(index);
+      expect(trigger.menuOpen).toBe(true);
+      expect(overlay().querySelector('[role="menu"]')).not.toBeNull();
+      return trigger;
+    }
+    async function back(): Promise<void> {
+      const done = firstValueFrom(TestBed.inject(Router).events.pipe(filter(e => e instanceof NavigationEnd)));
+      TestBed.inject(Location).back();
+      await done;
+      harness.detectChanges();
+      await harness.fixture.whenStable();
+      expect(harness.routeDebugElement!.componentInstance).toBe(gallery);
+    }
+
+    it('removes the right-click overlay on photo navigation and reopens once after arrow navigation and Back', async () => {
+      const dispatcher = TestBed.inject(ScrollDispatcher);
+      const scrolled = dispatcher.scrolled.bind(dispatcher);
+      let scrollSubscriptions = 0;
+      vi.spyOn(dispatcher, 'scrolled').mockImplementation(ms => defer(() => {
+        scrollSubscriptions++;
+        return scrolled(ms).pipe(finalize(() => scrollSubscriptions--));
+      }));
+      const trigger = await rightClick(1);
+      expect(scrollSubscriptions).toBeGreaterThan(0);
+      const closed = vi.fn();
+      trigger.menuClosed.subscribe(closed);
+      await harness.navigateByUrl('/photo?path=%2Fp1.jpg', MenuPhotoRoute);
+      await harness.fixture.whenStable();
+      expect(mockStore.parkListingReads).toHaveBeenCalledOnce();
+      expect(trigger.menuOpen).toBe(false);
+      await expectMenuRemoved();
+      expect(closed).toHaveBeenCalledOnce();
+      expect(scrollSubscriptions).toBe(0);
+      // Photo arrows replace the current entry; Back must retain that viewed
+      // photo as the gallery cursor, without resurrecting the old menu.
+      await TestBed.inject(Router).navigateByUrl('/photo?path=%2Fp2.jpg', { replaceUrl: true });
+      await back();
+      expect(document.activeElement?.closest('[data-pidx]')?.getAttribute('data-pidx')).toBe('2');
+      await expectMenuRemoved();
+      await rightClick(1);
+      expect(scrollSubscriptions).toBeGreaterThan(0);
+      expect(overlay().querySelectorAll('[role="menu"]')).toHaveLength(1);
+      await harness.navigateByUrl('/photo?path=%2Fp1.jpg');
+      await harness.fixture.whenStable();
+      expect(closed).toHaveBeenCalledTimes(2);
+      await expectMenuRemoved();
+      expect(scrollSubscriptions).toBe(0);
+    });
+
+    it('keeps a context menu usable when photo navigation is cancelled, then closes on a successful retry', async () => {
+      const trigger = await rightClick(0);
+      allowPhoto = false;
+      expect(await TestBed.inject(Router).navigateByUrl('/photo?path=%2Fp0.jpg')).toBe(false);
+      expect(mockStore.parkListingReads).not.toHaveBeenCalled();
+      expect(trigger.menuOpen).toBe(true);
+      expect(overlay().querySelector('[role="menu"]')).not.toBeNull();
+      allowPhoto = true;
+      await harness.navigateByUrl('/photo?path=%2Fp0.jpg');
+      await harness.fixture.whenStable();
+      expect(trigger.menuOpen).toBe(false);
+      await expectMenuRemoved();
+      await back();
+      await rightClick(0);
+    });
+
+    it('still closes an ordinary gallery menu across the real outlet detach', async () => {
+      mockStore.selectionCount.set(1);
+      harness.detectChanges();
+      const trigger = harness.routeDebugElement!.query(By.directive(MatMenuTrigger)).injector.get(MatMenuTrigger);
+      trigger.openMenu();
+      harness.detectChanges();
+      await harness.fixture.whenStable();
+      expect(trigger.menuOpen).toBe(true);
+      expect(overlay().querySelector('[role="menu"]')).not.toBeNull();
+      await harness.navigateByUrl('/photo?path=%2Fp0.jpg');
+      await harness.fixture.whenStable();
+      expect(trigger.menuOpen).toBe(false);
+      await expectMenuRemoved();
     });
   });
 

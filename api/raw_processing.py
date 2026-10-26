@@ -11,8 +11,10 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
+import unicodedata
 from collections.abc import Collection
 from io import BytesIO
 from pathlib import Path
@@ -184,6 +186,32 @@ def find_companion_raw(disk_path: str) -> str | None:
     return _find_companion_raw_cached(p.stem, str(p.parent), RAW_EXTENSIONS)
 
 
+def _companion_entry_path(candidate: Path) -> str:
+    """Keep the directory-entry spelling instead of a case-insensitive alias."""
+    if sys.platform != 'darwin':
+        return str(candidate)
+
+    import fcntl  # F_GETPATH and O_SYMLINK are macOS-only.
+
+    # Metadata-only access also handles symlinks themselves: resolving their
+    # targets would change the companion's directory or basename. Darwin's
+    # F_GETPATH takes a MAXPATHLEN (1024-byte) buffer, without listing a folder.
+    descriptor = os.open(candidate, os.O_EVTONLY | os.O_SYMLINK)
+    try:
+        actual = os.fsdecode(fcntl.fcntl(descriptor, fcntl.F_GETPATH, bytes(1024)).split(b'\0', 1)[0])
+        name = os.path.basename(actual)
+        if unicodedata.normalize('NFC', name).casefold() != unicodedata.normalize('NFC', candidate.name).casefold():
+            raise OSError('RAW companion name changed during lookup')
+        # Preserve the supplied parent, including any symlink spelling. Check
+        # the leaf itself: O_SYMLINK opened the symlink entry, not its target.
+        result = candidate.with_name(name)
+        if not os.path.samestat(os.fstat(descriptor), os.lstat(result)):
+            raise OSError('RAW companion entry changed during lookup')
+        return str(result)
+    finally:
+        os.close(descriptor)
+
+
 _companion_raw_cache: dict[tuple[str, str], tuple[float, str | None]] = {}
 _COMPANION_RAW_TTL = 300  # 5 minutes
 _COMPANION_RAW_MAX = 2048
@@ -195,7 +223,16 @@ def _find_companion_raw_cached(stem: str, parent_dir: str, raw_extensions: Colle
     now = time.monotonic()
     entry = _companion_raw_cache.get(key)
     if entry and (now - entry[0]) < _COMPANION_RAW_TTL:
-        return entry[1]
+        if entry[1] is None:
+            return None
+        # A case-only rename keeps resolving through the cached macOS alias.
+        # Cache extension selection, but retrieve the current entry spelling.
+        try:
+            return _companion_entry_path(Path(entry[1]))
+        except FileNotFoundError:
+            # The cached companion was moved or deleted since: probe again
+            # rather than failing every lookup until the entry expires.
+            _companion_raw_cache.pop(key, None)
 
     parent = Path(parent_dir)
     result: str | None = None
@@ -203,7 +240,7 @@ def _find_companion_raw_cached(stem: str, parent_dir: str, raw_extensions: Colle
         for candidate_ext in (ext, ext.upper()):
             candidate = parent / (stem + candidate_ext)
             if candidate.is_file():
-                result = str(candidate)
+                result = _companion_entry_path(candidate)
                 break
         if result:
             break

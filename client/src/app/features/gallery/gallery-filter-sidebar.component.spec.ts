@@ -9,6 +9,7 @@ import { By } from '@angular/platform-browser';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { GalleryStore } from './gallery.store';
 import { GalleryFilterSidebarComponent } from './gallery-filter-sidebar.component';
+import { I18N } from '../../core/i18n/keys';
 import { I18nService } from '../../core/services/i18n.service';
 import { AuthService } from '../../core/services/auth.service';
 import { AlbumService } from '../../core/services/album.service';
@@ -445,6 +446,59 @@ describe('GalleryFilterSidebarComponent', () => {
       fixture.detectChanges();
       thumb = fixture.nativeElement.querySelector('mat-slider input');
     });
+
+    for (const [value, label] of [
+      ['undecided', I18N.review.needs_review], ['kept', I18N.review.kept], ['rejected', I18N.review.rejected],
+    ] as const) {
+      it(`selects ${value}, blocks Hide rejected, and restores the toggle after All`, () => {
+        const store = TestBed.inject(GalleryStore);
+        store.filters.update(filters => ({ ...filters, review_status: '', hide_rejected: true }));
+        fixture.detectChanges();
+        const select = fixture.debugElement.queryAll(By.directive(MatSelect))
+          .find(el => el.nativeElement.closest('mat-form-field')?.textContent.includes(I18N.review.status))!
+          .injector.get(MatSelect);
+        const container = TestBed.inject(OverlayContainer).getContainerElement();
+        const hideRejected = () => Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('mat-checkbox'))
+          .find(el => el.textContent?.includes(I18N.gallery.hide_rejected))!
+          .querySelector('input') as HTMLInputElement;
+        const choose = (text: string) => {
+          select.open();
+          fixture.detectChanges();
+          const options = Array.from(container.querySelectorAll('mat-option'));
+          expect(options.map(option => option.textContent?.trim())).toEqual([
+            I18N.review.all, I18N.review.needs_review, I18N.review.kept, I18N.review.rejected,
+          ]);
+          const option = options.find(el => el.textContent?.trim() === text) as HTMLElement;
+          option.click();
+          fixture.detectChanges();
+          expect(select.panelOpen).toBe(false);
+        };
+
+        // Review browsing remains available to a read-only viewer.
+        expect(TestBed.inject(AuthService).isEdition()).toBe(false);
+        expect(hideRejected().disabled).toBe(false);
+        expect(hideRejected().checked).toBe(true);
+        choose(label);
+        expect(mockStore['updateFilter']).toHaveBeenLastCalledWith('review_status', value);
+        store.filters.update(filters => ({ ...filters, review_status: value }));
+        fixture.detectChanges();
+        expect(select.value).toBe(value);
+        expect(hideRejected().disabled).toBe(true);
+        expect(hideRejected().checked).toBe(true);
+        vi.mocked(store.updateFilter).mockClear();
+        hideRejected().click();
+        expect(store.updateFilter).not.toHaveBeenCalled();
+
+        choose(I18N.review.all);
+        expect(store.updateFilter).toHaveBeenLastCalledWith('review_status', '');
+        store.filters.update(filters => ({ ...filters, review_status: '' }));
+        fixture.detectChanges();
+        expect(hideRejected().disabled).toBe(false);
+        expect(hideRejected().checked).toBe(true);
+        hideRejected().click();
+        expect(store.updateFilter).toHaveBeenLastCalledWith('hide_rejected', false);
+      });
+    }
 
     it('offers face naming in People with no people and semantic search disabled', () => {
       TestBed.inject(GalleryStore).config.update(config => config ? {
