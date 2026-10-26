@@ -217,7 +217,7 @@ Wähle in der Galerie **Sichtungsstatus → Noch zu sichten**, um unentschiedene
 
 **Behalten** und **Ablehnen** entfernen ein Foto nach dem Speichern aus dieser Ansicht. Behaltene Fotos bleiben in der normalen Bibliothek und sind über **Behalten** auffindbar. Favoriten und Sterne bleiben unabhängig davon.
 
-Behalten und **Entscheidung zurücksetzen** stehen in der Detailansicht, im Kontextmenü und für die Mehrfachauswahl bereit. **K** behält das aktuelle Foto. Zurücksetzen löscht Behalten und Ablehnen, ohne Sterne oder Favoriten zu ändern. Galerieaktionen lassen sich rückgängig machen.
+Behalten und **Entscheidung zurücksetzen** stehen in der Detailansicht, im Kontextmenü und für die Mehrfachauswahl bereit. **K** behält das aktuelle Foto. In der Detailansicht ist die Schaltfläche Behalten ein Umschalter: Bei einem bereits behaltenen Foto setzt sie die Entscheidung zurück. Zurücksetzen löscht Behalten und Ablehnen, ohne Sterne oder Favoriten zu ändern. Galerieaktionen lassen sich rückgängig machen.
 
 Entscheidungen überstehen Neuladen, Neustarts und erneute Scans und gelten pro Benutzer. Bestätigte Auswahlgruppen markieren ihre ausgewählten Fotos ebenfalls als behalten. Bestehende Sterne, Favoriten und bereits gesichtete Gruppen werden nicht automatisch umgewandelt.
 

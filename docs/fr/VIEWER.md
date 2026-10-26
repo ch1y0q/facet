@@ -217,7 +217,7 @@ Dans la galerie, choisissez **Statut de tri → À examiner** pour parcourir les
 
 **Conserver** et **Rejeter** retirent la photo de cette file après enregistrement. Les photos conservées restent dans la bibliothèque et apparaissent avec le filtre **Conservées**. Cette décision est indépendante des favoris et des étoiles.
 
-Les actions Conserver et **Réinitialiser la décision** sont disponibles dans le détail, le menu contextuel et les actions groupées. **K** conserve la photo courante. Réinitialiser efface les décisions Conserver et Rejeter sans modifier les étoiles ni les favoris. Les actions de galerie disposent d’Annuler.
+Les actions Conserver et **Réinitialiser la décision** sont disponibles dans le détail, le menu contextuel et les actions groupées. **K** conserve la photo courante. Dans le détail, le bouton Conserver est une bascule : l’activer sur une photo conservée réinitialise la décision. Réinitialiser efface les décisions Conserver et Rejeter sans modifier les étoiles ni les favoris. Les actions de galerie disposent d’Annuler.
 
 Les décisions persistent après rechargement, redémarrage et nouvelle analyse, et sont propres à chaque utilisateur. Confirmer un groupe de tri marque ses photos choisies comme conservées. Les anciens favoris, notes et groupes examinés ne sont pas convertis automatiquement.
 

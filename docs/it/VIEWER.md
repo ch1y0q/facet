@@ -217,7 +217,7 @@ Nella galleria scegli **Stato revisione → Da rivedere** per scorrere le foto s
 
 **Conserva** e **Rifiuta** rimuovono la foto da questa vista dopo il salvataggio. Le foto conservate restano nella libreria normale e sono disponibili con il filtro **Conservate**. Preferiti e stelle rimangono indipendenti.
 
-Conserva e **Reimposta decisione** sono disponibili nel dettaglio, nel menu contestuale e nelle azioni multiple. **K** conserva la foto corrente. Reimpostare cancella Conserva e Rifiuta senza modificare stelle o preferiti. Le azioni della galleria possono essere annullate.
+Conserva e **Reimposta decisione** sono disponibili nel dettaglio, nel menu contestuale e nelle azioni multiple. **K** conserva la foto corrente. Nel dettaglio il pulsante Conserva è un interruttore: premuto su una foto già conservata reimposta la decisione. Reimpostare cancella Conserva e Rifiuta senza modificare stelle o preferiti. Le azioni della galleria possono essere annullate.
 
 Le decisioni sopravvivono a ricaricamenti, riavvii e nuove scansioni e sono personali per ogni utente. Confermare un gruppo di selezione contrassegna anche le foto scelte come conservate. Le vecchie valutazioni, i preferiti e i gruppi già esaminati non vengono convertiti automaticamente.
 

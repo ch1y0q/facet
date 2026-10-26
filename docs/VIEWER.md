@@ -218,7 +218,7 @@ Use **Review status → Needs review** in the gallery to work through undecided 
 
 Choose **Keep** for a photo you want to retain, or **Reject** for one you do not. Both decisions remove the photo from Needs review after saving. Kept photos remain in the normal library and can be found with the **Kept** status filter. Keep is independent of favorites and star ratings.
 
-Keep and **Reset decision** are available in photo detail, the gallery context menu and bulk actions. Press **K** to keep the current photo. Reset decision clears Keep and Reject and returns the photo to Needs review without changing its stars or favorite flag. Use Undo to reverse a gallery action.
+Keep and **Reset decision** are available in photo detail, the gallery context menu and bulk actions. Press **K** to keep the current photo. In photo detail the Keep button is a toggle: pressing it on a kept photo resets the decision. Reset decision clears Keep and Reject and returns the photo to Needs review without changing its stars or favorite flag. Use Undo to reverse a gallery action.
 
 Decisions survive reloads, viewer restarts and rescans. On multi-user installs they belong to the current user. Confirming a culling group also marks its chosen keepers as Kept. Existing ratings, favorites and previously reviewed groups are not automatically converted into Keep decisions.
 

@@ -217,7 +217,7 @@ En la galería, selecciona **Estado de revisión → Pendientes de revisión** p
 
 **Conservar** y **Rechazar** retiran la foto de esta vista después de guardar. Las fotos conservadas siguen en la biblioteca normal y aparecen con el filtro **Conservadas**. La decisión es independiente de favoritos y estrellas.
 
-Conservar y **Restablecer decisión** están disponibles en el detalle, el menú contextual y las acciones en lote. **K** conserva la foto actual. Restablecer borra Conservar y Rechazar sin cambiar estrellas ni favoritos. Las acciones de galería permiten Deshacer.
+Conservar y **Restablecer decisión** están disponibles en el detalle, el menú contextual y las acciones en lote. **K** conserva la foto actual. En el detalle, el botón Conservar es un conmutador: pulsarlo en una foto ya conservada restablece la decisión. Restablecer borra Conservar y Rechazar sin cambiar estrellas ni favoritos. Las acciones de galería permiten Deshacer.
 
 Las decisiones sobreviven a recargas, reinicios y nuevos análisis, y son propias de cada usuario. Confirmar un grupo de selección también marca sus fotos elegidas como conservadas. Las valoraciones, favoritos y grupos revisados anteriores no se convierten automáticamente.
 
