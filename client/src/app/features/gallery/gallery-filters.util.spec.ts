@@ -103,12 +103,13 @@ describe('buildApiParams semantic search', () => {
 });
 
 describe('buildSyncParams', () => {
-  it('is empty when filters equal defaults', () => {
-    expect(buildSyncParams(DEFAULT_FILTERS, undefined)).toEqual({});
+  it('carries only the sort when filters equal defaults', () => {
+    expect(buildSyncParams(DEFAULT_FILTERS, undefined)).toEqual({ sort: 'aggregate' });
   });
-  it('includes sort only when it differs from the effective default', () => {
+  it('writes the sort even when it equals the viewer default, so a remembered sort cannot override a link', () => {
     expect(buildSyncParams(filters({ sort: 'date_taken' }), undefined)['sort']).toBe('date_taken');
-    expect(buildSyncParams(filters({ sort: 'date_taken' }), { sort: 'date_taken' })['sort']).toBeUndefined();
+    expect(buildSyncParams(filters({ sort: 'date_taken' }), { sort: 'date_taken' })['sort']).toBe('date_taken');
+    expect(buildSyncParams(filters({ sort: 'aggregate' }), { sort: 'aggregate' })['sort']).toBe('aggregate');
   });
   it('includes similarity_mode only when non-visual and similar_to is set', () => {
     expect(

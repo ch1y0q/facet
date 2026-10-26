@@ -208,7 +208,8 @@
     "duplicate_set": "Open duplicate group",
     "burst_set": "Open burst group",
     "sequence_set": "Open bracket/panorama set",
-    "open_detail": "Open photo page"
+    "open_detail": "Open photo page",
+    "key_hint": "1-5 rate · F fav · X reject · Space select · Enter open"
   },
   "notifications": {
     "copied": "Copied!",
@@ -986,7 +987,8 @@
       "avg_monochrome": "Monochrome (%)",
       "avg_dynamic_range": "Avg. Dynamic Range",
       "usage_timeline": "Usage Timeline"
-    }
+    },
+    "gear_metric_label": "Chart metric"
   },
   "login": {
     "title": "Login",
@@ -1034,7 +1036,7 @@
     "user_menu": "User menu"
   },
   "gallery": {
-    "help": "Browse and filter your library. Sort by score, date or your personal taste; use the sidebar filters (people, tags, camera, category, score range, moments) and the search to find photos.",
+    "help": "Browse and filter your library. Sort by score, date or your personal taste; use the sidebar filters (people, tags, camera, category, score range, moments) and the search to find photos. Keys on a focused card: 1–5 rate, F favourite, X rejects (edition mode); / focuses the search, B toggles the filter sidebar, V swaps grid and mosaic.",
     "hidden_banner": {
       "message": "{n} photos hidden by current filters",
       "some_hidden": "Some photos are hidden by your filters",
@@ -1711,7 +1713,8 @@
     "split_select_face": "Select face {index}",
     "no_faces": "No faces found for this person",
     "split_done": "Person split",
-    "split_error": "Failed to split person"
+    "split_error": "Failed to split person",
+    "empty_hint": "People come from faces you assign on a photo page (edition mode). Open any photo with faces and pick Assign person to create the first one."
   },
   "person_selector": {
     "create_new": "Create new person",
@@ -2425,7 +2428,9 @@
     "cluster_photos": "{count} photos",
     "score": "Score: {score}",
     "date_from": "From",
-    "date_to": "To"
+    "date_to": "To",
+    "no_gps_title": "No photos with a location",
+    "no_gps_hint": "Nothing in scope carries GPS coordinates. Open a photo and use its Location panel to place it — placed photos appear here."
   },
   "photo_detail": {
     "back": "Back",
@@ -2618,6 +2623,9 @@
     "rate": "Rate (1–5 stars)",
     "reject": "Reject",
     "favorite": "Toggle favorite",
+    "focus_search": "Focus the search box",
+    "toggle_filters": "Show / hide the filter sidebar",
+    "toggle_layout": "Switch grid / mosaic",
     "comp_left_wins": "Left photo wins",
     "comp_right_wins": "Right photo wins"
   },

@@ -179,6 +179,8 @@ da `models/samp_net.py`):
 
 ## Ordinamento
 
+**Ordinamento memorizzato.** La galleria si apre sull'ultimo ordinamento scelto nel selettore di ordinamento, e questa scelta prevale su `viewer.defaults.sort`. Viene memorizzata nel `localStorage` per browser, non per account utente. Solo una scelta fatta nel selettore di ordinamento viene memorizzata: un ordinamento che arriva da un link condiviso o da un segnalibro, o che un assistente applica, cambia la vista senza essere memorizzato, e il `sort` proprio di un link prevale comunque su quello memorizzato. Scegliere di nuovo l'ordinamento predefinito configurato dimentica la scelta, così come reimpostare i filtri. **Pertinenza** non viene mai memorizzato, perché richiede una query di ricerca.
+
 I tempi di scatto sono ordinati per durata dell'esposizione in secondi, compresi
 i valori EXIF decimali e razionali: `1/250` e `0.004` sono uguali. I valori
 mancanti, malformati, nulli, negativi e non finiti compaiono per ultimi in
@@ -737,6 +739,8 @@ Premi **`F`** (o l'interruttore nell'intestazione) per attivare l'API Fullscreen
 
 Premi **`Z`** nel lightbox a vista singola per attivare una lente in stile Photo Mechanic (adatta ↔ 2×; zoom con rotellina/`+`/`-` fino all'800%). Oltre la scala di adattamento il riquadro sostituisce la sua miniatura con la sorgente `/image` a piena risoluzione, così puoi giudicare la messa a fuoco critica sui pixel reali senza lasciare la vista. Sulla striscia provini delle Scene, `Z` attiva una lente d'ingrandimento al passaggio del mouse che segue il cursore su una tessera (proveniente dall'immagine a piena risoluzione), con un cursore di zoom regolabile. Le miniature memorizzate si fermano a 640px e la vista adattata della camera oscura mostra un render dell'originale fino a 1920px, perciò la lente è il modo per esaminare i pixel oltre tale limite. I riquadri della camera oscura e del confronto mostrano prima la miniatura memorizzata e passano al render nitido quando è stato caricato, così un riquadro non mostra mai un altro fotogramma. In vista singola vengono precaricati il fotogramma successivo e il precedente (le miniature subito, i render quando quello corrente è nitido), tranne con il Risparmio dati del browser attivo, dove un passo può mostrare brevemente un riquadro vuoto. Un render che non può partire entro 5 s viene sostituito per 60 secondi dalla miniatura memorizzata, mostrata come se fosse nitida.
 
+Un URL già caricato salta soltanto il ritardo di precaricamento: la miniatura resta visibile finché il browser non carica di nuovo il rendering. Se la richiesta fallisce, la miniatura resta visibile e il focus peaking può usarla.
+
 **Lente al passaggio del mouse della camera oscura.** Separatamente, una lente circolare segue il cursore sull'immagine principale della camera oscura — in vista singola e su ciascun riquadro di confronto — ingrandendo la sorgente `/image` a piena risoluzione mappata sull'immagine effettivamente adattata alla cornice, così la lente mostra esattamente il pixel sotto il cursore. La stessa lente funziona anche sui ritagli in primo piano del pannello dei volti. Un interruttore nella barra degli strumenti la attiva o disattiva; è attiva per impostazione predefinita e il suo valore viene ricordato in `localStorage` per browser, non per account utente. La lente viene nascosta mentre l'immagine è ingrandita oltre la scala di adattamento, poiché quella vista mostra già pixel reali e lo spostamento entrerebbe in conflitto con la lente; funziona nella modalità a schermo intero della camera oscura e segue l'immagine quando si passa al fotogramma successivo/precedente con `←`/`→` durante il passaggio del mouse. È separata dall'interruttore della lente della striscia provini nell'intestazione della selezione.
 
 ### Badge per volto
@@ -909,9 +913,17 @@ Tutte le statistiche sono consapevoli dell'utente in modalità multiutente — o
 | `Shift+Click` | Selezione di un intervallo di foto tra l'ultima selezionata e quella cliccata |
 | `Double-click` | Apri la foto |
 | `Shift+F10` / `Menu` | Apri il menu contestuale della scheda foto con il focus (il clic destro fa lo stesso) |
+| `1`–`5` | Vota da 1 a 5 stelle la foto a fuoco (modalità modifica; passa alla successiva) |
+| `F` | Aggiungi / togli dai preferiti la foto a fuoco (modalità modifica) |
+| `X` o `0` | Scarta / annulla lo scarto della foto a fuoco (modalità modifica; passa alla successiva) |
+| `/` | Attiva la casella di ricerca |
+| `B` | Mostra / nascondi la barra laterale dei filtri |
+| `V` | Passa tra layout griglia e mosaico |
 | `?` | Mostra il riferimento delle scorciatoie da tastiera (funziona su ogni pagina) |
 
 La foto corrente — quella su cui agiscono le scorciatoie di valutazione, preferito e scarto — è contrassegnata da un contorno di 4px attorno alla sua scheda; tutte le altre schede si affievoliscono al 50% di opacità. Nulla è contrassegnato finché il cursore non si è effettivamente spostato su una foto tra i risultati, quindi una galleria che non hai ancora esplorato resta a piena intensità. Cliccare su una foto sposta il marcatore su di essa, così una scorciatoia digitata subito dopo un clic si applica alla foto cliccata, non a quella dove le frecce l'avevano lasciata. Tornando da una foto (Indietro o Esc) il marcatore resta sull'ultima foto che hai visto, così le scorciatoie proseguono da lì.
+
+**Nella pagina della foto**, `1`–`5`, `F` e `X` (o `0`) valutano, aggiungono ai preferiti e scartano la foto aperta, alle stesse condizioni dei pulsanti di valutazione: modalità modifica, con `viewer.features.show_rating_controls` attivo. A differenza della galleria, non passano mai a un'altra foto; per farlo usa `←` `→`. Il riferimento `?` le elenca sotto *Vista foto*.
 
 ## Annulla
 

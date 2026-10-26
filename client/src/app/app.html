@@ -1,7 +1,13 @@
 <div class="flex flex-col h-screen">
   <!-- Toolbar (hidden on shared routes) -->
   @if (!isSharedRoute()) {
-  <mat-toolbar class="shrink-0 !px-2 !bg-[var(--mat-sys-surface-container)] border-b border-[var(--mat-sys-outline-variant)]">
+  <!-- The edition-active underline: an unlocked edit session can write to the
+       library, and the only prior signal was a small amber shield among ten
+       icons. The bar is there from unlock until lock, sitting exactly on the
+       border the toolbar already draws. -->
+  <mat-toolbar class="shrink-0 !px-2 !bg-[var(--mat-sys-surface-container)] border-b border-[var(--mat-sys-outline-variant)]"
+               [class.!border-b-2]="auth.isEdition()"
+               [class.border-amber-400]="auth.isEdition()">
     <div class="flex items-center gap-3 w-full">
       <!-- Nav links -->
       @if (auth.isAuthenticated()) {
@@ -280,7 +286,7 @@
             [matTooltip]="I18N.gallery.filters | translate"
             [attr.aria-label]="I18N.gallery.filters | translate"
           >
-            <mat-icon [style.color]="store.filterDrawerOpen() ? 'var(--mat-sys-primary)' : ''">tune</mat-icon>
+            <mat-icon [style.color]="store.filterDrawerOpen() ? 'var(--mat-sys-primary)' : ''">filter_alt</mat-icon>
           </button>
         }
 
@@ -390,6 +396,15 @@
               {{ I18N.auth.logout | translate }}
             </button>
           }
+          <mat-divider />
+          <button mat-menu-item (click)="openCardActionsDialog()">
+            <mat-icon>tune</mat-icon>
+            {{ I18N.gallery.card_actions.title | translate }}
+          </button>
+          <button mat-menu-item (click)="pageHelp.toggle()">
+            <mat-icon>help_outline</mat-icon>
+            {{ I18N.culling.help | translate }}
+          </button>
         </mat-menu>
         <mat-menu #langMenu="matMenu">
           @for (lang of i18n.languages(); track lang.code) {
@@ -677,7 +692,7 @@
             matBadgeColor="primary"
             matBadgeSize="small"
           >
-            <mat-icon [style.color]="store.filterDrawerOpen() ? 'var(--mat-sys-primary)' : ''">tune</mat-icon>
+            <mat-icon [style.color]="store.filterDrawerOpen() ? 'var(--mat-sys-primary)' : ''">filter_alt</mat-icon>
           </button>
         }
       </div>

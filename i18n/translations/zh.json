@@ -208,7 +208,8 @@
     "duplicate_set": "查看重复照片组",
     "burst_set": "查看连拍组",
     "sequence_set": "查看包围曝光/全景组",
-    "open_detail": "打开照片页"
+    "open_detail": "打开照片页",
+    "key_hint": "1-5 评分 · F 收藏 · X 淘汰 · Space 选择 · Enter 打开"
   },
   "notifications": {
     "copied": "已复制！",
@@ -986,7 +987,8 @@
       "avg_monochrome": "黑白照片占比（%）",
       "avg_dynamic_range": "平均动态范围",
       "usage_timeline": "使用时间线"
-    }
+    },
+    "gear_metric_label": "图表指标"
   },
   "login": {
     "title": "登录",
@@ -1034,7 +1036,7 @@
     "user_menu": "用户菜单"
   },
   "gallery": {
-    "help": "浏览和筛选照片库。按评分、日期或个人偏好排序；通过侧栏筛选（人物、标签、相机、类别、评分范围、拍摄时刻）及搜索查找照片。",
+    "help": "浏览和筛选照片库。按评分、日期或个人偏好排序；通过侧栏筛选（人物、标签、相机、类别、评分范围、拍摄时刻）及搜索查找照片。 焦点卡片上的按键：1–5 打星、F 收藏、X 淘汰（编辑模式）；/ 聚焦搜索、B 开合筛选侧栏、V 切换网格与马赛克。",
     "hidden_banner": {
       "message": "当前筛选条件隐藏了 {n} 张照片",
       "some_hidden": "部分照片被筛选条件隐藏",
@@ -1711,7 +1713,8 @@
     "split_select_face": "选择第 {index} 张人脸",
     "no_faces": "未找到此人物的人脸",
     "split_done": "人物已拆分",
-    "split_error": "拆分人物失败"
+    "split_error": "拆分人物失败",
+    "empty_hint": "人物来自照片详情页分配的人脸（编辑模式）。打开任何带人脸的照片，点「将人脸分配给人物」即可创建第一个人物。"
   },
   "person_selector": {
     "create_new": "创建新人物",
@@ -2425,7 +2428,9 @@
     "cluster_photos": "{count} 张照片",
     "score": "评分：{score}",
     "date_from": "从",
-    "date_to": "至"
+    "date_to": "至",
+    "no_gps_title": "没有带位置的照片",
+    "no_gps_hint": "当前范围内的照片都没有 GPS 坐标。打开一张照片，用其位置面板标注地点——标注后会显示在这里。"
   },
   "photo_detail": {
     "back": "返回",
@@ -2618,6 +2623,9 @@
     "rate": "评星（1–5 星）",
     "reject": "淘汰",
     "favorite": "切换收藏状态",
+    "focus_search": "聚焦搜索框",
+    "toggle_filters": "显示／隐藏筛选侧栏",
+    "toggle_layout": "切换网格／拼贴",
     "comp_left_wins": "左侧照片更好",
     "comp_right_wins": "右侧照片更好"
   },

@@ -208,7 +208,8 @@
     "duplicate_set": "Abrir grupo de duplicatas",
     "burst_set": "Abrir grupo de rajada",
     "sequence_set": "Abrir bracket/panorama",
-    "open_detail": "Abrir página da foto"
+    "open_detail": "Abrir página da foto",
+    "key_hint": "1-5 avaliar · F favorita · X rejeitar · Space selecionar · Enter abrir"
   },
   "notifications": {
     "copied": "Copiado!",
@@ -986,7 +987,8 @@
       "avg_monochrome": "Monocromático (%)",
       "avg_dynamic_range": "Faixa Dinâmica Média",
       "usage_timeline": "Linha do Tempo de Uso"
-    }
+    },
+    "gear_metric_label": "Métrica do gráfico"
   },
   "login": {
     "title": "Entrar",
@@ -1034,7 +1036,7 @@
     "user_menu": "Menu do usuário"
   },
   "gallery": {
-    "help": "Navegue e filtre a sua biblioteca. Ordene por pontuação, data ou pelo seu gosto pessoal; use os filtros da barra lateral (pessoas, tags, câmera, categoria, faixa de pontuação, momentos) e a busca para encontrar fotos.",
+    "help": "Navegue e filtre a sua biblioteca. Ordene por pontuação, data ou pelo seu gosto pessoal; use os filtros da barra lateral (pessoas, tags, câmera, categoria, faixa de pontuação, momentos) e a busca para encontrar fotos. Teclas no cartão em foco: 1–5 avalia, F favorita, X rejeita (modo edição); / foca a busca, B mostra ou oculta a barra lateral de filtros, V alterna grade e mosaico.",
     "hidden_banner": {
       "message": "{n} fotos ocultadas pelos filtros atuais",
       "some_hidden": "Algumas fotos estão ocultadas pelos seus filtros",
@@ -1711,7 +1713,8 @@
     "split_select_face": "Selecionar rosto {index}",
     "no_faces": "Nenhum rosto encontrado para esta pessoa",
     "split_done": "Pessoa dividida",
-    "split_error": "Falha ao dividir a pessoa"
+    "split_error": "Falha ao dividir a pessoa",
+    "empty_hint": "As pessoas vêm dos rostos que você atribui na página da foto (modo edição). Abra qualquer foto com rostos e escolha Atribuir a uma pessoa para criar a primeira."
   },
   "person_selector": {
     "create_new": "Criar nova pessoa",
@@ -2425,7 +2428,9 @@
     "cluster_photos": "{count} fotos",
     "score": "Pontuação: {score}",
     "date_from": "De",
-    "date_to": "Até"
+    "date_to": "Até",
+    "no_gps_title": "Nenhuma foto com localização",
+    "no_gps_hint": "Nada no escopo carrega coordenadas GPS. Abra uma foto e use o painel de localização dela para situá-la — fotos situadas aparecem aqui."
   },
   "photo_detail": {
     "back": "Voltar",
@@ -2618,6 +2623,9 @@
     "rate": "Avaliar (1–5 estrelas)",
     "reject": "Rejeitar",
     "favorite": "Alternar favorita",
+    "focus_search": "Ir para a caixa de busca",
+    "toggle_filters": "Mostrar / ocultar a barra de filtros",
+    "toggle_layout": "Alternar grade / mosaico",
     "comp_left_wins": "Foto da esquerda vence",
     "comp_right_wins": "Foto da direita vence"
   },

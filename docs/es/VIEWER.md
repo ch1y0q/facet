@@ -179,6 +179,8 @@ Filtra por los patrones detectados por SAMP-Net (el modelo emite exactamente est
 
 ## Ordenación
 
+**Ordenación recordada.** La galería se abre con la última ordenación elegida en el selector de ordenación, y esa elección prevalece sobre `viewer.defaults.sort`. Se recuerda en `localStorage` por navegador, no por cuenta de usuario. Solo se recuerda una elección hecha en el selector de ordenación: una ordenación que llega en un enlace compartido o un marcador, o que aplica un asistente, cambia la vista sin recordarse, y el `sort` propio de un enlace sigue prevaleciendo sobre la recordada. Elegir de nuevo la ordenación predeterminada configurada olvida la elección, igual que restablecer los filtros. **Relevancia** nunca se recuerda, porque necesita una consulta de búsqueda.
+
 Las velocidades de obturación se ordenan por duración de la exposición en
 segundos, incluidos los valores EXIF decimales y racionales: `1/250` y `0.004` son
 iguales. Los valores ausentes, mal formados, cero, negativos y no finitos aparecen
@@ -736,6 +738,8 @@ Pulsa **`F`** (o el interruptor de la cabecera) para activar la API de pantalla 
 
 Pulsa **`Z`** en la caja de luz de vista única para alternar una lupa estilo Photo Mechanic (ajustar ↔ 2×; rueda/`+`/`-` hacen zoom hasta el 800%). Más allá de la escala de ajuste, el panel cambia su miniatura por la fuente `/image` a resolución completa, de modo que juzgas el enfoque crítico con píxeles reales sin salir de la vista. En la tira de contactos de Escenas, `Z` alterna una lupa flotante que sigue al cursor sobre una baldosa (obtenida de la imagen a resolución completa), con un control deslizante de zoom ajustable. Las miniaturas almacenadas se limitan a 640px y la vista ajustada del cuarto oscuro muestra un render de hasta 1920px a partir del original, así que la lupa es la forma de inspeccionar los píxeles más allá de eso. Los paneles del cuarto oscuro y de la comparación muestran primero la miniatura almacenada y pasan al render nítido cuando se ha cargado, así que un panel nunca muestra otro fotograma. En vista única se precargan el fotograma siguiente y el anterior (sus miniaturas de inmediato y sus renders cuando el actual ya es nítido), salvo con el Ahorro de datos del navegador activado, donde un paso puede mostrar brevemente un panel vacío. Un render que no puede empezar en 5 s se sustituye durante 60 segundos por la miniatura almacenada, que se muestra como si fuera nítida.
 
+Una URL cargada anteriormente solo omite el retraso de precarga: la miniatura sigue visible hasta que el navegador vuelva a cargar el renderizado. Si la solicitud falla, la miniatura permanece visible y el resaltado de enfoque puede utilizarla.
+
 **Lupa flotante del laboratorio.** Por separado, una lupa circular sigue al cursor sobre la imagen principal del laboratorio — en vista única y sobre cada panel de comparación — ampliando la fuente `/image` a resolución completa mapeada sobre la imagen realmente encuadrada, de modo que la lupa muestra exactamente el píxel bajo el cursor. La misma lupa también funciona sobre los recortes de primer plano del panel de caras. Un interruptor de la barra de herramientas la activa o desactiva; está activada por defecto y su valor se recuerda en `localStorage` por navegador, no por cuenta de usuario. La lupa se oculta mientras la imagen está ampliada más allá de la escala de ajuste, ya que esa vista ya muestra píxeles reales y desplazarse entraría en conflicto con la lupa; funciona en el modo de pantalla completa del laboratorio y sigue a la imagen al avanzar con `←`/`→` mientras se pasa el cursor. Es independiente del interruptor de lupa propio de la tira de contactos en la cabecera de selección.
 
 ### Insignias por cara
@@ -908,9 +912,17 @@ Todas las estadísticas tienen conciencia de usuario en modo multiusuario: cada 
 | `Shift+Click` | Seleccionar el rango de fotos entre la última seleccionada y la pulsada |
 | `Double-click` | Abrir la foto |
 | `Shift+F10` / `Menu` | Abrir el menú contextual de la tarjeta de foto con el foco (el clic derecho hace lo mismo) |
+| `1`–`5` | Puntuar la foto enfocada con 1–5 estrellas (modo edición; avanza a la siguiente) |
+| `F` | Marcar / desmarcar como favorita la foto enfocada (modo edición) |
+| `X` o `0` | Rechazar / anular el rechazo de la foto enfocada (modo edición; avanza) |
+| `/` | Enfocar el cuadro de búsqueda |
+| `B` | Mostrar / ocultar la barra lateral de filtros |
+| `V` | Cambiar entre cuadrícula y mosaico |
 | `?` | Mostrar la referencia de atajos de teclado (funciona en todas las páginas) |
 
 La foto actual — aquella sobre la que actúan los atajos de valoración, favorito y descarte — está marcada con un contorno de 4px alrededor de su tarjeta; el resto de las tarjetas baja al 50% de opacidad. Nada queda marcado hasta que el cursor se ha movido realmente sobre una foto de los resultados, así que una galería que aún no has recorrido permanece a intensidad completa. Al hacer clic en una foto, el marcador se mueve a ella, de modo que un atajo pulsado justo después de un clic se aplica a la foto en la que hiciste clic, no a la que dejaron las flechas. Al volver de una foto (Atrás o Esc) el marcador se queda en la última foto que viste, de modo que los atajos continúan desde ahí.
+
+**En la página de la foto**, `1`–`5`, `F` y `X` (o `0`) puntúan, marcan como favorita y rechazan la foto abierta, en las mismas condiciones que los botones de puntuación: modo edición, con `viewer.features.show_rating_controls` activado. A diferencia de la galería, nunca avanzan a otra foto; para eso, usa `←` `→`. La referencia `?` los lista en *Vista de foto*.
 
 ## Deshacer
 
