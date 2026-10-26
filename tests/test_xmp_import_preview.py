@@ -901,3 +901,67 @@ def test_preview_and_apply_share_keyword_provenance_without_overriding_review_cl
         assert import_sidecars(conn, str(path), user_id=user, fields=fields)['tags_added'] == 0
     finally:
         conn.close()
+
+
+@pytest.mark.parametrize('policy', ['full', 'basename', 'auto'])
+def test_bounded_naming_notices_retain_per_photo_preview_diagnostics(tmp_path, caplog, policy):
+    conn, first, db = setup(tmp_path, rating=0)
+    paths = [first, tmp_path / 'second.jpg', tmp_path / 'third.jpg']
+    try:
+        for path in paths[1:]:
+            conn.execute('INSERT INTO photos(path,scanned_at) VALUES (?,?)', (str(path), '2020-01-01'))
+        conn.commit()
+        for path in paths:
+            packet = sidecar(path, tags=[f'group|keyword-{index}' for index in range(105)])
+            path.with_suffix('.xmp').write_bytes(packet.read_bytes())
+        before, writes = db.read_bytes(), conn.total_changes
+        result = import_sidecars(conn, dry_run=True, sidecar_naming=policy)
+        assert result['full_ignored'] == (3 if policy == 'basename' else 0)
+        assert len(result['entries']) == 3
+        assert result['ambiguous'] == result['skipped'] == (3 if policy == 'auto' else 0)
+        notices = [record for record in caplog.records if record.name == 'processing.xmp_import']
+        assert len(notices) == 1
+        for entry in result['entries']:
+            if policy == 'auto':
+                assert entry['changes'] == {}
+                assert entry['diagnostics'] == [{'reason': 'ambiguous'}]
+            else:
+                assert len(entry['diagnostics']) == 100
+                assert entry['diagnostics_omitted'] == (6 if policy == 'basename' else 5)
+                assert entry['changes']['star_rating']['after'] == 5
+                if policy == 'basename':
+                    assert entry['diagnostics'][0] == {'reason': 'full_ignored'}
+        assert conn.total_changes == writes and db.read_bytes() == before
+        if policy == 'basename':
+            import subprocess
+            import sys
+            command = [sys.executable, 'facet.py', '--db', str(db), '--import-sidecars', 'all',
+                       '--sidecar-naming', policy, '--dry-run']
+            completed = subprocess.run(command, capture_output=True, text=True, timeout=30)
+            assert completed.returncode == 0, completed.stderr
+            assert json.loads(completed.stdout)['full_ignored'] == 3
+            assert '3 full-name sidecars ignored' in completed.stderr
+            assert 'preview (basename)' in completed.stderr
+            assert db.read_bytes() == before
+    finally:
+        conn.close()
+
+
+def test_malformed_basename_preview_retains_selection_and_parse_diagnostics(tmp_path):
+    conn, path, db = setup(tmp_path, rating=0)
+    try:
+        full = sidecar(path, rating=5)
+        basename = path.with_suffix('.xmp')
+        basename.write_bytes(b'not an XMP packet')
+        db_before, full_before, basename_before = db.read_bytes(), full.read_bytes(), basename.read_bytes()
+        result = import_sidecars(conn, sidecar_naming='basename', dry_run=True)
+        assert result['full_ignored'] == result['skipped'] == 1
+        assert result['updated'] == 0
+        assert result['entries'] == [{'path': str(path), 'sidecar': str(basename), 'changes': {},
+                                      'diagnostics': [{'reason': 'full_ignored'}, {'reason': 'unparseable_sidecar'}]}]
+        assert db.read_bytes() == db_before
+        assert full.read_bytes() == full_before
+        assert basename.read_bytes() == basename_before
+        assert conn.execute('SELECT star_rating FROM photos').fetchone()[0] == 0
+    finally:
+        conn.close()

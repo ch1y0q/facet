@@ -3946,9 +3946,9 @@ def main():
             print(json.dumps(stats, ensure_ascii=False, indent=2))
         logger.info(
             "Sidecar import%s (%s): %d updated, %d unchanged, %d without sidecar, %d skipped "
-            "(%d ambiguous, %d naming mismatches), %d review conflicts, %d untracked legacy review edits",
+            "(%d ambiguous, %d naming mismatches, %d full-name sidecars ignored), %d review conflicts, %d untracked legacy review edits",
             " preview" if args.dry_run else "", sidecar_naming, stats['updated'], stats['unchanged'],
-            stats['missing'], stats['skipped'], stats['ambiguous'], stats['naming_mismatch'],
+            stats['missing'], stats['skipped'], stats['ambiguous'], stats['naming_mismatch'], stats['full_ignored'],
             stats['conflicts'], stats['legacy_review_warnings'],
         )
         exit()
