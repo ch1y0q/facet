@@ -774,3 +774,28 @@ def fake_tab(monkeypatch):
     yield make
     for tab in tabs:
         tab.stop()
+
+
+@pytest.fixture()
+def off_event_loop():
+    """Wrap a sync callable so it fails the test when run on the event loop.
+
+    ``asyncio.get_running_loop()`` returns the loop from a coroutine and raises
+    ``RuntimeError`` from a worker thread, so a wrapped function reached through
+    ``asyncio.to_thread`` passes and one called directly from async code fails.
+    Returns ``guard(function, message)``.
+    """
+    import asyncio
+    import functools
+
+    def guard(function, message):
+        @functools.wraps(function)
+        def guarded(*args, **kwargs):
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                return function(*args, **kwargs)
+            pytest.fail(message)
+        return guarded
+
+    return guard
