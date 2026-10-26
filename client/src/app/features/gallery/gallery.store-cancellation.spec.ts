@@ -862,7 +862,8 @@ describe('GalleryStore read cancellation with HttpClient', () => {
     http.expectNone(r => r.url === '/api/photos');
   });
 
-  it.each(['success', 'failure', 'cancellation'] as const)('refills filtered page offsets after membership loss and %s before nextPage', async outcome => {
+  it.each(['success', 'failure', 'cancellation', 'active', 'active-failure', 'active-identity', 'active-filter', 'parked'] as const)('refills filtered page offsets after membership loss and %s before nextPage', async outcome => {
+    const activeRetry = outcome.startsWith('active');
     store.filters.update(f => ({ ...f, per_page: 2, no_gps: '1' }));
     const photos = Array.from({ length: 6 }, (_, i) => makePhoto({ path: `/gps${i}.jpg` }));
     const loading = store.loadPhotos();
@@ -902,7 +903,7 @@ describe('GalleryStore read cancellation with HttpClient', () => {
     let refills = http.match(r => r.url === '/api/photos');
     if (outcome !== 'success') {
       expect(refills).toHaveLength(1);
-      if (outcome === 'failure') refills[0].flush({}, { status: 500, statusText: 'Failed' });
+      if (outcome === 'failure' || activeRetry || outcome === 'parked') refills[0].flush({}, { status: 500, statusText: 'Failed' });
       else {
         events.next(new NavigationStart(3, '/photo?path=/gps3.jpg'));
         store.parkListingReads();
@@ -910,14 +911,52 @@ describe('GalleryStore read cancellation with HttpClient', () => {
       }
       for (const progress of http.match(r => r.url === '/api/photos/review_progress')) if (!progress.cancelled) progress.flush(COUNTS);
       await returning;
-      store.parkListingReads();
-      events.next(new NavigationStart(4, '/'));
-      (TestBed.inject(Router) as unknown as { url: string }).url = '/';
-      events.next(new NavigationEnd(4, '/', '/'));
-      returning = store.resumeListingReads();
+      if (activeRetry) returning = store.nextPage();
+      else if (outcome === 'parked') {
+        events.next(new NavigationStart(3, '/photo?path=/gps3.jpg'));
+        store.parkListingReads();
+        (TestBed.inject(Router) as unknown as { url: string }).url = '/photo?path=/gps3.jpg';
+        events.next(new NavigationEnd(3, '/photo?path=/gps3.jpg', '/photo?path=/gps3.jpg'));
+        returning = store.nextPage(undefined, { whileParked: true });
+      } else {
+        store.parkListingReads();
+        events.next(new NavigationStart(4, '/'));
+        (TestBed.inject(Router) as unknown as { url: string }).url = '/';
+        events.next(new NavigationEnd(4, '/', '/'));
+        returning = store.resumeListingReads();
+      }
+      if (activeRetry) await store.nextPage(); // Concurrent paging cannot bypass the structural repair.
       let retry!: TestRequest;
       await vi.waitFor(() => { retry = request('/photos'); });
       refills = [retry];
+      if (outcome === 'active-identity' || outcome === 'active-filter') {
+        if (outcome === 'active-identity') { identity.set('bob'); TestBed.tick(); }
+        const newLoad = outcome === 'active-filter' ? store.updateFilter('camera', 'Canon') : store.loadPhotos();
+        expect(retry.cancelled).toBe(true);
+        request('/photos').flush({ ...EMPTY_PAGE, photos: [makePhoto({ path: '/new-scope.jpg', star_rating: 2 })], total: 1 });
+        for (const progress of http.match(r => r.url === '/api/photos/review_progress')) if (!progress.cancelled) progress.flush(COUNTS);
+        await Promise.all([returning, newLoad]);
+        const hints = http.match(r => r.url === '/api/photos/keeper_hints').filter(read => !read.cancelled);
+        expect(hints).toHaveLength(1);
+        hints[0].flush({ '/new-scope.jpg': { better_path: '/better.jpg' } });
+        await vi.waitFor(() => { expect(store.photos()[0].keeper_hint).toEqual({ better_path: '/better.jpg' }); });
+        expect(store.photos().map(photo => [photo.path, photo.star_rating])).toEqual([['/new-scope.jpg', 2]]);
+        expect(store.filters().page).toBe(1);
+        http.expectNone(r => r.url === '/api/photos');
+        return;
+      }
+      if (outcome === 'active-failure') {
+        expect(retry.request.params.get('page')).toBe('1');
+        retry.flush({}, { status: 500, statusText: 'Failed again' });
+        for (const progress of http.match(r => r.url === '/api/photos/review_progress')) if (!progress.cancelled) progress.flush(COUNTS);
+        await returning;
+        expect(store.filters().page).toBe(2);
+        expect(store.photos().map(photo => photo.path)).toEqual(['/gps0.jpg', '/gps1.jpg', '/gps3.jpg']);
+        http.expectNone(r => r.url === '/api/photos');
+        returning = store.nextPage();
+        await vi.waitFor(() => { retry = request('/photos'); });
+        refills = [retry];
+      }
     }
     if (refills.length) {
       expect(refills).toHaveLength(1);
@@ -929,14 +968,16 @@ describe('GalleryStore read cancellation with HttpClient', () => {
       }
     }
     for (const progress of http.match(r => r.url === '/api/photos/review_progress')) if (!progress.cancelled) progress.flush(COUNTS);
-    await returning;
+    if (!activeRetry) await returning;
+    if (outcome === 'parked') await store.resumeListingReads();
     for (const hints of http.match(r => r.url === '/api/photos/keeper_hints')) if (!hints.cancelled) hints.flush({});
-    const tail = store.nextPage();
-    const last = request('/photos');
+    const tail = activeRetry ? returning : store.nextPage();
+    let last!: TestRequest;
+    await vi.waitFor(() => { last = request('/photos'); });
     expect(last.request.params.get('page')).toBe('3');
     last.flush({ ...EMPTY_PAGE, photos: remaining.slice(4), total: 5, has_more: false });
     await tail;
-    request('/photos/keeper_hints').flush({});
+    for (const hints of http.match(r => r.url === '/api/photos/keeper_hints')) if (!hints.cancelled) hints.flush({});
     expect(store.photos().map(photo => photo.path)).toEqual(remaining.map(photo => photo.path));
     expect(store.total()).toBe(5);
     expect(store.selectedPaths()).toEqual(new Set(['/gps3.jpg']));

@@ -295,6 +295,8 @@ export class GalleryStore {
   private readonly parkedRefreshPaths = new Set<string>();
   private readonly pendingKeeperHints = new Set<string>();
   private pageReadsInFlight = 0;
+  /** Concurrent paging cannot bypass an awaited repair of shifted offsets. */
+  private listingPageRepairSeq: number | null = null;
   private progressReadsInFlight = 0;
   private progressRefreshOwed = false;
   private suspendedFromPath: string | null = null;
@@ -1214,9 +1216,9 @@ export class GalleryStore {
         await this.refreshViewInPlace(loadSeq);
       }
     } catch {
-      // Keep a failed row repair for the next attach; parking already claimed cancelled reads.
+      // Retain failed repair debt; parking already claimed cancelled reads.
       if (this.claimRefresh(loadSeq)) {
-        if (membershipChanged) this.listingRefreshOwed = true;
+        if (membershipChanged || paths === null) this.listingRefreshOwed = true;
         const loaded = new Set(this.photos().map(photo => photo.path));
         for (const path of paths ?? claimedPaths) if (loaded.has(path)) this.parkedRefreshPaths.add(path);
       }
@@ -1332,7 +1334,18 @@ export class GalleryStore {
   async nextPage(acceptResult: () => boolean = () => true, { whileParked = false }: { whileParked?: boolean } = {}): Promise<void> {
     if (this.destroyRef.destroyed || (!this.listingReadsActive && !(whileParked && this.photoReadAllowed()))) return;
     this.syncReadOwner();
-    if (!this.listingReadsActive && this.listingPagesInterrupted) {
+    if (this.listingPageRepairSeq === this._loadSeq) return;
+    if (this.listingReadsActive && this.listingRefreshOwed) {
+      if (this.loading()) return;
+      // Repair shifted offsets once per paging action; an error leaves debt for retry.
+      const seq = this._loadSeq;
+      this.listingPageRepairSeq = seq;
+      this.listingRefreshOwed = false;
+      try { await this.refreshPaths(null); }
+      finally { if (this.listingPageRepairSeq === seq) this.listingPageRepairSeq = null; }
+      if (seq !== this._loadSeq || !this.listingReadsActive || this.listingRefreshOwed || this.viewRefreshOwed) return;
+    }
+    if (!this.listingReadsActive && (this.listingPagesInterrupted || this.listingRefreshOwed)) {
       if (this.loading()) return;
       const seq = this._loadSeq;
       const identity = this.auth.identity();
