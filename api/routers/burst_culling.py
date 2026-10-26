@@ -22,7 +22,7 @@ from typing import Literal, Optional, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from api import organization_history
+from api import organization_capture
 from api.agent import live_updates
 from api.auth import CurrentUser, get_optional_user, require_edition
 from api.database import get_db
@@ -2764,7 +2764,7 @@ def _confine_groups_to_scope(groups, path_scope):
     return confined, spanning_skipped
 
 
-@organization_history.grouped
+@organization_capture.grouped
 def run_auto_cull(conn, db_path, user_id, *, group_by, strictness, min_keep,
                   trim_brackets=False, highlights_album='', dry_run=True,
                   album_id=None, date_from=None, date_to=None, path_scope=None,
@@ -3071,7 +3071,7 @@ def culling_plan(
 _STANDALONE_REJECT_CHUNK = 500
 
 
-@organization_history.grouped
+@organization_capture.grouped
 def reject_standalone_below(conn, user_id, scope, min_score, exclude_paths, dry_run):
     """Reject standalone photos scoring under ``min_score``; returns the affected paths.
 

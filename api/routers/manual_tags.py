@@ -13,9 +13,9 @@ import sqlite3
 from fastapi import APIRouter, Depends, HTTPException
 
 from api.auth import CurrentUser, require_edition
-from api.config import invalidate_stats_cache, is_multi_user_enabled
+from api.config import is_multi_user_enabled
 from api.database import get_db
-from api.db_helpers import is_locked_error, retry_on_locked
+from api.db_helpers import after_commit, is_locked_error, retry_on_locked
 from api.models.manual_tags import (
     BatchManualTagRequest, BatchManualTagResponse, ManualTagDeleteResponse,
     ManualTagRequest, ManualTagResponse,
@@ -46,10 +46,6 @@ def _created_by(user):
 def _drop_tag_caches(conn):
     """Clear the DB-persisted tag dropdown row, then the in-process stats cache."""
     conn.execute("DELETE FROM stats_cache WHERE key = 'tags'")
-
-
-def _after_commit():
-    invalidate_stats_cache()
 
 
 @router.put("/api/photo/manual_tags", response_model=ManualTagResponse)
@@ -90,7 +86,7 @@ def api_add_manual_tag(
                 raise
             logger.exception("Database error adding manual tag")
             raise HTTPException(status_code=500, detail='Internal server error')
-    _after_commit()
+    after_commit()
     return {"success": True, "tag": tag, "skipped_existing": False}
 
 
@@ -118,7 +114,7 @@ def api_delete_manual_tag(
             logger.exception("Database error deleting manual tag")
             raise HTTPException(status_code=500, detail='Internal server error')
     if removed:
-        _after_commit()
+        after_commit()
     return {"success": True, "tag": tag, "removed": removed}
 
 
@@ -181,5 +177,5 @@ def api_batch_manual_tags(
                 raise
             logger.exception("Database error in batch manual tags")
             raise HTTPException(status_code=500, detail='Internal server error')
-    _after_commit()
+    after_commit()
     return {"success": True, "count": count}

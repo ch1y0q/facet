@@ -1069,9 +1069,12 @@ def export_viewer_db(source_db='photo_scores_pro.db', output_path=None, thumbnai
                      "raw_sharpness_variance = NULL, caption_embedding = NULL")
     dst_conn.commit()
 
-    # The agent side tables never ship in a viewer export: the provenance table holds user paths and
-    # paths, and the token table holds bearer-secret hashes. The viewer's own init_database
-    # re-creates both empty. (The incremental path copies neither.)
+    # Three side tables never ship in a viewer export: the provenance table holds user paths, the
+    # token table holds bearer-secret hashes, and organization_history holds per-owner before/after
+    # snapshots of edited photos. The viewer's own init_database re-creates all three empty. (The
+    # incremental path copies none of them.) organization_revisions and organization_clock stay: they
+    # are trigger-maintained derived counters (photo paths and integers only) that the
+    # destination's own triggers keep advancing.
     for table in VIEWER_EXPORT_EXCLUDED_TABLES:
         dst_conn.execute(f"DROP TABLE IF EXISTS {table}")
     dst_conn.commit()

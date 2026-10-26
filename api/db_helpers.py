@@ -28,10 +28,10 @@ from api.config import (
     _photo_tags_available, _photo_tags_lock, PHOTO_TAGS_CACHE_TTL,
     _count_cache, _count_cache_lock, COUNT_CACHE_TTL,
     is_multi_user_enabled, get_user_directories, _FULL_CONFIG, VIEWER_CONFIG,
-    config_load_failed, server_scoring_config,
+    config_load_failed, server_scoring_config, invalidate_stats_cache,
 )
 from api import database as _database
-from api import organization_history
+from api import organization_capture
 from api.change_token import db_change_token
 from api.database import get_db_connection
 from comparison.comparison_manager import record_culling_pairs
@@ -81,6 +81,14 @@ LIBRARY_BUSY_RETRY_AFTER_SECONDS = 5
 # table is locked", "database schema is locked") is a conflict inside one
 # connection, which waiting does not clear, so it is deliberately not matched.
 _BUSY_MESSAGES = ('database is locked', 'database is busy')
+
+
+def after_commit() -> None:
+    """Drop the in-process caches a committed organization/tag write makes stale."""
+    # Local import: api.routers.burst_culling imports this module (import cycle).
+    from api.routers.burst_culling import _invalidate_culling_groups_cache
+    invalidate_stats_cache()
+    _invalidate_culling_groups_cache()
 
 
 def is_locked_error(ex) -> bool:
@@ -262,7 +270,7 @@ def trigger_auto_retrain(db_path, user_id, added=1, conn=None):
         logger.debug("Auto-retrain trigger skipped", exc_info=True)
 
 
-@organization_history.grouped
+@organization_capture.grouped
 def record_culling_decision(conn, keep_paths, reject_paths, sequence_members,
                             user_id=None, group_type='burst', commit=True, record=True):
     """Persist keepers, record ranker training pairs, commit, nudge retrain.
@@ -1763,7 +1771,7 @@ def set_photos_rejected(conn, paths, user_id, agent=False):
     ).fetchall()]
     if not visible:
         return 0
-    history_before = organization_history.begin(conn, user_id, 'review', visible)
+    history_before = organization_capture.begin(conn, user_id, 'review', visible)
     before = snapshot_labels(conn, agent, user_id, visible)
     if user_id and is_multi_user_enabled():
         conn.executemany(
@@ -1776,7 +1784,7 @@ def set_photos_rejected(conn, paths, user_id, agent=False):
         ph = ','.join('?' * len(visible))
         conn.execute(f"UPDATE photos SET is_rejected = 1, is_kept = 0 WHERE path IN ({ph})", visible)
     record_label_origin(conn, agent, user_id, visible, before)
-    organization_history.finish(conn, user_id, 'review', history_before)
+    organization_capture.finish(conn, user_id, 'review', history_before)
     return len(visible)
 
 
@@ -1789,7 +1797,7 @@ def set_photos_kept(conn, paths, user_id, agent=False):
         conn, f"SELECT path FROM photos WHERE path IN ({{placeholders}}) AND {vis_sql}",
         list(paths), after=vis_params,
     )]
-    history_before = organization_history.begin(conn, user_id, 'review', visible)
+    history_before = organization_capture.begin(conn, user_id, 'review', visible)
     before = read_labels(conn, user_id, visible)
     if user_id and is_multi_user_enabled():
         conn.executemany(
@@ -1803,7 +1811,7 @@ def set_photos_kept(conn, paths, user_id, agent=False):
                          [(path,) for path in visible])
     origin_paths = visible if agent else [path for path in visible if before[path][2]]
     record_label_origin(conn, agent, user_id, origin_paths, before)
-    organization_history.finish(conn, user_id, 'review', history_before)
+    organization_capture.finish(conn, user_id, 'review', history_before)
     return len(visible)
 
 
