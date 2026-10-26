@@ -80,6 +80,8 @@ if _script_dir not in sys.path:
     sys.path.insert(0, _script_dir)
 
 import json
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 from datetime import datetime
 from db import DEFAULT_DB_PATH, init_database, get_connection, check_disk_space, write_photo_tags
@@ -2409,8 +2411,10 @@ def main():
     args = parser.parse_args()
     if (args.sidecar_fields is not None or args.overwrite_sidecar_review) and not args.import_sidecars:
         parser.error("--sidecar-fields and --overwrite-sidecar-review require --import-sidecars")
-    if args.sidecar_fields is not None and (not set(args.sidecar_fields.split(',')) <= {'review', 'gps', 'keywords'}):
-        parser.error("--sidecar-fields must select review,gps,keywords")
+    if args.sidecar_fields is not None:
+        from processing.xmp_import import SIDECAR_FIELDS
+        if not set(args.sidecar_fields.split(',')) <= set(SIDECAR_FIELDS):
+            parser.error(f"--sidecar-fields must select {','.join(SIDECAR_FIELDS)}")
     if args.sidecar_naming is not None and not args.import_sidecars:
         parser.error("--sidecar-naming requires --import-sidecars")
     if args.reconcile_keywords and not args.export_sidecars:
@@ -3926,8 +3930,6 @@ def main():
         from processing.xmp_import import import_sidecars
         root = None if args.import_sidecars == 'all' else args.import_sidecars
         sidecar_naming = args.sidecar_naming or "full"
-        import sqlite3
-        from contextlib import closing
         try:
             if args.dry_run:
                 # A preview must not migrate the DB, stamp edit clocks, or commit the caller's writes.
@@ -3936,7 +3938,8 @@ def main():
                 init_database(args.db)
                 connection = get_connection(args.db)
             with connection as conn:
-                conn.row_factory = sqlite3.Row if args.dry_run else conn.row_factory
+                if args.dry_run:
+                    conn.row_factory = sqlite3.Row
                 stats = import_sidecars(conn, root, user_id=args.user,
                                         overwrite_manual_gps=args.overwrite_manual_gps,
                                         dry_run=args.dry_run,
@@ -3955,10 +3958,10 @@ def main():
             print(json.dumps(stats, ensure_ascii=False, indent=2))
         logger.info(
             "Sidecar import%s (%s): %d updated, %d unchanged, %d without sidecar, %d skipped "
-            "(%d ambiguous, %d naming mismatches, %d full-name sidecars ignored), %d review conflicts, %d untracked legacy review edits",
+            "(%d ambiguous, %d naming mismatches, %d full-name sidecars ignored, %d basename sidecars ignored), %d review conflicts, %d untracked legacy review edits",
             " preview" if args.dry_run else "", sidecar_naming, stats['updated'], stats['unchanged'],
             stats['missing'], stats['skipped'], stats['ambiguous'], stats['naming_mismatch'], stats['full_ignored'],
-            stats['conflicts'], stats['legacy_review_warnings'],
+            stats['basename_ignored'], stats['conflicts'], stats['legacy_review_warnings'],
         )
         exit()
 

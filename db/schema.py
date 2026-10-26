@@ -1214,7 +1214,7 @@ SCHEMA_VERSION = 1
 MIGRATIONS: list[tuple[int, Callable[[Any], None]]] = []
 
 
-def _table_exists(conn, name):
+def table_exists(conn, name):
     return conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
     ).fetchone() is not None
@@ -1277,7 +1277,7 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
 
         # Detect a brand-new DB before any CREATE runs, so the version ladder
         # can stamp it to SCHEMA_VERSION instead of replaying historical steps.
-        is_fresh = not _table_exists(conn, 'photos')
+        is_fresh = not table_exists(conn, 'photos')
 
         conn.execute(_build_create_table_sql(
             'saved_places', SAVED_PLACES_COLUMNS,
@@ -1549,7 +1549,7 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
         # narrower schema is detected (caption+tags only), drop it so the
         # CREATE below installs the covering schema. The FTS data is then
         # repopulated by db.fts.rebuild_fts (or whoever rebuilds next).
-        fts_existed = _table_exists(conn, 'photos_fts')
+        fts_existed = table_exists(conn, 'photos_fts')
         fts_current = fts_schema_is_current(conn)
         fts_recreated = False
         if not (fts_existed and fts_current) and not conn.in_transaction:
