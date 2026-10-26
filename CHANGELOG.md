@@ -7,6 +7,7 @@ All notable changes to Facet are documented in this file.
 ### Fixed
 
 - **Retry capture-date resets during brief database contention.** Use file date retries busy writes and reports database failures without exposing internal details; failed transactions preserve the manual date and history.
+- **Readable sidecar import preview errors.** Missing, unreadable or invalid databases now produce a clear refusal instead of a SQLite traceback, without creating or upgrading the database.
 
 ## [1.24.0] "Diaphragme" — 2026-10-26
 
