@@ -1,4 +1,5 @@
 """Capture walltime correction: bounded preview, atomic apply, strict dates."""
+import sqlite3
 from unittest.mock import patch
 from pathlib import Path
 
@@ -206,7 +207,7 @@ def test_apply_rolls_back_all_rows_on_database_failure(edition_client, seed_phot
     with get_db() as conn, conn:
         conn.execute("CREATE TRIGGER capture_fail BEFORE UPDATE OF date_taken ON photos WHEN NEW.path='/capture/1.jpg' BEGIN SELECT RAISE(ABORT, 'test failure'); END")
     try:
-        with pytest.raises(Exception, match='test failure'):
+        with pytest.raises(sqlite3.IntegrityError, match='test failure'):
             edition_client.post('/api/photos/capture_date/apply', json={**body, 'preview_token': preview['preview_token']})
         assert values(paths) == [('2024:01:01 00:00:00', 0)] * 2
     finally:
