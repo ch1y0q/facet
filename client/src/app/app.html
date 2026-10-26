@@ -342,8 +342,8 @@
         (click)="pageHelp.toggle()"
         [class.!text-[var(--mat-sys-primary)]]="pageHelp.open()"
         [attr.aria-pressed]="pageHelp.open()"
-        [matTooltip]="I18N.culling.help | translate"
-        [attr.aria-label]="I18N.culling.help | translate"
+        [matTooltip]="I18N.nav.help | translate"
+        [attr.aria-label]="I18N.nav.help | translate"
       >
         <mat-icon>{{ pageHelp.open() ? 'help' : 'help_outline' }}</mat-icon>
       </button>
@@ -389,13 +389,6 @@
               {{ I18N.dialog.connect_assistant.menu | translate }}
             </button>
           }
-          @if (auth.isMultiUser() || auth.loginPasswordRequired()) {
-            <mat-divider />
-            <button mat-menu-item (click)="logout()">
-              <mat-icon>logout</mat-icon>
-              {{ I18N.auth.logout | translate }}
-            </button>
-          }
           <mat-divider />
           <button mat-menu-item (click)="openCardActionsDialog()">
             <mat-icon>tune</mat-icon>
@@ -403,8 +396,15 @@
           </button>
           <button mat-menu-item (click)="pageHelp.toggle()">
             <mat-icon>help_outline</mat-icon>
-            {{ I18N.culling.help | translate }}
+            {{ I18N.nav.help | translate }}
           </button>
+          @if (auth.isMultiUser() || auth.loginPasswordRequired()) {
+            <mat-divider />
+            <button mat-menu-item (click)="logout()">
+              <mat-icon>logout</mat-icon>
+              {{ I18N.auth.logout | translate }}
+            </button>
+          }
         </mat-menu>
         <mat-menu #langMenu="matMenu">
           @for (lang of i18n.languages(); track lang.code) {

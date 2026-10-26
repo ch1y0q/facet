@@ -505,6 +505,7 @@ export class CullGroupIconPipe implements PipeTransform {
 @Pipe({ name: 'cullGroupLabel' })
 export class CullGroupLabelPipe implements PipeTransform {
   private static readonly KEYS: Record<string, string> = {
+    all: 'culling.group_by.all',
     burst: 'culling.group_by.bursts',
     similar: 'culling.group_by.similar',
     scene: 'culling.group_by.scenes',

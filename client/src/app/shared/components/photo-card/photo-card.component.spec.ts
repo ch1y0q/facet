@@ -852,6 +852,19 @@ describe('PhotoCardComponent current-photo marker', () => {
     expect(hint()).toBeUndefined();
   });
 
+  it.each([
+    ['not the active card', { isActive: false, gridHasActiveCard: true, mosaicMode: false }],
+    ['no card active in the grid', { isActive: true, gridHasActiveCard: false, mosaicMode: false }],
+    ['mosaic layout', { isActive: true, gridHasActiveCard: true, mosaicMode: true }],
+  ])('hides the focused-card shortcut hint for %s even with edition and rating controls on', (_name, inputs) => {
+    const fixture = createCard(inputs);
+    fixture.componentRef.setInput('isEditionMode', true);
+    fixture.componentRef.setInput('config', { features: { show_rating_controls: true } });
+    fixture.detectChanges();
+    expect([...host(fixture).querySelectorAll('div[aria-hidden="true"]')]
+      .find(node => node.textContent?.trim() === 'photoCard.key_hint')).toBeUndefined();
+  });
+
   it('is neither current nor dimmed by default', () => {
     const fixture = createCard();
     expect(fixture.componentInstance.isActive()).toBe(false);
