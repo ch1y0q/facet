@@ -94,8 +94,8 @@ Configuration:
                              'Outside commercial mode, on 16gb/24gb the aesthetic column shows n/a '
                              '(TOPIQ runs only in a real scan; commercial mode shows the Q-ReAlign score)')
     scan_group.add_argument('--dry-run-count', type=int, default=DEFAULT_DRY_RUN_COUNT,
-                        help=f'Number of photos to process in dry-run mode (default: '
-                             f'{DEFAULT_DRY_RUN_COUNT}, requires --dry-run)')
+                        help=f'Number of sample photos to score in scan dry-run mode (default: '
+                             f'{DEFAULT_DRY_RUN_COUNT}, requires --dry-run; does not limit sidecar-import preview)')
     scan_group.add_argument('--resume', action='store_true',
                         help='Resume the last interrupted/failed scan run (reuses its directories; '
                              'with --force, skips files already re-scored since that run started)')
@@ -368,18 +368,19 @@ Configuration:
                              'to the global rating columns; pass --user for per-user ratings in multi-user mode')
     export_group.add_argument('--import-sidecars', type=str, nargs='?', const='all', metavar='PATH',
                         help='Import ratings/labels/tags, Facet decisions and manual GPS from XMP sidecars back into the DB '
-                             '(optional: limit to a path subtree; default: all photos)')
+                             '(optional: limit to a path subtree; default: all photos). Add --dry-run for a read-only '
+                             'JSON preview using an existing database')
     export_group.add_argument('--sidecar-naming', choices=('full', 'basename', 'auto'), default=None,
-                        help='With --import-sidecars: full (default) reads <image.ext>.xmp or '
+                        help='With --import-sidecars (apply or preview): full (default) reads <image.ext>.xmp or '
                              '<image.ext>.facet.xmp; basename reads <image>.xmp; auto refuses '
                              'both-present naming families. Shared or other-image sidecars are refused')
 
     export_group.add_argument('--sidecar-fields', type=str, metavar='FIELDS',
-                        help='With --import-sidecars: comma-separated review,gps,keywords (default: all)')
+                        help='With --import-sidecars (apply or preview): comma-separated review,gps,keywords (default: all)')
     export_group.add_argument('--overwrite-sidecar-review', action='store_true',
-                        help='With --import-sidecars: explicitly allow an older packet to replace newer review edits')
+                        help='With --import-sidecars (apply or preview): explicitly allow an older packet to replace newer review edits')
     export_group.add_argument('--overwrite-manual-gps', action='store_true',
-                        help='With --import-sidecars: replace existing manual GPS, including cleared locations')
+                        help='With --import-sidecars (apply or preview): replace existing manual GPS, including cleared locations')
     export_group.add_argument('--import-lightroom', type=str, default=None, metavar='FILE',
                         help='Import Lightroom\'s own rating/pick/reject state from a file '
                              'exported by the facet.lrplugin plug-in (Lightroom wins). Requires '
