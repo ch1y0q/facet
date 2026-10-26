@@ -20,7 +20,7 @@ import {
   type GalleryFilters, type GalleryMode, type TooltipMode, type PanelActivation, type DisplayOptions,
   type ViewFilterParams,
   DEFAULT_FILTERS, DISPLAY_OPTION_KEYS,
-  GALLERY_MODE_KEY, DRAWER_STATE_KEY, CARD_WIDTH_KEY, GALLERY_SESSION_QUERY_KEY,
+  GALLERY_MODE_KEY, DRAWER_STATE_KEY, CARD_WIDTH_KEY, GALLERY_SESSION_QUERY_KEY, LAST_SORT_KEY, RELEVANCE_SORT,
   loadDisplayOptionsFromStorage, saveDisplayOptionsToStorage,
   countActiveFilters, applyQueryParams, applySavedAlbumFilters, buildSyncParams, buildApiParams,
   buildViewFilterParams, viewFilterParamsEqual, anyHideToggleActive,
@@ -834,6 +834,14 @@ export class GalleryStore {
       // Apply config defaults to filters, then overlay localStorage display options, then URL params
       const defaults = cfg.defaults;
       const storedDisplay = loadDisplayOptionsFromStorage();
+      // The sort the user last picked in the sort control (localStorage, see
+      // setUserSort) seeds the base, under the URL: "sort how I used to" beats
+      // "sort how the config says", and a shared link's own sort beats both.
+      // Relevance is never remembered: it means nothing without a query.
+      const defaultSort = defaults?.sort || 'aggregate';
+      let lastSort = '';
+      try { lastSort = localStorage.getItem(LAST_SORT_KEY) ?? ''; } catch { /* ignore */ }
+      const rememberedSort = lastSort && lastSort !== defaultSort && lastSort !== RELEVANCE_SORT ? lastSort : '';
       const base: GalleryFilters = {
         ...DEFAULT_FILTERS,
         per_page: cfg.pagination?.default_per_page ?? 64,
@@ -842,7 +850,7 @@ export class GalleryStore {
         // disagreed. A MISSING field resolves to '' rather than a guess, which
         // is what makes /search omit `threshold` and resolve its own.
         search_threshold: seededSearchThreshold(cfg.search_threshold_default),
-        sort: defaults?.sort ?? 'aggregate',
+        sort: rememberedSort || defaultSort,
         sort_direction: defaults?.sort_direction ?? 'DESC',
         type: defaults?.type ?? '',
         hide_details: storedDisplay.hide_details ?? (defaults?.hide_details ?? true),
@@ -1298,6 +1306,22 @@ export class GalleryStore {
     await this.updateFilters(updates);
   }
 
+  /** The sort control's entry point: apply the sort AND remember it as this
+   *  browser's landing sort. Only a user's pick in the sort control lands
+   *  here -- URL hydration and the assistant's updateFilters never touch the
+   *  memory, so a shared link or an agent re-sort is not mistaken for a
+   *  choice. Picking the default forgets the memory; relevance is never
+   *  remembered (it means nothing without a query). */
+  async setUserSort(sort: string): Promise<void> {
+    if (sort !== RELEVANCE_SORT) {
+      try {
+        if (sort === (this.config()?.defaults?.sort || 'aggregate')) localStorage.removeItem(LAST_SORT_KEY);
+        else localStorage.setItem(LAST_SORT_KEY, sort);
+      } catch { /* ignore */ }
+    }
+    await this.updateFilter('sort', sort);
+  }
+
   /** Update multiple filters; reload only when the query changes. */
   async updateFilters(updates: Partial<GalleryFilters>): Promise<void> {
     const keys = Object.keys(updates) as (keyof GalleryFilters)[];
@@ -1363,6 +1387,7 @@ export class GalleryStore {
 
   /** Reset all filters to config defaults */
   async resetFilters(): Promise<void> {
+    try { localStorage.removeItem(LAST_SORT_KEY); } catch { /* ignore */ }
     this.currentAlbum.set(null);
     this.journal.recordFilters({ reset: true });
     const cfg = this.config();
