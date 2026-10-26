@@ -4,6 +4,10 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Keep targeted gallery repairs targeted.** Returning from a photo retries cancelled row updates without replaying completed pages when paging was idle. Failed repairs retain their targets, and obsolete returns cannot start follow-up reads for another account or filter.
+
 ## [1.24.0] "Diaphragme" — 2026-10-26
 
 
