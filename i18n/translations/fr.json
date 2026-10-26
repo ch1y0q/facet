@@ -208,7 +208,8 @@
     "duplicate_set": "Ouvrir le groupe de doublons",
     "burst_set": "Ouvrir le groupe de rafale",
     "sequence_set": "Ouvrir bracket/panorama",
-    "open_detail": "Ouvrir la page photo"
+    "open_detail": "Ouvrir la page photo",
+    "key_hint": "1-5 noter · F favori · X rejeter · Space sélectionner · Entrée ouvrir"
   },
   "notifications": {
     "copied": "Copie !",
@@ -986,7 +987,8 @@
       "avg_monochrome": "Monochrome (%)",
       "avg_dynamic_range": "Plage dynamique moy.",
       "usage_timeline": "Chronologie d'utilisation"
-    }
+    },
+    "gear_metric_label": "Métrique du graphique"
   },
   "login": {
     "title": "Connexion",
@@ -1034,7 +1036,7 @@
     "user_menu": "Menu utilisateur"
   },
   "gallery": {
-    "help": "Parcourez et filtrez votre bibliothèque. Triez par score, date ou par vos goûts personnels ; utilisez les filtres de la barre latérale (personnes, mots-clés, appareil, catégorie, plage de score, moments) et la recherche pour trouver des photos.",
+    "help": "Parcourez et filtrez votre bibliothèque. Triez par score, date ou par vos goûts personnels ; utilisez les filtres de la barre latérale (personnes, mots-clés, appareil, catégorie, plage de score, moments) et la recherche pour trouver des photos. Touches sur la carte ciblée : 1–5 note, F met en favori, X rejette (mode édition) ; / cible la recherche, B affiche ou masque la barre latérale des filtres, V bascule grille et mosaïque.",
     "hidden_banner": {
       "message": "{n} photos masquées par les filtres actuels",
       "some_hidden": "Certaines photos sont masquées par vos filtres",
@@ -1710,7 +1712,8 @@
     "split_select_face": "Sélectionner le visage {index}",
     "no_faces": "Aucun visage trouvé pour cette personne",
     "split_done": "Personne séparée",
-    "split_error": "Échec de la séparation de la personne"
+    "split_error": "Échec de la séparation de la personne",
+    "empty_hint": "Les personnes viennent des visages que vous attribuez sur la page d'une photo (mode édition). Ouvrez une photo avec des visages et choisissez Attribuer à une personne pour créer la première."
   },
   "person_selector": {
     "create_new": "Créer une nouvelle personne",
@@ -2424,7 +2427,9 @@
     "cluster_photos": "{count} photos",
     "score": "Score : {score}",
     "date_from": "Du",
-    "date_to": "Au"
+    "date_to": "Au",
+    "no_gps_title": "Aucune photo avec un lieu",
+    "no_gps_hint": "Rien dans le périmètre ne porte de coordonnées GPS. Ouvrez une photo et utilisez son panneau Lieu pour la placer — les photos placées apparaissent ici."
   },
   "photo_detail": {
     "back": "Retour",
@@ -2637,6 +2642,9 @@
     "rate": "Noter (1–5 étoiles)",
     "reject": "Rejeter",
     "favorite": "Basculer le favori",
+    "focus_search": "Aller au champ de recherche",
+    "toggle_filters": "Afficher / masquer le panneau de filtres",
+    "toggle_layout": "Basculer grille / mosaïque",
     "comp_left_wins": "La photo de gauche gagne",
     "comp_right_wins": "La photo de droite gagne"
   },

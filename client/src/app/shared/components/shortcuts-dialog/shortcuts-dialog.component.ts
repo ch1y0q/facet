@@ -63,6 +63,9 @@ export class ShortcutsDialogComponent {
         { keys: ['F'], labelKey: 'shortcuts.favorite' },
         { keys: ['Esc'], labelKey: 'shortcuts.clear_selection' },
         { keys: ['Shift', 'F10'], labelKey: 'shortcuts.context_menu' },
+        { keys: ['/'], labelKey: this.I18N.shortcuts.focus_search },
+        { keys: ['B'], labelKey: this.I18N.shortcuts.toggle_filters },
+        { keys: ['V'], labelKey: this.I18N.shortcuts.toggle_layout },
       ],
     },
     {
@@ -70,6 +73,9 @@ export class ShortcutsDialogComponent {
       rows: [
         { keys: ['K'], labelKey: this.I18N.review.shortcut },
         { keys: ['←', '→'], labelKey: 'shortcuts.navigate' },
+        { keys: ['1', '–', '5'], labelKey: 'shortcuts.rate' },
+        { keys: ['0', 'X'], labelKey: 'shortcuts.reject' },
+        { keys: ['F'], labelKey: 'shortcuts.favorite' },
         { keys: ['Esc'], labelKey: 'shortcuts.close' },
       ],
     },

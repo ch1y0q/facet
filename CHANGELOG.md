@@ -16,6 +16,7 @@ All notable changes to Facet are documented in this file.
 ### Added
 
 - **Background sidecar exports.** Export selected photos, filtered views and albums with progress, counts, explicit stop-between-files cancellation, and recent private receipts. Retry failed, skipped and unfinished files only when requested; closing the dialog leaves submitted work running.
+- **Explicit keyword reconciliation.** `--export-sidecars --reconcile-keywords` removes only previously Facet-owned keywords and preserves foreign names and AI provenance. Deletion markers expire when a name reappears in the file or Facet writes it again, allowing externally re-added manual keywords to be imported. Both export modes still write current Facet keywords back after external removal; no implicit database deletion or bidirectional sync is added. Additive exports remain the default; reconciliation requires ExifTool. Existing files whose metadata cannot be read reliably now refuse export before any metadata-clearing write, including ordinary CLI and viewer exports and embedding. Keyword names such as `2024`, `1.50`, `1e3`, `true`, `false` and `null` retain their exact spelling when ExifTool returns numeric or boolean JSON tokens.
 - Assign people from a searchable picker ordered by recent successful assignments in this browser, then visible face counts. Signing out clears saved recents.
 
 - **Explicit XMP sidecar discovery.** `--import-sidecars --sidecar-naming full|basename|auto` can read stripped-extension sidecars, refuses shared RAW/JPEG basenames, and reports naming conflicts. Full-name discovery remains the default; exports keep their existing filenames.
@@ -35,6 +36,9 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- Preserve the exact case of foreign boolean-looking keywords such as `True`, `FALSE` and `tRuE` with lossless readback when ExifTool JSON erases their spelling. Unicode newline-filename failures are isolated to the affected photo in batch exports.
+- Use shared Windows library-lock status probes so overlapping polls cannot report a running job when the library is idle. Real jobs retain exclusive admission.
+
 - Skip unsupported JSON face updates on ExifTool before 12.65 while exporting other metadata, preflight companion sidecars before embedding, and keep metadata-precondition responses free of resolved server paths. Unicode newline-filename failures are isolated to the affected photo in batch exports.
 - Preserve foreign face rectangles during metadata export and remove stale Facet-owned rectangles when faces are cleared. **Existing unmarked Facet exports are preserved too:** the first new export can show an old unmarked face plus its new marked copy, and clearing Facet faces leaves the old copy. Facet does not guess ownership from names or coordinates. Incompatible face dimensions skip faces with a warning while other metadata is written; unreadable or invalid existing face metadata refuses single-photo export/embed with HTTP 412.
 - Keep person-name searches working for numeric-looking and non-ASCII names without treating them as unsafe integer IDs. Assignment pagination counts people without repeating the face aggregate.
@@ -44,6 +48,9 @@ All notable changes to Facet are documented in this file.
 
 - **Semantic search refreshes its NumPy fallback after database changes.** Replaced embeddings and same-count photo replacements now update search results without restarting the viewer. Concurrent fallback requests share matrix construction, and cache entries include the database and visibility scope.
 - **Caption export preserves other XMP languages.** Writing a Facet caption now updates only the default-language description in sidecars and embedded metadata, retaining existing translations. An empty Facet caption still preserves the existing caption.
+- **The gallery remembers how you sorted, and answers to more keys.** A sort you pick (not the viewer default) survives visits; a reset returns to defaults and a URL's own sort always wins, because the gallery now writes its sort into every URL it syncs, the default included. `/` focuses the toolbar search, `B` toggles the filter sidebar, `V` swaps grid and mosaic, and the photo page answers `1`–`5`, `F` and `X` for the open photo — all documented in the ? reference now, which had never listed the rating keys that already existed.
+- **A calmer, more legible toolbar.** The header search is visible from `lg` up instead of `2xl` and filters as you type (400 ms debounce); "Keep top N%" reads as a labelled button on wide screens instead of an unexplained scissors; the culling toolbar's date-range, grouping and sort controls show their live state as text on wide screens; the culling first load shows skeleton groups instead of a bare spinner; an unlocked edit session draws an amber underline on the header; and the user menu gains the card-button customiser and the page-help toggle.
+
 
 - **Returning to the gallery from another page keeps your filters.** The nav icon's "photos" link used to land on a pristine default view, so the filters set before opening a photo — or any other page — were silently gone. The gallery's last synced query now travels in sessionStorage: landing on a parameterless `/` re-enters with it (page number included), while a reset — double-click the nav icon or the reset button — clears it, and a URL that already carries its own params is never overridden.
 

@@ -181,6 +181,8 @@ Filter by SAMP-Net detected patterns (the model emits exactly these 8, from
 
 ## Sorting
 
+**Remembered sort.** The gallery opens on the sort you last picked in the sort control, and that choice overrides `viewer.defaults.sort`. It is remembered in `localStorage` per browser, not per user account. Only a pick in the sort control is remembered: a sort that arrives in a shared or bookmarked link, or one an assistant applies, changes the view without being remembered, and a link's own `sort` still wins over the remembered one. Picking the configured default again forgets the choice, and so does resetting the filters. **Relevance** is never remembered, because it needs a search query.
+
 Shutter speeds sort by exposure duration in seconds, including decimal and
 rational EXIF values: `1/250` and `0.004` are equal. Missing, malformed, zero,
 negative, and nonfinite values appear last in either direction. Equal values
@@ -986,9 +988,17 @@ All stats are user-aware in multi-user mode — each user sees analytics for the
 | `Shift+Click` | Range-select photos between last selected and clicked |
 | `Double-click` | Open photo |
 | `Shift+F10` / `Menu` | Open the context menu of the focused photo card (right-click does the same) |
+| `1`–`5` | Rate the focused photo 1–5 stars (edition mode; auto-advances to the next photo) |
+| `F` | Favourite / unfavourite the focused photo (edition mode) |
+| `X` or `0` | Reject / un-reject the focused photo (edition mode; auto-advances) |
+| `/` | Focus the search box |
+| `B` | Show / hide the filter sidebar |
+| `V` | Switch between grid and mosaic layout |
 | `?` | Show the keyboard shortcuts reference (works on every page) |
 
 The current photo — the one star-rating, favorite and reject shortcuts act on — is marked with a 4px outline around its card; every other card dims to 50% opacity. Nothing is marked until the cursor has actually moved onto a photo in the results, so a gallery you have not navigated yet stays at full strength. Clicking a photo moves the marker onto it, so a shortcut typed right after a click lands on the photo you clicked, not on wherever the arrow keys last left it. Coming back from a photo (Back or Escape) leaves the marker on the last photo you viewed there, so the shortcuts carry on from there.
+
+**On the photo page**, `1`–`5`, `F` and `X` (or `0`) rate, favourite and reject the open photo, under the same conditions as the rating buttons: edition mode, with `viewer.features.show_rating_controls` on. Unlike the gallery, they never advance to another photo; use `←` `→` for that. The `?` reference lists them under *Photo view*.
 
 ## Undo
 

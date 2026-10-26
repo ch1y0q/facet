@@ -1,5 +1,7 @@
 """Real lock/receipt tests; cancellation never interrupts a file write."""
 from pathlib import Path
+import shutil
+import sqlite3
 import threading
 import time
 
@@ -428,3 +430,45 @@ def test_smart_album_job_preserves_stored_membership_contract(edition_client, tm
         with get_db() as conn:
             conn.execute('DELETE FROM albums WHERE id=?', (album_id,))
             conn.commit()
+
+
+@pytest.mark.skipif(shutil.which('exiftool') is None, reason='requires ExifTool')
+def test_background_export_preserves_foreign_keywords_and_ai_manual_provenance(edition_client, tmp_path, seed_photos_prefix, monkeypatch):
+    """The asynchronous worker must carry the same keyword authority as direct exports."""
+    from PIL import Image
+    from xml.etree import ElementTree as ET
+    from api import config
+    from api.database import DEFAULT_DB_PATH
+    from processing import xmp_export as xe
+    from processing.xmp_import import parse_sidecar
+
+    monkeypatch.setitem(config.VIEWER_CONFIG, 'scan_directories', [str(tmp_path)])
+    image = tmp_path / 'provenance.jpg'
+    Image.new('RGB', (40, 30), 'blue').save(image)
+    path = str(image)
+    seed_photos_prefix(str(tmp_path), [{'path': path, 'filename': image.name, 'tags': 'machine,shared'}])
+    with sqlite3.connect(DEFAULT_DB_PATH) as conn:
+        conn.executemany("INSERT INTO photo_manual_tags(photo_path,tag,source) VALUES (?,?,'user')",
+                         [(path, 'manual'), (path, 'shared')])
+    # An external keyword has no Facet ownership marker.
+    packet = ET.fromstring(xe.build_xmp(xe.XmpRating(tags=['foreign'])))
+    description = packet.find(f'.//{{{xe.NS_RDF}}}Description')
+    assert description is not None
+    description.attrib.pop(f'{{{xe.NS_FACET}}}KeywordState')
+    sidecar = Path(path + '.xmp')
+    sidecar.write_bytes(ET.tostring(packet, encoding='utf-8'))
+    original = image.read_bytes()
+
+    response = edition_client.post('/api/export/sidecar_jobs', json={'paths': [path]})
+    assert response.status_code == 202, response.text
+    job_id = response.json()['id']
+    owner = jobs._read(jobs._path(DEFAULT_DB_PATH, job_id))['owner']
+    result = _done(DEFAULT_DB_PATH, job_id, owner)
+    assert result['state'] == 'completed'
+    assert result['processed'] == result['written'] == 1
+    assert result['errors'] == result['skipped'] == 0
+    parsed = parse_sidecar(str(sidecar))
+    assert parsed['keyword_state']['ai'] == ['machine', 'shared']
+    assert parsed['keyword_state']['manual'] == ['manual', 'shared']
+    assert 'foreign' in parsed['tags']
+    assert image.read_bytes() == original

@@ -223,6 +223,7 @@ export const I18N = {
     burst_set: "photoCard.burst_set",
     sequence_set: "photoCard.sequence_set",
     open_detail: "photoCard.open_detail",
+    key_hint: "photoCard.key_hint",
   },
   notifications: {
     copied: "notifications.copied",
@@ -1001,6 +1002,7 @@ export const I18N = {
       avg_dynamic_range: "stats.gear_metrics.avg_dynamic_range",
       usage_timeline: "stats.gear_metrics.usage_timeline",
     },
+    gear_metric_label: "stats.gear_metric_label",
   },
   login: {
     title: "login.title",
@@ -1725,6 +1727,7 @@ export const I18N = {
     no_faces: "persons.no_faces",
     split_done: "persons.split_done",
     split_error: "persons.split_error",
+    empty_hint: "persons.empty_hint",
   },
   person_selector: {
     create_new: "person_selector.create_new",
@@ -2439,6 +2442,8 @@ export const I18N = {
     score: "map.score",
     date_from: "map.date_from",
     date_to: "map.date_to",
+    no_gps_title: "map.no_gps_title",
+    no_gps_hint: "map.no_gps_hint",
   },
   photo_detail: {
     back: "photo_detail.back",
@@ -2651,6 +2656,9 @@ export const I18N = {
     rate: "shortcuts.rate",
     reject: "shortcuts.reject",
     favorite: "shortcuts.favorite",
+    focus_search: "shortcuts.focus_search",
+    toggle_filters: "shortcuts.toggle_filters",
+    toggle_layout: "shortcuts.toggle_layout",
     comp_left_wins: "shortcuts.comp_left_wins",
     comp_right_wins: "shortcuts.comp_right_wins",
   },

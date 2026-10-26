@@ -208,7 +208,8 @@
     "duplicate_set": "Apri gruppo di duplicati",
     "burst_set": "Apri gruppo di raffica",
     "sequence_set": "Apri bracket/panorama",
-    "open_detail": "Apri pagina foto"
+    "open_detail": "Apri pagina foto",
+    "key_hint": "1-5 valuta · F preferita · X scarta · Space seleziona · Invio apri"
   },
   "notifications": {
     "copied": "Copiato!",
@@ -986,7 +987,8 @@
       "avg_monochrome": "Monocromatico (%)",
       "avg_dynamic_range": "Gamma dinamica media",
       "usage_timeline": "Cronologia utilizzo"
-    }
+    },
+    "gear_metric_label": "Metrica del grafico"
   },
   "login": {
     "title": "Accesso",
@@ -1034,7 +1036,7 @@
     "user_menu": "Menu utente"
   },
   "gallery": {
-    "help": "Sfoglia e filtra la tua libreria. Ordina per punteggio, data o per i tuoi gusti personali; usa i filtri della barra laterale (persone, tag, fotocamera, categoria, intervallo di punteggio, momenti) e la ricerca per trovare le foto.",
+    "help": "Sfoglia e filtra la tua libreria. Ordina per punteggio, data o per i tuoi gusti personali; usa i filtri della barra laterale (persone, tag, fotocamera, categoria, intervallo di punteggio, momenti) e la ricerca per trovare le foto. Tasti sulla scheda a fuoco: 1–5 valuta, F aggiunge ai preferiti, X scarta (modalità modifica); / attiva la ricerca, B mostra o nasconde la barra laterale dei filtri, V alterna griglia e mosaico.",
     "hidden_banner": {
       "message": "{n} foto nascoste dai filtri attivi",
       "some_hidden": "Alcune foto sono nascoste dai tuoi filtri",
@@ -1710,7 +1712,8 @@
     "split_select_face": "Seleziona volto {index}",
     "no_faces": "Nessun volto trovato per questa persona",
     "split_done": "Persona divisa",
-    "split_error": "Impossibile dividere la persona"
+    "split_error": "Impossibile dividere la persona",
+    "empty_hint": "Le persone provengono dai volti che assegni nella pagina della foto (modalità modifica). Apri una foto con volti e scegli Assegna a una persona per creare la prima."
   },
   "person_selector": {
     "create_new": "Crea nuova persona",
@@ -2424,7 +2427,9 @@
     "cluster_photos": "{count} foto",
     "score": "Punteggio: {score}",
     "date_from": "Da",
-    "date_to": "A"
+    "date_to": "A",
+    "no_gps_title": "Nessuna foto con posizione",
+    "no_gps_hint": "Nulla nell'ambito porta coordinate GPS. Apri una foto e usa il suo pannello Posizione per posizionarla — le foto posizionate appaiono qui."
   },
   "photo_detail": {
     "back": "Indietro",
@@ -2637,6 +2642,9 @@
     "rate": "Valuta (1–5 stelle)",
     "reject": "Rifiuta",
     "favorite": "Attiva/disattiva preferito",
+    "focus_search": "Vai alla casella di ricerca",
+    "toggle_filters": "Mostra / nascondi la barra dei filtri",
+    "toggle_layout": "Alterna griglia / mosaico",
     "comp_left_wins": "Vince la foto a sinistra",
     "comp_right_wins": "Vince la foto a destra"
   },

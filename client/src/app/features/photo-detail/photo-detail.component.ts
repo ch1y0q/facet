@@ -975,6 +975,33 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     void this.navigateAdjacentPhoto(1);
   }
 
+  /** 1-5 rate, F favourite, X/0 reject the open photo — the same rating keys
+   *  the grid's focused card answers, so a reviewer never has to reach for
+   *  the panel. Gated the same way the rating buttons are (edition mode +
+   *  the rating-controls feature flag); typing contexts and open dialogs bow
+   *  out first. No auto-advance: a single-photo view has no "next" contract
+   *  with the filters it came from. */
+  @HostListener('document:keydown', ['$event'])
+  protected onRatingShortcut(event: KeyboardEvent): void {
+    if (isTypingContext(event)) return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (document.querySelector('mat-dialog-container, mat-bottom-sheet-container')) return;
+    if (!this.auth.isEdition() || !this.store.config()?.features?.show_rating_controls) return;
+    const p = this.photo();
+    if (!p) return;
+    const key = event.key;
+    if (key >= '1' && key <= '5') {
+      event.preventDefault();
+      void this.setRating(p.path, Number(key));
+    } else if (key === 'f' || key === 'F') {
+      event.preventDefault();
+      void this.toggleFavorite(p.path);
+    } else if (key === 'x' || key === 'X' || key === '0') {
+      event.preventDefault();
+      void this.toggleRejected(p.path);
+    }
+  }
+
   private async navigateAdjacentPhoto(delta: number): Promise<void> {
     const current = this.photo();
     if (!current) return;

@@ -305,3 +305,36 @@ def test_region_reader_rejects_failed_or_unparseable_response(tmp_path, monkeypa
     with pytest.raises(xe.MetadataPreconditionError):
         xe._read_existing_regions(str(target), "exiftool", timeout=1)
     assert target.read_bytes() == before
+
+
+@pytest.mark.skipif(not EXE, reason="ExifTool not installed")
+@pytest.mark.parametrize("embedded", [False, True])
+def test_keyword_reconciliation_and_face_ownership_coexist(tmp_path, embedded):
+    """The shared writer preserves foreign lexical values and rectangles together."""
+    from utils.exiftool_process import run_exiftool_process
+
+    image = tmp_path / "combined.jpg"
+    Image.new("RGB", (100, 80), "blue").save(image)
+    original = image.read_bytes()
+    target = image if embedded else Path(str(image) + ".xmp")
+    result = run_exiftool_process([
+        EXE, "-config", CONFIG, "-api", "StructFormat=JSON",
+        "-XMP-mwg-rs:RegionInfo=" + json.dumps(_info([FOREIGN])),
+        "-XMP-dc:Subject=TrUe", "-overwrite_original", str(target),
+    ], timeout=30)
+    assert result.returncode == 0, result.stderr
+    foreign = xe._read_existing_regions(str(target), EXE, timeout=30)["RegionList"]
+    assert xe._read_existing_keywords(str(target), EXE, timeout=30, strict=True)[0] == ["TrUe"]
+    owned = xe.XmpRating(tags=["Facet keyword"], regions=[_face("Facet face")])
+    for rating in (owned, owned, xe.XmpRating(), xe.XmpRating()):
+        xe.write_metadata(str(image), rating, embed_original=embedded, reconcile_keywords=True)
+        keywords = xe._read_existing_keywords(str(target), EXE, timeout=30, strict=True)[0]
+        regions = xe._read_existing_regions(str(target), EXE, timeout=30).get("RegionList", [])
+        assert keywords == (["TrUe", "Facet keyword"] if rating.tags else ["TrUe"])
+        assert regions[:1] == foreign
+        assert len(regions) == (2 if rating.regions else 1)
+        if rating.regions:
+            assert regions[1]["Name"] == "Facet face"
+            assert regions[1]["Extensions"] == {"XMP-facet:RegionOwner": "Facet"}
+    if not embedded:
+        assert image.read_bytes() == original
