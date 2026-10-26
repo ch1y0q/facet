@@ -4,6 +4,10 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Keep batch export errors private.** Sidecar selections, albums and background receipts return safe failure summaries while retaining details in server logs; unaffected photos continue exporting.
+
 ## [1.24.0] "Diaphragme" — 2026-10-26
 
 
