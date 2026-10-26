@@ -624,12 +624,12 @@ def sync_to_immich(db_path, config: dict, user_id: str | None = None,
 
     try:
         # One bulk pass builds a local path index; misses fall back to per-path.
+        # The index is only a lookup shortcut. The client's complete observed
+        # registry, not this dictionary, decides whether an identity is unique.
         path_index = {}
         ambiguous = set()
         for path, asset_id in client.iter_asset_paths() if resolvable else ():
             path_index[path] = asset_id
-        # The index is only a lookup shortcut. The client's complete observed
-        # registry, not this dictionary, decides whether an identity is unique.
         # Two Facet roots mapping onto one remote path would otherwise push
         # competing ratings into the same asset. Refuse both, even if identical.
         mapped_paths = [entry[1] for entry in resolvable if entry[1]]
