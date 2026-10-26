@@ -106,6 +106,24 @@ def test_invalid_override_does_not_clear(tmp_path, state, latitude, longitude):
     assert parse_sidecar(str(sidecar))['gps'] is None
 
 
+@pytest.mark.parametrize('latitude,longitude,expected', [
+    ('48,51,30N', '2,21,0W', (48.858333333333334, -2.35)),
+    ('33,15S', '70,30,36E', (-33.25, 70.51)),
+    ('0,0N', '180,0W', (0.0, -180.0)),
+])
+def test_override_parses_hemispheres_and_seconds_form(tmp_path, latitude, longitude, expected):
+    from xml.etree import ElementTree as ET
+    from processing.xmp_export import NS_FACET, NS_EXIF, NS_RDF
+    packet = ET.fromstring(build_xmp(XmpRating()))
+    desc = packet.find(f'.//{{{NS_RDF}}}Description')
+    desc.set(f'{{{NS_FACET}}}GPSState', 'set')
+    desc.set(f'{{{NS_EXIF}}}GPSLatitude', latitude)
+    desc.set(f'{{{NS_EXIF}}}GPSLongitude', longitude)
+    sidecar = tmp_path / 'hemisphere.xmp'
+    sidecar.write_bytes(ET.tostring(packet))
+    assert parse_sidecar(str(sidecar))['gps'] == pytest.approx(expected)
+
+
 def test_user_decision_is_private_and_absent_fields_preserve_state(tmp_path, monkeypatch):
     monkeypatch.setattr('api.config.is_multi_user_enabled', lambda: True)
     image = tmp_path / 'user.jpg'

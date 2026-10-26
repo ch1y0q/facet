@@ -209,7 +209,7 @@
     "burst_set": "Abrir grupo de rajada",
     "sequence_set": "Abrir bracket/panorama",
     "open_detail": "Abrir página da foto",
-    "key_hint": "1-5 avaliar · F favorita · X rejeitar · Space selecionar · Enter abrir"
+    "key_hint": "1-5 avaliar · F favorita · X rejeitar · Espaço selecionar · Enter abrir"
   },
   "notifications": {
     "copied": "Copiado!",
@@ -1023,7 +1023,8 @@
     "folders": "Pastas",
     "map": "Mapa",
     "capsules": "Cápsulas",
-    "junk_sweep": "Limpeza"
+    "junk_sweep": "Limpeza",
+    "help": "Ajuda"
   },
   "auth": {
     "logout": "Sair",
@@ -1717,7 +1718,7 @@
     "no_faces": "Nenhum rosto encontrado para esta pessoa",
     "split_done": "Pessoa dividida",
     "split_error": "Falha ao dividir a pessoa",
-    "empty_hint": "As pessoas vêm dos rostos que você atribui na página da foto (modo edição). Abra qualquer foto com rostos e escolha Atribuir a uma pessoa para criar a primeira."
+    "empty_hint": "As pessoas vêm dos rostos que você atribui na página da foto (modo edição). Abra qualquer foto com rostos e escolha Atribuir rosto à pessoa para criar a primeira."
   },
   "person_selector": {
     "create_new": "Criar nova pessoa",
@@ -2482,6 +2483,8 @@
     "gps": {
       "online_query": "Endereço ou estabelecimento",
       "online_notice": "A pesquisa online envia esta consulta ao fornecedor Photon configurado. Os locais guardados e as coordenadas funcionam offline. Selecionar um resultado mostra uma prévia; Guardar aplica-o.",
+      "osm_attribution": "© Colaboradores do OpenStreetMap",
+      "opens_new_tab": "(abre em uma nova guia)",
       "online_search": "Pesquisar online",
       "online_disabled": "A pesquisa online está desativada.",
       "online_loading": "A pesquisar online…",
@@ -2510,8 +2513,10 @@
       "batch_title": "Definir localização",
       "only_missing": "Apenas fotos sem localização",
       "preview_batch": "Pré-visualizar alterações",
-      "batch_preview": "{changed} fotos serão alteradas; {skipped} ignoradas.",
-      "batch_applied": "{changed} fotos atualizadas; {skipped} ignoradas.",
+      "batch_preview": "{changed} foto será alterada; {skipped} ignoradas.",
+      "batch_preview_plural": "{changed} fotos serão alteradas; {skipped} ignoradas.",
+      "batch_applied": "{changed} foto atualizada; {skipped} ignoradas.",
+      "batch_applied_plural": "{changed} fotos atualizadas; {skipped} ignoradas.",
       "batch_error": "Não foi possível aplicar a localização. Selecione no máximo 1000 fotos e repita a prévia; a seleção ou o local salvo pode ter mudado.",
       "batch_limit": "Selecione no máximo 1000 fotos. Sem proteção, as localizações existentes são substituídas. Os arquivos originais não são alterados.",
       "batch_hint": "Escolha uma localização e confira as alterações antes de salvar a seleção."

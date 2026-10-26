@@ -274,7 +274,7 @@ interface ShortcutRow {
                       [matTooltip]="cull.dateRangeActive() ? (cull.scopeFrom() | cullDateRange: cull.scopeTo()) : (I18N.culling.date_range.label | translate)"
                       [attr.aria-label]="(I18N.culling.date_range.label | translate) + (cull.dateRangeActive() ? ': ' + (cull.scopeFrom() | cullDateRange: cull.scopeTo()) : '')">
                 <mat-icon>date_range</mat-icon>
-                <span class="hidden xl:inline text-sm">{{ I18N.culling.date_range.label | translate }}</span>
+                <span class="hidden xl:inline text-sm">{{ cull.dateRangeActive() ? (cull.scopeFrom() | cullDateRange: cull.scopeTo()) : (I18N.culling.date_range.label | translate) }}</span>
               </button>
               <mat-date-range-input #rangeInput [rangePicker]="rangePicker" aria-hidden="true"
                                     class="absolute inset-0 overflow-hidden opacity-0 pointer-events-none">
@@ -305,12 +305,12 @@ interface ShortcutRow {
                 <span>{{ I18N.culling.date_range.all_dates | translate }}</span>
               </button>
             </mat-menu>
-            <button mat-button class="!min-w-0 !px-3 shrink-0" [matMenuTriggerFor]="cullGroupByMenu"
+            <button mat-button class="!min-w-0 !px-3 shrink-0" data-testid="cull-group-by" [matMenuTriggerFor]="cullGroupByMenu"
                     [class.!text-[var(--mat-sys-primary)]]="cull.groupBy() !== 'all'"
                     [matTooltip]="I18N.culling.group_by.label | translate"
-                    [attr.aria-label]="I18N.culling.group_by.label | translate">
+                    [attr.aria-label]="(I18N.culling.group_by.label | translate) + ': ' + (cull.groupBy() | cullGroupLabel | translate)">
               <mat-icon>{{ cull.groupBy() | cullGroupIcon }}</mat-icon>
-              <span class="hidden xl:inline text-sm">{{ I18N.culling.group_by.label | translate }}</span>
+              <span class="hidden xl:inline text-sm">{{ cull.groupBy() | cullGroupLabel | translate }}</span>
             </button>
             <mat-menu #cullGroupByMenu="matMenu">
               <button mat-menu-item (click)="onGroupByChange('all')">

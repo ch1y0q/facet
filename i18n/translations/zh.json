@@ -209,7 +209,7 @@
     "burst_set": "查看连拍组",
     "sequence_set": "查看包围曝光/全景组",
     "open_detail": "打开照片页",
-    "key_hint": "1-5 评分 · F 收藏 · X 淘汰 · Space 选择 · Enter 打开"
+    "key_hint": "1-5 评分 · F 收藏 · X 淘汰 · 空格 选择 · 回车 打开"
   },
   "notifications": {
     "copied": "已复制！",
@@ -1023,7 +1023,8 @@
     "folders": "文件夹",
     "map": "地图",
     "capsules": "照片胶囊",
-    "junk_sweep": "废片清理"
+    "junk_sweep": "废片清理",
+    "help": "帮助"
   },
   "auth": {
     "logout": "退出登录",
@@ -2482,6 +2483,8 @@
     "gps": {
       "online_query": "地址或商家",
       "online_notice": "在线搜索会将此查询发送给已配置的 Photon 服务。已保存地点和坐标输入可离线使用。选择结果仅预览，点击保存后才会应用。",
+      "osm_attribution": "© OpenStreetMap 贡献者",
+      "opens_new_tab": "（在新标签页中打开）",
       "online_search": "在线搜索",
       "online_disabled": "在线搜索已禁用。",
       "online_loading": "正在在线搜索…",
@@ -2511,7 +2514,9 @@
       "only_missing": "仅限缺少位置的照片",
       "preview_batch": "预览位置更改",
       "batch_preview": "将更改 {changed} 张照片；跳过 {skipped} 张。",
+      "batch_preview_plural": "将更改 {changed} 张照片；跳过 {skipped} 张。",
       "batch_applied": "已更新 {changed} 张照片；跳过 {skipped} 张。",
+      "batch_applied_plural": "已更新 {changed} 张照片；跳过 {skipped} 张。",
       "batch_error": "无法应用位置。请选择最多 1000 张照片并重新预览；所选照片或已保存地点可能已更改。",
       "batch_limit": "请选择最多 1000 张照片。关闭保护后将替换现有位置。原始文件保持不变。",
       "batch_hint": "选择一个位置，然后预览更改，再保存所选照片。"

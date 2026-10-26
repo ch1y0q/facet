@@ -209,7 +209,7 @@
     "burst_set": "Seriengruppe öffnen",
     "sequence_set": "Belichtungsreihe/Panorama öffnen",
     "open_detail": "Fotoseite öffnen",
-    "key_hint": "1-5 bewerten · F fav · X verwerfen · Space auswählen · Enter öffnen"
+    "key_hint": "1-5 bewerten · F fav · X verwerfen · Leertaste auswählen · Eingabe öffnen"
   },
   "notifications": {
     "copied": "Kopiert!",
@@ -1023,7 +1023,8 @@
     "folders": "Ordner",
     "map": "Karte",
     "capsules": "Kapseln",
-    "junk_sweep": "Aufräumen"
+    "junk_sweep": "Aufräumen",
+    "help": "Hilfe"
   },
   "auth": {
     "logout": "Abmelden",
@@ -1717,7 +1718,7 @@
     "no_faces": "Keine Gesichter für diese Person gefunden",
     "split_done": "Person aufgeteilt",
     "split_error": "Person konnte nicht aufgeteilt werden",
-    "empty_hint": "Personen entstehen aus Gesichtern, die du auf einer Fotoseite zuweist (Bearbeitungsmodus). Öffne ein Foto mit Gesichtern und wähle „Person zuweisen“, um die erste anzulegen."
+    "empty_hint": "Personen entstehen aus Gesichtern, die du auf einer Fotoseite zuweist (Bearbeitungsmodus). Öffne ein Foto mit Gesichtern und wähle „Gesicht einer Person zuweisen“, um die erste anzulegen."
   },
   "person_selector": {
     "create_new": "Neue Person erstellen",
@@ -2482,6 +2483,8 @@
     "gps": {
       "online_query": "Adresse oder Geschäft",
       "online_notice": "Die Onlinesuche sendet diese Anfrage an den konfigurierten Photon-Anbieter. Gespeicherte Orte und Koordinaten funktionieren offline. Die Auswahl zeigt eine Vorschau; Speichern übernimmt sie.",
+      "osm_attribution": "© OpenStreetMap-Mitwirkende",
+      "opens_new_tab": "(öffnet in neuem Tab)",
       "online_search": "Online suchen",
       "online_disabled": "Die Onlinesuche ist deaktiviert.",
       "online_loading": "Onlinesuche läuft…",
@@ -2510,8 +2513,10 @@
       "batch_title": "Ort festlegen",
       "only_missing": "Nur Fotos ohne Standort",
       "preview_batch": "Standortänderungen prüfen",
-      "batch_preview": "{changed} Fotos werden geändert; {skipped} übersprungen.",
-      "batch_applied": "{changed} Fotos geändert; {skipped} übersprungen.",
+      "batch_preview": "{changed} Foto wird geändert; {skipped} übersprungen.",
+      "batch_preview_plural": "{changed} Fotos werden geändert; {skipped} übersprungen.",
+      "batch_applied": "{changed} Foto geändert; {skipped} übersprungen.",
+      "batch_applied_plural": "{changed} Fotos geändert; {skipped} übersprungen.",
       "batch_error": "Standort konnte nicht angewendet werden. Wählen Sie höchstens 1000 Fotos und erstellen Sie eine neue Vorschau; Auswahl oder gespeicherter Ort könnte sich geändert haben.",
       "batch_limit": "Wählen Sie höchstens 1000 Fotos. Ohne Schutz werden vorhandene Standorte ersetzt. Originaldateien bleiben unverändert.",
       "batch_hint": "Wählen Sie einen Ort und prüfen Sie die Änderungen, bevor Sie die Auswahl speichern."

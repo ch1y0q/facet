@@ -586,7 +586,15 @@ Una ubicación establecida en el visor queda marcada, y el diálogo ofrece enton
 
 La aplicación instalada carga los fondos del mapa directamente desde OpenStreetMap, fuera de su caché sin conexión. Las nuevas zonas del mapa necesitan conexión a internet.
 
-La lista y la entrada de coordenadas siguen disponibles si falla el mapa. La búsqueda usa nombres guardados localmente. Las correcciones manuales, incluido borrar el GPS, sobreviven a nuevos análisis y a la extracción EXIF. Los archivos originales no se modifican.
+La lista y la entrada de coordenadas siguen disponibles si falla el mapa. El filtrado de lugares guardados usa los nombres en local; la búsqueda en línea de direcciones o negocios requiere una búsqueda explícita aparte. Las correcciones manuales, incluido borrar el GPS, sobreviven a nuevos análisis y a la extracción EXIF. Los archivos originales no se modifican.
+
+### Búsqueda de lugares en línea
+
+Usa **Dirección o negocio → Buscar en línea** para consultar Photon explícitamente. La consulta se envía al proveedor configurado solo al pulsar; escribir no envía nada. Selecciona un resultado para previsualizar las coordenadas y pulsa **Guardar** para aplicarlas. El original no cambia. Photon usa datos de OpenStreetMap (© colaboradores de OpenStreetMap). Los lugares guardados y las coordenadas funcionan sin conexión. `viewer.place_search_url` tiene por defecto `https://photon.komoot.io/api`; permite un servidor Photon propio y `""` desactiva la búsqueda. El servidor público no garantiza disponibilidad. Límites: 3–200 puntos de código Unicode, cinco resultados, cinco segundos y 64 KiB; caché de 128 búsquedas durante 15 minutos por proceso, sin llamadas simultáneas y con un segundo mínimo entre ellas. Usa un solo worker con el proveedor público. Facet no registra las consultas; excluye sus parámetros de los registros del proxy. En modo multiusuario, las entradas de caché son privadas para cada cuenta; la capacidad de 128 entradas y la limitación de llamadas al proveedor siguen compartidas por el proceso.
+
+Los fallos esperados de búsqueda se muestran en el diálogo; para reintentar, inicia otra búsqueda explícita. `GET /api/places/search?q=` devuelve listas de validación para consultas inválidas (422), 429 con `Retry-After` al superar el límite, 502 si falla el proveedor y 503 si la búsqueda está desactivada. Las etiquetas de los resultados admiten hasta 600 caracteres Unicode.
+
+El plazo de cinco segundos interrumpe los sockets activos, incluidos encabezados y bloques HTTP lentos. La resolución DNS nativa usa los tiempos del sistema y puede tardar más antes de crear un socket; una búsqueda vencida no abre una conexión después.
 
 ## Cápsulas
 
@@ -1357,6 +1365,7 @@ Los tipos TypeScript del cliente se generan a partir de ese esquema en `client/s
 | `GET /api/photos/map/count` | Recuento de fotos geoetiquetadas |
 | `PUT /api/photo/gps` | `[Edición]` Establece o borra el GPS de una foto con `{path, gps_latitude, gps_longitude, saved_place_id?}`. Ambas coordenadas deben ser nulas o valores finitos (latitud ±90, longitud ±180); devuelve las coordenadas guardadas |
 | `DELETE /api/photo/gps?path=` | `[Edición]` Descarta una ubicación establecida a mano y vuelve a leer el GPS del propio archivo (NULL si no tiene); devuelve las coordenadas guardadas |
+| `GET /api/places/search?q=` | `[Edición]` Consulta Photon explícita y acotada; no modifica fotos. Las consultas inválidas devuelven listas de validación (422); la limitación devuelve 429 con `Retry-After`, un fallo del proveedor 502 y la búsqueda desactivada 503. |
 | `GET /api/places` | `[Edición]` Lugares guardados del editor actual y los 20 últimos puntos asignados |
 | `POST /api/places` | `[Edición]` Guarda `{name, latitude, longitude}` como chincheta privada con nombre (hasta 100 lugares; nombre de 1 a 120 caracteres) |
 | `PUT /api/places/{id}` | `[Edición]` Actualiza una chincheta con nombre propia; las fotos existentes conservan sus coordenadas |
@@ -1580,15 +1589,6 @@ Si la búsqueda semántica indica que la aceleración de Apple Silicon está ocu
 | Los subtítulos no se generan | Requiere el perfil de VRAM de 16gb/24gb para el subtitulado con VLM |
 | Línea de tiempo vacía | Asegúrate de que las fotos tengan valores `date_taken` |
 | El puerto 5000 está en uso | Ejecuta `python viewer.py --port 5001` (o define `PORT=5001`). En macOS, el Receptor de AirPlay del Centro de Control ocupa el 5000 por defecto: elige otro puerto o desactiva el Receptor de AirPlay en Ajustes del Sistema → General → AirDrop y Handoff. |
-
-
-### Photon
-
-Usa **Dirección o negocio → Buscar en línea** para consultar Photon explícitamente. La consulta se envía al proveedor configurado solo al pulsar; escribir no envía nada. Selecciona un resultado para previsualizar las coordenadas y pulsa **Guardar** para aplicarlas. El original no cambia. Photon usa datos de OpenStreetMap (© colaboradores de OpenStreetMap). Los lugares guardados y las coordenadas funcionan sin conexión. `viewer.place_search_url` tiene por defecto `https://photon.komoot.io/api`; permite un servidor Photon propio y `""` desactiva la búsqueda. El servidor público no garantiza disponibilidad. Límites: 3–200 puntos de código Unicode, cinco resultados, cinco segundos y 64 KiB; caché de 128 búsquedas durante 15 minutos por proceso, sin llamadas simultáneas y con un segundo mínimo entre ellas. Usa un solo worker con el proveedor público. Facet no registra las consultas; excluye sus parámetros de los registros del proxy. En modo multiusuario, las entradas de caché son privadas para cada cuenta; la capacidad de 128 entradas y la limitación de llamadas al proveedor siguen compartidas por el proceso.
-
-Los fallos esperados de búsqueda se muestran en el diálogo; para reintentar, inicia otra búsqueda explícita. `GET /api/places/search?q=` devuelve listas de validación para consultas inválidas (422), 429 con `Retry-After` al superar el límite, 502 si falla el proveedor y 503 si la búsqueda está desactivada. Las etiquetas de los resultados admiten hasta 600 caracteres Unicode.
-
-El plazo de cinco segundos interrumpe los sockets activos, incluidos encabezados y bloques HTTP lentos. La resolución DNS nativa usa los tiempos del sistema y puede tardar más antes de crear un socket; una búsqueda vencida no abre una conexión después.
 
 ### Revisar las marcas manuales de rostros guardadas
 

@@ -209,7 +209,7 @@
     "burst_set": "Abrir grupo de ráfaga",
     "sequence_set": "Abrir bracket/panorama",
     "open_detail": "Abrir página de foto",
-    "key_hint": "1-5 puntuar · F favorita · X rechazar · Space seleccionar · Enter abrir"
+    "key_hint": "1-5 puntuar · F favorita · X rechazar · Espacio seleccionar · Intro abrir"
   },
   "notifications": {
     "copied": "Copiado!",
@@ -1023,7 +1023,8 @@
     "folders": "Carpetas",
     "map": "Mapa",
     "capsules": "Cápsulas",
-    "junk_sweep": "Limpieza"
+    "junk_sweep": "Limpieza",
+    "help": "Ayuda"
   },
   "auth": {
     "logout": "Cerrar sesión",
@@ -1717,13 +1718,13 @@
     "no_faces": "No se encontraron caras para esta persona",
     "split_done": "Persona separada",
     "split_error": "No se pudo separar la persona",
-    "empty_hint": "Las personas provienen de caras que asignas en la página de la foto (modo edición). Abre cualquier foto con caras y elige Asignar persona para crear la primera."
+    "empty_hint": "Las personas provienen de caras que asignas en la página de la foto (modo edición). Abre cualquier foto con caras y elige Asignar rostro a persona para crear la primera."
   },
   "person_selector": {
     "create_new": "Crear nueva persona",
     "ordering_hint": "Primero las personas asignadas recientemente en este navegador, después las que tienen más rostros en las fotos que puedes ver.",
     "face_count": "{count} rostros",
-    "face_count_one": "1 cara"
+    "face_count_one": "1 rostro"
   },
   "slideshow": {
     "start": "Presentacion",
@@ -2482,6 +2483,8 @@
     "gps": {
       "online_query": "Dirección o negocio",
       "online_notice": "La búsqueda en línea envía esta consulta al proveedor Photon configurado. Los lugares guardados y las coordenadas funcionan sin conexión. Seleccionar un resultado muestra una vista previa; Guardar lo aplica.",
+      "osm_attribution": "© Colaboradores de OpenStreetMap",
+      "opens_new_tab": "(se abre en una pestaña nueva)",
       "online_search": "Buscar en línea",
       "online_disabled": "La búsqueda en línea está desactivada.",
       "online_loading": "Buscando en línea…",
@@ -2510,8 +2513,10 @@
       "batch_title": "Asignar ubicación",
       "only_missing": "Solo fotos sin ubicación",
       "preview_batch": "Vista previa de los cambios",
-      "batch_preview": "Se cambiarán {changed} fotos; {skipped} omitidas.",
-      "batch_applied": "{changed} fotos actualizadas; {skipped} omitidas.",
+      "batch_preview": "Se cambiará {changed} foto; {skipped} omitidas.",
+      "batch_preview_plural": "Se cambiarán {changed} fotos; {skipped} omitidas.",
+      "batch_applied": "{changed} foto actualizada; {skipped} omitidas.",
+      "batch_applied_plural": "{changed} fotos actualizadas; {skipped} omitidas.",
       "batch_error": "No se pudo aplicar la ubicación. Selecciona como máximo 1000 fotos y repite la vista previa; la selección o el lugar guardado puede haber cambiado.",
       "batch_limit": "Selecciona como máximo 1000 fotos. Sin protección se reemplazan las ubicaciones existentes. Los archivos originales no cambian.",
       "batch_hint": "Elige una ubicación y revisa los cambios antes de guardar la selección."

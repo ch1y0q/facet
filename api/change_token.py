@@ -40,8 +40,8 @@ from pathlib import Path
 
 logger = logging.getLogger("facet.api.change_token")
 
-# Short enough that a shm-lock wait cannot stall the event loop (the token is
-# computed synchronously inside async routes), long enough to ride out the
+# Short enough that a shm-lock wait cannot stall a worker thread (async routes
+# compute the token via asyncio.to_thread, never on the event loop), long enough to ride out the
 # microseconds a checkpoint holds the WAL index.
 _BUSY_TIMEOUT_SECONDS = 0.1
 

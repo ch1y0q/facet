@@ -134,7 +134,7 @@ class PhotoDeleteResponse(BaseModel):
     # Paths whose file was already missing from disk and whose row was removed
     # anyway (`remove_missing`), so the caller can tell a reconciled row from
     # a trashed one. Empty unless the flag was set.
-    removed_missing: Optional[list[str]] = None
+    removed_missing: list[str]
     trashed: int
     errors: dict[str, str]
 

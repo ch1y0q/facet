@@ -17,6 +17,8 @@ import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { FixedPipe } from '../../shared/pipes/fixed.pipe';
+import { normalizeOnlineQuery } from './online-query';
+import { PluralKeyPipe } from '../../shared/pipes/plural-key.pipe';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
 import { HANDLE_PLACE_SEARCH_ERRORS_LOCALLY } from '../../core/utils/place-search-error.util';
 
@@ -39,7 +41,7 @@ type GpsResult = components['schemas']['GpsUpdateResponse'];
 @Component({
   selector: 'app-gps-edit-dialog',
   standalone: true,
-  imports: [FormsModule, MatDialogModule, MatButtonModule, MatIconModule, MatSnackBarModule, TranslatePipe, FixedPipe],
+  imports: [FormsModule, MatDialogModule, MatButtonModule, MatIconModule, MatSnackBarModule, TranslatePipe, FixedPipe, PluralKeyPipe],
   changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title class="!flex items-center gap-2">
@@ -57,7 +59,7 @@ type GpsResult = components['schemas']['GpsUpdateResponse'];
         <input class="block w-full border rounded p-2 bg-transparent" type="search" maxlength="400" [ngModel]="onlineQuery()" (ngModelChange)="setOnlineQuery($event)">
       </label>
       <p class="text-xs mb-2">{{ I18N.photo_detail.gps.online_notice | translate }}</p>
-      <p class="text-xs mb-2"><a href="https://photon.komoot.io" target="_blank" rel="noopener noreferrer">Photon</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a></p>
+      <p class="text-xs mb-2"><a href="https://photon.komoot.io" target="_blank" rel="noopener noreferrer">Photon<span class="sr-only"> {{ I18N.photo_detail.gps.opens_new_tab | translate }}</span></a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">{{ I18N.photo_detail.gps.osm_attribution | translate }}<span class="sr-only"> {{ I18N.photo_detail.gps.opens_new_tab | translate }}</span></a></p>
       <button mat-button (click)="searchOnline()" [disabled]="saving() || onlineBusy() || !onlineQueryValid() || !onlineEnabled() || !auth.isEdition()">{{ I18N.photo_detail.gps.online_search | translate }}</button>
       @if (!onlineEnabled()) { <p role="status">{{ I18N.photo_detail.gps.online_disabled | translate }}</p> }
       @if (onlineBusy()) { <p role="status">{{ I18N.photo_detail.gps.online_loading | translate }}</p> }
@@ -123,7 +125,7 @@ type GpsResult = components['schemas']['GpsUpdateResponse'];
         <label class="flex items-center gap-2 mt-3"><input type="checkbox" [ngModel]="onlyMissing()" (ngModelChange)="onlyMissing.set($event)">{{ I18N.photo_detail.gps.only_missing | translate }}</label>
         <p class="text-sm mt-2">{{ I18N.photo_detail.gps.batch_limit | translate }}</p>
         @if (previewCurrent()) { @if (batchPreview(); as preview) {
-          <p role="status" class="mt-2">{{ I18N.photo_detail.gps.batch_preview | translate:{ changed: preview.result.changed, skipped: preview.result.skipped } }}</p>
+          <p role="status" class="mt-2">{{ preview.result.changed | pluralKey:I18N.photo_detail.gps.batch_preview:I18N.photo_detail.gps.batch_preview_plural | translate:{ changed: preview.result.changed, skipped: preview.result.skipped } }}</p>
         } }
       }
       @if (saveError()) { <p role="alert">{{ saveError() | translate }}</p> }
@@ -180,7 +182,7 @@ export class GpsEditDialogComponent {
   readonly onlineSearched = signal(false);
   readonly onlineError = signal('');
   readonly onlineEnabled = computed(() => this.store.config()?.place_search_enabled ?? false);
-  readonly onlineQueryValid = computed(() => Array.from(this.onlineQuery().trim()).length >= 3 && Array.from(this.onlineQuery().trim()).length <= 200);
+  readonly onlineQueryValid = computed(() => normalizeOnlineQuery(this.onlineQuery()) !== null);
   private onlineSequence = 0;
   private readonly cancelOnline = new Subject<void>();
   readonly placeName = signal('');
@@ -277,7 +279,7 @@ export class GpsEditDialogComponent {
     const auth = this.auth.status();
     this.onlineBusy.set(true);
     try {
-      const response = await firstValueFrom(this.api.get<components['schemas']['PlaceSearchResponse']>('/places/search', { q: this.onlineQuery().trim() }, new HttpContext().set(HANDLE_PLACE_SEARCH_ERRORS_LOCALLY, true)).pipe(takeUntil(this.cancelOnline)));
+      const response = await firstValueFrom(this.api.get<components['schemas']['PlaceSearchResponse']>('/places/search', { q: normalizeOnlineQuery(this.onlineQuery()) ?? '' }, new HttpContext().set(HANDLE_PLACE_SEARCH_ERRORS_LOCALLY, true)).pipe(takeUntil(this.cancelOnline)));
       if (sequence !== this.onlineSequence || auth !== this.auth.status() || this.destroyed || this.dismissed) return;
       this.onlineResults.set(response.results.filter(result => this.validOnlineResult(result)).slice(0, 5));
       this.onlineSearched.set(true);
@@ -481,7 +483,7 @@ export class GpsEditDialogComponent {
       if (!this.sessionCurrent()) return;
       this.data.onBatchApplied?.();
       void this.store.refreshPaths(null);
-      this.snackBar.open(this.i18n.t(I18N.photo_detail.gps.batch_applied, { changed: result.changed, skipped: result.skipped }), '', { duration: 4000 });
+      this.snackBar.open(this.i18n.t(result.changed === 1 ? I18N.photo_detail.gps.batch_applied : I18N.photo_detail.gps.batch_applied_plural, { changed: result.changed, skipped: result.skipped }), '', { duration: 4000 });
       if (this.current()) this.dialogRef.close(result);
     } catch {
       if (this.current()) { this.batchPreview.set(null); this.saveError.set(I18N.photo_detail.gps.batch_error); }
