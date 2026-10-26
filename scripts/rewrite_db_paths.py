@@ -10,7 +10,7 @@ Run it on a COPY. It rewrites every plain path column, the JSON columns that
 embed paths, drops the stats cache, and rebuilds FTS. ``photos_vec`` is keyed by
 path, so it is emptied; repopulate it with ``python database.py --populate-vec``.
 
-    python scripts/rewrite_db_paths.py DB /data/photos "\\\\192.168.1.90\\Photos and Videos"
+    python scripts/rewrite_db_paths.py DB /data/photos "\\\\NAS\\Photos"
 """
 import argparse
 import json
