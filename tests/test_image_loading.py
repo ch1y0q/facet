@@ -393,6 +393,7 @@ def test_scannable_extensions_include_hif():
         | image_loading.BMP_EXTENSIONS
         | image_loading.TIFF_EXTENSIONS
         | image_loading.AVIF_EXTENSIONS
+        | image_loading.JXL_EXTENSIONS
     )
 
 

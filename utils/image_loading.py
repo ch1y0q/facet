@@ -39,6 +39,14 @@ try:
 except ImportError:
     logger.warning("pillow-heif not installed — HEIF/HEIC files will be skipped")
 
+# Optional JPEG XL decoder. Importing the plugin registers its Pillow opener.
+_jxl_available = False
+try:
+    import pillow_jxl  # noqa: F401
+    _jxl_available = True
+except ImportError:
+    logger.debug("pillow-jxl-plugin not installed — JPEG XL files will be skipped")
+
 # AVIF codec availability (soft dependency, native in Pillow >= 11.3). Checked
 # eagerly, at import time, for the same reason pillow-heif is registered
 # eagerly above rather than through utils/_lazy.py's lazy PIL loader:
@@ -82,13 +90,16 @@ _SIXTEEN_BIT_MODES = frozenset({'I;16', 'I;16B', 'I;16L'})
 KNOWN_AVIF_EXTENSIONS = frozenset({'.avif'})
 AVIF_EXTENSIONS = KNOWN_AVIF_EXTENSIONS if _avif_available else frozenset()
 
+KNOWN_JXL_EXTENSIONS = frozenset({'.jxl'})
+JXL_EXTENSIONS = KNOWN_JXL_EXTENSIONS if _jxl_available else frozenset()
+
 # Every still-image extension the scan collector (facet.py) accepts. HEIF/AVIF
 # drop out when their decoder is missing, because a scan would have nothing to
 # decode them with.
 SCANNABLE_IMAGE_EXTENSIONS = (
     JPEG_EXTENSIONS | HEIF_EXTENSIONS | RAW_EXTENSIONS
     | PNG_EXTENSIONS | GIF_EXTENSIONS | WEBP_EXTENSIONS | BMP_EXTENSIONS
-    | TIFF_EXTENSIONS | AVIF_EXTENSIONS
+    | TIFF_EXTENSIONS | AVIF_EXTENSIONS | JXL_EXTENSIONS
 )
 
 # What watch mode observes. Deliberately the KNOWN sets rather than the decodable
@@ -98,7 +109,7 @@ SCANNABLE_IMAGE_EXTENSIONS = (
 WATCHABLE_IMAGE_EXTENSIONS = (
     JPEG_EXTENSIONS | KNOWN_HEIF_EXTENSIONS | RAW_EXTENSIONS
     | PNG_EXTENSIONS | GIF_EXTENSIONS | WEBP_EXTENSIONS | BMP_EXTENSIONS
-    | TIFF_EXTENSIONS | KNOWN_AVIF_EXTENSIONS
+    | TIFF_EXTENSIONS | KNOWN_AVIF_EXTENSIONS | KNOWN_JXL_EXTENSIONS
 )
 
 

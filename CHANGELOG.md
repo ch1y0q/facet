@@ -4,6 +4,10 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Optional JPEG XL import and display.** Install `facet-photo[jpegxl]` to scan `.jxl` images and view browser-compatible JPEG previews while preserving the JPEG XL original.
+
 ### Fixed
 
 - **The photo-detail Keep button is a real toggle.** It announced its pressed state to assistive technology, but activating it on a kept photo kept it again. It now resets the decision, and its icon is outlined until the photo is kept, so the state no longer relies on colour alone.

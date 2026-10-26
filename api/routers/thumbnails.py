@@ -23,7 +23,7 @@ from api.config import VIEWER_CONFIG
 from api.database import get_db, get_db_connection
 from api.db_helpers import get_visibility_clause
 from api.path_validation import resolve_photo_disk_path
-from utils.image_loading import RAW_EXTENSIONS, HEIF_EXTENSIONS, TIFF_EXTENSIONS, JPEG_EXTENSIONS
+from utils.image_loading import RAW_EXTENSIONS, HEIF_EXTENSIONS, TIFF_EXTENSIONS, JPEG_EXTENSIONS, KNOWN_JXL_EXTENSIONS
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +100,7 @@ def _convert_raw_cached(file_path: str, mtime: float, quality: int = 96,
 def _convert_nonraw_cached(file_path: str, mtime: float, quality: int = 96) -> bytes:
     """Convert a non-RAW, non-browser-renderable file to JPEG bytes, cached by path+mtime+quality.
 
-    Used for both HEIF/HEIC and TIFF: open_nonraw_image is format-agnostic for
+    Used for HEIF/HEIC, TIFF and JPEG XL: open_nonraw_image is format-agnostic for
     every non-RAW extension (RGBA/16-bit/AVIF-PQ handling all live there), so
     one cached conversion serves both branches below rather than pasting a
     second near-identical function. Goes through the same loader as the
@@ -489,18 +489,18 @@ def image(
                 return _stored_thumbnail_response(path, request)
             return Response(content="Failed to convert HEIF file", status_code=500)
 
-    # Convert TIFF to JPEG. Native browser formats below keep their original
+    # Convert TIFF and JPEG XL to JPEG. Native browser formats below keep their original
     # bytes and receive a known media type independent of the OS MIME registry.
-    if Path(real_disk).suffix.lower() in TIFF_EXTENSIONS:
+    if Path(real_disk).suffix.lower() in TIFF_EXTENSIONS | KNOWN_JXL_EXTENSIONS:
         try:
             mtime = os.path.getmtime(real_disk)
             quality = _get_image_jpeg_quality()
             jpeg_bytes = _convert_nonraw_cached(real_disk, mtime, quality)
             return _cached_image_response(jpeg_bytes, request)
         except Exception:
-            logger.exception("Failed to convert TIFF file: %s", real_disk)
+            logger.exception("Failed to convert TIFF/JPEG XL file: %s", real_disk)
             if want_fallback:
                 return _stored_thumbnail_response(path, request)
-            return Response(content="Failed to convert TIFF file", status_code=500)
+            return Response(content="Failed to convert TIFF/JPEG XL file", status_code=500)
 
     return FileResponse(real_disk, media_type=_BROWSER_IMAGE_MEDIA_TYPES.get(Path(real_disk).suffix.lower()))

@@ -4,6 +4,8 @@
 
 Application monopage FastAPI + Angular pour parcourir, filtrer et gérer les photos.
 
+Le scan et la détection JPEG XL (`.jxl`) en mode surveillance nécessitent le décodeur optionnel `pillow-jxl-plugin` (`pip install "facet-photo[jpegxl]"`). Redémarrez la visionneuse après installation. Facet génère des aperçus JPEG pour le navigateur et conserve les originaux JPEG XL ; le chargeur partagé applique orientation et transparence. Sans décodeur, le scan ignore JPEG XL. Les téléchargements originaux restent en `.jxl`. Cela permet l’import et l’affichage, mais pas l’export de métadonnées intégrées : les décisions Facet utilisent des fichiers sidecar pour JPEG XL.
+
 ## Sommaire
 
 - [Démarrer la visionneuse](#démarrer-la-visionneuse) · [Authentification](#authentification) · [Options de filtrage](#options-de-filtrage) · [Tri](#tri) · [Fonctionnalités de la galerie](#fonctionnalités-de-la-galerie)

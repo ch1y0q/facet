@@ -4,6 +4,8 @@
 
 FastAPI + Angular single-page application for browsing, filtering, and managing photos.
 
+JPEG XL (`.jxl`) scanning and watch-mode discovery are available with the optional `pillow-jxl-plugin` decoder (`pip install "facet-photo[jpegxl]"`). Restart the viewer after installation. Facet renders JPEG previews for browsers, while the original remains JPEG XL; the shared loader applies orientation and alpha handling. Without the decoder, scans skip JPEG XL. Original downloads remain `.jxl`. This enables import and display, not embedded metadata export: Facet review edits use sidecars for JPEG XL.
+
 ## Contents
 
 - [Starting the Viewer](#starting-the-viewer) · [Authentication](#authentication) · [Filtering Options](#filtering-options) · [Sorting](#sorting) · [Gallery Features](#gallery-features)

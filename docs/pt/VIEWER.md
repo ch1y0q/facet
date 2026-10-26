@@ -4,6 +4,8 @@
 
 Aplicação de página única em FastAPI + Angular para navegar, filtrar e gerenciar fotos.
 
+A análise e a deteção de JPEG XL (`.jxl`) no modo de monitorização exigem o descodificador opcional `pillow-jxl-plugin` (`pip install "facet-photo[jpegxl]"`). Reinicie o visualizador após a instalação. O Facet cria pré-visualizações JPEG para o navegador e mantém os originais JPEG XL; o carregador partilhado aplica orientação e transparência. Sem o descodificador, a análise ignora JPEG XL. Os downloads originais continuam em `.jxl`. Isto permite importar e visualizar, mas não exportar metadados incorporados: as decisões do Facet usam ficheiros sidecar para JPEG XL.
+
 ## Conteúdo
 
 - [Iniciando o Visualizador](#iniciando-o-visualizador) · [Autenticação](#autenticação) · [Opções de Filtragem](#opções-de-filtragem) · [Ordenação](#ordenação) · [Recursos da Galeria](#recursos-da-galeria)

@@ -4,6 +4,8 @@
 
 Aplicación de página única (SPA) basada en FastAPI + Angular para explorar, filtrar y gestionar fotos.
 
+El escaneo y la detección de JPEG XL (`.jxl`) en modo de vigilancia requieren el decodificador opcional `pillow-jxl-plugin` (`pip install "facet-photo[jpegxl]"`). Reinicie el visor tras instalarlo. Facet genera vistas previas JPEG para el navegador y conserva el original JPEG XL; el cargador compartido aplica orientación y transparencia. Sin el decodificador, el escaneo omite JPEG XL. Las descargas originales conservan `.jxl`. Esto permite importar y mostrar, pero no exportar metadatos incrustados: las decisiones de Facet usan archivos sidecar para JPEG XL.
+
 ## Contenido
 
 - [Iniciar el visor](#iniciar-el-visor) · [Autenticación](#autenticación) · [Opciones de filtrado](#opciones-de-filtrado) · [Ordenación](#ordenación) · [Funciones de la galería](#funciones-de-la-galería)
