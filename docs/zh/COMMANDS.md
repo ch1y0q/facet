@@ -89,11 +89,12 @@ API 会将其呈现在 `/api/scan/status` 的 `progress` 字段以及 SSE 数据
 | `python facet.py --import-sidecars --overwrite-manual-gps` | 用附属文件中的手动位置替换 Facet 中已设置的手动 GPS（包括已清除的位置）；不加此选项时保留已有的手动 GPS |
 | `python facet.py --export-sidecars` | 为全部照片从数据库写入／合并 `<image>.xmp` 附属文件（仅附属文件） |
 | `python facet.py --export-sidecars /path` | 仅导出某个路径子树下照片的附属文件 |
+| `python facet.py --export-sidecars /path --reconcile-keywords` | 仅协调 Facet 拥有的关键字，保留外部词；需要 ExifTool。 |
 | `python facet.py --export-sidecars --user alice` | 多用户模式：导出 Alice 的 `user_preferences` 评分，而不是全局列（关键词仍为全局） |
 | `python facet.py --export-sidecars --embed-originals` | 同时把元数据**写入文件本身**，适用于 JPEG/HEIC/TIFF/PNG/DNG（会重写原始文件） |
 | `python facet.py --export-sidecars --score-to-stars` | 对你没有手动评分过的照片，由综合评分推导出 `xmp:Rating`（手动评分／收藏／淘汰始终优先） |
 
-> **元数据双向同步。** Facet 会把评分、颜色标记、关键词、照片描述和已命名的人脸区域写入标准的 `<image>.xmp` 附属文件，整个生态都能读取（Lightroom、darktable、digiKam、immich 等）；除非你用 `--export-sidecars --embed-originals` 主动开启，否则原始图像永远不会被修改（仅限 JPEG/HEIC/TIFF/PNG/DNG——RAW 绝不会被改动）。写入文件本身以及安全的关键词并集合并需要 **exiftool**；没有它时，Facet 会退回到零依赖的纯 XML 附属文件。写出的关键字是 AI 标签加上你的[手动标签](VIEWER.md#手动标签)，并且一个关键字一旦写出，之后的导出不会再把它从附属文件中移除（参见[手动标签与 XMP 关键字](INTEROP.md#手动标签与-xmp-关键字)）。
+> **元数据双向同步。** Facet 会把评分、颜色标记、关键词、照片描述和已命名的人脸区域写入标准的 `<image>.xmp` 附属文件，整个生态都能读取（Lightroom、darktable、digiKam、immich 等）；除非你用 `--export-sidecars --embed-originals` 主动开启，否则原始图像永远不会被修改（仅限 JPEG/HEIC/TIFF/PNG/DNG——RAW 绝不会被改动）。写入文件本身以及安全的关键词并集合并需要 **exiftool**；没有它时，Facet 会退回到零依赖的纯 XML 附属文件。写出的关键字是 AI 标签加上你的[手动标签](VIEWER.md#手动标签)，未选择 `--reconcile-keywords` 时，之后的导出仍只添加关键字（参见[手动标签与 XMP 关键字](INTEROP.md#手动标签与-xmp-关键字)）。
 >
 > 没有凭据表示编辑时间未知，这是数据状态而非旧模式别名。`untracked_legacy_edit` 明确表示采用扫描时间，不推测人工编辑时间。预览无需迁移即可读取已发布版本的模式；缺少 Keep 字段表示未决定。来源时间取 `xmp:MetadataDate`，缺失或无效时取文件修改时间。最多展示范围内 1,000 张照片及每张 100 条诊断，并提供省略计数；范围和用户可见性在规划前生效。 编辑凭据仅属于其所在数据库。新导出的查看器数据库不包含扫描端凭据或 XMP 路径；增量导出仅保留查看器已有的凭据，不复制扫描端的编辑权限。查看器中的显式重置（包括删除的用户偏好）会保留；没有查看器编辑的扫描端值仍正常更新。旧预览版本可能已经复制了无法确定来源的凭据：为避免丢弃真实的查看器编辑，系统保守保留这些凭据，不推测时间戳。显式重建前请备份并检查数据库；完整重建不会保留查看器本地修改。
 >

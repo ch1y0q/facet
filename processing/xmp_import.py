@@ -65,6 +65,7 @@ from db.manual_tags import (
 )
 from processing.rating_writer import upsert_rating_state
 from utils.image_loading import WATCHABLE_IMAGE_EXTENSIONS
+from processing.xmp_keywords import keyword_key, parse_keyword_state
 from processing.xmp_export import (
     LABEL_FAVORITE,
     LABEL_REJECTED,
@@ -204,6 +205,7 @@ def parse_sidecar(path: str):
     if decision not in {"kept", "rejected", "undecided"}:
         decision = None
     return {
+        "keyword_state": parse_keyword_state(_find_scalar(root, f"{{{NS_FACET}}}KeywordState")),
         "review_decision": decision,
         "gps": _gps_override(root),
         "star_rating": star_rating,
@@ -502,8 +504,15 @@ def _import_sidecars(conn, root, *, user_id, overwrite_manual_gps, dry_run, fiel
         diagnostics = []
 
         existing = set(load_manual_tags(conn, row["path"]))
+        marker = parsed.get("keyword_state") or {}
+        manual = {keyword_key(tag) for tag in marker.get("manual", [])}
+        # Present subjects supersede stale deletion markers: another editor
+        # may have re-added them without updating our private packet state.
+        # AI provenance remains independent of deletion/re-addition.
+        excluded = {keyword_key(tag) for tag in marker.get("ai", []) if keyword_key(tag) not in manual}
+        keywords = [tag for tag in parsed["tags"] if keyword_key(tag) not in excluded]
         new_keywords = [
-            tag for tag in _foreign_keywords(conn, row["path"], row["tags"], parsed["tags"], diagnostics)
+            tag for tag in _foreign_keywords(conn, row["path"], row["tags"], keywords, diagnostics)
             if tag not in existing
         ]
         room = max(0, MAX_TAGS_PER_PHOTO - len(existing))

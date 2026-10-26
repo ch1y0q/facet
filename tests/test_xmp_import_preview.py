@@ -642,7 +642,14 @@ def test_exported_source_reset_does_not_claim_viewer_authority(tmp_path, per_use
 def test_readonly_preview_of_release_schema_without_keep_columns(tmp_path, monkeypatch, per_user):
     conn, path, db = setup(tmp_path, rating=0)
     try:
-        sidecar(path)
+        sidecar(path, tags=['old-ai', 'manual'])
+        from processing.xmp_export import NS_FACET
+        from processing.xmp_keywords import serialize_keyword_state
+        packet_path = Path(str(path) + '.xmp')
+        packet = ET.parse(packet_path)
+        packet.find(f'.//{{{NS_RDF}}}Description').set(f'{{{NS_FACET}}}KeywordState', serialize_keyword_state({
+            'version': 1, 'owned': [], 'deleted': ['manual'], 'ai': ['old-ai'], 'manual': []}))
+        packet.write(packet_path, encoding='utf-8')
         if per_user:
             conn.execute('INSERT INTO user_preferences(user_id,photo_path,star_rating) VALUES (?,?,0)', ('alice', str(path)))
         for (trigger,) in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND (name GLOB 'metadata_review_*' OR name GLOB 'organization_*')").fetchall():
@@ -662,6 +669,7 @@ def test_readonly_preview_of_release_schema_without_keep_columns(tmp_path, monke
             reader.row_factory = sqlite3.Row
             result = import_sidecars(reader, dry_run=True, user_id='alice' if per_user else None)
             assert result['entries'][0]['changes']['star_rating']['after'] == 5
+            assert result['entries'][0]['changes']['keywords'] == {'added': ['manual']}
             assert reader.total_changes == 0
         assert db.read_bytes() == before
         if not per_user:
@@ -845,5 +853,51 @@ def test_failed_viewer_sync_restores_existing_local_reset_and_receipt_snapshot(t
         assert conn.execute(f'SELECT star_rating FROM {table} WHERE {key}', (str(path),)).fetchone()[0] == 0
         assert review_edit_state(conn, str(path), 'alice' if per_user else '') == clock
         assert not conn.in_transaction
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize('per_user', [False, True])
+@pytest.mark.parametrize('fields', [frozenset({'keywords'}), frozenset({'review', 'gps', 'keywords'})])
+def test_preview_and_apply_share_keyword_provenance_without_overriding_review_clocks(tmp_path, monkeypatch, per_user, fields):
+    from db.manual_tags import load_manual_tags
+    from processing.xmp_export import NS_FACET
+    from processing.xmp_keywords import serialize_keyword_state
+
+    conn, path, db = setup(tmp_path, rating=0)
+    try:
+        monkeypatch.setattr('api.config.is_multi_user_enabled', lambda: per_user)
+        monkeypatch.setattr('api.db_helpers.get_visibility_clause', lambda _user: ('1=1', []))
+        if per_user:
+            conn.execute('INSERT INTO user_preferences(user_id,photo_path,star_rating) VALUES (?,?,3)', ('alice', str(path)))
+        else:
+            conn.execute('UPDATE photos SET star_rating=3 WHERE path=?', (str(path),))
+        conn.execute("UPDATE photos SET tags='new-ai',gps_latitude=10,gps_longitude=20,gps_manually_set=1 WHERE path=?", (str(path),))
+        conn.commit()
+        filename = sidecar(path, tags=['old-ai', 'restored', 'shared', 'a|hierarchy'], gps=True)
+        packet = ET.parse(filename)
+        packet.find(f'.//{{{NS_RDF}}}Description').set(f'{{{NS_FACET}}}KeywordState', serialize_keyword_state({
+            'version': 1, 'owned': ['shared'], 'deleted': ['restored', 'old-ai'],
+            'ai': ['old-ai', 'shared'], 'manual': ['shared']}))
+        packet.write(filename, encoding='utf-8')
+        user = 'alice' if per_user else None
+        clock = review_edit_state(conn, str(path), user or '')
+        before = db.read_bytes()
+        writes = conn.total_changes
+        preview = import_sidecars(conn, str(path), user_id=user, fields=fields, dry_run=True)
+        entry = preview['entries'][0]
+        assert entry['changes'] == {'keywords': {'added': ['restored', 'shared']}}
+        reasons = {d['reason'] for d in entry['diagnostics']}
+        assert 'hierarchy_unsupported' in reasons
+        assert ('newer_local_edit' in reasons) == ('review' in fields)
+        assert ('manual_gps_protected' in reasons) == ('gps' in fields)
+        assert conn.total_changes == writes and db.read_bytes() == before
+        applied = import_sidecars(conn, str(path), user_id=user, fields=fields)
+        assert applied['entries'] == preview['entries']
+        assert applied['tags_added'] == 2
+        assert load_manual_tags(conn, str(path)) == ['restored', 'shared']
+        assert review_edit_state(conn, str(path), user or '') == clock
+        assert conn.execute('SELECT gps_latitude,gps_longitude FROM photos').fetchone()[:] == (10, 20)
+        assert import_sidecars(conn, str(path), user_id=user, fields=fields)['tags_added'] == 0
     finally:
         conn.close()
