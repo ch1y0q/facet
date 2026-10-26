@@ -8,10 +8,14 @@ on:
   pull_request:
     paths:
       - "testdb/**"
+      - "installer/**"
+      - "scripts/rewrite_db_paths.py"
       - ".github/workflows/face-gate.yml"
   push:
     paths:
       - "testdb/**"
+      - "installer/**"
+      - "scripts/rewrite_db_paths.py"
       - ".github/workflows/face-gate.yml"
   workflow_dispatch:
 
@@ -128,9 +132,154 @@ jobs:
           name: report-docker
           path: reports/
 
+  windows:
+    name: Windows, MSI install
+    needs: library
+    runs-on: windows-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: powershell
+    env:
+      WIX_URL: https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip
+      WIX_SHA256: 6AC824E1642D6F7277D0ED7EA09411A508F6116BA6FAE0AA5F2C7DAA2FF43D31
+      PORT: "5000"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: client/package-lock.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: face-library
+          path: library
+      - name: Build the client
+        working-directory: client
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          if ($LASTEXITCODE) { throw 'client build failed' }
+      - name: Build the MSI (WiX 3.14, checksum pinned)
+        run: |
+          python -m pip install uv==0.10.7
+          $zip = Join-Path $env:RUNNER_TEMP 'wix.zip'
+          Invoke-WebRequest $env:WIX_URL -OutFile $zip -UseBasicParsing
+          if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne $env:WIX_SHA256) { throw 'WiX download failed its checksum' }
+          Expand-Archive $zip (Join-Path $env:RUNNER_TEMP 'wix')
+          & .\installer\build-msi.ps1 -WixDir (Join-Path $env:RUNNER_TEMP 'wix') -Uv (Get-Command uv).Source
+          "MSI=$((Get-ChildItem installer\out\*.msi).FullName)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+      - uses: actions/upload-artifact@v4
+        with:
+          name: facet-msi
+          path: installer/out/*.msi
+
+      - name: Install the MSI (per user, no admin, setup deferred)
+        run: |
+          $p = Start-Process msiexec -ArgumentList '/i', "`"$env:MSI`"", '/qn', '/l*v', "`"$env:RUNNER_TEMP\install.log`"", 'FACET_SKIP_SETUP=1' -Wait -PassThru
+          if ($p.ExitCode) { throw "msiexec /i exited $($p.ExitCode)" }
+          $app = Join-Path $env:LOCALAPPDATA 'Facet\app'
+          foreach ($f in 'viewer.py', 'facet.py', 'installer\Start-Facet.ps1', 'installer\bin\uv.exe', 'client\dist\client\browser\index.html') {
+            if (-not (Test-Path (Join-Path $app $f))) { throw "missing after install: $f" }
+          }
+          $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Facet'
+          if ((Get-ChildItem $menu -Filter *.lnk).Count -ne 3) { throw 'expected 3 Start-menu shortcuts' }
+          "FACET_APP=$app" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Setup (CPU path, no NVIDIA driver), then a second setup that does nothing
+        run: |
+          & "$env:FACET_APP\installer\Setup-Facet.ps1"
+          . "$env:FACET_APP\installer\Facet-Env.ps1"
+          & $FacetPython -c "import torch; assert not torch.cuda.is_available(); assert '+cpu' in torch.__version__, torch.__version__; print(torch.__version__)"
+          if ($LASTEXITCODE) { throw 'torch check failed' }
+          $ver = & (Join-Path $FacetExifTool 'exiftool.exe') -ver
+          if ($ver -ne '13.55') { throw "exiftool is $ver, expected 13.55" }
+          $out = & "$env:FACET_APP\installer\Setup-Facet.ps1" *>&1 | Out-String
+          if ($out -notmatch 'already set up') { throw "second setup did work:`n$out" }
+      - name: Start, health, idempotent start, port guard
+        run: |
+          & "$env:FACET_APP\installer\Start-Facet.ps1" -Port $env:PORT -NoBrowser
+          Invoke-RestMethod "http://127.0.0.1:$env:PORT/health" | ConvertTo-Json -Compress
+          if ((Invoke-WebRequest "http://127.0.0.1:$env:PORT/" -UseBasicParsing).StatusCode -ne 200) { throw 'client not served' }
+          & "$env:FACET_APP\installer\Start-Facet.ps1" -Port $env:PORT -NoBrowser
+          $l = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 5010); $l.Start()
+          try {
+            $refused = $false
+            try { & "$env:FACET_APP\installer\Start-Facet.ps1" -Port 5010 -NoBrowser } catch { $refused = $_.Exception.Message -match 'already in use' }
+            if (-not $refused) { throw 'Start-Facet did not refuse a port held by another program' }
+          } finally { $l.Stop() }
+
+      - name: Scan, group, name
+        run: |
+          . "$env:FACET_APP\installer\Facet-Env.ps1"
+          New-Item -ItemType Directory -Force C:\data | Out-Null
+          Copy-Item -Recurse library\photos C:\data\photos
+          Push-Location $FacetApp
+          try {
+            & $FacetPython facet.py C:\data\photos
+            if ($LASTEXITCODE) { throw "scan exited $LASTEXITCODE" }
+            & $FacetPython facet.py --cluster-faces-incremental
+            if ($LASTEXITCODE) { throw "clustering exited $LASTEXITCODE" }
+          } finally { Pop-Location }
+          & $FacetPython testdb\seed_names.py --db $env:DB_PATH --people C:\data\photos\people.csv --apply
+          if ($LASTEXITCODE) { throw "seed_names exited $LASTEXITCODE" }
+          New-Item -ItemType Directory -Force reports | Out-Null
+          # cmd redirects bytes; Windows PowerShell's > would write UTF-16.
+          cmd /c "`"$FacetPython`" testdb\ci_report.py --db `"$env:DB_PATH`" --people C:\data\photos\people.csv --refs library\references > reports\windows.txt"
+          if ($LASTEXITCODE) { throw "ci_report exited $LASTEXITCODE" }
+          Get-Content reports\windows.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: report-windows
+          path: reports/
+      - name: The viewer serves the scanned library
+        run: |
+          # The runner ends a step's child processes when the step finishes, so start again.
+          & "$env:FACET_APP\installer\Start-Facet.ps1" -Port $env:PORT -NoBrowser
+          $page = Invoke-RestMethod "http://127.0.0.1:$env:PORT/api/photos?per_page=5"
+          ($page | ConvertTo-Json -Depth 2 -Compress).Substring(0, 200)
+      - name: Path rewrite tests with the installed environment
+        run: |
+          . "$env:FACET_APP\installer\Facet-Env.ps1"
+          & $FacetUv pip install --python $FacetPython pytest pytest-asyncio pytest-timeout==2.4.0
+          & $FacetPython -m pytest tests/test_rewrite_db_paths.py -v --tb=short -p no:cacheprovider
+          if ($LASTEXITCODE) { throw 'rewrite tests failed' }
+      - name: Stop leaves nothing running
+        run: |
+          & "$env:FACET_APP\installer\Start-Facet.ps1" -Port $env:PORT -NoBrowser
+          . "$env:FACET_APP\installer\Facet-Env.ps1"
+          if (-not (Test-PortOpen ([int]$env:PORT))) { throw 'viewer did not start' }
+          & "$env:FACET_APP\installer\Stop-Facet.ps1"
+          if ($LASTEXITCODE) { throw "Stop-Facet exited $LASTEXITCODE" }
+          Start-Sleep -Seconds 2
+          if (Test-PortOpen ([int]$env:PORT)) { throw 'port still open after Stop-Facet' }
+          if (@(Get-FacetProcesses).Count) { throw 'Facet processes left after Stop-Facet' }
+      - name: Uninstall removes the program, keeps the data
+        run: |
+          $p = Start-Process msiexec -ArgumentList '/x', "`"$env:MSI`"", '/qn' -Wait -PassThru
+          if ($p.ExitCode) { throw "msiexec /x exited $($p.ExitCode)" }
+          if (Test-Path "$env:FACET_APP\viewer.py") { throw 'program files left after uninstall' }
+          if (-not (Test-Path "$env:LOCALAPPDATA\Facet\data\photo_scores_pro.db")) { throw 'uninstall removed the database' }
+      - name: Collect logs
+        if: always()
+        run: |
+          New-Item -ItemType Directory -Force ci-logs | Out-Null
+          Copy-Item "$env:RUNNER_TEMP\install.log" ci-logs -ErrorAction SilentlyContinue
+          Copy-Item "$env:LOCALAPPDATA\Facet\data\logs\*" ci-logs -ErrorAction SilentlyContinue
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-logs
+          path: ci-logs/
+          if-no-files-found: ignore
+
   compare:
     name: Same result everywhere
-    needs: [linux, docker]
+    needs: [linux, docker, windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -139,4 +288,4 @@ jobs:
           pattern: report-*
           merge-multiple: true
           path: reports
-      - run: python3 testdb/ci_compare.py reports/linux.txt reports/docker.txt
+      - run: python3 testdb/ci_compare.py reports/linux.txt reports/docker.txt reports/windows.txt
