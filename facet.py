@@ -2922,8 +2922,8 @@ def main():
 
         # HEIF orientation repair, inline like the schema step rather than as a
         # subprocess flag: no model and no GPU, and idempotent through a
-        # scanned_at watermark, so a run with nothing to repair costs one
-        # indexed query. Sideways rows leave with their subject columns NULLed,
+        # completed-pass scanned_at watermark; failed candidates remain eligible
+        # for retry. Sideways rows leave with their subject columns NULLed,
         # which is exactly what the --recompute-saliency step below selects on.
         from processing.scorer import fix_double_transposed_heif_thumbnails
         logger.info("--- HEIF orientation rebuild (thumbnails + dimensions) ---")

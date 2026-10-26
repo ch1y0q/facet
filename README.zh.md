@@ -234,6 +234,7 @@ python viewer.py                       # 照片库 → http://localhost:5000
 | [查看器](docs/zh/VIEWER.md) | 网页照片库的功能与用法 |
 | [互操作](docs/zh/INTEROP.md) | 与 Lightroom、Capture One、digiKam、darktable 往返同步星级／标签 |
 | [Immich](docs/zh/IMMICH.md) | 与 Immich 同步星级和收藏，以及入站 webhook |
+| [重新关联](docs/zh/RELINK.md) | 重新关联已移动照片 |
 | [AI 智能体](docs/zh/AGENTS.md) | 让支持 MCP 的助手使用个人令牌搜索照片库 |
 | [部署](docs/zh/DEPLOYMENT.md) | 生产环境部署（Synology NAS、Linux、Docker） |
 | [贡献指南](CONTRIBUTING.md) | 开发环境搭建、架构、代码风格 |

@@ -234,6 +234,7 @@ First time here? Follow the **[Getting Started](docs/GETTING_STARTED.md)** walkt
 | [Viewer](docs/VIEWER.md) | Web gallery features and usage |
 | [Interop](docs/INTEROP.md) | Round-tripping ratings/tags with Lightroom, Capture One, digiKam, darktable |
 | [Immich](docs/IMMICH.md) | Syncing ratings and favorites with Immich, plus the inbound webhook |
+| [Relink](docs/RELINK.md) | Relink moved photos |
 | [AI Agents](docs/AGENTS.md) | Letting an MCP-capable assistant search the library with a personal token |
 | [Deployment](docs/DEPLOYMENT.md) | Production deployment (Synology NAS, Linux, Docker) |
 | [Contributing](CONTRIBUTING.md) | Development setup, architecture, code style |

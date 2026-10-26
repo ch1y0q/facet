@@ -1,0 +1,16 @@
+name: Facet CodeQL config
+
+# Two Python rules are excluded because nearly every alert they raise here is a
+# false positive by construction (83 dismissed, versus one real bug from the
+# other rules combined):
+# - py/path-injection: Facet opens files at paths it stored itself, so every
+#   photo row path reaching open()/stat() is reported as user input. Request-
+#   supplied paths (/dav, export destinations) are covered by realpath-
+#   containment tests instead.
+# - py/clear-text-logging-sensitive-data: fires on any variable named like a
+#   password, token or secret, including ones that are never logged.
+query-filters:
+  - exclude:
+      id: py/path-injection
+  - exclude:
+      id: py/clear-text-logging-sensitive-data

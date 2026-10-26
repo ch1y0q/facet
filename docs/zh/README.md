@@ -18,7 +18,7 @@ Facet 是一个多维度的照片分析引擎：它为本地照片库评分、�
 | [互操作](INTEROP.md) | 与 Lightroom、Capture One、digiKam、darktable 双向交换星级／标签 |
 | [Immich](IMMICH.md) | 与 Immich 同步星级和收藏，以及入站 webhook |
 | [部署](DEPLOYMENT.md) | NAS、远程服务器、HTTPS、备份、多用户 |
-| [RELINK](RELINK.md) | 重新关联已移动照片 |
+| [重新关联](RELINK.md) | 重新关联已移动照片 |
 
 ## 支持的文件类型
 

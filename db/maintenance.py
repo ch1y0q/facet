@@ -82,6 +82,11 @@ def _classify_missing_path(path):
     return _PATH_DELETED
 
 
+def is_path_deleted(path):
+    """True only when ``path`` is genuinely gone: its entry is absent and its parent is readable."""
+    return _classify_missing_path(path) == _PATH_DELETED
+
+
 def vacuum_database(db_path='photo_scores_pro.db', verbose=True):
     """Run VACUUM to reclaim space and defragment the database.
 

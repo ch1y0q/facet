@@ -225,6 +225,7 @@ Ejecuta `python facet.py --doctor` para diagnosticar problemas con la GPU.
 | [Visor](docs/es/VIEWER.md) | Funciones y uso de la galería web |
 | [Interoperabilidad](docs/es/INTEROP.md) | Intercambiar valoraciones/tags con Lightroom, Capture One, digiKam, darktable |
 | [Immich](docs/es/IMMICH.md) | Sincronizar valoraciones y favoritos con Immich, más el webhook entrante |
+| [Volver a vincular](docs/es/RELINK.md) | Volver a vincular fotos movidas |
 | [Agentes de IA](docs/es/AGENTS.md) | Dejar que un asistente compatible con MCP busque en la biblioteca con un token personal |
 | [Despliegue](docs/es/DEPLOYMENT.md) | Despliegue en producción (NAS Synology, Linux, Docker) |
 | [Contribuir](CONTRIBUTING.md) | Configuración de desarrollo, arquitectura, estilo de código |

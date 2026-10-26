@@ -18,7 +18,7 @@ una libreria fotografica locale, poi serve una galleria per sfogliarla. Inizia d
 | [Interoperabilità](INTEROP.md) | Scambiare valutazioni/tag con Lightroom, Capture One, digiKam, darktable |
 | [Immich](IMMICH.md) | Sincronizzare valutazioni e preferiti con Immich, più il webhook in entrata |
 | [Distribuzione](DEPLOYMENT.md) | NAS, server remoti, HTTPS, backup, multi-utente |
-| [RELINK](RELINK.md) | Ricollegare foto spostate |
+| [Ricollegare](RELINK.md) | Ricollegare foto spostate |
 
 ## Tipi di file supportati
 

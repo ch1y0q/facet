@@ -438,7 +438,10 @@ def fix_thumbnail_rotation(db_path):
 # arithmetic identical to re-decoding the original, two orders of magnitude
 # cheaper -- plus the size swap back and NULLed subject columns, which hand
 # the rescoring to --recompute-saliency's own selection predicate.
-HEIF_DOUBLE_TRANSPOSE_WATERMARK_KEY = 'heif_double_transpose_watermark'
+# Earlier progress could pass an unreadable row tied on scanned_at, or a
+# thumbnail that failed to decode. Recheck those candidates once rather than
+# trusting the old marker; repaired portrait rows are already excluded below.
+HEIF_DOUBLE_TRANSPOSE_WATERMARK_KEY = 'heif_double_transpose_watermark_v2'
 # EXIF tag id for Orientation, read header-only off the original file.
 _EXIF_ORIENTATION_TAG = 274
 # orientation 6 stores the frame rotated 90 CW from upright, orientation 8
@@ -531,10 +534,11 @@ def fix_double_transposed_heif_thumbnails(db_path, batch_size=500):
 
     Candidate rows come from the DATABASE -- HEIF paths still lying on their
     side (``image_width > image_height``) past a ``scanned_at`` watermark in
-    ``stats_cache`` -- so later runs only look at rows scanned since the last
-    one and cost one indexed query when there are none. The candidate read
-    leaves the thumbnail BLOB behind (most candidates are ordinary landscape
-    frames); only a row that needs the repair has its thumbnail fetched. Each
+    ``stats_cache`` -- so after a completed pass, later runs only look at rows
+    scanned since that pass. The initial pass still scans for candidates. The
+    candidate read leaves the thumbnail BLOB behind (most candidates are
+    ordinary landscape frames); only a row that needs the repair has its
+    thumbnail fetched. Each
     candidate's file is header-read once for its stored orientation; a
     quarter-turn family (6 or 8) with the sideways stored size is repaired by
     rotating the stored thumbnail back (JPEG generation 2 at quality 95,
@@ -546,9 +550,11 @@ def fix_double_transposed_heif_thumbnails(db_path, batch_size=500):
     whole-library by design and needs nothing here.
 
     Idempotent twice over: repaired rows drop out of the size predicate, and
-    the watermark advances past every examined row whose file could be read.
-    It stops short of the first unreadable one (an offline volume, a file
-    still being copied) so a later run examines that row again.
+    the watermark advances only when every candidate could be read and, where
+    needed, repaired. Any header or photo thumbnail failure retains the previous
+    marker, including rows tied on scanned_at. Readable landscape candidates
+    may have their headers read again until the failure clears; already
+    repaired portrait rows are excluded and are never rotated twice.
 
     Returns the number of thumbnails re-uprighted.
     """
@@ -585,7 +591,7 @@ def fix_double_transposed_heif_thumbnails(db_path, batch_size=500):
             scanned_at = entry['scanned_at']
             orientation = _stored_heif_orientation(entry['path'])
             if orientation is None:
-                blocked = True  # unreadable now: keep the watermark below it
+                blocked = True  # retain the previous marker for a later retry
             elif not blocked and scanned_at and (new_watermark is None or scanned_at > new_watermark):
                 new_watermark = scanned_at
             transpose = _HEIF_DOUBLE_TRANSPOSE_FIXES.get(orientation)
@@ -598,6 +604,7 @@ def fix_double_transposed_heif_thumbnails(db_path, batch_size=500):
                 PILImage.open(BytesIO(blob)).transpose(
                     getattr(PILImage.Transpose, transpose)).save(buf, format='JPEG', quality=95)
             except Exception as e:
+                blocked = True
                 logger.error("Could not re-upright %s: %s", entry['path'], e)
                 continue
             conn.execute(
@@ -612,7 +619,7 @@ def fix_double_transposed_heif_thumbnails(db_path, batch_size=500):
             if fixed % batch_size == 0:
                 conn.commit()
         conn.commit()
-        if new_watermark and new_watermark != watermark:
+        if not blocked and new_watermark and new_watermark != watermark:
             conn.execute(
                 "INSERT OR REPLACE INTO stats_cache (key, value, updated_at) VALUES (?, ?, ?)",
                 (HEIF_DOUBLE_TRANSPOSE_WATERMARK_KEY, new_watermark, time.time()))

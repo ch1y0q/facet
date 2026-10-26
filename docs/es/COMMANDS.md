@@ -166,6 +166,8 @@ Estos comandos actualizan métricas específicas, derivan datos nuevos (leyendas
 | `python facet.py --compute-recommendations --apply-recommendations` | Aplica automáticamente las correcciones de puntuación |
 | `python facet.py --compute-recommendations --simulate` | Previsualiza los cambios proyectados |
 
+`--upgrade-db` vuelve a intentar los archivos HEIF cuyas cabeceras o miniaturas de las fotos no se pudieron leer o reparar. Mientras falle algún candidato, conserva el último progreso completado, por lo que puede volver a comprobar archivos horizontales legibles. Los retratos reparados correctamente no se giran por segunda vez. Al actualizar desde versiones anteriores de la reparación, se revisan de nuevo los candidatos pendientes; vaciar la caché de estadísticas también reinicia esta comprobación. Nunca se escriben los archivos de imagen originales.
+
 ### Modelos de calidad suplementarios
 
 Tres modelos PyIQA adicionales puntúan más allá de la puntuación estética principal de TOPIQ. Comparten VRAM con TOPIQ y se ejecutan como parte del pipeline multipaso por defecto.
@@ -414,6 +416,7 @@ Comprueba: rangos de puntuación, métricas faciales, corrupción de BLOB, tama�
 | `python database.py --cleanup-missing-photos` | Elimina de la base de datos las fotos que ya no están en disco (las eliminaciones en cascada limpian etiquetas, rostros detectados, etc.; también borra las pertenencias a álbumes y el índice vectorial, e invalida la caché de estadísticas salvo el estado de la biblioteca que guarda — la instantánea de percentiles, el estado de sincronización con Immich, los cabezales keeper entrenados y las métricas del ranker, y los marcadores de actualización de miniaturas y de reparación; los contadores de comparaciones del reentrenamiento automático se reinician) |
 | `python database.py --cleanup-missing-photos --dry-run` | Previsualiza los archivos ausentes sin eliminar |
 | `python database.py --cleanup-missing-photos --force` | Continúa incluso cuando todas las fotos parecen ausentes (protección contra eliminarlo todo cuando un volumen está desmontado) |
+| `python database.py --relink-photos` | Actualiza las rutas en la base de las fotos que has movido tú mismo (vista previa por defecto; aplicar exige un plan revisado). Véase [Volver a vincular fotos movidas](#volver-a-vincular-fotos-movidas) |
 | `python database.py --migrate-storage-fs` | Migra las miniaturas y los embeddings de los BLOB de la base de datos al sistema de archivos |
 | `python database.py --migrate-storage-db` | Migra las miniaturas y los embeddings del sistema de archivos de vuelta a la base de datos |
 | `python database.py --add-user alice --role admin` | Añade un usuario (solicita la contraseña) |
@@ -522,22 +525,3 @@ Tras mover los archivos manualmente, `python database.py --relink-photos` permit
 Aplicar usa el bloqueo de biblioteca: el código 75 indica otro trabajo en curso y el 1, un bloqueo inutilizable. La vista previa no toma el bloqueo.
 
 `sidecar_facet` identifica explícitamente `photo.ext.facet.xmp`; también se rechazan paquetes alternativos no listados. Los planes guardados son privados (0600 en POSIX). Un directorio legible no demuestra que el volumen esté montado: `source_mount_status` sigue en `not_verified`; el operador debe confirmar que el original se movió y no está sin conexión.
-
-```sh
-python database.py --relink-photos --db library.db --config scoring_config.json \
-  --mapping moved.json --plan-out relink-plan.json
-python database.py --relink-photos --db library.db --config scoring_config.json \
-  --apply-plan relink-plan.json --ack-plan REVIEWED_PLAN_ID \
-  --acknowledge-unverified-identity
-```
-
-| Opción | Función |
-|---|---|
-| `--db` | Base de datos existente |
-| `--config` | Configuración resuelta |
-| `--user` | Usuario configurado obligatorio en modo multiusuario |
-| `--mapping` | Rutas antigua/nueva en JSON; vista previa |
-| `--plan-out` | Crear plan privado nuevo sin sobrescribir |
-| `--apply-plan` | Aplicar un plan revisado |
-| `--ack-plan` | Hash exacto del plan revisado |
-| `--acknowledge-unverified-identity` | Confirmación explícita pese a bytes originales desconocidos |
