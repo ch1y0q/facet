@@ -2,7 +2,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AfterValidator, BaseModel, Field, field_validator
 
 from api.auth import CurrentUser, require_edition
 from api.config import is_multi_user_enabled
@@ -103,7 +103,25 @@ class PlaceSearchResponse(BaseModel):
     results: list[PlaceSearchResult]
 
 
-@router.get('/api/places/search', response_model=PlaceSearchResponse)
-def api_search_places(q: Annotated[str, Query(min_length=3, max_length=200)], user: CurrentUser = Depends(require_edition)):
+class PlaceSearchErrorResponse(BaseModel):
+    detail: str
+
+
+def _validate_search_query(value: str) -> str:
+    # Keep the service's validation for non-HTTP callers; HTTP refusals use
+    # FastAPI's declared validation-error shape before any provider work.
+    query = value.strip()
+    if len(query) < 3 or any(ord(c) < 32 for c in query):
+        raise ValueError('Search must contain 3 to 200 characters')
+    return value
+
+
+@router.get('/api/places/search', response_model=PlaceSearchResponse, responses={
+    429: {'model': PlaceSearchErrorResponse, 'description': 'Wait before another explicit search.',
+          'headers': {'Retry-After': {'schema': {'type': 'string'}, 'description': 'Seconds before retrying.'}}},
+    502: {'model': PlaceSearchErrorResponse, 'description': 'Online provider unavailable.'},
+    503: {'model': PlaceSearchErrorResponse, 'description': 'Online place search disabled.'},
+})
+def api_search_places(q: Annotated[str, Query(min_length=3, max_length=200), AfterValidator(_validate_search_query)], user: CurrentUser = Depends(require_edition)):
     owner = ('user', place_owner(user)) if is_multi_user_enabled() else ('installation', '')
     return {'results': place_search.search(q, owner)}

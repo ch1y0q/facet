@@ -1,3 +1,5 @@
+import { HttpContext } from '@angular/common/http';
+import { HANDLE_PLACE_SEARCH_ERRORS_LOCALLY } from '../../core/utils/place-search-error.util';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationStart, Router } from '@angular/router';
 import { Component, inject, signal, computed, effect, viewChild, ElementRef, DestroyRef, afterNextRender, ChangeDetectionStrategy } from '@angular/core';
@@ -51,7 +53,8 @@ type GpsResult = components['schemas']['GpsUpdateResponse'];
       </label>
       <label class="block text-sm mb-2">
         {{ I18N.photo_detail.gps.online_query | translate }}
-        <input class="block w-full border rounded p-2 bg-transparent" type="search" maxlength="200" [ngModel]="onlineQuery()" (ngModelChange)="setOnlineQuery($event)">
+        <!-- Native maxlength counts UTF-16 units; the request guard limits code points to 200. -->
+        <input class="block w-full border rounded p-2 bg-transparent" type="search" maxlength="400" [ngModel]="onlineQuery()" (ngModelChange)="setOnlineQuery($event)">
       </label>
       <p class="text-xs mb-2">{{ I18N.photo_detail.gps.online_notice | translate }}</p>
       <p class="text-xs mb-2"><a href="https://photon.komoot.io" target="_blank" rel="noopener noreferrer">Photon</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a></p>
@@ -275,7 +278,7 @@ export class GpsEditDialogComponent {
     const auth = this.auth.status();
     this.onlineBusy.set(true);
     try {
-      const response = await firstValueFrom(this.api.get<components['schemas']['PlaceSearchResponse']>('/places/search', { q: this.onlineQuery().trim() }).pipe(takeUntil(this.cancelOnline)));
+      const response = await firstValueFrom(this.api.get<components['schemas']['PlaceSearchResponse']>('/places/search', { q: this.onlineQuery().trim() }, new HttpContext().set(HANDLE_PLACE_SEARCH_ERRORS_LOCALLY, true)).pipe(takeUntil(this.cancelOnline)));
       if (sequence !== this.onlineSequence || auth !== this.auth.status() || this.destroyed || this.dismissed) return;
       this.onlineResults.set(response.results.filter(result => this.validOnlineResult(result)).slice(0, 5));
       this.onlineSearched.set(true);
