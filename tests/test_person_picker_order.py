@@ -134,3 +134,52 @@ def test_count_does_not_aggregate_visible_faces(edition_client, picker_db, monke
     assert len(counts) == 1
     assert 'visible_counts' not in counts[0]
     assert 'GROUP BY' not in counts[0]
+
+
+@pytest.mark.parametrize('sort', ['assignment', 'name_asc'])
+@pytest.mark.parametrize(('query', 'expected'), [
+    ('١', [3]),
+    ('１２', [3]),
+    ('١2', [3]),
+    ('Alice ١', [3]),
+    ('12', [3, 12]),
+    ('012', [3, 12]),
+    ('9223372036854775808', [3]),
+    ('9' * 100, [3]),
+])
+def test_search_reserves_id_matching_for_ascii_decimals(edition_client, picker_db, sort, query, expected):
+    with sqlite3.connect(picker_db) as conn:
+        conn.execute("UPDATE persons SET name='Unrelated'")
+        conn.execute('UPDATE persons SET name=? WHERE id=3', ('Name ' + query,))
+    response = edition_client.get('/api/persons', params={'sort': sort, 'search': query})
+    assert response.status_code == 200, response.text
+    assert response.json()['total'] == len(expected)
+    assert [(row['id'], row['name']) for row in response.json()['persons']] == [
+        (person_id, 'Name ' + query if person_id == 3 else 'Unrelated') for person_id in expected
+    ]
+
+
+def test_literal_search_combines_visibility_recents_and_pagination(edition_client, picker_db, monkeypatch):
+    from api.auth import CurrentUser, require_authenticated
+    from api.db_helpers import get_visibility_clause
+
+    monkeypatch.setattr('api.routers.persons.get_visibility_clause', get_visibility_clause)
+    monkeypatch.setattr('api.db_helpers.is_multi_user_enabled', lambda: True)
+    monkeypatch.setattr('api.db_helpers.get_user_directories',
+                        lambda user: ['/visible'] if user == 'test' else ['/private'])
+    with sqlite3.connect(picker_db) as conn:
+        conn.execute("UPDATE persons SET name='Ada ١' WHERE id IN (1,2,3,54,55)")
+        conn.execute("INSERT INTO persons(id,name,face_count) VALUES (56,'Ada ١',1)")
+        conn.execute("INSERT INTO faces(photo_path,person_id,face_index,embedding) VALUES ('/private/a.jpg',56,100,X'00')")
+    params = {'sort': 'assignment', 'search': '١', 'recent_ids': '56,54,3,1', 'per_page': 2}
+    first = edition_client.get('/api/persons', params=params)
+    second = edition_client.get('/api/persons', params={**params, 'page': 2})
+    assert first.status_code == second.status_code == 200
+    assert first.json()['total'] == second.json()['total'] == 3
+    assert [(row['id'], row['face_count']) for row in first.json()['persons'] + second.json()['persons']] == [(3, 1), (1, 1), (2, 4)]
+    # The same query and recents never grant another account the first scope.
+    edition_client.app.dependency_overrides[require_authenticated] = lambda: CurrentUser(user_id='other', role='user')
+    other = edition_client.get('/api/persons', params=params)
+    assert other.status_code == 200, other.text
+    assert other.json()['total'] == 2
+    assert [(row['id'], row['face_count']) for row in other.json()['persons']] == [(56, 1), (1, 10)]
