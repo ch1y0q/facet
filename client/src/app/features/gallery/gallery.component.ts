@@ -48,6 +48,7 @@ import { isBracketLadderRejection } from '../../shared/utils/sequence-ladder';
 import { IsSelectedPipe } from '../../shared/pipes/selection.pipe';
 import { PhotoSetKindIconPipe, PhotoSetKindLabelPipe } from '../../shared/pipes/photo-set-kind.pipe';
 import { AuthService } from '../../core/services/auth.service';
+import { StalenessGuardFactory } from '../../core/services/staleness-guard.service';
 import { ScanService } from '../../core/services/scan.service';
 import { useDesktopSignal, DETAILS_RAIL_MIN_WIDTH_PX } from '../../shared/utils/media-query';
 import { downloadAll } from '../../shared/utils/download';
@@ -844,6 +845,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly selectionBar = viewChild<ElementRef<HTMLElement>>('selectionBar');
   private readonly noticeHost = viewChild<ElementRef<HTMLElement>>('noticeHost');
   private readonly destroyRef = inject(DestroyRef);
+  private readonly staleness = inject(StalenessGuardFactory);
   private readonly injector = inject(Injector);
   private readonly document = inject(DOCUMENT);
   private readonly scrollContent = viewChild(MatSidenavContent);
@@ -1261,10 +1263,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     return buildMosaicRows(photos, width, this.store.cardWidth() || 168, GalleryComponent.ROW_GAP);
   });
 
-  private gpsDialogOwnerDestroyed = false;
-
   constructor() {
-    this.destroyRef.onDestroy(() => { this.gpsDialogOwnerDestroyed = true; });
     afterNextRender(() => {
       this.isTouchDevice.set(window.matchMedia('(hover: none)').matches);
       this.touchOnly.set(window.matchMedia('(hover: none) and (pointer: coarse)').matches);
@@ -2171,21 +2170,16 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   async openOrganizationHistory(): Promise<void> {
     if (!this.auth.isEdition()) return;
-    const owner = this.auth.identity();
-    const url = this.router.url;
-    let navigated = false;
-    const navigation = this.router.events.subscribe(event => { if (event instanceof NavigationStart) navigated = true; });
+    const liveness = this.staleness.create(this.destroyRef);
     try {
       const { OrganizationHistoryDialogComponent } = await this.loadOrganizationHistoryDialog();
-      if (this.destroyRef.destroyed || navigated || this.router.url !== url || this.auth.identity() !== owner || !this.auth.isEdition()) return;
+      if (!liveness.current()) return;
       this.dialog.open(OrganizationHistoryDialogComponent, { width: '95vw', maxWidth: '820px' });
-    } finally { navigation.unsubscribe(); }
+    } finally { liveness.dispose(); }
   }
 
   async openCaptureDateDialog(): Promise<void> {
     if (!this.auth.isEdition()) return;
-    const owner = this.auth.status();
-    const url = this.router.url;
     const viewScoped = this.viewScoped();
     const data = {
       paths: [...this.selectedPaths()],
@@ -2194,33 +2188,28 @@ export class GalleryComponent implements OnInit, OnDestroy {
       count: this.selectionCount(),
     };
     if (!viewScoped && !data.paths.length) return;
-    let navigated = false;
-    const navigation = this.router.events.subscribe(event => { if (event instanceof NavigationStart) navigated = true; });
+    const liveness = this.staleness.create(this.destroyRef, { track: 'status' });
     try {
       const { CaptureDateDialogComponent } = await import('../photo-detail/capture-date-dialog.component');
-      if (this.destroyRef.destroyed || navigated || this.router.url !== url || this.auth.status() !== owner || !this.auth.isEdition()) return;
+      if (!liveness.current()) return;
       this.dialog.open(CaptureDateDialogComponent, { width: '95vw', maxWidth: '760px', data });
-    } finally { navigation.unsubscribe(); }
+    } finally { liveness.dispose(); }
   }
 
   async openBatchGpsDialog(): Promise<void> {
     if (!this.auth.isEdition() || !this.selectionCount()) return;
-    const owner = this.auth.identity();
-    const url = this.router.url;
-    let navigated = false;
-    const current = () => !this.gpsDialogOwnerDestroyed && !navigated && this.router.url === url && this.auth.identity() === owner && this.auth.isEdition();
     const selectionIdentity = () => JSON.stringify({
       view: this.viewScoped(), paths: [...this.selectedPaths()].sort(),
       exclude: [...this.excludedPaths()].sort(), filters: this.store.filterPayload(),
     });
     const originalSelection = selectionIdentity();
-    const onBatchApplied = () => {
-      if (current() && selectionIdentity() === originalSelection) this.store.clearSelection();
-    };
     const batch = this.viewScoped()
       ? { filters: structuredClone(this.store.filterPayload()), exclude: [...this.excludedPaths()] }
       : { photo_paths: [...this.selectedPaths()] };
-    const navigation = this.router.events.subscribe(event => { if (event instanceof NavigationStart) navigated = true; });
+    const { current, dispose } = this.staleness.create(this.destroyRef);
+    const onBatchApplied = () => {
+      if (current() && selectionIdentity() === originalSelection) this.store.clearSelection();
+    };
     try {
       const { GpsEditDialogComponent } = await import('../photo-detail/gps-edit-dialog.component');
       if (!current()) return;
@@ -2228,7 +2217,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
         width: '95vw', maxWidth: '640px',
         data: { path: '', filename: this.i18n.t(I18N.photo_detail.gps.batch_title), lat: null, lng: null, batch, onBatchApplied },
       });
-    } finally { navigation.unsubscribe(); }
+    } finally { dispose(); }
   }
 
   /** Bulk add/remove of one manual tag. The dialog owns the request; the list is

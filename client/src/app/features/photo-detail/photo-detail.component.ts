@@ -17,6 +17,7 @@ import { AssistantChangeBatch, AssistantChangesService } from '../../core/agent/
 import { ExtendedQualityComponent } from '../../shared/components/extended-quality/extended-quality.component';
 import { Photo, KeeperHint, PhotoSet, normalisePhotoFlags } from '../../shared/models/photo.model';
 import { AuthService } from '../../core/services/auth.service';
+import { StalenessGuardFactory } from '../../core/services/staleness-guard.service';
 import { PhotoActionsService } from '../../core/services/photo-actions.service';
 import { PhotoDetailBase } from '../../shared/directives/photo-detail-base.directive';
 import { FixedPipe } from '../../shared/pipes/fixed.pipe';
@@ -658,6 +659,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly staleness = inject(StalenessGuardFactory);
   private readonly assistantChanges = inject(AssistantChangesService);
   private readonly photoActions = inject(PhotoActionsService);
   private readonly journal = inject(UserActivityJournal);
@@ -1402,16 +1404,9 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
 
   protected async openOrganizationHistory(): Promise<void> {
     if (!this.auth.isEdition()) return;
-    const owner = this.auth.identity();
     const path = this.photo()?.path;
-    const url = this.router.url;
-    let navigated = false;
     let opened = false;
-    const navigation = this.router.events.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(event => {
-      if (event instanceof NavigationStart) navigated = true;
-    });
-    const current = () => !navigated && !this.destroyRef.destroyed && this.auth.identity() === owner
-      && this.auth.isEdition() && this.router.url === url && this.photo()?.path === path;
+    const { current, dispose } = this.staleness.create(this.destroyRef, { valid: () => this.photo()?.path === path });
     try {
       const { OrganizationHistoryDialogComponent } = await this.loadOrganizationHistoryDialog();
       if (!current()) return;
@@ -1425,49 +1420,35 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
           const previous = this.photo();
           const fresh = await this.fetchPhoto(path).catch(() => undefined);
           if (fresh && current() && this.photo() === previous) this.photo.set(fresh);
-        } finally { navigation.unsubscribe(); }
+        } finally { dispose(); }
       });
-    } finally { if (!opened) navigation.unsubscribe(); }
+    } finally { if (!opened) dispose(); }
   }
 
   protected loadCaptureDateDialog() { return import('./capture-date-dialog.component'); }
 
   protected async editCaptureDate(p: Photo): Promise<void> {
-    const identity = this.auth.identity();
-    const url = this.router.url;
-    let navigated = false;
     let opened = false;
-    const navigation = this.router.events.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(event => {
-      if (event instanceof NavigationStart) navigated = true;
-    });
-    const current = () => !navigated && !this.destroyRef.destroyed
-      && this.auth.identity() === identity && this.auth.isEdition() && this.router.url === url && this.photo()?.path === p.path;
+    const { current, dispose } = this.staleness.create(this.destroyRef, { valid: () => this.photo()?.path === p.path });
     try {
       const m = await this.loadCaptureDateDialog();
       if (!current()) return;
       const data = { paths: [p.path], count: 1, manuallySet: p.date_manually_set === 1 };
       const ref = this.dialog.open(m.CaptureDateDialogComponent, { width: '95vw', maxWidth: '760px', data });
       opened = true;
-      ref.afterClosed().pipe(takeUntilDestroyed(this.destroyRef), finalize(() => navigation.unsubscribe())).subscribe((result: import('./capture-date-dialog.component').CaptureDateResult | undefined) => {
+      ref.afterClosed().pipe(takeUntilDestroyed(this.destroyRef), finalize(dispose)).subscribe((result: import('./capture-date-dialog.component').CaptureDateResult | undefined) => {
         if (current() && result !== undefined) this.applyConfirmed(p, result);
       });
     } finally {
-      if (!opened) navigation.unsubscribe();
+      if (!opened) dispose();
     }
   }
 
   protected loadGpsDialog() { return import('./gps-edit-dialog.component'); }
 
   protected async editGps(p: Photo): Promise<void> {
-    const identity = this.auth.identity();
-    const url = this.router.url;
-    let navigated = false;
     let opened = false;
-    const navigation = this.router.events.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(event => {
-      if (event instanceof NavigationStart) navigated = true;
-    });
-    const current = () => !navigated && !this.destroyRef.destroyed
-      && this.auth.identity() === identity && this.auth.isEdition() && this.router.url === url && this.photo()?.path === p.path;
+    const { current, dispose } = this.staleness.create(this.destroyRef, { valid: () => this.photo()?.path === p.path });
     try {
       const m = await this.loadGpsDialog();
       if (!current()) return;
@@ -1483,14 +1464,14 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
         },
       });
       opened = true;
-      ref.afterClosed().pipe(takeUntilDestroyed(this.destroyRef), finalize(() => navigation.unsubscribe())).subscribe((result: { gps_latitude: number | null; gps_longitude: number | null; gps_manually_set?: number } | undefined) => {
+      ref.afterClosed().pipe(takeUntilDestroyed(this.destroyRef), finalize(dispose)).subscribe((result: { gps_latitude: number | null; gps_longitude: number | null; gps_manually_set?: number } | undefined) => {
         if (current() && result !== undefined) {
           this.applyConfirmed(p, { gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude, gps_manually_set: result.gps_manually_set ?? 1 });
           if (this.photo()?.path === p.path) this.locationName.set('');
         }
       });
     } finally {
-      if (!opened) navigation.unsubscribe();
+      if (!opened) dispose();
     }
   }
 
