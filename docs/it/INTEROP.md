@@ -188,6 +188,8 @@ ExifTool sostituisce solo i rettangoli MWG con `facet:RegionOwner=Facet` nelle E
 
 `--import-sidecars /percorso --dry-run` mostra JSON con file scelto, prima/dopo, aggiunte, origine e motivi di rifiuto. Apre il database esistente in sola lettura, senza migrazioni o commit. L’applicazione rilegge file e database nella transazione di scrittura; il JSON non è un token di applicazione.
 
+Se il database è assente, illeggibile o non valido, l’anteprima termina con codice 1 e un messaggio di errore; non crea né ripara il database. `--dry-run-count` limita solo i campioni di scansione, non le anteprime di importazione.
+
 `--sidecar-fields review,gps,keywords` seleziona gruppi. `review` mantiene insieme stelle, preferito, rifiuto e Keep, senza decisioni parziali. Il GPS manuale resta protetto senza `--overwrite-manual-gps`. Le parole restano additive e condivise con `--user`.
 
 Dopo l’aggiornamento, trigger SQLite conservano una ricevuta per foto/account/campo di revisione, anche per reset e cancellazione delle preferenze. Un pacchetto più vecchio genera `newer_local_edit` e conserva tutto il gruppo. `--overwrite-sidecar-review` forza esplicitamente la sostituzione. La ricevuta XMP indica file/data; `local` significa autore SQL sconosciuto, non una persona verificata. Nessun nuovo import di didascalie, volti, gerarchie o GPS esterno senza marcatore.

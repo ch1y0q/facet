@@ -7,6 +7,7 @@ All notable changes to Facet are documented in this file.
 ### Fixed
 
 - **Ship the ExifTool tag definitions.** Installed distributions include Facet’s metadata configuration. ExifTool exports refuse missing definitions before changing photos or sidecars instead of silently omitting private metadata.
+- **Readable sidecar import preview errors.** Missing, unreadable or invalid databases now produce a clear refusal instead of a SQLite traceback, without creating or upgrading the database.
 
 ## [1.24.0] "Diaphragme" — 2026-10-26
 

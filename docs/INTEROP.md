@@ -188,6 +188,8 @@ Face export with ExifTool replaces only MWG rectangles explicitly marked `facet:
 
 Use `--import-sidecars /path --dry-run` to inspect JSON before writing. It reports the chosen packet, intended before/after fields, keyword additions, source time and skip/conflict reasons. Preview opens the existing database read-only, performs no migration and never commits. Apply reads the current packets and database again under its write transaction; the preview JSON is not an apply token.
 
+If the database is missing, unreadable or invalid, preview exits with code 1 and an error message; it does not create or repair the database. `--dry-run-count` limits scan samples only, not import previews.
+
 `--sidecar-fields review,gps,keywords` selects field groups; omit groups to leave them alone. Review groups stars, favorite, rejection and Keep together so a conflict cannot apply half a decision. GPS keeps the existing manual-location protection unless `--overwrite-manual-gps` is given. Keywords remain additive and shared even with `--user`.
 
 After this version initializes the database, SQLite triggers keep one edit receipt per photo/account/review field, including resets and preference-row deletion. A packet older than a changed field is a `newer_local_edit` conflict and that review group stays unchanged. `--overwrite-sidecar-review` explicitly overrides both edit clocks and the legacy scan gate. A source receipt identifies the XMP packet/time; `local` means an unknown SQL writer, not a verified human author. No caption, face, hierarchy or unmarked external GPS import is added.
