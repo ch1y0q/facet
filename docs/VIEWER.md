@@ -1343,7 +1343,7 @@ The client's TypeScript types are generated from that schema into `client/src/ap
 | `GET /thumbnail` | Photo thumbnail. A `size` above 640 is rendered from the original at up to 1920 px (never upscaled), whatever larger value was asked for; when the original is unavailable, the render cannot start within 5 s, or the render has no signal (an all-black decode, e.g. a truncated RAW), the stored thumbnail is served with a 60-second `max-age` |
 | `GET /face_thumbnail/{id}` | Face crop thumbnail |
 | `GET /person_thumbnail/{id}` | Person representative thumbnail |
-| `GET /image` | Full-resolution image |
+| `GET /image` | Full-resolution image. Native JPEG, PNG, GIF, WebP, BMP and AVIF files keep their original bytes and use consistent image media types, independent of the system MIME registry. |
 
 ### Filter Options
 
