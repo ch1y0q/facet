@@ -63,13 +63,13 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 | `status` | 令牌是谁、它的有效级别、服务器标志以及它能控制的已打开标签页 |
 | `available_actions` | 此刻适用于你已打开的标签页和该令牌的任务,每项附带其工具;超出令牌级别的工具不会列出 |
 
-在每个筛选对象中，`show_rejected` 是布尔值：`true` 只列出被淘汰的照片，`false` 或省略则为常规列表。
+在每个筛选对象中，`show_rejected` 是布尔值：`true` 只列出被淘汰的照片，`false` 或省略则为常规列表。代理可通过 `ui_set_gallery_filters` 应用 `show_rejected`，并在标签页中显示仅含淘汰照片的搜索。明确设置的 `review_status` 决定审阅状态，优先于 `show_rejected` 和 `hide_rejected`。智能相册也可保存此筛选，false 会省略。标签页修改和智能相册创建会拒绝同时设置 `show_rejected: true` 与 `favorites_only: true`（`invalid_input`）；搜索仍返回两者的交集，但报告 `shown_in_tab.reason: invalid_combination`，并保持标签页不变。
 
 ## 结果会显示在你的标签页中
 
 - `search_photos`、`semantic_search` 和 `similar_photos` 带有 `show`（默认 `true`）。第一页搜索成功后，服务器会在你打开的 Facet 标签页中显示它。`search_photos` 和 `similar_photos` 把同一查询应用到该标签页并替换其筛选条件；`semantic_search` 则始终固定恰好它返回的那些行（相似度顺序，最多 `limit` 行，无论有无 `filters` 或 `scope`），作为助手选定的列表（`shown_in_tab.mode` 为 `paths`），因为标签页自身的语义视图受隐藏开关过滤且排序不同。两种情况下，无需询问你都能看到助手找到了什么。助手被告知不要询问是否打开或显示结果；`show: false` 用于中间探查和计数，你看到的是最后一次显示的搜索。
 - 结果带有 `shown_in_tab`：`{"applied": true, "tab_id", "keys", "total"}`，或 `{"applied": false, "reason"}`，原因为 `no_tab`、`bridge_disabled`、`tab_outdated`、`tab_timeout`（标签页仍可能应用它）、`forbidden`、`page_not_first`、`empty_result`、`unsupported_filters`（附带 `keys`）、`invalid_combination`、`unsaved_decisions`、`modal_open`、`navigation_refused`（标签页拒绝了导航）或 `comparison_open`（用户在 `/compare` 上）。显示失败绝不会使搜索失败。传入 `tab_id` 可选择标签页。全部原因：`error`（显示本身失败）、`bridge_disabled`、`page_not_first`、`empty_result`、`invalid_combination`、`unsupported_filters`（附带 `keys`），以及标签页桥返回的代码（`no_tab`、`tab_outdated`、`tab_timeout`、`forbidden`、`invalid_input`、`upstream_error`、`unsaved_decisions`、`navigation_refused`）、`comparison_open` 以及 `modal_open`（标签页中打开了对话框、底部面板或幻灯片）。行被截短时，`next_page`（连同 `suggested_per_page`）给出恰好接在最后一行之后的页码；若页码无法表达该位置，则由 `next_offset` 以行偏移给出。
-- 只显示第一页（标签页在你滚动时自行分页），空结果不会显示，因此你保留之前的视图。使用图库侧栏没有对应控件的筛选（`exclude_tags`、`require_tags`、`is_silhouette`、`junk_kind`、`narrative_moment`、`min_rating`、`min_aggregate`、`show_rejected: true`）的搜索不会被部分应用。
+- 只显示第一页（标签页在你滚动时自行分页），空结果不会显示，因此你保留之前的视图。使用图库侧栏没有对应控件的筛选（`exclude_tags`、`require_tags`、`is_silhouette`、`junk_kind`、`narrative_moment`、`min_rating`、`min_aggregate`）的搜索不会被部分应用。
 - 显示会离开 `/photo` 并回到图库；仅当用户在 `/culling` 上没有未确认的决定时才会离开它（否则以 `unsaved_decisions` 拒绝）；在 `/compare` 上会以 `comparison_open` 拒绝且不做任何更改，并清除整个视图的选择；在相册页面上会先回到图库，因此相册已保存的筛选绝不会被覆盖。其数量要用作写入工具 `expected_count` 的搜索应使用 `show: false`。
 - `list_albums`、`list_persons` 和 `junk_list` 接受 `show`(默认 `false`:它们多半只是按名称查找)。使用 `show: true` 时,它们会在标签页中以确切的查询打开 `/albums`、`/persons` 或 `/junk`:空查询会清除页面的搜索,页面的其他过滤器也会重置。`junk_list` 只显示第一页(否则为 `page_not_first`),空列表不会显示(`empty_result`)。`shown_in_tab` 带有与搜索相同的原因,其 `mode` 为 `route`。`list_culling_groups` 没有 `show`:请使用 `ui_show_culling_group`。
 - `ui_show_photos` 固定一份精确的照片列表:图库按你的顺序显示这些照片,直到筛选条件的更改替换该列表。`ui_get_context` 会报告当前是否显示了固定列表。该列表很朴素:不带分组、标记或标签。要复核选片方案,助手使用 `auto_cull`,它会改为在[暗房](#暗房选片分组)(`/culling`)中打开方案。

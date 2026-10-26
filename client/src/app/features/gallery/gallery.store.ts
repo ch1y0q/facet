@@ -292,11 +292,13 @@ export class GalleryStore {
   private reviewRefreshOwed = false;
   /** Tail-only review repairs in flight: parking one leaves the loaded prefix's offsets stale. */
   private reviewRepairsInFlight = 0;
-  /** Whole-view or targeted repairs may overlap pagination, whose loading flag cannot identify them. */
-  private viewRepairsInFlight = 0;
+  /** Queued or active whole-view repairs must survive parking independently of row repairs. */
+  private readonly pendingViewRepairs = new Set<{ loadSeq: number; paths: string[] | null }>();
   private readonly parkedRefreshPaths = new Set<string>();
   private readonly pendingKeeperHints = new Set<string>();
   private pageReadsInFlight = 0;
+  /** Concurrent paging cannot bypass an awaited repair of shifted offsets. */
+  private listingPageRepairSeq: number | null = null;
   private progressReadsInFlight = 0;
   private progressRefreshOwed = false;
   private suspendedFromPath: string | null = null;
@@ -310,7 +312,16 @@ export class GalleryStore {
   private assistantChanges = inject(AssistantChangesService);
   private journal = inject(UserActivityJournal);
 
-  readonly reviewProgress = signal<components['schemas']['ReviewProgressResponse'] | null>(null);
+  private readonly reviewProgressSnapshot = signal<{
+    counts: components['schemas']['ReviewProgressResponse']; identity: string; key: string;
+  } | null>(null);
+  /** Counts stay visible during same-scope refreshes, but never under another
+   *  identity or filter scope, including before its next request starts. */
+  readonly reviewProgress = computed(() => {
+    const snapshot = this.reviewProgressSnapshot();
+    return snapshot && snapshot.identity === this.auth.identity() && snapshot.key === this.reviewProgressKey()
+      && this.pinnedPaths() === null && !this.filters().similar_to ? snapshot.counts : null;
+  });
   readonly reviewPercent = computed(() => {
     const progress = this.reviewProgress();
     return progress?.total ? Math.floor(100 * (progress.kept + progress.rejected) / progress.total) : 0;
@@ -329,7 +340,15 @@ export class GalleryStore {
     const scope = buildApiParams(this.filters(), this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
     delete scope['page'];
     delete scope['per_page'];
-    return JSON.stringify([scope, this.currentAlbum()?.smart_filter_json]);
+    return JSON.stringify([scope, this.currentAlbum()?.smart_filter_json, this.useSavedReviewStatus()]);
+  }
+
+  /** This mode selects the smart album's saved decision criterion for both
+   *  the request and its snapshot key; edition can change without identity. */
+  private useSavedReviewStatus(): boolean {
+    const album = this.currentAlbum();
+    return !!album?.is_smart && !!album.smart_filter_json
+      && (this.transientReviewStatus() || !this.auth.isEdition());
   }
 
   async startReviewQueue(): Promise<void> {
@@ -346,14 +365,18 @@ export class GalleryStore {
     this.progressReadCancelled.next();
     const identity = this.auth.identity();
     const key = this.reviewProgressKey();
-    this.reviewProgress.set(null);
-    if (this.pinnedPaths() !== null || this.filters().similar_to) return;
+    const previous = this.reviewProgressSnapshot();
+    if (previous?.identity !== identity || previous?.key !== key) this.reviewProgressSnapshot.set(null);
+    if (this.pinnedPaths() !== null || this.filters().similar_to) {
+      this.reviewProgressSnapshot.set(null);
+      return;
+    }
     const params = buildApiParams(this.filters(), this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
     const album = this.currentAlbum();
     if (album?.is_smart && album.smart_filter_json) {
       try {
         const saved = JSON.parse(album.smart_filter_json).review_status;
-        const status = this.transientReviewStatus() || !this.auth.isEdition() ? saved : this.filters().review_status;
+        const status = this.useSavedReviewStatus() ? saved : this.filters().review_status;
         if (status) params['scope_review_status'] = status;
       } catch { return; }
     }
@@ -362,8 +385,15 @@ export class GalleryStore {
       const progress = await firstValueFrom(this.api.get<components['schemas']['ReviewProgressResponse']>('/photos/review_progress', params).pipe(
         takeUntil(this.progressReadCancelled), finalize(() => this.progressReadsInFlight--),
       ));
-      if (seq === this.reviewProgressSeq && identity === this.auth.identity() && key === this.reviewProgressKey()) this.reviewProgress.set(progress);
-    } catch { /* Counts unavailable: never show a guessed denominator. */ }
+      if (seq === this.reviewProgressSeq && identity === this.auth.identity() && key === this.reviewProgressKey()) {
+        this.reviewProgressSnapshot.set({ counts: progress, identity, key });
+      }
+    } catch {
+      // A current failed read has no fresh denominator; superseded/cancelled reads cannot clear a newer one.
+      if (seq === this.reviewProgressSeq && identity === this.auth.identity() && key === this.reviewProgressKey()) {
+        this.reviewProgressSnapshot.set(null);
+      }
+    }
   }
 
   /** Restore this browser's queue and return its first remaining photo, skipping deleted/decided rows. */
@@ -930,7 +960,7 @@ export class GalleryStore {
     this.readOwner = owner;
     this.cancelListingReads();
     this.resumeSeq++;
-    this.reviewProgress.set(null);
+    this.reviewProgressSnapshot.set(null);
     this.parkedRefreshPaths.clear();
     this.pendingKeeperHints.clear();
     this.listingRefreshOwed = false;
@@ -946,7 +976,16 @@ export class GalleryStore {
   }
 
   private pauseListingReads(): void {
-    this.listingRefreshOwed ||= this.viewRepairsInFlight > 0 || (this.pageReadsInFlight > 0 && !this.loading());
+    let loaded: Set<string> | null = null;
+    for (const repair of this.pendingViewRepairs) {
+      if (repair.loadSeq !== this._loadSeq) continue;
+      if (repair.paths === null) this.listingRefreshOwed = true;
+      else {
+        loaded ??= new Set(this.photos().map(photo => photo.path));
+        for (const path of repair.paths) if (loaded.has(path)) this.parkedRefreshPaths.add(path);
+      }
+    }
+    this.listingRefreshOwed ||= this.pageReadsInFlight > 0 && !this.loading();
     this.listingPagesInterrupted ||= this.loading();
     this.reviewRefreshOwed ||= this.reviewRepairsInFlight > 0;
     this.progressRefreshOwed ||= this.progressReadsInFlight > 0;
@@ -962,6 +1001,9 @@ export class GalleryStore {
     if (this.listingReadsActive) return;
     this.listingReadsActive = true;
     if (!this.loadedOnce) return;
+    const seq = this._loadSeq;
+    const identity = this.auth.identity();
+    const query = this.reviewViewKey();
     const refresh = this.listingRefreshOwed || this.reviewRefreshOwed;
     const interrupted = this.listingPagesInterrupted;
     const progress = this.progressRefreshOwed;
@@ -974,8 +1016,6 @@ export class GalleryStore {
     if (refresh || interrupted) {
       this.viewRefreshOwed = false;
       const previous = this.photos();
-      const seq = this._loadSeq;
-      const identity = this.auth.identity();
       if (interrupted && this.filters().similar_to) await this.resumeSimilarPages();
       else await this.refreshPaths(null);
       if (seq === this._loadSeq && identity === this.auth.identity() && this.filters().review_status) {
@@ -983,6 +1023,7 @@ export class GalleryStore {
       }
     } else if (paths.length) await this.refreshPaths(paths);
     else if (progress) await this.loadReviewProgress();
+    if (seq !== this._loadSeq || identity !== this.auth.identity() || query !== this.reviewViewKey() || !this.listingReadsActive) return;
     const loaded = new Set(this.photos().map(photo => photo.path));
     for (const path of this.pendingKeeperHints) if (!loaded.has(path)) this.pendingKeeperHints.delete(path);
     if (this.listingReadsActive && !refresh && !interrupted) {
@@ -1026,11 +1067,11 @@ export class GalleryStore {
     }
   }
 
-  private pageRead<T>(request: Observable<T>): Promise<T> {
-    this.pageReadsInFlight++;
+  private pageRead<T>(request: Observable<T>, targeted = false): Promise<T> {
+    if (!targeted) this.pageReadsInFlight++;
     return firstValueFrom(request.pipe(
       takeUntil(this.pageReadCancelled),
-      finalize(() => this.pageReadsInFlight--),
+      finalize(() => { if (!targeted) this.pageReadsInFlight--; }),
     ));
   }
 
@@ -1164,14 +1205,23 @@ export class GalleryStore {
     this.syncReadOwner();
     void this.loadReviewProgress();
     const loadSeq = this._loadSeq;
-    const run = this.refreshChain.then(() => this.runRefresh(paths, loadSeq));
+    const repair = { loadSeq, paths };
+    if (repair.paths !== null) {
+      const loaded = new Set(this.photos().map(photo => photo.path));
+      repair.paths = [...new Set(repair.paths)].filter(path => loaded.has(path));
+    }
+    this.pendingViewRepairs.add(repair);
+    const claimedPaths = repair.paths ?? [...this.parkedRefreshPaths];
+    for (const path of claimedPaths) this.parkedRefreshPaths.delete(path);
+    const run = this.refreshChain.then(() => this.runRefresh(repair.paths, loadSeq, claimedPaths));
     this.refreshChain = run.catch(() => undefined);
-    await run;
+    try { await run; }
+    finally { this.pendingViewRepairs.delete(repair); }
   }
 
-  private async runRefresh(paths: string[] | null, loadSeq: number): Promise<void> {
+  private async runRefresh(paths: string[] | null, loadSeq: number, claimedPaths: string[]): Promise<void> {
     if (!this.claimRefresh(loadSeq)) return;
-    this.viewRepairsInFlight++;
+    let membershipChanged = false;
     try {
       if (paths === null) {
         if (this.pinnedPaths() !== null) await this.refreshPinnedList(loadSeq);
@@ -1187,15 +1237,23 @@ export class GalleryStore {
       const filters = membership
         ? buildByPathsFilters(f, this.currentAlbum()?.is_smart ?? false, this.config()?.defaults?.type ?? '', this.config()?.search_threshold_default)
         : undefined;
-      const { rows, missing } = await this.fetchByPaths(wanted, filters);
+      const { rows, missing } = await this.fetchByPaths(wanted, filters, true);
       if (!this.claimRefresh(loadSeq)) return;
       this.mergeRows(rows);
       // A similarity view ranks outside the gallery's WHERE clause: by_paths cannot say a photo left it.
       if (pinned || membership) this.dropMissing(missing);
+      if (membership && missing.length && this.hasMore()) {
+        // Removing a filtered row shifts the offsets of every following page.
+        membershipChanged = true;
+        await this.refreshViewInPlace(loadSeq);
+      }
     } catch {
-      // Best effort: the rows stay as they were.
-    } finally {
-      this.viewRepairsInFlight--;
+      // Retain failed repair debt; parking already claimed cancelled reads.
+      if (this.claimRefresh(loadSeq)) {
+        if (membershipChanged || paths === null) this.listingRefreshOwed = true;
+        const loaded = new Set(this.photos().map(photo => photo.path));
+        for (const path of paths ?? claimedPaths) if (loaded.has(path)) this.parkedRefreshPaths.add(path);
+      }
     }
   }
 
@@ -1208,11 +1266,12 @@ export class GalleryStore {
   private async fetchByPaths(
     paths: string[],
     filters?: Record<string, string | number | boolean>,
+    targeted = false,
   ): Promise<{ rows: Photo[]; missing: string[] }> {
     const chunks: string[][] = [];
     for (let i = 0; i < paths.length; i += BY_PATHS_MAX) chunks.push(paths.slice(i, i + BY_PATHS_MAX));
     const responses = await Promise.all(chunks.map(chunk => this.pageRead(
-      this.api.post<{ photos: Photo[] }>('/photos/by_paths', filters ? { paths: chunk, filters } : { paths: chunk }),
+      this.api.post<{ photos: Photo[] }>('/photos/by_paths', filters ? { paths: chunk, filters } : { paths: chunk }), targeted,
     )));
     const rows = normalisePhotoFlagsAll(responses.flatMap(res => res.photos));
     const returned = new Set(rows.map(p => p.path));
@@ -1307,7 +1366,22 @@ export class GalleryStore {
   async nextPage(acceptResult: () => boolean = () => true, { whileParked = false }: { whileParked?: boolean } = {}): Promise<void> {
     if (this.destroyRef.destroyed || (!this.listingReadsActive && !(whileParked && this.photoReadAllowed()))) return;
     this.syncReadOwner();
-    if (!this.listingReadsActive && this.listingPagesInterrupted) {
+    if (this.listingPageRepairSeq === this._loadSeq) return;
+    if (this.listingReadsActive && this.listingRefreshOwed) {
+      if (this.loading()) return;
+      // Repair shifted offsets once per paging action; an error leaves debt for retry.
+      const seq = this._loadSeq;
+      const identity = this.auth.identity();
+      const query = this.filterKey();
+      this.listingPageRepairSeq = seq;
+      this.listingRefreshOwed = false;
+      try { await this.refreshPaths(null); }
+      finally { if (this.listingPageRepairSeq === seq) this.listingPageRepairSeq = null; }
+      if (seq !== this._loadSeq || identity !== this.auth.identity() || query !== this.filterKey()
+        || !acceptResult() || this.destroyRef.destroyed || !this.listingReadsActive
+        || this.listingRefreshOwed || this.viewRefreshOwed) return;
+    }
+    if (!this.listingReadsActive && (this.listingPagesInterrupted || this.listingRefreshOwed)) {
       if (this.loading()) return;
       const seq = this._loadSeq;
       const identity = this.auth.identity();
@@ -2109,7 +2183,8 @@ export class GalleryStore {
     const key = scope();
     let seq = this._loadSeq;
     const current = () => seq === this._loadSeq && identity === this.auth.identity() && key === scope() && this.pinnedPaths() === null;
-    void this.loadReviewProgress();
+    // A rebuild delegates its one count request to loadPhotos.
+    if (!rebuild || !f.review_status || this.pinnedPaths() !== null) void this.loadReviewProgress();
     if (!f.review_status || this.pinnedPaths() !== null) return;
     const previous = this.photos();
     this.reviewRefreshOwed = false;

@@ -2861,7 +2861,7 @@
     "before": "Prima",
     "after": "Dopo",
     "error": "Impossibile completare l’azione. Verifica accesso e file, poi ripeti l’anteprima.",
-    "reset_hint": "La data del file rimuove la correzione manuale. Se il file non ha una data, la data di scatto diventa sconosciuta.",
+    "reset_hint": "Il pulsante «Usa data del file» rimuove la correzione manuale. Se il file non ha una data, la data di scatto diventa sconosciuta.",
     "use_file": "Usa data del file",
     "preview": "Anteprima",
     "apply": "Applica correzione",

@@ -2,6 +2,8 @@
 
 `python database.py --relink-photos` updates existing Facet database paths after you have moved files yourself. It never moves, copies, deletes, edits originals/sidecars, or contacts Immich. It is an offline maintenance command for the operator who has access to the database and configured folders. Stop the viewer, scanners and external file editors first; back up the database and review the plan before applying it.
 
+Apply holds Facet's library maintenance lock through the database write. Another library job causes exit code 75 without database or media changes; an unusable lock causes exit code 1. Preview stays read-only and takes no library lock. This lock coordinates jobs on one host; the offline requirements still apply to other hosts and external editors.
+
 The existing database has no cryptographic hash of original file bytes. `phash` and manual-face grayscale signatures do not prove byte identity. Every plan therefore says `original_bytes_unknown`. The target SHA-256 only identifies the new file that was previewed. Applying explicitly asserts that you have independently identified the correct moved file; this is never an automatic verified match. A wrong assertion can attach existing annotations to the wrong image.
 
 Moving or renaming a whole directory is outside this bounded mode when the old parent no longer exists. Missing directories cannot distinguish an intentional move from offline storage. Do not recreate empty old parents to bypass this check.

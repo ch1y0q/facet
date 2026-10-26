@@ -7,7 +7,11 @@ import { Location } from '@angular/common';
 import { MatDialog } from '@angular/material/dialog';
 import { BehaviorSubject, finalize, Observable, of, Subject, throwError } from 'rxjs';
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
-import { signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
+import { By } from '@angular/platform-browser';
+import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
+import { MatSelect, MatSelectModule } from '@angular/material/select';
+import { OverlayContainer } from '@angular/cdk/overlay';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
@@ -1063,6 +1067,55 @@ describe('PhotoDetailComponent', () => {
 
     it.each(['6', '9', 'q', 'Enter'])('leaves %s alone', key => {
       expectNothing(press({ key }));
+    });
+
+    @Component({
+      imports: [MatMenuModule, MatSelectModule],
+      template: `
+        <button [matMenuTriggerFor]="menu">Menu</button>
+        <mat-menu #menu="matMenu">
+          <button mat-menu-item>Favorite</button>
+          <button mat-menu-item>X reject</button>
+        </mat-menu>
+        <mat-select aria-label="Keyboard rating selector">
+          <mat-option value="f">Favorite</mat-option>
+          <mat-option value="x">X reject</mat-option>
+        </mat-select>
+      `,
+    })
+    class RatingControlsHost {}
+
+    it.each(['menu', 'select'])('does not rate the photo while a real Material %s owns the keys', async control => {
+      const host = TestBed.createComponent(RatingControlsHost);
+      host.detectChanges();
+      document.body.appendChild(host.nativeElement);
+      const trigger = host.debugElement.query(By.directive(MatMenuTrigger)).injector.get(MatMenuTrigger);
+      const select = host.debugElement.query(By.directive(MatSelect)).componentInstance as MatSelect;
+      try {
+        if (control === 'menu') trigger.openMenu();
+        else select.open();
+        host.detectChanges();
+        await host.whenStable();
+        const target = control === 'menu'
+          ? TestBed.inject(OverlayContainer).getContainerElement().querySelector('[role="menu"] button') as HTMLElement
+          : select.panel.nativeElement as HTMLElement;
+        target.focus();
+        for (const key of ['1', '2', '3', '4', '5', 'f', 'F', 'x', 'X']) {
+          const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+          target.dispatchEvent(event);
+          component.onRatingShortcut(event);
+        }
+        expect(setRating).not.toHaveBeenCalled();
+        expect(toggleFavorite).not.toHaveBeenCalled();
+        expect(toggleRejected).not.toHaveBeenCalled();
+        if (control === 'menu') trigger.closeMenu();
+        else select.close();
+        press({ key: 'f' });
+        expect(toggleFavorite).toHaveBeenCalledExactlyOnceWith('/photos/test.jpg');
+      } finally {
+        host.destroy();
+        host.nativeElement.remove();
+      }
     });
 
     it('does nothing outside edition mode', () => {

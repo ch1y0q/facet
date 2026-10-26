@@ -2,6 +2,8 @@
 
 `python database.py --relink-photos` altera apenas os caminhos de fotos já indexadas após movê-las manualmente. Pare visualizador, scanners e editores externos; faça backup do banco. Não move, modifica ou exclui originais ou acompanhantes e não contata Immich.
 
+A aplicação mantém o bloqueio de manutenção do Facet durante toda a escrita na base de dados. Outro trabalho na biblioteca causa o código 75 sem alterações na base ou nos ficheiros; um bloqueio inutilizável causa o código 1. A prévia continua apenas de leitura e não adquire o bloqueio. O bloqueio coordena trabalhos num único computador; os requisitos offline continuam a aplicar-se a outros computadores e editores externos.
+
 O banco não prova a identidade dos bytes do original ausente: cada plano indica `original_bytes_unknown`. SHA-256 identifica apenas o novo destino revisado. Verifique a identidade independentemente antes das duas confirmações; uma associação errada pode anexar anotações à imagem errada.
 
 Caminhos devem ser absolutos, nativos e canônicos, sem links simbólicos, dentro das raízes configuradas. O original deve faltar, mas a pasta pai precisa existir e ser legível. Pastas inteiras ausentes são recusadas porque podem estar offline. Não recrie pastas vazias para contornar isso. Uma pasta legível não prova montagem; `source_mount_status=not_verified` exige verificação independente.
