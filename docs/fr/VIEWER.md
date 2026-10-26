@@ -1603,6 +1603,8 @@ Il s’agit de l’heure locale de l’appareil, sans déduction du fuseau ni de
 
 Aucun original ni horodatage de fichier n’est modifié. L’export XMP explicite écrit `exif:DateTimeOriginal` pour les dates manuelles ; l’écriture explicite dans le fichier ajoute EXIF `DateTimeOriginal` pour les formats compatibles sans modifier les autres dates EXIF. Les groupes de rafales/séquences restent en place ; relancez explicitement le scan ou la détection de groupes pour les recalculer.
 
+La réinitialisation réessaie après un bref verrouillage de la base. Si la photothèque reste occupée, elle renvoie HTTP 503 (`library_busy`) avec `Retry-After` ; les autres erreurs de base renvoient HTTP 500 sans détails internes. Une transaction échouée conserve la date manuelle et n’ajoute aucune entrée à l’historique.
+
 ## Historique des modifications
 
 En mode édition, ouvrez **Historique des modifications** depuis le bouton de la galerie ou les détails. Dépliez une entrée pour comparer les valeurs avant/après, puis choisissez **Rétablir cette entrée**. Les lieux et dates sont partagés ; décisions, étoiles et favoris utilisent vos préférences de compte. Les fichiers et la reconnaissance faciale sont exclus. Les originaux restent inchangés. L’annulation temporaire et l’activité de l’assistant restent distinctes.

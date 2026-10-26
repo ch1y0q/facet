@@ -1601,6 +1601,8 @@ Desloca-se a hora local da câmara sem deduzir fuso horário ou horário de ver�
 
 Originais e datas de modificação dos ficheiros ficam inalterados. A exportação XMP explícita escreve `exif:DateTimeOriginal` para datas manuais; a escrita explícita no ficheiro adiciona EXIF `DateTimeOriginal` nos formatos suportados sem alterar outras datas EXIF. Os grupos de rajadas/sequências são preservados; execute explicitamente a análise ou deteção de grupos para reagrupar.
 
+A redefinição tenta novamente após bloqueios breves do banco de dados. Se a biblioteca continuar ocupada, retorna HTTP 503 (`library_busy`) com `Retry-After`; outras falhas do banco retornam HTTP 500 sem detalhes internos. Uma transação malsucedida mantém a data manual e não adiciona uma entrada ao histórico.
+
 ## Histórico de organização
 
 No modo de edição, abra **Histórico de organização** na galeria ou nos detalhes. Expanda uma entrada para comparar os valores antes/depois e escolha **Reverter esta entrada**. Locais e datas são partilhados; decisões, estrelas e favoritos usam as preferências da sua conta. Ficheiros e reconhecimento facial ficam excluídos. Os originais não mudam. A anulação temporária e a atividade do assistente continuam separadas.
