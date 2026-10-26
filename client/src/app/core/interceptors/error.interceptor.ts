@@ -7,6 +7,8 @@ import { I18nService } from '../services/i18n.service';
 import { I18N } from '../i18n/keys';
 import { extractErrorDetail, isLibraryBusyError } from '../utils/http-error.util';
 
+import { HANDLE_PLACE_SEARCH_ERRORS_LOCALLY, isExpectedPlaceSearchError } from '../utils/place-search-error.util';
+
 const CLIENT_ERRORS_URL = '/api/client-errors';
 
 // A read refused as library_busy changed nothing the user did, so it gets no
@@ -35,6 +37,12 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
 
   return next(req).pipe(
     catchError(error => {
+      if (req.method === 'GET' && req.url.split('?')[0] === '/api/places/search'
+          && req.context.get(HANDLE_PLACE_SEARCH_ERRORS_LOCALLY) && isExpectedPlaceSearchError(error)) {
+        // The caller still receives the refusal. Authentication and unexpected
+        // faults retain the global paths below; no query is sent to the crash sink.
+        return throwError(() => error);
+      }
       if (error.status === 401 && !isAuthUrl(req.url)) {
         auth.logout();
       } else if (error.status === 429 && !isAuthUrl(req.url)) {

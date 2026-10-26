@@ -7,6 +7,7 @@ All notable changes to Facet are documented in this file.
 ### Fixed
 
 - **Accessible capture-date validation.** Link invalid offsets to their explanation and identify preview table column headers.
+- **Handle expected online-place lookup failures in the dialog.** Rate limits, disabled lookup and provider outages no longer duplicate the inline error with global crash reporting. Query validation and documented HTTP error responses now match the generated API contract.
 - **Private online place-search caches.** Multi-user address searches reuse only the current account’s results while preserving the shared provider rate limit. Excessively nested provider JSON returns the normal unavailable response instead of an internal server error.
 - **Keep batch export errors private.** Sidecar selections, albums and background receipts return safe failure summaries while retaining details in server logs; unaffected photos continue exporting.
 - **Retry capture-date resets during brief database contention.** Use file date retries busy writes and reports database failures without exposing internal details; failed transactions preserve the manual date and history.
@@ -23,10 +24,11 @@ All notable changes to Facet are documented in this file.
 - **Clarify capture-date reset hints.** All seven languages identify the button that removes a manual date correction.
 - **Align rejected-only filters across the gallery and assistant.** Agents can apply and show rejected-only searches in the tab and save them as smart albums. Conflicting favorite-only/rejected-only tab requests are refused instead of broadening the view. The gallery disables the rejected-only toggle while an explicit review status takes priority.
 - **Preview global sidecar imports from read-only installs.** Imports without `--user` no longer initialize the viewer’s login secret, so database refusals are reported without authentication-bootstrap tracebacks.
-- **Include manual Keep and Reset in assistant activity context.** Successful gallery and photo-detail decisions now report `review` entries with `kept` or `undecided`; a late batch confirmation from another account cannot enter the current activity journal.
+- **Explain sidecar job refusals.** Starting or retrying an export uses `503 library_busy` while another library job holds the lock, with a retry delay. Unusable locks and receipt storage return distinct safe errors so operators can fix the cache instead of waiting.
 - **Ship the ExifTool tag definitions.** Installed distributions include Facet’s metadata configuration. ExifTool exports refuse missing definitions before changing photos or sidecars instead of silently omitting private metadata.
 - **Match focus peaking to each compare pane.** Track render failures and retries per pane so a previous single-view fallback does not select the wrong image source in compare mode.
 - **Readable sidecar import preview errors.** Missing, unreadable or invalid databases now produce a clear refusal instead of a SQLite traceback, without creating or upgrading the database.
+- **Include manual Keep and Reset in assistant activity context.** Successful gallery and photo-detail decisions now report `review` entries with `kept` or `undecided`; a late batch confirmation from another account cannot enter the current activity journal.
 
 ## [1.24.0] "Diaphragme" — 2026-10-26
 

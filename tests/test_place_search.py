@@ -57,11 +57,136 @@ def test_query_bounds(edition_client, query):
         fetch.assert_not_called()
 
 
-def test_disabled_invalid_endpoint(edition_client):
-    for url in ('', 'file:///etc/passwd', 'https://user:secret@example.org/api', 'https://example.org/api?q=x'):
-        with patch.dict('api.place_search.VIEWER_CONFIG', {'place_search_url': url}), patch('api.place_search._fetch') as fetch:
-            assert edition_client.get('/api/places/search', params={'q': 'Berlin'}).status_code == 503
+@pytest.mark.parametrize('query', ['   ', '  ab  ', 'ab\nc', 'a' * 201, 'ab'])
+def test_http_validation_detail_matches_declared_schema(edition_client, query):
+    with patch('api.place_search._fetch') as fetch:
+        response = edition_client.get('/api/places/search', params={'q': query})
+    assert response.status_code == 422
+    document = edition_client.app.openapi()
+    spec = document['paths']['/api/places/search']['get']['responses']['422']['content']['application/json']['schema']
+    model = document['components']['schemas'][spec['$ref'].split('/')[-1]]
+    assert model['properties']['detail']['type'] == 'array'
+    assert isinstance(response.json()['detail'], list)
+    assert response.json()['detail'][0]['loc'] == ['query', 'q']
+    fetch.assert_not_called()
+
+
+def test_http_query_normalization_keeps_safe_surrounding_whitespace(edition_client):
+    with patch('api.place_search._fetch', return_value={'type': 'FeatureCollection', 'features': []}) as fetch:
+        response = edition_client.get('/api/places/search', params={'q': '\t Berlin \n'})
+    assert response.status_code == 200
+    fetch.assert_called_once_with('https://example.org/api', 'Berlin')
+
+
+def _assert_declared_search_error(client, response):
+    document = client.app.openapi()
+    responses = document['paths']['/api/places/search']['get']['responses']
+    assert str(response.status_code) in responses
+    spec = responses[str(response.status_code)]['content']['application/json']['schema']
+    model = document['components']['schemas'][spec['$ref'].split('/')[-1]]
+    assert model['properties']['detail']['type'] == 'string'
+    assert isinstance(response.json()['detail'], str)
+
+
+def test_http_throttle_error_contract_and_explicit_retry(edition_client):
+    with patch('api.place_search._fetch', return_value={'type': 'FeatureCollection', 'features': [feature()]} ) as fetch, patch('api.place_search.time.monotonic', return_value=100):
+        assert edition_client.get('/api/places/search', params={'q': 'Berlin'}).status_code == 200
+        response = edition_client.get('/api/places/search', params={'q': 'Paris'})
+        assert response.status_code == 429
+        assert response.headers['Retry-After'] == '1'
+        assert response.json() == {'detail': 'Wait before searching again'}
+        _assert_declared_search_error(edition_client, response)
+        assert 'Retry-After' in edition_client.app.openapi()['paths']['/api/places/search']['get']['responses']['429']['headers']
+        fetch.assert_called_once()
+    with patch('api.place_search._fetch', return_value={'type': 'FeatureCollection', 'features': [feature()]}), patch('api.place_search.time.monotonic', return_value=102):
+        assert edition_client.get('/api/places/search', params={'q': 'Paris'}).status_code == 200
+
+
+@pytest.mark.parametrize('mode', ['disabled', 'timeout'])
+def test_provider_error_body_matches_declared_schema_without_private_details(edition_client, mode):
+    if mode == 'disabled':
+        with patch.dict('api.place_search.VIEWER_CONFIG', {'place_search_url': ''}), patch('api.place_search._fetch') as fetch:
+            response = edition_client.get('/api/places/search', params={'q': 'Private address'})
             fetch.assert_not_called()
+        assert response.status_code == 503
+        assert response.json() == {'detail': 'Online place search is disabled'}
+    else:
+        with patch('api.place_search._fetch', side_effect=TimeoutError('private-provider-and-address')):
+            response = edition_client.get('/api/places/search', params={'q': 'Private address'})
+        assert response.status_code == 502
+        assert response.json() == {'detail': 'Online place search is unavailable'}
+    assert 'private' not in response.text.lower()
+    _assert_declared_search_error(edition_client, response)
+
+
+@pytest.mark.parametrize('query', ['   ', 'ab\nc', 'a' * 201])
+def test_non_http_lookup_keeps_its_validation_boundary(query):
+    with patch('api.place_search._fetch') as fetch, pytest.raises(HTTPException) as error:
+        place_search.search(query, ('installation', ''))
+    assert error.value.status_code == 422
+    fetch.assert_not_called()
+
+
+@pytest.mark.parametrize('query,valid', [
+    ('😀', False), ('😀😀', False), ('😀😀😀', True), ('ab', False), ('abc', True),
+    ('a' * 199 + '😀', True), ('😀' * 200, True), ('😀' * 201, False),
+])
+def test_http_query_bounds_count_unicode_codepoints(edition_client, query, valid):
+    with patch('api.place_search._fetch', return_value={'type': 'FeatureCollection', 'features': []}) as fetch:
+        response = edition_client.get('/api/places/search', params={'q': query})
+    assert response.status_code == (200 if valid else 422)
+    if valid:
+        assert response.json() == {'results': []}
+        fetch.assert_called_once_with('https://example.org/api', query)
+    else:
+        assert isinstance(response.json()['detail'], list)
+        fetch.assert_not_called()
+
+
+@pytest.mark.parametrize('url', [
+    None, False, 123, [], {}, '',
+    'https://example.org/' + 'x' * 1981,
+    ' https://example.org/api',
+    'https://example.org/a b',
+    'https://example.org/a\nb',
+    'https://example.org/a\tb',
+    'file:///etc/passwd',
+    'ftp://example.org/api',
+    'https:///api',
+    'https://user:secret@example.org/api',
+    'https://user@example.org/api',
+    'https://:secret@example.org/api',
+    'https://@example.org/api',
+    'https://example.org/api?q=x',
+    'https://example.org/api#fragment',
+    'https://example.org:invalid/api',
+    'https://example.org:65536/api',
+    'https://[::1/api',
+])
+def test_disabled_invalid_endpoint(edition_client, url):
+    with patch.dict('api.place_search.VIEWER_CONFIG', {'place_search_url': url}), patch('api.place_search._fetch') as fetch:
+        response = edition_client.get('/api/places/search', params={'q': 'Berlin'})
+    assert response.status_code == 503
+    assert response.json() == {'detail': 'Online place search is disabled'}
+    fetch.assert_not_called()
+    assert not place_search._cache
+    assert place_search._next_request == 0
+    assert not place_search._inflight
+
+
+@pytest.mark.parametrize('url', [
+    'https://example.org/api',
+    'http://localhost:2322/api',
+    'https://[::1]:8443/api',
+    'https://example.org/geocoder%20name/api',
+    'https://example.org/' + 'x' * 1980,
+])
+def test_valid_configured_endpoint_is_used_unchanged(edition_client, url):
+    with patch.dict('api.place_search.VIEWER_CONFIG', {'place_search_url': url}), patch('api.place_search._fetch', return_value={'type': 'FeatureCollection', 'features': [feature()]}) as fetch:
+        response = edition_client.get('/api/places/search', params={'q': 'Berlin'})
+    assert response.status_code == 200
+    assert response.json() == {'results': [{'label': 'Berlin', 'latitude': 52.5, 'longitude': 13.4}]}
+    fetch.assert_called_once_with(url, 'Berlin')
 
 
 @pytest.mark.parametrize('coords', [[float('nan'), 0], [0, float('inf')], [181, 0], [0, 91], ['1', 2], [True, 2], [1], [1, 2, 3]])
