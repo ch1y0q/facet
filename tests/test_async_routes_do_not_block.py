@@ -35,6 +35,7 @@ from api.auth import (
     CurrentUser, get_optional_user, require_auth, require_authenticated, require_edition,
     require_scan_access, require_superadmin,
 )
+from tests.conftest import reset_place_search
 from tests.test_route_coverage import (
     AUTH_ROUTES, PARAMETERISED_ROUTES, POST_ROUTES, PUBLIC_ROUTES, SUPERADMIN_ROUTES,
 )
@@ -121,11 +122,7 @@ def _cold_caches():
     close_change_token_sentinels()
     from api.routers.burst_culling import _invalidate_culling_groups_cache
     _invalidate_culling_groups_cache()
-    from api import place_search
-    with place_search._lock:
-        place_search._cache.clear()
-        place_search._next_request = 0
-        place_search._inflight = False
+    reset_place_search()
 
 
 @pytest.fixture(autouse=True)

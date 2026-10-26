@@ -91,6 +91,21 @@ def _reset_index_build_status():
     schema_startup._set_status(state=schema_startup.STATE_READY, done=0, total=0)
 
 
+def reset_place_search():
+    """The provider cache, throttle and in-flight flag are process-wide."""
+    from api import place_search
+    with place_search._lock:
+        place_search._cache.clear()
+        place_search._next_request = 0
+        place_search._inflight = False
+
+
+@pytest.fixture(autouse=True)
+def _reset_place_search():
+    reset_place_search()
+    yield
+
+
 @pytest.fixture(autouse=True)
 def _reset_culling_groups_cache():
     """The culling-groups memo is process-global with a 45 s TTL: a result one test

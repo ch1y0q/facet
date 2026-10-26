@@ -39,6 +39,7 @@ All notable changes to Facet are documented in this file.
 - **Include manual Keep and Reset in assistant activity context.** Successful gallery and photo-detail decisions now report `review` entries with `kept` or `undecided`; a late batch confirmation from another account cannot enter the current activity journal.
 - **Close right-click menus when opening a photo.** Parking the gallery now dismisses its shared photo context menu so it cannot remain over the photo page or reappear on Back.
 - **Complete the relink guide in every language.** The French, German, Italian, Spanish, Portuguese and Chinese pages now carry all of the English page's sections instead of a one-section summary; the command appears in the maintenance table of the command reference, which no longer repeats the option table, and the viewer guide notes that relinked face marks stay in review until saved again in the editor.
+- **Document online place search in every language.** `viewer.place_search_url` now has a row in the Viewer settings table and its section sits under Viewer, in the French, German, Italian, Spanish, Portuguese and Chinese configuration guides too; in every viewer guide the section moves out of Troubleshooting into Map View, and the translated guides gain the `GET /api/places/search` row, a translated heading instead of "Photon", and the saved-places wording that separates local filtering from explicit online lookup.
 
 ## [1.24.0] "Diaphragme" — 2026-10-26
 
