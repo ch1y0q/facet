@@ -188,6 +188,8 @@ Eine nicht verfügbare, fehlgeschlagene oder ungültige ExifTool-Versionsprüfun
 
 `--import-sidecars /pfad --dry-run` zeigt JSON mit gewählter Datei, Vorher/Nachher-Werten, Ergänzungen, Quelle und Ablehnungsgründen. Die vorhandene Datenbank wird schreibgeschützt geöffnet, ohne Migration oder Commit. Anwenden liest Dateien und Datenbank in seiner Schreibtransaktion erneut; JSON ist kein Anwendungstoken.
 
+Fehlt die Datenbank, ist sie nicht lesbar oder ungültig, endet die Vorschau mit Exitcode 1 und einer Fehlermeldung; sie erstellt oder repariert die Datenbank nicht. `--dry-run-count` begrenzt nur Scan-Stichproben, nicht Importvorschauen.
+
 `--sidecar-fields review,gps,keywords` wählt Gruppen. `review` hält Sterne, Favorit, Ablehnung und Keep zusammen, damit keine halbe Entscheidung angewendet wird. Manuelles GPS bleibt ohne `--overwrite-manual-gps` geschützt. Stichwörter bleiben additiv und auch mit `--user` gemeinsam.
 
 Nach dem Upgrade speichern SQLite-Trigger je Foto/Konto/Bewertungsfeld einen Beleg, auch bei Zurücksetzen und Löschen einer Präferenzzeile. Ein älteres Paket erzeugt `newer_local_edit`; die ganze Bewertungsgruppe bleibt erhalten. `--overwrite-sidecar-review` erzwingt ausdrücklich den Ersatz. XMP-Belege nennen Datei/Zeit; `local` bedeutet unbekannter SQL-Schreiber, keinen bestätigten Menschen. Kein neuer Import für Beschriftungen, Gesichter, Hierarchien oder unmarkiertes externes GPS.

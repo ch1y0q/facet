@@ -188,6 +188,8 @@ Uma verificação da versão do ExifTool indisponível, falhada ou inválida é 
 
 `--import-sidecars /caminho --dry-run` mostra JSON com arquivo escolhido, antes/depois, adições, origem e motivos de recusa. Abre a base existente somente para leitura, sem migração ou commit. Aplicar relê arquivos e base na transação de escrita; JSON não é um token de aplicação.
 
+Se o banco de dados estiver ausente, ilegível ou inválido, a prévia termina com código 1 e uma mensagem de erro; ela não cria nem repara o banco. `--dry-run-count` limita apenas as amostras de varredura, não as prévias de importação.
+
 `--sidecar-fields review,gps,keywords` seleciona grupos. `review` mantém estrelas, favorito, rejeição e Keep juntos para evitar decisões parciais. GPS manual permanece protegido sem `--overwrite-manual-gps`. Palavras continuam aditivas e compartilhadas com `--user`.
 
 Após atualizar, gatilhos SQLite guardam um recibo por foto/conta/campo de revisão, inclusive resets e exclusão de preferências. Um pacote mais antigo gera `newer_local_edit` e mantém todo o grupo. `--overwrite-sidecar-review` força explicitamente a substituição. Recibo XMP identifica arquivo/data; `local` significa escritor SQL desconhecido, não uma pessoa verificada. Não acrescenta importação de legendas, rostos, hierarquias ou GPS externo sem marcador.
