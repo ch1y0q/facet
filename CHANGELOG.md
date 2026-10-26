@@ -7,6 +7,7 @@ All notable changes to Facet are documented in this file.
 ### Fixed
 
 - **Keep Unicode person searches literal.** Arabic and full-width decimal text matches names without also selecting an unrelated person ID. ASCII decimal IDs remain searchable, with visibility and assignment ordering preserved.
+- **Readable sidecar import preview errors.** Missing, unreadable or invalid databases now produce a clear refusal instead of a SQLite traceback, without creating or upgrading the database.
 
 ## [1.24.0] "Diaphragme" — 2026-10-26
 
