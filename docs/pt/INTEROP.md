@@ -175,7 +175,7 @@ O Facet guarda os tags que você digita por conta própria (veja [Visualizador �
 | Rótulo de cor | `xmp:Label` (`Red` = rejeitada, `Yellow` = favorita) | `xmp:Label` | Relógios de revisão; regra histórica da varredura |
 | Tags / palavras-chave | `dc:subject` (plano, tags de IA + tags manuais, inclui os nomes das pessoas reconhecidas) | `dc:subject` (armazenado como tags manuais) | Aditivo por padrão; `--reconcile-keywords` remove apenas nomes obsoletos do Facet; os imports permanecem aditivos ([Tags manuais e palavras-chave XMP](#tags-manuais-e-palavras-chave-xmp)) |
 | Tags hierárquicas | `lr:hierarchicalSubject` (`Category\|<cat>`, `People\|<nome>`) | Não reimportado | Somente exportação |
-| Legenda | `dc:description` (+ `IPTC:Caption-Abstract` via exiftool) | Não reimportado | Somente exportação |
+| Legenda | `dc:description` idioma padrão (+ `IPTC:Caption-Abstract` via exiftool) | Não reimportado | Somente exportação |
 | Regiões de rosto nomeadas | `mwg-rs:RegionList` + `facet:RegionOwner=Facet` MWG (centralizada-normalizada, `Type=Face`) | Não reimportado | Somente exportação; lida nativamente pelo digiKam, **não** lida pelo Lightroom (uma limitação conhecida da Adobe — o Lightroom só consome regiões MWG que ele mesmo gravou) |
 
 Veja [Comandos — Preview & Export](COMMANDS.md#preview--export) para a referência completa da CLI (`--export-sidecars`, `--import-sidecars`, `--embed-originals`, `--score-to-stars`, `--user`).

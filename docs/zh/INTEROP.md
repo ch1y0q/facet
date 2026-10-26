@@ -175,7 +175,7 @@ Facet 把你自己输入的标签（参见[查看器——手动标签](VIEWER.m
 | 颜色标签 | `xmp:Label`（`Red` = 已淘汰，`Yellow` = 收藏） | `xmp:Label` | 审核字段编辑时间；旧数据使用扫描时间 |
 | 标签／关键字 | `dc:subject`（扁平，AI 标签 + 手动标签，包含已命名人脸的人物姓名） | `dc:subject`（存为手动标签） | 默认只添加；`--reconcile-keywords` 仅移除属于 Facet 的过时名称；导入仍只添加 ([手动标签与 XMP 关键字](#手动标签与-xmp-关键字)) |
 | 层级标签 | `lr:hierarchicalSubject`（`Category\|<cat>`、`People\|<name>`） | 不再导入 | 仅导出 |
-| 照片描述 | `dc:description`（+ 经由 exiftool 的 `IPTC:Caption-Abstract`） | 不再导入 | 仅导出 |
+| 照片描述 | `dc:description` 默认语言（+ 经由 exiftool 的 `IPTC:Caption-Abstract`） | 不再导入 | 仅导出 |
 | 命名的人脸区域 | MWG `mwg-rs:RegionList` + `facet:RegionOwner=Facet`（中心归一化，`Type=Face`） | 不再导入 | 仅导出；由 digiKam 原生读取，Lightroom **不**读取（一个已知的 Adobe 限制 —— Lightroom 只消费它自己写出的 MWG 区域） |
 
 完整的 CLI 参考（`--export-sidecars`、`--import-sidecars`、`--embed-originals`、`--score-to-stars`、`--user`）请见[命令 — 预览与导出](COMMANDS.md#预览与导出)。
