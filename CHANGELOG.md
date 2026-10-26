@@ -4,6 +4,8 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+## [1.24.0] "Diaphragme" — 2026-10-26
+
 
 ### Changed
 - Concurrent thumbnail render requests share one decode; JPEG renders retain capacity while slower formats are busy, within the existing four-render limit.
