@@ -321,6 +321,9 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
         updates[clientKey] = String(value);
       }
     }
+    if (updates['show_rejected'] && updates['favorites_only']) {
+      throw new UiToolError('invalid_input', 'show_rejected and favorites_only cannot be combined in the tab.');
+    }
     if (updates['similar_to'] && updates['semanticQuery']) {
       throw new UiToolError('invalid_input', 'similar_to and semantic_query cannot be combined (the tab ranks by one of them).');
     }
