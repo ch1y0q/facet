@@ -821,3 +821,125 @@ def test_destination_changing_while_decoded_is_refused(library, monkeypatch):
     with pytest.raises(ValueError, match='Destination changed while decoding'):
         preview(library)
     assert _photo_rows(db) == before
+
+
+@pytest.fixture(params=['database', 'module'])
+def relink_cli(request, library, tmp_path):
+    import sys
+    db, old, new, config = library
+    config_file = tmp_path / 'lock-config.json'
+    mapping_file = tmp_path / 'lock-mapping.json'
+    config_file.write_text(json.dumps(config), encoding='utf-8')
+    mapping_file.write_text(json.dumps([{'old': old, 'new': new}]), encoding='utf-8')
+    entry = ['database.py', '--relink-photos'] if request.param == 'database' else ['-m', 'db.relink']
+    command = [sys.executable, *entry, '--db', db, '--config', str(config_file)]
+    return command, mapping_file
+
+
+def _run_relink_cli(command, *arguments):
+    import subprocess
+    return subprocess.run([*command, *arguments], cwd=Path(__file__).resolve().parents[1],
+                          capture_output=True, text=True, encoding='utf-8', timeout=30)
+
+
+def test_cli_preview_stays_readonly_and_apply_waits_for_library_job(library, relink_cli, tmp_path):
+    from facet import LibraryLock, LIBRARY_LOCK_HELD_EXIT_CODE, library_job_holder
+    db, old, new, _ = library
+    command, mapping_file = relink_cli
+    db_before, image_before = Path(db).read_bytes(), Path(new).read_bytes()
+    with LibraryLock(db, 'scan'):
+        previewed = _run_relink_cli(command, '--mapping', str(mapping_file))
+        assert previewed.returncode == 0, previewed.stderr
+        plan = json.loads(previewed.stdout)
+        assert Path(db).read_bytes() == db_before
+        plan_file = tmp_path / 'lock-plan.json'
+        plan_file.write_text(json.dumps(plan), encoding='utf-8')
+        arguments = ['--apply-plan', str(plan_file), '--ack-plan', plan['plan_id'],
+                     '--acknowledge-unverified-identity']
+        refused = _run_relink_cli(command, *arguments)
+        assert refused.returncode == LIBRARY_LOCK_HELD_EXIT_CODE, refused.stderr
+        assert refused.stdout == ''
+        assert 'scan is already running' in refused.stderr.lower()
+        assert library_job_holder(db)['kind'] == 'scan'
+        assert Path(db).read_bytes() == db_before
+        assert _photo_rows(db)[0][0] == old
+        assert Path(new).read_bytes() == image_before
+        assert not Path(old).exists()
+    applied = _run_relink_cli(command, *arguments)
+    assert applied.returncode == 0, applied.stderr
+    assert json.loads(applied.stdout)['relinked'] == 1
+    with sqlite3.connect(db) as conn:
+        assert conn.execute('SELECT path FROM photos').fetchone()[0] == new
+    assert library_job_holder(db) is None
+    assert Path(new).read_bytes() == image_before
+    assert not Path(old).exists()
+
+
+def test_cli_apply_rechecks_mutation_after_preview_and_lock_refusal(library, relink_cli, tmp_path):
+    from facet import LibraryLock, LIBRARY_LOCK_HELD_EXIT_CODE, library_job_holder
+    db, old, new, _ = library
+    command, mapping_file = relink_cli
+    previewed = _run_relink_cli(command, '--mapping', str(mapping_file))
+    assert previewed.returncode == 0, previewed.stderr
+    plan = json.loads(previewed.stdout)
+    plan_file = tmp_path / 'stale-lock-plan.json'
+    plan_file.write_text(json.dumps(plan), encoding='utf-8')
+    arguments = ['--apply-plan', str(plan_file), '--ack-plan', plan['plan_id'],
+                 '--acknowledge-unverified-identity']
+    image_before = Path(new).read_bytes()
+    with LibraryLock(db, 'scan'):
+        refused = _run_relink_cli(command, *arguments)
+        assert refused.returncode == LIBRARY_LOCK_HELD_EXIT_CODE, refused.stderr
+        with sqlite3.connect(db) as conn:
+            conn.execute('UPDATE photos SET star_rating=2 WHERE path=?', (old,))
+    response = _run_relink_cli(command, *arguments)
+    assert response.returncode == 1, response.stderr
+    assert 'plan is stale' in response.stderr
+    with sqlite3.connect(db) as conn:
+        assert conn.execute('SELECT path,star_rating FROM photos').fetchall() == [(old, 2)]
+        assert conn.execute('PRAGMA foreign_key_check').fetchall() == []
+    assert library_job_holder(db) is None
+    assert Path(new).read_bytes() == image_before
+
+
+@pytest.mark.parametrize('stale', [False, True])
+def test_in_process_cli_holds_maintenance_lock_through_apply_and_releases_it(library, tmp_path, monkeypatch, capsys, stale):
+    from contextlib import contextmanager
+    from config_resolve import load_resolved
+    from facet import LibraryLock, LibraryLockError, LIBRARY_JOB_MAINTENANCE, library_job_holder
+    db, old, new, config = library
+    config_file = tmp_path / 'in-process-config.json'
+    plan_file = tmp_path / 'in-process-plan.json'
+    config_file.write_text(json.dumps(config), encoding='utf-8')
+    plan = relink.preview_relinks(db, [{'old': old, 'new': new}], load_resolved(str(config_file)))
+    plan_file.write_text(json.dumps(plan), encoding='utf-8')
+    if stale:
+        with sqlite3.connect(db) as conn:
+            conn.execute('UPDATE photos SET star_rating=2 WHERE path=?', (old,))
+    original_connection = relink._connection
+    seen = []
+
+    @contextmanager
+    def observe_connection(db_path, write=False):
+        if write:
+            seen.append(library_job_holder(db_path))
+            with pytest.raises(LibraryLockError):
+                LibraryLock(db_path, 'other-writer').acquire()
+        with original_connection(db_path, write=write) as conn:
+            yield conn
+
+    monkeypatch.setattr(relink, '_connection', observe_connection)
+    arguments = ['--db', db, '--config', str(config_file), '--apply-plan', str(plan_file),
+                 '--ack-plan', plan['plan_id'], '--acknowledge-unverified-identity']
+    if stale:
+        with pytest.raises(SystemExit) as refusal:
+            relink.main(arguments)
+        assert refusal.value.code == 1
+        assert 'plan is stale' in capsys.readouterr().err
+    else:
+        relink.main(arguments)
+        assert json.loads(capsys.readouterr().out)['relinked'] == 1
+    assert len(seen) == 1 and seen[0]['kind'] == LIBRARY_JOB_MAINTENANCE
+    assert library_job_holder(db) is None
+    with sqlite3.connect(db) as conn:
+        assert conn.execute('SELECT path FROM photos').fetchone()[0] == (old if stale else new)

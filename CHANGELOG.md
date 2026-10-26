@@ -4,6 +4,10 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Relink applies respect running library jobs.** Both relink command entry points hold the shared maintenance lock while applying a reviewed plan; read-only previews remain available while another job runs.
+
 ## [1.24.0] "Diaphragme" — 2026-10-26
 
 
