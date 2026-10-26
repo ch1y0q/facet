@@ -339,3 +339,201 @@ def test_another_accounts_jxl_is_not_visible(tmp_path, seed_photos_prefix, jxl_c
     assert own.status_code == 200
     hidden = jxl_client.get("/image", params={"path": str(paths[1]), "fallback": "thumbnail"}, headers={"Accept": accept})
     assert hidden.status_code == 404
+
+
+@pytest.mark.parametrize("fail_first", [False, True])
+def test_concurrent_fallbacks_share_decode_and_retry_failures(
+        tmp_path, seed_photos_prefix, jxl_client, monkeypatch, fail_first):
+    import threading
+    from concurrent.futures import Future
+    from api.routers import thumbnails
+    path = tmp_path / "shared.jxl"
+    _jpegxl(path)
+    stored = BytesIO()
+    Image.new("RGB", (4, 6), (80, 100, 120)).save(stored, format="JPEG")
+    seed_photos_prefix(str(tmp_path) + os.sep, [{"path": str(path), "filename": path.name, "thumbnail": stored.getvalue()}])
+    thumbnails._convert_nonraw_cached.cache_clear()
+    started, joined, release = threading.Event(), threading.Event(), threading.Event()
+    calls = []
+    load = image_loading.open_nonraw_image
+    def held_load(*args, **kwargs):
+        calls.append(True)
+        started.set()
+        assert release.wait(5), "test failed to release decoder"
+        if fail_first and len(calls) == 1:
+            raise ValueError("synthetic decode failure")
+        return load(*args, **kwargs)
+    class ObservedFuture(Future):
+        def result(self, *args, **kwargs):
+            joined.set()
+            return super().result(*args, **kwargs)
+    monkeypatch.setattr(thumbnails, "Future", ObservedFuture)
+    monkeypatch.setattr(image_loading, "open_nonraw_image", held_load)
+    results, errors = [], []
+    def request():
+        try:
+            results.append(jxl_client.get("/image", params={"path": str(path), "fallback": "thumbnail"}))
+        except BaseException as error:
+            errors.append(error)
+    workers = [threading.Thread(target=request, daemon=True) for _ in range(2)]
+    try:
+        workers[0].start()
+        assert started.wait(3)
+        workers[1].start()
+        assert joined.wait(3), "second request did not join the first decode"
+    finally:
+        release.set()
+        for worker in workers:
+            if worker.ident is not None:
+                worker.join(5)
+    assert not errors and all(not w.is_alive() for w in workers)
+    assert len(calls) == 1
+    assert len(results) == 2 and all(r.status_code == 200 for r in results)
+    assert results[0].content == results[1].content
+    assert not thumbnails._render_inflight
+    if fail_first:
+        assert results[0].content == stored.getvalue()
+        retry = jxl_client.get("/image", params={"path": str(path)})
+        assert retry.status_code == 200 and len(calls) == 2
+        assert Image.open(BytesIO(retry.content)).size == (40, 24)
+    else:
+        assert Image.open(BytesIO(results[0].content)).size == (40, 24)
+        assert jxl_client.get("/image", params={"path": str(path)}).content == results[0].content
+        assert len(calls) == 1
+    thumbnails._convert_nonraw_cached.cache_clear()
+
+
+def test_fallback_timeout_releases_budget_and_is_retryable(tmp_path, seed_photos_prefix, jxl_client, monkeypatch):
+    import threading
+    from api.routers import thumbnails
+    path = tmp_path / "busy.jxl"
+    _jpegxl(path)
+    stored = BytesIO()
+    Image.new("RGB", (4, 6)).save(stored, format="JPEG")
+    seed_photos_prefix(str(tmp_path) + os.sep, [{"path": str(path), "filename": path.name, "thumbnail": stored.getvalue()}])
+    thumbnails._convert_nonraw_cached.cache_clear()
+    nonjpeg = threading.BoundedSemaphore(3)
+    slots = threading.BoundedSemaphore(0)
+    monkeypatch.setattr(thumbnails, "_nonjpeg_render_slots", nonjpeg)
+    monkeypatch.setattr(thumbnails, "_render_slots", slots)
+    monkeypatch.setattr(thumbnails, "_RENDER_WAIT_SECONDS", 0)
+    load = image_loading.open_nonraw_image
+    called = []
+    def observed(*args, **kwargs):
+        called.append(True)
+        return load(*args, **kwargs)
+    monkeypatch.setattr(image_loading, "open_nonraw_image", observed)
+    response = jxl_client.get("/image", params={"path": str(path), "fallback": "thumbnail"})
+    assert response.content == stored.getvalue() and response.status_code == 200
+    assert called == [] and not thumbnails._render_inflight
+    assert all(nonjpeg.acquire(blocking=False) for _ in range(3))
+    for _ in range(3):
+        nonjpeg.release()
+    monkeypatch.setattr(thumbnails, "_render_slots", threading.BoundedSemaphore(4))
+    retry = jxl_client.get("/image", params={"path": str(path)})
+    assert retry.status_code == 200 and len(called) == 1
+    assert Image.open(BytesIO(retry.content)).size == (40, 24)
+    thumbnails._convert_nonraw_cached.cache_clear()
+
+
+@pytest.mark.parametrize("compressed", [False, True])
+@pytest.mark.parametrize("tiff_offset", [0, 8])
+def test_native_codestream_orientation_wins_and_exif_survives(tmp_path, compressed, tiff_offset):
+    import struct
+    path = tmp_path / "native-metadata.jxl"
+    pixels = np.zeros((24, 40, 3), dtype=np.uint8)
+    pixels[:, :20] = (240, 20, 10)
+    pixels[:, 20:] = (10, 40, 230)
+    raw = imagecodecs.jpegxl_encode(pixels, lossless=True, numthreads=1)
+    exif = Image.Exif()
+    exif[274] = 6  # Native pixels follow the codestream, not this TIFF hint.
+    exif[34665] = {36867: "2024:01:13 11:36:39"}
+    payload = struct.pack(">I", tiff_offset) + b"\x00" * tiff_offset + exif.tobytes()[6:]
+    def box(kind, data):
+        return struct.pack(">I4s", len(data) + 8, kind) + data
+    metadata = box(b"brob", b"Exif" + imagecodecs.brotli_encode(payload)) if compressed else box(b"Exif", payload)
+    signature = b"\x00\x00\x00\x0cJXL \x0d\x0a\x87\x0a"
+    path.write_bytes(signature + box(b"ftyp", b"jxl \x00\x00\x00\x00jxl ") + metadata + box(b"jxlc", raw))
+    original = path.read_bytes()
+    actual = image_loading.open_nonraw_image(path)
+    assert actual.size == (40, 24)
+    np.testing.assert_array_equal(np.asarray(actual), pixels)
+    assert actual.getexif().get_ifd(34665)[36867] == "2024:01:13 11:36:39"
+    assert path.read_bytes() == original
+
+
+def test_full_jxl_conversions_reserve_a_slot_for_sharp_jpegs(tmp_path, seed_photos_prefix, jxl_client, monkeypatch):
+    import threading
+    from api.routers import thumbnails
+    paths = [tmp_path / f"held-{index}.jxl" for index in range(4)]
+    jpeg = tmp_path / "ready.jpg"
+    for path in paths:
+        original = _jpegxl(path)
+    jpeg.write_bytes(original)
+    stored = BytesIO()
+    Image.new("RGB", (4, 6)).save(stored, format="JPEG")
+    seed_photos_prefix(str(tmp_path) + os.sep, [
+        {"path": str(p), "filename": p.name, "thumbnail": stored.getvalue()} for p in [*paths, jpeg]])
+    thumbnails._convert_nonraw_cached.cache_clear()
+    fourth_attempt, three_entered, release = threading.Event(), threading.Event(), threading.Event()
+    guard = threading.Lock()
+    attempts, entered = [], []
+    class ObservedBudget(threading.BoundedSemaphore):
+        def acquire(self, *args, **kwargs):
+            with guard:
+                attempts.append(True)
+                if len(attempts) == 4:
+                    fourth_attempt.set()
+            return super().acquire(*args, **kwargs)
+    load = image_loading.open_nonraw_image
+    def held_load(path, *args, **kwargs):
+        if str(path).endswith(".jxl"):
+            with guard:
+                entered.append(True)
+                if len(entered) == 3:
+                    three_entered.set()
+            assert release.wait(5), "test did not release full decodes"
+        return load(path, *args, **kwargs)
+    monkeypatch.setattr(thumbnails, "_nonjpeg_render_slots", ObservedBudget(3))
+    monkeypatch.setattr(thumbnails, "_render_slots", threading.BoundedSemaphore(4))
+    monkeypatch.setattr(image_loading, "open_nonraw_image", held_load)
+    results, errors = [], []
+    def request(path):
+        try:
+            results.append(jxl_client.get("/image", params={"path": str(path)}))
+        except BaseException as error:
+            errors.append(error)
+    workers = [threading.Thread(target=request, args=(path,), daemon=True) for path in paths]
+    try:
+        for worker in workers:
+            worker.start()
+        assert fourth_attempt.wait(3) and three_entered.wait(3)
+        assert len(entered) == 3
+        response = jxl_client.get("/thumbnail", params={"path": str(jpeg), "size": 1920})
+        assert response.status_code == 200
+        assert Image.open(BytesIO(response.content)).size == (40, 24)
+    finally:
+        release.set()
+        for worker in workers:
+            worker.join(5)
+    assert not errors and len(results) == 4 and all(r.status_code == 200 for r in results)
+    assert all(not worker.is_alive() for worker in workers)
+    assert len(entered) == 4 and not thumbnails._render_inflight
+    thumbnails._convert_nonraw_cached.cache_clear()
+
+
+@pytest.mark.parametrize("compressed", [False, True])
+def test_plugin_written_native_exif_is_preserved(tmp_path, compressed):
+    path = tmp_path / "plugin-metadata.jxl"
+    exif = Image.Exif()
+    exif[274] = 1
+    exif[34665] = {36867: "2024:01:13 11:36:39"}
+    Image.new("RGB", (40, 24), (10, 80, 200)).save(
+        path, format="JXL", lossless=True, use_container=True,
+        exif=exif.tobytes(), compress_metadata=compressed, num_threads=1,
+    )
+    original = path.read_bytes()
+    actual = image_loading.open_nonraw_image(path)
+    assert actual.size == (40, 24)
+    assert actual.getexif().get_ifd(34665)[36867] == "2024:01:13 11:36:39"
+    assert path.read_bytes() == original

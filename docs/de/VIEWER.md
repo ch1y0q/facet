@@ -10,6 +10,8 @@ Bei der JPEG-XL-Vollbildanzeige erhalten Browser, die `image/jxl` ausdrücklich 
 
 Der optionale Decoder steht unter GPL-3.0-or-later und ist weder in der Standardinstallation noch im Container enthalten. Ein zur Plattform passendes Wheel installieren und Facet neu starten. Vor der Pixeldekodierung gilt das vorhandene Pillow-Pixellimit; die Header-Prüfung ist auf 4.096 Container-Boxen begrenzt. Vorschauen und Bewertung verwenden sRGB; Transparenz wird auf Weiß zusammengesetzt. Gleitkomma-Graustufen und hochbittige Graustufen mit Alpha werden abgelehnt, statt falsch dargestellt. Animiertes JPEG XL wird nicht als Animation unterstützt; nur das erste Bild wird verarbeitet. Die native Vollbildausgabe erhält Bittiefe und Profil des Originals; erzeugte Vorschauen sind 8-Bit-SDR. HDR-Tonemapping für JPEG XL ist nicht enthalten.
 
+JPEG-Konvertierungen in voller Größe für Nicht-RAW-Dateien teilen das Zugriffslimit der scharfen Vorschau, bündeln identische laufende Anfragen und speichern höchstens fünf Konvertierungen im Cache. Native JPEG-XL-Ausgabe dekodiert oder konvertiert das Original nicht auf dem Server. Bei nativen JXL-Pixeln hat die Codestream-Ausrichtung Vorrang vor EXIF; rekonstruierte JPEGs behalten ihre EXIF-Drehung. Standard- und Plugin-EXIF einschließlich Brotli-Kompression und TIFF-Offsets ungleich null werden ohne Änderung der Quelle gelesen. Kodiertes und entpacktes EXIF sind jeweils auf 16 MiB begrenzt; ungültiges oder zu großes EXIF wird abgelehnt.
+
 ## Inhalt
 
 - [Galerie starten](#galerie-starten) · [Authentifizierung](#authentifizierung) · [Filteroptionen](#filteroptionen) · [Sortierung](#sortierung) · [Galeriefunktionen](#galeriefunktionen)

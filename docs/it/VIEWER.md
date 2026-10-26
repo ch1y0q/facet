@@ -10,6 +10,8 @@ Per visualizzare JPEG XL a piena risoluzione, i browser che dichiarano esplicita
 
 Il decoder opzionale è distribuito con GPL-3.0-or-later e non è incluso nell’installazione predefinita né nel contenitore. Installa una wheel compatibile con la piattaforma e riavvia Facet. Il limite di pixel di Pillow viene verificato prima della decodifica; l’ispezione delle intestazioni è limitata a 4.096 box. Anteprime e valutazione usano sRGB, con trasparenza su bianco. Sono rifiutate le immagini in scala di grigi in virgola mobile e quelle ad alta profondità con alfa. Le animazioni JPEG XL non sono supportate; viene elaborato solo il primo fotogramma. La visualizzazione nativa conserva profondità e profilo originali; le anteprime sono SDR a 8 bit. Non viene aggiunta la mappatura dei toni HDR JPEG XL.
 
+Le conversioni JPEG a piena risoluzione delle sorgenti non RAW condividono il limite di concorrenza delle anteprime nitide, uniscono richieste identiche in corso e conservano al massimo cinque conversioni in cache. La distribuzione nativa JPEG XL non decodifica né converte l’originale sul server. Nei JXL nativi prevale l’orientamento del flusso su EXIF; i JPEG ricostruiti mantengono la rotazione EXIF. EXIF standard e del plugin, inclusi Brotli e offset TIFF non nulli, vengono letti senza modificare la sorgente. EXIF codificato e decompresso sono limitati ciascuno a 16 MiB; i metadati non validi o eccessivi vengono rifiutati.
+
 ## Contenuti
 
 - [Avvio della galleria](#avvio-della-galleria) · [Autenticazione](#autenticazione) · [Opzioni di filtraggio](#opzioni-di-filtraggio) · [Ordinamento](#ordinamento) · [Funzionalità della galleria](#funzionalità-della-galleria)

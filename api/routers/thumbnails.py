@@ -9,6 +9,8 @@ import os
 import threading
 import time
 from io import BytesIO
+from contextlib import contextmanager
+from collections.abc import Callable
 from functools import lru_cache
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
@@ -102,7 +104,10 @@ def _get_image_jpeg_quality() -> int:
     return VIEWER_CONFIG['display'].get('image_jpeg_quality', 96)
 
 
-@lru_cache(maxsize=5)
+_FULL_IMAGE_CACHE_SIZE = 5
+
+
+@lru_cache(maxsize=_FULL_IMAGE_CACHE_SIZE)
 def _convert_raw_cached(file_path: str, mtime: float, quality: int = 96,
                         sequence_kind: Optional[str] = None) -> bytes:
     """Convert a RAW file to JPEG bytes, cached by path+mtime+quality+sequence kind.
@@ -116,7 +121,26 @@ def _convert_raw_cached(file_path: str, mtime: float, quality: int = 96,
     return convert_raw_to_jpeg(file_path, quality, sequence_kind)
 
 
-@lru_cache(maxsize=32)
+@contextmanager
+def _image_render_budget(file_path: str):
+    """Share the decode/encode budget between sharp and full-size renders."""
+    nonjpeg = Path(file_path).suffix.lower() not in JPEG_EXTENSIONS
+    deadline = time.monotonic() + _RENDER_WAIT_SECONDS
+    if nonjpeg and not _nonjpeg_render_slots.acquire(timeout=_RENDER_WAIT_SECONDS):
+        raise RuntimeError("every non-JPEG render slot is busy")
+    try:
+        if not _render_slots.acquire(timeout=max(0, deadline - time.monotonic())):
+            raise RuntimeError("every render slot is busy")
+        try:
+            yield
+        finally:
+            _render_slots.release()
+    finally:
+        if nonjpeg:
+            _nonjpeg_render_slots.release()
+
+
+@lru_cache(maxsize=_FULL_IMAGE_CACHE_SIZE)
 def _convert_nonraw_cached(file_path: str, mtime: float, quality: int = 96) -> bytes:
     """Convert a non-RAW, non-browser-renderable file to JPEG bytes, cached by path+mtime+quality.
 
@@ -130,9 +154,10 @@ def _convert_nonraw_cached(file_path: str, mtime: float, quality: int = 96) -> b
     """
     from utils.image_loading import open_nonraw_image
 
-    buf = BytesIO()
-    open_nonraw_image(file_path).save(buf, format="JPEG", quality=quality)
-    return buf.getvalue()
+    with _image_render_budget(file_path):
+        buf = BytesIO()
+        open_nonraw_image(file_path).save(buf, format="JPEG", quality=quality)
+        return buf.getvalue()
 
 
 def _do_resize(thumbnail_bytes: bytes, size: int) -> bytes:
@@ -174,25 +199,12 @@ def _render_from_original_cached(file_path: str, mtime: float,
     from api.raw_processing import load_viewer_image
     from utils import image_transforms
 
-    nonjpeg = Path(file_path).suffix.lower() not in JPEG_EXTENSIONS
-    deadline = time.monotonic() + _RENDER_WAIT_SECONDS
-    if nonjpeg and not _nonjpeg_render_slots.acquire(timeout=_RENDER_WAIT_SECONDS):
-        raise RuntimeError("every non-JPEG render slot is busy")
-    try:
-        if not _render_slots.acquire(timeout=max(0, deadline - time.monotonic())):
-            raise RuntimeError("every render slot is busy")
-        try:
-            img = load_viewer_image(file_path, sequence_kind, max_edge=_RENDERED_SIZE)
-            # The slot covers the resize and encode too: the decoded frame is
-            # the large allocation the cap exists to bound.
-            blob = image_transforms.generate_photo_thumbnail(
-                img, _RENDERED_SIZE, _RENDERED_JPEG_QUALITY)
-            del img
-        finally:
-            _render_slots.release()
-    finally:
-        if nonjpeg:
-            _nonjpeg_render_slots.release()
+    with _image_render_budget(file_path):
+        img = load_viewer_image(file_path, sequence_kind, max_edge=_RENDERED_SIZE)
+        # Keep the slot through encoding while the full pixel plane is alive.
+        blob = image_transforms.generate_photo_thumbnail(
+            img, _RENDERED_SIZE, _RENDERED_JPEG_QUALITY)
+        del img
     if not image_transforms.thumbnail_has_signal(blob):
         # A truncated RW2 decodes to an all-zero frame without raising.
         raise _NoSignalError("render carries no signal")
@@ -226,8 +238,8 @@ _render_inflight: dict[tuple, Future[Optional[bytes]]] = {}
 _render_inflight_lock = threading.Lock()
 
 
-def _coalesced_render(key: tuple[str, float, Optional[str]]) -> Optional[bytes]:
-    """Share one cache miss; complete the LRU call before dropping its flight."""
+def _coalesced_image(key: tuple, render: Callable[[], Optional[bytes]]) -> Optional[bytes]:
+    """Publish cached work before dropping its flight; followers own no slot."""
     with _render_inflight_lock:
         future = _render_inflight.get(key)
         leader = future is None
@@ -238,20 +250,35 @@ def _coalesced_render(key: tuple[str, float, Optional[str]]) -> Optional[bytes]:
     if not leader:
         return future.result(timeout=_RENDER_WAIT_SECONDS)
     try:
-        # Recheck after joining the flight: another completed render may have
-        # published a negative result since the caller's earlier lookup.
-        result = None if _known_no_signal(key) else _render_from_original_cached(*key)
+        result = render()
         future.set_result(result)
         return result
     except BaseException as ex:
-        if isinstance(ex, _NoSignalError):
-            # Publish the negative cache before dropping the flight too.
-            _remember_no_signal(key)
         future.set_exception(ex)
         raise
     finally:
         with _render_inflight_lock:
             del _render_inflight[key]
+
+
+def _coalesced_render(key: tuple[str, float, Optional[str]]) -> Optional[bytes]:
+    def render():
+        try:
+            return None if _known_no_signal(key) else _render_from_original_cached(*key)
+        except _NoSignalError:
+            _remember_no_signal(key)
+            raise
+    return _coalesced_image(key, render)
+
+
+def _coalesced_nonraw_conversion(file_path: str, mtime: float, quality: int) -> bytes:
+    # Tag full-size keys so they can never join a 1920 px render of this file.
+    result = _coalesced_image(
+        ('full', file_path, mtime, quality),
+        lambda: _convert_nonraw_cached(file_path, mtime, quality),
+    )
+    assert result is not None
+    return result
 
 
 def _render_from_original(path: str, sequence_kind: Optional[str]) -> Optional[bytes]:
@@ -512,7 +539,7 @@ def image(
         try:
             mtime = os.path.getmtime(real_disk)
             quality = _get_image_jpeg_quality()
-            jpeg_bytes = _convert_nonraw_cached(real_disk, mtime, quality)
+            jpeg_bytes = _coalesced_nonraw_conversion(real_disk, mtime, quality)
             return _cached_image_response(jpeg_bytes, request)
         except Exception:
             logger.exception("Failed to convert HEIF file: %s", real_disk)
@@ -542,7 +569,7 @@ def image(
         try:
             mtime = os.path.getmtime(real_disk)
             quality = _get_image_jpeg_quality()
-            jpeg_bytes = _convert_nonraw_cached(real_disk, mtime, quality)
+            jpeg_bytes = _coalesced_nonraw_conversion(real_disk, mtime, quality)
             response = _cached_image_response(jpeg_bytes, request)
             if is_jxl:
                 response.headers['Vary'] = 'Accept'

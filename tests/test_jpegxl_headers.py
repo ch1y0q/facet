@@ -62,3 +62,28 @@ def test_metadata_box_count_is_bounded():
     stream = BytesIO(_SIGNATURE + _box(b"free", b"") * 4097)
     with pytest.raises(ValueError, match="4096 boxes"):
         jpegxl_dimensions(stream)
+
+
+@pytest.mark.parametrize("compressed", [False, True])
+def test_exif_bytes_are_bounded_before_pixel_decode(monkeypatch, compressed):
+    import imagecodecs
+    from PIL import Image
+    from utils import jpegxl
+    exif = Image.Exif()
+    exif[270] = "description " * 400
+    payload = b"\x00" * 4 + exif.tobytes()[6:]
+    kind = b"brob" if compressed else b"Exif"
+    data = b"Exif" + imagecodecs.brotli_encode(payload) if compressed else payload
+    monkeypatch.setattr(jpegxl, "_MAX_EXIF_BYTES", 512)
+    stream = BytesIO(_SIGNATURE + _box(kind, data))
+    stream.seek(2)
+    with pytest.raises(ValueError, match="metadata byte limit"):
+        jpegxl._jpegxl_exif(stream)
+    assert stream.tell() == 2
+
+
+@pytest.mark.parametrize("payload", [b"bad", b"\x00\x00\x01\x00II\x2a\x00", b"\x00" * 4 + b"not TIFF"])
+def test_invalid_exif_offsets_are_refused(payload):
+    from utils.jpegxl import _jpegxl_exif
+    with pytest.raises(ValueError, match="EXIF offset"):
+        _jpegxl_exif(BytesIO(_SIGNATURE + _box(b"Exif", payload)))

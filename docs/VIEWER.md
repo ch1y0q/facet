@@ -10,6 +10,8 @@ For full-size JPEG XL viewing, a browser that explicitly advertises `image/jxl` 
 
 The optional decoder is distributed under GPL-3.0-or-later; it is not included in the default install or container. Install a wheel matching your platform and restart Facet. Decoding checks the existing Pillow pixel limit before allocating pixels; container-header inspection is limited to 4,096 boxes. JPEG XL previews and scoring use an sRGB render, with transparency composited over white. Unsupported floating-point grayscale and high-bit-depth grayscale with alpha are refused rather than rendered incorrectly. Animated JPEG XL is not supported as animation; only the first frame is handled. Native full-size delivery preserves the original bit depth and profile, while generated previews are 8-bit SDR; this does not add HDR tone mapping for JPEG XL.
 
+Full-size JPEG conversions for non-RAW sources share the sharp-preview admission budget, join identical in-flight requests, and retain at most five cached conversions. Native JPEG XL delivery does not decode or convert the original on the server. For native JXL pixels, codestream orientation takes precedence over EXIF; reconstructed JPEGs retain their EXIF rotation. Standard and plugin-written EXIF, including Brotli-compressed EXIF and nonzero TIFF offsets, are read without changing the source. Encoded and decompressed EXIF are each limited to 16 MiB; malformed or oversized EXIF is refused.
+
 ## Contents
 
 - [Starting the Viewer](#starting-the-viewer) · [Authentication](#authentication) · [Filtering Options](#filtering-options) · [Sorting](#sorting) · [Gallery Features](#gallery-features)
