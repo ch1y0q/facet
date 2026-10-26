@@ -2872,8 +2872,9 @@ describe('BurstCullingComponent', () => {
       rendered['lightboxIndex'].set(0);
       rendered['peakingActive'].set(true);
       rendered['gridMode'].set('thirds');
-      rendered['sharpPath'].set('/f1.jpg');
-
+      fixture.detectChanges();
+      const pane = fixture.debugElement.query(By.directive(SyncedZoomComponent)).componentInstance as SyncedZoomComponent;
+      pane.sharpLoaded.emit(pane.src());
       fixture.detectChanges();
       await flush();
       await new Promise(resolve => setTimeout(resolve, SHARP_PRELOAD_DEBOUNCE_MS + 50));
@@ -4085,7 +4086,7 @@ describe('BurstCullingComponent progressive darkroom frames (rendered)', () => {
     fixture.detectChanges();
     expect(srcs().filter(u => u.includes('size=1920'))).toEqual([render('/p1.jpg')]);
 
-    FakeImage.instances = [];
+    // The same neighbor is still wanted at the other end; reuse its request.
     component['lightboxIndex'].set(2);
     fixture.detectChanges();
     component['onSharpLoaded'](render('/p2.jpg'));
@@ -4193,6 +4194,55 @@ describe('BurstCullingComponent progressive darkroom frames (rendered)', () => {
     expect(panes.map(p => p.placeholderSrc())).toEqual([thumb('/p0.jpg'), thumb('/p1.jpg')]);
     expect(panes.map(p => p.frameKey())).toEqual(['/p0.jpg', '/p1.jpg']);
     expect(srcs().filter(u => u.includes('path=%2Fp2.jpg'))).toEqual([]);
+  });
+
+  it('keeps a synchronous warm render success after the pending notification on a cached revisit', () => {
+    class WarmImage extends FakeImage {
+      complete = true;
+      naturalWidth = 640;
+    }
+    vi.stubGlobal('Image', WarmImage);
+    component['loadedRenders'].add(render('/p0.jpg'));
+    open(0);
+    expect(component['sharpPath']()).toBe('/p0.jpg');
+    open(1);
+    open(0);
+    expect(component['sharpPath']()).toBe('/p0.jpg');
+    expect(component['failedRenderPath']()).toBeNull();
+  });
+
+  it.each(['loaded', 'failed'])('clears %s readiness when returning to a frame whose new render attempt is pending', async state => {
+    const renderPeaking = vi.spyOn(component as any, 'renderPeaking').mockResolvedValue('overlay');
+    open(0);
+    if (state === 'loaded') {
+      pane().sharpLoaded.emit(render('/p0.jpg'));
+      component['loadedRenders'].add(render('/p0.jpg'));
+    } else {
+      pane().sharpFailed.emit(render('/p0.jpg'));
+    }
+    fixture.detectChanges();
+    open(1); // Its render remains pending: no load/failure output.
+    open(0); // A previous URL hint must not restore the previous attempt's readiness.
+    component['peakingActive'].set(true);
+    fixture.detectChanges();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(component['sharpPath']()).toBeNull();
+    expect(component['failedRenderPath']()).toBeNull();
+    expect(renderPeaking).not.toHaveBeenCalled();
+  });
+
+  it('uses the visible stored thumbnail for peaking when the current render fails', async () => {
+    const renderPeaking = vi.spyOn(component as any, 'renderPeaking').mockResolvedValue('overlay');
+    open(1);
+    component['peakingActive'].set(true);
+    fixture.detectChanges();
+    const pane = fixture.debugElement.query(By.directive(SyncedZoomComponent)).componentInstance as SyncedZoomComponent;
+    pane.sharpFailed.emit(render('/p1.jpg'));
+    fixture.detectChanges();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(renderPeaking).toHaveBeenCalledWith(thumb('/p1.jpg'), expect.any(Number));
+    expect(component['sharpPath']()).toBeNull();
+    expect(srcs().filter(u => u === render('/p0.jpg') || u === render('/p2.jpg'))).toEqual([]);
   });
 
   it('waits for the sharp render before building the peaking overlay in single view', async () => {
