@@ -33,6 +33,8 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- Use shared Windows library-lock status probes so overlapping polls cannot report a running job when the library is idle. Real jobs retain exclusive admission.
+
 - Skip unsupported JSON face updates on ExifTool before 12.65 while exporting other metadata, preflight companion sidecars before embedding, and keep metadata-precondition responses free of resolved server paths. Unicode newline-filename failures are isolated to the affected photo in batch exports.
 - Preserve foreign face rectangles during metadata export and remove stale Facet-owned rectangles when faces are cleared. **Existing unmarked Facet exports are preserved too:** the first new export can show an old unmarked face plus its new marked copy, and clearing Facet faces leaves the old copy. Facet does not guess ownership from names or coordinates. Incompatible face dimensions skip faces with a warning while other metadata is written; unreadable or invalid existing face metadata refuses single-photo export/embed with HTTP 412.
 - Keep person-name searches working for numeric-looking and non-ASCII names without treating them as unsafe integer IDs. Assignment pagination counts people without repeating the face aggregate.
