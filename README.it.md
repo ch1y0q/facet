@@ -224,6 +224,7 @@ Prima volta? Segui il percorso **[Per iniziare](docs/it/GETTING_STARTED.md)**: s
 | [Viewer](docs/it/VIEWER.md) | Funzionalità e utilizzo della galleria web |
 | [Interoperabilità](docs/it/INTEROP.md) | Scambiare valutazioni/tag con Lightroom, Capture One, digiKam, darktable |
 | [Immich](docs/it/IMMICH.md) | Sincronizzare valutazioni e preferiti con Immich, più il webhook in entrata |
+| [Ricollegare](docs/it/RELINK.md) | Ricollegare foto spostate |
 | [Agenti IA](docs/it/AGENTS.md) | Far cercare la libreria a un assistente compatibile con MCP con un token personale |
 | [Distribuzione](docs/it/DEPLOYMENT.md) | Distribuzione in produzione (NAS Synology, Linux, Docker) |
 | [Contribuire](CONTRIBUTING.md) | Configurazione di sviluppo, architettura, stile del codice |

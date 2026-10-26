@@ -130,7 +130,7 @@ python facet.py --immich-sync --dry-run
 python facet.py --immich-sync
 ```
 
-同步会报告 `matched` / `unmatched` / `updated` / `skipped (unrated)` / `identity_conflicts` 以及创建的相册数。首次运行时 `unmatched` 数量很大，几乎总是意味着路径映射有误——见[故障排查](#故障排查)。 试运行中，`updated` 表示已验证的计划更新数；不会写入远程数据或本地同步状态。
+同步会报告 `matched` / `unmatched` / `updated` / `skipped (unrated)` / `identity_conflicts` 以及创建的相册数。首次运行时 `unmatched` 数量很大，几乎总是意味着路径映射有误——见[故障排查](#故障排查)。试运行中，`updated` 表示已验证的计划更新数；不会写入远程数据或本地同步状态。
 
 会被推送的内容：
 

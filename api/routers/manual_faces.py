@@ -6,7 +6,6 @@ import math
 import sqlite3
 
 import cv2
-
 from fastapi import APIRouter, Depends, HTTPException, Response
 from PIL import Image
 
@@ -24,6 +23,7 @@ from utils.manual_face_frame import file_stamp, read_frame
 router = APIRouter(tags=['manual faces'])
 _PURPOSE = 'manual_face_frame'
 _DECODER = 'upright-analysis-v1'
+_PREVIEW_EDGE = 1600
 
 
 def _visible(conn, user, path):
@@ -60,7 +60,7 @@ def _rgb(pixels):
     return Image.fromarray(cv2.cvtColor(pixels, cv2.COLOR_BGR2RGB))
 
 
-def _preview(pixels, edge=1600):
+def _preview(pixels, edge=_PREVIEW_EDGE):
     height, width = pixels.shape[:2]
     if max(width, height) > edge:
         scale = edge / max(width, height)
@@ -118,7 +118,7 @@ def manual_face_frame(path: str, response: Response, user: CurrentUser = Depends
     token = create_access_token({'sub': user.user_id or '_legacy', 'purpose': _PURPOSE,
                                  'path': path, 'width': w, 'height': h, 'source': frame.identity,
                                  'decoder': _DECODER}, expires_delta=timedelta(minutes=15))
-    return {'image_base64': base64.b64encode(_jpeg(_preview(frame.pixels), 1600)).decode('ascii'),
+    return {'image_base64': base64.b64encode(_jpeg(_preview(frame.pixels), _PREVIEW_EDGE)).decode('ascii'),
             'width': w, 'height': h, 'frame_token': token}
 
 

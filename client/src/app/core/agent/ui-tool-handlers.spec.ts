@@ -658,6 +658,13 @@ describe('UI tool registry and handlers', () => {
       expect(store.filters()).toMatchObject({ show_rejected: false, blinks_only: false, duplicates_only: false, lens: '50mm' });
     });
 
+    it('replace also clears the manual-face review queue the user turned on', async () => {
+      await store.updateFilters({ manual_faces_need_review: true });
+      expect(store.filters().manual_faces_need_review).toBe(true);
+      await run('ui_set_gallery_filters', { patch: { lens: '50mm' }, replace: true });
+      expect(store.filters()).toMatchObject({ manual_faces_need_review: false, lens: '50mm' });
+    });
+
     it('refuses a filter the tab cannot show, without applying the rest', async () => {
       const result = await run('ui_set_gallery_filters', { patch: { camera: 'Canon', junk_kind: 'blurry' } });
       expect(result).toMatchObject({ ok: false, error: 'invalid_input' });

@@ -78,12 +78,12 @@ visor expone en el campo `progress` de `/api/scan/status` y del flujo SSE.
 | `python facet.py --export-manifest --user alice` | Modo multiusuario: exporta las valoraciones de `user_preferences` de Alice en el manifiesto en lugar de las columnas globales (las etiquetas y puntuaciones siguen siendo globales) |
 | `python facet.py --import-lightroom ARCHIVO` | Importa el estado de valoración/pick/rechazo de Lightroom exportado por el plugin (`facet_lightroom_state.json`, ver [Lightroom → Facet](INTEROP.md#lightroom--facet) en docs/INTEROP.md) — gana Lightroom para cada campo que lleve el archivo. Imprime `matched=… unmatched=… changed=…` |
 | `python facet.py --import-lightroom ARCHIVO --user alice` | Modo multiusuario: escribe en la fila `user_preferences` de Alice en lugar de las columnas globales; **obligatorio** en una instalación multiusuario — se rechaza si no, para que una importación nunca acabe en silencio en el ámbito equivocado |
-| `python facet.py --import-sidecars` | Importa valoraciones/etiquetas de color/etiquetas desde los sidecars `<image.ext>.xmp` / `<image.ext>.facet.xmp` de vuelta a la BD (todas las fotos); las palabras clave que Facet aún no tiene pasan a ser [tags manuales](INTEROP.md#tags-manuales-y-palabras-clave-xmp) |
+| `python facet.py --import-sidecars` | Importa valoraciones, etiquetas de color, decisiones Keep/rechazo, GPS manual y palabras clave desde los sidecars `<image.ext>.xmp` / `<image.ext>.facet.xmp` de vuelta a la BD (todas las fotos); una decisión de Facet (Keep, rechazo o indeciso) sin valoración ni etiqueta de color estándar se aplica sin comparar con la fecha de escaneo; las palabras clave que Facet aún no tiene pasan a ser [tags manuales](INTEROP.md#tags-manuales-y-palabras-clave-xmp) |
 | `python facet.py --import-sidecars /path` | Importa los sidecars solo para las fotos bajo un subárbol de ruta |
 | `python facet.py --import-sidecars /path --dry-run` | `--import-sidecars /ruta --dry-run` muestra JSON con archivo elegido, antes/después, adiciones, origen y motivos de rechazo. |
-| `python facet.py --import-sidecars /path --sidecar-fields keywords,gps` | `--sidecar-fields review,gps,keywords` selecciona grupos. |
-| `python facet.py --import-sidecars /path --overwrite-sidecar-review` | Sobrescribe conflictos de revisión y escaneo tras la vista previa. |
-| `python facet.py --import-sidecars --user alice` | Modo multiusuario: importa las valoraciones a la tabla `user_preferences` de Alice en lugar de a las columnas globales (las palabras clave siguen siendo globales) |
+| `python facet.py --import-sidecars /path --sidecar-fields keywords,gps` | Importa solo los grupos de campos indicados: `review` (estrellas, favorito, rechazo y Keep juntos), `gps`, `keywords`; los grupos omitidos no se tocan (por defecto: los tres) |
+| `python facet.py --import-sidecars /path --overwrite-sidecar-review` | Aplica los campos de revisión incluso cuando una edición local más reciente (`newer_local_edit`) o la comparación con la fecha de escaneo los bloquearía; revisa antes con `--dry-run` |
+| `python facet.py --import-sidecars --user alice` | Modo multiusuario: importa valoraciones y decisiones Keep/rechazo a la tabla `user_preferences` de Alice en lugar de a las columnas globales, limitado a las fotos visibles para Alice (palabras clave y GPS siguen siendo globales) |
 | `python facet.py --import-sidecars --sidecar-naming full` | Leer nombres completos primarios/alternativos (predeterminado); gana la modificación más reciente, el primario en empate |
 | `python facet.py --import-sidecars --sidecar-naming basename` | Leer `<image>.xmp` quitando la extensión de imagen; rechazar nombres base compartidos |
 | `python facet.py --import-sidecars --sidecar-naming auto` | Aceptar una familia de nombres; omitir e informar si hay nombre completo y nombre base |
@@ -91,13 +91,13 @@ visor expone en el campo `progress` de `/api/scan/status` y del flujo SSE.
 | `python facet.py --export-sidecars` | Escribe/fusiona los sidecars `<image>.xmp` desde la BD para todas las fotos (solo sidecar) |
 | `python facet.py --export-sidecars /path` | Exporta los sidecars solo para las fotos bajo un subárbol de ruta |
 | `python facet.py --export-sidecars /path --reconcile-keywords` | Reconcilia solo palabras de Facet; conserva las externas (requiere ExifTool). |
-| `python facet.py --export-sidecars --user alice` | Modo multiusuario: exporta las valoraciones de `user_preferences` de Alice en lugar de las columnas globales (las palabras clave siguen siendo globales) |
+| `python facet.py --export-sidecars --user alice` | Modo multiusuario: exporta las valoraciones y decisiones Keep/rechazo de `user_preferences` de Alice en lugar de las columnas globales, limitado a las fotos visibles para Alice (palabras clave, GPS y fecha de captura siguen siendo globales) |
 | `python facet.py --export-sidecars --embed-originals` | Incrusta además los metadatos **dentro del archivo** para JPEG/HEIC/TIFF/PNG/DNG (reescribe los originales) |
 | `python facet.py --export-sidecars --score-to-stars` | Deriva `xmp:Rating` de la puntuación agregada para las fotos que no has valorado manualmente (una valoración/favorito/rechazo manual siempre prevalece) |
 
 > **Sincronización bidireccional de metadatos.** Facet escribe valoraciones, etiquetas de color, palabras clave, leyendas y regiones de rostros con nombre en un sidecar `<image>.xmp` estándar que el ecosistema lee (Lightroom, darktable, digiKam, immich, …); la imagen original nunca se modifica a menos que lo actives explícitamente con `--export-sidecars --embed-originals` (solo JPEG/HEIC/TIFF/PNG/DNG — los RAW nunca se tocan). La incrustación y la fusión segura por unión de palabras clave requieren **exiftool**; sin él, Facet recurre a un sidecar XML puro sin dependencias. Las palabras clave escritas son los tags de IA más tus [tags manuales](VIEWER.md#tags-manuales), y la exportación sigue siendo aditiva sin `--reconcile-keywords` (ver [Tags manuales y palabras clave XMP](INTEROP.md#tags-manuales-y-palabras-clave-xmp)).
 >
-> Sin recibo, la fecha de edición es desconocida: es un estado de datos, no un alias de esquema. `untracked_legacy_edit` informa del uso de la fecha del escaneo, sin inventar una fecha humana. La vista previa lee esquemas publicados sin migrarlos; Keep ausente significa indeciso. La fuente es `xmp:MetadataDate` o la fecha del archivo. Se detallan 1.000 fotos y 100 diagnósticos por foto, con recuentos de omisiones; alcance y visibilidad se aplican antes de planificar. Los recibos de edición son privados de cada base. Las exportaciones nuevas al visor no incluyen recibos ni rutas XMP del escáner; las incrementales conservan solo los recibos ya existentes en el visor. Los restablecimientos explícitos, incluidas las preferencias de usuario eliminadas, sobreviven a nuevas exportaciones. Los valores del escáner sin ediciones del visor siguen actualizándose. Las versiones preliminares anteriores pueden contener recibos copiados cuyo origen se desconoce: se conservan por prudencia, sin inventar fechas ni descartar ediciones reales. Haz una copia y revisa la base antes de reconstruirla explícitamente; una reconstrucción completa no conserva los cambios locales del visor.
+> **Advertencias de importación.** Las palabras clave importadas van a la tabla de [tags manuales](INTEROP.md#tags-manuales-y-palabras-clave-xmp) (`photo_manual_tags`), que los filtros de tags leen directamente: después no hace falta `--migrate-tags`. Cómo se compara un sidecar con las ediciones locales (fecha de escaneo, recibos de edición por campo, `newer_local_edit`) se describe en [Vista previa de importación y conflictos](INTEROP.md#vista-previa-de-importación-y-conflictos).
 >
 > **`--export-manifest` frente a `--export-csv`/`--export-json`.** El argumento opcional del manifiesto acota *qué fotos* se exportan (como `--export-sidecars`), no el nombre del archivo de salida — siempre (re)escribe `facet_manifest.json` en el directorio de trabajo, ya que está pensado para regenerarse en el mismo sitio para una herramienta que vuelve a leer una ruta fija. Lleva los mismos valores `star_rating`/`is_favorite`/`is_rejected` que `--export-sidecars` — las columnas globales por defecto, o la fila `user_preferences` del usuario indicado cuando se pasa `--user`, de modo que una instalación multiusuario ya no exporta un manifiesto con todo a cero — más `is_burst_lead` (siempre global), un recuento de nivel superior `pending_corrections` (correcciones manuales de bracket/panorama que una ejecución de detección aún no ha aplicado — un recuento mayor que cero imprime un aviso de una línea tras la exportación con `--detect-panoramas`), y se escribe en JSON compacto (sin formato) — con ~100.000 fotos, la salida `indent=2` de `--export-json` llegaría a decenas de megabytes sin ningún beneficio para un lector automatizado.
 >
@@ -416,6 +416,7 @@ Comprueba: rangos de puntuación, métricas faciales, corrupción de BLOB, tama�
 | `python database.py --cleanup-missing-photos` | Elimina de la base de datos las fotos que ya no están en disco (las eliminaciones en cascada limpian etiquetas, rostros detectados, etc.; también borra las pertenencias a álbumes y el índice vectorial, e invalida la caché de estadísticas salvo el estado de la biblioteca que guarda — la instantánea de percentiles, el estado de sincronización con Immich, los cabezales keeper entrenados y las métricas del ranker, y los marcadores de actualización de miniaturas y de reparación; los contadores de comparaciones del reentrenamiento automático se reinician) |
 | `python database.py --cleanup-missing-photos --dry-run` | Previsualiza los archivos ausentes sin eliminar |
 | `python database.py --cleanup-missing-photos --force` | Continúa incluso cuando todas las fotos parecen ausentes (protección contra eliminarlo todo cuando un volumen está desmontado) |
+| `python database.py --relink-photos` | Actualiza las rutas en la base de las fotos que has movido tú mismo (vista previa por defecto; aplicar exige un plan revisado). Véase [Volver a vincular fotos movidas](#volver-a-vincular-fotos-movidas) |
 | `python database.py --migrate-storage-fs` | Migra las miniaturas y los embeddings de los BLOB de la base de datos al sistema de archivos |
 | `python database.py --migrate-storage-db` | Migra las miniaturas y los embeddings del sistema de archivos de vuelta a la base de datos |
 | `python database.py --add-user alice --role admin` | Añade un usuario (solicita la contraseña) |
@@ -524,22 +525,3 @@ Tras mover los archivos manualmente, `python database.py --relink-photos` permit
 Aplicar usa el bloqueo de biblioteca: el código 75 indica otro trabajo en curso y el 1, un bloqueo inutilizable. La vista previa no toma el bloqueo.
 
 `sidecar_facet` identifica explícitamente `photo.ext.facet.xmp`; también se rechazan paquetes alternativos no listados. Los planes guardados son privados (0600 en POSIX). Un directorio legible no demuestra que el volumen esté montado: `source_mount_status` sigue en `not_verified`; el operador debe confirmar que el original se movió y no está sin conexión.
-
-```sh
-python database.py --relink-photos --db library.db --config scoring_config.json \
-  --mapping moved.json --plan-out relink-plan.json
-python database.py --relink-photos --db library.db --config scoring_config.json \
-  --apply-plan relink-plan.json --ack-plan REVIEWED_PLAN_ID \
-  --acknowledge-unverified-identity
-```
-
-| Opción | Función |
-|---|---|
-| `--db` | Base de datos existente |
-| `--config` | Configuración resuelta |
-| `--user` | Usuario configurado obligatorio en modo multiusuario |
-| `--mapping` | Rutas antigua/nueva en JSON; vista previa |
-| `--plan-out` | Crear plan privado nuevo sin sobrescribir |
-| `--apply-plan` | Aplicar un plan revisado |
-| `--ack-plan` | Hash exacto del plan revisado |
-| `--acknowledge-unverified-identity` | Confirmación explícita pese a bytes originales desconocidos |

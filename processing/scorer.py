@@ -28,6 +28,7 @@ from int_affinity import storable_int
 from licensing import LicenceError
 from db import init_database, get_connection
 from db.render_version import DISPLAY_RENDER_VERSION
+from db.manual_faces import validate_review_paths, apply_review_states
 from db.embedding_space import SFACE_MODEL, active_embedding_model
 from db.person_carry_over import replace_photo_faces
 from db.person_centroids import recompute_person_centroid
@@ -442,8 +443,6 @@ def fix_thumbnail_rotation(db_path):
 # thumbnail that failed to decode. Recheck those candidates once rather than
 # trusting the old marker; repaired portrait rows are already excluded below.
 HEIF_DOUBLE_TRANSPOSE_WATERMARK_KEY = 'heif_double_transpose_watermark_v2'
-# EXIF tag id for Orientation, read header-only off the original file.
-_EXIF_ORIENTATION_TAG = 274
 # orientation 6 stores the frame rotated 90 CW from upright, orientation 8
 # rotated 270 CW; the double transpose turned each sideways by the opposite
 # extra quarter-turn, so each needs the opposite repair. Orientation 3 needs
@@ -460,10 +459,10 @@ def _stored_heif_orientation(path):
     versions leave getexif() as stored. Header-only: no pixel decode.
     """
     try:
-        from PIL import Image as PILImage
+        from PIL import ExifTags as PILExifTags, Image as PILImage
         with PILImage.open(path) as img:
             return int(img.info.get('original_orientation')
-                       or img.getexif().get(_EXIF_ORIENTATION_TAG) or 0)
+                       or img.getexif().get(PILExifTags.Base.Orientation) or 0)
     except Exception:
         return None
 
@@ -2889,7 +2888,6 @@ class Facet:
                 if face.get('embedding'):
                     face_records.append(face_upsert_row(res['path'], face, embedding_model))
 
-        from db.manual_faces import validate_review_paths, apply_review_states
         review_states = validate_review_paths(self.db_path, [res['path'] for res, _ in results_with_images])
 
         # Phase 3: Fast DB inserts (short transaction)
@@ -3032,7 +3030,6 @@ class Facet:
                     if face.get('embedding'):
                         face_records.append(face_upsert_row(res['path'], face, embedding_model))
 
-        from db.manual_faces import validate_review_paths, apply_review_states
         review_states = validate_review_paths(self.db_path, [res['path'] for res, _, _ in batch])
         with get_connection(self.db_path, row_factory=False) as conn:
             apply_review_states(conn, review_states)

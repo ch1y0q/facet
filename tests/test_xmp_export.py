@@ -375,11 +375,10 @@ class TestExiftoolArgs:
         assert not any(a.startswith("-XMP-dc:Description") for a in args)
 
     def test_regions_args_and_math(self):
-        import json
+        from tests.conftest import added_region
         reg = FaceRegion.from_bbox("Alice", 0, 0, 100, 100, 1000, 1000)
         args = xe._region_args([reg])
-        addition = next(arg for arg in args if arg.startswith('-XMP-mwg-rs:RegionList+='))
-        region = json.loads(addition.split("=", 1)[1])
+        region = added_region(args)
         assert "-XMP-mwg-rs:RegionAppliedToDimensionsW=1000" in args
         assert "-XMP-mwg-rs:RegionAppliedToDimensionsH=1000" in args
         assert region["Area"] == {
@@ -405,7 +404,7 @@ class TestWriteMetadata:
         calls = []
         monkeypatch.setattr(xe, "exiftool_available", lambda: True)
         monkeypatch.setattr(xe, "_run_exiftool",
-                            lambda target, rating, *, timeout: calls.append(target))
+                            lambda target, rating, *, timeout, reconcile: calls.append(target))
         img = tmp_path / "p.jpg"
         img.write_bytes(b"x")
         result = write_metadata(str(img), XmpRating(star_rating=3))
@@ -419,7 +418,7 @@ class TestWriteMetadata:
         monkeypatch.setattr(xe, "_resolve_exiftool", lambda: 'mock-exiftool')
         monkeypatch.setattr(xe, "_exiftool_write_args", lambda *args, **kwargs: [])
         monkeypatch.setattr(xe, "_run_exiftool",
-                            lambda target, rating, *, timeout: calls.append(target))
+                            lambda target, rating, *, timeout, reconcile: calls.append(target))
         img = tmp_path / "p.jpg"
         img.write_bytes(b"x")
         result = write_metadata(str(img), XmpRating(star_rating=3), embed_original=True)
@@ -432,7 +431,7 @@ class TestWriteMetadata:
         calls = []
         monkeypatch.setattr(xe, "exiftool_available", lambda: True)
         monkeypatch.setattr(xe, "_run_exiftool",
-                            lambda target, rating, *, timeout: calls.append(target))
+                            lambda target, rating, *, timeout, reconcile: calls.append(target))
         img = tmp_path / "p.nef"
         img.write_bytes(b"x")
         result = write_metadata(str(img), XmpRating(star_rating=3), embed_original=True)
@@ -633,6 +632,49 @@ class TestPostWriteValidation:
         assert stats["errors"] == 1 and stats["written"] == 0
         assert "malformed XMP" in caplog.text
         assert not (tmp_path / "p.jpg.xmp").exists()
+
+    def test_export_sidecars_precondition_error_counts_and_continues(self, monkeypatch, tmp_path, request):
+        import sqlite3
+
+        from db.schema import init_database
+        db = str(tmp_path / "e.db")
+        init_database(db)
+        conn = sqlite3.connect(db)
+        request.addfinalizer(conn.close)
+        conn.row_factory = sqlite3.Row
+        paths = []
+        for name in ("a.jpg", "b.jpg"):
+            img = tmp_path / name
+            img.write_bytes(b"x")
+            paths.append(str(img))
+            conn.execute("INSERT INTO photos (path, filename) VALUES (?, ?)", (str(img), name))
+        seen = []
+
+        def write(path, rating, **kwargs):
+            seen.append(path)
+            if path == paths[0]:
+                raise xe.MetadataPreconditionError("Cannot read face metadata; repair it before exporting")
+            return {"ok": True, "embedded": None, "sidecar": path + ".xmp", "skipped": False}
+        monkeypatch.setattr(xe, "write_metadata", write)
+        stats = xe.export_sidecars(conn)
+        assert stats == {"written": 1, "embedded": 0, "missing": 0, "errors": 1}
+        assert sorted(seen) == sorted(paths)
+
+    def test_row_without_ai_tags_marks_no_manual_tag_as_ai(self):
+        rating = XmpRating.from_row({"tags": "dog, manual", "manual_tags": ["manual"]})
+        assert rating.ai_tags == []
+        assert rating.manual_tags == ["manual"]
+
+    @pytest.mark.parametrize("value,expected", [
+        (None, []), ("", []), (1.50, ["1.5"]), (["a", ["b", None, 2]], ["a", "b", "2"]),
+    ])
+    def test_listify_stringifies_scalars_and_nests(self, value, expected):
+        assert xe._listify(value) == expected
+
+    @pytest.mark.parametrize("value", [True, False, ["ok", True], [[False]]])
+    def test_listify_refuses_booleans(self, value):
+        with pytest.raises(RuntimeError, match="Boolean keyword needs lossless readback"):
+            xe._listify(value)
 
 
 _EXIFTOOL = xe._resolve_exiftool()
