@@ -2407,6 +2407,10 @@ def main():
 
     parser = cli_args.build_parser()
     args = parser.parse_args()
+    if (args.sidecar_fields is not None or args.overwrite_sidecar_review) and not args.import_sidecars:
+        parser.error("--sidecar-fields and --overwrite-sidecar-review require --import-sidecars")
+    if args.sidecar_fields is not None and (not set(args.sidecar_fields.split(',')) <= {'review', 'gps', 'keywords'}):
+        parser.error("--sidecar-fields must select review,gps,keywords")
     if args.sidecar_naming is not None and not args.import_sidecars:
         parser.error("--sidecar-naming requires --import-sidecars")
     if args.reconcile_keywords and not args.export_sidecars:
@@ -3922,16 +3926,30 @@ def main():
         from processing.xmp_import import import_sidecars
         root = None if args.import_sidecars == 'all' else args.import_sidecars
         sidecar_naming = args.sidecar_naming or "full"
-        init_database(args.db)  # photo_manual_tags may not exist yet; lock is held
-        with get_connection(args.db) as conn:
+        if args.dry_run:
+            # A preview must not migrate the DB, stamp edit clocks, or commit the caller's writes.
+            import sqlite3
+            from contextlib import closing
+            connection = closing(sqlite3.connect(Path(args.db).resolve().as_uri() + '?mode=ro', uri=True))
+        else:
+            init_database(args.db)
+            connection = get_connection(args.db)
+        with connection as conn:
+            conn.row_factory = sqlite3.Row if args.dry_run else conn.row_factory
             stats = import_sidecars(conn, root, user_id=args.user,
                                     overwrite_manual_gps=args.overwrite_manual_gps,
+                                    dry_run=args.dry_run,
+                                    fields=args.sidecar_fields.split(',') if args.sidecar_fields else None,
+                                    overwrite_review=args.overwrite_sidecar_review,
                                     sidecar_naming=sidecar_naming)
+        if args.dry_run:
+            print(json.dumps(stats, ensure_ascii=False, indent=2))
         logger.info(
-            "Sidecar import (%s): %d updated, %d unchanged, %d without sidecar, %d skipped "
-            "(%d ambiguous, %d naming mismatches, %d full-name sidecars ignored)",
-            sidecar_naming, stats['updated'], stats['unchanged'], stats['missing'], stats['skipped'],
-            stats['ambiguous'], stats['naming_mismatch'], stats['full_ignored'],
+            "Sidecar import%s (%s): %d updated, %d unchanged, %d without sidecar, %d skipped "
+            "(%d ambiguous, %d naming mismatches, %d full-name sidecars ignored), %d review conflicts, %d untracked legacy review edits",
+            " preview" if args.dry_run else "", sidecar_naming, stats['updated'], stats['unchanged'],
+            stats['missing'], stats['skipped'], stats['ambiguous'], stats['naming_mismatch'], stats['full_ignored'],
+            stats['conflicts'], stats['legacy_review_warnings'],
         )
         exit()
 

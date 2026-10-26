@@ -306,7 +306,7 @@ as what it means rather than what it is silently rewrites the wire.
 
 Lookup and side tables: `photo_tags`, `faces`, `persons`, `albums`, `album_photos`,
 `album_client_picks`, `photo_scoring_overrides`, `photo_sequence_overrides`,
-`photo_manual_tags`, `saved_places` and `recent_places` (a viewer editor's private named pins and last-assigned points), `panorama_run_cache` (derived data, rebuilt by one panorama pass, not
+`photo_metadata_edits` (database-local per-account review edit clocks and XMP source receipts; scanner receipts are not copied into viewer databases), `photo_manual_tags`, `saved_places` and `recent_places` (a viewer editor's private named pins and last-assigned points), `panorama_run_cache` (derived data, rebuilt by one panorama pass, not
 merged or exported), `location_names`, `comparisons`, `learned_scores`, `weight_optimization_runs`,
 `weight_config_snapshots`, `recommendation_history`, `user_preferences`, `scan_runs`,
 `scan_failures`, `iqa_declined`, `stats_cache`, plus the virtual tables `photos_fts` (FTS5) and
@@ -329,6 +329,8 @@ The cache is stored in the `stats_cache` table with a 5-minute TTL. Run `--stats
 **Tag Lookup Table** - Run `python database.py --migrate-tags` to populate the `photo_tags` table. This enables 10-50x faster tag filtering by replacing slow `LIKE '%tag%'` scans with indexed exact-match queries.
 
 **FTS5 Full-Text Search** - Run `python database.py --rebuild-fts` to build the `photos_fts` index from captions and tags. Enables BM25-ranked text search on AI-generated captions without loading the CLIP model. Sync triggers keep the index updated automatically.
+
+**NumPy fallback cache** - Without sqlite-vec, one matrix is retained for the requested encoder width and effective visible photo set. Accounts with equal visible sets share it; switching between distinct scopes replaces it. Restricted searches read only permitted vector rows, and empty scopes allocate no matrix. `embedding_cache_revision` is derived, database-local state: its random revision changes transactionally on photo insertion, vector changes and relevant path changes. It carries no user/edit authority and may travel with a viewer export; stripping vectors advances the destination revision. Search reads revision, schema version, vectors and fresh visibility in one read-only snapshot, and disables reuse if tracking is missing. A single build lock bounds peak matrix memory; rating/favorite changes do not rebuild vectors.
 
 **Vector Search (sqlite-vec)** - Install `sqlite-vec` and run `python database.py --populate-vec` to populate the `photos_vec` table from existing embeddings. Replaces the in-memory NumPy embedding cache (~440MB for 100k photos) with on-disk KNN search. Falls back to NumPy if sqlite-vec is not installed.
 

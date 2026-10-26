@@ -111,7 +111,6 @@ Um registro que omite `rating` ou `pick` deixa intacto o valor correspondente do
 
 ### Regras de conflito
 
-- **Classificações e rótulos seguem a regra "o mais recente vence"**, comparando o `xmp:MetadataDate` do sidecar com o `scanned_at` da foto (a última vez que o Facet a pontuou) — não um carimbo de tempo por classificação. Um sidecar mais recente que a última varredura pode sobrescrever uma classificação que você alterou no Facet *depois* daquela varredura. Mantenha a ida e volta simples: exportar → Lightroom lê → editar no Lightroom → Lightroom salva → importar, sem reclassificar no Facet no meio.
 - **Tags e palavras-chave são mescladas por padrão.** Os exports adicionam palavras Facet; `--reconcile-keywords` remove também apenas nomes obsoletos pertencentes ao Facet. Os imports adicionam tags manuais sem substituir os de IA. [Tags manuais e palavras-chave XMP](#tags-manuais-e-palavras-chave-xmp).
 - **Multiusuário** (`--export-sidecars --user alice` / `--import-sidecars --user alice`): as avaliações vão para a linha `user_preferences` da Alice em vez das colunas globais. As palavras-chave continuam globais independentemente de `--user` — os tags manuais são compartilhados entre os usuários.
 - As palavras-chave importadas vão para a tabela `photo_manual_tags`, que os filtros de tags leem diretamente: depois de `--import-sidecars` não é mais preciso rodar `python database.py --migrate-tags`.
@@ -168,8 +167,8 @@ O Facet guarda os tags que você digita por conta própria (veja [Visualizador �
 
 | Campo | O Facet grava | O Facet relê | Regra de conflito |
 |---|---|---|---|
-| Classificação (estrelas/rejeição) | `xmp:Rating` (`-1` = rejeitada) | `xmp:Rating` | O mais recente vence, vs. `scanned_at` |
-| Rótulo de cor | `xmp:Label` (`Red` = rejeitada, `Yellow` = favorita) | `xmp:Label` | O mais recente vence, vs. `scanned_at` |
+| Classificação (estrelas/rejeição) | `xmp:Rating` (`-1` = rejeitada) | `xmp:Rating` | Relógios de revisão; regra histórica da varredura |
+| Rótulo de cor | `xmp:Label` (`Red` = rejeitada, `Yellow` = favorita) | `xmp:Label` | Relógios de revisão; regra histórica da varredura |
 | Tags / palavras-chave | `dc:subject` (plano, tags de IA + tags manuais, inclui os nomes das pessoas reconhecidas) | `dc:subject` (armazenado como tags manuais) | Aditivo por padrão; `--reconcile-keywords` remove apenas nomes obsoletos do Facet; os imports permanecem aditivos ([Tags manuais e palavras-chave XMP](#tags-manuais-e-palavras-chave-xmp)) |
 | Tags hierárquicas | `lr:hierarchicalSubject` (`Category\|<cat>`, `People\|<nome>`) | Não reimportado | Somente exportação |
 | Legenda | `dc:description` (+ `IPTC:Caption-Abstract` via exiftool) | Não reimportado | Somente exportação |
@@ -182,3 +181,15 @@ Quando um marcador antigo `facet:GPSState=cleared` acompanha campos GPS padrão,
 A exportação de legendas com ExifTool altera apenas o idioma `x-default` de `dc:description` e preserva os outros idiomas em cada arquivo auxiliar ou imagem. Uma legenda vazia no Facet preserva as existentes. Sem ExifTool, o XML contém o idioma padrão e normalmente usa `<image>.facet.xmp` se já houver um arquivo auxiliar; a substituição explícita continua substituindo o pacote de destino.
 
 O ExifTool substitui apenas retângulos MWG com `facet:RegionOwner=Facet` nas Extensions. Regiões sem marca, inclusive exportações antigas do Facet, são preservadas: nomes e coordenadas não provam propriedade. Após atualizar, um rosto antigo sem marca pode aparecer junto da nova cópia marcada; limpar rostos mantém a cópia antiga. Exportações repetidas substituem as cópias marcadas sem acumular duplicações. Regiões externas e extensões desconhecidas permanecem intactas. Dimensões diferentes entre rostos atuais ou dimensões externas diferentes/desconhecidas ignoram todas as alterações de rostos com aviso; classificação, rótulo, palavras-chave e GPS continuam sendo exportados. Metadados de rostos ilegíveis ou inválidos recusam exportação e incorporação individuais com HTTP 412 antes de escrever. Sem ExifTool não há exportação de retângulos. Uma região marcada editada externamente continua sob gestão do Facet; remova a marca para uma anotação independente. As condições conhecidas do original e do sidecar são verificadas antes da incorporação. As escritas separadas não são atômicas; alterações externas ou falhas de E/S posteriores podem deixar resultados parciais.
+
+## Prévia de importação e conflitos
+
+`--import-sidecars /caminho --dry-run` mostra JSON com arquivo escolhido, antes/depois, adições, origem e motivos de recusa. Abre a base existente somente para leitura, sem migração ou commit. Aplicar relê arquivos e base na transação de escrita; JSON não é um token de aplicação.
+
+`--sidecar-fields review,gps,keywords` seleciona grupos. `review` mantém estrelas, favorito, rejeição e Keep juntos para evitar decisões parciais. GPS manual permanece protegido sem `--overwrite-manual-gps`. Palavras continuam aditivas e compartilhadas com `--user`.
+
+Após atualizar, gatilhos SQLite guardam um recibo por foto/conta/campo de revisão, inclusive resets e exclusão de preferências. Um pacote mais antigo gera `newer_local_edit` e mantém todo o grupo. `--overwrite-sidecar-review` força explicitamente a substituição. Recibo XMP identifica arquivo/data; `local` significa escritor SQL desconhecido, não uma pessoa verificada. Não acrescenta importação de legendas, rostos, hierarquias ou GPS externo sem marcador.
+
+Sem recibo, a data de edição é desconhecida: é um estado dos dados, não um alias de esquema. `untracked_legacy_edit` informa o uso da data da varredura, sem inventar datas humanas. A prévia lê esquemas publicados sem migração; Keep ausente significa indeciso. A fonte é `xmp:MetadataDate` ou a data do arquivo. Os detalhes incluem 1.000 fotos e 100 diagnósticos por foto, com contagens de omissões; escopo e visibilidade valem antes do plano.
+
+Os recibos de edição são privados de cada banco de dados. Novas exportações para o visualizador não incluem recibos nem caminhos XMP do scanner; as incrementais preservam apenas os recibos já existentes no visualizador. Redefinições explícitas, incluindo preferências de usuário excluídas, sobrevivem às próximas exportações. Valores do scanner sem edições do visualizador continuam sendo atualizados. Versões anteriores de prévia podem conter recibos copiados de origem desconhecida: eles são preservados por prudência, sem inventar datas nem descartar edições reais. Faça backup e revise o banco antes de reconstruí-lo explicitamente; uma reconstrução completa não preserva alterações locais do visualizador.

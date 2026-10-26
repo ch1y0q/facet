@@ -111,7 +111,6 @@ Facet 的星级为 0 表示“没有意见”（见 `xmp_export.score_to_rating`
 
 ### 冲突规则
 
-- **星级和颜色标签遵循“最新者胜”**，比较的是附属文件的 `xmp:MetadataDate` 与照片的 `scanned_at`（Facet 最后一次为它评分的时间）—— 而不是逐条评分的编辑时间戳。比上次扫描更新的附属文件，可能覆盖你在那次扫描*之后*在 Facet 里改过的星级。请让往返保持简单：导出 → Lightroom 读取 → 在 Lightroom 中编辑 → Lightroom 保存 → 导入，中间不要在 Facet 里重新评星。
 - **标签和关键字默认合并。** 导出会添加 Facet 关键字；`--reconcile-keywords` 还会移除仅属于 Facet 的过时名称。导入会添加手动标签，不会替换 AI 标签。 [手动标签与 XMP 关键字](#手动标签与-xmp-关键字).
 - **多用户**（`--export-sidecars --user alice` / `--import-sidecars --user alice`）：评分会写入 Alice 的 `user_preferences` 行，而不是全局列。无论 `--user` 如何，关键字都保持全局——手动标签由所有用户共享。
 - 导入的关键字会进入 `photo_manual_tags` 表，标签筛选直接读取该表，因此 `--import-sidecars` 之后不再需要运行 `python database.py --migrate-tags`。
@@ -168,8 +167,8 @@ Facet 把你自己输入的标签（参见[查看器——手动标签](VIEWER.m
 
 | 字段 | Facet 写入 | Facet 读回 | 冲突规则 |
 |---|---|---|---|
-| 星级／淘汰 | `xmp:Rating`（`-1` = 已淘汰） | `xmp:Rating` | 最新者胜，对比 `scanned_at` |
-| 颜色标签 | `xmp:Label`（`Red` = 已淘汰，`Yellow` = 收藏） | `xmp:Label` | 最新者胜，对比 `scanned_at` |
+| 星级／淘汰 | `xmp:Rating`（`-1` = 已淘汰） | `xmp:Rating` | 审核字段编辑时间；旧数据使用扫描时间 |
+| 颜色标签 | `xmp:Label`（`Red` = 已淘汰，`Yellow` = 收藏） | `xmp:Label` | 审核字段编辑时间；旧数据使用扫描时间 |
 | 标签／关键字 | `dc:subject`（扁平，AI 标签 + 手动标签，包含已命名人脸的人物姓名） | `dc:subject`（存为手动标签） | 默认只添加；`--reconcile-keywords` 仅移除属于 Facet 的过时名称；导入仍只添加 ([手动标签与 XMP 关键字](#手动标签与-xmp-关键字)) |
 | 层级标签 | `lr:hierarchicalSubject`（`Category\|<cat>`、`People\|<name>`） | 不再导入 | 仅导出 |
 | 照片描述 | `dc:description`（+ 经由 exiftool 的 `IPTC:Caption-Abstract`） | 不再导入 | 仅导出 |
@@ -182,3 +181,15 @@ Facet 把你自己输入的标签（参见[查看器——手动标签](VIEWER.m
 使用 ExifTool 导出说明时，只更新 `dc:description` 的 `x-default` 语言，保留现有附属文件或图像中的其他语言。Facet 说明为空时，现有说明保持不变。没有 ExifTool 时，XML 包含默认语言；若已有附属文件，默认改写到 `<image>.facet.xmp`。显式覆盖仍会替换整个目标数据包。
 
 ExifTool 仅替换 Extensions 中带 `facet:RegionOwner=Facet` 标记的 MWG 矩形。未标记的区域（包括旧版 Facet 导出）会保留，因为名称和坐标不能证明归属。升级后，旧的未标记人脸可能与新的带标记副本同时出现；清除人脸仍会保留旧副本。重复导出只替换带标记副本，不会继续累积重复区域。外部区域及其未知扩展保持不变。当前人脸尺寸不一致，或外部区域的图像尺寸不同或未知时，会警告并跳过全部人脸变更，但仍导出评分、标签、关键词和 GPS。无法读取或无效的现有人脸元数据会在写入前拒绝单张导出或嵌入，并返回 HTTP 412。无 ExifTool 的 XML 后备方式不导出人脸矩形。带标记区域即使被外部编辑仍归 Facet 管理；如需作为独立标注，请先移除归属标记。 嵌入前会检查原图及附属文件的已知前提条件。分开写入多个文件并非原子操作；后续外部修改或 I/O 故障仍可能留下部分结果。
+
+## 附属文件导入预览与冲突
+
+`--import-sidecars /路径 --dry-run` 输出 JSON，列出所选文件、前后值、标签增加、来源和跳过原因。现有数据库以只读方式打开，不迁移、不提交。正式应用会在写事务中重新读取文件和数据库；预览 JSON 不是应用令牌。
+
+`--sidecar-fields review,gps,keywords` 选择字段组。`review` 将星级、收藏、拒绝和 Keep 作为整体，避免半个决定生效。没有 `--overwrite-manual-gps` 时仍保护手动 GPS。关键字仍只添加，且使用 `--user` 时仍共享。
+
+升级后，SQLite 触发器为每张照片、账户及审核字段保存一条最新凭据，包括重置和删除偏好行。较旧数据包产生 `newer_local_edit`，保留整个审核组；`--overwrite-sidecar-review` 可明确覆盖。XMP 凭据记录文件与时间；`local` 表示未知 SQL 写入者，并不表示已验证的人类作者。不增加描述、人脸、层级或无标记外部 GPS 导入。
+
+没有凭据表示编辑时间未知，这是数据状态而非旧模式别名。`untracked_legacy_edit` 明确表示采用扫描时间，不推测人工编辑时间。预览无需迁移即可读取已发布版本的模式；缺少 Keep 字段表示未决定。来源时间取 `xmp:MetadataDate`，缺失或无效时取文件修改时间。最多展示范围内 1,000 张照片及每张 100 条诊断，并提供省略计数；范围和用户可见性在规划前生效。
+
+编辑凭据仅属于其所在数据库。新导出的查看器数据库不包含扫描端凭据或 XMP 路径；增量导出仅保留查看器已有的凭据，不复制扫描端的编辑权限。查看器中的显式重置（包括删除的用户偏好）会保留；没有查看器编辑的扫描端值仍正常更新。旧预览版本可能已经复制了无法确定来源的凭据：为避免丢弃真实的查看器编辑，系统保守保留这些凭据，不推测时间戳。显式重建前请备份并检查数据库；完整重建不会保留查看器本地修改。

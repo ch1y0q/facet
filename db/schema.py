@@ -639,6 +639,12 @@ REJECTED_MERGE_SUGGESTIONS_COLUMNS = [
     ('rejected_at', "TEXT DEFAULT (datetime('now'))"),
 ]
 
+# Derived cache state, not user edits; a fresh DB identity prevents cross-file reuse.
+EMBEDDING_CACHE_REVISION_COLUMNS = [
+    ('id', 'INTEGER PRIMARY KEY CHECK(id=1)'),
+    ('revision', "TEXT NOT NULL CHECK(length(revision)=32 AND revision NOT GLOB '*[^0-9a-f]*')"),
+]
+
 # Weight optimization history
 WEIGHT_OPTIMIZATION_RUNS_COLUMNS = [
     ('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
@@ -884,6 +890,17 @@ MCP_TOKENS_INDEXES = [
     ('idx_mcp_tokens_user', 'mcp_tokens', 'user_id'),
 ]
 
+# Latest review-field edit receipt per photo/account; durable across viewer exports.
+PHOTO_METADATA_EDITS_COLUMNS = [
+    ('photo_path', 'TEXT NOT NULL REFERENCES photos(path) ON DELETE CASCADE ON UPDATE CASCADE'),
+    ('user_id', "TEXT NOT NULL DEFAULT ''"),
+    ('field', 'TEXT NOT NULL'),
+    ('changed_at', 'TEXT NOT NULL'),
+    ('source', "TEXT NOT NULL DEFAULT 'local'"),
+    ('source_path', 'TEXT'),
+    ('source_at', 'TEXT'),
+]
+
 # Which rating labels an assistant left behind, so the rating-derived comparisons
 # (`optimization/label_pairs.py`) never treat them as the user's taste. A side table, not a column on
 # `photos`, written by the rating routes themselves when the request is an agent's (an internal `mcp` JWT).
@@ -1102,6 +1119,7 @@ _MIGRATED_TABLES = [
     ('photo_manual_tags', PHOTO_MANUAL_TAGS_COLUMNS),
     ('mcp_tokens', MCP_TOKENS_COLUMNS),
     ('rating_provenance', RATING_PROVENANCE_COLUMNS),
+    ('photo_metadata_edits', PHOTO_METADATA_EDITS_COLUMNS),
     ('comparisons', COMPARISONS_COLUMNS),
     ('learned_scores', LEARNED_SCORES_COLUMNS),
     ('rejected_merge_suggestions', REJECTED_MERGE_SUGGESTIONS_COLUMNS),
@@ -1299,6 +1317,10 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
         # Create mcp_tokens (agent bearer tokens, hash only; side table)
         conn.execute(_build_create_table_sql('mcp_tokens', MCP_TOKENS_COLUMNS))
 
+        conn.execute(_build_create_table_sql(
+            'photo_metadata_edits', PHOTO_METADATA_EDITS_COLUMNS,
+            constraints=['PRIMARY KEY (photo_path, user_id, field)']))
+
         # Create rating_provenance (which rating labels an assistant left; side table)
         conn.execute(_build_create_table_sql(
             'rating_provenance', RATING_PROVENANCE_COLUMNS, constraints=['PRIMARY KEY (user_id, photo_path)']))
@@ -1473,6 +1495,9 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
                 "WHERE centroid IS NOT NULL AND centroid_model IS NULL",
                 (ARCFACE_MODEL,))
 
+        from db.embedding_revision import init_schema as init_embedding_revision
+        init_embedding_revision(conn)
+
         from db.organization_history import init_schema as init_organization_history
         init_organization_history(conn)
 
@@ -1556,6 +1581,9 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
                 logger.warning(
                     "photos_fts rebuild after recreate failed — run 'python database.py --rebuild-fts'"
                 )
+
+        from db.metadata_edits import create_review_edit_triggers
+        create_review_edit_triggers(conn)
 
         # Run the version ladder (no-op today) and stamp PRAGMA user_version.
         _run_migration_ladder(conn, is_fresh)
