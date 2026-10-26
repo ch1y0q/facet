@@ -453,23 +453,67 @@ def test_concurrent_events_do_not_lose_an_increment(db_path):
 
 def test_timer_dispatches_once_the_window_elapses(db_path):
     done = threading.Event()
+    workers = []
 
     def fake_train(db_path=None, user_id=None, **kwargs):
+        workers.append(threading.current_thread())
         done.set()
         return {"gated": False, "written": 5, "cv_accuracy": 88.0}
 
     with mock.patch("optimization.personal_ranker.train_ranker", side_effect=fake_train) as train:
-        for _ in range(30):
-            ar.maybe_retrain(db_path, user_id=None, added=1, threshold=25, idle_seconds=0.05)
+        # Record the batch before arming the real timer. Thirty separate commits
+        # need not finish within 50 ms: a valid idle gap may split that producer.
+        assert ar.maybe_retrain(db_path, user_id=None, added=30, threshold=25,
+                                idle_seconds=0.05) is True
         assert done.wait(timeout=5), "the idle timer never dispatched the retrain"
-        # The worker is registered in _active_threads only after it starts, so on
-        # the timer path joining that list can race. Wait on the slot itself.
-        deadline = time.time() + 5
-        while ar._retrain_running and time.time() < deadline:
-            time.sleep(0.01)
+        # The worker may run before _dispatch appends it to _active_threads.
+        # Join the actual thread observed by train_ranker, including slot cleanup.
+        workers[0].join(timeout=5)
+        assert not workers[0].is_alive()
 
-    # A whole burst collapses into exactly one retrain.
     train.assert_called_once()
+    assert _counter(db_path, None) == 0
+    assert ar._retrain_running is False
+
+
+def test_feedback_arriving_after_idle_dispatch_survives_for_the_next_train(db_path):
+    entered = threading.Event()
+    release = threading.Event()
+    workers = []
+
+    def fake_train(db_path=None, user_id=None, **kwargs):
+        workers.append(threading.current_thread())
+        entered.set()
+        assert release.wait(timeout=5), "the test did not release the train"
+        return {"gated": False, "written": 5, "cv_accuracy": 88.0}
+
+    with mock.patch("optimization.personal_ranker.train_ranker", side_effect=fake_train) as train:
+        try:
+            assert ar.maybe_retrain(db_path, user_id=None, added=28, threshold=25,
+                                    idle_seconds=0.05) is True
+            assert entered.wait(timeout=5), "the idle timer never dispatched the retrain"
+            assert ar._retrain_running is True
+            assert ar.maybe_retrain(db_path, user_id=None, added=2, threshold=25,
+                                    idle_seconds=0.05) is False
+            assert _counter(db_path, None) == 2
+            train.assert_called_once()
+        finally:
+            release.set()
+            for worker in workers:
+                worker.join(timeout=5)
+        assert not workers[0].is_alive()
+        assert ar._retrain_running is False
+        assert _counter(db_path, None) == 2
+
+        # The carried-over feedback participates in the next threshold crossing.
+        entered.clear()
+        assert ar.maybe_retrain(db_path, user_id=None, added=23, threshold=25,
+                                idle_seconds=0.05) is True
+        assert entered.wait(timeout=5)
+        workers[1].join(timeout=5)
+        assert not workers[1].is_alive()
+
+    assert train.call_count == 2
     assert _counter(db_path, None) == 0
     assert ar._retrain_running is False
 
