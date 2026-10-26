@@ -77,8 +77,7 @@ interface MapResponse {
         </div>
       }
       @if (noGpsResults() && !tileError()) {
-        <div class="absolute inset-0 flex items-center justify-center pointer-events-none"
-             style="z-index: 1000">
+        <div class="absolute inset-0 flex items-center justify-center pointer-events-none z-[1000]">
           <div class="max-w-md mx-4 px-6 py-5 rounded-xl shadow-lg text-center
                       bg-[var(--mat-sys-surface-container)] text-[var(--mat-sys-on-surface)]">
             <mat-icon class="!text-4xl !w-10 !h-10 opacity-50 mb-2">location_off</mat-icon>

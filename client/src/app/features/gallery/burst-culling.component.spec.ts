@@ -4229,6 +4229,12 @@ describe('BurstCullingComponent progressive darkroom frames (rendered)', () => {
     expect(component['sharpPath']()).toBeNull();
     expect(component['failedRenderPaths']().size).toBe(0);
     expect(renderPeaking).not.toHaveBeenCalled();
+    // Positive control: the new attempt's own success does restore readiness and peaking.
+    pane().sharpLoaded.emit(render('/p0.jpg'));
+    fixture.detectChanges();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(component['sharpPath']()).toBe('/p0.jpg');
+    expect(renderPeaking).toHaveBeenCalled();
   });
 
   it('uses the visible stored thumbnail for peaking when the current render fails', async () => {

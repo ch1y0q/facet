@@ -9,7 +9,7 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
 import { ThumbnailUrlPipe, PersonThumbnailUrlPipe, STORED_THUMBNAIL_EDGE } from '../../pipes/thumbnail-url.pipe';
 import { SequenceOverrideBadgeKeyPipe } from '../../pipes/sequence-kind.pipe';
 import { PhotoSetKindIconPipe, PhotoSetKindBestLabelPipe } from '../../pipes/photo-set-kind.pipe';
-import { CardActionId, CardActionsConfig, CardSetKind, DEFAULT_CARD_ACTIONS } from './card-actions';
+import { CARD_ACTION_META, CardActionId, CardActionsConfig, CardSetKind, DEFAULT_CARD_ACTIONS } from './card-actions';
 import { FixedPipe } from '../../pipes/fixed.pipe';
 import { ShutterSpeedPipe } from '../../pipes/shutter-speed.pipe';
 import { ScoreClassPipe, SortScorePipe } from '../../pipes/score.pipes';
@@ -226,18 +226,19 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
           </div>
         }
 
-        <!-- Persistent rejected badge (shape + desaturation, not color alone).
-             Sits where the hover bar's own reject button sits, right of the
-             heart. It does NOT yield to a star rating: the two occupy opposite
-             corners so they never collided, and hiding it left desaturation as
-             the only signal -- which conveys nothing to a screen reader and
-             nothing at all on an already-monochrome photo. -->
         @if (isEditionMode() && photo().is_kept && !photo().is_rejected) {
           <span class="absolute top-2 left-2 flex items-center justify-center rounded-full bg-green-700 text-white w-6 h-6 z-10"
                 [attr.aria-label]="I18N.review.kept | translate" [matTooltip]="I18N.review.kept | translate">
             <mat-icon class="!text-base !w-4 !h-4 !leading-4">check</mat-icon>
           </span>
         }
+
+        <!-- Persistent rejected badge (shape + desaturation, not color alone).
+             Sits where the hover bar's own reject button sits, right of the
+             heart. It does NOT yield to a star rating: the two occupy opposite
+             corners so they never collided, and hiding it left desaturation as
+             the only signal -- which conveys nothing to a screen reader and
+             nothing at all on an already-monochrome photo. -->
         @if (showsRejectedBadge()) {
           <div class="absolute right-9 w-7 h-7 z-20 pointer-events-none inline-flex items-center justify-center transition-opacity md:group-hover/img:opacity-0 bottom-1"
                [attr.aria-label]="'rating.rejected_badge' | translate">
@@ -274,98 +275,36 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
             @for (id of visibleActions(); track id) {
               @switch (id) {
                 @case ('similar') {
-                  @if (filterLinks() && config()?.features?.show_similar_button) {
-                    <button
-                      class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
-                      [matMenuTriggerFor]="similarMenu"
-                      [matTooltip]="'similar.find_similar' | translate"
-                      [attr.aria-label]="'similar.find_similar' | translate"
-                      (click)="$event.stopPropagation()">
-                      <mat-icon class="!text-base !w-4 !h-4 !leading-4">image_search</mat-icon>
-                    </button>
-                    <mat-menu #similarMenu="matMenu">
-                      <button mat-menu-item (click)="openSimilarClicked.emit({photo: photo(), mode: 'visual'})">
-                        <mat-icon>image_search</mat-icon>
-                        {{ 'similar.mode_visual' | translate }}
-                      </button>
-                      <button mat-menu-item (click)="openSimilarClicked.emit({photo: photo(), mode: 'color'})">
-                        <mat-icon>palette</mat-icon>
-                        {{ 'similar.mode_color' | translate }}
-                      </button>
-                      <button mat-menu-item (click)="openSimilarClicked.emit({photo: photo(), mode: 'person'})">
-                        <mat-icon>person_search</mat-icon>
-                        {{ 'similar.mode_person' | translate }}
-                      </button>
-                    </mat-menu>
-                  }
-                }
-                @case ('critique') {
-                  @if (config()?.features?.show_critique) {
-                    <button
-                      class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
-                      [matTooltip]="'critique.title' | translate"
-                      [attr.aria-label]="'critique.title' | translate"
-                      (click)="openCritiqueClicked.emit(photo()); $event.stopPropagation()">
-                      <mat-icon class="!text-base !w-4 !h-4 !leading-4">analytics</mat-icon>
-                    </button>
-                  }
-                }
-                @case ('embed') {
-                  @if (isEditionMode() && config()?.features?.show_embed_metadata) {
-                    <button
-                      class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
-                      [matTooltip]="'photoCard.embed_to_file' | translate"
-                      [attr.aria-label]="'photoCard.embed_to_file' | translate"
-                      (click)="embedMetadataClicked.emit(photo()); $event.stopPropagation()">
-                      <mat-icon class="!text-base !w-4 !h-4 !leading-4">save</mat-icon>
-                    </button>
-                  }
-                }
-                @case ('assign_face') {
-                  @if (isEditionMode() && photo().unassigned_faces > 0) {
-                    <button
-                      class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
-                      [matTooltip]="'manage_persons.assign_face' | translate"
-                      [attr.aria-label]="'manage_persons.assign_face' | translate"
-                      (click)="openAddPersonClicked.emit(photo()); $event.stopPropagation()">
-                      <mat-icon class="!text-base !w-4 !h-4 !leading-4">person_add</mat-icon>
-                    </button>
-                  }
-                }
-                @case ('duplicate_set') {
                   <button
                     class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
-                    [matTooltip]="'photoCard.duplicate_set' | translate"
-                    [attr.aria-label]="'photoCard.duplicate_set' | translate"
-                    (click)="openSetClicked.emit({photo: photo(), kind: 'duplicate'}); $event.stopPropagation()">
-                    <mat-icon class="!text-base !w-4 !h-4 !leading-4">photo_library</mat-icon>
+                    [matMenuTriggerFor]="similarMenu"
+                    [matTooltip]="'similar.find_similar' | translate"
+                    [attr.aria-label]="'similar.find_similar' | translate"
+                    (click)="$event.stopPropagation()">
+                    <mat-icon class="!text-base !w-4 !h-4 !leading-4">image_search</mat-icon>
                   </button>
+                  <mat-menu #similarMenu="matMenu">
+                    <button mat-menu-item (click)="openSimilarClicked.emit({photo: photo(), mode: 'visual'})">
+                      <mat-icon>image_search</mat-icon>
+                      {{ 'similar.mode_visual' | translate }}
+                    </button>
+                    <button mat-menu-item (click)="openSimilarClicked.emit({photo: photo(), mode: 'color'})">
+                      <mat-icon>palette</mat-icon>
+                      {{ 'similar.mode_color' | translate }}
+                    </button>
+                    <button mat-menu-item (click)="openSimilarClicked.emit({photo: photo(), mode: 'person'})">
+                      <mat-icon>person_search</mat-icon>
+                      {{ 'similar.mode_person' | translate }}
+                    </button>
+                  </mat-menu>
                 }
-                @case ('burst_set') {
+                @default {
                   <button
                     class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
-                    [matTooltip]="'photoCard.burst_set' | translate"
-                    [attr.aria-label]="'photoCard.burst_set' | translate"
-                    (click)="openSetClicked.emit({photo: photo(), kind: 'burst'}); $event.stopPropagation()">
-                    <mat-icon class="!text-base !w-4 !h-4 !leading-4">burst_mode</mat-icon>
-                  </button>
-                }
-                @case ('sequence_set') {
-                  <button
-                    class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
-                    [matTooltip]="'photoCard.sequence_set' | translate"
-                    [attr.aria-label]="'photoCard.sequence_set' | translate"
-                    (click)="openSetClicked.emit({photo: photo(), kind: 'sequence'}); $event.stopPropagation()">
-                    <mat-icon class="!text-base !w-4 !h-4 !leading-4">auto_awesome_motion</mat-icon>
-                  </button>
-                }
-                @case ('open_detail') {
-                  <button
-                    class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
-                    [matTooltip]="'photoCard.open_detail' | translate"
-                    [attr.aria-label]="'photoCard.open_detail' | translate"
-                    (click)="openDetailClicked.emit(photo()); $event.stopPropagation()">
-                    <mat-icon class="!text-base !w-4 !h-4 !leading-4">open_in_full</mat-icon>
+                    [matTooltip]="CARD_ACTION_META[id].labelKey | translate"
+                    [attr.aria-label]="CARD_ACTION_META[id].labelKey | translate"
+                    (click)="dispatchAction(id); $event.stopPropagation()">
+                    <mat-icon class="!text-base !w-4 !h-4 !leading-4">{{ CARD_ACTION_META[id].icon }}</mat-icon>
                   </button>
                 }
               }
@@ -786,9 +725,9 @@ export class PhotoCardComponent {
   /** The configured hover actions, laid over the per-photo/per-install gates.
    *
    *  The config decides membership and order; the gates decide availability —
-   *  it can surface an action the feature flags or this photo's own state
-   *  cannot back (a duplicate-set button on a photo with no duplicate group
-   *  renders as nothing). A `null` config, which older callers and tests pass,
+   *  the config may list an action the feature flags or this photo's own state
+   *  cannot back (a duplicate-set button on a photo with no duplicate group),
+   *  and the gates drop it. A `null` config, which older callers and tests pass,
    *  means the historical default row. */
   readonly cardActions = input<CardActionsConfig | null>(null);
 
@@ -808,6 +747,27 @@ export class PhotoCardComponent {
     };
     return cfg.order.filter(id => !cfg.hidden.includes(id) && available[id]);
   });
+
+  protected readonly CARD_ACTION_META = CARD_ACTION_META;
+
+  /** Emit the output behind a generic (non-menu) action button. */
+  protected dispatchAction(id: CardActionId): void {
+    const photo = this.photo();
+    switch (id) {
+      case 'critique': this.openCritiqueClicked.emit(photo); break;
+      case 'embed': this.embedMetadataClicked.emit(photo); break;
+      case 'assign_face': this.openAddPersonClicked.emit(photo); break;
+      case 'duplicate_set': this.openSetClicked.emit({ photo, kind: 'duplicate' }); break;
+      case 'burst_set': this.openSetClicked.emit({ photo, kind: 'burst' }); break;
+      case 'sequence_set': this.openSetClicked.emit({ photo, kind: 'sequence' }); break;
+      case 'open_detail': this.openDetailClicked.emit(photo); break;
+      case 'similar': break;
+      default: {
+        const unhandled: never = id;
+        throw new Error(`Unhandled card action: ${String(unhandled)}`);
+      }
+    }
+  }
 
   private readonly tooltips = viewChildren(MatTooltip);
   private readonly menus = viewChildren(MatMenuTrigger);
