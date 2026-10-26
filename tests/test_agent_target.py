@@ -331,6 +331,30 @@ class TestCreateAlbumFromTheView:
         assert result["error"] == "invalid_input", result
         assert albums_named(name) == []
 
+    @pytest.mark.parametrize("peer", ["favorites_only", "is_monochrome", "manual_faces_need_review", "faces_need_names"])
+    def test_rejected_view_refuses_nonboolean_peer_flags(self, setup, made_albums, peer):
+        with sqlite3.connect(_TEST_DB_FILE.name) as conn:
+            conn.execute("UPDATE photos SET is_rejected = 1 WHERE path = ?", [PATHS[0]])
+        stored = {"path_prefix": PFX, "show_rejected": True, peer: "0"}
+        view = gallery_view(stored, total=1, filters={"path_prefix": PFX, "show_rejected": "1", peer: "0"})
+        env, token, _ = setup(view)
+        name = ALBUM_PREFIX + "malformed peer"
+        result = env.call(token, "create_album", {"name": name, "target": "view"})
+        assert result["error"] == "invalid_input", result
+        assert albums_named(name) == []
+
+    @pytest.mark.parametrize("peer", ["favorites_only", "is_monochrome", "manual_faces_need_review", "faces_need_names"])
+    def test_rejected_view_accepts_boolean_false_peer_flags(self, setup, made_albums, peer):
+        with sqlite3.connect(_TEST_DB_FILE.name) as conn:
+            conn.execute("UPDATE photos SET is_rejected = 1 WHERE path = ?", [PATHS[0]])
+        stored = {"path_prefix": PFX, "show_rejected": True, peer: False}
+        view = gallery_view(stored, total=1, filters={"path_prefix": PFX, "show_rejected": "1", peer: "0"})
+        env, token, _ = setup(view)
+        result = env.call(token, "create_album", {"name": ALBUM_PREFIX + "boolean peer", "target": "view"})
+        assert result["ok"], result
+        assert result["data"]["photo_count"] == 1
+        assert json.loads(result["data"]["smart_filter_json"])[peer] is False
+
     def test_conflicting_positive_view_filters_create_nothing(self, setup, made_albums):
         env, token, _ = setup(gallery_view({"path_prefix": PFX, "show_rejected": True, "favorites_only": True}))
         name = ALBUM_PREFIX + "conflicting filters"
