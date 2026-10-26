@@ -7,6 +7,7 @@ All notable changes to Facet are documented in this file.
 ### Fixed
 
 - **Explain sidecar job refusals.** Starting or retrying an export uses `503 library_busy` while another library job holds the lock, with a retry delay. Unusable locks and receipt storage return distinct safe errors so operators can fix the cache instead of waiting.
+- **Readable sidecar import preview errors.** Missing, unreadable or invalid databases now produce a clear refusal instead of a SQLite traceback, without creating or upgrading the database.
 
 ## [1.24.0] "Diaphragme" — 2026-10-26
 
