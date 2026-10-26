@@ -4,6 +4,7 @@ import { By } from '@angular/platform-browser';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { MATERIAL_ANIMATIONS } from '@angular/material/core';
 import { MatTooltip } from '@angular/material/tooltip';
+import { MatMenuTrigger } from '@angular/material/menu';
 import { I18nService } from '../../../core/services/i18n.service';
 import { PhotoCardComponent } from './photo-card.component';
 import { CardActionsConfig } from './card-actions';
@@ -982,6 +983,26 @@ describe('PhotoCardComponent filter links', () => {
     expect(c.className).not.toContain('cursor-pointer');
     expect(c.className).not.toContain('hover:');
     expect(similar(el)).toBeNull();
+  });
+
+  it('closes an open Find similar menu when closeOverlays is called', () => {
+    TestBed.configureTestingModule({
+      imports: [PhotoCardComponent],
+      providers: [
+        { provide: I18nService, useValue: mockI18n },
+        { provide: MATERIAL_ANIMATIONS, useValue: { animationsDisabled: true } },
+      ],
+    });
+    const fixture = TestBed.createComponent(PhotoCardComponent);
+    fixture.componentRef.setInput('photo', makePhoto({ tags_list: ['sunset'] }));
+    fixture.componentRef.setInput('config', { features: { show_similar_button: true } });
+    fixture.detectChanges();
+    const trigger = fixture.debugElement.query(By.directive(MatMenuTrigger)).injector.get(MatMenuTrigger);
+    trigger.openMenu();
+    fixture.detectChanges();
+    expect(trigger.menuOpen).toBe(true);
+    fixture.componentInstance.closeOverlays();
+    expect(trigger.menuOpen).toBe(false);
   });
 
   it('does not emit tagClicked from a plain chip', () => {
