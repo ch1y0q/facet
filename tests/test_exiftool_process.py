@@ -60,6 +60,12 @@ def test_newline_filename_is_a_catchable_runtime_failure_before_process_start(mo
         run_exiftool_process(['exiftool', '-XMP-dc:Subject=café', '/tmp/a\nb.jpg'], timeout=1)
 
 
+def test_newline_file_include_assignment_is_refused_before_process_start(monkeypatch):
+    monkeypatch.setattr(subprocess, 'run', lambda *args, **kwargs: pytest.fail('must refuse before process start'))
+    with pytest.raises(RuntimeError, match='filename or option contains a newline'):
+        run_exiftool_process(['exiftool', '-XMP-dc:Subject=café', '-Tag<=a\nb', '/tmp/a.jpg'], timeout=1)
+
+
 @pytest.mark.skipif(os.name == 'nt' or shutil.which('exiftool') is None,
                     reason='requires ExifTool and a filesystem allowing newline filenames')
 def test_one_newline_filename_does_not_abort_other_photo_exports(tmp_path):

@@ -116,7 +116,7 @@ class TestExportPerUser:
         )
         captured = {}
 
-        def fake_write(path, rating, *, embed_original=False, timeout=60):
+        def fake_write(path, rating, *, embed_original=False, reconcile_keywords=False, timeout=60):
             captured["rating"] = rating
             return {"embedded": False}
 
@@ -140,7 +140,7 @@ class TestExportPerUser:
         )
         captured = {}
 
-        def fake_write(path, rating, *, embed_original=False, timeout=60):
+        def fake_write(path, rating, *, embed_original=False, reconcile_keywords=False, timeout=60):
             captured["rating"] = rating
             return {"embedded": False}
 
@@ -166,7 +166,7 @@ class TestExportPerUser:
             "VALUES (?,-1,X'',1,?,?,50,0,100,80,100,80,?)",
             (str(img), str(uuid4()), pid, source_identity(str(img))))
         captured = {}
-        def fake_write(path, rating, *, embed_original=False, timeout=60):
+        def fake_write(path, rating, *, embed_original=False, reconcile_keywords=False, timeout=60):
             captured['rating'] = rating
             return {'embedded': False}
         monkeypatch.setattr('processing.xmp_export.write_metadata', fake_write)
