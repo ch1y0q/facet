@@ -1352,6 +1352,19 @@
     "notices": {
       "collapsed": "{count} notice",
       "collapsed_plural": "{count} notices"
+    },
+    "person_bar": {
+      "unnamed": "Unnamed #{id}",
+      "photos": "{count} photos",
+      "name_placeholder": "Who is this? Type or pick a name",
+      "rename_placeholder": "Rename or merge into…",
+      "assign": "Assign",
+      "named": "Named {name}",
+      "merge_title": "Add to {name}?",
+      "merge_message": "Move all faces of {from} ({count} photos) into {name}? They become one person.",
+      "merge_confirm": "Add to this person",
+      "merged": "Added to {name}",
+      "error": "Could not save the name"
     }
   },
   "composition_patterns": {

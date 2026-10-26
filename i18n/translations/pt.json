@@ -1352,6 +1352,19 @@
     "notices": {
       "collapsed": "{count} aviso",
       "collapsed_plural": "{count} avisos"
+    },
+    "person_bar": {
+      "unnamed": "Sem nome n.º {id}",
+      "photos": "{count} fotos",
+      "name_placeholder": "Quem é? Digite ou escolha um nome",
+      "rename_placeholder": "Renomear ou mesclar em…",
+      "assign": "Atribuir",
+      "named": "Nomeado {name}",
+      "merge_title": "Adicionar a {name}?",
+      "merge_message": "Mover todos os rostos de {from} ({count} fotos) para {name}? Eles passam a ser uma só pessoa.",
+      "merge_confirm": "Adicionar a esta pessoa",
+      "merged": "Adicionado a {name}",
+      "error": "Não foi possível salvar o nome"
     }
   },
   "composition_patterns": {

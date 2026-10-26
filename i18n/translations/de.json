@@ -1352,6 +1352,19 @@
     "notices": {
       "collapsed": "{count} Hinweis",
       "collapsed_plural": "{count} Hinweise"
+    },
+    "person_bar": {
+      "unnamed": "Unbenannt #{id}",
+      "photos": "{count} Fotos",
+      "name_placeholder": "Wer ist das? Namen eingeben oder wählen",
+      "rename_placeholder": "Umbenennen oder zusammenführen mit…",
+      "assign": "Zuweisen",
+      "named": "{name} benannt",
+      "merge_title": "Zu {name} hinzufügen?",
+      "merge_message": "Alle Gesichter von {from} ({count} Fotos) zu {name} verschieben? Sie werden eine Person.",
+      "merge_confirm": "Zu dieser Person hinzufügen",
+      "merged": "Zu {name} hinzugefügt",
+      "error": "Name konnte nicht gespeichert werden"
     }
   },
   "composition_patterns": {

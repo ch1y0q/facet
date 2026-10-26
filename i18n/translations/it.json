@@ -1352,6 +1352,19 @@
     "notices": {
       "collapsed": "{count} avviso",
       "collapsed_plural": "{count} avvisi"
+    },
+    "person_bar": {
+      "unnamed": "Senza nome n. {id}",
+      "photos": "{count} foto",
+      "name_placeholder": "Chi è? Scrivi o scegli un nome",
+      "rename_placeholder": "Rinomina o unisci a…",
+      "assign": "Assegna",
+      "named": "Chiamato {name}",
+      "merge_title": "Aggiungere a {name}?",
+      "merge_message": "Spostare tutti i volti di {from} ({count} foto) in {name}? Diventano una sola persona.",
+      "merge_confirm": "Aggiungi a questa persona",
+      "merged": "Aggiunto a {name}",
+      "error": "Impossibile salvare il nome"
     }
   },
   "composition_patterns": {

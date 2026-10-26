@@ -1352,6 +1352,19 @@
     "notices": {
       "collapsed": "{count} 条通知",
       "collapsed_plural": "{count} 条通知"
+    },
+    "person_bar": {
+      "unnamed": "未命名 #{id}",
+      "photos": "{count} 张照片",
+      "name_placeholder": "这是谁？输入或选择名称",
+      "rename_placeholder": "重命名或合并到…",
+      "assign": "指定",
+      "named": "已命名为 {name}",
+      "merge_title": "添加到 {name}？",
+      "merge_message": "将 {from}（{count} 张照片）的所有面孔移到 {name}？它们将成为同一个人。",
+      "merge_confirm": "添加到此人",
+      "merged": "已添加到 {name}",
+      "error": "无法保存名称"
     }
   },
   "composition_patterns": {
