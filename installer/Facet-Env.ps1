@@ -17,3 +17,17 @@ $FacetReady  = Join-Path $FacetVenv '.facet-setup-ok'
 $env:FACET_CONFIG       = Join-Path $FacetConfig 'scoring_config.json'
 $env:DB_PATH            = Join-Path $FacetData 'photo_scores_pro.db'
 $env:PYTHONIOENCODING   = 'utf-8'
+
+# Facet processes of THIS install. A uv venv's python.exe is a launcher that runs the base
+# interpreter as a child, so match the launcher by path and take its children with it.
+function Get-FacetProcesses {
+    $all = @(Get-CimInstance Win32_Process -Filter "Name='python.exe' or Name='pythonw.exe'")
+    $launchers = @($all | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($FacetVenv, [StringComparison]::OrdinalIgnoreCase) })
+    $ids = $launchers.ProcessId
+    $launchers + @($all | Where-Object { $ids -contains $_.ParentProcessId })
+}
+
+function Test-PortOpen([int]$Port) {
+    $c = New-Object Net.Sockets.TcpClient
+    try { $c.ConnectAsync('127.0.0.1', $Port).Wait(500) -and $c.Connected } catch { $false } finally { $c.Dispose() }
+}

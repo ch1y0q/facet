@@ -1,5 +1,8 @@
 # Stop every Facet process (viewer and scans) started from this install's venv.
 . "$PSScriptRoot\Facet-Env.ps1"
-Get-CimInstance Win32_Process -Filter "Name='python.exe' or Name='pythonw.exe'" |
-    Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($FacetVenv, [StringComparison]::OrdinalIgnoreCase) } |
-    ForEach-Object { Stop-Process -Id $_.ProcessId -Force; Write-Host "Stopped $($_.ProcessId): $($_.CommandLine)" }
+$procs = @(Get-FacetProcesses)
+if (-not $procs) { Write-Host 'Facet is not running.'; return }
+foreach ($p in $procs) {
+    taskkill /T /F /PID $p.ProcessId 2>$null | Out-Null
+    Write-Host "Stopped $($p.ProcessId): $($p.CommandLine)"
+}

@@ -10,24 +10,30 @@ if (-not (Test-Path $FacetReady)) {
 }
 
 $url = "http://localhost:$Port/"
-$busy = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
-if ($busy) {
-    $owner = (Get-Process -Id $busy[0].OwningProcess -ErrorAction SilentlyContinue).Path
-    if ($owner -and $owner.StartsWith($FacetVenv, [StringComparison]::OrdinalIgnoreCase)) {
+# Probe the port by connecting: a listener behind WSL mirrored networking (the Docker
+# install) is invisible to Get-NetTCPConnection but still owns the port.
+if (Test-PortOpen $Port) {
+    $ours = Get-FacetProcesses | Where-Object { $_.CommandLine -match 'viewer\.py' -and $_.CommandLine -match "--port $Port\b" }
+    if ($ours) {
         if (-not $NoBrowser) { Start-Process $url }
         return
     }
-    throw "Port $Port is already used by $owner. Stop it, or run Start-Facet.ps1 -Port <other>."
+    throw "Port $Port is already in use by another program (the Docker install?). Stop it, or run Start-Facet.ps1 -Port <other>."
 }
 
 New-Item -ItemType Directory -Force $FacetLogs | Out-Null
 $bind = if ($Lan) { '0.0.0.0' } else { '127.0.0.1' }
-Start-Process -FilePath $FacetPython -ArgumentList @('viewer.py', '--port', $Port, '--host', $bind) `
-    -WorkingDirectory $FacetApp -WindowStyle Hidden `
+$proc = Start-Process -FilePath $FacetPython -ArgumentList @('viewer.py', '--production', '--port', $Port, '--host', $bind) `
+    -WorkingDirectory $FacetApp -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput (Join-Path $FacetLogs 'viewer.out.log') `
     -RedirectStandardError (Join-Path $FacetLogs 'viewer.log')
 
-for ($i = 0; $i -lt 60; $i++) {
-    try { Invoke-WebRequest $url -UseBasicParsing -TimeoutSec 2 | Out-Null; break } catch { Start-Sleep -Seconds 1 }
+for ($i = 0; $i -lt 90; $i++) {
+    if ($proc.HasExited) {
+        $tail = Get-Content (Join-Path $FacetLogs 'viewer.log') -Tail 15 -ErrorAction SilentlyContinue
+        throw "Facet viewer exited during start (code $($proc.ExitCode)). Log:`n$($tail -join "`n")"
+    }
+    if (Test-PortOpen $Port) { break }
+    Start-Sleep -Seconds 1
 }
 if (-not $NoBrowser) { Start-Process $url }
