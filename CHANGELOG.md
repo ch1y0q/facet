@@ -6,6 +6,7 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- **Retry incomplete HEIF orientation repairs.** Offline files and failures rebuilding photo thumbnails remain eligible on later upgrades, including tied scan timestamps. Older progress is rechecked without rotating already repaired portraits or faces again.
 - **Accessible capture-date validation.** Link invalid offsets to their explanation and identify preview table column headers.
 - **Handle expected online-place lookup failures in the dialog.** Rate limits, disabled lookup and provider outages no longer duplicate the inline error with global crash reporting. Query validation and documented HTTP error responses now match the generated API contract.
 - **Private online place-search caches.** Multi-user address searches reuse only the current account’s results while preserving the shared provider rate limit. Excessively nested provider JSON returns the normal unavailable response instead of an internal server error.

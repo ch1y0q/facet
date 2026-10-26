@@ -163,6 +163,8 @@ API 会将其呈现在 `/api/scan/status` 的 `progress` 字段以及 SSE 数据
 | `python facet.py --compute-recommendations --apply-recommendations` | 自动应用评分修正 |
 | `python facet.py --compute-recommendations --simulate` | 预览预计产生的变化 |
 
+`--upgrade-db` 会重试无法读取或修复文件头或照片缩略图的 HEIF 文件。只要有候选文件失败，就保留上次完整完成的进度，因此可读取的横向照片可能会再次检查。已成功修复的纵向照片不会再次旋转。从旧版修复程序升级后，会重新检查剩余候选文件；清空统计缓存也会重新开始检查。原始图像文件始终不会被写入。
+
 ### 补充画质模型
 
 除主要的 TOPIQ 美学评分外，还有三个 PyIQA 模型参与评分。它们与 TOPIQ 共用 VRAM，并作为默认多阶段流水线的一部分运行。

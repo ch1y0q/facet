@@ -166,6 +166,8 @@ These commands update specific metrics, derive new data (AI captions, GPS, embed
 | `python facet.py --compute-recommendations --apply-recommendations` | Auto-apply scoring fixes |
 | `python facet.py --compute-recommendations --simulate` | Preview projected changes |
 
+`--upgrade-db` retries HEIF files whose headers or photo thumbnails could not be read or repaired. While any candidate fails, the last completed progress marker is retained, so readable landscape files may be checked again. Successful portrait repairs are not rotated a second time. On upgrading from older repair versions, remaining candidates are checked again; clearing the statistics cache also restarts that check. Original image files are never written.
+
 ### Supplementary Quality Models
 
 Three additional PyIQA models score beyond the primary TOPIQ aesthetic score. They share VRAM with TOPIQ and run as part of the default multi-pass pipeline.
