@@ -450,11 +450,11 @@ def test_the_guard_flags_place_provider_on_the_loop():
 
     @app.get('/search-on-loop')
     async def search_on_loop():
-        return place_search.search('Berlin')
+        return place_search.search('Berlin', ('installation', ''))
 
     @app.get('/search-off-loop')
     async def search_off_loop():
-        return await asyncio.to_thread(place_search.search, 'Berlin')
+        return await asyncio.to_thread(place_search.search, 'Berlin', ('installation', ''))
 
     client = TestClient(app, raise_server_exceptions=False)
     _cold_caches()

@@ -6,6 +6,14 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- **Private online place-search caches.** Multi-user address searches reuse only the current account’s results while preserving the shared provider rate limit. Excessively nested provider JSON returns the normal unavailable response instead of an internal server error.
+- **Keep batch export errors private.** Sidecar selections, albums and background receipts return safe failure summaries while retaining details in server logs; unaffected photos continue exporting.
+- **Retry capture-date resets during brief database contention.** Use file date retries busy writes and reports database failures without exposing internal details; failed transactions preserve the manual date and history.
+- **Clear private review bookmarks on logout.** Remove every identity’s browser-local queue filters and prevent pending reads from recreating them; normal same-account navigation and reloads still retain resume queues.
+- **Keep Unicode person searches literal.** Arabic and full-width decimal text matches names without also selecting an unrelated person ID. ASCII decimal IDs remain searchable, with visibility and assignment ordering preserved.
+- **Keep menu and selector keys inside their controls.** Gallery view shortcuts and photo rating shortcuts no longer intercept typing or keyboard navigation in menus, comboboxes and selection lists.
+- **Relink applies respect running library jobs.** Both relink command entry points hold the shared maintenance lock while applying a reviewed plan; read-only previews remain available while another job runs.
+- **Make export job controls clearer for assistive technology.** Refresh controls have distinct names, the viewed receipt is identified, and live announcements cover status changes rather than the entire progress panel.
 - **Show the manual-face review filter chip.** The active filter can be removed above the gallery without clearing other filters.
 - **Ship the ExifTool tag definitions.** Installed distributions include Facet’s metadata configuration. ExifTool exports refuse missing definitions before changing photos or sidecars instead of silently omitting private metadata.
 - **Match focus peaking to each compare pane.** Track render failures and retries per pane so a previous single-view fallback does not select the wrong image source in compare mode.
