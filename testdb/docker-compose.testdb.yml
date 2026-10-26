@@ -7,7 +7,10 @@
 # TESTDB holds photos/ (from testdb/make_lfw_subset.py), data/ (the database) and
 # config/scoring_config.json. IMAGE picks the build to test; MAIN_PROJECT is the main
 # install's compose project name (its volumes are <project>_facet-*). Requires the
-# NVIDIA Container Toolkit.
+# NVIDIA Container Toolkit. The model caches are mounted read-only: the main install
+# fills them. Set CACHE_MODE=rw if the test instance must download a model itself.
+# It does not restart on its own, so it never comes back after a reboot to compete
+# with the main install for the GPU.
 services:
   facet:
     image: ${IMAGE:-ghcr.io/ncoevoet/facet:latest-cuda}
@@ -18,10 +21,10 @@ services:
       - ${TESTDB:?set TESTDB}/photos:/data/photos:ro
       - ${TESTDB}/data:/app/data
       - ${TESTDB}/config:/config
-      - hf-cache:/home/facet/.cache/huggingface
-      - torch-cache:/home/facet/.cache/torch
-      - insightface:/home/facet/.insightface
-      - pretrained:/app/pretrained_models
+      - hf-cache:/home/facet/.cache/huggingface:${CACHE_MODE:-ro}
+      - torch-cache:/home/facet/.cache/torch:${CACHE_MODE:-ro}
+      - insightface:/home/facet/.insightface:${CACHE_MODE:-ro}
+      - pretrained:/app/pretrained_models:${CACHE_MODE:-ro}
     environment:
       - FACET_LOG_LEVEL=INFO
       - DB_PATH=/app/data/photo_scores_pro.db
@@ -40,7 +43,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    restart: unless-stopped
+    restart: "no"
 
 volumes:
   hf-cache:

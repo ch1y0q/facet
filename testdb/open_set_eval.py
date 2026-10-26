@@ -5,8 +5,9 @@
 2. Test: for every face Facet detected in the test photos, take the most similar known
    person. Similarity >= T names it that person; below T it is Unknown 1, 2, 3...
 3. Score with the answer key, which the tester never sees: in each photo the face
-   nearest the centre is the primary (the person in the file name, LFW crops around
-   them); every other face is a bystander and should come out Unknown.
+   nearest the centre, if near enough, is the primary (the person in the file name, LFW
+   crops around them); every other face is a bystander and should come out Unknown.
+   Only detected ArcFace faces are tested: manual faces have no embedding.
 
 Sweeps T and prints, per threshold: primary faces named right / wrong / Unknown, and
 bystanders Unknown / wrongly named. Also compares 1 reference per person with all.
@@ -18,22 +19,13 @@ Reads only; Facet's database is not changed.
 import argparse
 import collections
 import csv
-from pathlib import Path, PurePosixPath, PureWindowsPath
+import sqlite3
+from pathlib import Path
 
 import cv2
 import numpy as np
 
-LFW_CENTRE = 125
-
-
-def photo_parts(path):
-    """``(folder, file name)`` of a stored photo path, from any OS.
-
-    A database scanned on Windows stores Windows paths (drive letter, backslashes); read on Linux,
-    ``Path`` would not split it, so a backslash selects Windows path rules.
-    """
-    p = PureWindowsPath(path) if "\\" in path else PurePosixPath(path)
-    return p.parent.name, p.name
+from lfw_common import AUTO_FACES_SQL, centre_offset, photo_parts, split_primary
 
 
 def unit(v):
@@ -41,47 +33,64 @@ def unit(v):
     return v / np.linalg.norm(v)
 
 
-def enroll(refs_dir, max_refs):
-    """{folder: unit mean embedding}, plus the test-set photos used as references, as (folder, file)."""
+def embed_references(refs_dir):
+    """``[(folder, photo, source, unit embedding)]`` for every reference photo with a face.
+
+    The face model loads once; enroll() then picks the first k per person.
+    """
     from insightface.app import FaceAnalysis
     app = FaceAnalysis(name="buffalo_l", providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
     app.prepare(ctx_id=0, det_size=(640, 640))
     with open(refs_dir / "references.csv", encoding="utf8") as handle:
         rows = list(csv.DictReader(handle))
-    per_person = collections.defaultdict(list)
-    excluded = set()
+    out = []
     for row in rows:
-        if len(per_person[row["folder"]]) >= max_refs:
-            continue
         img = cv2.imread(str(refs_dir / row["folder"] / row["photo"]))
-        faces = app.get(img)
+        faces = app.get(img) if img is not None else []
         if not faces:
             continue
         h, w = img.shape[:2]
         face = min(faces, key=lambda f: ((f.bbox[0] + f.bbox[2]) / 2 - w / 2) ** 2 + ((f.bbox[1] + f.bbox[3]) / 2 - h / 2) ** 2)
-        per_person[row["folder"]].append(unit(face.embedding))
-        if row["source"] == "from_test_set":
-            excluded.add((row["folder"], row["photo"]))
+        out.append((row["folder"], row["photo"], row["source"], unit(face.embedding)))
+    return out
+
+
+def enroll(references, max_refs):
+    """{folder: unit mean embedding}, plus the test-set photos used as references, as (folder, file)."""
+    per_person = collections.defaultdict(list)
+    excluded = set()
+    for folder, photo, source, emb in references:
+        if len(per_person[folder]) >= max_refs:
+            continue
+        per_person[folder].append(emb)
+        if source == "from_test_set":
+            excluded.add((folder, photo))
     return {k: unit(np.mean(v, axis=0)) for k, v in per_person.items()}, excluded
 
 
 def test_faces(db):
-    """``[(photo, role, true_folder, unit embedding)]``, role primary or bystander."""
-    import sqlite3
+    """``[(photo, role, true_folder, unit embedding)]``, role primary or bystander.
+
+    Also returns the photo count, the photos with a face, and the photos whose person was
+    not detected (no face near the centre: all their faces are bystanders).
+    """
     conn = sqlite3.connect(db)
     by_photo = collections.defaultdict(list)
     for path, x1, y1, x2, y2, emb in conn.execute(
-            "SELECT photo_path, bbox_x1, bbox_y1, bbox_x2, bbox_y2, embedding FROM faces WHERE embedding IS NOT NULL"):
-        off = ((x1 + x2) / 2 - LFW_CENTRE) ** 2 + ((y1 + y2) / 2 - LFW_CENTRE) ** 2
-        by_photo[path].append((off, unit(np.frombuffer(emb, np.float32))))
-    photos = [p for p in conn.execute("SELECT path FROM photos")]
-    out = []
+            "SELECT photo_path, bbox_x1, bbox_y1, bbox_x2, bbox_y2, embedding FROM faces "
+            f"WHERE {AUTO_FACES_SQL}"):
+        by_photo[path].append((centre_offset(x1, y1, x2, y2), unit(np.frombuffer(emb, np.float32))))
+    n_photos = conn.execute("SELECT COUNT(*) FROM photos").fetchone()[0]
+    out, missed = [], 0
     for path, faces in by_photo.items():
         folder = photo_parts(path)[0]
-        faces.sort(key=lambda f: f[0])
-        out.append((path, "primary", folder, faces[0][1]))
-        out.extend((path, "bystander", folder, f[1]) for f in faces[1:])
-    return out, len(photos), len(by_photo)
+        primary, bystanders = split_primary(faces)
+        if primary:
+            out.append((path, "primary", folder, primary[1]))
+        else:
+            missed += 1
+        out.extend((path, "bystander", folder, f[1]) for f in bystanders)
+    return out, n_photos, len(by_photo), missed
 
 
 def sweep(people, faces, excluded, thresholds):
@@ -116,12 +125,14 @@ def main():
     ap.add_argument("--db", required=True)
     ap.add_argument("--refs", type=Path, required=True)
     args = ap.parse_args()
-    faces, n_photos, with_faces = test_faces(args.db)
+    faces, n_photos, with_faces, missed = test_faces(args.db)
     print(f"{n_photos} photos, {with_faces} with at least one face; {len(faces)} faces "
-          f"({sum(f[1] == 'primary' for f in faces)} primary, {sum(f[1] == 'bystander' for f in faces)} bystanders)")
+          f"({sum(f[1] == 'primary' for f in faces)} primary, {sum(f[1] == 'bystander' for f in faces)} bystanders); "
+          f"person not detected in {missed} photo(s) with faces")
     thresholds = [round(x, 2) for x in np.arange(0.20, 0.61, 0.05)]
+    references = embed_references(args.refs)
     for k in (1, 3):
-        people, excluded = enroll(args.refs, k)
+        people, excluded = enroll(references, k)
         print(f"\n{k} reference photo(s) per person ({len(people)} people enrolled):")
         sweep(people, faces, excluded, thresholds)
 
