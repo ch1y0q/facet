@@ -124,7 +124,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
          Type filter + semantic search, rebound to the gallery store. -->
     <ng-template #galleryToolbar>
       @if (!pinned()) {
-        <mat-form-field class="!hidden lg:!inline-flex w-52 ml-2 2xl:shrink-0" subscriptSizing="dynamic">
+        <mat-form-field class="!hidden lg:!inline-flex w-44 ml-2 2xl:shrink-0" subscriptSizing="dynamic">
           <mat-label>{{ I18N.ui.filters.type | translate }}</mat-label>
           <mat-select panelWidth="auto" panelClass="nowrap-panel !max-h-[70vh]" [value]="store.filters().type" (selectionChange)="onTypeChange($event.value)">
             <mat-option value="">{{ I18N.gallery.all_photos | translate }}</mat-option>
@@ -134,10 +134,12 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
           </mat-select>
         </mat-form-field>
 
-        <!-- Search. Visible from lg up, beside the type dropdown it pairs with.
-             Filters as you type (400 ms debounce); Enter and leaving the box
-             commit immediately, so clicking a photo never drops typed text. -->
-        <mat-form-field class="!hidden lg:!inline-flex w-52 min-w-0 shrink" subscriptSizing="dynamic">
+        <!-- Search. Visible from 1360 px up — the same threshold as the count
+             label, below which the toolbar has no room for it — and filters as
+             you type (400 ms debounce; Enter and leaving the box commit, so
+             clicking a photo never drops typed text). flex-1 fills whatever
+             the type dropdown and the buttons leave. -->
+        <mat-form-field class="!hidden min-[1360px]:!inline-flex min-w-0 flex-1 mr-2" subscriptSizing="dynamic">
           <input
             #toolbarSearch
             matInput
