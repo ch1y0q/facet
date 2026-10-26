@@ -30,14 +30,17 @@ Run both scores below on the change and compare with the baseline. **Pass = no l
 Baseline: an 8 GB-profile GPU scan of this library followed by `--cluster-faces-incremental`;
 grouping can differ slightly on other hardware, so record your own baseline first.
 
-| Measure | Baseline | Better is |
-|---|---|---|
-| Photos with no face found (accepted detector failures, see Known failures) | 3 | lower (bonus) |
-| `seed_names.py --score`: primary faces right / wrong | 194 / 0 of 197 | more / must stay 0 |
-| `seed_names.py --score`: bystanders wrongly given a person's name | 10 of 24 | lower |
-| `seed_names.py --score`: photos with one name on 2+ faces | 5 | 0 |
-| `open_set_eval.py`, 3 references, T = 0.35: primary right / wrong | 196 / 0 of 196 | must stay |
-| `open_set_eval.py`, 3 references, T = 0.35: bystanders named | 0 of 24 | must stay 0 |
+| Measure | GPU 8gb | CPU (CI, legacy profile) | Better is |
+|---|---|---|---|
+| Photos with no face found (accepted detector failures, see Known failures) | 3 | 3 | lower (bonus) |
+| `seed_names.py --score`: primary faces right / wrong | 194 / 0 of 197 | 197 / 0 of 197 | more / must stay 0 |
+| `seed_names.py --score`: bystanders wrongly given a person's name | 10 of 24 | 3 of 24 | lower |
+| `seed_names.py --score`: photos with one name on 2+ faces | 5 | 2 | 0 |
+| `open_set_eval.py`, 3 references, T = 0.35: primary right / wrong | 196 / 0 of 196 | 196 / 0 of 196 | must stay |
+| `open_set_eval.py`, 3 references, T = 0.35: bystanders named | 0 of 24 | 0 of 24 | must stay 0 |
+
+The GPU-CPU gap is grouping: the CPU scan forms 20 face groups and the GPU scan 22, and the
+remaining CPU errors are all in Abdullah_Gul_0008 and _0009. The open-set scores are identical.
 
 CI runs it without a GPU (`.github/workflows/face-gate.yml`): one job builds the library, then
 Linux (direct install) and Docker (the CPU image) each scan it on the legacy profile, group,
