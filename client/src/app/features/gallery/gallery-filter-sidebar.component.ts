@@ -597,6 +597,7 @@ function saveSectionStates(states: Record<string, boolean>): void {
             (change)="store.updateFilter('hide_rejected', $event.checked)"
           >{{ I18N.gallery.hide_rejected | translate }}</mat-checkbox>
           <mat-checkbox
+            [disabled]="!!store.filters().review_status"
             [checked]="store.filters().show_rejected"
             (change)="store.updateFilter('show_rejected', $event.checked)"
           >{{ I18N.rating.show_rejected | translate }}</mat-checkbox>
