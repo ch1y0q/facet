@@ -2861,7 +2861,7 @@
     "before": "Avant",
     "after": "Après",
     "error": "Action impossible. Vérifiez les accès et les fichiers, puis relancez l’aperçu.",
-    "reset_hint": "La date du fichier supprime la correction manuelle. Si le fichier ne contient aucune date, la date devient inconnue.",
+    "reset_hint": "Le bouton « Utiliser la date du fichier » supprime la correction manuelle. Si le fichier ne contient aucune date, la date devient inconnue.",
     "use_file": "Utiliser la date du fichier",
     "preview": "Aperçu",
     "apply": "Appliquer la correction",
