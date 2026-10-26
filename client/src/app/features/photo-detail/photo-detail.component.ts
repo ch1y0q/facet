@@ -43,7 +43,7 @@ import { setScopePatch } from '../gallery/gallery-filters.util';
 import * as L from 'leaflet';
 import { createLeafletMap } from '../../shared/leaflet';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
-import { isTypingContext } from '../../shared/utils/keyboard';
+import { isPageShortcutBlocked, isTypingContext } from '../../shared/utils/keyboard';
 import type { CategoryOverrideResult } from './category-override-dialog.component';
 
 const SOCIAL_SOURCE_KEYS: Record<string, string> = {
@@ -970,9 +970,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
    *  with the filters it came from. */
   @HostListener('document:keydown', ['$event'])
   protected onRatingShortcut(event: KeyboardEvent): void {
-    if (isTypingContext(event)) return;
-    if (event.ctrlKey || event.metaKey || event.altKey) return;
-    if (document.querySelector('mat-dialog-container, mat-bottom-sheet-container')) return;
+    if (isPageShortcutBlocked(event)) return;
     if (!this.auth.isEdition() || !this.store.config()?.features?.show_rating_controls) return;
     const p = this.photo();
     if (!p) return;

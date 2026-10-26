@@ -1,6 +1,6 @@
 import type { Mock } from 'vitest';
 import { ComponentFixture, DeferBlockState, TestBed } from '@angular/core/testing';
-import { ChangeDetectorRef, Component, computed, DebugElement, DestroyRef, inject, signal, TemplateRef, WritableSignal } from '@angular/core';
+import { ApplicationRef, ChangeDetectorRef, Component, computed, DebugElement, DestroyRef, inject, signal, TemplateRef, WritableSignal } from '@angular/core';
 import { Location, NgTemplateOutlet } from '@angular/common';
 import { provideLocationMocks } from '@angular/common/testing';
 import { RouterTestingHarness } from '@angular/router/testing';
@@ -4860,6 +4860,63 @@ describe('GalleryComponent', () => {
       expect(trigger.menuOpen).toBe(true);
       openPhoto(1);
       expect(trigger.menuOpen).toBe(false);
+    });
+
+    it('closes the toolbar type select when the gallery parks', () => {
+      const view = TestBed.inject(HeaderSlotService).template()!.createEmbeddedView({});
+      TestBed.inject(ApplicationRef).attachView(view);
+      try {
+        view.detectChanges();
+        fixture.detectChanges();
+        const type = (gallery as unknown as { selects(): MatSelect[] }).selects().at(0)!;
+        expect(type).toBeTruthy();
+        type.open();
+        fixture.detectChanges();
+        expect(type.panelOpen).toBe(true);
+        openPhoto(1);
+        expect(type.panelOpen).toBe(false);
+      } finally {
+        TestBed.inject(ApplicationRef).detachView(view);
+        view.destroy();
+      }
+    });
+
+    it('does not override a pointer press made before the anchor frame', () => {
+      const frames: FrameRequestCallback[] = [];
+      vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+      const host = fixture.nativeElement.querySelector('[data-pidx="1"]') as HTMLElement;
+      const viewport = (content as any).getElementRef().nativeElement as HTMLElement;
+      vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue({ top: 0, width: 1000, height: 800 } as DOMRect);
+      let top = 100;
+      vi.spyOn(host, 'getBoundingClientRect').mockImplementation(() => ({ top, height: 200 } as DOMRect));
+      openPhoto(1);
+      top = 180;
+      outletMock.attachEvents.next(gallery);
+      // Focus stays on the opened card; only the pointer veto can stop the re-anchor.
+      document.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      scrollTo.mockClear();
+      for (let frame = 0; frame < 3; frame++) for (const callback of frames.splice(0)) callback(0);
+      expect(scrollTo).not.toHaveBeenCalled();
+    });
+
+    it('clamps a parked-resize anchor so the card stays inside a shorter viewport', () => {
+      const frames: FrameRequestCallback[] = [];
+      vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+      const host = fixture.nativeElement.querySelector('[data-pidx="1"]') as HTMLElement;
+      const viewport = (content as any).getElementRef().nativeElement as HTMLElement;
+      let height = 800;
+      let scroll = 640;
+      const absoluteTop = 740;
+      vi.spyOn(viewport, 'getBoundingClientRect').mockImplementation(() => ({ top: 0, width: 1000, height } as DOMRect));
+      vi.spyOn(host, 'getBoundingClientRect').mockImplementation(() => ({ top: absoluteTop - scroll, height: 200 } as DOMRect));
+      vi.spyOn(content, 'measureScrollOffset').mockImplementation(() => scroll);
+      scrollTo.mockImplementation(({ top }: ScrollToOptions) => { scroll = top!; });
+      openPhoto(1);
+      height = 250;
+      outletMock.attachEvents.next(gallery);
+      for (let frame = 0; frame < 3; frame++) for (const callback of frames.splice(0)) callback(0);
+      // Anchor offset 100 would push the 200px card past a 250px viewport: clamped to 250 - 200.
+      expect(host.getBoundingClientRect().top).toBe(50);
     });
 
     it('returns to the photo last viewed when the arrows moved off the one opened', () => {

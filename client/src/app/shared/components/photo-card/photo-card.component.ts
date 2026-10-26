@@ -14,6 +14,7 @@ import { FixedPipe } from '../../pipes/fixed.pipe';
 import { ShutterSpeedPipe } from '../../pipes/shutter-speed.pipe';
 import { ScoreClassPipe, SortScorePipe } from '../../pipes/score.pipes';
 import { SortPersonsPipe } from '../../pipes/sort-persons.pipe';
+import { closeOverlayDirectives } from '../../utils/overlays';
 
 interface AppConfig {
   quality_thresholds?: { excellent: number; great: number; good: number };
@@ -813,13 +814,12 @@ export class PhotoCardComponent {
 
   /** Hide every tooltip this card owns, for a gallery parking behind a photo page. */
   hideTooltips(): void {
-    for (const tooltip of this.tooltips()) tooltip.hide(0);
+    closeOverlayDirectives(this.tooltips());
   }
 
   /** Close overlays before the gallery parks behind a photo. */
   closeOverlays(): void {
-    this.hideTooltips();
-    for (const menu of this.menus()) menu.closeMenu();
+    closeOverlayDirectives(this.tooltips(), this.menus());
   }
 
   cycleStarRating(): void {
