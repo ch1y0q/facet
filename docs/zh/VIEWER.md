@@ -1574,7 +1574,7 @@ python database.py --stats-info
 | 端点 | 说明 |
 |----------|-------------|
 | `POST /api/photo/export_xmp` | `[Edition]` 写入一个 XMP 附属文件 |
-| `POST /api/export/sidecars` | `[Edition]` 为显式给出的路径或一组筛选条件写入附属文件。请求体 `{paths?, filters?, exclude?, overwrite}`——必须恰好是 `paths`（最多 10000）或一组照片库 `filters` 之一：两者都给返回 `422`，都不给返回 `400`。`exclude`（可选，最多 1000）会从所发送的目标中剔除指定路径——从 `paths` 中减去，或从 `filters` 范围中排除；`filters` 会走与 `GET /api/photos` 相同的归一化流程，与下面的 `POST /api/cull/apply` 完全一致，而指定了相册的 `filters` 会像该相册自身的 GET 一样做访问检查——相册不存在返回 `404`，在受访问控制的安装上访问他人的相册返回 `403`。匹配超过 10000 张照片的 `filters` 会以 `412` 拒绝并给出数量和上限，该计数在构建任何路径列表之前完成，且绝不截断 |
+| `POST /api/export/sidecars` | `[Edition]` 为显式给出的路径或一组筛选条件写入附属文件。请求体 `{paths?, filters?, exclude?, overwrite}`——必须恰好是 `paths`（最多 10000）或一组照片库 `filters` 之一：两者都给返回 `422`，都不给返回 `400`。`exclude`（可选，最多 1000）会从所发送的目标中剔除指定路径——从 `paths` 中减去，或从 `filters` 范围中排除；`filters` 会走与 `GET /api/photos` 相同的归一化流程，与下面的 `POST /api/cull/apply` 完全一致，而指定了相册的 `filters` 会像该相册自身的 GET 一样做访问检查——相册不存在返回 `404`，在受访问控制的安装上访问他人的相册返回 `403`。匹配超过 10000 张照片的 `filters` 会以 `412` 拒绝并给出数量和上限，该计数在构建任何路径列表之前完成，且绝不截断。批量错误仅返回不含隐私细节的摘要；详细错误记录在服务器日志中。其他照片继续导出。 |
 | `POST /api/export/sidecar_jobs` | `[Edition]` 启动有限的后台附属文件导出；paths 或 filters、exclude、overwrite；返回私人进度记录（202） |
 | `GET /api/export/sidecar_jobs` | `[Edition]` 读取调用者最近最多 20 条导出记录 |
 | `GET /api/export/sidecar_jobs/{id}` | `[Edition]` 读取调用者拥有的导出进度 |
@@ -1644,7 +1644,7 @@ python database.py --stats-info
 
 ### Photon
 
-使用 **地址或商家 → 在线搜索** 明确查询 Photon。只有点击按钮才会向配置的服务发送查询，输入时不会发送。选择结果可预览坐标，点击 **保存** 后才会应用；原始文件不会改变。Photon 使用 OpenStreetMap 数据（© OpenStreetMap 贡献者）。离线时仍可使用已保存地点和坐标输入。`viewer.place_search_url` 默认为 `https://photon.komoot.io/api`，可改为自托管 Photon 地址，或设为 `""` 禁用搜索。公共演示服务不保证可用性。限制：3–200 个字符、最多五个结果、五秒超时、64 KiB 响应；每个进程缓存 128 次查询共 15 分钟，不并发请求，请求至少间隔一秒。公共服务请仅使用一个 worker。Facet 不记录查询；请同时在反向代理日志中省略查询参数。
+使用 **地址或商家 → 在线搜索** 明确查询 Photon。只有点击按钮才会向配置的服务发送查询，输入时不会发送。选择结果可预览坐标，点击 **保存** 后才会应用；原始文件不会改变。Photon 使用 OpenStreetMap 数据（© OpenStreetMap 贡献者）。离线时仍可使用已保存地点和坐标输入。`viewer.place_search_url` 默认为 `https://photon.komoot.io/api`，可改为自托管 Photon 地址，或设为 `""` 禁用搜索。公共演示服务不保证可用性。限制：3–200 个字符、最多五个结果、五秒超时、64 KiB 响应；每个进程缓存 128 次查询共 15 分钟，不并发请求，请求至少间隔一秒。公共服务请仅使用一个 worker。Facet 不记录查询；请同时在反向代理日志中省略查询参数。 多用户模式下，各账户的缓存条目相互隔离；128 条缓存的总容量和服务请求限流仍由整个进程共享。
 
 五秒期限会中断活动套接字，包括缓慢的 HTTP 标头和分块帧读取。原生 DNS 解析使用操作系统的时限，可能在套接字创建之前耗时更长；查询过期后不会再建立连接。
 
