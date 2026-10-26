@@ -472,8 +472,14 @@ def main(argv=None, *, prog=None):
         else:
             if args.plan_out:
                 raise ValueError('--plan-out is only valid for preview')
-            result = apply_relinks(args.db, read_json(args.apply_plan), config, acknowledge_plan=args.ack_plan,
-                                   acknowledge_unverified_identity=args.acknowledge_unverified_identity, user=args.user)
+            from facet import LIBRARY_JOB_MAINTENANCE, hold_library_lock_or_exit
+            plan = read_json(args.apply_plan)
+            lock = hold_library_lock_or_exit(args.db, LIBRARY_JOB_MAINTENANCE)
+            try:
+                result = apply_relinks(args.db, plan, config, acknowledge_plan=args.ack_plan,
+                                       acknowledge_unverified_identity=args.acknowledge_unverified_identity, user=args.user)
+            finally:
+                lock.release()
         print(json.dumps(result, ensure_ascii=False, indent=2))
     except (OSError, ValueError, KeyError, TypeError, sqlite3.Error) as exc:
         parser.exit(1, f'Relink refused: {exc}\n')

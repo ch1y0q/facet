@@ -2,6 +2,8 @@
 
 `python database.py --relink-photos` modifie uniquement les chemins de photos déjà indexées après un déplacement manuel. Arrêtez viewer, scans et éditeurs externes ; sauvegardez la base. Aucun fichier original ou annexe n’est déplacé, écrit ou supprimé, et Immich n’est jamais contacté.
 
+L’application conserve le verrou de maintenance de Facet pendant toute l’écriture en base. Un autre travail sur la photothèque entraîne le code 75 sans modifier la base ni les médias ; un verrou inutilisable entraîne le code 1. L’aperçu reste en lecture seule et ne prend aucun verrou. Ce verrou coordonne les travaux sur un seul hôte ; les conditions hors ligne restent nécessaires pour les autres hôtes et éditeurs externes.
+
 La base ne prouve pas l’identité octet par octet de l’original absent : chaque plan indique `original_bytes_unknown`. SHA-256 identifie seulement la nouvelle cible examinée. Vérifiez vous-même l’identité avant les deux confirmations ; une mauvaise correspondance peut attacher les annotations à une autre image.
 
 Les chemins doivent être absolus, natifs et canoniques, sans lien symbolique, dans les racines configurées. L’ancien fichier doit manquer mais son parent doit exister et être lisible. Un dossier entier disparu est refusé : il pourrait être hors ligne. Ne recréez pas un parent vide pour contourner ce contrôle. Un dossier lisible ne prouve pas le montage ; `source_mount_status=not_verified` exige une vérification indépendante.
