@@ -653,11 +653,22 @@ def _restore_region_boolean_case(value, node):
     return restored
 
 
+def _exiftool_config() -> str:
+    """Require the shipped private-tag definitions before inspecting or writing metadata."""
+    config = os.path.join(os.path.dirname(__file__), "facet_exiftool.config")
+    try:
+        with open(config, "rb") as handle:
+            handle.read(1)
+    except OSError as ex:
+        raise RuntimeError("Facet ExifTool configuration is unavailable; reinstall Facet before exporting metadata") from ex
+    return config
+
+
 def _read_existing_regions(target: str, exe: str, *, timeout: int) -> dict:
     """Read structured MWG metadata before writing; fail closed on read errors."""
     if not os.path.exists(target):
         return {}
-    config = os.path.join(os.path.dirname(__file__), "facet_exiftool.config")
+    config = _exiftool_config()
     try:
         if target.lower().endswith(".xmp"):
             _assert_well_formed_xmp(target)
@@ -829,7 +840,7 @@ def _read_existing_metadata(target: str, exe: str, *, timeout: int, strict=False
     """Read flat/hierarchical names; existing-file failures must not clear them."""
     try:
         result = run_exiftool_process(
-            [exe, "-config", os.path.join(os.path.dirname(__file__), "facet_exiftool.config"),
+            [exe, "-config", _exiftool_config(),
              "-q", "-m", "-json", "-XMP-dc:Subject", "-IPTC:Keywords",
              "-XMP-lr:HierarchicalSubject", "-XMP-facet:DateState", target],
             timeout=timeout,
@@ -867,7 +878,7 @@ def _read_keyword_state(target, exe, *, timeout):
     """Read private state separately; missing/foreign packets grant no ownership."""
     if not os.path.exists(target):
         return None
-    config = os.path.join(os.path.dirname(__file__), 'facet_exiftool.config')
+    config = _exiftool_config()
     try:
         result = run_exiftool_process([exe, '-config', config, '-json', '-XMP-facet:KeywordState', target],
                                      timeout=timeout)
@@ -887,6 +898,7 @@ def _read_keyword_state(target, exe, *, timeout):
 
 def _exiftool_write_args(target: str, rating: XmpRating, exe: str, *, timeout: int, reconcile=False) -> list[str]:
     """Inspect a target and build its write without changing either file."""
+    config = _exiftool_config()
     # Validate structural metadata first so malformed existing packets retain
     # the metadata-precondition contract before any original/companion write.
     existing_regions = _read_existing_regions(target, exe, timeout=timeout)
@@ -903,7 +915,6 @@ def _exiftool_write_args(target: str, rating: XmpRating, exe: str, *, timeout: i
                        "other metadata will be exported")
     if not target.lower().endswith(".xmp") and rating.manual_date() is not None:
         tag_args.append(f"-EXIF:DateTimeOriginal={rating.manual_date()}")
-    config = os.path.join(os.path.dirname(__file__), "facet_exiftool.config")
     if not target.lower().endswith(".xmp") and rating.gps_state():
         state = rating.gps_state()
         for axis, value, directions in (("Latitude", rating.gps_latitude, "NS"),
