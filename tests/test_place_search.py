@@ -263,3 +263,15 @@ def test_connect_stops_when_the_deadline_passes_during_dns():
         with pytest.raises(TimeoutError):
             connection.connect()
     opened.assert_not_called()
+
+
+def test_unicode_result_label_counts_characters_not_utf16_units(edition_client):
+    name, city = '🚋' * 299, '🌳' * 299
+    label = name + ', ' + city
+    assert len(label) == 600
+    with patch('api.place_search._fetch', return_value={
+            'type': 'FeatureCollection', 'features': [feature(name=name, city=city)]}) as fetch:
+        response = edition_client.get('/api/places/search', params={'q': 'Station'})
+    assert response.status_code == 200, response.text
+    assert response.json() == {'results': [{'label': label, 'latitude': 52.5, 'longitude': 13.4}]}
+    fetch.assert_called_once()

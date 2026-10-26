@@ -287,7 +287,7 @@ export class GpsEditDialogComponent {
   }
 
   private validOnlineResult(result: components['schemas']['PlaceSearchResult']): boolean {
-    return typeof result?.label === 'string' && result.label.trim().length > 0 && result.label.length <= 600 &&
+    return typeof result?.label === 'string' && result.label.trim().length > 0 && Array.from(result.label).length <= 600 &&
       typeof result.latitude === 'number' && typeof result.longitude === 'number' && Number.isFinite(result.latitude) && Number.isFinite(result.longitude) && Math.abs(result.latitude) <= 90 && Math.abs(result.longitude) <= 180;
   }
 
