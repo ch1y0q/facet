@@ -246,6 +246,7 @@ exclude = ["venv*", "client*", "docs*", "photos_all*", "pretrained_models*"]
 [tool.setuptools.package-data]
 "*" = ["*.json"]
 "i18n" = ["*.json"]
+"processing" = ["facet_exiftool.config"]
 # Pre-built Angular client included in package
 "api" = ["../client/dist/client/browser/**/*"]
 
