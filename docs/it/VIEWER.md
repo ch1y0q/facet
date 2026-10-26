@@ -575,11 +575,11 @@ Accessibile tramite la rotta `/map`. Controllato da `viewer.features.show_map` (
 
 ### Luoghi salvati e GPS manuale
 
-Seleziona più foto nella galleria e scegli **Imposta posizione** nella barra di selezione, nelle azioni mobili o nel menu contestuale. Usa un luogo salvato/recente, la mappa o le coordinate. **Solo foto senza posizione** è inizialmente attivo; disattivalo per sostituire le posizioni esistenti. Controlla il numero di foto modificate e ignorate nell’anteprima prima di salvare. Ogni gruppo è limitato a 1000 foto visibili, anche con una vista filtrata completa e le sue esclusioni. Le coordinate uguali vengono ignorate. Se cambiano selezione, GPS o luogo salvato, ripeti l’anteprima. La galleria ricarica poi i filtri attivi. I file originali restano invariati.
-
 Nei filtri della galleria, apri **Posizione** e attiva **Senza geolocalizzazione** per trovare le foto prive di una coordinata GPS. Dopo aver aggiunto una posizione, la foto scompare dai risultati. Il filtro annulla la selezione del raggio sulla mappa. Il filtro può essere salvato in un album intelligente. Si disattiva avviando una ricerca semantica o di foto simili, oppure scegliendo un raggio sulla mappa.
 
 Apri **Aggiungi posizione** o **Modifica posizione** da una foto in modalità modifica. Cerca un nome in **Luoghi salvati** oppure scegli un punto da **Posizioni recenti**. La scelta mostra un’anteprima; **Salva** la applica alla foto. Annulla lascia la foto invariata.
+
+Seleziona più foto nella galleria e scegli **Imposta posizione** nella barra di selezione, nelle azioni mobili o nel menu contestuale. Usa un luogo salvato/recente, la mappa o le coordinate. **Solo foto senza posizione** è inizialmente attivo; disattivalo per sostituire le posizioni esistenti. Controlla il numero di foto modificate e ignorate nell’anteprima prima di salvare. Ogni gruppo è limitato a 1000 foto visibili, anche con una vista filtrata completa e le sue esclusioni. Le coordinate uguali vengono ignorate. Se cambiano selezione, GPS o luogo salvato, ripeti l’anteprima. La galleria ricarica poi i filtri attivi. I file originali restano invariati.
 
 Per memorizzare «Lavoro» una volta, scegli un punto sulla mappa o inserisci latitudine e longitudine, poi usa **Salva questo luogo** con un nome. Puoi anche salvare la posizione di una foto già geolocalizzata. Rinominare o eliminare un luogo non sposta le foto già assegnate. In modalità multiutente ogni editor ha una lista privata: massimo 100 luoghi e 20 punti recenti distinti. Solo un’assegnazione salvata correttamente aggiorna i recenti.
 
@@ -1274,7 +1274,7 @@ I tipi TypeScript del client sono generati da questo schema in `client/src/app/c
 | `GET /thumbnail` | Miniatura della foto. Un `size` maggiore di 640 viene generato dall'originale fino a 1920 px (mai ingrandito), qualunque sia il valore più grande richiesto; se l'originale non è disponibile, il render non può partire entro 5 s o il render non ha segnale (una decodifica completamente nera, ad es. un RAW troncato), viene servita la miniatura memorizzata con un `max-age` di 60 secondi |
 | `GET /face_thumbnail/{id}` | Miniatura del ritaglio del volto |
 | `GET /person_thumbnail/{id}` | Miniatura rappresentativa della persona |
-| `GET /image` | Immagine a piena risoluzione |
+| `GET /image` | Immagine a piena risoluzione. I file nativi JPEG, PNG, GIF, WebP, BMP e AVIF mantengono i byte originali e usano tipi multimediali immagine coerenti, indipendenti dal registro MIME del sistema. |
 
 ### Opzioni di filtro
 
@@ -1587,7 +1587,7 @@ Se la ricerca semantica segnala che l’accelerazione Apple Silicon è occupata,
 
 Usa **Indirizzo o attività → Cerca online** per interrogare Photon esplicitamente. La richiesta viene inviata al fornitore configurato solo al clic; digitare non invia nulla. Seleziona un risultato per visualizzare le coordinate, poi **Salva** per applicarle. Il file originale non cambia. Photon usa dati OpenStreetMap (© collaboratori OpenStreetMap). Luoghi salvati e coordinate funzionano offline. `viewer.place_search_url` è predefinito a `https://photon.komoot.io/api`; puoi indicare un’istanza Photon privata o `""` per disattivare la ricerca. Il server pubblico non garantisce disponibilità. Limiti: 3–200 punti di codice Unicode, cinque risultati, cinque secondi, 64 KiB; cache di 128 ricerche per 15 minuti per processo, nessuna chiamata simultanea e almeno un secondo tra le chiamate. Usa un solo worker con il fornitore pubblico. Facet non registra le query; escludi i parametri di ricerca dai log del proxy. In modalità multiutente, le voci della cache sono private per ogni account; il limite di 128 voci e la limitazione delle chiamate al fornitore restano condivisi nel processo.
 
-Gli errori previsti della ricerca compaiono nella finestra di dialogo; per riprovare, avvia un’altra ricerca esplicita. `GET /api/places/search?q=` restituisce elenchi di validazione per query non valide (422), 429 con `Retry-After` quando si supera il limite, 502 per un errore del fornitore e 503 per la ricerca disattivata.
+Gli errori previsti della ricerca compaiono nella finestra di dialogo; per riprovare, avvia un’altra ricerca esplicita. `GET /api/places/search?q=` restituisce elenchi di validazione per query non valide (422), 429 con `Retry-After` quando si supera il limite, 502 per un errore del fornitore e 503 per la ricerca disattivata. Le etichette dei risultati accettano fino a 600 caratteri Unicode.
 
 Il limite di cinque secondi interrompe i socket attivi, anche con intestazioni o delimitazioni HTTP lente. La risoluzione DNS nativa segue i tempi del sistema e può richiedere più tempo prima della creazione del socket; una ricerca scaduta non apre poi alcuna connessione.
 
