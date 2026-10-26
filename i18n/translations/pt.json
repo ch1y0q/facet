@@ -1037,7 +1037,7 @@
     "user_menu": "Menu do usuário"
   },
   "gallery": {
-    "help": "• Ordene por pontuação, data ou seu gosto pessoal\n• Filtre com a barra lateral: pessoas, tags, câmera, categorias\n• Busque por nome de arquivo ou descrição\n• Operação pelo teclado: veja a tabela abaixo",
+    "help": "Ordene por pontuação, data ou seu gosto pessoal\nFiltre com a barra lateral: pessoas, tags, câmera, categorias\nBusque por nome de arquivo ou descrição\nOperação pelo teclado: veja a tabela abaixo",
     "hidden_banner": {
       "message": "{n} fotos ocultadas pelos filtros atuais",
       "some_hidden": "Algumas fotos estão ocultadas pelos seus filtros",
