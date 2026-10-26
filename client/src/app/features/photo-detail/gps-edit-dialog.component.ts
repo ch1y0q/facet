@@ -1,7 +1,5 @@
-import { HttpContext } from '@angular/common/http';
-import { HANDLE_PLACE_SEARCH_ERRORS_LOCALLY } from '../../core/utils/place-search-error.util';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { NavigationStart, Router } from '@angular/router';
+import { HttpContext } from '@angular/common/http';
 import { Component, inject, signal, computed, effect, viewChild, ElementRef, DestroyRef, afterNextRender, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
@@ -10,6 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { firstValueFrom, Subject, takeUntil } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
+import { StalenessGuardFactory } from '../../core/services/staleness-guard.service';
 import * as L from 'leaflet';
 import { createLeafletMap } from '../../shared/leaflet';
 import type { components } from '../../core/api/schema';
@@ -19,6 +18,7 @@ import { I18nService } from '../../core/services/i18n.service';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { FixedPipe } from '../../shared/pipes/fixed.pipe';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
+import { HANDLE_PLACE_SEARCH_ERRORS_LOCALLY } from '../../core/utils/place-search-error.util';
 
 export interface GpsEditDialogData {
   path: string;
@@ -143,15 +143,13 @@ type GpsResult = components['schemas']['GpsUpdateResponse'];
 })
 export class GpsEditDialogComponent {
   protected readonly I18N = i18nKeys();
-  readonly auth = inject(AuthService);
-  private readonly router = inject(Router);
+  protected readonly auth = inject(AuthService);
   private readonly owner = this.auth.identity();
-  private readonly url = this.router.url;
-  private navigated = false;
   private readonly api = inject(ApiService);
   private readonly store = inject(GalleryStore);
   private readonly dialogRef = inject(MatDialogRef<GpsEditDialogComponent>);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly staleness = inject(StalenessGuardFactory).create(this.destroyRef, { onNavigate: () => this.invalidateOwner() });
   private readonly snackBar = inject(MatSnackBar);
   private readonly i18n = inject(I18nService);
   readonly data: GpsEditDialogData = inject(MAT_DIALOG_DATA);
@@ -220,13 +218,17 @@ export class GpsEditDialogComponent {
   /** Same session and page as at opening. A committed write is still published
    *  after a plain Cancel/Escape; only a later session or navigation drops it. */
   private sessionCurrent(): boolean {
-    return !this.navigated && this.auth.identity() === this.owner && this.auth.isEdition() && this.router.url === this.url;
+    return this.staleness.session();
   }
 
-  private invalidateOwner(): void {
+  private dismiss(): void {
     this.dismissed = true;
     this.batchPreview.set(null);
     this.invalidateOnline();
+  }
+
+  private invalidateOwner(): void {
+    this.dismiss();
     this.places.set([]);
     this.recent.set([]);
     this.dialogRef.close();
@@ -236,11 +238,8 @@ export class GpsEditDialogComponent {
     effect(() => {
       if (this.auth.identity() !== this.owner || !this.auth.isEdition()) this.invalidateOwner();
     });
-    this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
-      if (event instanceof NavigationStart) { this.navigated = true; this.invalidateOwner(); }
-    });
     effect(() => { this.auth.status(); this.invalidateOnline(); });
-    this.dialogRef.beforeClosed().pipe(takeUntilDestroyed()).subscribe(() => { this.dismissed = true; this.batchPreview.set(null); this.invalidateOnline(); });
+    this.dialogRef.beforeClosed().pipe(takeUntilDestroyed()).subscribe(() => this.dismiss());
     this.destroyRef.onDestroy(() => {
       this.destroyed = true;
       this.invalidateOnline();
@@ -272,7 +271,7 @@ export class GpsEditDialogComponent {
   }
 
   async searchOnline(): Promise<void> {
-    if (!this.current() || this.saving() || this.onlineBusy() || !this.onlineQueryValid() || !this.onlineEnabled() || !this.auth.isEdition()) return;
+    if (!this.current() || this.saving() || this.onlineBusy() || !this.onlineQueryValid() || !this.onlineEnabled()) return;
     this.invalidateOnline();
     const sequence = this.onlineSequence;
     const auth = this.auth.status();
@@ -295,7 +294,7 @@ export class GpsEditDialogComponent {
   }
 
   selectOnlineResult(result: components['schemas']['PlaceSearchResult']): void {
-    if (!this.current() || this.saving() || !this.auth.isEdition() || this.dismissed || this.destroyed || !this.validOnlineResult(result)) return;
+    if (!this.current() || this.saving()) return;
     this.selectRecent(result);
   }
 
@@ -432,7 +431,7 @@ export class GpsEditDialogComponent {
     finally { if (this.current()) this.placeBusy.set(false); }
   }
 
-  cancel(): void { this.dismissed = true; this.batchPreview.set(null); this.invalidateOnline(); this.dialogRef.close(undefined); }
+  cancel(): void { this.dismiss(); this.dialogRef.close(undefined); }
 
   async useFileLocation(): Promise<void> {
     if (!this.current() || this.saving() || this.placeBusy()) return;
@@ -450,7 +449,7 @@ export class GpsEditDialogComponent {
     } catch {
       if (!this.current()) return;
       this.snackBar.open(this.i18n.t(I18N.notifications.connection_error), '', { duration: 3000 });
-      if (this.current()) this.saveError.set(I18N.photo_detail.gps.save_error);
+      this.saveError.set(I18N.photo_detail.gps.save_error);
     } finally { if (this.current()) this.saving.set(false); }
   }
 
@@ -510,7 +509,7 @@ export class GpsEditDialogComponent {
     } catch {
       if (!this.current()) return;
       this.snackBar.open(this.i18n.t(I18N.notifications.connection_error), '', { duration: 3000 });
-      if (this.current()) this.saveError.set(I18N.photo_detail.gps.save_error);
+      this.saveError.set(I18N.photo_detail.gps.save_error);
     } finally { if (this.current()) this.saving.set(false); }
   }
 }

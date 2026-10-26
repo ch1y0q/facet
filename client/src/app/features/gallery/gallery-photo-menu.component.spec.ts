@@ -289,6 +289,8 @@ describe('GalleryPhotoMenuComponent', () => {
       { name: 'bulk panorama', bulk: true, path: [I18N.gallery.selection.mark_sequence, I18N.gallery.selection.mark_panorama], expected: { kind: 'mark-panorama', sequenceKind: 'panorama' } },
       { name: 'bulk hdr panorama', bulk: true, path: [I18N.gallery.selection.mark_sequence, I18N.gallery.selection.mark_hdr_panorama], expected: { kind: 'mark-panorama', sequenceKind: 'hdr_panorama' } },
       { name: 'bulk bracket', bulk: true, path: [I18N.gallery.selection.mark_sequence, I18N.gallery.selection.mark_bracket], expected: { kind: 'mark-panorama', sequenceKind: 'bracket' } },
+      { name: 'bulk capture date', bulk: true, path: [I18N.capture_date.title], expected: { kind: 'capture-date' } },
+      { name: 'bulk location', bulk: true, path: [I18N.photo_detail.gps.batch_title], expected: { kind: 'gps' } },
       { name: 'bulk edit tags', bulk: true, path: [I18N.gallery.selection.edit_tags], expected: { kind: 'tags' } },
       { name: 'bulk copy', bulk: true, path: [I18N.gallery.selection.copy_filenames], expected: { kind: 'copy' } },
       { name: 'bulk export', bulk: true, path: [I18N.export.action], expected: { kind: 'export' } },
