@@ -1037,7 +1037,7 @@
     "user_menu": "User menu"
   },
   "gallery": {
-    "help": "• Sort by score, date or your personal taste; filter with the sidebar (people, tags, camera, category, score range, moments) and the search box.\n• On a focused card: 1–5 rate, F favourite, X or 0 reject (edition mode) — the keys are named on the card itself.\n• / focuses the search, B toggles the filter sidebar, V swaps grid and mosaic, ? shows this reference.",
+    "help": "Sort by score, date or your personal taste; filter with the sidebar (people, tags, camera, category, score range, moments) and the search box.\nOn a focused card: 1–5 rate, F favourite, X or 0 reject (edition mode) — the keys are named on the card itself.\n/ focuses the search, B toggles the filter sidebar, V swaps grid and mosaic, ? shows this reference.",
     "hidden_banner": {
       "message": "{n} photos hidden by current filters",
       "some_hidden": "Some photos are hidden by your filters",
