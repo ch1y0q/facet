@@ -518,6 +518,8 @@ python facet.py --recompute-average        # Neue Gewichtungen anwenden
 
 Nach einem selbst ausgeführten Dateiumzug kann `python database.py --relink-photos` exakte Alt-/Neupfade zunächst prüfen und Datenbankzuordnungen erhalten. Die Vorschau ist Standard. Anwenden erfordert die gespeicherte Plan-ID und `--acknowledge-unverified-identity`: Die Datenbank enthält keinen kryptografischen Beweis des fehlenden Originals. Viewer/Scanner stoppen und den Plan prüfen. Beide Pfade müssen in konfigurierten Wurzeln mit gleicher Benutzersichtbarkeit bleiben; Kopien, mehrdeutige Namen, veraltete Pläne und Pfadzuordnungen werden abgelehnt. Begleitdateien müssen ausdrücklich benannt werden; manuelle Rechtecke benötigen Prüfung im Editor, Immich-Zustand bleibt unverändert. Vertrag und Beispiele: [Verschobene Fotos neu verknüpfen](RELINK.md).
 
+Anwenden nutzt die Bibliothekssperre: Exitcode 75 bedeutet, dass ein anderer Auftrag läuft, und 1, dass die Sperre unbenutzbar ist. Die Vorschau nimmt keine Bibliothekssperre.
+
 Der ausdrückliche Begleittyp `sidecar_facet` bezeichnet `photo.ext.facet.xmp`; nicht aufgeführte Fallback-Pakete werden ebenfalls abgelehnt. Gespeicherte Prüfpläne sind privat (0600 unter POSIX). Lesbare Verzeichnisse beweisen keinen eingehängten Datenträger: `source_mount_status` bleibt `not_verified`; der Betreiber muss einen echten Umzug statt Offline-Speicher bestätigen.
 
 ```sh
