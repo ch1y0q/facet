@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field, ValidationError, model_validator
 from api.auth import CurrentUser, get_optional_user, require_edition
 from api import organization_capture
 from api.database import get_async_db, get_db
-from api.db_helpers import get_existing_columns, get_visibility_clause, to_exif_date
+from api.db_helpers import get_existing_columns, get_visibility_clause, select_in_chunks, to_exif_date
 from api.models.discovery import PhotoMapCountResponse, PhotoMapResponse
 from api.path_validation import resolve_photo_disk_path
 from api.routers.faces import BatchPhotoRequest, _batch_scope_sql
@@ -241,19 +241,26 @@ class BatchGpsResponse(BaseModel):
     preview_token: str
 
 
-def _gps_batch_scopes(conn: sqlite3.Connection, body: BatchGpsRequest, user: CurrentUser) -> Iterator[tuple[str, list]]:
+_GPS_BATCH_COLUMNS = "path, gps_latitude, gps_longitude, gps_manually_set"
+
+
+def _gps_batch_rows(conn: sqlite3.Connection, body: BatchGpsRequest, user: CurrentUser) -> Iterator[sqlite3.Row]:
     """Reuse gallery visibility/album checks; keep explicit SQL binds bounded."""
     if body.filters is not None:
         from_clause, where, params = _batch_scope_sql(conn, body, user)
-        yield f"SELECT DISTINCT photos.path FROM {from_clause}{where} LIMIT 1001", params
+        yield from conn.execute(
+            f"SELECT {_GPS_BATCH_COLUMNS} FROM photos WHERE path IN "
+            f"(SELECT DISTINCT photos.path FROM {from_clause}{where} LIMIT 1001) ORDER BY path LIMIT 1001",
+            params,
+        )
     else:
         excluded = set(body.exclude or ())
         paths = list(dict.fromkeys(p for p in body.photo_paths or () if p not in excluded))
         vis_sql, vis_params = get_visibility_clause(user.user_id if user else None)
-        for start in range(0, len(paths), 400):
-            chunk = paths[start:start + 400]
-            marks = ','.join('?' for _ in chunk)
-            yield f"SELECT path FROM photos WHERE path IN ({marks}) AND {vis_sql}", [*chunk, *vis_params]
+        yield from select_in_chunks(
+            conn, f"SELECT {_GPS_BATCH_COLUMNS} FROM photos WHERE path IN ({{placeholders}}) AND {vis_sql}",
+            paths, after=vis_params, chunk=400,
+        )
 
 
 @router.post("/api/photos/batch_gps", response_model=BatchGpsResponse)
@@ -277,11 +284,8 @@ def api_batch_gps(body: BatchGpsRequest, user: CurrentUser = Depends(require_edi
                 if (saved['latitude'], saved['longitude']) != (body.gps_latitude, body.gps_longitude):
                     raise places.PlaceError(409, 'Saved place coordinates changed')
             rows = []
-            for scope, params in _gps_batch_scopes(conn, body, user):
-                rows.extend(conn.execute(
-                    f"SELECT path, gps_latitude, gps_longitude, gps_manually_set FROM photos WHERE path IN ({scope}) ORDER BY path LIMIT 1001",
-                    params,
-                ).fetchall())
+            for row in _gps_batch_rows(conn, body, user):
+                rows.append(row)
                 if len(rows) > 1000:
                     raise HTTPException(status_code=412, detail="Select at most 1000 photos for location assignment")
             rows.sort(key=lambda row: row['path'])

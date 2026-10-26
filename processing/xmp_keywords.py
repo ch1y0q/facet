@@ -6,9 +6,11 @@ previously claimed names; they are not permission to remove arbitrary tags.
 """
 import json
 import unicodedata
+from collections.abc import Iterable
+from typing import Any
 
 
-def keyword_key(value):
+def keyword_key(value: str) -> str:
     return unicodedata.normalize('NFC', value).casefold()
 
 
@@ -28,7 +30,9 @@ def _valid_keyword_state(state):
     return True
 
 
-def parse_keyword_state(raw):
+def parse_keyword_state(raw: str | None) -> dict[str, Any] | None:
+    if raw is None:
+        return None
     try:
         state = json.loads(raw)
         return state if _valid_keyword_state(state) else None
@@ -36,7 +40,9 @@ def parse_keyword_state(raw):
         return None
 
 
-def reconcile_keywords(existing, current, previous=None, *, reconcile=False, ai=(), manual=()):
+def reconcile_keywords(existing: Iterable[str], current: Iterable[str], previous: dict[str, Any] | None = None, *,
+                       reconcile: bool = False, ai: Iterable[str] = (),
+                       manual: Iterable[str] = ()) -> tuple[list[str], dict[str, Any]]:
     """Return merged flat names and the next ownership marker.
 
     Additive writes retain previous ownership so a later explicit reconcile can
@@ -79,7 +85,7 @@ def reconcile_keywords(existing, current, previous=None, *, reconcile=False, ai=
                                   'manual': list(unique(manual).values())}
 
 
-def serialize_keyword_state(state):
+def serialize_keyword_state(state: dict[str, Any]) -> str:
     if not _valid_keyword_state(state):
         raise RuntimeError(
             'Facet keyword ownership exceeds its safe packet bounds '

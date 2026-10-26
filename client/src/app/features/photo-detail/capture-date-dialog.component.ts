@@ -1,6 +1,6 @@
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { NavigationStart, Router } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
+import { StalenessGuardFactory } from '../../core/services/staleness-guard.service';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
@@ -67,11 +67,9 @@ export class CaptureDateDialogComponent {
   private readonly dialog = inject(MatDialogRef<CaptureDateDialogComponent>);
   private readonly destroyRef = inject(DestroyRef);
   private readonly auth = inject(AuthService);
-  private readonly router = inject(Router);
   private readonly owner = this.auth.status();
-  private readonly url = this.router.url;
+  private readonly staleness = inject(StalenessGuardFactory).create(this.destroyRef, { track: 'status', onNavigate: () => this.invalidate() });
   private closing = false;
-  private navigated = false;
   private readonly target = this.data.filters
     ? { filters: structuredClone(this.data.filters), exclude: [...(this.data.exclude ?? [])] }
     : { photo_paths: [...this.data.paths], exclude: [...(this.data.exclude ?? [])] };
@@ -83,9 +81,6 @@ export class CaptureDateDialogComponent {
 
   constructor() {
     this.dialog.beforeClosed().pipe(takeUntilDestroyed()).subscribe(() => { this.closing = true; this.result.set(null); });
-    this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
-      if (event instanceof NavigationStart) { this.navigated = true; this.invalidate(); }
-    });
     effect(() => {
       if (this.auth.status() !== this.owner || !this.auth.isEdition()) this.invalidate();
     });
@@ -98,7 +93,7 @@ export class CaptureDateDialogComponent {
   }
 
   private current(): boolean {
-    return !this.closing && !this.navigated && !this.destroyRef.destroyed && this.auth.status() === this.owner && this.auth.isEdition() && this.router.url === this.url;
+    return !this.closing && this.staleness.current();
   }
 
   setOffset(value: number | null): void { this.offset.set(value); this.result.set(null); }

@@ -2606,6 +2606,11 @@ export const I18N = {
       recent: "export.jobs.recent",
       none: "export.jobs.none",
       read_failed: "export.jobs.read_failed",
+      errors: {
+        metadata_repair: "export.jobs.errors.metadata_repair",
+        write_failed: "export.jobs.errors.write_failed",
+        stopped: "export.jobs.errors.stopped",
+      },
     },
   },
   undo: {

@@ -24,7 +24,7 @@ import {
   DEFAULT_FILTERS, DISPLAY_OPTION_KEYS,
   GALLERY_MODE_KEY, DRAWER_STATE_KEY, CARD_WIDTH_KEY, GALLERY_SESSION_QUERY_KEY, LAST_SORT_KEY, RELEVANCE_SORT,
   loadDisplayOptionsFromStorage, saveDisplayOptionsToStorage,
-  countActiveFilters, applyQueryParams, applySavedAlbumFilters, buildSyncParams, buildApiParams,
+  countActiveFilters, reviewStatusPatch, setScopePatch, applyQueryParams, applySavedAlbumFilters, buildSyncParams, buildApiParams,
   buildViewFilterParams, viewFilterParamsEqual, anyHideToggleActive,
   seededSearchThreshold, buildByPathsFilters, BY_PATHS_MAX, semanticSortPatch, smartAlbumFilterJson, exclusiveHidePatch,
 } from './gallery-filters.util';
@@ -1530,10 +1530,7 @@ export class GalleryStore {
     else if (!isDisplayOnly && !GalleryStore.SORT_KEYS.has(key)) this.leaveTemporaryReview();
     const update = { [key]: value } as Partial<GalleryFilters>;
     const gpsPatch: Partial<GalleryFilters> = {};
-    const reviewPatch: Partial<GalleryFilters> = {};
-    if (key === 'review_status' && value) { reviewPatch.similar_to = ''; reviewPatch.semanticQuery = ''; }
-    else if ((key === 'semanticQuery' || key === 'similar_to') && value) reviewPatch.review_status = '';
-    if (key === 'review_status' && value === 'undecided') { reviewPatch.sort = 'date_taken'; reviewPatch.sort_direction = 'ASC'; }
+    const reviewPatch = reviewStatusPatch(update);
     if (key === 'no_gps' && value) {
       gpsPatch.gps_lat = ''; gpsPatch.gps_lng = ''; gpsPatch.gps_radius_km = '';
       gpsPatch.similar_to = ''; gpsPatch.semanticQuery = '';
@@ -1615,20 +1612,13 @@ export class GalleryStore {
    * pair and the `hide_panoramas` toggle.
    */
   async scopeToSet(photo: Photo, kind: CardSetKind): Promise<void> {
-    const updates: Partial<GalleryFilters> = {
-      sequence_group_id: '', sequence_kind: '', burst_group_id: '', duplicate_group_id: '',
-    };
+    let updates: Partial<GalleryFilters>;
     if (kind === 'burst' && photo.burst_group_id != null) {
-      updates.burst_group_id = String(photo.burst_group_id);
-      updates.hide_bursts = false;
+      updates = setScopePatch('burst', String(photo.burst_group_id));
     } else if (kind === 'duplicate' && photo.duplicate_group_id != null) {
-      updates.duplicate_group_id = String(photo.duplicate_group_id);
-      updates.hide_duplicates = false;
+      updates = setScopePatch('duplicate', String(photo.duplicate_group_id));
     } else if (kind === 'sequence' && photo.sequence_kind && photo.sequence_group_id != null) {
-      updates.sequence_kind = photo.sequence_kind;
-      updates.sequence_group_id = String(photo.sequence_group_id);
-      if (photo.sequence_kind === 'bracket') updates.hide_brackets = false;
-      else updates.hide_panoramas = false;
+      updates = setScopePatch('sequence', String(photo.sequence_group_id), photo.sequence_kind);
     } else {
       return;
     }
@@ -1657,10 +1647,7 @@ export class GalleryStore {
     const isDisplayOnly = keys.length > 0 && keys.every(key => this.isDisplayOnlyFilter(key));
     if (keys.some(key => !this.isDisplayOnlyFilter(key) && !GalleryStore.SORT_KEYS.has(key))) this.leaveTemporaryReview();
     const gpsPatch: Partial<GalleryFilters> = {};
-    const reviewPatch: Partial<GalleryFilters> = {};
-    if (updates.review_status) { reviewPatch.similar_to = ''; reviewPatch.semanticQuery = ''; }
-    else if (updates.semanticQuery || updates.similar_to) reviewPatch.review_status = '';
-    if (updates.review_status === 'undecided') { reviewPatch.sort = 'date_taken'; reviewPatch.sort_direction = 'ASC'; }
+    const reviewPatch = reviewStatusPatch(updates);
     if (updates.no_gps) {
       gpsPatch.gps_lat = ''; gpsPatch.gps_lng = ''; gpsPatch.gps_radius_km = '';
       gpsPatch.similar_to = ''; gpsPatch.semanticQuery = '';
@@ -2510,28 +2497,13 @@ export class GalleryStore {
 
   /** Sync current filters to URL query params */
   private syncUrl(): void {
-    const queryParams = buildSyncParams(
-      this.filters(), this.config()?.defaults, this.config()?.search_threshold_default,
-    );
-    try {
-      sessionStorage.setItem(GALLERY_SESSION_QUERY_KEY, JSON.stringify(queryParams));
-    } catch { /* storage unavailable: the nav return just falls back to defaults */ }
+    this.saveSessionQuery();
     this.router.navigate([], {
       queryParams: this.galleryQueryParams(),
       replaceUrl: true,
     });
   }
 
-  /**
-   * Snapshot the current filters' query form into sessionStorage for the
-   * nav-icon return. Called from syncUrl (every user-driven filter change)
-   * AND from loadConfig — an entry via a bookmarked or typed URL never runs
-   * syncUrl, and without this hook its filters would never reach the session
-   * memory: /?blinks_only=true → albums → nav return silently came back
-   * to the full library. A reset overwrites the stored set with the
-   * near-empty default diff, so "reset then leave then return" correctly
-   * comes back to defaults.
-   */
   /**
    * Snapshot the CURRENT filters' query form into sessionStorage for the
    * nav-icon return. Only the gallery itself calls this — its init (a URL

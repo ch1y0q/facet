@@ -22,6 +22,7 @@ All notable changes to Facet are documented in this file.
 - **Keep menu and selector keys inside their controls.** Gallery view shortcuts and photo rating shortcuts no longer intercept typing or keyboard navigation in menus, comboboxes and selection lists.
 - **Relink applies respect running library jobs.** Both relink command entry points hold the shared maintenance lock while applying a reviewed plan; read-only previews remain available while another job runs.
 - **Make export job controls clearer for assistive technology.** Refresh controls have distinct names, the viewed receipt is identified, and live announcements cover status changes rather than the entire progress panel.
+- **Translate sidecar export errors.** The export dialog showed the server's English error message in every language. Job status now carries a `first_error_code` that the dialog maps to a translated message; `first_error` keeps its English text for API and agent callers.
 - **Show the manual-face review filter chip.** The active filter can be removed above the gallery without clearing other filters.
 - **Keep review progress steady during updates.** Review rebuilds fetch counts once, retain the same-scope summary while loading, and announce updated counts without moving focus. Account or scope changes hide old counts immediately.
 - **Recover face exports after a temporary ExifTool version-check failure.** Failed checks are retried rather than disabling face writes until restart; known defective versions remain refused before any metadata write.
@@ -41,6 +42,7 @@ All notable changes to Facet are documented in this file.
 - **Include manual Keep and Reset in assistant activity context.** Successful gallery and photo-detail decisions now report `review` entries with `kept` or `undecided`; a late batch confirmation from another account cannot enter the current activity journal.
 - **Close right-click menus when opening a photo.** Parking the gallery now dismisses its shared photo context menu so it cannot remain over the photo page or reappear on Back.
 - **Complete the relink guide in every language.** The French, German, Italian, Spanish, Portuguese and Chinese pages now carry all of the English page's sections instead of a one-section summary; the command appears in the maintenance table of the command reference, which no longer repeats the option table, and the viewer guide notes that relinked face marks stay in review until saved again in the editor.
+- **Sidecar docs match what import and export do.** The `--import-sidecars` / `--export-sidecars` rows now state that Keep/Reject decisions and manual GPS travel too, that `--user` limits both to photos visible to that user, and what `--sidecar-fields` and `--overwrite-sidecar-review` select; `facet:KeywordState` and `facet:RegionOwner` join the namespace description. The duplicated receipt paragraphs live once in the interop guide, in all seven languages.
 
 ## [1.24.0] "Diaphragme" — 2026-10-26
 

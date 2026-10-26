@@ -957,6 +957,27 @@ describe('GalleryComponent', () => {
       expect(mockStore.applySessionQuery).not.toHaveBeenCalled();
     });
 
+    it('records its own filters in the session query after loadConfig on a plain init', async () => {
+      routeMock.snapshot.queryParams = {};
+      const order: string[] = [];
+      mockStore.loadConfig.mockImplementation(async () => { order.push('loadConfig'); });
+      mockStore.saveSessionQuery.mockImplementation(() => { order.push('saveSessionQuery'); });
+
+      await component.ngOnInit();
+
+      expect(order).toEqual(['loadConfig', 'saveSessionQuery']);
+    });
+
+    it('does not write the session query on an album route', async () => {
+      routeMock.snapshot.paramMap.get = vi.fn((k: string) => (k === 'albumId' ? '7' : null));
+      routeMock.snapshot.queryParams = {};
+
+      await component.ngOnInit();
+
+      expect(mockStore.loadConfig).toHaveBeenCalled();
+      expect(mockStore.saveSessionQuery).not.toHaveBeenCalled();
+    });
+
     it('does not consult the session query on an album route', async () => {
       routeMock.snapshot.paramMap.get = vi.fn((k: string) => (k === 'albumId' ? '7' : null));
       routeMock.snapshot.queryParams = {};

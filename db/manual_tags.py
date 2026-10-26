@@ -123,6 +123,20 @@ def merge_effective_tags(ai_tags, manual_tags, exclude=()):
     return ', '.join(merge_effective_tag_list(ai_tags, manual_tags, exclude)) or None
 
 
+def enrich_effective_tags(data, manual_map):
+    """Split ``data['tags']`` into AI and manual provenance, in place.
+
+    Sets ``manual_tags`` from ``manual_map`` (a ``load_manual_tags_map`` result),
+    keeps the tagger's string as ``ai_tags`` and rewrites ``tags`` to the merged
+    effective string. Shared by every sidecar exporter so they cannot drift.
+    """
+    manual = manual_map.get(data["path"], [])
+    data["manual_tags"] = manual
+    data["ai_tags"] = data["tags"]
+    data["tags"] = merge_effective_tags(data["tags"], manual)
+    return data
+
+
 def is_ai_tag(ai_tags, tag):
     """True when ``tag`` equals one whole token of the comma-joined ``photos.tags``."""
     key = tag.strip().casefold()
