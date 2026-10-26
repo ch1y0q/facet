@@ -18,6 +18,8 @@ import csv
 import shutil
 from pathlib import Path
 
+from lfw_common import read_people
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -27,22 +29,23 @@ def main() -> None:
     parser.add_argument("--per-person", type=int, default=3)
     args = parser.parse_args()
 
-    with open(args.photos / "people.csv", encoding="utf8") as handle:
-        people = list(csv.DictReader(handle))
+    people = read_people(args.photos / "people.csv")
     rows = []
-    for person in people:
-        folder = person["folder"]
+    for folder, person in people.items():
         name = folder.split("_", 1)[1]
         used = {p.name for p in (args.photos / folder).glob("*.jpg")}
         spares = [p for p in sorted((args.lfw / name).glob("*.jpg")) if p.name not in used]
         chosen = [(p, "spare") for p in spares[:args.per_person]]
+        if not chosen and not used:
+            print(f"skipped {folder}: no photos in the test library or LFW")
+            continue
         if not chosen:
             chosen = [(args.photos / folder / sorted(used)[0], "from_test_set")]
         dest = args.out / folder
         dest.mkdir(parents=True, exist_ok=True)
         for src, source in chosen:
             shutil.copy2(src, dest / src.name)
-            rows.append((folder, person["person"], src.name, source))
+            rows.append((folder, person, src.name, source))
     with open(args.out / "references.csv", "w", newline="", encoding="utf8") as handle:
         writer = csv.writer(handle)
         writer.writerow(["folder", "person", "photo", "source"])

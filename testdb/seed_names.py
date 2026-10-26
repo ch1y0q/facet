@@ -11,32 +11,30 @@ For every person, the largest face group made mostly of their known faces become
 reference and gets the name. Split-off groups, ungrouped faces and unknown faces stay
 unnamed, so Find more and the naming tools have real work to do.
 
+Safety: --apply only runs on the test library (every photo folder must be listed in
+people.csv) and never renames a person that already has a name other than an earlier
+run's "Person NN". Manual faces are left out of the answer key. Nothing is written
+without --apply or --score.
+
     python seed_names.py --db /app/data/photo_scores_pro.db            # report only
     python seed_names.py --db ... --apply                              # name references
     python seed_names.py --db ... --score                              # after testing
 
-Writes beside the DB: reference.csv (Person NN, real name, person id, faces in group)
-and answer_key.csv (face id, photo, known/unknown, expected name).
+Writes beside the DB: reference.csv (Person NN, real name, person id, faces in group,
+with --apply) and answer_key.csv (face id, photo, known/unknown, expected name).
 """
 
 import argparse
 import collections
 import csv
+import re
 import sqlite3
-from pathlib import Path, PurePosixPath, PureWindowsPath
+import sys
+from pathlib import Path
 
-# LFW photos are 250x250 and centred on the labelled person.
-LFW_CENTRE = 125
+from lfw_common import AUTO_FACES_SQL, centre_offset, photo_parts, read_people, split_primary
 
-
-def photo_parts(path):
-    """``(folder, file name)`` of a stored photo path, from any OS.
-
-    A database scanned on Windows stores Windows paths (drive letter, backslashes); read on Linux,
-    ``Path`` would not split it, so a backslash selects Windows path rules.
-    """
-    p = PureWindowsPath(path) if "\\" in path else PurePosixPath(path)
-    return p.parent.name, p.name
+SEEDED_NAME = re.compile(r"Person \d+")
 
 
 def folder_of(path):
@@ -51,21 +49,23 @@ def label(folder):
 def answer_key(conn):
     """``[(face_id, person_id, photo, role, expected)]``, role ``known`` or ``unknown``.
 
-    Per photo, the face whose box centre is nearest the image centre is the known one.
-    Unknown faces are numbered in photo order, one label per face: the bystanders'
-    identities are not in the data, so two faces of one bystander get two labels.
+    Per photo, the face nearest the image centre is the known one, if it is near enough
+    (``lfw_common.split_primary``); otherwise the detector missed the person and every
+    face in the photo is unknown. Unknown faces are numbered in photo order, one label
+    per face: the bystanders' identities are not in the data, so two faces of one
+    bystander get two labels. Manual faces are not part of the test.
     """
     by_photo = collections.defaultdict(list)
     for fid, pid, path, x1, y1, x2, y2 in conn.execute(
-            "SELECT id, person_id, photo_path, bbox_x1, bbox_y1, bbox_x2, bbox_y2 FROM faces"):
-        off = ((x1 + x2) / 2 - LFW_CENTRE) ** 2 + ((y1 + y2) / 2 - LFW_CENTRE) ** 2
-        by_photo[path].append((off, fid, pid))
+            "SELECT id, person_id, photo_path, bbox_x1, bbox_y1, bbox_x2, bbox_y2 FROM faces "
+            f"WHERE {AUTO_FACES_SQL}"):
+        by_photo[path].append((centre_offset(x1, y1, x2, y2), fid, pid))
     key, unknown = [], 0
     for path in sorted(by_photo):
-        faces = sorted(by_photo[path])
-        _, fid, pid = faces[0]
-        key.append((fid, pid, path, "known", label(folder_of(path))))
-        for _, fid, pid in sorted(faces[1:], key=lambda f: f[1]):
+        primary, bystanders = split_primary(by_photo[path])
+        if primary:
+            key.append((primary[1], primary[2], path, "known", label(folder_of(path))))
+        for _, fid, pid in sorted(bystanders, key=lambda f: f[1]):
             unknown += 1
             key.append((fid, pid, path, "unknown", f"Unknown {unknown:02d}"))
     return key
@@ -113,6 +113,8 @@ def score(conn, key):
         else:
             unknown["ok"] += 1
     nk, nu = sum(known.values()), sum(unknown.values())
+    missed = conn.execute("SELECT COUNT(*) FROM photos").fetchone()[0] - nk
+    print(f"photos whose person was not detected (no face near the centre): {missed}")
     print(f"known faces {nk}: right {known['right']}, wrong {known['wrong']}, unnamed {known['unnamed']} "
           f"({100 * known['right'] / max(nk, 1):.0f}% correctly named)")
     print(f"unknown faces {nu}: left unnamed/ignored {unknown['ok']}, wrongly given a person's name {unknown['named']}")
@@ -127,6 +129,29 @@ def score(conn, key):
         print(f"  {photo_parts(path)[1]}: {name!r} x{n}")
 
 
+def check_test_library(conn, people):
+    """Exit unless every photo folder in the database is a test-library folder."""
+    folders = {photo_parts(path)[0] for (path,) in conn.execute("SELECT path FROM photos")}
+    stray = sorted(folders - set(people))
+    if not folders or stray:
+        reason = "no photos" if not folders else "folders not in people.csv: " + ", ".join(stray[:5])
+        sys.exit(f"refusing --apply: this is not the test library ({reason})")
+
+
+def renameable(conn, pids):
+    """The persons among ``pids`` with no name or an earlier run's "Person NN"."""
+    names = dict(conn.execute("SELECT id, name FROM persons"))
+    return {pid for pid in pids
+            if not (names.get(pid) or "").strip() or SEEDED_NAME.fullmatch(names[pid].strip())}
+
+
+def write_answer_key(db, key):
+    with open(Path(db).with_name("answer_key.csv"), "w", newline="", encoding="utf8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["face_id", "photo", "role", "expected"])
+        writer.writerows((fid, path, role, expected) for fid, _, path, role, expected in key)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--db", required=True)
@@ -135,21 +160,21 @@ def main():
     ap.add_argument("--score", action="store_true", help="only score current names")
     args = ap.parse_args()
 
-    with open(args.people, encoding="utf8") as handle:
-        people = {row["folder"]: row["person"] for row in csv.DictReader(handle)}
+    people = read_people(args.people)
     conn = sqlite3.connect(args.db)
     key = answer_key(conn)
-    with open(Path(args.db).with_name("answer_key.csv"), "w", newline="", encoding="utf8") as handle:
-        writer = csv.writer(handle)
-        writer.writerow(["face_id", "photo", "role", "expected"])
-        writer.writerows((fid, path, role, expected) for fid, _, path, role, expected in key)
     if args.score:
+        write_answer_key(args.db, key)
         score(conn, key)
         return
 
     sizes = collections.Counter(pid for _, pid, _, _, _ in key if pid is not None)
     refs = references(groups(key), sizes)
     missing = sorted(set(people) - set(refs))
+    named = {pid for pid, _ in refs.values()} - renameable(conn, {pid for pid, _ in refs.values()})
+    for folder in sorted(f for f in refs if refs[f][0] in named):
+        print(f"skipped {label(folder)}: person #{refs[folder][0]} already has a name")
+        del refs[folder]
     rows = []
     for folder in sorted(refs):
         pid, n = refs[folder]
@@ -161,9 +186,14 @@ def main():
     if not args.apply:
         print("dry run: add --apply to name them")
         return
+    check_test_library(conn, people)
     with conn:
         for name, _, pid, _ in rows:
             conn.execute("UPDATE persons SET name = ? WHERE id = ?", (name, pid))
+        # The gallery filter's cached person list; the viewer's in-memory stats expire on
+        # their own (restart it to see the names at once).
+        conn.execute("DELETE FROM stats_cache WHERE key = 'persons'")
+    write_answer_key(args.db, key)
     with open(Path(args.db).with_name("reference.csv"), "w", newline="", encoding="utf8") as handle:
         writer = csv.writer(handle)
         writer.writerow(["name", "real_name", "person_id", "faces"])
