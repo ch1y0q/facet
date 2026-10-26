@@ -48,7 +48,7 @@ describe('MapComponent', () => {
       providers: [
         MapComponent,
         { provide: ApiService, useValue: mockApi },
-        { provide: I18nService, useValue: { t: (k: string) => k } },
+        { provide: I18nService, useValue: { t: (k: string) => k, translations: () => ({}), locale: () => 'en' } },
       ],
     });
     component = TestBed.inject(MapComponent);
@@ -233,6 +233,65 @@ describe('MapComponent', () => {
       mockApi.get.mockReturnValue(throwError(() => new Error('fail')));
       await component.loadMarkers();
       expect(component.loading()).toBe(false);
+    });
+  });
+
+  describe('empty state (no photos with a location)', () => {
+    function serve(count: number): void {
+      mockApi.get.mockImplementation((url: string) =>
+        url === '/photos/map/count' ? of({ count }) : of({ clusters: [], photos: [] }));
+    }
+
+    async function settle(): Promise<void> {
+      await vi.runOnlyPendingTimersAsync();
+      await Promise.resolve();
+    }
+
+    it('shows when the library has no geotagged photo at all', async () => {
+      serve(0);
+      component.initMap();
+      await settle();
+      expect(mockApi.get).toHaveBeenCalledWith('/photos/map/count');
+      expect(component.noGpsResults()).toBe(true);
+    });
+
+    it('stays hidden when only the current viewport is empty', async () => {
+      serve(12);
+      component.initMap();
+      await settle();
+      expect(component.noGpsResults()).toBe(false);
+    });
+
+    it('does not reappear when a pan lands on an empty area', async () => {
+      serve(12);
+      component.initMap();
+      await settle();
+      const [, onMoveEnd] = mockMap.on.mock.calls.find(call => call[0] === 'moveend') as [string, () => void];
+      onMoveEnd();
+      await settle();
+      expect(component.noGpsResults()).toBe(false);
+    });
+
+    it('stays hidden when the count cannot be read', async () => {
+      mockApi.get.mockImplementation((url: string) =>
+        url === '/photos/map/count' ? throwError(() => new Error('offline')) : of({ clusters: [], photos: [] }));
+      component.initMap();
+      await settle();
+      expect(component.noGpsResults()).toBe(false);
+    });
+
+    it('never captures the pointer, so the map under it still pans and zooms', () => {
+      const fixture = TestBed.createComponent(MapComponent);
+      (fixture.componentInstance as unknown as { noGpsResults: { set(v: boolean): void } }).noGpsResults.set(true);
+      fixture.detectChanges();
+      const icon = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('mat-icon'))
+        .find(el => el.textContent?.trim() === 'location_off') as HTMLElement;
+      expect(icon).toBeTruthy();
+      for (let el: HTMLElement | null = icon; el && el !== fixture.nativeElement; el = el.parentElement) {
+        expect(el.classList.contains('pointer-events-auto')).toBe(false);
+      }
+      expect(icon.closest('.pointer-events-none')).not.toBeNull();
+      fixture.destroy();
     });
   });
 

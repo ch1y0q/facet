@@ -1743,7 +1743,7 @@ python facet.py --recompute-tags-vlm   # 用 VLM 标签模型重新打标签
 | `low_light_max_luminance` | `0.2` | 弱光阈值 |
 | **defaults** | | |
 | `type` | `""` | 默认的照片类型筛选（例如 `"portraits"`、`"landscapes"`，或 `""` 表示全部） |
-| `sort` | `"aggregate"` | 默认排序列 |
+| `sort` | `"aggregate"` | 默认排序列。若此浏览器记住了上次在排序控件中选择的排序，照片库会改以该排序打开（参见[排序](VIEWER.md#排序)） |
 | `sort_direction` | `"DESC"` | 默认排序方向（`"ASC"` 或 `"DESC"`） |
 | `hide_blinks` | `true` | 默认隐藏闭眼照片 |
 | `hide_bursts` | `true` | 默认只显示连拍最佳照片 |

@@ -179,6 +179,8 @@ Filtrer par les motifs détectés par SAMP-Net (le modèle n'en émet que ces
 
 ## Tri
 
+**Tri mémorisé.** La galerie s'ouvre sur le dernier tri choisi dans le sélecteur de tri, et ce choix l'emporte sur `viewer.defaults.sort`. Il est mémorisé dans le `localStorage` par navigateur, et non par compte utilisateur. Seul un choix fait dans le sélecteur de tri est mémorisé : un tri qui arrive par un lien partagé ou un favori, ou qu'un assistant applique, change la vue sans être mémorisé, et le `sort` propre à un lien l'emporte toujours sur le tri mémorisé. Choisir de nouveau le tri par défaut configuré oublie ce choix, tout comme la réinitialisation des filtres. **Pertinence** n'est jamais mémorisé, car ce tri exige une requête de recherche.
+
 Les vitesses d'obturation sont triées par durée d'exposition en secondes, y compris
 les valeurs EXIF décimales et rationnelles : `1/250` et `0.004` sont égales. Les
 valeurs manquantes, malformées, nulles, négatives et non finies apparaissent en
@@ -739,6 +741,8 @@ Appuyez sur **`F`** (ou la bascule d'en-tête) pour piloter l'API Fullscreen du 
 
 Appuyez sur **`Z`** dans la vue unique de la visionneuse plein écran pour basculer une loupe à la manière de Photo Mechanic (ajusté ↔ 2× ; molette/`+`/`-` zoom jusqu'à 800%). Au-delà de l'échelle d'ajustement, le volet remplace sa vignette par la source `/image` pleine résolution, afin de juger la mise au point critique sur de vrais pixels sans quitter la vue. Sur la bande contact des Scènes, `Z` bascule une loupe de survol qui suit le curseur sur une tuile (provenant de l'image pleine résolution), avec un curseur de zoom ajustable. Les vignettes stockées sont plafonnées à 640px et la vue ajustée de la chambre noire affiche un rendu de l'original jusqu'à 1920px, donc la loupe est le moyen d'examiner les pixels au-delà. Les volets de la chambre noire et de la comparaison affichent d'abord la vignette stockée et passent au rendu net une fois chargé, de sorte qu'un volet n'affiche jamais une autre image. En vue unique, l'image suivante et la précédente sont préchargées (leurs vignettes aussitôt, leurs rendus une fois l'image courante nette), sauf si l'économiseur de données du navigateur est actif, auquel cas un pas peut afficher brièvement un volet vide. Un rendu qui ne peut pas démarrer sous 5 s est remplacé pendant 60 secondes par la vignette stockée, affichée comme si elle était nette.
 
+Une URL déjà chargée permet seulement de sauter le délai de préchargement : la vignette reste visible jusqu’au nouveau chargement du rendu par le navigateur. Si cette requête échoue, la vignette reste affichée et le focus peaking peut l’utiliser.
+
 **Loupe de survol de la chambre noire.** Séparément, un grossisseur circulaire suit le curseur sur l'image principale de la chambre noire — en vue unique et sur chaque volet de comparaison — en grossissant la source `/image` pleine résolution mappée sur l'image réellement encadrée, afin que la loupe montre exactement le pixel sous le curseur. La même loupe fonctionne aussi sur les recadrages en gros plan du panneau des visages. Un bouton de la barre d'outils l'active ou la désactive ; elle est activée par défaut et son choix est mémorisé dans `localStorage` par navigateur, pas par compte utilisateur. La loupe est masquée quand l'image est zoomée au-delà de l'ajustement, puisque cette vue montre déjà de vrais pixels et que le déplacement entrerait en conflit avec la loupe ; elle fonctionne en mode plein écran de la chambre noire et suit l'image quand vous naviguez avec `←`/`→` en survolant. Elle est distincte du bouton de loupe de la bande contact dans l'en-tête de tri.
 
 ### Badges par visage
@@ -911,9 +915,17 @@ Toutes les statistiques tiennent compte de l'utilisateur en mode multi-utilisate
 | `Shift+Click` | Sélection par plage des photos entre la dernière sélectionnée et celle cliquée |
 | `Double-click` | Ouvrir la photo |
 | `Shift+F10` / `Menu` | Ouvrir le menu contextuel de la carte de photo ayant le focus (le clic droit fait de même) |
+| `1`–`5` | Noter la photo ciblée de 1 à 5 étoiles (mode édition ; passe à la suivante) |
+| `F` | Mettre en favori / retirer des favoris la photo ciblée (mode édition) |
+| `X` ou `0` | Rejeter / annuler le rejet de la photo ciblée (mode édition ; passe à la suivante) |
+| `/` | Cibler le champ de recherche |
+| `B` | Afficher / masquer la barre latérale de filtres |
+| `V` | Basculer entre les dispositions grille et mosaïque |
 | `?` | Afficher la référence des raccourcis clavier (fonctionne sur chaque page) |
 
 La photo courante — celle sur laquelle agissent les raccourcis de note, de favori et de rejet — est marquée par un contour de 4px autour de sa carte ; toutes les autres cartes passent à 50% d'opacité. Rien n'est marqué tant que le curseur ne s'est pas réellement déplacé sur une photo des résultats, si bien qu'une galerie que vous n'avez pas encore parcourue reste à pleine intensité. Cliquer sur une photo y déplace le marqueur, si bien qu'un raccourci tapé juste après un clic s'applique à la photo cliquée, et non à celle où les flèches l'avaient laissé. Revenir d'une photo (Retour ou Échap) laisse le marqueur sur la dernière photo que vous y avez vue, si bien que les raccourcis reprennent à partir de là.
+
+**Sur la page photo**, `1`–`5`, `F` et `X` (ou `0`) notent, mettent en favori et rejettent la photo ouverte, aux mêmes conditions que les boutons de notation : mode édition, avec `viewer.features.show_rating_controls` activé. Contrairement à la galerie, ils ne passent jamais à une autre photo ; utilisez `←` `→` pour cela. La référence `?` les liste sous *Vue photo*.
 
 ## Annuler
 

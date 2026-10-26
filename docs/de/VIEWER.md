@@ -179,6 +179,8 @@ Nach von SAMP-Net erkannten Mustern filtern (das Modell liefert genau diese 8, a
 
 ## Sortierung
 
+**Gemerkte Sortierung.** Die Galerie öffnet mit der Sortierung, die Sie zuletzt im Sortierauswahlfeld gewählt haben, und diese Wahl hat Vorrang vor `viewer.defaults.sort`. Sie wird pro Browser im `localStorage` gespeichert, nicht pro Benutzerkonto. Nur eine Wahl im Sortierauswahlfeld wird gemerkt: Eine Sortierung, die über einen geteilten Link oder ein Lesezeichen ankommt oder die ein Assistent anwendet, ändert die Ansicht, ohne gemerkt zu werden, und das eigene `sort` eines Links hat weiterhin Vorrang vor der gemerkten. Wählen Sie erneut die konfigurierte Standardsortierung, wird die Wahl vergessen, ebenso beim Zurücksetzen der Filter. **Relevanz** wird nie gemerkt, da sie eine Suchanfrage voraussetzt.
+
 Verschlusszeiten werden nach Belichtungsdauer in Sekunden sortiert, einschließlich
 dezimaler und rationaler EXIF-Werte: `1/250` und `0.004` sind gleich. Fehlende,
 fehlerhafte, null, negative und nicht endliche Werte erscheinen in beiden
@@ -738,6 +740,8 @@ Drücken Sie **`F`** (oder den Header-Umschalter), um die Fullscreen-API des Bro
 
 Drücken Sie **`Z`** in der Einzelansicht-Lightbox, um eine Lupe im Photo-Mechanic-Stil umzuschalten (Einpassen ↔ 2×; Mausrad/`+`/`-`-Zoom bis 800%). Jenseits der Einpassen-Skalierung tauscht der Bereich sein Vorschaubild gegen die vollauflösende `/image`-Quelle, sodass Sie die kritische Schärfe an echten Pixeln beurteilen, ohne die Ansicht zu verlassen. Auf dem Kontaktstreifen der Szenen schaltet `Z` eine Hover-Lupe um, die dem Cursor über einer Kachel folgt (aus dem vollauflösenden Bild gespeist), mit einem einstellbaren Zoom-Regler. Gespeicherte Vorschaubilder sind auf 640px begrenzt und die Einpassen-Ansicht der Dunkelkammer zeigt ein aus dem Original gerendertes Bild mit bis zu 1920px, daher ist die Lupe der Weg, um darüber hinaus pixelgenau zu prüfen. Die Bereiche der Dunkelkammer und des Vergleichs zeigen zuerst das gespeicherte Vorschaubild und wechseln zum scharfen Rendering, sobald es geladen ist, sodass ein Bereich nie ein anderes Bild zeigt. In der Einzelansicht werden das nächste und das vorherige Bild vorab geladen (ihre Vorschaubilder sofort, ihre Renderings, sobald das aktuelle Bild scharf ist), außer bei aktivem Datensparmodus des Browsers, wo ein Schritt kurz einen leeren Bereich zeigen kann. Ein Rendering, das nicht binnen 5 s starten kann, wird 60 Sekunden lang durch das gespeicherte Vorschaubild ersetzt, das wie ein scharfes Bild angezeigt wird.
 
+Eine bereits geladene URL überspringt nur die Vorladeverzögerung: Das Vorschaubild bleibt sichtbar, bis der Browser das Rendering erneut geladen hat. Schlägt die Anfrage fehl, bleibt das Vorschaubild sichtbar und kann für Focus Peaking verwendet werden.
+
 **Dunkelkammer-Hover-Lupe.** Separat davon folgt eine kreisförmige Lupe dem Cursor über dem Hauptbild der Dunkelkammer — in der Einzelansicht und über jedem Vergleichsbereich — und vergrößert die vollauflösende `/image`-Quelle, abgebildet auf das tatsächlich eingepasste Bild, sodass die Lupe genau das Pixel unter dem Cursor zeigt. Dieselbe Lupe funktioniert auch über den Nahaufnahme-Ausschnitten des Gesichts-Panels. Ein Symbolleisten-Umschalter aktiviert oder deaktiviert sie; sie ist standardmäßig aktiviert und wird pro Browser in `localStorage` gespeichert, nicht pro Benutzerkonto. Die Lupe wird ausgeblendet, während das Bild über die Einpassen-Skalierung hinaus gezoomt ist, da diese Ansicht bereits echte Pixel zeigt und das Verschieben mit der Lupe kollidieren würde; sie funktioniert im Vollbildmodus der Dunkelkammer und folgt dem Bild, wenn Sie beim Hovern mit `←`/`→` weiterschalten. Sie ist getrennt vom eigenen Lupen-Umschalter des Kontaktstreifens im Kopf der Sortieransicht.
 
 ### Abzeichen pro Gesicht
@@ -910,9 +914,17 @@ Alle Statistiken sind im Mehrbenutzermodus benutzerbewusst — jeder Benutzer si
 | `Shift+Click` | Bereichsauswahl von Fotos zwischen zuletzt ausgewähltem und angeklicktem |
 | `Double-click` | Foto öffnen |
 | `Shift+F10` / `Menu` | Kontextmenü der fokussierten Fotokarte öffnen (der Rechtsklick tut dasselbe) |
+| `1`–`5` | Sterne 1–5 für das Fokusfoto vergeben (Bearbeitungsmodus; springt zum nächsten Foto) |
+| `F` | Fokusfoto favorisieren / Favorit entfernen (Bearbeitungsmodus) |
+| `X` oder `0` | Fokusfoto verwerfen / Verwerfung aufheben (Bearbeitungsmodus; springt weiter) |
+| `/` | Suchfeld fokussieren |
+| `B` | Filterseitenleiste ein-/ausblenden |
+| `V` | Zwischen Raster- und Mosaiklayout wechseln |
 | `?` | Die Tastenkürzel-Referenz anzeigen (funktioniert auf jeder Seite) |
 
 Das aktuelle Foto — das, auf das die Tastenkürzel für Sternebewertung, Favorit und Ablehnen wirken — ist mit einer 4px breiten Umrandung um seine Karte markiert; alle anderen Karten werden auf 50 % Deckkraft abgedunkelt. Markiert wird erst, wenn der Cursor sich tatsächlich auf ein Foto in den Ergebnissen bewegt hat, sodass eine noch nicht durchgeblätterte Galerie in voller Stärke bleibt. Ein Klick auf ein Foto verschiebt die Markierung darauf, sodass ein direkt nach einem Klick getipptes Tastenkürzel das angeklickte Foto trifft und nicht das, wo die Pfeiltasten zuletzt standen. Die Rückkehr von einem Foto (Zurück oder Esc) lässt die Markierung auf dem zuletzt angesehenen Foto, sodass die Tastenkürzel von dort aus weiterarbeiten.
+
+**Auf der Fotoseite** bewerten, favorisieren und verwerfen `1`–`5`, `F` und `X` (oder `0`) das geöffnete Foto, unter denselben Bedingungen wie die Bewertungsschaltflächen: Bearbeitungsmodus, mit aktiviertem `viewer.features.show_rating_controls`. Anders als in der Galerie springen sie nie zu einem anderen Foto; dafür gibt es `←` `→`. Die `?`-Referenz führt sie unter *Fotoansicht* auf.
 
 ## Rückgängig
 
