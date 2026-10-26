@@ -70,7 +70,8 @@ class TestMappers:
     def test_show_rejected_false_is_the_normal_listing_not_unsupported(self):
         patch, reason = show.search_patch({"show_rejected": False, "camera": "Canon"}, None, None)
         assert reason is None and "show_rejected" not in patch
-        assert show.search_patch({"show_rejected": True}, None, None)[1]["keys"] == ["show_rejected"]
+        patch, reason = show.search_patch({"show_rejected": True}, None, None)
+        assert reason is None and patch["show_rejected"] is True
 
     @pytest.mark.parametrize("ignored", [
         {"is_silhouette": False}, {"exclude_tags": ""}, {"require_tags": "  "},
@@ -104,6 +105,20 @@ class TestSearchRelay:
         shown = result["shown_in_tab"]
         assert shown["applied"] is True and shown["tab_id"] == "tab-1" and shown["total"] == 7
         assert "min_aesthetic" in shown["keys"] and "filters" not in shown
+
+    def test_rejected_search_reaches_the_tab_with_the_same_positive_filter(self, agent_app, fake_tab, seed_photos_prefix):
+        seed_photos_prefix(PREFIX, [{**row, "is_rejected": int(i == 1)} for i, row in enumerate(ROWS)])
+        env = agent_app("open")
+        tab = fake_tab(env, None, reply=reply_total(1))
+        result = env.call(env.token(env.login()), "search_photos", {
+            "filters": {"path_prefix": PREFIX, "show_rejected": True}})
+        assert result["ok"] is True
+        assert [photo["path"] for photo in result["data"]["rows"]] == [ROWS[1]["path"]]
+        assert result["shown_in_tab"]["applied"] is True
+        assert len(tab.calls) == 1
+        assert tab.calls[0]["tool"] == "ui_set_gallery_filters"
+        assert tab.calls[0]["args"]["patch"]["show_rejected"] is True
+        assert tab.calls[0]["args"]["replace"] is True
 
     def test_a_tab_on_the_comparison_page_is_left_alone(self, agent_app, fake_tab, photos):
         env = agent_app("open")

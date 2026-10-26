@@ -272,3 +272,10 @@ def test_every_agents_doc_lists_the_same_error_codes_and_modal_open(lang):
     assert codes(DOCS / lang / "AGENTS.md") == english
     reasons = next(row for row in (DOCS / lang / "AGENTS.md").read_text().splitlines() if '{"applied": false, "reason"}' in row)
     assert "modal_open" in reasons
+
+
+def test_rejected_only_patch_preserves_explicit_review_status():
+    from api.agent.ui_tools import UiSetGalleryFilters
+    assert UiSetGalleryFilters.model_validate({"patch": {
+        "show_rejected": True, "review_status": "kept"}}).forward() == {
+            "patch": {"show_rejected": True, "review_status": "kept"}, "replace": False}

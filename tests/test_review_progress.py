@@ -81,3 +81,19 @@ def test_review_progress_semantic_gate_never_counts_the_whole_library(edition_cl
         with mock.patch("api.routers.search._encode_text", side_effect=side_effect):
             response = edition_client.get("/api/photos/review_progress", params=params)
     assert response.status_code == status, response.text
+
+
+@pytest.mark.parametrize("status, expected", [(None, "rejected"), ("kept", "kept"),
+    ("undecided", "undecided"), ("rejected", "rejected")])
+def test_explicit_review_status_precedes_rejected_toggles(edition_client, seed_photos_prefix, status, expected):
+    prefix = "/review-filter-precedence/"
+    seed_photos_prefix(prefix, [{"path": prefix + state + ".jpg", "filename": state + ".jpg",
+        "is_kept": int(state == "kept"), "is_rejected": int(state == "rejected")}
+        for state in ["undecided", "kept", "rejected"]])
+    params = {"path_prefix": prefix, "show_rejected": "true", "hide_rejected": "true"}
+    if status is not None:
+        params["review_status"] = status
+    response = edition_client.get("/api/photos", params=params)
+    assert response.status_code == 200, response.text
+    assert response.json()["total"] == 1
+    assert [photo["path"] for photo in response.json()["photos"]] == [prefix + expected + ".jpg"]

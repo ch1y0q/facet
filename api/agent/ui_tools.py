@@ -70,7 +70,7 @@ class UiArgs(BaseModel):
 # offering them would only earn the agent an `invalid_input`; `search_photos` covers them.
 TAB_UNSUPPORTED_FILTER_KEYS = frozenset({
     "exclude_tags", "require_tags", "is_silhouette", "junk_kind", "narrative_moment",
-    "min_rating", "min_aggregate", "show_rejected",
+    "min_rating", "min_aggregate",
 })
 # The contract names a filter the way the server's `GalleryParams` does; the tab's store keeps a few under
 # another name. Python is canonical: the client's own table is checked against the emitted JSON.
@@ -170,7 +170,8 @@ class UiSetGalleryFilters(UiArgs):
         description="Filters to change, keyed like the `search_photos` filters plus `sort` and "
                     "`sort_direction`. A key set to null removes that filter. Filters the gallery "
                     "sidebar has no field for (tag include/exclude lists, rating, aggregate, "
-                    "silhouette, junk, moment, rejected) are not offered: use `search_photos`.")
+                    "silhouette, junk, moment) are not offered: use `search_photos`. "
+                    "Explicit `review_status` takes precedence over `show_rejected` and `hide_rejected`.")
     replace: bool = Field(default=False, description="true: reset every other filter first.")
 
     def forward(self) -> dict:

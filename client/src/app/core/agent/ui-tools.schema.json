@@ -1549,6 +1549,16 @@
                   "null"
                 ]
               },
+              "show_rejected": {
+                "description": "Gallery filter `show_rejected`.",
+                "type": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
               "similar_to": {
                 "description": "Show the photos similar to the photo at this path. Cannot be combined with `semantic_query`.",
                 "type": [
@@ -2102,5 +2112,5 @@
       "name": "ui_show_comparison"
     }
   ],
-  "version": "9133467bcc2c7d0e"
+  "version": "82c67fd6fb8f32ce"
 }
