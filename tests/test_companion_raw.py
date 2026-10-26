@@ -426,12 +426,12 @@ def test_cached_companion_deleted_since_is_looked_up_again(tmp_path, monkeypatch
         return str(candidate)
 
     monkeypatch.setattr(raw_processing, '_companion_entry_path', entry_path)
-    raw = tmp_path / 'shot.CR2'
+    raw = tmp_path / 'shot.cr2'
     raw.write_bytes(b'RAW fixture')
     assert raw_processing._find_companion_raw_cached('shot', str(tmp_path), ('.cr2', '.nef')) == str(raw)
     raw.unlink()
     assert raw_processing._find_companion_raw_cached('shot', str(tmp_path), ('.cr2', '.nef')) is None
-    other = tmp_path / 'shot.NEF'
+    other = tmp_path / 'shot.nef'
     other.write_bytes(b'other RAW fixture')
     raw_processing._companion_raw_cache.clear()
     assert raw_processing._find_companion_raw_cached('shot', str(tmp_path), ('.cr2', '.nef')) == str(other)
