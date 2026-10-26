@@ -65,7 +65,7 @@ def _config(remote, directory):
     return {'immich': {
         'url': remote.url, 'api_key': 'fixture-key', 'timeout_seconds': 3,
         'owner_id': 'owner-a', 'library_id': 'library-a',
-        'path_map': [{'facet_prefix': str(directory) + '/', 'immich_prefix': '/remote/'}],
+        'path_map': [{'facet_prefix': str(directory) + os.sep, 'immich_prefix': '/remote/'}],
         'push': {'ratings': True, 'favorites': True, 'top_picks_album': ''},
         'webhook': {'token_env': 'FACET_TEST_DELIVERY_TOKEN', 'header': 'x-facet-token'},
     }}
@@ -94,7 +94,7 @@ def delivery(tmp_path, remote, monkeypatch, seed_photos_prefix):
     paths = {name: str(directory / (name + '.jpg')) for name in ('bad', 'good')}
     for path in paths.values():
         Path(path).write_bytes(b'untouched original')
-    seed_photos_prefix(str(directory) + '/', [dict(path=path, filename=Path(path).name,
+    seed_photos_prefix(str(directory) + os.sep, [dict(path=path, filename=Path(path).name,
                        star_rating=4, is_favorite=1, aggregate=8) for path in paths.values()])
     monkeypatch.setitem(config._FULL_CONFIG, 'immich', _config(remote, directory)['immich'])
     monkeypatch.setenv('FACET_TEST_DELIVERY_TOKEN', 'fixture-webhook-secret')
