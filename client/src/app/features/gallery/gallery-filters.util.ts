@@ -297,14 +297,57 @@ export function applySavedAlbumFilters(current: GalleryFilters, savedJson: strin
  *  `hide_rejected` and list fewer photos than it holds). */
 export function exclusiveHidePatch(updates: Partial<GalleryFilters>): Partial<GalleryFilters> {
   const patch: Partial<GalleryFilters> = {};
-  if (updates.hide_rejected) patch.favorites_only = false;
-  if (updates.favorites_only) patch.hide_rejected = false;
+  if (updates.hide_rejected) {
+    patch.favorites_only = false;
+    patch.show_rejected = false;
+  }
+  if (updates.favorites_only) {
+    patch.hide_rejected = false;
+    patch.show_rejected = false;
+  }
   // "Only rejected" is the inverse reading of "hide rejected": the two never
   // hold together, and neither does a favourites-only view of rejects.
-  if (updates.show_rejected) patch.hide_rejected = false;
-  if (updates.show_rejected) patch.favorites_only = false;
-  if (updates.hide_rejected) patch.show_rejected = false;
-  if (updates.favorites_only) patch.show_rejected = false;
+  if (updates.show_rejected) {
+    patch.hide_rejected = false;
+    patch.favorites_only = false;
+  }
+  return patch;
+}
+
+/** The review-status rules every filter write applies: a review status and a semantic/similar
+ *  query are mutually exclusive (the one just set wins), and entering "undecided" sorts oldest
+ *  first so the queue reads in shooting order. Shared by `updateFilter`, `updateFilters` and
+ *  `applyQueryParams`; the last passes `withSort = false` because a URL carries its own sort. */
+export function reviewStatusPatch(updates: Partial<GalleryFilters>, withSort = true): Partial<GalleryFilters> {
+  const patch: Partial<GalleryFilters> = {};
+  if (updates.review_status) { patch.similar_to = ''; patch.semanticQuery = ''; }
+  else if (updates.semanticQuery || updates.similar_to) patch.review_status = '';
+  if (withSort && updates.review_status === 'undecided') { patch.sort = 'date_taken'; patch.sort_direction = 'ASC'; }
+  return patch;
+}
+
+/** The filters that scope the gallery to one photo set, clearing any other set scope first (a
+ *  photo can belong to a burst AND a duplicate group at once, and only one scope can be active)
+ *  and releasing the hide toggle that would collapse the set's members. `sequenceKind` is the
+ *  `(sequence_kind, sequence_group_id)` kind for bracket / panorama / hdr_panorama. */
+export function setScopePatch(
+  kind: 'burst' | 'duplicate' | 'sequence', groupId: string, sequenceKind = '',
+): Partial<GalleryFilters> {
+  const patch: Partial<GalleryFilters> = {
+    sequence_group_id: '', sequence_kind: '', burst_group_id: '', duplicate_group_id: '',
+  };
+  if (kind === 'burst') {
+    patch.burst_group_id = groupId;
+    patch.hide_bursts = false;
+  } else if (kind === 'duplicate') {
+    patch.duplicate_group_id = groupId;
+    patch.hide_duplicates = false;
+  } else {
+    patch.sequence_kind = sequenceKind;
+    patch.sequence_group_id = groupId;
+    if (sequenceKind === 'bracket') patch.hide_brackets = false;
+    else patch.hide_panoramas = false;
+  }
   return patch;
 }
 
@@ -531,7 +574,7 @@ export function applyQueryParams(
     if (params[key]) (result as Record<string, unknown>)[key] = params[key];
   }
   if (!['', 'undecided', 'kept', 'rejected'].includes(result.review_status)) result.review_status = '';
-  if (result.review_status) { result.similar_to = ''; result.semanticQuery = ''; }
+  if (result.review_status) Object.assign(result, reviewStatusPatch(result, false));
   result.no_gps = ['1', 'true'].includes(result.no_gps) ? '1' : '';
   if (result.no_gps) {
     result.gps_lat = ''; result.gps_lng = ''; result.gps_radius_km = '';

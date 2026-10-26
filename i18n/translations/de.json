@@ -1624,7 +1624,10 @@
       "sequences": "Belichtungsreihen werden erkannt",
       "tagging": "Verschlagwortung",
       "vec": "Indizierung",
-      "done": "Fertig"
+      "done": "Fertig",
+      "moments": "Momente erkennen",
+      "junk": "Unerwünschte Fotos erkennen",
+      "recompute": "Bewertungen neu berechnen"
     },
     "title": "Fotos scannen",
     "start_button": "Scan starten",
@@ -2588,7 +2591,12 @@
       "refresh": "Status aktualisieren",
       "recent": "Letzte Sidecar-Exporte",
       "none": "Keine letzten Sidecar-Exporte.",
-      "read_failed": "Exportfortschritt nicht lesbar. Aktualisieren Sie den Status erneut."
+      "read_failed": "Exportfortschritt nicht lesbar. Aktualisieren Sie den Status erneut.",
+      "errors": {
+        "metadata_repair": "Vorhandene Metadaten müssen vor dem Export repariert werden.",
+        "write_failed": "Metadaten konnten nicht geschrieben werden. Prüfen Sie die Serverprotokolle.",
+        "stopped": "Der Export wurde unerwartet beendet. Prüfen Sie die Serverprotokolle und wiederholen Sie die übrigen Fotos."
+      }
     }
   },
   "undo": {

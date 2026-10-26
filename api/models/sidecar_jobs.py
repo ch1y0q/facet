@@ -16,6 +16,7 @@ class SidecarJobStatus(BaseModel):
     skipped: int = Field(ge=0, le=10000)
     errors: int = Field(ge=0, le=10000)
     first_error: str | None = None
+    first_error_code: Literal['metadata_repair', 'write_failed', 'stopped'] | None = None
     cancel_requested: bool = False
 
 

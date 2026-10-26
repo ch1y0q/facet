@@ -789,3 +789,33 @@ def fake_tab(monkeypatch):
     yield make
     for tab in tabs:
         tab.stop()
+
+
+LITERAL_KEYWORD_NAMES = ['true', 'false', 'null', '1.50', '1e3', '2024']
+
+
+@pytest.fixture()
+def seed_keywords():
+    """Factory: ``seed_keywords(targets, names=None, *extra)`` writes ``names`` as
+    ``XMP-dc:Subject`` on each target with the real ExifTool (``extra`` are more
+    exiftool arguments) and returns the names.
+
+    The default names are the ones an ExifTool JSON read would coerce to
+    booleans / numbers / null, so a round trip must preserve their spelling.
+    """
+    import subprocess
+
+    def seed(targets, names=None, *extra):
+        names = list(LITERAL_KEYWORD_NAMES if names is None else names)
+        for target in targets:
+            subprocess.run(['exiftool', '-overwrite_original', *[f'-XMP-dc:Subject={name}' for name in names],
+                            *extra, str(target)], check=True, capture_output=True)
+        return names
+
+    return seed
+
+
+def added_region(args):
+    """The first ``-XMP-mwg-rs:RegionList+=`` JSON value in an exiftool argv, decoded."""
+    addition = next(arg for arg in args if arg.startswith('-XMP-mwg-rs:RegionList+='))
+    return json.loads(addition.split('=', 1)[1])

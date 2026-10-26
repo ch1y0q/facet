@@ -223,6 +223,14 @@ describe('GalleryFilterSidebarComponent', () => {
       expect(component.sectionActiveCounts()['refine']).toBe(3);
     });
 
+    it('counts manual_faces_need_review once in the refine section', () => {
+      const mockStore = (component as any).store;
+      mockStore.filters.set({ ...mockStore.filters(), hide_rejected: false });
+      const before = component.sectionActiveCounts()['refine'];
+      mockStore.filters.set({ ...mockStore.filters(), manual_faces_need_review: true });
+      expect(component.sectionActiveCounts()['refine']).toBe(before + 1);
+    });
+
     it('counts active metric filters by min/max key', () => {
       const mockStore = (component as any).store;
       mockStore.filters.set({ ...mockStore.filters(), min_score: '7', min_aesthetic: '6' });
@@ -511,6 +519,19 @@ describe('GalleryFilterSidebarComponent', () => {
       expect(control.closest('mat-expansion-panel')?.textContent).toContain('gallery.sidebar.persons');
       (control.querySelector('input') as HTMLInputElement).click();
       expect(mockStore['updateFilter']).toHaveBeenCalledWith('faces_need_names', true);
+    });
+
+    it.each([false, true])('renders the manual-face review checkbox only for edition (edition=%s)', edition => {
+      const auth = TestBed.inject(AuthService);
+      vi.mocked(auth.isEdition).mockReturnValue(edition);
+      fixture.detectChanges();
+      const controls = Array.from(fixture.nativeElement.querySelectorAll('mat-checkbox')) as HTMLElement[];
+      const control = controls.find(el => el.textContent?.includes('gallery.manual_faces_need_review'));
+      expect(!!control).toBe(edition);
+      if (control) {
+        (control.querySelector('input') as HTMLInputElement).click();
+        expect(mockStore['updateFilter']).toHaveBeenCalledWith('manual_faces_need_review', true);
+      }
     });
 
     it.each([false, true])('describes face naming using actions available in edition=%s', edition => {

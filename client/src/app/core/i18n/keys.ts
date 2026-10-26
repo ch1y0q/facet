@@ -1639,6 +1639,9 @@ export const I18N = {
       tagging: "scan.phase.tagging",
       vec: "scan.phase.vec",
       done: "scan.phase.done",
+      moments: "scan.phase.moments",
+      junk: "scan.phase.junk",
+      recompute: "scan.phase.recompute",
     },
     title: "scan.title",
     start_button: "scan.start_button",
@@ -2603,6 +2606,11 @@ export const I18N = {
       recent: "export.jobs.recent",
       none: "export.jobs.none",
       read_failed: "export.jobs.read_failed",
+      errors: {
+        metadata_repair: "export.jobs.errors.metadata_repair",
+        write_failed: "export.jobs.errors.write_failed",
+        stopped: "export.jobs.errors.stopped",
+      },
     },
   },
   undo: {

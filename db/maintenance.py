@@ -1048,7 +1048,8 @@ def export_viewer_db(source_db='photo_scores_pro.db', output_path=None, thumbnai
 
     # A copied database may contain an older active row alongside a deletion
     # learned from another deployment. UUID deletion wins in full copies too.
-    if dst_conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='manual_face_deletions'").fetchone():
+    from db.schema import table_exists
+    if table_exists(dst_conn, 'manual_face_deletions'):
         from db.manual_faces import prune_deleted_manual_faces
         from db.person_carry_over import refresh_person_counts
         refresh_person_counts(dst_conn, prune_deleted_manual_faces(dst_conn))
@@ -1077,7 +1078,7 @@ def export_viewer_db(source_db='photo_scores_pro.db', output_path=None, thumbnai
 
     # Receipt authority and private source paths belong to this database only.
     # Keep its schema/triggers usable, but start a fresh viewer with no records.
-    if dst_conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='photo_metadata_edits'").fetchone():
+    if table_exists(dst_conn, 'photo_metadata_edits'):
         dst_conn.execute('DELETE FROM photo_metadata_edits')
         dst_conn.commit()
 

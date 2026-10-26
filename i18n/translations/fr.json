@@ -1624,7 +1624,10 @@
       "sequences": "Détection des bracketings",
       "tagging": "Étiquetage",
       "vec": "Indexation",
-      "done": "Terminé"
+      "done": "Terminé",
+      "moments": "Détection des moments",
+      "junk": "Détection des photos indésirables",
+      "recompute": "Recalcul des scores"
     },
     "title": "Scanner les photos",
     "start_button": "Lancer le scan",
@@ -2588,7 +2591,12 @@
       "refresh": "Actualiser l’état",
       "recent": "Exports récents de sidecars",
       "none": "Aucun export récent de sidecars.",
-      "read_failed": "Impossible de lire la progression. Actualisez l’état pour réessayer."
+      "read_failed": "Impossible de lire la progression. Actualisez l’état pour réessayer.",
+      "errors": {
+        "metadata_repair": "Les métadonnées existantes doivent être réparées avant l’export.",
+        "write_failed": "Impossible d’écrire les métadonnées. Consultez les journaux du serveur.",
+        "stopped": "L’export s’est arrêté de façon inattendue. Consultez les journaux du serveur et relancez les photos restantes."
+      }
     }
   },
   "undo": {

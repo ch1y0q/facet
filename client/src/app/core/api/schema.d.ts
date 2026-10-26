@@ -8350,6 +8350,8 @@ export interface components {
             errors: number;
             /** First Error */
             first_error?: string | null;
+            /** First Error Code */
+            first_error_code?: ("metadata_repair" | "write_failed" | "stopped") | null;
             /** Id */
             id: string;
             /** Processed */

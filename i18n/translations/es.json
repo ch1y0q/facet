@@ -1624,7 +1624,10 @@
       "sequences": "Detectando horquillados",
       "tagging": "Etiquetado",
       "vec": "Indexación",
-      "done": "Hecho"
+      "done": "Hecho",
+      "moments": "Detectando momentos",
+      "junk": "Detectando fotos no deseadas",
+      "recompute": "Recalculando puntuaciones"
     },
     "title": "Escanear fotos",
     "start_button": "Iniciar escaneo",
@@ -2588,7 +2591,12 @@
       "refresh": "Actualizar estado",
       "recent": "Exportaciones recientes de sidecars",
       "none": "No hay exportaciones recientes de sidecars.",
-      "read_failed": "No se pudo leer el progreso. Actualiza el estado para comprobarlo."
+      "read_failed": "No se pudo leer el progreso. Actualiza el estado para comprobarlo.",
+      "errors": {
+        "metadata_repair": "Los metadatos existentes deben repararse antes de exportar.",
+        "write_failed": "No se pudieron escribir los metadatos. Revisa los registros del servidor.",
+        "stopped": "La exportación se detuvo inesperadamente. Revisa los registros del servidor y reintenta las fotos restantes."
+      }
     }
   },
   "undo": {

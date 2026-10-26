@@ -390,3 +390,11 @@ def test_scan_heals_the_stored_stat_after_a_metadata_only_rewrite(edition_client
         pytest.fail('A healed mark was decoded again on the next scan')
     monkeypatch.setattr(frames, 'load_image_for_face_crop', forbidden)
     assert list(validate_review_paths(DEFAULT_DB_PATH, [identity_photo]).values()) == [True]
+
+
+def test_relink_unverified_identity_is_never_current_even_with_a_matching_stat(identity_photo):
+    from utils import manual_face_frame as frames
+    stored = frames.source_identity(identity_photo)
+    assert frames.is_current(identity_photo, stored) is True
+    unverified = json.dumps({**json.loads(stored), 'relink_unverified': True}, separators=(',', ':'))
+    assert frames.is_current(identity_photo, unverified) is False

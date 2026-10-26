@@ -1,6 +1,7 @@
 """Manual face marks use canonical pixels, real schema, and transactional writes."""
 import base64
 import json
+import os
 from io import BytesIO
 import sqlite3
 from uuid import uuid4
@@ -459,3 +460,18 @@ def test_unavailable_editor_validation_flags_mark_and_rechecks_visibility(editio
         return False
     monkeypatch.setattr(module, '_current', revoked)
     assert edition_client.get('/api/photo/manual-faces', params={'path': manual_photo}).status_code == 404
+
+
+@pytest.mark.parametrize('value, filtered', [('1', True), ('true', True), ('0', False), ('false', False), ('', False)])
+def test_review_filter_accepts_only_one_and_true(edition_client, manual_photo, seed_photos_prefix, value, filtered):
+    region = edition_client.post('/api/photo/manual-faces', json=payload(edition_client, manual_photo)).json()
+    library = os.path.dirname(manual_photo)
+    other = os.path.join(library, 'clean.jpg')
+    seed_photos_prefix(library, [{'path': other, 'filename': 'clean.jpg'}])
+    with get_db() as conn, conn:
+        conn.execute('UPDATE faces SET manual_review_required=1 WHERE id=?', (region['id'],))
+    response = edition_client.get('/api/photos', params={'manual_faces_need_review': value, 'path_prefix': library})
+    assert response.status_code == 200, response.text
+    paths = {p['path'] for p in response.json()['photos']}
+    assert manual_photo in paths
+    assert (other not in paths) is filtered
