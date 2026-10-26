@@ -520,3 +520,30 @@ def test_background_export_keeps_precondition_details_private_and_recovers(editi
     assert recovered['first_error'] is None
     assert parse_sidecar(str(companion))['star_rating'] == 4
     assert [image.read_bytes() for image in images] == originals
+
+
+def test_old_receipt_errors_stay_private_across_public_endpoints(edition_client):
+    from api.database import DEFAULT_DB_PATH
+
+    response = edition_client.post('/api/export/sidecar_jobs', json={'paths': ['/missing-receipt-photo.jpg']})
+    assert response.status_code == 202, response.text
+    job_id = response.json()['id']
+    path = jobs._path(DEFAULT_DB_PATH, job_id)
+    owner = jobs._read(path)['owner']
+    _done(DEFAULT_DB_PATH, job_id, owner)
+    # Simulate a receipt written before batch exception strings were sanitized.
+    state = jobs._read(path)
+    state.update(first_error='Cannot write /private/server/secret.jpg', skipped=0, errors=1)
+    jobs._write(path, state)
+    before = path.read_bytes()
+    status = edition_client.get(f'/api/export/sidecar_jobs/{job_id}')
+    recent = edition_client.get('/api/export/sidecar_jobs')
+    cancelled = edition_client.post(f'/api/export/sidecar_jobs/{job_id}/cancel')
+    for response in (status, recent, cancelled):
+        assert response.status_code == 200, response.text
+        assert '/private/server/' not in response.text
+    returned = [status.json(), next(row for row in recent.json() if row['id'] == job_id), cancelled.json()]
+    for row in returned:
+        assert row['first_error'] == 'Failed to write metadata; check server logs'
+        assert (row['written'], row['errors'], row['skipped']) == (0, 1, 0)
+    assert path.read_bytes() == before
