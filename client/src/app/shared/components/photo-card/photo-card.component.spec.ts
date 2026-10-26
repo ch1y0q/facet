@@ -1109,3 +1109,88 @@ describe('PhotoCardComponent configured hover actions', () => {
     expect(emitted).toEqual([{ photo: makePhoto({ duplicate_group_id: 7 }), kind: 'duplicate' }]);
   });
 });
+
+describe('PhotoCardComponent action button dispatch', () => {
+  const mockI18n = { t: vi.fn((key: string) => key), currentLang: vi.fn(() => 'en'), locale: vi.fn(() => 'en'), translations: vi.fn(() => ({})) };
+
+  function makeCard(photoOverrides: Partial<Photo>, cardActions: CardActionsConfig, edition = false, features: Record<string, boolean> = {}) {
+    const f = TestBed.createComponent(PhotoCardComponent);
+    f.componentRef.setInput('photo', makePhoto(photoOverrides));
+    f.componentRef.setInput('cardActions', cardActions);
+    f.componentRef.setInput('isEditionMode', edition);
+    f.componentRef.setInput('config', { features } as never);
+    f.detectChanges();
+    return f;
+  }
+
+  function topRowIcons(f: ComponentFixture<PhotoCardComponent>): string[] {
+    const row = f.nativeElement.querySelector('.absolute.inset-x-0.top-0 > div');
+    return [...row.querySelectorAll('button mat-icon')].map(i => i.textContent!.trim());
+  }
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [PhotoCardComponent],
+      providers: [{ provide: I18nService, useValue: mockI18n }],
+    }).compileComponents();
+  });
+
+  it('emits openDetailClicked with the photo from the open_detail button', () => {
+    const f = makeCard({}, { order: ['open_detail'], hidden: [] });
+    const card = f.debugElement.children[0].componentInstance as PhotoCardComponent;
+    const emitted: Photo[] = [];
+    card.openDetailClicked.subscribe(p => emitted.push(p));
+    (f.nativeElement.querySelector('.absolute.inset-x-0.top-0 > div:first-child button') as HTMLButtonElement).click();
+    expect(emitted).toEqual([makePhoto({})]);
+  });
+
+  it('shows the embed button only in edition mode with the feature on', () => {
+    const cfg: CardActionsConfig = { order: ['embed'], hidden: [] };
+    expect(topRowIcons(makeCard({}, cfg, true, { show_embed_metadata: true }))).toEqual(['save']);
+    expect(topRowIcons(makeCard({}, cfg, false, { show_embed_metadata: true }))).toEqual([]);
+    expect(topRowIcons(makeCard({}, cfg, true, {}))).toEqual([]);
+  });
+
+  it('emits embedMetadataClicked and openAddPersonClicked from their buttons', () => {
+    const cfg: CardActionsConfig = { order: ['embed', 'assign_face'], hidden: [] };
+    const f = makeCard({ unassigned_faces: 2 }, cfg, true, { show_embed_metadata: true });
+    const card = f.debugElement.children[0].componentInstance as PhotoCardComponent;
+    const embed: Photo[] = [];
+    const assign: Photo[] = [];
+    card.embedMetadataClicked.subscribe(p => embed.push(p));
+    card.openAddPersonClicked.subscribe(p => assign.push(p));
+    const buttons = f.nativeElement.querySelectorAll('.absolute.inset-x-0.top-0 > div:first-child button') as NodeListOf<HTMLButtonElement>;
+    expect(buttons).toHaveLength(2);
+    buttons[0].click();
+    expect(embed).toEqual([card.photo()]);
+    expect(assign).toEqual([]);
+    buttons[1].click();
+    expect(embed).toHaveLength(1);
+    expect(assign).toEqual([card.photo()]);
+  });
+
+  it('shows assign_face in edition mode on a photo with unassigned faces, never outside it', () => {
+    const cfg: CardActionsConfig = { order: ['assign_face'], hidden: [] };
+    expect(topRowIcons(makeCard({ unassigned_faces: 1 }, cfg, true))).toEqual(['person_add']);
+    expect(topRowIcons(makeCard({ unassigned_faces: 1 }, cfg, false))).toEqual([]);
+    expect(topRowIcons(makeCard({ unassigned_faces: 0 }, cfg, true))).toEqual([]);
+  });
+
+  it('emits critique and the burst and sequence set kinds', () => {
+    const cfg: CardActionsConfig = { order: ['critique', 'burst_set', 'sequence_set'], hidden: [] };
+    const f = makeCard({ burst_group_id: 3, sequence_kind: 'bracket', sequence_group_id: 5 }, cfg, false, { show_critique: true });
+    const card = f.debugElement.children[0].componentInstance as PhotoCardComponent;
+    const critique: Photo[] = [];
+    const sets: string[] = [];
+    card.openCritiqueClicked.subscribe(p => critique.push(p));
+    card.openSetClicked.subscribe(e => sets.push(e.kind));
+    const buttons = f.nativeElement.querySelectorAll('.absolute.inset-x-0.top-0 > div:first-child button') as NodeListOf<HTMLButtonElement>;
+    buttons[0].click();
+    expect(critique).toEqual([card.photo()]);
+    expect(sets).toEqual([]);
+    buttons[1].click();
+    buttons[2].click();
+    expect(critique).toHaveLength(1);
+    expect(sets).toEqual(['burst', 'sequence']);
+  });
+});

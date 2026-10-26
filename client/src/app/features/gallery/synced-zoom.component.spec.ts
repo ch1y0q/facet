@@ -411,6 +411,34 @@ describe('SyncedZoomComponent', () => {
       expect(imgEl(f).getAttribute('src')).toBe('/render-a.jpg');
     });
 
+    it('stays on the thumbnail when a warm-looking image has zero natural width', () => {
+      class BrokenWarmImage extends FakeImage {
+        complete = true;
+        naturalWidth = 0;
+      }
+      vi.stubGlobal('Image', BrokenWarmImage);
+      const loaded = new LoadedSources();
+      loaded.add('/render-a.jpg');
+      const f = makeProgressive({ loadedSources: loaded });
+      expect(imgEl(f).getAttribute('src')).toBe('/thumb-a.jpg');
+    });
+
+    it('keeps the thumbnail and reports failure when a LoadedSources-hinted preload errors', () => {
+      const loaded = new LoadedSources();
+      loaded.add('/render-a.jpg');
+      const f = TestBed.createComponent(SyncedZoomComponent);
+      const inputs: Record<string, unknown> = {
+        src: '/render-a.jpg', placeholderSrc: '/thumb-a.jpg', frameKey: 'a', zoom: FIT_ZOOM, loadedSources: loaded };
+      for (const [k, v] of Object.entries(inputs)) f.componentRef.setInput(k, v);
+      const failed: string[] = [];
+      f.componentInstance.sharpFailed.subscribe(s => failed.push(s));
+      f.detectChanges();
+      FakeImage.instances[0].onerror!();
+      f.detectChanges();
+      expect(imgEl(f).getAttribute('src')).toBe('/thumb-a.jpg');
+      expect(failed).toEqual(['/render-a.jpg']);
+    });
+
     it('records a fetched render so a later pane can skip the debounce', () => {
       const loaded = new LoadedSources();
       const f = makeProgressive({ loadedSources: loaded });

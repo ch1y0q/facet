@@ -817,8 +817,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly outlet = inject(RouterOutlet, { optional: true });
   private readonly changeDetector = inject(ChangeDetectorRef);
   private parked = false;
-  // Detaching loses the DOM scroll position and focus.
   private resumeNavigation = 0;
+  // Detaching loses the DOM scroll position and focus.
   private returnTo: { scroll: number; focus: Element | null; path: string | null;
     anchor: { offset: number; width: number; height: number } | null } | null = null;
   private readonly api = inject(ApiService);
