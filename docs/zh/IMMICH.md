@@ -94,7 +94,7 @@ Immich ≥ 3.0 允许你限定密钥的权限范围，而不必把一切都授�
 
 ## 第 3 步 —— 映射路径
 
-你共享的每个根目录添加一对。第一个 `facet_prefix` 与照片匹配的配对胜出：
+你共享的每个根目录添加一对。第一个字面字符串前缀匹配胜出；不会推断目录边界。目录前缀请以 `/` 结尾，并将较窄的映射放在较宽的映射之前：
 
 ```json
 "immich": {
@@ -130,7 +130,7 @@ python facet.py --immich-sync --dry-run
 python facet.py --immich-sync
 ```
 
-同步会报告 `matched` / `unmatched` / `updated` / `skipped (unrated)` 以及创建的相册数。首次运行时 `unmatched` 数量很大，几乎总是意味着路径映射有误——见[故障排查](#故障排查)。
+同步会报告 `matched` / `unmatched` / `updated` / `skipped (unrated)` / `identity_conflicts` 以及创建的相册数。首次运行时 `unmatched` 数量很大，几乎总是意味着路径映射有误——见[故障排查](#故障排查)。 试运行中，`updated` 表示已验证的计划更新数；不会写入远程数据或本地同步状态。
 
 会被推送的内容：
 
@@ -337,6 +337,10 @@ Facet 只会为它确实推送过的照片发送清除；这份记忆保存在 F
 
 同一路径对应多个远程资产 ID，或多个 Facet 路径映射到同一远程路径时，Facet 会拒绝写入并计入 `identity_conflicts`。这些路径不会更新评分、收藏、相册成员或已确认的同步状态；无歧义的照片仍可同步。请修正目录映射或明确设置 `owner_id` 和 `library_id` 后重试。
 
+身份检查使用配置的服务器 URL 和 API 密钥。响应必须包含 `id` 和 `originalPath`，且返回的所有者和图库字段必须符合已选范围。Webhook 提供的 ID 会通过读取该资产，并搜索该精确路径的所有结果页来验证；重复路径、ID 不符或分页无效都会阻止更新。成功响应只确认 HTTP 请求已接受，元数据任务可能仍在等待处理。
+
+Webhook 批次中，若不同 Facet 路径指向同一映射目标或远程 ID，相关条目都会被拒绝。所有身份均在首次写入前解析；矛盾的别名计为 `failed`，不更新已确认的推送状态。
+
 ### `rating: 0 is not valid`
 
 Immich 服务器版本低于 3.0。请升级——Facet 的清除语义需要 `null`，`push.rejected` 需要 `-1`；在 2.x 上没有任何可行的回退方案。
@@ -344,7 +348,3 @@ Immich 服务器版本低于 3.0。请升级——Facet 的清除语义需要 `n
 ---
 
 **参见：**[命令 —— Immich 同步](COMMANDS.md#immich-同步) · [配置](CONFIGURATION.md) · [编辑器互操作方案](INTEROP.md)，了解与 Lightroom、darktable 和 digiKam 的 XMP 往返。
-
-前缀仍按字面字符串匹配：第一个匹配项生效，不自动判断目录边界；目录前缀请以 `/` 结尾。试运行中 `updated` 表示计划更新数，不写入远程数据或本地同步状态。响应必须包含 `id` 和 `originalPath`。此契约仅通过已发布的 Immich v3.3.5 模式及隔离夹具验证，未连接真实服务器；HTTP 成功不代表元数据后台任务完成后仍然持久保存。
-
-Webhook 批次中，若不同 Facet 路径指向同一映射目标或远程 ID，相关条目都会被拒绝。所有身份均在首次写入前解析；矛盾的别名计为 `failed`，不更新已确认的推送状态。

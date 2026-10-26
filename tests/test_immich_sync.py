@@ -590,6 +590,10 @@ class TestBatchedPush:
             if method == "GET":
                 asset_id = path.rsplit("/", 1)[-1]
                 return {"id": asset_id, "originalPath": "/p/" + asset_id[3:] + ".jpg"}
+            if method == "POST" and path == "/api/search/metadata":
+                original_path = payload["originalPath"]
+                return {"assets": {"items": [{"id": "id-" + original_path.rsplit('/', 1)[-1][:-4],
+                                                "originalPath": original_path}], "nextPage": None}}
             if method == "PUT" and payload["ids"] == ['id-boom']:
                 raise urllib.error.URLError("connection refused")
             return None
@@ -1034,6 +1038,11 @@ class TestAssetIdentity:
             if method == 'GET':
                 asset_id = path.rsplit('/', 1)[-1]
                 return {'id': asset_id, 'originalPath': '/p/safe.jpg' if asset_id == 'safe' else '/p/a.jpg'}
+            if method == 'POST' and path == '/api/search/metadata':
+                original_path = payload['originalPath']
+                ids = ['safe'] if original_path == '/p/safe.jpg' else ['one', 'two']
+                return {'assets': {'items': [{'id': asset_id, 'originalPath': original_path} for asset_id in ids],
+                                   'nextPage': None}}
             writes.append((method, path, payload))
 
         monkeypatch.setattr(ImmichClient, '_request', request)

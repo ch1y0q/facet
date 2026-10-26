@@ -246,9 +246,13 @@ class TestKnownScoredAsset:
             {"ids": ["asset-scored"], "rating": 4, "isFavorite": True}
         ]
 
-    def test_payload_asset_id_is_verified_without_a_search(self, client, immich_cfg, transport):
-        _post(client, _asset(SCORED, asset_id="asset-scored"))
-        assert transport.searches() == []
+    def test_payload_asset_id_is_verified_and_unique_before_update(self, client, immich_cfg, transport):
+        response = _post(client, _asset(SCORED, asset_id="asset-scored"))
+        assert response.status_code == 202
+        assert response.json()['pushed'] == 1
+        assert ('GET', '/api/assets/asset-scored', None) in transport.requests
+        assert transport.searches() == [{"originalPath": _immich_path(SCORED), "page": 1, "withStacked": True}]
+        assert transport.asset_updates() == [{"ids": ["asset-scored"], "rating": 4, "isFavorite": True}]
 
     def test_missing_asset_id_falls_back_to_a_path_search(self, client, immich_cfg, transport):
         _post(client, _asset(SCORED))
@@ -476,3 +480,103 @@ class TestDeliveryBatching:
         assert calls["save_pending"] == 1
         assert calls["save_state"] == 0
         assert load_pending_paths(DB_PATH) == unknown
+
+
+@pytest.mark.parametrize('bad_search', ['duplicate', 'invalid-pagination'])
+def test_hint_does_not_bypass_path_identity_validation(client, immich_cfg, monkeypatch, bad_search):
+    fake = FakeTransport()
+    def request(_self, method, path, payload=None):
+        if method == 'POST' and path == '/api/search/metadata':
+            fake.requests.append((method, path, payload))
+            if bad_search == 'invalid-pagination':
+                return {'assets': {'items': [{'id': 'asset-scored', 'originalPath': _immich_path(SCORED)}],
+                                   'nextPage': 'not-a-page'}}
+            page = payload['page']
+            return {'assets': {'items': [{'id': 'asset-scored' if page == 1 else 'duplicate',
+                                         'originalPath': _immich_path(SCORED)}],
+                               'nextPage': '2' if page == 1 else None}}
+        return fake(method, path, payload)
+    monkeypatch.setattr(ImmichClient, '_request', request)
+    response = _post(client, _asset(SCORED, asset_id='asset-scored'))
+    assert response.status_code == 202, response.text
+    assert response.json()['failed'] == 1
+    assert response.json()['pushed'] == response.json()['pending'] == 0
+    assert fake.asset_updates() == []
+    assert [item['page'] for item in fake.searches()] == ([1, 2] if bad_search == 'duplicate' else [1])
+    with sqlite3.connect(DB_PATH) as conn:
+        assert conn.execute("SELECT value FROM stats_cache WHERE key LIKE 'immich_synced_paths:%'").fetchone() is None
+
+
+def test_hint_library_mismatch_refuses_before_mutation(client, immich_cfg, monkeypatch):
+    immich_cfg['library_id'] = 'intended-library'
+    fake = FakeTransport()
+    def request(_self, method, path, payload=None):
+        if method == 'GET':
+            fake.requests.append((method, path, payload))
+            return {'id': 'asset-scored', 'originalPath': _immich_path(SCORED), 'libraryId': 'different-library'}
+        return fake(method, path, payload)
+    monkeypatch.setattr(ImmichClient, '_request', request)
+    response = _post(client, _asset(SCORED, asset_id='asset-scored'))
+    assert response.status_code == 202
+    assert response.json()['failed'] == 1
+    assert response.json()['pushed'] == 0
+    assert fake.requests == [('GET', '/api/assets/asset-scored', None)]
+    with sqlite3.connect(DB_PATH) as conn:
+        assert conn.execute("SELECT value FROM stats_cache WHERE key LIKE 'immich_synced_paths:%'").fetchone() is None
+
+
+@pytest.mark.parametrize('next_page', [2.9, 2.0, True, False, {}, [], '', '2.9', '+2', ' 2', '²', '２'])
+def test_hinted_webhook_rejects_non_page_cursors(client, immich_cfg, monkeypatch, next_page):
+    fake = FakeTransport()
+    def request(_self, method, path, payload=None):
+        if method == 'POST' and path == '/api/search/metadata':
+            fake.requests.append((method, path, payload))
+            return {'assets': {'items': [{'id': 'asset-scored', 'originalPath': _immich_path(SCORED)}],
+                               'nextPage': next_page if payload['page'] == 1 else None}}
+        return fake(method, path, payload)
+    monkeypatch.setattr(ImmichClient, '_request', request)
+    response = _post(client, _asset(SCORED, asset_id='asset-scored'))
+    assert response.status_code == 202
+    assert response.json()['failed'] == 1
+    assert response.json()['pushed'] == 0
+    assert fake.asset_updates() == []
+    assert [item['page'] for item in fake.searches()] == [1]
+    with sqlite3.connect(DB_PATH) as conn:
+        assert conn.execute("SELECT value FROM stats_cache WHERE key LIKE 'immich_synced_paths:%'").fetchone() is None
+
+
+@pytest.mark.parametrize('search_id', [None, 'different-id'])
+def test_hint_requires_same_id_in_exact_path_search(client, immich_cfg, monkeypatch, search_id):
+    fake = FakeTransport()
+    def request(_self, method, path, payload=None):
+        if method == 'POST' and path == '/api/search/metadata':
+            fake.requests.append((method, path, payload))
+            items = [{'id': search_id, 'originalPath': _immich_path(SCORED)}] if search_id else []
+            return {'assets': {'items': items, 'nextPage': None}}
+        return fake(method, path, payload)
+    monkeypatch.setattr(ImmichClient, '_request', request)
+    response = _post(client, _asset(SCORED, asset_id='asset-scored'))
+    assert response.status_code == 202
+    assert response.json()['failed'] == 1
+    assert response.json()['pushed'] == 0
+    assert fake.asset_updates() == []
+    with sqlite3.connect(DB_PATH) as conn:
+        assert conn.execute("SELECT value FROM stats_cache WHERE key LIKE 'immich_synced_paths:%'").fetchone() is None
+
+
+@pytest.mark.parametrize('next_page', [2, '2'])
+def test_hint_search_accepts_legacy_integer_and_string_pages(client, immich_cfg, monkeypatch, next_page):
+    fake = FakeTransport()
+    def request(_self, method, path, payload=None):
+        if method == 'POST' and path == '/api/search/metadata':
+            fake.requests.append((method, path, payload))
+            return {'assets': {'items': [{'id': 'asset-scored', 'originalPath': _immich_path(SCORED)}],
+                               'nextPage': next_page if payload['page'] == 1 else None}}
+        return fake(method, path, payload)
+    monkeypatch.setattr(ImmichClient, '_request', request)
+    response = _post(client, _asset(SCORED, asset_id='asset-scored'))
+    assert response.status_code == 202
+    assert response.json()['pushed'] == 1
+    assert response.json()['failed'] == 0
+    assert [item['page'] for item in fake.searches()] == [1, 2]
+    assert fake.asset_updates() == [{'ids': ['asset-scored'], 'rating': 4, 'isFavorite': True}]

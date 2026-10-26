@@ -94,7 +94,7 @@ The key is sent as an `x-api-key` header on every request. Put it in `scoring_co
 
 ## Step 3 — map the paths
 
-Add one pair per root you share. The first literal string prefix match wins; directory boundaries are not inferred. This existing behavior is unchanged. End directory prefixes with `/`, and place narrow mappings before broad mappings:
+Add one pair per root you share. The first literal string prefix match wins; directory boundaries are not inferred. End directory prefixes with `/`, and place narrow mappings before broad mappings:
 
 ```json
 "immich": {
@@ -337,6 +337,10 @@ Facet only sends a clear for a photo it has actually pushed before; that memory 
 
 Facet refuses a path that resolves to multiple remote asset IDs, including matches on later search pages, and refuses multiple selected Facet paths mapping onto one remote path. These are reported as `identity_conflicts`; no rating, favorite, album membership or confirmed push-state update is made for those paths. Unambiguous photos can still sync. Resolve overlapping roots or select the intended remote `owner_id` and `library_id`, then retry. Never assume owner identity from a person's name or from the path alone.
 
+Identity checks use the configured server URL and API key. Responses must include `id` and `originalPath`; configured owner/library scopes must match response fields. A webhook-supplied ID is verified by fetching that asset and searching all pages for the same exact path: a duplicate path, mismatched ID or invalid pagination prevents the update. A successful update response confirms HTTP acceptance; queued metadata work may still be pending.
+
+Webhook batches also refuse every eligible entry when different Facet paths claim the same mapped target or remote ID. All identities are resolved before any update; inconsistent aliases count as `failed` and do not advance confirmed push state.
+
 ### `rating: 0 is not valid`
 
 The Immich server is older than 3.0. Upgrade — Facet's clear semantics need `null`, and `push.rejected` needs `-1`; there is no fallback that works on 2.x.
@@ -344,7 +348,3 @@ The Immich server is older than 3.0. Upgrade — Facet's clear semantics need `n
 ---
 
 **See also:** [Commands — Immich Sync](COMMANDS.md#immich-sync) · [Configuration](CONFIGURATION.md) · [Editor Interop Recipes](INTEROP.md) for XMP round-tripping with Lightroom, darktable, and digiKam.
-
-Identity checks use the configured server URL and API key; asset responses have no separate server identifier. Search responses must include `id` and `originalPath`. Owner/library scope is checked locally against response fields rather than mixing deprecated flat search fields with newer filter/cursor syntax. This contract was checked against released Immich v3.3.5 source and isolated fixtures, without a live server round trip. A successful update response confirms HTTP acceptance, not completion of queued sidecar jobs or metadata durability after refresh. See the [released asset response schema](https://github.com/immich-app/immich/blob/8303cb117e197c700332b33b61b45314c9cc5bb4/server/src/dtos/asset-response.dto.ts) and [search schema](https://github.com/immich-app/immich/blob/8303cb117e197c700332b33b61b45314c9cc5bb4/server/src/dtos/search.dto.ts).
-
-Webhook batches also refuse every eligible entry when different Facet paths claim the same mapped target or remote ID. All identities are resolved before any update; inconsistent aliases count as `failed` and do not advance confirmed push state.
