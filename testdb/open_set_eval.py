@@ -18,12 +18,22 @@ Reads only; Facet's database is not changed.
 import argparse
 import collections
 import csv
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import cv2
 import numpy as np
 
 LFW_CENTRE = 125
+
+
+def photo_parts(path):
+    """``(folder, file name)`` of a stored photo path, from any OS.
+
+    A database scanned on Windows stores Windows paths (drive letter, backslashes); read on Linux,
+    ``Path`` would not split it, so a backslash selects Windows path rules.
+    """
+    p = PureWindowsPath(path) if "\\" in path else PurePosixPath(path)
+    return p.parent.name, p.name
 
 
 def unit(v):
@@ -32,7 +42,7 @@ def unit(v):
 
 
 def enroll(refs_dir, max_refs):
-    """{folder: unit mean embedding}, plus the test-set photos used as references."""
+    """{folder: unit mean embedding}, plus the test-set photos used as references, as (folder, file)."""
     from insightface.app import FaceAnalysis
     app = FaceAnalysis(name="buffalo_l", providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
     app.prepare(ctx_id=0, det_size=(640, 640))
@@ -51,7 +61,7 @@ def enroll(refs_dir, max_refs):
         face = min(faces, key=lambda f: ((f.bbox[0] + f.bbox[2]) / 2 - w / 2) ** 2 + ((f.bbox[1] + f.bbox[3]) / 2 - h / 2) ** 2)
         per_person[row["folder"]].append(unit(face.embedding))
         if row["source"] == "from_test_set":
-            excluded.add(f"/data/photos/{row['folder']}/{row['photo']}")
+            excluded.add((row["folder"], row["photo"]))
     return {k: unit(np.mean(v, axis=0)) for k, v in per_person.items()}, excluded
 
 
@@ -67,7 +77,7 @@ def test_faces(db):
     photos = [p for p in conn.execute("SELECT path FROM photos")]
     out = []
     for path, faces in by_photo.items():
-        folder = Path(path).parts[3]
+        folder = photo_parts(path)[0]
         faces.sort(key=lambda f: f[0])
         out.append((path, "primary", folder, faces[0][1]))
         out.extend((path, "bystander", folder, f[1]) for f in faces[1:])
@@ -79,7 +89,7 @@ def sweep(people, faces, excluded, thresholds):
     matrix = np.stack([people[n] for n in names])
     best = []
     for path, role, folder, emb in faces:
-        if path in excluded:
+        if photo_parts(path) in excluded:
             continue
         sims = matrix @ emb
         i = int(np.argmax(sims))

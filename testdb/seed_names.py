@@ -23,16 +23,25 @@ import argparse
 import collections
 import csv
 import sqlite3
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 # LFW photos are 250x250 and centred on the labelled person.
 LFW_CENTRE = 125
 
 
+def photo_parts(path):
+    """``(folder, file name)`` of a stored photo path, from any OS.
+
+    A database scanned on Windows stores Windows paths (drive letter, backslashes); read on Linux,
+    ``Path`` would not split it, so a backslash selects Windows path rules.
+    """
+    p = PureWindowsPath(path) if "\\" in path else PurePosixPath(path)
+    return p.parent.name, p.name
+
+
 def folder_of(path):
-    """LFW folder (NN_Name) of a photo path under /data/photos."""
-    parts = Path(path).parts
-    return parts[parts.index("photos") + 1]
+    """LFW folder (NN_Name) of a photo path: its parent folder, whatever the root."""
+    return photo_parts(path)[0]
 
 
 def label(folder):
@@ -100,7 +109,7 @@ def score(conn, key):
                 known["wrong"] += 1
         elif name and pid not in hidden and not name.lower().startswith("unknown"):
             unknown["named"] += 1
-            wrong_unknown.append((expected, fid, name, Path(path).name))
+            wrong_unknown.append((expected, fid, name, photo_parts(path)[1]))
         else:
             unknown["ok"] += 1
     nk, nu = sum(known.values()), sum(unknown.values())
@@ -115,7 +124,7 @@ def score(conn, key):
         "ORDER BY f.photo_path").fetchall()
     print(f"photos with one name on two or more faces (always wrong): {len(twice)}")
     for path, name, n in twice:
-        print(f"  {Path(path).name}: {name!r} x{n}")
+        print(f"  {photo_parts(path)[1]}: {name!r} x{n}")
 
 
 def main():
