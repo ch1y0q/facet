@@ -979,6 +979,8 @@ All stats are user-aware in multi-user mode — each user sees analytics for the
 
 ## Keyboard Shortcuts (Gallery)
 
+Single-key gallery and photo shortcuts stay inactive while focus is in a text field, menu or selection list, leaving those keys to the focused control.
+
 | Key | Action |
 |-----|--------|
 | `←` `→` `↑` `↓` | Move the current-photo marker between photo cards (grid columns and mosaic rows) |

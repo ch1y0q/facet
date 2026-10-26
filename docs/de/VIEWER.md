@@ -910,6 +910,8 @@ Alle Statistiken sind im Mehrbenutzermodus benutzerbewusst — jeder Benutzer si
 
 ## Tastenkürzel (Galerie)
 
+Galerie- und Fotokürzel ohne Zusatztaste bleiben inaktiv, solange der Fokus in einem Textfeld, Menü oder einer Auswahlliste liegt; die Tasten gehören dann dem fokussierten Steuerelement.
+
 | Taste | Aktion |
 |-----|--------|
 | `←` `→` `↑` `↓` | Tastaturfokus zwischen Fotokarten bewegen (Rasterspalten und Mosaikzeilen) |

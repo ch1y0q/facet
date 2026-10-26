@@ -911,6 +911,8 @@ Toutes les statistiques tiennent compte de l'utilisateur en mode multi-utilisate
 
 ## Raccourcis clavier (galerie)
 
+Les raccourcis à une seule touche de la galerie et des photos restent inactifs lorsque le focus est dans un champ de texte, un menu ou une liste de sélection ; les touches restent réservées au contrôle actif.
+
 | Touche | Action |
 |-----|--------|
 | `←` `→` `↑` `↓` | Déplacer le marqueur de la photo courante entre les cartes de photo (colonnes de grille et lignes de mosaïque) |
