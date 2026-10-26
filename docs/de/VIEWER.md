@@ -1602,6 +1602,8 @@ Die Kamera-Uhrzeit wird ohne Ableitung von Zeitzone oder Sommerzeit verschoben. 
 
 Originale und Dateiänderungszeiten bleiben unberührt. Der ausdrückliche XMP-Export schreibt `exif:DateTimeOriginal` für manuelle Daten; das ausdrückliche Einbetten schreibt zusätzlich EXIF `DateTimeOriginal` bei unterstützten Formaten, ohne andere EXIF-Datumsfelder zu ändern. Serien- und Sequenzgruppen bleiben erhalten; für neue Gruppen den vorhandenen Scan bzw. die Gruppenerkennung ausdrücklich starten.
 
+Das Zurücksetzen wiederholt den Versuch bei kurzzeitiger Datenbanksperre. Bleibt die Bibliothek belegt, antwortet es mit HTTP 503 (`library_busy`) und `Retry-After`; andere Datenbankfehler ergeben HTTP 500 ohne interne Details. Eine fehlgeschlagene Datenbanktransaktion bewahrt das manuelle Datum und fügt keinen Verlaufseintrag hinzu.
+
 ## Änderungsverlauf
 
 Öffnen Sie im Bearbeitungsmodus **Änderungsverlauf** über die Galerie oder Fotodetails. Klappen Sie einen Eintrag für den Vorher/Nachher-Vergleich auf und wählen Sie **Diesen Eintrag zurücksetzen**. Orte und Daten gelten gemeinsam; Entscheidungen, Sterne und Favoriten nutzen Ihre Kontoeinstellungen. Dateien und Gesichtserkennung sind ausgeschlossen. Originale bleiben unverändert. Kurzzeitiges Rückgängigmachen und Assistentenaktivität bleiben getrennt.

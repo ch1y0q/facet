@@ -1601,6 +1601,8 @@ Si sposta l’ora locale della fotocamera senza dedurre fuso orario o ora legale
 
 Originali e date di modifica dei file rimangono invariati. L’esportazione XMP esplicita scrive `exif:DateTimeOriginal` per date manuali; la scrittura esplicita nel file aggiunge EXIF `DateTimeOriginal` nei formati supportati senza modificare altre date EXIF. I gruppi di raffiche/sequenze restano invariati; avvia esplicitamente la scansione o il rilevamento dei gruppi per raggruppare nuovamente.
 
+Il ripristino riprova in caso di brevi blocchi del database. Se la libreria resta occupata, restituisce HTTP 503 (`library_busy`) con `Retry-After`; gli altri errori del database restituiscono HTTP 500 senza dettagli interni. Una transazione fallita conserva la data manuale e non aggiunge voci alla cronologia.
+
 ## Cronologia delle modifiche
 
 In modalità modifica, apri **Cronologia delle modifiche** dalla galleria o dai dettagli. Espandi una voce per confrontare prima e dopo, quindi scegli **Ripristina questa voce**. Luoghi e date sono condivisi; decisioni, stelle e preferiti usano le preferenze del tuo account. File e riconoscimento facciale sono esclusi. Gli originali non cambiano. Annullamento temporaneo e attività dell’assistente restano separati.
