@@ -35,6 +35,7 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- Bound sidecar naming notices once per kind per import for full, basename and auto policies, while retaining complete ambiguity/mismatch and import counts.
 - Preserve the exact case of foreign boolean-looking keywords such as `True`, `FALSE` and `tRuE` with lossless readback when ExifTool JSON erases their spelling. Unicode newline-filename failures are isolated to the affected photo in batch exports.
 - Use shared Windows library-lock status probes so overlapping polls cannot report a running job when the library is idle. Real jobs retain exclusive admission.
 
