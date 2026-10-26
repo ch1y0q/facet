@@ -1359,7 +1359,7 @@ python database.py --stats-info
 
 | 端点 | 说明 |
 |----------|-------------|
-| `GET /api/persons` | 列出所有人物 |
+| `GET /api/persons` | 列出所有人物。人物搜索也支持 ASCII 十进制 ID；`١` 或 `１２` 等非 ASCII 数字仅按字面文本搜索姓名。 |
 | `POST /api/persons` | 创建一个新人物，可同时附加人脸（受编辑模式限制）。请求体：`{name, face_ids}` |
 | `GET /api/persons/needs_naming?min_faces=N` | 列出 `face_count >= N` 的未命名自动聚类人物（默认值来自 `viewer.persons.needs_naming_min_faces`） |
 | `POST /api/persons/{id}/rename` | 重命名人物 |

@@ -1302,7 +1302,7 @@ Les types TypeScript du client sont générés à partir de ce schéma dans `cli
 
 | Point d'accès | Description |
 |----------|-------------|
-| `GET /api/persons` | Lister toutes les personnes |
+| `GET /api/persons` | Lister toutes les personnes. La recherche de personnes reconnaît aussi les identifiants décimaux ASCII ; les chiffres non ASCII comme `١` ou `１２` restent une recherche littérale dans les noms. |
 | `POST /api/persons` | Créer une nouvelle personne, en y attachant éventuellement des visages (réservé à l'édition). Corps : `{name, face_ids}` |
 | `GET /api/persons/needs_naming?min_faces=N` | Lister les personnes auto-regroupées non nommées avec `face_count >= N` (par défaut depuis `viewer.persons.needs_naming_min_faces`) |
 | `POST /api/persons/{id}/rename` | Renommer une personne |
