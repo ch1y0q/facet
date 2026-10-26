@@ -307,9 +307,11 @@ as what it means rather than what it is silently rewrites the wire.
 Lookup and side tables: `photo_tags`, `faces`, `persons`, `albums`, `album_photos`,
 `album_client_picks`, `photo_scoring_overrides`, `photo_sequence_overrides`,
 `photo_metadata_edits` (database-local per-account review edit clocks and XMP source receipts; scanner receipts are not copied into viewer databases), `photo_manual_tags`, `saved_places` and `recent_places` (a viewer editor's private named pins and last-assigned points), `panorama_run_cache` (derived data, rebuilt by one panorama pass, not
-merged or exported), `location_names`, `comparisons`, `learned_scores`, `weight_optimization_runs`,
+merged or exported), `embedding_cache_revision` (derived singleton revision row kept current by triggers on `photos`; see NumPy fallback cache), `location_names`, `comparisons`, `learned_scores`, `weight_optimization_runs`,
 `weight_config_snapshots`, `recommendation_history`, `user_preferences`, `scan_runs`,
-`scan_failures`, `iqa_declined`, `stats_cache`, plus the virtual tables `photos_fts` (FTS5) and
+`scan_failures`, `iqa_declined`, `stats_cache`, `organization_history` (the viewer's capped per-account undo
+log of organization changes, never exported), `organization_revisions` and `organization_clock`
+(trigger-maintained change counters), plus the virtual tables `photos_fts` (FTS5) and
 `photos_vec` (sqlite-vec).
 
 ### Performance Optimizations
@@ -396,6 +398,12 @@ only what reading those two will NOT tell you.
   `DELETE /api/photo/capture_date` and honoured by the same two upserts and the viewer-DB export.
   **Any new writer of `gps_latitude` / `gps_longitude` or `date_taken` must skip or preserve rows
   where the matching flag is 1.**
+- **Review-field writes stamp their own edit clock.** The `metadata_review_*` triggers
+  (`db/metadata_edits.py`) record a `photo_metadata_edits` row on every changed `photos`
+  review field and every `user_preferences` insert, update or delete of one, so a new
+  review writer is covered without extra code. What the trigger cannot know is the source:
+  a sidecar import must call `record_sidecar_receipt` after its write, or the change reads
+  as a local edit and later sidecar imports treat it as newer than the file.
 - **`iqa_declined` rows are valid only while `scan_fingerprint` equals the photo's current
   `scanned_at || '|' || length(thumbnail)`.** The full-row save is an UPSERT, which never cascades, so
   a decline row survives a rescan; the rescan rewrites both fingerprint inputs and so silently

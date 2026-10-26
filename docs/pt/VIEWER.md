@@ -586,7 +586,15 @@ Uma localização definida no visualizador fica marcada, e a caixa de diálogo o
 
 O aplicativo instalado carrega os fundos do mapa diretamente do OpenStreetMap, fora do cache offline. Novas áreas do mapa precisam de conexão com a internet.
 
-A lista e a entrada de coordenadas continuam funcionando se o mapa estiver indisponível. A pesquisa usa nomes salvos localmente. Edições manuais, inclusive limpar o GPS, permanecem após novas análises e extração EXIF. Os arquivos originais não são alterados.
+A lista e a entrada de coordenadas continuam funcionando se o mapa estiver indisponível. A filtragem de locais salvos usa os nomes localmente; a pesquisa online de endereços ou estabelecimentos exige uma pesquisa explícita separada. Edições manuais, inclusive limpar o GPS, permanecem após novas análises e extração EXIF. Os arquivos originais não são alterados.
+
+### Pesquisa online de lugares
+
+Use **Endereço ou estabelecimento → Pesquisar online** para consultar o Photon explicitamente. A consulta só é enviada ao provedor configurado ao clicar; escrever não envia nada. Selecione um resultado para pré-visualizar as coordenadas e use **Salvar** para aplicá-las. O original não muda. O Photon usa dados OpenStreetMap (© colaboradores OpenStreetMap). Os locais salvos e as coordenadas funcionam offline. `viewer.place_search_url` usa `https://photon.komoot.io/api` por padrão; pode indicar uma instância Photon própria ou `""` para desativar. O servidor público não garante disponibilidade. Limites: 3–200 pontos de código Unicode, cinco resultados, cinco segundos e 64 KiB; cache de 128 pesquisas por 15 minutos por processo, sem chamadas simultâneas e com pelo menos um segundo de intervalo. Use apenas um worker com o provedor público. O Facet não registra consultas; exclua os parâmetros de pesquisa dos logs do proxy. No modo multiusuário, as entradas do cache são privadas para cada conta; o limite de 128 entradas e a limitação das chamadas ao provedor continuam compartilhados pelo processo.
+
+As falhas esperadas da pesquisa aparecem no diálogo; para tentar novamente, faça outra pesquisa explícita. `GET /api/places/search?q=` retorna listas de validação para consultas inválidas (422), 429 com `Retry-After` ao atingir o limite, 502 se o provedor falhar e 503 se a pesquisa estiver desativada. Os rótulos dos resultados aceitam até 600 caracteres Unicode.
+
+O prazo de cinco segundos interrompe os sockets ativos, incluindo cabeçalhos e delimitação HTTP lentos. A resolução DNS nativa segue os tempos do sistema e pode demorar mais antes da criação do socket; uma pesquisa expirada não abre depois uma conexão.
 
 ## Cápsulas
 
@@ -1360,6 +1368,7 @@ Os tipos TypeScript do cliente são gerados a partir desse esquema em `client/sr
 | `PUT /api/photo/gps` | `[Edição]` Define ou apaga o GPS de uma foto com `{path, gps_latitude, gps_longitude, saved_place_id?}`. As duas coordenadas devem ser nulas ou valores finitos (latitude ±90, longitude ±180); retorna as coordenadas salvas |
 | `POST /api/photos/batch_gps` | `[Edição]` Pré-visualiza/aplica até 1000 fotos visíveis com `{photo_paths}` ou `{filters, exclude?}`, coordenadas finitas e emparelhadas, `saved_place_id` opcional e `only_missing` (padrão `true`; `false` substitui explicitamente as localizações existentes). Envie primeiro `preview: true`; aplique com o `preview_token` retornado. Retorna `changed`, `skipped` e `preview_token`; pré-visualizações obsoletas retornam 409 e escopos grandes demais 412. O token determinístico detecta entradas obsoletas; ele não autoriza uma gravação nem prova que a pré-visualização foi chamada. O acesso em modo de edição continua necessário. Sem gravações de arquivos |
 | `DELETE /api/photo/gps?path=` | `[Edição]` Descarta uma localização definida manualmente e relê o GPS do próprio arquivo (NULL se não tiver); retorna as coordenadas salvas |
+| `GET /api/places/search?q=` | `[Edição]` Consulta Photon explícita e limitada; não altera fotos. Consultas inválidas retornam listas de validação (422); a limitação retorna 429 com `Retry-After`, falha do provedor 502 e pesquisa desativada 503. |
 | `GET /api/places` | `[Edição]` Locais salvos do editor atual e os 20 últimos pontos atribuídos |
 | `POST /api/places` | `[Edição]` Salva `{name, latitude, longitude}` como um alfinete privado com nome (até 100 locais; nome de 1 a 120 caracteres) |
 | `PUT /api/places/{id}` | `[Edição]` Atualiza um alfinete com nome próprio; as fotos existentes mantêm suas coordenadas |
@@ -1586,15 +1595,6 @@ Se a busca semântica informar que a aceleração Apple Silicon está ocupada, t
 | Legendas não são geradas | Requer o perfil de VRAM 16gb/24gb para legendagem por VLM |
 | Linha do tempo vazia | Garanta que as fotos tenham valores em `date_taken` |
 | Porta 5000 em uso | Execute `python viewer.py --port 5001` (ou defina `PORT=5001`). No macOS, o AirPlay Receiver do ControlCenter vincula a 5000 por padrão — escolha outra porta ou desative o AirPlay Receiver em Ajustes do Sistema → Geral → AirDrop e Handoff. |
-
-
-### Photon
-
-Use **Endereço ou estabelecimento → Pesquisar online** para consultar o Photon explicitamente. A consulta só é enviada ao fornecedor configurado ao clicar; escrever não envia nada. Selecione um resultado para pré-visualizar as coordenadas e use **Guardar** para as aplicar. O original não muda. O Photon usa dados OpenStreetMap (© colaboradores OpenStreetMap). Os locais guardados e as coordenadas funcionam offline. `viewer.place_search_url` usa `https://photon.komoot.io/api` por omissão; pode indicar uma instância Photon própria ou `""` para desativar. O servidor público não garante disponibilidade. Limites: 3–200 pontos de código Unicode, cinco resultados, cinco segundos e 64 KiB; cache de 128 pesquisas por 15 minutos por processo, sem chamadas simultâneas e com pelo menos um segundo de intervalo. Use apenas um worker com o fornecedor público. O Facet não regista consultas; exclua os parâmetros de pesquisa dos registos do proxy. No modo multiutilizador, as entradas da cache são privadas para cada conta; o limite de 128 entradas e a limitação das chamadas ao fornecedor continuam partilhados pelo processo.
-
-As falhas esperadas da pesquisa aparecem no diálogo; para tentar novamente, faça outra pesquisa explícita. `GET /api/places/search?q=` devolve listas de validação para consultas inválidas (422), 429 com `Retry-After` ao atingir o limite, 502 se o fornecedor falhar e 503 se a pesquisa estiver desativada. Os rótulos dos resultados aceitam até 600 caracteres Unicode.
-
-O prazo de cinco segundos interrompe os sockets ativos, incluindo cabeçalhos e delimitação HTTP lentos. A resolução DNS nativa segue os tempos do sistema e pode demorar mais antes da criação do socket; uma pesquisa expirada não abre depois uma ligação.
 
 ### Rever as marcações manuais de rostos guardadas
 

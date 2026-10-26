@@ -587,7 +587,15 @@ Ein im Viewer gesetzter Standort wird markiert, und der Dialog bietet dann **Sta
 
 Die installierte App lädt Kartenhintergründe direkt von OpenStreetMap, außerhalb ihres Offline-Caches. Für neue Kartenausschnitte ist eine Internetverbindung nötig.
 
-Liste und Koordinateneingabe funktionieren auch bei nicht verfügbarer Karte. Die Suche verwendet lokal gespeicherte Namen. Manuelle Änderungen einschließlich des Löschens von GPS bleiben bei erneuten Scans und EXIF-Extraktion erhalten. Die Originaldateien werden nicht verändert.
+Liste und Koordinateneingabe funktionieren auch bei nicht verfügbarer Karte. Die Filterung gespeicherter Orte nutzt Namen lokal; die Online-Suche nach Adressen oder Geschäften erfordert eine eigene ausdrückliche Suche. Manuelle Änderungen einschließlich des Löschens von GPS bleiben bei erneuten Scans und EXIF-Extraktion erhalten. Die Originaldateien werden nicht verändert.
+
+### Online-Ortssuche
+
+Mit **Adresse oder Geschäft → Online suchen** fragen Sie Photon ausdrücklich ab. Erst der Klick sendet die Anfrage an den konfigurierten Anbieter; die Eingabe allein sendet nichts. Ein Ergebnis zeigt Koordinaten als Vorschau; **Speichern** übernimmt sie. Die Originaldatei bleibt unverändert. Photon nutzt OpenStreetMap-Daten (© OpenStreetMap-Mitwirkende). Gespeicherte Orte und Koordinateneingabe funktionieren offline. `viewer.place_search_url` ist standardmäßig `https://photon.komoot.io/api`; eine eigene Photon-Instanz ist möglich, `""` deaktiviert die Suche. Der öffentliche Server garantiert keine Verfügbarkeit. Grenzen: 3–200 Unicode-Codepunkte, fünf Ergebnisse, fünf Sekunden, 64 KiB; pro Prozess 128 Suchanfragen für 15 Minuten im Cache, keine gleichzeitigen Aufrufe und mindestens eine Sekunde Abstand. Beim öffentlichen Anbieter nur einen Worker verwenden. Facet protokolliert keine Suchanfragen; Query-Strings auch aus Proxy-Protokollen ausschließen. Im Mehrbenutzerbetrieb sind Cache-Einträge für jedes Konto privat; die Grenze von 128 Einträgen und die Begrenzung der Anbieteraufrufe gelten weiterhin gemeinsam für den Prozess.
+
+Erwartete Suchfehler werden im Dialog angezeigt; starten Sie zum Wiederholen eine neue ausdrückliche Suche. `GET /api/places/search?q=` liefert bei ungültigen Abfragen eine Validierungsfehlerliste (422), bei Drosselung 429 mit `Retry-After`, bei Anbieterfehlern 502 und bei deaktivierter Suche 503. Ergebnisbezeichnungen erlauben bis zu 600 Unicode-Zeichen.
+
+Die Frist von fünf Sekunden unterbricht aktive Sockets, auch bei langsamen HTTP-Headern oder Chunk-Rahmen. Die native DNS-Auflösung folgt den Systemfristen und kann vor dem Öffnen eines Sockets länger dauern; eine abgelaufene Suche öffnet danach keine Verbindung.
 
 ## Kapseln
 
@@ -1361,6 +1369,7 @@ Die TypeScript-Typen des Clients werden mit `cd client && npm run gen:api` aus d
 | `PUT /api/photo/gps` | `[Edition]` GPS eines Fotos setzen oder löschen mit `{path, gps_latitude, gps_longitude, saved_place_id?}`. Beide Koordinaten müssen null oder endliche Werte sein (Breitengrad ±90, Längengrad ±180); gibt die gespeicherten Koordinaten zurück |
 | `POST /api/photos/batch_gps` | `[Edition]` Vorschau/Anwendung für bis zu 1000 sichtbare Fotos mit `{photo_paths}` oder `{filters, exclude?}`, endlichen gepaarten Koordinaten, optionalem `saved_place_id` und `only_missing` (Standard `true`; `false` ersetzt vorhandene Standorte ausdrücklich). Zuerst `preview: true` senden; mit dem zurückgegebenen `preview_token` anwenden. Gibt `changed`, `skipped` und `preview_token` zurück; veraltete Vorschauen liefern 409, zu große Bereiche 412. Das deterministische Token erkennt veraltete Eingaben; es autorisiert keinen Schreibvorgang und beweist nicht, dass die Vorschau aufgerufen wurde. Der Bearbeitungszugriff bleibt erforderlich. Keine Dateischreibvorgänge |
 | `DELETE /api/photo/gps?path=` | `[Edition]` Einen von Hand gesetzten Standort verwerfen und das GPS der Datei selbst erneut lesen (NULL, wenn sie keines hat); gibt die gespeicherten Koordinaten zurück |
+| `GET /api/places/search?q=` | `[Edition]` Ausdrückliche, begrenzte Photon-Abfrage; ändert keine Fotos. Ungültige Abfragen liefern Validierungsfehlerlisten (422); Drosselung liefert 429 mit `Retry-After`, Anbieterfehler 502, deaktivierte Suche 503. |
 | `GET /api/places` | `[Edition]` Gespeicherte Orte des aktuellen Editors und die 20 zuletzt zugewiesenen Punkte |
 | `POST /api/places` | `[Edition]` `{name, latitude, longitude}` als privaten benannten Pin speichern (bis zu 100 Orte; Name mit 1–120 Zeichen) |
 | `PUT /api/places/{id}` | `[Edition]` Einen eigenen benannten Pin aktualisieren; vorhandene Fotos behalten ihre Koordinaten |
@@ -1587,15 +1596,6 @@ Meldet die semantische Suche, dass die Apple-Silicon-Beschleunigung belegt ist, 
 | Bildbeschreibungen werden nicht generiert | Erfordert das 16gb/24gb-VRAM-Profil für VLM-Bildbeschreibungen |
 | Zeitleiste leer | Sicherstellen, dass Fotos `date_taken`-Werte haben |
 | Port 5000 belegt | `python viewer.py --port 5001` ausführen (oder `PORT=5001` setzen). Unter macOS belegt der AirPlay-Empfänger des ControlCenter standardmäßig Port 5000 — entweder einen anderen Port wählen oder den AirPlay-Empfänger unter Systemeinstellungen → Allgemein → AirDrop & Handoff deaktivieren. |
-
-
-### Photon
-
-Mit **Adresse oder Geschäft → Online suchen** fragen Sie Photon ausdrücklich ab. Erst der Klick sendet die Anfrage an den konfigurierten Anbieter; die Eingabe allein sendet nichts. Ein Ergebnis zeigt Koordinaten als Vorschau; **Speichern** übernimmt sie. Die Originaldatei bleibt unverändert. Photon nutzt OpenStreetMap-Daten (© OpenStreetMap-Mitwirkende). Gespeicherte Orte und Koordinateneingabe funktionieren offline. `viewer.place_search_url` ist standardmäßig `https://photon.komoot.io/api`; eine eigene Photon-Instanz ist möglich, `""` deaktiviert die Suche. Der öffentliche Server garantiert keine Verfügbarkeit. Grenzen: 3–200 Unicode-Codepunkte, fünf Ergebnisse, fünf Sekunden, 64 KiB; pro Prozess 128 Suchanfragen für 15 Minuten im Cache, keine gleichzeitigen Aufrufe und mindestens eine Sekunde Abstand. Beim öffentlichen Anbieter nur einen Worker verwenden. Facet protokolliert keine Suchanfragen; Query-Strings auch aus Proxy-Protokollen ausschließen. Im Mehrbenutzerbetrieb sind Cache-Einträge für jedes Konto privat; die Grenze von 128 Einträgen und die Begrenzung der Anbieteraufrufe gelten weiterhin gemeinsam für den Prozess.
-
-Erwartete Suchfehler werden im Dialog angezeigt; starten Sie zum Wiederholen eine neue ausdrückliche Suche. `GET /api/places/search?q=` liefert bei ungültigen Abfragen eine Validierungsfehlerliste (422), bei Drosselung 429 mit `Retry-After`, bei Anbieterfehlern 502 und bei deaktivierter Suche 503. Ergebnisbezeichnungen erlauben bis zu 600 Unicode-Zeichen.
-
-Die Frist von fünf Sekunden unterbricht aktive Sockets, auch bei langsamen HTTP-Headern oder Chunk-Rahmen. Die native DNS-Auflösung folgt den Systemfristen und kann vor dem Öffnen eines Sockets länger dauern; eine abgelaufene Suche öffnet danach keine Verbindung.
 
 ### Gespeicherte manuelle Gesichtsmarkierungen prüfen
 
