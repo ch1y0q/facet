@@ -2,6 +2,7 @@
 import json
 import logging
 import os
+from contextlib import closing
 from pathlib import Path
 import sqlite3
 import subprocess
@@ -192,9 +193,13 @@ def cli_library(tmp_path, remote):
     photo.write_bytes(b'untouched CLI original')
     db = tmp_path / 'library.db'
     init_database(str(db))
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn:
         conn.execute('INSERT INTO photos(path,filename,star_rating,is_favorite) VALUES(?,?,4,1)',
                      (str(photo), photo.name))
+        conn.commit()
+        # The library is in WAL mode: fold the row into library.db so a byte snapshot
+        # taken before the CLI runs is not changed by the CLI's own checkpoint on close.
+        conn.execute('PRAGMA wal_checkpoint(TRUNCATE)')
     config = tmp_path / 'scoring_config.json'
     config.write_text(json.dumps(_config(remote, directory)), encoding='utf-8')
     return db, photo, config
