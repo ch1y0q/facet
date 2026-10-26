@@ -15,6 +15,7 @@ All notable changes to Facet are documented in this file.
 - **Relink applies respect running library jobs.** Both relink command entry points hold the shared maintenance lock while applying a reviewed plan; read-only previews remain available while another job runs.
 - **Make export job controls clearer for assistive technology.** Refresh controls have distinct names, the viewed receipt is identified, and live announcements cover status changes rather than the entire progress panel.
 - **Show the manual-face review filter chip.** The active filter can be removed above the gallery without clearing other filters.
+- **Keep review progress steady during updates.** Review rebuilds fetch counts once, retain the same-scope summary while loading, and announce updated counts without moving focus. Account or scope changes hide old counts immediately.
 - **Ship the ExifTool tag definitions.** Installed distributions include Facet’s metadata configuration. ExifTool exports refuse missing definitions before changing photos or sidecars instead of silently omitting private metadata.
 - **Match focus peaking to each compare pane.** Track render failures and retries per pane so a previous single-view fallback does not select the wrong image source in compare mode.
 - **Readable sidecar import preview errors.** Missing, unreadable or invalid databases now produce a clear refusal instead of a SQLite traceback, without creating or upgrading the database.
