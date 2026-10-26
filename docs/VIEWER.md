@@ -222,9 +222,9 @@ Keep and **Reset decision** are available in photo detail, the gallery context m
 
 Decisions survive reloads, viewer restarts and rescans. On multi-user installs they belong to the current user. Confirming a culling group also marks its chosen keepers as Kept. Existing ratings, favorites and previously reviewed groups are not automatically converted into Keep decisions.
 
-The gallery shows **undecided**, **kept** and **rejected** counts for the complete visible folder, album or filtered scope, including photos beyond the loaded page. The percentage is `(kept + rejected) / total`; an empty scope displays 0%. The current Review status and Hide rejected toggle do not shrink this denominator. Other content and visibility filters remain active, including a smart album's own review criterion.
+The gallery shows **undecided**, **kept** and **rejected** counts for the complete visible folder, album or filtered scope, including photos beyond the loaded page. The percentage is `(kept + rejected) / total`; an empty scope displays 0%. The current Review status and Hide rejected toggle do not shrink this denominator. Other content and visibility filters remain active, including a smart album's own review criterion. During a refresh of the same scope, the previous counts stay visible until updated. Updates are announced without moving focus. Switching account or scope hides the previous counts; a failed count request hides the summary until a successful retry.
 
-Choose **Review undecided** to begin a queue. **Continue reviewing** restores your most recently opened Needs review queue on this browser and opens its first remaining undecided photo. Changing gallery filters does not replace that bookmark unless you open another Needs review queue. Kept, rejected and deleted photos are skipped using the current database state; this resumes the queue rather than an exact photo cursor. The bookmark survives reloads, is isolated by signed-in identity, and is limited to 20 browser identities. It does not sync across devices. Album queues use the album’s current saved criteria, and temporary reviewing does not change those criteria. A later sidebar edit returns to normal album filter editing. Navigating away cancels an in-flight Continue action. Temporary burst/sequence groups are not bookmarked because a rescan can reassign their IDs. If browser storage is disabled or full, reviewing still works, but the bookmark may not persist. An unavailable album leaves the current view unchanged.
+Choose **Review undecided** to begin a queue. **Continue reviewing** restores your most recently opened Needs review queue on this browser and opens its first remaining undecided photo. Changing gallery filters does not replace that bookmark unless you open another Needs review queue. Kept, rejected and deleted photos are skipped using the current database state; this resumes the queue rather than an exact photo cursor. The bookmark survives reloads, is isolated by signed-in identity, and is limited to 20 browser identities. It does not sync across devices. Album queues use the album’s current saved criteria, and temporary reviewing does not change those criteria. A later sidebar edit returns to normal album filter editing. Navigating away cancels an in-flight Continue action. Temporary burst/sequence groups are not bookmarked because a rescan can reassign their IDs. If browser storage is disabled or full, reviewing still works, but the bookmark may not persist. An unavailable album leaves the current view unchanged. Logging out clears review-queue bookmarks for every identity on this browser, including their search, person, folder and album filters.
 
 Review status applies to the regular gallery; choosing a status exits semantic and Similar Photos searches.
 
@@ -979,6 +979,8 @@ All stats are user-aware in multi-user mode — each user sees analytics for the
 
 ## Keyboard Shortcuts (Gallery)
 
+Single-key gallery and photo shortcuts stay inactive while focus is in a text field, menu or selection list, leaving those keys to the focused control.
+
 | Key | Action |
 |-----|--------|
 | `←` `→` `↑` `↓` | Move the current-photo marker between photo cards (grid columns and mosaic rows) |
@@ -1372,7 +1374,7 @@ The client's TypeScript types are generated from that schema into `client/src/ap
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/persons` | List all persons |
+| `GET /api/persons` | List all persons. Person search also matches ASCII decimal IDs; non-ASCII digits such as `١` or `１２` search names literally. |
 | `POST /api/persons` | Create a new person, optionally attaching faces (edition-gated). Body: `{name, face_ids}` |
 | `GET /api/persons/needs_naming?min_faces=N` | List unnamed auto-clustered persons with `face_count >= N` (default from `viewer.persons.needs_naming_min_faces`) |
 | `POST /api/persons/{id}/rename` | Rename a person |
@@ -1589,7 +1591,7 @@ The `/api/download/options` endpoint detects companion RAW files automatically a
 | Endpoint | Description |
 |----------|-------------|
 | `POST /api/photo/export_xmp` | `[Edition]` Write one XMP sidecar |
-| `POST /api/export/sidecars` | `[Edition]` Write sidecars for explicit paths or a filter set. Body `{paths?, filters?, exclude?, overwrite}` — exactly one of `paths` (max 10000) or a gallery `filters` set: naming both is a `422`, naming neither a `400`. `exclude` (optional, max 1000) drops named paths from whichever target is sent — subtracted from `paths`, or bound out of the `filters` scope; `filters` resolves through the same normalization `GET /api/photos` uses, exactly like `POST /api/cull/apply` below, and a `filters` set naming an album is access-checked like that album's own GET — `404` for an album that does not exist, `403` for another user's on an access-controlled install. A `filters` set matching more than 10000 photos is refused with a `412` naming the count and the cap, counted before any path list is built and never truncated |
+| `POST /api/export/sidecars` | `[Edition]` Write sidecars for explicit paths or a filter set. Body `{paths?, filters?, exclude?, overwrite}` — exactly one of `paths` (max 10000) or a gallery `filters` set: naming both is a `422`, naming neither a `400`. `exclude` (optional, max 1000) drops named paths from whichever target is sent — subtracted from `paths`, or bound out of the `filters` scope; `filters` resolves through the same normalization `GET /api/photos` uses, exactly like `POST /api/cull/apply` below, and a `filters` set naming an album is access-checked like that album's own GET — `404` for an album that does not exist, `403` for another user's on an access-controlled install. A `filters` set matching more than 10000 photos is refused with a `412` naming the count and the cap, counted before any path list is built and never truncated. Batch errors return a safe summary; detailed failures are logged on the server. Other photos continue exporting. |
 | `POST /api/export/sidecar_jobs` | `[Edition]` Start bounded background sidecar export; paths or filters, exclude, overwrite; returns a private progress receipt (202) |
 | `GET /api/export/sidecar_jobs` | `[Edition]` Read up to 20 recent receipts belonging to the caller |
 | `GET /api/export/sidecar_jobs/{id}` | `[Edition]` Read one caller-owned progress receipt |
@@ -1659,13 +1661,13 @@ If semantic search reports that Apple Silicon acceleration is busy, retry after 
 
 ### Online place search
 
-Use **Address or business → Search online** for an explicit Photon lookup. Your query goes to the configured provider only when you click; typing never sends it. Choose a result to preview coordinates, then **Save** to apply them. The original file stays unchanged. Photon uses OpenStreetMap data (© OpenStreetMap contributors). Offline or unavailable? Saved places and coordinate entry still work. Operators can set `viewer.place_search_url` (default `https://photon.komoot.io/api`) to a self-hosted Photon endpoint, or `""` to disable lookup. The public demo has no availability guarantee. Requests allow 3–200 characters, five results, five seconds and 64 KiB; a per-process cache holds 128 searches for 15 minutes, with at least one second between provider calls and no concurrent calls. Use one viewer worker with the public provider; multiple workers have separate limits. Facet does not log queries; configure reverse-proxy/access logs to omit query strings.
+Use **Address or business → Search online** for an explicit Photon lookup. Your query goes to the configured provider only when you click; typing never sends it. Choose a result to preview coordinates, then **Save** to apply them. The original file stays unchanged. Photon uses OpenStreetMap data (© OpenStreetMap contributors). Offline or unavailable? Saved places and coordinate entry still work. Operators can set `viewer.place_search_url` (default `https://photon.komoot.io/api`) to a self-hosted Photon endpoint, or `""` to disable lookup. The public demo has no availability guarantee. Requests allow 3–200 characters, five results, five seconds and 64 KiB; a per-process cache holds 128 searches for 15 minutes, with at least one second between provider calls and no concurrent calls. Use one viewer worker with the public provider; multiple workers have separate limits. Facet does not log queries; configure reverse-proxy/access logs to omit query strings. Cache entries are private to each account in multi-user mode; the 128-entry capacity and provider throttle remain shared across the process.
 
 The five-second deadline interrupts active sockets, including slow headers and chunk framing. Native DNS resolution uses operating system timing and may take longer before a socket exists; an expired lookup never opens a connection afterward.
 
 ### Review saved manual faces
 
-In the gallery’s Refine filters, editors can enable **Manual faces need review** to find photos with stale or legacy saved face rectangles. Open a photo and its existing face editor to adjust and save a rectangle, or delete it. After the last mark needing review is corrected or removed, the photo leaves this filtered gallery. The filter also works in saved smart albums and whole-view selections.
+In the gallery’s Refine filters, editors can enable **Manual faces need review** to find photos with stale or legacy saved face rectangles. Open a photo and its existing face editor to adjust and save a rectangle, or delete it. After the last mark needing review is corrected or removed, the photo leaves this filtered gallery. The filter also works in saved smart albums and whole-view selections. The active filter appears as a chip above the gallery. Remove that chip to clear only this filter and keep your other filters.
 
 The queue reflects the last scan or explicit face-editor check, not continuous filesystem monitoring. Full scans and restricted scans check photos with manual marks even when face detection is disabled. Missing originals are flagged when validation is attempted. Listing the queue reads indexed database metadata and does not decode originals. Opening the editor rechecks the original and is authoritative. Metadata-only rewrites remain current when the existing canonical image identity matches; its coarse signature may miss subtle same-size edits, as with ordinary manual-face validation. No original files are changed by reviewing marks.
 
@@ -1680,6 +1682,8 @@ This shifts camera walltime without inferring timezones or daylight saving. Only
 Corrections do not write originals or change file modification times. Existing explicit XMP export writes standard `exif:DateTimeOriginal` for manual dates; **Write metadata to file** additionally updates EXIF `DateTimeOriginal` for supported formats, leaving other EXIF date fields alone. Existing burst/sequence assignments are retained; run the existing scan/group detection workflow explicitly when regrouping is needed.
 
 Edition API: `POST /api/photos/capture_date/preview` accepts `photo_paths` or `filters`, optional `exclude`, and `offset_seconds`; `POST /api/photos/capture_date/apply` also requires the returned `preview_token`. `DELETE /api/photo/capture_date?path=` restores the file date.
+
+Reset retries brief database contention. If the library stays busy, it returns HTTP 503 (`library_busy`) with `Retry-After`; other database failures return HTTP 500 without internal details. A failed database transaction keeps the manual date and adds no history entry.
 
 ## Organization history
 
