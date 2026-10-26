@@ -41,7 +41,8 @@ _NS = {
 
 @pytest.mark.skipif(shutil.which('exiftool') is None, reason='requires ExifTool')
 @pytest.mark.parametrize('embed_original', [False, True])
-def test_missing_packaged_exiftool_config_refuses_before_any_write(tmp_path, monkeypatch, embed_original):
+@pytest.mark.parametrize('resource', ['missing', 'directory'])
+def test_missing_packaged_exiftool_config_refuses_before_any_write(tmp_path, monkeypatch, embed_original, resource):
     from PIL import Image
 
     image = tmp_path / 'photo.jpg'
@@ -50,6 +51,8 @@ def test_missing_packaged_exiftool_config_refuses_before_any_write(tmp_path, mon
     companion.write_text(build_xmp(XmpRating(star_rating=1)), encoding='utf-8')
     before = image.read_bytes(), companion.read_bytes()
     # Model an installed package lacking its non-Python resource.
+    if resource == 'directory':
+        (tmp_path / 'installed' / 'facet_exiftool.config').mkdir(parents=True)
     monkeypatch.setattr(xe, '__file__', str(tmp_path / 'installed' / 'xmp_export.py'))
     with pytest.raises(RuntimeError, match='configuration is unavailable'):
         write_metadata(str(image), XmpRating(star_rating=5, is_kept=True), embed_original=embed_original)
