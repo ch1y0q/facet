@@ -1,6 +1,7 @@
 import type { Mock } from 'vitest';
 import { ComponentFixture, DeferBlockState, TestBed } from '@angular/core/testing';
-import { ChangeDetectorRef, computed, DebugElement, DestroyRef, signal, TemplateRef, WritableSignal } from '@angular/core';
+import { ChangeDetectorRef, Component, computed, DebugElement, DestroyRef, inject, signal, TemplateRef, WritableSignal } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { ActivatedRoute, Event as RouterEvent, NavigationStart, Router, RouterOutlet } from '@angular/router';
 import { By } from '@angular/platform-browser';
 import { PhotoCardComponent } from '../../shared/components/photo-card/photo-card.component';
@@ -4759,6 +4760,190 @@ describe('GalleryComponent', () => {
       const header = TestBed.inject(HeaderSlotService);
       outletMock.detachEvents.next({});
       expect(header.template()).not.toBeNull();
+    });
+  });
+
+  describe('toolbar search and view shortcuts (rendered)', () => {
+    // Stands in for the shell, which renders the gallery's header-slot template
+    // through a template outlet in the global toolbar.
+    @Component({
+      selector: 'app-toolbar-host',
+      imports: [NgTemplateOutlet],
+      template: '<ng-container [ngTemplateOutlet]="template()" />',
+    })
+    class ToolbarHostComponent {
+      readonly template = inject(HeaderSlotService).template;
+    }
+
+    let fixture: ComponentFixture<GalleryComponent>;
+    let host: ComponentFixture<ToolbarHostComponent>;
+    let gallery: GalleryComponent;
+    let search: HTMLInputElement;
+
+    beforeEach(() => {
+      mockStore.setGalleryMode = vi.fn();
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      gallery = fixture.componentInstance;
+      host = TestBed.createComponent(ToolbarHostComponent);
+      host.detectChanges();
+      document.body.appendChild(host.nativeElement);
+      search = host.nativeElement.querySelector(`input[placeholder="${I18N.gallery.search_placeholder}"]`) as HTMLInputElement;
+      mockStore.updateFilter.mockClear();
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      host.destroy();
+      (host.nativeElement as HTMLElement).remove();
+      if (!fixture.componentRef.hostView.destroyed) fixture.destroy();
+    });
+
+    function type(value: string): void {
+      search.value = value;
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    function key(init: KeyboardEventInit, target: EventTarget = document): KeyboardEvent {
+      const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
+      target.dispatchEvent(event);
+      return event;
+    }
+
+    describe('search delay', () => {
+      it('filters 400 ms after the last keystroke, not before', () => {
+        type('cat');
+        vi.advanceTimersByTime(399);
+        expect(mockStore.updateFilter).not.toHaveBeenCalled();
+        vi.advanceTimersByTime(1);
+        expect(mockStore.updateFilter).toHaveBeenCalledExactlyOnceWith('search', 'cat');
+      });
+
+      it('restarts the delay on every keystroke', () => {
+        type('ca');
+        vi.advanceTimersByTime(300);
+        type('cat');
+        vi.advanceTimersByTime(300);
+        expect(mockStore.updateFilter).not.toHaveBeenCalled();
+        vi.advanceTimersByTime(100);
+        expect(mockStore.updateFilter).toHaveBeenCalledExactlyOnceWith('search', 'cat');
+      });
+
+      it('Enter commits at once and cancels the pending timer', () => {
+        type('cat');
+        search.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
+        expect(mockStore.updateFilter).toHaveBeenCalledExactlyOnceWith('search', 'cat');
+        vi.advanceTimersByTime(400);
+        expect(mockStore.updateFilter).toHaveBeenCalledOnce();
+      });
+
+      it('leaving the box commits the pending text at once, so a click away does not lose it', () => {
+        type('cat');
+        search.dispatchEvent(new FocusEvent('blur'));
+        expect(mockStore.updateFilter).toHaveBeenCalledExactlyOnceWith('search', 'cat');
+        vi.advanceTimersByTime(400);
+        expect(mockStore.updateFilter).toHaveBeenCalledOnce();
+      });
+
+      it('never fires once the gallery is parked behind a photo page', () => {
+        type('cat');
+        outletMock.detachEvents.next(gallery);
+        vi.advanceTimersByTime(400);
+        expect(mockStore.updateFilter).not.toHaveBeenCalled();
+      });
+
+      it('never fires once the gallery is destroyed', () => {
+        type('cat');
+        fixture.destroy();
+        vi.advanceTimersByTime(400);
+        expect(mockStore.updateFilter).not.toHaveBeenCalled();
+      });
+
+      it('clearing the box cancels a pending search, so the typed text does not come back', () => {
+        mockStore.filters.set({ ...DEFAULT_FILTERS, search: 'dog' });
+        type('dogs');
+        (gallery as unknown as { clearSearch(): void }).clearSearch();
+        vi.advanceTimersByTime(400);
+        expect(mockStore.updateFilter).toHaveBeenCalledExactlyOnceWith('search', '');
+      });
+    });
+
+    describe('/, B and V', () => {
+      it('/ focuses and selects the toolbar search', () => {
+        search.value = 'cat';
+        const event = key({ key: '/' });
+        expect(event.defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(search);
+        expect(search.selectionStart).toBe(0);
+        expect(search.selectionEnd).toBe(3);
+      });
+
+      it.each(['b', 'B'])('%s toggles the filter sidebar', k => {
+        mockStore.filterDrawerOpen.set(false);
+        expect(key({ key: k }).defaultPrevented).toBe(true);
+        expect(mockStore.setFilterDrawerOpen).toHaveBeenCalledWith(true);
+        mockStore.filterDrawerOpen.set(true);
+        key({ key: k });
+        expect(mockStore.setFilterDrawerOpen).toHaveBeenLastCalledWith(false);
+      });
+
+      it.each(['v', 'V'])('%s flips grid and mosaic', k => {
+        (gallery as unknown as { containerWidth: WritableSignal<number> }).containerWidth.set(800);
+        mockStore.galleryMode.set('mosaic');
+        expect(key({ key: k }).defaultPrevented).toBe(true);
+        expect(mockStore.setGalleryMode).toHaveBeenCalledWith('grid');
+        mockStore.galleryMode.set('grid');
+        key({ key: k });
+        expect(mockStore.setGalleryMode).toHaveBeenLastCalledWith('mosaic');
+      });
+
+      it('leaves other keys alone', () => {
+        expect(key({ key: 'q' }).defaultPrevented).toBe(false);
+      });
+
+      it('does nothing while the gallery is parked behind a photo page', () => {
+        outletMock.detachEvents.next(gallery);
+        for (const k of ['/', 'b', 'v']) expect(key({ key: k }).defaultPrevented).toBe(false);
+        expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
+        expect(mockStore.setGalleryMode).not.toHaveBeenCalled();
+      });
+
+      it('does nothing while typing in a field', () => {
+        const input = document.createElement('input');
+        document.body.appendChild(input);
+        try {
+          for (const k of ['/', 'b', 'v']) expect(key({ key: k }, input).defaultPrevented).toBe(false);
+          expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
+          expect(mockStore.setGalleryMode).not.toHaveBeenCalled();
+        } finally {
+          input.remove();
+        }
+      });
+
+      it.each([['ctrlKey'], ['metaKey'], ['altKey']])('does nothing with %s held', mod => {
+        expect(key({ key: 'b', [mod]: true }).defaultPrevented).toBe(false);
+        expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
+      });
+
+      it('does nothing while the slideshow is open', () => {
+        mockStore.slideshowActive.set(true);
+        for (const k of ['/', 'b', 'v']) expect(key({ key: k }).defaultPrevented).toBe(false);
+        expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
+        expect(mockStore.setGalleryMode).not.toHaveBeenCalled();
+        expect(document.activeElement).not.toBe(search);
+      });
+
+      it('does nothing while a dialog is open', () => {
+        const dialog = document.createElement('mat-dialog-container');
+        document.body.appendChild(dialog);
+        try {
+          expect(key({ key: 'b' }).defaultPrevented).toBe(false);
+          expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
+        } finally {
+          dialog.remove();
+        }
+      });
     });
   });
 });

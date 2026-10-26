@@ -179,6 +179,8 @@ em `models/samp_net.py`):
 
 ## Ordenação
 
+**Ordenação lembrada.** A galeria abre na última ordenação escolhida no seletor de ordenação, e essa escolha prevalece sobre `viewer.defaults.sort`. Ela é guardada no `localStorage` por navegador, não por conta de usuário. Só uma escolha feita no seletor de ordenação é lembrada: uma ordenação que chega por um link compartilhado ou um favorito, ou que um assistente aplica, muda a visualização sem ser lembrada, e o `sort` próprio de um link continua prevalecendo sobre a lembrada. Escolher de novo a ordenação padrão configurada esquece a escolha, assim como redefinir os filtros. **Relevância** nunca é lembrada, pois exige uma consulta de busca.
+
 As velocidades do obturador são ordenadas pela duração da exposição em segundos,
 incluindo valores EXIF decimais e racionais: `1/250` e `0.004` são iguais. Valores
 ausentes, malformados, zero, negativos e não finitos aparecem por último em ambas
@@ -736,6 +738,8 @@ Pressione **`F`** (ou a alternância no cabeçalho) para acionar a API de Tela c
 
 Pressione **`Z`** na lightbox de visualização única para alternar uma lupa no estilo Photo Mechanic (ajuste ↔ 2×; roda/`+`/`-` para zoom de até 800%). Além da escala de ajuste, o painel troca sua miniatura pela fonte `/image` em resolução total, para que você julgue o foco crítico em pixels reais sem sair da visão. Na tira de contato de Cenas, `Z` alterna uma lupa flutuante que segue o cursor sobre um ladrilho (originada da imagem em resolução total), com um controle deslizante de zoom ajustável. As miniaturas armazenadas têm um limite de 640px e a visualização ajustada da câmara escura mostra um render de até 1920px do original, então a lupa é a forma de inspecionar pixels além disso. Os painéis da câmara escura e da comparação mostram primeiro a miniatura armazenada e passam para o render nítido quando ele é carregado, então um painel nunca mostra outro quadro. Na visualização única, o quadro seguinte e o anterior são pré-carregados (as miniaturas de imediato e os renders quando o atual está nítido), exceto com a Economia de dados do navegador ativa, em que um passo pode mostrar brevemente um painel vazio. Um render que não pode começar em 5 s é substituído por 60 segundos pela miniatura armazenada, mostrada como se fosse nítida.
 
+Um URL já carregado apenas ignora o atraso de pré-carregamento: a miniatura continua visível até o navegador carregar novamente a renderização. Se o pedido falhar, a miniatura permanece visível e o focus peaking pode utilizá-la.
+
 **Lupa flutuante do laboratório.** Separadamente, uma lupa circular segue o cursor sobre o quadro principal do laboratório — na visualização única e em cada painel de comparação — ampliando a fonte `/image` em resolução total mapeada sobre a imagem realmente enquadrada, para que a lupa mostre exatamente o pixel sob o cursor. A mesma lupa também funciona sobre os recortes em close-up do painel de rostos. Um botão na barra de ferramentas a ativa ou desativa; ela vem ativada por padrão e seu valor é lembrado no `localStorage` por navegador, não por conta de usuário. A lupa é suprimida enquanto o quadro está ampliado além da escala de ajuste, já que essa visualização já mostra pixels reais e a movimentação entraria em conflito com a lupa; ela funciona no modo de tela cheia do laboratório e acompanha o quadro ao avançar com `←`/`→` enquanto o cursor está sobre a imagem. É separada do alternador de lupa próprio da tira de contato no cabeçalho de triagem.
 
 ### Selos por Rosto
@@ -908,9 +912,17 @@ Todas as estatísticas são sensíveis ao usuário no modo multiusuário — cad
 | `Shift+Click` | Seleciona em intervalo as fotos entre a última selecionada e a clicada |
 | `Double-click` | Abre a foto |
 | `Shift+F10` / `Menu` | Abre o menu de contexto do cartão de foto com foco (o clique direito faz o mesmo) |
+| `1`–`5` | Avaliar a foto em foco com 1–5 estrelas (modo edição; avança para a próxima) |
+| `F` | Favoritar / desfavoritar a foto em foco (modo edição) |
+| `X` ou `0` | Rejeitar / cancelar a rejeição da foto em foco (modo edição; avança) |
+| `/` | Focar a caixa de busca |
+| `B` | Mostrar / ocultar a barra lateral de filtros |
+| `V` | Alternar entre grade e mosaico |
 | `?` | Mostra a referência de atalhos de teclado (funciona em todas as páginas) |
 
 A foto atual — aquela sobre a qual agem os atalhos de avaliação, favorito e rejeição — é marcada com um contorno de 4px em volta do seu cartão; todos os outros cartões passam a 50% de opacidade. Nada fica marcado até o cursor se mover de fato para uma foto dos resultados, por isso uma galeria que você ainda não percorreu permanece em intensidade total. Clicar numa foto move o marcador para ela, de modo que um atalho digitado logo após um clique se aplica à foto clicada, não àquela onde as setas o tinham deixado. Ao voltar de uma foto (Voltar ou Esc) o marcador permanece na última foto que você viu, de modo que os atalhos continuam a partir dali.
+
+**Na página da foto**, `1`–`5`, `F` e `X` (ou `0`) avaliam, favoritam e rejeitam a foto aberta, nas mesmas condições dos botões de avaliação: modo edição, com `viewer.features.show_rating_controls` ativado. Ao contrário da galeria, nunca avançam para outra foto; para isso, use `←` `→`. A referência `?` lista-os em *Visualização da foto*.
 
 ## Desfazer
 

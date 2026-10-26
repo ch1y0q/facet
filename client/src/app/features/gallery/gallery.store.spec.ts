@@ -569,6 +569,117 @@ describe('GalleryStore', () => {
     });
   });
 
+  describe('remembered sort (facet_last_sort)', () => {
+    const KEY = 'facet_last_sort';
+
+    beforeEach(() => {
+      localStorage.removeItem(KEY);
+      apiGet.mockReturnValue(of(makeConfig()));
+    });
+    afterEach(() => localStorage.removeItem(KEY));
+
+    it('lands on the remembered sort when the URL carries none', async () => {
+      localStorage.setItem(KEY, 'date_taken');
+      await store.loadConfig();
+      expect(store.filters().sort).toBe('date_taken');
+    });
+
+    it('lands on the remembered sort even when the config omits defaults.sort', async () => {
+      localStorage.setItem(KEY, 'date_taken');
+      const cfg = makeConfig();
+      delete (cfg.defaults as Partial<ViewerConfig['defaults']>).sort;
+      apiGet.mockReturnValue(of(cfg));
+      await store.loadConfig();
+      expect(store.filters().sort).toBe('date_taken');
+    });
+
+    it('lands on the config default with nothing remembered', async () => {
+      await store.loadConfig();
+      expect(store.filters().sort).toBe('aggregate');
+    });
+
+    it('ignores a remembered relevance sort, which means nothing without a query', async () => {
+      localStorage.setItem(KEY, 'relevance');
+      await store.loadConfig();
+      expect(store.filters().sort).toBe('aggregate');
+    });
+
+    it("lets a URL's own sort win and does not remember it", async () => {
+      localStorage.setItem(KEY, 'date_taken');
+      Object.assign(queryParams, { sort: 'aesthetic' });
+      await store.loadConfig();
+      expect(store.filters().sort).toBe('aesthetic');
+      expect(localStorage.getItem(KEY)).toBe('date_taken');
+    });
+
+    it('writes a default sort into the URL, so the link reopens on it under a remembered sort', async () => {
+      await store.loadConfig();
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+      await store.updateFilters({ tag: 'landscape' });
+      const synced = routerNavigate.mock.calls.at(-1)?.[1]?.queryParams as Record<string, string>;
+      expect(synced['sort']).toBe('aggregate');
+      localStorage.setItem(KEY, 'date_taken');
+      Object.assign(queryParams, synced);
+      await store.loadConfig();
+      expect(store.filters().sort).toBe('aggregate');
+    });
+
+    it('does not remember the sort of a URL when nothing was remembered before', async () => {
+      Object.assign(queryParams, { sort: 'aesthetic' });
+      await store.loadConfig();
+      expect(localStorage.getItem(KEY)).toBeNull();
+    });
+
+    it('does not remember a relevance sort hydrated from a semantic-search URL', async () => {
+      Object.assign(queryParams, { semanticQuery: 'sunset', sort: 'relevance' });
+      await store.loadConfig();
+      expect(store.filters().sort).toBe('relevance');
+      expect(localStorage.getItem(KEY)).toBeNull();
+    });
+
+    it('does not remember a sort set through updateFilters (the assistant path)', async () => {
+      await store.loadConfig();
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+      await store.updateFilters({ sort: 'date_taken' });
+      expect(store.filters().sort).toBe('date_taken');
+      expect(localStorage.getItem(KEY)).toBeNull();
+    });
+
+    it('remembers a sort the user picks', async () => {
+      await store.loadConfig();
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+      await store.setUserSort('date_taken');
+      expect(store.filters().sort).toBe('date_taken');
+      expect(localStorage.getItem(KEY)).toBe('date_taken');
+    });
+
+    it('forgets the memory when the user picks the default sort again', async () => {
+      localStorage.setItem(KEY, 'date_taken');
+      await store.loadConfig();
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+      await store.setUserSort('aggregate');
+      expect(store.filters().sort).toBe('aggregate');
+      expect(localStorage.getItem(KEY)).toBeNull();
+    });
+
+    it('never remembers relevance even when the user picks it', async () => {
+      localStorage.setItem(KEY, 'date_taken');
+      await store.loadConfig();
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+      await store.setUserSort('relevance');
+      expect(localStorage.getItem(KEY)).toBe('date_taken');
+    });
+
+    it('resetFilters() forgets the remembered sort', async () => {
+      localStorage.setItem(KEY, 'date_taken');
+      await store.loadConfig();
+      apiGet.mockReturnValue(of(makePhotosResponse()));
+      await store.resetFilters();
+      expect(store.filters().sort).toBe('aggregate');
+      expect(localStorage.getItem(KEY)).toBeNull();
+    });
+  });
+
   describe('loadPhotos()', () => {
     it('should set loading, fetch photos, and update state', async () => {
       const response = makePhotosResponse({
@@ -1726,11 +1837,11 @@ describe('gallery session query (nav-icon return)', () => {
       apiGet.mockReturnValue(of(makePhotosResponse()));
     });
 
-    it('should only include non-default params in URL', async () => {
+    it('should only include non-default params in URL, plus the always-written sort', async () => {
       await store.updateFilter('camera', 'Canon');
 
       expect(routerNavigate).toHaveBeenCalledWith([], {
-        queryParams: { camera: 'Canon' },
+        queryParams: { sort: 'aggregate', camera: 'Canon' },
         replaceUrl: true,
       });
     });
