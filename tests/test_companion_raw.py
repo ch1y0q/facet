@@ -418,3 +418,23 @@ def test_replaced_symlink_is_not_the_opened_entry(tmp_path, monkeypatch):
         raw_processing._find_companion_raw_cached('shot', str(tmp_path), ('.cr2',))
     assert first.read_bytes() == b'original RAW fixture'
     assert second.read_bytes() == b'replacement RAW fixture'
+
+
+def test_cached_companion_deleted_since_is_looked_up_again(tmp_path, monkeypatch):
+    def entry_path(candidate):
+        os.lstat(candidate)  # the native lookup opens the entry, so a gone file raises
+        return str(candidate)
+
+    monkeypatch.setattr(raw_processing, '_companion_entry_path', entry_path)
+    raw = tmp_path / 'shot.CR2'
+    raw.write_bytes(b'RAW fixture')
+    assert raw_processing._find_companion_raw_cached('shot', str(tmp_path), ('.cr2', '.nef')) == str(raw)
+    raw.unlink()
+    assert raw_processing._find_companion_raw_cached('shot', str(tmp_path), ('.cr2', '.nef')) is None
+    other = tmp_path / 'shot.NEF'
+    other.write_bytes(b'other RAW fixture')
+    raw_processing._companion_raw_cache.clear()
+    assert raw_processing._find_companion_raw_cached('shot', str(tmp_path), ('.cr2', '.nef')) == str(other)
+    other.unlink()
+    raw.write_bytes(b'RAW fixture')
+    assert raw_processing._find_companion_raw_cached('shot', str(tmp_path), ('.cr2', '.nef')) == str(raw)

@@ -223,9 +223,16 @@ def _find_companion_raw_cached(stem: str, parent_dir: str, raw_extensions: Colle
     now = time.monotonic()
     entry = _companion_raw_cache.get(key)
     if entry and (now - entry[0]) < _COMPANION_RAW_TTL:
+        if entry[1] is None:
+            return None
         # A case-only rename keeps resolving through the cached macOS alias.
         # Cache extension selection, but retrieve the current entry spelling.
-        return _companion_entry_path(Path(entry[1])) if entry[1] is not None else None
+        try:
+            return _companion_entry_path(Path(entry[1]))
+        except FileNotFoundError:
+            # The cached companion was moved or deleted since: probe again
+            # rather than failing every lookup until the entry expires.
+            _companion_raw_cache.pop(key, None)
 
     parent = Path(parent_dir)
     result: str | None = None
