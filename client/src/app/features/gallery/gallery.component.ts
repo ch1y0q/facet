@@ -1287,6 +1287,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     this.outlet?.detachEvents.pipe(takeUntilDestroyed()).subscribe(component => {
       if (component !== this) return;
       this.parked = true;
+      this.store.parkListingReads();
       // Pending filter edits would otherwise replace the photo URL.
       this.filterSidebar()?.cancelPendingSearch();
       this.cancelToolbarSearch();
@@ -1306,6 +1307,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     this.outlet?.attachEvents.pipe(takeUntilDestroyed()).subscribe(component => {
       if (component !== this) return;
       this.parked = false;
+      void this.store.resumeListingReads();
       this.pageHelp.setDescription(I18N.gallery.help);
       const t = this.galleryToolbar();
       if (t) this.headerSlot.set(t);
@@ -1505,6 +1507,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
       this.scrollContent()?.scrollTo({ top: snap.scrollTop });
       requestAnimationFrame(() => setTimeout(() => this.scrollDirective()?.recheck()));
     }, { injector: this.injector });
+    void this.store.resumeListingReads();
     void this.store.loadTypeCounts();
     void this.store.loadFilterOptions();
     return true;

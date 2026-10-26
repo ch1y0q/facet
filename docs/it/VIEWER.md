@@ -428,6 +428,7 @@ Ricerca ibrida che combina la somiglianza degli embedding CLIP/SigLIP (70%) con 
 
 - Richiede i dati `clip_embedding` memorizzati (calcolati durante la valutazione)
 - Usa sqlite-vec quando è installato e lo SQLite di questo Python può caricare estensioni, altrimenti la matrice NumPy in memoria. Per la galleria non è più un top-k KNN limitato: la galleria risolve l'intero insieme di foto sopra la soglia di sensibilità della corrispondenza (prima una query KNN, una scansione completa quando corrispondono più di 4096 foto, oppure la matrice NumPy senza sqlite-vec). `GET /api/search` resta l'endpoint ordinato e limitato
+- Senza sqlite-vec, viene mantenuta una matrice in memoria per il modello corrente e le foto visibili. Gli account con le stesse foto visibili la condividono; un ambito diverso la sostituisce. Le ricerche limitate caricano solo i vettori consentiti e un ambito vuoto non crea alcuna matrice. Valutazioni e preferiti non la ricostruiscono. Modifiche a percorsi, embedding o schema la invalidano. La costruzione resta serializzata per limitare la memoria; una ricerca a freddo o in un ambito diverso può attendere.
 - La ricerca testuale FTS5 su didascalie/tag IA fornisce una corrispondenza per parole chiave aggiuntiva (esegui `database.py --rebuild-fts` per abilitarla)
 - Usa lo stesso modello di embedding del profilo VRAM attivo (SigLIP 2 per 16gb/24gb, CLIP ViT-L-14 per legacy/8gb), oppure quello tra `models.clip`/`clip_legacy` che corrisponde effettivamente alla dimensione di embedding memorizzata se i due non coincidono (vedi [docs/CONFIGURATION.md](CONFIGURATION.md))
 - `scope=text` limita la query alle corrispondenze FTS5 letterali nel testo OCR/didascalia e salta la ricerca tramite embedding
@@ -1158,6 +1159,10 @@ Imposta `min_photos_for_person` su un valore più alto per nascondere dal menu a
 ```
 
 ## Prestazioni
+
+I rapidi cambi di filtro annullano le richieste superate delle pagine e del progresso di revisione, incluse le viste simili e fissate. Uscire dalla galleria o cambiare identità annulla le letture in corso. Le modifiche a valutazioni e decisioni già inviate non vengono annullate.
+
+Aprire una foto sospende le letture in background della galleria; le frecce possono caricare altre foto e Conserva aggiorna subito la coda di revisione. Tornando si recuperano solo risultati interrotti o modificati e conteggi necessari. Tornare senza modifiche, annullare suggerimenti o assegnare una normale valutazione non ricarica le pagine. Una navigazione annullata o reindirizzata alla galleria ancora visibile ne riprende le letture. Le modifiche mirate durante la pausa della griglia vengono riunite in un aggiornamento delle righe al ritorno; i suggerimenti annullati vengono richiesti di nuovo senza ricaricare le pagine. Se è stata interrotta solo la paginazione, le frecce caricano soltanto la parte mancante.
 
 ### Database di grandi dimensioni (50k+ foto)
 

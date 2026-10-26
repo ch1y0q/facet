@@ -427,6 +427,7 @@ Busca híbrida combinando a similaridade de embedding CLIP/SigLIP (70%) com a co
 
 - Requer dados `clip_embedding` armazenados (computados durante a pontuação)
 - Usa sqlite-vec quando instalado e o SQLite deste Python consegue carregar extensões; caso contrário, a matriz NumPy em memória. Para a galeria já não é um top-k KNN limitado: a galeria resolve o conjunto completo de fotos acima do limiar de sensibilidade de correspondência (primeiro uma consulta KNN, uma varredura completa quando mais de 4096 fotos correspondem, ou a matriz NumPy sem sqlite-vec). `GET /api/search` continua sendo o endpoint ordenado e limitado
+- Sem sqlite-vec, mantém-se uma matriz em memória para o modelo atual e as fotos visíveis. Contas com as mesmas fotos visíveis partilham-na; outro âmbito substitui-a. Pesquisas restritas carregam apenas vetores permitidos e um âmbito vazio não cria uma matriz. Classificações e favoritos não a reconstroem. Alterações de caminhos, embeddings ou esquema invalidam-na. A construção continua em série para limitar a memória; uma pesquisa a frio ou noutro âmbito pode aguardar.
 - A busca de texto FTS5 em legendas/tags geradas por IA fornece correspondência de palavras-chave adicional (execute `database.py --rebuild-fts` para habilitar)
 - Usa o mesmo modelo de embedding do perfil de VRAM ativo (SigLIP 2 para 16gb/24gb, CLIP ViT-L-14 para legacy/8gb), ou o de `models.clip`/`clip_legacy` que realmente corresponde à dimensão de embedding armazenada, se os dois divergirem (ver [docs/CONFIGURATION.md](CONFIGURATION.md))
 - `scope=text` restringe a consulta a correspondências literais FTS5 em texto OCR/legenda e ignora a busca por embedding
@@ -1157,6 +1158,10 @@ Defina `min_photos_for_person` mais alto para ocultar do menu suspenso de filtro
 ```
 
 ## Desempenho
+
+Mudanças rápidas de filtro cancelam solicitações anteriores de páginas e progresso de revisão, incluindo vistas semelhantes e fixadas. Sair da galeria ou mudar a identidade cancela as leituras pendentes. Alterações de avaliação e revisão já enviadas não são canceladas.
+
+Abrir uma foto pausa as leituras de fundo da galeria; as setas podem carregar mais fotos e Manter atualiza a fila de revisão imediatamente. Ao voltar, apenas resultados interrompidos ou alterados e contagens necessárias são atualizados. Voltar sem mudanças, cancelar sugestões ou avaliar normalmente não recarrega páginas. Uma navegação cancelada ou redirecionada para a galeria ainda visível retoma suas leituras. As alterações específicas com a grelha em pausa são reunidas numa atualização das linhas ao voltar; as sugestões canceladas são repetidas sem recarregar as páginas. Se apenas a paginação foi interrompida, as setas carregam só a parte em falta.
 
 ### Bancos de Dados Grandes (50k+ fotos)
 

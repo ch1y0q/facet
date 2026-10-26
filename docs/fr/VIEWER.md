@@ -428,6 +428,7 @@ Recherche hybride combinant la similarité des embeddings CLIP/SigLIP (70%) avec
 
 - Nécessite des données `clip_embedding` stockées (calculées pendant le scoring)
 - Utilise sqlite-vec lorsqu'il est installé et que le SQLite de ce Python peut charger des extensions, sinon la matrice NumPy en mémoire. Ce n'est plus un top-k KNN plafonné pour la galerie : elle résout l'ensemble des photos au-dessus du seuil de sensibilité de correspondance (d'abord une requête KNN, un balayage complet quand plus de 4096 photos correspondent, ou la matrice NumPy sans sqlite-vec). `GET /api/search` reste le point d'accès classé et plafonné
+- Sans sqlite-vec, une seule matrice reste en mémoire pour le modèle courant et les photos visibles. Les comptes voyant les mêmes photos la partagent ; un autre périmètre la remplace. Les recherches restreintes chargent uniquement les vecteurs autorisés ; un périmètre vide ne crée aucune matrice. Les notes et favoris ne la reconstruisent pas. Les changements de chemins, embeddings ou schéma l’invalident. La construction reste sérialisée pour limiter la mémoire ; une recherche à froid ou dans un autre périmètre peut attendre.
 - La recherche textuelle FTS5 sur les légendes/tags IA fournit une correspondance par mots-clés supplémentaire (lancez `database.py --rebuild-fts` pour l'activer)
 - Utilise le même modèle d'embedding que le profil VRAM actif (SigLIP 2 pour 16gb/24gb, CLIP ViT-L-14 pour legacy/8gb), ou celui de `models.clip`/`clip_legacy` qui correspond réellement à la dimension d'embedding stockée si les deux diffèrent (voir [docs/CONFIGURATION.md](CONFIGURATION.md))
 - `scope=text` restreint la requête aux correspondances FTS5 littérales dans le texte OCR/légende et ignore la recherche par embedding
@@ -1159,6 +1160,10 @@ Augmentez `min_photos_for_person` pour masquer du menu déroulant de filtre les 
 ```
 
 ## Performances
+
+Les changements rapides de filtre annulent les anciennes requêtes de pages et de progression, y compris pour les vues similaires et épinglées. Quitter la galerie ou changer d’identité annule les lectures en cours. Les modifications de notes et de décisions déjà envoyées ne sont pas annulées.
+
+Ouvrir une photo suspend les lectures de fond de la galerie ; les flèches peuvent charger davantage de photos et Conserver actualise immédiatement la file de révision. Le retour recharge seulement les résultats interrompus ou modifiés et les compteurs nécessaires. Un retour sans changement, une suggestion annulée ou une note ordinaire ne recharge pas les pages. Une navigation annulée ou redirigée vers la galerie encore affichée reprend ses lectures. Les modifications ciblées pendant la pause de la grille sont regroupées en une actualisation des lignes au retour ; les conseils annulés sont réessayés sans recharger les pages. Si seule la pagination a été interrompue, les flèches chargent uniquement la partie manquante.
 
 ### Grandes bases de données (50k+ photos)
 

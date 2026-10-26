@@ -330,6 +330,8 @@ The cache is stored in the `stats_cache` table with a 5-minute TTL. Run `--stats
 
 **FTS5 Full-Text Search** - Run `python database.py --rebuild-fts` to build the `photos_fts` index from captions and tags. Enables BM25-ranked text search on AI-generated captions without loading the CLIP model. Sync triggers keep the index updated automatically.
 
+**NumPy fallback cache** - Without sqlite-vec, one matrix is retained for the requested encoder width and effective visible photo set. Accounts with equal visible sets share it; switching between distinct scopes replaces it. Restricted searches read only permitted vector rows, and empty scopes allocate no matrix. `embedding_cache_revision` is derived, database-local state: its random revision changes transactionally on photo insertion, vector changes and relevant path changes. It carries no user/edit authority and may travel with a viewer export; stripping vectors advances the destination revision. Search reads revision, schema version, vectors and fresh visibility in one read-only snapshot, and disables reuse if tracking is missing. A single build lock bounds peak matrix memory; rating/favorite changes do not rebuild vectors.
+
 **Vector Search (sqlite-vec)** - Install `sqlite-vec` and run `python database.py --populate-vec` to populate the `photos_vec` table from existing embeddings. Replaces the in-memory NumPy embedding cache (~440MB for 100k photos) with on-disk KNN search. Falls back to NumPy if sqlite-vec is not installed.
 
 **Query Optimizations in api/:**

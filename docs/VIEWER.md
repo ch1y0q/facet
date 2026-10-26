@@ -496,6 +496,7 @@ Hybrid search combining CLIP/SigLIP embedding similarity (70%) with FTS5 BM25 te
 
 - Requires stored `clip_embedding` data (computed during scoring)
 - Uses sqlite-vec when installed and this Python's SQLite can load extensions, otherwise the in-memory NumPy matrix. It is no longer a capped KNN top-k for the gallery: the gallery resolves the whole set of photos above the match-sensitivity threshold (a KNN query first, a full scan when more than 4096 photos match, or the NumPy matrix without sqlite-vec). `GET /api/search` stays the ranked, capped endpoint
+- Without sqlite-vec, searches retain one in-memory matrix for the current embedding model and visible photo set. Accounts with the same visible photos share it; switching to a different scope replaces it. Restricted searches load only permitted vectors, and empty scopes allocate no matrix. Ratings and favourites do not rebuild it. Photo-path, embedding or schema changes invalidate it. Matrix construction remains serialized to bound memory, so a cold or changed-scope search can wait for a build.
 - FTS5 text search on AI captions/tags provides additional keyword matching (run `database.py --rebuild-fts` to enable)
 - Uses the same embedding model as the active VRAM profile (SigLIP 2 for 16gb/24gb, CLIP ViT-L-14 for legacy/8gb), or whichever of `models.clip`/`clip_legacy` actually matches the stored embedding dimension if the two disagree (see [docs/CONFIGURATION.md](CONFIGURATION.md))
 - `scope=text` restricts the query to literal FTS5 matches in OCR/caption text and skips the embedding search
@@ -1228,6 +1229,10 @@ Set `min_photos_for_person` higher to hide persons with few photos from the filt
 ```
 
 ## Performance
+
+Rapid filter changes cancel superseded gallery page and review-progress requests, including reads for similar and pinned views. Leaving the gallery or changing the signed-in identity cancels outstanding gallery reads. Rating and review saves already submitted are not cancelled.
+
+Opening a photo parks background gallery reads, while arrow navigation can fetch more photos and Keep repairs the review queue immediately. Returning refills interrupted or changed results and refreshes counts only when needed; unchanged Back, cancelled keeper hints and ordinary rating updates do not refetch loaded pages. A cancelled navigation or a redirect back to the attached gallery resumes its reads. Targeted edits made while the grid is parked are combined into a row refresh on return; cancelled keeper hints are retried without reloading photo pages. When only pagination was interrupted, photo arrows fetch the missing tail instead of reloading completed pages.
 
 ### Large Databases (50k+ photos)
 

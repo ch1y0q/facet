@@ -428,6 +428,7 @@ Hybride Suche, die CLIP/SigLIP-Embedding-Ähnlichkeit (70%) mit FTS5-BM25-Textab
 
 - Erfordert gespeicherte `clip_embedding`-Daten (während der Bewertung berechnet)
 - Verwendet sqlite-vec, sofern installiert und das SQLite dieses Python Erweiterungen laden kann, sonst die NumPy-Matrix im Speicher. Für die Galerie ist es kein begrenztes KNN-Top-k mehr: Die Galerie ermittelt die gesamte Menge der Fotos über dem Schwellwert der Treffer-Empfindlichkeit (zuerst eine KNN-Abfrage, ein vollständiger Scan, wenn mehr als 4096 Fotos passen, oder die NumPy-Matrix ohne sqlite-vec). `GET /api/search` bleibt der sortierte, begrenzte Endpunkt
+- Ohne sqlite-vec bleibt eine Speichermatrix für das aktuelle Embedding-Modell und die sichtbaren Fotos erhalten. Konten mit denselben sichtbaren Fotos teilen sie; ein anderer Sichtbarkeitsbereich ersetzt sie. Eingeschränkte Suchen laden nur erlaubte Vektoren, leere Bereiche erzeugen keine Matrix. Bewertungen und Favoriten bauen sie nicht neu auf. Änderungen an Fotopfaden, Embeddings oder Schema machen sie ungültig. Der Aufbau bleibt zur Speicherbegrenzung serialisiert; kalte Suchen oder Bereichswechsel können warten.
 - FTS5-Textsuche auf KI-Bildbeschreibungen/Tags bietet zusätzlichen Schlüsselwortabgleich (zum Aktivieren `database.py --rebuild-fts` ausführen)
 - Verwendet dasselbe Embedding-Modell wie das aktive VRAM-Profil (SigLIP 2 für 16gb/24gb, CLIP ViT-L-14 für legacy/8gb), oder dasjenige von `models.clip`/`clip_legacy`, das tatsächlich zur gespeicherten Embedding-Dimension passt, falls beide voneinander abweichen (siehe [docs/CONFIGURATION.md](CONFIGURATION.md))
 - `scope=text` beschränkt die Anfrage auf literale FTS5-Treffer im OCR-/Beschreibungstext und überspringt die Embedding-Suche
@@ -1158,6 +1159,10 @@ Setzen Sie `min_photos_for_person` höher, um Personen mit wenigen Fotos aus dem
 ```
 
 ## Performance
+
+Schnelle Filteränderungen brechen überholte Anfragen für Galerieseiten und Bewertungsfortschritt ab, auch bei ähnlichen und angehefteten Ansichten. Beim Verlassen der Galerie oder Wechsel der angemeldeten Identität werden ausstehende Galerie-Leseanfragen abgebrochen. Bereits abgeschickte Bewertungsänderungen werden nicht abgebrochen.
+
+Das Öffnen eines Fotos pausiert Hintergrundabfragen der Galerie; Pfeiltasten können weitere Fotos laden und Behalten aktualisiert die Prüfliste sofort. Beim Zurückkehren werden nur unterbrochene oder geänderte Ergebnisse und nötige Zähler aktualisiert. Unverändertes Zurück, abgebrochene Hinweisabfragen und normale Bewertungen laden die Seiten nicht erneut. Abgebrochene Navigation oder eine Weiterleitung zur noch angezeigten Galerie setzt deren Abfragen fort. Gezielte Änderungen bei pausiertem Raster werden bei der Rückkehr gemeinsam zeilenweise aktualisiert; abgebrochene Keeper-Hinweise werden ohne erneutes Laden der Fotoseiten wiederholt. Wurde nur das Blättern unterbrochen, laden die Fotopfeile nur den fehlenden Rest.
 
 ### Große Datenbanken (50k+ Fotos)
 

@@ -427,6 +427,7 @@ Búsqueda híbrida que combina la similitud de embeddings de CLIP/SigLIP (70%) c
 
 - Requiere datos de `clip_embedding` almacenados (calculados durante la puntuación)
 - Usa sqlite-vec cuando está instalado y el SQLite de este Python puede cargar extensiones; si no, la matriz NumPy en memoria. Para la galería ya no es un top-k KNN limitado: la galería resuelve el conjunto completo de fotos por encima del umbral de sensibilidad de coincidencia (primero una consulta KNN, un barrido completo cuando coinciden más de 4096 fotos, o la matriz NumPy sin sqlite-vec). `GET /api/search` sigue siendo el endpoint ordenado y limitado
+- Sin sqlite-vec, se conserva una matriz en memoria para el modelo actual y las fotos visibles. Las cuentas con las mismas fotos visibles la comparten; otro ámbito la reemplaza. Las búsquedas restringidas solo cargan vectores permitidos y un ámbito vacío no crea ninguna matriz. Las valoraciones y favoritos no la reconstruyen. Los cambios de rutas, embeddings o esquema la invalidan. La construcción sigue en serie para limitar la memoria; una búsqueda en frío o con otro ámbito puede esperar.
 - La búsqueda de texto FTS5 sobre subtítulos/etiquetas de IA aporta coincidencia adicional por palabras clave (ejecuta `database.py --rebuild-fts` para habilitarla)
 - Usa el mismo modelo de embedding que el perfil de VRAM activo (SigLIP 2 para 16gb/24gb, CLIP ViT-L-14 para legacy/8gb), o el de `models.clip`/`clip_legacy` que realmente coincide con la dimensión de embedding almacenada si ambos no coinciden (ver [docs/CONFIGURATION.md](CONFIGURATION.md))
 - `scope=text` restringe la consulta a las coincidencias literales de FTS5 en el texto de OCR/subtítulos y omite la búsqueda por embeddings
@@ -1156,6 +1157,10 @@ Aumenta `min_photos_for_person` para ocultar del desplegable de filtros las pers
 ```
 
 ## Rendimiento
+
+Los cambios rápidos de filtro cancelan las solicitudes anteriores de páginas y progreso de revisión, incluidas las vistas de similares y fijadas. Salir de la galería o cambiar de identidad cancela las lecturas pendientes. Los cambios de valoración y revisión ya enviados no se cancelan.
+
+Abrir una foto pausa las lecturas de fondo de la galería; las flechas pueden cargar más fotos y Conservar actualiza la cola de revisión inmediatamente. Al volver solo se recuperan resultados interrumpidos o cambiados y los recuentos necesarios. Volver sin cambios, cancelar sugerencias o una valoración normal no recarga páginas. Una navegación cancelada o redirigida a la galería aún visible reanuda sus lecturas. Los cambios puntuales mientras la cuadrícula está pausada se agrupan en una actualización de filas al volver; los consejos cancelados se reintentan sin recargar las páginas. Si solo se interrumpió la paginación, las flechas cargan únicamente la parte que falta.
 
 ### Bases de datos grandes (más de 50k fotos)
 
