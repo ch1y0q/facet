@@ -1624,7 +1624,10 @@
       "sequences": "A detetar bracketings",
       "tagging": "Etiquetagem",
       "vec": "Indexação",
-      "done": "Concluído"
+      "done": "Concluído",
+      "moments": "A detetar momentos",
+      "junk": "A detetar fotografias indesejadas",
+      "recompute": "A recalcular pontuações"
     },
     "title": "Escanear Fotos",
     "start_button": "Iniciar Escaneamento",
