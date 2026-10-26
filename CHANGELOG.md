@@ -6,6 +6,7 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- **Show the manual-face review filter chip.** The active filter can be removed above the gallery without clearing other filters.
 - **Readable sidecar import preview errors.** Missing, unreadable or invalid databases now produce a clear refusal instead of a SQLite traceback, without creating or upgrading the database.
 
 ## [1.24.0] "Diaphragme" — 2026-10-26

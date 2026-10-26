@@ -1665,7 +1665,7 @@ The five-second deadline interrupts active sockets, including slow headers and c
 
 ### Review saved manual faces
 
-In the gallery’s Refine filters, editors can enable **Manual faces need review** to find photos with stale or legacy saved face rectangles. Open a photo and its existing face editor to adjust and save a rectangle, or delete it. After the last mark needing review is corrected or removed, the photo leaves this filtered gallery. The filter also works in saved smart albums and whole-view selections.
+In the gallery’s Refine filters, editors can enable **Manual faces need review** to find photos with stale or legacy saved face rectangles. Open a photo and its existing face editor to adjust and save a rectangle, or delete it. After the last mark needing review is corrected or removed, the photo leaves this filtered gallery. The filter also works in saved smart albums and whole-view selections. The active filter appears as a chip above the gallery. Remove that chip to clear only this filter and keep your other filters.
 
 The queue reflects the last scan or explicit face-editor check, not continuous filesystem monitoring. Full scans and restricted scans check photos with manual marks even when face detection is disabled. Missing originals are flagged when validation is attempted. Listing the queue reads indexed database metadata and does not decode originals. Opening the editor rechecks the original and is authoritative. Metadata-only rewrites remain current when the existing canonical image identity matches; its coarse signature may miss subtle same-size edits, as with ordinary manual-face validation. No original files are changed by reviewing marks.
 
