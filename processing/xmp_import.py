@@ -64,8 +64,6 @@ from db.manual_tags import (
     normalize_manual_tag,
 )
 from processing.rating_writer import upsert_rating_state
-from utils.image_loading import WATCHABLE_IMAGE_EXTENSIONS
-from processing.xmp_keywords import keyword_key, parse_keyword_state
 from processing.xmp_export import (
     LABEL_FAVORITE,
     LABEL_REJECTED,
@@ -76,8 +74,13 @@ from processing.xmp_export import (
     NS_XMP,
     sidecar_scope,
 )
+from processing.xmp_keywords import keyword_key, parse_keyword_state
+from utils.image_loading import WATCHABLE_IMAGE_EXTENSIONS
 
 logger = logging.getLogger(__name__)
+
+# Field groups an import may select; the CLI validates against the same tuple.
+SIDECAR_FIELDS = ('review', 'gps', 'keywords')
 
 
 def _find_scalar(root, qname: str):
@@ -304,21 +307,15 @@ def _directory_image_claims(directory: str) -> dict[str, set[str]]:
     return images
 
 
-def _warn_full_naming_once(reported: set[str], image_path: str, basename: str,
-                           selected: str | None) -> None:
-    if "full_naming" in reported:
-        return
-    reported.add("full_naming")
-    logger.warning("Full-name sidecar policy for %s: selected %s; ignoring basename packet %s. "
-                   "Check --sidecar-naming and image ownership before changing policy; "
-                   "shared or other-image packets are refused. Further naming notices are suppressed for this run.",
-                   image_path, selected or "no full-name sidecar", basename)
+_FULL_NAMING_NOTICE = ("Full-name sidecar policy for %s: selected %s; ignoring basename packet %s. "
+                       "Check --sidecar-naming and image ownership before changing policy; "
+                       "shared or other-image packets are refused")
 
 
-def _warn_discovery_once(reported, kind, message, *args):
+def _warn_discovery_once(reported: set[str], kind: str, message: str, *args: object) -> None:
     if kind not in reported:
         reported.add(kind)
-        logger.warning(message + '; further notices of this kind are suppressed for this run', *args)
+        logger.warning(message + "; further notices of this kind are suppressed for this run", *args)
 
 
 def _discover_sidecar(image_path: str, naming: str, shared_stems: set[str],
@@ -326,7 +323,8 @@ def _discover_sidecar(image_path: str, naming: str, shared_stems: set[str],
                       reported: set[str]) -> tuple[str | None, str | None]:
     """Choose a naming family before parsing; never use mtime across families.
 
-    Return ``(path, None)`` or ``(None, reason)``. Basename discovery refuses any
+    Return ``(path, None)``, ``(None, reason)``, or ``(path, reason)`` when the other
+    naming family's packet was ignored. Basename discovery refuses any
     packet also claimed by another indexed or on-disk image, by basename, full
     name or fallback. Directory scans and full-policy notices are cached only
     for this import; inspection failures propagate for the caller to report.
@@ -336,15 +334,18 @@ def _discover_sidecar(image_path: str, naming: str, shared_stems: set[str],
     basename = os.path.splitext(image_path)[0] + ".xmp"
     has_basename = basename != image_path + ".xmp" and os.path.exists(basename)
     if full and has_basename and naming == "auto":
-        _warn_discovery_once(reported, 'ambiguous_families',
+        _warn_discovery_once(reported, "ambiguous_families",
                              "Skipping %s: ambiguous sidecar naming (%s and %s); "
                              "select --sidecar-naming full or basename", image_path, full, basename)
         return None, "ambiguous"
     if naming != "basename" and full:
         # Preserve the existing primary/fallback rule; list order breaks ties.
         selected = max(full, key=os.path.getmtime)
-        if has_basename:
-            _warn_full_naming_once(reported, image_path, basename, selected)
+        # IMG.CR2.xmp beside IMG.CR2.jpg is IMG.CR2's own full-name packet, not one ignored here.
+        if has_basename and not os.path.exists(os.path.splitext(basename)[0]):
+            _warn_discovery_once(reported, "full_naming", _FULL_NAMING_NOTICE,
+                                 image_path, selected, basename)
+            return selected, "basename_ignored"
         return selected, None
     if naming != "full" and has_basename:
         stem = _sidecar_stems(image_path)[0]
@@ -367,22 +368,21 @@ def _discover_sidecar(image_path: str, naming: str, shared_stems: set[str],
                 shared = True
                 break
         if shared:
-            if "shared_basename" not in reported:
-                reported.add("shared_basename")
-                logger.warning("Skipping %s: shared basename or another image's full-name/fallback "
-                               "sidecar makes %s ambiguous; use per-image full-name sidecars. "
-                               "Further shared-packet notices are suppressed for this run.", image_path, basename)
+            _warn_discovery_once(reported, "shared_basename",
+                                 "Skipping %s: shared basename or another image's full-name/fallback "
+                                 "sidecar makes %s ambiguous; use per-image full-name sidecars", image_path, basename)
             return None, "ambiguous"
         if full:
-            _warn_discovery_once(reported, 'basename_selected',
+            _warn_discovery_once(reported, "basename_selected",
                                  "Sidecar naming basename for %s: selecting %s; ignoring %s", image_path, basename, full)
             return basename, "full_ignored"
         return basename, None
     if full or has_basename:
         if naming == "full":
-            _warn_full_naming_once(reported, image_path, basename, None)
+            _warn_discovery_once(reported, "full_naming", _FULL_NAMING_NOTICE,
+                                 image_path, "no full-name sidecar", basename)
         else:
-            _warn_discovery_once(reported, 'missing_basename',
+            _warn_discovery_once(reported, "missing_basename",
                                  "No basename sidecar for %s; found %s; use --sidecar-naming full to read it",
                                  image_path, full)
         return None, "naming_mismatch"
@@ -399,8 +399,8 @@ def import_sidecars(conn, root: str | None = None, *, user_id: str | None = None
     """
     if sidecar_naming not in {"full", "basename", "auto"}:
         raise ValueError("sidecar_naming must be full, basename, or auto")
-    selected = frozenset(('review', 'gps', 'keywords') if fields is None else fields)
-    if not selected or not selected <= {'review', 'gps', 'keywords'}:
+    selected = frozenset(SIDECAR_FIELDS if fields is None else fields)
+    if not selected or not selected <= set(SIDECAR_FIELDS):
         raise ValueError('fields must select review, gps and/or keywords')
     if dry_run:
         return _import_sidecars(conn, root, user_id=user_id, overwrite_manual_gps=overwrite_manual_gps,
@@ -425,6 +425,17 @@ def import_sidecars(conn, root: str | None = None, *, user_id: str | None = None
         raise
 
 
+_PLAN_DETAIL_LIMIT = 1000
+
+
+def _plan_entry(entries: list[dict], path: str, sidecar: str | None, changes: dict,
+                diagnostics: list[dict], **extra: object) -> None:
+    """Append one per-photo plan entry while the preview stays bounded."""
+    if len(entries) < _PLAN_DETAIL_LIMIT:
+        entries.append({"path": path, "sidecar": sidecar, "changes": changes,
+                        "diagnostics": diagnostics, **extra})
+
+
 def _import_sidecars(conn, root, *, user_id, overwrite_manual_gps, dry_run, fields, overwrite_review, sidecar_naming):
     """Import ``<image>.xmp`` sidecars into the ``photos`` table.
 
@@ -436,7 +447,8 @@ def _import_sidecars(conn, root, *, user_id, overwrite_manual_gps, dry_run, fiel
     ``photos.tags``. Returns counts: ``updated`` / ``unchanged`` / ``missing`` (no
     sidecar) / ``skipped`` (unparseable, unreadable or ambiguous) / ``tags_added``.
     ``ambiguous`` is a subset of skipped; ``naming_mismatch`` is a subset of missing;
-    ``full_ignored`` counts photos whose full-name sidecar was ignored under ``basename``.
+    ``full_ignored`` counts photos whose full-name sidecar was ignored under ``basename``;
+    ``basename_ignored`` counts photos whose basename packet was ignored under ``full``.
     ``sidecar_naming`` selects ``full`` (default: newest of ``<image>.xmp`` and
     ``<image>.facet.xmp``), ``basename`` (strip image extension), or ``auto``
     (accept one family only). Basename packets also claimed by another image's
@@ -479,12 +491,8 @@ def _import_sidecars(conn, root, *, user_id, overwrite_manual_gps, dry_run, fiel
 
     from db.metadata_edits import REVIEW_FIELDS, record_sidecar_receipt, review_edit_state
 
-    updated = unchanged = missing = skipped = tags_added = conflicts = legacy_review_warnings = ambiguous = naming_mismatch = full_ignored = 0
-    entries = []
-    detail_limit = 1000
-    def describe(entry):
-        if len(entries) < detail_limit:
-            entries.append(entry)
+    updated = unchanged = missing = skipped = tags_added = conflicts = legacy_review_warnings = ambiguous = naming_mismatch = full_ignored = basename_ignored = 0
+    entries: list[dict] = []
     shared_stems = _shared_indexed_stems(conn) if sidecar_naming != "full" else set()
     directory_images: dict[str, dict[str, set[str]]] = {}
     reported: set[str] = set()
@@ -496,7 +504,7 @@ def _import_sidecars(conn, root, *, user_id, overwrite_manual_gps, dry_run, fiel
         except OSError as ex:
             logger.warning("Skipping %s: cannot inspect sidecars or image siblings: %s", row["path"], ex)
             skipped += 1
-            describe({"path": row["path"], "sidecar": None, "changes": {}, "diagnostics": [{"reason": "sidecar_inspection_failed"}]})
+            _plan_entry(entries, row["path"], None, {}, [{"reason": "sidecar_inspection_failed"}])
             continue
         if sidecar is None:
             if reason == "ambiguous":
@@ -506,17 +514,20 @@ def _import_sidecars(conn, root, *, user_id, overwrite_manual_gps, dry_run, fiel
                 missing += 1
                 if reason == "naming_mismatch":
                     naming_mismatch += 1
-            describe({"path": row["path"], "sidecar": None, "changes": {}, "diagnostics": [{"reason": "missing_sidecar" if reason == "missing" else reason or "missing_sidecar"}]})
+            _plan_entry(entries, row["path"], None, {},
+                        [{"reason": "missing_sidecar" if reason == "missing" else reason or "missing_sidecar"}])
             continue
         if reason == "full_ignored":
             full_ignored += 1
-        diagnostics = [{"reason": "full_ignored"}] if reason == "full_ignored" else []
+        elif reason == "basename_ignored":
+            basename_ignored += 1
+        diagnostics = [{"reason": reason}] if reason in ("full_ignored", "basename_ignored") else []
         parsed = parse_sidecar(sidecar)
         if parsed is None:
             logger.warning("Skipping %s: cannot parse sidecar %s", row["path"], sidecar)
             skipped += 1
             diagnostics.append({"reason": "unparseable_sidecar"})
-            describe({"path": row["path"], "sidecar": sidecar, "changes": {}, "diagnostics": diagnostics})
+            _plan_entry(entries, row["path"], sidecar, {}, diagnostics)
             continue
 
         existing = set(load_manual_tags(conn, row["path"]))
@@ -616,11 +627,12 @@ def _import_sidecars(conn, root, *, user_id, overwrite_manual_gps, dry_run, fiel
         if new_keywords:
             changes['keywords'] = {"added": new_keywords}
         source_at = datetime.fromtimestamp(sidecar_epoch, timezone.utc).isoformat()
-        describe({"path": row['path'], "sidecar": sidecar, "changes": changes, "diagnostics": diagnostics[:100],
-                  "diagnostics_omitted": max(0, len(diagnostics) - 100),
-                  "source": {"metadata_date": parsed['metadata_date'].isoformat() if parsed['metadata_date'] else None,
-                             "effective_at": source_at,
-                             "clock": "metadata_date" if metadata_epoch is not None else "file_mtime"}, "review_provenance": clocks})
+        _plan_entry(entries, row['path'], sidecar, changes, diagnostics[:100],
+                    diagnostics_omitted=max(0, len(diagnostics) - 100),
+                    source={"metadata_date": parsed['metadata_date'].isoformat() if parsed['metadata_date'] else None,
+                            "effective_at": source_at,
+                            "clock": "metadata_date" if metadata_epoch is not None else "file_mtime"},
+                    review_provenance=clocks)
         if not changes:
             unchanged += 1
             continue
@@ -640,6 +652,7 @@ def _import_sidecars(conn, root, *, user_id, overwrite_manual_gps, dry_run, fiel
         updated += 1
 
     return {"updated": updated, "unchanged": unchanged, "missing": missing, "skipped": skipped,
-            "tags_added": tags_added, "ambiguous": ambiguous, "naming_mismatch": naming_mismatch, "full_ignored": full_ignored, "conflicts": conflicts, "legacy_review_warnings": legacy_review_warnings,
+            "tags_added": tags_added, "ambiguous": ambiguous, "naming_mismatch": naming_mismatch, "full_ignored": full_ignored,
+            "basename_ignored": basename_ignored, "conflicts": conflicts, "legacy_review_warnings": legacy_review_warnings,
             "dry_run": dry_run, "entries": entries,
             "details_truncated": max(0, len(rows) - len(entries))}
