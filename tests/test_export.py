@@ -724,3 +724,42 @@ def test_embed_preflights_companion_before_changing_original(client, tmp_path, m
     assert str(tmp_path) not in response.text
     assert Path(path).read_bytes() == before
     assert companion.read_bytes() == malformed
+
+
+@pytest.mark.parametrize("endpoint", ["/api/export/sidecars", "/api/albums/7/export"])
+@pytest.mark.parametrize("error_type", ["precondition", "operational", "filesystem"])
+def test_batch_failure_details_stay_private_and_later_photos_export(client, tmp_path, monkeypatch, endpoint, error_type):
+    from api.routers import export
+    from processing.xmp_export import MetadataPreconditionError
+
+    failed, failed_row = _make_photo(tmp_path, "failed.jpg")
+    good, good_row = _make_photo(tmp_path, "good.jpg", star_rating=4)
+    db = str(tmp_path / "batch.db")
+    _seed_db(db, [failed_row, good_row])
+    with sqlite3.connect(db) as conn:
+        conn.execute("INSERT INTO albums(id,user_id,name) VALUES (7,NULL,'A')")
+        conn.executemany("INSERT INTO album_photos(album_id,photo_path,position) VALUES (7,?,?)",
+                         [(failed, 0), (good, 1)])
+    failure = {"precondition": MetadataPreconditionError, "operational": RuntimeError,
+               "filesystem": OSError}[error_type]("Private failure at /private/server/library/secret.jpg")
+    write = export.write_metadata
+
+    def write_or_refuse(path, *args, **kwargs):
+        if path == failed:
+            raise failure
+        return write(path, *args, **kwargs)
+
+    monkeypatch.setattr(export, "get_db", _db_cm(db))
+    monkeypatch.setattr(export, "write_metadata", write_or_refuse)
+    payload = {"paths": [failed, good]} if endpoint == "/api/export/sidecars" else {"mode": "sidecars"}
+    response = client.post(endpoint, json=payload)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert (body["written"], body["errors"], body["skipped"]) == (1, 1, 0)
+    expected = ("Existing metadata needs repair before exporting" if error_type == "precondition"
+                else "Failed to write metadata; check server logs")
+    assert body["first_error"] == expected
+    assert "/private/server/" not in response.text
+    assert body["sidecars"] == [good + ".xmp"]
+    assert _read_sidecar_desc(good + ".xmp").get(f"{{{_NS['xmp']}}}Rating") == "4"
+    assert not os.path.exists(failed + ".xmp")

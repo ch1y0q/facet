@@ -519,6 +519,8 @@ python facet.py --recompute-average        # Applica i nuovi pesi
 
 Dopo aver spostato personalmente i file, `python database.py --relink-photos` mostra un’anteprima dei percorsi vecchi/nuovi esatti e conserva le associazioni nel database. L’anteprima è predefinita. Applicare richiede l’ID del piano salvato e `--acknowledge-unverified-identity`: il database non contiene prove crittografiche dell’originale mancante. Arrestare viewer/scansioni e rivedere il piano. Entrambi i percorsi devono restare nelle radici configurate con la stessa visibilità degli utenti; copie, nomi ambigui, piani obsoleti e mappature dei percorsi vengono rifiutati. I file compagni devono essere espliciti; i rettangoli manuali richiedono revisione nell’editor e lo stato Immich non cambia. Contratto ed esempi: [Ricollegare foto spostate](RELINK.md).
 
+L’applicazione usa il blocco della libreria: il codice 75 indica un altro lavoro in corso e il codice 1 un blocco inutilizzabile. L’anteprima non acquisisce il blocco.
+
 `sidecar_facet` indica esplicitamente `photo.ext.facet.xmp`; anche i pacchetti alternativi non elencati vengono rifiutati. I piani salvati sono privati (0600 su POSIX). Una directory leggibile non prova che il volume sia montato: `source_mount_status` resta `not_verified`; l’operatore deve confermare uno spostamento reale anziché archiviazione offline.
 
 ```sh
