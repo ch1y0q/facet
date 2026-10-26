@@ -14,6 +14,7 @@ All notable changes to Facet are documented in this file.
 
 ### Added
 
+- **Explicit keyword reconciliation.** `--export-sidecars --reconcile-keywords` removes only previously Facet-owned keywords and preserves foreign names and AI provenance. Deletion markers expire when a name reappears in the file or Facet writes it again, allowing externally re-added manual keywords to be imported. Both export modes still write current Facet keywords back after external removal; no implicit database deletion or bidirectional sync is added. Additive exports remain the default; reconciliation requires ExifTool. Existing files whose metadata cannot be read reliably now refuse export before any metadata-clearing write, including ordinary CLI and viewer exports and embedding. Keyword names such as `2024`, `1.50`, `1e3`, `true`, `false` and `null` retain their exact spelling when ExifTool returns numeric or boolean JSON tokens.
 - Assign people from a searchable picker ordered by recent successful assignments in this browser, then visible face counts. Signing out clears saved recents.
 
 - **Explicit XMP sidecar discovery.** `--import-sidecars --sidecar-naming full|basename|auto` can read stripped-extension sidecars, refuses shared RAW/JPEG basenames, and reports naming conflicts. Full-name discovery remains the default; exports keep their existing filenames.
@@ -33,6 +34,7 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- Preserve the exact case of foreign boolean-looking keywords such as `True`, `FALSE` and `tRuE` with lossless readback when ExifTool JSON erases their spelling. Unicode newline-filename failures are isolated to the affected photo in batch exports.
 - Use shared Windows library-lock status probes so overlapping polls cannot report a running job when the library is idle. Real jobs retain exclusive admission.
 
 - Skip unsupported JSON face updates on ExifTool before 12.65 while exporting other metadata, preflight companion sidecars before embedding, and keep metadata-precondition responses free of resolved server paths. Unicode newline-filename failures are isolated to the affected photo in batch exports.
