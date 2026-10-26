@@ -2908,6 +2908,8 @@ export const I18N = {
     no: "organization_history.no",
     unknown: "organization_history.unknown",
     photo_count: "organization_history.photo_count",
+    field: "organization_history.field",
+    entry_action: "organization_history.entry_action",
   },
 } as const;
 

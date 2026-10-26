@@ -94,6 +94,7 @@ class _DeadlineConnection(http.client.HTTPConnection):
                 active.connect(address)
                 if self._secure:
                     context = ssl.create_default_context()
+                    context.minimum_version = ssl.TLSVersion.TLSv1_2
                     with self._socket_lock:
                         self.remaining()
                         secure = context.wrap_socket(active, server_hostname=self.host, do_handshake_on_connect=False)

@@ -2893,6 +2893,8 @@
     "yes": "是",
     "no": "否",
     "unknown": "未知",
-    "photo_count": "照片数量：{count}"
+    "photo_count": "照片数量：{count}",
+    "field": "字段",
+    "entry_action": "{action} · {kind} · {date} · #{id}"
   }
 }
