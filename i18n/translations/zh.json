@@ -1624,7 +1624,10 @@
       "sequences": "正在检测包围曝光",
       "tagging": "正在添加标签",
       "vec": "正在建立索引",
-      "done": "完成"
+      "done": "完成",
+      "moments": "识别精彩瞬间",
+      "junk": "检测不需要的照片",
+      "recompute": "重新计算评分"
     },
     "title": "扫描照片",
     "start_button": "开始扫描",
