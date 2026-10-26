@@ -175,7 +175,7 @@ Facet conserva i tag che digiti tu stesso (vedi [Galleria web — Tag manuali](V
 | Etichetta colore | `xmp:Label` (`Red` = rifiutata, `Yellow` = preferita) | `xmp:Label` | Orologi di revisione; fallback storico scansione |
 | Tag / parole chiave | `dc:subject` (piatto, tag IA + tag manuali, include i nomi delle persone riconosciute) | `dc:subject` (memorizzato come tag manuali) | Additivo per impostazione predefinita; `--reconcile-keywords` rimuove solo nomi obsoleti di Facet; gli import restano additivi ([Tag manuali e parole chiave XMP](#tag-manuali-e-parole-chiave-xmp)) |
 | Tag gerarchici | `lr:hierarchicalSubject` (`Category\|<cat>`, `People\|<nome>`) | Non reimportato | Solo esportazione |
-| Didascalia | `dc:description` (+ `IPTC:Caption-Abstract` tramite exiftool) | Non reimportato | Solo esportazione |
+| Didascalia | `dc:description` lingua predefinita (+ `IPTC:Caption-Abstract` tramite exiftool) | Non reimportato | Solo esportazione |
 | Zone volto nominate | `mwg-rs:RegionList` + `facet:RegionOwner=Facet` MWG (centrata-normalizzata, `Type=Face`) | Non reimportato | Solo esportazione; letto nativamente da digiKam, **non** letto da Lightroom (una limitazione nota di Adobe — Lightroom consuma solo le zone MWG che ha scritto lui stesso) |
 
 Vedi [Comandi — Anteprima ed esportazione](COMMANDS.md#anteprima-ed-esportazione) per il riferimento CLI completo (`--export-sidecars`, `--import-sidecars`, `--embed-originals`, `--score-to-stars`, `--user`).
