@@ -273,6 +273,18 @@ describe('App', () => {
       expect((app as any).activeFilterChips().some((c: any) => c.id === 'is_monochrome')).toBe(true);
     });
 
+    it('shows the manual-face review filter only while it is active', () => {
+      const { app, filtersSignal } = createApp('/');
+      expect((app as any).activeFilterChips().some((chip: { id: string }) => chip.id === 'manual_faces_need_review')).toBe(false);
+      filtersSignal.update(filters => ({ ...filters, manual_faces_need_review: true }));
+      expect((app as any).activeFilterChips()).toContainEqual({
+        id: 'manual_faces_need_review', labelKey: I18N.gallery.manual_faces_need_review,
+        value: '', clearKeys: ['manual_faces_need_review'],
+      });
+      filtersSignal.update(filters => ({ ...filters, manual_faces_need_review: false }));
+      expect((app as any).activeFilterChips().some((chip: { id: string }) => chip.id === 'manual_faces_need_review')).toBe(false);
+    });
+
     it('topiq chip uses gallery.topiq_range (not aesthetic_range)', () => {
       const { app, filtersSignal } = createApp('/');
       filtersSignal.set({ ...DEFAULT_FILTERS, min_topiq: '5', max_topiq: '' });
@@ -298,6 +310,19 @@ describe('App', () => {
   });
 
   describe('clearFilterChip', () => {
+    it('clears the manual-face review flag as a boolean and preserves other filters', () => {
+      const { app, filtersSignal, mockStore } = createApp('/');
+      filtersSignal.set({ ...DEFAULT_FILTERS, manual_faces_need_review: true, person_id: '7', min_score: '5' });
+      mockStore.updateFilter.mockImplementation((key: keyof GalleryFilters, value: GalleryFilters[keyof GalleryFilters]) => {
+        filtersSignal.update(filters => ({ ...filters, [key]: value }));
+      });
+      const chip = (app as any).activeFilterChips().find((item: { id: string }) => item.id === 'manual_faces_need_review');
+      expect(chip).toBeDefined();
+      (app as any).clearFilterChip(chip);
+      expect(mockStore.updateFilter).toHaveBeenCalledExactlyOnceWith('manual_faces_need_review', false);
+      expect(filtersSignal()).toMatchObject({ manual_faces_need_review: false, person_id: '7', min_score: '5' });
+      expect((app as any).activeFilterChips().map((item: { id: string }) => item.id)).toEqual(['person_7', 'min_score']);
+    });
     it('removes one person without affecting other person ids', () => {
       const { app, filtersSignal, mockStore } = createApp('/');
       filtersSignal.set({ ...DEFAULT_FILTERS, person_id: '1,2,3' });

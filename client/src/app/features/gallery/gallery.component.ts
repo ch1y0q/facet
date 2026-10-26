@@ -240,8 +240,10 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
         @if (store.reviewProgress(); as progress) {
           <section class="mx-2 md:mx-4 mt-2 px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] text-sm" [attr.aria-label]="I18N.gallery.review_progress.title | translate">
             <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
-              <span>{{ I18N.gallery.review_progress.counts | translate:{ undecided: progress.undecided, kept: progress.kept, rejected: progress.rejected } }}</span>
-              <span>{{ I18N.gallery.review_progress.complete | translate:{ percent: store.reviewPercent(), total: progress.total } }}</span>
+              <span class="inline-flex flex-wrap gap-x-4 gap-y-1" role="status" aria-live="polite" aria-atomic="true">
+                <span>{{ I18N.gallery.review_progress.counts | translate:{ undecided: progress.undecided, kept: progress.kept, rejected: progress.rejected } }}</span>
+                <span>{{ I18N.gallery.review_progress.complete | translate:{ percent: store.reviewPercent(), total: progress.total } }}</span>
+              </span>
               @if (progress.undecided > 0 && store.filters().review_status !== 'undecided') {
                 <button mat-button (click)="store.startReviewQueue()">{{ I18N.gallery.review_progress.start | translate }}</button>
               }
@@ -2536,9 +2538,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
    *  overlay, not a MatDialog, so the dialog query below cannot see it. */
   protected onGalleryShortcut(event: KeyboardEvent): void {
     if (this.parked || this.store.slideshowActive()) return;
-    const target = event.target as HTMLElement | null;
-    if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
-    if (target?.isContentEditable) return;
+    if (isTypingContext(event)) return;
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     if (document.querySelector('mat-dialog-container, mat-bottom-sheet-container')) return;
 

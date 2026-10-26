@@ -2861,7 +2861,7 @@
     "before": "Before",
     "after": "After",
     "error": "Could not complete the action. Check access and files, then preview again.",
-    "reset_hint": "Use file date removes the manual override. If the file has no date, the capture date becomes unknown.",
+    "reset_hint": "The “Use file date” button removes the manual override. If the file has no date, the capture date becomes unknown.",
     "use_file": "Use file date",
     "preview": "Preview",
     "apply": "Apply correction",

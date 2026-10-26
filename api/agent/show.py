@@ -19,7 +19,7 @@ from api.agent.tokens import ResolvedGrant
 from api.agent.tools_common import SortColumn
 from api.agent.tools_ui import BRIDGE_DISABLED
 from api.agent.ui_tools import (
-    TAB_UNSUPPORTED_FILTER_KEYS, UiNavigate, UiSetGalleryFilters, UiShowPhotos,
+    TAB_UNSUPPORTED_FILTER_KEYS, UiNavigate, UiSetGalleryFilters, UiShowPhotos, conflicting_rejected_filters,
 )
 from api.config import VIEWER_CONFIG
 
@@ -64,6 +64,8 @@ def search_patch(filters: dict, sort: Optional[str], sort_direction: Optional[st
     keys = sorted(k for k in effective if k in TAB_UNSUPPORTED_FILTER_KEYS)
     if keys:
         return {}, not_shown("unsupported_filters", keys=keys)
+    if conflicting_rejected_filters(effective):
+        return {}, not_shown("invalid_combination", keys=["favorites_only", "show_rejected"])
     if "type" in effective and "category" in effective:
         return {}, not_shown("invalid_combination", keys=["type", "category"])
     return {**effective, **effective_sort(sort, sort_direction)}, None
