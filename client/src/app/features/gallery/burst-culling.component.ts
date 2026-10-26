@@ -1146,6 +1146,9 @@ interface ShortcutRow {
                                    [placeholderSrc]="photo.path | thumbnailUrl:storedEdge"
                                    [frameKey]="photo.path"
                                    [loadedSources]="loadedRenders"
+                                   (sharpLoaded)="onSharpLoaded($event, photo.path)"
+                                   (sharpFailed)="onSharpFailed($event, photo.path)"
+                                   (sharpPending)="onSharpPending($event, photo.path)"
                                    [fullResSrc]="photo.path | imageUrl:true"
                                    [zoom]="zoom()"
                                    [focusPoint]="(photo.path | keySubjectForPath:keySubjectMap())?.center ?? null"
@@ -1671,35 +1674,38 @@ export class BurstCullingComponent implements OnDestroy {
    *  the neighbour prefetch wait for it, so the current frame is first in the
    *  server's render queue. */
   private readonly sharpPath = signal<string | null>(null);
-  private readonly failedRenderPath = signal<string | null>(null);
+  /** Failed attempts belong to individual visible panes; a new attempt clears its fallback. */
+  private readonly failedRenderPaths = signal<ReadonlySet<string>>(new Set());
   /** Neighbour preloaders in flight, kept so they are not collected mid-fetch
    *  and can be aborted when the frame changes. */
   private neighbourThumbs = new Map<string, HTMLImageElement>();
   private neighbourRenders = new Map<string, HTMLImageElement>();
 
-  /** The single pane reports the render it swapped to; map it back to a path. */
-  protected onSharpLoaded(src: string): void {
-    const path = this.lightboxGroup()?.photos[this.lightboxIndex()]?.path;
-    if (path && src === this.thumbnailUrl.transform(path, DARKROOM_THUMB_SIZE)) {
-      this.failedRenderPath.set(null);
-      this.sharpPath.set(path);
-    }
+  protected onSharpLoaded(src: string, path = this.currentPath()): void {
+    this.onSharpState(src, path, 'loaded');
   }
 
-  protected onSharpPending(src: string): void {
-    const path = this.lightboxGroup()?.photos[this.lightboxIndex()]?.path;
-    if (path && src === this.thumbnailUrl.transform(path, DARKROOM_THUMB_SIZE)) {
-      this.failedRenderPath.set(null);
-      this.sharpPath.set(null);
-    }
+  protected onSharpPending(src: string, path = this.currentPath()): void {
+    this.onSharpState(src, path, 'pending');
   }
 
-  protected onSharpFailed(src: string): void {
-    const path = this.lightboxGroup()?.photos[this.lightboxIndex()]?.path;
-    if (path && src === this.thumbnailUrl.transform(path, DARKROOM_THUMB_SIZE)) {
-      this.failedRenderPath.set(path);
-      this.sharpPath.set(null);
-    }
+  protected onSharpFailed(src: string, path = this.currentPath()): void {
+    this.onSharpState(src, path, 'failed');
+  }
+
+  /** Ignore obsolete panes and style previews; only the focused single pane
+   *  controls neighbour prefetch, while every pane owns its fallback source. */
+  private onSharpState(src: string, path: string | undefined, state: 'loaded' | 'pending' | 'failed'): void {
+    if (!path || !this.darkroomFramePaths().includes(path)
+      || src !== this.thumbnailUrl.transform(path, DARKROOM_THUMB_SIZE)) return;
+    const visible = this.darkroomFramePaths();
+    this.failedRenderPaths.update(paths => {
+      const next = new Set([...paths].filter(path => visible.includes(path)));
+      if (state === 'failed') next.add(path);
+      else next.delete(path);
+      return next.size === paths.size && [...next].every(path => paths.has(path)) ? paths : next;
+    });
+    if (this.compareMode() === 'single') this.sharpPath.set(state === 'loaded' ? path : null);
   }
 
   /** Paths of the previous and next frame in single view; none in compare mode,
@@ -1794,7 +1800,13 @@ export class BurstCullingComponent implements OnDestroy {
   });
 
   protected setCompareMode(mode: 'single' | '2up' | '4up'): void {
-    this.compareMode.set(mode);
+    const previous = this.compareMode();
+    if (mode !== previous) {
+      // Single/compare recreate their panes; 2-up/4-up retain shared panes.
+      if (mode === 'single' || previous === 'single') this.failedRenderPaths.set(new Set());
+      this.sharpPath.set(null);
+      this.compareMode.set(mode);
+    }
     this.zoom.set(FIT_ZOOM);
   }
 
@@ -1826,7 +1838,7 @@ export class BurstCullingComponent implements OnDestroy {
   private frameSource(path: string, hiRes: boolean): string {
     return hiRes
       ? this.fullResUrl.transform(path, true)
-      : this.thumbnailUrl.transform(path, this.failedRenderPath() === path ? STORED_EDGE : DARKROOM_THUMB_SIZE);
+      : this.thumbnailUrl.transform(path, this.failedRenderPaths().has(path) ? STORED_EDGE : DARKROOM_THUMB_SIZE);
   }
 
   /** Drop the overlays and everything that could still republish them: a pass
@@ -2255,7 +2267,10 @@ export class BurstCullingComponent implements OnDestroy {
       // In plain single view wait for the render attempt. On failure, measure
       // the stored thumbnail that the pane continues displaying. Compare mode and
       // a darktable style keep their own timing.
-      const awaitingSharp = this.compareMode() === 'single' && !this.activeStyle() && this.sharpPath() !== paths[0] && this.failedRenderPath() !== paths[0];
+      // Read outside untracked so a compare pane's failure or recovery rebuilds the pool.
+      const failed = this.failedRenderPaths();
+      const awaitingSharp = this.compareMode() === 'single' && !this.activeStyle()
+        && this.sharpPath() !== paths[0] && !failed.has(paths[0]);
       untracked(() => {
         if (active && paths.length > 0 && awaitingSharp) {
           // Hide, but keep the edge maps of frames already seen: stepping back to
