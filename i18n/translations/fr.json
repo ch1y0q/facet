@@ -2893,6 +2893,8 @@
     "yes": "Oui",
     "no": "Non",
     "unknown": "Inconnu",
-    "photo_count": "Photos : {count}"
+    "photo_count": "Photos : {count}",
+    "field": "Champ",
+    "entry_action": "{action} · {kind} · {date} · #{id}"
   }
 }

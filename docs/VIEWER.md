@@ -1687,7 +1687,7 @@ Reset retries brief database contention. If the library stays busy, it returns H
 
 ## Organization history
 
-Open **Organization history** from the gallery history button or photo details in edition mode. Expand an entry to compare the exact before/after values, then choose **Revert this entry**. GPS and capture dates are shared library values; review decisions, stars and favorites use your existing account preferences. Only these organization edits are recorded; files and face recognition are outside this history. Original files are never written. The existing short Undo and assistant activity list remain separate.
+Open **Organization history** from the gallery history button or photo details in edition mode. Expand an entry to compare the exact before/after values, then choose **Revert this entry**. GPS and capture dates are shared library values; review decisions, stars and favorites use your existing account preferences. Only these organization edits are recorded; files and face recognition are outside this history. Original files are never written. The existing short Undo and assistant activity list remain separate. Each action has an entry-specific accessible name, and expanded comparisons label their columns and rows.
 
 This viewer database keeps the latest **50 entries per account**, each with at most **1000 photos and 1 MiB** of recorded values. Larger filtered review actions are stored as labeled parts in the same transaction. Revert restores only the selected part; older parts may already have expired under the 50-entry limit. No-op edits add nothing. History survives restarts and incremental viewer database updates; it is not synchronized to another database. A fresh/full viewer export starts with empty history.
 

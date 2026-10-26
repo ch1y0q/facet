@@ -1608,7 +1608,7 @@ El restablecimiento reintenta los bloqueos breves de la base de datos. Si la bib
 
 ## Historial de organización
 
-En modo edición, abre **Historial de organización** desde la galería o los detalles. Expande una entrada para comparar los valores anteriores y posteriores y pulsa **Revertir esta entrada**. Los lugares y fechas son compartidos; decisiones, estrellas y favoritos usan tus preferencias de cuenta. Se excluyen archivos y reconocimiento facial. Los originales no cambian. Deshacer temporal y la actividad del asistente siguen separados.
+En modo edición, abre **Historial de organización** desde la galería o los detalles. Expande una entrada para comparar los valores anteriores y posteriores y pulsa **Revertir esta entrada**. Los lugares y fechas son compartidos; decisiones, estrellas y favoritos usan tus preferencias de cuenta. Se excluyen archivos y reconocimiento facial. Los originales no cambian. Deshacer temporal y la actividad del asistente siguen separados. Cada acción tiene un nombre accesible específico de su entrada y las comparaciones desplegadas identifican sus columnas y filas.
 
 Esta base conserva las últimas **50 entradas por cuenta**, cada una con un máximo de **1000 fotos y 1 MiB**. Las revisiones filtradas grandes se guardan en partes dentro de la misma transacción. Revertir solo restaura la parte elegida; las antiguas pueden haber caducado. Las acciones sin cambios no añaden entradas. El historial sobrevive a reinicios y actualizaciones incrementales, sin sincronizarse entre bases. Una exportación completa empieza con el historial vacío.
 

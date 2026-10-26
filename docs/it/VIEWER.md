@@ -1609,7 +1609,7 @@ Il ripristino riprova in caso di brevi blocchi del database. Se la libreria rest
 
 ## Cronologia delle modifiche
 
-In modalità modifica, apri **Cronologia delle modifiche** dalla galleria o dai dettagli. Espandi una voce per confrontare prima e dopo, quindi scegli **Ripristina questa voce**. Luoghi e date sono condivisi; decisioni, stelle e preferiti usano le preferenze del tuo account. File e riconoscimento facciale sono esclusi. Gli originali non cambiano. Annullamento temporaneo e attività dell’assistente restano separati.
+In modalità modifica, apri **Cronologia delle modifiche** dalla galleria o dai dettagli. Espandi una voce per confrontare prima e dopo, quindi scegli **Ripristina questa voce**. Luoghi e date sono condivisi; decisioni, stelle e preferiti usano le preferenze del tuo account. File e riconoscimento facciale sono esclusi. Gli originali non cambiano. Annullamento temporaneo e attività dell’assistente restano separati. Ogni azione ha un nome accessibile specifico della voce e i confronti espansi identificano colonne e righe.
 
 Questo database conserva le ultime **50 voci per account**, ciascuna con al massimo **1000 foto e 1 MiB**. Le revisioni filtrate grandi sono divise in parti nella stessa transazione. Il ripristino riguarda solo la parte scelta; quelle più vecchie possono essere scadute. Le azioni senza cambiamenti non creano voci. La cronologia sopravvive a riavvii e aggiornamenti incrementali, senza sincronizzazione tra database. Un’esportazione completa parte con una cronologia vuota.
 

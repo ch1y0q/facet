@@ -1609,7 +1609,7 @@ A redefinição tenta novamente após bloqueios breves do banco de dados. Se a b
 
 ## Histórico de organização
 
-No modo de edição, abra **Histórico de organização** na galeria ou nos detalhes. Expanda uma entrada para comparar os valores antes/depois e escolha **Reverter esta entrada**. Locais e datas são partilhados; decisões, estrelas e favoritos usam as preferências da sua conta. Ficheiros e reconhecimento facial ficam excluídos. Os originais não mudam. A anulação temporária e a atividade do assistente continuam separadas.
+No modo de edição, abra **Histórico de organização** na galeria ou nos detalhes. Expanda uma entrada para comparar os valores antes/depois e escolha **Reverter esta entrada**. Locais e datas são partilhados; decisões, estrelas e favoritos usam as preferências da sua conta. Ficheiros e reconhecimento facial ficam excluídos. Os originais não mudam. A anulação temporária e a atividade do assistente continuam separadas. Cada ação tem um nome acessível específico da entrada e as comparações expandidas identificam as colunas e linhas.
 
 Esta base guarda as últimas **50 entradas por conta**, cada uma com até **1000 fotos e 1 MiB**. Revisões filtradas grandes são divididas em partes na mesma transação. Reverter restaura apenas a parte escolhida; as antigas podem ter expirado. Ações sem alterações não criam entradas. O histórico sobrevive a reinícios e atualizações incrementais, sem sincronização entre bases. Uma exportação completa começa com o histórico vazio.
 
