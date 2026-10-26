@@ -126,6 +126,52 @@ describe('Export editor background jobs with HttpClient', () => {
     expect(fixture!.nativeElement.textContent).toContain('25/10/2026 14:07');
   });
 
+  it('gives current-status and recent-history refresh controls distinct accessible names', async () => {
+    build();
+    await start(job({ state: 'interrupted', processed: 1, errors: 1 }));
+    fixture!.detectChanges();
+    const refreshes = [...fixture!.nativeElement.querySelectorAll('button')]
+      .filter((button: HTMLElement) => button.textContent?.includes('export.jobs.refresh')) as HTMLElement[];
+    expect(refreshes).toHaveLength(2);
+    const names = refreshes.map(button => button.getAttribute('aria-label') ?? button.textContent!.trim());
+    expect(names[0]).not.toBe(names[1]);
+    expect(names[1]).toContain('export.jobs.recent');
+  });
+
+  it('announces state changes without putting changing progress or controls in the live region', async () => {
+    build();
+    await start(job({ state: 'interrupted', processed: 1, errors: 1 }));
+    fixture!.detectChanges();
+    const region = fixture!.nativeElement.querySelector('[aria-live="polite"]') as HTMLElement;
+    expect(region.textContent).toContain('export.jobs.interrupted');
+    expect(region.querySelector('button, mat-progress-bar')).toBeNull();
+    expect(region.textContent).not.toContain('export.jobs.progress');
+    const pending = component.viewJob(component.job()!);
+    http.expectOne('/api/export/sidecar_jobs/job').flush(job({ state: 'cancelled', processed: 2, errors: 1 }));
+    await pending;
+    fixture!.detectChanges();
+    expect(region.textContent).toContain('export.jobs.cancelled');
+  });
+
+  it('identifies only the receipt whose status is currently displayed', async () => {
+    build({}, false);
+    const first = job({ id: 'first', state: 'failed', processed: 1, errors: 1 });
+    const second = job({ id: 'second', state: 'interrupted', processed: 2, errors: 1 });
+    http.expectOne('/api/export/sidecar_jobs').flush([first, second]);
+    await fixture!.whenStable();
+    expect(fixture!.nativeElement.querySelector('[aria-current="true"]')).toBeNull();
+    for (const receipt of [first, second]) {
+      const selected = component.viewJob(receipt);
+      http.expectOne(`/api/export/sidecar_jobs/${receipt.id}`).flush(receipt);
+      await selected;
+      fixture!.detectChanges();
+      const current = fixture!.nativeElement.querySelectorAll('[aria-current="true"]');
+      expect(current).toHaveLength(1);
+      expect(current[0].textContent).toContain(`export.jobs.${receipt.state}`);
+      http.expectNone(request => request.method === 'POST');
+    }
+  });
+
   it('polls progress, cancels the pending read before an explicit stop, and retains cancelled counts', async () => {
     vi.useFakeTimers(); build();
     await start();

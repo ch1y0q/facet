@@ -18,6 +18,10 @@ from api.models.sidecar_jobs import SidecarJobPlan, SidecarJobRecord
 logger = logging.getLogger(__name__)
 _KIND = 'sidecar-export:'
 _TERMINAL = {'completed', 'cancelled', 'failed', 'interrupted'}
+METADATA_REPAIR_MESSAGE = 'Existing metadata needs repair before exporting'
+WRITE_FAILURE_MESSAGE = 'Failed to write metadata; check server logs'
+_STOPPED_MESSAGE = 'Export stopped unexpectedly; inspect server logs and retry remaining photos'
+_PUBLIC_ERRORS = {METADATA_REPAIR_MESSAGE, WRITE_FAILURE_MESSAGE, _STOPPED_MESSAGE}
 
 
 def _directory(db_path):
@@ -112,8 +116,11 @@ def _open_receipt(path):
 
 
 def _public(state, *, cancel_requested):
-    return {key: value for key, value in state.items() if key not in {'owner', 'retry'}} | {
-        'cancel_requested': cancel_requested}
+    result = {key: value for key, value in state.items() if key not in {'owner', 'retry'}}
+    # Older receipts can contain raw exception text, including server paths.
+    if result.get('first_error') and result['first_error'] not in _PUBLIC_ERRORS:
+        result['first_error'] = WRITE_FAILURE_MESSAGE
+    return result | {'cancel_requested': cancel_requested}
 
 
 def _read(path):
@@ -257,7 +264,7 @@ def _run(path, state, paths, work, lock):
     except Exception:
         logger.exception('Sidecar export job failed')
         state['state'] = 'failed'
-        state['first_error'] = 'Export stopped unexpectedly; inspect server logs and retry remaining photos'
+        state['first_error'] = _STOPPED_MESSAGE
     finally:
         try:
             _write(path, state)

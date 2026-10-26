@@ -613,6 +613,7 @@ class TestUiTools:
         ("ui_navigate", {"route": "/stats", "extra": 1}),
         ("ui_set_gallery_filters", {"patch": {"not_a_filter": 1}}),
         ("ui_set_gallery_filters", {"patch": {"sort": "nope"}}),
+        ("ui_set_gallery_filters", {"patch": {"show_rejected": True, "favorites_only": True}}),
         ("ui_get_gallery_view", {"limit": 500}),
         ("ui_select_photos", {}),
         ("ui_select_photos", {"paths": ["a"], "select_view": True}),

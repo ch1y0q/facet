@@ -347,6 +347,7 @@ export class App implements OnInit {
     // Boolean filters
     if (f.favorites_only) chips.push({ id: 'favorites_only', labelKey: 'gallery.favorites_only', value: '', clearKeys: ['favorites_only'] });
     if (f.is_monochrome) chips.push({ id: 'is_monochrome', labelKey: 'gallery.monochrome_only', value: '', clearKeys: ['is_monochrome'] });
+    if (f.manual_faces_need_review) chips.push({ id: 'manual_faces_need_review', labelKey: I18N.gallery.manual_faces_need_review, value: '', clearKeys: ['manual_faces_need_review'] });
 
     // Range/date filter pairs (metrics hidden by the licensing policy get no chip)
     const hiddenMetrics = unavailableSet(this.store.config()?.unavailable_metrics);
@@ -398,8 +399,8 @@ export class App implements OnInit {
         this.store.updateFilter('person_id', ids.join(','));
         continue;
       }
-      if (key === 'favorites_only' || key === 'is_monochrome') {
-        this.store.updateFilter(key as 'favorites_only' | 'is_monochrome', false);
+      if (key === 'favorites_only' || key === 'is_monochrome' || key === 'manual_faces_need_review') {
+        this.store.updateFilter(key as 'favorites_only' | 'is_monochrome' | 'manual_faces_need_review', false);
       } else {
         this.store.updateFilter(key as keyof GalleryFilters, '' as never);
       }

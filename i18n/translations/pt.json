@@ -2861,7 +2861,7 @@
     "before": "Antes",
     "after": "Depois",
     "error": "Não foi possível concluir a ação. Verifique o acesso e os ficheiros e volte a pré-visualizar.",
-    "reset_hint": "A data do ficheiro remove a correção manual. Se o ficheiro não tiver data, a data de captura fica desconhecida.",
+    "reset_hint": "O botão «Usar data do ficheiro» remove a correção manual. Se o ficheiro não tiver data, a data de captura fica desconhecida.",
     "use_file": "Usar data do ficheiro",
     "preview": "Pré-visualizar",
     "apply": "Aplicar correção",

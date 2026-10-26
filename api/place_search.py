@@ -1,7 +1,8 @@
 """Small, explicit Photon lookup. No query or outbound URL is logged here.
 
-Cache and throttle are per viewer process; deploy one worker or use a private
-Photon instance when sharing an installation across multiple workers.
+The cache is isolated by place owner within each viewer process. The provider
+throttle remains shared; deploy one worker or use a private Photon instance
+when sharing an installation across multiple workers.
 """
 import http.client
 import json
@@ -20,7 +21,7 @@ from api.config import VIEWER_CONFIG
 
 _MAX_BYTES = 65536
 _TIMEOUT_SECONDS = 5.0
-_cache: OrderedDict[tuple[str, str], tuple[float, list[dict[str, Any]]]] = OrderedDict()
+_cache: OrderedDict[tuple[tuple[str, str], str, str], tuple[float, list[dict[str, Any]]]] = OrderedDict()
 _lock = threading.Lock()
 _next_request = 0.0
 _inflight = False
@@ -221,7 +222,7 @@ def _results(data: Any) -> list[dict[str, Any]]:
     return results
 
 
-def search(query: str) -> list[dict[str, Any]]:
+def search(query: str, owner: tuple[str, str]) -> list[dict[str, Any]]:
     global _next_request, _inflight
     if len(query) > 200:
         raise HTTPException(422, 'Search must contain 3 to 200 characters')
@@ -233,7 +234,7 @@ def search(query: str) -> list[dict[str, Any]]:
         raise HTTPException(503, 'Online place search is disabled')
     # Do not queue unbounded work. Reserve the provider interval before the call;
     # a busy search refuses new misses while cached searches remain available.
-    key = (url, query)
+    key = (owner, url, query)
     with _lock:
         now = time.monotonic()
         for expired in [k for k, (stamp, _) in _cache.items() if now - stamp >= 900]:
@@ -246,7 +247,7 @@ def search(query: str) -> list[dict[str, Any]]:
         _inflight = True
     try:
         results = _results(_fetch(url, query))
-    except (OSError, ValueError, http.client.HTTPException, zlib.error):
+    except (OSError, ValueError, RecursionError, http.client.HTTPException, zlib.error):
         raise HTTPException(502, 'Online place search is unavailable') from None
     finally:
         with _lock:
