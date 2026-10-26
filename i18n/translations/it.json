@@ -2588,7 +2588,12 @@
       "refresh": "Aggiorna stato",
       "recent": "Esportazioni sidecar recenti",
       "none": "Nessuna esportazione sidecar recente.",
-      "read_failed": "Impossibile leggere il progresso. Aggiorna lo stato per riprovare."
+      "read_failed": "Impossibile leggere il progresso. Aggiorna lo stato per riprovare.",
+      "errors": {
+        "metadata_repair": "I metadati esistenti devono essere riparati prima dell’esportazione.",
+        "write_failed": "Impossibile scrivere i metadati. Controlla i log del server.",
+        "stopped": "L’esportazione si è interrotta in modo imprevisto. Controlla i log del server e riprova con le foto rimanenti."
+      }
     }
   },
   "undo": {
