@@ -486,6 +486,7 @@ HDR 之间重新标注。**漏检**则从照片库修正，因为未被检测到
 
 - 需要已存储的 `clip_embedding` 数据（在评分过程中计算）
 - 安装了 sqlite-vec 且当前 Python 的 SQLite 能加载扩展时使用它，否则使用内存中的 NumPy 矩阵。对图库而言它不再是有上限的 KNN top-k：图库会解析出高于匹配灵敏度阈值的全部照片（先做 KNN 查询，匹配超过 4096 张时改为全量扫描，没有 sqlite-vec 时使用 NumPy 矩阵）。`GET /api/search` 仍是带排序、有上限的端点
+- 未使用 sqlite-vec 时，仅保留当前嵌入模型和可见照片集合对应的一个内存矩阵。可见照片相同的账户共用矩阵，切换到不同可见范围时会替换矩阵。受限搜索只加载获准访问的向量，空范围不分配矩阵。评分和收藏不会重建矩阵；照片路径、嵌入或数据库结构变化会使其失效。为限制内存占用，矩阵构建仍串行执行，首次搜索或范围变化后的搜索可能需要等待。
 - 对 AI 照片描述／标签做 FTS5 文本检索，提供额外的关键词匹配（运行 `database.py --rebuild-fts` 启用）
 - 使用与当前 VRAM 配置档相同的嵌入模型（16gb/24gb 用 SigLIP 2，legacy/8gb 用 CLIP ViT-L-14），如果两者不一致，则使用 `models.clip`/`clip_legacy` 中实际匹配已存储嵌入维度的那一个（见 [docs/CONFIGURATION.md](CONFIGURATION.md)）
 - `scope=text` 会把查询限制为对 OCR／描述文本的字面 FTS5 匹配，并跳过嵌入向量检索
