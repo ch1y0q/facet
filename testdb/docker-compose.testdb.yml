@@ -1,0 +1,57 @@
+# A second, family-free Facet for face testing: same image as the main install, its own
+# photos, database and settings, on port 5010. The main install is not touched. Model
+# caches are the main compose project's named volumes, so nothing is downloaded twice.
+#
+#   TESTDB=/path/to/testdb docker compose -p facet-test -f testdb/docker-compose.testdb.yml up -d
+#
+# TESTDB holds photos/ (from testdb/make_lfw_subset.py), data/ (the database) and
+# config/scoring_config.json. IMAGE picks the build to test; MAIN_PROJECT is the main
+# install's compose project name (its volumes are <project>_facet-*). Requires the
+# NVIDIA Container Toolkit.
+services:
+  facet:
+    image: ${IMAGE:-ghcr.io/ncoevoet/facet:latest-cuda}
+    container_name: facet-test
+    ports:
+      - "${PORT:-5010}:5000"
+    volumes:
+      - ${TESTDB:?set TESTDB}/photos:/data/photos:ro
+      - ${TESTDB}/data:/app/data
+      - ${TESTDB}/config:/config
+      - hf-cache:/home/facet/.cache/huggingface
+      - torch-cache:/home/facet/.cache/torch
+      - insightface:/home/facet/.insightface
+      - pretrained:/app/pretrained_models
+    environment:
+      - FACET_LOG_LEVEL=INFO
+      - DB_PATH=/app/data/photo_scores_pro.db
+      - FACET_CONFIG=/config/scoring_config.json
+      - FACET_VRAM_PROFILE=${FACET_VRAM_PROFILE:-8gb}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  hf-cache:
+    external: true
+    name: ${MAIN_PROJECT:-facet}_facet-hf-cache
+  torch-cache:
+    external: true
+    name: ${MAIN_PROJECT:-facet}_facet-torch-cache
+  insightface:
+    external: true
+    name: ${MAIN_PROJECT:-facet}_facet-insightface
+  pretrained:
+    external: true
+    name: ${MAIN_PROJECT:-facet}_facet-pretrained
