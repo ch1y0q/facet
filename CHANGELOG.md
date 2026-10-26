@@ -6,6 +6,7 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- **Accessible capture-date validation.** Link invalid offsets to their explanation and identify preview table column headers.
 - **Private online place-search caches.** Multi-user address searches reuse only the current account’s results while preserving the shared provider rate limit. Excessively nested provider JSON returns the normal unavailable response instead of an internal server error.
 - **Keep batch export errors private.** Sidecar selections, albums and background receipts return safe failure summaries while retaining details in server logs; unaffected photos continue exporting.
 - **Retry capture-date resets during brief database contention.** Use file date retries busy writes and reports database failures without exposing internal details; failed transactions preserve the manual date and history.
@@ -18,6 +19,10 @@ All notable changes to Facet are documented in this file.
 - **Keep review progress steady during updates.** Review rebuilds fetch counts once, retain the same-scope summary while loading, and announce updated counts without moving focus. Account or scope changes hide old counts immediately.
 - **Recover face exports after a temporary ExifTool version-check failure.** Failed checks are retried rather than disabling face writes until restart; known defective versions remain refused before any metadata write.
 - **Keep gallery labels and hints accurate.** The active date-range button retains its visible label in its accessible name, and photo cards hide rating shortcut hints when rating controls are disabled.
+- **Keep targeted gallery repairs targeted.** Returning from a photo retries cancelled row updates without replaying completed pages when paging was idle and membership stays unchanged. A row leaving a paginated filter refills loaded pages to prevent skipped results. Failed repairs retain their targets, and obsolete returns cannot start follow-up reads for another account or filter.
+- **Clarify capture-date reset hints.** All seven languages identify the button that removes a manual date correction.
+- **Align rejected-only filters across the gallery and assistant.** Agents can apply and show rejected-only searches in the tab and save them as smart albums. Conflicting favorite-only/rejected-only tab requests are refused instead of broadening the view. The gallery disables the rejected-only toggle while an explicit review status takes priority.
+- **Preview global sidecar imports from read-only installs.** Imports without `--user` no longer initialize the viewer’s login secret, so database refusals are reported without authentication-bootstrap tracebacks.
 - **Close right-click menus when opening a photo.** Parking the gallery now dismisses its shared photo context menu so it cannot remain over the photo page or reappear on Back.
 - **Ship the ExifTool tag definitions.** Installed distributions include Facet’s metadata configuration. ExifTool exports refuse missing definitions before changing photos or sidecars instead of silently omitting private metadata.
 - **Match focus peaking to each compare pane.** Track render failures and retries per pane so a previous single-view fallback does not select the wrong image source in compare mode.

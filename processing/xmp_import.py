@@ -443,8 +443,11 @@ def _import_sidecars(conn, root, *, user_id, overwrite_manual_gps, dry_run, fiel
     basename, full name or fallback are refused even when only one photo is in
     scope. No sidecars are rewritten.
     """
-    from api.config import is_multi_user_enabled
-    per_user = bool(user_id and is_multi_user_enabled())
+    # Global imports need no viewer state or authentication-secret bootstrap.
+    per_user = False
+    if user_id:
+        from api.config import is_multi_user_enabled
+        per_user = is_multi_user_enabled()
 
     # A read-only preview must inspect released schemas without migrating them.
     # Keep did not exist there; an absent decision is explicitly undecided.
