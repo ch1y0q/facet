@@ -1037,7 +1037,7 @@
     "user_menu": "User menu"
   },
   "gallery": {
-    "help": "Sort by score, date or your personal taste\nFilter with the sidebar: people, tags, camera, categories\nSearch by filename or description\nRate and curate with the keyboard — see the table below",
+    "help": "• Sort by score, date or your personal taste\n• Filter with the sidebar: people, tags, camera, categories\n• Search by filename or description\n• Rate and curate with the keyboard — see the table below",
     "hidden_banner": {
       "message": "{n} photos hidden by current filters",
       "some_hidden": "Some photos are hidden by your filters",
@@ -1336,7 +1336,8 @@
       "focus_search": "Focus the search box",
       "toggle_sidebar": "Show / hide the filter sidebar",
       "swap_layout": "Switch grid / mosaic",
-      "select": "Select the focused photo"
+      "select": "Select the focused photo",
+      "page_title": "Gallery shortcuts"
     }
   },
   "composition_patterns": {

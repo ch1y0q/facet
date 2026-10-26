@@ -12,7 +12,7 @@ interface ShortcutSection { titleKey: string; rows: CullingShortcutRow[]; }
  *  view toggles), shown when the Help entry fires there. */
 const GALLERY_SHORTCUT_SECTIONS: ShortcutSection[] = [
   {
-    titleKey: 'culling.shortcuts.page_title',
+    titleKey: 'gallery.shortcuts.page_title',
     rows: [
       { keys: ['1', '–', '5'], labelKey: 'gallery.shortcuts.rate' },
       { keys: ['F'], labelKey: 'gallery.shortcuts.favourite' },
