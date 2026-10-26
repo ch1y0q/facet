@@ -781,6 +781,8 @@ API: see the [API Endpoints](#api-endpoints) section below.
 
 The culling page (`/culling`, edition mode) groups near-identical shots so you can keep the best of each and reject the rest. A **granularity** select — the first, highest-impact control in the toolbar — chooses how photos are grouped:
 
+The Culling toolbar’s **Trash rejects** button previews all rejected photos, including hidden frames, without selecting them first. Confirm with **Apply** to move the files to the OS trash; database decisions remain for My Taste. Companion files and sequence siblings are excluded unless selected. Requires edition access and available trash support. The existing 10,000-photo filter-scope cap applies.
+
 - **All** (default) — merged burst + similar groups.
 - **Bursts** — photos shot close together in time (from burst detection).
 - **Similar** — photos that look alike regardless of when they were taken, grouped by CLIP/SigLIP embedding similarity. A threshold slider controls how strict the grouping is.

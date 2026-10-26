@@ -716,6 +716,8 @@ API: siehe den Abschnitt [API-Endpunkte](#api-endpunkte) weiter unten.
 
 Die Auswahl-Seite (`/culling`, Bearbeitungsmodus) gruppiert nahezu identische Aufnahmen, sodass Sie die beste jeder Gruppe behalten und den Rest ablehnen können. Ein **Granularitäts**-Selektor — das erste und einflussreichste Steuerelement in der Symbolleiste — bestimmt, wie Fotos gruppiert werden:
 
+Die Papierkorb-Schaltfläche in der Auswahl-Werkzeugleiste zeigt alle abgelehnten Fotos in einer Vorschau, auch ausgeblendete Aufnahmen. Erst die Bestätigung verschiebt Dateien in den Systempapierkorb; Entscheidungen für My Taste bleiben gespeichert. Begleitdateien und Seriengeschwister sind standardmäßig ausgeschlossen. Erfordert Bearbeitungszugriff und Papierkorb-Unterstützung. Die Grenze von 10.000 Fotos pro Filter gilt weiterhin.
+
 - **Alle** (Standard) — kombinierte Serienbild- + Ähnlichkeitsgruppen.
 - **Serienbilder** — zeitlich dicht aufeinanderfolgend aufgenommene Fotos (aus der Serienbilderkennung).
 - **Ähnlich** — Fotos, die sich ähneln, unabhängig vom Aufnahmezeitpunkt, gruppiert nach CLIP/SigLIP-Embedding-Ähnlichkeit. Ein Schwellenwertregler steuert, wie streng die Gruppierung ist.

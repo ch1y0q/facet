@@ -715,6 +715,8 @@ API: veja a seção [Endpoints da API](#endpoints-da-api) abaixo.
 
 A página de triagem (`/culling`, modo de edição) agrupa fotos quase idênticas para que você possa manter a melhor de cada uma e rejeitar o resto. Um seletor de **granularidade** — o primeiro e mais impactante controle da barra de ferramentas — escolhe como as fotos são agrupadas:
 
+O botão do lixo na barra de triagem mostra uma pré-visualização de todas as fotos rejeitadas, incluindo as ocultas, sem seleção prévia. Só a confirmação move os ficheiros para o lixo do sistema; as decisões para My Taste permanecem guardadas. Os ficheiros associados e as fotos da mesma sequência são excluídos por padrão. Requer acesso de edição e suporte ao lixo. Mantém-se o limite de 10.000 fotos por filtro.
+
 - **Tudo** (padrão) — grupos combinados de sequência + semelhantes.
 - **Sequências** — fotos tiradas próximas no tempo (da detecção de sequências).
 - **Semelhantes** — fotos que se parecem independentemente de quando foram tiradas, agrupadas pela similaridade de embedding CLIP/SigLIP. Um controle deslizante de limiar controla o quão restrito é o agrupamento.

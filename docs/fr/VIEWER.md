@@ -717,6 +717,8 @@ API : voir la section [Points d'accès API](#points-daccès-api) ci-dessous.
 
 La page de tri sélectif (`/culling`, mode édition) regroupe les clichés quasi identiques afin que vous puissiez conserver le meilleur de chaque groupe et rejeter le reste. Un sélecteur de **granularité** — la première commande, la plus impactante, de la barre d'outils — choisit la façon dont les photos sont regroupées :
 
+Le bouton corbeille de la barre de tri affiche un aperçu de toutes les photos rejetées, y compris les images masquées, sans sélection préalable. Seule la confirmation déplace les fichiers vers la corbeille du système ; les décisions pour My Taste restent enregistrées. Les fichiers associés et les images de la même séquence sont exclus par défaut. Nécessite un accès en édition et une corbeille disponible. La limite de 10 000 photos par filtre reste applicable.
+
 - **Tout** (par défaut) — groupes combinés de rafale + similaires.
 - **Rafales** — photos prises dans un court intervalle de temps (issues de la détection de rafales).
 - **Similaires** — photos qui se ressemblent quel que soit le moment où elles ont été prises, regroupées par similarité d'embeddings CLIP/SigLIP. Un curseur de seuil contrôle la rigueur du regroupement.

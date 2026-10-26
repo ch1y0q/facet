@@ -6,6 +6,7 @@ All notable changes to Facet are documented in this file.
 
 ### Added
 
+- **Trash rejected photos from Culling.** Preview all rejected files, including hidden frames, and confirm moving them to the system trash without selecting photos individually.
 - **Scores placed in the library.** Photo detail, the gallery side panel and the card score badge show where each score sits in the whole library: a sparkline of its distribution with this photo's bar lit, and "Top X% of the library" with the library range on hover or focus. Scores with no better end (ISO, aperture, face count…) show the range only.
 
 ### Changed

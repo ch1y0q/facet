@@ -715,6 +715,8 @@ API: consulta la sección [Endpoints de la API](#endpoints-de-la-api) más abajo
 
 La página de descarte (`/culling`, modo de edición) agrupa las tomas casi idénticas para que puedas conservar la mejor de cada una y descartar el resto. Un selector de **granularidad** —el primer control y el de mayor impacto en la barra de herramientas— elige cómo se agrupan las fotos:
 
+El botón de papelera de la barra de descarte muestra una vista previa de todas las fotos rechazadas, incluso las ocultas, sin selección previa. Solo la confirmación mueve los archivos a la papelera del sistema; las decisiones para My Taste se conservan. Los archivos asociados y las fotos de la misma secuencia se excluyen por defecto. Requiere acceso de edición y papelera disponible. Se mantiene el límite de 10.000 fotos por filtro.
+
 - **Todas** (predeterminado) — grupos combinados de ráfaga + similares.
 - **Ráfagas** — fotos tomadas muy seguidas en el tiempo (de la detección de ráfagas).
 - **Similar** — fotos que se parecen entre sí independientemente de cuándo se tomaron, agrupadas por la similitud de embeddings de CLIP/SigLIP. Un control deslizante de umbral controla lo estricta que es la agrupación.

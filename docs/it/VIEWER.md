@@ -716,6 +716,8 @@ API: vedi la sezione [Endpoint API](#endpoint-api) più sotto.
 
 La pagina di selezione (`/culling`, modalità di modifica) raggruppa gli scatti quasi identici in modo da poter conservare il migliore di ciascuno e scartare il resto. Un selettore di **granularità** — il primo controllo, quello con maggiore impatto, della barra degli strumenti — sceglie come raggruppare le foto:
 
+Il pulsante del cestino nella barra di selezione mostra un’anteprima di tutte le foto scartate, comprese quelle nascoste, senza selezione preventiva. Solo la conferma sposta i file nel cestino di sistema; le decisioni per My Taste restano salvate. I file associati e le foto della stessa sequenza sono esclusi per impostazione predefinita. Richiede accesso in modifica e supporto al cestino. Resta il limite di 10.000 foto per filtro.
+
 - **Tutto** (predefinito) — gruppi combinati di raffiche + foto simili.
 - **Raffiche** — foto scattate ravvicinate nel tempo (dal rilevamento delle raffiche).
 - **Simili** — foto che si assomigliano indipendentemente da quando sono state scattate, raggruppate per somiglianza degli embedding CLIP/SigLIP. Un cursore di soglia controlla quanto è rigido il raggruppamento.
