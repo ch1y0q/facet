@@ -7,7 +7,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatDialog } from '@angular/material/dialog';
 import { MatBottomSheet } from '@angular/material/bottom-sheet';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
-import { of, Subject } from 'rxjs';
+import { firstValueFrom, of, Subject } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { AlbumService } from '../../core/services/album.service';
@@ -790,6 +790,414 @@ describe('GalleryStore read cancellation with HttpClient', () => {
     request('/photos/keeper_hints').flush({});
     expect(store.photos()[0].is_kept).toBe(false);
     expect(snack).not.toHaveBeenCalled();
+  });
+
+  it.each(['none', 'targeted', 'full'] as const)('preserves cancelled repair scope and page two after Back (queued=%s)', async queued => {
+    store.filters.update(f => ({ ...f, per_page: 2 }));
+    const photos = Array.from({ length: 4 }, (_, i) => makePhoto({ path: `/p${i}.jpg` }));
+    const loading = store.loadPhotos();
+    request('/photos').flush({ ...EMPTY_PAGE, photos: photos.slice(0, 2), total: 6, has_more: true });
+    request('/photos/review_progress').flush(COUNTS);
+    await loading;
+    request('/photos/keeper_hints').flush({});
+    const paging = store.nextPage();
+    request('/photos').flush({ ...EMPTY_PAGE, photos: photos.slice(2), total: 6, has_more: true });
+    await paging;
+    request('/photos/keeper_hints').flush({});
+    const selected = new Set(['/p2.jpg']);
+    store.selectedPaths.set(selected);
+    const writing = firstValueFrom(TestBed.inject(ApiService).put('/photo/gps', {
+      path: '/p2.jpg', gps_latitude: 1, gps_longitude: 2,
+    })).then(() => store.refreshPaths(['/p2.jpg']));
+    const write = request('/photo/gps');
+    expect(write.request.body.path).toBe('/p2.jpg');
+    write.flush({ gps_latitude: 1, gps_longitude: 2 });
+    let obsolete!: TestRequest;
+    await vi.waitFor(() => { obsolete = request('/photos/by_paths'); });
+    expect(obsolete.request.body.paths).toEqual(['/p2.jpg']);
+    const writes = [writing];
+    if (queued !== 'none') {
+      for (const progress of http.match(r => r.url === '/api/photos/review_progress')) if (!progress.cancelled) progress.flush(COUNTS);
+      writes.push(firstValueFrom(TestBed.inject(ApiService).put('/photo/gps', {
+        path: '/p3.jpg', gps_latitude: 1, gps_longitude: 2,
+      })).then(() => store.refreshPaths(queued === 'full' ? null : ['/p3.jpg'])));
+      request('/photo/gps').flush({ gps_latitude: 1, gps_longitude: 2 });
+      let progress!: TestRequest;
+      await vi.waitFor(() => { progress = request('/photos/review_progress'); });
+      progress.flush(COUNTS);
+    }
+    events.next(new NavigationStart(1, '/photo?path=/p2.jpg'));
+    store.parkListingReads();
+    (TestBed.inject(Router) as unknown as { url: string }).url = '/photo?path=/p2.jpg';
+    events.next(new NavigationEnd(1, '/photo?path=/p2.jpg', '/photo?path=/p2.jpg'));
+    expect(obsolete.cancelled).toBe(true);
+    await Promise.all(writes);
+    for (const progress of http.match(r => r.url === '/api/photos/review_progress')) expect(progress.cancelled).toBe(true);
+    events.next(new NavigationStart(2, '/'));
+    (TestBed.inject(Router) as unknown as { url: string }).url = '/';
+    events.next(new NavigationEnd(2, '/', '/'));
+    const returning = store.resumeListingReads();
+    if (queued === 'full') {
+      for (let page = 1; page <= 2; page++) {
+        let repair!: TestRequest;
+        await vi.waitFor(() => { repair = request('/photos'); });
+        expect(repair.request.params.get('page')).toBe(String(page));
+        repair.flush({ ...EMPTY_PAGE, photos: photos.slice((page - 1) * 2, page * 2)
+          .map(photo => ({ ...photo, gps_latitude: 1, gps_longitude: 2 })), total: 6, has_more: true });
+      }
+    } else {
+      let repair!: TestRequest;
+      await vi.waitFor(() => { repair = request('/photos/by_paths'); });
+      const repairedPaths = queued === 'targeted' ? ['/p2.jpg', '/p3.jpg'] : ['/p2.jpg'];
+      expect(repair.request.body.paths).toEqual(repairedPaths);
+      repair.flush({ photos: repairedPaths.map(path => makePhoto({ path, gps_latitude: 1, gps_longitude: 2 })) });
+    }
+    for (const progress of http.match(r => r.url === '/api/photos/review_progress')) if (!progress.cancelled) progress.flush(COUNTS);
+    await returning;
+    for (const hints of http.match(r => r.url === '/api/photos/keeper_hints')) if (!hints.cancelled) hints.flush({});
+    expect(store.photos().map(photo => photo.path)).toEqual(photos.map(photo => photo.path));
+    expect(store.photos().find(photo => photo.path === '/p2.jpg')?.gps_latitude).toBe(1);
+    expect(store.filters().page).toBe(2);
+    expect(store.selectedPaths()).toBe(selected);
+    http.expectNone(r => r.url === '/api/photos');
+  });
+
+  it.each(['success', 'failure', 'cancellation', 'active', 'active-failure', 'active-identity', 'active-filter', 'parked', 'active-queued-identity', 'active-queued-query', 'active-queued-rejected', 'active-queued-destroyed'] as const)('refills filtered page offsets after membership loss and %s before nextPage', async outcome => {
+    const activeRetry = outcome.startsWith('active');
+    let acceptPaging = true;
+    store.filters.update(f => ({ ...f, per_page: 2, no_gps: '1' }));
+    const photos = Array.from({ length: 6 }, (_, i) => makePhoto({ path: `/gps${i}.jpg` }));
+    const loading = store.loadPhotos();
+    const first = request('/photos');
+    expect(first.request.params.get('no_gps')).toBe('1');
+    first.flush({ ...EMPTY_PAGE, photos: photos.slice(0, 2), total: 6, has_more: true });
+    request('/photos/review_progress').flush(COUNTS);
+    await loading;
+    request('/photos/keeper_hints').flush({});
+    const paging = store.nextPage();
+    request('/photos').flush({ ...EMPTY_PAGE, photos: photos.slice(2, 4), total: 6, has_more: true });
+    await paging;
+    request('/photos/keeper_hints').flush({});
+    store.selectedPaths.set(new Set(['/gps2.jpg', '/gps3.jpg']));
+    const writing = firstValueFrom(TestBed.inject(ApiService).put('/photo/gps', {
+      path: '/gps2.jpg', gps_latitude: 1, gps_longitude: 2,
+    })).then(() => store.refreshPaths(['/gps2.jpg']));
+    request('/photo/gps').flush({ gps_latitude: 1, gps_longitude: 2 });
+    let obsolete!: TestRequest;
+    await vi.waitFor(() => { obsolete = request('/photos/by_paths'); });
+    events.next(new NavigationStart(1, '/photo?path=/gps2.jpg'));
+    store.parkListingReads();
+    expect(obsolete.cancelled).toBe(true);
+    await writing;
+    for (const progress of http.match(r => r.url === '/api/photos/review_progress')) expect(progress.cancelled).toBe(true);
+    events.next(new NavigationStart(2, '/'));
+    (TestBed.inject(Router) as unknown as { url: string }).url = '/';
+    events.next(new NavigationEnd(2, '/', '/'));
+    let returning = store.resumeListingReads();
+    let target!: TestRequest;
+    await vi.waitFor(() => { target = request('/photos/by_paths'); });
+    expect(target.request.body.paths).toEqual(['/gps2.jpg']);
+    expect(target.request.body.filters.no_gps).toBe('1');
+    target.flush({ photos: [] });
+    const remaining = photos.filter(photo => photo.path !== '/gps2.jpg');
+    await vi.waitFor(() => { expect(store.photos().some(photo => photo.path === '/gps2.jpg')).toBe(false); });
+    let refills = http.match(r => r.url === '/api/photos');
+    if (outcome !== 'success') {
+      expect(refills).toHaveLength(1);
+      if (outcome === 'failure' || activeRetry || outcome === 'parked') refills[0].flush({}, { status: 500, statusText: 'Failed' });
+      else {
+        events.next(new NavigationStart(3, '/photo?path=/gps3.jpg'));
+        store.parkListingReads();
+        expect(refills[0].cancelled).toBe(true);
+      }
+      for (const progress of http.match(r => r.url === '/api/photos/review_progress')) if (!progress.cancelled) progress.flush(COUNTS);
+      await returning;
+      if (activeRetry) returning = store.nextPage(() => acceptPaging);
+      else if (outcome === 'parked') {
+        events.next(new NavigationStart(3, '/photo?path=/gps3.jpg'));
+        store.parkListingReads();
+        (TestBed.inject(Router) as unknown as { url: string }).url = '/photo?path=/gps3.jpg';
+        events.next(new NavigationEnd(3, '/photo?path=/gps3.jpg', '/photo?path=/gps3.jpg'));
+        returning = store.nextPage(undefined, { whileParked: true });
+      } else {
+        store.parkListingReads();
+        events.next(new NavigationStart(4, '/'));
+        (TestBed.inject(Router) as unknown as { url: string }).url = '/';
+        events.next(new NavigationEnd(4, '/', '/'));
+        returning = store.resumeListingReads();
+      }
+      if (activeRetry) await store.nextPage(); // Concurrent paging cannot bypass the structural repair.
+      let retry!: TestRequest;
+      await vi.waitFor(() => { retry = request('/photos'); });
+      refills = [retry];
+      if (outcome === 'active-identity' || outcome === 'active-filter') {
+        if (outcome === 'active-identity') { identity.set('bob'); TestBed.tick(); }
+        const newLoad = outcome === 'active-filter' ? store.updateFilter('camera', 'Canon') : store.loadPhotos();
+        expect(retry.cancelled).toBe(true);
+        request('/photos').flush({ ...EMPTY_PAGE, photos: [makePhoto({ path: '/new-scope.jpg', star_rating: 2 })], total: 1 });
+        for (const progress of http.match(r => r.url === '/api/photos/review_progress')) if (!progress.cancelled) progress.flush(COUNTS);
+        await Promise.all([returning, newLoad]);
+        const hints = http.match(r => r.url === '/api/photos/keeper_hints').filter(read => !read.cancelled);
+        expect(hints).toHaveLength(1);
+        hints[0].flush({ '/new-scope.jpg': { better_path: '/better.jpg' } });
+        await vi.waitFor(() => { expect(store.photos()[0].keeper_hint).toEqual({ better_path: '/better.jpg' }); });
+        expect(store.photos().map(photo => [photo.path, photo.star_rating])).toEqual([['/new-scope.jpg', 2]]);
+        expect(store.filters().page).toBe(1);
+        http.expectNone(r => r.url === '/api/photos');
+        return;
+      }
+      if (outcome === 'active-failure') {
+        expect(retry.request.params.get('page')).toBe('1');
+        retry.flush({}, { status: 500, statusText: 'Failed again' });
+        for (const progress of http.match(r => r.url === '/api/photos/review_progress')) if (!progress.cancelled) progress.flush(COUNTS);
+        await returning;
+        expect(store.filters().page).toBe(2);
+        expect(store.photos().map(photo => photo.path)).toEqual(['/gps0.jpg', '/gps1.jpg', '/gps3.jpg']);
+        http.expectNone(r => r.url === '/api/photos');
+        returning = store.nextPage();
+        await vi.waitFor(() => { retry = request('/photos'); });
+        refills = [retry];
+      }
+    }
+    if (refills.length) {
+      expect(refills).toHaveLength(1);
+      for (let page = 1; page <= 2; page++) {
+        let refill = refills[0];
+        if (page === 2) await vi.waitFor(() => { refill = request('/photos'); });
+        expect(refill.request.params.get('page')).toBe(String(page));
+        refill.flush({ ...EMPTY_PAGE, photos: remaining.slice((page - 1) * 2, page * 2), total: 5, has_more: true });
+        if (page === 2 && outcome.startsWith('active-queued')) {
+          // Change ownership after HTTP completion queues the repair continuation,
+          // before an auth effect or replacement load can invalidate its sequence.
+          if (outcome === 'active-queued-identity') identity.set('bob');
+          if (outcome === 'active-queued-query') store.filters.update(f => ({ ...f, camera: 'Canon' }));
+          if (outcome === 'active-queued-rejected') acceptPaging = false;
+          if (outcome === 'active-queued-destroyed') destroyStore();
+          let settled = false;
+          const completion = returning.then(() => { settled = true; });
+          const unexpected: TestRequest[] = [];
+          await vi.waitFor(() => {
+            // Settle any erroneous tail request so the assertion reports its effect,
+            // rather than hanging on an unflushed request or a fixed microtask count.
+            const reads = http.match(r => r.url === '/api/photos');
+            unexpected.push(...reads);
+            for (const read of reads) if (!read.cancelled) read.flush({ ...EMPTY_PAGE, photos: [], total: 5, has_more: false });
+            for (const read of http.match(r => r.url === '/api/photos/review_progress')) if (!read.cancelled) read.flush(COUNTS);
+            for (const read of http.match(r => r.url === '/api/photos/keeper_hints')) if (!read.cancelled) read.flush({});
+            expect(settled).toBe(true);
+          });
+          await completion;
+          expect(unexpected.map(read => read.request.params.get('page'))).toEqual([]);
+          expect(store.filters().page).toBe(2);
+          return;
+        }
+      }
+    }
+    for (const progress of http.match(r => r.url === '/api/photos/review_progress')) if (!progress.cancelled) progress.flush(COUNTS);
+    if (!activeRetry) await returning;
+    if (outcome === 'parked') await store.resumeListingReads();
+    for (const hints of http.match(r => r.url === '/api/photos/keeper_hints')) if (!hints.cancelled) hints.flush({});
+    const tail = activeRetry ? returning : store.nextPage();
+    let last!: TestRequest;
+    await vi.waitFor(() => { last = request('/photos'); });
+    expect(last.request.params.get('page')).toBe('3');
+    last.flush({ ...EMPTY_PAGE, photos: remaining.slice(4), total: 5, has_more: false });
+    await tail;
+    for (const hints of http.match(r => r.url === '/api/photos/keeper_hints')) if (!hints.cancelled) hints.flush({});
+    expect(store.photos().map(photo => photo.path)).toEqual(remaining.map(photo => photo.path));
+    expect(store.total()).toBe(5);
+    expect(store.selectedPaths()).toEqual(new Set(['/gps3.jpg']));
+  });
+
+  it.each(['attach', 'explicit'] as const)('retains failed targeted debt for %s retry without a later redundant Back read', async retryKind => {
+    await loadAndParkThreePages();
+    await store.refreshPaths(['/p64.jpg']);
+    const returning = store.resumeListingReads();
+    request('/photos/review_progress').flush(COUNTS);
+    let failed!: TestRequest;
+    await vi.waitFor(() => { failed = request('/photos/by_paths'); });
+    expect(failed.request.body.paths).toEqual(['/p64.jpg']);
+    failed.flush({}, { status: 500, statusText: 'Failed' });
+    await returning;
+    expect(store.photos()[64].path).toBe('/p64.jpg');
+    if (retryKind === 'attach') store.parkListingReads();
+    const retrying = retryKind === 'attach' ? store.resumeListingReads() : store.refreshPaths(['/p64.jpg']);
+    for (const progress of http.match(r => r.url === '/api/photos/review_progress')) if (!progress.cancelled) progress.flush(COUNTS);
+    let retry!: TestRequest;
+    await vi.waitFor(() => { retry = request('/photos/by_paths'); });
+    retry.flush({ photos: [makePhoto({ path: '/p64.jpg', star_rating: 5 })] });
+    await retrying;
+    expect(store.photos()[64].star_rating).toBe(5);
+    store.parkListingReads();
+    await store.resumeListingReads();
+    http.expectNone(r => r.url === '/api/photos' || r.url === '/api/photos/by_paths' || r.url === '/api/photos/review_progress');
+  });
+
+  it.each(['failure', 'cancellation', 'identity'] as const)('retains every chunk of a large targeted repair after %s', async outcome => {
+    store.filters.update(f => ({ ...f, per_page: 300 }));
+    const photos = Array.from({ length: 600 }, (_, i) => makePhoto({ path: `/chunk${i}.jpg`, star_rating: 1 }));
+    const loading = store.loadPhotos();
+    request('/photos').flush({ ...EMPTY_PAGE, photos: photos.slice(0, 300), total: 600, has_more: true });
+    request('/photos/review_progress').flush(COUNTS);
+    await loading;
+    request('/photos/keeper_hints').flush({});
+    const paging = store.nextPage();
+    request('/photos').flush({ ...EMPTY_PAGE, photos: photos.slice(300), total: 600, has_more: false });
+    await paging;
+    request('/photos/keeper_hints').flush({});
+    const paths = photos.map(photo => photo.path);
+    const repairing = store.refreshPaths(paths);
+    request('/photos/review_progress').flush(COUNTS);
+    let chunks: TestRequest[] = [];
+    await vi.waitFor(() => {
+      if (chunks.length === 0) chunks = http.match(r => r.url === '/api/photos/by_paths');
+      expect(chunks).toHaveLength(2);
+    });
+    expect(chunks.map(chunk => chunk.request.body.paths.length)).toEqual([500, 100]);
+    expect(chunks.flatMap(chunk => chunk.request.body.paths)).toEqual(paths);
+    if (outcome !== 'cancellation') {
+      chunks[0].flush({}, { status: 500, statusText: 'Failed' });
+      await repairing;
+      expect(chunks[1].cancelled).toBe(false);
+    }
+    if (outcome === 'identity') {
+      identity.set('bob');
+      TestBed.tick();
+      const loadingNew = store.loadPhotos();
+      expect(chunks[1].cancelled).toBe(true);
+      request('/photos').flush({ ...EMPTY_PAGE, photos: [makePhoto({ path: '/bob.jpg', star_rating: 2 })], total: 1 });
+      for (const progress of http.match(r => r.url === '/api/photos/review_progress')) if (!progress.cancelled) progress.flush(COUNTS);
+      await loadingNew;
+      request('/photos/keeper_hints').flush({ '/bob.jpg': { better_path: '/other.jpg' } });
+      await vi.waitFor(() => { expect(store.photos()[0].keeper_hint).toEqual({ better_path: '/other.jpg' }); });
+      store.parkListingReads();
+      await store.resumeListingReads();
+      expect(store.photos().map(photo => [photo.path, photo.star_rating])).toEqual([['/bob.jpg', 2]]);
+      http.expectNone(r => r.url === '/api/photos/by_paths' || r.url === '/api/photos');
+      return;
+    }
+    events.next(new NavigationStart(1, '/photo?path=/chunk0.jpg'));
+    store.parkListingReads();
+    expect(chunks[1].cancelled).toBe(true);
+    if (outcome === 'cancellation') expect(chunks[0].cancelled).toBe(true);
+    await repairing;
+    events.next(new NavigationStart(2, '/'));
+    (TestBed.inject(Router) as unknown as { url: string }).url = '/';
+    events.next(new NavigationEnd(2, '/', '/'));
+    const returning = store.resumeListingReads();
+    let retries: TestRequest[] = [];
+    await vi.waitFor(() => {
+      if (retries.length === 0) retries = http.match(r => r.url === '/api/photos/by_paths');
+      expect(retries).toHaveLength(2);
+    });
+    expect(retries.flatMap(chunk => chunk.request.body.paths)).toEqual(paths);
+    for (const retry of retries) retry.flush({ photos: retry.request.body.paths.map((path: string) => makePhoto({ path, star_rating: 5 })) });
+    for (const progress of http.match(r => r.url === '/api/photos/review_progress')) if (!progress.cancelled) progress.flush(COUNTS);
+    await returning;
+    expect(store.photos().map(photo => photo.path)).toEqual(paths);
+    expect(store.photos().every(photo => photo.star_rating === 5)).toBe(true);
+    expect(store.filters().page).toBe(2);
+    http.expectNone(r => r.url === '/api/photos');
+  });
+
+  it('keeps a targeted repair after a second cancellation on the return trip', async () => {
+    await loadAndParkThreePages();
+    await store.refreshPaths(['/p64.jpg']);
+    events.next(new NavigationStart(2, '/'));
+    (TestBed.inject(Router) as unknown as { url: string }).url = '/';
+    events.next(new NavigationEnd(2, '/', '/'));
+    const returning = store.resumeListingReads();
+    request('/photos/review_progress').flush(COUNTS);
+    let obsolete!: TestRequest;
+    await vi.waitFor(() => { obsolete = request('/photos/by_paths'); });
+    expect(obsolete.request.body.paths).toEqual(['/p64.jpg']);
+    events.next(new NavigationStart(3, '/photo?path=/p65.jpg'));
+    store.parkListingReads();
+    (TestBed.inject(Router) as unknown as { url: string }).url = '/photo?path=/p65.jpg';
+    events.next(new NavigationEnd(3, '/photo?path=/p65.jpg', '/photo?path=/p65.jpg'));
+    expect(obsolete.cancelled).toBe(true);
+    await returning;
+    events.next(new NavigationStart(4, '/'));
+    (TestBed.inject(Router) as unknown as { url: string }).url = '/';
+    events.next(new NavigationEnd(4, '/', '/'));
+    const retrying = store.resumeListingReads();
+    let retry!: TestRequest;
+    await vi.waitFor(() => { retry = request('/photos/by_paths'); });
+    expect(retry.request.body.paths).toEqual(['/p64.jpg']);
+    retry.flush({ photos: [makePhoto({ path: '/p64.jpg', star_rating: 5 })] });
+    for (const progress of http.match(r => r.url === '/api/photos/review_progress')) if (!progress.cancelled) progress.flush(COUNTS);
+    await retrying;
+    expect(store.photos()[64].star_rating).toBe(5);
+    expect(store.photos()).toHaveLength(192);
+    expect(store.filters().page).toBe(3);
+    http.expectNone(r => r.url === '/api/photos');
+  });
+
+  it.each(['identity', 'filter'] as const)('drops cancelled targeted debt when the %s changes', async change => {
+    await loadAndParkThreePages();
+    await store.refreshPaths(['/p64.jpg']);
+    const returning = store.resumeListingReads();
+    request('/photos/review_progress').flush(COUNTS);
+    let obsolete!: TestRequest;
+    await vi.waitFor(() => { obsolete = request('/photos/by_paths'); });
+    expect(obsolete.request.body.paths).toEqual(['/p64.jpg']);
+    if (change === 'identity') { identity.set('bob'); TestBed.tick(); }
+    const loading = change === 'filter' ? store.updateFilter('camera', 'Canon') : store.loadPhotos();
+    expect(obsolete.cancelled).toBe(true);
+    request('/photos').flush({ ...EMPTY_PAGE, photos: [makePhoto({ path: '/new-scope.jpg', star_rating: 2 })], total: 1 });
+    const progress = http.match(r => r.url === '/api/photos/review_progress').filter(read => !read.cancelled);
+    expect(progress).toHaveLength(1);
+    progress[0].flush(COUNTS);
+    await Promise.all([returning, loading]);
+    const hints = http.match(r => r.url === '/api/photos/keeper_hints').filter(read => !read.cancelled);
+    expect(hints).toHaveLength(1);
+    hints[0].flush({ '/new-scope.jpg': { better_path: '/better.jpg' } });
+    await vi.waitFor(() => { expect(store.photos()[0].keeper_hint).toEqual({ better_path: '/better.jpg' }); });
+    store.parkListingReads();
+    await store.resumeListingReads();
+    expect(store.photos().map(photo => [photo.path, photo.star_rating])).toEqual([['/new-scope.jpg', 2]]);
+    http.expectNone(r => r.url === '/api/photos/by_paths' || r.url === '/api/photos');
+  });
+
+  it('cancels foreground photo recovery on real Back and preserves a later confirmed write', async () => {
+    await loadAndParkThreePages();
+    const paging = store.nextPage(undefined, { whileParked: true });
+    const originalTail = request('/photos');
+    store.parkListingReads();
+    expect(originalTail.cancelled).toBe(true);
+    await paging;
+    const recovering = store.nextPage(undefined, { whileParked: true });
+    const obsolete = request('/photos');
+    events.next(new NavigationStart(2, '/'));
+    expect(obsolete.cancelled).toBe(true);
+    (TestBed.inject(Router) as unknown as { url: string }).url = '/';
+    events.next(new NavigationEnd(2, '/', '/'));
+    const returning = store.resumeListingReads();
+    const writing = firstValueFrom(TestBed.inject(ApiService).put('/photo/gps', {
+      path: '/p64.jpg', gps_latitude: 1, gps_longitude: 2,
+    })).then(() => store.refreshPaths(['/p64.jpg']));
+    const write = request('/photo/gps');
+    expect(write.request.body.path).toBe('/p64.jpg');
+    write.flush({ gps_latitude: 1, gps_longitude: 2 });
+    // Real Back cancelled the parked request and its loading state; the full repair
+    // runs first, then the confirmed write's targeted repair follows the chain.
+    for (let page = 1; page <= 4; page++) {
+      let read!: TestRequest;
+      await vi.waitFor(() => { read = request('/photos'); });
+      expect(read.request.params.get('page')).toBe(String(page));
+      read.flush({ ...EMPTY_PAGE, photos: Array.from({ length: 64 }, (_, i) => makePhoto({ path: `/p${(page - 1) * 64 + i}.jpg` })), total: 256, has_more: false });
+    }
+    let repair!: TestRequest;
+    await vi.waitFor(() => { repair = request('/photos/by_paths'); });
+    expect(repair.request.body.paths).toEqual(['/p64.jpg']);
+    repair.flush({ photos: [makePhoto({ path: '/p64.jpg', gps_latitude: 1, gps_longitude: 2 })] });
+    for (const progress of http.match(r => r.url === '/api/photos/review_progress')) if (!progress.cancelled) progress.flush(COUNTS);
+    await Promise.all([recovering, returning, writing]);
+    for (const hints of http.match(r => r.url === '/api/photos/keeper_hints')) if (!hints.cancelled) hints.flush({});
+    expect(store.photos()[64].gps_latitude).toBe(1);
+    expect(store.photos()).toHaveLength(256);
+    expect(store.filters().page).toBe(4);
+    http.expectNone(r => r.url === '/api/photos' || r.url === '/api/photos/by_paths');
   });
 
   it('coalesces parked confirmed writes and assistant changes into one in-place refresh on return', async () => {
