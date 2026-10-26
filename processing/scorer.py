@@ -442,8 +442,6 @@ def fix_thumbnail_rotation(db_path):
 # thumbnail that failed to decode. Recheck those candidates once rather than
 # trusting the old marker; repaired portrait rows are already excluded below.
 HEIF_DOUBLE_TRANSPOSE_WATERMARK_KEY = 'heif_double_transpose_watermark_v2'
-# EXIF tag id for Orientation, read header-only off the original file.
-_EXIF_ORIENTATION_TAG = 274
 # orientation 6 stores the frame rotated 90 CW from upright, orientation 8
 # rotated 270 CW; the double transpose turned each sideways by the opposite
 # extra quarter-turn, so each needs the opposite repair. Orientation 3 needs
@@ -460,10 +458,10 @@ def _stored_heif_orientation(path):
     versions leave getexif() as stored. Header-only: no pixel decode.
     """
     try:
-        from PIL import Image as PILImage
+        from PIL import ExifTags as PILExifTags, Image as PILImage
         with PILImage.open(path) as img:
             return int(img.info.get('original_orientation')
-                       or img.getexif().get(_EXIF_ORIENTATION_TAG) or 0)
+                       or img.getexif().get(PILExifTags.Base.Orientation) or 0)
     except Exception:
         return None
 
