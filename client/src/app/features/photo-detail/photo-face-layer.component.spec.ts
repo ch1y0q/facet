@@ -132,17 +132,32 @@ describe('PhotoFaceLayerComponent', () => {
     expect(fixture.nativeElement.querySelector('svg')).toBeNull();
   });
 
-  it('read-only: a face with a person opens the menu, a face without one does not', async () => {
+  it('read-only: an unnamed face opens a menu that says naming needs edition mode', async () => {
     await render();
     fixture.componentRef.setInput('canEdit', false);
     const menuFace = () => (component as unknown as { menuFace: () => DrawnFace | null }).menuFace();
-    const loose: DrawnFace = { ...component.faces()[1], personId: null };
 
-    component.onFaceClick(loose, new MouseEvent('click', { clientX: 5, clientY: 6 }));
-    expect(menuFace()).toBeNull();
+    component.onFaceClick(component.faces()[1], new MouseEvent('click', { clientX: 5, clientY: 6 }));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(menuFace()?.id).toBe(2);
+    const items = [...document.querySelectorAll('.mat-mdc-menu-panel button')] as HTMLButtonElement[];
+    expect(items.map((b) => b.textContent?.trim())).toEqual(['lock photo_faces.name_needs_edition']);
+    expect(items[0].disabled).toBe(true);
+  });
+
+  it('read-only: a face with a person opens its menu with no edition hint', async () => {
+    await render();
+    fixture.componentRef.setInput('canEdit', false);
 
     component.onFaceClick(component.faces()[0], new MouseEvent('click', { clientX: 5, clientY: 6 }));
-    expect(menuFace()?.id).toBe(1);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const text = [...document.querySelectorAll('.mat-mdc-menu-panel button')].map((b) => b.textContent ?? '').join('|');
+    expect(text).toContain('photo_faces.view_photos');
+    expect(text).not.toContain('name_needs_edition');
   });
 
   it('opens the gallery on all photos of the face person, named or not', async () => {

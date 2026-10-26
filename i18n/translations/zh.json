@@ -1797,6 +1797,7 @@
     "unknown": "未知",
     "change_person": "更换人物…",
     "name_face": "为此面孔命名…",
+    "name_needs_edition": "在用户菜单中解锁编辑后即可为此人脸命名",
     "find_more": "查找 {name} 的更多面孔",
     "not_person": "不是 {name}",
     "view_photos": "查看 {name} 的所有照片",

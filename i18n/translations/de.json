@@ -1797,6 +1797,7 @@
     "unknown": "Unbekannt",
     "change_person": "Person ändern…",
     "name_face": "Dieses Gesicht benennen…",
+    "name_needs_edition": "Bearbeitung im Benutzermenü freischalten, um dieses Gesicht zu benennen",
     "find_more": "Weitere Gesichter von {name} finden",
     "not_person": "Nicht {name}",
     "view_photos": "Alle Fotos von {name} ansehen",

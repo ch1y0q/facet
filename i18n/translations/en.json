@@ -1797,6 +1797,7 @@
     "unknown": "Unknown",
     "change_person": "Change person…",
     "name_face": "Name this face…",
+    "name_needs_edition": "Unlock editing in the user menu to name this face",
     "find_more": "Find more faces of {name}",
     "not_person": "Not {name}",
     "view_photos": "See all photos of {name}",

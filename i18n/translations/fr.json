@@ -1797,6 +1797,7 @@
     "unknown": "Inconnu",
     "change_person": "Changer de personne…",
     "name_face": "Nommer ce visage…",
+    "name_needs_edition": "Déverrouillez l'édition dans le menu utilisateur pour nommer ce visage",
     "find_more": "Trouver d'autres visages de {name}",
     "not_person": "Pas {name}",
     "view_photos": "Voir toutes les photos de {name}",

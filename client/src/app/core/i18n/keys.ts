@@ -1811,6 +1811,7 @@ export const I18N = {
     unknown: "photo_faces.unknown",
     change_person: "photo_faces.change_person",
     name_face: "photo_faces.name_face",
+    name_needs_edition: "photo_faces.name_needs_edition",
     find_more: "photo_faces.find_more",
     not_person: "photo_faces.not_person",
     view_photos: "photo_faces.view_photos",

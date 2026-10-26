@@ -43,7 +43,8 @@ const LABEL_SCALE = 0.022;
  * the photo (or always, with ``showAll``; a focused person's always), red while unnamed, a face's name on hovering that face, and clicking a face (edition
  * mode) opens a menu to change its person, take it off its person, or find more
  * faces like that person. Any face in a cluster, named or not, also offers its
- * cluster's photos, in read-only mode too.
+ * cluster's photos, in read-only mode too; an unnamed face there says that naming
+ * needs edition mode, so the click is never silent.
  *
  * The SVG's viewBox is the photo's own pixel frame, so it letterboxes exactly
  * like the ``object-contain`` image beneath it and shares its zoom transform:
@@ -65,8 +66,7 @@ const LABEL_SCALE = 0.022;
         aria-hidden="true">
         @for (f of faces(); track f.id) {
           <g
-            class="group/face pointer-events-auto"
-            [class.cursor-pointer]="canEdit() || f.personId !== null"
+            class="group/face pointer-events-auto cursor-pointer"
             (pointerdown)="$event.stopPropagation()"
             (dblclick)="$event.stopPropagation()"
             (click)="onFaceClick(f, $event)">
@@ -131,6 +131,11 @@ const LABEL_SCALE = 0.022;
               {{ I18N.photo_faces.not_person | translate:{ name: f.name || '' } }}
             </button>
           }
+        } @else if (!f.personId) {
+          <button mat-menu-item disabled>
+            <mat-icon>lock</mat-icon>
+            {{ I18N.photo_faces.name_needs_edition | translate }}
+          </button>
         }
       }
     </mat-menu>
@@ -217,8 +222,6 @@ export class PhotoFaceLayerComponent {
 
   onFaceClick(face: DrawnFace, event: MouseEvent): void {
     event.stopPropagation();
-    // Read-only viewers can still jump to a person's photos; nothing else applies.
-    if (!this.canEdit() && face.personId === null) return;
     this.menuFace.set(face);
     this.menuX.set(event.clientX);
     this.menuY.set(event.clientY);
