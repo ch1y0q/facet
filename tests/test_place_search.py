@@ -143,11 +143,50 @@ def test_http_query_bounds_count_unicode_codepoints(edition_client, query, valid
         fetch.assert_not_called()
 
 
-def test_disabled_invalid_endpoint(edition_client):
-    for url in ('', 'file:///etc/passwd', 'https://user:secret@example.org/api', 'https://example.org/api?q=x'):
-        with patch.dict('api.place_search.VIEWER_CONFIG', {'place_search_url': url}), patch('api.place_search._fetch') as fetch:
-            assert edition_client.get('/api/places/search', params={'q': 'Berlin'}).status_code == 503
-            fetch.assert_not_called()
+@pytest.mark.parametrize('url', [
+    None, False, 123, [], {}, '',
+    'https://example.org/' + 'x' * 1981,
+    ' https://example.org/api',
+    'https://example.org/a b',
+    'https://example.org/a\nb',
+    'https://example.org/a\tb',
+    'file:///etc/passwd',
+    'ftp://example.org/api',
+    'https:///api',
+    'https://user:secret@example.org/api',
+    'https://user@example.org/api',
+    'https://:secret@example.org/api',
+    'https://@example.org/api',
+    'https://example.org/api?q=x',
+    'https://example.org/api#fragment',
+    'https://example.org:invalid/api',
+    'https://example.org:65536/api',
+    'https://[::1/api',
+])
+def test_disabled_invalid_endpoint(edition_client, url):
+    with patch.dict('api.place_search.VIEWER_CONFIG', {'place_search_url': url}), patch('api.place_search._fetch') as fetch:
+        response = edition_client.get('/api/places/search', params={'q': 'Berlin'})
+    assert response.status_code == 503
+    assert response.json() == {'detail': 'Online place search is disabled'}
+    fetch.assert_not_called()
+    assert not place_search._cache
+    assert place_search._next_request == 0
+    assert not place_search._inflight
+
+
+@pytest.mark.parametrize('url', [
+    'https://example.org/api',
+    'http://localhost:2322/api',
+    'https://[::1]:8443/api',
+    'https://example.org/geocoder%20name/api',
+    'https://example.org/' + 'x' * 1980,
+])
+def test_valid_configured_endpoint_is_used_unchanged(edition_client, url):
+    with patch.dict('api.place_search.VIEWER_CONFIG', {'place_search_url': url}), patch('api.place_search._fetch', return_value={'type': 'FeatureCollection', 'features': [feature()]}) as fetch:
+        response = edition_client.get('/api/places/search', params={'q': 'Berlin'})
+    assert response.status_code == 200
+    assert response.json() == {'results': [{'label': 'Berlin', 'latitude': 52.5, 'longitude': 13.4}]}
+    fetch.assert_called_once_with(url, 'Berlin')
 
 
 @pytest.mark.parametrize('coords', [[float('nan'), 0], [0, float('inf')], [181, 0], [0, 91], ['1', 2], [True, 2], [1], [1, 2, 3]])
