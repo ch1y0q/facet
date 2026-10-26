@@ -8,9 +8,9 @@
 # incidentally safe, in case an `exclude` is ever added.
 #
 # This is deliberately NOT the same pin as the RUNTIME one. `requirements.txt`
-# caps setuptools <81 because pyiqa's LIQE/CLIPIQA reach PyPI `openai-clip`,
+# caps setuptools <82 because pyiqa's LIQE/CLIPIQA reach PyPI `openai-clip`,
 # whose `clip/clip.py` still does `from pkg_resources import packaging`, and
-# setuptools 81 removed pkg_resources. PEP 517 build isolation resolves this
+# setuptools 82 removed pkg_resources. PEP 517 build isolation resolves this
 # list separately from the installed environment, so the two do not conflict.
 requires = ["setuptools>=83.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
@@ -158,10 +158,10 @@ faces-insightface = [
 ]
 iqa = [
     # RESTRICTED: pyiqa model weights (TOPIQ, LIQE, ...) carry
-    # non-commercial terms. setuptools<81 is here, not in the base set, because
-    # pyiqa's PyPI openai-clip imports pkg_resources (removed in setuptools 81).
+    # non-commercial terms. setuptools<82 is here, not in the base set, because
+    # pyiqa's PyPI openai-clip imports pkg_resources (removed in setuptools 82).
     "pyiqa>=0.1.16",
-    "setuptools<81",
+    "setuptools<82",
 ]
 commercial = [
     # Runtime deps of mediapipe, declared WITHOUT mediapipe itself: mediapipe must
