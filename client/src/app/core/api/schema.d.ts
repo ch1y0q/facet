@@ -1562,6 +1562,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/export/sidecar_jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Api Recent Sidecar Jobs
+         * @description List this principal's recent export receipts, including interrupted jobs.
+         */
+        get: operations["api_recent_sidecar_jobs_api_export_sidecar_jobs_get"];
+        put?: never;
+        /**
+         * Api Start Sidecar Job
+         * @description Start a bounded sidecar export; poll its private receipt for progress.
+         */
+        post: operations["api_start_sidecar_job_api_export_sidecar_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export/sidecar_jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Api Sidecar Job Status
+         * @description Read progress for one of this principal's sidecar exports.
+         */
+        get: operations["api_sidecar_job_status_api_export_sidecar_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export/sidecar_jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Api Cancel Sidecar Job
+         * @description Stop an export between complete files; completed writes are retained.
+         */
+        post: operations["api_cancel_sidecar_job_api_export_sidecar_jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export/sidecar_jobs/{job_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Api Retry Sidecar Job
+         * @description Explicitly retry unfinished export files using current visibility and metadata.
+         */
+        post: operations["api_retry_sidecar_job_api_export_sidecar_jobs__job_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/export/sidecars": {
         parameters: {
             query?: never;
@@ -8250,6 +8334,35 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** SidecarJobStatus */
+        SidecarJobStatus: {
+            /**
+             * Cancel Requested
+             * @default false
+             */
+            cancel_requested?: boolean;
+            /** Errors */
+            errors: number;
+            /** First Error */
+            first_error?: string | null;
+            /** Id */
+            id: string;
+            /** Processed */
+            processed: number;
+            /** Skipped */
+            skipped: number;
+            /** Started At */
+            started_at: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "running" | "completed" | "cancelled" | "failed" | "interrupted";
+            /** Total */
+            total: number;
+            /** Written */
+            written: number;
+        };
         /**
          * SimilarPhotosResponse
          * @description One page of ``GET /api/similar_photos/{path}``.
@@ -11163,6 +11276,152 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DownloadOptionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    api_recent_sidecar_jobs_api_export_sidecar_jobs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SidecarJobStatus"][];
+                };
+            };
+        };
+    };
+    api_start_sidecar_job_api_export_sidecar_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportSidecarsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SidecarJobStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    api_sidecar_job_status_api_export_sidecar_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SidecarJobStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    api_cancel_sidecar_job_api_export_sidecar_jobs__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SidecarJobStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    api_retry_sidecar_job_api_export_sidecar_jobs__job_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SidecarJobStatus"];
                 };
             };
             /** @description Validation Error */
