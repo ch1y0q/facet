@@ -2550,7 +2550,7 @@
     "mode_copy": "Auswahl in einen Ordner kopieren",
     "mode_symlink": "Auswahl per Symlink in einen Ordner",
     "overwrite": "Vorhandene .xmp-Dateien überschreiben",
-    "overwrite_hint": "Standardmäßig aus: eine von darktable erstellte .xmp bleibt erhalten und Facet schreibt stattdessen eine .facet.xmp.",
+    "overwrite_hint": "Mit ExifTool werden vorhandene Sidecars zusammengeführt. Ohne ExifTool bleibt .xmp erhalten und Facet schreibt .facet.xmp, sofern Überschreiben nicht aktiviert ist.",
     "target_dir": "Zielordner",
     "run": "Exportieren",
     "running": "Exportiere…",
@@ -2568,6 +2568,26 @@
       "invalid_json": "Diese Datei ist kein gültiges JSON",
       "imported": "Lightroom-Status importiert: {matched} zugeordnet, {unmatched} nicht gefunden, {changed} geändert",
       "import_failed": "Lightroom-Statusdatei konnte nicht importiert werden"
+    },
+    "jobs": {
+      "running": "Sidecars werden exportiert",
+      "completed": "Export abgeschlossen",
+      "cancelled": "Export abgebrochen",
+      "failed": "Export fehlgeschlagen",
+      "interrupted": "Export unterbrochen",
+      "progress": "{processed} / {total} Dateien verarbeitet",
+      "counts": "{written} geschrieben · {skipped} übersprungen · {errors} Fehler",
+      "close": "Schließen",
+      "close_hint": "Der Export läuft nach dem Schließen weiter. Öffnen Sie den Dialog erneut für letzte Exporte.",
+      "cancel": "Nach aktueller Datei stoppen",
+      "cancelling": "Stoppt nach aktueller Datei…",
+      "cancel_hint": "Geschriebene Sidecars bleiben erhalten. Die aktuelle Datei kann noch fertiggestellt werden.",
+      "retry": "Unerledigte Dateien erneut versuchen",
+      "retry_hint": "Fehlgeschlagene, übersprungene und unerledigte Dateien werden mit aktuellen Metadaten erneut versucht. Eine unterbrochene Datei kann erneut geschrieben werden, falls ihr Fortschritt nicht gespeichert wurde.",
+      "refresh": "Status aktualisieren",
+      "recent": "Letzte Sidecar-Exporte",
+      "none": "Keine letzten Sidecar-Exporte.",
+      "read_failed": "Exportfortschritt nicht lesbar. Aktualisieren Sie den Status erneut."
     }
   },
   "undo": {

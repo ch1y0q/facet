@@ -2550,7 +2550,7 @@
     "mode_copy": "将选中照片复制到文件夹",
     "mode_symlink": "在文件夹中创建选中照片的符号链接",
     "overwrite": "覆盖已有的 .xmp 附属文件",
-    "overwrite_hint": "默认关闭：保留 darktable 创建的 .xmp 文件，Facet 会另行写入 .facet.xmp 文件。",
+    "overwrite_hint": "使用 ExifTool 时会合并现有附属文件。没有 ExifTool 时，保留已有 .xmp，并写入 .facet.xmp，除非明确启用覆盖。",
     "target_dir": "目标文件夹",
     "run": "导出",
     "running": "正在导出…",
@@ -2568,6 +2568,26 @@
       "invalid_json": "该文件不是有效的 JSON",
       "imported": "Lightroom 状态已导入：匹配 {matched} 张，未找到 {unmatched} 张，已更改 {changed} 张",
       "import_failed": "无法导入 Lightroom 状态文件"
+    },
+    "jobs": {
+      "running": "正在导出附属文件",
+      "completed": "导出已完成",
+      "cancelled": "导出已取消",
+      "failed": "导出失败",
+      "interrupted": "导出已中断",
+      "progress": "已处理 {processed} / {total} 个文件",
+      "counts": "已写入 {written} · 已跳过 {skipped} · 错误 {errors}",
+      "close": "关闭",
+      "close_hint": "关闭对话框后导出仍会继续。重新打开可查看最近的导出。",
+      "cancel": "当前文件完成后停止",
+      "cancelling": "正在等待当前文件完成后停止…",
+      "cancel_hint": "已写入的附属文件会保留。停止前当前文件可能仍会完成。",
+      "retry": "重试未完成的文件",
+      "retry_hint": "使用当前元数据重试失败、跳过及未完成的文件。如果未保存处理进度，中断的文件可能会再次写入。",
+      "refresh": "刷新状态",
+      "recent": "最近的附属文件导出",
+      "none": "没有最近的附属文件导出。",
+      "read_failed": "无法读取导出进度。请刷新状态后重试。"
     }
   },
   "undo": {
