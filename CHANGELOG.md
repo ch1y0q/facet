@@ -8,6 +8,7 @@ All notable changes to Facet are documented in this file.
 
 ### Changed
 - Album sidecar exports use bounded background jobs (at most 10,000 photos) and share the library job lock with scans and recomputes. Larger albums are refused before writes; album copy/symlink exports retain their existing behavior.
+- Verify webhook-supplied Immich asset IDs against all exact-path search pages before pushing metadata, matching CLI ambiguity refusal.
 - Keep the stored thumbnail visible while a previously loaded render is fetched again, and allow focus peaking on that thumbnail when the render fails.
 - Preserve Unicode metadata on Windows with UTF-8 ExifTool argument transport and output decoding, including names, keywords and multiline captions.
 - Read semantic-search, similar-photo and gallery count cache database change tokens in worker threads so both cold and warm token reads do not block other requests.
