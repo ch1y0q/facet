@@ -105,4 +105,5 @@ class PlaceSearchResponse(BaseModel):
 
 @router.get('/api/places/search', response_model=PlaceSearchResponse)
 def api_search_places(q: Annotated[str, Query(min_length=3, max_length=200)], user: CurrentUser = Depends(require_edition)):
-    return {'results': place_search.search(q)}
+    owner = ('user', place_owner(user)) if is_multi_user_enabled() else ('installation', '')
+    return {'results': place_search.search(q, owner)}

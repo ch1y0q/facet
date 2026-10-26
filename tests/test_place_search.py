@@ -6,9 +6,13 @@ from unittest.mock import patch
 
 import pytest
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 
-from api import place_search
+from api import create_app, place_search
+from api.auth import CurrentUser, require_authenticated, require_edition
 from api.database import get_db
+
+_SCOPE = ('installation', '')
 
 
 def feature(coords=None, **props):
@@ -73,20 +77,20 @@ def test_strict_results_and_limit():
 
 def test_cache_ttl_cap_endpoint_and_rate():
     with patch('api.place_search._fetch', return_value={}) as fetch, patch('api.place_search.time.monotonic', return_value=100):
-        assert place_search.search('Berlin') == place_search.search('Berlin')
+        assert place_search.search('Berlin', _SCOPE) == place_search.search('Berlin', _SCOPE)
         assert fetch.call_count == 1
         with pytest.raises(HTTPException) as exc:
-            place_search.search('Paris')
+            place_search.search('Paris', _SCOPE)
         assert exc.value.status_code == 429
     with patch('api.place_search._fetch', return_value={}) as fetch, patch('api.place_search.time.monotonic', return_value=1000):
-        place_search.search('Berlin')
+        place_search.search('Berlin', _SCOPE)
         assert fetch.call_count == 1
     for n in range(130):
         with patch('api.place_search._fetch', return_value={}), patch('api.place_search.time.monotonic', return_value=2000 + n):
-            place_search.search(f'query{n}')
+            place_search.search(f'query{n}', ('user', f'user{n % 2}'))
     assert len(place_search._cache) == 128
     with patch.dict('api.place_search.VIEWER_CONFIG', {'place_search_url': 'https://other.org/api'}), patch('api.place_search._fetch', return_value={}) as fetch, patch('api.place_search.time.monotonic', return_value=3000):
-        place_search.search('query129')
+        place_search.search('query129', ('user', 'user1'))
         fetch.assert_called_once()
 
 
@@ -154,14 +158,14 @@ def test_concurrent_miss_refused_but_cached_hit_available():
         started.set()
         assert finish.wait(2)
         return {}
-    place_search._cache[('https://example.org/api', 'cached')] = (place_search.time.monotonic(), [])
+    place_search._cache[(_SCOPE, 'https://example.org/api', 'cached')] = (place_search.time.monotonic(), [])
     with ThreadPoolExecutor(max_workers=1) as pool, patch('api.place_search._fetch', side_effect=fetch):
-        future = pool.submit(place_search.search, 'Berlin')
+        future = pool.submit(place_search.search, 'Berlin', _SCOPE)
         try:
             assert started.wait(2)
-            assert place_search.search('cached') == []
+            assert place_search.search('cached', _SCOPE) == []
             with pytest.raises(HTTPException) as exc:
-                place_search.search('Paris')
+                place_search.search('Paris', _SCOPE)
             assert exc.value.status_code == 429
         finally:
             finish.set()
@@ -263,3 +267,75 @@ def test_connect_stops_when_the_deadline_passes_during_dns():
         with pytest.raises(TimeoutError):
             connection.connect()
     opened.assert_not_called()
+
+
+@pytest.mark.parametrize('probe', ['Berlin', 'unsearched address'])
+def test_cache_does_not_probe_other_users_searches(monkeypatch, probe):
+    # Keep the real require_edition gate: both authenticated admins may search,
+    # but Bob must get the same throttled miss for Alice's query as any new one.
+    monkeypatch.setattr('api.auth.is_multi_user_enabled', lambda: True)
+    monkeypatch.setattr('api.routers.places.is_multi_user_enabled', lambda: True)
+    app = create_app()
+    alice = CurrentUser(user_id='alice', role='admin')
+    bob = CurrentUser(user_id='bob', role='admin')
+    app.dependency_overrides[require_authenticated] = lambda: alice
+    try:
+        with TestClient(app) as client, patch('api.place_search._fetch', return_value={}) as fetch:
+            with patch('api.place_search.time.monotonic', return_value=100):
+                assert client.get('/api/places/search', params={'q': 'Berlin'}).status_code == 200
+                assert client.get('/api/places/search', params={'q': ' Berlin '}).status_code == 200
+                app.dependency_overrides[require_authenticated] = lambda: bob
+                response = client.get('/api/places/search', params={'q': probe})
+                assert response.status_code == 429
+                assert response.headers['Retry-After'] == '1'
+                assert fetch.call_count == 1
+            with patch('api.place_search.time.monotonic', return_value=102):
+                assert client.get('/api/places/search', params={'q': 'Berlin'}).status_code == 200
+                assert fetch.call_count == 2
+                app.dependency_overrides[require_authenticated] = lambda: alice
+                assert client.get('/api/places/search', params={'q': 'Berlin'}).status_code == 200
+                assert fetch.call_count == 2
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_deep_provider_json_maps_to_generic_failure_and_releases_gate(edition_client):
+    # A valid JSON document below the byte limit can still exceed decoder depth.
+    payload = b'[' * 20000 + b'0' + b']' * 20000
+    assert len(payload) < place_search._MAX_BYTES
+    with patch('api.place_search._DeadlineConnection') as connection:
+        connection.return_value.expired = False
+        connection.return_value.getresponse.return_value = Response(payload)
+        with patch('api.place_search.time.monotonic', return_value=100):
+            response = edition_client.get('/api/places/search', params={'q': 'Berlin'})
+            assert response.status_code == 502
+            assert response.json() == {'detail': 'Online place search is unavailable'}
+            assert not place_search._cache
+            assert place_search._inflight is False
+            assert edition_client.get('/api/places/search', params={'q': 'Berlin'}).status_code == 429
+        connection.return_value.getresponse.return_value = Response(b'{"type":"FeatureCollection","features":[]}')
+        with patch('api.place_search.time.monotonic', return_value=102):
+            assert edition_client.get('/api/places/search', params={'q': 'Berlin'}).status_code == 200
+            assert len(place_search._cache) == 1
+
+
+
+def test_single_user_cache_is_separate_from_named_account(monkeypatch, edition_client):
+    # A multi-user account can have the same ID as the single-user owner label.
+    monkeypatch.setattr('api.routers.places.is_multi_user_enabled', lambda: False)
+    with patch('api.place_search._fetch', return_value={}) as fetch:
+        with patch('api.place_search.time.monotonic', return_value=100):
+            assert edition_client.get('/api/places/search', params={'q': 'Berlin'}).status_code == 200
+            monkeypatch.setattr('api.routers.places.is_multi_user_enabled', lambda: True)
+            edition_client.app.dependency_overrides[require_edition] = lambda: CurrentUser(user_id='installation', role='admin')
+            assert edition_client.get('/api/places/search', params={'q': 'Berlin'}).status_code == 429
+            assert fetch.call_count == 1
+        with patch('api.place_search.time.monotonic', return_value=102):
+            assert edition_client.get('/api/places/search', params={'q': 'Berlin'}).status_code == 200
+            assert fetch.call_count == 2
+
+
+def test_non_editor_cannot_search_online(regular_client):
+    with patch('api.place_search._fetch') as fetch:
+        assert regular_client.get('/api/places/search', params={'q': 'Berlin'}).status_code == 403
+        fetch.assert_not_called()
