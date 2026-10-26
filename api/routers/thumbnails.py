@@ -44,6 +44,13 @@ _RENDER_WAIT_SECONDS = 5
 # Short, so the sharp render shows up once the original is back.
 _FALLBACK_MAX_AGE = 60
 
+# Native browser images need stable types even without an OS MIME registry.
+_BROWSER_IMAGE_MEDIA_TYPES = {
+    '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+    '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp',
+    '.bmp': 'image/bmp', '.avif': 'image/avif',
+}
+
 
 def _cached_image_response(image_bytes: bytes, request: Request,
                            max_age: int = 31536000) -> Response:
@@ -482,10 +489,8 @@ def image(
                 return _stored_thumbnail_response(path, request)
             return Response(content="Failed to convert HEIF file", status_code=500)
 
-    # Convert TIFF to JPEG: the only new-format extension no major browser
-    # renders natively (confirmed via mimetypes.guess_type). PNG/GIF/WebP/BMP/
-    # AVIF are all browser-renderable and fall through to the bare
-    # FileResponse below, unconverted.
+    # Convert TIFF to JPEG. Native browser formats below keep their original
+    # bytes and receive a known media type independent of the OS MIME registry.
     if Path(real_disk).suffix.lower() in TIFF_EXTENSIONS:
         try:
             mtime = os.path.getmtime(real_disk)
@@ -498,4 +503,4 @@ def image(
                 return _stored_thumbnail_response(path, request)
             return Response(content="Failed to convert TIFF file", status_code=500)
 
-    return FileResponse(real_disk)
+    return FileResponse(real_disk, media_type=_BROWSER_IMAGE_MEDIA_TYPES.get(Path(real_disk).suffix.lower()))

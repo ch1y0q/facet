@@ -1272,7 +1272,7 @@ Les types TypeScript du client sont générés à partir de ce schéma dans `cli
 | `GET /thumbnail` | Vignette de photo. Un `size` supérieur à 640 est rendu à partir de l'original jusqu'à 1920 px (jamais agrandi), quelle que soit la valeur plus grande demandée ; si l'original est indisponible, si le rendu ne peut pas démarrer sous 5 s ou si le rendu ne contient aucun signal (un décodage entièrement noir, p. ex. un RAW tronqué), la vignette stockée est servie avec un `max-age` de 60 secondes |
 | `GET /face_thumbnail/{id}` | Vignette de recadrage de visage |
 | `GET /person_thumbnail/{id}` | Vignette représentative d'une personne |
-| `GET /image` | Image pleine résolution |
+| `GET /image` | Image pleine résolution. Les fichiers natifs JPEG, PNG, GIF, WebP, BMP et AVIF conservent leurs octets originaux et utilisent des types de média image cohérents, indépendamment du registre MIME du système. |
 
 ### Options de filtrage
 

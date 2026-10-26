@@ -1269,7 +1269,7 @@ Los tipos TypeScript del cliente se generan a partir de ese esquema en `client/s
 | `GET /thumbnail` | Miniatura de foto. Un `size` mayor que 640 se genera a partir del original a hasta 1920 px (nunca ampliado), sea cual sea el valor mayor pedido; si el original no está disponible, el render no puede empezar en 5 s o el render no tiene señal (una decodificación totalmente negra, p. ej. un RAW truncado), se sirve la miniatura almacenada con un `max-age` de 60 segundos |
 | `GET /face_thumbnail/{id}` | Miniatura del recorte de cara |
 | `GET /person_thumbnail/{id}` | Miniatura representativa de persona |
-| `GET /image` | Imagen a resolución completa |
+| `GET /image` | Imagen a resolución completa. Los archivos nativos JPEG, PNG, GIF, WebP, BMP y AVIF conservan sus bytes originales y usan tipos de imagen uniformes, independientemente del registro MIME del sistema. |
 
 ### Opciones de filtro
 
