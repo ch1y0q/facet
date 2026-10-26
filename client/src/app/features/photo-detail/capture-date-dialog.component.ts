@@ -34,14 +34,15 @@ export type CaptureDateResult = components['schemas']['CaptureDateReset'];
       <p class="text-sm mb-3">{{ I18N.gallery.selection.count | translate:{ count: data.count } }}</p>
       <label class="block mb-3">{{ I18N.capture_date.offset | translate }}
         <input class="block w-full border rounded p-2 bg-transparent" type="number" min="-31622400" max="31622400" step="1"
-          [ngModel]="offset()" (ngModelChange)="setOffset($event)" [disabled]="busy()">
+          [ngModel]="offset()" (ngModelChange)="setOffset($event)" [disabled]="busy()"
+          [attr.aria-invalid]="!valid()" [attr.aria-describedby]="valid() ? null : 'capture-date-offset-error'">
       </label>
-      @if (!valid()) { <p role="alert">{{ I18N.capture_date.invalid | translate }}</p> }
+      @if (!valid()) { <p id="capture-date-offset-error" role="alert">{{ I18N.capture_date.invalid | translate }}</p> }
       @if (result(); as preview) {
         <p role="status" class="my-3">{{ I18N.capture_date.counts | translate:{ changed: preview.changed, skipped: preview.skipped } }}</p>
         <p class="text-sm mb-2">{{ I18N.capture_date.samples | translate }}</p>
         <div class="overflow-x-auto"><table class="w-full text-sm">
-          <thead><tr><th class="text-left p-1">{{ I18N.capture_date.photo | translate }}</th><th class="text-left p-1">{{ I18N.capture_date.before | translate }}</th><th class="text-left p-1">{{ I18N.capture_date.after | translate }}</th></tr></thead>
+          <thead><tr><th scope="col" class="text-left p-1">{{ I18N.capture_date.photo | translate }}</th><th scope="col" class="text-left p-1">{{ I18N.capture_date.before | translate }}</th><th scope="col" class="text-left p-1">{{ I18N.capture_date.after | translate }}</th></tr></thead>
           <tbody>@for (sample of preview.samples; track sample.path) {
             <tr><td class="p-1 max-w-48 truncate" [title]="sample.path">{{ sample.path }}</td><td class="p-1 whitespace-nowrap">{{ sample.old_date }}</td><td class="p-1 whitespace-nowrap">{{ sample.new_date }}</td></tr>
           }</tbody>

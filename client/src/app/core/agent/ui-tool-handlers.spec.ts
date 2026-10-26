@@ -609,6 +609,27 @@ describe('UI tool registry and handlers', () => {
       expect(store.filters()).toMatchObject({ hide_bursts: false, favorites_only: true });
     });
 
+    it('dispatches rejected-only filters and preserves an explicit review decision', async () => {
+      await store.updateFilters({ favorites_only: true, camera: 'Canon' });
+      expect(await run('ui_set_gallery_filters', { patch: { show_rejected: true } })).toMatchObject({ ok: true });
+      expect(store.filters()).toMatchObject({ show_rejected: true, hide_rejected: false, favorites_only: false, camera: 'Canon' });
+      expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({ show_rejected: '1', camera: 'Canon' }));
+      expect(await run('ui_set_gallery_filters', { patch: { show_rejected: true, review_status: 'kept' } })).toMatchObject({ ok: true });
+      expect(store.filters()).toMatchObject({ show_rejected: true, review_status: 'kept' });
+      expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({ show_rejected: '1', review_status: 'kept' }));
+    });
+
+    it('refuses conflicting rejected-only and favorite-only patches without changing the tab', async () => {
+      await store.updateFilters({ camera: 'Canon' });
+      const previous = store.filters();
+      apiGet.mockClear();
+      const patch = { show_rejected: true, favorites_only: true };
+      expect(await run('ui_set_gallery_filters', { patch })).toMatchObject({ ok: false, error: 'invalid_input' });
+      await expect(direct()['ui_set_gallery_filters']({ patch })).rejects.toMatchObject({ code: 'invalid_input' });
+      expect(store.filters()).toBe(previous);
+      expect(apiGet).not.toHaveBeenCalled();
+    });
+
     it('replace starts from no filters', async () => {
       await run('ui_set_gallery_filters', { patch: { camera: 'Canon', min_iso: 100 } });
       await run('ui_set_gallery_filters', { patch: { lens: '50mm' }, replace: true });
