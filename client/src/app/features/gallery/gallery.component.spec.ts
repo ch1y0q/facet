@@ -9,7 +9,8 @@ import { GalleryPhotoMenuComponent } from './gallery-photo-menu.component';
 import { PhotoTooltipComponent } from './photo-tooltip.component';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Subject, of, throwError } from 'rxjs';
-import { MatMenuTrigger } from '@angular/material/menu';
+import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
+import { MatSelect, MatSelectModule } from '@angular/material/select';
 import { MatDialog } from '@angular/material/dialog';
 import { MatBottomSheet } from '@angular/material/bottom-sheet';
 import { MatTooltip } from '@angular/material/tooltip';
@@ -4865,8 +4866,21 @@ describe('GalleryComponent', () => {
     // through a template outlet in the global toolbar.
     @Component({
       selector: 'app-toolbar-host',
-      imports: [NgTemplateOutlet],
-      template: '<ng-container [ngTemplateOutlet]="template()" />',
+      imports: [NgTemplateOutlet, MatMenuModule, MatSelectModule],
+      template: `
+        <ng-container [ngTemplateOutlet]="template()" />
+        <button data-testid="keyboard-test-menu" [matMenuTriggerFor]="menu">Menu</button>
+        <mat-menu #menu="matMenu">
+          <button mat-menu-item>Berries</button>
+          <button mat-menu-item>Violet</button>
+          <button mat-menu-item>/ Slash</button>
+        </mat-menu>
+        <mat-select aria-label="Test selector">
+          <mat-option value="b">Berries</mat-option>
+          <mat-option value="v">Violet</mat-option>
+          <mat-option value="s">/ Slash</mat-option>
+        </mat-select>
+      `,
     })
     class ToolbarHostComponent {
       readonly template = inject(HeaderSlotService).template;
@@ -5029,6 +5043,63 @@ describe('GalleryComponent', () => {
         expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
         expect(mockStore.setGalleryMode).not.toHaveBeenCalled();
         expect(document.activeElement).not.toBe(search);
+      });
+
+      it.each(['b', 'v', '/'])('leaves %s to an open Material menu', async letter => {
+        vi.useRealTimers();
+        const trigger = host.debugElement.query(By.css('[data-testid="keyboard-test-menu"]')).injector.get(MatMenuTrigger);
+        trigger.openMenu();
+        host.detectChanges();
+        await host.whenStable();
+        const menu = TestBed.inject(OverlayContainer).getContainerElement().querySelector('[role="menu"]')!;
+        const item = menu.querySelector('button')!;
+        item.focus();
+        vi.useFakeTimers();
+        key({ key: letter, keyCode: letter === '/' ? 191 : letter.toUpperCase().charCodeAt(0) }, item);
+        vi.runOnlyPendingTimers();
+        host.detectChanges();
+        expect(trigger.menuOpen).toBe(true);
+        expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
+        expect(mockStore.setGalleryMode).not.toHaveBeenCalled();
+        expect(document.activeElement?.textContent?.trim()).toBe(letter === 'b' ? 'Berries' : letter === 'v' ? 'Violet' : '/ Slash');
+        trigger.closeMenu();
+      });
+
+      it.each(['b', 'v', '/'])('leaves %s to an open Material select', async letter => {
+        vi.useRealTimers();
+        const select = host.debugElement.query(By.css('mat-select[aria-label="Test selector"]')).componentInstance as MatSelect;
+        select.open();
+        host.detectChanges();
+        await host.whenStable();
+        expect(select.panelOpen).toBe(true);
+        const panel = select.panel.nativeElement as HTMLElement;
+        panel.focus();
+        vi.useFakeTimers();
+        key({ key: letter, keyCode: letter === '/' ? 191 : letter.toUpperCase().charCodeAt(0) }, panel);
+        vi.runOnlyPendingTimers();
+        host.detectChanges();
+        expect(select.panelOpen).toBe(true);
+        expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
+        expect(mockStore.setGalleryMode).not.toHaveBeenCalled();
+        expect(document.activeElement).not.toBe(search);
+        const active = document.getElementById((host.debugElement.query(By.css('mat-select[aria-label="Test selector"]')).nativeElement as HTMLElement).getAttribute('aria-activedescendant') ?? '');
+        expect(active?.textContent?.trim()).toBe(letter === 'b' ? 'Berries' : letter === 'v' ? 'Violet' : '/ Slash');
+        select.close();
+      });
+
+      it.each(['b', 'v', '/'])('leaves %s to a focused closed Material select', letter => {
+        const debug = host.debugElement.query(By.css('mat-select[aria-label="Test selector"]'));
+        const select = debug.componentInstance as MatSelect;
+        const element = debug.nativeElement as HTMLElement;
+        element.focus();
+        key({ key: letter, keyCode: letter === '/' ? 191 : letter.toUpperCase().charCodeAt(0) }, element);
+        vi.runOnlyPendingTimers();
+        host.detectChanges();
+        expect(select.panelOpen).toBe(false);
+        expect(select.value).toBe(letter === '/' ? 's' : letter);
+        expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
+        expect(mockStore.setGalleryMode).not.toHaveBeenCalled();
+        expect(document.activeElement).toBe(element);
       });
 
       it('does nothing while a dialog is open', () => {

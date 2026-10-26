@@ -909,6 +909,8 @@ Todas as estatísticas são sensíveis ao usuário no modo multiusuário — cad
 
 ## Atalhos de Teclado (Galeria)
 
+Os atalhos de uma só tecla da galeria e das fotos ficam inativos quando o foco está num campo de texto, menu ou lista de seleção, deixando as teclas para o controlo ativo.
+
 | Tecla | Ação |
 |-----|--------|
 | `←` `→` `↑` `↓` | Move o marcador da foto atual entre os cartões de foto (colunas da grade e linhas do mosaico) |

@@ -910,6 +910,8 @@ Tutte le statistiche sono consapevoli dell'utente in modalità multiutente — o
 
 ## Scorciatoie da tastiera (galleria)
 
+Le scorciatoie a tasto singolo della galleria e delle foto restano inattive quando il focus è in un campo di testo, menu o elenco di selezione, lasciando i tasti al controllo attivo.
+
 | Tasto | Azione |
 |-----|--------|
 | `←` `→` `↑` `↓` | Sposta il marcatore della foto corrente tra le schede foto (colonne della griglia e righe del mosaico) |

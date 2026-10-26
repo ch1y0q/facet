@@ -909,6 +909,8 @@ Todas las estadísticas tienen conciencia de usuario en modo multiusuario: cada 
 
 ## Atajos de teclado (galería)
 
+Los atajos de una sola tecla de la galería y las fotos permanecen inactivos cuando el foco está en un campo de texto, menú o lista de selección, dejando las teclas al control activo.
+
 | Tecla | Acción |
 |-----|--------|
 | `←` `→` `↑` `↓` | Mover el marcador de la foto actual entre las tarjetas de foto (columnas de cuadrícula y filas de mosaico) |
