@@ -127,11 +127,16 @@ const COLORS = ['#22c55e', '#3b82f6', '#a855f7', '#f59e0b', '#ef4444', '#06b6d4'
               <mat-icon class="sm:mr-2" [matTooltip]="I18N.stats.gear | translate">camera_alt</mat-icon>
               <span class="hidden sm:inline">{{ I18N.stats.gear | translate }}</span>
             </ng-template>
-            <div class="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-4 mt-4">
+            <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
               <app-gear-chart-card titleKey="stats.cameras" [items]="cameras()" [loading]="gearLoading()" [color]="themeService.accentColor()" />
               <app-gear-chart-card titleKey="stats.lenses" [items]="lenses()" [loading]="gearLoading()" [color]="themeService.complementaryColor()" />
               @if (combos().length > 0) {
-                <app-gear-chart-card titleKey="stats.charts.camera_lens_combos" [items]="combos()" [loading]="gearLoading()" [color]="themeService.accentColor()" />
+                <!-- Spans the bottom row: two top cards + one full-width combo
+                     chart beat a 3-column grid that strands a blank cell
+                     whenever the combos chart is the only third card. -->
+                <div class="xl:col-span-2">
+                  <app-gear-chart-card titleKey="stats.charts.camera_lens_combos" [items]="combos()" [loading]="gearLoading()" [color]="themeService.accentColor()" />
+                </div>
               }
             </div>
           </mat-tab>
@@ -314,6 +319,9 @@ export class StatsComponent {
   protected readonly cameras = signal<GearItem[]>([]);
   protected readonly lenses = signal<GearItem[]>([]);
   protected readonly combos = signal<GearItem[]>([]);
+  /** Two cards without the combos chart, three with — a fixed 3-column grid
+   *  left a blank third column on 2xl screens whenever combos had no data. */
+  protected readonly gearGridClass = 'grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4';
   protected readonly gearLoading = signal(false);
 
   protected readonly categoryStats = signal<CategoryStat[]>([]);
