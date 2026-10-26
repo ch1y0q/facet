@@ -2409,6 +2409,8 @@ def main():
     args = parser.parse_args()
     if args.sidecar_naming is not None and not args.import_sidecars:
         parser.error("--sidecar-naming requires --import-sidecars")
+    if args.reconcile_keywords and not args.export_sidecars:
+        parser.error("--reconcile-keywords requires --export-sidecars")
     if args.overwrite_manual_gps and not args.import_sidecars:
         parser.error("--overwrite-manual-gps requires --import-sidecars")
 
@@ -3943,6 +3945,7 @@ def main():
                 conn, root, embed_original=args.embed_originals, user_id=args.user,
                 xmp_export_cfg=_export_cfg.get('xmp_export', {}),
                 derive_stars=args.score_to_stars,
+                reconcile_keywords=args.reconcile_keywords,
             )
         logger.info(
             "Sidecar export: %d written, %d embedded, %d missing, %d errors",

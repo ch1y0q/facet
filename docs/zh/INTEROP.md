@@ -112,7 +112,7 @@ Facet 的星级为 0 表示“没有意见”（见 `xmp_export.score_to_rating`
 ### 冲突规则
 
 - **星级和颜色标签遵循“最新者胜”**，比较的是附属文件的 `xmp:MetadataDate` 与照片的 `scanned_at`（Facet 最后一次为它评分的时间）—— 而不是逐条评分的编辑时间戳。比上次扫描更新的附属文件，可能覆盖你在那次扫描*之后*在 Facet 里改过的星级。请让往返保持简单：导出 → Lightroom 读取 → 在 Lightroom 中编辑 → Lightroom 保存 → 导入，中间不要在 Facet 里重新评星。
-- **标签和关键字只会合并，绝不会被替换。** 导出时，Facet 会把它的 AI 标签和手动标签（去重后）写在附属文件已有内容旁边；导入时，附属文件中的关键字会成为手动标签，且从不触碰 AI 标签——Lightroom 的关键字永远不会清掉 Facet 的自动标签，反之亦然。移除操作会产生什么效果，参见[手动标签与 XMP 关键字](#手动标签与-xmp-关键字)。
+- **标签和关键字默认合并。** 导出会添加 Facet 关键字；`--reconcile-keywords` 还会移除仅属于 Facet 的过时名称。导入会添加手动标签，不会替换 AI 标签。 [手动标签与 XMP 关键字](#手动标签与-xmp-关键字).
 - **多用户**（`--export-sidecars --user alice` / `--import-sidecars --user alice`）：评分会写入 Alice 的 `user_preferences` 行，而不是全局列。无论 `--user` 如何，关键字都保持全局——手动标签由所有用户共享。
 - 导入的关键字会进入 `photo_manual_tags` 表，标签筛选直接读取该表，因此 `--import-sidecars` 之后不再需要运行 `python database.py --migrate-tags`。
 
@@ -156,9 +156,10 @@ Facet 把你自己输入的标签（参见[查看器——手动标签](VIEWER.m
 
 - **导出。** 每个写关键字的环节都按先 AI 标签、再手动标签、最后人物姓名的顺序输出，并且不区分大小写地去重：`--export-sidecars`、照片库的 XMP 导出和“将元数据写入文件”操作，以及 Lightroom 清单（`--export-manifest`、`/api/lightroom/manifest`）。
 - **导入。** `--import-sidecars` 只读取 `dc:subject`。每个关键字都会像手动输入的标签一样被规范化（去除首尾空白、转小写、最多 64 个字符、每张照片最多 50 个手动标签）。它会被存为来源为 `xmp` 的手动标签，除非它已经是照片当前的某个 AI 标签、等于照片的某个人物姓名、是分层路径 `a|b`、含逗号或控制字符，或会超出上限。导入的关键字不再写入 `photos.tags`，所以重新打标不会再覆盖它们。
-- **移除标签不会影响 Facet 已写出的附属文件。** Facet 会合并进现有附属文件，且从不从中删除关键字：因此在 Facet 中移除手动标签后它仍留在附属文件里，而 Facet 自己导出的关键字会在下一次 `--import-sidecars` 时作为手动标签回来。要彻底去掉它，请在附属文件中（或在拥有该关键字的编辑器中）清除该关键字。没有墓碑标记（tombstone）机制。
+- **删除必须明确选择。** 默认导出仍只添加关键字。安装 ExifTool 后，`--export-sidecars /路径 --reconcile-keywords` 仅移除 Facet 曾声明拥有、而当前 Facet 关键字中已不存在的名称。原有外部名称（包括同名词）保持不变；旧文件没有归属标记，就不授予任何归属。`facet:KeywordState` 保存归属及删除标记。名称在文件中重新出现，或 Facet 再次写入该名称时，旧删除标记失效。外部重新添加的手动关键字可以再次导入，后续导出将其视为外部名称。使用 `--user` 时关键字仍为共享数据。
+- **导出以 Facet 当前关键字为准。** 两种模式都会重新写入仍在 Facet 中、但被其他编辑器从文件移除的词。如需接受外部删除，也须在 Facet 中删除该词；不会自动删除数据库标签或进行双向同步。`2024`、`1.50`、`1e3`、`true`、`false` 和 `null` 等名称保留原有拼写，即使 ExifTool 将其表示为 JSON 数字或布尔值。现有文件读取失败或结构无效时，任何导出都会在写入前拒绝。每份列表最多 10,000 个名称，每个名称最多 1,024 个字符；超限会拒绝写入并保留删除标记。没有 ExifTool 时，协调操作在写入前拒绝。
 - **Lightroom 清单则会传播移除。** 插件的关键字选项会在 Apply 时把每张照片的 `Facet ›` 子关键字改写成与清单一致；在 Facet 中移除的标签因此会在下一次 Apply 时从 Lightroom 中消失。
-- **重新打标可能让已导出的 AI 标签作为手动标签回来。** 如果 Facet 导出的某个 AI 标签后来被重新打标改掉，它就不再匹配照片当前的 AI 标签，下一次导入会把它存为手动标签。
+- **重新标记保留 AI 来源。** 新数据包区分 AI 与手动标签；旧 AI 标签不会因重新标记而变为手动标签。无标记的旧数据包仍按原有方式添加。没有 ExifTool 时，协调操作会在写入前拒绝；层级关键字仍只添加。
 - **旧版 Facet 导入的关键字留在原处。** 在手动标签出现之前，导入会把关键字直接合并进 `photos.tags`，在那里它们与 AI 标签无法区分，也没有任何迁移会移动它们。这样的关键字会一直显示为 AI 标签，直到 `photos.tags` 被清空或照片被重新打标；而由于导入会跳过已在 `photos.tags` 中的关键字，它也不会重新出现为手动标签。要转换它，请先清空或重新打标 `photos.tags`，再重新运行 `--import-sidecars`；或者直接手动添加该标签。
 - **被移动或重命名的文件会失去它的手动标签。** 它们与照片路径绑定，而移动或重命名后该路径指向的是另一张照片。
 - **`--export-csv` 和 `--export-json` 仍然只含 AI 数据。** 它们的 `tags` 值是原始的 AI 列，不含手动标签。
@@ -169,7 +170,7 @@ Facet 把你自己输入的标签（参见[查看器——手动标签](VIEWER.m
 |---|---|---|---|
 | 星级／淘汰 | `xmp:Rating`（`-1` = 已淘汰） | `xmp:Rating` | 最新者胜，对比 `scanned_at` |
 | 颜色标签 | `xmp:Label`（`Red` = 已淘汰，`Yellow` = 收藏） | `xmp:Label` | 最新者胜，对比 `scanned_at` |
-| 标签／关键字 | `dc:subject`（扁平，AI 标签 + 手动标签，包含已命名人脸的人物姓名） | `dc:subject`（存为手动标签） | 合并，绝不替换；在 Facet 中的移除不会回写到附属文件（参见[手动标签与 XMP 关键字](#手动标签与-xmp-关键字)） |
+| 标签／关键字 | `dc:subject`（扁平，AI 标签 + 手动标签，包含已命名人脸的人物姓名） | `dc:subject`（存为手动标签） | 默认只添加；`--reconcile-keywords` 仅移除属于 Facet 的过时名称；导入仍只添加 ([手动标签与 XMP 关键字](#手动标签与-xmp-关键字)) |
 | 层级标签 | `lr:hierarchicalSubject`（`Category\|<cat>`、`People\|<name>`） | 不再导入 | 仅导出 |
 | 照片描述 | `dc:description`（+ 经由 exiftool 的 `IPTC:Caption-Abstract`） | 不再导入 | 仅导出 |
 | 命名的人脸区域 | MWG `mwg-rs:RegionList` + `facet:RegionOwner=Facet`（中心归一化，`Type=Face`） | 不再导入 | 仅导出；由 digiKam 原生读取，Lightroom **不**读取（一个已知的 Adobe 限制 —— Lightroom 只消费它自己写出的 MWG 区域） |

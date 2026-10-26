@@ -422,7 +422,7 @@ _GOOD_XMP = (
 
 
 def _fake_exiftool(tmp_path, version="13.55", payload="<broken attr=\"a=\" b"):
-    """Executable stand-in: answers -ver, returns one empty record for reads, corrupts on write."""
+    """Executable stand-in: answers -ver, returns one empty metadata record for reads, corrupts on write."""
     body = tmp_path / "fake_exiftool.py"
     body.write_text(
         "import sys\n"
