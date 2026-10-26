@@ -41,6 +41,7 @@ All notable changes to Facet are documented in this file.
 - **Include manual Keep and Reset in assistant activity context.** Successful gallery and photo-detail decisions now report `review` entries with `kept` or `undecided`; a late batch confirmation from another account cannot enter the current activity journal.
 - **Close right-click menus when opening a photo.** Parking the gallery now dismisses its shared photo context menu so it cannot remain over the photo page or reappear on Back.
 - **Complete the relink guide in every language.** The French, German, Italian, Spanish, Portuguese and Chinese pages now carry all of the English page's sections instead of a one-section summary; the command appears in the maintenance table of the command reference, which no longer repeats the option table, and the viewer guide notes that relinked face marks stay in review until saved again in the editor.
+- **Sidecar docs match what import and export do.** The `--import-sidecars` / `--export-sidecars` rows now state that Keep/Reject decisions and manual GPS travel too, that `--user` limits both to photos visible to that user, and what `--sidecar-fields` and `--overwrite-sidecar-review` select; `facet:KeywordState` and `facet:RegionOwner` join the namespace description. The duplicated receipt paragraphs live once in the interop guide, in all seven languages.
 
 ## [1.24.0] "Diaphragme" — 2026-10-26
 
