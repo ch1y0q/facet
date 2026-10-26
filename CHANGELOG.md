@@ -4,6 +4,10 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Recover face exports after a temporary ExifTool version-check failure.** Failed checks are retried rather than disabling face writes until restart; known defective versions remain refused before any metadata write.
+
 ## [1.24.0] "Diaphragme" — 2026-10-26
 
 

@@ -8,6 +8,7 @@ plus the no-clobber / overwrite behaviour around an existing darktable sidecar.
 import os
 import subprocess
 import sys
+from pathlib import Path
 from xml.etree import ElementTree as ET
 
 import pytest
@@ -447,9 +448,9 @@ def _fake_exiftool(tmp_path, version="13.55", payload="<broken attr=\"a=\" b"):
 
 @pytest.fixture
 def clear_version_cache():
-    xe._exiftool_version.cache_clear()
+    xe._cached_exiftool_version.cache_clear()
     yield
-    xe._exiftool_version.cache_clear()
+    xe._cached_exiftool_version.cache_clear()
 
 
 @pytest.mark.usefixtures("clear_version_cache")
@@ -466,6 +467,78 @@ class TestExiftoolVersionGuard:
             lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout=raw + "\n", stderr=""),
         )
         assert (xe.exiftool_defective_version() is not None) is defective
+
+    @pytest.mark.parametrize('failure', ['io', 'timeout', 'nonzero', 'malformed', 'empty'])
+    def test_failed_probe_is_retried_then_success_is_cached(self, monkeypatch, failure):
+        calls = []
+
+        def probe(args, **kwargs):
+            calls.append(args)
+            if len(calls) == 1:
+                if failure == 'io':
+                    raise OSError('transient version lookup failure')
+                if failure == 'timeout':
+                    raise subprocess.TimeoutExpired(args, 15)
+                if failure == 'nonzero':
+                    return subprocess.CompletedProcess(args, 1, stdout='13.55', stderr='temporary failure')
+                return subprocess.CompletedProcess(args, 0, stdout='not a version' if failure == 'malformed' else '')
+            return subprocess.CompletedProcess(args, 0, stdout='13.55\n')
+
+        monkeypatch.setattr(xe.subprocess, 'run', probe)
+        assert xe._exiftool_version('/same/exiftool') is None
+        assert xe._exiftool_version('/same/exiftool') == (13, 55)
+        assert xe._exiftool_version('/same/exiftool') == (13, 55)
+        assert len(calls) == 2
+
+    def test_face_writes_recover_after_a_failed_capability_probe(self, monkeypatch, tmp_path):
+        calls = []
+
+        def probe(args, **kwargs):
+            calls.append(args)
+            if len(calls) == 1:
+                raise OSError('transient version lookup failure')
+            return subprocess.CompletedProcess(args, 0, stdout='13.55')
+
+        monkeypatch.setattr(xe.subprocess, 'run', probe)
+        monkeypatch.setattr(xe, '_read_existing_regions', lambda *args, **kwargs: {})
+        monkeypatch.setattr(xe, '_read_existing_metadata', lambda *args, **kwargs: ([], [], False))
+        rating = XmpRating(star_rating=4, regions=[FaceRegion.from_bbox('Ada', 1, 1, 4, 4, 10, 10)])
+        target = str(tmp_path / 'new.xmp')
+        first = xe._exiftool_write_args(target, rating, '/same/exiftool', timeout=1)
+        second = xe._exiftool_write_args(target, rating, '/same/exiftool', timeout=1)
+        assert '-XMP:Rating=4' in first and '-XMP:Rating=4' in second
+        assert not any('RegionList' in argument for argument in first)
+        assert any(argument.startswith('-XMP-mwg-rs:RegionList+=') for argument in second)
+        assert len(calls) == 2
+        assert not Path(target).exists()
+
+    @pytest.mark.parametrize('embed', [False, True])
+    def test_recovered_defective_version_refuses_before_any_write(self, monkeypatch, tmp_path, embed):
+        exe = _fake_exiftool(tmp_path, version='13.25', payload=_GOOD_XMP)
+        monkeypatch.setattr(xe, '_resolve_exiftool', lambda: exe)
+        image = tmp_path / 'guard.jpg'
+        image.write_bytes(b'original image')
+        sidecar = Path(str(image) + '.xmp')
+        sidecar.write_text(_GOOD_XMP, encoding='utf-8')
+        before = image.read_bytes(), sidecar.read_bytes()
+        original_run = subprocess.run
+        probes, writes = [], []
+
+        def run(args, **kwargs):
+            if args[1:] == ['-ver']:
+                probes.append(args)
+                if len(probes) == 1:
+                    raise OSError('transient first version lookup failure')
+            if '-overwrite_original' in args:
+                writes.append(args)
+            return original_run(args, **kwargs)
+
+        monkeypatch.setattr(xe.subprocess, 'run', run)
+        with pytest.raises(RuntimeError, match='13.25.*13.28'):
+            write_metadata(str(image), XmpRating(star_rating=3), embed_original=embed)
+        assert len(probes) == 2
+        assert writes == []
+        assert (image.read_bytes(), sidecar.read_bytes()) == before
 
     def test_lookup_failure_does_not_block(self, monkeypatch):
         monkeypatch.setattr(xe, "_resolve_exiftool", lambda: "/nonexistent/exiftool")

@@ -503,14 +503,22 @@ _JSON_REGION_MIN = (12, 65)
 
 
 @functools.lru_cache(maxsize=8)
-def _exiftool_version(exe: str) -> tuple[int, int] | None:
-    """``(major, minor)`` of ``exe`` from ``-ver``, or None when unobtainable."""
-    try:
-        result = subprocess.run([exe, "-ver"], capture_output=True, text=True, timeout=15)
-    except (subprocess.TimeoutExpired, OSError):
-        return None
+def _cached_exiftool_version(exe: str) -> tuple[int, int]:
+    """Cache successful version probes only; exceptions are never cached."""
+    result = subprocess.run([exe, "-ver"], capture_output=True, text=True,
+                            encoding='utf-8', timeout=15)
     match = re.match(r"\s*(\d+)\.(\d+)", result.stdout or "")
-    return (int(match.group(1)), int(match.group(2))) if match else None
+    if result.returncode != 0 or match is None:
+        raise ValueError("ExifTool version probe failed")
+    return int(match.group(1)), int(match.group(2))
+
+
+def _exiftool_version(exe: str) -> tuple[int, int] | None:
+    """Return a known version, retrying unavailable probes on the next call."""
+    try:
+        return _cached_exiftool_version(exe)
+    except (subprocess.TimeoutExpired, OSError, ValueError):
+        return None
 
 
 def exiftool_defective_version() -> tuple[int, int] | None:
@@ -520,6 +528,15 @@ def exiftool_defective_version() -> tuple[int, int] | None:
     if version is not None and _DEFECTIVE_EXIFTOOL_MIN <= version < _DEFECTIVE_EXIFTOOL_FIXED:
         return version
     return None
+
+
+def _refuse_defective_exiftool_version(version: tuple[int, int] | None) -> None:
+    if version is not None and _DEFECTIVE_EXIFTOOL_MIN <= version < _DEFECTIVE_EXIFTOOL_FIXED:
+        label = ".".join(map(str, version))
+        raise RuntimeError(
+            f"exiftool {label} corrupts XMP sidecars that contain darktable edit "
+            "history (bug in 13.23-13.27); upgrade to 13.28 or newer"
+        )
 
 
 def _assert_well_formed_xmp(path: str) -> None:
@@ -896,6 +913,7 @@ def _exiftool_write_args(target: str, rating: XmpRating, exe: str, *, timeout: i
     tag_args = _exiftool_tag_args(rating, existing_flat, existing_hier, facet_dated,
                                   keyword_state=keyword_state, reconcile=reconcile)
     version = _exiftool_version(exe)
+    _refuse_defective_exiftool_version(version)
     if version is not None and version >= _JSON_REGION_MIN:
         tag_args += _region_args(rating.regions, existing_regions)
     elif rating.regions or existing_regions:
@@ -973,13 +991,7 @@ def write_metadata(image_path: str, rating: XmpRating, *, overwrite: bool = Fals
         result = write_sidecar(image_path, rating, overwrite=overwrite)
         result["embedded"] = None
         return result
-    defective = exiftool_defective_version()
-    if defective is not None:
-        version = ".".join(map(str, defective))
-        raise RuntimeError(
-            f"exiftool {version} corrupts XMP sidecars that contain darktable edit "
-            "history (bug in 13.23-13.27); upgrade to 13.28 or newer"
-        )
+    _refuse_defective_exiftool_version(exiftool_defective_version())
 
     ext = os.path.splitext(image_path)[1].lower().lstrip(".")
     sidecar = _contained_sidecar(image_path, ".xmp")
