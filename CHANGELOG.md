@@ -38,6 +38,7 @@ All notable changes to Facet are documented in this file.
 ### Fixed
 
 - Restore the opened gallery card after parked layout changes and close menus and selects when opening a photo. Use a covering face index for the naming queue without retaining its redundant predecessor.
+- Cancel obsolete gallery page, similarity, pinned-list and review-progress reads when filters, identity or navigation change. Already submitted rating and review saves continue, and cancellation does not show a loading error. Photo-page arrows and Keep continue to load the queue while the grid is parked; unchanged returns avoid page and count reloads. Retry cancelled keeper hints, combine parked targeted updates into one row refresh, and retain unrelated pending edits when Keep repairs the queue.
 - Bound sidecar naming notices once per kind per import for full, basename and auto policies, while retaining complete ambiguity/mismatch and import counts.
 - Preserve the exact case of foreign boolean-looking keywords such as `True`, `FALSE` and `tRuE` with lossless readback when ExifTool JSON erases their spelling. Unicode newline-filename failures are isolated to the affected photo in batch exports.
 - Use shared Windows library-lock status probes so overlapping polls cannot report a running job when the library is idle. Real jobs retain exclusive admission.

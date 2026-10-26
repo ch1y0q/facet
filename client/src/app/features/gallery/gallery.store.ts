@@ -1,9 +1,10 @@
-import { Injectable, inject, signal, computed, effect, untracked } from '@angular/core';
+import { Injectable, inject, signal, computed, effect, untracked, DestroyRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { pathOf } from '../../shared/utils/url-path';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Router, ActivatedRoute, NavigationStart } from '@angular/router';
+import { Router, ActivatedRoute, NavigationStart, NavigationCancel, NavigationError, NavigationEnd } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { firstValueFrom, timeout } from 'rxjs';
+import { firstValueFrom, Observable, Subject, finalize, takeUntil, timeout } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { PersonAssignmentHistoryService } from '../../core/services/person-assignment-history.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -278,6 +279,26 @@ const BATCH_ACTIVITY: Record<string, { kind: UserActivityKind; value: (extra: Re
 export class GalleryStore {
   private api = inject(ApiService);
   private auth = inject(AuthService);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly pageReadCancelled = new Subject<void>();
+  private readonly progressReadCancelled = new Subject<void>();
+  private readOwner = this.auth.identity();
+  private listingReadsActive = true;
+  private listingViewParked = false;
+  private listingRefreshOwed = false;
+  private listingPagesInterrupted = false;
+  private reviewRefreshOwed = false;
+  /** Tail-only review repairs in flight: parking one leaves the loaded prefix's offsets stale. */
+  private reviewRepairsInFlight = 0;
+  /** Whole-view or targeted repairs may overlap pagination, whose loading flag cannot identify them. */
+  private viewRepairsInFlight = 0;
+  private readonly parkedRefreshPaths = new Set<string>();
+  private readonly pendingKeeperHints = new Set<string>();
+  private pageReadsInFlight = 0;
+  private progressReadsInFlight = 0;
+  private progressRefreshOwed = false;
+  private suspendedFromPath: string | null = null;
+  private suspendedNavigation: number | null = null;
   private readonly assignmentHistory = inject(PersonAssignmentHistoryService);
   private albumService = inject(AlbumService);
   private router = inject(Router);
@@ -314,7 +335,12 @@ export class GalleryStore {
 
   /** The same full query as the grid; pagination never affects the aggregate. */
   async loadReviewProgress(): Promise<void> {
+    if (this.destroyRef.destroyed) return;
+    if (!this.listingReadsActive) { this.progressRefreshOwed = true; return; }
+    this.syncReadOwner();
+    this.progressRefreshOwed = false;
     const seq = ++this.reviewProgressSeq;
+    this.progressReadCancelled.next();
     const identity = this.auth.identity();
     const key = this.reviewProgressKey();
     this.reviewProgress.set(null);
@@ -328,8 +354,11 @@ export class GalleryStore {
         if (status) params['scope_review_status'] = status;
       } catch { return; }
     }
+    this.progressReadsInFlight++;
     try {
-      const progress = await firstValueFrom(this.api.get<components['schemas']['ReviewProgressResponse']>('/photos/review_progress', params));
+      const progress = await firstValueFrom(this.api.get<components['schemas']['ReviewProgressResponse']>('/photos/review_progress', params).pipe(
+        takeUntil(this.progressReadCancelled), finalize(() => this.progressReadsInFlight--),
+      ));
       if (seq === this.reviewProgressSeq && identity === this.auth.identity() && key === this.reviewProgressKey()) this.reviewProgress.set(progress);
     } catch { /* Counts unavailable: never show a guessed denominator. */ }
   }
@@ -761,14 +790,30 @@ export class GalleryStore {
   readonly activeFilterCount = computed(() => countActiveFilters(this.filters()));
 
   constructor() {
+    this.destroyRef.onDestroy(() => this.cancelListingReads());
+    effect(() => {
+      const owner = this.auth.identity();
+      untracked(() => this.syncReadOwner(owner));
+    });
     effect(() => { this.auth.identity(); untracked(() => this.clearForeignReviewedPhotos()); });
     this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
+      if (event instanceof NavigationStart && pathOf(event.url) !== pathOf(this.router.url)) {
+        this.suspendedFromPath = pathOf(this.router.url);
+        this.suspendedNavigation = event.id;
+        this.pauseListingReads();
+      }
+      if ((event instanceof NavigationEnd || event instanceof NavigationCancel || event instanceof NavigationError)
+        && event.id === this.suspendedNavigation) {
+        // A wildcard redirect can retain the attached gallery without outlet attach.
+        const attachedGallery = !this.listingViewParked;
+        const returned = !(event instanceof NavigationEnd)
+          || (this.suspendedFromPath === '/' && pathOf(event.urlAfterRedirects) === '/');
+        this.suspendedNavigation = null;
+        this.suspendedFromPath = null;
+        if (attachedGallery && returned) void this.resumeListingReads();
+      }
       if (event instanceof NavigationStart
         && this.router.currentNavigation?.()?.extras?.state?.[REVIEW_RESUME_NAVIGATION] !== this.resumeSeq) this.resumeSeq++;
-    });
-    effect(() => {
-      this.auth.identity();
-      untracked(() => { this.reviewProgressSeq++; this.resumeSeq++; this.reviewProgress.set(null); });
     });
     this.assistantChanges.batch$.pipe(takeUntilDestroyed()).subscribe(batch => void this.refreshPaths(batch.paths));
     // Auto-save album filters on change (debounced) — persists filter state for all albums
@@ -877,8 +922,136 @@ export class GalleryStore {
     }
   }
 
+  private syncReadOwner(owner = this.auth.identity()): void {
+    if (owner === this.readOwner) return;
+    this.readOwner = owner;
+    this.cancelListingReads();
+    this.resumeSeq++;
+    this.reviewProgress.set(null);
+    this.parkedRefreshPaths.clear();
+    this.pendingKeeperHints.clear();
+    this.listingRefreshOwed = false;
+    this.reviewRefreshOwed = false;
+    this.listingPagesInterrupted = false;
+    this.progressRefreshOwed = false;
+  }
+
+  /** The outlet parked this view; cancel reads without losing its rows or selection. */
+  parkListingReads(): void {
+    this.listingViewParked = true;
+    this.pauseListingReads();
+  }
+
+  private pauseListingReads(): void {
+    this.listingRefreshOwed ||= this.viewRepairsInFlight > 0 || (this.pageReadsInFlight > 0 && !this.loading());
+    this.listingPagesInterrupted ||= this.loading();
+    this.reviewRefreshOwed ||= this.reviewRepairsInFlight > 0;
+    this.progressRefreshOwed ||= this.progressReadsInFlight > 0;
+    this.listingReadsActive = false;
+    this.cancelListingReads();
+  }
+
+  /** Called by this gallery's own attach/restore, never by unrelated navigation. */
+  async resumeListingReads(): Promise<void> {
+    if (this.destroyRef.destroyed) return;
+    this.listingViewParked = false;
+    this.suspendedNavigation = null;
+    if (this.listingReadsActive) return;
+    this.listingReadsActive = true;
+    if (!this.loadedOnce) return;
+    const refresh = this.listingRefreshOwed || this.reviewRefreshOwed;
+    const interrupted = this.listingPagesInterrupted;
+    const progress = this.progressRefreshOwed;
+    const paths = [...this.parkedRefreshPaths];
+    this.parkedRefreshPaths.clear();
+    this.reviewRefreshOwed = false;
+    this.progressRefreshOwed = false;
+    this.listingRefreshOwed = false;
+    this.listingPagesInterrupted = false;
+    if (refresh || interrupted) {
+      this.viewRefreshOwed = false;
+      const previous = this.photos();
+      const seq = this._loadSeq;
+      const identity = this.auth.identity();
+      if (interrupted && this.filters().similar_to) await this.resumeSimilarPages();
+      else await this.refreshPaths(null);
+      if (seq === this._loadSeq && identity === this.auth.identity() && this.filters().review_status) {
+        this.rememberReviewedPhotos(previous);
+      }
+    } else if (paths.length) await this.refreshPaths(paths);
+    else if (progress) await this.loadReviewProgress();
+    const loaded = new Set(this.photos().map(photo => photo.path));
+    for (const path of this.pendingKeeperHints) if (!loaded.has(path)) this.pendingKeeperHints.delete(path);
+    if (this.listingReadsActive && !refresh && !interrupted) {
+      void this.fetchKeeperHints([...this.pendingKeeperHints]);
+    }
+  }
+
+  private photoReadAllowed(): boolean {
+    return this.suspendedNavigation === null && pathOf(this.router.url) === '/photo';
+  }
+
+  private async resumeSimilarPages(whileParked = false, preserveLoaded = false): Promise<void> {
+    const f = this.filters();
+    const seq = this._loadSeq;
+    const identity = this.auth.identity();
+    const current = () => (this.listingReadsActive || (whileParked && this.photoReadAllowed()))
+      && seq === this._loadSeq && identity === this.auth.identity();
+    const prefix = preserveLoaded ? this.photos().slice(0, Math.min(Math.floor(this.photos().length / f.per_page), f.page - 1) * f.per_page) : [];
+    const pages: SimilarPage[] = [];
+    this.loading.set(true);
+    try {
+      for (let page = prefix.length / f.per_page; page < f.page; page++) {
+        const result = await this.fetchSimilarPage(f, page * f.per_page);
+        if (!current()) return;
+        pages.push(result);
+        if (!result.has_more) break;
+      }
+      const last = pages[pages.length - 1];
+      this.photos.set([...prefix, ...normalisePhotoFlagsAll(pages.flatMap(page => page.similar ?? []))]);
+      this.total.set(last.total);
+      this.hasMore.set(last.has_more);
+      this.loadError.set(false);
+    } catch {
+      if (current()) {
+        this.loadError.set(true);
+        this.listingPagesInterrupted = true;
+        this.listingRefreshOwed = true;
+      }
+    } finally {
+      if (current()) this.loading.set(false);
+    }
+  }
+
+  private pageRead<T>(request: Observable<T>): Promise<T> {
+    this.pageReadsInFlight++;
+    return firstValueFrom(request.pipe(
+      takeUntil(this.pageReadCancelled),
+      finalize(() => this.pageReadsInFlight--),
+    ));
+  }
+
+  private cancelListingReads(): void {
+    // Invalidate guards before unsubscribe completes firstValueFrom's promise.
+    this._loadSeq++;
+    this.reviewProgressSeq++;
+    this.pageReadCancelled.next();
+    this.progressReadCancelled.next();
+    this.loading.set(false);
+  }
+
   /** Load photos based on current filters (replaces list) */
   async loadPhotos(acceptResult: () => boolean = () => true): Promise<void> {
+    if (this.destroyRef.destroyed) return;
+    this.syncReadOwner();
+    this.listingReadsActive = true;
+    this.listingViewParked = false;
+    this.suspendedNavigation = null;
+    this.listingRefreshOwed = false;
+    this.listingPagesInterrupted = false;
+    this.reviewRefreshOwed = false;
+    this.parkedRefreshPaths.clear();
+    this.pendingKeeperHints.clear();
     // Always load from page 1 — only nextPage() uses page > 1
     const pinned = this.pinnedLoad ? this.pinnedPaths() : null;
     this.pinnedLoad = false;
@@ -888,6 +1061,7 @@ export class GalleryStore {
     this.resetViewScope();
     this.filters.update(current => ({ ...current, page: 1 }));
     const seq = ++this._loadSeq;
+    this.pageReadCancelled.next();
     const identity = this.auth.identity();
     this.loadedOnce = true;
     void this.loadReviewProgress();
@@ -899,7 +1073,7 @@ export class GalleryStore {
       const f = this.filters();
 
       if (pinned) {
-        const res = await firstValueFrom(
+        const res = await this.pageRead(
           this.api.post<{ photos: Photo[]; total: number; missing: string[] }>('/photos/by_paths', { paths: pinned }),
         );
         if (seq !== this._loadSeq || identity !== this.auth.identity() || !acceptResult()) return;
@@ -926,7 +1100,7 @@ export class GalleryStore {
       }
 
       const params = buildApiParams(f, this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
-      const res = await firstValueFrom(this.api.get<PhotosResponse>('/photos', params));
+      const res = await this.pageRead(this.api.get<PhotosResponse>('/photos', params));
       if (seq !== this._loadSeq || identity !== this.auth.identity() || !acceptResult()) return;
       this.photos.set(normalisePhotoFlagsAll(res.photos));
       if (f.review_status === 'undecided') {
@@ -973,7 +1147,17 @@ export class GalleryStore {
    * gallery has loaded once, so a write seen from /culling or /stats never loads it behind the user.
    */
   async refreshPaths(paths: string[] | null): Promise<void> {
-    if (!this.loadedOnce) return;
+    if (!this.loadedOnce || this.destroyRef.destroyed) return;
+    if (!this.listingReadsActive) {
+      this.progressRefreshOwed = true;
+      if (paths === null) this.listingRefreshOwed = true;
+      else {
+        const loaded = new Set(this.photos().map(photo => photo.path));
+        for (const path of paths) if (loaded.has(path)) this.parkedRefreshPaths.add(path);
+      }
+      return;
+    }
+    this.syncReadOwner();
     void this.loadReviewProgress();
     const loadSeq = this._loadSeq;
     const run = this.refreshChain.then(() => this.runRefresh(paths, loadSeq));
@@ -982,6 +1166,8 @@ export class GalleryStore {
   }
 
   private async runRefresh(paths: string[] | null, loadSeq: number): Promise<void> {
+    if (!this.claimRefresh(loadSeq)) return;
+    this.viewRepairsInFlight++;
     try {
       if (paths === null) {
         if (this.pinnedPaths() !== null) await this.refreshPinnedList(loadSeq);
@@ -1004,6 +1190,8 @@ export class GalleryStore {
       if (pinned || membership) this.dropMissing(missing);
     } catch {
       // Best effort: the rows stay as they were.
+    } finally {
+      this.viewRepairsInFlight--;
     }
   }
 
@@ -1019,7 +1207,7 @@ export class GalleryStore {
   ): Promise<{ rows: Photo[]; missing: string[] }> {
     const chunks: string[][] = [];
     for (let i = 0; i < paths.length; i += BY_PATHS_MAX) chunks.push(paths.slice(i, i + BY_PATHS_MAX));
-    const responses = await Promise.all(chunks.map(chunk => firstValueFrom(
+    const responses = await Promise.all(chunks.map(chunk => this.pageRead(
       this.api.post<{ photos: Photo[] }>('/photos/by_paths', filters ? { paths: chunk, filters } : { paths: chunk }),
     )));
     const rows = normalisePhotoFlagsAll(responses.flatMap(res => res.photos));
@@ -1063,7 +1251,7 @@ export class GalleryStore {
    * this blanks nothing and leaves `selectedPaths`, `excludedPaths` and a view-scoped selection alone.
    * A similarity view keeps its rows: its membership is not a filter. A semantic search is a filter.
    */
-  private async refreshViewInPlace(loadSeq: number): Promise<void> {
+  private async refreshViewInPlace(loadSeq: number, recovering = false, preserveLoaded = false): Promise<void> {
     if (this.filters().similar_to) {
       // A similarity view keeps its membership: refresh the rows on screen without filters and never remove one.
       const { rows } = await this.fetchByPaths(this.photos().map(p => p.path));
@@ -1072,20 +1260,22 @@ export class GalleryStore {
     }
     // One re-run when the user paged mid-fetch; a page fetch in flight defers the refetch to `nextPage`.
     for (let attempt = 0; attempt < 2; attempt++) {
-      if (this.loading()) {
+      if (this.loading() && !recovering) {
         this.viewRefreshOwed = true;
         return;
       }
       const f = this.filters();
       const base = buildApiParams(f, this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
+      const prefix = preserveLoaded ? this.photos().slice(0, Math.min(Math.floor(this.photos().length / f.per_page), f.page - 1) * f.per_page) : [];
       const pages: PhotosResponse[] = [];
-      for (let page = 1; page <= f.page; page++) {
-        pages.push(await firstValueFrom(this.api.get<PhotosResponse>('/photos', { ...base, page })));
+      for (let page = prefix.length / f.per_page + 1; page <= f.page; page++) {
+        if (!this.claimRefresh(loadSeq)) return;
+        pages.push(await this.pageRead(this.api.get<PhotosResponse>('/photos', { ...base, page })));
       }
       if (!this.claimRefresh(loadSeq)) return;
       if (this.filters().page !== f.page) continue;
       const last = pages[pages.length - 1];
-      const rows = normalisePhotoFlagsAll(pages.flatMap(res => res.photos));
+      const rows = [...prefix, ...normalisePhotoFlagsAll(pages.flatMap(res => res.photos))];
       this.photos.set(rows);
       this.total.set(last.total);
       this.hasMore.set(last.has_more);
@@ -1110,7 +1300,56 @@ export class GalleryStore {
   }
 
   /** Load next page and append to existing photos */
-  async nextPage(acceptResult: () => boolean = () => true): Promise<void> {
+  async nextPage(acceptResult: () => boolean = () => true, { whileParked = false }: { whileParked?: boolean } = {}): Promise<void> {
+    if (this.destroyRef.destroyed || (!this.listingReadsActive && !(whileParked && this.photoReadAllowed()))) return;
+    this.syncReadOwner();
+    if (!this.listingReadsActive && this.listingPagesInterrupted) {
+      if (this.loading()) return;
+      const seq = this._loadSeq;
+      const identity = this.auth.identity();
+      this.listingPagesInterrupted = false;
+      const preserveLoaded = !this.listingRefreshOwed && !this.reviewRefreshOwed && !this.viewRefreshOwed
+        && !this.parkedRefreshPaths.size;
+      const previous = this.photos();
+      // Claim only debt that predates this snapshot. Writes arriving during recovery
+      // must remain queued for Back instead of being erased by this request's success.
+      const owed = {
+        listing: this.listingRefreshOwed, review: this.reviewRefreshOwed,
+        view: this.viewRefreshOwed, paths: [...this.parkedRefreshPaths],
+      };
+      if (!preserveLoaded) {
+        this.listingRefreshOwed = false;
+        this.reviewRefreshOwed = false;
+        this.viewRefreshOwed = false;
+        this.parkedRefreshPaths.clear();
+      }
+      const query = this.filterKey();
+      if (this.filters().similar_to) await this.resumeSimilarPages(true, preserveLoaded);
+      else {
+        this.loading.set(true);
+        try { await this.refreshViewInPlace(seq, true, preserveLoaded); }
+        catch {
+          if (seq === this._loadSeq && identity === this.auth.identity()) {
+            this.listingPagesInterrupted = true;
+            this.listingRefreshOwed = true;
+          }
+        } finally {
+          if (seq === this._loadSeq && identity === this.auth.identity()) this.loading.set(false);
+        }
+      }
+      if (!preserveLoaded && identity === this.auth.identity() && query === this.filterKey()) {
+        if (this.listingPagesInterrupted && (seq === this._loadSeq || !this.listingReadsActive)) {
+          // A failed or parked-again recovery did not settle its claimed debt.
+          this.listingRefreshOwed ||= owed.listing;
+          this.reviewRefreshOwed ||= owed.review;
+          this.viewRefreshOwed ||= owed.view;
+          for (const path of owed.paths) this.parkedRefreshPaths.add(path);
+        } else if (seq === this._loadSeq && this.filters().review_status) {
+          this.rememberReviewedPhotos(previous);
+        }
+      }
+      return;
+    }
     if (this.pinnedPaths() !== null) return;
     if (!this.hasMore() || this.loading()) return;
 
@@ -1131,7 +1370,7 @@ export class GalleryStore {
         this.hasMore.set(res.has_more);
       } else {
         const params = buildApiParams(this.filters(), this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
-        const res = await firstValueFrom(this.api.get<PhotosResponse>('/photos', params));
+        const res = await this.pageRead(this.api.get<PhotosResponse>('/photos', params));
         if (!current()) return;
         this.photos.update(current => [...current, ...normalisePhotoFlagsAll(res.photos)]);
         this.total.set(res.total);
@@ -1549,16 +1788,23 @@ export class GalleryStore {
   private async fetchKeeperHints(paths: string[]): Promise<void> {
     if (!paths.length) return;
     const current = this.captureReviewView();
+    const seq = this._loadSeq;
+    const loaded = new Set(this.photos().map(photo => photo.path));
+    for (const path of this.pendingKeeperHints) if (!loaded.has(path)) this.pendingKeeperHints.delete(path);
+    for (const path of paths) if (loaded.has(path)) this.pendingKeeperHints.add(path);
     try {
+      // Hints are advisory: cancelling one must not force every page to reload on Back.
       const hints = await firstValueFrom(
-        this.api.post<Record<string, KeeperHint>>('/photos/keeper_hints', { paths }),
+        this.api.post<Record<string, KeeperHint>>('/photos/keeper_hints', { paths }).pipe(takeUntil(this.pageReadCancelled)),
       );
       if (!current()) return;
+      for (const path of paths) this.pendingKeeperHints.delete(path);
       for (const [path, hint] of Object.entries(hints)) {
         this.patchPhoto(path, { keeper_hint: hint });
       }
     } catch {
-      // Best-effort: leave photos without hints on failure.
+      // Cancellation retains bounded loaded-path debt for the next attach.
+      if (seq === this._loadSeq) for (const path of paths) this.pendingKeeperHints.delete(path);
     }
   }
 
@@ -1778,6 +2024,17 @@ export class GalleryStore {
     const originIdentity = this.auth.identity();
     const originKey = this.filterKey();
     const current = () => originSeq === this._loadSeq && originIdentity === this.auth.identity() && originKey === this.filterKey();
+    const refreshConfirmed = async () => {
+      const rebuild = (endpoint === '/photos/batch_rating' && this.ratingShapesView())
+        || (endpoint === '/photos/batch_reject' && this.filters().review_status === 'rejected');
+      if (current()) await this.refreshReviewResults(rebuild);
+      else {
+        if (!this.listingReadsActive && originIdentity === this.auth.identity() && originKey === this.filterKey()) {
+          this.reviewRefreshOwed ||= rebuild || !!this.filters().review_status;
+        }
+        void this.loadReviewProgress();
+      }
+    };
     const viewScoped = useSelectionScope && this.viewScopeSelected();
     const targeted = viewScoped ? this.selectionCount() : paths.length;
     const loaded = viewScoped ? this.selectedLoadedPaths() : paths;
@@ -1802,16 +2059,13 @@ export class GalleryStore {
         } else {
           this.notifyActionFailed();
         }
-        if (count > 0 && current()) await this.refreshReviewResults((endpoint === '/photos/batch_rating' && this.ratingShapesView())
-          || (endpoint === '/photos/batch_reject' && this.filters().review_status === 'rejected'));
+        if (count > 0) await refreshConfirmed();
         return null;
       }
     }
     const kind = BATCH_ACTIVITY[endpoint];
     if (kind) this.journal.record(kind.kind, paths, kind.value(extraBody));
-    if (current()) await this.refreshReviewResults((endpoint === '/photos/batch_rating' && this.ratingShapesView())
-      || (endpoint === '/photos/batch_reject' && this.filters().review_status === 'rejected'));
-    else void this.loadReviewProgress();
+    await refreshConfirmed();
     return { snapshot, targeted, count };
   }
 
@@ -1835,7 +2089,14 @@ export class GalleryStore {
   }
 
   /** Repair shifted offsets with one tail-page request; Undo can restore earlier rows. */
-  async refreshReviewResults(rebuild = false): Promise<void> {
+  async refreshReviewResults(rebuild = false, { whileParked = false }: { whileParked?: boolean } = {}): Promise<void> {
+    if (this.destroyRef.destroyed) return;
+    if (!this.listingReadsActive && !(whileParked && this.photoReadAllowed())) {
+      this.progressRefreshOwed = true;
+      this.reviewRefreshOwed ||= rebuild || !!this.filters().review_status;
+      return;
+    }
+    this.syncReadOwner();
     this.clearForeignReviewedPhotos();
     const f = this.filters();
     const identity = this.auth.identity();
@@ -1847,6 +2108,7 @@ export class GalleryStore {
     void this.loadReviewProgress();
     if (!f.review_status || this.pinnedPaths() !== null) return;
     const previous = this.photos();
+    this.reviewRefreshOwed = false;
     if (rebuild) {
       const pages = Math.max(1, Math.ceil(previous.length / f.per_page));
       const loading = this.loadPhotos(current);
@@ -1862,12 +2124,14 @@ export class GalleryStore {
       const offset = (page - 1) * f.per_page;
       this.resetViewScope();
       seq = ++this._loadSeq;
+      this.pageReadCancelled.next();
       this.loadError.set(false);
       this.loadErrorKey.set(undefined);
       this.loading.set(true);
+      this.reviewRepairsInFlight++;
       try {
         const params = buildApiParams({ ...f, page }, this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
-        const res = await firstValueFrom(this.api.get<PhotosResponse>('/photos', params));
+        const res = await this.pageRead(this.api.get<PhotosResponse>('/photos', params));
         if (!current()) return;
         this.photos.set([...retained.slice(0, offset), ...normalisePhotoFlagsAll(res.photos)]);
         this.filters.update(current => ({ ...current, page }));
@@ -1880,10 +2144,18 @@ export class GalleryStore {
         this.loadError.set(true);
         return;
       } finally {
+        this.reviewRepairsInFlight--;
         if (current()) this.loading.set(false);
       }
     }
     if (!current()) return;
+    this.rememberReviewedPhotos(previous);
+    if (whileParked && !this.listingReadsActive) {
+      this.saveSessionQuery();
+    } else this.syncUrl();
+  }
+
+  private rememberReviewedPhotos(previous: Photo[]): void {
     const currentPaths = new Set(this.photos().map(photo => photo.path));
     for (const photo of previous) {
       if (currentPaths.has(photo.path)) continue;
@@ -1892,7 +2164,6 @@ export class GalleryStore {
       this.reviewedPhotos.set(photo.path, photo);
     }
     while (this.reviewedPhotos.size > 1000) this.reviewedPhotos.delete(this.reviewedPhotos.keys().next().value!);
-    this.syncUrl();
   }
 
   async batchReview(paths: string[], decision: 'kept' | 'undecided', useSelectionScope = true): Promise<BatchResult | null> {
@@ -2217,7 +2488,7 @@ export class GalleryStore {
   /** Fetch a page of similar photos from the API */
   private fetchSimilarPage(f: GalleryFilters, offset: number): Promise<SimilarPage> {
     const minSim = (parseInt(f.min_similarity || '70', 10) / 100).toString();
-    return firstValueFrom(
+    return this.pageRead(
       this.api.get<SimilarPage>(
         `/similar_photos/${encodeURIComponent(f.similar_to)}`,
         { limit: f.per_page, offset, min_similarity: minSim, mode: f.similarity_mode || 'visual', full: 1 },

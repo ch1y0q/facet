@@ -1295,6 +1295,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     this.outlet?.detachEvents.pipe(takeUntilDestroyed()).subscribe(component => {
       if (component !== this) return;
       this.parked = true;
+      this.store.parkListingReads();
       // Pending filter edits would otherwise replace the photo URL.
       this.filterSidebar()?.cancelPendingSearch();
       this.cancelToolbarSearch();
@@ -1314,6 +1315,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     this.outlet?.attachEvents.pipe(takeUntilDestroyed()).subscribe(component => {
       if (component !== this) return;
       this.parked = false;
+      void this.store.resumeListingReads();
       this.setGalleryChrome(true);
       this.tooltipPhoto.set(null);
       // A resize while parked measured the detached drawer as 0 and zeroed the content margin.
@@ -1559,6 +1561,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
       this.scrollContent()?.scrollTo({ top: snap.scrollTop });
       requestAnimationFrame(() => setTimeout(() => this.scrollDirective()?.recheck()));
     }, { injector: this.injector });
+    void this.store.resumeListingReads();
     this.refreshSideData();
     return true;
   }

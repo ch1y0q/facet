@@ -1229,6 +1229,10 @@ Set `min_photos_for_person` higher to hide persons with few photos from the filt
 
 ## Performance
 
+Rapid filter changes cancel superseded gallery page and review-progress requests, including reads for similar and pinned views. Leaving the gallery or changing the signed-in identity cancels outstanding gallery reads. Rating and review saves already submitted are not cancelled.
+
+Opening a photo parks background gallery reads, while arrow navigation can fetch more photos and Keep repairs the review queue immediately. Returning refills interrupted or changed results and refreshes counts only when needed; unchanged Back, cancelled keeper hints and ordinary rating updates do not refetch loaded pages. A cancelled navigation or a redirect back to the attached gallery resumes its reads. Targeted edits made while the grid is parked are combined into a row refresh on return; cancelled keeper hints are retried without reloading photo pages. When only pagination was interrupted, photo arrows fetch the missing tail instead of reloading completed pages.
+
 ### Large Databases (50k+ photos)
 
 Run these for better performance:

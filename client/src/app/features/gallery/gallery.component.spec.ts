@@ -88,6 +88,8 @@ describe('GalleryComponent', () => {
       loadTypeCounts: vi.fn(() => Promise.resolve()),
       loadPhotos: vi.fn(() => Promise.resolve()),
       reloadPhotos: vi.fn(() => Promise.resolve()),
+      parkListingReads: vi.fn(),
+      resumeListingReads: vi.fn(() => Promise.resolve()),
       updateFilter: vi.fn(() => Promise.resolve()),
       resetFilters: vi.fn(() => Promise.resolve()),
       nextPage: vi.fn(() => Promise.resolve()),
@@ -920,6 +922,7 @@ describe('GalleryComponent', () => {
       await component.ngOnInit();
 
       expect(mockStore.loadConfig).not.toHaveBeenCalled();
+      expect(mockStore.resumeListingReads).toHaveBeenCalledOnce();
       expect(mockStore.loadPhotos).not.toHaveBeenCalled();
       expect(mockStore.loadTypeCounts).toHaveBeenCalled();
     });
@@ -4539,10 +4542,13 @@ describe('GalleryComponent', () => {
       expect(TestBed.inject(HeaderSlotService).template()).toBeNull();
       expect(mockStore.loadTypeCounts).not.toHaveBeenCalled();
       expect(mockStore.loadFilterOptions).not.toHaveBeenCalled();
+      expect(mockStore.resumeListingReads).not.toHaveBeenCalled();
       outletMock.attachEvents.next(gallery);
       expect(TestBed.inject(HeaderSlotService).template()).not.toBeNull();
       expect(mockStore.loadTypeCounts).toHaveBeenCalledOnce();
       expect(mockStore.loadFilterOptions).toHaveBeenCalledOnce();
+      expect(mockStore.resumeListingReads).toHaveBeenCalledOnce();
+      expect(mockStore.parkListingReads).toHaveBeenCalledOnce();
     });
 
     it('destroys an active slideshow when the gallery is parked', () => {

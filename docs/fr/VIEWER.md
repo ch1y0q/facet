@@ -1160,6 +1160,10 @@ Augmentez `min_photos_for_person` pour masquer du menu déroulant de filtre les 
 
 ## Performances
 
+Les changements rapides de filtre annulent les anciennes requêtes de pages et de progression, y compris pour les vues similaires et épinglées. Quitter la galerie ou changer d’identité annule les lectures en cours. Les modifications de notes et de décisions déjà envoyées ne sont pas annulées.
+
+Ouvrir une photo suspend les lectures de fond de la galerie ; les flèches peuvent charger davantage de photos et Conserver actualise immédiatement la file de révision. Le retour recharge seulement les résultats interrompus ou modifiés et les compteurs nécessaires. Un retour sans changement, une suggestion annulée ou une note ordinaire ne recharge pas les pages. Une navigation annulée ou redirigée vers la galerie encore affichée reprend ses lectures. Les modifications ciblées pendant la pause de la grille sont regroupées en une actualisation des lignes au retour ; les conseils annulés sont réessayés sans recharger les pages. Si seule la pagination a été interrompue, les flèches chargent uniquement la partie manquante.
+
 ### Grandes bases de données (50k+ photos)
 
 Lancez ces commandes pour de meilleures performances :
