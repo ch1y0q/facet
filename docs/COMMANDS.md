@@ -514,6 +514,8 @@ python facet.py --recompute-average        # Apply new weights
 
 After moving files yourself, use `python database.py --relink-photos` to preview exact old/new mappings and preserve database associations. Preview is the default. Apply requires the saved plan ID and `--acknowledge-unverified-identity`: the database stores no cryptographic proof of the missing original. Stop viewers/scanners and review the plan first. Both paths must remain within configured roots and the same user visibility; copies, ambiguous names, stale plans and path mappings are refused. Companions must be explicit, manual rectangles require editor review, and Immich state is unchanged. See [Relink a missing photo](RELINK.md) for the full contract and examples.
 
+Apply uses the library job lock: exit code 75 means another job is running, and 1 means the lock is unusable. Preview takes no library lock.
+
 Explicit companion kinds include `sidecar_facet` for `photo.ext.facet.xmp`; unlisted fallback packets are refused too. Saved review plans are private (0600 on POSIX). Readable directories do not prove a volume is mounted: `source_mount_status` remains `not_verified`, and the operator must confirm the original was moved rather than offline.
 
 ```sh

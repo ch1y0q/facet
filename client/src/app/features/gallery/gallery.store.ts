@@ -15,6 +15,7 @@ import { UserActivityJournal, UserActivityKind, activityName } from '../../core/
 import { Photo, KeeperHint, normalisePhotoFlagsAll } from '../../shared/models/photo.model';
 import type { CardSetKind } from '../../shared/components/photo-card/card-actions';
 import { I18N } from '../../core/i18n/keys';
+import { reviewQueueClearVersion } from '../../core/services/review-queue.storage';
 import { readReviewQueue, saveReviewQueue } from './review-queue.util';
 import type { components } from '../../core/api/schema';
 import {
@@ -325,6 +326,7 @@ export class GalleryStore {
   private readonly bookmarkVersion = signal(0);
   readonly reviewBookmark = computed(() => {
     this.bookmarkVersion();
+    reviewQueueClearVersion();
     return readReviewQueue(this.auth.identity());
   });
   private reviewProgressSeq = 0;
@@ -1091,6 +1093,7 @@ export class GalleryStore {
     const seq = ++this._loadSeq;
     this.pageReadCancelled.next();
     const identity = this.auth.identity();
+    const bookmarkVersion = reviewQueueClearVersion();
     this.loadedOnce = true;
     void this.loadReviewProgress();
     this.photos.set([]);
@@ -1131,7 +1134,7 @@ export class GalleryStore {
       const res = await this.pageRead(this.api.get<PhotosResponse>('/photos', params));
       if (seq !== this._loadSeq || identity !== this.auth.identity() || !acceptResult()) return;
       this.photos.set(normalisePhotoFlagsAll(res.photos));
-      if (f.review_status === 'undecided') {
+      if (f.review_status === 'undecided' && bookmarkVersion === reviewQueueClearVersion()) {
         saveReviewQueue(this.auth.identity(), f);
         this.bookmarkVersion.update(n => n + 1);
       }

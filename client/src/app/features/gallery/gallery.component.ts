@@ -2538,9 +2538,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
    *  overlay, not a MatDialog, so the dialog query below cannot see it. */
   protected onGalleryShortcut(event: KeyboardEvent): void {
     if (this.parked || this.store.slideshowActive()) return;
-    const target = event.target as HTMLElement | null;
-    if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
-    if (target?.isContentEditable) return;
+    if (isTypingContext(event)) return;
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     if (document.querySelector('mat-dialog-container, mat-bottom-sheet-container')) return;
 
