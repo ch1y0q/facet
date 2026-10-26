@@ -717,12 +717,18 @@ class TestExportMetadata:
     def test_more_than_100_paths_is_too_large(self, library):
         assert self.export(library, [f"/x/{i}.jpg" for i in range(101)])["error"] == "too_large"
 
-    def test_an_exiftool_refusal_is_reported_not_swallowed(self, library, monkeypatch):
+    def test_an_exiftool_refusal_is_reported_without_private_details(self, library, monkeypatch, caplog):
+        paths = [library.r1, library.k1]
+        before = [Path(path).read_bytes() for path in paths]
         def refuse(*args, **kwargs):
-            raise RuntimeError("exiftool 13.25 corrupts XMP sidecars (bug in 13.23-13.27)")
+            raise RuntimeError("exiftool 13.25 corrupts XMP sidecars (bug in 13.23-13.27) at /private/server/secret.jpg")
         monkeypatch.setattr("api.routers.export.write_metadata", refuse)
-        data = self.export(library, [library.r1, library.k1])["data"]
-        assert data["written"] == 0 and data["errors"] == 2 and "13.23-13.27" in data["first_error"]
+        data = self.export(library, paths)["data"]
+        assert (data["written"], data["errors"], data["skipped"]) == (0, 2, 0)
+        assert data["first_error"] == "Failed to write metadata; check server logs"
+        assert "/private/server/" not in json.dumps(data)
+        assert "13.23-13.27" in caplog.text
+        assert [Path(path).read_bytes() for path in paths] == before
 
     def test_the_call_uses_the_dedicated_timeout_not_call_timeout_s(self, library, monkeypatch):
         seen = {}
