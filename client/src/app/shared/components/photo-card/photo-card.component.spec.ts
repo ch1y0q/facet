@@ -806,6 +806,25 @@ describe('PhotoCardComponent current-photo marker', () => {
 
   afterEach(() => TestBed.resetTestingModule());
 
+  it('shows the focused-card shortcut hint only while rating controls are enabled', () => {
+    const fixture = createCard({ isActive: true, gridHasActiveCard: true });
+    fixture.componentRef.setInput('isEditionMode', true);
+    fixture.componentRef.setInput('config', { features: { show_rating_controls: true } });
+    fixture.detectChanges();
+    const hint = () => [...host(fixture).querySelectorAll('div[aria-hidden="true"]')]
+      .find(node => node.textContent?.trim() === 'photoCard.key_hint');
+    expect(hint()).toBeDefined();
+    fixture.componentRef.setInput('config', { features: { show_rating_controls: false } });
+    fixture.detectChanges();
+    expect(hint()).toBeUndefined();
+    fixture.componentRef.setInput('config', { features: { show_rating_controls: true } });
+    fixture.detectChanges();
+    expect(hint()).toBeDefined();
+    fixture.componentRef.setInput('isEditionMode', false);
+    fixture.detectChanges();
+    expect(hint()).toBeUndefined();
+  });
+
   it('is neither current nor dimmed by default', () => {
     const fixture = createCard();
     expect(fixture.componentInstance.isActive()).toBe(false);

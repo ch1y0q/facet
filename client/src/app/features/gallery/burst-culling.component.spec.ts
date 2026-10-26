@@ -4385,13 +4385,22 @@ describe('BurstCullingComponent date range', () => {
 
   it('lights the button and names the window dd/MM/yyyy when the URL carries one', () => {
     mount({ from: '2026-07-01', to: '2026-07-31' });
-    expect(dateButton()!.getAttribute('aria-label')).toBe('01/07/2026 - 31/07/2026');
+    expect(dateButton()!.getAttribute('aria-label')).toBe('culling.date_range.label: 01/07/2026 - 31/07/2026');
+    expect(dateButton()!.getAttribute('aria-label')).toContain(dateButton()!.querySelector('span.text-sm')!.textContent!.trim());
     expect(dateButton()!.className).toContain('text-[var(--mat-sys-primary)]');
   });
 
   it('reads the EXIF form of a plan\'s window too', () => {
     mount({ from: '2026:07:01 00:00:00', to: '2026:07:31 23:59:59' });
-    expect(dateButton()!.getAttribute('aria-label')).toBe('01/07/2026 - 31/07/2026');
+    expect(dateButton()!.getAttribute('aria-label')).toBe('culling.date_range.label: 01/07/2026 - 31/07/2026');
+    expect(dateButton()!.getAttribute('aria-label')).toContain(dateButton()!.querySelector('span.text-sm')!.textContent!.trim());
+  });
+
+  it('keeps the visible date label when a dated scope is cleared', async () => {
+    mount({ from: '2026-07-01', to: '2026-07-31' });
+    component['onDateRange'](null, null);
+    await settle();
+    expect(dateButton()!.getAttribute('aria-label')).toBe(dateButton()!.querySelector('span.text-sm')!.textContent!.trim());
   });
 
   it('a preset reloads the feed over the window and mirrors the whole scope into the URL, keeping group_by', async () => {

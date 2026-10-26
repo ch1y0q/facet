@@ -519,6 +519,8 @@ python facet.py --recompute-average        # Apply new weights
 
 Depois de mover os arquivos manualmente, `python database.py --relink-photos` mostra uma prévia dos caminhos antigos/novos exatos e preserva suas associações no banco. A prévia é o padrão. Aplicar exige o ID do plano salvo e `--acknowledge-unverified-identity`: o banco não possui prova criptográfica do original ausente. Pare o viewer/as varreduras e revise o plano. Os dois caminhos devem permanecer em raízes configuradas com a mesma visibilidade de usuários; cópias, nomes ambíguos, planos obsoletos e mapeamentos de caminhos são recusados. Os companheiros devem ser explícitos; retângulos manuais exigem revisão no editor e o estado Immich fica inalterado. Contrato e exemplos: [Religar fotos movidas](RELINK.md).
 
+A aplicação usa o bloqueio da biblioteca: o código 75 indica outro trabalho em curso e o código 1 um bloqueio inutilizável. A prévia não adquire o bloqueio.
+
 `sidecar_facet` identifica explicitamente `photo.ext.facet.xmp`; pacotes alternativos não listados também são recusados. Os planos salvos são privados (0600 em POSIX). Um diretório legível não prova que o volume está montado: `source_mount_status` continua `not_verified`; o operador deve confirmar uma movimentação real em vez de armazenamento offline.
 
 ```sh
