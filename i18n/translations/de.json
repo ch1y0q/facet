@@ -2861,7 +2861,7 @@
     "before": "Vorher",
     "after": "Nachher",
     "error": "Aktion fehlgeschlagen. Zugriff und Dateien prüfen und die Vorschau erneut laden.",
-    "reset_hint": "Das Dateidatum entfernt die manuelle Korrektur. Ohne Datum in der Datei wird das Aufnahmedatum unbekannt.",
+    "reset_hint": "Die Schaltfläche „Dateidatum verwenden“ entfernt die manuelle Korrektur. Ohne Datum in der Datei wird das Aufnahmedatum unbekannt.",
     "use_file": "Dateidatum verwenden",
     "preview": "Vorschau",
     "apply": "Korrektur anwenden",

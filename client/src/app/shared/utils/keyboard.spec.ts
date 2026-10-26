@@ -15,6 +15,14 @@ describe('isTypingContext', () => {
     expect(isTypingContext(eventFrom({ tagName: 'DIV', isContentEditable: true } as HTMLElement))).toBe(true);
   });
 
+  it.each(['combobox', 'listbox', 'option', 'menu', 'menubar', 'menuitem', 'menuitemcheckbox', 'menuitemradio'])('recognizes a nested target in an ARIA %s', role => {
+    const control = document.createElement('div');
+    control.setAttribute('role', role);
+    const label = document.createElement('span');
+    control.appendChild(label);
+    expect(isTypingContext(eventFrom(label))).toBe(true);
+  });
+
   it('is false for a plain element', () => {
     expect(isTypingContext(eventFrom({ tagName: 'DIV', isContentEditable: false } as HTMLElement))).toBe(false);
   });

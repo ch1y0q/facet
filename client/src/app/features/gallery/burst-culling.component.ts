@@ -272,7 +272,7 @@ interface ShortcutRow {
               <button mat-button class="!min-w-0 !px-3 shrink-0" data-testid="cull-date-range" [matMenuTriggerFor]="dateRangeMenu"
                       [class.!text-[var(--mat-sys-primary)]]="cull.dateRangeActive()"
                       [matTooltip]="cull.dateRangeActive() ? (cull.scopeFrom() | cullDateRange: cull.scopeTo()) : (I18N.culling.date_range.label | translate)"
-                      [attr.aria-label]="cull.dateRangeActive() ? (cull.scopeFrom() | cullDateRange: cull.scopeTo()) : (I18N.culling.date_range.label | translate)">
+                      [attr.aria-label]="(I18N.culling.date_range.label | translate) + (cull.dateRangeActive() ? ': ' + (cull.scopeFrom() | cullDateRange: cull.scopeTo()) : '')">
                 <mat-icon>date_range</mat-icon>
                 <span class="hidden xl:inline text-sm">{{ I18N.culling.date_range.label | translate }}</span>
               </button>
