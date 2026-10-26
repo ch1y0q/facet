@@ -513,6 +513,8 @@ python facet.py --recompute-average        # Applique les nouveaux poids
 
 Après avoir déplacé vous-même les fichiers, `python database.py --relink-photos` prévisualise les chemins anciens/nouveaux exacts et préserve leurs associations en base. La prévisualisation est le mode par défaut. Appliquer exige l’ID du plan enregistré et `--acknowledge-unverified-identity` : la base ne contient aucune preuve cryptographique de l’original disparu. Arrêtez le viewer/les analyses et vérifiez le plan. Les deux chemins doivent rester dans des racines configurées avec la même visibilité utilisateur ; copies, noms ambigus, plans périmés et correspondances de chemins sont refusés. Les compagnons doivent être explicites ; les rectangles manuels nécessitent une révision dans l’éditeur et l’état Immich reste inchangé. Contrat et exemples : [Relier une photo déplacée](RELINK.md).
 
+L’application utilise le verrou de la photothèque : le code 75 indique un autre travail en cours et le code 1 un verrou inutilisable. L’aperçu ne prend aucun verrou.
+
 `sidecar_facet` désigne explicitement `photo.ext.facet.xmp` ; les paquets de repli non listés sont aussi refusés. Les plans enregistrés sont privés (0600 sous POSIX). Un répertoire lisible ne prouve pas qu’un volume est monté : `source_mount_status` reste `not_verified` ; l’opérateur doit confirmer un déplacement réel plutôt qu’un stockage hors ligne.
 
 ```sh
