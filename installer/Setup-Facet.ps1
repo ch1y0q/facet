@@ -7,7 +7,7 @@ $ErrorActionPreference = 'Stop'
 
 function Step($msg) { Write-Host "`n== $msg" -ForegroundColor Cyan }
 
-if ((Test-Path $FacetReady) -and -not $Force) {
+if ((Test-Path $FacetReady) -and (Test-Path (Join-Path $FacetExifTool 'exiftool.exe')) -and -not $Force) {
     Write-Host "Facet environment already set up ($FacetVenv). Use -Force to rebuild."
     return
 }
@@ -42,6 +42,28 @@ if ($hasCuda) {
     & $FacetUv pip uninstall --python $FacetPython onnxruntime onnxruntime-gpu
     & $FacetUv pip install --python $FacetPython 'onnxruntime-gpu==1.26.0'
     if ($LASTEXITCODE) { throw 'onnxruntime-gpu install failed' }
+}
+
+# ExifTool for Windows, the version the Docker image pins (must stay >= 13.28: 13.23-13.27
+# corrupt darktable XMP sidecars). exiftool.org keeps only the latest release, so take the
+# SourceForge archive and pin its hash (MD5 matches SourceForge's published 1ebe3c5b...).
+$exifVersion = '13.55'
+$exifSha256  = '9FADAF5221DCB07A5D018E21C8529E257917D2FAD1FDFC8E64855C4FB73293DF'
+$exifExe = Join-Path $FacetExifTool 'exiftool.exe'
+if (-not (Test-Path $exifExe) -or ((& $exifExe -ver) -ne $exifVersion)) {
+    Step "ExifTool $exifVersion"
+    $zip = Join-Path $env:TEMP "exiftool-${exifVersion}_64.zip"
+    Invoke-WebRequest "https://sourceforge.net/projects/exiftool/files/exiftool-${exifVersion}_64.zip/download" `
+        -OutFile $zip -UseBasicParsing -UserAgent 'Wget'
+    if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne $exifSha256) { Remove-Item $zip; throw 'ExifTool download failed its checksum' }
+    $unpack = Join-Path $env:TEMP "exiftool-$exifVersion"
+    if (Test-Path $unpack) { Remove-Item -Recurse -Force $unpack }
+    Expand-Archive $zip $unpack
+    if (Test-Path $FacetExifTool) { Remove-Item -Recurse -Force $FacetExifTool }
+    Move-Item (Get-ChildItem $unpack -Directory | Select-Object -First 1).FullName $FacetExifTool
+    Rename-Item (Join-Path $FacetExifTool 'exiftool(-k).exe') 'exiftool.exe'
+    Remove-Item -Recurse -Force $zip, $unpack
+    Write-Host "exiftool $(& $exifExe -ver)"
 }
 
 if (-not (Test-Path $env:FACET_CONFIG)) {

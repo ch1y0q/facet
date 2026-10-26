@@ -11,8 +11,13 @@ $FacetData   = Join-Path $FacetRoot 'data'
 $FacetConfig = Join-Path $FacetRoot 'config'
 $FacetLogs   = Join-Path $FacetData 'logs'
 $FacetPython = Join-Path $FacetVenv 'Scripts\python.exe'
-$FacetUv     = Join-Path $PSScriptRoot 'bin\uv.exe'
+$FacetUv     = Join-Path $PSScriptRoot 'bin\uv.exe'   # bundled by the MSI; a repo checkout uses PATH
+if (-not (Test-Path $FacetUv)) { $FacetUv = (Get-Command uv -ErrorAction SilentlyContinue).Source }
 $FacetReady  = Join-Path $FacetVenv '.facet-setup-ok'
+$FacetExifTool = Join-Path $FacetRoot 'exiftool'
+
+# Facet runs `exiftool` from PATH (EXIF batch read, XMP sidecars). Put this install's copy first.
+if (Test-Path (Join-Path $FacetExifTool 'exiftool.exe')) { $env:PATH = "$FacetExifTool;$env:PATH" }
 
 $env:FACET_CONFIG       = Join-Path $FacetConfig 'scoring_config.json'
 $env:DB_PATH            = Join-Path $FacetData 'photo_scores_pro.db'

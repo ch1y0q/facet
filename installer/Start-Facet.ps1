@@ -4,7 +4,7 @@ param([int]$Port = 5000, [switch]$Lan, [switch]$NoBrowser)
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\Facet-Env.ps1"
 
-if (-not (Test-Path $FacetReady)) {
+if (-not (Test-Path $FacetReady) -or -not (Test-Path (Join-Path $FacetExifTool 'exiftool.exe'))) {
     Write-Host 'First run: setting up the Python environment (downloads about 6 GB, 10-20 minutes).'
     & "$PSScriptRoot\Setup-Facet.ps1"
 }
