@@ -6,9 +6,12 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- **The photo-detail Keep button is a real toggle.** It announced its pressed state to assistive technology, but activating it on a kept photo kept it again. It now resets the decision, and its icon is outlined until the photo is kept, so the state no longer relies on colour alone.
+- **Show readable scan phase labels.** Moment and junk detection no longer display `[object Object]` in the scan dialog; future phase names are shown as plain text.
 - **LIQE and CLIPIQA load again in the legacy CUDA image.** Its restricted lock pinned setuptools 84.1.0, which no longer ships `pkg_resources`, so PyPI `openai-clip` failed to import. It is held at 81.0.0 like the default image's lock, and the runtime cap is corrected to `<82` (setuptools 82 removed `pkg_resources`, not 81).
 - **Online place search refuses TLS below 1.2.** The provider connection now sets the minimum explicitly instead of relying on the interpreter's default.
 - **Distinguish organization-history actions for assistive technology.** Revert controls identify their entry, and expanded before/after comparisons label column and row headers.
+- **Retry incomplete HEIF orientation repairs.** Offline files and failures rebuilding photo thumbnails remain eligible on later upgrades, including tied scan timestamps. Older progress is rechecked without rotating already repaired portraits or faces again.
 - **Accessible capture-date validation.** Link invalid offsets to their explanation and identify preview table column headers.
 - **Handle expected online-place lookup failures in the dialog.** Rate limits, disabled lookup and provider outages no longer duplicate the inline error with global crash reporting. Query validation and documented HTTP error responses now match the generated API contract.
 - **Private online place-search caches.** Multi-user address searches reuse only the current account’s results while preserving the shared provider rate limit. Excessively nested provider JSON returns the normal unavailable response instead of an internal server error.
@@ -36,6 +39,7 @@ All notable changes to Facet are documented in this file.
 - **Readable sidecar import preview errors.** Missing, unreadable or invalid databases now produce a clear refusal instead of a SQLite traceback, without creating or upgrading the database.
 - **Include manual Keep and Reset in assistant activity context.** Successful gallery and photo-detail decisions now report `review` entries with `kept` or `undecided`; a late batch confirmation from another account cannot enter the current activity journal.
 - **Close right-click menus when opening a photo.** Parking the gallery now dismisses its shared photo context menu so it cannot remain over the photo page or reappear on Back.
+- **Complete the relink guide in every language.** The French, German, Italian, Spanish, Portuguese and Chinese pages now carry all of the English page's sections instead of a one-section summary; the command appears in the maintenance table of the command reference, which no longer repeats the option table, and the viewer guide notes that relinked face marks stay in review until saved again in the editor.
 
 ## [1.24.0] "Diaphragme" — 2026-10-26
 

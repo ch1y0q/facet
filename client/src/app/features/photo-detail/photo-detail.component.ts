@@ -287,11 +287,11 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
                 <mat-icon class="!text-red-400">{{ p.is_favorite ? 'favorite' : 'favorite_border' }}</mat-icon>
               </button>
               <!-- Review decisions -->
-              <button mat-icon-button (click)="reviewPhoto('kept')" [class.text-green-400]="p.is_kept"
+              <button mat-icon-button (click)="reviewPhoto(p.is_kept ? 'undecided' : 'kept')" [class.text-green-400]="p.is_kept"
                 [matTooltip]="I18N.review.keep | translate"
                 [attr.aria-label]="I18N.review.keep | translate"
                 [attr.aria-pressed]="!!p.is_kept">
-                <mat-icon>check_circle</mat-icon>
+                <mat-icon>{{ p.is_kept ? 'check_circle' : 'check_circle_outline' }}</mat-icon>
               </button>
               <button mat-icon-button (click)="reviewPhoto('undecided')"
                 [matTooltip]="I18N.review.reset | translate"

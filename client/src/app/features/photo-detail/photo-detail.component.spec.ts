@@ -220,7 +220,7 @@ describe('PhotoDetailComponent', () => {
     expect(store.photos()[0].persons).toEqual([{ id: 5, name: 'Ada' }]);
   });
 
-  it('renders NULL and zero extended metrics in the actual detail template', () => {
+  function renderDetail() {
     TestBed.configureTestingModule({
       imports: [PhotoDetailComponent],
       providers: [
@@ -236,6 +236,31 @@ describe('PhotoDetailComponent', () => {
     });
     const view = TestBed.createComponent(PhotoDetailComponent);
     vi.spyOn(view.componentInstance, 'ngOnInit').mockResolvedValue(undefined);
+    return view;
+  }
+
+  it.each([
+    { kept: true, decision: 'undecided', icon: 'check_circle' },
+    { kept: false, decision: 'kept', icon: 'check_circle_outline' },
+  ])('Keep toggle on a photo with is_kept=$kept sends $decision, shows $icon and flips its state', async ({ kept, decision, icon }) => {
+    const view = renderDetail();
+    view.componentInstance.photo.set(makePhoto({ is_kept: kept, is_rejected: !kept }));
+    mockApi.post.mockReturnValue(of({}));
+    view.detectChanges();
+    const keep = view.nativeElement.querySelector('button[aria-label="review.keep"]') as HTMLButtonElement;
+    expect(keep.getAttribute('aria-pressed')).toBe(String(kept));
+    expect(keep.querySelector('mat-icon')!.textContent!.trim()).toBe(icon);
+    keep.click();
+    await view.whenStable();
+    expect(mockApi.post).toHaveBeenCalledWith('/photos/batch_review', { photo_paths: [view.componentInstance.photo()!.path], decision });
+    view.detectChanges();
+    expect(view.componentInstance.photo()).toMatchObject({ is_kept: !kept, is_rejected: false });
+    expect(keep.getAttribute('aria-pressed')).toBe(String(!kept));
+    expect(keep.querySelector('mat-icon')!.textContent!.trim()).not.toBe(icon);
+  });
+
+  it('renders NULL and zero extended metrics in the actual detail template', () => {
+    const view = renderDetail();
     TestBed.inject(GalleryStore).config.set({ populated_scores: ['aesthetic_v25', 'qrealign_score', 'deqa_score'] } as never);
     view.componentInstance.photo.set(makePhoto({ aesthetic_v25: null, qrealign_score: 0, deqa_score: null }));
     view.detectChanges();

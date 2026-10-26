@@ -19,7 +19,7 @@ copiar e colar.
 | [Interoperabilidade](INTEROP.md) | Trocar classificações/tags com Lightroom, Capture One, digiKam, darktable |
 | [Immich](IMMICH.md) | Sincronizar avaliações e favoritos com o Immich, além do webhook de entrada |
 | [Implantação](DEPLOYMENT.md) | NAS, servidores remotos, HTTPS, backups, multiusuário |
-| [RELINK](RELINK.md) | Religar fotos movidas |
+| [Religar](RELINK.md) | Religar fotos movidas |
 
 ## Tipos de arquivo suportados
 

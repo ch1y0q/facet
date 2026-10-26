@@ -1624,7 +1624,10 @@
       "sequences": "Rilevamento dei bracketing",
       "tagging": "Etichettatura",
       "vec": "Indicizzazione",
-      "done": "Completato"
+      "done": "Completato",
+      "moments": "Rilevamento dei momenti",
+      "junk": "Rilevamento delle foto indesiderate",
+      "recompute": "Ricalcolo dei punteggi"
     },
     "title": "Scansiona foto",
     "start_button": "Avvia scansione",

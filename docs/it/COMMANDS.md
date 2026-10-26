@@ -166,6 +166,8 @@ Questi comandi aggiornano metriche specifiche, derivano nuovi dati (didascalie A
 | `python facet.py --compute-recommendations --apply-recommendations` | Applica automaticamente le correzioni dei punteggi |
 | `python facet.py --compute-recommendations --simulate` | Visualizza in anteprima le modifiche previste |
 
+`--upgrade-db` ritenta i file HEIF le cui intestazioni o miniature delle foto non sono state lette o riparate. Finché un candidato non riesce, conserva l’ultimo avanzamento completato, quindi i file orizzontali leggibili possono essere controllati di nuovo. I ritratti già riparati non vengono ruotati una seconda volta. Dopo l’aggiornamento da versioni precedenti della riparazione, i candidati rimanenti vengono ricontrollati; anche svuotare la cache delle statistiche riavvia il controllo. I file immagine originali non vengono mai modificati.
+
 ### Modelli di qualità supplementari
 
 Tre modelli PyIQA aggiuntivi valutano oltre il punteggio estetico principale TOPIQ. Condividono la VRAM con TOPIQ e vengono eseguiti come parte della pipeline multi-pass predefinita.
@@ -414,6 +416,7 @@ Controlli: intervalli dei punteggi, metriche dei volti, corruzione dei BLOB, dim
 | `python database.py --cleanup-missing-photos` | Rimuove dal database le foto non più presenti su disco (le eliminazioni a cascata ripuliscono tag, volti rilevati, ecc.; cancella anche le appartenenze agli album e l'indice vettoriale, e invalida la cache delle statistiche tranne lo stato della libreria che contiene — lo snapshot dei percentili, lo stato di sincronizzazione Immich, le head keeper addestrate e le metriche del ranker, i marcatori di aggiornamento delle miniature e di riparazione; i contatori di confronti del riaddestramento automatico vengono azzerati) |
 | `python database.py --cleanup-missing-photos --dry-run` | Visualizza in anteprima i file mancanti senza eliminare |
 | `python database.py --cleanup-missing-photos --force` | Procede anche quando ogni foto sembra mancante (protezione contro l'eliminazione di tutto quando un volume è smontato) |
+| `python database.py --relink-photos` | Aggiorna i percorsi nel database delle foto spostate personalmente (anteprima predefinita; l’applicazione richiede un piano esaminato). Vedi [Ricollegare foto spostate](#ricollegare-foto-spostate) |
 | `python database.py --migrate-storage-fs` | Migra le miniature e gli embedding dai BLOB del database al filesystem |
 | `python database.py --migrate-storage-db` | Migra le miniature e gli embedding dal filesystem di nuovo al database |
 | `python database.py --add-user alice --role admin` | Aggiunge un utente (richiede la password) |
@@ -522,22 +525,3 @@ Dopo aver spostato personalmente i file, `python database.py --relink-photos` mo
 L’applicazione usa il blocco della libreria: il codice 75 indica un altro lavoro in corso e il codice 1 un blocco inutilizzabile. L’anteprima non acquisisce il blocco.
 
 `sidecar_facet` indica esplicitamente `photo.ext.facet.xmp`; anche i pacchetti alternativi non elencati vengono rifiutati. I piani salvati sono privati (0600 su POSIX). Una directory leggibile non prova che il volume sia montato: `source_mount_status` resta `not_verified`; l’operatore deve confermare uno spostamento reale anziché archiviazione offline.
-
-```sh
-python database.py --relink-photos --db library.db --config scoring_config.json \
-  --mapping moved.json --plan-out relink-plan.json
-python database.py --relink-photos --db library.db --config scoring_config.json \
-  --apply-plan relink-plan.json --ack-plan REVIEWED_PLAN_ID \
-  --acknowledge-unverified-identity
-```
-
-| Opzione | Scopo |
-|---|---|
-| `--db` | Base dati esistente |
-| `--config` | Configurazione risolta |
-| `--user` | Utente configurato obbligatorio in modalità multiutente |
-| `--mapping` | Percorsi vecchio/nuovo JSON; anteprima |
-| `--plan-out` | Creare un piano privato nuovo senza sovrascrivere |
-| `--apply-plan` | Applicare un piano esaminato |
-| `--ack-plan` | Hash esatto del piano esaminato |
-| `--acknowledge-unverified-identity` | Conferma esplicita nonostante i byte originali ignoti |
