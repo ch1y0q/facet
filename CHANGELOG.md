@@ -38,6 +38,7 @@ All notable changes to Facet are documented in this file.
 - **Readable sidecar import preview errors.** Missing, unreadable or invalid databases now produce a clear refusal instead of a SQLite traceback, without creating or upgrading the database.
 - **Include manual Keep and Reset in assistant activity context.** Successful gallery and photo-detail decisions now report `review` entries with `kept` or `undecided`; a late batch confirmation from another account cannot enter the current activity journal.
 - **Close right-click menus when opening a photo.** Parking the gallery now dismisses its shared photo context menu so it cannot remain over the photo page or reappear on Back.
+- **Complete the relink guide in every language.** The French, German, Italian, Spanish, Portuguese and Chinese pages now carry all of the English page's sections instead of a one-section summary; the command appears in the maintenance table of the command reference, which no longer repeats the option table, and the viewer guide notes that relinked face marks stay in review until saved again in the editor.
 
 ## [1.24.0] "Diaphragme" — 2026-10-26
 

@@ -408,6 +408,7 @@ python /opt/facet/viewer.py      # 仍然读取 /opt/facet/scoring_config.json�
 | `python database.py --cleanup-missing-photos` | 从数据库中删除磁盘上已不存在的照片（级联删除会清理标签、检测到的人脸等；同时清除相册归属和向量索引，并使统计缓存失效，但保留其中的图库状态——百分位快照、Immich 同步状态、已训练的保留照片排序头与排序器指标，以及缩略图刷新和修复标记；自动重新训练的比较计数会被清零） |
 | `python database.py --cleanup-missing-photos --dry-run` | 预览缺失的文件但不删除 |
 | `python database.py --cleanup-missing-photos --force` | 即使全部照片看起来都缺失也继续执行（用于防止卷未挂载时把一切删光） |
+| `python database.py --relink-photos` | 更新你自行移动的照片在数据库中的路径（默认仅预览；应用需要已审核的计划）。参见[重新关联已移动的照片](#重新关联已移动的照片) |
 | `python database.py --migrate-storage-fs` | 把缩略图和特征向量从数据库 BLOB 迁移到文件系统 |
 | `python database.py --migrate-storage-db` | 把缩略图和特征向量从文件系统迁回数据库 |
 | `python database.py --add-user alice --role admin` | 添加用户（会提示输入密码） |
@@ -518,22 +519,3 @@ python facet.py --recompute-average        # 应用新权重
 应用操作使用照片库任务锁：退出码 75 表示其他任务正在运行，退出码 1 表示锁无法使用。预览不获取照片库锁。
 
 `sidecar_facet` 明确表示 `photo.ext.facet.xmp`，未列出的回退包也会被拒绝。保存的审核计划为私有文件（POSIX 权限 0600）。目录可读不代表卷已挂载；`source_mount_status` 仍为 `not_verified`，操作员必须独立确认原文件确实已移动，而非仅处于离线状态。
-
-```sh
-python database.py --relink-photos --db library.db --config scoring_config.json \
-  --mapping moved.json --plan-out relink-plan.json
-python database.py --relink-photos --db library.db --config scoring_config.json \
-  --apply-plan relink-plan.json --ack-plan REVIEWED_PLAN_ID \
-  --acknowledge-unverified-identity
-```
-
-| 选项 | 用途 |
-|---|---|
-| `--db` | 现有数据库 |
-| `--config` | 解析后的配置 |
-| `--user` | 多用户模式下必须指定已配置用户 |
-| `--mapping` | 显式旧/新路径 JSON；预览模式 |
-| `--plan-out` | 创建新的私密计划文件，不覆盖已有文件 |
-| `--apply-plan` | 应用已审核的计划 |
-| `--ack-plan` | 已审核计划的准确摘要 |
-| `--acknowledge-unverified-identity` | 明确确认原图字节身份未知的操作 |

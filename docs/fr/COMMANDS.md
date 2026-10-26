@@ -410,6 +410,7 @@ Vérifications : plages de scores, métriques de visages, corruption de BLOB, ta
 | `python database.py --cleanup-missing-photos` | Supprime de la base de données les photos qui ne sont plus sur le disque (les suppressions en cascade nettoient les étiquettes, les visages détectés, etc. ; vide également les appartenances aux albums et l'index vectoriel, et invalide le cache de statistiques sauf l'état de la bibliothèque qu'il contient — l'instantané de percentiles, l'état de synchronisation Immich, les têtes keeper entraînées et les métriques du classeur, les repères de rafraîchissement des vignettes et de réparation ; les compteurs de comparaisons du réentraînement automatique sont remis à zéro) |
 | `python database.py --cleanup-missing-photos --dry-run` | Prévisualise les fichiers manquants sans supprimer |
 | `python database.py --cleanup-missing-photos --force` | Procède même si toutes les photos semblent manquantes (protection contre la suppression de tout lorsqu'un volume est démonté) |
+| `python database.py --relink-photos` | Met à jour les chemins en base des photos que vous avez déplacées vous-même (aperçu par défaut ; l’application exige un plan examiné). Voir [Relier des photos déplacées](#relier-des-photos-déplacées) |
 | `python database.py --migrate-storage-fs` | Migre les miniatures et embeddings des BLOB de base de données vers le système de fichiers |
 | `python database.py --migrate-storage-db` | Migre les miniatures et embeddings du système de fichiers vers la base de données |
 | `python database.py --add-user alice --role admin` | Ajoute un utilisateur (demande un mot de passe) |
@@ -518,22 +519,3 @@ Après avoir déplacé vous-même les fichiers, `python database.py --relink-pho
 L’application utilise le verrou de la photothèque : le code 75 indique un autre travail en cours et le code 1 un verrou inutilisable. L’aperçu ne prend aucun verrou.
 
 `sidecar_facet` désigne explicitement `photo.ext.facet.xmp` ; les paquets de repli non listés sont aussi refusés. Les plans enregistrés sont privés (0600 sous POSIX). Un répertoire lisible ne prouve pas qu’un volume est monté : `source_mount_status` reste `not_verified` ; l’opérateur doit confirmer un déplacement réel plutôt qu’un stockage hors ligne.
-
-```sh
-python database.py --relink-photos --db library.db --config scoring_config.json \
-  --mapping moved.json --plan-out relink-plan.json
-python database.py --relink-photos --db library.db --config scoring_config.json \
-  --apply-plan relink-plan.json --ack-plan REVIEWED_PLAN_ID \
-  --acknowledge-unverified-identity
-```
-
-| Option | Rôle |
-|---|---|
-| `--db` | Base existante |
-| `--config` | Configuration résolue |
-| `--user` | Utilisateur configuré obligatoire en mode multi-utilisateur |
-| `--mapping` | JSON des anciens/nouveaux chemins ; prévisualisation |
-| `--plan-out` | Créer un plan privé sans écraser |
-| `--apply-plan` | Appliquer un plan examiné |
-| `--ack-plan` | Empreinte exacte du plan examiné |
-| `--acknowledge-unverified-identity` | Confirmation explicite malgré les octets d’origine inconnus |

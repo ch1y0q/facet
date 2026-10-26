@@ -15,10 +15,7 @@ import stat
 import unicodedata
 
 from db.connection import load_sqlite_vec
-from db.maintenance import (
-    evict_derived_stats_cache,
-    _classify_missing_path, _PATH_DELETED,
-)
+from db.maintenance import evict_derived_stats_cache, is_path_deleted
 from db.stats_cache import invalidate_metric_ranges
 
 MAX_PHOTOS = 100
@@ -120,11 +117,15 @@ def _authorize(old, new, policy):
         raise ValueError('Relink would cross a user visibility boundary')
 
 
+def _stat_stamp(value):
+    return [value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns]
+
+
 def _file_receipt(old, new, policy):
     _canonical(old)
     _canonical(new)
     _authorize(old, new, policy)
-    if _classify_missing_path(old) != _PATH_DELETED:
+    if not is_path_deleted(old):
         raise ValueError('Original must be missing with a readable, existing parent; present/inaccessible originals refused')
     flags = os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0)
     descriptor = os.open(new, flags)
@@ -136,13 +137,10 @@ def _file_receipt(old, new, policy):
         digest = hashlib.sha256()
         while block := handle.read(1024 * 1024):
             digest.update(block)
-        def stamp(value):
-            return value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns
-        if stamp(before) != stamp(os.fstat(handle.fileno())) or stamp(before) != stamp(os.stat(new)):
+        if _stat_stamp(before) != _stat_stamp(os.fstat(handle.fileno())) or _stat_stamp(before) != _stat_stamp(os.stat(new)):
             raise ValueError('Destination changed while hashing')
     return {'old': old, 'new': new, 'sha256': digest.hexdigest(),
-            'stat': [before.st_dev, before.st_ino, before.st_size,
-                     before.st_mtime_ns, before.st_ctime_ns]}
+            'stat': _stat_stamp(before)}
 
 
 def _references(conn):
@@ -294,6 +292,33 @@ def _connection(db_path, write=False):
         conn.close()
 
 
+def _entry_file_receipts(entry, policy, photos, names, seen):
+    """Receipts for one mapping entry and its companions; ``seen`` carries the plan-wide duplicate and size tallies."""
+    receipts = []
+    for item in [entry, *entry.get('companions', [])]:
+        if _name_key(item['old']) in seen['sources'] or _name_key(item['new']) in seen['targets']:
+            raise ValueError('A source file was supplied more than once')
+        seen['sources'].add(_name_key(item['old']))
+        seen['targets'].add(_name_key(item['new']))
+        if item is not entry and _name_key(item['new']) in names:
+            raise ValueError('Companion destination is already a registered photo')
+        receipt = _file_receipt(item['old'], item['new'], policy)
+        inode = tuple(receipt['stat'][:2])
+        if inode in seen['inodes'] or (item is entry and receipt['sha256'] in seen['hashes']):
+            raise ValueError('Duplicate/copied destinations in the plan')
+        seen['inodes'].add(inode)
+        if item is entry:
+            seen['hashes'].add(receipt['sha256'])
+        seen['bytes'] += receipt['stat'][2]
+        seen['files'] += 1
+        if seen['bytes'] > MAX_TOTAL_BYTES or seen['files'] > MAX_FILES:
+            raise ValueError('Relink plan exceeds total file/byte limits')
+        if item is not entry and item['old'] in photos:
+            raise ValueError('Indexed companions need their own top-level relink entry')
+        receipts.append(receipt)
+    return receipts
+
+
 def _build_plan(conn, db_path, mapping, config, user):
     from utils.image_loading import (SCANNABLE_IMAGE_EXTENSIONS, configure_raw_decode_profile,
                                      configure_hdr_pq_tonemap_profile)
@@ -307,14 +332,13 @@ def _build_plan(conn, db_path, mapping, config, user):
         raise ValueError('Database already has broken foreign keys; repair before relinking')
     photos = [r[0] for r in conn.execute('SELECT path FROM photos')]
     names = {_name_key(path) for path in photos}
-    planned_names, sources, inodes, hashes, file_sources, file_targets = set(), set(), set(), set(), set(), set()
+    planned_names, sources = set(), set()
+    seen = {'inodes': set(), 'hashes': set(), 'sources': set(), 'targets': set(), 'bytes': 0, 'files': 0}
     source_name_counts = {}
     for path in photos:
         key = _name_key(path)
         source_name_counts[key] = source_name_counts.get(key, 0) + 1
     receipts = []
-    total_bytes = 0
-    file_count = 0
     # Both old and proposed photo names take part in sidecar ambiguity checks.
     photo_names = photos + [entry['new'] for entry in mapping]
     for entry in mapping:
@@ -333,37 +357,14 @@ def _build_plan(conn, db_path, mapping, config, user):
         _canonical(new)
         _authorize(old, new, policy)
         _companions(entry, photo_names, mapping)
-        file_receipts = []
-        for item in [entry, *entry.get('companions', [])]:
-            if _name_key(item['old']) in file_sources or _name_key(item['new']) in file_targets:
-                raise ValueError('A source file was supplied more than once')
-            file_sources.add(_name_key(item['old']))
-            file_targets.add(_name_key(item['new']))
-            if item is not entry and _name_key(item['new']) in names:
-                raise ValueError('Companion destination is already a registered photo')
-            receipt = _file_receipt(item['old'], item['new'], policy)
-            inode = tuple(receipt['stat'][:2])
-            if inode in inodes or (item is entry and receipt['sha256'] in hashes):
-                raise ValueError('Duplicate/copied destinations in the plan')
-            inodes.add(inode)
-            if item is entry:
-                hashes.add(receipt['sha256'])
-            total_bytes += receipt['stat'][2]
-            file_count += 1
-            if total_bytes > MAX_TOTAL_BYTES or file_count > MAX_FILES:
-                raise ValueError('Relink plan exceeds total file/byte limits')
-            if item is not entry and item['old'] in photos:
-                raise ValueError('Indexed companions need their own top-level relink entry')
-            file_receipts.append(receipt)
+        file_receipts = _entry_file_receipts(entry, policy, photos, names, seen)
         # This proves the target decodes in canonical analysis space, not that
         # its bytes equal the missing original. All manual marks need review.
         frame = json.loads(source_identity(new))
         dimensions = conn.execute('SELECT image_width,image_height FROM photos WHERE path=?', (old,)).fetchone()
         if all(dimensions) and list(dimensions) != [frame['w'], frame['h']]:
             raise ValueError('Destination canonical dimensions differ from the stored photo')
-        target_stat = os.stat(new)
-        if file_receipts[0]['stat'] != [target_stat.st_dev, target_stat.st_ino, target_stat.st_size,
-                                        target_stat.st_mtime_ns, target_stat.st_ctime_ns]:
+        if file_receipts[0]['stat'] != _stat_stamp(os.stat(new)):
             raise ValueError('Destination changed while decoding')
         receipts.append({'old': old, 'new': new, 'source_digest': _row_digest(row),
                          'identity': 'original_bytes_unknown', 'target_dimensions': [frame['w'], frame['h']],
@@ -388,6 +389,29 @@ def preview_relinks(db_path, mapping, config, user=None):
         return _build_plan(conn, db_path, mapping, config, user)
 
 
+def _rewrite_refs(conn, refs, old, new):
+    for table, column in refs:
+        if table == 'photos_vec':
+            vector = conn.execute('SELECT embedding FROM photos_vec WHERE path=?', (old,)).fetchone()
+            if vector:
+                conn.execute('DELETE FROM photos_vec WHERE path=?', (old,))
+                conn.execute('INSERT INTO photos_vec(path,embedding) VALUES (?,?)', (new, vector[0]))
+        else:
+            conn.execute(f'UPDATE {_quote(table)} SET {_quote(column)}=? WHERE {_quote(column)}=?', (new, old))
+
+
+def _flag_manual_faces(conn, path):
+    """Every manual rectangle on a relinked photo needs review; v2 sources also carry the unverified marker."""
+    for face_id, source in conn.execute('SELECT id,manual_source FROM faces WHERE photo_path=? AND is_manual=1', (path,)).fetchall():
+        try:
+            stored = json.loads(source)
+            if isinstance(stored, dict) and stored.get('v') == 2:
+                source = _json({**stored, 'relink_unverified': True})
+        except (ValueError, TypeError):
+            pass
+        conn.execute('UPDATE faces SET manual_source=?,manual_review_required=1 WHERE id=?', (source, face_id))
+
+
 def apply_relinks(db_path, plan, config, *, acknowledge_plan, acknowledge_unverified_identity=False, user=None):
     """Apply exactly a reviewed plan atomically; never move files or contact servers."""
     if not isinstance(plan, dict):
@@ -408,22 +432,8 @@ def apply_relinks(db_path, plan, config, *, acknowledge_plan, acknowledge_unveri
             for entry in plan['entries']:
                 old, new = entry['old'], entry['new']
                 conn.execute('UPDATE photos SET path=?,filename=? WHERE path=?', (new, Path(new).name, old))
-                for table, column in refs:
-                    if table == 'photos_vec':
-                        vector = conn.execute('SELECT embedding FROM photos_vec WHERE path=?', (old,)).fetchone()
-                        if vector:
-                            conn.execute('DELETE FROM photos_vec WHERE path=?', (old,))
-                            conn.execute('INSERT INTO photos_vec(path,embedding) VALUES (?,?)', (new, vector[0]))
-                    else:
-                        conn.execute(f'UPDATE {_quote(table)} SET {_quote(column)}=? WHERE {_quote(column)}=?', (new, old))
-                for face_id, source in conn.execute('SELECT id,manual_source FROM faces WHERE photo_path=? AND is_manual=1', (new,)):
-                    try:
-                        stored = json.loads(source)
-                        if isinstance(stored, dict) and stored.get('v') == 2:
-                            source = _json({**stored, 'relink_unverified': True})
-                    except (ValueError, TypeError):
-                        pass
-                    conn.execute('UPDATE faces SET manual_source=?,manual_review_required=1 WHERE id=?', (source, face_id))
+                _rewrite_refs(conn, refs, old, new)
+                _flag_manual_faces(conn, new)
             evict_derived_stats_cache(conn)
             invalidate_metric_ranges(conn)
             if conn.execute('PRAGMA foreign_key_check').fetchone():

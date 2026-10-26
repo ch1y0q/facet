@@ -411,6 +411,7 @@ Checks: Score ranges, face metrics, BLOB corruption, embedding sizes, orphaned f
 | `python database.py --cleanup-missing-photos` | Remove photos no longer on disk from the database (cascading deletes clean up tags, detected faces, etc.; also clears album memberships and the vector index, and invalidates the stats cache except the library state it holds — the percentile snapshot, Immich sync state, trained keeper heads and ranker metrics, and the thumbnail-refresh and repair markers; the auto-retrain comparison counters are reset) |
 | `python database.py --cleanup-missing-photos --dry-run` | Preview missing files without deleting |
 | `python database.py --cleanup-missing-photos --force` | Proceed even when every photo appears missing (guard against deleting everything when a volume is unmounted) |
+| `python database.py --relink-photos` | Update the database paths of photos you moved yourself (preview by default; applying needs a reviewed plan). See [Relink moved photos](#relink-moved-photos) |
 | `python database.py --migrate-storage-fs` | Migrate thumbnails and embeddings from database BLOBs to filesystem |
 | `python database.py --migrate-storage-db` | Migrate thumbnails and embeddings from filesystem back to database |
 | `python database.py --add-user alice --role admin` | Add a user (prompts for password) |
@@ -519,22 +520,3 @@ After moving files yourself, use `python database.py --relink-photos` to preview
 Apply uses the library job lock: exit code 75 means another job is running, and 1 means the lock is unusable. Preview takes no library lock.
 
 Explicit companion kinds include `sidecar_facet` for `photo.ext.facet.xmp`; unlisted fallback packets are refused too. Saved review plans are private (0600 on POSIX). Readable directories do not prove a volume is mounted: `source_mount_status` remains `not_verified`, and the operator must confirm the original was moved rather than offline.
-
-```sh
-python database.py --relink-photos --db library.db --config scoring_config.json \
-  --mapping moved.json --plan-out relink-plan.json
-python database.py --relink-photos --db library.db --config scoring_config.json \
-  --apply-plan relink-plan.json --ack-plan REVIEWED_PLAN_ID \
-  --acknowledge-unverified-identity
-```
-
-| Option | Purpose |
-|---|---|
-| `--db` | Existing database |
-| `--config` | Resolved configuration |
-| `--user` | Required configured user in multi-user mode |
-| `--mapping` | Explicit old/new JSON mappings; preview mode |
-| `--plan-out` | Create a new private plan file; never overwrite |
-| `--apply-plan` | Apply a previously reviewed plan |
-| `--ack-plan` | Exact reviewed plan digest |
-| `--acknowledge-unverified-identity` | Explicit assertion despite unknown original bytes |

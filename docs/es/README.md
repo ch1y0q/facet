@@ -19,7 +19,7 @@ copiar y pegar.
 | [Interoperabilidad](INTEROP.md) | Intercambiar valoraciones/tags con Lightroom, Capture One, digiKam, darktable |
 | [Immich](IMMICH.md) | Sincronizar valoraciones y favoritos con Immich, más el webhook entrante |
 | [Despliegue](DEPLOYMENT.md) | NAS, servidores remotos, HTTPS, copias de seguridad, multiusuario |
-| [RELINK](RELINK.md) | Volver a vincular fotos movidas |
+| [Volver a vincular](RELINK.md) | Volver a vincular fotos movidas |
 
 ## Tipos de archivo admitidos
 
