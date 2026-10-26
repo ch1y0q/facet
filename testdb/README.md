@@ -39,7 +39,11 @@ grouping can differ slightly on other hardware, so record your own baseline firs
 | `open_set_eval.py`, 3 references, T = 0.35: primary right / wrong | 196 / 0 of 196 | must stay |
 | `open_set_eval.py`, 3 references, T = 0.35: bystanders named | 0 of 24 | must stay 0 |
 
-It is not in CI: it needs a GPU, the models and a ~290 MB download, so it runs by hand. A
+CI runs it without a GPU (`.github/workflows/face-gate.yml`): one job builds the library, then
+Linux (direct install) and Docker (the CPU image) each scan it on the legacy profile, group,
+name and report with `ci_report.py`; `ci_compare.py` fails the run if the reports differ or a
+must-stay line above is broken. CPU and GPU grouping can differ slightly, so the GPU baseline
+above is still recorded by hand. A
 quality claim ("better on real photos") needs a separate, private, hand-checked sample.
 
 ## Build the library (once)
