@@ -1,5 +1,6 @@
 recursive-include client/dist/client/browser *
 recursive-include i18n *.json
+include processing/facet_exiftool.config
 include requirements.txt
 include LICENSE
 include README.md
