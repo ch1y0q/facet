@@ -308,7 +308,16 @@ export class GalleryStore {
   private assistantChanges = inject(AssistantChangesService);
   private journal = inject(UserActivityJournal);
 
-  readonly reviewProgress = signal<components['schemas']['ReviewProgressResponse'] | null>(null);
+  private readonly reviewProgressSnapshot = signal<{
+    counts: components['schemas']['ReviewProgressResponse']; identity: string; key: string;
+  } | null>(null);
+  /** Counts stay visible during same-scope refreshes, but never under another
+   *  identity or filter scope, including before its next request starts. */
+  readonly reviewProgress = computed(() => {
+    const snapshot = this.reviewProgressSnapshot();
+    return snapshot && snapshot.identity === this.auth.identity() && snapshot.key === this.reviewProgressKey()
+      && this.pinnedPaths() === null && !this.filters().similar_to ? snapshot.counts : null;
+  });
   readonly reviewPercent = computed(() => {
     const progress = this.reviewProgress();
     return progress?.total ? Math.floor(100 * (progress.kept + progress.rejected) / progress.total) : 0;
@@ -343,8 +352,12 @@ export class GalleryStore {
     this.progressReadCancelled.next();
     const identity = this.auth.identity();
     const key = this.reviewProgressKey();
-    this.reviewProgress.set(null);
-    if (this.pinnedPaths() !== null || this.filters().similar_to) return;
+    const previous = this.reviewProgressSnapshot();
+    if (previous?.identity !== identity || previous?.key !== key) this.reviewProgressSnapshot.set(null);
+    if (this.pinnedPaths() !== null || this.filters().similar_to) {
+      this.reviewProgressSnapshot.set(null);
+      return;
+    }
     const params = buildApiParams(this.filters(), this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
     const album = this.currentAlbum();
     if (album?.is_smart && album.smart_filter_json) {
@@ -359,8 +372,15 @@ export class GalleryStore {
       const progress = await firstValueFrom(this.api.get<components['schemas']['ReviewProgressResponse']>('/photos/review_progress', params).pipe(
         takeUntil(this.progressReadCancelled), finalize(() => this.progressReadsInFlight--),
       ));
-      if (seq === this.reviewProgressSeq && identity === this.auth.identity() && key === this.reviewProgressKey()) this.reviewProgress.set(progress);
-    } catch { /* Counts unavailable: never show a guessed denominator. */ }
+      if (seq === this.reviewProgressSeq && identity === this.auth.identity() && key === this.reviewProgressKey()) {
+        this.reviewProgressSnapshot.set({ counts: progress, identity, key });
+      }
+    } catch {
+      // A current failed read has no fresh denominator; superseded/cancelled reads cannot clear a newer one.
+      if (seq === this.reviewProgressSeq && identity === this.auth.identity() && key === this.reviewProgressKey()) {
+        this.reviewProgressSnapshot.set(null);
+      }
+    }
   }
 
   /** Restore this browser's queue and return its first remaining photo, skipping deleted/decided rows. */
@@ -927,7 +947,7 @@ export class GalleryStore {
     this.readOwner = owner;
     this.cancelListingReads();
     this.resumeSeq++;
-    this.reviewProgress.set(null);
+    this.reviewProgressSnapshot.set(null);
     this.parkedRefreshPaths.clear();
     this.pendingKeeperHints.clear();
     this.listingRefreshOwed = false;
@@ -2105,7 +2125,8 @@ export class GalleryStore {
     const key = scope();
     let seq = this._loadSeq;
     const current = () => seq === this._loadSeq && identity === this.auth.identity() && key === scope() && this.pinnedPaths() === null;
-    void this.loadReviewProgress();
+    // A rebuild delegates its one count request to loadPhotos.
+    if (!rebuild || !f.review_status || this.pinnedPaths() !== null) void this.loadReviewProgress();
     if (!f.review_status || this.pinnedPaths() !== null) return;
     const previous = this.photos();
     this.reviewRefreshOwed = false;
