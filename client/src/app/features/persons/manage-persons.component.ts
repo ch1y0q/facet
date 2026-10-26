@@ -365,9 +365,10 @@ export class PersonFacesDialogComponent implements OnInit {
 
       <!-- Empty state -->
       @if (!loading() && persons().length === 0) {
-        <div class="text-center py-16 opacity-50">
+        <div class="text-center py-16 opacity-50 max-w-md mx-auto">
           <mat-icon class="!text-5xl !w-12 !h-12 mb-4">people</mat-icon>
           <p>{{ I18N.persons.no_persons | translate }}</p>
+          <p class="text-sm mt-3 opacity-80">{{ I18N.persons.empty_hint | translate }}</p>
         </div>
       }
 
