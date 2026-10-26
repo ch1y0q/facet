@@ -3,6 +3,9 @@
 $procs = @(Get-FacetProcesses)
 if (-not $procs) { Write-Host 'Facet is not running.'; return }
 foreach ($p in $procs) {
-    taskkill /T /F /PID $p.ProcessId 2>$null | Out-Null
+    # Killing a launcher's tree also ends its child, which is listed too: skip what is gone.
+    if (-not (Get-Process -Id $p.ProcessId -ErrorAction SilentlyContinue)) { continue }
+    # Through cmd, so taskkill's stderr never becomes a PowerShell error under -ErrorAction Stop.
+    cmd /c "taskkill /T /F /PID $($p.ProcessId) >nul 2>&1"
     Write-Host "Stopped $($p.ProcessId): $($p.CommandLine)"
 }
