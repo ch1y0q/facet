@@ -4,6 +4,10 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Private online place-search caches.** Multi-user address searches reuse only the current account’s results while preserving the shared provider rate limit. Excessively nested provider JSON returns the normal unavailable response instead of an internal server error.
+
 ## [1.24.0] "Diaphragme" — 2026-10-26
 
 
