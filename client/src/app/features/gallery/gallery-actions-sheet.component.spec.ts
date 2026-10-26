@@ -46,6 +46,22 @@ describe('GalleryActionsSheetComponent', () => {
     expect(dismiss).toHaveBeenCalledWith({ kind: 'tags' });
   });
 
+  for (const [label, decision] of [[I18N.review.keep, 'kept'], [I18N.review.reset, 'undecided']] as const) {
+    it(`dismisses with the ${decision} review action after a real click`, () => {
+      const button = Array.from(render().querySelectorAll('button'))
+        .find(el => el.textContent?.includes(label));
+      expect(button).toBeDefined();
+      button!.click();
+      expect(dismiss.mock.calls).toEqual([[{ kind: 'review', decision }]]);
+    });
+
+    it(`does not offer ${decision} review without edition access`, () => {
+      const el = render({ isEdition: false });
+      expect(Array.from(el.querySelectorAll('button')).some(button => button.textContent?.includes(label))).toBe(false);
+      expect(dismiss).not.toHaveBeenCalled();
+    });
+  }
+
   it('offers capture date correction only with edition access', () => {
     const find = (el: HTMLElement) => Array.from(el.querySelectorAll('button')).find(b => b.textContent?.includes(I18N.capture_date.title));
     expect(find(render({ isEdition: false }))).toBeUndefined();
