@@ -9,3 +9,6 @@ foreach ($p in $procs) {
     cmd /c "taskkill /T /F /PID $($p.ProcessId) >nul 2>&1"
     Write-Host "Stopped $($p.ProcessId): $($p.CommandLine)"
 }
+# A child can end between the check above and taskkill, which then exits non-zero; the
+# script would pass that on as its own exit code (a failed scheduled task).
+exit 0
