@@ -7809,6 +7809,11 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** PlaceSearchErrorResponse */
+        PlaceSearchErrorResponse: {
+            /** Detail */
+            detail: string;
+        };
         /** PlaceSearchResponse */
         PlaceSearchResponse: {
             /** Results */
@@ -14586,6 +14591,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Wait before another explicit search. */
+            429: {
+                headers: {
+                    /** @description Seconds before retrying. */
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceSearchErrorResponse"];
+                };
+            };
+            /** @description Online provider unavailable. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceSearchErrorResponse"];
+                };
+            };
+            /** @description Online place search disabled. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceSearchErrorResponse"];
                 };
             };
         };
