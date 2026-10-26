@@ -4208,7 +4208,7 @@ describe('BurstCullingComponent progressive darkroom frames (rendered)', () => {
     open(1);
     open(0);
     expect(component['sharpPath']()).toBe('/p0.jpg');
-    expect(component['failedRenderPath']()).toBeNull();
+    expect(component['failedRenderPaths']().size).toBe(0);
   });
 
   it.each(['loaded', 'failed'])('clears %s readiness when returning to a frame whose new render attempt is pending', async state => {
@@ -4227,7 +4227,7 @@ describe('BurstCullingComponent progressive darkroom frames (rendered)', () => {
     fixture.detectChanges();
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(component['sharpPath']()).toBeNull();
-    expect(component['failedRenderPath']()).toBeNull();
+    expect(component['failedRenderPaths']().size).toBe(0);
     expect(renderPeaking).not.toHaveBeenCalled();
   });
 
@@ -4243,6 +4243,63 @@ describe('BurstCullingComponent progressive darkroom frames (rendered)', () => {
     expect(renderPeaking).toHaveBeenCalledWith(thumb('/p1.jpg'), expect.any(Number));
     expect(component['sharpPath']()).toBeNull();
     expect(srcs().filter(u => u === render('/p0.jpg') || u === render('/p2.jpg'))).toEqual([]);
+  });
+
+  it('uses each compare pane’s current render attempt after a single-view failure', async () => {
+    const pooled = vi.spyOn(component, 'renderPooledPeaking').mockImplementation(async (...args: unknown[]) =>
+      new Map((args[0] as string[]).map(src => [src, `overlay:${src}`])));
+    open(1);
+    pane().sharpFailed.emit(render('/p1.jpg'));
+    fixture.detectChanges();
+    component['setCompareMode']('2up');
+    component['peakingActive'].set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const panes = fixture.debugElement.queryAll(By.directive(SyncedZoomComponent))
+      .map(debug => debug.componentInstance as SyncedZoomComponent);
+    expect(panes.map(p => p.frameKey())).toEqual(['/p1.jpg', '/p2.jpg']);
+    panes[0].sharpLoaded.emit(render('/p1.jpg'));
+    panes[1].sharpFailed.emit(render('/p2.jpg'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(pooled).toHaveBeenLastCalledWith([render('/p1.jpg'), thumb('/p2.jpg')], expect.any(Number));
+    expect(component['peakingOverlays']().get('/p2.jpg')).toBe(`overlay:${thumb('/p2.jpg')}`);
+
+    // Obsolete/wrong-source events and an unchanged success must leave the pool alone.
+    const calls = pooled.mock.calls.length;
+    component['onSharpFailed'](render('/p0.jpg'), '/p0.jpg');
+    panes[1].sharpLoaded.emit(thumb('/p2.jpg'));
+    panes[0].sharpLoaded.emit(render('/p1.jpg'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(pooled).toHaveBeenCalledTimes(calls);
+    expect([...component['failedRenderPaths']()]).toEqual(['/p2.jpg']);
+
+    component['setCompareMode']('4up');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(pooled).toHaveBeenLastCalledWith([render('/p0.jpg'), render('/p1.jpg'), thumb('/p2.jpg')], expect.any(Number));
+    component['setCompareMode']('2up');
+    fixture.detectChanges();
+
+    // Retry only the second pane. Its old fallback must not survive success.
+    panes[1].sharpPending.emit(render('/p2.jpg'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(pooled).toHaveBeenLastCalledWith([render('/p1.jpg'), render('/p2.jpg')], expect.any(Number));
+    panes[1].sharpLoaded.emit(render('/p2.jpg'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(pooled).toHaveBeenLastCalledWith([render('/p1.jpg'), render('/p2.jpg')], expect.any(Number));
+
+    component['setCompareMode']('single');
+    fixture.detectChanges();
+    pane().sharpFailed.emit(render('/p1.jpg'));
+    fixture.detectChanges();
+    component['setCompareMode']('4up');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(pooled).toHaveBeenLastCalledWith(group.photos.map(p => render(p.path)), expect.any(Number));
   });
 
   it('waits for the sharp render before building the peaking overlay in single view', async () => {
