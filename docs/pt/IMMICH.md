@@ -94,7 +94,7 @@ A chave é enviada como um cabeçalho `x-api-key` em cada requisição. Coloque-
 
 ## Passo 3 — mapear os caminhos
 
-Adicione um par para cada raiz que você compartilha. O primeiro par cujo `facet_prefix` corresponder a uma foto vence:
+Adicione um par para cada raiz que você compartilha. Vence a primeira correspondência literal de prefixo de string; os limites de diretório não são inferidos. Termine os prefixos de diretório com `/` e coloque os mapeamentos mais específicos antes dos mais amplos:
 
 ```json
 "immich": {
@@ -130,7 +130,7 @@ python facet.py --immich-sync --dry-run
 python facet.py --immich-sync
 ```
 
-A sincronização informa `matched` / `unmatched` / `updated` / `skipped (unrated)` / álbuns criados. Uma primeira execução com uma contagem alta de `unmatched` quase sempre significa que o mapeamento de caminhos está errado — veja [Solução de Problemas](#solução-de-problemas).
+A sincronização informa `matched` / `unmatched` / `updated` / `skipped (unrated)` / `identity_conflicts` / álbuns criados. Uma primeira execução com uma contagem alta de `unmatched` quase sempre significa que o mapeamento de caminhos está errado — veja [Solução de Problemas](#solução-de-problemas). Na simulação, `updated` conta alterações verificadas previstas; não há gravações remotas nem do estado de sincronização local.
 
 O que é enviado:
 
@@ -337,6 +337,10 @@ O Facet só envia uma limpeza para uma foto que ele realmente enviou antes; essa
 
 Caminhos com vários IDs remotos e vários caminhos Facet apontando para o mesmo caminho remoto são recusados como `identity_conflicts`. Não há alterações nem confirmação do estado de sincronização para esses caminhos; fotos sem ambiguidade podem continuar. Corrija as raízes ou selecione `owner_id` e `library_id` e tente novamente.
 
+As verificações de identidade usam o URL e a chave API configurados. As respostas devem incluir `id` e `originalPath`; proprietário e biblioteca selecionados devem corresponder aos campos recebidos. Um ID de webhook é verificado consultando o ativo e todas as páginas de busca do caminho exato: caminhos duplicados, IDs diferentes ou paginação inválida impedem a atualização. Uma resposta bem-sucedida confirma a aceitação HTTP; o trabalho de metadados pode continuar pendente.
+
+Os lotes webhook recusam as entradas afetadas quando caminhos Facet diferentes indicam o mesmo destino ou ID remoto. Todas as identidades são resolvidas antes de escrever; aliases inconsistentes contam como `failed` e não confirmam o estado de envio.
+
 ### `rating: 0 is not valid`
 
 O servidor Immich é mais antigo que 3.0. Atualize-o — a semântica de limpeza do Facet precisa de `null`, e `push.rejected` precisa de `-1`; não há fallback que funcione no 2.x.
@@ -344,7 +348,3 @@ O servidor Immich é mais antigo que 3.0. Atualize-o — a semântica de limpeza
 ---
 
 **Ver também:** [Comandos — Sincronização com o Immich](COMMANDS.md#sincronização-com-o-immich) · [Configuração](CONFIGURATION.md) · [Receitas de Interoperabilidade com Editores](INTEROP.md) para o round-trip de XMP com Lightroom, darktable e digiKam.
-
-Os prefixos continuam sendo strings literais: vence a primeira correspondência, sem limites de diretório implícitos. Termine prefixos de diretório com `/`. Na simulação, `updated` conta alterações previstas, sem escritas remotas ou do estado local. As respostas devem incluir `id` e `originalPath`. Contrato verificado com esquemas publicados Immich v3.3.5 e fixtures isoladas, sem servidor real. Sucesso HTTP não comprova durabilidade após tarefas de metadados.
-
-Os lotes webhook recusam as entradas afetadas quando caminhos Facet diferentes indicam o mesmo destino ou ID remoto. Todas as identidades são resolvidas antes de escrever; aliases inconsistentes contam como `failed` e não confirmam o estado de envio.
