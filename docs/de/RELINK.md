@@ -2,6 +2,8 @@
 
 `python database.py --relink-photos` ändert nur Datenbankpfade bereits erfasster Fotos nach einem manuellen Verschieben. Viewer, Scanner und externe Editoren vorher stoppen und die Datenbank sichern. Originale und Begleitdateien werden weder verschoben noch geschrieben oder gelöscht; Immich wird nicht aufgerufen.
 
+Anwenden hält Facets Wartungssperre bis zum Ende des Datenbankschreibens. Ein anderer Bibliotheksauftrag führt zu Exitcode 75 ohne Änderungen an Datenbank oder Medien; eine unbenutzbare Sperre zu Exitcode 1. Die Vorschau bleibt schreibgeschützt und nimmt keine Bibliothekssperre. Die Sperre koordiniert Aufträge auf einem Host; die Offline-Anforderungen gelten weiterhin für andere Hosts und externe Editoren.
+
 Die Datenbank beweist nicht die Byte-Identität des fehlenden Originals: Jeder Plan trägt `original_bytes_unknown`. SHA-256 bezeichnet nur die geprüfte neue Zieldatei. Prüfen Sie die Identität unabhängig vor beiden Bestätigungen; eine falsche Zuordnung kann Anmerkungen mit dem falschen Bild verbinden.
 
 Pfade müssen absolut, nativ und kanonisch ohne Symlinks innerhalb konfigurierter Wurzeln sein. Das alte Original muss fehlen, sein lesbarer Elternordner aber existieren. Ganze verschwundene Ordner werden abgelehnt, da der Datenträger offline sein könnte. Keine leeren alten Ordner zur Umgehung anlegen. Ein lesbarer Ordner beweist keinen Mount; `source_mount_status=not_verified` erfordert eigene Prüfung.
