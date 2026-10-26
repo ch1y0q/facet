@@ -39,7 +39,7 @@ import { ComparisonCategoryExplainerComponent } from '../comparison/comparison-c
 import { DownloadOption } from '../../core/api/types';
 import { downloadAll } from '../../shared/utils/download';
 import { GalleryStore } from '../gallery/gallery.store';
-import { GalleryFilters } from '../gallery/gallery-filters.util';
+import { setScopePatch } from '../gallery/gallery-filters.util';
 import * as L from 'leaflet';
 import { createLeafletMap } from '../../shared/leaflet';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
@@ -932,24 +932,9 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     const set = this.photoSet();
     if (!set?.kind || set.group_id == null) return;
     const groupId = String(set.group_id);
-    const updates: Partial<GalleryFilters> = {
-      sequence_group_id: '', sequence_kind: '', burst_group_id: '', duplicate_group_id: '',
-    };
-    if (set.kind === 'burst') {
-      updates.burst_group_id = groupId;
-      updates.hide_bursts = false;
-    } else if (set.kind === 'duplicate') {
-      updates.duplicate_group_id = groupId;
-      updates.hide_duplicates = false;
-    } else if (set.kind === 'bracket') {
-      updates.sequence_kind = set.kind;
-      updates.sequence_group_id = groupId;
-      updates.hide_brackets = false;
-    } else {
-      updates.sequence_kind = set.kind;
-      updates.sequence_group_id = groupId;
-      updates.hide_panoramas = false;
-    }
+    const updates = setScopePatch(
+      set.kind === 'burst' || set.kind === 'duplicate' ? set.kind : 'sequence', groupId, set.kind,
+    );
     // Carried via router navigation state, never the URL or a post-navigate
     // updateFilters() call: the gallery route re-initialises its filters from
     // config + localStorage + URL on activation, which either overwrites a

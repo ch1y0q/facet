@@ -467,6 +467,16 @@ describe('GalleryStore', () => {
   });
 
   describe('loadConfig()', () => {
+    it('leaves the gallery session query untouched (the albums page shares loadConfig)', async () => {
+      sessionStorage.setItem('facet_gallery_session_query', '{"sort":"date_taken"}');
+      apiGet.mockReturnValue(of(makeConfig({})));
+
+      await store.loadConfig();
+
+      expect(sessionStorage.getItem('facet_gallery_session_query')).toBe('{"sort":"date_taken"}');
+      sessionStorage.removeItem('facet_gallery_session_query');
+    });
+
     it('should fetch config and apply defaults to filters', async () => {
       const cfg = makeConfig({
         pagination: { default_per_page: 32 },
@@ -1327,6 +1337,16 @@ describe('GalleryStore', () => {
 describe('gallery session query (nav-icon return)', () => {
   beforeEach(() => {
     sessionStorage.removeItem('facet_gallery_session_query');
+  });
+
+  it('saveSessionQuery writes the same query syncUrl stores, without navigating', async () => {
+    store.filters.update(f => ({ ...f, sort: 'date_taken' }));
+    routerNavigate.mockClear();
+
+    store.saveSessionQuery();
+
+    expect(JSON.parse(sessionStorage.getItem('facet_gallery_session_query')!)).toMatchObject({ sort: 'date_taken' });
+    expect(routerNavigate).not.toHaveBeenCalled();
   });
 
   it('syncUrl stores the built query in sessionStorage for the nav return', async () => {
