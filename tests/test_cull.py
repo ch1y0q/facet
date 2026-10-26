@@ -478,13 +478,13 @@ class TestCullApplyOnlyFilters:
             "lead": {"burst_group_id": 4, "is_burst_lead": 1},
         }
         paths = {n: _make_file(tmp_path, n + ".jpg") for n in extras}
-        seed_photos_prefix(str(tmp_path) + "/", [
+        seed_photos_prefix(os.path.join(str(tmp_path), ""), [
             {"path": paths[n], "filename": n + ".jpg", **extra} for n, extra in extras.items()
         ])
         return paths
 
     def _check(self, client, tmp_path, action, filters, expected):
-        prefix = str(tmp_path) + "/"
+        prefix = os.path.join(str(tmp_path), "")
         filters = {"hide_blinks": "1", **filters}
         with mock.patch(f"{_EXPORT_MODULE}._allowed_export_roots", return_value=[str(tmp_path)]):
             resp = client.post("/api/cull/apply", json={
